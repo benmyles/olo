@@ -85,11 +85,11 @@ impl Why {
     pub fn said(self, app: &str) -> String {
         match self {
             Why::Cleared => "Cleared".to_owned(),
-            Why::Tidied => "Tidied away".to_owned(),
+            Why::Tidied => olo_kit::words::tr("Tidied away").to_owned(),
             Why::Withdrawn if app.is_empty() => "Withdrawn".to_owned(),
-            Why::Withdrawn => format!("Withdrawn by {app}"),
-            Why::Replaced => "Replaced by a newer one".to_owned(),
-            Why::Overflow => "Made room for newer ones".to_owned(),
+            Why::Withdrawn => olo_kit::tr!("Withdrawn by {}", app),
+            Why::Replaced => olo_kit::words::tr("Replaced by a newer one").to_owned(),
+            Why::Overflow => olo_kit::words::tr("Made room for newer ones").to_owned(),
         }
     }
 }

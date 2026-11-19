@@ -676,19 +676,19 @@ pub fn run() -> ExitCode {
 /// Why not to back up now, if not.
 fn ready(s: &Settings) -> Result<(), String> {
     if s.target == Target::None {
-        return Err("not set up yet".into());
+        return Err(olo_kit::words::en("not set up yet").into());
     }
     if !s.enabled {
-        return Err("turned off".into());
+        return Err(olo_kit::words::en("turned off").into());
     }
     if !s.on_battery && on_battery() {
-        return Err("on battery: it waits for power".into());
+        return Err(olo_kit::words::en("on battery: it waits for power").into());
     }
     if s.wired_only && !olo_net::wired() {
-        return Err("no wired network: it waits for one".into());
+        return Err(olo_kit::words::en("no wired network: it waits for one").into());
     }
     if matches!(s.target, Target::GoogleDrive { .. }) && !olo_net::online() {
-        return Err("no network: it goes on once there’s one".into());
+        return Err(olo_kit::words::en("no network: it goes on once there’s one").into());
     }
     Ok(())
 }
@@ -870,11 +870,11 @@ fn tidy(settings: &Settings, st: &mut State, open: &mut Option<Opened>, cancel: 
     let progress = Progress::default();
     let result = reporting(st, doing, &progress, || {
         if let Ok(mut c) = progress.current.lock() {
-            *c = "Reading the index again".into();
+            *c = olo_kit::words::en("Reading the index again").into();
         }
         o.repo.refresh()?;
         if let Ok(mut c) = progress.current.lock() {
-            *c = "Letting go of backups past keeping".into();
+            *c = olo_kit::words::en("Letting go of backups past keeping").into();
         }
         let all = o.repo.snapshots()?;
         let host = host();
@@ -954,7 +954,7 @@ fn opened<'a>(settings: &Settings, open: &'a mut Option<Opened>, limits: &Limits
                     let mut s = Settings::load();
                     s.target = Target::GoogleDrive { account: account.clone(), folder: moved };
                     let _ = s.save();
-                    return Err("the backups' folder in Google Drive was made again elsewhere: following it there".into());
+                    return Err(olo_kit::words::en("the backups' folder in Google Drive was made again elsewhere: following it there").into());
                 }
                 return Err(olo_diskbackup::Error::NoRepository.to_string());
             }
@@ -1169,11 +1169,11 @@ fn validate(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limi
 fn delete(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limits: &Limits, cancel: &AtomicBool, ids: &[Id], unfinished: bool, forgotten: &mut u32) {
     // Said at once (opening the backup can take a moment), then as it goes.
     let what = match (ids.len(), unfinished) {
-        (0, _) => "the unfinished backup".to_owned(),
-        (1, false) => "a backup".to_owned(),
-        (n, false) => format!("{n} backups"),
-        (1, true) => "a backup and the unfinished one".to_owned(),
-        (n, true) => format!("{n} backups and the unfinished one"),
+        (0, _) => olo_kit::words::en("the unfinished backup").to_owned(),
+        (1, false) => olo_kit::words::en("a backup").to_owned(),
+        (n, false) => olo_kit::en!("{} backups", n),
+        (1, true) => olo_kit::words::en("a backup and the unfinished one").to_owned(),
+        (n, true) => olo_kit::en!("{} backups and the unfinished one", n),
     };
     let deleting = Doing::Deleting { what };
     st.doing = deleting.clone();
@@ -1185,7 +1185,7 @@ fn delete(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limits
         let _ = st.save();
     };
     st.progress = Some(olo_protocol::diskbackup::Progress { started: now(), ..Default::default() });
-    say(st, &format!("Opening the backup in {}", settings.target.describe()));
+    say(st, &olo_kit::en!("Opening the backup in {}", settings.target.describe()));
     let o = match opened(settings, open, limits) {
         Ok(o) => o,
         Err(e) => {
@@ -1274,12 +1274,12 @@ fn erase_all(settings: &Settings, st: &mut State, open: &mut Option<Opened>, lim
         // another computer's find it by its name).
         if let Target::GoogleDrive { account, folder } = &settings.target {
             if let Ok(mut c) = progress.current.lock() {
-                *c = "Deleting the backups’ folder in Google Drive".into();
+                *c = olo_kit::words::en("Deleting the backups’ folder in Google Drive").into();
             }
             let new = target::erase_drive(account, folder)?;
             drop(lock);
             if let Ok(mut c) = progress.current.lock() {
-                *c = "Making it again, empty".into();
+                *c = olo_kit::words::en("Making it again, empty").into();
             }
             let mut s = Settings::load();
             s.target = new.clone();
@@ -1330,7 +1330,7 @@ fn erase_all(settings: &Settings, st: &mut State, open: &mut Option<Opened>, lim
         Err(e) => {
             tracing::warn!("diskbackup: erasing: {e}");
             *open = None;
-            st.last = Some(Last { time: now(), error: Some(format!("erasing every backup didn't finish: {e}")), ..Default::default() });
+            st.last = Some(Last { time: now(), error: Some(olo_kit::en!("erasing every backup didn't finish: {}", e)), ..Default::default() });
         }
     }
     st.doing = Doing::Idle;

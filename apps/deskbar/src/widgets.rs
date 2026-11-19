@@ -230,11 +230,9 @@ impl Shown {
         let pool = matches!(w.measure, Measure::Pool { .. });
         // (Over its span, for what it draws as a graph.)
         let span = match w.span_s.clamp(1, MAX_SPAN_S) {
-            3600 => "the last hour".to_owned(),
-            s if s % 3600 == 0 => format!("the last {} hours", s / 3600),
-            60 => "the last minute".to_owned(),
-            s if s % 60 == 0 => format!("the last {} minutes", s / 60),
-            s => format!("the last {s} seconds"),
+            s if s % 3600 == 0 => olo_kit::words::count(u64::from(s / 3600), "the last hour", "the last {n} hours"),
+            s if s % 60 == 0 => olo_kit::words::count(u64::from(s / 60), "the last minute", "the last {n} minutes"),
+            s => olo_kit::words::count(u64::from(s), "the last second", "the last {n} seconds"),
         };
         if !pool && !matches!(w.measure, Measure::Space { .. }) {
             caption = if caption.is_empty() { format!("Over {span}") } else { format!("{caption} · over {span}") };
@@ -252,11 +250,11 @@ impl Shown {
                 olo_protocol::deskbar::PoolView::Serving => "the account answering now",
             };
             let which = match quotas.as_slice() {
-                [] => "what holds it back".to_owned(),
+                [] => olo_kit::words::tr("what holds it back").to_owned(),
                 [q] => q.clone(),
                 [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
             };
-            caption = format!("Token Pool · {accounts} · {which}");
+            caption = olo_kit::tr!("Token Pool · {} · {}", accounts, which);
             if *view == olo_protocol::deskbar::PoolView::Together {
                 caption = format!("{caption} · over {span}");
             }
@@ -287,7 +285,7 @@ impl Shown {
         if !caption.is_empty() {
             card = card.caption(caption);
         }
-        let Some(r) = &self.latest else { return card.part(Part::Notes(vec!["Nothing read yet".into()])) };
+        let Some(r) = &self.latest else { return card.part(Part::Notes(vec![olo_kit::words::tr("Nothing read yet").into()])) };
         let drawing = |look: Look, height: f32, heading: Option<&'static str>, text: String| {
             let s = Arc::new(Shown { widget: Widget { look, ..w.clone() }, ..(**self).clone() });
             let paint: CardPaint = Rc::new(move |g: &mut Painter, b: Bounds<Pixels>| paint_drawing(g, b, &s, &theme::palette(), clock()));
@@ -312,8 +310,8 @@ impl Shown {
                             row = row.level(level as f32, Some(c(charts::usage_colour(&p, use_of as f32))));
                         }
                         let note = match (&d.note, d.live) {
-                            (Some(n), true) => Some(format!("Answering now · {n}")),
-                            (None, true) => Some("Answering now".into()),
+                            (Some(n), true) => Some(olo_kit::tr!("Answering now · {}", n)),
+                            (None, true) => Some(olo_kit::words::tr("Answering now").into()),
                             (n, false) => n.clone(),
                         };
                         if let Some(n) = note {
@@ -368,10 +366,10 @@ impl Shown {
                             Row::new(name.clone(), value).level(level as f32, Some(first))
                         })
                         .collect();
-                    card = card.part(Part::Rows { heading: Some("Using the most".into()), rows });
+                    card = card.part(Part::Rows { heading: Some(olo_kit::words::tr("Using the most").into()), rows });
                 }
-                Some(_) => card = card.part(Part::Notes(vec!["No process uses much of it now".into()])),
-                None if looked => card = card.part(Part::Notes(vec!["Looking at which processes use it…".into()])),
+                Some(_) => card = card.part(Part::Notes(vec![olo_kit::words::tr("No process uses much of it now").into()])),
+                None if looked => card = card.part(Part::Notes(vec![olo_kit::words::tr("Looking at which processes use it…").into()])),
                 None => {}
             }
         }
@@ -532,7 +530,7 @@ impl Live {
             };
             let vs = readings.iter().map(|(_, r)| one(r)).filter(|v| v.is_finite());
             let (lo, hi) = vs.fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), v| (lo.min(v), hi.max(v)));
-            lo.is_finite().then(|| format!("From {} to {}", meters::unit_text(last.unit, lo), meters::unit_text(last.unit, hi)))
+            lo.is_finite().then(|| olo_kit::tr!("From {} to {}", meters::unit_text(last.unit, lo), meters::unit_text(last.unit, hi)))
         });
         self.shown(w).card(sources, top, looked, range)
     }
@@ -592,20 +590,20 @@ impl PoolNews {
         let Measure::Pool { provider, quotas, .. } = &self.measure else { return (String::new(), String::new()) };
         let name = olo_protocol::pool::provider_name(provider);
         let what = match quotas.as_slice() {
-            [q] => format!("{name}'s {q} quota"),
-            [] => format!("{name}'s quota"),
-            _ => format!("One of {name}'s quotas"),
+            [q] => olo_kit::tr!("{}'s {} quota", name, q),
+            [] => olo_kit::tr!("{}'s quota", name),
+            _ => olo_kit::tr!("One of {}'s quotas", name),
         };
         if self.out {
             (
-                format!("{what} is used up on every account"),
+                olo_kit::tr!("{} is used up on every account", what),
                 match &self.back {
-                    Some(b) => format!("{b}. Until then Token Pool asks {} to wait.", olo_protocol::pool::client_name(provider)),
-                    None => format!("Token Pool asks {} to wait until one resets.", olo_protocol::pool::client_name(provider)),
+                    Some(b) => olo_kit::tr!("{}. Until then Token Pool asks {} to wait.", b, olo_protocol::pool::client_name(provider)),
+                    None => olo_kit::tr!("Token Pool asks {} to wait until one resets.", olo_protocol::pool::client_name(provider)),
                 },
             )
         } else {
-            (format!("{what} is back"), "An account can answer again.".into())
+            (olo_kit::tr!("{} is back", what), olo_kit::words::tr("An account can answer again.").into())
         }
     }
 }

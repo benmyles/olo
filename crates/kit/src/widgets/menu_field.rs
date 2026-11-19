@@ -17,6 +17,15 @@ use olo_kit_base::metrics as m;
 use super::control::control;
 use crate::{Menu, menu, style, theme};
 
+/// Where the controls of a column of labelled ones begin: the widest of
+/// `labels` as they're shown, in the language chosen, and the gap after
+/// it. Give each of the column's fields this `divider`, so their fields
+/// line up whatever the language (a fixed divider lets a longer label
+/// push its own field over, out of line with the rest).
+pub fn divider_for(labels: &[&str]) -> f32 {
+    labels.iter().map(|l| f32::from(style::text_width(crate::words::of_text(l), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))).ceil()).fold(0.0, f32::max) + m::LABEL_GAP
+}
+
 type OnChange = Rc<dyn Fn(&usize, &mut WindowCx)>;
 
 pub struct MenuField {

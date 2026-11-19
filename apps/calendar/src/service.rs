@@ -97,7 +97,7 @@ pub fn reminders(book: &Book, choices: &Choices, from: &Zoned, zone: &TimeZone) 
                         at,
                         key: format!("{}|{start}|{before}", stored.href),
                         href: stored.href.clone(),
-                        title: if e.summary.trim().is_empty() { "(No title)".to_owned() } else { e.summary.trim().to_owned() },
+                        title: if e.summary.trim().is_empty() { olo_kit::words::tr("(No title)").to_owned() } else { e.summary.trim().to_owned() },
                         calendar: cal.kept.name.clone(),
                         hue: book.hue(i, choices),
                         start,
@@ -173,16 +173,16 @@ fn keep_coming(coming: &olo_protocol::calendar::Coming) {
 /// How far off `start` is at `now`, in words: "Now", "In 15 minutes",
 /// "In 2 hours", "Tomorrow", "In 3 days"; "Started 5 minutes ago".
 pub fn ahead(start: i64, now: i64) -> String {
-    let s = start - now;
-    let count = |n: i64, one: &str, many: &str| if n == 1 { format!("1 {one}") } else { format!("{n} {many}") };
-    match s {
-        s if s <= -3600 => format!("Started {} ago", count((-s + 1800) / 3600, "hour", "hours")),
-        s if s <= -60 => format!("Started {} ago", count((-s + 30) / 60, "minute", "minutes")),
-        s if s < 60 => "Now".to_owned(),
-        s if s < 3600 => format!("In {}", count((s + 30) / 60, "minute", "minutes")),
-        s if s < 20 * 3600 => format!("In {}", count((s + 1800) / 3600, "hour", "hours")),
-        s if s < 36 * 3600 => "Tomorrow".to_owned(),
-        s => format!("In {}", count((s + 43_200) / 86_400, "day", "days")),
+    use olo_kit::words::{count, tr};
+    let n = |v: i64| v.max(0) as u64;
+    match start - now {
+        s if s <= -3600 => count(n((-s + 1800) / 3600), "Started 1 hour ago", "Started {n} hours ago"),
+        s if s <= -60 => count(n((-s + 30) / 60), "Started 1 minute ago", "Started {n} minutes ago"),
+        s if s < 60 => tr("Now").to_owned(),
+        s if s < 3600 => count(n((s + 30) / 60), "In 1 minute", "In {n} minutes"),
+        s if s < 20 * 3600 => count(n((s + 1800) / 3600), "In 1 hour", "In {n} hours"),
+        s if s < 36 * 3600 => tr("Tomorrow").to_owned(),
+        s => count(n((s + 43_200) / 86_400), "In 1 day", "In {n} days"),
     }
 }
 
@@ -280,6 +280,8 @@ pub fn run() -> std::process::ExitCode {
             }
         }
         let settings: Settings = if demo { Settings::default() } else { olo_kit::store::load(&crate::settings_path()).unwrap_or_default() };
+        // (The reminders in the person's language, as it is now.)
+        olo_kit::words::choose();
         let list = reminders(&book, &settings.choices, &now, &zone);
         // What's to come, for the clock's menu (written when it changes).
         let me: Vec<String> = sources.iter().map(|s| s.account.address.clone()).collect();
@@ -297,7 +299,7 @@ pub fn run() -> std::process::ExitCode {
                 .icon("calendar")
                 .kind(NoteKind::Important)
                 .accent([fill[0], fill[1], fill[2]])
-                .action("show", "Show")
+                .action("show", olo_kit::words::tr("Show"))
                 .shows(which.clone())
                 .sticky(true);
             note.look.subtitle = Some(r.calendar.clone());

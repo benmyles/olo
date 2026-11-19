@@ -490,9 +490,9 @@ impl View for Banners {
                 olo_kit::review::own_grid(g, r);
                 g.paint_quad(fill(r, style::c(p.panel_background)));
                 style::frame_rect(g, r, style::tint(p.panel_background, 1.6));
-                let said = if more == 1 { "1 more waiting".to_owned() } else { format!("{more} more waiting") };
+                let said = olo_kit::words::count(more as u64, "1 more waiting", "{n} more waiting");
                 style::label(g, r.center().x, r.center().y, style::Align::Center, said.clone(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), style::secondary_text(&p));
-                agent::record(g, agent::Node::button(format!("{said}: Show Notifications"), r));
+                agent::record(g, agent::Node::button(olo_kit::tr!("{}: Show Notifications", said), r));
             }
         })
         .absolute()
@@ -529,7 +529,7 @@ impl View for Banners {
             let all = Bounds::centered_at(point(px(WIDTH - PAD - 6.0), px(head_mid)), size(px(18.0), px(18.0)));
             let (first, members): (u32, Vec<(u32, bool)>) = (g.cards[0].id, g.cards.iter().map(|c| (c.id, c.pinned)).collect());
             let name = if g.app.is_empty() { "Notification".to_owned() } else { g.app.clone() };
-            root = root.child(close_area(cx, format!("close-all-{first}"), all, if single { "Close".into() } else { format!("Close All from {name}") }, (first, false), move |b, cx| {
+            root = root.child(close_area(cx, format!("close-all-{first}"), all, if single { "Close".into() } else { olo_kit::tr!("Close All from {}", name) }, (first, false), move |b, cx| {
                 for &(id, pinned) in &members {
                     if single || !pinned {
                         b.did(id, Did::Dismiss, cx);

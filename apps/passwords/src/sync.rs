@@ -150,11 +150,11 @@ pub fn reason(e: &onepassword::Error) -> String {
     let text = describe(e);
     let lower = text.to_lowercase();
     if lower.contains("permission") {
-        "You don’t have permission to read it in 1Password.".to_string()
+        olo_kit::words::tr("You don’t have permission to read it in 1Password.").to_string()
     } else if lower.contains("not in an active state") {
-        "It’s archived in 1Password, which doesn’t let other apps read archived items.".to_string()
+        olo_kit::words::tr("It’s archived in 1Password, which doesn’t let other apps read archived items.").to_string()
     } else if lower.contains("not found") {
-        "It’s no longer in 1Password.".to_string()
+        olo_kit::words::tr("It’s no longer in 1Password.").to_string()
     } else {
         let mut t = text;
         if let Some(first) = t.get(..1) {
@@ -354,7 +354,7 @@ pub fn plan(snaps: &[Snapshot], socket: &str) -> Result<Plan, String> {
             }
             Err(message) => {
                 let name = if snap.label.is_empty() { snap.account.clone() } else { snap.label.clone() };
-                plan.problems.push(Problem::error(&format!("{name} (account)"), None, format!("Couldn’t sync this account. {message}")));
+                plan.problems.push(Problem::error(&format!("{name} (account)"), None, olo_kit::tr!("Couldn’t sync this account. {}", message)));
                 failed.get_or_insert(message);
             }
         }
@@ -398,7 +398,7 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
                     parts.push(format!("Renamed (was “{}”)", there.title));
                 }
                 if there.description != *description {
-                    parts.push(if description.is_empty() { "Description removed".to_owned() } else { "New description".to_owned() });
+                    parts.push(if description.is_empty() { olo_kit::words::tr("Description removed").to_owned() } else { olo_kit::words::tr("New description").to_owned() });
                 }
                 if parts.is_empty() {
                     // Already as it is here.
@@ -415,8 +415,7 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
                         let n = there.active_item_count;
                         let detail = match n {
                             0 => String::new(),
-                            1 => "Its 1 item too".to_owned(),
-                            n => format!("Its {n} items too"),
+                            n => olo_kit::words::count(n as u64, "Its 1 item too", "Its {n} items too"),
                         };
                         p.rows.push(vault_row(What::Delete, title, detail));
                         p.up.push(Up::DeleteVault { id: id.clone(), title: title.clone() });
@@ -430,7 +429,7 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
     let known: HashSet<&str> = vaults.iter().map(|v| v.id.as_str()).filter(|v| !deleting.contains(v)).chain(made.iter().copied()).collect();
     // Synced items whose vault is gone from 1Password go with it.
     for e in snap.entries.iter().filter(|e| e.remote.is_some() && !e.dirty && !known.contains(e.item.vault_id.as_str())) {
-        p.rows.push(row(true, What::Delete, &e.item, "Its vault is gone from 1Password".into()));
+        p.rows.push(row(true, What::Delete, &e.item, olo_kit::words::tr("Its vault is gone from 1Password").into()));
     }
     let local: HashMap<&str, &Entry> = snap.entries.iter().map(|e| (e.item.id.as_str(), e)).collect();
     // Changed there this time: anything of ours for them waits for the
@@ -453,7 +452,7 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
         let list = match c.items().list(&v.id, &all) {
             Ok(l) => l,
             Err(e) => {
-                p.problems.push(Problem::error(&title_of(&v.id), None, format!("Couldn’t list its items. {}", reason(&e))));
+                p.problems.push(Problem::error(&title_of(&v.id), None, olo_kit::tr!("Couldn’t list its items. {}", reason(&e))));
                 continue;
             }
         };
@@ -487,8 +486,8 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
             }
         }
         if left_out > 0 {
-            let n = if left_out == 1 { "1 archived item isn’t".to_string() } else { format!("{left_out} archived items aren’t") };
-            p.problems.push(Problem { vault: title_of(&v.id), item: None, reason: format!("{n} copied: 1Password doesn’t let other apps read its archive."), note: true });
+            let n = olo_kit::words::count(left_out as u64, "1 archived item isn’t", "{n} archived items aren’t");
+            p.problems.push(Problem { vault: title_of(&v.id), item: None, reason: olo_kit::tr!("{} copied: 1Password doesn’t let other apps read its archive.", n), note: true });
         }
         let titles: HashMap<&str, &str> = list.iter().map(|o| (o.id.as_str(), o.title.as_str())).collect();
         for ids in stale.chunks(BATCH) {
@@ -521,7 +520,7 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
                 match local.get(id.as_str()) {
                     None => p.rows.push(row(true, What::Add, &item, String::new())),
                     Some(e) if e.dirty && e.remote.as_ref().is_some_and(|r| r.version != item.version) => {
-                        let detail = format!("Changed both here and in 1Password: 1Password’s version replaces it here, and yours is kept as “{} (conflict)”", e.item.title);
+                        let detail = olo_kit::tr!("Changed both here and in 1Password: 1Password’s version replaces it here, and yours is kept as “{} (conflict)”", e.item.title);
                         p.rows.push(row(true, What::Conflict, &item, detail));
                     }
                     // Only ours changed; it goes up next time.
@@ -529,7 +528,7 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
                     Some(e) => {
                         let mut parts = differences(&e.item, &item);
                         if state != e.state {
-                            parts.push("out of the archive".into());
+                            parts.push(olo_kit::words::tr("out of the archive").into());
                         }
                         if !parts.is_empty() {
                             p.rows.push(row(true, What::Change, &item, changed(&parts)));
@@ -542,9 +541,9 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
         for e in snap.entries.iter().filter(|e| e.remote.is_some() && e.item.vault_id == v.id) {
             if !states.contains_key(e.item.id.as_str()) {
                 if e.dirty {
-                    p.rows.push(row(true, What::Conflict, &e.item, "Deleted in 1Password but changed here: kept here, to be added back".into()));
+                    p.rows.push(row(true, What::Conflict, &e.item, olo_kit::words::tr("Deleted in 1Password but changed here: kept here, to be added back").into()));
                 } else {
-                    p.rows.push(row(true, What::Delete, &e.item, "Deleted in 1Password".into()));
+                    p.rows.push(row(true, What::Delete, &e.item, olo_kit::words::tr("Deleted in 1Password").into()));
                 }
                 p.down.push(Change::Gone { id: e.item.id.clone() });
             }
@@ -584,7 +583,7 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
         // What 1Password would refuse isn't offered: the person hears why.
         let out = fields::for_core(&e.item.fields);
         if let Err(why) = fields::check(e.item.category, &out, &e.item.sections, &e.item.tags, &e.item.websites) {
-            let why = format!("1Password won’t take it, so it wasn’t sent. {} Change it here and sync again.", why.explain());
+            let why = olo_kit::tr!("1Password won’t take it, so it wasn’t sent. {} Change it here and sync again.", why.explain());
             p.problems.push(Problem::error(&title_of(&vault), Some(&e.item.title), why));
             continue;
         }
@@ -595,7 +594,7 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
         shown.vault_id = vault.clone();
         match &seen {
             None => {
-                let detail = if archive { "In the archive".into() } else { String::new() };
+                let detail = if archive { olo_kit::words::tr("In the archive").into() } else { String::new() };
                 p.rows.push(row(false, What::Add, &shown, detail));
             }
             Some(seen) => {
@@ -607,7 +606,7 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
                             there
                         }
                         Err(err) => {
-                            let why = format!("Couldn’t read 1Password’s copy to compare, so yours wasn’t sent. {}", reason(&err));
+                            let why = olo_kit::tr!("Couldn’t read 1Password’s copy to compare, so yours wasn’t sent. {}", reason(&err));
                             p.problems.push(Problem::error(&title_of(&e.item.vault_id), Some(&e.item.title), why));
                             continue;
                         }
@@ -615,7 +614,7 @@ fn plan_account(snap: &Snapshot, socket: &str) -> Result<Part, String> {
                 };
                 if there.version != seen.version {
                     // Changed there after all: as for a conflict found above.
-                    let detail = format!("Changed both here and in 1Password: 1Password’s version replaces it here, and yours is kept as “{} (conflict)”", e.item.title);
+                    let detail = olo_kit::tr!("Changed both here and in 1Password: 1Password’s version replaces it here, and yours is kept as “{} (conflict)”", e.item.title);
                     p.rows.push(row(true, What::Conflict, &there, detail));
                     p.down.push(Change::Fetched { item: Box::new(there), state: seen.state });
                     continue;
@@ -666,7 +665,7 @@ pub fn apply(plan: Plan, socket: &str) -> Result<Report, String> {
             Ok(c) => c,
             Err(message) => {
                 let name = if part.label.is_empty() { part.account.clone() } else { part.label.clone() };
-                r.problems.push(Problem::error(&format!("{name} (account)"), None, format!("Couldn’t send this account’s changes. {message}")));
+                r.problems.push(Problem::error(&format!("{name} (account)"), None, olo_kit::tr!("Couldn’t send this account’s changes. {}", message)));
                 continue;
             }
         };
@@ -697,7 +696,7 @@ pub fn apply(plan: Plan, socket: &str) -> Result<Report, String> {
                     r.sent += 1;
                 }
                 Err(err) => {
-                    r.problems.push(Problem::error(&title, None, format!("Couldn’t make this vault in 1Password, so its items weren’t sent either. {}", reason(&err))));
+                    r.problems.push(Problem::error(&title, None, olo_kit::tr!("Couldn’t make this vault in 1Password, so its items weren’t sent either. {}", reason(&err))));
                     unmade.insert(local);
                 }
             }
@@ -712,7 +711,7 @@ pub fn apply(plan: Plan, socket: &str) -> Result<Report, String> {
                             r.changes.push(Change::VaultEdited { id, title, description });
                             r.sent += 1;
                         }
-                        Err(err) => r.problems.push(Problem::error(&title, None, format!("Couldn’t change this vault in 1Password. {}", reason(&err)))),
+                        Err(err) => r.problems.push(Problem::error(&title, None, olo_kit::tr!("Couldn’t change this vault in 1Password. {}", reason(&err)))),
                     }
                 }
                 Up::DeleteVault { id, title } => match c.vaults().delete(&id) {
@@ -720,7 +719,7 @@ pub fn apply(plan: Plan, socket: &str) -> Result<Report, String> {
                         r.changes.push(Change::VaultDeleted { id });
                         r.sent += 1;
                     }
-                    Err(err) => r.problems.push(Problem::error(&title, None, format!("Couldn’t delete this vault from 1Password. {}", reason(&err)))),
+                    Err(err) => r.problems.push(Problem::error(&title, None, olo_kit::tr!("Couldn’t delete this vault from 1Password. {}", reason(&err)))),
                 },
                 Up::Send { local_id, rev, item, vault, seen, archive } => {
                     // (Into a vault made just now, by its id there.)
@@ -745,7 +744,7 @@ pub fn apply(plan: Plan, socket: &str) -> Result<Report, String> {
                             continue;
                         }
                         Err(err) => {
-                            r.problems.push(Problem::error(&title_of(&vault), Some(&item.title), format!("Couldn’t send it. {}", reason(&err))));
+                            r.problems.push(Problem::error(&title_of(&vault), Some(&item.title), olo_kit::tr!("Couldn’t send it. {}", reason(&err))));
                             continue;
                         }
                     };
@@ -753,7 +752,7 @@ pub fn apply(plan: Plan, socket: &str) -> Result<Report, String> {
                     if archive {
                         match c.items().archive(&sent.vault_id, &sent.id) {
                             Ok(()) => state = ItemState::Archived,
-                            Err(err) => r.problems.push(Problem::error(&title_of(&vault), Some(&item.title), format!("Couldn’t archive it. {}", reason(&err)))),
+                            Err(err) => r.problems.push(Problem::error(&title_of(&vault), Some(&item.title), olo_kit::tr!("Couldn’t archive it. {}", reason(&err)))),
                         }
                     }
                     r.changes.push(Change::Pushed { local_id, rev, item: Box::new(sent), state });
@@ -767,7 +766,7 @@ pub fn apply(plan: Plan, socket: &str) -> Result<Report, String> {
                         }
                         Ok(_) => {
                             if let Err(err) = c.items().delete(&tomb.vault, &tomb.id) {
-                                r.problems.push(Problem::error(&title_of(&tomb.vault), Some(&title), format!("Couldn’t delete it in 1Password. {}", reason(&err))));
+                                r.problems.push(Problem::error(&title_of(&tomb.vault), Some(&title), olo_kit::tr!("Couldn’t delete it in 1Password. {}", reason(&err))));
                                 continue;
                             }
                         }

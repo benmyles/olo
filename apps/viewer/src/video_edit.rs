@@ -372,8 +372,8 @@ impl Doc {
                         e.exported = Some(edits);
                         format!("Exported “{}”.", path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())
                     }
-                    Err(err) if err == "cancelled" => "Export cancelled.".into(),
-                    Err(err) => format!("The export failed: {err}"),
+                    Err(err) if err == "cancelled" => olo_kit::words::tr("Export cancelled.").into(),
+                    Err(err) => olo_kit::tr!("The export failed: {}", err),
                 });
             }
             _ => {}
@@ -639,14 +639,14 @@ impl Doc {
             for &(a, b) in &edits.cuts {
                 gone(g, a, b);
                 let r = Bounds::from_corners(point(x_of(a), strip.top()), point(x_of(b), strip.bottom()));
-                agent::record(g, agent::Node::label(format!("Cut {} to {}", olo_preview::media::format_duration(a), olo_preview::media::format_duration(b)), r));
+                agent::record(g, agent::Node::label(olo_kit::tr!("Cut {} to {}", olo_preview::media::format_duration(a), olo_preview::media::format_duration(b)), r));
             }
             // The stretch dragged out.
             if let Some((a, b)) = selection {
                 let r = Bounds::from_corners(point(x_of(a), strip.top()), point(x_of(b), strip.bottom()));
                 g.paint_quad(olo_kit::fill(r, style::c(p.list_selected_background).opacity(0.45)));
                 g.paint_quad(olo_kit::outline(r, style::c(p.selection_edge()), olo_kit::BorderStyle::Solid).border_widths(px(1.0)));
-                agent::record(g, agent::Node::label(format!("Selected {} to {}", olo_preview::media::format_duration(a), olo_preview::media::format_duration(b)), r));
+                agent::record(g, agent::Node::label(olo_kit::tr!("Selected {} to {}", olo_preview::media::format_duration(a), olo_preview::media::format_duration(b)), r));
             }
             // The trim's handles.
             for (t, name) in [(edits.trim.0, "Trim Start"), (edits.trim.1, "Trim End")] {
@@ -824,7 +824,7 @@ impl Doc {
         let status: String = match (&e.exporting, &e.note) {
             (Some(x), _) => format!("Exporting… {}%", (x.progress * 100.0).round()),
             (None, Some(n)) => n.clone(),
-            (None, None) => format!("{} kept of {}", olo_preview::media::format_duration(kept), olo_preview::media::format_duration(e.duration)),
+            (None, None) => olo_kit::tr!("{} kept of {}", olo_preview::media::format_duration(kept), olo_preview::media::format_duration(e.duration)),
         };
         let shown_export = e.note.as_ref().is_some_and(|n| n.starts_with("Exported")) && !busy;
         let mute = e.now.mute;
@@ -937,7 +937,7 @@ impl Doc {
                             g.paint_quad(olo_kit::fill(b.intersect(&view), scrim));
                         }
                     }
-                    agent::record(g, agent::Node::label(format!("Cropped to {w} × {h}"), r));
+                    agent::record(g, agent::Node::label(olo_kit::tr!("Cropped to {} × {}", w, h), r));
                 })
                 .absolute()
                 .inset_0();

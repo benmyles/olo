@@ -140,6 +140,119 @@ struct Entry {
 struct Catalog {
     language: &'static Language,
     words: HashMap<&'static str, Entry>,
+    /// Its sentences with parts, to find one another program said
+    /// (`of_said`): made the first time one is looked for.
+    patterns: OnceLock<Vec<Pattern>>,
+    /// What `of_said` found for each text it was given, kept (a window
+    /// shows the same few again and again).
+    told: Mutex<HashMap<String, Option<String>>>,
+}
+
+impl Catalog {
+    fn new(language: &'static Language) -> Catalog {
+        Catalog { language, words: read(language.text), patterns: OnceLock::new(), told: Mutex::default() }
+    }
+
+    /// `text` in this language, if it's one of Olo's sentences: whole,
+    /// or with parts put in.
+    fn retell(&self, text: &str) -> Option<String> {
+        if let Some(entry) = self.words.get(text) {
+            return Some(entry.text).filter(|t| !t.is_empty()).map(str::to_owned);
+        }
+        let mut told = self.told.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(found) = told.get(text) {
+            return found.clone();
+        }
+        let patterns = self.patterns.get_or_init(|| self.words.keys().filter_map(|k| Pattern::of(k)).collect());
+        let found = best(patterns, text).and_then(|(p, parts)| self.with_parts(p, &parts));
+        // (A few kept: a window's few, again and again; never many.)
+        if told.len() >= 256 {
+            told.clear();
+        }
+        told.insert(text.to_owned(), found.clone());
+        found
+    }
+
+    /// The translation of `p` with `parts` put in its places.
+    fn with_parts(&self, p: &Pattern, parts: &[&str]) -> Option<String> {
+        let entry = self.words.get(p.key)?;
+        if p.counted {
+            let n: u64 = parts.first()?.parse().ok()?;
+            let form = self.language.counting.form(n);
+            let said = entry.forms.iter().find(|(f, _)| *f == form).or_else(|| entry.forms.iter().find(|(f, _)| *f == Form::Other)).map(|(_, t)| *t);
+            return said.or(Some(entry.text)).filter(|t| !t.is_empty()).map(|t| t.replace("{n}", parts[0]));
+        }
+        let parts: Vec<&dyn Display> = parts.iter().map(|p| p as &dyn Display).collect();
+        Some(entry.text).filter(|t| !t.is_empty()).map(|t| fill_in(t, &parts))
+    }
+}
+
+/// A sentence with parts (`{}`, or a count's `{n}`), as its words
+/// between them.
+#[derive(Debug)]
+struct Pattern {
+    /// The English, as the catalog has it.
+    key: &'static str,
+    /// Its words before, between and after the parts: one more than it
+    /// has parts.
+    between: Vec<&'static str>,
+    /// Its one part is a count's `{n}`.
+    counted: bool,
+    /// How many letters its own words have: of two that fit, the one
+    /// that says more.
+    letters: usize,
+}
+
+impl Pattern {
+    fn of(key: &'static str) -> Option<Pattern> {
+        if key.contains("{{") || key.contains("}}") {
+            return None;
+        }
+        let (mut between, mut counted, mut rest) = (Vec::new(), false, key);
+        while let Some(open) = rest.find('{') {
+            let close = open + rest[open..].find('}')?;
+            match &rest[open + 1..close] {
+                "" => {}
+                "n" => counted = true,
+                _ => return None,
+            }
+            between.push(&rest[..open]);
+            rest = &rest[close + 1..];
+        }
+        between.push(rest);
+        // (Two parts side by side can't be told apart; a count has one.)
+        if between.len() < 2 || between[1..between.len() - 1].iter().any(|b| b.is_empty()) || (counted && between.len() != 2) {
+            return None;
+        }
+        let letters = between.iter().map(|b| b.chars().filter(|c| c.is_alphabetic()).count()).sum();
+        // (Too few words of its own to be told from any other: "{}: {}".)
+        (letters >= 3).then_some(Pattern { key, between, counted, letters })
+    }
+
+    /// `text`'s parts, if it's this sentence said with them: each part
+    /// something, the words between found from the left.
+    fn parts<'t>(&self, text: &'t str) -> Option<Vec<&'t str>> {
+        let n = self.between.len();
+        let mut rest = text.strip_prefix(self.between[0])?.strip_suffix(self.between[n - 1])?;
+        let mut parts = Vec::with_capacity(n - 1);
+        for words in &self.between[1..n - 1] {
+            let skip = rest.chars().next()?.len_utf8();
+            let at = skip + rest[skip..].find(words)?;
+            parts.push(&rest[..at]);
+            rest = &rest[at + words.len()..];
+        }
+        if rest.is_empty() || (self.counted && !rest.bytes().all(|b| b.is_ascii_digit())) {
+            return None;
+        }
+        parts.push(rest);
+        Some(parts)
+    }
+}
+
+/// The sentence of `patterns` that `text` is, with its parts: of two
+/// that fit, the one with more words of its own.
+fn best<'p, 't>(patterns: &'p [Pattern], text: &'t str) -> Option<(&'p Pattern, Vec<&'t str>)> {
+    patterns.iter().filter_map(|p| p.parts(text).map(|parts| (p, parts))).max_by_key(|(p, _)| p.letters)
 }
 
 /// `text` with `\n` made a new line (kept as it is where there's none:
@@ -190,7 +303,7 @@ static TRANSLATING: AtomicBool = AtomicBool::new(false);
 fn catalog(language: &'static Language) -> Arc<Catalog> {
     static READ: OnceLock<Mutex<HashMap<&'static str, Arc<Catalog>>>> = OnceLock::new();
     let mut read_already = READ.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner());
-    read_already.entry(language.code).or_insert_with(|| Arc::new(Catalog { language, words: read(language.text) })).clone()
+    read_already.entry(language.code).or_insert_with(|| Arc::new(Catalog::new(language))).clone()
 }
 
 /// The language set: `code` ("de"; empty or one Olo hasn't: English).
@@ -359,6 +472,12 @@ pub fn lookup(text: &str) -> Option<&'static str> {
 /// `{1}`… by their place (a translation puts them in its own order).
 /// `{{` and `}}` are braces.
 pub fn fill(pattern: &str, parts: &[&dyn Display]) -> String {
+    let out = fill_in(pattern, parts);
+    said(&out);
+    out
+}
+
+fn fill_in(pattern: &str, parts: &[&dyn Display]) -> String {
     use std::fmt::Write;
     let mut out = String::with_capacity(pattern.len() + 16);
     let mut next = 0;
@@ -391,8 +510,55 @@ pub fn fill(pattern: &str, parts: &[&dyn Display]) -> String {
         }
     }
     out.push_str(rest);
-    said(&out);
     out
+}
+
+/// Words for the person that another program shows (a service's state,
+/// an error it keeps, what it answers): kept in English here, where
+/// programs compare them and agents and logs read them, and gathered
+/// into the catalogs, so the window showing them gives them in the
+/// person's language ([`of_said`]). With parts: [`en!`](crate::en).
+pub fn en(text: &'static str) -> &'static str {
+    if recording() {
+        seen(text);
+    }
+    text
+}
+
+/// [`en!`](crate::en)'s sentence with its parts put in, in English.
+pub fn en_with(pattern: &'static str, parts: &[&dyn Display]) -> String {
+    fill_in(en(pattern), parts)
+}
+
+/// What another program said in English for the person ([`en`],
+/// [`en!`](crate::en): a service's state, an error it kept), in the
+/// language chosen: the sentence found by its words, whole or around
+/// the parts put in it (a path, a number, a system's own message), and
+/// the parts put in the translation's places as they are. Itself in
+/// English, and where it's none of Olo's sentences.
+pub fn of_said(text: &str) -> String {
+    let found = if TRANSLATING.load(Ordering::Acquire) {
+        let now = NOW.read().unwrap_or_else(|e| e.into_inner()).clone();
+        now.and_then(|c| c.retell(text))
+    } else {
+        None
+    };
+    if watched() && finding_unasked() {
+        match &found {
+            Some(out) => said(out),
+            // (In English: handed back as one of Olo's, if it is.)
+            None if is_english(text) => said(text),
+            None => {}
+        }
+    }
+    found.unwrap_or_else(|| text.to_owned())
+}
+
+/// Whether `text` is one of Olo's English sentences, whole or with its
+/// parts put in (for finding words never asked for: `finding_unasked`).
+fn is_english(text: &str) -> bool {
+    static PATTERNS: OnceLock<Vec<Pattern>> = OnceLock::new();
+    english().iter().any(|e| *e == text) || best(PATTERNS.get_or_init(|| english().iter().filter_map(|k| Pattern::of(k)).collect()), text).is_some()
 }
 
 /// A sentence that counts something, in the language's form for `n`:
@@ -449,6 +615,20 @@ pub fn covered(language: &'static Language, asked: impl Iterator<Item = &'static
     asked.fold((0, 0), |(have, all), text| (have + usize::from(catalog.words.contains_key(text)), all + 1))
 }
 
+/// Words for the person that another program shows, kept in English
+/// with their parts put in: `en!("the keyring can't be read: {}", e)`
+/// (`format!` as the catalogs know it). The window showing them gives
+/// them in the person's language with [`of_said`](crate::words::of_said).
+#[macro_export]
+macro_rules! en {
+    ($text:literal) => {
+        $crate::words::en($text)
+    };
+    ($text:literal, $($part:expr),+ $(,)?) => {
+        $crate::words::en_with($text, &[$(&$part as &dyn ::std::fmt::Display),+])
+    };
+}
+
 /// A sentence in the language chosen with its parts put in:
 /// `tr!("Updated {} ago", when)`. The first is the English, as a
 /// literal; alone, `tr!("Save")` is [`words::tr`](crate::words::tr).
@@ -486,6 +666,43 @@ mod tests {
         assert_eq!(fill("{{}} and {name} and {7} and {", &[&1]), "{} and {name} and {7} and {");
         assert_eq!(fill("{}%", &[&50]), "50%");
         assert_eq!(fill("", &[]), "");
+    }
+
+    /// What another program said, found in a catalog: whole; by its
+    /// words around its parts, which go into the translation's places
+    /// (in its own order); a count's in the form for its number; of two
+    /// that fit, the one that says more; and nothing for what isn't one
+    /// of Olo's, or has too few words of its own to tell.
+    #[test]
+    fn what_another_program_said() {
+        let c = Catalog {
+            language: language("de").unwrap(),
+            words: read(
+                "Paused\nPausiert\n\nthe keyring can't be read: {}\nder Schlüsselbund ist nicht lesbar: {}\n\nDeleting {} of {}\nVon {1} gelöscht: {0}\n\nStarted {} ago\nVor {} begonnen\n\nStarted {} ago, at {}\nVor {} begonnen, um {}\n\n{n} backups and the unfinished one\none: {n} Sicherung und die unfertige\nother: {n} Sicherungen und die unfertige\n\n{}: {}\n{}: {}\n\n{}{} more\n{}{} mehr\n",
+            ),
+            patterns: OnceLock::new(),
+            told: Mutex::default(),
+        };
+        assert_eq!(c.retell("Paused").as_deref(), Some("Pausiert"));
+        assert_eq!(c.retell("the keyring can't be read: it's locked").as_deref(), Some("der Schlüsselbund ist nicht lesbar: it's locked"));
+        assert_eq!(c.retell("Deleting 3 of 12").as_deref(), Some("Von 12 gelöscht: 3"));
+        assert_eq!(c.retell("Started 5 min ago, at 9:00").as_deref(), Some("Vor 5 min begonnen, um 9:00"), "the one that says more");
+        assert_eq!(c.retell("Started 5 min ago").as_deref(), Some("Vor 5 min begonnen"));
+        assert_eq!(c.retell("1 backups and the unfinished one").as_deref(), Some("1 Sicherung und die unfertige"));
+        assert_eq!(c.retell("4 backups and the unfinished one").as_deref(), Some("4 Sicherungen und die unfertige"));
+        assert_eq!(c.retell("some backups and the unfinished one"), None, "a count's part is a number");
+        assert_eq!(c.retell("Disk: full"), None, "too few words of its own");
+        assert_eq!(c.retell("ab more"), None, "two parts side by side");
+        assert_eq!(c.retell("Started  ago"), None, "a part is something");
+        assert_eq!(c.retell("A name"), None);
+        assert_eq!(c.retell("the keyring can't be read: it's locked").as_deref(), Some("der Schlüsselbund ist nicht lesbar: it's locked"), "kept");
+    }
+
+    /// `en!`: English, its parts put in, whatever the language.
+    #[test]
+    fn words_for_another_program() {
+        assert_eq!(crate::en!("not set up yet"), "not set up yet");
+        assert_eq!(crate::en!("the keyring can't be read: {}", "locked"), "the keyring can't be read: locked");
     }
 
     /// How each kind of language counts.
@@ -527,8 +744,12 @@ mod tests {
                     }
                     p
                 };
+                // (A count's form may say it without its number: "Jeden
+                // Tag" for "Every {n} days".)
+                let numberless: Vec<String> = wanted.iter().filter(|x| *x != "{n}").cloned().collect();
                 for text in std::iter::once(entry.text).chain(entry.forms.iter().map(|(_, t)| *t)).filter(|t| !t.is_empty()) {
-                    assert_eq!(own(text), wanted, "{}: “{english}” is “{text}”", language.code);
+                    let got = own(text);
+                    assert!(got == wanted || (english.contains("{n}") && got == numberless), "{}: “{english}” is “{text}”", language.code);
                 }
                 assert!(!entry.text.is_empty() || !entry.forms.is_empty(), "{}: “{english}” has no translation", language.code);
             }

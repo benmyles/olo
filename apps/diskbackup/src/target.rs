@@ -34,11 +34,11 @@ impl Limits {
 /// The store `target` names, paced by `limits`.
 pub fn store(target: &Target, limits: &Limits) -> Result<Arc<dyn Store>, String> {
     match target {
-        Target::None => Err("not set up yet".into()),
+        Target::None => Err(olo_kit::words::en("not set up yet").into()),
         Target::Folder { path } => {
             let path = expand(path);
             if !path.is_dir() {
-                return Err(format!("{} isn't there (a disk not plugged in?)", path.display()));
+                return Err(olo_kit::en!("{} isn't there (a disk not plugged in?)", path.display()));
             }
             Ok(Arc::new(Throttled { inner: LocalStore::new(path), up: limits.up.clone(), down: limits.down.clone() }))
         }
@@ -75,14 +75,14 @@ pub fn google() -> Result<Google, String> {
         Ok(t) => t.into_bytes(),
         Err(_) => match secrets::lookup(secrets::DISKBACKUP_GOOGLE.attributes) {
             Ok(Some(bytes)) => bytes,
-            Ok(None) => return Err("DiskBackup isn't signed in to Google Drive on this computer: set it up again (Back Up To ▸ Google Drive…)".into()),
-            Err(e) => return Err(format!("the keyring can't be read: {e}")),
+            Ok(None) => return Err(olo_kit::words::en("DiskBackup isn't signed in to Google Drive on this computer: set it up again (Back Up To ▸ Google Drive…)").into()),
+            Err(e) => return Err(olo_kit::en!("the keyring can't be read: {}", e)),
         },
     };
     let g: Google = serde_json::from_slice(&text).map_err(|_| "DiskBackup's Google sign-in in the keyring is damaged: set it up again".to_string())?;
     // (Disconnected: the client kept, to connect again with.)
     if g.refresh_token.is_empty() {
-        return Err("DiskBackup is disconnected from Google Drive on this computer: connect it again (Connect Google Drive…)".into());
+        return Err(olo_kit::words::en("DiskBackup is disconnected from Google Drive on this computer: connect it again (Connect Google Drive…)").into());
     }
     Ok(g)
 }
@@ -152,12 +152,12 @@ pub enum Where {
 /// sign-in checked). Blocks: a share gone away, Google slow to answer.
 pub fn look_at(t: &Target) -> Result<Where, String> {
     match t {
-        Target::None => Err("not set up yet".into()),
+        Target::None => Err(olo_kit::words::en("not set up yet").into()),
         Target::Folder { path } => {
             use std::os::unix::ffi::OsStrExt;
             let p = expand(path);
             if !p.is_dir() {
-                return Err(format!("{} isn't there (a disk not plugged in?)", p.display()));
+                return Err(olo_kit::en!("{} isn't there (a disk not plugged in?)", p.display()));
             }
             let c = std::ffi::CString::new(p.as_os_str().as_bytes()).map_err(|e| e.to_string())?;
             // SAFETY: a valid path, and a struct statvfs fills.
@@ -182,7 +182,7 @@ pub fn keep_google(g: &Google) -> Result<(), String> {
         return Ok(());
     }
     let json = serde_json::to_vec(g).unwrap_or_default();
-    secrets::store(secrets::DISKBACKUP_GOOGLE.label, secrets::DISKBACKUP_GOOGLE.attributes, &json).map_err(|e| format!("the keyring can't keep it: {e}"))
+    secrets::store(secrets::DISKBACKUP_GOOGLE.label, secrets::DISKBACKUP_GOOGLE.attributes, &json).map_err(|e| olo_kit::en!("the keyring can't keep it: {}", e))
 }
 
 /// The OAuth client's item in Passwords (so another computer signs in
@@ -235,7 +235,7 @@ pub fn lock_to_read(repo: &olo_diskbackup::Repo, cancel: &std::sync::atomic::Ato
 /// backup tidied since it was opened: what moved, found where it went).
 pub fn retrying<T>(repo: &std::sync::RwLock<olo_diskbackup::Repo>, f: impl Fn(&olo_diskbackup::Repo) -> olo_diskbackup::Result<T>) -> Result<T, String> {
     fn poisoned<E>(_: E) -> String {
-        "the backup isn't open".into()
+        olo_kit::words::en("the backup isn't open").into()
     }
     match f(&*repo.read().map_err(poisoned)?) {
         Ok(t) => return Ok(t),
@@ -270,9 +270,9 @@ pub fn key() -> Result<Key, String> {
         return Key::from_hex(&hex).ok_or_else(|| "OLO_DISKBACKUP_KEY isn't a key".into());
     }
     match secrets::lookup(secrets::DISKBACKUP_KEY.attributes) {
-        Ok(Some(bytes)) => Key::from_hex(&String::from_utf8_lossy(&bytes)).ok_or_else(|| "the key in the keyring is damaged".into()),
-        Ok(None) => Err("the key isn't in this computer's keyring: set DiskBackup up again, or put its key back from Passwords".into()),
-        Err(e) => Err(format!("the keyring can't be read: {e}")),
+        Ok(Some(bytes)) => Key::from_hex(&String::from_utf8_lossy(&bytes)).ok_or_else(|| olo_kit::words::en("the key in the keyring is damaged").into()),
+        Ok(None) => Err(olo_kit::words::en("the key isn't in this computer's keyring: set DiskBackup up again, or put its key back from Passwords").into()),
+        Err(e) => Err(olo_kit::en!("the keyring can't be read: {}", e)),
     }
 }
 
@@ -281,7 +281,7 @@ pub fn keep_key(key: &Key) -> Result<(), String> {
     if std::env::var_os("OLO_DISKBACKUP_KEY").is_some() {
         return Ok(());
     }
-    secrets::store(secrets::DISKBACKUP_KEY.label, secrets::DISKBACKUP_KEY.attributes, key.to_hex().as_bytes()).map_err(|e| format!("the keyring can't keep it: {e}"))
+    secrets::store(secrets::DISKBACKUP_KEY.label, secrets::DISKBACKUP_KEY.attributes, key.to_hex().as_bytes()).map_err(|e| olo_kit::en!("the keyring can't keep it: {}", e))
 }
 
 /// The key's item in Passwords.

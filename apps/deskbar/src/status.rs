@@ -131,19 +131,22 @@ pub fn backup() -> Option<Backup> {
         return None;
     }
     let st = State::load();
+    // (Said in a sentence, in the person's language: "DiskBackup:
+    // backing up.")
     let busy = match st.doing {
-        Doing::BackingUp => Some("Backing up"),
-        Doing::Pruning => Some("Tidying"),
-        Doing::Restoring => Some("Restoring"),
-        Doing::Erasing => Some("Erasing"),
-        Doing::Validating => Some("Validating"),
-        Doing::Deleting { .. } => Some("Deleting"),
+        Doing::BackingUp => Some(olo_kit::words::tr("backing up")),
+        Doing::Pruning => Some(olo_kit::words::tr("tidying")),
+        Doing::Restoring => Some(olo_kit::words::tr("restoring")),
+        Doing::Erasing => Some(olo_kit::words::tr("erasing")),
+        Doing::Validating => Some(olo_kit::words::tr("validating")),
+        Doing::Deleting { .. } => Some(olo_kit::words::tr("deleting")),
         _ => None,
     };
     let off = if st.pid == 0 {
-        Some("the DiskBackup service isn’t running".to_owned())
+        Some(olo_kit::words::tr("the DiskBackup service isn’t running").to_owned())
     } else if let Doing::Waiting { why } = &st.doing {
-        Some(why.clone())
+        // (The service's reason, in English: in the person's language.)
+        Some(olo_kit::words::of_said(why))
     } else {
         None
     };
@@ -152,8 +155,8 @@ pub fn backup() -> Option<Backup> {
     // intervals): said, if it isn't backing up now.
     let overdue = (3 * 86_400).max(3 * 60 * s.every_minutes as i64);
     let trouble = match (&st.last, st.last_ok) {
-        (Some(l), _) if l.error.is_some() && !l.stopped() => Some(format!("the last backup didn’t finish ({})", l.error.clone().unwrap_or_default())),
-        (_, Some(ok)) if now - ok > overdue => Some(format!("nothing backed up for {} days", (now - ok) / 86_400)),
+        (Some(l), _) if l.error.is_some() && !l.stopped() => Some(olo_kit::tr!("the last backup didn’t finish ({})", olo_kit::words::of_said(l.error.as_deref().unwrap_or_default()))),
+        (_, Some(ok)) if now - ok > overdue => Some(olo_kit::words::count(((now - ok) / 86_400) as u64, "nothing backed up for a day", "nothing backed up for {n} days")),
         _ => None,
     }
     .filter(|_| busy.is_none() && s.enabled);

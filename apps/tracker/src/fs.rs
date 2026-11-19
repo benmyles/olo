@@ -360,7 +360,7 @@ pub fn link_clipping(dir: &Path, url: &str, title: &str) -> std::io::Result<Path
     if name.is_empty() {
         name = "Link".into();
     }
-    let to = unique(dir, &format!("{name} link clipping.txt"));
+    let to = unique(dir, &olo_kit::tr!("{} link clipping.txt", name));
     fs::write(&to, format!("{url}\n"))?;
     Ok(to)
 }
@@ -375,7 +375,7 @@ pub fn pasted_picture(dir: &Path, kind: &str, data: &[u8]) -> std::io::Result<Pa
         other => other,
     };
     let ext: String = ext.chars().filter(|c| c.is_ascii_alphanumeric()).take(8).collect();
-    let to = unique(dir, &format!("Pasted Picture.{}", if ext.is_empty() { "img" } else { &ext }));
+    let to = unique(dir, &olo_kit::tr!("Pasted Picture.{}", if ext.is_empty() { "img" } else { &ext }));
     fs::write(&to, data)?;
     Ok(to)
 }

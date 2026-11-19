@@ -56,7 +56,7 @@ impl VaultInfo {
             let title = self.name.read(cx).text().trim().to_owned();
             let description = self.description.read(cx).text().trim().to_owned();
             if title.is_empty() {
-                self.note = "A vault needs a name.".into();
+                self.note = olo_kit::words::tr("A vault needs a name.").into();
                 self.wrong = true;
                 return cx.invalidate();
             }

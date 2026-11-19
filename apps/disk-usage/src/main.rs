@@ -183,8 +183,10 @@ fn count(n: u64) -> String {
     out
 }
 
-fn plural(n: u64, one: &str, many: &str) -> String {
-    format!("{} {}", count(n), if n == 1 { one } else { many })
+/// A count said in the person's language, its number grouped as Olo
+/// groups it ("12,345 files").
+fn plural(n: u64, one: &'static str, other: &'static str) -> String {
+    olo_kit::words::count(n, one, other).replacen(&n.to_string(), &count(n), 1)
 }
 
 /// A chip in the Collector's well: what it is (None: "+N more"), where,
@@ -336,7 +338,7 @@ impl DiskUsage {
         };
         let stop = Arc::new(AtomicBool::new(false));
         let what = if paths.len() == 1 { format!("“{}”", paths[0].2) } else { format!("{} items", paths.len()) };
-        let doing = if trash { format!("Moving {what} to the Trash…") } else { format!("Deleting {what}…") };
+        let doing = if trash { olo_kit::tr!("Moving {} to the Trash…", what) } else { format!("Deleting {what}…") };
         self.busy = Some((doing, stop.clone()));
         let to = cx.messenger();
         std::thread::spawn(move || {
@@ -354,8 +356,8 @@ impl DiskUsage {
                 };
                 match result {
                     Ok(()) => gone.push(id),
-                    Err(e) if e.raw_os_error() == Some(libc::EXDEV) => failed.push((name, "it is on a different volume from the Trash, so it can only be deleted".into())),
-                    Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => failed.push((name, "you don't have permission".into())),
+                    Err(e) if e.raw_os_error() == Some(libc::EXDEV) => failed.push((name, olo_kit::words::tr("it is on a different volume from the Trash, so it can only be deleted").into())),
+                    Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => failed.push((name, olo_kit::words::tr("you don't have permission").into())),
                     Err(e) => failed.push((name, e.to_string())),
                 }
             }
@@ -376,7 +378,7 @@ impl DiskUsage {
             Step::Trashed(items) => {
                 let stop = Arc::new(AtomicBool::new(false));
                 let what = if items.len() == 1 { "“".to_owned() + &items[0].1.file_name().unwrap_or_default().to_string_lossy() + "”" } else { format!("{} items", items.len()) };
-                self.busy = Some((format!("Putting {what} back…"), stop.clone()));
+                self.busy = Some((olo_kit::tr!("Putting {} back…", what), stop.clone()));
                 let to = cx.messenger();
                 std::thread::spawn(move || {
                     let (mut back, mut failed) = (Vec::new(), Vec::new());
@@ -419,12 +421,13 @@ impl DiskUsage {
             let t = scan.tree.read().unwrap();
             items.iter().map(|&i| t.nodes[i as usize].size).sum::<u64>()
         };
-        let what = match items.as_slice() {
-            [one] => self.item(*one).map(|(_, _, name, _)| format!("“{name}”")).unwrap_or_default(),
-            _ => plural(items.len() as u64, "item", "items"),
+        let message = match items.as_slice() {
+            [one] => {
+                let name = self.item(*one).map(|(_, _, name, _)| name).unwrap_or_default();
+                olo_kit::tr!("Delete “{}” ({}) for good? It won't go to the Trash, and this can't be undone.", name, format_size(size))
+            }
+            _ => olo_kit::tr!("Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.", olo_kit::words::count(items.len() as u64, "1 item", "{n} items"), format_size(size)),
         };
-        let they = if items.len() == 1 { "It won't" } else { "They won't" };
-        let message = format!("Delete {what} ({}) for good? {they} go to the Trash, and this can't be undone.", format_size(size));
         let to = cx.messenger();
         open_alert(cx, "DiskUsage", "warning", &message, &["Cancel", "Delete"], move |choice, _| {
             if *choice == Some(1) {
@@ -647,7 +650,7 @@ impl DiskUsage {
     // ---- drawing ----------------------------------------------------------
 
     fn volumes_view(&self, cx: &mut Cx<Self>) -> Element {
-        let mut rows: Vec<(String, &'static str, String, Option<(u64, u64)>, PathBuf)> = vec![("Home".into(), "home", display_path(&home()), volumes::space(&home()), home())];
+        let mut rows: Vec<(String, &'static str, String, Option<(u64, u64)>, PathBuf)> = vec![(olo_kit::words::tr("Home").into(), "home", display_path(&home()), volumes::space(&home()), home())];
         for v in self.volumes.iter().flatten() {
             rows.push((v.name.clone(), "disk", v.mount.display().to_string(), Some((v.total, v.free)), v.mount.clone()));
         }
@@ -673,7 +676,7 @@ impl DiskUsage {
                         style::label(g, x, r.bottom() - px(16.0), style::Align::Left, "Your own files and folders", style::PLAIN_SIZE, plain, dim);
                     }
                     (_, Some((total, free))) => {
-                        let free_text = format!("{} free of {}", format_size(free), format_size(total));
+                        let free_text = olo_kit::tr!("{} free of {}", format_size(free), format_size(total));
                         style::label(g, right, r.top() + px(16.0), style::Align::Right, free_text, style::PLAIN_SIZE, plain, dim);
                         let bar = Bounds::from_corners(point(x, r.bottom() - px(22.0)), point(right, r.bottom() - px(10.0)));
                         level_bar(g, bar, 1.0 - free as f32 / total.max(1) as f32, None, &p);
@@ -867,22 +870,22 @@ impl DiskUsage {
             let t = tree.read().unwrap();
             let n = &t.nodes[id as usize];
             let share = n.size as f64 / total as f64 * 100.0;
-            let kind = if n.dir { format!(" — {}", plural(n.files, "file", "files")) } else { String::new() };
-            let floor = if n.unreadable { " (some of it couldn't be read)" } else { "" };
-            (format!("{} — {} ({share:.1}% of this folder){kind}{floor}", n.name, format_size(n.size)), display_path(&t.path(id)))
+            let kind = if n.dir { format!(" — {}", plural(n.files, "1 file", "{n} files")) } else { String::new() };
+            let floor = if n.unreadable { format!(" ({})", olo_kit::words::tr("some of it couldn't be read")) } else { String::new() };
+            (olo_kit::tr!("{} — {} ({}% of this folder){}{}", n.name, format_size(n.size), format!("{:.1}", share), kind, floor), display_path(&t.path(id)))
         } else if running {
             let files = progress.files.load(Ordering::Relaxed);
             let bytes = progress.bytes.load(Ordering::Relaxed);
             let current = display_path(&progress.current.lock().unwrap());
-            (format!("Scanning… {}, {}", plural(files, "file", "files"), format_size(bytes)), current)
+            (olo_kit::tr!("Scanning… {}, {}", plural(files, "1 file", "{n} files"), format_size(bytes)), current)
         } else {
             let t = tree.read().unwrap();
             let unreadable = progress.unreadable.load(Ordering::Relaxed);
             let n = &t.nodes[self.folder as usize];
-            let note = if unreadable > 0 { format!(" — {} couldn't be read", plural(unreadable, "folder", "folders")) } else { String::new() };
+            let note = if unreadable > 0 { format!(" — {}", olo_kit::words::count(unreadable, "1 folder couldn't be read", "{n} folders couldn't be read")) } else { String::new() };
             (
-                format!("{} in {}{note}", format_size(n.size), plural(n.files, "file", "files")),
-                "Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.".into(),
+                format!("{}{note}", olo_kit::tr!("{} in {}", format_size(n.size), plural(n.files, "1 file", "{n} files"))),
+                olo_kit::words::tr("Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.").into(),
             )
         };
         let look = style::key((&line1, &line2));
@@ -929,6 +932,10 @@ impl DiskUsage {
             chart::paint_hub(gx, &g, style::c(hub_fill), style::c(mix(p.panel_text, p.panel_background, 0.5)));
             let t = scan.tree.read().unwrap();
             let n = &t.nodes[folder as usize];
+            // (The home folder's name in the middle stays "Home": the middle is
+            // small, and "Benutzerordner", "Carpeta personal" and "Dossier
+            // personnel" are cut there; a short form for tight places is
+            // to come, docs/TODO.md.)
             let title = if folder == ROOT && t.root == home() { "Home".to_owned() } else { n.name.to_string() };
             let amount = format_size(n.size);
             // In the box inscribed in the middle, cut short to it (a long
@@ -1061,9 +1068,9 @@ impl DiskUsage {
         let b = style::snap(g, b);
         let (inner, chips) = self.chips(b);
         let heading = if self.collected.is_empty() {
-            "Collector: drag files and folders here".to_owned()
+            olo_kit::words::tr("Collector: drag files and folders here").to_owned()
         } else {
-            format!("Collector: {} — {}", plural(self.collected.len() as u64, "item", "items"), format_size(self.collected_size()))
+            olo_kit::tr!("Collector: {} — {}", plural(self.collected.len() as u64, "1 item", "{n} items"), format_size(self.collected_size()))
         };
         let p = theme::palette();
         let target = self.drag.is_some() && b.contains(&self.drag_at);
@@ -1108,7 +1115,14 @@ impl DiskUsage {
                 g.paint_segment(point(z.x, a.y), point(a.x, z.y), px(1.5), true, style::c(xc));
                 olo_kit::agent::record(
                     g,
-                    olo_kit::agent::Node { role: "Button", name: Some(format!("Remove {name} from the Collector").into()), bounds: *close, enabled: true, clickable: true, ..Default::default() },
+                    olo_kit::agent::Node {
+                        role: "Button",
+                        name: Some(olo_kit::tr!("Remove {} from the Collector", name).into()),
+                        bounds: *close,
+                        enabled: true,
+                        clickable: true,
+                        ..Default::default()
+                    },
                 );
             }
         }
@@ -1372,7 +1386,8 @@ mod tests {
         assert_eq!(display_path(&h), "~");
         assert_eq!(display_path(&h.join("Music")), "~/Music");
         assert_eq!(display_path(Path::new("/usr")), "/usr");
-        assert_eq!(plural(1, "file", "files"), "1 file");
+        assert_eq!(plural(1, "1 file", "{n} files"), "1 file");
+        assert_eq!(plural(12_345, "1 file", "{n} files"), "12,345 files");
         assert_eq!(count(199_111), "199,111");
         assert_eq!(count(1_000_000), "1,000,000");
         assert_eq!(count(999), "999");

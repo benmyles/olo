@@ -36,10 +36,10 @@ pub fn serve() -> std::process::ExitCode {
                 }
                 let (n, red) = (cards.len(), cards.iter().filter(|c| c.attention).count());
                 let tip = match (n, red) {
-                    (0, _) => "Nothing new".to_owned(),
-                    (n, 0) => format!("{n} to read"),
-                    (n, red) if red == n => format!("{n} waiting in {}", if n == 1 { "its app" } else { "their apps" }),
-                    (n, red) => format!("{n} to deal with, {red} waiting in {}", if red == 1 { "its app" } else { "their apps" }),
+                    (0, _) => olo_kit::words::tr("Nothing new").to_owned(),
+                    (n, 0) => olo_kit::tr!("{} to read", n),
+                    (n, red) if red == n => olo_kit::words::count(n as u64, "1 waiting in its app", "{n} waiting in their apps"),
+                    (n, red) => olo_kit::tr!("{} to deal with, {}", n, olo_kit::words::count(red as u64, "1 waiting in its app", "{n} waiting in their apps")),
                 };
                 let body = Body::Inbox { cards, snooze_minutes: option("snooze").parse().unwrap_or(15), preview: option("detail") == "full" };
                 let glance = Glance { icon: Some("notifications".into()), value: n.to_string(), title: "Inbox".into(), tip, body: Some(body), ..Default::default() };

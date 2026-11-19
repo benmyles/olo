@@ -82,17 +82,18 @@ pub enum Asked {
 /// calendar most, none assuming what theirs holds. After five in the
 /// evening the day's are tomorrow's. (One line each in the column.)
 pub fn suggestions(hour: i8) -> Vec<String> {
-    let day = if hour >= 17 { "tomorrow" } else { "today" };
+    // (Each said whole: "today" sits differently in each language.)
+    let tomorrow = hour >= 17;
     vec![
-        format!("What’s on {day}?"),
-        "What’s next?".to_owned(),
-        format!("When am I free {day}?"),
-        "What does my week look like?".to_owned(),
-        "What’s on this weekend?".to_owned(),
-        "Which invitations haven’t I answered?".to_owned(),
-        "Find a free hour this week".to_owned(),
-        "What’s coming up next week?".to_owned(),
-        "Add lunch tomorrow at noon".to_owned(),
+        (if tomorrow { olo_kit::words::tr("What’s on tomorrow?") } else { olo_kit::words::tr("What’s on today?") }).to_owned(),
+        olo_kit::words::tr("What’s next?").to_owned(),
+        (if tomorrow { olo_kit::words::tr("When am I free tomorrow?") } else { olo_kit::words::tr("When am I free today?") }).to_owned(),
+        olo_kit::words::tr("What does my week look like?").to_owned(),
+        olo_kit::words::tr("What’s on this weekend?").to_owned(),
+        olo_kit::words::tr("Which invitations haven’t I answered?").to_owned(),
+        olo_kit::words::tr("Find a free hour this week").to_owned(),
+        olo_kit::words::tr("What’s coming up next week?").to_owned(),
+        olo_kit::words::tr("Add lunch tomorrow at noon").to_owned(),
     ]
 }
 
@@ -275,12 +276,12 @@ pub fn ask(n: u64, question: String, given: impl FnOnce() -> (String, Reader) + 
         let (system, read) = given();
         let settings = match Client::connect().map_err(|e| e.to_string()).and_then(|mut c| c.request(&Request::GetSettings).map_err(|e| e.to_string())) {
             Ok(Reply::Settings { settings }) => settings,
-            Ok(_) => return done(Err("The window server didn’t give its settings.".into())),
+            Ok(_) => return done(Err(olo_kit::words::tr("The window server didn’t give its settings.").into())),
             Err(e) => return done(Err(e)),
         };
         let feature = settings.ai.calendar.clone();
         if !feature.enabled {
-            return done(Err("The assistant is off in Preferences ▸ AI ▸ Calendar.".into()));
+            return done(Err(olo_kit::words::tr("The assistant is off in Preferences ▸ AI ▸ Calendar.").into()));
         }
         let effort = olo_protocol::AI_EFFORTS.iter().find(|(id, _)| *id == feature.effort).map_or(feature.effort.as_str(), |(_, name)| name);
         send(Asked::Model(n, format!("{} · {effort}", feature.model_name())));

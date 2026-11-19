@@ -461,11 +461,11 @@ impl Tab {
         let keep = self.keep_going.as_ref().map(|_| format!("kept going (\u{201c}{says}\u{201d} after two quiet minutes, at most hourly)"));
         let approve = self.auto_approve.as_ref().map(|a| match &a.pending {
             Some(p) if !p.stopped => format!("auto approving: Yes to \u{201c}{}\u{201d} in {} s", p.question, p.due.saturating_duration_since(Instant::now()).as_secs_f32().ceil()),
-            _ => format!("auto approving (Yes after {} s; {} answered)", auto_approve_after().as_secs(), a.approved),
+            _ => olo_kit::tr!("auto approving (Yes after {} s; {} answered)", auto_approve_after().as_secs(), a.approved),
         });
         let what = match self.agent {
             Some((agent, state)) => Some(format!("{}: {}", agent.name(), state.describe())),
-            None => self.rang.then(|| "bell rang".into()),
+            None => self.rang.then(|| olo_kit::words::tr("bell rang").into()),
         };
         let parts: Vec<String> = [what, keep, approve].into_iter().flatten().collect();
         (!parts.is_empty()).then(|| parts.join("; "))
@@ -1461,8 +1461,13 @@ impl Terminal {
         let session = &t.tabs[i].session;
         match session.foreground().filter(|_| session.busy()) {
             Some(program) => {
-                let place = if t.tabs.len() > 1 { "tab" } else { "window" };
-                let message = format!("“{program}” is still running in this {place}. Close it anyway?");
+                // (Each said whole: "this tab" and "this window" differ by
+                // more than a word in some languages.)
+                let message = if t.tabs.len() > 1 {
+                    olo_kit::tr!("“{}” is still running in this tab. Close it anyway?", program)
+                } else {
+                    olo_kit::tr!("“{}” is still running in this window. Close it anyway?", program)
+                };
                 self.confirm_close(cx, win, Some(shell), message, why);
             }
             None => self.close_tab(cx, win, shell),
@@ -1494,8 +1499,15 @@ impl Terminal {
                 let busy: Vec<String> = t.tabs.iter().filter(|x| x.session.busy()).filter_map(|x| x.session.foreground()).collect();
                 let message = match busy.as_slice() {
                     [] => return self.close(cx, window),
-                    [one] => format!("“{one}” is still running in this window. Close it anyway?"),
-                    [first, rest @ ..] => format!("“{first}” and {} other program{} are still running in this window. Close it anyway?", rest.len(), if rest.len() == 1 { "" } else { "s" }),
+                    [one] => olo_kit::tr!("“{}” is still running in this window. Close it anyway?", one),
+                    [first, rest @ ..] => olo_kit::words::fill(
+                        &olo_kit::words::count(
+                            rest.len() as u64,
+                            "“{}” and 1 other program are still running in this window. Close it anyway?",
+                            "“{}” and {n} other programs are still running in this window. Close it anyway?",
+                        ),
+                        &[first],
+                    ),
                 };
                 self.confirm_close(cx, window, None, message, why);
             }
@@ -1956,7 +1968,7 @@ impl Terminal {
             .checked(tab.keep_going.is_some())
             .enabled(tab.agent.is_some() || tab.keep_going.is_some())
             .separator()
-            .item(format!("Default Message ({})", short(&self.keep_going_says)), format!("tab-keep-going-default:{shell}"))
+            .item(olo_kit::tr!("Default Message ({})", short(&self.keep_going_says)), format!("tab-keep-going-default:{shell}"))
             .checked(tab.keep_going_own.is_none());
         let menu = match &tab.keep_going_own {
             Some(own) => menu.item(short(own), format!("tab-keep-going-message:{shell}")).checked(true),
@@ -1981,7 +1993,7 @@ impl Terminal {
         let field = FieldSpec {
             text: says,
             hint: Some(self.keep_going_says.clone()),
-            name: Some("Keep It Going says".into()),
+            name: Some(olo_kit::words::tr("Keep It Going says").into()),
             select_all: true,
             entered: Some(|t, cx, id| t.keep_going_message_done(cx, id, true)),
             ..Default::default()
@@ -2249,11 +2261,11 @@ impl Terminal {
             None => format!("In “{place}”."),
         };
         let (summary, kind) = match state {
-            State::Blocked => (format!("{} needs your answer", agent.name()), NoteKind::Important),
-            _ => (format!("{} is waiting for you", agent.name()), NoteKind::Information),
+            State::Blocked => (olo_kit::tr!("{} needs your answer", agent.name()), NoteKind::Important),
+            _ => (olo_kit::tr!("{} is waiting for you", agent.name()), NoteKind::Information),
         };
         let body = match tab.auto_approve.as_ref().and_then(|a| a.pending.as_ref()).filter(|p| state == State::Blocked && !p.stopped) {
-            Some(p) => format!("{body} Auto Approve answers Yes in {} s.", p.due.saturating_duration_since(Instant::now()).as_secs_f32().ceil()),
+            Some(p) => olo_kit::tr!("{} Auto Approve answers Yes in {} s.", body, p.due.saturating_duration_since(Instant::now()).as_secs_f32().ceil()),
             None => body,
         };
         // (Shown by a click whenever: while the note is open, its action;
@@ -2647,7 +2659,7 @@ impl Terminal {
             }
             .filter(|id| looks::terminal(id).is_some());
             let slot = if mode == ThemeMode::Dark { "dark" } else { "light" };
-            let menu = Menu::new(title.to_owned()).item(format!("As in Themes ({})", own.name), format!("colors-{slot}:")).checked(chosen.is_none()).separator();
+            let menu = Menu::new(title.to_owned()).item(olo_kit::tr!("As in Themes ({})", own.name), format!("colors-{slot}:")).checked(chosen.is_none()).separator();
             looks::terminals(&self.look.theme, mode).iter().fold(menu, |m, t| m.item(&t.name, format!("colors-{slot}:{}", t.id)).checked(chosen == Some(t.id.as_str())))
         };
         let scheme = Menu::new("Colors")
@@ -3182,12 +3194,12 @@ impl Terminal {
         let id = ui::window_of(surface).ok_or("it has no such window")?;
         let key = match self.windows.get(&id) {
             Some(Win::Term(t)) => t.key,
-            _ => return Err("only terminal windows move".into()),
+            _ => return Err(olo_kit::words::tr("only terminal windows move").into()),
         };
         let mut saved = self.layout();
         saved.windows.retain(|w| w.key == key);
         if saved.windows.is_empty() {
-            return Err("its shells have all ended".into());
+            return Err(olo_kit::words::tr("its shells have all ended").into());
         }
         saved.moved = true;
         Ok(olo_kit::WindowMove { args: Vec::new(), state: serde_json::to_string(&saved).ok(), gone: Box::new(|| {}) })
@@ -3590,7 +3602,7 @@ fn main() {
         // olo-termd's, which ends with it.
         olo_kit::refuse_moves_while(|| {
             (std::env::var_os("OLO_SCREEN").is_some() && olo_kit_base::moving::home().is_none())
-                .then(|| "Terminal's shells here belong to this screen and end with it: open the person's own Terminal for work to keep".to_owned())
+                .then(|| olo_kit::words::tr("Terminal's shells here belong to this screen and end with it: open the person's own Terminal for work to keep").to_owned())
         });
         widgets::strip::on_window_dropped(|window, onto, place| {
             let (Some(window), Some(onto)) = (ui::window_of(window), ui::window_of(onto)) else { return };

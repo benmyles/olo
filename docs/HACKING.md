@@ -5855,8 +5855,11 @@ recorded otherwise.
     other whose labels line up but whose fields start a column apart:
     a label wider than the form's fixed column pushes only its own
     field, as translations do; give the group one column from its
-    widest label, `form::divider_for(&[…])`, at least the old one:
-    French's DNS form and German's Shaping were 28 and 20 points off).
+    widest label, `widgets::divider_for(&[…])` (the kit's, measuring
+    each label as shown in the language chosen), at least the old one:
+    French's DNS form and German's Shaping were 28 and 20 points off;
+    DiskBackup's kept-backups menus, each column of two, in French and
+    Spanish, which the check doesn't see across a box's two columns).
 - **Review** (most are mistakes, a few are meant): `near-height` (bands
   stacked or side by side almost one height: a 21 bar over a 22 head),
   `near-level` (text or icons in neighbouring columns a pixel or two off
@@ -13177,7 +13180,13 @@ the live one in its language (`OLO_LANGUAGE=es cargo ui-lint
 --no-fail-fast`, `OLO_LANGUAGE=es tools/dev/ui-lint --no-cache`): where a
 translation ran past its room it was said in fewer words, measured
 against German, which fits (a long note under Power's modes is 480
-characters in German, 498 in Spanish).
+characters in German, 498 in Spanish). **What the lint can't see**: a
+line cut short by design (a headline `.cut(true)`, a status line an app
+paints and cuts) passes it, so a translation cut there is found only by
+looking: DiskBackup's "Sicherung nicht abgeschlos…" and Disk Usage's
+hint were (2026-11-19). Measure such a line's translations against its
+room (Noto Sans at the line's size and weight; DiskBackup's headline is
+24 pt bold beside its buttons), and picture the app in each language.
 
 The words stay in the code, in English, as they always were. Each
 language has a catalog of them (`crates/kit-base/words/CODE.txt`,
@@ -13220,7 +13229,7 @@ writes every word asked for to FILE, each once (literals, and in
 English too what's otherwise left as it is: a tab view's tabs, a menu
 field's choices, a box's title, an alert's words: `words::note`).
 
-**Olo's word list** (`crates/kit-base/words/en.txt`, 2,258 words on
+**Olo's word list** (`crates/kit-base/words/en.txt`, 3,361 words on
 2026-11-19) is what `tools/dev/words gather --write` finds: both layout
 lints run with `OLO_WORDS_SEEN` (`cargo ui-lint` opens Preferences',
 DiskBackup's and the kit's windows; `tools/dev/ui-lint` every app's,
@@ -13228,7 +13237,12 @@ and their menus, built as an app starts), and the literals handed to
 widgets in the apps' code that no window either lint opens shows
 (`Button::new("…")`, `.note("…")`, `.item("…", …)`, `tr!("…")`: a
 pairing dialog, a first-run window, an error's note; ids and a
-service's log words left out). It never takes a word out. The list was
+service's log words left out). A word only seen as the lints ran counts
+if the code holds it as a literal outside its tests and comments: what
+this computer shows the lints (its displays, its graphics card, its
+disks, its Wi-Fi card) is data, and once came into the list that way
+(removed 2026-11-19), as did the lint fixtures' made-up names. It never
+takes a word out. The list was
 first made from the unit lint alone (1,161 words): every app's menus
 and windows but Preferences' and DiskBackup's were missing, so German,
 Spanish and French left them in English. Sentences made with `format!`
@@ -13260,6 +13274,47 @@ outside the `tr!` (`format!(", {}", tr!("of {}", …))`): a catalog line
 keeps no leading space. Preferences was swept so on 2026-11-19 (468
 places, 461 new words); its unasked list went from 378 to 258, the
 rest data and what's drawn by name.
+**Whose words are they.** A window's words are the person's: through
+the layer. A program's words for another program stay English: a
+service's state another window reads (`why` DiskBackup isn't backing
+up, which its window and Deskbar compare: "turned off" is Paused), what
+it answers (Passwords' `Response::Error` to whichever program asked),
+what a command line prints and what an agent is told (an MCP reply,
+the context Terminal's palette or Calendar's assistant gives a model)
+and a log. Agents and programs read them, and a program that doesn't
+start the kit's app speaks English anyway: the language is chosen as
+the kit starts (`theme::init`), so a command line's `tr!` was English
+all along, and converting it only gave translators words no one sees.
+Where a window shows a service's words, the service marks them
+`words::en("turned off")` or `olo_kit::en!("the keyring can't be read:
+{}", e)`: English as before, but gathered into the catalogs, and the
+window gives them in the person's language with `words::of_said(text)`,
+which finds the sentence by its words, whole or around the parts put
+in it (a path, a number, the system's own message), and puts the parts
+in the translation's places (of two that fit, the one with more words
+of its own; a count's `{n}` must be a number; too few words of their
+own, "{}: {}", is no sentence). What it finds is kept (a window shows the
+same few at each progress tick). A service whose own words reach the
+person (Calendar's reminders, a notification) chooses the language
+before it makes them: `words::choose()` asks the window server for the
+setting (Calendar's service does at each waking; it had taken it only
+as a side effect of its first `palette()` call, and never again).
+**Saying a sentence whole.** A word spliced into a sentence ("in this
+{}" with "tab" or "window"; "{} items" with "Its" or "Their"; "Started
+{} ago" with "5 minutes") can't be translated: languages decline,
+agree and order differently. Each is its own sentence
+(`if tabs > 1 { tr!("… in this tab. …") } else { tr!("… in this
+window. …") }`), and a number with its noun is `words::count`, whose
+forms may leave the number out ("Every day" for one of "Every {n}
+days"; merge and `the_catalogs` allow it). `tr(if a { "x" } else { "y"
+})` hides both from the gatherer, which looks for a literal right after
+`tr(` (or `count(`): write two calls, and a helper handed its words
+gets each as its own `tr("…")` or `count(n, "…", "…")` at the call
+(DiskBackup's "one a day for ever" came in only so). The gatherer skips
+a lint's fixtures, the settings index written from them, a block only
+tests and demos take (`if cfg!(test) …`), comments, and strings of
+numbers alone ("+1 555 123 4567"). The sweep skips a thread's name and a line that
+already says `en!`.
 `tools/dev/words missing LANG` lists what a catalog lacks, and `words
 merge LANG PAIRS…` puts translations in (written as "English |||
 translation"; it refuses unless every word is there and each keeps its

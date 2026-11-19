@@ -243,7 +243,7 @@ impl Terminal {
             menu = menu.separator();
         }
         if let Some(pr) = pr {
-            menu = menu.item(format!("Open Pull Request #{}", pr.number), format!("pr-open:{shell}"));
+            menu = menu.item(olo_kit::tr!("Open Pull Request #{}", pr.number), format!("pr-open:{shell}"));
         } else if needs_github(tab) {
             menu = menu.separator().item("Connect GitHub for Pull Requests…", "github-connect");
         }
@@ -271,7 +271,7 @@ impl Terminal {
         let linked = tab.repo.as_ref().is_some_and(|r| r.linked);
         menu = menu.separator().item("Rename Worktree…", format!("worktree-rename:{shell}")).enabled(linked).item("Remove Worktree…", format!("worktree-remove:{shell}")).enabled(linked).separator();
         match pr {
-            Some(pr) => menu.item(format!("Open Pull Request #{}", pr.number), format!("pr-open:{shell}")),
+            Some(pr) => menu.item(olo_kit::tr!("Open Pull Request #{}", pr.number), format!("pr-open:{shell}")),
             None if needs_github(tab) => menu.item("Connect GitHub for Pull Requests…", "github-connect"),
             None => menu.item("No Pull Request", "none").enabled(false),
         }
@@ -364,20 +364,20 @@ impl Terminal {
                 let old = p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                 let branch = trees.iter().find(|w| w.path == *p).and_then(|w| w.branch.clone());
                 match branch {
-                    Some(b) if b == old && !branches.iter().any(|b| b == name) => format!("Its folder becomes {shown}, and its branch, {old}, takes the new name too."),
-                    _ => format!("Its folder becomes {shown}; its branch stays as it is."),
+                    Some(b) if b == old && !branches.iter().any(|b| b == name) => olo_kit::tr!("Its folder becomes {}, and its branch, {}, takes the new name too.", shown, old),
+                    _ => olo_kit::tr!("Its folder becomes {}; its branch stays as it is.", shown),
                 }
             }
-            None if name.is_empty() => format!("In {shown}, on a new branch of its name{from}."),
+            None if name.is_empty() => olo_kit::tr!("In {}, on a new branch of its name{}.", shown, from),
             None if branches.iter().any(|b| b == name) => {
                 if let Some(w) = trees.iter().find(|w| w.branch.as_deref() == Some(name)) {
-                    invalid = invalid.or_else(|| Some(format!("Branch {name} is checked out in {} already.", tilde(&w.path))));
+                    invalid = invalid.or_else(|| Some(olo_kit::tr!("Branch {} is checked out in {} already.", name, tilde(&w.path))));
                 }
-                format!("In {shown}, on its branch, {name}.")
+                olo_kit::tr!("In {}, on its branch, {}.", shown, name)
             }
             None => match &d.from {
-                Some(f) => format!("In {shown}, on a new branch, {name}, from {f}."),
-                None => format!("In {shown}, on a new branch, {name}."),
+                Some(f) => olo_kit::tr!("In {}, on a new branch, {}, from {}.", shown, name, f),
+                None => olo_kit::tr!("In {}, on a new branch, {}.", shown, name),
             },
         };
         (note, invalid)
@@ -405,7 +405,7 @@ impl Terminal {
         let p = olo_kit::theme::palette();
         let status = if let Some(job) = &d.job {
             let (done, total) = (job.done.load(Ordering::Relaxed), job.total.load(Ordering::Relaxed));
-            let text = if total == 0 { "Making it…".to_owned() } else { format!("Checking out {done} of {total} files") };
+            let text = if total == 0 { olo_kit::words::tr("Making it…").to_owned() } else { olo_kit::tr!("Checking out {} of {} files", done, total) };
             let f = if total == 0 { 0.0 } else { done as f32 / total as f32 };
             // (Its progress, drawn again while it goes.)
             Cx.later(std::time::Duration::from_millis(50), move |_, cx| cx.redraw(id));
@@ -505,18 +505,22 @@ impl Terminal {
         let tabs = inside.len();
         let changes = match a.changes {
             0 => String::new(),
-            1 => ", with the 1 file changed in it and not committed".into(),
-            n => format!(", with the {n} files changed in it and not committed"),
+            n => format!(", {}", olo_kit::words::count(n as u64, "with the 1 file changed in it and not committed", "with the {n} files changed in it and not committed")),
         };
         let tabs = match tabs {
             0 => String::new(),
-            1 => " Its tab closes.".into(),
-            n => format!(" Its {n} tabs close."),
+            n => format!(" {}", olo_kit::words::count(n as u64, "Its tab closes.", "Its {n} tabs close.")),
         };
         let running = match running.as_slice() {
             [] => String::new(),
-            [one] => format!(" “{one}” is still running in it, and stops."),
-            [first, rest @ ..] => format!(" “{first}” and {} more are still running in them, and stop.", rest.len()),
+            [one] => format!(" {}", olo_kit::tr!("“{}” is still running in it, and stops.", one)),
+            [first, rest @ ..] => format!(
+                " {}",
+                olo_kit::words::fill(
+                    &olo_kit::words::count(rest.len() as u64, "“{}” and 1 more are still running in them, and stop.", "“{}” and {n} more are still running in them, and stop."),
+                    &[first]
+                )
+            ),
         };
         let message = format!("Remove the worktree “{name}”?\n\nIts folder, {}, goes{changes}. Its branch stays.{tabs}{running}", tilde(&a.path));
         let id = cx.open_window(WindowOptions::alert("Terminal", &message));
@@ -550,7 +554,7 @@ impl Terminal {
 
     pub(crate) fn worktree_removed(&mut self, cx: &mut Cx, Removed(path, result): Removed) {
         if let Err(e) = result {
-            let message = format!("Couldn’t remove the worktree in {}: {e}", tilde(&path));
+            let message = olo_kit::tr!("Couldn’t remove the worktree in {}: {}", tilde(&path), e);
             let id = cx.open_window(WindowOptions::alert("Terminal", &message));
             self.windows.insert(id, Win::Failed { message });
         }

@@ -95,10 +95,10 @@ pub fn until_change(age: Duration, say: &impl Fn(Duration) -> String, words: &st
 pub fn short(age: Duration) -> String {
     let s = age.as_secs();
     match s {
-        0..60 => "now".into(),
-        60..3600 => format!("{} min", s / 60),
-        3600..86_400 => format!("{} h", s / 3600),
-        _ => format!("{} d", s / 86_400),
+        0..60 => crate::words::tr("now").into(),
+        60..3600 => crate::tr!("{} min", s / 60),
+        3600..86_400 => crate::tr!("{} h", s / 3600),
+        _ => crate::tr!("{} d", s / 86_400),
     }
 }
 
@@ -107,12 +107,12 @@ pub fn short(age: Duration) -> String {
 pub fn long(age: Duration) -> String {
     let s = age.as_secs();
     match s {
-        0..10 => "just now".into(),
-        10..60 => format!("{s} s ago"),
-        60..3600 => format!("{} min ago", s / 60),
-        3600..86_400 => format!("{} h ago", s / 3600),
-        86_400..172_800 => "a day ago".into(),
-        _ => format!("{} days ago", s / 86_400),
+        0..10 => crate::words::tr("just now").into(),
+        10..60 => crate::tr!("{} s ago", s),
+        60..3600 => crate::tr!("{} min ago", s / 60),
+        3600..86_400 => crate::tr!("{} h ago", s / 3600),
+        86_400..172_800 => crate::words::tr("a day ago").into(),
+        _ => crate::words::count(s / 86_400, "1 day ago", "{n} days ago"),
     }
 }
 

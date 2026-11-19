@@ -584,7 +584,7 @@ impl Doc {
                 image.update(cx, move |v, _| v.on_drag_out(move |cx| doc.update(cx, |d, cx| d.drag_out(cx))));
                 self.content = Content::Other(preview);
             }
-            None => self.content = Content::Failed(format!("“{}” can't be found.", file_name(&path))),
+            None => self.content = Content::Failed(olo_kit::tr!("“{}” can't be found.", file_name(&path))),
         }
         cx.invalidate();
     }
@@ -649,7 +649,7 @@ impl Doc {
         match &ev {
             Event::Failed(e) => error = Some(e.clone()),
             Event::SaveFailed(e) => {
-                error = Some(format!("“{}” couldn't be saved. {e}", file_name(&self.path)));
+                error = Some(olo_kit::tr!("“{}” couldn't be saved. {}", file_name(&self.path), e));
                 self.after_save = After::Nothing;
             }
             Event::Saved { to, adopted } => {
@@ -769,7 +769,7 @@ impl Doc {
         }
         let Content::Pdf(v) = &self.content else { return };
         if !v.read(cx).editable {
-            return self.error("This PDF can't be edited, so it can't be saved.".into(), cx);
+            return self.error(olo_kit::words::tr("This PDF can't be edited, so it can't be saved.").into(), cx);
         }
         self.after_save = after;
         let path = self.path.clone();
@@ -811,7 +811,7 @@ impl Doc {
             Purpose::SaveAs if !is_pdf(&self.path) => {
                 // A picture: written there (with any edits), then shown.
                 if edit::save_format(&path).is_none() {
-                    return self.error("Pictures can be saved as PNG, JPEG, WebP, BMP, TIFF or GIF.".into(), cx);
+                    return self.error(olo_kit::words::tr("Pictures can be saved as PNG, JPEG, WebP, BMP, TIFF or GIF.").into(), cx);
                 }
                 self.ensure_editor(cx);
                 if let Some(e) = &mut self.edit {
@@ -1057,7 +1057,7 @@ impl Doc {
             let (with, now, gpus) = (prev.read(cx).decode_with(), prev.read(cx).decoding(), prev.read(cx).decoders());
             use olo_preview::video::Device;
             let decode = Menu::new("Decode With")
-                .item(format!("Decoding on {}", now.unwrap_or("…")), "")
+                .item(olo_kit::tr!("Decoding on {}", now.unwrap_or("…")), "")
                 .enabled(false)
                 .separator()
                 .item("Default (Preferences ▸ Power)", "decode-default")
@@ -1660,7 +1660,7 @@ impl Doc {
         let read_only = pv.loaded() && !pv.editable;
         // The page and zoom as the pages have them (they tell when
         // either changes: `pdfview::Changed`).
-        let page = pv.loaded().then(|| format!("Page {} of {}", pv.current_page + 1, pv.geoms.len()));
+        let page = pv.loaded().then(|| olo_kit::tr!("Page {} of {}", pv.current_page + 1, pv.geoms.len()));
         let pct = format!("{}%", (pv.zoom * 100.0).round());
         let info = canvas(move |g, b| {
             let p = theme::palette();

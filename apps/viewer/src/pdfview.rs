@@ -717,7 +717,7 @@ impl PdfView {
             }
             Some(Editing::Mark(i)) => {
                 let MarkKind::Text { size, .. } = self.model.marks[i].kind else { return };
-                (size * self.zoom, rgb(self.model.marks[i].color), true, false, None, olo_kit::widgets::text_field::Align::Left, "Text Box".to_owned())
+                (size * self.zoom, rgb(self.model.marks[i].color), true, false, None, olo_kit::widgets::text_field::Align::Left, olo_kit::words::tr("Text Box").to_owned())
             }
             None => return,
         };
@@ -1882,7 +1882,7 @@ impl PdfView {
     /// it's still reading pages), Previous, Next and Close.
     fn find_bar(&self, f: &Find, cx: &Cx<Self>) -> Element {
         let reading = self.texts.len() < self.geoms.len();
-        let looking = reading.then(|| format!("{} of {} pages", self.texts.len(), self.geoms.len()));
+        let looking = reading.then(|| olo_kit::tr!("{} of {} pages", self.texts.len(), self.geoms.len()));
         let said = olo_kit::widgets::find_said(&f.query, f.matches.len(), f.current, looking);
         let step = cx.listener(|v: &mut PdfView, back: &bool, cx| v.find_step(*back, cx));
         let close = cx.listener(|v: &mut PdfView, _: &(), cx| v.close_find(cx));
@@ -2034,7 +2034,10 @@ fn draw_mark(g: &mut Painter, mark: &Mark, r: Bounds<Pixels>, zoom: f32, font: &
                 let top = r.top() + px((pdfdoc::TEXT_PAD + k as f32 * size * 1.15) * zoom);
                 pdf_text(g, r.left() + px(pdfdoc::TEXT_PAD * zoom), top + px(size * zoom * 0.905), Align::Left, line, size * zoom, font, color);
             }
-            agent::record(g, agent::Node { role: "TextInput", name: Some("Text Box".into()), value: Some(text.clone().into()), bounds: r, enabled: true, clickable: true, ..Default::default() });
+            agent::record(
+                g,
+                agent::Node { role: "TextInput", name: Some(olo_kit::words::tr("Text Box").into()), value: Some(text.clone().into()), bounds: r, enabled: true, clickable: true, ..Default::default() },
+            );
         }
         MarkKind::Ink { strokes, width, signature } => {
             let sw = px(width * zoom);

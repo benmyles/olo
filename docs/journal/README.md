@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-19
 
+### DiskBackup's header: the paragraphs under the title take the whole width
+
+*08:15* — The title now shares a row with Restore and Back Up Now (centred on its line), and what's said under it (where it backs up to, the last backup, an unfinished one) runs the window's width beneath both. It used to wrap beside the buttons, which in German and French ran a line or two longer and past the window's foot. The schedule's choices are whole phrases after 'Automatically,' ('every hour'), so each language says them its own way, and each column of kept-backup menus lines up after its longer label. Its words, and the service's own (why it isn't backing up, an error), are now in German, Spanish and French.
+
+![DiskBackup's header: the paragraphs under the title take the whole width](2026-11-19/081521-diskbackup-s-header-the-paragraphs-under-the-tit.png)
+
 ### Olo's words, whole
 
 *04:41* — DiskBackup's first window in English and French. Olo's word list now has every app's words (its menus and windows, 2,259 of them; the first list had only Preferences' and DiskBackup's settings), German, Spanish and French each every one. Where the longer words ran out of room the layouts now follow them: these two boxes as tall as the taller, their buttons level.

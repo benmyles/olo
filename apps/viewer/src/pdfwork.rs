@@ -99,11 +99,11 @@ fn open(bytes: Vec<u8>) -> Result<Doc, String> {
         None => bytes.clone(),
     };
     let pdf = Pdf::new(render).map_err(|e| match e {
-        LoadPdfError::Decryption(_) => "This PDF is protected by a password.".to_string(),
-        _ => "This PDF can't be read.".to_string(),
+        LoadPdfError::Decryption(_) => olo_kit::words::tr("This PDF is protected by a password.").to_string(),
+        _ => olo_kit::words::tr("This PDF can't be read.").to_string(),
     })?;
     if pdf.pages().is_empty() {
-        return Err("This PDF has no pages.".into());
+        return Err(olo_kit::words::tr("This PDF has no pages.").into());
     }
     Ok(Doc { bytes, doc, model, pdf })
 }
@@ -220,7 +220,7 @@ pub fn start(path: PathBuf, send: impl Fn(Event) + Send + 'static) -> mpsc::Send
                     }
                     Request::Save { model, to, flatten, adopt } => {
                         let Some(doc) = &d.doc else {
-                            send(Event::SaveFailed("This PDF can't be edited.".into()));
+                            send(Event::SaveFailed(olo_kit::words::tr("This PDF can't be edited.").into()));
                             continue;
                         };
                         let out = if flatten { pdfdoc::flatten(&d.bytes, doc, &d.model, &model) } else { pdfdoc::save(&d.bytes, doc, &d.model, &model) };
@@ -244,7 +244,7 @@ pub fn start(path: PathBuf, send: impl Fn(Event) + Send + 'static) -> mpsc::Send
                                     Some(d.model.clone())
                                 }
                                 Err(e) => {
-                                    send(Event::SaveFailed(format!("Saved, but it can't be reopened: {e}")));
+                                    send(Event::SaveFailed(olo_kit::tr!("Saved, but it can't be reopened: {}", e)));
                                     None
                                 }
                             }

@@ -918,7 +918,7 @@ impl Deskbar {
     fn arrange_menu(&self, mode: WindowingMode) -> Menu {
         let focused = self.focused_window().is_some();
         let mut menu = self.modes_menu(mode);
-        menu.title = "Window Arrangement".into();
+        menu.title = olo_kit::words::tr("Window Arrangement").into();
         // Main and Stack's: the focused window the main one, or the one
         // before back.
         let (_, ws, key) = self.menu_place();
@@ -939,9 +939,9 @@ impl Deskbar {
             .separator()
             // (Named as an app's Edit ▸ Undo is: Undo Cascade, Redo Move
             // to Workspace 2.)
-            .item(self.arrangement.0.as_ref().map_or("Undo Window Arrangement".into(), |n| format!("Undo {n}")), "arrange:undo-arrangement")
+            .item(self.arrangement.0.as_ref().map_or(olo_kit::words::tr("Undo Window Arrangement").into(), |n| format!("Undo {n}")), "arrange:undo-arrangement")
             .enabled(self.arrangement.0.is_some())
-            .item(self.arrangement.1.as_ref().map_or("Redo Window Arrangement".into(), |n| format!("Redo {n}")), "arrange:redo-arrangement")
+            .item(self.arrangement.1.as_ref().map_or(olo_kit::words::tr("Redo Window Arrangement").into(), |n| format!("Redo {n}")), "arrange:redo-arrangement")
             .enabled(self.arrangement.1.is_some())
             .separator()
             .item(olo_kit::app_menu::settings_label("windows"), "pref:windows")
@@ -1052,7 +1052,7 @@ impl Deskbar {
         let mut displays: Vec<&OutputInfo> = self.outputs.iter().filter(|o| o.mirror_of.is_none()).collect();
         displays.sort_by_key(|o| o.position);
         for d in displays.iter().filter(|d| Some(d.name.as_str()) != display) {
-            m = m.item(format!("Move to {}", self.workspace_name(Some(&d.name), ws)), format!("ws-move:{ws}:{ws}:{}", d.name)).enabled(any);
+            m = m.item(olo_kit::tr!("Move to {}", self.workspace_name(Some(&d.name), ws)), format!("ws-move:{ws}:{ws}:{}", d.name)).enabled(any);
         }
         let mut to = Menu::new("Move All Windows To");
         for (k, d) in displays.iter().enumerate() {
@@ -1215,8 +1215,8 @@ impl Deskbar {
             m = m.item(label, format!("caff:{minutes}"));
         }
         let label = match self.caffeinated_until {
-            Some(t) if on => format!("Allow Sleep (awake until {})", status::time_of_day(t, &self.clock)),
-            _ => "Allow Sleep".into(),
+            Some(t) if on => olo_kit::tr!("Allow Sleep (awake until {})", status::time_of_day(t, &self.clock)),
+            _ => olo_kit::words::tr("Allow Sleep").into(),
         };
         m.separator()
             .item("Even With the Lid Closed", "caff:lid")
@@ -1509,11 +1509,11 @@ impl Deskbar {
         // A release being installed: how far.
         if let Some((version, doing, fraction)) = &offer.installing {
             let title = offer.release.as_ref().map_or_else(|| format!("Olo {version}"), |r| r.title.clone());
-            return say(format!("{title} is being installed ({doing}, {:.0}%). Olo switches to it when it's done: your windows stay open.", fraction * 100.0));
+            return say(olo_kit::tr!("{} is being installed ({}, {}%). Olo switches to it when it's done: your windows stay open.", title, doing, format!("{:.0}", fraction * 100.0)));
         }
         // Already asked for, while a build runs: it says so.
         if self.status.upgrade_waiting {
-            return say("A build of Olo is still running. Olo upgrades as soon as it has finished: your windows stay open.".to_owned());
+            return say(olo_kit::words::tr("A build of Olo is still running. Olo upgrades as soon as it has finished: your windows stay open.").to_owned());
         }
         let build = !self.status.upgrade.is_empty();
         let release = offer.release.clone();
@@ -1534,27 +1534,29 @@ impl Deskbar {
                 tell(Msg::Effect(Effect::Upgrade { message: upgrade_message(&self.status.upgrade, &closing), buttons: vec!["Later".into(), "Upgrade".into()], choices: vec![None, Some(None)] }));
             }
             (false, Some(r)) => {
-                let failed = offer.failed.as_ref().map(|e| format!(" (The last try didn't go through: {e}.)")).unwrap_or_default();
-                let message = format!(
-                    "{} is ready, made {} ({} to download). Install it? Olo downloads it in the background and switches to it when it's done: your windows stay open.{failed}",
+                let failed = offer.failed.as_ref().map(|e| format!(" {}", olo_kit::tr!("(The last try didn't go through: {}.)", e))).unwrap_or_default();
+                let message = olo_kit::tr!(
+                    "{} is ready, made {} ({} to download). Install it? Olo downloads it in the background and switches to it when it's done: your windows stay open.{}",
                     r.title,
                     at(r.made),
-                    olo_kit::files::format_size(r.download_bytes)
+                    olo_kit::files::format_size(r.download_bytes),
+                    failed
                 );
                 tell(Msg::Effect(Effect::Upgrade { message, buttons: vec!["Later".into(), "Upgrade".into()], choices: vec![None, Some(Some("release"))] }));
             }
             (true, Some(r)) => {
                 let built = offer.build_made.map(|t| format!(", made {}", at(t))).unwrap_or_default();
-                let message = format!(
-                    "Two upgrades are ready: a new build of Olo ({}{built}), and {} from GitHub, made {} ({} to download). Which do you want? Your windows stay open either way.",
+                let message = olo_kit::tr!(
+                    "Two upgrades are ready: a new build of Olo ({}{}), and {} from GitHub, made {} ({} to download). Which do you want? Your windows stay open either way.",
                     listing(&upgrade_names(&self.status.upgrade)),
+                    built,
                     r.title,
                     at(r.made),
                     olo_kit::files::format_size(r.download_bytes)
                 );
                 // The newer of the two is the default (the last button).
                 let build_first = offer.build_made.is_some_and(|b| b < r.made);
-                let (b, rel) = (("The New Build".to_owned(), Some(Some("build"))), (r.title.clone(), Some(Some("release"))));
+                let (b, rel) = ((olo_kit::words::tr("The New Build").to_owned(), Some(Some("build"))), (r.title.clone(), Some(Some("release"))));
                 let (first, second) = if build_first { (b, rel) } else { (rel, b) };
                 tell(Msg::Effect(Effect::Upgrade { message, buttons: vec!["Later".into(), first.0, second.0], choices: vec![None, first.1, second.1] }));
             }
@@ -1915,7 +1917,7 @@ impl Deskbar {
             // Still the network told of: nothing more to say.
             (Some(p), Some((told, id))) if told == p.network => self.portal_told = Some((told, id)),
             (Some(p), was) => {
-                let note = Note::new(format!("Sign in to “{}”", p.network))
+                let note = Note::new(olo_kit::tr!("Sign in to “{}”", p.network))
                     .body("This network wants you to sign in on its page before it lets anything through.")
                     .icon("browser")
                     .kind(NoteKind::Important)
@@ -2047,10 +2049,10 @@ fn backup_menu(clock: &olo_protocol::ClockSettings) -> Menu {
         let at = status::time_of_day(t.max(0) as u64, clock);
         match status::local_day(now) - status::local_day(t) {
             0 => format!("at {at}"),
-            1 => format!("yesterday at {at}"),
-            -1 => format!("tomorrow at {at}"),
-            d if d > 0 => format!("{d} days ago"),
-            d => format!("in {} days", -d),
+            1 => olo_kit::tr!("yesterday at {}", at),
+            -1 => olo_kit::tr!("tomorrow at {}", at),
+            d if d > 0 => olo_kit::words::count(d as u64, "1 day ago", "{n} days ago"),
+            d => olo_kit::words::count((-d) as u64, "in 1 day", "in {n} days"),
         }
     };
     let count = |n: u64| {
@@ -2069,46 +2071,47 @@ fn backup_menu(clock: &olo_protocol::ClockSettings) -> Menu {
         // What, how far through how much, how long, files, what's new
         // and sent: DiskBackup's own words (its window says the same).
         Doing::BackingUp => said.extend(st.progress.clone().unwrap_or_default().lines(&s, now)),
-        Doing::Pruning => said.push("Tidying: letting go of old snapshots".into()),
+        Doing::Pruning => said.push(olo_kit::words::tr("Tidying: letting go of old snapshots").into()),
         Doing::Restoring => said.push("Restoring".into()),
-        Doing::Erasing => said.push("Erasing every backup, to start fresh".into()),
-        Doing::Validating => said.push("Validating backups: reading them back".into()),
+        Doing::Erasing => said.push(olo_kit::words::tr("Erasing every backup, to start fresh").into()),
+        Doing::Validating => said.push(olo_kit::words::tr("Validating backups: reading them back").into()),
         Doing::Deleting { what } => {
             let p = st.progress.clone().unwrap_or_default();
-            said.push(if p.total_files > 0 { format!("Deleting {what}: {} of {}", count(p.files), count(p.total_files)) } else { format!("Deleting {what}") });
+            let what = olo_kit::words::of_said(what);
+            said.push(if p.total_files > 0 { olo_kit::tr!("Deleting {}: {} of {}", what, count(p.files), count(p.total_files)) } else { olo_kit::tr!("Deleting {}", what) });
         }
-        Doing::Waiting { why } => said.push(format!("Waiting: {why}")),
-        Doing::Idle if st.pid == 0 => said.push("The DiskBackup service isn’t running".into()),
+        Doing::Waiting { why } => said.push(olo_kit::tr!("Waiting: {}", olo_kit::words::of_said(why))),
+        Doing::Idle if st.pid == 0 => said.push(olo_kit::words::tr("The DiskBackup service isn’t running").into()),
         Doing::Idle => {}
     }
     match (&st.last, st.last_ok) {
         // Stopped by the person: calmly, and what it got through.
         (Some(l), ok) if l.stopped() && st.doing == Doing::Idle => {
-            said.push(format!("You stopped the backup {}", when(l.time)));
+            said.push(olo_kit::tr!("You stopped the backup {}", when(l.time)));
             if let Some(u) = &st.unfinished {
                 said.push(if u.files > 0 {
                     format!("{} ({}) done so far: Back Up Now goes on", olo_protocol::diskbackup::words::plural(u.files, "file"), olo_protocol::diskbackup::words::size(u.bytes))
                 } else {
-                    "Back Up Now goes on from where it got to".into()
+                    olo_kit::words::tr("Back Up Now goes on from where it got to").into()
                 });
             }
             if let Some(t) = ok {
-                said.push(format!("Last backed up whole {}", when(t)));
+                said.push(olo_kit::tr!("Last backed up whole {}", when(t)));
             }
         }
         (Some(l), ok) if l.error.is_some() && st.doing == Doing::Idle => {
-            let mut why = l.error.clone().unwrap_or_default();
+            let mut why = olo_kit::words::of_said(l.error.as_deref().unwrap_or_default());
             if why.chars().count() > 60 {
                 why = format!("{}…", why.chars().take(59).collect::<String>());
             }
-            said.push(format!("The backup {} didn’t finish: {why}", when(l.time)));
+            said.push(olo_kit::tr!("The backup {} didn’t finish: {}", when(l.time), why));
             if let Some(t) = ok {
-                said.push(format!("Last backed up whole {}", when(t)));
+                said.push(olo_kit::tr!("Last backed up whole {}", when(t)));
             }
         }
-        (_, Some(t)) if st.doing == Doing::BackingUp => said.push(format!("Last backed up {}", when(t))),
-        (_, Some(t)) => said.push(format!("Backed up {}", when(t))),
-        _ => said.push("Not backed up yet".into()),
+        (_, Some(t)) if st.doing == Doing::BackingUp => said.push(olo_kit::tr!("Last backed up {}", when(t))),
+        (_, Some(t)) => said.push(olo_kit::tr!("Backed up {}", when(t))),
+        _ => said.push(olo_kit::words::tr("Not backed up yet").into()),
     }
     if let Some(n) = st.next.filter(|_| st.doing == Doing::Idle) {
         said.push(format!("Next {}", when(n)));
@@ -2354,11 +2357,11 @@ fn supervisor_menu(sup: &status::Supervisor) -> Menu {
             m = m.item(format!("{}: {} ({}){}", f.kind.title(), f.name, f.pid, if f.urgent { ", Urgent" } else { "" }), format!("run:olo-activity --inspect {}", f.pid));
         }
         if st.findings.len() > SHOWN {
-            m = m.item(format!("And {} More", st.findings.len() - SHOWN), "run:olo-activity --section supervisor");
+            m = m.item(olo_kit::words::count((st.findings.len() - SHOWN) as u64, "And 1 More", "And {n} More"), "run:olo-activity --section supervisor");
         }
         if !st.lowered.is_empty() {
             let n = st.lowered.len();
-            m = m.item(format!("{n} Background Process{} Lowered", if n == 1 { "" } else { "es" }), "run:olo-activity --section supervisor");
+            m = m.item(olo_kit::words::count(n as u64, "1 Background Process Lowered", "{n} Background Processes Lowered"), "run:olo-activity --section supervisor");
         }
     }
     m.separator().item("Show in Activity Monitor", "run:olo-activity --section supervisor").item("Performance Settings…", "pref:performance")
@@ -2399,18 +2402,18 @@ fn link_menu(kind: olo_system::network::Kind, l: &olo_system::network::Links) ->
         m,
         match &joined {
             Some(j) => format!("{name}: {j}"),
-            None => format!("{name}: Not Connected"),
+            None => olo_kit::tr!("{}: Not Connected", name),
         },
     );
     if let Some(d) = dev.filter(|d| d.connected()) {
         match l.primary {
-            Some(p) if p == kind => m = row(m, "In Use for Internet Traffic".into()),
-            Some(_) => m = row(m, format!("Standing By: {other} Is in Use")),
+            Some(p) if p == kind => m = row(m, olo_kit::words::tr("In Use for Internet Traffic").into()),
+            Some(_) => m = row(m, olo_kit::tr!("Standing By: {} Is in Use", other)),
             None => {}
         }
         // Behind a captive portal: its sign-in page, first.
         if l.portal.as_ref().is_some_and(|p| p.device == d.path) {
-            m = row(m, "Sign-In Needed".into()).item("Open Sign-In Page", "portal:open");
+            m = row(m, olo_kit::words::tr("Sign-In Needed").into()).item("Open Sign-In Page", "portal:open");
         }
         m = m.separator();
         if kind == Kind::Wifi
@@ -2423,7 +2426,7 @@ fn link_menu(kind: olo_system::network::Kind, l: &olo_system::network::Links) ->
         }
         let bare: Vec<&str> = d.addresses.iter().map(|a| a.split('/').next().unwrap_or(a)).collect();
         if !bare.is_empty() {
-            m = row(m, format!("IP Address: {}", bare.join(", ")));
+            m = row(m, olo_kit::tr!("IP Address: {}", bare.join(", ")));
         }
         if let Some(g) = &d.gateway {
             m = row(m, format!("Router: {g}"));
@@ -2433,7 +2436,7 @@ fn link_menu(kind: olo_system::network::Kind, l: &olo_system::network::Links) ->
         }
         m = row(m, format!("Interface: {}", d.interface));
         if !d.hw_address.is_empty() {
-            m = row(m, format!("Hardware Address: {}", d.hw_address));
+            m = row(m, olo_kit::tr!("Hardware Address: {}", d.hw_address));
         }
         if let Some((received, sent)) = net::traffic(&d.interface) {
             use olo_kit::files::format_size;
@@ -2466,8 +2469,8 @@ fn upgrade_names(programs: &[String]) -> Vec<String> {
             Some((_, name, _)) => name.to_string(),
             None => match bin.as_str() {
                 "olo-deskbar" => "Deskbar".into(),
-                "olo-app-server" => "the window server".into(),
-                "olo-session" => "the session".into(),
+                "olo-app-server" => olo_kit::words::tr("the window server").into(),
+                "olo-session" => olo_kit::words::tr("the session").into(),
                 "olo-preferences" => "Preferences".into(),
                 other => other.to_string(),
             },
@@ -2479,9 +2482,9 @@ fn upgrade_names(programs: &[String]) -> Vec<String> {
 fn upgrade_message(programs: &[String], closing: &[String]) -> String {
     let list = listing(&upgrade_names(programs));
     if closing.is_empty() {
-        return format!("A new build of Olo is ready ({list}). Install it now? Your windows stay open.");
+        return olo_kit::tr!("A new build of Olo is ready ({}). Install it now? Your windows stay open.", list);
     }
-    format!("A new build of Olo is ready ({list}). Installing it restarts the window server: Olo's windows stay open, but {} will close.", listing(closing))
+    olo_kit::tr!("A new build of Olo is ready ({}). Installing it restarts the window server: Olo's windows stay open, but {} will close.", list, listing(closing))
 }
 
 /// "A", "A and B", "A, B and C", "A, B, C and 2 others".
@@ -2490,7 +2493,7 @@ fn listing(names: &[String]) -> String {
         0 => "nothing".to_string(),
         1 => names[0].clone(),
         2..=4 => format!("{} and {}", names[..names.len() - 1].join(", "), names[names.len() - 1]),
-        n => format!("{} and {} others", names[..3].join(", "), n - 3),
+        n => olo_kit::tr!("{} and {} others", names[..3].join(", "), n - 3),
     }
 }
 
@@ -2931,9 +2934,9 @@ impl Deskbar {
                 style::vgradient(g, tile, style::tint(p.panel_background, if hot { 0.75 } else { 0.85 }), shade(&p, p.panel_background, 1.04));
                 section_bevel(g, tile, &p);
                 paint_fold(g, tile, true, c(p.panel_text));
-                agent::record(g, agent::Node { role: "Button", name: Some("Show Deskbar".into()), bounds: tile, enabled: true, clickable: true, ..Default::default() });
+                agent::record(g, agent::Node { role: "Button", name: Some(olo_kit::words::tr("Show Deskbar").into()), bounds: tile, enabled: true, clickable: true, ..Default::default() });
             });
-            d.hits.push(hit(view, "fold", tile, Some("Show Deskbar".into())).on_any_button(|e, _| {
+            d.hits.push(hit(view, "fold", tile, Some(olo_kit::words::tr("Show Deskbar").into())).on_any_button(|e, _| {
                 if button(e) == MouseButton::Left {
                     set_folded(false);
                 }
@@ -2988,9 +2991,9 @@ impl Deskbar {
                     style::fill_rect(g, style::snap(g, fold), c(p.panel_text).opacity(0.10));
                 }
                 paint_fold(g, fold, false, if hot { c(p.panel_text) } else { style::disabled_text(&p) });
-                agent::record(g, agent::Node { role: "Button", name: Some("Hide Deskbar".into()), bounds: fold, enabled: true, clickable: true, ..Default::default() });
+                agent::record(g, agent::Node { role: "Button", name: Some(olo_kit::words::tr("Hide Deskbar").into()), bounds: fold, enabled: true, clickable: true, ..Default::default() });
             });
-            d.hits.push(hit(view, "fold", fold, Some("Hide Deskbar".into())).on_any_button(|e, cx| {
+            d.hits.push(hit(view, "fold", fold, Some(olo_kit::words::tr("Hide Deskbar").into())).on_any_button(|e, cx| {
                 if button(e) == MouseButton::Left {
                     set_folded(true);
                     cx.stop_propagation();
@@ -3214,7 +3217,7 @@ impl Deskbar {
             let (r, h) = tray_item(
                 &mut d,
                 "display",
-                format!("Display {}: {name}. Click to go to another display.", olo_protocol::display_number_text(n)),
+                olo_kit::tr!("Display {}: {}. Click to go to another display.", olo_protocol::display_number_text(n), name),
                 Box::new(move |g, r| status::draw_display(g, r, &theme::palette(), n)),
             );
             let (m, v) = (model.clone(), view.clone());
@@ -3232,10 +3235,10 @@ impl Deskbar {
             let release = offer.release.as_ref().map(|r| r.title.clone());
             let tip_text = match (&offer.installing, st.upgrade_waiting, n, &release) {
                 (Some((v, doing, f)), ..) => format!("Installing {}: {doing}, {:.0}%.", release.clone().unwrap_or_else(|| format!("Olo {v}")), f * 100.0),
-                (None, true, ..) => "A build of Olo is running: Olo upgrades as soon as it has finished.".to_owned(),
-                (None, false, 0, Some(r)) => format!("{r} is ready. Click to upgrade."),
-                (None, false, n, Some(r)) => format!("A new build of Olo ({n} program{}) and {r} are ready. Click to choose.", if n == 1 { "" } else { "s" }),
-                (None, false, n, None) => format!("A new build of Olo is ready ({n} program{}). Click to upgrade.", if n == 1 { "" } else { "s" }),
+                (None, true, ..) => olo_kit::words::tr("A build of Olo is running: Olo upgrades as soon as it has finished.").to_owned(),
+                (None, false, 0, Some(r)) => olo_kit::tr!("{} is ready. Click to upgrade.", r),
+                (None, false, n, Some(r)) => olo_kit::tr!("A new build of Olo ({}) and {} are ready. Click to choose.", olo_kit::words::count(n as u64, "1 program", "{n} programs"), r),
+                (None, false, n, None) => olo_kit::tr!("A new build of Olo is ready ({}). Click to upgrade.", olo_kit::words::count(n as u64, "1 program", "{n} programs")),
             };
             let done = offer.installing.as_ref().map(|(_, _, f)| *f);
             let (_, h) = tray_item(&mut d, "upgrade", tip_text, Box::new(move |g, r| status::draw_upgrade(g, r, &theme::palette(), done)));
@@ -3251,15 +3254,15 @@ impl Deskbar {
         if let Some(rec) = st.recording.clone() {
             let since = status::time_of_day(rec.started, &clock);
             let what = match rec.what.as_str() {
-                "display" => "the screen".to_owned(),
-                "region" => "part of the screen".to_owned(),
-                w => format!("a window ({})", w.trim_start_matches("window ")),
+                "display" => olo_kit::words::tr("the screen").to_owned(),
+                "region" => olo_kit::words::tr("part of the screen").to_owned(),
+                w => olo_kit::tr!("a window ({})", w.trim_start_matches("window ")),
             };
             let paused = rec.paused;
             let (tip_text, said) = if paused {
-                (format!("Recording {what} since {since}, paused. Click to resume or stop."), format!("Recording {what} since {since} (paused)"))
+                (olo_kit::tr!("Recording {} since {}, paused. Click to resume or stop.", what, since), olo_kit::tr!("Recording {} since {} (paused)", what, since))
             } else {
-                (format!("Recording {what} since {since}. Click to pause or stop."), format!("Recording {what} since {since}"))
+                (olo_kit::tr!("Recording {} since {}. Click to pause or stop.", what, since), olo_kit::tr!("Recording {} since {}", what, since))
             };
             let (r, h) = tray_item(&mut d, "recording", tip_text, Box::new(move |g, r| status::draw_recording(g, r, &theme::palette(), paused)));
             let (m, v) = (model.clone(), view.clone());
@@ -3279,12 +3282,12 @@ impl Deskbar {
         // a click its menu.
         if let Some(b) = st.backup.clone() {
             let tip_text = match (&b.busy, &b.off, &b.trouble) {
-                (Some(busy), _, _) => format!("DiskBackup: {}. Click to see how far it is.", busy.to_lowercase()),
-                (_, Some(why), _) => format!("DiskBackup: not backing up ({why})."),
-                (_, _, Some(what)) => format!("DiskBackup: {what}. Click to see more."),
+                (Some(busy), _, _) => olo_kit::tr!("DiskBackup: {}. Click to see how far it is.", busy),
+                (_, Some(why), _) => olo_kit::tr!("DiskBackup: not backing up ({}).", why),
+                (_, _, Some(what)) => olo_kit::tr!("DiskBackup: {}. Click to see more.", what),
                 _ => match b.last_ok {
-                    Some(t) => format!("DiskBackup: backed up at {}.", status::time_of_day(t.max(0) as u64, &clock)),
-                    None => "DiskBackup: not backed up yet.".to_owned(),
+                    Some(t) => olo_kit::tr!("DiskBackup: backed up at {}.", status::time_of_day(t.max(0) as u64, &clock)),
+                    None => olo_kit::words::tr("DiskBackup: not backed up yet.").to_owned(),
                 },
             };
             let (busy, off) = (b.busy.is_some(), b.off.is_some());
@@ -3311,9 +3314,11 @@ impl Deskbar {
         // A screen being shared: what, with whom, and Stop.
         if !st.sharing.is_empty() {
             let tip_text = match st.sharing.as_slice() {
-                [one] => format!("{}. Click to stop.", olo_protocol::SharingState::said(one)),
-                many if many.iter().any(|s| !s.control.is_empty()) => format!("{} shares, control among them. Click to stop them.", many.len()),
-                many => format!("{} screen shares. Click to stop them.", many.len()),
+                [one] => olo_kit::tr!("{}. Click to stop.", olo_protocol::SharingState::said(one)),
+                many if many.iter().any(|s| !s.control.is_empty()) => {
+                    olo_kit::words::count(many.len() as u64, "1 share, with control. Click to stop it.", "{n} shares, control among them. Click to stop them.")
+                }
+                many => olo_kit::words::count(many.len() as u64, "1 screen share. Click to stop it.", "{n} screen shares. Click to stop them."),
             };
             let (r, h) = tray_item(&mut d, "sharing", tip_text, Box::new(|g, r| status::draw_sharing(g, r, &theme::palette())));
             let (m, v, shares) = (model.clone(), view.clone(), st.sharing.clone());
@@ -3328,11 +3333,23 @@ impl Deskbar {
         // one: what, where, and Pause and Stop.
         if !st.airplay.is_empty() {
             let tip_text = match st.airplay.as_slice() {
-                [one] if one.paused() => format!("{}. Click to resume or stop.", play_said(one)),
-                [one] => format!("{}. Click to pause or stop.", play_said(one)),
-                many if many.iter().all(|p| p.live) => format!("{} screens shown on AirPlay receivers. Click to pause or stop them.", many.len()),
-                many if many.iter().any(|p| p.live) => format!("{} playing and shown on AirPlay receivers. Click to pause or stop them.", many.len()),
-                many => format!("{} films playing on AirPlay receivers. Click to pause or stop them.", many.len()),
+                [one] if one.paused() => olo_kit::tr!("{}. Click to resume or stop.", play_said(one)),
+                [one] => olo_kit::tr!("{}. Click to pause or stop.", play_said(one)),
+                many if many.iter().all(|p| p.live) => olo_kit::words::count(
+                    many.len() as u64,
+                    "1 screen shown on an AirPlay receiver. Click to pause or stop it.",
+                    "{n} screens shown on AirPlay receivers. Click to pause or stop them.",
+                ),
+                many if many.iter().any(|p| p.live) => olo_kit::words::count(
+                    many.len() as u64,
+                    "1 playing or shown on an AirPlay receiver. Click to pause or stop it.",
+                    "{n} playing and shown on AirPlay receivers. Click to pause or stop them.",
+                ),
+                many => olo_kit::words::count(
+                    many.len() as u64,
+                    "1 film playing on an AirPlay receiver. Click to pause or stop it.",
+                    "{n} films playing on AirPlay receivers. Click to pause or stop them.",
+                ),
             };
             let (paused, count) = (st.airplay.iter().all(|p| p.paused()), st.airplay.len());
             let (r, h) = tray_item(&mut d, "airplay", tip_text, Box::new(move |g, r| status::draw_airplay(g, r, &theme::palette(), paused, count)));
@@ -3378,7 +3395,7 @@ impl Deskbar {
         // the right button, a menu with each shown on AirPlay too.
         if !st.agent_screens.is_empty() {
             let n = st.agent_screens.len();
-            let tip_text = if n == 1 { "An agent screen is running. Click to watch it.".to_string() } else { format!("{n} agent screens are running. Click to watch them.") };
+            let tip_text = olo_kit::words::count(n as u64, "An agent screen is running. Click to watch it.", "{n} agent screens are running. Click to watch them.");
             let (r, h) = tray_item(&mut d, "agent-screens", tip_text, Box::new(move |g, r| status::draw_screens(g, r, &theme::palette(), n)));
             let (m, v, menu) = (model.clone(), view.clone(), screens_menu(&st.agent_screens, &st.airplay_paired));
             d.hits.push(h.on_any_button(move |e, cx| match button(e) {
@@ -3395,10 +3412,10 @@ impl Deskbar {
         if let Some(sup) = st.supervisor.clone() {
             let (n, urgent) = (sup.state.findings.len(), sup.state.urgent());
             let tip_text = match (sup.on, n, urgent) {
-                (false, ..) => "Performance supervisor: off".to_owned(),
-                (true, 0, _) => "Performance supervisor: on, nothing found".to_owned(),
-                (true, n, 0) => format!("Performance supervisor: {n} finding{}", if n == 1 { "" } else { "s" }),
-                (true, _, u) => format!("Performance supervisor: {u} urgent finding{}", if u == 1 { "" } else { "s" }),
+                (false, ..) => olo_kit::words::tr("Performance supervisor: off").to_owned(),
+                (true, 0, _) => olo_kit::words::tr("Performance supervisor: on, nothing found").to_owned(),
+                (true, n, 0) => olo_kit::words::count(n as u64, "Performance supervisor: 1 finding", "Performance supervisor: {n} findings"),
+                (true, _, u) => olo_kit::words::count(u as u64, "Performance supervisor: 1 urgent finding", "Performance supervisor: {n} urgent findings"),
             };
             let on = sup.on;
             let (r, h) = tray_item(&mut d, "supervisor", tip_text, Box::new(move |g, r| status::draw_gauge(g, r, &theme::palette(), on, n, urgent > 0)));
@@ -3416,7 +3433,7 @@ impl Deskbar {
         if !st.doctor.issues.is_empty() {
             let n = st.doctor.issues.len();
             let first = &st.doctor.issues[0];
-            let tip_text = if n == 1 { format!("Olo Doctor: {first}. Click to see it.") } else { format!("Olo Doctor found {n} things to fix: {first}, and more. Click to see them.") };
+            let tip_text = if n == 1 { olo_kit::tr!("Olo Doctor: {}. Click to see it.", first) } else { olo_kit::tr!("Olo Doctor found {} things to fix: {}, and more. Click to see them.", n, first) };
             let (_, h) = tray_item(&mut d, "doctor", tip_text, Box::new(move |g, r| _ = icons::paint(g, r, "doctor")));
             let m = model.clone();
             d.hits.push(h.on_any_button(move |e, cx| {
@@ -3453,7 +3470,7 @@ impl Deskbar {
         // A network that wants its sign-in page first (a captive portal):
         // a click opens the page.
         if let Some(p) = st.portal.clone() {
-            let tip_text = format!("“{}” wants you to sign in before it lets anything through. Click to open its sign-in page.", p.network);
+            let tip_text = olo_kit::tr!("“{}” wants you to sign in before it lets anything through. Click to open its sign-in page.", p.network);
             let (_, h) = tray_item(&mut d, "portal", tip_text, Box::new(move |g, r| _ = icons::paint(g, r, "browser")));
             d.hits.push(h.on_any_button(move |e, _| {
                 if matches!(button(e), MouseButton::Left | MouseButton::Right) {
@@ -3475,7 +3492,7 @@ impl Deskbar {
             let by = standing_by(Kind::Wifi);
             let tip_text = match &w.ssid {
                 Some(s) => format!("{s} ({}%){}", w.signal, if by { ", standing by: Ethernet is in use" } else { "" }),
-                None => "Not connected".into(),
+                None => olo_kit::words::tr("Not connected").into(),
             };
             let signal = w.ssid.as_ref().map(|_| w.signal);
             let (r, h) = tray_item(&mut d, "wifi", tip_text, Box::new(move |g, r| g.with_element_opacity(faint(by), |g| status::draw_wifi(g, r, &theme::palette(), signal))));
@@ -3521,11 +3538,10 @@ impl Deskbar {
         // menu (the history, Do Not Disturb, the settings).
         if let Some(n) = st.notifications.clone() {
             let tip_text = match (n.quiet, n.unread) {
-                (true, 0) => "Do Not Disturb is on".to_string(),
-                (true, u) => format!("Do Not Disturb is on — {u} unread"),
-                (false, 0) => "No new notifications".to_string(),
-                (false, 1) => "1 new notification".to_string(),
-                (false, u) => format!("{u} new notifications"),
+                (true, 0) => olo_kit::words::tr("Do Not Disturb is on").to_string(),
+                (true, u) => olo_kit::tr!("Do Not Disturb is on — {} unread", u),
+                (false, 0) => olo_kit::words::tr("No new notifications").to_string(),
+                (false, u) => olo_kit::words::count(u as u64, "1 new notification", "{n} new notifications"),
             };
             let (unread, quiet, hue) = (n.unread, n.quiet, n.badge);
             let (r, h) = tray_item(&mut d, "notifications", tip_text, Box::new(move |g, r| status::draw_bell(g, r, &theme::palette(), unread, quiet, hue)));
@@ -3544,9 +3560,9 @@ impl Deskbar {
         {
             let on = self.caffeinated;
             let tip_text = match (on, self.caffeinated_until) {
-                (true, Some(t)) => format!("Caffeinated until {}", status::time_of_day(t, &self.clock)),
-                (true, None) => "Caffeinated: staying awake".into(),
-                _ => "Stay awake (caffeinated)".into(),
+                (true, Some(t)) => olo_kit::tr!("Caffeinated until {}", status::time_of_day(t, &self.clock)),
+                (true, None) => olo_kit::words::tr("Caffeinated: staying awake").into(),
+                _ => olo_kit::words::tr("Stay awake (caffeinated)").into(),
             };
             let (r, h) = tray_item(&mut d, "caffeine", tip_text, Box::new(move |g, r| status::draw_cup(g, r, &theme::palette(), on)));
             let (m, v) = (model.clone(), view.clone());
@@ -3564,8 +3580,8 @@ impl Deskbar {
         // takes the password; Ask Again; Security's preferences).
         {
             let tip_text = match self.approve_until {
-                Some(t) => format!("Approving without asking: {} left (until {})", approve::left(t), status::time_of_day(t, &self.clock)),
-                None => "Approve requests without asking, for a while".into(),
+                Some(t) => olo_kit::tr!("Approving without asking: {} left (until {})", approve::left(t), status::time_of_day(t, &self.clock)),
+                None => olo_kit::words::tr("Approve requests without asking, for a while").into(),
             };
             let on = self.approve_until.is_some();
             let (r, h) = tray_item(&mut d, "approve", tip_text, Box::new(move |g, r| status::draw_key(g, r, &theme::palette(), on)));
@@ -3682,9 +3698,9 @@ impl Deskbar {
         let (open, mode_open) = (pointer.open(&key), pointer.open(&mode_key));
         let (hovered, mode_hovered) = (pointer.hot(&key), pointer.hot(&mode_key));
         let tip_text = match mode {
-            WindowingMode::Standard => format!("{name}: windows stay where you put them. Click to choose a windowing mode."),
-            WindowingMode::AutoTiling => format!("{name}: Auto-Tiling, every window takes a tile. Click to choose a windowing mode."),
-            WindowingMode::Focus => format!("{name}: Focus, only the active window shows, zoomed. Click to choose a windowing mode."),
+            WindowingMode::Standard => olo_kit::tr!("{}: windows stay where you put them. Click to choose a windowing mode.", name),
+            WindowingMode::AutoTiling => olo_kit::tr!("{}: Auto-Tiling, every window takes a tile. Click to choose a windowing mode.", name),
+            WindowingMode::Focus => olo_kit::tr!("{}: Focus, only the active window shows, zoomed. Click to choose a windowing mode.", name),
         };
         let ground = self.ground(p, display, Some(ws));
         // Folding (`fold`): its arrow just before the mode, as far from it
@@ -3695,9 +3711,9 @@ impl Deskbar {
         let fold_hovered = pointer.hot(&fold_key_s);
         let count = fold.filter(|&(shown, _)| !shown).map(|(_, apps)| apps.to_string());
         let fold_said = fold.map(|(shown, apps)| match (shown, apps) {
-            (true, _) => format!("{name}. Click to put its applications away."),
-            (false, 1) => format!("{name}: 1 application. Click to show it."),
-            (false, n) => format!("{name}: {n} applications. Click to show them."),
+            (true, _) => olo_kit::tr!("{}. Click to put its applications away.", name),
+            (false, 1) => olo_kit::tr!("{}: 1 application. Click to show it.", name),
+            (false, n) => olo_kit::tr!("{}: {} applications. Click to show them.", name, n),
         });
         // (Its count is part of what a click on the arrow takes.)
         let count_w = count.as_ref().map_or(0.0, |n| f32::from(style::text_width(n.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL))).ceil() + 4.0);
@@ -3855,9 +3871,9 @@ impl Deskbar {
         let said: Vec<String> = [
             badge.as_ref().and_then(|b| b.count).map(|n| format!("{n} unread")),
             notes.and_then(|d| d.notes).map(|(fresh, count)| match (count, fresh < 1.0) {
-                (0, _) => "has notifications".to_owned(),
-                (n, false) => format!("has notifications ({n})"),
-                (n, true) => format!("has notifications ({n}, the dot {}% full)", (fresh * 100.0).round()),
+                (0, _) => olo_kit::words::tr("has notifications").to_owned(),
+                (n, false) => olo_kit::tr!("has notifications ({})", n),
+                (n, true) => olo_kit::tr!("has notifications ({}, the dot {}% full)", n, (fresh * 100.0).round()),
             }),
             badge.as_ref().and_then(|b| b.progress).map(|p| format!("{}% done", (p * 100.0).round())),
         ]
@@ -4109,8 +4125,8 @@ impl Deskbar {
                         let m = model.clone();
                         let tip = match part {
                             // (What waits in an app: put off, not for a time.)
-                            olo_kit::glance::InboxPart::Snooze if card.attention => "Later: until more is waiting".to_owned(),
-                            olo_kit::glance::InboxPart::Snooze => format!("Snooze for {}", snooze_words(minutes)),
+                            olo_kit::glance::InboxPart::Snooze if card.attention => olo_kit::words::tr("Later: until more is waiting").to_owned(),
+                            olo_kit::glance::InboxPart::Snooze => olo_kit::tr!("Snooze for {}", snooze_words(minutes)),
                             olo_kit::glance::InboxPart::Dismiss => "Clear".to_owned(),
                             part => part.name().to_owned(),
                         };

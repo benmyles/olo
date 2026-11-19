@@ -52,9 +52,9 @@ impl View for AllowedView {
         let a = app();
         let p = theme::palette();
         let message = if a.allowed.is_empty() {
-            "No app may have an item without asking. When one asks for an item, Approve Always allows it for good, and it’s listed here to take back.".to_owned()
+            olo_kit::words::tr("No app may have an item without asking. When one asks for an item, Approve Always allows it for good, and it’s listed here to take back.").to_owned()
         } else {
-            "These apps may have these items whenever they ask. Take one back and the app is asked again the next time.".to_owned()
+            olo_kit::words::tr("These apps may have these items whenever they ask. Take one back and the app is asked again the next time.").to_owned()
         };
         let mut rows = div().w_full().flex().flex_col();
         for allowed in &a.allowed {

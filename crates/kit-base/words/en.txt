@@ -2,6 +2,7 @@
 % CPU
 (No title)
 (The desktop is {} now: these show when it's {}.)
+(The last try didn't go through: {}.)
 (not in force: {})
 *.qcow2, *.vdi, *.vmdk (large, changing while in use)
 *.swp, *~, .#*
@@ -38,10 +39,13 @@
 15 minutes
 15 minutes before
 1Password Accounts…
+1Password closed the connection. If it asked whether to allow Passwords, choose Allow, then try again.
+1Password is open but isn’t letting other apps in. In 1Password, turn on Settings ▸ Developer ▸ Integrate with other apps, then try again.
+1Password isn’t running. Open it (and turn on Settings ▸ Developer ▸ Integrate with other apps), then try again.
+1Password won’t take it, so it wasn’t sent. {} Change it here and sync again.
 2 GB a screen
 2 Hours Before
 2 Seconds
-2 hours
 2 hours before
 2 minutes
 2 seconds
@@ -77,7 +81,6 @@
 5 years
 512 MB a screen
 52 weeks
-6 hours
 6 months
 7 days
 8 events
@@ -90,6 +93,8 @@ A GPU's encoder takes a 4K screen in about 15 ms a frame, the processor about 11
 A WireGuard file (from the server, or wg-quick's) is kept with its keys; its DNS servers are asked alone while it's connected.
 A backup reads one file at a time, and leaves what it read out of memory: it never takes much of either.
 A battery kept full wears faster: for a computer that's mostly plugged in.
+A build of Olo is running: Olo upgrades as soon as it has finished.
+A build of Olo is still running. Olo upgrades as soon as it has finished: your windows stay open.
 A classic token with the repo scope, or a fine-grained one that can read pull requests and checks. Olo keeps it in your login keyring.
 A code that is surely an agent’s tab’s is put in there, and you’re told; one that isn’t sure is asked about.
 A copy to a stick or a card goes at the disk's own pace, {} waiting in memory at most, so its progress is true and ejecting is quick.
@@ -103,6 +108,12 @@ A little room
 A look at the infrared camera can stand for your password: sudo in Terminal, administrator requests, Passwords and the lock screen. Only infrared counts, so a photo on a screen can't pass it.
 A lot of room
 A month
+A name can't have a slash, start with a dot or a dash, or end in .lock.
+A name, without “/”.
+A new build of Olo ({}) and {} are ready. Click to choose.
+A new build of Olo is ready ({}). Click to upgrade.
+A new build of Olo is ready ({}). Install it now? Your windows stay open.
+A new build of Olo is ready ({}). Installing it restarts the window server: Olo's windows stay open, but {} will close.
 A notch scrolls as far in Chrome and other programs as in Olo’s apps.
 A palm, ignored ({} so far)
 A path: /…, ~/… or a name here
@@ -121,6 +132,7 @@ A touch starts at pressure
 A touch types nothing unless something is waiting for the key; three in a row type its one-time code where you are, for a web form Olo doesn’t know.
 A town, an address, or 47.61, -122.33
 A value
+A vault needs a name.
 A week
 AI
 AI features use OpenAI’s models through the Token Pool’s Codex accounts, spent in its order.
@@ -169,7 +181,11 @@ Add a Google Account…
 Add a Kind
 Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
 Add an App…
+Add an account in Preferences
+Add lunch tomorrow at noon
+Add the one-time code this page shows to your login {}?
 Add to Collector
+Add “{}” to Favorites
 Added turned off.
 Address
 Address, port, program or state
@@ -213,6 +229,10 @@ All day
 All of Olo’s {} words are in {}.
 All {} connected.
 Allow
+Allow Sleep
+Allow Sleep (awake until {})
+Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).
+Allowed with {}
 Along the Top
 Also from the Deskbar: click the cup.
 Also leave out:
@@ -226,11 +246,15 @@ Always Right
 Always Where It Is
 Always a palm when as large as
 Always on Top
+An account can answer again.
 An administrator's password is needed.
+An app
 An application is keeping the display awake.
+An error occurred while {}: {}
 An etched line
 An iPhone first: Bluetooth doesn’t yet present this computer as an iPhone expects, and the iPhone would offer it its notifications but not its contacts. Olo Doctor fixes it (Present as Hands-Free); then pair.
 And I/O under
+And {n} More
 Anonymous identity:
 Another account
 Answer
@@ -238,6 +262,8 @@ Answer 1Password’s op command
 Answer questions about the forecast
 Answer questions about your calendars
 Answer questions in the command palette
+Answering now
+Answering now · {}
 Any touch
 App
 App caches
@@ -248,12 +274,16 @@ Applications
 Applied: kept for this computer, and set again at every start.
 Apply
 Apply once to let Olo follow the mode and the power supply: an administrator's password is asked, this once.
+Apply {n} Changes
 Applying asks for an administrator's password once while this window is open.
 Applying… (an administrator's password may be asked for)
+Approve requests without asking, for a while
+Approving without asking: {} left (until {})
 Apps Allowed…
 Apps That Always Float
 Apps With Their Own Workspace
 Apps appear here once they have sent a notification.
+Apps are waiting for logins.
 Apps get the microphone's sound as it is.
 Archive
 Archive All
@@ -262,12 +292,15 @@ Archived Conversations
 As BeOS R5 drew its icons: flat faces in its 8-bit colours, black outlines.
 As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines.
 As fast as the computer goes: the processors kept quick and the firmware's power limits raised, the fans as needed. The battery runs down sooner.
+As in Themes ({})
 As it goes
 As set now
 As the Mode
 As the other mice
 As wide as the widgets
 Ask
+Ask Again
+Ask Again ({} left, until {})
 Ask It
 Ask Me First
 Ask about the weather…
@@ -278,6 +311,7 @@ Ask for Full Access at Start
 Ask for sudo Passwords in a Window
 Ask what to do about urgent ones
 Asked now:
+Asking Passwords…
 Asking Telegram…
 Asking it…
 Asking…
@@ -294,6 +328,7 @@ Authenticate
 Authentication:
 Auto
 Auto Approve
+Auto Approve: Yes in {} s
 Auto-Tiling
 Auto-Tiling Layout
 Auto-tiling layout:
@@ -303,9 +338,10 @@ Automatic wakes NVIDIA's GPU on battery too
 Automatic: {} for AV1 and VP9 (Fedora's driver has no H.264 or HEVC: Olo Doctor installs the full one){}. {}
 Automatic: {} for every video (H.264, HEVC, VP9, AV1), 4K at 60 frames a second with a quarter of a core. {}
 Automatically
-Automatically, every
+Automatically,
 Back
 Back Up Now
+Back Up Now goes on from where it got to
 Back Up There
 Back Up These Folders
 Back to Conversations
@@ -315,13 +351,23 @@ Back up to the Drive of:
 Back up to your Google Drive from now on; the backups in this folder stay as they are
 Back up:
 Backed Up
+Backed up {}
+Backed up: {}
 Background Noise
 Background noise:
 Background noise: {}
 Background:
 Backgrounds
+Backing up to Google Drive ({}), in the folder “{}”.
+Backing up to {}. Its key is kept in Passwords.
+Backing up to {}. Keep its key in Passwords when you can ({}).
+Backing up your home folder
+Backing up {n} folders
+Backing up {}
 Backlight
 Backup
+Backup didn’t finish
+Backup stopped
 Backups
 Backups Kept
 Balanced
@@ -356,6 +402,7 @@ Bottom Half
 Bottom Left Quarter
 Bottom Right Quarter
 Bottom Two Thirds
+Branch {} is checked out in {} already.
 Bright
 Brightness
 Bring It Into Olo…
@@ -371,7 +418,6 @@ Buttons
 By
 By a parent leaving
 By at least
-By hand
 By the hour for the next 5 days (the provider’s reach):
 C
 C#
@@ -384,6 +430,8 @@ CPU
 CPU Time
 CSS
 Caffeinated
+Caffeinated until {}
+Caffeinated: staying awake
 CalDAV
 Calendar
 Calendar shows the calendars of your accounts on other CalDAV servers (Nextcloud, iCloud with an app-specific password, a server of your own) beside Google’s and Fastmail’s, and writes what you change back to them.
@@ -391,11 +439,17 @@ Calendar:
 Calendar: Fastmail didn’t take the app password for calendars (it needs access to them).
 Calendar: Next Event
 Calendar: The Day Ahead
+Calendar: no account set up. Add one in Preferences ▸ Integrations.
+Calendar: nothing coming up {}.
 Calendars
 Calendar’s assistant is handed the events of the calendars you show. It can draft events; nothing is added until you save it.
 Call
 Call Quality, with Microphone
 Calls
+Can't make {}: {}
+Can't move it: {}
+Can't remove {}: {}
+Can't tell git where it went: {}
 Cancel
 Cancel Echo from the Speakers
 Cancel It
@@ -403,6 +457,8 @@ Cancel Recording
 Cancel Sign-In
 Cancel Trimming
 Cancel echo from the speakers
+Can’t come back as it was: {} and {} more.
+Can’t come back as it was: {}.
 Caps Lock is another Control key
 Capture debug information whenever a frame drops
 Cascade All
@@ -414,6 +470,9 @@ Center Two Thirds
 Chance of rain
 Change API ID…
 Change Background…
+Changed both here and in 1Password: 1Password’s version replaces it here, and yours is kept as “{} (conflict)”
+Changed here now, and in 1Password at the next sync.
+Changes to “{}”
 Change…
 Changing…
 Chat
@@ -424,12 +483,16 @@ Check Health
 Check Spelling While Typing
 Check for Updates
 Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
+Checking out {} of {} files
+Checking the backup
+Checking the connection…
 Checking your password…
 Checking…
 Choose All
 Choose Another Folder…
 Choose None
 Choose a Folder…
+Choose a backup to see how it was last checked.
 Choose a backup to see what it holds before importing it.
 Choose a network to join it.
 Choose a setting, then play the original or its sound: switching goes on from the same place.
@@ -459,6 +522,8 @@ Clear Scrollback
 Clear copied secrets after:
 Cleared
 Click
+Click Back Up Now to make the first.
+Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.
 Click a shortcut to give it other keys.
 Click an event to see it here; double-click it to change it.
 Click and hold
@@ -473,6 +538,7 @@ Clients
 Clock
 Close
 Close All
+Close All from {}
 Close Group
 Close Other Tabs
 Close Others
@@ -487,6 +553,8 @@ Codex
 Coding Agents
 Collection:
 Collector
+Collector: drag files and folders here
+Collector: {} — {}
 Color
 Colors
 Colors in:
@@ -503,6 +571,8 @@ Comment
 Comment:
 Compress
 Compress As…
+Compress {} into a new archive beside it:
+Compress {} into a new archive beside them:
 Configure IPv4:
 Configure IPv6:
 Confirm:
@@ -516,6 +586,7 @@ Connected as {}, through {}.
 Connected to “{}”
 Connected to “{}”: {}
 Connected {}, but its sign-in wasn’t allowed {}: Sign In Again and allow everything it asks.
+Connected.
 Connection:
 Contacts
 Container images and Flatpak runtimes
@@ -528,6 +599,9 @@ Cool
 Cooler
 Cooler and Quieter
 Coolest
+Copied the reference to “{}”’s {}.
+Copied the {}.
+Copied {}. It leaves the clipboard in {} seconds.
 Copy
 Copy Code
 Copy Conversation
@@ -546,13 +620,48 @@ Copy Value
 Copy a code no tab is waiting for
 Copy the Code That Just Came
 Copy to clipboard
+Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
 Core
+Couldn't create a folder: {}
+Couldn't create a link: {}
+Couldn't paste: {}
+Couldn't rename “{}”: {}
 Couldn't restart: {}
 Couldn't save the setting: {}
+Couldn't save what was dropped: {}
 Couldn't save: {}
+Couldn’t archive it. {}
+Couldn’t ask for your keyring to be unlocked: {}
+Couldn’t be checked {}: {}.
+Couldn’t change this vault in 1Password. {}
+Couldn’t delete it in 1Password. {}
+Couldn’t delete this vault from 1Password. {}
+Couldn’t keep the approval: {}
+Couldn’t keep the key in the login keyring: {}
+Couldn’t keep the key: {}
+Couldn’t list its items. {}
+Couldn’t make this vault in 1Password, so its items weren’t sent either. {}
+Couldn’t open this item: {}
+Couldn’t reach the login keyring: {}
+Couldn’t read 1Password’s copy to compare, so yours wasn’t sent. {}
+Couldn’t read the key: {}
+Couldn’t remove the account: {}
+Couldn’t remove the worktree in {}: {}
+Couldn’t reset: {}
+Couldn’t restore: {}.
+Couldn’t save the settings: {}
+Couldn’t save your passwords: {}
+Couldn’t save “{}”: {}
+Couldn’t send it. {}
+Couldn’t send this account’s changes. {}
 Couldn’t sign out ({}).
+Couldn’t sync this account. {}
+Couldn’t take the approval back: {}
+Couldn’t write the shared copy: {}
 Count accounts turned off or signed out
 Countdown
+Counting what there is to back up: {}, {} so far.
+Counting what to back up
 Crate
 Create Link
 Create Link Here
@@ -560,15 +669,16 @@ Create Partition…
 Create…
 Credit Card
 Crop
+Cropped to {} × {}
 Crop…
 Custom
 Custom Message…
 Custom {} once applied (on {} until then)
 Customize…
 Cut
+Cut {} to {}
 Cyan
 Czech
-D0 Built-in Display
 DNS
 DNS servers:
 DSL
@@ -585,12 +695,14 @@ Days:
 Decline
 Decode With
 Decode on:
+Decoding on {}
 DeepFilterNet3
 DeepFilterNet3 Low Delay
 Default
 Default (Preferences ▸ Power)
 Default Apps
 Default Keys
+Default Message ({})
 Default mode:
 Defaults
 Degrees
@@ -609,7 +721,30 @@ Delete Signature
 Delete Table
 Delete Vault
 Delete Vault…
+Delete the unfinished backup? What it sent ({}) is freed, and the next backup reads and sends again what it had done. It can’t be undone.
+Delete the vault “{}”{}{}? This can’t be undone.
+Delete these {} backups, the unfinished one too? The space only they took is freed (what the unfinished one sent, {}); files other backups hold too stay in those. It can’t be undone.
+Delete these {} backups? The space only they took is freed; files other backups hold too stay in those. It can’t be undone.
+Delete this backup? The space only it took is freed; files other backups hold too stay in those. It can’t be undone.
+Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
+Delete {} Backups…
+Delete “{}” ({}) for good? It won't go to the Trash, and this can't be undone.
+Delete “{}” for good? Its attached files can’t come back.
+Delete “{}”? Edit ▸ Undo makes it again until Passwords locks.
+Deleted in 1Password
+Deleted in 1Password but changed here: kept here, to be added back
+Deleted the vault “{}” and its item.
+Deleted the vault “{}” and its {} items.
+Deleted the vault “{}”.
 Delete…
+Deleting a backup
+Deleting backups
+Deleting the backups’ folder in Google Drive
+Deleting the unfinished backup
+Deleting {}
+Deleting {} of {}
+Deleting {}: {} of {}
+Description removed
 Description:
 Deselect All Chats
 Deselect All Conversations
@@ -630,27 +765,43 @@ Dim the display while you look away
 Disagree
 Discard
 Discard Recording
+Discard the changes to this item?
 Disconnect
 Disconnect Google Drive
+Disconnect Google Drive ({})? DiskBackup stops backing up there, and forgets its sign-in on this computer. The backups in your Drive stay as they are: connect again to go on from them, or to restore from them.
+Disconnecting from Google Drive…
 Disconnect…
 Disk
 Disk Space
 Disk:
 DiskBackup
+DiskBackup backs up to a Google account’s Drive through that account’s own app, which Olo makes once for each account you connect (Mail and Calendar sign in through it too). Connect yours in Preferences ▸ Integrations ▸ Google: it shows here as soon as it’s connected.
 DiskBackup backs up to its Drive and couldn’t stop: {}
 DiskBackup copies your files, encrypted, every hour, and keeps older copies too, so any file can be brought back as it was. Where should the backups go?
 DiskBackup couldn’t: {}
+DiskBackup is disconnected from Google Drive on this computer: connect it again (Connect Google Drive…)
 DiskBackup is setting up its backups in {}’s Google Drive…
 DiskBackup is stopping its backups to Google Drive…
+DiskBackup isn't signed in to Google Drive on this computer: set it up again (Back Up To ▸ Google Drive…)
+DiskBackup isn’t running
+DiskBackup keeps its backups in a folder “{}” in that account’s Drive, which only Olo’s app for the account sees: nothing else of your Drive. Backups there already (another computer’s) are added to, with their key from Passwords.
+DiskBackup: backed up at {}.
+DiskBackup: not backed up yet.
+DiskBackup: not backing up ({}).
+DiskBackup: {}. Click to see how far it is.
+DiskBackup: {}. Click to see more.
 DiskBackup’s own app, from before. Bring it in for Mail and Calendar too; the backups stay put.
 DiskBackup…
 DiskUsage
 Disks
 Display
+Display {}: {}. Click to go to another display.
 Displays
 Divider
 Do Not Disturb
 Do Not Disturb (for {n} more minutes)
+Do Not Disturb is on
+Do Not Disturb is on — {} unread
 Dockerfile
 Document
 Documents
@@ -699,10 +850,12 @@ Either AirPod
 Eject
 Elixir
 Email Account
+Email Accounts
 Emoji
 Empty
 Empty Trash
 Empty the Collector
+Emptying the Trash
 Enable Screen Saver
 Enclosing Folder
 Encode on:
@@ -717,7 +870,13 @@ Enhancements
 Enrolling didn't finish.
 Enrolling your {}
 Enter Full Screen
+Enter the password for “{}” to unlock it.
+Entire disk
 Erase All Backups…
+Erase every backup in {}? Every version of every file kept there goes (another computer’s backups there too), and the space is freed. {} It can’t be undone.
+Erasing every backup
+Erasing every backup, to start fresh
+Erasing goes on by itself once it’s back, from where it got to.
 Erlang
 Ethernet
 Even Columns
@@ -732,6 +891,10 @@ Every Month
 Every Week
 Every Weekday
 Every Year
+Every backup from the last hour, then {} and {}.
+Every backup from the last hour, then {}.
+Every backup from the last hour; older ones go.
+Every byte read back and checked, from {}.
 Every day
 Every day at set times
 Every disk
@@ -741,13 +904,19 @@ Every month
 Every week
 Every weekday
 Every year
+Every {n} days
+Every {n} months
+Every {n} weeks
+Every {n} years
 Everything
 Everything Else
 Everything else's brightness
+Everything it needs looked for, in {}.
 Export
 Export Flattened PDF…
 Export Video
 Export Video…
+Export cancelled.
 Export…
 Expression
 Extended desktop
@@ -789,11 +958,11 @@ File system:
 Files
 Files with these extensions are this kind wherever Olo looks at them, and open in its app. An extension another kind had is this one's now.
 Fill It In
-Fills
 Find
 Find Again
 Find Previous
 Find Selection
+Find a free hour this week
 Find in document
 Find:
 Find…
@@ -802,6 +971,9 @@ Fingerprints can only be changed from a session logged in at this computer.
 Fingers moving
 Fingers scrolling
 Fingers taken for palms
+Finishing sending a pack: {} of {}
+Finishing the backup
+Finishing what’s being sent, then keeping what’s done.
 Finnish
 Firm
 Firmer
@@ -823,7 +995,6 @@ Folders and files, separated by commas: ~/ is your home folder, **/ anywhere, * 
 Folders by Name, Files by Date
 Follows Other Mice below. Recommended for it: {}.
 Font
-Font Size
 For
 For Every Link
 For ever
@@ -846,11 +1017,13 @@ Forward…
 Four fingers
 Free
 Free (open source)
+Freeing the space only backups past keeping took, in {}.
 French
 French (Canada)
 From
 From the network
 From your next login, Passwords can be ssh’s agent here too.
+From {} to {}
 From:
 GPU
 GPU:
@@ -862,13 +1035,16 @@ German
 Gestures
 Get Full Access…
 Get Info
+Getting ready
 Getting the sensor ready…
 Git Worktrees
 GitHub
+GitHub answered {}
 GitHub answered {}.
 GitHub couldn’t be reached ({}).
 GitHub didn’t take the token: it may have expired or been revoked.
 Give a new key
+Give it a name.
 Glide
 Glow new windows for
 Go
@@ -915,6 +1091,7 @@ Halves
 Hang Up
 Hard
 Hardware
+Hardware Address: {}
 Hardware address:
 Haskell
 Header & Footer…
@@ -933,10 +1110,10 @@ Hidden and ignored files
 Hide
 Hide All
 Hide Chat List
+Hide Deskbar
 Hide List
 Hide Others
 Hide Tab When Tiled
-Hides
 High
 High dynamic range (HDR)
 Highest clock
@@ -952,6 +1129,7 @@ Hours:
 How loud this microphone is gets measured as you talk on a call, or with Try It.
 ID
 INI
+IP Address: {}
 IP address:
 Icon View
 Icons
@@ -975,10 +1153,13 @@ Imported {}{}{}. Apps that are open take some settings when they next start.{}
 Import…
 In Google Cloud, signed in as the account, make its app, “Olo (its address)”:
 In HDR on a display whose HDR is on: its lights shine brighter than the rest.
+In Use for Internet Traffic
 In an agent’s tab:
+In its own way
 In place of the blue dot of its notifications, for as long as the app says something is unread or waiting in it.
 In the Scratchpad
 In the Tray
+In the archive
 In the command palette, type /ask and a question: the answer shows there with code to copy (its number, then Return). Space asks a follow-up.
 In the emoji picker ({}), describe what you want to say and press ⌘↩ for five emoji that say it.
 In the emoji picker, describe what you want to say and press ⌘↩ for five emoji that say it.
@@ -986,6 +1167,13 @@ In the tray it's an icon's size; its name and value are in its tip.
 In use, with the weights it began from (not fine-tuned yet), on the {}.
 In use: Olo's own for a {}, made from {} touches of real hands on one; it caught {}% of palms and took {}% of fingers for palms. Train for Your Palm fits it to yours.
 In use: yours, trained {} on {} touches; on touches kept back it caught {}% of palms and took {}% of fingers for palms.
+In {n} days
+In {n} hours
+In {n} minutes
+In {}, on a new branch of its name{}.
+In {}, on a new branch, {}, from {}.
+In {}, on a new branch, {}.
+In {}, on its branch, {}.
 In:
 Inches
 Inches of Mercury
@@ -1010,21 +1198,24 @@ Installed
 Install…
 Integrations
 Intel GPU (VA-API)
-Intel Graphics
-Intel Graphics (AV1 and VP9)
-Intel Graphics (VA-API)
-Intel Graphics (every video)
 Interface:
+Invalid one-time password secret
 Invert Selection
 Invite:
 It Matches
+It backs up once the computer is connected by a cable. {}. {}.
+It backs up once the computer is plugged in. {}. {}.
 It didn't work.
+It didn’t open: {}.
+It goes on once there’s one. {}. {}.
 It isn't a WireGuard configuration: {}.
 It lasts until it's turned off, the link goes away or the computer restarts. Changing it asks for an administrator's password once while this window is open.
 It learned from {} of your touches, but app_server didn't keep it: it's likely older than this Preferences. Upgrade Olo (the new build in Deskbar's tray), then train again.
 It needs at least three palms and three fingers among the touches it learns from. Train again and do each exercise as its film shows.
 It plays at a quarter of full volume, whatever yours is set to, and not while the sound is muted.
 It takes only what nothing else wants, the processor’s time and the disk’s: never in your way, though slower while you work.
+It was run by {} in {}.
+It was run by {}.
 It wasn't forgotten ({}).
 It wasn't set up ({}).
 It's in use now, in place of Olo's own.
@@ -1034,6 +1225,8 @@ Item
 Its app password isn’t in the keyring: remove it and add it again.
 Its click is its own: a resting palm can't press.
 Its decoder, on its battery preset (Power Modes), costs less than the processor's cores; off, the processor decodes on battery.
+Its folder becomes {}, and its branch, {}, takes the new name too.
+Its folder becomes {}; its branch stays as it is.
 Its key is damaged.
 Its key isn't in this login keyring: it opens only on the computer that made it.
 Its own
@@ -1043,9 +1236,16 @@ Its password isn’t in the keyring: remove it and add it again.
 Its power limit is the computer's to set, as a laptop's is.
 Its release packages are installed: they add its repositories and keys.
 Its secret reference, as Passwords’ Copy Secret Reference gives it. Passwords asks once, while it runs, whether Weather may have it.
+Its service starts with your session: log out and in again, or ask Olo Doctor to start it.
 Its sign-in isn’t in the keyring: sign in again.
+Its vault is gone from 1Password
+Its versions can’t be read: {}.
 Its work starts sooner, but it never sleeps: more power, more warmth.
+Its {n} items too
+Its {n} tabs close.
 It’s Different
+It’s archived in 1Password, which doesn’t let other apps read archived items.
+It’s no longer in 1Password.
 It’s the newest release: there’s nothing to upgrade to.
 JSON
 Japanese
@@ -1082,9 +1282,13 @@ Keep typing…
 Keep until tapped
 Keep up to:
 Keep windows' graphics memory out of swap
+Keeping the key in Passwords (unlock it if it asks)…
+Keeping what’s done…
 Kept Core
 Kept for this computer and set again at every start.
 Kept in step with network time servers.
+Kept on this computer.
+Kept on this computer; made in 1Password once you sync an account.
 Kernel
 Kernel:
 Key
@@ -1112,6 +1316,10 @@ Larger
 Larger Pointer
 Last
 Last Page
+Last backed up whole {}
+Last backed up {}
+Last: {}, {} new or changed, {} new, took {}.
+Later: until more is waiting
 Layout:
 Leaking memory
 Learn Spelling
@@ -1131,6 +1339,7 @@ Left-handed (swap the buttons)
 Length
 Less noise
 Let coding agents keep their tab’s title current
+Letting go of backups past keeping
 Level
 Level evened out
 Level not evened out
@@ -1164,7 +1373,6 @@ Lock when you walk away:
 Log Out
 Log Out…
 Login
-Logitech G309 LIGHTSPEED
 Long
 Longest window title
 Look
@@ -1173,6 +1381,10 @@ Look ahead:
 Look for codes in:
 Look:
 Looking at Bluetooth…
+Looking at its disk…
+Looking at what’s there
+Looking at what’s there…
+Looking at which processes use it…
 Looking for a newer release…
 Looking for apps…
 Looking for its calendars…
@@ -1195,6 +1407,9 @@ Luna 6
 MTU:
 MacBook
 Machine:
+Made here now, and in 1Password ({}) at the next sync, once you’ve reviewed it.
+Made room for newer ones
+Made the vault “{}”.
 Magenta
 Magic Keyboard with Touch ID and Numeric Keypad
 Magic Trackpad
@@ -1220,6 +1435,8 @@ Make this the main display
 Make:
 Makefile
 Making a hotspot (below)
+Making it again, empty
+Making it…
 Manually
 Mapped
 Mappings
@@ -1289,16 +1506,16 @@ Move to Archive
 Move to New Window
 Move to Trash
 Move to Workspace
-Moves
+Move to {}
+Moved “{}” to the Archive.
+Moving {} to the Trash
+Moving {} to the Trash…
 Music
 Music Quality (AAC)
 Mute
 Mute All
 My keys
 NVIDIA GPU (NVDEC)
-NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU
-NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU (NVDEC)
-NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU (NVENC)
 NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor. {}
 Name
 Name or text
@@ -1331,9 +1548,11 @@ New Vault…
 New Window
 New Windows Open In
 New Worktree…
+New description
 New ones go in
 New ones go in:
 New screenshot
+New shells can't start until it's running again.
 New windows go:
 Newest first
 News (blue)
@@ -1350,6 +1569,8 @@ Next Page
 Next Tab
 Next Week
 Next step
+Next when you click Back Up Now.
+Next {}.
 Nice
 Night Mode
 Nix
@@ -1364,24 +1585,32 @@ No Pull Request
 No Receivers Paired
 No Saved Groups
 No VPNs. Import a WireGuard configuration, or add one with its maker's app.
+No app may have an item without asking. When one asks for an item, Approve Always allows it for good, and it’s listed here to take back.
 No app opens these
 No app opens these yet: add one.
 No apps open this.
+No backup has finished yet
+No backup has finished yet.
 No banners and no sounds (errors still show).
 No cable
+No calendars yet
 No chat selected
 No connections match.
 No conversations open.
 No disks.
 No entries.
 No environment.
+No event from a year back to two years on has “{}” in its title, its place or its notes.
 No keyboards are plugged in.
+No limit
 No mouse is connected. These settings are for any you connect.
+No new notifications
 No notes.
 No open files.
 No phone or mail account is set up: a phone in Phone, a Google or Fastmail account for Mail in Integrations.
 No power profiles daemon is running (power-profiles-daemon, or tuned-ppd on Fedora): Olo sets the power mode through it.
 No power profiles daemon is running, so there's no power mode to follow.
+No process uses much of it now
 No processes match.
 No screen recordings yet. Record one with ⌘⇧6.
 No space around an auto-tiled window alone
@@ -1412,6 +1641,7 @@ Not all of it applied: {}.
 Not answered
 Not applied.
 Not applied: an administrator's password is needed.
+Not backed up yet
 Not boosted
 Not boosted (suggested)
 Not brought over from GNOME Keyring (another password): {}.
@@ -1419,36 +1649,49 @@ Not changed. {}
 Not changed: an administrator's password is needed.
 Not changed: changes as an administrator are made in the person's own session.
 Not changed: the network's helper stopped.
+Not checked ({}).
+Not checked yet: Validate reads it back and checks it’s whole.
 Not connected
 Not connected: only public repositories’ pull requests show.
+Not connected: {}.
 Not enough touches to learn from
 Not found
 Not imported: {}
 Not in a Repository
+Not in a vault
 Not paired
+Not recognised. Try again
 Not running under olo-session.
 Not running: Codex starts it with its first window.
 Not saved: {}
+Not set up
 Not set up.
 Not set up: Telegram needs an API ID to sign in with.
+Not set up: {}.
 Not shaped: as fast as it goes.
 Not signed in. (API ID {}.)
+Not synced: changes not applied{}
+Not synced: {}{}
 Not told
 Not working: {}.
 Notes:
 Nothing
 Nothing Found
+Nothing backed up yet.
 Nothing came from the microphone.
 Nothing changed: Olo's own model is still in use.
+Nothing coming up
 Nothing in the history yet.
+Nothing is backed up or sent until you resume. {}. {}.
 Nothing more today
+Nothing new
+Nothing read yet
 Nothing recorded yet. Press Record and talk for a few seconds.
 Nothing to tune for its driver ({}) yet.
 Notification
 Notification Settings…
 Notifications
 Notifications: Inbox
-November 2026
 Now
 Now lift your hands, and rest them again as you type.
 Now point or tap with a finger above it: {} more.
@@ -1480,6 +1723,8 @@ Olo Desktop
 Olo Desktop, version {}
 Olo Doctor
 Olo Doctor couldn't set it.
+Olo Doctor found {} things to fix: {}, and more. Click to see them.
+Olo Doctor: {}. Click to see it.
 Olo Installer
 Olo doesn’t have {} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it.
 Olo keeps {}{}: their sign-ins, keys and Wi-Fi passwords, opened by your login password.
@@ -1507,9 +1752,11 @@ On: packages come from it
 One a day for:
 One a month for:
 One a week for:
+One account connected wasn’t allowed Google Drive: sign in again there, and allow it.
 One an hour for:
 One like it again from the same app (its title and text) takes the earlier one's place while that's still showing or unread.
 One of the colours things are told apart by: tags, graphs, a tab group's colour, Terminal's {}.
+One of {}'s quotas
 One-Time Codes
 Only Zip and 7-Zip archives can have a password.
 Only on battery power
@@ -1531,6 +1778,7 @@ Open Olo Doctor…
 Open Parent
 Open Phone
 Open Power
+Open Pull Request #{}
 Open Saved Group
 Open Screenshot
 Open Sign-In Page
@@ -1543,8 +1791,13 @@ Open in Terminal
 Open in Tracker
 Open kache's Log
 Open my.telegram.org
+Open with {}
+Open {} to see it.
+Open {} to see them.
 OpenDocument Text…
 Opening programs’ secrets…
+Opening the backup in {}
+Opening the backup…
 Opens in:
 Open…
 Optional
@@ -1569,6 +1822,7 @@ PHP
 Package
 Packages
 Page View
+Page {} of {}
 Pair
 Paired with {}.
 Pairing
@@ -1591,30 +1845,46 @@ Password lock
 Password:
 Passwords
 Passwords and sign-ins: there's no login keyring here to keep them in, so they didn't come along.
+Passwords answered something else.
+Passwords answered {}
+Passwords can’t be reached ({}).
 Passwords couldn’t give its logins: {}
+Passwords didn’t keep it.
 Passwords for Every Screen…
 Passwords has no login for a Google account: add the account’s login there first, or set the app up by hand.
+Passwords is locked.
+Passwords isn’t running.
+Passwords isn’t set up yet.
+Passwords keeps no password for it (an item “{}”).
+Passwords keeps your items on this computer, encrypted, and can keep them in step with your 1Password accounts both ways. To sync, turn on Settings ▸ Developer ▸ Integrate with other apps in 1Password, then choose the accounts.
+Passwords keeps your items on this computer, encrypted, and can keep them in step with your 1Password accounts both ways. To sync, turn on Settings ▸ Developer ▸ Integrate with other apps in 1Password, then name the accounts.
 Passwords: Clipboard
 Passwords: Command line
 Passwords: Locking
 Passwords: Syncing with 1Password
+Passwords’ password is used now: try again.
 Paste
 Paste the key
+Pasted Picture.{}
 Pause
 Pause Backups
 Pause Recording
+Paused
 Performance
 Performance Preferences…
 Performance Settings…
+Performance supervisor: off
+Performance supervisor: on, nothing found
+Performance supervisor: {n} findings
+Performance supervisor: {n} urgent findings
 Permission
 Personalized Volume
 Phone
 Phone Settings…
 Phone number:
-Photographs and Home Videos 2026
-Picks
 Picture
 Picture Size
+Pictures can be saved as PNG, JPEG, WebP, BMP, TIFF or GIF.
 Pictures, Movies and Music
 Pin
 Pin as Main
@@ -1628,7 +1898,8 @@ Play a sound when Olo starts
 Play sound through:
 Playback
 Playback Speed
-Playing the {} at {} s.
+Playing the original at {} s.
+Playing the processed sound at {} s.
 Please continue
 Plug in a security key to set it up.
 Point with a palm at the edge
@@ -1701,6 +1972,8 @@ Put Back
 Put a device in pairing mode to see it here.
 Put the computer to sleep after:
 Puts what you choose from a backup in place of what's here; the rest stays as it is. What you have now is saved first.
+Putting {} back
+Putting {} back…
 Python
 Python bytecode and virtual environments
 QR code: {}
@@ -1725,8 +1998,11 @@ Read Quota Now
 Read every byte the backups chosen need back from where they’re kept, and check each piece, as a restore would
 Read ones fade, then move to Cleared; unread ones stay.
 Reading /etc/hosts…
+Reading the Google accounts connected to Olo…
+Reading the backups…
 Reading the changelog…
 Reading the clock…
+Reading the index again
 Reading the journal…
 Reading your logins in Passwords…
 Reading…
@@ -1747,12 +2023,17 @@ Record from:
 Record the Computer's Sound
 Record the Microphone
 Recording
+Recording {} since {}
+Recording {} since {} (paused)
+Recording {} since {}, paused. Click to resume or stop.
+Recording {} since {}. Click to pause or stop.
 Recording: {} of {} seconds. Talk as you do on a call.
 Recordings…
 Record…
 Red
 Red:
 Redo
+Redo Window Arrangement
 Redo {}
 Reference:
 Refining Olo's model on {} touches…
@@ -1778,6 +2059,8 @@ Remove from Pool…
 Remove it from the pool? Its sign-in here is deleted; the account itself isn’t touched.
 Remove the VPN “{}”? Its settings and keys go with it.
 Remove the {}? It will no longer unlock anything.
+Remove {} from the Collector
+Remove “{}” from Favorites
 Remove…
 Rename
 Rename Group…
@@ -1788,9 +2071,12 @@ Repeat rate
 Repeats:
 Replace
 Replace Same
+Replace the one-time code of your login {} with the one this page shows?
 Replace with:
+Replaced by a newer one
 Replace…
 Reply
+Reply to
 Repositories
 Repository
 Rescan
@@ -1821,12 +2107,17 @@ Restart…
 Restore
 Restore Files…
 Restore To…
+Restored as {}.
 Restore…
+Restoring
+Restoring: {} so far…
+Restoring: {}, {} so far. {}
 Rests
 Result
 Resume
 Resume Backups
 Resume Recording
+Resuming the backup
 Revert
 Revert to Saved
 Revert to Saved…
@@ -1842,7 +2133,6 @@ Rotate Left
 Rotate Right
 Router:
 Rows
-Rtkit isn't running
 Ruby
 Ruler
 Run module
@@ -1850,15 +2140,19 @@ Russian
 Rust
 Rust build output and downloaded crates
 SQL
-Samsung SSD 990 PRO with Heatsink 4TB
 Saturday
 Save
 Save As…
 Save Group
+Save a login for {} with the one-time code this page shows?
+Save a passkey{} on {} in Passwords?
+Save a passkey{} on {} in Passwords? It goes with your login “{}”.
 Save as GIF
 Save as:
 Save in:
+Saved the vault “{}”.
 Saved to /etc/hosts.
+Saved, but it can't be reopened: {}
 Saves Olo's settings and what apps keep between runs in one file, to bring back here or to another computer. What goes in:
 Saving Power
 Saving Power slows the processors and turns turbo off, Balanced speeds them up for work (leaning to saving on battery), Fastest keeps them quick; Top speed caps them (Balanced's 75% leaves out their hottest quarter). A GPU's Cooler and Quieter caps its clocks (Custom: its own, on Graphics), an SSD's Cooler and Coolest the power it may draw (a SATA SSD's, how deeply its link may sleep between commands), the fans' Cool, Cooler and Coolest how early they speed up (Auto: the computer's own way). On battery, a row not As the Mode holds whatever the mode.
@@ -1868,6 +2162,8 @@ Scan
 Scan Home
 Scan Volume
 Scan a Folder…
+Scanning…
+Scanning… {}, {}
 Schedule
 Scheduled
 Scheduler
@@ -1904,6 +2200,7 @@ Select None
 Select a line to read it whole.
 Select a repository to see everything about it.
 Select a transaction to see what it did to each package.
+Selected {} to {}
 Send
 Send Code
 Send Signal
@@ -1932,10 +2229,11 @@ Set Up by Hand…
 Set Up…
 Set date and time automatically
 Set for the whole computer by {}{}.
-Set the Time
 Set up ({} looks).
 Setting
 Setting it: an administrator's password is asked…
+Setting up backups to {}…
+Setting up the backups in {}’s Google Drive…
 Setting up your {} takes your password and two touches of the key:
 Setting up your {} takes your password, its PIN and two touches of the key:
 Settings
@@ -1943,6 +2241,7 @@ Settings:
 Shaping
 Share
 Shared
+Shared with this screen: change it in your own Passwords.
 Shares this computer's connection as a Wi-Fi network of its own; the adapter leaves the network it's on while it does.
 Sharing
 Sharing this computer's connection as “{}”.
@@ -1963,6 +2262,7 @@ Show Assistant
 Show Calendars
 Show Camera
 Show Clicks
+Show Deskbar
 Show DiskBackup in Deskbar
 Show Display
 Show File in Tracker
@@ -1986,7 +2286,6 @@ Show on AirPlay
 Show on All Workspaces
 Show or Hide All Windows
 Show seconds
-Show the date in the menu bar
 Show the day of the week
 Show the phone’s other notifications
 Show what a message says
@@ -2006,11 +2305,16 @@ Sign In with Google
 Sign In…
 Sign Out
 Sign Out…
+Sign in to {} as “{}” with your passkey?
+Sign in to {} with which passkey?
+Sign in to “{}”
+Sign-In Needed
 Signal
 Signed in as {} ({}).
 Signed in as {}.
 Signing in to Fastmail…
 Sign…
+Site Settings
 Size
 Size:
 Skip this step
@@ -2025,13 +2329,18 @@ Smooth Pointer
 Smooth Scrolling Graphs
 Snapshots
 Snooze
+Snooze for {}
 Snooze for:
+So the next backup goes on from there.
 Soft
 Software License
 Sol 6.1
+Some accounts connected weren’t allowed Google Drive: sign in again there, and allow it.
+Some items are left out…
 Some of what changed takes effect only once the computer starts again.
 Some room
 Sonnet 5.5
+Sorry, that didn't work. Please try again.
 Sort By
 Sound
 Sound Settings…
@@ -2048,6 +2357,7 @@ Speed Test
 Speed:
 Spiral
 Standard
+Standing By: {} Is in Use
 Start
 Start Olo over (Rescue stays on), log out, or restart the computer.
 Start Over
@@ -2057,7 +2367,10 @@ Start the Agent
 Start this step over
 Start typing
 Started
+Started {n} hours ago
+Started {n} minutes ago
 Starting Up
+Starting over…
 Starting the agent…
 Starts:
 State
@@ -2065,6 +2378,7 @@ Stats
 Status
 Status:
 Stay Awake
+Stay awake (caffeinated)
 Stay awake: no display sleep, sleep, screen saver or lock
 Steadily (fit)
 Step {} of {}
@@ -2078,9 +2392,13 @@ Stop Screen
 Stop Screen…
 Stop Sharing
 Stop charging at {}% (and start again below {}%)
+Stop syncing with {}? Its items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
+Stop syncing with {}? Their items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
+Stopped · {}
 Stopped.
+Stopped: what was restored so far is there.
+Stopping the backup
 Strikeout
-Strip
 Strong
 Stuck in a loop
 Style
@@ -2106,6 +2424,8 @@ Switch to a woken program at once
 Sync
 Sync Again
 Sync Now
+Syncing with 1Password…
+Syncing with {} makes {}. Nothing changes on either side until you apply them.
 System
 System Font
 TCP sends at the pace its path can carry, by a model of it, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
@@ -2140,79 +2460,105 @@ Terminal
 Terminal Daemon…
 Terminal Preferences…
 Terminal shows each tab’s pull request on GitHub and whether its checks pass.
+Terminal's shells here belong to this screen and end with it: open the person's own Terminal for work to keep
 Terra 6.1
 Test
 Tested on the {} touches kept back from training ({} palms, {} fingers):
 Text
+Text Box
 Text Message
 Text Size
 Text messages to “{}”
 Text:
-Texts
+That isn't one of the repository's worktrees.
 That isn't the backup's password.
 That password isn't right.
 That password isn’t right.
+That password isn’t right. Try again:
 That's all of them. Press {} to learn your hands.
 That's all this step needs.
 The API ID couldn’t be kept in the keyring ({}).
 The API ID is a number.
 The API hash is 32 letters and digits (0–9, a–f).
 The AirPods service isn't running.
+The DiskBackup service isn’t running
 The GPU
 The MTU is a number of bytes.
+The New Build
 The Theme’s Own
 The VPN couldn't be saved.
 The account answering now
 The account couldn’t be saved ({}).
 The agent is at work in a Terminal window, on its agent screen “{}” (Agent Screens shows it): it makes the account’s app in Google Cloud and signs Olo in with it. The account shows here when it’s done; you can talk to the agent in Terminal meanwhile.
+The assistant is off in Preferences ▸ AI ▸ Calendar.
+The backup can’t be opened: {}.
+The backup goes on by itself once it’s back, from where it got to.
 The backup is damaged.
+The backup {} didn’t finish: {}
 The backup's password is needed to open it.
+The backups can’t be listed: {}.
+The backups have no version of it.
+The backups have only the version there now.
+The backups take {} there
 The bell's count in:
+The change couldn’t be made: {}.
 The clock service (systemd-timedated) isn't answering.
 The coming days, each its sky, low and high.
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
+The export failed: {}
 The fans' profile isn't in force yet: {}
 The fingerprint couldn't be removed.
 The fingerprint sensor couldn't be used.
 The fingerprint sensor isn't answering.
+The first backup reads everything; later ones read only what changed, in a fraction of the time.
+The first backup starts in a moment.
 The first fine-tune failed: {}
 The icons {} is drawn with, everywhere.
 The infrared camera couldn't be opened (its shutter, or another program).
 The kernel's own (recommended)
 The key couldn’t be kept ({}).
 The key couldn’t be removed ({}).
+The key is in your login keyring.
+The key is kept in Passwords as “DiskBackup Key”.
 The key is only on this computer: keep it in Passwords, to restore anywhere else.
 The key is set up: from now on, a touch of it does what typing your password does.
 The key stopped waiting with no touch, and is blinking again: touch it once more now.
 The key stopped waiting with no touch, and is blinking again: touch {} now.
+The key to DiskBackup's backups: without it they can't be read. DiskBackup keeps a copy in this computer's keyring; on another computer, it reads it from here.
 The key was removed: a touch of it no longer stands for your password.
 The keyring couldn’t be read ({}).
 The last 12 hours
 The last 6 hours
+The last backup isn’t whole: {}. The next backup sends again what it can.
+The last backup was {}
+The last whole one was {}
 The list of Google accounts couldn’t be saved ({}).
 The login keyring couldn't be read: {}
 The look of every icon, window and control, in every app, and a wallpaper to match.
 The look's own
 The loss is a number, in percent.
 The model wasn't good enough to keep
-The most powerful (NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU)
 The most powerful (the processor)
 The most powerful ({})
 The network couldn't be asked for receivers.
 The next 12 hours
 The next 3 hours
 The next 6 hours
+The next backup sends again what it can.
 The next hours, each its sky and temperature, with the chance of rain or the cloud.
 The one it started on
 The pad clicks at {}/{} (all contacts together); with a palm on it, Olo counts the click only if the fingers press that hard alone.
 The pairing with {} couldn't be forgotten: {}.
 The password couldn’t be kept in the keyring ({}).
+The password of “{}” couldn’t be kept: {}
+The passwords file is damaged: {}
 The picture on the desktop when {} is chosen. Backgrounds changes the desktop’s after, a workspace at a time.
 The pointer keeps moving, and none of its motion is lost, while the desktop is busy: a slow frame, or a wait in the graphics driver under load. New, and being tried: if the mouse, touchpad or keyboard misbehaves with it on, turn it off.
 The pool
 The power mode (Power Saver, Balanced or Performance) is set in Power.
 The processor
 The processor (OpenH264)
+The repository has a worktree called {} already.
 The right edge
 The screen
 The server didn’t take the name and password.
@@ -2227,6 +2573,7 @@ The token couldn’t be taken out of the keyring ({}).
 The touchpad says which touches are palms, but lets a resting palm go back to being a finger; Olo keeps it a palm until it lifts.
 The two passwords aren't the same.
 The voice service isn't running.
+The window server didn’t give its settings.
 The workspace each display shows stays open in every Deskbar; each other one is its heading, with an arrow that shows its applications and puts them away again.
 The {} couldn't be changed.
 The {} is a whole number.
@@ -2236,6 +2583,8 @@ Their windows float over the tiles, and over the window Focus shows. Uncheck an 
 Theme
 Themes
 Then its client’s ID and secret here, and sign in: Google asks in your browser whether Olo may read your mail, use your calendars and keep DiskBackup’s files in your Drive.
+Then the space only it took is freed, in {}.
+Then the space only they took is freed, in {}.
 There are no links to shape.
 There are no network interfaces.
 There is nothing to share.
@@ -2243,11 +2592,17 @@ There's no Ethernet adapter. A USB or Thunderbolt one shows here once it's plugg
 There's no Wi-Fi adapter.
 There's no fingerprint sensor, or fprintd isn't running.
 There's no infrared camera.
+These apps may have these items whenever they ask. Take one back and the app is asked again the next time.
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 ThinkPad
 Thinking:
 This Computer
 This Computer's Microphones
+This PDF can't be edited, so it can't be saved.
+This PDF can't be edited.
+This PDF can't be read.
+This PDF has no pages.
+This PDF is protected by a password.
 This Touchpad
 This account has a two-step password.
 This backup was made by a newer Olo.
@@ -2258,11 +2613,14 @@ This computer is “{}”.
 This computer's kernel can't load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel's own schedules.
 This computer's sensor sees when someone is in front of it.
 This display reports no modes.
+This event
+This folder was moved or deleted.
 This is the recommended profile for this touchpad.
 This isn't an Olo backup.
 This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 This kernel has one way of preempting only: it wasn't built to be told another.
 This keyboard has no backlight.
+This page shows a one-time code for {}. Add it to which login?
 This step is done
 This touchpad doesn't report pressure, so it is left to libinput.
 Threads
@@ -2270,7 +2628,11 @@ Three fingers
 Three months
 Three touches type a code
 Thumb clicks
+Tidied away
 Tidy away read notifications after
+Tidying goes on by itself once it’s back, from where it got to.
+Tidying old backups
+Tidying: letting go of old snapshots
 Tile
 Tile All
 Tile All Tabs
@@ -2285,11 +2647,17 @@ Title
 Title and preview
 Title only
 Title:
+To allow it, you can also {}.
+To {}
+To {}.
 To:
 Today
 Today and tomorrow
+Today {}
 Token Pool
+Token Pool asks {} to wait until one resets.
 Token Pool isn't running: its quotas are listed once it is.
+Token Pool · {} · {}
 Token Pool: its accounts came in paused. Turn them on here once the other computer's pool no longer uses them: each sign-in renews itself, and two computers renewing one sign each other out.
 Token:
 Tomorrow
@@ -2303,6 +2671,7 @@ Top speed
 Touch
 Touch ID
 Touch ID isn't used here: its sensor works only with the Mac it's paired to, whose Secure Enclave alone can read what it senses. Use the computer's own fingerprint reader, or your password.
+Touch ID, touch your security key, or enter your password
 Touch screen
 Touch the key now: its light is blinking. Touch {}.
 Touch the sensor, lift, and touch again.
@@ -2331,6 +2700,7 @@ Trust this repository’s key?
 Try Again
 Try It…
 Try Voice Processing
+Try again now.
 Try it
 Try the Phone Again
 Trying each setting on it: {} of {}…
@@ -2348,6 +2718,7 @@ Turned on
 Twelve exercises, then a try
 Two fingers
 Two fingers:
+Two upgrades are ready: a new build of Olo ({}{}), and {} from GitHub, made {} ({} to download). Which do you want? Your windows stay open either way.
 Type
 Type a time like 13:05 or 1:05 PM.
 Type here to try the settings
@@ -2356,13 +2727,13 @@ Type the code “{}” shows on its screen.
 Type the keys. Esc cancels; ⌫ removes them.
 Type the keys…
 Type the passkey shown by “{}”.
+Type the password it’s to be opened with.
 Type this
 Type with your palms down
 Type {} on “{}”, then press Return.
 Type:
 TypeScript
 Typing test:
-USB mice may sleep
 USB power management may put it to sleep, and then it loses the first movement when the hand moves again.
 USB receiver
 Unarchive All
@@ -2371,8 +2742,11 @@ Under the Tray
 Underline
 Undo
 Undo Transaction…
+Undo Window Arrangement
 Undo {}
 Undo…
+Unfinished: {} ({}) done and {} sent; the next backup goes on from there.
+Unfinished: {} sent before it stopped; the next backup goes on from there.
 Unfloat
 Ungroup
 Units
@@ -2394,7 +2768,6 @@ Update Only This…
 Update Selected Only…
 Update every:
 Updated
-Updated a long while ago, longer than there is room to say
 Updated {} ago
 Updates
 Upgrade Fedora
@@ -2425,10 +2798,18 @@ User
 Username or Site
 Username:
 Using DHCP
+Using the most
 Using too much memory
 VPN
 Validate Fully…
+Validate fully? Every byte {}{} is read back from {} and checked, as a restore would: it can take a while, at the download limit. The usual Validate compares checksums and reads only a sample back.
 Validated
+Validated fully {}: all it needs ({}) read back, and whole.
+Validated {}: everything it needs is there{}. Validate Fully reads it all back.
+Validated: all there.
+Validating backups
+Validating backups: reading them back
+Validating goes on by itself once it’s back, from where it got to.
 Value
 Value:
 Variable refresh rate
@@ -2436,6 +2817,7 @@ Vault
 Vault Info…
 Vault:
 Version
+Versions of {}
 Very Bad Network
 Video Playback
 Video is decoded on the processor. {}
@@ -2448,15 +2830,23 @@ Voice Processing
 Volume
 Volume:
 Volumes
+Wait for the sync to finish, then remove the account.
+Wait for the sync to finish, then reset.
+Waiting
+Waiting for Ethernet
 Waiting for app_server…
+Waiting for it…
+Waiting for power
+Waiting for the network
 Waiting for the phone… this page follows it by itself.
 Waiting for the touchpad…
 Waiting for you to sign in to Google in the browser…
 Waiting for “{}” to allow it (its switches for this computer, in its Bluetooth settings).
-Waits
+Waiting: {}
 Waits less than
 Wake the display when you come back
 Wallpaper
+Wants attention
 Warmer
 Warmth
 Watch Agent Screens
@@ -2472,6 +2862,7 @@ Week
 Week Starts On
 What
 What Each Mode Sets
+What does my week look like?
 What follows them is from an older Olo: Apply to bring it up to date (an administrator's password is asked).
 What is made from it (shades, edges, text that has to read on it) follows.
 What it can be set to isn't known yet: asking it wakes it for a moment.
@@ -2487,23 +2878,30 @@ What's still to come today, in order, each in its calendar's colour; then the da
 What's unread and what waits in apps, as cards to work through.
 What's waiting (red)
 Whatever the model says: it adds palms, never takes these away.
+What’s coming up next week?
 What’s in the Trash
+What’s next?
+What’s on this weekend?
+What’s on today?
+What’s on tomorrow?
 Wheel
 When
 When Idle
 When Olo starts Claude Code for a task (DiskBackup’s Agent Setup), in a Terminal window you can follow, it uses this model.
+When am I free today?
+When am I free tomorrow?
 When held for:
 When pressed:
 When to Back Up
 When:
 Where Backups Go
 Where:
+Which invitations haven’t I answered?
 While Typing
 While less is free than
 While sharing or recording the screen (errors wait too)
 Why
 Wi-Fi
-Wi-Fi (Intel Wi-Fi 7 BE200 320MHz)
 Wi-Fi networks
 Wi-Fi: there's no NetworkManager here to save the networks in.
 Wi-Fi: {} didn't come along ({}, set up with the other computer's certificates): join {} again here.
@@ -2514,6 +2912,7 @@ Widget
 Widget name
 Widgets
 Wind
+Window Arrangement
 Window Size
 Window on a Background
 Window title size
@@ -2522,6 +2921,7 @@ Windows
 Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).
 Wireless Router
 With AirPods:
+Withdrawn by {}
 Word Document…
 Working out what it comes to: every package it needs, and what it replaces…
 Working…
@@ -2532,11 +2932,17 @@ Worst
 Wrap Lines
 Write Disk Image…
 Writes
+Writing the backup’s lists…
 Written
 XML
 YAML
 Yellow
 Yes
+Yesterday {}
+You don't have permission to see inside this folder.
+You don’t have permission to read it in 1Password.
+You stopped it {}. {}. {}
+You stopped the backup {}
 Your Display
 Your Google Drive keeps them anywhere: sign in once, or let an agent set it up.
 Your Kinds
@@ -2545,6 +2951,8 @@ Your Own Kinds
 Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
 Your backups are encrypted before they leave this computer. Their key is kept in Passwords (“DiskBackup Key”): with it, they can be restored on any computer.
 Your face wasn't seen well enough: sit facing the camera, at arm's length, and try again.
+Your face wasn’t recognised. Type your password.
+Your home folder
 Your home folder is backed up every hour, leaving out what can be downloaded or built again. Once it’s set up, you can change any of it.
 Your messages, your contacts and the one-time codes texted to you, on this computer: over Bluetooth, with nothing between and nothing else to install.
 Your own:
@@ -2572,102 +2980,287 @@ Zoom to Fill
 Zoom to Fit
 __pycache__, .venv, .mypy_cache, .pytest_cache, .tox
 a PIN set
+a backup
+a backup and the unfinished one
+a day ago
+a minute ago
+a window ({})
 a {} W power limit
+about {} min left
+about {} s left
+all day
+and the {n} items in it
 as in 1Password's sidebar, or its UUID
 as it goes
+at most {}
+at {}
+auto approving (Yes after {} s; {} answered)
+backing up
+bell rang
 brush’s grey hint after what you type, from a tiny model of your own commands on this computer. Your shell is {}: Olo Doctor makes it brush (a suggestion).
 brush’s grey hint after what you type, from a tiny model of your own commands on this computer: it weighs what’s typed, the folder, the commands before, the hour and the day, and learns as you go.
 charging, full in {}
 couldn't save the boost: {}
 couldn't save the setting: {}
 day
+deleting
+erasing
+erasing every backup didn't finish: {}
+every 12 hours
+every 15 minutes
+every 2 hours
+every 30 minutes
+every 6 hours
+every day
+every hour
+every {n} minutes
 full size, with a numeric keypad
 fully charged
 ghp_… or github_pat_…
+has notifications
+has notifications ({})
+has notifications ({}, the dot {}% full)
+here now and in 1Password at the next sync (after you review it)
+hidden when tiled
 hour
 iPhone
+in a minute
+in the next week
+in the next {} days
+in {n} days
+in {n} minutes
+it is on a different volume from the Trash, so it can only be deleted
 its clock as the driver has it, up to {} MHz
 its clock up to {} MHz
+its disk has {}
 its ports: {}
+its shells have all ended
+just now
 kbit/s
 libinput's default
 ms
 no display ports
+no limit to its space
+no network: it goes on once there’s one
+no wired network: it waits for one
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 not parts of it: {}; its parts are {}
+not set up yet
 not yet on this kernel's series, {}
+nothing backed up for {n} days
 nothing now (its ports: {})
+now
 of {}
 of {} and {} more
 olo-complete didn't answer while learning.
 olo-complete didn’t start: Deskbar’s Upgrade installs it.
+olo-termd is running (process {}, up {}).
 on
 on battery
+on battery: it waits for power
 on this kernel's series, {}
+on {}
+on {} at {}
+one a day for ever
+one a day for {n} days
+one a month for ever
+one a month for {n} months
+one a week for ever
+one a week for {n} weeks
+one an hour for ever
+one an hour for {n} hours
+only folder and Find windows move
+only terminal windows move
 optional
 organizer
-original
+out of the archive
+part of the screen
 plugged in, held at the {}% limit
 plugged in, not charging
-processed sound
+pull request #{} {}{}
 recommended for this touchpad
+restoring
 sav, sv2
 scx_lavd, made for a computer someone is sitting at: what it judges is being waited for runs first, with builds and other long work around it. It gives a program's priority little weight, and under heavy work the window server waited for the processor three times as long as with the kernel's own. It is loaded over the kernel's own, which takes over again by itself if LAVD ever stops.
 signed in
 signed in, 1 calendar
 signed in, {} calendars
+some of it couldn't be read
+something else is called “{}” there now
 ssh, git and other programs sign in with the SSH keys in Passwords, each one allowed the first time it asks.
+sudo needs your password to run this{}:
 target/debug, target/release, ~/.cargo/registry, ~/.rustup
+the DiskBackup service isn’t running
 the account’s
 the agent didn’t start: {}
+the backup isn't open
+the backups' folder in Google Drive was made again elsewhere: following it there
+the desktop stays with its display
 the fans {}{}
 the introduction
+the key in the keyring is damaged
+the key isn't in this computer's keyring: set DiskBackup up again, or put its key back from Passwords
+the keyring can't be read: {}
+the keyring can't keep it: {}
+the last backup didn’t finish ({})
+the last {n} hours
+the last {n} minutes
+the last {n} seconds
 the power profiles daemon, through {}
+the screen
+the secret at {}
+the service answered {}
+the session
 the summary, {}
 the system's power profiles daemon
 the try
+the unfinished backup
+the window server
+these {n} backups need
+this event
+this site
+tidying
+today at {}
+today or tomorrow
+tomorrow at {}
+turned off
+under a minute
+under a second
 up to {} dpi
+validating
+what holds it back
+with the {n} files changed in it and not committed
+yesterday at {}
 you
+you don't have permission
 your own picture
+{n} Background Processes Lowered
+{n} Events Found
+{n} More in Calendar…
+{n} agent screens are running. Click to watch them.
+{n} archived items aren’t
+{n} backups
+{n} backups chosen.
 {n} days
+{n} days ago
+{n} files
+{n} files couldn’t be read.
+{n} films playing on AirPlay receivers. Click to pause or stop them.
+{n} folders couldn't be read
 {n} hours
+{n} hours ago
+{n} items
+{n} items found
+{n} items found so far
+{n} items taken out.
 {n} minutes
+{n} minutes ago
+{n} more waiting
+{n} new notifications
+{n} packs as sent, by their checksums
+{n} playing and shown on AirPlay receivers. Click to pause or stop them.
+{n} problems reading 1Password…
+{n} programs
+{n} samples
+{n} screen shares. Click to stop them.
+{n} screens shown on AirPlay receivers. Click to pause or stop them.
 {n} seconds
 {n} secrets
+{n} shares, control among them. Click to stop them.
+{n} sync changes to review
+{n} times
+{n} to come
+{n} waiting in their apps
 {n} weeks
 {} (AV1 and VP9)
 {} (every video)
 {} (in use)
 {} (not connected)
 {} (the theme’s own)
+{} (there now)
 {} A workspace starts with this; choose its own from Deskbar's tray.
 {} About a microsecond each, on the {}.
+{} Auto Approve answers Yes in {} s.
 {} Choose Set Up… to try again.
 {} Choose a workspace's own from Deskbar's tray.
+{} Replace with the version backed up {}, or keep both (the restored one named with its time)?
+{} Type your password.
 {} What’s looked in for codes, and where they go: Security ▸ Passwords.
 {} a second
+{} and {} others
 {} applications are keeping the display awake.
+{} backups
+{} backups and the unfinished one
 {} cd/m² at most, {} over the whole screen
+{} cleared · kept for {} days, the last {}
+{} copied: 1Password doesn’t let other apps read its archive.
+{} d
 {} didn't say where it is.
 {} didn't start pairing: {}.
 {} dpi as it comes
 {} for each
+{} found · {} items searched · {}
+{} free of {}
+{} h
+{} h ago
 {} h {} min
+{} in all
+{} in {}
+{} in {} s
+{} in {}, by the last backup.
 {} in {}.
+{} is back
+{} is being installed ({}, {}%). Olo switches to it when it's done: your windows stay open.
 {} is connected but plays no sound: {}.
 {} is disconnected from Olo. Its app stays in its Google Cloud project, to connect it again with.
 {} is grabbing input devices: a mouse it has grabbed moves through its virtual pointer, and settings made here don't reach it.
+{} is protected by a password.
+{} is ready, made {} ({} to download). Install it? Olo downloads it in the background and switches to it when it's done: your windows stay open.{}
+{} is ready. Click to upgrade.
+{} is there already.
+{} is used up on every account
+{} is waiting for a login.
+{} is waiting for a passkey.
+{} is waiting for you
 {} isn't paired with.
 {} isn't shaped.
+{} isn't there (a disk not plugged in?)
+{} items in it, {} unpacked
+{} kept in {}{}.
+{} kept of {}
 {} knows this computer.
 {} later: gone
+{} link clipping.txt
+{} min
+{} min ago
 {} ms, the middle of them
+{} needs signing in again
+{} needs your answer
+{} new to the backup · {} sent, compressed and encrypted ({}/s{})
 {} of Olo’s {} words are in {} so far; the rest stay in English.
 {} of them
+{} of these are there now.
+{} of {} Events Found
 {} of {} connected.
 {} of {} connections
+{} of {} free
+{} of {} freed
+{} of {} pages
+{} of {} read back
+{} of {} selected
 {} on Workspace {}
+{} on this computer
 {} per second
+{} read back
+{} repeats. Change only this one, or every one of them?
+{} s ago
+{} shared with this screen
+{} to deal with, {}
+{} to read
+{} to send
+{} waiting in {}
+{} wants to run this with sudo{}:
+{} wants your attention
 {} was added.
 {} was removed.
 {} was taken from “{}”.
@@ -2675,23 +3268,47 @@ your own picture
 {} · set up {}{}
 {} · {} · call quality while the microphone is used
 {} · {} · music quality
+{} — {} ({}% of this folder){}{}
 {}% of RAM
 {}% of a core
 {}% of the time
 {}% of their {} segments
+{}'s quota
+{}'s {} quota
 {}, all day
 {}, all disks
+{}, in place of its code
+{}, in the folder “{}”
+{}, on set days
 {}, until {}
+{}, {} new to the backup, {} sent so far.
+{}, {} shown in this Terminal.
+{}. Click to pause or stop.
+{}. Click to put its applications away.
+{}. Click to resume or stop.
+{}. Click to stop.
+{}. The next backup starts afresh.
+{}. Until then Token Pool asks {} to wait.
+{}: 1 application. Click to show it.
+{}: Auto-Tiling, every window takes a tile. Click to choose a windowing mode.
+{}: Focus, only the active window shows, zoomed. Click to choose a windowing mode.
+{}: Not Connected
+{}: Show Notifications
 {}: it asks for its PIN at every use, so a touch can’t stand for your password
 {}: it can’t keep a secret for Olo (no hmac-secret)
 {}: left as it is here, as this computer's couldn't be saved first.
 {}: left as it is here. The backup holds no key to open what it has of it (one exported without passwords and sign-ins holds none).
+{}: not here yet
 {}: sign in again on this computer (each computer signs in as itself).
 {}: the login keyring didn't take it ({}). Import the backup again once it does.
 {}: what's set below. Power Modes says what each mode puts it on.
+{}: windows stay where you put them. Click to choose a windowing mode.
+{}: {} applications. Click to show them.
+{}: {}. {}. {}
 {}; not allowed {} (sign in again)
 {}Run by {}. Echo cancellation isn't tried: a recording has no speakers' sound beside it to take out.
 {}a heading {}
+{}{} · {} so far
 {}{}, plugged in: {}.
 {}″ ({} × {} mm), {} pixels per inch
 ~/.cache, browsers’ caches, thumbnails
@@ -2705,16 +3322,40 @@ your own picture
 ¼ second
 ½ Second
 ½ second
+“{}” and {n} more are still running in them, and stop.
+“{}” and {n} other programs are still running in this window. Close it anyway?
+“{}” can't be found.
 “{}” can't be imported. {}
+“{}” can't go inside itself.
+“{}” can’t be deleted: 1Password keeps it for every account.
+“{}” couldn't be saved. {}
 “{}” couldn't be written: {}
+“{}” has no {}.
+“{}” has nothing to refer to.
 “{}” is an enterprise network.
 “{}” is asking something else to pair.
 “{}” is imported.
 “{}” is out of reach or its Bluetooth is off. It’s tried again by itself.
+“{}” is protected by a password.
+“{}” is still running in it, and stops.
+“{}” is still running in this tab. Close it anyway?
+“{}” is still running in this window. Close it anyway?
+“{}” is there now.
+“{}” is there now. Replace it with the version modified {}, or keep both (the restored one named with its time)?
 “{}” isn't a domain.
 “{}” isn't an IP address.
+“{}” isn't in the Trash any more
+“{}” isn't there any more
+“{}” isn’t a day I can read for when it ends: try Nov 20, 2026-11-20 or Friday.
+“{}” isn’t a day I can read for when it starts: try Nov 20, 2026-11-20 or Friday.
+“{}” isn’t a day I can read for when it stops repeating: leave it empty to go on for good.
+“{}” isn’t a time I can read for when it ends: try 14:30 or 2:30 PM.
+“{}” isn’t a time I can read for when it starts: try 14:30 or 2:30 PM.
+“{}” isn’t an address I can invite: write each as name@example.org, with commas between.
 “{}” isn’t in reach. Is it nearby, unlocked, with Bluetooth on?
+“{}” repeats. Delete only this one, or every one of them?
 “{}” wants to pair with this computer.
+“{}” wants you to sign in before it lets anything through. Click to open its sign-in page.
 “{}”, made {}{}. What's checked comes back:
 ↑↓ choose an app.
 ⌘ Command (the Super key)

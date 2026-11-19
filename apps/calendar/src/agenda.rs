@@ -104,7 +104,10 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
 pub fn found(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
     let all = found_lines(v);
     if all.is_empty() {
-        return EmptyState::new("Nothing found").icon("calendar").detail(format!("No event from a year back to two years on has “{}” in its title, its place or its notes.", v.finding)).into_element();
+        return EmptyState::new("Nothing found")
+            .icon("calendar")
+            .detail(olo_kit::tr!("No event from a year back to two years on has “{}” in its title, its place or its notes.", v.finding))
+            .into_element();
     }
     list(v, cx, all, true)
 }
@@ -166,7 +169,7 @@ fn list(v: &mut Calendar, cx: &mut Cx<Calendar>, all: Vec<Line>, found: bool) ->
                         // Its time on this day: all day, or from when to when.
                         let (first, last) = s.days();
                         let when = if s.all_day {
-                            "all day".to_owned()
+                            olo_kit::words::tr("all day").to_owned()
                         } else if first == last {
                             words::when(s.start, s.end, false, v.h24)
                         } else if day == first {
@@ -174,7 +177,7 @@ fn list(v: &mut Calendar, cx: &mut Cx<Calendar>, all: Vec<Line>, found: bool) ->
                         } else if day == last {
                             format!("until {}", words::time(s.end.time(), v.h24))
                         } else {
-                            "all day".to_owned()
+                            olo_kit::words::tr("all day").to_owned()
                         };
                         style::label(g, x0, mid, style::Align::Left, when, style::PLAIN_SIZE, regular.clone(), dim);
                         // (An invitation not answered: the mark hollow; one

@@ -281,27 +281,41 @@ impl Editor {
 
     /// A day and a time read from their fields (the time midnight, all
     /// day); or what's wrong with them.
-    fn read(&self, day: &Child<TextField>, time: &Child<TextField>, which: &str, cx: &Cx<Self>) -> Result<DateTime, String> {
+    /// (`ends`: the end's fields; each said whole, as languages say
+    /// "when it starts" each their own way.)
+    fn read(&self, day: &Child<TextField>, time: &Child<TextField>, ends: bool, cx: &Cx<Self>) -> Result<DateTime, String> {
         let typed = day.read(cx).text().to_owned();
-        let date = edit::date(&typed, self.today, self.month_first).ok_or_else(|| format!("“{}” isn’t a day I can read for when it {which}: try Nov 20, 2026-11-20 or Friday.", typed.trim()))?;
+        let date = edit::date(&typed, self.today, self.month_first).ok_or_else(|| {
+            if ends {
+                olo_kit::tr!("“{}” isn’t a day I can read for when it ends: try Nov 20, 2026-11-20 or Friday.", typed.trim())
+            } else {
+                olo_kit::tr!("“{}” isn’t a day I can read for when it starts: try Nov 20, 2026-11-20 or Friday.", typed.trim())
+            }
+        })?;
         if self.all_day {
             return Ok(date.at(0, 0, 0, 0));
         }
         let typed = time.read(cx).text().to_owned();
-        let time = edit::time(&typed).ok_or_else(|| format!("“{}” isn’t a time I can read for when it {which}: try 14:30 or 2:30 PM.", typed.trim()))?;
+        let time = edit::time(&typed).ok_or_else(|| {
+            if ends {
+                olo_kit::tr!("“{}” isn’t a time I can read for when it ends: try 14:30 or 2:30 PM.", typed.trim())
+            } else {
+                olo_kit::tr!("“{}” isn’t a time I can read for when it starts: try 14:30 or 2:30 PM.", typed.trim())
+            }
+        })?;
         Ok(date.to_datetime(time))
     }
 
     /// The draft the fields say; or what's wrong with them.
     fn draft(&self, cx: &Cx<Self>) -> Result<Draft, String> {
-        let start = self.read(&self.start_day, &self.start_time, "starts", cx)?;
-        let end = self.read(&self.end_day, &self.end_time, "ends", cx)?;
+        let start = self.read(&self.start_day, &self.start_time, false, cx)?;
+        let end = self.read(&self.end_day, &self.end_time, true, cx)?;
         let repeat = self.repeats[self.repeat.min(self.repeats.len() - 1)].clone();
         let typed = self.until.read(cx).text().trim().to_owned();
         let until = match (typed.is_empty() || matches!(repeat, Repeat::Never | Repeat::Other(_)), edit::date(&typed, self.today, self.month_first)) {
             (true, _) => None,
             (false, Some(day)) => Some(day),
-            (false, None) => return Err(format!("“{typed}” isn’t a day I can read for when it stops repeating: leave it empty to go on for good.")),
+            (false, None) => return Err(olo_kit::tr!("“{}” isn’t a day I can read for when it stops repeating: leave it empty to go on for good.", typed)),
         };
         let draft = Draft {
             title: self.title.read(cx).text().to_owned(),
@@ -315,7 +329,8 @@ impl Editor {
             reminder: self.reminder,
             invite: match &self.invite {
                 Some(field) => {
-                    let guests = edit::Invite::read(field.read(cx).text()).map_err(|word| format!("“{word}” isn’t an address I can invite: write each as name@example.org, with commas between."))?;
+                    let guests =
+                        edit::Invite::read(field.read(cx).text()).map_err(|word| olo_kit::tr!("“{}” isn’t an address I can invite: write each as name@example.org, with commas between.", word))?;
                     Some(edit::Invite { guests, organizer: String::new() })
                 }
                 None => None,
@@ -379,7 +394,7 @@ impl View for Editor {
             Edit::StartTyped => {
                 // The end keeps its distance from the start (once what's
                 // typed reads as a day and a time).
-                let (Ok(start), Ok(end)) = (self.read(&self.start_day, &self.start_time, "starts", cx), self.read(&self.end_day, &self.end_time, "ends", cx)) else { return };
+                let (Ok(start), Ok(end)) = (self.read(&self.start_day, &self.start_time, false, cx), self.read(&self.end_day, &self.end_time, true, cx)) else { return };
                 if start == self.start {
                     return;
                 }

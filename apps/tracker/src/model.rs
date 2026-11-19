@@ -129,8 +129,8 @@ impl FolderWin {
         let counter = if pane.is_none() { counter } else { Arc::default() };
         std::thread::spawn(move || {
             let result = fs::list_counting(&path, hidden, &counter).map_err(|e| match e.kind() {
-                std::io::ErrorKind::NotFound => "This folder was moved or deleted.".to_owned(),
-                std::io::ErrorKind::PermissionDenied => "You don't have permission to see inside this folder.".to_owned(),
+                std::io::ErrorKind::NotFound => olo_kit::words::tr("This folder was moved or deleted.").to_owned(),
+                std::io::ErrorKind::PermissionDenied => olo_kit::words::tr("You don't have permission to see inside this folder.").to_owned(),
                 _ => e.to_string(),
             });
             // What Open With offers for the kinds here, worked out now

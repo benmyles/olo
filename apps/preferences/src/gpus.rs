@@ -138,9 +138,9 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_kit::Proxy, wake: Option<String>,
         let mut s = shared.lock().unwrap();
         s.follower = Follower::Current;
         s.mode = Some(olo_system::power_profile::Mode::Balanced);
-        s.av1 = vec![olo_kit::words::tr("Intel Graphics").into()];
-        s.h264 = vec![olo_kit::words::tr("Intel Graphics").into()];
-        s.decodes = Some((olo_kit::words::tr("Intel Graphics").into(), false));
+        s.av1 = vec!["Intel Graphics".into()];
+        s.h264 = vec!["Intel Graphics".into()];
+        s.decodes = Some(("Intel Graphics".into(), false));
         {
             use olo_system::nvme_power::{Drive, PowerState};
             let state = |index: u8, max_watts: f32, operational: bool| PowerState { index, max_watts, operational };

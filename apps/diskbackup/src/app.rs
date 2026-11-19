@@ -203,11 +203,12 @@ pub(crate) fn keep_in_passwords() -> Result<(), String> {
     let request = olo_keychain::Request::KeepSecret {
         title: target::KEY_TITLE.into(),
         secret: key.to_hex(),
-        note: "The key to DiskBackup's backups: without it they can't be read. DiskBackup keeps a copy in this computer's keyring; on another computer, it reads it from here.".into(),
+        note: olo_kit::words::tr("The key to DiskBackup's backups: without it they can't be read. DiskBackup keeps a copy in this computer's keyring; on another computer, it reads it from here.")
+            .into(),
     };
     match target::passwords(&request)? {
         olo_keychain::Response::Saved { .. } => Ok(()),
-        ref other => Err(format!("Passwords answered {other:?}")),
+        ref other => Err(olo_kit::tr!("Passwords answered {}", format!("{:?}", other))),
     }
 }
 
@@ -226,11 +227,11 @@ pub(crate) fn clock(t: i64) -> String {
 }
 
 // (Said as Deskbar says them.)
-pub(crate) use olo_protocol::diskbackup::words::{count, plural, size};
+pub(crate) use olo_protocol::diskbackup::words::{count, size};
 
 pub(crate) fn speed_label(kbs: u64) -> String {
     match kbs {
-        0 => "No limit".into(),
+        0 => olo_kit::words::tr("No limit").into(),
         k if k >= 1000 && k % 1000 == 0 => format!("{} MB/s", k / 1000),
         k => format!("{k} KB/s"),
     }

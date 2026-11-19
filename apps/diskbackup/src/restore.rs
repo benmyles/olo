@@ -63,8 +63,8 @@ pub(crate) fn when(t: i64) -> String {
     let today = Local::now().date_naive();
     let days = (today - at.date_naive()).num_days();
     match days {
-        0 => format!("Today {}", at.format("%H:%M")),
-        1 => format!("Yesterday {}", at.format("%H:%M")),
+        0 => olo_kit::tr!("Today {}", at.format("%H:%M")),
+        1 => olo_kit::tr!("Yesterday {}", at.format("%H:%M")),
         2..=6 => at.format("%a %H:%M").to_string(),
         _ => at.format("%-d %b %Y %H:%M").to_string(),
     }
@@ -77,10 +77,10 @@ pub(crate) fn when_said(t: i64) -> String {
     let Some(at) = Local.timestamp_opt(t, 0).single() else { return String::new() };
     let time = at.format("%H:%M");
     match (Local::now().date_naive() - at.date_naive()).num_days() {
-        0 => format!("today at {time}"),
-        1 => format!("yesterday at {time}"),
-        2..=6 => format!("on {} at {time}", at.format("%a")),
-        _ => format!("on {} at {time}", at.format("%-d %b %Y")),
+        0 => olo_kit::tr!("today at {}", time),
+        1 => olo_kit::tr!("yesterday at {}", time),
+        2..=6 => olo_kit::tr!("on {} at {}", at.format("%a"), time),
+        _ => olo_kit::tr!("on {} at {}", at.format("%-d %b %Y"), time),
     }
 }
 
@@ -133,7 +133,7 @@ impl RestoreWindow {
             listing: 0,
             snaps: ListModel::new(false),
             files: ListModel::new(true),
-            status: ("Opening the backup…".into(), false),
+            status: (olo_kit::words::tr("Opening the backup…").into(), false),
             restoring: None,
         }
     }
@@ -223,10 +223,10 @@ impl RestoreWindow {
         }
         let (replace, both) = (pairs(false), pairs(true));
         let what = match there.as_slice() {
-            [one] => format!("“{}” is there now.", name_of(one)),
-            many => format!("{} of these are there now.", many.len()),
+            [one] => olo_kit::tr!("“{}” is there now.", name_of(one)),
+            many => olo_kit::tr!("{} of these are there now.", many.len()),
         };
-        let message = format!("{what} Replace with the version backed up {}, or keep both (the restored one named with its time)?", when_said(snap.time));
+        let message = olo_kit::tr!("{} Replace with the version backed up {}, or keep both (the restored one named with its time)?", what, when_said(snap.time));
         let to = cx.messenger();
         open_alert(cx, "Restore", "warning", &message, &["Cancel", "Keep Both", "Replace"], move |choice, _| {
             match choice {
@@ -303,8 +303,8 @@ impl RestoreWindow {
                     let files = if n == 1 { "1 file".to_owned() } else { format!("{n} files") };
                     Ok(format!("Restored {files} ({}) from {}, {place}.", size(progress.bytes.load(Relaxed)), when(snap.time)).replace(&target::home().display().to_string(), "~"))
                 }
-                Err(olo_diskbackup::Error::Cancelled) => Err("Stopped: what was restored so far is there.".into()),
-                Err(e) => Err(format!("Couldn’t restore: {e}.")),
+                Err(olo_diskbackup::Error::Cancelled) => Err(olo_kit::words::tr("Stopped: what was restored so far is there.").into()),
+                Err(e) => Err(olo_kit::tr!("Couldn’t restore: {}.", olo_kit::words::of_said(&e.to_string()))),
             };
             proxy.send(Done::Restored(out));
         });
@@ -319,12 +319,12 @@ impl View for RestoreWindow {
             Done::Opened(Ok((repo, snaps))) => {
                 self.repo = Some(repo);
                 self.snapshots = snaps;
-                self.status = (if self.snapshots.is_empty() { "Nothing backed up yet.".into() } else { String::new() }, false);
+                self.status = (if self.snapshots.is_empty() { olo_kit::words::tr("Nothing backed up yet.").into() } else { String::new() }, false);
                 if !self.snapshots.is_empty() {
                     self.choose_snapshot(0, cx);
                 }
             }
-            Done::Opened(Err(e)) => self.status = (format!("The backup can’t be opened: {e}."), true),
+            Done::Opened(Err(e)) => self.status = (olo_kit::tr!("The backup can’t be opened: {}.", olo_kit::words::of_said(&e.to_string())), true),
             Done::Listed(n, r) if n == self.listing => match r {
                 Ok(nodes) => {
                     self.nodes = nodes;
@@ -339,7 +339,7 @@ impl View for RestoreWindow {
             Done::Progress(files, bytes, current) => {
                 if self.restoring.is_some() {
                     let shown = current.replace(&target::home().display().to_string(), "~");
-                    self.status = (format!("Restoring: {files} {}, {} so far. {shown}", if files == 1 { "file" } else { "files" }, size(bytes)), false);
+                    self.status = (olo_kit::tr!("Restoring: {}, {} so far. {}", olo_kit::words::count(files as u64, "1 file", "{n} files"), size(bytes), shown), false);
                 }
             }
             Done::Run(pairs) => return self.run(pairs, cx),

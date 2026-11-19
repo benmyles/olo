@@ -499,13 +499,10 @@ impl View for FindWin {
         let status = if self.running {
             let scanned = self.progress.scanned.load(Ordering::Relaxed);
             let folder = self.progress.folder.lock().map(|f| fs::display_path(&f)).unwrap_or_default();
-            format!("{} found · {scanned} items searched · {folder}", self.results.len())
+            olo_kit::tr!("{} found · {} items searched · {}", self.results.len(), scanned, folder)
         } else if self.generation > 0 {
-            let found = match self.results.len() {
-                1 => "1 item found".to_owned(),
-                n => format!("{n} items found"),
-            };
-            if self.stopped { format!("Stopped · {found}") } else { format!("{found} in {:.1} s", self.took.as_secs_f32()) }
+            let found = olo_kit::words::count(self.results.len() as u64, "1 item found", "{n} items found");
+            if self.stopped { olo_kit::tr!("Stopped · {}", found) } else { olo_kit::tr!("{} in {} s", found, format!("{:.1}", self.took.as_secs_f32())) }
         } else {
             String::new()
         };
@@ -536,10 +533,12 @@ impl View for FindWin {
                         f.mode = *i;
                         cx.invalidate();
                     })))
-                    .child(MenuField::new("find-root", vec!["Home".into(), "Entire disk".into()], self.root).label("In:").on_change(cx.listener(|f: &mut FindWin, i: &usize, cx| {
-                        f.root = *i;
-                        cx.invalidate();
-                    })))
+                    .child(MenuField::new("find-root", vec!["Home".into(), olo_kit::words::tr("Entire disk").into()], self.root).label("In:").on_change(cx.listener(
+                        |f: &mut FindWin, i: &usize, cx| {
+                            f.root = *i;
+                            cx.invalidate();
+                        },
+                    )))
                     .child(CheckBox::new("Hidden and ignored files", self.everything).on_toggle(cx.listener(|f: &mut FindWin, on: &bool, cx| {
                         f.everything = *on;
                         cx.invalidate();

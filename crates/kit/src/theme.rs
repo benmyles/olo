@@ -45,6 +45,15 @@ fn settings() -> Option<olo_protocol::Settings> {
     }
 }
 
+/// The words' language chosen again from Olo's setting (`words::choose`);
+/// as it was, where the window server can't be asked.
+pub(crate) fn choose_language() {
+    let setting = settings().map(|s| s.language);
+    if setting.is_some() || std::env::var_os("OLO_LANGUAGE").is_some_and(|v| !v.is_empty()) {
+        olo_kit_base::words::start(setting.as_deref().unwrap_or(""));
+    }
+}
+
 fn outputs() -> Option<Vec<OutputInfo>> {
     let mut client = Client::connect().ok()?;
     match client.request(&Request::Outputs).ok()? {

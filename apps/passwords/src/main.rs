@@ -184,8 +184,11 @@ pub enum Accounts {
 /// What removing accounts does, for the alert.
 fn remove_message(removed: &[Linked]) -> String {
     let names = removed.iter().map(|l| format!("“{}”", l.label)).collect::<Vec<_>>().join(" and ");
-    let its = if removed.len() == 1 { "Its" } else { "Their" };
-    format!("Stop syncing with {names}? {its} items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.")
+    if removed.len() == 1 {
+        olo_kit::tr!("Stop syncing with {}? Its items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.", names)
+    } else {
+        olo_kit::tr!("Stop syncing with {}? Their items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.", names)
+    }
 }
 
 /// Whether app_server approves requests without asking (Deskbar's key),
@@ -226,8 +229,8 @@ fn allow_message(a: &cli::Asker, ssh: bool, ways: Option<String>) -> String {
     let what = if ssh { "sign in with your SSH keys" } else { "use your passwords" };
     let mut m = format!("Allow “{}” to {what}?", a.command);
     match (&a.parent, &a.cwd) {
-        (Some(p), Some(d)) => m.push_str(&format!(" It was run by {p} in {d}.")),
-        (Some(p), None) => m.push_str(&format!(" It was run by {p}.")),
+        (Some(p), Some(d)) => m.push_str(&format!(" {}", olo_kit::tr!("It was run by {} in {}.", p, d))),
+        (Some(p), None) => m.push_str(&format!(" {}", olo_kit::tr!("It was run by {}.", p))),
         _ => {}
     }
     if let Some(ways) = ways {
@@ -246,7 +249,7 @@ fn reference_message(program: &str, named: &str, purpose: &str) -> String {
     let name = program_name(program);
     let purpose = purpose.trim();
     let what = if purpose.is_empty() { String::new() } else { format!(" ({purpose})") };
-    format!("Allow “{name}” to use {named}{what}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).")
+    olo_kit::tr!("Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).", name, named, what)
 }
 
 /// A program as the person knows it: an Olo app's name, else its file's.
@@ -532,7 +535,7 @@ impl Passwords {
     /// ID or name, as resolving it finds them); the reference itself when
     /// it names nothing here (resolving it then says why).
     pub fn reference_named(&self, reference: &str) -> String {
-        let fallback = || format!("the secret at {reference}");
+        let fallback = || olo_kit::tr!("the secret at {}", reference);
         let Ok(r) = onepassword::reference::validate(reference) else { return fallback() };
         let vault = self.vaults.iter().find(|v| v.id == r.vault).or_else(|| self.vaults.iter().find(|v| v.title.eq_ignore_ascii_case(&r.vault)));
         let Some(vault) = vault else { return fallback() };
@@ -1262,8 +1265,8 @@ impl Passwords {
                 let rp = rp_id.clone();
                 let label = |p: &olo_keychain::Passkey| if p.user_name.is_empty() { p.title.clone() } else { p.user_name.clone() };
                 let message = match found.as_slice() {
-                    [one] => format!("Sign in to {rp} as “{}” with your passkey?", label(one)),
-                    _ => format!("Sign in to {rp} with which passkey?"),
+                    [one] => olo_kit::tr!("Sign in to {} as “{}” with your passkey?", rp, label(one)),
+                    _ => olo_kit::tr!("Sign in to {} with which passkey?", rp),
                 };
                 let choices = found.iter().map(|p| ((p.vault.clone(), p.id.clone()), label(p))).collect();
                 return self.ask_passkey(incoming, message, choices, Vec::new());
@@ -1287,8 +1290,8 @@ impl Passwords {
                 let joins = near.iter().find(|i| self.username_of(i).eq_ignore_ascii_case(user_name) && !user_name.is_empty());
                 let who = if user_name.is_empty() { String::new() } else { format!(" for “{user_name}”") };
                 let message = match joins {
-                    Some(i) => format!("Save a passkey{who} on {rp_id} in Passwords? It goes with your login “{}”.", i.title),
-                    None => format!("Save a passkey{who} on {rp_id} in Passwords?"),
+                    Some(i) => olo_kit::tr!("Save a passkey{} on {} in Passwords? It goes with your login “{}”.", who, rp_id, i.title),
+                    None => olo_kit::tr!("Save a passkey{} on {} in Passwords?", who, rp_id),
                 };
                 let candidates = near.iter().map(|i| (i.vault_id.clone(), i.id.clone())).collect();
                 return self.ask_passkey(incoming, message, Vec::new(), candidates);
@@ -1329,15 +1332,15 @@ impl Passwords {
     /// or in a new login when there's none for the site.
     fn ask_otp(&mut self, incoming: Box<Incoming>, uri: String, logins: Vec<store::OtpLogin>) {
         let Request::OtpScan { url, .. } = &incoming.request else { return };
-        let host = url::Url::parse(url).ok().and_then(|u| u.host_str().map(str::to_owned)).unwrap_or_else(|| "this site".into());
+        let host = url::Url::parse(url).ok().and_then(|u| u.host_str().map(str::to_owned)).unwrap_or_else(|| olo_kit::words::tr("this site").into());
         let account = Totp::parse(&uri).ok().and_then(|t| t.account.clone());
         let named = |l: &store::OtpLogin| if l.username.is_empty() { format!("“{}”", l.title) } else { format!("“{}” ({})", l.title, l.username) };
         let known: Vec<(String, bool)> = logins.iter().map(|l| (l.username.clone(), l.has)).collect();
         let (message, done, choices) = match (qr::joins(account.as_deref(), &known), logins.as_slice()) {
-            (_, []) => (format!("Save a login for {host} with the one-time code this page shows?"), "Save Login", Vec::new()),
-            (Some(i), _) if logins[i].has => (format!("Replace the one-time code of your login {} with the one this page shows?", named(&logins[i])), "Replace", vec![logins[i].clone()]),
-            (Some(i), _) => (format!("Add the one-time code this page shows to your login {}?", named(&logins[i])), "Add", vec![logins[i].clone()]),
-            (None, _) => (format!("This page shows a one-time code for {host}. Add it to which login?"), "Add", logins.clone()),
+            (_, []) => (olo_kit::tr!("Save a login for {} with the one-time code this page shows?", host), "Save Login", Vec::new()),
+            (Some(i), _) if logins[i].has => (olo_kit::tr!("Replace the one-time code of your login {} with the one this page shows?", named(&logins[i])), "Replace", vec![logins[i].clone()]),
+            (Some(i), _) => (olo_kit::tr!("Add the one-time code this page shows to your login {}?", named(&logins[i])), "Add", vec![logins[i].clone()]),
+            (None, _) => (olo_kit::tr!("This page shows a one-time code for {}. Add it to which login?", host), "Add", logins.clone()),
         };
         OtpAsk::open(incoming, message, done, choices, uri);
     }
@@ -1383,7 +1386,7 @@ impl Passwords {
         let Some(asked) = self.allow_shown.remove(&session) else { return };
         tracing::info!(command = asked.command, how, "op allowed");
         let what = if asked.ssh { "sign in with your SSH keys" } else { "use your passwords" };
-        quietly(&self.notifier, &format!("Allowed with {how}"), format!("“{}” can {what}.", asked.command));
+        quietly(&self.notifier, &olo_kit::tr!("Allowed with {}", how), format!("“{}” can {what}.", asked.command));
         if let Some(w) = asked.window {
             w.close();
         }
@@ -1546,7 +1549,7 @@ impl Passwords {
         let seconds = self.security.clear_seconds;
         olo_kit::copy::secret(text, Duration::from_secs(seconds as u64));
         self.secret_until = Some(Instant::now() + Duration::from_secs(seconds as u64));
-        self.flash(format!("Copied {what}. It leaves the clipboard in {seconds} seconds."));
+        self.flash(olo_kit::tr!("Copied {}. It leaves the clipboard in {} seconds.", what, seconds));
         self.changed();
     }
 
@@ -1587,7 +1590,7 @@ impl Passwords {
             t if edit::concealed(t) || t == ItemFieldType::CreditCardNumber => self.copy_secret(&format!("the {label}"), &f.value),
             _ => {
                 olo_kit::clipboard::write(ClipboardItem::new_string(f.value.clone()));
-                self.flash(format!("Copied the {label}."));
+                self.flash(olo_kit::tr!("Copied the {}.", label));
                 self.changed();
             }
         }
@@ -1621,9 +1624,9 @@ impl Passwords {
         match found {
             Some((reference, what)) => {
                 olo_kit::clipboard::write(ClipboardItem::new_string(reference));
-                self.flash(format!("Copied the reference to “{}”’s {what}.", i.title));
+                self.flash(olo_kit::tr!("Copied the reference to “{}”’s {}.", i.title, what));
             }
-            None => self.flash(format!("“{}” has nothing to refer to.", i.title)),
+            None => self.flash(olo_kit::tr!("“{}” has nothing to refer to.", i.title)),
         }
         self.changed();
     }
@@ -1645,7 +1648,7 @@ impl Passwords {
         };
         match field {
             Some(f) => self.copy_field(&item.id, &f.id.clone()),
-            None => self.flash(format!("“{}” has no {}.", item.title, if kind == "otp" { "one-time password" } else { kind })),
+            None => self.flash(olo_kit::tr!("“{}” has no {}.", item.title, if kind == "otp" { "one-time password" } else { kind })),
         }
         self.changed();
     }
@@ -1730,7 +1733,7 @@ impl Passwords {
         let tag = |name: String, before: Option<Box<onepassword::Item>>| Some(store::Tag { purpose: olo_kit::undo::Purpose::Do, name, before });
         if let Some(base) = editor.base.clone() {
             if let Some(item) = editor.to_item() {
-                let name = format!("Changes to “{}”", base.title);
+                let name = olo_kit::tr!("Changes to “{}”", base.title);
                 self.store.send(Job::Put(Box::new(item), tag(name, Some(Box::new(base)))));
                 self.flash("Saving…");
             }
@@ -1818,7 +1821,7 @@ impl Passwords {
 
     fn ask_discard(&mut self, then: Then) {
         let then = Mutex::new(Some(then));
-        self.alert("Passwords", "warning", "Discard the changes to this item?".into(), &["Keep Editing", "Discard"], move |choice| {
+        self.alert("Passwords", "warning", olo_kit::words::tr("Discard the changes to this item?").into(), &["Keep Editing", "Discard"], move |choice| {
             if choice == Some(1)
                 && let Some(then) = then.lock().unwrap_or_else(|e| e.into_inner()).take()
             {
@@ -1892,9 +1895,9 @@ impl Passwords {
         // (Undone, it's made again: not with files attached.)
         let back = self.details.get(&o.id).is_none_or(undo::can_come_back);
         let message = if back {
-            format!("Delete “{}”? Edit ▸ Undo makes it again until Passwords locks.", o.title)
+            olo_kit::tr!("Delete “{}”? Edit ▸ Undo makes it again until Passwords locks.", o.title)
         } else {
-            format!("Delete “{}” for good? Its attached files can’t come back.", o.title)
+            olo_kit::tr!("Delete “{}” for good? Its attached files can’t come back.", o.title)
         };
         let tag = back.then(|| store::Tag { purpose: olo_kit::undo::Purpose::Do, name: format!("Delete “{}”", o.title), before: None });
         self.alert("Delete Item", "warning", message, &["Cancel", "Delete"], move |choice| {
@@ -1926,10 +1929,10 @@ impl Passwords {
         let first = self.settings.accounts.first().map(|l| l.label.clone());
         let synced = shown.as_ref().is_some_and(|v| self.vault_accounts.contains_key(&v.id));
         let note = match (&shown, first) {
-            (None, Some(account)) => format!("Made here now, and in 1Password ({account}) at the next sync, once you’ve reviewed it."),
-            (None, None) => "Kept on this computer; made in 1Password once you sync an account.".to_owned(),
-            (Some(_), _) if synced => "Changed here now, and in 1Password at the next sync.".to_owned(),
-            (Some(_), _) => "Kept on this computer.".to_owned(),
+            (None, Some(account)) => olo_kit::tr!("Made here now, and in 1Password ({}) at the next sync, once you’ve reviewed it.", account),
+            (None, None) => olo_kit::words::tr("Kept on this computer; made in 1Password once you sync an account.").to_owned(),
+            (Some(_), _) if synced => olo_kit::words::tr("Changed here now, and in 1Password at the next sync.").to_owned(),
+            (Some(_), _) => olo_kit::words::tr("Kept on this computer.").to_owned(),
         };
         if let Some(w) = self.vault_info.take() {
             w.close();
@@ -1945,16 +1948,15 @@ impl Passwords {
         }
         let Some(v) = id.as_ref().and_then(|id| self.vaults.iter().find(|v| &v.id == id)).or_else(|| self.chosen_vault()).cloned() else { return };
         if !vault::deletable(&v) {
-            return self.show_error(format!("“{}” can’t be deleted: 1Password keeps it for every account.", v.title));
+            return self.show_error(olo_kit::tr!("“{}” can’t be deleted: 1Password keeps it for every account.", v.title));
         }
         let n = self.items.iter().filter(|i| i.vault_id == v.id).count();
         let items = match n {
             0 => String::new(),
-            1 => " and the 1 item in it".to_owned(),
-            n => format!(" and the {n} items in it"),
+            n => format!(" {}", olo_kit::words::count(n as u64, "and the 1 item in it", "and the {n} items in it")),
         };
-        let there = if self.vault_accounts.contains_key(&v.id) { ", here now and in 1Password at the next sync (after you review it)" } else { "" };
-        let message = format!("Delete the vault “{}”{items}{there}? This can’t be undone.", v.title);
+        let there = if self.vault_accounts.contains_key(&v.id) { format!(", {}", olo_kit::words::tr("here now and in 1Password at the next sync (after you review it)")) } else { String::new() };
+        let message = olo_kit::tr!("Delete the vault “{}”{}{}? This can’t be undone.", v.title, items, there);
         let id = v.id.clone();
         self.alert("Delete Vault", "warning", message, &["Cancel", "Delete Vault"], move |choice| {
             if choice == Some(1) {
@@ -2212,7 +2214,7 @@ impl Passwords {
                 if let Some(i) = self.items.iter_mut().find(|i| i.id == item) {
                     i.state = ItemState::Archived;
                     let title = i.title.clone();
-                    self.flash(format!("Moved “{title}” to the Archive."));
+                    self.flash(olo_kit::tr!("Moved “{}” to the Archive.", title));
                 }
                 self.invalidate();
                 self.after_removal(&item, row);
@@ -2239,12 +2241,12 @@ impl Passwords {
                     store::VaultDone::Made => {
                         // (Chosen, to fill: New Item goes into it.)
                         self.set_source(Source::Vault(vault));
-                        self.flash(format!("Made the vault “{title}”."));
+                        self.flash(olo_kit::tr!("Made the vault “{}”.", title));
                     }
-                    store::VaultDone::Changed => self.flash(format!("Saved the vault “{title}”.")),
-                    store::VaultDone::Deleted { items: 0 } => self.flash(format!("Deleted the vault “{title}”.")),
-                    store::VaultDone::Deleted { items: 1 } => self.flash(format!("Deleted the vault “{title}” and its item.")),
-                    store::VaultDone::Deleted { items } => self.flash(format!("Deleted the vault “{title}” and its {items} items.")),
+                    store::VaultDone::Changed => self.flash(olo_kit::tr!("Saved the vault “{}”.", title)),
+                    store::VaultDone::Deleted { items: 0 } => self.flash(olo_kit::tr!("Deleted the vault “{}”.", title)),
+                    store::VaultDone::Deleted { items: 1 } => self.flash(olo_kit::tr!("Deleted the vault “{}” and its item.", title)),
+                    store::VaultDone::Deleted { items } => self.flash(olo_kit::tr!("Deleted the vault “{}” and its {} items.", title, items)),
                 }
                 self.changed_here();
             }
@@ -2762,7 +2764,7 @@ impl View for OtpAsk {
             let mut radios = div().mt(px(m::SPACING)).flex().flex_col().gap(px(m::TIGHT));
             for (i, l) in self.choices.iter().enumerate() {
                 let who = if l.username.is_empty() { l.title.clone() } else { format!("{} ({})", l.title, l.username) };
-                let label = if l.has { format!("{who}, in place of its code") } else { who };
+                let label = if l.has { olo_kit::tr!("{}, in place of its code", who) } else { who };
                 radios = radios.child(RadioButton::new(label, i == self.chosen).id(format!("otp-{i}")).on_select(cx.listener(move |p: &mut OtpAsk, _: &(), cx| {
                     p.chosen = i;
                     cx.invalidate();

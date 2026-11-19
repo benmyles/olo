@@ -127,7 +127,7 @@ pub fn adopt(note: &mut Note) {
     // Chrome's Settings button is the site's notification settings.
     for (key, label) in &mut note.actions {
         if key == "settings" {
-            *label = "Site Settings".into();
+            *label = olo_kit::words::tr("Site Settings").into();
         }
     }
 }

@@ -40,12 +40,12 @@ impl Repeat {
     pub fn said(&self) -> String {
         match self {
             Repeat::Never => "Never".into(),
-            Repeat::Daily => "Every day".into(),
-            Repeat::Weekdays => "Every weekday".into(),
-            Repeat::Weekly => "Every week".into(),
+            Repeat::Daily => olo_kit::words::tr("Every day").into(),
+            Repeat::Weekdays => olo_kit::words::tr("Every weekday").into(),
+            Repeat::Weekly => olo_kit::words::tr("Every week").into(),
             Repeat::Fortnightly => "Every 2 weeks".into(),
-            Repeat::Monthly => "Every month".into(),
-            Repeat::Yearly => "Every year".into(),
+            Repeat::Monthly => olo_kit::words::tr("Every month").into(),
+            Repeat::Yearly => olo_kit::words::tr("Every year").into(),
             Repeat::Other(said) => said.clone(),
         }
     }
@@ -53,12 +53,12 @@ impl Repeat {
     pub fn name(&self) -> String {
         match self {
             Repeat::Never => "Never".into(),
-            Repeat::Daily => "Every Day".into(),
-            Repeat::Weekdays => "Every Weekday".into(),
-            Repeat::Weekly => "Every Week".into(),
+            Repeat::Daily => olo_kit::words::tr("Every Day").into(),
+            Repeat::Weekdays => olo_kit::words::tr("Every Weekday").into(),
+            Repeat::Weekly => olo_kit::words::tr("Every Week").into(),
             Repeat::Fortnightly => "Every 2 Weeks".into(),
-            Repeat::Monthly => "Every Month".into(),
-            Repeat::Yearly => "Every Year".into(),
+            Repeat::Monthly => olo_kit::words::tr("Every Month").into(),
+            Repeat::Yearly => olo_kit::words::tr("Every Year").into(),
             Repeat::Other(said) => said.clone(),
         }
     }
@@ -77,7 +77,7 @@ impl Repeat {
 
     /// How `event` repeats, as one of those offered if it is one.
     fn of(event: &Event) -> Repeat {
-        let Some(rule) = &event.rule else { return if event.repeats { Repeat::Other("In its own way".into()) } else { Repeat::Never } };
+        let Some(rule) = &event.rule else { return if event.repeats { Repeat::Other(olo_kit::words::tr("In its own way").into()) } else { Repeat::Never } };
         let plain = rule.count.is_none() && rule.by_month_day.is_empty() && rule.by_month.is_empty() && rule.by_set_pos.is_empty();
         let weekday = event.start.local().weekday();
         // (A weekly rule that names its start's own day says no more than one that names none.)
@@ -97,16 +97,16 @@ impl Repeat {
 
 /// A rule the editor doesn't offer, in a few words.
 fn said(rule: &Rule) -> String {
-    let unit = match rule.freq {
-        Freq::Daily => "day",
-        Freq::Weekly => "week",
-        Freq::Monthly => "month",
-        Freq::Yearly => "year",
+    let n = u64::from(rule.interval);
+    let every = match rule.freq {
+        Freq::Daily => olo_kit::words::count(n, "Every day", "Every {n} days"),
+        Freq::Weekly => olo_kit::words::count(n, "Every week", "Every {n} weeks"),
+        Freq::Monthly => olo_kit::words::count(n, "Every month", "Every {n} months"),
+        Freq::Yearly => olo_kit::words::count(n, "Every year", "Every {n} years"),
     };
-    let every = if rule.interval == 1 { format!("Every {unit}") } else { format!("Every {} {unit}s", rule.interval) };
     match rule.count {
-        Some(n) => format!("{every}, {n} times"),
-        None if !rule.by_day.is_empty() || !rule.by_month_day.is_empty() || !rule.by_set_pos.is_empty() || !rule.by_month.is_empty() => format!("{every}, on set days"),
+        Some(n) => format!("{every}, {}", olo_kit::words::count(u64::from(n), "1 time", "{n} times")),
+        None if !rule.by_day.is_empty() || !rule.by_month_day.is_empty() || !rule.by_set_pos.is_empty() || !rule.by_month.is_empty() => olo_kit::tr!("{}, on set days", every),
         None => every,
     }
 }

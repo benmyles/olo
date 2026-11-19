@@ -461,7 +461,7 @@ impl Desktop {
         match cmd {
             "clean-up" => {
                 let moved = self.clean_up();
-                to_hub(ToHub::Done("Clean Up".into(), undo::Change::Placed(moved)));
+                to_hub(ToHub::Done(olo_kit::words::tr("Clean Up").into(), undo::Change::Placed(moved)));
             }
             "open" => {
                 for e in self.selected_entries() {
@@ -496,11 +496,11 @@ impl Desktop {
                 let _ = std::fs::create_dir_all(&dir);
                 match fs::new_folder(&dir) {
                     Ok(p) => {
-                        to_hub(ToHub::Done("New Folder".into(), undo::Change::Made(vec![p.clone()])));
+                        to_hub(ToHub::Done(olo_kit::words::tr("New Folder").into(), undo::Change::Made(vec![p.clone()])));
                         self.reload();
                         self.edit_name(&p, cx);
                     }
-                    Err(e) => self.error(format!("Couldn't create a folder: {e}"), cx),
+                    Err(e) => self.error(olo_kit::tr!("Couldn't create a folder: {}", e), cx),
                 }
             }
             "empty-trash" => crate::confirm_empty_trash(cx),

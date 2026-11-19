@@ -62,6 +62,15 @@ pub fn of_all(texts: std::rc::Rc<[SharedString]>) -> std::rc::Rc<[SharedString]>
     texts
 }
 
+/// The language chosen again from Olo's setting, for a program without
+/// windows whose words reach the person (a service's notifications):
+/// an app's is chosen as it starts and follows the setting, a service
+/// calls this before it makes what's shown (one question to the window
+/// server). `$OLO_LANGUAGE` for a test.
+pub fn choose() {
+    crate::theme::choose_language();
+}
+
 /// Words that reach a widget as plain text but are the app's own, by
 /// what they say (an alert's title, message and buttons, given as
 /// `&str`): in the language chosen where it has them.

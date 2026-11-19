@@ -58,15 +58,15 @@ impl Waiting {
     /// attention": the same words on every surface.
     pub fn said(&self) -> String {
         match self.count {
-            0 => format!("{} wants your attention", self.name),
-            n => format!("{n} waiting in {}", self.name),
+            0 => olo_kit::tr!("{} wants your attention", self.name),
+            n => olo_kit::tr!("{} waiting in {}", n, self.name),
         }
     }
 
     /// Beside the app's name: "3 waiting", "Wants attention".
     pub fn short(&self) -> String {
         match self.count {
-            0 => "Wants attention".to_owned(),
+            0 => olo_kit::words::tr("Wants attention").to_owned(),
             n => format!("{n} waiting"),
         }
     }
@@ -180,8 +180,8 @@ impl WaitingApps {
                 icons: icons(w),
                 title: w.said(),
                 detail: match w.count {
-                    0 | 1 => format!("Open {} to see it.", w.name),
-                    _ => format!("Open {} to see them.", w.name),
+                    0 | 1 => olo_kit::tr!("Open {} to see it.", w.name),
+                    _ => olo_kit::tr!("Open {} to see them.", w.name),
                 },
                 attention: true,
                 time: w.time,

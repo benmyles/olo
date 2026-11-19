@@ -1667,7 +1667,7 @@ impl View for HistoryWindow {
             format!("{} of {all}", list.shown)
         } else if archived {
             // (What it is, and how long it's kept.)
-            format!("{all} cleared · kept for {} days, the last {}", store::ARCHIVE_DAYS, store::ARCHIVE_KEEP)
+            olo_kit::tr!("{} cleared · kept for {} days, the last {}", all, store::ARCHIVE_DAYS, store::ARCHIVE_KEEP)
         } else if all == 1 {
             "1 notification".into()
         } else {

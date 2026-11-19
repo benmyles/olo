@@ -352,8 +352,8 @@ impl Request {
         // The tab's name last: it is the part that wraps.
         let tab = self.tab.as_ref().map(|t| format!(" in “{t}”")).unwrap_or_default();
         match self.who {
-            Some(a) => format!("{} wants to run this with sudo{tab}:", a.name()),
-            None => format!("sudo needs your password to run this{tab}:"),
+            Some(a) => olo_kit::tr!("{} wants to run this with sudo{}:", a.name(), tab),
+            None => olo_kit::tr!("sudo needs your password to run this{}:", tab),
         }
     }
 
@@ -415,7 +415,7 @@ impl Request {
             Ask::Error(t) => {
                 self.finger_error = self.finger_too && !self.conv.checking;
                 self.conv.checking = false;
-                self.conv.error = if t.starts_with("Sorry, try again") { "Sorry, that didn't work. Please try again.".into() } else { t };
+                self.conv.error = if t.starts_with("Sorry, try again") { olo_kit::words::tr("Sorry, that didn't work. Please try again.").into() } else { t };
             }
             Ask::Prompt(t) => {
                 // Past the fingerprint, if there was one, unless it's
@@ -491,7 +491,7 @@ impl Request {
             }
             Err(why) => {
                 if !self.conv.checking {
-                    self.conv.info = format!("{why} Type your password.");
+                    self.conv.info = olo_kit::tr!("{} Type your password.", why);
                 }
             }
         }

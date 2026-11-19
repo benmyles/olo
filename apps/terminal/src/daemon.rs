@@ -60,9 +60,9 @@ fn uptime(started: u64) -> String {
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(started);
     let s = now.saturating_sub(started);
     match s {
-        0..60 => "under a minute".into(),
+        0..60 => olo_kit::words::tr("under a minute").into(),
         60..3600 => format!("{} min", s / 60),
-        3600..86400 => format!("{} h {} min", s / 3600, s % 3600 / 60),
+        3600..86400 => olo_kit::tr!("{} h {} min", s / 3600, s % 3600 / 60),
         _ => format!("{} days", s / 86400),
     }
 }
@@ -86,7 +86,7 @@ impl DaemonWin {
     /// Confirmed: stop it, however it is, and start it afresh.
     pub fn start_over(&mut self, proxy: Proxy) {
         self.busy = true;
-        self.note = "Starting over…".into();
+        self.note = olo_kit::words::tr("Starting over…").into();
         let known = match &self.status {
             Some(Ok(s)) => Some(s.pid),
             _ => None,
@@ -135,14 +135,14 @@ impl Terminal {
         let ours = std::process::id() as i32;
         let (headline, detail) = match &d.status {
             None => ("Checking…".to_owned(), String::new()),
-            Some(Err(e)) => (format!("olo-termd: {e}"), "New shells can't start until it's running again.".to_owned()),
+            Some(Err(e)) => (format!("olo-termd: {e}"), olo_kit::words::tr("New shells can't start until it's running again.").to_owned()),
             Some(Ok(s)) => {
                 let here = s.shells.iter().filter(|sh| sh.client == Some(ours)).count();
                 let shells = match s.shells.len() {
                     1 => "1 shell".to_owned(),
                     n => format!("{n} shells"),
                 };
-                (format!("olo-termd is running (process {}, up {}).", s.pid, uptime(s.started)), format!("{shells}, {here} shown in this Terminal."))
+                (olo_kit::tr!("olo-termd is running (process {}, up {}).", s.pid, uptime(s.started)), olo_kit::tr!("{}, {} shown in this Terminal.", shells, here))
             }
         };
         let shells: Vec<wire::ShellInfo> = match &d.status {

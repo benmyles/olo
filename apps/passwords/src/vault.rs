@@ -279,11 +279,11 @@ pub const LOCKED: &str = "Your keyring is locked, and the key to your passwords 
 fn looked_up() -> Result<Option<Vec<u8>>> {
     match olo_system::secrets::lookup(KEY_ATTRS) {
         Err(_) if olo_system::secrets::locked() => match olo_system::secrets::unlock() {
-            Ok(true) => olo_system::secrets::lookup(KEY_ATTRS).map_err(|e| fail(format!("Couldn’t reach the login keyring: {e}"))),
+            Ok(true) => olo_system::secrets::lookup(KEY_ATTRS).map_err(|e| fail(olo_kit::tr!("Couldn’t reach the login keyring: {}", e))),
             Ok(false) => Err(fail(LOCKED)),
-            Err(e) => Err(fail(format!("Couldn’t ask for your keyring to be unlocked: {e}"))),
+            Err(e) => Err(fail(olo_kit::tr!("Couldn’t ask for your keyring to be unlocked: {}", e))),
         },
-        other => other.map_err(|e| fail(format!("Couldn’t reach the login keyring: {e}"))),
+        other => other.map_err(|e| fail(olo_kit::tr!("Couldn’t reach the login keyring: {}", e))),
     }
 }
 
@@ -299,17 +299,17 @@ fn key(store_exists: bool, keyfile: Option<&Path>) -> Result<Zeroizing<[u8; 32]>
                     return Err(missing());
                 }
                 let k = Zeroizing::new(random::<32>().to_vec());
-                write_private(file, &k).map_err(|e| fail(format!("Couldn’t keep the key: {e}")))?;
+                write_private(file, &k).map_err(|e| fail(olo_kit::tr!("Couldn’t keep the key: {}", e)))?;
                 k
             }
-            Err(e) => return Err(fail(format!("Couldn’t read the key: {e}"))),
+            Err(e) => return Err(fail(olo_kit::tr!("Couldn’t read the key: {}", e))),
         },
         None => match looked_up() {
             Ok(Some(b)) => Zeroizing::new(b),
             Ok(None) if store_exists => return Err(missing()),
             Ok(None) => {
                 let k = Zeroizing::new(random::<32>().to_vec());
-                olo_system::secrets::store(olo_system::secrets::PASSWORDS_KEY.label, KEY_ATTRS, &k).map_err(|e| fail(format!("Couldn’t keep the key in the login keyring: {e}")))?;
+                olo_system::secrets::store(olo_system::secrets::PASSWORDS_KEY.label, KEY_ATTRS, &k).map_err(|e| fail(olo_kit::tr!("Couldn’t keep the key in the login keyring: {}", e)))?;
                 k
             }
             Err(e) => return Err(e),
@@ -464,7 +464,7 @@ impl Vault {
             return Ok(());
         }
         let key = key(file.exists(), Some(keyfile))?;
-        write_private(file, &seal(&key, &plain)).map_err(|e| fail(format!("Couldn’t write the shared copy: {e}")))?;
+        write_private(file, &seal(&key, &plain)).map_err(|e| fail(olo_kit::tr!("Couldn’t write the shared copy: {}", e)))?;
         written.insert(file.to_owned(), digest);
         Ok(())
     }
@@ -476,7 +476,7 @@ impl Vault {
         let data = match existing {
             Some(bytes) => {
                 let plain = open(&key, &bytes)?;
-                serde_json::from_slice(&plain).map_err(|e| fail(format!("The passwords file is damaged: {e}")))?
+                serde_json::from_slice(&plain).map_err(|e| fail(olo_kit::tr!("The passwords file is damaged: {}", e)))?
             }
             None => Data { vaults: vec![local_vault()], ..Default::default() },
         };
@@ -499,7 +499,7 @@ impl Vault {
             return Err(fail("These are shared from your Passwords: change them there."));
         }
         let plain = Zeroizing::new(serde_json::to_vec(&self.data).map_err(|e| fail(e.to_string()))?);
-        write_private(&self.file, &seal(&self.key, &plain)).map_err(|e| fail(format!("Couldn’t save your passwords: {e}")))
+        write_private(&self.file, &seal(&self.key, &plain)).map_err(|e| fail(olo_kit::tr!("Couldn’t save your passwords: {}", e)))
     }
 
     fn rev(&mut self) -> u64 {
@@ -669,7 +669,7 @@ impl Vault {
     pub fn delete_vault(&mut self, id: &str) -> Result<usize> {
         let v = self.data.vaults.iter().find(|v| v.id == id).cloned().ok_or_else(|| fail("That vault isn’t there any more."))?;
         if !deletable(&v) {
-            return Err(fail(format!("“{}” can’t be deleted: 1Password keeps it for every account.", v.title)));
+            return Err(fail(olo_kit::tr!("“{}” can’t be deleted: 1Password keeps it for every account.", v.title)));
         }
         let before = self.data.entries.len();
         self.data.entries.retain(|e| e.item.vault_id != id);

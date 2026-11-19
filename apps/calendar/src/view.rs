@@ -202,10 +202,9 @@ pub fn title(v: &Calendar) -> String {
     // (Find: how many were found.)
     if !v.finding.is_empty() {
         return match (v.found.len(), v.found_total) {
-            (0, _) => "Nothing Found".to_owned(),
-            (1, 1) => "1 Event Found".to_owned(),
-            (n, all) if all > n => format!("{} of {} Events Found", style::thousands(n), style::thousands(all)),
-            (n, _) => format!("{n} Events Found"),
+            (0, _) => olo_kit::words::tr("Nothing Found").to_owned(),
+            (n, all) if all > n => olo_kit::tr!("{} of {} Events Found", style::thousands(n), style::thousands(all)),
+            (n, _) => olo_kit::words::count(n as u64, "1 Event Found", "{n} Events Found"),
         };
     }
     let (first, after) = v.visible();

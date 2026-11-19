@@ -327,7 +327,7 @@ pub fn paint_mark(window: &mut Painter, icon: Bounds<Pixels>, name: &str, p: &Pa
     if let Ok(path) = tick.build() {
         window.paint_path(path, olo_kit::white());
     }
-    agent::record(window, agent::Node { role: "Image", name: Some(format!("Backed up: {name}").into()), bounds: disc, ..Default::default() });
+    agent::record(window, agent::Node { role: "Image", name: Some(olo_kit::tr!("Backed up: {}", name).into()), bounds: disc, ..Default::default() });
 }
 
 /// How far along a download is, as a bar across the foot of its icon

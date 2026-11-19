@@ -46,7 +46,7 @@ fn load(path: &std::path::Path) -> Result<Vec<Version>, String> {
     let at = path.display().to_string();
     match olo_protocol::diskbackup::call(&Request::Versions { path: at }) {
         Ok(Reply::Versions { versions }) => return Ok(versions),
-        Ok(r) => return Err(format!("the service answered {r:?}")),
+        Ok(r) => return Err(olo_kit::tr!("the service answered {}", format!("{:?}", r))),
         Err(e) if !e.contains("isn't running") => return Err(e),
         Err(_) => {}
     }
@@ -100,7 +100,7 @@ impl VersionsWindow {
         }
         let beside = self.path.with_file_name(crate::restore::beside(&name, v.mtime / 1_000_000_000));
         let message =
-            format!("“{name}” is there now. Replace it with the version modified {}, or keep both (the restored one named with its time)?", crate::restore::when_said(v.mtime / 1_000_000_000));
+            olo_kit::tr!("“{}” is there now. Replace it with the version modified {}, or keep both (the restored one named with its time)?", name, crate::restore::when_said(v.mtime / 1_000_000_000));
         let (to, here) = (cx.messenger(), self.path.clone());
         open_alert(cx, "Restore", "warning", &message, &["Cancel", "Keep Both", "Replace"], move |choice, _| {
             match choice {
@@ -143,9 +143,9 @@ impl VersionsWindow {
             });
             let shown = to.display().to_string().replace(&target::home().display().to_string(), "~");
             let out = match r {
-                Ok(()) => Ok(format!("Restored as {shown}.")),
+                Ok(()) => Ok(olo_kit::tr!("Restored as {}.", shown)),
                 Err(e) if e == olo_diskbackup::Error::Cancelled.to_string() => Err("Stopped.".into()),
-                Err(e) => Err(format!("Couldn’t restore: {e}.")),
+                Err(e) => Err(olo_kit::tr!("Couldn’t restore: {}.", olo_kit::words::of_said(&e.to_string()))),
             };
             proxy.send(Done::Restored(out));
         });
@@ -161,8 +161,8 @@ impl View for VersionsWindow {
                 self.versions = vs;
                 self.status = (
                     match self.versions.len() {
-                        0 => "The backups have no version of it.".into(),
-                        1 if self.versions[0].current => "The backups have only the version there now.".into(),
+                        0 => olo_kit::words::tr("The backups have no version of it.").into(),
+                        1 if self.versions[0].current => olo_kit::words::tr("The backups have only the version there now.").into(),
                         _ => String::new(),
                     },
                     false,
@@ -174,10 +174,10 @@ impl View for VersionsWindow {
                     state.cursor = Some(i);
                 }
             }
-            Done::Listed(Err(e)) => self.status = (format!("Its versions can’t be read: {e}."), true),
+            Done::Listed(Err(e)) => self.status = (olo_kit::tr!("Its versions can’t be read: {}.", olo_kit::words::of_said(&e.to_string())), true),
             Done::Progress(bytes) => {
                 if self.restoring.is_some() {
-                    self.status = (format!("Restoring: {} so far…", crate::app::size(bytes)), false);
+                    self.status = (olo_kit::tr!("Restoring: {} so far…", crate::app::size(bytes)), false);
                 }
             }
             Done::Reload => return self.reload(cx),
@@ -205,7 +205,7 @@ impl View for VersionsWindow {
             move |w: &VersionsWindow, cell, g| {
                 let Some(v) = w.versions.get(cell.row) else { return };
                 match cell.column {
-                    0 => cell.text(g, if v.current { format!("{} (there now)", when(v.mtime / 1_000_000_000)) } else { when(v.mtime / 1_000_000_000) }),
+                    0 => cell.text(g, if v.current { olo_kit::tr!("{} (there now)", when(v.mtime / 1_000_000_000)) } else { when(v.mtime / 1_000_000_000) }),
                     1 => cell.text(g, crate::restore::size(v.size)),
                     _ => cell.text(g, if v.first == v.time { when(v.time) } else { format!("{} to {}", when(v.first), when(v.time)) }),
                 }
@@ -229,5 +229,5 @@ impl View for VersionsWindow {
 /// The window's options (titled with the file's name).
 pub fn options(path: &std::path::Path) -> olo_kit::WindowOptions {
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    olo_kit::WindowOptions::new(format!("Versions of {name}"), 600.0, 340.0).min_size(480.0, 240.0).keep_size("versions")
+    olo_kit::WindowOptions::new(olo_kit::tr!("Versions of {}", name), 600.0, 340.0).min_size(480.0, 240.0).keep_size("versions")
 }

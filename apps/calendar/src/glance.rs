@@ -104,9 +104,9 @@ pub fn timeline(r: &Request, with: &With, now: &Zoned) -> Timeline {
         let glance = Glance {
             icon: Some("calendar".into()),
             plain: true,
-            title: "No calendars yet".into(),
-            detail: "Add an account in Preferences".into(),
-            tip: "Calendar: no account set up. Add one in Preferences ▸ Integrations.".into(),
+            title: olo_kit::words::tr("No calendars yet").into(),
+            detail: olo_kit::words::tr("Add an account in Preferences").into(),
+            tip: olo_kit::words::tr("Calendar: no account set up. Add one in Preferences ▸ Integrations.").into(),
             ..Glance::default()
         };
         return Timeline { entries: vec![Entry { from: made - made % 60, glance }], made };
@@ -156,16 +156,16 @@ fn next(coming: &[Shown], t: DateTime, days: i32, with: &With) -> Glance {
     let mut timed = coming.iter().filter(|s| !s.all_day && s.end > t);
     let Some(s) = timed.next() else {
         let within = match days {
-            1 => "today or tomorrow".to_owned(),
-            7 => "in the next week".to_owned(),
-            n => format!("in the next {n} days"),
+            1 => olo_kit::words::tr("today or tomorrow").to_owned(),
+            7 => olo_kit::words::tr("in the next week").to_owned(),
+            n => olo_kit::tr!("in the next {} days", n),
         };
         return Glance {
             icon: Some("calendar".into()),
             plain: true,
-            title: "Nothing coming up".into(),
+            title: olo_kit::words::tr("Nothing coming up").into(),
             detail: within.clone(),
-            tip: format!("Calendar: nothing coming up {within}."),
+            tip: olo_kit::tr!("Calendar: nothing coming up {}.", within),
             ..Glance::default()
         };
     };
@@ -208,7 +208,7 @@ fn the_day(coming: &[Shown], t: DateTime, count: usize, with: &With) -> Glance {
             let on_today = s.start < today_end;
             let weekday = &words::weekday_name(s.start.date())[..3];
             let (label, full) = match (on_today, s.all_day, s.start <= t) {
-                (true, true, _) => ("all day".to_owned(), "all day".to_owned()),
+                (true, true, _) => (olo_kit::words::tr("all day").to_owned(), olo_kit::words::tr("all day").to_owned()),
                 (true, false, true) => ("Now".to_owned(), format!("now, until {}", words::time(s.end.time(), with.h24))),
                 (true, false, false) => (words::time(s.start.time(), with.h24), words::time(s.start.time(), with.h24)),
                 (false, true, _) => (weekday.to_owned(), weekday.to_owned()),
@@ -218,9 +218,8 @@ fn the_day(coming: &[Shown], t: DateTime, count: usize, with: &With) -> Glance {
         })
         .unzip();
     let detail = match to_come {
-        0 => "Nothing more today".to_owned(),
-        1 => "1 to come".to_owned(),
-        n => format!("{n} to come"),
+        0 => olo_kit::words::tr("Nothing more today").to_owned(),
+        n => olo_kit::words::count(n as u64, "1 to come", "{n} to come"),
     };
     let tip = format!("Calendar: {}. {}{}", words::long_day(today), detail, if said.is_empty() { ".".to_owned() } else { format!(": {}.", said.join("; ")) });
     // (One line of ordinary words over the list: "Wed 18  3 to come".)

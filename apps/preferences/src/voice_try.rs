@@ -487,7 +487,11 @@ impl View for LivePane {
             }
             (Phase::Trying, _) => (olo_kit::tr!("Trying each setting on it: {} of {}…", done, rows), Some(done as f32 / rows.max(1) as f32)),
             (Phase::Tried, _) => match at {
-                Some(at) => (olo_kit::tr!("Playing the {} at {} s.", olo_kit::words::tr(if processed { "processed sound" } else { "original" }), format!("{:.1}", at as f32 / rate)), None),
+                // (Each said whole: "the original" is set apart in some languages.)
+                Some(at) => {
+                    let at = format!("{:.1}", at as f32 / rate);
+                    (if processed { olo_kit::tr!("Playing the processed sound at {} s.", at) } else { olo_kit::tr!("Playing the original at {} s.", at) }, None)
+                }
                 None => (olo_kit::words::tr("Choose a setting, then play the original or its sound: switching goes on from the same place.").into(), None),
             },
         };

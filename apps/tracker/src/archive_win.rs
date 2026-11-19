@@ -245,7 +245,7 @@ impl ArchiveWin {
             let path = self.path.clone();
             std::thread::spawn(move || {
                 if let Err(e) = crate::archives::keep_password(&path, &pw) {
-                    to_hub(ToHub::Said(format!("The password of “{}” couldn’t be kept: {e}", path.file_name().unwrap_or_default().to_string_lossy())));
+                    to_hub(ToHub::Said(olo_kit::tr!("The password of “{}” couldn’t be kept: {}", path.file_name().unwrap_or_default().to_string_lossy(), e)));
                 }
             });
         }
@@ -316,7 +316,7 @@ impl View for ArchiveWin {
                 self.password = Some(pw);
                 self.wants = None;
                 if self.entries.is_some() {
-                    self.note = Some(("Try again now.".into(), false));
+                    self.note = Some((olo_kit::words::tr("Try again now.").into(), false));
                 } else {
                     self.read(cx);
                 }
@@ -335,7 +335,7 @@ impl View for ArchiveWin {
                 match r {
                     Ok(made) => {
                         self.keep_worked();
-                        self.note = Some((format!("{} taken out.", if made.len() == 1 { "1 item".to_owned() } else { format!("{} items", made.len()) }), false));
+                        self.note = Some((olo_kit::words::count(made.len() as u64, "1 item taken out.", "{n} items taken out."), false));
                         to_hub(ToHub::Done("Extract".into(), undo::Change::Made(made)));
                         to_hub(ToHub::ReloadAll);
                     }
@@ -349,7 +349,7 @@ impl View for ArchiveWin {
             Msg::Keep(on) => self.keep = on,
             Msg::UseSaved => {
                 let path = self.path.clone();
-                self.note = Some(("Asking Passwords…".into(), false));
+                self.note = Some((olo_kit::words::tr("Asking Passwords…").into(), false));
                 cx.work(move || crate::archives::saved_password(&path), Msg::Saved);
             }
             Msg::Saved(r) => match r {
@@ -358,12 +358,12 @@ impl View for ArchiveWin {
                     self.wants = None;
                     self.note = None;
                     if self.entries.is_some() {
-                        self.note = Some(("Passwords’ password is used now: try again.".into(), false));
+                        self.note = Some((olo_kit::words::tr("Passwords’ password is used now: try again.").into(), false));
                     } else {
                         self.read(cx);
                     }
                 }
-                Ok(None) => self.note = Some((format!("Passwords keeps no password for it (an item “{}”).", crate::archives::secret_title(&self.path)), true)),
+                Ok(None) => self.note = Some((olo_kit::tr!("Passwords keeps no password for it (an item “{}”).", crate::archives::secret_title(&self.path)), true)),
                 Err(e) => self.note = Some((e, true)),
             },
             Msg::Progress(f, item) => {
@@ -437,7 +437,10 @@ impl View for ArchiveWin {
         let mut col = div().size_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).child(head);
         if let Some(wrong) = self.wants {
             col = col
-                .child(StringView::new(if wrong { "That password isn’t right. Try again:".to_owned() } else { format!("“{}” is protected by a password.", self.name) }).wrap(true))
+                .child(
+                    StringView::new(if wrong { olo_kit::words::tr("That password isn’t right. Try again:").to_owned() } else { olo_kit::tr!("“{}” is protected by a password.", self.name) })
+                        .wrap(true),
+                )
                 .child(
                     div()
                         .flex()
@@ -469,12 +472,12 @@ impl View for ArchiveWin {
                 let s = StringView::new(t.clone()).cut(true);
                 (if *failed { s.color(olo_kit::style::c(p.failure)) } else { s.dim(true) }).into_element()
             }
-            (None, None) => {
-                StringView::new(self.entries.as_ref().map(|e| format!("{} items in it, {} unpacked", e.len(), olo_kit_base::files::format_size(e.iter().map(|x| x.size).sum()))).unwrap_or_default())
-                    .dim(true)
-                    .cut(true)
-                    .into_element()
-            }
+            (None, None) => StringView::new(
+                self.entries.as_ref().map(|e| olo_kit::tr!("{} items in it, {} unpacked", e.len(), olo_kit_base::files::format_size(e.iter().map(|x| x.size).sum()))).unwrap_or_default(),
+            )
+            .dim(true)
+            .cut(true)
+            .into_element(),
         };
         let any = !self.list.state().selected.is_empty();
         col = col.child(

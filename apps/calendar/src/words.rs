@@ -62,7 +62,7 @@ pub fn when(start: DateTime, end: DateTime, all_day: bool, h24: bool) -> String 
     let short = |d: Date| format!("{} {} {}", &weekday_name(d)[..3], &month_name(d)[..3], d.day());
     if all_day {
         let last = end.date().yesterday().unwrap_or(end.date()).max(start.date());
-        return if last == start.date() { format!("{}, all day", short(last)) } else { format!("{} – {}", short(start.date()), short(last)) };
+        return if last == start.date() { olo_kit::tr!("{}, all day", short(last)) } else { format!("{} – {}", short(start.date()), short(last)) };
     }
     if start.date() == end.date() || (end.time() == Time::midnight() && end.date().yesterday().ok() == Some(start.date())) {
         format!("{} – {}", time(start.time(), h24), time(end.time(), h24))

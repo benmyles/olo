@@ -37,7 +37,7 @@ use olo_kit::{
 use olo_protocol::diskbackup::{Check, Doing, Priority, Progress, Request, Settings, SnapshotInfo, Stage, State, Target};
 
 use crate::{
-    app::{Changed, Msg, clock, count, keep_in_passwords, plural, put_back, size, speed_label, step_name, tilde},
+    app::{Changed, Msg, clock, count, keep_in_passwords, put_back, size, speed_label, step_name, tilde},
     target::{self, Where},
 };
 
@@ -52,7 +52,9 @@ fn busy_with(st: &State) -> bool {
 }
 
 /// What a backup takes "every": minutes, and what it's called.
-const EVERY: &[(u32, &str)] = &[(15, "15 minutes"), (30, "30 minutes"), (60, "hour"), (120, "2 hours"), (360, "6 hours"), (720, "12 hours"), (1440, "day")];
+// (Whole phrases after "Automatically,": "every hour" is said its own
+// way in each language, "jede Stunde", "toutes les heures".)
+const EVERY: &[(u32, &str)] = &[(15, "every 15 minutes"), (30, "every 30 minutes"), (60, "every hour"), (120, "every 2 hours"), (360, "every 6 hours"), (720, "every 12 hours"), (1440, "every day")];
 /// Speed limits offered, KB/s (0: none).
 const SPEEDS: &[u64] = &[0, 256, 512, 1000, 2000, 5000, 10_000, 25_000];
 /// How long each kind of backup is kept: the choices.
@@ -155,7 +157,7 @@ impl MainWindow {
                 // (Not read yet: the service says when it has, `State::read`.)
                 Ok(olo_protocol::diskbackup::Reply::Snapshots { read: false, .. }) => None,
                 Ok(olo_protocol::diskbackup::Reply::Snapshots { snapshots, .. }) => Some(Ok(snapshots)),
-                Ok(other) => Some(Err(format!("the service answered {other:?}"))),
+                Ok(other) => Some(Err(olo_kit::tr!("the service answered {}", format!("{:?}", other)))),
                 Err(e) => Some(Err(e)),
             },
             WinMsg::Snapshots,
@@ -186,11 +188,12 @@ impl MainWindow {
         }
         let sent = self.state.unfinished.as_ref().map_or(0, |u| u.sent);
         let message = match (ids.len(), unfinished) {
-            (0, true) => format!("Delete the unfinished backup? What it sent ({}) is freed, and the next backup reads and sends again what it had done. It can’t be undone.", size(sent)),
-            (1, false) => "Delete this backup? The space only it took is freed; files other backups hold too stay in those. It can’t be undone.".to_owned(),
-            (_, false) => format!("Delete these {n} backups? The space only they took is freed; files other backups hold too stay in those. It can’t be undone."),
-            (_, true) => format!(
-                "Delete these {n} backups, the unfinished one too? The space only they took is freed (what the unfinished one sent, {}); files other backups hold too stay in those. It can’t be undone.",
+            (0, true) => olo_kit::tr!("Delete the unfinished backup? What it sent ({}) is freed, and the next backup reads and sends again what it had done. It can’t be undone.", size(sent)),
+            (1, false) => olo_kit::words::tr("Delete this backup? The space only it took is freed; files other backups hold too stay in those. It can’t be undone.").to_owned(),
+            (_, false) => olo_kit::tr!("Delete these {} backups? The space only they took is freed; files other backups hold too stay in those. It can’t be undone.", n),
+            (_, true) => olo_kit::tr!(
+                "Delete these {} backups, the unfinished one too? The space only they took is freed (what the unfinished one sent, {}); files other backups hold too stay in those. It can’t be undone.",
+                n,
                 size(sent)
             ),
         };
@@ -218,10 +221,12 @@ impl MainWindow {
         if !full {
             return self.ask(Request::Validate { snapshots: ids, full }, "", cx);
         }
-        let what = if ids.len() == 1 { "this backup needs".to_owned() } else { format!("these {} backups need", ids.len()) };
+        let what = olo_kit::words::count(ids.len() as u64, "this backup needs", "these {n} backups need");
         let most = self.state.size.map(|b| format!(" (up to {})", size(b))).unwrap_or_default();
-        let message = format!(
-            "Validate fully? Every byte {what}{most} is read back from {} and checked, as a restore would: it can take a while, at the download limit. The usual Validate compares checksums and reads only a sample back.",
+        let message = olo_kit::tr!(
+            "Validate fully? Every byte {}{} is read back from {} and checked, as a restore would: it can take a while, at the download limit. The usual Validate compares checksums and reads only a sample back.",
+            what,
+            most,
             self.settings.target.describe()
         );
         self.confirm("Validate Fully", "info", &message, "Validate Fully", Request::Validate { snapshots: ids, full: true }, cx);
@@ -249,8 +254,9 @@ impl MainWindow {
     /// client kept, to connect again); the backups there stay.
     fn disconnect(&mut self, cx: &mut Cx<Self>) {
         let Target::GoogleDrive { account, .. } = &self.settings.target else { return };
-        let message = format!(
-            "Disconnect Google Drive ({account})? DiskBackup stops backing up there, and forgets its sign-in on this computer. The backups in your Drive stay as they are: connect again to go on from them, or to restore from them."
+        let message = olo_kit::tr!(
+            "Disconnect Google Drive ({})? DiskBackup stops backing up there, and forgets its sign-in on this computer. The backups in your Drive stay as they are: connect again to go on from them, or to restore from them.",
+            account
         );
         let to = cx.messenger();
         open_alert(cx, "Disconnect Google Drive", "warning", &message, &["Cancel", "Disconnect"], move |choice, _| {
@@ -262,7 +268,7 @@ impl MainWindow {
 
     fn disconnect_now(&mut self, cx: &mut Cx<Self>) {
         self.busy = true;
-        self.note = Some(("Disconnecting from Google Drive…".into(), false));
+        self.note = Some((olo_kit::words::tr("Disconnecting from Google Drive…").into(), false));
         cx.work(|| crate::disconnect_drive().map(|said| format!("{said}.")), WinMsg::Note);
     }
 
@@ -270,7 +276,8 @@ impl MainWindow {
     fn erase_all(&mut self, cx: &mut Cx<Self>) {
         let at = self.settings.target.describe();
         let then = if self.settings.automatic { "A fresh backup starts right after, copying everything again." } else { "The next backup (when you click Back Up Now) copies everything again." };
-        let message = format!("Erase every backup in {at}? Every version of every file kept there goes (another computer’s backups there too), and the space is freed. {then} It can’t be undone.");
+        let message =
+            olo_kit::tr!("Erase every backup in {}? Every version of every file kept there goes (another computer’s backups there too), and the space is freed. {} It can’t be undone.", at, then);
         self.confirm("Erase All Backups", "warning", &message, "Erase All Backups", Request::EraseAll, cx);
     }
 
@@ -293,7 +300,7 @@ impl MainWindow {
 
     fn save(&mut self, s: Settings, cx: &mut Cx<Self>) {
         if let Err(e) = s.save() {
-            self.note = Some((format!("Couldn’t save the settings: {e}"), true));
+            self.note = Some((olo_kit::tr!("Couldn’t save the settings: {}", olo_kit::words::of_said(&e.to_string())), true));
         }
         self.settings = s;
         self.settings_changed(cx);
@@ -348,7 +355,7 @@ impl MainWindow {
                 if let Some(at) = at
                     && let Err(e) = olo_xdg::open::open(&at)
                 {
-                    self.note = Some((format!("It didn’t open: {e}."), true));
+                    self.note = Some((olo_kit::tr!("It didn’t open: {}.", olo_kit::words::of_said(&e.to_string())), true));
                 }
             }
             "add-folder" => {
@@ -384,7 +391,7 @@ impl MainWindow {
     /// the key kept in the keyring and in Passwords. On a worker.
     fn set_up_folder(&mut self, dir: PathBuf, cx: &mut Cx<Self>) {
         self.busy = true;
-        self.note = Some((format!("Setting up backups to {}…", dir.display()), false));
+        self.note = Some((olo_kit::tr!("Setting up backups to {}…", dir.display()), false));
         cx.work(
             move || {
                 crate::set_up_folder(&dir.display().to_string()).map(|()| {
@@ -393,9 +400,9 @@ impl MainWindow {
                         Ok(()) => {
                             s.key_in_passwords = true;
                             let _ = s.save();
-                            format!("Backing up to {}. Its key is kept in Passwords.", dir.display())
+                            olo_kit::tr!("Backing up to {}. Its key is kept in Passwords.", dir.display())
                         }
-                        Err(e) => format!("Backing up to {}. Keep its key in Passwords when you can ({e}).", dir.display()),
+                        Err(e) => olo_kit::tr!("Backing up to {}. Keep its key in Passwords when you can ({}).", dir.display(), e),
                     }
                 })
             },
@@ -405,14 +412,14 @@ impl MainWindow {
 
     fn keep_key(&mut self, cx: &mut Cx<Self>) {
         self.busy = true;
-        self.note = Some(("Keeping the key in Passwords (unlock it if it asks)…".into(), false));
+        self.note = Some((olo_kit::words::tr("Keeping the key in Passwords (unlock it if it asks)…").into(), false));
         cx.work(
             || {
                 keep_in_passwords().map(|()| {
                     let mut s = Settings::load();
                     s.key_in_passwords = true;
                     let _ = s.save();
-                    "The key is kept in Passwords as “DiskBackup Key”.".to_owned()
+                    olo_kit::words::tr("The key is kept in Passwords as “DiskBackup Key”.").to_owned()
                 })
             },
             WinMsg::Note,
@@ -438,18 +445,20 @@ fn ago_at(t: i64, now: i64) -> String {
     use chrono::{Local, TimeZone};
     let d = (now - t).max(0);
     match d {
-        0..60 => "just now".into(),
-        60..3600 => format!("{} ago", minutes(d / 60)),
-        3600..43_200 => format!("{} ago", if d / 3600 == 1 { "an hour".into() } else { format!("{} hours", d / 3600) }),
+        0..60 => olo_kit::words::tr("just now").into(),
+        60..3600 => olo_kit::words::count((d / 60) as u64, "a minute ago", "{n} minutes ago"),
+        3600..43_200 => olo_kit::words::count((d / 3600) as u64, "an hour ago", "{n} hours ago"),
         _ => {
             let Some(at) = Local.timestamp_opt(t, 0).single() else { return String::new() };
             let Some(then) = Local.timestamp_opt(now, 0).single() else { return String::new() };
             let days = (then.date_naive() - at.date_naive()).num_days();
             match days {
-                0 => format!("today at {}", at.format("%H:%M")),
-                1 => format!("yesterday at {}", at.format("%H:%M")),
-                2..7 => format!("on {} at {}", at.format("%a"), at.format("%H:%M")),
-                _ => format!("on {}", at.format("%-d %b %Y")),
+                0 => olo_kit::tr!("today at {}", at.format("%H:%M")),
+                1 => olo_kit::tr!("yesterday at {}", at.format("%H:%M")),
+                // (The day's and month's names are English until Olo's
+                // formats follow the language.)
+                2..7 => olo_kit::tr!("on {} at {}", at.format("%a"), at.format("%H:%M")),
+                _ => olo_kit::tr!("on {}", at.format("%-d %b %Y")),
             }
         }
     }
@@ -460,30 +469,35 @@ pub fn until(t: i64) -> String {
     use chrono::{Local, TimeZone};
     let d = t - now();
     match d {
-        ..=60 => "in a minute".into(),
-        61..3600 => format!("in {}", minutes((d + 59) / 60)),
+        ..=60 => olo_kit::words::tr("in a minute").into(),
+        61..3600 => olo_kit::words::count(((d + 59) / 60) as u64, "in a minute", "in {n} minutes"),
         _ => {
             let Some(at) = Local.timestamp_opt(t, 0).single() else { return String::new() };
-            if at.date_naive() == Local::now().date_naive() { format!("at {}", at.format("%H:%M")) } else { format!("tomorrow at {}", at.format("%H:%M")) }
+            if at.date_naive() == Local::now().date_naive() { olo_kit::tr!("at {}", at.format("%H:%M")) } else { olo_kit::tr!("tomorrow at {}", at.format("%H:%M")) }
         }
     }
 }
 
+/// A count said in the person's language, its number grouped as Olo
+/// groups it ("312,004 files").
+fn counted(n: u64, one: &'static str, other: &'static str) -> String {
+    olo_kit::words::count(n, one, other).replacen(&n.to_string(), &count(n), 1)
+}
+
 fn minutes(n: i64) -> String {
-    if n == 1 { "a minute".into() } else { format!("{n} minutes") }
+    olo_kit::words::count(n.max(0) as u64, "a minute", "{n} minutes")
 }
 
 /// "12 seconds", "4 minutes", "1 hour 5 minutes".
 pub fn took(secs: f64) -> String {
     let s = secs.round() as i64;
     match s {
-        ..1 => "under a second".into(),
-        1 => "1 second".into(),
-        2..60 => format!("{s} seconds"),
+        ..1 => olo_kit::words::tr("under a second").into(),
+        1..60 => olo_kit::words::count(s as u64, "1 second", "{n} seconds"),
         60..3600 => minutes((s + 30) / 60),
         _ => {
             let (h, m) = (s / 3600, (s % 3600 + 30) / 60);
-            let h = if h == 1 { "1 hour".to_owned() } else { format!("{h} hours") };
+            let h = olo_kit::words::count(h as u64, "1 hour", "{n} hours");
             if m == 0 { h } else { format!("{h} {}", minutes(m)) }
         }
     }
@@ -494,21 +508,24 @@ pub fn took(secs: f64) -> String {
 /// one a month for 24 months."
 pub fn keep_words(k: &olo_protocol::diskbackup::Keep) -> String {
     let mut parts = Vec::new();
-    let mut add = |n: u32, one: &str, unit: &str| {
+    // (Each said whole, counted: "one a day for 14 days"; every literal
+    // in its call, where the word gatherer finds it.)
+    let mut add = |n: u32, ever: &str, counted: String| {
         if n == u32::MAX {
-            parts.push(format!("one {one} for ever"));
+            parts.push(ever.to_owned());
         } else if n > 0 {
-            parts.push(format!("one {one} for {n} {unit}{}", if n == 1 { "" } else { "s" }));
+            parts.push(counted);
         }
     };
-    add(k.hourly, "an hour", "hour");
-    add(k.daily, "a day", "day");
-    add(k.weekly, "a week", "week");
-    add(k.monthly, "a month", "month");
+    use olo_kit::words::count;
+    add(k.hourly, olo_kit::words::tr("one an hour for ever"), count(u64::from(k.hourly), "one an hour for 1 hour", "one an hour for {n} hours"));
+    add(k.daily, olo_kit::words::tr("one a day for ever"), count(u64::from(k.daily), "one a day for 1 day", "one a day for {n} days"));
+    add(k.weekly, olo_kit::words::tr("one a week for ever"), count(u64::from(k.weekly), "one a week for 1 week", "one a week for {n} weeks"));
+    add(k.monthly, olo_kit::words::tr("one a month for ever"), count(u64::from(k.monthly), "one a month for 1 month", "one a month for {n} months"));
     match parts.len() {
-        0 => "Every backup from the last hour; older ones go.".into(),
-        1 => format!("Every backup from the last hour, then {}.", parts[0]),
-        n => format!("Every backup from the last hour, then {} and {}.", parts[..n - 1].join(", "), parts[n - 1]),
+        0 => olo_kit::words::tr("Every backup from the last hour; older ones go.").into(),
+        1 => olo_kit::tr!("Every backup from the last hour, then {}.", parts[0]),
+        n => olo_kit::tr!("Every backup from the last hour, then {} and {}.", parts[..n - 1].join(", "), parts[n - 1]),
     }
 }
 
@@ -520,15 +537,15 @@ fn capital(t: &str) -> String {
 
 /// Folder `p` (as the settings keep it) as the window says it.
 fn folder_name(p: &str) -> String {
-    if p == "~" { "Your home folder".into() } else { p.to_owned() }
+    if p == "~" { olo_kit::words::tr("Your home folder").into() } else { p.to_owned() }
 }
 
 /// What a backup that didn't finish got through, in a line.
 pub fn unfinished_words(u: &olo_protocol::diskbackup::Unfinished) -> String {
     if u.files == 0 {
-        format!("Unfinished: {} sent before it stopped; the next backup goes on from there.", size(u.sent))
+        olo_kit::tr!("Unfinished: {} sent before it stopped; the next backup goes on from there.", size(u.sent))
     } else {
-        format!("Unfinished: {} ({}) done and {} sent; the next backup goes on from there.", plural(u.files, "file"), size(u.bytes), size(u.sent))
+        olo_kit::tr!("Unfinished: {} ({}) done and {} sent; the next backup goes on from there.", counted(u.files, "1 file", "{n} files"), size(u.bytes), size(u.sent))
     }
 }
 
@@ -545,9 +562,9 @@ pub fn check_cell(c: Option<&Check>) -> &'static str {
 
 /// A backup's check, said in a line.
 pub fn check_words(c: Option<&Check>) -> String {
-    let Some(c) = c else { return "Not checked yet: Validate reads it back and checks it’s whole.".into() };
+    let Some(c) = c else { return olo_kit::words::tr("Not checked yet: Validate reads it back and checks it’s whole.").into() };
     if let Some(e) = &c.error {
-        return format!("Couldn’t be checked {}: {e}.", ago(c.time));
+        return olo_kit::tr!("Couldn’t be checked {}: {}.", ago(c.time), olo_kit::words::of_said(e));
     }
     if !c.problems.is_empty() {
         let mut t = format!("Damaged (found {}): {}.", ago(c.time), c.problems.join("; "));
@@ -555,57 +572,59 @@ pub fn check_words(c: Option<&Check>) -> String {
             let more = c.files_affected.saturating_sub(c.files.len() as u64);
             let home = target::home().display().to_string();
             let named: Vec<String> = c.files.iter().map(|f| f.strip_prefix(&home).map_or(f.clone(), |r| format!("~{r}"))).collect();
-            t.push_str(&format!(" Can’t come back as it was: {}{}.", named.join(", "), if more > 0 { format!(" and {more} more") } else { String::new() }));
+            let named = named.join(", ");
+            t.push_str(&format!(" {}", if more > 0 { olo_kit::tr!("Can’t come back as it was: {} and {} more.", named, more) } else { olo_kit::tr!("Can’t come back as it was: {}.", named) }));
         }
-        t.push_str(" The next backup sends again what it can.");
+        t.push_str(&format!(" {}", olo_kit::words::tr("The next backup sends again what it can.")));
         return t;
     }
     if c.full {
-        return format!("Validated fully {}: all it needs ({}) read back, and whole.", ago(c.time), size(c.bytes_read));
+        return olo_kit::tr!("Validated fully {}: all it needs ({}) read back, and whole.", ago(c.time), size(c.bytes_read));
     }
     let mut how = Vec::new();
     if c.by_checksum > 0 {
-        how.push(format!("{} as sent, by {} checksums", plural(c.by_checksum, "pack"), if c.by_checksum == 1 { "its" } else { "their" }));
+        how.push(olo_kit::words::count(c.by_checksum as u64, "1 pack as sent, by its checksums", "{n} packs as sent, by their checksums"));
     }
     if c.sampled > 0 {
-        how.push(format!("{} read back", plural(c.sampled, "sample")));
+        how.push(olo_kit::tr!("{} read back", counted(c.sampled, "1 sample", "{n} samples")));
     }
     let how = if how.is_empty() { String::new() } else { format!(" ({})", how.join("; ")) };
-    format!("Validated {}: everything it needs is there{how}. Validate Fully reads it all back.", ago(c.time))
+    olo_kit::tr!("Validated {}: everything it needs is there{}. Validate Fully reads it all back.", ago(c.time), how)
 }
 
 // ---- the header: whether your files are safe -----------------------------
 
 /// The headline, what's under it, and whether it's bad news.
 pub fn headline(st: &State, s: &Settings) -> (String, String, bool) {
-    let to = format!("To {}", s.target.describe());
+    let to = olo_kit::tr!("To {}", s.target.describe());
     if st.pid == 0 {
-        return ("DiskBackup isn’t running".into(), "Its service starts with your session: log out and in again, or ask Olo Doctor to start it.".into(), true);
+        return (olo_kit::words::tr("DiskBackup isn’t running").into(), olo_kit::words::tr("Its service starts with your session: log out and in again, or ask Olo Doctor to start it.").into(), true);
     }
     let progress = st.progress.clone().unwrap_or_default();
     // (Under way, with the network gone: it waits, and goes on.)
-    let what = match &st.doing {
-        Doing::BackingUp => Some("The backup"),
-        Doing::Validating => Some("Validating"),
-        Doing::Pruning | Doing::Deleting { .. } => Some("Tidying"),
-        Doing::Erasing => Some("Erasing"),
+    // (Each said whole: what goes on is the sentence's subject.)
+    let goes_on = match &st.doing {
+        Doing::BackingUp => Some(olo_kit::words::tr("The backup goes on by itself once it’s back, from where it got to.")),
+        Doing::Validating => Some(olo_kit::words::tr("Validating goes on by itself once it’s back, from where it got to.")),
+        Doing::Pruning | Doing::Deleting { .. } => Some(olo_kit::words::tr("Tidying goes on by itself once it’s back, from where it got to.")),
+        Doing::Erasing => Some(olo_kit::words::tr("Erasing goes on by itself once it’s back, from where it got to.")),
         _ => None,
     };
-    if let Some(what) = what.filter(|_| progress.offline) {
+    if let Some(goes_on) = goes_on.filter(|_| progress.offline) {
         // (Where it goes is in Destination: the line has room for this.)
-        return ("Waiting for the network".into(), format!("{what} goes on by itself once it’s back, from where it got to."), false);
+        return (olo_kit::words::tr("Waiting for the network").into(), goes_on.into(), false);
     }
     match &st.doing {
         Doing::BackingUp => {
             let title = match progress.stage {
                 // (Titles fit beside the buttons: the lint draws each.)
-                Stage::Counting => "Counting what to back up",
-                Stage::Reading if progress.resuming => "Resuming the backup",
+                Stage::Counting => olo_kit::words::tr("Counting what to back up"),
+                Stage::Reading if progress.resuming => olo_kit::words::tr("Resuming the backup"),
                 // ("Backing up your home folder": what, said.)
                 Stage::Reading => return reading_headline(&progress, s),
-                Stage::Saving => "Finishing the backup",
-                Stage::Checking => return ("Checking the backup".into(), format!("Everything it needs looked for, in {}.", s.target.describe()), false),
-                Stage::Stopping => return ("Stopping the backup".into(), "Finishing what’s being sent, then keeping what’s done.".into(), false),
+                Stage::Saving => olo_kit::words::tr("Finishing the backup"),
+                Stage::Checking => return (olo_kit::words::tr("Checking the backup").into(), olo_kit::tr!("Everything it needs looked for, in {}.", s.target.describe()), false),
+                Stage::Stopping => return (olo_kit::words::tr("Stopping the backup").into(), olo_kit::words::tr("Finishing what’s being sent, then keeping what’s done.").into(), false),
             };
             // (Reading: the file it's at, under the title; where it goes
             // is in Destination.)
@@ -615,42 +634,52 @@ pub fn headline(st: &State, s: &Settings) -> (String, String, bool) {
                     Some(rest) if rest.is_empty() || rest.starts_with('/') => format!("~{rest}"),
                     _ => progress.current.clone(),
                 };
-                return (title.into(), format!("Now: {current}"), false);
+                return (title.into(), olo_kit::tr!("Now: {}", current), false);
             }
             return (title.into(), format!("{to}."), false);
         }
-        Doing::Pruning => return ("Tidying old backups".into(), format!("Freeing the space only backups past keeping took, in {}.", s.target.describe()), false),
+        Doing::Pruning => return (olo_kit::words::tr("Tidying old backups").into(), olo_kit::tr!("Freeing the space only backups past keeping took, in {}.", s.target.describe()), false),
         Doing::Deleting { what } => {
             let one = what == "the unfinished backup" || what == "a backup";
+            // (`what` is the service's, in English: compared, not shown.)
             let title = if what == "the unfinished backup" {
-                "Deleting the unfinished backup"
+                olo_kit::words::tr("Deleting the unfinished backup")
             } else if one {
-                "Deleting a backup"
+                olo_kit::words::tr("Deleting a backup")
             } else {
-                "Deleting backups"
+                olo_kit::words::tr("Deleting backups")
             };
-            return (title.into(), format!("Then the space only {} took is freed, in {}.", if one { "it" } else { "they" }, s.target.describe()), false);
+            let freed = if one {
+                olo_kit::tr!("Then the space only it took is freed, in {}.", s.target.describe())
+            } else {
+                olo_kit::tr!("Then the space only they took is freed, in {}.", s.target.describe())
+            };
+            return (title.into(), freed, false);
         }
-        Doing::Restoring => return ("Restoring".into(), to, false),
-        Doing::Erasing => return ("Erasing every backup".into(), format!("{to}. The next backup starts afresh."), false),
-        Doing::Validating => return ("Validating backups".into(), format!("Every byte read back and checked, from {}.", s.target.describe()), false),
+        Doing::Restoring => return (olo_kit::words::tr("Restoring").into(), to, false),
+        Doing::Erasing => return (olo_kit::words::tr("Erasing every backup").into(), olo_kit::tr!("{}. The next backup starts afresh.", to), false),
+        Doing::Validating => return (olo_kit::words::tr("Validating backups").into(), olo_kit::tr!("Every byte read back and checked, from {}.", s.target.describe()), false),
         // Not backing up, and why, in its own words (Ben, 2026-11-18: "make
         // sure the backup app itself also shows the status as to whether
         // it is running or paused or whatnot"), with when the last one
         // was: the backups kept are still listed and restorable.
         Doing::Waiting { why } => {
-            let last = st.last_ok.map_or("No backup has finished yet".to_owned(), |t| format!("The last backup was {}", ago(t)));
+            let last = st.last_ok.map_or(olo_kit::words::tr("No backup has finished yet").to_owned(), |t| olo_kit::tr!("The last backup was {}", ago(t)));
             let (title, detail) = match why.as_str() {
-                "turned off" => ("Paused".to_owned(), format!("Nothing is backed up or sent until you resume. {last}. {to}.")),
-                w if w.starts_with("on battery") => ("Waiting for power".to_owned(), format!("It backs up once the computer is plugged in. {last}. {to}.")),
-                w if w.starts_with("no wired network") => ("Waiting for Ethernet".to_owned(), format!("It backs up once the computer is connected by a cable. {last}. {to}.")),
-                w if w.starts_with("no network") => ("Waiting for the network".to_owned(), format!("It goes on once there’s one. {last}. {to}.")),
+                "turned off" => (olo_kit::words::tr("Paused").to_owned(), olo_kit::tr!("Nothing is backed up or sent until you resume. {}. {}.", last, to)),
+                w if w.starts_with("on battery") => (olo_kit::words::tr("Waiting for power").to_owned(), olo_kit::tr!("It backs up once the computer is plugged in. {}. {}.", last, to)),
+                w if w.starts_with("no wired network") => {
+                    (olo_kit::words::tr("Waiting for Ethernet").to_owned(), olo_kit::tr!("It backs up once the computer is connected by a cable. {}. {}.", last, to))
+                }
+                w if w.starts_with("no network") => (olo_kit::words::tr("Waiting for the network").to_owned(), olo_kit::tr!("It goes on once there’s one. {}. {}.", last, to)),
+                // (The service's reason, said in English: in the person's
+                // language here.)
                 w => {
-                    let mut w = w.to_owned();
-                    if let Some(c) = w.get(..1) {
-                        w.replace_range(..1, &c.to_uppercase());
+                    let mut w = olo_kit::words::of_said(w);
+                    if let Some(c) = w.chars().next() {
+                        w.replace_range(..c.len_utf8(), &c.to_uppercase().to_string());
                     }
-                    ("Waiting".to_owned(), format!("{w}. {to}."))
+                    (olo_kit::words::tr("Waiting").to_owned(), format!("{w}. {to}."))
                 }
             };
             return (title, detail, false);
@@ -658,39 +687,48 @@ pub fn headline(st: &State, s: &Settings) -> (String, String, bool) {
         Doing::Idle => {}
     }
     let next = match st.next {
-        Some(n) if s.automatic => format!("Next {}.", until(n)),
-        _ => "Next when you click Back Up Now.".into(),
+        Some(n) if s.automatic => olo_kit::tr!("Next {}.", until(n)),
+        _ => olo_kit::words::tr("Next when you click Back Up Now.").into(),
     };
     match (&st.last, st.last_ok) {
-        (Some(l), _) if l.error.is_none() => (format!("Backed up {}", ago(l.time)), format!("{to}. {next}"), now() - l.time > 3 * 24 * 3600),
+        (Some(l), _) if l.error.is_none() => (olo_kit::tr!("Backed up {}", ago(l.time)), format!("{to}. {next}"), now() - l.time > 3 * 24 * 3600),
         // (Stopped: the person's doing, not trouble, unless nothing whole
         // is recent.)
         (Some(l), ok) if l.stopped() => {
-            let whole = ok.map_or("No backup has finished yet".to_owned(), |t| format!("The last whole one was {}", ago(t)));
-            ("Backup stopped".into(), format!("You stopped it {}. {whole}. {next}", ago(l.time)), ok.is_some_and(|t| now() - t > 3 * 24 * 3600))
+            let whole = ok.map_or(olo_kit::words::tr("No backup has finished yet").to_owned(), |t| olo_kit::tr!("The last whole one was {}", ago(t)));
+            (olo_kit::words::tr("Backup stopped").into(), olo_kit::tr!("You stopped it {}. {}. {}", ago(l.time), whole, next), ok.is_some_and(|t| now() - t > 3 * 24 * 3600))
         }
         (Some(l), ok) => {
-            let whole = ok.map_or("No backup has finished yet".to_owned(), |t| format!("The last whole one was {}", ago(t)));
+            let whole = ok.map_or(olo_kit::words::tr("No backup has finished yet").to_owned(), |t| olo_kit::tr!("The last whole one was {}", ago(t)));
             let when = ago(l.time);
             let when = when.get(..1).map_or(when.clone(), |c| format!("{}{}", c.to_uppercase(), &when[1..]));
-            ("Backup didn’t finish".into(), format!("{when}: {}. {whole}. {next}", l.error.clone().unwrap_or_default()), true)
+            (olo_kit::words::tr("Backup didn’t finish").into(), olo_kit::tr!("{}: {}. {}. {}", when, olo_kit::words::of_said(l.error.as_deref().unwrap_or_default()), whole, next), true)
         }
-        (None, _) => ("Not backed up yet".into(), format!("{to}. {}", if s.automatic { "The first backup starts in a moment." } else { "Click Back Up Now to make the first." }), false),
+        (None, _) => (
+            olo_kit::words::tr("Not backed up yet").into(),
+            format!("{to}. {}", if s.automatic { olo_kit::words::tr("The first backup starts in a moment.") } else { olo_kit::words::tr("Click Back Up Now to make the first.") }),
+            false,
+        ),
     }
 }
 
 /// Backing up, reading: what (your home folder), and the file it's at.
 fn reading_headline(p: &Progress, s: &Settings) -> (String, String, bool) {
-    let title = format!("Backing up {}", olo_protocol::diskbackup::words::what(s));
+    // (What's backed up, said whole in each language.)
+    let title = match s.paths.as_slice() {
+        [p] if p == "~" => olo_kit::words::tr("Backing up your home folder").to_owned(),
+        [p] => olo_kit::tr!("Backing up {}", p),
+        ps => olo_kit::words::count(ps.len() as u64, "Backing up 1 folder", "Backing up {n} folders"),
+    };
     if p.current.is_empty() {
-        return (title, format!("To {}.", s.target.describe()), false);
+        return (title, olo_kit::tr!("To {}.", s.target.describe()), false);
     }
     let home = target::home().display().to_string();
     let current = match p.current.strip_prefix(&home) {
         Some(rest) if rest.is_empty() || rest.starts_with('/') => format!("~{rest}"),
         _ => p.current.clone(),
     };
-    (title, format!("Now: {current}"), false)
+    (title, olo_kit::tr!("Now: {}", current), false)
 }
 
 /// Something to see to, in a line: a small mark, what's wrong, and the
@@ -820,7 +858,7 @@ impl View for MainWindow {
             // runs: that's what sends again what's lost).
             if !running && let Some(c) = st.last.as_ref().and_then(|l| l.check.as_ref()).filter(|c| !c.problems.is_empty()) {
                 body = body.child(notice(
-                    format!("The last backup isn’t whole: {}. The next backup sends again what it can.", c.problems.join("; ")),
+                    olo_kit::tr!("The last backup isn’t whole: {}. The next backup sends again what it can.", c.problems.join("; ")),
                     Button::new("Back Up Now").id("damage-back-up").enabled(!running).on_click(self.cmd(cx, "back-up-now")),
                 ));
             }
@@ -950,20 +988,27 @@ impl MainWindow {
         }
         // (While it runs, the file it's at: one line, whatever its length.)
         let detail = if running { StringView::new(detail).cut(true).height(style::line_row(style::PLAIN_SIZE)) } else { StringView::new(detail).wrap(true) };
-        words = words.child(t).child(detail);
+        // (The title beside the buttons; what's said under it has the
+        // whole width, under the buttons too: in a language longer than
+        // English, the paragraphs wrapped beside the buttons ran a line or
+        // two longer and past the window's foot.)
+        // (The buttons centred on the title's line.)
+        let head = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(t)).child(buttons);
+        words = words.child(head).child(detail);
         // While it runs, the whole of it (under, the window's width); else
         // the last one, in a line.
         let progress = if running && let Some(pr) = &st.progress { Some(self.progress(s, st, pr)) } else { None };
         if st.doing == Doing::Idle
             && let Some(l) = st.last.as_ref().filter(|l| l.error.is_none())
         {
-            let mut said = format!("Last: {}, {} new or changed, {} new, took {}.", plural(l.files, "file"), count(l.new_files + l.changed_files), size(l.new_bytes), took(l.seconds));
+            let mut said =
+                olo_kit::tr!("Last: {}, {} new or changed, {} new, took {}.", counted(l.files, "1 file", "{n} files"), count(l.new_files + l.changed_files), size(l.new_bytes), took(l.seconds));
             if l.unreadable > 0 {
-                said.push_str(&format!(" {} couldn’t be read.", plural(l.unreadable, "file")));
+                said.push_str(&format!(" {}", olo_kit::words::count(l.unreadable, "1 file couldn’t be read.", "{n} files couldn’t be read.")));
             }
             match &l.check {
-                Some(c) if c.whole() => said.push_str(" Validated: all there."),
-                Some(Check { error: Some(e), .. }) => said.push_str(&format!(" Not checked ({e}).")),
+                Some(c) if c.whole() => said.push_str(&format!(" {}", olo_kit::words::tr("Validated: all there."))),
+                Some(Check { error: Some(e), .. }) => said.push_str(&format!(" {}", olo_kit::tr!("Not checked ({}).", olo_kit::words::of_said(e)))),
                 _ => {}
             }
             words = words.child(StringView::new(said).wrap(true).dim(true));
@@ -974,7 +1019,7 @@ impl MainWindow {
         {
             words = words.child(StringView::new(unfinished_words(u)).wrap(true).dim(true));
         }
-        let row = div().flex().flex_row().items_start().gap(px(m::SPACING * 2.0)).child(picture("diskbackup", ICON)).child(words).child(buttons);
+        let row = div().flex().flex_row().items_start().gap(px(m::SPACING * 2.0)).child(picture("diskbackup", ICON)).child(words);
         div().flex().flex_col().gap(px(m::TIGHT)).child(row).children(progress)
     }
 
@@ -985,16 +1030,16 @@ impl MainWindow {
         let mut col = div().flex().flex_col().gap(px(m::TIGHT));
         match (&st.doing, pr.stage) {
             (Doing::BackingUp, Stage::Counting) => {
-                col = col.child(line(format!("Counting what there is to back up: {}, {} so far.", plural(pr.total_files, "file"), size(pr.total_bytes))));
-                col = col.child(dim("The first backup reads everything; later ones read only what changed, in a fraction of the time.".into()));
+                col = col.child(line(olo_kit::tr!("Counting what there is to back up: {}, {} so far.", counted(pr.total_files, "1 file", "{n} files"), size(pr.total_bytes))));
+                col = col.child(dim(olo_kit::words::tr("The first backup reads everything; later ones read only what changed, in a fraction of the time.").into()));
             }
             (Doing::BackingUp | Doing::Validating, Stage::Checking) | (Doing::Validating, _) => {
                 // (The bar throughout, so nothing moves: empty till it knows
                 // how much there is to read back.)
                 let done = if pr.total_bytes == 0 { 0.0 } else { (pr.bytes as f32 / pr.total_bytes as f32).min(1.0) };
-                let label = if pr.total_bytes == 0 { "Looking at what’s there".to_owned() } else { format!("{} of {} read back", size(pr.bytes), size(pr.total_bytes)) };
+                let label = if pr.total_bytes == 0 { olo_kit::words::tr("Looking at what’s there").to_owned() } else { olo_kit::tr!("{} of {} read back", size(pr.bytes), size(pr.total_bytes)) };
                 col = col.child(StatusBar::new(done).label(label).trailing(format!("{:.0}%", done * 100.0)));
-                col = col.child(line(if pr.current.is_empty() { "Looking at what’s there…".into() } else { format!("{}…", pr.current) }));
+                col = col.child(line(if pr.current.is_empty() { olo_kit::words::tr("Looking at what’s there…").into() } else { format!("{}…", olo_kit::words::of_said(&pr.current)) }));
             }
             // Stopping: the pack being sent, finished first (then what's
             // done is kept).
@@ -1002,13 +1047,13 @@ impl MainWindow {
                 let (bar, label, then) = match pr.sending_left() {
                     Some((done, left)) => (
                         done as f32 / pr.sending as f32,
-                        format!("Finishing sending a pack: {} of {}", size(done), size(pr.sending)),
+                        olo_kit::tr!("Finishing sending a pack: {} of {}", size(done), size(pr.sending)),
                         format!("Then what’s done is kept, so the next backup goes on from there{}.", left.map(|l| format!(" ({})", olo_protocol::diskbackup::words::left(l))).unwrap_or_default()),
                     ),
-                    None => (1.0, "Keeping what’s done…".to_owned(), "So the next backup goes on from there.".to_owned()),
+                    None => (1.0, olo_kit::words::tr("Keeping what’s done…").to_owned(), olo_kit::words::tr("So the next backup goes on from there.").to_owned()),
                 };
                 col = col.child(StatusBar::new(bar.min(1.0)).label(label).trailing(format!("{:.0}%", bar.min(1.0) * 100.0)));
-                col = col.child(line(format!("{}, {} new to the backup, {} sent so far.", pr.of_files(), size(pr.new_bytes), size(pr.uploaded))));
+                col = col.child(line(olo_kit::tr!("{}, {} new to the backup, {} sent so far.", pr.of_files(), size(pr.new_bytes), size(pr.uploaded))));
                 col = col.child(dim(then));
             }
             (Doing::BackingUp, stage) => {
@@ -1016,7 +1061,7 @@ impl MainWindow {
                 let saving = stage == Stage::Saving;
                 // How far through all of it (what's unchanged since the
                 // last backup is gone through without being read again).
-                let label = if saving { "Writing the backup’s lists…".to_owned() } else { pr.gone_through() };
+                let label = if saving { olo_kit::words::tr("Writing the backup’s lists…").to_owned() } else { pr.gone_through() };
                 col = col.child(StatusBar::new(if saving { 1.0 } else { done }).label(label).trailing(format!("{:.0}%", if saving { 100.0 } else { done * 100.0 })));
                 let mut words = pr.of_files();
                 if let Some(l) = left.filter(|_| !saving) {
@@ -1026,8 +1071,8 @@ impl MainWindow {
                 // What the backup didn't have yet, and that sent.
                 let spent = (now() - pr.started).max(1) as f64;
                 let rate = pr.uploaded as f64 / spent;
-                let limit = if s.upload_kbs > 0 { format!(", at most {}", speed_label(s.upload_kbs)) } else { String::new() };
-                col = col.child(dim(format!("{} new to the backup · {} sent, compressed and encrypted ({}/s{limit})", size(pr.new_bytes), size(pr.uploaded), size(rate as u64))));
+                let limit = if s.upload_kbs > 0 { format!(", {}", olo_kit::tr!("at most {}", speed_label(s.upload_kbs))) } else { String::new() };
+                col = col.child(dim(olo_kit::tr!("{} new to the backup · {} sent, compressed and encrypted ({}/s{})", size(pr.new_bytes), size(pr.uploaded), size(rate as u64), limit)));
                 // Each folder's turn (they're gone through in order).
                 if s.paths.len() > 1 {
                     let mut paths: Vec<(String, std::path::PathBuf)> = s.paths.iter().map(|p| (folder_name(p), target::expand(p))).collect();
@@ -1051,14 +1096,14 @@ impl MainWindow {
                 let label = if pr.total_files == 0 {
                     format!("{}…", if pr.current.is_empty() { "Getting ready" } else { &pr.current })
                 } else {
-                    format!("Deleting {} of {}", count(pr.files), count(pr.total_files))
+                    olo_kit::tr!("Deleting {} of {}", count(pr.files), count(pr.total_files))
                 };
                 col = col.child(StatusBar::new(done).label(label).trailing(format!("{:.0}%", done * 100.0)));
             }
             // Tidying, or deleting (a tidy after): the step it's on, how
             // many of how many, and (deleting what isn't used) what's freed.
             (Doing::Pruning | Doing::Deleting { .. }, _) => {
-                let what = if pr.current.is_empty() { "Getting ready".to_owned() } else { pr.current.clone() };
+                let what = if pr.current.is_empty() { olo_kit::words::tr("Getting ready").to_owned() } else { pr.current.clone() };
                 let done = if pr.total_files == 0 { 0.0 } else { (pr.files as f32 / pr.total_files as f32).min(1.0) };
                 let label = match (pr.total_files, pr.files) {
                     (0, 0) => format!("{what}…"),
@@ -1066,10 +1111,10 @@ impl MainWindow {
                     (t, n) => format!("{what}: {} of {}", count(n), count(t)),
                 };
                 col = col.child(StatusBar::new(done).label(label).trailing(if pr.total_files == 0 { String::new() } else { format!("{:.0}%", done * 100.0) }));
-                let step = if pr.steps > 0 { format!("Step {} of {}", pr.step.max(1), pr.steps) } else { "Starting".into() };
-                let freed = if pr.total_bytes > 0 { format!(" · {} of {} freed", size(pr.bytes), size(pr.total_bytes)) } else { String::new() };
+                let step = if pr.steps > 0 { olo_kit::tr!("Step {} of {}", pr.step.max(1), pr.steps) } else { "Starting".into() };
+                let freed = if pr.total_bytes > 0 { format!(" · {}", olo_kit::tr!("{} of {} freed", size(pr.bytes), size(pr.total_bytes))) } else { String::new() };
                 let spent = took((now() - pr.started).max(0) as f64);
-                col = col.child(dim(format!("{step}{freed} · {spent} so far")));
+                col = col.child(dim(olo_kit::tr!("{}{} · {} so far", step, freed, spent)));
             }
             _ => {}
         }
@@ -1082,7 +1127,7 @@ impl MainWindow {
         let every_at = EVERY.iter().position(|(m, _)| *m == s.every_minutes);
         let mut names: Vec<SharedString> = EVERY.iter().map(|(_, n)| SharedString::from(*n)).collect();
         if every_at.is_none() {
-            names.push(format!("{} minutes", s.every_minutes).into());
+            names.push(olo_kit::words::count(u64::from(s.every_minutes), "every minute", "every {n} minutes").into());
         }
         let every = MenuField::new("every", names, every_at.unwrap_or(EVERY.len())).enabled(s.automatic).on_change(self.sets(cx, |s, i: usize| {
             if let Some((m, _)) = EVERY.get(i) {
@@ -1098,19 +1143,21 @@ impl MainWindow {
                     .gap(px(m::SPACING))
                     // (As tall as the menu beside it: placed alike, their words land
                     // on the same device pixels at 1.25× and 1.75× too.)
-                    .child(RadioButton::new("Automatically, every", s.automatic).height(m::CONTROL_HEIGHT).on_select(self.sets(cx, |s, (): ()| s.automatic = true)))
+                    .child(RadioButton::new("Automatically,", s.automatic).height(m::CONTROL_HEIGHT).on_select(self.sets(cx, |s, (): ()| s.automatic = true)))
                     .child(every),
             )
             .child(RadioButton::new("Only when I click Back Up Now", !s.automatic).on_select(self.sets(cx, |s, (): ()| s.automatic = false)))
             .child(div().pt(px(m::TIGHT)).child(CheckBox::new("Also when running on battery", s.on_battery).on_toggle(self.sets(cx, |s, on: bool| s.on_battery = on))))
             .child(CheckBox::new("Only when connected to Ethernet", s.wired_only).on_toggle(self.sets(cx, |s, on: bool| s.wired_only = on)));
-        let keep_menu = |id: &'static str, label: &'static str, choices: &'static [(u32, &'static str)], now: u32, set: fn(&mut Settings, u32)| {
+        // (Each column's fields begin together, after its wider label.)
+        let (left, right) = (DIVIDER.max(widgets::divider_for(&["One an hour for:", "One a day for:"])), DIVIDER.max(widgets::divider_for(&["One a week for:", "One a month for:"])));
+        let keep_menu = |id: &'static str, label: &'static str, choices: &'static [(u32, &'static str)], now: u32, divider: f32, set: fn(&mut Settings, u32)| {
             let at = choices.iter().position(|(n, _)| *n == now);
             let mut names: Vec<SharedString> = choices.iter().map(|(_, name)| SharedString::from(*name)).collect();
             if at.is_none() {
                 names.push(now.to_string().into());
             }
-            MenuField::new(id, names, at.unwrap_or(choices.len())).label(label).divider(DIVIDER).on_change(self.sets(cx, move |s, i: usize| {
+            MenuField::new(id, names, at.unwrap_or(choices.len())).label(label).divider(divider).on_change(self.sets(cx, move |s, i: usize| {
                 if let Some((n, _)) = choices.get(i) {
                     set(s, *n);
                 }
@@ -1123,18 +1170,20 @@ impl MainWindow {
                     .flex()
                     .flex_row()
                     .gap(px(m::SPACING * 2.0))
-                    .child(div().flex_1().flex().flex_col().gap(px(m::SPACING)).child(keep_menu("hourly", "One an hour for:", HOURLY, k.hourly, |s, n| s.keep.hourly = n)).child(keep_menu(
+                    .child(div().flex_1().flex().flex_col().gap(px(m::SPACING)).child(keep_menu("hourly", "One an hour for:", HOURLY, k.hourly, left, |s, n| s.keep.hourly = n)).child(keep_menu(
                         "daily",
                         "One a day for:",
                         DAILY,
                         k.daily,
+                        left,
                         |s, n| s.keep.daily = n,
                     )))
-                    .child(div().flex_1().flex().flex_col().gap(px(m::SPACING)).child(keep_menu("weekly", "One a week for:", WEEKLY, k.weekly, |s, n| s.keep.weekly = n)).child(keep_menu(
+                    .child(div().flex_1().flex().flex_col().gap(px(m::SPACING)).child(keep_menu("weekly", "One a week for:", WEEKLY, k.weekly, right, |s, n| s.keep.weekly = n)).child(keep_menu(
                         "monthly",
                         "One a month for:",
                         MONTHLY,
                         k.monthly,
+                        right,
                         |s, n| s.keep.monthly = n,
                     ))),
             )
@@ -1172,7 +1221,7 @@ impl MainWindow {
         what = what.child(
             div().flex().flex_row().items_center().gap(px(m::SPACING)).pt(px(m::TIGHT)).child(Button::new("Add a Folder…").on_click(self.cmd(cx, "add-folder"))).child(
                 StringView::new(match &st.last {
-                    Some(l) if l.error.is_none() => format!("{} in {}, by the last backup.", size(l.bytes), plural(l.files, "file")),
+                    Some(l) if l.error.is_none() => olo_kit::tr!("{} in {}, by the last backup.", size(l.bytes), counted(l.files, "1 file", "{n} files")),
                     _ => String::new(),
                 })
                 .dim(true),
@@ -1222,14 +1271,14 @@ impl MainWindow {
         // kept, newest first.
         let first = usize::from(unfinished.is_some());
         let said = match &self.snapshots {
-            None => "Reading the backups…".to_owned(),
-            Some(Err(e)) => format!("The backups can’t be listed: {e}."),
+            None => olo_kit::words::tr("Reading the backups…").to_owned(),
+            Some(Err(e)) => olo_kit::tr!("The backups can’t be listed: {}.", olo_kit::words::of_said(&e.to_string())),
             Some(Ok(l)) => {
                 let mut t = if l.is_empty() {
-                    "No backup has finished yet.".to_owned()
+                    olo_kit::words::tr("No backup has finished yet.").to_owned()
                 } else {
-                    let taken = st.size.map(|b| format!(", {} in all", size(b))).unwrap_or_default();
-                    format!("{} kept in {}{taken}.", plural(l.len() as u64, "backup"), s.target.describe())
+                    let taken = st.size.map(|b| format!(", {}", olo_kit::tr!("{} in all", size(b)))).unwrap_or_default();
+                    olo_kit::tr!("{} kept in {}{}.", counted(l.len() as u64, "1 backup", "{n} backups"), s.target.describe(), taken)
                 };
                 if unfinished.is_some() {
                     t.push_str(" The unfinished one is where the next goes on from: delete it to start over.");
@@ -1290,13 +1339,13 @@ impl MainWindow {
                 Some(b) => (check_words(b.check.as_ref()), b.check.as_ref().is_some_and(|c| !c.problems.is_empty())),
                 None => (String::new(), false),
             },
-            ([], _) => ("Choose a backup to see how it was last checked.".into(), false),
-            _ => (format!("{} chosen.", plural(n as u64, "backup")), false),
+            ([], _) => (olo_kit::words::tr("Choose a backup to see how it was last checked.").into(), false),
+            _ => (counted(n as u64, "1 backup chosen.", "{n} backups chosen."), false),
         };
         let mut detail = StringView::new(detail).cut(true).height(style::line_row(style::PLAIN_SIZE));
         detail = if bad { detail.color(style::c(p.failure)) } else { detail.dim(true) };
         let (to_delete, to_check, to_check_fully) = (chosen.clone(), chosen.clone(), chosen.clone());
-        let delete = Button::new(if n > 1 { format!("Delete {n} Backups…") } else { "Delete…".into() })
+        let delete = Button::new(if n > 1 { olo_kit::tr!("Delete {} Backups…", n) } else { "Delete…".into() })
             .enabled(n > 0 && !running)
             .on_click(cx.listener(move |w: &mut MainWindow, _: &ClickEvent, cx| w.delete(to_delete.clone(), unfinished_chosen, cx)));
         let can_check = !chosen.is_empty() && !running;
@@ -1365,10 +1414,10 @@ impl MainWindow {
         let busy = self.busy;
         // As last looked at (None: looking).
         let looked = self.where_.as_ref().filter(|(t, _)| *t == s.target).and_then(|(_, r)| r.clone());
-        let taken = st.size.map(|b| format!("The backups take {} there", size(b)));
+        let taken = st.size.map(|b| olo_kit::tr!("The backups take {} there", size(b)));
         let space = |free: u64, total: Option<u64>| match total {
-            Some(t) if t > 0 => format!("{} of {} free", size(free), size(t)),
-            _ => "no limit to its space".to_owned(),
+            Some(t) if t > 0 => olo_kit::tr!("{} of {} free", size(free), size(t)),
+            _ => olo_kit::words::tr("no limit to its space").to_owned(),
         };
         let and = |first: Option<String>, then: String| match first {
             Some(f) => format!("{f}; {then}."),
@@ -1377,10 +1426,10 @@ impl MainWindow {
         let (icon, title, detail, status, buttons): (&'static str, String, String, (String, bool), Vec<Element>) = match &s.target {
             Target::GoogleDrive { account, .. } => {
                 let status = match &looked {
-                    None => ("Checking the connection…".to_owned(), false),
+                    None => (olo_kit::words::tr("Checking the connection…").to_owned(), false),
                     Some(Ok(Where::Drive(a))) => (format!("Connected. {}", and(taken.clone(), format!("your Drive has {}", space(a.limit.map_or(0, |l| l.saturating_sub(a.used)), a.limit)))), false),
                     Some(Ok(_)) => (String::new(), false),
-                    Some(Err(e)) => (format!("Not connected: {e}."), true),
+                    Some(Err(e)) => (olo_kit::tr!("Not connected: {}.", olo_kit::words::of_said(&e.to_string())), true),
                 };
                 let mut buttons = Vec::new();
                 // (Signed out by Google: sign in again, with the client from before.)
@@ -1393,12 +1442,12 @@ impl MainWindow {
                     "use-folder",
                     "Back up to a disk or folder from now on; the backups in Google Drive stay as they are",
                 ));
-                ("diskbackup", "Google Drive".to_owned(), format!("{account}, in the folder “{}”", olo_diskbackup::drive::FOLDER), status, buttons)
+                ("diskbackup", olo_kit::words::tr("Google Drive").to_owned(), olo_kit::tr!("{}, in the folder “{}”", account, olo_diskbackup::drive::FOLDER), status, buttons)
             }
             Target::Folder { path } => {
                 let status = match &looked {
-                    None => ("Looking at its disk…".to_owned(), false),
-                    Some(Ok(Where::Disk { free, total })) => (and(taken.clone(), format!("its disk has {}", space(*free, Some(*total)))), false),
+                    None => (olo_kit::words::tr("Looking at its disk…").to_owned(), false),
+                    Some(Ok(Where::Disk { free, total })) => (and(taken.clone(), olo_kit::tr!("its disk has {}", space(*free, Some(*total)))), false),
                     Some(Ok(_)) => (String::new(), false),
                     Some(Err(e)) => (format!("{}.", capital(e)), true),
                 };
@@ -1413,7 +1462,7 @@ impl MainWindow {
                 ];
                 ("disk", name, tilde(std::path::Path::new(path)), status, buttons)
             }
-            Target::None => ("disk", "Not set up".into(), String::new(), (String::new(), false), Vec::new()),
+            Target::None => ("disk", olo_kit::words::tr("Not set up").into(), String::new(), (String::new(), false), Vec::new()),
         };
         let open_label = if matches!(s.target, Target::GoogleDrive { .. }) { "Open in Google Drive" } else { "Show in Tracker" };
         let mut status_view = StringView::new(status.0).cut(true).height(style::line_row(style::PLAIN_SIZE));

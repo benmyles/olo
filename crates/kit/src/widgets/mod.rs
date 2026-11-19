@@ -44,7 +44,7 @@ pub use find_bar::{find_bar, find_said};
 pub use image_view::{ImageView, image_view};
 pub use key_hint::KeyHint;
 pub use list::{Cell, Column, ColumnListView, HEADER_HEIGHT, ListModel};
-pub use menu_field::{MenuField, NONE_CHOSEN};
+pub use menu_field::{MenuField, NONE_CHOSEN, divider_for};
 pub use month::MonthGrid;
 pub use picture_text::TextLine;
 pub use scroll::{SCROLL_BAR, ScrollBar, ScrollView};

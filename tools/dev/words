@@ -93,20 +93,25 @@ def catalog(lang):
 
 # Literals handed to the kit's widgets (and `tr!`), the first string
 # argument after at most one plain one (`ui.check(id, "…")`).
-CALLS = (r"(?:Button::new|\.label|\.title|\.item|\.check|\.note|StringView::new|\.hint|\.tip|tr!|words::tr|words::of_text|words::of|\.bbox|"
+CALLS = (r"(?:Button::new|\.label|\.title|\.item|\.check|\.note|StringView::new|\.hint|\.tip|tr!|words::tr|words::of_text|words::of|en!|words::en|\.bbox|"
          r"Column::new|\.submenu|RadioButton::new|CheckBox::new|\.placeholder|\.heading|\.empty_text|\.empty|alert|"
          r"\.choose|LinkButton::new|Menu::new|\.button|\.default_button|\.cancel_button|\.message|\.explain|\.radio|"
          r"\.group|\.section)")
 LITERAL = re.compile(CALLS + r'\(\s*(?:[a-z_&.]+,\s*)?"((?:[^"\\]|\\.)+)"')
-# A sentence that counts is known by its other form (`words::count(n,
-# "{n} window", "{n} windows")`, or `count(` brought in by a `use`).
-COUNTING = re.compile(r'\bcount\([^"]*"(?:[^"\\]|\\.)*",\s*"((?:[^"\\]|\\.)+)"')
+# Words asked for by name (`tr!`, `words::tr`, `en!`…): words, however
+# they look ("tidying" alone too, which a widget's literal wouldn't be).
+ASKED = re.compile(r'(?:\b(?:tr!|words::tr|words::of_text|en!|words::en)|(?<![\w:])tr)\(\s*"((?:[^"\\]|\\.)+)"')
+# A sentence that counts is known by its other form, the last of a
+# call's two words with `{n}` in it (`words::count(n, "1 window", "{n}
+# windows")`, `count(` brought in by a `use`, an app's own `counted(`).
+COUNTING = re.compile(r'\b\w+\([^"]*"(?:[^"\\]|\\.)*",\s*"((?:[^"\\]|\\.)*\{n\}(?:[^"\\]|\\.)*)"\s*\)')
 # Programs without windows: their words are a log's.
 SERVICES = ("apps/chime/", "apps/fans/")
 
 
 def in_code():
-    found = set()
+    """The words in the code, and of them those asked for by name."""
+    found, asked = set(), set()
     for path in sorted(glob.glob(os.path.join(ROOT, "apps/*/src/**/*.rs"), recursive=True) + glob.glob(os.path.join(ROOT, "crates/kit/src/**/*.rs"), recursive=True)):
         rel = os.path.relpath(path, ROOT)
         if rel.startswith(SERVICES) or rel.endswith("lint.rs"):
@@ -116,18 +121,113 @@ def in_code():
         if cut >= 0:
             src = src[:cut]
         # (An app's own `words::count` without `{n}` is its own helper.)
-        for m in list(LITERAL.finditer(src)) + [m for m in COUNTING.finditer(src) if "{n}" in m.group(1)]:
+        for m in list(LITERAL.finditer(src)) + [m for m in COUNTING.finditer(src) if "{n}" in m.group(1)] + list(ASKED.finditer(src)):
             s = re.sub(r"\\u\{([0-9a-fA-F]+)\}", lambda m: chr(int(m.group(1), 16)), m.group(1))
-            if "\\" in s or not re.search(r"[A-Za-z]{2}", s):
+            # (Asked for by name, a unit alone is a word, "{} h", and so is
+            # punctuation that languages set apart: "{}: {}", French's
+            # "{} : {}".)
+            if "\\" in s or not re.search(r"[A-Za-z]{2}" if m.re is not ASKED else r"[A-Za-z:;?!]", s):
                 continue
             found.add(s)
-    return found
+            if m.re is ASKED:
+                asked.add(s)
+    return found, asked
+
+
+def without_test_blocks(src):
+    """`src` less what only tests take: the item after each `#[cfg(test)]`
+    (a module of whatever name, a function; `mod lint;` to its `;`) and
+    each `if cfg!(test)…` block (its fixtures' data)."""
+    out, i = [], 0
+    while True:
+        found = [a for a in (src.find("if cfg!(test)", i), src.find("#[cfg(test)]", i)) if a >= 0]
+        if not found:
+            out.append(src[i:])
+            return "".join(out)
+        at = min(found)
+        brace = src.find("{", at)
+        semi = src.find(";", at) if src.startswith("#[cfg(test)]", at) else -1
+        if 0 <= semi and (brace < 0 or semi < brace):
+            out.append(src[i:at])
+            i = semi + 1
+            continue
+        if brace < 0:
+            out.append(src[i:])
+            return "".join(out)
+        depth, j = 0, brace
+        while j < len(src):
+            c = src[j]
+            if c == '"':
+                j += 1
+                while j < len(src) and src[j] != '"':
+                    j += 2 if src[j] == "\\" else 1
+            elif c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        out.append(src[i:at])
+        i = j + 1
+
+
+def literals():
+    """Every string the code holds as a literal, outside its tests."""
+    held = set()
+    for path in sorted(glob.glob(os.path.join(ROOT, "apps/*/src/**/*.rs"), recursive=True) + glob.glob(os.path.join(ROOT, "crates/*/src/**/*.rs"), recursive=True)):
+        # (Nor the settings index, written from what the lint drew.)
+        if path.endswith("lint.rs") or path.endswith("crates/xdg/src/settings.rs"):
+            continue
+        src = open(path, errors="replace").read()
+        cut = src.find("#[cfg(test)]\nmod tests")
+        if cut >= 0:
+            src = src[:cut]
+        # (Not a block only tests and demos take: `if cfg!(test) || …demo…
+        # { …fixtures… }`.)
+        src = without_test_blocks(src)
+        for lit in rust_strings(src):
+            s = re.sub(r"\\u\{([0-9a-fA-F]+)\}", lambda m: chr(int(m.group(1), 16)), lit)
+            held.add(s.replace('\\"', '"').replace("\\n", "\n"))
+    return held
+
+
+def rust_strings(src):
+    """The string literals of Rust source, as written (escapes kept), less
+    comments, character literals and lifetimes; a raw string whole."""
+    i, n = 0, len(src)
+    while i < n:
+        c = src[i]
+        if src.startswith("//", i):
+            i = src.find("\n", i)
+            i = n if i < 0 else i
+        elif src.startswith("/*", i):
+            i = src.find("*/", i + 2)
+            i = n if i < 0 else i + 2
+        elif c == "'":
+            # A character ('a', '\'', '\u{2026}'), or a lifetime ('a).
+            m = re.match(r"'(?:\\u\{[0-9a-fA-F]+\}|\\.|[^\\'\n])'", src[i:i + 12])
+            i += len(m.group(0)) if m else 1
+        elif c == "r" and re.match(r'r#*"', src[i:i + 8]) and (i == 0 or not (src[i - 1].isalnum() or src[i - 1] == "_")):
+            hashes = len(re.match(r'r(#*)"', src[i:i + 8]).group(1))
+            end = src.find('"' + "#" * hashes, i + 2 + hashes)
+            end = n if end < 0 else end
+            yield src[i + 2 + hashes:end]
+            i = end + 1 + hashes
+        elif c == '"':
+            j = i + 1
+            while j < n and src[j] != '"':
+                j += 2 if src[j] == "\\" else 1
+            yield src[i + 1:j]
+            i = j + 1
+        else:
+            i += 1
 
 
 def a_word(s):
     """Not an id ("caff:off", "widget-hue"), a number or a lone lower-case
     token: words have a space, or are a name or a label."""
-    if re.fullmatch(r"[\d\s.,:%-]+", s):
+    if re.fullmatch(r"[\d\s.,:%+()-]+", s):
         return False
     if " " in s:
         return True
@@ -153,7 +253,13 @@ def gather(write, lints):
         if os.path.exists(path):
             seen |= {l.replace("\\n", "\n") for l in open(path).read().split("\n") if l}
     known = set(english())
-    new = sorted((w for w in (seen | in_code()) - known if a_word(w) and "\n" not in w), key=lambda w: w.encode())
+    found, asked = in_code()
+    # (A word only seen as the lints ran is one of Olo's if the code holds
+    # it as a literal, outside its tests: what this computer shows the
+    # lints (its displays, its graphics, its networks) isn't.)
+    held = literals()
+    seen = {w for w in seen if w in held}
+    new = sorted((w for w in (seen | found) - known if (w in asked or a_word(w)) and "\n" not in w), key=lambda w: w.encode())
     for w in new:
         print(w)
     print(f"words: {len(new)} not in en.txt ({len(known)} there)", file=sys.stderr)
@@ -292,7 +398,9 @@ def convert_format(fmt, args):
     return "".join(out), new
 
 
-SKIP_LINE = re.compile(r"tracing::|eprintln!|println!|log::|warn!|info!|debug!|error!|trace!|panic!|assert|expect\(|unreachable!|todo!|\.id\(|Command::new|\.arg\(|\.env\(|header|Header|tr!\(|words::")
+# (A thread's name, a log line, a command's arguments, an id: not words a
+# person reads.)
+SKIP_LINE = re.compile(r"tracing::|eprintln!|println!|log::|warn!|info!|debug!|error!|trace!|panic!|assert|expect\(|unreachable!|todo!|\.id\(|Command::new|\.arg\(|\.env\(|header|Header|tr!\(|words::|en!\(|\.name\(|Builder::new")
 
 
 def sweep(path, dry):
@@ -362,6 +470,21 @@ def parts(text):
     return sorted(re.findall(r"\{[^}]*\}", text))
 
 
+def same_parts(english, said):
+    """Whether a translation has the English's parts: the same, or its
+    `{}` numbered by place to put them in its own order (`{1} … {0}`),
+    or a count's form without its number ("Every day" for "Every {n}
+    days")."""
+    want, got = parts(english), parts(said)
+    if got == want or got == [p for p in want if p != "{n}"]:
+        return True
+    plain = [p for p in want if p == "{}"]
+    numbered = sorted(p for p in got if re.fullmatch(r"\{\d+\}", p))
+    rest_want = [p for p in want if p != "{}"]
+    rest_got = [p for p in got if not re.fullmatch(r"\{\d+\}", p)]
+    return bool(numbered) and numbered == sorted(f"{{{i}}}" for i in range(len(plain))) and rest_got in (rest_want, [p for p in rest_want if p != "{n}"])
+
+
 def merge(lang, files, header):
     pairs, own_header = catalog(lang)
     header = header or own_header
@@ -405,11 +528,11 @@ def merge(lang, files, header):
             for f in forms:
                 if not re.match(r"^(one|few|many|other): ", f):
                     problems.append(f"a form without its name: {w} → {f[:60]}")
-                elif parts(f.split(": ", 1)[1]) != parts(w):
+                elif not same_parts(w, f.split(": ", 1)[1]):
                     problems.append(f"parts differ: {w} → {f}")
             blocks.append(w + "\n" + "\n".join(forms))
         else:
-            if parts(tr) != parts(w):
+            if not same_parts(w, tr):
                 problems.append(f"parts differ: {w[:60]} → {tr[:60]}")
             blocks.append(w + "\n" + tr)
     if problems:

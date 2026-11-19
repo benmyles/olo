@@ -153,7 +153,7 @@ impl Lock {
             LockMsg::Finger(fingerprint::Event::Match) => return self.unlock(),
             LockMsg::Finger(fingerprint::Event::Ready { swipe }) => self.finger = Finger::Listening(if swipe { "Swipe your finger" } else { "Touch ID or enter your password" }.into()),
             LockMsg::Finger(fingerprint::Event::Retry(s)) => self.finger = Finger::Listening(s),
-            LockMsg::Finger(fingerprint::Event::NoMatch) => self.finger = Finger::Listening("Not recognised. Try again".into()),
+            LockMsg::Finger(fingerprint::Event::NoMatch) => self.finger = Finger::Listening(olo_kit::words::tr("Not recognised. Try again").into()),
             LockMsg::Finger(fingerprint::Event::Failed(_)) | LockMsg::NoFinger => {
                 self.stop = None;
                 self.finger = Finger::Off;
@@ -165,7 +165,7 @@ impl Lock {
             LockMsg::Password(Err(e)) => {
                 self.checking = false;
                 self.error = Some(match e {
-                    auth::AuthError::Denied(_) => "That password isn’t right.".into(),
+                    auth::AuthError::Denied(_) => olo_kit::words::tr("That password isn’t right.").into(),
                     other => other.to_string(),
                 });
             }
@@ -180,10 +180,10 @@ impl Lock {
             }
             LockMsg::Key(Err(why)) => {
                 self.key = None;
-                self.key_note = Some(format!("{why} Type your password."));
+                self.key_note = Some(olo_kit::tr!("{} Type your password.", why));
             }
             LockMsg::Face(olo_system::face::Look::Match) => return self.unlock(),
-            LockMsg::Face(olo_system::face::Look::NotYou) => self.key_note = Some("Your face wasn’t recognised. Type your password.".into()),
+            LockMsg::Face(olo_system::face::Look::NotYou) => self.key_note = Some(olo_kit::words::tr("Your face wasn’t recognised. Type your password.").into()),
             LockMsg::Face(_) => {}
         }
         false

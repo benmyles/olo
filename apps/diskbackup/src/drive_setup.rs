@@ -61,7 +61,7 @@ impl DriveSetup {
     fn back_up_there(&mut self, cx: &mut Cx<Self>) {
         let Some(account) = self.accounts.as_ref().and_then(|l| l.get(self.chosen)).cloned() else { return };
         self.busy = true;
-        self.status = (format!("Setting up the backups in {}’s Google Drive…", account.address), false);
+        self.status = (olo_kit::tr!("Setting up the backups in {}’s Google Drive…", account.address), false);
         cx.invalidate();
         cx.work(move || crate::set_up_drive_account(&account.address), Done::SetUp);
     }
@@ -93,10 +93,10 @@ impl View for DriveSetup {
                     Ok(email) => {
                         // (The main window shows where backups go now.)
                         olo_kit::proxy().send(Msg::SetUp);
-                        self.status = (format!("Backing up to Google Drive ({email}), in the folder “{}”.", olo_diskbackup::drive::FOLDER), false);
+                        self.status = (olo_kit::tr!("Backing up to Google Drive ({}), in the folder “{}”.", email, olo_diskbackup::drive::FOLDER), false);
                         self.done = Some(email);
                     }
-                    Err(e) => self.status = (format!("Not set up: {e}."), true),
+                    Err(e) => self.status = (olo_kit::tr!("Not set up: {}.", olo_kit::words::of_said(&e.to_string())), true),
                 }
             }
         }
@@ -110,18 +110,18 @@ impl View for DriveSetup {
         let mut buttons = div().flex().flex_row().items_center().justify_end().gap(px(m::SPACING));
         let cancel = |label: &'static str, default: bool| Button::new(label).default(default).on_click(|_: &ClickEvent, cx| cx.close_window());
         match &self.accounts {
-            None => body = body.child(dim("Reading the Google accounts connected to Olo…".into())),
+            None => body = body.child(dim(olo_kit::words::tr("Reading the Google accounts connected to Olo…").into())),
             Some(l) if l.is_empty() => {
                 body = body.child(dim(
-                    "DiskBackup backs up to a Google account’s Drive through that account’s own app, which Olo makes once for each account you connect (Mail and Calendar sign in through it too). Connect yours in Preferences ▸ Integrations ▸ Google: it shows here as soon as it’s connected.".into(),
+                    olo_kit::words::tr("DiskBackup backs up to a Google account’s Drive through that account’s own app, which Olo makes once for each account you connect (Mail and Calendar sign in through it too). Connect yours in Preferences ▸ Integrations ▸ Google: it shows here as soon as it’s connected.").into(),
                 ));
                 if self.others > 0 {
                     let n = self.others;
-                    body = body.child(dim(format!(
-                        "{} connected {} allowed Google Drive: sign in again there, and allow it.",
-                        if n == 1 { "One account" } else { "Some accounts" },
-                        if n == 1 { "wasn’t" } else { "weren’t" }
-                    )));
+                    body = body.child(dim(if n == 1 {
+                        olo_kit::words::tr("One account connected wasn’t allowed Google Drive: sign in again there, and allow it.").to_owned()
+                    } else {
+                        olo_kit::words::tr("Some accounts connected weren’t allowed Google Drive: sign in again there, and allow it.").to_owned()
+                    }));
                 }
                 buttons = buttons.child(cancel("Cancel", false)).child(Button::new("Open Integrations…").default(true).on_click(|_: &ClickEvent, _| open_integrations()));
             }
@@ -135,10 +135,7 @@ impl View for DriveSetup {
                         },
                     )),
                 ));
-                body = body.child(dim(format!(
-                    "DiskBackup keeps its backups in a folder “{}” in that account’s Drive, which only Olo’s app for the account sees: nothing else of your Drive. Backups there already (another computer’s) are added to, with their key from Passwords.",
-                    olo_diskbackup::drive::FOLDER
-                )));
+                body = body.child(dim(olo_kit::tr!("DiskBackup keeps its backups in a folder “{}” in that account’s Drive, which only Olo’s app for the account sees: nothing else of your Drive. Backups there already (another computer’s) are added to, with their key from Passwords.", olo_diskbackup::drive::FOLDER)));
                 if self.done.is_some() {
                     buttons = buttons.child(cancel("Done", true));
                 } else {

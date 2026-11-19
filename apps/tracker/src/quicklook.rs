@@ -334,7 +334,7 @@ impl View for QuickLook {
         }
         let p = theme::palette();
         let label = match &self.opener {
-            Some(app) => format!("Open with {app}"),
+            Some(app) => olo_kit::tr!("Open with {}", app),
             None => "Open".into(),
         };
         // Pop out (to the Viewer) is a square button showing a window with

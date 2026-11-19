@@ -33,7 +33,7 @@ pub fn left(until: u64) -> String {
     match (minutes / 60, minutes % 60) {
         (0, m) => format!("{m} min"),
         (h, 0) => format!("{h} h"),
-        (h, m) => format!("{h} h {m} min"),
+        (h, m) => olo_kit::tr!("{} h {} min", h, m),
     }
 }
 
@@ -46,8 +46,8 @@ pub fn menu(until: Option<u64>, clock: &ClockSettings) -> Menu {
         menu = menu.item(label, format!("approve:{minutes}"));
     }
     let label = match until {
-        Some(t) => format!("Ask Again ({} left, until {})", left(t), status::time_of_day(t, clock)),
-        None => "Ask Again".into(),
+        Some(t) => olo_kit::tr!("Ask Again ({} left, until {})", left(t), status::time_of_day(t, clock)),
+        None => olo_kit::words::tr("Ask Again").into(),
     };
     menu.separator().item(label, "approve:off").enabled(until.is_some()).separator().item(olo_kit::app_menu::settings_label("security"), "pref:security")
 }

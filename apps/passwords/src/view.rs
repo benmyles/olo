@@ -214,10 +214,10 @@ pub fn linked_id(app: &Passwords, a: &onepassword::accounts::Account) -> String 
 fn sync_ago(at: chrono::DateTime<chrono::Utc>) -> String {
     let secs = (chrono::Utc::now() - at).num_seconds().max(0);
     match secs {
-        0..60 => "just now".into(),
-        60..120 => "a minute ago".into(),
-        120..3600 => format!("{} minutes ago", secs / 60),
-        _ => format!("at {}", at.with_timezone(&chrono::Local).format("%H:%M")),
+        0..60 => olo_kit::words::tr("just now").into(),
+        60..120 => olo_kit::words::tr("a minute ago").into(),
+        120..3600 => olo_kit::words::count((secs / 60) as u64, "1 minute ago", "{n} minutes ago"),
+        _ => olo_kit::tr!("at {}", at.with_timezone(&chrono::Local).format("%H:%M")),
     }
 }
 
@@ -230,7 +230,7 @@ enum More {
 fn plural(c: ItemCategory) -> String {
     match c {
         ItemCategory::Identity => "Identities".into(),
-        ItemCategory::Email => "Email Accounts".into(),
+        ItemCategory::Email => olo_kit::words::tr("Email Accounts").into(),
         ItemCategory::Person => "People".into(),
         ItemCategory::Unsupported => "Other".into(),
         c => format!("{}s", c.label()),
@@ -375,10 +375,16 @@ impl MainView {
         }
         let cancel_to = a.set_up();
         let listed = listed_accounts(a);
-        let message = format!(
-            "Passwords keeps your items on this computer, encrypted, and can keep them in step with your 1Password accounts both ways. To sync, turn on Settings ▸ Developer ▸ Integrate with other apps in 1Password, then {} the accounts.",
-            if listed.is_empty() { "name" } else { "choose" }
-        );
+        // (Each said whole: "name" and "choose" sit apart in each language.)
+        let message = if listed.is_empty() {
+            olo_kit::words::tr(
+                "Passwords keeps your items on this computer, encrypted, and can keep them in step with your 1Password accounts both ways. To sync, turn on Settings ▸ Developer ▸ Integrate with other apps in 1Password, then name the accounts.",
+            )
+        } else {
+            olo_kit::words::tr(
+                "Passwords keeps your items on this computer, encrypted, and can keep them in step with your 1Password accounts both ways. To sync, turn on Settings ▸ Developer ▸ Integrate with other apps in 1Password, then choose the accounts.",
+            )
+        };
         let mut extra = div().w_full().flex().flex_col().gap(px(m::SPACING));
         for (i, acc) in listed.iter().enumerate() {
             let on = a.chosen.iter().any(|c| same(acc, c));
@@ -434,25 +440,25 @@ impl MainView {
         if !any && cancel_to {
             extra = extra.child(note("With no account chosen, Passwords keeps its items only on this computer."));
         }
-        panel("passwords", "Sync with 1Password?", message, extra)
+        panel("passwords", "Sync with 1Password?", message.to_owned(), extra)
     }
 
     fn locked(&mut self, a: &mut Passwords, cx: &mut Cx<Self>) -> Element {
         let p = theme::palette();
         let mut message = match (&a.lock.finger, &a.lock.key_note) {
-            (Finger::Listening(s), Some(_)) if s == "Touch ID or enter your password" => "Touch ID, touch your security key, or enter your password".into(),
+            (Finger::Listening(s), Some(_)) if s == "Touch ID or enter your password" => olo_kit::words::tr("Touch ID, touch your security key, or enter your password").into(),
             (Finger::Listening(s), _) => s.clone(),
             (_, Some(k)) => k.clone(),
-            _ => format!("Enter the password for “{}” to unlock it.", a.lock.user()),
+            _ => olo_kit::tr!("Enter the password for “{}” to unlock it.", a.lock.user()),
         };
         // Who is waiting: the app by name, or apps, if more than one.
         if let Some(first) = a.waiting.first() {
             let who = if a.waiting.iter().all(|w| w.from == first.from) {
-                let name = olo_xdg::apps::our_app(first.from.trim_start_matches("olo-")).map_or("An app", |(name, _)| name);
+                let name = olo_xdg::apps::our_app(first.from.trim_start_matches("olo-")).map_or(olo_kit::words::tr("An app"), |(name, _)| name);
                 let passkey = a.waiting.iter().all(|w| matches!(w.request, olo_keychain::Request::PasskeySign { .. } | olo_keychain::Request::PasskeyCreate { .. }));
-                format!("{name} is waiting for a {}.", if passkey { "passkey" } else { "login" })
+                if passkey { olo_kit::tr!("{} is waiting for a passkey.", name) } else { olo_kit::tr!("{} is waiting for a login.", name) }
             } else {
-                "Apps are waiting for logins.".to_owned()
+                olo_kit::words::tr("Apps are waiting for logins.").to_owned()
             };
             message = format!("{who} {message}");
         }
@@ -506,23 +512,23 @@ impl MainView {
                 let n = a.visible().len();
                 let said = if a.search.trim().is_empty() { format!("{n} item{}", if n == 1 { "" } else { "s" }) } else { format!("{n} found") };
                 // (What a screen's Passwords shows is the person's to change.)
-                if crate::on_screen() { format!("{said} shared with this screen") } else { said }.into()
+                if crate::on_screen() { olo_kit::tr!("{} shared with this screen", said) } else { said }.into()
             }
         };
         let review_click = matches!(a.sync, Some(SyncState::Review { .. } | SyncState::Declined { .. })) && !matches!(a.conn, Conn::Failed(_));
         let right = match (&a.conn, &a.sync) {
             (Conn::Failed(m), _) => Some((m.split('.').next().unwrap_or(m).to_string(), true, None)),
-            (_, Some(SyncState::Running)) => Some(("Syncing with 1Password…".to_string(), false, None)),
-            (_, Some(SyncState::Review { changes, .. })) => Some((format!("{} to review", if *changes == 1 { "1 sync change".to_string() } else { format!("{changes} sync changes") }), false, None)),
+            (_, Some(SyncState::Running)) => Some((olo_kit::words::tr("Syncing with 1Password…").to_string(), false, None)),
+            (_, Some(SyncState::Review { changes, .. })) => Some((olo_kit::words::count(*changes as u64, "1 sync change to review", "{n} sync changes to review"), false, None)),
             (_, Some(SyncState::Declined { pending })) => {
-                let to_send = if *pending > 0 { format!(" · {pending} to send") } else { String::new() };
-                Some((format!("Not synced: changes not applied{to_send}"), false, None))
+                let to_send = if *pending > 0 { format!(" · {}", olo_kit::tr!("{} to send", pending)) } else { String::new() };
+                Some((olo_kit::tr!("Not synced: changes not applied{}", to_send), false, None))
             }
             (_, Some(SyncState::Done { at, problems, pending, .. })) => {
                 let failed = problems.iter().filter(|p| !p.note).count();
                 let mut text = format!("Synced {}", sync_ago(*at));
                 if *pending > 0 {
-                    text += &format!(" · {pending} to send");
+                    text += &format!(" · {}", olo_kit::tr!("{} to send", pending));
                 }
                 if failed > 0 {
                     text += &if failed == 1 { " · 1 problem".to_string() } else { format!(" · {failed} problems") };
@@ -535,8 +541,8 @@ impl MainView {
             (_, Some(SyncState::Failed { message, pending })) => {
                 // The first clause; a click shows the rest.
                 let first = message.split(['.', ',']).next().unwrap_or(message);
-                let to_send = if *pending > 0 { format!(" · {pending} to send") } else { String::new() };
-                Some((format!("Not synced: {first}{to_send}"), true, Some(More::Text(message.clone()))))
+                let to_send = if *pending > 0 { format!(" · {}", olo_kit::tr!("{} to send", pending)) } else { String::new() };
+                Some((olo_kit::tr!("Not synced: {}{}", first, to_send), true, Some(More::Text(message.clone()))))
             }
             _ => None,
         };
@@ -635,7 +641,7 @@ impl MainView {
             }
             let here: Vec<_> = a.vaults.iter().filter(|v| !a.vault_accounts.contains_key(&v.id)).collect();
             if !here.is_empty() {
-                groups.push(("On This Computer".into(), here));
+                groups.push((olo_kit::words::tr("On This Computer").into(), here));
             }
         } else if !a.vaults.is_empty() {
             groups.push(("Vaults".into(), a.vaults.iter().collect()));
@@ -822,7 +828,7 @@ impl View for MainView {
             self.locked(&mut a, cx)
         } else {
             match a.conn.clone() {
-                Conn::Connecting if a.items.is_empty() => panel("passwords", "Opening your passwords…", "The key is in your login keyring.".into(), div()),
+                Conn::Connecting if a.items.is_empty() => panel("passwords", "Opening your passwords…", olo_kit::words::tr("The key is in your login keyring.").into(), div()),
                 Conn::Failed(message) if a.items.is_empty() => {
                     // (Locked: Unlock asks for the login password again.)
                     let label = if message == crate::vault::LOCKED { "Unlock…" } else { "Try Again" };
@@ -830,7 +836,7 @@ impl View for MainView {
                 }
                 Conn::Ready if a.items.is_empty() && a.sync == Some(SyncState::Running) => {
                     let account = a.account_label();
-                    let message = format!("Copying the items in {account} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).");
+                    let message = olo_kit::tr!("Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).", account);
                     panel("passwords", "Bringing in your items…", message, div())
                 }
                 _ => self.browser(&mut a, cx),
@@ -995,7 +1001,7 @@ fn shown(f: &ItemField, revealed: bool) -> (String, bool) {
             match code {
                 Some(c) if c.len() == 6 => (format!("{} {}", &c[..3], &c[3..]), true),
                 Some(c) => (c, true),
-                None => ("Invalid one-time password secret".into(), false),
+                None => (olo_kit::words::tr("Invalid one-time password secret").into(), false),
             }
         }
         ItemFieldType::CreditCardNumber if !revealed => {
@@ -1316,7 +1322,7 @@ impl View for Detail {
         let vault = a.vault_title(&overview.vault_id);
         let Some(item) = a.details.get(&id).cloned() else {
             let (text, color) = match a.missing.get(&id) {
-                Some(e) => (format!("Couldn’t open this item: {e}"), c(p.failure)),
+                Some(e) => (olo_kit::tr!("Couldn’t open this item: {}", e), c(p.failure)),
                 None => ("Loading…".to_string(), dim(&p)),
             };
             let content = div()
@@ -1498,12 +1504,12 @@ impl View for ReviewView {
         let count = |n: usize| if n == 1 { "1 change".to_string() } else { format!("{n} changes") };
         let mut sides = Vec::new();
         if here > 0 {
-            sides.push(format!("{} on this computer", count(here)));
+            sides.push(olo_kit::tr!("{} on this computer", count(here)));
         }
         if there > 0 {
             sides.push(format!("{} in 1Password", count(there)));
         }
-        let message = format!("Syncing with {} makes {}. Nothing changes on either side until you apply them.", a.account_label(), sides.join(" and "));
+        let message = olo_kit::tr!("Syncing with {} makes {}. Nothing changes on either side until you apply them.", a.account_label(), sides.join(" and "));
         let mut rows = div().w_full().flex().flex_col();
         for row in &review.rows {
             let title = if row.vault.is_empty() { row.title.clone() } else { format!("{}  ·  {}", row.title, row.vault) };
@@ -1536,7 +1542,7 @@ impl View for ReviewView {
         let p = theme::palette();
         let list = ScrollView::new(&self.list).background(p.list_background).child(rows);
         let n = review.rows.len();
-        let apply = if n == 1 { "Apply Change".to_string() } else { format!("Apply {n} Changes") };
+        let apply = olo_kit::words::count(n as u64, "Apply Change", "Apply {n} Changes");
         let mut buttons = button_row();
         // What couldn't be read: a line on the left, the list a click away.
         if !review.problems.is_empty() {
@@ -1569,9 +1575,8 @@ impl View for ReviewView {
 fn problems_note(list: &[crate::sync::Problem], over: bool) -> Element {
     let failed = list.iter().filter(|p| !p.note).count();
     let (icon_name, text): (&'static str, SharedString) = match failed {
-        0 => ("info", "Some items are left out…".into()),
-        1 => ("warning", "1 problem reading 1Password…".into()),
-        n => ("warning", format!("{n} problems reading 1Password…").into()),
+        0 => ("info", olo_kit::words::tr("Some items are left out…").into()),
+        n => ("warning", olo_kit::words::count(n as u64, "1 problem reading 1Password…", "{n} problems reading 1Password…").into()),
     };
     let key = style::key((icon_name, &text, over));
     let face = canvas(move |g, b| {
@@ -1635,7 +1640,7 @@ impl View for ProblemsView {
         for problem in list {
             if vault != Some(problem.vault.as_str()) {
                 vault = Some(problem.vault.as_str());
-                let name: SharedString = if problem.vault.is_empty() { "Not in a vault".into() } else { problem.vault.clone().into() };
+                let name: SharedString = if problem.vault.is_empty() { olo_kit::words::tr("Not in a vault").into() } else { problem.vault.clone().into() };
                 let key = style::key(&name);
                 rows = rows.child(
                     canvas(move |g, b| {

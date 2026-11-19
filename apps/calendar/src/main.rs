@@ -706,7 +706,7 @@ impl Calendar {
     /// server, which is what tells the organizer).
     fn answer_event(&mut self, cal: usize, href: String, answer: olo_calendar::event::Answer, cx: &mut Cx<Self>) {
         let me: Vec<String> = self.sources.iter().map(|s| s.account.address.clone()).collect();
-        self.naming = Some(("Reply to".to_owned(), olo_kit::undo::Purpose::Do));
+        self.naming = Some((olo_kit::words::tr("Reply to").to_owned(), olo_kit::undo::Purpose::Do));
         self.write(cal, sync::Job::Change(href, Box::new(move |c| olo_calendar::event::answer(c, &me, answer))), cx);
     }
 
@@ -961,7 +961,14 @@ impl Calendar {
         let asked = cx.msg_with(|choice: &Option<usize>| Msg::Asked(*choice));
         if *repeats && id.is_some() {
             self.waiting = Some(Waiting::DeleteWhich(target));
-            olo_kit::widgets::open_alert(cx, "Calendar", "warning", &format!("“{title}” repeats. Delete only this one, or every one of them?"), &["Cancel", "All of Them", "Only This One"], asked);
+            olo_kit::widgets::open_alert(
+                cx,
+                "Calendar",
+                "warning",
+                &olo_kit::tr!("“{}” repeats. Delete only this one, or every one of them?", title),
+                &["Cancel", "All of Them", "Only This One"],
+                asked,
+            );
         } else {
             self.delete_event(target, false, cx);
         }
@@ -1208,7 +1215,7 @@ impl Calendar {
             .filter_map(|s| {
                 let e = self.standing.get(&s.account.id())?.error.as_ref()?;
                 Some(match e {
-                    dav::Error::SignIn => format!("{} needs signing in again", s.account.address),
+                    dav::Error::SignIn => olo_kit::tr!("{} needs signing in again", s.account.address),
                     e => format!("{}: {e}", s.account.address),
                 })
             })
@@ -1485,14 +1492,14 @@ impl View for Calendar {
             Msg::Save(saving) => match &saving.target {
                 // A repeating event's occurrence: only it, or all of them?
                 editor::Target::Existing { id: Some(_), repeats: true, .. } => {
-                    let title = if saving.draft.title.trim().is_empty() { "This event".to_owned() } else { format!("“{}”", saving.draft.title.trim()) };
+                    let title = if saving.draft.title.trim().is_empty() { olo_kit::words::tr("This event").to_owned() } else { format!("“{}”", saving.draft.title.trim()) };
                     self.waiting = Some(Waiting::Save(*saving));
                     let asked = cx.msg_with(|choice: &Option<usize>| Msg::Asked(*choice));
                     olo_kit::widgets::open_alert(
                         cx,
                         "Calendar",
                         "warning",
-                        &format!("{title} repeats. Change only this one, or every one of them?"),
+                        &olo_kit::tr!("{} repeats. Change only this one, or every one of them?", title),
                         &["Cancel", "All of Them", "Only This One"],
                         asked,
                     );
@@ -1504,7 +1511,7 @@ impl View for Calendar {
                     editor::Target::Existing { cal, href, .. } => self.book.cals.get(*cal).and_then(|c| c.events.iter().find(|s| s.href == *href)).map(|s| s.event.summary.clone()).unwrap_or_default(),
                     editor::Target::New => return,
                 };
-                let title = if title.trim().is_empty() { "this event".to_owned() } else { title };
+                let title = if title.trim().is_empty() { olo_kit::words::tr("this event").to_owned() } else { title };
                 self.ask_delete(*target, &title, cx);
             }
             Msg::Asked(choice) => match (self.waiting.take(), choice) {
@@ -1544,7 +1551,7 @@ impl View for Calendar {
                     }
                     Err(e) => {
                         tracing::warn!("calendar: a change couldn't be made: {e}");
-                        olo_kit::widgets::open_alert(cx, "Calendar", "stop", &format!("The change couldn’t be made: {e}."), &["OK"], |_, _| {});
+                        olo_kit::widgets::open_alert(cx, "Calendar", "stop", &olo_kit::tr!("The change couldn’t be made: {}.", e), &["OK"], |_, _| {});
                     }
                 }
                 self.run_writes(cx);

@@ -271,10 +271,10 @@ pub fn describe(e: &Error) -> String {
         // (Running, its socket isn't there: the setting is off, as on a
         // new computer.)
         Error::DesktopAppUnavailable if onepassword::desktop::app_running() => {
-            "1Password is open but isn’t letting other apps in. In 1Password, turn on Settings ▸ Developer ▸ Integrate with other apps, then try again.".into()
+            olo_kit::words::tr("1Password is open but isn’t letting other apps in. In 1Password, turn on Settings ▸ Developer ▸ Integrate with other apps, then try again.").into()
         }
-        Error::DesktopAppUnavailable => "1Password isn’t running. Open it (and turn on Settings ▸ Developer ▸ Integrate with other apps), then try again.".into(),
-        Error::ConnectionDropped => "1Password closed the connection. If it asked whether to allow Passwords, choose Allow, then try again.".into(),
+        Error::DesktopAppUnavailable => olo_kit::words::tr("1Password isn’t running. Open it (and turn on Settings ▸ Developer ▸ Integrate with other apps), then try again.").into(),
+        Error::ConnectionDropped => olo_kit::words::tr("1Password closed the connection. If it asked whether to allow Passwords, choose Allow, then try again.").into(),
         other => other.to_string(),
     }
 }
@@ -468,7 +468,7 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
                     | Job::TakeBack { .. }
             )
         {
-            proxy.send(FromStore { generation: gen_of_job, reply: Reply::Error("Shared with this screen: change it in your own Passwords.".into()) });
+            proxy.send(FromStore { generation: gen_of_job, reply: Reply::Error(olo_kit::words::tr("Shared with this screen: change it in your own Passwords.").into()) });
             continue;
         }
         let reply = |reply: Reply| proxy.send(FromStore { generation: gen_of_job, reply });
@@ -500,7 +500,7 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
             }
             Job::Reset => {
                 if syncing {
-                    reply(Reply::Error("Wait for the sync to finish, then reset.".into()));
+                    reply(Reply::Error(olo_kit::words::tr("Wait for the sync to finish, then reset.").into()));
                     continue;
                 }
                 waiting = None;
@@ -515,7 +515,7 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
                 };
                 match done {
                     Ok(()) => reply(Reply::Reset),
-                    Err(e) => reply(Reply::Error(format!("Couldn’t reset: {}", describe(&e)))),
+                    Err(e) => reply(Reply::Error(olo_kit::tr!("Couldn’t reset: {}", describe(&e)))),
                 }
                 continue;
             }
@@ -608,7 +608,7 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
             Job::RemoveAccount { account } => {
                 // A sync in flight would bring it back.
                 if syncing {
-                    reply(Reply::Error("Wait for the sync to finish, then remove the account.".into()));
+                    reply(Reply::Error(olo_kit::words::tr("Wait for the sync to finish, then remove the account.").into()));
                     continue;
                 }
                 if waiting.take().is_some() {
@@ -616,7 +616,7 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
                 }
                 match v.remove_account(&account) {
                     Ok(()) => refresh(v, &reply),
-                    Err(e) => reply(Reply::Error(format!("Couldn’t remove the account: {}", describe(&e)))),
+                    Err(e) => reply(Reply::Error(olo_kit::tr!("Couldn’t remove the account: {}", describe(&e)))),
                 }
             }
             Job::Approve { plan } => {
@@ -644,7 +644,7 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
                     reply(Reply::Saved { item: Box::new(i), created: true, tag });
                     reply(Reply::Index(index(v)));
                 }
-                Err(e) => reply(Reply::Error(format!("Couldn’t save “{}”: {}", params.title, describe(&e)))),
+                Err(e) => reply(Reply::Error(olo_kit::tr!("Couldn’t save “{}”: {}", params.title, describe(&e)))),
             },
             Job::Put(item, tag) => match v.put(&item) {
                 Ok(i) => {
@@ -654,7 +654,7 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
                     reply(Reply::Saved { item: Box::new(i), created: false, tag });
                     reply(Reply::Index(index(v)));
                 }
-                Err(e) => reply(Reply::Error(format!("Couldn’t save “{}”: {}", item.title, describe(&e)))),
+                Err(e) => reply(Reply::Error(olo_kit::tr!("Couldn’t save “{}”: {}", item.title, describe(&e)))),
             },
             Job::Archive { vault, item } => match v.archive(&vault, &item) {
                 Ok(()) => {
@@ -699,14 +699,14 @@ fn worker(rx: mpsc::Receiver<(u64, Job)>, back: mpsc::Sender<(u64, Job)>, proxy:
                 v.data.allowed.push(crate::vault::Allowed { program, reference, since: Utc::now() });
                 match v.save() {
                     Ok(()) => reply(Reply::Allowed(v.data.allowed.clone())),
-                    Err(e) => reply(Reply::Error(format!("Couldn’t keep the approval: {}", describe(&e)))),
+                    Err(e) => reply(Reply::Error(olo_kit::tr!("Couldn’t keep the approval: {}", describe(&e)))),
                 }
             }
             Job::TakeBack { program, reference } => {
                 v.data.allowed.retain(|a| (&a.program, &a.reference) != (&program, &reference));
                 match v.save() {
                     Ok(()) => reply(Reply::Allowed(v.data.allowed.clone())),
-                    Err(e) => reply(Reply::Error(format!("Couldn’t take the approval back: {}", describe(&e)))),
+                    Err(e) => reply(Reply::Error(olo_kit::tr!("Couldn’t take the approval back: {}", describe(&e)))),
                 }
             }
             Job::Keychain { incoming, candidates, vault } => {

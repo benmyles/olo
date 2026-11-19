@@ -94,12 +94,21 @@ something nobody here has is in "Blocked", with what it waits for.
   unasked` lists what the live lint shows of them by program (1,136 in
   20 programs on 2026-11-19). Preferences' are through the words layer
   (2026-11-19: 468 places, its helpers' labels by `of_text`, 404 new
-  words in German, Spanish and French); left, by that list: StyledEdit
-  (143), Calendar (77), Terminal (73), Speed Test and Weather (68 each),
-  Updates (62), Telegram (61), Activity Monitor (46), kache (35), Logs
-  (30), Phone and Olo Doctor (22 each), Disk Usage and Tracker (17
-  each), Deskbar, Passwords, Viewer, DiskBackup, DeskCalc (a few each),
-  and what no window the lint opens shows (Olo Doctor's findings); what apps paint themselves; formats (dates, numbers, the
+  words in German, Spanish and French), and so are Deskbar's, Tracker's,
+  Notifications', DiskBackup's, Disk Usage's, Calendar's, Terminal's,
+  Passwords' and Viewer's (2026-11-19: 675 new words in each language;
+  a service's words for its window stay English and are translated where
+  shown, `en!` and `words::of_said`; command lines, agents' replies and
+  logs stay English); left, by that list: StyledEdit (143), Speed Test
+  and Weather (68 each), Updates (62), Telegram (61), Activity Monitor
+  (46), kache (35), Logs (30), Phone and Olo Doctor (22 each), DeskCalc
+  (a few), a short form for words in tight places (Disk Usage's middle
+  says "Home" in every language: "Benutzerordner" is cut there; a
+  catalog's `short:` line, `words::short`), what the swept apps still build with `format!` around a new
+  line or that the sweep couldn't (single words copied into a `String`:
+  "Restoring", "Paused"; a worktree's removal alert), Calendar's own
+  month and day names (with the formats), and what no window the lint
+  opens shows (Olo Doctor's findings); what apps paint themselves; formats (dates, numbers, the
   week's first day); Arabic (right-to-left layout). Words the lint
   doesn't see were missing from the list too (now gathered from the
   code, `words gather`): most of Calendar's (its menus, the event window's

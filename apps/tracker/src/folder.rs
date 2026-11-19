@@ -596,9 +596,9 @@ impl FolderWin {
         }
         let name = olo_kit_base::places::label(&here);
         favorites = if places.favorites.contains(&here) {
-            favorites.item(format!("Remove “{name}” from Favorites"), "favorite-off")
+            favorites.item(olo_kit::tr!("Remove “{}” from Favorites", name), "favorite-off")
         } else {
-            favorites.item(format!("Add “{name}” to Favorites"), "favorite-on")
+            favorites.item(olo_kit::tr!("Add “{}” to Favorites", name), "favorite-on")
         };
         let mut go = Menu::new("Go")
             // (Their keys the profile's: `app_keys`' tracker.back and .forward.)
@@ -1257,7 +1257,7 @@ impl FolderWin {
             _ if loading => format!("Loading… {} items", self.listed.load(std::sync::atomic::Ordering::Relaxed)),
             (1, 0) => "1 item".to_owned(),
             (n, 0) => format!("{n} items"),
-            (n, s) => format!("{s} of {n} selected"),
+            (n, s) => olo_kit::tr!("{} of {} selected", s, n),
         };
         let free = self.free_space();
         // (The list view's own sunken frame edges it: an etched edge
@@ -1421,11 +1421,11 @@ impl FolderWin {
             "parent" => to_hub(ToHub::Reveal(dir, true)),
             "new-folder" => match fs::new_folder(&dir) {
                 Ok(p) => {
-                    to_hub(ToHub::Done("New Folder".into(), undo::Change::Made(vec![p.clone()])));
+                    to_hub(ToHub::Done(olo_kit::words::tr("New Folder").into(), undo::Change::Made(vec![p.clone()])));
                     self.add_entry(&p);
                     self.edit_name(&p, cx);
                 }
-                Err(e) => self.error(format!("Couldn't create a folder: {e}"), cx),
+                Err(e) => self.error(olo_kit::tr!("Couldn't create a folder: {}", e), cx),
             },
             "terminal" => fs::open_in_terminal(&dir),
             "back" => self.go(-1, cx),
@@ -1578,7 +1578,7 @@ impl FolderWin {
             // Nothing goes into itself.
             if let Some(p) = paths.iter().find(|p| p.is_dir() && dir.starts_with(p)) {
                 let name = p.file_name().unwrap_or_default().to_string_lossy().into_owned();
-                return self.error(format!("“{name}” can't go inside itself."), cx);
+                return self.error(olo_kit::tr!("“{}” can't go inside itself.", name), cx);
             }
             if cut {
                 // Moved: the clipboard has them where they are now, copied.
@@ -1604,7 +1604,7 @@ impl FolderWin {
                 to_hub(ToHub::Done("Paste".into(), undo::Change::Made(vec![p])));
                 to_hub(ToHub::ReloadAll);
             }
-            Err(e) => self.error(format!("Couldn't paste: {e}"), cx),
+            Err(e) => self.error(olo_kit::tr!("Couldn't paste: {}", e), cx),
         }
     }
 

@@ -121,10 +121,10 @@ fn title(kind: Kind, sources: &[PathBuf], dest: Option<&Path>) -> String {
         Kind::Copy => format!("Copying {what}{to}"),
         Kind::Move => format!("Moving {what}{to}"),
         Kind::Duplicate => format!("Duplicating {what}"),
-        Kind::Trash => format!("Moving {what} to the Trash"),
+        Kind::Trash => olo_kit::tr!("Moving {} to the Trash", what),
         Kind::Restore => format!("Restoring {what}"),
-        Kind::EmptyTrash => "Emptying the Trash".into(),
-        Kind::PutBack => format!("Putting {what} back"),
+        Kind::EmptyTrash => olo_kit::words::tr("Emptying the Trash").into(),
+        Kind::PutBack => olo_kit::tr!("Putting {} back", what),
         Kind::Compress(f) => format!("Compressing {what} ({})", f.label()),
         Kind::Extract => format!("Extracting {what}"),
     }
@@ -287,10 +287,10 @@ impl Worker<'_> {
                     self.p.set_current(s);
                     let name = |p: &Path| p.file_name().unwrap_or_default().to_string_lossy().into_owned();
                     if sfs::symlink_metadata(s).is_err() {
-                        return Err(io::Error::other(format!("“{}” isn't there any more", name(s))));
+                        return Err(io::Error::other(olo_kit::tr!("“{}” isn't there any more", name(s))));
                     }
                     if sfs::symlink_metadata(target).is_ok() {
-                        return Err(io::Error::other(format!("something else is called “{}” there now", name(target))));
+                        return Err(io::Error::other(olo_kit::tr!("something else is called “{}” there now", name(target))));
                     }
                     // Its folder may have gone meanwhile: made again.
                     if let Some(dir) = target.parent() {
@@ -325,7 +325,7 @@ impl Worker<'_> {
                     self.p.set_current(s);
                     // (Emptied, or put back by hand, since: an undo said so.)
                     if sfs::symlink_metadata(s).is_err() {
-                        return Err(io::Error::other(format!("“{}” isn't in the Trash any more", s.file_name().unwrap_or_default().to_string_lossy())));
+                        return Err(io::Error::other(olo_kit::tr!("“{}” isn't in the Trash any more", s.file_name().unwrap_or_default().to_string_lossy())));
                     }
                     let (origin, info) = fs::trash_origin(s)?;
                     let dir = origin.parent().ok_or_else(|| io::Error::other("no folder to restore into"))?;
@@ -590,7 +590,7 @@ pub fn detail(job: &Job) -> (String, String) {
     let (tb, ti, di) = (p.total_bytes.load(Ordering::Relaxed), p.total_items.load(Ordering::Relaxed), p.done_items.load(Ordering::Relaxed));
     let mut parts = Vec::new();
     if p.counting.load(Ordering::Relaxed) {
-        parts.push(format!("{} found so far", plural(ti, "item")));
+        parts.push(olo_kit::words::count(ti, "1 item found so far", "{n} items found so far"));
     } else {
         if tb > 0 && ti > 1 {
             parts.push(format!("{} of {}", count(di.min(ti)), plural(ti, "item")));
@@ -600,7 +600,7 @@ pub fn detail(job: &Job) -> (String, String) {
         let elapsed = job.started.elapsed().as_secs_f64();
         if f > 0.02 && elapsed > 2.0 {
             let left = elapsed * (1.0 - f) / f;
-            parts.push(if left < 60.0 { format!("about {} s left", left.ceil().max(1.0)) } else { format!("about {} min left", (left / 60.0).ceil()) });
+            parts.push(if left < 60.0 { olo_kit::tr!("about {} s left", left.ceil().max(1.0)) } else { olo_kit::tr!("about {} min left", (left / 60.0).ceil()) });
         }
     }
     (current, parts.join(" · "))

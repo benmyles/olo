@@ -813,7 +813,7 @@ fn lerp(a: Hsla, b: Hsla, t: f32) -> Hsla {
 /// N s" and Stop (the question is then the person's). Agents read it as a
 /// Status, its Stop a button.
 fn auto_approve_box(screen: Bounds<Pixels>, shell: u64, left: u32) -> Element {
-    let text: SharedString = format!("Auto Approve: Yes in {left} s").into();
+    let text: SharedString = olo_kit::tr!("Auto Approve: Yes in {} s", left).into();
     let name = text.clone();
     let back = canvas(move |g, b| {
         let p = theme::palette();
@@ -1230,7 +1230,7 @@ impl Terminal {
                     status: status.map(Into::into),
                     badge: pr.map(repos::pr_badge),
                     group: tab.group,
-                    faded: tab.hidden_tiled.then(|| "hidden when tiled".into()),
+                    faded: tab.hidden_tiled.then(|| olo_kit::words::tr("hidden when tiled").into()),
                     unread: tab.dot(),
                 }
             })

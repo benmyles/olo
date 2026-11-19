@@ -372,7 +372,7 @@ pub fn dropped_into(drop: &Dropped, paths: Vec<PathBuf>, dest: PathBuf, origin: 
             match fs::app_link_into(p, &dest) {
                 Ok(to) => names.extend(to.file_name().map(|n| n.to_string_lossy().into_owned())),
                 Err(e) => {
-                    failed = Some(format!("Couldn't create a link: {e}"));
+                    failed = Some(olo_kit::tr!("Couldn't create a link: {}", e));
                     break;
                 }
             }
@@ -400,14 +400,14 @@ pub fn dropped_into(drop: &Dropped, paths: Vec<PathBuf>, dest: PathBuf, origin: 
                 to_hub(ToHub::ReloadAll);
                 Ok(Vec::new())
             }
-            Some(Err(e)) => Err(format!("Couldn't save what was dropped: {e}")),
+            Some(Err(e)) => Err(olo_kit::tr!("Couldn't save what was dropped: {}", e)),
             None => Ok(Vec::new()),
         };
     }
     // Nothing goes into itself.
     if let Some(p) = paths.iter().find(|p| p.is_dir() && dest.starts_with(p)) {
         let name = p.file_name().unwrap_or_default().to_string_lossy().into_owned();
-        return Err(format!("“{name}” can't go inside itself."));
+        return Err(olo_kit::tr!("“{}” can't go inside itself.", name));
     }
     match drop.action {
         DragAction::Ask => {
@@ -425,7 +425,7 @@ pub fn dropped_into(drop: &Dropped, paths: Vec<PathBuf>, dest: PathBuf, origin: 
                             match fs::link_into(p, &dest) {
                                 Ok(l) => made.push(l),
                                 Err(e) => {
-                                    let _ = open_app_alert("Tracker", "about", &format!("Couldn't create a link: {e}"), &["OK"], |_| {});
+                                    let _ = open_app_alert("Tracker", "about", &olo_kit::tr!("Couldn't create a link: {}", e), &["OK"], |_| {});
                                     break;
                                 }
                             }
@@ -798,7 +798,7 @@ impl Hub {
         match r {
             Ok(new) => Some(new),
             Err(e) => {
-                error(format!("Couldn't rename “{current}”: {e}"));
+                error(olo_kit::tr!("Couldn't rename “{}”: {}", current, e));
                 None
             }
         }
@@ -991,7 +991,7 @@ impl Hub {
             std::thread::spawn(move || {
                 for a in archives {
                     if let Err(e) = archives::keep_password(&a, &pw) {
-                        to_hub(ToHub::Said(format!("The password of “{}” couldn’t be kept: {e}", a.file_name().unwrap_or_default().to_string_lossy())));
+                        to_hub(ToHub::Said(olo_kit::tr!("The password of “{}” couldn’t be kept: {}", a.file_name().unwrap_or_default().to_string_lossy(), e)));
                     }
                 }
             });
@@ -1002,7 +1002,7 @@ impl Hub {
         }
         if let Some(e) = outcome.error {
             let what = job.title.chars().next().map(|c| c.to_lowercase().chain(job.title.chars().skip(1)).collect::<String>());
-            error(format!("An error occurred while {}: {e}", what.unwrap_or_default()));
+            error(olo_kit::tr!("An error occurred while {}: {}", what.unwrap_or_default(), e));
         }
     }
 
@@ -1183,8 +1183,8 @@ fn move_window(surface: u32) -> Result<olo_kit::WindowMove, String> {
     match (info.folder, info.find) {
         (Some(f), _) => saved.folders.push(f),
         (None, true) => saved.find = 1,
-        (None, false) if info.path == fs::home().join("Desktop") => return Err("the desktop stays with its display".into()),
-        _ => return Err("only folder and Find windows move".into()),
+        (None, false) if info.path == fs::home().join("Desktop") => return Err(olo_kit::words::tr("the desktop stays with its display").into()),
+        _ => return Err(olo_kit::words::tr("only folder and Find windows move").into()),
     }
     Ok(olo_kit::WindowMove { args: Vec::new(), state: serde_json::to_string(&saved).ok(), gone: Box::new(move || to_hub(ToHub::Gone(id))) })
 }

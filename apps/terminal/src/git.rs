@@ -180,10 +180,10 @@ pub fn branches(main: &Path) -> Vec<String> {
 pub fn valid_name(name: &str) -> Result<(), String> {
     let n = name.trim();
     if n.is_empty() {
-        return Err("Give it a name.".into());
+        return Err(olo_kit::words::tr("Give it a name.").into());
     }
     if n.contains(['/', '\\']) || n.starts_with(['.', '-']) || n.ends_with(".lock") || n.contains("..") {
-        return Err("A name can't have a slash, start with a dot or a dash, or end in .lock.".into());
+        return Err(olo_kit::words::tr("A name can't have a slash, start with a dot or a dash, or end in .lock.").into());
     }
     if n.chars().any(|c| c.is_whitespace() || c.is_control() || "~^:?*[@{".contains(c)) {
         return Err("A name can't have spaces or any of ~ ^ : ? * [ @ {.".into());
@@ -222,12 +222,12 @@ pub fn add(main: &Path, name: &str, path: &Path, progress: &Progress) -> Result<
     let msg = |e: git2::Error| e.message().to_owned();
     valid_name(name)?;
     if path.exists() {
-        return Err(format!("{} is there already.", path.display()));
+        return Err(olo_kit::tr!("{} is there already.", path.display()));
     }
     let repo = git2::Repository::open(main).map_err(msg)?;
     let admin = repo.commondir().join("worktrees").join(name);
     if admin.exists() || repo.find_worktree(name).is_ok() {
-        return Err(format!("The repository has a worktree called {name} already."));
+        return Err(olo_kit::tr!("The repository has a worktree called {} already.", name));
     }
     let (branch, made) = match repo.find_branch(name, git2::BranchType::Local) {
         Ok(b) => (b, false),
@@ -237,7 +237,7 @@ pub fn add(main: &Path, name: &str, path: &Path, progress: &Progress) -> Result<
         }
     };
     if !made && let Some(w) = worktrees(main).into_iter().find(|w| w.branch.as_deref() == Some(name)) {
-        return Err(format!("Branch {name} is checked out in {} already.", w.path.display()));
+        return Err(olo_kit::tr!("Branch {} is checked out in {} already.", name, w.path.display()));
     }
     let refname = branch.get().name().unwrap_or_default().to_owned();
     let commit = branch.get().peel_to_commit().map_err(msg)?;
@@ -264,7 +264,7 @@ pub fn add(main: &Path, name: &str, path: &Path, progress: &Progress) -> Result<
         std::fs::write(admin.join("HEAD"), format!("ref: {refname}\n"))
     })();
     if let Err(e) = made_dirs {
-        return undo(format!("Can't make {}: {e}", path.display()));
+        return undo(olo_kit::tr!("Can't make {}: {}", path.display(), e));
     }
     let wt = match git2::Repository::open(path) {
         Ok(r) => r,
@@ -305,7 +305,12 @@ pub fn add(main: &Path, name: &str, path: &Path, progress: &Progress) -> Result<
 /// The linked worktree of `main` at `path`.
 fn find(repo: &git2::Repository, path: &Path) -> Result<git2::Worktree, String> {
     let names = repo.worktrees().map_err(|e| e.message().to_owned())?;
-    names.iter().flatten().filter_map(|n| repo.find_worktree(n).ok()).find(|w| tidy(w.path()) == tidy(path)).ok_or_else(|| "That isn't one of the repository's worktrees.".to_owned())
+    names
+        .iter()
+        .flatten()
+        .filter_map(|n| repo.find_worktree(n).ok())
+        .find(|w| tidy(w.path()) == tidy(path))
+        .ok_or_else(|| olo_kit::words::tr("That isn't one of the repository's worktrees.").to_owned())
 }
 
 /// Rename the worktree at `path` to `new` (its folder, beside where it
@@ -318,15 +323,15 @@ pub fn rename(main: &Path, path: &Path, new: &str) -> Result<PathBuf, String> {
     let old = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let to = path.with_file_name(new);
     if to.exists() {
-        return Err(format!("{} is there already.", to.display()));
+        return Err(olo_kit::tr!("{} is there already.", to.display()));
     }
     // Where git keeps it: its gitdir file says where its folder is.
     let admin = repo.commondir().join("worktrees").join(wt.name().unwrap_or(&old));
-    std::fs::rename(path, &to).map_err(|e| format!("Can't move it: {e}"))?;
+    std::fs::rename(path, &to).map_err(|e| olo_kit::tr!("Can't move it: {}", e))?;
     let gitdir = format!("{}\n", to.join(".git").display());
     if let Err(e) = std::fs::write(admin.join("gitdir"), gitdir) {
         let _ = std::fs::rename(&to, path);
-        return Err(format!("Can't tell git where it went: {e}"));
+        return Err(olo_kit::tr!("Can't tell git where it went: {}", e));
     }
     if let Ok(mut b) = repo.find_branch(&old, git2::BranchType::Local)
         && repo.find_branch(new, git2::BranchType::Local).is_err()
@@ -356,7 +361,7 @@ pub fn remove(main: &Path, path: &Path, tidy: bool) -> Result<(), String> {
     wt.prune(Some(&mut opts)).map_err(|e| e.message().to_owned())?;
     // (libgit2 leaves an emptied folder behind at times.)
     if path.exists() {
-        std::fs::remove_dir_all(path).map_err(|e| format!("Can't remove {}: {e}", path.display()))?;
+        std::fs::remove_dir_all(path).map_err(|e| olo_kit::tr!("Can't remove {}: {}", path.display(), e))?;
     }
     if tidy && let Some(parent) = path.parent() {
         let _ = std::fs::remove_dir(parent);
@@ -407,7 +412,7 @@ impl Pr {
             Some(Checks::Pending) => ", checks running",
             None => "",
         };
-        format!("pull request #{} {state}{checks}", self.number)
+        olo_kit::tr!("pull request #{} {}{}", self.number, state, checks)
     }
 }
 
@@ -473,7 +478,7 @@ fn get_json(agent: &ureq::Agent, url: &str, token: Option<&str>) -> Result<serde
     let status = resp.status().as_u16();
     let body = resp.into_body().into_with_config().limit(4 << 20).read_to_string().map_err(|e| e.to_string())?;
     if status != 200 {
-        return Err(format!("GitHub answered {status}"));
+        return Err(olo_kit::tr!("GitHub answered {}", status));
     }
     serde_json::from_str(&body).map_err(|e| e.to_string())
 }

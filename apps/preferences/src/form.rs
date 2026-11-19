@@ -532,15 +532,8 @@ fn same(a: &serde_json::Value, b: &serde_json::Value) -> bool {
     }
 }
 
-/// The widest of `labels` as they're shown (in the language chosen), and
-/// the gap after it: where controls in a column of labelled ones begin.
-pub fn divider_for(labels: &[&str]) -> f32 {
-    labels
-        .iter()
-        .map(|l| f32::from(olo_kit::style::text_width(olo_kit::words::of_text(l), olo_kit::style::PLAIN_SIZE, olo_kit::style::ui_font(olo_kit::FontWeight::NORMAL))).ceil())
-        .fold(0.0, f32::max)
-        + m::LABEL_GAP
-}
+/// Where controls in a column of labelled ones begin (the kit's).
+pub use olo_kit::widgets::divider_for;
 
 /// How long a slider's dragged value is shown in place of what its
 /// server says (the server's echoes are a little older: the knob would

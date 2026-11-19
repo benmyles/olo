@@ -44,7 +44,7 @@ fn cut(title: &str) -> String {
 /// day"), then its title.
 fn line(e: &Event, c: &Clock) -> String {
     let when = if e.all_day {
-        "All day".to_owned()
+        olo_kit::words::tr("All day").to_owned()
     } else if e.start <= c.now {
         format!("Now, until {}", (c.time)(e.end))
     } else {
@@ -67,7 +67,7 @@ pub fn menu(coming: Option<&Coming>, c: &Clock) -> Menu {
     if let Some(coming) = coming.filter(|c| c.set_up) {
         // (One begun before today and not over is on today.)
         let on = |day: i64| coming.from(c.now).filter(move |e| (c.day)(e.start).max(today) == day).collect::<Vec<&Event>>();
-        let mut list = |mut menu: Menu, events: &[&Event], most: usize| {
+        let list = |mut menu: Menu, events: &[&Event], most: usize| {
             for e in events.iter().take(most) {
                 menu = menu.item(line(e, c), shows(e));
                 if let Some(hue) = e.hue {
@@ -76,7 +76,7 @@ pub fn menu(coming: Option<&Coming>, c: &Clock) -> Menu {
             }
             if events.len() > most {
                 let more = events.len() - most;
-                menu = menu.item(format!("{more} More in Calendar…"), "run:olo-calendar");
+                menu = menu.item(olo_kit::words::count(more as u64, "1 More in Calendar…", "{n} More in Calendar…"), "run:olo-calendar");
             }
             menu
         };

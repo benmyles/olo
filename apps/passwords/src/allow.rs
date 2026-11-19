@@ -50,7 +50,7 @@ impl Ways {
             [one] => (*one).to_owned(),
             [rest @ .., last] => format!("{} or {last}", rest.join(", ")),
         };
-        Some(format!("To allow it, you can also {list}."))
+        Some(olo_kit::tr!("To allow it, you can also {}.", list))
     }
 }
 

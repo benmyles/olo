@@ -324,13 +324,13 @@ impl Glances {
 
     /// Its tip in words.
     pub fn tip(&self, w: &Widget) -> String {
-        self.now(w.id).map_or_else(|| format!("{}: not here yet", w.label()), |g| g.tip.clone())
+        self.now(w.id).map_or_else(|| olo_kit::tr!("{}: not here yet", w.label()), |g| g.tip.clone())
     }
 
     /// Its tip as a card: its name and value, the headline's words, what
     /// its body shows as rows, its note.
     pub fn card(&self, w: &Widget) -> Card {
-        let Some(gl) = self.now(w.id) else { return Card::new(w.label()).part(Part::Notes(vec!["Waiting for it…".into()])) };
+        let Some(gl) = self.now(w.id) else { return Card::new(w.label()).part(Part::Notes(vec![olo_kit::words::tr("Waiting for it…").into()])) };
         let caption = [gl.title.as_str(), gl.detail.as_str()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ");
         let mut card = Card::new(w.label()).caption(caption).value(gl.value.clone(), None);
         match &gl.body {

@@ -45,13 +45,13 @@ fn passwords_said(r: Result<olo_keychain::Response, olo_keychain::CallError>) ->
     // (A Response wipes its secrets when dropped: looked at, not taken apart.)
     match r {
         Ok(resp) => match &resp {
-            Response::Locked => Err("Passwords is locked.".into()),
-            Response::NotSetUp => Err("Passwords isn’t set up yet.".into()),
+            Response::Locked => Err(olo_kit::words::tr("Passwords is locked.").into()),
+            Response::NotSetUp => Err(olo_kit::words::tr("Passwords isn’t set up yet.").into()),
             Response::Error { message } => Err(format!("Passwords: {message}")),
             _ => Ok(resp),
         },
-        Err(CallError::NotRunning) => Err("Passwords isn’t running.".into()),
-        Err(e) => Err(format!("Passwords can’t be reached ({e}).")),
+        Err(CallError::NotRunning) => Err(olo_kit::words::tr("Passwords isn’t running.").into()),
+        Err(e) => Err(olo_kit::tr!("Passwords can’t be reached ({}).", e)),
     }
 }
 
@@ -60,7 +60,7 @@ fn passwords_said(r: Result<olo_keychain::Response, olo_keychain::CallError>) ->
 pub fn saved_password(archive: &std::path::Path) -> Result<Option<String>, String> {
     match &passwords_said(olo_keychain::call(&olo_keychain::Request::Secrets { title: secret_title(archive) }))? {
         olo_keychain::Response::Secrets { values } => Ok(values.iter().find(|v| !v.is_empty()).cloned()),
-        _ => Err("Passwords answered something else.".into()),
+        _ => Err(olo_kit::words::tr("Passwords answered something else.").into()),
     }
 }
 
@@ -70,7 +70,7 @@ pub fn keep_password(archive: &std::path::Path, password: &str) -> Result<(), St
     let request = olo_keychain::Request::KeepSecret { title: secret_title(archive), secret: password.to_owned(), note: format!("The password of the archive “{name}” (kept here by Tracker).") };
     match &passwords_said(olo_keychain::call(&request))? {
         olo_keychain::Response::Saved { .. } => Ok(()),
-        _ => Err("Passwords didn’t keep it.".into()),
+        _ => Err(olo_kit::words::tr("Passwords didn’t keep it.").into()),
     }
 }
 
@@ -183,7 +183,7 @@ impl View for AskPassword {
             AskMsg::UseSaved => {
                 let Some(archive) = self.again.sources.first().cloned() else { return };
                 self.asking = true;
-                self.note = Some("Asking Passwords…".into());
+                self.note = Some(olo_kit::words::tr("Asking Passwords…").into());
                 cx.work(move || saved_password(&archive), AskMsg::Saved);
             }
             AskMsg::Saved(r) => {
@@ -196,7 +196,7 @@ impl View for AskPassword {
                     }
                     Ok(None) => {
                         self.note =
-                            Some(format!("Passwords keeps no password for it (an item “{}”).", secret_title(self.again.sources.first().map(PathBuf::as_path).unwrap_or(std::path::Path::new("")))))
+                            Some(olo_kit::tr!("Passwords keeps no password for it (an item “{}”).", secret_title(self.again.sources.first().map(PathBuf::as_path).unwrap_or(std::path::Path::new("")))))
                     }
                     Err(e) => self.note = Some(e),
                 }
@@ -222,7 +222,7 @@ impl View for AskPassword {
             [one] => format!("“{}”", one.file_name().unwrap_or_default().to_string_lossy()),
             many => format!("{} archives", many.len()),
         };
-        let said = if self.wrong { "That password isn’t right. Try again:".to_owned() } else { format!("{name} is protected by a password.") };
+        let said = if self.wrong { olo_kit::words::tr("That password isn’t right. Try again:").to_owned() } else { olo_kit::tr!("{} is protected by a password.", name) };
         let verb = if matches!(self.again.kind, ops::Kind::Extract) { "Extract" } else { "Open" };
         div()
             .w_full()
@@ -330,13 +330,13 @@ impl View for CompressAs {
                 let format = AS_FORMATS[self.format];
                 let stem = self.name.read(cx).text().trim().to_owned();
                 if stem.is_empty() || stem.contains('/') {
-                    self.note = Some("A name, without “/”.".into());
+                    self.note = Some(olo_kit::words::tr("A name, without “/”.").into());
                     cx.invalidate();
                     return;
                 }
                 let password = (self.protect && format.takes_password()).then(|| self.password.read(cx).text().to_owned()).filter(|p| !p.is_empty());
                 if self.protect && format.takes_password() && password.is_none() {
-                    self.note = Some("Type the password it’s to be opened with.".into());
+                    self.note = Some(olo_kit::words::tr("Type the password it’s to be opened with.").into());
                     cx.invalidate();
                     return;
                 }
@@ -384,7 +384,14 @@ impl View for CompressAs {
                     cx.close_window();
                 }
             }))
-            .child(StringView::new(format!("Compress {what} into a new archive beside {}:", if self.sources.len() == 1 { "it" } else { "them" })).wrap(true))
+            .child(
+                StringView::new(if self.sources.len() == 1 {
+                    olo_kit::tr!("Compress {} into a new archive beside it:", what)
+                } else {
+                    olo_kit::tr!("Compress {} into a new archive beside them:", what)
+                })
+                .wrap(true),
+            )
             .child(TextControl::new(cx, &self.name).label("Name:").divider(72.0))
             .child(MenuField::new("compress-format", labels, self.format).label("Format:").divider(72.0).on_change(cx.msg_with(|i: &usize| AsMsg::Format(*i))))
             .child(
