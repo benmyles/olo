@@ -5819,7 +5819,9 @@ recorded otherwise.
     container's; a scroll view's frame and bars are the kit's),
     `control-edges` (controls down a column almost lined up, left or
     right, in the same section: check boxes' right edges are their
-    labels'), `uneven-gaps` (a row of controls spaced unevenly by a
+    labels'; a point an app marks for agents in what it draws, under 10
+    points each way, lines up with nothing: a Disk Usage slice's and the
+    box of its middle did, 1.7 points apart), `uneven-gaps` (a row of controls spaced unevenly by a
     point or few), `after-commit` (a commit row, push buttons Apply,
     Revert, Save or Done, not a toolbar's icons, with anything under it
     in its own column (the innermost box it's in, as wide: a column
@@ -5992,7 +5994,12 @@ way to another size (`resizing`: a window that follows what it shows
 is laid out for what just came before it's that tall, and what's found
 then is of a window nobody is shown; on a busy machine the lint once
 took Power's Graphics tab so, 22 points past its pane), never slept
-for. `tsession review` asks again the same way. An app
+for. The look is first changed once app_server shows the app's window
+(drawn, no size on its way: `list_windows`' `content` and `settling`),
+not when the app first answers: an app answers for what it has drawn
+itself before app_server has its first frame, and a change of scale
+then once had Disk Usage reviewed at its least (`first-frame-check`,
+above). `tsession review` asks again the same way. An app
 whose build and lint are as when it last came out clean isn't run
 again (`~/.cache/olo-dev/ui-lint.json`: its binary's, app_server's and
 the fake sound server's size, time and inode, the lint's scripts, the
@@ -7869,7 +7876,15 @@ both ways: a window squeezed under the least its app sets (a bigger
 scale, a smaller screen) grows back to that least as soon as its
 display has room again, not left at the squeezed size (Weather at 2× on
 a 1600 × 1000 screen was 800 × 500; back at 1× it stayed so, its columns
-run past its edge, until this).
+run past its edge, until this). A window that hasn't drawn yet isn't
+fitted when the displays change: its frame is its decoration alone,
+and grown from that to its app's least it was told that size (Disk
+Usage, the scale changed before its first frame, came up at 600 × 440,
+not its own 780 × 560). It's marked (`refit_on_map`) and fitted as it
+first shows, at its own size. `tools/dev/first-frame-check` holds an
+app's first frame (relaying its Wayland connection, its first
+`wl_surface.attach` of a buffer held) while the scale changes, and
+checks its window comes up at its own size.
 
 **A window that rests gives its swapchain back** (found 2026-11-16,
 answering Ben's "doesn't 6gb of memory seem really high for olo app
@@ -16266,7 +16281,16 @@ slice is one `Painter::paint_sector` (the slices
 one paint layer, the hairlines another), so hovering redraws the window
 in about a millisecond and only when the slice under the pointer
 changes; the chart's width is kept on device pixels so the list beside
-it is too.
+it is too, and leaves the list room for its columns (the name at its
+least: in the window at its least, Files ran out of the list). The
+middle says the folder's name and size in a box inscribed in it
+(`hub_box`, its corners on the circle), which is also how agents find
+it; its radius is never under what that box needs for two lines and
+the widest size there is ("1023 bytes", `hub_least`), a small chart's
+rings narrower for it (`Geometry::fit`): the box was a square the
+radius across and the size wasn't fitted, so at the window's least the
+lint found the words over the box, and a smaller middle's size ran
+over its rim.
 
 The start screen lists Home and each disk file system once
 (`volumes.rs`, from /proc/self/mountinfo; statvfs for size and free

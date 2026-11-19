@@ -1640,6 +1640,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             }
             return;
         }
+        // Not drawn yet, its frame is its decoration alone: grown from
+        // that to the least its app needs, it was told that size (Disk
+        // Usage at its least, 600 × 440, the scale changed before its
+        // first frame: tools/dev/first-frame-check). It's fitted as it
+        // shows, at its own size.
+        if window.content_size().is_empty() {
+            window.meta().refit_on_map.set(true);
+            return;
+        }
         // A window of its own size only has to be on the display (the
         // margins are for arranging).
         let area = self.window_output(window).and_then(|o| self.usable_area(&o));

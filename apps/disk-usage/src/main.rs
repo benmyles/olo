@@ -41,6 +41,15 @@ use volumes::Volume;
 const APP_ID: &str = "olo.disk-usage";
 const COLLECTOR_HEIGHT: f32 = 58.0;
 const CHIP_HEIGHT: f32 = 20.0;
+/// The list's name column at its least, and the room of the columns
+/// after it (size, its bar and files, with their gaps).
+const NAME_LEAST: f32 = 120.0;
+const OTHER_COLUMNS: f32 = 208.0;
+/// The middle's two lines of words, their middles this far apart.
+const HUB_LINES: f32 = 16.0;
+/// The box the middle's words go in, across and down, in its radius:
+/// its corners on the circle (0.8² + 0.6² = 1).
+const HUB_BOX: (f32, f32) = (1.6, 1.2);
 
 /// What the window is told: by the scan, its workers, a launch, and
 /// what's in it.
@@ -688,7 +697,37 @@ impl DiskUsage {
     /// The chart's place in its box.
     fn geometry(b: Bounds<Pixels>) -> chart::Geometry {
         let side = f32::from(b.size.width.min(b.size.height));
-        chart::Geometry::fit(b.center(), side / 2.0 - 2.0)
+        chart::Geometry::fit(b.center(), side / 2.0 - 2.0, Self::hub_least())
+    }
+
+    /// The box the middle's words go in, inscribed in it (its corners on
+    /// the circle, a hairline in): the folder's name on the upper of two
+    /// lines, its size on the lower. Agents find the middle by it.
+    fn hub_box(g: &chart::Geometry, gx: &Painter) -> Bounds<Pixels> {
+        let r = (px(g.hub) - style::hairline(gx)).max(px(0.0));
+        Bounds::centered_at(g.center, size(r * HUB_BOX.0, r * HUB_BOX.1))
+    }
+
+    /// The least radius of the middle (`chart::Geometry::fit`): its box
+    /// (`hub_box`) tall enough for its two lines, and as wide as the
+    /// widest size it can say (each unit's longest: "1023 bytes"), so a
+    /// size is never cut short. Kept for the font it was measured in.
+    fn hub_least() -> f32 {
+        thread_local!(static KEPT: std::cell::RefCell<Option<(olo_kit::Font, f32)>> = const { std::cell::RefCell::new(None) });
+        let font = style::ui_font(FontWeight::NORMAL);
+        KEPT.with(|kept| {
+            if let Some((f, least)) = &*kept.borrow()
+                && *f == font
+            {
+                return *least;
+            }
+            let widest = (0..5).map(|unit| f32::from(style::text_width(format_size(1023u64 << (10 * unit)), style::PLAIN_SIZE, font.clone()))).fold(0.0, f32::max);
+            let tall = style::line_row(style::PLAIN_SIZE) + HUB_LINES;
+            // (And the hairline inside the rim.)
+            let least = (widest / HUB_BOX.0).max(tall / HUB_BOX.1) + 1.0;
+            *kept.borrow_mut() = Some((font, least));
+            least
+        })
     }
 
     fn scan_view(&mut self, cx: &mut Cx<Self>) -> Element {
@@ -756,11 +795,15 @@ impl DiskUsage {
         // quarter pixel in leaves layout rounding ties that put the list's
         // scroll bar a pixel off its rows).
         let scale = cx.scale_factor();
-        let side = (body_h.min(list_w * 0.56) * scale).floor().max(0.0) / scale;
+        // (Leaving the list room for its columns, the name at its least:
+        // in the window at its least, the chart took that and Files ran
+        // out of the list, "Fil" and a scroll bar under it.)
+        let list_least = NAME_LEAST + OTHER_COLUMNS + 2.0 + SCROLL_BAR;
+        let side = (body_h.min(list_w * 0.56).min(list_w - m::SPACING - list_least) * scale).floor().max(0.0) / scale;
         let list_w = list_w - side - m::SPACING;
         // The name takes what the others leave (inside the list's border and
         // scroll bar), the last filling to the edge.
-        let columns = [Column::new("Name", (list_w - 2.0 - SCROLL_BAR - 208.0).max(120.0)), Column::new("Size", 76.0).right(), Column::new("", 50.0), Column::new("Files", 76.0).right()];
+        let columns = [Column::new("Name", (list_w - 2.0 - SCROLL_BAR - OTHER_COLUMNS).max(NAME_LEAST)), Column::new("Size", 76.0).right(), Column::new("", 50.0), Column::new("Files", 76.0).right()];
         let want: Vec<usize> = self.selected.and_then(|s| rows.iter().position(|&r| r == s)).into_iter().collect();
         {
             let mut state = self.list.state_mut();
@@ -887,14 +930,25 @@ impl DiskUsage {
             let t = scan.tree.read().unwrap();
             let n = &t.nodes[folder as usize];
             let title = if folder == ROOT && t.root == home() { "Home".to_owned() } else { n.name.to_string() };
-            let w = px(g.hub * 1.7);
-            style::label_fit(gx, g.center.x, g.center.y - px(8.0), style::Align::Center, title.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), style::c(p.document_text), w);
-            style::label(gx, g.center.x, g.center.y + px(8.0), style::Align::Center, format_size(n.size), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::c(p.document_text));
-            let hub = Bounds { origin: point(g.center.x - px(g.hub / 2.0), g.center.y - px(g.hub / 2.0)), size: size(px(g.hub), px(g.hub)) };
-            olo_kit::agent::record(
-                gx,
-                olo_kit::agent::Node { role: "Button", name: Some(format!("{title} {}", format_size(n.size)).into()), bounds: hub, enabled: true, clickable: true, ..Default::default() },
-            );
+            let amount = format_size(n.size);
+            // In the box inscribed in the middle, cut short to it (a long
+            // name): two lines where it's tall enough, as it is for any
+            // chart a window makes (`hub_least`), else the size alone.
+            // (The box was a square the radius across, half the middle,
+            // and the size wasn't cut: its words ran over the box, and a
+            // small middle's size over its rim.)
+            let hub = Self::hub_box(&g, gx);
+            let row = px(style::line_row(style::PLAIN_SIZE));
+            let ink = style::c(p.document_text);
+            let two = hub.size.height >= row + px(HUB_LINES);
+            if two {
+                style::label_fit(gx, g.center.x, g.center.y - px(HUB_LINES / 2.0), style::Align::Center, title.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), ink, hub.size.width);
+            }
+            if hub.size.height >= row {
+                let y = if two { g.center.y + px(HUB_LINES / 2.0) } else { g.center.y };
+                style::label_fit(gx, g.center.x, y, style::Align::Center, amount.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), ink, hub.size.width);
+            }
+            olo_kit::agent::record(gx, olo_kit::agent::Node { role: "Button", name: Some(format!("{title} {amount}").into()), bounds: hub, enabled: true, clickable: true, ..Default::default() });
             // Agents (and hints) can pick the first ring's slices by
             // name.
             for s in slices.iter().filter(|s| s.ring == 1 && s.end - s.start > 0.15) {

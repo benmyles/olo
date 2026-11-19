@@ -41,9 +41,14 @@ pub struct Geometry {
 }
 
 impl Geometry {
-    pub fn fit(center: Point<Pixels>, radius: f32) -> Geometry {
-        // The middle a little wider than a ring, as Haiku has it.
-        let ring = (radius / (RINGS as f32 + 1.4)).floor();
+    /// The chart in a circle of `radius`, its middle `least_hub` across
+    /// at the least (room for its words).
+    pub fn fit(center: Point<Pixels>, radius: f32, least_hub: f32) -> Geometry {
+        // The middle a little wider than a ring, as Haiku has it; on a
+        // small chart, the rings narrower so the middle keeps its least
+        // (each a point wide at the least). In the 600 × 440 window, its
+        // words ran out of a middle of 30.
+        let ring = (radius / (RINGS as f32 + 1.4)).min(((radius - least_hub) / RINGS as f32).max(1.0)).floor();
         Geometry { center, hub: radius - ring * RINGS as f32, ring }
     }
 
@@ -211,13 +216,27 @@ mod tests {
         assert_eq!((s[1].node, s[1].ring), (3, 2));
         assert!((s[1].end - s[1].start - TAU * 0.25).abs() < 1e-4, "a third of its folder");
         assert_eq!((s[2].node, s[2].ring), (1, 1));
-        let g = Geometry::fit(pos2(100.0, 100.0), 90.0);
+        let g = Geometry::fit(pos2(100.0, 100.0), 90.0, 30.0);
         // Right of the middle, in the first ring: the folder (3 o'clock).
         assert_eq!(hit(&s, &g, pos2(100.0 + g.hub + 2.0, 100.0)), Some(0));
         // Left, first ring: the file (9 o'clock is within 270°..360°).
         assert_eq!(hit(&s, &g, pos2(100.0 - g.hub - 2.0, 100.0 - 1.0)), Some(2));
         assert_eq!(g.at(pos2(100.0, 100.0)), Some((0, 0.0)));
         assert_eq!(g.at(pos2(300.0, 100.0)), None);
+    }
+
+    #[test]
+    fn the_middle_keeps_room_for_its_words() {
+        // Roomy: a ring and two fifths, as it was.
+        let g = Geometry::fit(pos2(0.0, 0.0), 177.0, 40.0);
+        assert_eq!((g.ring, g.hub), (27.0, 42.0));
+        // The least window's chart: narrower rings, the middle its least.
+        let g = Geometry::fit(pos2(0.0, 0.0), 115.0, 40.0);
+        assert_eq!(g.ring, 15.0);
+        assert!(g.hub >= 40.0, "{}", g.hub);
+        // Smaller than any window makes it: rings a point wide.
+        let g = Geometry::fit(pos2(0.0, 0.0), 30.0, 40.0);
+        assert_eq!((g.ring, g.hub), (1.0, 25.0));
     }
 
     #[test]

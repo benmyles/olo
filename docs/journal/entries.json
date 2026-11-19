@@ -5116,5 +5116,11 @@
   "title": "Olo in French",
   "caption": "Preferences \u25b8 Keyboard \u25b8 Shortcuts with Olo's language set to French: every one of Olo's words has a French translation, set as French sets it (a narrow space before a colon). The profile row's menu now takes only the room its buttons leave, so a longer Delete never runs out of the box.",
   "image": "2026-11-19/024957-olo-in-french.png"
+ },
+ {
+  "time": "2026-11-19T03:28:59",
+  "title": "Disk Usage at its least size",
+  "caption": "Before (left) and after: at its least window size, the list now has room for all its columns (Files was cut, with a scroll bar under it), and the chart's middle keeps room for its words (a small chart's rings narrower for it).",
+  "image": "2026-11-19/032859-disk-usage-at-its-least-size.png"
  }
 ]

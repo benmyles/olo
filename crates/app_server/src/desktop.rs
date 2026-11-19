@@ -71,6 +71,9 @@ pub struct WindowMeta {
     pub saved_location: Cell<Point<i32, Logical>>,
     /// Set on the first commit, once placement memory has been consulted.
     pub placed: Cell<bool>,
+    /// The displays changed before it had drawn anything: fitted to them
+    /// as it shows (`refit`), not to a frame of its decoration alone.
+    pub refit_on_map: Cell<bool>,
     /// It was the focused window before an in-place restart, put back at
     /// this time.
     pub restored_focus: Cell<Option<std::time::Instant>>,
@@ -262,6 +265,7 @@ impl WindowElement {
             minimized: Cell::new(false),
             saved_location: Cell::new(Point::default()),
             placed: Cell::new(false),
+            refit_on_map: Cell::new(false),
             restored_focus: Cell::new(None),
             focus_before: Default::default(),
             restored_depth: Cell::new(None),

@@ -752,10 +752,22 @@ fn crowded_lines(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
     }
 }
 
+/// Smaller across and down than any control the kit draws (a check box,
+/// a scroll bar's arrow): a point an app marks in what it draws for
+/// agents to click (Disk Usage's 8-point squares at its slices'
+/// middles), not a box anyone sees.
+const POINT: f32 = 10.0;
+
+fn a_point(c: &Control) -> bool {
+    c.rect.width() < POINT && c.rect.height() < POINT
+}
+
 /// Controls down a column almost lined up, on the left or the right.
 fn control_edges(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
-    // (A menu bar's titles are set by their lengths, as tabs are.)
-    let shown: Vec<&Control> = showing(p).filter(|c| !part_of_a_whole(c) && c.role != "MenuBarItem").collect();
+    // (A menu bar's titles are set by their lengths, as tabs are. A
+    // point has no edges to line up: a slice's lined up with the box of
+    // Disk Usage's middle by chance, 1.7 points off.)
+    let shown: Vec<&Control> = showing(p).filter(|c| !part_of_a_whole(c) && c.role != "MenuBarItem" && !a_point(c)).collect();
     let right_room = SAME.max(1.0 / ppp + 0.01);
     // (A check box or radio button ends where its label does: its right
     // edge lines up with nothing.)
@@ -1306,6 +1318,22 @@ mod tests {
         // cut by nothing would: that's `text-cut`'s, not this.)
         p.texts = vec![text("Restore…", 258.0, 64.0)];
         assert!(found(&p).is_empty());
+    }
+
+    /// Two boxes almost lined up down a column are found; a point an app
+    /// marks for agents (a chart's slice) and a box aren't.
+    #[test]
+    fn a_point_lines_up_with_nothing() {
+        let found = |p: &Parts| review(p, 400.0, 300.0, 2.0).into_iter().filter(|f| f.kind == "control-edges").count();
+        let at = |name: &str, x: f32, y: f32, side: f32| {
+            let mut c = button(name, x, &format!("[{name}]"));
+            c.rect = Rect::from_min_max(pos2(x, y), pos2(x + side, y + side));
+            c
+        };
+        let p = Parts { controls: vec![at("Downloads", 163.5, 100.0, 24.0), at("Home 2.7 MB", 161.8, 130.0, 60.0)], ..Parts::default() };
+        assert_eq!(found(&p), 1, "two boxes");
+        let p = Parts { controls: vec![at("Downloads", 163.5, 100.0, 8.0), at("Home 2.7 MB", 161.8, 115.0, 60.0)], ..Parts::default() };
+        assert_eq!(found(&p), 0, "a point and a box");
     }
 
     /// Something close under a form's Save is found; a scroll bar's

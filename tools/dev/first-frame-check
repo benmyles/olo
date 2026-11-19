@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+"""A window keeps its own size when the displays change before it first draws.
+
+  first-frame-check [--app PROGRAM] [--hold SECONDS] [--keep]
+
+Starts a headless session of its own ("first-frame", at 2×) and in it
+the app (Disk Usage unless --app) twice, each time with a state folder
+of its own under /var/tmp, so neither remembers a size: first as it
+is, for the size it gives its window; then through a relay that holds
+its window's first frame (its first wl_surface.attach of a buffer) for
+--hold seconds (1.5 unless), the screens going to 1× while it's held.
+Once shown, its window must have the size it had the first time.
+
+What failed before (2026-11-19): a change of the displays refit every
+window, one that hadn't drawn yet too. With only its decoration to go
+by, app_server grew it to the least its app needs and told the app so
+(Disk Usage at 600 × 440, not its own 780 × 560). The live layout lint,
+which changes the scale as soon as an app answers it, once reviewed
+Disk Usage at its least, its hub's words outside the hub's box at every
+look (found by the olo-debug-help investigator, with this relay).
+"""
+import argparse, json, os, shutil, subprocess, sys, time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+N = "first-frame"
+SCRATCH = f"/var/tmp/olo-first-frame-check-{os.getpid()}"
+ENV = dict(os.environ, TSESSION_PROFILE="release")
+# Never the person's display.
+ENV.pop("WAYLAND_DISPLAY", None)
+
+# PROGRAM on the session's display, through a relay of its connection
+# that holds its first window's first frame: `relay.py HOLD MARKER
+# PROGRAM [ARGS]`, MARKER written as the hold begins. The relay connects
+# first and then becomes PROGRAM's parent's other half: the compositor
+# sees the PID that execs PROGRAM, as for any app.
+RELAY = r'''
+import array, os, socket, struct, sys, threading, time
+
+def receive(sock, size):
+    data, ancillary, _, _ = sock.recvmsg(size, socket.CMSG_SPACE(253 * 4))
+    fds = array.array("i")
+    for level, kind, payload in ancillary:
+        if (level, kind) == (socket.SOL_SOCKET, socket.SCM_RIGHTS):
+            fds.frombytes(payload[: len(payload) - len(payload) % fds.itemsize])
+    return data, fds
+
+def forward(sock, data, fds):
+    try:
+        rights = [(socket.SOL_SOCKET, socket.SCM_RIGHTS, fds)] if fds else []
+        sent = sock.sendmsg([data], rights)
+        if sent < len(data):
+            sock.sendall(data[sent:])
+    finally:
+        for fd in fds:
+            os.close(fd)
+
+def read_exact(sock, size):
+    data, fds = bytearray(), array.array("i")
+    while len(data) < size:
+        part, rights = receive(sock, size - len(data))
+        if not part:
+            os._exit(0)
+        data.extend(part)
+        fds.extend(rights)
+    return bytes(data), fds
+
+def requests(app, server, hold, marker):
+    registry = wm_base = surface = None
+    held = False
+    while True:
+        header, fds = read_exact(app, 8)
+        obj, word = struct.unpack("=II", header)
+        op, size = word & 0xFFFF, word >> 16
+        body, more = read_exact(app, size - 8)
+        fds.extend(more)
+        if registry is None and obj == 1 and op == 1:  # wl_display.get_registry
+            registry, = struct.unpack("=I", body)
+        elif wm_base is None and obj == registry and op == 0 and len(body) >= 20:  # wl_registry.bind
+            length, = struct.unpack_from("=I", body, 4)
+            if body[8:8 + length].rstrip(b"\0") == b"xdg_wm_base":
+                wm_base, = struct.unpack_from("=I", body, len(body) - 4)
+        elif surface is None and obj == wm_base and op == 2:  # xdg_wm_base.get_xdg_surface
+            _, surface = struct.unpack("=II", body)
+        elif not held and obj == surface and op == 1 and len(body) == 12:  # wl_surface.attach
+            buffer, = struct.unpack_from("=I", body)
+            if buffer:
+                held = True
+                open(marker, "w").close()
+                time.sleep(hold)
+        forward(server, header + body, fds)
+
+def events(server, app):
+    try:
+        while True:
+            data, fds = receive(server, 65536)
+            if not data:
+                return
+            forward(app, data, fds)
+    finally:
+        os._exit(0)
+
+hold, marker = float(sys.argv[1]), sys.argv[2]
+server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+server.connect(os.path.join(os.environ["XDG_RUNTIME_DIR"], os.environ["WAYLAND_DISPLAY"]))
+app, program = socket.socketpair()
+if os.fork():
+    server.close()
+    app.close()
+    program.set_inheritable(True)
+    os.environ["WAYLAND_SOCKET"] = str(program.fileno())
+    os.execv(sys.argv[3], sys.argv[3:])
+program.close()
+threading.Thread(target=events, args=(server, app), daemon=True).start()
+requests(app, server, hold, marker)
+'''
+
+
+def ts(*a):
+    return subprocess.run([sys.executable, os.path.join(ROOT, "tools/dev/tsession"), *a], capture_output=True, text=True, env=ENV)
+
+
+def windows():
+    out = ts("ipc", N, json.dumps({"type": "list_windows"})).stdout
+    return json.loads(out).get("windows", []) if out.strip() else []
+
+
+def started(out):
+    """The PID `tsession run` says it started."""
+    words = out.split()
+    return int(words[-1]) if words and words[-1].isdigit() else None
+
+
+def shown(pid, within):
+    """The size of `pid`'s window once it shows (it has drawn, and app_server
+    isn't waiting on a new size from it), or None after `within` s."""
+    deadline = time.time() + within
+    while time.time() < deadline:
+        for w in windows():
+            content = w.get("content") or {}
+            if w.get("pid") == pid and content.get("width", 0) > 0 and not w.get("settling"):
+                # (Twice the same, a moment apart: settled.)
+                time.sleep(0.5)
+                again = [x for x in windows() if x.get("id") == w["id"]]
+                if again and again[0].get("content") == content:
+                    return content["width"], content["height"]
+        time.sleep(0.1)
+    return None
+
+
+def stop(pid):
+    """Ends the app this check started (by its PID, nothing else)."""
+    try:
+        os.kill(pid, 15)
+    except ProcessLookupError:
+        return
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return
+        time.sleep(0.1)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--app", default=os.path.join(ROOT, "target/release/olo-disk-usage"))
+    ap.add_argument("--hold", type=float, default=1.5)
+    ap.add_argument("--keep", action="store_true", help="leave the session running (stop it with tsession stop first-frame)")
+    a = ap.parse_args()
+    os.makedirs(os.path.join(SCRATCH, "home"), exist_ok=True)
+    relay = os.path.join(SCRATCH, "relay.py")
+    open(relay, "w").write(RELAY)
+    ts("stop", N)
+    r = ts("start", N, "--scale", "2", "--home", os.path.join(SCRATCH, "home"), "--owner", str(os.getpid()))
+    if r.returncode:
+        sys.exit(f"first-frame-check: the session didn't start: {r.stderr.strip()[-300:]}")
+    ok = False
+    try:
+        # As it is: the size the app gives its window.
+        pid = started(ts("run", N, f"XDG_STATE_HOME={SCRATCH}/state-1", a.app).stdout)
+        own = shown(pid, 30) if pid else None
+        if own is None:
+            sys.exit("first-frame-check: the app's window never showed")
+        stop(pid)
+        print(f"its own size: {own[0]} × {own[1]}")
+        # Its first frame held while the scale changes.
+        marker = os.path.join(SCRATCH, "holding")
+        pid = started(ts("run", N, f"XDG_STATE_HOME={SCRATCH}/state-2", sys.executable, relay, str(a.hold), marker, a.app).stdout)
+        deadline = time.time() + 30
+        while not os.path.exists(marker) and time.time() < deadline:
+            time.sleep(0.05)
+        if not os.path.exists(marker):
+            sys.exit("first-frame-check: the app never drew a first frame to hold")
+        ts("scale", N, "1")
+        got = shown(pid, 30 + a.hold)
+        stop(pid)
+        if got is None:
+            sys.exit("first-frame-check: the held window never showed")
+        print(f"shown after the scale changed before its first frame: {got[0]} × {got[1]}")
+        ok = got == own
+        print("ok" if ok else f"FAILED: it should be {own[0]} × {own[1]}, the size it gives itself")
+    finally:
+        if not a.keep:
+            ts("stop", N)
+            shutil.rmtree(SCRATCH, ignore_errors=True)
+    sys.exit(0 if ok else 1)
+
+
+if __name__ == "__main__":
+    main()

@@ -252,8 +252,12 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                     }
                     self.place_on_content(surface);
                     // Come on screen: if under the pointer, it has it
-                    // (its cursor) without waiting for the pointer to move.
+                    // (its cursor) without waiting for the pointer to move;
+                    // fitted to displays that changed before it drew.
                     if came(surface) {
+                        if window.meta().refit_on_map.replace(false) {
+                            self.refit(&window);
+                        }
                         self.repoint_soon();
                     }
                     let buffer_offset = with_states(surface, |states| states.cached_state.get::<SurfaceAttributes>().current().buffer_delta.take());

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-19
 
+### Disk Usage at its least size
+
+*03:28* — Before (left) and after: at its least window size, the list now has room for all its columns (Files was cut, with a scroll bar under it), and the chart's middle keeps room for its words (a small chart's rings narrower for it).
+
+![Disk Usage at its least size](2026-11-19/032859-disk-usage-at-its-least-size.png)
+
 ### Olo in French
 
 *02:49* — Preferences ▸ Keyboard ▸ Shortcuts with Olo's language set to French: every one of Olo's words has a French translation, set as French sets it (a narrow space before a colon). The profile row's menu now takes only the room its buttons leave, so a longer Delete never runs out of the box.

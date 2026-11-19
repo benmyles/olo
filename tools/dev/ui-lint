@@ -363,7 +363,13 @@ def lint_one(spec, slot, master, screen, scales, show_review, work, all_themes=F
         began, waiting = time.time(), kept_waiting(server)
         while True:
             ps = pids_of(exe, home)
-            if ps and (layers or windows_of(name, ps[0])):
+            # Its windows on screen, as app_server has them: drawn, and no
+            # new size on its way (`settling`). An app answers the review
+            # for the size it has drawn itself before app_server has its
+            # first frame; the look changed then, Disk Usage was reviewed
+            # at another size (tools/dev/first-frame-check).
+            shown = [w for w in windows_of(name, ps[0]) if (w.get("content") or {}).get("width", 0) > 0] if ps and not layers else []
+            if ps and (layers or (shown and not any(w.get("settling") for w in shown))):
                 pid = ps[0]
                 break
             if time.time() > began + 20 + min(kept_waiting(server, *ps[:1]) - waiting, 120):

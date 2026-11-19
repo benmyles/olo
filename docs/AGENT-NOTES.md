@@ -194,6 +194,15 @@ Each note: what to do, then why (what happened), then how to apply it.
   fixture's name in it (a volume, a keyboard) can be the fixture
   translated: a name the system gives is never looked up, so keep it
   as itself in the catalog.
+- **A finding the live lint made once, at every look, and never again**
+  can be a race at the app's start: the lint changes the scale as soon
+  as the app answers, and app_server may not have its first frame yet.
+  To make such a race happen every time, hold the frame: relay the
+  app's Wayland connection and hold its first `wl_surface.attach` of a
+  buffer (`tools/dev/first-frame-check`'s relay, from the olo-debug-help
+  investigator, 2026-11-19). The same app reviewed in an ordinary
+  session at the size it was given (drag it to its least) shows the
+  finding as the lint saw it.
 - **A service in a program that also has a window pays for the
   window's kit**: linked beside `olo-phone --service`, it cost 3.5 MB
   at rest for nothing it used. A service that runs all session is a
