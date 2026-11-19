@@ -1144,6 +1144,9 @@ Copiar ahí
 Back Up These Folders
 Hacer copia de estas carpetas
 
+Back to Chats
+Volver a los chats
+
 Back to Conversations
 Volver a las conversaciones
 

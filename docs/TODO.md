@@ -40,9 +40,9 @@ something nobody here has is in "Blocked", with what it waits for.
   (`SidePane::panes`), its empty state wraps, a short scroll bar's
   arrows fit; Calendar passes on the smallest screen and the person's
   three (its columns give way and come in front, its toolbar folds, its
-  tabs fold into a pop-up in a short window, its month scrolls). To do:
-  Phone and Telegram one pane at a time (the music box giving way in a
-  short window), Weather (its places and assistant give way, its cards
+  tabs fold into a pop-up in a short window, its month scrolls); Phone
+  and Telegram show one pane at a time in a narrow window (Phone's music
+  box gives way in a short one). To do: Weather (its places and assistant give way, its cards
   reflow, its forecast scrolls), kache (cards in one column, its
   buttons under its title), Doctor and OS Updates (the Choose row folds;
   Updates' detail and sources give way), Logs (its detail gives way in

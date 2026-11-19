@@ -256,9 +256,12 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, cx: &mut Cx<Tg>) -> Element {
     let hot = tg.hot.clone();
     let is_hot = move |k: &str| hot.as_ref().is_some_and(|h| h.as_ref() == k);
 
-    // The header.
+    // The header (one at a time, the way back to the list at its left,
+    // the picture after it).
     let head = r(x0, y0, w, HEADER);
-    let pic_r = r(x0 + m::SPACING * 2.0, y0 + HEADER / 2.0 - 18.0, 36.0, 36.0);
+    // (The picture 12 points after the arrow, as Phone's.)
+    let lead = if tg.side.alone() { 8.0 + m::CONTROL_HEIGHT + 12.0 - m::SPACING * 2.0 } else { 0.0 };
+    let pic_r = r(x0 + m::SPACING * 2.0 + lead, y0 + HEADER / 2.0 - 18.0, 36.0, 36.0);
     let pic = if chat.photo.is_some() { tg.pics.get(&Pic::Avatar(chat.id), &tg.backend) } else { None };
     let (status, live) = match tg.store.doing(chat_id, topic, crate::now()) {
         Some(t) => (t, true),
@@ -303,9 +306,21 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, cx: &mut Cx<Tg>) -> Element {
             style::hline_above(gr, head.origin.x, head.right(), head.bottom(), c(p.shadow).opacity(0.5));
         }));
     }
-    for (key, b) in [("conv-head", r(x0, y0, f32::from(info.origin.x) - 8.0 - x0, HEADER)), ("conv-info", info)] {
+    // (The header's click, Chat Info, starts after the back arrow: under
+    // it, it took the arrow's click.)
+    let head_x = if lead > 0.0 { x0 + 8.0 + m::CONTROL_HEIGHT + 4.0 } else { x0 };
+    for (key, b) in [("conv-head", r(head_x, y0, f32::from(info.origin.x) - 8.0 - head_x, HEADER)), ("conv-info", info)] {
         let t = me.clone();
         hits.push(crate::hit(&me, key, b).on_left_click(move |_, cx| t.update(cx, move |tg, cx| tg.conv_act(Act::Info, cx))));
+    }
+    if tg.side.alone() {
+        let t = me.clone();
+        hits.push(div().absolute().left(px(x0 + 8.0)).top(px(y0 + ((HEADER - m::CONTROL_HEIGHT) / 2.0).round())).child(olo_kit::widgets::ArrowButton::back("Back to Chats").on_click(move |_, cx| {
+            t.update(cx, |tg, cx| {
+                tg.side.show_pane();
+                cx.invalidate();
+            })
+        })));
     }
     let mut top = y0 + HEADER;
 

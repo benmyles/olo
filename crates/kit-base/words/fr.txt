@@ -1144,6 +1144,9 @@ Y sauvegarder
 Back Up These Folders
 Sauvegarder ces dossiers
 
+Back to Chats
+Retour aux discussions
+
 Back to Conversations
 Retour aux conversations
 

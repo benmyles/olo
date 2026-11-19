@@ -828,7 +828,10 @@ fn chat_row(g: &mut Painter, r: Bounds<Pixels>, ch: &Chat, img: Option<Arc<Rende
     }
     if ch.mentions > 0 {
         let fill = if selected { white() } else { accent };
-        let pr = style::pill_on_baseline(g, pxr - px(18.0), base2, "@", pill_size, bold.clone(), fill, if selected { sel_fill } else { white() });
+        // (As wide as it's drawn: placed as 18 points, it ran into the
+        // count beside it; Codex, 2026-11-19.)
+        let w = style::pill_width("@", pill_size, &bold).max(18.0);
+        let pr = style::pill_on_baseline(g, pxr - px(w), base2, "@", pill_size, bold.clone(), fill, if selected { sel_fill } else { white() });
         pxr = pr.origin.x - px(4.0);
     }
     if ch.pinned && count.is_none() && ch.mentions == 0 && !ch.archived {

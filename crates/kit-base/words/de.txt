@@ -1144,6 +1144,9 @@ Dort sichern
 Back Up These Folders
 Diese Ordner sichern
 
+Back to Chats
+Zurück zu den Chats
+
 Back to Conversations
 Zurück zu den Unterhaltungen
 

@@ -323,6 +323,8 @@ impl Tg {
             self.backend.send(Cmd::Open { chat, topic });
         }
         self.conv = Some(c);
+        // (Where the list and the chat show one at a time: the chat.)
+        self.side.show_rest();
         let title = self.store.chats.get(&chat).map_or_else(|| "Telegram".into(), |c| c.title.clone());
         self.set_title(title, cx);
         // Its notification has been seen to.
@@ -1337,7 +1339,7 @@ impl Tg {
             .item("Next Chat", "next")
             .key("down")
             .separator()
-            .item(if self.side.collapsed() { "Show Chat List" } else { "Hide Chat List" }, "sidebar")
+            .item(if self.side.showing() { "Hide Chat List" } else { "Show Chat List" }, "sidebar")
             // (Every app's keys for it: `app.sidebar`, ⌥⌘S.)
             .key("s");
         let account = Menu::new("Account")
@@ -1598,8 +1600,25 @@ impl View for Tg {
                 // were at 1.5× only: at 1.25× the list's pane, laid out as a
                 // root of its own, ran a pixel past the window).
                 let fw = f32::from(full.size.width);
-                // (Away: none of it, the conversation the whole width.)
-                let lw = (self.side.shown(fw, 320.0) / 2.0).round() * 2.0;
+                // Side by side while both fit; in a window too narrow for
+                // both (a third of a screen), one at a time, never both
+                // squeezed: the list until a chat is opened, then it, with
+                // a way back (the kit's SidePane; CLAUDE.md, "Every tiling
+                // layout"). (Away: none of it, the chat the whole width.)
+                let panes = self.side.panes(fw, CHAT_LEAST);
+                let lw = match panes {
+                    olo_kit::widgets::Panes::Both(w) => (w / 2.0).round() * 2.0,
+                    olo_kit::widgets::Panes::Pane => fw,
+                    olo_kit::widgets::Panes::Rest => 0.0,
+                };
+                let chat_shows = panes != olo_kit::widgets::Panes::Pane;
+                // The window's name: the chat's while it shows, else
+                // Telegram's (back to the list alone, the chat's stayed).
+                let title = match (&self.conv, chat_shows) {
+                    (Some(c), true) => self.store.chats.get(&c.chat).map_or_else(|| "Telegram".into(), |ch| ch.title.clone()),
+                    _ => "Telegram".to_owned(),
+                };
+                self.set_title(title, cx);
                 let left = snap_rect(Bounds { origin: full.origin, size: size(px(lw), full.size.height) });
                 let rx = if lw > 0.0 { snap(px(lw) + hairline) } else { full.origin.x };
                 let right = snap_rect(Bounds::from_corners(point(rx, full.origin.y), full.bottom_right()));
@@ -1635,10 +1654,15 @@ impl View for Tg {
                 if lw > 0.0 {
                     let list = list::render(self, self.list_rect, cx);
                     layer = layer.child(pane(list, self.list_rect, vs));
-                    let shadow = c(p.shadow);
-                    layer = layer.child(canvas(move |g, _| style::vline(g, left.right(), left.origin.y, left.bottom(), shadow)).absolute().inset_0());
+                    // (The line between them: side by side only.)
+                    if chat_shows {
+                        let shadow = c(p.shadow);
+                        layer = layer.child(canvas(move |g, _| style::vline(g, left.right(), left.origin.y, left.bottom(), shadow)).absolute().inset_0());
+                    }
                 }
-                if self.conv.is_some() {
+                if !chat_shows {
+                    // (The list alone, the whole width.)
+                } else if self.conv.is_some() {
                     // The conversation over its composer, as tall as its
                     // text (up to eight lines).
                     let (_, composer_h, _) = conv::composer_size(self, f32::from(right.size.width), cx);
@@ -1668,21 +1692,36 @@ impl View for Tg {
                             .bg(ground)
                             .child(EmptyState::new("No chat selected").icon("telegram").detail(detail)),
                     );
+                    // (One at a time, put in front by View ▸ Hide Chat
+                    // List: the way back to the list.)
+                    if self.side.alone() {
+                        let me = cx.view_ref();
+                        layer = layer.child(div().absolute().left(right.origin.x + px(8.0)).top(right.origin.y + px(8.0)).child(olo_kit::widgets::ArrowButton::back("Back to Chats").on_click(
+                            move |_, cx| {
+                                me.update(cx, |tg, cx| {
+                                    tg.side.show_pane();
+                                    cx.invalidate();
+                                })
+                            },
+                        )));
+                    }
                 }
                 // The divider between them: dragged to size the list, or
                 // put it away for the conversation's room (the kit's
                 // SidePane: past its narrowest, a double click, View ▸
                 // Hide Chat List), and out again from the window's edge.
-                layer = layer.child(olo_kit::widgets::side_divider(
-                    &self.side,
-                    lw,
-                    f32::from(full.origin.y),
-                    f32::from(full.size.height),
-                    "Chat List",
-                    cx.listener(|_: &mut Tg, _: &(), cx| cx.invalidate()),
-                ));
+                if !self.side.alone() {
+                    layer = layer.child(olo_kit::widgets::side_divider(
+                        &self.side,
+                        lw,
+                        f32::from(full.origin.y),
+                        f32::from(full.size.height),
+                        "Chat List",
+                        cx.listener(|_: &mut Tg, _: &(), cx| cx.invalidate()),
+                    ));
+                }
                 // A problem to tell, across the conversation's top.
-                if let (Some(text), Some(until)) = (self.banner.text().cloned(), self.banner.until()) {
+                if chat_shows && let (Some(text), Some(until)) = (self.banner.text().cloned(), self.banner.until()) {
                     self.wake_in(until.saturating_duration_since(Instant::now()), cx);
                     let b = Bounds { origin: point(right.origin.x + px(12.0), right.origin.y + px(conv::HEADER + 8.0)), size: size(right.size.width - px(24.0), px(30.0)) };
                     let failure = c(p.failure).opacity(0.92);
@@ -2026,6 +2065,13 @@ impl View for Info {
     }
 }
 
+/// What a chat keeps beside the list: less, they show one at a time.
+const CHAT_LEAST: f32 = 320.0;
+/// The window's least: a third of the smallest screen, either way
+/// (CLAUDE.md, "Every tiling layout").
+const MIN_WIDTH: f32 = 400.0;
+const MIN_HEIGHT: f32 = 220.0;
+
 fn main() {
     olo_crash::install();
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -2041,7 +2087,7 @@ fn main() {
         let clock = proxy.clone();
         olo_kit::settings::watch(move |s| clock.send(Clock(s.clock.twenty_four_hour)));
         let restored: Saved = olo_kit::restored_state().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
-        let window = olo_kit::open_window(WindowOptions::new("Telegram", 980.0, 660.0).min_size(620.0, 420.0).keep_size("main"), move |cx| Tg::new(backend, restored, cx));
+        let window = olo_kit::open_window(WindowOptions::new("Telegram", 980.0, 660.0).min_size(MIN_WIDTH, MIN_HEIGHT).keep_size("main"), move |cx| Tg::new(backend, restored, cx));
         // What the account, the pictures' and stickers' workers, the
         // microphone, notifications and another launch say: the window's.
         olo_kit::message_handler(app, move |message, _| {

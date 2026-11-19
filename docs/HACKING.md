@@ -3856,7 +3856,9 @@ it.
   View ▸ Show (`toggle()`, which, one at a time, swaps them rather than
   put the pane away). `alone()` says they show one at a time (a back
   arrow wanted), `showing()` whether the pane shows (a menu's Show or
-  Hide). Calendar's calendars and assistant.
+  Hide). Calendar's calendars and assistant; Phone's and Telegram's
+  lists (a conversation opened comes in front; its header's back arrow,
+  12 points before its picture, goes back).
 - `widgets::TabView::new(id, labels, selected).on_select(f)` with the
   chosen tab's content as its child (BTabView: the tab strip's folder
   tabs, so there is one tab look, over a raised panel: outlined, lit

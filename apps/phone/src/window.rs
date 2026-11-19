@@ -32,7 +32,7 @@ use olo_kit::{
     size,
     style::{self, Align, c},
     theme, transparent_black, when, white,
-    widgets::{Button, EmptyState, ScrollView, SidePane, StringView, TextField, TextFieldEvent, side_divider, text_field},
+    widgets::{ArrowButton, Button, EmptyState, Panes, ScrollView, SidePane, StringView, TextField, TextFieldEvent, side_divider, text_field},
 };
 use olo_protocol::phone::{self, Conversation, Kind, Link, Message, Person, PhoneState, Request};
 use olo_system::phone::pbap;
@@ -48,6 +48,13 @@ const PERSON_ROW: f32 = 48.0;
 const PICTURE: f32 = 40.0;
 const LIST: f32 = 300.0;
 const LIST_MIN: f32 = 230.0;
+/// What a conversation keeps beside the list: less, they show one at a
+/// time (the kit's SidePane; a third of a screen is 407 points).
+const TALK_LEAST: f32 = 360.0;
+/// The music box under the list, about: in a window too short for it and
+/// two of the list's rows (a third of a screen's height), it gives way
+/// (Music ▸ Play, Next, Previous are there all the same).
+const PLAYING_H: f32 = 104.0;
 /// The conversation's header.
 const HEADER: f32 = 60.0;
 /// The archive's band back to the conversations.
@@ -75,7 +82,7 @@ const SEND: f32 = 34.0;
 const ASK: Duration = Duration::from_secs(45);
 
 pub fn options() -> WindowOptions {
-    WindowOptions::new("Phone", 920.0, 640.0).min_size(660.0, 420.0).keep_size("main")
+    WindowOptions::new("Phone", 920.0, 640.0).min_size(400.0, 220.0).keep_size("main")
 }
 
 /// `OLO_PHONE_DEMO`: made-up people and no service; a number: that many
@@ -298,6 +305,10 @@ pub struct Phone {
     search: Child<SearchField>,
     draft: Child<TextField>,
     side: SidePane,
+    /// What was shown when the panes were last laid out: something new
+    /// shown (a conversation chosen, a notification's, an agent's) comes
+    /// in front of the list where they show one at a time.
+    front_for: Shown,
     list_scroll: ScrollHandle,
     people_scroll: ScrollHandle,
     talk_scroll: ScrollHandle,
@@ -313,6 +324,11 @@ pub struct Phone {
     /// The conversation shown is to be at its end once laid out (opened,
     /// or a message came while it was there).
     to_end: bool,
+    /// The window's height when the conversation was last laid out: a
+    /// conversation at its end stays there as the window changes height
+    /// (tiled into a third of a screen's height, it showed its first
+    /// message, cut, the newest out of sight; Codex, 2026-11-19).
+    talk_h: f32,
     h24: bool,
     demo: bool,
     shaped: RefCell<Shaped>,
@@ -419,6 +435,7 @@ impl Phone {
             search,
             draft,
             side: SidePane::new(LIST, LIST_MIN).restored(saved.list_width, saved.list_hidden),
+            front_for: Shown::Nothing,
             list_scroll: ScrollHandle::new(),
             people_scroll: ScrollHandle::new(),
             talk_scroll: ScrollHandle::new(),
@@ -428,6 +445,7 @@ impl Phone {
             asked: 0,
             seen_changes: None,
             to_end: true,
+            talk_h: 0.0,
             h24: false,
             demo: demo.is_some(),
             shaped: RefCell::default(),
@@ -729,7 +747,7 @@ impl Phone {
                 .checked(self.in_archive && self.tab == Tab::Messages)
                 .enabled(self.in_archive || self.threads.iter().any(|t| archived_in(&self.archived, t)))
                 .separator()
-                .item(if self.side.collapsed() { "Show List" } else { "Hide List" }, "sidebar")
+                .item(if self.side.showing() { "Hide List" } else { "Show List" }, "sidebar")
                 .key("s"),
             self.archive_items(Menu::new("Conversation"), &self.acted_on())
                 .separator()
@@ -954,28 +972,48 @@ impl View for Phone {
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let p = theme::palette();
-        let bar = MenuBar::of(self, cx, |v, _| v.menus());
         let vs = cx.viewport_size();
         let total = f32::from(vs.width);
-        let lw = (self.side.shown(total, 360.0) / 2.0).round() * 2.0;
-        let right_w = total - lw;
-        let left = (lw > 0.0).then(|| self.left(lw, cx));
-        let right = self.right(right_w, cx);
+        // Something new shown comes in front of the list where they show
+        // one at a time.
+        if self.shown != self.front_for {
+            self.front_for = self.shown.clone();
+            if self.shown != Shown::Nothing {
+                self.side.show_rest();
+            }
+        }
+        // The list and the conversation side by side while both fit; in
+        // a window too narrow for both (a third of a screen), one at a
+        // time, never both squeezed: the list until a conversation is
+        // chosen, then it, with a way back (the kit's SidePane;
+        // CLAUDE.md, "Every tiling layout").
+        let panes = self.side.panes(total, TALK_LEAST);
+        let lw = (panes.width() / 2.0).round() * 2.0;
         let shadow = c(p.shadow);
         let mut row = div().flex_1().min_h_0().flex().flex_row().relative();
-        if let Some(left) = left {
-            row = row.child(div().w(px(lw)).h_full().flex_shrink_0().child(left));
+        match panes {
+            Panes::Pane => row = row.child(div().size_full().child(self.left(total, cx))),
+            Panes::Rest => row = row.child(div().size_full().child(self.right(total, cx))),
+            Panes::Both(_) => {
+                let left = self.left(lw, cx);
+                let right = self.right(total - lw, cx);
+                row = row.child(div().w(px(lw)).h_full().flex_shrink_0().child(left)).child(div().flex_1().min_w_0().h_full().child(right));
+                // (The line between them, over both: on device pixels,
+                // with no room of its own for a seam at 1.5×.)
+                row = row.child(canvas(move |g, b: Bounds<Pixels>| style::vline(g, b.left() + px(lw), b.top(), b.bottom(), shadow)).absolute().inset_0());
+            }
         }
-        row = row.child(div().flex_1().min_w_0().h_full().child(right));
-        if lw > 0.0 {
-            // (The line between them, over both: on device pixels, with
-            // no room of its own for a seam at 1.5×.)
-            row = row.child(canvas(move |g, b: Bounds<Pixels>| style::vline(g, b.left() + px(lw), b.top(), b.bottom(), shadow)).absolute().inset_0());
+        // (The menus after what shows is settled: View ▸ Hide List says
+        // what shows now.)
+        let bar = MenuBar::of(self, cx, |v, _| v.menus());
+        let mut window = div().size_full().flex().flex_col().bg(c(p.panel_background)).child(bar).child(row);
+        // The divider, side by side: dragged to size the list, or to put
+        // it away (and, put away, a grip at the window's edge).
+        if !self.side.alone() {
+            let top = olo_kit::menu::BAR_HEIGHT;
+            window = window.child(side_divider(&self.side, lw, top, f32::from(vs.height) - top, "Conversations", cx.listener(|_: &mut Phone, _: &(), cx| cx.invalidate())));
         }
-        // The divider: dragged to size the list, or to put it away.
-        let top = olo_kit::menu::BAR_HEIGHT;
-        let divider = side_divider(&self.side, lw, top, f32::from(vs.height) - top, "Conversations", cx.listener(|_: &mut Phone, _: &(), cx| cx.invalidate()));
-        div().size_full().flex().flex_col().bg(c(p.panel_background)).child(bar).child(row).child(divider).into_element()
+        window.into_element()
     }
 
     fn save_state(&mut self, cx: &mut Cx<Self>) -> Option<String> {
@@ -1078,6 +1116,19 @@ fn row_ground(g: &mut Painter, r: Bounds<Pixels>, selected: bool, hot: bool) -> 
 }
 
 impl Phone {
+    /// One at a time (a window too narrow for the list beside what it
+    /// shows): the arrow back to the list.
+    fn back(&self, cx: &mut Cx<Self>) -> Option<Element> {
+        self.side.alone().then(|| {
+            ArrowButton::back("Back to Conversations")
+                .on_click(cx.listener(|v: &mut Phone, _: &ClickEvent, cx| {
+                    v.side.show_pane();
+                    cx.invalidate();
+                }))
+                .into_element()
+        })
+    }
+
     /// The list's side: Messages or Contacts, a search, and the rows.
     fn left(&mut self, _width: f32, cx: &mut Cx<Self>) -> Element {
         let p = theme::palette();
@@ -1148,7 +1199,12 @@ impl Phone {
         });
         let list = ScrollView::new(&handle).border(false).auto_hide(true).background(p.list_background).on_scroll(cx.listener(|_: &mut Phone, _, cx| cx.invalidate())).child(content);
         let mut column = div().size_full().flex().flex_col().bg(c(p.panel_background)).child(top).children(back).child(div().flex_1().min_h_0().child(list));
-        if let Some(playing) = self.playing(cx) {
+        // (The music box gives way to the list in a window too short for
+        // both: a third of a screen's height.)
+        let room = f32::from(cx.viewport_size().height) - olo_kit::menu::BAR_HEIGHT - HEADER - m::CONTROL_HEIGHT - m::SPACING;
+        if room - PLAYING_H >= 2.0 * ROW
+            && let Some(playing) = self.playing(cx)
+        {
             column = column.child(playing);
         }
         column.into_element()
@@ -1553,9 +1609,12 @@ impl Phone {
         }
         let content = match self.shown.clone() {
             Shown::Person(name) => self.card(&name, cx),
-            Shown::Nothing => {
-                div().size_full().child(EmptyState::new("No conversation chosen").icon(self.state.picture()).detail("Choose a conversation from the list, or start one with New.")).into_element()
-            }
+            Shown::Nothing => div()
+                .size_full()
+                .relative()
+                .child(EmptyState::new("No conversation chosen").icon(self.state.picture()).detail("Choose a conversation from the list, or start one with New."))
+                .children(self.back(cx).map(|b| div().absolute().left(px(8.0)).top(px(8.0)).child(b)))
+                .into_element(),
             Shown::Thread(_) | Shown::New(_) => self.talk(width, cx),
         };
         // How the phone stands, while it isn't simply connected.
@@ -1632,7 +1691,17 @@ impl Phone {
             .child(olo_kit::widgets::heading(person.name.clone()))
             .child(div().h(px(m::TIGHT)))
             .child(ways);
-        div().size_full().flex().flex_col().items_center().pt(px(m::WINDOW_INSET * 3.0)).px(px(m::WINDOW_INSET)).child(column).into_element()
+        div()
+            .size_full()
+            .relative()
+            .flex()
+            .flex_col()
+            .items_center()
+            .pt(px(m::WINDOW_INSET * 3.0))
+            .px(px(m::WINDOW_INSET))
+            .child(column)
+            .children(self.back(cx).map(|b| div().absolute().left(px(8.0)).top(px(8.0)).child(b)))
+            .into_element()
     }
 
     /// The width a message's text wraps at in a pane `width` wide: the
@@ -1832,6 +1901,15 @@ impl Phone {
     fn talk(&mut self, width: f32, cx: &mut Cx<Self>) -> Element {
         let p = theme::palette();
         let dark = p.mode == olo_kit::palette::ThemeMode::Dark;
+        let h = f32::from(cx.viewport_size().height);
+        if (h - self.talk_h).abs() > 0.5 {
+            // (At its end as last laid out, or all of it showing: kept at
+            // its end at the new height.)
+            if -self.talk_scroll.offset().y >= self.talk_scroll.max_offset().height - px(2.0) {
+                self.to_end = true;
+            }
+            self.talk_h = h;
+        }
         let Some((address, name)) = self.writing_to() else {
             // (A conversation kept from before, not there now.)
             return div().size_full().child(EmptyState::new("No conversation chosen").icon("phone").detail("Choose a conversation from the list, or start one with New.")).into_element();
@@ -1840,12 +1918,16 @@ impl Phone {
         let (shadow, panel, ink, dim) = (c(p.shadow), c(p.panel_background), c(p.panel_text), style::secondary_text(&p));
         let (h_name, h_address) = (name.clone(), address.clone());
         let under = if named(&name) { address.clone() } else { String::new() };
+        // (One at a time: the way back to the list at its left, the
+        // picture after it.)
+        let back = self.back(cx);
+        let lead = if back.is_some() { m::CONTROL_HEIGHT + 8.0 } else { 0.0 };
         let header = canvas(move |g, b: Bounds<Pixels>| {
             style::fill_rect(g, b, panel);
             // (Its own lines: a name over a number isn't held level with
             // the list's buttons beside it.)
             olo_kit::review::own_grid(g, b);
-            let pic = Bounds { origin: point(b.origin.x + px(12.0), b.center().y - px(18.0)), size: size(px(36.0), px(36.0)) };
+            let pic = Bounds { origin: point(b.origin.x + px(12.0 + lead), b.center().y - px(18.0)), size: size(px(36.0), px(36.0)) };
             picture(g, pic, &h_name, &h_address, dark);
             let (x, room) = (pic.right() + px(12.0), b.right() - pic.right() - px(24.0));
             if under.is_empty() {
@@ -1860,9 +1942,9 @@ impl Phone {
             style::hline(g, b.left(), b.right(), b.bottom() - style::hairline(g), shadow.opacity(0.5));
             agent::record(g, agent::Node { role: "Heading", value: Some(h_address.clone().into()), ..agent::Node::label(h_name.clone(), b) });
         })
-        .w_full()
-        .h(px(HEADER))
-        .flex_shrink_0();
+        .size_full();
+        let header =
+            div().relative().w_full().h(px(HEADER)).flex_shrink_0().child(header).children(back.map(|b| div().absolute().left(px(8.0)).top(px(((HEADER - m::CONTROL_HEIGHT) / 2.0).round())).child(b)));
 
         // The balloons.
         let height = self.lay(width, cx);
