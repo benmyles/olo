@@ -10,8 +10,10 @@ Two brains are better than one (Ben, 2026-11-18): whenever you're
 unsure of a cause, or the problem is a complex one, put a second
 investigator on it and keep working on your own line meanwhile. Don't
 wait until you've circled for hours, and never settle for a guess. It
-is the one exception to "no forks or subagents" in CLAUDE.md: the
-helper investigates and reports; the work stays yours.
+is one of the Codex helpers CLAUDE.md's "Subagents" allows (the others:
+Codex subagents for narrow work items, `tools/dev/agents` and the
+`olo-codex-agents` skill; and `codex-look` for pictures): the helper
+investigates and reports; the work stays yours.
 
 The first time it was used, it found in an hour what a day's reading
 hadn't: a pointer that vanished in Chrome was the Wayland proxy

@@ -21,6 +21,11 @@ if [ -z "$brief" ] || [ ! -s "$brief" ]; then
     echo "usage: tools/dev/codex-help BRIEF.md [DIR]   (the brief: a file that says what's wrong and what's known)" >&2
     exit 2
 fi
+# (A subagent doesn't start agents: CLAUDE.md, "Subagents".)
+if [ -n "${OLO_SUBAGENT:-}" ]; then
+    echo "codex-help: you are a subagent; ask the lead (write your question as your reply) instead" >&2
+    exit 2
+fi
 # (A helper doesn't ask for a helper.)
 if [ -n "${OLO_CODEX_HELP:-}" ]; then
     echo "codex-help: this is already the helper; find it yourself, or say you couldn't" >&2

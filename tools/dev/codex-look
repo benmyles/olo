@@ -16,6 +16,12 @@
 # first picture. It only looks (a read-only sandbox, no tools wanted):
 # check each finding against the picture yourself, and fix what's real.
 set -u
+# (A subagent doesn't start agents: CLAUDE.md, "Subagents". Its lead
+# looks at its pictures.)
+if [ -n "${OLO_SUBAGENT:-}" ]; then
+    echo "codex-look: you are a subagent; the lead looks at pictures, say in your report what to look at" >&2
+    exit 2
+fi
 about=""
 if [ "${1:-}" = "--about" ]; then
     about=${2:-}

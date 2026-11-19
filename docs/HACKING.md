@@ -19443,8 +19443,8 @@ working tree unchanged, no commits, the person's session left alone,
 headless tests under a `codex-` name, scratch in the brief's folder,
 no helper of its own), in the background, and writes `answer.md` and
 `log.txt` beside the brief. What it says is a lead: checked, then
-fixed by whoever asked. It is one of two exceptions to "no forks or
-subagents" (CLAUDE.md). `.claude/` is ignored but for `.claude/skills/`.
+fixed by whoever asked. It is one of the Codex helpers CLAUDE.md's
+"Subagents" allows. `.claude/` is ignored but for `.claude/skills/`.
 
 **A second look at every change's pictures** (`tools/dev/codex-look`;
 Ben, 2026-11-18, after a status line set right under its paragraph
@@ -19462,6 +19462,29 @@ scrolled view's partial lines at its edges, as the kit's other views
 have them; Integrations' one height for every tab; a refused
 connection's wording, seen only against a made-up server). What it
 says is checked against the picture, as the debug helper's is.
+
+**Codex subagents** (`tools/dev/agents`, the `olo-codex-agents` skill;
+Ben, 2026-11-19: "you now have permission to utilize subagents for
+narrow, targeted work items that can be parallelized. they must be able
+to work in this same worktree without clobbering each other, ideally
+with their work scoped to a single crate that only one agent is working
+in at any given time … use codex via a subprocess to do the work with
+astra 6.2 on xhigh … in interactive mode via e.g. tmux … where you can
+monitor its output and get notified when it needs you … the codex
+subagents themselves should NOT be allowed to launch more subagents …
+review their work carefully, especially any visual design … up to 5 at
+once"; and "the codex agents should run on auto approve for most things
+only the super risky stuff should come to you"): `agents start NAME
+CRATE BRIEF.md` starts an interactive Codex (gpt-6.2-astra, xhigh,
+`--approve-for-me`, its multi-agent features off) in a tmux session of
+its own (`tmux -L olo-agents`) on one crate no other agent is in, with
+its rules in front of the task (that crate only, no git that changes
+anything, no new dependencies, no agents, nothing on the person's
+screen, `report.md` and DONE when finished); `agents watch`, in the
+background, returns as soon as one needs its lead (an approval its
+reviewer won't pass, a finished turn, an exit, 15 minutes with nothing
+new); `peek`, `say`, `approve`, `stop`. Each builds in its own target
+folder. Its work is reviewed, pictured and committed by its lead.
 
 While the person controls a screen (Take Control), the viewer writes
 `NAME.control` (its pid) in the screens' folder, and `olo-screen`

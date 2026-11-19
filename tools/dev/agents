@@ -1,0 +1,402 @@
+#!/usr/bin/python3
+"""Codex subagents: narrow, parallel work items, each an interactive Codex
+(gpt-6.2-astra, its reasoning at xhigh) in a tmux session of its own,
+working in this same working tree, scoped to one crate no other agent is
+in, watched and steered from here (CLAUDE.md, "Subagents"; the
+olo-codex-agents skill says how to use them).
+
+  agents start NAME CRATE BRIEF.md   start one on CRATE (a folder, apps/updates)
+                                     with the task in BRIEF.md; at most 5 at once
+  agents list                        each one: its crate, what it's doing, since when
+  agents watch [--stuck MIN]         return once one needs you: an approval asked,
+                                     a turn finished (DONE, a question), gone, or
+                                     nothing new for MIN minutes (15) while working.
+                                     Run it in the background and re-run it after
+                                     each answer: it's how you hear from them.
+  agents peek NAME [LINES]           the last LINES (60) of its screen
+  agents log NAME                    its whole transcript
+  agents say NAME TEXT...            a message to it: an answer, steering
+  agents approve NAME [y|p|no]       answer its approval prompt: yes this once (y),
+                                     yes and don't ask again for commands that
+                                     start the same (p), or no (then `say` why)
+  agents stop NAME                   end it (its folder, /var/tmp/olo-agents/NAME,
+                                     with its report, stays until `forget`)
+  agents forget NAME                 remove a stopped one's folder
+  agents attach NAME                 how the person can watch it live (read-only)
+
+Each agent's folder holds brief.md (the rules, then the task), report.md
+(what it says it did, when done), meta.json, and target/ (its own
+CARGO_TARGET_DIR, so its builds never wait on another's).
+
+An agent can't start agents: OLO_SUBAGENT is set in its environment, which
+this script, codex-help and codex-look refuse, and Codex's own multi-agent
+features are off.
+"""
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+HOME = "/var/tmp/olo-agents"
+SOCKET = "olo-agents"
+MOST = 5
+MODEL = "gpt-6.2-astra"
+EFFORT = "xhigh"
+# What the TUI shows (codex-cli 0.170, inline: --no-alt-screen).
+ASKING = ("Press enter to confirm or esc to cancel", "Would you like to")
+WORKING = re.compile(r"Working \(\d|esc to interrupt")
+# Lines that change while nothing else does: the timer, the status line.
+VOLATILE = re.compile(r"Working \(|esc to interrupt|Context \d+% left|weekly \d+% left|^\s*[←?].*shortcuts|f2 to view")
+
+
+# The server's options, read whenever it starts (it ends with its last
+# session): each pane kept once Codex ends, to read; long histories.
+CONF = "set-option -g remain-on-exit on\nset-option -g history-limit 200000\n"
+
+
+def tmux(*args, check=False):
+    conf = os.path.join(HOME, "tmux.conf")
+    if not os.path.exists(conf):
+        os.makedirs(HOME, exist_ok=True)
+        open(conf, "w").write(CONF)
+    r = subprocess.run(["tmux", "-L", SOCKET, "-f", conf, *args], capture_output=True, text=True)
+    if check and r.returncode:
+        sys.exit(f"agents: tmux {' '.join(args)}: {r.stderr.strip()}")
+    return r
+
+
+def folder(name):
+    return os.path.join(HOME, name)
+
+
+def meta(name):
+    try:
+        return json.load(open(os.path.join(folder(name), "meta.json")))
+    except (OSError, ValueError):
+        return None
+
+
+def save_meta(name, m):
+    tmp = os.path.join(folder(name), "meta.json.new")
+    json.dump(m, open(tmp, "w"), indent=1)
+    os.replace(tmp, os.path.join(folder(name), "meta.json"))
+
+
+def names():
+    try:
+        return sorted(n for n in os.listdir(HOME) if meta(n))
+    except OSError:
+        return []
+
+
+def screen(name, lines=None):
+    """Its screen as text (the last `lines` of its history, if given)."""
+    args = ["capture-pane", "-p", "-J", "-t", f"{name}:0.0"]
+    if lines:
+        args[1:1] = ["-S", f"-{lines}"]
+    r = tmux(*args)
+    return r.stdout.rstrip() if r.returncode == 0 else None
+
+
+def state(name):
+    """gone, exited, asking, working or idle (its turn over, waiting)."""
+    r = tmux("display-message", "-p", "-t", f"{name}:0.0", "#{pane_dead}")
+    if r.returncode:
+        return "gone"
+    if r.stdout.strip() == "1":
+        return "exited"
+    s = screen(name) or ""
+    tail = "\n".join(s.splitlines()[-30:])
+    if any(a in tail for a in ASKING):
+        return "asking"
+    if WORKING.search(tail):
+        return "working"
+    return "idle"
+
+
+def progress(name):
+    """A hash of what it has said, less what changes by itself."""
+    s = screen(name, 400) or ""
+    kept = "\n".join(l for l in s.splitlines() if not VOLATILE.search(l))
+    return hashlib.sha1(kept.encode()).hexdigest()
+
+
+def seen(name):
+    """What you've looked at: `watch` says only what's new since."""
+    m = meta(name)
+    if m:
+        m["seen"] = progress(name)
+        m["seen_state"] = state(name)
+        save_meta(name, m)
+
+
+def live(n):
+    return state(n) not in ("gone", "exited")
+
+
+def refuse_nested():
+    if os.environ.get("OLO_SUBAGENT"):
+        sys.exit("agents: you are a subagent; you can't start or steer agents. Do your task, or stop and ask the lead.")
+
+
+RULES = """You are a subagent working on Olo (a BeOS-inspired Wayland desktop
+written in Rust; the repository is your working directory) for another
+agent, the lead, who reads your screen, answers your questions, and will
+review and commit your work. Your task follows these rules.
+
+Scope
+- Change files under {crate}/ only (and any other file the task names).
+  Other agents are working in other crates of this same working tree at
+  the same time: never edit, format, move or delete anything outside your
+  scope. Format your crate only: `cargo fmt -p {package}`, never a bare
+  `cargo fmt`.
+- No git command that changes anything: no add, commit, stash, checkout,
+  switch, reset, restore, rebase, merge, clean or push (git status, diff,
+  log and show are fine).
+- No new dependencies (no edits to a Cargo.toml's dependencies, no
+  Cargo.lock change) unless the task says so; if you need one, ask.
+- You are a subagent: don't start agents of any kind (no codex, claude,
+  tools/dev/agents, tools/dev/codex-help, tools/dev/codex-look, nor any
+  multi-agent or delegation tool).
+
+Building and testing
+- Your builds go in your own target folder (CARGO_TARGET_DIR is set for
+  you: leave it). Debug builds; run the tests of what you change
+  (`cargo test -p {package}`) and keep them passing; add tests for what
+  you add, as the code around it does.
+- Leave the person's desktop alone: never run a GUI program from your
+  shell (it would open on their screen), never reload, upgrade or install
+  anything into their session, never play sound. To see a window, use a
+  headless session of your own (tools/dev/tsession, run with
+  /usr/bin/python3, named "codex-{name}" or starting so), and stop it
+  when you're done.
+- Scratch files go in {dir} (never /tmp: it is RAM). Kill only
+  processes you started, by their PID.
+
+How to work
+- Read CLAUDE.md (the repository's rules: they apply to you) and the
+  parts of docs/HACKING.md about what you touch, and follow the code's
+  conventions: its comments' voice, docs and tests changed with the code.
+- Look and feel is the lead's to judge: build what the task asks with the
+  kit's widgets, the palette (theme::palette), the spacing (metrics) and
+  text (style); don't invent a new look. Say in your report what anything
+  new looks like, so the lead can check it.
+- If something is unclear, blocked, or would take you outside your scope,
+  stop and ask: write your question as your reply and wait for the
+  answer. Don't guess at what the lead wants.
+- When you're done: write {dir}/report.md (what you changed, file by
+  file; why; how you tested it, the commands and what they printed;
+  anything left undone or doubtful; what the lead should look at
+  closely), then reply DONE and wait.
+
+The task:
+
+"""
+
+
+def start(name, crate, brief):
+    refuse_nested()
+    if not re.fullmatch(r"[a-z][a-z0-9-]{0,30}", name):
+        sys.exit("agents: a NAME of lowercase letters, digits and dashes")
+    crate_dir = os.path.normpath(os.path.join(ROOT, crate))
+    if not os.path.isfile(os.path.join(crate_dir, "Cargo.toml")):
+        sys.exit(f"agents: {crate} isn't a crate (no Cargo.toml in it)")
+    crate = os.path.relpath(crate_dir, ROOT)
+    task = open(brief).read().strip()
+    if not task:
+        sys.exit("agents: the brief is empty")
+    running = [n for n in names() if live(n)]
+    if name in running:
+        sys.exit(f"agents: {name} is running")
+    if len(running) >= MOST:
+        sys.exit(f"agents: {MOST} are running ({', '.join(running)}): stop one first")
+    for n in running:
+        other = meta(n)["crate"]
+        if other == crate or other.startswith(crate + "/") or crate.startswith(other + "/"):
+            sys.exit(f"agents: {n} is working in {other}: one agent to a crate")
+    package = next((l.split('"')[1] for l in open(os.path.join(crate_dir, "Cargo.toml")) if l.startswith("name")), crate)
+    d = folder(name)
+    if os.path.exists(d):
+        shutil.rmtree(d)
+    os.makedirs(os.path.join(d, "target"))
+    open(os.path.join(d, "task.md"), "w").write(task + "\n")
+    open(os.path.join(d, "brief.md"), "w").write(RULES.format(crate=crate, package=package, name=name, dir=d) + task + "\n")
+    save_meta(name, {"crate": crate, "package": package, "started": time.time(), "seen": "", "seen_state": ""})
+    # (One tmux server for them all, its options from CONF.)
+    env = ["env", "-u", "WAYLAND_DISPLAY", "-u", "DISPLAY", "-u", "OLO_SOCKET", f"OLO_SUBAGENT={name}", f"CARGO_TARGET_DIR={d}/target"]
+    # (Approvals reviewed by Codex's own reviewer, `--approve-for-me`:
+    # what's routine goes ahead, only what it won't pass comes to the
+    # lead, Ben, 2026-11-19: "the codex agents should run on auto approve
+    # for most things only the super risky stuff should come to you".)
+    # (It brings the workspace-write sandbox with it: with `-s` too, Codex
+    # refuses to start.)
+    codex = ["codex", "-m", MODEL, "-c", f'model_reasoning_effort="{EFFORT}"', "--approve-for-me",
+             "--disable", "multi_agent", "--disable", "multi_agent_v2", "--no-alt-screen", "-C", ROOT, "--add-dir", d,
+             f"Read {d}/brief.md (the rules, then your task) and do what it says."]
+    tmux("new-session", "-d", "-s", name, "-x", "200", "-y", "60", "-c", ROOT, *env, *codex, check=True)
+    print(f"agents: {name} started on {crate} ({package}); its folder is {d}")
+    print(f"agents: keep `tools/dev/agents watch` running in the background to hear from it")
+
+
+def ago(t):
+    s = int(time.time() - t)
+    return f"{s // 3600}h{s % 3600 // 60:02d}m" if s >= 3600 else f"{s // 60}m{s % 60:02d}s"
+
+
+def list_():
+    rows = names()
+    if not rows:
+        print("agents: none")
+        return
+    for n in rows:
+        m = meta(n)
+        st = state(n)
+        done = " report.md" if os.path.exists(os.path.join(folder(n), "report.md")) else ""
+        print(f"{n:16} {st:8} {m['crate']:28} for {ago(m['started'])}{done}")
+
+
+def watch(stuck_min):
+    """Return once an agent needs you; print who and why."""
+    last = {}
+    while True:
+        alerts = []
+        rows = [n for n in names()]
+        if not any(state(n) in ("working", "asking", "idle") for n in rows):
+            print("agents: none running")
+            return
+        for n in rows:
+            st = state(n)
+            m = meta(n) or {}
+            if st == "asking":
+                alerts.append((n, "asks for approval", screen(n)))
+            elif st == "exited" and m.get("seen_state") != "exited":
+                alerts.append((n, "has exited", screen(n, 40)))
+            elif st == "idle":
+                # (Just started, it shows no work for a moment before its
+                # first prompt goes in.)
+                if time.time() - m.get("started", 0) < 30:
+                    continue
+                p = progress(n)
+                if p != m.get("seen"):
+                    said = "is DONE" if os.path.exists(os.path.join(folder(n), "report.md")) else "finished a turn (a question, or waiting)"
+                    alerts.append((n, said, screen(n, 40)))
+            elif st == "working":
+                p = progress(n)
+                t, was = last.get(n, (time.time(), p))
+                if p != was:
+                    t = time.time()
+                last[n] = (t, p)
+                if time.time() - t >= stuck_min * 60:
+                    alerts.append((n, f"has shown nothing new for {stuck_min} minutes while working", screen(n, 30)))
+        if alerts:
+            for n, why, text in alerts:
+                print(f"=== {n} {why}")
+                print("\n".join(l for l in (text or "").splitlines() if l.strip())[-3000:])
+                print()
+            return
+        time.sleep(5)
+
+
+def peek(name, lines):
+    s = screen(name, lines)
+    if s is None:
+        sys.exit(f"agents: no {name}")
+    print("\n".join(l for l in s.splitlines() if l.strip()))
+    print(f"--- {name}: {state(name)}")
+    seen(name)
+
+
+def log(name):
+    s = screen(name, 200000)
+    if s is None:
+        sys.exit(f"agents: no {name}")
+    print(s)
+    seen(name)
+
+
+def say(name, text):
+    refuse_nested()
+    if not live(name):
+        sys.exit(f"agents: {name} isn't running")
+    # (Typed fast, the words come as a paste, and an Enter in the same
+    # burst is a new line in it: Enter goes on its own, a moment after.)
+    tmux("send-keys", "-t", f"{name}:0.0", "-l", text, check=True)
+    time.sleep(0.5)
+    tmux("send-keys", "-t", f"{name}:0.0", "C-m", check=True)
+    seen(name)
+    print(f"agents: said to {name}")
+
+
+def approve(name, how):
+    refuse_nested()
+    if state(name) != "asking":
+        sys.exit(f"agents: {name} isn't asking for anything ({state(name)})")
+    s = screen(name) or ""
+    lines = s.splitlines()
+    start_at = max((i for i, l in enumerate(lines) if "Would you like to" in l), default=max(0, len(lines) - 12))
+    print("\n".join(l for l in lines[start_at:] if l.strip()))
+    key = {"y": "y", "yes": "y", "p": "p", "no": "Escape", "n": "Escape"}.get(how)
+    if not key:
+        sys.exit("agents: approve with y, p or no")
+    tmux("send-keys", "-t", f"{name}:0.0", key, check=True)
+    time.sleep(0.5)
+    seen(name)
+    print(f"agents: answered {how} to {name}")
+
+
+def stop(name):
+    refuse_nested()
+    tmux("kill-session", "-t", name)
+    m = meta(name)
+    if m:
+        m["seen_state"] = "exited"
+        save_meta(name, m)
+    print(f"agents: {name} stopped; its folder {folder(name)} stays (report.md, its transcript: `agents log` before stopping)")
+
+
+def forget(name):
+    refuse_nested()
+    if live(name):
+        sys.exit(f"agents: {name} is running: stop it first")
+    shutil.rmtree(folder(name), ignore_errors=True)
+    print(f"agents: {name}'s folder removed")
+
+
+def main():
+    a = sys.argv[1:]
+    if not a or a[0] in ("-h", "--help", "help"):
+        print(__doc__)
+        return
+    cmd, rest = a[0], a[1:]
+    if cmd == "start" and len(rest) == 3:
+        start(*rest)
+    elif cmd == "list":
+        list_()
+    elif cmd == "watch":
+        watch(int(rest[rest.index("--stuck") + 1]) if "--stuck" in rest else 15)
+    elif cmd == "peek" and rest:
+        peek(rest[0], int(rest[1]) if len(rest) > 1 else 60)
+    elif cmd == "log" and rest:
+        log(rest[0])
+    elif cmd == "say" and len(rest) >= 2:
+        say(rest[0], " ".join(rest[1:]))
+    elif cmd == "approve" and rest:
+        approve(rest[0], rest[1] if len(rest) > 1 else "y")
+    elif cmd == "stop" and rest:
+        stop(rest[0])
+    elif cmd == "forget" and rest:
+        forget(rest[0])
+    elif cmd == "attach" and rest:
+        print(f"tmux -L {SOCKET} attach -r -t {rest[0]}")
+    else:
+        print(__doc__)
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()

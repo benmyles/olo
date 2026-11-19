@@ -171,6 +171,61 @@ something nobody here has is in "Blocked", with what it waits for.
   labels and menus, its dates and times, `words.rs`: "Wednesday,
   November 18, 2026, 2 PM – 3:30 PM" in German too; Codex, 2026-11-19,
   on the preview pane, whose own words are in).
+- **Translations as resources, not compiled in: measure it**
+  (2026-11-19, from another agent's study of kache's misses, which Ben
+  passed on: "packaging catalogs as separately updatable resources is
+  worth measuring"; then: "Misses consumed 53.0 compiler-hours.
+  Dependency changes accounted for 47.1 hours. In the main Olo checkout
+  alone, 4,148 misses had identical source, flags, and every other
+  recorded input except dependency artifacts … Start with translations
+  … 22 commits touched them during this window. In six, the catalogs
+  were the only shared-crate change. Shipping catalogs as versioned data
+  would let a wording edit bypass recompilation of dependent apps. A
+  one-string edit is a good benchmark"). The catalogs are compiled into
+  olo-kit-base (`crates/kit-base/src/words.rs`), so every word added
+  rebuilds the 41 apps built on it, and the pre-push hook builds the
+  whole workspace in release (`tools/hooks/pre-push`). Read at start
+  instead, as versioned data (from the build's or the installed share
+  folder), a catalog change would rebuild nothing. Measure first, with a
+  one-string edit: the builds it costs now and after, against a read at
+  each app's start (and what in-place reload, tests and agents' screens
+  need); then do it if it pays.
+
+- **olo-fakesound in a package of its own, with only its own
+  dependencies** (2026-11-19, from the same study of kache's misses,
+  which Ben passed on: "744 compiles produced only files kache already
+  held, costing 2.1 compiler-hours … 66 distinct cache keys for
+  olo-fakesound produced the exact same executable and dependency file.
+  Give olo-fakesound a small package containing its actual dependencies.
+  It currently inherits the preview package's dependency list. This is
+  the clearest first experiment because we already have a byte-for-byte
+  baseline"). `crates/preview/src/bin/fakesound.rs` is a `[[bin]]` of
+  olo-preview (`crates/preview/Cargo.toml`), so every change to what
+  olo-preview depends on builds it again, to the same bytes. A small
+  crate of its own (what fakesound.rs uses, nothing more), the lint and
+  tsession pointed at it; then the same look at the other helper
+  binaries (dnf-fake, udisks-fake in olo-system). Measure: kache's
+  misses for it before and after, over a day's work.
+
+- **kache's storage warning says what counts** (2026-11-19, from the
+  same study, which Ben passed on: "Fix the dashboard's storage warning
+  before increasing capacity. The red 486 GB is the logical size of all
+  entries. Kache's budget uses deduplicated blob bytes and discounts
+  blocks still held by build directories. The screenshot implies
+  roughly 418 − 118 = 300 GB counted against a 322 GB limit, using the
+  last cleanup's held-byte measurement. I matched 529 misses to recorded
+  size evictions. Those cost about 25 aggregate compiler-minutes in this
+  window. I'd show the budgeted size on the card, give incremental
+  builds their own category, and rank misses by total compile time").
+  Olo's kache window (`apps/kache`: the Store card's warning, around
+  main.rs:461) shows the size the budget counts, against the limit, not
+  every entry's logical size; incremental builds a category of their
+  own in Builds; Slowest compiles ranked by total compile time (a
+  crate's misses added up). How kache counts: its configuration docs
+  (in the kache repository, docs/getting-started/configuration.mdx,
+  storage). Another agent works on kache in a worktree of its own
+  (branch `kache`): see what it has done first.
+
 - **Links in Calendar's event notes found and made clickable** (Ben,
   2026-11-19, with a picture of an event's notes holding a meeting's
   link, a dial-in page's and a help page's: "also a todo: any links in
@@ -265,7 +320,9 @@ something nobody here has is in "Blocked", with what it waits for.
   composer, the views, the assistant, the widget…) goes to a Codex
   instance (gpt-6.2-astra, xhigh) with a precise spec of what it builds,
   how it looks and behaves, and how it's tested, working in parallel in
-  worktrees of its own; I review, fit together and judge every picture.
+  this working tree, a crate each (`tools/dev/agents`, the
+  `olo-codex-agents` skill: CLAUDE.md, "Subagents"); I review, fit
+  together and judge every picture.
 
 - **Calendar and Mail in Deskbar: widgets of their own** (Ben,
   2026-11-17: "both the calendar and email should also integrate with

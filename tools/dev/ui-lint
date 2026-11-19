@@ -8,7 +8,7 @@ Sound comes from olo-fakesound (a speaker, AirPods and a microphone), so
 Preferences ▸ Sound shows its devices, not its empty state.
 Errors fail it; review findings (look closely) are listed with --review.
 
-  tools/dev/ui-lint [--review] [--keep] [--no-cache] [--jobs N] [--scales 1,1.5,2] [--screen WxH] [--tiles [--shots DIR]] [APP...]
+  tools/dev/ui-lint [--dev] [--review] [--keep] [--no-cache] [--jobs N] [--scales 1,1.5,2] [--screen WxH] [--tiles [--shots DIR]] [APP...]
 
 --tiles: every window that tiles (not a dialog, an alert, a fixed-size or
 floating one) is tiled into each layout in turn, by app_server as a
@@ -38,6 +38,12 @@ as "disk-usage", or "prefs:PANEL"; case and spaces don't count). It
 runs release builds: `cargo build --release --workspace` first. Run by
 the pre-push hook when UI code changed (tools/hooks), and by
 tools/install-session.sh. See "The layout lint" in docs/HACKING.md.
+
+--dev runs the dev profile's builds (target/debug, optimized too) while
+you work (CLAUDE.md, "Build what you change"): build the packages you
+lint and what the lint runs beside them, `cargo build -p app_server -p
+olo-preview -p PACKAGE` (and `-p olo-system` for OS Updates' fake
+package service), not the whole workspace in release.
 """
 import hashlib, json, os, socket, subprocess, sys, threading, time
 
@@ -45,6 +51,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 TSESSION = os.path.join(ROOT, "tools/dev/tsession")
 BASE = "/var/tmp/olo-dev"
 RUNTIME = f"/run/user/{os.getuid()}"
+# Which builds it runs: release (the pre-push hook's, and what's ready),
+# or with --dev the dev profile's (target/debug), as it's being worked on.
+PROFILE = "debug" if "--dev" in sys.argv[1:] else "release"
 
 # Preferences' panels (Bluetooth stays out of test runs; AirPods needs
 # its fake device).
@@ -94,7 +103,7 @@ def sh(*args, check=False):
     env = dict(os.environ)
     for k in ("WAYLAND_DISPLAY", "OLO_SOCKET", "OLO_SESSION", "OLO_SESSION_PID", "OLO_REAL_SESSION"):
         env.pop(k, None)
-    env["TSESSION_PROFILE"] = "release"
+    env["TSESSION_PROFILE"] = PROFILE
     r = subprocess.run(["/usr/bin/python3", TSESSION, *args], capture_output=True, text=True, env=env)
     if check and r.returncode:
         sys.exit(f"tsession {' '.join(args)}: {r.stderr or r.stdout}")
@@ -205,8 +214,8 @@ def signature(exe, screen, scales, show_review, tiles=False):
         except OSError:
             pass
     for b in (exe, "olo-app-server", "olo-fakesound"):
-        h.update(stamp(os.path.join(ROOT, "target/release", b)).encode())
-    h.update(f"{screen}|{scales}|{show_review}|{tiles}".encode())
+        h.update(stamp(os.path.join(ROOT, "target", PROFILE, b)).encode())
+    h.update(f"{screen}|{scales}|{show_review}|{tiles}|{PROFILE}".encode())
     return h.hexdigest()
 
 
@@ -407,7 +416,7 @@ def lint_one(spec, slot, master, screen, scales, show_review, work, all_themes=F
     argv = [a.replace(master, home) for a in spec[1]]
     env = {k: v.replace(master, home) for k, v in env.items()}
     pulse = os.path.join(work, f"pulse{slot}.sock")
-    fakesound = subprocess.Popen([os.path.join(ROOT, "target/release/olo-fakesound"), pulse], env=dict(os.environ, FAKESOUND_AIRPODS="AA:BB:CC:DD:EE:FF"),
+    fakesound = subprocess.Popen([os.path.join(ROOT, "target", PROFILE, "olo-fakesound"), pulse], env=dict(os.environ, FAKESOUND_AIRPODS="AA:BB:CC:DD:EE:FF"),
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     lines = []
     fake = None
@@ -422,7 +431,7 @@ def lint_one(spec, slot, master, screen, scales, show_review, work, all_themes=F
         if "@session-bus" in env.values():
             bus = f"unix:path={BASE}/{name}/bus"
             env = {k: (bus if v == "@session-bus" else v) for k, v in env.items()}
-            fake = subprocess.Popen([os.path.join(ROOT, "target/release/dnf-fake"), "--address", bus], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            fake = subprocess.Popen([os.path.join(ROOT, "target", PROFILE, "dnf-fake"), "--address", bus], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             # (On the bus before the app asks for it.)
             try:
                 import dbus

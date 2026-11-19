@@ -102,6 +102,18 @@ are universal and non-negotiable:
   Upgrade installs it and reloads in place. `tools/install-session.sh` is
   only for a first install, or when the login-screen entry or udev rules
   change.
+- **Build what you change, in dev, while you work.** While editing,
+  build and test only the packages you change, in the dev profile
+  (optimized too): `cargo build -p`, `cargo test -p`, pictures from dev
+  builds (`tsession`'s default), the live lint with `--dev` (with
+  `cargo build -p app_server -p olo-preview` beside what it lints). The
+  release build of the workspace is for work that's ready: build it
+  once, when you finish, so the person's session offers the upgrade
+  (the pre-push hook builds it too). Measure on release builds of the
+  packages measured (`cargo build --release -p`). Release builds were
+  49.1 of the 52 compiler-hours kache spent on misses (measured,
+  2026-11-19): a change to olo-kit-base, a word in a catalog, rebuilds
+  every app.
 - **Wayland only, no X11.** Olo runs Wayland programs and nothing
   else: no Xwayland, no X11 window management, no `DISPLAY`, no code or
   dependencies for X11-only programs. Programs that can speak either
@@ -146,17 +158,33 @@ are universal and non-negotiable:
   work, and what's there is kept current (corrected or removed when it
   stops being true). Never store memories in an agent's own memory
   outside the repository.
-- **No forks or subagents.** Do all the work yourself, in this session:
-  never spawn a fork, subagent or background agent for any part of a task.
-  The one exception, and use it freely: a second investigator for
-  debugging and root-causing, with the `olo-debug-help` skill
-  (`tools/dev/codex-help BRIEF.md`: a headless Codex, gpt-6.2-astra at
-  its highest effort, approving its own steps), started as soon as a
-  bug's cause isn't plain (below), while you keep working on your own
-  line: two brains are better than one. It looks and reports; you
-  check what it found and do the work. The other
-  exception: `tools/dev/codex-look`, the second look at every change's
-  pictures (above).
+- **Subagents: Codex, narrow, watched, reviewed.** Do the work yourself,
+  in this session, but for three kinds of help, all Codex (never a
+  Claude fork, nor the Agent tool):
+  - Narrow, targeted work items that can go on in parallel: Codex
+    subagents (gpt-6.2-astra at xhigh), each interactive in a tmux
+    session of its own, started, watched and steered with
+    `tools/dev/agents` (the `olo-codex-agents` skill). Up to five at
+    once, all in this working tree, each in one crate that no other
+    agent, nor you, is changing meanwhile, so none clobbers another.
+    Each gets a clear brief: the task, its crate, what done is, how to
+    test it. They never start agents themselves (the tooling refuses,
+    and their brief says so). While any runs, keep `tools/dev/agents
+    watch` going in the background, started again after each time it
+    returns, and look at `agents list` now and then: answer approvals
+    and questions promptly, steer what drifts, unstick what stalls. When
+    one finishes, review its work as your own before anything is
+    committed: read the whole diff, run its tests, picture every visual
+    change and judge it closely (Codex is weak at visual design: expect
+    to redo some), then commit it yourself (2026-11-19).
+  - A second investigator for debugging and root-causing, with the
+    `olo-debug-help` skill (`tools/dev/codex-help BRIEF.md`: a headless
+    Codex at its highest effort, approving its own steps), started as
+    soon as a bug's cause isn't plain (below), while you keep working
+    on your own line: two brains are better than one. It looks and
+    reports; you check what it found and do the work.
+  - `tools/dev/codex-look`, the second look at every change's pictures
+    (above).
 - **A bug you can't see at once gets a second investigator at once.**
   If a quick first look (the logs, the code on its path: minutes, not
   an hour) hasn't shown you the cause, start the `olo-debug-help`

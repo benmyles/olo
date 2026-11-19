@@ -706,6 +706,16 @@ Doctor check, try its fix and look again: the finding must be gone.
 
 ## Working with the repository
 
+- **Codex subagents** (`tools/dev/agents`, the `olo-codex-agents`
+  skill, which has the details). What codex-cli 0.170 does that its help
+  doesn't say: `--approve-for-me` brings the workspace-write sandbox and
+  refuses `-s` beside it ("cannot be used with"); with `-c`, `--enable`
+  or `--disable` it runs without the shared background server (a
+  warning, harmless, but `codex queue` can't reach it: steer through
+  tmux); text typed into its TUI quickly is a paste, an Enter in the
+  same burst a new line in it (send Enter apart); its sandbox writes
+  `/tmp` and `/var/tmp` as well as the repository; the posthog MCP
+  warning at its start is the person's unlogged server, harmless.
 - **Commit and push regularly**: push to origin after commits (LFS
   through the proxy may need a second try: find why if it fails twice).
   Push from a worktree of its own (`git worktree add --detach
