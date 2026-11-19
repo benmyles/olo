@@ -24,14 +24,14 @@ use std::{
 
 use olo_kit::{
     BorderStyle, Bounds, ClickEvent, ClipboardItem, Cx, Element, FontWeight, Hsla, InteractiveElement as _, KeyDownEvent, Menu, MenuBar, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    Painter, ParentElement as _, Pixels, Point, SharedString, Size, Styled as _, View, WindowOptions, clipboard, div,
+    Painter, ParentElement as _, Pixels, Point, ScrollHandle, SharedString, Size, Styled as _, View, WindowOptions, clipboard, div,
     file_panel::{self, FilePanel, PanelResult},
     files::{format_size, kind_for},
     icons,
     instance::{self, Launch},
     menu, metrics as m, point, px, size, style, theme, tracker,
     undo::{History, Purpose},
-    widgets::{Button, Column, ColumnListView, ListModel, SCROLL_BAR, StringView, level_bar, open_alert},
+    widgets::{Button, Column, ColumnListView, HEADER_HEIGHT, ListModel, SCROLL_BAR, ScrollView, StringView, dashboard, level_bar, open_alert, paragraph_height},
 };
 use olo_theme::mix;
 use scan::{NodeId, ROOT, Scan};
@@ -39,6 +39,14 @@ use serde::{Deserialize, Serialize};
 use volumes::Volume;
 
 const APP_ID: &str = "olo.disk-usage";
+/// Fits a vertical third of the smallest screen, including the window frame.
+const MIN_WIDTH: f32 = 400.0;
+/// Fits a horizontal third of the smallest screen, including the window tab.
+const MIN_HEIGHT: f32 = 220.0;
+/// Below this side the rings give way (CLAUDE.md, "Every tiling layout").
+const CHART_LEAST: f32 = 200.0;
+/// Below this viewport height the hint and the Collector's chips give way.
+const SHORT: f32 = 360.0;
 const COLLECTOR_HEIGHT: f32 = 58.0;
 const CHIP_HEIGHT: f32 = 20.0;
 /// The list's name column at its least, and the room of the columns
@@ -50,6 +58,32 @@ const HUB_LINES: f32 = 16.0;
 /// The box the middle's words go in, across and down, in its radius:
 /// its corners on the circle (0.8² + 0.6² = 1).
 const HUB_BOX: (f32, f32) = (1.6, 1.2);
+
+#[derive(Debug, PartialEq)]
+enum Layout {
+    Beside(f32),
+    Stacked(f32),
+    ListOnly,
+}
+
+/// The rings and list in the space between the toolbar and status.
+/// Keep their shared edge on a device pixel at fractional scales.
+fn layout(width: f32, height: f32, scale: f32) -> Layout {
+    let snap = |side: f32| (side * scale).floor() / scale;
+    let list_least = NAME_LEAST + OTHER_COLUMNS + 2.0 + SCROLL_BAR;
+    let side = height.min(width * 0.56).min(width - m::SPACING - list_least);
+    if side >= CHART_LEAST {
+        Layout::Beside(snap(side))
+    } else if height >= CHART_LEAST + m::SPACING + HEADER_HEIGHT + 5.0 * m::LIST_ROW + 4.0 {
+        Layout::Stacked(snap(width.min(0.4 * height)))
+    } else {
+        Layout::ListOnly
+    }
+}
+
+fn body_height(viewport: f32, status: f32, collector: Option<f32>) -> f32 {
+    viewport - menu::BAR_HEIGHT - 2.0 * m::WINDOW_INSET - m::CONTROL_HEIGHT - 2.0 * m::SPACING - status - collector.map_or(0.0, |h| m::SPACING + h)
+}
 
 /// What the window is told: by the scan, its workers, a launch, and
 /// what's in it.
@@ -120,6 +154,7 @@ struct Shown {
 
 struct DiskUsage {
     volumes: Option<Vec<Volume>>,
+    volumes_scroll: ScrollHandle,
     scan: Option<Scan>,
     /// The folder shown.
     folder: NodeId,
@@ -132,16 +167,13 @@ struct DiskUsage {
     slices: Arc<Vec<chart::Slice>>,
     shown: Vec<Shown>,
     total: u64,
-    /// Counts what the chart and the Collector show changing (their
-    /// drawings' keys).
-    rev: u64,
     collected: Vec<NodeId>,
     /// Being dragged towards the Collector, and where the pointer is.
     drag: Option<NodeId>,
     drag_at: Point<Pixels>,
     /// Where the Collector's well was drawn last (a drop's target), and
     /// where the pointer is in it.
-    collector: Bounds<Pixels>,
+    collector: Option<Bounds<Pixels>>,
     well_at: Option<Point<Pixels>>,
     pointer: Pointer,
     /// A slice right-clicked, for its menu.
@@ -197,6 +229,7 @@ impl DiskUsage {
     fn new(start: Option<(PathBuf, Option<Saved>)>, cx: &mut Cx<Self>) -> DiskUsage {
         let mut d = DiskUsage {
             volumes: None,
+            volumes_scroll: ScrollHandle::new(),
             scan: None,
             folder: ROOT,
             selected: None,
@@ -205,11 +238,10 @@ impl DiskUsage {
             slices: Arc::default(),
             shown: Vec::new(),
             total: 1,
-            rev: 0,
             collected: Vec::new(),
             drag: None,
             drag_at: Point::default(),
-            collector: Bounds::default(),
+            collector: None,
             well_at: None,
             pointer: Pointer::default(),
             context: None,
@@ -650,11 +682,16 @@ impl DiskUsage {
     // ---- drawing ----------------------------------------------------------
 
     fn volumes_view(&self, cx: &mut Cx<Self>) -> Element {
-        let mut rows: Vec<(String, &'static str, String, Option<(u64, u64)>, PathBuf)> = vec![(olo_kit::words::tr("Home").into(), "home", display_path(&home()), volumes::space(&home()), home())];
+        let mut rows: Vec<(String, &'static str, String, Option<(u64, u64)>, PathBuf)> = vec![(olo_kit::words::tr("Home").into(), "home", display_path(&home()), None, home())];
         for v in self.volumes.iter().flatten() {
             rows.push((v.name.clone(), "disk", v.mount.display().to_string(), Some((v.total, v.free)), v.mount.clone()));
         }
-        let mut out = div().flex().flex_col().gap(px(m::SPACING)).size_full().child(div().h(px(16.0)).child(StringView::new("Choose what to scan:").bold(true).height(16.0)));
+        let viewport = cx.viewport_size();
+        let short = viewport.height < px(SHORT);
+        let across = if short { dashboard::across(f32::from(viewport.width) - 2.0 * m::WINDOW_INSET, MIN_WIDTH, rows.len()) } else { 1 };
+        let card_h = if short { 42.0 } else { 56.0 };
+        let mut cards = div().w_full().grid().grid_cols(across as u16).gap(px(m::SPACING));
+        let button_w = olo_kit::widgets::button_width("Scan", false);
         for (i, (name, icon, place, space, path)) in rows.into_iter().enumerate() {
             let scan_it = Button::new("Scan").id(format!("scan-{i}")).on_click(cx.msg_with(move |_: &ClickEvent| Msg::Scan(path.clone())));
             let look = style::key((&name, icon, &place, space));
@@ -664,22 +701,33 @@ impl DiskUsage {
                 let icon_r = Bounds { origin: point(r.left() + px(10.0), r.center().y - px(16.0)), size: size(px(32.0), px(32.0)) };
                 icons::paint(g, icon_r, icon);
                 let x = icon_r.right() + px(10.0);
-                let right = r.right() - px(10.0 + 80.0 + 16.0);
-                // Name and where it is; then how full it is (a volume)
-                // or what it holds (home).
-                let named = style::label(g, x, r.top() + px(16.0), style::Align::Left, name.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), style::c(p.panel_text));
+                let right = r.right() - px(10.0 + button_w + m::WINDOW_INSET);
+                let dy = px(if short { m::LABEL_ROW / 2.0 } else { m::SPACING });
+                let top = r.center().y - dy;
+                let bottom = r.center().y + dy;
+                let named = style::label_fit(g, x, top, style::Align::Left, name.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), style::c(p.panel_text), right - x);
                 let dim = style::c(mix(p.panel_text, p.panel_background, 0.45));
                 let plain = style::ui_font(FontWeight::NORMAL);
-                style::label(g, named.right() + px(m::SPACING), r.top() + px(16.0), style::Align::Left, place.clone(), style::PLAIN_SIZE, plain.clone(), dim);
+                let path_x = named.right() + px(m::SPACING);
+                let mut used = named.right();
+                if right - path_x >= px(m::LABEL_ROW) {
+                    used = style::label_fit(g, path_x, top, style::Align::Left, place.clone(), style::PLAIN_SIZE, plain.clone(), dim, right - path_x).right();
+                }
                 match (icon, space) {
                     ("home", _) => {
-                        style::label(g, x, r.bottom() - px(16.0), style::Align::Left, "Your own files and folders", style::PLAIN_SIZE, plain, dim);
+                        style::label_fit(g, x, bottom, style::Align::Left, olo_kit::words::tr("Your own files and folders"), style::PLAIN_SIZE, plain, dim, right - x);
                     }
                     (_, Some((total, free))) => {
                         let free_text = olo_kit::tr!("{} free of {}", format_size(free), format_size(total));
-                        style::label(g, right, r.top() + px(16.0), style::Align::Right, free_text, style::PLAIN_SIZE, plain, dim);
-                        let bar = Bounds::from_corners(point(x, r.bottom() - px(22.0)), point(right, r.bottom() - px(10.0)));
-                        level_bar(g, bar, 1.0 - free as f32 / total.max(1) as f32, None, &p);
+                        // Where the free space won't fit after the path, it
+                        // shares the second line with as much bar as fits.
+                        let fits = style::text_width(free_text.clone(), style::PLAIN_SIZE, plain.clone()) <= right - used - px(m::SPACING);
+                        let at = style::label_fit(g, right, if fits { top } else { bottom }, style::Align::Right, free_text, style::PLAIN_SIZE, plain, dim, right - x);
+                        let bar_end = if fits { right } else { at.left() - px(m::SPACING) };
+                        if bar_end - x >= px(m::CONTROL_HEIGHT) {
+                            let bar = Bounds::from_corners(point(x, bottom - px(m::TIGHT)), point(bar_end, bottom + px(m::TIGHT)));
+                            level_bar(g, bar, 1.0 - free as f32 / total.max(1) as f32, None, &p);
+                        }
                     }
                     _ => {}
                 }
@@ -689,12 +737,19 @@ impl DiskUsage {
             .left(px(0.0))
             .top(px(0.0))
             .size_full();
-            out = out.child(div().relative().w_full().h(px(56.0)).flex().items_center().justify_end().pr(px(10.0)).child(face).child(scan_it));
+            cards = cards.child(div().relative().min_w_0().h(px(card_h)).flex().items_center().justify_end().pr(px(10.0)).child(face).child(scan_it));
         }
         if self.volumes.is_none() {
-            out = out.child(StringView::new("Looking for volumes…"));
+            cards = cards.child(StringView::new("Looking for volumes…"));
         }
-        out.child(div().flex_1()).child(Button::new("Scan a Folder…").min_width(140.0).on_click(cx.msg_with(|_: &ClickEvent| Msg::Command("scan-folder".into()))))
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .gap(px(m::SPACING))
+            .child(StringView::new("Choose what to scan:").bold(true).height(m::LABEL_ROW))
+            .child(div().flex_1().min_h_0().child(ScrollView::new(&self.volumes_scroll).border(false).auto_hide(true).child(cards)))
+            .child(Button::new("Scan a Folder…").min_width(140.0).on_click(cx.msg_with(|_: &ClickEvent| Msg::Command("scan-folder".into()))))
     }
 
     /// The chart's place in its box.
@@ -731,6 +786,21 @@ impl DiskUsage {
             *kept.borrow_mut() = Some((font, least));
             least
         })
+    }
+
+    fn chart_view(&self, cx: &Cx<Self>) -> Element {
+        cx.canvas(|d: &DiskUsage, g, b| d.paint_chart(g, b))
+            .id("disk-usage-chart")
+            .size_full()
+            .on_mouse_move(cx.listener(|d: &mut Self, e: &MouseMoveEvent, cx| d.chart_moved(Some(e), cx)))
+            .on_hover(cx.listener(|d: &mut Self, over: &bool, cx| {
+                if !over {
+                    d.chart_moved(None, cx);
+                }
+            }))
+            .on_mouse_down(MouseButton::Left, cx.listener(|d: &mut Self, e: &MouseDownEvent, cx| d.chart_pressed(e, cx)))
+            .on_mouse_down(MouseButton::Right, cx.listener(|d: &mut Self, e: &MouseDownEvent, cx| d.chart_pressed(e, cx)))
+            .on_mouse_up(MouseButton::Left, cx.listener(|d: &mut Self, e: &MouseUpEvent, cx| d.chart_released(e, cx)))
     }
 
     fn scan_view(&mut self, cx: &mut Cx<Self>) -> Element {
@@ -772,38 +842,36 @@ impl DiskUsage {
             )
             .child(Button::new(if running { "Stop" } else { "Rescan" }).on_click(cx.msg_with(move |_: &ClickEvent| Msg::Command(if running { "stop" } else { "rescan" }.into()))));
 
-        // The chart at the left, as large as fits; the list beside it.
-        self.slices = Arc::new(chart::layout(&tree.read().unwrap(), self.folder, &p));
-        self.rev += 1;
-        let chart_el = cx
-            .canvas(|d: &DiskUsage, g, b| d.paint_chart(g, b))
-            .id("disk-usage-chart")
-            .size_full()
-            .on_mouse_move(cx.listener(|d: &mut Self, e: &MouseMoveEvent, cx| d.chart_moved(Some(e), cx)))
-            .on_hover(cx.listener(|d: &mut Self, over: &bool, cx| {
-                if !over {
-                    d.chart_moved(None, cx);
-                }
-            }))
-            .on_mouse_down(MouseButton::Left, cx.listener(|d: &mut Self, e: &MouseDownEvent, cx| d.chart_pressed(e, cx)))
-            .on_mouse_down(MouseButton::Right, cx.listener(|d: &mut Self, e: &MouseDownEvent, cx| d.chart_pressed(e, cx)))
-            .on_mouse_up(MouseButton::Left, cx.listener(|d: &mut Self, e: &MouseUpEvent, cx| d.chart_released(e, cx)));
-
-        // The list.
-        let rows = self.rows();
         let viewport = cx.viewport_size();
-        let list_w = f32::from(viewport.width) - 2.0 * m::WINDOW_INSET;
-        let body_h = f32::from(viewport.height) - menu::BAR_HEIGHT - 2.0 * m::WINDOW_INSET - m::CONTROL_HEIGHT - 3.0 * m::SPACING - (2.0 * style::PLAIN_SIZE + 6.0) - COLLECTOR_HEIGHT;
-        // On whole device pixels, so the list beside it is too (a box a
-        // quarter pixel in leaves layout rounding ties that put the list's
-        // scroll bar a pixel off its rows).
-        let scale = cx.scale_factor();
-        // (Leaving the list room for its columns, the name at its least:
-        // in the window at its least, the chart took that and Files ran
-        // out of the list, "Fil" and a scroll bar under it.)
-        let list_least = NAME_LEAST + OTHER_COLUMNS + 2.0 + SCROLL_BAR;
-        let side = (body_h.min(list_w * 0.56).min(list_w - m::SPACING - list_least) * scale).floor().max(0.0) / scale;
-        let list_w = list_w - side - m::SPACING;
+        let width = f32::from(viewport.width) - 2.0 * m::WINDOW_INSET;
+        let height = f32::from(viewport.height);
+        let short = height < SHORT;
+        let collector_h = if short { (!self.collected.is_empty()).then_some(m::CONTROL_HEIGHT) } else { Some(COLLECTOR_HEIGHT) };
+        let hint = olo_kit::words::tr("Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.");
+        let stop_in_status = self.busy.is_some() && collector_h.is_none();
+        // Keep the status still as the pointer moves from a ring to its neighbour.
+        let status_h = if stop_in_status {
+            m::CONTROL_HEIGHT
+        } else if short {
+            m::LABEL_ROW
+        } else {
+            m::LABEL_ROW + paragraph_height(hint, width.max(1.0))
+        };
+        let layout = layout(width, body_height(height, status_h, collector_h), cx.scale_factor());
+        let rings = if layout == Layout::ListOnly {
+            self.pointer = Pointer::default();
+            CHART.with(|c| c.set(None));
+            1 // Only the list's colour bars need the first ring.
+        } else {
+            chart::RINGS
+        };
+        self.slices = Arc::new(chart::layout(&tree.read().unwrap(), self.folder, &p, rings));
+
+        let rows = self.rows();
+        let list_w = match layout {
+            Layout::Beside(side) => width - side - m::SPACING,
+            _ => width,
+        };
         // The name takes what the others leave (inside the list's border and
         // scroll bar), the last filling to the edge.
         let columns = [Column::new("Name", (list_w - 2.0 - SCROLL_BAR - OTHER_COLUMNS).max(NAME_LEAST)), Column::new("Size", 76.0).right(), Column::new("", 50.0), Column::new("Files", 76.0).right()];
@@ -883,34 +951,37 @@ impl DiskUsage {
             let unreadable = progress.unreadable.load(Ordering::Relaxed);
             let n = &t.nodes[self.folder as usize];
             let note = if unreadable > 0 { format!(" — {}", olo_kit::words::count(unreadable, "1 folder couldn't be read", "{n} folders couldn't be read")) } else { String::new() };
-            (
-                format!("{}{note}", olo_kit::tr!("{} in {}", format_size(n.size), plural(n.files, "1 file", "{n} files"))),
-                olo_kit::words::tr("Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.").into(),
-            )
+            (format!("{}{note}", olo_kit::tr!("{} in {}", format_size(n.size), plural(n.files, "1 file", "{n} files"))), String::new())
         };
-        let look = style::key((&line1, &line2));
-        let status = olo_kit::canvas(move |g, b| {
-            let p = theme::palette();
-            let font = style::ui_font(FontWeight::NORMAL);
-            let dim = style::c(mix(p.panel_text, p.panel_background, 0.4));
-            style::label_fit(g, b.left(), b.top() + px(style::PLAIN_SIZE / 2.0 + 1.0), style::Align::Left, line1.clone(), style::PLAIN_SIZE, font.clone(), style::c(p.panel_text), b.size.width);
-            style::label_fit(g, b.left(), b.bottom() - px(style::PLAIN_SIZE / 2.0 + 1.0), style::Align::Left, line2.clone(), style::PLAIN_SIZE, font, dim, b.size.width);
-        })
-        .paint_key(look)
-        .w_full()
-        .h(px(2.0 * style::PLAIN_SIZE + 6.0))
-        .flex_shrink_0();
-
-        let collector = self.collector_view(cx);
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .gap(px(m::SPACING))
-            .child(top)
-            .child(div().flex_1().min_h_0().flex().gap(px(m::SPACING)).child(div().w(px(side)).h_full().child(chart_el)).child(div().flex_1().min_w_0().child(list)))
-            .child(status)
-            .child(collector)
+        let mut status = div().flex().h(px(status_h)).flex_shrink_0();
+        if short {
+            let text = if line2.is_empty() { line1 } else { format!("{line1} — {line2}") };
+            status = status.items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(StringView::new(text).cut(true).height(m::LABEL_ROW)));
+            if stop_in_status {
+                status = status.child(Button::new("Stop").on_click(cx.msg_with(|_: &ClickEvent| Msg::Command("stop-removing".into()))));
+            }
+        } else {
+            status = status.flex_col().child(StringView::new(line1).cut(true).height(m::LABEL_ROW));
+            if !line2.is_empty() {
+                status = status.child(StringView::new(line2).dim(true).cut(true).height(m::LABEL_ROW));
+            } else if !running && self.busy.is_none() && layout != Layout::ListOnly {
+                status = status.child(StringView::new(hint).dim(true).wrap(true));
+            }
+        }
+        let body = div().flex_1().min_h_0().flex().gap(px(m::SPACING));
+        let body = match layout {
+            Layout::Beside(side) => body.child(div().w(px(side)).h_full().child(self.chart_view(cx))).child(div().flex_1().min_w_0().child(list)),
+            Layout::Stacked(side) => body.flex_col().child(div().w_full().h(px(side)).flex_shrink_0().child(self.chart_view(cx))).child(div().flex_1().min_h_0().child(list)),
+            Layout::ListOnly => body.child(div().size_full().child(list)),
+        };
+        let mut out = div().size_full().flex().flex_col().gap(px(m::SPACING)).child(top).child(body).child(status);
+        if let Some(h) = collector_h {
+            out = out.child(self.collector_view(short, h, cx));
+        } else {
+            self.collector = None;
+            self.well_at = None;
+        }
+        out
     }
 
     /// The slice at `pos`, where the chart was last drawn.
@@ -1035,7 +1106,7 @@ impl DiskUsage {
     }
 
     /// The Collector's chips in its well at `b`.
-    fn chips(&self, b: Bounds<Pixels>) -> (Bounds<Pixels>, Vec<Chip>) {
+    fn chips(&self, b: Bounds<Pixels>) -> Vec<Chip> {
         let items: Vec<(NodeId, String, u64, bool)> = match &self.scan {
             Some(scan) => {
                 let t = scan.tree.read().unwrap();
@@ -1061,26 +1132,43 @@ impl DiskUsage {
             chips.push((Some(*id), chip, text, *dir, Some(close)));
             x += px(w + 6.0);
         }
-        (inner, chips)
+        chips
     }
 
-    fn paint_well(&self, g: &mut Painter, b: Bounds<Pixels>) {
+    fn paint_well(&self, g: &mut Painter, b: Bounds<Pixels>, folded: bool) {
         let b = style::snap(g, b);
-        let (inner, chips) = self.chips(b);
-        let heading = if self.collected.is_empty() {
-            olo_kit::words::tr("Collector: drag files and folders here").to_owned()
-        } else {
-            olo_kit::tr!("Collector: {} — {}", plural(self.collected.len() as u64, "1 item", "{n} items"), format_size(self.collected_size()))
+        let summary = (!self.collected.is_empty()).then(|| (plural(self.collected.len() as u64, "1 item", "{n} items"), format_size(self.collected_size())));
+        let heading = match &summary {
+            Some((items, size)) => olo_kit::tr!("Collector: {} — {}", items, size),
+            None => olo_kit::words::tr("Collector: drag files and folders here").to_owned(),
         };
         let p = theme::palette();
         let target = self.drag.is_some() && b.contains(&self.drag_at);
         let fill = if target { mix(p.document_background, p.list_selected_background, 0.25) } else { p.document_background };
         style::fill_rect(g, style::inset(g, b, 2.0), style::c(fill));
         style::sunken(g, b, &p, target);
-        // In line with the chips' icons.
-        style::label(g, inner.left() + px(3.0), inner.top() + px(6.0), style::Align::Left, heading, style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), style::c(p.document_text));
+        // In line with the chips' icons; centred vertically when folded.
+        let y = if folded { b.center().y } else { b.top() + px(m::SPACING) };
+        let inset = px(if folded { m::TEXT_INSET } else { 9.0 });
+        let width = b.size.width - inset * 2.0;
+        let bold = style::ui_font(FontWeight::BOLD);
+        let mut shown = heading.clone();
+        let mut font_size = style::PLAIN_SIZE;
+        if folded && style::text_width(shown.clone(), font_size, bold.clone()) > width {
+            font_size = style::DETAIL_SIZE;
+            if style::text_width(shown.clone(), font_size, bold.clone()) > width
+                && let Some((items, size)) = summary
+            {
+                shown = format!("{items} — {size}");
+            }
+        }
+        let at = style::label_fit(g, b.left() + inset, y, style::Align::Left, shown, font_size, bold, style::c(p.document_text), width);
+        olo_kit::agent::record(g, olo_kit::agent::Node::label(heading, at));
+        if folded {
+            return;
+        }
         let font = style::ui_font(FontWeight::NORMAL);
-        for (id, chip, text, dir, close) in &chips {
+        for (id, chip, text, dir, close) in &self.chips(b) {
             if id.is_none() {
                 style::label(g, chip.left() + px(2.0), chip.center().y, style::Align::Left, text.clone(), style::DETAIL_SIZE, font.clone(), style::c(p.document_text));
                 continue;
@@ -1130,47 +1218,54 @@ impl DiskUsage {
 
     /// The chip's "×" at `at` in the well, if one is there.
     fn close_at(&self, at: Point<Pixels>) -> Option<NodeId> {
-        let (_, chips) = self.chips(self.collector);
-        chips.into_iter().find_map(|(id, _, _, _, close)| id.filter(|_| close.is_some_and(|c| c.contains(&at))))
+        self.chips(self.collector?).into_iter().find_map(|(id, _, _, _, close)| id.filter(|_| close.is_some_and(|c| c.contains(&at))))
     }
 
-    fn collector_view(&self, cx: &mut Cx<Self>) -> Element {
-        let well = cx
-            .canvas(|d: &DiskUsage, g, b| d.paint_well(g, b))
+    fn collector_view(&self, folded: bool, height: f32, cx: &mut Cx<Self>) -> Element {
+        let mut well = cx
+            .canvas(move |d: &DiskUsage, g, b| d.paint_well(g, b, folded))
             .id("disk-usage-collector")
             .flex_1()
             .h_full()
-            // (Where a drop lands, and where its chips are.)
-            .on_bounds_changed(cx.listener(|d: &mut Self, b: &Bounds<Pixels>, _| d.collector = *b))
-            .moves_matter_at_edges()
-            .on_mouse_move(cx.listener(|d: &mut Self, e: &MouseMoveEvent, cx| {
-                let before = d.well_at.and_then(|at| d.close_at(at));
-                d.well_at = Some(e.position);
-                if d.close_at(e.position) != before {
-                    cx.invalidate();
-                }
-            }))
-            .on_hover(cx.listener(|d: &mut Self, over: &bool, cx| {
-                if !over && d.well_at.take().is_some() {
-                    cx.invalidate();
-                }
-            }))
-            // A chip's "×": out of the Collector.
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|d: &mut Self, e: &MouseDownEvent, cx| {
-                    if let Some(id) = d.close_at(e.position) {
-                        d.collected.retain(|&c| c != id);
+            .on_bounds_changed(cx.listener(|d: &mut Self, b: &Bounds<Pixels>, _| d.collector = Some(*b)));
+        if !folded {
+            well = well
+                .moves_matter_at_edges()
+                .on_mouse_move(cx.listener(|d: &mut Self, e: &MouseMoveEvent, cx| {
+                    let before = d.well_at.and_then(|at| d.close_at(at));
+                    d.well_at = Some(e.position);
+                    if d.close_at(e.position) != before {
                         cx.invalidate();
                     }
-                }),
-            );
+                }))
+                .on_hover(cx.listener(|d: &mut Self, over: &bool, cx| {
+                    if !over && d.well_at.take().is_some() {
+                        cx.invalidate();
+                    }
+                }))
+                // A chip's "×": out of the Collector.
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|d: &mut Self, e: &MouseDownEvent, cx| {
+                        if let Some(id) = d.close_at(e.position) {
+                            d.collected.retain(|&c| c != id);
+                            cx.invalidate();
+                        }
+                    }),
+                );
+        }
         let busy = self.busy.is_some();
         let any = !self.collected.is_empty();
-        // (At least 112 points, both as wide as the wider, as it says
-        // them: German's and French's Move to Trash ran past the window.)
-        let bw = ["Move to Trash", "Delete…", "Stop"].iter().map(|l| olo_kit::widgets::button_width(l, false)).fold(112.0, f32::max);
-        let mut buttons = div().w(px(bw)).flex_shrink_0().flex().flex_col().gap(px(6.0)).pt(px(2.0));
+        // Side by side, each button takes just its label and padding.
+        // One over the other, both as wide as the wider translated label.
+        let mut buttons = div().flex_shrink_0().flex().gap(px(m::TIGHT));
+        let bw = if folded {
+            0.0
+        } else {
+            let w = ["Move to Trash", "Delete…", "Stop"].iter().map(|l| olo_kit::widgets::button_width(l, false)).fold(112.0, f32::max);
+            buttons = buttons.w(px(w)).flex_col().pt(px(2.0));
+            w
+        };
         if busy {
             buttons = buttons.child(Button::new("Stop").min_width(bw).on_click(cx.msg_with(|_: &ClickEvent| Msg::Command("stop-removing".into()))));
         } else {
@@ -1178,7 +1273,7 @@ impl DiskUsage {
                 .child(Button::new("Move to Trash").min_width(bw).enabled(any).on_click(cx.msg_with(|_: &ClickEvent| Msg::Command("collector-trash".into()))))
                 .child(Button::new("Delete…").min_width(bw).enabled(any).on_click(cx.msg_with(|_: &ClickEvent| Msg::Command("collector-delete".into()))));
         }
-        div().flex().gap(px(m::SPACING)).h(px(COLLECTOR_HEIGHT)).flex_shrink_0().child(well).child(buttons)
+        div().flex().gap(px(m::SPACING)).h(px(height)).flex_shrink_0().child(well).child(buttons)
     }
 
     /// What's dragged, by the pointer.
@@ -1328,7 +1423,7 @@ impl View for DiskUsage {
                 }))
                 .on_window_mouse_up(cx.listener(|d: &mut Self, e: &MouseUpEvent, cx| {
                     if let Some(id) = d.drag.take()
-                        && d.collector.contains(&e.position)
+                        && d.collector.is_some_and(|b| b.contains(&e.position))
                     {
                         d.collect(id);
                     }
@@ -1362,7 +1457,7 @@ fn main() {
             Some(saved) if saved.root.is_some() => saved.root.clone().map(|root| (root, Some(saved))),
             _ => args.iter().find(|a| !a.starts_with('-')).map(|path| (std::path::absolute(path).unwrap_or_else(|_| PathBuf::from(path)), None)),
         };
-        let window = olo_kit::open_window(WindowOptions::new("DiskUsage", 780.0, 560.0).min_size(600.0, 440.0).keep_size("main"), move |cx| DiskUsage::new(start, cx));
+        let window = olo_kit::open_window(WindowOptions::new("DiskUsage", 780.0, 560.0).min_size(MIN_WIDTH, MIN_HEIGHT).keep_size("main"), move |cx| DiskUsage::new(start, cx));
         // Launched again: the one there comes forward, and scans the
         // folder named.
         olo_kit::message_handler(app, move |message, _| {
@@ -1379,6 +1474,31 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rings_and_list_in_the_six_tiles_and_least_window() {
+        // Outer tile sizes on a 1280 × 800 point screen. The tab and frame
+        // take 31 points vertically, the two sides 10 horizontally.
+        let in_tile = |w: f32, h: f32, status_h: f32, collector_h| layout(w - 10.0 - 2.0 * m::WINDOW_INSET, body_height(h - 31.0, status_h, collector_h), 2.0);
+        let full = Some(COLLECTOR_HEIGHT);
+        assert!(matches!(in_tile(1264.0, 784.0, 32.0, full), Layout::Beside(_))); // zoomed
+        assert!(matches!(in_tile(628.0, 784.0, 32.0, full), Layout::Beside(_))); // vertical half
+        assert!(matches!(in_tile(1264.0, 388.0, m::LABEL_ROW, None), Layout::Beside(_))); // horizontal half
+        assert!(matches!(in_tile(628.0, 388.0, m::LABEL_ROW, None), Layout::Beside(_))); // quarter
+        assert!(matches!(in_tile(417.0, 784.0, 48.0, full), Layout::Stacked(side) if side >= CHART_LEAST)); // vertical third
+        assert_eq!(in_tile(1264.0, 257.0, m::LABEL_ROW, None), Layout::ListOnly); // horizontal third
+        for collector_h in [None, Some(m::CONTROL_HEIGHT)] {
+            assert_eq!(layout(MIN_WIDTH - 2.0 * m::WINDOW_INSET, body_height(MIN_HEIGHT, m::LABEL_ROW, collector_h), 2.0), Layout::ListOnly);
+        }
+    }
+
+    #[test]
+    fn stack_keeps_five_whole_rows_and_snaps_the_chart_to_pixels() {
+        let height = CHART_LEAST + m::SPACING + 5.0 * m::LIST_ROW + HEADER_HEIGHT + 4.0;
+        assert_eq!(layout(375.0, height - 1.0, 1.5), Layout::ListOnly);
+        assert!(matches!(layout(375.0, height, 1.5), Layout::Stacked(side) if (side * 1.5).fract() == 0.0 && side <= 0.4 * height));
+        assert_eq!(layout(375.0, 1200.0, 2.0), Layout::Stacked(375.0));
+    }
 
     #[test]
     fn paths_show_home_as_tilde() {

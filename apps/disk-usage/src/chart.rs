@@ -82,8 +82,8 @@ fn angle(x: f32, y: f32) -> f32 {
 /// red, then purple, orange and teal.
 const HUES: [Hue; 7] = [Hue::Blue, Hue::Yellow, Hue::Green, Hue::Red, Hue::Purple, Hue::Orange, Hue::Teal];
 
-/// The slices for `folder`, ring by ring, in `p`'s hues.
-pub fn layout(tree: &Tree, folder: NodeId, p: &Palette) -> Vec<Slice> {
+/// The slices for `folder`, through `rings` rings, in `p`'s hues.
+pub fn layout(tree: &Tree, folder: NodeId, p: &Palette, rings: usize) -> Vec<Slice> {
     let hue = |i: usize| p.hue(HUES[i % HUES.len()]);
     let mut out = Vec::new();
     let total = tree.nodes[folder as usize].size.max(1) as f64;
@@ -91,14 +91,14 @@ pub fn layout(tree: &Tree, folder: NodeId, p: &Palette) -> Vec<Slice> {
     let mut start = 0.0f32;
     for (i, child) in tree.children(folder, min.max(1)).into_iter().enumerate() {
         let sweep = (tree.nodes[child as usize].size as f64 / total * TAU as f64) as f32;
-        place(tree, child, 1, start, sweep, hue(i), min.max(1), p, &mut out);
+        place(tree, child, 1, rings, start, sweep, hue(i), min.max(1), p, &mut out);
         start += sweep;
     }
     out
 }
 
 #[allow(clippy::too_many_arguments)]
-fn place(tree: &Tree, node: NodeId, ring: usize, start: f32, sweep: f32, base: Rgba, min: u64, p: &Palette, out: &mut Vec<Slice>) {
+fn place(tree: &Tree, node: NodeId, ring: usize, rings: usize, start: f32, sweep: f32, base: Rgba, min: u64, p: &Palette, out: &mut Vec<Slice>) {
     let n = &tree.nodes[node as usize];
     // Softer with each ring outwards (toward the ground it sits on);
     // files greyer.
@@ -107,13 +107,13 @@ fn place(tree: &Tree, node: NodeId, ring: usize, start: f32, sweep: f32, base: R
         color = mix(color, p.hue(Hue::Gray), 0.55);
     }
     out.push(Slice { node, ring, start, end: start + sweep, color: c(color) });
-    if ring == RINGS || !n.dir || n.size == 0 {
+    if ring >= rings || !n.dir || n.size == 0 {
         return;
     }
     let mut at = start;
     for child in tree.children(node, min) {
         let s = (tree.nodes[child as usize].size as f64 / n.size as f64 * sweep as f64) as f32;
-        place(tree, child, ring + 1, at, s, base, min, p, out);
+        place(tree, child, ring + 1, rings, at, s, base, min, p, out);
         at += s;
     }
 }
@@ -209,8 +209,9 @@ mod tests {
     fn slices_share_the_circle_by_size() {
         // A folder of 300 (with a file of 100 in it) and a file of 100.
         let t = tree(&[(100, false, 0), (300, true, 0), (100, false, 2)]);
-        let s = layout(&t, ROOT, &Palette::light());
+        let s = layout(&t, ROOT, &Palette::light(), RINGS);
         assert_eq!(s.len(), 3);
+        assert_eq!(layout(&t, ROOT, &Palette::light(), 1), [s[0].clone(), s[2].clone()], "the list alone keeps the same first-ring colours");
         assert_eq!((s[0].node, s[0].ring), (2, 1), "largest first");
         assert!((s[0].end - TAU * 0.75).abs() < 1e-4);
         assert_eq!((s[1].node, s[1].ring), (3, 2));
@@ -242,6 +243,6 @@ mod tests {
     #[test]
     fn tiny_slices_are_left_out() {
         let t = tree(&[(1_000_000, false, 0), (10, false, 0)]);
-        assert_eq!(layout(&t, ROOT, &Palette::light()).len(), 1);
+        assert_eq!(layout(&t, ROOT, &Palette::light(), RINGS).len(), 1);
     }
 }
