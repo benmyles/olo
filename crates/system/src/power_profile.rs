@@ -10,7 +10,6 @@
 
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
 use zvariant::OwnedValue;
 
 use crate::{Result, bus};
@@ -21,73 +20,7 @@ const PLACES: &[(&str, &str, &str)] = &[
     ("net.hadess.PowerProfiles", "/net/hadess/PowerProfiles", "net.hadess.PowerProfiles"),
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum Mode {
-    PowerSaver,
-    Balanced,
-    Performance,
-}
-
-impl Mode {
-    pub const ALL: [Mode; 3] = [Mode::Performance, Mode::Balanced, Mode::PowerSaver];
-
-    /// The daemon's name for it.
-    pub fn id(self) -> &'static str {
-        match self {
-            Mode::PowerSaver => "power-saver",
-            Mode::Balanced => "balanced",
-            Mode::Performance => "performance",
-        }
-    }
-
-    pub fn from_id(id: &str) -> Option<Mode> {
-        Mode::ALL.into_iter().find(|m| m.id() == id)
-    }
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Mode::PowerSaver => "Power Saver",
-            Mode::Balanced => "Balanced",
-            Mode::Performance => "Performance",
-        }
-    }
-
-    /// What it does, in a sentence.
-    pub fn about(self) -> &'static str {
-        match self {
-            Mode::Performance => "As fast as the computer goes: the processors kept quick and the firmware's power limits raised, the fans as needed. The battery runs down sooner.",
-            Mode::Balanced => "Fast when there is work, frugal when there isn't, the processors kept out of their hottest top speed. The usual choice.",
-            Mode::PowerSaver => "Slower, cooler and quieter: the processors favour saving energy and the firmware lowers its power limits. The battery lasts longest.",
-        }
-    }
-}
-
-/// The modes the daemon offers, the one in use, and what it acts on.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Modes {
-    pub active: Mode,
-    pub available: Vec<Mode>,
-    /// Why Performance is held back now, if it is: the computer on a lap,
-    /// running hot (the daemon's words: "lap-detected",
-    /// "high-operating-temperature").
-    pub degraded: Option<String>,
-    /// What the daemon drives: the processors' ("intel_pstate") and the
-    /// platform's ("platform_profile") drivers, each once.
-    pub drivers: Vec<String>,
-}
-
-impl Modes {
-    /// Why Performance is held back, said plainly.
-    pub fn degraded_text(&self) -> Option<String> {
-        let why = self.degraded.as_deref()?;
-        Some(match why {
-            "lap-detected" => "Performance is held back while the computer is on a lap.".into(),
-            "high-operating-temperature" => "Performance is held back while the computer runs hot.".into(),
-            other => format!("Performance is held back ({other})."),
-        })
-    }
-}
+pub use olo_protocol::power_mode::{Mode, Modes};
 
 /// The daemon's place on the system bus, if one is running.
 fn place() -> Option<(&'static str, &'static str, &'static str)> {
@@ -147,32 +80,58 @@ pub fn wait_for_daemon() -> Result<()> {
     Err(zbus::Error::Failure("the system bus went away".into()))
 }
 
+/// TuneD applies its profile on a worker after PPD publishes ActiveProfile.
+/// Subscribe before the initial hardware read. Other PPD implementations
+/// complete the transition themselves.
+pub fn watch_tuned_applied(changed: impl Fn(String) + Send + 'static) -> Result<()> {
+    let conn = bus::system()?;
+    let rule = zbus::MatchRule::builder().msg_type(zbus::message::Type::Signal).sender("com.redhat.tuned")?.path("/Tuned")?.interface("com.redhat.tuned.control")?.member("profile_changed")?.build();
+    let signals = zbus::blocking::MessageIterator::for_match_rule(rule, conn, Some(16))?;
+    std::thread::Builder::new()
+        .name("tuned-applied".into())
+        .spawn(move || {
+            for m in signals.flatten() {
+                if let Ok((profile, true, _)) = m.body().deserialize::<(String, bool, String)>() {
+                    changed(profile);
+                }
+            }
+        })
+        .expect("tuned profile watcher");
+    Ok(())
+}
+
+pub fn tuned_profile() -> Option<String> {
+    bus::call(bus::system().ok()?, "com.redhat.tuned", "/Tuned", "com.redhat.tuned.control", "active_profile", &()).ok()
+}
+
 /// Calls `changed` with the modes now and whenever they change (a mode
 /// chosen here or anywhere else, a ThinkPad's Fn keys, Performance held
 /// back), on threads of its own, by the daemon's signals: nothing polls.
 pub fn watch(changed: impl Fn(Option<Modes>) + Send + 'static) {
     let _ = std::thread::Builder::new().name("power-modes".into()).spawn(move || {
-        let mut last = modes().ok().flatten();
-        changed(last.clone());
-        let Some((dest, path, _)) = place() else { return };
-        let Ok(conn) = bus::system() else { return };
-        let Some(signals) = (|| {
-            let rule = zbus::MatchRule::builder()
-                .msg_type(zbus::message::Type::Signal)
-                .sender(dest)
-                .ok()?
-                .path(path)
-                .ok()?
-                .interface("org.freedesktop.DBus.Properties")
-                .ok()?
-                .member("PropertiesChanged")
-                .ok()?
-                .build();
-            zbus::blocking::MessageIterator::for_match_rule(rule, conn, Some(16)).ok()
-        })() else {
+        // A private connection has only these signals. Subscribe before
+        // reading, including name changes so a daemon can appear or restart.
+        let Ok(conn) = zbus::blocking::Connection::system() else {
+            changed(None);
             return;
         };
-        for _ in signals.flatten() {
+        let signals = zbus::blocking::MessageIterator::from(&conn);
+        for (dest, path, _) in PLACES {
+            for rule in [
+                format!("type='signal',sender='{dest}',path='{path}',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged'"),
+                format!("type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',arg0='{dest}'"),
+            ] {
+                if let Err(e) = bus::call::<_, ()>(&conn, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "AddMatch", &(rule,)) {
+                    tracing::warn!(?e, "power profile subscription");
+                }
+            }
+        }
+        let mut last = modes().ok().flatten();
+        changed(last.clone());
+        for msg in signals.flatten() {
+            if msg.message_type() != zbus::message::Type::Signal {
+                continue;
+            }
             let now = modes().ok().flatten();
             if now != last {
                 changed(now.clone());
@@ -193,7 +152,7 @@ mod tests {
         }
         assert_eq!(Mode::from_id("turbo"), None);
         let held = Modes { active: Mode::Balanced, available: Mode::ALL.to_vec(), degraded: Some("lap-detected".into()), drivers: vec![] };
-        assert_eq!(held.degraded_text().as_deref(), Some("Performance is held back while the computer is on a lap."));
+        assert_eq!(held.degraded_text().as_deref(), Some("Low Latency is limited while the computer is on a lap."));
     }
 
     /// The machine's own daemon, if it has one (`cargo test -- --ignored`).

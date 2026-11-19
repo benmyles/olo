@@ -528,6 +528,9 @@ Adaptador:
 Adaptive
 Adaptable
 
+Adaptive Performance
+Rendimiento adaptativo
+
 Adaptive:
 Adaptable:
 
@@ -769,6 +772,9 @@ Las {} están conectadas.
 
 Allow
 Permitir
+
+Allow NVIDIA Fallback on Battery
+Permitir NVIDIA como alternativa con batería
 
 Allow Sleep
 Permitir reposo
@@ -1063,6 +1069,15 @@ Asistente
 Astra 6
 Astra 6
 
+At 10%
+Al 10 %
+
+At 15%
+Al 15 %
+
+At 20%
+Al 20 %
+
 At full speed
 A toda velocidad
 
@@ -1271,6 +1286,12 @@ Batería
 Battery & Idle
 Batería y reposo
 
+Battery Saver
+Ahorro de batería
+
+Battery Saver at {}% · {} resumes on AC
+Ahorro al {} % · {} se reanuda al conectar el cargador
+
 Be the SSH agent (ssh, git)
 Ser el agente SSH (ssh, git)
 
@@ -1342,6 +1363,9 @@ Cuerpo
 
 Bold
 Negrita
+
+Boost when work arrives and ease back between tasks.
+Aumenta la potencia cuando hace falta y la reduce entre tareas.
 
 Boosted {} dB (suggested)
 Subido {} dB (sugerido)
@@ -1624,6 +1648,9 @@ Cambiando la prioridad del proceso {}
 
 Changing…
 Cambiando…
+
+Charging resumes below {}%.
+La carga se reanuda por debajo del {} %.
 
 Chat
 Chat
@@ -2321,6 +2348,9 @@ Recortado a {} × {}
 Crop…
 Recortar…
 
+Current hardware state
+Estado actual del hardware
+
 Custom
 Personalizado
 
@@ -2973,6 +3003,9 @@ Activar el salvapantallas
 Enclosing Folder
 Carpeta contenedora
 
+Encode With
+Codificar con
+
 Encode on:
 Codificar en:
 
@@ -3250,6 +3283,12 @@ Abanico
 Fan Out Others
 Las demás en abanico
 
+Fan level {}
+Nivel de ventilador {}
+
+Fan level {} · {}
+Nivel de ventilador {} · {}
+
 Fans
 Ventiladores
 
@@ -3387,6 +3426,9 @@ Firme
 
 Firmer
 Más firme
+
+Firmware curve
+Curva del firmware
 
 First Page
 Primera página
@@ -4216,6 +4258,9 @@ Instalado
 Install…
 Instalar…
 
+Integrated GPU (VA-API)
+GPU integrada (VA-API)
+
 Integrations
 Integraciones
 
@@ -4469,6 +4514,9 @@ Reservar un núcleo para el servidor de ventanas
 
 Keep briefly
 Guardar poco tiempo
+
+Keep foreground work ready between bursts. Fans start sooner.
+Mantiene listas las tareas en primer plano. Los ventiladores arrancan antes.
 
 Keep it in Passwords
 Guardarla en Passwords
@@ -4770,6 +4818,9 @@ Como:
 Limit
 Límite
 
+Limit charging to {}%
+Limitar la carga al {} %
+
 Limit what waits to be written to them
 Limitar lo que espera a escribirse en ellos
 
@@ -4824,6 +4875,9 @@ Ubicación
 Lock
 Bloquear
 
+Lock & presence
+Bloqueo y presencia
+
 Lock After
 Bloquear tras
 
@@ -4841,6 +4895,9 @@ Bloquear la pantalla
 
 Lock the screen when the display turns off
 Bloquear la pantalla cuando se apague
+
+Lock when the displays turn off
+Bloquear al apagar las pantallas
 
 Lock when the screen locks
 Bloquear cuando se bloquee la pantalla
@@ -4934,6 +4991,9 @@ Perdidos, según su cuenta
 
 Low
 Bajo
+
+Low Latency
+Baja latencia
 
 Lower background work
 Bajar el trabajo de fondo
@@ -6183,6 +6243,9 @@ Olo Desktop, versión {}
 Olo Doctor
 Olo Doctor
 
+Olo Doctor can set up the hardware power service.
+Olo Doctor puede configurar el servicio de energía del hardware.
+
 Olo Doctor couldn't set it.
 Olo Doctor no pudo ajustarlo.
 
@@ -6254,6 +6317,9 @@ En una llamada
 
 On a plane of its own: moving it draws nothing
 En un plano propio: moverlo no dibuja nada
+
+On battery
+Con batería
 
 On disk
 En disco
@@ -6854,6 +6920,9 @@ Please continue
 Plug in a security key to set it up.
 Conecta una llave de seguridad para configurarla.
 
+Plugged in
+Con cargador
+
 Point with a palm at the edge
 Señalar con una palma en el borde
 
@@ -7183,6 +7252,15 @@ Las leídas se apagan y van a Borradas; las demás se quedan.
 
 Reading /etc/hosts…
 Leyendo /etc/hosts…
+
+Reading battery…
+Leyendo la batería…
+
+Reading hardware…
+Leyendo el hardware…
+
+Reading power modes…
+Leyendo los modos de energía…
 
 Reading the Google accounts connected to Olo…
 Leyendo las cuentas de Google conectadas a Olo…
@@ -8576,6 +8654,9 @@ Deteniendo la copia
 Store
 Almacén
 
+Stretch the remaining charge while keeping everyday work responsive.
+Prolonga la autonomía y mantiene la fluidez en las tareas cotidianas.
+
 Strikeout
 Tachado
 
@@ -9185,6 +9266,9 @@ El pool
 The power mode (Power Saver, Balanced or Performance) is set in Power.
 El modo de energía (Ahorro de energía, Equilibrado o Rendimiento) se elige en Energía.
 
+The power service reported a problem applying this mode. Olo Doctor has the details.
+El servicio de energía ha encontrado un problema al aplicar este modo. Consulta Olo Doctor.
+
 The process has quit.
 El proceso ha terminado.
 
@@ -9223,6 +9307,9 @@ El almacén
 
 The store is over its {} limit
 El almacén supera su límite de {}
+
+The system power profiles service is unavailable.
+El servicio de perfiles de energía no está disponible.
 
 The system's services (updates, indexing) can still run there.
 Los servicios del sistema (actualizaciones, indexación) pueden seguir ejecutándose allí.
@@ -9719,6 +9806,12 @@ Ajustado para:
 Tuning
 Ajuste
 
+Turbo off
+Turbo desactivado
+
+Turbo on
+Turbo activado
+
 Turn Off
 Desactivar
 
@@ -9731,8 +9824,14 @@ Activar Bluetooth
 Turn off after
 Apagar tras
 
+Turn off displays
+Apagar pantallas
+
 Turn off screen
 Apagar la pantalla
+
+Turn on for a laptop usually plugged in.
+Actívalo si el portátil suele estar enchufado.
 
 Turn the display off after:
 Apagar la pantalla al cabo de:
@@ -9826,6 +9925,9 @@ Desarchivar todo…
 
 Unarchive {} Chats
 Desarchivar {} chats
+
+Unavailable with this computer's power driver.
+No disponible con el controlador de energía de este equipo.
 
 Under the Tray
 Bajo la bandeja
@@ -9941,6 +10043,9 @@ Actualizar estas {}…
 Update every:
 Actualizar cada:
 
+Update the power service in Olo Doctor to use these policies.
+Actualiza el servicio de energía en Olo Doctor para utilizar estos modos.
+
 Updated
 Actualizado
 
@@ -9991,6 +10096,9 @@ Urgente desde
 
 Use
 Usar
+
+Use Battery Saver automatically
+Activar el ahorro de batería automáticamente
 
 Use Credit
 Usar crédito
@@ -10126,6 +10234,9 @@ Red muy mala
 
 Very high
 Muy alto
+
+Video Format
+Formato de vídeo
 
 Video Playback
 Reproducción de vídeo
@@ -10812,6 +10923,9 @@ Las sugerencias grises de brush, de un modelo diminuto de tus propias órdenes
 built most, the last 24 hours
 lo más compilado, últimas 24 horas
 
+ceiling {}%
+límite superior del {} %
+
 charging, full in {}
 cargando, lleno en {}
 
@@ -10830,6 +10944,9 @@ eliminando
 downgrade {n} packages
 one: bajar de versión {n} paquete
 other: bajar de versión {n} paquetes
+
+driving {}
+controla {}
 
 ending one gives its slots back to the pool
 terminar una devuelve sus huecos al conjunto
@@ -11030,6 +11147,9 @@ baja
 medium
 media
 
+minimum and maximum both {}%
+mínimo y máximo al {} %
+
 misses, the last 24 hours
 fallos, últimas 24 horas
 
@@ -11182,6 +11302,9 @@ fuera del archivo
 part of the screen
 parte de la pantalla
 
+plugged in, charge limit {}%
+con cargador, límite de carga {} %
+
 plugged in, held at the {}% limit
 enchufado, retenido en el límite del {} %
 
@@ -11267,6 +11390,9 @@ la copia no está abierta
 
 the backups' folder in Google Drive was made again elsewhere: following it there
 la carpeta de copias de Google Drive se volvió a crear en otro sitio: la sigue allí
+
+the built-in display
+la pantalla integrada
 
 the connection failed
 falló la conexión
@@ -12146,6 +12272,12 @@ Se activó {}.
 {} · and {} more
 {} · y {} más
 
+{} · easing background work
+{} · se reducen las tareas en segundo plano
+
+{} · limiting sustained power
+{} · se limita la potencia sostenida
+
 {} · set up {}{}
 {} · configurado {}{}
 
@@ -12316,6 +12448,9 @@ cuota de {}
 
 {}{}, plugged in: {}.
 {}{}, enchufado: {}.
+
+{}–{}% performance range
+intervalo de rendimiento del {} al {} %
 
 {}’s data centre
 Centro de datos de {}

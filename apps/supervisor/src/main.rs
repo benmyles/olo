@@ -22,6 +22,7 @@
 
 mod detect;
 mod ecwatch;
+mod power_budget;
 mod priority;
 mod sample;
 
@@ -85,6 +86,7 @@ struct Supervisor {
     clock: Instant,
     followed: HashMap<i32, Followed>,
     lowered: HashMap<i32, Lowered>,
+    power_budget: power_budget::Budget,
     /// Olo's own programs found above their tier and raised (or that
     /// couldn't be, noted once).
     raised: HashMap<i32, Raised>,
@@ -146,6 +148,7 @@ impl Supervisor {
 
     /// Put back what was lowered and forget it all (turned off).
     fn stand_down(&mut self) {
+        self.power_budget.apply(&[]);
         let units = self.lowered_units();
         let lowered: Vec<Lowered> = self.lowered.drain().map(|(_, l)| l).collect();
         for l in &lowered {
@@ -397,6 +400,10 @@ impl Supervisor {
             self.lowered.clear();
             self.units_put_back(&units);
             self.note("Priorities off: background work put back".into());
+        }
+
+        if self.power_budget.needed() {
+            self.power_budget.apply(&self.lowered_units());
         }
 
         // The watchdog.
@@ -731,6 +738,7 @@ fn main() -> std::process::ExitCode {
             clock: Instant::now(),
             followed: HashMap::new(),
             lowered: HashMap::new(),
+            power_budget: power_budget::Budget::new(),
             raised: HashMap::new(),
             raise_again: HashMap::new(),
             realtime: HashMap::new(),

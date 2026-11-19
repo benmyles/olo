@@ -832,6 +832,22 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Reply::Ok
             }
             Request::GrabKeys { keys } => self.grab_keys(conn, keys),
+            Request::SetRecordingOptions { options } => {
+                let mut settings = self.rescue.as_ref().map_or(&self.settings, |r| &r.real).clone();
+                settings.screen_recording = options;
+                self.set_settings(settings);
+                Reply::Ok
+            }
+            Request::SetVideoOptions { options } => {
+                let mut settings = self.rescue.as_ref().map_or(&self.settings, |r| &r.real).clone();
+                settings.video = options;
+                self.set_settings(settings);
+                Reply::Ok
+            }
+            Request::SetPowerMode { mode } => match self.select_power_mode(mode) {
+                Ok(()) => Reply::Ok,
+                Err(message) => Reply::Error { message },
+            },
             Request::SetCaffeinated { on, minutes, lid } => {
                 self.set_caffeinated(on, minutes, lid);
                 Reply::Ok

@@ -254,12 +254,8 @@ impl Panel {
             // How the phone stands, then what's told of beside where
             // codes go.
             Panel::Phone => (820, 464),
-            // Three tabs: the power modes and what each sets (a grid of
-            // the processors and each GPU), the GPUs side by side, and the
-            // battery with when idle beside it.
-            // (Its modes' table's names as wide as a drive's or GPU's longest,
-            // up to 216: `gpus::modes`.)
-            Panel::Power => (968, 520),
+            // Power follows its two forms and their disclosures.
+            Panel::Power => (540, 200),
             Panel::ScreenSaver => (500, 400),
             // Passwords' settings, security keys beside them.
             Panel::Security => (880, 440),
@@ -473,9 +469,8 @@ pub fn render(v: &mut PanelView, cx: &mut Cx<PanelView>) -> Element {
         return root.items_center().justify_center().child(StringView::new("Waiting for app_server…").color(style::disabled_text(&p)));
     }
     let s = settings.unwrap_or_default();
-    // (Power's Defaults and Revert are its Battery & Idle tab's: its other
-    // tabs have Apply and Revert of their own, for the computer.)
-    let resettable = panel.resettable() && !matches!(&v.state, State::Power(st) if st.tab != 2);
+    // Power edits are immediate. Per-setting undo is available from Edit.
+    let resettable = panel.resettable() && !matches!(&v.state, State::Power(_));
     let items = {
         let mut ui = Ui::new(cx, &s, &mut v.fields);
         ui.resets(resettable);
@@ -486,7 +481,7 @@ pub fn render(v: &mut PanelView, cx: &mut Cx<PanelView>) -> Element {
             (Panel::Display, State::Display(st)) => display::ui(&mut ui, &outputs, power, &server, st),
             (Panel::Keyboard, State::Keyboard(st)) => keyboard::ui(&mut ui, power, &server, st),
             (Panel::Power, State::Power(st)) => power::ui(&mut ui, power, &server, st),
-            (Panel::ScreenSaver, State::ScreenSaver(st)) => screensaver::ui(&mut ui, &server, st),
+            (Panel::ScreenSaver, State::ScreenSaver(st)) => screensaver::ui(&mut ui, &server, st, power.is_some_and(|p| p.policy.on_battery)),
             (Panel::Sound, State::Sound(st)) => sound::ui(&mut ui, st),
             (Panel::Security, State::Security(st)) => security::ui(&mut ui, st),
             (Panel::Ai, _) => ai::ui(&mut ui),

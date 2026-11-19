@@ -155,6 +155,10 @@ pub fn starting_level(kept: f32) -> f32 {
 }
 
 pub struct Power {
+    pub policy: olo_protocol::power_mode::State,
+    pub policy_tx: Option<Sender<crate::power_modes::Change>>,
+    panel_before_saver: Option<smithay::output::Mode>,
+    interactive_boost: bool,
     last_activity: Instant,
     caffeinated: bool,
     /// When a timed caffeinated stretch ends.
@@ -200,7 +204,7 @@ pub struct Power {
     /// Since when the person in front looks away, and whether the built-in
     /// display is dimmed for it (`dim_when_looking_away`).
     looked_away_since: Option<Instant>,
-    dimmed: bool,
+    pub(crate) dimmed: bool,
     jobs: Option<Sender<Job>>,
     /// Displays found with a USB brightness control, and their levels
     /// (from the worker; taken by state set-up).
@@ -247,6 +251,10 @@ impl Power {
             (None, Some(1.0), None, Some((0.5, false)), None, None)
         };
         Power {
+            policy: if is_session { Default::default() } else { crate::power_modes::simulated() },
+            policy_tx: None,
+            panel_before_saver: None,
+            interactive_boost: false,
             last_activity: Instant::now(),
             caffeinated: false,
             caffeinated_until: None,
@@ -311,12 +319,21 @@ impl Power {
         (self.caffeinated, self.caffeinated_until.and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs()), self.caffeinated_lid)
     }
 
+    fn low_latency(&self) -> bool {
+        self.policy.modes.as_ref().is_some_and(|m| m.active == olo_protocol::power_mode::Mode::Performance)
+    }
+
+    fn saving(&self) -> bool {
+        self.policy.modes.as_ref().is_some_and(|m| m.active == olo_protocol::power_mode::Mode::PowerSaver)
+    }
+
     pub fn caffeinated(&self) -> bool {
         self.caffeinated
     }
 
     pub fn status(&self) -> PowerStatus {
         PowerStatus {
+            policy: self.policy.clone(),
             caffeinated: self.caffeinated,
             idle_seconds: self.last_activity.elapsed().as_secs(),
             display_asleep: self.display_asleep,
@@ -504,6 +521,71 @@ fn unattended() -> bool {
 }
 
 impl<B: Backend> AnvilState<B> {
+    pub fn select_power_mode(&mut self, mode: olo_protocol::power_mode::Mode) -> Result<(), String> {
+        if !self.power.policy.modes.as_ref().is_some_and(|m| m.available.contains(&mode)) {
+            return Err("This power mode is unavailable".into());
+        }
+        if let Some(tx) = &self.power.policy_tx {
+            return tx.send(crate::power_modes::Change::Select(mode)).map_err(|_| "The power service has stopped".into());
+        }
+        let mut policy = self.power.policy.clone();
+        if let Some(m) = &mut policy.modes {
+            m.active = mode;
+        }
+        self.apply_power_policy(policy);
+        Ok(())
+    }
+
+    pub fn apply_power_policy(&mut self, policy: olo_protocol::power_mode::State) {
+        let was_saver = self.power.saving();
+        self.power.policy = policy;
+        if self.power.interactive_boost && !self.power.low_latency() {
+            self.power.interactive_boost = false;
+            crate::realtime::burst(false);
+        }
+        if was_saver != self.power.saving() {
+            self.apply_saver_refresh();
+            if was_saver && self.power.dimmed {
+                self.undim("leaving Battery Saver");
+            }
+        }
+        self.power_changed();
+    }
+
+    /// Cap only the panel's refresh, at the chosen resolution. Its saved
+    /// display mode always describes what the person wants after Saver.
+    pub fn apply_saver_refresh(&mut self) {
+        let Some(panel) = self.space.outputs().chain(self.mirrors.iter()).find(|o| is_internal(&o.name())).cloned() else {
+            self.power.panel_before_saver = None;
+            return;
+        };
+        let Some(now) = panel.current_mode() else { return };
+        let want = if self.power.saving() {
+            if now.refresh <= 60_000 {
+                return;
+            }
+            let Some(capped) = panel.modes().into_iter().filter(|m| m.size == now.size && m.refresh <= 60_000).max_by_key(|m| m.refresh) else { return };
+            self.power.panel_before_saver = Some(now);
+            capped
+        } else {
+            let Some(previous) = self.power.panel_before_saver.take() else { return };
+            if !panel.modes().contains(&previous) {
+                return;
+            }
+            previous
+        };
+        if let Err(e) = self.backend_data.set_mode(&panel, want) {
+            warn!(?e, "could not apply panel refresh policy");
+        } else {
+            self.backend_data.reset_buffers(&panel);
+            self.ipc.broadcast(Event::OutputsChanged { outputs: self.output_infos() });
+        }
+    }
+
+    pub fn panel_mode_chosen(&mut self, mode: smithay::output::Mode) {
+        self.power.panel_before_saver = self.power.saving().then_some(mode);
+    }
+
     /// Watch the presence sensor while a setting wants it (locking when
     /// the person walks away, waking when they come back), not otherwise:
     /// the watcher waits on the sensor's buffer, which says only changes.
@@ -571,8 +653,19 @@ impl<B: Backend> AnvilState<B> {
         if let Some(level) = p.brightness {
             p.apply_brightness(level * DIM_TO);
         }
+        self.dim_hdr_panel();
         info!("the person looks away: the display dimmed");
         self.power_changed();
+    }
+
+    fn dim_hdr_panel(&mut self) {
+        let panel = self.space.outputs().find(|o| is_internal(&o.name()) && in_hdr(o)).cloned();
+        if let Some(panel) = panel {
+            if let Err(e) = self.apply_color(&panel) {
+                warn!(?e, "could not adjust panel white");
+            }
+            self.backend_data.wake(Some(std::slice::from_ref(&panel)));
+        }
     }
 
     fn undim(&mut self, why: &str) {
@@ -584,6 +677,7 @@ impl<B: Backend> AnvilState<B> {
         {
             p.apply_brightness(level);
         }
+        self.dim_hdr_panel();
         info!("{why}: the display's brightness back");
         self.power_changed();
     }
@@ -638,8 +732,32 @@ impl<B: Backend> AnvilState<B> {
         self.ipc.broadcast(Event::PowerChanged { status });
     }
 
+    /// One timer per interaction, with no per-input IPC. Move the deadline
+    /// forward using the activity timestamp the idle policy already keeps.
+    fn boost_interaction(&mut self) {
+        if !B::IS_SESSION || self.power.interactive_boost || !self.power.low_latency() {
+            return;
+        }
+        const TAIL: Duration = Duration::from_millis(200);
+        self.power.interactive_boost = true;
+        crate::realtime::burst(true);
+        let _ = self.handle.insert_source(calloop::timer::Timer::from_duration(TAIL), |_, _, state| {
+            if !state.power.interactive_boost {
+                return calloop::timer::TimeoutAction::Drop;
+            }
+            let elapsed = state.power.last_activity.elapsed();
+            if elapsed < TAIL {
+                return calloop::timer::TimeoutAction::ToDuration(TAIL - elapsed);
+            }
+            state.power.interactive_boost = false;
+            crate::realtime::burst(false);
+            calloop::timer::TimeoutAction::Drop
+        });
+    }
+
     /// Any input: the user is here.
     pub fn power_activity(&mut self) {
+        self.boost_interaction();
         let seat = self.seat.clone();
         self.idle_notifier_state.notify_activity(&seat);
         let p = &mut self.power;
@@ -656,6 +774,7 @@ impl<B: Backend> AnvilState<B> {
             {
                 p.apply_brightness(level);
             }
+            self.dim_hdr_panel();
             info!("input: the display's brightness back");
             self.power_changed();
         }
@@ -730,7 +849,16 @@ impl<B: Backend> AnvilState<B> {
         let mut went_dark = false;
         let minutes = |m: u32| Duration::from_secs(m as u64 * 60);
         // On the lock screen nobody is working: displays go off after a minute.
-        let display_off = if self.lock.locked() { 1 } else { settings.display_off_minutes };
+        let (display_off, sleep) = settings.idle_minutes(p.policy.on_battery);
+        let display_off = if self.lock.locked() { 1 } else { display_off };
+        let saver_dim = p.saving() && !awake && !p.dimmed && !p.display_asleep && !p.panel_off && idle >= Duration::from_secs(30);
+        if saver_dim {
+            p.dimmed = true;
+            if let Some(level) = p.brightness {
+                p.apply_brightness(level * DIM_TO);
+            }
+            changed = true;
+        }
         if display_off > 0 && idle >= minutes(display_off) && !p.display_asleep {
             p.display_asleep = true;
             p.send(Job::Brightness(0));
@@ -743,7 +871,7 @@ impl<B: Backend> AnvilState<B> {
             lock = settings.lock_on_display_off;
         }
         let display_asleep = p.display_asleep;
-        if settings.sleep_minutes > 0 && idle >= minutes(settings.sleep_minutes) && !p.slept && (!settings.sleep_on_battery_only || !olo_system::battery::on_ac()) {
+        if sleep > 0 && idle >= minutes(sleep) && !p.slept {
             p.slept = true;
             if p.jobs.is_some() {
                 info!(?idle, "sleeping");
@@ -762,6 +890,9 @@ impl<B: Backend> AnvilState<B> {
         }
         if lock {
             self.lock_screen();
+        }
+        if saver_dim {
+            self.dim_hdr_panel();
         }
         if went_dark {
             self.backend_data.set_displays_on(false);
@@ -906,6 +1037,7 @@ impl<B: Backend> AnvilState<B> {
         if names != self.power.looked.0 {
             self.power.externals.retain(|e| names.contains(&e.output));
             self.power.looked = (names.clone(), Instant::now());
+            self.apply_saver_refresh();
         }
         let internal = self.space.outputs().find(|o| is_internal(&o.name())).cloned();
         if !self.power.internal_set

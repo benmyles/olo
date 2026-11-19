@@ -111,6 +111,8 @@ pub struct Action {
     pub english: SharedString,
     pub command: SharedString,
     pub enabled: bool,
+    /// An informational row, readable without being a command.
+    pub informational: bool,
     pub checked: bool,
     /// Its keys as the app presses them (the command key is Ctrl):
     /// apps give the Mac's ([`Menu::key`]), [`resolve`] the profile's.
@@ -159,6 +161,13 @@ impl Menu {
     pub fn item(mut self, label: impl Into<SharedString>, command: impl Into<SharedString>) -> Menu {
         let english = label.into();
         self.items.push(MenuItem::Action(Action { label: crate::words::of(english.clone()), english, command: command.into(), enabled: true, ..Default::default() }));
+        self
+    }
+
+    /// A status line in the popup, skipped by keyboard and pointer selection.
+    pub fn note(mut self, label: impl Into<SharedString>) -> Menu {
+        let english = label.into();
+        self.items.push(MenuItem::Action(Action { label: crate::words::of(english.clone()), english, informational: true, ..Default::default() }));
         self
     }
 
@@ -1003,7 +1012,13 @@ impl MenuPopup {
                         if lit {
                             style::fill_rect(g, face, style::c(p.menu_selected_background));
                         }
-                        let ink = if a.minimized && a.enabled && !lit { style::c(olo_theme::mix(p.menu_item_text, p.menu_background, 0.38)) } else { text(a.enabled) };
+                        let ink = if a.informational {
+                            style::secondary_text(&p)
+                        } else if a.minimized && a.enabled && !lit {
+                            style::c(olo_theme::mix(p.menu_item_text, p.menu_background, 0.38))
+                        } else {
+                            text(a.enabled)
+                        };
                         let m = Bounds { origin: point(row.left() + px(10.0 - 4.5), cy - px(4.5)), size: size(px(9.0), px(9.0)) };
                         if a.checked {
                             check_mark(g, m, ink);
@@ -1021,7 +1036,7 @@ impl MenuPopup {
                             style::key_combo(g, point(row.right() - px(ITEM_RIGHT), cy), keys, ink);
                         }
                         g.agent(agent::Node {
-                            role: "MenuItem",
+                            role: if a.informational { "Label" } else { "MenuItem" },
                             name: Some(SharedString::from(a.label.clone())),
                             bounds: row,
                             enabled: a.enabled,

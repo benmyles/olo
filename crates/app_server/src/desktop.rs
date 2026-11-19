@@ -2230,6 +2230,10 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.backend_data.set_mode(&output, want)?;
                 self.backend_data.reset_buffers(&output);
             }
+            if crate::power::is_internal(name) {
+                self.panel_mode_chosen(want);
+                self.apply_saver_refresh();
+            }
         }
         update_entry(self.settings.display.config_mut(&display_key(&output), name), &config);
         if let Some(on) = config.vrr {
@@ -2277,7 +2281,11 @@ impl<B: Backend + 'static> AnvilState<B> {
             (true, Some(level), Some(full)) => (full as f32 * level).clamp(crate::color::MIN_SDR_NITS, crate::color::MAX_SDR_NITS),
             _ => olo_protocol::color::SDR_NITS,
         };
-        let applied = crate::color::Applied { mode: config.color_mode.unwrap_or_default(), hdr: config.hdr.unwrap_or(false), sdr_nits: config.sdr_nits.unwrap_or(sdr_default) };
+        let mut sdr_nits = config.sdr_nits.unwrap_or(sdr_default);
+        if self.power.dimmed && config.hdr == Some(true) && crate::power::is_internal(&output.name()) {
+            sdr_nits = crate::power::sdr_nits_at(crate::power::sdr_level(sdr_nits) * 0.3);
+        }
+        let applied = crate::color::Applied { mode: config.color_mode.unwrap_or_default(), hdr: config.hdr.unwrap_or(false), sdr_nits };
         let before = crate::color::drawing(output);
         if crate::color::apply(output, applied) {
             let now = crate::color::drawing(output);
@@ -2336,6 +2344,11 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// set), from what's live now: only what changed is done again.
     pub fn apply_settings(&mut self, mut settings: Settings) {
         keep_brightness(&mut settings, &self.settings);
+        if settings.power.saver_percent != self.settings.power.saver_percent
+            && let Some(tx) = &self.power.policy_tx
+        {
+            let _ = tx.send(crate::power_modes::Change::Threshold(settings.power.saver_percent));
+        }
         let scale_changed = settings.display != self.settings.display;
         let main_changed = settings.display.main != self.settings.display.main;
         // (Smart gaps too: turned on, a tile alone there already lost its

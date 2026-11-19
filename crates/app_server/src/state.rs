@@ -1458,6 +1458,15 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             state.power_tick();
             smithay::reexports::calloop::timer::TimeoutAction::ToDuration(crate::power::TICK)
         });
+        if BackendData::IS_SESSION {
+            let (tx, updates) = crate::power_modes::start(state.settings.power.saver_percent);
+            state.power.policy_tx = Some(tx);
+            let _ = state.handle.insert_source(updates, |event, _, state| {
+                if let smithay::reexports::calloop::channel::Event::Msg(policy) = event {
+                    state.apply_power_policy(policy);
+                }
+            });
+        }
         if let Some(feedback) = state.power.volume_feedback.take() {
             let _ = state.handle.insert_source(feedback, |event, _, state| {
                 if let smithay::reexports::calloop::channel::Event::Msg(shown) = event {

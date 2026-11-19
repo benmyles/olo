@@ -53,6 +53,7 @@ pub mod plymouth;
 pub mod pointer_hide;
 pub mod power;
 pub mod power_button;
+mod power_modes;
 pub mod private;
 pub mod realtime;
 pub mod rescue;

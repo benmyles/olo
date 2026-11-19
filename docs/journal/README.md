@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-19
 
+### Battery and idle settings by power source
+
+*12:43* — The charging limit, display timeout and sleep timeout share one panel. Each timeout can be set independently on battery and while plugged in.
+
+![Battery and idle settings by power source](2026-11-19/124300-battery-and-idle-settings-by-power-source.png)
+
+### Three laptop power modes
+
+*12:40* — Battery Saver stretches the remaining charge. Adaptive Performance responds to demand. Low Latency favors quick response. The hardware disclosure shows what the active mode is doing.
+
+![Three laptop power modes](2026-11-19/124025-three-laptop-power-modes.png)
+
 ### Weather in German: the forecast, its cards and charts in the person's language
 
 *09:36* — Weather's precipitation and sky (tomorrow.io's 94 codes, each built in each language), its cards' titles and captions, its charts' legends and the next-hour line now follow Olo's language, and so do its assistant's suggested questions. The kit's dashboard cards, facts and chart legends look their words up as they're made. Captions were measured against their card and reworded where German ran past. Weekday names wait for Olo's formats.

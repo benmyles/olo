@@ -9,18 +9,20 @@
 //!                                knobs): kept in /etc/olo/gpus.json,
 //!                                what's in force now applied, and set
 //!                                again at every start
-//!   olo-gpu-tune apply [CARD]    (root) the tuning kept, applied (udev
-//!                                runs it as each GPU appears: "card1")
+//!   olo-gpu-tune apply [CARD]    (root) apply the active graphics policy
 //!   olo-gpu-tune follow          (root, olo-gpu-follow.service) the
 //!                                processors and every GPU on the plan's
 //!                                presets as the power mode or the power
 //!                                supply changes
 //!
 //! `set` installs a copy of this program where only root can change it
-//! (/usr/local/libexec/olo-gpu-tune), the udev rule that runs it at
-//! start and the service that follows the power mode: a rule or service
+//! (/usr/local/libexec/olo-gpu-tune), the udev rule that requests the
+//! follower and the service that follows the power mode: a rule or service
 //! running a program the person's account could change would run
-//! anything as root. Preferences runs `set` through polkit.
+//! anything as root. Restoring a hardware backup runs `set` through polkit.
+
+#[path = "gpu_tune/events.rs"]
+mod events;
 
 use std::{
     io::{Read, Write},
@@ -36,6 +38,7 @@ use olo_system::{
 use gpu_tuning::{
     FOLLOWER_PROGRAM as INSTALLED, FOLLOWER_RULE as RULE, FOLLOWER_RULE_PATH as RULE_FILE, FOLLOWER_SERVICE as SERVICE_NAME, FOLLOWER_UNIT as SERVICE, FOLLOWER_UNIT_PATH as SERVICE_FILE,
 };
+use olo_system::battery::Supply;
 
 fn main() {
     olo_crash::install();
@@ -55,6 +58,7 @@ fn main() {
 
 fn show(wake: bool) -> i32 {
     let tuning = Tuning::load();
+    let followed = gpu_tuning::Followed::load(std::path::Path::new("/")).filter(|s| s.version >= gpu_tuning::FOLLOWER_VERSION);
     let out: Vec<serde_json::Value> = gpus::list()
         .into_iter()
         .map(|g| {
@@ -67,7 +71,9 @@ fn show(wake: bool) -> i32 {
                 "power_failed": gpu_tuning::power_failed(&g),
                 "caps": caps,
                 "unanswered": why,
-                "tuning": tuning.of(&g.pci),
+                "tuning": followed.as_ref().map_or_else(|| Some(tuning.of(&g.pci)), |s| s.gpus.iter().find(|p| p.pci == g.pci).cloned()),
+                "pending": followed.as_ref().is_some_and(|s| s.deferred.contains(&g.pci)),
+                "mode": followed.as_ref().map(|s| s.mode.as_str()),
             })
         })
         .collect();
@@ -123,46 +129,101 @@ fn set() -> i32 {
         println!("error: {}: {e}", gpu_tuning::FILE);
         return 1;
     }
-    match install() {
-        Ok(new) => {
-            if let Err(e) = start_following(new) {
-                println!("error: following the power mode: {e}");
-            }
-        }
-        Err(e) => println!("error: setting it at every start: {e}"),
+    if let Err(e) = install().map_err(|e| e.to_string()).and_then(|_| start_following(true).map_err(|e| e.to_string())) {
+        eprintln!("error: applying the restored power settings: {e}");
+        return 1;
     }
-    // What's in force now (the mode and the power supply as they are).
-    match power_profile::modes() {
-        Ok(Some(modes)) => report(follow_now(modes.active, !battery::on_ac())),
-        _ => report(gpu_tuning::apply_kept(None, true)),
-    }
+    0
 }
 
-/// The plan's presets for `mode` and the power supply: every GPU's (kept
-/// and applied as `set` does; NVIDIA's asked what it allows, waking it a
-/// moment, as applying its preset does anyway) and the processors'
-/// (and what was done said in `/run/olo-gpu-follow.json`, for Olo Doctor
-/// and Preferences).
-fn follow_now(mode: power_profile::Mode, on_battery: bool) -> Vec<(String, gpu_tuning::Applied)> {
-    let mut out = follow_plan(mode, on_battery);
-    let kept = Tuning::load();
-    let before = gpu_tuning::Followed::load(std::path::Path::new("/")).unwrap_or_default();
-    let (done, drives, limited, sata_found) = follow_drives(&kept.plan, mode, on_battery, &before);
+fn ceiling(mode: power_profile::Mode) -> u8 {
+    if mode != power_profile::Mode::PowerSaver && std::fs::read_to_string("/run/olo-fans/pressure").is_ok_and(|s| s.trim() == "hot") { 80 } else { 100 }
+}
+
+/// Only write a GPU when its effective request changed. Keep pending
+/// requests for sleeping GPUs in the follower until a real client uses one.
+fn follow_gpus(mode: power_profile::Mode, battery: bool, state: &mut gpu_tuning::Followed, pending_only: bool) -> Vec<(String, gpu_tuning::Applied)> {
+    use gpu_tuning::{Caps, Preset};
+    let mut out = Vec::new();
+    for g in gpus::list() {
+        if !matches!(g.driver.as_str(), "xe" | "nvidia") || (pending_only && !state.deferred.contains(&g.pci)) {
+            continue;
+        }
+        let preset = if battery && mode == power_profile::Mode::Balanced && g.vendor == 0x10de { Preset::Cooler } else { gpu_tuning::for_mode(mode) };
+        let previous = state.autosuspend_ms.get(&g.pci).copied();
+        match gpu_tuning::runtime_tail(&g.sysfs, mode == power_profile::Mode::Performance, previous) {
+            Ok(Some(ms)) => {
+                state.autosuspend_ms.insert(g.pci.clone(), ms);
+            }
+            Ok(None) => {
+                state.autosuspend_ms.remove(&g.pci);
+            }
+            Err(e) => out.push((g.name.clone(), vec![Err(format!("GPU idle delay: {e}"))])),
+        }
+        if g.vendor == 0x10de && gpu_tuning::asleep(&g) {
+            if !state.gpus.iter().any(|t| t.pci == g.pci && t.preset == preset) {
+                if !state.deferred.contains(&g.pci) {
+                    state.deferred.push(g.pci.clone());
+                }
+            } else {
+                state.deferred.retain(|id| id != &g.pci);
+            }
+            continue;
+        }
+        let (caps, why) = gpu_tuning::caps_or_why(&g, false);
+        let Some(caps) = caps else {
+            out.push((g.name, vec![Err(why.unwrap_or_else(|| "driver capabilities unavailable".into()))]));
+            continue;
+        };
+        let tune = gpu_tuning::preset(&g.pci, preset, &caps);
+        // The kernel's RPe follows operating conditions. Reasserting the
+        // same range at every supply event overrides its autonomous policy.
+        if !state.gpus.contains(&tune) {
+            let done = gpu_tuning::apply(&g, &tune, None);
+            if done.iter().all(Result::is_ok) {
+                state.gpus.retain(|t| t.pci != g.pci);
+                if !matches!(caps, Caps::None) {
+                    state.gpus.push(tune);
+                }
+                state.deferred.retain(|id| id != &g.pci);
+            }
+            out.push((g.name, done));
+        } else {
+            state.deferred.retain(|id| id != &g.pci);
+        }
+    }
+    out
+}
+
+fn follow_now(mode: power_profile::Mode, on_battery: bool, state: &mut gpu_tuning::Followed) -> Vec<(String, gpu_tuning::Applied)> {
+    let mut out = follow_gpus(mode, on_battery, state, false);
+    let cpu = gpu_tuning::cpu_for_mode(mode);
+    let top = ceiling(mode);
+    out.push((format!("processors ({})", cpu.name()), cpu_tuning::apply(cpu, top, on_battery)));
+    use olo_system::fans::{Places, Profile};
+    let places = Places::here();
+    if let Some(f) = olo_system::fans::look(&places)
+        && f.installed
+    {
+        let profile = match mode {
+            power_profile::Mode::PowerSaver => Profile::Auto,
+            power_profile::Mode::Balanced => Profile::Cool,
+            power_profile::Mode::Performance => Profile::Cooler,
+        };
+        out.push(("fans".into(), vec![follow_fans(profile, &places)]));
+    }
+    let (done, drives, limited, sata_found) = follow_drives(&Tuning::load().plan, mode, on_battery, state);
     out.extend(done);
-    let followed = gpu_tuning::Followed {
-        version: gpu_tuning::FOLLOWER_VERSION,
-        mode: mode.id().into(),
-        on_battery,
-        cpu: kept.plan.cpu_now(mode, on_battery).id().into(),
-        top: kept.plan.cpu_top_now(mode, on_battery),
-        failed: failures(&out),
-        cpu_after: cpu_tuning::caps(),
-        drives,
-        limited,
-        sata_found,
-    };
-    if let Err(e) = followed.save() {
-        eprintln!("olo-gpu-tune: couldn't say what was done: {e}");
+    state.version = gpu_tuning::FOLLOWER_VERSION;
+    state.mode = mode.id().into();
+    state.on_battery = on_battery;
+    state.cpu = cpu.id().into();
+    state.top = top;
+    state.cpu_after = cpu_tuning::caps();
+    state.failed = failures(&out);
+    (state.drives, state.limited, state.sata_found) = (drives, limited, sata_found);
+    if let Err(e) = state.save() {
+        eprintln!("couldn't report power settings: {e}");
     }
     out
 }
@@ -231,25 +292,6 @@ fn follow_drives(plan: &gpu_tuning::Plan, mode: power_profile::Mode, on_battery:
         drives.push(nvme_power::DriveState { serial: d.serial, model: d.model, name: d.name, link, sata: true, ..Default::default() });
     }
     (out, drives, lowered, found)
-}
-
-fn follow_plan(mode: power_profile::Mode, on_battery: bool) -> Vec<(String, gpu_tuning::Applied)> {
-    let kept = Tuning::load();
-    let gpus: Vec<gpu_tuning::PlanGpu> = gpus::list().iter().filter_map(|g| Some(gpu_tuning::PlanGpu { pci: g.pci.clone(), caps: gpu_tuning::caps(g, true)?, nvidia: g.vendor == 0x10de })).collect();
-    if let Some(new) = gpu_tuning::scenario(&kept, &gpus, mode, on_battery) {
-        let new = gpu_tuning::with_driver_limits(new, &kept);
-        if let Err(e) = keep(&new) {
-            return vec![("gpus".into(), vec![Err(format!("{}: {e}", gpu_tuning::FILE))])];
-        }
-    }
-    let mut out = gpu_tuning::apply_kept(None, true);
-    let (cpu, top) = (kept.plan.cpu_now(mode, on_battery), kept.plan.cpu_top_now(mode, on_battery));
-    out.push((format!("processors ({})", cpu.name()), cpu_tuning::apply(cpu, top, on_battery)));
-    // The fans' profile, where the modes have their own.
-    if let Some(profile) = kept.plan.fans_now(mode, on_battery) {
-        out.push((format!("fans ({})", profile.label()), vec![follow_fans(profile, &olo_system::fans::Places::here())]));
-    }
-    out
 }
 
 /// The fans' profile made `profile`: its word written where `olo-fans`
@@ -323,79 +365,6 @@ fn start_following(new: bool) -> olo_system::Result<()> {
     if new { systemd::restart(SERVICE_NAME) } else { systemd::start_stop(SERVICE_NAME, true) }
 }
 
-/// The power supply as the follower acts on it: a change counts once it
-/// has held for `SETTLE` (a plug put in twice, a cable moved to another
-/// port), and a supply that keeps changing (`UNSTEADY` times within
-/// `WINDOW`) is taken as the battery, the careful plan, set once, until it
-/// has been steady for `WINDOW`. A ThinkPad P1's controller reported its
-/// adapter coming and going 23 times a second for two hours, charger in
-/// or out (2026-11-17): every change UPower told of had the whole plan
-/// set again, 610 times in the first hour, each waking NVIDIA's GPU and
-/// calling the firmware for its profile.
-struct Supply {
-    /// What the plan in force was set for.
-    battery: bool,
-    /// The last reading.
-    seen: bool,
-    /// When the reading changed, lately.
-    changes: std::collections::VecDeque<Instant>,
-    unsteady: bool,
-}
-
-impl Supply {
-    const SETTLE: Duration = Duration::from_secs(2);
-    const WINDOW: Duration = Duration::from_secs(30);
-    const UNSTEADY: usize = 4;
-
-    fn new(battery: bool) -> Self {
-        Supply { battery, seen: battery, changes: Default::default(), unsteady: false }
-    }
-
-    /// A reading of the supply.
-    fn observe(&mut self, battery: bool, now: Instant) {
-        if battery != self.seen {
-            self.seen = battery;
-            self.changes.push_back(now);
-        }
-        while self.changes.len() > Self::UNSTEADY {
-            self.changes.pop_front();
-        }
-        if self.changes.len() == Self::UNSTEADY && self.changes.front().is_some_and(|t| now.duration_since(*t) <= Self::WINDOW) {
-            self.unsteady = true;
-        }
-    }
-
-    /// The supply to plan for at `now`.
-    fn battery(&mut self, now: Instant) -> bool {
-        let since = self.changes.back().map(|t| now.saturating_duration_since(*t));
-        if self.unsteady {
-            if since.is_some_and(|d| d < Self::WINDOW) {
-                self.battery = true;
-                return true;
-            }
-            self.unsteady = false;
-            self.changes.clear();
-        }
-        if self.seen != self.battery && since.is_none_or(|d| d >= Self::SETTLE) {
-            self.battery = self.seen;
-        }
-        self.battery
-    }
-
-    /// When to ask again without a reading: a change settling, or an
-    /// unsteady supply come to rest.
-    fn deadline(&self) -> Option<Instant> {
-        let last = *self.changes.back()?;
-        if self.unsteady {
-            Some(last + Self::WINDOW)
-        } else if self.seen != self.battery {
-            Some(last + Self::SETTLE)
-        } else {
-            None
-        }
-    }
-}
-
 /// `follow` (root, olo-gpu-follow.service): once there's a power profiles
 /// daemon, the processors and every GPU (integrated and discrete) on the
 /// plan's presets for the mode and the power supply (Preferences ▸ Power:
@@ -411,17 +380,43 @@ fn follow() -> i32 {
         return 1;
     }
     enum Change {
-        Mode(Option<power_profile::Mode>),
+        Mode(Option<power_profile::Modes>),
         Supply,
         Settled,
         /// Back from sleep: a drive's controller reset on the way puts it
         /// back on its highest state.
         Woke,
+        Applied(String),
+        Device,
+        Topology,
+        Cooling,
     }
     let (tx, rx) = std::sync::mpsc::channel();
+    let device = tx.clone();
+    if let Err(e) = events::watch(move |e| {
+        device
+            .send(match e {
+                events::Event::Device => Change::Device,
+                events::Event::Topology => Change::Topology,
+                events::Event::Cooling => Change::Cooling,
+            })
+            .is_ok()
+    }) {
+        eprintln!("couldn't watch GPU opens and cooling: {e}");
+    }
+    let applied = tx.clone();
+    if let Err(e) = power_profile::watch_tuned_applied(move |name| {
+        let _ = applied.send(Change::Applied(name));
+    }) {
+        eprintln!("couldn't follow TuneD: {e}");
+    }
+    let mut state = gpu_tuning::Followed::load(std::path::Path::new("/")).unwrap_or_default();
+    // A new process has no NVML handles or verified driver requests yet.
+    state.gpus.clear();
+    state.deferred.clear();
     let modes = tx.clone();
     power_profile::watch(move |m| {
-        let _ = modes.send(Change::Mode(m.map(|m| m.active)));
+        let _ = modes.send(Change::Mode(m));
     });
     let woke = tx.clone();
     if let Err(e) = olo_system::power::watch_wake(move || {
@@ -434,14 +429,21 @@ fn follow() -> i32 {
     });
     // (Its first change opens NVML, held from then on, which keeps NVIDIA's
     // GPU's lock: `gpu_tuning::nvml`.)
+    let mut last_tuned = None;
+    let mut uses_tuned = false;
     let mut mode = None;
     let mut supply = Supply::new(!battery::on_ac());
     let mut last = None;
     let mut unsteady = false;
+    // An open can precede the driver's first runtime resume. Recheck the
+    // passive runtime status briefly, only in response to that open.
+    let mut probe = None;
+    let mut probe_end = None;
     loop {
-        let change = match supply.deadline() {
+        let change = match supply.deadline().into_iter().chain(probe).min() {
             Some(end) => match rx.recv_timeout(end.saturating_duration_since(Instant::now())) {
                 Ok(change) => change,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) if probe.is_some_and(|t| Instant::now() >= t) => Change::Device,
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Change::Settled,
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
             },
@@ -451,29 +453,78 @@ fn follow() -> i32 {
             },
         };
         match change {
-            Change::Mode(Some(m)) => mode = Some(m),
+            Change::Mode(Some(ref m)) => {
+                uses_tuned = m.drivers.iter().any(|d| d == "tuned");
+                if mode.is_none() && uses_tuned {
+                    last_tuned = power_profile::tuned_profile();
+                }
+                mode = Some(m.active);
+            }
             Change::Mode(None) => continue,
             Change::Supply | Change::Settled => supply.observe(!battery::on_ac(), Instant::now()),
-            Change::Woke => {
-                // Only the drives: the rest keeps across a sleep (and
-                // NVIDIA's GPU isn't woken for it).
-                if let Some(m) = mode {
-                    let mut followed = gpu_tuning::Followed::load(std::path::Path::new("/")).unwrap_or_default();
-                    let (done, drives, limited, sata_found) = follow_drives(&Tuning::load().plan, m, supply.battery(Instant::now()), &followed);
-                    if !done.is_empty() {
-                        println!("woke: the drives set again");
-                        followed.failed.retain(|f| !f.contains("(nvme") && !f.contains("(sd"));
-                        followed.failed.extend(failures(&done));
-                        (followed.drives, followed.limited, followed.sata_found) = (drives, limited, sata_found);
-                        let _ = followed.save();
+            Change::Applied(ref name) => {
+                if !uses_tuned {
+                    continue;
+                }
+                last_tuned = Some(name.clone());
+                mode = power_profile::modes().ok().flatten().map(|m| m.active);
+            }
+            Change::Device => {
+                let now = Instant::now();
+                if probe.is_none() {
+                    probe_end = Some(now + Duration::from_secs(2));
+                }
+                probe = None;
+                if !state.deferred.is_empty()
+                    && let Some(m) = mode
+                {
+                    let prev = state.deferred.clone();
+                    let done = follow_gpus(m, supply.battery(Instant::now()), &mut state, true);
+                    if !done.is_empty() || prev != state.deferred {
+                        state.failed.extend(failures(&done));
+                        let _ = state.save();
                         report(done);
+                    }
+                    if !state.deferred.is_empty() && probe_end.is_some_and(|end| now < end) {
+                        probe = Some(now + Duration::from_millis(200));
                     }
                 }
                 continue;
             }
+            Change::Cooling => {
+                if let Some(m) = mode {
+                    let top = ceiling(m);
+                    if top != state.top {
+                        let done = cpu_tuning::Sys::default().limit(top);
+                        if let Err(e) = done {
+                            eprintln!("thermal power ceiling: {e}");
+                        } else {
+                            state.top = top;
+                            state.cpu_after = cpu_tuning::caps();
+                            let _ = state.save();
+                        }
+                    }
+                }
+                continue;
+            }
+            Change::Topology => {
+                if let Some(m) = mode {
+                    let done = follow_gpus(m, supply.battery(Instant::now()), &mut state, false);
+                    state.failed.extend(failures(&done));
+                    let _ = state.save();
+                    report(done);
+                }
+                continue;
+            }
+            Change::Woke => state.gpus.clear(),
         }
         let Some(m) = mode else { continue };
         let on_battery = supply.battery(Instant::now());
+        // Switching profiles returns before TuneD has finished writing.
+        // Its completion signal is the next event for this transition.
+        if uses_tuned && power_profile::tuned_profile() != last_tuned {
+            continue;
+        }
         if supply.unsteady != unsteady {
             unsteady = supply.unsteady;
             if unsteady {
@@ -483,12 +534,12 @@ fn follow() -> i32 {
             }
         }
         // (The mode said again is set again: the daemon set its own first.)
-        if last == Some((m, on_battery)) && !matches!(change, Change::Mode(_)) {
+        if last == Some((m, on_battery)) && !matches!(change, Change::Applied(_) | Change::Woke) {
             continue;
         }
         last = Some((m, on_battery));
         println!("the power mode is {}{}", m.label(), if on_battery { ", on battery" } else { "" });
-        report(follow_now(m, on_battery));
+        report(follow_now(m, on_battery, &mut state));
     }
     // (The daemon's watch ended: systemd starts this again.)
     1
@@ -584,5 +635,11 @@ mod tests {
 }
 
 fn apply(card: Option<&str>) -> i32 {
-    report(gpu_tuning::apply_kept(card, false))
+    let Some(m) = power_profile::modes().ok().flatten() else { return 0 };
+    let mut state = gpu_tuning::Followed::default();
+    // Device add is also reported to the long-lived follower. Never open a sleeping card.
+    if let Some(g) = gpus::list().into_iter().find(|g| g.card.as_ref().and_then(|p| p.file_name()).and_then(|s| s.to_str()) == card) {
+        state.deferred.push(g.pci);
+    }
+    report(follow_gpus(m.active, !battery::on_ac(), &mut state, card.is_some()))
 }

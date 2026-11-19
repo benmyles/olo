@@ -192,6 +192,7 @@ mod focused {
 
     pub(super) enum Ask {
         Focus(Option<i32>),
+        Burst(bool),
         Always(i32),
         KeepCore(bool),
     }
@@ -259,16 +260,53 @@ mod focused {
         }
     }
 
+    /// Restore only our own temporary hint on a still registered thread.
+    fn release_boost(held: &mut Vec<(i32, i32, u32)>) {
+        for (pid, tid, old) in held.drain(..) {
+            if std::path::Path::new(&format!("/proc/{pid}/task/{tid}")).exists() && olo_system::realtime::marked(tid) && olo_system::priority::util_min_of(tid as u32) == Some(1024) {
+                let _ = olo_system::priority::set_util_min(tid, old);
+            }
+        }
+    }
+
+    fn boost(pid: Option<i32>, held: &mut Vec<(i32, i32, u32)>) {
+        let Some(pid) = pid.filter(|p| olo_system::realtime::guarded(*p as u32)) else { return };
+        for (tid, _) in threads(pid) {
+            if let Some(old) = olo_system::priority::util_min_of(tid as u32)
+                && old < 1024
+                && olo_system::priority::set_util_min(tid, 1024).is_ok()
+            {
+                held.push((pid, tid, old));
+            }
+        }
+    }
+
     fn work(rx: mpsc::Receiver<Ask>) {
         let (mut focused, mut always): (Option<i32>, Vec<i32>) = (None, Vec::new());
+        let mut burst = false;
+        let mut held = Vec::new();
         while let Ok(ask) = rx.recv() {
             match ask {
+                Ask::Burst(on) => {
+                    burst = on;
+                    if on {
+                        boost(focused, &mut held);
+                    } else {
+                        release_boost(&mut held);
+                    }
+                }
                 Ask::Focus(pid) => {
+                    if focused != pid {
+                        release_boost(&mut held);
+                    }
                     super::kept::sweep_own();
                     if let Some(old) = focused.filter(|old| Some(*old) != pid && !always.contains(old)) {
                         demote(old);
                     }
                     focused = pid;
+                    if burst {
+                        boost(pid, &mut held);
+                    }
                     // (Again for the same program: a window it opened since
                     // has a thread of its own.)
                     if let Some(pid) = pid {
@@ -300,6 +338,12 @@ pub fn enable() {
 pub fn focus(pid: Option<i32>) {
     if ENABLED.load(std::sync::atomic::Ordering::Relaxed) {
         focused::send(focused::Ask::Focus(pid));
+    }
+}
+
+pub fn burst(on: bool) {
+    if ENABLED.load(std::sync::atomic::Ordering::Relaxed) {
+        focused::send(focused::Ask::Burst(on));
     }
 }
 

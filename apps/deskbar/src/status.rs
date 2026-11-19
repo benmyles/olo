@@ -96,9 +96,6 @@ pub struct Status {
     pub phone: Option<olo_protocol::phone::PhoneState>,
     /// Voice processing's settings (olo-voice's), for the speaker's menu.
     pub voice: olo_protocol::voice::Settings,
-    /// The power modes (the power profiles daemon's), for the battery's
-    /// menu.
-    pub power_modes: Option<olo_system::power_profile::Modes>,
     /// What Olo Doctor last found: its bag in the tray while there is
     /// something to fix.
     pub doctor: olo_protocol::doctor::DoctorFound,
@@ -364,10 +361,6 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
         let battery = b.map(|b| Battery { percent: b.percent, plugged: b.plugged_in(), charging: b.state == olo_system::battery::State::Charging });
         publish(&on_battery, |s| s.battery = battery);
     });
-    // The power mode, as the daemon's signals say (a ThinkPad's Fn keys,
-    // Preferences ▸ Power).
-    let on_modes = shared.clone();
-    olo_system::power_profile::watch(move |m| publish(&on_modes, |s| s.power_modes = m));
     let on_links = shared.clone();
     if let Err(e) = olo_system::network::watch_links(move |l| {
         let wifi = l.wifi.as_ref().map(|w| Wifi { ssid: w.ssid.clone(), signal: w.strength });

@@ -544,8 +544,10 @@ fn config_path() -> PathBuf {
 pub fn screen_settings(person: Option<Settings>, scale: f64) -> Settings {
     let mut s = person.unwrap_or_default();
     s.display = olo_protocol::DisplaySettings { scale, ..Default::default() };
-    s.power.display_off_minutes = 0;
-    s.power.sleep_minutes = 0;
+    s.power.set_idle_minutes(false, false, 0);
+    s.power.set_idle_minutes(false, true, 0);
+    s.power.set_idle_minutes(true, false, 0);
+    s.power.set_idle_minutes(true, true, 0);
     s.power.lock_on_display_off = false;
     s.screen_saver.enabled = false;
     s.screen_saver.lock = false;

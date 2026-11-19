@@ -173,6 +173,7 @@ Activity Monitor doesn't change {}.
 Actual Size
 Adapter:
 Adaptive
+Adaptive Performance
 Adaptive:
 Add
 Add Account
@@ -253,6 +254,7 @@ All of Olo’s {} words are in {}.
 All waiting
 All {} connected.
 Allow
+Allow NVIDIA Fallback on Battery
 Allow Sleep
 Allow Sleep (awake until {})
 Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).
@@ -350,6 +352,9 @@ Asking…
 Ask…
 Assistant
 Astra 6
+At 10%
+At 15%
+At 20%
 At full speed
 At least
 At the Bottom
@@ -419,6 +424,8 @@ Basic Keypad
 Basics
 Battery
 Battery & Idle
+Battery Saver
+Battery Saver at {}% · {} resumes on AC
 Be the SSH agent (ssh, git)
 Because
 Before import {}.{}
@@ -443,6 +450,7 @@ Bluetooth said it would open them and no channel came
 Bluetooth…
 Body
 Bold
+Boost when work arrives and ease back between tasks.
 Boosted {} dB (suggested)
 Bottom Half
 Bottom Left Quarter
@@ -537,6 +545,7 @@ Changing the CPU governor
 Changing the cores process {} may use
 Changing the priority of process {}
 Changing…
+Charging resumes below {}%.
 Chat
 Chat Info
 Check
@@ -768,6 +777,7 @@ Credit Card
 Crop
 Cropped to {} × {}
 Crop…
+Current hardware state
 Custom
 Custom Message…
 Custom {} once applied (on {} until then)
@@ -985,6 +995,7 @@ Empty the Collector
 Emptying the Trash
 Enable Screen Saver
 Enclosing Folder
+Encode With
 Encode on:
 Encrypt it with a passphrase
 End
@@ -1076,6 +1087,8 @@ Fade Colors
 Fahrenheit (°F)
 Fan Out
 Fan Out Others
+Fan level {}
+Fan level {} · {}
 Fans
 Fast
 Fast when there is work, frugal when there isn't, the processors kept out of their hottest top speed. The usual choice.
@@ -1122,6 +1135,7 @@ Finishing what’s being sent, then keeping what’s done.
 Finnish
 Firm
 Firmer
+Firmware curve
 First Page
 First, as the main window
 Fish
@@ -1397,6 +1411,7 @@ Install just
 Install the Helper…
 Installed
 Install…
+Integrated GPU (VA-API)
 Integrations
 Intel GPU (VA-API)
 Interface:
@@ -1481,6 +1496,7 @@ Keep Only on This Computer
 Keep Them Off
 Keep a core for the window server
 Keep briefly
+Keep foreground work ready between bursts. Fans start sooner.
 Keep it in Passwords
 Keep its driver ready
 Keep palms from moving the pointer
@@ -1581,6 +1597,7 @@ Light:
 Like this
 Like:
 Limit
+Limit charging to {}%
 Limit what waits to be written to them
 Line
 Line Numbers
@@ -1599,12 +1616,14 @@ Local
 Local socket
 Location
 Lock
+Lock & presence
 Lock After
 Lock Screen
 Lock after
 Lock after idle for:
 Lock the Screen
 Lock the screen when the display turns off
+Lock when the displays turn off
 Lock when the screen locks
 Lock when you walk away:
 Log Out
@@ -1636,6 +1655,7 @@ Looks like {} × {}
 Loss:
 Lost, by its count
 Low
+Low Latency
 Lower background work
 Lower this computer's sound while you speak
 Lower to nice
@@ -2052,6 +2072,7 @@ Olo
 Olo Desktop
 Olo Desktop, version {}
 Olo Doctor
+Olo Doctor can set up the hardware power service.
 Olo Doctor couldn't set it.
 Olo Doctor found {} things to fix: {}, and more. Click to see them.
 Olo Doctor: {}. Click to see it.
@@ -2076,6 +2097,7 @@ On This Computer
 On a PC keyboard, Alt is where a Mac's ⌘ is: swapped, the key beside the space bar is ⌘ (with the Mac profile) and the Windows key is Option. Each keyboard keeps its own setting, so an Apple keyboard plugged in stays as it is.
 On a call
 On a plane of its own: moving it draws nothing
+On battery
 On disk
 On hold
 On the network
@@ -2275,6 +2297,7 @@ Playing the original at {} s.
 Playing the processed sound at {} s.
 Please continue
 Plug in a security key to set it up.
+Plugged in
 Point with a palm at the edge
 Point with your hand resting low
 Pointer
@@ -2385,6 +2408,9 @@ Read Quota Now
 Read every byte the backups chosen need back from where they’re kept, and check each piece, as a restore would
 Read ones fade, then move to Cleared; unread ones stay.
 Reading /etc/hosts…
+Reading battery…
+Reading hardware…
+Reading power modes…
 Reading the Google accounts connected to Olo…
 Reading the backups…
 Reading the changelog…
@@ -2848,6 +2874,7 @@ Stopped.
 Stopped: what was restored so far is there.
 Stopping the backup
 Store
+Stretch the remaining charge while keeping everyday work responsive.
 Strikeout
 Strong
 Stuck in a loop
@@ -3051,6 +3078,7 @@ The place’s time zone can’t be looked up: {}
 The pointer keeps moving, and none of its motion is lost, while the desktop is busy: a slow frame, or a wait in the graphics driver under load. New, and being tried: if the mouse, touchpad or keyboard misbehaves with it on, turn it off.
 The pool
 The power mode (Power Saver, Balanced or Performance) is set in Power.
+The power service reported a problem applying this mode. Olo Doctor has the details.
 The process has quit.
 The processor
 The processor (OpenH264)
@@ -3064,6 +3092,7 @@ The shell has ended.
 The sky and temperature now, and what's coming.
 The store
 The store is over its {} limit
+The system power profiles service is unavailable.
 The system's services (updates, indexing) can still run there.
 The system's services are kept off it too.
 The test didn't finish: {}.
@@ -3229,11 +3258,15 @@ Trying each setting on it: {} of {}…
 Tuned for {}
 Tuned for:
 Tuning
+Turbo off
+Turbo on
 Turn Off
 Turn On
 Turn On Bluetooth
 Turn off after
+Turn off displays
 Turn off screen
+Turn on for a laptop usually plugged in.
 Turn the display off after:
 Turn the touchpad off while a mouse is plugged in
 Turned off by the hardware switch.
@@ -3265,6 +3298,7 @@ UV index
 Unarchive All
 Unarchive All…
 Unarchive {} Chats
+Unavailable with this computer's power driver.
 Under the Tray
 Underline
 Undo
@@ -3303,6 +3337,7 @@ Update Only This…
 Update Selected Only…
 Update These {}…
 Update every:
+Update the power service in Olo Doctor to use these policies.
 Updated
 Updated {} · {}
 Updates
@@ -3320,6 +3355,7 @@ Uploading…
 Uptime:
 Urgent at
 Use
+Use Battery Saver automatically
 Use Credit
 Use Default
 Use F1, F2, etc. as standard function keys
@@ -3365,6 +3401,7 @@ Version
 Versions of {}
 Very Bad Network
 Very high
+Video Format
 Video Playback
 Video is decoded on the processor. {}
 View
@@ -3593,12 +3630,14 @@ brush’s grey hint after what you type, from a tiny model of your own commands 
 brush’s grey hint after what you type, from a tiny model of your own commands on this computer: it weighs what’s typed, the folder, the commands before, the hour and the day, and learns as you go.
 brush’s grey hints, from a tiny model of your own commands
 built most, the last 24 hours
+ceiling {}%
 charging, full in {}
 couldn't save the boost: {}
 couldn't save the setting: {}
 day
 deleting
 downgrade {n} packages
+driving {}
 ending one gives its slots back to the pool
 erasing
 erasing every backup didn't finish: {}
@@ -3664,6 +3703,7 @@ libinput's default
 libinput's own: Olo's touch filter is off
 low
 medium
+minimum and maximum both {}%
 misses, the last 24 hours
 ms
 no display ports
@@ -3713,6 +3753,7 @@ optional
 organizer
 out of the archive
 part of the screen
+plugged in, charge limit {}%
 plugged in, held at the {}% limit
 plugged in, not charging
 process {}
@@ -3741,6 +3782,7 @@ the account’s
 the agent didn’t start: {}
 the backup isn't open
 the backups' folder in Google Drive was made again elsewhere: following it there
+the built-in display
 the connection failed
 the desktop stays with its display
 the fans {}{}
@@ -4018,6 +4060,8 @@ your own picture
 {} {}, {} there
 {} µs a report typically, the longest {} µs
 {} · and {} more
+{} · easing background work
+{} · limiting sustained power
 {} · set up {}{}
 {} · {} · call quality while the microphone is used
 {} · {} · music quality
@@ -4075,6 +4119,7 @@ your own picture
 {}pid {} · found {} ago
 {}{} · {} so far
 {}{}, plugged in: {}.
+{}–{}% performance range
 {}’s data centre
 {}″ ({} × {} mm), {} pixels per inch
 ~/.cache, browsers’ caches, thumbnails

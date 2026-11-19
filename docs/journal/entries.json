@@ -5140,5 +5140,17 @@
   "title": "Weather in German: the forecast, its cards and charts in the person's language",
   "caption": "Weather's precipitation and sky (tomorrow.io's 94 codes, each built in each language), its cards' titles and captions, its charts' legends and the next-hour line now follow Olo's language, and so do its assistant's suggested questions. The kit's dashboard cards, facts and chart legends look their words up as they're made. Captions were measured against their card and reworded where German ran past. Weekday names wait for Olo's formats.",
   "image": "2026-11-19/093653-weather-in-german-the-forecast-its-cards-and-cha.png"
+ },
+ {
+  "time": "2026-11-19T12:40:25",
+  "title": "Three laptop power modes",
+  "caption": "Battery Saver stretches the remaining charge. Adaptive Performance responds to demand. Low Latency favors quick response. The hardware disclosure shows what the active mode is doing.",
+  "image": "2026-11-19/124025-three-laptop-power-modes.png"
+ },
+ {
+  "time": "2026-11-19T12:43:00",
+  "title": "Battery and idle settings by power source",
+  "caption": "The charging limit, display timeout and sleep timeout share one panel. Each timeout can be set independently on battery and while plugged in.",
+  "image": "2026-11-19/124300-battery-and-idle-settings-by-power-source.png"
  }
 ]

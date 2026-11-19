@@ -137,6 +137,8 @@ struct Shared {
     /// look steps through the panel's list as the panel's selection does.
     follow: bool,
     signatures: Mutex<Vec<Signature>>,
+    video: Arc<Mutex<olo_protocol::VideoSettings>>,
+    save_video: std::sync::mpsc::Sender<olo_protocol::VideoSettings>,
     /// Each window's "unsaved changes, or a save under way" (an upgrade
     /// waits while any says so).
     busy: Mutex<Vec<Weak<AtomicBool>>>,
@@ -345,7 +347,7 @@ impl Hub {
         let title = file_name(&path);
         let min_w = if is_pdf(&path) { pdfview::MIN_WIDTH } else { 360.0 };
         let (w, h) = shown.size.unwrap_or((720.0, 560.0));
-        let mut options = WindowOptions::new(title, w, h).min_size(min_w, 240.0);
+        let mut options = WindowOptions::new(title, w, h).min_size(min_w, 220.0);
         // A look floats over the panel that asked, as Quick Look does:
         // never a tile or a tab.
         if self.shared.look {
@@ -1052,26 +1054,28 @@ impl Doc {
             && prev.read(cx).is_video()
         {
             let zoom = prev.read(cx).video_zoom();
-            // What decodes it: the default (Preferences ▸ Power ▸ Graphics), or one
-            // chosen for it; and what does now.
+            // The current decoder and the default for subsequent videos.
             let (with, now, gpus) = (prev.read(cx).decode_with(), prev.read(cx).decoding(), prev.read(cx).decoders());
             use olo_preview::video::Device;
+            let defaults = self.shared.video.lock().unwrap().clone();
+            let with = if with == Device::Default { Device::parse(&defaults.decoder).unwrap_or(Device::Automatic) } else { with };
             let decode = Menu::new("Decode With")
-                .item(olo_kit::tr!("Decoding on {}", now.unwrap_or("…")), "")
-                .enabled(false)
+                .note(olo_kit::tr!("Decoding on {}", now.unwrap_or("…")))
                 .separator()
-                .item("Default (Preferences ▸ Power)", "decode-default")
-                .checked(with == Device::Default)
                 .item("Automatic", "decode-auto")
                 .checked(with == Device::Automatic)
                 .item("NVIDIA GPU (NVDEC)", "decode-nvidia")
                 .checked(with == Device::Nvidia)
                 .enabled(gpus.nvidia)
-                .item("Intel GPU (VA-API)", "decode-intel")
+                .item(if gpus.vaapi_is_intel { "Intel GPU (VA-API)" } else { "Integrated GPU (VA-API)" }, "decode-intel")
                 .checked(with == Device::Intel)
                 .enabled(gpus.intel)
                 .item("Processor", "decode-cpu")
-                .checked(with == Device::Processor);
+                .checked(with == Device::Processor)
+                .separator()
+                .item("Allow NVIDIA Fallback on Battery", "video-nvidia-battery")
+                .checked(defaults.nvidia_on_battery)
+                .enabled(gpus.nvidia && with == Device::Automatic);
             menus.push(
                 Menu::new("View")
                     .item("Actual Size", "video-actual")
@@ -1260,6 +1264,13 @@ impl Doc {
             cx.invalidate();
             return;
         }
+        if command == "video-nvidia-battery" {
+            let mut options = self.shared.video.lock().unwrap();
+            options.nvidia_on_battery = !options.nvidia_on_battery;
+            let _ = self.shared.save_video.send(options.clone());
+            cx.invalidate();
+            return;
+        }
         // View ▸ Decode With: the video decoded there from now on.
         if let Some(d) = command.strip_prefix("decode-")
             && let Content::Other(prev) = &self.content
@@ -1268,6 +1279,11 @@ impl Doc {
                 "default" => olo_preview::video::Device::Default,
                 d => olo_preview::video::Device::parse(d).unwrap_or_default(),
             };
+            if device != olo_preview::video::Device::Default {
+                let mut options = self.shared.video.lock().unwrap();
+                options.decoder = device.id().into();
+                let _ = self.shared.save_video.send(options.clone());
+            }
             prev.update(cx, |p, cx| p.set_decode_with(device, cx));
             cx.invalidate();
             return;
@@ -2188,7 +2204,23 @@ fn main() {
         if !look {
             instance::listen(APP_ID, olo_kit::proxy());
         }
-        let shared = Arc::new(Shared { look, follow, signatures: Mutex::new(signature::load()), busy: Mutex::default() });
+        let video = Arc::new(Mutex::new(olo_protocol::VideoSettings::default()));
+        let current = video.clone();
+        let (save_video, updates) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            if let Some(s) = olo_kit::settings::current() {
+                *current.lock().unwrap() = s.video;
+            }
+            while let Ok(mut options) = updates.recv() {
+                while let Ok(new) = updates.try_recv() {
+                    options = new;
+                }
+                if let Ok(mut client) = olo_protocol::Client::connect() {
+                    let _ = client.request(&olo_protocol::Request::SetVideoOptions { options });
+                }
+            }
+        });
+        let shared = Arc::new(Shared { look, follow, video, save_video, signatures: Mutex::new(signature::load()), busy: Mutex::default() });
         let mut hub = Hub { docs: Vec::new(), shared: shared.clone(), over, watch: None, next: 0 };
         // What the panel says to show, a line at a time, on a thread.
         if follow {

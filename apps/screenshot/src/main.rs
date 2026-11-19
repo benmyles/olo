@@ -63,7 +63,7 @@ enum Msg {
     /// itself: we're done), or why not.
     Recording(Result<(), String>),
     /// The recording settings Record…'s ticks show.
-    Recordings(olo_protocol::ScreenRecordingSettings),
+    Recordings(olo_protocol::ScreenRecordingSettings, Encoders),
     /// The folder chosen in the panel.
     Folder(PathBuf),
     /// Record…'s menu, under the button.
@@ -87,6 +87,33 @@ enum Busy {
     Taking,
     Saving,
     Copying,
+}
+
+#[derive(Default)]
+struct Encoders {
+    nvidia: bool,
+    va_h264: bool,
+    va_av1: bool,
+}
+
+impl Encoders {
+    fn read() -> Self {
+        let va = olo_video::vaapi::abilities();
+        Self {
+            nvidia: olo_system::gpus::list().iter().any(|g| g.vendor == 0x10de) && olo_video::nvenc::available(),
+            va_h264: va.iter().any(|a| a.h264.is_some()),
+            va_av1: va.iter().any(|a| a.av1.is_some()),
+        }
+    }
+
+    fn supports(&self, encoder: &str, codec: &str) -> bool {
+        match encoder {
+            "cpu" => codec == "h264",
+            "vaapi" => codec == "h264" && self.va_h264 || codec == "av1" && self.va_av1,
+            "nvidia" => self.nvidia,
+            _ => codec == "h264" || self.nvidia || codec == "av1" && self.va_av1,
+        }
+    }
 }
 
 struct Screenshot {
@@ -116,6 +143,8 @@ struct Screenshot {
     /// The recording settings, for Record…'s ticks (the sound, GIF,
     /// clicks and keys shown).
     recordings: olo_protocol::ScreenRecordingSettings,
+    encoders: Encoders,
+    save_recording: std::sync::mpsc::Sender<olo_protocol::ScreenRecordingSettings>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -220,9 +249,17 @@ impl Screenshot {
         });
         // What Record…'s ticks show, read off the window's looper.
         let to = cx.messenger();
+        let (save_recording, updates) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            if let Some(s) = olo_kit::settings::current() {
-                to.send(Msg::Recordings(s.screen_recording));
+            let options = olo_kit::settings::current().map(|s| s.screen_recording).unwrap_or_default();
+            to.send(Msg::Recordings(options, Encoders::read()));
+            while let Ok(mut options) = updates.recv() {
+                while let Ok(new) = updates.try_recv() {
+                    options = new;
+                }
+                if let Ok(mut c) = olo_protocol::Client::connect() {
+                    let _ = c.request(&olo_protocol::Request::SetRecordingOptions { options });
+                }
             }
         });
         // (Shown, or said, once the window is up.)
@@ -241,6 +278,8 @@ impl Screenshot {
             folders,
             holding: false,
             recordings: Default::default(),
+            encoders: Default::default(),
+            save_recording,
         }
     }
 
@@ -272,18 +311,17 @@ impl Screenshot {
             "smooth-pointer" => r.smooth_pointer = !r.smooth_pointer,
             "zoom-follow" => r.zoom_follow = !r.zoom_follow,
             "camera" => r.camera = if r.camera.is_empty() { "auto".into() } else { String::new() },
+            c if c.starts_with("encoder-") => {
+                r.encoder = c["encoder-".len()..].into();
+                if !self.encoders.supports(&r.encoder, &r.codec) {
+                    r.codec = if self.encoders.supports(&r.encoder, "h264") { "h264" } else { "av1" }.into();
+                }
+            }
+            c if c.starts_with("codec-") => r.codec = c["codec-".len()..].into(),
             c if c.starts_with("countdown-") => r.countdown = c["countdown-".len()..].parse().unwrap_or(3),
             _ => return,
         }
-        let mine = r.clone();
-        std::thread::spawn(move || {
-            let Some(mut settings) = olo_kit::settings::current() else { return };
-            // (The encoder is Preferences', left as it is there.)
-            settings.screen_recording = olo_protocol::ScreenRecordingSettings { encoder: settings.screen_recording.encoder, ..mine };
-            if let Ok(mut c) = olo_protocol::Client::connect() {
-                let _ = c.request(&olo_protocol::Request::SetSettings { settings });
-            }
-        });
+        let _ = self.save_recording.send(r.clone());
     }
 
     fn name_text(&self, cx: &Cx<Self>) -> String {
@@ -350,6 +388,18 @@ impl Screenshot {
                     .item("Window on a Background", "background")
                     .checked(r.background)
                     .separator()
+                    .submenu(
+                        [("auto", "Automatic"), ("vaapi", "Integrated GPU (VA-API)"), ("nvidia", "NVIDIA GPU (NVENC)"), ("cpu", "Processor")]
+                            .into_iter()
+                            .fold(Menu::new("Encode With"), |m, (id, label)| {
+                                m.item(label, format!("encoder-{id}")).checked(r.encoder == id).enabled(self.encoders.supports(id, "h264") || self.encoders.supports(id, "av1"))
+                            }),
+                    )
+                    .submenu(
+                        [("h264", "H.264"), ("hevc", "HEVC"), ("av1", "AV1")]
+                            .into_iter()
+                            .fold(Menu::new("Video Format"), |m, (id, label)| m.item(label, format!("codec-{id}")).checked(r.codec == id).enabled(self.encoders.supports(&r.encoder, id))),
+                    )
                     .item("Save as GIF", "gif")
                     .checked(r.gif)
                     .submenu(
@@ -364,6 +414,11 @@ impl Screenshot {
     }
 
     fn record_command(&mut self, command: &str, cx: &mut Cx<Self>) {
+        if command.starts_with("encoder-") || command.starts_with("codec-") {
+            self.toggle(command);
+            cx.invalidate();
+            return;
+        }
         let what = match command {
             "sound-computer" | "sound-microphone" | "gif" | "show-clicks" | "show-keys" | "background" | "pointer-size" | "smooth-pointer" | "zoom-follow" | "camera" | "countdown-0"
             | "countdown-3" | "countdown-5" | "countdown-10" => {
@@ -401,12 +456,13 @@ impl Screenshot {
     /// saved), and we're done.
     fn record(&mut self, what: Record, cx: &mut Cx<Self>) {
         let pointer = self.settings.pointer;
+        let (encoder, codec) = (self.recordings.encoder.clone(), self.recordings.codec.clone());
         cx.work(
             move || {
                 let active = capture::step_aside()?;
                 let exe = std::env::current_exe().map_err(|e| e.to_string())?;
                 let mut cmd = std::process::Command::new(exe);
-                cmd.arg("--toggle-record").stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null());
+                cmd.args(["--toggle-record", "--encoder", &encoder, "--codec", &codec]).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null());
                 match (what, active) {
                     (Record::Window, Some(id)) => {
                         cmd.args(["--window", &id.to_string()]);
@@ -589,7 +645,10 @@ impl View for Screenshot {
                 cx.activate_window();
                 self.show_error(format!("Couldn't start recording.\n\n{e}"), cx);
             }
-            Msg::Recordings(r) => self.recordings = r,
+            Msg::Recordings(r, encoders) => {
+                self.recordings = r;
+                self.encoders = encoders;
+            }
             Msg::Folder(dir) => {
                 self.settings.folder = Some(dir);
                 self.settings_changed(cx);

@@ -24,13 +24,13 @@ pub struct State {
     tab: usize,
     preview: Preview,
     /// What "Turn off screen" goes back to when ticked again.
-    last_display_off: Option<u32>,
+    last_display_off: [Option<u32>; 2],
     scroll: ScrollHandle,
 }
 
 impl State {
     pub fn new(_: &mut Cx<PanelView>) -> State {
-        State { tab: 0, preview: Rc::default(), last_display_off: None, scroll: ScrollHandle::new() }
+        State { tab: 0, preview: Rc::default(), last_display_off: [None; 2], scroll: ScrollHandle::new() }
     }
 }
 
@@ -62,9 +62,9 @@ fn minutes_slider(ui: &mut Ui, id: &str, label: &str, value: u32, set: impl Fn(&
     ui.slider(id, i as f32, 0.0..=(MINUTES.len() - 1) as f32, |s| s.step(1.0).label(label).value_text(text), move |s, v| set(s, MINUTES[(v.round() as usize).min(MINUTES.len() - 1)]));
 }
 
-pub fn ui(ui: &mut Ui, server: &Server, st: &mut State) {
+pub fn ui(ui: &mut Ui, server: &Server, st: &mut State, battery: bool) {
     let items = ui.collect(|ui| match st.tab {
-        0 => fade(ui),
+        0 => fade(ui, battery),
         _ => modules(ui, server, st),
     });
     let pick = ui.on_view(|v, i: &usize, cx| {
@@ -78,33 +78,34 @@ pub fn ui(ui: &mut Ui, server: &Server, st: &mut State) {
     ui.add(div().flex_1().flex().flex_col().child(TabView::new("screensaver-tabs", tabs, st.tab).grows().on_select(pick).child(content.children(items))));
 }
 
-fn fade(ui: &mut Ui) {
+fn fade(ui: &mut Ui, battery: bool) {
     let s = ui.s.clone();
     let ss = s.screen_saver.clone();
     ui.check("Enable Screen Saver", ss.enabled, |s, v| s.screen_saver.enabled = v);
     ui.enabled_if(ss.enabled, |ui| minutes_slider(ui, "run-minutes", "Run module", ss.run_minutes, |s, v| s.screen_saver.run_minutes = v));
     // "Turn off screen" is Power's display-off time (0: never).
-    let off = s.power.display_off_minutes > 0;
+    let minutes = s.power.idle_minutes(battery).0;
+    let off = minutes > 0;
     let toggle = ui.on_view(move |v, on: &bool, cx| {
         let Some(st) = state_of(v) else { return };
-        let back = st.last_display_off.unwrap_or(10);
+        let back = st.last_display_off[usize::from(battery)].unwrap_or(10);
         let mut remember = None;
         let on = *on;
         crate::prefs().edit_as("", "Screen Saver", |s| {
             if on {
-                s.power.display_off_minutes = back;
+                s.power.set_idle_minutes(battery, false, back);
             } else {
-                remember = Some(s.power.display_off_minutes);
-                s.power.display_off_minutes = 0;
+                remember = Some(s.power.idle_minutes(battery).0);
+                s.power.set_idle_minutes(battery, false, 0);
             }
         });
         if let (Some(st), Some(m)) = (state_of(v), remember) {
-            st.last_display_off = Some(m);
+            st.last_display_off[usize::from(battery)] = Some(m);
         }
         cx.notify();
     });
     ui.add(CheckBox::new("Turn off screen", off).on_toggle(toggle));
-    ui.enabled_if(off, |ui| minutes_slider(ui, "off-minutes", "Turn off after", s.power.display_off_minutes.max(1), |s, v| s.power.display_off_minutes = v));
+    ui.enabled_if(off, |ui| minutes_slider(ui, "off-minutes", "Turn off after", minutes.max(1), move |s, v| s.power.set_idle_minutes(battery, false, v)));
     ui.enabled_if(ss.enabled, |ui| {
         ui.check("Password lock", ss.lock, |s, v| s.screen_saver.lock = v);
         ui.enabled_if(ss.lock, |ui| minutes_slider(ui, "lock-minutes", "Lock after", ss.lock_minutes, |s, v| s.screen_saver.lock_minutes = v));

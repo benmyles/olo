@@ -220,10 +220,19 @@ pub fn user_unit_in(cgroup: &str) -> Option<String> {
 /// The user manager's unit `unit`'s CPU weight as set (None: not set,
 /// its parent's default; Some(0): idle).
 pub fn user_cpu_weight(unit: &str) -> Result<Option<u64>> {
+    user_cpu_property(unit, "CPUWeight")
+}
+
+/// Runtime CPU quota, in microseconds per second, on a background unit.
+pub fn user_cpu_quota(unit: &str) -> Result<Option<u64>> {
+    user_cpu_property(unit, "CPUQuotaPerSecUSec")
+}
+
+fn user_cpu_property(unit: &str, property: &str) -> Result<Option<u64>> {
     let conn = bus::session()?;
     let path: zvariant::OwnedObjectPath = bus::call(conn, SYSTEMD, MANAGER, MANAGER_IFACE, "GetUnit", &(unit,))?;
     let iface = if unit.ends_with(".scope") { "org.freedesktop.systemd1.Scope" } else { "org.freedesktop.systemd1.Service" };
-    let value: zvariant::OwnedValue = bus::call(conn, SYSTEMD, path.as_str(), "org.freedesktop.DBus.Properties", "Get", &(iface, "CPUWeight"))?;
+    let value: zvariant::OwnedValue = bus::call(conn, SYSTEMD, path.as_str(), "org.freedesktop.DBus.Properties", "Get", &(iface, property))?;
     let weight = u64::try_from(value).map_err(|e| zbus::Error::Failure(e.to_string()))?;
     Ok((weight != u64::MAX).then_some(weight))
 }
@@ -233,7 +242,15 @@ pub fn user_cpu_weight(unit: &str) -> Result<Option<u64>> {
 /// when no other cgroup beside it wants the processor), None back to its
 /// default. The person's own manager: no privilege asked.
 pub fn set_user_cpu_weight(unit: &str, weight: Option<u64>) -> Result<()> {
-    let props = vec![("CPUWeight", zvariant::Value::U64(weight.unwrap_or(u64::MAX)))];
+    set_user_cpu_property(unit, "CPUWeight", weight)
+}
+
+pub fn set_user_cpu_quota(unit: &str, quota: Option<u64>) -> Result<()> {
+    set_user_cpu_property(unit, "CPUQuotaPerSecUSec", quota)
+}
+
+fn set_user_cpu_property(unit: &str, property: &str, value: Option<u64>) -> Result<()> {
+    let props = vec![(property, zvariant::Value::U64(value.unwrap_or(u64::MAX)))];
     bus::call::<_, ()>(bus::session()?, SYSTEMD, MANAGER, MANAGER_IFACE, "SetUnitProperties", &(unit, true, props))
 }
 

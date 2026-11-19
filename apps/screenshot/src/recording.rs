@@ -624,7 +624,7 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
         _ => None,
     });
     let settings = all.as_ref().map(|s| s.screen_recording.clone());
-    // As asked, else as Preferences ▸ Power ▸ Graphics has it, else the most
+    // As asked, else as the Record menu has it, else the most
     // powerful there is.
     let chosen = option(args, "--encoder").map(str::to_owned).or_else(|| settings.as_ref().map(|s| s.encoder.clone()));
     // A window on a background: what it's made of.
@@ -659,7 +659,7 @@ fn record(args: &[String]) -> Result<Option<Made>, String> {
         Some(e) => olo_video::Choice::parse(e).ok_or("--encoder is auto, cpu, nvidia or vaapi")?,
         None => olo_video::Choice::Auto,
     };
-    // H.264, HEVC or AV1: as asked, else as Preferences ▸ Power ▸ Graphics has it (on
+    // H.264, HEVC or AV1: as asked, else as the Record menu has it (on
     // the processor, H.264 whatever it says: the processor makes only that;
     // through VA-API, H.264 where the driver makes it, else AV1, the only
     // one Fedora's own drivers make).
@@ -1148,7 +1148,7 @@ fn encode(
             }
             None => olo_video::even(w, h),
         };
-        let enc = olo_video::Encoder::new(vw, vh, fps, choice, codec)?;
+        let enc = olo_video::Encoder::for_recording(vw, vh, fps, choice, codec)?;
         let mut mp4 = olo_video::Mp4::create_for(part, vw, vh, 1000, enc.codec()).map_err(|e| e.to_string())?;
         // (Olo's: a library knows it whatever it's named.)
         mp4.mark_olo();

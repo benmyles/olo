@@ -696,7 +696,7 @@ pub struct Options {
 /// Preferences ▸ Video's default).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Device {
-    /// The person's choice (Preferences ▸ Power ▸ Graphics ▸ Video Playback), read
+    /// The person's choice (Viewer ▸ View ▸ Decode With), read
     /// by the player's worker.
     #[default]
     Default,
@@ -721,12 +721,15 @@ pub struct Decoders {
     pub nvidia: bool,
     /// Intel's or AMD's (VA-API: AV1 and VP9 with Fedora's drivers).
     pub intel: bool,
+    /// Whether the VA-API driver for this stream reports an Intel GPU.
+    pub vaapi_is_intel: bool,
 }
 
 impl Decoders {
     #[cfg(feature = "gpu")]
     fn of(planes: bool, codec: Codec) -> Decoders {
-        Decoders { nvidia: planes && olo_video::nvdec::available(), intel: planes && olo_vaapi::decode::available(va_codec(codec)) }
+        let vaapi = if planes { olo_vaapi::decode::decoder_for(va_codec(codec)) } else { None };
+        Decoders { nvidia: planes && olo_video::nvdec::available(), intel: vaapi.is_some(), vaapi_is_intel: vaapi.is_some_and(|(_, driver)| driver.contains("Intel")) }
     }
 
     #[cfg(not(feature = "gpu"))]

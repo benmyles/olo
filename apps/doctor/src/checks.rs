@@ -3874,7 +3874,7 @@ fn power_now(roots: &Roots, r: &mut Report) {
 
 /// What Olo's power mode follower does (`olo-gpu-tune follow`), said in
 /// each finding about it.
-const FOLLOWER_DOES: &str = "Olo's power mode follower puts the processors and each GPU on what Preferences ▸ Power ▸ Power Modes plans for the mode and the power supply, after the power profiles daemon has set its own: in Balanced the processors at up to 75% of their top speed (their hottest quarter left out, most of their speed kept), leaning to saving power on battery; NVIDIA's GPU saving power on battery; NVMe drives kept cooler where chosen (and set again after a resume).";
+const FOLLOWER_DOES: &str = "Olo applies Battery Saver, Adaptive Performance and Low Latency to the processors, graphics and cooling. It restores the CPU floor and lets an unused discrete GPU sleep.";
 
 /// The power modes as Olo plans them (Preferences ▸ Power ▸ Power
 /// Modes; Ben, 2026-11-13: "olo doctor should make sure those profiles
@@ -3924,6 +3924,20 @@ fn power_modes(roots: &Roots, r: &mut Report) {
         if std::fs::read_to_string(at(g::FOLLOWER_RULE_PATH)).ok().as_deref() != Some(g::FOLLOWER_RULE) {
             steps.push(Step::WriteFile { path: PathBuf::from(g::FOLLOWER_RULE_PATH), content: g::FOLLOWER_RULE.into(), mode: 0o644 });
         }
+        if let Ok(conf) = std::fs::read_to_string(at(g::TUNED_PPD)) {
+            let mapping = g::laptop_mapping(&conf);
+            if (mapping.is_some() || conf.lines().any(|l| l.trim() == "performance=olo-low-latency")) && std::fs::read_to_string(at(g::TUNED_LATENCY)).ok().as_deref() != Some(g::LATENCY_PROFILE) {
+                steps.push(Step::WriteFile { path: g::TUNED_LATENCY.into(), content: g::LATENCY_PROFILE.into(), mode: 0o644 });
+            }
+            if let Some(content) = mapping {
+                steps.push(Step::WriteFile { path: g::TUNED_PPD.into(), content, mode: 0o644 });
+                steps.push(Step::Unit { name: "tuned-ppd.service".into(), action: UnitAction::Restart });
+            }
+        }
+        let places = if roots.fs == std::path::Path::new("/") { olo_system::fans::Places::here() } else { olo_system::fans::Places::under(&roots.fs) };
+        if places.fan().is_file() && roots.bin.join(crate::fans::PROGRAM).is_file() {
+            steps.extend(crate::fans::steps_with(olo_system::fans::Profile::Cool, &roots.bin, &places, &*roots.units));
+        }
         for action in [UnitAction::Reload, UnitAction::Enable, UnitAction::Restart] {
             steps.push(Step::Unit { name: g::FOLLOWER_SERVICE.into(), action });
         }
@@ -3936,7 +3950,10 @@ fn power_modes(roots: &Roots, r: &mut Report) {
             id: "power-modes:missing".into(),
             severity: Severity::Advice,
             title: "The power modes aren't set as Olo plans them".into(),
-            detail: format!("{FOLLOWER_DOES} It isn't installed, so only the daemon's own settings are in force (Balanced lets the processors run at their top speed). The fix installs it: olo-gpu-follow.service, running {} as root.", g::FOLLOWER_PROGRAM),
+            detail: format!(
+                "{FOLLOWER_DOES} It isn't installed, so the system power profiles daemon is managing the hardware. The fix installs it: olo-gpu-follow.service, running {} as root.",
+                g::FOLLOWER_PROGRAM
+            ),
             fix: fix("Install It", install()),
         });
         return;
@@ -3959,9 +3976,7 @@ fn power_modes(roots: &Roots, r: &mut Report) {
             id: "power-modes:older".into(),
             severity: Severity::Advice,
             title: "Olo's power mode follower is out of date".into(),
-            detail: format!(
-                "{FOLLOWER_DOES} The one running is from an older Olo, without some of that (the processors' top speed came with this version). The fix brings it up to date and starts it again."
-            ),
+            detail: format!("{FOLLOWER_DOES} The running version predates adaptive power modes. The fix brings it up to date and starts it again."),
             fix: fix("Update It", install()),
         });
         return;
@@ -3989,6 +4004,7 @@ fn power_modes(roots: &Roots, r: &mut Report) {
                 ("energy preference", c.preference.clone()),
                 ("turbo", if c.turbo { "on" } else { "off" }.to_owned()),
                 ("platform profile", c.platform.clone()),
+                ("minimum performance", c.floor.map(|t| format!("{t}%")).unwrap_or_default()),
                 ("top speed", c.top.map(|t| format!("{t}%")).unwrap_or_default()),
             ]
         };
@@ -5370,13 +5386,13 @@ mod tests {
         };
         save(&followed, 60);
         let f = scan(&roots).find("power-modes:failed").cloned().expect("refused");
-        assert!(f.detail.contains("Balanced on battery") && f.detail.contains("turbo: Permission denied"), "{}", f.detail);
+        assert!(f.detail.contains("Adaptive Performance on battery") && f.detail.contains("turbo: Permission denied"), "{}", f.detail);
         // As set: fine, saying so.
         followed.failed.clear();
         save(&followed, 60);
         let r = scan(&roots);
         let fine = r.fine.iter().find(|f| f.title == "The power modes are set as Olo plans them").expect("fine");
-        assert_eq!(fine.detail, format!("Now Balanced on battery: the processors {}, at up to 75% of their top speed (olo-gpu-follow).", CpuPreset::Balanced.name()));
+        assert_eq!(fine.detail, format!("Now Adaptive Performance on battery: the processors {}, at up to 75% of their top speed (olo-gpu-follow).", CpuPreset::Balanced.name()));
         // Changed since (the top speed lifted, the preference raised): set
         // them again; but not a moment after the follower wrote.
         w("sys/devices/system/cpu/intel_pstate/max_perf_pct", "100\n");

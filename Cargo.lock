@@ -8803,6 +8803,7 @@ dependencies = [
  "olo-crash",
  "olo-kit",
  "olo-preview",
+ "olo-protocol",
  "olo-video",
  "olo-xdg",
  "serde",

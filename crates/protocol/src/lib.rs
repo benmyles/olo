@@ -31,6 +31,7 @@ pub mod performance;
 pub mod phone;
 pub mod pool;
 pub mod power_button;
+pub mod power_mode;
 pub mod recording;
 pub mod rescue;
 pub mod sharing;
@@ -317,6 +318,18 @@ pub enum Request {
     StartScreenSaver,
     /// Idle state, caffeinated mode and the built-in display's brightness.
     PowerStatus,
+    /// Select a power mode and take precedence over automatic Battery Saver.
+    SetPowerMode {
+        mode: power_mode::Mode,
+    },
+    /// Set only the recorder's options. Other preference edits can be in flight.
+    SetRecordingOptions {
+        options: ScreenRecordingSettings,
+    },
+    /// Set the default decoder and whether Automatic may use NVIDIA on battery.
+    SetVideoOptions {
+        options: VideoSettings,
+    },
     /// Keep the machine awake (no display sleep, system sleep, screen
     /// saver or lock) until turned off, or for `minutes`. With `lid`,
     /// closing the lid doesn't sleep either. Not persisted.
@@ -1238,6 +1251,7 @@ impl Event {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct PowerStatus {
+    pub policy: power_mode::State,
     pub caffeinated: bool,
     /// Seconds since the last input (or since something kept us awake).
     pub idle_seconds: u64,
@@ -1768,9 +1782,9 @@ pub struct Settings {
     pub shortcuts: Option<ShortcutSettings>,
     pub tiling: TilingSettings,
     pub tracker: TrackerSettings,
-    /// Screen recordings (Preferences ▸ Power ▸ Graphics ▸ Screen Recordings).
+    /// Screen recordings (Screenshot ▸ Record).
     pub screen_recording: ScreenRecordingSettings,
-    /// Video played (Preferences ▸ Power ▸ Graphics ▸ Video Playback).
+    /// Video played (Viewer ▸ View ▸ Decode With).
     pub video: VideoSettings,
     /// Olo's start-up sound as a session starts (Preferences ▸ Sound).
     pub startup_sound: bool,
@@ -2226,6 +2240,13 @@ impl Default for ScreenSaverSettings {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct PowerSettings {
+    /// Unset in older settings, which shared both timers between supplies.
+    #[serde(default)]
+    pub battery_display_off_minutes: Option<u32>,
+    #[serde(default)]
+    pub battery_sleep_minutes: Option<u32>,
+    /// Enter Battery Saver on discharge at this percentage (0 disables it).
+    pub saver_percent: u32,
     /// Minutes of idleness before the displays turn off; 0 is never.
     pub display_off_minutes: u32,
     /// Minutes of idleness before the machine sleeps; 0 is never.
@@ -2247,11 +2268,40 @@ pub struct PowerSettings {
     pub dim_when_looking_away: bool,
 }
 
+impl PowerSettings {
+    /// (Turn displays off, suspend), in minutes of inactivity.
+    pub fn idle_minutes(&self, battery: bool) -> (u32, u32) {
+        if battery {
+            (self.battery_display_off_minutes.unwrap_or(self.display_off_minutes), self.battery_sleep_minutes.unwrap_or(self.sleep_minutes))
+        } else {
+            (self.display_off_minutes, if self.sleep_on_battery_only { 0 } else { self.sleep_minutes })
+        }
+    }
+
+    pub fn set_idle_minutes(&mut self, battery: bool, sleep: bool, minutes: u32) {
+        // Materialize both old columns before changing either one.
+        let (off, suspend) = self.idle_minutes(true);
+        self.battery_display_off_minutes = Some(off);
+        self.battery_sleep_minutes = Some(suspend);
+        self.sleep_minutes = self.idle_minutes(false).1;
+        self.sleep_on_battery_only = false;
+        match (battery, sleep) {
+            (true, true) => self.battery_sleep_minutes = Some(minutes),
+            (true, false) => self.battery_display_off_minutes = Some(minutes),
+            (false, true) => self.sleep_minutes = minutes,
+            (false, false) => self.display_off_minutes = minutes,
+        }
+    }
+}
+
 impl Default for PowerSettings {
     fn default() -> Self {
         PowerSettings {
-            display_off_minutes: 10,
-            sleep_minutes: 30,
+            battery_display_off_minutes: Some(5),
+            battery_sleep_minutes: Some(15),
+            saver_percent: 15,
+            display_off_minutes: 15,
+            sleep_minutes: 0,
             sleep_on_battery_only: false,
             lock_on_display_off: true,
             lock_when_away_seconds: 0,

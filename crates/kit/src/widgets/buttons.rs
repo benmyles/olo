@@ -4,11 +4,18 @@
 
 use std::rc::Rc;
 
-use olo_interface::{Bounds, ClickEvent, Element, FontWeight, IntoElement, Painter, Pixels, SharedString, WindowCx, fill, point, px, size};
+use olo_interface::{Bounds, ClickEvent, Element, FontWeight, IntoElement, Painter, ParentElement as _, Pixels, SharedString, Styled as _, WindowCx, div, fill, point, px, size};
 use olo_kit_base::metrics as m;
 
 use super::control::{ControlState, control};
 use crate::{style, theme};
+
+// The radio's circular bevel is one point wider than a checkbox.
+const RADIO_WIDTH: f32 = 13.0;
+
+fn described(mark: impl IntoElement, width: f32, text: impl Into<SharedString>) -> Element {
+    div().flex().flex_col().child(mark).child(div().pl(px(width + m::MARK_GAP)).child(super::StringView::new(text).dim(true).wrap(true))).into_element()
+}
 
 /// A small button's height (`Button::small`).
 pub const SMALL_BUTTON_HEIGHT: f32 = 20.0;
@@ -565,6 +572,11 @@ impl CheckBox {
         self
     }
 
+    /// Add a wrapped explanation directly beneath this mark's label.
+    pub fn description(self, text: impl Into<SharedString>) -> Element {
+        described(self, m::MARK_SIZE, text)
+    }
+
     /// Gets the new value when clicked.
     pub fn on_toggle(mut self, f: impl Fn(&bool, &mut WindowCx) + 'static) -> Self {
         self.on_toggle = Some(Rc::new(f));
@@ -725,6 +737,11 @@ impl RadioButton {
         RadioButton { id: label.clone(), label, selected, enabled: true, height: m::MARK_ROW, on_select: None }
     }
 
+    /// Add a wrapped explanation directly beneath this mark's label.
+    pub fn description(self, text: impl Into<SharedString>) -> Element {
+        described(self, RADIO_WIDTH, text)
+    }
+
     /// As tall as what's beside it, as [`CheckBox::height`]: beside a
     /// label or a button (`metrics::CONTROL_HEIGHT`), its text and theirs
     /// share a baseline at every scale (20 points tall, centred beside 24,
@@ -755,7 +772,7 @@ impl IntoElement for RadioButton {
         // (As a CheckBox: without a label, an id of its own.)
         debug_assert!(!self.id.is_empty(), "a RadioButton without a label needs an id of its own (RadioButton::id)");
         let tw = f32::from(style::text_width(self.label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))).ceil();
-        let w = 13.0 + m::MARK_GAP + tw;
+        let w = RADIO_WIDTH + m::MARK_GAP + tw;
         let (label, selected) = (self.label.clone(), self.selected);
         let mut c = control(self.id.clone(), w, self.height, move |g, r, s| {
             let p = theme::palette();
@@ -788,7 +805,7 @@ impl IntoElement for RadioButton {
                 circle(g, cx0 - px(1.0), cy0 - px(1.0), 0.9, style::c([lit[0], lit[1], lit[2], 255]));
             }
             let color = if s.enabled { style::c(p.panel_text) } else { style::disabled_text(&p) };
-            let text = style::label(g, r.left() + px(13.0 + m::MARK_GAP), r.center().y, style::Align::Left, label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color);
+            let text = style::label(g, r.left() + px(RADIO_WIDTH + m::MARK_GAP), r.center().y, style::Align::Left, label.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color);
             if s.focused {
                 focus_underline(g, text, &p);
             }

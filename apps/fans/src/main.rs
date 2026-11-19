@@ -395,6 +395,53 @@ fn wanted(sensors: &[Sensor], watts: f32, margin: f32, strength: u8) -> (Level, 
     best
 }
 
+/// Escalate only on sustained heat. Give background work the first chance
+/// to yield, and use hysteresis before releasing the package ceiling.
+#[derive(Default)]
+struct Heat {
+    close_since: Option<Instant>,
+    cool_since: Option<Instant>,
+    level: u8,
+}
+
+impl Heat {
+    fn update(&mut self, margin: f32, now: Instant) -> u8 {
+        if margin <= 5.0 {
+            let since = *self.close_since.get_or_insert(now);
+            self.cool_since = None;
+            self.level = self.level.max(if now.duration_since(since) >= Duration::from_secs(8) { 2 } else { 1 });
+        } else {
+            self.close_since = None;
+            if margin <= 8.0 {
+                self.level = self.level.max(1);
+                self.cool_since = None;
+            } else if margin >= 12.0 {
+                let since = *self.cool_since.get_or_insert(now);
+                if now.duration_since(since) >= Duration::from_secs(15) {
+                    self.level = 0;
+                }
+            } else {
+                self.cool_since = None;
+            }
+        }
+        self.level
+    }
+}
+
+const PRESSURE: &str = "/run/olo-fans/pressure";
+
+fn report_heat(level: u8) {
+    let part = "/run/olo-fans/pressure.new";
+    let word = match level {
+        1 => "background",
+        2 => "hot",
+        _ => "normal",
+    };
+    if let Err(e) = std::fs::write(part, word).and_then(|()| std::fs::rename(part, PRESSURE)) {
+        eprintln!("couldn't publish thermal headroom: {e}");
+    }
+}
+
 /// The fans, as they were last set.
 struct Fans {
     /// thinkpad_acpi's fan file, and where what's being done is said.
@@ -600,6 +647,7 @@ fn main() -> std::process::ExitCode {
     let start = Instant::now();
     let mut fans = Fans::new(Path::new(FAN), Path::new(STATUS), start);
     let mut current = None;
+    let mut heat = Heat::default();
     // Whether the driver was last seen not to take levels (said once).
     let mut untaken = false;
     loop {
@@ -608,6 +656,8 @@ fn main() -> std::process::ExitCode {
         if current != Some(p) {
             eprintln!("olo-fans: profile {p:?}");
             current = Some(p);
+            heat = Heat::default();
+            report_heat(0);
             untaken = false;
             // (There from the start: a service that says nothing reads
             // as one that isn't running.)
@@ -636,6 +686,8 @@ fn main() -> std::process::ExitCode {
             // then, for a driver loaded again by hand.
             Profile::Cool(_) if !takes_levels(Path::new(CONTROL)) => {
                 if !untaken {
+                    heat = Heat::default();
+                    report_heat(0);
                     untaken = true;
                     let kept = match keep_levels(Path::new(MODPROBE)) {
                         Ok(true) => format!("{MODPROBE} written: it takes them from the computer's next start"),
@@ -664,6 +716,12 @@ fn main() -> std::process::ExitCode {
                     if now >= s.due {
                         s.read(now);
                     }
+                }
+                let margin = list.iter().filter(|s| s.kind != Kind::Part).filter_map(|s| s.reading.map(|v| s.limit - v)).fold(f32::INFINITY, f32::min);
+                let previous = heat.level;
+                let level = heat.update(margin, now);
+                if level != previous {
+                    report_heat(level);
                 }
                 let watts = power.read(now);
                 let (up, why) = wanted(&list, watts, 0.0, strength);
@@ -697,6 +755,7 @@ fn main() -> std::process::ExitCode {
     let _ = fans.say("level auto");
     let _ = fans.say("watchdog 0");
     let _ = std::fs::remove_file(STATUS);
+    let _ = std::fs::remove_file(PRESSURE);
     eprintln!("olo-fans: ending; the fans are the firmware's again");
     std::process::ExitCode::SUCCESS
 }
@@ -704,6 +763,17 @@ fn main() -> std::process::ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn heat_asks_background_work_first_and_releases_after_recovery() {
+        let now = Instant::now();
+        let mut heat = Heat::default();
+        assert_eq!(heat.update(6.0, now), 1);
+        assert_eq!(heat.update(4.0, now), 1);
+        assert_eq!(heat.update(4.0, now + Duration::from_secs(9)), 2);
+        assert_eq!(heat.update(14.0, now + Duration::from_secs(10)), 2);
+        assert_eq!(heat.update(14.0, now + Duration::from_secs(26)), 0);
+    }
 
     /// The fans start where a sensor's span says and reach full speed at
     /// its end, a step at a time between.

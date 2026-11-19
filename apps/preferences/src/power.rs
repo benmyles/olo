@@ -1,169 +1,208 @@
-//! Power, in three tabs (Ben, 2026-11-06: "centralize the gpu power
-//! settings and cpu power settings to all be under the prefs -> power
-//! section"):
-//!
-//! - Power Modes: the power mode (Power Saver, Balanced, Performance,
-//!   through the power profiles daemon: `olo_system::power_profile`; also
-//!   in Deskbar's battery menu, and found from Performance) and what each
-//!   mode, and running on battery, puts the processors and each GPU on
-//!   (`gpus::modes`).
-//! - Graphics: each GPU, its Custom settings, and what records and plays
-//!   video (`gpus::graphics`).
-//! - Battery & Idle: the battery, when an idle machine turns its
-//!   display off and sleeps,
-//!   caffeinated mode (stay awake until turned off; also the cup in the
-//!   Deskbar) and presence.
-//!
-//! The battery and the fans' keeper are read on a thread every few
-//! seconds; the modes follow the daemon's signals.
-
-use std::{sync::Arc, time::Duration};
-
-use olo_kit::{
-    Cx, ParentElement as _, SharedString, Styled as _, WindowCx, div, metrics as m, px,
-    widgets::{CheckBox, RadioButton, StringView, TabView},
-};
-use olo_protocol::{PowerStatus, Settings};
-use olo_sync::Mutex;
-use olo_system::{
-    battery::{self, Battery, State as Charge},
-    fans,
-    power_profile::{self, Mode, Modes},
-};
-
+//! Three immediate power policies. Driver readback is collected on demand,
+//! off the window thread, and follows the follower while its pane is open.
 use crate::{
     Msg, PanelView,
     form::{Ui, divider_for},
     server::Server,
 };
+use olo_kit::{
+    Cx, ParentElement as _, SharedString, Styled as _, WindowCx, div, metrics as m, px,
+    widgets::{CheckBox, PaneSwitch, RadioButton, StringView, TabView},
+};
+use olo_protocol::{
+    PowerStatus, Settings,
+    power_mode::{Mode, Modes},
+};
+use olo_sync::Mutex;
+use olo_system::{
+    battery::{self, Battery, State as Charge},
+    fans, gpu_tuning,
+};
+use std::{
+    path::{Path, PathBuf},
+    sync::{
+        Arc,
+        mpsc::{SyncSender, sync_channel},
+    },
+    time::Duration,
+};
 
-/// What the poller last read: None until it has; Some(None) for no battery.
-type Shared = Arc<Mutex<Option<Option<Battery>>>>;
+pub const TABS: [&str; 2] = ["Power Mode", "Battery & Idle"];
 
-/// The battery, read on a thread of its own while the panel is open.
-pub struct State {
-    battery: Shared,
-    /// The power modes: None while being read, then the daemon's (None:
-    /// there is none).
-    modes: Modes_,
-    /// The battery's charge limit (UPower's), when it has one: read on a
-    /// thread as the panel opens and after each change.
-    limit: Arc<Mutex<Option<battery::ChargeLimit>>>,
-    /// A presence sensor: whether the session can read it (Olo's rule
-    /// in); None without one.
-    presence: Option<bool>,
-    /// The GPUs follow the power mode (its follower installed by Power
-    /// Modes' Apply): read with the modes, off the UI thread.
-    gpus_follow: Arc<std::sync::atomic::AtomicBool>,
-    /// The tab showing (`TABS`).
-    pub tab: usize,
-    /// The plan and the GPUs (Power Modes and Graphics).
-    pub gpus: crate::gpus::State,
-}
-
-/// Power's tabs.
-pub const TABS: [&str; 3] = ["Power Modes", "Graphics", "Battery & Idle"];
-
-/// Power shown on tab `name` (`--tab`; the old GPUs panel's names: Graphics).
 pub fn show_tab(st: &mut State, name: &str) {
-    if let Some(i) = TABS.iter().position(|t| t.eq_ignore_ascii_case(name)) {
-        st.tab = i;
+    st.tab = usize::from(name.eq_ignore_ascii_case(TABS[1]));
+    if name.eq_ignore_ascii_case("Graphics") {
+        st.set_details(true);
     }
 }
 
-type Modes_ = Arc<Mutex<Option<Option<Modes>>>>;
+#[derive(Default, Clone)]
+struct Facts {
+    battery: Option<Battery>,
+    limit: Option<battery::ChargeLimit>,
+    presence: Option<bool>,
+    charge_writable: bool,
+    hardware: Vec<(String, String)>,
+    issue: Option<String>,
+}
+
+fn demo() -> bool {
+    cfg!(test) || std::env::var_os("OLO_POWER_DEMO").is_some()
+}
+
+impl Facts {
+    fn read(details: bool) -> Self {
+        if demo() {
+            return Self {
+                battery: Some(Battery { percent: 79, state: Charge::NotCharging, time_to_empty: None, time_to_full: None, cycle_count: None, health: None, charge_limit: Some(80), power_watts: None }),
+                limit: Some(battery::ChargeLimit { enabled: true, start: 75, end: 80, path: String::new() }),
+                charge_writable: true,
+                presence: Some(true),
+                hardware: vec![
+                    ("CPU".into(), "Turbo on, 8–100% performance range".into()),
+                    ("Graphics".into(), "Intel driving the built-in display, NVIDIA asleep".into()),
+                    ("Cooling".into(), "Fans at level 3 of 7".into()),
+                ],
+                ..Self::default()
+            };
+        }
+        let mut f = Self {
+            battery: battery::battery(),
+            limit: battery::charge_limit(),
+            charge_writable: olo_xdg::session::real(),
+            presence: olo_system::presence::sensor().map(|s| olo_system::presence::readable(&s)),
+            ..Default::default()
+        };
+        if let Some(followed) = gpu_tuning::Followed::load(Path::new("/")) {
+            if followed.version < gpu_tuning::FOLLOWER_VERSION {
+                f.issue = Some("Update the power service in Olo Doctor to use these policies.".into());
+            } else if !followed.failed.is_empty() {
+                f.issue = Some("The power service reported a problem applying this mode. Olo Doctor has the details.".into());
+            }
+        } else {
+            f.issue = Some("Olo Doctor can set up the hardware power service.".into());
+        }
+        if !details {
+            return f;
+        }
+        if let Some(c) = olo_system::cpu_tuning::caps() {
+            let mut parts = vec![olo_kit::words::tr(if c.turbo { "Turbo on" } else { "Turbo off" }).to_owned()];
+            match (c.floor, c.top) {
+                (Some(lo), Some(hi)) if lo == hi => parts.push(olo_kit::tr!("minimum and maximum both {}%", hi)),
+                (Some(lo), Some(hi)) => parts.push(olo_kit::tr!("{}–{}% performance range", lo, hi)),
+                (_, Some(hi)) => parts.push(olo_kit::tr!("ceiling {}%", hi)),
+                _ => {}
+            }
+            if !c.preference.is_empty() {
+                parts.push(c.preference.replace('_', " "));
+            }
+            f.hardware.push(("CPU".into(), parts.join(", ")));
+        }
+        for gpu in olo_system::gpus::list() {
+            let ports: Vec<_> = gpu
+                .connectors
+                .iter()
+                .filter(|port| {
+                    gpu.card
+                        .as_ref()
+                        .and_then(|p| p.file_name())
+                        .is_some_and(|card| std::fs::read_to_string(format!("/sys/class/drm/{}-{port}/enabled", card.to_string_lossy())).is_ok_and(|s| s.trim() == "enabled"))
+                })
+                .cloned()
+                .collect();
+            let status = if gpu_tuning::asleep(&gpu) {
+                "asleep".to_owned()
+            } else if !ports.is_empty() {
+                olo_kit::tr!(
+                    "driving {}",
+                    ports.iter().map(|p| if p.starts_with("eDP") || p.starts_with("LVDS") { olo_kit::words::tr("the built-in display").to_owned() } else { p.clone() }).collect::<Vec<_>>().join(", ")
+                )
+            } else {
+                "awake".into()
+            };
+            f.hardware.push((gpu.maker().into(), status));
+        }
+        let cooling = fans::look(&fans::Places::here())
+            .and_then(|f| {
+                f.level().map(|(l, w)| {
+                    if l == "auto" {
+                        olo_kit::words::tr("Firmware curve").to_owned()
+                    } else if w.is_empty() {
+                        olo_kit::tr!("Fan level {}", l)
+                    } else {
+                        olo_kit::tr!("Fan level {} · {}", l, w)
+                    }
+                })
+            })
+            .unwrap_or_else(|| olo_kit::words::tr("Firmware curve").to_owned());
+        let pressure = std::fs::read_to_string("/run/olo-fans/pressure").unwrap_or_default();
+        let cooling = match pressure.trim() {
+            "background" => olo_kit::tr!("{} · easing background work", cooling),
+            "hot" => olo_kit::tr!("{} · limiting sustained power", cooling),
+            _ => cooling,
+        };
+        f.hardware.push(("Cooling".into(), cooling));
+        f
+    }
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+pub struct Saved {
+    tab: usize,
+    hardware: bool,
+    idle_options: bool,
+}
+
+pub struct State {
+    pub tab: usize,
+    pub details: bool,
+    more_idle: bool,
+    facts: Arc<Mutex<Option<Facts>>>,
+    refresh: SyncSender<()>,
+    expanded: Arc<std::sync::atomic::AtomicBool>,
+    watch: Option<olo_kit::watch::Watch>,
+    observed: Option<(Option<Mode>, Option<u32>, bool)>,
+}
 
 impl State {
-    pub fn new(_cx: &mut Cx<PanelView>) -> State {
-        // The power modes, as the daemon says, kept up to date by its
-        // signals (a ThinkPad's Fn+L/M/H too). Tests: made up.
-        let modes: Modes_ = Default::default();
-        let gpus_follow: Arc<std::sync::atomic::AtomicBool> = Default::default();
-        if cfg!(test) {
-            *modes.lock().unwrap() = Some(Some(Modes { active: Mode::Balanced, available: Mode::ALL.to_vec(), degraded: None, drivers: vec!["intel_pstate".into(), "platform_profile".into()] }));
-        } else {
-            let (into, proxy, follow) = (modes.clone(), olo_kit::proxy(), gpus_follow.clone());
-            power_profile::watch(move |m| {
-                let on = std::path::Path::new("/etc/systemd/system/olo-gpu-follow.service").exists();
-                follow.store(on, std::sync::atomic::Ordering::Relaxed);
-                *into.lock().unwrap() = Some(m);
+    pub fn saved(&self) -> Saved {
+        Saved { tab: self.tab, hardware: self.details, idle_options: self.more_idle }
+    }
+    pub fn restore(&mut self, saved: Saved) {
+        self.tab = saved.tab.min(1);
+        self.more_idle = saved.idle_options;
+        self.set_details(saved.hardware);
+    }
+    pub fn new(_cx: &mut Cx<PanelView>) -> Self {
+        let facts = Arc::new(Mutex::new(demo().then(|| Facts::read(false))));
+        let (refresh, jobs) = sync_channel(1);
+        let expanded = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (out, details, proxy) = (facts.clone(), expanded.clone(), olo_kit::proxy());
+        std::thread::spawn(move || {
+            while jobs.recv().is_ok() {
+                *out.lock().unwrap() = Some(Facts::read(details.load(std::sync::atomic::Ordering::Relaxed)));
                 proxy.send(Msg::Redraw);
-            });
-        }
-        let limit: Arc<Mutex<Option<battery::ChargeLimit>>> = Default::default();
-        read_limit(&limit, olo_kit::proxy());
-        // (Tests: a ThinkPad's, readable.)
-        let presence = if cfg!(test) { Some(true) } else { olo_system::presence::sensor().map(|s| olo_system::presence::readable(&s)) };
-        State { battery: poll(olo_kit::proxy()), modes, limit, presence, gpus_follow, tab: 0, gpus: crate::gpus::State::new() }
-    }
-}
-
-/// Read the battery's charge limit (UPower's), on a thread.
-fn read_limit(into: &Arc<Mutex<Option<battery::ChargeLimit>>>, proxy: olo_kit::Proxy) {
-    // Tests (the layout lint): a ThinkPad's.
-    if cfg!(test) {
-        *into.lock().unwrap() = Some(battery::ChargeLimit { enabled: false, start: 75, end: 80, path: String::new() });
-        return;
-    }
-    let into = into.clone();
-    std::thread::spawn(move || {
-        let now = battery::charge_limit();
-        *into.lock().unwrap() = now;
-        proxy.send(Msg::Redraw);
-    });
-}
-
-fn poll(proxy: olo_kit::Proxy) -> Shared {
-    let battery: Shared = Default::default();
-    // Tests (the layout lint): a battery with all there is to say, and
-    // not this machine's.
-    if cfg!(test) {
-        *battery.lock().unwrap() = Some(Some(Battery {
-            percent: 87,
-            state: Charge::Discharging,
-            time_to_empty: Some(Duration::from_secs(5 * 3600 + 47 * 60)),
-            time_to_full: None,
-            cycle_count: Some(1284),
-            health: Some(91),
-            charge_limit: Some(80),
-            power_watts: Some(12.4),
-        }));
-        return battery;
-    }
-    let out = Arc::downgrade(&battery);
-    std::thread::Builder::new()
-        .name("battery".into())
-        .spawn(move || {
-            // Ends once the panel (the only strong reference) has closed.
-            let places = fans::Places::here();
-            let mut fans_seen: Option<Option<fans::State>> = None;
-            while let Some(shared) = out.upgrade() {
-                let b = battery::battery();
-                {
-                    let mut slot = shared.lock().unwrap();
-                    if slot.as_ref() != Some(&b) {
-                        *slot = Some(b);
-                        proxy.send(Msg::Redraw);
-                    }
-                }
-                // The fans' keeper with it (a few small files): the
-                // level it holds changes as the computer works, and
-                // Power Modes says it (drawn again as it changes).
-                let now = fans::look(&places);
-                if fans_seen.as_ref() != Some(&now) {
-                    fans_seen = Some(now);
-                    proxy.send(Msg::Redraw);
-                }
-                drop(shared);
-                std::thread::sleep(Duration::from_secs(5));
             }
-        })
-        .expect("thread");
-    battery
+        });
+        let _ = refresh.try_send(());
+        Self { tab: 0, details: false, more_idle: false, facts, refresh, expanded, watch: None, observed: None }
+    }
+    pub fn set_details(&mut self, open: bool) {
+        self.details = open;
+        self.expanded.store(open, std::sync::atomic::Ordering::Relaxed);
+        self.watch = if open && !demo() {
+            let tx = self.refresh.clone();
+            olo_kit::watch::watch(["/run/olo-gpu-follow.json", "/run/olo-fans/status", "/run/olo-fans/pressure"].map(PathBuf::from), move |_| {
+                let _ = tx.try_send(());
+            })
+        } else {
+            None
+        };
+        if open {
+            let _ = self.refresh.try_send(());
+        }
+    }
 }
-
-const DISPLAY_OFF: &[u32] = &[1, 2, 5, 10, 15, 30, 60, 0];
-const SLEEP: &[u32] = &[5, 10, 15, 30, 60, 120, 180, 0];
 
 fn minutes_text(m: u32) -> String {
     match m {
@@ -197,7 +236,7 @@ pub fn summary(b: &Battery) -> String {
             None => olo_kit::words::tr("on battery").to_owned(),
         },
         Charge::NotCharging => match b.charge_limit {
-            Some(l) if l < 100 && b.percent + 2 >= l => olo_kit::tr!("plugged in, held at the {}% limit", l),
+            Some(l) if l < 100 && b.percent + 2 >= l => olo_kit::tr!("plugged in, charge limit {}%", l),
             _ => olo_kit::words::tr("plugged in, not charging").to_owned(),
         },
         Charge::Unknown => String::new(),
@@ -229,65 +268,17 @@ pub fn minutes_menu(ui: &mut Ui, id: &str, label: &str, divider: f32, choices: &
     );
 }
 
-/// Power Saver, Balanced or Performance: the system's power profiles
-/// daemon makes each what the machine has (the processors' energy
-/// preference and governor, the firmware's platform profile).
-fn power_mode(ui: &mut Ui, modes: Option<Option<Modes>>, shared: &Modes_, gpus_follow: bool) {
-    ui.bbox("Power Mode", |ui| {
-        let Some(modes) = modes else {
-            ui.note("Reading…");
-            return;
-        };
-        let Some(modes) = modes else {
-            ui.note("No power profiles daemon is running (power-profiles-daemon, or tuned-ppd on Fedora): Olo sets the power mode through it.");
-            return;
-        };
-        // The modes side by side, each its description under it (stacked,
-        // with a SATA SSD's row the tab outgrew a 1280 × 800 screen).
-        let mut columns = Vec::new();
-        for mode in Mode::ALL.into_iter().filter(|m| modes.available.contains(m)) {
-            let shared = shared.clone();
-            let pick = ui.on_view(move |_, _: &(), cx| {
-                // (Shown at once; the daemon's signal confirms it.)
-                if let Some(Some(m)) = shared.lock().unwrap().as_mut() {
-                    m.active = mode;
-                }
-                std::thread::spawn(move || {
-                    if let Err(e) = power_profile::set(mode) {
-                        tracing::warn!(?mode, "power mode: {e}");
-                    }
-                });
-                cx.notify();
-            });
-            let items = ui.collect(|ui| {
-                ui.add(RadioButton::new(mode.label(), modes.active == mode).id(format!("power-{}", mode.id())).on_select(move |_window, cx| pick(&(), cx)));
-                // (Under the label, past the mark.)
-                ui.add(div().pl(px(m::MARK_SIZE + m::MARK_GAP)).child(StringView::new(mode.about()).dim(true).wrap(true)));
-            });
-            columns.push(div().flex_1().min_w(px(0.0)).flex().flex_col().gap(px(m::STACK)).children(items));
-        }
-        ui.add(div().flex().flex_row().items_start().gap(px(m::SPACING * 2.0)).children(columns));
-        if let Some(why) = modes.degraded_text() {
-            ui.note(why);
-        }
-        let what = if modes.drivers.is_empty() {
-            olo_kit::words::tr("the system's power profiles daemon").to_string()
-        } else {
-            olo_kit::tr!("the power profiles daemon, through {}", modes.drivers.join(" and "))
-        };
-        ui.note(olo_kit::tr!("Set for the whole computer by {}{}.", what, if gpus_follow { ", and on every GPU as below" } else { "" }));
-    });
-}
-
 pub fn ui(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut State) {
-    let items = ui.collect(|ui| match st.tab {
-        0 => {
-            let modes = st.modes.lock().unwrap().clone();
-            power_mode(ui, modes, &st.modes, st.gpus_follow.load(std::sync::atomic::Ordering::Relaxed));
-            crate::gpus::modes(ui, &mut st.gpus);
+    let facts = st.facts.lock().unwrap().clone();
+    if let Some(p) = power {
+        let key = (p.policy.modes.as_ref().map(|m| m.active), p.policy.percent, p.policy.on_battery);
+        if st.observed.replace(key) != Some(key) {
+            let _ = st.refresh.try_send(());
         }
-        1 => crate::gpus::graphics(ui, &mut st.gpus),
-        _ => battery_and_idle(ui, power, server, st),
+    }
+    let items = ui.collect(|ui| match st.tab {
+        0 => modes_ui(ui, power, facts.as_ref(), server, st),
+        _ => idle_ui(ui, facts.as_ref(), st),
     });
     let pick = ui.on_view(|v, i: &usize, cx| {
         if let crate::panel::State::Power(st) = &mut v.state {
@@ -295,96 +286,198 @@ pub fn ui(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut St
         }
         cx.notify();
     });
-    let tabs: Vec<SharedString> = TABS.into_iter().map(SharedString::from).collect();
     ui.add(
-        div()
-            .flex_1()
-            .flex()
-            .flex_col()
-            .child(TabView::new("power-tabs", tabs, st.tab).grows().on_select(pick).child(div().flex_1().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(items))),
+        div().flex_1().flex().flex_col().child(
+            TabView::new("power-tabs", TABS.into_iter().map(SharedString::from).collect::<Vec<_>>(), st.tab)
+                .grows()
+                .on_select(pick)
+                .child(div().flex_1().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(items)),
+        ),
     );
 }
 
-/// Battery & Idle: two columns, so it fits a laptop's screen: the battery,
-/// and when idle, caffeinated and presence beside it.
-fn battery_and_idle(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut State) {
-    let battery = st.battery.lock().unwrap().clone();
-    let left = ui.collect(|ui| {
-        battery_box(ui, battery, st);
-        // (The fans' profile is a row of each power mode now: Power Modes.)
+fn modes_ui(ui: &mut Ui, power: Option<&PowerStatus>, facts: Option<&Facts>, server: &Server, st: &State) {
+    let example = Modes { active: Mode::Balanced, available: Mode::ALL.to_vec(), degraded: None, drivers: vec![] };
+    let modes = power.and_then(|p| p.policy.modes.as_ref()).or_else(|| demo().then_some(&example));
+    let choices = ui.collect(|ui| {
+        for mode in Mode::ALL {
+            let enabled = modes.is_some_and(|m| m.available.contains(&mode));
+            let server = server.clone();
+            let description = if !enabled && modes.is_some() { "Unavailable with this computer's power driver." } else { mode.about() };
+            ui.add(
+                RadioButton::new(mode.label(), modes.is_some_and(|m| m.active == mode))
+                    .id(format!("power-{}", mode.id()))
+                    .enabled(enabled)
+                    .on_select(move |_, _| server.set_mode(mode))
+                    .description(description),
+            );
+        }
+        if modes.is_none() {
+            ui.label(if power.is_some() { "The system power profiles service is unavailable." } else { "Reading power modes…" });
+        }
+        if let Some(note) = modes.and_then(Modes::degraded_text) {
+            ui.label(note);
+        }
+        if let Some(error) = power.and_then(|p| p.policy.error.as_deref()) {
+            ui.add(StringView::new(error.to_owned()).wrap(true));
+        }
     });
-    let presence = st.presence;
-    let right = ui.collect(|ui| {
-        idle_boxes(ui, power, server);
-        presence_box(ui, presence);
+    ui.add(div().flex().flex_col().gap(px(m::SPACING)).mb(px(m::TIGHT)).children(choices));
+    if facts.is_some_and(|f| f.battery.is_some()) || power.is_some_and(|p| p.policy.percent.is_some()) {
+        ui.choose(
+            "automatic-saver",
+            &[(0, "Off"), (10, "At 10%"), (15, "At 15%"), (20, "At 20%")],
+            &ui.s.power.saver_percent,
+            |f| f.label("Use Battery Saver automatically").divider(divider_for(&["Use Battery Saver automatically"])),
+            |s, v| s.power.saver_percent = v,
+        );
+        if let Some(p) = power
+            && let Some(mode) = p.policy.resume_on_ac
+        {
+            ui.label(olo_kit::tr!("Battery Saver at {}% · {} resumes on AC", p.policy.percent.unwrap_or_default(), olo_kit::words::tr(mode.label())));
+        }
+    }
+    if let Some(issue) = facts.and_then(|f| f.issue.as_ref()) {
+        ui.add(StringView::new(olo_kit::words::of_text(issue)).wrap(true));
+        ui.button("Open Olo Doctor", |_, _| {
+            std::thread::spawn(|| {
+                let _ = olo_xdg::open::spawn(&["olo-doctor".into()]);
+            });
+        });
+    }
+    let toggle = ui.on_view(|v, open: &bool, cx| {
+        if let crate::panel::State::Power(st) = &mut v.state {
+            st.set_details(*open);
+        }
+        cx.notify();
     });
-    let column = |items: Vec<olo_kit::Element>| div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).children(items);
-    ui.add(div().flex().flex_row().items_start().gap(px(m::SPACING)).child(column(left)).child(column(right)));
+    ui.add(PaneSwitch::new("Current hardware state", st.details).id("power-hardware").on_toggle(toggle));
+    if st.details {
+        let rows = ui.collect(|ui| match facts {
+            Some(f) if !f.hardware.is_empty() => {
+                for (name, value) in &f.hardware {
+                    ui.add(
+                        div()
+                            .flex()
+                            .flex_row()
+                            .items_start()
+                            .gap(px(m::SPACING))
+                            .child(div().w(px(76.0)).flex_shrink_0().child(StringView::new(olo_kit::words::of_text(name)).dim(true).wrap(true)))
+                            .child(div().flex_1().min_w_0().child(StringView::new(value.clone()).wrap(true))),
+                    );
+                }
+
+                let tx = st.refresh.clone();
+                ui.button("Refresh", move |_, _| {
+                    let _ = tx.try_send(());
+                });
+            }
+            _ => ui.label("Reading hardware…"),
+        });
+        ui.add(div().pl(px(m::MARK_SIZE + m::MARK_GAP)).flex().flex_col().gap(px(m::TIGHT)).children(rows));
+    }
 }
 
-fn battery_box(ui: &mut Ui, battery: Option<Option<Battery>>, st: &State) {
-    ui.bbox("Battery", |ui| match battery {
-        None => ui.note("Reading…"),
-        Some(None) => ui.note("This computer has no battery."),
-        Some(Some(b)) => {
-            ui.label(summary(&b));
-            let mut facts = Vec::new();
-            if let Some(h) = b.health {
-                facts.push(olo_kit::tr!("Health: {}% of original capacity", h));
+fn idle_ui(ui: &mut Ui, facts: Option<&Facts>, st: &State) {
+    ui.bbox("Battery", |ui| match facts {
+        None => ui.label("Reading battery…"),
+        Some(f) => {
+            let Some(b) = &f.battery else {
+                ui.label("This computer has no battery.");
+                return;
+            };
+            if b.state == Charge::NotCharging && f.limit.as_ref().is_some_and(|limit| limit.enabled && b.percent + 2 >= limit.end) {
+                ui.label(format!("{}% — {}", b.percent, olo_kit::words::tr("Plugged in")));
+            } else {
+                ui.label(summary(b));
             }
-            if let Some(c) = b.cycle_count {
-                facts.push(format!("{c} cycles"));
-            }
-            if !facts.is_empty() {
-                ui.note(facts.join(" · "));
-            }
-            // Charging stopped short, to spare a battery that's mostly
-            // plugged in (UPower's threshold: a ThinkPad's).
-            if let Some(l) = st.limit.lock().unwrap().clone() {
-                let (shared, proxy, it) = (st.limit.clone(), olo_kit::proxy(), l.clone());
-                let toggle = move |on: &bool, _: &mut WindowCx| {
-                    let (l, shared, proxy, on) = (it.clone(), shared.clone(), proxy.clone(), *on);
-                    std::thread::spawn(move || {
-                        if let Err(e) = battery::set_charge_limit(&l, on) {
-                            tracing::warn!("charge limit: {e}");
-                        }
-                        read_limit(&shared, proxy);
-                    });
-                };
-                let label = olo_kit::tr!("Stop charging at {}% (and start again below {}%)", l.end, l.start);
-                ui.add(CheckBox::new(label, l.enabled).on_toggle(toggle));
-                ui.add(div().pl(px(m::MARK_SIZE + m::MARK_GAP)).child(StringView::new("A battery kept full wears faster: for a computer that's mostly plugged in.").dim(true).wrap(true)));
+            if let Some(l) = &f.limit {
+                let (l, tx, facts) = (l.clone(), st.refresh.clone(), st.facts.clone());
+                let label = olo_kit::tr!("Limit charging to {}%", l.end);
+                let resume = if l.enabled { olo_kit::tr!("Charging resumes below {}%.", l.start) } else { olo_kit::words::tr("Turn on for a laptop usually plugged in.").to_owned() };
+                ui.add(
+                    CheckBox::new(label, l.enabled)
+                        .id("charge-limit")
+                        .enabled(f.charge_writable)
+                        .on_toggle(move |on, _: &mut WindowCx| {
+                            if demo() {
+                                if let Some(l) = facts.lock().unwrap().as_mut().and_then(|f| f.limit.as_mut()) {
+                                    l.enabled = *on;
+                                }
+                                olo_kit::proxy().send(Msg::Redraw);
+                                return;
+                            }
+                            let (l, on, tx) = (l.clone(), *on, tx.clone());
+                            std::thread::spawn(move || {
+                                if let Err(e) = battery::set_charge_limit(&l, on) {
+                                    tracing::warn!(?e, "charge limit");
+                                }
+                                let _ = tx.try_send(());
+                            });
+                        })
+                        .description(resume),
+                );
             }
         }
     });
-}
-
-fn idle_boxes(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server) {
-    let p = ui.s.power.clone();
+    let battery = facts.is_some_and(|f| f.battery.is_some());
     ui.bbox("When Idle", |ui| {
-        const OFF: &str = "Turn the display off after:";
-        const SLEEP_AFTER: &str = "Put the computer to sleep after:";
-        let divider = divider_for(&[OFF, SLEEP_AFTER]);
-        minutes_menu(ui, "display-off", OFF, divider, DISPLAY_OFF, p.display_off_minutes, |s, m| s.power.display_off_minutes = m);
-        minutes_menu(ui, "sleep", SLEEP_AFTER, divider, SLEEP, p.sleep_minutes, |s, m| s.power.sleep_minutes = m);
-        ui.enabled_if(p.sleep_minutes > 0, |ui| ui.check("Only on battery power", p.sleep_on_battery_only, |s, v| s.power.sleep_on_battery_only = v));
-        ui.enabled_if(p.display_off_minutes > 0, |ui| ui.check("Lock the screen when the display turns off", p.lock_on_display_off, |s, v| s.power.lock_on_display_off = v));
+        let values = ui.s.power.clone();
+        let label_w = divider_for(&["Turn off displays", "Sleep"]);
+        let mut head = div().flex().flex_row().gap(px(m::SPACING)).child(div().w(px(label_w)));
+        for (dc, label) in [(true, "On battery"), (false, "Plugged in")] {
+            if !dc || battery {
+                head = head.child(div().flex_1().child(StringView::new(label).dim(true)));
+            }
+        }
+        let mut rows = div().flex().flex_col().gap(px(m::STACK));
+        for (sleep, label) in [(false, "Turn off displays"), (true, "Sleep")] {
+            let mut row = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().w(px(label_w)).child(StringView::new(label)));
+            for (dc, source) in [(true, "on battery"), (false, "plugged in")] {
+                if dc && !battery {
+                    continue;
+                }
+                let (off, suspend) = values.idle_minutes(dc);
+                let current = if sleep { suspend } else { off };
+                let mut choices = vec![5, 15, 30, 60, 0];
+                if !choices.contains(&current) {
+                    choices.insert(0, current);
+                }
+                let index = choices.iter().position(|&t| t == current).unwrap_or(0);
+                let name = format!("{label} {source}");
+                let items = ui.collect(|ui| {
+                    ui.menu(
+                        &format!("idle-{sleep}-{dc}"),
+                        choices.iter().map(|m| minutes_text(*m).into()).collect(),
+                        index,
+                        |f| f.name(name),
+                        move |s, i| {
+                            if let Some(&m) = choices.get(i) {
+                                s.power.set_idle_minutes(dc, sleep, m);
+                            }
+                        },
+                    )
+                });
+                row = row.child(div().flex_1().min_w_0().children(items));
+            }
+            rows = rows.child(row);
+        }
+        ui.add(div().flex().flex_col().child(head).child(rows));
     });
-
-    ui.bbox("Caffeinated", |ui| {
-        let Some(status) = power else {
-            ui.note("Waiting for app_server…");
-            return;
-        };
-        let server = server.clone();
-        ui.add(CheckBox::new("Stay awake: no display sleep, sleep, screen saver or lock", status.caffeinated).on_toggle(move |on, _| server.set_caffeinated(*on)));
-        let note = match status.app_inhibitors {
-            0 => olo_kit::words::tr("Also from the Deskbar: click the cup.").to_owned(),
-            1 => olo_kit::words::tr("An application is keeping the display awake.").to_owned(),
-            n => olo_kit::tr!("{} applications are keeping the display awake.", n),
-        };
-        ui.note(note);
+    let toggle = ui.on_view(|v, open: &bool, cx| {
+        if let crate::panel::State::Power(st) = &mut v.state {
+            st.more_idle = *open;
+        }
+        cx.notify();
     });
+    ui.add(PaneSwitch::new("Lock & presence", st.more_idle).id("idle-options").on_toggle(toggle));
+    if st.more_idle {
+        let controls = ui.collect(|ui| {
+            ui.check("Lock when the displays turn off", ui.s.power.lock_on_display_off, |s, v| s.power.lock_on_display_off = v);
+            presence_box(ui, facts.and_then(|f| f.presence));
+        });
+        ui.add(div().pl(px(m::MARK_SIZE + m::MARK_GAP)).flex().flex_col().gap(px(m::SPACING)).children(controls));
+    }
 }
 
 /// Seconds after the person walks away before the screen locks.
@@ -437,7 +530,7 @@ mod tests {
         assert_eq!(summary(&d), "57% — 2 h 10 min remaining");
         let mut l = b(80, Charge::NotCharging);
         l.charge_limit = Some(80);
-        assert_eq!(summary(&l), "80% — plugged in, held at the 80% limit");
+        assert_eq!(summary(&l), "80% — plugged in, charge limit 80%");
         assert_eq!(minutes_text(120), "2 hours");
         assert_eq!(minutes_text(0), "Never");
     }

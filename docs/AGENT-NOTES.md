@@ -773,3 +773,16 @@ Doctor check, try its fix and look again: the finding must be gone.
   `tools/dev/unit-watch` (bpftrace, as root) names whoever removes a
   unit folder: `sudo tools/dev/unit-watch >> /var/tmp/NAME/rmdir.log`;
   the sweep's own runs are in `journalctl --user -u olo-sweep`.
+
+
+- **Power mode readback on the P1 (2026-11-19).** TuneD 2.28 reports
+  PPD ActiveProfile before it finishes applying its profile. In a real
+  transition Olo saw the change 47 ms before the completion entry.
+  Subscribe to TuneD's `com.redhat.tuned.control.profile_changed` at
+  `/Tuned` to observe completion. With a 90% cap already present,
+  throughput-performance's 100% minimum left intel_pstate at 90/90
+  even after Olo restored powersave and balance_performance. Check
+  both global limits. Xe's reported render minimum followed RPe
+  through 650, 700 and 850 MHz with 650 requested. Its media GT
+  has separate clock limits. Use PCI runtime status and DRM connector
+  `enabled` for inspection of a sleeping NVIDIA GPU.

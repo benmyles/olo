@@ -31,7 +31,6 @@ mod face_unlock;
 mod fastmail;
 mod form;
 mod google;
-mod gpus;
 mod integrations;
 mod keyboard;
 mod language;
@@ -360,10 +359,11 @@ impl Prefs {
         self.redraw();
     }
 
-    fn save_state(&mut self) -> Option<String> {
+    fn save_state(&mut self, views: &[String]) -> Option<String> {
         self.windows.retain(Shown::is_open);
         let open: Vec<&str> = self.windows.iter().map(|w| w.panel().map_or("", Panel::arg)).collect();
-        serde_json::to_string(&open).ok()
+        let power = views.iter().find_map(|v| serde_json::from_str::<power::Saved>(v).ok());
+        serde_json::to_string(&(open, power)).ok()
     }
 }
 
@@ -380,14 +380,24 @@ pub struct PanelView {
 pub enum PanelMsg {
     /// What it shows changed (the settings, what a worker found).
     Redraw,
+    RestorePower(power::Saved),
     /// The settings as app_server first said them: what Revert goes
     /// back to.
     Opened(Box<Settings>),
     /// On tab `tab`, with the setting called `name` lit, in its box.
-    Show { tab: Option<String>, group: Option<String>, name: Option<String> },
+    Show {
+        tab: Option<String>,
+        group: Option<String>,
+        name: Option<String>,
+    },
     /// The setting is looked for once its tab has drawn (and again,
     /// while its panel waits for what it shows).
-    Light { tab: Option<String>, group: Option<String>, name: String, tries: u8 },
+    Light {
+        tab: Option<String>,
+        group: Option<String>,
+        name: String,
+        tries: u8,
+    },
     /// A backup opened from Tracker is waiting (`backup::open_later`).
     TakeOpened,
 }
@@ -402,6 +412,10 @@ impl PanelView {
 impl View for PanelView {
     type Message = PanelMsg;
 
+    fn save_state(&mut self, _: &mut Cx<Self>) -> Option<String> {
+        if let panel::State::Power(st) = &self.state { serde_json::to_string(&st.saved()).ok() } else { None }
+    }
+
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         // Edit ▸ Undo and Redo for the command palette and agents (the
         // windows have no menu bar).
@@ -413,6 +427,11 @@ impl View for PanelView {
     fn message(&mut self, message: PanelMsg, cx: &mut Cx<Self>) {
         match message {
             PanelMsg::Redraw => {}
+            PanelMsg::RestorePower(saved) => {
+                if let panel::State::Power(st) = &mut self.state {
+                    st.restore(saved);
+                }
+            }
             PanelMsg::Opened(s) => self.opened = *s,
             PanelMsg::Show { tab, group, name } => {
                 // A tab alone: the panel opens on it, by its state (its
@@ -655,16 +674,23 @@ fn main() {
         instance::listen(APP_ID, proxy.clone());
         let server = server::Server::start(proxy);
         let _ = PREFS.set(Mutex::new(Prefs { settings: None, outputs: Vec::new(), outputs_in: false, holds: Vec::new(), power: None, server, windows: Vec::new(), history: Default::default() }));
-        let restored = olo_kit::restored_state().and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok()).filter(|o| !o.is_empty());
+        let restored = olo_kit::restored_state()
+            .and_then(|s| serde_json::from_str::<(Vec<String>, Option<power::Saved>)>(&s).ok().or_else(|| serde_json::from_str::<Vec<String>>(&s).ok().map(|open| (open, None))))
+            .filter(|(open, _)| !open.is_empty());
         {
             let mut p = prefs();
             match restored {
-                Some(open) => {
+                Some((open, saved)) => {
                     for name in open {
                         if name.is_empty() {
                             p.open_launcher();
                         } else {
                             p.open(&name);
+                            if name == "power"
+                                && let (Some(w), Some(saved)) = (p.window_of(Panel::Power), saved)
+                            {
+                                w.messenger().send(PanelMsg::RestorePower(saved));
+                            }
                         }
                     }
                 }
@@ -680,6 +706,6 @@ fn main() {
                 prefs().message(*msg);
             }
         });
-        olo_kit::on_upgrade(|_| prefs().save_state());
+        olo_kit::on_upgrade(|views| prefs().save_state(&views));
     });
 }

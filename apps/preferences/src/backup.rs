@@ -231,7 +231,7 @@ impl System for Root {
         std::fs::read(gpu_tuning::FILE).ok()
     }
     fn set_tuning(&self, tuning: &Tuning) -> Result<(), String> {
-        crate::gpus::run_tune(tuning).map(|_| ())
+        restore_tuning(tuning).map(|_| ())
     }
 }
 
@@ -957,6 +957,39 @@ fn contents(src: &Path, manifest: &Manifest, passphrase: Option<&str>, keyring: 
 
 /// [`import_only`] of everything (the tests'; the panel and `--import`
 /// choose).
+fn restore_tuning(tuning: &olo_system::gpu_tuning::Tuning) -> Result<String, String> {
+    use std::{
+        io::{BufRead, BufReader, Write},
+        process::{Command, Stdio},
+    };
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let exe = std::path::PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)"));
+    let tune = exe.with_file_name("olo-gpu-tune");
+    let json = serde_json::to_string(tuning).map_err(|e| e.to_string())?;
+    // (Polkit asks for the password with Olo's agent: there's no way
+    // across to root in process. In tests, as this user: nothing changes.)
+    let mut cmd = if olo_system::env::at_the_computer() {
+        let mut c = Command::new("pkexec");
+        c.arg("--disable-internal-agent").arg(&tune);
+        c
+    } else {
+        return Err(olo_kit::words::tr("GPUs are tuned only in the person's own session (polkit asks there).").into());
+    };
+    let mut child = cmd.arg("set").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().map_err(|e| format!("{}: {e}", tune.display()))?;
+    if let Some(mut input) = child.stdin.take() {
+        let _ = input.write_all(json.as_bytes());
+    }
+    let errors: Vec<String> = child.stdout.take().map(|o| BufReader::new(o).lines().map_while(Result::ok).filter_map(|l| l.strip_prefix("error: ").map(str::to_owned)).collect()).unwrap_or_default();
+    let status = child.wait().map_err(|e| e.to_string())?;
+    match status.code() {
+        Some(0) => Ok(olo_kit::words::tr("Applied: kept for this computer, and set again at every start.").into()),
+        // pkexec: the password dialog dismissed, or not allowed.
+        Some(126) | Some(127) => Err(olo_kit::words::tr("Not applied: an administrator's password is needed.").into()),
+        _ if !errors.is_empty() => Err(olo_kit::tr!("Not all of it applied: {}.", errors.join("; "))),
+        _ => Err(olo_kit::words::tr("Not applied.").into()),
+    }
+}
+
 #[cfg(test)]
 pub fn import(roots: &[(&'static str, PathBuf)], src: &Path, passphrase: Option<&str>, here: &Here, progress: Progress, cancel: &AtomicBool) -> Result<Imported, String> {
     import_only(roots, src, passphrase, here, &Choice::all(), progress, cancel)

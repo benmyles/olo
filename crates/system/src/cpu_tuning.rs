@@ -1,6 +1,4 @@
-//! The processors' power: three presets, made of what the power profiles
-//! daemon sets for its modes, so each can be chosen for a mode or for
-//! running on battery (`gpu_tuning::Plan`, Preferences ▸ Power): each
+//! The processors' power: the three operating modes control each
 //! processor's governor and energy preference (cpufreq's
 //! `scaling_governor` and `energy_performance_preference`), turbo
 //! (intel_pstate's `no_turbo`, else cpufreq's `boost`) and the firmware's
@@ -8,14 +6,9 @@
 //! ([`caps`]); applied by `olo-gpu-tune` (root) as the power mode or the
 //! power supply changes ([`apply`]).
 //!
-//! Beside the preset, a top speed: how fast the processors may go, as a
-//! share of the fastest they can (intel_pstate's `max_perf_pct`, else
-//! each processor's `scaling_max_freq`). Balanced's is 75% (Ben,
-//! 2026-11-13: "right now the cpu on it ends up still being too high,
-//! but on power saving it's too low. can we make it so that the cpu is
-//! limited to like 75% of what it gets now on balanced instead?"): the
-//! last quarter of a processor's clock is where it spends most, so the
-//! cap takes away its hottest bursts and keeps most of its speed.
+//! The governor adapts to the frequency driver. The global Intel HWP floor
+//! is released before applying the ceiling. Low Latency enables HWP's
+//! short I/O-wakeup boost; the CPU can idle between bursts.
 
 use std::path::{Path, PathBuf};
 
@@ -56,12 +49,14 @@ impl CpuPreset {
         CpuPreset::ALL.into_iter().find(|p| p.id() == s)
     }
 
-    /// The governor it asks for.
-    fn governor(self) -> &'static str {
-        match self {
-            CpuPreset::Fastest => "performance",
-            _ => "powersave",
-        }
+    fn governor(self, driver: &str, offered: &str) -> Option<&'static str> {
+        let choices: &[&str] = if matches!(driver, "intel_pstate" | "amd-pstate-epp") {
+            &["powersave"]
+        } else {
+            // Generic powersave fixes a CPU at its lowest frequency.
+            &["schedutil", "ondemand", "conservative"]
+        };
+        choices.iter().copied().find(|c| offered.split_whitespace().any(|g| g == *c))
     }
 
     /// The energy preferences it asks for, best first (the first the
@@ -88,13 +83,9 @@ impl CpuPreset {
         self != CpuPreset::Saving
     }
 
-    /// Its top speed unless chosen otherwise, in percent of the fastest
-    /// the processors go.
+    /// All three policies permit their full operating range within the thermal budget.
     pub fn top(self) -> u8 {
-        match self {
-            CpuPreset::Balanced => 75,
-            CpuPreset::Saving | CpuPreset::Fastest => 100,
-        }
+        100
     }
 
     /// The firmware's platform profile it asks for.
@@ -126,6 +117,9 @@ pub struct CpuCaps {
     /// it can't be set here).
     #[serde(default)]
     pub top: Option<u8>,
+    /// Global Intel HWP floor, read separately from the cpufreq policy floor.
+    #[serde(default)]
+    pub floor: Option<u8>,
 }
 
 /// The top speeds offered, in percent.
@@ -190,13 +184,16 @@ impl Sys {
 
     /// What they allow (None: no cpufreq here).
     pub fn caps(&self) -> Option<CpuCaps> {
-        let first = self.policies().into_iter().next()?;
+        self.policies().first().map(|first| self.caps_for(first))
+    }
+
+    fn caps_for(&self, first: &Path) -> CpuCaps {
         let (turbo_switch, turbo) = match self.turbo_file() {
             Some((f, inverted)) => (true, (read(&f) == "1") != inverted),
             None => (false, true),
         };
         let words = |p: PathBuf| read(p).split_whitespace().map(str::to_owned).collect::<Vec<_>>();
-        Some(CpuCaps {
+        CpuCaps {
             driver: read(first.join("scaling_driver")),
             governor: read(first.join("scaling_governor")),
             preferences: words(first.join("energy_performance_available_preferences")),
@@ -205,8 +202,9 @@ impl Sys {
             turbo,
             platforms: words(self.firmware.join("platform_profile_choices")),
             platform: read(self.firmware.join("platform_profile")),
-            top: self.top(&first),
-        })
+            top: self.top(first),
+            floor: read(self.cpu.join("intel_pstate/min_perf_pct")).parse().ok(),
+        }
     }
 
     /// `preset` set on every processor and the firmware, and their top
@@ -214,21 +212,20 @@ impl Sys {
     /// what each write did, or why it couldn't.
     pub fn apply(&self, preset: CpuPreset, top: u8, on_battery: bool) -> Vec<Result<String, String>> {
         let mut out = Vec::new();
-        let Some(caps) = self.caps() else {
+        let policies = self.policies();
+        let Some(first) = policies.first() else {
             return vec![Err("no cpufreq here".into())];
         };
+        let caps = self.caps_for(first);
         let write = |path: &Path, value: &str| std::fs::write(path, value).map_err(|e| format!("{}: {e}", path.display()));
-        let policies = self.policies();
         // The governor first: the energy preference can't be written
         // under the performance governor.
-        let governors = read(policies[0].join("scaling_available_governors"));
-        if governors.split_whitespace().any(|g| g == preset.governor()) {
-            let failed: Vec<String> = policies.iter().filter_map(|p| write(&p.join("scaling_governor"), preset.governor()).err()).collect();
-            out.push(if failed.is_empty() { Ok(format!("governor {}", preset.governor())) } else { Err(failed.join("; ")) });
+        let governors = read(first.join("scaling_available_governors"));
+        if let Some(governor) = preset.governor(&caps.driver, &governors) {
+            let failed: Vec<String> = policies.iter().filter_map(|p| write(&p.join("scaling_governor"), governor).err()).collect();
+            out.push(if failed.is_empty() { Ok(format!("governor {governor}")) } else { Err(failed.join("; ")) });
         }
-        if preset.governor() != "performance"
-            && let Some(pref) = preset.energy_on(on_battery).iter().find(|e| caps.preferences.iter().any(|p| p == *e))
-        {
+        if let Some(pref) = preset.energy_on(on_battery).iter().find(|e| caps.preferences.iter().any(|p| p == *e)) {
             let failed: Vec<String> = policies.iter().filter_map(|p| write(&p.join("energy_performance_preference"), pref).err()).collect();
             out.push(if failed.is_empty() { Ok(format!("energy preference {pref}")) } else { Err(failed.join("; ")) });
         }
@@ -239,6 +236,17 @@ impl Sys {
         if let Some(p) = preset.platform().iter().find(|p| caps.platforms.iter().any(|c| c == *p)) {
             out.push(write(&self.firmware.join("platform_profile"), p).map(|()| format!("platform profile {p}")));
         }
+        let floor = self.cpu.join("intel_pstate/min_perf_pct");
+        if floor.exists() {
+            // The kernel clamps zero to the hardware floor. Release TuneD's
+            // old minimum before writing the ceiling (each clamps the other).
+            out.push(write(&floor, "0").map(|()| format!("minimum performance {}%", read(&floor))));
+        }
+        let boost = self.cpu.join("intel_pstate/hwp_dynamic_boost");
+        if boost.exists() {
+            // HWP raises the minimum temporarily after an I/O wakeup.
+            out.push(write(&boost, if preset == CpuPreset::Fastest { "1" } else { "0" }).map(|()| "dynamic HWP boost set".into()));
+        }
         out.push(self.set_top(&policies, top));
         out
     }
@@ -247,11 +255,17 @@ impl Sys {
     /// floor, `min_perf_pct`, which the daemon's Performance raises to
     /// 100 and puts back as it leaves), else each processor's highest
     /// clock allowed.
+    pub fn limit(&self, top: u8) -> Result<String, String> {
+        self.set_top(&self.policies(), top)
+    }
+
     fn set_top(&self, policies: &[PathBuf], top: u8) -> Result<String, String> {
         let top = top.clamp(10, 100);
         let write = |path: &Path, value: &str| std::fs::write(path, value).map_err(|e| format!("{}: {e}", path.display()));
         if let Some(f) = self.max_perf() {
-            return write(&f, &top.to_string()).map(|()| format!("top speed {top}%"));
+            write(&f, &top.to_string())?;
+            let actual = read(&f);
+            return if actual == top.to_string() { Ok(format!("top speed {top}%")) } else { Err(format!("requested {top}% ceiling, driver reports {actual}%")) };
         }
         let failed: Vec<String> = policies
             .iter()
@@ -295,6 +309,8 @@ mod tests {
             w(&format!("{d}/energy_performance_preference"), "performance\n");
             w(&format!("{d}/energy_performance_available_preferences"), "default performance balance_performance balance_power power \n");
         }
+        w("cpu/intel_pstate/min_perf_pct", "90\n");
+        w("cpu/intel_pstate/hwp_dynamic_boost", "0\n");
         w("cpu/intel_pstate/no_turbo", "0\n");
         w("cpu/intel_pstate/max_perf_pct", "100\n");
         w("firmware/platform_profile", "performance\n");
@@ -314,7 +330,7 @@ mod tests {
         assert_eq!((c.governor.as_str(), c.preference.as_str(), c.turbo, c.platform.as_str(), c.top), ("powersave", "power", false, "low-power", Some(100)));
         assert!(all_ok(sys.apply(CpuPreset::Balanced, CpuPreset::Balanced.top(), false)));
         let c = sys.caps().unwrap();
-        assert_eq!((c.governor.as_str(), c.preference.as_str(), c.turbo, c.platform.as_str(), c.top), ("powersave", "balance_performance", true, "balanced", Some(75)));
+        assert_eq!((c.governor.as_str(), c.preference.as_str(), c.turbo, c.platform.as_str(), c.top), ("powersave", "balance_performance", true, "balanced", Some(100)));
         // On battery Balanced leans to saving, as tuned's balanced-battery.
         assert!(all_ok(sys.apply(CpuPreset::Balanced, 75, true)));
         assert_eq!(sys.caps().unwrap().preference, "balance_power");
@@ -322,10 +338,22 @@ mod tests {
         let c = sys.caps().unwrap();
         // (The performance governor holds the preference at performance
         // itself: it's left alone.)
-        assert_eq!((c.governor.as_str(), c.turbo, c.platform.as_str(), c.top), ("performance", true, "performance", Some(100)));
+        assert_eq!((c.governor.as_str(), c.turbo, c.platform.as_str(), c.top), ("powersave", true, "performance", Some(100)));
         std::fs::remove_dir_all(root).unwrap();
     }
 
+    #[test]
+    fn dynamic_profiles_release_the_old_floor_and_select_short_latency_boost() {
+        let (root, sys) = fake();
+        assert!(sys.apply(CpuPreset::Fastest, 100, false).iter().all(Result::is_ok));
+        assert_eq!(sys.caps().unwrap().floor, Some(0)); // Hardware clamps this to its native floor.
+        assert_eq!(sys.caps().unwrap().preference, "performance");
+        assert_eq!(read(sys.cpu.join("intel_pstate/hwp_dynamic_boost")), "1");
+        assert!(sys.apply(CpuPreset::Balanced, 100, true).iter().all(Result::is_ok));
+        assert_eq!(read(sys.cpu.join("intel_pstate/hwp_dynamic_boost")), "0");
+        assert_eq!(CpuPreset::Balanced.governor("acpi-cpufreq", "performance powersave schedutil"), Some("schedutil"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
     /// Without intel_pstate (amd-pstate, acpi-cpufreq) the top speed is
     /// each processor's highest clock allowed.
     #[test]

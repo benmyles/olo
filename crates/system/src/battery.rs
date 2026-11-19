@@ -4,7 +4,7 @@
 
 use std::{
     path::{Path, PathBuf},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,13 +103,17 @@ const DISPLAY_DEVICE: &str = "/org/freedesktop/UPower/devices/DisplayDevice";
 /// and polls what doesn't send them, so nothing here wakes in between).
 /// With no UPower, once a minute. Quick runs of changes come together.
 pub fn watch(changed: impl Fn(Option<Battery>) + Send + 'static) {
+    watch_supply(move |battery, _| changed(battery));
+}
+
+pub fn watch_supply(changed: impl Fn(Option<Battery>, bool) + Send + 'static) {
     let (tx, rx) = std::sync::mpsc::channel::<()>();
     let signals = crate::bus::system().ok().and_then(|c| {
         let rule = zbus::MatchRule::builder()
             .msg_type(zbus::message::Type::Signal)
             .sender(UPOWER)
             .ok()?
-            .path(DISPLAY_DEVICE)
+            .path_namespace("/org/freedesktop/UPower")
             .ok()?
             .interface("org.freedesktop.DBus.Properties")
             .ok()?
@@ -124,7 +128,12 @@ pub fn watch(changed: impl Fn(Option<Battery>) + Send + 'static) {
     match signals {
         Some(signals) if upower => {
             let _ = std::thread::Builder::new().name("battery-signals".into()).spawn(move || {
-                for _ in signals.flatten() {
+                for msg in signals.flatten() {
+                    let header = msg.header();
+                    let path = header.path().map(|p| p.as_str()).unwrap_or_default();
+                    if path != DISPLAY_DEVICE && path != "/org/freedesktop/UPower" && !path.starts_with("/org/freedesktop/UPower/devices/line_power") {
+                        continue;
+                    }
                     if tx.send(()).is_err() {
                         return;
                     }
@@ -140,19 +149,92 @@ pub fn watch(changed: impl Fn(Option<Battery>) + Send + 'static) {
         }
     }
     let _ = std::thread::Builder::new().name("battery".into()).spawn(move || {
-        let mut last = battery();
-        changed(last.clone());
+        let mut last = (battery(), !on_ac());
+        changed(last.0.clone(), last.1);
         while rx.recv().is_ok() {
             // (UPower sends a few properties apart.)
             std::thread::sleep(Duration::from_millis(50));
             while rx.try_recv().is_ok() {}
-            let now = battery();
+            let now = (battery(), !on_ac());
             if now != last {
-                changed(now.clone());
+                changed(now.0.clone(), now.1);
                 last = now;
             }
         }
     });
+}
+
+/// The power supply as the follower acts on it: a change counts once it
+/// has held for `SETTLE` (a plug put in twice, a cable moved to another
+/// port), and a supply that keeps changing (`UNSTEADY` times within
+/// `WINDOW`) is taken as the battery, the careful plan, set once, until it
+/// has been steady for `WINDOW`. A ThinkPad P1's controller reported its
+/// adapter coming and going 23 times a second for two hours, charger in
+/// or out (2026-11-17): every change UPower told of had the whole plan
+/// set again, 610 times in the first hour, each waking NVIDIA's GPU and
+/// calling the firmware for its profile.
+pub struct Supply {
+    /// What the plan in force was set for.
+    battery: bool,
+    /// The last reading.
+    seen: bool,
+    /// When the reading changed, lately.
+    changes: std::collections::VecDeque<Instant>,
+    pub unsteady: bool,
+}
+
+impl Supply {
+    pub const SETTLE: Duration = Duration::from_secs(2);
+    pub const WINDOW: Duration = Duration::from_secs(30);
+    pub const UNSTEADY: usize = 4;
+
+    pub fn new(battery: bool) -> Self {
+        Supply { battery, seen: battery, changes: Default::default(), unsteady: false }
+    }
+
+    /// A reading of the supply.
+    pub fn observe(&mut self, battery: bool, now: Instant) {
+        if battery != self.seen {
+            self.seen = battery;
+            self.changes.push_back(now);
+        }
+        while self.changes.len() > Self::UNSTEADY {
+            self.changes.pop_front();
+        }
+        if self.changes.len() == Self::UNSTEADY && self.changes.front().is_some_and(|t| now.duration_since(*t) <= Self::WINDOW) {
+            self.unsteady = true;
+        }
+    }
+
+    /// The supply to plan for at `now`.
+    pub fn battery(&mut self, now: Instant) -> bool {
+        let since = self.changes.back().map(|t| now.saturating_duration_since(*t));
+        if self.unsteady {
+            if since.is_some_and(|d| d < Self::WINDOW) {
+                self.battery = true;
+                return true;
+            }
+            self.unsteady = false;
+            self.changes.clear();
+        }
+        if self.seen != self.battery && since.is_none_or(|d| d >= Self::SETTLE) {
+            self.battery = self.seen;
+        }
+        self.battery
+    }
+
+    /// When to ask again without a reading: a change settling, or an
+    /// unsteady supply come to rest.
+    pub fn deadline(&self) -> Option<Instant> {
+        let last = *self.changes.back()?;
+        if self.unsteady {
+            Some(last + Self::WINDOW)
+        } else if self.seen != self.battery {
+            Some(last + Self::SETTLE)
+        } else {
+            None
+        }
+    }
 }
 
 /// Plugged into mains power (true on machines without a battery).

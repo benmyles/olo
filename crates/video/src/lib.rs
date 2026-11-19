@@ -276,6 +276,16 @@ impl Encoder {
 
     /// [`new`](Self::new), coded as finely as `q` says.
     pub fn with_quality(width: u32, height: u32, fps: u32, choice: Choice, codec: Codec, q: Quality) -> Result<Encoder, String> {
+        Self::open(width, height, fps, choice, codec, q, choice == Choice::Auto && on_battery())
+    }
+
+    /// A capture normally lives on the integrated GPU. Try its media
+    /// engine first on either supply, preserving explicit encoder choices.
+    pub fn for_recording(width: u32, height: u32, fps: u32, choice: Choice, codec: Codec) -> Result<Encoder, String> {
+        Self::open(width, height, fps, choice, codec, Quality::High, true)
+    }
+
+    fn open(width: u32, height: u32, fps: u32, choice: Choice, codec: Codec, q: Quality, prefer_va: bool) -> Result<Encoder, String> {
         let bps = bitrate(width, height, fps);
         let nvidia = || nvenc::Nvenc::with_rate(width, height, fps.clamp(1, 120), quality(codec, bps, q), codec).map(|e| Encoder::Nvidia(e, Vec::new()));
         let cpu = || {
@@ -316,7 +326,7 @@ impl Encoder {
             Choice::Vaapi => vaapi(),
             // On battery, the built-in GPU first: NVIDIA's would be woken
             // from its sleep.
-            Choice::Auto if codec != Codec::Hevc && on_battery() => vaapi().or_else(|_| nvidia()).or_else(|_| cpu()),
+            Choice::Auto if codec != Codec::Hevc && prefer_va => vaapi().or_else(|_| nvidia()).or_else(|_| cpu()),
             Choice::Auto => nvidia().or_else(|_| vaapi()).or_else(|_| cpu()),
         }
     }

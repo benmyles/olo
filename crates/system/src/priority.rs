@@ -95,6 +95,12 @@ pub fn raise_thread(pid: u32, tid: u32, nice: i32) -> std::result::Result<i32, S
 /// (`olo_protocol::performance::CORE_UTIL_MIN`). The threads it starts
 /// afterwards inherit it, as they do its nice.
 pub fn util_min_self(min: u32) -> std::io::Result<()> {
+    set_util_min(0, min)
+}
+
+/// Set the scheduler hint on a selected thread without changing its class,
+/// nice, priority or maximum utilization. Zero means the calling thread.
+pub fn set_util_min(tid: i32, min: u32) -> std::io::Result<()> {
     if let Some(why) = not_the_persons() {
         return Err(std::io::Error::other(why));
     }
@@ -104,7 +110,7 @@ pub fn util_min_self(min: u32) -> std::io::Result<()> {
     let attr = SchedAttr { size: size_of::<SchedAttr>() as u32, flags: KEEP_POLICY | KEEP_PARAMS | UTIL_CLAMP_MIN, util_min: min.min(1024), ..Default::default() };
     // SAFETY: sched_setattr reads `attr`, of the size it's told, for this
     // thread (0).
-    if unsafe { libc::syscall(libc::SYS_sched_setattr, 0, &attr as *const SchedAttr, 0) } != 0 {
+    if unsafe { libc::syscall(libc::SYS_sched_setattr, tid, &attr as *const SchedAttr, 0) } != 0 {
         return Err(std::io::Error::last_os_error());
     }
     Ok(())

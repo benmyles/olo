@@ -17,6 +17,7 @@ enum Out {
     Settings(Box<Settings>),
     Output(String, OutputConfig),
     Caffeinated(bool),
+    Mode(olo_protocol::power_mode::Mode),
     Brightness(String, f32),
     KeyboardBacklight(f32),
     StartScreenSaver,
@@ -75,6 +76,10 @@ impl Server {
         let _ = self.tx.send(Out::Output(name.to_owned(), config));
     }
 
+    pub fn set_mode(&self, mode: olo_protocol::power_mode::Mode) {
+        let _ = self.tx.send(Out::Mode(mode));
+    }
+
     pub fn set_caffeinated(&self, on: bool) {
         let _ = self.tx.send(Out::Caffeinated(on));
     }
@@ -123,6 +128,7 @@ fn send(client: &mut Option<Client>, out: Out) {
     let req = match out {
         Out::Settings(settings) => Request::SetSettings { settings: *settings },
         Out::Output(name, config) => Request::ConfigureOutput { name, config },
+        Out::Mode(mode) => Request::SetPowerMode { mode },
         Out::Caffeinated(on) => Request::SetCaffeinated { on, minutes: None, lid: false },
         Out::Brightness(name, level) => Request::SetOutputBrightness { name, level },
         Out::KeyboardBacklight(level) => Request::SetKeyboardBacklight { level },

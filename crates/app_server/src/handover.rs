@@ -19,6 +19,8 @@ use crate::state::{AnvilState, Backend};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct Handover {
+    #[serde(default)]
+    simulated_mode: Option<olo_protocol::power_mode::Mode>,
     caffeinated: bool,
     caffeinated_until: Option<u64>,
     caffeinated_lid: bool,
@@ -43,13 +45,14 @@ impl<B: Backend + 'static> AnvilState<B> {
         let (caffeinated, caffeinated_until, caffeinated_lid) = self.power.caffeine_handover();
         let approve = self.auto_approve_handover();
         let h = Handover {
+            simulated_mode: (!B::IS_SESSION).then(|| self.power.policy.modes.as_ref().map(|m| m.active)).flatten(),
             caffeinated,
             caffeinated_until,
             caffeinated_lid,
             approve_until: approve.as_ref().and_then(|(t, _)| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs()),
             rescue: self.rescue.as_ref().map(|r| r.before.clone()),
         };
-        if !h.caffeinated && h.approve_until.is_none() && h.rescue.is_none() {
+        if !h.caffeinated && h.approve_until.is_none() && h.rescue.is_none() && h.simulated_mode.is_none_or(|m| m == olo_protocol::power_mode::Mode::Balanced) {
             let _ = std::fs::remove_file(&state_path);
             let _ = std::fs::remove_file(&secret_path);
             return;
@@ -84,6 +87,11 @@ impl<B: Backend + 'static> AnvilState<B> {
         let Ok(text) = text else { return };
         let Ok(h) = serde_json::from_str::<Handover>(&text) else { return };
         let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
+        if !B::IS_SESSION
+            && let Some(m) = h.simulated_mode
+        {
+            let _ = self.select_power_mode(m);
+        }
         if h.caffeinated {
             // A timed stretch goes on for what is left of it (whole minutes
             // up); one past its time is over.

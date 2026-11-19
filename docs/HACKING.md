@@ -973,7 +973,7 @@ long after a way out comes back.
 | `crates/pool` | `olo-token-pool`: token pooling for Claude Code and Codex (see "Token Pool"): the accounts, their sealed store, the drain order, the loopback gateway and the clients' proxy (its own certificate authority, and which program is connecting, from /proc). |
 | `crates/ai` | `olo-ai`: how AI features reach their models (see "AI features"): `ask(&settings.ai, &feature, &Ask)` → the answer's JSON. Blocking; call off the UI thread. |
 | `crates/ocr` | `olo-ocr`: the text in a picture, read in process (Robert Knight's Ocrs and RTen, its two models in `data/ocr`, CC BY-SA 4.0): each line's characters and where they are, for the Viewer's and Quick Look's selecting and copying. `read` (for a worker), `let_go` (the models, when nothing has been read for a while), `init` (its four threads, made as the program starts). See "The text in a picture" under Viewer. |
-| `crates/preview` | `olo-preview`: native previews of every file kind (text, images, PDF, audio, video, archives, office documents, fonts). Its decoding needs no toolkit (pictures are `Bitmap`s, premultiplied RGBA; token classes are `olo_theme::Syntax`, coloured by `Palette::syntax`)); its views (`PreviewView`, `rich::RichView`, `table::TableView`) are `kit`, on olo-kit, behind its `kit` feature (what the loader finds comes as messages, `kit::Msg`; a document is laid out as its `body` runs, for the width layout says, and draws only what `Painter::visible_bounds` shows; pictures let go leave the GPU's atlas by themselves). Either turns on `gpu`: pictures as planes for a window's GPU (`olo_yuv::YuvFrame`) and video decoded on GPUs. Source code is coloured by syntect's bundled Sublime grammars plus Olo's own in `src/syntaxes` (TOML, with Cargo.lock and other lock files; INI, with systemd units, .desktop entries and git and editor configs; just, `justfile`, `Justfile`, `.justfile` and `*.just`, its recipe bodies bash with `{{ }}` found in them, in the shell's strings too, through `with_prototype`), its scopes mapped onto the theme's token classes (`text::classify`). Spreadsheets and CSV (`table.rs`, sheets shared as `Arc`s): every column, scrolled sideways; the first row as the columns' names when it looks like a header (all text, with numbers or blanks below); number columns lined up on the right; a bar with Search (every word, in all columns or the one chosen beside it; Escape clears, then lets go) and how many rows show ("14 of 120 rows"); a header click sorts (again to reverse): numbers as numbers (a thousands comma, a currency sign or a percent allowed) before text, text naturally and without case ("file2" before "file10"), empty cells last, ties in the file's order. A sheet of more than 40,000 cells is searched and sorted on a worker (cancelled when asked again), the rows shown until then staying put and the bar saying "Searching…". Quick Look's own keys (Space, the arrows, F) stand aside while a field has the keyboard. Formatted documents (Markdown, and Word, OpenDocument and RTF text; PowerPoint presentations are drawn, "Presentations" under Viewer) are blocks (`doc::Block`) set as a page by `rich.rs`: Word, OpenDocument text and RTF are read by `olo-richtext` (`doc::rich`: headings, lists numbered as they count, quotations, neighbouring code lines as one block, tables as tables; empty paragraphs are spacing, left out), an OpenDocument presentation's text by `doc.rs`'s own zip and XML; Markdown is CommonMark with GitHub's tables (their alignment, and styled cells), task lists, strikethrough and alerts (`> [!NOTE]` and the rest, a bar and title in the alert's hue), typographer's quotes and dashes; raw HTML keeps its text (`<br>` breaks, `<img>` is an image, comments go); code blocks are coloured by their fence's language (`text::highlight`, the text preview's grammars); pictures beside the document are shown (local files only, never fetched; a remote one's alt text shows instead), resampled exactly to their device size. The page is at most 680 points wide, centred, body text 13 points on a 20-point line, headings 26 to 13 points with room above them (rules under the first two), lists with hanging indents (bullets drawn, numbers lined up on the right, tasks as `check_box_look`s), inline code on a tint with a small no-break space either side (a line doesn't break between "(" and code), and links in the link hue, underlined under the pointer; they open with `olo_xdg::open` (a relative one beside the document) and a `#heading` scrolls to it (GitHub's anchors). Blocks are laid out once for a width, scale, look and font generation: those in view first (at most 5 ms), the rest 3 ms a frame after, and a spinner shows over a part not laid out yet; only blocks in view are drawn. Agents read each block (`Heading`, `Paragraph`, `ListItem`, `Code`, `Table`, `Image`) and click its links (`Link`). Text and formatted documents' text is selected as anywhere in Olo (a drag; a word with a double-click, a line with a triple; ⇧ extends; an I-beam over it), drawn behind the text in the kit's selection (`style::selection_behind`, the text fields' too): the text preview's places are a line and a byte, hit by each line shaped as drawn (any characters, not only monospaced ASCII), a whole line's selection taking its line break; a document's are a block, one of its texts, a line and a byte (`WrappedLine::closest_index_for_position`, painted row by row from `position_for_index`, just behind each text so a code block's ground stays under it). `PreviewView::copy` gives what's selected (a document's partial selection: paragraphs apart, a list's items a line apart, a table's cells by tabs and its rows by lines; Select All: every block's own text, laid out yet or not), and `open_find` the kit's find bar (`widgets::find_bar`, Viewer's PDFs' too): a text's matches by line, a document's over what's laid out (found again as more is, "…" until it all is), each marked, the one shown selected and centred. With nothing selected or found the views do nothing more a frame (TODO.md in the rich view scrolling at 60 frames a second: 484 to 535 µs a frame before, 499 to 522 after; the text view's listeners cost about 25 µs a frame). Used by Tracker's Quick Look (`PreviewView::new(item, generation, false, cx)`, images capped at 3200 px; a PDF shows its first page as a picture, in the same `ImageView`, the card until it comes, the rest the Viewer's, and its arrows step through the folder as a picture's do: it had shown only its card, and Up and Down did nothing on it) and the Viewer (zoomable: full resolution up to the GPU texture limit, zoom and pan through its `ImageView`). Video (`video.rs`, H.264 in mp4 or Matroska, AV1 and VP9 in Matroska/WebM or mp4, HEVC in mp4 (`hvc1` and `hev1`: `media::mp4_hevc` walks the boxes to its `hvcC` and `colr`, which the mp4 crate skips) or Matroska (`V_MPEGH/ISO/HEVC`, the record in its CodecPrivate, its `Colour`), with `media.playable` set; the mp4 crate doesn't know AV1's `av01` sample entry, so `media::mp4_av1` walks the boxes to it for the track and its `av1C` sequence header, sent before each key frame): a worker demuxes and decodes (OpenH264, rav1d through `olo_images::av1::Decoder`, filmcraft-vp9 through `olo_images::vp9::Decoder`, or rust_h265 through `olo_images::hevc::Decoder`, whose pictures are `av1::Frame`s too: HEVC's from its decoder configuration record's parameter sets, on four threads in display order, its matrix and range the container's, else BT.709 from 720 lines and BT.601 under) up to six frames ahead, giving each picture the earliest outstanding presentation time (VP9's carry their sample's own, and times left behind by samples that showed nothing are dropped) (OpenH264 returns display order; it must be made with `Flush::NoFlush`, as the crate's default flush after every packet breaks B-frame reordering and every B-frame then fails), mp4 times shifted by the track's edit list; `Video::tick` shows frames against a clock that follows the sound's reported position when an `audio::Player` is playing it and runs alone otherwise (no sound server in tests, silent files). Seeks go to the key frame before the target (Matroska: scans back for one, further each time) and drop pictures before it, all but the one still showing at the target (a still screen in a screen recording is one picture, seconds long: seeking into it showed the next change; `seeks_into_a_long_picture`): the last before it is held (made) unless its sample's duration (an MP4's, a Matroska block's own) says it ended first, and queued at the target's time when the next starts after it; past the last picture's end, that one is decoded again (`Lead`). Holding every picture cost a 4K H.264 seek a sixth more (`seek_cost`: 386 ms against 329; with durations, 317); a paused seek still shows its frame. `OLO_SAMPLES=dir cargo test --release -p olo-preview video -- --ignored` checks seeking on test.mp4/mkv (one key frame) and gop.mp4/mkv (one a second), made with ffmpeg's testsrc2, plus av1.webm (svt-av1, Opus sound), vp9.webm (libvpx with `-auto-alt-ref 1 -lag-in-frames 25`, so hidden frames in superframes), av1.mp4 (`av1_in_mp4`: 4 s of testsrc2 through libsvtav1, a key frame a second), vp9.mp4 and vp9-10bit.webm (`vp9_plays`: profile 0 in mp4, profile 2 in WebM; every picture, posters, facts), hevc.mp4, hvc1.mp4, hevc.mkv and hevc-10bit.mp4 (`hevc_plays`: 1080p HEVC with B-frames as `hev1`, `hvc1` and Matroska, remuxed by `ffmpeg -c copy`, and JCT-VC's Main 10 WPP_D in an mp4; every picture, seeks, posters, facts) and bframes.mp4 (any x264-made H.264 High clip with B-frames; `b_frames` checks every picture comes out, in order); `keeps_up` needs av1-1080.mkv (1080p AV1), vp9-1080.webm (1080p VP9), gop.mp4 and av1.mp4 to decode at well over 30 frames a second (72 on the M2 Max, 195 now; VP9 120; av1.mp4 600; `OLO_ONLY=a,b` picks samples; the YUV to RGB fast path is fixed-point with tables, checked against the float path by `yuv_fast_path`). Drawn by the GPU from its planes (Ben, 2026-11-06: "the viewer app can't even play 4k video at 60fps smoothly"): a window's player asks for `Options::yuv`, and each SDR 4:2:0 picture comes as `Picture::Yuv`, an `olo_yuv::YuvFrame` made on the worker (luma packed, Cb and Cr interleaved; 10-bit samples in the high bits of 16; H.264's limited-range BT.601 as OpenH264's, the others' matrix and range as `olo_images::av1::Frame::yuv420` says), which the window paints with `Painter::paint_yuv`: the renderer keeps two pairs of textures a stream (R8/RG8, or R16/RG16 unorm, added to blade), uploads each new picture into the pair the frame before isn't reading, and the surface shader makes RGB with the picture's own matrix (`YuvFrame::rgb_matrix`). A 4K picture is 12 MB rather than 33 of RGBA, and nothing converts it on the CPU; HDR, wide-gamut and 4:2:2/4:4:4 pictures keep the RGBA path. Measured on 4K60 clips (`make_4k60`: 10 s of 3840 × 2160 through NVENC) on a headless 4K screen: H.264 29.6 frames a second before, 60.0 after; HEVC 24.4 to 59.8; AV1 52.2 to 60.0; the window's own work 18 to 25 ms a frame before (making the picture BGRA and a texture of it), 0.5 ms after. Decoded on NVIDIA's GPU where there is one (`olo_video::nvdec`: NVDEC's API through vendor/nvdec-sys's declarations, `libnvcuvid.so.1` and `libcuda.so.1` opened at run time, nothing linked; its parser takes the stream, HEVC as Annex B with its parameter sets before each key frame; each picture NV12 or P016, copied from the GPU into a `YuvFrame`; its colour from the stream's own H.273 numbers): H.264, HEVC (8- and 10-bit), VP9 and AV1, each asked of the GPU first (`cuvidGetDecoderCaps`). What decodes is chosen by `video::Device` (`Options::device`): `Default` follows Preferences ▸ Power ▸ Graphics ▸ Video Playback (`settings.video.decoder`: `auto`, `nvidia`, `intel`, `cpu`), `Automatic` is the built-in GPU where it decodes the video, else NVIDIA's (on battery too, unless `settings.video.nvidia_on_battery` is off: Ben, 2026-11-06), else the processor, or one named; a decoder that fails mid-stream hands over to the processor at the last key frame, the video playing on. `Video::decoding` says what is decoding ("NVIDIA's GPU (NVDEC)", "the processor"), `PreviewEvent::Decoding` when it changes, and `PreviewView::set_decode_with` starts the video again on another at the same place, playing or not (the Viewer's View ▸ Decode With). Measured on the 4K60 clips: all at 60 frames a second either way; the process's CPU HEVC 246% of a core on the processor to 41.6% on NVDEC, H.264 100% to 29%, AV1 368% to 26%. Every codec decodes on Intel's (or AMD's) GPU too (`olo_vaapi::decode`: VA-API through vendor/va-sys, libva opened at run time). Fedora's iHD (and Mesa) leave out H.264 and HEVC for their patents, and its Mesa compiles them out of Vulkan Video too (ANV shows AV1 and VP9 decoding only with `ANV_DEBUG=video-decode`); RPM Fusion's `intel-media-driver` (nonfree) has them all, in `/usr/lib64/dri-nonfree`, which libva reads before Fedora's folder, and Olo Doctor installs it (`intel_video`: an Intel GPU on Fedora without it; the fix adds RPM Fusion's free and nonfree repositories by their release packages, as rpmfusion.org says, `Step::InstallRepository`, then the driver through PackageKit). H.264 and HEVC go through cros-codecs' stateless decoders (vendor/cros-codecs: its parsers and what a decoder keeps between pictures, the decoded picture buffer, picture order, reference lists and marking, bumping; its own backends and encoders, which link libva and libgbm, gated off) driving a backend of ours (`decode/stateless.rs`: a picture in one of the session's surfaces, back in the free list when nothing holds its handle; `h264.rs` and `h265.rs` fill VA-API's picture, scaling list and slice parameters as ChromeOS's backend does, HEVC's slices a slice behind so the last says so). AV1 and VP9: cros-codecs' parsers read the OBUs and frames, and each picture's parameters are filled as FFmpeg's and ChromeOS's decoders fill them; references are eight slots of surfaces; AV1's film grain is applied by the driver into a display surface of its own; VP9's superframes and shown-again frames are decoded as libvpx does. A picture comes back by the driver's copy engine (`vaCopy`) into a linear surface in memory of ours (`USER_PTR`, the chroma right after the luma rows, as iHD lays it whatever offset it's given), then into planes: mapping the decoder's own (tiled) surface had the processor untile it, 7.5 ms a 4K picture, and `vaGetImage` 7 ms, so 4K60 dropped to 58; the video processor isn't a copy (it changed pictures). A GPU decoder's pictures are held, not copied out (`Decoder::hold`, `Nvdec::hold`; `OLO_VIDEO_HELD=0` copies, to compare): each decoder keeps up to 16 pieces of page-aligned memory (VA-API's linear surfaces, NVDEC's buffers), copies a picture into one nothing holds, and hands it on as it is (`Picture::held`: its planes' offsets and row pitch), as an `olo_yuv::YuvMemory` on the `YuvFrame`; the renderer imports that memory as a Vulkan buffer (blade's `import_host_buffer`, VK_EXT_external_memory_host) and copies it into the stream's textures on the GPU, letting both go once the GPU is past that frame (a picture it can't import is staged as before, at its pitch). NVDEC's memory is registered with its CUDA context (`cuMemHostRegister`: its copy goes by DMA, not through the processor as into pageable memory), the context shared with that memory and destroyed when the last of it goes (`Cuda`), and made with blocking sync (waiting for a copy, the thread sleeps rather than spins). 4K60 AV1, the Viewer's share of a core, copied → held: Intel's GPU 21.9% → 7.1%, NVIDIA's 30.3% → 21.9%, pinned 13.8%, blocking 7.0% (its video thread 19.9% → 1.1%; 4K60 VP9 7.0%; nothing dropped). `crates/video/tests/reference.rs` decodes reference streams on every device here, each picture against the reference decoder's MD5 (libvpx's VP9 profile 2 and 1080p in tiles, libaom's AV1 10-bit, the HEVC conformance suite's Main 10 in wavefronts; NVDEC takes VP9 only from 128 × 128, said before trying); cros-codecs' per-picture HEVC reference-set warnings are debug notes (ordinary streams do it). `crates/vaapi/tests/decode.rs` checks every picture's MD5 against the reference decoder's (cros-codecs' AV1, VP9, H.264 and HEVC streams: B-frames, H.264 High, HEVC films, VP9's shown-again frames, a reset; a codec no GPU here decodes is said and passed: `LIBVA_DRIVERS_PATH=DIR` points the test alone at RPM Fusion's driver unpacked there). `Automatic` takes the built-in GPU where it decodes the video, else NVIDIA's (on battery too); `Video::decoders` says which GPUs could (the Viewer's menu enables those). 4K60 on the ThinkPad's Intel GPU (Panther Lake, RPM Fusion's iHD 26.3.5), the process's share of a core: H.264 25% (NVDEC 29%, the processor 100%), HEVC 21% (41.6%, 246%), AV1 22% (26%, 368%); a minute of each, with six ahead and the clock waiting for the first picture, played every picture but one (H.264 3600 of 3600, HEVC 3599, AV1 3600, none late; NVDEC's H.264 5 dropped, all at the switch to it), where at two ahead NVDEC had dropped 155, 68 and 176. On the processor, rav1d's and OpenH264's x86 assembly (SSE4 and AVX2, chosen at run time) is built in: nasm assembles it (tools/setup.sh installs it; OpenH264 leaves its assembly out without saying so when there's no nasm, and rav1d's `asm` feature fails the build). `keeps_up` on the 4K60 clips (`OLO_SAMPLES=/var/tmp/olo-4k OLO_ONLY=…`): AV1 32 → 85 pictures a second, H.264 45 → 53–98 (OpenH264 decodes on one thread, as fast as the core the scheduler gives it; its threads crash it), HEVC 108 → 140 (rust_h265, no assembly; the machine was busier for the first); the Viewer playing 4K60 AV1 on the processor 368% → 175% of a core. A frame keeps 8-bit video's samples as bytes (`av1::Planes`, words only deeper; every conversion runs over either through one macro): it had widened them to 16 bits and the queue counted each 4K picture 50 MB, one ahead, so 4K60 AV1 on the processor dropped 1,510 of 3,600 pictures in a minute, now 3 (its video thread 57% of a core → 17.5%). The worker keeps up to six pictures ahead within 80 MB (`QUEUE_BYTES`: six 4K pictures as planes; at 24 MB a 4K picture had two, 33 ms at 60 frames a second, and every hiccup of a decoder's dropped pictures, NVDEC's H.264 150 a minute), and with no sound to follow the clock waits for a late decoder up to 200 ms (`HOLD`: starting, a stall), so a picture shows late rather than the ones after it being passed over; one that can't keep up at all is caught up with by passing pictures over. How smoothly a video played is counted (`Video::playback`: pictures shown, dropped, already late when their turn came, and shown late, more than 25 ms after their time) and logged when the player goes ("video: 3600 pictures shown, 0 dropped, 0 late; decoded on Intel's GPU (VA-API)"); `make_4k60` makes longer clips with `OLO_SECONDS`. Audio decodes with symphonia plus `opus.rs` (opus-decoder, OpusHead parsing and pre-skip trim) for Ogg Opus. `audio::Player` speaks the PulseAudio protocol itself, and its client says who is playing as libpulse does (`application.process.id`, `.binary`, `.user`, `.host`, beside the app's name and icon): Fedora's uresourced follows the programs playing sound by their process, and crashed at every Olo login on the start-up sound's stream (a null process id). Picture editing (`edit.rs`): an `Editor` keeps a list of `Op`s (rotate, flip, crop, resize) with undo/redo and a saved mark, and a worker that loads the full picture once, applies new steps to its last result, sends `EditEvent::Shown` (downscaled for the screen) for `PreviewView::show_edited`, and writes PNG, JPEG (quality 92), WebP, BMP, TIFF or GIF atomically (`write`, through a hidden `.name.saving` file); `edit::editable` says which files it can write back. The Viewer's crop overlay (`crop.rs`: drag a frame, move it or its edges) sits where `ImageView::picture_bounds` says the picture is, `set_still` stopping pan and zoom while it is up. The Viewer's Image menu and File ▸ Save / Save As / Revert use it; Quick Look's footer has Rotate Left / Right (⌘L / ⌘R), which save at once. |
+| `crates/preview` | `olo-preview`: native previews of every file kind (text, images, PDF, audio, video, archives, office documents, fonts). Its decoding needs no toolkit (pictures are `Bitmap`s, premultiplied RGBA; token classes are `olo_theme::Syntax`, coloured by `Palette::syntax`)); its views (`PreviewView`, `rich::RichView`, `table::TableView`) are `kit`, on olo-kit, behind its `kit` feature (what the loader finds comes as messages, `kit::Msg`; a document is laid out as its `body` runs, for the width layout says, and draws only what `Painter::visible_bounds` shows; pictures let go leave the GPU's atlas by themselves). Either turns on `gpu`: pictures as planes for a window's GPU (`olo_yuv::YuvFrame`) and video decoded on GPUs. Source code is coloured by syntect's bundled Sublime grammars plus Olo's own in `src/syntaxes` (TOML, with Cargo.lock and other lock files; INI, with systemd units, .desktop entries and git and editor configs; just, `justfile`, `Justfile`, `.justfile` and `*.just`, its recipe bodies bash with `{{ }}` found in them, in the shell's strings too, through `with_prototype`), its scopes mapped onto the theme's token classes (`text::classify`). Spreadsheets and CSV (`table.rs`, sheets shared as `Arc`s): every column, scrolled sideways; the first row as the columns' names when it looks like a header (all text, with numbers or blanks below); number columns lined up on the right; a bar with Search (every word, in all columns or the one chosen beside it; Escape clears, then lets go) and how many rows show ("14 of 120 rows"); a header click sorts (again to reverse): numbers as numbers (a thousands comma, a currency sign or a percent allowed) before text, text naturally and without case ("file2" before "file10"), empty cells last, ties in the file's order. A sheet of more than 40,000 cells is searched and sorted on a worker (cancelled when asked again), the rows shown until then staying put and the bar saying "Searching…". Quick Look's own keys (Space, the arrows, F) stand aside while a field has the keyboard. Formatted documents (Markdown, and Word, OpenDocument and RTF text; PowerPoint presentations are drawn, "Presentations" under Viewer) are blocks (`doc::Block`) set as a page by `rich.rs`: Word, OpenDocument text and RTF are read by `olo-richtext` (`doc::rich`: headings, lists numbered as they count, quotations, neighbouring code lines as one block, tables as tables; empty paragraphs are spacing, left out), an OpenDocument presentation's text by `doc.rs`'s own zip and XML; Markdown is CommonMark with GitHub's tables (their alignment, and styled cells), task lists, strikethrough and alerts (`> [!NOTE]` and the rest, a bar and title in the alert's hue), typographer's quotes and dashes; raw HTML keeps its text (`<br>` breaks, `<img>` is an image, comments go); code blocks are coloured by their fence's language (`text::highlight`, the text preview's grammars); pictures beside the document are shown (local files only, never fetched; a remote one's alt text shows instead), resampled exactly to their device size. The page is at most 680 points wide, centred, body text 13 points on a 20-point line, headings 26 to 13 points with room above them (rules under the first two), lists with hanging indents (bullets drawn, numbers lined up on the right, tasks as `check_box_look`s), inline code on a tint with a small no-break space either side (a line doesn't break between "(" and code), and links in the link hue, underlined under the pointer; they open with `olo_xdg::open` (a relative one beside the document) and a `#heading` scrolls to it (GitHub's anchors). Blocks are laid out once for a width, scale, look and font generation: those in view first (at most 5 ms), the rest 3 ms a frame after, and a spinner shows over a part not laid out yet; only blocks in view are drawn. Agents read each block (`Heading`, `Paragraph`, `ListItem`, `Code`, `Table`, `Image`) and click its links (`Link`). Text and formatted documents' text is selected as anywhere in Olo (a drag; a word with a double-click, a line with a triple; ⇧ extends; an I-beam over it), drawn behind the text in the kit's selection (`style::selection_behind`, the text fields' too): the text preview's places are a line and a byte, hit by each line shaped as drawn (any characters, not only monospaced ASCII), a whole line's selection taking its line break; a document's are a block, one of its texts, a line and a byte (`WrappedLine::closest_index_for_position`, painted row by row from `position_for_index`, just behind each text so a code block's ground stays under it). `PreviewView::copy` gives what's selected (a document's partial selection: paragraphs apart, a list's items a line apart, a table's cells by tabs and its rows by lines; Select All: every block's own text, laid out yet or not), and `open_find` the kit's find bar (`widgets::find_bar`, Viewer's PDFs' too): a text's matches by line, a document's over what's laid out (found again as more is, "…" until it all is), each marked, the one shown selected and centred. With nothing selected or found the views do nothing more a frame (TODO.md in the rich view scrolling at 60 frames a second: 484 to 535 µs a frame before, 499 to 522 after; the text view's listeners cost about 25 µs a frame). Used by Tracker's Quick Look (`PreviewView::new(item, generation, false, cx)`, images capped at 3200 px; a PDF shows its first page as a picture, in the same `ImageView`, the card until it comes, the rest the Viewer's, and its arrows step through the folder as a picture's do: it had shown only its card, and Up and Down did nothing on it) and the Viewer (zoomable: full resolution up to the GPU texture limit, zoom and pan through its `ImageView`). Video (`video.rs`, H.264 in mp4 or Matroska, AV1 and VP9 in Matroska/WebM or mp4, HEVC in mp4 (`hvc1` and `hev1`: `media::mp4_hevc` walks the boxes to its `hvcC` and `colr`, which the mp4 crate skips) or Matroska (`V_MPEGH/ISO/HEVC`, the record in its CodecPrivate, its `Colour`), with `media.playable` set; the mp4 crate doesn't know AV1's `av01` sample entry, so `media::mp4_av1` walks the boxes to it for the track and its `av1C` sequence header, sent before each key frame): a worker demuxes and decodes (OpenH264, rav1d through `olo_images::av1::Decoder`, filmcraft-vp9 through `olo_images::vp9::Decoder`, or rust_h265 through `olo_images::hevc::Decoder`, whose pictures are `av1::Frame`s too: HEVC's from its decoder configuration record's parameter sets, on four threads in display order, its matrix and range the container's, else BT.709 from 720 lines and BT.601 under) up to six frames ahead, giving each picture the earliest outstanding presentation time (VP9's carry their sample's own, and times left behind by samples that showed nothing are dropped) (OpenH264 returns display order; it must be made with `Flush::NoFlush`, as the crate's default flush after every packet breaks B-frame reordering and every B-frame then fails), mp4 times shifted by the track's edit list; `Video::tick` shows frames against a clock that follows the sound's reported position when an `audio::Player` is playing it and runs alone otherwise (no sound server in tests, silent files). Seeks go to the key frame before the target (Matroska: scans back for one, further each time) and drop pictures before it, all but the one still showing at the target (a still screen in a screen recording is one picture, seconds long: seeking into it showed the next change; `seeks_into_a_long_picture`): the last before it is held (made) unless its sample's duration (an MP4's, a Matroska block's own) says it ended first, and queued at the target's time when the next starts after it; past the last picture's end, that one is decoded again (`Lead`). Holding every picture cost a 4K H.264 seek a sixth more (`seek_cost`: 386 ms against 329; with durations, 317); a paused seek still shows its frame. `OLO_SAMPLES=dir cargo test --release -p olo-preview video -- --ignored` checks seeking on test.mp4/mkv (one key frame) and gop.mp4/mkv (one a second), made with ffmpeg's testsrc2, plus av1.webm (svt-av1, Opus sound), vp9.webm (libvpx with `-auto-alt-ref 1 -lag-in-frames 25`, so hidden frames in superframes), av1.mp4 (`av1_in_mp4`: 4 s of testsrc2 through libsvtav1, a key frame a second), vp9.mp4 and vp9-10bit.webm (`vp9_plays`: profile 0 in mp4, profile 2 in WebM; every picture, posters, facts), hevc.mp4, hvc1.mp4, hevc.mkv and hevc-10bit.mp4 (`hevc_plays`: 1080p HEVC with B-frames as `hev1`, `hvc1` and Matroska, remuxed by `ffmpeg -c copy`, and JCT-VC's Main 10 WPP_D in an mp4; every picture, seeks, posters, facts) and bframes.mp4 (any x264-made H.264 High clip with B-frames; `b_frames` checks every picture comes out, in order); `keeps_up` needs av1-1080.mkv (1080p AV1), vp9-1080.webm (1080p VP9), gop.mp4 and av1.mp4 to decode at well over 30 frames a second (72 on the M2 Max, 195 now; VP9 120; av1.mp4 600; `OLO_ONLY=a,b` picks samples; the YUV to RGB fast path is fixed-point with tables, checked against the float path by `yuv_fast_path`). Drawn by the GPU from its planes (Ben, 2026-11-06: "the viewer app can't even play 4k video at 60fps smoothly"): a window's player asks for `Options::yuv`, and each SDR 4:2:0 picture comes as `Picture::Yuv`, an `olo_yuv::YuvFrame` made on the worker (luma packed, Cb and Cr interleaved; 10-bit samples in the high bits of 16; H.264's limited-range BT.601 as OpenH264's, the others' matrix and range as `olo_images::av1::Frame::yuv420` says), which the window paints with `Painter::paint_yuv`: the renderer keeps two pairs of textures a stream (R8/RG8, or R16/RG16 unorm, added to blade), uploads each new picture into the pair the frame before isn't reading, and the surface shader makes RGB with the picture's own matrix (`YuvFrame::rgb_matrix`). A 4K picture is 12 MB rather than 33 of RGBA, and nothing converts it on the CPU; HDR, wide-gamut and 4:2:2/4:4:4 pictures keep the RGBA path. Measured on 4K60 clips (`make_4k60`: 10 s of 3840 × 2160 through NVENC) on a headless 4K screen: H.264 29.6 frames a second before, 60.0 after; HEVC 24.4 to 59.8; AV1 52.2 to 60.0; the window's own work 18 to 25 ms a frame before (making the picture BGRA and a texture of it), 0.5 ms after. Decoded on NVIDIA's GPU where there is one (`olo_video::nvdec`: NVDEC's API through vendor/nvdec-sys's declarations, `libnvcuvid.so.1` and `libcuda.so.1` opened at run time, nothing linked; its parser takes the stream, HEVC as Annex B with its parameter sets before each key frame; each picture NV12 or P016, copied from the GPU into a `YuvFrame`; its colour from the stream's own H.273 numbers): H.264, HEVC (8- and 10-bit), VP9 and AV1, each asked of the GPU first (`cuvidGetDecoderCaps`). What decodes is chosen by `video::Device` (`Options::device`): `Default` follows Viewer ▸ View ▸ Decode With (`settings.video.decoder`: `auto`, `nvidia`, `intel`, `cpu`), `Automatic` is the built-in GPU where it decodes the video, else NVIDIA's (on battery too, unless `settings.video.nvidia_on_battery` is off: Ben, 2026-11-06), else the processor, or one named; a decoder that fails mid-stream hands over to the processor at the last key frame, the video playing on. `Video::decoding` says what is decoding ("NVIDIA's GPU (NVDEC)", "the processor"), `PreviewEvent::Decoding` when it changes, and `PreviewView::set_decode_with` starts the video again on another at the same place, playing or not (the Viewer's View ▸ Decode With). Measured on the 4K60 clips: all at 60 frames a second either way; the process's CPU HEVC 246% of a core on the processor to 41.6% on NVDEC, H.264 100% to 29%, AV1 368% to 26%. Every codec decodes on Intel's (or AMD's) GPU too (`olo_vaapi::decode`: VA-API through vendor/va-sys, libva opened at run time). Fedora's iHD (and Mesa) leave out H.264 and HEVC for their patents, and its Mesa compiles them out of Vulkan Video too (ANV shows AV1 and VP9 decoding only with `ANV_DEBUG=video-decode`); RPM Fusion's `intel-media-driver` (nonfree) has them all, in `/usr/lib64/dri-nonfree`, which libva reads before Fedora's folder, and Olo Doctor installs it (`intel_video`: an Intel GPU on Fedora without it; the fix adds RPM Fusion's free and nonfree repositories by their release packages, as rpmfusion.org says, `Step::InstallRepository`, then the driver through PackageKit). H.264 and HEVC go through cros-codecs' stateless decoders (vendor/cros-codecs: its parsers and what a decoder keeps between pictures, the decoded picture buffer, picture order, reference lists and marking, bumping; its own backends and encoders, which link libva and libgbm, gated off) driving a backend of ours (`decode/stateless.rs`: a picture in one of the session's surfaces, back in the free list when nothing holds its handle; `h264.rs` and `h265.rs` fill VA-API's picture, scaling list and slice parameters as ChromeOS's backend does, HEVC's slices a slice behind so the last says so). AV1 and VP9: cros-codecs' parsers read the OBUs and frames, and each picture's parameters are filled as FFmpeg's and ChromeOS's decoders fill them; references are eight slots of surfaces; AV1's film grain is applied by the driver into a display surface of its own; VP9's superframes and shown-again frames are decoded as libvpx does. A picture comes back by the driver's copy engine (`vaCopy`) into a linear surface in memory of ours (`USER_PTR`, the chroma right after the luma rows, as iHD lays it whatever offset it's given), then into planes: mapping the decoder's own (tiled) surface had the processor untile it, 7.5 ms a 4K picture, and `vaGetImage` 7 ms, so 4K60 dropped to 58; the video processor isn't a copy (it changed pictures). A GPU decoder's pictures are held, not copied out (`Decoder::hold`, `Nvdec::hold`; `OLO_VIDEO_HELD=0` copies, to compare): each decoder keeps up to 16 pieces of page-aligned memory (VA-API's linear surfaces, NVDEC's buffers), copies a picture into one nothing holds, and hands it on as it is (`Picture::held`: its planes' offsets and row pitch), as an `olo_yuv::YuvMemory` on the `YuvFrame`; the renderer imports that memory as a Vulkan buffer (blade's `import_host_buffer`, VK_EXT_external_memory_host) and copies it into the stream's textures on the GPU, letting both go once the GPU is past that frame (a picture it can't import is staged as before, at its pitch). NVDEC's memory is registered with its CUDA context (`cuMemHostRegister`: its copy goes by DMA, not through the processor as into pageable memory), the context shared with that memory and destroyed when the last of it goes (`Cuda`), and made with blocking sync (waiting for a copy, the thread sleeps rather than spins). 4K60 AV1, the Viewer's share of a core, copied → held: Intel's GPU 21.9% → 7.1%, NVIDIA's 30.3% → 21.9%, pinned 13.8%, blocking 7.0% (its video thread 19.9% → 1.1%; 4K60 VP9 7.0%; nothing dropped). `crates/video/tests/reference.rs` decodes reference streams on every device here, each picture against the reference decoder's MD5 (libvpx's VP9 profile 2 and 1080p in tiles, libaom's AV1 10-bit, the HEVC conformance suite's Main 10 in wavefronts; NVDEC takes VP9 only from 128 × 128, said before trying); cros-codecs' per-picture HEVC reference-set warnings are debug notes (ordinary streams do it). `crates/vaapi/tests/decode.rs` checks every picture's MD5 against the reference decoder's (cros-codecs' AV1, VP9, H.264 and HEVC streams: B-frames, H.264 High, HEVC films, VP9's shown-again frames, a reset; a codec no GPU here decodes is said and passed: `LIBVA_DRIVERS_PATH=DIR` points the test alone at RPM Fusion's driver unpacked there). `Automatic` takes the built-in GPU where it decodes the video, else NVIDIA's (on battery too); `Video::decoders` says which GPUs could (the Viewer's menu enables those). 4K60 on the ThinkPad's Intel GPU (Panther Lake, RPM Fusion's iHD 26.3.5), the process's share of a core: H.264 25% (NVDEC 29%, the processor 100%), HEVC 21% (41.6%, 246%), AV1 22% (26%, 368%); a minute of each, with six ahead and the clock waiting for the first picture, played every picture but one (H.264 3600 of 3600, HEVC 3599, AV1 3600, none late; NVDEC's H.264 5 dropped, all at the switch to it), where at two ahead NVDEC had dropped 155, 68 and 176. On the processor, rav1d's and OpenH264's x86 assembly (SSE4 and AVX2, chosen at run time) is built in: nasm assembles it (tools/setup.sh installs it; OpenH264 leaves its assembly out without saying so when there's no nasm, and rav1d's `asm` feature fails the build). `keeps_up` on the 4K60 clips (`OLO_SAMPLES=/var/tmp/olo-4k OLO_ONLY=…`): AV1 32 → 85 pictures a second, H.264 45 → 53–98 (OpenH264 decodes on one thread, as fast as the core the scheduler gives it; its threads crash it), HEVC 108 → 140 (rust_h265, no assembly; the machine was busier for the first); the Viewer playing 4K60 AV1 on the processor 368% → 175% of a core. A frame keeps 8-bit video's samples as bytes (`av1::Planes`, words only deeper; every conversion runs over either through one macro): it had widened them to 16 bits and the queue counted each 4K picture 50 MB, one ahead, so 4K60 AV1 on the processor dropped 1,510 of 3,600 pictures in a minute, now 3 (its video thread 57% of a core → 17.5%). The worker keeps up to six pictures ahead within 80 MB (`QUEUE_BYTES`: six 4K pictures as planes; at 24 MB a 4K picture had two, 33 ms at 60 frames a second, and every hiccup of a decoder's dropped pictures, NVDEC's H.264 150 a minute), and with no sound to follow the clock waits for a late decoder up to 200 ms (`HOLD`: starting, a stall), so a picture shows late rather than the ones after it being passed over; one that can't keep up at all is caught up with by passing pictures over. How smoothly a video played is counted (`Video::playback`: pictures shown, dropped, already late when their turn came, and shown late, more than 25 ms after their time) and logged when the player goes ("video: 3600 pictures shown, 0 dropped, 0 late; decoded on Intel's GPU (VA-API)"); `make_4k60` makes longer clips with `OLO_SECONDS`. Audio decodes with symphonia plus `opus.rs` (opus-decoder, OpusHead parsing and pre-skip trim) for Ogg Opus. `audio::Player` speaks the PulseAudio protocol itself, and its client says who is playing as libpulse does (`application.process.id`, `.binary`, `.user`, `.host`, beside the app's name and icon): Fedora's uresourced follows the programs playing sound by their process, and crashed at every Olo login on the start-up sound's stream (a null process id). Picture editing (`edit.rs`): an `Editor` keeps a list of `Op`s (rotate, flip, crop, resize) with undo/redo and a saved mark, and a worker that loads the full picture once, applies new steps to its last result, sends `EditEvent::Shown` (downscaled for the screen) for `PreviewView::show_edited`, and writes PNG, JPEG (quality 92), WebP, BMP, TIFF or GIF atomically (`write`, through a hidden `.name.saving` file); `edit::editable` says which files it can write back. The Viewer's crop overlay (`crop.rs`: drag a frame, move it or its edges) sits where `ImageView::picture_bounds` says the picture is, `set_still` stopping pan and zoom while it is up. The Viewer's Image menu and File ▸ Save / Save As / Revert use it; Quick Look's footer has Rotate Left / Right (⌘L / ⌘R), which save at once. |
 | `crates/richtext` | `olo-richtext`: formatted text documents in and out, natively (zip and quick-xml): Word (`.docx`: styles, numbering, hyperlinks' relationships), OpenDocument text (`.odt`: automatic and named styles, nested lists, `text:s` for runs of spaces) and RTF (`rtf.rs`: a reader of groups and control words — font and colour tables, the style sheet's names for kinds or else `\outlinelevel`, lists from the list table or Word 95's `\pn`, links from `HYPERLINK` fields, tables from `\intbl` paragraphs, `\cell` and `\row` (`\trhdr` a header), any Windows code page by `\ansicpg` or a font's `\fcharset`, `\u` with its fallbacks skipped, surrogate pairs; pictures, headers, footers, notes, hidden text and unknown `\*` destinations left out — and a writer of plain ASCII with a style sheet, a list table per numbered list and every paragraph's look spelled out, as RTF readers take a paragraph's look from its own words, not its style; the reader takes each kind's look off again). A `Document` of `Paragraph`s (kind: body, title, heading 1–3, quote, code; a list, bulleted or numbered, and its level; an indent; alignment; or a `Table` in the flow: rows of cells of paragraphs, the first row maybe a header, and the columns' widths if they have their own (`widths`, shares of the table after `tidy`: Word's `w:gridCol`s, OpenDocument's column styles, RTF's first row's `\cellx` edges), written ruled across the page in each format) of `Span`s (bold, italic, underline, struck out, size, colour, font, monospace, link), indents beyond the levels in points (`left`, `first`, `right`; read as whole levels and the rest) and tab stops (`Tab`: left, centre, right, decimal), and the document's font. `read`/`write` go by the file's extension; `Document::tidy` runs same-styled spans together and makes a line break a new paragraph (in cells too), and gives every row a cell for each column and every cell a paragraph. Light on purpose (StyledEdit links it; `preview` is far heavier), and round-trip tested; its files open in LibreOffice as they look in StyledEdit (`OLO_RICHTEXT_OUT=dir cargo test -p olo-richtext writes_samples` writes a sample of each; `OLO_RICHTEXT_READ=file cargo test -p olo-richtext reads_named_file -- --nocapture` prints how another program's file reads). |
 | `crates/syntax` | `olo-syntax`: source code coloured by syntax, in process: tree-sitter's grammars for 43 languages (Rust, C, C++, Go, Python, JavaScript, TypeScript and TSX, shell and fish, Ruby, Java, Kotlin, Swift, C#, PHP, Lua, SQL, HTML, CSS, JSON, YAML, TOML, XML, Makefiles, Dockerfiles, CMake, Scala, Haskell, Zig, Elixir, Erlang, Nix, R, Julia, OCaml, Dart, Objective-C, Protocol Buffers, PowerShell, INI, diffs), each compiled in, with its highlight query (its crate's, or `queries/`: Kotlin's is Olo's own) whose captures map to the palette's token classes (`class_of`: `function.method.call` a function, `variable` plain inside a string). `LANGUAGES`; `detect(path, first_line)` (a whole name like `Makefile`, the extension, a `#!` line's interpreter, `env -S` and versions too); `by_name` (an id, alias or extension: what a Markdown fence says). A `Highlighter` keeps one text's tree: `edit(&Edit)` per change (`Edit::new` with the lines it's on, or `Edit::in_text` counting them), `job(text)` the parse to run on a worker (one out at a time; a language's query compiles in its first, up to half a second for Swift's), `done(parsed)` takes the tree (edits made meanwhile applied to it; what changed: `Changed`), `classes(text, range)` the query over just those bytes (inner captures and a node's first pattern win). 100,000 lines of Rust: parsed in a second, a keystroke's reparse 16 ms (both on the worker), a screenful coloured in 0.35 ms. The kit's `code` module puts it in the editor. |
 | `crates/print` | `olo-print`: printing, natively. `Page`s of `Item`s (text at a baseline with its font, size, colour, width and lines; rectangles; lines; pictures, a PNG, JPEG, GIF or WebP file's bytes in a box), in points from the top left, made into a PDF by `pdf` (krilla: fonts found by fontdb, Olo's own for text naming none, embedded and subset, text stays text; a character the font lacks drawn from a face that has it, `ttf-parser` telling; bold from a variable font's default instance stroked as well as filled, as browsers print it). `ipp`: CUPS spoken to over IPP on `/run/cups/cups.sock` (else `localhost:631`; `OLO_CUPS_SOCKET` for a test's stand-in, as `talks_to_cups` has): `printers()` (name, description, state, paper), `default_printer()`, `print(printer, pdf, &Job)` (copies, paper, pages, sides). `panel::PrintPanel`: the Print window (printer or PDF File, paper, copies, pages; the printers asked for on a worker); `Paper`, `PAPERS` and `local_paper()` (US Letter where it is used, else A4). |
@@ -5873,7 +5873,7 @@ recorded otherwise.
     rows beside Telegram's Save) closer than `metrics::SECTION`,
     two spacings: the row ends its group, so what follows is a new
     section; as close as the rows above, the row reads as the start of
-    what follows, as Preferences ▸ Power ▸ Graphics' Screen Recordings did),
+    what follows, as the former Power panel's Screen Recordings box did),
     `same-id` (two controls with one element id: they share the element's state,
     a press among it, so a click on either is lost; a kit Button's id is
     its label unless given one, and Preferences ▸ Security's two Remove
@@ -10495,212 +10495,96 @@ themselves, or `__NV_PRIME_RENDER_OFFLOAD=1`: those are left alone. To
 check: NVIDIA's `power/runtime_status` stays `suspended` and its
 `power/runtime_active_time` doesn't move through a launch.
 
-### Power: the processors' and each GPU's, by mode and on battery (Preferences ▸ Power, `olo-gpu-tune`)
+### Power modes (Preferences ▸ Power, Deskbar and `olo-gpu-follow.service`)
 
-Every power setting is in Preferences ▸ Power (Ben, 2026-11-06:
-"centralize the gpu power settings and cpu power settings to all be
-under the prefs -> power section, and have all these scenarios
-configurable with reasonable defaults"), in three tabs:
+Power uses the shared kit's `RadioButton::description` and `CheckBox::description` for wrapped notes aligned with their mark labels. A menu can use `Menu::note` for a readable, non-interactive status line, as in Viewer's Decode With menu.
 
-- Power Modes: the power mode (Power Saver, Balanced, Performance), and
-  a grid of what each mode, and running on battery, puts the processors
-  and each GPU on (`gpu_tuning::Plan`; each cell a `MenuField` named by
-  its row and column for agents, "Processors in Power Saver"). The
-  processors' presets (`cpu_tuning::CpuPreset`) are what the power
-  profiles daemon sets for its modes, so each can be chosen anywhere:
-  Saving Power (the powersave governor, the "power" energy preference,
-  turbo off, the firmware's low-power profile), Balanced
-  (balance_performance, on battery balance_power as tuned's
-  balanced-battery has it, turbo, balanced) and Fastest (the performance
-  governor, turbo, performance). Below them, the processors' Top speed
-  (`Plan::cpu_top`: 100, 90, 80, 75, 60 or 50% of the fastest they go;
-  intel_pstate's `max_perf_pct`, else each processor's
-  `scaling_max_freq`), by default its preset's own: Balanced's 75%,
-  the others' 100% (Ben, 2026-11-13: "right now the cpu on it ends up
-  still being too high, but on power saving it's too low. can we make
-  it so that the cpu is limited to like 75% of what it gets now on
-  balanced instead?"). The last quarter of a processor's clock is where
-  it spends most (its voltage climbs with it), so the cap takes away the
-  hottest bursts and keeps most of the speed; Power Saver, without
-  turbo, holds the ThinkPad's P-cores at 1.9 GHz of their 4.7. Then a
-  row for each NVMe drive, named by its model (`nvme_power::titles`:
-  "SKHynix HFS002TFM9X179N", its size then its device added only where
-  two would read alike, "Samsung SSD 990 PRO, 2 TB"; a long one cut, whole
-  in its tip; the summary line the same; Ben, 2026-11-15: "use their
-  device name or something instead of generic SSD"; each set on its own
-  by its serial; `Drive::size` from its namespaces) (`olo_system::nvme_power`; Ben, 2026-11-13:
-  "add the ability to adjust/customize nvme power for each profile for
-  when a user wants to get their nvme drive to run a bit cooler (but
-  default should be whatever it is now / by default)"): Auto (called
-  As It Is until 2026-11-18; the
-  default: the drive untouched), Cooler (its second working power
-  state) or Coolest (its lowest), each with the most it draws in it
-  ("Cooler (6.3 W)") once the follower has read the drive's own table,
-  which is root's (Identify Controller's power state descriptors,
-  through the kernel's admin passthrough, `NVME_IOCTL_ADMIN_CMD` on
-  /dev/nvmeN, natively); a drive with one working state offers only As
-  It Is. The follower sets the state with Set Features (Power
-  Management, not saved on the drive); APST's resting states are the
-  drive's own and it comes back to the state set. Auto touches a
-  drive only to put back PS0 on one the follower had lowered
-  (`Followed::limited`). A controller reset (some resumes) puts a drive
-  back on PS0, so the follower sets the drives again as logind says the
-  computer woke (`power::watch_wake`), the drives alone. Drives are
-  known in the plan by serial ("balanced/nvme:SERIAL"), as names can
-  change between starts. Then a row for each SATA SSD (`olo_system::
-  sata_power`, 2026-11-15: "configure the settings independently for
-  all SSD/nvme drives"; libata's disks, `/sys/block/sd*` under an `ata`
-  port and not spinning, so not USB's), named and kept by serial the
-  same way (its unit serial page, `vpd_pg80`, else its `wwid`): the same
-  three choices, a SATA drive's power being its link's (ALPM: Cooler
-  `med_power_with_dipm`, "the link naps", Coolest `min_power`, "the link
-  sleeps"), set on its host adapter's
-  `link_power_management_policy` by the follower (version 4), which
-  keeps the policy it found before it first changed one
-  (`Followed::sata_found`) and puts that back for Auto. Tried with a
-  fake /sys (a SATA SSD, a spinning disk, a USB stick: only the SSD);
-  this ThinkPad has none. The names' column is as wide as the longest
-  name (a drive's model, a GPU's), on the 4-point grid, 152 to 216
-  (the panel 968 wide for it); the three modes above stand side by
-  side, each its description under it (stacked, the tab outgrew 1280 ×
-  800 with a SATA row). `OLO_POWER_DEMO=1` shows the made-up machine
-  the lint draws (two GPUs, an NVMe drive, a SATA SSD) on a test
-  desktop. A GPU's are Cooler and Quieter,
-  Balanced, Fastest (`gpu_tuning::preset`) or Custom (its own knobs, on
-  Graphics). The On Battery column is "As the Mode" or a preset that
-  holds whatever the mode. The defaults: each mode's own, and on battery
-  the mode's, but NVIDIA's GPU on Cooler and Quieter (video's Automatic
-  wakes it on battery too). Only choices that differ from the defaults
-  are kept (`Plan::chosen`), so a GPU added later takes its defaults.
-  Below: what's in force now ("Now Performance, on battery: the
-  processors Fastest at up to 100%, Intel Graphics Fastest, NVIDIA RTX
-  PRO 2000 Cooler and Quieter").
-- Graphics: a box for each GPU (`olo_system::gpus`: what it drives,
-  whether it's awake, the preset it's on now and what that has it on in
-  numbers (`gpus::in_force`: xe's clocks as its driver says now,
-  NVIDIA's as they were set, which its driver doesn't say back; Ben,
-  2026-11-07: "changing the power mode in prefs -> power doesn't change
-  the clock setting of the nvidia gpu?", its box showing only Custom's
-  slider), and its settings. On a preset they show what it runs at
-  now (`gpus::shown`: xe's clocks and profile as its driver says,
-  NVIDIA's as set; Ben, 2026-11-07: "it says nvidia is on cooler and
-  quieter but the slider hasn't changed?", they had been Custom's alone
-  under a heading of their own), and moving one makes it Custom where
-  it is now (`gpus::situation`: on battery when the plan has a choice
-  for it there, else the power mode), starting from those, so nothing
-  else jumps: "Custom in Performance once applied (on Cooler and
-  Quieter until then)", Revert back to the preset. On Custom they're
-  Custom's, a knob not set showing what Custom would set, the driver's
-  own (moving xe's lowest clock with no highest set had pinned the
-  highest to it):
-  Intel's xe the render GT's lowest and highest clock, `freq0/min_freq`
-  and `max_freq` within `rpn_freq`..`rp0_freq`, and every GT's power
-  profile; NVIDIA's, through NVML in process, its highest GPU clock,
-  locked clocks from its rest clock, its power limit where it can be
-  given one, a laptop's can't, and persistence, its driver kept ready so
-  it never sleeps), then Screen Recordings and Video Playback (with
-  "Automatic wakes NVIDIA's GPU on battery too", on by default).
-- Battery & Idle: the battery and its charge limit, the fans' profile
-  on a ThinkPad ("The fans", below), when idle,
-  caffeinated and presence; the panel's Defaults and Revert are this
-  tab's (the others have Apply and Revert of their own, for the
-  computer).
+Power has two tabs. **Power Mode** offers Battery Saver, Adaptive Performance
+and Low Latency. Choosing one in Preferences or Deskbar applies it immediately.
+The same stable IDs work with PPD, the ThinkPad's firmware shortcuts and
+app_server's agent API. `{"type":"set_power_mode","mode":"balanced"}` selects
+Adaptive Performance. `power_status` and `power_changed` include `policy`,
+with available modes, the active mode, supply, percentage, any restore-on-AC
+mode and selection errors. Modes unavailable on the machine are disabled.
 
-The old GPUs panel's names (`gpus`, `gpu`, `graphics`, `nvidia`) open
-Power on Graphics (`--tab` picks a tab: `power::show_tab`).
+| Mode | Processors | Graphics and cooling |
+|---|---|---|
+| Battery Saver (`power-saver`) | Low-power chassis profile, energy-first EPP, turbo off on hardware that supports it. A supervised background build service can use up to half the CPU capacity. | Conservative Intel graphics ramp and clock ceiling, reduced NVIDIA ceiling on first use. Firmware fans. The built-in panel uses an offered mode at its existing resolution at or below 60 Hz, and dims after 30 idle seconds. |
+| Adaptive Performance (`balanced`) | Low native floor, full turbo, balanced chassis profile. Performance-biased EPP on AC and energy-biased EPP on battery. | Driver-managed range and demand-based discrete graphics. The ThinkPad's Cool curve anticipates heat. |
+| Low Latency (`performance`) | Full turbo and performance EPP with a low floor. Intel HWP dynamic boost covers I/O wakeups. Registered foreground window threads get a temporary utilization hint for the interaction and 200 ms afterwards. | Full operating range. Where supported, the GPU runtime-PM delay spans at least 250 ms during this mode. The ThinkPad's Cooler curve starts earlier. |
 
-What a GPU allows is read without root (`gpu_tuning::caps`); a sleeping
-NVIDIA GPU isn't asked (it would wake): what it said last time is shown
-(`~/.cache/olo/gpus/`), or "Ask It". Asked and not answering, its box
-says what the driver said (`caps_or_why`: "its driver didn't answer (an
-internal driver error occurred)"), and that a restart starts its driver
-again when the kernel has its power management in an error state
-(`power_failed`: `runtime_status` "error", as NVIDIA's was after memory
-ran out on 2026-11-07), with Ask Again; "Asking it…" while it asks.
-NVIDIA's library is started again at each ask until it starts once (a
-failed start had been kept for the life of the process: Preferences
-never asked again). `olo-gpu-tune show` says the same, as
-`power_failed` and `unanswered`. Apply runs `olo-gpu-tune set`
-through pkexec (only in the person's own session: "The person's own
-session", below),
-which keeps the tuning in `/etc/olo/gpus.json` (the computer's: it's the
-hardware's), notes each GPU's limits as its driver had them before it
-was first tuned (xe keeps whatever is written, and its own lowest clock
-isn't one it says: Balanced writes those back), applies it, and installs
-a root-owned copy of itself (`/usr/local/libexec/olo-gpu-tune`) and
-`/etc/udev/rules.d/73-olo-gpu-tune.rules`, which applies it again as
-each GPU appears at start (a rule running a program the person's account
-could change would run anything as root). Agents read it all with
-`olo-gpu-tune show` (JSON; `--wake` asks a sleeping GPU too).
+Battery Saver temporarily selects the nearest offered refresh at or below
+60 Hz at the current resolution. A lower refresh already in use takes
+precedence. Display settings made while in Saver become the preferred mode
+when it ends. Idle dimming uses the panel's backlight in SDR and its SDR white
+in HDR. Input restores the chosen brightness. Display sleep, Caffeinated and
+application inhibitors use the ordinary idle policy.
 
-The plan is followed as the power mode changes, wherever it's chosen
-(Preferences ▸ Power, Deskbar's battery menu, a ThinkPad's Fn+L/M/H,
-the daemon's own tools), and as the power supply does (UPower's
-signals, `battery::watch`): the daemon sets the processors and the
-firmware for its mode first, then each GPU and the processors are put
-on what the plan says (`gpu_tuning::scenario`, `cpu_tuning::apply`;
-`Plan::cpu_now`, `Plan::gpu_now`).
+The automatic choice is Off, 10%, 15% (default) or 20%. app_server's
+`power_modes` worker follows UPower and PPD, remembers the previous mode
+and restores it when power is connected. A choice made above the threshold
+keeps automatic Saver armed. A manual choice at low charge, including a
+firmware shortcut, takes precedence until AC returns. The episode survives a compositor reload in
+the user's runtime directory. Supply changes settle for two seconds. An
+adapter that reports four switches within half a minute is treated as
+battery until stable. Agent screens simulate mode choice locally.
 
-The daemon is the person's to drive without a password, but GPU clocks,
-power limits and the processors' knobs are root's, so a root service
-does it:
-`set` also installs and enables `olo-gpu-follow.service` (systemd's own
-API, `olo_system::systemd`: reloaded and started again when it or the
-installed program is new), which runs `olo-gpu-tune follow`: it waits
-for the daemon's name on the system bus (`power_profile::
-wait_for_daemon`, the bus's `NameOwnerChanged`), then for its mode
-changes (`power_profile::watch`, its `PropertiesChanged`) and UPower's
-(mains or battery), and on each keeps the new tuning and applies it as
-`set` does (`follow_now`: a sleeping NVIDIA GPU asked, waking it a
-moment, as applying its preset does anyway; the processors' preset
-after the daemon's own). It's woken by nothing else: idle, it costs
-nothing. **The supply has to hold** (`Supply`, gpu_tune.rs): a change
-counts once it has lasted two seconds (a plug put in twice, a cable
-moved to another port set the plan twice), and a supply that changes
-four times within half a minute is unsteady: planned for as the battery,
-the careful plan, set once, until it has been steady half a minute; it
-says so in its log. On 2026-11-17 the P1's embedded controller reported
-its adapter coming and going 23 times a second for two hours (see
-docs/AGENT-NOTES.md, "The embedded controller's event storm"), and
-every change UPower told of had the whole plan set again: 610 times in
-the first hour, each waking NVIDIA's GPU and calling the firmware for
-its profile. It holds NVIDIA's GPU open (NVML, opened at its first change
-and never closed: `gpu_tuning::nvml`), and that is what keeps the GPU's
-clock lock: with persistence off, NVIDIA's driver shuts a GPU down
-whole when the last program holding it closes it, its lock and power
-limit with it (open-gpu-kernel-modules' `nv_close_device` →
-`rm_shutdown_adapter`), so a lock set by a program that then exits
-lasts only while another has the GPU open (Ben, 2026-11-07: "changing
-the power mode in prefs -> power doesn't change the clock setting of
-the nvidia gpu?"). Held, the GPU still sleeps: on the ThinkPad (driver
-615, fine-grained runtime D3) it suspended 25 s after its last use with
-NVML open, video memory off; closing NVML is what woke it. `set` keeps the whole tuning (the plan, each GPU's Custom
-knobs) and applies what's in force now. After each change the
-follower says what it did in `/run/olo-gpu-follow.json`
-(`gpu_tuning::Followed`, readable by all): its version
-(`FOLLOWER_VERSION`, raised whenever what the follower does changes, not
-with every build: a new build of the same follower isn't worth an
-administrator's password; 3 has the drives), the mode and supply, the
-processors' preset and top speed, what was refused, the processors as
-they were just after, and each NVMe drive's power states and the one
-it's on. One password, at the first Apply; Power Modes offers Apply while
-the service isn't there, or says an older version (or nothing), and
-otherwise says what's in force now. Olo Doctor checks the same
-(`power_modes`, with a power profiles daemon and processors that can be
-set; Ben, 2026-11-13: "olo doctor should make sure those profiles get
-set/customized properly"): the follower not installed (Install It: the
-program copied where only root can change it, the unit and rule,
-systemd told, started), stopped (Start It), out of date (Update It),
-refused something (Try Again), or the processors changed since it set
-them by something else, ten seconds after it wrote (Set Them Again:
-it's started again, which sets everything for the mode now); else
-fine, saying what's in force. The panel follows
-`/etc/olo/gpus.json` (inotify) so what's shown changes with the mode
-and the supply. On the ThinkPad
-(2026-11-04): Power Saver put the Intel GPU on 650–1600 MHz with its
-power-saving profile and the NVIDIA GPU on 180–2160 MHz, and all 16
-processors on the "power" preference, turbo off, the platform profile
-low-power.
+**Current hardware state** reads the actual CPU performance limits and
+turbo, active display connectors, discrete GPU runtime state and cooling.
+Opening it, Refresh, and changes to the follower's report refresh the
+readback on a worker. NVIDIA is never queried through NVML for this panel.
+
+**Battery & Idle** offers the charge threshold reported by UPower and
+independent display-off and suspend times for battery and AC. Never
+disables that timer. Earlier shared timers and battery-only sleep retain
+their effective values on each supply. The first edit materializes the
+two columns. Lock and presence are under the disclosure and temporary
+Caffeinated mode is available in Deskbar. Screen Saver's display timer
+edits the current supply. The location `olo-preferences gpus` still
+opens Power with the hardware disclosure expanded.
+
+**Hardware ownership.** Olo Doctor installs or updates the privileged
+follower and, on supported ThinkPads, its fan service. The three named
+modes supersede the old per-mode CPU, GPU and fan grid. Legacy tuning
+files remain readable for backup, including existing per-drive NVMe
+and SATA choices. Unconfigured drives use the controller or link's
+normal policy. Fedora's stock Performance mapping can use the
+`olo-low-latency` TuneD profile based on its laptop Balanced policy.
+A custom distribution or administrator mapping is respected. TuneD's
+`profile_changed` completion signal synchronizes the follower with its
+asynchronous writes. The follower releases Intel's global minimum
+before setting the maximum, reads the result back and records refused
+writes. Generic CPUFreq drivers use a demand-based governor when
+available.
+
+`/run/olo-gpu-follow.json` records the applied mode, supply, CPU floor
+and ceiling, GPU requests, deferred devices, drives and errors. A sleeping
+RTX receives its pending settings when a client opens its device. Native
+inotify observes device opens and additions. Only a pending open gets a
+bounded recheck of runtime status. The NVIDIA clock lock is held by the
+follower's NVML context. Fine-grained runtime D3 remains available. On
+resume the follower reconciles hardware state again. `olo-gpu-tune show`
+reports GPU readback as JSON. `--wake` explicitly queries sleeping devices.
+
+**Thermal headroom.** The fan service uses its existing sensor samples
+and the hardware's individual trip points. Within 8 °C it signals
+background work to ease off. Within 5 °C for eight seconds it also asks
+the follower to trim the CPU performance ceiling to 80%. The ceiling
+and background budget recover after 15 seconds with at least 12 °C of
+headroom. User-service build quotas are temporary and explicit quotas
+are respected. Existing foreground scheduling and firmware protection
+remain in force. These are control thresholds to validate on each
+platform. A headless run can exercise the policy and deadlines but does
+not measure a laptop's thermals or battery life.
+
+**Media choices.** Screenshot's Record menu has Encode With and Video
+Format, filtered by the available engines. Automatic recording tries the
+integrated VA-API hardware path for H.264 and AV1 on either supply.
+Viewer ▸ View ▸ Decode With selects the decoder for the current video and
+future videos. Its Automatic option prefers the integrated decoder and
+can use NVIDIA on battery when enabled. Explicit device selection,
+capture commands and codec arguments remain available.
+
 
 ## The touch screen (app_server input_handler.rs)
 
@@ -11093,19 +10977,12 @@ Screens' Export Video uses too).
   region of it, 11%, 28 a second.
 - **Encoded on a worker** as frames come; one that comes while the last
   is still being encoded waits in its place, a newer taking it, on the
-  most powerful encoder there is unless told (`--encoder auto|cpu|
-  nvidia|vaapi`; `olo_video::Encoder`, `Choice`): NVIDIA's GPU where its
-  encoder opens (`olo_video::nvenc`: NVENC's API through vendor/
-  nvenc-sys's declarations, `libnvidia-encode.so.1` and `libcuda.so.1`
-  opened at run time, nothing linked, so a machine without them builds,
-  starts and records on the processor; a constant quality, as many
-  bits as keep it, at most twice `olo_video::bitrate`, a key frame every
-  two seconds, no B-frames, no lookahead (a picture out for each in),
-  the parameter sets or sequence header with each key frame), else the
-  processor (OpenH264); unless told, as Preferences ▸ Power ▸ Graphics ▸ Screen
-  Recordings has it (`Settings::screen_recording.encoder`: the most
-  powerful there is, named, by default; the NVIDIA GPU, offered where
-  there is one; or the processor). A frame at 4K: 13.4 ms on the GPU (an RTX 50
+  selected encoder (`--encoder auto|cpu|nvidia|vaapi`, or Screenshot ▸
+  Record ▸ Encode With). Automatic tries the VA-API media engine first
+  for H.264 and AV1 on both supplies, then NVENC and OpenH264 as available.
+  NVENC loads its libraries at runtime. It uses constant quality with
+  at most twice `olo_video::bitrate`, a key frame every two seconds and
+  no B-frames or lookahead. A 4K frame took 13.4 ms on the GPU (an RTX 50
   laptop part, `nvenc_makes_h264_that_decodes`, each frame decoded back
   by OpenH264), 111 ms on the processor (AVX2, one thread; 16 ms at
   1440 × 900, 56 at 2560 × 1600: `encode_cost`), so 4K keeps up at 30 or
@@ -11242,7 +11119,7 @@ Screens' Export Video uses too).
   `plays_across_another_encoders_entry` (`OLO_FALLBACK_MP4`,
   `OLO_FALLBACK_SEEKS`).
 - **H.264, HEVC or AV1** (`--codec`, `Settings::screen_recording.codec`,
-  Preferences ▸ Power ▸ Graphics ▸ Format, which offers H.264 and HEVC;
+  Screenshot ▸ Record ▸ Video Format, which offers compatible codecs;
   `olo_video::Codec`): HEVC and AV1 on NVIDIA's encoder only (the
   processor makes H.264: `--encoder auto` falling back to it says so in
   `codec`). The MP4 gets the codec's sample entry made from the stream
@@ -13651,34 +13528,11 @@ sensor is throttled: **not yet measured against the firmware's own
 curve on this computer**, which needs the fans' profile changed under
 a steady load (the fans' file is root's, and the person's to change).
 `olo-fans --status` says what each of the three would set now.
-**A row of each power mode** (Preferences ▸ Power ▸ Power Modes ▸
-What Each Mode Sets ▸ Fans; Ben: "move the fans option to be another
-mode row setting in the power modes tab"): Auto, Cool, Cooler or
-Coolest for Power Saver, Balanced and Performance, and on battery (As
-the Mode, or one of its own). In the plan as `MODE/fans` (`Plan::fans`,
-`set_fans`, `fans_now`), applied with the rest by the root follower as
-the mode or the supply changes (`gpu_tune`'s `follow_fans`: the
-profile's word written to `/etc/olo/fans`, which `olo-fans` watches;
-nothing written where it's that already). Until a mode has a profile
-of its own the plan says nothing and the follower leaves the fans as
-they are: every mode's menu shows the one profile there is (what was
-chosen before the modes had their own), and the first choice gives
-each mode what it shows, so only what's chosen changes. The first
-time one of Olo's is applied with the fan service not set up,
-Preferences has Olo Doctor set it up (`fans_to_set_up`,
-`olo-doctor --fans`: the program, the unit, the driver told to take
-levels; its password asked once). The tab's "Now …" line says the
-profile in force and what the fans are doing ("the fans Cooler (at
-level 5 of 7)"), drawn again as that changes. The Fans box that was
-in Battery & Idle is gone. Activity Monitor's fans card names the one
-in force. Tested: `gpu_tuning`'s `the_plan_s_fans`, `gpu_tune`'s
-`the_fans_follow_the_plan` (a stand-in tree: can't be set, not set up,
-written once, the old word left as it is). **Not tried applied on
-this computer** (it writes root's `/etc/olo/fans` and changes how the
-fans run: Ben's to try); the tab was looked at, reading only. Tested: `olo-fans`'s
-`three_strengths_each_a_step_earlier` and `power_asks_ahead_of_heat`;
-`olo_system::fans`'s `words`; Doctor's (the word written, the service
-installed for any of the three).
+The three Power modes select these curves automatically (see Power
+modes above). Olo Doctor installs the fan helper alongside the power
+follower on supported ThinkPads. The stand-alone fan tools still accept
+the four profile names and the previous `cool` spelling.
+
 
 
 A ThinkPad's fans run ahead of the heat, so the computer isn't slowed
@@ -13691,7 +13545,7 @@ which the firmware throttles the processor (their zones' passive trip,
 `/etc/olo/fans` holds the profile, one word: `auto` (the firmware's
 own curve: nothing read or written, asleep until the file changes) or
 `cool` (the firmware's curve while everything is cool, the fans raised
-early as anything warms, up to full speed). There are only those two.
+early as anything warms, up to full speed). The current three Olo curves use the same controller at different strengths.
 In `cool` it watches every sensor the computer has (each core and the
 package, the firmware's own readings, every thermal zone with a trip,
 the SSD, the memory), each with where the fans start for it and where

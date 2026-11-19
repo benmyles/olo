@@ -48,8 +48,36 @@ RestartSec=10
 WantedBy=multi-user.target
 ";
 pub const FOLLOWER_RULE_PATH: &str = "/etc/udev/rules.d/73-olo-gpu-tune.rules";
-pub const FOLLOWER_RULE: &str =
-    "# Olo: each GPU's tuning (Preferences ▸ Power), set again as it appears.\nACTION==\"add\", SUBSYSTEM==\"drm\", KERNEL==\"card[0-9]*\", RUN+=\"/usr/local/libexec/olo-gpu-tune apply %k\"\n";
+pub const FOLLOWER_RULE: &str = "# Olo: each GPU's tuning (Preferences ▸ Power), set again as it appears.\nACTION==\"add\", SUBSYSTEM==\"drm\", KERNEL==\"card[0-9]*\", TAG+=\"systemd\", ENV{SYSTEMD_WANTS}+=\"olo-gpu-follow.service\"\n";
+
+/// Fedora maps Performance to a server-throughput profile. An Olo install
+/// can substitute a laptop profile without changing unrelated PPD mappings.
+pub const TUNED_PPD: &str = "/etc/tuned/ppd.conf";
+pub const TUNED_LATENCY: &str = "/etc/tuned/profiles/olo-low-latency/tuned.conf";
+pub const LATENCY_PROFILE: &str = "[main]\nsummary=Olo foreground latency on a laptop\ninclude=balanced\n\n[cpu]\ngovernor=schedutil|powersave\nmin_perf_pct=0\nenergy_performance_preference=performance\nboost=1\n\n[acpi]\nplatform_profile=performance\n";
+
+pub fn laptop_mapping(conf: &str) -> Option<String> {
+    let mut out = String::with_capacity(conf.len());
+    let mut profiles = false;
+    let mut changed = false;
+    for line in conf.split_inclusive('\n') {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            profiles = trimmed == "[profiles]";
+        }
+        if profiles
+            && let Some((key, value)) = line.split_once('=')
+            && key.trim() == "performance"
+            && value.trim() == "throughput-performance"
+        {
+            out.push_str(&line.replace("throughput-performance", "olo-low-latency"));
+            changed = true;
+        } else {
+            out.push_str(line);
+        }
+    }
+    changed.then_some(out)
+}
 
 /// What the follower does, as a number raised whenever that changes
 /// (not with every build): a follower that says an older one is out of
@@ -59,7 +87,7 @@ pub const FOLLOWER_RULE: &str =
 /// link power (`sata_power`), kept per drive. 5: a change of supply
 /// counts once it has held two seconds, and a supply that keeps changing
 /// is planned for as the battery (`Supply`, gpu_tune.rs).
-pub const FOLLOWER_VERSION: u32 = 5;
+pub const FOLLOWER_VERSION: u32 = 6;
 
 /// What the follower last did, written by it after each change to
 /// `/run/olo-gpu-follow.json` (readable by all): which version it is,
@@ -69,6 +97,12 @@ pub const FOLLOWER_VERSION: u32 = 5;
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Followed {
+    /// Last successful GPU requests and devices waiting for first use.
+    pub gpus: Vec<GpuTune>,
+    pub deferred: Vec<String>,
+    /// Original runtime-PM delay on devices for which Low Latency supplied
+    /// a longer idle tail. Other power managers can change it independently.
+    pub autosuspend_ms: std::collections::BTreeMap<String, i32>,
     pub version: u32,
     /// The mode's id ("balanced").
     pub mode: String,
@@ -215,14 +249,10 @@ impl When {
 }
 
 /// What the power mode and the power supply put the processors and each
-/// GPU on (Preferences ▸ Power ▸ Power Modes; `olo-gpu-tune follow`
-/// applies it as either changes). Only choices that differ from the
-/// defaults are kept (`chosen`: "MODE/cpu" or "MODE/PCI" to a preset's
-/// id, MODE a mode's id or "battery"), so a GPU added later, or a
-/// default changed, takes its default. The defaults: each mode's own
-/// (Power Saver saving power, Balanced balanced, Performance fastest),
-/// and on battery the mode's, but NVIDIA's GPU on Cooler and Quieter
-/// (Ben, 2026-11-06: video wakes it on battery too, then saving power).
+/// GPU on. Old installations and backups can contain "MODE/cpu",
+/// "MODE/PCI" and "battery/PCI" overrides in `chosen`. The follower
+/// uses Olo's operating modes for processors, graphics and fans. It
+/// still honors explicit storage choices.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Plan {
@@ -665,8 +695,6 @@ pub fn preset(pci: &str, preset: Preset, caps: &Caps) -> GpuTune {
             t.power_saving = x.profiles.then_some(true);
         }
         (Preset::Fastest, Caps::Xe(x)) => {
-            // Never below halfway up; as high as it goes.
-            t.min_mhz = Some(round50(x.efficient.max(x.lowest) + (x.highest.saturating_sub(x.efficient.max(x.lowest))) / 2));
             t.max_mhz = Some(x.highest);
             t.power_saving = x.profiles.then_some(false);
         }
@@ -679,12 +707,31 @@ pub fn preset(pci: &str, preset: Preset, caps: &Caps) -> GpuTune {
                 t.max_gpu_mhz = Some(round15(n.max_gpu_mhz * 7 / 10).max(n.min_gpu_mhz));
             }
         }
-        (Preset::Fastest, Caps::Nvidia(n)) => {
-            t.power_limit_w = n.power.map(|(_, most, ..)| most);
-        }
         _ => {}
     }
     t
+}
+
+/// Keep the GPU ready across short gaps in Low Latency using the driver's
+/// runtime PM timer. A sleeping device stays asleep. Negative delays and
+/// drivers managing their own suspension stay under their own policy.
+pub fn runtime_tail(device: &Path, latency: bool, original: Option<i32>) -> std::io::Result<Option<i32>> {
+    const HOLD_MS: i32 = 250;
+    let path = device.join("power/autosuspend_delay_ms");
+    let Some(now) = std::fs::read_to_string(&path).ok().and_then(|s| s.trim().parse::<i32>().ok()) else { return Ok(original) };
+    if latency && original.is_none() && (0..HOLD_MS).contains(&now) {
+        std::fs::write(path, HOLD_MS.to_string())?;
+        return Ok(Some(now));
+    }
+    if !latency {
+        if let Some(old) = original
+            && now == HOLD_MS
+        {
+            std::fs::write(path, old.to_string())?;
+        }
+        return Ok(None);
+    }
+    Ok(original)
 }
 
 /// What applying went like, a line a knob.
@@ -809,6 +856,32 @@ mod tests {
     /// every GPU; on battery the mode's, but NVIDIA's GPU on Cooler and
     /// Quieter. A choice back on its default leaves nothing kept.
     #[test]
+    fn fedora_mapping_preserves_unrelated_or_custom_choices() {
+        let conf = "[main]\n# keep this\n[profiles]\n performance = throughput-performance\nbalanced=balanced\n[battery]\nperformance=other\n";
+        let out = laptop_mapping(conf).unwrap();
+        assert_eq!(out, conf.replace("throughput-performance", "olo-low-latency"));
+        assert!(laptop_mapping(&out).is_none());
+        assert!(laptop_mapping("[profiles]\nperformance=my-profile\n").is_none());
+    }
+
+    #[test]
+    fn latency_tail_only_extends_short_delays_and_restores_its_own_value() {
+        let dir = std::path::Path::new("/var/tmp").join(format!("olo-power-tail-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("power")).unwrap();
+        let file = dir.join("power/autosuspend_delay_ms");
+        for (start, ret) in [("0", Some(0)), ("2000", None), ("-1", None)] {
+            std::fs::write(&file, start).unwrap();
+            assert_eq!(runtime_tail(&dir, true, None).unwrap(), ret);
+            assert_eq!(runtime_tail(&dir, false, ret).unwrap(), None);
+            assert_eq!(std::fs::read_to_string(&file).unwrap(), start);
+        }
+        std::fs::write(&file, "700").unwrap();
+        runtime_tail(&dir, false, Some(0)).unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "700");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn the_plan_s_defaults_and_choices() {
         use crate::{cpu_tuning::CpuPreset, power_profile::Mode};
         let mut plan = Plan::default();
@@ -849,10 +922,10 @@ mod tests {
     fn the_plan_s_top_speeds() {
         use crate::{cpu_tuning::CpuPreset, power_profile::Mode};
         let mut plan = Plan::default();
-        assert_eq!(plan.cpu_top(When::Mode(Mode::Balanced)), Some(75));
+        assert_eq!(plan.cpu_top(When::Mode(Mode::Balanced)), Some(100));
         assert_eq!(plan.cpu_top(When::Mode(Mode::Performance)), Some(100));
         assert_eq!(plan.cpu_top(When::Battery), None);
-        assert_eq!((plan.cpu_top_now(Mode::Balanced, false), plan.cpu_top_now(Mode::Balanced, true), plan.cpu_top_now(Mode::PowerSaver, true)), (75, 75, 100));
+        assert_eq!((plan.cpu_top_now(Mode::Balanced, false), plan.cpu_top_now(Mode::Balanced, true), plan.cpu_top_now(Mode::PowerSaver, true)), (100, 100, 100));
         // Balanced at 90%; on battery 60%.
         plan.set_cpu_top(When::Mode(Mode::Balanced), Some(90));
         plan.set_cpu_top(When::Battery, Some(60));
@@ -860,10 +933,10 @@ mod tests {
         // A preset chosen on battery takes its own top unless one's chosen.
         plan.set_cpu_top(When::Battery, None);
         plan.set_cpu(When::Battery, Some(CpuPreset::Balanced));
-        assert_eq!(plan.cpu_top_now(Mode::Performance, true), 75);
+        assert_eq!(plan.cpu_top_now(Mode::Performance, true), 100);
         plan.set_cpu(When::Battery, None);
         // Back on the defaults: nothing kept.
-        plan.set_cpu_top(When::Mode(Mode::Balanced), Some(75));
+        plan.set_cpu_top(When::Mode(Mode::Balanced), Some(100));
         assert!(plan.chosen.is_empty(), "{plan:?}");
     }
 
@@ -934,13 +1007,13 @@ mod tests {
         let c = preset("0000:00:02.0", Preset::Cooler, &xe());
         assert_eq!((c.min_mhz, c.max_mhz, c.power_saving), (None, Some(1600), Some(true)));
         let f = preset("0000:00:02.0", Preset::Fastest, &xe());
-        assert_eq!((f.min_mhz, f.max_mhz, f.power_saving), (Some(1600), Some(2450), Some(false)));
+        assert_eq!((f.min_mhz, f.max_mhz, f.power_saving), (None, Some(2450), Some(false)));
         assert!(preset("0000:00:02.0", Preset::Balanced, &xe()).is_default());
-        // (The ThinkPad P1 Gen 9's RTX PRO 2000: 5–75 W, 60 by default.)
+        // A board with a writable watt limit. The P1's is firmware-owned.
         let n = Caps::Nvidia(NvidiaCaps { power: Some((5, 75, 60, 60)), min_gpu_mhz: 210, max_gpu_mhz: 3090, persistent_now: Some(false) });
         let c = preset("0000:01:00.0", Preset::Cooler, &n);
         assert_eq!((c.power_limit_w, c.max_gpu_mhz), (Some(40), Some(2160)));
-        assert_eq!(preset("0000:01:00.0", Preset::Fastest, &n).power_limit_w, Some(75));
+        assert_eq!(preset("0000:01:00.0", Preset::Fastest, &n).power_limit_w, None);
     }
 
     #[test]

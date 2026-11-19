@@ -376,6 +376,7 @@ struct Deskbar {
     /// Each display's workspace showing.
     showing: Vec<DisplayWorkspace>,
     status: status::Status,
+    power_policy: olo_protocol::power_mode::State,
     caffeinated: bool,
     /// A timed caffeinated stretch's end (seconds since the epoch).
     caffeinated_until: Option<u64>,
@@ -1198,7 +1199,7 @@ impl Deskbar {
     fn battery_menu(&self) -> Menu {
         use olo_system::power_profile::Mode;
         let mut m = Menu::new("Power");
-        if let Some(modes) = &self.status.power_modes {
+        if let Some(modes) = &self.power_policy.modes {
             for mode in Mode::ALL.into_iter().filter(|x| modes.available.contains(x)) {
                 m = m.item(mode.label(), format!("power-mode:{}", mode.id())).checked(modes.active == mode);
             }
@@ -1348,14 +1349,7 @@ impl Deskbar {
             // signal says so back.
             Some(("power-mode", id)) => {
                 if let Some(mode) = olo_system::power_profile::Mode::from_id(id) {
-                    if let Some(m) = &mut self.status.power_modes {
-                        m.active = mode;
-                    }
-                    std::thread::spawn(move || {
-                        if let Err(e) = olo_system::power_profile::set(mode) {
-                            tracing::warn!(?mode, "power mode: {e}");
-                        }
-                    });
+                    request(Request::SetPowerMode { mode });
                 }
             }
             // Stop Sharing: olo-portal ends the session (and tells the app).
@@ -1779,6 +1773,7 @@ impl Deskbar {
             Msg::Power(p) => {
                 // (Nothing read for widgets nobody can see.)
                 self.live.pause(p.display_asleep || p.locked, &proxy);
+                self.power_policy = p.policy;
                 self.caffeinated = p.caffeinated;
                 self.caffeinated_until = p.caffeinated_until;
                 self.caffeinated_lid = p.caffeinated_lid;
@@ -3441,7 +3436,7 @@ impl Deskbar {
         // The battery: a click opens its menu (the power mode, Power's
         // preferences).
         if let Some(b) = st.battery {
-            let mode = st.power_modes.as_ref().map(|m| format!(", {}", m.active.label())).unwrap_or_default();
+            let mode = self.power_policy.modes.as_ref().map(|m| format!(", {}", m.active.label())).unwrap_or_default();
             let power = match (b.plugged, b.charging) {
                 (true, true) => " — charging",
                 (true, false) => " — plugged in",
@@ -4454,6 +4449,7 @@ fn main() {
             workspace: (0, 1),
             showing: Vec::new(),
             status: status::Status::default(),
+            power_policy: Default::default(),
             caffeinated: false,
             caffeinated_until: None,
             caffeinated_lid: false,
