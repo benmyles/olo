@@ -100,6 +100,39 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Token Pool counts its reset credits, and spends each where it
+  gives back most** (Ben, 2026-11-19, with a picture of Deskbar's Codex
+  widget's tip, "56% left: 1.1 of 2 accounts' worth … At this pace,
+  what's left lasts 22 h 34", and of Token Pool's window, each of the
+  two Codex accounts with "3 reset credits": "i don't think the token
+  pool widget that says "At this pace, what's left lasts ..." is taking
+  into account the (6!) usage resets I have available. make sure it
+  does, and also that the usage resets will get automatically used when
+  they are needed (in the most token optimal fashion so as to not waste
+  them)"). Now: `Availability::lasts` (crates/protocol/src/pool.rs)
+  divides what's left by the last hour's pace and counts no credit, and
+  the tip doesn't say there are any. The gateway redeems a credit when
+  no account can serve (`redeem_for`, crates/pool/src/gateway.rs) and
+  before one expires (`spend_expiring`, `Account::spend_before_expiry`,
+  crates/pool/src/model.rs). To do:
+  - The tip and the widget count them: how many there are, and the
+    pace line with what each gives back as the pool will spend it (a
+    credit is worth what's used of its account's quota when it's
+    redeemed, and only what can be used before that account would have
+    reset anyway; one that expires before it would be needed counts
+    for what it gives back then).
+  - Spending gives back the most: never while another account can
+    serve (as now); on the out account whose own reset is furthest off
+    (a credit spent an hour before its account resets by itself gives
+    back an hour's use), not on one about to reset by itself; the
+    credit soonest to expire first; Claude's accounts' the same. First
+    find out what a credit does to a quota's reset time (its use set to
+    nothing until the same reset, or a new week from then): the worth
+    of each choice depends on it.
+  - Tested in the pool's model tests (two accounts, six credits, a
+    week at Ben's pace: none spent while an account can serve, each
+    where it gives back most, none lost to expiry), and the tip pictured.
+
 - **A Language setting, and Olo in every major language** (Ben,
   2026-11-18: "we should add a language setting and also let's translate
   all olo apps and prefs and ux to support all the major languages
