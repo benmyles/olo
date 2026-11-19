@@ -96,7 +96,7 @@ def names():
 
 def screen(name, lines=None):
     """Its screen as text (the last `lines` of its history, if given)."""
-    args = ["capture-pane", "-p", "-J", "-t", f"{name}:0.0"]
+    args = ["capture-pane", "-p", "-J", "-t", f"={name}:0.0"]
     if lines:
         args[1:1] = ["-S", f"-{lines}"]
     r = tmux(*args)
@@ -105,7 +105,12 @@ def screen(name, lines=None):
 
 def state(name):
     """gone, exited, asking, working or idle (its turn over, waiting)."""
-    r = tmux("display-message", "-p", "-t", f"{name}:0.0", "#{pane_dead}")
+    # (A session that isn't there: `display-message` answers nothing and
+    # succeeds, and a bare name matches another's by its start; `=` is the
+    # name exactly.)
+    if tmux("has-session", "-t", f"={name}").returncode:
+        return "gone"
+    r = tmux("display-message", "-p", "-t", f"={name}:0.0", "#{pane_dead}")
     if r.returncode:
         return "gone"
     if r.stdout.strip() == "1":
@@ -263,6 +268,10 @@ def list_():
 def watch(stuck_min):
     """Return once an agent needs you; print who and why."""
     last = {}
+    # (When each was first seen idle: between two steps the TUI can show
+    # neither its working line nor a prompt for a moment, and that isn't
+    # a turn ended. Idle 15 seconds on end, it is.)
+    idle_since = {}
     while True:
         alerts = []
         rows = [n for n in names()]
@@ -281,11 +290,15 @@ def watch(stuck_min):
                 # first prompt goes in.)
                 if time.time() - m.get("started", 0) < 30:
                     continue
+                if time.time() - idle_since.setdefault(n, time.time()) < 15:
+                    continue
                 p = progress(n)
                 if p != m.get("seen"):
                     said = "is DONE" if os.path.exists(os.path.join(folder(n), "report.md")) else "finished a turn (a question, or waiting)"
                     alerts.append((n, said, screen(n, 40)))
-            elif st == "working":
+            if st != "idle":
+                idle_since.pop(n, None)
+            if st == "working":
                 p = progress(n)
                 t, was = last.get(n, (time.time(), p))
                 if p != was:
@@ -325,9 +338,9 @@ def say(name, text):
         sys.exit(f"agents: {name} isn't running")
     # (Typed fast, the words come as a paste, and an Enter in the same
     # burst is a new line in it: Enter goes on its own, a moment after.)
-    tmux("send-keys", "-t", f"{name}:0.0", "-l", text, check=True)
+    tmux("send-keys", "-t", f"={name}:0.0", "-l", text, check=True)
     time.sleep(0.5)
-    tmux("send-keys", "-t", f"{name}:0.0", "C-m", check=True)
+    tmux("send-keys", "-t", f"={name}:0.0", "C-m", check=True)
     seen(name)
     print(f"agents: said to {name}")
 
@@ -343,7 +356,7 @@ def approve(name, how):
     key = {"y": "y", "yes": "y", "p": "p", "no": "Escape", "n": "Escape"}.get(how)
     if not key:
         sys.exit("agents: approve with y, p or no")
-    tmux("send-keys", "-t", f"{name}:0.0", key, check=True)
+    tmux("send-keys", "-t", f"={name}:0.0", key, check=True)
     time.sleep(0.5)
     seen(name)
     print(f"agents: answered {how} to {name}")
@@ -351,7 +364,7 @@ def approve(name, how):
 
 def stop(name):
     refuse_nested()
-    tmux("kill-session", "-t", name)
+    tmux("kill-session", "-t", f"={name}")
     m = meta(name)
     if m:
         m["seen_state"] = "exited"
