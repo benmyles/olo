@@ -1,7 +1,8 @@
 //! The fans' keeper, as anyone may read it: whether this computer's
 //! fans can be set at all (a ThinkPad's `/proc/acpi/ibm/fan`), the
 //! profile chosen (`/etc/olo/fans`: `auto`, the firmware's own curve, or
-//! `cool`, Olo's `olo-fans` running them ahead of the heat), whether
+//! Olo's `olo-fans` running them ahead of the heat at one of three
+//! strengths, `cool-1`, `cool-2`, `cool-3`: Cool, Cooler, Coolest), whether
 //! the service is installed, and what it says it's doing
 //! (`/run/olo-fans/status`). Nothing here changes anything: the profile
 //! is root's to write (Olo Doctor's helper: `olo-doctor --fans`).
@@ -17,37 +18,60 @@ use std::path::{Path, PathBuf};
 pub enum Profile {
     /// The firmware's own.
     Auto,
-    /// Olo's: raised early as anything warms, so nothing is throttled.
+    /// Olo's, at three strengths (Ben, 2026-11-18: "Auto/Cool/Cooler/
+    /// Coolest"): the fans raised early as anything warms, each a step
+    /// earlier than the one before. Cool: a little ahead of the heat.
     Cool,
+    /// The curve Olo had before there were three (it was called Cool).
+    Cooler,
+    /// The earliest and the loudest.
+    Coolest,
 }
 
 impl Profile {
-    pub const ALL: [Profile; 2] = [Profile::Auto, Profile::Cool];
+    pub const ALL: [Profile; 4] = [Profile::Auto, Profile::Cool, Profile::Cooler, Profile::Coolest];
 
     /// As `/etc/olo/fans` and the command line say it.
     pub fn word(self) -> &'static str {
         match self {
             Profile::Auto => "auto",
-            Profile::Cool => "cool",
+            Profile::Cool => "cool-1",
+            Profile::Cooler => "cool-2",
+            Profile::Coolest => "cool-3",
         }
     }
 
+    /// The profile `word` names. ("cool", the one word there was for
+    /// Olo's curve before the three, is that curve still: Cooler.)
     pub fn parse(word: &str) -> Option<Profile> {
-        Profile::ALL.into_iter().find(|p| p.word() == word.trim())
+        match word.trim() {
+            "cool" => Some(Profile::Cooler),
+            word => Profile::ALL.into_iter().find(|p| p.word() == word),
+        }
     }
 
-    /// As a menu names it.
+    /// Olo's own curve (`olo-fans` runs the fans), not the firmware's.
+    pub fn ours(self) -> bool {
+        self != Profile::Auto
+    }
+
+    /// As a menu names it: the same names as an SSD's power in the same
+    /// place (Auto, Cooler, Coolest), with Cool before them.
     pub fn label(self) -> &'static str {
         match self {
-            Profile::Auto => "Automatic",
+            Profile::Auto => "Auto",
             Profile::Cool => "Cool",
+            Profile::Cooler => "Cooler",
+            Profile::Coolest => "Coolest",
         }
     }
 
     pub fn about(self) -> &'static str {
         match self {
             Profile::Auto => "The computer's own: quiet, and slow to speed the fans up. Under long, heavy work the processor is slowed down for the heat.",
-            Profile::Cool => "The fans speed up ahead of the heat, so the processor isn't slowed down for it: cooler, and louder under work.",
+            Profile::Cool => "The fans speed up a little ahead of the heat: cooler under work, and a little louder.",
+            Profile::Cooler => "The fans speed up well ahead of the heat, so the processor isn't slowed down for it: cooler, and louder under work.",
+            Profile::Coolest => "The fans speed up at the first sign of work: the coolest, and the loudest.",
         }
     }
 }
@@ -202,10 +226,10 @@ pub fn status(line: &str) -> Option<(String, String)> {
 }
 
 impl State {
-    /// Why Cool, chosen, isn't what the fans are doing (None: it is, or
-    /// it isn't chosen).
+    /// Why Olo's curve, chosen, isn't what the fans are doing (None: it
+    /// is, or it isn't chosen).
     pub fn amiss(&self) -> Option<Amiss> {
-        if self.profile != Profile::Cool {
+        if !self.profile.ours() {
             None
         } else if !self.control {
             Some(if self.control_kept { Amiss::NextStart } else { Amiss::Driver })
@@ -220,7 +244,7 @@ impl State {
     /// running and has said nothing (an older one, until its first
     /// change), None where Cool isn't in force.
     pub fn level(&self) -> Option<(&str, &str)> {
-        if self.profile != Profile::Cool || self.amiss().is_some() {
+        if !self.profile.ours() || self.amiss().is_some() {
             return None;
         }
         Some(self.held.as_ref().map_or(("auto", ""), |(level, why)| (level.as_str(), why.as_str())))
@@ -291,7 +315,8 @@ mod tests {
         assert_eq!(s.now(), "Now: all is cool, the fans left to the computer.");
         put(p.status(), "level=4 why=19 W\n");
         let s = look(&p).unwrap();
-        assert_eq!((s.profile, s.installed), (Profile::Cool, true));
+        // (Its file says "cool", the word there was before the three.)
+        assert_eq!((s.profile, s.installed), (Profile::Cooler, true));
         assert_eq!(s.now(), "Now: level 4 of 7, for 19 W.");
         put(p.status(), "level=auto why=\n");
         assert_eq!(look(&p).unwrap().now(), "Now: all is cool, the fans left to the computer.");
@@ -337,8 +362,13 @@ mod tests {
 
     #[test]
     fn words() {
-        assert_eq!(Profile::parse("cool\n"), Some(Profile::Cool));
+        // (The one word there was before the three: its curve, Cooler.)
+        assert_eq!(Profile::parse("cool\n"), Some(Profile::Cooler));
         assert_eq!(Profile::parse("full"), None);
+        for p in Profile::ALL {
+            assert_eq!(Profile::parse(p.word()), Some(p));
+        }
+        assert_eq!(Profile::ALL.map(|p| (p.label(), p.ours())), [("Auto", false), ("Cool", true), ("Cooler", true), ("Coolest", true)]);
         assert_eq!(status("level=6 why=coretemp Package id 0 74°"), Some(("6".into(), "coretemp Package id 0 74°".into())));
         assert_eq!(status("nothing"), None);
     }

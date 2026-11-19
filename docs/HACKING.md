@@ -12991,6 +12991,34 @@ said: `Paired::signed`).
 
 ## The fans (apps/fans, `olo-fans`)
 
+**Four profiles** (Ben, 2026-11-18: "default is Auto, but then have
+Cool, Very Cool, Coolest where Cool is about +10% more aggressive than
+Auto at ramping up fans, Very Cool is +20% and Coolest is +30% …
+maybe we use Auto/Cool/Cooler/Coolest"): Auto, the firmware's own
+curve, and Olo's at three strengths (`olo_system::fans::Profile`;
+`/etc/olo/fans`: `auto`, `cool-1`, `cool-2`, `cool-3`). Each strength
+starts the fans, and has them at full speed, a step earlier than the
+one before: a step is a tenth of a sensor's room from a warm idle
+(40 °C) to its limit (`span`: for a processor that throttles at 100 °C,
+from 61 °C to full speed at 95 for Cool, 55 to 90 for Cooler, 49 to 84
+for Coolest; for the board's sensors, throttled at 65 °C, from 52.5,
+50 and 47.5), and the processor's power asks for the fans at 15% more
+watts for Cool and 15% fewer for Coolest (`level_for_power`). Full
+speed always comes before the limit. **Cooler's is the curve there was
+before** (it was called Cool, and its word, `cool`, still means it:
+nothing chosen before changes). The steps are a design, by where each
+sensor is throttled: **not yet measured against the firmware's own
+curve on this computer**, which needs the fans' profile changed under
+a steady load (the fans' file is root's, and the person's to change).
+`olo-fans --status` says what each of the three would set now.
+Preferences ▸ Power ▸ Battery & Idle ▸ Fans offers the four (a row of
+each power mode instead is next: docs/TODO.md); Activity Monitor's
+fans card names the one in force. Tested: `olo-fans`'s
+`three_strengths_each_a_step_earlier` and `power_asks_ahead_of_heat`;
+`olo_system::fans`'s `words`; Doctor's (the word written, the service
+installed for any of the three).
+
+
 A ThinkPad's fans run ahead of the heat, so the computer isn't slowed
 down for it: the firmware's own curve waits for the processor to be
 hot, falls behind, and the board's sensors pass the temperature at

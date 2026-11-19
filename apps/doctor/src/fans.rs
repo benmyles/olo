@@ -114,7 +114,7 @@ pub fn apply(profile: Profile, places: &Places, progress: &mut dyn FnMut(String)
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let exe = std::path::PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)"));
     let bin = exe.parent().unwrap_or(Path::new("."));
-    if profile == Profile::Cool && !bin.join(PROGRAM).is_file() {
+    if profile.ours() && !bin.join(PROGRAM).is_file() {
         return Err(format!("{} isn't beside {}: Olo isn't whole here.", PROGRAM, exe.display()));
     }
     let steps = steps(profile, bin, places);
@@ -125,15 +125,17 @@ pub fn apply(profile: Profile, places: &Places, progress: &mut dyn FnMut(String)
             return Err(e);
         }
     }
-    let waits = profile == Profile::Cool && look(places).is_some_and(|s| !s.control);
+    let waits = profile.ours() && look(places).is_some_and(|s| !s.control);
     Ok(match profile {
         Profile::Auto => "The fans are left to the computer.".to_owned(),
-        Profile::Cool if waits => "Cool is chosen: it starts with the computer's next start (the fans' driver takes levels from then).".to_owned(),
-        Profile::Cool => "The fans run ahead of the heat.".to_owned(),
+        ours if waits => format!("{} is chosen: it starts with the computer's next start (the fans' driver takes levels from then).", ours.label()),
+        ours => format!("The fans run ahead of the heat ({}).", ours.label()),
     })
 }
 
-/// `olo-doctor --fans [auto|cool]`; its exit status.
+/// `olo-doctor --fans [auto|cool-1|cool-2|cool-3]` (Auto, Cool, Cooler,
+/// Coolest; `cool`, the word there was before the three, is Cooler);
+/// its exit status.
 pub fn from_the_command_line(args: &[String]) -> i32 {
     let places = Places::here();
     match args.first().map(String::as_str) {
@@ -211,7 +213,7 @@ mod tests {
         run(&first);
         assert_eq!(std::fs::read_to_string(places.program()).unwrap(), "the program, build one");
         assert_eq!(std::fs::read_to_string(places.unit()).unwrap(), UNIT);
-        assert_eq!(std::fs::read_to_string(places.profile()).unwrap(), "cool\n");
+        assert_eq!(std::fs::read_to_string(places.profile()).unwrap(), "cool-1\n");
         // (Kept though the driver takes levels now: it may only because
         // it was loaded again by hand, which a restart undoes.)
         assert_eq!(std::fs::read_to_string(places.modprobe()).unwrap(), CONF);
@@ -225,7 +227,7 @@ mod tests {
         run(&auto);
         assert_eq!(look(&places).unwrap().profile, Profile::Auto);
         let back = steps(Profile::Cool, &bin, &places);
-        assert!(matches!(back.as_slice(), [Step::WriteFile { content, .. }] if content == "cool\n"), "{back:?}");
+        assert!(matches!(back.as_slice(), [Step::WriteFile { content, .. }] if content == "cool-1\n"), "{back:?}");
         // A newer build's program replaces root's copy.
         put(bin.join(PROGRAM), "the program, build two");
         let newer = steps(Profile::Cool, &bin, &places);

@@ -218,7 +218,8 @@ pub struct Volume {
 /// whether the processor was held back for heat.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Cooling {
-    /// The fan profile chosen (`/etc/olo/fans`: "cool", or "auto", the
+    /// The fan profile chosen (`/etc/olo/fans`: "cool-1", "cool-2" or
+    /// "cool-3", Olo's Cool, Cooler and Coolest, or "auto", the
     /// firmware's own curve); empty where there's no such choice.
     pub profile: String,
     /// The level the service holds the fans at ("auto": left to the
@@ -1475,18 +1476,18 @@ mod tests {
         use olo_system::fans::{Profile, State};
         let own = |(a, b, c, d): (&str, &str, &str, &str)| (a.to_owned(), b.to_owned(), c.to_owned(), d.to_owned());
         let mut s = State { profile: Profile::Cool, installed: true, control: true, control_kept: true, running: true, held: Some(("6".into(), "coretemp Package id 0 74° (+4 rising)".into())) };
-        assert_eq!(fan_state(Some(&s)), own(("cool", "6", "coretemp Package id 0 74° (+4 rising)", "")));
+        assert_eq!(fan_state(Some(&s)), own(("cool-1", "6", "coretemp Package id 0 74° (+4 rising)", "")));
         // Running and silent (an older service before its first change):
         // the firmware's for now, not "isn't running".
         s.held = None;
-        assert_eq!(fan_state(Some(&s)), own(("cool", "auto", "", "")));
+        assert_eq!(fan_state(Some(&s)), own(("cool-1", "auto", "", "")));
         s.running = false;
-        assert_eq!(fan_state(Some(&s)), own(("cool", "", "", "the fan service isn't running")));
+        assert_eq!(fan_state(Some(&s)), own(("cool-1", "", "", "the fan service isn't running")));
         // A driver that takes no levels: whatever the service says.
         (s.running, s.control, s.held) = (true, false, Some(("auto".into(), String::new())));
-        assert_eq!(fan_state(Some(&s)), own(("cool", "", "", "the fans can't be set until the computer's next start")));
+        assert_eq!(fan_state(Some(&s)), own(("cool-1", "", "", "the fans can't be set until the computer's next start")));
         s.control_kept = false;
-        assert_eq!(fan_state(Some(&s)), own(("cool", "", "", "the fans' driver doesn't let them be set")));
+        assert_eq!(fan_state(Some(&s)), own(("cool-1", "", "", "the fans' driver doesn't let them be set")));
         s.profile = Profile::Auto;
         assert_eq!(fan_state(Some(&s)), own(("auto", "", "", "")));
         // Not installed, or no fans to set: no profile to speak of.

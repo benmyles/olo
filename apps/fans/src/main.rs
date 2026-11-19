@@ -15,8 +15,16 @@
 //!
 //! - `auto`: the firmware's own curve. Nothing is read or written:
 //!   asleep until the file changes.
-//! - `cool`: the firmware's curve while everything is cool, the fans
-//!   raised early as anything warms, up to full speed.
+//! - `cool-1`, `cool-2`, `cool-3` (Cool, Cooler, Coolest; Ben,
+//!   2026-11-18: "default is Auto, but then have Cool, Very Cool,
+//!   Coolest … +10% … +20% … +30%"; "maybe we use
+//!   Auto/Cool/Cooler/Coolest"): the firmware's curve while everything
+//!   is cool, the fans raised early as anything warms, up to full
+//!   speed; each a step earlier than the one before, a step a tenth of
+//!   a sensor's room between a warm idle and its limit ([`span`]), and
+//!   the processor's power asking sooner ([`level_for_power`]).
+//!   `cool`, the one profile there was before, is `cool-2`: its curve
+//!   is the same.
 //!
 //! Every sensor the computer has is watched (`sensors`): each core and
 //! the package (coretemp), the firmware's own (thinkpad: CPU, the
@@ -122,14 +130,23 @@ fn level_word(l: Level) -> String {
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Profile {
     Auto,
-    Cool,
+    /// Olo's own curve, at a strength: 1 Cool, 2 Cooler, 3 Coolest.
+    Cool(u8),
+}
+
+/// The profile `word` names (`/etc/olo/fans`'s one word).
+fn profile_of(word: &str) -> Profile {
+    match word.trim() {
+        "cool-1" => Profile::Cool(1),
+        // ("cool": the one there was before these three; its curve.)
+        "cool" | "cool-2" => Profile::Cool(2),
+        "cool-3" => Profile::Cool(3),
+        _ => Profile::Auto,
+    }
 }
 
 fn profile() -> Profile {
-    match std::fs::read_to_string(PROFILE).unwrap_or_default().trim() {
-        "cool" => Profile::Cool,
-        _ => Profile::Auto,
-    }
+    profile_of(&std::fs::read_to_string(PROFILE).unwrap_or_default())
 }
 
 /// What kind of thing a sensor is on, which says where the fans start
@@ -165,9 +182,10 @@ struct Sensor {
 }
 
 impl Sensor {
-    /// Where the fans start for it and where they're at full speed (°C).
-    fn span(&self) -> (f32, f32) {
-        span(self.kind, self.limit)
+    /// Where the fans start for it and where they're at full speed (°C),
+    /// at `strength`.
+    fn span(&self, strength: u8) -> (f32, f32) {
+        span(self.kind, self.limit, strength)
     }
 
     /// Its temperature now (None: not there now, or nonsense), its rise
@@ -194,13 +212,26 @@ impl Sensor {
     }
 }
 
-fn span(kind: Kind, limit: f32) -> (f32, f32) {
-    match kind {
-        Kind::Cpu => (limit - 45.0, limit - 10.0),
-        Kind::Gpu => (limit - 32.0, limit - 6.0),
-        Kind::Board => (limit - 15.0, limit - 4.0),
-        Kind::Part => (limit - 30.0, limit - 8.0),
-    }
+/// A warm idle (°C): where a sensor's room up to its limit is counted
+/// from, for the steps between the strengths.
+const IDLE: f32 = 40.0;
+
+/// Where the fans start for a sensor of `kind` whose limit is `limit`,
+/// and where they're at full speed, at `strength` (1 Cool, 2 Cooler,
+/// 3 Coolest). Cooler's is the curve there was before the three; Cool's
+/// is a tenth of the sensor's room (from a warm idle to its limit)
+/// later, Coolest's a tenth earlier. Full speed always comes before the
+/// limit, whichever.
+fn span(kind: Kind, limit: f32, strength: u8) -> (f32, f32) {
+    let (start, full, before) = match kind {
+        Kind::Cpu => (limit - 45.0, limit - 10.0, 5.0),
+        Kind::Gpu => (limit - 32.0, limit - 6.0, 4.0),
+        Kind::Board => (limit - 15.0, limit - 4.0, 2.0),
+        Kind::Part => (limit - 30.0, limit - 8.0, 4.0),
+    };
+    let step = 0.10 * (limit - IDLE).max(10.0);
+    let later = (2.0 - strength.clamp(1, 3) as f32) * step;
+    (start + later, (full + later).min(limit - before))
 }
 
 /// The level a temperature asks for, between where the fans start for
@@ -215,9 +246,12 @@ fn level_for(t: f32, (start, full): (f32, f32)) -> Level {
 }
 
 /// The level the processor's power asks for by itself (watts, smoothed):
-/// heat on its way that no sensor shows yet.
-fn level_for_power(watts: f32) -> Level {
-    match watts {
+/// heat on its way that no sensor shows yet. At `strength`: Cooler's
+/// are the watts there were before the three; Cool asks at 15% more of
+/// them, Coolest at 15% fewer.
+fn level_for_power(watts: f32, strength: u8) -> Level {
+    let w = watts / [1.15, 1.0, 0.85][(strength.clamp(1, 3) - 1) as usize];
+    match w {
         w if w >= 80.0 => 7,
         w if w >= 60.0 => 6,
         w if w >= 45.0 => 5,
@@ -348,12 +382,12 @@ impl Power {
 /// What everything read asks of the fans: the level, and what asked for
 /// it. `margin` is taken off every temperature's room (coming down
 /// needs more room than going up).
-fn wanted(sensors: &[Sensor], watts: f32, margin: f32) -> (Level, String) {
-    let mut best = (level_for_power(watts + margin * 3.0), format!("{watts:.0} W"));
+fn wanted(sensors: &[Sensor], watts: f32, margin: f32, strength: u8) -> (Level, String) {
+    let mut best = (level_for_power(watts + margin * 3.0, strength), format!("{watts:.0} W"));
     for s in sensors {
         let Some(t) = s.reading else { continue };
         let ahead = (s.rise * AHEAD).clamp(0.0, if s.kind == Kind::Cpu { AHEAD_MOST_CPU } else { AHEAD_MOST });
-        let l = level_for(t + ahead + margin, s.span());
+        let l = level_for(t + ahead + margin, s.span(strength));
         if l > best.0 {
             best = (l, format!("{} {t:.0}°{}", s.name, if ahead >= 1.0 { format!(" (+{ahead:.0} rising)") } else { String::new() }));
         }
@@ -495,23 +529,38 @@ fn status() {
     for s in &mut list {
         s.read(now);
     }
-    println!("profile: {:?} ({PROFILE})", profile());
+    let chosen = profile();
+    // (What's shown is for the profile chosen; with the firmware's own,
+    // for Cooler, the middle one.)
+    let strength = match chosen {
+        Profile::Cool(s) => s,
+        Profile::Auto => 2,
+    };
+    println!("profile: {chosen:?} ({PROFILE})");
     println!("fans: {}", std::fs::read_to_string(FAN).unwrap_or_default().lines().take(3).map(|l| l.split_whitespace().collect::<Vec<_>>().join(" ")).collect::<Vec<_>>().join(", "));
     if let Some(said) = read_trim(Path::new(STATUS)) {
         println!("the service: {said}");
     }
     println!("processor: {}", if power.file.is_some() { format!("{watts:.0} W") } else { "power not readable (root's)".into() });
     for s in &list {
-        let (start, full) = s.span();
+        let (start, full) = s.span(strength);
         match s.reading {
             Some(t) => {
-                println!("  {:<28} {t:5.1}°  fans from {start:.0}°, full at {full:.0}° (limit {:.0}°), read every {} s: {}", s.name, s.limit, s.every.as_secs(), level_word(level_for(t, s.span())))
+                println!(
+                    "  {:<28} {t:5.1}°  fans from {start:.0}°, full at {full:.0}° (limit {:.0}°), read every {} s: {}",
+                    s.name,
+                    s.limit,
+                    s.every.as_secs(),
+                    level_word(level_for(t, s.span(strength)))
+                )
             }
             None => println!("  {:<28} not read", s.name),
         }
     }
-    let (level, why) = wanted(&list, watts, 0.0);
-    println!("cool would set: {} ({why})", level_word(level));
+    for (s, name) in [(1, "Cool"), (2, "Cooler"), (3, "Coolest")] {
+        let (level, why) = wanted(&list, watts, 0.0, s);
+        println!("{name} would set: {} ({why})", level_word(level));
+    }
 }
 
 fn main() -> std::process::ExitCode {
@@ -585,7 +634,7 @@ fn main() -> std::process::ExitCode {
             // is loaded again told to (the computer's next start, by the
             // file kept here). Said once, and looked at again now and
             // then, for a driver loaded again by hand.
-            Profile::Cool if !takes_levels(Path::new(CONTROL)) => {
+            Profile::Cool(_) if !takes_levels(Path::new(CONTROL)) => {
                 if !untaken {
                     untaken = true;
                     let kept = match keep_levels(Path::new(MODPROBE)) {
@@ -599,7 +648,7 @@ fn main() -> std::process::ExitCode {
                 }
                 Some(LOOK_AGAIN)
             }
-            Profile::Cool => {
+            Profile::Cool(strength) => {
                 if untaken {
                     untaken = false;
                     eprintln!("olo-fans: the fans' driver takes levels now");
@@ -617,8 +666,8 @@ fn main() -> std::process::ExitCode {
                     }
                 }
                 let watts = power.read(now);
-                let (up, why) = wanted(&list, watts, 0.0);
-                let (down, _) = wanted(&list, watts, HYSTERESIS);
+                let (up, why) = wanted(&list, watts, 0.0, strength);
+                let (down, _) = wanted(&list, watts, HYSTERESIS, strength);
                 let mut next = fans.level;
                 if up > fans.level {
                     next = up;
@@ -636,7 +685,7 @@ fn main() -> std::process::ExitCode {
                 }
                 // Looked at every second while anything is warm, every
                 // two while all is cool.
-                let near = fans.level != AUTO || wanted(&list, watts, 8.0).0 != AUTO;
+                let near = fans.level != AUTO || wanted(&list, watts, 8.0, strength).0 != AUTO;
                 Some(Duration::from_secs(if near { 1 } else { 2 }))
             }
         };
@@ -660,7 +709,7 @@ mod tests {
     /// its end, a step at a time between.
     #[test]
     fn levels_rise_across_a_span() {
-        let cpu = span(Kind::Cpu, 100.0);
+        let cpu = span(Kind::Cpu, 100.0, 2);
         assert_eq!(cpu, (55.0, 90.0));
         assert_eq!(level_for(54.0, cpu), AUTO);
         assert_eq!(level_for(55.0, cpu), FIRST);
@@ -679,7 +728,7 @@ mod tests {
     /// speed before they get there.
     #[test]
     fn the_board_is_cooled_before_its_trip() {
-        let board = span(Kind::Board, 65.0);
+        let board = span(Kind::Board, 65.0, 2);
         assert_eq!(level_for(49.0, board), AUTO);
         assert_eq!(level_for(50.0, board), FIRST);
         assert_eq!(level_for(61.0, board), FULL);
@@ -741,8 +790,42 @@ mod tests {
 
     #[test]
     fn power_asks_ahead_of_heat() {
-        assert_eq!(level_for_power(10.0), AUTO);
-        assert_eq!(level_for_power(50.0), 5);
-        assert_eq!(level_for_power(110.0), 7);
+        assert_eq!(level_for_power(10.0, 2), AUTO);
+        assert_eq!(level_for_power(50.0, 2), 5);
+        assert_eq!(level_for_power(110.0, 2), 7);
+        // Cool asks at more watts, Coolest at fewer.
+        assert_eq!([1, 2, 3].map(|s| level_for_power(32.0, s)), [AUTO, 4, 4]);
+        assert_eq!([1, 2, 3].map(|s| level_for_power(27.0, s)), [AUTO, AUTO, 4]);
+        assert_eq!([1, 2, 3].map(|s| level_for_power(70.0, s)), [6, 6, 7]);
+    }
+
+    /// Cool, Cooler, Coolest: each starts the fans, and has them at full
+    /// speed, a step earlier than the one before (a tenth of the
+    /// sensor's room from a warm idle to its limit); Cooler's is the
+    /// curve there was before the three; full speed always comes before
+    /// the limit. And the words that name them, the old one too.
+    #[test]
+    fn three_strengths_each_a_step_earlier() {
+        assert_eq!([1, 2, 3].map(|s| span(Kind::Cpu, 100.0, s)), [(61.0, 95.0), (55.0, 90.0), (49.0, 84.0)]);
+        assert_eq!([1, 2, 3].map(|s| span(Kind::Board, 65.0, s)), [(52.5, 63.0), (50.0, 61.0), (47.5, 58.5)]);
+        for kind in [Kind::Cpu, Kind::Gpu, Kind::Board, Kind::Part] {
+            for limit in [65.0, 85.0, 100.0] {
+                let [cool, cooler, coolest] = [1, 2, 3].map(|s| span(kind, limit, s));
+                assert!(cool.0 > cooler.0 && cooler.0 > coolest.0, "{kind:?} {limit}: starts");
+                assert!(cool.1 >= cooler.1 && cooler.1 > coolest.1 && cool.1 < limit, "{kind:?} {limit}: full speed");
+                assert!(cool.0 < cool.1 && coolest.0 < coolest.1);
+            }
+        }
+        // The same heat, each strength: Coolest is never the quietest.
+        for t in (45..100).step_by(5) {
+            let levels = [1, 2, 3].map(|s| level_for(t as f32, span(Kind::Cpu, 100.0, s)));
+            assert!(levels[0] <= levels[1] && levels[1] <= levels[2], "{t}°: {levels:?}");
+        }
+        assert_eq!(level_for(58.0, span(Kind::Cpu, 100.0, 1)), AUTO);
+        assert_eq!(level_for(58.0, span(Kind::Cpu, 100.0, 2)), FIRST);
+        assert_eq!(
+            ["auto", "cool-1", "cool-2", "cool-3", "cool", "", "nonsense"].map(profile_of),
+            [Profile::Auto, Profile::Cool(1), Profile::Cool(2), Profile::Cool(3), Profile::Cool(2), Profile::Auto, Profile::Auto]
+        );
     }
 }

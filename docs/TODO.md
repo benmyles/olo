@@ -360,9 +360,14 @@ something nobody here has is in "Blocked", with what it waits for.
   Cool, Coolest where Cool is about +10% more aggressive than Auto at
   ramping up fans, Very Cool is +20% and Coolest is +30%. if you can
   think of a better name for the 3 options you can use that instead").
+  *Done so far* (2026-11-18): the four profiles themselves, Auto,
+  Cool, Cooler, Coolest (HACKING.md, "The fans": each of Olo's three
+  a step earlier than the last; what was called Cool is Cooler, the
+  same curve), offered where the one choice was. *Next:*
   Preferences ▸ Power: the Fans setting leaves the Battery tab and
   becomes a row of the Power Modes tab, set for each mode like its
-  other rows. Auto (the default: the firmware's own curve), and three
+  other rows (the plan's `MODE/fans`, applied by the root helper as
+  the mode changes, as an SSD's is). Auto (the default: the firmware's own curve), and three
   that bring the fans up sooner and further than Auto: about 10%, 20%
   and 30% more. Names (Ben, after: "and maybe we use
   Auto/Cool/Cooler/Coolest"): Auto, Cool, Cooler, Coolest, a ladder
