@@ -1153,6 +1153,9 @@ Retour aux conversations
 Back to the Days
 Retour aux jours
 
+Back to the Forecast
+Retour aux prévisions
+
 Back up this computer
 Sauvegarder cet ordinateur
 
@@ -8082,6 +8085,9 @@ Afficher les notifications
 Show Only {}
 Afficher seulement {}
 
+Show Places
+Afficher les lieux
+
 Show Preview
 Afficher l’aperçu
 
@@ -10433,6 +10439,9 @@ Vent
 Wind ({})
 Vent ({})
 
+Wind {}{}
+Vent {}{}
+
 Wind {}{}, gusts {}
 Vent {}{}, rafales {}
 
@@ -10825,6 +10834,9 @@ complètement chargée
 
 ghp_… or github_pat_…
 ghp_… ou github_pat_…
+
+gusts {}
+rafales {}
 
 has notifications
 a des notifications

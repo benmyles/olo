@@ -380,6 +380,7 @@ Back Up These Folders
 Back to Chats
 Back to Conversations
 Back to the Days
+Back to the Forecast
 Back up this computer
 Back up to a disk or folder from now on; the backups in Google Drive stay as they are
 Back up to the Drive of:
@@ -2684,6 +2685,7 @@ Show File in Tracker
 Show Hidden Files
 Show Notifications
 Show Only {}
+Show Places
 Show Preview
 Show Rescue Here
 Show Ruler
@@ -3467,6 +3469,7 @@ Will it rain today?
 Will it rain tomorrow?
 Wind
 Wind ({})
+Wind {}{}
 Wind {}{}, gusts {}
 Window
 Window Arrangement
@@ -3597,6 +3600,7 @@ full size, with a numeric keypad
 full speed
 fully charged
 ghp_… or github_pat_…
+gusts {}
 has notifications
 has notifications ({})
 has notifications ({}, the dot {}% full)

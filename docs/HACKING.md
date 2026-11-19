@@ -3877,8 +3877,10 @@ it.
   holds its content as children under its head (`Card::height(content,
   caption)`), `Facts::new(rows)` (label: value rows, `.colors(label,
   value)` on a panel), `meter`, `flow`/`flow_rows` for cards placed by
-  hand, `GAP`, `FACT_ROW`, `gutter(p)`. Cards in a flex row are as tall
-  as the tallest. `style::card(window, r, p, hover, selected)` paints a
+  hand, `across(width, least, most)` for a grid of them (`grid_cols`: as
+  many across as fit, so they reflow in a third of a screen rather than
+  be cut: Weather's), `GAP`, `FACT_ROW`, `gutter(p)`. Cards in a flex row
+  are as tall as the tallest. `style::card(window, r, p, hover, selected)` paints a
   card's paper and shadow; `style::thousands(n)` writes "12,345".
 - `menu::shortcut_command(cx, keystroke)`: the menu bar command
   a keystroke chooses, for a view that takes the keys itself and lets

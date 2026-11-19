@@ -149,6 +149,11 @@ pub struct Weather {
     /// Each range's own scroll (each keeps its place).
     pub scrolls: [ScrollHandle; 3],
     pub chat_scroll: ScrollHandle,
+    /// The places' column and the assistant's: beside the forecast while
+    /// there's room, else giving way, in front alone when asked for (the
+    /// kit's SidePane; View ▸ Show Places and Show Assistant).
+    pub places_pane: olo_kit::widgets::SidePane,
+    pub assistant_pane: olo_kit::widgets::SidePane,
     pub question: Child<TextField>,
     pub turns: Vec<assistant::Turn>,
     pub asking: Option<Asking>,
@@ -220,6 +225,8 @@ impl Weather {
             due: 0,
             scrolls: [ScrollHandle::new(), ScrollHandle::new(), ScrollHandle::new()],
             chat_scroll: ScrollHandle::new(),
+            places_pane: olo_kit::widgets::SidePane::new(view::SIDEBAR, view::SIDEBAR).first(olo_kit::widgets::Front::Rest),
+            assistant_pane: olo_kit::widgets::SidePane::new(view::ASSISTANT, view::ASSISTANT_MIN).first(olo_kit::widgets::Front::Rest),
             question,
             turns,
             asking: None,
@@ -370,6 +377,8 @@ impl Weather {
     }
 
     pub fn choose(&mut self, i: usize, cx: &mut Cx<Self>) {
+        // (Chosen in the places in front of the forecast: the forecast.)
+        self.places_pane.show_rest();
         if i < self.settings.places.len() && i != self.settings.chosen {
             self.settings.chosen = i;
             self.spans.clear();
@@ -406,6 +415,8 @@ impl Weather {
     /// Show turn `i`'s spans on the chart (a span under its answer
     /// clicked).
     pub fn show_spans(&mut self, i: usize, cx: &mut Cx<Self>) {
+        // (From the assistant in front of the forecast: the forecast.)
+        self.assistant_pane.show_rest();
         if let Some(t) = self.turns.get(i) {
             let spans = t.windows.clone();
             self.mark(spans, true, cx);
@@ -601,9 +612,11 @@ impl Weather {
                 .separator()
                 .submenu(units_menu)
                 .separator()
+                .item("Show Places", "places")
+                .checked(self.places_pane.showing())
                 .item("Show Assistant", "assistant")
                 .key("j")
-                .checked(self.settings.assistant),
+                .checked(self.assistant_pane.showing()),
             Menu::new("Assistant")
                 .item("Ask…", "ask")
                 .key("l")
@@ -781,14 +794,41 @@ impl View for Weather {
             "refresh" => self.refresh(true, cx),
             "copy" => olo_kit::clipboard::write(olo_kit::ClipboardItem::new_string(self.as_text())),
             "assistant" => {
-                self.settings.assistant = !self.settings.assistant;
-                self.save();
+                // (Too narrow for it beside the forecast: in front of it,
+                // or back; shown so, it's on.)
+                if self.assistant_pane.alone() {
+                    self.assistant_pane.toggle();
+                    self.places_pane.show_rest();
+                    if self.assistant_pane.showing() && !self.settings.assistant {
+                        self.settings.assistant = true;
+                        self.save();
+                    }
+                } else {
+                    self.settings.assistant = !self.settings.assistant;
+                    self.save();
+                }
+                cx.invalidate();
+            }
+            // (The places give way only: in front of the forecast, or
+            // back, where there's room for only one; beside it always
+            // else.)
+            "places" => {
+                if self.places_pane.alone() {
+                    self.places_pane.toggle();
+                    self.assistant_pane.show_rest();
+                } else {
+                    self.places_pane.set_collapsed(false);
+                }
                 cx.invalidate();
             }
             "ask" => {
                 if !self.settings.assistant {
                     self.settings.assistant = true;
                     self.save();
+                    cx.invalidate();
+                }
+                if self.assistant_pane.alone() {
+                    self.assistant_pane.show_pane();
                     cx.invalidate();
                 }
                 self.question.focus(cx);

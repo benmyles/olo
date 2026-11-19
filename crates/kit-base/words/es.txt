@@ -1153,6 +1153,9 @@ Volver a las conversaciones
 Back to the Days
 Volver a los días
 
+Back to the Forecast
+Volver al pronóstico
+
 Back up this computer
 Haz copias de este ordenador
 
@@ -8082,6 +8085,9 @@ Mostrar notificaciones
 Show Only {}
 Mostrar solo {}
 
+Show Places
+Mostrar lugares
+
 Show Preview
 Mostrar vista previa
 
@@ -10433,6 +10439,9 @@ Viento
 Wind ({})
 Viento ({})
 
+Wind {}{}
+Viento {}{}
+
 Wind {}{}, gusts {}
 Viento {}{}, ráfagas {}
 
@@ -10825,6 +10834,9 @@ carga completa
 
 ghp_… or github_pat_…
 ghp_… o github_pat_…
+
+gusts {}
+ráfagas {}
 
 has notifications
 tiene notificaciones

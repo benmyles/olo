@@ -270,12 +270,21 @@ pub fn meter(g: &mut Painter, r: Bounds<Pixels>, parts: &[(Hsla, f64)], total: f
     }
 }
 
+/// How many cards go across `width` (points), each at least `min_width`
+/// wide and [`GAP`] apart: at most `max_columns`, at least one. A grid
+/// of cards (`grid_cols`) takes this, so its cards reflow in a window a
+/// third of a screen wide rather than being cut (CLAUDE.md, "Every
+/// tiling layout").
+pub fn across(width: f32, min_width: f32, max_columns: usize) -> usize {
+    (((width + GAP) / (min_width + GAP)).floor() as usize).clamp(1, max_columns.max(1))
+}
+
 /// Places for `n` cards in `area`: as many columns of at least
 /// `min_width` as fit (at most `max_columns`), `height` tall, [`GAP`]
 /// apart.
 pub fn flow(area: Bounds<Pixels>, n: usize, min_width: f32, max_columns: usize, height: f32) -> Vec<Bounds<Pixels>> {
     let width = f32::from(area.size.width);
-    let cols = (((width + GAP) / (min_width + GAP)).floor() as usize).clamp(1, max_columns.max(1));
+    let cols = across(width, min_width, max_columns);
     let w = ((width - GAP * (cols - 1) as f32) / cols as f32).floor();
     (0..n)
         .map(|i| {
@@ -290,7 +299,7 @@ pub fn flow(area: Bounds<Pixels>, n: usize, min_width: f32, max_columns: usize, 
 
 /// How many rows [`flow`] makes.
 pub fn flow_rows(width: f32, n: usize, min_width: f32, max_columns: usize) -> usize {
-    let cols = (((width + GAP) / (min_width + GAP)).floor() as usize).clamp(1, max_columns.max(1));
+    let cols = across(width, min_width, max_columns);
     n.div_ceil(cols)
 }
 

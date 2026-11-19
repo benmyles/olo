@@ -13,7 +13,7 @@ use olo_kit::{
     Bounds, ClickEvent, Cx, Element, FontWeight, Hsla, InteractiveElement as _, IntoElement as _, KeyDownEvent, MenuBar, ParentElement as _, Pixels, Styled as _, View as _, canvas, div, icons,
     metrics as m, point, px, size, style, theme,
     widgets::{
-        Button, EmptyState, LinkButton, ScrollView, StringView, TabView, TextControl,
+        ArrowButton, Button, EmptyState, LinkButton, MenuField, Panes, ScrollView, StringView, TabView, TextControl,
         dashboard::Card,
         sidebar::{Row, Sidebar},
         timeline::{Kind as PanelKind, Panel, Scale, Span, Timeline, Track},
@@ -31,16 +31,27 @@ use crate::{
 
 /// The places' column, and the assistant's (narrower, down to its
 /// least, before the forecast between them is).
-const SIDEBAR: f32 = 184.0;
-const ASSISTANT: f32 = 320.0;
-const ASSISTANT_MIN: f32 = 260.0;
-/// The least the forecast needs: its cards three across with their
-/// titles and figures whole.
-const MAIN_MIN: f32 = 560.0;
-/// The window's least size: every column at its least, and the chart
-/// still a few panels tall.
-pub const MIN_WIDTH: f32 = 2.0 * m::WINDOW_INSET + SIDEBAR + MAIN_MIN + ASSISTANT_MIN + 2.0 * m::SPACING;
-pub const MIN_HEIGHT: f32 = 660.0;
+pub const SIDEBAR: f32 = 184.0;
+pub const ASSISTANT: f32 = 320.0;
+pub const ASSISTANT_MIN: f32 = 260.0;
+/// What the forecast keeps beside a column (the places', the
+/// assistant's): its cards two across. Less, the column gives way
+/// (CLAUDE.md, "Every tiling layout").
+const MAIN_BESIDE: f32 = 420.0;
+/// A card's least width: as many go across as fit (three at most).
+const CARD_LEAST: f32 = 160.0;
+/// The least the chart's tabs keep under the place, the cards and the
+/// next hour: with less (a quarter of a screen, a third of its height,
+/// or a third of its width, where the cards go one a row), all of it
+/// scrolls as one: the place, the cards, the next hour, the range (a
+/// pop-up, not tabs) and the chart.
+const CHART_LEAST: f32 = 260.0;
+/// A card's height, and the next hour's line: what's above the chart.
+const CARD_H: f32 = 56.0;
+const NEXT_H: f32 = 44.0;
+/// The window's least: a third of the smallest screen, either way.
+pub const MIN_WIDTH: f32 = 400.0;
+pub const MIN_HEIGHT: f32 = 220.0;
 /// The header's height.
 const HEADER: f32 = 116.0;
 
@@ -77,26 +88,43 @@ fn hhmm(local: i64) -> String {
 }
 
 pub fn body(w: &mut Weather, cx: &mut Cx<Weather>) -> Element {
-    let bar = MenuBar::of(w, cx, |w, _| w.menus());
     let p = theme::palette();
     let e = edge(cx);
-    let sidebar = sidebar(w, cx);
-    let main = main_area(w, cx);
+    let vs = cx.viewport_size();
+    let (width, height) = (f32::from(vs.width) - 2.0 * m::WINDOW_INSET, f32::from(vs.height));
+    // What's beside the forecast gives way to it, never squeezing it
+    // (CLAUDE.md, "Every tiling layout"): the assistant's column takes
+    // what it can spare beside its two cards across, up to its width,
+    // then the places' column what's left after it. A column without
+    // the room gives way; View ▸ Show Assistant or Show Places brings it
+    // in front of the forecast, alone, with a way back (the kit's
+    // SidePane).
+    let assistant_on = w.settings.assistant && !w.settings.places.is_empty() && !w.needs_key();
+    w.assistant_pane.set_collapsed(!assistant_on);
+    let assistant = w.assistant_pane.panes(width, MAIN_BESIDE + m::SPACING);
+    let left = if assistant.width() > 0.0 { width - assistant.width() - m::SPACING } else { width };
+    let places = if assistant == Panes::Pane { Panes::Rest } else { w.places_pane.panes(left, MAIN_BESIDE + m::SPACING) };
+    let main_h = height - olo_kit::menu::BAR_HEIGHT - m::SPACING - m::WINDOW_INSET - 2.0 * e;
     // Inset from the window's edges, the columns a spacing apart.
-    let mut row = div()
-        .flex_1()
-        .min_h_0()
-        .flex()
-        .flex_row()
-        .gap(px(m::SPACING))
-        .px(px(m::WINDOW_INSET))
-        .pt(px(m::SPACING))
-        .pb(px(m::WINDOW_INSET))
-        .child(div().w(px(SIDEBAR)).flex_shrink_0().h_full().flex().flex_col().child(sidebar))
-        .child(div().flex_1().min_w(px(MAIN_MIN)).h_full().child(well(e, p.document_background, main)));
-    if w.settings.assistant && !w.settings.places.is_empty() && !w.needs_key() {
-        row = row.child(div().w(px(ASSISTANT)).min_w(px(ASSISTANT_MIN)).flex_shrink().h_full().child(assistant_pane(w, cx)));
+    let mut row = div().flex_1().min_h_0().flex().flex_row().gap(px(m::SPACING)).px(px(m::WINDOW_INSET)).pt(px(m::SPACING)).pb(px(m::WINDOW_INSET));
+    if assistant == Panes::Pane {
+        row = row.child(div().flex_1().min_w_0().h_full().child(assistant_pane(w, width, true, cx)));
+    } else if places == Panes::Pane {
+        row = row.child(div().flex_1().min_w_0().h_full().flex().flex_col().child(sidebar(w, true, cx)));
+    } else {
+        if let Panes::Both(pw) = places {
+            row = row.child(div().w(px(pw)).flex_shrink_0().h_full().flex().flex_col().child(sidebar(w, false, cx)));
+        }
+        let main_w = left - if places.width() > 0.0 { places.width() + m::SPACING } else { 0.0 } - 2.0 * e;
+        let main = main_area(w, main_w, main_h, cx);
+        row = row.child(div().flex_1().min_w_0().h_full().child(well(e, p.document_background, main)));
+        if let Panes::Both(aw) = assistant {
+            row = row.child(div().w(px(aw)).flex_shrink_0().h_full().child(assistant_pane(w, aw, false, cx)));
+        }
     }
+    // (The menus after what shows is settled: View ▸ Show Places and
+    // Show Assistant are checked as they show now.)
+    let bar = MenuBar::of(w, cx, |w, _| w.menus());
     // (Escape lets an answer coming go, as Assistant ▸ Stop does, from
     // wherever the keyboard is, if nothing there takes it.)
     let escape = cx.listener(|v: &mut Weather, e: &KeyDownEvent, cx| {
@@ -108,12 +136,31 @@ pub fn body(w: &mut Weather, cx: &mut Cx<Weather>) -> Element {
     div().size_full().flex().flex_col().bg(style::c(p.panel_background)).on_window_key_down(escape).child(bar).child(row).into_element()
 }
 
+/// The back arrow of a column shown alone in front of the forecast (a
+/// window too narrow for both): the forecast again.
+fn back(cx: &mut Cx<Weather>, assistant: bool) -> Element {
+    ArrowButton::back("Back to the Forecast")
+        .on_click(cx.listener(move |v: &mut Weather, _: &ClickEvent, cx| {
+            if assistant {
+                v.assistant_pane.show_rest();
+            } else {
+                v.places_pane.show_rest();
+            }
+            cx.invalidate();
+        }))
+        .into_element()
+}
+
 /// The places kept, each with its sky and temperature now; Add Place…
-/// under them.
-fn sidebar(w: &mut Weather, cx: &mut Cx<Weather>) -> Element {
+/// under them. `alone`: in front of the forecast in a window too narrow
+/// for both, with a way back to it.
+fn sidebar(w: &mut Weather, alone: bool, cx: &mut Cx<Weather>) -> Element {
     let p = theme::palette();
     let now = provider::now();
-    let mut rows: Vec<Row> = vec![Row::heading("Places")];
+    // (In front of the forecast, its title is beside the back arrow, not
+    // a heading in the list: the rows start at 0.)
+    let head = usize::from(!alone);
+    let mut rows: Vec<Row> = if alone { Vec::new() } else { vec![Row::heading("Places")] };
     for place in &w.settings.places {
         let entry = w.entries.get(&crate::place_id(place));
         let f = entry.and_then(|e| e.forecast.clone());
@@ -123,26 +170,26 @@ fn sidebar(w: &mut Weather, cx: &mut Cx<Weather>) -> Element {
         };
         rows.push(Row::new(icon, place.title().to_owned()).value(temp));
     }
-    let chosen = w.settings.chosen.min(w.settings.places.len().saturating_sub(1)) + 1;
+    let chosen = w.settings.chosen.min(w.settings.places.len().saturating_sub(1)) + head;
     let list = Sidebar::new("weather-places", rows, chosen)
         .bare()
-        .on_choose(cx.listener(|v: &mut Weather, i: &usize, cx| {
-            if *i > 0 {
-                v.choose(i - 1, cx);
+        .on_choose(cx.listener(move |v: &mut Weather, i: &usize, cx| {
+            if *i >= head {
+                v.choose(i - head, cx);
             }
         }))
         // (Dragged into another order: the places' own, the heading
         // first.)
-        .on_reorder(cx.listener(|v: &mut Weather, (from, to): &(usize, usize), cx| {
-            if *from > 0 && *to > 0 {
-                v.move_place(from - 1, to - 1, cx);
+        .on_reorder(cx.listener(move |v: &mut Weather, (from, to): &(usize, usize), cx| {
+            if *from >= head && *to >= head {
+                v.move_place(from - head, to - head, cx);
             }
         }))
-        .on_menu(cx.listener(|v: &mut Weather, (i, at): &(usize, olo_kit::Point<Pixels>), cx| {
-            if *i == 0 {
+        .on_menu(cx.listener(move |v: &mut Weather, (i, at): &(usize, olo_kit::Point<Pixels>), cx| {
+            if *i < head {
                 return;
             }
-            let i = i - 1;
+            let i = i - head;
             let last = v.settings.places.len().saturating_sub(1);
             let menu = olo_kit::Menu::new("Place")
                 .item("Show", format!("place:{i}"))
@@ -175,13 +222,14 @@ fn sidebar(w: &mut Weather, cx: &mut Cx<Weather>) -> Element {
         .flex()
         .flex_col()
         .gap(px(m::TIGHT))
+        .children(alone.then(|| div().flex().flex_row().items_center().gap(px(m::TIGHT)).h(px(m::CONTROL_HEIGHT)).child(back(cx, false)).child(StringView::new("Places").bold(true))))
         .child(div().flex_1().min_h_0().child(well(e, p.list_background, list)))
         .child(div().flex().child(Button::new("Add Place…").id("add-place").on_click(cx.listener(|v: &mut Weather, _: &ClickEvent, cx| v.open_add_place(cx)))))
         .into_element()
 }
 
-/// What the well beside the places shows.
-fn main_area(w: &mut Weather, cx: &mut Cx<Weather>) -> Element {
+/// What the well beside the places shows, `width` × `height` points.
+fn main_area(w: &mut Weather, width: f32, height: f32, cx: &mut Cx<Weather>) -> Element {
     let provider = w.provider();
     if w.needs_key() {
         let detail = olo_kit::tr!(
@@ -234,11 +282,40 @@ fn main_area(w: &mut Weather, cx: &mut Cx<Weather>) -> Element {
     let units = w.settings.units;
     let now = provider::now();
     let header = header(&place, &f, &units, now, status);
-    let cards = cards(&f, &units, now);
-    let next = next_hour(&f, &units, now);
+    // (As many across as fit: three, two, or one in a third of a screen.)
+    let across = olo_kit::widgets::dashboard::across(width - 2.0 * m::WINDOW_INSET, CARD_LEAST, 3);
+    let cards = cards(&f, &units, now, across);
+    let rows = 6usize.div_ceil(across) as f32;
+    let above = HEADER + rows * CARD_H + (rows - 1.0) * olo_kit::widgets::dashboard::GAP + m::TIGHT + NEXT_H.min(next_hour_height(&next_hour_sentence(&[], None), width)) + m::TIGHT;
+    let next = next_hour(&f, &units, now, width);
     let tabs: Rc<[olo_kit::SharedString]> = Rc::from(vec![olo_kit::words::tr("Rest of Today").into(), "Next 3 Days".into(), "Next 7 Days".into()]);
     let tab = w.settings.tab.min(2);
-    let (sections, chart, axis) = tab_content(w, &place, &f, tab, now);
+    let (mut sections, chart, axis) = tab_content(w, &place, &f, tab, now);
+    // A short window (a quarter of a screen, a third of its height): all
+    // of it scrolls as one, the range a pop-up over the chart (its axis
+    // still kept in sight once the chart reaches the top).
+    if height - above < CHART_LEAST {
+        let range = div()
+            .w_full()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(m::SPACING))
+            .px(px(m::WINDOW_INSET))
+            .pt(px(m::TIGHT))
+            .child(MenuField::new("weather-range", tabs.to_vec(), tab).name("Range").on_change(cx.listener(|v: &mut Weather, i: &usize, cx| v.set_tab(*i, cx))));
+        // (The next hour under the conditions, then the cards: what's
+        // coming first in a short window; Codex, 2026-11-19.)
+        let top = vec![header, next, div().w_full().px(px(m::WINDOW_INSET)).pb(px(m::TIGHT)).child(cards).into_element(), range.into_element()];
+        let n = top.len();
+        sections.splice(0..0, top);
+        let scroller = ScrollView::new(&w.scrolls[tab]).border(false).auto_hide(true).background(theme::palette().document_background).children(sections).sticky(
+            chart + n,
+            olo_kit::widgets::timeline::AXIS_HEIGHT,
+            div().w_full().pr(px(m::TIGHT)).child(axis),
+        );
+        return div().size_full().child(scroller).into_element();
+    }
     // The chart's time axis stays at the top once the chart reaches it,
     // its panels scrolling under it (Ben, 2026-11-15: "the timeline should
     // be at the top and stay there as you scroll the data so that you
@@ -255,7 +332,8 @@ fn main_area(w: &mut Weather, cx: &mut Cx<Weather>) -> Element {
         .flex_col()
         .child(header)
         .child(div().px(px(m::WINDOW_INSET)).pb(px(m::TIGHT)).child(cards))
-        .child(next)
+        // (A gap under the next hour's scale: "Now" sat on the tabs.)
+        .child(div().pb(px(m::TIGHT)).child(next))
         .child(div().flex_1().min_h_0().px(px(m::TIGHT)).pb(px(m::TIGHT)).child(tab_view))
         .into_element()
 }
@@ -312,6 +390,9 @@ fn header(place: &Place, f: &Forecast, units: &Units, now: i64, (status, wrong):
     if let Some(e) = place.elevation {
         about.push(units.say(Quantity::Height, e / 1000.0));
     }
+    // (Its first part alone where all of it doesn't fit, or nothing: cut,
+    // "A made-up place · …" took the room the conditions needed.)
+    let about_first = about.first().cloned().unwrap_or_default();
     let about = about.join(" · ");
     let units = *units;
     let (zone_place, fallback) = (place.clone(), f.offset);
@@ -334,8 +415,11 @@ fn header(place: &Place, f: &Forecast, units: &Units, now: i64, (status, wrong):
         let n = style::label_on_baseline_fit(g, x0, row1, style::Align::Left, name.clone(), style::LEAD_SIZE, bold.clone(), text, room);
         olo_kit::agent::record(g, olo_kit::agent::Node { role: "Heading", name: Some(name.clone().into()), bounds: n, enabled: true, ..Default::default() });
         let ax = n.right() + px(m::SPACING);
-        let a = style::label_on_baseline_fit(g, ax, row1, style::Align::Left, about.clone(), style::SMALL_SIZE, regular.clone(), dim, (c.left() - ax - px(m::SECTION)).max(px(0.0)));
-        olo_kit::agent::record(g, olo_kit::agent::Node::label(about.clone(), a));
+        let room_a = (c.left() - ax - px(m::SECTION)).max(px(0.0));
+        if let Some(t) = [about.clone(), about_first.clone()].into_iter().find(|t| !t.is_empty() && style::text_width(t.clone(), style::SMALL_SIZE, regular.clone()) <= room_a) {
+            let a = style::label_on_baseline(g, ax, row1, style::Align::Left, t.clone(), style::SMALL_SIZE, regular.clone(), dim);
+            olo_kit::agent::record(g, olo_kit::agent::Node::label(t, a));
+        }
         // The sky now, the temperature, what it's doing.
         let top = b.top() + px(34.0);
         let code = step.as_ref().map_or(0, |s| s.code());
@@ -365,6 +449,11 @@ fn header(place: &Place, f: &Forecast, units: &Units, now: i64, (status, wrong):
             let local = |t: i64| t + place_offset(t);
             line.push(olo_kit::tr!("Sun {}–{}", hhmm(local(rise)), hhmm(local(set))));
         }
+        // (What doesn't fit goes from the end, the sun's times first:
+        // cut, the low was lost; Codex, 2026-11-19.)
+        while line.len() > 1 && style::text_width(line.join("  ·  "), style::PLAIN_SIZE, regular.clone()) > room {
+            line.pop();
+        }
         let line = line.join("  ·  ");
         let l = style::label_on_baseline_fit(g, cx_, top + px(43.0), style::Align::Left, line.clone(), style::PLAIN_SIZE, regular.clone(), dim, room);
         olo_kit::agent::record(g, olo_kit::agent::Node::label(line.clone(), l));
@@ -387,7 +476,7 @@ fn today<'a>(f: &'a Forecast, _place: &Place, now: i64) -> Option<&'a Day> {
 
 /// The cards of what matters now: clouds, visibility, wind,
 /// precipitation, the air, the sun.
-fn cards(f: &Forecast, units: &Units, now: i64) -> Element {
+fn cards(f: &Forecast, units: &Units, now: i64, across: usize) -> Element {
     let s = f.now(now).cloned().unwrap_or_else(|| Step::new(now));
     let h = f.hour(now).cloned().unwrap_or_else(|| s.clone());
     let get = |l: Layer| s.get(l).or_else(|| h.get(l));
@@ -447,8 +536,8 @@ fn cards(f: &Forecast, units: &Units, now: i64) -> Element {
     let highest = day.and_then(|d| d.get(Layer::UvIndex, Stat::Max));
     let caption = [uv.map(|u| olo_kit::words::tr(model::uv_level(u)).to_owned()), highest.map(|h| olo_kit::tr!("up to {} today", h.round()))].into_iter().flatten().collect::<Vec<_>>().join(" · ");
     out.push(("sun", "UV index", uv.map(|u| format!("{}", u.round())).unwrap_or_else(|| "–".into()), caption));
-    // Three a row, however wide (their captions cut short when narrow).
-    let mut row = div().grid().grid_cols(3).gap(px(olo_kit::widgets::dashboard::GAP));
+    // As many a row as fit (their captions cut short when narrow).
+    let mut row = div().grid().grid_cols(across as u16).gap(px(olo_kit::widgets::dashboard::GAP));
     for (id, title, figure, caption) in out {
         row = row.child(div().min_w_0().child(Card::new(format!("now-{id}"), title).figure(figure).caption(caption)));
     }
@@ -457,9 +546,19 @@ fn cards(f: &Forecast, units: &Units, now: i64) -> Element {
 
 /// The next hour, minute by minute: what's falling, and when it starts or
 /// stops.
-fn next_hour(f: &Forecast, units: &Units, now: i64) -> Element {
+/// The next hour's line's height: as tall as its graph where that fits
+/// beside it (in `width`), else a line's (a third of a screen: the graph
+/// left empty room round the line).
+fn next_hour_height(said: &str, width: f32) -> f32 {
+    let words = f32::from(style::text_width(said.to_owned(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD)));
+    let left = (m::WINDOW_INSET + words + m::SECTION).max(300.0);
+    if width - m::WINDOW_INSET - left >= 120.0 { 56.0 } else { 30.0 }
+}
+
+fn next_hour(f: &Forecast, units: &Units, now: i64, width: f32) -> Element {
     let minutes: Vec<(f64, Kind)> = f.minutely.iter().filter(|s| s.time + 60 > now).take(60).map(|s| (s.precipitation().unwrap_or(0.0), s.kind())).collect();
     let said = next_hour_sentence(&minutes, f.hour(now));
+    let height = next_hour_height(&said, width);
     let units = *units;
     let peak = minutes.iter().map(|(r, _)| *r).fold(0.0, f64::max);
     let key = style::key((&said, minutes.iter().map(|(r, k)| ((r * 100.0) as i64, *k as u8)).collect::<Vec<_>>(), format!("{units:?}")));
@@ -518,7 +617,7 @@ fn next_hour(f: &Forecast, units: &Units, now: i64) -> Element {
     })
     .paint_key(key)
     .w_full()
-    .h(px(56.0))
+    .h(px(height))
     .flex_shrink_0()
     .into_element()
 }
@@ -764,11 +863,24 @@ fn daily(f: &Forecast, units: &Units, now: i64, local: impl Fn(f64) -> i64 + Clo
         let bold = style::ui_font(FontWeight::BOLD);
         let x0 = b.left() + px(m::WINDOW_INSET);
         let right = b.right() - px(m::WINDOW_INSET);
+        // Each day's name, and their column as wide as the widest (64
+        // points was wider than "Sat 21", and the sky's words were cut).
+        let names: Vec<String> = days
+            .iter()
+            .map(|d| {
+                let (_, _, wd, dd) = olo_kit::widgets::timeline::parts(local(d.time as f64 + 6.0 * 3600.0));
+                if Some(d.time) == today_start && d.time <= now { olo_kit::words::tr("Today").to_owned() } else { format!("{} {dd}", olo_kit::widgets::timeline::WEEKDAYS[wd]) }
+            })
+            .collect();
+        let names_w = names.iter().map(|n| f32::from(style::text_width(n.clone(), style::PLAIN_SIZE, bold.clone()))).fold(0.0, f32::max);
+        let icons_at = (names_w + m::SPACING).ceil().min(64.0);
+        // (The lows' column as wide as the widest of them, not 34 points.)
+        let lows_w =
+            days.iter().filter_map(|d| d.get(Layer::Temperature, Stat::Min)).map(|v| f32::from(style::text_width(units.degrees(v), style::PLAIN_SIZE, font.clone()))).fold(0.0, f32::max).ceil() + 6.0;
         for (i, d) in days.iter().enumerate() {
             let top = b.top() + px(i as f32 * ROW);
             let mid = top + px(17.0);
-            let (_, _, wd, dd) = olo_kit::widgets::timeline::parts(local(d.time as f64 + 6.0 * 3600.0));
-            let name = if Some(d.time) == today_start && d.time <= now { olo_kit::words::tr("Today").to_owned() } else { format!("{} {dd}", olo_kit::widgets::timeline::WEEKDAYS[wd]) };
+            let name = names[i].clone();
             let n = style::label(g, x0, mid, style::Align::Left, name.clone(), style::PLAIN_SIZE, bold.clone(), text);
             // The sky by day, and by night smaller.
             let day_code = match d.code(Layer::WeatherCodeDay) {
@@ -776,7 +888,7 @@ fn daily(f: &Forecast, units: &Units, now: i64, local: impl Fn(f64) -> i64 + Clo
                 c => c,
             };
             let night_code = d.code(Layer::WeatherCodeNight);
-            let icon_x = x0 + px(64.0);
+            let icon_x = x0 + px(icons_at);
             // (Centred on the capitals of the row's text as they're drawn,
             // their baseline on a device pixel.)
             let caps = style::baseline_at(g, mid, style::PLAIN_SIZE) - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
@@ -787,7 +899,12 @@ fn daily(f: &Forecast, units: &Units, now: i64, local: impl Fn(f64) -> i64 + Clo
             let what = model::describe_said(day_code);
             let tx = icon_x + px(50.0);
             // The temperatures' span, among the week's.
-            let bar_w = px(130.0);
+            // The week's bar narrows before the sky's words are cut, down
+            // to 40 points; the words go where they'd have less than 40
+            // (a third of a screen: they ran under the temperatures).
+            let temps = m::TIGHT + 30.0 + lows_w;
+            let free = f32::from(right - tx) - temps;
+            let bar_w = px((free - 90.0).clamp(40.0, 130.0));
             let bar_r = right;
             let bar_l = bar_r - bar_w;
             let lo = d.get(Layer::Temperature, Stat::Min);
@@ -805,8 +922,8 @@ fn daily(f: &Forecast, units: &Units, now: i64, local: impl Fn(f64) -> i64 + Clo
                 let fill = style::snap(g, Bounds::from_corners(point(at(lo), mid - px(2.0)), point(at(hi).max(at(lo) + px(4.0)), mid + px(2.0))));
                 g.paint_quad(olo_kit::fill(fill, style::c(p.hues.orange)).corner_radii(px(2.0)));
             }
-            let what_room = (bar_l - px(m::TIGHT + 30.0) - px(34.0) - tx).max(px(40.0));
-            let w_r = style::label_fit(g, tx, mid, style::Align::Left, what, style::PLAIN_SIZE, font.clone(), text, what_room);
+            let what_room = bar_l - px(m::TIGHT + 30.0) - px(lows_w) - tx;
+            let w_r = (what_room >= px(40.0)).then(|| style::label_fit(g, tx, mid, style::Align::Left, what, style::PLAIN_SIZE, font.clone(), text, what_room));
             // The rest, a line under: every layer that tells the day.
             let mut more: Vec<String> = Vec::new();
             let chance = d.get(Layer::PrecipitationProbability, Stat::Max);
@@ -840,7 +957,10 @@ fn daily(f: &Forecast, units: &Units, now: i64, local: impl Fn(f64) -> i64 + Clo
             let mut next: Vec<String> = Vec::new();
             if let (Some(wv), Some(gu)) = (d.get(Layer::WindSpeed, Stat::Avg), d.get(Layer::WindGust, Stat::Max)) {
                 let dir = d.get(Layer::WindDirection, Stat::Avg).map(|x| format!(" {}", olo_kit::words::tr(model::compass(x)))).unwrap_or_default();
-                next.push(olo_kit::tr!("Wind {}{}, gusts {}", units.say(Quantity::Speed, wv), dir, units.say(Quantity::Speed, gu)));
+                // (Two details: where the line hasn't room for both, the
+                // gusts go whole, not "gusts 19 m…".)
+                next.push(olo_kit::tr!("Wind {}{}", units.say(Quantity::Speed, wv), dir));
+                next.push(olo_kit::tr!("gusts {}", units.say(Quantity::Speed, gu)));
             }
             // (UV once it's worth minding: moderate and up.)
             if let Some(uv) = d.get(Layer::UvIndex, Stat::Max).filter(|uv| *uv >= 3.0) {
@@ -853,11 +973,20 @@ fn daily(f: &Forecast, units: &Units, now: i64, local: impl Fn(f64) -> i64 + Clo
             if d.get(Layer::MoonPhase, Stat::Avg).is_some() {
                 next.push(model::moon(moon).to_lowercase());
             }
-            let first = more.join(" · ");
-            let second = next.join(" · ");
-            let l_r = style::label_fit(g, tx, top + px(36.0), style::Align::Left, first.clone(), style::SMALL_SIZE, font.clone(), dim, right - tx);
-            style::label_fit(g, tx, top + px(52.0), style::Align::Left, second.clone(), style::SMALL_SIZE, font.clone(), dim, right - tx);
-            let line = format!("{first}; {second}");
+            // (Each line as many whole details as fit, from its start: one
+            // cut through, "gusts 19 m…", split a measurement.)
+            let fits = |items: &[String]| {
+                let mut n = items.len();
+                while n > 1 && style::text_width(items[..n].join(" · "), style::SMALL_SIZE, font.clone()) > right - tx {
+                    n -= 1;
+                }
+                items[..n].join(" · ")
+            };
+            let (whole_first, whole_second) = (more.join(" · "), next.join(" · "));
+            let (first, second) = (fits(&more), fits(&next));
+            let l_r = style::label_fit(g, tx, top + px(36.0), style::Align::Left, first, style::SMALL_SIZE, font.clone(), dim, right - tx);
+            style::label_fit(g, tx, top + px(52.0), style::Align::Left, second, style::SMALL_SIZE, font.clone(), dim, right - tx);
+            let line = format!("{whole_first}; {whole_second}");
             olo_kit::agent::record(
                 g,
                 olo_kit::agent::Node {
@@ -900,7 +1029,9 @@ fn day_kind(d: &Day) -> Kind {
 
 /// The assistant: the conversation, suggestions before it, and the
 /// field to ask in.
-fn assistant_pane(w: &mut Weather, cx: &mut Cx<Weather>) -> Element {
+/// `column`: how wide it is; `alone`, in front of the forecast in a
+/// window too narrow for both, with a way back to it.
+fn assistant_pane(w: &mut Weather, column: f32, alone: bool, cx: &mut Cx<Weather>) -> Element {
     let p = theme::palette();
     let e = edge(cx);
     let mut conv = div().w_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING));
@@ -946,8 +1077,6 @@ fn assistant_pane(w: &mut Weather, cx: &mut Cx<Weather>) -> Element {
         // (A question wider than the column wraps: the column's width as
         // the row gives it, less its well's edges, its padding and the
         // scroll bar's room while there is one.)
-        let room = f32::from(cx.viewport_size().width) - 2.0 * m::WINDOW_INSET - SIDEBAR - 2.0 * m::SPACING;
-        let column = (room - MAIN_MIN).clamp(ASSISTANT_MIN, ASSISTANT);
         let bar = if w.chat_scroll.max_offset().height > px(0.5) { olo_kit::widgets::scroll::SCROLL_BAR } else { 0.0 };
         let wrap = column - 2.0 * e - 2.0 * m::SPACING - bar;
         for (i, s) in crate::assistant::suggestions(hour, raining).into_iter().enumerate() {
@@ -966,10 +1095,16 @@ fn assistant_pane(w: &mut Weather, cx: &mut Cx<Weather>) -> Element {
     } else {
         Button::new("Ask").id("ask").default(true).on_click(cx.listener(|v: &mut Weather, _: &ClickEvent, cx| v.ask_typed(cx)))
     };
-    let title =
-        div().flex().flex_row().items_center().h(px(m::CONTROL_HEIGHT)).child(StringView::new("Assistant").bold(true)).child(div().flex_1()).child(
-            LinkButton::new("New Conversation").id("new-conversation").enabled(!w.turns.is_empty() || asking).on_click(cx.listener(|v: &mut Weather, _: &ClickEvent, cx| v.new_conversation(cx))),
-        );
+    let title = div()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap(px(m::TIGHT))
+        .h(px(m::CONTROL_HEIGHT))
+        .children(alone.then(|| back(cx, true)))
+        .child(StringView::new("Assistant").bold(true))
+        .child(div().flex_1())
+        .child(LinkButton::new("New Conversation").id("new-conversation").enabled(!w.turns.is_empty() || asking).on_click(cx.listener(|v: &mut Weather, _: &ClickEvent, cx| v.new_conversation(cx))));
     div()
         .size_full()
         .flex()

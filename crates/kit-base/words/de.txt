@@ -1153,6 +1153,9 @@ Zurück zu den Unterhaltungen
 Back to the Days
 Zurück zu den Tagen
 
+Back to the Forecast
+Zurück zur Vorhersage
+
 Back up this computer
 Diesen Computer sichern
 
@@ -8082,6 +8085,9 @@ Mitteilungen zeigen
 Show Only {}
 Nur {} zeigen
 
+Show Places
+Orte zeigen
+
 Show Preview
 Vorschau zeigen
 
@@ -10433,6 +10439,9 @@ Wind
 Wind ({})
 Wind ({})
 
+Wind {}{}
+Wind {}{}
+
 Wind {}{}, gusts {}
 Wind {}{}, Böen {}
 
@@ -10825,6 +10834,9 @@ voll geladen
 
 ghp_… or github_pat_…
 ghp_… oder github_pat_…
+
+gusts {}
+Böen {}
 
 has notifications
 hat Mitteilungen

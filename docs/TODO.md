@@ -42,8 +42,9 @@ something nobody here has is in "Blocked", with what it waits for.
   three (its columns give way and come in front, its toolbar folds, its
   tabs fold into a pop-up in a short window, its month scrolls); Phone
   and Telegram show one pane at a time in a narrow window (Phone's music
-  box gives way in a short one). To do: Weather (its places and assistant give way, its cards
-  reflow, its forecast scrolls), kache (cards in one column, its
+  box gives way in a short one); Weather (its places and assistant give
+  way and come in front, its cards reflow, a short forecast scrolls as
+  one). To do: kache (cards in one column, its
   buttons under its title), Doctor and OS Updates (the Choose row folds;
   Updates' detail and sources give way), Logs (its detail gives way in
   a short window, its filters wrap), Disk Usage (the rings over the list
