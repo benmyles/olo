@@ -82,6 +82,16 @@ enum Doing {
     Nothing,
     Busy(String),
     Said(String),
+    /// The agent at work: what's said, and what it waits for: that
+    /// account to be listed (bringing DiskBackup's app in), or any not
+    /// listed when it started (a new one).
+    Agent {
+        said: String,
+        account: Option<String>,
+        known: Vec<String>,
+    },
+    /// The agent's account came: the message goes, and the adding with it.
+    Arrived,
     Failed(String),
 }
 
@@ -126,7 +136,11 @@ pub fn tick(address: &str, service: Service, on: bool) {
 /// Olo's Google accounts (`olo_system::secrets::DISKBACKUP_GOOGLE`), and
 /// the account it backs up to. Blocking (the keyring).
 pub fn legacy_client() -> Option<olo_google::Client> {
-    let kept = olo_system::secrets::lookup(olo_system::secrets::DISKBACKUP_GOOGLE.attributes).ok()??;
+    // (`OLO_DISKBACKUP_GOOGLE`: a test's, as DiskBackup takes it.)
+    let kept = match std::env::var("OLO_DISKBACKUP_GOOGLE") {
+        Ok(t) => t.into_bytes(),
+        Err(_) => olo_system::secrets::lookup(olo_system::secrets::DISKBACKUP_GOOGLE.attributes).ok()??,
+    };
     let v: serde_json::Value = serde_json::from_slice(&kept).ok()?;
     serde_json::from_value(v.get("client")?.clone()).ok()
 }
@@ -174,12 +188,13 @@ impl State {
                 ),
             ]);
             *st.drive.lock().unwrap() = Some("ada@example.org".into());
+            *st.legacy.lock().unwrap() = Some(("ada.lovelace@analytical-engines.example.net".into(), "123.apps.googleusercontent.com".into()));
         } else {
             st.check();
-            let (proxy, accounts, legacy, drive) = (st.proxy.clone(), st.accounts.clone(), st.legacy.clone(), st.drive.clone());
+            let (proxy, accounts, legacy, drive, doing) = (st.proxy.clone(), st.accounts.clone(), st.legacy.clone(), st.drive.clone(), st.doing.clone());
             st._watch = olo_kit::watch::watch([accounts::path()], move |_| {
-                let (accounts, legacy, drive, proxy) = (accounts.clone(), legacy.clone(), drive.clone(), proxy.clone());
-                std::thread::spawn(move || read(&accounts, &legacy, &drive, &proxy, false));
+                let (accounts, legacy, drive, doing, proxy) = (accounts.clone(), legacy.clone(), drive.clone(), doing.clone(), proxy.clone());
+                std::thread::spawn(move || read(&accounts, &legacy, &drive, &doing, &proxy, false));
             });
         }
         st
@@ -187,8 +202,8 @@ impl State {
 
     /// Read the accounts, and try each one's sign-in, on a worker.
     fn check(&self) {
-        let (accounts, legacy, drive, proxy) = (self.accounts.clone(), self.legacy.clone(), self.drive.clone(), self.proxy.clone());
-        std::thread::spawn(move || read(&accounts, &legacy, &drive, &proxy, true));
+        let (accounts, legacy, drive, doing, proxy) = (self.accounts.clone(), self.legacy.clone(), self.drive.clone(), self.doing.clone(), self.proxy.clone());
+        std::thread::spawn(move || read(&accounts, &legacy, &drive, &doing, &proxy, true));
     }
 
     /// Start adding (the agent's task, or by hand). The agent needs a
@@ -217,12 +232,21 @@ impl State {
         let Logins::Read(found) = self.logins.lock().unwrap().clone() else { return };
         let Some(login) = found.get(self.login).cloned() else { return };
         *self.doing.lock().unwrap() = Doing::Busy("Starting the agent…".into());
+        let account = match &task {
+            Task::Extend { address, .. } => Some(address.clone()),
+            Task::Make => None,
+        };
+        let known: Vec<String> = self.accounts.lock().unwrap().iter().flatten().map(|(a, _)| a.address.clone()).collect();
         let (doing, proxy) = (self.doing.clone(), self.proxy.clone());
         std::thread::spawn(move || {
             *doing.lock().unwrap() = match setup::start(&login, &task, &claude) {
-                Ok(screen) => Doing::Said(format!(
-                    "The agent is at work in a Terminal window, on its agent screen “{screen}” (Agent Screens shows it): it makes the account’s app in Google Cloud and signs Olo in with it. The account shows here when it’s done; you can talk to the agent in Terminal meanwhile."
-                )),
+                Ok(screen) => Doing::Agent {
+                    said: format!(
+                        "The agent is at work in a Terminal window, on its agent screen “{screen}” (Agent Screens shows it): it makes the account’s app in Google Cloud and signs Olo in with it. The account shows here when it’s done; you can talk to the agent in Terminal meanwhile."
+                    ),
+                    account,
+                    known,
+                },
                 Err(e) => Doing::Failed(sentence(&format!("the agent didn’t start: {e}"))),
             };
             proxy.send(Msg::Redraw);
@@ -256,7 +280,7 @@ impl State {
                 },
             };
             *doing.lock().unwrap() = now;
-            read(&accounts_, &legacy, &drive, &proxy, true);
+            read(&accounts_, &legacy, &drive, &doing, &proxy, true);
         });
     }
 
@@ -335,8 +359,30 @@ impl State {
 
 /// The accounts read (each one's sign-in tried, with `check`), and
 /// whether DiskBackup has an app of its own from before.
-fn read(accounts_: &Arc<Mutex<Option<Vec<(Account, Stands)>>>>, legacy: &Arc<Mutex<Option<(String, String)>>>, drive: &Arc<Mutex<Option<String>>>, proxy: &olo_kit::Proxy, check: bool) {
+fn read(
+    accounts_: &Arc<Mutex<Option<Vec<(Account, Stands)>>>>,
+    legacy: &Arc<Mutex<Option<(String, String)>>>,
+    drive: &Arc<Mutex<Option<String>>>,
+    doing: &Arc<Mutex<Doing>>,
+    proxy: &olo_kit::Proxy,
+    check: bool,
+) {
     let listed = accounts::accounts();
+    // (The account the agent was making, or bringing in, is here: its
+    // message goes.)
+    {
+        let mut d = doing.lock().unwrap();
+        if let Doing::Agent { account, known, .. } = &*d {
+            let same = |a: &str, b: &str| a.eq_ignore_ascii_case(b);
+            let came = listed.iter().any(|l| match account {
+                Some(wanted) => same(&l.address, wanted),
+                None => !known.iter().any(|k| same(k, &l.address)),
+            });
+            if came {
+                *d = Doing::Arrived;
+            }
+        }
+    }
     {
         let mut held = accounts_.lock().unwrap();
         let before = held.take().unwrap_or_default();
@@ -411,12 +457,22 @@ fn act(ui: &Ui, f: impl Fn(&mut State, &mut Cx<PanelView>) + 'static) -> impl Fn
 const COLUMN: f32 = 76.0;
 
 pub fn ui(ui: &mut Ui, st: &mut State) {
+    {
+        let mut d = st.doing.lock().unwrap();
+        if *d == Doing::Arrived {
+            *d = Doing::Nothing;
+            if matches!(st.adding, Some(Adding::Agent(_))) {
+                st.adding = None;
+            }
+        }
+    }
     let listed = st.accounts.lock().unwrap().clone();
     let doing = st.doing.lock().unwrap().clone();
     let busy = matches!(doing, Doing::Busy(_));
     let status = match &listed {
         None => "Checking…".to_owned(),
-        Some(l) if l.is_empty() => "No Google accounts connected.".to_owned(),
+        // (DiskBackup's own account, if it has one, is listed below to bring in.)
+        Some(l) if l.is_empty() => "None connected to Olo yet.".to_owned(),
         Some(l) if l.iter().any(|(_, s)| *s == Stands::Checking) => "Checking…".to_owned(),
         Some(l) => match (l.iter().filter(|(_, s)| *s == Stands::Signed).count(), l.len()) {
             (1, 1) => "Connected.".to_owned(),
@@ -432,10 +488,15 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         )
         .into_element(),
     ];
-    // The grid: each account, what it's used for, and its buttons.
+    // The grid: each account, what it's used for, and its buttons; and
+    // the account DiskBackup backs up to with its own app from before, as
+    // a row of it.
     let wide = button_width("Sign In Again", false) + m::SPACING + button_width("Remove", false);
     let row = || div().flex().flex_row().items_center().gap(px(m::SPACING));
-    if let Some(list) = listed.as_ref().filter(|l| !l.is_empty()) {
+    let legacy = st.legacy.lock().unwrap().clone();
+    let none = Vec::new();
+    let list = listed.as_ref().unwrap_or(&none);
+    if !list.is_empty() || legacy.is_some() {
         let mut head = row().child(div().flex_1().min_w_0().child(StringView::new("Account").dim(true)));
         for s in Service::ALL {
             head = head.child(div().w(px(COLUMN)).flex_shrink_0().flex().justify_center().child(StringView::new(s.name()).dim(true)));
@@ -476,28 +537,28 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             acts = acts.child(Button::new("Remove").id(format!("google-remove-{address}")).enabled(!busy).on_click(act(ui, move |st, _| st.remove(address.clone()))));
             items.push(r.child(acts).into_element());
         }
-    }
-    // DiskBackup's own app from before.
-    let legacy = st.legacy.lock().unwrap().clone();
-    if let (Some((address, client_id)), None) = (&legacy, &st.adding) {
-        items.push(
-            StringView::new(format!(
-                "DiskBackup backs up to {address}’s Google Drive with an app it made itself, before Olo’s Google accounts: only that app sees the backups it wrote there. Bring It Into Olo… has the agent rename it “Olo ({address})” and let it serve Mail and Calendar too; the backups stay where they are, as they are."
-            ))
-            .wrap(true)
-            .into_element(),
-        );
-        let (address, client_id) = (address.clone(), client_id.clone());
-        items.push(
-            buttons(vec![
-                Button::new("Bring It Into Olo…")
-                    .id("google-bring-in")
-                    .enabled(!busy)
-                    .on_click(act(ui, move |st, _| st.start(Adding::Agent(Task::Extend { address: address.clone(), client_id: client_id.clone() }))))
-                    .into_element(),
-            ])
-            .into_element(),
-        );
+        // (Its DiskBackup tick shown as it is: the app is DiskBackup's.)
+        if let Some((address, client_id)) = &legacy {
+            let mut r = row().child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .child(StringView::new(address.clone()).cut(true))
+                    .child(StringView::new("DiskBackup’s own app, from before. Bring it in for Mail and Calendar too; the backups stay put.").small(true).dim(true).wrap(true)),
+            );
+            for s in Service::ALL {
+                let tick = CheckBox::new(format!("{} for {}", s.name(), address), s == Service::DiskBackup).mark_only().id(format!("google-{}-{}", s.name(), address)).enabled(false);
+                r = r.child(div().w(px(COLUMN)).flex_shrink_0().flex().justify_center().child(tick));
+            }
+            let (a, c) = (address.clone(), client_id.clone());
+            let bring = Button::new("Bring It Into Olo…")
+                .id("google-bring-in")
+                .enabled(!busy && st.adding.is_none())
+                .on_click(act(ui, move |st, _| st.start(Adding::Agent(Task::Extend { address: a.clone(), client_id: c.clone() }))));
+            items.push(r.child(div().w(px(wide)).flex_shrink_0().flex().flex_row().justify_end().child(bring)).into_element());
+        }
     }
     match st.adding.clone() {
         Some(Adding::Agent(task)) => {
@@ -529,7 +590,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             };
             items.push(StringView::new(what).dim(true).wrap(true).into_element());
             say(&mut items, &doing);
-            let started = matches!(doing, Doing::Said(_));
+            let started = matches!(doing, Doing::Agent { .. });
             let ready = matches!(&logins, Logins::Read(l) if !l.is_empty()) && !busy && !started;
             let claude = ui.s.ai.claude_code.clone();
             let mut row = vec![
@@ -602,8 +663,8 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
 /// What's under way, or how it went, under the rest.
 fn say(items: &mut Vec<Element>, doing: &Doing) {
     match doing {
-        Doing::Nothing => {}
-        Doing::Busy(what) | Doing::Said(what) => items.push(StringView::new(what.clone()).wrap(true).into_element()),
+        Doing::Nothing | Doing::Arrived => {}
+        Doing::Busy(what) | Doing::Said(what) | Doing::Agent { said: what, .. } => items.push(StringView::new(what.clone()).wrap(true).into_element()),
         Doing::Failed(why) => items.push(StringView::new(why.clone()).wrap(true).color(olo_kit::style::c(olo_kit::theme::palette().failure)).into_element()),
     }
 }
