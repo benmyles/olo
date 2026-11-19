@@ -21356,6 +21356,27 @@ clash with the person's own setup later). `tests/set_up_drive.rs`'s
 `agent_setup_done` runs the done command against the fake Google and a
 stand-in Passwords.
 
+**Paused** (Deskbar's DiskBackup menu ▸ Pause Backups, the window's File
+▸ Pause Backups or Resume, `Settings::enabled` false): nothing is backed
+up or sent until it's resumed, and nothing else changes (Ben,
+2026-11-18: "pausing backups should just make sure no active transfers
+happen"). The backups kept are still listed, restorable and looked up
+by Tracker: a paused service reads their list as it starts
+(`service.rs`, the not-ready branch, reading only; before this it
+never did, so after an upgrade re-executed it paused, its window said
+"No backup has finished yet" with 25 kept), and says when it last read
+them (`State::read`), which a window that asked too early follows and
+asks again. The list's reply says whether it's read yet
+(`Reply::Snapshots::read`): not yet, the window says "Reading the
+backups…", never "none". The window says how it stands in its
+headline: Paused ("Nothing is backed up or sent until you resume. The
+last backup was 2 hours ago. To …"), Waiting for power, Waiting for the
+network; paused, its button is Resume (Back Up Now does nothing then).
+Tested: `tests/set_up_drive.rs`'s `set_up_then_back_up` (paused and
+started again, the service lists the backup over its socket, says it's
+read, and writes nothing; it failed with the read left out), the
+headline's test, a "paused" case in the layout lint.
+
 **Restore** (`restore.rs`; File ▸ Restore…, ⌘R, or Restore… beside Back
 Up Now): the snapshots newest first; the chosen one's folders browsed as
 they were then (Name, Size, Modified; Return or a double-click goes in, Up

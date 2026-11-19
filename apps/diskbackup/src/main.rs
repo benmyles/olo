@@ -404,7 +404,7 @@ pub(crate) fn disconnect_drive() -> Result<String, String> {
 /// the service lists them.
 fn chosen(wanted: &[String]) -> Result<Vec<String>, String> {
     let all = match olo_protocol::diskbackup::call(&Request::Snapshots)? {
-        olo_protocol::diskbackup::Reply::Snapshots { snapshots } => snapshots,
+        olo_protocol::diskbackup::Reply::Snapshots { snapshots, .. } => snapshots,
         other => return Err(format!("the service answered {other:?}")),
     };
     let mut ids = Vec::new();
@@ -441,7 +441,7 @@ fn validate_cli(args: &[String]) -> Result<(), String> {
 /// Backups deleted by id (or an id's start), by the service.
 fn delete_cli(wanted: &[String]) -> Result<(), String> {
     let all = match olo_protocol::diskbackup::call(&Request::Snapshots)? {
-        olo_protocol::diskbackup::Reply::Snapshots { snapshots } => snapshots,
+        olo_protocol::diskbackup::Reply::Snapshots { snapshots, .. } => snapshots,
         other => return Err(format!("the service answered {other:?}")),
     };
     let mut ids = Vec::new();
@@ -468,7 +468,7 @@ fn snapshots() -> Result<(), String> {
     let (_, repo) = open()?;
     // (How each was last checked: the service keeps that.)
     let checks: std::collections::HashMap<String, olo_protocol::diskbackup::Check> = match olo_protocol::diskbackup::call(&Request::Snapshots) {
-        Ok(Reply::Snapshots { snapshots }) => snapshots.into_iter().filter_map(|s| s.check.map(|c| (s.id, c))).collect(),
+        Ok(Reply::Snapshots { snapshots, .. }) => snapshots.into_iter().filter_map(|s| s.check.map(|c| (s.id, c))).collect(),
         _ => Default::default(),
     };
     for (id, s) in repo.snapshots().map_err(|e| e.to_string())? {

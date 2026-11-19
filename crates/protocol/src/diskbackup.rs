@@ -378,6 +378,11 @@ pub struct State {
     pub tidied: Option<Tidied>,
     /// This computer's backup that didn't finish, if one is kept.
     pub unfinished: Option<Unfinished>,
+    /// When the service last read the list of backups to answer from
+    /// (seconds since 1970; None: not since it started): what asked too
+    /// early asks again as this changes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub read: Option<i64>,
 }
 
 impl State {
@@ -488,7 +493,16 @@ pub enum Reply {
     },
     Snapshots {
         snapshots: Vec<SnapshotInfo>,
+        /// Whether the service has read them yet (false: none listed is
+        /// "not read yet", not "none"; a service from before this always
+        /// had).
+        #[serde(default = "yes")]
+        read: bool,
     },
+}
+
+fn yes() -> bool {
+    true
 }
 
 /// One version of a file the backups kept (`Reply::Versions`), newest

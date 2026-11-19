@@ -264,6 +264,9 @@ fn unfinished() -> Option<Unfinished> {
 /// opened yet, none).
 fn snapshot_list() -> Reply {
     let lookup = LOOKUP.lock().ok().and_then(|l| l.clone());
+    // (Not read yet, as the service starts, is not "none": said apart,
+    // the window says it's reading. Not set up, there are none to read.)
+    let read = lookup.is_some() || Settings::load().target == Target::None;
     let checks = CHECKS.lock().map(|c| c.clone()).unwrap_or_default();
     let snapshots = lookup
         .map(|l| {
@@ -286,7 +289,7 @@ fn snapshot_list() -> Reply {
                 .collect()
         })
         .unwrap_or_default();
-    Reply::Snapshots { snapshots }
+    Reply::Snapshots { snapshots, read }
 }
 
 /// Which of `dir`'s files are backed up as they are now.
@@ -537,6 +540,23 @@ pub fn run() -> ExitCode {
         if let Err(why) = ready(&settings) {
             st.doing = Doing::Waiting { why: why.clone() };
             st.next = None;
+            // Turned off (paused) or waiting for power, the backups are
+            // still there to list, restore from and look up: read, as
+            // the service starts (an upgrade re-executes it, paused or
+            // not), moving nothing (Ben, 2026-11-18: "when i clicked
+            // pause backups i guess it made them go away too … pausing
+            // backups should just make sure no active transfers happen").
+            let reachable = match &settings.target {
+                Target::None => false,
+                Target::GoogleDrive { .. } => olo_net::online(),
+                Target::Folder { .. } => true,
+            };
+            if open.is_none() && reachable {
+                match opened(&settings, &mut open, &limits) {
+                    Ok(_) => st.read = Some(now()),
+                    Err(e) => tracing::info!("diskbackup: can't read the backups while waiting: {e}"),
+                }
+            }
             let _ = st.save();
             // On battery: look again in a while (power coming back has no
             // event of ours yet); else when something changes.
@@ -547,10 +567,14 @@ pub fn run() -> ExitCode {
             continue;
         }
         // Open (for Tracker's lookups) before the first backup is due.
-        if open.is_none()
-            && let Err(e) = opened(&settings, &mut open, &limits)
-        {
-            tracing::info!("diskbackup: can't open the backup yet: {e}");
+        if open.is_none() {
+            match opened(&settings, &mut open, &limits) {
+                Ok(_) => {
+                    st.read = Some(now());
+                    let _ = st.save();
+                }
+                Err(e) => tracing::info!("diskbackup: can't open the backup yet: {e}"),
+            }
         }
         // Once: what an older backup that didn't finish left with nothing
         // kept of its own (since the last tidy).

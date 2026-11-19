@@ -74,7 +74,8 @@ pub enum WinMsg {
     /// Something done in the background: what to say (an error if Err).
     Note(Result<String, String>),
     /// This computer's backups, from the service (or why not).
-    Snapshots(Result<Vec<SnapshotInfo>, String>),
+    /// The backups listed (None: the service hasn't read them yet).
+    Snapshots(Option<Result<Vec<SnapshotInfo>, String>>),
     /// Where backups go, looked at (its disk's space, or Google's answer).
     Where(Target, Result<Where, String>),
     /// Asked of the service, once the person said so.
@@ -151,9 +152,11 @@ impl MainWindow {
         }
         cx.work(
             || match olo_protocol::diskbackup::call(&Request::Snapshots) {
-                Ok(olo_protocol::diskbackup::Reply::Snapshots { snapshots }) => Ok(snapshots),
-                Ok(other) => Err(format!("the service answered {other:?}")),
-                Err(e) => Err(e),
+                // (Not read yet: the service says when it has, `State::read`.)
+                Ok(olo_protocol::diskbackup::Reply::Snapshots { read: false, .. }) => None,
+                Ok(olo_protocol::diskbackup::Reply::Snapshots { snapshots, .. }) => Some(Ok(snapshots)),
+                Ok(other) => Some(Err(format!("the service answered {other:?}"))),
+                Err(e) => Some(Err(e)),
             },
             WinMsg::Snapshots,
         );
@@ -311,6 +314,10 @@ impl MainWindow {
     fn do_command(&mut self, cmd: &str, cx: &mut Cx<Self>) {
         match cmd {
             "back-up-now" => self.ask(Request::BackUpNow, "", cx),
+            // Paused: nothing backed up or sent (the backups kept are still
+            // listed and restorable); resumed, it goes on as it was set.
+            "pause" => self.change(|s| s.enabled = false, cx),
+            "resume" => self.change(|s| s.enabled = true, cx),
             "stop" => {
                 // (Said at once: keeping what's done can take a few seconds.)
                 if self.state.doing == Doing::BackingUp
@@ -627,12 +634,25 @@ pub fn headline(st: &State, s: &Settings) -> (String, String, bool) {
         Doing::Restoring => return ("Restoring".into(), to, false),
         Doing::Erasing => return ("Erasing every backup".into(), format!("{to}. The next backup starts afresh."), false),
         Doing::Validating => return ("Validating backups".into(), format!("Every byte read back and checked, from {}.", s.target.describe()), false),
+        // Not backing up, and why, in its own words (Ben, 2026-11-18: "make
+        // sure the backup app itself also shows the status as to whether
+        // it is running or paused or whatnot"), with when the last one
+        // was: the backups kept are still listed and restorable.
         Doing::Waiting { why } => {
-            let mut w = why.clone();
-            if let Some(c) = w.get(..1) {
-                w.replace_range(..1, &c.to_uppercase());
-            }
-            return ("Waiting".into(), format!("{w}. {to}."), false);
+            let last = st.last_ok.map_or("No backup has finished yet".to_owned(), |t| format!("The last backup was {}", ago(t)));
+            let (title, detail) = match why.as_str() {
+                "turned off" => ("Paused".to_owned(), format!("Nothing is backed up or sent until you resume. {last}. {to}.")),
+                w if w.starts_with("on battery") => ("Waiting for power".to_owned(), format!("It backs up once the computer is plugged in. {last}. {to}.")),
+                w if w.starts_with("no network") => ("Waiting for the network".to_owned(), format!("It goes on once there’s one. {last}. {to}.")),
+                w => {
+                    let mut w = w.to_owned();
+                    if let Some(c) = w.get(..1) {
+                        w.replace_range(..1, &c.to_uppercase());
+                    }
+                    ("Waiting".to_owned(), format!("{w}. {to}."))
+                }
+            };
+            return (title, detail, false);
         }
         Doing::Idle => {}
     }
@@ -714,9 +734,11 @@ impl MainWindow {
                 .app_items(&["backup"])
                 .item("Back Up Now", "back-up-now")
                 .key("b")
-                .enabled(set_up && !running)
+                .enabled(set_up && !running && self.settings.enabled)
                 .item("Stop", "stop")
                 .enabled(running)
+                .item(if self.settings.enabled { "Pause Backups" } else { "Resume Backups" }, if self.settings.enabled { "pause" } else { "resume" })
+                .enabled(set_up)
                 .item("Restore…", "restore")
                 .key("r")
                 .enabled(set_up)
@@ -735,15 +757,16 @@ impl View for MainWindow {
     fn message(&mut self, message: WinMsg, cx: &mut Cx<Self>) {
         match message {
             WinMsg::Changed(settings, state) => {
-                let was = (self.state.last_ok, self.state.snapshots, self.state.doing.clone());
+                let was = (self.state.last_ok, self.state.snapshots, self.state.doing.clone(), self.state.read);
                 self.settings = settings;
                 self.state = state;
-                // Backups made, deleted, erased or validated: listed again.
-                if (self.state.last_ok, self.state.snapshots, self.state.doing.clone()) != was {
+                // Backups made, deleted, erased or validated, or read by
+                // the service as it started: listed again.
+                if (self.state.last_ok, self.state.snapshots, self.state.doing.clone(), self.state.read) != was {
                     self.load_snapshots(cx);
                 }
             }
-            WinMsg::Snapshots(r) => self.snapshots = Some(r),
+            WinMsg::Snapshots(r) => self.snapshots = r,
             WinMsg::Where(t, r) => match &mut self.where_ {
                 Some((now, looked)) if *now == t => *looked = Some(r),
                 _ => return,
@@ -907,8 +930,11 @@ impl MainWindow {
         let mut buttons = div().flex().flex_row().gap(px(m::SPACING)).flex_shrink_0();
         buttons = buttons.child(Button::new("Restore…").on_click(self.cmd(cx, "restore")));
         let stopping = st.progress.as_ref().is_some_and(|p| p.stage == Stage::Stopping);
+        // (Paused, backing up now does nothing: Resume is what's next.)
         buttons = buttons.child(if running {
             Button::new("Stop").enabled(!stopping).on_click(self.cmd(cx, "stop"))
+        } else if !s.enabled {
+            Button::new("Resume").default(true).enabled(st.pid != 0).on_click(self.cmd(cx, "resume"))
         } else {
             Button::new("Back Up Now").default(true).enabled(st.pid != 0).on_click(self.cmd(cx, "back-up-now"))
         });
@@ -1067,7 +1093,9 @@ impl MainWindow {
                     .flex_row()
                     .items_center()
                     .gap(px(m::SPACING))
-                    .child(RadioButton::new("Automatically, every", s.automatic).on_select(self.sets(cx, |s, (): ()| s.automatic = true)))
+                    // (As tall as the menu beside it: placed alike, their words land
+                    // on the same device pixels at 1.25× and 1.75× too.)
+                    .child(RadioButton::new("Automatically, every", s.automatic).height(m::CONTROL_HEIGHT).on_select(self.sets(cx, |s, (): ()| s.automatic = true)))
                     .child(every),
             )
             .child(RadioButton::new("Only when I click Back Up Now", !s.automatic).on_select(self.sets(cx, |s, (): ()| s.automatic = false)))
@@ -1190,7 +1218,7 @@ impl MainWindow {
         // kept, newest first.
         let first = usize::from(unfinished.is_some());
         let said = match &self.snapshots {
-            None => "Asking DiskBackup’s service…".to_owned(),
+            None => "Reading the backups…".to_owned(),
             Some(Err(e)) => format!("The backups can’t be listed: {e}."),
             Some(Ok(l)) => {
                 let mut t = if l.is_empty() {
@@ -1501,6 +1529,16 @@ mod tests {
         assert!(!bad && title == "Backup stopped" && detail.starts_with("You stopped it a minute ago. The last whole one was an hour ago."), "{title} {detail}");
         st.last_ok = Some(now() - 5 * 86_400);
         assert!(headline(&st, &s).2);
+        // Not backing up, and why: paused, waiting for power or the
+        // network; with when the last one was.
+        st.doing = Doing::Waiting { why: "turned off".into() };
+        let (title, detail, bad) = headline(&st, &s);
+        assert!(!bad && title == "Paused" && detail.starts_with("Nothing is backed up or sent until you resume. The last backup was ") && detail.ends_with(". To /backups."), "{title} {detail}");
+        st.doing = Doing::Waiting { why: "on battery: it waits for power".into() };
+        assert_eq!(headline(&st, &s).0, "Waiting for power");
+        st.doing = Doing::Waiting { why: "no network: it goes on once there’s one".into() };
+        assert_eq!(headline(&st, &s).0, "Waiting for the network");
+        st.doing = Doing::Idle;
         // Under way: the file it's at, the home folder as ~.
         st.last_ok = None;
         st.doing = Doing::BackingUp;

@@ -48,6 +48,8 @@ pub(crate) fn step_name(a: &Settings, b: &Settings) -> &'static str {
         "Leave Out"
     } else if a.excludes != b.excludes {
         "Patterns"
+    } else if a.enabled != b.enabled {
+        if b.enabled { "Resume Backups" } else { "Pause Backups" }
     } else if a.automatic != b.automatic {
         if b.automatic { "Back Up Automatically" } else { "Back Up Only When Asked" }
     } else if a.every_minutes != b.every_minutes {

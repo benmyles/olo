@@ -90,6 +90,38 @@ fn set_up_then_back_up() {
     assert!(state["last_ok"].is_number(), "{state}");
     assert!(state["target"].as_str().unwrap_or("").contains("Google Drive"), "{state}");
     assert!(g.lock().unwrap().files.values().any(|f| f.0.starts_with("snapshots/")), "a snapshot in Drive");
+
+    // Paused, and the service started again (as an upgrade re-executes
+    // it): the backups are still listed, read with nothing moved (they
+    // vanished from DiskBackup's window, 2026-11-18: a paused service
+    // never read them).
+    let path = base.join("run/diskbackup-settings.json");
+    let mut s: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    s["enabled"] = false.into();
+    std::fs::write(&path, s.to_string()).unwrap();
+    let uploads = g.lock().unwrap().files.len();
+    let mut cmd = Command::new(exe);
+    cmd.arg("--service").stdout(Stdio::null()).stderr(Stdio::null());
+    sandboxed(&mut cmd, &base, &api);
+    let mut service = cmd.spawn().unwrap();
+    let until = Instant::now() + Duration::from_secs(30);
+    let state = loop {
+        let st: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(base.join("run/olo-diskbackup.json")).unwrap_or_default()).unwrap_or_default();
+        if (st["why"] == "turned off" && st["read"].is_number() && st["pid"] == service.id()) || Instant::now() > until {
+            break st;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    assert!(state["read"].is_number(), "read while paused: {state}");
+    let mut sock = std::os::unix::net::UnixStream::connect(base.join("run/olo-diskbackup.sock")).unwrap();
+    sock.write_all(b"{\"type\":\"snapshots\"}\n").unwrap();
+    let mut line = String::new();
+    BufReader::new(&sock).read_line(&mut line).unwrap();
+    let reply: serde_json::Value = serde_json::from_str(&line).unwrap();
+    let _ = service.kill();
+    let _ = service.wait();
+    assert_eq!((reply["read"].as_bool(), reply["snapshots"].as_array().map(Vec::len)), (Some(true), Some(1)), "{reply}");
+    assert_eq!(g.lock().unwrap().files.len(), uploads, "nothing written while paused");
     let _ = std::fs::remove_dir_all(base);
 }
 
