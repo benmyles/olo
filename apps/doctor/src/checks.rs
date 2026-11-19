@@ -4557,14 +4557,19 @@ fn fan_profile(roots: &Roots, r: &mut Report) {
     use olo_system::fans::{Amiss, Places, Profile, look};
     let places = if roots.fs == Path::new("/") { Places::here() } else { Places::under(&roots.fs) };
     let Some(state) = look(&places) else { return };
-    if !state.installed || state.profile != Profile::Cool {
+    // (Any of Olo's own curves: Cool, Cooler, Coolest. Only Cool was
+    // asked after the profiles became three, and "cool" as kept before
+    // reads as Cooler, so the service went unchecked: a test found it,
+    // 2026-11-19.)
+    if !state.installed || !state.profile.ours() {
         return;
     }
+    let chosen = state.profile.label();
     // (A build tree's: nothing to bring it up to date from.)
     if !roots.bin.join(crate::fans::PROGRAM).is_file() {
         return;
     }
-    let mut steps = crate::fans::steps_with(Profile::Cool, &roots.bin, &places, &*roots.units);
+    let mut steps = crate::fans::steps_with(state.profile, &roots.bin, &places, &*roots.units);
     let amiss = state.amiss();
     let restarts = |steps: &[Step]| steps.iter().any(|s| matches!(s, Step::Unit { action: UnitAction::Restart, .. }));
     if amiss == Some(Amiss::Stopped) && !restarts(&steps) {
@@ -4577,7 +4582,7 @@ fn fan_profile(roots: &Roots, r: &mut Report) {
         Some(Amiss::NextStart) => r.findings.push(Finding {
             id: "fans:next-start".into(),
             severity: Severity::Advice,
-            title: "The Cool fan profile starts with the computer's next start".into(),
+            title: format!("The {chosen} fan profile starts with the computer's next start"),
             detail: format!(
                 "The fans' driver (thinkpad_acpi) lets them be set only if it's told to as it's loaded, and this time it wasn't. It is told to from the next start on: nothing more is needed. {firmware}{}",
                 if steps.is_empty() { "" } else { " The fix brings Olo's fan service up to date meanwhile." }
@@ -4587,16 +4592,16 @@ fn fan_profile(roots: &Roots, r: &mut Report) {
         Some(Amiss::Driver) => r.findings.push(Finding {
             id: "fans:driver".into(),
             severity: Severity::Problem,
-            title: "The Cool fan profile isn't in force".into(),
+            title: format!("The {chosen} fan profile isn't in force"),
             detail: format!(
-                "The fans' driver (thinkpad_acpi) doesn't let them be set, and nothing tells it to when it's loaded (it may have been told by hand before the computer last started). The fix tells it to at every start (/etc/modprobe.d/olo-fans.conf): Cool is in force from the next one. {firmware}"
+                "The fans' driver (thinkpad_acpi) doesn't let them be set, and nothing tells it to when it's loaded (it may have been told by hand before the computer last started). The fix tells it to at every start (/etc/modprobe.d/olo-fans.conf): {chosen} is in force from the next one. {firmware}"
             ),
             fix: fix("Repair the Fan Profile", steps),
         }),
         Some(Amiss::Stopped) => r.findings.push(Finding {
             id: "fans:stopped".into(),
             severity: Severity::Problem,
-            title: "The Cool fan profile isn't in force".into(),
+            title: format!("The {chosen} fan profile isn't in force"),
             detail: format!("Olo's fan service (olo-fans) isn't running. The fix starts it{}. {firmware}", if older { ", from the installed version of Olo" } else { "" }),
             fix: fix("Start the Fan Service", steps),
         }),
@@ -4607,7 +4612,7 @@ fn fan_profile(roots: &Roots, r: &mut Report) {
             detail: "It runs as the system's, from a copy of its own (/usr/local/libexec/olo/olo-fans) that an upgrade doesn't replace. The fix brings the copy and its settings up to date and starts it again; the fans are the firmware's for the moment that takes.".into(),
             fix: fix("Update the Fan Service", steps),
         }),
-        None => r.fine.push(Fine { title: "The fans run ahead of the heat".into(), detail: "The Cool fan profile is in force: Olo's fan service is running, the installed version.".into() }),
+        None => r.fine.push(Fine { title: "The fans run ahead of the heat".into(), detail: format!("The {chosen} fan profile is in force: Olo's fan service is running, the installed version.") }),
     }
 }
 
