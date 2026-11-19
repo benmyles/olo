@@ -75,6 +75,7 @@ pub const PREFERENCE_PANELS: &[(&str, &str, &str)] = &[
     ("display", "Display", "display"),
     ("integrations", "Integrations", "integrations"),
     ("keyboard", "Keyboard", "keyboard"),
+    ("language", "Language & Region", "language"),
     ("network", "Network", "network-prefs"),
     ("notifications", "Notifications", "notifications"),
     ("performance", "Performance", "performance"),
