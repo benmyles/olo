@@ -332,22 +332,29 @@ struct Settings {
     unread_dots: bool,
     /// Folded away to the right.
     folded: bool,
-    /// Every workspace but each display's showing one begins collapsed.
+    /// Every workspace but the one its own display shows begins
+    /// collapsed, in each display's Deskbar.
     others_collapsed: bool,
 }
 
-/// `display`'s workspace `ws` in `Model::others_shown`: opened by its
-/// arrow, where every workspace but the one its display shows begins
-/// collapsed.
-fn fold_key(display: Option<&str>, ws: u32) -> String {
-    format!("{}:{ws}", display.unwrap_or(""))
+/// `display`'s workspace `ws` in `Model::others_shown`, in the Deskbar
+/// on display `bar`: opened by its arrow there, where every workspace but
+/// the one `bar` shows begins collapsed. Each display's Deskbar its own
+/// (Ben, 2026-11-19: "each display needs its own state for this").
+fn fold_key(bar: Option<&str>, display: Option<&str>, ws: u32) -> String {
+    format!("{}>{}:{ws}", bar.unwrap_or(""), display.unwrap_or(""))
 }
 
-/// `Model::fold`: with `collapse` (`others_collapsed`), each of a
-/// display's workspaces but the one it shows (`current`) folds, where it
-/// has applications to put away; open if its arrow opened it (`shown`).
-fn fold_of(collapse: bool, shown: &std::collections::HashSet<String>, display: Option<&str>, ws: u32, current: u32, apps: usize) -> Option<(bool, usize)> {
-    (collapse && ws != current && apps > 0).then(|| (shown.contains(&fold_key(display, ws)), apps))
+/// `Model::fold`: with `collapse` (`others_collapsed`), in the Deskbar on
+/// display `bar`, every workspace but the one `bar` shows (`current`, of
+/// `display`'s, when `display` is `bar`) folds, where it has
+/// applications to put away, other displays' showing ones too: open if
+/// its arrow opened it there (`shown`). (Each display's showing
+/// workspace stayed open in every Deskbar: on D0's, D1's too, Ben,
+/// 2026-11-19.)
+fn fold_of(collapse: bool, shown: &std::collections::HashSet<String>, bar: Option<&str>, display: Option<&str>, ws: u32, current: u32, apps: usize) -> Option<(bool, usize)> {
+    let home = display == bar && ws == current;
+    (collapse && !home && apps > 0).then(|| (shown.contains(&fold_key(bar, display, ws)), apps))
 }
 
 /// A team: the windows of one application.
@@ -420,10 +427,10 @@ struct Deskbar {
     /// Folded away to the screen's right edge (`DeskbarSettings::folded`):
     /// only its button shows.
     folded: bool,
-    /// Every workspace but each display's showing one begins collapsed
-    /// (`DeskbarSettings::others_collapsed`), and those whose arrow has
-    /// opened them since (`fold_key`: every display's Deskbar alike, until
-    /// Deskbar starts again).
+    /// Every workspace but the one its own display shows begins collapsed
+    /// in each display's Deskbar (`DeskbarSettings::others_collapsed`),
+    /// and those whose arrow has opened them since (`fold_key`: in that
+    /// display's Deskbar alone, until Deskbar starts again).
     others_collapsed: bool,
     others_shown: std::collections::HashSet<String>,
     /// Approving requests without asking until then (seconds since the
@@ -3644,13 +3651,14 @@ impl Deskbar {
         (d, y.ceil())
     }
 
-    /// Whether `display`'s workspace `ws` folds, and if it does, whether
-    /// it's open and how many applications it has: where every workspace
-    /// but the one its display shows (`current`) begins collapsed
+    /// Whether `display`'s workspace `ws` folds in the bar being drawn
+    /// (`drawing_for`), and if it does, whether it's open and how many
+    /// applications it has: where every workspace but the one the bar's
+    /// display shows (`current`, `display`'s) begins collapsed
     /// (`others_collapsed`), each other one does, open once its arrow has
-    /// opened it (`others_shown`).
+    /// opened it in this bar (`others_shown`).
     fn fold(&self, display: Option<&str>, ws: u32, current: u32, apps: usize) -> Option<(bool, usize)> {
-        fold_of(self.others_collapsed, &self.others_shown, display, ws, current, apps)
+        fold_of(self.others_collapsed, &self.others_shown, self.drawing_for.as_deref(), display, ws, current, apps)
     }
 
     /// Workspace `ws`'s heading at `r`, on `display`'s Deskbar, its
@@ -3798,7 +3806,7 @@ impl Deskbar {
         // (Over the row's, as the mode's is: a click on the arrow folds,
         // anywhere else on the row goes to the workspace.)
         if fold.is_some() {
-            let (m, k) = (model.clone(), fold_key(display, ws));
+            let (m, k) = (model.clone(), fold_key(self.drawing_for.as_deref(), display, ws));
             d.hits.push(hit(view, &fold_key_s, fold_hit, fold_said).occlude().on_any_button(move |e, _cx| {
                 if button(e) == MouseButton::Left {
                     m.update(|d| {
@@ -4560,24 +4568,33 @@ mod tests {
     }
 
     #[test]
-    fn only_the_workspace_each_display_shows_starts_open() {
+    fn only_the_workspace_its_own_display_shows_starts_open() {
         use super::{fold_key, fold_of};
         let (one, two) = (Some("HEADLESS-1"), Some("HEADLESS-2"));
         let mut shown = std::collections::HashSet::new();
         // Off: nothing folds.
-        assert_eq!(fold_of(false, &shown, one, 1, 0, 2), None);
-        // On: on every display, the workspace it shows is open, each other
-        // one is folded, closed until its arrow opens it.
-        assert_eq!(fold_of(true, &shown, one, 0, 0, 2), None);
-        assert_eq!(fold_of(true, &shown, one, 1, 0, 2), Some((false, 2)));
-        assert_eq!(fold_of(true, &shown, two, 1, 1, 3), None);
-        assert_eq!(fold_of(true, &shown, two, 0, 1, 3), Some((false, 3)));
-        shown.insert(fold_key(one, 1));
-        assert_eq!(fold_of(true, &shown, one, 1, 0, 2), Some((true, 2)));
+        assert_eq!(fold_of(false, &shown, one, one, 1, 0, 2), None);
+        // On, in display one's Deskbar: the workspace one shows is open,
+        // each other one folded and closed until its arrow opens it, the
+        // one display two shows too.
+        assert_eq!(fold_of(true, &shown, one, one, 0, 0, 2), None);
+        assert_eq!(fold_of(true, &shown, one, one, 1, 0, 2), Some((false, 2)));
+        assert_eq!(fold_of(true, &shown, one, two, 1, 1, 3), Some((false, 3)));
+        assert_eq!(fold_of(true, &shown, one, two, 0, 1, 3), Some((false, 3)));
+        // In display two's, the other way round.
+        assert_eq!(fold_of(true, &shown, two, two, 1, 1, 3), None);
+        assert_eq!(fold_of(true, &shown, two, one, 0, 0, 2), Some((false, 2)));
+        // Opened by its arrow in one's Deskbar: open there, not in two's.
+        shown.insert(fold_key(one, two, 1));
+        assert_eq!(fold_of(true, &shown, one, two, 1, 1, 3), Some((true, 3)));
+        assert_eq!(fold_of(true, &shown, two, two, 1, 1, 3), None);
+        shown.insert(fold_key(one, one, 1));
+        assert_eq!(fold_of(true, &shown, one, one, 1, 0, 2), Some((true, 2)));
+        assert_eq!(fold_of(true, &shown, two, one, 1, 0, 2), Some((false, 2)));
         // (Another display's workspace of that number is its own.)
-        assert_eq!(fold_of(true, &shown, two, 1, 0, 3), Some((false, 3)));
+        assert_eq!(fold_of(true, &shown, one, two, 0, 1, 3), Some((false, 3)));
         // Nothing in it: nothing to put away.
-        assert_eq!(fold_of(true, &shown, one, 2, 0, 0), None);
+        assert_eq!(fold_of(true, &shown, one, one, 2, 0, 0), None);
     }
 
     #[test]

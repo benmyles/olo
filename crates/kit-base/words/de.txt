@@ -1697,6 +1697,9 @@ Ihr Passwort wird geprüft …
 Checking…
 Wird geprüft …
 
+Choose
+Wählen
+
 Choose All
 Alle wählen
 
@@ -2116,6 +2119,9 @@ Kühler und leiser
 
 Coolest
 Am kühlsten
+
+Cooling
+Kühlung
 
 Copied the reference to “{}”’s {}.
 Verweis auf {1} von „{0}“ kopiert.
@@ -2912,6 +2918,9 @@ Jeder Bildschirm hat jetzt seine eigene beste Auflösung und Skalierung: keine D
 
 Each display is drawn by the graphics it's wired to, so no frame crosses between them; the second sleeps while nothing uses it.
 Jeder Bildschirm wird von der Grafik gezeichnet, an der er hängt, sodass kein Bild zwischen ihnen wechselt; die zweite schläft, solange nichts sie nutzt.
+
+Each display’s Deskbar keeps the workspace that display shows open; each other one is its heading, with an arrow that shows its applications and puts them away again, in that Deskbar alone.
+Die Deskbar jedes Bildschirms hält die Arbeitsfläche offen, die dieser Bildschirm zeigt; jede andere ist ihre Überschrift, mit einem Pfeil, der ihre Programme zeigt und wieder einklappt, nur in dieser Deskbar.
 
 Each is judged from several signals together; a finding says how sure it is and why.
 Jedes wird aus mehreren Signalen zusammen beurteilt; ein Befund sagt, wie sicher er ist und warum.

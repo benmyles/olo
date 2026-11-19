@@ -1697,6 +1697,9 @@ Comprobando tu contraseña…
 Checking…
 Comprobando…
 
+Choose
+Elegir
+
 Choose All
 Elegir todo
 
@@ -2116,6 +2119,9 @@ Más fresco y silencioso
 
 Coolest
 Lo más fresco
+
+Cooling
+Refrigeración
 
 Copied the reference to “{}”’s {}.
 Se copió la referencia a {1} de «{0}».
@@ -2912,6 +2918,9 @@ Cada pantalla está ahora en su mejor resolución y escala: sin rotación, dupli
 
 Each display is drawn by the graphics it's wired to, so no frame crosses between them; the second sleeps while nothing uses it.
 Cada pantalla la dibuja la gráfica a la que está conectada, así que ningún fotograma pasa de una a otra; la segunda duerme mientras nada la usa.
+
+Each display’s Deskbar keeps the workspace that display shows open; each other one is its heading, with an arrow that shows its applications and puts them away again, in that Deskbar alone.
+La Deskbar de cada pantalla deja abierto el espacio de trabajo que muestra esa pantalla; cada uno de los demás es su encabezado, con una flecha que muestra sus aplicaciones y vuelve a guardarlas, solo en esa Deskbar.
 
 Each is judged from several signals together; a finding says how sure it is and why.
 Cada uno se valora a partir de varias señales juntas; un hallazgo dice cuán seguro es y por qué.

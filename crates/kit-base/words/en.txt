@@ -561,6 +561,7 @@ Checking the connection…
 Checking the packages…
 Checking your password…
 Checking…
+Choose
 Choose All
 Choose Another Folder…
 Choose None
@@ -700,6 +701,7 @@ Cool
 Cooler
 Cooler and Quieter
 Coolest
+Cooling
 Copied the reference to “{}”’s {}.
 Copied the {}.
 Copied {}. It leaves the clipboard in {} seconds.
@@ -965,6 +967,7 @@ Each core ({})
 Each display has workspaces of its own.
 Each display is at its own best resolution and scale now: no rotation, mirroring, HDR or VRR, and night light off. Yours come back as you leave.
 Each display is drawn by the graphics it's wired to, so no frame crosses between them; the second sleeps while nothing uses it.
+Each display’s Deskbar keeps the workspace that display shows open; each other one is its heading, with an arrow that shows its applications and puts them away again, in that Deskbar alone.
 Each is judged from several signals together; a finding says how sure it is and why.
 Each is the computer's, not this account's, so switching one asks for an administrator's password. Olo Doctor suggests each, with what was measured for it.
 Each kind of input in the last minute: how many, never which keys

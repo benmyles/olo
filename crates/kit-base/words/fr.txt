@@ -1697,6 +1697,9 @@ Vérification de votre mot de passe…
 Checking…
 Vérification…
 
+Choose
+Choisir
+
 Choose All
 Tout choisir
 
@@ -2116,6 +2119,9 @@ Plus frais et plus silencieux
 
 Coolest
 Le plus frais
+
+Cooling
+Refroidissement
 
 Copied the reference to “{}”’s {}.
 Référence à {1} de « {0} » copiée.
@@ -2912,6 +2918,9 @@ Chaque écran est maintenant à sa meilleure résolution et échelle : ni rota
 
 Each display is drawn by the graphics it's wired to, so no frame crosses between them; the second sleeps while nothing uses it.
 Chaque écran est dessiné par le processeur graphique auquel il est relié : aucune image ne passe de l’un à l’autre ; le second dort tant que rien ne l’utilise.
+
+Each display’s Deskbar keeps the workspace that display shows open; each other one is its heading, with an arrow that shows its applications and puts them away again, in that Deskbar alone.
+La Deskbar de chaque écran garde ouvert l’espace de travail que montre cet écran ; les autres ne sont que leur titre, avec une flèche qui montre leurs applications et les replie, dans cette Deskbar seulement.
 
 Each is judged from several signals together; a finding says how sure it is and why.
 Chacun est jugé sur plusieurs signaux à la fois ; un constat dit son degré de certitude et pourquoi.

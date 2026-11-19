@@ -20651,9 +20651,12 @@ applications, then the other displays'. With Preferences ▸ Deskbar ▸
 Applications ▸ "Other workspaces’ applications start collapsed"
 (`DeskbarSettings::others_collapsed`, `deskbar.others_collapsed`, the
 key the other displays' rows had: a box ticked stays ticked; off unless
-turned on), the workspace each display shows is open, in every
-Deskbar, and each other workspace with applications is only its
-heading (`fold_of`): how many applications it has while they're put
+turned on), each display's Deskbar has the workspace its own display
+shows open, and each other workspace with applications only its
+heading, the ones other displays show too (`fold_of`, by the bar's
+display: on D0's, D1's showing workspace stayed open, Ben, 2026-11-19:
+"it needs to be display aware too e.g. on D0 only D0 Workspace 1 should
+be expanded … each display needs its own state for this"): how many applications it has while they're put
 away, then an arrow just before its windowing mode, down to show them
 under the heading and up to put them away (`style::arrow_down`; the
 modes stay in one column, the arrows in another); while they're away,
@@ -20661,9 +20664,10 @@ the heading ends its group with the rule its last row would have (two
 headings ran together). A click on the arrow
 or its count folds; anywhere else on the heading goes to the workspace,
 as ever (the arrow's hit is over the heading's, as the mode's is).
-Which are open is Deskbar's own (`others_shown`, by `fold_key`:
-display and workspace, every display's Deskbar alike), until Deskbar
-starts again: they start collapsed, as asked. Agents: a Button named
+Which are open is Deskbar's own (`others_shown`, by `fold_key`: the
+bar's display, then the workspace's display and number, so an arrow
+opened in one display's Deskbar leaves the others' as they were), until
+Deskbar starts again: they start collapsed, as asked. Agents: a Button named
 with what a click does ("D0 Workspace 2: 1 application. Click to show
 it."), its value "collapsed" or "expanded". Tried in a test session of
 two displays (`tsession start NAME 2560x1600,2560x1600 --session
