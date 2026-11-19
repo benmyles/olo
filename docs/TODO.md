@@ -53,38 +53,86 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Token Pool counts its reset credits, and spends each where it
-  gives back most** (Ben, 2026-11-19, with a picture of Deskbar's Codex
-  widget's tip, "56% left: 1.1 of 2 accounts' worth … At this pace,
-  what's left lasts 22 h 34", and of Token Pool's window, each of the
-  two Codex accounts with "3 reset credits": "i don't think the token
+- **Token Pool sends exactly what Claude Code and Codex send, and counts
+  and spends every reset credit** (Ben, 2026-11-19, with pictures of the
+  Codex widget's tip and Token Pool's window: "i don't think the token
   pool widget that says "At this pace, what's left lasts ..." is taking
   into account the (6!) usage resets I have available. make sure it
   does, and also that the usage resets will get automatically used when
   they are needed (in the most token optimal fashion so as to not waste
-  them)"). Now: `Availability::lasts` (crates/protocol/src/pool.rs)
-  divides what's left by the last hour's pace and counts no credit, and
-  the tip doesn't say there are any. The gateway redeems a credit when
-  no account can serve (`redeem_for`, crates/pool/src/gateway.rs) and
-  before one expires (`spend_expiring`, `Account::spend_before_expiry`,
-  crates/pool/src/model.rs). To do:
-  - The tip and the widget count them: how many there are, and the
-    pace line with what each gives back as the pool will spend it (a
-    credit is worth what's used of its account's quota when it's
-    redeemed, and only what can be used before that account would have
-    reset anyway; one that expires before it would be needed counts
-    for what it gives back then).
-  - Spending gives back the most: never while another account can
-    serve (as now); on the out account whose own reset is furthest off
-    (a credit spent an hour before its account resets by itself gives
-    back an hour's use), not on one about to reset by itself; the
-    credit soonest to expire first; Claude's accounts' the same. First
-    find out what a credit does to a quota's reset time (its use set to
-    nothing until the same reset, or a new week from then): the worth
-    of each choice depends on it.
-  - Tested in the pool's model tests (two accounts, six credits, a
-    week at Ben's pace: none spent while an account can serve, each
-    where it gives back most, none lost to expiry), and the tip pictured.
+  them)"; "please also double check that we correctly identify and apply
+  reset credits with claude subs too"; "doesn't the pool act
+  transparently? it should send exactly what claude code would send so
+  that it's transparent to the server that it's going through the
+  pool"; "it must be identical to the client"; "not just quota and
+  redemption requests -- all requests from the pool need to be exactly
+  the same as if they came from claude code / codex"; "have an astra 6.2
+  subagent review these changes"; "make it so that any time the
+  installed claude or codex clients change it can automatically
+  recapture this stuff too. and also have a menu item in the pool app
+  to manually trigger recapture"; "wouldn't it make most sense to have
+  it do a capture with each connected real account and then store that
+  in user's pool data dir and use the right one based on the account in
+  use").
+  **Found** (2026-11-19): the pool's own requests carry no User-Agent and
+  little else, so Claude's server answers its credit read "eligible:
+  false, surface" for every account, where the same read sent as Claude
+  Code is "eligible: true" with the account's resets (2 to 4 an account:
+  "One full limit reset (November 2026)", weekly, until 10 December;
+  "New model launch: one Fable reset…", full, 109 days); the pool showed
+  none. Its model requests go on changed: the client's `accept-encoding`,
+  cookies, origin and organization headers dropped, `authorization` and
+  `chatgpt-account-id` moved first and `anthropic-beta` last, reqwest's
+  `accept: */*` added, HTTP/2 to Anthropic where Claude Code speaks
+  HTTP/1.1 (names in their own case), and the client's own account left
+  in Claude Code's `metadata.user_id`. A capture (each installed client
+  run with a made-up sign-in through a recording proxy that sends
+  nothing on, crates/pool/examples/capture.rs) shows what each sends:
+  Claude Code 2.1.329 over three stacks (its API client for `/api/*`:
+  `Accept: application/json, text/plain, */*`, `User-Agent`, `Connection:
+  close`, no ALPN; the SDK for `/v1/messages`: twenty-odd headers in a
+  fixed order, ALPN `http/1.1`; Bun's fetch for flags and logging), and
+  print mode names itself `sdk-cli` where a session says `cli`; Codex
+  0.170.0 one stack (lowercase names, `originator`, `user-agent` with
+  the OS and terminal, ALPN `h2, http/1.1`), exec mode naming itself
+  `codex_exec`. Claude Code has two reset programs: `cedar_ember`
+  (grants: `type` session, weekly or full, `clears`, `use_requires_limit`,
+  `starts_at`/`ends_at`, the server's `next_grant_id`) and `juniper_tide`
+  (a 5-hour reset offered at the limit to accounts in an experiment).
+  A Claude reset leaves the weekly reset day as it is; a Codex one
+  (OpenAI's help article, for bought resets) starts a new week at the
+  next request and loses what was left.
+  **To do**:
+  - Capture each real account (Ben's design): the installed client run
+    in a sandbox (a scratch home, the account's access token, a made-up
+    refresh token: a real one never goes there), through the pool's own
+    capturing proxy, which passes on only the reads the client needs to
+    go on as it would and answers everything else itself (a model
+    request, a reset claim, a sign-in renewal, logging: never sent, so
+    no quota spent, no reset used, no sign-in rotated); kept in the
+    pool's data folder with every secret a placeholder, one an account
+    and client version; captured again when a client changes (its
+    install watched, not polled) and from Token Pool's menu.
+  - Every request the pool makes itself (quota, credits, claims, sign-in
+    renewals, sign-ins) sent as the capture of that account shows, byte
+    for byte (header names, case, order, values; the body; HTTP/1.1 or
+    HTTP/2 as the client would get), with the session's own identity
+    (its User-Agent and originator, from the client's live requests).
+  - Model requests passed on as the client sent them, only the account's
+    parts in place: its sign-in, `chatgpt-account-id`, organization
+    headers, the `account_uuid` in `metadata.user_id`; the client's
+    `accept-encoding` kept (the answer decoded for the pool's own
+    reading); nothing added; the client's HTTP version and case.
+  - TLS: what each client's ClientHello offers (Claude Code's is
+    BoringSSL's, through Bun) against the pool's rustls; say how far it
+    can match.
+  - Credits: every `cedar_ember` grant read whole; the tip and the pace
+    line count them; spent when a limit a grant clears is reached, on
+    the account whose own reset is furthest off, the soonest to expire
+    first, never on one about to reset by itself; Codex's the same,
+    knowing a reset starts a new week. Tested in the model tests, the
+    tip pictured.
+  - A Codex reviewer (astra 6.2) over all of it before it's pushed.
 
 - **Notifications' "Waiting in apps" goes to the window and tab that
   waits** (Ben, 2026-11-19, with a picture of Notifications' "Waiting in
