@@ -80,7 +80,10 @@ something nobody here has is in "Blocked", with what it waits for.
   fields' choices and boxes' titles counted too, `words/en.txt`). Then
   German, every word (1,100), and the layout lint run in a language
   (`OLO_LANGUAGE=de cargo ui-lint`), clean in German (HACKING.md, "The
-  lint in a language"). **Left**: the other eleven languages' words;
+  lint in a language"). Spanish, every word (1,161; 2026-11-19), clean in
+  both lints in Spanish; the menus' check reads the app's English, so
+  the live lint is clean in German and Spanish too. **Left**: the other
+  ten languages' words;
   sentences still made with `format!` (Power's "Now Performance: …",
   Notifications' "6 seconds" and "1 hour", Keyboard's "35 per second"
   and the like: what the lint can't see, as their English shows in any

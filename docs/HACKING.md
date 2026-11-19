@@ -13129,9 +13129,15 @@ too long for its room, put right with shorter German where the English
 is right. The kit's own lint tests look for words as drawn
 (`words::tr("Revert")`), and the settings index is drawn in English
 whatever the lint runs in (`ui_lint_settings_index`, under the lint's
-one-window lock). German (`words/de.txt`) has every one of Olo's words:
-those the same in German (names, paths) as themselves, so coverage
-says all.
+one-window lock). German (`words/de.txt`) and Spanish (`words/es.txt`,
+Spain's, "tú", sentence case as Spanish menus have it) have every one
+of Olo's words: those the same as in English (names, paths) as
+themselves, so coverage says all. Each is clean in the layout lint and
+the live one in its language (`OLO_LANGUAGE=es cargo ui-lint
+--no-fail-fast`, `OLO_LANGUAGE=es tools/dev/ui-lint --no-cache`): where a
+translation ran past its room it was said in fewer words, measured
+against German, which fits (a long note under Power's modes is 480
+characters in German, 498 in Spanish).
 
 The words stay in the code, in English, as they always were. Each
 language has a catalog of them (`crates/kit-base/words/CODE.txt`,
