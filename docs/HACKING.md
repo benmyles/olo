@@ -3843,7 +3843,20 @@ it.
   its item `.key("s")` for every app's keys (`app.sidebar`: ⌥⌘S, as
   Finder's was; a kit app's keys have no Control of their own, so ⌃⌘S
   would be ⌘S). Agents read a Splitter (its width, or "hidden").
-  Telegram's chat list (View ▸ Hide Chat List).
+  Telegram's chat list (View ▸ Hide Chat List). In a window too narrow
+  for both (a third of a screen: "Tiling layouts"), they show one at a
+  time, never both squeezed: `pane.panes(total, rest)` says what shows,
+  `Panes::Both(width)` side by side (the divider then), `Pane` the pane
+  alone, `Rest` what's beside it alone (and put away, `Rest` too). A
+  list to choose from shows first, what it opened once something is
+  (`show_rest()` as a row is chosen), with a back arrow
+  (`ArrowButton::back`) calling `show_pane()`; a pane that gives way (a
+  sidebar of calendars, an assistant) has what's beside it first
+  (`SidePane::new(..).first(Front::Rest)`), brought in front by its
+  View ▸ Show (`toggle()`, which, one at a time, swaps them rather than
+  put the pane away). `alone()` says they show one at a time (a back
+  arrow wanted), `showing()` whether the pane shows (a menu's Show or
+  Hide). Calendar's calendars and assistant.
 - `widgets::TabView::new(id, labels, selected).on_select(f)` with the
   chosen tab's content as its child (BTabView: the tab strip's folder
   tabs, so there is one tab look, over a raised panel: outlined, lit
@@ -6012,6 +6025,22 @@ What adapting means:
 - **A document scrolls, a form doesn't**: a dashboard, a forecast or a
   month's weeks scroll in a window too short for them; a form is in a
   window that fits what it shows (above), which floats.
+
+How the kit helps: a side pane gives way and shows one at a time in a
+narrow window (`SidePane::panes`, above); an empty state's lines wrap to
+its room; a scroll bar too short for its arrows halves them; the tool
+bar wraps and has its » menu. Calendar shows the rest of the patterns:
+its toolbar's search field narrows to its least before its title takes
+a shorter form (the longest that fits: "Thursday, November 19, 2026",
+"Thu, Nov 19, 2026", "Nov 19, 2026", "Nov 19"), its status line goes
+first; its Day, Week, Month and Agenda tabs fold into a pop-up in the
+toolbar in a window a third of a screen high, the days having the tabs'
+row; its preview gives way under days left too short, its menu item
+dimmed; its month keeps a least row height and scrolls its weeks; its
+week's day headings say "W 18", or the number alone, where "Wed 18"
+doesn't fit. A pop-up a short window folds its tabs into isn't stepped
+through by `--tiles` (it clicks tabs): picture each of its choices there
+(`{"invoke": "mode:week"}` on the app's socket chooses one).
 
 `tools/dev/ui-lint --tiles` tiles each window that tiles into each
 layout in turn, as a person's tiling puts it (`Arrange`), and reviews

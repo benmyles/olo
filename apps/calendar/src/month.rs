@@ -59,6 +59,14 @@ impl State {
     }
 }
 
+/// The month's least height: the weekdays' row, and each week a day's
+/// number and an event's row (in a window too short for it, the weeks
+/// scroll rather than pile up: CLAUDE.md, "Every tiling layout").
+pub fn least(v: &Calendar) -> f32 {
+    let (_, weeks) = layout::month_grid(v.cursor.year(), v.cursor.month(), v.week_start());
+    HEADER + weeks as f32 * (NUMBER + LANE + 2.0)
+}
+
 pub fn view(cx: &mut Cx<Calendar>) -> Element {
     cx.canvas(|v: &Calendar, g, b| {
         let p = theme::palette();
@@ -156,7 +164,10 @@ pub fn view(cx: &mut Cx<Calendar>) -> Element {
                         style::frame_rect(g, r, style::c(hue));
                     }
                     let ink = style::c(p.ink_on(fill));
-                    let said = if s.all_day { s.title.to_string() } else { format!("{} {}", words::time(s.start.time(), v.h24), s.title) };
+                    // (Its start before its title only where both fit: else
+                    // its title, cut short, never its time.)
+                    let both = format!("{} {}", words::time(s.start.time(), v.h24), s.title);
+                    let said = if s.all_day || style::text_width(both.clone(), style::DETAIL_SIZE, regular.clone()) > room { s.title.to_string() } else { both };
                     let t = style::label_fit(g, words_at, mid, style::Align::Left, said, style::DETAIL_SIZE, regular.clone(), ink, room.max(px(0.0)));
                     crate::view::struck(g, s, t, ink);
                 } else {
@@ -171,9 +182,14 @@ pub fn view(cx: &mut Cx<Calendar>) -> Element {
                         style::fill_rect(g, mark, style::c(hue));
                     }
                     let x = words_at + px(7.0 + PAD);
+                    // Its time only whole ("9:3…" said nothing; Codex,
+                    // 2026-11-19): too narrow for it, its title.
                     let time = words::time(s.start.time(), v.h24);
-                    let t = style::label_fit(g, x, mid, style::Align::Left, time, style::DETAIL_SIZE, regular.clone(), quiet, (r.right() - x).max(px(0.0)));
-                    let x = t.right() + px(4.0);
+                    let x = if style::text_width(time.clone(), style::DETAIL_SIZE, regular.clone()) <= (r.right() - x).max(px(0.0)) {
+                        style::label(g, x, mid, style::Align::Left, time, style::DETAIL_SIZE, regular.clone(), quiet).right() + px(4.0)
+                    } else {
+                        x
+                    };
                     if r.right() - x > px(12.0) {
                         let ink = if going == Some(olo_calendar::event::Answer::No) { quiet } else { text };
                         let t = style::label_fit(g, x, mid, style::Align::Left, s.title.to_string(), style::DETAIL_SIZE, regular.clone(), ink, r.right() - x);
@@ -193,8 +209,21 @@ pub fn view(cx: &mut Cx<Calendar>) -> Element {
                 let day = layout::day_of(layout::day_number(first) + col as i32);
                 let y = y0 + px(NUMBER + (lanes - 1) as f32 * LANE);
                 let r = style::snap(g, Bounds::from_corners(point(xs[col] + px(EDGE), y), point(xs[col + 1] - px(EDGE), y + px(BAR))));
-                let said = format!("+{} more", laid.more[col]);
-                let l = style::label_fit(g, xs[col] + px(INSET), r.center().y, style::Align::Left, said.clone(), style::DETAIL_SIZE, regular.clone(), quiet, r.size.width - px(2.0 * PAD));
+                // "+3 more" under what's named; with nothing named (one
+                // row for events: a window a third of a screen high),
+                // "4 events"; in a column too narrow for the words, the
+                // number alone ("+3"), never cut short.
+                let n = laid.more[col] as u64;
+                let room = r.size.width - px(2.0 * PAD);
+                let words = if lanes == 1 { olo_kit::words::count(n, "1 event", "{n} events") } else { olo_kit::words::count(n, "+1 more", "+{n} more") };
+                let said = if style::text_width(words.clone(), style::DETAIL_SIZE, regular.clone()) <= room {
+                    words
+                } else if lanes == 1 {
+                    n.to_string()
+                } else {
+                    format!("+{n}")
+                };
+                let l = style::label_fit(g, xs[col] + px(INSET), r.center().y, style::Align::Left, said.clone(), style::DETAIL_SIZE, regular.clone(), quiet, room);
                 g.agent(agent::Node { role: "Link", name: Some(format!("{said}, {}", words::long_day(day)).into()), bounds: l, enabled: true, clickable: true, ..Default::default() });
                 parts.push((r, Part::More(day)));
             }

@@ -35,12 +35,24 @@ something nobody here has is in "Blocked", with what it waits for.
   in a horizontal third, Telegram's and Phone's conversations strips
   beside their lists, Passwords' welcome cut off in a short window,
   kache's and Weather's cards cut off, Doctor's and Updates' Fix and
-  Update buttons gone in a third. To do: the kit's side panes give way
-  and show one at a time in a narrow window (a back arrow), its empty
-  state wraps, its Choose row folds; then each app, Calendar first;
-  then the pre-push hook runs `--tiles` too (not before: it would
-  refuse every push until they pass), on the smallest screen and the
-  person's.
+  Update buttons gone in a third. Done: the kit's side panes give way
+  and show one at a time in a narrow window, with a back arrow
+  (`SidePane::panes`), its empty state wraps, a short scroll bar's
+  arrows fit; Calendar passes on the smallest screen and the person's
+  three (its columns give way and come in front, its toolbar folds, its
+  tabs fold into a pop-up in a short window, its month scrolls). To do:
+  Phone and Telegram one pane at a time (the music box giving way in a
+  short window), Weather (its places and assistant give way, its cards
+  reflow, its forecast scrolls), kache (cards in one column, its
+  buttons under its title), Doctor and OS Updates (the Choose row folds;
+  Updates' detail and sources give way), Logs (its detail gives way in
+  a short window, its filters wrap), Disk Usage (the rings over the list
+  in a narrow window, the Collector giving way in a short one),
+  Passwords (its welcome's picture gives way; its three columns one at
+  a time, pictured with a made-up vault), Activity Monitor and Viewer
+  (least sizes); then the pre-push hook runs `--tiles` too (not
+  before: it would refuse every push until they pass), on the smallest
+  screen and the person's.
 - **Themes: one list (Classic, Platinum, BeOS and every scheme), each
   perfect, with icons of its own, Customize…, and a wallpaper of its
   own** (Ben, 2026-11-17: "the split between themes and colors doesn't

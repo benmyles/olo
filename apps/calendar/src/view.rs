@@ -7,23 +7,35 @@ use std::rc::Rc;
 
 use olo_kit::{
     ClickEvent, Cx, Element, Hsla, InteractiveElement as _, IntoElement as _, MenuBar, ParentElement as _, Styled as _, canvas, div, metrics as m, px, style, theme,
-    widgets::{ArrowButton, Button, CheckBox, EmptyState, LinkButton, MonthGrid, ScrollView, StringView, TabView, TextControl, month as mini},
+    widgets::{ArrowButton, Button, CheckBox, EmptyState, LinkButton, MenuField, MonthGrid, Panes, ScrollView, StringView, TabView, TextControl, button_width, month as mini},
 };
 
 use crate::{Calendar, Mode, Msg, agenda, hue_of, layout, month, week, words};
 
-/// The search field's width.
+/// The search field's width, and the least it narrows to where the
+/// toolbar has less room.
 const SEARCH: f32 = 190.0;
+const SEARCH_LEAST: f32 = 100.0;
 /// The calendars' column: the small month and a little room round it.
-const SIDEBAR: f32 = mini::WIDTH + 2.0 * m::TIGHT + 4.0;
-/// The least the views need: seven days across, each wide enough for a
-/// time and a few words.
-const MAIN_MIN: f32 = 7.0 * 78.0;
-pub const MIN_WIDTH: f32 = 2.0 * m::WINDOW_INSET + SIDEBAR + m::SPACING + MAIN_MIN;
-pub const MIN_HEIGHT: f32 = 520.0;
+pub const SIDEBAR: f32 = mini::WIDTH + 2.0 * m::TIGHT + 4.0;
+/// What the views keep beside a column (the calendars', the
+/// assistant's): seven days across, each wide enough for a time and a
+/// word. Less, the column gives way (CLAUDE.md, "Every tiling layout").
+const MAIN_BESIDE: f32 = 7.0 * 60.0;
+/// The window's least: a third of the smallest screen, either way (its
+/// days alone, seven across; a few hours of them).
+pub const MIN_WIDTH: f32 = 400.0;
+pub const MIN_HEIGHT: f32 = 220.0;
+/// The views' least height beside the preview under them: less, the
+/// preview gives way.
+const VIEWS_BESIDE_PREVIEW: f32 = 300.0;
+/// The views' column shorter than this (a third of a screen's height),
+/// Day, Week, Month and Agenda fold from tabs into a pop-up in the
+/// toolbar: the tabs' row is the days'.
+const TABS_FOLD: f32 = 270.0;
 /// The assistant's column, and the least it's any use at.
-const ASSISTANT: f32 = 264.0;
-const ASSISTANT_MIN: f32 = 216.0;
+pub const ASSISTANT: f32 = 264.0;
+pub const ASSISTANT_MIN: f32 = 216.0;
 /// How many days on the agenda shows.
 pub const AGENDA_DAYS: i32 = 56;
 
@@ -96,29 +108,51 @@ fn well(e: f32, ground: Hsla, content: impl olo_kit::IntoElement) -> Element {
 }
 
 pub fn body(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
-    let bar = MenuBar::of(v, cx, |v, _| v.menus());
     let p = theme::palette();
+    let vs = cx.viewport_size();
+    let (w, h) = (f32::from(vs.width) - 2.0 * m::WINDOW_INSET, f32::from(vs.height));
     let mut row = div().flex_1().min_h_0().flex().flex_row().gap(px(m::SPACING)).px(px(m::WINDOW_INSET)).pt(px(m::SPACING)).pb(px(m::WINDOW_INSET));
-    // The assistant's column takes what the views can spare, up to its
-    // width; in a window too narrow for all three, the calendars' column
-    // gives way to it while it shows.
-    let room = |sidebar: bool| f32::from(cx.viewport_size().width) - 2.0 * m::WINDOW_INSET - if sidebar { SIDEBAR + m::SPACING } else { 0.0 } - MAIN_MIN - m::SPACING;
-    let (sidebar_shown, column) = match (v.settings.assistant, v.settings.sidebar) {
-        (false, sidebar) => (sidebar, 0.0),
-        (true, true) if room(true) >= ASSISTANT_MIN => (true, room(true).min(ASSISTANT)),
-        (true, _) => (false, room(false).clamp(ASSISTANT_MIN, ASSISTANT)),
-    };
-    if sidebar_shown {
-        row = row.child(div().w(px(SIDEBAR)).flex_shrink_0().h_full().child(sidebar(v, cx)));
+    // What's beside the days gives way to them, never squeezing them
+    // (CLAUDE.md, "Every tiling layout"): the assistant's column takes
+    // what they can spare beside what they keep, up to its width, and
+    // the calendars' column what's left after it. A column without the
+    // room gives way; View ▸ Show brings it in front of the days, alone,
+    // with a way back (the kit's SidePane).
+    v.assistant_pane.set_collapsed(!v.settings.assistant);
+    v.sidebar_pane.set_collapsed(!v.settings.sidebar);
+    let assistant = v.assistant_pane.panes(w, MAIN_BESIDE + m::SPACING);
+    let left = if assistant.width() > 0.0 { w - assistant.width() - m::SPACING } else { w };
+    let sidebar = if assistant == Panes::Pane { Panes::Rest } else { v.sidebar_pane.panes(left, MAIN_BESIDE + m::SPACING) };
+    // The views' column: its toolbar, the days, the preview under them.
+    let main_h = h - olo_kit::menu::BAR_HEIGHT - m::SPACING - m::WINDOW_INSET;
+    let preview_room = main_h - (main_h / 3.0).max(crate::preview::LEAST) - m::TIGHT >= VIEWS_BESIDE_PREVIEW;
+    v.preview_fits = preview_room;
+    if assistant == Panes::Pane {
+        row = row.child(div().flex_1().min_w_0().h_full().child(assistant_pane(v, w, true, cx)));
+    } else if sidebar == Panes::Pane {
+        row = row.child(div().flex_1().min_w_0().h_full().child(sidebar_column(v, true, cx)));
+    } else {
+        if let Panes::Both(width) = sidebar {
+            row = row.child(div().w(px(width)).flex_shrink_0().h_full().child(sidebar_column(v, false, cx)));
+        }
+        let main_w = left - if sidebar.width() > 0.0 { sidebar.width() + m::SPACING } else { 0.0 };
+        let folded = main_h < TABS_FOLD;
+        let mut main = div().flex_1().min_w_0().h_full().flex().flex_col().gap(px(m::TIGHT)).child(nav(v, main_w, folded, cx)).child(div().flex_1().min_h_0().child(views(v, folded, cx)));
+        // (The event chosen, under the views, a third of their column:
+        // View ▸ Show Preview. It gives way where the days would be left
+        // too short: a quarter of a screen.)
+        if v.settings.preview && preview_room {
+            crate::preview::follow(v, cx);
+            main = main.child(div().w_full().h(olo_kit::relative(1.0 / 3.0)).min_h(px(crate::preview::LEAST)).flex_shrink_0().pt(px(m::TIGHT)).child(&v.preview));
+        }
+        row = row.child(main);
+        if let Panes::Both(width) = assistant {
+            row = row.child(div().w(px(width)).flex_shrink_0().h_full().child(assistant_pane(v, width, false, cx)));
+        }
     }
-    let mut main = div().flex_1().min_w(px(MAIN_MIN)).h_full().flex().flex_col().gap(px(m::TIGHT)).child(nav(v, cx)).child(div().flex_1().min_h_0().child(views(v, cx)));
-    // (The event chosen, under the views, a third of their column:
-    // View ▸ Show Preview.)
-    if v.settings.preview {
-        crate::preview::follow(v, cx);
-        main = main.child(div().w_full().h(olo_kit::relative(1.0 / 3.0)).min_h(px(crate::preview::LEAST)).flex_shrink_0().pt(px(m::TIGHT)).child(&v.preview));
-    }
-    let pane = v.settings.assistant.then(|| div().w(px(column)).flex_shrink_0().h_full().child(assistant_pane(v, column, cx)));
+    // (The menus after what shows is settled: View ▸ Show Calendars and
+    // Show Assistant are checked as they show now.)
+    let bar = MenuBar::of(v, cx, |v, _| v.menus());
     // Keys, where nothing that's typed in has the keyboard: Return opens
     // the event chosen, Delete (or Backspace) deletes it, the arrows step
     // through the days (a week up or down), Escape lets go of what's
@@ -194,31 +228,49 @@ pub fn body(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
         v.step_found(up, cx);
         cx.stop_propagation();
     });
-    div().size_full().flex().flex_col().bg(style::c(p.panel_background)).on_window_key_down(keys).capture_key_down(in_field).child(bar).child(row.child(main).children(pane)).into_element()
+    div().size_full().flex().flex_col().bg(style::c(p.panel_background)).on_window_key_down(keys).capture_key_down(in_field).child(bar).child(row).into_element()
 }
 
-/// What the view shows, in words: the month, the week's days, the day.
-pub fn title(v: &Calendar) -> String {
+/// The back arrow of a column shown alone in front of the days (a
+/// window too narrow for both): the days again.
+fn back(cx: &mut Cx<Calendar>, assistant: bool) -> Element {
+    ArrowButton::back("Back to the Days")
+        .on_click(cx.listener(move |v: &mut Calendar, _: &ClickEvent, cx| {
+            if assistant {
+                v.assistant_pane.show_rest();
+            } else {
+                v.sidebar_pane.show_rest();
+            }
+            cx.invalidate();
+        }))
+        .into_element()
+}
+
+/// What the view shows, in words, longest first: the month, the week's
+/// days, the day; the toolbar takes the longest that fits its room
+/// ("Thursday, November 19, 2026", "Thu, Nov 19, 2026", "Nov 19, 2026",
+/// "Nov 19").
+pub fn titles(v: &Calendar) -> Vec<String> {
     // (Find: how many were found.)
     if !v.finding.is_empty() {
-        return match (v.found.len(), v.found_total) {
+        return vec![match (v.found.len(), v.found_total) {
             (0, _) => olo_kit::words::tr("Nothing Found").to_owned(),
             (n, all) if all > n => olo_kit::tr!("{} of {} Events Found", style::thousands(n), style::thousands(all)),
             (n, _) => olo_kit::words::count(n as u64, "1 Event Found", "{n} Events Found"),
-        };
+        }];
     }
     let (first, after) = v.visible();
     let last = layout::day_of(layout::day_number(after) - 1);
     match v.settings.mode {
-        Mode::Month => words::month_year(v.cursor),
-        Mode::Day => words::long_day(v.cursor),
-        Mode::Week => words::days_span(first, last),
-        Mode::Agenda => format!("From {}", words::long_day(v.cursor)),
+        Mode::Month => words::month_forms(v.cursor),
+        Mode::Day => words::day_forms(v.cursor),
+        Mode::Week => words::span_forms(first, last),
+        Mode::Agenda => words::day_forms(v.cursor).into_iter().map(|d| olo_kit::tr!("From {}", d)).collect(),
     }
 }
 
 /// The arrows, Today, what shows, and how things stand with the servers.
-fn nav(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
+fn nav(v: &mut Calendar, width: f32, folded: bool, cx: &mut Cx<Calendar>) -> Element {
     let (back, on) = match v.settings.mode {
         Mode::Day => ("Previous Day", "Next Day"),
         Mode::Week | Mode::Agenda => ("Previous Week", "Next Week"),
@@ -226,6 +278,29 @@ fn nav(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
     };
     let (status, wrong) = v.status();
     let p = theme::palette();
+    // Its room, a toolbar's that folds (CLAUDE.md, "Every tiling
+    // layout"): the arrows, Today and the gaps keep theirs; the search
+    // field narrows to its least before the title takes a shorter form,
+    // and the status line has what's left (none at all, below a few
+    // words' room).
+    let bold = style::ui_font(olo_kit::FontWeight::BOLD);
+    // (A point or two more than its words: a box exactly as wide as them
+    // cut the last one short.)
+    let measure = |t: &str| f32::from(style::text_width(t.to_owned(), style::LEAD_SIZE, bold.clone())).ceil() + 2.0;
+    // Folded (a window a third of a screen high): Day, Week, Month and
+    // Agenda in a pop-up after Today, as wide as the widest of them.
+    let modes: Vec<olo_kit::SharedString> = Mode::ALL.iter().map(|mode| olo_kit::SharedString::from(mode.name())).collect();
+    let regular = style::ui_font(olo_kit::FontWeight::NORMAL);
+    let widest = Mode::ALL.iter().map(|mode| f32::from(style::text_width(olo_kit::words::tr(mode.name()).to_owned(), style::PLAIN_SIZE, regular.clone()))).fold(0.0, f32::max);
+    let mode_w = (m::TEXT_INSET + widest + 30.0).ceil();
+    let fixed = 2.0 * m::CONTROL_HEIGHT + button_width(olo_kit::words::tr("Today"), false) + 4.0 * m::SPACING + if folded { mode_w + m::SPACING } else { 0.0 };
+    let titles = titles(v);
+    let longest = measure(&titles[0]);
+    let search = (width - fixed - longest).clamp(SEARCH_LEAST, SEARCH);
+    let room = (width - fixed - search).max(0.0);
+    let title = titles.iter().find(|t| measure(t) <= room).unwrap_or(&titles[titles.len() - 1]).clone();
+    let title_w = measure(&title).min(room);
+    let status_room = room - title_w;
     // (The title and the status on the line of Today's own word.)
     let mut said = StringView::new(status).small(true).cut(true).beside(style::PLAIN_SIZE);
     said = if wrong { said.color(style::c(p.failure)) } else { said.dim(true) };
@@ -247,18 +322,23 @@ fn nav(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
             let today = v.today;
             v.go(today, cx);
         })))
-        .child(div().flex_shrink_0().child(StringView::new(title(v)).size(style::LEAD_SIZE).bold(true).height(m::CONTROL_HEIGHT).beside(style::PLAIN_SIZE)))
-        .child(div().flex_1().min_w_0().flex().justify_end().child(said))
+        .children(folded.then(|| {
+            let at = Mode::ALL.iter().position(|mode| *mode == v.settings.mode).unwrap_or(2);
+            MenuField::new("calendar-mode", modes, at).name("View").width(mode_w).on_change(cx.msg_with(|i: &usize| Msg::Mode(Mode::ALL[(*i).min(3)]))).into_element()
+        }))
+        .child(div().w(px(title_w)).flex_shrink_0().child(StringView::new(title).size(style::LEAD_SIZE).bold(true).cut(true).height(m::CONTROL_HEIGHT).beside(style::PLAIN_SIZE)))
+        .child(div().flex_1().min_w_0().flex().justify_end().children((status_room >= 64.0).then_some(said)))
         // Find: what's typed here is looked for in every calendar shown.
-        .child(div().w(px(SEARCH)).flex_shrink_0().child(&v.search))
+        .child(div().w(px(search)).flex_shrink_0().child(&v.search))
         .into_element()
 }
 
 /// The assistant: the conversation (each answer with the events it
 /// points to, a click going to each, and what it proposes, a click
 /// opening it to save or not), suggestions before any, and the field to
-/// ask in. `column` is how wide it is.
-fn assistant_pane(v: &mut Calendar, column: f32, cx: &mut Cx<Calendar>) -> Element {
+/// ask in. `column` is how wide it is; `alone`, in front of the days in
+/// a window too narrow for both, with a way back to them.
+fn assistant_pane(v: &mut Calendar, column: f32, alone: bool, cx: &mut Cx<Calendar>) -> Element {
     let p = theme::palette();
     let e = edge(cx);
     let failure = style::c(p.failure);
@@ -291,7 +371,11 @@ fn assistant_pane(v: &mut Calendar, column: f32, cx: &mut Cx<Calendar>) -> Eleme
     }
     if let Some(a) = &v.answering {
         conv = conv.child(StringView::new(a.question.clone()).bold(true).wrap(true));
-        let words = if a.so_far.is_empty() { format!("Thinking{}…", if a.model.is_empty() { String::new() } else { format!(" ({})", a.model) }) } else { a.so_far.clone() };
+        let words = match (a.so_far.is_empty(), a.model.is_empty()) {
+            (true, true) => olo_kit::words::tr("Thinking…").to_owned(),
+            (true, false) => olo_kit::tr!("Thinking ({})…", a.model),
+            (false, _) => a.so_far.clone(),
+        };
         conv = conv.child(StringView::new(words).wrap(true).dim(a.so_far.is_empty()));
     }
     if v.turns.is_empty() && v.answering.is_none() {
@@ -319,9 +403,18 @@ fn assistant_pane(v: &mut Calendar, column: f32, cx: &mut Cx<Calendar>) -> Eleme
     } else {
         Button::new("Ask").id("ask").on_click(cx.listener(|v: &mut Calendar, _: &ClickEvent, cx| v.ask_typed(cx)))
     };
-    let title = div().flex().flex_row().items_center().h(px(m::CONTROL_HEIGHT)).child(StringView::new("Assistant").bold(true)).child(div().flex_1()).child(
-        LinkButton::new("New Conversation").id("new-conversation").enabled(!v.turns.is_empty() || answering).on_click(cx.listener(|v: &mut Calendar, _: &ClickEvent, cx| v.new_conversation(cx))),
-    );
+    let title = div()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap(px(m::TIGHT))
+        .h(px(m::CONTROL_HEIGHT))
+        .children(alone.then(|| back(cx, true)))
+        .child(StringView::new("Assistant").bold(true))
+        .child(div().flex_1())
+        .child(
+            LinkButton::new("New Conversation").id("new-conversation").enabled(!v.turns.is_empty() || answering).on_click(cx.listener(|v: &mut Calendar, _: &ClickEvent, cx| v.new_conversation(cx))),
+        );
     div()
         .size_full()
         .flex()
@@ -334,7 +427,7 @@ fn assistant_pane(v: &mut Calendar, column: f32, cx: &mut Cx<Calendar>) -> Eleme
 }
 
 /// Day, Week, Month and Agenda, as tabs.
-fn views(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
+fn views(v: &mut Calendar, folded: bool, cx: &mut Cx<Calendar>) -> Element {
     let tabs: Rc<[olo_kit::SharedString]> = Rc::from(Mode::ALL.map(|mode| olo_kit::SharedString::from(mode.name())).to_vec());
     let at = Mode::ALL.iter().position(|mode| *mode == v.settings.mode).unwrap_or(2);
     let p = theme::palette();
@@ -350,19 +443,31 @@ fn views(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
         agenda::found(v, cx)
     } else {
         match v.settings.mode {
-            Mode::Month => month::view(cx),
+            // (Each week a number's row and an event's at least: in a
+            // window too short for that, the weeks scroll.)
+            Mode::Month => ScrollView::new(&v.month_scroll)
+                .border(false)
+                .auto_hide(true)
+                .background(p.document_background)
+                .child(div().w_full().h_full().min_h(px(month::least(v))).child(month::view(cx)))
+                .into_element(),
             Mode::Day | Mode::Week => week::view(v, cx),
             Mode::Agenda => agenda::view(v, cx),
         }
     };
+    // (Folded, the tabs are a pop-up in the toolbar: the days have their row.)
+    if folded {
+        return div().size_full().child(well(e, style::c(p.document_background), content)).into_element();
+    }
     TabView::new("calendar-mode", tabs, at)
         .on_select(cx.msg_with(|i: &usize| Msg::Mode(Mode::ALL[(*i).min(3)])))
         .child(div().size_full().child(well(e, style::c(p.document_background), content)))
         .into_element()
 }
 
-/// The small month, and the calendars under it.
-fn sidebar(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
+/// The small month, and the calendars under it; `alone`, in front of the
+/// days in a window too narrow for both, with a way back to them.
+fn sidebar_column(v: &mut Calendar, alone: bool, cx: &mut Cx<Calendar>) -> Element {
     let p = theme::palette();
     let ground = olo_kit::widgets::sidebar::ground(&p);
     // The days with something on them, in the month it shows.
@@ -430,12 +535,31 @@ fn sidebar(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
     }
     let heading = div().px(px(m::TIGHT + 2.0)).pt(px(m::TIGHT)).child(StringView::new("Calendars").bold(true).height(m::LABEL_ROW));
     let e = edge(cx);
-    let content = div()
+    let month = div().w_full().flex().justify_center().pt(px(m::TIGHT)).pb(px(m::TIGHT)).child(month);
+    // The calendars scroll under the small month; in a window too short
+    // for the month and a few of them (a third of a screen's height), the
+    // whole column does, the month with them, not cut off.
+    let room = f32::from(cx.viewport_size().height) - olo_kit::menu::BAR_HEIGHT - m::SPACING - m::WINDOW_INSET - if alone { m::CONTROL_HEIGHT + m::TIGHT } else { 0.0 };
+    let short = room < mini::HEIGHT + 2.0 * m::TIGHT + m::LABEL_ROW + m::TIGHT + 3.0 * m::MARK_ROW + 2.0 * e;
+    let content = if short {
+        div().size_full().child(ScrollView::new(&v.calendars_scroll).border(false).auto_hide(true).child(div().w_full().flex().flex_col().child(month).child(heading).child(list)))
+    } else {
+        div().size_full().flex().flex_col().child(month).child(heading).child(div().flex_1().min_h_0().child(ScrollView::new(&v.calendars_scroll).border(false).auto_hide(true).child(list)))
+    };
+    if !alone {
+        return well(e, ground, content);
+    }
+    // Alone in front of the days: the column as it is beside them,
+    // centred, the small month and the calendars on one inset (the month
+    // centred across the window, the calendars at its left, looked like
+    // two things; Codex, 2026-11-19).
+    let column = div().size_full().flex().justify_center().child(div().w(px(SIDEBAR)).h_full().child(content));
+    div()
         .size_full()
         .flex()
         .flex_col()
-        .child(div().w_full().flex().justify_center().pt(px(m::TIGHT)).pb(px(m::TIGHT)).child(month))
-        .child(heading)
-        .child(div().flex_1().min_h_0().child(ScrollView::new(&v.calendars_scroll).border(false).auto_hide(true).child(list)));
-    well(e, ground, content)
+        .gap(px(m::TIGHT))
+        .child(div().flex().flex_row().items_center().h(px(m::CONTROL_HEIGHT)).child(back(cx, false)))
+        .child(div().flex_1().min_h_0().child(well(e, ground, column)))
+        .into_element()
 }

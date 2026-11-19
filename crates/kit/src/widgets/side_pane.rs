@@ -14,12 +14,27 @@
 //! Its width and whether it's away are the app's to keep across restarts
 //! and upgrades ([`SidePane::width`], [`SidePane::collapsed`]).
 //!
+//! In a window too narrow for both, the pane's narrowest beside what the
+//! rest needs (a tile a third of a screen wide: CLAUDE.md, "Every tiling
+//! layout"), they show one at a time ([`SidePane::panes`]), each the
+//! whole width, never both squeezed. A list to choose from (Telegram's
+//! chats, Phone's conversations) shows first, and what it opens once
+//! something is ([`SidePane::show_rest`]), with a back arrow to the list
+//! (`ArrowButton::back`, calling [`SidePane::show_pane`]). A pane that
+//! gives way (a sidebar of calendars, an assistant) has what's beside it
+//! first ([`SidePane::first`]); its View ▸ Show brings it in front
+//! ([`SidePane::toggle`]), its back arrow takes it away again.
+//!
 //! The view keeps the [`SidePane`] (a handle: clones are the same pane)
 //! and is told when its divider changed what shows (`on_change`):
 //!
 //! ```ignore
-//! let w = self.pane.shown(total_width, 320.0);
-//! layer.child(side_divider(&self.pane, w, top, height, "Chat List", cx.msg(Msg::PaneMoved)))
+//! match self.pane.panes(total_width, 320.0) {
+//!     Panes::Both(w) => { /* the pane w wide, the rest beside it, and: */
+//!         layer.child(side_divider(&self.pane, w, top, height, "Chat List", cx.msg(Msg::PaneMoved))) }
+//!     Panes::Pane => { /* the pane alone */ }
+//!     Panes::Rest => { /* the rest alone, a back arrow if `self.pane.alone()` */ }
+//! }
 //! ```
 
 use std::{cell::RefCell, rc::Rc};
@@ -30,6 +45,34 @@ use olo_interface::{CursorStyle, Element, InteractiveElement as _, MouseButton, 
 /// beside it (the pane's own scroll bar runs up to its edge).
 pub const GRIP: f32 = 6.0;
 
+/// Which shows where there's room for only one: the pane, or what's
+/// beside it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Front {
+    Pane,
+    Rest,
+}
+
+/// What a window with a side pane shows ([`SidePane::panes`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Panes {
+    /// Side by side, the pane this wide (whole points).
+    Both(f32),
+    /// The pane alone, the whole width: too narrow for both, the pane in
+    /// front.
+    Pane,
+    /// What's beside the pane alone: the pane put away, or too narrow for
+    /// both and what's beside it in front.
+    Rest,
+}
+
+impl Panes {
+    /// The pane's width beside the rest: 0 unless they're side by side.
+    pub fn width(self) -> f32 {
+        if let Panes::Both(w) = self { w } else { 0.0 }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 struct Pane {
     /// Its width when shown (at least `min`).
@@ -39,6 +82,10 @@ struct Pane {
     /// The divider being dragged: where it was pressed, and the width
     /// shown then (0: away).
     drag: Option<(f32, f32)>,
+    /// Which shows in a window too narrow for both.
+    front: Front,
+    /// Laid out last too narrow for both.
+    alone: bool,
 }
 
 /// A side pane's size and whether it's put away.
@@ -48,7 +95,15 @@ pub struct SidePane(Rc<RefCell<Pane>>);
 impl SidePane {
     /// `width` wide, never narrower than `min` while shown.
     pub fn new(width: f32, min: f32) -> SidePane {
-        SidePane(Rc::new(RefCell::new(Pane { width: width.max(min), collapsed: false, min, drag: None })))
+        SidePane(Rc::new(RefCell::new(Pane { width: width.max(min), collapsed: false, min, drag: None, front: Front::Pane, alone: false })))
+    }
+
+    /// Which shows first in a window too narrow for both: [`Front::Rest`]
+    /// for a pane that gives way (a sidebar, an assistant); the pane, a
+    /// list to choose from, unless told.
+    pub fn first(self, front: Front) -> SidePane {
+        self.0.borrow_mut().front = front;
+        self
     }
 
     /// As kept: `width`, and put away or not.
@@ -77,10 +132,48 @@ impl SidePane {
         self.0.borrow_mut().collapsed = collapsed;
     }
 
-    /// Put away, or brought back.
+    /// Put away, or brought back (View ▸ Hide Sidebar). One at a time
+    /// (laid out last too narrow for both), the pane or what's beside it
+    /// brought in front instead: shown so, it's not put away.
     pub fn toggle(&self) {
         let mut p = self.0.borrow_mut();
-        p.collapsed = !p.collapsed;
+        if p.alone {
+            p.front = match p.front {
+                Front::Pane => Front::Rest,
+                Front::Rest => Front::Pane,
+            };
+            if p.front == Front::Pane {
+                p.collapsed = false;
+            }
+        } else {
+            p.collapsed = !p.collapsed;
+        }
+    }
+
+    /// Something in the pane opened (a chat chosen): one at a time, what's
+    /// beside it shows.
+    pub fn show_rest(&self) {
+        self.0.borrow_mut().front = Front::Rest;
+    }
+
+    /// Back to the pane (the back arrow): one at a time, the pane shows,
+    /// and beside the rest again once there's room.
+    pub fn show_pane(&self) {
+        let mut p = self.0.borrow_mut();
+        p.front = Front::Pane;
+        p.collapsed = false;
+    }
+
+    /// Laid out last one at a time, too narrow for both: what's beside
+    /// the pane has a way back to it.
+    pub fn alone(&self) -> bool {
+        self.0.borrow().alone
+    }
+
+    /// The pane shows, as laid out last (a menu's Show or Hide).
+    pub fn showing(&self) -> bool {
+        let p = self.0.borrow();
+        if p.alone { p.front == Front::Pane } else { !p.collapsed }
     }
 
     /// Its divider is being dragged.
@@ -88,9 +181,28 @@ impl SidePane {
         self.0.borrow().drag.is_some()
     }
 
+    /// What shows in a window `total` wide whose rest needs at least
+    /// `rest`: side by side while the pane's narrowest fits beside it
+    /// (the pane its width, no wider than leaves `rest`; whole points),
+    /// the rest alone while it's put away; too narrow for both, one at a
+    /// time, whichever is in front.
+    pub fn panes(&self, total: f32, rest: f32) -> Panes {
+        let mut p = self.0.borrow_mut();
+        p.alone = total - rest < p.min;
+        if !p.alone {
+            return if p.collapsed { Panes::Rest } else { Panes::Both(p.width.min(total - rest).max(p.min).round()) };
+        }
+        match p.front {
+            Front::Pane => Panes::Pane,
+            Front::Rest => Panes::Rest,
+        }
+    }
+
     /// How wide it shows in a window `total` wide that keeps at least
     /// `rest` for what's beside it: 0 when away; else its width, no
-    /// narrower than `min`, no wider than leaves `rest`. Whole points.
+    /// narrower than `min`, no wider than leaves `rest` (or squeezing
+    /// it, too narrow for both: [`Self::panes`] shows them one at a time
+    /// instead). Whole points.
     pub fn shown(&self, total: f32, rest: f32) -> f32 {
         let p = self.0.borrow();
         if p.collapsed {
@@ -220,5 +332,48 @@ mod tests {
         // Kept: as it was left.
         let q = SidePane::new(300.0, 220.0).restored(Some(180.0), true);
         assert_eq!((q.width(), q.collapsed()), (220.0, true));
+    }
+
+    /// Too narrow for both, one at a time, never squeezed: a list first,
+    /// what it opened once something is, back to the list; a pane that
+    /// gives way, what's beside it first, brought in front and taken
+    /// away by View ▸ Show and Hide.
+    #[test]
+    fn a_side_pane_too_narrow_shows_one_at_a_time() {
+        let p = SidePane::new(300.0, 220.0);
+        assert_eq!(p.panes(1000.0, 360.0), Panes::Both(300.0));
+        assert!(!p.alone() && p.showing());
+        // A third of the smallest screen: 407 points across.
+        assert_eq!(p.panes(407.0, 360.0), Panes::Pane);
+        assert!(p.alone() && p.showing());
+        p.show_rest();
+        assert_eq!(p.panes(407.0, 360.0), Panes::Rest);
+        assert!(!p.showing());
+        // Wider again: side by side, whichever was in front.
+        assert_eq!(p.panes(1000.0, 360.0), Panes::Both(300.0));
+        // The back arrow: the list.
+        p.panes(407.0, 360.0);
+        p.show_pane();
+        assert_eq!(p.panes(407.0, 360.0), Panes::Pane);
+        // View ▸ Hide, one at a time: what's beside it, the list not put away.
+        p.toggle();
+        assert_eq!((p.panes(407.0, 360.0), p.collapsed()), (Panes::Rest, false));
+        // Put away side by side, then too narrow: whichever is in front;
+        // brought in front, it's beside the rest again once there's room.
+        let q = SidePane::new(300.0, 220.0).restored(None, true);
+        assert_eq!(q.panes(1000.0, 360.0), Panes::Rest);
+        q.panes(407.0, 360.0);
+        q.show_pane();
+        assert_eq!((q.panes(407.0, 360.0), q.panes(1000.0, 360.0)), (Panes::Pane, Panes::Both(300.0)));
+        // A sidebar that gives way: what's beside it first.
+        let s = SidePane::new(180.0, 180.0).first(Front::Rest);
+        assert_eq!(s.panes(600.0, 440.0), Panes::Rest);
+        assert!(!s.showing());
+        assert_eq!(s.panes(800.0, 440.0), Panes::Both(180.0));
+        s.panes(600.0, 440.0);
+        s.toggle();
+        assert_eq!(s.panes(600.0, 440.0), Panes::Pane);
+        s.toggle();
+        assert_eq!(s.panes(600.0, 440.0), Panes::Rest);
     }
 }

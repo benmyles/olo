@@ -48,7 +48,7 @@ pub use menu_field::{MenuField, NONE_CHOSEN, divider_for};
 pub use month::MonthGrid;
 pub use picture_text::TextLine;
 pub use scroll::{SCROLL_BAR, ScrollBar, ScrollView};
-pub use side_pane::{SidePane, side_divider};
+pub use side_pane::{Front, Panes, SidePane, side_divider};
 pub use sidebar::Sidebar;
 pub use slider::Slider;
 pub use slim_scroll::{SLIM_BAR, SLIM_NEAR, SlimScrollBar};

@@ -205,7 +205,10 @@ fn select(v: &mut Calendar, e: &MouseDownEvent, hours: bool, cx: &mut Cx<Calenda
 
 pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
     let (first, n) = days(v);
-    let strip = layout::row(&v.shown, first, n, usize::MAX, true).lanes.clamp(1, MOST);
+    // (Empty, the all-day row keeps a lane to drop on, except in a window
+    // a third of a screen high, where the hours want every point.)
+    let short = f32::from(cx.viewport_size().height) < SHORT;
+    let strip = layout::row(&v.shown, first, n, usize::MAX, true).lanes.clamp(if short { 0 } else { 1 }, MOST);
     // (A whole number of device pixels at every scale, quarters too:
     // what scrolls under it starts on one.)
     let head = ((NAMES + strip as f32 * LANE + 3.0) / 4.0).ceil() * 4.0;
@@ -224,6 +227,29 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
             let mut parts: Vec<(Bounds<Pixels>, Part)> = Vec::new();
             olo_kit::review::own_grid(g, b);
             let mid = b.top() + px(NAMES / 2.0);
+            // The days' headings' form: the longest every column has room
+            // for ("Wed 18", "W 18", "18"), with the widest of the
+            // week's names and numbers, today's in its pill.
+            let heading = {
+                let narrowest = (0..n).map(|col| f32::from(xs[col + 1] - xs[col])).fold(f32::MAX, f32::min);
+                let width = |t: &str, size: f32, font: &olo_kit::Font| f32::from(style::text_width(t.to_owned(), size, font.clone()));
+                let numbers = (0..n)
+                    .map(|col| layout::day_of(layout::day_number(first) + col as i32))
+                    .map(|d| width(&d.day().to_string(), style::PLAIN_SIZE, &bold) + if d == v.today { 10.0 } else { 0.0 })
+                    .fold(0.0, f32::max);
+                let names = |len: usize| (0..n).map(|col| width(&words::weekday_name(layout::day_of(layout::day_number(first) + col as i32))[..len], style::DETAIL_SIZE, &regular)).fold(0.0, f32::max);
+                let fits = |name: f32, gap: f32| EDGE + PAD + name + gap + numbers + PAD <= narrowest;
+                // ("W 18" centred in its column, with a little room each
+                // side: at its left inset it didn't fit a third of a
+                // screen's columns, and the names went.)
+                if fits(names(3), 6.0) {
+                    Heading::Short
+                } else if names(1) + 2.0 + numbers + 2.0 <= narrowest {
+                    Heading::Initial
+                } else {
+                    Heading::Number
+                }
+            };
             for col in 0..n {
                 let day = layout::day_of(layout::day_number(first) + col as i32);
                 let cell = Bounds::from_corners(point(xs[col], b.top()), point(xs[col + 1], b.bottom()));
@@ -231,13 +257,35 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                 if day == v.today && n > 1 {
                     style::fill_rect(g, cell, style::c(p.list_selected_background).opacity(0.3));
                 }
-                // "Wed" and its number (today's on the look's mark colour).
-                let name = if n == 1 { words::weekday_name(day).to_owned() } else { words::weekday_name(day)[..3].to_owned() };
-                let x = xs[col] + px(EDGE + PAD);
-                // (The name on the line of its number, which is the larger.)
-                let r = style::label_on_baseline(g, x, style::baseline_at(g, mid, style::PLAIN_SIZE), style::Align::Left, name, style::DETAIL_SIZE, regular.clone(), quiet);
+                // "Wed" and its number (today's on the look's mark colour);
+                // in columns too narrow for that (a third of a screen),
+                // "W" and its number, or the number alone: the same in
+                // every column (`heading`).
+                let full = words::weekday_name(day);
                 let number = day.day().to_string();
-                let nx = r.right() + px(6.0);
+                let (name, gap) = match heading {
+                    _ if n == 1 => (full.to_owned(), 6.0),
+                    Heading::Short => (full[..3].to_owned(), 6.0),
+                    // (Today's pill starts a point before its number: a
+                    // wider gap, or "W" ran into it.)
+                    Heading::Initial => (full[..1].to_owned(), if day == v.today { 4.0 } else { 2.0 }),
+                    Heading::Number => (String::new(), 0.0),
+                };
+                let x = match heading {
+                    Heading::Initial if n > 1 => {
+                        let name_w = f32::from(style::text_width(name.clone(), style::DETAIL_SIZE, regular.clone()));
+                        let number_w = f32::from(style::text_width(number.clone(), style::PLAIN_SIZE, bold.clone())) + if day == v.today { 10.0 } else { 0.0 };
+                        xs[col] + px(((f32::from(xs[col + 1] - xs[col]) - name_w - gap - number_w) / 2.0).round())
+                    }
+                    _ => xs[col] + px(EDGE + PAD),
+                };
+                // (The name on the line of its number, which is the larger.)
+                let r = if name.is_empty() {
+                    Bounds { origin: point(x, mid), size: size(px(0.0), px(0.0)) }
+                } else {
+                    style::label_on_baseline(g, x, style::baseline_at(g, mid, style::PLAIN_SIZE), style::Align::Left, name, style::DETAIL_SIZE, regular.clone(), quiet)
+                };
+                let nx = r.right() + px(gap);
                 let shown = if day == v.today {
                     let width = (f32::from(style::text_width(number.clone(), style::PLAIN_SIZE, bold.clone())) + 10.0).max(18.0);
                     let pill = style::snap(g, Bounds { origin: point(nx - px(1.0), mid - px(9.0)), size: size(px(width), px(18.0)) });
@@ -263,7 +311,9 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
             // What's on all day, across its days.
             let laid = layout::row(&v.shown, first, n, strip, true);
             let top = b.top() + px(NAMES);
-            style::label(g, b.left() + px(GUTTER - 8.0), top + px(LANE / 2.0), style::Align::Right, "all day", style::SMALL_SIZE, regular.clone(), quiet);
+            if strip > 0 {
+                style::label(g, b.left() + px(GUTTER - 8.0), top + px(LANE / 2.0), style::Align::Right, "all day", style::SMALL_SIZE, regular.clone(), quiet);
+            }
             for piece in &laid.pieces {
                 let s = &v.shown[piece.item];
                 let y = top + px(piece.lane as f32 * LANE + 1.0);
@@ -413,14 +463,21 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                             let mid = r.center().y;
                             let t = style::label_fit(g, x, mid, style::Align::Left, s.title.to_string(), style::DETAIL_SIZE, bold.clone(), ink, room);
                             crate::view::struck(g, s, t, ink);
+                            // (Its start after it only whole: cut, "9:3…"
+                            // said nothing the hours beside it don't.)
                             let after = t.right() + px(6.0);
-                            if r.right() - after > px(40.0) {
-                                style::label_fit(g, after, mid, style::Align::Left, words::time(s.start.time(), v.h24), style::DETAIL_SIZE, regular.clone(), ink, r.right() - after - px(PAD));
+                            let start = words::time(s.start.time(), v.h24);
+                            if style::text_width(start.clone(), style::DETAIL_SIZE, regular.clone()) <= r.right() - after - px(PAD) {
+                                style::label(g, after, mid, style::Align::Left, start, style::DETAIL_SIZE, regular.clone(), ink);
                             }
                         } else {
                             let t = style::label_fit(g, x, r.top() + px(9.0), style::Align::Left, s.title.to_string(), style::DETAIL_SIZE, bold.clone(), ink, room);
                             crate::view::struck(g, s, t, ink);
-                            style::label_fit(g, x, r.top() + px(9.0 + 14.0), style::Align::Left, when.clone(), style::SMALL_SIZE, regular.clone(), ink, room);
+                            // (Its time only whole: "7…" under "R…" said
+                            // nothing; Codex, 2026-11-19.)
+                            if style::text_width(when.clone(), style::SMALL_SIZE, regular.clone()) <= room {
+                                style::label(g, x, r.top() + px(9.0 + 14.0), style::Align::Left, when.clone(), style::SMALL_SIZE, regular.clone(), ink);
+                            }
                             if tall >= 46.0 && !s.location.is_empty() {
                                 style::label_fit(g, x, r.top() + px(9.0 + 28.0), style::Align::Left, s.location.to_string(), style::SMALL_SIZE, regular.clone(), ink, room);
                             }
@@ -475,11 +532,19 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                     let (x, room) = (r.left() + px(PAD), (r.size.width - px(2.0 * PAD)).max(px(0.0)));
                     olo_kit::review::own_grid(g, r);
                     g.with_content_mask(Some(olo_kit::ContentMask { bounds: r }), |g| {
+                        // Its time only where it fits whole: cut ("7…"), it
+                        // said nothing the hours beside it don't.
+                        let whole = |t: &str, size: f32, font: &olo_kit::Font| style::text_width(t.to_owned(), size, font.clone()) <= room;
                         if f32::from(r.size.height) < 30.0 {
-                            style::label_fit(g, x, r.center().y, style::Align::Left, format!("{}  {}", s.title, words::time(from.time(), v.h24)), style::DETAIL_SIZE, bold.clone(), ink, room);
+                            let both = format!("{}  {}", s.title, words::time(from.time(), v.h24));
+                            let said = if whole(&both, style::DETAIL_SIZE, &bold) { both } else { s.title.to_string() };
+                            style::label_fit(g, x, r.center().y, style::Align::Left, said, style::DETAIL_SIZE, bold.clone(), ink, room);
                         } else {
                             style::label_fit(g, x, r.top() + px(9.0), style::Align::Left, s.title.to_string(), style::DETAIL_SIZE, bold.clone(), ink, room);
-                            style::label_fit(g, x, r.top() + px(9.0 + 14.0), style::Align::Left, words::when(from, to, false, v.h24), style::SMALL_SIZE, regular.clone(), ink, room);
+                            let when = words::when(from, to, false, v.h24);
+                            if whole(&when, style::SMALL_SIZE, &regular) {
+                                style::label_fit(g, x, r.top() + px(9.0 + 14.0), style::Align::Left, when, style::SMALL_SIZE, regular.clone(), ink, room);
+                            }
                         }
                     });
                 }
@@ -516,6 +581,21 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
 
 /// Where the hours start out scrolled to: a little before the working
 /// day (or before now, if that's earlier).
+/// The days' headings' form, the same in every column.
+#[derive(Clone, Copy)]
+enum Heading {
+    /// "Wed 18".
+    Short,
+    /// "W 18".
+    Initial,
+    /// "18".
+    Number,
+}
+
+/// A window shorter than this (a third of a screen's height): the empty
+/// all-day row gives its lane to the hours.
+const SHORT: f32 = 300.0;
+
 pub fn starting_offset(now_hour: i8) -> f32 {
     // (Its first hour's name whole under the days' names.)
     ((now_hour.min(8) as f32 - 1.0) * HOUR - 12.0).max(0.0)

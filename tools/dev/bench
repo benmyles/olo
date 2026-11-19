@@ -142,6 +142,8 @@ APPS = [
     App("screenshot", ["olo-screenshot"]),
     # Made-up people: 2,000 conversations and contacts, 600 messages in the one open.
     App("phone", ["olo-phone"], env=["OLO_PHONE_DEMO=2000"], type_text="benchmark 123"),
+    # (Its demo calendars, on a day of its own: no account, no network.)
+    App("calendar", ["olo-calendar"], env=["OLO_CALENDAR_DEMO=1", "OLO_CALENDAR_NOW=2026-11-18T10:30"], type_text="standup"),
     # A pretend account with thousands of chats (no network, no keyring).
     App("telegram", ["olo-telegram"], env=["OLO_TELEGRAM_DEMO=3000", f"OLO_TELEGRAM_CACHE={SCRATCH}/telegram-cache", f"OLO_TELEGRAM_SECRETS={SCRATCH}/telegram-secrets"], settle=3.0),
 ]

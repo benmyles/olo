@@ -342,6 +342,16 @@ pub struct Calendar {
     pub answering: Option<Asking>,
     asks: u64,
     pub chat_scroll: ScrollHandle,
+    /// The assistant's column and the calendars': beside the days while
+    /// there's room, else giving way, in front alone when asked for (the
+    /// kit's SidePane; View ▸ Show Assistant and Show Calendars).
+    pub assistant_pane: olo_kit::widgets::SidePane,
+    pub sidebar_pane: olo_kit::widgets::SidePane,
+    /// The preview has room under the days, as laid out last (View ▸
+    /// Show Preview is dimmed where it hasn't).
+    pub preview_fits: bool,
+    /// The month's weeks, scrolled in a window too short for them.
+    pub month_scroll: ScrollHandle,
     /// What the event selected will be, once its move is written.
     moved_to: Option<Key>,
     /// The changes made here, to take back and make again.
@@ -476,6 +486,10 @@ impl Calendar {
             answering: None,
             asks: 0,
             chat_scroll: ScrollHandle::new(),
+            assistant_pane: olo_kit::widgets::SidePane::new(view::ASSISTANT, view::ASSISTANT_MIN).first(olo_kit::widgets::Front::Rest),
+            sidebar_pane: olo_kit::widgets::SidePane::new(view::SIDEBAR, view::SIDEBAR).first(olo_kit::widgets::Front::Rest),
+            preview_fits: true,
+            month_scroll: ScrollHandle::new(),
             moved_to: None,
             history: Default::default(),
             search,
@@ -541,8 +555,14 @@ impl Calendar {
             return;
         }
         self.hours_placed = true;
-        let hour = now(&self.zone).hour();
-        self.hours_scroll.set_offset_once_laid_out(cx, olo_kit::point(olo_kit::px(0.0), olo_kit::px(-week::starting_offset(hour))));
+        let t = now(&self.zone);
+        self.hours_scroll.set_offset_once_laid_out(cx, olo_kit::point(olo_kit::px(0.0), olo_kit::px(-week::starting_offset(t.hour()))));
+        // The hour now too, with the half hour before it, where the hours
+        // show too few for both (a window a third of a screen high opened
+        // on 7 to 8 AM, now at 10:30 out of sight; Codex, 2026-11-19): it
+        // moves only if that isn't in view already.
+        let at = (t.hour() as f32 + t.minute() as f32 / 60.0) * week::HOUR;
+        self.hours_scroll.reveal(cx, olo_kit::px(at - week::HOUR / 2.0), olo_kit::px(at + week::HOUR));
     }
 
     /// The calendars a new event can go in: those shown that may be
@@ -643,6 +663,10 @@ impl Calendar {
         if !self.settings.assistant {
             self.settings.assistant = true;
             self.save();
+        }
+        // (Asked in a window too narrow for it beside the days: in front.)
+        if self.assistant_pane.alone() {
+            self.assistant_pane.show_pane();
         }
         self.asks += 1;
         let n = self.asks;
@@ -1328,11 +1352,12 @@ impl Calendar {
                 .key("]")
                 .separator()
                 .item("Show Calendars", "sidebar")
-                .checked(self.settings.sidebar)
+                .checked(self.sidebar_pane.showing())
                 .item("Show Assistant", "assistant")
-                .checked(self.settings.assistant)
+                .checked(self.assistant_pane.showing())
                 .item("Show Preview", "preview")
                 .checked(self.settings.preview)
+                .enabled(self.preview_fits)
                 .submenu(week),
         ]
     }
@@ -1445,6 +1470,8 @@ impl View for Calendar {
             }
             Msg::FoundOpen(i) => return self.open_found(i, cx),
             Msg::Reveal(href, start) => {
+                // (From the assistant in front of the days: the days.)
+                self.assistant_pane.show_rest();
                 self.reveal = Some((href, start));
                 self.go(start.date(), cx);
                 self.try_reveal();
@@ -1456,7 +1483,12 @@ impl View for Calendar {
                 self.h24 = h24;
             }
             Msg::Mode(mode) => return self.set_mode(mode, cx),
-            Msg::Go(day) => return self.go(day, cx),
+            Msg::Go(day) => {
+                // (A day picked in the small month in front of the days:
+                // the days.)
+                self.sidebar_pane.show_rest();
+                return self.go(day, cx);
+            }
             Msg::Mini(year, month) => {
                 self.mini = (year, month);
                 self.look(cx);
@@ -1591,8 +1623,20 @@ impl View for Calendar {
             "previous" => self.step(-1, cx),
             "next" => self.step(1, cx),
             "sidebar" => {
-                self.settings.sidebar = !self.settings.sidebar;
-                self.save();
+                // (Too narrow for it beside the days: in front of them,
+                // or back to them; shown so, it's on.)
+                if self.sidebar_pane.alone() {
+                    self.sidebar_pane.toggle();
+                    // (One in front at a time: the assistant goes back.)
+                    self.assistant_pane.show_rest();
+                    if self.sidebar_pane.showing() && !self.settings.sidebar {
+                        self.settings.sidebar = true;
+                        self.save();
+                    }
+                } else {
+                    self.settings.sidebar = !self.settings.sidebar;
+                    self.save();
+                }
                 cx.invalidate();
             }
             "preview" => {
@@ -1601,9 +1645,18 @@ impl View for Calendar {
                 cx.invalidate();
             }
             "assistant" => {
-                self.settings.assistant = !self.settings.assistant;
-                self.save();
-                if self.settings.assistant {
+                if self.assistant_pane.alone() {
+                    self.assistant_pane.toggle();
+                    self.sidebar_pane.show_rest();
+                    if self.assistant_pane.showing() && !self.settings.assistant {
+                        self.settings.assistant = true;
+                        self.save();
+                    }
+                } else {
+                    self.settings.assistant = !self.settings.assistant;
+                    self.save();
+                }
+                if self.assistant_pane.showing() || (!self.assistant_pane.alone() && self.settings.assistant) {
                     self.question.focus(cx);
                 }
                 cx.invalidate();

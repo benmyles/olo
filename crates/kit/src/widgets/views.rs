@@ -411,7 +411,10 @@ impl IntoElement for EmptyState {
         let p = crate::theme::palette();
         let dim = style::disabled_text(&p);
         let icon = self.icon.clone();
-        let mut col = div().flex().flex_col().items_center().max_w(px(320.0)).gap(px(m::TIGHT)).text_color(dim);
+        // (As wide as it's given, 320 points at most, its lines wrapped
+        // to that: one line each, a pane a third of a screen wide cut its
+        // detail off.)
+        let mut col = div().w_full().max_w(px(320.0)).flex().flex_col().items_center().gap(px(m::TIGHT)).text_color(dim);
         if let Some(name) = icon {
             col = col.child(
                 canvas({
@@ -426,9 +429,9 @@ impl IntoElement for EmptyState {
                 .mb(px(m::SPACING - m::TIGHT)),
             );
         }
-        col = col.child(div().text_center().line_height(olo_interface::relative(style::LINE_HEIGHT)).child(self.text.clone()));
+        col = col.child(div().w_full().text_center().line_height(olo_interface::relative(style::LINE_HEIGHT)).child(self.text.clone()));
         if let Some(d) = self.detail.clone() {
-            col = col.child(div().text_center().text_size(px(style::DETAIL_SIZE)).line_height(olo_interface::relative(style::LINE_HEIGHT)).child(d));
+            col = col.child(div().w_full().text_center().text_size(px(style::DETAIL_SIZE)).line_height(olo_interface::relative(style::LINE_HEIGHT)).child(d));
         }
         if let Some((label, f)) = self.action {
             col = col.child(div().mt(px(m::SPACING * 1.5 - m::TIGHT)).child(super::Button::new(label).on_click(move |event, cx| f(event, cx))));

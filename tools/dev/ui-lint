@@ -317,6 +317,16 @@ def escape(name):
     ipc(name, {"type": "synthetic", "events": [{"type": "key", "key": 1, "pressed": True}, {"type": "key", "key": 1, "pressed": False}]})
 
 
+def selected_tab(pid, title):
+    """The tab shown in window `title`'s first tab view (None: it has
+    none)."""
+    for tree in ask_app(pid, {"tree": True}) or []:
+        nodes = tree.get("nodes", [])
+        if nodes and nodes[0].get("name") == title:
+            return next((n.get("name") for n in nodes if n.get("role") == "Tab" and n.get("selected")), None)
+    return None
+
+
 def chosen(pid, tab, within=3.0):
     """Wait for `tab` to be the one shown."""
     end = time.time() + within
@@ -508,7 +518,7 @@ def lint_one(spec, slot, master, screen, scales, show_review, work, all_themes=F
                         seen.setdefault(key, []).append(f"{scale:g}×")
                     looks = [(None, drawn(pid, layers, scale, False))]
                     shot = lambda tab: shots and picture(name, w["id"], scale, os.path.join(shots, f"{slug(app)}-{slug(layout)}{'-' + slug(tab) if tab else ''}.png"))
-                    shot(None)
+                    shot(shots and selected_tab(pid, w["title"]))
                     for title, tab, x, y in tabs(name, pid):
                         if title != w["title"]:
                             continue

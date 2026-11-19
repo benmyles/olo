@@ -35,6 +35,10 @@ other: ({n} autres ont aussi été refusés.)
 *.swp, *~, .#*
 *.swp, *~, .#*
 
++{n} more
+one: +{n} autre
+other: +{n} autres
+
 /etc/hosts can't be read: {}
 Impossible de lire /etc/hosts : {}
 
@@ -11419,6 +11423,10 @@ other: {n} jours
 {n} days ago
 one: il y a {n} jour
 other: il y a {n} jours
+
+{n} events
+one: {n} événement
+other: {n} événements
 
 {n} files
 one: {n} fichier

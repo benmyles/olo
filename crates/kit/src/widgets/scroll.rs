@@ -106,7 +106,11 @@ impl Bar {
 
     fn geometry(&self, bar: Bounds<Pixels>, scale: f32) -> Geometry {
         let (offset, max, view) = self.offsets();
-        let a = px(SCROLL_BAR);
+        // (A bar shorter than its two arrows, in a view a few points
+        // tall, has them half its length each, not one over the other:
+        // Calendar's hours in a third of a screen's height.)
+        let len = f32::from(if self.vertical { bar.size.height } else { bar.size.width });
+        let a = px(SCROLL_BAR.min((len / 2.0).floor()).max(0.0));
         let (back, forward, track) = if self.vertical {
             (
                 Bounds { origin: bar.origin, size: size(bar.size.width, a) },

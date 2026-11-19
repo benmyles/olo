@@ -30,6 +30,43 @@ pub fn long_day(d: Date) -> String {
     day_of(d).said()
 }
 
+/// A month's short name: "Nov".
+fn short_month(d: Date) -> &'static str {
+    &month_name(d)[..3]
+}
+
+/// "November 2026", "Nov 2026": longest first, for a place with less
+/// room.
+pub fn month_forms(d: Date) -> Vec<String> {
+    vec![month_year(d), format!("{} {}", short_month(d), d.year())]
+}
+
+/// "Wednesday, November 18, 2026", "Wed, Nov 18, 2026", "Nov 18, 2026",
+/// "Nov 18": longest first.
+pub fn day_forms(d: Date) -> Vec<String> {
+    vec![
+        long_day(d),
+        format!("{}, {} {}, {}", &weekday_name(d)[..3], short_month(d), d.day(), d.year()),
+        format!("{} {}, {}", short_month(d), d.day(), d.year()),
+        format!("{} {}", short_month(d), d.day()),
+    ]
+}
+
+/// [`days_span`], then with short months, then without the year
+/// ("Nov 16 – 22"): longest first.
+pub fn span_forms(first: Date, last: Date) -> Vec<String> {
+    let (a, b) = (short_month(first), short_month(last));
+    let short = if first.year() != last.year() {
+        format!("{a} {}, {} – {b} {}, {}", first.day(), first.year(), last.day(), last.year())
+    } else if first.month() != last.month() {
+        format!("{a} {} – {b} {}, {}", first.day(), last.day(), last.year())
+    } else {
+        format!("{a} {} – {}, {}", first.day(), last.day(), last.year())
+    };
+    let shortest = if first.month() != last.month() { format!("{a} {} – {b} {}", first.day(), last.day()) } else { format!("{a} {} – {}", first.day(), last.day()) };
+    vec![days_span(first, last), short, shortest]
+}
+
 /// "November 16 – 22, 2026", "November 30 – December 6, 2026",
 /// "December 28, 2026 – January 3, 2027".
 pub fn days_span(first: Date, last: Date) -> String {

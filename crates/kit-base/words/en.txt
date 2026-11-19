@@ -9,6 +9,7 @@
 ({} by their size)
 *.qcow2, *.vdi, *.vmdk (large, changing while in use)
 *.swp, *~, .#*
++{n} more
 /etc/hosts can't be read: {}
 0.3 seconds
 0.5 seconds
@@ -3787,6 +3788,7 @@ your own picture
 {n} backups chosen.
 {n} days
 {n} days ago
+{n} events
 {n} files
 {n} files couldn’t be read.
 {n} films playing on AirPlay receivers. Click to pause or stop them.
