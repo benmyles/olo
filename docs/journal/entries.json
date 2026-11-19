@@ -5008,5 +5008,11 @@
   "title": "Calendar: invitations",
   "caption": "An invitation shows what you answered: not answered is pale with a line round it (Interview), declined is struck through (Budget call), accepted looks like any event. Edit \u25b8 Reply answers the one selected (Yes, Maybe, No), and so does Going in its window, which lists the guests with each one's answer. Also: the SSD rows' \"As It Is\" in Preferences \u25b8 Power is now called Auto.",
   "image": "2026-11-18/162546-calendar-invitations.png"
+ },
+ {
+  "time": "2026-11-18T16:50:55",
+  "title": "Calendar in Deskbar: Next Event and The Day Ahead",
+  "caption": "Calendar gives Deskbar two widgets (Preferences \u25b8 Deskbar): what's next, with what comes after it, and the day ahead as a list in each calendar's colour. A click opens Calendar on the event. Their headline is ordinary-sized words, not the big figure Weather uses. Also: several files chosen in the file picker are handed to the program in name order.",
+  "image": "2026-11-18/165055-calendar-in-deskbar-next-event-and-the-day-ahead.png"
  }
 ]

@@ -112,7 +112,8 @@ something nobody here has is in "Blocked", with what it waits for.
   Invitations: how each looks says what you answered, Edit ▸ Reply and
   the event window's Going answer them, and the window lists the
   guests with their answers (not yet: inviting people yourself).
-  **Next**: the Deskbar widget, the palette, the assistant. Reminders are shown
+  Deskbar widgets: Next Event and The Day Ahead (Preferences ▸
+  Deskbar; a click opens Calendar on the event). **Next**: the palette, the assistant. Reminders are shown
   (`olo-calendar --service`, a session service; Show goes to the
   event). (Its cost
   is measured and in-place reload tried: HACKING.md, "Calendar".)
@@ -332,6 +333,44 @@ something nobody here has is in "Blocked", with what it waits for.
   that's grown unwieldy, to one set of patterns (what's grouped, in
   what order, named how), written down in HACKING.md and held by the
   window review where it can be.
+
+- **The file picker hands several files over in order** (Ben,
+  2026-11-18: "in the olo file picker e.g. when in slack or chrome or
+  wherever and adding files and you get the picker, when you multi
+  select files and add them they should be given to the target app
+  ordered lexographically asc, with tie breaker being creation time
+  asc. this is important with e.g. screenshots where you want them to
+  be ordered properly so the target app shows them sequenced right").
+  Whatever order they were clicked in, the files chosen go to the
+  program by name ascending (as the list sorts names, so "Shot 2" is
+  before "Shot 10"), then by when they were made. *Done* for the
+  picker other programs get (the portal's Open:
+  `olo_kit::files::in_handing_order`, tested with files clicked in no
+  order); it's in the next build. Olo's own programs' Open panels with
+  several files, where there are any, take the same function.
+
+- **Notifications, made plain: one model for what shows, stays, fades
+  and is read** (Ben, 2026-11-18: "the red vs blue types and what fades
+  out vs goes to history/archive vs goes away vs automatically gets
+  marked as read vs what doesn't etc. is all very confusing. can you
+  spin up an opus 5.5 agent on xhigh and ask it to do a thorough visual
+  analysis of notifications and all the different edge cases, the
+  notifications app and how they appear in the deskbar and on window
+  title bars and how they transition etc. etc. and then ask it to
+  research what the best practices are around notifications and alerts
+  for web apps, other desktop environments, phones etc. and have it
+  give you specific suggestions/guidance on how we can revamp olo
+  notifications to be more intuitive"). *Under way:* the study (an
+  Opus 5.5 agent at xhigh, as asked, the one time the no-subagents rule
+  is set aside, by Ben's word): how it works today as a state model and
+  a matrix of edge cases, pictures of every state and transition, what
+  confuses and why, best practice elsewhere with sources, and a
+  proposed model; its report is at `/var/tmp/opus-notif/report.md`
+  until its findings are checked and written into HACKING.md. *Then:*
+  the revamp from it: the fewest concepts that cover every case, each
+  with one name, one colour and one rule everywhere (banner, bell, tab,
+  Deskbar, the app, the Inbox widget), and what Ben decides of its open
+  questions.
 
 - **Fans: a row of each power mode, with more than Auto** (Ben,
   2026-11-18: "in the power -> battery -> fans move the fans option to

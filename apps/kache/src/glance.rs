@@ -102,6 +102,7 @@ pub fn glance(snap: &data::Snapshot, span: usize) -> Glance {
         note,
         body: (!slots.is_empty()).then_some(Body::Slots { slots, hue: Some(olo_theme::Hue::Green) }),
         tip,
+        ..Glance::default()
     }
 }
 

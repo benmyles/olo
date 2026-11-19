@@ -16,8 +16,10 @@
 //!   the next hours' forecast goes on from hour to hour with nothing run.
 //!   A glance is a headline (an icon, a value, a title, a detail), a note
 //!   under it, and a [`Body`]: [`Slot`]s across (times, each an icon, a
-//!   value and a level) or [`Span`]s down (days, each a low to a high on
-//!   one scale). The kit draws it (`olo_kit::glance`), the same anywhere.
+//!   value and a level), [`Span`]s down (days, each a low to a high on
+//!   one scale) or [`Line`]s down (things in order: each a label, a mark
+//!   in a colour and its words: a day's events). The kit draws it
+//!   (`olo_kit::glance`), the same anywhere.
 //! - How: Deskbar writes what it wants of each app ([`Requests`], one
 //!   file an app, in [`dir`]) and runs its provider ([`Provider::program`]
 //!   with [`Provider::arg`]), which writes each widget's timeline there
@@ -111,6 +113,27 @@ pub const PROVIDERS: &[Provider] = &[
                 menu: "Weather: Next Days",
                 about: "The coming days, each its sky, low and high.",
                 options: &[Opt { id: "days", label: "Days:", values: &[("7", "7 days"), ("5", "5 days"), ("3", "3 days")] }],
+            },
+        ],
+    },
+    Provider {
+        app: "calendar",
+        name: "Calendar",
+        program: "olo-calendar",
+        arg: "--glance",
+        icon: "calendar",
+        kinds: &[
+            Kind {
+                id: "next",
+                menu: "Calendar: Next Event",
+                about: "What's next (or on now): when, what and where, and what comes after it.",
+                options: &[Opt { id: "ahead", label: "Look ahead:", values: &[("7", "A week"), ("1", "Today and tomorrow"), ("30", "A month")] }],
+            },
+            Kind {
+                id: "day",
+                menu: "Calendar: The Day Ahead",
+                about: "What's still to come today, in order, each in its calendar's colour; then the days after.",
+                options: &[Opt { id: "count", label: "Events:", values: &[("5", "5 events"), ("3", "3 events"), ("8", "8 events")] }],
             },
         ],
     },
@@ -212,6 +235,16 @@ pub struct Glance {
     pub body: Option<Body>,
     /// It all in words: its tip, and its value for agents.
     pub tip: String,
+    /// Its headline at the size of ordinary words: a small icon, the
+    /// value and the title on a line, the detail under it. For what
+    /// isn't a figure to be read from across the room (an event's time
+    /// and title; Weather's temperature is the big kind).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub plain: bool,
+    /// What a click opens: its app run with these arguments (Calendar's
+    /// `--show` and the event), not bare. Empty: the app as it is.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub open: Vec<String>,
 }
 
 /// What's under a glance's headline.
@@ -235,6 +268,23 @@ pub enum Body {
     /// low to a high on the scale from `min` to `max`, coloured by where
     /// it lies, cold to warm.
     Spans { spans: Vec<Span>, min: f32, max: f32 },
+    /// Lines down (a day's events, things to do): each a label ("2 PM"),
+    /// a mark in its colour and its words.
+    Lines { lines: Vec<Line> },
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct Line {
+    /// "2 PM", "all day", "Thu".
+    pub label: String,
+    /// What it is ("Design review").
+    pub text: String,
+    /// Its mark's colour (none: the accent).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hue: Option<olo_theme::Hue>,
+    /// Quieter than the others (on now, or not for certain).
+    pub dim: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]

@@ -198,7 +198,7 @@ fn now_glance(f: &Forecast, place: &Place, units: &Units, t: i64, _local: &impl 
     let note = sentence.as_deref().map(short_sentence).or_else(|| high_low(f, units, t)).unwrap_or_default();
     let said = [feels, wind.map(|w| format!("wind {w}"))].into_iter().flatten().collect::<Vec<_>>().join(", ");
     let tip = format!("{}: {title}, {value}. {said}. {}.", place.title(), sentence.unwrap_or_else(|| note.clone()));
-    Glance { icon: Some(model::icon(code, f.is_night(t)).into()), value, title, detail, note: Some(note), body: None, tip }
+    Glance { icon: Some(model::icon(code, f.is_night(t)).into()), value, title, detail, note: Some(note), body: None, tip, ..Glance::default() }
 }
 
 /// The next hour's sentence for a Deskbar's width: "Rain stopping in about
@@ -279,7 +279,7 @@ fn hours(f: &Forecast, place: &Place, units: &Units, t: i64, every: i64, level: 
         _ => Some(olo_theme::Hue::Blue),
     };
     let tip = format!("{}: {value}, {}. {detail}. {}.", place.title(), model::describe(s.code()).to_lowercase(), said.join("; "));
-    Glance { icon: Some(model::icon(s.code(), f.is_night(t)).into()), value, title: place.title().to_owned(), detail, note: None, body: Some(Body::Slots { slots, hue }), tip }
+    Glance { icon: Some(model::icon(s.code(), f.is_night(t)).into()), value, title: place.title().to_owned(), detail, note: None, body: Some(Body::Slots { slots, hue }), tip, ..Glance::default() }
 }
 
 /// Next Days: `n` days from the one holding `t`, each its sky and its
@@ -312,7 +312,7 @@ fn days(f: &Forecast, place: &Place, units: &Units, t: i64, n: usize, local: &im
     let said: Vec<String> = spans.iter().map(|s| format!("{} {} to {}", s.label, s.low_text, s.high_text)).collect();
     let tip = format!("{}: {value} now. {detail}. {}.", place.title(), said.join("; "));
     let body = (!spans.is_empty()).then_some(Body::Spans { spans, min: if min.is_finite() { min } else { 0.0 }, max: if max.is_finite() { max } else { 1.0 } });
-    Glance { icon: Some(model::icon(s.code(), f.is_night(t)).into()), value, title: place.title().to_owned(), detail, note: None, body, tip }
+    Glance { icon: Some(model::icon(s.code(), f.is_night(t)).into()), value, title: place.title().to_owned(), detail, note: None, body, tip, ..Glance::default() }
 }
 
 #[cfg(test)]

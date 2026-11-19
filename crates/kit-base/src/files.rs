@@ -112,6 +112,22 @@ fn sniff_text(path: &Path) -> bool {
     n > 0 && std::str::from_utf8(&buf[..n]).is_ok() && !buf[..n].contains(&0)
 }
 
+/// Several files chosen, put in the order they're handed to a program:
+/// by name as lists sort them ([`natural_cmp`]: "Shot 2" before "Shot
+/// 10"), files of one name by when they were made, oldest first (when
+/// last changed, where the file system doesn't say), then by where they
+/// are. Whatever order they were clicked in: a row of screenshots added
+/// to a message comes out in sequence (Ben, 2026-11-18).
+pub fn in_handing_order(paths: &mut [std::path::PathBuf]) {
+    let name = |p: &std::path::Path| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let made = |p: &std::path::Path| std::fs::metadata(p).ok().and_then(|m| m.created().or_else(|_| m.modified()).ok());
+    let mut keyed: Vec<(String, Option<std::time::SystemTime>, std::path::PathBuf)> = paths.iter().map(|p| (name(p), made(p), p.clone())).collect();
+    keyed.sort_by(|a, b| natural_cmp(&a.0, &b.0).then_with(|| a.1.cmp(&b.1)).then_with(|| a.2.cmp(&b.2)));
+    for (slot, (.., path)) in paths.iter_mut().zip(keyed) {
+        *slot = path;
+    }
+}
+
 /// Names in the order people expect: ignoring case, and runs of digits
 /// by their value ("file-2" before "file-10", "cpuhp/9" before
 /// "cpuhp/10"), as Finder and modern file managers sort. Equal names
@@ -249,6 +265,29 @@ mod tests {
             assert_eq!(super::expected_size(&p), Some(123_456));
         }
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn several_files_are_handed_over_in_order() {
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-kit-order-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("b")).unwrap();
+        // (Made in this order: the two "same.png" by when they were made.)
+        let made = ["b/same.png", "Shot 10.png", "shot 2.png", "Shot 1.png", "same.png", "Zebra.txt", "apple.txt"];
+        for name in made {
+            std::fs::write(dir.join(name), name).unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(15));
+        }
+        // Clicked in no order at all.
+        let mut chosen: Vec<std::path::PathBuf> = ["Zebra.txt", "same.png", "Shot 10.png", "b/same.png", "apple.txt", "Shot 1.png", "shot 2.png"].iter().map(|n| dir.join(n)).collect();
+        super::in_handing_order(&mut chosen);
+        let names: Vec<String> = chosen.iter().map(|p| p.strip_prefix(&dir).unwrap().to_string_lossy().into_owned()).collect();
+        assert_eq!(names, ["apple.txt", "b/same.png", "same.png", "Shot 1.png", "shot 2.png", "Shot 10.png", "Zebra.txt"]);
+        // (One that's gone keeps its place by its name.)
+        std::fs::remove_file(dir.join("Shot 1.png")).unwrap();
+        super::in_handing_order(&mut chosen);
+        assert_eq!(chosen[3], dir.join("Shot 1.png"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -20,6 +20,7 @@
 mod agenda;
 mod edit;
 mod editor;
+mod glance;
 mod layout;
 mod model;
 mod month;
@@ -1522,6 +1523,10 @@ fn main() -> std::process::ExitCode {
         return print(&args);
     }
     // The reminders service (the session's; no window).
+    // Deskbar's widgets (no window).
+    if args.first().is_some_and(|a| a == "--glance") {
+        return glance::serve();
+    }
     if args.first().is_some_and(|a| a == "--service") {
         let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
         let _ = tracing_subscriber::fmt().with_env_filter(filter).with_writer(std::io::stderr).try_init();

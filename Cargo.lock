@@ -7209,6 +7209,7 @@ dependencies = [
  "olo-calendar",
  "olo-crash",
  "olo-kit",
+ "olo-protocol",
  "olo-theme",
  "olo-xdg",
  "serde",

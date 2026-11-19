@@ -352,6 +352,10 @@ impl Glances {
                 let rows = spans.iter().map(|s| Row::new(s.label.clone(), format!("{} to {}", s.low_text, s.high_text))).collect();
                 card = card.part(Part::Rows { heading: None, rows });
             }
+            Some(Body::Lines { lines }) => {
+                let rows = lines.iter().map(|l| Row::new(l.label.clone(), l.text.clone())).collect();
+                card = card.part(Part::Rows { heading: None, rows });
+            }
             None => {}
         }
         if let Some(note) = &gl.note {
@@ -366,9 +370,18 @@ fn is_provider(pid: i32, program: &str) -> bool {
     std::fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|c| program.starts_with(c.trim()))
 }
 
-/// What a click on app widget `w` runs: its app.
-pub fn opens(w: &Widget) -> Option<(String, &'static str)> {
-    let Measure::App { app, .. } = &w.measure else { return None };
-    let p = g::provider(app)?;
-    Some((format!("run:{}", p.program), p.name))
+/// One word of a command line, quoted for the shell that runs it.
+fn quoted(arg: &str) -> String {
+    format!("'{}'", arg.replace('\'', "'\\''"))
+}
+
+impl Glances {
+    /// What a click on app widget `w` runs: its app, on what the widget
+    /// shows now where it says what that is (`Glance::open`).
+    pub fn opens(&self, w: &Widget) -> Option<(String, &'static str)> {
+        let Measure::App { app, .. } = &w.measure else { return None };
+        let p = g::provider(app)?;
+        let on: String = self.now(w.id).map(|gl| gl.open.iter().map(|a| format!(" {}", quoted(a))).collect()).unwrap_or_default();
+        Some((format!("run:{}{on}", p.program), p.name))
+    }
 }

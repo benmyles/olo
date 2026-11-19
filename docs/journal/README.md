@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Calendar in Deskbar: Next Event and The Day Ahead
+
+*16:50* — Calendar gives Deskbar two widgets (Preferences ▸ Deskbar): what's next, with what comes after it, and the day ahead as a list in each calendar's colour. A click opens Calendar on the event. Their headline is ordinary-sized words, not the big figure Weather uses. Also: several files chosen in the file picker are handed to the program in name order.
+
+![Calendar in Deskbar: Next Event and The Day Ahead](2026-11-18/165055-calendar-in-deskbar-next-event-and-the-day-ahead.png)
+
 ### Calendar: invitations
 
 *16:25* — An invitation shows what you answered: not answered is pale with a line round it (Interview), declined is struck through (Budget call), accepted looks like any event. Edit ▸ Reply answers the one selected (Yes, Maybe, No), and so does Going in its window, which lists the guests with each one's answer. Also: the SSD rows' "As It Is" in Preferences ▸ Power is now called Auto.

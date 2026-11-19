@@ -20135,13 +20135,32 @@ app only to make what's next.
   comes with). A widget of one is `Measure::App { app, glance,
   options }` (`Measure::app`, `same_kind`; `kinds()` lists them after
   the meters). Weather gives Now, Next Hours and Next Days; Kache, Build
-  Cache.
+  Cache; Calendar, Next Event and The Day Ahead (`apps/calendar/src/
+  glance.rs`, `olo-calendar --glance`: from what's kept on this
+  computer, nothing asked of a server; an entry wherever what it says
+  changes, an event starting or ending and midnight, for a day ahead;
+  made again as the accounts, Calendar's settings or what's kept
+  change, and every six hours; a declined invitation left out. Next
+  Event: "2 PM Design review / Today · Room 2", "Now … until 3:30 PM"
+  while it's on, and what's after it time first, "Then 3 PM ·
+  Interview", as a Deskbar is narrow and what's cut is the end. The
+  Day Ahead: "Wed 18 · 3 to come" over 3, 5 or 8 lines, another day's
+  by its weekday with its time in the tip. Tested: `glance::tests`.
+  At rest the provider wakes 0 times a second.)
 * **What one shows**: a `Timeline` of `Entry`s, each a `Glance` from a
   minute on (`Timeline::at`): a headline (icon, value, title, detail),
   a note, a `Body` (`Slots` across: label, icon, value, level, drawn
   as small columns in the body's hue; `Spans` down: label, icon, low
   to high on the body's scale, coloured cold to warm, blue to orange in
-  the look's hues), and its tip in words.
+  the look's hues; `Lines` down: a label, a mark in the line's hue and
+  its words, a day's events), and its tip in words. `plain` gives it a
+  headline of ordinary words (a 16-point icon, the value bold and the
+  title on one line, the detail quieter under it) for what isn't a
+  figure to read from across the room (Ben, of Calendar's with the big
+  one: "that calendar icon and heading on the widget is ginormous").
+  `open` is what a click opens: its app run with those arguments
+  (Calendar's `--show HREF START`: the event shown), where a bare
+  click runs the app as it is (`Glances::opens`).
 * **How it gets there**: a folder a display, `$XDG_RUNTIME_DIR/
   olo-glance/DISPLAY/` (`glance::dir`; a folder of its own: a watch
   follows a folder's parent too, and the runtime folder changes

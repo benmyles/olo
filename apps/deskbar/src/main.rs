@@ -4109,7 +4109,7 @@ impl Deskbar {
         let pool = widget.is_some_and(|w| matches!(w.measure, olo_protocol::deskbar::Measure::Pool { .. }));
         // (An app's widget opens its app.)
         let inbox = widget.and_then(|w| self.glances.inbox(w.id).map(|(cards, at, mins, _)| (w.id, cards.get(at).map(|c| c.id), mins, cards.len())));
-        let (opens, name) = match (inbox, widget.and_then(glances::opens)) {
+        let (opens, name) = match (inbox, widget.and_then(|w| self.glances.opens(w))) {
             (Some((_, Some(id), _, _)), _) => (format!("run:olo-notifications --invoke {id}"), "Open item"),
             (Some(_), _) => ("run:olo-notifications --history".to_owned(), "Open Notifications"),
             (_, Some((opens, name))) => (opens, name),

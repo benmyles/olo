@@ -183,7 +183,13 @@ impl FileChooser {
         let folder = options.get("directory").and_then(|v| bool::try_from(v).ok()).unwrap_or(false);
         let purpose = if folder { Purpose::Folder } else { Purpose::Open };
         match self.ask(handle, app_id, parent_window, title, purpose, &options, server).await {
-            Some((c, filters)) => answer(c.paths.clone(), &c, &filters),
+            Some((c, filters)) => {
+                // (Several chosen: handed over by name, then by when they
+                // were made, not as they were clicked.)
+                let mut paths = c.paths.clone();
+                olo_kit::files::in_handing_order(&mut paths);
+                answer(paths, &c, &filters)
+            }
             None => cancelled(),
         }
     }

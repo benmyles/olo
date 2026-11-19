@@ -53,8 +53,22 @@ const SPAN: f32 = 18.0;
 /// A small glance's one line.
 const LINE: f32 = 24.0;
 
+/// A plain headline's lines (`Glance::plain`): the value and title,
+/// and the detail under them where there is one.
+const HEAD_PLAIN: f32 = 20.0;
+const HEAD_PLAIN_DETAIL: f32 = 15.0;
+
 fn head(size: Size) -> f32 {
     if size == Size::Large { HEAD_LARGE } else { HEAD }
+}
+
+/// How tall `gl`'s headline is at `size`.
+fn head_of(gl: &Glance, size: Size) -> f32 {
+    match (gl.plain, gl.detail.is_empty()) {
+        (true, true) => HEAD_PLAIN,
+        (true, false) => HEAD_PLAIN + HEAD_PLAIN_DETAIL,
+        (false, _) => head(size),
+    }
 }
 
 /// How tall `glance` is drawn at `size` (one not come yet: its headline's).
@@ -66,13 +80,14 @@ pub fn height(glance: Option<&Glance>, size: Size) -> f32 {
         return LINE;
     }
     let Some(gl) = glance else { return PAD + head(size) + PAD };
-    let mut h = PAD + head(size);
+    let mut h = PAD + head_of(gl, size);
     if gl.note.is_some() {
         h += NOTE;
     }
     match &gl.body {
         Some(Body::Slots { slots, .. }) => h += slots_height(slots),
         Some(Body::Spans { spans, .. }) => h += 2.0 + spans.len() as f32 * SPAN,
+        Some(Body::Lines { lines }) => h += 2.0 + lines.len() as f32 * SPAN,
         Some(Body::Inbox { .. }) | None => {}
     }
     h + PAD
@@ -104,8 +119,12 @@ pub fn paint(g: &mut Painter, r: Bounds<Pixels>, glance: &Glance, size: Size, in
             return;
         }
         let mut y = f32::from(r.top()) + PAD;
-        paint_head(g, left, right, y, glance, size, &p);
-        y += head(size);
+        if glance.plain {
+            paint_plain_head(g, left, right, y, glance, &p);
+        } else {
+            paint_head(g, left, right, y, glance, size, &p);
+        }
+        y += head_of(glance, size);
         if let Some(note) = &glance.note {
             let (ink, _) = inks(&p);
             let b = style::label_fit(g, px(left), px(y + NOTE / 2.0), Align::Left, note.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), ink, px(right - left));
@@ -115,6 +134,7 @@ pub fn paint(g: &mut Painter, r: Bounds<Pixels>, glance: &Glance, size: Size, in
         match &glance.body {
             Some(Body::Slots { slots, hue }) => paint_slots(g, left, right, y, slots, *hue, size, &p),
             Some(Body::Spans { spans, min, max }) => paint_spans(g, left, right, y + 2.0, spans, *min, *max, &p),
+            Some(Body::Lines { lines }) => paint_lines(g, left, right, y + 2.0, lines, &p),
             Some(Body::Inbox { .. }) | None => {}
         }
     });
@@ -432,6 +452,34 @@ fn paint_head(g: &mut Painter, left: f32, right: f32, top: f32, gl: &Glance, siz
     }
 }
 
+/// A plain headline (`Glance::plain`): a small icon, the value and the
+/// title on a line of ordinary words, the detail quieter under them.
+fn paint_plain_head(g: &mut Painter, left: f32, right: f32, top: f32, gl: &Glance, p: &Palette) {
+    let (ink, dim) = inks(p);
+    let first = top + HEAD_PLAIN / 2.0;
+    let mut x = left;
+    if let Some(icon) = &gl.icon {
+        let b = style::snap_centred(g, point(px(left + 8.0), px(first)), 16.0, 16.0);
+        icons::paint(g, b, icon);
+        x += 16.0 + 5.0;
+    }
+    let words = x;
+    if !gl.value.is_empty() {
+        let b = style::label_fit(g, px(x), px(first), Align::Left, gl.value.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), ink, px((right - x).max(0.0)));
+        said(g, &gl.value, b);
+        x = f32::from(b.right()) + 5.0;
+    }
+    if !gl.title.is_empty() && x < right {
+        let b = style::label_fit(g, px(x), px(first), Align::Left, gl.title.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), ink, px(right - x));
+        said(g, &gl.title, b);
+    }
+    if !gl.detail.is_empty() {
+        let second = top + HEAD_PLAIN + HEAD_PLAIN_DETAIL / 2.0 - 1.0;
+        let b = style::label_fit(g, px(words), px(second), Align::Left, gl.detail.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), dim, px((right - words).max(0.0)));
+        said(g, &gl.detail, b);
+    }
+}
+
 /// Small: the headline on one line (icon, value, title).
 fn paint_line(g: &mut Painter, left: f32, right: f32, cy: f32, gl: &Glance, p: &Palette) {
     let (ink, dim) = inks(p);
@@ -559,6 +607,26 @@ fn paint_spans(g: &mut Painter, left: f32, right: f32, top: f32, spans: &[Span],
         }
         let value = format!("{} to {}", span.low_text, span.high_text);
         agent::record(g, agent::Node { role: "ListItem", name: Some(span.label.clone().into()), value: Some(value.into()), bounds: row, enabled: true, ..Default::default() });
+    }
+}
+
+/// Lines down: each its label (quiet, in a column as wide as the widest),
+/// a mark in its colour, and its words as far as there's room.
+fn paint_lines(g: &mut Painter, left: f32, right: f32, top: f32, lines: &[olo_protocol::glance::Line], p: &Palette) {
+    let (ink, dim) = inks(p);
+    let plain = style::ui_font(FontWeight::NORMAL);
+    // (The labels' column no wider than half of it: the words keep room.)
+    let label_w = lines.iter().map(|l| style::text_width_app(&l.label, style::SMALL_SIZE, &plain)).fold(0.0, f32::max).min((right - left) / 2.0);
+    let mark_x = left + label_w + 6.0 + 3.5;
+    let text_x = mark_x + 3.5 + 5.0;
+    for (i, line) in lines.iter().enumerate() {
+        let cy = top + SPAN * (i as f32 + 0.5);
+        let row = Bounds::from_corners(point(px(left), px(top + SPAN * i as f32)), point(px(right), px(top + SPAN * (i + 1) as f32)));
+        style::label_fit(g, px(left), px(cy), Align::Left, line.label.clone(), style::SMALL_SIZE, plain.clone(), dim, px(label_w));
+        let mark = style::snap_centred(g, point(px(mark_x), px(cy)), 7.0, 7.0);
+        style::fill_rect(g, mark, hue_of(p, line.hue));
+        style::label_fit(g, px(text_x), px(cy), Align::Left, line.text.clone(), style::SMALL_SIZE, plain.clone(), if line.dim { dim } else { ink }, px((right - text_x).max(0.0)));
+        agent::record(g, agent::Node { role: "ListItem", name: Some(line.text.clone().into()), value: Some(line.label.clone().into()), bounds: row, enabled: true, ..Default::default() });
     }
 }
 
@@ -692,6 +760,18 @@ mod tests {
         gl.note = None;
         gl.body = Some(Body::Spans { spans: vec![Span::default(); 7], min: 0.0, max: 1.0 });
         assert_eq!(height(Some(&gl), Size::Medium), PAD + HEAD + 2.0 + 7.0 * SPAN + PAD);
+        gl.body = Some(Body::Lines { lines: vec![olo_protocol::glance::Line::default(); 5] });
+        assert_eq!(height(Some(&gl), Size::Medium), PAD + HEAD + 2.0 + 5.0 * SPAN + PAD);
+        assert_eq!(height(Some(&gl), Size::Small), LINE);
+        // A plain headline: a line of ordinary words, and its detail's
+        // under it where it has one; the same at every size but Small.
+        gl.plain = true;
+        assert_eq!(height(Some(&gl), Size::Medium), PAD + HEAD_PLAIN + 2.0 + 5.0 * SPAN + PAD);
+        assert_eq!(height(Some(&gl), Size::Large), height(Some(&gl), Size::Medium));
+        gl.detail = "Today · Room 2".into();
+        gl.body = None;
+        assert_eq!(height(Some(&gl), Size::Medium), PAD + HEAD_PLAIN + HEAD_PLAIN_DETAIL + PAD);
+        assert_eq!(height(Some(&gl), Size::Small), LINE);
     }
 
     #[test]
