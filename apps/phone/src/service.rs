@@ -415,6 +415,9 @@ struct Service {
     check_at: Option<Instant>,
     told: bool,
     asked_again: bool,
+    /// The deadlines found still past after a turn of the loop, nothing
+    /// having moved them (each said once: see `run`).
+    past_said: HashSet<&'static str>,
     /// Messages sent while the phone's messages weren't open (`HOLD`).
     held: Vec<Held>,
     /// Its other notifications: when they're tried again after closing
@@ -683,6 +686,7 @@ pub fn run() -> ! {
         check_at: None,
         told: false,
         asked_again: false,
+        past_said: HashSet::new(),
         held: Vec::new(),
         others_at: None,
         others_fails: 0,
@@ -714,26 +718,8 @@ pub fn run() -> ! {
     loop {
         // Asleep until something is said, or until a round of asking
         // ends, a code gets too old, or it's time to try the phone again.
-        let next = s
-            .codes
-            .iter()
-            .flat_map(|c| [Some(c.until), c.round.as_ref().map(|r| r.until)])
-            .flatten()
-            .chain(s.retry_at)
-            .chain(s.profiles_at)
-            .chain(s.contacts_at)
-            .chain(s.opening_until)
-            .chain(s.keep_at)
-            .chain(s.check_at)
-            .chain(s.held.iter().map(|h| h.until))
-            .chain(s.others_at)
-            // (Asked again over low energy only while that's waited for.)
-            .chain(s.le_ask_at.filter(|_| s.others.is_none() && s.others_since.is_some()))
-            .chain(s.others.as_ref().and_then(|o| o.state.due()))
-            .chain(s.calling.due())
-            // (When advertising for its other notifications ends.)
-            .chain(s.others_since.filter(|_| s.others.is_none() && s.solicit.is_some()).map(|since| since + ALLOW_FOR).filter(|at| *at > Instant::now()))
-            .min();
+        let next = s.deadlines().into_iter().map(|(_, at)| at).min();
+        let due: Vec<(&'static str, Instant)> = s.deadlines().into_iter().filter(|(_, at)| *at <= Instant::now()).collect();
         let ev = match next {
             Some(at) => match rx.recv_timeout(at.saturating_duration_since(Instant::now())) {
                 Ok(ev) => Some(ev),
@@ -752,11 +738,62 @@ pub fn run() -> ! {
         }
         s.tick();
         s.publish();
+        // Each deadline that was past has been acted on: moved, or let go
+        // of. One left as it was would have the loop turn without
+        // waiting, a core's worth of it, for as long as it stays (the
+        // phone's asking over low energy, for ten minutes at a time,
+        // 2026-11-19): said, once each, by name.
+        for (name, at) in s.deadlines() {
+            if due.contains(&(name, at)) && s.past_said.insert(name) {
+                tracing::error!("phone: {name} is past and nothing moved it: the loop turns without waiting");
+            }
+        }
         let _ = beat.send(false);
     }
 }
 
+/// When to ask the phone again to connect over low energy (`le_ask_at`),
+/// if that's what's waited for: its other notifications aren't open, are
+/// wanted since a while (`others_since`), and no try of theirs is set for
+/// later (`others_at`: `others_link` waits for that, and does nothing
+/// before; counted here, the asking's past time had the loop turn
+/// without waiting until the try, ten minutes at a time, a core's worth:
+/// 2026-11-19).
+fn le_ask_due(le_ask_at: Option<Instant>, others_open: bool, others_since: Option<Instant>, others_at: Option<Instant>) -> Option<Instant> {
+    le_ask_at.filter(|_| !others_open && others_since.is_some() && others_at.is_none())
+}
+
 impl Service {
+    /// What the loop wakes for, each by name: a round of asking ending, a
+    /// code getting too old, a try of the phone again, a link's answer
+    /// due.
+    fn deadlines(&self) -> Vec<(&'static str, Instant)> {
+        let mut out: Vec<(&'static str, Instant)> = Vec::new();
+        for c in &self.codes {
+            out.push(("a code's end", c.until));
+            if let Some(r) = &c.round {
+                out.push(("a code's round", r.until));
+            }
+        }
+        let named = [
+            ("retry_at", self.retry_at),
+            ("profiles_at", self.profiles_at),
+            ("contacts_at", self.contacts_at),
+            ("opening_until", self.opening_until),
+            ("keep_at", self.keep_at),
+            ("check_at", self.check_at),
+            ("others_at", self.others_at),
+            ("le_ask_at", le_ask_due(self.le_ask_at, self.others.is_some(), self.others_since, self.others_at)),
+            ("its other notifications' answer", self.others.as_ref().and_then(|o| o.state.due())),
+            ("a call's", self.calling.due()),
+            // (When advertising for its other notifications ends.)
+            ("advertising's end", self.others_since.filter(|_| self.others.is_none() && self.solicit.is_some()).map(|since| since + ALLOW_FOR).filter(|at| *at > Instant::now())),
+        ];
+        out.extend(named.into_iter().filter_map(|(name, at)| Some((name, at?))));
+        out.extend(self.held.iter().map(|h| ("a held message", h.until)));
+        out
+    }
+
     fn take(&mut self, ev: Ev) {
         match ev {
             Ev::Opened(opened) => self.opened(opened),
@@ -1264,6 +1301,8 @@ impl Service {
         let wait = paced(Duration::from_secs(OTHERS_AGAIN[self.others_fails.min(OTHERS_AGAIN.len() - 1)]));
         self.others_fails += 1;
         self.others_at = Some(Instant::now() + wait);
+        // (Its low-energy link is there: no more asking for it.)
+        self.le_ask_at = None;
         if self.others_fails == 1 || self.others_fails == OTHERS_AGAIN.len() {
             tracing::info!("phone: its other notifications don't stay open: tried again in {} s", wait.as_secs());
         }
@@ -2384,7 +2423,7 @@ impl Service {
         }
         // Its other notifications, tried again; the phone asked again
         // to connect over low energy.
-        if self.others_at.is_some_and(|at| at <= t) || (self.others.is_none() && self.others_since.is_some() && self.le_ask_at.is_some_and(|at| at <= t)) {
+        if self.others_at.is_some_and(|at| at <= t) || le_ask_due(self.le_ask_at, self.others.is_some(), self.others_since, self.others_at).is_some_and(|at| at <= t) {
             self.others_link();
         }
         if self.retry_at.is_some_and(|at| at <= t) {
@@ -2654,6 +2693,26 @@ fn serve(tx: mpsc::Sender<Ev>) {
 
 #[cfg(test)]
 mod tests {
+    /// Asking the phone again over low energy is waited for only while
+    /// nothing else will be done first: with a try of its other
+    /// notifications set for later, its past time isn't (it had the
+    /// service's loop turn without waiting until then, a core's worth,
+    /// 2026-11-19).
+    #[test]
+    fn asking_over_low_energy_waits_for_a_try_set_for_later() {
+        use std::time::{Duration, Instant};
+        let now = Instant::now();
+        let past = now - Duration::from_secs(60);
+        let later = Some(now + Duration::from_secs(600));
+        // Waited for: due, and acted on.
+        assert_eq!(super::le_ask_due(Some(past), false, Some(past), None), Some(past));
+        // A try set for later: not waited for.
+        assert_eq!(super::le_ask_due(Some(past), false, Some(past), later), None);
+        // Open, or not wanted: not waited for.
+        assert_eq!(super::le_ask_due(Some(past), true, Some(past), None), None);
+        assert_eq!(super::le_ask_due(Some(past), false, None, None), None);
+    }
+
     /// The loop's watch: quiet while each thing taken up is done with in
     /// time, and at rest however long; it says so when one isn't.
     #[test]

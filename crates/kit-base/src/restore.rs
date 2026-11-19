@@ -39,9 +39,13 @@ pub fn claim() {
 /// still its own, but nothing in it waits for them: Activity Monitor's
 /// helper, whose input pipe closed with the exec, ended and stayed a
 /// zombie, one an upgrade (eleven in a day). A program starts with none
-/// of its own, so whatever children it has as it starts are those: a
-/// thread waits for each (a few microseconds; nothing when there are
-/// none, the usual start).
+/// of its own, so whatever children it has as it starts are those: one
+/// thread waits for them all at once, whichever ends first (a few
+/// microseconds; nothing when there are none, the usual start).
+///
+/// All at once, not one after another: waited for in turn, the first
+/// (Deskbar's oldest app, an agent screen running for days) held the
+/// rest, and an app that quit behind it stayed a zombie (2026-11-19).
 fn reap_inherited() {
     // (Each of our threads' children: after an exec there is one thread.)
     let Ok(tasks) = std::fs::read_dir("/proc/self/task") else { return };
@@ -51,12 +55,49 @@ fn reap_inherited() {
         return;
     }
     tracing::info!(?pids, "waiting for the children the previous version left");
-    let _ = std::thread::Builder::new().name("reap-inherited".into()).spawn(move || {
-        for pid in pids {
-            // SAFETY: waits for a child of ours that nothing else waits for.
-            unsafe { libc::waitpid(pid, std::ptr::null_mut(), 0) };
+    let _ = std::thread::Builder::new().name("reap-inherited".into()).stack_size(64 * 1024).spawn(move || reap(pids));
+}
+
+/// Waits for each of `pids` (children of ours nothing else waits for) as
+/// it ends, whichever first: each a pidfd (readable once it has ended),
+/// all of them polled at once, asleep until one ends. A child whose pidfd
+/// can't be had (a kernel without them) is waited for by a thread of its
+/// own.
+fn reap(pids: Vec<libc::pid_t>) {
+    let mut watched: Vec<(libc::pid_t, libc::c_int)> = Vec::new();
+    for pid in pids {
+        // SAFETY: pidfd_open takes a pid and flags, and returns a new fd
+        // (or -1), which is ours to close.
+        let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) } as libc::c_int;
+        if fd >= 0 {
+            watched.push((pid, fd));
+        } else {
+            let _ = std::thread::Builder::new().name("reap-inherited".into()).stack_size(64 * 1024).spawn(move || {
+                // SAFETY: waits for a child of ours that nothing else waits for.
+                unsafe { libc::waitpid(pid, std::ptr::null_mut(), 0) };
+            });
         }
-    });
+    }
+    while !watched.is_empty() {
+        let mut fds: Vec<libc::pollfd> = watched.iter().map(|(_, fd)| libc::pollfd { fd: *fd, events: libc::POLLIN, revents: 0 }).collect();
+        // SAFETY: `fds` is ours and as long as said.
+        let n = unsafe { libc::poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, -1) };
+        if n < 0 {
+            if std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            return;
+        }
+        let ended: Vec<usize> = fds.iter().enumerate().filter(|(_, f)| f.revents != 0).map(|(i, _)| i).collect();
+        for i in ended.into_iter().rev() {
+            let (pid, fd) = watched.remove(i);
+            // SAFETY: it has ended: reaped at once; the fd is ours.
+            unsafe {
+                libc::waitpid(pid, std::ptr::null_mut(), libc::WNOHANG);
+                libc::close(fd);
+            }
+        }
+    }
 }
 
 /// What the previous version left (once; None on a normal start, or if
@@ -191,6 +232,32 @@ mod tests {
         hand_over(&mut cmd, Some(""));
         hand_over(&mut cmd, None);
         assert!(cmd.get_envs().all(|(k, _)| k != ENV));
+    }
+
+    /// Children the previous self left are waited for whichever ends
+    /// first: one that ends while an older one runs on isn't left a
+    /// zombie behind it (Deskbar's, 2026-11-19: waited for in turn, its
+    /// oldest app held the rest).
+    #[test]
+    fn inherited_children_are_reaped_whichever_ends_first() {
+        let long = Command::new("sleep").arg("30").spawn().expect("sleep runs");
+        let short = Command::new("true").spawn().expect("true runs");
+        let (long_pid, short_pid) = (long.id(), short.id());
+        std::mem::forget(long);
+        std::mem::forget(short);
+        // (The test's own children are many: only these two.)
+        let _ = std::thread::Builder::new().spawn(move || super::reap(vec![long_pid as libc::pid_t, short_pid as libc::pid_t]));
+        let gone = |pid: u32| {
+            (0..300).any(|_| {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+                !std::path::Path::new(&format!("/proc/{pid}")).exists()
+            })
+        };
+        assert!(gone(short_pid), "{short_pid} is still there, behind {long_pid}");
+        assert!(std::path::Path::new(&format!("/proc/{long_pid}")).exists());
+        // SAFETY: ends a child of this test.
+        unsafe { libc::kill(long_pid as libc::pid_t, libc::SIGKILL) };
+        assert!(gone(long_pid), "{long_pid} is still there");
     }
 
     /// A child the previous self left (forgotten, as an exec forgets it)

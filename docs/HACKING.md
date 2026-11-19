@@ -4463,7 +4463,11 @@ for a 3-second `sleep`.
   Monitor's helper, its input pipe closed with the exec, ended and
   stayed a zombie, one an upgrade. `restore::claim` (the first thing
   `olo_kit::run` does) has a thread wait for whatever children the
-  process has as it starts.
+  process has as it starts, all at once, whichever ends first (a pidfd
+  each, polled together: asleep until one ends). Waited for one after
+  another they weren't: Deskbar's oldest app (an agent screen running
+  for days) held the wait, and apps that quit behind it stayed zombies
+  (2026-11-19, the supervisor's "Leaves zombies: olo-deskbar").
 * app_server puts a window back on its own as it was in every way: a
   window remembered by this app_server whose own process came back
   (`Placement::id`) is stacked among the others by the windows that
@@ -15688,6 +15692,17 @@ What his phone showed, and what's kept true since:
   (`STUCK`: it asks BlueZ what phones there are, and BlueZ can stop
   answering) the service ends, and the session starts it afresh. Two
   messages a turn of the loop; nothing at rest.
+- **Every deadline the loop wakes for is acted on** (`deadlines`, each
+  by name; `tick` acts on each that's past: moves it or lets it go). One
+  that `tick` left as it was would have the loop turn without waiting,
+  a core's worth: asking the phone again over low energy (`le_ask_at`)
+  was waited for while a try of its other notifications was set for
+  later, which `others_link` waits for, and the service spun ten minutes
+  at a time for hours (2026-11-19: Olo's supervisor said "Seems stuck",
+  141 % of a core). Both now ask `le_ask_due`, which isn't due while a
+  try is pending, and a failed try ends the asking. A deadline found
+  still past after a turn is said once, by name, as an error ("… is
+  past and nothing moved it").
 - **The pairing agent is BlueZ's default while a panel has it**
   (`Agent::register`: `RequestDefaultAgent`), so a pairing the phone
   starts is asked about too (BlueZ had "No agent available" for his
