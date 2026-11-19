@@ -106,8 +106,22 @@ pub fn accounts() -> Vec<Account> {
     } else {
         olo_google::accounts::serving(olo_google::accounts::Service::Mail).into_iter().map(|a| Account { provider: Provider::Gmail, address: a.address }).collect()
     };
-    for a in own_accounts() {
-        if !all.iter().any(|g| g.address.eq_ignore_ascii_case(&a.address)) {
+    all = merged(all, own_accounts());
+    all
+}
+
+/// The Google accounts' and those added here, as one list. One added here
+/// is left out only where it's the same mailbox as a Google account's: a
+/// Gmail account now connected under Google. Another provider's at the
+/// same address is a mailbox of its own, and listed: a domain's mail at
+/// Fastmail, its Google account kept for Drive and Calendar. (Left out by
+/// its address alone, Ben's Fastmail account went from every list, and
+/// its mail was looked for at Google, once his Google account of that
+/// address was ticked for Mail, 2026-11-18.)
+fn merged(mut all: Vec<Account>, own: Vec<Account>) -> Vec<Account> {
+    for a in own {
+        let under_google = a.provider == Provider::Gmail && all.iter().any(|g| g.address.eq_ignore_ascii_case(&a.address));
+        if !under_google && !all.contains(&a) {
             all.push(a);
         }
     }
@@ -954,5 +968,17 @@ mod tests {
         stopper.stop();
         assert!(waiting.join().unwrap().is_err());
         assert!(t.elapsed() < Duration::from_secs(3), "a stop ends the wait at once");
+    }
+
+    /// An account added here is left out only where a Google account is
+    /// the same mailbox (Gmail, of its address): a Fastmail account of the
+    /// address a Google account has stays.
+    #[test]
+    fn a_fastmail_account_stays_beside_a_google_one_of_its_address() {
+        let gmail = |a: &str| Account { provider: Provider::Gmail, address: a.into() };
+        let fastmail = |a: &str| Account { provider: Provider::Fastmail, address: a.into() };
+        let google = vec![gmail("ben@example.org")];
+        let own = vec![fastmail("ben@example.org"), gmail("Ben@Example.org"), gmail("ann@example.com"), fastmail("ann@example.net")];
+        assert_eq!(merged(google, own), vec![gmail("ben@example.org"), fastmail("ben@example.org"), gmail("ann@example.com"), fastmail("ann@example.net")]);
     }
 }
