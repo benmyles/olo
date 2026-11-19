@@ -6187,18 +6187,45 @@ lint at a time).
   username empty for the active account or the `user:` of hosts.yml;
   `go-keyring-base64:` values decoded). Test the keyring parts with
   `tools/dev/private-keyring` (`github::tests::tokens_from_a_keyring`).
-  Mail (`mail.rs`, in the Mail & Calendars tab): the Google accounts
-  ticked for Mail (see "Google accounts": signed in through their own
-  app) and any number of Fastmail accounts, looked in for one-time codes
-  (see "Codes sent by mail"); Gmail accounts added with an app password
-  before go on as they were. Add Fastmail… asks the
-  address and an app password (Make an App Password… opens the
-  provider's page; Gmail's wants 2-Step Verification, Fastmail's isn't
-  on the Basic plan) and tries them first, on a worker (signed in, the
-  inbox opened, `olo_mail::check`); taken, the password goes in the
-  login keyring (`application=olo service=mail account=ADDRESS`) and the
-  address in `~/.config/olo/mail.json`. Each is tried again as the panel
-  opens (Check Again), and says how it stands; Remove forgets both.
+  The tabs are a provider's or a service's each: Google, Fastmail,
+  CalDAV, GitHub, Telegram (Ben, 2026-11-18; the Mail & Calendars tab,
+  which mixed providers, is gone). Mail reads the Google accounts ticked
+  for Mail (see "Google accounts") and the Fastmail accounts ticked for
+  it (below), looked in for one-time codes (see "Codes sent by mail").
+  **Fastmail** (`fastmail.rs`, `olo_fastmail`, as Google's tab and
+  `olo_google::accounts`): its accounts in a grid, each ticked for Mail
+  and Calendar, each with one app password (Fastmail's Settings ▸
+  Privacy & Security, with access to mail and calendars; Make an App
+  Password… opens it), kept in the login keyring
+  (`application=olo service=fastmail account=ADDRESS`), the list in
+  `~/.config/olo/fastmail-accounts.json` (changed under a lock beside
+  it). Add tries the address and password for Mail (IMAP,
+  `olo_mail::check`) and for Calendar (CalDAV) on a worker, and keeps it
+  ticked for what it signed in to; a tick is tried before it's kept,
+  and says why not; Remove forgets it and its password. The tab follows
+  the list's file. **Moved by themselves**: Mail and Calendar each kept
+  their Fastmail accounts before (in `mail.json` and
+  `calendar-accounts.json`, passwords under their own names): the first
+  read of their accounts after an upgrade, by any program
+  (`olo_mail::accounts`, `olo_calendar::account::accounts`), moves them
+  to Fastmail's list, ticked for that service, passwords and all, and
+  lets go of theirs only once that's done (a keyring not unlocked yet
+  leaves them for the next read; Ben: "make sure it auto migrates the
+  existing storage/creds on upgrade"). And a Gmail account added to
+  Mail with an app password before Google accounts were connected is
+  let go of, password too, once a Google account of the address is
+  (its ticks under Google decide: left, it would read the mail with the
+  old password still, with Mail unticked). Both tested
+  (`crates/mail/tests/fastmail_moves.rs`,
+  `crates/calendar/tests/fastmail_moves.rs`), each in a test's own
+  lists and keyrings (`OLO_MAIL_SECRETS`, `OLO_FASTMAIL_ACCOUNTS`,
+  `OLO_FASTMAIL_SECRETS`, as Calendar's and Google's). Before, the
+  Mail & Calendars tab merged Google's and Fastmail's by address alone,
+  and Ben's Fastmail account of his Google account's address went from
+  every list, its mail looked for at Google. **CalDAV** (`caldav.rs`):
+  calendars on other servers (Nextcloud, iCloud with an app-specific
+  password), added with the server's address, a name and a password,
+  tried first, kept in `calendar-accounts.json`.
 * Tracker (`tracker.rs`) sets `Settings::tracker` (the view new folder
   windows open in); its icon is Tracker's own, as in Haiku.
 * Terminal (`terminal.rs`) sets `Settings::terminal`: where New
@@ -13177,19 +13204,17 @@ sign-in goes in the person's), `OLO_GOOGLE_API` (a Google of its own),
   account whose DiskBackup app came first keeps that app (below).
 
 **Preferences ▸ Integrations ▸ Google** (`apps/preferences/src/google.rs`;
-the panel is three tabs now, Google, Mail & Calendars, GitHub &
-Telegram: with the grid it was 868 points tall, past a 1280 × 800
-screen): the grid, each account with a tick for Mail, Calendar and
+the panel is a tab a provider: Google, Fastmail, CalDAV, GitHub,
+Telegram; with the grid it was 868 points tall in one, past a 1280 ×
+800 screen): the grid, each account with a tick for Mail, Calendar and
 DiskBackup (one not allowed can't be ticked; DiskBackup's tick runs
 `olo-diskbackup --set-up-drive-account` or `--disconnect-drive`, and
 the grid follows only once it's done), how its sign-in stands (a token
 asked for on a worker as the panel opens), Sign In Again (the
 account's own app, in the person's browser; with none kept here, the
 by-hand form, saying where its client is) and Remove (what signs it
-in forgotten; DiskBackup stopped first if it backs up there). Mail's
-and Calendars' boxes list the Google accounts ticked for them, and
-their Remove unticks. The list is followed: an agent's finished
-account shows at once.
+in forgotten; DiskBackup stopped first if it backs up there). The list
+is followed: an agent's finished account shows at once.
 
 - **Add a Google Account…** (the agent; it was DiskBackup's Agent
   Setup, moved here and made the account's: `olo_google::setup`): the
@@ -21602,16 +21627,15 @@ things stand with the servers.
   on a day makes an event there (in the hours, at the half hour under
   the pointer; in the strip above them, for the whole day).
 - **Accounts**: Google's are the Google accounts connected to Olo with
-  Calendar ticked (see "Google accounts"); others are added in
-  Preferences ▸ Integrations ▸ Mail & Calendars ▸ Calendars
-  (apps/preferences/src/calendars.rs): Add an Account… ▸ Fastmail…
-  (address and an app password with access to calendars) or Another
-  CalDAV Server….
-  What's typed is tried first (signed in, its calendars listed), then
-  kept: the secret in the login keyring, the account in
-  `calendar-accounts.json`, which Calendar follows (`olo_kit::watch`):
-  an account added or removed shows in its window at once, and what was
-  kept of a removed one's calendars is let go.
+  Calendar ticked (see "Google accounts"), Fastmail's the Fastmail
+  accounts ticked for it (Preferences ▸ Integrations ▸ Fastmail,
+  `olo_fastmail`); other servers' are added under Integrations ▸ CalDAV
+  (apps/preferences/src/caldav.rs): what's typed is tried first (signed
+  in, its calendars listed), then kept: the secret in the login keyring,
+  the account in `calendar-accounts.json`. Calendar follows all three
+  lists (`account::watched`, `olo_kit::watch`): an account added or
+  removed shows in its window at once, and what was kept of a removed
+  one's calendars is let go.
 - **Trying it with no account of anyone's**: `cargo run --release -p
   olo-calendar --example standin [DAY]` is the stand-in server by
   itself with the demo's calendars; it prints its address. With

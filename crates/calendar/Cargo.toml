@@ -8,6 +8,8 @@ license.workspace = true
 [dependencies]
 olo-net.workspace = true
 olo-google.workspace = true
+olo-fastmail.workspace = true
+tracing.workspace = true
 olo-system.workspace = true
 olo-xdg.workspace = true
 jiff = "0.2"

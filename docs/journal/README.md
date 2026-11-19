@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Integrations: a tab for each provider, Fastmail's like Google's
+
+*22:56* — Preferences ▸ Integrations has a tab for each of Google, Fastmail, CalDAV, GitHub and Telegram. Fastmail's lists its accounts as Google's does, each ticked for Mail and Calendar, with one app password each; the Fastmail accounts Mail and Calendar kept before move there by themselves after the upgrade.
+
+![Integrations: a tab for each provider, Fastmail's like Google's](2026-11-18/225609-integrations-a-tab-for-each-provider-fastmail-s-.png)
+
 ### Language & Region in Preferences
 
 *21:23* — Preferences ▸ Language & Region chooses the language Olo's words are in, each language by its own name, and says how much of Olo is in it so far. Olo's windows change at once; other programs take it as they next start. The translations are coming, German first.

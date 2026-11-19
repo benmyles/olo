@@ -5086,5 +5086,11 @@
   "title": "Language & Region in Preferences",
   "caption": "Preferences \u25b8 Language & Region chooses the language Olo's words are in, each language by its own name, and says how much of Olo is in it so far. Olo's windows change at once; other programs take it as they next start. The translations are coming, German first.",
   "image": "2026-11-18/212307-language-region-in-preferences.png"
+ },
+ {
+  "time": "2026-11-18T22:56:09",
+  "title": "Integrations: a tab for each provider, Fastmail's like Google's",
+  "caption": "Preferences \u25b8 Integrations has a tab for each of Google, Fastmail, CalDAV, GitHub and Telegram. Fastmail's lists its accounts as Google's does, each ticked for Mail and Calendar, with one app password each; the Fastmail accounts Mail and Calendar kept before move there by themselves after the upgrade.",
+  "image": "2026-11-18/225609-integrations-a-tab-for-each-provider-fastmail-s-.png"
  }
 ]

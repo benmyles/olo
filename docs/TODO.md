@@ -13,6 +13,18 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
+- **Calendar: an event's notes scroll** (Ben, 2026-11-18: "in calendar
+  details notes needs a scrollbar and to be scrollable"): the event
+  window's Notes in a scroll view, its bar while they overflow, the
+  caret kept in sight as it's typed (the kit's multi-line field in a
+  `ScrollView`, for every app's).
+- **Calendar: a preview pane** (Ben, 2026-11-18: "there should also be
+  a preview pane where if i single click an event i see the details in
+  the bottom 1/3 of the main area"): one click on an event shows what
+  it is in the main area's bottom third (title, when, where, calendar,
+  who's invited, notes, links), a double click opens it to edit, as
+  now.
+
 - **Themes: one list (Classic, Platinum, BeOS and every scheme), each
   perfect, with icons of its own, Customize…, and a wallpaper of its
   own** (Ben, 2026-11-17: "the split between themes and colors doesn't
@@ -295,6 +307,32 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Integrations: a tab for each provider, Fastmail's like Google's**
+  (Ben, 2026-11-18, after the Mail & Calendars tab showed his Google
+  account where his Fastmail one of the same address should have been,
+  and an account ticked under Google wasn't listed: "keep the Google tab
+  as google, add a Fastmail tab modelled after google where you add
+  fastmail accounts and choose what they integrate with, and then just
+  for consistency split Github and Telegram into their own tabs too",
+  "get rid of the mail and calendars tab from there completely", "just
+  add a CalDAV tab in integrations and have them managed in there",
+  "make sure it auto migrates the existing storage/creds on upgrade").
+  Tabs Google, Fastmail, CalDAV, GitHub, Telegram. Fastmail: its
+  accounts in a grid, each ticked for Mail and Calendar, one app
+  password an account (`olo-fastmail`, as `olo_google::accounts`); the
+  accounts Mail and Calendar kept themselves moved there by themselves
+  as either next reads its accounts, passwords and all. CalDAV: other
+  servers' calendars. Every list follows its files (an account ticked
+  elsewhere shows at once). **Done** (HACKING.md,
+  Preferences ▸ Integrations): five tabs; Fastmail's grid with Add,
+  ticks tried before they're kept, Remove; the old Fastmail entries and
+  passwords moved by whichever program reads Mail's or Calendar's
+  accounts first after the upgrade (tested both ways), and an old Gmail
+  app-password entry let go of once Google has its address; every list
+  follows its file. Looked at headless in light and dark, 1× to 2×.
+  Try: after Upgrade, Integrations ▸ Fastmail should list ben@2q31.com
+  with Mail ticked (Calendar can be ticked there too).
 
 - **A passkey shared with an agent screen wasn't offered there** (Ben,
   2026-11-18, the google-setup screen: "google showed its own qr code

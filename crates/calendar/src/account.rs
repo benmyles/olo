@@ -104,15 +104,27 @@ fn googles() -> bool {
     std::env::var_os("OLO_CALENDAR_ACCOUNTS").is_none() || std::env::var_os("OLO_GOOGLE_ACCOUNTS").is_some()
 }
 
+/// Whether this computer's Fastmail accounts are looked at, as
+/// [`googles`].
+fn fastmails() -> bool {
+    std::env::var_os("OLO_CALENDAR_ACCOUNTS").is_none() || std::env::var_os("OLO_FASTMAIL_ACCOUNTS").is_some()
+}
+
 /// Every account whose calendars Calendar shows: the Google accounts
-/// connected to Olo with Calendar ticked, then those added here, in the
-/// order they were added.
+/// connected to Olo with Calendar ticked, the Fastmail accounts ticked
+/// for it (Integrations ▸ Fastmail, `olo_fastmail`), then those added
+/// here (other CalDAV servers: Integrations ▸ CalDAV), in the order they
+/// were added.
 pub fn accounts() -> Vec<Account> {
     let mut all: Vec<Account> = if googles() {
         olo_google::accounts::serving(olo_google::accounts::Service::Calendar).into_iter().map(|a| Account { provider: Provider::Google, address: a.address, server: String::new() }).collect()
     } else {
         Vec::new()
     };
+    if fastmails() {
+        adopt_fastmail();
+        all.extend(olo_fastmail::serving(olo_fastmail::Service::Calendar).into_iter().map(|a| Account { provider: Provider::Fastmail, address: a.address, server: String::new() }));
+    }
     for a in own_accounts() {
         if !all.iter().any(|b| b.id() == a.id()) {
             all.push(a);
@@ -124,7 +136,52 @@ pub fn accounts() -> Vec<Account> {
 /// The files that say which accounts there are: followed by whoever
 /// shows them (Calendar's window, its reminders, its widgets).
 pub fn watched() -> Vec<PathBuf> {
-    vec![accounts_path(), olo_google::accounts::path()]
+    vec![accounts_path(), olo_google::accounts::path(), olo_fastmail::path()]
+}
+
+/// The Fastmail accounts added here before Integrations had a Fastmail
+/// tab (in this list, their app passwords under Calendar's name) moved
+/// to `olo_fastmail`'s, ticked for Calendar, passwords and all: an
+/// upgrade carries them over by itself. Each is let go of here only once
+/// it's there. Once a program, until done.
+fn adopt_fastmail() {
+    static DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    use std::sync::atomic::Ordering;
+    if DONE.load(Ordering::Acquire) {
+        return;
+    }
+    let theirs: Vec<Account> = own_accounts().into_iter().filter(|a| a.provider == Provider::Fastmail).collect();
+    let mut moved = Vec::new();
+    for a in &theirs {
+        let kept = match kept_secret(a) {
+            Ok(Some(Secret::Password(p))) => Some(p),
+            Ok(_) => None,
+            Err(e) => {
+                tracing::info!("calendar: the Fastmail account {} is moved later: its password can't be read now ({e})", a.address);
+                continue;
+            }
+        };
+        match olo_fastmail::adopt(&a.address, olo_fastmail::Service::Calendar, kept.as_deref()) {
+            Ok(()) => moved.push(a.clone()),
+            Err(e) => tracing::warn!("calendar: the Fastmail account {} isn't moved: {e}", a.address),
+        }
+    }
+    if !moved.is_empty() {
+        let mut listed = own_accounts();
+        listed.retain(|a| !moved.contains(a));
+        match save_accounts(&listed) {
+            Ok(()) => {
+                for a in &moved {
+                    forget_secret(a);
+                    tracing::info!("calendar: the Fastmail account {} moved to Integrations ▸ Fastmail", a.address);
+                }
+            }
+            Err(e) => tracing::warn!("calendar: the Fastmail accounts moved stay listed here too ({e})"),
+        }
+    }
+    if moved.len() == theirs.len() {
+        DONE.store(true, Ordering::Release);
+    }
 }
 
 /// The accounts added here are these (`calendar-accounts.json`: Google's
@@ -174,7 +231,9 @@ pub fn keep_secret(account: &Account, secret: &Secret) -> Result<(), String> {
 }
 
 /// What signs `account` in, if kept: a Google account connected to Olo
-/// signs in through its own app (`olo_google::accounts`). Blocking.
+/// signs in through its own app (`olo_google::accounts`), a Fastmail
+/// one with the app password Integrations ▸ Fastmail keeps for it.
+/// Blocking.
 pub fn secret(account: &Account) -> Option<Secret> {
     if account.provider == Provider::Google
         && (std::env::var_os("OLO_CALENDAR_SECRETS").is_none() || std::env::var_os("OLO_GOOGLE_SECRETS").is_some())
@@ -182,10 +241,22 @@ pub fn secret(account: &Account) -> Option<Secret> {
     {
         return Some(Secret::Google { client: s.client, refresh_token: s.refresh_token });
     }
-    if let Some(file) = test_secret(account) {
-        return serde_json::from_slice(&std::fs::read(file).ok()?).ok();
+    if account.provider == Provider::Fastmail
+        && fastmails()
+        && let Some(p) = olo_fastmail::password(&account.address)
+    {
+        return Some(Secret::Password(p));
     }
-    serde_json::from_slice(&olo_system::secrets::lookup(&attributes(&account.id())).ok()??).ok()
+    kept_secret(account).ok().flatten()
+}
+
+/// What this list kept for `account` itself (Err: the keyring couldn't
+/// be read). Blocking.
+fn kept_secret(account: &Account) -> Result<Option<Secret>, String> {
+    if let Some(file) = test_secret(account) {
+        return Ok(std::fs::read(file).ok().and_then(|b| serde_json::from_slice(&b).ok()));
+    }
+    Ok(olo_system::secrets::lookup(&attributes(&account.id())).map_err(|e| e.to_string())?.and_then(|b| serde_json::from_slice(&b).ok()))
 }
 
 /// Forget it. Blocking.

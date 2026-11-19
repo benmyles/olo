@@ -24,6 +24,7 @@ olo-color.workspace = true
 olo-screensavers = { workspace = true, features = ["kit"] }
 olo-system.workspace = true
 olo-mail.workspace = true
+olo-fastmail.workspace = true
 olo-calendar.workspace = true
 # AirPlay: finding receivers, pairing with one, checking, forgetting (not
 # the showing of a screen, which `olo-airplay show` does).

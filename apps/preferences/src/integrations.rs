@@ -1,10 +1,11 @@
 //! Integrations: the services Olo works with, each connected here (and
-//! only here), in three tabs. Google: the Google accounts connected to
-//! Olo, and which of Mail, Calendar and DiskBackup use each
-//! (`google.rs`). Mail & Calendars: the accounts looked in for one-time
-//! codes (`mail.rs`) and whose calendars Calendar shows (`calendars.rs`),
-//! Google's among them. GitHub & Telegram: Telegram's API ID and signing
-//! in (`telegram.rs`), and GitHub's token.
+//! only here), a tab each (Ben, 2026-11-18: a tab for each provider, the
+//! Mail & Calendars tab, which mixed them, gone). Google: the Google
+//! accounts connected to Olo, and which of Mail, Calendar and DiskBackup
+//! use each (`google.rs`). Fastmail: its accounts, and which of Mail and
+//! Calendar use each (`fastmail.rs`). CalDAV: other servers' calendars
+//! (`caldav.rs`). GitHub: its token. Telegram: its API ID and signing in
+//! (`telegram.rs`).
 //! GitHub: Terminal shows each tab's pull request and its
 //! checks with it. The sign-in is `olo_system::github`'s: a token Olo keeps
 //! in the login keyring, else `GH_TOKEN`, else the GitHub CLI's. Checking
@@ -51,16 +52,15 @@ pub struct State {
     adding: bool,
     proxy: olo_kit::Proxy,
     pub telegram: crate::telegram::State,
-    pub mail: crate::mail::State,
-    pub calendars: crate::calendars::State,
+    pub fastmail: crate::fastmail::State,
+    pub caldav: crate::caldav::State,
     pub google: crate::google::State,
     /// The tab shown ([`TABS`]).
     pub tab: usize,
 }
 
-/// The panel's tabs (with Google's grid it no longer fits a laptop's
-/// screen in one: 868 points tall).
-pub const TABS: [&str; 3] = ["Google", "Mail & Calendars", "GitHub & Telegram"];
+/// The panel's tabs: a provider's or a service's each.
+pub const TABS: [&str; 5] = ["Google", "Fastmail", "CalDAV", "GitHub", "Telegram"];
 
 impl State {
     pub fn new(cx: &mut Cx<PanelView>) -> State {
@@ -79,8 +79,8 @@ impl State {
             adding: false,
             proxy: olo_kit::proxy(),
             telegram: crate::telegram::State::new(cx),
-            mail: crate::mail::State::new(cx),
-            calendars: crate::calendars::State::new(cx),
+            fastmail: crate::fastmail::State::new(cx),
+            caldav: crate::caldav::State::new(cx),
             google: crate::google::State::new(cx),
             tab: 0,
         };
@@ -218,16 +218,10 @@ fn act(ui: &Ui, f: impl Fn(&mut State, &mut Cx<PanelView>) + 'static) -> impl Fn
 pub fn ui(ui: &mut Ui, st: &mut State) {
     let items = ui.collect(|ui| match st.tab {
         0 => crate::google::ui(ui, &mut st.google),
-        1 => {
-            let left = ui.collect(|ui| crate::mail::ui(ui, &mut st.mail));
-            let right = ui.collect(|ui| crate::calendars::ui(ui, &mut st.calendars));
-            ui.add_columns(left, right);
-        }
-        _ => {
-            let left = ui.collect(|ui| github(ui, st));
-            let right = ui.collect(|ui| crate::telegram::ui(ui, &mut st.telegram));
-            ui.add_columns(left, right);
-        }
+        1 => crate::fastmail::ui(ui, &mut st.fastmail),
+        2 => crate::caldav::ui(ui, &mut st.caldav),
+        3 => github(ui, st),
+        _ => crate::telegram::ui(ui, &mut st.telegram),
     });
     let pick = ui.on_view(|v, i: &usize, cx| {
         if let Some(st) = state_of(v) {

@@ -107,7 +107,7 @@ impl Panel {
             "open-with" | "file-types" | "filetypes" | "default-applications" => Some(Panel::DefaultApps),
             "passwords" | "privacy" => Some(Panel::Security),
             "smart-tiling" | "models" => Some(Panel::Ai),
-            "github" | "telegram" | "accounts" | "services" | "integration" => Some(Panel::Integrations),
+            "github" | "telegram" | "fastmail" | "caldav" | "accounts" | "services" | "integration" => Some(Panel::Integrations),
             "theme" | "icons" | "icon-theme" => Some(Panel::Themes),
             "window" | "tiling" | "margins" | "gaps" | "windowing" | "windowing-mode" | "focus-mode" => Some(Panel::Windows),
             _ => None,

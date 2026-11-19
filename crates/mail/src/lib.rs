@@ -98,16 +98,103 @@ pub fn own_accounts() -> Vec<Account> {
 /// Every account mail is read from: the Google accounts connected to
 /// Olo that are ticked for Mail (Preferences ▸ Integrations ▸ Google:
 /// they sign in through the account's own app, `olo_google::accounts`),
-/// then those added here with an app password.
+/// the Fastmail accounts ticked for it (Integrations ▸ Fastmail,
+/// `olo_fastmail`), then any added here before those were (Gmail's with
+/// an app password).
 pub fn accounts() -> Vec<Account> {
-    let mut all: Vec<Account> = if std::env::var_os("OLO_MAIL_ACCOUNTS").is_some() && std::env::var_os("OLO_GOOGLE_ACCOUNTS").is_none() {
-        // (A test's own list: this computer's Google accounts aren't in it.)
+    // (A test's own list: this computer's accounts elsewhere aren't in it,
+    // unless it names a list of theirs too.)
+    let test = std::env::var_os("OLO_MAIL_ACCOUNTS").is_some();
+    let mut all: Vec<Account> = if test && std::env::var_os("OLO_GOOGLE_ACCOUNTS").is_none() {
         Vec::new()
     } else {
         olo_google::accounts::serving(olo_google::accounts::Service::Mail).into_iter().map(|a| Account { provider: Provider::Gmail, address: a.address }).collect()
     };
-    all = merged(all, own_accounts());
-    all
+    if !test || std::env::var_os("OLO_GOOGLE_ACCOUNTS").is_some() {
+        drop_gmail_under_google();
+    }
+    if !test || std::env::var_os("OLO_FASTMAIL_ACCOUNTS").is_some() {
+        adopt_fastmail();
+        all.extend(olo_fastmail::serving(olo_fastmail::Service::Mail).into_iter().map(|a| Account { provider: Provider::Fastmail, address: a.address }));
+    }
+    merged(all, own_accounts())
+}
+
+/// The Gmail accounts added here with an app password before Google
+/// accounts were connected to Olo, let go of once a Google account of the
+/// address is (its ticks under Google say whether Mail uses it: one left
+/// here, which no tab shows, would read its mail with the old app
+/// password still, unticked). Their app passwords go too. Once a program.
+fn drop_gmail_under_google() {
+    static DONE: AtomicBool = AtomicBool::new(false);
+    if DONE.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let google: Vec<String> = olo_google::accounts::accounts().into_iter().map(|a| a.address).collect();
+    let own = own_accounts();
+    let under = |a: &Account| a.provider == Provider::Gmail && google.iter().any(|g| g.eq_ignore_ascii_case(&a.address));
+    if !own.iter().any(under) {
+        return;
+    }
+    let kept: Vec<Account> = own.iter().filter(|a| !under(a)).cloned().collect();
+    match save_accounts(&kept) {
+        Ok(()) => {
+            for a in own.iter().filter(|a| under(a)) {
+                if !kept.iter().any(|b| b.address.eq_ignore_ascii_case(&a.address)) {
+                    forget_password(&a.address);
+                }
+                tracing::info!("mail: the Gmail account {} is Integrations ▸ Google's now; its app password is let go of", a.address);
+            }
+        }
+        Err(e) => tracing::warn!("mail: the Gmail accounts under Google stay listed here too ({e})"),
+    }
+}
+
+/// The Fastmail accounts Mail kept itself before Integrations had a
+/// Fastmail tab (in its own list, their app passwords under Mail's name)
+/// moved to `olo_fastmail`'s, ticked for Mail, passwords and all: an
+/// upgrade carries them over by itself (Ben, 2026-11-18: "make sure it
+/// auto migrates the existing storage/creds on upgrade"). Each is let go
+/// of here only once it's there. Once a program, until done (a keyring
+/// not unlocked yet leaves them for the next try).
+fn adopt_fastmail() {
+    static DONE: AtomicBool = AtomicBool::new(false);
+    if DONE.load(Ordering::Acquire) {
+        return;
+    }
+    let theirs: Vec<Account> = own_accounts().into_iter().filter(|a| a.provider == Provider::Fastmail).collect();
+    let mut moved = Vec::new();
+    for a in &theirs {
+        let kept = match kept_password(&a.address) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::info!("mail: the Fastmail account {} is moved later: its password can't be read now ({e})", a.address);
+                continue;
+            }
+        };
+        match olo_fastmail::adopt(&a.address, olo_fastmail::Service::Mail, kept.as_deref()) {
+            Ok(()) => moved.push(a.clone()),
+            Err(e) => tracing::warn!("mail: the Fastmail account {} isn't moved: {e}", a.address),
+        }
+    }
+    if !moved.is_empty() {
+        let mut listed = own_accounts();
+        listed.retain(|a| !moved.contains(a));
+        match save_accounts(&listed) {
+            Ok(()) => {
+                for a in &moved {
+                    if !listed.iter().any(|b| b.address.eq_ignore_ascii_case(&a.address)) {
+                        forget_password(&a.address);
+                    }
+                    tracing::info!("mail: the Fastmail account {} moved to Integrations ▸ Fastmail", a.address);
+                }
+            }
+            Err(e) => tracing::warn!("mail: the Fastmail accounts moved stay listed here too ({e})"),
+        }
+    }
+    if moved.len() == theirs.len() {
+        DONE.store(true, Ordering::Release);
+    }
 }
 
 /// The Google accounts' and those added here, as one list. One added here
@@ -131,7 +218,7 @@ fn merged(mut all: Vec<Account>, own: Vec<Account>) -> Vec<Account> {
 /// The files that say which accounts there are: followed by whoever
 /// shows or watches them.
 pub fn watched() -> Vec<PathBuf> {
-    vec![accounts_path(), olo_google::accounts::path()]
+    vec![accounts_path(), olo_google::accounts::path(), olo_fastmail::path()]
 }
 
 /// What signs an account in.
@@ -172,6 +259,13 @@ pub fn auth_of(account: &Account) -> Result<Auth, String> {
     {
         return accounts::token(&account.address, false, "Olo Mail").map(Auth::Token).map_err(|e| e.to_string());
     }
+    // (A Fastmail account's, as Integrations ▸ Fastmail keeps it.)
+    if account.provider == Provider::Fastmail
+        && std::env::var_os("OLO_MAIL_IMAP").is_none()
+        && let Some(p) = olo_fastmail::password(&account.address)
+    {
+        return Ok(Auth::Password(p));
+    }
     password(&account.address).map(Auth::Password).ok_or_else(|| "no app password in the keyring".to_owned())
 }
 
@@ -191,9 +285,29 @@ fn attributes(address: &str) -> [(&str, &str); 3] {
     [("application", "olo"), ("service", "mail"), ("account", address)]
 }
 
+/// A test's own keyring (`OLO_MAIL_SECRETS`: a folder, a file an
+/// address), so nothing a test adds or removes touches the person's
+/// login keyring, which a test session's programs can reach.
+fn test_password(address: &str) -> Option<PathBuf> {
+    let dir = std::env::var_os("OLO_MAIL_SECRETS")?;
+    let name: String = address.to_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | '@') { c } else { '_' }).collect();
+    Some(PathBuf::from(dir).join(name))
+}
+
+/// `address`'s app password as kept (Err: the keyring couldn't be read).
+fn kept_password(address: &str) -> Result<Option<String>, String> {
+    if let Some(file) = test_password(address) {
+        return Ok(std::fs::read_to_string(file).ok());
+    }
+    Ok(olo_system::secrets::lookup(&attributes(address)).map_err(|e| e.to_string())?.and_then(|b| String::from_utf8(b).ok()))
+}
+
 /// Keep `password` for `address` in the login keyring. Blocking (a D-Bus
 /// call): off the UI thread.
 pub fn keep_password(address: &str, password: &str) -> Result<(), String> {
+    if let Some(file) = test_password(address) {
+        return file.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|()| std::fs::write(&file, password)).map_err(|e| e.to_string());
+    }
     let label = format!("Mail: {address} (Olo)");
     olo_system::secrets::store(&label, &attributes(address), password.as_bytes()).map_err(|e| e.to_string())
 }
@@ -204,12 +318,15 @@ pub fn password(address: &str) -> Option<String> {
     if std::env::var_os("OLO_MAIL_IMAP").is_some() {
         return Some(standin::PASSWORD.into());
     }
-    let v = olo_system::secrets::lookup(&attributes(address)).ok()??;
-    String::from_utf8(v).ok().filter(|p| !p.is_empty())
+    kept_password(address).ok().flatten().filter(|p| !p.is_empty())
 }
 
 /// Forget `address`'s app password. Blocking.
 pub fn forget_password(address: &str) {
+    if let Some(file) = test_password(address) {
+        let _ = std::fs::remove_file(file);
+        return;
+    }
     let _ = olo_system::secrets::delete(&attributes(address));
 }
 

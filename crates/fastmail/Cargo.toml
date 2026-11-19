@@ -1,0 +1,12 @@
+[package]
+name = "olo-fastmail"
+description = "The Fastmail accounts Olo is connected to, what each is used for, and their app passwords"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+olo-system.workspace = true
+olo-xdg.workspace = true
+serde.workspace = true
+serde_json.workspace = true

@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 olo-system.workspace = true
 olo-google.workspace = true
+olo-fastmail.workspace = true
 olo-xdg.workspace = true
 serde.workspace = true
 serde_json.workspace = true

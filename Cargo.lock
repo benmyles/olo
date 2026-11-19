@@ -7190,6 +7190,7 @@ dependencies = [
  "base64 0.22.1",
  "getrandom 0.3.4",
  "jiff",
+ "olo-fastmail",
  "olo-google",
  "olo-net",
  "olo-system",
@@ -7198,6 +7199,7 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
+ "tracing",
  "ureq",
 ]
 
@@ -7551,6 +7553,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-fastmail"
+version = "0.1.0"
+dependencies = [
+ "olo-system",
+ "olo-xdg",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "olo-fido"
 version = "0.1.0"
 dependencies = [
@@ -7897,6 +7909,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "encoding_rs",
+ "olo-fastmail",
  "olo-google",
  "olo-system",
  "olo-xdg",
@@ -8174,6 +8187,7 @@ dependencies = [
  "olo-color",
  "olo-complete",
  "olo-crash",
+ "olo-fastmail",
  "olo-fido",
  "olo-google",
  "olo-keychain",
