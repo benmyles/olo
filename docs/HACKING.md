@@ -3777,11 +3777,11 @@ it.
 - `widgets::ArrowButton::back(name)` / `::on(name)`: a square push
   button with an arrow (`style::arrow`), for stepping through what a
   window shows, in a pair set flush. No words on it, so `name`
-  ("Previous Week") is what agents read and its tip.
-  `style::arrow_down(g, r, up, color)` is the same small triangle
-  pointing down (what's under can be shown) or up (it can be put
-  away): a row's disclosure, where there's no room for a button's
-  frame (Deskbar's other displays).
+  ("Previous Week") is what agents read and its tip. A row's
+  disclosure, where there's no room for a button's frame (Deskbar's
+  folded workspaces), is `style::latch(g, r, open, color)`,
+  BOutlineListView's: pointing right while what's under it is away,
+  down while it shows (`PaneSwitch`'s too).
 - `StringView::cut(true).beside(size)`: a line cut to its room sits on
   the baseline of the larger text beside it, as an uncut one does (a
   status after a title: it was half a point off, the layout review's
@@ -20700,9 +20700,12 @@ heading, the ones other displays show too (`fold_of`, by the bar's
 display: on D0's, D1's showing workspace stayed open, Ben, 2026-11-19:
 "it needs to be display aware too e.g. on D0 only D0 Workspace 1 should
 be expanded … each display needs its own state for this"): how many applications it has while they're put
-away, then an arrow just before its windowing mode, down to show them
-under the heading and up to put them away (`style::arrow_down`; the
-modes stay in one column, the arrows in another); while they're away,
+away, then a latch just before its windowing mode, pointing right
+while they're away and down while they show under the heading
+(`style::latch`, BOutlineListView's, as BeOS has it; it pointed down
+then up, an accordion's way, until Ben, 2026-11-19: "I'd use ▸ when
+collapsed and ▾ when expanded"; the modes stay in one column, the
+latches in another); while they're away,
 the heading ends its group with the rule its last row would have (two
 headings ran together). A click on the arrow
 or its count folds; anywhere else on the heading goes to the workspace,

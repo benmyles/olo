@@ -99,21 +99,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Deskbar's fold arrows: ▸ closed, ▾ open** (Ben, 2026-11-19, with
-  pictures of D0's Deskbar, its folded workspaces' ▼ and an open one's
-  ▲, passing on: "▼ when collapsed and ▲ when expanded is a common
-  accordion convention, especially when the arrow sits on the right …
-  For Deskbar, I'd use ▸ when collapsed and ▾ when expanded. That's the
-  familiar desktop outline convention, including in BeOS. In your
-  second screenshot, the open workspace's triangle would point down
-  toward Phone and Telegram, while the closed workspaces would point
-  right." Be Book: vendor/bebook/BOutlineListView_Overview.md:95; W3C's
-  disclosure pattern). A workspace heading's arrow (`workspace_heading`,
-  `style::arrow_down`) points right while its applications are put
-  away and down once they show, as BOutlineListView's latches do; drawn
-  on whole pixels at every scale; agents' "collapsed"/"expanded" as
-  now. Check Doctor's and Logs' latches ("Fixed (2)") use the same.
-
 - **A Language setting, and Olo in every major language** (Ben,
   2026-11-18: "we should add a language setting and also let's translate
   all olo apps and prefs and ux to support all the major languages
@@ -450,6 +435,16 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Deskbar's fold arrows: ▸ closed, ▾ open** (Ben, 2026-11-19: "For
+  Deskbar, I'd use ▸ when collapsed and ▾ when expanded. That's the
+  familiar desktop outline convention, including in BeOS"). A folded
+  workspace's heading has BOutlineListView's latch now
+  (`style::latch`, as Doctor's "Ignored (1)" has): right while its
+  applications are away, down while they show; the old down/up arrow
+  (`style::arrow_down`) is gone from the kit. The latch's flat side is
+  on whole device pixels at 1.25× and 1.75× too (a fringe there, found
+  on the way). To try: upgrade from Deskbar's tray.
 
 - **Olo Doctor's red dot stays after everything is dealt with** (Ben,
   2026-11-19: "olo doctor still has a red dot even after i've looked at

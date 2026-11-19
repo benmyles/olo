@@ -3669,10 +3669,14 @@ impl Deskbar {
     /// and on the one showing, the arranging commands). A click goes
     /// there; on the workspace showing, the Workspaces menu; the right
     /// button, the heading's menu (`heading_menu`). One that folds
-    /// (`fold`: open, and how many applications) has an arrow before the
-    /// mode, down to show its applications under it and up to put them
-    /// away (`style::arrow_down`), and while they're away how many there
-    /// are before it: the modes stay in one column, the arrows in another.
+    /// (`fold`: open, and how many applications) has a latch before the
+    /// mode, BOutlineListView's (`style::latch`): pointing right while
+    /// its applications are away, down while they show under it (it
+    /// pointed down to show and up to put away, an accordion's way; Ben,
+    /// 2026-11-19: "I'd use ▸ when collapsed and ▾ when expanded … the
+    /// familiar desktop outline convention, including in BeOS"); and
+    /// while they're away how many there are before it: the modes stay
+    /// in one column, the latches in another.
     #[allow(clippy::too_many_arguments)]
     fn workspace_heading(
         &self,
@@ -3741,7 +3745,7 @@ impl Deskbar {
                         let at = expand(fold_r, 2.0);
                         g.paint_quad(olo_kit::quad(style::snap(g, at), px(2.0), style::tint(ground, 0.7), px(0.0), olo_kit::transparent_black(), olo_kit::BorderStyle::Solid));
                     }
-                    style::arrow_down(g, fold_r, shown, ink);
+                    style::latch(g, fold_r, shown, ink);
                     // (Its applications away, the heading ends its group
                     // with the rule its last row would: two headings ran
                     // together.)

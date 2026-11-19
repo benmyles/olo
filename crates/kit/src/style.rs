@@ -999,28 +999,20 @@ pub fn stop_mark(g: &mut Painter, r: Bounds<Pixels>, palette: &Palette) {
 /// pointing right while its group is folded and down while open.
 pub fn latch(g: &mut Painter, r: Bounds<Pixels>, open: bool, color: Hsla) {
     let m = snap_centred(g, r.center(), 8.0, 8.0).center();
-    let at = |x: f32, y: f32| point(m.x + px(x), m.y + px(y));
-    let pts = if open { [at(-4.0, -2.0), at(4.0, -2.0), at(0.0, 2.5)] } else { [at(-2.0, -4.0), at(2.5, 0.0), at(-2.0, 4.0)] };
+    // (Its flat side on a device pixel's edge, its point 4.5 from it: 2
+    // points from the middle fell between pixels at 1.25× and 1.75×, a
+    // pale fringe along it.)
+    let pts = if open {
+        let top = snap_coord(g, m.y - px(2.0));
+        [point(m.x - px(4.0), top), point(m.x + px(4.0), top), point(m.x, top + px(4.5))]
+    } else {
+        let left = snap_coord(g, m.x - px(2.0));
+        [point(left, m.y - px(4.0)), point(left + px(4.5), m.y), point(left, m.y + px(4.0))]
+    };
     let mut path = olo_interface::PathBuilder::fill();
     path.move_to(pts[0]);
     path.line_to(pts[1]);
     path.line_to(pts[2]);
-    path.close();
-    if let Ok(path) = path.build() {
-        g.paint_path(path, color);
-    }
-}
-
-/// A small solid triangle centred in `r`, pointing down (what's under
-/// it can be shown) or up (it can be put away): a section's
-/// disclosure, where a row has no room for a button's frame.
-pub fn arrow_down(g: &mut Painter, r: Bounds<Pixels>, up: bool, color: Hsla) {
-    let m = snap_centred(g, r.center(), 8.0, 8.0).center();
-    let at = |x: f32, y: f32| point(m.x + px(x), m.y + px(if up { -y } else { y }));
-    let mut path = olo_interface::PathBuilder::fill();
-    path.move_to(at(-4.0, -2.0));
-    path.line_to(at(0.0, 2.5));
-    path.line_to(at(4.0, -2.0));
     path.close();
     if let Ok(path) = path.build() {
         g.paint_path(path, color);
