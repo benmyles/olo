@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Calendar: events are dragged among the days
+
+*16:02* — In the month, and in the week's all-day strip, an event is dragged to other days: it keeps its time and its length, where it was stays faint, and where it would go is drawn across its days (here the Conference dragged across a week's end, and Release 2.4 from Thursday to Monday). A moved event stays selected.
+
+![Calendar: events are dragged among the days](2026-11-18/160221-calendar-events-are-dragged-among-the-days.png)
+
 ### Calendar: an event's end is dragged
 
 *15:57* — An event's bottom edge can be dragged to change when it ends: the pointer turns to an up-and-down arrow over the edge, the end follows it by quarter hours with the times shown, and letting go saves it (Undo takes it back).

@@ -107,8 +107,8 @@ something nobody here has is in "Blocked", with what it waits for.
   day (HACKING.md, "Calendar"). Undo and Redo of every change (a
   deletion asks nothing now). Find (⌘F: every calendar shown, from a
   year back to two years on, listed by day from today). An event's
-  end is dragged by its bottom edge (how long it lasts). **Next**:
-  dragging in the month and the whole-day strip. **Then**: invitations (who's coming,
+  end is dragged by its bottom edge (how long it lasts), and events
+  are dragged among the month's days and the whole-day strip. **Next**: invitations (who's coming,
   answering); the Deskbar widget, the palette, the assistant. Reminders are shown
   (`olo-calendar --service`, a session service; Show goes to the
   event). (Its cost

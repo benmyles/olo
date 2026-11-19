@@ -21090,8 +21090,30 @@ by where the event would go, so it's drawn again only as that changes:
 twenty steps of a drag drew 19 frames of 0.77 ms on average (the
 slowest 1.96 ms; release, 2×, `tools/dev/cost`). Tried against the
 demo: Dentist from Tuesday 3 PM to Thursday 10 AM; Monday's Standup an
-hour and a half later, only that one. Not yet: the month's days, the
-whole-day strip.
+hour and a half later, only that one. A move leaves the event
+selected where it went (`moved_to`).
+
+**Dragging among the days** (`Calendar::day_drag`, `DayDrag`; the
+month, `month.rs`, and the week's and the day's whole-day strip,
+`week.rs`). An event pressed there (one that can be written to) is
+dragged to other days: it goes by whole days, keeping the day pressed
+under the pointer (`grab`: the third day of a conference pressed stays
+its third), at the time it has and as long as it is. Where it was is
+drawn faint, and where it would be as its bar with a line round it, in
+the row it was pressed in, across every week it would be in (its words
+where it starts). Let go, it's moved (`day_drag_drop` → `Msg::Move`, as
+among the hours: a repeating event asks which, Undo is "Move"); Escape,
+or let go where it was, and nothing changes. Which day the pointer is
+over is the drawing's own columns and weeks (`State::day_at`, the
+nearest outside them, so the drag is followed out of the view). Forty
+pointer moves across the month drew 9 frames (one a day entered) of
+563 µs on average, the slowest 639 µs; at rest 0 frames (release, 2×,
+`tools/dev/cost`). Tried against the demo: Dentist from Tuesday the
+17th to Friday the 13th and back with Undo; the three days' Conference
+to the first week, and across a week's end (Friday to Sunday, in two
+weeks' rows); Release 2.4 in the strip from Thursday to Monday. Tested:
+`month::tests::the_day_under_the_pointer`. Not yet: from the strip
+down among the hours (a whole day made a time) or back.
 
 **An event's end, dragged** (the same drag, `Drag::end`). An event's
 bottom edge (`GRIP`: five points of it, a third of a short one; the

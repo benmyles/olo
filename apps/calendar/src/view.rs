@@ -103,8 +103,8 @@ pub fn body(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                 v.command("delete-event", cx);
             }
             // (A drag under way is let go of first: the event stays.)
-            "escape" if v.drag.is_some() => {
-                v.drag = None;
+            "escape" if v.drag.is_some() || v.day_drag.is_some() => {
+                (v.drag, v.day_drag) = (None, None);
                 cx.invalidate();
             }
             "escape" if v.selected.is_some() => cx.send(Msg::Select(None)),

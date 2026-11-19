@@ -4996,5 +4996,11 @@
   "title": "Calendar: an event's end is dragged",
   "caption": "An event's bottom edge can be dragged to change when it ends: the pointer turns to an up-and-down arrow over the edge, the end follows it by quarter hours with the times shown, and letting go saves it (Undo takes it back).",
   "image": "2026-11-18/155726-calendar-an-event-s-end-is-dragged.png"
+ },
+ {
+  "time": "2026-11-18T16:02:21",
+  "title": "Calendar: events are dragged among the days",
+  "caption": "In the month, and in the week's all-day strip, an event is dragged to other days: it keeps its time and its length, where it was stays faint, and where it would go is drawn across its days (here the Conference dragged across a week's end, and Release 2.4 from Thursday to Monday). A moved event stays selected.",
+  "image": "2026-11-18/160221-calendar-events-are-dragged-among-the-days.png"
  }
 ]

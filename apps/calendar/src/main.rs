@@ -244,6 +244,25 @@ pub struct Drag {
     pub end: Option<Date>,
 }
 
+/// An event being dragged among the days (the month's, the week's
+/// whole-day strip): it goes by whole days, at the time it has.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DayDrag {
+    pub key: Key,
+    /// Where the press was, in the drawing.
+    pub from: olo_kit::Point<olo_kit::Pixels>,
+    /// How many days after its first the day pressed was.
+    pub grab: i32,
+    /// Its first day, how many days it's on, and the row it's drawn in
+    /// (of its week's, of the strip's).
+    pub was: Date,
+    pub days: i32,
+    pub lane: usize,
+    /// The first day it would have. None until the pointer has gone a
+    /// few points: a click selects, it doesn't move.
+    pub to: Option<Date>,
+}
+
 /// `--show HREF START` among a launch's arguments: the occurrence to show.
 fn to_reveal(args: &[String]) -> Option<(String, jiff::civil::DateTime)> {
     let at = args.iter().position(|a| a == "--show")?;
@@ -286,6 +305,10 @@ pub struct Calendar {
     reveal: Option<(String, jiff::civil::DateTime)>,
     /// An event pressed among the hours, dragged to another time or day.
     pub drag: Option<Drag>,
+    /// An event being dragged among the days.
+    pub day_drag: Option<DayDrag>,
+    /// What the event selected will be, once its move is written.
+    moved_to: Option<Key>,
     /// The changes made here, to take back and make again.
     pub history: olo_kit::undo::History<Change>,
     /// Find: the search field, what's being looked for (empty: nothing),
@@ -396,6 +419,8 @@ impl Calendar {
             selected: None,
             reveal: None,
             drag: None,
+            day_drag: None,
+            moved_to: None,
             history: Default::default(),
             search,
             finding,
@@ -519,8 +544,53 @@ impl Calendar {
         let mut draft = opening.draft;
         let (Ok(new_start), Ok(new_end)) = (draft.start.checked_add(by), draft.end.checked_add(by)) else { return };
         (draft.start, draft.end) = (new_start, new_end);
+        // (An event by itself is told from others by when it starts: the
+        // one selected is this one, when it starts then.)
+        self.moved_to = (self.selected.as_ref() == Some(key) && shown.id.is_none()).then(|| (key.0, key.1.clone(), start));
         self.naming = Some(("Move".to_owned(), olo_kit::undo::Purpose::Do));
         cx.send(Msg::Save(Box::new(editor::Saving { target: opening.target, draft, cal: shown.cal })));
+    }
+
+    /// An event pressed among the days, on `pressed`, where it's drawn in
+    /// row `lane`: it may be dragged to other days (one of a calendar
+    /// that can be written to).
+    pub fn day_drag_start(&mut self, key: &Key, from: olo_kit::Point<olo_kit::Pixels>, pressed: Date, lane: usize) {
+        let Some(s) = self.shown.iter().find(|s| s.key() == *key) else { return };
+        if !self.changeable(key) {
+            return;
+        }
+        let (first, last) = s.days();
+        let days = layout::day_number(last) - layout::day_number(first) + 1;
+        let grab = (layout::day_number(pressed) - layout::day_number(first)).clamp(0, days - 1);
+        self.day_drag = Some(DayDrag { key: key.clone(), from, grab, was: first, days, lane, to: None });
+    }
+
+    /// The pointer moved with it pressed, to `at` in the drawing, over
+    /// `day`: where it would go, drawn again only when that changes.
+    pub fn day_drag_over(&mut self, at: olo_kit::Point<olo_kit::Pixels>, day: Date, cx: &mut Cx<Self>) {
+        let Some(d) = &mut self.day_drag else { return };
+        let far = f32::from(at.x - d.from.x).abs().max(f32::from(at.y - d.from.y).abs()) >= week::DRAG_AFTER;
+        if d.to.is_none() && !far {
+            return;
+        }
+        let to = layout::day_of(layout::day_number(day) - d.grab);
+        if d.to != Some(to) {
+            d.to = Some(to);
+            cx.invalidate();
+        }
+    }
+
+    /// The button let go: dragged to other days, it goes there, at the
+    /// time it has (a change as a move among the hours is).
+    pub fn day_drag_drop(&mut self, cx: &mut Cx<Self>) {
+        let Some(d) = self.day_drag.take() else { return };
+        let Some(to) = d.to else { return };
+        cx.invalidate();
+        let by = layout::day_number(to) - layout::day_number(d.was);
+        let start = self.shown.iter().find(|s| s.key() == d.key).and_then(|s| s.start.checked_add(jiff::Span::new().days(by as i64)).ok());
+        if let (Some(start), true) = (start, by != 0) {
+            cx.send(Msg::Move(d.key, start));
+        }
     }
 
     /// The occurrence made to end at `end` (the person's clock), starting
@@ -1087,10 +1157,11 @@ impl View for Calendar {
                 self.shown_version += 1;
                 self.shown_for = self.generation;
                 // (What was selected and is no longer there isn't selected.)
+                // (One moved while selected: it's selected where it went.)
                 if let Some(key) = &self.selected
                     && !self.shown.iter().any(|s| s.key() == *key)
                 {
-                    self.selected = None;
+                    self.selected = self.moved_to.take().filter(|to| self.shown.iter().any(|s| s.key() == *to));
                 }
                 self.try_reveal();
             }

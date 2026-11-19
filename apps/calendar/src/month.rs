@@ -5,7 +5,7 @@
 //! counted under it ("+2 more": the day itself, clicked).
 
 use jiff::civil::Date;
-use olo_kit::{Bounds, Cx, Element, FontWeight, InteractiveElement as _, MouseButton, MouseDownEvent, Pixels, Styled as _, agent, point, px, size, style, theme};
+use olo_kit::{Bounds, Cx, Element, FontWeight, InteractiveElement as _, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Styled as _, agent, point, px, size, style, theme};
 
 use crate::{Calendar, Key, Mode, Msg, layout, words};
 
@@ -37,6 +37,26 @@ struct State {
     parts: Vec<(Bounds<Pixels>, Part)>,
     /// Where the drawing's corner was when they were noted.
     origin: olo_kit::Point<Pixels>,
+    /// The days' edges across and the weeks' down, and the first day
+    /// (for a drag: which day the pointer is over).
+    xs: Vec<Pixels>,
+    ys: Vec<Pixels>,
+    start: Option<Date>,
+}
+
+impl State {
+    /// The day at `at` (the nearest, outside them), and which of its
+    /// week's rows of events.
+    fn day_at(&self, at: olo_kit::Point<Pixels>) -> Option<(Date, usize)> {
+        let start = self.start?;
+        if self.xs.len() < 2 || self.ys.len() < 2 {
+            return None;
+        }
+        let col = self.xs.windows(2).position(|c| at.x < c[1]).unwrap_or(self.xs.len() - 2);
+        let week = self.ys.windows(2).position(|r| at.y < r[1]).unwrap_or(self.ys.len() - 2);
+        let lane = (f32::from(at.y - self.ys[week] - px(NUMBER)) / LANE).floor().max(0.0) as usize;
+        Some((layout::day_of(layout::day_number(start) + (7 * week + col) as i32), lane))
+    }
 }
 
 pub fn view(cx: &mut Cx<Calendar>) -> Element {
@@ -118,6 +138,8 @@ pub fn view(cx: &mut Cx<Calendar>) -> Element {
                 let r = style::snap(g, Bounds::from_corners(point(left, y), point(right, y + px(BAR))));
                 let chosen = v.selected.as_ref().is_some_and(|key| *key == s.key());
                 let hue = p.hue(s.hue);
+                // (Being dragged to other days: where it was, faint.)
+                let moving = v.day_drag.as_ref().is_some_and(|d| d.to.is_some() && d.key == s.key());
                 let mid = r.center().y;
                 let room = r.size.width - px(2.0 * PAD);
                 // (Its words start where the day's do, whether or not its
@@ -125,9 +147,15 @@ pub fn view(cx: &mut Cx<Calendar>) -> Element {
                 let words_at = xs[piece.from] + px(INSET);
                 if s.bar() || chosen {
                     // On its calendar's colour (lighter, taking no time).
-                    let fill = if s.free && !chosen { olo_theme::mix(hue, p.document_background, 0.45) } else { hue };
+                    let fill = if moving {
+                        olo_theme::mix(hue, p.document_background, 0.7)
+                    } else if s.free && !chosen {
+                        olo_theme::mix(hue, p.document_background, 0.45)
+                    } else {
+                        hue
+                    };
                     style::fill_rect(g, r, style::c(fill));
-                    if chosen {
+                    if chosen && !moving {
                         style::frame_rect(g, r, text);
                     }
                     let ink = style::c(p.ink_on(fill));
@@ -164,10 +192,48 @@ pub fn view(cx: &mut Cx<Calendar>) -> Element {
                 parts.push((r, Part::More(day)));
             }
         }
+        // One being dragged to other days: where it would be, in each week
+        // it would be in, in the row it was pressed in.
+        if let Some(drag) = &v.day_drag
+            && let Some(to) = drag.to
+            && let Some(s) = v.shown.iter().find(|s| s.key() == drag.key)
+        {
+            let from = layout::day_number(to) - layout::day_number(start);
+            let mut said = Some(if s.all_day { s.title.to_string() } else { format!("{} {}", words::time(s.start.time(), v.h24), s.title) });
+            for week in 0..weeks as i32 {
+                let (a, z) = (from.max(7 * week), (from + drag.days - 1).min(7 * week + 6));
+                if a > z {
+                    continue;
+                }
+                let (ca, cz) = ((a - 7 * week) as usize, (z - 7 * week) as usize);
+                let y = ys[week as usize] + px(NUMBER + drag.lane.min(lanes.saturating_sub(1)) as f32 * LANE);
+                let left = xs[ca] + if a > from { px(0.0) } else { px(EDGE) };
+                let right = xs[cz + 1] - if z < from + drag.days - 1 { px(0.0) } else { px(EDGE) };
+                let r = style::snap(g, Bounds::from_corners(point(left, y), point(right, y + px(BAR))));
+                let fill = p.hue(s.hue);
+                style::fill_rect(g, r, style::c(fill));
+                style::frame_rect(g, r, text);
+                // (Its words where it starts: once.)
+                if let Some(said) = said.take() {
+                    style::label_fit(
+                        g,
+                        xs[ca] + px(INSET),
+                        r.center().y,
+                        style::Align::Left,
+                        said,
+                        style::DETAIL_SIZE,
+                        regular.clone(),
+                        style::c(p.ink_on(fill)),
+                        (r.size.width - px(2.0 * PAD)).max(px(0.0)),
+                    );
+                }
+            }
+        }
         let state = g.node_state::<State>();
         (state.parts, state.origin) = (parts, b.origin);
+        (state.xs, state.ys, state.start) = (xs, ys, Some(start));
     })
-    .key_by(|v: &Calendar| style::key((v.cursor, v.today, v.week_start(), v.shown_version, &v.selected, v.h24)))
+    .key_by(|v: &Calendar| style::key((v.cursor, v.today, v.week_start(), v.shown_version, &v.selected, v.h24, v.day_drag.as_ref().and_then(|d| d.to))))
     .size_full()
     .on_mouse_down(
         MouseButton::Left,
@@ -176,6 +242,12 @@ pub fn view(cx: &mut Cx<Calendar>) -> Element {
             let state = cx.node_state::<State>();
             let at = crate::view::in_drawing(e.position, state.origin, now);
             let over = state.parts.iter().rev().find(|(r, _)| r.contains(&at)).map(|(_, part)| part.clone());
+            // An event pressed may be dragged to other days.
+            if let (1, Some(Part::Event(key))) = (e.click_count, &over)
+                && let Some((day, lane)) = state.day_at(at)
+            {
+                v.day_drag_start(key, at, day, lane);
+            }
             match over {
                 // (Twice: opened.)
                 Some(Part::Event(key)) if e.click_count >= 2 => cx.send(Msg::Open(key)),
@@ -194,4 +266,41 @@ pub fn view(cx: &mut Cx<Calendar>) -> Element {
             }
         }),
     )
+    // (An event pressed is dragged to other days, followed out of the
+    // month too, and goes there when the button is let go.)
+    .on_drag_move(cx.listener(|v: &mut Calendar, e: &MouseMoveEvent, cx| {
+        if v.day_drag.is_none() {
+            return;
+        }
+        let now = cx.listener_bounds();
+        let state = cx.node_state::<State>();
+        let at = crate::view::in_drawing(e.position, state.origin, now);
+        if let Some((day, _)) = state.day_at(at) {
+            v.day_drag_over(at, day, cx);
+        }
+    }))
+    .on_window_mouse_up(cx.listener(|v: &mut Calendar, _: &MouseUpEvent, cx| v.day_drag_drop(cx)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The day under the pointer, for a drag: by the days' edges across
+    /// and the weeks' down, the nearest outside them; and which row of
+    /// its week's events.
+    #[test]
+    fn the_day_under_the_pointer() {
+        let xs: Vec<Pixels> = (0..=7).map(|i| px(100.0 * i as f32)).collect();
+        let ys: Vec<Pixels> = (0..=5).map(|i| px(22.0 + 120.0 * i as f32)).collect();
+        let state = State { xs, ys, start: Some(jiff::civil::date(2026, 11, 1)), ..Default::default() };
+        let at = |x: f32, y: f32| state.day_at(point(px(x), px(y))).map(|(day, lane)| (day.to_string(), lane));
+        assert_eq!(at(50.0, 30.0), Some(("2026-11-01".to_owned(), 0)));
+        // (Tuesday the 17th, its third row of events.)
+        assert_eq!(at(250.0, 22.0 + 240.0 + NUMBER + 2.0 * LANE + 3.0), Some(("2026-11-17".to_owned(), 2)));
+        // (Outside: the nearest day.)
+        assert_eq!(at(-40.0, 5000.0).map(|(day, _)| day), Some("2026-11-29".to_owned()));
+        assert_eq!(at(9000.0, -10.0), Some(("2026-11-07".to_owned(), 0)));
+        assert_eq!(State::default().day_at(point(px(1.0), px(1.0))), None);
+    }
 }

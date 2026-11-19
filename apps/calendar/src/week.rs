@@ -28,7 +28,7 @@ const PAD: f32 = 4.0;
 /// An event dragged among the hours goes by quarter hours, once the
 /// pointer has gone this far from where it pressed.
 const STEP: i32 = 15;
-const DRAG_AFTER: f32 = 4.0;
+pub const DRAG_AFTER: f32 = 4.0;
 /// An event's bottom edge, to drag its end by: this much of it (less of
 /// a short one: a third).
 const GRIP: f32 = 5.0;
@@ -81,6 +81,20 @@ fn dragged(v: &mut Calendar, e: &MouseMoveEvent, cx: &mut Cx<Calendar>) {
         }
         cx.invalidate();
     }
+}
+
+/// The pointer moved with an event of the whole-day strip pressed: the
+/// day it's over.
+fn day_dragged(v: &mut Calendar, e: &MouseMoveEvent, cx: &mut Cx<Calendar>) {
+    if v.day_drag.is_none() {
+        return;
+    }
+    let now = cx.listener_bounds();
+    let state = cx.node_state::<State>();
+    let at = crate::view::in_drawing(e.position, state.origin, now);
+    let (Some(first), true) = (state.first, state.cols.len() >= 2) else { return };
+    let col = state.cols.windows(2).position(|c| at.x < c[1]).unwrap_or(state.cols.len() - 2);
+    v.day_drag_over(at, layout::day_of(layout::day_number(first) + col as i32), cx);
 }
 
 /// The start a dragged event takes with its top `minutes` into the day:
@@ -158,6 +172,16 @@ fn select(v: &mut Calendar, e: &MouseDownEvent, hours: bool, cx: &mut Cx<Calenda
         let end = state.grips.iter().find(|(grip, k, _)| k == key && grip.contains(&at)).map(|(.., day)| *day);
         let grab = if end.is_some() { 0.0 } else { f32::from(at.y - r.top()) / HOUR * 60.0 };
         v.drag = Some(Drag { key: key.clone(), from: at, grab, lasts, was: (s.start.date(), minutes(s.start)), to: None, end });
+    }
+    // One pressed in the whole-day strip, to other days.
+    if let (false, 1, Some(Part::Event(key))) = (hours, e.click_count, &over)
+        && let Some(first) = state.first
+        && state.cols.len() >= 2
+        && let Some((r, _)) = state.parts.iter().rev().find(|(r, part)| r.contains(&at) && matches!(part, Part::Event(k) if k == key))
+    {
+        let col = state.cols.windows(2).position(|c| at.x < c[1]).unwrap_or(state.cols.len() - 2);
+        let lane = (f32::from(r.top() - state.origin.y - px(NAMES)) / LANE).round().max(0.0) as usize;
+        v.day_drag_start(key, at, layout::day_of(layout::day_number(first) + col as i32), lane);
     }
     match over {
         Some(Part::Event(key)) if e.click_count >= 2 => cx.send(Msg::Open(key)),
@@ -248,9 +272,17 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                 let r = style::snap(g, Bounds::from_corners(point(left, y), point(right, y + px(BAR))));
                 let chosen = v.selected.as_ref().is_some_and(|key| *key == s.key());
                 let hue = p.hue(s.hue);
-                let fill = if s.free && !chosen { olo_theme::mix(hue, p.document_background, 0.45) } else { hue };
+                // (Being dragged to other days: where it was, faint.)
+                let moving = v.day_drag.as_ref().is_some_and(|d| d.to.is_some() && d.key == s.key());
+                let fill = if moving {
+                    olo_theme::mix(hue, p.document_background, 0.7)
+                } else if s.free && !chosen {
+                    olo_theme::mix(hue, p.document_background, 0.45)
+                } else {
+                    hue
+                };
                 style::fill_rect(g, r, style::c(fill));
-                if chosen {
+                if chosen && !moving {
                     style::frame_rect(g, r, text);
                 }
                 let said = if s.all_day { s.title.to_string() } else { format!("{} {}", words::time(s.start.time(), v.h24), s.title) };
@@ -274,16 +306,41 @@ pub fn view(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
                 let y = top + px((strip - 1) as f32 * LANE + 1.0 + BAR / 2.0);
                 style::label(g, xs[col] + px(EDGE + PAD), y, style::Align::Left, format!("+{more} more"), style::DETAIL_SIZE, regular.clone(), quiet);
             }
+            // One being dragged to other days: where it would be, on those
+            // of them that show.
+            if let Some(drag) = &v.day_drag
+                && let Some(to) = drag.to
+                && let Some(s) = v.shown.iter().find(|s| s.key() == drag.key)
+            {
+                let from = layout::day_number(to) - layout::day_number(first);
+                let (a, z) = (from.max(0), (from + drag.days - 1).min(n as i32 - 1));
+                if a <= z {
+                    let y = top + px(drag.lane.min(strip.saturating_sub(1)) as f32 * LANE + 1.0);
+                    let left = xs[a as usize] + if a > from { px(0.0) } else { px(EDGE) };
+                    let right = xs[z as usize + 1] - if z < from + drag.days - 1 { px(0.0) } else { px(EDGE) };
+                    let r = style::snap(g, Bounds::from_corners(point(left, y), point(right, y + px(BAR))));
+                    let fill = p.hue(s.hue);
+                    style::fill_rect(g, r, style::c(fill));
+                    style::frame_rect(g, r, text);
+                    let said = if s.all_day { s.title.to_string() } else { format!("{} {}", words::time(s.start.time(), v.h24), s.title) };
+                    let x = xs[a as usize] + px(EDGE + PAD);
+                    style::label_fit(g, x, r.center().y, style::Align::Left, said, style::DETAIL_SIZE, regular.clone(), style::c(p.ink_on(fill)), (r.size.width - px(2.0 * PAD)).max(px(0.0)));
+                }
+            }
             // A line under it all, heavier: the hours start here.
             style::hline_above(g, b.left(), b.right(), b.bottom(), style::c(olo_theme::mix(p.document_text, p.document_background, 0.7)));
             let state = g.node_state::<State>();
             (state.parts, state.origin) = (parts, b.origin);
+            (state.cols, state.first) = (xs, Some(first));
         })
-        .key_by(key)
+        .key_by(move |v: &Calendar| style::key((key(v), v.day_drag.as_ref().and_then(|d| d.to))))
         .w_full()
         .h(px(head))
         .flex_shrink_0()
-        .on_mouse_down(MouseButton::Left, cx.listener(|v: &mut Calendar, e: &MouseDownEvent, cx| select(v, e, false, cx)));
+        .on_mouse_down(MouseButton::Left, cx.listener(|v: &mut Calendar, e: &MouseDownEvent, cx| select(v, e, false, cx)))
+        // (One of its events pressed is dragged to other days.)
+        .on_drag_move(cx.listener(day_dragged))
+        .on_window_mouse_up(cx.listener(|v: &mut Calendar, _: &MouseUpEvent, cx| v.day_drag_drop(cx)));
     // The hours.
     let hours = cx
         .canvas(|v: &Calendar, g, b| {
