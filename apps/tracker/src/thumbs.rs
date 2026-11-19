@@ -14,11 +14,11 @@
 //! exact device size asked for (a texture pixel a device pixel: never
 //! resampled as it's drawn).
 
-use olo_sync::Mutex;
+use olo_sync::{Condvar, Mutex};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::{Arc, Condvar, OnceLock},
+    sync::{Arc, OnceLock},
     time::SystemTime,
 };
 

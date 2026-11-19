@@ -142,7 +142,11 @@ like pixel alignment is.
    `RUST_LIB_BACKTRACE=1`), so tests, test sessions, the fuzzers on
    debug builds (`olo-fuzz sweep --debug`) and `wm-sweep` find it
    before anyone hangs; release builds get std's
-   locks as they are. (It found Smithay's keyboard taking its keymap's
+   locks as they are. (So a `Condvar` is `olo_sync`'s too: std's can't
+   wait on the checker's guard, which only a debug build shows. Run a
+   crate's tests in debug, not only `--release`: Tracker's thumbnails
+   built in release for two days with a std `Condvar` and wouldn't
+   build in debug.) (It found Smithay's keyboard taking its keymap's
    lock and its state's in both orders.) `tools/dev/lockcheck` looks
    without running: clippy's lints for guards held through a `match`
    or past their last use, `lockcheck lockbud`, a static analysis
