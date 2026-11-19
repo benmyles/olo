@@ -6099,15 +6099,18 @@ there, the rest scrolling sideways.
 layout in turn, as a person's tiling puts it (`Arrange`), and reviews
 it there, every tab, at the session's first scale: a least size more
 than a layout's tile is an error, and so is everything the review
-finds. Run it on the smallest screen (`--screen 2560x1600 --scales 2`)
-and on the person's (`--screen 3200x2000 --scales 2`, `--screen
-5120x2880 --scales 2.5`, `--screen 1920x1080 --scales 1`). `--shots
-DIR` keeps a picture of each window in each layout and tab
-(DIR/APP-LAYOUT[-TAB].png): look at them, as a designer would, since
-the review finds what overlaps or is cut, not what's crowded or gone
-(Disk Usage's rings were a dot in a third, and nothing said so). A
-tab that opens a menu (Telegram's More) has it closed (Escape) before
-the next.
+finds. Run it on the smallest screen and on the person's, each at its
+own scale: `--screens 2560x1600@2,$(tools/dev/ui-lint
+--person-screens)` (`--person-screens` reads their screens' sizes and
+scales from their session's app_server, `outputs`, and asks it nothing
+else). The pre-push hook runs it so, after the ordinary lint, on the
+apps the push changed. `--shots DIR` keeps a picture of each window in
+each layout and tab (DIR/APP-LAYOUT[-TAB].png, in a folder for each
+screen with `--screens`): look at them, as a designer would, since the
+review finds what overlaps or is cut, not what's crowded or gone (Disk
+Usage's rings were a dot in a third, and nothing said so). A tab that
+opens a menu (Telegram's More) has it closed (Escape) before the
+next.
 
 ### The layout lint (`olo_kit::lint`, `cargo ui-lint`)
 
@@ -6146,8 +6149,9 @@ tabs clicked: for indexes made from what windows show (Preferences'
 settings).
 
 **Every app, live** (`tools/dev/ui-lint [APP…] [--review] [--scales …]
-[--screen WxH] [--jobs N] [--no-cache] [--tiles [--shots DIR]]`; for
-`--tiles`, "Tiling layouts" above): every app at once, each in a
+[--screen WxH | --screens WxH@S,…] [--jobs N] [--no-cache] [--tiles
+[--shots DIR]]`; for `--tiles`, "Tiling layouts" above): every app at
+once (on each of `--screens` in turn, each at its own scale), each in a
 headless session of its own with a copy of the made-up home and its own
 sound server, three quarters of the processors' worth at a time (20 s
 for all of them on the ThinkPad, from 5 min 43 s one by one); the look
@@ -6166,7 +6170,9 @@ above). `tsession review` asks again the same way. An app
 whose build and lint are as when it last came out clean isn't run
 again (`~/.cache/olo-dev/ui-lint.json`: its binary's, app_server's and
 the fake sound server's size, time and inode, the lint's scripts, the
-screen, scales and --review); one with errors always is. Each Olo app
+screen, scales and --review; one entry for each app and way of running
+it, so the hook's runs on several screens don't put out each other's);
+one with errors always is. Each Olo app
 with a window opened in a headless session of its own (a MacBook's screen, 3024 × 1964 at 2×, or `--screen`'s:
 run it at the screen you're on too, and at 2560 × 1600, 1280 × 800
 points), a made-up home from `fixture-home`, its own D-Bus,
@@ -6195,7 +6201,8 @@ cargo says: `tools/hooks/lint-covers`; an app it doesn't draw, a daemon
 or the docs waits for nothing), runs `cargo ui-lint`;
 the pre-push hook runs `tools/dev/ui-lint` on the apps the push changed
 (all of them when the kits, or what they're built on, did), after a release build of the
-workspace, and neither when none of them has a window the lint opens.
+workspace, then again tiled (`--tiles`) on the smallest screen and the
+person's, and neither when none of them has a window the lint opens.
 The build reads the working tree, so the push stops at once, saying
 why, when that isn't what's pushed: changes not committed, or another
 commit checked out (edits begun after a commit once failed the push of

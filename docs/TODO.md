@@ -13,53 +13,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-- **Every app right in every tiling layout** (Ben, 2026-11-19, with a
-  picture of Calendar tiled in a quarter, its date, search field and
-  assistant's heading run together: "the calendar layout is breaking in
-  quarter mode. please add a standing rule to CLAUDE.md that you should
-  review all apps zoomed, horizontal half, vertical half, quarter,
-  vertical third, horizontal third to ensure that they adapt and render
-  appropriately in all those tiling configurations for a great out of
-  the box tiling experience in all olo apps/prefs. floating only windows
-  are excepted. if you need to improve the kit to better adapt to these
-  sizes/layouts do that too. and also improve the lints to check these
-  sizes/layouts and catch stuff like this."). The rule is in CLAUDE.md
-  and HACKING ("Tiling layouts"); the live lint tiles each window into
-  each layout and reviews it there (`tools/dev/ui-lint --tiles`, with
-  `--shots` for pictures). On the smallest screen it finds 352 errors:
-  12 apps' least sizes are bigger than a third (Calendar, Weather, OS
-  Updates, kache, Passwords, Phone, Telegram, Disk Usage, Doctor, Logs,
-  Activity Monitor, Viewer), Calendar's and Weather's views are cut or
-  piled up inside the sizes they take, and the pictures show more: Disk
-  Usage's rings a dot in a third, Logs' and Phone's lists with no rows
-  in a horizontal third, Telegram's and Phone's conversations strips
-  beside their lists, Passwords' welcome cut off in a short window,
-  kache's and Weather's cards cut off, Doctor's and Updates' Fix and
-  Update buttons gone in a third. Done: the kit's side panes give way
-  and show one at a time in a narrow window, with a back arrow
-  (`SidePane::panes`), its empty state wraps, a short scroll bar's
-  arrows fit; Calendar passes on the smallest screen and the person's
-  three (its columns give way and come in front, its toolbar folds, its
-  tabs fold into a pop-up in a short window, its month scrolls); Phone
-  and Telegram show one pane at a time in a narrow window (Phone's music
-  box gives way in a short one); Weather (its places and assistant give
-  way and come in front, its cards reflow, a short forecast scrolls as
-  one); kache (its sidebar gives way to a menu of its sections, cards
-  reflow, buttons go under its title, Settings in one column); Doctor
-  (its Choose links over its buttons where narrow, `chosen::bar_within`;
-  its summary wraps, or one line where short); OS Updates (its sidebar
-  gives way to a section menu, each section's details go under its list
-  or give way, its filter menus wrap into rows, its Choose links fold
-  into a pull-down; the kit's `FilterBar` and `chosen::bar_within` do the
-  wrapping and folding); Log Viewer (its detail gives way in a short
-  window, least size 400 × 220); Activity Monitor (a sections menu
-  where its sidebar gives way; Codex subagent), Disk Usage (rings over
-  the list where narrow, the Collector folding where short; Codex
-  subagent), Passwords (sources into a menu, the items and an item one
-  at a time where narrow, its welcome without its picture where short).
-  Viewer (a PDF window 400 wide, its tools folding into a menu; Codex
-  subagent). To do: the pre-push hook runs `--tiles` too, on the
-  smallest screen and the person's.
 - **Themes: one list (Classic, Platinum, BeOS and every scheme), each
   perfect, with icons of its own, Customize…, and a wallpaper of its
   own** (Ben, 2026-11-17: "the split between themes and colors doesn't
@@ -469,6 +422,58 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Every app right in every tiling layout** (Ben, 2026-11-19, with a
+  picture of Calendar tiled in a quarter, its date, search field and
+  assistant's heading run together: "the calendar layout is breaking in
+  quarter mode. please add a standing rule to CLAUDE.md that you should
+  review all apps zoomed, horizontal half, vertical half, quarter,
+  vertical third, horizontal third to ensure that they adapt and render
+  appropriately in all those tiling configurations for a great out of
+  the box tiling experience in all olo apps/prefs. floating only windows
+  are excepted. if you need to improve the kit to better adapt to these
+  sizes/layouts do that too. and also improve the lints to check these
+  sizes/layouts and catch stuff like this."). The rule is in CLAUDE.md
+  and HACKING ("Tiling layouts"); the live lint tiles each window into
+  each layout and reviews it there (`tools/dev/ui-lint --tiles`, with
+  `--shots` for pictures). On the smallest screen it finds 352 errors:
+  12 apps' least sizes are bigger than a third (Calendar, Weather, OS
+  Updates, kache, Passwords, Phone, Telegram, Disk Usage, Doctor, Logs,
+  Activity Monitor, Viewer), Calendar's and Weather's views are cut or
+  piled up inside the sizes they take, and the pictures show more: Disk
+  Usage's rings a dot in a third, Logs' and Phone's lists with no rows
+  in a horizontal third, Telegram's and Phone's conversations strips
+  beside their lists, Passwords' welcome cut off in a short window,
+  kache's and Weather's cards cut off, Doctor's and Updates' Fix and
+  Update buttons gone in a third. Done: the kit's side panes give way
+  and show one at a time in a narrow window, with a back arrow
+  (`SidePane::panes`), its empty state wraps, a short scroll bar's
+  arrows fit; Calendar passes on the smallest screen and the person's
+  three (its columns give way and come in front, its toolbar folds, its
+  tabs fold into a pop-up in a short window, its month scrolls); Phone
+  and Telegram show one pane at a time in a narrow window (Phone's music
+  box gives way in a short one); Weather (its places and assistant give
+  way and come in front, its cards reflow, a short forecast scrolls as
+  one); kache (its sidebar gives way to a menu of its sections, cards
+  reflow, buttons go under its title, Settings in one column); Doctor
+  (its Choose links over its buttons where narrow, `chosen::bar_within`;
+  its summary wraps, or one line where short); OS Updates (its sidebar
+  gives way to a section menu, each section's details go under its list
+  or give way, its filter menus wrap into rows, its Choose links fold
+  into a pull-down; the kit's `FilterBar` and `chosen::bar_within` do the
+  wrapping and folding); Log Viewer (its detail gives way in a short
+  window, least size 400 × 220); Activity Monitor (a sections menu
+  where its sidebar gives way; Codex subagent), Disk Usage (rings over
+  the list where narrow, the Collector folding where short; Codex
+  subagent), Passwords (sources into a menu, the items and an item one
+  at a time where narrow, its welcome without its picture where short).
+  Viewer (a PDF window 400 wide, its tools folding into a menu; Codex
+  subagent). Every app is clean tiled into each layout on the smallest
+  screen and the person's three (45 apps on 4 screens, 56.5 s), and
+  the pre-push hook keeps it so: it lints what a push changed tiled too,
+  on those screens (`ui-lint --tiles --screens`, the person's read from
+  their session). To try: upgrade from Deskbar's tray, then tile any
+  app into a half, a quarter or a third.
 
 - **Deskbar's fold arrows: ▸ closed, ▾ open** (Ben, 2026-11-19: "For
   Deskbar, I'd use ▸ when collapsed and ▾ when expanded. That's the
