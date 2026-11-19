@@ -20,8 +20,11 @@ looking at, with a reproduction and a patch that checked out.
 
 ## When
 
-- You're unsure why something goes wrong, and a first look (the logs,
-  the code on the path) hasn't shown it.
+- You're unsure why something goes wrong, and a quick first look (the
+  logs, the code on the path: minutes, not an hour) hasn't shown it.
+  Start it then, before forming your own theories, not once you're
+  stuck (2026-11-19: "if you're stuck or having trouble ask astra 6.2
+  for help", and CLAUDE.md, "A bug you can't see at once").
 - The problem is complex: several programs, protocols or threads lie
   between the cause and what's seen; or your first theories didn't hold.
 - It happens only on the person's real session (their hardware, their

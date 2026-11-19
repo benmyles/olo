@@ -151,18 +151,24 @@ are universal and non-negotiable:
   The one exception, and use it freely: a second investigator for
   debugging and root-causing, with the `olo-debug-help` skill
   (`tools/dev/codex-help BRIEF.md`: a headless Codex, gpt-6.2-astra at
-  its highest effort, approving its own steps). Whenever you're unsure
-  of a cause, or a problem is complex (it spans several programs, it
-  only happens on the person's real session, your first theories
-  didn't hold), write the brief and start it early, and keep working
-  on your own line meanwhile: two brains are better than one. It looks
-  and reports; you check what it found and do the work. The other
+  its highest effort, approving its own steps), started as soon as a
+  bug's cause isn't plain (below), while you keep working on your own
+  line: two brains are better than one. It looks and reports; you
+  check what it found and do the work. The other
   exception: `tools/dev/codex-look`, the second look at every change's
   pictures (above).
-- **Root-cause every problem; never work around it.** (Unsure of a
-  cause, or it's a hard one? Start the `olo-debug-help` skill's helper
-  alongside your own digging: it found in an hour what a day of
-  reading hadn't, 2026-11-18.) Whenever something
+- **A bug you can't see at once gets a second investigator at once.**
+  If a quick first look (the logs, the code on its path: minutes, not
+  an hour) hasn't shown you the cause, start the `olo-debug-help`
+  helper right then, before your own theories: don't wait to be stuck,
+  to have circled, or to have ruled things out first (say in the brief
+  what you've seen so far, however little). Then keep digging on your
+  own line while it works, and check what it brings back. A flaky
+  test, a hang, a race, anything spanning programs or only on the
+  person's session: always. It found in an hour what a day of reading
+  hadn't (2026-11-18); "if you're stuck or having trouble ask astra
+  6.2 for help" (2026-11-19).
+- **Root-cause every problem; never work around it.** Whenever something
   goes wrong (a hang, a crash, a slow step, a flaky test, a tool that
   misbehaves), find why it happened and fix that, so it can't happen
   again: in Olo, in its tools, or in the tool itself (fork it if need
