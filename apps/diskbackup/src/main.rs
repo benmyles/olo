@@ -43,8 +43,9 @@
 //!   validated fast once it's made.
 //! - `--erase-all --yes`: every backup there deleted, to start fresh
 //!   (File ▸ Erase All Backups…).
-//! - `--set KEY=VALUE…`: `enabled`, `automatic`, `battery`, `deskbar`
-//!   (on/off; `automatic` off: only when asked, `--now`), `priority`
+//! - `--set KEY=VALUE…`: `enabled`, `automatic`, `battery`, `wired`,
+//!   `deskbar` (on/off; `automatic` off: only when asked, `--now`;
+//!   `wired` on: only while connected to Ethernet), `priority`
 //!   (`idle`, `low` or `normal`), `every`
 //!   (minutes), `upload`, `download` (KB/s, 0 for no limit), `paths`
 //!   (comma-separated), `exclude` (a pattern, added), `groups`
@@ -213,7 +214,12 @@ fn status(json: bool) {
     println!(
         "  every {} min; {}; up {}, down {}; {} snapshots (keeping {} hourly, {} daily, {} weekly, {} monthly)",
         settings.every_minutes,
-        if settings.on_battery { "on battery too" } else { "not on battery" },
+        match (settings.on_battery, settings.wired_only) {
+            (true, false) => "on battery too",
+            (false, false) => "not on battery",
+            (true, true) => "on battery too, only on Ethernet",
+            (false, true) => "not on battery, only on Ethernet",
+        },
         limit(settings.upload_kbs),
         limit(settings.download_kbs),
         state.snapshots,
@@ -590,6 +596,7 @@ fn set(pairs: &[String]) -> Result<(), String> {
         match k {
             "enabled" => s.enabled = flag()?,
             "battery" => s.on_battery = flag()?,
+            "wired" => s.wired_only = flag()?,
             "automatic" => s.automatic = flag()?,
             "priority" => {
                 s.priority = match v {
@@ -610,7 +617,7 @@ fn set(pairs: &[String]) -> Result<(), String> {
             "daily" => s.keep.daily = number()?.min(u32::MAX as u64) as u32,
             "weekly" => s.keep.weekly = number()?.min(u32::MAX as u64) as u32,
             "monthly" => s.keep.monthly = number()?.min(u32::MAX as u64) as u32,
-            _ => return Err(format!("{k}: enabled, battery, deskbar, every, upload, download, paths, exclude, groups, hourly, daily, weekly or monthly")),
+            _ => return Err(format!("{k}: enabled, battery, wired, deskbar, every, upload, download, paths, exclude, groups, hourly, daily, weekly or monthly")),
         }
     }
     s.save().map_err(|e| e.to_string())

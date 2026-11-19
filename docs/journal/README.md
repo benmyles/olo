@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-19
 
+### DiskBackup: only when connected to Ethernet
+
+*01:23* — Schedule ▸ When to Back Up gains "Only when connected to Ethernet" under the battery's. Ticked, nothing is backed up without a wired connection; the window says "Waiting for Ethernet", and a backup under way when the cable comes out goes on once it's back.
+
+![DiskBackup: only when connected to Ethernet](2026-11-19/012352-diskbackup-only-when-connected-to-ethernet.png)
+
 ### Deskbar: other workspaces start collapsed
 
 *01:10* — With Preferences ▸ Deskbar ▸ "Other workspaces’ applications start collapsed", every Deskbar keeps open the workspace each display shows; each other one is its heading, how many applications it has and an arrow that shows them. Two displays' Deskbars.

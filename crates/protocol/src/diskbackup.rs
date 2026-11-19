@@ -80,6 +80,14 @@ pub struct Settings {
     pub download_kbs: u64,
     /// Back up on battery too (else it waits for power).
     pub on_battery: bool,
+    /// Back up only while a wired Ethernet port is connected
+    /// (`olo_net::wired`): not over Wi-Fi or a phone's data. Off at first
+    /// (Ben, 2026-11-19: "add an option to diskbackup next to "[ ] Also
+    /// when running on battery" to be "[ ] Only when connected to
+    /// ethernet" default unchecked (and make it work of course)"). A
+    /// backup under way when the wire comes out stops, keeping its place,
+    /// and goes on once it's back.
+    pub wired_only: bool,
     /// How much a backup gives way to the person's own work (the CPU's and
     /// the disks' priority).
     pub priority: Priority,
@@ -106,6 +114,7 @@ impl Default for Settings {
             upload_kbs: 0,
             download_kbs: 0,
             on_battery: true,
+            wired_only: false,
             priority: Priority::Idle,
             one_file_system: true,
             key_in_passwords: false,

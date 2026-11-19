@@ -115,6 +115,12 @@ static RESTART: AtomicBool = AtomicBool::new(false);
 static UPGRADE: AtomicBool = AtomicBool::new(false);
 /// Erasing every backup: let finish before the upgrade, not stopped.
 static ERASING: AtomicBool = AtomicBool::new(false);
+/// A backup under way (`once`).
+static BACKING_UP: AtomicBool = AtomicBool::new(false);
+/// Only on a wire (`Settings::wired_only`), and it came out while a backup
+/// was under way: it stopped, keeping its place, not to be said as one
+/// that failed; it goes on once there's a wire again.
+static WIRE_GONE: AtomicBool = AtomicBool::new(false);
 
 /// What the new version goes on with (an upgrade stopped it, or it was
 /// asked and not done yet).
@@ -385,8 +391,17 @@ pub fn run() -> ExitCode {
     // that diskbackup will seamlessly start using the new network and not
     // hang or error"; what's under way goes on by itself: the Drive's).
     {
-        let tx = Mutex::new(tx.clone());
+        let (tx, cancel) = (Mutex::new(tx.clone()), cancel.clone());
         olo_net::on_change(move || {
+            // Only on a wire, and it came out: the backup under way stops
+            // (its place kept) rather than go on over Wi-Fi or a phone's
+            // data; it goes on once the wire's back (`WIRE_GONE`).
+            if BACKING_UP.load(Relaxed) && !olo_net::wired() && Settings::load().wired_only {
+                tracing::info!("diskbackup: the wire came out: the backup stops until it's back");
+                WIRE_GONE.store(true, Relaxed);
+                cancel.store(true, Relaxed);
+                olo_net::nudge();
+            }
             let _ = tx.lock().map(|t| t.send(Event::Network));
         });
     }
@@ -648,6 +663,11 @@ pub fn run() -> ExitCode {
             cancel.store(false, Relaxed);
             tidy(&settings, &mut st, &mut open, &cancel, &mut forgotten, Doing::Pruning);
         }
+        // Stopped as the wire came out: on with it once one's back (it
+        // waits for one first, `ready`).
+        if WIRE_GONE.swap(false, Relaxed) {
+            asked.now = true;
+        }
         save(&st, forgotten, &kept_target);
     }
     ExitCode::SUCCESS
@@ -663,6 +683,9 @@ fn ready(s: &Settings) -> Result<(), String> {
     }
     if !s.on_battery && on_battery() {
         return Err("on battery: it waits for power".into());
+    }
+    if s.wired_only && !olo_net::wired() {
+        return Err("no wired network: it waits for one".into());
     }
     if matches!(s.target, Target::GoogleDrive { .. }) && !olo_net::online() {
         return Err("no network: it goes on once there’s one".into());
@@ -765,7 +788,9 @@ fn reporting<T>(st: &mut State, doing: Doing, progress: &Progress, f: impl FnOnc
 /// finished.
 fn once(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limits: &Limits, cancel: &AtomicBool, forgotten: &mut u32) -> bool {
     let progress = Progress::default();
+    BACKING_UP.store(true, Relaxed);
     let result = reporting(st, Doing::BackingUp, &progress, || back_up(settings, open, limits, cancel, &progress));
+    BACKING_UP.store(false, Relaxed);
     if result.is_err() {
         // What it got through, said (kept as an unfinished snapshot); then
         // opened again next time: the index as the store has it.
@@ -777,6 +802,14 @@ fn once(settings: &Settings, st: &mut State, open: &mut Option<Opened>, limits: 
     st.unfinished = unfinished();
     let time = now();
     let ok = result.is_ok();
+    // Stopped as the wire came out (only on a wire): no stop, said; it
+    // goes on once the wire's back.
+    if !ok && WIRE_GONE.load(Relaxed) {
+        st.doing = Doing::Idle;
+        st.progress = None;
+        let _ = st.save();
+        return false;
+    }
     // Stopped for an upgrade: no stop, said; the new version goes on.
     if !ok && UPGRADE.load(Relaxed) {
         resume(|r| r.back_up = true);
@@ -1357,4 +1390,22 @@ fn listen(tx: mpsc::Sender<Event>, cancel: Arc<AtomicBool>) {
             let _ = (&conn).write_all(format!("{}\n", serde_json::to_string(&reply).unwrap_or_default()).as_bytes());
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use olo_protocol::diskbackup::{Settings, Target};
+
+    #[test]
+    fn only_on_ethernet_waits_for_a_wire() {
+        // (On battery or not: not what's tried here.)
+        let s = Settings { enabled: true, target: Target::Folder { path: "/nowhere".into() }, on_battery: true, wired_only: true, ..Settings::default() };
+        olo_net::pretend_wired(false);
+        assert_eq!(super::ready(&s), Err("no wired network: it waits for one".to_owned()));
+        olo_net::pretend_wired(true);
+        assert_eq!(super::ready(&s), Ok(()));
+        // Off (as it starts), a wire or not doesn't matter.
+        olo_net::pretend_wired(false);
+        assert_eq!(super::ready(&Settings { wired_only: false, ..s }), Ok(()));
+    }
 }

@@ -21295,7 +21295,7 @@ there; Passwords keeps it as well (the app, next). Command line:
 `--keep-key` (the key kept in Passwords, as Keep Key in Passwords does:
 Olo Doctor's fix), `--snapshots`, `--restore SNAPSHOT PATH [TO]` (a shared lock, waiting
 for a tidy under way), `--tidy` (asked of the service if it runs, else
-done there), `--set KEY=VALUE…` (enabled, battery, every, upload,
+done there), `--set KEY=VALUE…` (enabled, battery, wired, every, upload,
 download, paths, exclude, groups, hourly, daily, weekly, monthly),
 `--groups`, `--delete SNAPSHOT…` (an id's start is enough; `unfinished`
 the one that didn't finish), `--validate [--full] SNAPSHOT…` (`latest`,
@@ -21304,7 +21304,30 @@ the one that didn't finish), `--validate [--full] SNAPSHOT…` (`latest`,
 priority=idle|low|normal`; `--snapshots` says how each was last checked,
 and lists the unfinished ones. For
 tests, `OLO_DISKBACKUP_DIR` keeps its settings, state and
-socket apart and `OLO_DISKBACKUP_KEY` gives the key. Checked so (a
+socket apart and `OLO_DISKBACKUP_KEY` gives the key.
+
+**Only when connected to Ethernet** (Ben, 2026-11-19: "add an option to
+diskbackup next to "[ ] Also when running on battery" to be "[ ] Only
+when connected to ethernet" default unchecked (and make it work of
+course)"): Schedule ▸ When to Back Up, under the battery's
+(`Settings::wired_only`, `--set wired=on`; off at first). Ticked,
+nothing is backed up (automatically or asked, tidied or checked) while
+no wired Ethernet port is connected (`olo_net::wired`: one up, with a
+carrier and an address a network gave it; a dock's or an adapter's
+counts, Wi-Fi, a mobile modem, a bridge, a container's, a VPN and a
+phone sharing its data over USB don't, `wired_port`; known from the
+kernel's news as `online` is, a VPN over the wire counting as the
+wire). The service waits, "Waiting for Ethernet" in the window, and the
+network's next change wakes it (no polling). A backup under way when
+the wire comes out stops (its place kept, as Stop's, not said as one
+that failed: `WIRE_GONE`) and goes on once the wire's back; on battery
+the one under way finishes, as before. Tried: the release service in a
+network namespace of its own (`unshare -rn`: only loopback) waited
+("no wired network: it waits for one"); here, on the dock's wire, it
+didn't. `olo_net`'s `wired_port` is tried on a stand-in sysfs (a dock's
+and a laptop's port wired; Wi-Fi, a modem, a bridge, a container's
+pair, a VPN, RNDIS and Apple's tethering not), the service's gate with
+`olo_net::pretend_wired`. Checked so (a
 sandbox HOME, a folder target): set up, the first backup at once (9
 files, node_modules left out), a change and Back Up Now (1 changed,
 nothing new), the older version restored, 5 MB new at a 500 KB/s upload

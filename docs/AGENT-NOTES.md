@@ -424,6 +424,28 @@ Each note: what to do, then why (what happened), then how to apply it.
   `y` above or below it (the scroll view's band). Filter by the
   window's height before saying what's on screen.
 
+### DiskBackup's window in a state of your choosing
+
+`OLO_DISKBACKUP_DIR=DIR olo-diskbackup` (in a test session) reads its
+settings from `DIR/diskbackup-settings.json` and what the service is
+doing from `DIR/olo-diskbackup.json`, so a window in any state needs no
+service: write both (the state's `pid` a process of yours that's alive,
+the app's own will do: with 0, or one that's gone, the window says
+"DiskBackup isn't running"). A test session runs no DiskBackup service
+(it's one of the real session's), so nothing there backs anything up.
+For the service itself, point HOME, every XDG folder and
+`OLO_DISKBACKUP_DIR` at scratch and give `OLO_DISKBACKUP_KEY` (64 hex):
+`--set-up-folder` keeps its key in the login keyring, so don't run it
+in a test.
+
+### A program with no network, without root
+
+`unshare -rn PROGRAM` runs it in a network of its own with only
+loopback (a user namespace: no root needed): no way out, no wire, no
+Wi-Fi, as its netlink sees it (`/sys/class/net` still lists this
+computer's). DiskBackup's "Only when connected to Ethernet" was tried
+so (2026-11-19).
+
 ### `/proc/PID/environ` is what a program was started with
 
 It never changes while the program runs (not when the program sets a

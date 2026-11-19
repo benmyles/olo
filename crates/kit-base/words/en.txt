@@ -682,6 +682,7 @@ Only on battery power
 Only the latest of the same notification
 Only when I choose Sync Now
 Only when I click Back Up Now
+Only when connected to Ethernet
 Only when the computer is idle
 Open Olo Doctor…
 Open Phone

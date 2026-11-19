@@ -55,6 +55,8 @@ use netlink::{Link, Netlink, Way};
 struct Net {
     generation: AtomicU64,
     online: AtomicBool,
+    /// A wired Ethernet port connected ([`wired`]).
+    wired: AtomicBool,
     waiting: AtomicUsize,
     /// Moved on by every change and [`nudge`]: what waiters wait on.
     wake: Mutex<u64>,
@@ -66,6 +68,7 @@ static NET: LazyLock<Net> = LazyLock::new(|| Net {
     generation: AtomicU64::new(0),
     // (Until known, or if it can't be: there is one, so nothing waits.)
     online: AtomicBool::new(true),
+    wired: AtomicBool::new(true),
     waiting: AtomicUsize::new(0),
     wake: Mutex::new(0),
     cond: Condvar::new(),
@@ -101,6 +104,14 @@ impl Snapshot {
         self.ways.iter().flatten().any(|w| self.links.get(&w.link).is_some_and(|l| l.running))
     }
 
+    /// A wired Ethernet port connected: running, with an address beyond
+    /// its own link (one a network gave it), whichever way the internet
+    /// is (a VPN's over the wire is the wire's).
+    fn wired(&self) -> bool {
+        let net = std::path::Path::new(SYS_NET);
+        self.links.iter().any(|(i, l)| l.running && !l.loopback && self.addrs.iter().any(|(at, a)| at == i && beyond_link(a)) && wired_port(net, &l.name))
+    }
+
     /// What a change is told by: the addresses on links that are up, and
     /// the ways out.
     fn key(&self) -> (BTreeSet<(u32, IpAddr)>, [Option<Way>; 2]) {
@@ -129,6 +140,7 @@ pub fn watch() {
         };
         let was = Snapshot::read(&ask);
         NET.online.store(was.online(), SeqCst);
+        NET.wired.store(was.wired(), SeqCst);
         tracing::debug!("network: {}", was.describe());
         if let Err(e) = std::thread::Builder::new().name("olo-net".into()).spawn(move || run(events, ask, was)) {
             tracing::warn!("network: changes can't be followed ({e})");
@@ -178,6 +190,7 @@ fn run(events: Netlink, ask: Netlink, mut was: Snapshot) {
         // the network changed under it.
         let generation = NET.generation.fetch_add(1, SeqCst) + 1;
         NET.online.store(now.online(), SeqCst);
+        NET.wired.store(now.wired(), SeqCst);
         let (mut cut, mut watched) = (0, 0);
         for t in sockets::all(false) {
             if gone.contains(&t.local.ip()) {
@@ -238,6 +251,60 @@ pub fn generation() -> u64 {
 pub fn online() -> bool {
     watch();
     NET.online.load(SeqCst)
+}
+
+/// Whether a wired Ethernet port is connected now: up, with a carrier and
+/// an address a network gave it ([`wired_port`] says which ports are).
+/// Known as [`online`] is, from the kernel's news (each change runs the
+/// hooks, [`on_change`]): DiskBackup's "Only when connected to Ethernet"
+/// (Ben, 2026-11-19: "add an option to diskbackup next to "[ ] Also when
+/// running on battery" to be "[ ] Only when connected to ethernet"").
+pub fn wired() -> bool {
+    watch();
+    NET.wired.load(SeqCst)
+}
+
+/// Where the kernel lists the network's links (`/sys/class/net`).
+const SYS_NET: &str = "/sys/class/net";
+
+/// Whether link `name` (in `net`, `/sys/class/net` or a stand-in's) is a
+/// wired Ethernet port: an Ethernet link (`type` 1) of a device (not a
+/// bridge's, a container's or a VPN's, which have none), not Wi-Fi's nor a
+/// mobile modem's (`DEVTYPE`, `wireless`), and not a phone sharing its
+/// mobile data over USB (RNDIS's and Apple's drivers, which only phones
+/// use). A dock's or an adapter's is one (r8152, ax88179, cdc_ncm's).
+#[doc(hidden)]
+pub fn wired_port(net: &std::path::Path, name: &str) -> bool {
+    let dir = net.join(name);
+    let read = |f: &str| std::fs::read_to_string(dir.join(f)).unwrap_or_default();
+    if read("type").trim() != "1" || !dir.join("device").exists() || dir.join("wireless").exists() || dir.join("phy80211").exists() {
+        return false;
+    }
+    if read("uevent").lines().any(|l| l.strip_prefix("DEVTYPE=").is_some_and(|t| !t.trim().is_empty())) {
+        return false;
+    }
+    let driver = std::fs::read_link(dir.join("device/driver")).ok().and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())).unwrap_or_default();
+    !matches!(driver.as_str(), "rndis_host" | "ipheth")
+}
+
+/// An address a network gave (not one a link gives itself: IPv4's
+/// 169.254 and IPv6's fe80::).
+fn beyond_link(a: &IpAddr) -> bool {
+    match a {
+        IpAddr::V4(v4) => !v4.is_link_local(),
+        IpAddr::V6(v6) => (v6.segments()[0] & 0xffc0) != 0xfe80,
+    }
+}
+
+/// For tests of what uses this: as if a wired port had been connected
+/// (`true`) or its cable pulled, as the watcher would have it (the hooks
+/// run, waiters woken), until the next real change.
+#[doc(hidden)]
+pub fn pretend_wired(on: bool) {
+    watch();
+    NET.generation.fetch_add(1, SeqCst);
+    NET.wired.store(on, SeqCst);
+    told();
 }
 
 /// How many are waiting for a network now ([`wait_online`]): for saying
@@ -371,8 +438,15 @@ impl<T: Clone> PerNetwork<T> {
 mod tests {
     use super::*;
 
+    /// Held by each test that moves the network's generation on or counts
+    /// on it staying: they share it (one process), and run at once, so one
+    /// moving it on while another rested made that one see a change
+    /// (2026-11-19: `a_nudge_wakes_a_waiter`, now and then).
+    static SHARED: Mutex<()> = Mutex::new(());
+
     #[test]
     fn made_once_a_network() {
+        let _shared = SHARED.lock();
         let n = Arc::new(AtomicUsize::new(0));
         let counted = n.clone();
         let p = PerNetwork::new(move || counted.fetch_add(1, SeqCst));
@@ -386,6 +460,7 @@ mod tests {
 
     #[test]
     fn a_failure_that_isnt_the_networks_is_its_own() {
+        let _shared = SHARED.lock();
         let mut tries = 0;
         let seen = generation();
         let r: Result<(), String> = across_changes(Duration::ZERO, || {
@@ -401,6 +476,7 @@ mod tests {
 
     #[test]
     fn a_nudge_wakes_a_waiter() {
+        let _shared = SHARED.lock();
         let t = Instant::now();
         assert!(!rest(Duration::ZERO));
         assert!(t.elapsed() < Duration::from_millis(50));

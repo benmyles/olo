@@ -13,15 +13,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-- **DiskBackup: "Only when connected to ethernet"** (Ben, 2026-11-19:
-  "add an option to diskbackup next to "[ ] Also when running on
-  battery" to be "[ ] Only when connected to ethernet" default
-  unchecked (and make it work of course)"): in Schedule ▸ When to Back
-  Up, beside "Also when running on battery", unticked at first; ticked,
-  automatic backups happen only while the computer has a wired
-  connection (what a backup under way does when the wire comes out, and
-  whether Back Up Now waits too, as the battery option does).
-
 - **Themes: one list (Classic, Platinum, BeOS and every scheme), each
   perfect, with icons of its own, Customize…, and a wallpaper of its
   own** (Ben, 2026-11-17: "the split between themes and colors doesn't
@@ -309,6 +300,20 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **DiskBackup: "Only when connected to ethernet"** (Ben, 2026-11-19:
+  "add an option to diskbackup next to "[ ] Also when running on
+  battery" to be "[ ] Only when connected to ethernet" default
+  unchecked (and make it work of course)"): in Schedule ▸ When to Back
+  Up, beside "Also when running on battery", unticked at first. **Done**
+  (HACKING, "Only when connected to Ethernet"): ticked, nothing is
+  backed up while no wired Ethernet port is connected (a dock's or an
+  adapter's counts; Wi-Fi, a modem, a VPN or a phone's USB tethering
+  don't), the window saying "Waiting for Ethernet"; plugging in wakes it
+  (no polling), and a backup under way when the cable comes out stops,
+  keeping its place, and goes on once it's back. Back Up Now waits for
+  the wire too, as it waits for power. Try: tick it, and pull the
+  cable during a backup.
 
 - **Deskbar: other workspaces' applications start collapsed** (Ben,
   2026-11-18, in Preferences ▸ Deskbar: "in addition to the other

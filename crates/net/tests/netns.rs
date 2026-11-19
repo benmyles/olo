@@ -102,8 +102,12 @@ fn inside() {
     let g1 = olo_net::generation();
     nl.address(true, 1, [10, 9, 0, 4]);
     nl.route(true, Some([10, 9, 0, 3]), 1, Some([10, 9, 0, 4]));
-    wait_for(|| olo_net::generation() > g1);
-    assert_eq!(user_timeout(&c2), 15_000, "watched closely");
+    // (Waited for as such: the watcher moves the generation on first, so a
+    // request failing meanwhile knows why, and handles the connections
+    // after; waiting for the generation alone, it was read too soon on a
+    // busy computer, 2026-11-19.)
+    wait_for(|| user_timeout(&c2) == 15_000);
+    assert!(olo_net::generation() > g1);
     let mut probe = [0u8; 1];
     c2.set_nonblocking(true).unwrap();
     assert_eq!((&c2).read(&mut probe).map_err(|e| e.kind()), Err(std::io::ErrorKind::WouldBlock), "still open");

@@ -643,6 +643,7 @@ pub fn headline(st: &State, s: &Settings) -> (String, String, bool) {
             let (title, detail) = match why.as_str() {
                 "turned off" => ("Paused".to_owned(), format!("Nothing is backed up or sent until you resume. {last}. {to}.")),
                 w if w.starts_with("on battery") => ("Waiting for power".to_owned(), format!("It backs up once the computer is plugged in. {last}. {to}.")),
+                w if w.starts_with("no wired network") => ("Waiting for Ethernet".to_owned(), format!("It backs up once the computer is connected by a cable. {last}. {to}.")),
                 w if w.starts_with("no network") => ("Waiting for the network".to_owned(), format!("It goes on once there’s one. {last}. {to}.")),
                 w => {
                     let mut w = w.to_owned();
@@ -1099,7 +1100,8 @@ impl MainWindow {
                     .child(every),
             )
             .child(RadioButton::new("Only when I click Back Up Now", !s.automatic).on_select(self.sets(cx, |s, (): ()| s.automatic = false)))
-            .child(div().pt(px(m::TIGHT)).child(CheckBox::new("Also when running on battery", s.on_battery).on_toggle(self.sets(cx, |s, on: bool| s.on_battery = on))));
+            .child(div().pt(px(m::TIGHT)).child(CheckBox::new("Also when running on battery", s.on_battery).on_toggle(self.sets(cx, |s, on: bool| s.on_battery = on))))
+            .child(CheckBox::new("Only when connected to Ethernet", s.wired_only).on_toggle(self.sets(cx, |s, on: bool| s.wired_only = on)));
         let keep_menu = |id: &'static str, label: &'static str, choices: &'static [(u32, &'static str)], now: u32, set: fn(&mut Settings, u32)| {
             let at = choices.iter().position(|(n, _)| *n == now);
             let mut names: Vec<SharedString> = choices.iter().map(|(_, name)| SharedString::from(*name)).collect();

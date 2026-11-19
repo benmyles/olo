@@ -56,6 +56,8 @@ pub(crate) fn step_name(a: &Settings, b: &Settings) -> &'static str {
         "Back Up Every"
     } else if a.on_battery != b.on_battery {
         "Also on Battery"
+    } else if a.wired_only != b.wired_only {
+        "Only on Ethernet"
     } else if a.keep != b.keep {
         "Keep"
     } else if a.upload_kbs != b.upload_kbs || a.download_kbs != b.download_kbs {
@@ -78,7 +80,7 @@ pub(crate) fn put_back(now: &mut Settings, before: &Settings, after: &Settings) 
             })*
         };
     }
-    each!(enabled, target, paths, exclude_groups, excludes, automatic, every_minutes, keep, upload_kbs, download_kbs, on_battery, priority, one_file_system, key_in_passwords, in_deskbar);
+    each!(enabled, target, paths, exclude_groups, excludes, automatic, every_minutes, keep, upload_kbs, download_kbs, on_battery, wired_only, priority, one_file_system, key_in_passwords, in_deskbar);
 }
 
 /// The main window's: a form, at the size of what it shows (it floats,

@@ -2005,6 +2005,9 @@ Nur wenn ich „Jetzt abgleichen“ wähle
 Only when I click Back Up Now
 Nur wenn ich auf „Jetzt sichern“ klicke
 
+Only when connected to Ethernet
+Nur bei Verbindung über Ethernet
+
 Only when the computer is idle
 Nur wenn der Computer im Leerlauf ist
 

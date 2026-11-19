@@ -80,6 +80,7 @@ fn states() -> Vec<(&'static str, Settings, State)> {
         ("stopped", home.clone(), State { last: Some(Last { error: Some(STOPPED.into()), ..last.clone() }), last_ok: Some(t - 86_400), ..base.clone() }),
         ("paused", Settings { enabled: false, ..drive.clone() }, State { doing: Doing::Waiting { why: "turned off".into() }, ..backed_up.clone() }),
         ("waiting on battery", home.clone(), State { doing: Doing::Waiting { why: "on battery: it waits for power".into() }, ..backed_up.clone() }),
+        ("waiting for Ethernet", Settings { wired_only: true, ..home.clone() }, State { doing: Doing::Waiting { why: "no wired network: it waits for one".into() }, ..backed_up.clone() }),
         ("waiting for the network", drive.clone(), State { doing: Doing::Waiting { why: "no network: it goes on once there’s one".into() }, ..backed_up.clone() }),
         ("counting", home.clone(), doing(Doing::BackingUp, progress(Stage::Counting))),
         ("counting a folder", folder.clone(), doing(Doing::BackingUp, progress(Stage::Counting))),
