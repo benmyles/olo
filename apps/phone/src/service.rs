@@ -551,7 +551,7 @@ fn session(stream: Stream, cmds: mpsc::Receiver<Cmd>, said: impl Fn(FromSession)
             },
             Cmd::Send { to, text, note, answer } => {
                 let done = match BMessage::outgoing(&[to.as_str()], &text) {
-                    None => Err("That isn't a telephone number or an address.".to_owned()),
+                    None => Err(olo_kit::words::en("That isn't a telephone number or an address.").to_owned()),
                     Some(b) => mas.send(&b).map(|_| ()).map_err(|e| e.to_string()),
                 };
                 let broke = done.is_err() && !mas_alive(&mut mas);
@@ -783,7 +783,7 @@ impl Service {
             Ev::Session(generation, said) if generation == self.generation => self.from_session(said),
             // (An earlier session's: old news; but an answer owed is given.)
             Ev::Session(_, FromSession::Sent { answer: Some(answer), .. }) => {
-                let _ = answer.send(Reply { ok: false, error: Some("The phone went.".into()), ..Default::default() });
+                let _ = answer.send(Reply { ok: false, error: Some(olo_kit::words::en("The phone went.").into()), ..Default::default() });
             }
             Ev::Session(..) => {}
             Ev::Settings => {
@@ -871,9 +871,9 @@ impl Service {
             Err(e) => {
                 let taken = e.to_string().contains("AlreadyExists");
                 let trouble = if taken {
-                    "Another program has the phone’s message profiles (BlueFerry’s or GNOME’s obexd). Olo Doctor removes BlueFerry.".to_owned()
+                    olo_kit::words::en("Another program has the phone’s message profiles (BlueFerry’s or GNOME’s obexd). Olo Doctor removes BlueFerry.").to_owned()
                 } else {
-                    "Bluetooth isn’t answering.".to_owned()
+                    olo_kit::words::en("Bluetooth isn’t answering.").to_owned()
                 };
                 if self.state.profiles || self.state.trouble != trouble {
                     tracing::info!("phone: can't register with BlueZ: {e}");
@@ -1106,12 +1106,19 @@ impl Service {
                     if shown.state.ringing() && self.rung() {
                         continue;
                     }
+                    // (A notification's words are the person's: the language
+                    // as it is now, the service having started before.)
+                    olo_kit::words::choose();
                     let who = pbap::name_of(&self.contacts, &shown.number)
                         .or_else(|| Some(shown.name.clone()).filter(|n| !n.is_empty()))
                         .or_else(|| Some(shown.number.clone()).filter(|n| !n.is_empty()))
-                        .unwrap_or_else(|| "Unknown caller".into());
-                    let mut note = Note::new(who).subtitle(self.call_here.map_or("", CallState::words)).icon("phone").sticky(true);
-                    note = if shown.state.ringing() { note.action("answer", "Answer").action("hangup", "Decline") } else { note.action("hangup", "Hang Up") };
+                        .unwrap_or_else(|| olo_kit::words::tr("Unknown caller").into());
+                    let mut note = Note::new(who).subtitle(self.call_here.map_or("", |c| olo_kit::words::tr(c.words()))).icon("phone").sticky(true);
+                    note = if shown.state.ringing() {
+                        note.action("answer", olo_kit::words::tr("Answer")).action("hangup", olo_kit::words::tr("Decline"))
+                    } else {
+                        note.action("hangup", olo_kit::words::tr("Hang Up"))
+                    };
                     let had = self.call_note;
                     let id = self.notes.show(had, note);
                     self.call_note = Some(id);
@@ -1126,7 +1133,8 @@ impl Service {
                     }
                 }
                 E::Failed(why) => {
-                    let id = self.notes.show(None, Note::new("Call").body(why).icon("phone").kind(olo_kit_base::notify::NoteKind::Error));
+                    olo_kit::words::choose();
+                    let id = self.notes.show(None, Note::new(olo_kit::words::tr("Call")).body(olo_kit::words::of_said(&why)).icon("phone").kind(olo_kit_base::notify::NoteKind::Error));
                     self.remember(id, About::CallFailed);
                 }
             }
@@ -1578,7 +1586,7 @@ impl Service {
                 tracing::info!("phone: it took the channel to its messages and said nothing for {} s (asleep?): asked again in {} s", paced(FIRST_ANSWER).as_secs(), wait.as_secs());
                 self.state.link = Link::Away;
                 if self.phone.as_ref().is_some_and(|p| p.connected) {
-                    self.state.trouble = "The phone is connected but isn’t answering (it may be asleep). It’s asked again from time to time, and at once when it wakes.".into();
+                    self.state.trouble = olo_kit::words::en("The phone is connected but isn’t answering (it may be asleep). It’s asked again from time to time, and at once when it wakes.").into();
                 }
                 self.retry_at = Some(Instant::now() + wait);
             }
@@ -1623,7 +1631,7 @@ impl Service {
                     }
                 }
                 self.state.trouble =
-                    if connected { format!("Bluetooth couldn’t open the phone’s messages ({}).", why.rsplit(": ").next().unwrap_or(&why).trim_end_matches('.')) } else { String::new() };
+                    if connected { olo_kit::en!("Bluetooth couldn’t open the phone’s messages ({}).", why.rsplit(": ").next().unwrap_or(&why).trim_end_matches('.')) } else { String::new() };
             }
             FromSession::NotAllowed => {
                 (self.opening, self.session, self.opening_until) = (false, None, None);
@@ -1724,7 +1732,7 @@ impl Service {
                 if !why.is_empty() {
                     tracing::info!("phone: the session ended: {why}");
                     if self.phone.as_ref().is_some_and(|p| p.connected) {
-                        self.state.trouble = format!("The phone’s messages stopped ({}).", why.trim_end_matches('.'));
+                        self.state.trouble = olo_kit::en!("The phone’s messages stopped ({}).", why.trim_end_matches('.'));
                     }
                 }
                 self.state.link = Link::Away;
@@ -1875,8 +1883,9 @@ impl Service {
             self.next_code
         });
         if self.settings.notify == Notify::Messages {
-            let mut note = Note::new(thread.name.clone()).style(NoteStyle::Message).icon("phone").action("read", "Mark as Read").reply("Reply");
-            note = note.body(if self.settings.show_text { message.text.clone() } else { "New message".into() });
+            olo_kit::words::choose();
+            let mut note = Note::new(thread.name.clone()).style(NoteStyle::Message).icon("phone").action("read", olo_kit::words::tr("Mark as Read")).reply(olo_kit::words::tr("Reply"));
+            note = note.body(if self.settings.show_text { message.text.clone() } else { olo_kit::words::tr("New message").into() });
             if id.is_some() {
                 note = note.action("copy", "Copy Code");
             }
@@ -2013,7 +2022,7 @@ impl Service {
                 match (self.profiles.as_ref(), self.music_player.as_deref()) {
                     (Some(profiles), Some(player)) => match profiles.music_act(player, action) {
                         Ok(()) => Reply { ok: true, ..Default::default() },
-                        Err(e) => no(&format!("the phone didn't take it: {e}")),
+                        Err(e) => no(&olo_kit::en!("the phone didn't take it: {}", e)),
                     },
                     _ => no("the phone isn't playing anything"),
                 }
@@ -2220,8 +2229,9 @@ impl Service {
             How::Ask => {
                 let screen = with_screens[i].0.clone().unwrap_or_default();
                 let from = c.from.clone();
-                let note = Note::new(format!("Agent Screen “{screen}” is waiting for a code"))
-                    .body(format!("At {}. Give it the code from {from}?", tab.host))
+                olo_kit::words::choose();
+                let note = Note::new(olo_kit::tr!("Agent Screen “{}” is waiting for a code", screen))
+                    .body(olo_kit::tr!("At {}. Give it the code from {}?", tab.host, from))
                     .icon("phone")
                     .kind(olo_kit_base::notify::NoteKind::Important)
                     .sticky(true)
@@ -2255,7 +2265,8 @@ impl Service {
             // What the agent's tab got, in its screen's history (never
             // the code), and said to the person.
             record(&screen, &c.from, tab);
-            self.notes.show(None, Note::new(format!("Code given to Agent Screen “{screen}”")).body(format!("The code from {}, at {}.", c.from, tab.host)).icon("phone"));
+            olo_kit::words::choose();
+            self.notes.show(None, Note::new(olo_kit::tr!("Code given to Agent Screen “{}”", screen)).body(olo_kit::tr!("The code from {}, at {}.", c.from, tab.host)).icon("phone"));
         }
     }
 
@@ -2347,7 +2358,7 @@ impl Service {
         if self.opening && self.opening_until.is_some_and(|at| at <= t) {
             self.generation += 1;
             self.let_go = true;
-            self.from_session(FromSession::NoChannel("Bluetooth said it would open them and no channel came".into()));
+            self.from_session(FromSession::NoChannel(olo_kit::words::en("Bluetooth said it would open them and no channel came").into()));
         }
         // An open session, looked in on (answered with `Listed`, which
         // sets the next; unanswered, the session ends and is asked for
@@ -2367,7 +2378,7 @@ impl Service {
                     self.notes.show(Some(note), Note::new("Not sent").body("The phone isn’t connected.").kind(olo_kit_base::notify::NoteKind::Error));
                 }
                 if let Some(answer) = h.answer {
-                    let _ = answer.send(Reply { ok: false, error: Some("The phone isn’t connected.".into()), ..Default::default() });
+                    let _ = answer.send(Reply { ok: false, error: Some(olo_kit::words::en("The phone isn’t connected.").into()), ..Default::default() });
                 }
             }
         }
@@ -2621,14 +2632,15 @@ fn serve(tx: mpsc::Sender<Ev>) {
                         Ok(request) => {
                             let (answer, got) = mpsc::channel();
                             let _ = tx.send(Ev::Ask(request, screen.is_some(), answer));
-                            let reply = got.recv_timeout(Duration::from_secs(45)).unwrap_or_else(|_| Reply { ok: false, error: Some("the service is busy".into()), ..Default::default() });
+                            let reply =
+                                got.recv_timeout(Duration::from_secs(45)).unwrap_or_else(|_| Reply { ok: false, error: Some(olo_kit::words::en("the service is busy").into()), ..Default::default() });
                             let mut out = serde_json::to_vec(&reply).unwrap_or_default();
                             out.push(b'\n');
                             let _ = (&stream).write_all(&out);
                             out.zeroize();
                         }
                         Err(e) => {
-                            let reply = Reply { ok: false, error: Some(format!("not understood: {e}")), ..Default::default() };
+                            let reply = Reply { ok: false, error: Some(olo_kit::en!("not understood: {}", e)), ..Default::default() };
                             let mut out = serde_json::to_vec(&reply).unwrap_or_default();
                             out.push(b'\n');
                             let _ = (&stream).write_all(&out);

@@ -78,6 +78,11 @@ pub struct Look {
     pub ours_edge: Hsla,
     pub text: Hsla,
     pub dim: Hsla,
+    /// A time and ticks on what the person sent: lighter in the dark
+    /// look, where the blue under them is lighter than an incoming
+    /// bubble's grey (Phone's same grey was 3.2 : 1 there; Codex,
+    /// 2026-11-19).
+    pub ours_dim: Hsla,
     pub link: Hsla,
     pub accent: Hsla,
     pub pill: Hsla,
@@ -100,10 +105,11 @@ impl Look {
             ours_edge: style::c(olo_kit::palette::mix(ours, p.keyboard_navigation, 0.35)),
             text: ink.text,
             dim: ink.dim,
+            ours_dim: if dark { ink.text.opacity(0.72) } else { ink.dim },
             link: style::c(link),
             accent: style::c(p.keyboard_navigation),
-            pill: style::c(olo_kit::palette::mix(p.document_text, p.document_background, if dark { 0.75 } else { 0.62 })).opacity(0.85),
-            pill_text: if dark { style::c([235, 235, 235, 255]) } else { white() },
+            pill: style::day_pill(p).0,
+            pill_text: style::day_pill(p).1,
             dark,
         }
     }
@@ -282,7 +288,7 @@ pub fn lay(m: &Message, place: Place, look: &Look, col: f32, time: &str, sender_
     let ours = m.out;
     let left_room = if place.many && !ours { AVATAR + 8.0 } else { 0.0 };
     let max_w = (col - left_room - 48.0).clamp(120.0, MAX_WIDTH);
-    let meta_g = line(&meta_text(m, time), META, normal.clone(), look.dim, None);
+    let meta_g = line(&meta_text(m, time), META, normal.clone(), if ours { look.ours_dim } else { look.dim }, None);
     let meta_w = meta_g.w + if ours { TICKS + 2.0 } else { 0.0 };
     let empty = |meta_g: Line| Laid {
         shape: Shape::Service,
@@ -844,6 +850,8 @@ pub fn paint(gr: &mut Painter, o: Point<Pixels>, m: &Message, laid: &Laid, pp: &
         white()
     } else if m.pending == Some((0, Pending::Failed)) {
         rgb(0xFF0000).into()
+    } else if m.out {
+        look.ours_dim
     } else {
         look.dim
     };
@@ -862,7 +870,7 @@ pub fn paint(gr: &mut Painter, o: Point<Pixels>, m: &Message, laid: &Laid, pp: &
         } else if pp.read {
             look.link
         } else {
-            look.dim
+            look.ours_dim
         };
         ticks(gr, point(mp.x + px(g.w + 3.0), mp.y + px(g.h / 2.0)), pp.read, m.pending, tick_ink);
     }

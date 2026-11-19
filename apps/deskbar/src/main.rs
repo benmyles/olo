@@ -1519,11 +1519,7 @@ impl Deskbar {
         let release = offer.release.clone();
         let h24 = self.clock.twenty_four_hour;
         let now = olo_kit::when::now();
-        let at = |t: u64| {
-            let t = t as i64;
-            let day = olo_kit::when::day(t, now);
-            format!("{} at {}", if day == "Today" || day == "Yesterday" { day.to_lowercase() } else { day }, olo_kit::when::time(t, h24))
-        };
+        let at = |t: u64| olo_kit::when::day_at(t as i64, now, h24);
         match (build, release) {
             (false, None) => {}
             (true, None) => {

@@ -1823,9 +1823,16 @@ colour (seven, bright for fills, with an ink to write their name in);
 `person::id_of(words)` an id from a number or an address, the same
 every time. `when::short` is a list row's time (today's a time, this
 week's a day, then a date), `when::day` a conversation's day heading
-("Today", "Yesterday", "Monday", "October 12"), `when::time` in the
+("Today", "Yesterday", "Monday", "October 12") in the person's words
+(`when::day_en` in English, for a conversation copied as text or an
+agent), `when::day_at` one set in a sentence, said whole ("today at
+1:05 PM", "yesterday at …", "Monday at …"), `when::time` in the
 Deskbar clock's 12- or 24-hour style. (Telegram's, moved to the kit
-when Phone wanted the same.)
+when Phone wanted the same.) `style::day_pill` is the day heading's
+pill, its ground and words: white on a grey that reads (4.9 : 1 in the
+light look). A time on what the person sent is its text at 72 % in the
+dark look, not a card's 52 % (`CardInk::dim`): the sent bubble's blue
+is lighter than an incoming one's grey, and 52 % was 3.2 : 1 on it.
 
 ### Showing a control (`olo_kit::spotlight`)
 

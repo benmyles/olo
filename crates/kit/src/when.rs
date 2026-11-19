@@ -28,18 +28,47 @@ pub fn short(unix: i64, now: i64, h24: bool) -> String {
     }
 }
 
-/// A conversation's day heading: "Today", "Yesterday", "Monday",
-/// "October 12", "October 12, 2025".
+/// A conversation's day heading, in the person's words: "Today",
+/// "Yesterday", "Monday", "October 12", "October 12, 2025". (The names
+/// of days and months are English still: docs/TODO.md, formats.)
 pub fn day(unix: i64, now: i64) -> String {
+    match days_ago(unix, now) {
+        ..=0 => crate::words::tr("Today").into(),
+        1 => crate::words::tr("Yesterday").into(),
+        _ => day_en(unix, now),
+    }
+}
+
+/// [`day`] in English, for programs and agents (a conversation copied
+/// as text).
+pub fn day_en(unix: i64, now: i64) -> String {
     let (t, n) = (local(unix), local(now));
-    let days = n.date_naive().signed_duration_since(t.date_naive()).num_days();
-    match days {
+    match days_ago(unix, now) {
         ..=0 => "Today".into(),
         1 => "Yesterday".into(),
         2..=6 => t.format("%A").to_string(),
         _ if t.year() == n.year() => t.format("%B %-d").to_string(),
         _ => t.format("%B %-d, %Y").to_string(),
     }
+}
+
+/// When `unix` was, set in a sentence, in the person's words: "today
+/// at 1:05 PM", "yesterday at 1:05 PM", "Monday at 1:05 PM". Each said
+/// whole: a language puts its words for "today" and "at" where it
+/// does.
+pub fn day_at(unix: i64, now: i64, h24: bool) -> String {
+    let at = time(unix, h24);
+    match days_ago(unix, now) {
+        ..=0 => crate::tr!("today at {}", at),
+        1 => crate::tr!("yesterday at {}", at),
+        _ => crate::tr!("{} at {}", day_en(unix, now), at),
+    }
+}
+
+/// How many days before `now`'s `unix` was (0: the same day, less if
+/// it's to come).
+fn days_ago(unix: i64, now: i64) -> i64 {
+    local(now).date_naive().signed_duration_since(local(unix).date_naive()).num_days()
 }
 
 /// The day `unix` falls on (to tell days apart).
@@ -60,6 +89,8 @@ mod tests {
         let now = now();
         assert_eq!(day(now, now), "Today");
         assert_eq!(day(now - 86_400, now), "Yesterday");
+        assert_eq!(day_en(now - 86_400, now), "Yesterday");
+        assert!(day_at(now, now, true).starts_with("today at "));
         assert!(short(now, now, true).contains(':'));
         assert_eq!(short(now - 3 * 86_400, now, true).len(), 3);
     }

@@ -222,6 +222,7 @@ Again:
 Against Cloudflare’s speed test servers: four connections each way, eight seconds each.
 Agenda
 Agent Screen Logs
+Agent Screen “{}” is waiting for a code
 Agent Screens
 Agree
 AirPlay
@@ -278,6 +279,7 @@ And {n} More
 And {} more
 Anonymous identity:
 Another account
+Another program has the phone’s message profiles (BlueFerry’s or GNOME’s obexd). Olo Doctor removes BlueFerry.
 Answer
 Answer 1Password’s op command
 Answer questions about the forecast
@@ -350,6 +352,7 @@ At least
 At the Bottom
 At the Start
 At the start
+At {}. Give it the code from {}?
 Attach Files…
 Authenticate
 Authentication:
@@ -424,10 +427,13 @@ Black
 Blue
 Blue:
 Bluetooth
+Bluetooth couldn’t open the phone’s messages ({}).
 Bluetooth devices and Touch ID fingerprints belong to each computer: pair and enrol them again here.
 Bluetooth devices, Wi-Fi networks and Touch ID fingerprints belong to each computer: pair, join and enrol them again here.
 Bluetooth is off.
+Bluetooth isn’t answering.
 Bluetooth isn’t running on this computer.
+Bluetooth said it would open them and no channel came
 Bluetooth…
 Body
 Bold
@@ -485,6 +491,7 @@ Calendars
 Calendar’s assistant is handed the events of the calendars you show. It can draft events; nothing is added until you save it.
 Call
 Call Quality, with Microphone
+Calling…
 Calls
 Can't make {}: {}
 Can't move it: {}
@@ -614,6 +621,7 @@ Cloudflare (1.1.1.1)
 Clouds ({} above the ground)
 Cloudy
 Code
+Code given to Agent Screen “{}”
 Code:
 Codex
 Coding Agents
@@ -659,6 +667,7 @@ Connected to “{}”: {}
 Connected {}, but its sign-in wasn’t allowed {}: Sign In Again and allow everything it asks.
 Connected.
 Connecting to Telegram…
+Connecting to “{}”…
 Connection
 Connection:
 Connections
@@ -1354,6 +1363,7 @@ In:
 Inches
 Inches of Mercury
 Include passwords and sign-ins, sealed with a password
+Incoming call
 Incomplete expression
 Indent Less
 Indent More
@@ -1679,6 +1689,7 @@ Memory:
 Message
 Message queues
 Messages
+Messages ({})
 Messages are coming. Contacts follow once Sync Contacts is on.
 Messages: each as it comes, answered in place
 Meter
@@ -1823,6 +1834,7 @@ New Window
 New Windows Open In
 New Worktree…
 New description
+New message
 New ones go in
 New ones go in:
 New screenshot
@@ -1879,6 +1891,7 @@ No event from a year back to two years on has “{}” in its title, its place o
 No key yet.
 No keyboards are plugged in.
 No limit
+No messages with {} yet. What you write below goes as a text message from your phone.
 No mouse is connected. These settings are for any you connect.
 No new notifications
 No notes.
@@ -1953,6 +1966,7 @@ Not recognised. Try again
 Not running under olo-session.
 Not running: Codex starts it with its first window.
 Not saved: {}
+Not sent: {}
 Not set up
 Not set up.
 Not set up: Telegram needs an API ID to sign in with.
@@ -2045,8 +2059,10 @@ On Battery
 On Custom {}
 On This Computer
 On a PC keyboard, Alt is where a Mac's ⌘ is: swapped, the key beside the space bar is ⌘ (with the Mac profile) and the Windows key is Option. Each keyboard keeps its own setting, so an Apple keyboard plugged in stays as it is.
+On a call
 On a plane of its own: moving it draws nothing
 On disk
+On hold
 On the network
 On the phone, open Settings ▸ Bluetooth and keep it open there. It appears here in a moment.
 On your phone, open Telegram ▸ Settings ▸ Devices ▸ Link Desktop Device, and point it at this code.
@@ -2897,6 +2913,7 @@ Text Message
 Text Size
 Text messages to “{}”
 Text:
+That isn't a telephone number or an address.
 That isn't a value.
 That isn't one of the repository's worktrees.
 That isn't the backup's password.
@@ -2937,6 +2954,7 @@ The backups take {} there
 The bell's count in:
 The change couldn’t be made: {}.
 The clock service (systemd-timedated) isn't answering.
+The code from {}, at {}.
 The coming days, each its sky, low and high.
 The computer couldn't be restarted: {}
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
@@ -2997,6 +3015,13 @@ The pairing with {} couldn't be forgotten: {}.
 The password couldn’t be kept in the keyring ({}).
 The password of “{}” couldn’t be kept: {}
 The passwords file is damaged: {}
+The phone didn’t take it.
+The phone is connected but isn’t answering (it may be asleep). It’s asked again from time to time, and at once when it wakes.
+The phone isn’t connected.
+The phone service isn’t running.
+The phone service wouldn’t say.
+The phone went.
+The phone’s messages stopped ({}).
 The picture on the desktop when {} is chosen. Backgrounds changes the desktop’s after, a workspace at a time.
 The place search answered {}.
 The place search’s answer can’t be read: {}
@@ -3236,6 +3261,7 @@ Unix socket
 Unix socket {}
 Unknown
 Unknown Senders
+Unknown caller
 Unless the app says; kept while the pointer is over it.
 Unlock…
 Unmount
@@ -3464,11 +3490,13 @@ XML
 YAML
 Yellow
 Yes
+Yesterday
 Yesterday {}
 You don't have permission to see inside this folder.
 You don’t have permission to read it in 1Password.
 You stopped it {}. {}. {}
 You stopped the backup {}
+You: {}
 Your Display
 Your Google Drive keeps them anywhere: sign in once, or let an agent set it up.
 Your Kinds
@@ -3620,6 +3648,7 @@ no wired network: it waits for one
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 not parts of it: {}; its parts are {}
 not set up yet
+not understood: {}
 not yet on this kernel's series, {}
 nothing backed up for {n} days
 nothing freed
@@ -3700,6 +3729,7 @@ the last {n} hours
 the last {n} minutes
 the last {n} seconds
 the package {}
+the phone didn't take it: {}
 the power profiles daemon, through {}
 the recording failed
 the request failed
@@ -3707,6 +3737,7 @@ the screen
 the secret at {}
 the server answered {}
 the service answered {}
+the service is busy
 the session
 the system's power profiles daemon
 the unfinished backup
@@ -3815,6 +3846,7 @@ your own picture
 {} and {} others
 {} answered {} (not a speed test server?)
 {} applications are keeping the display awake.
+{} at {}
 {} backups
 {} backups and the unfinished one
 {} begun in the last minute (swipes, pinches, holds)
@@ -4048,11 +4080,13 @@ your own picture
 “{}” doesn’t say where its packages are (no baseurl, metalink or mirrorlist).
 “{}” has no {}.
 “{}” has nothing to refer to.
+“{}” hasn’t allowed this computer its messages yet.
 “{}” is a folder: StyledEdit opens files.
 “{}” is an enterprise network.
 “{}” is asking something else to pair.
 “{}” is imported.
 “{}” is out of reach or its Bluetooth is off. It’s tried again by itself.
+“{}” is out of reach. It’s tried again by itself.
 “{}” is protected by a password.
 “{}” is still running in it, and stops.
 “{}” is still running in this tab. Close it anyway?

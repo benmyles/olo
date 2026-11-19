@@ -676,6 +676,9 @@ Agenda
 Agent Screen Logs
 Journaux des écrans d’agents
 
+Agent Screen “{}” is waiting for a code
+L’écran d’agent « {} » attend un code
+
 Agent Screens
 Écrans d’agents
 
@@ -844,6 +847,9 @@ Identité anonyme :
 
 Another account
 Un autre compte
+
+Another program has the phone’s message profiles (BlueFerry’s or GNOME’s obexd). Olo Doctor removes BlueFerry.
+Un autre programme détient les profils de messages du téléphone (l’obexd de BlueFerry ou de GNOME). Olo Doctor supprime BlueFerry.
 
 Answer
 Répondre
@@ -1061,6 +1067,9 @@ Au début
 
 At the start
 Au début
+
+At {}. Give it the code from {}?
+Sur {}. Lui donner le code de {} ?
 
 Attach Files…
 Joindre des fichiers…
@@ -1285,6 +1294,9 @@ Bleu :
 Bluetooth
 Bluetooth
 
+Bluetooth couldn’t open the phone’s messages ({}).
+Bluetooth n’a pas pu ouvrir les messages du téléphone ({}).
+
 Bluetooth devices and Touch ID fingerprints belong to each computer: pair and enrol them again here.
 Les appareils Bluetooth et les empreintes Touch ID appartiennent à chaque ordinateur : jumelez-les et enregistrez-les de nouveau ici.
 
@@ -1294,8 +1306,14 @@ Les appareils Bluetooth, les réseaux Wi-Fi et les empreintes Touch ID appartien
 Bluetooth is off.
 Bluetooth est éteint.
 
+Bluetooth isn’t answering.
+Bluetooth ne répond pas.
+
 Bluetooth isn’t running on this computer.
 Bluetooth ne fonctionne pas sur cet ordinateur.
+
+Bluetooth said it would open them and no channel came
+Bluetooth a dit qu’il les ouvrirait et aucun canal n’est venu
 
 Bluetooth…
 Bluetooth…
@@ -1467,6 +1485,9 @@ Appeler
 
 Call Quality, with Microphone
 Qualité d’appel, avec micro
+
+Calling…
+Appel en cours…
 
 Calls
 Appels
@@ -1858,6 +1879,9 @@ Nuageux
 Code
 Code
 
+Code given to Agent Screen “{}”
+Code donné à l’écran d’agent « {} »
+
 Code:
 Code :
 
@@ -1992,6 +2016,9 @@ Connecté.
 
 Connecting to Telegram…
 Connexion à Telegram…
+
+Connecting to “{}”…
+Connexion à « {} »…
 
 Connection
 Connexion
@@ -4086,6 +4113,9 @@ Pouces de mercure
 Include passwords and sign-ins, sealed with a password
 Inclure les mots de passe et connexions, scellés par un mot de passe
 
+Incoming call
+Appel entrant
+
 Incomplete expression
 Expression incomplète
 
@@ -5063,6 +5093,9 @@ Files de messages
 Messages
 Messages
 
+Messages ({})
+Messages ({})
+
 Messages are coming. Contacts follow once Sync Contacts is on.
 Les messages arrivent. Les contacts suivent dès que Synchroniser les contacts est activé.
 
@@ -5495,6 +5528,9 @@ Nouveau worktree…
 New description
 Nouvelle description
 
+New message
+Nouveau message
+
 New ones go in
 Les nouveaux vont dans
 
@@ -5662,6 +5698,9 @@ Aucun clavier n’est branché.
 
 No limit
 Aucune limite
+
+No messages with {} yet. What you write below goes as a text message from your phone.
+Pas encore de messages avec {}. Ce que vous écrivez ci-dessous part en SMS depuis votre téléphone.
 
 No mouse is connected. These settings are for any you connect.
 Aucune souris n’est connectée. Ces réglages valent pour celles que vous connectez.
@@ -5884,6 +5923,9 @@ Ne tourne pas : Codex le lance avec sa première fenêtre.
 
 Not saved: {}
 Non enregistré : {}
+
+Not sent: {}
+Non envoyé : {}
 
 Not set up
 Non configuré
@@ -6161,11 +6203,17 @@ Sur cet ordinateur
 On a PC keyboard, Alt is where a Mac's ⌘ is: swapped, the key beside the space bar is ⌘ (with the Mac profile) and the Windows key is Option. Each keyboard keeps its own setting, so an Apple keyboard plugged in stays as it is.
 Sur un clavier de PC, Alt est là où un Mac a ⌘ : une fois inversées, la touche à côté de la barre d’espace est ⌘ (avec le profil Mac) et la touche Windows est Option. Chaque clavier garde son réglage : un clavier Apple branché reste tel quel.
 
+On a call
+En communication
+
 On a plane of its own: moving it draws nothing
 Sur un plan à lui : le déplacer ne dessine rien
 
 On disk
 Sur le disque
+
+On hold
+En attente
 
 On the network
 Sur le réseau
@@ -8722,6 +8770,9 @@ SMS à « {} »
 Text:
 Texte :
 
+That isn't a telephone number or an address.
+Ce n’est ni un numéro de téléphone ni une adresse.
+
 That isn't a value.
 Ce n’est pas une valeur.
 
@@ -8841,6 +8892,9 @@ La modification n’a pas pu être faite : {}.
 
 The clock service (systemd-timedated) isn't answering.
 Le service d’horloge (systemd-timedated) ne répond pas.
+
+The code from {}, at {}.
+Le code de {}, sur {}.
 
 The coming days, each its sky, low and high.
 Les jours à venir, chacun avec son ciel, minimale et maximale.
@@ -9021,6 +9075,27 @@ Le mot de passe de « {} » n’a pas pu être gardé : {}
 
 The passwords file is damaged: {}
 Le fichier des mots de passe est endommagé : {}
+
+The phone didn’t take it.
+Le téléphone ne l’a pas accepté.
+
+The phone is connected but isn’t answering (it may be asleep). It’s asked again from time to time, and at once when it wakes.
+Le téléphone est connecté mais ne répond pas (il dort peut-être). Il est de nouveau interrogé de temps en temps, et dès son réveil.
+
+The phone isn’t connected.
+Le téléphone n’est pas connecté.
+
+The phone service isn’t running.
+Le service du téléphone n’est pas lancé.
+
+The phone service wouldn’t say.
+Le service du téléphone n’a rien dit.
+
+The phone went.
+Le téléphone est parti.
+
+The phone’s messages stopped ({}).
+Les messages du téléphone se sont arrêtés ({}).
 
 The picture on the desktop when {} is chosen. Backgrounds changes the desktop’s after, a workspace at a time.
 L’image du bureau quand {} est choisi. Fonds d’écran change ensuite celle du bureau, un espace de travail à la fois.
@@ -9739,6 +9814,9 @@ Inconnu
 Unknown Senders
 Expéditeurs inconnus
 
+Unknown caller
+Appelant inconnu
+
 Unless the app says; kept while the pointer is over it.
 Sauf avis de l’app ; reste sous le pointeur.
 
@@ -10423,6 +10501,9 @@ Jaune
 Yes
 Oui
 
+Yesterday
+Hier
+
 Yesterday {}
 Hier {}
 
@@ -10437,6 +10518,9 @@ Vous l’avez arrêtée {}. {}. {}
 
 You stopped the backup {}
 Vous avez arrêté la sauvegarde {}
+
+You: {}
+Vous : {}
 
 Your Display
 Votre écran
@@ -10897,6 +10981,9 @@ n’en font pas partie : {} ; ses parties sont {}
 not set up yet
 pas encore configuré
 
+not understood: {}
+non compris : {}
+
 not yet on this kernel's series, {}
 pas encore dans la série de ce noyau, {}
 
@@ -11147,6 +11234,9 @@ other: les {n} dernières secondes
 the package {}
 le paquet {}
 
+the phone didn't take it: {}
+le téléphone ne l’a pas accepté : {}
+
 the power profiles daemon, through {}
 le service de profils d’énergie, via {}
 
@@ -11167,6 +11257,9 @@ le serveur a répondu {}
 
 the service answered {}
 le service a répondu {}
+
+the service is busy
+le service est occupé
 
 the session
 la session
@@ -11534,6 +11627,9 @@ il y a {} · cliquez sur un graphique pour un autre moment
 
 {} applications are keeping the display awake.
 {} applications gardent l’écran allumé.
+
+{} at {}
+{} à {}
 
 {} backups
 {} sauvegardes
@@ -12236,6 +12332,9 @@ other: « {} » et {n} autres programmes tournent encore dans cette fenêtre. 
 “{}” has nothing to refer to.
 « {} » n’a rien à quoi se référer.
 
+“{}” hasn’t allowed this computer its messages yet.
+« {} » n’a pas encore autorisé ses messages à cet ordinateur.
+
 “{}” is a folder: StyledEdit opens files.
 « {} » est un dossier : StyledEdit ouvre des fichiers.
 
@@ -12250,6 +12349,9 @@ other: « {} » et {n} autres programmes tournent encore dans cette fenêtre. 
 
 “{}” is out of reach or its Bluetooth is off. It’s tried again by itself.
 « {} » est hors de portée ou son Bluetooth est éteint. Nouvel essai automatique.
+
+“{}” is out of reach. It’s tried again by itself.
+« {} » est hors de portée. Une nouvelle tentative se fait d’elle-même.
 
 “{}” is protected by a password.
 « {} » est protégé par un mot de passe.

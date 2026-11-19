@@ -786,6 +786,18 @@ pub fn pill_width(text: &str, font_size: f32, font: &Font) -> f32 {
     (f32::from(text_width(text.to_owned(), font_size, font.clone())) + h * 0.9).max(h).round()
 }
 
+/// A conversation's day heading's pill ("Today", "Yesterday"), Phone's
+/// and Telegram's: its ground and its words. White on a grey dark enough
+/// to read, 4.9 : 1 in the light look (a lighter grey was 2.1 : 1, found
+/// by a second look, 2026-11-19); light grey on a darker one in the dark.
+pub fn day_pill(p: &Palette) -> (Hsla, Hsla) {
+    if p.mode == olo_theme::ThemeMode::Dark {
+        (c(olo_theme::mix(p.document_text, p.document_background, 0.75)).opacity(0.85), c([235, 235, 235, 255]))
+    } else {
+        (c(olo_theme::mix(p.document_text, p.document_background, 0.28)).opacity(0.85), c([255, 255, 255, 255]))
+    }
+}
+
 /// A short tag in a pill (a badge, a count), its left edge at `x` and
 /// centred on `cy`, on device pixels. Returns where it is.
 #[allow(clippy::too_many_arguments)]

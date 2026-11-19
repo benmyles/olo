@@ -491,8 +491,9 @@ impl Phone {
             || {
                 let threads = match phone::ask(&Request::Conversations, ASK) {
                     Ok(r) if r.ok => Ok(r.conversations.unwrap_or_default()),
-                    Ok(r) => Err(r.error.unwrap_or_else(|| "The phone service wouldn’t say.".into())),
-                    Err(_) => Err("The phone service isn’t running.".into()),
+                    // (The service's words, in English: in the person's language here.)
+                    Ok(r) => Err(r.error.map(|e| olo_kit::words::of_said(&e)).unwrap_or_else(|| olo_kit::words::tr("The phone service wouldn’t say.").into())),
+                    Err(_) => Err(olo_kit::words::tr("The phone service isn’t running.").into()),
                 };
                 let contacts = phone::ask(&Request::Contacts { query: String::new() }, ASK).ok().and_then(|r| r.contacts).unwrap_or_default();
                 (threads, contacts)
@@ -664,8 +665,8 @@ impl Phone {
         cx.work(
             move || match phone::ask(&Request::Send { to, text }, Duration::from_secs(90)) {
                 Ok(r) if r.ok => Ok(()),
-                Ok(r) => Err(r.error.unwrap_or_else(|| "The phone didn’t take it.".into())),
-                Err(_) => Err("The phone service isn’t running.".into()),
+                Ok(r) => Err(r.error.map(|e| olo_kit::words::of_said(&e)).unwrap_or_else(|| olo_kit::words::tr("The phone didn’t take it.").into())),
+                Err(_) => Err(olo_kit::words::tr("The phone service isn’t running.").into()),
             },
             move |done| Msg::Sent(done, if from_draft { said } else { String::new() }),
         );
@@ -697,7 +698,7 @@ impl Phone {
         let Some(t) = self.thread() else { return String::new() };
         let mut out = vec![format!("{} ({})", t.name, t.address)];
         for m in &t.messages {
-            out.push(format!("{} {}  {}: {}", when::day(m.at, when::now()), when::time(m.at, self.h24), if m.outgoing { "Me" } else { t.name.as_str() }, m.text));
+            out.push(format!("{} {}  {}: {}", when::day_en(m.at, when::now()), when::time(m.at, self.h24), if m.outgoing { "Me" } else { t.name.as_str() }, m.text));
         }
         out.join("\n")
     }
@@ -1081,7 +1082,7 @@ impl Phone {
     fn left(&mut self, _width: f32, cx: &mut Cx<Self>) -> Element {
         let p = theme::palette();
         let unread: usize = self.threads.iter().map(Conversation::unread).sum();
-        let messages = if unread > 0 { format!("Messages ({unread})") } else { "Messages".to_owned() };
+        let messages = if unread > 0 { olo_kit::tr!("Messages ({})", unread) } else { olo_kit::words::tr("Messages").to_owned() };
         let tabs = div()
             .flex()
             .flex_row()
@@ -1343,7 +1344,7 @@ impl Phone {
             menu = menu.item(label("Unarchive"), "unarchive");
         }
         let unread = ts.iter().any(|t| t.unread() > 0);
-        menu.item(if n > 1 { "Mark All as Read".to_owned() } else { "Mark as Read".to_owned() }, "mark-read").enabled(unread)
+        menu.item(if n > 1 { olo_kit::words::tr("Mark All as Read").to_owned() } else { olo_kit::words::tr("Mark as Read").to_owned() }, "mark-read").enabled(unread)
     }
 
     /// `menu` where the list was right-clicked; what's chosen goes to the
@@ -1452,7 +1453,7 @@ impl Phone {
             room -= px(w + 8.0);
         }
         let last = t.messages.last();
-        let words = last.map(|m| format!("{}{}", if m.outgoing { "You: " } else { "" }, one_line(&m.text))).unwrap_or_default();
+        let words = last.map(|m| if m.outgoing { olo_kit::tr!("You: {}", one_line(&m.text)) } else { one_line(&m.text) }).unwrap_or_default();
         let words_ink = if unread > 0 && !selected { ink } else { dim };
         style::label_on_baseline_fit(g, x, base2, Align::Left, words.clone(), small, normal, words_ink, room);
         if g.content_mask().bounds.intersects(&r) {
@@ -1494,7 +1495,7 @@ impl Phone {
                     if let Some(person) = paint_list.get(i - lead).and_then(|&k| v.contacts.get(k)) {
                         let first = person.phones.first().or(person.emails.first()).cloned().unwrap_or_default();
                         let more = person.phones.len() + person.emails.len();
-                        let under = if more > 1 { format!("{first} and {} more", more - 1) } else { first.clone() };
+                        let under = if more > 1 { olo_kit::tr!("{} and {} more", first, more - 1) } else { first.clone() };
                         let selected = matches!(&v.shown, Shown::Person(name) if *name == person.name);
                         v.person_row(g, r, &person.name, &under, &first, selected, hot);
                     }
@@ -1560,10 +1561,10 @@ impl Phone {
         // How the phone stands, while it isn't simply connected.
         let notice = (!self.demo && self.state.link != Link::Ready).then(|| {
             let words = match (self.state.link, self.state.trouble.is_empty()) {
-                (Link::Allow, _) => format!("“{}” hasn’t allowed this computer its messages yet.", self.state.name),
-                (Link::Connecting, _) => format!("Connecting to “{}”…", self.state.name),
-                (_, false) => self.state.trouble.clone(),
-                _ => format!("“{}” is out of reach. It’s tried again by itself.", self.state.name),
+                (Link::Allow, _) => olo_kit::tr!("“{}” hasn’t allowed this computer its messages yet.", self.state.name),
+                (Link::Connecting, _) => olo_kit::tr!("Connecting to “{}”…", self.state.name),
+                (_, false) => olo_kit::words::of_said(&self.state.trouble),
+                _ => olo_kit::tr!("“{}” is out of reach. It’s tried again by itself.", self.state.name),
             };
             let mut row = div()
                 .flex()
@@ -1986,7 +1987,7 @@ impl Phone {
         } else {
             div()
                 .p(px(m::WINDOW_INSET))
-                .child(StringView::new(format!("No messages with {name} yet. What you write below goes as a text message from your phone.")).dim(true).wrap(true))
+                .child(StringView::new(olo_kit::tr!("No messages with {} yet. What you write below goes as a text message from your phone.", name)).dim(true).wrap(true))
                 .into_element()
         };
         let scroller = ScrollView::new(&self.talk_scroll).border(false).auto_hide(true).background(style::card_paper(&p).0).on_scroll(cx.listener(|_: &mut Phone, _, cx| cx.invalidate())).child(inner);
@@ -2050,7 +2051,7 @@ impl Phone {
             );
         let mut bottom = div().flex().flex_col().gap(px(m::TIGHT)).px(px(m::WINDOW_INSET)).pt(px(m::SPACING)).pb(px(m::WINDOW_INSET)).bg(c(p.panel_background)).flex_shrink_0();
         if let Some(why) = &self.trouble {
-            bottom = bottom.child(StringView::new(format!("Not sent: {why}")).color(c(p.failure)).wrap(true));
+            bottom = bottom.child(StringView::new(olo_kit::tr!("Not sent: {}", why)).color(c(p.failure)).wrap(true));
         }
         bottom = bottom.child(div().flex().flex_row().items_end().gap(px(m::SPACING)).child(field).child(send));
         let rule = canvas(move |g, b| style::hline(g, b.left(), b.right(), b.top(), shadow.opacity(0.5))).w_full().h(px(0.0)).flex_shrink_0();
@@ -2081,6 +2082,10 @@ struct Look {
     ours: Hsla,
     ours_edge: Hsla,
     dim: Hsla,
+    /// A time on what the person sent: lighter in the dark look, where
+    /// the blue under it is lighter than an incoming balloon's grey
+    /// (the same quiet grey was 3.2 : 1 there; Codex, 2026-11-19).
+    ours_dim: Hsla,
     lift: Hsla,
     day: Hsla,
     day_text: Hsla,
@@ -2100,9 +2105,10 @@ impl Look {
             ours: c(ours),
             ours_edge: c(olo_kit::palette::mix(ours, p.keyboard_navigation, 0.35)),
             dim: ink.dim,
+            ours_dim: if dark { ink.text.opacity(0.72) } else { ink.dim },
             lift: hsla(0.0, 0.0, 0.0, if dark { 50.0 } else { 14.0 } / 255.0),
-            day: c(olo_kit::palette::mix(p.document_text, p.document_background, if dark { 0.75 } else { 0.62 })).opacity(0.85),
-            day_text: if dark { c([235, 235, 235, 255]) } else { white() },
+            day: style::day_pill(p).0,
+            day_text: style::day_pill(p).1,
             chip: c(p.keyboard_navigation),
             chip_text: white(),
         }
@@ -2131,7 +2137,7 @@ impl Look {
         // Its time: at the balloon's foot, on the right.
         let small_h = para::line_height(META);
         let cy = br.bottom() - px(PAD.1 + small_h / 2.0) + px(if bl.time_under { 0.0 } else { 1.0 });
-        style::label(g, br.right() - px(PAD.0), cy, Align::Right, bl.time.clone(), META, style::ui_font(FontWeight::NORMAL), self.dim);
+        style::label(g, br.right() - px(PAD.0), cy, Align::Right, bl.time.clone(), META, style::ui_font(FontWeight::NORMAL), if bl.ours { self.ours_dim } else { self.dim });
     }
 }
 
