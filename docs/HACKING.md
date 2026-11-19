@@ -17145,8 +17145,26 @@ otherwise, this is the rule.
   the list, on the bell, or colouring a notification ("One dot beside
   an application", under Deskbar, has the whole of it). The bell
   counts unread notifications, and nothing else.
-- Still to do, in docs/TODO.md's order: urgency apart from kind, read
-  on arrival in the app in front, sticky banners kept across restarts.
+- **How pressing it is, is not what it is** (`Note::urgent` beside
+  `Kind`). Urgent (the spec's critical urgency, GTK's "urgent"): its
+  banner stays until it's dealt with and comes through Do Not Disturb
+  (not while the screen is shared). An error (a stop sign) is what
+  *says* it's one: Olo's `x-olo-type` error (the kit's
+  `NoteKind::Error`, which is urgent too), or one of the spec's
+  categories ending ".error". A critical call is urgent and
+  Important, with no stop sign; a backup that failed is an error and
+  not urgent. A site's `requireInteraction` stays and is neither. Low
+  urgency is silent, as it was.
+- **One from the app you're in is read as it comes**, with no banner
+  over what you're looking at (`show`'s `there`, `Notifications::
+  in_front`): about the app as a whole, not a tab of it or a site, and
+  not an urgent one. The service knows the app in front from the
+  moment it starts (`follow_visits` asks first, then follows), and
+  that the person is in none between windows (`Msg::Left`).
+- **What was on screen to stay is on screen again after a restart**
+  (an upgrade): the pinned banners, as before, and those with no time
+  of their own (urgent, an error, sticky) still unread
+  (`Entry::stays`).
 
 
 Olo's own apps notify through the kit: `olo_kit::notify::Notifier::

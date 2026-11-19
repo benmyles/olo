@@ -120,6 +120,10 @@ pub struct Entry {
     /// (key, label).
     pub actions: Vec<(String, String)>,
     pub kind: KindName,
+    /// Urgent (`Note::urgent`): how it came, said to agents and kept
+    /// for when it shows again.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub urgent: bool,
     pub progress: Option<f32>,
     /// Seconds since the epoch.
     pub time: u64,
@@ -131,6 +135,11 @@ pub struct Entry {
     pub live: bool,
     /// On screen as a card right now.
     pub shown: bool,
+    /// Its card stays until it's dealt with (no time of its own: urgent,
+    /// an error, or its sender asked): on screen again after a restart,
+    /// while it's unread.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub stays: bool,
     pub look: NoteLook,
     /// A website's: the browser it came through.
     pub via: Option<String>,
@@ -172,11 +181,13 @@ impl Entry {
             body: n.body.clone(),
             actions: n.actions.clone(),
             kind: n.kind.into(),
+            urgent: n.urgent,
             progress: n.progress,
             time: n.time.duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0),
             unread,
             live: true,
             shown: false,
+            stays: n.timeout.is_none(),
             look: n.look.clone(),
             via: n.via.clone(),
             show: n.show.clone(),
@@ -189,7 +200,6 @@ impl Entry {
         }
     }
 
-    /// Out of sight for now (snoozed).
     /// What its fading counts from: when it was read, if that's known
     /// (one read long after it came isn't tidied away the moment it's
     /// read), else when it came.
@@ -203,6 +213,7 @@ impl Entry {
         self.read_at = if unread { 0 } else { now };
     }
 
+    /// Out of sight for now (snoozed).
     pub fn snoozed(&self) -> bool {
         self.snoozed_until.is_some()
     }
@@ -221,6 +232,7 @@ impl Entry {
             body: self.body.clone(),
             actions: if self.live { self.actions.clone() } else { Vec::new() },
             kind: self.kind.into(),
+            urgent: self.urgent,
             progress: self.progress,
             timeout,
             resident: false,
@@ -395,7 +407,9 @@ impl History {
         entries.retain(|e| e.attention.is_none());
         for e in &mut entries {
             e.live = false;
-            e.shown &= e.pinned;
+            // (Back on screen: what was there to stay. One with a time of
+            // its own had it.)
+            e.shown &= e.pinned || (e.stays && e.unread);
         }
         History { entries: Arc::new(entries), path, left: Vec::new() }
     }
@@ -725,6 +739,22 @@ mod tests {
             [(2, "Build failed", "", false, None), (1, "Dana", "Lunch at one?", false, Some(60))]
         );
         assert_eq!((h.unread(), cards[1].icons.clone()), (2, vec!["slack".to_owned()]));
+        // After a restart, what's on screen again: a pinned one, and one
+        // that was there to stay and is still unread; not one that had
+        // its time, nor one read since.
+        let path = PathBuf::from(format!("/var/tmp/olo-notif-shown-{}.json", std::process::id()));
+        let on = |id: u32, e: Entry| Entry { shown: true, ..Entry { id, ..e } };
+        let was = vec![
+            on(1, Entry { pinned: true, ..entry(1, "pinned") }),
+            on(2, Entry { stays: true, ..entry(2, "a call") }),
+            on(3, entry(3, "had its time")),
+            on(4, Entry { stays: true, unread: false, ..entry(4, "seen to") }),
+        ];
+        std::fs::write(&path, serde_json::to_string(&was).unwrap()).unwrap();
+        let back = History::load(Some(path.clone()));
+        assert_eq!(back.entries.iter().filter(|e| e.shown).map(|e| e.id).collect::<Vec<_>>(), [1, 2]);
+        assert!(back.entries.iter().all(|e| !e.live));
+        let _ = std::fs::remove_file(path);
         // An old list's waiting item: dropped as it's read; the rest kept.
         let path = PathBuf::from(format!("/var/tmp/olo-notif-old-{}.json", std::process::id()));
         std::fs::write(

@@ -392,6 +392,11 @@ impl View for Banners {
             bodies.borrow_mut().clear();
             for group in &painted {
                 let frame = group.frame + origin;
+                // (A banner is a card on a surface as big as itself, its
+                // words set in by the card's own measure, `PAD`: not a
+                // window's panel, whose inset the layout review would
+                // hold its title and close box to.)
+                olo_kit::review::own_grid(g, frame);
                 g.paint_quad(fill(frame, style::c(p.panel_background)));
                 style::frame_rect(g, frame, style::tint(p.panel_background, 1.6));
                 style::raised(g, style::inset(g, frame, 1.0), &p);

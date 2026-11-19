@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Notifications, made plain (third step): urgent is not an error
+
+*18:12* — An urgent notification (a call) stays on screen and comes through Do Not Disturb, without the stop sign: that is only for what says it failed (Backup failed, right). And a notification from the app you are already in is read as it arrives, with no banner over what you're looking at. Urgent and sticky banners come back after an upgrade.
+
+![Notifications, made plain (third step): urgent is not an error](2026-11-18/181229-notifications-made-plain-third-step-urgent-is-no.png)
+
 ### Notifications, made plain (second step): red is what waits in an app
 
 *18:03* — What an app says is waiting in it (Slack's 3 unread) is no longer an item among the notifications. It has a red dot beside the app in Deskbar, a row under Waiting in apps at the top of the Notifications window (a click goes to the app), and a red card in the Inbox with Later in place of ×. Notifications are always blue; the bell counts only them. Deskbar remembers apps' counts across an upgrade.

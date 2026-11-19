@@ -146,9 +146,11 @@ pub fn note(number: u32, replaces: bool, app_id: &str, gtk_id: &str, n: &HashMap
         (None, None) => Vec::new(),
     };
     let (icon, picture) = n.get("icon").map(icon).unwrap_or_default();
+    // (GTK's "urgent" is how pressing it is: it stays, and comes through
+    // Do Not Disturb. Not an error.)
+    let urgent = text("priority").as_deref() == Some("urgent");
     let kind = match text("priority").as_deref() {
-        Some("urgent") => Kind::Error,
-        Some("high") => Kind::Important,
+        Some("urgent" | "high") => Kind::Important,
         _ => Kind::Information,
     };
     let default = text("default-action").and_then(|a| action(a, n.get("default-action-target")));
@@ -174,8 +176,9 @@ pub fn note(number: u32, replaces: bool, app_id: &str, gtk_id: &str, n: &HashMap
         body,
         actions,
         kind,
+        urgent,
         progress: None,
-        timeout: (kind != Kind::Error).then_some(DEFAULT_TIMEOUT),
+        timeout: (!urgent).then_some(DEFAULT_TIMEOUT),
         resident: false,
         transient: false,
         sound: (text("priority").as_deref() != Some("low")).then_some(Sound::Default),

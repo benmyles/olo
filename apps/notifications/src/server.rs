@@ -32,14 +32,18 @@ pub struct Picture {
 }
 
 /// What kind of news it is, as Haiku's BNotification has it: each looks
-/// a little different.
+/// a little different. What it *is*, not how it arrives: how pressing it
+/// is, is `Note::urgent` (a call is urgent and no error; a backup that
+/// failed overnight is an error and not urgent).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Kind {
     #[default]
     Information,
     /// Wants attention (a message for you, a call).
     Important,
-    /// Something went wrong (urgency critical): stays until dismissed.
+    /// Something went wrong (its sender says so: `x-olo-type` error, or
+    /// a category of the spec's that ends in ".error"): a stop sign, and
+    /// it stays until dismissed.
     Error,
     /// A job under way, with a bar (the `value` hint).
     Progress,
@@ -71,6 +75,10 @@ pub struct Note {
     /// (key, label); "default" is clicking the notification.
     pub actions: Vec<(String, String)>,
     pub kind: Kind,
+    /// Urgent (the spec's critical urgency; GTK's "urgent" priority): it
+    /// stays on screen until it's dealt with, and comes through Do Not
+    /// Disturb. How it arrives, not what it is: no stop sign for it.
+    pub urgent: bool,
     /// 0–1, for progress.
     pub progress: Option<f32>,
     /// None: until dismissed.
@@ -317,10 +325,16 @@ pub fn note(id: u32, replaces: bool, app_name: String, app_icon: String, summary
         Some("progress") => Kind::Progress,
         Some("information") => Kind::Information,
         _ if progress.is_some() => Kind::Progress,
-        _ if urgency >= 2 => Kind::Error,
+        // (The spec's own way to say something went wrong: "device.error",
+        // "network.error", "transfer.error", "im.error".)
+        _ if category.as_deref().is_some_and(|c| c.ends_with(".error")) => Kind::Error,
+        // Critical urgency is how pressing it is, not that it's an error:
+        // a call, an alarm, a battery about to die. It wants attention.
+        _ if urgency >= 2 => Kind::Important,
         _ if category.as_deref().is_some_and(|c| c.starts_with("im.") || c == "call" || c.starts_with("call.")) => Kind::Important,
         _ => Kind::Information,
     };
+    let urgent = urgency >= 2;
     let sound = if flag("suppress-sound") || urgency == 0 || kind == Kind::Progress {
         None
     } else if let Some(f) = text("sound-file") {
@@ -352,7 +366,7 @@ pub fn note(id: u32, replaces: bool, app_name: String, app_icon: String, summary
     // answered. Telegram's stayed on the screen for good.)
     let timeout = match expire_timeout {
         0 => None,
-        _ if kind == Kind::Error => None,
+        _ if kind == Kind::Error || urgent => None,
         t if t < 0 => Some(DEFAULT_TIMEOUT),
         t => Some(Duration::from_millis(t as u64)),
     };
@@ -367,6 +381,7 @@ pub fn note(id: u32, replaces: bool, app_name: String, app_icon: String, summary
         body: markup::parse(&body),
         actions,
         kind,
+        urgent,
         progress,
         timeout,
         resident: flag("resident"),
@@ -534,9 +549,25 @@ mod tests {
         assert_eq!(note(3, false, "".into(), "".into(), "".into(), "".into(), vec![], &hints, 0).timeout, None);
         assert_eq!(note(3, false, "".into(), "".into(), "".into(), "".into(), vec![], &hints, 1500).timeout, Some(Duration::from_millis(1500)));
         hints.insert("urgency".to_owned(), OwnedValue::from(2u8));
+        // Critical urgency: urgent (it stays), and no error for that.
         let n = note(3, false, "".into(), "file:///tmp/x.png".into(), "".into(), "".into(), vec![], &hints, 1500);
-        assert!(n.kind == Kind::Error && n.timeout.is_none());
+        assert!(n.kind == Kind::Important && n.urgent && n.timeout.is_none());
         assert_eq!(n.icon.as_deref(), Some("/tmp/x.png"));
+        // An error is one its sender says is one: Olo's own hint (with
+        // or without urgency), or the spec's ".error" categories; a call
+        // that's critical is urgent and important, never an error.
+        let with = |pairs: &[(&str, OwnedValue)], timeout: i32| {
+            let hints: HashMap<String, OwnedValue> = pairs.iter().map(|(k, v)| ((*k).to_owned(), v.try_clone().unwrap())).collect();
+            let n = note(3, false, "".into(), "".into(), "".into(), "".into(), vec![], &hints, timeout);
+            (n.kind, n.urgent, n.timeout.is_none())
+        };
+        let text = |s: &str| OwnedValue::try_from(zbus::zvariant::Value::from(s)).unwrap();
+        assert!(with(&[("x-olo-type", text("error")), ("urgency", OwnedValue::from(2u8))], -1) == (Kind::Error, true, true));
+        assert!(with(&[("x-olo-type", text("error"))], -1) == (Kind::Error, false, true));
+        assert!(with(&[("category", text("transfer.error"))], -1) == (Kind::Error, false, true));
+        assert!(with(&[("category", text("call.incoming")), ("urgency", OwnedValue::from(2u8))], -1) == (Kind::Important, true, true));
+        assert!(with(&[("category", text("call.incoming"))], -1) == (Kind::Important, false, false));
+        assert!(with(&[("urgency", OwnedValue::from(0u8))], -1) == (Kind::Information, false, false));
     }
 
     #[test]

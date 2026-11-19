@@ -50,7 +50,7 @@ use std::{
 use olo_kit::{Bounds, LayerKeyboard, LayerShellLayer, Menu, Painter, Pixels, WindowCx, WindowHandle, WindowOptions};
 use olo_kit_base::{metrics as m, watch::Watch};
 use olo_protocol::{NotificationSettings, NotificationState};
-use server::{Bus, Control, In, Kind, Note, Reason};
+use server::{Bus, Control, In, Note, Reason};
 use store::{Entry, History};
 
 const APP_ID: &str = "olo.notifications";
@@ -71,6 +71,9 @@ enum Msg {
     /// The person has been at a window of this app for a moment
     /// (`follow_visits`).
     Visited(String),
+    /// The window in front changed: the person is in no app for sure
+    /// until they've stayed in one (`Visited`).
+    Left,
     /// Something may have expired (or Do Not Disturb begun or ended, or
     /// the settings or a share changed).
     Tick,
@@ -146,6 +149,9 @@ pub struct Notifications {
     told: Option<NotificationState>,
     /// The screen is being shared (`SharingState`).
     sharing: bool,
+    /// The app whose window the person is in (its app id), once they've
+    /// stayed there a moment (`follow_visits`); None between windows.
+    in_front: Option<String>,
     /// The settings file and the screen shares, watched.
     _watches: Vec<Watch>,
 }
@@ -385,10 +391,20 @@ impl Notifications {
         if note.timeout == Some(server::DEFAULT_TIMEOUT) {
             note.timeout = Some(self.banner_time());
         }
-        // Do Not Disturb keeps all but errors off the screen and quiet; a
-        // snoozed one's news waits with it.
+        // Do Not Disturb keeps all but what's urgent off the screen and
+        // quiet (not while the screen is shared); a snoozed one's news
+        // waits with it.
         let snoozed = self.history.get_mut(note.id).is_some_and(|e| e.snoozed());
-        let banner = app.banners && ((!quiet && !never) || (note.kind == Kind::Error && !self.sharing_quiet())) && !snoozed;
+        // One from the app the person is in, about the app as a whole
+        // (not a tab of it, nor a site through a browser): they're
+        // there, so it's read as it comes, with no banner over what
+        // they're looking at (it's in the list, read). An urgent one
+        // shows all the same.
+        let there = !note.urgent
+            && note.via.is_none()
+            && note.show.is_empty()
+            && self.in_front.as_deref().is_some_and(|front| store::is_app(&store::app_ids(note.desktop_entry.as_deref(), &note.app_name), front));
+        let banner = app.banners && ((!quiet && !never) || (note.urgent && !self.sharing_quiet())) && !snoozed && !there;
         if app.sounds
             && !quiet
             && !snoozed
@@ -399,7 +415,10 @@ impl Notifications {
         }
         let kept = app.history && !note.transient;
         if kept {
-            let mut e = Entry::from_note(&note, true);
+            let mut e = Entry::from_note(&note, !there);
+            if there {
+                e.read_at = now_secs();
+            }
             e.shown = banner;
             self.history.put(e);
             if let Some(p) = &note.picture {
@@ -983,7 +1002,9 @@ impl Notifications {
                     self.changed();
                 }
             }
+            Msg::Left => self.in_front = None,
             Msg::Visited(app_id) => {
+                self.in_front = Some(app_id.clone());
                 let read = self.history.visited_app(&app_id);
                 // (And what waits in it has been seen, as much as there is.)
                 if self.waiting.visited_app(&app_id) && read.is_empty() {
@@ -1094,6 +1115,15 @@ fn follow_visits(proxy: olo_kit::Proxy) {
     let (tx, rx) = std::sync::mpsc::channel::<Option<String>>();
     let _ = std::thread::Builder::new().name("notes-focus".into()).spawn(move || {
         loop {
+            // Where the person is as this starts (or app_server did
+            // again): events only say where they go from here, and one
+            // who stays in an app is there all the same.
+            if let Ok(mut client) = Client::connect()
+                && let Ok(olo_protocol::Reply::Windows { windows }) = client.request(&olo_protocol::Request::ListWindows)
+                && tx.send(windows.iter().find(|w| w.focused).map(|w| w.app_id.clone())).is_err()
+            {
+                return;
+            }
             if let Ok(client) = Client::connect()
                 && let Ok(events) = client.into_events_of(&[EventKind::Focus])
             {
@@ -1112,6 +1142,8 @@ fn follow_visits(proxy: olo_kit::Proxy) {
     });
     let _ = std::thread::Builder::new().name("notes-visits".into()).spawn(move || {
         while let Ok(mut at) = rx.recv() {
+            // (Out of where they were, as of now.)
+            proxy.send(Msg::Left);
             // Still there after a moment: gone to. (Another window in
             // front meanwhile starts the moment again, for that one.)
             loop {
@@ -1434,6 +1466,7 @@ fn main() -> std::process::ExitCode {
                 archived_snapshot,
                 told: None,
                 sharing: false,
+                in_front: None,
                 _watches: watches,
                 steps: Default::default(),
             })
@@ -1444,8 +1477,10 @@ fn main() -> std::process::ExitCode {
             n.fade_out();
             // Snoozed ones back on time.
             n.wake_snoozed();
-            // Pinned banners on screen before a restart (an upgrade) are again.
-            let pinned: Vec<Note> = n.history.entries.iter().filter(|e| e.shown).map(|e| e.to_note(Some(n.banner_time()))).collect();
+            // The banners that were on screen to stay before a restart (an
+            // upgrade) are again: the pinned ones, and those with no time
+            // of their own (urgent, an error, sticky) not yet dealt with.
+            let pinned: Vec<Note> = n.history.entries.iter().filter(|e| e.shown).map(|e| e.to_note((!e.stays).then(|| n.banner_time()))).collect();
             for note in pinned {
                 n.add_card(note);
             }

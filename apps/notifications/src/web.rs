@@ -117,9 +117,11 @@ pub fn adopt(note: &mut Note) {
     }
     note.via = Some(browser.to_owned());
     note.app_name = name;
-    // requireInteraction: it stays until dismissed; that's all.
-    if note.kind == Kind::Error {
-        note.kind = Kind::Important;
+    // requireInteraction (Chrome sends it as critical urgency): it
+    // stays until dismissed; that's all. A site doesn't get through Do
+    // Not Disturb by asking to.
+    if note.urgent {
+        note.urgent = false;
         note.timeout = None;
     }
     // Chrome's Settings button is the site's notification settings.
@@ -180,7 +182,7 @@ mod tests {
         let n = chrome("<a href=\"https://www.example.org:8443/x\">www.example.org</a>\n\nBuild failed", &hints);
         assert_eq!(n.app_name, "example.org");
         assert_eq!(n.look.source, None, "the name already says it");
-        assert_eq!((n.kind, n.timeout), (Kind::Important, None), "requireInteraction stays, but isn't an error");
+        assert_eq!((n.kind, n.timeout, n.urgent), (Kind::Important, None, false), "requireInteraction stays, but isn't an error, nor urgent");
         // Under a known site's host.
         assert_eq!(chrome("<a href=\"https://acme.slack.com/\">acme.slack.com</a>\n\nhi", &HashMap::new()).app_name, "Slack");
         // Not a browser's: as it came.
