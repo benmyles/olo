@@ -843,7 +843,9 @@ pub fn draw_bell(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, unread: u32, q
         g.paint_segment(a, b, px(1.4), false, ink(p));
     }
     if unread > 0 {
-        badge(g, r, p, unread as usize, badge_hue.map_or(p.failure, |h| p.hue(h)));
+        // (In the colour of what it counts: unread notifications, blue as
+        // their dots are. Red is what waits in an app.)
+        badge(g, r, p, unread as usize, badge_hue.map_or(p.notice, |h| p.hue(h)));
     }
 }
 

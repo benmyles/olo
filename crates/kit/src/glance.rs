@@ -350,7 +350,7 @@ fn paint_inbox(g: &mut Painter, r: Bounds<Pixels>, cards: &[olo_protocol::notifi
     }
     style::card(g, face, p, shown.over && shown.hot.is_none(), false);
     let (left, right) = (face.left() + px(INBOX_IN), face.right() - px(INBOX_IN));
-    let dot = style::c(if card.attention { p.unread } else { p.keyboard_navigation });
+    let dot = style::c(if card.attention { p.unread } else { p.notice });
     let kind = if card.attention { "waiting in its app" } else { "a notification" };
     // (A notification that fades away: its dot drains as it goes, as
     // Deskbar's beside its app does. The card itself stays whole.)

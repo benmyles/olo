@@ -168,7 +168,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "notifications", tab: "", group: "Do Not Disturb", name: "Every day at set times", role: "CheckBox" },
     Setting { panel: "notifications", tab: "", group: "Do Not Disturb", name: "While sharing or recording the screen (errors wait too)", role: "CheckBox" },
     Setting { panel: "notifications", tab: "", group: "Banners", name: "Show banners for", role: "ComboBox" },
-    Setting { panel: "notifications", tab: "", group: "History", name: "Fade notifications away over", role: "CheckBox" },
+    Setting { panel: "notifications", tab: "", group: "History", name: "Tidy away read notifications after", role: "CheckBox" },
     Setting { panel: "notifications", tab: "", group: "History", name: "Only the latest of the same notification", role: "CheckBox" },
     Setting { panel: "notifications", tab: "", group: "Deskbar", name: "The bell's count in", role: "ComboBox" },
     Setting { panel: "performance", tab: "Supervisor", group: "", name: "Open Power", role: "Button" },

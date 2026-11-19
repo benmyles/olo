@@ -254,9 +254,8 @@ impl Glances {
     pub fn inbox(&self, id: u32) -> Option<(Vec<olo_protocol::notifications::InboxCard>, usize, u32, bool)> {
         let Body::Inbox { cards, snooze_minutes, preview } = self.now(id)?.body.as_ref()? else { return None };
         let gone = self.gone.get(&id).map(|items| items.iter().filter(|(_, at)| at.elapsed() < GONE).map(|(item, _)| *item).collect::<Vec<_>>()).unwrap_or_default();
-        // (And not what has faded away, should its app be late to say so.)
-        let secs = now().max(0) as u64;
-        let cards: Vec<_> = cards.iter().filter(|c| !gone.contains(&c.id) && c.strength(secs) > 0.0).cloned().collect();
+        // (A card is unread, and nothing unread fades away: all of them.)
+        let cards: Vec<_> = cards.iter().filter(|c| !gone.contains(&c.id)).cloned().collect();
         // The card chosen while it is there; gone, the one that took its
         // place (the next comes up under the pointer).
         let at = match self.selected.get(&id) {
@@ -270,20 +269,18 @@ impl Glances {
     /// dealt with here.
     pub fn shown(&self, id: u32) -> Option<std::borrow::Cow<'_, Glance>> {
         let gl = self.now(id)?;
-        let secs = now().max(0) as u64;
-        let whole = |gl: &Glance| !matches!(&gl.body, Some(Body::Inbox { cards, .. }) if cards.iter().any(|c| c.strength(secs) <= 0.0));
-        if !self.gone.contains_key(&id) && whole(gl) {
+        if !self.gone.contains_key(&id) {
             return Some(std::borrow::Cow::Borrowed(gl));
         }
         let (cards, _, snooze_minutes, preview) = self.inbox(id)?;
         Some(std::borrow::Cow::Owned(Glance { body: Some(Body::Inbox { cards, snooze_minutes, preview }), ..gl.clone() }))
     }
 
-    /// Whether a card on top of an inbox is fading away (its dot drains:
-    /// drawn again as it does).
+    /// Whether the dot of a card on top of an inbox is still draining
+    /// (drawn again as it does; at its floor, no more).
     pub fn fading(&self) -> bool {
         let secs = now().max(0) as u64;
-        self.timelines.keys().any(|id| self.inbox(*id).is_some_and(|(cards, at, ..)| cards.get(at).is_some_and(|c| c.strength(secs) < 1.0 || c.fade_minutes.is_some())))
+        self.timelines.keys().any(|id| self.inbox(*id).is_some_and(|(cards, at, ..)| cards.get(at).is_some_and(|c| c.draining(secs))))
     }
 
     /// Card `item` of widget `id` was dismissed or snoozed here: gone at

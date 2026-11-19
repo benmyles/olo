@@ -2,8 +2,16 @@
 //! restart in `history.json` under Olo's state directory, with each
 //! note's picture (a sender's face, a page's icon) beside it, small, in
 //! `pictures/`. Transient notes and apps that asked not to be kept never
-//! get here. Each is unread until it's clicked, opened or acted on; with
-//! fading on, each goes once it has faded away.
+//! get here.
+//!
+//! A notification is **unread** until the person has seen to it
+//! (clicked, opened, acted on, gone to what it's about); then **read**,
+//! fading with the time since; then **cleared**: out of this list and
+//! into the archive (the Cleared list), which says why each left
+//! ([`Why`]). Nothing unread leaves by itself: what is tidied away
+//! after a while is what was read (Ben, 2026-11-18: "what fades out vs
+//! goes to history/archive vs goes away vs automatically gets marked
+//! as read vs what doesn't etc. is all very confusing").
 
 use std::{
     path::{Path, PathBuf},
@@ -52,6 +60,43 @@ impl From<Kind> for KindName {
             Kind::Progress => KindName::Progress,
         }
     }
+}
+
+/// Why a notification left the list for the Cleared one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Why {
+    /// The person cleared it (its ×, Clear, Clear All).
+    Cleared,
+    /// Read, and older than the time read ones are kept.
+    Tidied,
+    /// Its app took it back (seen to elsewhere, or no longer true).
+    Withdrawn,
+    /// The same again from its app took its place.
+    Replaced,
+    /// The list was full: the oldest go.
+    Overflow,
+}
+
+impl Why {
+    /// How a Cleared row says it, before when: "Cleared", "Tidied
+    /// away", "Withdrawn by Telegram", "Replaced by a newer one",
+    /// "Made room for newer ones".
+    pub fn said(self, app: &str) -> String {
+        match self {
+            Why::Cleared => "Cleared".to_owned(),
+            Why::Tidied => "Tidied away".to_owned(),
+            Why::Withdrawn if app.is_empty() => "Withdrawn".to_owned(),
+            Why::Withdrawn => format!("Withdrawn by {app}"),
+            Why::Replaced => "Replaced by a newer one".to_owned(),
+            Why::Overflow => "Made room for newer ones".to_owned(),
+        }
+    }
+}
+
+/// Now, in seconds since the epoch.
+pub fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs())
 }
 
 /// One notification as the history keeps it (and as `List` gives it).
@@ -112,6 +157,13 @@ pub struct Entry {
     /// In the archive: when it went there (seconds since the epoch).
     #[serde(skip_serializing_if = "is_zero")]
     pub archived: u64,
+    /// In the archive: why it left the list.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub why: Option<Why>,
+    /// When it was read (seconds since the epoch; 0: not known, or not
+    /// read): a read one fades, and is tidied away, by the time since.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub read_at: u64,
 }
 
 impl Entry {
@@ -142,10 +194,25 @@ impl Entry {
             pinned: false,
             snoozed_until: None,
             archived: 0,
+            why: None,
+            read_at: 0,
         }
     }
 
     /// Out of sight for now (snoozed).
+    /// What its fading counts from: when it was read, if that's known
+    /// (one read long after it came isn't tidied away the moment it's
+    /// read), else when it came.
+    pub fn since(&self) -> u64 {
+        self.time.max(self.read_at)
+    }
+
+    /// Read (`now`), or unread again.
+    pub fn set_unread(&mut self, unread: bool, now: u64) {
+        self.unread = unread;
+        self.read_at = if unread { 0 } else { now };
+    }
+
     pub fn snoozed(&self) -> bool {
         self.snoozed_until.is_some()
     }
@@ -192,9 +259,9 @@ pub struct History {
     pub entries: Arc<Vec<Entry>>,
     path: Option<PathBuf>,
     /// What has left by itself since it was last asked for
-    /// ([`History::take_left`]: faded away, or pushed out by newer ones):
-    /// for the archive.
-    left: Vec<Entry>,
+    /// ([`History::take_left`]: read and tidied away, or pushed out by
+    /// newer ones), each with why: for the archive.
+    left: Vec<(Entry, Why)>,
 }
 
 /// How many the archive keeps, and for how many days.
@@ -482,9 +549,10 @@ impl History {
         });
     }
 
-    /// What has left by itself since this was last asked (faded away,
-    /// pushed out by newer ones): for the archive.
-    pub fn take_left(&mut self) -> Vec<Entry> {
+    /// What has left by itself since this was last asked (read and
+    /// tidied away, pushed out by newer ones), each with why: for the
+    /// archive.
+    pub fn take_left(&mut self) -> Vec<(Entry, Why)> {
         std::mem::take(&mut self.left)
     }
 
@@ -495,9 +563,10 @@ impl History {
     /// same one archived again (after an Undo) takes its own place. Then
     /// the oldest go: those archived over `ARCHIVE_DAYS` ago, and those
     /// past `ARCHIVE_KEEP`. Whether anything changed.
-    pub fn archive(&mut self, gone: impl IntoIterator<Item = Entry>, now: u64) -> bool {
+    pub fn archive(&mut self, gone: impl IntoIterator<Item = (Entry, Why)>, now: u64) -> bool {
         let mut changed = false;
-        for mut e in gone.into_iter().filter(|e| e.attention.is_none()) {
+        for (mut e, why) in gone.into_iter().filter(|(e, _)| e.attention.is_none()) {
+            e.why = Some(why);
             e.unread = false;
             e.live = false;
             e.shown = false;
@@ -584,16 +653,21 @@ impl History {
             }
             None => entries.push(e),
         }
-        // The oldest go (to the archive: `take_left`), but those pinned
-        // or snoozed.
-        let mut extra = entries.len().saturating_sub(KEEP);
+        // Past what's kept, the oldest go (to the archive: `take_left`),
+        // but those pinned or snoozed: the read ones first, and unread
+        // ones only when there's nothing read left to go.
+        let extra = entries.len().saturating_sub(KEEP);
         if extra > 0 {
+            let may_go = |e: &Entry| !e.pinned && !e.snoozed() && e.attention.is_none();
+            let read: Vec<usize> = entries.iter().enumerate().filter(|(_, e)| may_go(e) && !e.unread).map(|(i, _)| i).take(extra).collect();
+            let unread: Vec<usize> = entries.iter().enumerate().filter(|(_, e)| may_go(e) && e.unread).map(|(i, _)| i).take(extra - read.len()).collect();
             let mut left = Vec::new();
+            let mut i = 0;
             entries.retain(|e| {
-                let goes = extra > 0 && !e.pinned && !e.snoozed();
+                let goes = read.contains(&i) || unread.contains(&i);
+                i += 1;
                 if goes {
-                    extra -= 1;
-                    left.push(e.clone());
+                    left.push((e.clone(), Why::Overflow));
                 }
                 !goes
             });
@@ -653,8 +727,9 @@ impl History {
         if !self.entries.iter().any(|e| e.unread) {
             return false;
         }
-        for e in self.entries_mut() {
-            e.unread = false;
+        let now = now_secs();
+        for e in self.entries_mut().iter_mut().filter(|e| e.unread) {
+            e.set_unread(false, now);
         }
         true
     }
@@ -664,7 +739,7 @@ impl History {
         match self.entries.iter().rposition(|e| e.id == id) {
             Some(at) if self.entries[at].unread == read => {
                 let e = &mut self.entries_mut()[at];
-                e.unread = !read;
+                e.set_unread(!read, now_secs());
                 // (An app's item made unread again: all of it.)
                 if !read {
                     (e.seen, e.seen_urgent) = (0, false);
@@ -716,18 +791,19 @@ impl History {
         self.entries = Arc::new(kept);
     }
 
-    /// What has faded away by `now` (not what is on screen) leaves, for
-    /// the archive (`take_left`); the ones still open at their apps, to
-    /// tell them.
+    /// What was read long enough ago to be tidied away by `now` leaves,
+    /// for the archive (`take_left`); the ones still open at their apps,
+    /// to tell them. Never one that's unread (nothing the person hasn't
+    /// seen goes by itself), on screen, pinned or snoozed.
     pub fn fade_out(&mut self, settings: &olo_protocol::NotificationSettings, now: u64) -> Option<Vec<u32>> {
-        let faded = |e: &Entry| e.attention.is_none() && !e.shown && !e.pinned && !e.snoozed() && settings.faded(now.saturating_sub(e.time));
+        let faded = |e: &Entry| e.attention.is_none() && !e.unread && !e.shown && !e.pinned && !e.snoozed() && settings.faded(now.saturating_sub(e.since()));
         if !self.entries.iter().any(faded) {
             return None;
         }
         let live = self.entries.iter().filter(|e| faded(e) && e.live).map(|e| e.id).collect();
         // (Their pictures stay: they go on to the archive, `take_left`.)
         let gone = self.take_out(|_, e| !faded(e));
-        self.left.extend(gone.into_iter().map(|(_, e)| e));
+        self.left.extend(gone.into_iter().map(|(_, e)| (e, Why::Tidied)));
         Some(live)
     }
 }
@@ -946,66 +1022,85 @@ mod tests {
         assert!(!is_app(&app_ids(None, ""), "anything") && !is_app(&app_ids(Some(" "), ""), ""));
     }
 
-    /// What leaves the history goes to the archive (Ben, 2026-11-18:
-    /// "after a notification has been faded out / dismissed / cleared
-    /// let's put it in an archived section"): what fades away and what
-    /// newer ones push out are handed on (`take_left`); in the archive
-    /// each is read, closed, unpinned, and marked with when; an Undo
-    /// takes it out again; and the archive itself lets its oldest go.
+    /// What leaves the list goes to the Cleared one (the archive; Ben,
+    /// 2026-11-18: "after a notification has been faded out / dismissed /
+    /// cleared let's put it in an archived section"), each saying why:
+    /// what was read and is tidied away, and what newer ones push out,
+    /// are handed on (`take_left`); there each is read, closed, unpinned,
+    /// and marked with when and why; an Undo takes it out again; and the
+    /// archive itself lets its oldest go. Nothing unread is tidied away.
     #[test]
     fn what_leaves_the_history_is_archived() {
         let settings = olo_protocol::NotificationSettings { fade: true, fade_minutes: 60, ..Default::default() };
         let mut h = History::load(None);
         let mut a = History::load(None);
         let at = |id: u32, time: u64| Entry { time, ..entry(id, "One") };
-        h.put(at(1, 100));
-        h.put(Entry { pinned: true, ..at(2, 100) });
+        let read = |id: u32, time: u64| Entry { unread: false, ..at(id, time) };
+        h.put(read(1, 100));
+        h.put(Entry { pinned: true, ..read(2, 100) });
         h.put(at(3, 5000));
-        // An hour on, the first has faded away: out of the history, handed on.
+        // (As old as the first, and never seen: it stays, however old.)
+        h.put(at(4, 100));
+        // An hour on, the first, read, is tidied away: out of the list, handed on.
         assert_eq!(h.fade_out(&settings, 4000), Some(vec![1]));
         let left = h.take_left();
-        assert_eq!(left.iter().map(|e| e.id).collect::<Vec<_>>(), vec![1]);
+        assert_eq!(left.iter().map(|(e, why)| (e.id, *why)).collect::<Vec<_>>(), vec![(1, Why::Tidied)]);
         assert!(h.take_left().is_empty(), "handed on once");
+        assert_eq!(h.fade_out(&settings, 4_000_000), None, "the unread one is there a month on");
+        assert!(h.entries.iter().any(|e| e.id == 4 && e.unread));
         assert!(a.archive(left, 4000));
         let e = &a.entries[0];
-        assert_eq!((e.id, e.unread, e.live, e.pinned, e.archived), (1, false, false, false, 4000));
-        // Cleared (or forgotten, or dismissed): taken out and archived;
-        // an Undo puts it back and takes it out of the archive.
+        assert_eq!((e.id, e.unread, e.live, e.pinned, e.archived, e.why), (1, false, false, false, 4000, Some(Why::Tidied)));
+        // Cleared by the person: taken out and archived; an Undo puts it
+        // back and takes it out of the archive.
+        let cleared = |gone: &[(usize, Entry)]| gone.iter().map(|(_, e)| (e.clone(), Why::Cleared)).collect::<Vec<_>>();
         let gone = h.take_out(|_, e| e.id != 3);
-        assert!(a.archive(gone.iter().map(|(_, e)| e.clone()), 4100));
-        assert_eq!(a.entries.iter().map(|e| e.id).collect::<Vec<_>>(), vec![1, 3]);
+        assert!(a.archive(cleared(&gone), 4100));
+        assert_eq!(a.entries.iter().map(|e| (e.id, e.why)).collect::<Vec<_>>(), vec![(1, Some(Why::Tidied)), (3, Some(Why::Cleared))]);
         h.put_back(gone);
         assert!(a.unarchive(&[(3, 5000)]) && !a.unarchive(&[(3, 5000)]));
         assert_eq!(a.entries.iter().map(|e| e.id).collect::<Vec<_>>(), vec![1]);
+        assert!(h.entries.iter().any(|e| e.id == 3 && e.unread && e.why.is_none()), "back as it was");
         // Archived again (a Redo): once, in its own place.
         let again = h.take_out(|_, e| e.id != 3);
-        assert!(a.archive(again.iter().map(|(_, e)| e.clone()), 4200));
-        assert!(a.archive(again.into_iter().map(|(_, e)| e), 4300));
+        assert!(a.archive(cleared(&again), 4200));
+        assert!(a.archive(cleared(&again), 4300));
         assert_eq!(a.entries.iter().map(|e| (e.id, e.archived)).collect::<Vec<_>>(), vec![(1, 4000), (3, 4300)]);
         // What an app says is waiting in it is not a notification: never archived.
         let item = Entry { attention: Some(olo_protocol::notifications::Attention { app: "olo-slack".into(), count: 2, urgent: false }), ..at(9, 4300) };
-        assert!(!a.archive(vec![item], 4400));
-        // Newer ones push the oldest out of the history: handed on too.
-        for id in 10..(10 + KEEP as u32 + 1) {
+        assert!(!a.archive(vec![(item, Why::Cleared)], 4400));
+        // Newer ones push the oldest out of the list, handed on too: the
+        // read ones first, an unread one only when no read one is left;
+        // never the pinned one.
+        h.put(read(5, 6000));
+        // (With the pinned one, the old unread one and the read one: two too many.)
+        for id in 10..(10 + KEEP as u32 - 1) {
             h.put(at(id, 6000));
         }
-        let pushed: Vec<u32> = h.take_left().iter().map(|e| e.id).collect();
-        assert_eq!(pushed, vec![10, 11], "the oldest two, not the pinned one before them");
-        assert!(h.entries.iter().any(|e| e.id == 2 && e.pinned));
+        let pushed: Vec<(u32, Why)> = h.take_left().iter().map(|(e, why)| (e.id, *why)).collect();
+        assert_eq!(pushed, vec![(5, Why::Overflow), (4, Why::Overflow)], "the read one first, though it's newer; then the oldest unread");
+        assert!(h.entries.iter().any(|e| e.id == 2 && e.pinned) && h.entries.len() == KEEP);
         // The archive keeps so long and so many.
         assert!(!a.prune_archive(4000 + ARCHIVE_DAYS * 86400), "thirty days: still there");
         assert!(a.prune_archive(4000 + ARCHIVE_DAYS * 86400 + 1));
         assert_eq!(a.entries.iter().map(|e| e.id).collect::<Vec<_>>(), vec![3], "the one archived over thirty days ago went");
-        let many: Vec<Entry> = (100..(100 + ARCHIVE_KEEP as u32 + 5)).map(|id| at(id, 7000)).collect();
+        let many: Vec<(Entry, Why)> = (100..(100 + ARCHIVE_KEEP as u32 + 5)).map(|id| (at(id, 7000), Why::Cleared)).collect();
         assert!(a.archive(many, 4300 + 86400));
         assert_eq!(a.entries.len(), ARCHIVE_KEEP);
         assert_eq!((a.entries[0].id, a.entries.last().unwrap().id), (105, 100 + ARCHIVE_KEEP as u32 + 4), "the oldest went first (the one there before, and five of these)");
-        // Written with when it was archived; one that isn't says nothing of it.
+        // Written with when and why it was archived; one that isn't says nothing of either.
         let mut kept = History::load(None);
-        kept.archive(vec![at(1, 100)], 4000);
+        kept.archive(vec![(at(1, 100), Why::Withdrawn)], 4000);
         let text = serde_json::to_string(&*kept.entries).unwrap();
-        assert!(text.contains("\"archived\":4000"), "{text}");
-        assert!(!serde_json::to_string(&at(1, 100)).unwrap().contains("archived"), "nothing said of one that isn't");
+        assert!(text.contains("\"archived\":4000") && text.contains("\"why\":\"withdrawn\""), "{text}");
+        let plain = serde_json::to_string(&at(1, 100)).unwrap();
+        assert!(!plain.contains("archived") && !plain.contains("why") && !plain.contains("read_at"), "nothing said of one that isn't: {plain}");
+        // How each reason is said on a Cleared row.
+        assert_eq!(
+            [Why::Cleared, Why::Tidied, Why::Withdrawn, Why::Replaced, Why::Overflow].map(|w| w.said("Telegram")),
+            ["Cleared", "Tidied away", "Withdrawn by Telegram", "Replaced by a newer one", "Made room for newer ones"]
+        );
+        assert_eq!(Why::Withdrawn.said(""), "Withdrawn");
     }
 
     #[test]
@@ -1068,12 +1163,21 @@ mod tests {
         h.put(Entry { time: 900, shown: true, ..entry(3, "on screen") });
         assert!(h.set_read(2, true) && !h.set_read(2, true));
         assert_eq!(h.unread(), 2);
+        // (Read: when is kept; unread again: forgotten.)
+        assert!(h.entries[1].read_at > 4000 && h.entries[1].since() == h.entries[1].read_at);
         assert!(h.set_read(2, false) && h.unread() == 3);
+        assert_eq!((h.entries[1].read_at, h.entries[1].since()), (0, 4000));
         let settings = olo_protocol::NotificationSettings { fade_minutes: 60, ..Default::default() };
-        assert_eq!(h.fade_out(&settings, 4000), None, "nothing an hour old yet");
-        // An hour after the first: it goes (it was open: its app hears),
-        // not the one still on screen.
-        assert_eq!(h.fade_out(&settings, 4600), Some(vec![1]));
+        // Unread, nothing goes, however old.
+        assert_eq!(h.fade_out(&settings, 1_000_000), None, "nothing unread is tidied away");
+        // Read at 3000 (long after it came), the first goes an hour after
+        // that, not an hour after it came; it was open: its app hears.
+        // Not the one still on screen, read or not.
+        for e in h.entries_mut().iter_mut().filter(|e| e.id != 2) {
+            e.set_unread(false, 3000);
+        }
+        assert_eq!(h.fade_out(&settings, 4700), None, "an hour after it came, not yet an hour after it was read");
+        assert_eq!(h.fade_out(&settings, 6600), Some(vec![1]));
         assert_eq!(h.entries.iter().map(|e| e.id).collect::<Vec<_>>(), [2, 3]);
         let off = olo_protocol::NotificationSettings { fade: false, ..settings };
         assert_eq!(h.fade_out(&off, 100_000), None);
@@ -1087,8 +1191,12 @@ mod tests {
         h.put(Entry { time: 1000, ..entry(3, "neither") });
         // Snoozed: not counted until it is back.
         assert_eq!(h.unread(), 2);
+        // (All read, long ago.)
+        for e in h.entries_mut() {
+            e.unread = false;
+        }
         let settings = olo_protocol::NotificationSettings { fade_minutes: 60, ..Default::default() };
-        assert_eq!(h.fade_out(&settings, 100_000), Some(vec![3]), "only the one neither pinned nor snoozed fades");
+        assert_eq!(h.fade_out(&settings, 100_000), Some(vec![3]), "only the one neither pinned nor snoozed is tidied away");
         // A replacement keeps both.
         h.put(Entry { summary: "pinned again".into(), ..entry(1, "") });
         h.put(entry(2, "snoozed again"));

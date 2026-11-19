@@ -288,7 +288,8 @@ impl Banners {
     fn did(&mut self, id: u32, did: Did, cx: &mut Cx<Self>) {
         let shared = self.shared.clone();
         with(&shared, |n| match did {
-            Did::Dismiss => n.remove(id, Reason::Dismissed),
+            // (Its ×: cleared, as × is everywhere.)
+            Did::Dismiss => n.clear(id),
             Did::Action(key) => n.invoke(Some(&**cx), id, key),
             Did::Raise => {
                 if let Some(card) = n.cards.iter().find(|c| c.note.id == id) {

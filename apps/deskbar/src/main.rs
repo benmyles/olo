@@ -2430,7 +2430,7 @@ fn link_menu(kind: olo_system::network::Kind, l: &olo_system::network::Links) ->
 /// The bell's menu.
 fn notifications_menu(quiet: bool) -> Menu {
     Menu::new("Notifications")
-        .item("Show History", "notif:history")
+        .item("Show Notifications", "notif:history")
         .separator()
         .item("Do Not Disturb", if quiet { "notif:off" } else { "notif:on" })
         .checked(quiet)
@@ -3846,7 +3846,9 @@ impl Deskbar {
         if notes.is_some_and(|n| n.notes_shake.is_some() || n.unread_shake.is_some()) {
             d.animating = true;
         }
-        if notes.is_some_and(|n| n.notes.is_some_and(|(fresh, _)| fresh < 1.0)) {
+        // (Its blue dot drains with the age of what's unread, down to its
+        // floor, where it stays: drawn again only while it's on its way.)
+        if notes.is_some_and(|n| n.notes.is_some_and(|(fresh, _)| fresh < 1.0 && fresh > olo_protocol::notifications::UNREAD_FLOOR + 0.001)) {
             d.fading = true;
         }
         let (name, icon) = (team.name.clone(), team.icon.clone());

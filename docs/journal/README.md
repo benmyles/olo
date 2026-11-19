@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Notifications, made plain (first step)
+
+*17:36* — Unread is blue everywhere: the dot beside an app, on a card, in the list, and now the bell's count too. Nothing unread goes away by itself any more: only what you've read is tidied away, an hour after you read it. × clears, wherever it is (a banner's too). Archived is now Cleared, and each row there says why it left: cleared by you, tidied away, withdrawn by its app, replaced, or made room.
+
+![Notifications, made plain (first step)](2026-11-18/173631-notifications-made-plain-first-step.png)
+
 ### Calendar: an assistant
 
 *17:11* — View ▸ Show Assistant: ask about your calendars and it answers from the events of the ones you show, with links that go to the events it means. Asked to add or plan something, it drafts the event and a click opens it for you to look over and save: it never adds anything itself. Its model is in Preferences ▸ AI ▸ Calendar.

@@ -17080,6 +17080,51 @@ while it was away. `OLO_SECRETS_SERVE=1`, `OLO_SECRETS_KEYFILE` and
 
 ## Notifications (apps/notifications)
 
+**The model, in one place** (2026-11-18, after a study of every state
+and surface: Ben, "the red vs blue types and what fades out vs goes to
+history/archive vs goes away vs automatically gets marked as read vs
+what doesn't etc. is all very confusing"; the decisions his to
+delegate: "decide and use your judgement"). What follows it in this
+section is how each part is built; where an older paragraph says
+otherwise, this is the rule.
+
+- A notification is **unread** (a blue dot, `Palette::notice`: beside
+  its app in Deskbar, on its row in the list, on its Inbox card; the
+  bell counts these, in the same blue), **read** (no dot; its row
+  fades with the time since it was read), or **cleared** (out of the
+  list, in the Cleared list, which says why and when each left).
+- **Nothing unread leaves by itself.** A banner timing out leaves it
+  unread. What is tidied away after "Tidy away read notifications
+  after" (an hour) is what was *read* that long ago
+  (`History::fade_out`, `Entry::since`: from when it was read,
+  `Entry::read_at`, not from when it came). Past the 200 kept, the
+  oldest read ones go first, an unread one only when none is left.
+  An unread one's mark drains with its age to a floor
+  (`UNREAD_FLOOR`, 0.3) and stays there; drawn again only while it's
+  on its way.
+- **× always clears**: on a banner, on an Inbox card, on a row; Clear,
+  Clear All, `--clear ID` (`Notifications::clear`). Out of the list,
+  into the Cleared one, and Edit ▸ Undo brings it back. In the Cleared
+  list × and Delete delete (Undo there too), and Put Back returns one
+  to the list, read.
+- **Read follows the person**: a click on it or one of its actions
+  anywhere, going to what it's about (its window, its tab, its site),
+  Mark as Read. Not a banner timing out.
+- **An app taking one back clears it** (`remove` with `Reason::Closed`
+  while it was still open there): "Withdrawn by APP" in the Cleared
+  list. That is how apps say "seen to elsewhere" (Telegram on a chat
+  read, the phone on a notification removed there).
+- **Why each left** (`store::Why`, on every Cleared row and in
+  `--cleared`): Cleared (the person), Tidied away (read, and its time
+  up), Withdrawn (its app), Replaced by a newer one ("only the latest
+  of the same"), Made room for newer ones (past 200).
+- **Red is not a notification**: it is what an app says is waiting in
+  it (its own count). Still to do, in docs/TODO.md's order: that count
+  out of the list and into a strip of its own, urgency apart from
+  kind, read on arrival in the app in front, counts kept across
+  restarts.
+
+
 Olo's own apps notify through the kit: `olo_kit::notify::Notifier::
 new(olo_kit::proxy(), "Tracker", "olo-tracker")`, then `show(None,
 Note::new("Copied").body(…).action("default", "Show"))` → a `NoteId`;
@@ -17181,12 +17226,14 @@ the service's new threads cost nothing (0 wakeups a second over 6 s).
 **The archive** (Ben, 2026-11-18: "after a notification has been faded
 out / dismissed / cleared let's put it in an archived section in the
 notifications app and have a way to see the archived ones when
-needed"). Whatever leaves the history goes to it: what fades away and
-what newer ones push out past the 200 kept (the history hands those on,
-`History::take_left`, as `publish` next runs), what is dismissed (a
-banner's ×, a card of Deskbar's widget, `Dismiss`: out of the list at
-once now, where it stayed as read until it faded; a pinned one stays
-put), cleared (Clear All) and forgotten (a row's ×, Forget). Never what
+needed"). It is the **Cleared** list now (the model above; its file
+and its functions keep the name). Whatever leaves the list goes to it,
+each with why (`store::Why`): what was read and is tidied away and
+what newer ones push out past the 200 kept (the history hands those
+on, `History::take_left`, as `publish` next runs), what is cleared (a
+banner's ×, a card of Deskbar's widget, a row's ×, Clear, Clear All,
+`Dismiss` to an agent; a pinned one stays put), what its app
+withdraws, and what a newer one of the same replaces. Never what
 an app says is waiting in it, which isn't a notification. It is a list
 like the history, in a file beside it
 (`~/.local/state/olo/notifications/archive.json`,
@@ -17199,17 +17246,21 @@ lists). It keeps 30 days and the last 1000 (`ARCHIVE_DAYS`,
 Ids are unique across the two lists (the next id starts past both).
 
 In the Notifications window, the status bar's link at the right,
-"Archived (2)", shows it, and "Notifications (5)" there goes back; so
-does View ▸ Archived (⌘5) (`HistoryState::archived`,
+"Cleared (2)", shows it, and "Notifications" there goes back; so does
+View ▸ Cleared (⌘5) (`HistoryState::archived`,
 `Notifications::listed`: the window lays out one list or the other, in
-whichever view, with its search). The archive's bar has its name where
-Do Not Disturb is, and Empty Archive for Clear All; nothing in it
-fades; a row can be opened (what it's about, by what it said shows it,
-else its app) or deleted (its ×, Delete, the menu), and Edit ▸ Undo
-takes back a deletion or Empty Archive (`Gone::Deleted`) as it takes
-back Forget, Clear All and now Dismiss (`Gone::Forgot`: back in the
-history, out of the archive). For agents: `ListArchived` (JSON,
-`{"archived": [...]}`) and `olo-notifications --archived [--json]`.
+whichever view, with its search). Its bar has its name where Do Not
+Disturb is, and Delete All for Clear All; nothing in it fades; a row
+says whose it was and why and when it left ("Slack · Cleared 17:35",
+`meta_of`: short enough to sit beside its title; the review found the
+longer line, with when it came too, a pixel off the row's icon), and
+can be opened (what it's about, by what it said shows it, else its
+app), put back in the list (Put Back, read: `put_back`) or deleted
+(its ×, Delete, the menu), and Edit ▸ Undo takes back a deletion or
+Delete All (`Gone::Deleted`) as it takes back Clear and Clear All
+(`Gone::Forgot`: back in the list, out of the Cleared one). For
+agents: `ListArchived` (JSON, `{"archived": [...]}`, each with `why`)
+and `olo-notifications --cleared [--json]` (`--archived` the same).
 tsession review of both views, with the pointer on a row, at 1×, 1.5×
 and 2×: nothing (it found a row's × three points from the app and time
 beside it, in the history's list too: `CLOSE_W`, `CLOSE_AT`).
@@ -17332,15 +17383,17 @@ or fitted whole), kept, and the windows drawn again as each comes.
   each note's picture beside it in `pictures/ID.png` (scaled to 96 px,
   written off the UI thread; pictures nothing names go at start-up).
   Every note not `transient` goes in, unread. Read means the person has
-  seen to it: clicked (on screen or in the history), acted on, or
-  dismissed; a card that just expires stays unread. An expired card
-  stays "open" there (its actions still work) until the app closes it.
-  After a restart nothing is open, and ids carry on after the
-  history's. With fading on, a note goes once it has faded away
-  (`History::fade_out`, checked every tick, never one still on screen;
-  its app hears it expired). The window draws a note at
-  `fade_opacity(strength)`, never fainter than 0.3, so the last of its
-  fade is still legible (full again selected or under the pointer).
+  seen to it: clicked (on screen or in the list), acted on, or gone
+  to; a card that just expires stays unread. An expired card stays
+  "open" there (its actions still work) until the app closes it (which
+  clears it: "Withdrawn"). After a restart nothing is open, and ids
+  carry on after the history's. With tidying on, a *read* note goes
+  once it was read long enough ago (`History::fade_out`, checked every
+  tick, never one unread, nor one still on screen; its app hears it
+  expired). The window draws an unread note whole, and a read one at
+  `fade_opacity(strength)` by the time since it was read, never
+  fainter than 0.3, so the last of its fade is still legible (full
+  again selected or under the pointer).
 - history.rs: the History window (`--history`, or Deskbar's bell),
   unread first under an *Unread* heading (with its count and Mark All
   Read), then the rest, newest first in each, in one of four views
@@ -20241,9 +20294,10 @@ app only to make what's next.
   ask the service (`--dismiss`, `--snooze ID MINUTES`); one that
   arrives goes on top, whichever was chosen ("if newer ones arrive
   they should be added on top of the card stack too, not the bottom");
-  one that has faded away leaves ("cards that time out should leave the
-  stack, and the dot should animate to show it timing out like we do in
-  deskbar"). Its options: what it shows (everything, red, blue), the
+  a card stays until it's read or cleared (it once left when it
+  "faded away", which took unread things out of sight: no more), its
+  dot draining with its age to the floor ("the dot should animate …
+  like we do in deskbar"). Its options: what it shows (everything, red, blue), the
   order, how long Snooze snoozes, and whether cards show their text.
   Agents read the top card as a list item ("Slack: Dana: lunch?", "2 of
   5, waiting in its app") and each button by name. The layer over the

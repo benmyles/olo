@@ -114,13 +114,13 @@ enum Item {
 }
 
 /// An entry's menu (a right click on it); `archived`: one in the
-/// archive, which can only be opened or deleted.
+/// Cleared list, which can be opened, put back in the list, or deleted.
 fn entry_menu(e: &store::Entry, archived: bool) -> Menu {
     if archived {
-        return Menu::new("Notification").item("Open", "open").separator().item("Delete", "forget");
+        return Menu::new("Notification").item("Open", "open").item("Put Back", "put-back").separator().item("Delete", "forget");
     }
     let menu = Menu::new("Notification").item("Open", "open").separator().item(if e.unread { "Mark as Read" } else { "Mark as Unread" }, "toggle-read").separator();
-    crate::note_menu(menu, Some(e.pinned)).separator().item("Forget", "forget")
+    crate::note_menu(menu, Some(e.pinned)).separator().item("Clear", "forget")
 }
 
 /// The local date of `secs`: (a key that differs from day to day, its
@@ -300,7 +300,8 @@ fn paint_icon(g: &mut Painter, r: Bounds<Pixels>, e: &store::Entry, person: bool
 /// Red (`waiting`) where its app says something is waiting in it; blue,
 /// news (as Deskbar's dot beside the app, and its Inbox widget's cards).
 fn unread_dot(g: &mut Painter, center: Point<Pixels>, p: &olo_theme::Palette, waiting: bool) {
-    g.paint_sector(center, px(0.0), px(3.5), 0.0, std::f32::consts::TAU, style::c(if waiting { p.unread } else { p.keyboard_navigation }));
+    // (Blue as it is beside its app in Deskbar and on the bell: unread.)
+    g.paint_sector(center, px(0.0), px(3.5), 0.0, std::f32::consts::TAU, style::c(if waiting { p.unread } else { p.notice }));
 }
 
 /// A row laid out.
@@ -467,9 +468,15 @@ fn mark_all_rect(r: Bounds<Pixels>) -> Bounds<Pixels> {
     Bounds::from_corners(point(r.right() - px(CLOSE_W + tw + 4.0), r.top() + px(2.0)), point(r.right() - px(CLOSE_W - 4.0), r.bottom() - px(3.0)))
 }
 
-/// A group's Dismiss, at the right of its heading `r`.
+/// What a × or a group's link does, in a word: clears a notification
+/// (out of the list, into the Cleared one); deletes one that's there.
+fn clears(e: Option<&store::Entry>) -> &'static str {
+    if e.is_some_and(|e| e.archived > 0) { "Delete" } else { "Clear" }
+}
+
+/// A group's Clear, at the right of its heading `r`.
 fn dismiss_rect(r: Bounds<Pixels>) -> Bounds<Pixels> {
-    let tw = f32::from(style::text_width("Dismiss", style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL)));
+    let tw = f32::from(style::text_width("Delete", style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL)));
     Bounds::from_corners(point(r.right() - px(8.0 + tw + 6.0), r.top() + px(3.0)), point(r.right() - px(4.0), r.bottom() - px(4.0)))
 }
 
@@ -495,8 +502,16 @@ fn card_close(r: Bounds<Pixels>) -> Bounds<Pixels> {
     Bounds::centered_at(point(head.right() - px(6.0), head.center().y), size(px(12.0), px(12.0)))
 }
 
-/// A row's or card's line under its title: whose it is and when.
+/// A row's or card's line under its title: whose it is and when; in
+/// the Cleared list, whose it is, and why it left and when ("Telegram ·
+/// Withdrawn 4:41 PM": it's under the day it came, and short enough to
+/// sit beside its title).
 fn meta_of(e: &store::Entry, view: HistoryView) -> String {
+    if e.archived > 0 {
+        // (Its app is said already: "Withdrawn", not "Withdrawn by …".)
+        let why = format!("{} {}", e.why.map_or_else(|| "Cleared".to_owned(), |w| w.said("")), crate::when(e.archived));
+        return if view == HistoryView::Apps { why } else { format!("{} · {why}", app_name(e)) };
+    }
     let meta = match view {
         HistoryView::List => format!("{} · {}", app_name(e), clock(e.time)),
         HistoryView::Apps => crate::when(e.time),
@@ -546,9 +561,9 @@ impl HistoryWindow {
         for (v, label, command, key) in VIEWS {
             views = views.item(label, command).key(key).checked(view == v);
         }
-        // (The archive beside the history's views: what has left it.)
+        // (The Cleared list beside the list's views: what has left it.)
         let archived = n.view.archived;
-        views = views.separator().item("Archived", "archived").key("5").checked(archived);
+        views = views.separator().item("Cleared", "archived").key("5").checked(archived);
         let selected = n.selected_unread();
         let pinned = n.view.selected.filter(|_| !archived).and_then(|id| n.history.newest(id)).map(|e| e.pinned);
         let edit = n
@@ -566,7 +581,7 @@ impl HistoryWindow {
             .separator();
         let edit = crate::note_menu(edit, pinned).separator();
         let edit = if archived {
-            edit.item("Empty Archive", "empty-archive").enabled(!n.archive.entries.is_empty())
+            edit.item("Delete All", "empty-archive").enabled(!n.archive.entries.is_empty())
         } else {
             edit.item("Clear All", "clear").enabled(n.history.entries.iter().any(|e| !e.shown && !e.pinned && !e.snoozed()))
         };
@@ -671,8 +686,8 @@ impl HistoryWindow {
             } else {
                 vec![("default".into(), format!("Show {}", app_name(e)))]
             };
-            // Dismiss last: the notification, or the whole conversation.
-            actions.push((String::new(), "Dismiss".to_owned()));
+            // Clear last: the notification, or the whole conversation.
+            actions.push((String::new(), "Clear".to_owned()));
             actions
                 .into_iter()
                 .map(|(k, l)| (k, l.clone(), (f32::from(style::text_width(l, style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))) + 2.0 * m::CONTROL_PAD).max(m::BUTTON_MIN_WIDTH * 0.75).ceil()))
@@ -986,6 +1001,7 @@ impl HistoryWindow {
                     n.open_entry(Some(&**cx), i, None);
                 }
                 "forget" => n.forget(vec![i], &order),
+                "put-back" if n.view.archived => n.put_back(i),
                 _ if n.view.archived => {}
                 "toggle-read" => {
                     n.view.held.insert(id);
@@ -1188,7 +1204,7 @@ fn paint_card(g: &mut Painter, r: Bounds<Pixels>, e: &store::Entry, laid: &CardL
             }
         } else {
             style::close_box(g, close, if lit { ink.text } else { ink.dim });
-            agent::record(g, agent::Node::button("Forget", close));
+            agent::record(g, agent::Node::button(clears(Some(e)), close));
         }
         look::paint(g, &entry_face(e), &laid.face, &laid.ink, point(inner.left(), head.bottom() + px(CARD_HEAD_GAP)), f32::from(inner.size.width));
     });
@@ -1230,7 +1246,7 @@ fn paint_heading(g: &mut Painter, r: Bounds<Pixels>, item: &Item, entries: &[sto
             let name = if app.is_empty() { "Notification" } else { app.as_str() };
             let text = style::c(p.document_text);
             let dim = style::disabled_text(&p);
-            // (Under the pointer: its latch lit, and its Dismiss shown.)
+            // (Under the pointer: its latch lit, and its Clear shown.)
             let lit = shown.hovered;
             style::latch(g, Bounds::centered_at(point(r.left() + px(7.0), r.center().y), size(px(10.0), px(10.0))), *open, if lit { text } else { dim });
             if let Some(first) = members.first().and_then(|&i| entries.get(i)) {
@@ -1242,8 +1258,9 @@ fn paint_heading(g: &mut Painter, r: Bounds<Pixels>, item: &Item, entries: &[sto
             agent::record(g, agent::Node { role: "Button", name: Some(format!("{name} ({count})").into()), bounds: r, enabled: true, clickable: true, selected: Some(*open), ..Default::default() });
             if lit {
                 let cr = dismiss_rect(r);
-                style::label(g, cr.right() - px(4.0), r.center().y, Align::Right, "Dismiss", style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), if shown.lit { text } else { dim });
-                agent::record(g, agent::Node::button(format!("Dismiss {name}"), cr));
+                let word = clears(members.first().and_then(|&i| entries.get(i)));
+                style::label(g, cr.right() - px(4.0), r.center().y, Align::Right, word, style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), if shown.lit { text } else { dim });
+                agent::record(g, agent::Node::button(format!("{word} {name}"), cr));
             }
         }
         Item::Note { .. } => {}
@@ -1316,7 +1333,7 @@ fn paint_row(g: &mut Painter, r: Bounds<Pixels>, e: &store::Entry, laid: &RowLai
         if !e.shown && hovered {
             let close = Bounds::centered_at(point(r.right() - px(CLOSE_AT), line1), size(px(12.0), px(12.0)));
             style::close_box(g, close, if shown.lit { style::c(fg) } else { dim });
-            agent::record(g, agent::Node::button("Forget", close));
+            agent::record(g, agent::Node::button(clears(Some(e)), close));
         }
     });
     if !is_sel {
@@ -1377,7 +1394,9 @@ impl View for HistoryWindow {
                 n
             }
         };
-        let strength = |e: &store::Entry| if e.pinned { 1.0 } else { list.settings.strength(now.saturating_sub(e.time)) };
+        // (An unread one shows whole: it isn't going anywhere. A read one
+        // fades by the time since it was read, until it's tidied away.)
+        let strength = |e: &store::Entry| if e.pinned || e.unread || e.attention.is_some() { 1.0 } else { list.settings.strength(now.saturating_sub(e.since())) };
         // What every drawing's key starts with.
         let base = (list.generation, palette_gen, crate::icons_made());
 
@@ -1540,7 +1559,7 @@ impl View for HistoryWindow {
         let shown_list: Element = if list.shown == 0 {
             let empty = match (searching, archived) {
                 (true, _) => "Nothing matches",
-                (false, true) => "Nothing archived",
+                (false, true) => "Nothing cleared",
                 (false, false) => "No notifications",
             };
             canvas(move |g, b| {
@@ -1574,7 +1593,7 @@ impl View for HistoryWindow {
         // the search and Empty Archive; Do Not Disturb is nothing of the
         // archive's).
         let dnd_box = CheckBox::new("Do Not Disturb", dnd).height(m::CONTROL_HEIGHT).on_toggle(cx.listener(|h: &mut HistoryWindow, on: &bool, _| with(&h.shared, |n| n.set_quiet(*on, 0))));
-        let clear = Button::new(if archived { "Empty Archive" } else { "Clear All" }).min_width(m::BUTTON_MIN_WIDTH).enabled(list.can_clear).on_click(cx.listener(
+        let clear = Button::new(if archived { "Delete All" } else { "Clear All" }).min_width(m::BUTTON_MIN_WIDTH).enabled(list.can_clear).on_click(cx.listener(
             move |h: &mut HistoryWindow, _: &ClickEvent, _| {
                 h.stale = true;
                 with(&h.shared, |n| if archived { n.delete_archived(None) } else { n.clear_history() });
@@ -1583,7 +1602,7 @@ impl View for HistoryWindow {
         let mut bar_row = div().flex().items_center().gap(px(m::SPACING)).h(px(m::CONTROL_HEIGHT + 2.0 * m::SPACING)).px(px(m::SPACING));
         bar_row = if archived {
             // (Where Do Not Disturb is in the notifications' bar: which list this is.)
-            bar_row.child(div().flex_shrink_0().child(StringView::new("Archived").bold(true)))
+            bar_row.child(div().flex_shrink_0().child(StringView::new("Cleared").bold(true)))
         } else {
             bar_row.child(div().flex_shrink_0().child(dnd_box))
         };
@@ -1598,7 +1617,7 @@ impl View for HistoryWindow {
             format!("{} of {all}", list.shown)
         } else if archived {
             // (What it is, and how long it's kept.)
-            format!("{all} archived · kept for {} days, the last {}", store::ARCHIVE_DAYS, store::ARCHIVE_KEEP)
+            format!("{all} cleared · kept for {} days, the last {}", store::ARCHIVE_DAYS, store::ARCHIVE_KEEP)
         } else if all == 1 {
             "1 notification".into()
         } else {
@@ -1631,7 +1650,10 @@ impl View for HistoryWindow {
         .paint_key(key_of(("foot", &status)))
         .flex_1()
         .h(px(m::LABEL_ROW));
-        let other = if archived { format!("Notifications ({})", list.other) } else { format!("Archived ({})", list.other) };
+        // (Back to the list: by its name alone; its unread are counted on
+        // the bell and in its own foot, and another number here was one
+        // more that agreed with neither.)
+        let other = if archived { "Notifications".to_owned() } else { format!("Cleared ({})", list.other) };
         let to_other = LinkButton::new(other).beside(style::DETAIL_SIZE).on_click(cx.listener(move |h: &mut HistoryWindow, _: &ClickEvent, cx| {
             h.stale = true;
             with(&h.shared, |n| n.show_archived(!archived));
@@ -1711,8 +1733,8 @@ impl Notifications {
             }
         }
         if !gone.is_empty() {
-            self.to_archive(gone.iter().map(|(_, e)| e.clone()).collect());
-            self.steps.done("Forget", crate::Gone::Forgot(gone));
+            self.to_archive(gone.iter().map(|(_, e)| e.clone()).collect(), store::Why::Cleared);
+            self.steps.done("Clear", crate::Gone::Forgot(gone));
         }
         if self.view.selected.is_some() {
             self.view.selected = next;

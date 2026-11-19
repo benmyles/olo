@@ -248,9 +248,34 @@ impl Notifications {
         if gone.iter().any(|(_, e)| Some(e.id) == self.view.selected) {
             self.view.selected = None;
         }
-        self.steps.done(if at.is_some() { "Delete" } else { "Empty Archive" }, Gone::Deleted(gone));
+        self.steps.done(if at.is_some() { "Delete" } else { "Delete All" }, Gone::Deleted(gone));
         self.archive.save();
         self.archived_changed();
+        self.changed();
+    }
+
+    /// One of the Cleared list (at `at`) put back in the list, read, as
+    /// it was but for its app (closed there by now): where its time
+    /// puts it.
+    pub fn put_back(&mut self, at: usize) {
+        let gone = self.archive.take_out(|i, _| i != at);
+        if gone.is_empty() {
+            return;
+        }
+        for (_, mut e) in gone {
+            (e.archived, e.why, e.unread, e.live, e.shown) = (0, None, false, false, false);
+            // (Read now: it has its time in the list again before it's tidied away.)
+            e.read_at = now_secs();
+            if self.view.selected == Some(e.id) {
+                self.view.selected = None;
+            }
+            let entries = self.history.entries_mut();
+            let pos = entries.iter().position(|x| x.time > e.time).unwrap_or(entries.len());
+            entries.insert(pos, e);
+        }
+        self.archive.save();
+        self.archived_changed();
+        self.publish(true);
         self.changed();
     }
 
@@ -260,9 +285,18 @@ impl Notifications {
         if self.view.archived { &self.archive } else { &self.history }
     }
 
-    /// These have left the history: into the archive, and kept.
-    pub fn to_archive(&mut self, gone: Vec<Entry>) {
+    /// These have left the history, each for its reason: into the
+    /// archive (the Cleared list), and kept.
+    pub fn to_archive_each(&mut self, gone: Vec<(Entry, store::Why)>) {
         if self.archive.archive(gone, now_secs()) {
+            self.archive.save();
+            self.archived_changed();
+        }
+    }
+
+    /// These have left the history for `why`: into the archive.
+    pub fn to_archive(&mut self, gone: Vec<Entry>, why: store::Why) {
+        if self.archive.archive(gone.into_iter().map(|e| (e, why)), now_secs()) {
             self.archive.save();
             self.archived_changed();
         }
@@ -278,7 +312,7 @@ impl Notifications {
         // (What left by itself, pushed out by newer ones or faded away.)
         let left = self.history.take_left();
         if !left.is_empty() {
-            self.to_archive(left);
+            self.to_archive_each(left);
         }
         if history_changed {
             self.history.save();
@@ -304,7 +338,9 @@ impl Notifications {
             .iter()
             .map(|e| {
                 let mut v = serde_json::to_value(e).unwrap_or_default();
-                let strength = if e.pinned { 1.0 } else { self.settings.strength(now.saturating_sub(e.time)) };
+                // (How strongly its row shows: an unread one whole, a read
+                // one fading by the time since it was read.)
+                let strength = if e.pinned || e.unread || e.attention.is_some() { 1.0 } else { self.settings.strength(now.saturating_sub(e.since())) };
                 v["strength"] = serde_json::json!((strength * 100.0).round() / 100.0);
                 v
             })
@@ -326,7 +362,9 @@ impl Notifications {
             let earlier = store::same_as(&self.history, &self.cards.iter().map(|c| &c.note).collect::<Vec<_>>(), &note.app_name, &note.summary, &text, note.id);
             for id in earlier {
                 self.take(id);
-                self.history.retain(|e| e.id != id);
+                // (To the Cleared list, saying why: not gone without a trace.)
+                let gone: Vec<Entry> = self.history.take_out(|_, e| e.id != id).into_iter().map(|(_, e)| e).collect();
+                self.to_archive(gone, store::Why::Replaced);
                 self.bus(|b| b.closed(id, Reason::Expired));
             }
         }
@@ -434,12 +472,44 @@ impl Notifications {
         later(&self.proxy, after + Duration::from_millis(20), Msg::Tick);
     }
 
+    /// A notification cleared by the person (its ×, on a banner, in the
+    /// Inbox or in the list; `Dismiss` to an agent): off the screen, out
+    /// of the list and into the Cleared one, and Edit ▸ Undo brings it
+    /// back. × means this everywhere. A pinned one stays put, as it does
+    /// through everything (its banner goes; it's read).
+    pub fn clear(&mut self, id: u32) {
+        self.remove(id, Reason::Dismissed);
+        self.set_read(id, true);
+        let gone = self.history.take_out(|_, e| e.id != id || e.pinned || e.attention.is_some());
+        if !gone.is_empty() {
+            self.to_archive(gone.iter().map(|(_, e)| e.clone()).collect(), store::Why::Cleared);
+            self.steps.done("Clear", Gone::Forgot(gone));
+            if self.view.selected == Some(id) {
+                self.view.selected = None;
+            }
+            self.publish(true);
+        }
+    }
+
     /// A notification goes. Its card times out into the history (still
-    /// open at its app, so its actions work from there); otherwise the app
-    /// hears why it closed.
+    /// open at its app, so its actions work from there, and unread);
+    /// one its app takes back while it's still open there is cleared
+    /// (to the Cleared list, "Withdrawn by APP": the app's way of saying
+    /// it was seen to elsewhere, or is no longer true); otherwise the
+    /// app hears why it closed.
     pub fn remove(&mut self, id: u32, reason: Reason) {
         let on_screen = self.take(id);
         let kept = self.history.get_mut(id).is_some();
+        if reason == Reason::Closed && self.history.newest(id).is_some_and(|e| e.live && !e.pinned && e.attention.is_none()) {
+            let gone: Vec<Entry> = self.history.take_out(|_, e| e.id != id || !e.live).into_iter().map(|(_, e)| e).collect();
+            self.to_archive(gone, store::Why::Withdrawn);
+            if self.view.selected == Some(id) {
+                self.view.selected = None;
+            }
+            self.bus(|b| b.closed(id, reason));
+            self.publish(true);
+            return;
+        }
         if reason == Reason::Expired && kept {
             if let Some(e) = self.history.get_mut(id) {
                 e.shown = false;
@@ -450,8 +520,8 @@ impl Notifications {
         if let Some(e) = self.history.get_mut(id) {
             e.live = false;
             e.shown = false;
-            if reason == Reason::Dismissed {
-                e.unread = false;
+            if reason == Reason::Dismissed && e.unread {
+                e.set_unread(false, now_secs());
             }
         }
         if on_screen || kept {
@@ -571,7 +641,9 @@ impl Notifications {
         // (Read: and what waits in its app seen.)
         self.history.acknowledge(id);
         if let Some(e) = self.history.get_mut(id) {
-            e.unread = false;
+            if e.unread {
+                e.set_unread(false, now_secs());
+            }
             if !resident {
                 e.live = false;
                 e.shown = false;
@@ -717,22 +789,7 @@ impl Notifications {
                     self.invoke(None, id, key);
                 }
             }
-            Control::Dismiss(id) => {
-                self.remove(id, Reason::Dismissed);
-                self.set_read(id, true);
-                // Dismissed, it's done with: out of the list, into the
-                // archive (Edit ▸ Undo brings it back). A pinned one
-                // stays put, as it does through everything.
-                let gone = self.history.take_out(|_, e| e.id != id || e.pinned || e.attention.is_some());
-                if !gone.is_empty() {
-                    self.to_archive(gone.iter().map(|(_, e)| e.clone()).collect());
-                    self.steps.done("Dismiss", Gone::Forgot(gone));
-                    if self.view.selected == Some(id) {
-                        self.view.selected = None;
-                    }
-                    self.publish(true);
-                }
-            }
+            Control::Dismiss(id) => self.clear(id),
             Control::ClearHistory => self.clear_history(),
             Control::ShowHistory => self.open_history(),
             Control::DoNotDisturb(on, minutes) => self.set_quiet(on, minutes),
@@ -802,7 +859,7 @@ impl Notifications {
         for id in due {
             let Some(e) = self.history.newest_mut(id) else { continue };
             e.snoozed_until = None;
-            e.unread = true;
+            e.set_unread(true, now);
             e.time = now;
             let banner = e.attention.is_none() && self.settings.app_via(&e.app, e.via.as_deref()).banners && !quiet && !never;
             e.shown = banner;
@@ -825,7 +882,7 @@ impl Notifications {
         }
         let gone = self.history.take_out(|_, e| kept(e));
         if !gone.is_empty() {
-            self.to_archive(gone.iter().map(|(_, e)| e.clone()).collect());
+            self.to_archive(gone.iter().map(|(_, e)| e.clone()).collect(), store::Why::Cleared);
             self.steps.done("Clear All", Gone::Forgot(gone));
         }
         self.publish(true);
@@ -851,7 +908,7 @@ impl Notifications {
             }
             Gone::Back(which) => {
                 let gone = self.history.take_out(|_, e| !which.contains(&(e.id, e.time)));
-                self.to_archive(gone.iter().map(|(_, e)| e.clone()).collect());
+                self.to_archive(gone.iter().map(|(_, e)| e.clone()).collect(), store::Why::Cleared);
                 Gone::Forgot(gone)
             }
             Gone::Deleted(gone) => {

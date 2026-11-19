@@ -312,9 +312,21 @@ pub fn parse_color(s: &str) -> Option<[u8; 3]> {
     }
 }
 
-/// How strongly a notification `age` seconds old shows, with the history
-/// fading over `fade_minutes` (None: it doesn't fade): 1 new, falling
-/// slowly at first, then faster, to 0 when it has faded away.
+/// The least an unread notification's mark shows (its dot beside its app
+/// in Deskbar, on its Inbox card): it drains with age to this and stays,
+/// until the notification is read. Nothing unread fades away.
+pub const UNREAD_FLOOR: f32 = 0.3;
+
+/// How strongly an unread notification's mark shows `age` seconds on:
+/// [`fade_strength`], no less than [`UNREAD_FLOOR`].
+pub fn unread_strength(fade_minutes: Option<u32>, age: u64) -> f32 {
+    fade_strength(fade_minutes, age).max(UNREAD_FLOOR)
+}
+
+/// How strongly a read notification `age` seconds past its reading shows,
+/// with the history fading over `fade_minutes` (None: it doesn't fade):
+/// 1 new, falling slowly at first, then faster, to 0 when it's tidied
+/// away.
 pub fn fade_strength(fade_minutes: Option<u32>, age: u64) -> f32 {
     let Some(minutes) = fade_minutes else { return 1.0 };
     let t = (age as f32 / (minutes.max(1) as f32 * 60.0)).clamp(0.0, 1.0);
@@ -366,9 +378,16 @@ pub struct InboxCard {
 }
 
 impl InboxCard {
-    /// How much of it is left at `now` ([`fade_strength`]): 1 new, 0 gone.
+    /// How strongly its dot shows at `now` ([`unread_strength`]): 1 new,
+    /// draining to [`UNREAD_FLOOR`], where it stays (a card is unread).
     pub fn strength(&self, now: u64) -> f32 {
-        fade_strength(self.fade_minutes, now.saturating_sub(self.time))
+        unread_strength(self.fade_minutes, now.saturating_sub(self.time))
+    }
+
+    /// Whether its dot is still draining at `now` (drawn again as it
+    /// does; at its floor there's nothing more to draw).
+    pub fn draining(&self, now: u64) -> bool {
+        self.fade_minutes.is_some() && fade_strength(self.fade_minutes, now.saturating_sub(self.time)) > UNREAD_FLOOR
     }
 }
 
@@ -419,7 +438,7 @@ impl NoteApp {
         }
         let fading = self.fading.len().min(self.count as usize);
         let whole = (self.count as usize - fading) as f32;
-        let faded: f32 = self.fading.iter().take(fading).map(|&t| fade_strength(fade_minutes, now.saturating_sub(t))).sum();
+        let faded: f32 = self.fading.iter().take(fading).map(|&t| unread_strength(fade_minutes, now.saturating_sub(t))).sum();
         ((whole + faded) / self.count as f32).clamp(0.0, 1.0)
     }
 }
@@ -519,9 +538,20 @@ mod tests {
         // Two new, one pinned: full.
         let mut app = NoteApp { count: 3, fading: vec![now, now - 5], ..Default::default() };
         assert!(app.freshness(Some(60), now) > 0.9999);
-        // One of the two faded away: its third is gone.
+        // One of the two as old as marks get: its third is at the floor,
+        // and stays there (it's unread: it doesn't fade away).
         app.fading[1] = now - 3600;
-        assert!((app.freshness(Some(60), now) - 2.0 / 3.0).abs() < 1e-6);
+        assert!((app.freshness(Some(60), now) - (2.0 + UNREAD_FLOOR) / 3.0).abs() < 1e-6);
+        app.fading[1] = 0;
+        assert!((app.freshness(Some(60), now) - (2.0 + UNREAD_FLOOR) / 3.0).abs() < 1e-6);
+        // All of an app's as old as that: its dot at the floor, no lower.
+        let old_app = NoteApp { count: 2, fading: vec![now - 9000, now - 9000], ..Default::default() };
+        assert_eq!(old_app.freshness(Some(60), now), UNREAD_FLOOR);
+        // A card's dot: draining for the hour, then at its floor, still.
+        let card = InboxCard { time: now - 1800, fade_minutes: Some(60), ..Default::default() };
+        assert!(card.draining(now) && card.strength(now) > UNREAD_FLOOR && card.strength(now) < 1.0);
+        assert!(!card.draining(now + 7200) && card.strength(now + 7200) == UNREAD_FLOOR);
+        assert!(!InboxCard { time: now - 1800, ..Default::default() }.draining(now), "one that doesn't fade isn't draining");
         // Halfway through its fade: part of its third.
         app.fading[1] = now - 1800;
         let half = app.freshness(Some(60), now);

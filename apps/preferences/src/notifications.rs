@@ -213,17 +213,18 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             }
         });
         // (As tall as the menu beside it: their labels level at 1.25×.)
-        let fade = CheckBox::new("Fade notifications away over", s.fade).height(m::CONTROL_HEIGHT).on_toggle(set(ui, |s, v| s.fade = v));
+        let fade = CheckBox::new("Tidy away read notifications after", s.fade).height(m::CONTROL_HEIGHT).on_toggle(set(ui, |s, v| s.fade = v));
         ui.add(div().flex().flex_row().items_center().gap(px(m::SPACING)).child(fade).child(MenuField::new("fade-minutes", names, i).width(110.0).enabled(s.fade).on_change(on)));
         let strip = s.clone();
         ui.add(canvas(move |g, b| fade_strip(g, b, &strip)).w_full().h(px(10.0 + style::SMALL_SIZE + 4.0)));
-        ui.note(if s.fade { "The newest show strongest; each goes once it has faded away." } else { "Kept until you clear them (the last 200)." });
+        ui.note(if s.fade { "Read ones fade, then move to Cleared; unread ones stay." } else { "Kept until you clear them (the last 200)." });
         check(ui, "Only the latest of the same notification", s.one_of_each, |s, v| s.one_of_each = v);
         ui.note("One like it again from the same app (its title and text) takes the earlier one's place while that's still showing or unread.");
     });
     ui.bbox("Deskbar", |ui| {
-        ui.note(if s.fade { "An app's dot drains as its notifications fade." } else { "An app with notifications unread has a dot beside its name." });
-        // The count on the tray's bell: the look's own red, or a hue.
+        ui.note("Unread notifications put a blue dot beside their app.");
+        // The count on the tray's bell: the look's own blue (the colour
+        // of unread, as the dots are), or a hue.
         let hues = olo_theme::Hue::ALL;
         let names: Vec<SharedString> = std::iter::once("The look's own").chain(hues.iter().map(|h| h.name())).map(SharedString::from).collect();
         let at = s.badge.and_then(|b| hues.iter().position(|h| *h == b)).map_or(0, |i| i + 1);
