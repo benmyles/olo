@@ -13129,8 +13129,11 @@ too long for its room, put right with shorter German where the English
 is right. The kit's own lint tests look for words as drawn
 (`words::tr("Revert")`), and the settings index is drawn in English
 whatever the lint runs in (`ui_lint_settings_index`, under the lint's
-one-window lock). German (`words/de.txt`) and Spanish (`words/es.txt`,
-Spain's, "tú", sentence case as Spanish menus have it) have every one
+one-window lock). German (`words/de.txt`), Spanish (`words/es.txt`,
+Spain's, "tú", sentence case as Spanish menus have it) and French
+(`words/fr.txt`, "vous", sentence case, a check box's words in the
+infinitive; a narrow no-break space before `:` `;` `?` `!` and
+no-break spaces inside « », as French sets them) have every one
 of Olo's words: those the same as in English (names, paths) as
 themselves, so coverage says all. Each is clean in the layout lint and
 the live one in its language (`OLO_LANGUAGE=es cargo ui-lint

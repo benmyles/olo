@@ -2057,7 +2057,7 @@ Other Mice
 Andere Mäuse
 
 Other workspaces’ applications start collapsed
-Programme anderer Arbeitsflächen starten eingeklappt
+Apps anderer Arbeitsflächen starten eingeklappt
 
 Output
 Ausgabe
@@ -3131,7 +3131,7 @@ Volume
 Lautstärke
 
 Volume:
-Lautstärke:
+Volume:
 
 Waits
 Wartezeiten

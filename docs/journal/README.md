@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-19
 
+### Olo in French
+
+*02:49* — Preferences ▸ Keyboard ▸ Shortcuts with Olo's language set to French: every one of Olo's words has a French translation, set as French sets it (a narrow space before a colon). The profile row's menu now takes only the room its buttons leave, so a longer Delete never runs out of the box.
+
+![Olo in French](2026-11-19/024957-olo-in-french.png)
+
 ### DiskBackup: only when connected to Ethernet
 
 *01:23* — Schedule ▸ When to Back Up gains "Only when connected to Ethernet" under the battery's. Ticked, nothing is backed up without a wired connection; the window says "Waiting for Ethernet", and a backup under way when the cable comes out goes on once it's back.

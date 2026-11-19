@@ -181,6 +181,19 @@ Each note: what to do, then why (what happened), then how to apply it.
   with nothing chosen. A panel whose controls change with what's chosen
   starts, under `cfg!(test)`, at its fullest: the most buttons, the
   longest words (Bluetooth's chooses its test phone).
+- **What a lint window holds, in a language**: a throwaway test that
+  calls `Lint::trees` and prints each tab's nodes (role, name, y,
+  height) shows which control runs lowest or widest, where the lint's
+  finding only says "make it 752 tall". Run it as the lint is built
+  (`OLO_LANGUAGE=fr cargo test -p olo-preferences --features
+  olo-kit/lint NAME -- --nocapture`; `--release` builds a whole other
+  profile). A window at 736 with a `ScrollBar` "Scroll Bar" in its
+  tree is taller than the 1280 × 800 screen allows, its Frame
+  scrolling it: French's keyboard hints ran a line longer than
+  German's. A finding the lint makes only in one language with a
+  fixture's name in it (a volume, a keyboard) can be the fixture
+  translated: a name the system gives is never looked up, so keep it
+  as itself in the catalog.
 - **A service in a program that also has a window pays for the
   window's kit**: linked beside `olo-phone --service`, it cost 3.5 MB
   at rest for nothing it used. A service that runs all session is a

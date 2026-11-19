@@ -5110,5 +5110,11 @@
   "title": "DiskBackup: only when connected to Ethernet",
   "caption": "Schedule \u25b8 When to Back Up gains \"Only when connected to Ethernet\" under the battery's. Ticked, nothing is backed up without a wired connection; the window says \"Waiting for Ethernet\", and a backup under way when the cable comes out goes on once it's back.",
   "image": "2026-11-19/012352-diskbackup-only-when-connected-to-ethernet.png"
+ },
+ {
+  "time": "2026-11-19T02:49:57",
+  "title": "Olo in French",
+  "caption": "Preferences \u25b8 Keyboard \u25b8 Shortcuts with Olo's language set to French: every one of Olo's words has a French translation, set as French sets it (a narrow space before a colon). The profile row's menu now takes only the room its buttons leave, so a longer Delete never runs out of the box.",
+  "image": "2026-11-19/024957-olo-in-french.png"
  }
 ]

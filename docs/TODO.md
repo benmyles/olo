@@ -82,15 +82,17 @@ something nobody here has is in "Blocked", with what it waits for.
   (`OLO_LANGUAGE=de cargo ui-lint`), clean in German (HACKING.md, "The
   lint in a language"). Spanish, every word (1,161; 2026-11-19), clean in
   both lints in Spanish; the menus' check reads the app's English, so
-  the live lint is clean in German and Spanish too. **Left**: the other
-  ten languages' words;
+  the live lint is clean in German and Spanish too. French, every word
+  (1,161; 2026-11-19, "vous", French spacing), clean in both lints.
+  **Left**: the other nine languages' words;
   sentences still made with `format!` (Power's "Now Performance: …",
   Notifications' "6 seconds" and "1 hour", Keyboard's "35 per second"
   and the like: what the lint can't see, as their English shows in any
   language); what apps paint themselves; formats (dates, numbers, the
   week's first day); Arabic (right-to-left layout). Words the lint
   doesn't see because no window it opens shows them are missing from
-  the list too: most of Calendar's (its menus, the event window's
+  the list too (DiskBackup's first-run window, Keyboard's "No keyboards
+  are plugged in."): most of Calendar's (its menus, the event window's
   labels and menus, its dates and times, `words.rs`: "Wednesday,
   November 18, 2026, 2 PM – 3:30 PM" in German too; Codex, 2026-11-19,
   on the preview pane, whose own words are in).

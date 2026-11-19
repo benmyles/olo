@@ -435,7 +435,12 @@ pub fn profile(ui: &mut Ui, saving: Option<&Child<TextField>>) {
                         .flex()
                         .flex_row()
                         .gap(px(m::SPACING))
-                        .child(div().flex_1().child(MenuField::new("profile", names, i).label("Profile:").divider(DIVIDER).on_change(pick)))
+                        // (What's left for the menu, a long name cut
+                        // short: a profile saved with one, or a language
+                        // whose buttons are longer, never pushes the
+                        // buttons out of the box. The French lint found
+                        // Delete past it.)
+                        .child(div().flex_1().min_w_0().child(MenuField::new("profile", names, i).label("Profile:").divider(DIVIDER).on_change(pick)))
                         .child(Button::new("Save As…").on_click(save_as))
                         .child(Button::new("Delete").enabled(saved).on_click(delete)),
                 );
