@@ -706,6 +706,17 @@ Doctor check, try its fix and look again: the finding must be gone.
 
 ## Working with the repository
 
+- **kache can hand a build script another worktree's path.** It keys a
+  workspace's paths as `<WORKSPACE>`, so worktrees share its cache, but a
+  build script's `env!("CARGO_MANIFEST_DIR")` is compiled into the
+  program: the main checkout's release build ran olo-installer's build
+  script compiled in the power worktree (its `.d` said `# env-dep:
+  CARGO_MANIFEST_DIR=/home/ben/worktrees/olo/power/apps/installer`), and
+  with that worktree removed it found no `data` folder and panicked, the
+  push refused (2026-11-19). Build scripts read it as they run
+  (`std::env::var_os("CARGO_MANIFEST_DIR")`), never with `env!`. A build
+  script that fails on a path that exists: read the `env-dep` lines of
+  its `target/*/build/PKG/*/out/build_script_build.d`.
 - **Codex subagents** (`tools/dev/agents`, the `olo-codex-agents`
   skill, which has the details). What codex-cli 0.170 does that its help
   doesn't say: `--approve-for-me` brings the workspace-write sandbox and

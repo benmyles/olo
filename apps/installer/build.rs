@@ -24,7 +24,11 @@ fn walk(dir: &Path, base: &Path, out: &mut Vec<String>) {
 }
 
 fn main() {
-    let data = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data").canonicalize().unwrap();
+    // (Its folder as Cargo runs it, not as it was compiled: kache gave a
+    // build of the main checkout this script compiled in a worktree since
+    // removed, its path in it, and it found no data folder, 2026-11-19.)
+    let manifest = std::env::var_os("CARGO_MANIFEST_DIR").expect("Cargo runs a build script with CARGO_MANIFEST_DIR");
+    let data = Path::new(&manifest).join("../../data").canonicalize().unwrap();
     let mut files = Vec::new();
     walk(&data.join("fonts"), &data, &mut files);
     walk(&data.join("brand"), &data, &mut files);

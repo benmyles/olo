@@ -8,7 +8,11 @@
 use std::{collections::BTreeSet, path::Path};
 
 fn main() {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    // (Its folder as Cargo runs it, not as it was compiled: a build
+    // cache's build script compiled in another worktree had that one's
+    // path in it, 2026-11-19.)
+    let manifest = std::env::var_os("CARGO_MANIFEST_DIR").expect("Cargo runs a build script with CARGO_MANIFEST_DIR");
+    let dir = Path::new(&manifest);
     let lock = dir.join("../../Cargo.lock");
     println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-changed=Cargo.toml");
