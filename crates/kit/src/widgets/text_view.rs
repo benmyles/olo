@@ -31,6 +31,8 @@ pub struct TextView {
     selected: Range<usize>,
     /// Where a drag started (a byte index), while the pointer is down.
     anchor: Option<usize>,
+    /// Its bar only while the text overflows (`auto_hide`).
+    auto_hide: bool,
 }
 
 /// `text` to the clipboard, if there's any.
@@ -43,7 +45,17 @@ fn copy(text: String) {
 /// A text view, owned by the view that makes it.
 pub fn text_view<V: View>(cx: &mut Cx<V>, build: impl FnOnce(TextView) -> TextView) -> Child<TextView> {
     cx.new_view(|_| {
-        build(TextView { focus: FocusHandle::new(), scroll: ScrollHandle::new(), text: SharedString::default(), runs: None, mono: false, empty: SharedString::default(), selected: 0..0, anchor: None })
+        build(TextView {
+            focus: FocusHandle::new(),
+            scroll: ScrollHandle::new(),
+            text: SharedString::default(),
+            runs: None,
+            mono: false,
+            empty: SharedString::default(),
+            selected: 0..0,
+            anchor: None,
+            auto_hide: false,
+        })
     })
 }
 
@@ -52,6 +64,26 @@ impl TextView {
     pub fn mono(mut self, on: bool) -> Self {
         self.mono = on;
         self
+    }
+
+    /// Its scroll bar only while the text is more than shows: a short
+    /// text read beside others (Calendar's preview: a bar by "No notes."
+    /// was heavy), as `ScrollView::auto_hide`.
+    pub fn auto_hide(mut self, on: bool) -> Self {
+        self.auto_hide = on;
+        self
+    }
+
+    /// Its text's margins inside its frame, across and down.
+    pub const MARGINS: (f32, f32) = (MARGIN_X, MARGIN_Y);
+
+    /// Its lines' height in the plain face: a whole number of points (a
+    /// paragraph's elsewhere isn't, `StringView::wrap`). With
+    /// [`Self::MARGINS`], for text beside it to be set as it is
+    /// (Calendar's preview: an event's facts in a box beside its notes,
+    /// their lines on its lines at every scale).
+    pub fn line_height() -> f32 {
+        (style::PLAIN_SIZE * style::LINE_HEIGHT).ceil()
     }
 
     /// What it says, dim, in the middle, while there's no text.
@@ -203,18 +235,21 @@ impl View for TextView {
             .on_mouse_up(MouseButton::Left, cx.listener(|v: &mut Self, _, _| v.anchor = None));
 
         // The note while empty, and what agents read.
-        let (empty, text) = (self.empty.clone(), self.text.clone());
+        let (empty, text, auto_hide) = (self.empty.clone(), self.text.clone(), self.auto_hide);
         let note = canvas(move |g, b| {
             let p = theme::palette();
             g.agent(agent::Node { role: "Document", value: Some(text.clone()), bounds: b, enabled: true, ..Default::default() });
             if text.is_empty() && !empty.is_empty() {
-                // In the middle of where text goes (beside the bar).
-                let b = Bounds::from_corners(b.origin, point(b.right() - px(crate::widgets::SCROLL_BAR), b.bottom()));
+                // In the middle of where text goes: beside the bar, or all
+                // of it where the bar is hidden (no text, nothing to
+                // scroll: `auto_hide`; "No notes." sat left of the middle).
+                let bar = if auto_hide { 0.0 } else { crate::widgets::SCROLL_BAR };
+                let b = Bounds::from_corners(b.origin, point(b.right() - px(bar), b.bottom()));
                 let dim = style::c(olo_theme::mix(p.document_text, p.document_background, 0.5));
                 style::label_fit(g, b.center().x, b.center().y, style::Align::Center, empty.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), dim, b.size.width - px(2.0 * m::SPACING));
             }
         })
-        .paint_key(style::key((&self.empty, &self.text)))
+        .paint_key(style::key((&self.empty, &self.text, self.auto_hide)))
         .absolute()
         .inset_0();
 
@@ -251,7 +286,7 @@ impl View for TextView {
                     menu::context_menu(cx, m, e.position, chosen);
                 }),
             )
-            .child(ScrollView::new(&self.scroll).focused(focused).background(p.document_background).child(body).into_element())
+            .child(ScrollView::new(&self.scroll).auto_hide(self.auto_hide).focused(focused).background(p.document_background).child(body).into_element())
             .child(note)
     }
 }

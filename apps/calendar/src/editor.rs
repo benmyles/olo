@@ -41,7 +41,7 @@ pub enum Target {
 
 /// One of an event's guests (or who asked them, where that's not one of
 /// them), as the window lists them.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash)]
 pub struct Guest {
     /// Their name, or their address where no name is given.
     pub name: String,
@@ -56,9 +56,10 @@ pub struct Guest {
 
 impl Guest {
     /// What's said of them beside their name: "organizer", "you",
-    /// "optional".
+    /// "optional" (in the person's language: drawn, not handed to a
+    /// widget, so asked for here).
     fn note(&self) -> String {
-        [(self.me, "you"), (self.organizer, "organizer"), (self.optional, "optional")].iter().filter(|(on, _)| *on).map(|(_, word)| *word).collect::<Vec<_>>().join(", ")
+        [(self.me, "you"), (self.organizer, "organizer"), (self.optional, "optional")].iter().filter(|(on, _)| *on).map(|(_, word)| olo_kit::words::tr(word)).collect::<Vec<_>>().join(", ")
     }
 
     /// Their answer in a word.
@@ -81,6 +82,51 @@ const GOING: [(Answer, &str); 3] = [(Answer::Yes, "Yes"), (Answer::Maybe, "Maybe
 /// How many of `n` guests show at once.
 fn guests_shown(n: usize) -> usize {
     n.clamp(1, GUEST_ROWS)
+}
+
+/// Where a guest's name starts in its row: past their answer's mark.
+pub const GUEST_MARK: f32 = m::TIGHT + 10.0 + m::SPACING;
+
+/// Each guest a row: their answer's mark (✓, ✗, ?, a dash for not yet),
+/// their name, and what they are ("you", "organizer", "optional"); one
+/// list item each for agents. The event window's guest list and the
+/// preview pane's (`preview.rs`).
+pub fn guest_rows(guests: Vec<Guest>) -> Element {
+    let tall = guests.len() as f32 * m::LIST_ROW;
+    let key = style::key(&guests);
+    let rows = canvas(move |g, b| {
+        let p = theme::palette();
+        let (text, quiet) = (style::c(p.document_text), style::secondary_text(&p));
+        let (regular, bold) = (style::ui_font(FontWeight::NORMAL), style::ui_font(FontWeight::BOLD));
+        for (i, guest) in guests.iter().enumerate() {
+            let row = Bounds::from_corners(point(b.left(), b.top() + px(i as f32 * m::LIST_ROW)), point(b.right(), b.top() + px((i + 1) as f32 * m::LIST_ROW)));
+            let mid = row.center().y;
+            let mark = style::snap_centred(g, point(row.left() + px(m::TIGHT + 5.0), mid), 9.0, 9.0);
+            match guest.answer {
+                Some(Answer::Yes) => style::check_mark(g, mark, style::c(p.success)),
+                Some(Answer::No) => style::cross_mark(g, style::inset(g, mark, 1.0), style::c(p.failure)),
+                Some(Answer::Maybe) => {
+                    style::label(g, mark.center().x, mid, style::Align::Center, "?", style::PLAIN_SIZE, bold.clone(), quiet);
+                }
+                Some(Answer::NotYet) => style::hline(g, mark.left() + px(1.0), mark.right() - px(1.0), mid, quiet),
+                None => {}
+            }
+            let x = row.left() + px(GUEST_MARK);
+            let note = guest.note();
+            let noted = style::label(g, row.right() - px(m::TIGHT), mid, style::Align::Right, note.clone(), style::SMALL_SIZE, regular.clone(), quiet);
+            let room = (if note.is_empty() { row.right() - px(m::TIGHT) } else { noted.left() - px(m::SPACING) } - x).max(px(0.0));
+            style::label_fit(g, x, mid, style::Align::Left, guest.name.clone(), style::PLAIN_SIZE, regular.clone(), text, room);
+            let said: Vec<&str> = [guest.name.as_str(), note.as_str(), guest.answered()].into_iter().filter(|w| !w.is_empty()).collect();
+            g.agent(agent::Node { role: "ListItem", name: Some(said.join(", ").into()), bounds: row, enabled: true, ..Default::default() });
+        }
+    })
+    // (Drawn again only when they change: the preview's are in the main
+    // window, whose body runs on every change.)
+    .paint_key(key)
+    .w_full()
+    .h(px(tall))
+    .flex_shrink_0();
+    rows.into_element()
 }
 
 /// What Save hands over.
@@ -285,37 +331,7 @@ impl Editor {
     /// a question mark, a dash for none yet), their name, and what they
     /// are to it; in a list that scrolls past a few.
     fn guest_list(&self) -> Element {
-        let guests = self.guests.clone();
-        let tall = guests.len() as f32 * m::LIST_ROW;
-        let rows = canvas(move |g, b| {
-            let p = theme::palette();
-            let (text, quiet) = (style::c(p.document_text), style::secondary_text(&p));
-            let (regular, bold) = (style::ui_font(FontWeight::NORMAL), style::ui_font(FontWeight::BOLD));
-            for (i, guest) in guests.iter().enumerate() {
-                let row = Bounds::from_corners(point(b.left(), b.top() + px(i as f32 * m::LIST_ROW)), point(b.right(), b.top() + px((i + 1) as f32 * m::LIST_ROW)));
-                let mid = row.center().y;
-                let mark = style::snap_centred(g, point(row.left() + px(m::TIGHT + 5.0), mid), 9.0, 9.0);
-                match guest.answer {
-                    Some(Answer::Yes) => style::check_mark(g, mark, style::c(p.success)),
-                    Some(Answer::No) => style::cross_mark(g, style::inset(g, mark, 1.0), style::c(p.failure)),
-                    Some(Answer::Maybe) => {
-                        style::label(g, mark.center().x, mid, style::Align::Center, "?", style::PLAIN_SIZE, bold.clone(), quiet);
-                    }
-                    Some(Answer::NotYet) => style::hline(g, mark.left() + px(1.0), mark.right() - px(1.0), mid, quiet),
-                    None => {}
-                }
-                let x = row.left() + px(m::TIGHT + 10.0 + m::SPACING);
-                let note = guest.note();
-                let noted = style::label(g, row.right() - px(m::TIGHT), mid, style::Align::Right, note.clone(), style::SMALL_SIZE, regular.clone(), quiet);
-                let room = (if note.is_empty() { row.right() - px(m::TIGHT) } else { noted.left() - px(m::SPACING) } - x).max(px(0.0));
-                style::label_fit(g, x, mid, style::Align::Left, guest.name.clone(), style::PLAIN_SIZE, regular.clone(), text, room);
-                let said: Vec<&str> = [guest.name.as_str(), note.as_str(), guest.answered()].into_iter().filter(|w| !w.is_empty()).collect();
-                g.agent(agent::Node { role: "ListItem", name: Some(said.join(", ").into()), bounds: row, enabled: true, ..Default::default() });
-            }
-        })
-        .w_full()
-        .h(px(tall))
-        .flex_shrink_0();
+        let rows = guest_rows(self.guests.clone());
         let p = theme::palette();
         let shown = guests_shown(self.guests.len()) as f32 * m::LIST_ROW + 4.0;
         // (The well drawn here, the list two points inside it, and the
@@ -454,7 +470,7 @@ impl View for Editor {
         }
         col = col.child(starts).child(ends);
         if let Some(clock) = &self.clock {
-            col = col.child(div().pl(px(DIVIDER)).child(StringView::new(format!("Times in {clock}.")).small(true).dim(true).height(m::LABEL_ROW)));
+            col = col.child(div().pl(px(DIVIDER)).child(StringView::new(olo_kit::tr!("Times in {}.", clock)).small(true).dim(true).height(m::LABEL_ROW)));
         }
         let repeats: Vec<SharedString> = self.repeats.iter().map(|r| SharedString::from(r.name())).collect();
         col = col.child(MenuField::new("event-repeat", repeats, self.repeat).label("Repeats:").divider(DIVIDER).width(DIVIDER + DAY_FIELD).on_change(cx.msg_with(|i: &usize| Edit::Repeat(*i))));

@@ -1,14 +1,21 @@
 %
+(No title)
 *.qcow2, *.vdi, *.vmdk (large, changing while in use)
 *.swp, *~, .#*
 0.3 seconds
 0.5 seconds
 1
+1 Day Before
 1 GB a screen
+1 Hour Before
+1 day before
 1 hour
+1 hour before
 1 minute
 1 second
+10 Minutes Before
 10 minutes
+10 minutes before
 10 ms frame
 10 seconds
 12 hours
@@ -16,9 +23,13 @@
 12 weeks
 128 MB a screen
 14 days
+15 Minutes Before
 15 minutes
+15 minutes before
 2 GB a screen
+2 Hours Before
 2 hours
+2 hours before
 2 minutes
 2 seconds
 24 hours
@@ -29,16 +40,20 @@
 3 days
 3 events
 3 hours
+30 Minutes Before
 30 days
 30 minutes
+30 minutes before
 30 seconds
 3G
 4 hours
 4 weeks
 48 hours
+5 Minutes Before
 5 days
 5 events
 5 minutes
+5 minutes before
 5 seconds
 5 years
 512 MB a screen
@@ -143,6 +158,8 @@ Ask Me First
 Astra 6
 At full speed
 At the Bottom
+At the Start
+At the start
 Auto
 Auto-Tiling
 Auto-tiling layout:
@@ -195,6 +212,7 @@ Caffeinated
 CalDAV
 Calendar
 Calendar shows the calendars of your accounts on other CalDAV servers (Nextcloud, iCloud with an app-specific password, a server of your own) beside Google’s and Fastmail’s, and writes what you change back to them.
+Calendar:
 Calendar: Next Event
 Calendar: The Day Ahead
 Calendar’s assistant is handed the events of the calendars you show. It can draft events; nothing is added until you save it.
@@ -224,6 +242,7 @@ Claude Code and Codex started in a tab of a group whose tabs are in more than on
 Clean up the microphone's sound
 Clear copied secrets after:
 Click
+Click an event to see it here; double-click it to change it.
 Click and hold
 Click pressure:
 Click with two fingers for a secondary click
@@ -325,6 +344,7 @@ Edge
 Edge to edge
 Edit
 Editors’ swap and backup files
+Edit…
 Either AirPod
 Emoji
 Enable Screen Saver
@@ -336,9 +356,21 @@ Erase All Backups…
 Ethernet
 Even out the voice's level
 Events:
+Every 2 Weeks
+Every 2 weeks
+Every Day
+Every Month
+Every Week
+Every Weekday
+Every Year
+Every day
 Every day at set times
 Every disk
 Every interface
+Every month
+Every week
+Every weekday
+Every year
 Everything
 Everything Else
 Everything else's brightness
@@ -397,6 +429,7 @@ Git Worktrees
 GitHub
 Glide
 Glow new windows for
+Going:
 Google
 Google (8.8.8.8)
 Go’s downloaded modules and build cache
@@ -408,6 +441,7 @@ Gray
 Green
 Green:
 Grid
+Guests:
 H.264 (plays everywhere)
 HEVC (about half the size)
 Haiku 5.5
@@ -545,6 +579,7 @@ Main display: the desktop is here.
 Main window:
 Make one at my.telegram.org ▸ API development tools (sign in there with your phone number), then copy its App api_id and api_hash here.
 Max
+Maybe
 Medium
 Memory
 Memory:
@@ -590,9 +625,11 @@ News (blue)
 Next Month
 Next step
 Night Mode
+No
 No VPNs. Import a WireGuard configuration, or add one with its maker's app.
 No app opens these yet: add one.
 No banners and no sounds (errors still show).
+No notes.
 No space around an auto-tiled window alone
 No widgets: add one below.
 Noise
@@ -606,6 +643,8 @@ None. An alert’s Ignore This Process adds one here.
 None. To add an app, choose Float Window ▸ Always in the window menu of one of its windows.
 None. To give an app one, choose Always Open on Workspace in the window menu of one of its windows.
 Norwegian
+Not Answered
+Not answered
 Not connected: only public repositories’ pull requests show.
 Not enough touches to learn from
 Not set up: Telegram needs an API ID to sign in with.
@@ -743,9 +782,11 @@ Red
 Red:
 Redo
 Refresh rate:
+Reminder:
 Removable Disks
 Remove
 Repeat rate
+Repeats:
 Reset
 Reset Thresholds
 Resolution:
@@ -819,6 +860,7 @@ Shortcuts
 Shorter
 Shortest
 Show DiskBackup in Deskbar
+Show Preview
 Show a window from its tab's menu (right-click its title) or its row in Deskbar: Show on AirPlay. Play a film from Viewer or Tracker: Play On.
 Show banners for:
 Show icons in the Deskbar menu
@@ -951,6 +993,7 @@ Time
 Time Zone
 Time zone
 Time:
+Times in {}.
 Title and preview
 Title only
 To:
@@ -1052,6 +1095,7 @@ When Olo starts Claude Code for a task (DiskBackup’s Agent Setup), in a Termin
 When held for:
 When pressed:
 When to Back Up
+When:
 Where Backups Go
 Where:
 While Typing
@@ -1071,6 +1115,7 @@ Workspaces
 Worst
 Writes
 Yellow
+Yes
 Your Kinds
 Your Own Kinds
 Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
@@ -1091,12 +1136,18 @@ kbit/s
 libinput's default
 ms
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
+optional
+organizer
 sav, sv2
 scx_lavd, made for a computer someone is sitting at: what it judges is being waited for runs first, with builds and other long work around it. It gives a program's priority little weight, and under heavy work the window server waited for the processor three times as long as with the kernel's own. It is loaded over the kernel's own, which takes over again by itself if LAVD ever stops.
 target/debug, target/release, ~/.cargo/registry, ~/.rustup
+you
 {n} minutes
 {n} seconds
+{} in {}.
 {} of {} connected.
+{}, all day
+{}, until {}
 ~/.cache, browsers’ caches, thumbnails
 ~/.gradle, ~/.m2/repository, a project’s .gradle
 ~/.local/share/Trash

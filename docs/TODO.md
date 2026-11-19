@@ -34,12 +34,6 @@ something nobody here has is in "Blocked", with what it waits for.
   automatic backups happen only while the computer has a wired
   connection (what a backup under way does when the wire comes out, and
   whether Back Up Now waits too, as the battery option does).
-- **Calendar: a preview pane** (Ben, 2026-11-18: "there should also be
-  a preview pane where if i single click an event i see the details in
-  the bottom 1/3 of the main area"): one click on an event shows what
-  it is in the main area's bottom third (title, when, where, calendar,
-  who's invited, notes, links), a double click opens it to edit, as
-  now.
 
 - **Themes: one list (Classic, Platinum, BeOS and every scheme), each
   perfect, with icons of its own, Customize…, and a wallpaper of its
@@ -125,7 +119,12 @@ something nobody here has is in "Blocked", with what it waits for.
   Notifications' "6 seconds" and "1 hour", Keyboard's "35 per second"
   and the like: what the lint can't see, as their English shows in any
   language); what apps paint themselves; formats (dates, numbers, the
-  week's first day); Arabic (right-to-left layout).
+  week's first day); Arabic (right-to-left layout). Words the lint
+  doesn't see because no window it opens shows them are missing from
+  the list too: most of Calendar's (its menus, the event window's
+  labels and menus, its dates and times, `words.rs`: "Wednesday,
+  November 18, 2026, 2 PM – 3:30 PM" in German too; Codex, 2026-11-19,
+  on the preview pane, whose own words are in).
 - **A sign-in's mailed code is found every time** (Ben, 2026-11-18,
   signing in at claude.ai, which mails a link and takes a "verification
   code" in its place: "i tried to login to claude and it didn't manage
@@ -323,6 +322,26 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Calendar: a preview pane** (Ben, 2026-11-18: "there should also be
+  a preview pane where if i single click an event i see the details in
+  the bottom 1/3 of the main area"). **Done** (HACKING, "Calendar",
+  `preview.rs`): one click on an event shows it in the bottom third of
+  the main area (View ▸ Show Preview, on at first): its title beside its
+  calendar's colour and Edit…; its facts in a box (when, on the
+  person's clock as the views show it, and on its own where that's
+  another; where, a link to join where it's an address; its calendar;
+  how it repeats; its reminder; the person's answer; its guests with
+  theirs), scrolling inside it when they're more than fits; its notes in
+  a text view beside them (selected, copied, scrolled). Nothing chosen,
+  it says to click one. A double click opens the event window, as
+  before. A view of its own, told what to show only when the event or
+  what it's made from changes: a click between two events costs 12.1M
+  to 12.4M instructions with it, 3.3M without, its frame 1.9 ms on
+  average (2.9 at most, on a machine at load 10); at rest, nothing.
+  Looked at headless in light, dark and night at 1× to 2× (1.25× and
+  1.75× too), in German, and by Codex. Try: click an event, then
+  another; View ▸ Show Preview.
 
 - **Calendar: an event's notes scroll** (Ben, 2026-11-18: "in calendar
   details notes needs a scrollbar and to be scrollable"): the event

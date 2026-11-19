@@ -3,6 +3,14 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-19
+
+### Calendar: a preview pane
+
+*00:47* — One click on an event shows it in the bottom third of the main column: its title after its calendar's colour, Edit… at the right, its facts (when on the person's clock and on its own, where as a link, calendar, repeats, reminder, answer, guests) in a box beside its notes. View ▸ Show Preview.
+
+![Calendar: a preview pane](2026-11-19/004759-calendar-a-preview-pane.png)
+
 ## 2026-11-18
 
 ### Integrations: a tab for each provider, Fastmail's like Google's

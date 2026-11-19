@@ -5092,5 +5092,11 @@
   "title": "Integrations: a tab for each provider, Fastmail's like Google's",
   "caption": "Preferences \u25b8 Integrations has a tab for each of Google, Fastmail, CalDAV, GitHub and Telegram. Fastmail's lists its accounts as Google's does, each ticked for Mail and Calendar, with one app password each; the Fastmail accounts Mail and Calendar kept before move there by themselves after the upgrade.",
   "image": "2026-11-18/225609-integrations-a-tab-for-each-provider-fastmail-s-.png"
+ },
+ {
+  "time": "2026-11-19T00:47:59",
+  "title": "Calendar: a preview pane",
+  "caption": "One click on an event shows it in the bottom third of the main column: its title after its calendar's colour, Edit\u2026 at the right, its facts (when on the person's clock and on its own, where as a link, calendar, repeats, reminder, answer, guests) in a box beside its notes. View \u25b8 Show Preview.",
+  "image": "2026-11-19/004759-calendar-a-preview-pane.png"
  }
 ]

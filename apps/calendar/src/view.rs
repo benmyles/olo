@@ -111,7 +111,13 @@ pub fn body(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
     if sidebar_shown {
         row = row.child(div().w(px(SIDEBAR)).flex_shrink_0().h_full().child(sidebar(v, cx)));
     }
-    let main = div().flex_1().min_w(px(MAIN_MIN)).h_full().flex().flex_col().gap(px(m::TIGHT)).child(nav(v, cx)).child(div().flex_1().min_h_0().child(views(v, cx)));
+    let mut main = div().flex_1().min_w(px(MAIN_MIN)).h_full().flex().flex_col().gap(px(m::TIGHT)).child(nav(v, cx)).child(div().flex_1().min_h_0().child(views(v, cx)));
+    // (The event chosen, under the views, a third of their column:
+    // View ▸ Show Preview.)
+    if v.settings.preview {
+        crate::preview::follow(v, cx);
+        main = main.child(div().w_full().h(olo_kit::relative(1.0 / 3.0)).min_h(px(crate::preview::LEAST)).flex_shrink_0().pt(px(m::TIGHT)).child(&v.preview));
+    }
     let pane = v.settings.assistant.then(|| div().w(px(column)).flex_shrink_0().h_full().child(assistant_pane(v, column, cx)));
     // Keys, where nothing that's typed in has the keyboard: Return opens
     // the event chosen, Delete (or Backspace) deletes it, the arrows step

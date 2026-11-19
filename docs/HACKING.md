@@ -2695,7 +2695,13 @@ it.
   pointer (double click a word, triple all), ⌘A, ⌘C and a context menu
   copy. Agents read it as a `Document` with its text. Built on the Interface
   Kit's `styled_text` (wrapping, measuring, run backgrounds); the selection is a
-  run background too, as the marks are.
+  run background too, as the marks are. `auto_hide(true)`: its bar only
+  while the text overflows (a short text beside others; the empty note
+  then in the middle of all of it). `TextView::MARGINS` and
+  `TextView::line_height()` (a whole number of points) are how it sets
+  its text, for text beside it to be set the same: Calendar's preview
+  sets an event's facts so in a box beside its notes, their first lines
+  on one line at every scale.
 - `style::label_runs`/`label_runs_fit` (one line in runs, cut short to
   fit), `Cell::text_runs` (a list cell's), `ListModel::at_end` (its last
   row shows: a list following what's added keeps following only then),
@@ -2755,7 +2761,14 @@ it.
   `beside(size)` puts its words on the baseline a push button's label
   of that size has in the same row, so links and buttons in one row
   read as one line; `wrap_at(width)` breaks words that don't fit onto
-  more lines, still one control: Weather's suggested questions),
+  more lines, still one control: Weather's suggested questions;
+  `size(points)` its words in another size; `line(height)` that tall,
+  its words on the baseline a paragraph's line that tall has
+  (`style::paragraph_baseline`: the text system sets a line's glyphs on
+  the device pixel at or above its baseline, a label rounds to the
+  nearest, and the two parted by a pixel at 1.75×); `cut()` at most as
+  wide as its room, cut short with "…", the whole in its tip and to
+  agents: an address among facts, Calendar's preview),
   `EmptyState` (an icon, a line, a detail and an action button,
   centred in what it's given: a list or pane with nothing in it),
   `Tag` (a word in a pill saying what kind a thing is, Olo Doctor's
@@ -2882,7 +2895,12 @@ it.
   overflows (panes side by side); its content scrolls (clipped to the
   view, measured) with the bar hidden too, so the bar comes as soon as
   it overflows (not scrolling, a hidden bar's content ran past the view
-  over what's below and never showed the bar).
+  over what's below and never showed the bar). When what it holds starts
+  or stops overflowing, the view that holds it says what it shows again
+  (`invalidate_owner`): a second body. Where that body is costly, keep
+  the scroll view in a view of its own (Calendar's preview pane is one:
+  inside Calendar's body, every click between an event whose facts
+  overflow and one whose facts don't ran all of Calendar's views twice).
 - `widgets::SlimScrollBar::new(id, top, shown, total).on_scroll(|to,
   cx|)`: the slim one, there when wanted, for content a BeOS
   bar's column would cost (Terminal's scrollback; use the BeOS bar
@@ -21648,6 +21666,37 @@ things stand with the servers.
   them?" (Only This One is Return's: the smaller change). Delete asks
   the same, or for a single event whether to (nothing brings it back:
   no undo yet).
+- **`preview.rs`**: the preview pane (Ben, 2026-11-18: "if i single
+  click an event i see the details in the bottom 1/3 of the main
+  area"; View ▸ Show Preview, `Settings::preview`, on at first): under
+  the views, a third of their column (`LEAST` at the least), the event
+  chosen: its title, its calendar's colour before it and Edit… after
+  (Calendar's `Msg::Open`, as a double click); its facts in a box (When
+  on the person's clock as the views show it, and on its own clock
+  under it where that's another, "12 PM – 12:30 PM in New York."; Where,
+  an address a link cut to the column, `LinkButton::cut`; Calendar;
+  Repeats; Reminder; Going; Guests, the event window's rows,
+  `editor::guest_rows`, their marks hanging left of the values), which
+  scroll inside it when there are more than fit, and its notes in a
+  `TextView` beside them; nothing chosen, it says how to choose one,
+  keeping its place. Values are said as in a sentence ("Every year",
+  "15 minutes before": `Repeat::said`, `REMINDERS_SAID`, beside the
+  menus' "Every Year"). The facts are set as the notes' text is
+  (`TextView::MARGINS`, `line_height`), so the boxes' first lines are
+  on one line at every scale, and the labels' column is the event
+  window's 84 points, wider where a label is in the language shown
+  ("Wiederholung:"). A view of its own (`Pane`), told what to show by
+  `follow` from Calendar's body only when the event chosen, the
+  calendars (`Book`), the occurrences shown (both `Arc`s, compared by
+  pointer), the clock's style or the calendar's colour changed: the
+  event is opened (`opening_of`, which looks through every occurrence
+  shown) then and not on Calendar's other bodies, and the facts' bar
+  coming or going makes the pane again alone. Measured (release, 20
+  clicks between two events, `perf stat --no-scale`): 12.1M to 12.4M
+  instructions a click with the pane, 3.3M without (inside Calendar's
+  body, 15.4M); a click's frame 1.9 ms on average (2.9 at most) with it,
+  0.8 without; at rest nothing. The demo has an event on another clock
+  (Call with New York) and one with a meeting's address (Interview).
 - **Writes** (`sync::Job`, `sync::write`): Create, Change (given the
   event's whole `VCALENDAR`) or Remove, done on a worker against the
   server first and kept after (`Kept::create` / `change` / `remove`),

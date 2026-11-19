@@ -204,13 +204,43 @@ pub struct LinkButton {
     beside: Option<f32>,
     /// The widest it may be: wider words wrap onto more lines.
     wrap: Option<f32>,
+    /// Its words' size: the detail size unless said.
+    size: f32,
+    /// On a paragraph's line this tall ([`LinkButton::line`]).
+    line: Option<f32>,
+    /// Cut short to its room ([`LinkButton::cut`]).
+    cut: bool,
     on_click: Option<Handler>,
 }
 
 impl LinkButton {
     pub fn new(label: impl Into<SharedString>) -> LinkButton {
         let label = crate::words::of(label);
-        LinkButton { id: label.clone(), label, enabled: true, beside: None, wrap: None, on_click: None }
+        LinkButton { id: label.clone(), label, enabled: true, beside: None, wrap: None, size: style::DETAIL_SIZE, line: None, cut: false, on_click: None }
+    }
+
+    /// Its words in `points`, not the detail size: a link that is a value
+    /// among text of that size (an event's address in Calendar's preview).
+    pub fn size(mut self, points: f32) -> Self {
+        self.size = points;
+        self
+    }
+
+    /// `points` tall, not `LABEL_ROW`, its words where a paragraph's line
+    /// that tall has them (`style::paragraph_baseline`): a link among text
+    /// set as a paragraph, on its line at every scale (Calendar's preview:
+    /// `TextView::line_height`).
+    pub fn line(mut self, points: f32) -> Self {
+        self.line = Some(points);
+        self
+    }
+
+    /// At most as wide as its room: words wider than that are cut short
+    /// with an ellipsis, the whole of them in its tip and to agents (an
+    /// address in a column: Calendar's preview).
+    pub fn cut(mut self) -> Self {
+        self.cut = true;
+        self
     }
 
     /// At most `width` wide: words that don't fit go onto the next line,
@@ -249,17 +279,22 @@ impl LinkButton {
 
 /// A link button's width for `label` (on the two-point grid).
 pub fn link_button_width(label: &str) -> f32 {
-    let tw = f32::from(style::text_width(label.to_string(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL)));
+    link_width(label, style::DETAIL_SIZE)
+}
+
+/// `label`'s width in `size` (on the two-point grid).
+fn link_width(label: &str, size: f32) -> f32 {
+    let tw = f32::from(style::text_width(label.to_string(), size, style::ui_font(FontWeight::NORMAL)));
     (tw / 2.0).ceil() * 2.0
 }
 
-/// `label`'s words in lines no wider than `width` (a word wider than that
-/// alone on its line).
-fn link_lines(label: &str, width: f32) -> Vec<String> {
+/// `label`'s words in lines no wider than `width` in `size` (a word wider
+/// than that alone on its line).
+fn link_lines(label: &str, width: f32, size: f32) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
     for word in label.split_whitespace() {
         match lines.last_mut() {
-            Some(line) if link_button_width(&format!("{line} {word}")) <= width => {
+            Some(line) if link_width(&format!("{line} {word}"), size) <= width => {
                 line.push(' ');
                 line.push_str(word);
             }
@@ -275,12 +310,14 @@ fn link_lines(label: &str, width: f32) -> Vec<String> {
 impl IntoElement for LinkButton {
     fn into_element(self) -> Element {
         // Wrapped: its lines, a row each (the first the usual row).
-        let lines: Option<Vec<String>> = self.wrap.filter(|w| link_button_width(&self.label) > *w).map(|w| link_lines(&self.label, w));
+        let (size, line, cut) = (self.size, self.line, self.cut);
+        let height = line.unwrap_or(m::LABEL_ROW);
+        let lines: Option<Vec<String>> = self.wrap.filter(|w| link_width(&self.label, size) > *w).map(|w| link_lines(&self.label, w, size));
         if let Some(lines) = lines {
-            let row = style::line_row(style::DETAIL_SIZE);
-            let w = lines.iter().map(|l| link_button_width(l)).fold(0.0, f32::max);
-            let h = m::LABEL_ROW + row * (lines.len() - 1) as f32;
-            let first = (m::LABEL_ROW - row) / 2.0;
+            let row = style::line_row(size);
+            let w = lines.iter().map(|l| link_width(l, size)).fold(0.0, f32::max);
+            let h = height + row * (lines.len() - 1) as f32;
+            let first = (height - row) / 2.0;
             let mut c = control(self.id.clone(), w, h, move |g, r, s| {
                 let p = theme::palette();
                 let link = olo_theme::readable(p.hue(olo_theme::Hue::Blue), p.panel_background, 4.5);
@@ -294,7 +331,7 @@ impl IntoElement for LinkButton {
                 let font = style::ui_font(FontWeight::NORMAL);
                 for (i, line) in lines.iter().enumerate() {
                     let cy = r.top() + px(first + row * (i as f32 + 0.5));
-                    let text = style::label(g, r.left(), cy, style::Align::Left, line.clone(), style::DETAIL_SIZE, font.clone(), color);
+                    let text = style::label(g, r.left(), cy, style::Align::Left, line.clone(), size, font.clone(), color);
                     if s.focused {
                         focus_underline(g, text, &p);
                     } else if s.hovered && s.enabled {
@@ -302,7 +339,7 @@ impl IntoElement for LinkButton {
                     }
                 }
             })
-            .look((&self.label, self.wrap.map(f32::to_bits)))
+            .look((&self.label, self.wrap.map(f32::to_bits), size.to_bits(), line.map(f32::to_bits)))
             .enabled(self.enabled)
             .focusable()
             .pointing()
@@ -312,9 +349,9 @@ impl IntoElement for LinkButton {
             }
             return c.into_element();
         }
-        let w = link_button_width(&self.label);
+        let w = link_width(&self.label, size);
         let (label, beside) = (self.label.clone(), self.beside);
-        let mut c = control(self.id.clone(), w, m::LABEL_ROW, move |g, r, s| {
+        let mut c = control(self.id.clone(), w, height, move |g, r, s| {
             let p = theme::palette();
             // (The blue of links, readable on the panel.)
             let link = olo_theme::readable(p.hue(olo_theme::Hue::Blue), p.panel_background, 4.5);
@@ -326,9 +363,18 @@ impl IntoElement for LinkButton {
                 style::c(link)
             };
             let font = style::ui_font(FontWeight::NORMAL);
-            let text = match beside {
-                Some(of) => style::label_on_baseline(g, r.left(), style::baseline_at(g, r.center().y, of), style::Align::Left, label.to_string(), style::DETAIL_SIZE, font, color),
-                None => style::label(g, r.left(), r.center().y, style::Align::Left, label.to_string(), style::DETAIL_SIZE, font, color),
+            // (On a paragraph's line, `line`; beside text of another size,
+            // `beside`; else in the middle. Cut, what fits of it: `cut`.)
+            let baseline = match (line, beside) {
+                (Some(h), _) => Some(style::paragraph_baseline(g, r.top(), h, size, font.clone())),
+                (None, Some(of)) => Some(style::baseline_at(g, r.center().y, of)),
+                (None, None) => None,
+            };
+            let text = match (baseline, cut) {
+                (Some(on), false) => style::label_on_baseline(g, r.left(), on, style::Align::Left, label.to_string(), size, font, color),
+                (Some(on), true) => style::label_on_baseline_fit(g, r.left(), on, style::Align::Left, label.to_string(), size, font, color, r.size.width),
+                (None, false) => style::label(g, r.left(), r.center().y, style::Align::Left, label.to_string(), size, font, color),
+                (None, true) => style::label_fit(g, r.left(), r.center().y, style::Align::Left, label.to_string(), size, font, color, r.size.width),
             };
             if s.focused {
                 focus_underline(g, text, &p);
@@ -336,11 +382,14 @@ impl IntoElement for LinkButton {
                 style::hline_above(g, text.left(), text.right(), text.bottom(), color);
             }
         })
-        .look((&self.label, self.beside.map(f32::to_bits)))
+        .look((&self.label, self.beside.map(f32::to_bits), size.to_bits(), line.map(f32::to_bits), cut))
         .enabled(self.enabled)
         .focusable()
         .pointing()
         .agent("Button", self.label.clone(), None);
+        if cut {
+            c = c.shrinks().tip(self.label.clone());
+        }
         if let Some(f) = self.on_click {
             c = c.on_click(move |event, cx| f(event, cx));
         }

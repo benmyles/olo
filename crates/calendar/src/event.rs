@@ -211,7 +211,7 @@ pub enum Status {
 }
 
 /// Whether someone invited is coming.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
 pub enum Answer {
     #[default]
     NotYet,

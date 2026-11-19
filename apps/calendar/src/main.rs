@@ -25,6 +25,7 @@ mod glance;
 mod layout;
 mod model;
 mod month;
+mod preview;
 mod service;
 mod sync;
 mod view;
@@ -92,6 +93,8 @@ pub struct Settings {
     pub sidebar: bool,
     /// The assistant shown beside the views.
     pub assistant: bool,
+    /// The preview pane under the views (`preview.rs`).
+    pub preview: bool,
     pub choices: Choices,
     /// The calendar the last new event went in (its address).
     pub calendar: Option<String>,
@@ -99,7 +102,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { mode: Mode::Month, week_start: None, sidebar: true, assistant: false, choices: Choices::default(), calendar: None }
+        Settings { mode: Mode::Month, week_start: None, sidebar: true, assistant: false, preview: true, choices: Choices::default(), calendar: None }
     }
 }
 
@@ -323,6 +326,9 @@ pub struct Calendar {
     shown_for: u64,
     asking: u64,
     pub selected: Option<Key>,
+    /// The preview pane, and what it was last told (`preview.rs`).
+    pub preview: olo_kit::Child<preview::Pane>,
+    pub preview_told: preview::Told,
     /// An occurrence to select once it's among those shown ([`Msg::Reveal`]).
     reveal: Option<(String, jiff::civil::DateTime)>,
     /// An event pressed among the hours, dragged to another time or day.
@@ -460,6 +466,8 @@ impl Calendar {
             shown_for: 0,
             asking: 0,
             selected: None,
+            preview: preview::Pane::new(cx),
+            preview_told: None,
             reveal: None,
             drag: None,
             day_drag: None,
@@ -771,7 +779,7 @@ impl Calendar {
 
     /// What the editor is opened with for the occurrence `key`: what it
     /// is in its calendar, and its words and times as a draft.
-    fn opening_of(&self, key: &Key) -> Option<editor::Opening> {
+    pub(crate) fn opening_of(&self, key: &Key) -> Option<editor::Opening> {
         let shown = self.shown.iter().find(|s| s.key() == *key).cloned()?;
         let stored = self.book.stored(&shown)?;
         // The occurrence's own text, if it was changed by itself; else the event's.
@@ -1316,6 +1324,8 @@ impl Calendar {
                 .checked(self.settings.sidebar)
                 .item("Show Assistant", "assistant")
                 .checked(self.settings.assistant)
+                .item("Show Preview", "preview")
+                .checked(self.settings.preview)
                 .submenu(week),
         ]
     }
@@ -1575,6 +1585,11 @@ impl View for Calendar {
             "next" => self.step(1, cx),
             "sidebar" => {
                 self.settings.sidebar = !self.settings.sidebar;
+                self.save();
+                cx.invalidate();
+            }
+            "preview" => {
+                self.settings.preview = !self.settings.preview;
                 self.save();
                 cx.invalidate();
             }

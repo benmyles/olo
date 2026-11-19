@@ -35,6 +35,21 @@ pub enum Repeat {
 impl Repeat {
     pub const OFFERED: [Repeat; 7] = [Repeat::Never, Repeat::Daily, Repeat::Weekdays, Repeat::Weekly, Repeat::Fortnightly, Repeat::Monthly, Repeat::Yearly];
 
+    /// Its name in a sentence, as a fact says it (the preview's "Every
+    /// week"; the menu's is "Every Week").
+    pub fn said(&self) -> String {
+        match self {
+            Repeat::Never => "Never".into(),
+            Repeat::Daily => "Every day".into(),
+            Repeat::Weekdays => "Every weekday".into(),
+            Repeat::Weekly => "Every week".into(),
+            Repeat::Fortnightly => "Every 2 weeks".into(),
+            Repeat::Monthly => "Every month".into(),
+            Repeat::Yearly => "Every year".into(),
+            Repeat::Other(said) => said.clone(),
+        }
+    }
+
     pub fn name(&self) -> String {
         match self {
             Repeat::Never => "Never".into(),
@@ -95,6 +110,11 @@ fn said(rule: &Rule) -> String {
         None => every,
     }
 }
+
+/// The reminders the editor offers: seconds before the start, and each
+/// in a sentence, as a fact says it (the preview's "15 minutes before";
+/// the menu's is "15 Minutes Before").
+pub const REMINDERS_SAID: [&str; 9] = ["None", "At the start", "5 minutes before", "10 minutes before", "15 minutes before", "30 minutes before", "1 hour before", "2 hours before", "1 day before"];
 
 /// The reminders the editor offers: seconds before the start.
 pub const REMINDERS: [(Option<i64>, &str); 9] = [

@@ -745,6 +745,22 @@ pub fn baseline_at(g: &Painter, center_y: Pixels, font_size: f32) -> Pixels {
     snap_coord(g, center_y + px(font_size * CAP_HEIGHT / 2.0))
 }
 
+/// The baseline of a paragraph's line `line_height` tall whose top is
+/// `top`, in `font` at `font_size`: where the text system sets the line's
+/// words (its ascent and descent in the middle of the line, the glyphs on
+/// the device pixel at or above, `Painter::paint_glyph`). A label drawn
+/// on it ([`label_on_baseline`]) stands on the same line as text set as a
+/// paragraph beside it, at every scale: centred as labels are, a link
+/// among an event's facts was a pixel off them at 1.75× (Calendar's
+/// preview, `LinkButton::line`).
+pub fn paragraph_baseline(g: &Painter, top: Pixels, line_height: f32, font_size: f32, font: Font) -> Pixels {
+    let run = TextRun { len: 1, font, color: Hsla::default(), background_color: None, underline: None, strikethrough: None, size: None };
+    let line = g.text_system().shape_line(SharedString::from("H"), px(font_size), &[run], None);
+    let at = f32::from(top + (px(line_height) + line.ascent - line.descent) / 2.0);
+    let s = g.scale_factor();
+    px(((at * s * 64.0).round() / 64.0).floor() / s)
+}
+
 /// One line of text on `baseline` (beside a label of another size, on
 /// the baseline it was drawn on), `x` its left, centre or right.
 #[allow(clippy::too_many_arguments)]

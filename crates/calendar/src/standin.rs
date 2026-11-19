@@ -135,7 +135,7 @@ impl Standin {
 
     /// The demo's calendars: a life's worth of a fortnight, in each kind of
     /// event the views draw (all-day and across days, repeating, side by
-    /// side, short, late).
+    /// side, short, late, on another clock, with a link to join).
     pub fn fill_demo(&self, today: jiff::civil::Date) {
         let s = self;
         // (From the Monday of today's week.)
@@ -186,7 +186,7 @@ impl Standin {
                 at(2, 15, 30),
                 "Design review",
                 &format!(
-                    "LOCATION:Room 2\nDESCRIPTION:The new month view\\, and what’s left of the week’s.\nORGANIZER;CN=Kim Bakker:mailto:kim@example.org\nATTENDEE;CN=Kim Bakker;PARTSTAT=ACCEPTED:mailto:kim@example.org\n{}\nATTENDEE;CN=\"Jansen, Dana\";PARTSTAT=ACCEPTED:mailto:dana@example.org\nATTENDEE;CN=Sam de Vries;PARTSTAT=TENTATIVE:mailto:sam@example.org\nATTENDEE;CN=Lee Wong;PARTSTAT=DECLINED;ROLE=OPT-PARTICIPANT:mailto:lee@example.org\nATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:robin@example.org\n{}",
+                    "LOCATION:Room 2\nDESCRIPTION:The new month view\\, and what’s left of the week view.\nORGANIZER;CN=Kim Bakker:mailto:kim@example.org\nATTENDEE;CN=Kim Bakker;PARTSTAT=ACCEPTED:mailto:kim@example.org\n{}\nATTENDEE;CN=\"Jansen, Dana\";PARTSTAT=ACCEPTED:mailto:dana@example.org\nATTENDEE;CN=Sam de Vries;PARTSTAT=TENTATIVE:mailto:sam@example.org\nATTENDEE;CN=Lee Wong;PARTSTAT=DECLINED;ROLE=OPT-PARTICIPANT:mailto:lee@example.org\nATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:robin@example.org\n{}",
                     me("ACCEPTED"),
                     remind("PT15M")
                 ),
@@ -198,10 +198,16 @@ impl Standin {
                 at(2, 15, 0),
                 at(2, 15, 45),
                 "Interview",
-                &format!("ORGANIZER;CN=\"Jansen, Dana\":mailto:dana@example.org\nATTENDEE;CN=\"Jansen, Dana\";PARTSTAT=ACCEPTED:mailto:dana@example.org\n{}", me("NEEDS-ACTION")),
+                &format!(
+                    "LOCATION:https://meet.example.org/j/81234567890?pwd=Zk9vV2pLd0NhR3FlT1hNcz09\nORGANIZER;CN=\"Jansen, Dana\":mailto:dana@example.org\nATTENDEE;CN=\"Jansen, Dana\";PARTSTAT=ACCEPTED:mailto:dana@example.org\n{}",
+                    me("NEEDS-ACTION")
+                ),
             ),
         );
         put("work", timed(at(2, 15, 30), at(2, 16, 30), "Retro", ""));
+        // (On New York's clock, the views showing it on the person's: 9 AM
+        // in Los Angeles, 6 PM in Amsterdam.)
+        put("work", format!("DTSTART;TZID=America/New_York:{}\nDTEND;TZID=America/New_York:{}\nSUMMARY:Call with New York", at(3, 12, 0), at(3, 12, 30)));
         put("work", days(date(3), date(4), "Release 2.4", ""));
         put("work", days(date(8), date(11), "Conference", "LOCATION:Lisbon"));
         put("work", timed(at(4, 16, 0), at(4, 16, 15), "Timesheets", "RRULE:FREQ=WEEKLY"));

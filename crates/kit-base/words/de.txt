@@ -4,6 +4,9 @@
 %
 %
 
+(No title)
+(Ohne Titel)
+
 *.qcow2, *.vdi, *.vmdk (large, changing while in use)
 *.qcow2, *.vdi, *.vmdk (groß, ändern sich während der Nutzung)
 
@@ -19,11 +22,23 @@
 1
 1
 
+1 Day Before
+1 Tag vorher
+
 1 GB a screen
 1 GB pro Bildschirm
 
+1 Hour Before
+1 Stunde vorher
+
+1 day before
+1 Tag vorher
+
 1 hour
 1 Stunde
+
+1 hour before
+1 Stunde vorher
 
 1 minute
 1 Minute
@@ -31,8 +46,14 @@
 1 second
 1 Sekunde
 
+10 Minutes Before
+10 Minuten vorher
+
 10 minutes
 10 Minuten
+
+10 minutes before
+10 Minuten vorher
 
 10 ms frame
 10-ms-Frame
@@ -55,14 +76,26 @@
 14 days
 14 Tage
 
+15 Minutes Before
+15 Minuten vorher
+
 15 minutes
 15 Minuten
+
+15 minutes before
+15 Minuten vorher
 
 2 GB a screen
 2 GB pro Bildschirm
 
+2 Hours Before
+2 Stunden vorher
+
 2 hours
 2 Stunden
+
+2 hours before
+2 Stunden vorher
 
 2 minutes
 2 Minuten
@@ -94,11 +127,17 @@
 3 hours
 3 Stunden
 
+30 Minutes Before
+30 Minuten vorher
+
 30 days
 30 Tage
 
 30 minutes
 30 Minuten
+
+30 minutes before
+30 Minuten vorher
 
 30 seconds
 30 Sekunden
@@ -115,6 +154,9 @@
 48 hours
 48 Stunden
 
+5 Minutes Before
+5 Minuten vorher
+
 5 days
 5 Tage
 
@@ -123,6 +165,9 @@
 
 5 minutes
 5 Minuten
+
+5 minutes before
+5 Minuten vorher
 
 5 seconds
 5 Sekunden
@@ -415,6 +460,12 @@ Mit voller Geschwindigkeit
 At the Bottom
 Unten
 
+At the Start
+Zu Beginn
+
+At the start
+Zu Beginn
+
 Auto
 Automatisch
 
@@ -562,6 +613,9 @@ Koffeiniert
 Calendar
 Kalender
 
+Calendar:
+Kalender:
+
 Calendar: Next Event
 Kalender: Nächster Termin
 
@@ -651,6 +705,9 @@ Kopierte Geheimnisse löschen nach:
 
 Click
 Klicken
+
+Click an event to see it here; double-click it to change it.
+Klicken Sie auf einen Termin, um ihn hier zu sehen; doppelklicken Sie darauf, um ihn zu ändern.
 
 Click and hold
 Klicken und halten
@@ -949,6 +1006,9 @@ Bearbeiten
 Editors’ swap and backup files
 Swap- und Backupdateien von Editoren
 
+Edit…
+Bearbeiten…
+
 Either AirPod
 Ein beliebiger AirPod
 
@@ -982,6 +1042,30 @@ Lautstärke der Stimme ausgleichen
 Events:
 Termine:
 
+Every 2 Weeks
+Alle 2 Wochen
+
+Every 2 weeks
+Alle 2 Wochen
+
+Every Day
+Täglich
+
+Every Month
+Monatlich
+
+Every Week
+Wöchentlich
+
+Every Weekday
+An Werktagen
+
+Every Year
+Jährlich
+
+Every day
+Täglich
+
 Every day at set times
 Jeden Tag zu festen Zeiten
 
@@ -990,6 +1074,18 @@ Jedes Laufwerk
 
 Every interface
 Jede Schnittstelle
+
+Every month
+Monatlich
+
+Every week
+Wöchentlich
+
+Every weekday
+An Werktagen
+
+Every year
+Jährlich
 
 Everything
 Alles
@@ -1165,6 +1261,9 @@ Gleiten
 Glow new windows for
 Neue Fenster leuchten lassen für
 
+Going:
+Teilnahme:
+
 Google
 Google
 
@@ -1197,6 +1296,9 @@ Grün:
 
 Grid
 Raster
+
+Guests:
+Gäste:
 
 H.264 (plays everywhere)
 H.264 (läuft überall)
@@ -1603,6 +1705,9 @@ Erstellen Sie eine unter my.telegram.org ▸ API development tools (melden Sie s
 Max
 Max
 
+Maybe
+Vielleicht
+
 Medium
 Mittel
 
@@ -1738,6 +1843,9 @@ Nächster Schritt
 Night Mode
 Nachtmodus
 
+No
+Nein
+
 No VPNs. Import a WireGuard configuration, or add one with its maker's app.
 Keine VPNs. Importieren Sie eine WireGuard-Konfiguration oder fügen Sie eine mit der App ihres Herstellers hinzu.
 
@@ -1746,6 +1854,9 @@ Noch öffnet keine App diese: Fügen Sie eine hinzu.
 
 No banners and no sounds (errors still show).
 Keine Banner und keine Töne (Fehler erscheinen trotzdem).
+
+No notes.
+Keine Notizen.
 
 No space around an auto-tiled window alone
 Kein Abstand um ein allein gekacheltes Fenster
@@ -1785,6 +1896,12 @@ Keine. Um einer App eine zu geben, wählen Sie „Always Open on Workspace“ im
 
 Norwegian
 Norwegisch
+
+Not Answered
+Nicht beantwortet
+
+Not answered
+Nicht beantwortet
 
 Not enough touches to learn from
 Nicht genug Berührungen zum Lernen
@@ -2179,6 +2296,9 @@ Rot:
 Refresh rate:
 Bildwiederholrate:
 
+Reminder:
+Erinnerung:
+
 Removable Disks
 Wechseldatenträger
 
@@ -2187,6 +2307,9 @@ Entfernen
 
 Repeat rate
 Wiederholrate
+
+Repeats:
+Wiederholung:
 
 Reset
 Zurücksetzen
@@ -2400,6 +2523,9 @@ Am kürzesten
 
 Show DiskBackup in Deskbar
 DiskBackup in der Deskbar zeigen
+
+Show Preview
+Vorschau zeigen
 
 Show a window from its tab's menu (right-click its title) or its row in Deskbar: Show on AirPlay. Play a film from Viewer or Tracker: Play On.
 Ein Fenster über das Menü seines Tabs (Rechtsklick auf den Titel) oder seine Zeile in der Deskbar zeigen: Auf AirPlay zeigen. Einen Film aus Viewer oder Tracker abspielen: Abspielen auf.
@@ -2788,6 +2914,9 @@ Zeitzone
 Time:
 Zeit:
 
+Times in {}.
+Uhrzeiten in {}.
+
 Title and preview
 Titel und Vorschau
 
@@ -3085,6 +3214,9 @@ Beim Drücken:
 When to Back Up
 Wann gesichert wird
 
+When:
+Wann:
+
 Where Backups Go
 Wohin Backups gehen
 
@@ -3141,6 +3273,9 @@ Schreibvorgänge
 
 Yellow
 Gelb
+
+Yes
+Ja
 
 Your Kinds
 Ihre Arten
@@ -3202,6 +3337,12 @@ ms
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
+optional
+optional
+
+organizer
+Organisator
+
 sav, sv2
 sav, sv2
 
@@ -3210,6 +3351,18 @@ scx_lavd, gemacht für einen Computer, an dem jemand sitzt: Was es für erwartet
 
 target/debug, target/release, ~/.cargo/registry, ~/.rustup
 target/debug, target/release, ~/.cargo/registry, ~/.rustup
+
+you
+Sie
+
+{} in {}.
+{} in {}.
+
+{}, all day
+{}, ganztägig
+
+{}, until {}
+{}, bis {}
 
 ~/.cache, browsers’ caches, thumbnails
 ~/.cache, Caches von Browsern, Vorschaubilder

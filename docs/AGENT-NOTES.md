@@ -537,6 +537,23 @@ Doctor check, try its fix and look again: the finding must be gone.
   idle class, which nothing leaves without privilege). A nice only
   goes up: a test asks for one above what it has, never a fixed one.
 
+- **A click's cost: check every click lands where you mean.** Picture
+  the window before measuring clicks, and again if anything about it
+  changes. Calendar's week opens scrolled to an hour that follows the
+  time of day, so the same points hit an event in the evening and an
+  empty slot after midnight (2026-11-19: half the clicks of a "7.0M a
+  click" run let go of the selection, a cheaper frame; on events it was
+  15.4M). Scroll to the top first, then down a known number of notches
+  (one notch is an hour there), and say in the numbers what was
+  clicked.
+
+- **Night mode isn't in pictures.** The night light scales the screens'
+  gamma ramps at scan-out (`crates/app_server/src/night.rs`), so
+  `tsession shot` in night mode is the dark picture. To judge night,
+  multiply a dark picture's channels by the night light's gains (its
+  3,600 K default: red ×1.0, green ×0.769, blue ×0.585; the formula is
+  `night::white_point`).
+
 ## Ben's computer
 
 - **Don't probe sudo.** Even `sudo -n` runs face unlock (the IR camera)
@@ -626,6 +643,11 @@ Doctor check, try its fix and look again: the finding must be gone.
   old history back.
 - **Testing on Amazon and sites that bar bots is fine** (Ben): look
   only, no shopping actions.
+
+- **The clock is on Pacific time.** Calendar's demo events are on the
+  person's own clock wherever they are, but one on another clock (the
+  demo's Call with New York) lands at that zone's time here: 9 AM, not
+  the 6 PM it is in Amsterdam.
 
 ## Working with the repository
 
