@@ -168,7 +168,13 @@ Each note: what to do, then why (what happened), then how to apply it.
   socket (`OLO_KEYCHAIN_SOCKET=PATH`: a few lines of Python answering
   `{"type":"shares",…}` with made-up items, as
   `apps/preferences/tests` and DiskBackup's tests do), and never press
-  what would start a real agent (Start the Agent) in a test.
+  what would start a real agent (Start the Agent) in a test. The phone
+  service is kept out by `tsession` itself: each session has its own
+  `OLO_PHONE_DIR` (in `env.json`, and given to what `tsession run`
+  starts), so a test's Chrome host or Phone finds no phone service. A
+  program started outside `tsession` needs it set by hand (a test's
+  Chrome told the person's phone service "a browser is listening",
+  2026-11-19, before that).
 - **Run the tests, read their result, then commit: never in one
   command.** `cargo test … | grep …; git commit …` commits whatever the
   tests said (a commit went in with a failing test, 2026-11-17, caught

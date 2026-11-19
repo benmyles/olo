@@ -214,6 +214,13 @@ def start(name, args):
     # Passwords keeps its vault key in the session, never in the real
     # login keyring (which the session bus would reach).
     env["OLO_PASSWORDS_KEYFILE"] = os.path.join(d, "passwords.key")
+    # The phone service's socket and state in the session's own folder
+    # (`OLO_PHONE_DIR`), not the runtime directory the sessions share
+    # with the person's: a test's Chrome (its texted codes) and Phone
+    # never reach the person's phone service (a test's Chrome host told
+    # it "a browser is listening", 2026-11-19).
+    os.makedirs(os.path.join(d, "phone"), exist_ok=True)
+    env["OLO_PHONE_DIR"] = os.path.join(d, "phone")
     env["DBUS_SESSION_BUS_ADDRESS"] = private_bus(d)
     env.pop("WAYLAND_DISPLAY", None)
     env.pop("OLO_SOCKET", None)
@@ -258,7 +265,8 @@ def start(name, args):
             ready = True
         if m and i and ready:
             e = {"WAYLAND_DISPLAY": m.group(1), "OLO_SOCKET": i.group(1), "XDG_RUNTIME_DIR": RUNTIME,
-                 "XDG_CONFIG_HOME": os.path.join(d, "config"), "DBUS_SESSION_BUS_ADDRESS": env["DBUS_SESSION_BUS_ADDRESS"], "pid": p.pid}
+                 "XDG_CONFIG_HOME": os.path.join(d, "config"), "DBUS_SESSION_BUS_ADDRESS": env["DBUS_SESSION_BUS_ADDRESS"],
+                 "OLO_PHONE_DIR": env["OLO_PHONE_DIR"], "pid": p.pid}
             if home:
                 e["HOME"] = os.path.abspath(home)
             e.update(own)
@@ -470,6 +478,10 @@ def run(name, cmd):
         assigns.append(f"HOME={e['HOME']}")
     if not any(a.startswith("OLO_PASSWORDS_KEYFILE=") for a in assigns):
         assigns.append(f"OLO_PASSWORDS_KEYFILE={os.path.join(sdir(name), 'passwords.key')}")
+    # (The session's own phone folder: see `start`.)
+    if not any(a.startswith("OLO_PHONE_DIR=") for a in assigns):
+        os.makedirs(os.path.join(sdir(name), "phone"), exist_ok=True)
+        assigns.append(f"OLO_PHONE_DIR={os.path.join(sdir(name), 'phone')}")
     # Shells in the session (Terminal's, through olo-termd) keep their
     # history here, not in the person's ~/.bash_history.
     if not any(a.startswith("HISTFILE=") for a in assigns):
