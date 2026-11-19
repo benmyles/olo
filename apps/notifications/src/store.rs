@@ -525,7 +525,10 @@ impl History {
     /// Add `e`, or update the entry with its id still open (a replacement).
     pub fn put(&mut self, e: Entry) {
         let entries = self.entries_mut();
-        match entries.iter_mut().rev().find(|x| x.id == e.id && x.live) {
+        // (The one with its id, open at its app or not: an app that
+        // replaces one it closed, or one from before a restart, has its
+        // old one again, not a second with the same id beside it.)
+        match entries.iter_mut().rev().find(|x| x.id == e.id) {
             Some(old) => {
                 // A replacement keeps being pinned, or snoozed.
                 let (unread, pinned, snoozed_until) = (old.unread || e.unread, old.pinned || e.pinned, old.snoozed_until.or(e.snoozed_until));
@@ -739,6 +742,12 @@ mod tests {
             [(2, "Build failed", "", false, None), (1, "Dana", "Lunch at one?", false, Some(60))]
         );
         assert_eq!((h.unread(), cards[1].icons.clone()), (2, vec!["slack".to_owned()]));
+        // One replaced after its app closed it (or after a restart): the
+        // same entry again, unread, not a second with its id.
+        let mut r = History::load(None);
+        r.put(Entry { live: false, unread: false, ..entry(5, "Build running") });
+        r.put(entry(5, "Build finished"));
+        assert_eq!(r.entries.iter().map(|e| (e.id, e.summary.as_str(), e.unread, e.live)).collect::<Vec<_>>(), [(5, "Build finished", true, true)]);
         // After a restart, what's on screen again: a pinned one, and one
         // that was there to stay and is still unread; not one that had
         // its time, nor one read since.

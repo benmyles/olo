@@ -5044,5 +5044,11 @@
   "title": "Notifications, made plain (third step): urgent is not an error",
   "caption": "An urgent notification (a call) stays on screen and comes through Do Not Disturb, without the stop sign: that is only for what says it failed (Backup failed, right). And a notification from the app you are already in is read as it arrives, with no banner over what you're looking at. Urgent and sticky banners come back after an upgrade.",
   "image": "2026-11-18/181229-notifications-made-plain-third-step-urgent-is-no.png"
+ },
+ {
+  "time": "2026-11-18T18:16:01",
+  "title": "Notifications, made plain (last step)",
+  "caption": "When more banners arrive than fit, a line under them says how many are waiting, and a click on it opens the list. Also: a notification an app replaces after closing it no longer shows twice, and Olo's own apps have their icons on notifications sent by name.",
+  "image": "2026-11-18/181601-notifications-made-plain-last-step.png"
  }
 ]

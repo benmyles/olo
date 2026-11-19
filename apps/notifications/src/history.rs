@@ -1808,7 +1808,11 @@ impl Notifications {
             }
             return;
         }
-        if e.unread {
+        // (It keeps its place among the unread while the window is open;
+        // opened from elsewhere, an agent's or the Inbox's, with no
+        // window, there's no place to keep: it sat among the unread,
+        // read, when the window next opened.)
+        if e.unread && self.history_win.is_some() {
             self.view.held.insert(e.id);
         }
         if e.live && e.actions.iter().any(|(k, _)| *k == key) {

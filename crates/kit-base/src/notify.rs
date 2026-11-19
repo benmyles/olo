@@ -45,9 +45,11 @@ pub struct NoteId(u64);
 pub enum NoteKind {
     #[default]
     Information,
-    /// Wants attention: a blue edge and a sound.
+    /// Wants attention (a message for you): its own look, and a sound.
     Important,
-    /// Something went wrong: a red edge, a sound; stays until dismissed.
+    /// Something went wrong: a stop sign beside its title, a sound; it
+    /// stays until dismissed, and is sent as urgent (it comes through
+    /// Do Not Disturb).
     Error,
     /// A job under way, with a bar.
     Progress,

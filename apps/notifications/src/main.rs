@@ -357,6 +357,9 @@ impl Notifications {
                 // one fading by the time since it was read.)
                 let strength = if e.pinned || e.unread { 1.0 } else { self.settings.strength(now.saturating_sub(e.since())) };
                 v["strength"] = serde_json::json!((strength * 100.0).round() / 100.0);
+                // (Where it stands, in a word: what a person sees as a
+                // blue dot, or none. One that's cleared is in `ListArchived`.)
+                v["state"] = serde_json::json!(if e.unread { "unread" } else { "read" });
                 v
             })
             .collect();
@@ -1270,6 +1273,9 @@ fn look_up_app_icons(desktop_entry: Option<&str>, app: &str) -> Vec<String> {
         // (Olo's own by its program's name, entry or none.)
         names.extend(olo_xdg::apps::OUR_APPS.iter().find(|(bin, ..)| *bin == e).map(|(_, _, icon)| (*icon).to_owned()));
     }
+    // (One of Olo's own by its name as people see it, "StyledEdit":
+    // sent with no desktop entry, it had the generic app's cube.)
+    names.extend(olo_xdg::apps::OUR_APPS.iter().find(|(_, name, _)| name.eq_ignore_ascii_case(app.trim())).map(|(_, _, icon)| (*icon).to_owned()));
     let app = app.to_lowercase().replace(' ', "-");
     if !app.is_empty() {
         names.extend(olo_xdg::icon_for_app(&app));

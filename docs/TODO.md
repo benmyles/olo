@@ -353,67 +353,6 @@ something nobody here has is in "Blocked", with what it waits for.
   order); it's in the next build. Olo's own programs' Open panels with
   several files, where there are any, take the same function.
 
-- **Notifications, made plain: one model for what shows, stays, fades
-  and is read** (Ben, 2026-11-18: "the red vs blue types and what fades
-  out vs goes to history/archive vs goes away vs automatically gets
-  marked as read vs what doesn't etc. is all very confusing. can you
-  spin up an opus 5.5 agent on xhigh and ask it to do a thorough visual
-  analysis of notifications and all the different edge cases, the
-  notifications app and how they appear in the deskbar and on window
-  title bars and how they transition etc. etc. and then ask it to
-  research what the best practices are around notifications and alerts
-  for web apps, other desktop environments, phones etc. and have it
-  give you specific suggestions/guidance on how we can revamp olo
-  notifications to be more intuitive"). *The study is done* (an Opus
-  5.5 agent at xhigh, as asked: the one time the no-subagents rule is
-  set aside, by Ben's word; 2026-11-18): its report, with a matrix of
-  every edge case, pictures of each state, sources, and a proposed
-  model, is at `/var/tmp/opus-notif/report.md` (pictures in
-  `/var/tmp/opus-notif/shots/`). What it found, in short: two different
-  things are drawn with the same marks (a notification, and an app's
-  own "waiting" count made into a fake list item that turns the app's
-  real notifications red); red means four things and × means four
-  things; unread notifications leave by a timer and land in the archive
-  marked read; one an app withdraws stays unread and counted. *The
-  model it proposes:* a notification is New (blue, counted on the bell,
-  in blue), Read (no dot, fades with age, tidied away after a while) or
-  Cleared (today's archive, each row saying when and why it left);
-  Waiting (red) is only an app's own count, on its Deskbar row and
-  tabs and in a "Waiting in apps" strip, never an item of the list and
-  never recolouring notifications; urgency (Quiet, Normal, Urgent) is
-  how one arrives, not a colour or a stop sign. Three rules: nothing
-  New goes by itself; × always clears (with Undo); red is only waiting,
-  blue only new. *Done so far* (HACKING.md, "The model, in one place"): (1) to
-  (8): the Cleared list saying why each left, waiting counts out of
-  the list, urgency apart from "error", read on arrival in the app in
-  front, counts and staying banners kept across restarts. *Left:* (9)
-  to (12): the last words and counts, tab dots that follow what
-  waits, the small bugs. *The list, in its order
-  of benefit, each claim checked against the code first:* (1) unread never fades out
-  (`History::fade_out`); (2) × clears on a banner too; (3) a withdrawal
-  clears ("withdrawn by APP"); (4) waiting counts out of the list
-  (`attention` items, `mark_waiting`, `more()` go; the strip and the
-  Inbox's app cards come); (5) the bell counts New, in blue; (6)
-  urgency apart from kind (a call is urgent, not an error); (7) read
-  on arrival in the app in front, without the dwell's race; (8) red
-  counts, sticky banners and actions kept across restarts and
-  upgrades; (9) one word and one count everywhere; (10) window and tab
-  red dots follow what waits; (11) agents read state, urgency and why;
-  (12) the small bugs it met (a read row among the unread, a duplicate
-  id after a replacement, the cube icon on banners, "+N more" for
-  queued banners). *Decided as built* (Ben, the same day: "for the
-  notifications stuff i want you to decide and use your judgement --
-  overall i think the findings were spot on, you should use your
-  taste/judgement for any decisions and if needed consult opus 5.5
-  xhigh for a second opinion"; the report's recommendations are where
-  each starts): where the red counts live (a strip
-  and app cards); what the bell counts and its colour (New, blue);
-  what a banner's × does (clears); what a withdrawn note becomes
-  (cleared); whether the blue dot drains (yes, to a floor); how long
-  before read ones are tidied (an hour); a note from the app in front
-  (no banner unless urgent, read at once); tab dots (stay until dealt
-  with); the names (Cleared; New or Unread, one of them).
-
 - **Fans: a row of each power mode, with more than Auto** (Ben,
   2026-11-18: "in the power -> battery -> fans move the fans option to
   be another mode row setting in the power modes tab instead, and also
@@ -450,6 +389,72 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Notifications, made plain: one model for what shows, stays, fades
+  and is read** (Ben, 2026-11-18: "the red vs blue types and what fades
+  out vs goes to history/archive vs goes away vs automatically gets
+  marked as read vs what doesn't etc. is all very confusing. can you
+  spin up an opus 5.5 agent on xhigh and ask it to do a thorough visual
+  analysis of notifications and all the different edge cases, the
+  notifications app and how they appear in the deskbar and on window
+  title bars and how they transition etc. etc. and then ask it to
+  research what the best practices are around notifications and alerts
+  for web apps, other desktop environments, phones etc. and have it
+  give you specific suggestions/guidance on how we can revamp olo
+  notifications to be more intuitive"). *The study is done* (an Opus
+  5.5 agent at xhigh, as asked: the one time the no-subagents rule is
+  set aside, by Ben's word; 2026-11-18): its report, with a matrix of
+  every edge case, pictures of each state, sources, and a proposed
+  model, is at `/var/tmp/opus-notif/report.md` (pictures in
+  `/var/tmp/opus-notif/shots/`). What it found, in short: two different
+  things are drawn with the same marks (a notification, and an app's
+  own "waiting" count made into a fake list item that turns the app's
+  real notifications red); red means four things and × means four
+  things; unread notifications leave by a timer and land in the archive
+  marked read; one an app withdraws stays unread and counted. *The
+  model it proposes:* a notification is New (blue, counted on the bell,
+  in blue), Read (no dot, fades with age, tidied away after a while) or
+  Cleared (today's archive, each row saying when and why it left);
+  Waiting (red) is only an app's own count, on its Deskbar row and
+  tabs and in a "Waiting in apps" strip, never an item of the list and
+  never recolouring notifications; urgency (Quiet, Normal, Urgent) is
+  how one arrives, not a colour or a stop sign. Three rules: nothing
+  New goes by itself; × always clears (with Undo); red is only waiting,
+  blue only new. *Done, all twelve* (2026-11-18; HACKING.md, "The model, in one
+  place"; four commits): the Cleared list saying why each left,
+  waiting counts out of the list, urgency apart from "error", read on
+  arrival in the app in front, counts and staying banners kept across
+  restarts, one word and one count, what agents read, the small bugs.
+  One thing decided against the study: a window's or tab's red dot
+  still fades once you're there (it says where, not how much). **For
+  Ben, to try** after an Upgrade: the bell's count is blue and counts
+  only notifications; nothing unread disappears; × clears everywhere;
+  View ▸ Cleared says why each left; an app's own count is under
+  "Waiting in apps" and a red Inbox card with Later. *The list, in its order
+  of benefit, each claim checked against the code first:* (1) unread never fades out
+  (`History::fade_out`); (2) × clears on a banner too; (3) a withdrawal
+  clears ("withdrawn by APP"); (4) waiting counts out of the list
+  (`attention` items, `mark_waiting`, `more()` go; the strip and the
+  Inbox's app cards come); (5) the bell counts New, in blue; (6)
+  urgency apart from kind (a call is urgent, not an error); (7) read
+  on arrival in the app in front, without the dwell's race; (8) red
+  counts, sticky banners and actions kept across restarts and
+  upgrades; (9) one word and one count everywhere; (10) window and tab
+  red dots follow what waits; (11) agents read state, urgency and why;
+  (12) the small bugs it met (a read row among the unread, a duplicate
+  id after a replacement, the cube icon on banners, "+N more" for
+  queued banners). *Decided as built* (Ben, the same day: "for the
+  notifications stuff i want you to decide and use your judgement --
+  overall i think the findings were spot on, you should use your
+  taste/judgement for any decisions and if needed consult opus 5.5
+  xhigh for a second opinion"; the report's recommendations are where
+  each starts): where the red counts live (a strip
+  and app cards); what the bell counts and its colour (New, blue);
+  what a banner's × does (clears); what a withdrawn note becomes
+  (cleared); whether the blue dot drains (yes, to a floor); how long
+  before read ones are tidied (an hour); a note from the app in front
+  (no banner unless urgent, read at once); tab dots (stay until dealt
+  with); the names (Cleared; New or Unread, one of them).
 
 - **A link opens in the Chrome window that's there, not a new one**
   (Ben, 2026-11-18, of a link clicked in Terminal: "it's not opening in

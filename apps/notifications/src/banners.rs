@@ -36,6 +36,9 @@ const ICON: f32 = 24.0;
 const HEADER: f32 = 22.0;
 /// Room kept clear above and below the cards on screen.
 const SCREEN_EDGE: f32 = 32.0;
+/// The line under the banners that says how many more are waiting
+/// their turn.
+const MORE: f32 = 22.0;
 const BODY_ROWS: usize = 5;
 
 /// What a face was measured for: a card's look then.
@@ -358,18 +361,21 @@ impl View for Banners {
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let (groups, fits, y) = self.arrange(cx);
         // Those coming on screen have their time from now.
-        let hovered = {
+        let (hovered, more) = {
             let mut n = self.shared.lock().unwrap();
             if fits > n.fits {
                 let from = n.fits;
                 n.wake(from..fits);
             }
             n.fits = fits;
-            n.hovered
+            (n.hovered, n.cards.len().saturating_sub(fits))
         };
-        // As tall as they are; the keyboard only while there is something
-        // to type into.
-        let total = (y - GAP).max(1.0).ceil();
+        // As tall as they are (and a line under them while more wait
+        // their turn than fit: they're in the list and on the bell, and
+        // this says so where the person is looking); the keyboard only
+        // while there is something to type into.
+        let more_at = y;
+        let total = (y - GAP + if more > 0 { GAP + MORE } else { 0.0 }).max(1.0).ceil();
         if total != self.height {
             self.height = total;
             cx.resize_window(size(px(WIDTH), px(total)));
@@ -472,6 +478,16 @@ impl View for Banners {
                         bodies.borrow_mut().insert(c.id, body);
                     }
                 }
+            }
+            // More waiting their turn: a small card of its own, saying so.
+            if more > 0 {
+                let r = style::snap(g, Bounds::new(point(origin.x, origin.y + px(more_at)), size(px(WIDTH), px(MORE))));
+                olo_kit::review::own_grid(g, r);
+                g.paint_quad(fill(r, style::c(p.panel_background)));
+                style::frame_rect(g, r, style::tint(p.panel_background, 1.6));
+                let said = if more == 1 { "1 more waiting".to_owned() } else { format!("{more} more waiting") };
+                style::label(g, r.center().x, r.center().y, style::Align::Center, said.clone(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), style::secondary_text(&p));
+                agent::record(g, agent::Node::button(format!("{said}: Show Notifications"), r));
             }
         })
         .absolute()
@@ -591,6 +607,12 @@ impl View for Banners {
                     root = root.child(div().absolute().left(c.rect.right() - px(PAD + send_w)).top(by).occlude().child(send));
                 }
             }
+        }
+        // (The line of those waiting opens the list.)
+        if more > 0 {
+            root = root.child(
+                div().id("more").absolute().left(px(0.0)).top(px(more_at)).w(px(WIDTH)).h(px(MORE)).on_click(cx.listener(|b: &mut Banners, _: &ClickEvent, _| with(&b.shared, |n| n.open_history()))),
+            );
         }
         root
     }

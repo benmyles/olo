@@ -17165,6 +17165,26 @@ otherwise, this is the rule.
   (an upgrade): the pinned banners, as before, and those with no time
   of their own (urgent, an error, sticky) still unread
   (`Entry::stays`).
+- **More banners than fit say so**: four show at once, and a line
+  under them, "2 more waiting", opens the list (`banners.rs`, `MORE`);
+  the rest came unseen until those before them went.
+- **A window's or a tab's red dot says where**, and fades a few
+  seconds after the person is there (`unread::mark`'s
+  `clear_on_focus`, Ben's own ask of 2026-11-17), as going to an app
+  puts its Inbox card off: seen is seen. How much waits is the row's
+  dot and the strip, which stay while the app says so. (The study
+  would have had the tab's dot stay too; it's a pointer to a place,
+  and the place has been reached.)
+- **For agents**, each of `List`'s notifications has `state`
+  ("unread", "read"), `urgent`, `kind`, `read_at`; each of
+  `ListArchived`'s has `why` and `archived`; `"waiting"` is apart.
+- Small things the study met, fixed: a notification replaced after its
+  app closed it is the same entry again, not a second with its id
+  (`History::put`); one opened with no window open no longer sits,
+  read, among the unread when the window next opens
+  (`open_entry`'s `held`); Olo's own apps named without a desktop
+  entry have their icons (`look_up_app_icons`); a banner is a card to
+  the layout review.
 
 
 Olo's own apps notify through the kit: `olo_kit::notify::Notifier::
