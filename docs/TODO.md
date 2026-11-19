@@ -57,10 +57,9 @@ something nobody here has is in "Blocked", with what it waits for.
   the list where narrow, the Collector folding where short; Codex
   subagent), Passwords (sources into a menu, the items and an item one
   at a time where narrow, its welcome without its picture where short).
-  To do: Viewer's PDF window (its toolbar folds: a Codex subagent's
-  work, in review); then the pre-push hook runs `--tiles` too (not
-  before: it would refuse every push until they pass), on the smallest
-  screen and the person's.
+  Viewer (a PDF window 400 wide, its tools folding into a menu; Codex
+  subagent). To do: the pre-push hook runs `--tiles` too, on the
+  smallest screen and the person's.
 - **Themes: one list (Classic, Platinum, BeOS and every scheme), each
   perfect, with icons of its own, Customize…, and a wallpaper of its
   own** (Ben, 2026-11-17: "the split between themes and colors doesn't

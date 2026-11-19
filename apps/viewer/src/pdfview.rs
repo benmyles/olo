@@ -44,8 +44,10 @@ const GAP: f32 = 12.0;
 /// Grab handles on a selected mark.
 const HANDLE: f32 = 7.0;
 pub const MIN_ZOOM: f32 = 0.1;
-/// Narrowest a PDF window gets: the toolbar's width.
-pub const MIN_WIDTH: f32 = 560.0;
+/// Fits a third of the smallest screen (CLAUDE.md, “Every tiling layout”).
+pub const MIN_WIDTH: f32 = 400.0;
+/// A newly opened PDF still has room for the full toolbar.
+const MIN_OPEN_WIDTH: f32 = 560.0;
 pub const MAX_ZOOM: f32 = 8.0;
 /// New tiles sent to the GPU a frame at most (bytes): the rest the next.
 const UPLOAD_BUDGET: usize = 12 << 20;
@@ -421,7 +423,7 @@ impl PdfView {
             f.field.focus(cx);
             return;
         }
-        let field = text_field(cx, |f| f.hint("Find in document"));
+        let field = text_field(cx, |f| f.name("Find in document"));
         cx.subscribe(&field, |v: &mut PdfView, e: &TextFieldEvent, cx| match e {
             TextFieldEvent::Changed => {
                 let Some(q) = v.find.as_ref().map(|f| f.field.read(cx).text().to_lowercase()) else { return };
@@ -601,7 +603,7 @@ impl PdfView {
         self.zoom = zoom;
         let w = pw * zoom + 2.0 * GAP + SCROLL_BAR + 4.0;
         let h = ph * zoom + 2.0 * GAP + chrome + 4.0;
-        (w.round().max(MIN_WIDTH), h.round().max(240.0))
+        (w.round().max(MIN_OPEN_WIDTH), h.round().max(240.0))
     }
 
     // ---- editing ---------------------------------------------------------
@@ -1880,10 +1882,19 @@ impl View for PdfView {
 impl PdfView {
     /// Find's bar over the pages: the field, how many it found (or that
     /// it's still reading pages), Previous, Next and Close.
-    fn find_bar(&self, f: &Find, cx: &Cx<Self>) -> Element {
-        let reading = self.texts.len() < self.geoms.len();
-        let looking = reading.then(|| olo_kit::tr!("{} of {} pages", self.texts.len(), self.geoms.len()));
-        let said = olo_kit::widgets::find_said(&f.query, f.matches.len(), f.current, looking);
+    fn find_bar(&self, f: &Find, cx: &mut Cx<Self>) -> Element {
+        // At the kit bar's compact size the buttons stay, the count
+        // gives way whole, and the field still has room for its hint.
+        let compact = cx.viewport_size().width < px(olo_kit::widgets::find_bar::MIN_WIDTH);
+        let hint = if compact { "Find" } else { "Find in document" };
+        f.field.update(cx, |field, cx| field.set_hint(hint, cx));
+        let said = if compact {
+            String::new()
+        } else {
+            let reading = self.texts.len() < self.geoms.len();
+            let looking = reading.then(|| olo_kit::tr!("{} of {} pages", self.texts.len(), self.geoms.len()));
+            olo_kit::widgets::find_said(&f.query, f.matches.len(), f.current, looking)
+        };
         let step = cx.listener(|v: &mut PdfView, back: &bool, cx| v.find_step(*back, cx));
         let close = cx.listener(|v: &mut PdfView, _: &(), cx| v.close_find(cx));
         olo_kit::widgets::find_bar(cx, &f.field, said, !f.matches.is_empty(), step, close)

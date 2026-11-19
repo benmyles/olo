@@ -32,7 +32,7 @@ use olo_kit::{
     metrics as m, point, px, size,
     style::{self, Align},
     theme,
-    widgets::{Button, CheckBox, TextControl, TextField, TextFieldEvent, Unsaved, ask_to_save, open_alert, text_field},
+    widgets::{Button, CheckBox, MenuField, TextControl, TextField, TextFieldEvent, Unsaved, ask_to_save, button_width, open_alert, text_field},
 };
 use olo_preview::{
     Body, Item,
@@ -47,6 +47,49 @@ use pdfwork::Event;
 use signature::{Pad, Signature};
 
 const APP_ID: &str = "olo.viewer";
+
+const PDF_TOOLS: [(&str, Tool, &str); 3] = [("Select", Tool::Select, "tool-select"), ("Text", Tool::Text, "tool-text"), ("Draw", Tool::Draw, "tool-draw")];
+const TOOL_WIDTH: f32 = 64.0;
+const SIGN_WIDTH: f32 = 72.0;
+const ZOOM_BUTTON_WIDTH: f32 = 28.0;
+const ZOOM_LABEL_WIDTH: f32 = 44.0;
+
+/// Width for the separate tools, Sign, zoom and the page. The fixed
+/// part is measured once per language; a long page number gets its own room.
+fn tools_fold(page_width: f32) -> f32 {
+    thread_local! {
+        static TOOLS_FOLD: std::cell::Cell<(&'static str, f32)> = const { std::cell::Cell::new(("", 0.0)) };
+    }
+    let language = olo_kit::words::current().code;
+    TOOLS_FOLD.with(|kept| {
+        let (was, fixed) = kept.get();
+        if was == language {
+            return fixed + page_width;
+        }
+        // button_width includes the kit's ordinary minimum. Where that
+        // determined the width, use the toolbar button's smaller minimum.
+        let compact = |label: &str, min: f32| {
+            let w = button_width(label, false);
+            if w > m::BUTTON_MIN_WIDTH {
+                return w;
+            }
+            let text = style::text_width(olo_kit::words::of_text(label), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL));
+            ((f32::from(text) + 2.0 * m::CONTROL_PAD).max(min) / 2.0).ceil() * 2.0
+        };
+        let tools: f32 = PDF_TOOLS.iter().map(|(label, _, _)| compact(label, TOOL_WIDTH)).sum();
+        let left = tools + compact("Sign…", SIGN_WIDTH) + m::SPACING + 4.0 * m::TIGHT;
+        let zoom = compact("−", ZOOM_BUTTON_WIDTH) + ZOOM_LABEL_WIDTH + compact("+", ZOOM_BUTTON_WIDTH) + 2.0 * m::TIGHT;
+        let fixed = left + zoom + 4.0 * m::SPACING; // Both insets and the gaps to the info canvas.
+        kept.set((language, fixed));
+        fixed + page_width
+    })
+}
+
+/// The labels that fit between Sign and zoom. Keep the current page
+/// ahead of the read-only note, even when the note alone would fit.
+fn pdf_info_fits(room: f32, page: f32, note: f32) -> (bool, bool) {
+    (room >= page, room >= page + 2.0 * m::SPACING + note)
+}
 
 /// What a window asks of the app (through the proxy, to its looper).
 enum ToHub {
@@ -1661,35 +1704,46 @@ impl Doc {
         let pv = v.read(cx);
         let editable = pv.editable && pv.loaded();
         let cmd = |c: &'static str| cx.listener(move |d: &mut Doc, _: &ClickEvent, cx| d.run(c, cx));
-        let mut left = div().flex().items_center().gap(px(m::TIGHT));
-        for (label, tool, c) in [("Select", Tool::Select, "tool-select"), ("Text", Tool::Text, "tool-text"), ("Draw", Tool::Draw, "tool-draw")] {
-            left = left.child(Button::new(label).min_width(64.0).pushed(editable && pv.tool == tool).enabled(editable).on_click(cmd(c)));
+        let page = pv.loaded().then(|| olo_kit::tr!("Page {} of {}", pv.current_page + 1, pv.geoms.len()));
+        let width = |text: olo_kit::SharedString| f32::from(style::text_width(text, style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))).ceil();
+        let page_w = page.as_ref().map_or(0.0, |s| width(s.clone().into()));
+        let mut left = div().flex().flex_shrink_0().items_center().gap(px(m::TIGHT));
+        let folded = f32::from(cx.viewport_size().width) < tools_fold(page_w);
+        if folded {
+            let choices = PDF_TOOLS.iter().map(|(label, _, _)| (*label).into()).collect();
+            let current = PDF_TOOLS.iter().position(|(_, tool, _)| *tool == pv.tool).unwrap();
+            left = left.child(MenuField::new("pdf-tool", choices, current).name("Tool").enabled(editable).on_change(cx.listener(|d: &mut Doc, i: &usize, cx| d.run(PDF_TOOLS[*i].2, cx))));
+        } else {
+            for (label, tool, c) in PDF_TOOLS {
+                left = left.child(Button::new(label).min_width(TOOL_WIDTH).pushed(editable && pv.tool == tool).enabled(editable).on_click(cmd(c)));
+            }
         }
         // Sign…: its menu under the button.
-        left = left.child(div().w(px(m::SPACING))).child(Button::new("Sign…").min_width(72.0).enabled(editable).on_click(cx.listener(|d: &mut Doc, _: &ClickEvent, cx| {
+        left = left.child(div().w(px(m::SPACING))).child(Button::new("Sign…").min_width(SIGN_WIDTH).enabled(editable).on_click(cx.listener(|d: &mut Doc, _: &ClickEvent, cx| {
             let (sign, at, me) = (d.shared.sign_menu(""), cx.listener_bounds(), cx.view_ref());
             olo_kit::menu::popup(cx, sign, at, Corner::BottomLeft, move |cmd, cx| {
                 let cmd = cmd.to_owned();
                 me.update(cx, move |d, cx| d.run(&cmd, cx));
             });
         })));
-        let read_only = pv.loaded() && !pv.editable;
+        let read_only = (pv.loaded() && !pv.editable).then(|| olo_kit::words::tr("Read only"));
+        let read_only_w = read_only.map_or(0.0, |s| width(s.into()));
         // The page and zoom as the pages have them (they tell when
         // either changes: `pdfview::Changed`).
-        let page = pv.loaded().then(|| olo_kit::tr!("Page {} of {}", pv.current_page + 1, pv.geoms.len()));
         let pct = format!("{}%", (pv.zoom * 100.0).round());
         let info = canvas(move |g, b| {
             let p = theme::palette();
             let dim = style::disabled_text(&p);
-            let mut x = b.right();
-            if let Some(page) = &page {
-                let at = style::label(g, x, b.center().y, Align::Right, page.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), dim);
+            let Some(page) = &page else { return };
+            let (show_page, show_note) = pdf_info_fits(b.size.width.into(), page_w, read_only_w);
+            if show_page {
+                let at = style::label(g, b.right(), b.center().y, Align::Right, page.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), dim);
                 agent::record(g, agent::Node::label(page.clone(), at));
-                x = at.left() - px(m::SPACING * 2.0);
-            }
-            if read_only && x > b.left() {
-                let at = style::label(g, x, b.center().y, Align::Right, "Read only", style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), dim);
-                agent::record(g, agent::Node::label("Read only", at));
+                let x = at.left() - px(2.0 * m::SPACING);
+                if let Some(note) = read_only.filter(|_| show_note) {
+                    let at = style::label(g, x, b.center().y, Align::Right, note, style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), dim);
+                    agent::record(g, agent::Node::label(note, at));
+                }
             }
         })
         .flex_1()
@@ -1699,23 +1753,41 @@ impl Doc {
             let at = style::label(g, b.center().x, b.center().y, Align::Center, pct.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::c(p.panel_text));
             agent::record(g, agent::Node::label(pct.clone(), at));
         })
-        .w(px(44.0))
+        .w(px(ZOOM_LABEL_WIDTH))
         .h(px(m::CONTROL_HEIGHT));
         let right = div()
             .flex()
+            .flex_shrink_0()
             .items_center()
             .gap(px(m::TIGHT))
-            .child(Button::new("−").min_width(28.0).on_click(cmd("zoom-out")))
+            .child(Button::new("−").min_width(ZOOM_BUTTON_WIDTH).on_click(cmd("zoom-out")))
             .child(zoom_label)
-            .child(Button::new("+").min_width(28.0).on_click(cmd("zoom-in")));
+            .child(Button::new("+").min_width(ZOOM_BUTTON_WIDTH).on_click(cmd("zoom-in")));
         let ground = canvas(|g, b| {
             let p = theme::palette();
-            g.paint_quad(olo_kit::fill(b, style::c(p.panel_background)));
+            style::fill_rect(g, b, style::c(p.panel_background));
             style::hline_above(g, b.left(), b.right(), b.bottom(), style::shade(&p, p.panel_background, 1.3));
         })
         .absolute()
-        .size_full();
-        div().relative().h(px(m::TOOLBAR_HEIGHT)).w_full().px(px(m::SPACING)).flex().items_center().gap(px(m::SPACING)).child(ground).child(left).child(info).child(right).into_any_element()
+        .inset_0();
+        // The menu field's text starts under File's. Its edge and its
+        // text are snapped separately, also at 1.25× and 1.75×.
+        let s = cx.scale_factor();
+        let inset = if folded { ((m::WINDOW_INSET * s).round() - (m::TEXT_INSET * s).round()) / s } else { m::SPACING };
+        div()
+            .relative()
+            .h(px(m::TOOLBAR_HEIGHT))
+            .w_full()
+            .pl(px(inset))
+            .pr(px(m::SPACING))
+            .flex()
+            .items_center()
+            .gap(px(m::SPACING))
+            .child(ground)
+            .child(left)
+            .child(info)
+            .child(right)
+            .into_any_element()
     }
 
     /// Trim… (a video): handles on its timeline (the player's own,
@@ -2260,4 +2332,19 @@ fn main() {
         }
         olo_kit::message_handler(app, move |message, _| hub.message(message));
     });
+}
+
+#[cfg(test)]
+mod toolbar_tests {
+    use super::*;
+
+    #[test]
+    fn pdf_info_gives_way_one_whole_label_at_a_time() {
+        let (page, note) = (63.0, 54.0);
+        let both = page + 2.0 * m::SPACING + note;
+        assert_eq!(pdf_info_fits(both, page, note), (true, true));
+        assert_eq!(pdf_info_fits(both - 1.0, page, note), (true, false));
+        assert_eq!(pdf_info_fits(page, page, note), (true, false));
+        assert_eq!(pdf_info_fits(page - 1.0, page, note), (false, false));
+    }
 }
