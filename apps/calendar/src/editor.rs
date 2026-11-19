@@ -145,6 +145,8 @@ pub struct Editor {
     guests: Vec<Guest>,
     going: Option<Answer>,
     guests_scroll: ScrollHandle,
+    /// The notes' scroll view: they're as tall as their lines in it.
+    notes_scroll: ScrollHandle,
     /// The guests' addresses, where they're the person's to say.
     invite: Option<Child<TextField>>,
     to_main: Messenger<Msg>,
@@ -178,7 +180,10 @@ impl Editor {
             let end_day = field(cx, "End Day", edit::date_text(d.end.date()), "");
             let end_time = field(cx, "End Time", words::time(d.end.time(), o.h24), "");
             let until = field(cx, "Repeats Until", d.until.map(edit::date_text).unwrap_or_default(), "for good");
-            let notes = text_field(cx, |f| f.name("Notes").multiline(false).with_text(d.notes.clone()));
+            // (In a scroll view, as tall as their lines: scrolled by the
+            // wheel and the bar, the caret kept in sight as it's typed.)
+            let notes_scroll = ScrollHandle::new();
+            let notes = text_field(cx, |f| f.name("Notes").multiline(false).with_text(d.notes.clone()).scrolled_by(&notes_scroll));
             let invite = o.invite.as_ref().map(|guests| field(cx, "Invite", guests.join(", "), "addresses, with commas between"));
             for start in [&start_day, &start_time] {
                 cx.subscribe(start, |_: &mut Editor, e: &TextFieldEvent, cx| {
@@ -221,6 +226,7 @@ impl Editor {
                 guests: o.guests.clone(),
                 going: o.going,
                 guests_scroll: ScrollHandle::new(),
+                notes_scroll,
                 invite,
                 to_main,
             }
@@ -479,23 +485,24 @@ impl View for Editor {
         if !self.guests.is_empty() {
             col = col.child(self.guest_list());
         }
-        // Notes: several lines, in a well.
-        let well = canvas(|g, b| {
-            let p = theme::palette();
-            let inner = style::inset(g, b, 2.0);
-            style::fill_rect(g, inner, style::c(p.document_background));
-            style::sunken(g, b, &p, false);
-        })
-        .absolute()
-        .inset_0();
-        col = col.child(
-            div()
-                .w_full()
-                .flex()
-                .flex_row()
-                .child(div().w(px(DIVIDER)).flex_shrink_0().child(StringView::new("Notes:")))
-                .child(div().relative().flex_1().h(px(NOTES)).child(well).child(div().absolute().inset(px(2.0 + m::TIGHT)).child(&self.notes))),
-        );
+        // Notes: several lines, in a scroll view (its bar while they
+        // overflow), its frame the keyboard's while they have it.
+        let notes_focused = self.notes.read(cx).is_focused();
+        col = col.child(div().w_full().flex().flex_row().child(div().w(px(DIVIDER)).flex_shrink_0().child(StringView::new("Notes:"))).child(div().flex_1().min_w_0().h(px(NOTES)).child(
+            ScrollView::new(&self.notes_scroll).auto_hide(true).focused(notes_focused).background(p.document_background).child(
+                // (All of the box takes a click, as a text view's does: below
+                // the text, the caret goes to its end. The field alone is as
+                // tall as its lines, and a click under a short note's went to
+                // nothing: what was typed next went to the title.)
+                div().min_h(px(NOTES - 4.0)).flex().flex_col().px(px(m::TIGHT)).py(px(m::TIGHT / 2.0)).child(&self.notes).child(div().flex_1().on_mouse_down(
+                    olo_kit::MouseButton::Left,
+                    cx.listener(|ed: &mut Editor, _: &olo_kit::MouseDownEvent, cx| {
+                        ed.notes.focus(cx);
+                        ed.notes.update(cx, |f, cx| f.caret_to_end(cx));
+                    }),
+                )),
+            ),
+        )));
         if let Some(wrong) = &self.wrong {
             col = col.child(div().pl(px(DIVIDER)).child(StringView::new(wrong.clone()).wrap(true).color(style::c(p.failure))));
         }

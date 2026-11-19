@@ -227,6 +227,16 @@ impl ScrollHandle {
         self.0.to_span.set(Some((top, bottom)));
     }
 
+    /// [`Self::reveal_span`], asked from anywhere in the window: the
+    /// handle is looked at once it's next laid out whoever builds the
+    /// scroller (a field in a scroll view another view built, revealing
+    /// its caret's line: the scroller isn't built again as the field is,
+    /// and `reveal_span` waited for that).
+    pub fn reveal(&self, cx: &mut WindowCx, top: Pixels, bottom: Pixels) {
+        self.0.to_span.set(Some((top, bottom)));
+        cx.core.scroll_asked(self.clone());
+    }
+
     /// Scrolls to `offset` once what it holds is next laid out, kept
     /// within its ends as they are then: for content whose size is
     /// changing in the same turn (a page zoomed about a point, where

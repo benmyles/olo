@@ -116,6 +116,15 @@ pub struct TextField {
     scroll_x: Cell<Pixels>,
     /// Up and down keep to this column.
     goal_x: Option<Pixels>,
+    /// The scroll view it's in, for a multi-line field as tall as all its
+    /// lines there (`scrolled_by`); its width as last laid out (what they
+    /// wrap to); and that its caret's line is to be brought into sight.
+    scroller: Option<olo_interface::ScrollHandle>,
+    laid_width: Cell<Option<Pixels>>,
+    reveal: Cell<bool>,
+    /// Where its top was last laid out, in the window (what's above it
+    /// in the scroll view counts when its caret's line is revealed).
+    laid_top: Cell<Option<Pixels>>,
 }
 
 /// Colours for parts of a field's text (byte ranges, in order), in the
@@ -173,6 +182,10 @@ impl TextField {
             scroll: Cell::new(px(0.0)),
             scroll_x: Cell::new(px(0.0)),
             goal_x: None,
+            scroller: None,
+            laid_width: Cell::new(None),
+            reveal: Cell::new(false),
+            laid_top: Cell::new(None),
         }
     }
 
@@ -181,6 +194,18 @@ impl TextField {
     pub fn multiline(mut self, enter_sends: bool) -> Self {
         self.multiline = true;
         self.enter_sends = enter_sends;
+        self
+    }
+
+    /// A multi-line field in a scroll view (`ScrollView::new(handle)`):
+    /// as tall as all its lines wrapped to its width, the view scrolling
+    /// it (the wheel, the touchpad, its bar), and its caret's line
+    /// brought into sight as it's edited or moved, never as the person
+    /// scrolls away from it (Ben, 2026-11-18: an event's notes "needs a
+    /// scrollbar and to be scrollable"; a field in a box of its own size
+    /// kept its caret in sight, but nothing else of it could be seen).
+    pub fn scrolled_by(mut self, handle: &olo_interface::ScrollHandle) -> Self {
+        self.scroller = Some(handle.clone());
         self
     }
 
@@ -875,6 +900,8 @@ impl TextField {
     /// there while the field has the keyboard, for [`BLINK_FOR`].
     fn show_caret(&mut self, cx: &mut Cx<Self>) {
         self.caret_on = true;
+        // (In a scroll view: its line brought into sight as it's next laid out.)
+        self.reveal.set(true);
         if let Some((timer, _)) = self.blink.take() {
             cx.looper().cancel(timer);
         }
@@ -1035,6 +1062,9 @@ impl View for TextField {
             .agent_value(self.shown())
             .agent_clickable(true)
             .child(cx.canvas(Self::paint).size_full());
+        if let Some(handle) = self.scroller.clone().filter(|_| self.multiline) {
+            root = self.scrolled(root, &handle, cx);
+        }
         if self.enabled {
             root = root.tab_stop().on_text_input(cx.text_input());
         }
@@ -1043,6 +1073,39 @@ impl View for TextField {
 }
 
 impl TextField {
+    /// A multi-line field in a scroll view (`scrolled_by`): laid out at
+    /// the width it was last given (told as it changes, and built again
+    /// then), as tall as all its lines, and its caret's line revealed
+    /// once laid out, if it moved or the text changed.
+    fn scrolled(&self, root: Element, handle: &olo_interface::ScrollHandle, cx: &mut Cx<Self>) -> Element {
+        let root = root.on_bounds_changed(cx.listener(|f: &mut Self, b: &Bounds<Pixels>, cx| {
+            f.laid_top.set(Some(b.origin.y));
+            if f.laid_width.get() != Some(b.size.width) {
+                f.laid_width.set(Some(b.size.width));
+                f.reveal.set(true);
+                cx.notify();
+            }
+        }));
+        let Some(width) = self.laid_width.get() else { return root };
+        let lh = TextField::line_height_for(cx.scale_factor(), self.font_size);
+        let text: SharedString = self.shown().into();
+        let run = TextRun { len: text.len(), font: self.face(), color: Hsla::default(), background_color: None, underline: None, strikethrough: None, size: None };
+        let lines: Vec<WrappedLine> = olo_interface::thread_text_system().shape_text(text, px(self.font_size), &[run], Some(width), None).map(|l| l.into_vec()).unwrap_or_default();
+        *self.paragraphs.borrow_mut() = lines;
+        self.line_height.set(lh);
+        let height = self.content_height();
+        if self.reveal.take()
+            && let Some(at) = self.position_of(self.to_shown(self.caret()))
+        {
+            // (Its line in the scroll view's content: the field's own top
+            // there, from where it was laid out, the view's top and how
+            // far it's scrolled.)
+            let top = self.laid_top.get().map_or(px(0.0), |y| y - handle.bounds().origin.y - handle.offset().y);
+            handle.reveal(cx, top + at.y, top + at.y + lh);
+        }
+        root.h(height)
+    }
+
     /// Draws the text, the selection and the caret.
     fn paint(&self, g: &mut Painter, bounds: Bounds<Pixels>) {
         if self.multiline {
