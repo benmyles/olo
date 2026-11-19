@@ -788,6 +788,24 @@ systemd's limits first where the hard limit itself is low
 (`/etc/security/limits.d/80-olo-open-files.conf`,
 `/etc/systemd/{system,user}.conf.d/80-olo-open-files.conf`, with one).
 
+**Following files, the same way.** Every program that follows files as
+they change holds one of the account's inotify instances (an Olo
+program one for all its watches: `olo_kit::watch` makes it with the
+first), and the kernel allows an account 128
+(`fs.inotify.max_user_instances`; Fedora leaves it so). Each agent
+screen runs its own Deskbar, Tracker, Notifications, Weather and
+portal, and each Chrome takes two: with ten screens open 125 were
+taken (2026-11-18), and a program starting then got none. Olo Doctor
+(`inotify`, finding `inotify-instances`; a Problem from three quarters
+taken) keeps 8,192 in `/etc/sysctl.d/90-olo-inotify.conf` and sets it
+at once (`Step::WriteSysfs`); an instance costs a little kernel memory,
+and only while it's used. And a refusal isn't kept: `watch` tries again
+at the next call (it kept the refusal for the program's life, so a
+program started then never followed a file), and says in the log what
+was refused and that Doctor raises the limit
+(`crates/kit-base/tests/watch_refused.rs` makes the kernel refuse by
+holding the test's own open files down; it failed before).
+
 **Every Olo program leaves what's needed to look into its crash.**
 `olo_crash::install()` is the first thing each program's `main` does
 (`olo_kit::run` does it again, harmlessly; `crates/crash/tests/

@@ -710,6 +710,7 @@ pub fn scan(roots: &Roots) -> Report {
     graphics_swap(roots, &gpus, &mut r);
     memory_kept(roots, &procs, &mut r);
     open_files(roots, &procs, &mut r);
+    inotify(roots, &procs, &mut r);
     language(roots, &procs, &mut r);
     swappiness(roots, &mut r);
     swap_size(roots, &gpus, &mut r);
@@ -1967,6 +1968,61 @@ fn open_files(roots: &Roots, procs: &[Proc], r: &mut Report) {
             if hard_low { ", and for the account from its next login (this system's own limit is low)" } else { "" }
         ),
         fix: Some(Fix { label: "Raise the Limit".into(), root: hard_low, steps }),
+    });
+}
+
+/// Where the kernel keeps how many inotify instances one account may
+/// hold, Olo's setting of it, and enough.
+const INOTIFY_INSTANCES_PATH: &str = "proc/sys/fs/inotify/max_user_instances";
+pub const INOTIFY_SYSCTL_PATH: &str = "etc/sysctl.d/90-olo-inotify.conf";
+pub const INOTIFY_SYSCTL: &str = "# Olo: room for every program that follows files as they change (Olo Doctor, Raise the Limit;\n# the kernel's default, 128, ran out with a few agent screens open).\nfs.inotify.max_user_instances = 8192\n";
+const INOTIFY_ENOUGH: u64 = 8192;
+
+/// How many inotify instances process `pid` holds (its open files that
+/// are one).
+fn inotify_of(fs: &Path, pid: i32) -> u64 {
+    let Ok(rd) = std::fs::read_dir(fs.join(format!("proc/{pid}/fd"))) else { return 0 };
+    rd.flatten().filter(|e| std::fs::read_link(e.path()).is_ok_and(|t| t.as_os_str() == "anon_inode:inotify")).count() as u64
+}
+
+/// Programs may follow the files they need as they change (Ben,
+/// 2026-11-18: "why am i limited to 128 instances??? shouldn't that be
+/// thousands?? can olo doctor fix that for us?"). Every program that
+/// follows files holds one or more of the account's inotify instances
+/// (an Olo program one, for all its watches: `olo_kit::watch`), which
+/// the kernel caps at 128 unless told otherwise, and Fedora doesn't;
+/// each agent screen runs its own Deskbar, Tracker, Notifications,
+/// Weather and portal, and each Chrome two, so with ten screens open
+/// 125 were in use, and a program starting then couldn't follow its
+/// files. The fix keeps 8,192 in /etc/sysctl.d and sets it at once
+/// (an instance costs a little kernel memory, and only while it's
+/// used). The programs' open files are read only while it's low.
+fn inotify(roots: &Roots, procs: &[Proc], r: &mut Report) {
+    let fs = &roots.fs;
+    let Some(limit) = read(&fs.join(INOTIFY_INSTANCES_PATH)).and_then(|v| v.trim().parse::<u64>().ok()) else { return };
+    if limit >= INOTIFY_ENOUGH {
+        r.fine.push(Fine { title: "Programs may follow the files they need".into(), detail: format!("Up to {} programs at once may follow files as they change.", thousands(limit)) });
+        return;
+    }
+    let used: u64 = procs.iter().filter(|p| p.uid == roots.uid).map(|p| inotify_of(fs, p.pid)).sum();
+    let near = used * 4 >= limit * 3;
+    r.findings.push(Finding {
+        id: "inotify-instances".into(),
+        severity: if near { Severity::Problem } else { Severity::Advice },
+        title: format!("Only {} programs may follow files at once", thousands(limit)),
+        detail: format!(
+            "Every program that follows files as they change (Tracker, Preferences, Calendar, DiskBackup, Chrome, and each agent screen's own) takes one of this account's {}, and {} are taken. With none left, a program that starts can't follow its files and doesn't see them change. Raise the Limit makes it 8,192, now and at every start.",
+            thousands(limit),
+            thousands(used)
+        ),
+        fix: Some(Fix {
+            label: "Raise the Limit".into(),
+            root: true,
+            steps: vec![
+                Step::WriteFile { path: PathBuf::from("/").join(INOTIFY_SYSCTL_PATH), content: INOTIFY_SYSCTL.into(), mode: 0o644 },
+                Step::WriteSysfs { path: PathBuf::from("/").join(INOTIFY_INSTANCES_PATH), value: INOTIFY_ENOUGH.to_string() },
+            ],
+        }),
     });
 }
 
@@ -5074,6 +5130,55 @@ mod tests {
         // The session has it itself: fine.
         w("proc/960/environ", b"HOME=/home/me\0LANG=nl_NL.UTF-8\0");
         assert!(fine(&look(&at(with_session(Some(&[("LANG", "nl_NL.UTF-8")])))), "nl_NL.UTF-8"));
+    }
+
+    /// The inotify limit: low with most of it taken, a problem; with
+    /// few taken, advice; raised to 8,192 now and at every start; fine
+    /// at 8,192.
+    #[test]
+    fn programs_may_follow_their_files() {
+        let (fs, roots) = machine("inotify");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        // Two of this account's programs holding three instances between
+        // them, and another account's one (not counted).
+        let procs: Vec<Proc> = [(101, roots.uid), (102, roots.uid), (103, roots.uid + 1)].iter().map(|&(pid, uid)| Proc { pid, uid, name: "olo-tracker".into(), exe: None, scope: None }).collect();
+        for (pid, n) in [(101, 2), (102, 1), (103, 1)] {
+            let dir = fs.join(format!("proc/{pid}/fd"));
+            std::fs::create_dir_all(&dir).unwrap();
+            for i in 0..n {
+                std::os::unix::fs::symlink("anon_inode:inotify", dir.join(format!("{}", 10 + i))).unwrap();
+            }
+            std::os::unix::fs::symlink("/dev/null", dir.join("0")).unwrap();
+        }
+        let look = |roots: &Roots| {
+            let mut r = Report::default();
+            inotify(roots, &procs, &mut r);
+            r
+        };
+        w("proc/sys/fs/inotify/max_user_instances", "4\n");
+        let r = look(&roots);
+        let f = r.find("inotify-instances").unwrap();
+        assert_eq!((f.severity, f.title.as_str()), (Severity::Problem, "Only 4 programs may follow files at once"));
+        assert!(f.detail.contains("this account's 4, and 3 are taken"), "{}", f.detail);
+        let fix = f.fix.as_ref().unwrap();
+        assert!(fix.root && fix.label == "Raise the Limit");
+        assert_eq!(
+            fix.steps,
+            [
+                Step::WriteFile { path: "/etc/sysctl.d/90-olo-inotify.conf".into(), content: INOTIFY_SYSCTL.into(), mode: 0o644 },
+                Step::WriteSysfs { path: "/proc/sys/fs/inotify/max_user_instances".into(), value: "8192".into() }
+            ]
+        );
+        assert!(INOTIFY_SYSCTL.lines().any(|l| l == "fs.inotify.max_user_instances = 8192"));
+        w("proc/sys/fs/inotify/max_user_instances", "128\n");
+        assert_eq!(look(&roots).find("inotify-instances").unwrap().severity, Severity::Advice, "few taken: advice");
+        w("proc/sys/fs/inotify/max_user_instances", "8192\n");
+        let r = look(&roots);
+        assert!(r.findings.is_empty() && r.fine[0].detail.starts_with("Up to 8,192 programs"), "{:?}", r.fine);
     }
 
     /// Swappiness: with swap on and the kernel's 60, set to 1 now and at

@@ -544,27 +544,50 @@ impl Service {
     }
 }
 
+/// The program's one inotify instance and its thread, made by the first
+/// watch. A refusal isn't kept: the next watch tries again (a program
+/// started while the account's instances were all in use, the kernel's
+/// 128, never followed a file for the rest of its life, 2026-11-18).
 fn service() -> Option<&'static Service> {
-    static SERVICE: OnceLock<Option<&'static Service>> = OnceLock::new();
-    *SERVICE.get_or_init(|| {
-        // SAFETY: plain syscalls; the fds are owned from here on.
-        let fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
-        if fd < 0 {
-            tracing::warn!("inotify unavailable: {}", std::io::Error::last_os_error());
-            return None;
+    static SERVICE: OnceLock<&'static Service> = OnceLock::new();
+    static MAKING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    if let Some(s) = SERVICE.get() {
+        return Some(s);
+    }
+    let _one = MAKING.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(s) = SERVICE.get() {
+        return Some(s);
+    }
+    let s = make_service()?;
+    let _ = SERVICE.set(s);
+    Some(s)
+}
+
+fn make_service() -> Option<&'static Service> {
+    // SAFETY: plain syscalls; the fds are owned from here on.
+    let fd = unsafe { libc::inotify_init1(libc::IN_NONBLOCK | libc::IN_CLOEXEC) };
+    if fd < 0 {
+        let e = std::io::Error::last_os_error();
+        if e.raw_os_error() == Some(libc::EMFILE) {
+            tracing::warn!(
+                "can't follow files as they change ({e}): this account's inotify instances are all in use (fs.inotify.max_user_instances: Olo Doctor raises it), or this program's open files; the next watch tries again"
+            );
+        } else {
+            tracing::warn!("inotify unavailable: {e}");
         }
-        let fd = unsafe { OwnedFd::from_raw_fd(fd) };
-        let mut pipe = [0; 2];
-        if unsafe { libc::pipe2(pipe.as_mut_ptr(), libc::O_NONBLOCK | libc::O_CLOEXEC) } != 0 {
-            return None;
-        }
-        let (woken, wake) = unsafe { (OwnedFd::from_raw_fd(pipe[0]), OwnedFd::from_raw_fd(pipe[1])) };
-        let ino = fd.as_raw_fd();
-        let s: &'static Service =
-            Box::leak(Box::new(Service { state: Mutex::new(State { fd, next: 0, watchers: HashMap::new(), paths: BTreeMap::new(), dirs: HashMap::new(), by_wd: HashMap::new() }), wake }));
-        std::thread::Builder::new().name("kit-watch".into()).spawn(move || run(s, ino, woken)).ok()?;
-        Some(s)
-    })
+        return None;
+    }
+    let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+    let mut pipe = [0; 2];
+    if unsafe { libc::pipe2(pipe.as_mut_ptr(), libc::O_NONBLOCK | libc::O_CLOEXEC) } != 0 {
+        return None;
+    }
+    let (woken, wake) = unsafe { (OwnedFd::from_raw_fd(pipe[0]), OwnedFd::from_raw_fd(pipe[1])) };
+    let ino = fd.as_raw_fd();
+    let s: &'static Service =
+        Box::leak(Box::new(Service { state: Mutex::new(State { fd, next: 0, watchers: HashMap::new(), paths: BTreeMap::new(), dirs: HashMap::new(), by_wd: HashMap::new() }), wake }));
+    std::thread::Builder::new().name("kit-watch".into()).spawn(move || run(s, ino, woken)).ok()?;
+    Some(s)
 }
 
 fn run(s: &'static Service, ino: i32, woken: OwnedFd) {

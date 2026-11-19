@@ -405,6 +405,20 @@ Each note: what to do, then why (what happened), then how to apply it.
   again in a test. `flock` holders are per opening of the file, so two
   threads of one program wait on each other through it like two
   programs, and olo-sync's cycle check doesn't see it.
+- **A test that starts a program ends it in a `Drop`**, not with a
+  `kill()` at the end: a failed assert unwinds past that, and a
+  `Child` isn't killed when dropped. DiskBackup's `set_up_drive` left
+  a service running for hours that way (2026-11-18, found holding an
+  inotify instance); its `Running` and `Scratch` guards end the program
+  and remove the folder however the test ends.
+- **Inotify instances run out with many screens** (2026-11-18): the
+  kernel allows an account 128, and each agent screen's Deskbar,
+  Tracker, Notifications, Weather and portal take one each (Tracker
+  two), each Chrome two: with ten screens open 125 were taken, and
+  kit-base's watch tests failed with `watch(…).unwrap()` on None. This
+  computer has 8,192 now (`/etc/sysctl.d/90-olo-inotify.conf`, which
+  Olo Doctor's `inotify-instances` writes). If watches fail again, count
+  them: `ls -l /proc/PID/fd | grep -c anon_inode:inotify` per process.
 - **A kit program's tree lists what was painted, not only what shows**:
   a scrolled drawing's nodes outside the view are there too, with a
   `y` above or below it (the scroll view's band). Filter by the

@@ -7,8 +7,8 @@
 use std::{
     io::{BufRead, BufReader, Read, Write},
     net::TcpStream,
-    path::Path,
-    process::{Command, Stdio},
+    path::{Path, PathBuf},
+    process::{Child, Command, Stdio},
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -30,10 +30,34 @@ fn sandboxed(cmd: &mut Command, base: &Path, api: &str) {
         .env("OLO_DISKBACKUP_GOOGLE", r#"{"client":{"id":"123.apps.googleusercontent.com","secret":"GOCSPX-secret"},"refresh_token":"the-refresh"}"#);
 }
 
+/// A program the test started, ended however the test ends, a failed
+/// assert too (a service left running outlived its test by hours,
+/// 2026-11-18: an assert before its `kill`).
+struct Running(Child);
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+/// The test's own folder, removed however the test ends.
+struct Scratch(PathBuf);
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 #[test]
 fn set_up_then_back_up() {
-    let base = std::path::PathBuf::from(format!("/var/tmp/olo-diskbackup-setup-{}", std::process::id()));
+    let base = PathBuf::from(format!("/var/tmp/olo-diskbackup-setup-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&base);
+    // (Declared before the programs, so dropped after them: the folder
+    // goes once nothing uses it.)
+    let _scratch = Scratch(base.clone());
     for d in ["home/docs", "config", "cache", "state", "run"] {
         std::fs::create_dir_all(base.join(d)).unwrap();
     }
@@ -45,8 +69,8 @@ fn set_up_then_back_up() {
     let mut cmd = Command::new(exe);
     cmd.args(["--set-up-drive", "123.apps.googleusercontent.com", "GOCSPX-secret"]).stdout(Stdio::piped()).stderr(Stdio::null());
     sandboxed(&mut cmd, &base, &api);
-    let mut child = cmd.spawn().unwrap();
-    let mut out = BufReader::new(child.stdout.take().unwrap());
+    let mut child = Running(cmd.spawn().unwrap());
+    let mut out = BufReader::new(child.0.stdout.take().unwrap());
     // The consent page's address, said.
     let url = loop {
         let mut line = String::new();
@@ -65,7 +89,7 @@ fn set_up_then_back_up() {
     assert!(page.contains("Signed in"), "{page}");
     let mut rest = String::new();
     out.read_to_string(&mut rest).unwrap();
-    assert!(child.wait().unwrap().success(), "{rest}");
+    assert!(child.0.wait().unwrap().success(), "{rest}");
     assert!(rest.contains("Backing up to Google Drive (me@example.com)"), "{rest}");
     let settings: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(base.join("run/diskbackup-settings.json")).unwrap()).unwrap();
     assert_eq!(settings["target"]["kind"], "google-drive");
@@ -76,7 +100,7 @@ fn set_up_then_back_up() {
     let mut cmd = Command::new(exe);
     cmd.arg("--service").stdout(Stdio::null()).stderr(Stdio::null());
     sandboxed(&mut cmd, &base, &api);
-    let mut service = cmd.spawn().unwrap();
+    let service = Running(cmd.spawn().unwrap());
     let until = Instant::now() + Duration::from_secs(60);
     let state = loop {
         let st: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(base.join("run/olo-diskbackup.json")).unwrap_or_default()).unwrap_or_default();
@@ -85,8 +109,7 @@ fn set_up_then_back_up() {
         }
         std::thread::sleep(Duration::from_millis(200));
     };
-    let _ = service.kill();
-    let _ = service.wait();
+    drop(service);
     assert!(state["last_ok"].is_number(), "{state}");
     assert!(state["target"].as_str().unwrap_or("").contains("Google Drive"), "{state}");
     assert!(g.lock().unwrap().files.values().any(|f| f.0.starts_with("snapshots/")), "a snapshot in Drive");
@@ -103,11 +126,11 @@ fn set_up_then_back_up() {
     let mut cmd = Command::new(exe);
     cmd.arg("--service").stdout(Stdio::null()).stderr(Stdio::null());
     sandboxed(&mut cmd, &base, &api);
-    let mut service = cmd.spawn().unwrap();
+    let service = Running(cmd.spawn().unwrap());
     let until = Instant::now() + Duration::from_secs(30);
     let state = loop {
         let st: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(base.join("run/olo-diskbackup.json")).unwrap_or_default()).unwrap_or_default();
-        if (st["why"] == "turned off" && st["read"].is_number() && st["pid"] == service.id()) || Instant::now() > until {
+        if (st["why"] == "turned off" && st["read"].is_number() && st["pid"] == service.0.id()) || Instant::now() > until {
             break st;
         }
         std::thread::sleep(Duration::from_millis(100));
@@ -118,11 +141,9 @@ fn set_up_then_back_up() {
     let mut line = String::new();
     BufReader::new(&sock).read_line(&mut line).unwrap();
     let reply: serde_json::Value = serde_json::from_str(&line).unwrap();
-    let _ = service.kill();
-    let _ = service.wait();
+    drop(service);
     assert_eq!((reply["read"].as_bool(), reply["snapshots"].as_array().map(Vec::len)), (Some(true), Some(1)), "{reply}");
     assert_eq!(g.lock().unwrap().files.len(), uploads, "nothing written while paused");
-    let _ = std::fs::remove_dir_all(base);
 }
 
 /// A Google of our own for trying the app's setup window by hand (headless):
