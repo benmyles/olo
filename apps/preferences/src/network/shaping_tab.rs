@@ -52,7 +52,11 @@ impl Way {
     }
 
     fn ui(&self, ui: &mut Ui) {
-        for (f, label) in self.0.iter().zip(["Bandwidth:", "Delay:", "Jitter:", "Loss:"]) {
+        const LABELS: [&str; 4] = ["Bandwidth:", "Delay:", "Jitter:", "Loss:"];
+        // (One column from the widest as shown: German's "Verzögerung:"
+        // pushed its field past the others'.)
+        let divider = DIVIDER.max(crate::form::divider_for(&LABELS));
+        for (f, label) in self.0.iter().zip(LABELS) {
             let unit = match label {
                 "Bandwidth:" => "kbit/s",
                 "Loss:" => "%",
@@ -64,7 +68,7 @@ impl Way {
                     .flex_row()
                     .items_center()
                     .gap(px(m::LABEL_GAP))
-                    .child(div().flex_1().child(TextControl::new(ui.cx, &f).label(label).divider(DIVIDER)))
+                    .child(div().flex_1().child(TextControl::new(ui.cx, &f).label(label).divider(divider)))
                     .child(div().w(px(40.0)).child(StringView::new(unit))),
             );
         }

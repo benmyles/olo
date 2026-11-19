@@ -2731,7 +2731,7 @@ It Matches
 Stimmt überein
 
 It lasts until it's turned off, the link goes away or the computer restarts. Changing it asks for an administrator's password once while this window is open.
-Es gilt, bis es ausgeschaltet wird, die Verbindung wegfällt oder der Computer neu startet. Das Ändern fragt einmal nach einem Administratorpasswort, solange dieses Fenster offen ist.
+Es gilt, bis es ausgeschaltet wird, die Verbindung wegfällt oder der Computer neu startet. Beim Ändern wird einmal nach dem Passwort eines Administrators gefragt, solange dieses Fenster offen ist.
 
 It plays at a quarter of full volume, whatever yours is set to, and not while the sound is muted.
 Er spielt mit einem Viertel der vollen Lautstärke, egal wie Ihre eingestellt ist, und nicht, solange der Ton stumm ist.

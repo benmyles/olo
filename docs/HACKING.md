@@ -5842,7 +5842,12 @@ recorded otherwise.
     Network panel's "Service Ord…" in English and "Ordre des se…" in
     French went by). `widgets::tabs_width` is how wide a tab view must
     be for its names, in the language shown (the Network panel's window
-    is at least that wide).
+    is at least that wide); `label-column` (labelled fields under each
+    other whose labels line up but whose fields start a column apart:
+    a label wider than the form's fixed column pushes only its own
+    field, as translations do; give the group one column from its
+    widest label, `form::divider_for(&[…])`, at least the old one:
+    French's DNS form and German's Shaping were 28 and 20 points off).
 - **Review** (most are mistakes, a few are meant): `near-height` (bands
   stacked or side by side almost one height: a 21 bar over a 22 head),
   `near-level` (text or icons in neighbouring columns a pixel or two off

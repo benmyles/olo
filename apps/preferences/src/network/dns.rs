@@ -75,9 +75,12 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
         servers.update(cx, |f, cx| f.set_text(text, cx));
     };
     ui.bbox("For Every Link", |ui| {
-        ui.add(MenuField::new("dns-resolver", names, chosen).label("Use:").divider(DIVIDER).on_change(pick));
-        ui.add(TextControl::new(ui.cx, &st.dns.servers).label("DNS servers:").divider(DIVIDER));
-        ui.add(TextControl::new(ui.cx, &st.dns.searches).label("Search domains:").divider(DIVIDER));
+        // (One column from the widest as shown: French's "Domaines de
+        // recherche :" put its field 28 points past the others'.)
+        let divider = DIVIDER.max(crate::form::divider_for(&["Use:", "DNS servers:", "Search domains:"]));
+        ui.add(MenuField::new("dns-resolver", names, chosen).label("Use:").divider(divider).on_change(pick));
+        ui.add(TextControl::new(ui.cx, &st.dns.servers).label("DNS servers:").divider(divider));
+        ui.add(TextControl::new(ui.cx, &st.dns.searches).label("Search domains:").divider(divider));
         ui.note("Servers of your own are asked in place of what each network hands out, on every link. Search domains are tried after a short name: nas, then nas.corp.example.");
     });
     let bad = edited

@@ -309,8 +309,48 @@ pub fn review(parts: &Parts, width: f32, height: f32, ppp: f32) -> Vec<Finding> 
     uneven_gaps(parts, ppp, &mut out);
     after_commit(parts, &mut out);
     same_ids(parts, &mut out);
+    label_columns(parts, &mut out);
     out.sort_by_key(|f| f.level);
     out
+}
+
+/// Fields under each other, their labels lined up on the left, the
+/// fields not: one label wider than the column the form gave them pushed
+/// its field over, as a translation does ("Domaines de recherche :" put
+/// French's Search domains field 28 points right of DNS servers'). A
+/// few points off is `control-edges`'; this is a column's worth.
+fn label_columns(p: &Parts, out: &mut Vec<Finding>) {
+    let fields: Vec<(&Control, &Text)> = showing(p)
+        .filter(|c| matches!(c.role.as_str(), "TextInput" | "ComboBox" | "SpinButton"))
+        .filter_map(|c| {
+            // Its label: words on its row, ending before it starts.
+            let label = p
+                .texts
+                .iter()
+                .filter(|t| t.rect.max.x <= c.rect.min.x + SAME && c.rect.min.x - t.rect.max.x <= 80.0 && t.middle >= c.rect.min.y && t.middle <= c.rect.max.y)
+                .max_by(|a, b| a.rect.max.x.total_cmp(&b.rect.max.x))?;
+            Some((c, label))
+        })
+        .collect();
+    for (a, la) in &fields {
+        for (b, lb) in &fields {
+            let below = b.rect.min.y - a.rect.max.y;
+            let d = (b.rect.min.x - a.rect.min.x).abs();
+            if (-2.0..=48.0).contains(&below)
+                && (la.left - lb.left).abs() <= SAME
+                && d > NEAR_EDGE
+                && d <= 160.0
+                && grid_of(p, &a.rect) == grid_of(p, &b.rect)
+                && section_of(p, &a.rect) == section_of(p, &b.rect)
+            {
+                let text = format!(
+                    "“{}” and “{}” under it start their fields {d:.0} pt apart (x {:.0} and {:.0}): give them one column, from the wider label (`form::divider_for`)",
+                    la.label, lb.label, a.rect.min.x, b.rect.min.x
+                );
+                push(out, finding(Level::Error, "label-column", text, a.rect.union(b.rect)));
+            }
+        }
+    }
 }
 
 /// Two controls with one element id share their state (a press, the
@@ -1334,6 +1374,36 @@ mod tests {
         assert_eq!(found(&p), 1, "two boxes");
         let p = Parts { controls: vec![at("Downloads", 163.5, 100.0, 8.0), at("Home 2.7 MB", 161.8, 115.0, 60.0)], ..Parts::default() };
         assert_eq!(found(&p), 0, "a point and a box");
+    }
+
+    /// Two fields whose labels line up but whose fields start a column
+    /// apart are found; lined up, or with labels apart, they aren't.
+    #[test]
+    fn fields_out_of_their_column_are_found() {
+        let found = |p: &Parts| review(p, 600.0, 300.0, 2.0).into_iter().filter(|f| f.kind == "label-column").count();
+        let field = |x: f32, y: f32| Control { rect: Rect::from_min_max(pos2(x, y), pos2(x + 200.0, y + 24.0)), role: "TextInput".into(), ..button("", 0.0, &format!("[f{x}{y}]")) };
+        let label = |words: &str, left: f32, right: f32, y: f32| Text {
+            rect: Rect::from_min_max(pos2(left, y + 4.0), pos2(right, y + 20.0)),
+            baseline: y + 16.0,
+            middle: y + 12.0,
+            left,
+            label: words.into(),
+            size: 13.0,
+        };
+        let p = Parts {
+            controls: vec![field(140.0, 20.0), field(168.0, 52.0)],
+            texts: vec![label("Serveurs DNS :", 20.0, 120.0, 20.0), label("Domaines de recherche :", 20.0, 160.0, 52.0)],
+            ..Parts::default()
+        };
+        assert_eq!(found(&p), 1);
+        let p = Parts { controls: vec![field(168.0, 20.0), field(168.0, 52.0)], texts: p.texts.clone(), ..Parts::default() };
+        assert_eq!(found(&p), 0, "one column");
+        let p = Parts {
+            controls: vec![field(140.0, 20.0), field(168.0, 52.0)],
+            texts: vec![label("Serveurs DNS :", 20.0, 120.0, 20.0), label("Domaines de recherche :", 40.0, 160.0, 52.0)],
+            ..Parts::default()
+        };
+        assert_eq!(found(&p), 0, "labels apart: another column of labels");
     }
 
     /// Something close under a form's Save is found; a scroll bar's
