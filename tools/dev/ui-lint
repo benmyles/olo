@@ -106,7 +106,7 @@ def sh(*args, check=False):
     env["TSESSION_PROFILE"] = PROFILE
     r = subprocess.run(["/usr/bin/python3", TSESSION, *args], capture_output=True, text=True, env=env)
     if check and r.returncode:
-        sys.exit(f"tsession {' '.join(args)}: {r.stderr or r.stdout}")
+        raise RuntimeError(f"tsession {' '.join(args)}: {r.stderr or r.stdout}")
     return r.stdout
 
 
@@ -153,7 +153,7 @@ def pids_of(exe, home):
     for p in os.listdir("/proc"):
         if p.isdigit():
             try:
-                if os.path.basename(os.readlink(f"/proc/{p}/exe")) == exe and ours(int(p), home):
+                if os.path.basename(os.readlink(f"/proc/{p}/exe")).removesuffix(" (deleted)") == exe and ours(int(p), home):
                     out.append(int(p))
             except OSError:
                 pass
@@ -264,35 +264,62 @@ def set_look(name, theme, scale, look=None):
     ipc(name, {"type": "set_settings", "settings": st})
 
 
-def kept_waiting(*pids):
-    """Seconds the main threads of `pids` have spent ready to run with no
-    processor to run on (the kernel's count, /proc/PID/schedstat). The
-    lint and all it starts run at idle priority, so on a computer busy
-    with other work (a build, another agent's tests: a load of 38 on 15
-    processors, 2026-11-16) an app and its window server wait for a
-    processor far longer than they run, and a deadline in seconds on the
-    wall said "no window came up" of apps that had hardly run. A wait's
-    deadline here doesn't count that time."""
-    total = 0.0
-    for pid in pids:
+def thread_waits(pid):
+    """Seconds each live thread has spent runnable and waiting for a CPU."""
+    waits = {}
+    try:
+        tids = os.listdir(f"/proc/{pid}/task")
+    except OSError:
+        return waits
+    for tid in tids:
         try:
-            with open(f"/proc/{pid}/schedstat") as f:
-                total += int(f.read().split()[1]) / 1e9
+            with open(f"/proc/{pid}/task/{tid}/schedstat") as f:
+                waits[tid] = int(f.read().split()[1]) / 1e9
         except (OSError, ValueError, IndexError):
             pass
-    return total
+    return waits
 
 
-def drawn(pid, layers, scale=None, dark=None, within=6.0):
+class Deadline:
+    """Bound a wait for idle-priority processes. Their main threads can be
+    asleep while a worker needs a CPU. Allow the longest measured runnable
+    delay in each process, up to max_delay seconds in total."""
+
+    def __init__(self, within, max_delay, *pids):
+        self.nominal = time.monotonic() + within
+        self.limit = self.nominal + max_delay
+        self.check_at = self.nominal
+        self.before = {pid: thread_waits(pid) for pid in pids if pid}
+        self.delays = {}
+
+    def reached(self, *launched):
+        now = time.monotonic()
+        if now < self.check_at:
+            return False
+        if now >= self.limit:
+            return True
+        # Charge simultaneous thread waits once per process. A thread that
+        # exits later cannot take back an allowance already measured.
+        for pid in (*self.before, *launched):
+            before = self.before.get(pid, {})
+            longest = max((w - before.get(t, 0.0) for t, w in thread_waits(pid).items()), default=0.0)
+            self.delays[pid] = max(self.delays.get(pid, 0.0), longest)
+        self.check_at = min(self.limit, self.nominal + sum(self.delays.values()))
+        return now >= self.check_at
+
+
+def drawn(pid, layers, scale=None, dark=None, within=6.0, *, server=None):
     """The app's review once its windows are drawn (at `scale`, in the look
     `dark` says, when given): asked again until they are, never waited
-    for longer than it takes. None if they never are (`within` seconds,
-    and as long again as the app was kept waiting for a processor, a
-    minute of that at most)."""
-    began, waiting = time.time(), kept_waiting(pid)
+    for longer than it takes. A ready sample gets one confirmation. A deadline
+    with replies but no settled review is a test-harness failure."""
+    deadline = Deadline(within, 60, pid, server)
     last = None
     settled = None
-    while time.time() < began + within + min(kept_waiting(pid) - waiting, 60):
+    while True:
+        final_check = deadline.reached()
+        if final_check and settled is None:
+            break
         wins = [w for w in (ask_app(pid, {"review": True}, timeout=8) or []) if layers or not w.get("layer")]
         if wins:
             last = wins
@@ -308,8 +335,15 @@ def drawn(pid, layers, scale=None, dark=None, within=6.0):
                 settled = sizes
             else:
                 settled = None
+        else:
+            settled = None
+        if final_check:
+            break
         time.sleep(0.05)
-    return None if last is None else [(w.get("layer") or w["title"], f) for w in last for f in w["findings"]]
+    if last is None and scale is None and dark is None:
+        return None
+    state = [(w.get("layer") or w["title"], w["width"], w["height"], w.get("scale"), w.get("dark"), w.get("resizing", False)) for w in (last or [])]
+    raise TimeoutError(f"review did not settle for pid {pid} (scale={scale}, dark={dark}), last (title, width, height, scale, dark, resizing)={state}")
 
 
 def click(name, x, y):
@@ -359,7 +393,7 @@ LAYOUTS = [
 ]
 
 
-def tiled(name, pid, wid, part, within=8.0):
+def tiled(name, pid, wid, part, within=8.0, *, server=None):
     """Window `wid` tiled into `part` of its display's tiling area, as
     app_server's tiling puts it, and its frame once it has drawn there (or
     the size it keeps, its least): (frame, tile, least). None if app_server
@@ -369,9 +403,9 @@ def tiled(name, pid, wid, part, within=8.0):
         return None
     ipc(name, {"type": "arrange", "windows": [{"id": wid, "x": part[0], "y": part[1], "w": part[2], "h": part[3]}]})
     tile = (area["x"] + area["width"] * part[0], area["y"] + area["height"] * part[1], area["width"] * part[2], area["height"] * part[3])
-    began, waiting = time.time(), kept_waiting(pid)
+    deadline = Deadline(within, 30, pid, server)
     last, same = None, 0
-    while time.time() < began + within + min(kept_waiting(pid) - waiting, 30):
+    while not deadline.reached():
         w = next((w for w in windows_of(name, pid) if w["id"] == wid), None)
         if w and w.get("frame") and not w.get("settling"):
             f = w["frame"]
@@ -452,7 +486,7 @@ def lint_one(spec, slot, master, screen, scales, show_review, work, all_themes=F
                 server = json.load(f).get("pid")
         except (OSError, ValueError):
             server = None
-        began, waiting = time.time(), kept_waiting(server)
+        deadline = Deadline(20, 120, server)
         while True:
             ps = pids_of(exe, home)
             # Its windows on screen, as app_server has them: drawn, and no
@@ -464,10 +498,10 @@ def lint_one(spec, slot, master, screen, scales, show_review, work, all_themes=F
             if ps and (layers or (shown and not any(w.get("settling") for w in shown))):
                 pid = ps[0]
                 break
-            if time.time() > began + 20 + min(kept_waiting(server, *ps[:1]) - waiting, 120):
+            if deadline.reached(*ps[:1]):
                 break
             time.sleep(0.1)
-        if pid is None or drawn(pid, layers) is None:
+        if pid is None or drawn(pid, layers, server=server) is None:
             alive = pids_of(exe, home)
             log = os.path.join(BASE, name, f"{os.path.basename(exe)}.log")
             try:
@@ -485,11 +519,11 @@ def lint_one(spec, slot, master, screen, scales, show_review, work, all_themes=F
         for look, theme in ((look, mode) for look in theme_ids for mode in (("light", "dark", "night") if all_themes else ("light", "dark"))):
             for scale in scales:
                 set_look(name, theme, scale, look)
-                looks = [(None, drawn(pid, layers, scale, theme != "light"))]
+                looks = [(None, drawn(pid, layers, scale, theme != "light", server=server))]
                 for title, tab, x, y in tabs(name, pid):
                     click(name, x, y)
                     chosen(pid, tab)
-                    looks.append((tab, drawn(pid, layers, scale, theme != "light")))
+                    looks.append((tab, drawn(pid, layers, scale, theme != "light", server=server)))
                 for tab, found in looks:
                     if found is None:
                         raise RuntimeError(f"{look or 'default'} {theme} {scale:g}×: no review returned")
@@ -505,13 +539,13 @@ def lint_one(spec, slot, master, screen, scales, show_review, work, all_themes=F
             # 1280 × 800.)
             scale = float(first)
             set_look(name, "light", scale)
-            drawn(pid, layers, scale, False)
+            drawn(pid, layers, scale, False, server=server)
             for w in windows_of(name, pid):
                 if w.get("floating") or w.get("floats_always"):
                     continue
                 tiled_windows.append(w["title"])
                 for layout, part in LAYOUTS:
-                    got = tiled(name, pid, w["id"], part)
+                    got = tiled(name, pid, w["id"], part, server=server)
                     if got is None:
                         seen.setdefault(("Error", w["title"], None, "tiling", f"never settled in {layout}"), []).append(f"{scale:g}×")
                         continue
@@ -525,7 +559,7 @@ def lint_one(spec, slot, master, screen, scales, show_review, work, all_themes=F
                         what = f"its least size, {least[0]} × {least[1]}," if least else "it"
                         key = ("Error", w["title"], None, "tile-fit", f"{what} is more than {layout}'s tile, {min(frame[2], tile[2]):.0f} × {min(frame[3], tile[3]):.0f}")
                         seen.setdefault(key, []).append(f"{scale:g}×")
-                    looks = [(None, drawn(pid, layers, scale, False))]
+                    looks = [(None, drawn(pid, layers, scale, False, server=server))]
                     shot = lambda tab: shots and picture(name, w["id"], scale, os.path.join(shots, f"{slug(app)}-{slug(layout)}{'-' + slug(tab) if tab else ''}.png"))
                     shot(shots and selected_tab(pid, w["title"]))
                     for title, tab, x, y in tabs(name, pid):
@@ -533,7 +567,7 @@ def lint_one(spec, slot, master, screen, scales, show_review, work, all_themes=F
                             continue
                         click(name, x, y)
                         chosen(pid, tab)
-                        looks.append((tab, drawn(pid, layers, scale, False)))
+                        looks.append((tab, drawn(pid, layers, scale, False, server=server)))
                         shot(tab)
                         escape(name)
                     for tab, found in looks:
@@ -549,10 +583,12 @@ def lint_one(spec, slot, master, screen, scales, show_review, work, all_themes=F
             lines.append(f"  - {level.lower()} {kind} in {window}{' ▸ ' + tab if tab else ''}: {text} ({', '.join(seen[key])})")
         return len(app_errors), len(app_reviews), lines
     finally:
-        sh("stop", name)
-        fakesound.terminate()
-        if fake:
-            fake.terminate()
+        try:
+            sh("stop", name, check=True)
+        finally:
+            fakesound.terminate()
+            if fake:
+                fake.terminate()
         # (Its session folder too: /tmp is memory.)
         subprocess.run(["rm", "-rf", home, os.path.join(BASE, name)])
 

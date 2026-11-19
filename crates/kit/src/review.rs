@@ -9,6 +9,7 @@
 //! What is in an area on a grid of its own ([`own_grid`]) or centred in
 //! a band nothing fills ([`band`]) is marked so.
 
+use crate::app::Frame;
 use olo_interface::{Bounds, Painter, Pixels, WindowCx};
 use olo_kit_base::{
     commands::WindowReview,
@@ -256,5 +257,6 @@ pub(crate) fn review_window(cx: &mut WindowCx, dark: bool) -> (WindowReview, (f3
         height: 0.0,
     }));
     let fit = (checks::overflow_depth(&parts, scale), checks::bottom_slack(&parts, w, h));
-    (WindowReview { title: cx.window_title().to_string(), width: w as u32, height: h as u32, scale, dark, layer: None, resizing: cx.commit_is_held(), findings }, fit)
+    let resizing = cx.commit_is_held() || (cx.resize_pending() && !cx.held_state().held() && cx.root_view::<Frame>().is_some_and(Frame::awaiting_fit));
+    (WindowReview { title: cx.window_title().to_string(), width: w as u32, height: h as u32, scale, dark, layer: None, resizing, findings }, fit)
 }

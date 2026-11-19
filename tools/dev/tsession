@@ -357,19 +357,28 @@ def end(left, within=3.0):
     `within` seconds. Then the state any of them left for its next self
     (a kit app that saw app_server go writes olo-restore-PID.json and
     re-executes; killed before it claimed it, the file stays)."""
-    t0 = time.monotonic()
+    term_at = kill_at = None
     seen = set()
     while pids := left():
         seen.update(pids)
-        late = time.monotonic() - t0
-        if late > within + 2:
-            print(f"tsession: still running after SIGKILL: {pids}", file=sys.stderr)
-            break
+        force = term_at is not None and time.monotonic() - term_at >= within
         for pid in pids:
             try:
-                os.kill(pid, signal.SIGKILL if late > within else signal.SIGTERM)
+                os.kill(pid, signal.SIGKILL if force else signal.SIGTERM)
             except OSError:
                 pass
+        # Scanning /proc at idle priority can take the entire grace period.
+        # Start each grace period after actually sending its signal.
+        now = time.monotonic()
+        if term_at is None:
+            term_at = now
+        if force:
+            if kill_at is None:
+                kill_at = now
+            elif now - kill_at >= 2:
+                if remaining := left():
+                    sys.exit(f"tsession: still running after SIGKILL: {remaining}")
+                break
         time.sleep(0.05)
     for pid in seen:
         if not os.path.exists(f"/proc/{pid}"):

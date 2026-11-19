@@ -468,6 +468,11 @@ pub fn tab_step(k: &olo_interface::Keystroke) -> i32 {
 }
 
 impl Frame {
+    /// An outstanding fit request can outlast the hold on presenting frames.
+    pub(crate) fn awaiting_fit(&self) -> bool {
+        self.fit.as_ref().is_some_and(|fit| fit.asked.is_some())
+    }
+
     /// A window that follows what it shows is brought in line with what
     /// its content needs now: asked to be that size (held back until it
     /// is, so it's never seen at the wrong one), or, past the screen's

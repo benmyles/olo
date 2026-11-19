@@ -1889,6 +1889,11 @@ impl<'a> WindowCx<'a> {
         self.core.views.get(id)?.view.as_ref()?.as_any().downcast_ref()
     }
 
+    /// Reads the window's outermost view when it has type `V`.
+    pub fn root_view<V: View>(&self) -> Option<&V> {
+        self.read_view(self.core.root_view?)
+    }
+
     /// The window's own view says what it shows again (something
     /// outside the window it shows changed: what may be pasted).
     pub fn invalidate_main_view(&mut self) {
