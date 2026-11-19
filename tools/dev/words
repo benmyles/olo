@@ -12,6 +12,18 @@
       --write, added to en.txt. Never takes a word out. --no-lints reads
       the lints' last lists (in /var/tmp/olo-words) instead of running them.
 
+  words unasked [--no-lint]
+      What Olo shows that never went through the words layer, so no
+      language can reach it: the live lint run in English with
+      OLO_WORDS_UNSEEN, each program's windows written down as the kit
+      is handed them (`words::of` given a `String`) or draws them (an
+      app's own `style::label`), less what the layer made (`tr!`,
+      `count`). By program, plain data (paths, numbers, addresses) left
+      out; a file's name or a person's words are still among them, to be
+      told apart by eye. Each one shown is a `format!` to make a `tr!`, a
+      literal copied into a `String` to hand on as the literal, or a
+      helper taking `&str` to make `&'static str`.
+
   words missing LANG
       The words of en.txt LANG's catalog doesn't have yet, one a line.
 
@@ -139,6 +151,35 @@ def gather(write, lints):
         print(f"words: en.txt has {len(words)}", file=sys.stderr)
 
 
+def unasked(lint):
+    os.makedirs(SCRATCH, exist_ok=True)
+    path = os.path.join(SCRATCH, "unasked.txt")
+    if lint:
+        if os.path.exists(path):
+            os.remove(path)
+        env = {k: v for k, v in os.environ.items() if k != "OLO_LANGUAGE"}
+        print("words: the live lint (tools/dev/ui-lint, every app), finding words never asked for…", file=sys.stderr)
+        subprocess.run([sys.executable, os.path.join(ROOT, "tools/dev/ui-lint"), "--no-cache"], cwd=ROOT, env=dict(env, OLO_WORDS_UNSEEN=path), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if not os.path.exists(path):
+        sys.exit("words: nothing written down (no lint run yet: leave out --no-lint)")
+    data = re.compile(r"^[\w.+-]+@[\w.-]+$|^[~/][^ ]*$|^[\w.-]+\.[a-z0-9]{1,5}$|^[\d\s.,:%°/+-]+[a-zA-Z]{0,3}$|^[0-9a-f:]{6,}$")
+    by = {}
+    for line in open(path).read().split("\n"):
+        if "\t" not in line:
+            continue
+        program, text = line.split("\t", 1)
+        if data.match(text.strip()):
+            continue
+        by.setdefault(program, set()).add(text)
+    total = 0
+    for program in sorted(by, key=lambda p: -len(by[p])):
+        print(f"== {program} ({len(by[program])})")
+        for t in sorted(by[program]):
+            print(f"  {t}")
+        total += len(by[program])
+    print(f"words: {total} shown, never asked for, in {len(by)} programs", file=sys.stderr)
+
+
 def french(t):
     for mark in (":", ";", "?", "!"):
         t = t.replace(" " + mark, "\u202f" + mark)
@@ -215,6 +256,8 @@ def main():
     cmd = a.pop(0)
     if cmd == "gather":
         gather("--write" in a, "--no-lints" not in a)
+    elif cmd == "unasked":
+        unasked("--no-lint" not in a)
     elif cmd == "missing" and a:
         have, _ = catalog(a[0])
         for w in english():

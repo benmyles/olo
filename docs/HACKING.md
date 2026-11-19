@@ -13225,6 +13225,20 @@ and windows but Preferences' and DiskBackup's were missing, so German,
 Spanish and French left them in English. Sentences made with `format!`
 or owned copies of literals (`"…".into()` to a `String`) aren't looked
 up and aren't in it until they're `tr!` or `words::of_text`.
+**What Olo shows that never asked**: `tools/dev/words unasked` runs the
+live lint with `OLO_WORDS_UNSEEN`, under which the layer keeps every
+word it hands back (`tr`, `lookup`, `count`, `fill`, `note`) and the kit
+writes down text a widget is handed that isn't a literal (`words::of`
+given a `String`) or that an app paints itself (the review's drawn
+labels), less what the layer made: by program, the sweep's list of
+words made at run time (1,136 on 2026-11-19, 378 of them Preferences').
+It catches what no scan of the code can: a helper that takes `&str` and
+copies it into a `String` (Network's text fields' hints, "Each
+network's own"). Data shows among them (a network's name, a file's),
+told apart by eye; what agents call a control, made from its label, is
+handed on with `words::of_name`, not flagged. Watching costs one load
+when nothing watches (Preferences over 180 keys typed: the same within
+the rounds' spread, before, after and with it hard-wired off).
 `tools/dev/words missing LANG` lists what a catalog lacks, and `words
 merge LANG PAIRS…` puts translations in (written as "English |||
 translation"; it refuses unless every word is there and each keeps its

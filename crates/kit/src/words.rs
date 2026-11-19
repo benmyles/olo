@@ -24,7 +24,23 @@ pub fn of(text: impl Into<SharedString>) -> SharedString {
             // would be.)
             if std::ptr::eq(said, written) { text } else { SharedString::new(said) }
         }
-        None => text,
+        None => {
+            // (Not a literal: shown as it is. Written down if words made
+            // at run time are being found, unless the layer made it.)
+            unasked(&text);
+            text
+        }
+    }
+}
+
+/// What agents call a control (`agent_value`, a field's `name`): as
+/// `of`, but a name made from its label (already in the language: "Command
+/// key" from "Command key:") isn't a word never asked for.
+pub fn of_name(name: impl Into<SharedString>) -> SharedString {
+    let name = name.into();
+    match name.as_static() {
+        Some(_) => of(name),
+        None => name,
     }
 }
 
@@ -35,9 +51,12 @@ pub fn of_all(texts: std::rc::Rc<[SharedString]>) -> std::rc::Rc<[SharedString]>
         return texts.iter().cloned().map(of).collect();
     }
     // (In English as they are; written down if Olo's words are being.)
-    if recording() {
-        for t in texts.iter().filter_map(|t| t.as_static()) {
-            note(t);
+    if recording() || finding_unasked() {
+        for t in texts.iter() {
+            match t.as_static() {
+                Some(t) => note(t),
+                None => unasked(t),
+            }
         }
     }
     texts

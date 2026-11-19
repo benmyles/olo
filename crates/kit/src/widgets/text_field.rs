@@ -343,7 +343,7 @@ impl TextField {
 
     /// What agents call it.
     pub fn name(mut self, name: impl Into<SharedString>) -> Self {
-        self.name = crate::words::of(name);
+        self.name = crate::words::of_name(name);
         self
     }
 

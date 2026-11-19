@@ -234,8 +234,11 @@ pub fn recording() -> bool {
 /// (`recording`): for words handed on as plain text or kept as they are
 /// in English (a tab view's tabs, a menu field's choices, a box's title).
 pub fn note(text: &str) {
-    if recording() {
-        seen(text);
+    if watched() {
+        if recording() {
+            seen(text);
+        }
+        said(text);
     }
 }
 
@@ -257,27 +260,96 @@ fn seen(text: &str) {
     }
 }
 
+/// Whether words shown but never asked for are being found
+/// (`OLO_WORDS_UNSEEN` names a file): every word the layer hands back is
+/// kept, and what a widget is handed, or the kit draws, that isn't one of
+/// them is written down (`unasked`): words made at run time (a
+/// `format!`, a literal copied into a `String`) that no language can
+/// reach. `tools/dev/words unasked` runs the live lint so.
+pub fn finding_unasked() -> bool {
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("OLO_WORDS_UNSEEN").is_some_and(|p| !p.is_empty()))
+}
+
+/// Whether anything watches the words (`OLO_WORDS_SEEN`,
+/// `OLO_WORDS_UNSEEN`): one load, as nearly always nothing does.
+#[inline]
+fn watched() -> bool {
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| recording() || finding_unasked())
+}
+
+static SAID: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+/// `text`, handed back by the layer (`finding_unasked`).
+#[inline]
+pub fn said(text: &str) {
+    if watched() && finding_unasked() {
+        SAID.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner()).insert(text.to_owned());
+    }
+}
+
+/// Whether the layer handed `text` back (`finding_unasked`).
+pub fn was_said(text: &str) -> bool {
+    SAID.get().is_some_and(|s| s.lock().unwrap_or_else(|e| e.into_inner()).contains(text))
+}
+
+/// `text` shown but never asked for (`finding_unasked`), written down
+/// once, with the program it's in, unless the layer handed it back or it
+/// has no words (a number, a mark).
+pub fn unasked(text: &str) {
+    if !watched() || !finding_unasked() || was_said(text) || text.chars().filter(|c| c.is_alphabetic()).count() < 2 {
+        return;
+    }
+    static FILE: OnceLock<Option<Mutex<(HashSet<String>, std::fs::File, String)>>> = OnceLock::new();
+    let Some(file) = FILE.get_or_init(|| {
+        let path = std::env::var_os("OLO_WORDS_UNSEEN").filter(|p| !p.is_empty())?;
+        let file = std::fs::OpenOptions::new().create(true).append(true).open(path).ok()?;
+        let me = std::env::current_exe().ok().and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())).unwrap_or_default();
+        Some(Mutex::new((HashSet::new(), file, me)))
+    }) else {
+        return;
+    };
+    let mut file = file.lock().unwrap_or_else(|e| e.into_inner());
+    if file.0.insert(text.to_owned()) {
+        use std::io::Write;
+        let line = format!("{}\t{}\n", file.2, text.replace('\n', "\\n"));
+        let _ = file.1.write_all(line.as_bytes());
+    }
+}
+
 /// `text` (as the code writes it, in English) in the language chosen:
 /// itself in English, and where the language has no word for it.
 pub fn tr(text: &'static str) -> &'static str {
-    seen(text);
-    if !TRANSLATING.load(Ordering::Acquire) {
-        return text;
+    let out = if TRANSLATING.load(Ordering::Acquire) {
+        let now = NOW.read().unwrap_or_else(|e| e.into_inner());
+        now.as_ref().and_then(|c| c.words.get(text)).map(|e| e.text).filter(|t| !t.is_empty()).unwrap_or(text)
+    } else {
+        text
+    };
+    // (One load when nothing watches, as before it was `seen`'s.)
+    if watched() {
+        seen(text);
+        said(out);
     }
-    let now = NOW.read().unwrap_or_else(|e| e.into_inner());
-    now.as_ref().and_then(|c| c.words.get(text)).map(|e| e.text).filter(|t| !t.is_empty()).unwrap_or(text)
+    out
 }
 
 /// The translation of words given by what they say, not as a literal
 /// (an alert's message, handed on as `&str`): None in English, and
 /// where the language has none.
 pub fn lookup(text: &str) -> Option<&'static str> {
-    note(text);
-    if !TRANSLATING.load(Ordering::Acquire) {
-        return None;
+    let out = if TRANSLATING.load(Ordering::Acquire) {
+        let now = NOW.read().unwrap_or_else(|e| e.into_inner());
+        now.as_ref().and_then(|c| c.words.get(text)).map(|e| e.text).filter(|t| !t.is_empty())
+    } else {
+        None
+    };
+    if watched() {
+        note(text);
+        said(out.unwrap_or(text));
     }
-    let now = NOW.read().unwrap_or_else(|e| e.into_inner());
-    now.as_ref().and_then(|c| c.words.get(text)).map(|e| e.text).filter(|t| !t.is_empty())
+    out
 }
 
 /// `pattern` with its `{}` filled from `parts` in turn, and `{0}`,
@@ -316,6 +388,7 @@ pub fn fill(pattern: &str, parts: &[&dyn Display]) -> String {
         }
     }
     out.push_str(rest);
+    said(&out);
     out
 }
 
@@ -324,6 +397,12 @@ pub fn fill(pattern: &str, parts: &[&dyn Display]) -> String {
 /// `{n}` in whichever is used is the number. A language's forms are in
 /// its catalog under `other`.
 pub fn count(n: u64, one: &'static str, other: &'static str) -> String {
+    let out = count_in(n, one, other);
+    said(&out);
+    out
+}
+
+fn count_in(n: u64, one: &'static str, other: &'static str) -> String {
     seen(other);
     let said = |pattern: &str| pattern.replace("{n}", &n.to_string());
     if !TRANSLATING.load(Ordering::Acquire) {

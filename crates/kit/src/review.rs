@@ -92,6 +92,9 @@ pub(crate) fn text(g: &mut Painter, rect: Bounds<Pixels>, baseline: Pixels, text
     if !recording(g) {
         return;
     }
+    // (Words an app paints itself, made at run time and never asked for,
+    // written down if they're being found: `words::finding_unasked`.)
+    crate::words::unasked(text);
     with_parts(g, |parts, clip| {
         let label: String = text.split('\n').next().unwrap_or("").trim().chars().take(28).collect();
         let r = kb(rect);

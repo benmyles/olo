@@ -77,7 +77,7 @@ impl MenuField {
     /// Its name for agents, with no label shown: a field in a grid, named
     /// by its row and column ("Processors in Power Saver").
     pub fn name(mut self, name: impl Into<SharedString>) -> Self {
-        self.name = Some(crate::words::of(name));
+        self.name = Some(crate::words::of_name(name));
         self
     }
 
