@@ -249,10 +249,13 @@ pub fn run() {
         }
         // Chrome's downloads (downloads.rs).
         if let Ok(m) = &message
-            && (m.get("downloads").is_some() || m.get("downloaded").is_some())
+            && (m.get("downloads").is_some() || m.get("downloaded").is_some() || m.get("held").is_some())
         {
             let whose = if slack.is_some() { downloads::SLACK } else { downloads::CHROME };
-            let downloads = downloads.get_or_insert_with(|| Downloads::new(whose));
+            let downloads = downloads.get_or_insert_with(|| Downloads::new(whose, out.clone()));
+            if let Some(d) = m.get("held").cloned().and_then(|v| serde_json::from_value::<Download>(v).ok()) {
+                downloads.held(&d);
+            }
             if let Some(list) = m.get("downloads").cloned().and_then(|v| serde_json::from_value::<Vec<Download>>(v).ok()) {
                 downloads.going(&list);
             }

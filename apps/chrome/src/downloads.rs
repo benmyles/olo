@@ -51,11 +51,23 @@ pub struct Whose {
 pub const CHROME: Whose = Whose { name: "Google Chrome", entry: "google-chrome", counted: true };
 pub const SLACK: Whose = Whose { name: "Slack", entry: "olo-slack", counted: false };
 
+/// What a notification is about, for its actions.
+#[derive(Debug, Clone)]
+enum About {
+    /// A file downloaded: Open, Open in Tracker.
+    File(PathBuf),
+    /// One Chrome holds: Show Downloads (Chrome's page, where it's kept or
+    /// deleted).
+    Held,
+}
+
 pub struct Downloads {
     whose: Whose,
     notes: Notifier,
     /// What each notification is about, for its actions.
-    shown: std::sync::Arc<olo_sync::Mutex<HashMap<NoteId, PathBuf>>>,
+    shown: std::sync::Arc<olo_sync::Mutex<HashMap<NoteId, About>>>,
+    /// Those held told of already (by id).
+    held: Vec<u64>,
     bus: Option<zbus::blocking::Connection>,
     /// Marked with `EXPECTED` already (by id).
     marked: Vec<u64>,
@@ -65,12 +77,21 @@ pub struct Downloads {
 }
 
 impl Downloads {
-    pub fn new(whose: Whose) -> Downloads {
-        let shown: std::sync::Arc<olo_sync::Mutex<HashMap<NoteId, PathBuf>>> = Default::default();
+    /// `out` is the way to the extension (Show Downloads asks it to open
+    /// Chrome's Downloads page).
+    pub fn new(whose: Whose, out: std::sync::Arc<olo_sync::Mutex<std::io::Stdout>>) -> Downloads {
+        let shown: std::sync::Arc<olo_sync::Mutex<HashMap<NoteId, About>>> = Default::default();
         let about = shown.clone();
         let notes = Notifier::with_events(whose.name, whose.entry, move |e| {
             let NoteEvent::Action { id, key, .. } = e else { return };
-            let Some(file) = about.lock().unwrap_or_else(|e| e.into_inner()).get(&id).cloned() else { return };
+            let Some(what) = about.lock().unwrap_or_else(|e| e.into_inner()).get(&id).cloned() else { return };
+            let file = match what {
+                About::File(file) => file,
+                About::Held => {
+                    crate::host::send(&out, &serde_json::json!({ "show_downloads": true }));
+                    return;
+                }
+            };
             let done = match key.as_str() {
                 "reveal" => olo_kit_base::tracker::open(&file),
                 _ => olo_xdg::open::open(&olo_xdg::open::Target::Path(file)),
@@ -79,7 +100,25 @@ impl Downloads {
                 eprintln!("olo-chrome: {e}");
             }
         });
-        Downloads { whose, notes, shown, bus: zbus::blocking::Connection::session().ok(), marked: Vec::new(), told: None }
+        Downloads { whose, notes, shown, held: Vec::new(), bus: zbus::blocking::Connection::session().ok(), marked: Vec::new(), told: None }
+    }
+
+    /// One Chrome holds until the person keeps or deletes it, thinking it
+    /// may be harmful, where Chrome's own download UI is off (Slack's
+    /// Chrome): said once, with the way to Chrome's Downloads page.
+    pub fn held(&mut self, d: &Download) {
+        if self.held.contains(&d.id) {
+            return;
+        }
+        self.held.push(d.id);
+        let name = d.file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let note = Note::new(name)
+            .body(olo_kit_base::words::tr("Chrome holds it, as it may be harmful: keep it or delete it in Chrome’s Downloads."))
+            .kind(NoteKind::Error)
+            .action("default", "Show Downloads")
+            .action("downloads", "Show Downloads");
+        let id = self.notes.show(None, note);
+        self.shown.lock().unwrap_or_else(|e| e.into_inner()).insert(id, About::Held);
     }
 
     /// The ones under way now.
@@ -121,7 +160,7 @@ impl Downloads {
         };
         let id = self.notes.show(None, note);
         if d.error.is_none() {
-            self.shown.lock().unwrap_or_else(|e| e.into_inner()).insert(id, d.file.clone());
+            self.shown.lock().unwrap_or_else(|e| e.into_inner()).insert(id, About::File(d.file.clone()));
         }
     }
 

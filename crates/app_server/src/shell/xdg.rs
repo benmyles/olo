@@ -741,23 +741,26 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             return;
         };
 
-        let mut outputs_for_window = self.space.outputs_for_element(&window);
-        if outputs_for_window.is_empty() {
+        let Some(window_geo) = self.space.element_geometry(&window) else {
             return;
-        }
-
-        // Get a union of all outputs' geometries.
-        let mut outputs_geo = self.space.output_geometry(&outputs_for_window.pop().unwrap()).unwrap();
-        for output in outputs_for_window {
-            outputs_geo = outputs_geo.merge(self.space.output_geometry(&output).unwrap());
-        }
-
-        let window_geo = self.space.element_geometry(&window).unwrap();
+        };
+        // The display it's kept on: the one under its anchor (a menu
+        // opens where it was asked for, on whichever display that part of
+        // its window lies), else its window's. Never the union of every
+        // display its window touches: slid back into that, a popup
+        // crossed from one display onto the next (Chrome's menu, from a
+        // window across two, by 52 points; Codex, 2026-11-19).
+        let parent = window_geo.loc + window.content_offset() + popup_offset;
+        let anchor = popup.with_pending_state(|state| state.positioner.anchor_rect);
+        let at = (parent + anchor.loc + anchor.size.downscale(2).to_point()).to_f64();
+        let output = self.space.output_under(at).next().cloned().or_else(|| self.window_output(&window));
+        let Some(mut target) = output.and_then(|o| self.space.output_geometry(&o)) else {
+            return;
+        };
 
         // The target geometry for the positioner should be relative to its
         // parent's geometry: the client's window geometry, which sits
         // inside our decoration frame.
-        let mut target = outputs_geo;
         target.loc -= popup_offset;
         target.loc -= window_geo.loc;
         target.loc -= window.content_offset();

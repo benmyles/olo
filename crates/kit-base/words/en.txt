@@ -377,6 +377,7 @@ Back Up Now goes on from where it got to
 Back Up There
 Back Up These Folders
 Back to Conversations
+Back to the Days
 Back up this computer
 Back up to a disk or folder from now on; the backups in Google Drive stay as they are
 Back up to the Drive of:
@@ -564,6 +565,7 @@ Choose…
 Chosen by someone
 Chosen for the whole computer and kept across restarts. It's the computer's, not this account's, so choosing asks for an administrator's password.
 Chosen outside dnf
+Chrome holds it, as it may be harmful: keep it or delete it in Chrome’s Downloads.
 City or region
 Classic
 Claude
@@ -1175,6 +1177,7 @@ Frequencies
 From
 From the network
 From your next login, Passwords can be ssh’s agent here too.
+From {}
 From {} to {}
 From:
 Full access couldn't be asked for. {}

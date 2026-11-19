@@ -1143,6 +1143,9 @@ Hacer copia de estas carpetas
 Back to Conversations
 Volver a las conversaciones
 
+Back to the Days
+Volver a los días
+
 Back up this computer
 Haz copias de este ordenador
 
@@ -1706,6 +1709,9 @@ Se elige para todo el ordenador y se conserva entre reinicios. Es del ordenador,
 
 Chosen outside dnf
 Elegido fuera de dnf
+
+Chrome holds it, as it may be harmful: keep it or delete it in Chrome’s Downloads.
+Chrome lo retiene porque podría ser dañino: consérvalo o elimínalo en las descargas de Chrome.
 
 City or region
 Ciudad o región
@@ -3545,6 +3551,9 @@ De la red
 
 From your next login, Passwords can be ssh’s agent here too.
 Desde tu próximo inicio de sesión, Passwords puede ser también aquí el agente de ssh.
+
+From {}
+Desde {}
 
 From {} to {}
 De {} a {}

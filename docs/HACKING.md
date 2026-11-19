@@ -7470,6 +7470,17 @@ opened (its log: "slow window elements: … glow 10.9 ms"); in parts,
 such a window, with its textures). `the_band_in_parts_is_the_band`
 checks every flat part against the band painted whole.
 
+A popup (a menu, a pop-up's list, a tooltip) is kept on the display
+under its anchor, else on its window's (`unconstrain_popup`, xdg.rs),
+moved as far as its positioner lets it (slid, flipped): never on the
+union of the displays its window touches, where a menu from a window
+across two crossed from one onto the next (Chrome's, by 52 points;
+2026-11-19). A program's subsurface is its own to place: Chrome draws
+its download bubble as one, and in an app window (`--app`, no toolbar)
+anchored it to the toolbar's hidden button at the window's corner, over
+the display's edge; olo-slack's Chrome has Chrome's own download UI off
+(see "Downloads" under Chrome).
+
 ## Workspaces, one set per display (app_server desktop.rs)
 
 Every display has its own workspaces, `Settings::workspace_count` of
@@ -20199,7 +20210,20 @@ cancelled says why). Tracker shows a `NAME.crdownload` as `NAME`, of the
 kind it will be, with a bar under its icon (icon views, the column
 preview) and "3.1 of 10 MB" / "Downloading, 31%" in its Size and Kind
 (`Entry::downloading`, `label`, `size_text`, `kind_text`); Chrome renames
-it when done, and the bar goes.
+it when done, and the bar goes. In olo-slack's Chrome, Chrome's own
+download UI is off (`chrome.downloads.setUiOptions`, the `downloads.ui`
+permission, set as its host says it's Slack's, at each start): Slack's
+window is an app's, without Chrome's toolbar, and Chrome's bubble,
+anchored to the toolbar's hidden button at the window's corner, opened
+at its top left and over the display beside it (Ben, 2026-11-19;
+Chromium has since anchored it to the window's edge). Olo's notification
+is the download's there. A download Chrome holds there until the
+person keeps or deletes it (its `danger`, not safe or accepted) is told
+of (`{held}`): Olo's notification says so, and Show Downloads opens
+Chrome's Downloads page (`{show_downloads}`), where that's done. (Not
+seen in a test: no kind of file served from loopback was held by a
+scratch profile's Chrome on Linux.) A normal Chrome window keeps
+Chrome's bubble, by its toolbar's button.
 
 **Chrome's widget tree, for agents** (`extension/tree.js`, `host.rs`).
 The extension (named "Olo": it does more than passwords) connects to

@@ -48,6 +48,12 @@ function connect() {
       });
       return;
     }
+    // Chrome's Downloads page, asked by Olo's notification of a download
+    // Chrome holds (in Slack's Chrome, whose own download UI is off).
+    if (m.show_downloads) {
+      chrome.tabs.create({ url: "chrome://downloads/" }).catch(() => {});
+      return;
+    }
     // olo-slack's host, about Slack.
     if (m.slack) {
       fromSlackHost(m.slack);
@@ -1032,6 +1038,18 @@ function downloadOf(d) {
   return { id: d.id, file: d.filename, received: d.bytesReceived, total: d.totalBytes > 0 ? d.totalBytes : null, paused: d.paused, url: d.finalUrl || d.url };
 }
 
+// Chrome holds a download it thinks may be harmful until the person
+// keeps it or deletes it (`danger`). Where Chrome's own download UI is
+// off (Slack's Chrome), Olo's notification says so ({held}), with the way
+// to Chrome's Downloads page, where that's done.
+const NOT_HELD = ["safe", "accepted", "allowlistedByPolicy", "deepScannedSafe", "deepScannedOpenedDangerous", "asyncScanning", "asyncLocalPasswordScanning"];
+const heldTold = new Set();
+function tellHeld(d) {
+  if (!slack || !d || d.state !== "in_progress" || !d.danger || NOT_HELD.includes(d.danger) || heldTold.has(d.id)) return;
+  heldTold.add(d.id);
+  tellHost({ held: downloadOf(d) });
+}
+
 function tellHost(message) {
   if (!port) connect();
   port?.postMessage(message);
@@ -1077,8 +1095,15 @@ async function tellDownloads() {
   }
 }
 
-chrome.downloads.onCreated.addListener(() => tellDownloads());
+chrome.downloads.onCreated.addListener((d) => {
+  tellHeld(d);
+  tellDownloads();
+});
 chrome.downloads.onChanged.addListener(async (delta) => {
+  if (delta.danger) {
+    const [d] = await chrome.downloads.search({ id: delta.id });
+    tellHeld(d);
+  }
   const state = delta.state?.current;
   if (state === "complete" || state === "interrupted") {
     const [d] = await chrome.downloads.search({ id: delta.id });
@@ -1217,6 +1242,14 @@ async function fromSlackHost(m) {
     const origin = originOf(m.url);
     if (!origin) return;
     slack = { origin, url: m.url };
+    // Slack's window is an app's, without Chrome's toolbar: Chrome's own
+    // download bubble, anchored to the toolbar's hidden button at the
+    // window's corner, opened at its top left and over the display beside
+    // it (Ben, 2026-11-19; Chromium has since anchored it to the window's
+    // edge). Here Olo's notification is a download's, and Deskbar shows
+    // its progress (downloads.rs). (Chrome keeps it for the running
+    // browser: said again at each start, as the host says this.)
+    chrome.downloads.setUiOptions({ enabled: false }).catch((e) => console.warn("olo-slack: Chrome's download UI", e));
     menuFor = null;
     buildMenu("");
     await slackScripts(origin).catch((e) => console.warn("olo-slack: scripts", e));

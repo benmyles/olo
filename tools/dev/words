@@ -96,7 +96,7 @@ def catalog(lang):
 CALLS = (r"(?:Button::new|\.label|\.title|\.item|\.check|\.note|StringView::new|\.hint|\.tip|tr!|words::tr|words::of_text|words::of|en!|words::en|\.bbox|Track::\w+|Panel::plot|\.guide|\.caption|"
          r"Column::new|\.submenu|RadioButton::new|CheckBox::new|\.placeholder|\.heading|\.empty_text|\.empty|alert|"
          r"\.choose|LinkButton::new|Menu::new|\.button|\.default_button|\.cancel_button|\.message|\.explain|\.radio|"
-         r"\.group|\.section)")
+         r"\.group|\.section|ArrowButton::back|ArrowButton::on)")
 LITERAL = re.compile(CALLS + r'\(\s*(?:[a-z_&.]+,\s*)?"((?:[^"\\]|\\.)+)"')
 # A dashboard's words: a card's title (its second literal), and a fact's
 # label (a pair's first, `("Entries".into(), …)`: a pair's parenthesis,

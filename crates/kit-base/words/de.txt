@@ -1143,6 +1143,9 @@ Diese Ordner sichern
 Back to Conversations
 Zurück zu den Unterhaltungen
 
+Back to the Days
+Zurück zu den Tagen
+
 Back up this computer
 Diesen Computer sichern
 
@@ -1706,6 +1709,9 @@ Für den ganzen Computer gewählt und über Neustarts hinweg beibehalten. Es geh
 
 Chosen outside dnf
 Außerhalb von dnf gewählt
+
+Chrome holds it, as it may be harmful: keep it or delete it in Chrome’s Downloads.
+Chrome hält die Datei zurück, da sie schädlich sein könnte: Behalte oder lösche sie in den Downloads von Chrome.
 
 City or region
 Stadt oder Region
@@ -3545,6 +3551,9 @@ Aus dem Netzwerk
 
 From your next login, Passwords can be ssh’s agent here too.
 Ab Ihrer nächsten Anmeldung kann Passwords auch hier der Agent von ssh sein.
+
+From {}
+Ab {}
 
 From {} to {}
 Von {} bis {}

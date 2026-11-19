@@ -13,15 +13,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-- **A Chrome app window's download popup opened at its top left, half on
-  the next display** (Ben, 2026-11-19, downloading a file in Slack, Olo's
-  Chrome in app mode zoomed on a display with another to its left: "it
-  showed its download notification in the top left instead of the bottom
-  right and was half over a screen"). Chrome's own download bubble showed
-  where a finished download should be Olo's notification
-  (apps/chrome/src/downloads.rs), and app_server let a popup cross from
-  its window's display onto the next. Root-causing both (a second
-  investigator on it too).
 - **Every app right in every tiling layout** (Ben, 2026-11-19, with a
   picture of Calendar tiled in a quarter, its date, search field and
   assistant's heading run together: "the calendar layout is breaking in
@@ -144,7 +135,9 @@ something nobody here has is in "Blocked", with what it waits for.
   language, its replies English for programs and translated where shown,
   its tapbacks English as phones exchange them; 34 new words); left:
   Olo Doctor (its findings, which Deskbar and its command line read: the
-  service-words model), a batch of its own; Phone's and Weather's Edit ▸
+  service-words model), a batch of its own; olo-chrome's host's
+  notifications (a download's "Downloaded from …", "Couldn’t download
+  …", their actions; it never chooses the language); Phone's and Weather's Edit ▸
   Copy text (English labels
   throughout), and its next-hour line said whole for each kind of
   precipitation ("La pluie cessera…", not "Pluie s'arrête…": French and
@@ -368,6 +361,23 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Done, waiting for Ben to try or confirm
 
+- **A Chrome app window's download popup opened at its top left, half on
+  the next display** (Ben, 2026-11-19, downloading a file in Slack, Olo's
+  Chrome in app mode zoomed on a display with another to its left: "it
+  showed its download notification in the top left instead of the bottom
+  right and was half over a screen"). Chrome's own download bubble showed
+  where a finished download should be Olo's notification
+  (apps/chrome/src/downloads.rs), and app_server let a popup cross from
+  its window's display onto the next. Done 2026-11-19: the bubble is
+  Chrome's own, a subsurface it places itself, anchored in an app window
+  to its toolbar's hidden button at the window's corner (Chromium has
+  since fixed that); olo-slack's Chrome has Chrome's own download UI off,
+  and Olo's notification (bottom right, Open, Open in Tracker) is the
+  download's, with a new one for a file Chrome holds (Show Downloads).
+  App_server keeps a popup on the display under its anchor, not on every
+  display its window touches. Reproduced and pictured in a headless
+  session before and after; a held download couldn't be made to happen
+  in a test. To try: download a file in Slack.
 - **DiskBackup: "Only when connected to ethernet"** (Ben, 2026-11-19:
   "add an option to diskbackup next to "[ ] Also when running on
   battery" to be "[ ] Only when connected to ethernet" default
