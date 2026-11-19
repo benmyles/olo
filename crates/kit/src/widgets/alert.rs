@@ -214,7 +214,7 @@ impl IntoElement for ConversationField {
 /// alert's message, a description). (Agents read it as a label: text
 /// says what it is.)
 pub fn paragraph(text: impl Into<SharedString>) -> Element {
-    div().relative().w_full().line_height(olo_interface::relative(style::LINE_HEIGHT)).child(text.into())
+    div().relative().w_full().line_height(olo_interface::relative(style::LINE_HEIGHT)).child(crate::words::of(text))
 }
 
 /// The height of `text` wrapped to `width` in the plain font, for sizing
@@ -386,6 +386,13 @@ impl View for Alert {
 
 /// The alert's window as asked for, and the view in it.
 fn alert(title: &str, icon: &str, message: &str, buttons: &[&str], timeout: Option<Timeout>, on_choose: Chosen) -> (crate::WindowOptions, Alert) {
+    // (In the person's language, where these are the app's own words:
+    // they come as plain text, so they're found by what they say.)
+    let (title, message) = (crate::words::of_text(title), crate::words::of_text(message));
+    let (title, message): (&str, &str) = (&title, &message);
+    let said: Vec<SharedString> = buttons.iter().map(|b| crate::words::of_text(b)).collect();
+    let labels: Vec<&str> = said.iter().map(|b| b.as_ref()).collect();
+    let buttons: &[&str] = &labels;
     let width = alert_width(buttons);
     // The countdown's line under the message, as long as it gets.
     let shown = match &timeout {

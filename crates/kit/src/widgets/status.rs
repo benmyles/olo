@@ -20,13 +20,13 @@ impl StatusBar {
     }
 
     pub fn label(mut self, label: impl Into<SharedString>) -> Self {
-        self.label = Some(label.into());
+        self.label = Some(crate::words::of(label));
         self
     }
 
     /// A note at the right ("3 of 7").
     pub fn trailing(mut self, text: impl Into<SharedString>) -> Self {
-        self.trailing = Some(text.into());
+        self.trailing = Some(crate::words::of(text));
         self
     }
 

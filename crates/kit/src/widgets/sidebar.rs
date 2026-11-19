@@ -59,13 +59,13 @@ pub struct Row {
 
 impl Row {
     pub fn new(icon: impl Into<SharedString>, label: impl Into<SharedString>) -> Row {
-        Row { icon: icon.into(), label: label.into(), value: None, heading: false }
+        Row { icon: icon.into(), label: crate::words::of(label), value: None, heading: false }
     }
 
     /// A heading; with no words, a gap setting what follows apart
     /// (Passwords' Archive, under its categories).
     pub fn heading(label: impl Into<SharedString>) -> Row {
-        Row { icon: SharedString::default(), label: label.into(), value: None, heading: true }
+        Row { icon: SharedString::default(), label: crate::words::of(label), value: None, heading: true }
     }
 
     /// How tall it stands.
@@ -78,7 +78,7 @@ impl Row {
     }
 
     pub fn value(mut self, value: impl Into<SharedString>) -> Row {
-        self.value = Some(value.into());
+        self.value = Some(crate::words::of(value));
         self
     }
 }

@@ -51,7 +51,7 @@ pub struct Notice(Option<(SharedString, Instant)>);
 impl Notice {
     /// Say `text` for `long`, in place of what it said.
     pub fn say(&mut self, text: impl Into<SharedString>, long: Duration) {
-        self.0 = Some((text.into(), Instant::now() + long));
+        self.0 = Some((crate::words::of(text), Instant::now() + long));
     }
 
     /// What it says now: None once its time is up.

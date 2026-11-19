@@ -85,7 +85,7 @@ pub struct WindowOptions {
 impl WindowOptions {
     pub fn new(title: impl Into<SharedString>, width: f32, height: f32) -> Self {
         WindowOptions {
-            title: title.into(),
+            title: crate::words::of(title),
             size: (width, height),
             min_size: None,
             max_size: None,

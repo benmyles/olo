@@ -108,7 +108,7 @@ pub enum SearchMsg {
 
 /// A search field, hinting `hint` while it's empty ("Search").
 pub fn search_field<V: View>(cx: &mut Cx<V>, hint: impl Into<SharedString>) -> Child<SearchField> {
-    let hint = hint.into();
+    let hint = crate::words::of(hint);
     cx.new_view(|cx| {
         let field = text_field(cx, |f| f.name(hint.clone()).hint(hint));
         cx.subscribe(&field, |s: &mut SearchField, e: &TextFieldEvent, cx| match e {

@@ -32,7 +32,7 @@ pub struct Button {
 
 impl Button {
     pub fn new(label: impl Into<SharedString>) -> Button {
-        let label = label.into();
+        let label = crate::words::of(label);
         Button { id: label.clone(), label, default: false, pushed: false, small: false, enabled: true, min_width: m::BUTTON_MIN_WIDTH, working: None, on_click: None }
     }
 
@@ -152,7 +152,7 @@ pub struct ArrowButton {
 impl ArrowButton {
     /// The one that goes back, named `name` ("Previous Week").
     pub fn back(name: impl Into<SharedString>) -> ArrowButton {
-        let name = name.into();
+        let name = crate::words::of(name);
         ArrowButton { id: name.clone(), name, back: true, enabled: true, on_click: None }
     }
 
@@ -209,7 +209,7 @@ pub struct LinkButton {
 
 impl LinkButton {
     pub fn new(label: impl Into<SharedString>) -> LinkButton {
-        let label = label.into();
+        let label = crate::words::of(label);
         LinkButton { id: label.clone(), label, enabled: true, beside: None, wrap: None, on_click: None }
     }
 
@@ -476,7 +476,7 @@ pub struct CheckBox {
 
 impl CheckBox {
     pub fn new(label: impl Into<SharedString>, checked: bool) -> CheckBox {
-        let label = label.into();
+        let label = crate::words::of(label);
         CheckBox { id: label.clone(), label, checked, mixed: false, enabled: true, mark_only: false, height: m::MARK_ROW, on_toggle: None }
     }
 
@@ -595,7 +595,7 @@ const LATCH: f32 = 12.0;
 
 impl PaneSwitch {
     pub fn new(label: impl Into<SharedString>, open: bool) -> PaneSwitch {
-        let label = label.into();
+        let label = crate::words::of(label);
         PaneSwitch { id: label.clone(), label, open, enabled: true, on_toggle: None }
     }
 
@@ -670,7 +670,7 @@ pub struct RadioButton {
 
 impl RadioButton {
     pub fn new(label: impl Into<SharedString>, selected: bool) -> RadioButton {
-        let label = label.into();
+        let label = crate::words::of(label);
         RadioButton { id: label.clone(), label, selected, enabled: true, height: m::MARK_ROW, on_select: None }
     }
 

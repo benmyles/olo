@@ -192,7 +192,8 @@ impl<'a, 'b, 'c> Ui<'a, 'b, 'c> {
         let items = self.collect(build);
         self.titles.pop();
         let probes = self.boxes.pop().unwrap_or_default();
-        let mut b = if title.is_empty() { BBox::plain() } else { BBox::new(SharedString::from(title.to_owned())) };
+        // (A box's title is the panel's own words, whatever it's given as.)
+        let mut b = if title.is_empty() { BBox::plain() } else { BBox::new(olo_kit::words::of_text(title)) };
         if grow {
             b = b.grow();
         }

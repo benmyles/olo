@@ -236,7 +236,7 @@ fn tips<'a>(cx: &'a mut WindowCx) -> &'a mut Tips {
 /// it from the window's other tips).
 pub fn on(element: Element, key: impl Into<SharedString>, text: impl Into<SharedString>) -> Element {
     use olo_interface::InteractiveElement as _;
-    let (key, text) = (key.into(), text.into());
+    let (key, text) = (key.into(), crate::words::of(text));
     let (rested, pressed_key) = (key.clone(), key);
     element
         .on_hover(move |hovered, cx| {
@@ -250,7 +250,7 @@ pub fn on(element: Element, key: impl Into<SharedString>, text: impl Into<Shared
 /// window, whose tip says `text` and which is at `anchor` (in the
 /// window).
 pub fn hover(cx: &mut WindowCx, key: impl Into<SharedString>, text: impl Into<SharedString>, anchor: Bounds<Pixels>, hovered: bool) {
-    hover_body(cx, key.into(), Body::text(text.into()), anchor, Place { at: anchor, side: TipPlace::Below }, hovered);
+    hover_body(cx, key.into(), Body::text(crate::words::of(text)), anchor, Place { at: anchor, side: TipPlace::Below }, hovered);
 }
 
 /// [`hover`], the tip a card: `card` (shared, so it isn't copied as the
@@ -433,7 +433,7 @@ fn card_hovered(cx: &mut WindowCx, on: bool) {
 /// The tip of widget `key` of the window now, without the pause (⌘ held
 /// over cut text, `cut`).
 pub fn show_now(cx: &mut WindowCx, key: impl Into<SharedString>, text: impl Into<SharedString>, anchor: Bounds<Pixels>) {
-    let (key, text, parent) = (key.into(), Body::text(text.into()), cx.window_id());
+    let (key, text, parent) = (key.into(), Body::text(crate::words::of(text)), cx.window_id());
     forget_gone(cx);
     let tips = tips(cx);
     let waiting = tips.waiting.take().map(|w| w.timer);
@@ -467,7 +467,7 @@ pub fn pressed(cx: &mut WindowCx, key: impl Into<SharedString>) {
 /// waiting to show, it shows that (else nothing: [`hover`] takes the
 /// text as it shows).
 pub fn retext(cx: &mut WindowCx, key: impl Into<SharedString>, text: impl Into<SharedString>) {
-    rebody(cx, key.into(), Body::text(text.into()));
+    rebody(cx, key.into(), Body::text(crate::words::of(text)));
 }
 
 /// [`retext`] for a card's tip: it shows `card` from now (resized for

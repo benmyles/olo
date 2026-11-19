@@ -49,7 +49,7 @@ impl Slider {
     }
 
     pub fn label(mut self, label: impl Into<SharedString>) -> Self {
-        self.label = Some(label.into());
+        self.label = Some(crate::words::of(label));
         self
     }
 
@@ -61,7 +61,7 @@ impl Slider {
 
     /// Labels under the ends of the bar.
     pub fn limits(mut self, min: impl Into<SharedString>, max: impl Into<SharedString>) -> Self {
-        self.limits = Some((min.into(), max.into()));
+        self.limits = Some((crate::words::of(min), crate::words::of(max)));
         self
     }
 

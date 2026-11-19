@@ -1,0 +1,4 @@
+# Olo in this language: see crates/kit-base/src/words.rs for the format.
+
+Cancel
+Cancel

@@ -41,7 +41,7 @@ pub struct TabView {
 
 impl TabView {
     pub fn new(id: impl Into<SharedString>, tabs: impl Into<Rc<[SharedString]>>, selected: usize) -> TabView {
-        TabView { id: id.into(), tabs: tabs.into(), selected, on_select: None, children: SmallVec::new(), grows: false }
+        TabView { id: id.into(), tabs: crate::words::of_all(tabs.into()), selected, on_select: None, children: SmallVec::new(), grows: false }
     }
 
     /// As tall as what the chosen tab shows needs, at least (else it is as

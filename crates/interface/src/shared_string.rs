@@ -28,6 +28,16 @@ impl SharedString {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// The literal it was made from, if it was one (`new_static`, a
+    /// `&'static str` converted): words written in the code, not made
+    /// as the program goes.
+    pub fn as_static(&self) -> Option<&'static str> {
+        match &self.0 {
+            ArcCow::Borrowed(text) => Some(text),
+            ArcCow::Owned(_) => None,
+        }
+    }
 }
 
 impl JsonSchema for SharedString {

@@ -213,13 +213,13 @@ impl TextField {
 
     /// What it shows, dim, while it's empty.
     pub fn hint(mut self, hint: impl Into<SharedString>) -> Self {
-        self.hint = hint.into();
+        self.hint = crate::words::of(hint);
         self
     }
 
     /// Changes the hint (a composer's "Message" or "Edit message").
     pub fn set_hint(&mut self, hint: impl Into<SharedString>, cx: &mut Cx<Self>) {
-        let hint = hint.into();
+        let hint = crate::words::of(hint);
         if hint != self.hint {
             self.hint = hint;
             cx.notify();
@@ -318,7 +318,7 @@ impl TextField {
 
     /// What agents call it.
     pub fn name(mut self, name: impl Into<SharedString>) -> Self {
-        self.name = name.into();
+        self.name = crate::words::of(name);
         self
     }
 

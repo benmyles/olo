@@ -19,7 +19,7 @@ pub struct KeyHint {
 impl KeyHint {
     /// `key` as it's printed on the keyboard ("Space", "Esc", "R").
     pub fn new(key: impl Into<SharedString>, action: impl Into<SharedString>) -> KeyHint {
-        KeyHint { key: key.into(), action: action.into(), enabled: true, level_with: None }
+        KeyHint { key: key.into(), action: crate::words::of(action), enabled: true, level_with: None }
     }
 
     /// On the baseline of text of `size` points beside it, centred as

@@ -42,6 +42,8 @@ pub const NONE_CHOSEN: usize = usize::MAX;
 
 impl MenuField {
     pub fn new(id: impl Into<SharedString>, options: Vec<SharedString>, selected: usize) -> MenuField {
+        // (Choices written in the code are in the person's language.)
+        let options = if crate::words::current().code == "en" { options } else { options.into_iter().map(crate::words::of).collect() };
         MenuField { id: id.into(), label: None, name: None, quiet: false, divider: None, options, selected, width: None, enabled: true, on_change: None, many: None }
     }
 
@@ -49,11 +51,11 @@ impl MenuField {
     /// `options`), `none` what it says with none (its menu's first item).
     /// `on_change` gets the choice to turn on or off, or [`NONE_CHOSEN`].
     pub fn many(id: impl Into<SharedString>, options: Vec<SharedString>, chosen: Vec<bool>, none: impl Into<SharedString>) -> MenuField {
-        MenuField { many: Some((chosen, none.into())), ..MenuField::new(id, options, NONE_CHOSEN) }
+        MenuField { many: Some((chosen, crate::words::of(none))), ..MenuField::new(id, options, NONE_CHOSEN) }
     }
 
     pub fn label(mut self, label: impl Into<SharedString>) -> Self {
-        self.label = Some(label.into());
+        self.label = Some(crate::words::of(label));
         self
     }
 
@@ -66,7 +68,7 @@ impl MenuField {
     /// Its name for agents, with no label shown: a field in a grid, named
     /// by its row and column ("Processors in Power Saver").
     pub fn name(mut self, name: impl Into<SharedString>) -> Self {
-        self.name = Some(name.into());
+        self.name = Some(crate::words::of(name));
         self
     }
 

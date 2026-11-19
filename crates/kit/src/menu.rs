@@ -129,7 +129,7 @@ pub struct Action {
 
 impl Menu {
     pub fn new(title: impl Into<SharedString>) -> Menu {
-        Menu { title: title.into(), items: Vec::new(), icon: None }
+        Menu { title: crate::words::of(title), items: Vec::new(), icon: None }
     }
 
     /// The last item's (an action's or a submenu's) icon.
@@ -153,7 +153,7 @@ impl Menu {
 
     /// Adds a command.
     pub fn item(mut self, label: impl Into<SharedString>, command: impl Into<SharedString>) -> Menu {
-        self.items.push(MenuItem::Action(Action { label: label.into(), command: command.into(), enabled: true, ..Default::default() }));
+        self.items.push(MenuItem::Action(Action { label: crate::words::of(label), command: command.into(), enabled: true, ..Default::default() }));
         self
     }
 

@@ -80,7 +80,7 @@ pub struct Row {
 
 impl Row {
     pub fn new(name: impl Into<SharedString>, value: impl Into<SharedString>) -> Row {
-        Row { name: name.into(), value: value.into(), ..Default::default() }
+        Row { name: crate::words::of(name), value: crate::words::of(value), ..Default::default() }
     }
 
     pub fn level(mut self, level: f32, color: Option<Hsla>) -> Self {
@@ -90,7 +90,7 @@ impl Row {
     }
 
     pub fn note(mut self, note: impl Into<SharedString>) -> Self {
-        self.note = Some(note.into());
+        self.note = Some(crate::words::of(note));
         self
     }
 
@@ -132,11 +132,11 @@ pub struct Card {
 
 impl Card {
     pub fn new(title: impl Into<SharedString>) -> Card {
-        Card { title: title.into(), caption: None, value: None, value_color: None, parts: Vec::new() }
+        Card { title: crate::words::of(title), caption: None, value: None, value_color: None, parts: Vec::new() }
     }
 
     pub fn caption(mut self, caption: impl Into<SharedString>) -> Self {
-        self.caption = Some(caption.into());
+        self.caption = Some(crate::words::of(caption));
         self
     }
 

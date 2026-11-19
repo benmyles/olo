@@ -1,0 +1,70 @@
+# Olo auf Deutsch. The format: crates/kit-base/src/words.rs.
+
+Cancel
+Abbrechen
+
+Power Modes
+Energiemodi
+
+Graphics
+Grafik
+
+Battery & Idle
+Batterie & Ruhezustand
+
+Power Mode
+Energiemodus
+
+Performance
+Leistung
+
+Balanced
+Ausgewogen
+
+Power Saver
+Energiesparen
+
+What Each Mode Sets
+Was jeder Modus einstellt
+
+Apply
+Anwenden
+
+Revert
+Zurücksetzen
+
+Processors
+Prozessoren
+
+Top speed
+Höchstgeschwindigkeit
+
+Fans
+Lüfter
+
+Auto
+Automatisch
+
+Cool
+Kühl
+
+Cooler
+Kühler
+
+Coolest
+Am kühlsten
+
+As the Mode
+Wie der Modus
+
+On Battery
+Im Batteriebetrieb
+
+File
+Ablage
+
+Edit
+Bearbeiten
+
+View
+Darstellung

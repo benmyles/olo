@@ -24,7 +24,7 @@ pub struct StringView {
 
 impl StringView {
     pub fn new(text: impl Into<SharedString>) -> StringView {
-        StringView { text: text.into(), dim: false, bold: false, color: None, height: m::CONTROL_HEIGHT, wrap: false, cut: false, size: style::PLAIN_SIZE, beside: None }
+        StringView { text: crate::words::of(text), dim: false, bold: false, color: None, height: m::CONTROL_HEIGHT, wrap: false, cut: false, size: style::PLAIN_SIZE, beside: None }
     }
 
     /// On the baseline of a line of `size` points centred in the same
@@ -166,7 +166,7 @@ pub struct Tag {
 
 impl Tag {
     pub fn new(text: impl Into<SharedString>) -> Tag {
-        Tag { text: text.into(), fill: None, height: m::LABEL_ROW, middle: m::LABEL_ROW / 2.0 }
+        Tag { text: crate::words::of(text), fill: None, height: m::LABEL_ROW, middle: m::LABEL_ROW / 2.0 }
     }
 
     /// Level with the first line of a wrapped paragraph of `size` text
@@ -251,7 +251,7 @@ pub struct BBox {
 
 impl BBox {
     pub fn new(label: impl Into<SharedString>) -> BBox {
-        BBox { label: Some(label.into()), width: None, action: None, grow: false, children: SmallVec::new() }
+        BBox { label: Some(crate::words::of(label)), width: None, action: None, grow: false, children: SmallVec::new() }
     }
 
     /// Without a label.
@@ -262,7 +262,7 @@ impl BBox {
     /// A `LinkButton` at the right end of its top line, for what's in it
     /// (Preferences' Reset: this box's settings back to their defaults).
     pub fn action(mut self, label: impl Into<SharedString>, on_click: impl Fn(&ClickEvent, &mut WindowCx) + 'static) -> Self {
-        self.action = Some((label.into(), std::rc::Rc::new(on_click)));
+        self.action = Some((crate::words::of(label), std::rc::Rc::new(on_click)));
         self
     }
 
@@ -385,7 +385,7 @@ type OnAction = std::rc::Rc<dyn Fn(&ClickEvent, &mut WindowCx)>;
 
 impl EmptyState {
     pub fn new(text: impl Into<SharedString>) -> EmptyState {
-        EmptyState { text: text.into(), icon: None, detail: None, action: None }
+        EmptyState { text: crate::words::of(text), icon: None, detail: None, action: None }
     }
 
     pub fn icon(mut self, name: impl Into<SharedString>) -> Self {
@@ -395,13 +395,13 @@ impl EmptyState {
 
     /// A line or two more, smaller, under the text.
     pub fn detail(mut self, detail: impl Into<SharedString>) -> Self {
-        self.detail = Some(detail.into());
+        self.detail = Some(crate::words::of(detail));
         self
     }
 
     /// A button under it all ("Open Integrations…").
     pub fn action(mut self, label: impl Into<SharedString>, on_click: impl Fn(&ClickEvent, &mut WindowCx) + 'static) -> Self {
-        self.action = Some((label.into(), std::rc::Rc::new(on_click)));
+        self.action = Some((crate::words::of(label), std::rc::Rc::new(on_click)));
         self
     }
 }

@@ -60,6 +60,7 @@ pub mod undo;
 mod upgrade;
 pub mod when;
 pub mod widgets;
+pub mod words;
 
 pub use app::{
     FIRST_SHOW_WAIT, FirstShowHold, Frame, SMALLEST_SCREEN_HEIGHT, WindowOptions, app_id, begin_move, display_height, hold_first_show, message_handler, on_displays_changed, open_or_raise,

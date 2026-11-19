@@ -112,7 +112,17 @@ impl ToolBar {
     /// its tools' commands chosen through `on_command`, as the menu
     /// bar's are. Its tools follow, then [`Self::menus`].
     pub fn new(id: impl Into<SharedString>, name: impl Into<SharedString>, on_command: impl Fn(&str, &mut WindowCx) + 'static) -> ToolBar {
-        ToolBar { id: id.into(), name: name.into(), tools: Vec::new(), actions: HashMap::new(), vertical: false, length: None, rows: 1, on_command: Rc::new(on_command), placed: Default::default() }
+        ToolBar {
+            id: id.into(),
+            name: crate::words::of(name),
+            tools: Vec::new(),
+            actions: HashMap::new(),
+            vertical: false,
+            length: None,
+            rows: 1,
+            on_command: Rc::new(on_command),
+            placed: Default::default(),
+        }
     }
 
     /// What its tools are now: the window's menus (the ones its menu bar
@@ -176,14 +186,14 @@ impl ToolBar {
     /// chosen), its menu made by `menu` as it opens (one the window's
     /// menus have too: Font ▸ Size; the choice checked in it).
     pub fn picker(mut self, name: impl Into<SharedString>, value: impl Into<SharedString>, width: f32, menu: impl Fn(&mut WindowCx) -> Menu + 'static) -> Self {
-        self.tools.push(Tool::Picker { name: name.into(), value: value.into(), swatch: None, width, enabled: true, menu: Rc::new(menu) });
+        self.tools.push(Tool::Picker { name: crate::words::of(name), value: value.into(), swatch: None, width, enabled: true, menu: Rc::new(menu) });
         self
     }
 
     /// [`Self::picker`] of colours (a menu with `Menu::swatch`es), showing
     /// `swatch` (None: a colour none of its choices is) and saying `value`.
     pub fn colors(mut self, name: impl Into<SharedString>, value: impl Into<SharedString>, swatch: Option<Hsla>, menu: impl Fn(&mut WindowCx) -> Menu + 'static) -> Self {
-        self.tools.push(Tool::Picker { name: name.into(), value: value.into(), swatch: Some(swatch), width: TOOL + 18.0, enabled: true, menu: Rc::new(menu) });
+        self.tools.push(Tool::Picker { name: crate::words::of(name), value: value.into(), swatch: Some(swatch), width: TOOL + 18.0, enabled: true, menu: Rc::new(menu) });
         self
     }
 

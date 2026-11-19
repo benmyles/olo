@@ -81,6 +81,26 @@ something nobody here has is in "Blocked", with what it waits for.
   Korean, Chinese simplified and traditional, Arabic, Hindi, Russian
   at least), each checked in the layout lint at every scale (words
   are longer in German: nothing cut).
+  **So far** (2026-11-18; HACKING.md, "Words in the person's
+  language"): the kit's layer (`olo_kit::words`: catalogs by the
+  English, literals handed to widgets translated with nothing said,
+  `tr!` and `count` for sentences, twelve languages named,
+  `Settings::language` applied to every running app). **Left**: the
+  choice in Preferences (and `LANGUAGE` for other programs); the
+  translations themselves (the catalogs hold a few German words to
+  try it with); sentences made with `format!` turned to `tr!`; what
+  apps paint themselves; the lint run in each language; Arabic
+  (right-to-left layout).
+  **So far** (2026-11-18; HACKING.md, "Words in the person's
+  language"): the kit's layer (`olo_kit::words`: catalogs by the
+  English, literals handed to widgets translated with nothing said,
+  `tr!` and `count` for sentences, twelve languages named,
+  `Settings::language` applied to every running app). **Left**: the
+  choice in Preferences (and `LANGUAGE` for other programs); the
+  translations themselves (the catalogs hold a few German words to
+  try it with); sentences made with `format!` turned to `tr!`; what
+  apps paint themselves; the lint run in each language; Arabic
+  (right-to-left layout).
 - **A sign-in's mailed code is found every time** (Ben, 2026-11-18,
   signing in at claude.ai, which mails a link and takes a "verification
   code" in its place: "i tried to login to claude and it didn't manage

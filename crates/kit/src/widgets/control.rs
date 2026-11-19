@@ -107,13 +107,13 @@ impl Control {
     /// What agents read it as: its role ("Button"), its name, and whether
     /// it's checked (check boxes, radio buttons).
     pub fn agent(mut self, role: &'static str, name: impl Into<SharedString>, checked: Option<bool>) -> Self {
-        self.node = Some((role, name.into(), checked));
+        self.node = Some((role, crate::words::of(name), checked));
         self
     }
 
     /// [`Control::agent`] with a value (a filter menu: "Program", "Any").
     pub fn agent_value(mut self, role: &'static str, name: impl Into<SharedString>, value: impl Into<SharedString>) -> Self {
-        self.node = Some((role, name.into(), None));
+        self.node = Some((role, crate::words::of(name), None));
         self.value = Some(value.into());
         self
     }
@@ -121,7 +121,7 @@ impl Control {
     /// A tip saying `text`, once the pointer has rested on it (a tool's
     /// name and keys).
     pub fn tip(mut self, text: impl Into<SharedString>) -> Self {
-        self.tip = Some(text.into());
+        self.tip = Some(crate::words::of(text));
         self
     }
 

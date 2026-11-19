@@ -93,7 +93,7 @@ pub struct Banner {
 
 impl Banner {
     pub fn new(tone: Tone, title: impl Into<SharedString>, detail: impl Into<SharedString>) -> Banner {
-        Banner { tone, title: title.into(), detail: detail.into(), trailing: None }
+        Banner { tone, title: crate::words::of(title), detail: crate::words::of(detail), trailing: None }
     }
 
     /// What goes on its right: what to do next.

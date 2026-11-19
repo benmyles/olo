@@ -56,7 +56,7 @@ impl TextView {
 
     /// What it says, dim, in the middle, while there's no text.
     pub fn empty_text(mut self, text: impl Into<SharedString>) -> Self {
-        self.empty = text.into();
+        self.empty = crate::words::of(text);
         self
     }
 

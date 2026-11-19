@@ -51,7 +51,7 @@ pub struct Column {
 
 impl Column {
     pub fn new(title: impl Into<SharedString>, width: f32) -> Column {
-        Column { title: title.into(), width, align: style::Align::Left, min_width: 24.0 }
+        Column { title: crate::words::of(title), width, align: style::Align::Left, min_width: 24.0 }
     }
 
     /// Its text on the right (numbers).
@@ -488,7 +488,7 @@ impl<V: View> ColumnListView<V> {
 
     /// Said in the middle while there are no rows ("No lines match.").
     pub fn empty_text(mut self, text: impl Into<SharedString>) -> Self {
-        self.empty = Some(text.into());
+        self.empty = Some(crate::words::of(text));
         self
     }
 

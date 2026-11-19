@@ -1754,6 +1754,10 @@ pub struct Settings {
     /// then an ellipsis.
     pub tab_title_chars: u32,
     pub appearance: Appearance,
+    /// The language Olo's own words are in ("de", "pt-BR": one of
+    /// `olo_kit_base::words::LANGUAGES`; empty: English). Every running
+    /// app takes it as it changes.
+    pub language: String,
     pub display: DisplaySettings,
     pub power: PowerSettings,
     pub screen_saver: ScreenSaverSettings,
@@ -2823,6 +2827,7 @@ impl Default for Settings {
             tab_font_size: 12.0,
             tab_title_chars: 100,
             appearance: Appearance::default(),
+            language: String::new(),
             display: DisplaySettings::default(),
             power: PowerSettings::default(),
             screen_saver: ScreenSaverSettings::default(),

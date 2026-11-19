@@ -59,6 +59,8 @@ fn initial() -> Appearance {
     if let Some(s) = &settings {
         olo_kit_base::keys::set(&s.keyboard.profile);
     }
+    // (The words' language with the look: before any window is made.)
+    olo_kit_base::words::start(settings.as_ref().map_or("", |s| s.language.as_str()));
     // (Outside Olo, for tests and screenshots: `$OLO_LOOK` names the theme.)
     let mut a = settings.map(|s| s.appearance).unwrap_or_else(|| Appearance { look: env("OLO_LOOK").unwrap_or_else(|| olo_theme::looks::DEFAULT.into()), ..Appearance::default() });
     if let Some(mode) = env("OLO_THEME") {
@@ -125,7 +127,9 @@ fn look(settings: olo_protocol::Settings) {
     // (The icons can change with the colours as they are: the person
     // gave the theme another set.)
     let (colours, icons) = (set_palette(Arc::new(a.palette())), olo_xdg::themes::set(a.icons()));
-    if colours || icons {
+    // (Another language: every window says its words again.)
+    let words = std::env::var_os("OLO_LANGUAGE").is_none_or(|v| v.is_empty()) && olo_kit_base::words::set(&settings.language);
+    if colours || icons || words {
         olo_interface::refresh_all_windows();
     }
 }

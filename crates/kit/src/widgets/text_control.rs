@@ -28,7 +28,7 @@ impl TextControl {
     }
 
     pub fn label(mut self, label: impl Into<SharedString>) -> Self {
-        self.label = Some(label.into());
+        self.label = Some(crate::words::of(label));
         self
     }
 
