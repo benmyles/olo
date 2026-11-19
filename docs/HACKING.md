@@ -2269,7 +2269,10 @@ the room alone cut to it), each row's last menu widened so every row
 ends at the bar's edge (`rows_of`; a ragged edge a few points off the
 field's was the lint's `control-edges`); they had been cut short and
 then left out (OS Updates' Severity cut, its Repository and Chosen
-gone, 2026-11-19).
+gone, 2026-11-19). `fill()` has one row end at `max_width` too: a
+header's bar under its field, in one row, ending within `SNAP` (8
+points) of the field's right edge, is made to end at it (Log Viewer's
+was 2 points short in a third of a 1600-point screen).
 `.drives(&field)` has its choices go into the field (`choose`), so an
 app follows the field alone, one subscription for typed and chosen.
 `search::header(&field, id, facets, width)` is the search over a list

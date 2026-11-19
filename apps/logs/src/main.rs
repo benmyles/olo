@@ -55,6 +55,15 @@ const TIMES: [(Since, &str); 5] = [(Since::Minutes(10), "Last 10 Minutes"), (Sin
 
 /// The height of the pane under the list with the selected line in full.
 const DETAIL: f32 = 112.0;
+/// That pane shows in a window at least this tall; in a shorter one (a
+/// quarter of a screen, a half or a third of its height) it gives way and
+/// the list has the room: it showed one row in a quarter, none in a third
+/// (CLAUDE.md, "Every tiling layout"). The line is still the list's, and
+/// Show in Context's.
+const DETAIL_ROOM: f32 = 480.0;
+/// The window's least: a third of the smallest screen, either way.
+const MIN_WIDTH: f32 = 400.0;
+const MIN_HEIGHT: f32 = 220.0;
 /// The least the Message column is given (the last: it fills the rest).
 const MESSAGE_LEAST: f32 = 200.0;
 
@@ -954,12 +963,13 @@ impl View for Logs {
         // directo" ran within 11 points of the window's edge.)
         foot = foot.child(div().min_w(px(64.0)).flex().justify_center().child(CheckBox::new("Live", self.settings.live).on_toggle(cx.msg_with(|_: &bool| Msg::Command("live".into())))));
 
+        let detail = (f32::from(cx.viewport_size().height) >= DETAIL_ROOM).then(|| div().h(px(DETAIL)).child(&self.detail));
         div()
             .size_full()
             .flex()
             .flex_col()
             .child(bar)
-            .child(div().flex_1().min_h_0().p(px(m::WINDOW_INSET)).flex().flex_col().gap(px(m::SPACING)).child(controls).child(list).child(div().h(px(DETAIL)).child(&self.detail)).child(foot))
+            .child(div().flex_1().min_h_0().p(px(m::WINDOW_INSET)).flex().flex_col().gap(px(m::SPACING)).child(controls).child(list).children(detail).child(foot))
     }
 }
 
@@ -1123,7 +1133,7 @@ fn main() {
         // A log file named on the command line, else the journal.
         let source = file.map(PathBuf::from).map(|p| std::fs::canonicalize(&p).unwrap_or(p));
         let title = title_of(source.as_deref());
-        let window = olo_kit::open_window(WindowOptions::new(title, 820.0, 520.0).min_size(560.0, 340.0).keep_size("main"), move |cx| Logs::new(settings, source, cx));
+        let window = olo_kit::open_window(WindowOptions::new(title, 820.0, 520.0).min_size(MIN_WIDTH, MIN_HEIGHT).keep_size("main"), move |cx| Logs::new(settings, source, cx));
         // Launched again: the window comes forward, with the search and
         // the log asked for.
         olo_kit::message_handler(app, move |message, _| {

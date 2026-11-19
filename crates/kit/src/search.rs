@@ -498,12 +498,14 @@ pub struct FilterBar {
     facets: Rc<Vec<Facet>>,
     clear: bool,
     max_width: Option<f32>,
+    /// Every row ends at `max_width`, one row too ([`FilterBar::fill`]).
+    fill: bool,
     on_change: Option<OnChange>,
 }
 
 impl FilterBar {
     pub fn new(id: impl Into<SharedString>, text: impl Into<String>, facets: Rc<Vec<Facet>>) -> FilterBar {
-        FilterBar { id: id.into(), text: text.into(), facets, clear: true, max_width: None, on_change: None }
+        FilterBar { id: id.into(), text: text.into(), facets, clear: true, max_width: None, fill: false, on_change: None }
     }
 
     /// No Clear button (the app has its own).
@@ -521,6 +523,14 @@ impl FilterBar {
 
     pub fn on_change(mut self, f: impl Fn(&String, &mut WindowCx) + 'static) -> Self {
         self.on_change = Some(Rc::new(f));
+        self
+    }
+
+    /// Its one row ends at `max_width` too, its last menu widened, as
+    /// wrapped rows do: a bar under a field it would end a hair short of
+    /// ([`Header`]).
+    pub fn fill(mut self) -> Self {
+        self.fill = true;
         self
     }
 
@@ -607,6 +617,10 @@ pub fn list_indent(cx: &WindowCx) -> f32 {
     frame + m::CELL_INSET - m::TEXT_INSET
 }
 
+/// How near a bar under a header's field may end to the field's right
+/// edge before it's made to end at it.
+const SNAP: f32 = 8.0;
+
 /// The widths headers were last laid out at, by their ids.
 #[derive(Default)]
 struct HeaderWidths(std::collections::HashMap<SharedString, f32>);
@@ -661,12 +675,32 @@ impl IntoElement for Header {
         // field takes what's left, so any width of the same shape lays
         // out as it is; one of another has its view say it again.
         let (min_field, indent) = (self.min_field, self.indent);
+        // (What its menus take in one row, Clear too: where they'd end.)
+        let clear_w = if self.clear && !self.text.trim().is_empty() {
+            m::SPACING + (f32::from(style::text_width("Clear", style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))) + 2.0 * m::TEXT_INSET).ceil()
+        } else {
+            0.0
+        };
+        let natural = FilterBar::width(&self.text, &self.facets) + clear_w;
         let shape = move |width: f32| {
             let one_row = width - bar_w - count_w - m::SPACING >= min_field;
-            (one_row, if one_row { bar_w } else { (width - indent).min(bar_w) })
+            if one_row {
+                return (true, bar_w, false);
+            }
+            // Under the field in one row and ending a few points off its
+            // right edge: made to end at it (or, past it, at the row's end
+            // under the count), its last menu widened; a hair off read as
+            // a mistake (Log Viewer in a third of a 1600-point screen, 2
+            // points: the lint's `control-edges`).
+            let (field_right, right) = (width - count_w, indent + natural);
+            if natural <= width - indent && (right - field_right).abs() <= SNAP {
+                let to = if right <= field_right { field_right } else { width };
+                return (false, to - indent, true);
+            }
+            (false, (width - indent).min(bar_w), false)
         };
-        let (one_row, room) = shape(self.width);
-        let built = (one_row, room.to_bits());
+        let (one_row, room, fill) = shape(self.width);
+        let built = (one_row, room.to_bits(), fill);
         let laid_id = self.id.clone();
         let drives = self.drives;
         let mut bar = FilterBar::new(self.id, self.text, self.facets).on_change(move |text, cx| {
@@ -675,6 +709,9 @@ impl IntoElement for Header {
         });
         if !self.clear {
             bar = bar.no_clear();
+        }
+        if fill {
+            bar = bar.fill();
         }
         let count = self.count.map(|c| {
             let look = style::key(&c);
@@ -697,8 +734,8 @@ impl IntoElement for Header {
         header.on_bounds_changed(move |b, cx| {
             let width = f32::from(b.size.width);
             cx.window_state::<HeaderWidths>().0.insert(laid_id.clone(), width);
-            let (one_row, room) = shape(width);
-            if (one_row, room.to_bits()) != built {
+            let (one_row, room, fill) = shape(width);
+            if (one_row, room.to_bits(), fill) != built {
                 cx.invalidate_owner();
             }
         })
@@ -735,7 +772,7 @@ impl IntoElement for FilterBar {
         // Each menu's row and width (and Clear's, last), wrapped in `most`.
         let mut widths: Vec<(f32, bool)> = labels.iter().map(|(l, filters)| (pill_width_shaped(l, *filters), true)).collect();
         widths.extend(clear_w.map(|w| (w, false)));
-        let placed = rows_of(&widths, most);
+        let placed = rows_of(&widths, most, self.fill);
         let mut cells: Vec<Vec<Element>> = (0..=placed.last().map_or(0, |p| p.0)).map(|_| Vec::new()).collect();
         for (i, f) in bar.iter().enumerate() {
             let (label, filters) = labels[i].clone();
@@ -844,8 +881,9 @@ impl IntoElement for FilterBar {
 /// its row has left (a row's first wider than `most` is cut to it). In
 /// more than one row, each row's last that may be widened takes what its
 /// row has left, so every row ends at the bar's edge: never a ragged
-/// edge a few points off another (the layout lint's `control-edges`).
-fn rows_of(widths: &[(f32, bool)], most: f32) -> Vec<(usize, f32)> {
+/// edge a few points off another (the layout lint's `control-edges`);
+/// with `fill`, one row too.
+fn rows_of(widths: &[(f32, bool)], most: f32, fill: bool) -> Vec<(usize, f32)> {
     let mut placed: Vec<(usize, f32)> = Vec::with_capacity(widths.len());
     let (mut row, mut room, mut first) = (0, most, true);
     for &(w, _) in widths {
@@ -857,7 +895,7 @@ fn rows_of(widths: &[(f32, bool)], most: f32) -> Vec<(usize, f32)> {
         room -= w + m::SPACING;
         first = false;
     }
-    if row > 0 {
+    if row > 0 || (fill && most.is_finite()) {
         for r in 0..=row {
             let at: Vec<usize> = (0..placed.len()).filter(|&i| placed[i].0 == r).collect();
             let used: f32 = at.iter().map(|&i| placed[i].1).sum::<f32>() + m::SPACING * (at.len().saturating_sub(1)) as f32;
@@ -893,17 +931,20 @@ mod tests {
     fn a_bar_wraps_into_rows_that_end_together() {
         let menus = [(110.0, true), (140.0, true), (184.0, true), (150.0, true)];
         let all: f32 = 110.0 + 140.0 + 184.0 + 150.0 + 3.0 * m::SPACING;
-        assert_eq!(rows_of(&menus, all), vec![(0, 110.0), (0, 140.0), (0, 184.0), (0, 150.0)]);
-        let placed = rows_of(&menus, 385.0);
+        assert_eq!(rows_of(&menus, all, false), vec![(0, 110.0), (0, 140.0), (0, 184.0), (0, 150.0)]);
+        // One row asked to fill: its last menu takes the rest.
+        let filled = rows_of(&menus, all + 8.0, true);
+        assert_eq!(filled[3], (0, 158.0));
+        let placed = rows_of(&menus, 385.0, false);
         assert_eq!(placed.iter().map(|p| p.0).collect::<Vec<_>>(), [0, 0, 1, 1]);
         for r in 0..2 {
             let row: Vec<f32> = placed.iter().filter(|p| p.0 == r).map(|p| p.1).collect();
             assert_eq!(row.iter().sum::<f32>() + m::SPACING * (row.len() - 1) as f32, 385.0, "row {r} ends at the edge");
         }
         assert_eq!(placed[0].1, 110.0, "only the last widens");
-        let with_clear = rows_of(&[(110.0, true), (140.0, true), (184.0, true), (40.0, false)], 300.0);
+        let with_clear = rows_of(&[(110.0, true), (140.0, true), (184.0, true), (40.0, false)], 300.0, false);
         assert_eq!(with_clear[3].1, 40.0, "Clear keeps its width");
         assert_eq!(with_clear[2].1, 300.0 - 40.0 - m::SPACING, "the menu before it takes the room");
-        assert_eq!(rows_of(&[(500.0, true)], 300.0), vec![(0, 300.0)]);
+        assert_eq!(rows_of(&[(500.0, true)], 300.0, false), vec![(0, 300.0)]);
     }
 }

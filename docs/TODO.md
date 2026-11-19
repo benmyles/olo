@@ -51,8 +51,8 @@ something nobody here has is in "Blocked", with what it waits for.
   gives way to a section menu, each section's details go under its list
   or give way, its filter menus wrap into rows, its Choose links fold
   into a pull-down; the kit's `FilterBar` and `chosen::bar_within` do the
-  wrapping and folding). To do: Logs (its detail gives way in a short
-  window; its filters wrap now, with the kit's), Disk Usage (the rings over the list
+  wrapping and folding); Log Viewer (its detail gives way in a short
+  window, least size 400 × 220). To do: Disk Usage (the rings over the list
   in a narrow window, the Collector giving way in a short one),
   Passwords (its welcome's picture gives way; its three columns one at
   a time, pictured with a made-up vault), Activity Monitor and Viewer
