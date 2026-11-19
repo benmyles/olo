@@ -293,6 +293,22 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Done, waiting for Ben to try or confirm
 
+- **A passkey shared with an agent screen wasn't offered there** (Ben,
+  2026-11-18, the google-setup screen: "google showed its own qr code
+  thing for a passkey instead -- the olo passwords extension didn't
+  inject its own one and offer it up"). **Found and fixed** (the second
+  investigator found it; HACKING.md, "The keychain"): Google's request
+  did reach Olo's extension, but the screen's Passwords served nothing.
+  It had been quit and opened again while the first still ran on for
+  what it had copied, holding the keychain and SSH-agent sockets; the
+  new one found them "already served", and once the old one went,
+  nothing answered ("Passwords isn't running"), so Chrome showed its own
+  QR sheet. A quitting Passwords now lets go of its sockets first. Made
+  to happen and stop happening in a test session. Try: once upgraded,
+  a sign-in with a shared passkey on a screen. (Whether Google's
+  request names the shared passkey's credential is still to see: with
+  nothing answering, it was never asked.)
+
 - **Agent Screens: every action says what the screen looks like after
   it** (Ben, 2026-11-18: "can you improve olo agent screens reliability
   by having it always include a new / up to date screenshot of the

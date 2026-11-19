@@ -22354,7 +22354,18 @@ connection, and only for our own uid running an `olo-*` program
 (SO_PEERCRED + `/proc/PID/exe`); what's shared with agent screens
 (`Shares`, `SetShares`) never to a program on one ("Passwords for agent
 screens"). `olo_keychain::call` blocks, so call
-it from a thread. Requests: `Logins {url}` (title and username of each
+it from a thread. One Passwords serves a display: `serve` refuses ("already
+served") where another answers, and takes a socket nothing answers. So
+a Passwords that quits lets go of its sockets first, the keychain's and
+the SSH agent's (`Served` in main.rs: removed if still the files it
+bound, never another's): the kit runs a program on after it quits for
+what it copied, giving up its launch name, and a Passwords opened
+meanwhile found the old one serving, served nothing, and went on so
+once the old one had gone. Chrome's passkeys and logins then answered
+"Passwords isn't running" and Google showed its own QR sheet (Ben's
+google-setup screen, 2026-11-18; found by the second investigator,
+made to happen and stop happening in a test session: text copied in
+Passwords, Quit, Passwords again, the clipboard taken). Requests: `Logins {url}` (title and username of each
 login whose website fits the page, honouring 1Password's autofill
 setting; `Locked` if locked), `Fill {url, vault, id}`, `Check {url,
 username, password}` (`Known`, `New` or `Changed`), `Save {…, replace}`,

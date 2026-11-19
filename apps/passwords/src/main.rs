@@ -30,6 +30,8 @@ mod view;
 
 use std::{
     collections::{HashMap, HashSet},
+    os::unix::fs::MetadataExt as _,
+    path::PathBuf,
     sync::{
         Arc, Mutex, MutexGuard, OnceLock,
         atomic::{AtomicBool, Ordering},
@@ -429,6 +431,9 @@ pub struct Passwords {
     /// Closed with a secret still on the clipboard: running on without
     /// its windows until that has left (`quit`).
     leaving: bool,
+    /// The sockets this Passwords serves (the keychain, the SSH agent),
+    /// let go of as it quits (`Served`).
+    served: Vec<Served>,
     proxy: Proxy,
     /// On an agent screen: what's shared with it, followed (the person's
     /// Passwords writes it again as they share more or less).
@@ -2011,6 +2016,19 @@ impl Passwords {
             self.changed();
             return;
         }
+        self.end();
+    }
+
+    /// Quit: let go of the sockets it serves first, then end. (The kit
+    /// may run on for what was copied, its launch name given up: a
+    /// Passwords opened meanwhile is a new one, and found the keychain
+    /// "already served" by this one, served nothing, and went on so once
+    /// this had gone: Chrome's passkeys and logins answered "Passwords
+    /// isn't running", 2026-11-18.)
+    fn end(&mut self) {
+        for s in self.served.drain(..) {
+            s.release();
+        }
         self.main = None;
         olo_kit::quit();
     }
@@ -2291,8 +2309,7 @@ impl Passwords {
         let now = Instant::now();
         // Closed with a secret copied: that has left the clipboard now.
         if self.leaving && self.secret_until.is_none_or(|t| now >= t) {
-            self.main = None;
-            return olo_kit::quit();
+            return self.end();
         }
         // (Syncing only when asked: File ▸ Sync Now.)
         let due = self.security.auto_sync && (self.sync_due.is_some_and(|t| now >= t) || self.sync_asked.is_some_and(|t| now >= t + SYNC_EVERY));
@@ -2824,8 +2841,10 @@ fn main() {
         instance::listen(APP_ID, proxy.clone());
         // Logins for Chrome's pages, the palette's search and op.
         let keychain = proxy.clone();
-        if let Err(e) = olo_keychain::serve(move |incoming| keychain.send(incoming)) {
-            tracing::warn!("keychain: {e}");
+        let mut served = Vec::new();
+        match olo_keychain::serve(move |incoming| keychain.send(incoming)) {
+            Ok(()) => served.extend(Served::now(olo_keychain::socket_path())),
+            Err(e) => tracing::warn!("keychain: {e}"),
         }
         let mut settings: Settings = std::fs::read_to_string(settings_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
         // From when there was one account.
@@ -2845,8 +2864,12 @@ fn main() {
         }
         if security.ssh_agent {
             let to = proxy.clone();
-            match agent::serve(&olo_xdg::ssh_agent_socket(), move |incoming| to.send(incoming)) {
-                Ok(()) => olo_kit::stay_resident(),
+            let path = olo_xdg::ssh_agent_socket();
+            match agent::serve(&path, move |incoming| to.send(incoming)) {
+                Ok(()) => {
+                    served.extend(Served::now(path));
+                    olo_kit::stay_resident();
+                }
                 Err(e) => tracing::warn!("ssh agent: {e}"),
             }
         }
@@ -2933,6 +2956,7 @@ fn main() {
             ui: Ui::default(),
             secret_until: None,
             leaving: false,
+            served,
             proxy: proxy.clone(),
             _shared: olo_keychain::shared::this_screen().and_then(|screen| {
                 let proxy = proxy.clone();
@@ -3031,9 +3055,53 @@ fn main() {
     });
 }
 
+/// A socket this Passwords serves, as it bound it (its file's device and
+/// inode): let go of as it quits, for the Passwords opened next to serve.
+struct Served {
+    path: PathBuf,
+    file: (u64, u64),
+}
+
+impl Served {
+    /// `path` as it is now, just bound.
+    fn now(path: PathBuf) -> Option<Served> {
+        let m = std::fs::symlink_metadata(&path).inspect_err(|e| tracing::warn!("{}: {e}", path.display())).ok()?;
+        Some(Served { path, file: (m.dev(), m.ino()) })
+    }
+
+    /// Removed, if it's still the one this bound (never another's: a test
+    /// session's Passwords beside the person's, one that took it since).
+    fn release(&self) {
+        if std::fs::symlink_metadata(&self.path).is_ok_and(|m| (m.dev(), m.ino()) == self.file)
+            && let Err(e) = std::fs::remove_file(&self.path)
+        {
+            tracing::warn!("{}: not let go of: {e}", self.path.display());
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::unasked;
+
+    /// A socket served is let go of as Passwords quits, and so is free
+    /// for the next; one bound since by another is left alone.
+    #[test]
+    fn a_quitting_passwords_lets_go_of_its_sockets() {
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-passwords-served-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("keychain.sock");
+        let _listening = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        let served = super::Served::now(path.clone()).unwrap();
+        served.release();
+        assert!(!path.exists(), "let go of");
+        // Bound since by another: left.
+        let _theirs = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        served.release();
+        assert!(path.exists(), "another's left alone");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// A passkey is used without anyone asked only on an agent's screen
     /// (what's there was shared with it), and only when it's the one for
