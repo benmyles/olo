@@ -125,6 +125,53 @@ pub struct Draft {
     pub until: Option<Date>,
     /// Seconds before the start (None: no reminder).
     pub reminder: Option<i64>,
+    /// Who's invited, where that's the person's to say (None: its
+    /// guests stay as they are).
+    pub invite: Option<Invite>,
+}
+
+/// Who's invited to an event the person organizes.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Invite {
+    /// The guests' addresses (not the person's own).
+    pub guests: Vec<String>,
+    /// Who invites: the address the calendar's account is signed in
+    /// with (filled in as it's saved: the window doesn't know it).
+    pub organizer: String,
+}
+
+impl Invite {
+    /// The addresses typed in `text`, each once: apart by commas,
+    /// semicolons, new lines or spaces; of "Dana Jansen
+    /// <dana@example.org>" (as mail writes one), the address. Or the
+    /// first thing typed that isn't an address.
+    pub fn read(text: &str) -> Result<Vec<String>, String> {
+        let address = |word: &str| {
+            let (name, domain) = word.split_once('@').unwrap_or(("", ""));
+            !name.is_empty() && domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.') && !domain.contains('@')
+        };
+        let mut out: Vec<String> = Vec::new();
+        for entry in text.split([',', ';', '\n']).map(str::trim).filter(|e| !e.is_empty()) {
+            // (Mail's way: the address is what's between the angles.)
+            let words: Vec<&str> = match (entry.find('<'), entry.rfind('>')) {
+                (Some(a), Some(b)) if a < b => vec![entry[a + 1..b].trim()],
+                _ => entry.split_whitespace().collect(),
+            };
+            for word in words {
+                if !address(word) {
+                    return Err(word.to_owned());
+                }
+                if !out.iter().any(|a| a.eq_ignore_ascii_case(word)) {
+                    out.push(word.to_owned());
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    fn organizer(&self) -> olo_calendar::event::Person {
+        olo_calendar::event::Person { address: self.organizer.clone(), answer: olo_calendar::event::Answer::Yes, ..Default::default() }
+    }
 }
 
 impl Draft {
@@ -132,7 +179,18 @@ impl Draft {
     pub fn new(start: DateTime, all_day: bool) -> Draft {
         let start = if all_day { start.date().at(0, 0, 0, 0) } else { start };
         let end = if all_day { start } else { start.checked_add(Span::new().hours(1)).unwrap_or(start) };
-        Draft { title: String::new(), location: String::new(), notes: String::new(), all_day, start, end, repeat: Repeat::Never, until: None, reminder: if all_day { None } else { Some(900) } }
+        Draft {
+            title: String::new(),
+            location: String::new(),
+            notes: String::new(),
+            all_day,
+            start,
+            end,
+            repeat: Repeat::Never,
+            until: None,
+            reminder: if all_day { None } else { Some(900) },
+            invite: None,
+        }
     }
 
     /// `event`'s, at the times `start` and `end` (its own, or one of its
@@ -161,6 +219,7 @@ impl Draft {
             repeat: Repeat::of(event),
             until,
             reminder: event.alarms.first().copied(),
+            invite: None,
         }
     }
 
@@ -226,6 +285,20 @@ impl Draft {
             }
             (None, None) => {}
         }
+        // (A new event is written with these; one there has its lines
+        // changed by `invited`, which keeps what each guest answered.)
+        if let Some(invite) = self.invite.as_ref().filter(|i| !i.organizer.is_empty()) {
+            event.organizer = (!invite.guests.is_empty()).then(|| invite.organizer());
+            event.attendees = invite.guests.iter().map(|g| olo_calendar::event::Person { address: g.clone(), ..Default::default() }).collect();
+        }
+    }
+
+    /// Who's invited written into the `VEVENT` `c`, where that's the
+    /// draft's to say.
+    fn invited(&self, c: &mut Component) {
+        if let Some(invite) = self.invite.as_ref().filter(|i| !i.organizer.is_empty()) {
+            olo_calendar::event::invite(c, &invite.organizer(), &invite.guests);
+        }
     }
 }
 
@@ -264,6 +337,11 @@ pub fn change_all(cal: &mut Component, draft: &Draft, from: DateTime, id: Option
     }
     draft.apply(&mut event, start, end, zone);
     event.write_into(&mut cal.children[at]);
+    // (Who's invited to the event is who's invited to each occurrence
+    // changed by itself.)
+    for child in cal.children.iter_mut().filter(|c| c.name.eq_ignore_ascii_case("VEVENT")) {
+        draft.invited(child);
+    }
     event::stamp(&mut cal.children[at], jiff::Timestamp::now());
     if !moved.is_zero() {
         for (i, child) in cal.children.iter_mut().enumerate() {
@@ -311,6 +389,7 @@ pub fn change_one(cal: &mut Component, id: &When, draft: &Draft, zone: &TimeZone
     draft.apply(&mut event, draft.start, draft.end, zone);
     event.recurrence_id = Some(id.clone());
     event.write_into(&mut cal.children[at]);
+    draft.invited(&mut cal.children[at]);
     event::stamp(&mut cal.children[at], jiff::Timestamp::now());
     Ok(())
 }
@@ -446,6 +525,43 @@ pub fn time(text: &str) -> Option<Time> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Addresses as they're typed: apart by commas, semicolons or
+    /// spaces, mail's "Name <address>" too, each once; what isn't an
+    /// address is said. And a draft's guests written into an event
+    /// there: asked, the others kept, with the calendar's own address
+    /// as who invites.
+    #[test]
+    fn guests_typed_and_written() {
+        assert_eq!(Invite::read("dana@example.org, Sam Okafor <sam@example.org>; kim@example.org DANA@example.org\n").unwrap(), ["dana@example.org", "sam@example.org", "kim@example.org"]);
+        assert_eq!(Invite::read("  ").unwrap(), Vec::<String>::new());
+        assert_eq!(Invite::read("dana@example.org, sam"), Err("sam".into()));
+        assert_eq!(Invite::read("dana@example"), Err("dana@example".into()));
+        assert_eq!(Invite::read("Sam <sam at example>"), Err("sam at example".into()));
+        let zone = TimeZone::get("Europe/Amsterdam").unwrap();
+        let mut cal = olo_calendar::ical::parse(
+            "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:lunch\nDTSTART;TZID=Europe/Amsterdam:20261120T120000\nDTEND;TZID=Europe/Amsterdam:20261120T130000\nSUMMARY:Lunch\nEND:VEVENT\nEND:VCALENDAR\n",
+        )
+        .remove(0);
+        let event = Event::read(&cal.children[0]).unwrap();
+        let at = jiff::civil::date(2026, 11, 20).at(12, 0, 0, 0);
+        let mut draft = Draft::of(&event, at, jiff::civil::date(2026, 11, 20).at(13, 0, 0, 0));
+        // (Not the draft's to say: nothing of guests written.)
+        change_all(&mut cal, &draft, at, None, &zone).unwrap();
+        assert!(!cal.write().contains("ATTENDEE"));
+        draft.invite = Some(Invite { guests: vec!["dana@example.org".into()], organizer: "ben@example.org".into() });
+        change_all(&mut cal, &draft, at, None, &zone).unwrap();
+        let after = Event::read(&cal.children[0]).unwrap();
+        assert_eq!(after.organizer.as_ref().map(|o| o.address.as_str()), Some("ben@example.org"));
+        assert_eq!(
+            after.attendees.iter().map(|p| (p.address.as_str(), p.answer)).collect::<Vec<_>>(),
+            [("ben@example.org", olo_calendar::event::Answer::Yes), ("dana@example.org", olo_calendar::event::Answer::NotYet)]
+        );
+        // A new event's guests go with it.
+        let mut new = Event::new("new", "", When::Date(at.date()), When::Date(at.date()));
+        Draft { invite: draft.invite.clone(), ..Draft::new(at, false) }.apply(&mut new, at, at, &zone);
+        assert_eq!((new.organizer.map(|o| o.address), new.attendees.len()), (Some("ben@example.org".into()), 1));
+    }
     use jiff::civil::date as day;
     use olo_calendar::ical;
 

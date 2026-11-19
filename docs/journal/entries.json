@@ -5062,5 +5062,11 @@
   "title": "The clock's menu: what the day holds",
   "caption": "A click on Deskbar's date and time opens a menu: the day in full, what's still to come today and tomorrow in Calendar (each in its calendar's colour; choose one to open Calendar on it), Open Calendar, and Date & Time Settings\u2026, which is what the click did before.",
   "image": "2026-11-18/185246-the-clock-s-menu-what-the-day-holds.png"
+ },
+ {
+  "time": "2026-11-18T19:15:57",
+  "title": "Calendar: invite people to an event",
+  "caption": "An event of your own has an Invite field: type your guests' addresses with commas between and Save. Your calendar's server sends the invitations, and the window lists each guest with what they've answered. Take an address out to uninvite.",
+  "image": "2026-11-18/191557-calendar-invite-people-to-an-event.png"
  }
 ]

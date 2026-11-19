@@ -286,6 +286,49 @@ pub fn answer(cal: &mut Component, me: &[String], answer: Answer) -> Result<(), 
     if any { Ok(()) } else { Err("You aren’t among this event’s guests.") }
 }
 
+/// Who's invited to the event `c` (a `VEVENT`), set by who organizes
+/// it: `guests` (addresses) are its guests and nobody else is. Those
+/// new are asked (`PARTSTAT=NEEDS-ACTION`, `RSVP`), those there already
+/// keep their line whole (what they answered, their name), those left
+/// out go; `organizer` is its `ORGANIZER`, where it had none, and
+/// attends. No guests: an event of one's own again, with neither.
+/// Nothing is sent from here: on a server that schedules (RFC 6638:
+/// Google's, Fastmail's, iCloud's), writing the event is what invites
+/// the new guests, tells the others of the change and tells those
+/// taken out it's off for them.
+pub fn invite(c: &mut Component, organizer: &Person, guests: &[String]) {
+    let address = |l: &Line| Person::read(l).address;
+    let same = |a: &str, b: &str| a.trim().eq_ignore_ascii_case(b.trim());
+    if guests.iter().all(|g| g.trim().is_empty() || same(g, &organizer.address)) {
+        if c.get("ATTENDEE").is_some() {
+            c.remove("ATTENDEE");
+            c.remove("ORGANIZER");
+        }
+        return;
+    }
+    let person = |name: &str, p: &Person, params: &[(&str, &str)]| {
+        let mut line = Line::new(name, format!("mailto:{}", p.address.trim()));
+        if !p.name.trim().is_empty() {
+            line.params.push(("CN".to_owned(), vec![p.name.trim().to_owned()]));
+        }
+        line.params.extend(params.iter().map(|(n, v)| ((*n).to_owned(), vec![(*v).to_owned()])));
+        line
+    };
+    if c.get("ORGANIZER").is_none() {
+        c.lines.push(person("ORGANIZER", organizer, &[]));
+    }
+    c.lines.retain(|l| l.name != "ATTENDEE" || same(&address(l), &organizer.address) || guests.iter().any(|g| same(g, &address(l))));
+    if !c.all("ATTENDEE").any(|l| same(&address(l), &organizer.address)) {
+        c.lines.push(person("ATTENDEE", organizer, &[("ROLE", "CHAIR"), ("PARTSTAT", "ACCEPTED")]));
+    }
+    for guest in guests.iter().map(|g| g.trim()).filter(|g| !g.is_empty() && !same(g, &organizer.address)) {
+        if !c.all("ATTENDEE").any(|l| same(&address(l), guest)) {
+            let new = Person { address: guest.to_owned(), ..Person::default() };
+            c.lines.push(person("ATTENDEE", &new, &[("CUTYPE", "INDIVIDUAL"), ("ROLE", "REQ-PARTICIPANT"), ("PARTSTAT", "NEEDS-ACTION"), ("RSVP", "TRUE")]));
+        }
+    }
+}
+
 /// An event as a calendar shows and changes it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Event {
@@ -459,6 +502,10 @@ impl Event {
         }
         if !fresh {
             c.set(Line::new("SEQUENCE", (self.sequence + 1).to_string()));
+        } else if let Some(organizer) = self.organizer.as_ref().filter(|_| !self.attendees.is_empty()) {
+            // (A new event's guests: an event there keeps who's invited
+            // as written, changed only by `invite`.)
+            invite(c, organizer, &self.attendees.iter().map(|p| p.address.clone()).collect::<Vec<_>>());
         }
         // Reminders: those that say how long before the start are ours to
         // set; any other kind (at a date, before the end) stays.
@@ -856,6 +903,61 @@ END:VEVENT
     /// occurrence changed by itself, whatever the address's case; it no
     /// longer asks for an answer; nobody else's line, and nothing else,
     /// changes. Not invited: nothing written.
+    /// Inviting: the organizer named and attending, new guests asked,
+    /// those there keeping what they answered, those left out gone;
+    /// no guests, an event of one's own again; a new event written
+    /// with its guests.
+    #[test]
+    fn people_invited() {
+        let text = "BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:lunch@example.org
+DTSTART:20261120T120000Z
+DTEND:20261120T130000Z
+SUMMARY:Lunch
+X-KEPT:as it is
+END:VEVENT
+END:VCALENDAR
+";
+        let mut cal = ical::parse(text).remove(0);
+        let me = Person { address: "ben@example.org".into(), name: "Ben".into(), ..Person::default() };
+        invite(&mut cal.children[0], &me, &["dana@example.org".into(), " Sam@Example.org ".into(), "ben@example.org".into()]);
+        // (Long lines are folded as they're written.)
+        let written = cal.write().replace("\r\n ", "").replace("\n ", "");
+        assert!(written.contains("ORGANIZER;CN=Ben:mailto:ben@example.org") && written.contains("ATTENDEE;CN=Ben;ROLE=CHAIR;PARTSTAT=ACCEPTED:mailto:ben@example.org"), "{written}");
+        assert!(
+            written.contains("ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:dana@example.org") && written.contains(":mailto:Sam@Example.org"),
+            "{written}"
+        );
+        assert_eq!(Event::read(&cal.children[0]).unwrap().attendees.len(), 3);
+        // Dana answers (the server writes it); Sam is taken out, Kim asked.
+        for line in cal.children[0].lines.iter_mut().filter(|l| l.name == "ATTENDEE" && l.value.contains("dana")) {
+            line.params.retain(|(n, _)| n != "PARTSTAT" && n != "RSVP");
+            line.params.push(("PARTSTAT".into(), vec!["ACCEPTED".into()]));
+        }
+        invite(&mut cal.children[0], &me, &["DANA@example.org".into(), "kim@example.org".into()]);
+        let event = Event::read(&cal.children[0]).unwrap();
+        let said: Vec<(&str, Answer)> = event.attendees.iter().map(|p| (p.address.as_str(), p.answer)).collect();
+        assert_eq!(said, [("ben@example.org", Answer::Yes), ("dana@example.org", Answer::Yes), ("kim@example.org", Answer::NotYet)]);
+        assert_eq!(cal.children[0].all("ORGANIZER").count(), 1);
+        // Nobody: one's own again, the rest as it was.
+        invite(&mut cal.children[0], &me, &[]);
+        let written = cal.write();
+        assert!(!written.contains("ATTENDEE") && !written.contains("ORGANIZER") && written.contains("X-KEPT:as it is"), "{written}");
+        // (And an event that never had guests is left quite alone.)
+        let before = cal.write();
+        invite(&mut cal.children[0], &me, &["ben@example.org".into()]);
+        assert_eq!(cal.write(), before);
+        // A new event with guests is written with them.
+        let mut new = Event::new("new@example.org", "Dinner", When::Date(jiff::civil::date(2026, 11, 21)), When::Date(jiff::civil::date(2026, 11, 22)));
+        new.organizer = Some(me.clone());
+        new.attendees = vec![Person { address: "dana@example.org".into(), ..Person::default() }];
+        let mut c = Component::new("VEVENT");
+        new.write_into(&mut c);
+        let read = Event::read(&c).unwrap();
+        assert_eq!((read.organizer.map(|o| o.address), read.attendees.len(), read.sequence), (Some("ben@example.org".into()), 2, 0));
+    }
+
     #[test]
     fn an_invitation_answered() {
         let text = "BEGIN:VCALENDAR

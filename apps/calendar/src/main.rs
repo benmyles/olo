@@ -573,6 +573,7 @@ impl Calendar {
             clock: None,
             guests: Vec::new(),
             going: None,
+            invite: Some(Vec::new()),
         };
         Some(opening)
     }
@@ -803,7 +804,12 @@ impl Calendar {
         }
         guests.sort_by_key(|g| (!g.organizer, !g.me, g.name.to_lowercase()));
         let going = shown.going.filter(|_| self.changeable(key));
-        Some(editor::Opening { target, draft, calendars: vec![(shown.cal, name)], calendar: 0, today: self.today, h24: self.h24, month_first: month_first(), clock, guests, going })
+        // Who's invited is the person's to say where nobody else
+        // organizes it (and it can be written): the guests there are,
+        // by address, without themselves.
+        let mine = event.organizer.as_ref().is_none_or(|o| is_me(&o.address));
+        let invite = (mine && self.changeable(key)).then(|| event.attendees.iter().filter(|p| !is_me(&p.address)).map(|p| p.address.clone()).collect());
+        Some(editor::Opening { target, draft, calendars: vec![(shown.cal, name)], calendar: 0, today: self.today, h24: self.h24, month_first: month_first(), clock, guests, going, invite })
     }
 
     fn open_editor(&mut self, opening: editor::Opening, cx: &mut Cx<Self>) {
@@ -887,7 +893,17 @@ impl Calendar {
     /// it was made on.
     fn save_event(&mut self, saving: editor::Saving, only_this: bool, cx: &mut Cx<Self>) {
         let zone = self.zone.clone();
-        let draft = saving.draft;
+        let mut draft = saving.draft;
+        // Who invites: the address its calendar's account is signed in with.
+        let cal = match &saving.target {
+            editor::Target::New => saving.cal,
+            editor::Target::Existing { cal, .. } => *cal,
+        };
+        if let Some(invite) = draft.invite.as_mut() {
+            let account = self.book.cals.get(cal).map(|c| c.kept.account.clone()).unwrap_or_default();
+            invite.organizer = self.sources.iter().find(|s| s.account.id() == account).map(|s| s.account.address.clone()).unwrap_or_default();
+            invite.guests.retain(|g| !g.eq_ignore_ascii_case(&invite.organizer));
+        }
         match saving.target {
             editor::Target::New => {
                 // (Its times take their kind from the draft: a day's, or a time in the person's zone.)

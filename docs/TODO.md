@@ -66,72 +66,6 @@ something nobody here has is in "Blocked", with what it waits for.
   a build's wrapper three minutes before the loss, and nothing of
   units (AGENT-NOTES has the rest).
 
-- **A Calendar app, native, with Google and Fastmail calendars** (Ben,
-  2026-11-17: "build a beautiful olo native calendar app. add calendar
-  support to prefs -> integrations and support any number of google
-  calendars (eg from multiple google accounts) as well as any number of
-  fastmail calendars. make sure it is full features, integrates with all
-  the olo stuff, looks beautiful. it should be able to aggregate all the
-  connected calendar sources into one unified calendar view, and also
-  support read and write actions"). `olo-calendar`: day, week, month and
-  agenda views of every connected calendar together, each in its colour,
-  shown or hidden; events made, changed, moved and deleted, repeating
-  ones and invitations too, written back to where they live.
-  Preferences ▸ Integrations ▸ Calendars: any number of Google accounts
-  (Google Calendar's API, signed in as Drive is) and of Fastmail ones
-  (CalDAV, or JMAP for Calendars, with an app password kept in
-  Passwords). Olo's own: reminders as notifications, a Deskbar widget
-  (what's next), the clock's menu, the command palette, the phone, an
-  agents' API, in-place reload, native in Rust. **So far**
-  (2026-11-18): the engine's first parts, `crates/calendar`
-  (`olo-calendar`): iCalendar read and written back whole (`ical`),
-  repeating worked out (`rrule`: the RFC's examples are its tests), and
-  events with their zones, exceptions and occurrences (`event`).
-  Then CalDAV for every account (`dav`), the accounts and their
-  sign-ins (`account`: Google's by OAuth with the person's own client,
-  as Drive; Fastmail's by app password), calendars kept on disk in step
-  with their servers (`store`) and a stand-in server to test with
-  (HACKING.md, "Calendar's engine"). Then the app itself
-  (apps/calendar, `olo-calendar`; HACKING.md, "Calendar"): the small
-  month and the calendars at the left, Day, Week, Month and Agenda,
-  every calendar in its colour, kept in step with its servers; and
-  events made, changed and deleted (the event's window; "only this
-  one" or all of a repeating event; never over a change made somewhere
-  else), by the menus, a double-click or the keyboard. And accounts
-  added in Preferences ▸ Integrations ▸ Calendars: Google's by signing
-  in (the client DiskBackup's Drive set-up made is found, the CalDAV
-  API to be turned on in its project), Fastmail's by an app password,
-  any other CalDAV server's; tried against a stand-in server end to
-  end. Its own icon (a block calendar, in every set; Flat's its own
-  drawing). An event is dragged among the hours to another time or
-  day (HACKING.md, "Calendar"). Undo and Redo of every change (a
-  deletion asks nothing now). Find (⌘F: every calendar shown, from a
-  year back to two years on, listed by day from today). An event's
-  end is dragged by its bottom edge (how long it lasts), and events
-  are dragged among the month's days and the whole-day strip.
-  Invitations: how each looks says what you answered, Edit ▸ Reply and
-  the event window's Going answer them, and the window lists the
-  guests with their answers (not yet: inviting people yourself).
-  Deskbar widgets: Next Event and The Day Ahead (Preferences ▸
-  Deskbar; a click opens Calendar on the event). The command palette
-  finds events (Return opens Calendar on one). An assistant (View ▸
-  Show Assistant: questions answered from your events, with links to
-  them, and events drafted for you to save; Preferences ▸ AI ▸
-  Calendar). The clock's menu (a click on Deskbar's date and time: the
-  day, what's still to come today and tomorrow, Open Calendar, Date &
-  Time Settings…). The phone: its calendar's reminder of an event
-  Calendar reminds of here isn't shown twice (not tried with a phone).
-  **Next**: inviting people yourself. Reminders are shown
-  (`olo-calendar --service`, a session service; Show goes to the
-  event). (Its cost
-  is measured and in-place reload tried: HACKING.md, "Calendar".)
-  **Not tried against Google's and Fastmail's real servers**: that
-  needs Ben's accounts. **For Ben, to try**: Preferences ▸ Integrations
-  ▸ Calendars ▸ Add an Account… (for Google, first turn on the CalDAV
-  API in the Google Cloud project of DiskBackup's client: the link is
-  in the form; for Fastmail, an app password with access to calendars),
-  then open Calendar.
-
 - **A Language setting, and Olo in every major language** (Ben,
   2026-11-18: "we should add a language setting and also let's translate
   all olo apps and prefs and ux to support all the major languages
@@ -371,6 +305,73 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **A Calendar app, native, with Google and Fastmail calendars** (Ben,
+  2026-11-17: "build a beautiful olo native calendar app. add calendar
+  support to prefs -> integrations and support any number of google
+  calendars (eg from multiple google accounts) as well as any number of
+  fastmail calendars. make sure it is full features, integrates with all
+  the olo stuff, looks beautiful. it should be able to aggregate all the
+  connected calendar sources into one unified calendar view, and also
+  support read and write actions"). `olo-calendar`: day, week, month and
+  agenda views of every connected calendar together, each in its colour,
+  shown or hidden; events made, changed, moved and deleted, repeating
+  ones and invitations too, written back to where they live.
+  Preferences ▸ Integrations ▸ Calendars: any number of Google accounts
+  (Google Calendar's API, signed in as Drive is) and of Fastmail ones
+  (CalDAV, or JMAP for Calendars, with an app password kept in
+  Passwords). Olo's own: reminders as notifications, a Deskbar widget
+  (what's next), the clock's menu, the command palette, the phone, an
+  agents' API, in-place reload, native in Rust. **So far**
+  (2026-11-18): the engine's first parts, `crates/calendar`
+  (`olo-calendar`): iCalendar read and written back whole (`ical`),
+  repeating worked out (`rrule`: the RFC's examples are its tests), and
+  events with their zones, exceptions and occurrences (`event`).
+  Then CalDAV for every account (`dav`), the accounts and their
+  sign-ins (`account`: Google's by OAuth with the person's own client,
+  as Drive; Fastmail's by app password), calendars kept on disk in step
+  with their servers (`store`) and a stand-in server to test with
+  (HACKING.md, "Calendar's engine"). Then the app itself
+  (apps/calendar, `olo-calendar`; HACKING.md, "Calendar"): the small
+  month and the calendars at the left, Day, Week, Month and Agenda,
+  every calendar in its colour, kept in step with its servers; and
+  events made, changed and deleted (the event's window; "only this
+  one" or all of a repeating event; never over a change made somewhere
+  else), by the menus, a double-click or the keyboard. And accounts
+  added in Preferences ▸ Integrations ▸ Calendars: Google's by signing
+  in (the client DiskBackup's Drive set-up made is found, the CalDAV
+  API to be turned on in its project), Fastmail's by an app password,
+  any other CalDAV server's; tried against a stand-in server end to
+  end. Its own icon (a block calendar, in every set; Flat's its own
+  drawing). An event is dragged among the hours to another time or
+  day (HACKING.md, "Calendar"). Undo and Redo of every change (a
+  deletion asks nothing now). Find (⌘F: every calendar shown, from a
+  year back to two years on, listed by day from today). An event's
+  end is dragged by its bottom edge (how long it lasts), and events
+  are dragged among the month's days and the whole-day strip.
+  Invitations: how each looks says what you answered, Edit ▸ Reply and
+  the event window's Going answer them, and the window lists the
+  guests with their answers; the Invite field invites people to an
+  event of your own (the server sends the invitations).
+  Deskbar widgets: Next Event and The Day Ahead (Preferences ▸
+  Deskbar; a click opens Calendar on the event). The command palette
+  finds events (Return opens Calendar on one). An assistant (View ▸
+  Show Assistant: questions answered from your events, with links to
+  them, and events drafted for you to save; Preferences ▸ AI ▸
+  Calendar). The clock's menu (a click on Deskbar's date and time: the
+  day, what's still to come today and tomorrow, Open Calendar, Date &
+  Time Settings…). The phone: its calendar's reminder of an event
+  Calendar reminds of here isn't shown twice (not tried with a phone).
+  Reminders are shown
+  (`olo-calendar --service`, a session service; Show goes to the
+  event). (Its cost
+  is measured and in-place reload tried: HACKING.md, "Calendar".)
+  **Not tried against Google's and Fastmail's real servers**: that
+  needs Ben's accounts. **For Ben, to try**: Preferences ▸ Integrations
+  ▸ Calendars ▸ Add an Account… (for Google, first turn on the CalDAV
+  API in the Google Cloud project of DiskBackup's client: the link is
+  in the form; for Fastmail, an app password with access to calendars),
+  then open Calendar.
 
 - **Fans: a row of each power mode, with more than Auto** (Ben,
   2026-11-18: "in the power -> battery -> fans move the fans option to

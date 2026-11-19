@@ -21379,6 +21379,31 @@ the demo with the real model: "What's next?" (Design review, and that
 it overlaps the unanswered Interview, both linked) and "Add lunch
 tomorrow at noon" (drafted, opened Thursday 12 PM – 1 PM).
 
+**Inviting people** (the event window's Invite field: a new event,
+or one nobody else organizes, in a calendar that can be written): the
+guests' addresses, with commas between (semicolons, spaces and mail's
+"Dana Jansen <dana@example.org>" are read too, `edit::Invite::read`;
+what isn't an address is said under the fields and nothing is saved).
+Saving writes them into the event (`olo_calendar::event::invite`):
+who invites is its `ORGANIZER` (the address the calendar's account is
+signed in with, filled in by `save_event`) and attends, each new guest
+an `ATTENDEE` asked for an answer (`PARTSTAT=NEEDS-ACTION`, `RSVP`),
+guests there already keep their line whole (what they answered),
+those taken out of the field go, and with no guests left it's an event
+of one's own again. **Nothing is mailed from here**: on a server that
+schedules (RFC 6638: Google's, Fastmail's, iCloud's) writing the event
+is what invites the new guests, tells the others of a change and tells
+those taken out it's off. Of a repeating event, "all" changes every
+occurrence's guests, "only this one" that occurrence's. The window
+then lists the guests with their answers under the field, as for an
+invitation of someone else's (where there's no field: its guests are
+the organizer's to say). Tested: the engine's `people_invited`,
+`edit`'s `guests_typed_and_written`; tried in a test session against
+the stand-in server (which keeps events and schedules nothing): a
+wrong address said, two guests saved and listed, the window at 1×
+through 2×. **Not tried against a server that sends invitations**
+(Google's, Fastmail's): that needs Ben's accounts.
+
 **Invitations** (an event with `ATTENDEE`s; "me" is the accounts'
 addresses, `Shown::going`). How one looks says what the person
 answered (`view::ground`, `view::struck`, in the week, the strip, the

@@ -110,6 +110,9 @@ pub struct Opening {
     /// answered, where they're one of them and can say.
     pub guests: Vec<Guest>,
     pub going: Option<Answer>,
+    /// Who's invited is the person's to say (a new event, or one they
+    /// organize): the guests' addresses now. None: someone else's.
+    pub invite: Option<Vec<String>>,
 }
 
 pub struct Editor {
@@ -142,6 +145,8 @@ pub struct Editor {
     guests: Vec<Guest>,
     going: Option<Answer>,
     guests_scroll: ScrollHandle,
+    /// The guests' addresses, where they're the person's to say.
+    invite: Option<Child<TextField>>,
     to_main: Messenger<Msg>,
 }
 
@@ -174,6 +179,7 @@ impl Editor {
             let end_time = field(cx, "End Time", words::time(d.end.time(), o.h24), "");
             let until = field(cx, "Repeats Until", d.until.map(edit::date_text).unwrap_or_default(), "for good");
             let notes = text_field(cx, |f| f.name("Notes").multiline(false).with_text(d.notes.clone()));
+            let invite = o.invite.as_ref().map(|guests| field(cx, "Invite", guests.join(", "), "addresses, with commas between"));
             for start in [&start_day, &start_time] {
                 cx.subscribe(start, |_: &mut Editor, e: &TextFieldEvent, cx| {
                     if matches!(e, TextFieldEvent::Changed) {
@@ -215,6 +221,7 @@ impl Editor {
                 guests: o.guests.clone(),
                 going: o.going,
                 guests_scroll: ScrollHandle::new(),
+                invite,
                 to_main,
             }
         })
@@ -254,6 +261,13 @@ impl Editor {
             repeat,
             until,
             reminder: self.reminder,
+            invite: match &self.invite {
+                Some(field) => {
+                    let guests = edit::Invite::read(field.read(cx).text()).map_err(|word| format!("“{word}” isn’t an address I can invite: write each as name@example.org, with commas between."))?;
+                    Some(edit::Invite { guests, organizer: String::new() })
+                }
+                None => None,
+            },
         };
         match draft.wrong() {
             Some(wrong) => Err(wrong.to_owned()),
@@ -456,6 +470,11 @@ impl View for Editor {
                 }
             };
             col = col.child(MenuField::new("event-going", offered, at).label("Going:").divider(DIVIDER).width(DIVIDER + DAY_FIELD).on_change(cx.msg_with(|i: &usize| Edit::Going(*i))));
+        }
+        // Who's invited, where that's the person's to say (saving it is
+        // what invites them), and what each has answered.
+        if let Some(invite) = &self.invite {
+            col = col.child(TextControl::new(cx, invite).label("Invite:").divider(DIVIDER));
         }
         if !self.guests.is_empty() {
             col = col.child(self.guest_list());

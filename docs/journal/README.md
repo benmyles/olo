@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Calendar: invite people to an event
+
+*19:15* — An event of your own has an Invite field: type your guests' addresses with commas between and Save. Your calendar's server sends the invitations, and the window lists each guest with what they've answered. Take an address out to uninvite.
+
+![Calendar: invite people to an event](2026-11-18/191557-calendar-invite-people-to-an-event.png)
+
 ### The clock's menu: what the day holds
 
 *18:52* — A click on Deskbar's date and time opens a menu: the day in full, what's still to come today and tomorrow in Calendar (each in its calendar's colour; choose one to open Calendar on it), Open Calendar, and Date & Time Settings…, which is what the click did before.
