@@ -699,9 +699,20 @@ message). Each was a fault, not a line to hide:
   started there ran in the "C" locale. olo-session sets what's missing
   from `/etc/locale.conf` and `~/.config/locale.conf`
   (`olo_xdg::locale`, exported to what's started on demand), every Olo
-  program takes it as it re-executes (`olo_xdg::upgrade_env`), and Olo
-  Doctor finds a session still without, or a computer with none set
-  (`language`: "Set the Language").
+  program takes it as it re-executes (`olo_xdg::upgrade_env`), and
+  whatever Olo starts for the person is given it where the starter has
+  none itself (`olo_xdg::locale::give`, in `spawn_detached` and
+  `open::spawn`; Terminal's shells, `pty.rs`): a running program can't
+  be given a language, so it hands it to what it starts. Olo Doctor
+  (`language`, "Set the Language") judges what a program started now
+  would get: from Deskbar (its own environment, or what it gives; a
+  Deskbar from before an upgrade, replaced on disk, gives nothing, and
+  that's said with nothing to press), and on demand (systemd's user
+  manager's environment, `TempFiles::session_env`). Each fix changes
+  one of those, so it's gone once fixed. (It first judged by Deskbar's
+  own `/proc/PID/environ`, which is what a program was started with
+  and never changes: the fix said "Fixed." and the finding stayed.
+  **A check's fix must change what the check looks at.**)
 - *A program that didn't reconnect*: a kit app whose event loop ends in
   an error has lost its connection for certain
   (`compositor_lost_check(…, ended)`). Asked of the socket instead, an

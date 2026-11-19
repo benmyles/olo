@@ -400,6 +400,18 @@ Each note: what to do, then why (what happened), then how to apply it.
   `y` above or below it (the scroll view's band). Filter by the
   window's height before saying what's on screen.
 
+### `/proc/PID/environ` is what a program was started with
+
+It never changes while the program runs (not when the program sets a
+variable itself, not when the session's environment is set), so
+nothing that judges by it can be fixed without restarting that
+program. Olo Doctor's language finding stayed after "Set the Language"
+said "Fixed." for that reason (2026-11-18). To see what's started on
+demand gets, ask systemd's user manager
+(`olo_system::env::manager_environment`); to see what a program hands
+down, read the code that starts its children. And when writing a
+Doctor check, try its fix and look again: the finding must be gone.
+
 ## Measuring
 
 - **Count instructions unscaled: `perf stat --no-scale`.** This

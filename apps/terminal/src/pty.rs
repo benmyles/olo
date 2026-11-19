@@ -95,6 +95,11 @@ impl Pty {
             env.retain(|(ek, _)| ek != k);
             env.push((k.into(), v.into()));
         }
+        // (The shell's language, where the session was started with none:
+        // `olo_xdg::locale`.)
+        for (k, v) in olo_xdg::locale::missing_for(|name| env.iter().any(|(ek, ev)| ek == name && !ev.is_empty())) {
+            env.push((k.into(), v));
+        }
         let c_env: Vec<CString> = env.iter().filter_map(|(k, v)| CString::new(format!("{k}={v}")).ok()).collect();
         let mut c_envp: Vec<*const libc::c_char> = c_env.iter().map(|e| e.as_ptr()).collect();
         c_envp.push(std::ptr::null());

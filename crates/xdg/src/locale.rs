@@ -9,6 +9,12 @@
 //! the locale taking ASCII (found from app_server's "failed to get
 //! system locale" in the log, 2026-11-18). What the environment already
 //! says is kept.
+//!
+//! A program can't be given a language once it runs, so one started
+//! without (a session from before this, a computer whose language was
+//! set after the login) hands it to what it starts instead ([`give`]):
+//! the programs a person opens from Deskbar, Tracker's, Terminal's
+//! shells have it at once, whatever the program that starts them has.
 
 use std::path::Path;
 
@@ -64,11 +70,25 @@ fn own_conf() -> std::path::PathBuf {
         .join("locale.conf")
 }
 
-/// What this process's environment lacks of the system's and the
-/// person's locale files.
-pub fn missing_here() -> Vec<(&'static str, String)> {
+/// What an environment that has `has(name)` lacks of the system's and
+/// the person's locale files, as they are now.
+pub fn missing_for(has: impl Fn(&str) -> bool) -> Vec<(&'static str, String)> {
     let text = |p: &Path| std::fs::read_to_string(p).unwrap_or_default();
-    missing(&text(&Path::new("/").join(SYSTEM_CONF)), &text(&own_conf()), |name| std::env::var_os(name).is_some_and(|v| !v.is_empty()))
+    missing(&text(&Path::new("/").join(SYSTEM_CONF)), &text(&own_conf()), has)
+}
+
+/// What this process's environment lacks of them.
+pub fn missing_here() -> Vec<(&'static str, String)> {
+    missing_for(|name| std::env::var_os(name).is_some_and(|v| !v.is_empty()))
+}
+
+/// A program being started is given the language this one has none of
+/// to hand down (two small files read, as it's started): everything
+/// Olo starts for the person goes through this.
+pub fn give(cmd: &mut std::process::Command) {
+    for (name, value) in missing_here() {
+        cmd.env(name, value);
+    }
 }
 
 /// The locale for this process and what it starts, where the login gave
@@ -89,6 +109,22 @@ mod tests {
         let text = "# Written by localectl\nLANG=\"en_US.UTF-8\"\nLC_TIME=nl_NL.UTF-8\n LC_PAPER = 'en_GB.UTF-8' \nPATH=/evil\nLC_ALL=C\nLANG=\nnonsense\n";
         assert_eq!(read(text), [("LANG", "en_US.UTF-8".to_owned()), ("LC_TIME", "nl_NL.UTF-8".to_owned()), ("LC_PAPER", "en_GB.UTF-8".to_owned())]);
         assert!(read("").is_empty());
+    }
+
+    /// A program started is given what its starter lacks, and nothing
+    /// where the starter has a language to hand down. (This computer's
+    /// files are what they are: only that `give` and `missing_here`
+    /// agree is checked.)
+    #[test]
+    fn a_started_program_is_given_what_is_missing() {
+        let mut cmd = std::process::Command::new("true");
+        give(&mut cmd);
+        let given: Vec<(String, String)> = cmd.get_envs().filter_map(|(k, v)| Some((k.to_str()?.to_owned(), v?.to_str()?.to_owned()))).collect();
+        let missing: Vec<(String, String)> = missing_here().into_iter().map(|(k, v)| (k.to_owned(), v)).collect();
+        assert_eq!(given, missing);
+        if std::env::var_os("LANG").is_some_and(|v| !v.is_empty()) {
+            assert!(given.is_empty());
+        }
     }
 
     /// The person's file over the system's; nothing over what the login

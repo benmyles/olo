@@ -439,6 +439,8 @@ fn spawn_detached_pid(cmd: &str, env: &[(&str, &str)]) -> std::io::Result<u32> {
     c.arg("-c").arg(cmd);
     // (A copy of its own only when asked: never inherited.)
     c.env_remove(NEW_INSTANCE);
+    // (Its language, where we were started with none: `locale`.)
+    locale::give(&mut c);
     c.envs(env.iter().copied());
     if let Some(program) = cmd.split_whitespace().next() {
         electron::on_screen(&mut c, program.as_ref());
