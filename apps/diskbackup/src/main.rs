@@ -51,7 +51,6 @@
 //!   (comma-separated ids; `--groups` lists them), `hourly`, `daily`,
 //!   `weekly`, `monthly` (how many of each to keep).
 
-mod agent_setup;
 mod app;
 mod drive_setup;
 #[cfg(test)]
@@ -88,7 +87,11 @@ fn main() -> ExitCode {
                 None => Err("--set-up-folder PATH".into()),
             },
             Some("--set-up-drive") => set_up_drive_cli(&args[1..]),
-            Some("--agent-setup-done") => agent_setup_done(&args[1..]),
+            Some("--set-up-drive-account") => match args.get(1) {
+                Some(address) => set_up_drive_account(address).map(|email| println!("Backing up to Google Drive ({email}), in the folder “{}”.", olo_diskbackup::drive::FOLDER)),
+                None => Err("--set-up-drive-account ADDRESS".into()),
+            },
+            Some("--disconnect-drive") => disconnect_drive().map(|said| println!("{said}.")),
             Some("--snapshots") => snapshots(),
             Some("--delete") if args.len() > 1 => delete_cli(&args[1..]),
             Some("--validate") if args.len() > 1 => validate_cli(&args[1..]),
@@ -127,7 +130,7 @@ fn main() -> ExitCode {
             Some(path) => versions_cli(path),
             None => Err("--versions PATH".into()),
         },
-            _ => Err("usage: olo-diskbackup --service | --status [--json] | --now | --stop | --set-up-folder PATH | --set-up-drive [CLIENT_FILE | ID SECRET] | --agent-setup-done [CLIENT_FILE] [--screen NAME] | --snapshots | --delete SNAPSHOT… | --validate [--full] SNAPSHOT… | --erase-all --yes | --restore SNAPSHOT PATH [TO] | --marks DIR | --versions PATH | --keep-key | --tidy | --set KEY=VALUE… | --groups"
+            _ => Err("usage: olo-diskbackup --service | --status [--json] | --now | --stop | --set-up-folder PATH | --set-up-drive [CLIENT_FILE | ID SECRET] | --set-up-drive-account ADDRESS | --disconnect-drive | --snapshots | --delete SNAPSHOT… | --validate [--full] SNAPSHOT… | --erase-all --yes | --restore SNAPSHOT PATH [TO] | --marks DIR | --versions PATH | --keep-key | --tidy | --set KEY=VALUE… | --groups"
                 .into()),
         };
     match r {
@@ -345,83 +348,56 @@ fn set_up_drive_cli(a: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// Agent Setup's last step, run by the agent (`agent_setup`): the client
-/// (its file, else the one Passwords keeps) kept in Passwords, DiskBackup
-/// signed in with it (Google's consent page on the agent's screen, for it
-/// to allow; with no screen, the browser), set up, and DiskBackup's
-/// window told. Says how it goes, for the agent to read; gives up after
-/// 20 minutes.
-fn agent_setup_done(a: &[String]) -> Result<(), String> {
-    let mut file = None;
-    let mut screen = None;
-    let mut it = a.iter();
-    while let Some(x) = it.next() {
-        match x.as_str() {
-            "--screen" => screen = it.next().cloned(),
-            f if !f.starts_with('-') && file.is_none() => file = Some(f.to_owned()),
-            other => return Err(format!("{other}? --agent-setup-done [CLIENT_FILE] [--screen NAME]")),
-        }
+/// `olo-diskbackup --set-up-drive-account ADDRESS`: back up to the Drive
+/// of a Google account connected to Olo (Preferences ▸ Integrations ▸
+/// Google: its own app's sign-in, `olo_google::accounts`), as the Back Up
+/// to Google Drive window does and the Google grid's DiskBackup tick.
+/// The backups' folder there found or made, a backup there opened (its
+/// key from the keyring or Passwords) or made, the settings saying so,
+/// the account ticked for DiskBackup (and no other). What it says at the
+/// end is its last line.
+pub(crate) fn set_up_drive_account(address: &str) -> Result<String, String> {
+    use olo_google::accounts::{self, Service};
+    let account = accounts::accounts()
+        .into_iter()
+        .find(|a| a.address.eq_ignore_ascii_case(address))
+        .ok_or_else(|| format!("{address} isn't connected to Olo: connect it in Preferences ▸ Integrations ▸ Google"))?;
+    if !account.allowed(Service::DiskBackup) {
+        return Err(format!("{address}'s sign-in wasn't allowed Google Drive: sign in again in Preferences ▸ Integrations ▸ Google, and allow it"));
     }
-    let client = match &file {
-        Some(f) => olo_diskbackup::oauth::Client::from_json(&std::fs::read_to_string(target::expand(f)).map_err(|e| format!("{f}: {e}"))?)?,
-        None => target::client_in_passwords()?.ok_or("no client file given, and Passwords keeps none")?,
-    };
-    client.check()?;
-    if file.is_some() {
-        println!("Keeping the client in Olo Passwords (the person may be asked to unlock it)…");
-        target::keep_client(&client)?;
-        println!("Kept in Passwords as “{}”.", target::CLIENT_TITLE);
-    }
-    let cancel = std::sync::Arc::new(AtomicBool::new(false));
-    {
-        let cancel = cancel.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_secs(20 * 60));
-            cancel.store(true, std::sync::atomic::Ordering::Relaxed);
-        });
-    }
-    let signed = sign_in(&client, &cancel, |url| match &screen {
-        Some(s) => {
-            println!(
-                "Google's consent page is open on screen “{s}”: choose the account (sign in if asked), then Continue or Allow. DiskBackup waits for it.
+    let g = target::google_for(&account.address)?;
+    let folder = olo_diskbackup::drive::Drive::folder(&g.client, &g.refresh_token, &target::endpoints())?;
+    let t = Target::GoogleDrive { account: account.address.clone(), folder };
+    let store = target::store(&t, &target::Limits::new())?;
+    set_up(t, store, "Google Drive")?;
+    let mut all = accounts::accounts();
+    accounts::tick(&mut all, &account.address, Service::DiskBackup, true);
+    accounts::save(&all).map_err(|e| format!("{}: {e}", accounts::path().display()))?;
+    Ok(account.address)
+}
 
-  {url}
-"
-            );
-            let opened = std::process::Command::new(olo_xdg::find_program("olo-screen").map(|p| p.into_os_string()).unwrap_or_else(|| "olo-screen".into()))
-                .args(["run", s, "olo-chrome", url])
-                .stdout(std::process::Stdio::null())
-                .status();
-            if !opened.is_ok_and(|st| st.success()) {
-                println!("(It didn't open there: open the address above on the screen.)");
-            }
-        }
-        None => {
-            println!(
-                "Sign in to Google in the browser (DiskBackup opened it), or open this:
-
-  {url}
-"
-            );
-            if std::env::var_os("OLO_DISKBACKUP_GOOGLE_API").is_none() {
-                let _ = olo_xdg::open::open(&olo_xdg::open::Target::Url(url.to_owned()));
-            }
-        }
-    })?;
-    // (A test of the agent against the real Google: signed in, nothing
-    // made in its Drive, nothing set up here.)
-    if std::env::var_os("OLO_DISKBACKUP_AGENT_CHECK_ONLY").is_some() {
-        println!("Signed in as {}. (Checking only, for a test: DiskBackup isn't set up.)", signed.email);
-        return Ok(());
+/// DiskBackup no longer backs up to Google Drive (Disconnect, the Google
+/// grid's DiskBackup unticked, its account removed): what's under way
+/// stopped, the settings with no target. The account stays connected to
+/// Olo (Mail and Calendar may use it), unticked for DiskBackup; a
+/// sign-in of DiskBackup's own from before is forgotten. The backups in
+/// Drive stay as they are.
+pub(crate) fn disconnect_drive() -> Result<String, String> {
+    use olo_google::accounts::{self, Service};
+    let mut s = Settings::load();
+    let Target::GoogleDrive { account, .. } = s.target.clone() else { return Ok("DiskBackup doesn't back up to Google Drive".into()) };
+    // (What's under way stops first: it's using the sign-in.)
+    let _ = ask(Request::Stop);
+    if accounts::accounts().iter().any(|a| a.address.eq_ignore_ascii_case(&account)) {
+        let mut all = accounts::accounts();
+        accounts::tick(&mut all, &account, Service::DiskBackup, false);
+        accounts::save(&all).map_err(|e| format!("{}: {e}", accounts::path().display()))?;
+    } else {
+        target::forget_google()?;
     }
-    println!("Signed in as {}; setting up…", signed.email);
-    let email = set_up_drive(client, signed)?;
-    println!("Backing up to Google Drive ({email}), in the folder “{}”. DiskBackup is set up.", olo_diskbackup::drive::FOLDER);
-    // DiskBackup's window, if it's open, says so (not started for it).
-    if olo_kit::instance::running(APP_ID) {
-        olo_kit::instance::forward(APP_ID, &["--agent-setup-done".to_owned()]);
-    }
-    Ok(())
+    s.target = Target::None;
+    s.save().map_err(|e| e.to_string())?;
+    Ok(format!("DiskBackup no longer backs up to {account}’s Google Drive. The backups there stay as they are"))
 }
 
 /// This computer's backups by id (or an id's start; `latest`, `all`), as

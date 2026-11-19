@@ -260,19 +260,7 @@ impl MainWindow {
     fn disconnect_now(&mut self, cx: &mut Cx<Self>) {
         self.busy = true;
         self.note = Some(("Disconnecting from Google Drive…".into(), false));
-        cx.work(
-            || {
-                // (What's under way stops first: it's using the sign-in.)
-                let _ = crate::ask(Request::Stop);
-                target::forget_google().and_then(|()| {
-                    let mut s = Settings::load();
-                    s.target = Target::None;
-                    s.save().map_err(|e| e.to_string())?;
-                    Ok("Disconnected from Google Drive. Your backups there stay as they are.".to_owned())
-                })
-            },
-            WinMsg::Note,
-        );
+        cx.work(|| crate::disconnect_drive().map(|said| format!("{said}.")), WinMsg::Note);
     }
 
     /// Every backup deleted, to start fresh, once the person says so.

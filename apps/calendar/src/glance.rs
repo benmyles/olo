@@ -50,7 +50,8 @@ const AGAIN: Duration = Duration::from_secs(6 * 3600);
 pub fn serve() -> std::process::ExitCode {
     let demo = sync::demo();
     // (Calendar's settings and the clock's are in the settings' folder.)
-    let mut watched = vec![olo_calendar::account::accounts_path(), olo_kit::config_dir()];
+    let mut watched = olo_calendar::account::watched();
+    watched.push(olo_kit::config_dir());
     watched.extend(sync::store_dir());
     // (The demo's calendars are nowhere but on its server: read once.)
     let mut held: Option<Book> = None;

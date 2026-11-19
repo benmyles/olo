@@ -499,7 +499,7 @@ impl Calendar {
         // An account added or removed in Preferences shows here at once.
         if !demo {
             let changed = cx.messenger();
-            v._accounts = olo_kit::watch::watch([olo_calendar::account::accounts_path()], move |_| {
+            v._accounts = olo_kit::watch::watch(olo_calendar::account::watched(), move |_| {
                 changed.send(Msg::Accounts);
             });
         }

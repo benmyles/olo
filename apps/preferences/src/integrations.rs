@@ -1,6 +1,10 @@
 //! Integrations: the services Olo works with, each connected here (and
-//! only here). Telegram: its API ID and signing in (`telegram.rs`). Mail:
-//! Gmail and Fastmail accounts looked in for one-time codes (`mail.rs`).
+//! only here), in three tabs. Google: the Google accounts connected to
+//! Olo, and which of Mail, Calendar and DiskBackup use each
+//! (`google.rs`). Mail & Calendars: the accounts looked in for one-time
+//! codes (`mail.rs`) and whose calendars Calendar shows (`calendars.rs`),
+//! Google's among them. GitHub & Telegram: Telegram's API ID and signing
+//! in (`telegram.rs`), and GitHub's token.
 //! GitHub: Terminal shows each tab's pull request and its
 //! checks with it. The sign-in is `olo_system::github`'s: a token Olo keeps
 //! in the login keyring, else `GH_TOKEN`, else the GitHub CLI's. Checking
@@ -10,8 +14,8 @@ use olo_sync::Mutex;
 use std::sync::Arc;
 
 use olo_kit::{
-    Child, ClickEvent, Cx, Element, IntoElement, ParentElement as _, Styled as _, WindowCx, canvas, div, icons, metrics as m, px,
-    widgets::{BBox, Button, StringView, TextControl, TextField, TextFieldEvent},
+    Child, ClickEvent, Cx, Element, IntoElement, ParentElement as _, SharedString, Styled as _, WindowCx, canvas, div, icons, metrics as m, px,
+    widgets::{BBox, Button, StringView, TabView, TextControl, TextField, TextFieldEvent},
 };
 use olo_system::github::{self, Source};
 
@@ -49,7 +53,14 @@ pub struct State {
     pub telegram: crate::telegram::State,
     pub mail: crate::mail::State,
     pub calendars: crate::calendars::State,
+    pub google: crate::google::State,
+    /// The tab shown ([`TABS`]).
+    pub tab: usize,
 }
+
+/// The panel's tabs (with Google's grid it no longer fits a laptop's
+/// screen in one: 868 points tall).
+pub const TABS: [&str; 3] = ["Google", "Mail & Calendars", "GitHub & Telegram"];
 
 impl State {
     pub fn new(cx: &mut Cx<PanelView>) -> State {
@@ -70,6 +81,8 @@ impl State {
             telegram: crate::telegram::State::new(cx),
             mail: crate::mail::State::new(cx),
             calendars: crate::calendars::State::new(cx),
+            google: crate::google::State::new(cx),
+            tab: 0,
         };
         // (Tests, the layout lint, never read the keyring.)
         if cfg!(test) {
@@ -203,6 +216,37 @@ fn act(ui: &Ui, f: impl Fn(&mut State, &mut Cx<PanelView>) + 'static) -> impl Fn
 }
 
 pub fn ui(ui: &mut Ui, st: &mut State) {
+    let items = ui.collect(|ui| match st.tab {
+        0 => crate::google::ui(ui, &mut st.google),
+        1 => {
+            let left = ui.collect(|ui| crate::mail::ui(ui, &mut st.mail));
+            let right = ui.collect(|ui| crate::calendars::ui(ui, &mut st.calendars));
+            ui.add_columns(left, right);
+        }
+        _ => {
+            let left = ui.collect(|ui| github(ui, st));
+            let right = ui.collect(|ui| crate::telegram::ui(ui, &mut st.telegram));
+            ui.add_columns(left, right);
+        }
+    });
+    let pick = ui.on_view(|v, i: &usize, cx| {
+        if let Some(st) = state_of(v) {
+            st.tab = *i;
+        }
+        cx.notify();
+    });
+    let tabs: Vec<SharedString> = TABS.into_iter().map(SharedString::from).collect();
+    ui.add(
+        div()
+            .flex_1()
+            .flex()
+            .flex_col()
+            .child(TabView::new("integrations-tabs", tabs, st.tab).grows().on_select(pick).child(div().flex_1().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING)).children(items))),
+    );
+}
+
+/// GitHub's box: how Terminal is signed in to it, and a token to connect with.
+fn github(ui: &mut Ui, st: &mut State) {
     let now = st.github.lock().unwrap().clone();
     let status = match &now {
         GitHub::Checking => "Checking…".to_owned(),
@@ -260,14 +304,5 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         row
     };
     items.push(buttons(row).into_element());
-    // (GitHub and Mail beside Telegram, whose sign-in is the tallest.)
-    let left = ui.collect(|ui| {
-        ui.add(BBox::new("GitHub").children(items));
-        crate::mail::ui(ui, &mut st.mail);
-    });
-    let right = ui.collect(|ui| {
-        crate::telegram::ui(ui, &mut st.telegram);
-        crate::calendars::ui(ui, &mut st.calendars);
-    });
-    ui.add_columns(left, right);
+    ui.add(BBox::new("GitHub").children(items));
 }

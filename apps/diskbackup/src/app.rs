@@ -9,7 +9,7 @@
 use std::path::PathBuf;
 
 use olo_kit::{WindowHandle, WindowOptions};
-use olo_protocol::diskbackup::{Settings, State, Target};
+use olo_protocol::diskbackup::{Settings, State};
 
 use crate::{
     drive_setup::DriveSetup,
@@ -143,17 +143,6 @@ impl Hub {
     pub fn launched(&mut self, args: &[String], cwd: Option<&std::path::Path>) {
         match args.first().map(String::as_str) {
             Some("--restore-window") => self.open_restore(),
-            // Agent Setup's agent set it up: said in the setup window.
-            Some("--agent-setup-done") => {
-                if let Target::GoogleDrive { account, .. } = Settings::load().target
-                    && let Some(w) = self.drive.as_ref().filter(|w| w.is_open())
-                {
-                    // (Which tells the main window, as when it set it up.)
-                    w.messenger().send(crate::drive_setup::Done::SetUp(Ok(account)));
-                } else if let Some(w) = &self.win {
-                    w.messenger().send(WinMsg::SetUp);
-                }
-            }
             Some("--versions-window") => match args.get(1) {
                 Some(p) => {
                     let p = target::expand(p);

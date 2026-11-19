@@ -6169,10 +6169,11 @@ lint at a time).
   username empty for the active account or the `user:` of hosts.yml;
   `go-keyring-base64:` values decoded). Test the keyring parts with
   `tools/dev/private-keyring` (`github::tests::tokens_from_a_keyring`).
-  Mail (`mail.rs`, beside GitHub; Telegram in the column beside them,
-  its sign-in the tallest): any number of Gmail (a free account or a
-  Workspace one) and Fastmail accounts, looked in for one-time codes
-  (see "Codes sent by mail"). Add Gmail… or Add Fastmail… asks the
+  Mail (`mail.rs`, in the Mail & Calendars tab): the Google accounts
+  ticked for Mail (see "Google accounts": signed in through their own
+  app) and any number of Fastmail accounts, looked in for one-time codes
+  (see "Codes sent by mail"); Gmail accounts added with an app password
+  before go on as they were. Add Fastmail… asks the
   address and an app password (Make an App Password… opens the
   provider's page; Gmail's wants 2-Step Verification, Fastmail's isn't
   on the Basic plan) and tries them first, on a worker (signed in, the
@@ -13098,6 +13099,152 @@ English. Tested: `words`' `a_catalog_read`, `a_sentence_filled`,
 parts), `words_in_a_language_and_back`; Preferences ▸ Power looked at
 in German with a few words (`OLO_LANGUAGE=de`): tabs, radio buttons,
 menus and buttons in German, the layout following their widths.
+
+## Google accounts (crates/google, `olo_google::accounts`; Preferences ▸ Integrations ▸ Google)
+
+Ben, 2026-11-18: "we need a Google Workspace integration where for each
+google workspace account you add you setup the "Olo" google app …
+that should handle DiskBackup, Email, Calendar, anything else we add
+later … for each google workspace we should have it be e.g. "Olo
+(ben@shiftupai.com)" so that it is separated for the user … add as
+many google workspaces as we want in prefs -> integrations and then
+choose which ones are enabled for mail, calendar, diskbackup in like a
+grid". (And not a published app of Olo's own: Google's review of mail
+and calendar scopes is a yearly cost, and an organisation still has to
+let a third party's app in.)
+
+**Why an app per account.** Google lets only a registered app (an OAuth
+client in some Google Cloud project) sign someone in, and an
+organisation's accounts are let into an app of its own where another's
+is refused: a Workspace account signing in with the app another
+account made (DiskBackup's, in a Gmail account) got "Access blocked:
+Your institution's admin needs to review … Error 400:
+access_not_configured". So each account Olo connects has an app of its
+own in a project of its own, named "Olo (its address)" (several people
+of one organisation each have theirs): a Desktop app client, its
+consent screen Internal for a Workspace account (no publishing, no
+warning, never signed out) or External and published for a Gmail one
+(Google shows "Google hasn't verified this app" once: Advanced ▸ Go to
+Olo), the Gmail, CalDAV and Drive APIs on, and the three scopes.
+
+**One sign-in, every service.** `olo_google::accounts`: the list
+(`~/.config/olo/google-accounts.json`: each account's address, the
+services ticked, the scopes its sign-in was allowed; nothing secret)
+and, in the login keyring, what signs each in (its app's client and
+the refresh token: `application=olo service=google account=ADDRESS`).
+`sign_in` asks for everything Olo's services use at once (`openid
+email`, `https://mail.google.com/` for IMAP, `…/auth/calendar` for
+CalDAV, `…/auth/drive.file` for DiskBackup's own files only), going to
+the account meant (`login_hint`) or asking which (`prompt=select_account`,
+never whichever the browser is signed in to); what Google says was
+allowed is kept (its consent page lets some be left out: a service
+not allowed can't be ticked until the account signs in again).
+`token(address, fresh, agent)` gives an access token, kept while good
+(an hour less a minute), a new one where a server refused the one in
+hand. `Service::{Mail, Calendar, DiskBackup}` (DiskBackup is one
+account's: ticking it for one unticks the rest, `tick`). Mail, Calendar
+and DiskBackup each read the list and take their sign-in from here:
+none keeps one of its own. Tests: `OLO_GOOGLE_ACCOUNTS` (a list),
+`OLO_GOOGLE_SECRETS` (**a test's own keyring**: without it a test's
+sign-in goes in the person's), `OLO_GOOGLE_API` (a Google of its own),
+`OLO_GOOGLE_CONSENT=self` (the consent page fetched, nothing opened).
+
+- **Mail** (`olo_mail::accounts`): the Google accounts ticked for Mail,
+  then those added with an app password (`own_accounts`, `mail.json`:
+  Fastmail's, and Gmail ones from before, which go on as they were).
+  A Google one signs in to IMAP with `AUTHENTICATE XOAUTH2` (its
+  address and a token; refused, the server's line of why is answered
+  and the refusal said: is Mail allowed, and IMAP on in its Gmail
+  settings?), `auth_of` choosing.
+- **Calendar** (`olo_calendar::account::accounts`): the Google accounts
+  ticked for Calendar (`Provider::Google`, the id `google:ADDRESS` as
+  before, so what was kept of their calendars stays theirs), then
+  Fastmail's and other CalDAV servers' (`calendar-accounts.json`).
+  Calendar's window, reminders and widgets follow both files
+  (`account::watched`). Calendar's own Google sign-in is gone.
+- **DiskBackup** (`target::google_for`): the account it backs up to
+  signs in through its app where it's connected; DiskBackup's own
+  sign-in from before (`DISKBACKUP_GOOGLE`) is used only where it
+  isn't. `olo-diskbackup --set-up-drive-account ADDRESS` backs up to a
+  connected account's Drive (the folder found or made, a backup there
+  opened with its key or made, the settings saying so, the account
+  ticked for DiskBackup); `--disconnect-drive` stops (no target, the
+  account unticked; the backups in Drive left as they are). Back Up To
+  ▸ Google Drive… chooses among the connected accounts (none: it says
+  to connect one, Open Integrations…). **`drive.file` files are seen
+  only by the app (the project) that made them**: a backup folder made
+  by one project's app is invisible to another's, so moving DiskBackup
+  to another app would start a fresh, empty backup there. That's why an
+  account whose DiskBackup app came first keeps that app (below).
+
+**Preferences ▸ Integrations ▸ Google** (`apps/preferences/src/google.rs`;
+the panel is three tabs now, Google, Mail & Calendars, GitHub &
+Telegram: with the grid it was 868 points tall, past a 1280 × 800
+screen): the grid, each account with a tick for Mail, Calendar and
+DiskBackup (one not allowed can't be ticked; DiskBackup's tick runs
+`olo-diskbackup --set-up-drive-account` or `--disconnect-drive`, and
+the grid follows only once it's done), how its sign-in stands (a token
+asked for on a worker as the panel opens), Sign In Again (the
+account's own app, in the person's browser; with none kept here, the
+by-hand form, saying where its client is) and Remove (what signs it
+in forgotten; DiskBackup stopped first if it backs up there). Mail's
+and Calendars' boxes list the Google accounts ticked for them, and
+their Remove unticks. The list is followed: an agent's finished
+account shows at once.
+
+- **Add a Google Account…** (the agent; it was DiskBackup's Agent
+  Setup, moved here and made the account's: `olo_google::setup`): the
+  account's login chosen from Passwords (its `Shares`: those that say
+  Google, else every login; no secret read), an agent screen of its own
+  (`google-setup`) started and the login shared with it, and Claude
+  Code opened in a Terminal window (Preferences ▸ AI's model and
+  effort; `--allowedTools` olo-screen and the done command, `--add-dir`
+  the screens' pictures and ~/Downloads, `--no-chrome`; it works in
+  `~/.local/state/olo/google-agent-setup`, the task kept there as
+  TASK.md). The task (`setup::brief`): sign in to Google Cloud there
+  with the shared login without seeing its password, then the steps
+  (`setup::steps`: a project named "Olo"; the three APIs; the consent
+  screen "Olo (its address)", Internal for Workspace; the three scopes;
+  publish if External; a Desktop app client, its JSON downloaded),
+  first looking for a set-up begun before; and the finish:
+  `olo-preferences --google-setup-done ~/Downloads/client_secret_….json
+  --screen google-setup`, which signs Olo in with Google's consent page
+  opened on the agent's screen for it to allow, lists the account
+  (ticked for Mail and Calendar where allowed; DiskBackup where it backs
+  up to that Drive already), and tries each service, saying how each
+  went for the agent to read (Mail: its inbox opened; Calendar: how
+  many calendars; DiskBackup: whether the app sees the backups there,
+  `accounts::sees_drive_file`). The person follows along in Terminal.
+  Or **Set Up by Hand…**: the steps, the client's ID and secret, Sign
+  In with Google in the person's browser.
+- **Bring It Into Olo…** (shown while DiskBackup backs up to an
+  account's Drive with its own app from before, and that account isn't
+  connected): the agent brings **that** app up to date instead of
+  making another (`setup::Task::Extend`: rename its consent screen
+  "Olo (its address)", turn on the Gmail and CalDAV APIs, add their
+  scopes; told never to make another project or client), then
+  `--google-setup-done --account ADDRESS` signs in again with that
+  app's client (DiskBackup's, from the keyring) and checks the app
+  sees DiskBackup's folder. DiskBackup goes on backing up throughout:
+  the same client, the same folder, the same key and settings.
+
+Tested: `olo_google`'s `ticks_and_what_is_allowed`, `setup`'s
+`the_brief_says_where_what_and_how`, `google_logins_first`,
+`shared_once`; Calendar's `signing_in_to_google` (Olo's sign-in against
+Calendar's stand-in Google: every scope asked, the account named, its
+calendars listed); Mail's `a_google_token` (XOAUTH2 against the
+stand-in IMAP server, refused said); DiskBackup's
+`set_up_drive_account_then_disconnect`; Preferences'
+`tests/google_setup.rs` (the done command against DiskBackup's stand-in
+Google: the browser played, the account listed and ticked, its sign-in
+kept, each service tried; signed in again with the app it has; an app
+that doesn't see DiskBackup's folder said; an account with no known
+app refused). Looked at headless (made-up accounts; a stand-in
+Passwords socket, `OLO_KEYCHAIN_SOCKET`, as a test session shares the
+person's runtime directory): the grid, the Add flow's login chooser,
+the by-hand form and Sign In Again with no app kept, each tab, at 1×
+to 2×. **Not tried against Google itself**: that's Ben's accounts (the
+agent's run is his to start).
 
 ## The fans (apps/fans, `olo-fans`)
 
@@ -21126,9 +21273,17 @@ or Replace, with a shared lock and its progress; it lists again when a
 backup finishes. Checked headless: a file changed loses its tick, gets
 it back after Back Up Now; its older version restored beside it.
 
-**Google Drive's setup** (`drive_setup.rs`; Back Up To ▸ Google Drive…;
-Ben, 2026-11-07: "we should have each user setup their own desktop app
-… have the app walk the user through how to do it"): Google asks each
+**Google Drive** (2026-11-18): DiskBackup signs in through the Google
+accounts connected to Olo (see "Google accounts": each account's own
+app, which Mail and Calendar use too); Back Up To ▸ Google Drive…
+chooses among them, and the steps and the agent below moved to
+Preferences ▸ Integrations ▸ Google. What follows is how it was, kept
+for `--set-up-drive` (the command line's, by hand, with a client file),
+which still signs DiskBackup in by itself.
+
+**Google Drive's setup, before** (Ben, 2026-11-07: "we should have each
+user setup their own desktop app … have the app walk the user through
+how to do it"): Google asks each
 person to make their own sign-in for an app like this, so the window
 walks them through it, a numbered step at a time, each with Open for its
 page (Google Cloud's: make a project; turn on the Drive API; set up its
@@ -21165,9 +21320,10 @@ Focus or put in a tile (Ben, 2026-11-08: "diskbackup looks silly in focus
 mode"). Restore and Versions, browsers of what a backup holds, are
 windows like Tracker's.
 
-**Agent Setup** (`agent_setup.rs`; the setup window's Let an Agent Do
-It…; Ben, 2026-11-08: "an "Agent Setup" feature to disk backup where an
-agent can do the google drive oauth/app setup"): an agent does the steps.
+**Agent Setup, before** (moved to Preferences ▸ Integrations ▸ Google
+and made the account's: `olo_google::setup`; Ben, 2026-11-08: "an
+"Agent Setup" feature to disk backup where an agent can do the google
+drive oauth/app setup"): an agent did the steps.
 The person chooses the Google account's login from Passwords (its
 `Shares` items: those that say Google, else every login; no secrets
 read). DiskBackup starts its agent screen (`diskbackup-setup`; `olo-screen
@@ -21389,13 +21545,12 @@ things stand with the servers.
   week, up and down), Escape lets go of what's chosen. A double-click
   on a day makes an event there (in the hours, at the half hour under
   the pointer; in the strip above them, for the whole day).
-- **Accounts** are added in Preferences ▸ Integrations ▸ Calendars
-  (apps/preferences/src/calendars.rs): Add an Account… ▸ Google…
-  (signing in to Google in the browser, `account::google_sign_in`, with
-  a client already on this computer, another calendar account's or
-  DiskBackup's, else one whose ID and secret are typed; the CalDAV API
-  must be on in its project, a link is there), Fastmail… (address and
-  an app password with access to calendars) or Another CalDAV Server….
+- **Accounts**: Google's are the Google accounts connected to Olo with
+  Calendar ticked (see "Google accounts"); others are added in
+  Preferences ▸ Integrations ▸ Mail & Calendars ▸ Calendars
+  (apps/preferences/src/calendars.rs): Add an Account… ▸ Fastmail…
+  (address and an app password with access to calendars) or Another
+  CalDAV Server….
   What's typed is tried first (signed in, its calendars listed), then
   kept: the secret in the login keyring, the account in
   `calendar-accounts.json`, which Calendar follows (`olo_kit::watch`):

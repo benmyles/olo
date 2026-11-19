@@ -89,9 +89,76 @@ pub fn accounts_path() -> PathBuf {
     std::env::var_os("OLO_MAIL_ACCOUNTS").map(PathBuf::from).unwrap_or_else(|| olo_xdg::config_dir().join("mail.json"))
 }
 
-/// The accounts set up, in the order they were added.
-pub fn accounts() -> Vec<Account> {
+/// The accounts added here with an app password, in the order they
+/// were added (what `mail.json` lists).
+pub fn own_accounts() -> Vec<Account> {
     std::fs::read(accounts_path()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+/// Every account mail is read from: the Google accounts connected to
+/// Olo that are ticked for Mail (Preferences ▸ Integrations ▸ Google:
+/// they sign in through the account's own app, `olo_google::accounts`),
+/// then those added here with an app password.
+pub fn accounts() -> Vec<Account> {
+    let mut all: Vec<Account> = if std::env::var_os("OLO_MAIL_ACCOUNTS").is_some() && std::env::var_os("OLO_GOOGLE_ACCOUNTS").is_none() {
+        // (A test's own list: this computer's Google accounts aren't in it.)
+        Vec::new()
+    } else {
+        olo_google::accounts::serving(olo_google::accounts::Service::Mail).into_iter().map(|a| Account { provider: Provider::Gmail, address: a.address }).collect()
+    };
+    for a in own_accounts() {
+        if !all.iter().any(|g| g.address.eq_ignore_ascii_case(&a.address)) {
+            all.push(a);
+        }
+    }
+    all
+}
+
+/// The files that say which accounts there are: followed by whoever
+/// shows or watches them.
+pub fn watched() -> Vec<PathBuf> {
+    vec![accounts_path(), olo_google::accounts::path()]
+}
+
+/// What signs an account in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Auth {
+    /// An app password.
+    Password(String),
+    /// A Google access token (`AUTHENTICATE XOAUTH2`).
+    Token(String),
+}
+
+impl From<&str> for Auth {
+    fn from(password: &str) -> Auth {
+        Auth::Password(password.to_owned())
+    }
+}
+
+impl From<&String> for Auth {
+    fn from(password: &String) -> Auth {
+        Auth::Password(password.clone())
+    }
+}
+
+impl From<&Auth> for Auth {
+    fn from(auth: &Auth) -> Auth {
+        auth.clone()
+    }
+}
+
+/// What signs `account` in now: a Google account connected to Olo and
+/// ticked for Mail, a token from its sign-in; else its app password
+/// from the keyring. Err: neither, in words. Blocking.
+pub fn auth_of(account: &Account) -> Result<Auth, String> {
+    use olo_google::accounts::{self, Service};
+    if account.provider == Provider::Gmail
+        && std::env::var_os("OLO_MAIL_IMAP").is_none()
+        && accounts::accounts().iter().any(|a| a.address.eq_ignore_ascii_case(&account.address) && a.serves(Service::Mail))
+    {
+        return accounts::token(&account.address, false, "Olo Mail").map(Auth::Token).map_err(|e| e.to_string());
+    }
+    password(&account.address).map(Auth::Password).ok_or_else(|| "no app password in the keyring".to_owned())
 }
 
 /// The accounts set up are these.
@@ -254,18 +321,38 @@ fn timed_out(e: &io::Error) -> bool {
 }
 
 impl Session {
-    /// Sign in to `account` with `password` (its app password: spaces, as
-    /// Google shows it in fours, left out) and open its inbox.
-    pub fn open(account: &Account, password: &str) -> Result<Session, String> {
-        Session::open_at(&Server::of(account), account, password)
+    /// Sign in to `account` with `auth` (its app password: spaces, as
+    /// Google shows it in fours, left out; or a Google token) and open
+    /// its inbox.
+    pub fn open(account: &Account, auth: impl Into<Auth>) -> Result<Session, String> {
+        Session::open_at(&Server::of(account), account, auth)
     }
 
     /// [`Session::open`] at `server`.
-    pub fn open_at(server: &Server, account: &Account, password: &str) -> Result<Session, String> {
+    pub fn open_at(server: &Server, account: &Account, auth: impl Into<Auth>) -> Result<Session, String> {
         let mut s = Session::greeted(server)?;
-        let pass: String = password.chars().filter(|c| !c.is_whitespace()).collect();
-        s.command(&format!("LOGIN {} {}", quoted(&account.address), quoted(&pass)))
-            .map_err(|e| if e.starts_with("NO") || e.starts_with("BAD") { format!("{} didn’t take the address and app password ({})", account.provider.name(), e.trim()) } else { e })?;
+        match auth.into() {
+            Auth::Password(password) => {
+                let pass: String = password.chars().filter(|c| !c.is_whitespace()).collect();
+                s.command(&format!("LOGIN {} {}", quoted(&account.address), quoted(&pass)))
+                    .map_err(|e| if e.starts_with("NO") || e.starts_with("BAD") { format!("{} didn’t take the address and app password ({})", account.provider.name(), e.trim()) } else { e })?;
+            }
+            // (RFC 7628's forerunner, as Google has it: the address and
+            // the token in one go. Refused, the server says why in a
+            // line of its own first, answered with an empty one:
+            // `command` does.)
+            Auth::Token(token) => {
+                use base64::Engine as _;
+                let said = base64::engine::general_purpose::STANDARD.encode(format!("user={}\x01auth=Bearer {token}\x01\x01", account.address));
+                s.command(&format!("AUTHENTICATE XOAUTH2 {said}")).map_err(|e| {
+                    if e.starts_with("NO") || e.starts_with("BAD") {
+                        format!("{} didn’t take the account’s sign-in ({}): is Mail allowed for it, and IMAP turned on in its Gmail settings?", account.provider.name(), e.trim())
+                    } else {
+                        e
+                    }
+                })?;
+            }
+        }
         let caps = s.command("CAPABILITY")?;
         s.idle = caps.iter().any(|c| c.text.split_whitespace().any(|w| w.eq_ignore_ascii_case("IDLE")));
         let answers = s.command("SELECT INBOX")?;
@@ -532,6 +619,12 @@ impl Session {
         let lost = |e: io::Error| format!("the server stopped answering ({e})");
         loop {
             let mut line = self.line().map_err(lost)?;
+            // (The server has more to say before it answers, and waits
+            // for a line: a sign-in refused, saying why. An empty one.)
+            if line.starts_with("+ ") || line.trim_end() == "+" {
+                self.send("")?;
+                continue;
+            }
             if let Some(rest) = line.strip_prefix(&format!("{tag} ")) {
                 let rest = rest.trim_end().to_owned();
                 if rest.starts_with("OK") {
@@ -620,10 +713,10 @@ fn internal_date(line: &str) -> Option<u64> {
     u64::try_from(days * 86_400 + h * 3600 + m * 60 + s - offset).ok()
 }
 
-/// Whether `account` signs in with `password` (Preferences, adding it):
+/// Whether `account` signs in with `auth` (Preferences, adding it):
 /// signed in and its inbox opened, then signed out. Blocking.
-pub fn check(account: &Account, password: &str) -> Result<(), String> {
-    Session::open(account, password).map(Session::close)
+pub fn check(account: &Account, auth: impl Into<Auth>) -> Result<(), String> {
+    Session::open(account, auth).map(Session::close)
 }
 
 /// An inbox watched on a thread of its own (named "mail"): the messages
@@ -695,7 +788,7 @@ impl Drop for Watch {
 fn watch(account: &Account, recent: Duration, sh: &WatchShared, found: &mut dyn FnMut(u32, Message) -> bool) -> Result<(), String> {
     let stopped = || sh.stopped.load(Ordering::SeqCst);
     let until = || *sh.until.lock().unwrap_or_else(|e| e.into_inner());
-    let password = password(&account.address).ok_or("no app password in the keyring")?;
+    let password = auth_of(account)?;
     if stopped() {
         return Ok(());
     }
@@ -796,6 +889,20 @@ mod tests {
             s.close();
             eprintln!("{}: greeted over TLS, has IDLE", p.name());
         }
+    }
+
+    /// A Google account's way in: its address and token in one line
+    /// (XOAUTH2), the inbox opened; a token the server refuses is said
+    /// plainly, after its line of why is answered.
+    #[test]
+    fn a_google_token() {
+        let server = standin::Server::start(Vec::new());
+        let s = Session::open_at(&Server::Plain(server.address()), &account(), &Auth::Token(standin::TOKEN.into())).unwrap();
+        assert_eq!(s.uid_next(), 1, "its inbox opened");
+        s.close();
+        assert_eq!(server.logins(), ["me@example.com token"]);
+        let e = Session::open_at(&Server::Plain(server.address()), &account(), &Auth::Token("stale".into())).err().unwrap();
+        assert!(e.starts_with("Gmail didn’t take the account’s sign-in"), "{e}");
     }
 
     /// A wrong password, said plainly.

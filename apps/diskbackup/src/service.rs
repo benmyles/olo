@@ -891,7 +891,7 @@ fn opened<'a>(settings: &Settings, open: &'a mut Option<Opened>, limits: &Limits
                 // by the same name): the settings follow it there, and the
                 // loop opens it as they change.
                 if let Target::GoogleDrive { account, folder } = &settings.target
-                    && let Some(moved) = target::drive_folder_moved(folder)
+                    && let Some(moved) = target::drive_folder_moved(account, folder)
                 {
                     tracing::info!("diskbackup: the backups' folder in Google Drive is another now (erased elsewhere, made again): following it");
                     let mut s = Settings::load();

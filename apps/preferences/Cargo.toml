@@ -15,6 +15,7 @@ olo-kit.workspace = true
 olo-xdg.workspace = true
 # (The ssh configuration's agent, for Security's SSH agent setting.)
 olo-keychain.workspace = true
+olo-google.workspace = true
 olo-palm.workspace = true
 olo-voice.workspace = true
 olo-theme.workspace = true
@@ -55,3 +56,4 @@ qrcode = { version = "0.14", default-features = false }
 
 [dev-dependencies]
 olo-kit = { workspace = true, features = ["lint"] }
+md-5 = "0.11"

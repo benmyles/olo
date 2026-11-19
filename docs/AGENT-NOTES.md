@@ -159,6 +159,16 @@ Each note: what to do, then why (what happened), then how to apply it.
   only the kind). And **`cargo build -p A -p B --example E` builds only
   the example**: the programs stayed old, and a test Chrome ran the old
   extension. Build the programs in a command of their own.
+- **A test session shares the person's runtime directory**
+  (`env.json`'s `XDG_RUNTIME_DIR` is `/run/user/1000`), so a program in
+  it that asks Passwords asks the person's own (the socket is found
+  there): a click on something that lists logins (Integrations ▸
+  Google ▸ Add a Google Account…) would read their vault and could ask
+  them to unlock it, on their screen. Give the program a stand-in's
+  socket (`OLO_KEYCHAIN_SOCKET=PATH`: a few lines of Python answering
+  `{"type":"shares",…}` with made-up items, as
+  `apps/preferences/tests` and DiskBackup's tests do), and never press
+  what would start a real agent (Start the Agent) in a test.
 - **Run the tests, read their result, then commit: never in one
   command.** `cargo test … | grep …; git commit …` commits whatever the
   tests said (a commit went in with a failing test, 2026-11-17, caught

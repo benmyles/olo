@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### One Google integration, and a grid of what each account is for
+
+*20:38* — Preferences ▸ Integrations ▸ Google: each Google account connected through an app of its own, “Olo (its address)”, which an agent makes for you in Google Cloud (Add a Google Account…). Tick Mail, Calendar and DiskBackup for each. DiskBackup's older app can be brought in as it is (Bring It Into Olo…), so its backups stay where they are.
+
+![One Google integration, and a grid of what each account is for](2026-11-18/203819-one-google-integration-and-a-grid-of-what-each-a.png)
+
 ### Calendar: invite people to an event
 
 *19:15* — An event of your own has an Invite field: type your guests' addresses with commas between and Save. Your calendar's server sends the invitations, and the window lists each guest with what they've answered. Take an address out to uninvite.

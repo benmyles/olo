@@ -175,6 +175,11 @@ something nobody here has is in "Blocked", with what it waits for.
   (`olo_calendar::account`) into a crate of their own that both apps
   read; an account added before this (`calendar-accounts.json`) is
   carried over.
+  **So far** (2026-11-18): Google's is done, as one Google integration
+  (the item in "Waiting for Ben", "One Google integration"): one
+  sign-in per account, ticked for Mail, Calendar and DiskBackup.
+  **Left**: Fastmail's (one app password for both, and its accounts in
+  the same list).
 - **A Mail app, native, every account in one place, and the assistant
   in both Mail and Calendar** (Ben, 2026-11-17: "build a beautiful olo
   native email app. use/extend the email integration support in prefs ->
@@ -311,6 +316,17 @@ something nobody here has is in "Blocked", with what it waits for.
   order); it's in the next build. Olo's own programs' Open panels with
   several files, where there are any, take the same function.
 
+- **Deskbar folded and unfolded from the keyboard, and the palette**
+  (Ben, 2026-11-18: "the collapse/expand deskbar needs a keyboard
+  toggle to cycle it and it should be ctrl+cmd+d by default (but
+  customizable). it should also be available in the command
+  palette"). One shortcut that folds Deskbar away and brings it back
+  (⌃⌘D by default; in Preferences ▸ Keyboard ▸ Shortcuts like the
+  others, so it can be changed), and the same as a command in the
+  command palette ("Hide Deskbar" / "Show Deskbar", as it stands).
+  The fold itself is done (Deskbar's little button: HACKING.md,
+  Deskbar).
+
 - **Last, once everything above that isn't blocked is done: the website,
   the README and the docs refreshed, and a new GitHub release** (Ben,
   2026-11-17: "when all the other todos that aren't blocked are
@@ -325,6 +341,40 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **One Google integration: each account its own "Olo (address)" app,
+  a grid of what it's used for** (Ben, 2026-11-18: "we need a Google
+  Workspace integration where for each google workspace account you
+  add you setup the "Olo" google app … and that should handle
+  DiskBackup, Email, Calendar … add as many google workspaces as we
+  want in prefs -> integrations and then choose which ones are enabled
+  for mail, calendar, diskbackup in like a grid"; and "i will also need
+  you to help me transition my old olo diskbackup drive app to my new
+  olo app in ben@2q31.com without losing files/state"). *Done*
+  (HACKING.md, "Google accounts"): Preferences ▸ Integrations ▸ Google
+  (the panel in three tabs now): the grid; Add a Google Account… (the
+  agent, moved here from DiskBackup: it makes the account's app in
+  Google Cloud on an agent screen with the login from Passwords, and
+  signs Olo in); Set Up by Hand…; Sign In Again; Remove. Mail,
+  Calendar and DiskBackup all sign in through it; DiskBackup's Back Up
+  To ▸ Google Drive… chooses among the connected accounts.
+  **For Ben, to try** (after Upgrade; nothing changes until you do):
+  1. **ben@2q31.com, keeping DiskBackup as it is**: Preferences ▸
+     Integrations ▸ Google shows "DiskBackup backs up to ben@2q31.com’s
+     Google Drive with an app it made itself…": Bring It Into Olo…,
+     choose that account's login, Start the Agent. It renames your
+     "Olo DiskBackup" app to "Olo (ben@2q31.com)" and lets it serve Mail
+     and Calendar too (the same project and client: Google shows the
+     backups only to the app that wrote them, so a new app would start
+     an empty backup). Its last step checks the app still sees the
+     backups, and says so in Terminal.
+  2. **ben@shiftupai.com**: Add a Google Account…, its login, Start the
+     Agent: a project and an Internal app "Olo (ben@shiftupai.com)" in
+     your Workspace (if the Workspace doesn't let accounts make
+     projects, the agent says so: allow it in the Admin console, or
+     make the client there yourself and use Set Up by Hand…).
+  3. Tick Mail and Calendar where you want them.
+  **Not tried against Google itself** (the agent's run is yours).
 
 - **A Calendar app, native, with Google and Fastmail calendars** (Ben,
   2026-11-17: "build a beautiful olo native calendar app. add calendar

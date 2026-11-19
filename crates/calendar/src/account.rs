@@ -1,14 +1,16 @@
 //! Calendar accounts: any number of Google's and Fastmail's (and any
 //! other CalDAV server's, the protocol being one). An account is who
-//! keeps it and the address signed in with
-//! (`~/.config/olo/calendar-accounts.json`, nothing secret in it; the
-//! app's own settings are `calendar.json`); what signs it in is kept in the login keyring
-//! (as Olo's other secrets: `olo_system::secrets`): an app password
-//! (Fastmail's: Settings ▸ Privacy & Security ▸ app passwords, with
-//! access to calendars), or for Google the person's own OAuth client and
-//! the refresh token its sign-in gave (`olo_google`, as DiskBackup signs
-//! in to Drive: the same client serves both, with the CalDAV API turned
-//! on in its project).
+//! keeps it and the address signed in with.
+//!
+//! Google's are the Google accounts connected to Olo with Calendar
+//! ticked (Preferences ▸ Integrations ▸ Google; `olo_google::accounts`:
+//! each signs in through an app of its own, "Olo (its address)", which
+//! serves Mail and DiskBackup too). The others are listed in
+//! `~/.config/olo/calendar-accounts.json` (nothing secret in it; the
+//! app's own settings are `calendar.json`), and what signs each in, an
+//! app password (Fastmail's: Settings ▸ Privacy & Security ▸ app
+//! passwords, with access to calendars), is kept in the login keyring
+//! (as Olo's other secrets: `olo_system::secrets`).
 
 use std::{
     io,
@@ -45,10 +47,6 @@ impl Provider {
         }
     }
 }
-
-/// What Calendar asks of Google: its calendars, read and written, and
-/// whose account it is.
-pub const GOOGLE_SCOPES: &str = "openid email https://www.googleapis.com/auth/calendar";
 
 /// Where its app passwords are made.
 pub const FASTMAIL_APP_PASSWORDS: &str = "https://app.fastmail.com/settings/security";
@@ -94,12 +92,43 @@ pub fn accounts_path() -> PathBuf {
     std::env::var_os("OLO_CALENDAR_ACCOUNTS").map(PathBuf::from).unwrap_or_else(|| olo_xdg::config_dir().join("calendar-accounts.json"))
 }
 
-/// The accounts set up, in the order they were added.
-pub fn accounts() -> Vec<Account> {
+/// The accounts added here (Fastmail's, another CalDAV server's), as
+/// `calendar-accounts.json` lists them.
+pub fn own_accounts() -> Vec<Account> {
     std::fs::read(accounts_path()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
 }
 
-/// The accounts set up are these.
+/// Whether this computer's Google accounts are looked at: not by a test
+/// that names lists of its own without naming Google's.
+fn googles() -> bool {
+    std::env::var_os("OLO_CALENDAR_ACCOUNTS").is_none() || std::env::var_os("OLO_GOOGLE_ACCOUNTS").is_some()
+}
+
+/// Every account whose calendars Calendar shows: the Google accounts
+/// connected to Olo with Calendar ticked, then those added here, in the
+/// order they were added.
+pub fn accounts() -> Vec<Account> {
+    let mut all: Vec<Account> = if googles() {
+        olo_google::accounts::serving(olo_google::accounts::Service::Calendar).into_iter().map(|a| Account { provider: Provider::Google, address: a.address, server: String::new() }).collect()
+    } else {
+        Vec::new()
+    };
+    for a in own_accounts() {
+        if !all.iter().any(|b| b.id() == a.id()) {
+            all.push(a);
+        }
+    }
+    all
+}
+
+/// The files that say which accounts there are: followed by whoever
+/// shows them (Calendar's window, its reminders, its widgets).
+pub fn watched() -> Vec<PathBuf> {
+    vec![accounts_path(), olo_google::accounts::path()]
+}
+
+/// The accounts added here are these (`calendar-accounts.json`: Google's
+/// aren't in it).
 pub fn save_accounts(accounts: &[Account]) -> io::Result<()> {
     let path = accounts_path();
     if let Some(dir) = path.parent() {
@@ -144,8 +173,15 @@ pub fn keep_secret(account: &Account, secret: &Secret) -> Result<(), String> {
     olo_system::secrets::store(&label, &attributes(&id), &json).map_err(|e| e.to_string())
 }
 
-/// What signs `account` in, if kept. Blocking.
+/// What signs `account` in, if kept: a Google account connected to Olo
+/// signs in through its own app (`olo_google::accounts`). Blocking.
 pub fn secret(account: &Account) -> Option<Secret> {
+    if account.provider == Provider::Google
+        && (std::env::var_os("OLO_CALENDAR_SECRETS").is_none() || std::env::var_os("OLO_GOOGLE_SECRETS").is_some())
+        && let Some(s) = olo_google::accounts::secret(&account.address)
+    {
+        return Some(Secret::Google { client: s.client, refresh_token: s.refresh_token });
+    }
     if let Some(file) = test_secret(account) {
         return serde_json::from_slice(&std::fs::read(file).ok()?).ok();
     }
@@ -161,72 +197,14 @@ pub fn forget_secret(account: &Account) {
     let _ = olo_system::secrets::delete(&attributes(&account.id()));
 }
 
-/// A Google client already on this computer to sign in with, so the
-/// person makes one once: another calendar account's, else DiskBackup's.
-/// Blocking.
-pub fn known_google_client() -> Option<olo_google::Client> {
-    for a in accounts() {
-        if let Some(Secret::Google { client, .. }) = secret(&a) {
-            return Some(client);
-        }
-    }
-    // (A test has no other program's sign-in to look in.)
-    if std::env::var_os("OLO_CALENDAR_SECRETS").is_some() {
-        return None;
-    }
-    // (DiskBackup's sign-in: {"client": …, "refresh_token": …}.)
-    let kept = olo_system::secrets::lookup(olo_system::secrets::DISKBACKUP_GOOGLE.attributes).ok()??;
-    serde_json::from_slice::<serde_json::Value>(&kept).ok().and_then(|v| serde_json::from_value(v.get("client")?.clone()).ok())
-}
-
 /// Google's addresses (`OLO_CALENDAR_GOOGLE`: a test's own Google, its
-/// `/auth` and `/token`).
+/// `/auth` and `/token`; else Olo's, `olo_google::accounts::endpoints`).
 pub fn google_endpoints() -> olo_google::Endpoints {
     match std::env::var("OLO_CALENDAR_GOOGLE") {
         Ok(base) => olo_google::Endpoints { auth: format!("{base}/auth"), token: format!("{base}/token"), api: base },
-        Err(_) => Default::default(),
+        Err(_) => olo_google::accounts::endpoints(),
     }
 }
-
-/// Sign in to Google for Calendar with `client` (the person's own): its
-/// consent page is given to `open` (the browser: [`open_consent`]), and
-/// Google's answer waited for, until `cancel` or 15 minutes. The account
-/// it is (its address, as Google says) and what signs it in. Blocking.
-pub fn google_sign_in(client: &olo_google::Client, cancel: &std::sync::atomic::AtomicBool, open: impl FnOnce(&str)) -> Result<(Account, Secret), String> {
-    google_sign_in_at(client, &google_endpoints(), cancel, open)
-}
-
-/// [`google_sign_in`], with Google at `endpoints`.
-pub fn google_sign_in_at(client: &olo_google::Client, endpoints: &olo_google::Endpoints, cancel: &std::sync::atomic::AtomicBool, open: impl FnOnce(&str)) -> Result<(Account, Secret), String> {
-    client.check()?;
-    let client = olo_google::Client { id: client.id.trim().to_owned(), secret: client.secret.trim().to_owned() };
-    let sign_in = olo_google::SignIn::start(&client, endpoints, GOOGLE_SCOPES, "Calendar").map_err(|e| e.to_string())?;
-    open(sign_in.url());
-    let signed = sign_in.wait(&olo_google::agent("Olo Calendar"), cancel)?;
-    if signed.email.is_empty() {
-        return Err("Google didn't say whose account it is".into());
-    }
-    Ok((Account { provider: Provider::Google, address: signed.email.to_lowercase(), server: String::new() }, Secret::Google { client, refresh_token: signed.refresh_token }))
-}
-
-/// The consent page at `url` opened in the person's browser.
-/// (`OLO_CALENDAR_CONSENT=self`: fetched here instead, for a test whose
-/// stand-in Google agrees at once; nothing opens.)
-pub fn open_consent(url: &str) {
-    if std::env::var("OLO_CALENDAR_CONSENT").is_ok_and(|v| v == "self") {
-        let url = url.to_owned();
-        std::thread::spawn(move || {
-            let agent: ureq::Agent = ureq::Agent::config_builder().http_status_as_error(false).max_redirects(4).timeout_global(Some(Duration::from_secs(20))).build().into();
-            let _ = agent.get(&url).call();
-        });
-        return;
-    }
-    let _ = olo_xdg::open::open(&olo_xdg::open::Target::Url(url.to_owned()));
-}
-
-/// Where a Google client's project has its APIs turned on: the CalDAV
-/// API must be, for Calendar.
-pub const GOOGLE_CALDAV_API: &str = "https://console.cloud.google.com/apis/library/caldav.googleapis.com";
 
 /// `account`'s server, signed in with `secret`: nothing is asked of it
 /// yet. Google's tokens are fetched as they're wanted and kept while
@@ -328,10 +306,12 @@ mod tests {
         assert!(matches!(nowhere.calendars(&there.url()), Err(dav::Error::Network(_))));
     }
 
-    /// Signing in to Google: the consent page opened (here fetched: the
-    /// stand-in agrees at once and sends the browser back), the code made
-    /// a refresh token, the account named by the address Google says; and
-    /// what that gives signs in to its calendars.
+    /// Signing in to Google (Olo's one sign-in, `olo_google::accounts`):
+    /// the consent page opened (here fetched: the stand-in agrees at once
+    /// and sends the browser back), asking for the account's calendars
+    /// among the rest, the code made a refresh token, the account named
+    /// by the address Google says; and what that gives signs in to its
+    /// calendars.
     #[test]
     fn signing_in_to_google() {
         use crate::standin::Standin;
@@ -341,7 +321,7 @@ mod tests {
         let endpoints = olo_google::Endpoints { auth: format!("{}auth", there.url()), token: format!("{}token", there.url()), api: there.url() };
         let client = olo_google::Client { id: "1.apps.googleusercontent.com".into(), secret: "x".into() };
         let opened = std::sync::Mutex::new(String::new());
-        let (account, secret) = google_sign_in_at(&client, &endpoints, &std::sync::atomic::AtomicBool::new(false), |url| {
+        let signed = olo_google::accounts::sign_in_at(&client, None, &endpoints, &std::sync::atomic::AtomicBool::new(false), |url| {
             *opened.lock().unwrap() = url.to_owned();
             let url = url.to_owned();
             std::thread::spawn(move || {
@@ -351,15 +331,20 @@ mod tests {
         })
         .unwrap();
         let url = opened.into_inner().unwrap();
-        assert!(url.contains("auth%2Fcalendar") && url.contains("access_type=offline") && url.contains("code_challenge_method=S256"), "{url}");
-        assert_eq!((account.provider, account.address.as_str(), account.id().as_str()), (Provider::Google, "ada@example.org", "google:ada@example.org"));
-        assert_eq!(secret, Secret::Google { client: client.clone(), refresh_token: "refresh-7".into() });
+        assert!(url.contains("auth%2Fcalendar") && url.contains("access_type=offline") && url.contains("code_challenge_method=S256") && url.contains("prompt=select_account"), "{url}");
+        assert!(url.contains("mail.google.com") && url.contains("drive.file"), "everything Olo's services use: {url}");
+        assert_eq!((signed.email.to_lowercase().as_str(), signed.refresh_token.as_str()), ("ada@example.org", "refresh-7"));
+        assert!(signed.scopes.iter().any(|s| s == "https://www.googleapis.com/auth/calendar"), "{:?}", signed.scopes);
+        let account = Account { provider: Provider::Google, address: signed.email.to_lowercase(), server: String::new() };
+        let secret = Secret::Google { client: client.clone(), refresh_token: signed.refresh_token };
         assert_eq!(connect_at(&account, &secret, endpoints.clone()).calendars(&there.url()).unwrap()[0].name, "Ada");
         // A client that isn't one: said before anything opens.
         let bad = olo_google::Client { id: "nope".into(), secret: "x".into() };
-        assert!(google_sign_in_at(&bad, &endpoints, &std::sync::atomic::AtomicBool::new(false), |_| panic!("nothing to open")).is_err());
-        // Stopped while waiting.
+        assert!(olo_google::accounts::sign_in_at(&bad, None, &endpoints, &std::sync::atomic::AtomicBool::new(false), |_| panic!("nothing to open")).is_err());
+        // Stopped while waiting; and one for an account known goes to it.
         let stop = std::sync::atomic::AtomicBool::new(true);
-        assert_eq!(google_sign_in_at(&client, &endpoints, &stop, |_| {}).unwrap_err(), "stopped");
+        let hinted = std::sync::Mutex::new(String::new());
+        assert_eq!(olo_google::accounts::sign_in_at(&client, Some("ada@example.org"), &endpoints, &stop, |url| *hinted.lock().unwrap() = url.to_owned()).unwrap_err(), "stopped");
+        assert!(hinted.into_inner().unwrap().contains("login_hint=ada%40example.org"));
     }
 }

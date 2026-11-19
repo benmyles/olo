@@ -1,11 +1,15 @@
 //! Integrations ▸ Mail: the mail accounts Olo looks in for one-time codes
 //! sent by mail (`olo_mail`; Ben, 2026-11-17: "support for connecting any
 //! number of gmail (free or workspace gmail) accounts as well as fastmail
-//! accounts"). One is added with its address and an app password, which
-//! is tried first (signed in, its inbox opened) on a worker: then the
-//! password is kept in the login keyring and the address in `mail.json`.
-//! As the panel opens each is tried again, and says how it stands. Which
-//! are looked in, and when: Security ▸ Passwords (`phone::codes`).
+//! accounts"). A Google account's is its account connected to Olo with
+//! Mail ticked (the Google box, `crate::google`: signed in through its
+//! own app). A Fastmail one is added here with its address and an app
+//! password, which is tried first (signed in, its inbox opened) on a
+//! worker: then the password is kept in the login keyring and the
+//! address in `mail.json` (Gmail accounts added that way before go on
+//! as they were). As the panel opens each is tried again, and says how
+//! it stands. Which are looked in, and when: Security ▸ Passwords
+//! (`phone::codes`).
 
 use std::sync::Arc;
 
@@ -46,6 +50,9 @@ pub struct State {
     /// The provider of the one being added, while it is.
     adding: Option<Provider>,
     trying: Arc<Mutex<Adding>>,
+    /// The addresses that are Google accounts connected to Olo (signed in
+    /// through their own app, not an app password).
+    google: Arc<Mutex<Vec<String>>>,
     address: Child<TextField>,
     password: Child<TextField>,
     proxy: olo_kit::Proxy,
@@ -74,7 +81,7 @@ impl State {
         };
         let address = field(cx, "you@example.com", false);
         let password = field(cx, "xxxx xxxx xxxx xxxx", true);
-        let st = State { accounts: Arc::default(), adding: None, trying: Arc::default(), address, password, proxy: olo_kit::proxy() };
+        let st = State { accounts: Arc::default(), adding: None, trying: Arc::default(), google: Arc::default(), address, password, proxy: olo_kit::proxy() };
         // (Tests, the layout lint, never read the keyring or the network:
         // an account of each kind, one that no longer signs in.)
         if cfg!(test) {
@@ -90,15 +97,17 @@ impl State {
 
     /// Read the accounts, and try each, on a worker.
     fn check(&self) {
-        let (accounts, proxy) = (self.accounts.clone(), self.proxy.clone());
+        let (accounts, google, proxy) = (self.accounts.clone(), self.google.clone(), self.proxy.clone());
         std::thread::spawn(move || {
             let listed = olo_mail::accounts();
+            *google.lock().unwrap() = olo_google::accounts::serving(olo_google::accounts::Service::Mail).into_iter().map(|a| a.address).collect();
             *accounts.lock().unwrap() = Some(listed.iter().map(|a| (a.clone(), Stands::Checking)).collect());
             proxy.send(Msg::Redraw);
             for a in listed {
-                let now = match olo_mail::password(&a.address) {
-                    None => Stands::Failed("Its app password isn’t in the keyring: remove it and add it again.".into()),
-                    Some(p) => match olo_mail::check(&a, &p) {
+                let now = match olo_mail::auth_of(&a) {
+                    Err(why) if why.starts_with("no app password") => Stands::Failed("Its app password isn’t in the keyring: remove it and add it again.".into()),
+                    Err(why) => Stands::Failed(sentence(&why)),
+                    Ok(auth) => match olo_mail::check(&a, &auth) {
                         Ok(()) => Stands::Connected,
                         Err(why) => Stands::Failed(sentence(&why)),
                     },
@@ -131,7 +140,7 @@ impl State {
                 Ok(()) => match olo_mail::keep_password(&account.address, password.trim()) {
                     Err(e) => Adding::Failed(format!("The app password couldn’t be kept in the keyring ({e}).")),
                     Ok(()) => {
-                        let mut listed = olo_mail::accounts();
+                        let mut listed = olo_mail::own_accounts();
                         listed.retain(|a| a.address != account.address);
                         listed.push(account.clone());
                         match olo_mail::save_accounts(&listed) {
@@ -153,15 +162,22 @@ impl State {
     }
 
     /// Forget an account: its password out of the keyring, its address
-    /// off the list.
+    /// off the list. A Google account stays connected to Olo: its mail
+    /// is no longer looked in (its Mail unticked under Google).
     fn remove(&self, address: String) {
         let (accounts, proxy) = (self.accounts.clone(), self.proxy.clone());
         if let Some(list) = accounts.lock().unwrap().as_mut() {
             list.retain(|(a, _)| a.address != address);
         }
+        let through_google = self.google.lock().unwrap().iter().any(|g| g.eq_ignore_ascii_case(&address));
         std::thread::spawn(move || {
+            if through_google {
+                crate::google::tick(&address, olo_google::accounts::Service::Mail, false);
+                proxy.send(Msg::Redraw);
+                return;
+            }
             olo_mail::forget_password(&address);
-            let mut listed = olo_mail::accounts();
+            let mut listed = olo_mail::own_accounts();
             listed.retain(|a| a.address != address);
             if let Err(e) = olo_mail::save_accounts(&listed) {
                 tracing::warn!("mail accounts: couldn’t save ({e})");
@@ -216,8 +232,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         },
     };
     let mut items: Vec<Element> = vec![
-        service("mail", "While a page waits for a one-time code sent by mail, Olo looks for it in these accounts’ new mail for a minute (which ones: Security ▸ Passwords).", status).into_element(),
+        service("mail", "While a page waits for a one-time code sent by mail, Olo looks for it in these accounts’ new mail for a minute (which ones: Security ▸ Passwords). Google accounts: tick Mail for them under Google.", status).into_element(),
     ];
+    let google = st.google.lock().unwrap().clone();
     for (account, stands) in listed.iter().flatten() {
         let how = match stands {
             Stands::Checking => "checking…".to_owned(),
@@ -231,15 +248,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 .flex_row()
                 .items_center()
                 .gap(px(m::SPACING))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .flex()
-                        .flex_col()
-                        .child(StringView::new(account.address.clone()).wrap(true))
-                        .child(StringView::new(format!("{} · {how}", account.provider.name())).dim(true).wrap(true)),
-                )
+                .child(div().flex_1().min_w_0().flex().flex_col().child(StringView::new(account.address.clone()).wrap(true)).child(
+                    StringView::new(format!("{} · {how}", if google.iter().any(|g| g.eq_ignore_ascii_case(&account.address)) { "Google" } else { account.provider.name() })).dim(true).wrap(true),
+                ))
                 .child(Button::new("Remove").id(format!("mail-remove-{address}")).on_click(act(ui, move |st, _| st.remove(address.clone()))))
                 .into_element(),
         );
@@ -278,7 +289,8 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             let checking = listed.iter().flatten().any(|(_, s)| *s == Stands::Checking);
             row.push(Button::new("Check Again").id("mail-check").enabled(!checking).on_click(act(ui, |st, _| st.check())).into_element());
         }
-        for provider in Provider::ALL {
+        // (Gmail's: under Google, with Mail ticked.)
+        for provider in [Provider::Fastmail] {
             let field = st.address.downgrade();
             row.push(
                 Button::new(format!("Add {}…", provider.name()))

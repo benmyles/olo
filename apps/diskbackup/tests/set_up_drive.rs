@@ -108,71 +108,53 @@ fn serve_google() {
     std::thread::sleep(Duration::from_secs(secs));
 }
 
-/// Agent Setup's last step, as the agent runs it (`--agent-setup-done
-/// FILE`): the client kept in Passwords (a stand-in's socket, which says
-/// what it was asked), DiskBackup signed in (the consent page's address
-/// said, the browser's answer taken at the loopback address) and set up.
+/// Backing up to the Drive of a Google account connected to Olo
+/// (`--set-up-drive-account`, what the Google grid's DiskBackup tick and
+/// the Back Up to Google Drive window do): signed in through the
+/// account's own app (Olo's list of accounts and its sign-in, here a
+/// test's own), the folder made, a backup made there, the account ticked
+/// for DiskBackup; one that isn't connected refused, saying where to
+/// connect it; then `--disconnect-drive`: no target, unticked, the
+/// backups in Drive left as they are.
 #[test]
-fn agent_setup_done() {
-    use std::os::unix::net::UnixListener;
-    let base = std::path::PathBuf::from(format!("/var/tmp/olo-diskbackup-agent-{}", std::process::id()));
+fn set_up_drive_account_then_disconnect() {
+    let base = std::path::PathBuf::from(format!("/var/tmp/olo-diskbackup-account-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&base);
-    for d in ["home/docs", "config", "cache", "state", "run"] {
+    for d in ["home/docs", "config", "cache", "state", "run", "google"] {
         std::fs::create_dir_all(base.join(d)).unwrap();
     }
-    let file = base.join("home/client_secret_123.json");
-    std::fs::write(&file, r#"{"installed":{"client_id":"123.apps.googleusercontent.com","project_id":"olo-diskbackup","client_secret":"GOCSPX-secret","redirect_uris":["http://localhost"]}}"#)
-        .unwrap();
-    // Passwords, standing in: what it's asked to keep.
-    let sock = base.join("run/k.sock");
-    let listener = UnixListener::bind(&sock).unwrap();
-    let asked = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
-    {
-        let asked = asked.clone();
-        std::thread::spawn(move || {
-            for s in listener.incoming().flatten() {
-                let mut line = String::new();
-                if BufReader::new(&s).read_line(&mut line).is_ok() {
-                    asked.lock().unwrap().push(serde_json::from_str(&line).unwrap_or_default());
-                    let _ = (&s).write_all(b"{\"type\":\"saved\",\"title\":\"DiskBackup Google Client\",\"updated\":false}\n");
-                }
-            }
-        });
-    }
+    let list = base.join("google/accounts.json");
+    std::fs::write(&list, r#"[{"address":"me@example.com","services":["mail"],"scopes":["https://mail.google.com/","https://www.googleapis.com/auth/drive.file"]}]"#).unwrap();
+    std::fs::write(base.join("google/me@example.com.json"), r#"{"client":{"id":"123.apps.googleusercontent.com","secret":"GOCSPX-secret"},"refresh_token":"the-refresh"}"#).unwrap();
     let g = Arc::new(Mutex::new(google::Google::default()));
     let api = google::serve(g.clone());
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_olo-diskbackup"));
-    cmd.arg("--agent-setup-done").arg(&file).stdout(Stdio::piped()).stderr(Stdio::null());
-    sandboxed(&mut cmd, &base, &api);
-    cmd.env("OLO_KEYCHAIN_SOCKET", &sock);
-    let mut child = cmd.spawn().unwrap();
-    let mut out = BufReader::new(child.stdout.take().unwrap());
-    let mut said = String::new();
-    let url = loop {
-        let mut line = String::new();
-        assert!(out.read_line(&mut line).unwrap() > 0, "no address said: {said}");
-        said.push_str(&line);
-        if let Some(u) = line.trim().strip_prefix(&format!("{api}/auth?")) {
-            break u.to_owned();
-        }
+    let run = |args: &[&str]| {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_olo-diskbackup"));
+        cmd.args(args);
+        sandboxed(&mut cmd, &base, &api);
+        // (Olo's own list and sign-ins, not DiskBackup's from before.)
+        cmd.env_remove("OLO_DISKBACKUP_GOOGLE").env("OLO_GOOGLE_ACCOUNTS", &list).env("OLO_GOOGLE_SECRETS", base.join("google"));
+        cmd.output().unwrap()
     };
-    assert!(said.contains("Kept in Passwords as “DiskBackup Google Client”"), "{said}");
-    let kept = asked.lock().unwrap().clone();
-    assert_eq!(kept.len(), 1, "{kept:?}");
-    assert_eq!(kept[0]["type"], "keep_secret");
-    assert_eq!(kept[0]["title"], "DiskBackup Google Client");
-    assert!(kept[0]["secret"].as_str().unwrap().contains("123.apps.googleusercontent.com"));
-    let param = |k: &str| google::unescape(url.split(&format!("{k}=")).nth(1).unwrap().split('&').next().unwrap());
-    let (state, redirect) = (param("state"), param("redirect_uri"));
-    let mut s = TcpStream::connect(redirect.trim_start_matches("http://")).unwrap();
-    s.write_all(format!("GET /?state={state}&code=the-code HTTP/1.1\r\nHost: x\r\n\r\n").as_bytes()).unwrap();
-    let mut page = String::new();
-    s.read_to_string(&mut page).unwrap();
-    let mut rest = String::new();
-    out.read_to_string(&mut rest).unwrap();
-    assert!(child.wait().unwrap().success(), "{rest}");
-    assert!(rest.contains("Backing up to Google Drive (me@example.com)") && rest.contains("DiskBackup is set up"), "{rest}");
-    let settings: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(base.join("run/diskbackup-settings.json")).unwrap()).unwrap();
-    assert_eq!(settings["target"]["kind"], "google-drive");
+    let out = run(&["--set-up-drive-account", "ME@example.com"]);
+    let said = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{said}{}", String::from_utf8_lossy(&out.stderr));
+    assert!(said.contains("Backing up to Google Drive (me@example.com)"), "{said}");
+    let settings = || -> serde_json::Value { serde_json::from_str(&std::fs::read_to_string(base.join("run/diskbackup-settings.json")).unwrap()).unwrap() };
+    assert_eq!((settings()["target"]["kind"].as_str(), settings()["target"]["account"].as_str()), (Some("google-drive"), Some("me@example.com")));
+    assert!(g.lock().unwrap().files.values().any(|f| f.0 == "config"), "the backup made in Drive");
+    let services = || -> serde_json::Value { serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(&list).unwrap()).unwrap()[0]["services"].clone() };
+    assert_eq!(services(), serde_json::json!(["mail", "diskbackup"]));
+    // One that isn't connected: refused, nothing changed.
+    let out = run(&["--set-up-drive-account", "someone@example.org"]);
+    assert!(!out.status.success() && String::from_utf8_lossy(&out.stderr).contains("isn't connected to Olo"), "{}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(settings()["target"]["account"].as_str(), Some("me@example.com"));
+    // Disconnected: no target, unticked; what's in Drive stays.
+    let out = run(&["--disconnect-drive"]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(String::from_utf8_lossy(&out.stdout).contains("no longer backs up to me@example.com’s Google Drive"));
+    assert_eq!(settings()["target"]["kind"].as_str(), Some("none"));
+    assert_eq!(services(), serde_json::json!(["mail"]));
+    assert!(g.lock().unwrap().files.values().any(|f| f.0 == "config"), "the backups there stay");
     let _ = std::fs::remove_dir_all(base);
 }

@@ -29,6 +29,7 @@ mod deskbar;
 mod display;
 mod face_unlock;
 mod form;
+mod google;
 mod gpus;
 mod integrations;
 mod keyboard;
@@ -114,16 +115,23 @@ static PREFS: OnceLock<Mutex<Prefs>> = OnceLock::new();
 /// session) and wait for it: what it said at the end, or why it didn't.
 /// Off the looper: it waits for the person.
 pub fn ask_doctor(args: &[&str]) -> Result<String, String> {
+    ask_program("olo-doctor", args)
+}
+
+/// Have Olo's program `name` beside us do something (`olo-doctor`,
+/// `olo-diskbackup --set-up-drive-account ADDRESS`) and wait for it:
+/// what it said at the end, or why it didn't. Off the looper.
+pub fn ask_program(name: &str, args: &[&str]) -> Result<String, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let exe = std::path::PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)"));
-    let doctor = exe.with_file_name("olo-doctor");
-    let out = std::process::Command::new(&doctor).args(args).stdin(std::process::Stdio::null()).output().map_err(|e| format!("{}: {e}", doctor.display()))?;
+    let program = exe.with_file_name(name);
+    let out = std::process::Command::new(&program).args(args).stdin(std::process::Stdio::null()).output().map_err(|e| format!("{}: {e}", program.display()))?;
     let last = |bytes: &[u8]| String::from_utf8_lossy(bytes).lines().rev().find(|l| !l.trim().is_empty()).unwrap_or_default().trim().to_owned();
     if out.status.success() {
         return Ok(last(&out.stdout));
     }
     let why = last(&out.stderr);
-    let why = why.strip_prefix("olo-doctor: ").unwrap_or(&why);
+    let why = why.strip_prefix(&format!("{name}: ")).unwrap_or(&why);
     // (As a sentence of its own.)
     let mut c = why.chars();
     Err(match c.next() {
@@ -628,6 +636,10 @@ fn backup_cli(flag: &str, file: &std::path::Path, sealed: bool, only: Option<Vec
 fn main() {
     olo_crash::install();
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // The Google account set-up's agent, done (no window).
+    if args.first().is_some_and(|a| a == "--google-setup-done") {
+        std::process::exit(google::setup_done(&args[1..]));
+    }
     if let [flag, file, rest @ ..] = &args[..]
         && let Some((sealed, only)) = backup_options(rest)
         && let Some(code) = backup_cli(flag, std::path::Path::new(file), sealed, only)

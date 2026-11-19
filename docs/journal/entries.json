@@ -5068,5 +5068,11 @@
   "title": "Calendar: invite people to an event",
   "caption": "An event of your own has an Invite field: type your guests' addresses with commas between and Save. Your calendar's server sends the invitations, and the window lists each guest with what they've answered. Take an address out to uninvite.",
   "image": "2026-11-18/191557-calendar-invite-people-to-an-event.png"
+ },
+ {
+  "time": "2026-11-18T20:38:19",
+  "title": "One Google integration, and a grid of what each account is for",
+  "caption": "Preferences \u25b8 Integrations \u25b8 Google: each Google account connected through an app of its own, \u201cOlo (its address)\u201d, which an agent makes for you in Google Cloud (Add a Google Account\u2026). Tick Mail, Calendar and DiskBackup for each. DiskBackup's older app can be brought in as it is (Bring It Into Olo\u2026), so its backups stay where they are.",
+  "image": "2026-11-18/203819-one-google-integration-and-a-grid-of-what-each-a.png"
  }
 ]

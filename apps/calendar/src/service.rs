@@ -213,7 +213,8 @@ pub fn run() -> std::process::ExitCode {
     };
     // Woken when the accounts, the person's choices or what's kept change.
     let waker = alarm.waker();
-    let mut followed = vec![olo_calendar::account::accounts_path(), crate::settings_path()];
+    let mut followed = olo_calendar::account::watched();
+    followed.push(crate::settings_path());
     followed.extend(sync::store_dir());
     let _watch = olo_kit::watch::watch(followed, move |_| waker.wake());
     let h24 = Arc::new(AtomicBool::new(true));

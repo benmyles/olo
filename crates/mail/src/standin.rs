@@ -14,6 +14,9 @@ use std::{
 /// The password a session gives the stand-in (`crate::password` with
 /// `OLO_MAIL_IMAP` set).
 pub const PASSWORD: &str = "standin";
+/// The Google token it takes (`AUTHENTICATE XOAUTH2`); any other is
+/// refused as Google refuses one: a line of why, then NO.
+pub const TOKEN: &str = "ya29.standin";
 
 /// When it was, `secs` seconds ago (Unix seconds).
 pub fn ago(secs: u64) -> u64 {
@@ -165,6 +168,23 @@ fn serve(stream: TcpStream, state: &Mutex<State>) {
             } else {
                 lock().logins.push(format!("{address} {password}"));
                 format!("{tag} OK signed in\r\n")
+            }
+        } else if let Some(said) = cmd.strip_prefix("AUTHENTICATE XOAUTH2 ") {
+            use base64::Engine as _;
+            lock().said.push("AUTHENTICATE XOAUTH2".into());
+            let text = base64::engine::general_purpose::STANDARD.decode(said.trim()).ok().and_then(|b| String::from_utf8(b).ok()).unwrap_or_default();
+            let mut parts = text.split('\x01');
+            let (user, auth) = (parts.next().unwrap_or_default().trim_start_matches("user=").to_owned(), parts.next().unwrap_or_default().to_owned());
+            if auth == format!("auth=Bearer {TOKEN}") {
+                lock().logins.push(format!("{user} token"));
+                format!("{tag} OK signed in\r\n")
+            } else {
+                // (Why, base64, then it waits for a line before saying NO.)
+                let _ = w.write_all(b"+ eyJzdGF0dXMiOiI0MDAifQ==\r\n");
+                let _ = w.flush();
+                let mut empty = String::new();
+                let _ = reader.read_line(&mut empty);
+                format!("{tag} NO [AUTHENTICATIONFAILED] Invalid credentials (Failure)\r\n")
             }
         } else {
             lock().said.push(cmd.clone());

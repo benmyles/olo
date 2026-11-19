@@ -43,7 +43,7 @@ pub fn store(target: &Target, limits: &Limits) -> Result<Arc<dyn Store>, String>
             Ok(Arc::new(Throttled { inner: LocalStore::new(path), up: limits.up.clone(), down: limits.down.clone() }))
         }
         Target::GoogleDrive { account, folder } => {
-            let g = google()?;
+            let g = google_for(account)?;
             Ok(Arc::new(
                 olo_diskbackup::drive::Drive::new(g.client, g.refresh_token, account.clone(), folder.clone(), limits.up.clone(), limits.down.clone(), endpoints()).stopped_by(limits.stop.clone()),
             ))
@@ -87,14 +87,18 @@ pub fn google() -> Result<Google, String> {
     Ok(g)
 }
 
-/// The client DiskBackup signed in with here before (kept when it
-/// disconnects), to connect again with. Blocks (the keyring).
-pub fn known_client() -> Option<olo_diskbackup::oauth::Client> {
-    let text = match std::env::var("OLO_DISKBACKUP_GOOGLE") {
-        Ok(t) => t.into_bytes(),
-        Err(_) => secrets::lookup(secrets::DISKBACKUP_GOOGLE.attributes).ok().flatten()?,
-    };
-    serde_json::from_slice::<Google>(&text).ok().map(|g| g.client)
+/// What signs DiskBackup in to `account`'s Drive: the account's own app,
+/// where the account is connected to Olo (Preferences ▸ Integrations ▸
+/// Google, `olo_google::accounts`: the one sign-in Mail and Calendar use
+/// too); else DiskBackup's own sign-in from before ([`google`]). (Tests,
+/// `OLO_DISKBACKUP_GOOGLE`: theirs.) Blocks (the keyring).
+pub fn google_for(account: &str) -> Result<Google, String> {
+    if std::env::var_os("OLO_DISKBACKUP_GOOGLE").is_none()
+        && let Some(s) = olo_google::accounts::secret(account).filter(|s| !s.refresh_token.is_empty())
+    {
+        return Ok(Google { client: s.client, refresh_token: s.refresh_token });
+    }
+    google()
 }
 
 /// Disconnected: DiskBackup's sign-in to Google Drive forgotten on this
@@ -120,18 +124,18 @@ pub fn forget_google() -> Result<(), String> {
 /// empty? wouldn't that be much quicker?"), and made again, empty; the
 /// target with the new folder.
 pub fn erase_drive(account: &str, folder: &str) -> Result<Target, String> {
-    let g = google()?;
+    let g = google_for(account)?;
     let d = olo_diskbackup::drive::Drive::new(g.client.clone(), g.refresh_token.clone(), account.to_owned(), folder.to_owned(), Arc::default(), Arc::default(), endpoints());
     d.delete_folder().map_err(|e| e.to_string())?;
     let folder = olo_diskbackup::drive::Drive::folder(&g.client, &g.refresh_token, &endpoints())?;
     Ok(Target::GoogleDrive { account: account.to_owned(), folder })
 }
 
-/// The backups' folder in Google Drive as it is now, if it's another than
-/// `folder` (another computer erased them all: a new folder, by the same
-/// name).
-pub fn drive_folder_moved(folder: &str) -> Option<String> {
-    let g = google().ok()?;
+/// The backups' folder in `account`'s Google Drive as it is now, if it's
+/// another than `folder` (another computer erased them all: a new
+/// folder, by the same name).
+pub fn drive_folder_moved(account: &str, folder: &str) -> Option<String> {
+    let g = google_for(account).ok()?;
     olo_diskbackup::drive::Drive::find_folder(&g.client, &g.refresh_token, &endpoints()).ok().flatten().filter(|f| f != folder)
 }
 
@@ -165,7 +169,7 @@ pub fn look_at(t: &Target) -> Result<Where, String> {
             Ok(Where::Disk { free: v.f_bavail * unit, total: v.f_blocks * unit })
         }
         Target::GoogleDrive { account, folder } => {
-            let g = google()?;
+            let g = google_for(account)?;
             let d = olo_diskbackup::drive::Drive::new(g.client, g.refresh_token, account.clone(), folder.clone(), Arc::default(), Arc::default(), endpoints());
             d.about().map(Where::Drive).map_err(|e| e.to_string())
         }

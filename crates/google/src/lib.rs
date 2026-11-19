@@ -67,12 +67,19 @@ impl Client {
     }
 }
 
-/// Signed in: the refresh token (kept), and whose account it is.
+/// Signed in: the refresh token (kept), whose account it is, and what
+/// the person allowed of what was asked (Google's page lets them leave
+/// some out).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SignedIn {
     pub refresh_token: String,
     pub email: String,
+    #[serde(default)]
+    pub scopes: Vec<String>,
 }
+
+pub mod accounts;
+pub mod setup;
 
 /// An HTTP agent for Google, calling itself `name` ("Olo DiskBackup"):
 /// its TLS the system's roots, statuses as values (an error's body says
@@ -153,25 +160,40 @@ pub struct SignIn {
     url: String,
     /// Who is signing in, for the page the browser ends on ("DiskBackup").
     app: String,
+    /// The scopes asked for.
+    asked: Vec<String>,
 }
 
 impl SignIn {
     /// A sign-in begun for the program called `app` ("DiskBackup"), asking
     /// for `scopes` (space between).
     pub fn start(client: &Client, endpoints: &Endpoints, scopes: &str, app: &str) -> std::io::Result<SignIn> {
+        SignIn::start_as(client, endpoints, scopes, app, None)
+    }
+
+    /// [`SignIn::start`] for the account `address`, where it's known
+    /// (Google's page goes to it); where it isn't, Google asks which
+    /// account, whatever the browser is signed in to (Ben, 2026-11-18:
+    /// one account's client was tried on another without a word).
+    pub fn start_as(client: &Client, endpoints: &Endpoints, scopes: &str, app: &str, address: Option<&str>) -> std::io::Result<SignIn> {
         let listener = TcpListener::bind("127.0.0.1:0")?;
         let redirect = format!("http://127.0.0.1:{}", listener.local_addr()?.port());
         let verifier = random(48);
         let challenge = b64(&sha2::Sha256::digest(verifier.as_bytes()));
         let state = random(16);
+        let whose = match address.map(str::trim).filter(|a| !a.is_empty()) {
+            Some(address) => format!("prompt=consent&login_hint={}", escape(address)),
+            None => "prompt=select_account%20consent".to_owned(),
+        };
         let url = format!(
-            "{}?client_id={}&redirect_uri={}&response_type=code&scope={}&code_challenge={challenge}&code_challenge_method=S256&state={state}&access_type=offline&prompt=consent",
+            "{}?client_id={}&redirect_uri={}&response_type=code&scope={}&code_challenge={challenge}&code_challenge_method=S256&state={state}&access_type=offline&{whose}",
             endpoints.auth,
             escape(client.id.trim()),
             escape(&redirect),
             escape(scopes)
         );
-        Ok(SignIn { listener, redirect, verifier, state, client: client.clone(), endpoints: endpoints.clone(), url, app: app.to_owned() })
+        let asked: Vec<String> = scopes.split_whitespace().map(str::to_owned).collect();
+        Ok(SignIn { listener, redirect, verifier, state, client: client.clone(), endpoints: endpoints.clone(), url, app: app.to_owned(), asked })
     }
 
     /// Google's consent page, for the browser.
@@ -238,7 +260,12 @@ impl SignIn {
         let v = post_form(http, &self.endpoints.token, &form)?;
         let refresh_token = v.get("refresh_token").and_then(|t| t.as_str()).ok_or("Google gave no refresh token (sign in again)")?.to_owned();
         let email = v.get("id_token").and_then(|t| t.as_str()).and_then(email_of).unwrap_or_default();
-        Ok(SignedIn { refresh_token, email })
+        // (What was allowed, as Google says; a server that doesn't say allowed what was asked.)
+        let scopes = match v.get("scope").and_then(|s| s.as_str()) {
+            Some(allowed) => allowed.split_whitespace().map(str::to_owned).collect(),
+            None => self.asked.clone(),
+        };
+        Ok(SignedIn { refresh_token, email, scopes })
     }
 }
 

@@ -91,7 +91,8 @@ fn link(proxy: olo_kit::Proxy) -> &'static Link {
                 proxy.send(Msg::Redraw);
             }
         };
-        let paths = [PhoneState::path(), PhoneSettings::path(), olo_mail::accounts_path()];
+        let mut paths = vec![PhoneState::path(), PhoneSettings::path()];
+        paths.extend(olo_mail::watched());
         let first = read.clone();
         std::thread::spawn(move || first(&[]));
         if let Some(w) = olo_kit::watch::watch(paths, read) {
