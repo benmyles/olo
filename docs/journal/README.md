@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Calendar's events in the command palette
+
+*16:59* — Type two letters or more in the palette and the events with those words in their title, place or notes are among the results, each at its next occurrence (or its last, if it's over), with when, where and which calendar. Return opens Calendar on it.
+
+![Calendar's events in the command palette](2026-11-18/165943-calendar-s-events-in-the-command-palette.png)
+
 ### Calendar in Deskbar: Next Event and The Day Ahead
 
 *16:50* — Calendar gives Deskbar two widgets (Preferences ▸ Deskbar): what's next, with what comes after it, and the day ahead as a list in each calendar's colour. A click opens Calendar on the event. Their headline is ordinary-sized words, not the big figure Weather uses. Also: several files chosen in the file picker are handed to the program in name order.

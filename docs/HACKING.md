@@ -17580,7 +17580,8 @@ put it away.
   and so on) and ctrl again continues to cycle through the 3"): at
   first Olo's own (its apps, the front app's menu commands, the
   desktop's shortcuts, Preferences' panels and settings, the open
-  windows, Passwords' items, sums, slash commands and the web search);
+  windows, Passwords' items, Calendar's events, sums, slash commands
+  and the web search);
   a tap of Ctrl on its own (not ⌘, which comes as the right Ctrl) goes
   on to files and folders only, the next to other programs' apps only
   (their desktop entries: `sources::other_app`, an `Action::Launch`;
@@ -17593,6 +17594,20 @@ put it away.
   any. The field is a little taller than its line on the device grid
   (it sets its text by the capitals' middle, so a field just a line
   tall cut the letters' tops at 1.25×).
+* **Calendar's events** (`sources::Events`, `event_items`; a result
+  of kind Event): two letters typed and more, the events with every
+  word in their title, place or notes (`olo_calendar::find`: from what
+  Calendar keeps on this computer, the calendars hidden in Calendar
+  left out), each once, at its next occurrence or with none to come
+  its last, six at the most: its title, and under it when ("Today, 2
+  PM – 3:30 PM", "Mon, Mar 1, 2027"), where and which calendar.
+  Return opens Calendar on that occurrence (`olo-calendar --show HREF
+  START`). On a worker of its own (a slow one never holds up the
+  others); the calendars are read once and again only when their
+  files change (each file's time and size), so a query is a pass over
+  events already read. At rest the palette wakes 0 times a second.
+  Tested: `sources::tests::events_as_results`,
+  `olo_calendar::find::tests::events_found_by_their_words`.
 * **Sources** (`sources.rs`): applications (ours, then desktop entries),
   "Go to ~/src/olo" for a path copied (offered first, before anything
   is typed) or typed whole (`sources::go_to`: absolute, `~/…`, a

@@ -113,7 +113,8 @@ something nobody here has is in "Blocked", with what it waits for.
   the event window's Going answer them, and the window lists the
   guests with their answers (not yet: inviting people yourself).
   Deskbar widgets: Next Event and The Day Ahead (Preferences ▸
-  Deskbar; a click opens Calendar on the event). **Next**: the palette, the assistant. Reminders are shown
+  Deskbar; a click opens Calendar on the event). The command palette
+  finds events (Return opens Calendar on one). **Next**: the assistant, the clock's menu. Reminders are shown
   (`olo-calendar --service`, a session service; Show goes to the
   event). (Its cost
   is measured and in-place reload tried: HACKING.md, "Calendar".)

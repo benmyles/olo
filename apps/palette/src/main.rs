@@ -328,6 +328,8 @@ struct Palette {
     menus: Vec<Item>,
     files: Vec<Item>,
     passwords: Vec<Item>,
+    /// Calendar's events for what's typed.
+    events: Vec<Item>,
     /// Go to the path in the clipboard, if it holds one that's there
     /// (asked for once, when the window has the keyboard).
     copied: Option<Item>,
@@ -463,6 +465,7 @@ impl Palette {
             menus: Vec::new(),
             files: Vec::new(),
             passwords: Vec::new(),
+            events: Vec::new(),
             copied: None,
             read_copied: false,
             typed: None,
@@ -574,7 +577,7 @@ impl Palette {
             let found = match self.scope {
                 Scope::Files => sources::ranked_with(&words, self.files.iter().chain(&self.copied), by_model),
                 Scope::Olo => {
-                    let all = self.fixed.iter().chain(&self.context).filter(|i| Scope::Olo.has(i)).chain(&self.menus).chain(&self.passwords).chain(&self.copied);
+                    let all = self.fixed.iter().chain(&self.context).filter(|i| Scope::Olo.has(i)).chain(&self.menus).chain(&self.passwords).chain(&self.events).chain(&self.copied);
                     sources::ranked_with(&words, all, by_model)
                 }
                 Scope::Apps => sources::ranked_with(&words, self.fixed.iter().filter(|i| Scope::Apps.has(i)), by_model),
@@ -613,6 +616,7 @@ impl Palette {
             let _ = self.shared.workers.files.send((self.asked, rank::words(&self.query_text)));
         }
         let _ = self.shared.workers.passwords.send((self.asked, self.query_text.clone()));
+        let _ = self.shared.workers.events.send((self.asked, self.query_text.clone()));
         // A path written whole: looked for on a worker, offered if it's
         // there.
         if olo_kit::files::written_path(&self.query_text).is_some() {
@@ -1067,6 +1071,7 @@ impl View for Palette {
             Msg::Found(Found::Menus(items)) => self.menus = items,
             Msg::Found(Found::Files(n, items)) if n == self.asked => self.files = items,
             Msg::Found(Found::Passwords(n, items)) if n == self.asked => self.passwords = items,
+            Msg::Found(Found::Events(n, items)) if n == self.asked => self.events = items,
             Msg::Found(_) => return,
             Msg::Asked(asked) => return self.asked(asked, cx),
             Msg::Copied(item) => self.copied = Some(item),

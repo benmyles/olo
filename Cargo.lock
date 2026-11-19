@@ -7984,8 +7984,10 @@ name = "olo-palette"
 version = "0.1.0"
 dependencies = [
  "ignore",
+ "jiff",
  "libc",
  "olo-ai",
+ "olo-calendar",
  "olo-complete",
  "olo-crash",
  "olo-keychain",

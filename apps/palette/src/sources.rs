@@ -26,6 +26,8 @@ pub enum Kind {
     Shortcut,
     Setting,
     Password,
+    /// A calendar's event.
+    Event,
     File,
     Web,
 }
@@ -41,6 +43,7 @@ impl Kind {
             Kind::Shortcut => "Shortcut",
             Kind::Setting => "Setting",
             Kind::Password => "Password",
+            Kind::Event => "Event",
             Kind::File => "File",
             Kind::Web => "Web",
         }
@@ -55,7 +58,7 @@ impl Kind {
             Kind::Shortcut | Kind::Setting => 35,
             Kind::Preference => 15,
             Kind::Window => 10,
-            Kind::Password => 0,
+            Kind::Password | Kind::Event => 0,
             // Files come after anything else that matches as well.
             Kind::File => -60,
             Kind::Web => -1000,
@@ -161,6 +164,8 @@ pub enum Found {
     Files(u64, Vec<Item>),
     /// Passwords for query number `.0`.
     Passwords(u64, Vec<Item>),
+    /// Calendar's events for query number `.0`.
+    Events(u64, Vec<Item>),
 }
 
 /// The MIME types text is copied as (what's on the clipboard read as
@@ -547,6 +552,104 @@ pub fn find_passwords(query: &str) -> Vec<Item> {
     }
 }
 
+/// Calendar's events as they're kept on this computer, read once and
+/// again only when their files change (`stamp`: each file's time and
+/// size).
+#[derive(Default)]
+pub struct Events {
+    stamp: Vec<(PathBuf, Option<std::time::SystemTime>, u64)>,
+    cals: Vec<olo_calendar::find::Read>,
+}
+
+impl Events {
+    fn dir() -> PathBuf {
+        olo_xdg::cache_dir().join("calendar")
+    }
+
+    /// The calendars' files as they are now.
+    fn stamp_of(dir: &Path) -> Vec<(PathBuf, Option<std::time::SystemTime>, u64)> {
+        let mut out = Vec::new();
+        for account in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+            for file in std::fs::read_dir(account.path()).into_iter().flatten().flatten() {
+                if let Ok(m) = file.metadata() {
+                    out.push((file.path(), m.modified().ok(), m.len()));
+                }
+            }
+        }
+        out.sort();
+        out
+    }
+
+    /// The calendars, read again if their files changed.
+    fn read(&mut self, dir: &Path) -> &[olo_calendar::find::Read] {
+        let stamp = Self::stamp_of(dir);
+        if stamp != self.stamp {
+            self.cals = olo_calendar::store::Kept::load_all(dir).iter().map(olo_calendar::find::Read::of).collect();
+            self.stamp = stamp;
+        }
+        &self.cals
+    }
+
+    /// The events for `query` (two letters at least): each once, at its
+    /// next occurrence or its last; Return opens Calendar on it.
+    pub fn find(&mut self, query: &str) -> Vec<Item> {
+        if query.trim().chars().count() < 2 {
+            return Vec::new();
+        }
+        let dir = Self::dir();
+        if self.read(&dir).is_empty() {
+            return Vec::new();
+        }
+        // (The calendars the person hides in Calendar aren't looked in.)
+        let hidden: Vec<String> = std::fs::read(olo_kit::config_dir().join("calendar.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+            .and_then(|v| v.pointer("/choices/hidden").and_then(|h| h.as_array().cloned()))
+            .map(|list| list.iter().filter_map(|h| h.as_str().map(str::to_owned)).collect())
+            .unwrap_or_default();
+        let h24 = olo_kit::settings::current().is_some_and(|s| s.clock.twenty_four_hour);
+        let now = jiff::Zoned::now();
+        event_items(&self.cals, &|href| hidden.iter().any(|h| h == href), query, &now, h24)
+    }
+}
+
+/// How many events a query lists.
+const EVENTS: usize = 6;
+
+/// `query`'s events among `cals` as results: its title; when, where and
+/// in which calendar under it.
+pub fn event_items(cals: &[olo_calendar::find::Read], hidden: &dyn Fn(&str) -> bool, query: &str, now: &jiff::Zoned, h24: bool) -> Vec<Item> {
+    let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+    let today = now.date();
+    let clock = |t: jiff::civil::Time| match (h24, t.minute()) {
+        (true, m) => format!("{:02}:{m:02}", t.hour()),
+        (false, 0) => format!("{} {}", (t.hour() + 11) % 12 + 1, if t.hour() < 12 { "AM" } else { "PM" }),
+        (false, m) => format!("{}:{m:02} {}", (t.hour() + 11) % 12 + 1, if t.hour() < 12 { "AM" } else { "PM" }),
+    };
+    let day = |d: jiff::civil::Date| {
+        let apart = d.since((jiff::Unit::Day, today)).map_or(i64::MAX, |s| s.get_days() as i64);
+        match apart {
+            0 => "Today".to_owned(),
+            1 => "Tomorrow".to_owned(),
+            -1 => "Yesterday".to_owned(),
+            _ if d.year() == today.year() => d.strftime("%a, %b %-d").to_string(),
+            _ => d.strftime("%a, %b %-d, %Y").to_string(),
+        }
+    };
+    olo_calendar::find::find(cals, hidden, &words, now, EVENTS)
+        .into_iter()
+        .map(|f| {
+            let when = if f.all_day { day(f.start.date()) } else { format!("{}, {} – {}", day(f.start.date()), clock(f.start.time()), clock(f.end.time())) };
+            let said: Vec<&str> = [when.as_str(), f.location.as_str(), f.calendar.as_str()].into_iter().filter(|w| !w.is_empty()).collect();
+            // (Found by its notes too: it answers to what was typed.)
+            Item::new(Kind::Event, f.title.clone(), Action::Spawn(vec!["olo-calendar".into(), "--show".into(), f.href.clone(), f.start.to_string()]))
+                .subtitle(said.join(" · "))
+                .icon("calendar")
+                .keywords(format!("{} {} {query}", f.location, f.calendar))
+        })
+        .collect()
+}
+
 /// Text editing's keys (`sheet::text_keys`), each a shortcut done in the
 /// window the palette was opened over, and with Shift what selects as it
 /// moves: so every key is there to find, and learn (Ben, 2026-11-03:
@@ -731,6 +834,7 @@ fn search_url(text: &str) -> String {
 pub struct Workers {
     pub files: mpsc::Sender<(u64, Vec<String>)>,
     pub passwords: mpsc::Sender<(u64, String)>,
+    pub events: mpsc::Sender<(u64, String)>,
 }
 
 pub fn workers(proxy: Proxy) -> Workers {
@@ -841,6 +945,20 @@ pub fn workers(proxy: Proxy) -> Workers {
             }
         }
     });
+    // Calendar's events: from what's kept on disk, read once.
+    let (events, events_rx) = mpsc::channel::<(u64, String)>();
+    let events_to_ui = proxy.clone();
+    let _ = std::thread::Builder::new().name("palette-events".into()).spawn(move || {
+        let mut kept = Events::default();
+        while let Ok(mut q) = events_rx.recv() {
+            // Typing fast: wait for a pause, take the newest.
+            std::thread::sleep(Duration::from_millis(120));
+            while let Ok(newer) = events_rx.try_recv() {
+                q = newer;
+            }
+            events_to_ui.send(Found::Events(q.0, kept.find(&q.1)));
+        }
+    });
     let (passwords, pass_rx) = mpsc::channel::<(u64, String)>();
     let _ = std::thread::Builder::new().name("palette-passwords".into()).spawn(move || {
         while let Ok(mut q) = pass_rx.recv() {
@@ -852,12 +970,42 @@ pub fn workers(proxy: Proxy) -> Workers {
             proxy.send(Found::Passwords(q.0, find_passwords(&q.1)));
         }
     });
-    Workers { files, passwords }
+    Workers { files, passwords, events }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Calendar's events as results: the title; when (today, tomorrow, a
+    /// date; the year when it's another), where and which calendar under
+    /// it; Return opens Calendar on that occurrence; found by its notes
+    /// too, it still answers to what was typed.
+    #[test]
+    fn events_as_results() {
+        let mut kept = olo_calendar::store::Kept { account: "a".into(), href: "https://x/work/".into(), name: "Work".into(), ..Default::default() };
+        let events = [
+            "DTSTART;TZID=Europe/Amsterdam:20261118T140000\nDTEND;TZID=Europe/Amsterdam:20261118T153000\nSUMMARY:Design review\nLOCATION:Room 2\nDESCRIPTION:The month view",
+            "DTSTART;VALUE=DATE:20270301\nDTEND;VALUE=DATE:20270304\nSUMMARY:Review conference",
+            "DTSTART;TZID=Europe/Amsterdam:20261119T093000\nDTEND;TZID=Europe/Amsterdam:20261119T100000\nSUMMARY:Standup",
+        ];
+        for (i, body) in events.iter().enumerate() {
+            let ics = format!("BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:w{i}\n{body}\nEND:VEVENT\nEND:VCALENDAR\n");
+            kept.items.insert(format!("https://x/work/{i}.ics"), olo_calendar::store::Item { etag: "e".into(), ics });
+        }
+        let cals = [olo_calendar::find::Read::of(&kept)];
+        let now = jiff::civil::date(2026, 11, 18).at(10, 30, 0, 0).to_zoned(jiff::tz::TimeZone::get("Europe/Amsterdam").unwrap()).unwrap();
+        let none = |_: &str| false;
+        let said = |query: &str, h24: bool| -> Vec<(String, String)> { event_items(&cals, &none, query, &now, h24).into_iter().map(|i| (i.title, i.subtitle)).collect() };
+        assert_eq!(said("review", false), [("Design review".to_owned(), "Today, 2 PM – 3:30 PM · Room 2 · Work".to_owned()), ("Review conference".to_owned(), "Mon, Mar 1, 2027 · Work".to_owned())]);
+        assert_eq!(said("standup", true), [("Standup".to_owned(), "Tomorrow, 09:30 – 10:00 · Work".to_owned())]);
+        let found = event_items(&cals, &none, "month view", &now, false);
+        assert_eq!(found[0].action, Action::Spawn(vec!["olo-calendar".into(), "--show".into(), "https://x/work/0.ics".into(), "2026-11-18T14:00:00".into()]));
+        assert_eq!((found[0].kind, found[0].icon.as_deref()), (Kind::Event, Some("calendar")));
+        // (Ranked by the palette's own matching: what was typed is among its words.)
+        assert_eq!(ranked(&crate::rank::words("month view"), found.iter(), |_| 0).len(), 1);
+        assert!(event_items(&cals, &|_: &str| true, "review", &now, false).is_empty());
+    }
 
     #[test]
     fn the_index_follows_folders_that_change() {

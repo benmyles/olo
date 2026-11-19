@@ -13,6 +13,8 @@
 //!   `VEVENT` and written back into it, and its occurrences between two
 //!   moments: time zones, all-day events, dates taken out, one
 //!   occurrence changed by itself.
+//! - [`find`]: events found by their words from outside Calendar (the
+//!   command palette): each once, at its next occurrence or its last.
 //! - [`dav`]: CalDAV, the one protocol for every account (Fastmail's
 //!   with an app password, Google's with its sign-in's token): an
 //!   account's calendars, what is in one, what changed since a token,
@@ -31,6 +33,7 @@
 pub mod account;
 pub mod dav;
 pub mod event;
+pub mod find;
 pub mod ical;
 pub mod rrule;
 pub mod standin;
