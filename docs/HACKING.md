@@ -6050,6 +6050,16 @@ doesn't fit. A pop-up a short window folds its tabs into isn't stepped
 through by `--tiles` (it clicks tabs): picture each of its choices there
 (`{"invoke": "mode:week"}` on the app's socket chooses one).
 
+A sidebar of sections (kache's Status, Builds and Settings) gives way
+to a pop-up menu field over the section, which names it and has the
+others (`MenuField`, named "Section" for agents): without it a narrow
+window no longer says where it is. Cards go as many across as fit
+(`dashboard::across`) and give way to a list in a short window; a
+form's two columns become one, the first's fields then the second's;
+a list too narrow for its columns keeps what matters side by side
+(kache's crate and result, the project after them) and narrows them
+there, the rest scrolling sideways.
+
 `tools/dev/ui-lint --tiles` tiles each window that tiles into each
 layout in turn, as a person's tiling puts it (`Arrange`), and reviews
 it there, every tab, at the session's first scale: a least size more
@@ -13341,7 +13351,10 @@ and their menus, built as an app starts), and the literals handed to
 widgets in the apps' code that no window either lint opens shows
 (`Button::new("…")`, `.note("…")`, `.item("…", …)`, `tr!("…")`: a
 pairing dialog, a first-run window, an error's note; ids and a
-service's log words left out). A word only seen as the lints ran counts
+service's log words left out), and what agents call a field with no
+label shown (`.name("Range")`, looked up as `words::of_name`; one with
+a capital: a thread's `.name("pty reader")` isn't a word. Sixteen were
+never gathered before 2026-11-19, so no language had them). A word only seen as the lints ran counts
 if the code holds it as a literal outside its tests and comments: what
 this computer shows the lints (its displays, its graphics card, its
 disks, its Wi-Fi card) is data, and once came into the list that way

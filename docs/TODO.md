@@ -44,8 +44,9 @@ something nobody here has is in "Blocked", with what it waits for.
   and Telegram show one pane at a time in a narrow window (Phone's music
   box gives way in a short one); Weather (its places and assistant give
   way and come in front, its cards reflow, a short forecast scrolls as
-  one). To do: kache (cards in one column, its
-  buttons under its title), Doctor and OS Updates (the Choose row folds;
+  one); kache (its sidebar gives way to a menu of its sections, cards
+  reflow, buttons go under its title, Settings in one column). To do:
+  Doctor and OS Updates (the Choose row folds;
   Updates' detail and sources give way), Logs (its detail gives way in
   a short window, its filters wrap), Disk Usage (the rings over the list
   in a narrow window, the Collector giving way in a short one),

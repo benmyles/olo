@@ -109,6 +109,11 @@ ASKED = re.compile(r'(?:\b(?:tr!|words::tr|words::of_text|en!|words::en)|(?<![\w
 # call's two words with `{n}` in it (`words::count(n, "1 window", "{n}
 # windows")`, `count(` brought in by a `use`, an app's own `counted(`).
 COUNTING = re.compile(r'\b\w+\([^"]*"(?:[^"\\]|\\.)*",\s*"((?:[^"\\]|\\.)*\{n\}(?:[^"\\]|\\.)*)"\s*\)')
+# What agents call a control with no label shown (a menu field's
+# `.name("Range")`, which the kit looks up as `words::of_name`): a name
+# starts with a capital, as a thread's (`.name("pty reader")`) doesn't.
+# (Not gathered before 2026-11-19: sixteen names were never translated.)
+NAMED = re.compile(r'\.name\(\s*"([A-Z](?:[^"\\]|\\.)*)"')
 # Programs without windows: their words are a log's.
 SERVICES = ("apps/chime/", "apps/fans/")
 
@@ -128,7 +133,7 @@ def in_code():
         src = "\n".join(l for l in src.split("\n") if not l.lstrip().startswith("//"))
         src = without_test_blocks(src)
         # (An app's own `words::count` without `{n}` is its own helper.)
-        for m in list(LITERAL.finditer(src)) + [m for m in COUNTING.finditer(src) if "{n}" in m.group(1)] + list(ASKED.finditer(src)) + list(DASHBOARD.finditer(src)):
+        for m in list(LITERAL.finditer(src)) + [m for m in COUNTING.finditer(src) if "{n}" in m.group(1)] + list(ASKED.finditer(src)) + list(DASHBOARD.finditer(src)) + list(NAMED.finditer(src)):
             s = re.sub(r"\\u\{([0-9a-fA-F]+)\}", lambda m: chr(int(m.group(1), 16)), m.group(1) or m.group(m.lastindex or 1) or "")
             # (Asked for by name, a unit alone is a word, "{} h", and so is
             # punctuation that languages set apart: "{}: {}", French's

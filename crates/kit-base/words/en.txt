@@ -154,6 +154,7 @@ AI features use OpenAI’s models through the Token Pool’s Codex accounts, spe
 API Credential
 API ID:
 API hash:
+API key
 API key:
 About 
 About Olo Desktop
@@ -219,6 +220,7 @@ After tap and drag:
 After the active window
 After {n} minutes
 After {n} seconds
+Again
 Again:
 Against Cloudflare’s speed test servers: four connections each way, eight seconds each.
 Agenda
@@ -659,6 +661,7 @@ Compressed to
 Computes with
 Configure IPv4:
 Configure IPv6:
+Confirm
 Confirm:
 Connect
 Connect Another Account…
@@ -691,6 +694,7 @@ Coolest
 Copied the reference to “{}”’s {}.
 Copied the {}.
 Copied {}. It leaves the clipboard in {} seconds.
+Copr project
 Copy
 Copy Code
 Copy Conversation
@@ -840,6 +844,7 @@ Deleting the unfinished backup
 Deleting {}
 Deleting {} of {}
 Deleting {}: {} of {}
+Description
 Description removed
 Description:
 Deselect All Chats
@@ -1100,6 +1105,7 @@ Find Again
 Find Previous
 Find Selection
 Find a free hour this week
+Find an app
 Find in document
 Find:
 Finding the server…
@@ -1209,6 +1215,7 @@ Give it a name.
 Glide
 Glow new windows for
 Go
+Go to
 Go to End
 Go to File or Folder…
 Go to:
@@ -1275,6 +1282,7 @@ Heavy rain
 Heavy sleet
 Heavy snow
 Hectopascals
+Height
 Held by builds
 Held by the server
 Hidden and ignored files
@@ -1986,6 +1994,7 @@ Not tested yet.
 Not told
 Not trusted: stopping…
 Not working: {}.
+Notes
 Notes:
 Nothing
 Nothing Found
@@ -2194,6 +2203,7 @@ Partly cloudy and mostly clear
 Partly cloudy and rain
 Partly cloudy and snow
 Partly cloudy and thunderstorm
+Passphrase
 Passphrase:
 Password
 Password Generator
@@ -2367,6 +2377,7 @@ Rain and ice pellets
 Rain and snow
 Raise Soft Limit to Hard
 Ran for
+Range
 Reaches:
 React
 Read
@@ -2418,6 +2429,7 @@ Red:
 Redo
 Redo Window Arrangement
 Redo {}
+Reference
 Reference:
 Refining Olo's model on {} touches…
 Refresh
@@ -2455,6 +2467,7 @@ Repeats:
 Replace
 Replace Same
 Replace the one-time code of your login {} with the one this page shows?
+Replace with
 Replace with:
 Replaced by a newer one
 Replace…
@@ -2550,6 +2563,7 @@ Save Group
 Save a login for {} with the one-time code this page shows?
 Save a passkey{} on {} in Passwords?
 Save a passkey{} on {} in Passwords? It goes with your login “{}”.
+Save as
 Save as GIF
 Save as:
 Save in:
@@ -2590,6 +2604,7 @@ Search: names, CVEs, kind:, severity:, repo:
 Search: words, program:, level:, since:
 Searching…
 Secondary click (three: middle)
+Section
 Secure Note
 Security
 Security Keys
@@ -3465,6 +3480,7 @@ Wide
 Widget
 Widget name
 Widgets
+Width
 Will it rain today?
 Will it rain tomorrow?
 Wind

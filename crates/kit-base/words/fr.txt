@@ -471,6 +471,9 @@ ID d’API :
 API hash:
 Hash d’API :
 
+API key
+Clé d’API
+
 API key:
 Clé d’API :
 
@@ -667,6 +670,9 @@ other: Après {n} minutes
 After {n} seconds
 one: Après {n} seconde
 other: Après {n} secondes
+
+Again
+Répéter
 
 Again:
 Encore :
@@ -1994,6 +2000,9 @@ Configurer IPv4 :
 Configure IPv6:
 Configurer IPv6 :
 
+Confirm
+Confirmer
+
 Confirm:
 Confirmer :
 
@@ -2089,6 +2098,9 @@ Copied the {}.
 
 Copied {}. It leaves the clipboard in {} seconds.
 {} copié. Il quitte le presse-papiers dans {} secondes.
+
+Copr project
+Projet Copr
 
 Copy
 Copier
@@ -2536,6 +2548,9 @@ Suppression de {} sur {}
 
 Deleting {}: {} of {}
 Suppression de {} : {} sur {}
+
+Description
+Description
 
 Description removed
 Description supprimée
@@ -3322,6 +3337,9 @@ Rechercher la sélection
 Find a free hour this week
 Trouver une heure libre cette semaine
 
+Find an app
+Rechercher une app
+
 Find in document
 Rechercher dans le document
 
@@ -3649,6 +3667,9 @@ Faire briller les nouvelles fenêtres pendant
 Go
 Aller
 
+Go to
+Aller à
+
 Go to End
 Aller à la fin
 
@@ -3846,6 +3867,9 @@ Fortes chutes de neige
 
 Hectopascals
 Hectopascals
+
+Height
+Hauteur
 
 Held by builds
 Retenu par les compilations
@@ -5985,6 +6009,9 @@ Non approuvée : arrêt…
 Not working: {}.
 Ne fonctionne pas : {}.
 
+Notes
+Notes
+
 Notes:
 Notes :
 
@@ -6609,6 +6636,9 @@ Partiellement nuageux et neige
 Partly cloudy and thunderstorm
 Partiellement nuageux et orage
 
+Passphrase
+Phrase secrète
+
 Passphrase:
 Phrase secrète :
 
@@ -7130,6 +7160,9 @@ Relever la limite souple à la dure
 Ran for
 A duré
 
+Range
+Période
+
 Reaches:
 Atteint :
 
@@ -7283,6 +7316,9 @@ Rétablir la disposition des fenêtres
 Redo {}
 Rétablir {}
 
+Reference
+Référence
+
 Reference:
 Référence :
 
@@ -7393,6 +7429,9 @@ Remplacer les identiques
 
 Replace the one-time code of your login {} with the one this page shows?
 Remplacer le code à usage unique de votre identifiant {} par celui affiché par cette page ?
+
+Replace with
+Remplacer par
 
 Replace with:
 Remplacer par :
@@ -7679,6 +7718,9 @@ Enregistrer une clé d’accès{} pour {} dans Passwords ?
 Save a passkey{} on {} in Passwords? It goes with your login “{}”.
 Enregistrer une clé d’accès{} pour {} dans Passwords ? Elle va avec votre identifiant « {} ».
 
+Save as
+Enregistrer sous
+
 Save as GIF
 Enregistrer en GIF
 
@@ -7798,6 +7840,9 @@ Recherche…
 
 Secondary click (three: middle)
 Clic secondaire (trois : milieu)
+
+Section
+Section
 
 Secure Note
 Note sécurisée
@@ -10426,6 +10471,9 @@ Nom du widget
 
 Widgets
 Widgets
+
+Width
+Largeur
 
 Will it rain today?
 Va-t-il pleuvoir aujourd’hui ?

@@ -471,6 +471,9 @@ API-ID:
 API hash:
 API-Hash:
 
+API key
+API-Schlüssel
+
 API key:
 API-Schlüssel:
 
@@ -667,6 +670,9 @@ other: Nach {n} Minuten
 After {n} seconds
 one: Nach {n} Sekunde
 other: Nach {n} Sekunden
+
+Again
+Wiederholen
 
 Again:
 Erneut:
@@ -1994,6 +2000,9 @@ IPv4 konfigurieren:
 Configure IPv6:
 IPv6 konfigurieren:
 
+Confirm
+Bestätigen
+
 Confirm:
 Bestätigen:
 
@@ -2089,6 +2098,9 @@ Copied the {}.
 
 Copied {}. It leaves the clipboard in {} seconds.
 {} kopiert. Es verlässt die Zwischenablage in {} Sekunden.
+
+Copr project
+Copr-Projekt
 
 Copy
 Kopieren
@@ -2536,6 +2548,9 @@ Deleting {} of {}
 
 Deleting {}: {} of {}
 {} wird gelöscht: {} von {}
+
+Description
+Beschreibung
 
 Description removed
 Beschreibung entfernt
@@ -3322,6 +3337,9 @@ Auswahl suchen
 Find a free hour this week
 Eine freie Stunde diese Woche finden
 
+Find an app
+App suchen
+
 Find in document
 Im Dokument suchen
 
@@ -3649,6 +3667,9 @@ Neue Fenster leuchten lassen für
 Go
 Gehe zu
 
+Go to
+Gehe zu
+
 Go to End
 Zum Ende
 
@@ -3846,6 +3867,9 @@ Starker Schneefall
 
 Hectopascals
 Hektopascal
+
+Height
+Höhe
 
 Held by builds
 Von Builds gehalten
@@ -5985,6 +6009,9 @@ Nicht vertraut: wird beendet …
 Not working: {}.
 Funktioniert nicht: {}.
 
+Notes
+Notizen
+
 Notes:
 Notizen:
 
@@ -6609,6 +6636,9 @@ Teilweise bewölkt und Schnee
 Partly cloudy and thunderstorm
 Teilweise bewölkt und Gewitter
 
+Passphrase
+Passphrase
+
 Passphrase:
 Passphrase:
 
@@ -7130,6 +7160,9 @@ Weiches Limit auf hartes anheben
 Ran for
 Lief
 
+Range
+Zeitraum
+
 Reaches:
 Erreicht:
 
@@ -7283,6 +7316,9 @@ Fensteranordnung wiederholen
 Redo {}
 {} wiederholen
 
+Reference
+Referenz
+
 Reference:
 Referenz:
 
@@ -7393,6 +7429,9 @@ Gleiche ersetzen
 
 Replace the one-time code of your login {} with the one this page shows?
 Den Einmalcode Ihrer Anmeldung {} durch den ersetzen, den diese Seite zeigt?
+
+Replace with
+Ersetzen durch
 
 Replace with:
 Ersetzen durch:
@@ -7679,6 +7718,9 @@ Einen Passkey{} für {} in Passwords speichern?
 Save a passkey{} on {} in Passwords? It goes with your login “{}”.
 Einen Passkey{} für {} in Passwords speichern? Er gehört zu Ihrer Anmeldung „{}“.
 
+Save as
+Sichern unter
+
 Save as GIF
 Als GIF sichern
 
@@ -7798,6 +7840,9 @@ Suche läuft …
 
 Secondary click (three: middle)
 Sekundärklick (drei: Mittelklick)
+
+Section
+Bereich
 
 Secure Note
 Sichere Notiz
@@ -10426,6 +10471,9 @@ Widget-Name
 
 Widgets
 Widgets
+
+Width
+Breite
 
 Will it rain today?
 Regnet es heute?

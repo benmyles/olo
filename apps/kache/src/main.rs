@@ -37,7 +37,7 @@ use olo_kit::{
     instance::{self, Launch},
     metrics as m, px, style, theme,
     widgets::{
-        Button, CheckBox, Column, ColumnListView, EmptyState, ListModel, StringView, button_row,
+        Button, CheckBox, Column, ColumnListView, EmptyState, ListModel, MenuField, StringView, button_row,
         dashboard::{Card, Facts},
         sidebar::{Row, Sidebar},
     },
@@ -46,8 +46,20 @@ use serde::{Deserialize, Serialize};
 
 pub const APP_ID: &str = "olo.kache";
 const SIDEBAR: f32 = 160.0;
-const MIN_WIDTH: f32 = 860.0;
-const MIN_HEIGHT: f32 = 560.0;
+/// What the sections keep beside the sidebar: less (a third of a
+/// screen), the sidebar gives way to a menu of them over the section
+/// (CLAUDE.md, "Every tiling layout").
+const CONTENT_LEAST: f32 = 300.0;
+/// Status's cards two by two where each has this, else one a row.
+const CARD_LEAST: f32 = 260.0;
+/// Builds' cards over its list in a window at least this tall.
+const BUILDS_CARDS_ROOM: f32 = 420.0;
+/// Builds' first three columns as wide as they come in a list this wide;
+/// narrower in a narrower one, so the three show.
+const LIST_NARROW: f32 = 470.0;
+/// The window's least: a third of the smallest screen, either way.
+const MIN_WIDTH: f32 = 400.0;
+const MIN_HEIGHT: f32 = 220.0;
 /// The least time between two looks while builds go on.
 const LOOK_EVERY: Duration = Duration::from_secs(2);
 /// Status's Now card.
@@ -363,9 +375,32 @@ impl Kache {
         Some(s.into_element())
     }
 
+    /// How wide the section beside the sidebar is (the window's width,
+    /// less the sidebar where it shows: see `body`).
+    fn content_width(&self, cx: &Cx<Self>) -> f32 {
+        let w = f32::from(cx.viewport_size().width) - 2.0 * m::WINDOW_INSET;
+        if w - SIDEBAR - m::SPACING >= CONTENT_LEAST { w - SIDEBAR - m::SPACING } else { w }
+    }
+
     fn status(&mut self, cx: &mut Cx<Self>) -> Element {
         let snap = self.snap.clone();
         let busy = self.doing.is_some();
+        // The room the cards have: two by two where each has its least,
+        // else one a row; the service's buttons beside its words where
+        // they have room, else under them.
+        let width = self.content_width(cx) - m::SPACING;
+        let two = width >= 2.0 * CARD_LEAST + m::SPACING;
+        let pair = |a: olo_kit::Element, b: olo_kit::Element, left: Option<f32>| -> olo_kit::Element {
+            if two {
+                let first = match left {
+                    Some(w) => div().w(px(w)).flex_shrink_0().child(a),
+                    None => div().flex_1().min_w_0().child(a),
+                };
+                div().flex().gap(px(m::SPACING)).child(first).child(div().flex_1().min_w_0().child(b)).into_element()
+            } else {
+                div().flex().flex_col().gap(px(m::SPACING)).child(a).child(b).into_element()
+            }
+        };
         let mut col = div().flex().flex_col().gap(px(m::SPACING));
         // The service.
         let (title, detail) = match &snap.unit {
@@ -399,14 +434,13 @@ impl Kache {
             } else {
                 Button::new("Start").enabled(!busy && running.is_some()).on_click(cx.listener(|v: &mut Kache, _: &ClickEvent, cx| v.service("StartUnit", cx)))
             });
-        col = col.child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(m::SPACING))
-                .child(div().flex_1().min_w_0().flex().flex_col().child(StringView::new(title).bold(true).size(style::LEAD_SIZE).cut(true)).child(StringView::new(detail).dim(true).cut(true)))
-                .child(buttons),
-        );
+        let words = div().flex_1().min_w_0().flex().flex_col().child(StringView::new(title).bold(true).size(style::LEAD_SIZE).cut(true)).child(StringView::new(detail).dim(true).cut(true));
+        let buttons_w = ["Clean Up Now", "Restart", "Stop"].iter().map(|l| olo_kit::widgets::button_width(l, false)).sum::<f32>() + 2.0 * m::SPACING;
+        col = col.child(if width - buttons_w - m::SPACING >= CARD_LEAST {
+            div().flex().items_center().gap(px(m::SPACING)).child(words).child(buttons)
+        } else {
+            div().flex().flex_col().gap(px(m::SPACING)).child(words).child(buttons)
+        });
         // The store and the day, side by side.
         let store = match &snap.daemon {
             Some(d) => {
@@ -446,7 +480,7 @@ impl Kache {
             facts.push((olo_kit::words::tr("Time saved").into(), olo_kit::tr!("about {}", data::span(day.saved_ms)).into()));
         }
         let today = Card::new("kache-day", "The last 24 hours").figure(rate).caption("of what could be cached came from it").child(Facts::new(facts));
-        col = col.child(div().flex().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(store)).child(div().flex_1().min_w_0().child(today)));
+        col = col.child(pair(store.into_element(), today.into_element(), None));
         // Now (the pool's slots, what's compiling), and the day by the hour.
         let compiling: Vec<String> = snap.daemon.as_ref().map(|d| d.in_flight.clone()).unwrap_or_default();
         let mut now: Vec<(olo_kit::SharedString, olo_kit::SharedString)> = Vec::new();
@@ -466,7 +500,7 @@ impl Kache {
         }
         let hours =
             Card::new("kache-hours", "Builds by the hour").caption("the last 24 hours").child(div().flex().flex_col().gap(px(m::STACK)).child(hours_chart(&snap.day)).child(hours_legend(&snap.day)));
-        col = col.child(div().flex().gap(px(m::SPACING)).child(div().w(px(NOW_CARD)).flex_shrink_0().child(card.child(Facts::new(now)))).child(div().flex_1().min_w_0().child(hours)));
+        col = col.child(pair(card.child(Facts::new(now)).into_element(), hours.into_element(), Some(NOW_CARD)));
         // Tests holding slots, each to end.
         if !snap.held.is_empty() {
             let mut list = div().flex().flex_col().gap(px(m::STACK));
@@ -517,7 +551,8 @@ impl Kache {
                     Some(c) if e.result == "miss" => format!("{result}: {c}"),
                     _ => result.to_owned(),
                 };
-                [when, e.crate_name.clone(), e.project.clone(), result, data::span(e.elapsed_ms), if e.size > 0 { data::bytes(e.size) } else { String::new() }]
+                // (In the columns' order: see `builds`.)
+                [when, e.crate_name.clone(), result, e.project.clone(), data::span(e.elapsed_ms), if e.size > 0 { data::bytes(e.size) } else { String::new() }]
             })
             .collect()
     }
@@ -541,18 +576,29 @@ impl Kache {
         // Why the misses missed, most first.
         let causes: Vec<(olo_kit::SharedString, olo_kit::SharedString)> =
             day.causes.iter().take(data::TOP + 1).map(|(c, n)| (olo_kit::SharedString::from(sentence_case(c)), style::thousands(*n as usize).into())).collect();
-        let cards = div()
-            .flex()
-            .flex_shrink_0()
-            .gap(px(m::SPACING))
-            .child(div().flex_1().min_w_0().child(Card::new("kache-projects", "Projects").caption("built most, the last 24 hours").child(Facts::new(projects))))
-            .child(div().flex_1().min_w_0().child(Card::new("kache-slowest", "Slowest compiles").caption("misses, the last 24 hours").child(Facts::new(slowest))))
-            .child(div().flex_1().min_w_0().child(Card::new("kache-causes", "Why misses missed").caption("the last 24 hours").child(Facts::new(causes))));
+        // As many across as fit (one in a third of a screen's width); in
+        // a window too short for them and the list (a third of its
+        // height), they give way to the list.
+        let width = self.content_width(cx);
+        let across = olo_kit::widgets::dashboard::across(width, 220.0, 3);
+        let cards = (f32::from(cx.viewport_size().height) >= BUILDS_CARDS_ROOM).then(|| {
+            div()
+                .grid()
+                .grid_cols(across as u16)
+                .flex_shrink_0()
+                .gap(px(m::SPACING))
+                .child(div().min_w_0().child(Card::new("kache-projects", "Projects").caption("built most, the last 24 hours").child(Facts::new(projects))))
+                .child(div().min_w_0().child(Card::new("kache-slowest", "Slowest compiles").caption("misses, the last 24 hours").child(Facts::new(slowest))))
+                .child(div().min_w_0().child(Card::new("kache-causes", "Why misses missed").caption("the last 24 hours").child(Facts::new(causes))))
+        });
+        // A crate and what came of it side by side, however narrow the
+        // list (a third of a screen's width: the rest scrolls sideways).
+        let narrow = width < LIST_NARROW;
         let columns = vec![
-            Column::new("When", 90.0),
-            Column::new("Crate", 160.0),
+            Column::new("When", if narrow { 70.0 } else { 90.0 }),
+            Column::new("Crate", if narrow { 116.0 } else { 160.0 }),
+            Column::new("Result", if narrow { 166.0 } else { 210.0 }),
             Column::new("Project", 110.0),
-            Column::new("Result", 210.0),
             Column::new("Took", 80.0).right(),
             Column::new("Size", 80.0).right(),
         ];
@@ -563,7 +609,7 @@ impl Kache {
                 cell.text(g, r[cell.column].clone());
             }
         });
-        div().size_full().flex().flex_col().gap(px(m::SPACING)).child(cards).child(div().flex_1().min_h_0().child(list)).into_element()
+        div().size_full().flex().flex_col().gap(px(m::SPACING)).children(cards).child(div().flex_1().min_h_0().child(list)).into_element()
     }
 
     fn settings(&mut self, cx: &mut Cx<Self>) -> Element {
@@ -633,12 +679,25 @@ impl Kache {
             (&[], &["scheduler_dynamic", "scheduler_cpu_percent"]),
         ];
         let gap = m::SPACING * 3.0;
-        col = col.child(
-            div().flex().gap(px(gap)).child(div().flex_1().min_w_0().child(StringView::new("The store").bold(true))).child(div().flex_1().min_w_0().child(StringView::new("The pool").bold(true))),
-        );
-        for (left, right) in rows {
-            let (l, r) = (take(left), take(right));
-            col = col.child(div().flex().items_start().gap(px(gap)).child(l).child(r));
+        if self.content_width(cx) >= 2.0 * CARD_LEAST + gap {
+            col = col.child(
+                div().flex().gap(px(gap)).child(div().flex_1().min_w_0().child(StringView::new("The store").bold(true))).child(div().flex_1().min_w_0().child(StringView::new("The pool").bold(true))),
+            );
+            for (left, right) in rows {
+                let (l, r) = (take(left), take(right));
+                col = col.child(div().flex().items_start().gap(px(gap)).child(l).child(r));
+            }
+        } else {
+            // (Too narrow for two columns, a third of a screen: the store's,
+            // then the pool's, one under the other, their words whole.)
+            col = col.child(StringView::new("The store").bold(true));
+            for (left, _) in rows.iter().filter(|(l, _)| !l.is_empty()) {
+                col = col.child(take(left));
+            }
+            col = col.child(div().pt(px(m::SPACING)).child(StringView::new("The pool").bold(true)));
+            for (_, right) in rows.iter().filter(|(_, r)| !r.is_empty()) {
+                col = col.child(take(right));
+            }
         }
         let buttons = button_row()
             .child(Button::new("Revert").on_click(cx.listener(|v: &mut Kache, _: &ClickEvent, cx| v.revert_settings(cx))))
@@ -798,12 +857,29 @@ impl View for Kache {
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let bar = MenuBar::of(self, cx, |v, _| v.menus());
         let p = theme::palette();
+        // The sidebar gives way where the section would have less than
+        // its least beside it (View ▸ Status, Builds and Settings, and a
+        // menu of them over the section, are there all the same).
+        let w = f32::from(cx.viewport_size().width) - 2.0 * m::WINDOW_INSET;
+        let sidebar_shows = w - SIDEBAR - m::SPACING >= CONTENT_LEAST;
         let sidebar = self.sidebar(cx);
         let content = match self.section {
             Section::Status => self.status(cx),
             Section::Builds => self.builds(cx),
             Section::Settings => self.settings(cx),
         };
+        // Without the sidebar, the section's name over it, a menu of
+        // each (a second look, 2026-11-19: nothing said which showed).
+        let section = (!sidebar_shows).then(|| {
+            let names: Vec<olo_kit::SharedString> = Section::ALL.iter().map(|s| olo_kit::SharedString::from(s.name())).collect();
+            let at = Section::ALL.iter().position(|s| *s == self.section).unwrap_or(0);
+            div().flex().flex_shrink_0().child(MenuField::new("kache-section", names, at).name("Section").on_change(cx.listener(|v: &mut Kache, i: &usize, cx| {
+                if let Some(s) = Section::ALL.get(*i) {
+                    v.section = *s;
+                    cx.invalidate();
+                }
+            })))
+        });
         let row = div()
             .flex_1()
             .min_h_0()
@@ -813,8 +889,8 @@ impl View for Kache {
             .px(px(m::WINDOW_INSET))
             .pt(px(m::SPACING))
             .pb(px(m::WINDOW_INSET))
-            .child(div().w(px(SIDEBAR)).flex_shrink_0().h_full().child(well(cx, p.list_background, sidebar)))
-            .child(div().flex_1().min_w_0().h_full().child(content));
+            .children(sidebar_shows.then(|| div().w(px(SIDEBAR)).flex_shrink_0().h_full().child(well(cx, p.list_background, sidebar))))
+            .child(div().flex_1().min_w_0().h_full().flex().flex_col().gap(px(m::SPACING)).children(section).child(div().flex_1().min_h_0().child(content)));
         div().size_full().flex().flex_col().bg(style::c(p.panel_background)).child(bar).child(row).into_element()
     }
 

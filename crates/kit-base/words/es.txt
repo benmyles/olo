@@ -471,6 +471,9 @@ ID de API:
 API hash:
 Hash de API:
 
+API key
+Clave de API
+
 API key:
 Clave de API:
 
@@ -667,6 +670,9 @@ other: Al cabo de {n} minutos
 After {n} seconds
 one: Al cabo de {n} segundo
 other: Al cabo de {n} segundos
+
+Again
+Repetir
 
 Again:
 Otra vez:
@@ -1994,6 +2000,9 @@ Configurar IPv4:
 Configure IPv6:
 Configurar IPv6:
 
+Confirm
+Confirmar
+
 Confirm:
 Confirmar:
 
@@ -2089,6 +2098,9 @@ Se copió {}.
 
 Copied {}. It leaves the clipboard in {} seconds.
 Se copió {}. Sale del portapapeles en {} segundos.
+
+Copr project
+Proyecto de Copr
 
 Copy
 Copiar
@@ -2536,6 +2548,9 @@ Eliminando {} de {}
 
 Deleting {}: {} of {}
 Eliminando {}: {} de {}
+
+Description
+Descripción
 
 Description removed
 Descripción eliminada
@@ -3322,6 +3337,9 @@ Buscar la selección
 Find a free hour this week
 Busca una hora libre esta semana
 
+Find an app
+Buscar una app
+
 Find in document
 Buscar en el documento
 
@@ -3649,6 +3667,9 @@ Resaltar las ventanas nuevas durante
 Go
 Ir
 
+Go to
+Ir a
+
 Go to End
 Ir al final
 
@@ -3846,6 +3867,9 @@ Nevada intensa
 
 Hectopascals
 Hectopascales
+
+Height
+Alto
 
 Held by builds
 Retenido por compilaciones
@@ -5985,6 +6009,9 @@ No es de confianza: deteniendo…
 Not working: {}.
 No funciona: {}.
 
+Notes
+Notas
+
 Notes:
 Notas:
 
@@ -6609,6 +6636,9 @@ Parcialmente nublado y nieve
 Partly cloudy and thunderstorm
 Parcialmente nublado y tormenta
 
+Passphrase
+Frase de contraseña
+
 Passphrase:
 Frase de contraseña:
 
@@ -7130,6 +7160,9 @@ Subir el límite blando al duro
 Ran for
 Duró
 
+Range
+Periodo
+
 Reaches:
 Alcanza:
 
@@ -7283,6 +7316,9 @@ Rehacer la disposición de ventanas
 Redo {}
 Rehacer {}
 
+Reference
+Referencia
+
 Reference:
 Referencia:
 
@@ -7393,6 +7429,9 @@ Reemplazar iguales
 
 Replace the one-time code of your login {} with the one this page shows?
 ¿Sustituir el código de un solo uso de tu inicio de sesión {} por el que muestra esta página?
+
+Replace with
+Reemplazar por
 
 Replace with:
 Reemplazar por:
@@ -7679,6 +7718,9 @@ Save a passkey{} on {} in Passwords?
 Save a passkey{} on {} in Passwords? It goes with your login “{}”.
 ¿Guardar una llave de acceso{} en {} en Passwords? Va con tu inicio de sesión «{}».
 
+Save as
+Guardar como
+
 Save as GIF
 Guardar como GIF
 
@@ -7798,6 +7840,9 @@ Buscando…
 
 Secondary click (three: middle)
 Clic secundario (tres: central)
+
+Section
+Sección
 
 Secure Note
 Nota segura
@@ -10426,6 +10471,9 @@ Nombre del widget
 
 Widgets
 Widgets
+
+Width
+Ancho
 
 Will it rain today?
 ¿Lloverá hoy?

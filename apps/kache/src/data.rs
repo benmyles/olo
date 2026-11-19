@@ -807,7 +807,7 @@ pub fn made_up(now: u64) -> Snapshot {
         events.push(Event {
             at_ms: at,
             crate_name: names[(i % 8) as usize].into(),
-            project: if i % 3 == 0 { "olo".into() } else { "shiftup".into() },
+            project: if i % 3 == 0 { "olo".into() } else { "garden".into() },
             result: result.into(),
             elapsed_ms: 200 + (i * 37) % 9000,
             compile_ms: 20_000 + (i * 53) % 9000,
