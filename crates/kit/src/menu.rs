@@ -104,7 +104,11 @@ pub enum MenuItem {
 /// A command in a menu.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Action {
+    /// Its words, in the person's language.
     pub label: SharedString,
+    /// Its words as the app wrote them, in English: what the menus'
+    /// check reads (`app_menu`), a command's name being the code's.
+    pub english: SharedString,
     pub command: SharedString,
     pub enabled: bool,
     pub checked: bool,
@@ -153,7 +157,8 @@ impl Menu {
 
     /// Adds a command.
     pub fn item(mut self, label: impl Into<SharedString>, command: impl Into<SharedString>) -> Menu {
-        self.items.push(MenuItem::Action(Action { label: crate::words::of(label), command: command.into(), enabled: true, ..Default::default() }));
+        let english = label.into();
+        self.items.push(MenuItem::Action(Action { label: crate::words::of(english.clone()), english, command: command.into(), enabled: true, ..Default::default() }));
         self
     }
 
@@ -286,6 +291,16 @@ impl Menu {
     pub fn checked(mut self, on: bool) -> Menu {
         if let Some(MenuItem::Action(a)) = self.items.last_mut() {
             a.checked = on;
+        }
+        self
+    }
+
+    /// The last item's words as the app wrote them, in English, where
+    /// its label was made in the person's language already (`tr!`: "Undo
+    /// Rename"): what the menus' check reads (`Action::english`).
+    pub fn english(mut self, words: impl Into<SharedString>) -> Menu {
+        if let Some(MenuItem::Action(a)) = self.items.last_mut() {
+            a.english = words.into();
         }
         self
     }

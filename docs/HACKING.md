@@ -3364,7 +3364,13 @@ it.
   find-previous, find-selection in Edit; zoom-in, zoom-out in View)
   in another menu or called otherwise ("Find…", "Find Again"), a
   settings item outside the first menu or not "… Settings…", two
-  enabled items with the same keys. A command that only looks like a
+  enabled items with the same keys. What a command is called is read in
+  the English the app wrote (`Action::english`: kept by `Menu::item`, or
+  said with `Menu::english` for an item whose label was made in the
+  language already, as Undo's and Redo's are), the same in every
+  language: in another, an item says it its own way ("Nueva ventana"
+  doesn't begin with "Nuevo"), and one not translated yet is still
+  English. A command that only looks like a
   standard one gets a name of its own (DiskUsage's Item ▸ Open is
   `open-item`; Tracker's Find…, a query of the disk, is in Edit as
   every Find… is, not BeOS's File). Windows without a bar (Preferences'

@@ -228,9 +228,13 @@ pub fn review(menus: &[Menu]) -> Vec<(String, String)> {
                 let want = if home.is_empty() { "the first menu" } else { home };
                 say(format!("{} ▸ {}: belongs in {want}", menu.title, a.label));
             }
-            let label = crate::words::of(*label);
-            if !a.label.starts_with(label.as_ref()) {
-                say(format!("{} ▸ {}: say “{label}”", menu.title, a.label));
+            // (By the words the app wrote, in English: a command's name is
+            // the code's, and each language says an item its own way,
+            // "Nueva ventana" for New Window, so a label in another can't
+            // be held to the standard word's translation.)
+            let english = if a.english.is_empty() { &a.label } else { &a.english };
+            if !english.starts_with(*label) {
+                say(format!("{} ▸ {}: say “{}”", menu.title, a.label, crate::words::of(*label)));
             }
         }
     }

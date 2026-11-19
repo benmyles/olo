@@ -157,7 +157,7 @@ pub fn edit_items_named(menu: Menu, undo: Option<&str>, redo: Option<&str>) -> M
 
 /// [`edit_items_named`] with commands of the app's own (`edit-undo`).
 pub fn edit_items_as(menu: Menu, undo: Option<&str>, redo: Option<&str>, commands: (&'static str, &'static str)) -> Menu {
-    menu.item(said(true, undo), commands.0).key("z").enabled(undo.is_some()).item(said(false, redo), commands.1).shift_key("z").enabled(redo.is_some())
+    menu.item(said(true, undo), commands.0).english("Undo").key("z").enabled(undo.is_some()).item(said(false, redo), commands.1).english("Redo").shift_key("z").enabled(redo.is_some())
 }
 
 fn label<C>(verb: &str, step: Option<&Step<C>>) -> String {
