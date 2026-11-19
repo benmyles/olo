@@ -69,6 +69,9 @@ const MAIL_FOR: Duration = Duration::from_secs(60);
 /// A message is one that has just come if it's no older than this (and
 /// not from more than a minute ahead: the phone's clock and this one's).
 const JUST: i64 = 5 * 60;
+/// A phone calendar's reminder this near (seconds) to one Calendar
+/// here shows of the same event is the same reminder.
+const REMINDED_WITHIN: i64 = 120;
 /// How much of the phone's inbox is read as a session opens.
 const INBOX: u16 = 60;
 /// How often a phone that hasn't allowed this computer is tried.
@@ -1237,6 +1240,12 @@ impl Service {
         }
         let mut state = Others::default();
         state.messages_elsewhere = self.session.is_some();
+        // What Calendar here reminds of at this moment (the small file
+        // its service keeps: read when the phone's calendar reminds).
+        state.reminded = crate::others::Reminded(Some(Box::new(|title| {
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
+            olo_protocol::calendar::Coming::read().is_some_and(|coming| coming.reminds(title, now, REMINDED_WITHIN))
+        })));
         self.others = Some(OthersLink { generation, opened_at: now, heard: false, state, write, notes: HashMap::new() });
         self.state.others = true;
     }

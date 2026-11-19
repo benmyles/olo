@@ -62,10 +62,26 @@ pub enum Effect {
     Close(u32),
 }
 
+/// Whether Olo's Calendar reminds, now, of an event with this title
+/// (the service's: `olo_protocol::calendar::Coming::reminds`). None: it
+/// reminds of nothing.
+#[derive(Default)]
+pub struct Reminded(pub Option<Box<dyn Fn(&str) -> bool + Send>>);
+
+impl std::fmt::Debug for Reminded {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(if self.0.is_some() { "Reminded(asked)" } else { "Reminded(none)" })
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct Others {
     /// Text messages come whole another way: theirs aren't shown twice.
     pub messages_elsewhere: bool,
+    /// An event Olo's Calendar reminds of at this moment: the phone's
+    /// own reminder of it isn't shown as well (the one here opens
+    /// Calendar on the event).
+    pub reminded: Reminded,
     /// Apps' names, by their identifiers.
     names: HashMap<String, String>,
     /// The notifications to be shown, as the phone last told of each.
@@ -120,6 +136,13 @@ impl Others {
                         if n.app == ancs::MESSAGES_APP {
                             tracing::info!("phone: a text message's notification has {} subtitle", if n.subtitle.is_empty() { "no" } else { "a" });
                         }
+                        self.live.remove(&n.uid);
+                        continue;
+                    }
+                    // (A calendar's reminder of what Calendar here reminds
+                    // of now: once is enough.)
+                    if ancs::CALENDAR_APPS.contains(&n.app.as_str()) && self.reminded.0.as_ref().is_some_and(|reminded| reminded(&n.title)) {
+                        tracing::info!("phone: its calendar's reminder of an event Calendar reminds of here: not shown twice");
                         self.live.remove(&n.uid);
                         continue;
                     }
@@ -297,6 +320,28 @@ mod tests {
         o.messages_elsewhere = false;
         o.told(&told(Event::Added, 4, Category::Other, false, (false, true)), now);
         assert_eq!(o.data(&says(4, ancs::MESSAGES_APP, "Mira Kovač", "On my way", ("", "Clear")), now), [Effect::Write(ancs::get_app(ancs::MESSAGES_APP))]);
+    }
+
+    /// The phone's calendar reminding of what Calendar here reminds of
+    /// at that moment: not shown twice. Of anything else: shown. The
+    /// same words from another app aren't a calendar's reminder.
+    #[test]
+    fn a_reminder_calendar_shows_itself() {
+        let (mut o, now) = (Others::default(), Instant::now());
+        o.reminded = Reminded(Some(Box::new(|title| title == "Design review")));
+        assert_eq!(o.told(&told(Event::Added, 7, Category::Other, false, (false, true)), now), [Effect::Write(ancs::get_notification(7))]);
+        assert_eq!(o.data(&says(7, "com.apple.mobilecal", "Design review", "Today at 2:00 PM", ("", "Clear")), now), []);
+        assert_eq!(o.told(&told(Event::Removed, 7, Category::Other, false, (false, false)), now), [], "never shown: nothing to close");
+        o.told(&told(Event::Added, 8, Category::Other, false, (false, true)), now);
+        assert_eq!(o.data(&says(8, "com.apple.mobilecal", "Dentist", "Today at 4:00 PM", ("", "Clear")), now), [Effect::Write(ancs::get_app("com.apple.mobilecal"))]);
+        let shown = o.data(&ancs::answer_bytes(&Answer::App("com.apple.mobilecal".into(), "Calendar".into())), now);
+        assert!(matches!(&shown[..], [Effect::Show(s)] if s.uid == 8 && s.app == "Calendar" && s.title == "Dentist"), "{shown:?}");
+        o.told(&told(Event::Added, 9, Category::Other, false, (false, true)), now);
+        assert_eq!(o.data(&says(9, "com.apple.mobilemail", "Design review", "Agenda attached", ("", "Clear")), now), [Effect::Write(ancs::get_app("com.apple.mobilemail"))]);
+        // With no Calendar to ask, the phone's is shown.
+        let mut plain = Others::default();
+        plain.told(&told(Event::Added, 7, Category::Other, false, (false, true)), now);
+        assert_eq!(plain.data(&says(7, "com.apple.mobilecal", "Design review", "Today at 2:00 PM", ("", "Clear")), now), [Effect::Write(ancs::get_app("com.apple.mobilecal"))]);
     }
 
     /// A question never answered is given up on after a while, half an

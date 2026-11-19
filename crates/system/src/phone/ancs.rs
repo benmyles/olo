@@ -29,6 +29,11 @@ pub const DATA_SOURCE: &str = "22eac6e9-24d6-4bb5-be44-b36ace7c7bfb";
 /// come whole another way, the Message Access Profile).
 pub const MESSAGES_APP: &str = "com.apple.MobileSMS";
 
+/// The phone's calendar apps (Apple's, Google's, Fantastical, Outlook):
+/// a reminder from one of an event Olo's Calendar reminds of itself, at
+/// that moment, says nothing new.
+pub const CALENDAR_APPS: [&str; 4] = ["com.apple.mobilecal", "com.google.calendar", "com.flexibits.fantastical2.iphone", "com.microsoft.Office.Outlook"];
+
 /// What happened to a notification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Event {

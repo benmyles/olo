@@ -21499,6 +21499,27 @@ a core). Tested: `coming`'s `the_day_and_what_it_holds` and
 test session with the demo's calendars (the menu at 1×, 1.5× and 2×,
 light and dark; an event chosen started Calendar on it).
 
+**The phone** (apps/phone's `others.rs`): a phone with the same
+calendars reminds of the same events, and its notifications are shown
+here (the phone's other notifications), so each reminder came twice.
+A reminder from one of the phone's calendar apps
+(`ancs::CALENDAR_APPS`: Apple's, Google's, Fantastical, Outlook) whose
+title is an event Calendar here reminds of within two minutes of that
+moment isn't shown as well (`Others::reminded`, as text messages that
+come whole another way aren't): the one here opens Calendar on the
+event. What Calendar reminds of is in the file it keeps for the
+clock's menu (each event's `reminds`: the moments, for the next two
+days and for events not over; `Coming::reminds(title, now, within)`,
+by the title whatever its case and the kind of its apostrophes), read
+when the phone's calendar reminds and at no other time. A reminder
+the phone has that Calendar here doesn't (another time, a calendar
+only on the phone, an invitation) is shown as before. Tested:
+`others`' `a_reminder_calendar_shows_itself`, the protocol's
+`reminded_of_here`, the service's `what_is_to_come`. **Not tried with
+a phone**: that an iPhone's Calendar puts the event's title in its
+notification's title is as its own notifications show it, not seen on
+this link.
+
 **Reminders** (`apps/calendar/src/service.rs`): `olo-calendar
 --service` is one of a real session's services (`REAL_SHELL`), with no
 window. It shows each reminder an event has (its `VALARM`s, as

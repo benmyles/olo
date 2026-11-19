@@ -54,6 +54,12 @@ pub struct Event {
     pub start: i64,
     pub end: i64,
     pub all_day: bool,
+    /// When Calendar reminds of it (seconds since 1970), as far as it
+    /// has worked that out (the next two days, and those already shown
+    /// for an event not over): whoever else would remind of the same
+    /// event then (the phone's own calendar, relayed here) needn't.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub reminds: Vec<i64>,
 }
 
 impl Event {
@@ -77,5 +83,35 @@ impl Coming {
     /// Those not over at `now`.
     pub fn from(&self, now: i64) -> impl Iterator<Item = &Event> {
         self.events.iter().filter(move |e| e.end > now)
+    }
+
+    /// Whether Calendar itself reminds, within `within` seconds of
+    /// `now`, of an event called `title` (whatever its case, its spaces
+    /// at the ends and the kind of its apostrophes): a reminder of it
+    /// from somewhere else then says nothing new.
+    pub fn reminds(&self, title: &str, now: i64, within: i64) -> bool {
+        let plain = |s: &str| s.trim().to_lowercase().replace(['’', '‘'], "'");
+        let title = plain(title);
+        !title.is_empty() && self.events.iter().any(|e| e.reminds.iter().any(|at| (at - now).abs() <= within) && plain(&e.title) == title)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Calendar reminds of an event by its title, near the moment it
+    /// does: whatever the title's case, the spaces at its ends and the
+    /// kind of its apostrophes; not at another time, of another event,
+    /// or of one with no reminder.
+    #[test]
+    fn reminded_of_here() {
+        let event = |title: &str, reminds: &[i64]| Event { title: title.into(), start: 10_000, end: 13_600, reminds: reminds.to_vec(), ..Event::default() };
+        let coming = Coming { set_up: true, until: 99_999, events: vec![event("Sam’s birthday", &[9_100, 6_400]), event("Standup", &[])] };
+        assert!(coming.reminds(" sam's Birthday ", 9_100, 120) && coming.reminds("Sam’s birthday", 9_215, 120) && coming.reminds("Sam's birthday", 6_300, 120));
+        assert!(!coming.reminds("Sam's birthday", 9_400, 120) && !coming.reminds("Standup", 9_100, 120) && !coming.reminds("", 9_100, 120) && !coming.reminds("Dentist", 9_100, 120));
+        // (A file from before reminders were written reads, with none.)
+        let old: Coming = serde_json::from_str(r#"{"set_up":true,"until":5,"events":[{"href":"h","starts":"s","title":"T","start":1,"end":2}]}"#).unwrap();
+        assert!(old.events[0].reminds.is_empty() && !old.reminds("T", 1, 120));
     }
 }

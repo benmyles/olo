@@ -119,7 +119,9 @@ something nobody here has is in "Blocked", with what it waits for.
   them, and events drafted for you to save; Preferences ▸ AI ▸
   Calendar). The clock's menu (a click on Deskbar's date and time: the
   day, what's still to come today and tomorrow, Open Calendar, Date &
-  Time Settings…). **Next**: the phone. Reminders are shown
+  Time Settings…). The phone: its calendar's reminder of an event
+  Calendar reminds of here isn't shown twice (not tried with a phone).
+  **Next**: inviting people yourself. Reminders are shown
   (`olo-calendar --service`, a session service; Show goes to the
   event). (Its cost
   is measured and in-place reload tried: HACKING.md, "Calendar".)
