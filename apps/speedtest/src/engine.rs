@@ -436,8 +436,8 @@ fn server_ms(r: &Response) -> f64 {
 pub fn run(config: &Config, stop: &AtomicBool, tell: &(dyn Fn(Update) + Sync)) -> Result<Results, String> {
     let when = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
     tell(Update::Phase(Phase::Connecting));
-    let tls = if config.server.tls { Some(crate::http::tls_config().map_err(|e| format!("TLS couldn't be set up: {e}"))?) } else { None };
-    let (addrs, dns_ms) = crate::http::resolve(&config.server).map_err(|e| format!("{} couldn't be found: {e}", config.server.host))?;
+    let tls = if config.server.tls { Some(crate::http::tls_config().map_err(|e| olo_kit::tr!("TLS couldn't be set up: {}", e))?) } else { None };
+    let (addrs, dns_ms) = crate::http::resolve(&config.server).map_err(|e| olo_kit::tr!("{} couldn't be found: {}", config.server.host, e))?;
     // The first address that answers is every connection's.
     let mut opened = None;
     let mut why = String::new();
@@ -450,11 +450,11 @@ pub fn run(config: &Config, stop: &AtomicBool, tell: &(dyn Fn(Update) + Sync)) -
             Err(e) => why = format!("{addr}: {e}"),
         }
     }
-    let mut first = opened.ok_or_else(|| format!("{} didn't answer ({why})", config.server.host))?;
+    let mut first = opened.ok_or_else(|| olo_kit::tr!("{} didn't answer ({})", config.server.host, why))?;
     let addr = first.peer;
-    let (_, r) = probe(&mut first).map_err(|e| format!("{} didn't answer a request: {e}", config.server.host))?;
+    let (_, r) = probe(&mut first).map_err(|e| olo_kit::tr!("{} didn't answer a request: {}", config.server.host, e))?;
     if r.status != 200 {
-        return Err(format!("{} answered {} (not a speed test server?)", config.server.host, r.status));
+        return Err(olo_kit::tr!("{} answered {} (not a speed test server?)", config.server.host, r.status));
     }
     let place = place_of(&r);
     let opening = Opening { dns_ms, ..first.opening };
@@ -482,7 +482,7 @@ pub fn run(config: &Config, stop: &AtomicBool, tell: &(dyn Fn(Update) + Sync)) -
                 idle.push(ms);
                 tell(Update::Latency { ms });
             }
-            Err(e) => return Err(format!("{} stopped answering: {e}", config.server.host)),
+            Err(e) => return Err(olo_kit::tr!("{} stopped answering: {}", config.server.host, e)),
         }
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -564,7 +564,7 @@ fn transfer(config: &Config, addr: SocketAddr, tls: Option<&Arc<rustls::ClientCo
                             theirs.lock().unwrap()[stream] = Some(t);
                         }
                         if response.as_ref().is_some_and(|r| r.status != 200) {
-                            return Err(std::io::Error::other(format!("the server answered {}", response.map_or(0, |r| r.status))));
+                            return Err(std::io::Error::other(olo_kit::tr!("the server answered {}", response.map_or(0, |r| r.status))));
                         }
                         // The next piece: this connection's seconds' worth at
                         // this one's rate (up: at the rate it was acknowledged,
@@ -640,8 +640,8 @@ fn transfer(config: &Config, addr: SocketAddr, tls: Option<&Arc<rustls::ClientCo
 
     let bytes = total;
     if bytes == 0 {
-        let why = failed.lock().unwrap().clone().unwrap_or_else(|| "nothing moved".into());
-        return Err(format!("the {} didn't get going: {why}", if down { "download" } else { "upload" }));
+        let why = failed.lock().unwrap().clone().unwrap_or_else(|| olo_kit::words::tr("nothing moved").into());
+        return Err(olo_kit::tr!("the {} didn't get going: {}", if down { "download" } else { "upload" }, why));
     }
     // The rate once going: the first fifth left out. The best second.
     let skip = series.len() / 5;

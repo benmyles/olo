@@ -595,14 +595,15 @@ pub fn act_all(access: Access, actions: Vec<Action>, cx: &mut WindowCx) {
     }
     tell(Msg::Acted);
     if let Some(first) = other.first() {
-        let message = if other.len() == 1 { first.clone() } else { format!("{first} ({} more were refused too.)", other.len() - 1) };
+        let message =
+            if other.len() == 1 { first.clone() } else { format!("{first} {}", olo_kit::words::count((other.len() - 1) as u64, "(1 more was refused too.)", "({n} more were refused too.)")) };
         alert(&message, cx);
     }
     if !needs.is_empty() {
         let message = if one {
-            format!("{why} Activity Monitor can do it once you give it full access, with an administrator's password.")
+            olo_kit::tr!("{} Activity Monitor can do it once you give it full access, with an administrator's password.", why)
         } else {
-            format!("{} of them belong to someone else. Activity Monitor can act on those once you give it full access, with an administrator's password.", needs.len())
+            olo_kit::tr!("{} of them belong to someone else. Activity Monitor can act on those once you give it full access, with an administrator's password.", needs.len())
         };
         open_alert(cx, "Activity Monitor", "authentication", &message, &["Cancel", "Get Full Access…"], move |choice, _| {
             if *choice == Some(1) {
@@ -622,8 +623,8 @@ pub fn quit_processes(access: Access, pids: Vec<i32>, names: String, force: bool
         return act_all(access, pids.into_iter().map(|pid| Action::Signal { pid, signal: libc::SIGTERM }).collect(), cx);
     }
     let message = match pids.as_slice() {
-        [pid] => format!("Force “{names}” ({pid}) to quit? Any unsaved work in it will be lost."),
-        _ => format!("Force {} processes to quit ({names})? Any unsaved work in them will be lost.", pids.len()),
+        [pid] => olo_kit::tr!("Force “{}” ({}) to quit? Any unsaved work in it will be lost.", names, pid),
+        _ => olo_kit::tr!("Force {} processes to quit ({})? Any unsaved work in them will be lost.", pids.len(), names),
     };
     open_alert(cx, "Activity Monitor", "warning", &message, &["Cancel", "Force Quit"], move |choice, cx| {
         if *choice == Some(1) {
@@ -1564,7 +1565,7 @@ impl Hub {
                 self.helper = Some(h);
                 self.set_access(Access::Asking);
             }
-            Err(e) => self.alert(format!("Full access couldn't be asked for. {e}")),
+            Err(e) => self.alert(olo_kit::tr!("Full access couldn't be asked for. {}", e)),
         }
     }
 

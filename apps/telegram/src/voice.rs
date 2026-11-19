@@ -155,7 +155,7 @@ impl Recorder {
         // Stopped first: nothing more comes to the file.
         drop(self.capture);
         let (out, peaks, error) = {
-            let mut s = self.shared.lock().map_err(|_| "the recording failed".to_owned())?;
+            let mut s = self.shared.lock().map_err(|_| olo_kit::words::tr("the recording failed").to_owned())?;
             if s.peak > 0.0 {
                 let p = s.peak;
                 s.peaks.push(p);
@@ -169,7 +169,7 @@ impl Recorder {
         if let Some(e) = error {
             return fail(e);
         }
-        let Some(out) = out else { return fail("the recording failed".into()) };
+        let Some(out) = out else { return fail(olo_kit::words::tr("the recording failed").into()) };
         let (_, seconds) = match out.finish() {
             Ok(r) => r,
             Err(e) => return fail(e.to_string()),

@@ -370,7 +370,7 @@ pub fn lay(m: &Message, place: Place, look: &Look, col: f32, time: &str, sender_
             (g, p)
         });
     let forward = m.forwarded.as_ref().map(|f| {
-        let g = line(&format!("Forwarded from {f}"), META + 0.5, bold.clone(), look.link, Some(inner));
+        let g = line(&olo_kit::tr!("Forwarded from {}", f), META + 0.5, bold.clone(), look.link, Some(inner));
         let p = (pad_x, y);
         y += g.h + 3.0;
         width = width.max(g.w);

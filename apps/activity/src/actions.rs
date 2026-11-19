@@ -69,8 +69,8 @@ fn os_error(what: &str) -> Refusal {
     let err = std::io::Error::last_os_error();
     let needs_access = matches!(err.raw_os_error(), Some(libc::EPERM) | Some(libc::EACCES));
     let message = match err.raw_os_error() {
-        Some(libc::ESRCH) => "The process has quit.".to_owned(),
-        Some(libc::EPERM) | Some(libc::EACCES) => format!("{what} needs full access."),
+        Some(libc::ESRCH) => olo_kit::words::tr("The process has quit.").to_owned(),
+        Some(libc::EPERM) | Some(libc::EACCES) => olo_kit::tr!("{} needs full access.", what),
         _ => format!("{what} failed: {err}."),
     };
     Refusal { message, needs_access }
@@ -91,14 +91,14 @@ impl Action {
         match self {
             Action::Signal { pid, signal } => {
                 let name = SIGNALS.iter().find(|(n, ..)| n == signal).map_or("a signal", |(_, n, _)| *n);
-                format!("Sending {name} to process {pid}")
+                olo_kit::tr!("Sending {} to process {}", name, pid)
             }
-            Action::Nice { pid, .. } => format!("Changing the priority of process {pid}"),
-            Action::Affinity { pid, .. } => format!("Changing the cores process {pid} may use"),
-            Action::Limit { pid, .. } => format!("Changing a limit of process {pid}"),
-            Action::OomAdjust { pid, .. } => format!("Changing how process {pid} fares when memory runs out"),
+            Action::Nice { pid, .. } => olo_kit::tr!("Changing the priority of process {}", pid),
+            Action::Affinity { pid, .. } => olo_kit::tr!("Changing the cores process {} may use", pid),
+            Action::Limit { pid, .. } => olo_kit::tr!("Changing a limit of process {}", pid),
+            Action::OomAdjust { pid, .. } => olo_kit::tr!("Changing how process {} fares when memory runs out", pid),
             Action::Sysctl { name, .. } => format!("Setting {name}"),
-            Action::Governor { .. } => "Changing the CPU governor".into(),
+            Action::Governor { .. } => olo_kit::words::tr("Changing the CPU governor").into(),
         }
     }
 
@@ -121,7 +121,7 @@ impl Action {
             }
             Action::Affinity { pid, cores } => {
                 if cores.is_empty() {
-                    return Err(Refusal { message: "A process needs at least one core.".into(), needs_access: false });
+                    return Err(Refusal { message: olo_kit::words::tr("A process needs at least one core.").into(), needs_access: false });
                 }
                 // SAFETY: a zeroed cpu_set_t is empty; CPU_SET writes within it.
                 let mut set: libc::cpu_set_t = unsafe { std::mem::zeroed() };
@@ -137,7 +137,7 @@ impl Action {
             }
             Action::Limit { pid, resource, soft, hard } => {
                 let Some(r) = crate::details::resource(resource) else {
-                    return Err(Refusal { message: format!("There is no limit “{resource}”."), needs_access: false });
+                    return Err(Refusal { message: olo_kit::tr!("There is no limit “{}”.", resource), needs_access: false });
                 };
                 let lim = libc::rlimit { rlim_cur: soft.unwrap_or(libc::RLIM_INFINITY), rlim_max: hard.unwrap_or(libc::RLIM_INFINITY) };
                 // SAFETY: prlimit with a limit to set and none to read back.
@@ -150,10 +150,10 @@ impl Action {
             }
             Action::Sysctl { name, value } => {
                 if !crate::sample::TUNABLES.iter().any(|(n, _)| n == name) {
-                    return Err(Refusal { message: format!("Activity Monitor doesn't change {name}."), needs_access: false });
+                    return Err(Refusal { message: olo_kit::tr!("Activity Monitor doesn't change {}.", name), needs_access: false });
                 }
                 if value.contains(['\n', '\0']) {
-                    return Err(Refusal { message: "That isn't a value.".into(), needs_access: false });
+                    return Err(Refusal { message: olo_kit::words::tr("That isn't a value.").into(), needs_access: false });
                 }
                 std::fs::write(crate::sample::sysctl_path(name), value.trim()).map_err(|e| refusal(&what, &e))?;
             }
@@ -161,7 +161,7 @@ impl Action {
                 let dir = format!("/sys/devices/system/cpu/cpufreq/policy{policy}");
                 let offered = std::fs::read_to_string(format!("{dir}/scaling_available_governors")).unwrap_or_default();
                 if !offered.split_whitespace().any(|g| g == governor) {
-                    return Err(Refusal { message: format!("The CPU doesn't offer “{governor}”."), needs_access: false });
+                    return Err(Refusal { message: olo_kit::tr!("The CPU doesn't offer “{}”.", governor), needs_access: false });
                 }
                 std::fs::write(format!("{dir}/scaling_governor"), governor).map_err(|e| refusal(&what, &e))?;
             }
@@ -172,8 +172,8 @@ impl Action {
 
 fn refusal(what: &str, e: &std::io::Error) -> Refusal {
     match e.kind() {
-        std::io::ErrorKind::PermissionDenied => Refusal { message: format!("{what} needs full access."), needs_access: true },
-        std::io::ErrorKind::NotFound => Refusal { message: "The process has quit.".into(), needs_access: false },
+        std::io::ErrorKind::PermissionDenied => Refusal { message: olo_kit::tr!("{} needs full access.", what), needs_access: true },
+        std::io::ErrorKind::NotFound => Refusal { message: olo_kit::words::tr("The process has quit.").into(), needs_access: false },
         _ => Refusal { message: format!("{what} failed: {e}."), needs_access: false },
     }
 }

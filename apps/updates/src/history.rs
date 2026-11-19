@@ -88,7 +88,7 @@ pub fn undo_plan(t: &Transaction) -> Plan {
             ops.push((op, list));
         }
     }
-    let title = format!("Undo Transaction {}", t.id);
+    let title = olo_kit::tr!("Undo Transaction {}", t.id);
     Plan { title: title.clone(), ops, release: None, offline_only: false, comment: title }
 }
 

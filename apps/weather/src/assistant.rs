@@ -67,29 +67,24 @@ pub enum Asked {
 /// evening the day's questions are tomorrow's; and while it's `raining`
 /// there, when it stops.
 pub fn suggestions(hour: u32, raining: bool) -> Vec<String> {
+    use olo_kit::words::tr;
     let late = hour >= 17;
-    let day = if late { "tomorrow" } else { "today" };
+    // (In the person's language, each said whole: "today" and "tomorrow"
+    // sit differently in each; the model answers whatever it's asked in.)
     let rain = match (raining, late) {
-        (true, _) => "When will the rain stop?".to_owned(),
-        (false, false) => "Will it rain today?".to_owned(),
-        (false, true) => "Will it rain tomorrow?".to_owned(),
+        (true, _) => tr("When will the rain stop?"),
+        (false, false) => tr("Will it rain today?"),
+        (false, true) => tr("Will it rain tomorrow?"),
     };
     // (Short: a link is one line, and the assistant's column is 260
     // points at its narrowest.)
-    let warmth = if late { "How cold will it get tonight?" } else { "How warm will it get today?" };
-    let sun = if late { "When does the sun rise tomorrow?" } else { "Do I need sunscreen today?" };
-    vec![
-        rain,
-        format!("What should I wear {day}?"),
-        warmth.to_owned(),
-        format!("How windy will it be {day}?"),
-        "Any storms on the way?".to_owned(),
-        "How’s the weekend looking?".to_owned(),
-        "Which day this week looks best?".to_owned(),
-        sun.to_owned(),
-        format!("Best time for a run {day}?"),
-        format!("How cloudy will it be {day}?"),
-    ]
+    let warmth = if late { tr("How cold will it get tonight?") } else { tr("How warm will it get today?") };
+    let sun = if late { tr("When does the sun rise tomorrow?") } else { tr("Do I need sunscreen today?") };
+    let wear = if late { tr("What should I wear tomorrow?") } else { tr("What should I wear today?") };
+    let windy = if late { tr("How windy will it be tomorrow?") } else { tr("How windy will it be today?") };
+    let run = if late { tr("Best time for a run tomorrow?") } else { tr("Best time for a run today?") };
+    let cloudy = if late { tr("How cloudy will it be tomorrow?") } else { tr("How cloudy will it be today?") };
+    [rain, wear, warmth, windy, tr("Any storms on the way?"), tr("How’s the weekend looking?"), tr("Which day this week looks best?"), sun, run, cloudy].into_iter().map(str::to_owned).collect()
 }
 
 pub fn schema() -> Value {

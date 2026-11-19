@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-19
 
+### Weather in German: the forecast, its cards and charts in the person's language
+
+*09:36* — Weather's precipitation and sky (tomorrow.io's 94 codes, each built in each language), its cards' titles and captions, its charts' legends and the next-hour line now follow Olo's language, and so do its assistant's suggested questions. The kit's dashboard cards, facts and chart legends look their words up as they're made. Captions were measured against their card and reworded where German ran past. Weekday names wait for Olo's formats.
+
+![Weather in German: the forecast, its cards and charts in the person's language](2026-11-19/093653-weather-in-german-the-forecast-its-cards-and-cha.png)
+
 ### DiskBackup's header: the paragraphs under the title take the whole width
 
 *08:15* — The title now shares a row with Restore and Back Up Now (centred on its line), and what's said under it (where it backs up to, the last backup, an unfinished one) runs the window's width beneath both. It used to wrap beside the buttons, which in German and French ran a line or two longer and past the window's foot. The schedule's choices are whole phrases after 'Automatically,' ('every hour'), so each language says them its own way, and each column of kept-backup menus lines up after its longer label. Its words, and the service's own (why it isn't backing up, an error), are now in German, Spanish and French.

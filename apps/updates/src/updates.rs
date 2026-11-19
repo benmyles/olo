@@ -413,9 +413,9 @@ pub fn body(app: &mut OsUpdates, cx: &mut Cx<OsUpdates>) -> Element {
 
     let list: Element = if app.session.is_none() {
         let (title, detail) = match (&app.error, &app.loading) {
-            (Some(e), _) => ("The packages can’t be read".to_owned(), e.clone()),
-            (None, Some(l)) => (l.what.clone(), "The package service reads what’s installed and what each repository has.".to_owned()),
-            _ => ("Nothing read yet".to_owned(), String::new()),
+            (Some(e), _) => (olo_kit::words::tr("The packages can’t be read").to_owned(), e.clone()),
+            (None, Some(l)) => (l.what.clone(), olo_kit::words::tr("The package service reads what’s installed and what each repository has.").to_owned()),
+            _ => (olo_kit::words::tr("Nothing read yet").to_owned(), String::new()),
         };
         crate::well(cx, p.document_background, olo_kit::widgets::EmptyState::new(title).icon("software-update").detail(detail))
     } else if total == 0 {
@@ -536,8 +536,8 @@ fn list_view(app: &mut OsUpdates, cx: &mut Cx<OsUpdates>) -> Element {
             .item(label("Update Only"), "update-selected")
             .item(label("Reinstall"), "reinstall-selected")
             .separator()
-            .item(if n == 1 { "Choose".to_owned() } else { format!("Choose These {n}") }, "choose-selected")
-            .item(if n == 1 { "Don’t Choose".to_owned() } else { format!("Choose None of These {n}") }, "unchoose-selected")
+            .item(olo_kit::words::count(n as u64, "Choose", "Choose These {n}"), "choose-selected")
+            .item(olo_kit::words::count(n as u64, "Don’t Choose", "Choose None of These {n}"), "unchoose-selected")
             .separator()
             .item("Copy Name", "copy-names");
         let to = cx.view_ref();
@@ -622,20 +622,24 @@ fn details_view(app: &mut OsUpdates, cx: &mut Cx<OsUpdates>) -> Element {
                 .flex()
                 .flex_col()
                 .gap(px(m::TIGHT))
-                .child(StringView::new(format!("{n} updates selected")).bold(true))
+                .child(StringView::new(olo_kit::tr!("{} updates selected", n)).bold(true))
                 .child(field("Download", text(dnf::size_words(dl))))
                 .child(field("Disk space", text(signed_size(inst))))
-                .child(div().pt(px(m::SPACING)).flex().gap(px(m::SPACING)).child(Button::new(format!("Update These {n}…")).on_click(cx.listener(|v: &mut OsUpdates, _: &ClickEvent, cx| {
+                .child(div().pt(px(m::SPACING)).flex().gap(px(m::SPACING)).child(Button::new(olo_kit::tr!("Update These {}…", n)).on_click(cx.listener(|v: &mut OsUpdates, _: &ClickEvent, cx| {
                     let keys = v.u.selected_keys(&v.updates);
                     message(v, Msg::Only(Op::Upgrade, keys), cx);
                 }))))
                 .into_element()
         }
         (Some(u), _) => update_details(app, &u, cx),
-        (None, _) => StringView::new(if app.updates.updates.is_empty() { String::new() } else { "Select an update to read about it: its versions, why it came out, what changed.".to_owned() })
-            .dim(true)
-            .wrap(true)
-            .into_element(),
+        (None, _) => StringView::new(if app.updates.updates.is_empty() {
+            String::new()
+        } else {
+            olo_kit::words::tr("Select an update to read about it: its versions, why it came out, what changed.").to_owned()
+        })
+        .dim(true)
+        .wrap(true)
+        .into_element(),
     };
     let inner = div().w_full().p(px(m::SPACING)).child(content);
     crate::well(cx, p.document_background, ScrollView::new(&app.u.scroll).border(false).auto_hide(true).background(p.document_background).child(inner))
@@ -670,11 +674,11 @@ fn update_details(app: &mut OsUpdates, u: &Update, cx: &mut Cx<OsUpdates>) -> El
         col = col.child(field(
             "Installed as",
             text(match u.installed.reason.as_str() {
-                "User" => "Chosen by someone".to_owned(),
-                "Dependency" => "Needed by another package".to_owned(),
-                "Weak Dependency" => "Recommended by another package".to_owned(),
-                "Group" => "Part of a package group".to_owned(),
-                "External User" => "Chosen outside dnf".to_owned(),
+                "User" => olo_kit::words::tr("Chosen by someone").to_owned(),
+                "Dependency" => olo_kit::words::tr("Needed by another package").to_owned(),
+                "Weak Dependency" => olo_kit::words::tr("Recommended by another package").to_owned(),
+                "Group" => olo_kit::words::tr("Part of a package group").to_owned(),
+                "External User" => olo_kit::words::tr("Chosen outside dnf").to_owned(),
                 other => other.to_owned(),
             }),
         ));
@@ -754,7 +758,7 @@ fn update_details(app: &mut OsUpdates, u: &Update, cx: &mut Cx<OsUpdates>) -> El
                 let n = d.requires.len();
                 let mut list: Vec<String> = d.requires.iter().filter(|r| !r.starts_with("rpmlib(")).take(24).cloned().collect();
                 if n > 24 {
-                    list.push(format!("and {} more", n - 24));
+                    list.push(olo_kit::tr!("and {} more", n - 24));
                 }
                 col = col.child(text(list.join("\n")));
             }

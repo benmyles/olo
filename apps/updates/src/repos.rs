@@ -123,7 +123,7 @@ pub fn message(app: &mut OsUpdates, msg: Msg, cx: &mut Cx<OsUpdates>) {
             app.r.busy = None;
             match r {
                 Ok(id) => {
-                    app.say(format!("{id} was turned {}.", if app.repos.iter().any(|r| r.id == id && r.enabled) { "off" } else { "on" }), false);
+                    app.say(if app.repos.iter().any(|r| r.id == id && r.enabled) { olo_kit::tr!("{} was turned off.", id) } else { olo_kit::tr!("{} was turned on.", id) }, false);
                     app.load(false, cx);
                 }
                 Err(e) => app.say(e, true),
@@ -155,7 +155,7 @@ pub fn message(app: &mut OsUpdates, msg: Msg, cx: &mut Cx<OsUpdates>) {
 fn remove(app: &mut OsUpdates, cx: &mut Cx<OsUpdates>) {
     let Some(r) = app.r.selected(&app.repos).cloned() else { return };
     if !removable(&r) {
-        app.say(format!("{} is Fedora’s own: it can be turned off, not removed.", r.id), true);
+        app.say(olo_kit::tr!("{} is Fedora’s own: it can be turned off, not removed.", r.id), true);
         return;
     }
     let others: Vec<String> = app.repos.iter().filter(|o| o.repofile == r.repofile && o.id != r.id).map(|o| o.id.clone()).collect();
@@ -164,7 +164,7 @@ fn remove(app: &mut OsUpdates, cx: &mut Cx<OsUpdates>) {
         review::open(Plan { title: title.clone(), ops: vec![(Op::Remove, vec![pkg])], release: None, offline_only: false, comment: title }, cx.messenger());
         return;
     }
-    let mut message = format!("Its file, {}, is removed", r.repofile);
+    let mut message = olo_kit::tr!("Its file, {}, is removed", r.repofile);
     if !others.is_empty() {
         message.push_str(&format!(", and with it {} that it also holds ({})", words::count(others.len(), "repository", "repositories"), others.join(", ")));
     }
@@ -207,7 +207,7 @@ pub fn command(app: &mut OsUpdates, command: &str, cx: &mut Cx<OsUpdates>) -> bo
 pub fn body(app: &mut OsUpdates, cx: &mut Cx<OsUpdates>) -> Element {
     let p = theme::palette();
     let on = app.repos.iter().filter(|r| r.enabled).count();
-    let head = StringView::new(if app.session.is_some() { format!("{} repositories, {on} on. Packages come from those that are on.", app.repos.len()) } else { String::new() }).dim(true);
+    let head = StringView::new(if app.session.is_some() { olo_kit::tr!("{} repositories, {} on. Packages come from those that are on.", app.repos.len(), on) } else { String::new() }).dim(true);
     let list = list_view(app, cx);
     let list = crate::well(cx, p.list_background, list);
     let details = details_view(app, cx);
@@ -371,7 +371,7 @@ fn details_view(app: &mut OsUpdates, cx: &mut Cx<OsUpdates>) -> Element {
                 col = col.child(field("Key", if k.starts_with("http") { link(k.clone(), k.clone()) } else { text(k.trim_start_matches("file://").to_owned()) }));
             }
             col = col.child(heading("Settings"));
-            col = col.child(field("Priority", text(format!("{} (lower wins)", r.priority))));
+            col = col.child(field("Priority", text(olo_kit::tr!("{} (lower wins)", r.priority))));
             col = col.child(field("Cost", text(r.cost.to_string())));
             col = col.child(field("If it’s down", text(if r.skip_if_unavailable { "Skipped" } else { "Everything waits" })));
             if !r.excludepkgs.is_empty() {
@@ -385,7 +385,7 @@ fn details_view(app: &mut OsUpdates, cx: &mut Cx<OsUpdates>) -> Element {
             }
             col = col.child(field("File", text(r.repofile.clone())));
             if let Some(Some(pkg)) = app.r.owners.get(&r.repofile) {
-                col = col.child(field("Came with", text(format!("the package {pkg}"))));
+                col = col.child(field("Came with", text(olo_kit::tr!("the package {}", pkg))));
             }
             col.into_element()
         }
@@ -411,7 +411,7 @@ pub struct Section {
 /// say where it's fetched from (baseurl, metalink or mirrorlist).
 pub fn parse_repo_file(text: &str) -> Result<Vec<Section>, String> {
     if text.len() > 64 * 1024 {
-        return Err("That’s too big to be a .repo file.".into());
+        return Err(olo_kit::words::tr("That’s too big to be a .repo file.").into());
     }
     let mut out: Vec<Section> = Vec::new();
     for line in text.lines() {
@@ -422,7 +422,7 @@ pub fn parse_repo_file(text: &str) -> Result<Vec<Section>, String> {
         if let Some(id) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
             let id = id.trim();
             if id.is_empty() || id.contains(char::is_whitespace) || id.contains('/') {
-                return Err(format!("“[{id}]” isn’t a repository’s id."));
+                return Err(olo_kit::tr!("“[{}]” isn’t a repository’s id.", id));
             }
             out.push(Section { id: id.to_owned(), enabled: true, gpgcheck: true, ..Default::default() });
             continue;
@@ -431,9 +431,9 @@ pub fn parse_repo_file(text: &str) -> Result<Vec<Section>, String> {
             if out.last().is_some_and(|s| s.source.ends_with(',')) || line.starts_with("http") {
                 continue; // (a continued list of addresses)
             }
-            return Err(format!("“{line}” isn’t a setting."));
+            return Err(olo_kit::tr!("“{}” isn’t a setting.", line));
         };
-        let Some(s) = out.last_mut() else { return Err("A setting comes before any [repository].".into()) };
+        let Some(s) = out.last_mut() else { return Err(olo_kit::words::tr("A setting comes before any [repository].").into()) };
         let (k, v) = (k.trim(), v.trim());
         match k {
             "name" => s.name = v.to_owned(),
@@ -445,10 +445,10 @@ pub fn parse_repo_file(text: &str) -> Result<Vec<Section>, String> {
         }
     }
     if out.is_empty() {
-        return Err("It has no [repository] in it.".into());
+        return Err(olo_kit::words::tr("It has no [repository] in it.").into());
     }
     if let Some(s) = out.iter().find(|s| s.source.is_empty()) {
-        return Err(format!("“{}” doesn’t say where its packages are (no baseurl, metalink or mirrorlist).", s.id));
+        return Err(olo_kit::tr!("“{}” doesn’t say where its packages are (no baseurl, metalink or mirrorlist).", s.id));
     }
     Ok(out)
 }
@@ -483,14 +483,14 @@ pub fn fetch(url: &str) -> Result<String, String> {
         return std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"));
     }
     if !url.starts_with("https://") {
-        return Err("Only an https:// address: one that can be listened in on could be changed on its way.".into());
+        return Err(olo_kit::words::tr("Only an https:// address: one that can be listened in on could be changed on its way.").into());
     }
-    let mut reply = agent().get(url).call().map_err(|e| format!("It couldn’t be fetched: {e}"))?;
+    let mut reply = agent().get(url).call().map_err(|e| olo_kit::tr!("It couldn’t be fetched: {}", e))?;
     let status = reply.status().as_u16();
     if status != 200 {
-        return Err(format!("The server answered {status}{}.", if status == 404 { ": nothing’s there (for this Fedora release?)" } else { "" }));
+        return Err(olo_kit::tr!("The server answered {}{}.", status, if status == 404 { ": nothing’s there (for this Fedora release?)" } else { "" }));
     }
-    reply.body_mut().with_config().limit(64 * 1024).read_to_string().map_err(|e| format!("It couldn’t be read: {e}"))
+    reply.body_mut().with_config().limit(64 * 1024).read_to_string().map_err(|e| olo_kit::tr!("It couldn’t be read: {}", e))
 }
 
 /// What's being added.
@@ -532,14 +532,15 @@ static LOOKS: AtomicU64 = AtomicU64::new(0);
 
 /// A Copr project's .repo file: its address and the name dnf gives it.
 fn copr(project: &str, release: u32) -> Result<(String, String), String> {
-    let (owner, name) = project.trim().trim_start_matches("copr:").split_once('/').ok_or_else(|| "A Copr project is owner/project (as “@group/project” for a group’s).".to_owned())?;
+    let (owner, name) =
+        project.trim().trim_start_matches("copr:").split_once('/').ok_or_else(|| olo_kit::words::tr("A Copr project is owner/project (as “@group/project” for a group’s).").to_owned())?;
     let ok = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || "-_.+".contains(c));
     let (group, owner) = match owner.strip_prefix('@') {
         Some(g) => (true, g),
         None => (false, owner),
     };
     if !ok(owner) || !ok(name) {
-        return Err("That isn’t a Copr project’s name.".into());
+        return Err(olo_kit::words::tr("That isn’t a Copr project’s name.").into());
     }
     let who = if group { format!("group_{owner}") } else { owner.to_owned() };
     let path = if group { format!("g/{owner}") } else { owner.to_owned() };
@@ -645,7 +646,7 @@ impl View for AddRepo {
                         if urls.is_empty() {
                             return;
                         }
-                        let title = "Add RPM Fusion".to_owned();
+                        let title = olo_kit::words::tr("Add RPM Fusion").to_owned();
                         review::open(Plan { title: title.clone(), ops: vec![(Op::Install, urls)], release: None, offline_only: false, comment: title }, self.to_main.clone());
                     }
                     _ => {
@@ -719,7 +720,7 @@ impl View for AddRepo {
                     list = list.child(StringView::new("Added turned off.").small(true).dim(true));
                 }
             }
-            col = col.child(StringView::new(format!("{} will hold:", helper::repos_dir().join(name).display())).dim(true)).child(div().h(px(120.0)).child(crate::well(
+            col = col.child(StringView::new(olo_kit::tr!("{} will hold:", helper::repos_dir().join(name).display())).dim(true)).child(div().h(px(120.0)).child(crate::well(
                 cx,
                 p.list_background,
                 ScrollView::new(&self.scroll).border(false).background(p.list_background).child(list),

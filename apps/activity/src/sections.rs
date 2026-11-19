@@ -320,9 +320,14 @@ fn overview(app: &Activity, me: &Me, area: f32, cx: &Cx<Activity>) -> Vec<Elemen
                 vec!["Busy", "System", "I/O wait"],
                 Some(100.0),
             ),
-            Section::Memory => {
-                ("Memory", value(app, "memory"), format!("of {} · {} swap used", format_size(mem_total), value(app, "swap")), vec!["memory", "cached"], vec!["Used", "Cached"], Some(mem_total as f64))
-            }
+            Section::Memory => (
+                "Memory",
+                value(app, "memory"),
+                olo_kit::tr!("of {} · {} swap used", format_size(mem_total), value(app, "swap")),
+                vec!["memory", "cached"],
+                vec!["Used", "Cached"],
+                Some(mem_total as f64),
+            ),
             Section::Network => (
                 "Network",
                 Unit::Rate.format(app.latest("net-rx").unwrap_or(0.0) + app.latest("net-tx").unwrap_or(0.0)),
@@ -334,7 +339,7 @@ fn overview(app: &Activity, me: &Me, area: f32, cx: &Cx<Activity>) -> Vec<Elemen
             Section::Disks => (
                 "Disks",
                 Unit::Rate.format(app.latest("disk-read").unwrap_or(0.0) + app.latest("disk-write").unwrap_or(0.0)),
-                sys.volumes.first().and_then(|v| Some(format!("{} free on {}", format_size(v.free?), v.mount.split(", ").next().unwrap_or(&v.mount)))).unwrap_or_default(),
+                sys.volumes.first().and_then(|v| Some(olo_kit::tr!("{} free on {}", format_size(v.free?), v.mount.split(", ").next().unwrap_or(&v.mount)))).unwrap_or_default(),
                 vec!["disk-read", "disk-write"],
                 vec!["Read", "Written"],
                 None,
@@ -343,7 +348,7 @@ fn overview(app: &Activity, me: &Me, area: f32, cx: &Cx<Activity>) -> Vec<Elemen
                 // (The one the computer started on; the others in the GPU section.)
                 let more = sys.gpus.len().saturating_sub(1);
                 let first = sys.gpus.first().map(|g| format!("{} · {}", g.name, g.driver)).unwrap_or_default();
-                ("GPU", value(app, "gpu-busy"), if more > 0 { format!("{first} · and {more} more") } else { first }, vec!["gpu-busy"], vec!["Busy"], Some(100.0))
+                ("GPU", value(app, "gpu-busy"), if more > 0 { olo_kit::tr!("{} · and {} more", first, more) } else { first }, vec!["gpu-busy"], vec!["Busy"], Some(100.0))
             }
             _ => match &sys.battery {
                 Some(b) => ("Battery", value(app, "battery"), format!("{} · {}", b.status, Unit::Watts.format(b.watts.abs())), vec!["battery"], vec!["Charge"], Some(100.0)),
@@ -391,9 +396,9 @@ fn busiest(app: &Activity, me: &Me) -> Element {
     let (title, caption) = match moment {
         Some(m) => {
             let ago = app.t() - m.at;
-            (format!("At {}", clock(wall(app, m.at))), format!("{} ago · click a graph for another moment", duration(ago)))
+            (format!("At {}", clock(wall(app, m.at))), olo_kit::tr!("{} ago · click a graph for another moment", duration(ago)))
         }
-        None => ("Busiest Now".to_owned(), "Click a graph to see what was busy then".to_owned()),
+        None => (olo_kit::words::tr("Busiest Now").to_owned(), olo_kit::words::tr("Click a graph to see what was busy then").to_owned()),
     };
     let (cpu, other, other_title): (Vec<Busy>, Vec<Busy>, &str) = match moment {
         Some(m) => (
@@ -561,10 +566,10 @@ fn cpu(app: &Activity, me: &Me, inner: f32, cx: &Cx<Activity>) -> Vec<Element> {
     // Idle states: how deeply the cores sleep when there's nothing to do.
     if !sys.idle_states.is_empty() {
         let busy = app.latest("cpu").unwrap_or(0.0);
-        let mut rows: Vec<(String, String)> = vec![("Running".into(), format!("{busy:.1}% of the time"))];
+        let mut rows: Vec<(String, String)> = vec![("Running".into(), olo_kit::tr!("{}% of the time", format!("{:.1}", busy)))];
         for st in &sys.idle_states {
             let what = if st.what.is_empty() { st.name.clone() } else { format!("{} ({})", st.name, st.what) };
-            rows.push((what, format!("{:.1}% of the time, waking in {} µs", st.share, st.latency_us)));
+            rows.push((what, olo_kit::tr!("{}% of the time, waking in {} µs", format!("{:.1}", st.share), st.latency_us)));
         }
         let hues = [olo_theme::Hue::Blue, olo_theme::Hue::Teal, olo_theme::Hue::Green, olo_theme::Hue::Purple, olo_theme::Hue::Gray];
         let mut parts = vec![(c(p.hue(hues[0])), busy)];
@@ -581,12 +586,12 @@ fn cpu(app: &Activity, me: &Me, inner: f32, cx: &Cx<Activity>) -> Vec<Element> {
 
     // Load.
     let rows: Vec<(String, String)> = vec![
-        ("Load average".into(), format!("{:.2}, {:.2}, {:.2} (1, 5 and 15 minutes)", sys.load[0], sys.load[1], sys.load[2])),
+        (olo_kit::words::tr("Load average").into(), format!("{:.2}, {:.2}, {:.2} (1, 5 and 15 minutes)", sys.load[0], sys.load[1], sys.load[2])),
         ("Processes".into(), value(app, "processes")),
         ("Threads".into(), value(app, "threads")),
-        ("Context switches".into(), value(app, "switches")),
+        (olo_kit::words::tr("Context switches").into(), value(app, "switches")),
         ("Interrupts".into(), value(app, "interrupts")),
-        ("Page faults".into(), value(app, "faults")),
+        (olo_kit::words::tr("Page faults").into(), value(app, "faults")),
     ];
     out.push(Card::new("load", "Load").child(facts_two(rows)).child(div().h(px(m::SPACING))).child(graph(app, None, &["load"], None, GRAPH, cx)).into_any_element());
     out
@@ -634,8 +639,8 @@ fn memory(app: &Activity, area: f32, inner: f32, cx: &Cx<Activity>) -> Vec<Eleme
             let ratio = if z.compressed > 0 { z.original as f64 / z.compressed as f64 } else { 0.0 };
             [
                 (format!("{} holds", z.name), format!("{} of {}", format_size(z.original), format_size(z.disk_size))),
-                ("Compressed to".into(), format!("{} ({ratio:.1} : 1, {})", format_size(z.compressed), z.algorithm)),
-                ("Using".into(), format!("{} of memory", format_size(z.used))),
+                (olo_kit::words::tr("Compressed to").into(), format!("{} ({ratio:.1} : 1, {})", format_size(z.compressed), z.algorithm)),
+                ("Using".into(), olo_kit::tr!("{} of memory", format_size(z.used))),
             ]
         })
         .collect();
@@ -647,9 +652,9 @@ fn memory(app: &Activity, area: f32, inner: f32, cx: &Cx<Activity>) -> Vec<Eleme
         .iter()
         .find(|p| p.resource == "memory")
         .map(|pr| {
-            let mut v = vec![("Some waiting".to_owned(), format!("{:.1}%, {:.1}%, {:.1}%", pr.some[0], pr.some[1], pr.some[2]))];
+            let mut v = vec![(olo_kit::words::tr("Some waiting").to_owned(), format!("{:.1}%, {:.1}%, {:.1}%", pr.some[0], pr.some[1], pr.some[2]))];
             if let Some(f) = pr.full {
-                v.push(("All waiting".into(), format!("{:.1}%, {:.1}%, {:.1}%", f[0], f[1], f[2])));
+                v.push((olo_kit::words::tr("All waiting").into(), format!("{:.1}%, {:.1}%, {:.1}%", f[0], f[1], f[2])));
             }
             v
         })
@@ -688,16 +693,16 @@ fn disks(app: &Activity, me: &Me, inner: f32, cx: &Cx<Activity>) -> Vec<Element>
         let health = ctrl.as_ref().and_then(|c| sys.health.iter().find(|(n, _)| n == c)).map(|(_, h)| h.clone());
         let hrows: Vec<(String, String)> = match &health {
             Some(Some(h)) => vec![
-                ("Health".into(), format!("{}, {}% of its life used", h.verdict(), h.used)),
-                ("Spare".into(), format!("{}% left (warns under {}%)", h.spare, h.spare_threshold)),
+                ("Health".into(), olo_kit::tr!("{}, {}% of its life used", h.verdict(), h.used)),
+                ("Spare".into(), olo_kit::tr!("{}% left (warns under {}%)", h.spare, h.spare_threshold)),
                 ("Written".into(), format_size(h.written_bytes.min(u64::MAX as u128) as u64)),
                 ("Read".into(), format_size(h.read_bytes.min(u64::MAX as u128) as u64)),
-                ("Powered on".into(), format!("{} hours, {} times", h.power_on_hours, h.power_cycles)),
-                ("Unsafe shutdowns".into(), h.unsafe_shutdowns.to_string()),
-                ("Media errors".into(), h.media_errors.to_string()),
+                (olo_kit::words::tr("Powered on").into(), format!("{} hours, {} times", h.power_on_hours, h.power_cycles)),
+                (olo_kit::words::tr("Unsafe shutdowns").into(), h.unsafe_shutdowns.to_string()),
+                (olo_kit::words::tr("Media errors").into(), h.media_errors.to_string()),
                 ("Temperature".into(), Unit::Celsius.format(h.temperature)),
             ],
-            Some(None) => vec![("Health".into(), "Needs full access".into())],
+            Some(None) => vec![("Health".into(), olo_kit::words::tr("Needs full access").into())],
             None => Vec::new(),
         };
         let kind = if d.rotational {
@@ -725,8 +730,8 @@ fn disks(app: &Activity, me: &Me, inner: f32, cx: &Cx<Activity>) -> Vec<Element>
     for v in &sys.volumes {
         let title: SharedString = format!("{}{}", v.mount, if v.read_only { " (read-only)" } else { "" }).into();
         let detail: SharedString = match (v.size, v.free) {
-            (Some(s), Some(f)) => format!("{} free of {}", format_size(f), format_size(s)),
-            _ => "On the network".into(),
+            (Some(s), Some(f)) => olo_kit::tr!("{} free of {}", format_size(f), format_size(s)),
+            _ => olo_kit::words::tr("On the network").into(),
         }
         .into();
         let sub: SharedString = format!("{} · {}", v.kind, v.device).into();
@@ -786,7 +791,7 @@ fn network(app: &Activity, me: &Me, inner: f32, cx: &Cx<Activity>) -> Vec<Elemen
             items.push(figure("Errors", n.errors.to_string()));
             items.push(figure("Dropped", n.drops.to_string()));
         }
-        let mut cap = vec![if n.up { "Connected".to_owned() } else { "Not connected".to_owned() }];
+        let mut cap = vec![if n.up { "Connected".to_owned() } else { olo_kit::words::tr("Not connected").to_owned() }];
         cap.extend(n.addresses.iter().filter(|a| !a.starts_with("fe80")).cloned());
         if !n.mac.is_empty() && n.mac != "00:00:00:00:00:00" {
             cap.push(n.mac.clone());
@@ -928,7 +933,7 @@ fn gpu(app: &Activity, me: &Me, area: f32, inner: f32, cx: &Cx<Activity>) -> Vec
             );
         }
         if app.source(&memory).is_some() {
-            let caption = if g.memory_limit > 0 { format!("of {} it may use", format_size(g.memory_limit)) } else { String::new() };
+            let caption = if g.memory_limit > 0 { olo_kit::tr!("of {} it may use", format_size(g.memory_limit)) } else { String::new() };
             let mut card = Card::new(SharedString::from(memory.clone()), "Memory").figure(value(app, &memory)).caption(caption);
             if g.memory_limit > 0 {
                 card = card.child(meter_el(vec![(c(p.hue(olo_theme::Hue::Red)), g.memory_used as f64)], g.memory_limit as f64, 8.0)).child(div().h(px(m::SPACING)));
@@ -971,7 +976,7 @@ fn gpu(app: &Activity, me: &Me, area: f32, inner: f32, cx: &Cx<Activity>) -> Vec
             (false, false) => "Its memory each holds (other users' need full access)",
         };
         out.push(
-            Card::new(SharedString::from(format!("gpu-programs-{i}")), SharedString::from(format!("Programs Using the {}", g.name)))
+            Card::new(SharedString::from(format!("gpu-programs-{i}")), SharedString::from(olo_kit::tr!("Programs Using the {}", g.name)))
                 .caption(caption)
                 .child(process_rows(me, "Memory on the GPU", rows))
                 .into_any_element(),
@@ -1040,19 +1045,19 @@ fn displays(app: &Activity, me: &Me, inner: f32, cx: &Cx<Activity>) -> Vec<Eleme
         let hz = d.refresh_mhz as f64 / 1000.0;
         let frame_ms = 1000.0 / hz.max(1.0);
         let rows: Vec<(String, String)> = vec![
-            ("Refresh".into(), format!("{hz:.0} Hz, {frame_ms:.1} ms a frame")),
-            ("Now".into(), if d.resting { "Resting: nothing new on it".into() } else { format!("{:.0} frames a second", d.fps) }),
-            ("Dropped".into(), format!("{} in the last minute, {} of {} in all", d.late_minute, style::thousands(d.late as usize), style::thousands(d.frames as usize))),
-            ("Drawing".into(), format!("{} typically, {} at the 95th percentile, {} to {}", ms(d.render_p50_us), ms(d.render_p95_us), ms(d.render_min_us), ms(d.render_max_us))),
-            ("Pacing".into(), format!("{} of each frame kept for drawing: a frame starts {} after the vblank", ms(d.budget_us), ms(d.delay_us))),
-            ("Pointer".into(), if d.cursor_plane { "On a plane of its own: moving it draws nothing".into() } else { "Drawn into each frame".into() }),
+            ("Refresh".into(), olo_kit::tr!("{} Hz, {} ms a frame", format!("{:.0}", hz), format!("{:.1}", frame_ms))),
+            ("Now".into(), if d.resting { olo_kit::words::tr("Resting: nothing new on it").into() } else { olo_kit::tr!("{} frames a second", format!("{:.0}", d.fps)) }),
+            ("Dropped".into(), olo_kit::tr!("{} in the last minute, {} of {} in all", d.late_minute, style::thousands(d.late as usize), style::thousands(d.frames as usize))),
+            ("Drawing".into(), olo_kit::tr!("{} typically, {} at the 95th percentile, {} to {}", ms(d.render_p50_us), ms(d.render_p95_us), ms(d.render_min_us), ms(d.render_max_us))),
+            ("Pacing".into(), olo_kit::tr!("{} of each frame kept for drawing: a frame starts {} after the vblank", ms(d.budget_us), ms(d.delay_us))),
+            ("Pointer".into(), if d.cursor_plane { olo_kit::words::tr("On a plane of its own: moving it draws nothing").into() } else { olo_kit::words::tr("Drawn into each frame").into() }),
             ("Scan-out".into(), if d.scanout.is_empty() { "—".into() } else { d.scanout.clone() }),
         ];
         let figure = if d.resting { "resting".to_owned() } else { format!("{:.0} fps", d.fps) };
         let caption = match d.late_minute {
-            0 => "Every frame on time this last minute".to_owned(),
-            1 => "A frame dropped in the last minute".to_owned(),
-            n => format!("{n} frames dropped in the last minute"),
+            0 => olo_kit::words::tr("Every frame on time this last minute").to_owned(),
+            1 => olo_kit::words::tr("A frame dropped in the last minute").to_owned(),
+            n => olo_kit::tr!("{} frames dropped in the last minute", n),
         };
         let mut card = Card::new(format!("display-{}", d.output), d.output.clone()).figure(figure).caption(caption);
         if d.late_minute > 0 {
@@ -1140,12 +1145,12 @@ fn ai(app: &Activity, inner: f32, cx: &Cx<Activity>) -> Vec<Element> {
     };
     let share = |n: u64| if s.offered > 0 { format!(" ({})", percent(n as f64 / s.offered as f64)) } else { String::new() };
     let rows: Vec<(String, String)> = vec![
-        ("Offered".into(), format!("{} suggestions since it started", style::thousands(s.offered as usize))),
-        ("Taken".into(), format!("{} whole{}, and {} a word at a time", style::thousands(s.accepted as usize), share(s.accepted), style::thousands(s.accepted_words as usize))),
-        ("Knows".into(), format!("{} different commands, of {} run", style::thousands(s.known), style::thousands(s.seen as usize))),
-        ("Computes with".into(), format!("The {}", s.backend)),
+        ("Offered".into(), olo_kit::tr!("{} suggestions since it started", style::thousands(s.offered as usize))),
+        ("Taken".into(), olo_kit::tr!("{} whole{}, and {} a word at a time", style::thousands(s.accepted as usize), share(s.accepted), style::thousands(s.accepted_words as usize))),
+        ("Knows".into(), olo_kit::tr!("{} different commands, of {} run", style::thousands(s.known), style::thousands(s.seen as usize))),
+        (olo_kit::words::tr("Computes with").into(), format!("The {}", s.backend)),
     ];
-    let figure = if s.offered > 0 { format!("{} taken", percent(s.accepted as f64 / s.offered as f64)) } else { "nothing yet".into() };
+    let figure = if s.offered > 0 { format!("{} taken", percent(s.accepted as f64 / s.offered as f64)) } else { olo_kit::words::tr("nothing yet").into() };
     let mut out = vec![
         Card::new("ai-commands", "Command Suggestions")
             .figure(figure)
@@ -1159,12 +1164,12 @@ fn ai(app: &Activity, inner: f32, cx: &Cx<Activity>) -> Vec<Element> {
     // most, then shows its own hint).
     let none = s.latency_count == 0;
     let rows: Vec<(String, String)> = if none {
-        vec![("Suggestions".into(), "None asked for yet: type in brush".into())]
+        vec![("Suggestions".into(), olo_kit::words::tr("None asked for yet: type in brush").into())]
     } else {
         vec![
             ("Typically".into(), us_text(s.latency_p50_us)),
-            ("95th percentile".into(), us_text(s.latency_p95_us)),
-            ("Slowest".into(), format!("{} (of the last {})", us_text(s.latency_worst_us), style::thousands(s.latency_count))),
+            (olo_kit::words::tr("95th percentile").into(), us_text(s.latency_p95_us)),
+            ("Slowest".into(), olo_kit::tr!("{} (of the last {})", us_text(s.latency_worst_us), style::thousands(s.latency_count))),
         ]
     };
     let slow = s.latency_p95_us > 8_000;
@@ -1182,27 +1187,30 @@ fn ai(app: &Activity, inner: f32, cx: &Cx<Activity>) -> Vec<Element> {
     let mut rows: Vec<(String, String)> = vec![(
         "Weights".into(),
         match (s.tuned, s.fine_tunes) {
-            (false, _) => "The hand-written ones: not fine-tuned yet".into(),
-            (true, 0) => "Yours, as last learned".into(),
-            (true, 1) => "Yours: fine-tuned once since it started".into(),
-            (true, n) => format!("Yours: fine-tuned {} times since it started", style::thousands(n as usize)),
+            (false, _) => olo_kit::words::tr("The hand-written ones: not fine-tuned yet").into(),
+            (true, 0) => olo_kit::words::tr("Yours, as last learned").into(),
+            (true, 1) => olo_kit::words::tr("Yours: fine-tuned once since it started").into(),
+            (true, n) => olo_kit::tr!("Yours: fine-tuned {} times since it started", style::thousands(n as usize)),
         },
     )];
     let mut figure = "—".to_owned();
     if let Some(t) = &s.last_tune {
         let when = jiff::Timestamp::from_second(s.last_tune_at).ok().map(|w| w.to_zoned(jiff::tz::TimeZone::system()).strftime("%-d %B at %H:%M").to_string()).unwrap_or_default();
         let ms = t.micros as f64 / 1000.0;
-        rows.push(("Last".into(), format!("{when}: {} examples, {} steps, {ms:.1} ms on the {}", style::thousands(t.examples), style::thousands(t.steps), t.backend)));
+        rows.push(("Last".into(), olo_kit::tr!("{}: {} examples, {} steps, {} ms on the {}", when, style::thousands(t.examples), style::thousands(t.steps), format!("{:.1}", ms), t.backend)));
         // (What's in use: the new weights if kept, else those before.)
         let in_use = if t.kept { t.after.top1 } else { t.before.top1 } as f64;
-        rows.push(("Right first".into(), format!("{} of your newest commands, kept back to test it ({} hand-written)", percent(in_use), percent(t.baseline.top1 as f64))));
+        rows.push((olo_kit::words::tr("Right first").into(), olo_kit::tr!("{} of your newest commands, kept back to test it ({} hand-written)", percent(in_use), percent(t.baseline.top1 as f64))));
         rows.push((
             "Kept".into(),
-            if t.kept { format!("Yes ({} before)", percent(t.before.top1 as f64)) } else { format!("No: it did no better ({}), so the weights before stay", percent(t.after.top1 as f64)) },
+            if t.kept { format!("Yes ({} before)", percent(t.before.top1 as f64)) } else { olo_kit::tr!("No: it did no better ({}), so the weights before stay", percent(t.after.top1 as f64)) },
         ));
-        figure = format!("{} right first", percent(in_use));
+        figure = olo_kit::tr!("{} right first", percent(in_use));
     }
-    rows.push(("Waiting".into(), if s.pending > 0 { format!("{} new examples, learned within a second", style::thousands(s.pending)) } else { "Nothing new to learn".into() }));
+    rows.push((
+        "Waiting".into(),
+        if s.pending > 0 { olo_kit::tr!("{} new examples, learned within a second", style::thousands(s.pending)) } else { olo_kit::words::tr("Nothing new to learn").into() },
+    ));
     out.push(Card::new("ai-learning", "Learning").figure(figure).caption("Fine-tuned on your newest commands a minute after you type them").child(facts(rows)).into_any_element());
     out
 }
@@ -1222,8 +1230,15 @@ fn inputs(app: &Activity, inner: f32, cx: &Cx<Activity>) -> Vec<Element> {
         let rate = if h.interval_us > 0 { format!("{} Hz", (1_000_000 / h.interval_us.max(1)).min(8000)) } else { "—".to_owned() };
         let ms = |us: u64| format!("{:.0} ms", us as f64 / 1000.0);
         let rows: Vec<(String, String)> = vec![
-            ("Reports".into(), format!("{} in the last second, at {rate}", h.reports_second)),
-            ("Gaps".into(), if h.gaps_minute == 0 { "None in the last minute".into() } else { format!("{} over 5 ms in the last minute, the longest {}", h.gaps_minute, ms(h.longest_gap_us)) }),
+            ("Reports".into(), olo_kit::tr!("{} in the last second, at {}", h.reports_second, rate)),
+            (
+                "Gaps".into(),
+                if h.gaps_minute == 0 {
+                    olo_kit::words::tr("None in the last minute").into()
+                } else {
+                    olo_kit::tr!("{} over 5 ms in the last minute, the longest {}", h.gaps_minute, ms(h.longest_gap_us))
+                },
+            ),
         ];
         let figure = if h.reports_second > 0 { rate.clone() } else { "still".to_owned() };
         let caption = if h.gaps_minute > 0 {
@@ -1245,26 +1260,26 @@ fn inputs(app: &Activity, inner: f32, cx: &Cx<Activity>) -> Vec<Element> {
     if t.filter || t.reports_minute > 0 {
         let us = |us: u64| if us < 1000 { format!("{us} µs") } else { format!("{:.1} ms", us as f64 / 1000.0) };
         let palms = if t.model && t.trained == 0 {
-            format!("Olo's own palm model, made from {} touches of real hands (Preferences ▸ Touchpad & Mouse ▸ Touch trains one of yours)", t.contacts)
+            olo_kit::tr!("Olo's own palm model, made from {} touches of real hands (Preferences ▸ Touchpad & Mouse ▸ Touch trains one of yours)", t.contacts)
         } else if t.model {
             let when = jiff::Timestamp::from_second(t.trained as i64).ok().map(|w| w.to_zoned(jiff::tz::TimeZone::system()).strftime("%-d %B %Y").to_string()).unwrap_or_default();
-            format!("Your palm model, trained {when} on {} touches", t.contacts)
+            olo_kit::tr!("Your palm model, trained {} on {} touches", when, t.contacts)
         } else if t.filter {
-            "By their size alone: the palm model is off (Preferences ▸ Touchpad & Mouse ▸ Touch)".into()
+            olo_kit::words::tr("By their size alone: the palm model is off (Preferences ▸ Touchpad & Mouse ▸ Touch)").into()
         } else {
-            "libinput's own: Olo's touch filter is off".into()
+            olo_kit::words::tr("libinput's own: Olo's touch filter is off").into()
         };
         let core = match t.util_min {
-            1024.. => "on a fast core at a high clock".to_owned(),
-            1.. => format!("taken as at least {}% busy", t.util_min * 100 / 1024),
-            0 => "where the scheduler puts it".to_owned(),
+            1024.. => olo_kit::words::tr("on a fast core at a high clock").to_owned(),
+            1.. => olo_kit::tr!("taken as at least {}% busy", t.util_min * 100 / 1024),
+            0 => olo_kit::words::tr("where the scheduler puts it").to_owned(),
         };
         let mut rows: Vec<(String, String)> = vec![
-            ("Reports".into(), if t.reports_second > 0 { format!("{} in the last second", t.reports_second) } else { "None in the last second".into() }),
+            ("Reports".into(), if t.reports_second > 0 { olo_kit::tr!("{} in the last second", t.reports_second) } else { olo_kit::words::tr("None in the last second").into() }),
             (
                 "Latency".into(),
                 if t.reports_minute > 0 {
-                    format!(
+                    olo_kit::tr!(
                         "{} typically, {} at the 99th percentile, the longest {} ({} reports in the last minute)",
                         us(t.latency_p50_us),
                         us(t.latency_p99_us),
@@ -1278,23 +1293,26 @@ fn inputs(app: &Activity, inner: f32, cx: &Cx<Activity>) -> Vec<Element> {
             ("Palms".into(), palms),
         ];
         if t.model {
-            rows.push(("Tested".into(), format!("{:.0}% of palms caught, {:.1}% of fingers taken for palms, on touches kept back", t.palms_caught * 100.0, t.fingers_lost * 100.0)));
+            rows.push((
+                "Tested".into(),
+                olo_kit::tr!("{}% of palms caught, {}% of fingers taken for palms, on touches kept back", format!("{:.0}", t.palms_caught * 100.0), format!("{:.1}", t.fingers_lost * 100.0)),
+            ));
         }
         // What the model makes of the touches now (judged here as the
         // filter judges them, while this section shows).
         if let Some(s) = &app.palm_stats {
             let judged = if s.touches == 0 {
-                "No touches in the last minute".to_owned()
+                olo_kit::words::tr("No touches in the last minute").to_owned()
             } else {
-                let size = if s.by_size > 0 { format!(" ({} by their size)", s.by_size) } else { String::new() };
-                format!("{} touches in the last minute, {} taken for palms{size}", s.touches, s.palms)
+                let size = if s.by_size > 0 { format!(" {}", olo_kit::tr!("({} by their size)", s.by_size)) } else { String::new() };
+                olo_kit::tr!("{} touches in the last minute, {} taken for palms{}", s.touches, s.palms, size)
             };
             rows.push(("Judged".into(), judged));
             if s.model && s.us_p50 > 0 {
-                rows.push(("The model".into(), format!("{} µs a report typically, the longest {} µs", s.us_p50, s.us_max)));
+                rows.push((olo_kit::words::tr("The model").into(), olo_kit::tr!("{} µs a report typically, the longest {} µs", s.us_p50, s.us_max)));
             }
         }
-        rows.push(("Runs on".into(), format!("app_server's main thread: nice {}{}, {core}", t.nice, if t.realtime { ", realtime" } else { "" })));
+        rows.push((olo_kit::words::tr("Runs on").into(), olo_kit::tr!("app_server's main thread: nice {}{}, {}", t.nice, if t.realtime { ", realtime" } else { "" }, core)));
         // (Half a frame at 120 Hz: a touch waiting that long shows.)
         let slow = t.reports_minute > 0 && t.latency_p99_us > 4_000;
         let figure = if t.reports_minute > 0 { us(t.latency_p50_us) } else { "still".to_owned() };
@@ -1325,14 +1343,14 @@ fn inputs(app: &Activity, inner: f32, cx: &Cx<Activity>) -> Vec<Element> {
     {
         let a = &app.inputs;
         let rows: Vec<(String, String)> = vec![
-            ("Clicks".into(), format!("{} in the last minute", style::thousands(a.clicks_minute as usize))),
-            ("Scrolling".into(), format!("{} steps in the last minute (a wheel's notches, a touchpad's moves)", style::thousands(a.scrolls_minute as usize))),
-            ("Gestures".into(), format!("{} begun in the last minute (swipes, pinches, holds)", style::thousands(a.gestures_minute as usize))),
-            ("Keys".into(), format!("{} pressed in the last minute", style::thousands(a.keys_minute as usize))),
+            ("Clicks".into(), olo_kit::tr!("{} in the last minute", style::thousands(a.clicks_minute as usize))),
+            ("Scrolling".into(), olo_kit::tr!("{} steps in the last minute (a wheel's notches, a touchpad's moves)", style::thousands(a.scrolls_minute as usize))),
+            ("Gestures".into(), olo_kit::tr!("{} begun in the last minute (swipes, pinches, holds)", style::thousands(a.gestures_minute as usize))),
+            ("Keys".into(), olo_kit::tr!("{} pressed in the last minute", style::thousands(a.keys_minute as usize))),
         ];
         let busy = a.clicks_minute + a.scrolls_minute + a.gestures_minute + a.keys_minute;
         let card = Card::new("inputs-activity", "What You Did")
-            .figure(if busy > 0 { format!("{} a minute", style::thousands(busy as usize)) } else { "nothing".into() })
+            .figure(if busy > 0 { olo_kit::tr!("{} a minute", style::thousands(busy as usize)) } else { "nothing".into() })
             .caption("Each kind of input in the last minute: how many, never which keys");
         let graph = history_graph(
             app,
@@ -1366,7 +1384,7 @@ fn sensors(app: &Activity, inner: f32, cx: &Cx<Activity>) -> Vec<Element> {
             rows.push(("Health".into(), b.health.clone()));
         }
         if b.design > 0.0 {
-            rows.push(("Holds".into(), format!("{:.1} Wh of {:.1} Wh new ({:.0}%)", b.full, b.design, b.full / b.design * 100.0)));
+            rows.push(("Holds".into(), olo_kit::tr!("{} Wh of {} Wh new ({}%)", format!("{:.1}", b.full), format!("{:.1}", b.design), format!("{:.0}", b.full / b.design * 100.0))));
         }
         rows.push(("Now".into(), format!("{:.1} Wh", b.energy)));
         rows.push(("Cycles".into(), b.cycles.to_string()));
@@ -1446,17 +1464,17 @@ fn fan_words(cool: &crate::sample::Cooling) -> (String, Option<&'static str>, Op
     };
     match (ours, cool.profile.as_str()) {
         // Chosen and not what the fans are doing: said, with why.
-        (Some(p), _) if !cool.amiss.is_empty() => (format!("{} profile · not in force: {}", p.label(), cool.amiss), Some(fact(p)), Some(format!("Not in force: {}", cool.amiss))),
+        (Some(p), _) if !cool.amiss.is_empty() => (olo_kit::tr!("{} profile · not in force: {}", p.label(), cool.amiss), Some(fact(p)), Some(olo_kit::tr!("Not in force: {}", cool.amiss))),
         (Some(p), _) => {
             let (short, level) = match cool.level.as_str() {
-                "" | "auto" => ("left to the firmware for now".to_owned(), "Left to the firmware for now".to_owned()),
-                "full-speed" => ("full speed".to_owned(), "Full speed".to_owned()),
-                n => (format!("level {n} of 7"), format!("{n} of 7")),
+                "" | "auto" => (olo_kit::words::tr("left to the firmware for now").to_owned(), olo_kit::words::tr("Left to the firmware for now").to_owned()),
+                "full-speed" => (olo_kit::words::tr("full speed").to_owned(), olo_kit::words::tr("Full speed").to_owned()),
+                n => (olo_kit::tr!("level {} of 7", n), format!("{n} of 7")),
             };
             (format!("{} profile · {short}", p.label()), Some(fact(p)), Some(level))
         }
         (None, "") => (String::new(), None, None),
-        (None, _) => ("Auto profile · the firmware's own curve".to_owned(), Some("Auto: the firmware's own curve"), None),
+        (None, _) => (olo_kit::words::tr("Auto profile · the firmware's own curve").to_owned(), Some("Auto: the firmware's own curve"), None),
     }
 }
 
@@ -1528,13 +1546,13 @@ fn fans_card(app: &Activity, inner: f32, cx: &Cx<Activity>) -> Option<Element> {
         rows.push(("Because".into(), cool.why.clone()));
     }
     if let Some(n) = cool.throttled {
-        let long = cool.throttled_ms.filter(|ms| *ms >= 1000).map(|ms| format!(", {} in all", duration(ms as f64 / 1000.0))).unwrap_or_default();
-        rows.push(("Throttled".into(), if n == 0 { "Never since the computer started".into() } else { format!("{} since the computer started{long}", times(n)) }));
+        let long = cool.throttled_ms.filter(|ms| *ms >= 1000).map(|ms| format!(", {}", olo_kit::tr!("{} in all", duration(ms as f64 / 1000.0)))).unwrap_or_default();
+        rows.push(("Throttled".into(), if n == 0 { olo_kit::words::tr("Never since the computer started").into() } else { olo_kit::tr!("{} since the computer started{}", times(n), long) }));
         if let Some((minute, open)) = app.throttled_lately() {
             let lately = match (minute, open) {
-                (_, 0) => "Not since this window opened".to_owned(),
-                (0, open) => format!("Not in the last minute; {} since this window opened", times(open)),
-                (minute, open) => format!("{} in the last minute, {} since this window opened", times(minute), times(open)),
+                (_, 0) => olo_kit::words::tr("Not since this window opened").to_owned(),
+                (0, open) => olo_kit::tr!("Not in the last minute; {} since this window opened", times(open)),
+                (minute, open) => olo_kit::tr!("{} in the last minute, {} since this window opened", times(minute), times(open)),
             };
             rows.push(("Lately".into(), lately));
         }
@@ -1566,10 +1584,10 @@ fn system(app: &Activity, me: &Me, inner: f32, cx: &Cx<Activity>) -> Vec<Element
         ("Model".into(), sys.model.clone()),
         ("Name".into(), sys.host.clone()),
         ("Kernel".into(), sys.kernel.clone()),
-        ("Up for".into(), duration(sys.uptime)),
+        (olo_kit::words::tr("Up for").into(), duration(sys.uptime)),
         ("Processor".into(), if sys.cpu_model.is_empty() { format!("{} cores", sys.cores) } else { sys.cpu_model.clone() }),
         ("Memory".into(), format_size(mem)),
-        ("Open files".into(), if sys.open_files.1 >= 1 << 62 { format!("{}, no limit", sys.open_files.0) } else { format!("{} of {}", sys.open_files.0, sys.open_files.1) }),
+        (olo_kit::words::tr("Open files").into(), if sys.open_files.1 >= 1 << 62 { olo_kit::tr!("{}, no limit", sys.open_files.0) } else { format!("{} of {}", sys.open_files.0, sys.open_files.1) }),
         ("Access".into(), access.to_owned()),
     ];
     let mut card = Card::new("this-computer", "This Computer").child(facts_two(rows));
@@ -1778,10 +1796,10 @@ fn supervisor(app: &Activity, me: &Me, _: &Cx<Activity>) -> Vec<Element> {
         vec![
             ("Favoured".into(), favoured),
             (
-                "Olo's own".into(),
+                olo_kit::words::tr("Olo's own").into(),
                 match st.raised.len() {
-                    0 => "Each above everything else, as it started (rtkit)".to_owned(),
-                    _ => st.raised.iter().map(|r| format!("{} to nice {}", r.name, r.nice)).collect::<Vec<_>>().join(", "),
+                    0 => olo_kit::words::tr("Each above everything else, as it started (rtkit)").to_owned(),
+                    _ => st.raised.iter().map(|r| olo_kit::tr!("{} to nice {}", r.name, r.nice)).collect::<Vec<_>>().join(", "),
                 },
             ),
             (
@@ -1792,8 +1810,8 @@ fn supervisor(app: &Activity, me: &Me, _: &Cx<Activity>) -> Vec<Element> {
                     n => format!("{n} processes"),
                 },
             ),
-            ("Memory free".into(), format!("{:.0}%", st.memory_available)),
-            ("Memory stalls".into(), format!("{:.0}%", st.memory_stall)),
+            (olo_kit::words::tr("Memory free").into(), format!("{:.0}%", st.memory_available)),
+            (olo_kit::words::tr("Memory stalls").into(), format!("{:.0}%", st.memory_stall)),
         ]
     } else {
         Vec::new()
@@ -1806,7 +1824,7 @@ fn supervisor(app: &Activity, me: &Me, _: &Cx<Activity>) -> Vec<Element> {
     let figure_text = if st.running { "On" } else { "Off" };
     let caption = match (st.running, urgent, st.findings.len()) {
         (false, ..) => String::new(),
-        (true, 0, 0) => "Nothing found".to_owned(),
+        (true, 0, 0) => olo_kit::words::tr("Nothing found").to_owned(),
         (true, 0, n) => format!("{n} finding{}", if n == 1 { "" } else { "s" }),
         (true, u, n) => format!("{n} finding{}, {u} urgent", if n == 1 { "" } else { "s" }),
     };
@@ -1826,7 +1844,7 @@ fn supervisor(app: &Activity, me: &Me, _: &Cx<Activity>) -> Vec<Element> {
         let title = format!("{}: {}", f.kind.title(), f.name);
         let since = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(f.since);
         let ago = std::time::SystemTime::now().duration_since(since).map(|d| d.as_secs_f64()).unwrap_or(0.0);
-        let caption = format!("{}pid {} · found {} ago", if f.urgent { "Urgent · " } else { "" }, f.pid, duration(ago));
+        let caption = olo_kit::tr!("{}pid {} · found {} ago", if f.urgent { "Urgent · " } else { "" }, f.pid, duration(ago));
         let alarm = c(if f.urgent { p.failure } else { p.warning });
         let mut card = Card::new(format!("finding-{}-{}", f.pid, f.kind as u8), title)
             .figure(format!("{:.0}% sure", f.confidence * 100.0))
@@ -1858,7 +1876,7 @@ fn supervisor(app: &Activity, me: &Me, _: &Cx<Activity>) -> Vec<Element> {
         }
         let more = st.lowered.len().saturating_sub(SHOWN);
         if more > 0 {
-            card = card.child(para(format!("And {more} more"), ink.text));
+            card = card.child(para(olo_kit::tr!("And {} more", more), ink.text));
         }
         out.push(card.into_any_element());
     }

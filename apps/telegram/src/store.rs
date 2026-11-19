@@ -200,8 +200,8 @@ impl Store {
         Some(match (live.len(), many) {
             (1, false) => format!("{}…", first.doing.describe()),
             (1, true) => format!("{} is {}…", first.who.split(' ').next().unwrap_or(&first.who), first.doing.describe()),
-            (2, _) => format!("{} and {} are typing…", first.who.split(' ').next().unwrap_or(""), live[1].who.split(' ').next().unwrap_or("")),
-            (n, _) => format!("{n} people are typing…"),
+            (2, _) => olo_kit::tr!("{} and {} are typing…", first.who.split(' ').next().unwrap_or(""), live[1].who.split(' ').next().unwrap_or("")),
+            (n, _) => olo_kit::tr!("{} people are typing…", n),
         })
     }
 }

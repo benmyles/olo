@@ -99,10 +99,18 @@ something nobody here has is in "Blocked", with what it waits for.
   Passwords' and Viewer's (2026-11-19: 675 new words in each language;
   a service's words for its window stay English and are translated where
   shown, `en!` and `words::of_said`; command lines, agents' replies and
-  logs stay English); left, by that list: StyledEdit (143), Speed Test
-  and Weather (68 each), Updates (62), Telegram (61), Activity Monitor
-  (46), kache (35), Logs (30), Phone and Olo Doctor (22 each), DeskCalc
-  (a few), a short form for words in tight places (Disk Usage's middle
+  logs stay English), and StyledEdit's, Speed Test's, Logs', DeskCalc's,
+  Telegram's, kache's, Weather's, Updates' and Activity Monitor's
+  (2026-11-19: 727 new words; the kit's dashboards and charts ask for
+  their words; Deskbar's glances choose the language); left: Phone (its
+  service's notifications and replies, the service-words model, and
+  its tapbacks, which phones exchange in English) and Olo Doctor (its
+  findings, which Deskbar and its command line read: the same), each a
+  batch of its own; Weather's Edit ▸ Copy text (English labels
+  throughout), and its next-hour line said whole for each kind of
+  precipitation ("La pluie cessera…", not "Pluie s'arrête…": French and
+  Spanish want the article the kind's name alone doesn't carry); what apps paint themselves that the unasked list shows
+  (Activity's sections, kache's sidebar), a short form for words in tight places (Disk Usage's middle
   says "Home" in every language: "Benutzerordner" is cut there; a
   catalog's `short:` line, `words::short`), what the swept apps still build with `format!` around a new
   line or that the sweep couldn't (single words copied into a `String`:

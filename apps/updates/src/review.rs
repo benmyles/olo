@@ -188,28 +188,34 @@ impl Review {
 
     fn summary(r: &Resolved) -> String {
         let n = |a: &str| r.items.iter().filter(|i| i.action == a).count();
+        // (Each said whole, counted: "update 3 packages", for "This will
+        // {}." in any language.)
         let mut parts = Vec::new();
-        for (a, verb) in [("Upgrade", "update"), ("Install", "install"), ("Downgrade", "downgrade"), ("Reinstall", "reinstall"), ("Remove", "remove")] {
-            let c = n(a);
+        let mut add = |c: usize, said: fn(u64) -> String| {
             if c > 0 {
-                parts.push(format!("{verb} {}", words::count(c, "package", "packages")));
+                parts.push(said(c as u64));
             }
-        }
+        };
+        add(n("Upgrade"), |c| olo_kit::words::count(c, "update 1 package", "update {n} packages"));
+        add(n("Install"), |c| olo_kit::words::count(c, "install 1 package", "install {n} packages"));
+        add(n("Downgrade"), |c| olo_kit::words::count(c, "downgrade 1 package", "downgrade {n} packages"));
+        add(n("Reinstall"), |c| olo_kit::words::count(c, "reinstall 1 package", "reinstall {n} packages"));
+        add(n("Remove"), |c| olo_kit::words::count(c, "remove 1 package", "remove {n} packages"));
         let (download, disk) = r.sizes();
         let mut s = match parts.as_slice() {
-            [] => "Nothing to do.".to_owned(),
-            [one] => format!("This will {one}."),
+            [] => olo_kit::words::tr("Nothing to do.").to_owned(),
+            [one] => olo_kit::tr!("This will {}.", one),
             more => {
                 let (last, rest) = more.split_last().expect("two");
-                format!("This will {} and {last}.", rest.join(", "))
+                olo_kit::tr!("This will {} and {}.", rest.join(", "), last)
             }
         };
         if download > 0 {
-            s.push_str(&format!(" It downloads {}", dnf::size_words(download)));
+            s.push_str(&format!(" {}", olo_kit::tr!("It downloads {}", dnf::size_words(download))));
             s.push_str(&match disk {
-                0 => " and needs no more disk space.".to_owned(),
-                1.. => format!(" and takes {} more disk space.", dnf::size_words(disk as u64)),
-                _ => format!(" and frees {}.", dnf::size_words((-disk) as u64)),
+                0 => format!(" {}", olo_kit::words::tr("and needs no more disk space.")).to_owned(),
+                1.. => format!(" {}", olo_kit::tr!("and takes {} more disk space.", dnf::size_words(disk as u64))),
+                _ => format!(" {}", olo_kit::tr!("and frees {}.", dnf::size_words((-disk) as u64))),
             });
         }
         s
@@ -268,19 +274,19 @@ impl Review {
                 if let Some(d) = run.downloads.iter_mut().find(|d| d.0 == id) {
                     d.3 = d.2;
                     if !ok {
-                        run.log.push(format!("{} didn’t download: {message}", d.1));
+                        run.log.push(olo_kit::tr!("{} didn’t download: {}", d.1, message));
                     }
                 }
             }
-            Event::MirrorFailure { message, url, .. } => run.log.push(format!("A mirror failed ({url}): {message}")),
+            Event::MirrorFailure { message, url, .. } => run.log.push(olo_kit::tr!("A mirror failed ({}): {}", url, message)),
             Event::Key(k) => {
-                run.now = "A repository’s key needs to be trusted".into();
+                run.now = olo_kit::words::tr("A repository’s key needs to be trusted").into();
                 run.key = Some(k);
             }
-            Event::KeyImported { key_id } => run.log.push(format!("Key {key_id} trusted.")),
+            Event::KeyImported { key_id } => run.log.push(olo_kit::tr!("Key {} trusted.", key_id)),
             Event::Begin { .. } | Event::Verify { .. } => {
                 run.installing = true;
-                run.now = "Checking the packages…".into();
+                run.now = olo_kit::words::tr("Checking the packages…").into();
             }
             Event::Prepare { .. } => {
                 run.installing = true;
@@ -294,8 +300,8 @@ impl Review {
             Event::Element { done, total, .. } => {
                 run.packages = (done, total.max(run.packages.1));
             }
-            Event::ScriptError { nevra, code, .. } => run.log.push(format!("A script of {nevra} failed (code {code}).")),
-            Event::UnpackError { nevra } => run.log.push(format!("{nevra} couldn’t be unpacked.")),
+            Event::ScriptError { nevra, code, .. } => run.log.push(olo_kit::tr!("A script of {} failed (code {}).", nevra, code)),
+            Event::UnpackError { nevra } => run.log.push(olo_kit::tr!("{} couldn’t be unpacked.", nevra)),
             Event::ActionProgress { .. } | Event::ActionDone { .. } | Event::Finished { .. } => {}
         }
         // How far: the downloads are the first half (all of it offline),
@@ -457,7 +463,7 @@ impl View for Review {
                 if let (Some(s), Stage::Running(run)) = (self.session.clone(), &mut self.stage)
                     && let Some(k) = run.key.take()
                 {
-                    run.now = if yes { "Trusting the key…".into() } else { "Not trusted: stopping…".into() };
+                    run.now = if yes { olo_kit::words::tr("Trusting the key…").into() } else { olo_kit::words::tr("Not trusted: stopping…").into() };
                     cx.work(move || s.confirm_key(&k.key_id, yes).map_err(|e| dnf::error_text(&e)), |_| Msg::Event(Box::new(Event::ActionDone { nevra: String::new() })));
                 }
             }
@@ -467,7 +473,7 @@ impl View for Review {
                 if dnf::real() && olo_system::env::at_the_computer() {
                     cx.work(|| olo_system::power::reboot().map_err(|e| e.to_string()), |_| Msg::Close);
                 } else {
-                    self.to_main.send(AppMsg::Note("This isn't the session at the computer, so the computer isn't restarted.".into(), true));
+                    self.to_main.send(AppMsg::Note(olo_kit::words::tr("This isn't the session at the computer, so the computer isn't restarted.").into(), true));
                     cx.close_window();
                 }
             }
@@ -516,7 +522,11 @@ impl View for Review {
                 if !self.left_out.is_empty() {
                     let names: Vec<&str> = self.left_out.iter().map(|(a, _)| a.as_str()).collect();
                     let why: Vec<&str> = self.left_out.iter().map(|(_, w)| w.as_str()).collect();
-                    let said = format!("Left out, as dnf wouldn’t take {}: {}. ({})", if names.len() == 1 { "it" } else { "them" }, names.join(", "), why.join(" "));
+                    let said = if names.len() == 1 {
+                        olo_kit::tr!("Left out, as dnf wouldn’t take it: {}. ({})", names.join(", "), why.join(" "))
+                    } else {
+                        olo_kit::tr!("Left out, as dnf wouldn’t take them: {}. ({})", names.join(", "), why.join(" "))
+                    };
                     col = col.child(StringView::new(said).dim(true).wrap(true));
                 }
                 if !r.problems.is_empty() {

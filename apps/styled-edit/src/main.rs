@@ -1260,7 +1260,7 @@ fn tool_bars(cx: &Cx<DocView>, d: &DocView, menus: &[Menu], ink: olo_kit::Hsla) 
     let fonts = cx.asks(|d: &mut DocView, _: &(), _| families(Menu::new("Font"), &d.shared.common(), d, &style_now(d)));
     let sizes = cx.asks(|d: &mut DocView, _: &(), _| size_menu(&style_now(d)));
     let colors = cx.asks(move |d: &mut DocView, _: &(), _| color_menu(&style_now(d), ink));
-    let family = if cur.family.is_empty() { "System Font".to_owned() } else { cur.family.clone() };
+    let family = if cur.family.is_empty() { olo_kit::words::tr("System Font").to_owned() } else { cur.family.clone() };
     let color = COLORS.iter().find(|(_, rgb)| *rgb == cur.color).map_or("Other", |(name, _)| name);
     let top = ToolBar::new("tools", "Tools", cx.listener(|d: &mut DocView, command: &str, cx| d.run(command, cx)))
         .command("new", "new-document")
@@ -1610,7 +1610,7 @@ impl View for DocView {
             }
             DocMsg::Picture(path, px) => {
                 let Some(px) = px else {
-                    return self.error(format!("“{}” isn't a picture StyledEdit can read.", file_name(&path)), cx);
+                    return self.error(olo_kit::tr!("“{}” isn't a picture StyledEdit can read.", file_name(&path)), cx);
                 };
                 let (width, height) = pictures::fit(px, PICTURE_ROOM.0, PICTURE_ROOM.1);
                 let alt = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
@@ -1628,12 +1628,12 @@ impl View for DocView {
             }
             DocMsg::Exported(path, result) => {
                 if let Err(e) = result {
-                    self.error(format!("“{}” couldn't be written. {e}", file_name(&path)), cx);
+                    self.error(olo_kit::tr!("“{}” couldn't be written. {}", file_name(&path), e), cx);
                 }
             }
             DocMsg::Printed(title, result) => {
                 if let Err(e) = result {
-                    self.error(format!("“{title}” couldn't be printed. {e}"), cx);
+                    self.error(olo_kit::tr!("“{}” couldn't be printed. {}", title, e), cx);
                 }
             }
             DocMsg::Chosen(purpose, path) => self.chosen(purpose, path, cx),
@@ -2038,7 +2038,7 @@ impl Hub {
         }
         // A folder (dropped, named): said so, no window opened for it.
         if path.is_dir() {
-            return app_error(format!("“{}” is a folder: StyledEdit opens files.", file_name(&path)));
+            return app_error(olo_kit::tr!("“{}” is a folder: StyledEdit opens files.", file_name(&path)));
         }
         let file = path.clone();
         self.add_window(Some(path), 0, move |d, cx| d.load(file, cx));
@@ -2125,7 +2125,7 @@ impl Hub {
                         d.reset(doc, 0..0);
                     });
                 }
-                Err(e) => app_error(format!("“{}” couldn't be imported. {e}", file_name(&path))),
+                Err(e) => app_error(olo_kit::tr!("“{}” couldn't be imported. {}", file_name(&path), e)),
             },
             ToHub::Showing(id, path) => {
                 if let Some(d) = self.docs.iter_mut().find(|d| d.id == id) {
@@ -2244,7 +2244,7 @@ impl DocView {
             }
             // A new file: it's made on the first save.
             Err(_) if !path.exists() => {}
-            Err(e) => to_hub(ToHub::Failed(self.id, format!("“{}” couldn't be opened. {e}", file_name(&path)))),
+            Err(e) => to_hub(ToHub::Failed(self.id, olo_kit::tr!("“{}” couldn't be opened. {}", file_name(&path), e))),
         }
     }
 
@@ -2302,7 +2302,7 @@ impl DocView {
                 to_hub(ToHub::Showing(self.id, self.path.clone()));
                 self.finish(after, cx);
             }
-            Err(e) => self.error(format!("“{}” couldn't be saved. {e}", file_name(&path)), cx),
+            Err(e) => self.error(olo_kit::tr!("“{}” couldn't be saved. {}", file_name(&path), e), cx),
         }
     }
 
@@ -2611,11 +2611,11 @@ impl DocView {
                 if let Some(path) = self.path.clone()
                     && let Err(e) = olo_kit::tracker::open(&path)
                 {
-                    self.error(format!("“{}” couldn't be shown in Tracker. {e}", file_name(&path)), cx);
+                    self.error(olo_kit::tr!("“{}” couldn't be shown in Tracker. {}", file_name(&path), e), cx);
                 }
             }
             "revert" => {
-                let message = format!("Revert to the last saved version of “{}”?", self.title());
+                let message = olo_kit::tr!("Revert to the last saved version of “{}”?", self.title());
                 let doc = cx.view_ref();
                 let _ = open_alert(cx, "StyledEdit", "warning", &message, &["Cancel", "Revert"], move |choice, cx| {
                     if *choice == Some(1) {

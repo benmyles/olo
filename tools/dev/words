@@ -93,11 +93,15 @@ def catalog(lang):
 
 # Literals handed to the kit's widgets (and `tr!`), the first string
 # argument after at most one plain one (`ui.check(id, "…")`).
-CALLS = (r"(?:Button::new|\.label|\.title|\.item|\.check|\.note|StringView::new|\.hint|\.tip|tr!|words::tr|words::of_text|words::of|en!|words::en|\.bbox|"
+CALLS = (r"(?:Button::new|\.label|\.title|\.item|\.check|\.note|StringView::new|\.hint|\.tip|tr!|words::tr|words::of_text|words::of|en!|words::en|\.bbox|Track::\w+|Panel::plot|\.guide|\.caption|"
          r"Column::new|\.submenu|RadioButton::new|CheckBox::new|\.placeholder|\.heading|\.empty_text|\.empty|alert|"
          r"\.choose|LinkButton::new|Menu::new|\.button|\.default_button|\.cancel_button|\.message|\.explain|\.radio|"
          r"\.group|\.section)")
 LITERAL = re.compile(CALLS + r'\(\s*(?:[a-z_&.]+,\s*)?"((?:[^"\\]|\\.)+)"')
+# A dashboard's words: a card's title (its second literal), and a fact's
+# label (a pair's first, `("Entries".into(), …)`: a pair's parenthesis,
+# not a call's), which the kit looks up as it shows them.
+DASHBOARD = re.compile(r'Card::new\(\s*[^,()]+,\s*"((?:[^"\\]|\\.)+)"|(?<![\w!])\(\s*"((?:[^"\\]|\\.)+)"\.into\(\),')
 # Words asked for by name (`tr!`, `words::tr`, `en!`…): words, however
 # they look ("tidying" alone too, which a widget's literal wouldn't be).
 ASKED = re.compile(r'(?:\b(?:tr!|words::tr|words::of_text|en!|words::en)|(?<![\w:])tr)\(\s*"((?:[^"\\]|\\.)+)"')
@@ -120,9 +124,12 @@ def in_code():
         cut = src.find("#[cfg(test)]\nmod tests")
         if cut >= 0:
             src = src[:cut]
+        # (Not a comment's example, nor a block only tests and demos take.)
+        src = "\n".join(l for l in src.split("\n") if not l.lstrip().startswith("//"))
+        src = without_test_blocks(src)
         # (An app's own `words::count` without `{n}` is its own helper.)
-        for m in list(LITERAL.finditer(src)) + [m for m in COUNTING.finditer(src) if "{n}" in m.group(1)] + list(ASKED.finditer(src)):
-            s = re.sub(r"\\u\{([0-9a-fA-F]+)\}", lambda m: chr(int(m.group(1), 16)), m.group(1))
+        for m in list(LITERAL.finditer(src)) + [m for m in COUNTING.finditer(src) if "{n}" in m.group(1)] + list(ASKED.finditer(src)) + list(DASHBOARD.finditer(src)):
+            s = re.sub(r"\\u\{([0-9a-fA-F]+)\}", lambda m: chr(int(m.group(1), 16)), m.group(1) or m.group(m.lastindex or 1) or "")
             # (Asked for by name, a unit alone is a word, "{} h", and so is
             # punctuation that languages set apart: "{}: {}", French's
             # "{} : {}".)
@@ -228,6 +235,11 @@ def a_word(s):
     """Not an id ("caff:off", "widget-hue"), a number or a lone lower-case
     token: words have a space, or are a name or a label."""
     if re.fullmatch(r"[\d\s.,:%+()-]+", s):
+        return False
+    # (A name in capitals alone is an identifier: PATH, HOME; so is one in
+    # camel case, a field's: dewPointDepression; and a search's syntax:
+    # program:all.)
+    if re.fullmatch(r"[A-Z][A-Z0-9_]+", s) or re.fullmatch(r"[a-z][a-z0-9]*[A-Z][A-Za-z0-9]*", s) or re.search(r"\b[a-z]+:[a-z]+\b", s):
         return False
     if " " in s:
         return True

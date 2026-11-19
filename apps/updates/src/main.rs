@@ -204,7 +204,8 @@ impl OsUpdates {
     pub fn load(&mut self, fresh: bool, cx: &mut Cx<Self>) {
         self.loads += 1;
         let n = self.loads;
-        self.loading = Some(Loading { n, what: if fresh { "Checking for updates…".into() } else { "Reading the packages…".into() }, fraction: None, fresh });
+        self.loading =
+            Some(Loading { n, what: if fresh { olo_kit::words::tr("Checking for updates…").into() } else { olo_kit::words::tr("Reading the packages…").into() }, fraction: None, fresh });
         let progress = cx.messenger();
         cx.work(
             move || {
@@ -328,7 +329,7 @@ impl OsUpdates {
             || olo_system::power::reboot().map_err(|e| e.to_string()),
             |r| match r {
                 Ok(()) => Msg::Note("Restarting…".into(), false),
-                Err(e) => Msg::Note(format!("The computer couldn't be restarted: {e}"), true),
+                Err(e) => Msg::Note(olo_kit::tr!("The computer couldn't be restarted: {}", e), true),
             },
         );
     }
@@ -404,7 +405,7 @@ fn load(fresh: bool, progress: &mut dyn FnMut(String, Option<f32>)) -> Result<Lo
         Ok(false) => tracing::info!("not every repository could be read"),
         Err(e) => return Err(text(e)),
     }
-    progress("Reading the updates…".into(), None);
+    progress(olo_kit::words::tr("Reading the updates…").into(), None);
     let updates = s.updates().map_err(text)?;
     let repos = s.repos().map_err(text)?;
     let history = s.history(500).map_err(text)?;

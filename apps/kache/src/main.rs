@@ -270,7 +270,7 @@ impl Kache {
             "open-log" => {
                 let log = data::cache_dir().join("daemon.log");
                 if let Err(e) = olo_xdg::spawn_detached(&format!("olo-logs '{}'", log.display().to_string().replace('\'', "'\\''"))) {
-                    self.say(format!("The log can't be opened: {e}"), true);
+                    self.say(olo_kit::tr!("The log can't be opened: {}", e), true);
                 }
             }
             "close" | "quit" => olo_kit::quit(),
@@ -287,11 +287,11 @@ impl Kache {
     /// first).
     fn end_test(&mut self, pid: i32, cx: &mut Cx<Self>) {
         if data::demo() {
-            self.say(format!("Ended the test (process {pid}, made up)."), false);
+            self.say(olo_kit::tr!("Ended the test (process {}, made up).", pid), false);
             return cx.invalidate();
         }
         let dir = data::cache_dir();
-        cx.work(move || held::end(&dir, pid).map(|()| format!("Ended the test (process {pid}): its slots go back to the pool.")), Msg::CleanedUp);
+        cx.work(move || held::end(&dir, pid).map(|()| olo_kit::tr!("Ended the test (process {}): its slots go back to the pool.", pid)), Msg::CleanedUp);
     }
 
     fn running(&self) -> Option<bool> {
@@ -370,14 +370,17 @@ impl Kache {
         // The service.
         let (title, detail) = match &snap.unit {
             Some(u) if u.loaded && u.running() => {
-                let since = olo_kit::ago::ago_ms(u.since_us / 1000, |a| olo_kit::ago::long(a).replace(" ago", ""));
+                let since = olo_kit::ago::ago_ms(u.since_us / 1000, running_for);
                 let version = snap.daemon.as_ref().map(|d| format!(" {}", d.version)).unwrap_or_default();
                 let memory = u.memory.map(|b| format!(" · {}", data::bytes(b))).unwrap_or_default();
-                (format!("kache{version} is running"), format!("For {since} · process {}{memory}", u.pid))
+                (olo_kit::tr!("kache{} is running", version), format!("{}{memory}", olo_kit::tr!("For {} · process {}", since, u.pid)))
             }
-            Some(u) if u.loaded => (format!("kache is {}", if u.active == "failed" { "stopped: it failed" } else { "stopped" }), "Builds go on without the cache until it starts.".to_owned()),
-            Some(_) => ("kache isn't set up as a service".into(), format!("No {} for this account.", data::UNIT)),
-            None => ("kache's service can't be asked".into(), "The user session's systemd didn't answer.".into()),
+            Some(u) if u.loaded => (
+                if u.active == "failed" { olo_kit::words::tr("kache is stopped: it failed").to_owned() } else { olo_kit::words::tr("kache is stopped").to_owned() },
+                olo_kit::words::tr("Builds go on without the cache until it starts.").to_owned(),
+            ),
+            Some(_) => (olo_kit::words::tr("kache isn't set up as a service").into(), olo_kit::tr!("No {} for this account.", data::UNIT)),
+            None => (olo_kit::words::tr("kache's service can't be asked").into(), olo_kit::words::tr("The user session's systemd didn't answer.").into()),
         };
         let running = self.running();
         let buttons = div()
@@ -408,21 +411,22 @@ impl Kache {
         let store = match &snap.daemon {
             Some(d) => {
                 let mut facts: Vec<(olo_kit::SharedString, olo_kit::SharedString)> =
-                    vec![("On disk".into(), data::bytes(d.disk).into()), ("Entries".into(), style::thousands(d.entries as usize).into())];
+                    vec![(olo_kit::words::tr("On disk").into(), data::bytes(d.disk).into()), ("Entries".into(), style::thousands(d.entries as usize).into())];
                 if let Some(c) = &snap.cleanup {
                     // (What builds' target folders still share: no clean-up
                     // takes it. Known only from a clean-up that looked.)
                     if let Some(held) = c.held {
-                        facts.push(("Held by builds".into(), data::bytes(held).into()));
+                        facts.push((olo_kit::words::tr("Held by builds").into(), data::bytes(held).into()));
                     }
                     if c.at_ms > 0 {
                         let when = olo_kit::ago::ago_ms(c.at_ms, olo_kit::ago::long);
-                        let freed = if c.freed > 0 { format!("{} freed", data::bytes(c.freed)) } else { "nothing freed".to_owned() };
-                        facts.push(("Last clean-up".into(), format!("{when}, {freed}").into()));
+                        let freed = if c.freed > 0 { olo_kit::tr!("{} freed", data::bytes(c.freed)) } else { olo_kit::words::tr("nothing freed").to_owned() };
+                        facts.push((olo_kit::words::tr("Last clean-up").into(), format!("{when}, {freed}").into()));
                     }
                 }
                 let over = d.limit > 0 && d.size > d.limit;
-                let caption = if d.limit > 0 { format!("of a {} limit{}", data::bytes(d.limit), if over { ": over it" } else { "" }) } else { String::new() };
+                let caption =
+                    if d.limit > 0 { if over { olo_kit::tr!("of a {} limit: over it", data::bytes(d.limit)) } else { olo_kit::tr!("of a {} limit", data::bytes(d.limit)) } } else { String::new() };
                 let mut card = Card::new("kache-store", "Store").figure(data::bytes(d.size)).caption(caption);
                 if over {
                     card = card.figure_ink(style::c(theme::palette().failure));
@@ -436,10 +440,10 @@ impl Kache {
         let mut facts: Vec<(olo_kit::SharedString, olo_kit::SharedString)> = vec![
             ("Hits".into(), style::thousands(day.hits as usize).into()),
             ("Misses".into(), style::thousands(day.misses as usize).into()),
-            ("Couldn't be cached".into(), style::thousands(day.others as usize).into()),
+            (olo_kit::words::tr("Couldn't be cached").into(), style::thousands(day.others as usize).into()),
         ];
         if day.saved_ms > 0 {
-            facts.push(("Time saved".into(), format!("about {}", data::span(day.saved_ms)).into()));
+            facts.push((olo_kit::words::tr("Time saved").into(), olo_kit::tr!("about {}", data::span(day.saved_ms)).into()));
         }
         let today = Card::new("kache-day", "The last 24 hours").figure(rate).caption("of what could be cached came from it").child(Facts::new(facts));
         col = col.child(div().flex().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(store)).child(div().flex_1().min_w_0().child(today)));
@@ -448,17 +452,17 @@ impl Kache {
         let mut now: Vec<(olo_kit::SharedString, olo_kit::SharedString)> = Vec::new();
         let card = match &snap.pool {
             Some(p) => {
-                now.push(("Compiles".into(), format!("{} slots", p.compiles).into()));
-                now.push(("Tests".into(), format!("{} slots", p.tests).into()));
+                now.push(("Compiles".into(), olo_kit::words::count(p.compiles as u64, "1 slot", "{n} slots").into()));
+                now.push(("Tests".into(), olo_kit::words::count(p.tests as u64, "1 slot", "{n} slots").into()));
                 now.push(("Waiting".into(), style::thousands(p.waiting as usize).into()));
-                Card::new("kache-now", "Now").figure(format!("{} of {}", p.compiles + p.tests, p.size)).caption("slots of the pool in use")
+                Card::new("kache-now", "Now").figure(olo_kit::tr!("{} of {}", p.compiles + p.tests, p.size)).caption("slots of the pool in use")
             }
             None => Card::new("kache-now", "Now").figure(compiling.len().to_string()).caption(if compiling.len() == 1 { "compile going on" } else { "compiles going on" }),
         };
         if !compiling.is_empty() {
             let more = compiling.len().saturating_sub(2);
             let names = compiling.iter().take(2).cloned().collect::<Vec<_>>().join(", ");
-            now.push(("Compiling".into(), if more > 0 { format!("{names} and {more} more") } else { names }.into()));
+            now.push(("Compiling".into(), if more > 0 { olo_kit::tr!("{} and {} more", names, more) } else { names }.into()));
         }
         let hours =
             Card::new("kache-hours", "Builds by the hour").caption("the last 24 hours").child(div().flex().flex_col().gap(px(m::STACK)).child(hours_chart(&snap.day)).child(hours_legend(&snap.day)));
@@ -467,14 +471,13 @@ impl Kache {
         if !snap.held.is_empty() {
             let mut list = div().flex().flex_col().gap(px(m::STACK));
             for h in &snap.held {
-                let since = if h.since_ms > 0 { format!(", for {}", olo_kit::ago::ago_ms(h.since_ms, |a| olo_kit::ago::long(a).replace(" ago", ""))) } else { String::new() };
+                let since = if h.since_ms > 0 { format!(", {}", olo_kit::tr!("for {}", olo_kit::ago::ago_ms(h.since_ms, running_for))) } else { String::new() };
                 let what = format!(
-                    "{}{} · {} slot{}{since} · process {}",
+                    "{}{} · {}{since} · {}",
                     h.name,
                     if h.project.is_empty() { String::new() } else { format!(" ({})", h.project) },
-                    h.slots,
-                    if h.slots == 1 { "" } else { "s" },
-                    h.pid
+                    olo_kit::words::count(h.slots as u64, "1 slot", "{n} slots"),
+                    olo_kit::tr!("process {}", h.pid)
                 );
                 let pid = h.pid;
                 list = list.child(
@@ -483,7 +486,7 @@ impl Kache {
                         .items_center()
                         .gap(px(m::SPACING))
                         .child(div().flex_1().min_w_0().child(StringView::new(what).cut(true)))
-                        .child(Button::new("End").id(format!("end-test-{pid}")).small().on_click(cx.listener(move |v: &mut Kache, _: &ClickEvent, cx| v.end_test(pid, cx)))),
+                        .child(Button::new("End Test").id(format!("end-test-{pid}")).small().on_click(cx.listener(move |v: &mut Kache, _: &ClickEvent, cx| v.end_test(pid, cx)))),
                 );
             }
             col = col.child(Card::new("kache-tests", "Tests holding slots").caption("ending one gives its slots back to the pool").child(list));
@@ -568,7 +571,7 @@ impl Kache {
             .flex()
             .flex_col()
             .gap(px(m::SPACING))
-            .child(StringView::new(format!("kache's own settings, in {}; kache takes them as it starts again.", data::config_path().display())).dim(true).wrap(true));
+            .child(StringView::new(olo_kit::tr!("kache's own settings, in {}; kache takes them as it starts again.", data::config_path().display())).dim(true).wrap(true));
         // Each setting's block: a slider over its steps alone, the one
         // chosen said with its unit, what it is under it; a switch, its
         // check box. Then laid out in rows of two, the store's on the
@@ -596,7 +599,7 @@ impl Kache {
                 && at == 0
                 && let Some(d) = self.snap.daemon.as_ref().filter(|d| d.limit > 0)
             {
-                said = format!("kache's own: {} now", data::bytes(d.limit));
+                said = olo_kit::tr!("kache's own: {} now", data::bytes(d.limit));
             }
             let short = |n: &str| n.split(':').next().unwrap_or(n).to_owned();
             let slider = olo_kit::widgets::Slider::new(format!("kache-{}", s.key), at as f32, 0.0..=(steps.len().max(2) - 1) as f32)
@@ -650,6 +653,19 @@ impl Kache {
 }
 
 /// "its source changed" → "Its source changed".
+/// How long the service or a test has run, in the person's language:
+/// "12 s", "5 min", "3 h", "2 days" (the kit's ages say "ago", which a
+/// translation puts anywhere).
+fn running_for(a: std::time::Duration) -> String {
+    let s = a.as_secs();
+    match s {
+        0..60 => olo_kit::tr!("{} s", s),
+        60..3600 => olo_kit::tr!("{} min", s / 60),
+        3600..86_400 => olo_kit::tr!("{} h", s / 3600),
+        _ => olo_kit::words::count(s / 86_400, "1 day", "{n} days"),
+    }
+}
+
 fn sentence_case(s: &str) -> String {
     let mut c = s.chars();
     c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
@@ -690,10 +706,13 @@ fn hours_chart(day: &data::Day) -> Element {
             if i % 6 == 0 {
                 style::label(g, px(x0), chart.bottom() + px(label_h / 2.0 + 1.0), style::Align::Left, hour.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), style::secondary_text(&p));
             }
-            said.push(format!("{hour}:00 {} hits, {} misses, {} not cacheable", h[0], h[1], h[2]));
+            said.push(olo_kit::tr!("{}:00 {} hits, {} misses, {} not cacheable", hour, h[0], h[1], h[2]));
         }
         let _ = s;
-        olo_kit::agent::record(g, olo_kit::agent::Node { role: "Image", name: Some("Builds by the hour".into()), value: Some(said.join("; ").into()), bounds: b, enabled: true, ..Default::default() });
+        olo_kit::agent::record(
+            g,
+            olo_kit::agent::Node { role: "Image", name: Some(olo_kit::words::tr("Builds by the hour").into()), value: Some(said.join("; ").into()), bounds: b, enabled: true, ..Default::default() },
+        );
     })
     .paint_key(key)
     .w_full()

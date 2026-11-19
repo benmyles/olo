@@ -184,14 +184,14 @@ fn sidebar(w: &mut Weather, cx: &mut Cx<Weather>) -> Element {
 fn main_area(w: &mut Weather, cx: &mut Cx<Weather>) -> Element {
     let provider = w.provider();
     if w.needs_key() {
-        let detail = format!(
+        let detail = olo_kit::tr!(
             "Weather’s forecasts come from {}, which needs an API key (a free one takes a minute to make). Give it once and it’s kept in Passwords, or point to one already there.",
             provider.name()
         );
         return div()
             .size_full()
             .child(
-                EmptyState::new(format!("Forecasts from {}", provider.name()))
+                EmptyState::new(olo_kit::tr!("Forecasts from {}", provider.name()))
                     .icon("weather")
                     .detail(detail)
                     .action("Give a Key…", cx.listener(|v: &mut Weather, _: &ClickEvent, cx| v.open_key_dialog(cx))),
@@ -236,7 +236,7 @@ fn main_area(w: &mut Weather, cx: &mut Cx<Weather>) -> Element {
     let header = header(&place, &f, &units, now, status);
     let cards = cards(&f, &units, now);
     let next = next_hour(&f, &units, now);
-    let tabs: Rc<[olo_kit::SharedString]> = Rc::from(vec!["Rest of Today".into(), "Next 3 Days".into(), "Next 7 Days".into()]);
+    let tabs: Rc<[olo_kit::SharedString]> = Rc::from(vec![olo_kit::words::tr("Rest of Today").into(), "Next 3 Days".into(), "Next 7 Days".into()]);
     let tab = w.settings.tab.min(2);
     let (sections, chart, axis) = tab_content(w, &place, &f, tab, now);
     // The chart's time axis stays at the top once the chart reaches it,
@@ -269,11 +269,11 @@ fn status_line(w: &Weather) -> (String, bool) {
         return (format!("{stage} ({provider})"), false);
     }
     if let Some(err) = &entry.error {
-        let kept = entry.forecast.as_ref().map(|f| format!(" Showing the forecast from {}.", ago(provider::now() - f.fetched))).unwrap_or_default();
+        let kept = entry.forecast.as_ref().map(|f| format!(" {}", olo_kit::tr!("Showing the forecast from {}.", ago(provider::now() - f.fetched)))).unwrap_or_default();
         return (format!("{err}{kept}"), true);
     }
     match &entry.forecast {
-        Some(f) => (format!("Updated {} · {provider}", ago(provider::now() - f.fetched)), false),
+        Some(f) => (olo_kit::tr!("Updated {} · {}", ago(provider::now() - f.fetched), provider), false),
         None => (String::new(), false),
     }
 }
@@ -282,12 +282,12 @@ fn status_line(w: &Weather) -> (String, bool) {
 /// again as it changes (`olo_kit::ago`).
 fn ago(seconds: i64) -> String {
     olo_kit::ago::age(std::time::Duration::from_secs(seconds.max(0) as u64), |age| match age.as_secs() {
-        s if s < 60 => "just now".into(),
-        s if s < 120 => "a minute ago".into(),
-        s if s < 3600 => format!("{} minutes ago", s / 60),
-        s if s < 2 * 3600 => "an hour ago".into(),
-        s if s < 86_400 => format!("{} hours ago", s / 3600),
-        s => format!("{} days ago", s / 86_400),
+        s if s < 60 => olo_kit::words::tr("just now").into(),
+        s if s < 120 => olo_kit::words::tr("a minute ago").into(),
+        s if s < 3600 => olo_kit::tr!("{} minutes ago", s / 60),
+        s if s < 2 * 3600 => olo_kit::words::tr("an hour ago").into(),
+        s if s < 86_400 => olo_kit::tr!("{} hours ago", s / 3600),
+        s => olo_kit::tr!("{} days ago", s / 86_400),
     })
 }
 
@@ -299,7 +299,7 @@ fn header(place: &Place, f: &Forecast, units: &Units, now: i64, (status, wrong):
     let today = today(f, place, now).cloned();
     let local = local_of(place, f)(now as f64);
     let (h, mi, wd, d) = olo_kit::widgets::timeline::parts(local);
-    let clock = format!("{} {d}, {h:02}:{mi:02} there", olo_kit::widgets::timeline::WEEKDAYS[wd]);
+    let clock = olo_kit::tr!("{} {}, {} there", olo_kit::widgets::timeline::WEEKDAYS[wd], d, format!("{h:02}:{mi:02}"));
     let name = place.title().to_owned();
     let mut about = vec![];
     // (Its own name in the title: what it was found as beside, then.)
@@ -346,24 +346,24 @@ fn header(place: &Place, f: &Forecast, units: &Units, now: i64, (status, wrong):
         let caps = top + px(44.0 - style::CAP_HEIGHT * 40.0 / 2.0);
         let icon_r = style::snap_centred(g, point(x0 + px(28.0), caps), 56.0, 56.0);
         icons::paint(g, icon_r, model::icon(code, night));
-        olo_kit::agent::record(g, olo_kit::agent::Node { role: "Heading", name: Some(format!("{temp} {}", model::describe(code)).into()), bounds: r, enabled: true, ..Default::default() });
+        olo_kit::agent::record(g, olo_kit::agent::Node { role: "Heading", name: Some(format!("{temp} {}", model::describe_said(code)).into()), bounds: r, enabled: true, ..Default::default() });
         let cx_ = r.right() + px(m::SPACING);
         let room = (right - cx_).max(px(40.0));
-        style::label_on_baseline_fit(g, cx_, top + px(23.0), style::Align::Left, model::describe(code), style::LEAD_SIZE, bold.clone(), text, room);
+        style::label_on_baseline_fit(g, cx_, top + px(23.0), style::Align::Left, model::describe_said(code), style::LEAD_SIZE, bold.clone(), text, room);
         let mut line = Vec::new();
         if let Some(fl) = step.as_ref().and_then(|s| s.get(Layer::TemperatureApparent)) {
-            line.push(format!("Feels like {}", units.degrees(fl)));
+            line.push(olo_kit::tr!("Feels like {}", units.degrees(fl)));
         }
         if let Some(d) = &today
             && let (Some(hi), Some(lo)) = (d.get(Layer::Temperature, Stat::Max), d.get(Layer::Temperature, Stat::Min))
         {
-            line.push(format!("High {}, low {}", units.degrees(hi), units.degrees(lo)));
+            line.push(olo_kit::tr!("High {}, low {}", units.degrees(hi), units.degrees(lo)));
         }
         if let Some(d) = &today
             && let (Some(rise), Some(set)) = (d.sunrise, d.sunset)
         {
             let local = |t: i64| t + place_offset(t);
-            line.push(format!("Sun {}–{}", hhmm(local(rise)), hhmm(local(set))));
+            line.push(olo_kit::tr!("Sun {}–{}", hhmm(local(rise)), hhmm(local(set))));
         }
         let line = line.join("  ·  ");
         let l = style::label_on_baseline_fit(g, cx_, top + px(43.0), style::Align::Left, line.clone(), style::PLAIN_SIZE, regular.clone(), dim, room);
@@ -400,10 +400,10 @@ fn cards(f: &Forecast, units: &Units, now: i64) -> Element {
     let (figure, caption) = match (base, cover) {
         (Some(b), _) => (
             units.say(Quantity::Height, b),
-            [say(Layer::CloudCeiling).map(|c| format!("Ceiling {c}")), cover.map(|c| format!("{}% cover", c.round()))].into_iter().flatten().collect::<Vec<_>>().join(" · "),
+            [say(Layer::CloudCeiling).map(|c| olo_kit::tr!("Ceiling {}", c)), cover.map(|c| olo_kit::tr!("{}% cover", c.round()))].into_iter().flatten().collect::<Vec<_>>().join(" · "),
         ),
-        (None, Some(c)) if c < 5.0 => ("Clear".into(), "No cloud".into()),
-        (None, c) => ("–".into(), c.map(|c| format!("{}% cover", c.round())).unwrap_or_default()),
+        (None, Some(c)) if c < 5.0 => (olo_kit::words::tr("Clear sky").into(), olo_kit::words::tr("No cloud").into()),
+        (None, c) => ("–".into(), c.map(|c| olo_kit::tr!("{}% cover", c.round())).unwrap_or_default()),
     };
     out.push(("clouds", "Cloud base", figure, caption));
     // Visibility, and fog's chance by the dew point's spread.
@@ -411,21 +411,22 @@ fn cards(f: &Forecast, units: &Units, now: i64) -> Element {
     let spread = get(Layer::DewPointDepression).or_else(|| Some(get(Layer::Temperature)? - get(Layer::DewPoint)?));
     let foggy = vis.is_some_and(|v| v < 1.0);
     let caption = match spread {
-        Some(sp) if sp < 2.5 && !foggy => format!("Fog likely · spread {}", units.say(Quantity::TemperatureSpread, sp)),
-        Some(sp) => format!("Dew point spread {}", units.say(Quantity::TemperatureSpread, sp)),
+        Some(sp) if sp < 2.5 && !foggy => olo_kit::tr!("Fog likely · spread {}", units.say(Quantity::TemperatureSpread, sp)),
+        Some(sp) => olo_kit::tr!("Dew point spread {}", units.say(Quantity::TemperatureSpread, sp)),
         None => String::new(),
     };
     out.push(("visibility", if foggy { "Visibility · fog" } else { "Visibility" }, say(Layer::Visibility).unwrap_or_else(|| "–".into()), caption));
     // Wind and gusts, and where from.
     let dir = get(Layer::WindDirection);
-    let caption = [say(Layer::WindGust).map(|g| format!("Gusts {g}")), dir.map(|d| format!("from {}", model::compass(d)))].into_iter().flatten().collect::<Vec<_>>().join(" · ");
+    let caption =
+        [say(Layer::WindGust).map(|g| olo_kit::tr!("Gusts {}", g)), dir.map(|d| olo_kit::tr!("from {}", olo_kit::words::tr(model::compass(d))))].into_iter().flatten().collect::<Vec<_>>().join(" · ");
     out.push(("wind", "Wind", say(Layer::WindSpeed).unwrap_or_else(|| "–".into()), caption));
     // What's falling, how hard, and the chances.
     let rate = s.precipitation().or_else(|| h.precipitation()).unwrap_or(0.0);
     let kind = if rate > 0.0 { s.kind() } else { Kind::None };
     let figure = if rate >= 0.05 { units.say(Quantity::Rate, rate) } else { "None".into() };
     let caption = [
-        h.get(Layer::PrecipitationProbability).map(|c| format!("{}% chance this hour", c.round())),
+        h.get(Layer::PrecipitationProbability).map(|c| olo_kit::tr!("{}% chance this hour", c.round())),
         h.get(Layer::ThunderstormProbability).filter(|c| *c >= 1.0).map(|c| format!("storms {}%", c.round())),
     ]
     .into_iter()
@@ -438,13 +439,13 @@ fn cards(f: &Forecast, units: &Units, now: i64) -> Element {
     };
     out.push(("precipitation", title, figure, caption));
     // The air: humidity, dew point, pressure.
-    let caption = [say(Layer::DewPoint).map(|d| format!("Dew point {d}")), say(Layer::PressureSeaLevel)].into_iter().flatten().collect::<Vec<_>>().join(" · ");
+    let caption = [say(Layer::DewPoint).map(|d| olo_kit::tr!("Dew point {}", d)), say(Layer::PressureSeaLevel)].into_iter().flatten().collect::<Vec<_>>().join(" · ");
     out.push(("air", "Humidity", say(Layer::Humidity).unwrap_or_else(|| "–".into()), caption));
     // The sun: UV now, and the day's highest (its times are in the
     // header).
     let uv = get(Layer::UvIndex);
     let highest = day.and_then(|d| d.get(Layer::UvIndex, Stat::Max));
-    let caption = [uv.map(|u| model::uv_level(u).to_owned()), highest.map(|h| format!("up to {} today", h.round()))].into_iter().flatten().collect::<Vec<_>>().join(" · ");
+    let caption = [uv.map(|u| olo_kit::words::tr(model::uv_level(u)).to_owned()), highest.map(|h| olo_kit::tr!("up to {} today", h.round()))].into_iter().flatten().collect::<Vec<_>>().join(" · ");
     out.push(("sun", "UV index", uv.map(|u| format!("{}", u.round())).unwrap_or_else(|| "–".into()), caption));
     // Three a row, however wide (their captions cut short when narrow).
     let mut row = div().grid().grid_cols(3).gap(px(olo_kit::widgets::dashboard::GAP));
@@ -503,7 +504,7 @@ fn next_hour(f: &Forecast, units: &Units, now: i64) -> Element {
             style::fill_rect(g, Bounds::from_corners(point(l, area.bottom() - px(hgt)), point(rr, area.bottom())), kind_color(&p, *k));
         }
         let dim = style::disabled_text(&p);
-        for (frac, label) in [(0.0, "Now"), (0.5, "30 min"), (1.0, "60 min")] {
+        for (frac, label) in [(0.0, olo_kit::words::tr("Now")), (0.5, olo_kit::words::tr("30 min")), (1.0, olo_kit::words::tr("60 min"))] {
             let x = area.left() + area.size.width * frac;
             let align = if frac == 0.0 {
                 style::Align::Left
@@ -527,31 +528,30 @@ pub fn next_hour_sentence(minutes: &[(f64, Kind)], hour: Option<&Step>) -> Strin
     const WET: f64 = 0.05;
     if minutes.is_empty() {
         return match hour.and_then(|h| h.precipitation()) {
-            Some(r) if r >= WET => format!("{} this hour", hour.map_or(Kind::Rain, |h| h.kind()).name()),
-            _ => "No precipitation this hour".into(),
+            Some(r) if r >= WET => olo_kit::tr!("{} this hour", hour.map_or(Kind::Rain, |h| h.kind()).said()),
+            _ => olo_kit::words::tr("No precipitation this hour").into(),
         };
     }
     let wet_now = minutes[0].0 >= WET;
     let what = minutes.iter().find(|(r, _)| *r >= WET).map_or(Kind::Rain, |(_, k)| if *k == Kind::None { Kind::Rain } else { *k });
-    let name = what.name();
-    let lower = name.to_lowercase();
+    let name = what.said();
     // The first minute it's dry (or wet) for ten minutes on.
     let turns = |wet: bool| (1..minutes.len()).find(|&i| minutes[i..(i + 10).min(minutes.len())].iter().all(|(r, _)| (*r >= WET) == wet));
     match (wet_now, turns(!wet_now)) {
-        (true, Some(i)) => format!("{name} stopping in about {} minutes", i.max(1)),
+        (true, Some(i)) => olo_kit::tr!("{} stopping in about {} minutes", name, i.max(1)),
         (true, None) => {
             let peak = minutes.iter().map(|(r, _)| *r).fold(0.0, f64::max);
-            let how = if peak >= 7.6 {
-                "Heavy"
+            let strength = if peak >= 7.6 {
+                2
             } else if peak >= 2.5 {
-                "Steady"
+                1
             } else {
-                "Light"
+                0
             };
-            format!("{how} {lower} for the next hour")
+            olo_kit::tr!("{} for the next hour", what.said_with(strength))
         }
-        (false, Some(i)) => format!("{name} starting in about {} minutes", i.max(1)),
-        (false, None) => "No precipitation in the next hour".into(),
+        (false, Some(i)) => olo_kit::tr!("{} starting in about {} minutes", name, i.max(1)),
+        (false, None) => olo_kit::words::tr("No precipitation in the next hour").into(),
     }
 }
 
@@ -658,7 +658,7 @@ fn panels(f: &Forecast, u: &Units) -> Vec<Panel> {
     let t = Quantity::Temperature;
     let freezing = u.convert(t, 0.0);
     out.push(
-        Panel::plot(format!("Temperature ({})", u.unit(t)), 104.0, Scale::new(tick(t)))
+        Panel::plot(olo_kit::tr!("Temperature ({})", u.unit(t)), 104.0, Scale::new(tick(t)))
             .track(Track::line("Temperature", hue(p.hues.orange), series(Layer::Temperature)).say(say(t)))
             .track(Track::line("Feels like", hue(p.hues.red), series(Layer::TemperatureApparent)).thin().say(say(t)))
             .track(Track::line("Dew point", hue(p.hues.teal), series(Layer::DewPoint)).thin().say(say(t)))
@@ -673,7 +673,7 @@ fn panels(f: &Forecast, u: &Units) -> Vec<Panel> {
     let cloud = hue(olo_theme::mix(p.hues.gray, p.document_background, 0.15));
     let alpha: Vec<f32> = hours.iter().map(|h| (0.12 + h.get(Layer::CloudCover).unwrap_or(0.0) / 100.0 * 0.5) as f32).collect();
     out.push(
-        Panel::plot(format!("Clouds ({} above the ground)", u.unit(hq)), 124.0, Scale::new(tick(hq)).at_least(u.convert(hq, 3.0)).from_zero())
+        Panel::plot(olo_kit::tr!("Clouds ({} above the ground)", u.unit(hq)), 124.0, Scale::new(tick(hq)).at_least(u.convert(hq, 3.0)).from_zero())
             .track(Track::above("Cloud base", cloud, series(Layer::CloudBase)).alpha(alpha).say(say(hq)))
             .track(Track::above("Ceiling", hue(olo_theme::mix(p.hues.gray, p.document_text, 0.35)), series(Layer::CloudCeiling)).alpha(vec![0.3f32; hours.len()]).say(say(hq)))
             .track(Track::quiet("Cover", cloud, series(Layer::CloudCover)).say(say(Quantity::Percent))),
@@ -681,7 +681,7 @@ fn panels(f: &Forecast, u: &Units) -> Vec<Panel> {
     // Visibility, with fog marked; the dew point's spread on the right.
     let dq = Quantity::Distance;
     out.push(
-        Panel::plot(format!("Visibility ({})", u.unit(dq)), 84.0, Scale::new(tick(dq)).at_least(u.convert(dq, 10.0)))
+        Panel::plot(olo_kit::tr!("Visibility ({})", u.unit(dq)), 84.0, Scale::new(tick(dq)).at_least(u.convert(dq, 10.0)))
             .right(Scale::new(tick(Quantity::TemperatureSpread)).at_least(u.convert(Quantity::TemperatureSpread, 6.0)))
             .track(Track::line("Visibility", hue(p.hues.purple), series(Layer::Visibility)).say(say(dq)))
             .track(Track::line("Dew point spread", hue(p.hues.brown), series(Layer::DewPointDepression)).thin().on_right().say(say(Quantity::TemperatureSpread)))
@@ -693,7 +693,7 @@ fn panels(f: &Forecast, u: &Units) -> Vec<Panel> {
     let rates: Vec<(f64, f64)> = hours.iter().map(|h| (h.time as f64, h.precipitation().map_or(f64::NAN, |v| u.convert(rq, v)))).collect();
     let colors: Vec<Hsla> = hours.iter().map(|h| kind_color(&p, h.kind())).collect();
     out.push(
-        Panel::plot(format!("Precipitation ({})", u.unit(rq)), 100.0, Scale::new(tick(rq)).at_least(u.convert(rq, 2.0)))
+        Panel::plot(olo_kit::tr!("Precipitation ({})", u.unit(rq)), 100.0, Scale::new(tick(rq)).at_least(u.convert(rq, 2.0)))
             .right(Scale::new(tick(Quantity::Percent)).range(0.0, 100.0))
             .track(Track::columns("Precipitation", hue(p.hues.blue), rates).colors(colors).say(say(rq)))
             .track(Track::line("Chance", hue(olo_theme::mix(p.hues.blue, p.document_text, 0.3)), series(Layer::PrecipitationProbability)).thin().on_right().say(say(Quantity::Percent)))
@@ -702,7 +702,7 @@ fn panels(f: &Forecast, u: &Units) -> Vec<Panel> {
     // Wind and gusts, and where it comes from.
     let sq = Quantity::Speed;
     out.push(
-        Panel::plot(format!("Wind ({})", u.unit(sq)), 90.0, Scale::new(tick(sq)).at_least(u.convert(sq, 8.0)))
+        Panel::plot(olo_kit::tr!("Wind ({})", u.unit(sq)), 90.0, Scale::new(tick(sq)).at_least(u.convert(sq, 8.0)))
             .track(Track::line("Wind", hue(p.hues.green), series(Layer::WindSpeed)).say(say(sq)))
             .track(Track::line("Gusts", hue(olo_theme::mix(p.hues.green, p.document_background, 0.35)), series(Layer::WindGust)).thin().say(say(sq))),
     );
@@ -711,7 +711,7 @@ fn panels(f: &Forecast, u: &Units) -> Vec<Panel> {
     // The air: humidity, and the pressure on its own scale.
     let pq = Quantity::Pressure;
     out.push(
-        Panel::plot(format!("Humidity and pressure ({})", u.unit(pq)), 80.0, Scale::new(tick(pq)))
+        Panel::plot(olo_kit::tr!("Humidity and pressure ({})", u.unit(pq)), 80.0, Scale::new(tick(pq)))
             .right(Scale::new(tick(Quantity::Percent)).range(0.0, 100.0))
             .track(Track::line("Pressure", hue(p.hues.purple), series(Layer::PressureSeaLevel)).say(say(pq)))
             .track(Track::line("Humidity", hue(p.hues.teal), series(Layer::Humidity)).thin().on_right().say(say(Quantity::Percent))),
@@ -768,7 +768,7 @@ fn daily(f: &Forecast, units: &Units, now: i64, local: impl Fn(f64) -> i64 + Clo
             let top = b.top() + px(i as f32 * ROW);
             let mid = top + px(17.0);
             let (_, _, wd, dd) = olo_kit::widgets::timeline::parts(local(d.time as f64 + 6.0 * 3600.0));
-            let name = if Some(d.time) == today_start && d.time <= now { "Today".to_owned() } else { format!("{} {dd}", olo_kit::widgets::timeline::WEEKDAYS[wd]) };
+            let name = if Some(d.time) == today_start && d.time <= now { olo_kit::words::tr("Today").to_owned() } else { format!("{} {dd}", olo_kit::widgets::timeline::WEEKDAYS[wd]) };
             let n = style::label(g, x0, mid, style::Align::Left, name.clone(), style::PLAIN_SIZE, bold.clone(), text);
             // The sky by day, and by night smaller.
             let day_code = match d.code(Layer::WeatherCodeDay) {
@@ -784,7 +784,7 @@ fn daily(f: &Forecast, units: &Units, now: i64, local: impl Fn(f64) -> i64 + Clo
             if night_code != 0 {
                 icons::paint(g, style::snap_centred(g, point(icon_x + px(36.0), caps), 16.0, 16.0), model::icon(night_code, true));
             }
-            let what = model::describe(day_code);
+            let what = model::describe_said(day_code);
             let tx = icon_x + px(50.0);
             // The temperatures' span, among the week's.
             let bar_w = px(130.0);
@@ -834,13 +834,13 @@ fn daily(f: &Forecast, units: &Units, now: i64, local: impl Fn(f64) -> i64 + Clo
             }
             // (Only when it's poor: 10 km and more is a clear day's.)
             if let Some(v) = d.get(Layer::Visibility, Stat::Min).filter(|v| *v < 10.0) {
-                more.push(format!("visibility down to {}", units.say(Quantity::Distance, v)));
+                more.push(olo_kit::tr!("visibility down to {}", units.say(Quantity::Distance, v)));
             }
             // (The sky's on one line, the wind, sun and moon on the next.)
             let mut next: Vec<String> = Vec::new();
             if let (Some(wv), Some(gu)) = (d.get(Layer::WindSpeed, Stat::Avg), d.get(Layer::WindGust, Stat::Max)) {
-                let dir = d.get(Layer::WindDirection, Stat::Avg).map(|x| format!(" {}", model::compass(x))).unwrap_or_default();
-                next.push(format!("Wind {}{dir}, gusts {}", units.say(Quantity::Speed, wv), units.say(Quantity::Speed, gu)));
+                let dir = d.get(Layer::WindDirection, Stat::Avg).map(|x| format!(" {}", olo_kit::words::tr(model::compass(x)))).unwrap_or_default();
+                next.push(olo_kit::tr!("Wind {}{}, gusts {}", units.say(Quantity::Speed, wv), dir, units.say(Quantity::Speed, gu)));
             }
             // (UV once it's worth minding: moderate and up.)
             if let Some(uv) = d.get(Layer::UvIndex, Stat::Max).filter(|uv| *uv >= 3.0) {
@@ -927,11 +927,11 @@ fn assistant_pane(w: &mut Weather, cx: &mut Cx<Weather>) -> Element {
     }
     if let Some(a) = &w.asking {
         conv = conv.child(StringView::new(a.question.clone()).bold(true).wrap(true));
-        let words = if a.so_far.is_empty() { format!("Thinking{}…", if a.model.is_empty() { String::new() } else { format!(" ({})", a.model) }) } else { a.so_far.clone() };
+        let words = if a.so_far.is_empty() { if a.model.is_empty() { olo_kit::words::tr("Thinking…").to_owned() } else { olo_kit::tr!("Thinking ({})…", a.model) } } else { a.so_far.clone() };
         conv = conv.child(StringView::new(words).wrap(true).dim(a.so_far.is_empty()));
     }
     if w.turns.is_empty() && w.asking.is_none() {
-        conv = conv.child(StringView::new("Ask anything about the forecast here: the assistant is given all of it, every layer hour by hour.").dim(true).wrap(true));
+        conv = conv.child(StringView::new("Ask anything about the forecast here: the assistant has all of it, hour by hour.").dim(true).wrap(true));
         // (For the place's time of day, and whether it's raining there.)
         let now = provider::now();
         let forecast = w.entry().and_then(|e| e.forecast.clone());

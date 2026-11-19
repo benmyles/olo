@@ -132,7 +132,7 @@ fn fetch(url: &str, to: &Path) -> Result<(), String> {
     let mut bytes = Vec::new();
     body.take(MOST_FETCHED + 1).read_to_end(&mut bytes).map_err(|e| format!("{url}: {e}"))?;
     if bytes.len() as u64 > MOST_FETCHED {
-        return Err(format!("{url} is too big a picture"));
+        return Err(olo_kit::tr!("{} is too big a picture", url));
     }
     let dir = to.parent().ok_or("no folder")?;
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;

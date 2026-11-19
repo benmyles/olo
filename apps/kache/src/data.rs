@@ -336,14 +336,14 @@ impl Live {
 
 /// A line of JSON to the daemon's socket, its line back.
 fn ask(socket: &std::path::Path, request: &Value, timeout: Duration) -> Result<Value, String> {
-    let s = std::os::unix::net::UnixStream::connect(socket).map_err(|e| format!("kache's daemon isn't answering ({e})"))?;
+    let s = std::os::unix::net::UnixStream::connect(socket).map_err(|e| olo_kit::tr!("kache's daemon isn't answering ({})", e))?;
     let _ = s.set_read_timeout(Some(timeout));
     let _ = s.set_write_timeout(Some(timeout));
     let mut w = &s;
     w.write_all(format!("{request}\n").as_bytes()).map_err(|e| e.to_string())?;
     let mut line = String::new();
-    std::io::BufReader::new(&s).read_line(&mut line).map_err(|e| format!("kache's daemon didn't answer ({e})"))?;
-    let v: Value = serde_json::from_str(&line).map_err(|e| format!("kache's daemon answered something unreadable ({e})"))?;
+    std::io::BufReader::new(&s).read_line(&mut line).map_err(|e| olo_kit::tr!("kache's daemon didn't answer ({})", e))?;
+    let v: Value = serde_json::from_str(&line).map_err(|e| olo_kit::tr!("kache's daemon answered something unreadable ({})", e))?;
     if v["ok"].as_bool() == Some(false) {
         return Err(v["error"].as_str().unwrap_or("kache's daemon refused").to_owned());
     }
@@ -531,7 +531,7 @@ pub fn day_of(events: &[Event], now: u64) -> Day {
 /// Clean up now: the daemon's own clean-up, as its limit asks.
 pub fn clean_up() -> Result<String, String> {
     if demo() {
-        return Ok("Cleaned up (made up).".into());
+        return Ok(olo_kit::words::tr("Cleaned up (made up).").into());
     }
     let v = ask(&socket_path(), &gc_request(&config_path()), Duration::from_secs(300))?;
     Ok(cleaned_up(&v))
@@ -556,12 +556,11 @@ pub fn cleaned_up(v: &Value) -> String {
     let freed = sum("disk_bytes_reclaimed").max(sum("bytes_freed"));
     let held = sum("entries_unreclaimable");
     let mut said = match evicted {
-        0 => "Cleaned up: nothing to remove".to_owned(),
-        1 => format!("Cleaned up: 1 entry removed, {} freed", bytes(freed)),
-        n => format!("Cleaned up: {n} entries removed, {} freed", bytes(freed)),
+        0 => olo_kit::words::tr("Cleaned up: nothing to remove").to_owned(),
+        n => olo_kit::words::fill(&olo_kit::words::count(n as u64, "Cleaned up: 1 entry removed, {} freed", "Cleaned up: {n} entries removed, {} freed"), &[&bytes(freed)]),
     };
     if held > 0 {
-        said.push_str(&format!("; {held} kept, still shared with builds' target folders"));
+        said.push_str(&format!("; {}", olo_kit::tr!("{} kept, still shared with builds' target folders", held)));
     }
     said.push('.');
     said
@@ -572,7 +571,7 @@ pub fn service(method: &str) -> Result<UserUnit, String> {
     if demo() {
         return Ok(made_up(now_ms()).unit.unwrap_or_default());
     }
-    olo_system::systemd::user_job(UNIT, method).map_err(|e| format!("kache's service: {e}"))
+    olo_system::systemd::user_job(UNIT, method).map_err(|e| olo_kit::tr!("kache's service: {}", e))
 }
 
 /// A setting of kache's, as shown and edited (its `[cache]` key).
@@ -628,7 +627,7 @@ pub const SETTINGS: &[Setting] = &[
 /// file holds that isn't among them (set by hand) is one too, in its
 /// place. `processors`: this computer's, for the pool's steps.
 pub fn steps(s: &Setting, current: Option<&str>, processors: u32) -> Vec<(Option<String>, String)> {
-    let own = (None, format!("kache's own: {}", s.default));
+    let own = (None, olo_kit::tr!("kache's own: {}", s.default));
     let n = |v: u64, name: String| (Some(v.to_string()), name);
     let plural = |v: u64, one: &str, many: &str| if v == 1 { format!("1 {one}") } else { format!("{v} {many}") };
     let mut steps: Vec<(Option<String>, String)> = match s.key {
@@ -736,7 +735,7 @@ pub fn save_settings(values: &[Option<String>]) -> Result<(), String> {
 
 /// `values` set in config `text`: the new text.
 pub fn set_in(text: &str, values: &[Option<String>]) -> Result<String, String> {
-    let mut doc: toml_edit::DocumentMut = text.parse().map_err(|e| format!("kache's settings file can't be read: {e}"))?;
+    let mut doc: toml_edit::DocumentMut = text.parse().map_err(|e| olo_kit::tr!("kache's settings file can't be read: {}", e))?;
     if !doc.contains_key("cache") {
         doc["cache"] = toml_edit::table();
     }
@@ -749,11 +748,11 @@ pub fn set_in(text: &str, values: &[Option<String>]) -> Result<String, String> {
         let name = s.label.trim_end_matches(':');
         let name = if name.is_empty() { s.about } else { name };
         cache[s.key] = match s.kind {
-            Kind::Number => toml_edit::value(v.parse::<i64>().map_err(|_| format!("{name}: a whole number, please"))?),
+            Kind::Number => toml_edit::value(v.parse::<i64>().map_err(|_| olo_kit::tr!("{}: a whole number, please", name))?),
             Kind::Switch => toml_edit::value(v == "true"),
             Kind::Size => {
                 if !size_reads(v) {
-                    return Err(format!("{name}: a size such as 95GiB, please"));
+                    return Err(olo_kit::tr!("{}: a size such as 95GiB, please", name));
                 }
                 toml_edit::value(v)
             }
@@ -788,7 +787,7 @@ pub fn span(ms: u64) -> String {
         0..1000 => format!("{ms} ms"),
         1000..60_000 => format!("{:.1} s", ms as f64 / 1000.0),
         60_000..3_600_000 => format!("{} min", ms / 60_000),
-        _ => format!("{} h {} min", ms / 3_600_000, ms % 3_600_000 / 60_000),
+        _ => olo_kit::tr!("{} h {} min", ms / 3_600_000, ms % 3_600_000 / 60_000),
     }
 }
 

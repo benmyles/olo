@@ -255,8 +255,8 @@ fn row_menu(app: &Activity, pids: &[i32]) -> Menu {
     let mut menu = Menu::new("")
         .item("Inspect", format!("inspect:{first}"))
         .separator()
-        .item(if several { format!("Quit {} Processes", pids.len()) } else { "Quit".into() }, format!("quit:{list}"))
-        .item(if several { format!("Force Quit {} Processes…", pids.len()) } else { "Force Quit…".into() }, format!("force-quit:{list}"))
+        .item(if several { olo_kit::tr!("Quit {} Processes", pids.len()) } else { "Quit".into() }, format!("quit:{list}"))
+        .item(if several { olo_kit::tr!("Force Quit {} Processes…", pids.len()) } else { olo_kit::words::tr("Force Quit…").into() }, format!("force-quit:{list}"))
         .separator()
         .submenu(signal_menu(pids))
         .submenu(priority_menu(pids, &app.nices(pids)))
@@ -538,7 +538,7 @@ pub fn view(app: &mut Activity, width: f32, cx: &mut Cx<Activity>) -> Element {
     // The totals and the buttons under the list.
     let threads: u64 = app.processes.iter().map(|p| p.threads as u64).sum();
     let summary: SharedString =
-        format!("{} of {} processes, {threads} threads · {} CPU", rows.refs.len(), app.processes.len(), app.latest("cpu").map(|v| format!("{v:.0}%")).unwrap_or_default()).into();
+        olo_kit::tr!("{} of {} processes, {} threads · {} CPU", rows.refs.len(), app.processes.len(), threads, app.latest("cpu").map(|v| format!("{v:.0}%")).unwrap_or_default()).into();
     // The buttons act on every process chosen (Inspect on the first).
     let sel = app.chosen_pids();
     let bw = 96.0;

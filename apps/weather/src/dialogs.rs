@@ -113,7 +113,7 @@ impl View for AddPlace {
                 }
                 match result {
                     Ok(found) => {
-                        self.note = if found.is_empty() { "Nothing found by that name or address.".into() } else { String::new() };
+                        self.note = if found.is_empty() { olo_kit::words::tr("Nothing found by that name or address.").into() } else { String::new() };
                         self.results = found;
                         self.chosen = 0;
                         self.reveal_chosen();
@@ -289,7 +289,7 @@ impl KeyDialog {
         if self.by_reference {
             let r = self.reference.read(cx).text().trim().to_owned();
             if !key::is_reference(&r) {
-                self.note = "A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference gives one).".into();
+                self.note = olo_kit::words::tr("A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference gives one).").into();
                 self.wrong = true;
                 return cx.invalidate();
             }
@@ -303,12 +303,12 @@ impl KeyDialog {
                 self.to_main.send(Msg::Provider(provider.id().into(), self.now.clone()));
                 return cx.close_window();
             }
-            self.note = "Paste the key first.".into();
+            self.note = olo_kit::words::tr("Paste the key first.").into();
             self.wrong = true;
             return cx.invalidate();
         }
         self.saving = true;
-        self.note = "Keeping it in Passwords…".into();
+        self.note = olo_kit::words::tr("Keeping it in Passwords…").into();
         self.wrong = false;
         cx.work(move || key::keep(provider, &typed), KeyMsg::Kept);
         cx.invalidate();
@@ -352,9 +352,9 @@ impl View for KeyDialog {
             .child(div().pl(px(DIVIDER)).child(StringView::new(provider.about()).dim(true).wrap(true)));
         if provider.needs_key() {
             let now = match &self.now {
-                key::Source::None => "No key yet.".to_owned(),
-                key::Source::Kept => format!("Now: kept in Passwords as “{}”.", key::title(provider)),
-                key::Source::Reference { reference } => format!("Now: {reference}, in Passwords."),
+                key::Source::None => olo_kit::words::tr("No key yet.").to_owned(),
+                key::Source::Kept => olo_kit::tr!("Now: kept in Passwords as “{}”.", key::title(provider)),
+                key::Source::Reference { reference } => olo_kit::tr!("Now: {}, in Passwords.", reference),
             };
             col = col.child(div().pl(px(DIVIDER)).pt(px(m::TIGHT)).child(StringView::new(now).wrap(true)));
             col = col.child(
@@ -385,7 +385,7 @@ impl View for KeyDialog {
                         .flex()
                         .flex_col()
                         .gap(px(m::TIGHT))
-                        .child(StringView::new(format!("It’s kept in Passwords as “{}”, and nowhere else.", key::title(provider))).dim(true).wrap(true))
+                        .child(StringView::new(olo_kit::tr!("It’s kept in Passwords as “{}”, and nowhere else.", key::title(provider))).dim(true).wrap(true))
                         .child(div().flex().child(LinkButton::new(format!("Make a free key at {}", provider.name())).id("make-key").on_click(move |_: &ClickEvent, _| {
                             let _ = olo_xdg::open::open(&olo_xdg::open::Target::Url(url.to_owned()));
                         }))),
@@ -464,7 +464,7 @@ impl View for RenamePlace {
                 }
             }))
             .child(TextControl::new(cx, &self.name).label("Name:").divider(DIVIDER))
-            .child(div().pl(px(DIVIDER)).child(StringView::new(format!("Found as {}. Leave it empty for that name.", self.found)).dim(true).wrap(true)))
+            .child(div().pl(px(DIVIDER)).child(StringView::new(olo_kit::tr!("Found as {}. Leave it empty for that name.", self.found)).dim(true).wrap(true)))
             .child(
                 div()
                     .mt(px(m::SPACING))

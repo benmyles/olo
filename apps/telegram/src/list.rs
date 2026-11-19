@@ -256,7 +256,7 @@ pub fn render(tg: &mut Tg, rect: Bounds<Pixels>, cx: &mut Cx<Tg>) -> Element {
                 olo_kit::agent::record(g, olo_kit::agent::Node::button("Back to Chats", row));
             }));
         } else {
-            let chips: Vec<(Option<i32>, String, u32)> = std::iter::once((None, "All Chats".to_owned(), 0))
+            let chips: Vec<(Option<i32>, String, u32)> = std::iter::once((None, olo_kit::words::tr("All Chats").to_owned(), 0))
                 .chain(tg.store.folders.iter().map(|f| {
                     let unread = tg.store.chats.values().filter(|c| f.admits(c) && !c.muted && !c.unknown).filter(|c| c.unread > 0 || c.marked).count() as u32;
                     (Some(f.id), f.title.clone(), unread)

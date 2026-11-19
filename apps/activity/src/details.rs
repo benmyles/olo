@@ -146,7 +146,7 @@ fn limits(text: &str) -> Vec<Limit> {
 /// (kind, target) of a descriptor's link.
 fn file_kind(target: &str, sockets: &HashMap<u64, String>) -> (String, String) {
     if let Some(inode) = target.strip_prefix("socket:[").and_then(|t| t.strip_suffix(']')).and_then(|t| t.parse::<u64>().ok()) {
-        return ("Socket".into(), sockets.get(&inode).cloned().unwrap_or_else(|| "Local socket".into()));
+        return ("Socket".into(), sockets.get(&inode).cloned().unwrap_or_else(|| olo_kit::words::tr("Local socket").into()));
     }
     if target.starts_with("pipe:[") {
         return ("Pipe".into(), target.into());
@@ -189,7 +189,7 @@ fn sockets() -> HashMap<u64, String> {
             && let Ok(inode) = f[6].parse::<u64>()
         {
             let path = f.get(7).copied().unwrap_or("");
-            out.insert(inode, if path.is_empty() { "Unix socket".into() } else { format!("Unix socket {path}") });
+            out.insert(inode, if path.is_empty() { olo_kit::words::tr("Unix socket").into() } else { olo_kit::tr!("Unix socket {}", path) });
         }
     }
     out
@@ -253,7 +253,7 @@ fn policy(pid: i32) -> String {
 /// Everything about `pid` this process may see.
 pub fn read_details(pid: i32) -> Result<Details, String> {
     let dir = Path::new("/proc").join(pid.to_string());
-    let status = read(dir.join("status")).ok_or_else(|| "The process has quit.".to_owned())?;
+    let status = read(dir.join("status")).ok_or_else(|| olo_kit::words::tr("The process has quit.").to_owned())?;
     let mut d = Details {
         pid,
         exe: link(dir.join("exe")),

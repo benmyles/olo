@@ -59,12 +59,12 @@ pub fn glance(snap: &data::Snapshot, span: usize) -> Glance {
     };
     let mut detail = Vec::new();
     if let Some(p) = &snap.pool {
-        detail.push(format!("{} of {} slots", p.compiles + p.tests, p.size));
+        detail.push(olo_kit::tr!("{} of {} slots", p.compiles + p.tests, p.size));
     }
     let over = snap.daemon.as_ref().is_some_and(|d| d.limit > 0 && d.size > d.limit);
     let note = match running {
-        Some(false) => Some("kache is stopped: builds go on uncached".to_owned()),
-        _ if over => snap.daemon.as_ref().map(|d| format!("The store is over its {} limit", data::bytes(d.limit))),
+        Some(false) => Some(olo_kit::words::tr("kache is stopped: builds go on uncached").to_owned()),
+        _ if over => snap.daemon.as_ref().map(|d| olo_kit::tr!("The store is over its {} limit", data::bytes(d.limit))),
         _ => None,
     };
     // The last hours, oldest first: each its builds and its share of hits.

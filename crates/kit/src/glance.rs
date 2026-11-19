@@ -709,6 +709,13 @@ pub fn serve(
     // (Its own writes in the folder aren't news: the requests, the folder
     // going, and the app's own paths are.)
     let (asked_path, folder) = (requests.clone(), dir.clone());
+    // (A glance's words are the person's, in Olo's language: chosen as it
+    // starts and again when the settings change, since a glance's process
+    // isn't an app that follows them; the settings' folder is watched.)
+    let settings = std::env::var_os("OLO_APP_SERVER_SETTINGS").map(std::path::PathBuf::from).unwrap_or_else(|| crate::config_dir().join("app_server.json"));
+    let changed_at = |p: &std::path::Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    let mut chosen_for: Option<Option<std::time::SystemTime>> = None;
+    let watched: Vec<std::path::PathBuf> = watched.into_iter().chain(settings.parent().map(std::path::Path::to_path_buf)).collect();
     let _watch = olo_kit_base::watch::watch(std::iter::once(dir.clone()).chain(watched), move |changed| {
         if changed.iter().any(|p| *p == asked_path || *p == folder || !p.starts_with(&folder)) {
             let _ = tx.lock().unwrap_or_else(|e| e.into_inner()).send(());
@@ -722,6 +729,11 @@ pub fn serve(
         let asked: Requests = std::fs::read(&requests).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
         if asked.widgets.is_empty() {
             break;
+        }
+        let now = changed_at(&settings);
+        if chosen_for != Some(now) {
+            crate::words::choose();
+            chosen_for = Some(now);
         }
         let (made, again) = make(&asked.widgets);
         for (id, timeline) in made {

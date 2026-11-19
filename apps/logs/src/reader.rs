@@ -49,7 +49,7 @@ pub fn run(follow: bool, on: &mut dyn FnMut(Update) -> bool) {
     let uid = unsafe { libc::getuid() };
     let files = journal::user_files(uid);
     if files.is_empty() {
-        on(Update::Failed("There is no journal for this user to read (in /var/log/journal or /run/log/journal).".into()));
+        on(Update::Failed(olo_kit::words::tr("There is no journal for this user to read (in /var/log/journal or /run/log/journal).").into()));
         return;
     }
     let mut builder = Builder::default();
@@ -65,7 +65,7 @@ pub fn run(follow: bool, on: &mut dyn FnMut(Update) -> bool) {
         let mut j = match Journal::open(path) {
             Ok(j) => j,
             Err(e) if i == last => {
-                on(Update::Failed(format!("The journal couldn't be read: {e}")));
+                on(Update::Failed(olo_kit::tr!("The journal couldn't be read: {}", e)));
                 return;
             }
             Err(_) => continue,
@@ -195,7 +195,7 @@ pub fn run_file(path: &std::path::Path, follow: bool, on: &mut dyn FnMut(Update)
     let mut f = match std::fs::File::open(path) {
         Ok(f) => f,
         Err(e) => {
-            on(Update::Failed(format!("“{}” couldn't be read: {e}", path.display())));
+            on(Update::Failed(olo_kit::tr!("“{}” couldn't be read: {}", path.display(), e)));
             return;
         }
     };

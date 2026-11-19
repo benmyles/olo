@@ -46,7 +46,7 @@ fn lex(s: &str) -> Result<Vec<Tok>, String> {
                 }
             }
             let text: String = chars[start..i].iter().collect();
-            let n = text.parse::<f64>().map_err(|_| format!("“{text}” isn't a number"))?;
+            let n = text.parse::<f64>().map_err(|_| olo_kit::tr!("“{}” isn't a number", text))?;
             out.push(Tok::Num(n));
         } else if c.is_alphabetic() || c == 'π' {
             if c == 'π' {
@@ -65,8 +65,8 @@ fn lex(s: &str) -> Result<Vec<Tok>, String> {
                 '÷' | '/' => '/',
                 '−' | '-' => '-',
                 '+' | '%' | '^' | '!' | '(' | ')' => c,
-                ',' => return Err("use . for decimals".into()),
-                _ => return Err(format!("“{c}” isn't understood")),
+                ',' => return Err(olo_kit::words::tr("use . for decimals").into()),
+                _ => return Err(olo_kit::tr!("“{}” isn't understood", c)),
             };
             out.push(Tok::Op(op));
             i += 1;
@@ -124,13 +124,13 @@ impl Parser<'_> {
             } else if self.eat('/') {
                 let d = self.unary()?;
                 if d == 0.0 {
-                    return Err("Division by zero".into());
+                    return Err(olo_kit::words::tr("Division by zero").into());
                 }
                 v /= d;
             } else if self.eat('%') {
                 let d = self.unary()?;
                 if d == 0.0 {
-                    return Err("Division by zero".into());
+                    return Err(olo_kit::words::tr("Division by zero").into());
                 }
                 v %= d;
             } else if self.starts_factor() {
@@ -192,16 +192,16 @@ impl Parser<'_> {
                     "e" => Ok(std::f64::consts::E),
                     f if FUNCTIONS.contains(&f) => {
                         if self.peek().is_none() {
-                            return Err(format!("{f} of what?"));
+                            return Err(olo_kit::tr!("{} of what?", f));
                         }
                         let x = self.power()?;
                         self.apply(f, x)
                     }
-                    other => Err(format!("“{other}” isn't known")),
+                    other => Err(olo_kit::tr!("“{}” isn't known", other)),
                 }
             }
             Some(Tok::Op(c)) => Err(format!("Unexpected “{c}”")),
-            None => Err("Incomplete expression".into()),
+            None => Err(olo_kit::words::tr("Incomplete expression").into()),
         }
     }
 
@@ -216,7 +216,7 @@ impl Parser<'_> {
             "tan" => {
                 let c = exact_trig((x * to_rad).cos());
                 if c == 0.0 {
-                    return Err("tan is undefined there".into());
+                    return Err(olo_kit::words::tr("tan is undefined there").into());
                 }
                 exact_trig((x * to_rad).sin()) / c
             }
@@ -238,7 +238,7 @@ impl Parser<'_> {
             _ => unreachable!(),
         };
         if v.is_nan() {
-            return Err(format!("{f} is undefined there"));
+            return Err(olo_kit::tr!("{} is undefined there", f));
         }
         Ok(v)
     }
@@ -251,7 +251,7 @@ fn exact_trig(v: f64) -> f64 {
 
 fn factorial(v: f64) -> Result<f64, String> {
     if v < 0.0 || v.fract() != 0.0 {
-        return Err("! needs a whole number".into());
+        return Err(olo_kit::words::tr("! needs a whole number").into());
     }
     if v > 170.0 {
         return Ok(f64::INFINITY);
@@ -263,17 +263,17 @@ fn factorial(v: f64) -> Result<f64, String> {
 pub fn eval(text: &str, angle: Angle) -> Result<f64, String> {
     let toks = lex(text)?;
     if toks.is_empty() {
-        return Err("Nothing to calculate".into());
+        return Err(olo_kit::words::tr("Nothing to calculate").into());
     }
     let mut p = Parser { toks: &toks, at: 0, angle };
     let v = p.expr()?;
     // Stray closing parentheses at the end: forgive them.
     while p.eat(')') {}
     if p.at < toks.len() {
-        return Err("Unexpected input".into());
+        return Err(olo_kit::words::tr("Unexpected input").into());
     }
     if v.is_nan() {
-        return Err("Not a number".into());
+        return Err(olo_kit::words::tr("Not a number").into());
     }
     Ok(v)
 }

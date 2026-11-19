@@ -63,11 +63,11 @@ pub fn ago(t: i64) -> String {
     olo_kit::ago::ago_secs(t, move |age| {
         let d = age.as_secs() as i64;
         match d {
-            0..60 => "just now".into(),
-            60..120 => "a minute ago".into(),
-            120..3600 => format!("{} minutes ago", d / 60),
-            3600..7200 => "an hour ago".into(),
-            7200..86_400 => format!("{} hours ago", d / 3600),
+            0..60 => olo_kit::words::tr("just now").into(),
+            60..120 => olo_kit::words::tr("a minute ago").into(),
+            120..3600 => olo_kit::tr!("{} minutes ago", d / 60),
+            3600..7200 => olo_kit::words::tr("an hour ago").into(),
+            7200..86_400 => olo_kit::tr!("{} hours ago", d / 3600),
             _ => format!("on {}", date(t)),
         }
     })

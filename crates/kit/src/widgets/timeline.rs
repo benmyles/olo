@@ -65,8 +65,10 @@ pub struct Track {
 }
 
 impl Track {
+    // (A track's name, a panel's title and a guide's are words the chart
+    // paints itself: in the language chosen, a literal looked up.)
     pub fn line(name: impl Into<SharedString>, color: Hsla, points: impl Into<Rc<[(f64, f64)]>>) -> Track {
-        Track { name: name.into(), color, points: points.into(), mark: Mark::Line { width: 2.0 }, right: false, say: None }
+        Track { name: crate::words::of(name), color, points: points.into(), mark: Mark::Line { width: 2.0 }, right: false, say: None }
     }
 
     pub fn columns(name: impl Into<SharedString>, color: Hsla, points: impl Into<Rc<[(f64, f64)]>>) -> Track {
@@ -241,7 +243,7 @@ pub struct Panel {
 impl Panel {
     /// A plot `height` points tall, on `left`'s scale.
     pub fn plot(title: impl Into<SharedString>, height: f32, left: Scale) -> Panel {
-        Panel { title: title.into(), height, kind: Kind::Plot { tracks: Vec::new(), left, right: None, guides: Vec::new() } }
+        Panel { title: crate::words::of(title), height, kind: Kind::Plot { tracks: Vec::new(), left, right: None, guides: Vec::new() } }
     }
 
     pub fn icons(points: impl Into<Rc<[(f64, SharedString)]>>) -> Panel {
@@ -272,7 +274,7 @@ impl Panel {
     /// fog's visibility.
     pub fn guide(mut self, value: f64, name: impl Into<SharedString>) -> Self {
         if let Kind::Plot { guides, .. } = &mut self.kind {
-            guides.push((value, name.into()));
+            guides.push((value, crate::words::of(name)));
         }
         self
     }
@@ -923,7 +925,7 @@ fn paint_axis(g: &mut Painter, top: Pixels, plots: Bounds<Pixels>, start: f64, e
     for (i, &d) in starts.iter().enumerate() {
         let next = starts.get(i + 1).copied().unwrap_or(end);
         let (_, _, wd, day) = parts(local(d + 1.0));
-        let name = if d == start && now.is_some_and(|n| (n - start).abs() < 3.0 * 3600.0) { "Today".to_owned() } else { format!("{} {day}", WEEKDAYS[wd]) };
+        let name = if d == start && now.is_some_and(|n| (n - start).abs() < 3.0 * 3600.0) { crate::words::tr("Today").to_owned() } else { format!("{} {day}", WEEKDAYS[wd]) };
         let room = x_of(next) - x_of(d);
         if f32::from(room) >= 34.0 {
             let named = style::label_fit(g, x_of(d) + px(4.0), day_y, style::Align::Left, name, style::SMALL_SIZE, bold.clone(), text, room - px(6.0));

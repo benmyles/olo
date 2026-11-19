@@ -817,9 +817,9 @@ fn subtitle(chat: &olo_tg::Chat, store: &crate::store::Store, topic: Option<MsgI
         return t.title.clone();
     }
     match chat.kind {
-        ChatKind::Saved => "your cloud storage".into(),
+        ChatKind::Saved => olo_kit::words::tr("your cloud storage").into(),
         ChatKind::Bot => "bot".into(),
-        ChatKind::User => chat.seen.as_ref().map_or_else(|| "last seen recently".into(), |s| s.describe(when::now())),
+        ChatKind::User => chat.seen.as_ref().map_or_else(|| olo_kit::words::tr("last seen recently").into(), |s| s.describe(when::now())),
         ChatKind::Channel => chat.members.map_or_else(|| "channel".into(), |n| format!("{} subscribers", bubble::short_count(n))),
         ChatKind::Group | ChatKind::Forum => chat.members.map_or_else(|| "group".into(), |n| format!("{n} members")),
     }
@@ -952,7 +952,7 @@ pub fn composer(tg: &mut Tg, rect: Bounds<Pixels>, cx: &mut Cx<Tg>) -> Element {
                     gr.paint_segment(at(-6.0, 0.0), at(-1.0, 5.0), px(1.6), true, accent);
                     gr.paint_segment(at(-6.0, 0.0), at(6.0, 0.0), px(1.6), true, accent);
                 }
-                let head = if editing { "Edit Message".to_owned() } else { format!("Reply to {}", q.from.as_ref().map_or("message", |f| f.name.as_str())) };
+                let head = if editing { olo_kit::words::tr("Edit Message").to_owned() } else { olo_kit::tr!("Reply to {}", q.from.as_ref().map_or("message", |f| f.name.as_str())) };
                 style::label(gr, bar.origin.x + px(38.0), bar.origin.y + px(10.0), Align::Left, head, style::SMALL_SIZE + 0.5, style::ui_font(FontWeight::BOLD), accent);
                 style::label_fit(
                     gr,
@@ -1128,7 +1128,7 @@ fn voice_strip(gr: &mut Painter, well: Bounds<Pixels>, held: bool, send_hot: boo
         let bar = style::snap(gr, Bounds { origin: point(bx, mid - px(h / 2.0)), size: size(px(2.0), px(h)) });
         gr.paint_quad(olo_kit::fill(bar, ink).corner_radii(px(1.0)));
     }
-    let name = if held { format!("Recording a voice message, {time}") } else { format!("Recording a voice message, {time}: Send Voice Message or Cancel Recording") };
+    let name = if held { olo_kit::tr!("Recording a voice message, {}", time) } else { olo_kit::tr!("Recording a voice message, {}: Send Voice Message or Cancel Recording", time) };
     // (Where the field's text would be, inside the well.)
     let inner = Bounds::from_corners(point(well.origin.x + px(14.0), well.origin.y + px(8.0)), point(well.right() - px(14.0), well.bottom() - px(8.0)));
     olo_kit::agent::record(gr, olo_kit::agent::Node { role: "Label", name: Some(name.into()), bounds: inner, enabled: true, ..Default::default() });

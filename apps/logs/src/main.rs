@@ -738,7 +738,7 @@ impl Logs {
             status += " (finding…)";
         }
         if self.before_context.is_some() {
-            status = format!("All lines around the selected one. {status}");
+            status = olo_kit::tr!("All lines around the selected one. {}", status);
         }
         status
     }
@@ -885,7 +885,7 @@ impl View for Logs {
                 }
                 self.selection_changed(cx);
                 let program = self.view.get(row).map(|&i| self.lines[i].program.to_string()).unwrap_or_default();
-                let menu = Menu::new("").item("Copy", "copy").item("Show in Context", "context").item(format!("Show Only {program}"), "only-program");
+                let menu = Menu::new("").item("Copy", "copy").item("Show in Context", "context").item(olo_kit::tr!("Show Only {}", program), "only-program");
                 let chose = cx.msg_with(|command: &str| Msg::Command(command.to_owned()));
                 menu::context_menu(cx, menu, at, chose);
             }

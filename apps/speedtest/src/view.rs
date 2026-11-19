@@ -100,7 +100,8 @@ impl Link {
 type Samples = Rc<VecDeque<(f64, f64)>>;
 /// A card in words: its title, figure, caption and facts (each a label
 /// and a value).
-type CardWords = (&'static str, String, String, Vec<(String, String)>);
+// (A fact's label stays a literal, which the kit looks up as it shows it.)
+type CardWords = (&'static str, String, String, Vec<(&'static str, String)>);
 
 /// What the window shows of a test: the one under way as it's told, or
 /// the last one's.
@@ -318,18 +319,18 @@ impl Speed {
     fn progress(&self) -> (f32, String) {
         let Some(running) = &self.running else {
             return match (&self.results, &self.error) {
-                (_, Some(e)) => (0.0, format!("The test didn't finish: {e}.")),
-                (Some(r), _) => (0.0, olo_kit::ago::ago_secs(r.when as i64, |d| if r.stopped { format!("Stopped part way, {}", ago(d)) } else { format!("Tested {}", ago(d)) })),
-                _ => (0.0, "Not tested yet.".into()),
+                (_, Some(e)) => (0.0, olo_kit::tr!("The test didn't finish: {}.", e)),
+                (Some(r), _) => (0.0, olo_kit::ago::ago_secs(r.when as i64, |d| if r.stopped { olo_kit::tr!("Stopped part way, {}", ago(d)) } else { olo_kit::tr!("Tested {}", ago(d)) })),
+                _ => (0.0, olo_kit::words::tr("Not tested yet.").into()),
             };
         };
         let (down, up) = (self.config.download.as_secs_f64(), self.config.upload.as_secs_f64());
         let into = running.phase_began.elapsed().as_secs_f64();
         let (done, words) = match running.phase {
-            Phase::Connecting => (0.0, "Finding the server…".to_owned()),
-            Phase::Latency => (into.min(BEFORE), "Measuring the round trip…".to_owned()),
-            Phase::Download => (BEFORE + into.min(down), self.shown.down_now.map_or("Downloading…".to_owned(), |r| format!("Downloading: {}", words::rate(r)))),
-            Phase::Upload => (BEFORE + down + into.min(up), self.shown.up_now.map_or("Uploading…".to_owned(), |r| format!("Uploading: {}", words::rate(r)))),
+            Phase::Connecting => (0.0, olo_kit::words::tr("Finding the server…").to_owned()),
+            Phase::Latency => (into.min(BEFORE), olo_kit::words::tr("Measuring the round trip…").to_owned()),
+            Phase::Download => (BEFORE + into.min(down), self.shown.down_now.map_or(olo_kit::words::tr("Downloading…").to_owned(), |r| olo_kit::tr!("Downloading: {}", words::rate(r)))),
+            Phase::Upload => (BEFORE + down + into.min(up), self.shown.up_now.map_or(olo_kit::words::tr("Uploading…").to_owned(), |r| olo_kit::tr!("Uploading: {}", words::rate(r)))),
         };
         ((done / (BEFORE + down + up)) as f32, words)
     }
@@ -338,12 +339,12 @@ impl Speed {
     pub fn as_text(&self) -> String {
         let mut out = String::from("Speed Test\n");
         for (title, figure, caption, facts) in self.cards() {
-            out += &format!("\n{title}: {figure}\n");
+            out += &format!("\n{}: {figure}\n", olo_kit::words::tr(title));
             if !caption.is_empty() {
                 out += &format!("  {caption}\n");
             }
             for (label, value) in facts {
-                out += &format!("  {label}: {value}\n");
+                out += &format!("  {}: {value}\n", olo_kit::words::tr(label));
             }
         }
         out
@@ -359,7 +360,7 @@ impl Speed {
         let waiting = if running { "Waiting its turn" } else { "Not measured yet" };
         let transfer = |t: Option<&Transfer>, now: Option<f64>| -> (String, String) {
             match (t, now) {
-                (Some(t), _) => (words::rate(t.mbps), format!("Best second {}; {} moved", words::rate(t.peak_mbps), words::bytes(t.bytes))),
+                (Some(t), _) => (words::rate(t.mbps), olo_kit::tr!("Best second {}; {} moved", words::rate(t.peak_mbps), words::bytes(t.bytes))),
                 (None, Some(now)) => (words::rate(now), "Measuring…".into()),
                 (None, None) => ("–".into(), waiting.into()),
             }
@@ -367,15 +368,15 @@ impl Speed {
         // A round trip while busy, and how much more than idle it is.
         let meanwhile = |t: Option<&Transfer>| -> String {
             match (t.map(|t| &t.latency).filter(|l| l.samples > 0), idle) {
-                (Some(l), Some(idle)) => format!("{} ({} more)", words::ms(l.median), words::ms((l.median - idle.median).max(0.0))),
+                (Some(l), Some(idle)) => olo_kit::tr!("{} ({} more)", words::ms(l.median), words::ms((l.median - idle.median).max(0.0))),
                 (Some(l), None) => words::ms(l.median),
                 _ => "–".into(),
             }
         };
-        let fact = |label: &str, value: String| (label.to_owned(), value);
+        let fact = |label: &'static str, value: String| (label, value);
         let or_dash = |v: Option<String>| v.unwrap_or_else(|| "–".into());
-        let share = |pct: f64, packets: u64| format!("{} ({} packets)", words::percent(pct), words::count(packets));
-        let trips = |least: f64, now: f64| format!("{} least, {} now", words::ms(least), words::ms(now));
+        let share = |pct: f64, packets: u64| olo_kit::tr!("{} ({} packets)", words::percent(pct), words::count(packets));
+        let trips = |least: f64, now: f64| olo_kit::tr!("{} least, {} now", words::ms(least), words::ms(now));
 
         // Download: the server is the sender, so what was sent again and
         // lost is its to say; ours is what arrived, and in what order.
@@ -387,10 +388,10 @@ impl Speed {
         let download = vec![
             fact("Round trip meanwhile", meanwhile(down)),
             fact("Sent again by the server", or_dash(theirs.map(|t| share(t.retransmitted_pct(), t.retransmissions)))),
-            fact("Lost, by its count", or_dash(theirs.map(|t| format!("{} packets", words::count(t.lost))))),
+            fact("Lost, by its count", or_dash(theirs.map(|t| olo_kit::tr!("{} packets", words::count(t.lost))))),
             fact("Arrived out of order", or_dash(ours.zip(packets_in).map(|(o, n)| share(o.out_of_order as f64 * 100.0 / n.max(1) as f64, o.out_of_order as u64)))),
             fact("Server’s round trip", or_dash(theirs.map(|t| trips(t.min_rtt_ms, t.rtt_ms)))),
-            fact("Server’s window", or_dash(theirs.map(|t| format!("{} packets", words::count(t.cwnd))))),
+            fact("Server’s window", or_dash(theirs.map(|t| olo_kit::tr!("{} packets", words::count(t.cwnd))))),
             fact("Server delivers at", or_dash(theirs.map(|t| words::rate(t.delivery_mbps)))),
             fact("Connections", or_dash(down.map(|t| t.streams.to_string()))),
         ];
@@ -406,19 +407,19 @@ impl Speed {
             fact("TCP’s round trip", or_dash(ours.map(|o| trips(o.min_rtt_ms, o.rtt_ms)))),
             fact("Sends with", or_dash(ours.map(|o| o.congestion_control.clone()))),
             fact("BBR’s model", or_dash(ours.and_then(|o| o.bbr.as_ref()).map(|b| format!("{}, {}", words::rate(b.bandwidth_mbps), phases(&b.phases))))),
-            fact("Window", or_dash(ours.map(|o| format!("{} packets", words::count(o.cwnd as u64))))),
-            fact("Held by the server", or_dash(ours.map(|o| format!("{} of the time", words::percent(o.rwnd_limited_pct))))),
+            fact("Window", or_dash(ours.map(|o| olo_kit::tr!("{} packets", words::count(o.cwnd as u64))))),
+            fact("Held by the server", or_dash(ours.map(|o| olo_kit::tr!("{} of the time", words::percent(o.rwnd_limited_pct))))),
         ];
 
         // Latency.
         let latest = self.shown.latency.back().map(|(_, v)| *v);
         let (latency_figure, latency_caption) = match (idle, latest) {
-            (Some(l), _) => (words::ms(l.median), format!("Idle: the middle of {} round trips", l.samples)),
+            (Some(l), _) => (words::ms(l.median), olo_kit::tr!("Idle: the middle of {} round trips", l.samples)),
             (None, Some(now)) => (words::ms(now), "Measuring…".into()),
             _ => ("–".into(), waiting.into()),
         };
         // The middle one, and from the least to what nine in ten are under.
-        let spread = |l: Option<&Latency>| or_dash(l.filter(|l| l.samples > 0).map(|l| format!("{} ({} to {})", words::ms(l.median), words::ms(l.min), words::ms(l.p90))));
+        let spread = |l: Option<&Latency>| or_dash(l.filter(|l| l.samples > 0).map(|l| olo_kit::tr!("{} ({} to {})", words::ms(l.median), words::ms(l.min), words::ms(l.p90))));
         let latency = vec![
             fact("Idle", spread(idle)),
             fact("One differs from the next by", or_dash(idle.map(|l| words::ms(l.jitter)))),
@@ -426,12 +427,15 @@ impl Speed {
             fact("While downloading", spread(down.map(|t| &t.latency))),
             fact("While uploading", spread(up.map(|t| &t.latency))),
             fact("Added by a busy line", or_dash(r.and_then(Results::added_latency_ms).map(words::ms))),
-            fact("Responsiveness", or_dash(r.and_then(Results::responsiveness).map(|rpm| format!("{} ({} a minute)", words::responsiveness(rpm), words::count(rpm.round() as u64))))),
+            fact(
+                "Responsiveness",
+                or_dash(r.and_then(Results::responsiveness).map(|rpm| olo_kit::tr!("{} ({} a minute)", olo_kit::words::tr(words::responsiveness(rpm)), words::count(rpm.round() as u64)))),
+            ),
         ];
 
         // Connection.
         let (place_figure, place_caption) = match &self.place {
-            Some((_, place, _)) if !place.colo.is_empty() => (place.colo.clone(), format!("{}’s data centre", self.config.server.host)),
+            Some((_, place, _)) if !place.colo.is_empty() => (place.colo.clone(), olo_kit::tr!("{}’s data centre", self.config.server.host)),
             Some(_) => ("–".into(), self.config.server.host.clone()),
             None => ("–".into(), self.config.server.host.clone()),
         };
@@ -448,7 +452,7 @@ impl Speed {
             fact("Name looked up in", opened(|o| o.dns_ms)),
             fact("TCP opened in", opened(|o| o.connect_ms)),
             fact("TLS opened in", opened(|o| o.tls_ms)),
-            fact("Segment size", or_dash(any.filter(|o| o.mss > 0).map(|o| format!("{} bytes", words::count(o.mss as u64))))),
+            fact("Segment size", or_dash(any.filter(|o| o.mss > 0).map(|o| olo_kit::tr!("{} bytes", words::count(o.mss as u64))))),
             fact(
                 "Link",
                 or_dash(link.map(|l| match &l.name {
@@ -559,16 +563,18 @@ fn phases(all: &[String]) -> String {
             seen.push(p);
         }
     }
-    seen.join(" and ")
+    // (BBR's own names for what it does, as its papers name them; joined
+    // by a comma, no "and" to translate, and short in its narrow cell.)
+    seen.join(", ")
 }
 
 /// How long ago, in words.
 fn ago(d: std::time::Duration) -> String {
     match d.as_secs() {
-        0..=59 => "just now".into(),
-        s @ 60..=3599 => format!("{} min ago", s / 60),
-        s @ 3600..=86_399 => format!("{} h ago", s / 3600),
-        s => format!("{} days ago", s / 86_400),
+        0..=59 => olo_kit::words::tr("just now").into(),
+        s @ 60..=3599 => olo_kit::tr!("{} min ago", s / 60),
+        s @ 3600..=86_399 => olo_kit::tr!("{} h ago", s / 3600),
+        s => olo_kit::tr!("{} days ago", s / 86_400),
     }
 }
 
@@ -679,7 +685,7 @@ mod tests {
 
     #[test]
     fn small_things_are_said() {
-        assert_eq!(phases(&["cruise".into(), "probe up".into(), "cruise".into()]), "cruise and probe up");
+        assert_eq!(phases(&["cruise".into(), "probe up".into(), "cruise".into()]), "cruise, probe up");
         let burst: Samples = Rc::new([(0.1, 0.0), (0.2, 200.0), (0.3, 0.0), (0.4, 100.0)].into_iter().collect());
         assert_eq!(smoothed(&burst).iter().map(|(_, v)| v.round()).collect::<Vec<_>>(), [0.0, 100.0, 67.0, 100.0]);
         assert_eq!([ago(std::time::Duration::from_secs(5)), ago(std::time::Duration::from_secs(190)), ago(std::time::Duration::from_secs(7300))], ["just now", "3 min ago", "2 h ago"]);

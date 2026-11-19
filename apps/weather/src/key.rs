@@ -56,14 +56,14 @@ pub fn read(provider: &dyn Provider, source: &Source) -> Result<Zeroizing<String
     match olo_keychain::call(&request) {
         Ok(Response::Secrets { ref values }) => match values.iter().find(|v| !v.trim().is_empty()) {
             Some(v) => Ok(Zeroizing::new(v.trim().to_owned())),
-            None if matches!(source, Source::Kept) => Err(Error::Key(format!("Passwords has no “{}” item: give the key again in File ▸ Data Provider…", title(provider)))),
-            None => Err(Error::Key("That secret is empty in Passwords.".into())),
+            None if matches!(source, Source::Kept) => Err(Error::Key(olo_kit::tr!("Passwords has no “{}” item: give the key again in File ▸ Data Provider…", title(provider)))),
+            None => Err(Error::Key(olo_kit::words::tr("That secret is empty in Passwords.").into())),
         },
         Ok(Response::Error { ref message }) => Err(Error::Key(format!("Passwords: {message}"))),
-        Ok(Response::Locked) => Err(Error::Key("Passwords is locked.".into())),
-        Ok(Response::NotSetUp) => Err(Error::Key("Passwords isn’t set up yet: open it to set it up, then try again.".into())),
-        Ok(_) => Err(Error::Key("Passwords answered something else.".into())),
-        Err(e) => Err(Error::Key(format!("Passwords can’t be reached ({e}). Is it running?"))),
+        Ok(Response::Locked) => Err(Error::Key(olo_kit::words::tr("Passwords is locked.").into())),
+        Ok(Response::NotSetUp) => Err(Error::Key(olo_kit::words::tr("Passwords isn’t set up yet: open it to set it up, then try again.").into())),
+        Ok(_) => Err(Error::Key(olo_kit::words::tr("Passwords answered something else.").into())),
+        Err(e) => Err(Error::Key(olo_kit::tr!("Passwords can’t be reached ({}). Is it running?", e))),
     }
 }
 
@@ -73,9 +73,9 @@ pub fn keep(provider: &dyn Provider, key: &str) -> Result<(), Error> {
     match olo_keychain::call(&request) {
         Ok(Response::Saved { .. }) => Ok(()),
         Ok(Response::Error { ref message }) => Err(Error::Key(format!("Passwords: {message}"))),
-        Ok(Response::NotSetUp) => Err(Error::Key("Passwords isn’t set up yet: open it to set it up, then try again.".into())),
-        Ok(_) => Err(Error::Key("Passwords didn’t keep the key.".into())),
-        Err(e) => Err(Error::Key(format!("Passwords can’t be reached ({e}). Is it running?"))),
+        Ok(Response::NotSetUp) => Err(Error::Key(olo_kit::words::tr("Passwords isn’t set up yet: open it to set it up, then try again.").into())),
+        Ok(_) => Err(Error::Key(olo_kit::words::tr("Passwords didn’t keep the key.").into())),
+        Err(e) => Err(Error::Key(olo_kit::tr!("Passwords can’t be reached ({}). Is it running?", e))),
     }
 }
 

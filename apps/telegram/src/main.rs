@@ -465,7 +465,7 @@ impl Tg {
                 self.voice_to.remove(&token);
                 if let Some(v) = self.voice.take_if(|v| v.token == token) {
                     self.backend.send(Cmd::Typing { chat: v.chat, topic: v.topic, doing: Doing::Stopped });
-                    self.banner.say(format!("The microphone can’t be recorded ({why})."), Duration::from_secs(8));
+                    self.banner.say(olo_kit::tr!("The microphone can’t be recorded ({}).", why), Duration::from_secs(8));
                     cx.invalidate();
                 }
             }
@@ -493,11 +493,11 @@ impl Tg {
                     Ok(note) => {
                         let _ = std::fs::remove_file(&note.path);
                         self.backend.send(Cmd::Typing { chat, topic, doing: Doing::Stopped });
-                        self.banner.say("Hold the microphone button down while you speak, or click it to record until you click Send.".to_owned(), Duration::from_secs(6));
+                        self.banner.say(olo_kit::words::tr("Hold the microphone button down while you speak, or click it to record until you click Send.").to_owned(), Duration::from_secs(6));
                         return cx.invalidate();
                     }
                     Err(why) => {
-                        self.banner.say(format!("The voice message couldn’t be recorded ({why})."), Duration::from_secs(8));
+                        self.banner.say(olo_kit::tr!("The voice message couldn’t be recorded ({}).", why), Duration::from_secs(8));
                         return cx.invalidate();
                     }
                 };
@@ -552,7 +552,7 @@ impl Tg {
             .style(olo_protocol::NoteStyle::Message)
             .kind(NoteKind::Important)
             .action("default", "Show")
-            .reply(format!("Reply to {}", chat.title));
+            .reply(olo_kit::tr!("Reply to {}", chat.title));
         if chat.kind.many() {
             note = note.subtitle(from);
         }
@@ -689,7 +689,7 @@ impl Tg {
                     }
                     self.open_chat(id, None, cx);
                 }
-                None => self.banner.say(format!("No one on Telegram is called {username}."), Duration::from_secs(6)),
+                None => self.banner.say(olo_kit::tr!("No one on Telegram is called {}.", username), Duration::from_secs(6)),
             },
             Event::Error(e) => self.banner.say(e, Duration::from_secs(8)),
             Event::Sync { pending, total, waiting } => {
@@ -834,7 +834,7 @@ impl Tg {
                     Some(Media::File { name, .. }) => name.clone(),
                     Some(Media::Photo { .. }) => format!("Photo {id}.jpg"),
                     Some(Media::Video { name, .. }) | Some(Media::Audio { name, .. }) => name.clone().unwrap_or_else(|| format!("Telegram {id}")),
-                    Some(Media::Voice { .. }) => format!("Voice message {id}.ogg"),
+                    Some(Media::Voice { .. }) => olo_kit::tr!("Voice message {}.ogg", id),
                     _ => format!("Telegram {id}"),
                 };
                 let dir = olo_xdg::user_dir("DOWNLOAD").unwrap_or_else(home);
@@ -922,9 +922,9 @@ impl Tg {
         if cmd == "group:unarchive" {
             let n = chats.len();
             let message = match n {
-                1 => "Move the archived chat back to your chat list?".to_owned(),
-                2 => "Move both archived chats back to your chat list?".to_owned(),
-                n => format!("Move all {n} archived chats back to your chat list?"),
+                1 => olo_kit::words::tr("Move the archived chat back to your chat list?").to_owned(),
+                2 => olo_kit::words::tr("Move both archived chats back to your chat list?").to_owned(),
+                n => olo_kit::tr!("Move all {} archived chats back to your chat list?", n),
             };
             let cmds = chats.iter().map(|c| Cmd::Archive { chat: c.id, on: false }).collect();
             self.ask("Unarchive All Chats", message, "Unarchive", cmds, cx);
@@ -957,7 +957,8 @@ impl Tg {
             "chats:delete" => {
                 let n = chats.len();
                 let leaves = chats.iter().any(|c| matches!(c.kind, ChatKind::Group | ChatKind::Forum | ChatKind::Channel));
-                let message = format!("Delete {n} chats? Their messages go from this account{}. This can’t be undone.", if leaves { ", and you leave the groups and channels among them" } else { "" });
+                let message =
+                    olo_kit::tr!("Delete {} chats? Their messages go from this account{}. This can’t be undone.", n, if leaves { ", and you leave the groups and channels among them" } else { "" });
                 let cmds = chats.iter().map(|c| Cmd::DeleteChat { chat: c.id }).collect();
                 self.ask("Delete Chats", message, "Delete", cmds, cx);
                 return false;
@@ -973,10 +974,10 @@ impl Tg {
         let chats = self.chosen_chats();
         let n = chats.len();
         if chats.iter().any(|c| !c.archived) {
-            menu = menu.item(format!("Archive {n} Chats"), "chats:archive");
+            menu = menu.item(olo_kit::tr!("Archive {} Chats", n), "chats:archive");
         }
         if chats.iter().any(|c| c.archived) {
-            menu = menu.item(format!("Unarchive {n} Chats"), "chats:unarchive");
+            menu = menu.item(olo_kit::tr!("Unarchive {} Chats", n), "chats:unarchive");
         }
         menu = menu.item("Mark as Read", "chats:read").enabled(chats.iter().any(|c| c.unread > 0 || c.marked));
         if chats.iter().any(|c| !c.muted) {
@@ -985,7 +986,7 @@ impl Tg {
         if chats.iter().any(|c| c.muted) {
             menu = menu.item("Unmute", "chats:unmute");
         }
-        menu.separator().item(format!("Delete {n} Chats…"), "chats:delete")
+        menu.separator().item(olo_kit::tr!("Delete {} Chats…", n), "chats:delete")
     }
 
     fn chat_command(&mut self, chat: ChatId, cmd: &str, cx: &mut Cx<Self>) {
@@ -1340,7 +1341,7 @@ impl Tg {
             // (Every app's keys for it: `app.sidebar`, ⌥⌘S.)
             .key("s");
         let account = Menu::new("Account")
-            .item(self.me.as_ref().map_or_else(|| "Not Signed In".into(), |m| m.name.clone()), "me")
+            .item(self.me.as_ref().map_or_else(|| olo_kit::words::tr("Not Signed In").into(), |m| m.name.clone()), "me")
             .enabled(false)
             .separator()
             .item("Sign Out…", "signout")
@@ -1607,11 +1608,11 @@ impl View for Tg {
                 self.list_rect = if pending > 0 {
                     let line = Bounds::from_corners(point(left.origin.x, snap(left.bottom() - px(SYNC_H))), left.bottom_right());
                     let done = total.saturating_sub(pending) as f32 / total.max(1) as f32;
-                    let label = if pending == 1 { "Sending a change to Telegram…".to_owned() } else { format!("Sending {pending} changes to Telegram…") };
+                    let label = olo_kit::words::count(pending as u64, "Sending a change to Telegram…", "Sending {n} changes to Telegram…");
                     let trailing = match (&self.status, waiting) {
-                        (Status::Offline(_), _) => "offline: sent when back".to_owned(),
-                        (_, Some(s)) => format!("Telegram asks to wait {s} s"),
-                        _ => format!("{} of {total} sent", total - pending),
+                        (Status::Offline(_), _) => olo_kit::words::tr("offline: sent when back").to_owned(),
+                        (_, Some(s)) => olo_kit::tr!("Telegram asks to wait {} s", s),
+                        _ => olo_kit::tr!("{} of {} sent", total - pending, total),
                     };
                     let edge = c(p.shadow);
                     layer = layer.child(
@@ -1650,11 +1651,11 @@ impl View for Tg {
                     layer = layer.child(pane(composer, self.composer_rect, vs));
                 } else {
                     let detail = match &self.status {
-                        Status::Connecting => "Connecting to Telegram…".to_owned(),
-                        Status::Updating => "Catching up…".to_owned(),
+                        Status::Connecting => olo_kit::words::tr("Connecting to Telegram…").to_owned(),
+                        Status::Updating => olo_kit::words::tr("Catching up…").to_owned(),
                         Status::Offline(why) => why.clone(),
-                        Status::Waiting(s) => format!("Telegram asks us to wait {s} seconds."),
-                        _ => "Choose a chat from the list to start messaging.".to_owned(),
+                        Status::Waiting(s) => olo_kit::tr!("Telegram asks us to wait {} seconds.", s),
+                        _ => olo_kit::words::tr("Choose a chat from the list to start messaging.").to_owned(),
                     };
                     let ground = bubble::Look::of(&p).ground;
                     layer = layer.child(
@@ -1717,8 +1718,8 @@ impl View for Tg {
             let done = total.saturating_sub(pending) as f32 / total.max(1) as f32;
             let what = if pending == 1 { "1 change".to_owned() } else { format!("{pending} changes") };
             let trailing = match waiting {
-                Some(s) => format!("Telegram asks to wait {s} s"),
-                None => format!("quitting in {left_s} s at most"),
+                Some(s) => olo_kit::tr!("Telegram asks to wait {} s", s),
+                None => olo_kit::tr!("quitting in {} s at most", left_s),
             };
             let sheet = div()
                 .w(px(360.0))
@@ -1730,7 +1731,9 @@ impl View for Tg {
                 .border_1()
                 .border_color(c(p.shadow))
                 .child(StringView::new("Sending your changes to Telegram").bold(true))
-                .child(StringView::new(format!("{what} to chats (archived, read, muted or pinned) still to send. Whatever isn’t sent now is kept and sent when Telegram next opens.")).wrap(true))
+                .child(
+                    StringView::new(olo_kit::tr!("{} to chats (archived, read, muted or pinned) still to send. Whatever isn’t sent now is kept and sent when Telegram next opens.", what)).wrap(true),
+                )
                 .child(StatusBar::new(done).trailing(trailing).bar_height(8.0))
                 .child(button_row().child(Button::new("Quit Now").on_click(|_, _| olo_kit::quit())));
             layer = layer.child(div().absolute().inset_0().flex().items_center().justify_center().bg(c(p.shadow).opacity(0.25)).child(sheet));
@@ -1968,7 +1971,7 @@ impl View for Info {
             ChatKind::User | ChatKind::Bot => ch.seen.as_ref().map(|s| s.describe(when::now())).unwrap_or_default(),
             ChatKind::Channel => ch.members.map(|n| format!("{n} subscribers")).unwrap_or_default(),
             ChatKind::Group | ChatKind::Forum => ch.members.map(|n| format!("{n} members")).unwrap_or_default(),
-            ChatKind::Saved => "Your notes, files and forwarded messages".into(),
+            ChatKind::Saved => olo_kit::words::tr("Your notes, files and forwarded messages").into(),
         };
         let (title, id) = (ch.title.clone(), ch.id);
         let head = canvas(move |g, b| {

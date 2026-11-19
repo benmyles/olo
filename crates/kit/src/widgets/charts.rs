@@ -719,6 +719,12 @@ pub struct LegendItem {
     pub value: SharedString,
 }
 
+/// An item's name as shown: in the language chosen, a literal looked up
+/// (measured and painted alike).
+fn shown_name(it: &LegendItem) -> SharedString {
+    crate::words::of(it.name.clone())
+}
+
 fn swatch_w(it: &LegendItem) -> f32 {
     if it.color.a == 0.0 { 0.0 } else { SWATCH + 5.0 }
 }
@@ -729,7 +735,7 @@ fn legend_places(width: f32, items: &[LegendItem]) -> Vec<(f32, usize)> {
     let mut out = Vec::new();
     let (mut x, mut row) = (0.0, 0);
     for it in items {
-        let w = swatch_w(it) + style::text_width_app(&it.name, style::DETAIL_SIZE, &plain) + 6.0 + style::text_width_app(&it.value, style::SMALL_SIZE, &bold) + 2.0 * m::SPACING;
+        let w = swatch_w(it) + style::text_width_app(&shown_name(it), style::DETAIL_SIZE, &plain) + 6.0 + style::text_width_app(&it.value, style::SMALL_SIZE, &bold) + 2.0 * m::SPACING;
         if x > 0.0 && x + w > width {
             x = 0.0;
             row += 1;
@@ -766,7 +772,7 @@ pub fn legend(g: &mut Painter, r: Bounds<Pixels>, items: &[LegendItem]) {
             }
             // Name and value on one baseline (their sizes differ).
             let baseline = style::baseline_at(g, mid, style::DETAIL_SIZE);
-            let name = style::label_on_baseline(g, left + px(swatch_w(it)), baseline, style::Align::Left, it.name.clone(), style::DETAIL_SIZE, plain.clone(), dim);
+            let name = style::label_on_baseline(g, left + px(swatch_w(it)), baseline, style::Align::Left, shown_name(it), style::DETAIL_SIZE, plain.clone(), dim);
             style::label_on_baseline(g, name.right() + px(6.0), baseline, style::Align::Left, it.value.clone(), style::SMALL_SIZE, bold.clone(), text);
         }
     });

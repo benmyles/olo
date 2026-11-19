@@ -196,6 +196,39 @@ impl Kind {
             Kind::FreezingRain => "Freezing rain",
         }
     }
+
+    /// Its name in the person's language (`name` is the English, for the
+    /// assistant and the command line).
+    pub fn said(self) -> &'static str {
+        match self {
+            Kind::None => olo_kit::words::tr("Nothing"),
+            Kind::Rain => olo_kit::words::tr("Rain"),
+            Kind::Snow => olo_kit::words::tr("Snow"),
+            Kind::Sleet => olo_kit::words::tr("Sleet"),
+            Kind::FreezingRain => olo_kit::words::tr("Freezing rain"),
+        }
+    }
+
+    /// With how hard it comes (0 light, 1 steady, 2 heavy), said whole in
+    /// the person's language: an adjective agrees with its noun and goes
+    /// before or after it as the language has it.
+    pub fn said_with(self, strength: u8) -> &'static str {
+        use olo_kit::words::tr;
+        match (self, strength) {
+            (Kind::Snow, 2) => tr("Heavy snow"),
+            (Kind::Snow, 1) => tr("Steady snow"),
+            (Kind::Snow, _) => tr("Light snow"),
+            (Kind::Sleet, 2) => tr("Heavy sleet"),
+            (Kind::Sleet, 1) => tr("Steady sleet"),
+            (Kind::Sleet, _) => tr("Light sleet"),
+            (Kind::FreezingRain, 2) => tr("Heavy freezing rain"),
+            (Kind::FreezingRain, 1) => tr("Steady freezing rain"),
+            (Kind::FreezingRain, _) => tr("Light freezing rain"),
+            (_, 2) => tr("Heavy rain"),
+            (_, 1) => tr("Steady rain"),
+            (_, _) => tr("Light rain"),
+        }
+    }
 }
 
 /// What a day's value is of its hours.
@@ -314,7 +347,9 @@ impl Forecast {
 /// widest; `weatherCode`'s are among them, and a day's or night's is
 /// one of these with 0 or 1 after it).
 const CODES: &[(u32, &str)] = &[
-    (1000, "Clear"),
+    // ("Clear sky", not "Clear": a button's Clear is another word in every
+    // language.)
+    (1000, "Clear sky"),
     (1100, "Mostly clear"),
     (1101, "Partly cloudy"),
     (1102, "Mostly cloudy"),
@@ -420,6 +455,12 @@ pub fn describe(code: u32) -> &'static str {
     CODES.iter().find(|(k, _)| *k == c).map_or("Unknown", |(_, d)| *d)
 }
 
+/// [`describe`] in the person's language (`describe` is the English, for
+/// the assistant and Edit ▸ Copy).
+pub fn describe_said(code: u32) -> &'static str {
+    olo_kit::words::tr(describe(code))
+}
+
 /// The picture for a weather code, by day or by night.
 pub fn icon(code: u32, night: bool) -> &'static str {
     let c = four(code);
@@ -484,7 +525,7 @@ mod tests {
     fn codes_read_by_day_and_night() {
         assert_eq!(describe(4214), "Partly cloudy and light rain");
         assert_eq!(describe(42141), "Partly cloudy and light rain");
-        assert_eq!(describe(10000), "Clear");
+        assert_eq!(describe(10000), "Clear sky");
         assert_eq!(icon(1000, false), "weather-clear-day");
         assert_eq!(icon(10001, true), "weather-clear-night");
         assert_eq!(icon(4201, false), "weather-heavy-rain");

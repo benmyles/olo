@@ -217,7 +217,7 @@ impl Inspector {
         }
         rows.push(("Scheduling", d.policy.clone()));
         let cores = match &d.affinity {
-            Some(a) if a.len() >= self.seen.cores => format!("Any of the {}", self.seen.cores),
+            Some(a) if a.len() >= self.seen.cores => olo_kit::tr!("Any of the {}", self.seen.cores),
             Some(a) => a.iter().map(|c| (c + 1).to_string()).collect::<Vec<_>>().join(", "),
             None => "—".into(),
         };
@@ -425,7 +425,7 @@ impl Inspector {
         let field = MenuField::new(SharedString::from(format!("inspect-oom-{pid}")), options, chosen).label("Out of memory:").divider(divider).width(divider + 180.0).on_change(move |i, cx| {
             Inspector::act_on(&oom_me, Action::OomAdjust { pid, value: OOM[*i].0 }, cx);
         });
-        let score: SharedString = d.oom_score.map(|s| format!("Score {s} of 2000")).unwrap_or_default().into();
+        let score: SharedString = d.oom_score.map(|s| olo_kit::tr!("Score {} of 2000", s)).unwrap_or_default().into();
         let dim = style::disabled_text(&p);
         let score_el = canvas(move |g, b| {
             // On the field's text's baseline.
@@ -483,11 +483,11 @@ fn kernel(p: &Proc) -> bool {
 fn limit_name(name: &str) -> String {
     let n = name.trim_start_matches("Max ");
     match n {
-        "cpu time" => "CPU time".into(),
-        "resident set" => "Resident memory".into(),
-        "msgqueue size" => "Message queues".into(),
-        "realtime priority" => "Real-time priority".into(),
-        "realtime timeout" => "Real-time timeout".into(),
+        "cpu time" => olo_kit::words::tr("CPU time").into(),
+        "resident set" => olo_kit::words::tr("Resident memory").into(),
+        "msgqueue size" => olo_kit::words::tr("Message queues").into(),
+        "realtime priority" => olo_kit::words::tr("Real-time priority").into(),
+        "realtime timeout" => olo_kit::words::tr("Real-time timeout").into(),
         _ => {
             let mut s = n.to_owned();
             if let Some(f) = s.get_mut(0..1) {
@@ -560,7 +560,7 @@ fn supervised(me: &Me, st: &olo_protocol::performance::SupervisorState, pid: i32
         out = out
             .child(heading("Lowered".into()))
             .child(para(
-                format!(
+                olo_kit::tr!(
                     "As {}: nice {} → {}, {} scheduling, {} I/O priority{}, so the active window’s app and Olo stay quick.",
                     l.why,
                     l.nice_before,
@@ -574,7 +574,7 @@ fn supervised(me: &Me, st: &olo_protocol::performance::SupervisorState, pid: i32
             .child(gap());
     }
     if favoured {
-        out = out.child(heading("Favoured".into())).child(para("It has the active window: never lowered while it does.".into(), text)).child(gap());
+        out = out.child(heading("Favoured".into())).child(para(olo_kit::words::tr("It has the active window: never lowered while it does.").into(), text)).child(gap());
     }
     let mut buttons = div().flex().flex_row().flex_wrap().gap(px(m::SPACING));
     if let Some(f) = findings.first() {
@@ -624,12 +624,12 @@ impl View for Inspector {
         let name: SharedString = self.name.clone().into();
         let sub: SharedString = match &proc {
             Some(pr) => format!("Process {} · {} · {}", pr.pid, pr.user, state_name(pr.state)),
-            None if gone => format!("Process {pid} has quit"),
+            None if gone => olo_kit::tr!("Process {} has quit", pid),
             None => format!("Process {pid}"),
         }
         .into();
         let figs: Option<SharedString> = proc.as_ref().map(|pr| {
-            let memory = if kernel(pr) { "a kernel thread".to_owned() } else { format_size(pr.memory) };
+            let memory = if kernel(pr) { olo_kit::words::tr("a kernel thread").to_owned() } else { format_size(pr.memory) };
             format!("{:.1}% CPU · {memory}", pr.cpu).into()
         });
         let words = canvas(move |g, b| {

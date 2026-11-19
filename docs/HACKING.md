@@ -13229,7 +13229,7 @@ writes every word asked for to FILE, each once (literals, and in
 English too what's otherwise left as it is: a tab view's tabs, a menu
 field's choices, a box's title, an alert's words: `words::note`).
 
-**Olo's word list** (`crates/kit-base/words/en.txt`, 3,361 words on
+**Olo's word list** (`crates/kit-base/words/en.txt`, 4,083 words on
 2026-11-19) is what `tools/dev/words gather --write` finds: both layout
 lints run with `OLO_WORDS_SEEN` (`cargo ui-lint` opens Preferences',
 DiskBackup's and the kit's windows; `tools/dev/ui-lint` every app's,
@@ -13299,6 +13299,25 @@ person (Calendar's reminders, a notification) chooses the language
 before it makes them: `words::choose()` asks the window server for the
 setting (Calendar's service does at each waking; it had taken it only
 as a side effect of its first `palette()` call, and never again).
+The kit's glance server (`glance::serve`, Deskbar's glances: Weather's,
+Calendar's, kache's, Notifications') chooses the language as it starts
+and again when the settings' file changes: before, a glance's words
+were English whatever the setting, as its process never started the
+kit's app.
+**What the kit asks for itself**, besides the widgets above: a
+dashboard card's title and caption (`Card::new`, `caption`), a fact's
+label (`Facts::new`'s pairs), a chart legend's names, a timeline's
+tracks' names, panels' titles and guides: a literal looked up as each
+is made (`words::of`). What an app paints itself is its own to ask for
+(Weather's next-hour axis, a day's "Today"). **A phrase mid-sentence**:
+`words::mid_sentence("Partly cloudy")` makes its first letter small,
+as English and French do in a sentence, and keeps it in a language that
+writes every noun with a capital (`Language::capital_nouns`, German:
+"44°, Regen"); `to_lowercase()` on a translation would make German's
+nouns small. **One English word, two things**: a key means one thing in
+every language, so where English says two things alike the code says
+one of them differently: Weather's sky is "Clear sky", not the button's
+"Clear" ("Leeren", "Borrar", "Effacer").
 **Saying a sentence whole.** A word spliced into a sentence ("in this
 {}" with "tab" or "window"; "{} items" with "Its" or "Their"; "Started
 {} ago" with "5 minutes") can't be translated: languages decline,
@@ -13310,10 +13329,21 @@ days"; merge and `the_catalogs` allow it). `tr(if a { "x" } else { "y"
 })` hides both from the gatherer, which looks for a literal right after
 `tr(` (or `count(`): write two calls, and a helper handed its words
 gets each as its own `tr("…")` or `count(n, "…", "…")` at the call
-(DiskBackup's "one a day for ever" came in only so). The gatherer skips
+(DiskBackup's "one a day for ever" came in only so). The converter
+leaves a sentence with one word around its parts ("Gusts {}", "Sun
+{}–{}", "Temperature ({})"): convert those by hand. A word held in a
+table (Weather's sky phrases, from tomorrow.io's codes; a menu's
+choices in a `const`) is looked up as it's shown (`words::tr(describe(
+code))`) and put in en.txt by hand: the gatherer finds a literal by the
+call it's in. It knows a dashboard's: a card's title, a caption, a
+pair's first (`("Entries".into(), …)`, a pair's parenthesis, not a
+call's). The gatherer skips
 a lint's fixtures, the settings index written from them, a block only
-tests and demos take (`if cfg!(test) …`), comments, and strings of
-numbers alone ("+1 555 123 4567"). The sweep skips a thread's name and a line that
+tests and demos take (`if cfg!(test) …`, and the item after any
+`#[cfg(test)]`), comments (in the code scan too: a doc comment's example
+had come in as a word), strings of numbers alone ("+1 555 123 4567"),
+names in capitals (PATH), in camel case (an API's fields:
+dewPointDepression) and a search's syntax (program:all). The sweep skips a thread's name and a line that
 already says `en!`.
 `tools/dev/words missing LANG` lists what a catalog lacks, and `words
 merge LANG PAIRS…` puts translations in (written as "English |||

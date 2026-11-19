@@ -52,7 +52,7 @@ fn newest() -> Result<Option<u32>, String> {
         Err(_) if !olo_system::dnf::real() => return Ok(current().map(|c| c + 1)),
         Err(_) => crate::repos::fetch("https://fedoraproject.org/releases.json")?,
     };
-    let list: Vec<serde_json::Value> = serde_json::from_str(&text).map_err(|e| format!("Fedora’s list of releases couldn’t be read: {e}"))?;
+    let list: Vec<serde_json::Value> = serde_json::from_str(&text).map_err(|e| olo_kit::tr!("Fedora’s list of releases couldn’t be read: {}", e))?;
     Ok(list.iter().filter_map(|r| r.get("version").and_then(|v| v.as_str())).filter(|v| !v.contains(' ')).filter_map(|v| v.parse::<u32>().ok()).max())
 }
 
@@ -81,7 +81,7 @@ pub fn message(app: &mut OsUpdates, msg: Msg, cx: &mut Cx<OsUpdates>) {
             }
         }
         Msg::Prepare(to) => {
-            let title = format!("Upgrade to Fedora {to}");
+            let title = olo_kit::tr!("Upgrade to Fedora {}", to);
             review::open(Plan { title: title.clone(), ops: vec![(Op::SystemUpgrade, Vec::new())], release: Some(to.to_string()), offline_only: true, comment: title }, cx.messenger());
         }
         Msg::CancelWaiting => {
@@ -120,8 +120,8 @@ pub fn waiting_banner(app: &mut OsUpdates, cx: &mut Cx<OsUpdates>) -> Option<Ele
     let st = &app.offline.status;
     let target = st.get("target_releasever").filter(|t| app.rel.current.is_none_or(|c| t.parse::<u32>().ok() != Some(c)));
     let what = match target {
-        Some(t) => format!("The upgrade to Fedora {t} is downloaded and waits for the computer to restart."),
-        None => "Updates are downloaded and wait for the computer to restart: they’re installed then.".to_owned(),
+        Some(t) => olo_kit::tr!("The upgrade to Fedora {} is downloaded and waits for the computer to restart.", t),
+        None => olo_kit::words::tr("Updates are downloaded and wait for the computer to restart: they’re installed then.").to_owned(),
     };
     Some(
         div()
@@ -144,23 +144,21 @@ pub fn body(app: &mut OsUpdates, cx: &mut Cx<OsUpdates>) -> Element {
         col = col.child(b);
     }
     let runs = match app.rel.current {
-        Some(c) => format!("This computer runs Fedora {c}."),
-        None => "Which Fedora this computer runs can’t be told (/etc/os-release says nothing).".to_owned(),
+        Some(c) => olo_kit::tr!("This computer runs Fedora {}.", c),
+        None => olo_kit::words::tr("Which Fedora this computer runs can’t be told (/etc/os-release says nothing).").to_owned(),
     };
     col = col.child(title(runs));
     match (app.rel.next, &app.rel.error, app.rel.checking) {
         (_, _, true) => col = col.child(StringView::new("Looking for a newer release…").dim(true)),
         (Some(n), _, _) => {
             col = col
-                .child(StringView::new(format!("Fedora {n} is out.")).bold(true))
+                .child(StringView::new(olo_kit::tr!("Fedora {} is out.", n)).bold(true))
                 .child(
-                    StringView::new(format!(
-                        "Upgrading downloads every package of Fedora {n} now, while you work, then installs them as the computer restarts: that takes a while, and the computer can’t be used meanwhile. Your files, settings and apps stay. Update to the newest of this release first, and have a backup."
-                    ))
+                    StringView::new(olo_kit::tr!("Upgrading downloads every package of Fedora {} now, while you work, then installs them as the computer restarts: that takes a while, and the computer can’t be used meanwhile. Your files, settings and apps stay. Update to the newest of this release first, and have a backup.", n))
                     .wrap(true),
                 )
                 .children((!app.updates.updates.is_empty()).then(|| {
-                    StringView::new(format!("{} of Fedora {} {} waiting: install {} first, in Updates.", app.updates.updates.len(), app.rel.current.unwrap_or(0), if app.updates.updates.len() == 1 { "update is" } else { "updates are" }, if app.updates.updates.len() == 1 { "it" } else { "them" }))
+                    StringView::new(olo_kit::words::fill(&olo_kit::words::count(app.updates.updates.len() as u64, "1 of Fedora {} update is waiting: install it first, in Updates.", "{n} of Fedora {} updates are waiting: install them first, in Updates."), &[&app.rel.current.unwrap_or(0)]))
                         .wrap(true)
                         .color(style::c(theme::palette().failure))
                 }))
@@ -170,10 +168,10 @@ pub fn body(app: &mut OsUpdates, cx: &mut Cx<OsUpdates>) -> Element {
                     ),
                 );
             if app.rel.newest.is_some_and(|newest| newest > n) {
-                col = col.child(StringView::new(format!("Fedora {} is out too: after this upgrade, the next.", app.rel.newest.unwrap_or(n))).dim(true));
+                col = col.child(StringView::new(olo_kit::tr!("Fedora {} is out too: after this upgrade, the next.", app.rel.newest.unwrap_or(n))).dim(true));
             }
         }
-        (None, Some(e), _) => col = col.child(StringView::new(format!("Whether a newer release is out can’t be told: {e}")).wrap(true).color(style::c(theme::palette().failure))),
+        (None, Some(e), _) => col = col.child(StringView::new(olo_kit::tr!("Whether a newer release is out can’t be told: {}", e)).wrap(true).color(style::c(theme::palette().failure))),
         (None, None, _) => col = col.child(StringView::new("It’s the newest release: there’s nothing to upgrade to.").dim(true)),
     }
     col.child(div().flex_1()).child(app.status(cx)).into_element()

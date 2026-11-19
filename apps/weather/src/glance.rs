@@ -87,7 +87,7 @@ fn make(asked: &[Request], demo: bool, st: &mut State) -> (Vec<(u32, Timeline)>,
         }
     }
     let Some(f) = forecast else {
-        let why = st.error.clone().unwrap_or_else(|| "Open Weather to set up its data provider".into());
+        let why = st.error.clone().unwrap_or_else(|| olo_kit::words::tr("Open Weather to set up its data provider").into());
         return (say(&why), st.retry_at.map(|t| Duration::from_secs((t - now).max(60) as u64)));
     };
     let made = asked.iter().map(|r| (r.widget, timeline(r, &f, &place, &settings.units, now))).collect();
@@ -100,7 +100,7 @@ fn fetch(provider: &'static dyn provider::Provider, settings: &Settings, place: 
     let key = match &st.key {
         Some(k) => k.clone(),
         None if !provider.needs_key() => Arc::new(Zeroizing::new(String::new())),
-        None if settings.key == key::Source::None => return Err(Error::Key("Open Weather to set up its data provider".into())),
+        None if settings.key == key::Source::None => return Err(Error::Key(olo_kit::words::tr("Open Weather to set up its data provider").into())),
         None => {
             let k = Arc::new(key::read(provider, &settings.key)?);
             st.key = Some(k.clone());
@@ -187,9 +187,9 @@ fn now_glance(f: &Forecast, place: &Place, units: &Units, t: i64, _local: &impl 
     let (s, get) = at(f, t);
     let code = s.code();
     let value = get(Layer::Temperature).map(|v| units.degrees(v)).unwrap_or_default();
-    let title = model::describe(code).to_owned();
+    let title = model::describe_said(code).to_owned();
     // (Short: a Deskbar's width. The tip says it in full.)
-    let feels = get(Layer::TemperatureApparent).map(|v| format!("Feels like {}", units.degrees(v)));
+    let feels = get(Layer::TemperatureApparent).map(|v| olo_kit::tr!("Feels like {}", units.degrees(v)));
     let wind = get(Layer::WindSpeed).map(|v| units.say(Quantity::Speed, v));
     let detail = [feels.clone(), wind.clone()].into_iter().flatten().collect::<Vec<_>>().join(" · ");
     // The next hour while the minutes reach, else the day's high and low.
@@ -231,14 +231,14 @@ fn hours(f: &Forecast, place: &Place, units: &Units, t: i64, every: i64, level: 
         .enumerate()
         .map(|(i, &at_t)| {
             let (s, get) = at(f, at_t);
-            let label = if i == 0 { "Now".into() } else { hour_label(local(at_t), half_hours) };
+            let label = if i == 0 { olo_kit::words::tr("Now").into() } else { hour_label(local(at_t), half_hours) };
             let value = get(Layer::Temperature).map(|v| units.degrees(v)).unwrap_or_default();
             let level = match level {
                 "cloud" => get(Layer::CloudCover).map(|c| (c / 100.0) as f32),
                 "none" => None,
                 _ => get(Layer::PrecipitationProbability).map(|p| (p / 100.0) as f32),
             };
-            said.push(format!("{label} {value} {}", model::describe(s.code()).to_lowercase()));
+            said.push(format!("{label} {value} {}", olo_kit::words::mid_sentence(model::describe_said(s.code()))));
             Slot { label, icon: Some(model::icon(s.code(), f.is_night(at_t)).into()), value, level }
         })
         .collect();
@@ -248,28 +248,28 @@ fn hours(f: &Forecast, place: &Place, units: &Units, t: i64, every: i64, level: 
         "cloud" => {
             let covers: Vec<f64> = times.iter().filter_map(|&x| at(f, x).1(Layer::CloudCover)).collect();
             match (covers.iter().cloned().reduce(f64::min), covers.iter().cloned().reduce(f64::max)) {
-                (Some(a), Some(b)) if (b - a).abs() < 5.0 => format!("Cloud cover about {}%", b.round()),
-                (Some(a), Some(b)) => format!("Cloud cover {}–{}%", a.round(), b.round()),
-                _ => model::describe(s.code()).to_owned(),
+                (Some(a), Some(b)) if (b - a).abs() < 5.0 => olo_kit::tr!("Cloud cover about {}%", b.round()),
+                (Some(a), Some(b)) => olo_kit::tr!("Cloud cover {}–{}%", a.round(), b.round()),
+                _ => model::describe_said(s.code()).to_owned(),
             }
         }
-        "none" => high_low(f, units, t).unwrap_or_else(|| model::describe(s.code()).to_owned()),
+        "none" => high_low(f, units, t).unwrap_or_else(|| model::describe_said(s.code()).to_owned()),
         _ => {
             // What the rain does over the times shown.
             let wet_at: Vec<bool> = times.iter().map(|&x| wet(&at(f, x).1)).collect();
             let what = |x: i64| match at(f, x).0.kind() {
-                Kind::None => "Rain",
-                k => k.name(),
+                Kind::None => Kind::Rain.said(),
+                k => k.said(),
             };
             let clock = |x: i64| {
                 let (h, mi, _, _) = olo_kit::widgets::timeline::parts(local(x));
                 format!("{h:02}:{mi:02}")
             };
             match (wet(&get), wet_at.iter().position(|w| *w != wet(&get))) {
-                (true, Some(i)) => format!("{} until about {}", what(t), clock(times[i])),
-                (true, None) => format!("{} for the next {span_h} hours", what(t)),
-                (false, Some(i)) => format!("{} likely from {}", what(times[i]), clock(times[i])),
-                (false, None) => format!("Dry for the next {span_h} hours"),
+                (true, Some(i)) => olo_kit::tr!("{} until about {}", what(t), clock(times[i])),
+                (true, None) => olo_kit::tr!("{} for the next {} hours", what(t), span_h),
+                (false, Some(i)) => olo_kit::tr!("{} likely from {}", what(times[i]), clock(times[i])),
+                (false, None) => olo_kit::tr!("Dry for the next {} hours", span_h),
             }
         }
     };
@@ -278,7 +278,7 @@ fn hours(f: &Forecast, place: &Place, units: &Units, t: i64, every: i64, level: 
         "cloud" => Some(olo_theme::Hue::Gray),
         _ => Some(olo_theme::Hue::Blue),
     };
-    let tip = format!("{}: {value}, {}. {detail}. {}.", place.title(), model::describe(s.code()).to_lowercase(), said.join("; "));
+    let tip = format!("{}: {value}, {}. {detail}. {}.", place.title(), olo_kit::words::mid_sentence(model::describe_said(s.code())), said.join("; "));
     Glance { icon: Some(model::icon(s.code(), f.is_night(t)).into()), value, title: place.title().to_owned(), detail, note: None, body: Some(Body::Slots { slots, hue }), tip, ..Glance::default() }
 }
 
@@ -306,8 +306,8 @@ fn days(f: &Forecast, place: &Place, units: &Units, t: i64, n: usize, local: &im
     let value = get(Layer::Temperature).map(|v| units.degrees(v)).unwrap_or_default();
     let today = f.daily.get(first).map(|d| [Layer::WeatherCodeFullDay, Layer::WeatherCodeDay, Layer::WeatherCode].iter().map(|l| d.code(*l)).find(|c| *c != 0).unwrap_or(0)).unwrap_or(s.code());
     let detail = match high_low(f, units, t) {
-        Some(hl) => format!("{} · {hl}", model::describe(today)),
-        None => model::describe(today).to_owned(),
+        Some(hl) => format!("{} · {hl}", model::describe_said(today)),
+        None => model::describe_said(today).to_owned(),
     };
     let said: Vec<String> = spans.iter().map(|s| format!("{} {} to {}", s.label, s.low_text, s.high_text)).collect();
     let tip = format!("{}: {value} now. {detail}. {}.", place.title(), said.join("; "));

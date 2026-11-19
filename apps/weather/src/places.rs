@@ -159,11 +159,11 @@ pub fn merge(query: &str, towns: Result<Vec<Place>, Error>, addresses: Result<Ve
 pub fn search_addresses(query: &str) -> Result<Vec<Place>, Error> {
     let base = base("OLO_WEATHER_ADDRESS_URL", "https://photon.komoot.io");
     let reply = agent().get(format!("{base}/api/")).query("q", query).query("limit", "8").query("lang", "en").call();
-    let mut reply = reply.map_err(|e| Error::Unreachable(format!("Addresses can’t be looked up: {e}")))?;
+    let mut reply = reply.map_err(|e| Error::Unreachable(olo_kit::tr!("Addresses can’t be looked up: {}", e)))?;
     if !reply.status().is_success() {
-        return Err(Error::Answer(format!("The address search answered {}.", reply.status().as_u16())));
+        return Err(Error::Answer(olo_kit::tr!("The address search answered {}.", reply.status().as_u16())));
     }
-    let v: serde_json::Value = reply.body_mut().read_json().map_err(|e| Error::Answer(format!("The address search’s answer can’t be read: {e}")))?;
+    let v: serde_json::Value = reply.body_mut().read_json().map_err(|e| Error::Answer(olo_kit::tr!("The address search’s answer can’t be read: {}", e)))?;
     Ok(parse_addresses(&v))
 }
 
@@ -216,11 +216,11 @@ pub fn parse_addresses(v: &serde_json::Value) -> Vec<Place> {
 pub fn locate(lat: f64, lon: f64) -> Result<(Option<String>, Option<f64>), Error> {
     let base = base("OLO_WEATHER_ZONE_URL", "https://api.open-meteo.com");
     let reply = agent().get(format!("{base}/v1/forecast")).query("latitude", format!("{lat:.5}")).query("longitude", format!("{lon:.5}")).query("timezone", "auto").call();
-    let mut reply = reply.map_err(|e| Error::Unreachable(format!("The place’s time zone can’t be looked up: {e}")))?;
+    let mut reply = reply.map_err(|e| Error::Unreachable(olo_kit::tr!("The place’s time zone can’t be looked up: {}", e)))?;
     if !reply.status().is_success() {
-        return Err(Error::Answer(format!("The time zone lookup answered {}.", reply.status().as_u16())));
+        return Err(Error::Answer(olo_kit::tr!("The time zone lookup answered {}.", reply.status().as_u16())));
     }
-    let v: serde_json::Value = reply.body_mut().read_json().map_err(|e| Error::Answer(format!("The time zone lookup’s answer can’t be read: {e}")))?;
+    let v: serde_json::Value = reply.body_mut().read_json().map_err(|e| Error::Answer(olo_kit::tr!("The time zone lookup’s answer can’t be read: {}", e)))?;
     Ok(parse_located(&v))
 }
 
@@ -235,11 +235,11 @@ pub fn parse_located(v: &serde_json::Value) -> (Option<String>, Option<f64>) {
 fn search_towns(query: &str) -> Result<Vec<Place>, Error> {
     let base = base("OLO_WEATHER_GEOCODE_URL", "https://geocoding-api.open-meteo.com");
     let reply = agent().get(format!("{base}/v1/search")).query("name", query).query("count", "10").query("language", "en").query("format", "json").call();
-    let mut reply = reply.map_err(|e| Error::Unreachable(format!("Places can’t be looked up: {e}")))?;
+    let mut reply = reply.map_err(|e| Error::Unreachable(olo_kit::tr!("Places can’t be looked up: {}", e)))?;
     if !reply.status().is_success() {
-        return Err(Error::Answer(format!("The place search answered {}.", reply.status().as_u16())));
+        return Err(Error::Answer(olo_kit::tr!("The place search answered {}.", reply.status().as_u16())));
     }
-    let v: serde_json::Value = reply.body_mut().read_json().map_err(|e| Error::Answer(format!("The place search’s answer can’t be read: {e}")))?;
+    let v: serde_json::Value = reply.body_mut().read_json().map_err(|e| Error::Answer(olo_kit::tr!("The place search’s answer can’t be read: {}", e)))?;
     Ok(parse_search(&v))
 }
 

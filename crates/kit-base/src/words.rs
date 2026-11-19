@@ -94,6 +94,9 @@ pub struct Language {
     /// The locale other programs are given for it ("de_DE").
     pub locale: &'static str,
     pub counting: Counting,
+    /// Whether it writes every noun with a capital (German): a phrase set
+    /// into a sentence keeps its first letter then (`mid_sentence`).
+    pub capital_nouns: bool,
     /// Its catalog (empty: English).
     text: &'static str,
 }
@@ -101,19 +104,27 @@ pub struct Language {
 /// English first (what the code is written in), then by their English
 /// names.
 pub static LANGUAGES: [Language; 13] = [
-    Language { code: "en", name: "English", english: "English", locale: "en_US", counting: Counting::OneOther, text: "" },
-    Language { code: "zh-Hans", name: "简体中文", english: "Chinese, Simplified", locale: "zh_CN", counting: Counting::Other, text: include_str!("../words/zh-Hans.txt") },
-    Language { code: "zh-Hant", name: "繁體中文", english: "Chinese, Traditional", locale: "zh_TW", counting: Counting::Other, text: include_str!("../words/zh-Hant.txt") },
-    Language { code: "nl", name: "Nederlands", english: "Dutch", locale: "nl_NL", counting: Counting::OneOther, text: include_str!("../words/nl.txt") },
-    Language { code: "fr", name: "Français", english: "French", locale: "fr_FR", counting: Counting::UpToOneOther, text: include_str!("../words/fr.txt") },
-    Language { code: "de", name: "Deutsch", english: "German", locale: "de_DE", counting: Counting::OneOther, text: include_str!("../words/de.txt") },
-    Language { code: "hi", name: "हिन्दी", english: "Hindi", locale: "hi_IN", counting: Counting::UpToOneOther, text: include_str!("../words/hi.txt") },
-    Language { code: "it", name: "Italiano", english: "Italian", locale: "it_IT", counting: Counting::OneOther, text: include_str!("../words/it.txt") },
-    Language { code: "ja", name: "日本語", english: "Japanese", locale: "ja_JP", counting: Counting::Other, text: include_str!("../words/ja.txt") },
-    Language { code: "ko", name: "한국어", english: "Korean", locale: "ko_KR", counting: Counting::Other, text: include_str!("../words/ko.txt") },
-    Language { code: "pt-BR", name: "Português (Brasil)", english: "Portuguese, Brazil", locale: "pt_BR", counting: Counting::UpToOneOther, text: include_str!("../words/pt-BR.txt") },
-    Language { code: "ru", name: "Русский", english: "Russian", locale: "ru_RU", counting: Counting::Slavic, text: include_str!("../words/ru.txt") },
-    Language { code: "es", name: "Español", english: "Spanish", locale: "es_ES", counting: Counting::OneOther, text: include_str!("../words/es.txt") },
+    Language { code: "en", name: "English", english: "English", locale: "en_US", counting: Counting::OneOther, capital_nouns: false, text: "" },
+    Language { code: "zh-Hans", name: "简体中文", english: "Chinese, Simplified", locale: "zh_CN", counting: Counting::Other, capital_nouns: false, text: include_str!("../words/zh-Hans.txt") },
+    Language { code: "zh-Hant", name: "繁體中文", english: "Chinese, Traditional", locale: "zh_TW", counting: Counting::Other, capital_nouns: false, text: include_str!("../words/zh-Hant.txt") },
+    Language { code: "nl", name: "Nederlands", english: "Dutch", locale: "nl_NL", counting: Counting::OneOther, capital_nouns: false, text: include_str!("../words/nl.txt") },
+    Language { code: "fr", name: "Français", english: "French", locale: "fr_FR", counting: Counting::UpToOneOther, capital_nouns: false, text: include_str!("../words/fr.txt") },
+    Language { code: "de", name: "Deutsch", english: "German", locale: "de_DE", counting: Counting::OneOther, capital_nouns: true, text: include_str!("../words/de.txt") },
+    Language { code: "hi", name: "हिन्दी", english: "Hindi", locale: "hi_IN", counting: Counting::UpToOneOther, capital_nouns: false, text: include_str!("../words/hi.txt") },
+    Language { code: "it", name: "Italiano", english: "Italian", locale: "it_IT", counting: Counting::OneOther, capital_nouns: false, text: include_str!("../words/it.txt") },
+    Language { code: "ja", name: "日本語", english: "Japanese", locale: "ja_JP", counting: Counting::Other, capital_nouns: false, text: include_str!("../words/ja.txt") },
+    Language { code: "ko", name: "한국어", english: "Korean", locale: "ko_KR", counting: Counting::Other, capital_nouns: false, text: include_str!("../words/ko.txt") },
+    Language {
+        code: "pt-BR",
+        name: "Português (Brasil)",
+        english: "Portuguese, Brazil",
+        locale: "pt_BR",
+        counting: Counting::UpToOneOther,
+        capital_nouns: false,
+        text: include_str!("../words/pt-BR.txt"),
+    },
+    Language { code: "ru", name: "Русский", english: "Russian", locale: "ru_RU", counting: Counting::Slavic, capital_nouns: false, text: include_str!("../words/ru.txt") },
+    Language { code: "es", name: "Español", english: "Spanish", locale: "es_ES", counting: Counting::OneOther, capital_nouns: false, text: include_str!("../words/es.txt") },
 ];
 
 /// The language with this tag (whatever its case; "de-DE" and "de_DE"
@@ -561,6 +572,18 @@ fn is_english(text: &str) -> bool {
     english().iter().any(|e| *e == text) || best(PATTERNS.get_or_init(|| english().iter().filter_map(|k| Pattern::of(k)).collect()), text).is_some()
 }
 
+/// A phrase said on its own ("Partly cloudy") set into the middle of a
+/// sentence ("44°, partly cloudy"): its first letter made small, as the
+/// language has it, but kept in a language that writes every noun with a
+/// capital ("44°, Regen", not "regen").
+pub fn mid_sentence(text: &str) -> String {
+    let mut chars = text.chars();
+    match chars.next() {
+        Some(first) if !current().capital_nouns => first.to_lowercase().chain(chars).collect(),
+        _ => text.to_owned(),
+    }
+}
+
 /// A sentence that counts something, in the language's form for `n`:
 /// `one` and `other` are the English ("1 window", "{n} windows"), and
 /// `{n}` in whichever is used is the number. A language's forms are in
@@ -696,6 +719,15 @@ mod tests {
         assert_eq!(c.retell("Started  ago"), None, "a part is something");
         assert_eq!(c.retell("A name"), None);
         assert_eq!(c.retell("the keyring can't be read: it's locked").as_deref(), Some("der Schlüsselbund ist nicht lesbar: it's locked"), "kept");
+    }
+
+    /// A phrase in a sentence: small in English, its noun's capital kept
+    /// in German.
+    #[test]
+    fn a_phrase_mid_sentence() {
+        assert_eq!(mid_sentence("Partly cloudy"), "partly cloudy");
+        assert_eq!(mid_sentence(""), "");
+        assert!(language("de").unwrap().capital_nouns && !language("fr").unwrap().capital_nouns);
     }
 
     /// `en!`: English, its parts put in, whatever the language.

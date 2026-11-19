@@ -89,11 +89,11 @@ fn started_ms(p: &Path, boot_ms: u64) -> u64 {
 /// slots and this user's.
 pub fn end(dir: &Path, pid: i32) -> Result<(), String> {
     if !held(dir).iter().any(|h| h.pid == pid) {
-        return Err("that test no longer holds slots".into());
+        return Err(olo_kit::words::tr("that test no longer holds slots").into());
     }
     // SAFETY: kill with a pid and a signal has no memory effects; the
     // kernel refuses another user's process (EPERM).
-    if unsafe { libc::kill(pid, libc::SIGTERM) } == 0 { Ok(()) } else { Err(format!("it couldn't be ended: {}", std::io::Error::last_os_error())) }
+    if unsafe { libc::kill(pid, libc::SIGTERM) } == 0 { Ok(()) } else { Err(olo_kit::tr!("it couldn't be ended: {}", std::io::Error::last_os_error())) }
 }
 
 #[cfg(test)]

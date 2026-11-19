@@ -481,7 +481,7 @@ fn probe() -> Probe {
         add(&format!("cpu{i}"), &format!("CPU {}", i + 1), Unit::Percent, SPREAD[i % SPREAD.len()], Some(100.0), Group::Cpus);
     }
     for i in 0..freq.len() {
-        add(&format!("freq{i}"), &format!("CPU {} frequency", i + 1), Unit::Megahertz, SPREAD[i % SPREAD.len()], None, Group::Frequencies);
+        add(&format!("freq{i}"), &olo_kit::tr!("CPU {} frequency", i + 1), Unit::Megahertz, SPREAD[i % SPREAD.len()], None, Group::Frequencies);
     }
     for (res, name, hue) in [("cpu", "CPU pressure", Hue::Blue), ("memory", "Memory pressure", Hue::Red), ("io", "I/O pressure", Hue::Orange)] {
         if Path::new("/proc/pressure").join(res).exists() {
@@ -601,10 +601,10 @@ fn sensor_name(chip: &str, stem: &str, label: &str) -> String {
         "fan"
     };
     match chip {
-        "nvme" if label == "Composite" || label.is_empty() => "SSD temperature".into(),
+        "nvme" if label == "Composite" || label.is_empty() => olo_kit::words::tr("SSD temperature").into(),
         "nvme" => format!("SSD {label}"),
         "macsmc_battery" => format!("Battery {kind}"),
-        "tas2764" | "tas2770" => format!("Speaker amp {kind}"),
+        "tas2764" | "tas2770" => olo_kit::tr!("Speaker amp {}", kind),
         _ if !label.is_empty() => label.into(),
         _ => format!("{chip} {stem}"),
     }
@@ -1097,7 +1097,7 @@ fn system(probe: &Probe, mi: &str, static_disks: &[Disk], disk_rates: &HashMap<S
         }
         // (Asahi's GPU by the Mac's chip.)
         let name = match (&g.kind, apple_chip(&s.model)) {
-            (Kind::Agx, Some(chip)) => format!("Apple {chip} GPU"),
+            (Kind::Agx, Some(chip)) => olo_kit::tr!("Apple {} GPU", chip),
             _ => g.name.clone(),
         };
         s.gpus.push(Gpu { prefix: g.prefix.clone(), name, driver: g.driver.clone(), memory_used: used, memory_limit: limit, jobs, asleep });

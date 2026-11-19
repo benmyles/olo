@@ -32,7 +32,7 @@ enum Keypad {
 }
 
 /// R5's keypad; Haiku's scientific rows go above it.
-const BASIC: [[&str; 5]; 4] = [["7", "8", "9", "(", ")"], ["4", "5", "6", "×", "÷"], ["1", "2", "3", "+", "−"], ["0", ".", "BS", "=", "C"]];
+const BASIC: [[&str; 5]; 4] = [["7", "8", "9", "(", ")"], ["4", "5", "6", "×", "÷"], ["1", "2", "3", "+", "−"], ["0", ".", "⌫", "=", "C"]];
 const SCIENTIFIC: [[&str; 5]; 4] = [["ln", "sin", "cos", "tan", "π"], ["log", "asin", "acos", "atan", "sqrt"], ["exp", "sinh", "cosh", "tanh", "cbrt"], ["!", "ceil", "floor", "E", "^"]];
 
 const WIDTH: f32 = 266.0;
@@ -208,7 +208,7 @@ impl DeskCalc {
         match key {
             "=" => return self.evaluate(cx),
             "C" => e.clear(),
-            "BS" => {
+            "⌫" => {
                 e.pop();
             }
             "E" => e.push('E'),

@@ -113,19 +113,19 @@ impl Provider for TomorrowIo {
 
 /// A reply's JSON, or what went wrong said plainly.
 fn answer(reply: Result<ureq::http::Response<ureq::Body>, ureq::Error>) -> Result<Value, Error> {
-    let mut reply = reply.map_err(|e| Error::Unreachable(format!("tomorrow.io can’t be reached: {}", plain(&e))))?;
+    let mut reply = reply.map_err(|e| Error::Unreachable(olo_kit::tr!("tomorrow.io can’t be reached: {}", plain(&e))))?;
     let status = reply.status().as_u16();
     let retry = reply.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|v| v.trim().parse::<u64>().ok());
-    let text = reply.body_mut().read_to_string().map_err(|e| Error::Unreachable(format!("tomorrow.io’s answer was cut short: {}", plain(&e))))?;
+    let text = reply.body_mut().read_to_string().map_err(|e| Error::Unreachable(olo_kit::tr!("tomorrow.io’s answer was cut short: {}", plain(&e))))?;
     let v: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
     let said = v["message"].as_str().map(str::to_owned);
     match status {
         200..=299 if v.is_object() => Ok(v),
-        200..=299 => Err(Error::Answer("tomorrow.io’s answer wasn’t a forecast.".into())),
-        401 => Err(Error::Key("tomorrow.io didn’t accept the API key. Check it in File ▸ Data Provider…".into())),
-        429 => Err(Error::Limit(format!("tomorrow.io’s limit for your key is reached for now{}", said.map(|s| format!(" ({})", s.trim_end_matches('.'))).unwrap_or_default()) + ".", retry)),
-        403 => Err(Error::Answer(said.unwrap_or_else(|| "tomorrow.io refused the request.".into()))),
-        _ => Err(Error::Answer(format!("tomorrow.io answered {status}{}", said.map(|s| format!(": {s}")).unwrap_or_default()))),
+        200..=299 => Err(Error::Answer(olo_kit::words::tr("tomorrow.io’s answer wasn’t a forecast.").into())),
+        401 => Err(Error::Key(olo_kit::words::tr("tomorrow.io didn’t accept the API key. Check it in File ▸ Data Provider…").into())),
+        429 => Err(Error::Limit(olo_kit::tr!("tomorrow.io’s limit for your key is reached for now{}", said.map(|s| format!(" ({})", s.trim_end_matches('.'))).unwrap_or_default()) + ".", retry)),
+        403 => Err(Error::Answer(said.unwrap_or_else(|| olo_kit::words::tr("tomorrow.io refused the request.").into()))),
+        _ => Err(Error::Answer(olo_kit::tr!("tomorrow.io answered {}{}", status, said.map(|s| format!(": {s}")).unwrap_or_default()))),
     }
 }
 
@@ -133,13 +133,13 @@ fn answer(reply: Result<ureq::http::Response<ureq::Body>, ureq::Error>) -> Resul
 fn plain(e: &ureq::Error) -> String {
     match e {
         ureq::Error::Io(io) => io.to_string(),
-        ureq::Error::Timeout(_) => "it took too long".into(),
-        ureq::Error::HostNotFound => "its address can’t be found (is the computer online?)".into(),
-        ureq::Error::ConnectionFailed => "the connection failed".into(),
-        ureq::Error::Tls(m) => format!("a secure connection failed ({m})"),
+        ureq::Error::Timeout(_) => olo_kit::words::tr("it took too long").into(),
+        ureq::Error::HostNotFound => olo_kit::words::tr("its address can’t be found (is the computer online?)").into(),
+        ureq::Error::ConnectionFailed => olo_kit::words::tr("the connection failed").into(),
+        ureq::Error::Tls(m) => olo_kit::tr!("a secure connection failed ({})", m),
         other => {
             let s = other.to_string();
-            if s.contains("apikey") { "the request failed".into() } else { s }
+            if s.contains("apikey") { olo_kit::words::tr("the request failed").into() } else { s }
         }
     }
 }
@@ -204,7 +204,7 @@ fn day_of(item: &Value) -> Option<Day> {
 pub fn parse(raw: &Value, fetched: i64) -> Result<Forecast, Error> {
     let f = &raw["forecast"]["timelines"];
     if !f.is_object() {
-        return Err(Error::Answer("tomorrow.io’s answer had no forecast in it.".into()));
+        return Err(Error::Answer(olo_kit::words::tr("tomorrow.io’s answer had no forecast in it.").into()));
     }
     let list = |v: &Value| v.as_array().cloned().unwrap_or_default();
     let minutely: Vec<Step> = list(&f["minutely"]).iter().filter_map(step_of).collect();

@@ -1,6 +1,9 @@
 # Olo en español. The format: crates/kit-base/src/words.rs.
 # Every word of en.txt; those the same as in English (names, paths) as themselves.
 
+! needs a whole number
+! necesita un número entero
+
 %
 %
 
@@ -18,6 +21,13 @@
 
 (not in force: {})
 (sin efecto: {})
+
+({n} more were refused too.)
+one: ({n} más también se rechazó.)
+other: ({n} más también se rechazaron.)
+
+({} by their size)
+({} por su tamaño)
 
 *.qcow2, *.vdi, *.vmdk (large, changing while in use)
 *.qcow2, *.vdi, *.vmdk (grandes, cambian mientras se usan)
@@ -193,6 +203,9 @@ Reloj de 24 horas
 30 days
 30 días
 
+30 min
+30 min
+
 30 minutes
 30 minutos
 
@@ -253,6 +266,9 @@ Reloj de 24 horas
 6 months
 6 meses
 
+60 min
+60 min
+
 7 days
 7 días
 
@@ -270,6 +286,12 @@ Reloj de 24 horas
 
 90 days
 90 días
+
+95th percentile
+Percentil 95
+
+A Copr project is owner/project (as “@group/project” for a group’s).
+Un proyecto de Copr es propietario/proyecto («@grupo/proyecto» si es de un grupo).
 
 A Disk or Folder
 Un disco o una carpeta
@@ -316,6 +338,9 @@ Un dedo ({} hasta ahora)
 A finger on the fingerprint sensor can stand for your password. Fingers enrolled for {}:
 Un dedo en el sensor de huellas puede sustituir a tu contraseña. Dedos registrados para {}:
 
+A frame dropped in the last minute
+Se perdió un fotograma en el último minuto
+
 A letter goes on everything you can pick: controls, menu items, windows, Deskbar. Type one to pick it, or to letter what’s inside; Backspace goes back, Esc puts them away.
 Todo lo que puedes elegir lleva una letra: controles, elementos de menú, ventanas, la Deskbar. Escribe una para elegirlo o para poner letras a lo que hay dentro; Retroceso vuelve atrás y Esc las quita.
 
@@ -327,6 +352,9 @@ Una mirada a la cámara de infrarrojos puede sustituir a tu contraseña: sudo en
 
 A lot of room
 Mucho espacio
+
+A mirror failed ({}): {}
+Falló un espejo ({}): {}
 
 A month
 Un mes
@@ -361,6 +389,9 @@ Una ruta: /…, ~/… o un nombre de aquí
 A picture of your own
 Una imagen tuya
 
+A process needs at least one core.
+Un proceso necesita al menos un núcleo.
+
 A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
 Un programa que despierta mientras los procesadores están ocupados se ejecuta enseguida, en vez de esperar al siguiente tic del núcleo (expropiación completa). {} planifica ahora y lo decide por sí mismo: esto es para el planificador propio del núcleo.
 
@@ -370,6 +401,12 @@ Un programa que despierta mientras los procesadores están ocupados se ejecuta e
 A red dot for an app with something unread in it
 Un punto rojo para una app con algo sin leer
 
+A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference gives one).
+Una referencia es como op://bóveda/elemento/campo (Copiar referencia del secreto en Passwords da una).
+
+A repository’s key needs to be trusted
+Hay que confiar en la clave de un repositorio
+
 A resting palm can't click (its pressure doesn't count)
 Palma apoyada: sin clic (su presión no cuenta)
 
@@ -378,6 +415,12 @@ Un crescendo
 
 A row of dots
 Una fila de puntos
+
+A script of {} failed (code {}).
+Falló un script de {} (código {}).
+
+A setting comes before any [repository].
+Un ajuste va antes de cualquier [repositorio].
 
 A terminal’s job busy for a minute and more is lowered too. Batch scheduling and idle I/O are put back when this is turned off; a raised nice stays until the program ends.
 También se rebaja un trabajo de terminal ocupado durante un minuto o más. Al desactivarlo se restablecen la planificación por lotes y la E/S inactiva; un nice elevado se mantiene hasta que el programa termina.
@@ -466,6 +509,9 @@ Actividad
 Activity Monitor
 Monitor de actividad
 
+Activity Monitor doesn't change {}.
+Monitor de actividad no cambia {}.
+
 Actual Size
 Tamaño real
 
@@ -510,6 +556,9 @@ Añadir marca
 
 Add Place…
 Añadir lugar…
+
+Add RPM Fusion
+Añadir RPM Fusion
 
 Add Repository…
 Añadir repositorio…
@@ -565,6 +614,9 @@ Añadir al colector
 Add “{}” to Favorites
 Añadir «{}» a Favoritos
 
+Added by a busy line
+Añadido por una línea ocupada
+
 Added turned off.
 Añadido desactivado.
 
@@ -576,6 +628,9 @@ Dirección, puerto, programa o estado
 
 Address:
 Dirección:
+
+Addresses can’t be looked up: {}
+No se pueden buscar direcciones: {}
 
 Adjust Size…
 Ajustar tamaño…
@@ -687,8 +742,14 @@ Todas las cuentas juntas
 All day
 Todo el día
 
+All lines around the selected one. {}
+Todas las líneas alrededor de la seleccionada. {}
+
 All of Olo’s {} words are in {}.
 Las {} palabras de Olo están en {}.
+
+All waiting
+Todos esperando
 
 All {} connected.
 Las {} están conectadas.
@@ -775,6 +836,9 @@ And {n} More
 one: Y {n} más
 other: Y {n} más
 
+And {} more
+Y {} más
+
 Anonymous identity:
 Identidad anónima:
 
@@ -802,6 +866,12 @@ Respondiendo ahora
 Answering now · {}
 Respondiendo ahora · {}
 
+Any of the {}
+Cualquiera de los {}
+
+Any storms on the way?
+¿Viene alguna tormenta?
+
 Any touch
 Cualquier toque
 
@@ -819,6 +889,9 @@ AppImages
 
 Appearance
 Apariencia
+
+Apple {} GPU
+GPU Apple {}
 
 Applications
 Aplicaciones
@@ -872,11 +945,17 @@ Archivar
 Archive All
 Archivar todo
 
+Archive {} Chats
+Archivar {} chats
+
 Archived Chats
 Chats archivados
 
 Archived Conversations
 Conversaciones archivadas
+
+Arrived out of order
+Llegados desordenados
 
 As BeOS R5 drew its icons: flat faces in its 8-bit colours, black outlines.
 Como BeOS R5 dibujaba sus iconos: caras planas en sus colores de 8 bits y contornos negros.
@@ -905,6 +984,9 @@ Como los demás ratones
 As wide as the widgets
 Tan ancho como los widgets
 
+As {}: nice {} → {}, {} scheduling, {} I/O priority{}, so the active window’s app and Olo stay quick.
+Como {}: nice {} → {}, planificación {}, prioridad de E/S {}{}, para que la app de la ventana activa y Olo sigan rápidas.
+
 Ask
 Preguntar
 
@@ -929,8 +1011,8 @@ Pregunta por tus calendarios
 Ask about your calendars here: the assistant is given the events of the ones you show, a month back and four months on. It can draft events; nothing is added until you save it.
 Pregunta aquí por tus calendarios: el asistente recibe los eventos de los que muestras, un mes atrás y cuatro adelante. Puede preparar eventos; no se añade nada hasta que lo guardes.
 
-Ask anything about the forecast here: the assistant is given all of it, every layer hour by hour.
-Pregunta aquí lo que quieras de la previsión: el asistente la recibe entera, cada capa hora a hora.
+Ask anything about the forecast here: the assistant has all of it, hour by hour.
+Pregunta aquí lo que quieras sobre el pronóstico: el asistente lo conoce entero, hora a hora.
 
 Ask for Full Access at Start
 Pedir acceso total al empezar
@@ -998,6 +1080,9 @@ Aprobar solo
 Auto Approve: Yes in {} s
 Aprobación automática: Sí en {} s
 
+Auto profile · the firmware's own curve
+Perfil automático · la curva propia del firmware
+
 Auto-Tiling
 Mosaico automático
 
@@ -1027,6 +1112,9 @@ Automáticamente
 
 Automatically,
 Automáticamente,
+
+BBR’s model
+Modelo de BBR
 
 Back
 Atrás
@@ -1078,6 +1166,9 @@ Ruido de fondo:
 
 Background noise: {}
 Ruido de fondo: {}
+
+Background work, so the rest stays quick
+Trabajo de fondo, para que lo demás siga rápido
 
 Background:
 Fondo:
@@ -1155,6 +1246,9 @@ Batería y reposo
 Be the SSH agent (ssh, git)
 Ser el agente SSH (ssh, git)
 
+Because
+Porque
+
 Before import {}.{}
 Antes de importar {}.{}
 
@@ -1166,6 +1260,15 @@ Prueba de rendimiento…
 
 Beside the widget before it
 Junto al widget anterior
+
+Best second {}; {} moved
+Mejor segundo {}; {} movidos
+
+Best time for a run today?
+¿Mejor hora para correr hoy?
+
+Best time for a run tomorrow?
+¿Mejor hora para correr mañana?
 
 Bigger
 Más grande
@@ -1239,6 +1342,12 @@ Correcciones
 Builds
 Compilaciones
 
+Builds by the hour
+Compilaciones por hora
+
+Builds go on without the cache until it starts.
+Las compilaciones siguen sin la caché hasta que se inicie.
+
 Built into the keyboard
 Integrado en el teclado
 
@@ -1247,6 +1356,9 @@ Teclado integrado
 
 Bulleted List
 Lista con viñetas
+
+Busiest Now
+Lo más ocupado ahora
 
 Busy Wi-Fi
 Wi-Fi saturado
@@ -1268,6 +1380,9 @@ En al menos
 
 By the hour for the next 5 days (the provider’s reach):
 Hora a hora, los próximos 5 días (hasta donde llega el proveedor):
+
+By their size alone: the palm model is off (Preferences ▸ Touchpad & Mouse ▸ Touch)
+Solo por su tamaño: el modelo de palmas está desactivado (Preferencias ▸ Panel táctil y ratón ▸ Toque)
 
 C
 C
@@ -1295,6 +1410,12 @@ CPU
 
 CPU Time
 Tiempo de CPU
+
+CPU time
+Tiempo de CPU
+
+CPU {} frequency
+Frecuencia de la CPU {}
 
 CSS
 CSS
@@ -1404,6 +1525,15 @@ Las demás en cascada
 Case
 Funda
 
+Catching up…
+Poniéndose al día…
+
+Ceiling
+Techo
+
+Ceiling {}
+Techo {}
+
 Celsius (°C)
 Celsius (°C)
 
@@ -1412,6 +1542,9 @@ Tercio central
 
 Center Two Thirds
 Dos tercios centrales
+
+Chance
+Probabilidad
 
 Chance of rain
 Probabilidad de lluvia
@@ -1433,6 +1566,21 @@ Cambios en «{}»
 
 Change…
 Cambiar…
+
+Changing a limit of process {}
+Cambiando un límite del proceso {}
+
+Changing how process {} fares when memory runs out
+Cambiando cómo le va al proceso {} cuando falta memoria
+
+Changing the CPU governor
+Cambiando el gobernador de la CPU
+
+Changing the cores process {} may use
+Cambiando los núcleos que puede usar el proceso {}
+
+Changing the priority of process {}
+Cambiando la prioridad del proceso {}
 
 Changing…
 Cambiando…
@@ -1461,6 +1609,9 @@ Buscar actualizaciones
 Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
 Comprobar rápidamente que las copias elegidas están completas: todo lo que necesitan está ahí, las sumas de verificación del almacén coinciden con lo enviado y se releen unas muestras (como tras cada copia). Lo dañado se repara en la medida de lo posible.
 
+Checking for updates…
+Buscando actualizaciones…
+
 Checking out {} of {} files
 Extrayendo {} de {} archivos
 
@@ -1469,6 +1620,9 @@ Comprobando la copia
 
 Checking the connection…
 Comprobando la conexión…
+
+Checking the packages…
+Comprobando los paquetes…
 
 Checking your password…
 Comprobando tu contraseña…
@@ -1485,6 +1639,14 @@ Elegir otra carpeta…
 Choose None
 No elegir nada
 
+Choose None of These {n}
+one: No elegir
+other: No elegir ninguna de estas {n}
+
+Choose These {n}
+one: Elegir
+other: Elegir estas {n}
+
 Choose a Folder…
 Elegir una carpeta…
 
@@ -1493,6 +1655,9 @@ Elige una copia para ver cómo se comprobó por última vez.
 
 Choose a backup to see what it holds before importing it.
 Elige una copia para ver lo que contiene antes de importarla.
+
+Choose a chat from the list to start messaging.
+Elige un chat de la lista para empezar a escribir.
 
 Choose a network to join it.
 Elige una red para conectarte a ella.
@@ -1512,8 +1677,14 @@ Elegir:
 Choose…
 Elegir…
 
+Chosen by someone
+Elegido por alguien
+
 Chosen for the whole computer and kept across restarts. It's the computer's, not this account's, so choosing asks for an administrator's password.
 Se elige para todo el ordenador y se conserva entre reinicios. Es del ordenador, no de esta cuenta, así que al elegir se pide la contraseña de un administrador.
+
+Chosen outside dnf
+Elegido fuera de dnf
 
 City or region
 Ciudad o región
@@ -1548,6 +1719,16 @@ Limpiar ahora
 Clean up the microphone's sound
 Limpiar el sonido del micrófono
 
+Cleaned up (made up).
+Limpieza hecha (inventada).
+
+Cleaned up: nothing to remove
+Limpieza hecha: nada que quitar
+
+Cleaned up: {n} entries removed, {} freed
+one: Limpieza hecha: {n} entrada quitada, {} liberados
+other: Limpieza hecha: {n} entradas quitadas, {} liberados
+
 Cleaning up the microphone's sound: {} ms behind{}.
 Limpiando el sonido del micrófono: {} ms de retraso{}.
 
@@ -1572,6 +1753,9 @@ Borrar historial de desplazamiento
 Clear copied secrets after:
 Borrar secretos copiados al cabo de:
 
+Clear sky
+Cielo despejado
+
 Cleared
 Borradas
 
@@ -1580,6 +1764,9 @@ Clic
 
 Click Back Up Now to make the first.
 Haz clic en Hacer copia ahora para hacer la primera.
+
+Click a graph to see what was busy then
+Haz clic en un gráfico para ver qué estaba ocupado entonces
 
 Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.
 Haz clic en un anillo para entrar en una carpeta y en el centro para volver; arrastra lo que no necesites al Colector.
@@ -1647,11 +1834,26 @@ Cerrar ventana
 Cloud Heights
 Altura de las nubes
 
+Cloud base
+Base nubosa
+
 Cloud cover
 Nubosidad
 
+Cloud cover about {}%
+Nubosidad de alrededor del {} %
+
+Cloud cover {}–{}%
+Nubosidad del {}–{} %
+
 Cloudflare (1.1.1.1)
 Cloudflare (1.1.1.1)
+
+Clouds ({} above the ground)
+Nubes ({} sobre el suelo)
+
+Cloudy
+Nublado
 
 Code
 Código
@@ -1719,6 +1921,12 @@ Comentario
 Comment:
 Comentario:
 
+Compiles
+Compilaciones
+
+Compiling
+Compilando
+
 Compress
 Comprimir
 
@@ -1730,6 +1938,15 @@ Comprimir {} en un nuevo archivo junto a él:
 
 Compress {} into a new archive beside them:
 Comprimir {} en un nuevo archivo junto a ellos:
+
+Compressed Swap
+Intercambio comprimido
+
+Compressed to
+Comprimido a
+
+Computes with
+Calcula con
 
 Configure IPv4:
 Configurar IPv4:
@@ -1773,8 +1990,17 @@ Conectado {}, pero su inicio de sesión no se permitió {}: vuelve a entrar y pe
 Connected.
 Conectado.
 
+Connecting to Telegram…
+Conectando con Telegram…
+
+Connection
+Conexión
+
 Connection:
 Conexión:
+
+Connections
+Conexiones
 
 Contacts
 Contactos
@@ -1784,6 +2010,9 @@ Imágenes de contenedor y runtimes Flatpak
 
 Contents
 Contenido
+
+Context switches
+Cambios de contexto
 
 Control
 Control
@@ -1878,6 +2107,12 @@ Copiando los elementos de {} desde 1Password. Si 1Password pregunta si permitir 
 Core
 Núcleo
 
+Cores
+Núcleos
+
+Couldn't be cached
+No se pudo guardar en caché
+
 Couldn't create a folder: {}
 No se pudo crear una carpeta: {}
 
@@ -1904,6 +2139,9 @@ No se pudo guardar: {}
 
 Couldn’t archive it. {}
 No se pudo archivar. {}
+
+Couldn’t ask for emoji
+No se pudieron pedir emojis
 
 Couldn’t ask for your keyring to be unlocked: {}
 No se pudo pedir que se desbloquee tu llavero: {}
@@ -1998,6 +2236,9 @@ Contando lo que hay que copiar: {}, {} hasta ahora.
 Counting what to back up
 Contando qué copiar
 
+Cover
+Cobertura
+
 Crate
 Crate
 
@@ -2045,6 +2286,9 @@ Cortado de {} a {}
 
 Cyan
 Cian
+
+Cycles
+Ciclos
 
 Czech
 Checo
@@ -2196,6 +2440,12 @@ Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
 Delete {} Backups…
 Eliminar {} copias…
 
+Delete {} Chats…
+Eliminar {} chats…
+
+Delete {} chats? Their messages go from this account{}. This can’t be undone.
+¿Eliminar {} chats? Sus mensajes desaparecen de esta cuenta{}. No se puede deshacer.
+
 Delete “{}” ({}) for good? It won't go to the Trash, and this can't be undone.
 ¿Eliminar «{}» ({}) para siempre? No irá a la papelera y no se puede deshacer.
 
@@ -2291,6 +2541,18 @@ Detalles
 
 Device
 Dispositivo
+
+Dew point
+Punto de rocío
+
+Dew point spread
+Diferencia con el punto de rocío
+
+Dew point spread {}
+Dif. punto de rocío {}
+
+Dew point {}
+Punto de rocío {}
 
 Diff
 Diff
@@ -2406,6 +2668,12 @@ Pantallas
 Divider
 Separador
 
+Division by zero
+División por cero
+
+Do I need sunscreen today?
+¿Necesito protector solar hoy?
+
 Do Not Disturb
 No molestar
 
@@ -2458,11 +2726,20 @@ Bajada (recibido)
 Down the Side
 En un lado
 
+Download
+Descarga
+
 Download at most:
 Descargar como máximo:
 
 Download, Then Restart to Install
 Descargar y reiniciar para instalar
+
+Downloading: {}
+Descargando: {}
+
+Downloading…
+Descargando…
 
 Drag with:
 Arrastrar con:
@@ -2470,11 +2747,41 @@ Arrastrar con:
 Draw
 Dibujar
 
+Drawing
+Dibujo
+
+Drawn into each frame
+Dibujado en cada fotograma
+
 DriveSetup
 DriveSetup
 
+Drizzle
+Llovizna
+
+Drizzle and freezing drizzle
+Llovizna y llovizna helada
+
+Drizzle and freezing rain
+Llovizna y lluvia helada
+
+Drizzle and ice pellets
+Llovizna y gránulos de hielo
+
+Drizzle and light snow
+Llovizna y nevada ligera
+
+Drizzle and snow
+Llovizna y nieve
+
 Drop on lift
 Soltar al levantar
+
+Dropped
+Perdidos
+
+Dry for the next {} hours
+Seco las próximas {} horas
 
 Duplicate
 Duplicar
@@ -2482,14 +2789,29 @@ Duplicar
 Dutch
 Neerlandés
 
+E
+E
+
+ENE
+ENE
+
+ESE
+ESE
+
 Each Network's Own
 Los de cada red
+
+Each above everything else, as it started (rtkit)
+Cada uno por encima de todo lo demás, como empezó (rtkit)
 
 Each account
 Cada cuenta
 
 Each agent screen keeps what was done on it and the frames it drew, to replay or export as a video. The oldest goes first.
 Cada pantalla de agente guarda lo que se hizo en ella y los fotogramas que dibujó, para reproducirlos o exportarlos como vídeo. Lo más antiguo se borra primero.
+
+Each cluster's cores change speed together; the governor decides how
+Los núcleos de un clúster cambian de velocidad juntos; el gobernador decide cómo
 
 Each core ({})
 Cada núcleo ({})
@@ -2508,6 +2830,9 @@ Cada uno se valora a partir de varias señales juntas; un hallazgo dice cuán se
 
 Each is the computer's, not this account's, so switching one asks for an administrator's password. Olo Doctor suggests each, with what was measured for it.
 Cada uno es del ordenador, no de esta cuenta, así que al cambiarlo se pide la contraseña de un administrador. Olo Doctor sugiere cada uno con lo que se midió para él.
+
+Each kind of input in the last minute: how many, never which keys
+Cada tipo de entrada en el último minuto: cuántas, nunca qué teclas
 
 Each kind opens in this app wherever you open it, in Olo and in other programs. Tracker's Open With ▸ Always Open With chooses too.
 Cada tipo se abre en esta app dondequiera que lo abras, en Olo y en otros programas. Abrir con ▸ Abrir siempre con, de Tracker, también lo elige.
@@ -2538,6 +2863,9 @@ Edición
 
 Edit Event…
 Editar evento…
+
+Edit Message
+Editar mensaje
 
 Edit Name
 Editar nombre
@@ -2596,6 +2924,15 @@ Cifrarlo con una frase de contraseña
 End
 Fin
 
+End Test
+Terminar la prueba
+
+Ended the test (process {}): its slots go back to the pool.
+Prueba terminada (proceso {}): sus huecos vuelven al conjunto.
+
+Ended the test (process {}, made up).
+Prueba terminada (proceso {}, inventado).
+
 Ends a turn going on; Codex’s windows reconnect.
 Termina un turno en curso; las ventanas de Codex se reconectan.
 
@@ -2628,6 +2965,9 @@ Escribe la contraseña de «{}» para desbloquearlo.
 
 Entire disk
 Disco entero
+
+Entries
+Entradas
 
 Erase All Backups…
 Borrar las copias…
@@ -2671,6 +3011,9 @@ Cada 2 semanas
 Every 2 weeks
 Cada 2 semanas
 
+Every Counter
+Todos los contadores
+
 Every Day
 Cada día
 
@@ -2706,6 +3049,9 @@ Cada día a horas fijas
 
 Every disk
 Todos los discos
+
+Every frame on time this last minute
+Todos los fotogramas a tiempo en el último minuto
 
 Every interface
 Todas las interfaces
@@ -2801,6 +3147,9 @@ Extraer la selección…
 Extract To…
 Extraer en…
 
+Extreme
+Extremo
+
 FD
 FD
 
@@ -2843,6 +3192,9 @@ Abanico
 Fan Out Others
 Las demás en abanico
 
+Fans
+Ventiladores
+
 Fast
 Rápido
 
@@ -2864,14 +3216,35 @@ Fastmail no aceptó la dirección y la contraseña de app: {}
 Favorites
 Favoritos
 
+Favoured
+Favorecido
+
 Fedora
 Fedora
+
+Fedora {} is out too: after this upgrade, the next.
+También ha salido Fedora {}: tras esta actualización, la siguiente.
+
+Fedora {} is out.
+Ha salido Fedora {}.
+
+Fedora’s list of releases couldn’t be read: {}
+No se pudo leer la lista de versiones de Fedora: {}
+
+Feels like
+Sensación térmica
+
+Feels like {}
+Sensación térmica: {}
 
 Feet
 Pies
 
 Fetching the forecast…
 Obteniendo la previsión…
+
+Fetching…
+Obteniendo…
 
 Field
 Campo
@@ -2912,8 +3285,14 @@ Buscar en el documento
 Find:
 Buscar:
 
+Finding the server…
+Buscando el servidor…
+
 Find…
 Buscar…
+
+Fine-tuned on your newest commands a minute after you type them
+Ajustado con tus órdenes más recientes un minuto después de escribirlas
 
 Finger
 Dedo
@@ -2984,11 +3363,23 @@ Ventana flotante
 Float Window Group
 Grupo de ventanas flotante
 
+Flurries
+Nevisca
+
 Focus
 Enfoque
 
 Focus follows the pointer
 El foco sigue al puntero
+
+Fog
+Niebla
+
+Fog likely · spread {}
+Niebla probable · diferencia {}
+
+Folder
+Carpeta
 
 Folders and files, separated by commas: ~/ is your home folder, **/ anywhere, * any name.
 Carpetas y archivos, separados por comas: ~/ es tu carpeta personal, **/ en cualquier sitio, * cualquier nombre.
@@ -3011,8 +3402,14 @@ Para cada enlace
 For ever
 Para siempre
 
+For finding out why
+Para averiguar por qué
+
 For the mice set to follow the others, and any you connect.
 Para los ratones configurados para seguir a los demás y los que conectes.
+
+For {} · process {}
+Desde hace {} · proceso {}
 
 For:
 Para:
@@ -3020,8 +3417,20 @@ Para:
 Force End
 Forzar el fin
 
+Force Quit {} Processes…
+Forzar la salida de {} procesos…
+
 Force Quit…
 Forzar salida…
+
+Force {} processes to quit ({})? Any unsaved work in them will be lost.
+¿Forzar la salida de {} procesos ({})? Se perderá el trabajo sin guardar.
+
+Force “{}” ({}) to quit? Any unsaved work in it will be lost.
+¿Forzar la salida de «{}» ({})? Se perderá el trabajo sin guardar.
+
+Forecasts from {}
+Pronósticos de {}
 
 Forever
 Para siempre
@@ -3056,8 +3465,14 @@ Formatear…
 Forward
 Adelante
 
+Forwarded from {}
+Reenviado de {}
+
 Forward…
 Reenviar…
+
+Found as {}. Leave it empty for that name.
+Encontrado como {}. Déjalo vacío para usar ese nombre.
 
 Four fingers
 Cuatro dedos
@@ -3071,11 +3486,29 @@ Libre (código abierto)
 Freeing the space only backups past keeping took, in {}.
 Liberando el espacio que solo ocupaban copias que ya no se conservan, en {}.
 
+Freezing
+Congelación
+
+Freezing drizzle
+Llovizna helada
+
+Freezing rain
+Lluvia helada
+
+Freezing rain and heavy ice pellets
+Lluvia helada y gránulos de hielo intensos
+
+Freezing rain and ice pellets
+Lluvia helada y gránulos de hielo
+
 French
 Francés
 
 French (Canada)
 Francés (Canadá)
+
+Frequencies
+Frecuencias
 
 From
 De
@@ -3092,6 +3525,12 @@ De {} a {}
 From:
 Desde:
 
+Full access couldn't be asked for. {}
+No se pudo pedir acceso completo. {}
+
+Full speed
+A toda velocidad
+
 GPU
 GPU
 
@@ -3103,6 +3542,9 @@ Las GPU solo se ajustan en la sesión propia de la persona (polkit pregunta ahí
 
 Game saves
 Partidas guardadas
+
+Gaps
+Huecos
 
 Generator
 Generador
@@ -3254,6 +3696,12 @@ Creciendo
 Guests:
 Invitados:
 
+Gusts
+Ráfagas
+
+Gusts {}
+Ráfagas {}
+
 H.264 (plays everywhere)
 H.264 (se reproduce en todas partes)
 
@@ -3326,14 +3774,38 @@ Título 6
 Headless
 Sin pantalla
 
+Health
+Estado
+
 Health: {}% of original capacity
 Estado: {} % de la capacidad original
 
 Heatmap
 Mapa de calor
 
+Heavy freezing rain
+Lluvia helada intensa
+
+Heavy ice pellets
+Gránulos de hielo intensos
+
+Heavy rain
+Lluvia intensa
+
+Heavy sleet
+Aguanieve intensa
+
+Heavy snow
+Nevada intensa
+
 Hectopascals
 Hectopascales
+
+Held by builds
+Retenido por compilaciones
+
+Held by the server
+Retenido por el servidor
 
 Hidden and ignored files
 Archivos ocultos e ignorados
@@ -3365,11 +3837,17 @@ Alto
 High dynamic range (HDR)
 Alto rango dinámico (HDR)
 
+High {}, low {}
+Máx. {}, mín. {}
+
 Highest clock
 Frecuencia máxima
 
 History
 Historial
+
+Hits
+Aciertos
 
 Hold Fn (🌐) for F1 to F12.
 Mantén Fn (🌐) para F1 a F12.
@@ -3380,8 +3858,14 @@ Duración de la pulsación:
 Hold it there…
 Mantenla ahí…
 
+Hold the microphone button down while you speak, or click it to record until you click Send.
+Mantén pulsado el botón del micrófono mientras hablas, o haz clic en él para grabar hasta que hagas clic en Enviar.
+
 Holding at least
 Con al menos
+
+Holds
+Retiene
 
 Home
 Carpeta personal
@@ -3395,8 +3879,41 @@ Punto de acceso
 Hours:
 Horas:
 
+How cloudy will it be today?
+¿Qué tan nublado estará hoy?
+
+How cloudy will it be tomorrow?
+¿Qué tan nublado estará mañana?
+
+How cold will it get tonight?
+¿Cuánto frío hará esta noche?
+
+How fast it runs now
+Qué tan rápido va ahora
+
 How loud this microphone is gets measured as you talk on a call, or with Try It.
 Lo alto que suena este micrófono se mide mientras hablas en una llamada, o con Probar.
+
+How warm will it get today?
+¿Cuánto calor hará hoy?
+
+How windy will it be today?
+¿Cuánto viento hará hoy?
+
+How windy will it be tomorrow?
+¿Cuánto viento hará mañana?
+
+How’s the weekend looking?
+¿Qué tal el fin de semana?
+
+Humidity
+Humedad
+
+Humidity and pressure ({})
+Humedad y presión ({})
+
+I/O Pressure
+Presión de E/S
 
 ID
 ID
@@ -3409,6 +3926,9 @@ Dirección IP: {}
 
 IP address:
 Dirección IP:
+
+Ice pellets
+Gránulos de hielo
 
 Icon View
 Vista de iconos
@@ -3427,6 +3947,15 @@ Identidad
 
 Identity:
 Identidad:
+
+Idle
+En reposo
+
+Idle States
+Estados de reposo
+
+Idle: the middle of {} round trips
+En reposo: la mediana de {} idas y vueltas
 
 If it does, confirm here, and on the phone too.
 Si es así, confírmalo aquí y también en el teléfono.
@@ -3509,6 +4038,9 @@ En el selector de emojis, describe lo que quieres decir y pulsa ⌘↩ para cinc
 In the tray it's an icon's size; its name and value are in its tip.
 En la bandeja tiene el tamaño de un icono; su nombre y valor están en su ayuda.
 
+In use
+En uso
+
 In use, with the weights it began from (not fine-tuned yet), on the {}.
 En uso, con los pesos con los que empezó (aún sin afinar), en el {}.
 
@@ -3553,6 +4085,9 @@ Pulgadas de mercurio
 
 Include passwords and sign-ins, sealed with a password
 Incluir contraseñas e inicios de sesión, sellados con una contraseña
+
+Incomplete expression
+Expresión incompleta
 
 Indent Less
 Reducir sangría
@@ -3617,6 +4152,9 @@ GPU Intel (VA-API)
 Interface:
 Interfaz:
 
+Interrupts
+Interrupciones
+
 Invalid one-time password secret
 Secreto de contraseña de un solo uso no válido
 
@@ -3635,14 +4173,29 @@ Hace la copia en cuanto el ordenador se conecte por cable. {}. {}.
 It backs up once the computer is plugged in. {}. {}.
 Hace la copia en cuanto el ordenador se enchufe. {}. {}.
 
+It couldn’t be fetched: {}
+No se pudo descargar: {}
+
+It couldn’t be read: {}
+No se pudo leer: {}
+
 It didn't work.
 No funcionó.
 
 It didn’t open: {}.
 No se abrió: {}.
 
+It downloads {}
+Descarga {}
+
 It goes on once there’s one. {}. {}.
 Sigue en cuanto haya una. {}. {}.
+
+It has no [repository] in it.
+No tiene ningún [repositorio].
+
+It has the active window: never lowered while it does.
+Tiene la ventana activa: nunca se rebaja mientras la tenga.
 
 It isn't a WireGuard configuration: {}.
 No es una configuración de WireGuard: {}.
@@ -3695,6 +4248,9 @@ Su clic es suyo: una palma apoyada no puede pulsar.
 Its decoder, on its battery preset (Power Modes), costs less than the processor's cores; off, the processor decodes on battery.
 Su decodificador, con su ajuste de batería (Modos de energía), gasta menos que los núcleos del procesador; si está apagada, el procesador decodifica con batería.
 
+Its file, {}, is removed
+Se quita su archivo, {}
+
 Its folder becomes {}, and its branch, {}, takes the new name too.
 Su carpeta pasa a ser {}, y su rama, {}, también toma el nuevo nombre.
 
@@ -3709,6 +4265,9 @@ Su clave no está en este llavero de inicio de sesión: solo se abre en el orden
 
 Its own
 El suyo
+
+Its own sensor
+Su propio sensor
 
 Its packager wrote nothing.
 Su empaquetador no escribió nada.
@@ -3757,6 +4316,9 @@ Es distinto
 It’s archived in 1Password, which doesn’t let other apps read archived items.
 Está archivado en 1Password, que no deja a otras apps leer elementos archivados.
 
+It’s kept in Passwords as “{}”, and nowhere else.
+Se guarda en Passwords como «{}», y en ningún otro sitio.
+
 It’s no longer in 1Password.
 Ya no está en 1Password.
 
@@ -3786,6 +4348,9 @@ Unirse
 
 Journal
 Diario
+
+Judged
+Evaluado
 
 Julia
 Julia
@@ -3868,11 +4433,17 @@ Guardar hasta:
 Keep windows' graphics memory out of swap
 Memoria gráfica de las ventanas fuera del intercambio
 
+Keeping it in Passwords…
+Guardándola en Passwords…
+
 Keeping the key in Passwords (unlock it if it asks)…
 Guardando la clave en Passwords (desbloquéalo si lo pide)…
 
 Keeping what’s done…
 Guardando lo hecho…
+
+Kept
+Conservado
 
 Kept Core
 Núcleo reservado
@@ -3904,6 +4475,9 @@ Repetición de teclas
 Key password:
 Contraseña de la clave:
 
+Key {} trusted.
+Clave {} de confianza.
+
 Keyboard
 Teclado
 
@@ -3922,6 +4496,9 @@ Teclado: el perfil Mac se ha traído, ⌘ en la tecla Super (la tecla Windows en
 Keyboards
 Teclados
 
+Keys
+Teclas
+
 Key’s PIN:
 PIN de la llave:
 
@@ -3939,6 +4516,9 @@ Tipo:
 
 Knots
 Nudos
+
+Knows
+Conoce
 
 Kotlin
 Kotlin
@@ -3976,8 +4556,20 @@ Last backed up whole {}
 Last backed up {}
 Última copia {}
 
+Last clean-up
+Última limpieza
+
+Last used
+Último uso
+
 Last: {}, {} new or changed, {} new, took {}.
 Última: {}, {} nuevos o cambiados, {} nuevos, tardó {}.
+
+Lately
+Últimamente
+
+Latency
+Latencia
 
 Later: until more is waiting
 Más tarde: hasta que haya más esperando
@@ -3999,6 +4591,9 @@ Aprendió {} de {} ejemplos en {}: su primera sugerencia acierta el {} de las ve
 
 Learned {} from {} examples in {}: its first suggestion is right {} of the time on your newest commands.
 Aprendió {} de {} ejemplos en {}: su primera sugerencia acierta el {} de las veces con tus comandos más recientes.
+
+Learning
+Aprendizaje
 
 Learning from your history…
 Aprendiendo de tu historial…
@@ -4027,6 +4622,15 @@ Tercio izquierdo
 Left Two Thirds
 Dos tercios izquierdos
 
+Left out, as dnf wouldn’t take it: {}. ({})
+Se dejó fuera porque dnf no lo aceptó: {}. ({})
+
+Left out, as dnf wouldn’t take them: {}. ({})
+Se dejaron fuera porque dnf no los aceptó: {}. ({})
+
+Left to the firmware for now
+En manos del firmware por ahora
+
 Left-handed (swap the buttons)
 Para zurdos (intercambiar los botones)
 
@@ -4053,6 +4657,33 @@ Nivel sin igualar
 
 Light
 Claro
+
+Light fog
+Niebla ligera
+
+Light freezing rain
+Lluvia helada ligera
+
+Light ice pellets
+Gránulos de hielo ligeros
+
+Light rain
+Lluvia ligera
+
+Light rain and freezing drizzle
+Lluvia ligera y llovizna helada
+
+Light rain and freezing rain
+Lluvia ligera y lluvia helada
+
+Light rain and ice pellets
+Lluvia ligera y gránulos de hielo
+
+Light sleet
+Aguanieve ligera
+
+Light snow
+Nevada ligera
 
 Light:
 Claro:
@@ -4087,6 +4718,9 @@ Solo enlace local
 Link:
 Enlace:
 
+Link’s rate
+Velocidad del enlace
+
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 El planificador de Linux tal cual viene (EEVDF): justo con cada programa, haga lo que haga. Los hilos propios de Olo que alguien espera son de tiempo real, por encima de cualquier programa con cualquiera de los dos planificadores, y durante compilaciones y otros trabajos pesados el escritorio responde más rápido con este.
 
@@ -4099,8 +4733,17 @@ Escuchando
 Live
 En directo
 
+Load
+Carga
+
+Load average
+Carga media
+
 Local
 Local
+
+Local socket
+Socket local
 
 Location
 Ubicación
@@ -4201,6 +4844,9 @@ Buscando el sensor de huellas…
 Looking for volumes…
 Buscando volúmenes…
 
+Looking this computer over…
+Revisando este ordenador…
+
 Looking…
 Buscando…
 
@@ -4209,6 +4855,9 @@ Parece {} × {}
 
 Loss:
 Pérdida:
+
+Lost, by its count
+Perdidos, según su cuenta
 
 Low
 Bajo
@@ -4221,6 +4870,9 @@ Bajar el sonido de este ordenador mientras hablas
 
 Lower to nice
 Bajar a nice
+
+Lowered
+Rebajado
 
 Lowers builds and other background work so the active window’s app and Olo itself stay quick, and watches for stuck processes, leaks and memory hogs. What it does is in Activity Monitor’s Supervisor section, and Deskbar’s gauge turns it on and off.
 Rebaja las compilaciones y otros trabajos en segundo plano para que la app de la ventana activa y el propio Olo respondan rápido, y vigila procesos atascados, fugas y acaparadores de memoria. Lo que hace aparece en la sección Supervisor del Monitor de actividad, y el indicador de la Deskbar lo activa y desactiva.
@@ -4375,6 +5027,12 @@ Máx.
 Maybe
 Quizá
 
+Measuring the round trip…
+Midiendo el tiempo de ida y vuelta…
+
+Media errors
+Errores del medio
+
 Medium
 Medio
 
@@ -4384,11 +5042,23 @@ Suscripción
 Memory
 Memoria
 
+Memory Pressure
+Presión de memoria
+
+Memory free
+Memoria libre
+
+Memory stalls
+Esperas de memoria
+
 Memory:
 Memoria:
 
 Message
 Mensaje
+
+Message queues
+Colas de mensajes
 
 Messages
 Mensajes
@@ -4435,8 +5105,14 @@ Vista de iconos pequeños
 Mirror of {}
 Duplicado de {}
 
+Misses
+Fallos
+
 Mode
 Modo
+
+Model
+Modelo
 
 Model:
 Modelo:
@@ -4473,6 +5149,120 @@ Más menús
 
 More noise
 Más ruido
+
+Mostly clear
+Mayormente despejado
+
+Mostly clear and drizzle
+Mayormente despejado y llovizna
+
+Mostly clear and flurries
+Mayormente despejado y nevisca
+
+Mostly clear and fog
+Mayormente despejado y niebla
+
+Mostly clear and freezing drizzle
+Mayormente despejado y llovizna helada
+
+Mostly clear and freezing rain
+Mayormente despejado y lluvia helada
+
+Mostly clear and heavy freezing rain
+Mayormente despejado y lluvia helada intensa
+
+Mostly clear and heavy ice pellets
+Mayormente despejado y gránulos de hielo intensos
+
+Mostly clear and heavy rain
+Mayormente despejado y lluvia intensa
+
+Mostly clear and heavy snow
+Mayormente despejado y nevada intensa
+
+Mostly clear and ice pellets
+Mayormente despejado y gránulos de hielo
+
+Mostly clear and light fog
+Mayormente despejado y niebla ligera
+
+Mostly clear and light freezing rain
+Mayormente despejado y lluvia helada ligera
+
+Mostly clear and light ice pellets
+Mayormente despejado y gránulos de hielo ligeros
+
+Mostly clear and light rain
+Mayormente despejado y lluvia ligera
+
+Mostly clear and light snow
+Mayormente despejado y nevada ligera
+
+Mostly clear and rain
+Mayormente despejado y lluvia
+
+Mostly clear and snow
+Mayormente despejado y nieve
+
+Mostly clear and thunderstorm
+Mayormente despejado y tormenta
+
+Mostly cloudy
+Mayormente nublado
+
+Mostly cloudy and drizzle
+Mayormente nublado y llovizna
+
+Mostly cloudy and flurries
+Mayormente nublado y nevisca
+
+Mostly cloudy and fog
+Mayormente nublado y niebla
+
+Mostly cloudy and freezing drizzle
+Mayormente nublado y llovizna helada
+
+Mostly cloudy and freezing rain
+Mayormente nublado y lluvia helada
+
+Mostly cloudy and heavy freezing rain
+Mayormente nublado y lluvia helada intensa
+
+Mostly cloudy and heavy ice pellets
+Mayormente nublado y gránulos de hielo intensos
+
+Mostly cloudy and heavy rain
+Mayormente nublado y lluvia intensa
+
+Mostly cloudy and heavy snow
+Mayormente nublado y nevada intensa
+
+Mostly cloudy and ice pellets
+Mayormente nublado y gránulos de hielo
+
+Mostly cloudy and light fog
+Mayormente nublado y niebla ligera
+
+Mostly cloudy and light freezing rain
+Mayormente nublado y lluvia helada ligera
+
+Mostly cloudy and light ice pellets
+Mayormente nublado y gránulos de hielo ligeros
+
+Mostly cloudy and light rain
+Mayormente nublado y lluvia ligera
+
+Mostly cloudy and light snow
+Mayormente nublado y nevada ligera
+
+Mostly cloudy and rain
+Mayormente nublado y lluvia
+
+Mostly cloudy and snow
+Mayormente nublado y nieve
+
+Mostly cloudy and thunderstorm
+Mayormente nublado y tormenta
 
 Mount
 Montar
@@ -4522,6 +5312,15 @@ Mover las ventanas a
 Move Windows To…
 Mover las ventanas a…
 
+Move all {} archived chats back to your chat list?
+¿Devolver los {} chats archivados a tu lista de chats?
+
+Move both archived chats back to your chat list?
+¿Devolver los dos chats archivados a tu lista de chats?
+
+Move the archived chat back to your chat list?
+¿Devolver el chat archivado a tu lista de chats?
+
 Move the pointer
 Mover el puntero
 
@@ -4567,14 +5366,32 @@ Silenciar todo
 My keys
 Mis claves
 
+N
+N
+
+NE
+NE
+
+NNE
+NNE
+
+NNW
+NNO
+
 NVIDIA GPU (NVDEC)
 GPU NVIDIA (NVDEC)
 
 NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor. {}
 La GPU de NVIDIA decodifica H.264, HEVC, VP9 y AV1, 4K a 60 fotogramas por segundo con poco del procesador. {}
 
+NW
+NO
+
 Name
 Nombre
+
+Name looked up in
+Nombre resuelto en
 
 Name or text
 Nombre o texto
@@ -4597,6 +5414,12 @@ Más estrecho que sRGB ({} % de él)
 Natural scrolling (content follows your fingers)
 Desplazamiento natural (sigue a tus dedos)
 
+Needed by another package
+Lo necesita otro paquete
+
+Needs full access
+Necesita acceso completo
+
 Network
 Red
 
@@ -4611,6 +5434,9 @@ Sin avisos nunca
 
 Never fade
 No desvanecer nunca
+
+Never since the computer started
+Nunca desde que se inició el ordenador
 
 New
 Nuevo
@@ -4807,6 +5633,9 @@ Aún no hay calendarios
 No chat selected
 Ningún chat seleccionado
 
+No cloud
+Sin nubes
+
 No connections match.
 Ninguna conexión coincide.
 
@@ -4825,6 +5654,9 @@ Sin entorno.
 No event from a year back to two years on has “{}” in its title, its place or its notes.
 Ningún evento desde hace un año hasta dentro de dos tiene «{}» en su título, su lugar o sus notas.
 
+No key yet.
+Aún no hay clave.
+
 No keyboards are plugged in.
 No hay teclados conectados.
 
@@ -4840,6 +5672,9 @@ No hay notificaciones nuevas
 No notes.
 Sin notas.
 
+No one on Telegram is called {}.
+Nadie en Telegram se llama {}.
+
 No open files.
 Ningún archivo abierto.
 
@@ -4851,6 +5686,12 @@ No funciona ningún servicio de perfiles de energía (power-profiles-daemon, o t
 
 No power profiles daemon is running, so there's no power mode to follow.
 No funciona ningún servicio de perfiles de energía, así que no hay modo de energía que seguir.
+
+No precipitation in the next hour
+Sin precipitación en la próxima hora
+
+No precipitation this hour
+Sin precipitación esta hora
 
 No process uses much of it now
 Ningún proceso usa mucho ahora
@@ -4864,6 +5705,9 @@ Aún no hay grabaciones de pantalla. Graba una con ⌘⇧6.
 No space around an auto-tiled window alone
 Sin margen en torno a una ventana sola en mosaico
 
+No touches in the last minute
+Ningún toque en el último minuto
+
 No touchpad found.
 No se ha encontrado ningún touchpad.
 
@@ -4872,6 +5716,12 @@ Ninguna actualización coincide con la búsqueda.
 
 No widgets: add one below.
 No hay widgets: añade uno abajo.
+
+No {} for this account.
+Ningún {} para esta cuenta.
+
+No: it did no better ({}), so the weights before stay
+No: no fue mejor ({}), así que se quedan los pesos anteriores
 
 Noise
 Ruido
@@ -4900,8 +5750,17 @@ Nada
 None (flat)
 Ninguno (plano)
 
+None asked for yet: type in brush
+Aún no se ha pedido ninguno: escribe en brush
+
 None connected to Olo yet.
 Ninguno conectado a Olo todavía.
+
+None in the last minute
+Ninguno en el último minuto
+
+None in the last second
+Ninguno en el último segundo
 
 None just now
 Ninguno ahora mismo
@@ -4932,6 +5791,12 @@ Noruego
 
 Not Answered
 Sin responder
+
+Not Signed In
+Sin iniciar sesión
+
+Not a number
+No es un número
 
 Not all of it applied: {}.
 No se aplicó todo: {}.
@@ -4999,6 +5864,12 @@ No está en un repositorio
 Not in a vault
 En ninguna bóveda
 
+Not in force: {}
+Sin efecto: {}
+
+Not in the last minute; {} since this window opened
+No en el último minuto; {} desde que se abrió esta ventana
+
 Not paired
 No enlazado
 
@@ -5032,14 +5903,23 @@ Sin limitar: tan rápido como va.
 Not signed in. (API ID {}.)
 Sin sesión iniciada. (ID de API {}.)
 
+Not since this window opened
+No desde que se abrió esta ventana
+
 Not synced: changes not applied{}
 Sin sincronizar: cambios sin aplicar{}
 
 Not synced: {}{}
 Sin sincronizar: {}{}
 
+Not tested yet.
+Aún sin probar.
+
 Not told
 No indicado
+
+Not trusted: stopping…
+No es de confianza: deteniendo…
 
 Not working: {}.
 No funciona: {}.
@@ -5065,6 +5945,12 @@ No ha cambiado nada: se sigue usando el modelo propio de Olo.
 Nothing coming up
 Nada próximo
 
+Nothing found
+No se encontró nada
+
+Nothing found by that name or address.
+No se encontró nada con ese nombre o dirección.
+
 Nothing in the history yet.
 Aún no hay nada en el historial.
 
@@ -5077,11 +5963,23 @@ Nada más hoy
 Nothing new
 Nada nuevo
 
+Nothing new to learn
+Nada nuevo que aprender
+
 Nothing read yet
 Aún no se ha leído nada
 
 Nothing recorded yet. Press Record and talk for a few seconds.
 Aún no hay nada grabado. Pulsa Grabar y habla unos segundos.
+
+Nothing to calculate
+Nada que calcular
+
+Nothing to do.
+Nada que hacer.
+
+Nothing to show yet
+Aún no hay nada que mostrar
 
 Nothing to tune for its driver ({}) yet.
 Aún no hay nada que ajustar para su driver ({}).
@@ -5116,8 +6014,14 @@ Ahora {}{}: los procesadores {} hasta el {} %, {}.
 Now:
 Ahora:
 
+Now: kept in Passwords as “{}”.
+Ahora: guardada en Passwords como «{}».
+
 Now: {}
 Ahora: {}
+
+Now: {}, in Passwords.
+Ahora: {}, en Passwords.
 
 Num Lock on when Olo starts
 Bloq Num activado al iniciar Olo
@@ -5160,6 +6064,9 @@ Desactivado: las palmas son lo que el touchpad dice que son.
 
 Offer a code in the browser tab waiting for it
 Ofrecer un código en la pestaña del navegador que lo espera
+
+Offered
+Ofrecido
 
 Offline (Everything Lost)
 Sin conexión (todo perdido)
@@ -5218,8 +6125,14 @@ Pantalla de arranque de Olo
 Olo's login screen
 Pantalla de inicio de sesión de Olo
 
+Olo's own
+El de Olo
+
 Olo's own model is still in use.
 Se sigue usando el modelo propio de Olo.
+
+Olo's own palm model, made from {} touches of real hands (Preferences ▸ Touchpad & Mouse ▸ Touch trains one of yours)
+El modelo de palmas de Olo, hecho con {} toques de manos reales (Preferencias ▸ Panel táctil y ratón ▸ Toque entrena uno tuyo)
 
 Olo’s keyring isn’t running here; it starts with your session.
 El llavero de Olo no funciona aquí; se inicia con tu sesión.
@@ -5247,6 +6160,15 @@ En este ordenador
 
 On a PC keyboard, Alt is where a Mac's ⌘ is: swapped, the key beside the space bar is ⌘ (with the Mac profile) and the Windows key is Option. Each keyboard keeps its own setting, so an Apple keyboard plugged in stays as it is.
 En un teclado de PC, Alt está donde un Mac tiene ⌘: al intercambiarlas, la tecla junto a la barra espaciadora es ⌘ (con el perfil de Mac) y la tecla Windows es Opción. Cada teclado conserva su ajuste, así que un teclado de Apple conectado se queda como está.
+
+On a plane of its own: moving it draws nothing
+En un plano propio: moverlo no dibuja nada
+
+On disk
+En disco
+
+On the network
+En la red
 
 On the phone, open Settings ▸ Bluetooth and keep it open there. It appears here in a moment.
 En el teléfono, abre Ajustes ▸ Bluetooth y déjalo abierto ahí. Aparecerá aquí en un momento.
@@ -5284,6 +6206,9 @@ A una cuenta conectada no se le permitió Google Drive: vuelve a iniciar sesión
 One an hour for:
 Una por hora durante:
 
+One differs from the next by
+Varía de una a otra en
+
 One like it again from the same app (its title and text) takes the earlier one's place while that's still showing or unread.
 Otra igual de la misma app (mismo título y texto) sustituye a la anterior mientras esta siga visible o sin leer.
 
@@ -5298,6 +6223,9 @@ Códigos de un solo uso
 
 Only Zip and 7-Zip archives can have a password.
 Solo los archivos Zip y 7-Zip pueden tener contraseña.
+
+Only an https:// address: one that can be listened in on could be changed on its way.
+Solo una dirección https://: una que se puede escuchar podría cambiarse por el camino.
 
 Only on battery power
 Solo con batería
@@ -5371,6 +6299,9 @@ Abrir la página de inicio de sesión
 Open Telegram
 Abrir Telegram
 
+Open Weather to set up its data provider
+Abre Weather para configurar su proveedor de datos
+
 Open Website
 Abrir sitio web
 
@@ -5379,6 +6310,9 @@ Abrir con
 
 Open With Offers
 Ofertas de Abrir con
+
+Open files
+Archivos abiertos
 
 Open in Google Drive
 Abrir en Google Drive
@@ -5415,6 +6349,9 @@ Abriendo la copia en {}
 
 Opening the backup…
 Abriendo la copia…
+
+Opening…
+Abriendo…
 
 Opens in:
 Se abre en:
@@ -5479,6 +6416,9 @@ PDF…
 PHP
 PHP
 
+Pacing
+Ritmo
+
 Package
 Paquete
 
@@ -5487,6 +6427,9 @@ Paquetes
 
 Page View
 Vista de página
+
+Page faults
+Fallos de página
 
 Page {} of {}
 Página {} de {}
@@ -5530,11 +6473,74 @@ Paneles
 Paragraph
 Párrafo
 
+Part of a package group
+Parte de un grupo de paquetes
+
 Part of an app's name
 Parte del nombre de una app
 
 Partition
 Partición
+
+Partly cloudy
+Parcialmente nublado
+
+Partly cloudy and drizzle
+Parcialmente nublado y llovizna
+
+Partly cloudy and flurries
+Parcialmente nublado y nevisca
+
+Partly cloudy and fog
+Parcialmente nublado y niebla
+
+Partly cloudy and freezing drizzle
+Parcialmente nublado y llovizna helada
+
+Partly cloudy and freezing rain
+Parcialmente nublado y lluvia helada
+
+Partly cloudy and heavy freezing rain
+Parcialmente nublado y lluvia helada intensa
+
+Partly cloudy and heavy ice pellets
+Parcialmente nublado y gránulos de hielo intensos
+
+Partly cloudy and heavy rain
+Parcialmente nublado y lluvia intensa
+
+Partly cloudy and heavy snow
+Parcialmente nublado y nevada intensa
+
+Partly cloudy and ice pellets
+Parcialmente nublado y gránulos de hielo
+
+Partly cloudy and light fog
+Parcialmente nublado y niebla ligera
+
+Partly cloudy and light freezing rain
+Parcialmente nublado y lluvia helada ligera
+
+Partly cloudy and light ice pellets
+Parcialmente nublado y gránulos de hielo ligeros
+
+Partly cloudy and light rain
+Parcialmente nublado y lluvia ligera
+
+Partly cloudy and light snow
+Parcialmente nublado y nevada ligera
+
+Partly cloudy and mostly clear
+Parcialmente nublado y mayormente despejado
+
+Partly cloudy and rain
+Parcialmente nublado y lluvia
+
+Partly cloudy and snow
+Parcialmente nublado y nieve
+
+Partly cloudy and thunderstorm
+Parcialmente nublado y tormenta
 
 Passphrase:
 Frase de contraseña:
@@ -5566,17 +6572,26 @@ Passwords respondió {}
 Passwords can’t be reached ({}).
 No se puede acceder a Passwords ({}).
 
+Passwords can’t be reached ({}). Is it running?
+No se puede acceder a Passwords ({}). ¿Se está ejecutando?
+
 Passwords couldn’t give its logins: {}
 Passwords no pudo dar sus inicios de sesión: {}
 
 Passwords didn’t keep it.
 Passwords no lo guardó.
 
+Passwords didn’t keep the key.
+Passwords no guardó la clave.
+
 Passwords for Every Screen…
 Contraseñas para cada pantalla…
 
 Passwords has no login for a Google account: add the account’s login there first, or set the app up by hand.
 Passwords no tiene ningún inicio de sesión para una cuenta de Google: añade antes ahí el de la cuenta, o configura la app a mano.
+
+Passwords has no “{}” item: give the key again in File ▸ Data Provider…
+Passwords no tiene ningún elemento «{}»: vuelve a dar la clave en Archivo ▸ Proveedor de datos…
 
 Passwords is locked.
 Passwords está bloqueado.
@@ -5586,6 +6601,9 @@ Passwords no se está ejecutando.
 
 Passwords isn’t set up yet.
 Passwords aún no está configurado.
+
+Passwords isn’t set up yet: open it to set it up, then try again.
+Passwords aún no está configurado: ábrelo para configurarlo y vuelve a intentarlo.
 
 Passwords keeps no password for it (an item “{}”).
 Passwords no guarda ninguna contraseña para ello (un elemento «{}»).
@@ -5616,6 +6634,9 @@ Pegar
 
 Paste the key
 Pegar la clave
+
+Paste the key first.
+Pega primero la clave.
 
 Pasted Picture.{}
 Imagen pegada.{}
@@ -5694,11 +6715,17 @@ Pellizcar para ampliar
 Pink
 Rosa
 
+Pipe
+Tubería
+
 Place
 Lugar
 
 Places
 Lugares
+
+Places can’t be looked up: {}
+No se pueden buscar lugares: {}
 
 Play
 Reproducir
@@ -5784,8 +6811,14 @@ Energía: se trajo en qué pone cada modo de energía los procesadores y las GPU
 PowerShell
 PowerShell
 
+Powered on
+Encendido
+
 Precipitation
 Precipitación
+
+Precipitation ({})
+Precipitación ({})
 
 Preemption
 Expropiación
@@ -5874,6 +6907,9 @@ Problemas
 Process
 Proceso
 
+Process {} has quit
+El proceso {} ha terminado
+
 Processed
 Procesado
 
@@ -5892,6 +6928,9 @@ Procesador
 Processor:
 Procesador:
 
+Profile
+Perfil
+
 Profile:
 Perfil:
 
@@ -5901,6 +6940,12 @@ Programa
 Program names, comma separated
 Nombres de programas, separados por comas
 
+Programs Using the Network
+Programas que usan la red
+
+Programs Using the {}
+Programas que usan {}
+
 Programs’ Secrets
 Secretos de los programas
 
@@ -5909,6 +6954,9 @@ Los secretos de los programas están bloqueados: {}.
 
 Project
 Proyecto
+
+Projects
+Proyectos
 
 Protect it with a password
 Protegerlo con una contraseña
@@ -5976,6 +7024,9 @@ Salir
 Quit Now
 Salir ahora
 
+Quit {} Processes
+Salir de {} procesos
+
 Quit, dropping the touches
 Salir descartando los toques
 
@@ -5994,8 +7045,23 @@ RPM Fusion
 Radians
 Radianes
 
+Rain
+Lluvia
+
+Rain and freezing rain
+Lluvia y lluvia helada
+
+Rain and ice pellets
+Lluvia y gránulos de hielo
+
+Rain and snow
+Lluvia y nieve
+
 Raise Soft Limit to Hard
 Subir el límite blando al duro
+
+Ran for
+Duró
 
 Reaches:
 Alcanza:
@@ -6036,6 +7102,12 @@ Volviendo a leer el índice
 Reading the journal…
 Leyendo el diario…
 
+Reading the packages…
+Leyendo los paquetes…
+
+Reading the updates…
+Leyendo las actualizaciones…
+
 Reading your logins in Passwords…
 Leyendo tus inicios de sesión en Passwords…
 
@@ -6044,6 +7116,12 @@ Leyendo…
 
 Reads
 Lecturas
+
+Real-time priority
+Prioridad de tiempo real
+
+Real-time timeout
+Límite de tiempo real
 
 Received
 Recibido
@@ -6056,6 +7134,9 @@ Carpetas recientes
 
 Recommended
 Recomendado
+
+Recommended by another package
+Lo recomienda otro paquete
 
 Recommended for it
 Recomendado para él
@@ -6092,6 +7173,12 @@ Grabar el micrófono
 
 Recording
 Grabando
+
+Recording a voice message, {}
+Grabando un mensaje de voz, {}
+
+Recording a voice message, {}: Send Voice Message or Cancel Recording
+Grabando un mensaje de voz, {}: Enviar mensaje de voz o Cancelar grabación
 
 Recording {} since {}
 Grabando {} desde {}
@@ -6255,6 +7342,12 @@ Responder
 Reply to
 Responder a
 
+Reply to {}
+Responder a {}
+
+Reports
+Informes
+
 Repositories
 Repositorios
 
@@ -6291,6 +7384,12 @@ Restablecer umbrales
 Reset of “{}”
 Restablecer «{}»
 
+Resetting the displays' settings…
+Restableciendo los ajustes de las pantallas…
+
+Resident memory
+Memoria residente
+
 Resize
 Redimensionar
 
@@ -6299,6 +7398,9 @@ Redimensionar…
 
 Resolution:
 Resolución:
+
+Responsiveness
+Capacidad de respuesta
 
 Rest of Today
 Resto del día
@@ -6336,6 +7438,9 @@ Reiniciar preguntando antes
 Restart…
 Reiniciar…
 
+Resting: nothing new on it
+En reposo: nada nuevo
+
 Restore
 Restaurar
 
@@ -6359,6 +7464,9 @@ Restaurando: {} hasta ahora…
 
 Restoring: {}, {} so far. {}
 Restaurando: {}, {} hasta ahora. {}
+
+Restoring…
+Restaurando…
 
 Rests
 Apoyos
@@ -6387,6 +7495,9 @@ Volver a lo guardado
 Revert to Saved…
 Volver a lo guardado…
 
+Revert to the last saved version of “{}”?
+¿Volver a la última versión guardada de «{}»?
+
 Reverting in 1 second.
 Volviendo atrás en 1 segundo.
 
@@ -6408,6 +7519,9 @@ Tercio derecho
 Right Two Thirds
 Dos tercios derechos
 
+Right first
+Acierto a la primera
+
 Room:
 Espacio:
 
@@ -6416,6 +7530,12 @@ Girar a la izquierda
 
 Rotate Right
 Girar a la derecha
+
+Round trip
+Ida y vuelta
+
+Round trip meanwhile
+Ida y vuelta durante la prueba
 
 Router:
 Router:
@@ -6432,6 +7552,15 @@ Regla
 Run module
 Ejecutar módulo
 
+Run on it with “olo-screen run”
+Ejecuta en ella con «olo-screen run»
+
+Running
+En marcha
+
+Runs on
+Se ejecuta en
+
 Russian
 Ruso
 
@@ -6441,8 +7570,26 @@ Rust
 Rust build output and downloaded crates
 Compilados de Rust y crates descargados
 
+S
+S
+
+SE
+SE
+
 SQL
 SQL
+
+SSD temperature
+Temperatura del SSD
+
+SSE
+SSE
+
+SSW
+SSO
+
+SW
+SO
 
 Saturday
 Sábado
@@ -6495,6 +7642,9 @@ Saving Power slows the processors and turns turbo off, Balanced speeds them up f
 Saving it with your settings…
 Guardándolo con tus ajustes…
 
+Saving…
+Guardando…
+
 Scala
 Scala
 
@@ -6527,6 +7677,9 @@ Planificador
 
 Scientific Keypad
 Teclado científico
+
+Score {} of 2000
+Puntuación {} de 2000
 
 Screen
 Pantalla
@@ -6597,6 +7750,12 @@ Seguridad:
 Security…
 Seguridad…
 
+Sees this computer in
+Ve este ordenador en
+
+Segment size
+Tamaño de segmento
+
 Select
 Seleccionar
 
@@ -6623,6 +7782,9 @@ Selecciona un repositorio para ver todo sobre él.
 
 Select a transaction to see what it did to each package.
 Selecciona una transacción para ver qué hizo con cada paquete.
+
+Select an update to read about it: its versions, why it came out, what changed.
+Selecciona una actualización para leer sobre ella: sus versiones, por qué salió, qué cambió.
 
 Selected {} to {}
 Seleccionado de {} a {}
@@ -6651,6 +7813,16 @@ Enviar con BBRv3
 Sending your changes to Telegram
 Enviando tus cambios a Telegram
 
+Sending {n} changes to Telegram…
+one: Enviando un cambio a Telegram…
+other: Enviando {n} cambios a Telegram…
+
+Sending {} to process {}
+Enviando {} al proceso {}
+
+Sends with
+Envía con
+
 Sensor:
 Sensor:
 
@@ -6660,11 +7832,20 @@ Sensores
 Sent
 Enviado
 
+Sent again
+Reenviados
+
+Sent again by the server
+Reenviados por el servidor
+
 Separated by spaces
 Separados por espacios
 
 Server
 Servidor
+
+Server delivers at
+El servidor entrega a
 
 Server:
 Servidor:
@@ -6674,6 +7855,12 @@ Servidores propios
 
 Servers of your own are asked in place of what each network hands out, on every link. Search domains are tried after a short name: nas, then nas.corp.example.
 Se consulta a tus propios servidores en lugar de los que da cada red, en cada enlace. Los dominios de búsqueda se prueban tras un nombre corto: nas y luego nas.corp.example.
+
+Server’s round trip
+Ida y vuelta del servidor
+
+Server’s window
+Ventana del servidor
 
 Service
 Servicio
@@ -6828,6 +8015,9 @@ Mostrar archivos ocultos
 Show Notifications
 Mostrar notificaciones
 
+Show Only {}
+Mostrar solo {}
+
 Show Preview
 Mostrar vista previa
 
@@ -6899,6 +8089,9 @@ Mostrar:
 
 Showing its code
 Mostrando su código
+
+Showing the forecast from {}.
+Mostrando el pronóstico de {}.
 
 Shown
 Mostrado
@@ -6978,6 +8171,9 @@ Tamaño:
 Skip this step
 Saltar este paso
 
+Sleet
+Aguanieve
+
 Slow
 Lento
 
@@ -6989,6 +8185,9 @@ Más lento, fresco y silencioso: los procesadores priorizan el ahorro y el firmw
 
 Slowest
 Lo más lento
+
+Slowest compiles
+Compilaciones más lentas
 
 Small
 Pequeño
@@ -7017,8 +8216,20 @@ Posponer {}
 Snooze for:
 Posponer durante:
 
+Snow
+Nieve
+
+Snow and freezing rain
+Nieve y lluvia helada
+
+Snow and ice pellets
+Nieve y gránulos de hielo
+
 So the next backup goes on from there.
 Para que la próxima copia siga desde ahí.
+
+Socket
+Socket
 
 Soft
 Blando
@@ -7040,6 +8251,9 @@ Algunos cambios solo surten efecto cuando el ordenador vuelva a arrancar.
 
 Some room
 Algo de espacio
+
+Some waiting
+Algunos esperando
 
 Sonnet 5.5
 Sonnet 5.5
@@ -7076,6 +8290,12 @@ Solo espacio
 
 Spanish
 Español
+
+Spare
+Reserva
+
+Speaker amp {}
+Amplificador de altavoz {}
 
 Speed
 Velocidad
@@ -7142,6 +8362,9 @@ Empezando de nuevo…
 Starting the agent…
 Iniciando el agente…
 
+Starting…
+Iniciando…
+
 Starts:
 Empieza:
 
@@ -7168,6 +8391,18 @@ Despierto: sin reposo, suspensión, salvapantallas ni bloqueo
 
 Steadily (fit)
 Uniforme (ajuste)
+
+Steady freezing rain
+Lluvia helada constante
+
+Steady rain
+Lluvia constante
+
+Steady sleet
+Aguanieve constante
+
+Steady snow
+Nevada constante
 
 Step {} of {}
 Paso {} de {}
@@ -7208,6 +8443,9 @@ Stop syncing with {}? Its items are removed from this computer, along with chang
 Stop syncing with {}? Their items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
 ¿Dejar de sincronizar con {}? Sus elementos se quitan de este ordenador, junto con los cambios hechos aquí y aún sin enviar. En 1Password no cambia nada.
 
+Stopped part way, {}
+Detenida a medias, {}
+
 Stopped · {}
 Detenido · {}
 
@@ -7219,6 +8457,9 @@ Detenido: lo restaurado hasta ahora está ahí.
 
 Stopping the backup
 Deteniendo la copia
+
+Store
+Almacén
 
 Strikeout
 Tachado
@@ -7256,6 +8497,9 @@ Sugerencia
 Suggestions
 Sugerencias
 
+Sun {}–{}
+Sol {}–{}
+
 Sunday
 Domingo
 
@@ -7264,6 +8508,9 @@ SuperString, de Jon Watte
 
 Supervisor
 Supervisor
+
+Swap
+Intercambio
 
 Swap Alt and the Windows Key
 Intercambiar Alt y la tecla Windows
@@ -7310,11 +8557,26 @@ Sistema
 System Font
 Tipo de letra del sistema
 
+TCP opened in
+TCP abierto en
+
 TCP sends at the pace its path can carry, by a model of it, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
 TCP envía al ritmo que su camino puede llevar, según un modelo de él, donde el propio de Linux llena las colas por el camino (módulo de Olo, tcp_bbr3).
 
 TCP/IP
 TCP/IP
+
+TCP’s own, idle
+La de TCP, en reposo
+
+TCP’s round trip
+Ida y vuelta de TCP
+
+TLS couldn't be set up: {}
+No se pudo configurar TLS: {}
+
+TLS opened in
+TLS abierto en
 
 TOML
 TOML
@@ -7343,6 +8605,9 @@ Hacer captura de pantalla…
 Take calls on this computer
 Atender llamadas en este ordenador
 
+Taken
+Aceptadas
+
 Tap
 Toque
 
@@ -7370,6 +8635,12 @@ Telegram
 Telegram (in Applications) shows your chats and messages, and tells you of new ones. Olo keeps its sign-in in your keyring.
 Telegram (en Aplicaciones) muestra tus chats y mensajes y te avisa de los nuevos. Olo guarda su inicio de sesión en tu llavero.
 
+Telegram asks to wait {} s
+Telegram pide esperar {} s
+
+Telegram asks us to wait {} seconds.
+Telegram nos pide esperar {} segundos.
+
 Telegram sent a code to Telegram on your other devices (or by text message). Type it here.
 Telegram ha enviado un código a Telegram en tus otros dispositivos (o por SMS). Escríbelo aquí.
 
@@ -7394,6 +8665,9 @@ Distinguir también las palmas con un modelo de palma
 Temperature
 Temperatura
 
+Temperature ({})
+Temperatura ({})
+
 Terminal
 Terminal
 
@@ -7415,8 +8689,20 @@ Terra 6.1
 Test
 Probar
 
+Tested
+Probado
+
 Tested on the {} touches kept back from training ({} palms, {} fingers):
 Probado con los {} toques apartados del entrenamiento ({} palmas, {} dedos):
+
+Tested {}
+Última prueba {}
+
+Tests
+Pruebas
+
+Tests holding slots
+Pruebas que retienen huecos
 
 Text
 Texto
@@ -7436,11 +8722,17 @@ SMS a «{}»
 Text:
 Texto:
 
+That isn't a value.
+Eso no es un valor.
+
 That isn't one of the repository's worktrees.
 Ese no es uno de los worktrees del repositorio.
 
 That isn't the backup's password.
 Esa no es la contraseña de la copia.
+
+That isn’t a Copr project’s name.
+Ese no es el nombre de un proyecto de Copr.
 
 That password isn't right.
 Esa contraseña no es correcta.
@@ -7451,11 +8743,17 @@ Esa contraseña no es correcta.
 That password isn’t right. Try again:
 Esa contraseña no es correcta. Inténtalo de nuevo:
 
+That secret is empty in Passwords.
+Ese secreto está vacío en Passwords.
+
 That's all of them. Press {} to learn your hands.
 Ya están todos. Pulsa {} para aprender tus manos.
 
 That's all this step needs.
 Es todo lo que necesita este paso.
+
+That’s too big to be a .repo file.
+Es demasiado grande para ser un archivo .repo.
 
 The API ID couldn’t be kept in the keyring ({}).
 No se pudo guardar el ID de API en el llavero ({}).
@@ -7468,6 +8766,9 @@ El hash de API son 32 letras y dígitos (0–9, a–f).
 
 The AirPods service isn't running.
 El servicio de los AirPods no está en marcha.
+
+The CPU doesn't offer “{}”.
+La CPU no ofrece «{}».
 
 The DiskBackup service isn’t running
 El servicio de DiskBackup no se está ejecutando
@@ -7492,6 +8793,12 @@ La cuenta que responde ahora
 
 The account couldn’t be saved ({}).
 No se pudo guardar la cuenta ({}).
+
+The address search answered {}.
+La búsqueda de direcciones respondió {}.
+
+The address search’s answer can’t be read: {}
+No se puede leer la respuesta de la búsqueda de direcciones: {}
 
 The agent is at work in a Terminal window, on its agent screen “{}” (Agent Screens shows it): it makes the account’s app in Google Cloud and signs Olo in with it. The account shows here when it’s done; you can talk to the agent in Terminal meanwhile.
 El agente trabaja en una ventana de Terminal, en su pantalla de agente «{}» (Pantallas de agentes la muestra): crea la app de la cuenta en Google Cloud e inicia sesión con ella en Olo. La cuenta aparece aquí cuando termina; mientras tanto puedes hablar con el agente en Terminal.
@@ -7538,8 +8845,14 @@ El servicio del reloj (systemd-timedated) no responde.
 The coming days, each its sky, low and high.
 Los próximos días, cada uno con su cielo, mínima y máxima.
 
+The computer couldn't be restarted: {}
+No se pudo reiniciar el ordenador: {}
+
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
 La tasa de aciertos del día, las plazas del pool en uso y las compilaciones y aciertos de las últimas horas.
+
+The displays' settings are Olo's own again, from when you leave Rescue.
+Los ajustes de las pantallas vuelven a ser los de Olo, desde que salgas de Rescue.
 
 The export failed: {}
 La exportación falló: {}
@@ -7565,11 +8878,17 @@ La primera copia empieza en un momento.
 The first fine-tune failed: {}
 Falló el primer ajuste fino: {}
 
+The hand-written ones: not fine-tuned yet
+Los escritos a mano: aún sin ajustar
+
 The icons {} is drawn with, everywhere.
 Los iconos con los que se dibuja {}, en todas partes.
 
 The infrared camera couldn't be opened (its shutter, or another program).
 No se pudo abrir la cámara de infrarrojos (su obturador, u otro programa).
+
+The journal couldn't be read: {}
+No se pudo leer el registro del sistema: {}
 
 The kernel's own (recommended)
 El propio del núcleo (recomendado)
@@ -7610,6 +8929,9 @@ No se pudo leer el llavero ({}).
 The last 12 hours
 Las últimas 12 horas
 
+The last 24 hours
+Las últimas 24 horas
+
 The last 6 hours
 Las últimas 6 horas
 
@@ -7619,11 +8941,17 @@ La última copia no está completa: {}. La próxima copia vuelve a enviar lo que
 The last backup was {}
 La última copia fue {}
 
+The last hour of use
+La última hora de uso
+
 The last whole one was {}
 La última completa fue {}
 
 The list of Google accounts couldn’t be saved ({}).
 No se pudo guardar la lista de cuentas de Google ({}).
+
+The log can't be opened: {}
+No se puede abrir el registro: {}
 
 The login keyring couldn't be read: {}
 No se pudo leer el llavero de inicio de sesión: {}
@@ -7636,6 +8964,12 @@ El del aspecto
 
 The loss is a number, in percent.
 La pérdida es un número, en porcentaje.
+
+The microphone can’t be recorded ({}).
+No se puede grabar el micrófono ({}).
+
+The model
+El modelo
 
 The model wasn't good enough to keep
 El modelo no era lo bastante bueno para guardarlo
@@ -7667,6 +9001,12 @@ Las próximas horas, cada una con su cielo y temperatura, con la probabilidad de
 The one it started on
 En la que empezó
 
+The package service reads what’s installed and what each repository has.
+El servicio de paquetes lee lo instalado y lo que tiene cada repositorio.
+
+The packages can’t be read
+No se pueden leer los paquetes
+
 The pad clicks at {}/{} (all contacts together); with a palm on it, Olo counts the click only if the fingers press that hard alone.
 El pad hace clic a {}/{} (todos los contactos juntos); con una palma encima, Olo solo cuenta el clic si los dedos solos presionan así de fuerte.
 
@@ -7685,6 +9025,15 @@ El archivo de contraseñas está dañado: {}
 The picture on the desktop when {} is chosen. Backgrounds changes the desktop’s after, a workspace at a time.
 La imagen del escritorio cuando se elige {}. Fondos cambia luego la del escritorio, un espacio de trabajo cada vez.
 
+The place search answered {}.
+La búsqueda de lugares respondió {}.
+
+The place search’s answer can’t be read: {}
+No se puede leer la respuesta de la búsqueda de lugares: {}
+
+The place’s time zone can’t be looked up: {}
+No se puede buscar la zona horaria del lugar: {}
+
 The pointer keeps moving, and none of its motion is lost, while the desktop is busy: a slow frame, or a wait in the graphics driver under load. New, and being tried: if the mouse, touchpad or keyboard misbehaves with it on, turn it off.
 El puntero sigue moviéndose, sin perder nada de su movimiento, mientras el escritorio está ocupado: un fotograma lento o una espera en el controlador gráfico bajo carga. Es nuevo y está a prueba: si el ratón, el touchpad o el teclado fallan con esto activado, desactívalo.
 
@@ -7693,6 +9042,9 @@ El pool
 
 The power mode (Power Saver, Balanced or Performance) is set in Power.
 El modo de energía (Ahorro de energía, Equilibrado o Rendimiento) se elige en Energía.
+
+The process has quit.
+El proceso ha terminado.
 
 The processor
 El procesador
@@ -7709,6 +9061,9 @@ El borde derecho
 The screen
 La pantalla
 
+The server answered {}{}.
+El servidor respondió {}{}.
+
 The server didn’t take the name and password.
 El servidor no aceptó el nombre y la contraseña.
 
@@ -7724,11 +9079,23 @@ El cielo y la temperatura ahora, y lo que viene.
 The store
 El almacén
 
+The store is over its {} limit
+El almacén supera su límite de {}
+
 The system's services (updates, indexing) can still run there.
 Los servicios del sistema (actualizaciones, indexación) pueden seguir ejecutándose allí.
 
 The system's services are kept off it too.
 Los servicios del sistema también quedan fuera de él.
+
+The test didn't finish: {}.
+La prueba no terminó: {}.
+
+The time zone lookup answered {}.
+La búsqueda de zona horaria respondió {}.
+
+The time zone lookup’s answer can’t be read: {}
+No se puede leer la respuesta de la búsqueda de zona horaria: {}
 
 The token couldn’t be kept in the keyring ({}).
 No se pudo guardar el token en el llavero ({}).
@@ -7741,6 +9108,15 @@ El touchpad dice qué toques son palmas, pero deja que una palma apoyada vuelva 
 
 The two passwords aren't the same.
 Las dos contraseñas no coinciden.
+
+The upgrade to Fedora {} is downloaded and waits for the computer to restart.
+La actualización a Fedora {} está descargada y espera a que se reinicie el ordenador.
+
+The user session's systemd didn't answer.
+El systemd de la sesión del usuario no respondió.
+
+The voice message couldn’t be recorded ({}).
+No se pudo grabar el mensaje de voz ({}).
 
 The voice service isn't running.
 El servicio de voz no está en marcha.
@@ -7787,6 +9163,12 @@ No hay enlaces que limitar.
 There are no network interfaces.
 No hay interfaces de red.
 
+There is no journal for this user to read (in /var/log/journal or /run/log/journal).
+No hay ningún registro del sistema que este usuario pueda leer (en /var/log/journal o /run/log/journal).
+
+There is no limit “{}”.
+No hay ningún límite «{}».
+
 There is nothing to share.
 No hay nada que compartir.
 
@@ -7811,8 +9193,14 @@ Necesitan Bluetooth para escuchar a los AirPods: Olo Doctor puede activarlo.
 ThinkPad
 ThinkPad
 
+Thinking ({})…
+Pensando ({})…
+
 Thinking:
 Razonamiento:
+
+Thinking…
+Pensando…
 
 This Computer
 Este ordenador
@@ -7856,6 +9244,9 @@ Este ordenador es «{}» para los receptores AirPlay.
 This computer is “{}”.
 Este ordenador es «{}».
 
+This computer runs Fedora {}.
+Este ordenador ejecuta Fedora {}.
+
 This computer's kernel can't load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel's own schedules.
 El núcleo de este ordenador no puede cargar otro planificador (sched_ext: desde Linux 6.12), así que planifica el del núcleo.
 
@@ -7877,6 +9268,9 @@ Este es el perfil recomendado para este touchpad.
 This isn't an Olo backup.
 No es una copia de Olo.
 
+This isn't the session at the computer, so the computer isn't restarted.
+Esta no es la sesión del ordenador, así que el ordenador no se reinicia.
+
 This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 Este núcleo no puede sujetar un disco a un límite propio (Linux 6.2 y posteriores pueden).
 
@@ -7895,6 +9289,12 @@ Este paso está hecho
 This touchpad doesn't report pressure, so it is left to libinput.
 Este touchpad no informa de la presión, así que se deja en manos de libinput.
 
+This will {} and {}.
+Esto va a {} y {}.
+
+This will {}.
+Esto va a {}.
+
 Threads
 Hilos
 
@@ -7907,8 +9307,20 @@ Tres meses
 Three touches type a code
 Tres toques escriben un código
 
+Throttled
+Limitado
+
+Through
+A través de
+
 Thumb clicks
 Clics con el pulgar
+
+Thunderstorm
+Tormenta
+
+Thunderstorms
+Tormentas
 
 Tidied away
 Recogida
@@ -7946,11 +9358,26 @@ Hora
 Time Zone
 Zona horaria
 
+Time saved
+Tiempo ahorrado
+
+Time tasks waited for disks
+Tiempo que las tareas esperaron a los discos
+
+Time tasks waited for each, over 10 s, 1 min and 5 min
+Tiempo que las tareas esperaron a cada uno, en 10 s, 1 min y 5 min
+
+Time tasks waited for memory: 10 s, 1 min, 5 min
+Tiempo que las tareas esperaron a la memoria: 10 s, 1 min, 5 min
+
 Time zone
 Zona horaria
 
 Time:
 Hora:
+
+Timeouts
+Tiempos agotados
 
 Times in {}.
 Horas en {}.
@@ -8117,6 +9544,9 @@ Confiar
 Trust this repository’s key?
 ¿Confiar en la clave de este repositorio?
 
+Trusting the key…
+Confiando en la clave…
+
 Try Again
 Reintentar
 
@@ -8143,6 +9573,9 @@ Ajustado para {}
 
 Tuned for:
 Ajustado para:
+
+Tuning
+Ajuste
 
 Turn Off
 Desactivar
@@ -8225,6 +9658,12 @@ Tipo:
 TypeScript
 TypeScript
 
+Typically
+Lo habitual
+
+Typing
+Escritura
+
 Typing test:
 Prueba de escritura:
 
@@ -8234,11 +9673,17 @@ La gestión de energía USB puede dormirlo, y entonces pierde el primer movimien
 USB receiver
 Receptor USB
 
+UV index
+Índice UV
+
 Unarchive All
 Desarchivar todo
 
 Unarchive All…
 Desarchivar todo…
+
+Unarchive {} Chats
+Desarchivar {} chats
 
 Under the Tray
 Bajo la bandeja
@@ -8248,6 +9693,9 @@ Subrayado
 
 Undo
 Deshacer
+
+Undo Transaction {}
+Deshacer la transacción {}
 
 Undo Transaction…
 Deshacer transacción…
@@ -8260,6 +9708,9 @@ Deshacer {}
 
 Undo…
 Deshacer…
+
+Unexpected input
+Entrada inesperada
 
 Unfinished: {} ({}) done and {} sent; the next backup goes on from there.
 Sin terminar: {} ({}) procesados y {} enviados; la próxima copia sigue desde ahí.
@@ -8275,6 +9726,15 @@ Desagrupar
 
 Units
 Unidades
+
+Unix socket
+Socket Unix
+
+Unix socket {}
+Socket Unix {}
+
+Unknown
+Desconocido
 
 Unknown Senders
 Remitentes desconocidos
@@ -8300,6 +9760,9 @@ Las no leídas ponen un punto azul junto a su app.
 Unreaped for
 Sin recoger durante
 
+Unsafe shutdowns
+Apagados inseguros
+
 Until Turned Off
 Hasta que se desactive
 
@@ -8311,6 +9774,9 @@ Subir
 
 Up (sent)
 Subida (enviado)
+
+Up for
+Activo desde hace
 
 Update
 Actualizar
@@ -8324,17 +9790,26 @@ Actualizar solo esto…
 Update Selected Only…
 Actualizar solo la selección…
 
+Update These {}…
+Actualizar estas {}…
+
 Update every:
 Actualizar cada:
 
 Updated
 Actualizado
 
-Updated {} ago
-Actualizado hace {}
+Updated {} · {}
+Actualizado {} · {}
 
 Updates
 Actualizaciones
+
+Updates are downloaded and wait for the computer to restart: they’re installed then.
+Las actualizaciones están descargadas y esperan a que se reinicie el ordenador: se instalan entonces.
+
+Updating…
+Actualizando…
 
 Upgrade Fedora
 Actualizar Fedora
@@ -8342,11 +9817,26 @@ Actualizar Fedora
 Upgrade Olo
 Actualizar Olo
 
+Upgrade to Fedora {}
+Actualizar a Fedora {}
+
+Upgrading downloads every package of Fedora {} now, while you work, then installs them as the computer restarts: that takes a while, and the computer can’t be used meanwhile. Your files, settings and apps stay. Update to the newest of this release first, and have a backup.
+La actualización descarga ahora todos los paquetes de Fedora {}, mientras trabajas, y luego los instala al reiniciar el ordenador: tarda un rato y mientras tanto no se puede usar el ordenador. Tus archivos, ajustes y apps se conservan. Actualiza antes a lo más reciente de esta versión y ten una copia de seguridad.
+
+Upload
+Subida
+
 Upload at most:
 Subir como máximo:
 
 Uploading is backing up; downloading is restoring, and tidying. A limit holds at once, for a backup under way too.
 Subir es hacer copia; bajar es restaurar y ordenar. Un límite se aplica al instante, también a una copia en curso.
+
+Uploading: {}
+Subiendo: {}
+
+Uploading…
+Subiendo…
 
 Uptime:
 Encendido:
@@ -8417,6 +9907,9 @@ Usuario o sitio
 Username:
 Usuario:
 
+Using
+Usa
+
 Using DHCP
 Usando DHCP
 
@@ -8474,6 +9967,9 @@ Información de la bóveda…
 Vault:
 Bóveda:
 
+Vaults
+Bóvedas
+
 Version
 Versión
 
@@ -8482,6 +9978,9 @@ Versiones de {}
 
 Very Bad Network
 Red muy mala
+
+Very high
+Muy alto
 
 Video Playback
 Reproducción de vídeo
@@ -8501,11 +10000,23 @@ Imágenes de disco de máquinas virtuales
 Visibility
 Visibilidad
 
+Visibility ({})
+Visibilidad ({})
+
+Visibility · fog
+Visibilidad · niebla
+
 Voice Only
 Solo voz
 
 Voice Processing
 Procesamiento de voz
+
+Voice message {}.ogg
+Mensaje de voz {}.ogg
+
+Voltage
+Voltaje
 
 Volume
 Volumen
@@ -8515,6 +10026,15 @@ Volumen:
 
 Volumes
 Volúmenes
+
+W
+O
+
+WNW
+ONO
+
+WSW
+OSO
 
 Wait for the sync to finish, then remove the account.
 Espera a que termine la sincronización y luego quita la cuenta.
@@ -8597,6 +10117,9 @@ Weather: ahora
 Weather’s assistant is handed the whole forecast for the place you’re looking at, every layer hour by hour, to answer from.
 El asistente de Weather recibe toda la previsión del lugar que estás mirando, cada capa hora a hora, para responder a partir de ella.
 
+Weather’s forecasts come from {}, which needs an API key (a free one takes a minute to make). Give it once and it’s kept in Passwords, or point to one already there.
+Los pronósticos de Weather vienen de {}, que necesita una clave de API (una gratuita se hace en un minuto). Dala una vez y se guarda en Passwords, o indica una que ya esté allí.
+
 Web Page (HTML)…
 Página web (HTML)…
 
@@ -8606,11 +10129,17 @@ Semana
 Week Starts On
 La semana empieza el
 
+Weights
+Pesos
+
 What
 Qué
 
 What Each Mode Sets
 Lo que fija cada modo
+
+What You Did
+Lo que hiciste
 
 What does my week look like?
 ¿Cómo es mi semana?
@@ -8633,11 +10162,20 @@ No se sabe qué se le puede ajustar: {}. Sigue así hasta que el ordenador se re
 What it does
 Qué hace
 
+What it draws
+Lo que dibuja
+
 What it draws from the battery; on power, it says so.
 Lo que toma de la batería; enchufado, lo dice.
 
 What it’s for (optional)
 Para qué es (opcional)
+
+What should I wear today?
+¿Qué me pongo hoy?
+
+What should I wear tomorrow?
+¿Qué me pongo mañana?
 
 What you change applies when you leave Rescue.
 Lo que cambies se aplica al salir de Rescue.
@@ -8690,11 +10228,17 @@ En reposo
 When Olo starts Claude Code for a task (DiskBackup’s Agent Setup), in a Terminal window you can follow, it uses this model.
 Cuando Olo inicia Claude Code para una tarea (la configuración por agente de DiskBackup), en una ventana de Terminal que puedes seguir, usa este modelo.
 
+When a Frame Drops
+Cuando se pierde un fotograma
+
 When am I free today?
 ¿Cuándo estoy libre hoy?
 
 When am I free tomorrow?
 ¿Cuándo estoy libre mañana?
+
+When does the sun rise tomorrow?
+¿A qué hora sale el sol mañana?
 
 When held for:
 Al mantener durante:
@@ -8705,14 +10249,29 @@ Al pulsar:
 When to Back Up
 Cuándo hacer una copia
 
+When will the rain stop?
+¿Cuándo parará la lluvia?
+
 When:
 Cuándo:
 
 Where Backups Go
 Dónde van las copias
 
+Where the cores' time goes: the deeper a state, the less power and the slower to wake
+Adónde va el tiempo de los núcleos: cuanto más profundo el estado, menos energía y más lento despertar
+
 Where:
 Dónde:
+
+Whether a newer release is out can’t be told: {}
+No se puede saber si ha salido una versión más nueva: {}
+
+Which Fedora this computer runs can’t be told (/etc/os-release says nothing).
+No se puede saber qué Fedora ejecuta este ordenador (/etc/os-release no dice nada).
+
+Which day this week looks best?
+¿Qué día de esta semana será mejor?
 
 Which invitations haven’t I answered?
 ¿Qué invitaciones no he contestado?
@@ -8720,14 +10279,23 @@ Which invitations haven’t I answered?
 While Typing
 Al escribir
 
+While downloading
+Al descargar
+
 While less is free than
 Si queda libre bajo
 
 While sharing or recording the screen (errors wait too)
 Al compartir o grabar la pantalla (los errores también esperan)
 
+While uploading
+Al subir
+
 Why
 Por qué
+
+Why misses missed
+Por qué fallaron los fallos
 
 Wi-Fi
 Wi-Fi
@@ -8759,8 +10327,23 @@ Nombre del widget
 Widgets
 Widgets
 
+Will it rain today?
+¿Lloverá hoy?
+
+Will it rain tomorrow?
+¿Lloverá mañana?
+
 Wind
 Viento
+
+Wind ({})
+Viento ({})
+
+Wind {}{}, gusts {}
+Viento {}{}, ráfagas {}
+
+Window
+Ventana
 
 Window Arrangement
 Disposición de ventanas
@@ -8891,6 +10474,9 @@ Se copia tu carpeta personal cada hora, sin lo que se puede volver a descargar o
 Your messages, your contacts and the one-time codes texted to you, on this computer: over Bluetooth, with nothing between and nothing else to install.
 Tus mensajes, tus contactos y los códigos de un solo uso que te llegan por SMS, en este ordenador: por Bluetooth, sin nada en medio y sin nada más que instalar.
 
+Your notes, files and forwarded messages
+Tus notas, archivos y mensajes reenviados
+
 Your own:
 Tuyo:
 
@@ -8902,6 +10488,9 @@ Tu modelo de palma está listo: guardando…
 
 Your palm model is saved, and in use
 Tu modelo de palma está guardado y en uso
+
+Your palm model, trained {} on {} touches
+Tu modelo de palmas, entrenado {} con {} toques
 
 Your palm over the left edge
 Tu palma sobre el borde izquierdo
@@ -8939,6 +10528,15 @@ Tu voz llega a {} dB: suficientemente alta sin subirla.
 Your voice comes in at {} dB: {} brings it to the {} dB aimed for.
 Tu voz llega a {} dB: {} la lleva a los {} dB buscados.
 
+Yours, as last learned
+El tuyo, como se aprendió por última vez
+
+Yours: fine-tuned once since it started
+El tuyo: ajustado una vez desde que se inició
+
+Yours: fine-tuned {} times since it started
+El tuyo: ajustado {} veces desde que se inició
+
 Zig
 Zig
 
@@ -8975,14 +10573,23 @@ una copia y la sin terminar
 a day ago
 hace un día
 
+a kernel thread
+un hilo del kernel
+
 a minute ago
 hace un minuto
+
+a secure connection failed ({})
+falló una conexión segura ({})
 
 a window ({})
 una ventana ({})
 
 a {} W power limit
 un límite de potencia de {} W
+
+about {}
+unos {}
 
 about {} min left
 quedan unos {} min
@@ -8993,9 +10600,27 @@ quedan unos {} s
 all day
 todo el día
 
+an hour ago
+hace una hora
+
+and frees {}.
+y libera {}.
+
+and needs no more disk space.
+y no necesita más espacio en disco.
+
+and takes {} more disk space.
+y ocupa {} más de espacio en disco.
+
 and the {n} items in it
 one: y su elemento
 other: y sus {n} elementos
+
+and {} more
+y {} más
+
+app_server's main thread: nice {}{}, {}
+hilo principal de app_server: nice {}{}, {}
 
 as in 1Password's sidebar, or its UUID
 como en la barra lateral de 1Password, o su UUID
@@ -9024,6 +10649,12 @@ La pista gris de brush tras lo que escribes, de un modelo diminuto de tus propio
 brush’s grey hint after what you type, from a tiny model of your own commands on this computer: it weighs what’s typed, the folder, the commands before, the hour and the day, and learns as you go.
 La pista gris de brush tras lo que escribes, de un modelo diminuto de tus propios comandos en este ordenador: pondera lo escrito, la carpeta, los comandos anteriores, la hora y el día, y aprende sobre la marcha.
 
+brush’s grey hints, from a tiny model of your own commands
+Las sugerencias grises de brush, de un modelo diminuto de tus propias órdenes
+
+built most, the last 24 hours
+lo más compilado, últimas 24 horas
+
 charging, full in {}
 cargando, lleno en {}
 
@@ -9038,6 +10669,13 @@ día
 
 deleting
 eliminando
+
+downgrade {n} packages
+one: bajar de versión {n} paquete
+other: bajar de versión {n} paquetes
+
+ending one gives its slots back to the pool
+terminar una devuelve sus huecos al conjunto
 
 erasing
 borrando
@@ -9070,8 +10708,17 @@ every {n} minutes
 one: cada minuto
 other: cada {n} minutos
 
+for {}
+desde hace {}
+
+from {}
+del {}
+
 full size, with a numeric keypad
 tamaño completo, con teclado numérico
+
+full speed
+a toda velocidad
 
 fully charged
 carga completa
@@ -9093,6 +10740,9 @@ aquí ahora y en 1Password en la próxima sincronización (cuando lo revises)
 
 hidden when tiled
 oculto en mosaico
+
+high
+alta
 
 hour
 hora
@@ -9117,8 +10767,21 @@ in {n} minutes
 one: dentro de un minuto
 other: dentro de {n} minutos
 
+install {n} packages
+one: instalar {n} paquete
+other: instalar {n} paquetes
+
+it couldn't be ended: {}
+no se pudo terminar: {}
+
 it is on a different volume from the Trash, so it can only be deleted
 está en un volumen distinto del de la papelera, así que solo se puede eliminar
+
+it took too long
+tardó demasiado
+
+its address can’t be found (is the computer online?)
+no se encuentra su dirección (¿está conectado el ordenador?)
 
 its clock as the driver has it, up to {} MHz
 su frecuencia según el driver, hasta {} MHz
@@ -9138,11 +10801,77 @@ todas sus shells han terminado
 just now
 ahora mismo
 
+kache is stopped
+kache está detenido
+
+kache is stopped: builds go on uncached
+kache está detenido: las compilaciones siguen sin caché
+
+kache is stopped: it failed
+kache está detenido: falló
+
+kache isn't set up as a service
+kache no está configurado como servicio
+
+kache's daemon answered something unreadable ({})
+El demonio de kache respondió algo ilegible ({})
+
+kache's daemon didn't answer ({})
+El demonio de kache no respondió ({})
+
+kache's daemon isn't answering
+El demonio de kache no responde
+
+kache's daemon isn't answering ({})
+El demonio de kache no responde ({})
+
+kache's own settings, in {}; kache takes them as it starts again.
+Los ajustes propios de kache, en {}; kache los toma al volver a iniciarse.
+
+kache's own: {}
+Propio de kache: {}
+
+kache's own: {} now
+Propio de kache: {} ahora
+
+kache's service can't be asked
+No se puede preguntar al servicio de kache
+
+kache's service: {}
+Servicio de kache: {}
+
+kache's settings file can't be read: {}
+No se puede leer el archivo de ajustes de kache: {}
+
+kache{} is running
+kache{} se está ejecutando
+
 kbit/s
 kbit/s
 
+last seen recently
+visto recientemente
+
+left to the firmware for now
+en manos del firmware por ahora
+
+level {} of 7
+nivel {} de 7
+
 libinput's default
 El predeterminado de libinput
+
+libinput's own: Olo's touch filter is off
+El propio de libinput: el filtro táctil de Olo está desactivado
+
+low
+baja
+
+medium
+media
+
+misses, the last 24 hours
+fallos, últimas 24 horas
 
 ms
 ms
@@ -9175,17 +10904,44 @@ nothing backed up for {n} days
 one: nada copiado desde hace un día
 other: nada copiado desde hace {n} días
 
+nothing freed
+nada liberado
+
+nothing moved
+nada se movió
+
 nothing now (its ports: {})
 nada ahora (sus puertos: {})
 
+nothing yet
+nada aún
+
 now
 ahora
+
+of a {} limit
+de un límite de {}
+
+of a {} limit: over it
+de un límite de {}: por encima
+
+of what could be cached came from it
+de lo que se podía guardar en caché vino de ahí
 
 of {}
 de {}
 
 of {} and {} more
 de {} y {} más
+
+of {} it may use
+de {} que puede usar
+
+of {} · {} swap used
+de {} · {} de intercambio usado
+
+offline: sent when back
+sin conexión: se envía al volver
 
 olo-complete didn't answer while learning.
 olo-complete no respondió mientras aprendía.
@@ -9198,6 +10954,9 @@ olo-termd se está ejecutando (proceso {}, activo desde hace {}).
 
 on
 activado
+
+on a fast core at a high clock
+en un núcleo rápido a alta frecuencia
 
 on battery
 con batería
@@ -9266,11 +11025,25 @@ enchufado, retenido en el límite del {} %
 plugged in, not charging
 enchufado, sin cargar
 
+process {}
+proceso {}
+
 pull request #{} {}{}
 pull request #{} {}{}
 
+quitting in {} s at most
+saliendo en {} s como mucho
+
 recommended for this touchpad
 recomendado para este touchpad
+
+reinstall {n} packages
+one: reinstalar {n} paquete
+other: reinstalar {n} paquetes
+
+remove {n} packages
+one: quitar {n} paquete
+other: quitar {n} paquetes
 
 restoring
 restaurando
@@ -9290,6 +11063,9 @@ sesión iniciada, 1 calendario
 signed in, {} calendars
 sesión iniciada, {} calendarios
 
+slots of the pool in use
+huecos del conjunto en uso
+
 some of it couldn't be read
 parte no se pudo leer
 
@@ -9302,8 +11078,17 @@ ssh, git y otros programas inician sesión con las claves SSH de Passwords, cada
 sudo needs your password to run this{}:
 sudo necesita tu contraseña para ejecutar esto{}:
 
+taken as at least {}% busy
+contado como ocupado al menos un {} %
+
+tan is undefined there
+tan no está definida ahí
+
 target/debug, target/release, ~/.cargo/registry, ~/.rustup
 target/debug, target/release, ~/.cargo/registry, ~/.rustup
+
+that test no longer holds slots
+esa prueba ya no retiene huecos
 
 the DiskBackup service isn’t running
 el servicio de DiskBackup no se está ejecutando
@@ -9320,14 +11105,14 @@ la copia no está abierta
 the backups' folder in Google Drive was made again elsewhere: following it there
 la carpeta de copias de Google Drive se volvió a crear en otro sitio: la sigue allí
 
+the connection failed
+falló la conexión
+
 the desktop stays with its display
 el escritorio se queda con su pantalla
 
 the fans {}{}
 los ventiladores {}{}
-
-the introduction
-la introducción
 
 the key in the keyring is damaged
 la clave del llavero está dañada
@@ -9340,6 +11125,9 @@ no se puede leer el llavero: {}
 
 the keyring can't keep it: {}
 el llavero no puede guardarlo: {}
+
+the last 24 hours
+las últimas 24 horas
 
 the last backup didn’t finish ({})
 la última copia no terminó ({})
@@ -9356,8 +11144,17 @@ the last {n} seconds
 one: el último segundo
 other: los últimos {n} segundos
 
+the package {}
+el paquete {}
+
 the power profiles daemon, through {}
 el servicio de perfiles de energía, a través de {}
+
+the recording failed
+falló la grabación
+
+the request failed
+falló la solicitud
 
 the screen
 la pantalla
@@ -9365,26 +11162,26 @@ la pantalla
 the secret at {}
 el secreto en {}
 
+the server answered {}
+el servidor respondió {}
+
 the service answered {}
 el servicio respondió {}
 
 the session
 la sesión
 
-the summary, {}
-el resumen, {}
-
 the system's power profiles daemon
 el servicio de perfiles de energía del sistema
-
-the try
-la prueba
 
 the unfinished backup
 la copia sin terminar
 
 the window server
 el servidor de ventanas
+
+the {} didn't get going: {}
+la {} no arrancó: {}
 
 these {n} backups need
 one: esta copia necesita
@@ -9408,6 +11205,30 @@ hoy o mañana
 tomorrow at {}
 mañana a las {}
 
+tomorrow.io answered {}{}
+tomorrow.io respondió {}{}
+
+tomorrow.io can’t be reached: {}
+No se puede acceder a tomorrow.io: {}
+
+tomorrow.io didn’t accept the API key. Check it in File ▸ Data Provider…
+tomorrow.io no aceptó la clave de API. Revísala en Archivo ▸ Proveedor de datos…
+
+tomorrow.io refused the request.
+tomorrow.io rechazó la solicitud.
+
+tomorrow.io’s answer had no forecast in it.
+La respuesta de tomorrow.io no tenía pronóstico.
+
+tomorrow.io’s answer was cut short: {}
+La respuesta de tomorrow.io llegó cortada: {}
+
+tomorrow.io’s answer wasn’t a forecast.
+La respuesta de tomorrow.io no era un pronóstico.
+
+tomorrow.io’s limit for your key is reached for now{}
+Se alcanzó por ahora el límite de tomorrow.io para tu clave{}
+
 turned off
 desactivado
 
@@ -9420,11 +11241,27 @@ menos de un segundo
 up to {} dpi
 hasta {} ppp
 
+up to {} today
+hasta {} hoy
+
+update {n} packages
+one: actualizar {n} paquete
+other: actualizar {n} paquetes
+
+use . for decimals
+usa . para los decimales
+
 validating
 validando
 
+visibility down to {}
+visibilidad de hasta {}
+
 what holds it back
 lo que lo frena
+
+where the scheduler puts it
+donde lo pone el planificador
 
 with the {n} files changed in it and not committed
 one: con el archivo cambiado en él y sin confirmar
@@ -9438,6 +11275,9 @@ tú
 
 you don't have permission
 no tienes permiso
+
+your cloud storage
+tu almacenamiento en la nube
 
 your own picture
 una imagen tuya
@@ -9534,6 +11374,10 @@ other: {n} más esperando
 one: {n} notificación nueva
 other: {n} notificaciones nuevas
 
+{n} of Fedora {} updates are waiting: install them first, in Updates.
+one: Hay {n} actualización de Fedora {} esperando: instálala primero, en Updates.
+other: Hay {n} actualizaciones de Fedora {} esperando: instálalas primero, en Updates.
+
 {n} packs as sent, by their checksums
 one: {n} paquete tal como se envió, por sus sumas de verificación
 other: {n} paquetes tal como se enviaron, por sus sumas de verificación
@@ -9574,6 +11418,10 @@ other: {n} secretos
 one: {n} uso compartido, con control. Haz clic para detenerlo.
 other: {n} usos compartidos, alguno con control. Haz clic para detenerlos.
 
+{n} slots
+one: {n} hueco
+other: {n} huecos
+
 {n} sync changes to review
 one: {n} cambio de sincronización por revisar
 other: {n} cambios de sincronización por revisar
@@ -9603,8 +11451,14 @@ other: {n} semanas
 {} (in use)
 {} (en uso)
 
+{} (lower wins)
+{} (gana el menor)
+
 {} (not connected)
 {} (no conectado)
+
+{} (of the last {})
+{} (de los últimos {})
 
 {} (the theme’s own)
 {} (el del tema)
@@ -9612,11 +11466,26 @@ other: {n} semanas
 {} (there now)
 {} (ahí ahora)
 
+{} ({} a minute)
+{} ({} por minuto)
+
+{} ({} more)
+{} ({} más)
+
+{} ({} packets)
+{} ({} paquetes)
+
+{} ({} to {})
+{} ({}–{})
+
 {} A workspace starts with this; choose its own from Deskbar's tray.
 {} Un espacio de trabajo empieza con este; elige el suyo en la bandeja de la Deskbar.
 
 {} About a microsecond each, on the {}.
 {} Un microsegundo cada uno, más o menos, en el {}.
+
+{} Activity Monitor can do it once you give it full access, with an administrator's password.
+{} Monitor de actividad puede hacerlo cuando le des acceso completo, con una contraseña de administrador.
 
 {} Auto Approve answers Yes in {} s.
 {} Aprobación automática responde Sí en {} s.
@@ -9627,20 +11496,41 @@ other: {n} semanas
 {} Choose a workspace's own from Deskbar's tray.
 {} Elige el de un espacio de trabajo en la bandeja de la Deskbar.
 
+{} Hz, {} ms a frame
+{} Hz, {} ms por fotograma
+
 {} Replace with the version backed up {}, or keep both (the restored one named with its time)?
 {} ¿Sustituirlo por la versión copiada {} o conservar ambas (la restaurada con su hora en el nombre)?
 
 {} Type your password.
 {} Escribe tu contraseña.
 
+{} Wh of {} Wh new ({}%)
+{} Wh de {} Wh nueva ({} %)
+
 {} What’s looked in for codes, and where they go: Security ▸ Passwords.
 {} Dónde se buscan los códigos y adónde van: Seguridad ▸ Passwords.
+
+{} a minute
+{} por minuto
 
 {} a second
 {}/s
 
+{} ago · click a graph for another moment
+hace {} · haz clic en un gráfico para otro momento
+
+{} and {} are typing…
+{} y {} están escribiendo…
+
+{} and {} more
+{} y {} más
+
 {} and {} others
 {} y {} más
+
+{} answered {} (not a speed test server?)
+{} respondió {} (¿no es un servidor de pruebas de velocidad?)
 
 {} applications are keeping the display awake.
 {} aplicaciones mantienen la pantalla despierta.
@@ -9651,6 +11541,12 @@ other: {n} semanas
 {} backups and the unfinished one
 {} copias y la sin terminar
 
+{} begun in the last minute (swipes, pinches, holds)
+{} iniciados en el último minuto (deslizar, pellizcar, mantener)
+
+{} bytes
+{} bytes
+
 {} cd/m² at most, {} over the whole screen
 {} cd/m² como mucho, {} en toda la pantalla
 
@@ -9660,8 +11556,23 @@ other: {n} semanas
 {} copied: 1Password doesn’t let other apps read its archive.
 {}: 1Password no deja que otras apps lean su archivo.
 
+{} couldn't be found: {}
+No se encontró {}: {}
+
+{} couldn’t be unpacked.
+No se pudo desempaquetar {}.
+
 {} d
 {} d
+
+{} days ago
+hace {} días
+
+{} didn't answer ({})
+{} no respondió ({})
+
+{} didn't answer a request: {}
+{} no respondió a una solicitud: {}
 
 {} didn't say where it is.
 {} no dijo dónde está.
@@ -9669,17 +11580,41 @@ other: {n} semanas
 {} didn't start pairing: {}.
 {} no empezó el enlace: {}.
 
+{} didn’t download: {}
+{} no se descargó: {}
+
+{} different commands, of {} run
+{} órdenes distintas, de {} ejecutadas
+
 {} dpi as it comes
 {} ppp tal cual
 
 {} for each
 {} cada uno
 
+{} for the next hour
+{} durante la próxima hora
+
+{} for the next {} hours
+{} durante las próximas {} horas
+
 {} found · {} items searched · {}
 {} encontrados · {} elementos buscados · {}
 
+{} frames a second
+{} fotogramas por segundo
+
+{} frames dropped in the last minute
+{} fotogramas perdidos en el último minuto
+
 {} free of {}
 {} libres de {}
+
+{} free on {}
+{} libres en {}
+
+{} freed
+{} liberados
 
 {} h
 {} h
@@ -9690,8 +11625,26 @@ hace {} h
 {} h {} min
 {} h {} min
 
+{} hours ago
+hace {} horas
+
 {} in all
 {} en total
+
+{} in the last minute
+{} en el último minuto
+
+{} in the last minute, {} of {} in all
+{} en el último minuto, {} de {} en total
+
+{} in the last minute, {} since this window opened
+{} en el último minuto, {} desde que se abrió esta ventana
+
+{} in the last second
+{} en el último segundo
+
+{} in the last second, at {}
+{} en el último segundo, a {}
 
 {} in {}
 {} en {}
@@ -9704,6 +11657,9 @@ hace {} h
 
 {} in {}.
 {} en {}.
+
+{} is Fedora’s own: it can be turned off, not removed.
+{} es propio de Fedora: se puede desactivar, no quitar.
 
 {} is back
 {} ha vuelto
@@ -9731,6 +11687,12 @@ Instalando {} ({}, {} %). Olo pasa a ella cuando termine: tus ventanas siguen ab
 
 {} is there already.
 {} ya existe.
+
+{} is too big a picture
+{} es una imagen demasiado grande
+
+{} is undefined there
+{} no está definida ahí
 
 {} is used up on every account
 {} se ha agotado en todas las cuentas
@@ -9762,11 +11724,20 @@ Instalando {} ({}, {} %). Olo pasa a ella cuando termine: tus ventanas siguen ab
 {} kept of {}
 {} conservado de {}
 
+{} kept, still shared with builds' target folders
+{} conservados, aún compartidos con las carpetas de destino de las compilaciones
+
 {} knows this computer.
 {} conoce este ordenador.
 
 {} later: gone
 {} después: borradas
+
+{} least, {} now
+{} mínimo, {} ahora
+
+{} likely from {}
+{} probable desde las {}
 
 {} link clipping.txt
 {} recorte de enlace.txt
@@ -9777,8 +11748,14 @@ Instalando {} ({}, {} %). Olo pasa a ella cuando termine: tus ventanas siguen ab
 {} min ago
 hace {} min
 
+{} minutes ago
+hace {} minutos
+
 {} ms, the middle of them
 {} ms, la mediana
+
+{} needs full access.
+{} necesita acceso completo.
 
 {} needs signing in again
 {} necesita volver a iniciar sesión
@@ -9786,17 +11763,41 @@ hace {} min
 {} needs your answer
 {} necesita tu respuesta
 
+{} new examples, learned within a second
+{} ejemplos nuevos, aprendidos en un segundo
+
 {} new to the backup · {} sent, compressed and encrypted ({}/s{})
 {} nuevos para la copia · {} enviados, comprimidos y cifrados ({}/s{})
 
 {} of Olo’s {} words are in {} so far; the rest stay in English.
 {} de las {} palabras de Olo están en {} por ahora; el resto queda en inglés.
 
+{} of each frame kept for drawing: a frame starts {} after the vblank
+{} de cada fotograma reservados para dibujar: un fotograma empieza {} después del vblank
+
+{} of memory
+{} de memoria
+
+{} of the time
+{} del tiempo
+
 {} of them
 {} de ellos
 
+{} of them belong to someone else. Activity Monitor can act on those once you give it full access, with an administrator's password.
+{} pertenecen a otra persona. Monitor de actividad puede actuar sobre ellos cuando le des acceso completo, con una contraseña de administrador.
+
 {} of these are there now.
 {} de estos están ahí ahora.
+
+{} of what?
+¿{} de qué?
+
+{} of your newest commands, kept back to test it ({} hand-written)
+{} de tus órdenes más recientes, apartadas para probarlo ({} escritas a mano)
+
+{} of {}
+{} de {}
 
 {} of {} Events Found
 {} de {} eventos encontrados
@@ -9816,11 +11817,20 @@ hace {} min
 {} of {} pages
 {} de {} páginas
 
+{} of {} processes, {} threads · {} CPU
+{} de {} procesos, {} hilos · {} CPU
+
 {} of {} read back
 {} de {} releídos
 
 {} of {} selected
 {} de {} seleccionados
+
+{} of {} sent
+{} de {} enviados
+
+{} of {} slots
+{} de {} huecos
 
 {} on Workspace {}
 {} en el espacio de trabajo {}
@@ -9828,8 +11838,23 @@ hace {} min
 {} on this computer
 {} en este ordenador
 
+{} over 5 ms in the last minute, the longest {}
+{} de más de 5 ms en el último minuto, la más larga {}
+
+{} packets
+{} paquetes
+
+{} people are typing…
+{} personas están escribiendo…
+
 {} per second
 {} por segundo
+
+{} pressed in the last minute
+{} pulsadas en el último minuto
+
+{} profile · not in force: {}
+Perfil {} · sin efecto: {}
 
 {} read back
 {} releídos
@@ -9837,20 +11862,71 @@ hace {} min
 {} repeats. Change only this one, or every one of them?
 {} se repite. ¿Cambiar solo este o todos?
 
+{} repositories, {} on. Packages come from those that are on.
+{} repositorios, {} activos. Los paquetes vienen de los activos.
+
+{} right first
+{} acertadas a la primera
+
+{} s
+{} s
+
 {} s ago
 hace {} s
 
 {} shared with this screen
 {} compartido con esta pantalla
 
+{} since the computer started{}
+{} desde que se inició el ordenador{}
+
+{} starting in about {} minutes
+{} empieza en unos {} minutos
+
+{} steps in the last minute (a wheel's notches, a touchpad's moves)
+{} pasos en el último minuto (muescas de una rueda, movimientos de un panel táctil)
+
+{} stopped answering: {}
+{} dejó de responder: {}
+
+{} stopping in about {} minutes
+{} para en unos {} minutos
+
+{} suggestions since it started
+{} sugerencias desde que se inició
+
+{} this hour
+{} esta hora
+
+{} to chats (archived, read, muted or pinned) still to send. Whatever isn’t sent now is kept and sent when Telegram next opens.
+{} a chats (archivados, leídos, silenciados o fijados) pendientes de enviar. Lo que no se envíe ahora se guarda y se envía cuando Telegram vuelva a abrirse.
+
 {} to deal with, {}
 {} por atender, {}
+
+{} to nice {}
+{} a nice {}
 
 {} to read
 {} por leer
 
 {} to send
 {} por enviar
+
+{} touches in the last minute, {} taken for palms{}
+{} toques en el último minuto, {} tomados por palmas{}
+
+{} typically, {} at the 95th percentile, {} to {}
+{} lo habitual, {} en el percentil 95, de {} a {}
+
+{} typically, {} at the 99th percentile, the longest {} ({} reports in the last minute)
+{} lo habitual, {} en el percentil 99, el más largo {} ({} informes en el último minuto)
+
+{} until about {}
+{} hasta las {} aproximadamente
+
+{} updates selected
+{} actualizaciones seleccionadas
 
 {} waiting in {}
 {} esperando en {}
@@ -9870,8 +11946,29 @@ Se quitó {}.
 {} was taken from “{}”.
 Se sacó {} de «{}».
 
+{} was turned off.
+Se desactivó {}.
+
+{} was turned on.
+Se activó {}.
+
+{} whole{}, and {} a word at a time
+{} enteras{} y {} palabra a palabra
+
+{} will hold:
+{} contendrá:
+
 {} words a minute · {}% right
 {} palabras por minuto · {} % bien
+
+{} {}, {} there
+{} {}, {} allí
+
+{} µs a report typically, the longest {} µs
+{} µs por informe lo habitual, el más largo {} µs
+
+{} · and {} more
+{} · y {} más
 
 {} · set up {}{}
 {} · configurado {}{}
@@ -9885,14 +11982,29 @@ Se sacó {} de «{}».
 {} — {} ({}% of this folder){}{}
 {} — {} ({} % de esta carpeta){}{}
 
+{}% chance this hour
+{} % esta hora
+
+{}% cover
+{} %
+
+{}% left (warns under {}%)
+Queda un {} % (avisa por debajo del {} %)
+
 {}% of RAM
 {} % de RAM
 
 {}% of a core
 {} % de un núcleo
 
+{}% of palms caught, {}% of fingers taken for palms, on touches kept back
+{} % de palmas detectadas, {} % de dedos tomados por palmas, en toques apartados
+
 {}% of the time
 {} % del tiempo
+
+{}% of the time, waking in {} µs
+{} % del tiempo, despertando en {} µs
 
 {}% of their {} segments
 {} % de sus {} segmentos
@@ -9915,6 +12027,9 @@ cuota de {}
 {}, in the folder “{}”
 {}, en la carpeta «{}»
 
+{}, no limit
+{}, sin límite
+
 {}, on set days
 {}, en días fijos
 
@@ -9926,6 +12041,9 @@ cuota de {}
 
 {}, {} shown in this Terminal.
 {}, {} mostradas en este Terminal.
+
+{}, {}% of its life used
+{}, {} % de su vida útil usado
 
 {}. Click to pause or stop.
 {}. Haz clic para pausar o detener.
@@ -9960,6 +12078,12 @@ cuota de {}
 {}: Show Notifications
 {}: Mostrar notificaciones
 
+{}: a size such as 95GiB, please
+{}: un tamaño como 95GiB, por favor
+
+{}: a whole number, please
+{}: un número entero, por favor
+
 {}: it asks for its PIN at every use, so a touch can’t stand for your password
 {}: pide su PIN en cada uso, así que un toque no puede sustituir a tu contraseña
 
@@ -9990,8 +12114,14 @@ cuota de {}
 {}: {} applications. Click to show them.
 {}: {} aplicaciones. Haz clic para mostrarlas.
 
+{}: {} examples, {} steps, {} ms on the {}
+{}: {} ejemplos, {} pasos, {} ms en la {}
+
 {}: {}. {}. {}
 {}: {}. {}. {}
+
+{}:00 {} hits, {} misses, {} not cacheable
+{}:00 {} aciertos, {} fallos, {} no almacenables
 
 {}; not allowed {} (sign in again)
 {}; no permitido {} (vuelve a entrar)
@@ -10002,11 +12132,17 @@ cuota de {}
 {}a heading {}
 {}un título {}
 
+{}pid {} · found {} ago
+{}pid {} · encontrado hace {}
+
 {}{} · {} so far
 {}{} · {} hasta ahora
 
 {}{}, plugged in: {}.
 {}{}, enchufado: {}.
+
+{}’s data centre
+Centro de datos de {}
 
 {}″ ({} × {} mm), {} pixels per inch
 {}″ ({} × {} mm), {} píxeles por pulgada
@@ -10044,6 +12180,9 @@ cuota de {}
 ½ second
 ½ segundo
 
+“[{}]” isn’t a repository’s id.
+«[{}]» no es el id de un repositorio.
+
 “{}” and {n} more are still running in them, and stop.
 one: «{}» y {n} más siguen en marcha en ellas y se detienen.
 other: «{}» y {n} más siguen en marcha en ellas y se detienen.
@@ -10064,17 +12203,41 @@ No se puede importar «{}». {}
 “{}” can’t be deleted: 1Password keeps it for every account.
 No se puede eliminar «{}»: 1Password la conserva para todas las cuentas.
 
+“{}” couldn't be imported. {}
+No se pudo importar «{}». {}
+
+“{}” couldn't be opened. {}
+No se pudo abrir «{}». {}
+
+“{}” couldn't be printed. {}
+No se pudo imprimir «{}». {}
+
+“{}” couldn't be read: {}
+No se pudo leer «{}»: {}
+
 “{}” couldn't be saved. {}
 No se pudo guardar «{}». {}
 
+“{}” couldn't be shown in Tracker. {}
+No se pudo mostrar «{}» en Tracker. {}
+
+“{}” couldn't be written. {}
+No se pudo escribir «{}». {}
+
 “{}” couldn't be written: {}
 No se pudo escribir «{}»: {}
+
+“{}” doesn’t say where its packages are (no baseurl, metalink or mirrorlist).
+«{}» no dice dónde están sus paquetes (sin baseurl, metalink ni mirrorlist).
 
 “{}” has no {}.
 «{}» no tiene {}.
 
 “{}” has nothing to refer to.
 «{}» no tiene nada a lo que referirse.
+
+“{}” is a folder: StyledEdit opens files.
+«{}» es una carpeta: StyledEdit abre archivos.
 
 “{}” is an enterprise network.
 «{}» es una red empresarial.
@@ -10109,14 +12272,26 @@ No se pudo escribir «{}»: {}
 “{}” isn't a domain.
 «{}» no es un dominio.
 
+“{}” isn't a number
+«{}» no es un número
+
+“{}” isn't a picture StyledEdit can read.
+«{}» no es una imagen que StyledEdit pueda leer.
+
 “{}” isn't an IP address.
 «{}» no es una dirección IP.
 
 “{}” isn't in the Trash any more
 «{}» ya no está en la papelera
 
+“{}” isn't known
+«{}» no se conoce
+
 “{}” isn't there any more
 «{}» ya no está ahí
+
+“{}” isn't understood
+«{}» no se entiende
 
 “{}” isn’t a day I can read for when it ends: try Nov 20, 2026-11-20 or Friday.
 «{}» no es un día que pueda leer para cuándo termina: prueba 20 nov, 2026-11-20 o viernes.
@@ -10126,6 +12301,9 @@ No se pudo escribir «{}»: {}
 
 “{}” isn’t a day I can read for when it stops repeating: leave it empty to go on for good.
 «{}» no es un día que pueda leer para cuándo deja de repetirse: déjalo vacío para que siga siempre.
+
+“{}” isn’t a setting.
+«{}» no es un ajuste.
 
 “{}” isn’t a time I can read for when it ends: try 14:30 or 2:30 PM.
 «{}» no es una hora que pueda leer para cuándo termina: prueba 14:30 o 2:30 PM.

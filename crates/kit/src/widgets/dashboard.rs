@@ -62,7 +62,8 @@ pub struct Card {
 
 impl Card {
     pub fn new(id: impl Into<SharedString>, title: impl Into<SharedString>) -> Card {
-        Card { id: id.into(), title: title.into(), figure: None, caption: None, selected: false, figure_ink: None, on_click: None, children: SmallVec::new() }
+        // (Its title in the language chosen: a literal looked up.)
+        Card { id: id.into(), title: crate::words::of(title), figure: None, caption: None, selected: false, figure_ink: None, on_click: None, children: SmallVec::new() }
     }
 
     pub fn figure(mut self, figure: impl Into<SharedString>) -> Self {
@@ -71,7 +72,7 @@ impl Card {
     }
 
     pub fn caption(mut self, caption: impl Into<SharedString>) -> Self {
-        let caption = caption.into();
+        let caption = crate::words::of(caption);
         self.caption = (!caption.is_empty()).then_some(caption);
         self
     }
@@ -199,7 +200,10 @@ pub struct Facts {
 
 impl Facts {
     pub fn new(rows: impl Into<Rc<[(SharedString, SharedString)]>>) -> Facts {
-        Facts { rows: rows.into(), colors: None }
+        // (Each label in the language chosen: a literal looked up.)
+        let rows: Rc<[(SharedString, SharedString)]> = rows.into();
+        let rows = rows.iter().map(|(label, value)| (crate::words::of(label.clone()), value.clone())).collect();
+        Facts { rows, colors: None }
     }
 
     /// On a panel rather than a card: its labels' colour and its values'
