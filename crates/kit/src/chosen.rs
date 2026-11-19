@@ -19,7 +19,9 @@
 //!   Suggestions", "Fix 2 and Apply 3"; dimmed with nothing checked.
 //! - Beside it, Choose: All, each kind, None ([`choose`]; the two in a
 //!   row, [`bar`]; the button alone, [`act`]): one click for both, either
-//!   or neither, before choosing one by one. The menus have the same,
+//!   or neither, before choosing one by one. In a row too narrow for both
+//!   ([`bar_within`]: a window a third of a screen wide), the links go in
+//!   a row of their own over it, the button staying in it. The menus have the same,
 //!   the button's command first ([`menu`]), Choose All on ⌘A (the app's
 //!   `choose-all` in `app_keys`, so it's configurable; not Select All's
 //!   command, which is Edit's).
@@ -27,13 +29,13 @@
 
 use std::{collections::BTreeMap, rc::Rc};
 
-use olo_interface::{ClickEvent, Element, IntoElement as _, ParentElement as _, Styled as _, WindowCx, div, px};
+use olo_interface::{ClickEvent, Element, FontWeight, IntoElement as _, ParentElement as _, Styled as _, WindowCx, div, px};
 use olo_kit_base::metrics as m;
 
 use crate::{
     menu::Menu,
     style,
-    widgets::{Button, LinkButton, StringView, button_width},
+    widgets::{Button, LinkButton, StringView, button_width, link_button_width},
 };
 
 /// A kind of item, and what acting on it is called.
@@ -182,18 +184,61 @@ pub fn choose(id: &str, counts: &[Count], enabled: bool, on_choice: impl Fn(&Cho
 /// moves as it counts.
 pub fn act(id: &str, counts: &[Count], enabled: bool, on_act: impl Fn(&ClickEvent, &mut WindowCx) + 'static) -> Element {
     let any = counts.iter().any(|(_, n, _)| *n > 0);
-    let widest = (0u32..1 << counts.len())
+    Button::new(label(&checked(counts))).id(format!("{id}-act")).min_width(act_width(counts)).default(any && enabled).enabled(any && enabled).on_click(on_act).into_element()
+}
+
+/// How wide [`act`] is: its widest words, every one of each kind
+/// checked, in any mix.
+pub fn act_width(counts: &[Count]) -> f32 {
+    (0u32..1 << counts.len())
         .map(|mask| {
             let all: Vec<(&Kind, usize)> = counts.iter().enumerate().map(|(i, &(k, _, of))| (k, if mask & (1 << i) != 0 { of } else { 0 })).collect();
             button_width(&label(&all), false)
         })
-        .fold(0.0, f32::max);
-    Button::new(label(&checked(counts))).id(format!("{id}-act")).min_width(widest).default(any && enabled).enabled(any && enabled).on_click(on_act).into_element()
+        .fold(0.0, f32::max)
+}
+
+/// How wide [`choose`] is, in the language it's shown in: "Choose:" and
+/// its links, a tight gap apart.
+pub fn choose_width(counts: &[Count]) -> f32 {
+    let word = f32::from(style::text_width(crate::words::of_text("Choose:"), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL)));
+    let links: Vec<_> = std::iter::once("All").chain(counts.iter().map(|(k, ..)| k.many)).chain(std::iter::once("None")).map(crate::words::of_text).collect();
+    (word / 2.0).ceil() * 2.0 + links.iter().map(|l| link_button_width(l) + m::TIGHT).sum::<f32>()
+}
+
+/// How wide [`bar`] is.
+pub fn bar_width(counts: &[Count]) -> f32 {
+    choose_width(counts) + m::SPACING + act_width(counts)
 }
 
 /// The two in a row under such a list, the button at its right.
 pub fn bar(id: &str, counts: &[Count], enabled: bool, on_choice: impl Fn(&Choice, &mut WindowCx) + 'static, on_act: impl Fn(&ClickEvent, &mut WindowCx) + 'static) -> Element {
     div().flex().items_center().gap(px(m::SPACING)).child(choose(id, counts, enabled, on_choice)).child(act(id, counts, enabled, on_act))
+}
+
+/// [`bar`] where a row leaves it `room` points; else (a window a third
+/// of a screen wide: CLAUDE.md, "Every tiling layout") its links in a
+/// row of their own, at the right, to go over the app's row, and the
+/// button alone in it: (the row over it, if any; what goes in the row).
+/// Nothing cut or squeezed, the button always there.
+pub fn bar_within(
+    id: &str,
+    counts: &[Count],
+    enabled: bool,
+    room: f32,
+    on_choice: impl Fn(&Choice, &mut WindowCx) + 'static,
+    on_act: impl Fn(&ClickEvent, &mut WindowCx) + 'static,
+) -> (Option<Element>, Element) {
+    if fits(counts, room) {
+        (None, bar(id, counts, enabled, on_choice, on_act))
+    } else {
+        (Some(div().flex().justify_end().child(choose(id, counts, enabled, on_choice)).into_element()), act(id, counts, enabled, on_act))
+    }
+}
+
+/// Whether [`bar`] fits in `room` points, the links beside the button.
+pub fn fits(counts: &[Count], room: f32) -> bool {
+    bar_width(counts) <= room
 }
 
 /// The same in a menu: the button's command (`act`, its words as the
@@ -227,6 +272,18 @@ mod tests {
         // Two kinds with one verb: counted together.
         let urgent = Kind { one: "Critical Problem", many: "Critical Problems", ..FIX };
         assert_eq!(label(&[(&urgent, 1), (&FIX, 2)]), "Fix 3");
+    }
+
+    /// The bar is its links and its button a spacing apart, the button
+    /// as wide as its widest words; it fits a row as wide, not one a
+    /// point narrower, where the links go over the row.
+    #[test]
+    fn the_bar_knows_its_width() {
+        let counts: [Count; 2] = [(&FIX, 2, 3), (&APPLY, 0, 2)];
+        assert_eq!(bar_width(&counts), choose_width(&counts) + m::SPACING + act_width(&counts));
+        assert!(act_width(&counts) >= button_width("Fix 3 and Apply 2", false));
+        assert!(choose_width(&counts) > link_button_width("Suggestions"));
+        assert!(fits(&counts, bar_width(&counts)) && !fits(&counts, bar_width(&counts) - 1.0));
     }
 
     /// Checked by its kind until the person says otherwise, and kept so;

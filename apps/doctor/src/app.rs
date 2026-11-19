@@ -34,13 +34,24 @@ use olo_kit::{
     div, icons,
     instance::{self, Launch},
     metrics as m, px, style, theme,
-    widgets::{Button, CheckBox, LinkButton, PaneSwitch, ScrollView, StringView, Tag},
+    widgets::{Button, CheckBox, LinkButton, PaneSwitch, ScrollView, StringView, Tag, button_width},
 };
 use serde::{Deserialize, Serialize};
 
 const APP_ID: &str = "olo.doctor";
 const TITLE: &str = "Olo Doctor";
 const PROGRAM: &str = "olo-doctor";
+/// The window's least: a third of the smallest screen, either way
+/// (CLAUDE.md, "Every tiling layout").
+const MIN_WIDTH: f32 = 400.0;
+const MIN_HEIGHT: f32 = 220.0;
+/// In a window less tall than this (a third of a screen's height), the
+/// summary is one line, without the icon: the list has the room.
+const SUMMARY_FOLDS: f32 = 300.0;
+/// The least of the summary's second part beside its first on that line.
+const DETAIL_LEAST: f32 = 80.0;
+/// A short window this wide has each card's actions beside its title.
+const INLINE_LEAST: f32 = 640.0;
 
 enum Msg {
     /// Opened again: look again.
@@ -427,7 +438,10 @@ impl Doctor {
 
     /// A finding's card: its kind's tag and its title, what it is, and
     /// its buttons (Ignore, its fix) under it, with how its fix goes.
-    fn finding_card(&self, f: &Finding, ink: &style::CardInk, cx: &mut Cx<Self>) -> Element {
+    /// `inline`: its Ignore and its fix at the right of its title, not
+    /// in a row under its words (a short, wide window: each card whole,
+    /// with what does it, in the room there is).
+    fn finding_card(&self, f: &Finding, ink: &style::CardInk, inline: bool, cx: &mut Cx<Self>) -> Element {
         let p = theme::palette();
         let outcome = self.outcomes.get(&f.id);
         let (doing, done) = words(Some(f.severity));
@@ -461,7 +475,13 @@ impl Doctor {
             .child(choose)
             .child(Tag::new(f.severity.label()).fill(tag_fill(f.severity, &p)).beside_paragraph(style::PLAIN_SIZE))
             .child(div().flex_1().min_w_0().child(StringView::new(f.title.clone()).bold(true).wrap(true).color(ink.text)));
-        let mut buttons = div().flex().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().children(status));
+        let mut buttons = div().flex().items_center().gap(px(m::SPACING));
+        let status = if inline {
+            status
+        } else {
+            buttons = buttons.child(div().flex_1().min_w_0().children(status));
+            None
+        };
         // Not wanted: set aside, quietly (ignored.rs). A link, so the
         // fix is what stands out.
         {
@@ -483,7 +503,14 @@ impl Doctor {
                     .on_click(cx.listener(move |d: &mut Doctor, _: &ClickEvent, cx| d.fix(std::slice::from_ref(&id), cx))),
             );
         }
-        card(Some(f.title.clone())).gap(px(m::TIGHT)).child(top).child(StringView::new(f.detail.clone()).wrap(true).color(ink.text)).child(div().pt(px(m::TIGHT)).child(buttons))
+        let detail = StringView::new(f.detail.clone()).wrap(true).color(ink.text);
+        if inline {
+            // (The title's first line on the buttons' middle, as a row of
+            // controls reads.)
+            let top = top.items_center().child(buttons.flex_shrink_0());
+            return card(Some(f.title.clone())).gap(px(m::TIGHT)).child(top).child(detail).children(status).into_element();
+        }
+        card(Some(f.title.clone())).gap(px(m::TIGHT)).child(top).child(detail).child(div().pt(px(m::TIGHT)).child(buttons))
     }
 }
 
@@ -591,30 +618,62 @@ impl View for Doctor {
         .paint_key(style::key("doctor-icon"))
         .size(px(32.0))
         .flex_shrink_0();
-        let header = div().flex().items_center().gap(px(m::SPACING)).child(icon).child(
+        let vs = cx.viewport_size();
+        let room = f32::from(vs.width) - 2.0 * m::WINDOW_INSET;
+        // A short window (a third of a screen high) as wide as a screen:
+        // each card's actions beside its title, the card a row shorter.
+        let inline = f32::from(vs.height) < SUMMARY_FOLDS && room >= INLINE_LEAST;
+        let header = if f32::from(vs.height) >= SUMMARY_FOLDS {
+            // (Its lines wrap in a narrow window, never cut: a third of a
+            // screen's width has the height for them.)
             div()
-                .flex_1()
-                .min_w_0()
                 .flex()
-                .flex_col()
-                .child(StringView::new(title).bold(true).cut(true).height(m::LABEL_ROW + 2.0))
-                .child(StringView::new(detail).dim(true).cut(true).height(m::LABEL_ROW + 2.0)),
-        );
+                .items_center()
+                .gap(px(m::SPACING))
+                .child(icon)
+                .child(div().flex_1().min_w_0().flex().flex_col().child(StringView::new(title).bold(true).wrap(true)).child(StringView::new(detail).dim(true).wrap(true)))
+        } else {
+            // (A window a third of a screen high: one line, what's said
+            // first whole and the rest cut where it must be; in one narrow
+            // too, what's said first alone, cut.)
+            let gap = m::TIGHT * 2.0;
+            let title_w = f32::from(style::text_width(title.clone(), style::PLAIN_SIZE, style::ui_font(olo_kit::FontWeight::BOLD))).ceil();
+            let line = div().flex().items_center().gap(px(gap));
+            if title_w + gap + DETAIL_LEAST <= room {
+                line.child(div().flex_shrink_0().child(StringView::new(title).bold(true))).child(div().flex_1().min_w_0().child(StringView::new(detail).dim(true).cut(true)))
+            } else {
+                line.child(div().flex_1().min_w_0().child(StringView::new(title).bold(true).cut(true)))
+            }
+        };
         // (Under the list, as a dialog's: the summary has the width.)
-        let footer = div()
-            .flex()
-            .items_center()
-            .gap(px(m::SPACING))
-            .child(Button::new("Check Again").enabled(!self.scanning).on_click(cx.listener(|d: &mut Doctor, _: &ClickEvent, cx| d.scan(cx))))
-            .child(div().flex_1())
-            // What's checked, done together: Choose All, a kind, None, and
-            // the button saying what it will do (olo_kit::chosen).
-            .child(chosen::bar("chosen", &counts, self.report.is_some(), cx.listener(|d: &mut Doctor, c: &Choice, cx| d.choose(*c, cx)), cx.listener(|d: &mut Doctor, _: &ClickEvent, cx| d.act(cx))));
+        // What's checked, done together: Choose All, a kind, None, and the
+        // button saying what it will do (olo_kit::chosen); the links over
+        // the row where it hasn't room for them beside the buttons.
+        let beside = room - button_width("Check Again", false) - m::SPACING;
+        let (over, act) = chosen::bar_within(
+            "chosen",
+            &counts,
+            self.report.is_some(),
+            beside,
+            cx.listener(|d: &mut Doctor, c: &Choice, cx| d.choose(*c, cx)),
+            cx.listener(|d: &mut Doctor, _: &ClickEvent, cx| d.act(cx)),
+        );
+        // (The links a stack's spacing over the buttons: a default
+        // button's ring takes some of a tight one.)
+        let footer = div().flex().flex_col().gap(px(m::STACK)).children(over).child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(m::SPACING))
+                .child(Button::new("Check Again").enabled(!self.scanning).on_click(cx.listener(|d: &mut Doctor, _: &ClickEvent, cx| d.scan(cx))))
+                .child(div().flex_1())
+                .child(act),
+        );
         let mut list = div().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING));
         if let Some(r) = &self.report {
             // What's found, most pressing first, each tagged with its kind.
             for f in &r.findings {
-                list = list.child(self.finding_card(f, &ink, cx));
+                list = list.child(self.finding_card(f, &ink, inline, cx));
             }
             let fine_ink = style::c(p.hue_text(olo_theme::Hue::Green));
             // What was fixed: each thing applied that can be put back,
@@ -800,7 +859,7 @@ pub fn run() {
     olo_kit::run(APP_ID, move |app| {
         instance::listen(APP_ID, olo_kit::proxy());
         let saved: Saved = olo_kit::restored_state().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
-        let window = olo_kit::open_window(WindowOptions::new(TITLE, 600.0, 580.0).min_size(540.0, 360.0).keep_size(TITLE), move |cx| {
+        let window = olo_kit::open_window(WindowOptions::new(TITLE, 600.0, 580.0).min_size(MIN_WIDTH, MIN_HEIGHT).keep_size(TITLE), move |cx| {
             let mut doctor = Doctor {
                 report: None,
                 scanning: false,

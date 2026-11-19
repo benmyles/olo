@@ -2200,6 +2200,13 @@ pattern (the Olo Book's "Acting on what's chosen"):
   counts). `counts` is `[(kind, checked, of)]`, in the kinds' order;
   `of` counts items being acted on too, so the width holds while they
   run. Ids: `{id}-all`, `{id}-kind-N`, `{id}-none`, `{id}-act`.
+- `chosen::bar_within(id, counts, enabled, room, on_choice, on_act)`:
+  the bar where the app's row leaves it `room` points (`fits`), else
+  `(Some(links), button)`: the links in a row of their own at the right,
+  for the app to put a stack's spacing over its row, and the button
+  alone in the row (a window a third of a screen wide: Doctor's Fix
+  button was cut off). `choose_width`, `act_width` and `bar_width`
+  measure them in the language shown.
 - `chosen::menu(menu, act, counts, enabled)` adds the same to a menu:
   the button's command with its words, Choose All (`choose-all`, ⌘A:
   list it in `app_keys` for the app, so it's configurable and isn't
@@ -6049,6 +6056,11 @@ week's day headings say "W 18", or the number alone, where "Wed 18"
 doesn't fit. A pop-up a short window folds its tabs into isn't stepped
 through by `--tiles` (it clicks tabs): picture each of its choices there
 (`{"invoke": "mode:week"}` on the app's socket chooses one).
+
+A list's Choose links go over its row where they don't fit beside its
+button (`chosen::bar_within`); Doctor's summary wraps in a narrow
+window and is one line in a short one, and a short, wide window has
+each finding's actions beside its title.
 
 A sidebar of sections (kache's Status, Builds and Settings) gives way
 to a pop-up menu field over the section, which names it and has the

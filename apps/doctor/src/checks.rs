@@ -4554,7 +4554,7 @@ fn own_login_screen(roots: &Roots, r: &mut Report) {
 /// morning's restart, having been told to only by hand). Nothing where
 /// the firmware's own curve is chosen, or the fans can't be set at all.
 fn fan_profile(roots: &Roots, r: &mut Report) {
-    use olo_system::fans::{Amiss, Places, Profile, look};
+    use olo_system::fans::{Amiss, Places, look};
     let places = if roots.fs == Path::new("/") { Places::here() } else { Places::under(&roots.fs) };
     let Some(state) = look(&places) else { return };
     // (Any of Olo's own curves: Cool, Cooler, Coolest. Only Cool was
