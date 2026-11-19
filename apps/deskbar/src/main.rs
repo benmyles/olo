@@ -78,6 +78,8 @@ const ROW_H: f32 = 24.0;
 /// A workspace's heading.
 const HEADING_H: f32 = 20.0;
 const ICON: f32 = 16.0;
+/// Between a workspace heading's fold arrow and its mode.
+const FOLD_GAP: f32 = 4.0;
 /// An application with notifications unread: a dot this wide at its
 /// row's right end, as far in as its name's text, and the gap it keeps
 /// from the name.
@@ -330,8 +332,22 @@ struct Settings {
     unread_dots: bool,
     /// Folded away to the right.
     folded: bool,
-    /// The other displays' applications begin collapsed.
+    /// Every workspace but each display's showing one begins collapsed.
     others_collapsed: bool,
+}
+
+/// `display`'s workspace `ws` in `Model::others_shown`: opened by its
+/// arrow, where every workspace but the one its display shows begins
+/// collapsed.
+fn fold_key(display: Option<&str>, ws: u32) -> String {
+    format!("{}:{ws}", display.unwrap_or(""))
+}
+
+/// `Model::fold`: with `collapse` (`others_collapsed`), each of a
+/// display's workspaces but the one it shows (`current`) folds, where it
+/// has applications to put away; open if its arrow opened it (`shown`).
+fn fold_of(collapse: bool, shown: &std::collections::HashSet<String>, display: Option<&str>, ws: u32, current: u32, apps: usize) -> Option<(bool, usize)> {
+    (collapse && ws != current && apps > 0).then(|| (shown.contains(&fold_key(display, ws)), apps))
 }
 
 /// A team: the windows of one application.
@@ -403,9 +419,9 @@ struct Deskbar {
     /// Folded away to the screen's right edge (`DeskbarSettings::folded`):
     /// only its button shows.
     folded: bool,
-    /// The other displays' applications begin collapsed, a row a display
-    /// (`DeskbarSettings::others_collapsed`), and those whose row has
-    /// been opened since (by name; every display's Deskbar alike, until
+    /// Every workspace but each display's showing one begins collapsed
+    /// (`DeskbarSettings::others_collapsed`), and those whose arrow has
+    /// opened them since (`fold_key`: every display's Deskbar alike, until
     /// Deskbar starts again).
     others_collapsed: bool,
     others_shown: std::collections::HashSet<String>,
@@ -3572,32 +3588,19 @@ impl Deskbar {
         // heading (each display's workspaces with windows, and the one it
         // shows)
         let mut y = self.widget_rows(&mut d, olo_protocol::deskbar::Place::Top, TILE_H + tray_height(rows), view, &model);
-        for (nth, on) in self.displays_from(display.as_deref()).into_iter().enumerate() {
+        for on in self.displays_from(display.as_deref()) {
             let on = on.as_deref();
-            // Another display's, where they begin collapsed (Preferences ▸
-            // Deskbar): its row, and what's under only while it's open.
-            if nth > 0
-                && self.others_collapsed
-                && let Some(other) = on
-            {
-                let open = self.others_shown.contains(other);
-                // (How many applications it has: said while they're put away.)
-                let mut workspaces: Vec<u32> = self.windows_on(on).map(|w| w.workspace).collect();
-                workspaces.sort();
-                workspaces.dedup();
-                let apps: usize = workspaces.into_iter().map(|ws| self.teams(on, Some(ws)).len()).sum();
-                self.display_heading(&mut d, rect(0.0, y, WIDTH, HEADING_H), other, open, apps, pointer, view, &model);
-                y += HEADING_H;
-                if !open {
-                    continue;
-                }
-            }
             let current = self.showing(on);
             let mut workspaces: Vec<u32> = self.windows_on(on).map(|w| w.workspace).chain([current]).collect();
             workspaces.sort();
             workspaces.dedup();
             for ws in workspaces {
                 let teams = self.teams(on, Some(ws));
+                // Where every workspace but the one its display shows
+                // begins collapsed (Preferences ▸ Deskbar), the others are
+                // their heading, its arrow showing what's under it.
+                let fold = self.fold(on, ws, current, teams.len());
+                let teams = if fold.is_some_and(|(open, _)| !open) { Vec::new() } else { teams };
                 // The workspace showing is lit, its heading and
                 // applications together, as one selection: on its own
                 // ground, edged above and below.
@@ -3607,7 +3610,7 @@ impl Deskbar {
                     let ground = self.ground(&p, on, Some(ws));
                     d.paint(move |g| style::fill_rect(g, group, c(ground)));
                 }
-                self.workspace_heading(&mut d, &p, rect(0.0, y, WIDTH, HEADING_H), on, ws, pointer, view, &model);
+                self.workspace_heading(&mut d, &p, rect(0.0, y, WIDTH, HEADING_H), on, ws, fold, pointer, view, &model);
                 y += HEADING_H;
                 for team in teams {
                     self.team_row(&mut d, &p, rect(0.0, y, WIDTH, ROW_H), &team, on, Some(ws), pointer, view, &model, cx);
@@ -3634,71 +3637,13 @@ impl Deskbar {
         (d, y.ceil())
     }
 
-    /// Another display's row at `r`, where the other displays begin
-    /// collapsed: "Display 1: Studio Display", how many applications are
-    /// on it while they're put away, and at its right end an arrow, down
-    /// to show its workspaces and applications under the row, up to put
-    /// them away. A click anywhere on it does.
-    #[allow(clippy::too_many_arguments)]
-    fn display_heading(&self, d: &mut Drawing, r: Bounds<Pixels>, display: &str, open: bool, apps: usize, pointer: &Pointer, view: &ViewRef<BarView>, model: &Model) {
-        let name = self.outputs.iter().find(|o| o.name == display).map(|o| o.display_name()).unwrap_or_else(|| display.to_owned());
-        let caption = match olo_protocol::display_number(&self.outputs, display) {
-            Some(n) => format!("Display {}: {name}", olo_protocol::display_number_text(n)),
-            None => name,
-        };
-        let count = (!open && apps > 0).then(|| apps.to_string());
-        let arrow_r = rect(f32::from(r.right()) - ICON_INSET - ICON, f32::from(r.center().y) - ICON / 2.0, ICON, ICON);
-        let key = format!("display-row:{display}");
-        let hovered = pointer.hot(&key);
-        let said = match (open, apps) {
-            (true, _) => format!("{caption}. Click to put its applications away."),
-            (false, 0) => format!("{caption}: no applications. Click to show its workspaces."),
-            (false, 1) => format!("{caption}: 1 application. Click to show it."),
-            (false, n) => format!("{caption}: {n} applications. Click to show them."),
-        };
-        {
-            let (caption, said, count) = (caption.clone(), said.clone(), count.clone());
-            d.paint(move |g| {
-                let p = theme::palette();
-                // (A line over it: where one display's ends and the next begins.)
-                style::hline(g, px(0.0), px(WIDTH), r.top(), shade(&p, p.panel_background, 1.18));
-                if hovered {
-                    style::fill_rect(g, rect(0.0, f32::from(r.top()) + 1.0, WIDTH, HEADING_H - 1.0), style::tint(p.panel_background, 0.8));
-                }
-                let ink = if hovered { c(p.panel_text) } else { c(olo_kit::palette::mix(p.panel_text, p.panel_background, 0.45)) };
-                let font = style::ui_font(FontWeight::BOLD);
-                // Its count just left of the arrow, the caption in the room that leaves.
-                let mut room = f32::from(arrow_r.left()) - 4.0 - ICON_INSET;
-                if let Some(count) = &count {
-                    let drawn = style::label(g, arrow_r.left() - px(4.0), r.center().y, Align::Right, count.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), ink);
-                    room -= f32::from(drawn.size.width) + 6.0;
-                }
-                style::label_fit(g, px(ICON_INSET), r.center().y, Align::Left, caption.clone(), style::SMALL_SIZE, font, ink, px(room));
-                style::arrow_down(g, arrow_r, open, ink);
-                agent::record(
-                    g,
-                    agent::Node {
-                        role: "Button",
-                        name: Some(said.clone().into()),
-                        value: Some(if open { "expanded" } else { "collapsed" }.into()),
-                        bounds: r,
-                        enabled: true,
-                        clickable: true,
-                        ..Default::default()
-                    },
-                );
-            });
-        }
-        let (m, dsp) = (model.clone(), display.to_owned());
-        d.hits.push(hit(view, &key, r, Some(said)).on_any_button(move |e, _cx| {
-            if button(e) == MouseButton::Left {
-                m.update(|d| {
-                    if !d.others_shown.remove(&dsp) {
-                        d.others_shown.insert(dsp.clone());
-                    }
-                });
-            }
-        }));
+    /// Whether `display`'s workspace `ws` folds, and if it does, whether
+    /// it's open and how many applications it has: where every workspace
+    /// but the one its display shows (`current`) begins collapsed
+    /// (`others_collapsed`), each other one does, open once its arrow has
+    /// opened it (`others_shown`).
+    fn fold(&self, display: Option<&str>, ws: u32, current: u32, apps: usize) -> Option<(bool, usize)> {
+        fold_of(self.others_collapsed, &self.others_shown, display, ws, current, apps)
     }
 
     /// Workspace `ws`'s heading at `r`, on `display`'s Deskbar, its
@@ -3708,9 +3653,24 @@ impl Deskbar {
     /// at its right end the workspace's windowing mode (click: the modes,
     /// and on the one showing, the arranging commands). A click goes
     /// there; on the workspace showing, the Workspaces menu; the right
-    /// button, the heading's menu (`heading_menu`).
+    /// button, the heading's menu (`heading_menu`). One that folds
+    /// (`fold`: open, and how many applications) has an arrow before the
+    /// mode, down to show its applications under it and up to put them
+    /// away (`style::arrow_down`), and while they're away how many there
+    /// are before it: the modes stay in one column, the arrows in another.
     #[allow(clippy::too_many_arguments)]
-    fn workspace_heading(&self, d: &mut Drawing, p: &Palette, r: Bounds<Pixels>, display: Option<&str>, ws: u32, pointer: &Pointer, view: &ViewRef<BarView>, model: &Model) {
+    fn workspace_heading(
+        &self,
+        d: &mut Drawing,
+        p: &Palette,
+        r: Bounds<Pixels>,
+        display: Option<&str>,
+        ws: u32,
+        fold: Option<(bool, usize)>,
+        pointer: &Pointer,
+        view: &ViewRef<BarView>,
+        model: &Model,
+    ) {
         let name = self.workspace_name(display, ws);
         let here = self.lit(display, Some(ws));
         let mode = self.mode(display, ws);
@@ -3727,8 +3687,23 @@ impl Deskbar {
             WindowingMode::Focus => format!("{name}: Focus, only the active window shows, zoomed. Click to choose a windowing mode."),
         };
         let ground = self.ground(p, display, Some(ws));
+        // Folding (`fold`): its arrow just before the mode, as far from it
+        // as the caption is from the arrow's count, and while the
+        // applications are away how many there are, before the arrow.
+        let fold_r = rect(f32::from(mode_r.left()) - FOLD_GAP - ICON, f32::from(r.center().y) - ICON / 2.0, ICON, ICON);
+        let fold_key_s = format!("fold:{}:{ws}", display.unwrap_or(""));
+        let fold_hovered = pointer.hot(&fold_key_s);
+        let count = fold.filter(|&(shown, _)| !shown).map(|(_, apps)| apps.to_string());
+        let fold_said = fold.map(|(shown, apps)| match (shown, apps) {
+            (true, _) => format!("{name}. Click to put its applications away."),
+            (false, 1) => format!("{name}: 1 application. Click to show it."),
+            (false, n) => format!("{name}: {n} applications. Click to show them."),
+        });
+        // (Its count is part of what a click on the arrow takes.)
+        let count_w = count.as_ref().map_or(0.0, |n| f32::from(style::text_width(n.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL))).ceil() + 4.0);
+        let fold_hit = Bounds::from_corners(point(fold_r.left() - px(2.0 + count_w), fold_r.top() - px(2.0)), point(fold_r.right() + px(2.0), fold_r.bottom() + px(2.0)));
         {
-            let (name, tip_text) = (name.clone(), tip_text.clone());
+            let (name, tip_text, fold_said, count) = (name.clone(), tip_text.clone(), fold_said.clone(), count.clone());
             d.paint(move |g| {
                 let p = theme::palette();
                 if open || mode_open {
@@ -3745,7 +3720,37 @@ impl Deskbar {
                 } else {
                     c(olo_kit::palette::mix(p.panel_text, p.panel_background, 0.45))
                 };
-                let room = f32::from(mode_r.left()) - 4.0 - ICON_INSET;
+                let mut room = f32::from(mode_r.left()) - 4.0 - ICON_INSET;
+                if let Some((shown, _)) = fold {
+                    if fold_hovered {
+                        let at = expand(fold_r, 2.0);
+                        g.paint_quad(olo_kit::quad(style::snap(g, at), px(2.0), style::tint(ground, 0.7), px(0.0), olo_kit::transparent_black(), olo_kit::BorderStyle::Solid));
+                    }
+                    style::arrow_down(g, fold_r, shown, ink);
+                    // (Its applications away, the heading ends its group
+                    // with the rule its last row would: two headings ran
+                    // together.)
+                    if !shown {
+                        style::hline_above(g, r.left(), r.right(), r.bottom(), shade(&p, ground, 1.14));
+                    }
+                    room = f32::from(fold_r.left()) - 4.0 - ICON_INSET;
+                    if let Some(count) = &count {
+                        let drawn = style::label(g, fold_r.left() - px(4.0), r.center().y, Align::Right, count.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), ink);
+                        room -= f32::from(drawn.size.width) + 6.0;
+                    }
+                    agent::record(
+                        g,
+                        agent::Node {
+                            role: "Button",
+                            name: fold_said.clone().map(Into::into),
+                            value: Some(if shown { "expanded" } else { "collapsed" }.into()),
+                            bounds: fold_hit,
+                            enabled: true,
+                            clickable: true,
+                            ..Default::default()
+                        },
+                    );
+                }
                 style::label_fit(g, px(ICON_INSET), r.center().y, Align::Left, name.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::BOLD), ink, px(room));
                 if mode_hovered && !mode_open {
                     let at = expand(mode_r, 2.0);
@@ -3781,6 +3786,20 @@ impl Deskbar {
                 }
                 MouseButton::Left => request(Request::SwitchWorkspace { index: ws, output: dsp.clone() }),
                 _ => {}
+            }));
+        }
+        // (Over the row's, as the mode's is: a click on the arrow folds,
+        // anywhere else on the row goes to the workspace.)
+        if fold.is_some() {
+            let (m, k) = (model.clone(), fold_key(display, ws));
+            d.hits.push(hit(view, &fold_key_s, fold_hit, fold_said).occlude().on_any_button(move |e, _cx| {
+                if button(e) == MouseButton::Left {
+                    m.update(|d| {
+                        if !d.others_shown.remove(&k) {
+                            d.others_shown.insert(k.clone());
+                        }
+                    });
+                }
             }));
         }
         {
@@ -4530,6 +4549,27 @@ mod tests {
         // None on the workspace: its newest.
         assert_eq!(row_click(&[&elsewhere], 0, true), RowClick::Show(vec![3]));
         assert_eq!(row_click(&[], 0, true), RowClick::Show(vec![]));
+    }
+
+    #[test]
+    fn only_the_workspace_each_display_shows_starts_open() {
+        use super::{fold_key, fold_of};
+        let (one, two) = (Some("HEADLESS-1"), Some("HEADLESS-2"));
+        let mut shown = std::collections::HashSet::new();
+        // Off: nothing folds.
+        assert_eq!(fold_of(false, &shown, one, 1, 0, 2), None);
+        // On: on every display, the workspace it shows is open, each other
+        // one is folded, closed until its arrow opens it.
+        assert_eq!(fold_of(true, &shown, one, 0, 0, 2), None);
+        assert_eq!(fold_of(true, &shown, one, 1, 0, 2), Some((false, 2)));
+        assert_eq!(fold_of(true, &shown, two, 1, 1, 3), None);
+        assert_eq!(fold_of(true, &shown, two, 0, 1, 3), Some((false, 3)));
+        shown.insert(fold_key(one, 1));
+        assert_eq!(fold_of(true, &shown, one, 1, 0, 2), Some((true, 2)));
+        // (Another display's workspace of that number is its own.)
+        assert_eq!(fold_of(true, &shown, two, 1, 0, 3), Some((false, 3)));
+        // Nothing in it: nothing to put away.
+        assert_eq!(fold_of(true, &shown, one, 2, 0, 0), None);
     }
 
     #[test]

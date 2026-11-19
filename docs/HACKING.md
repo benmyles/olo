@@ -20427,25 +20427,39 @@ reload, and an agent folds it with `set_settings`; a Deskbar's layer
 surface is anchored at the top right and takes its new width
 (`BarView::width`).
 
-**Other displays' applications, collapsed** (Ben, 2026-11-18: "add an
+**Other workspaces' applications, collapsed** (Ben, 2026-11-18: "add an
 option in deskbar prefs (disabled by default) to default to showing
 other display's apps collapsed in the deskbar with an icon button to
-expand them (down) and collapse them again (up)"). A display's Deskbar
-lists its own workspaces and applications, then the other displays'.
-With Preferences ▸ Deskbar ▸ Applications ▸ "Other displays’
-applications start collapsed" (`DeskbarSettings::others_collapsed`,
-`deskbar.others_collapsed`; off unless turned on), each other display
-is one row there (`display_heading`): "Display 1: Studio Display", how
-many applications it has while they're put away, and at its right end
-an arrow, down to show its workspaces and applications under the row
-and up to put them away (`style::arrow_down`); a click anywhere on the
-row does. Which are open is Deskbar's own (`others_shown`, by display,
-every display's Deskbar alike), until Deskbar starts again: they start
-collapsed, as asked. Agents: a Button named with what a click does
-("Display 1: Headless: 2 applications. Click to show them."), its
-value "collapsed" or "expanded". Tried in a test session of two
-displays, both Deskbars, light and dark, the row at 1×, 1.5× and 2×;
-Preferences' pane clean in the review at the three.
+expand them (down) and collapse them again (up)"; 2026-11-19, in its
+place: "change this existing option to Other workspaces' applications
+start collapsed and it should apply to every other workspace when
+checked regardless of what display they are on (same or other) so that
+only the active workspace for a given display is the one expanded by
+default"). A display's Deskbar lists its own workspaces and
+applications, then the other displays'. With Preferences ▸ Deskbar ▸
+Applications ▸ "Other workspaces’ applications start collapsed"
+(`DeskbarSettings::others_collapsed`, `deskbar.others_collapsed`, the
+key the other displays' rows had: a box ticked stays ticked; off unless
+turned on), the workspace each display shows is open, in every
+Deskbar, and each other workspace with applications is only its
+heading (`fold_of`): how many applications it has while they're put
+away, then an arrow just before its windowing mode, down to show them
+under the heading and up to put them away (`style::arrow_down`; the
+modes stay in one column, the arrows in another); while they're away,
+the heading ends its group with the rule its last row would have (two
+headings ran together). A click on the arrow
+or its count folds; anywhere else on the heading goes to the workspace,
+as ever (the arrow's hit is over the heading's, as the mode's is).
+Which are open is Deskbar's own (`others_shown`, by `fold_key`:
+display and workspace, every display's Deskbar alike), until Deskbar
+starts again: they start collapsed, as asked. Agents: a Button named
+with what a click does ("D0 Workspace 2: 1 application. Click to show
+it."), its value "collapsed" or "expanded". Tried in a test session of
+two displays (`tsession start NAME 2560x1600,2560x1600 --session
+--shell`; `tsession shot NAME FILE --output HEADLESS-2` for the second):
+both Deskbars with it off and on, an arrow clicked open and shut, light
+and dark at 1×, 1.25×, 1.5×, 1.75× and 2× (the arrow on whole pixels at
+each); Preferences' pane clean in the review at 1×, 1.5× and 2×.
 
 The windows follow in app_server. `usable_area` leaves out a Deskbar
 only if it is wider than `DESKBAR_FOLDED` (48): a folded one takes no

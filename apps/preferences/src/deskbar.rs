@@ -201,7 +201,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                         })),
                 ),
         );
-        ui.note("Each shows in the Deskbar as it changes. Click one there for Activity Monitor (a Token Pool one, Token Pool; an app's, its app).");
+        ui.note("Each shows in the Deskbar as it changes. A click on one there opens its app: Activity Monitor, Token Pool or the app it’s from.");
         // Beside each application's name, one dot: blue for its
         // notifications (it drains as they fade); red in its place
         // while the app itself says something is unread or waiting.
@@ -209,11 +209,11 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         ui.bbox("Applications", |ui| {
             ui.check("A red dot for an app with something unread in it", on, |s, v| s.deskbar.unread_dots = v);
             ui.note("In place of the blue dot of its notifications, for as long as the app says something is unread or waiting in it.");
-            // (With several displays: each Deskbar lists the others'
-            // applications under its own; here, behind an arrow.)
+            // (Every workspace but the one each display shows, on every
+            // display, behind an arrow on its heading.)
             let collapsed = ui.s.deskbar.others_collapsed;
-            ui.check("Other displays’ applications start collapsed", collapsed, |s, v| s.deskbar.others_collapsed = v);
-            ui.note("Each other display is one row in a display’s Deskbar, with an arrow that shows its applications and puts them away again.");
+            ui.check("Other workspaces’ applications start collapsed", collapsed, |s, v| s.deskbar.others_collapsed = v);
+            ui.note("The workspace each display shows stays open in every Deskbar; each other one is its heading, with an arrow that shows its applications and puts them away again.");
         });
     });
     let right = ui.collect(|ui| match selected.and_then(|i| widgets.get(i)) {

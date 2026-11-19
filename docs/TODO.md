@@ -13,19 +13,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-- **Deskbar: other workspaces' applications start collapsed** (Ben,
-  2026-11-18, in Preferences ▸ Deskbar: "in addition to the other
-  displays workspaces start collapsed we should have other workspace on
-  the same display start collapsed too"; then, 2026-11-19, instead of a
-  second option: "change this existing option to Other workspaces'
-  applications start collapsed and it should apply to every other
-  workspace when checked regardless of what display they are on (same
-  or other) so that only the active workspace for a given display is
-  the one expanded by default"): "Other displays' applications start
-  collapsed" becomes "Other workspaces' applications start collapsed";
-  ticked, every workspace but each display's active one starts
-  collapsed, on that display or another. A setting kept from before
-  stays as it was (ticked stays ticked).
 - **DiskBackup: "Only when connected to ethernet"** (Ben, 2026-11-19:
   "add an option to diskbackup next to "[ ] Also when running on
   battery" to be "[ ] Only when connected to ethernet" default
@@ -322,6 +309,30 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Deskbar: other workspaces' applications start collapsed** (Ben,
+  2026-11-18, in Preferences ▸ Deskbar: "in addition to the other
+  displays workspaces start collapsed we should have other workspace on
+  the same display start collapsed too"; then, 2026-11-19, instead of a
+  second option: "change this existing option to Other workspaces'
+  applications start collapsed and it should apply to every other
+  workspace when checked regardless of what display they are on (same
+  or other) so that only the active workspace for a given display is
+  the one expanded by default"): "Other displays' applications start
+  collapsed" becomes "Other workspaces' applications start collapsed";
+  ticked, every workspace but each display's active one starts
+  collapsed, on that display or another. A setting kept from before
+  stays as it was (ticked stays ticked). **Done** (HACKING, "Other
+  workspaces' applications, collapsed"): in every Deskbar, the workspace
+  each display shows is open; each other one with applications is its
+  heading, how many it has, and an arrow before its windowing mode that
+  shows them under it and puts them away (every Deskbar alike, until
+  Deskbar starts again); a click elsewhere on the heading still goes to
+  the workspace. The other displays' one-row fold is gone. Tried in a
+  test session of two displays, light and dark at 1× to 2×; the bar's
+  frames cost the same with it on (752 µs on average over a sweep of
+  the pointer) as off (735). Try: Preferences ▸ Deskbar ▸ "Other
+  workspaces’ applications start collapsed", then an arrow.
 
 - **Calendar: a preview pane** (Ben, 2026-11-18: "there should also be
   a preview pane where if i single click an event i see the details in

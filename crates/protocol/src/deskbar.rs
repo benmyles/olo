@@ -35,13 +35,19 @@ pub struct DeskbarSettings {
     /// expand it and when it collapses and expands the windows on the
     /// screen should expand/collapse to fill the space too").
     pub folded: bool,
-    /// The other displays' applications begin collapsed in each
-    /// display's Deskbar: one row a display, with an arrow that shows
-    /// its workspaces and applications (down) and puts them away again
-    /// (up). Off unless turned on (Ben, 2026-11-18: "add an option in
-    /// deskbar prefs (disabled by default) to default to showing other
-    /// display's apps collapsed in the deskbar with an icon button to
-    /// expand them (down) and collapse them again (up)").
+    /// Every workspace but the one each display shows begins collapsed
+    /// in the Deskbars, on that display or another: its heading, with how
+    /// many applications it has and an arrow that shows them under it
+    /// (down) and puts them away again (up). Off unless turned on (Ben,
+    /// 2026-11-18: "add an option in deskbar prefs (disabled by default)
+    /// to default to showing other display's apps collapsed in the
+    /// deskbar with an icon button to expand them (down) and collapse
+    /// them again (up)"; 2026-11-19: "change this existing option to
+    /// Other workspaces' applications start collapsed and it should apply
+    /// to every other workspace when checked regardless of what display
+    /// they are on (same or other) so that only the active workspace for
+    /// a given display is the one expanded by default"). Its key is the
+    /// one the other displays' rows had: a box ticked stays ticked.
     pub others_collapsed: bool,
 }
 

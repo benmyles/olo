@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-19
 
+### Deskbar: other workspaces start collapsed
+
+*01:10* — With Preferences ▸ Deskbar ▸ "Other workspaces’ applications start collapsed", every Deskbar keeps open the workspace each display shows; each other one is its heading, how many applications it has and an arrow that shows them. Two displays' Deskbars.
+
+![Deskbar: other workspaces start collapsed](2026-11-19/011052-deskbar-other-workspaces-start-collapsed.png)
+
 ### Calendar: a preview pane
 
 *00:47* — One click on an event shows it in the bottom third of the main column: its title after its calendar's colour, Edit… at the right, its facts (when on the person's clock and on its own, where as a link, calendar, repeats, reminder, answer, guests) in a box beside its notes. View ▸ Show Preview.

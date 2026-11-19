@@ -337,9 +337,8 @@ Each is judged from several signals together; a finding says how sure it is and 
 Each is the computer's, not this account's, so switching one asks for an administrator's password. Olo Doctor suggests each, with what was measured for it.
 Each kind opens in this app wherever you open it, in Olo and in other programs. Tracker's Open With ▸ Always Open With chooses too.
 Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
-Each other display is one row in a display’s Deskbar, with an arrow that shows its applications and puts them away again.
 Each setting tried shows here.
-Each shows in the Deskbar as it changes. Click one there for Activity Monitor (a Token Pool one, Token Pool; an app's, its app).
+Each shows in the Deskbar as it changes. A click on one there opens its app: Activity Monitor, Token Pool or the app it’s from.
 Edge
 Edge to edge
 Edit
@@ -699,7 +698,7 @@ Order:
 Original
 Other
 Other Mice
-Other displays’ applications start collapsed
+Other workspaces’ applications start collapsed
 Output
 Palm-proof clicks, hovering fingers ignored, Mac-like scrolling
 Palms
@@ -971,6 +970,7 @@ The processor (OpenH264)
 The right edge
 The sky and temperature now, and what's coming.
 The system's services (updates, indexing) can still run there.
+The workspace each display shows stays open in every Deskbar; each other one is its heading, with an arrow that shows its applications and puts them away again.
 Theme
 Themes
 There's no Ethernet adapter. A USB or Thunderbolt one shows here once it's plugged in.

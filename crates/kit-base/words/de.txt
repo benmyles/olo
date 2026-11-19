@@ -985,14 +985,11 @@ Jede Art öffnet sich in dieser App, wo immer Sie sie öffnen, in Olo und in and
 Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
 Jedes davon, einmal eingerichtet, ersetzt Ihr Passwort, wo immer es verlangt wird (Passwords, sudo im Terminal, Administratoranfragen; Gesicht oder Fingerabdruck auch Sperr- und Anmeldebildschirm), alle zugleich: was Sie zuerst benutzen.
 
-Each other display is one row in a display’s Deskbar, with an arrow that shows its applications and puts them away again.
-Jeder andere Bildschirm ist eine Zeile in der Deskbar eines Bildschirms, mit einem Pfeil, der seine Programme zeigt und wieder einklappt.
-
 Each setting tried shows here.
 Jede ausprobierte Einstellung erscheint hier.
 
-Each shows in the Deskbar as it changes. Click one there for Activity Monitor (a Token Pool one, Token Pool; an app's, its app).
-Jedes erscheint in der Deskbar, sobald es sich ändert. Ein Klick darauf öffnet die Aktivitätsanzeige (eines des Token Pools den Token Pool; das einer App die App).
+Each shows in the Deskbar as it changes. A click on one there opens its app: Activity Monitor, Token Pool or the app it’s from.
+Jedes erscheint in der Deskbar, sobald es sich ändert. Ein Klick darauf öffnet sein Programm: die Aktivitätsanzeige, den Token Pool oder das Programm, von dem es kommt.
 
 Edge
 Rand
@@ -2056,8 +2053,8 @@ Andere
 Other Mice
 Andere Mäuse
 
-Other displays’ applications start collapsed
-Programme anderer Bildschirme starten eingeklappt
+Other workspaces’ applications start collapsed
+Programme anderer Arbeitsflächen starten eingeklappt
 
 Output
 Ausgabe
@@ -2847,6 +2844,9 @@ Himmel und Temperatur jetzt und was kommt.
 
 The system's services (updates, indexing) can still run there.
 Die Dienste des Systems (Updates, Indexierung) können dort weiterhin laufen.
+
+The workspace each display shows stays open in every Deskbar; each other one is its heading, with an arrow that shows its applications and puts them away again.
+Die Arbeitsfläche, die ein Bildschirm zeigt, bleibt in jeder Deskbar offen; jede andere ist ihre Überschrift, mit einem Pfeil, der ihre Programme zeigt und wieder einklappt.
 
 Theme
 Thema

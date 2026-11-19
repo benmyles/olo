@@ -104,7 +104,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "deskbar", tab: "", group: "Widgets", name: "Move Up", role: "Button" },
     Setting { panel: "deskbar", tab: "", group: "Widgets", name: "Move Down", role: "Button" },
     Setting { panel: "deskbar", tab: "", group: "Applications", name: "A red dot for an app with something unread in it", role: "CheckBox" },
-    Setting { panel: "deskbar", tab: "", group: "Applications", name: "Other displays’ applications start collapsed", role: "CheckBox" },
+    Setting { panel: "deskbar", tab: "", group: "Applications", name: "Other workspaces’ applications start collapsed", role: "CheckBox" },
     Setting { panel: "display", tab: "", group: "Display", name: "Resolution", role: "ComboBox" },
     Setting { panel: "display", tab: "", group: "Display", name: "Refresh rate", role: "ComboBox" },
     Setting { panel: "display", tab: "", group: "Display", name: "Variable refresh rate", role: "CheckBox" },
