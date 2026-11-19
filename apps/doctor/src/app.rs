@@ -123,6 +123,9 @@ struct Doctor {
     /// problems to begin with, the suggestions when the person checks
     /// them).
     chosen: Chosen,
+    /// Says what's waiting in Olo Doctor (`notify::waiting`) after each
+    /// look and each Ignore here: made at the first.
+    notes: Option<olo_kit_base::notify::Notifier>,
 }
 
 /// What's fixed: the critical, the problems and what's recommended,
@@ -208,6 +211,7 @@ impl Doctor {
         });
         self.chosen.keep(report.findings.iter().map(|f| f.id.as_str()));
         self.report = Some(report);
+        self.tell_waiting();
         if std::mem::take(&mut self.rescan) {
             self.scan(cx);
         }
@@ -288,7 +292,20 @@ impl Doctor {
             r.sort();
             checks::tell_tray(r);
         }
+        self.tell_waiting();
         cx.invalidate();
+    }
+
+    /// What's waiting here, as this report has it, to Deskbar and
+    /// Notifications (the watcher says it too, at its own looks). Not the
+    /// demo's: it tells nothing.
+    fn tell_waiting(&mut self) {
+        let Some(r) = &self.report else { return };
+        if crate::demo::on() {
+            return;
+        }
+        let n = crate::notify::waiting(r);
+        self.notes.get_or_insert_with(|| olo_kit_base::notify::Notifier::with_events("Olo Doctor", "olo-doctor", |_| {})).badge(n);
     }
 
     /// The findings that can be checked (those with a fix, not being
@@ -879,6 +896,7 @@ pub fn run() {
                 next_run: 0,
                 scroll: ScrollHandle::new(),
                 chosen: saved.chosen,
+                notes: None,
             };
             doctor.scan(cx);
             doctor

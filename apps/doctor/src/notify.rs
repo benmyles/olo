@@ -116,13 +116,26 @@ fn tell_suggestions(notes: &Notifier, findings: &[Finding]) {
     notes.show(None, Note::new(summary).body(body).icon("suggestions").action("default", "Show").action("show", "Show in Olo Doctor"));
 }
 
+/// What's waiting in Olo Doctor, as Deskbar's red dot and Notifications'
+/// "Waiting in apps" say: its critical problems and problems, not what's
+/// only recommended or suggested, nor what's ignored (`report`'s
+/// findings are what's left once those are set aside). Said by the
+/// watcher at each look, and by the window at each of its own and at
+/// each Ignore, so a problem fixed or ignored there isn't "1 waiting"
+/// until the watcher's next look (Ben, 2026-11-19: "olo doctor still has
+/// a red dot even after i've looked at the app and chosen something for
+/// all the feedback").
+pub fn waiting(report: &checks::Report) -> u32 {
+    report.findings.iter().filter(|f| matches!(f.severity, Severity::Critical | Severity::Problem)).count() as u32
+}
+
 /// Look the computer over, and tell of problems not told before (and,
 /// `suggestions`, of suggestions); whether a problem was told.
 fn look(notes: &Notifier, suggestions: bool) -> bool {
     let report = checks::look();
     // (What's wrong now, as the app's unread count: Deskbar's red dot
     // beside Olo Doctor while its window is open.)
-    notes.badge(report.findings.iter().filter(|f| matches!(f.severity, Severity::Critical | Severity::Problem)).count() as u32);
+    notes.badge(waiting(&report));
     let mut told = read_told();
     let (new, remember) = news(&report.findings, &told);
     // Something new wrong: Olo Doctor's window's tab gets the red dot, if
@@ -295,6 +308,19 @@ mod tests {
 
     fn finding(id: &str, severity: Severity) -> Finding {
         Finding { id: id.into(), severity, title: id.into(), detail: String::new(), fix: None }
+    }
+
+    /// What's waiting: the critical and the problems; what's recommended
+    /// or suggested isn't, nor what's ignored.
+    #[test]
+    fn only_problems_are_waiting() {
+        let mut r = checks::Report::default();
+        r.findings = vec![finding("c", Severity::Critical), finding("p", Severity::Problem), finding("a", Severity::Advice), finding("s", Severity::Suggestion)];
+        assert_eq!(waiting(&r), 2);
+        r.move_ignored("p", true);
+        assert_eq!(waiting(&r), 1, "ignored, it isn't waiting");
+        r.move_ignored("c", true);
+        assert_eq!(waiting(&r), 0);
     }
 
     #[test]

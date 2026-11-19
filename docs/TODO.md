@@ -99,21 +99,6 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Olo Doctor's red dot stays after everything is dealt with** (Ben,
-  2026-11-19, with Notifications showing "Waiting in apps: Olo Doctor,
-  1 waiting" and its red dot in Deskbar, while Doctor's window said
-  "Everything is as Olo wants it. 55 things looked at; 54 are fine, 1
-  ignored": "olo doctor still has a red dot even after i've looked at
-  the app and chosen something for all the feedback"). What Doctor says
-  is waiting (the unread/waiting count apps tell Deskbar and
-  Notifications) must follow what's left to deal with: nothing once
-  every finding is fixed or ignored, and gone as soon as the window shows
-  that; an ignored finding isn't waiting. Find what it counts and when
-  it says it (a count from the scan before the last, its notification
-  "Olo Doctor found a problem" never withdrawn, the ignored one counted),
-  fix it at the source, and test the round trip: a finding, its dot, the
-  fix or Ignore, no dot.
-
 - **Deskbar's fold arrows: ▸ closed, ▾ open** (Ben, 2026-11-19, with
   pictures of D0's Deskbar, its folded workspaces' ▼ and an open one's
   ▲, passing on: "▼ when collapsed and ▲ when expanded is a common
@@ -465,6 +450,17 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Olo Doctor's red dot stays after everything is dealt with** (Ben,
+  2026-11-19: "olo doctor still has a red dot even after i've looked at
+  the app and chosen something for all the feedback"). What's waiting
+  in Olo Doctor (Deskbar's red dot, Notifications' "1 waiting") was said
+  only by its watcher, every quarter of an hour; the window, which knows
+  first, said nothing. Now the window says it after each look and each
+  Ignore, the same count (`notify::waiting`: the critical and the
+  problems, not what's recommended, suggested or ignored). To try:
+  upgrade from Deskbar's tray; fix or ignore what Doctor finds, and the
+  dot goes at once.
 
 - **Stuck processes: olo-phoned spinning, Deskbar's zombies, the
   palette** (Ben, 2026-11-19, with Olo's supervisor's "Seems stuck:
