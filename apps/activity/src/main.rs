@@ -48,7 +48,7 @@ use olo_kit::{
     instance::{self, Launch},
     metrics as m, px,
     search::{SearchEvent, SearchField, search_field},
-    widgets::{AlertFrame, Button, ListModel, Sidebar, TextControl, TextField, TextFieldEvent, button_row, open_alert, paragraph, sidebar::Row, text_field},
+    widgets::{AlertFrame, Button, ListModel, MenuField, Sidebar, TextControl, TextField, TextFieldEvent, button_row, open_alert, paragraph, sidebar::Row, text_field},
 };
 use sample::{Connection, Proc, Sample, Source, System};
 use serde::{Deserialize, Serialize};
@@ -60,6 +60,19 @@ const KEEP_SECONDS: f64 = 31.0 * 60.0;
 const INTERVALS: [(u64, &str); 5] = [(250, "¼ Second"), (500, "½ Second"), (1000, "1 Second"), (2000, "2 Seconds"), (5000, "5 Seconds")];
 const SPANS: [(u32, &str); 4] = [(60, "1 Minute"), (300, "5 Minutes"), (900, "15 Minutes"), (1800, "30 Minutes")];
 const SIDEBAR_WIDTH: f32 = 176.0;
+/// The space a section keeps beside the sidebar before it gives way to a menu.
+const CONTENT_LEAST: f32 = 360.0;
+/// The least window width fits a vertical third of the smallest screen.
+const MIN_WIDTH: f32 = 400.0;
+/// The least window height fits a horizontal third of the smallest screen.
+const MIN_HEIGHT: f32 = 220.0;
+
+/// Whether the sidebar fits, and the width left for the section inside the window's insets.
+fn section_layout(window_width: f32) -> (bool, f32) {
+    let width = window_width - 2.0 * m::WINDOW_INSET;
+    let beside = width - SIDEBAR_WIDTH - m::SPACING;
+    if beside >= CONTENT_LEAST { (true, beside) } else { (false, width) }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1217,8 +1230,7 @@ impl Activity {
     }
 
     /// The sidebar, each row with its figure now.
-    fn sidebar(&mut self, cx: &mut Cx<Self>) -> Element {
-        let sections = self.sections();
+    fn sidebar(&self, sections: &[Section], cx: &mut Cx<Self>) -> Element {
         let headings = [(0, "Activity"), (3, "Hardware"), (sections.len() - 2, "System")];
         let mut rows: Vec<Row> = Vec::new();
         let mut index_of: Vec<Option<Section>> = Vec::new();
@@ -1367,11 +1379,12 @@ impl View for Activity {
     }
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
-        if !self.sections().contains(&self.settings.section) {
+        let sections = self.sections();
+        if !sections.contains(&self.settings.section) {
             self.settings.section = Section::Overview;
         }
         let bar = MenuBar::of(self, cx, |v, _| v.menus());
-        let width = f32::from(cx.viewport_size().width) - SIDEBAR_WIDTH;
+        let (shows_sidebar, width) = section_layout(f32::from(cx.viewport_size().width));
         let content = if self.sources.is_empty() {
             div().into_any_element()
         } else if self.settings.section == Section::Processes {
@@ -1379,13 +1392,27 @@ impl View for Activity {
         } else {
             sections::view(self, self.settings.section, width, cx)
         };
-        let sidebar = self.sidebar(cx);
+        let mut row = div().flex_1().min_h_0().flex().flex_row().gap(px(m::SPACING)).px(px(m::WINDOW_INSET)).pt(px(m::SPACING)).pb(px(m::WINDOW_INSET));
+        let mut column = div().flex_1().min_w_0().h_full().flex().flex_col().gap(px(m::SPACING));
+        if shows_sidebar {
+            row = row.child(div().w(px(SIDEBAR_WIDTH)).h_full().flex_shrink_0().child(self.sidebar(&sections, cx)));
+        } else {
+            let names = sections.iter().map(|s| s.name().into()).collect::<Vec<_>>();
+            let at = sections.iter().position(|s| *s == self.settings.section).unwrap_or(0);
+            let chooser = MenuField::new("activity-section", names, at).name("Section").on_change(cx.listener(move |a: &mut Activity, i: &usize, cx| {
+                if let Some(s) = sections.get(*i) {
+                    a.set_section(*s, cx);
+                }
+            }));
+            column = column.child(div().flex().flex_shrink_0().child(chooser));
+        }
         div()
             .size_full()
             .flex()
             .flex_col()
+            .bg(olo_kit::style::c(olo_kit::theme::palette().panel_background))
             .child(bar)
-            .child(div().flex_1().min_h_0().flex().flex_row().child(div().w(px(SIDEBAR_WIDTH)).h_full().flex_shrink_0().child(sidebar)).child(div().flex_1().min_w_0().h_full().child(content)))
+            .child(row.child(column.child(div().flex_1().min_h_0().child(content))))
             .into_any_element()
     }
 }
@@ -1495,7 +1522,7 @@ impl Hub {
         }
         let Some(pollers) = self.pollers.take() else { return };
         let (shared, control, sources) = (self.shared.clone(), self.control.clone(), self.sources.clone());
-        let options = WindowOptions::new("Activity Monitor", 900.0, 620.0).min_size(560.0, 400.0).keep_size("main");
+        let options = WindowOptions::new("Activity Monitor", 900.0, 620.0).min_size(MIN_WIDTH, MIN_HEIGHT).keep_size("main");
         self.main = Some(olo_kit::open_window(options, move |cx| Activity::new(shared, control, sources, pollers, cx)));
     }
 
@@ -1864,5 +1891,27 @@ mod pid_tests {
         assert_eq!(super::pid_list("12,x"), None);
         assert_eq!(super::pid_list(""), None);
         assert_eq!(crate::processes::pids_text(&[12, 40]), "12,40");
+    }
+}
+
+#[cfg(test)]
+mod layout_tests {
+    use super::*;
+
+    #[test]
+    fn sidebar_gives_way_before_the_section_gets_too_narrow() {
+        let threshold = CONTENT_LEAST + SIDEBAR_WIDTH + m::SPACING + 2.0 * m::WINDOW_INSET;
+        assert_eq!(section_layout(threshold), (true, CONTENT_LEAST));
+        assert_eq!(section_layout(threshold - 1.0), (false, threshold - 1.0 - 2.0 * m::WINDOW_INSET));
+        assert_eq!(section_layout(417.0), (false, 385.0));
+        assert_eq!(section_layout(MIN_WIDTH), (false, 368.0));
+    }
+
+    #[test]
+    fn sections_in_the_smallest_screens_tiles() {
+        // The two five-point borders of a decorated tile are outside the client.
+        for (frame, sidebar, section) in [(417.0, false, 375.0), (628.0, true, 398.0), (1264.0, true, 1034.0)] {
+            assert_eq!(section_layout(frame - 10.0), (sidebar, section));
+        }
     }
 }

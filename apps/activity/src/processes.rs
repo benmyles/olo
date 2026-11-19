@@ -7,13 +7,12 @@
 use std::rc::Rc;
 
 use olo_kit::{
-    Bounds, ClickEvent, Cx, Element, FontWeight, IntoElement as _, Menu, Painter, ParentElement as _, PathBuilder, Pixels, Point, SharedString, Styled as _, canvas, div,
+    Bounds, ClickEvent, Cx, Element, FontWeight, IntoElement as _, Menu, Painter, ParentElement as _, PathBuilder, Pixels, Point, SharedString, Styled as _, div,
     files::format_size,
     menu, metrics as m, point, px,
     search::{Facet, FilterBar, Query},
-    style::{self, c},
-    theme,
-    widgets::{Button, CheckBox, Column, ColumnListView},
+    style,
+    widgets::{Button, CheckBox, Column, ColumnListView, StringView, button_width},
 };
 
 use crate::{
@@ -494,15 +493,14 @@ fn list(app: &mut Activity, cx: &mut Cx<Activity>) -> Element {
 }
 
 pub fn view(app: &mut Activity, width: f32, cx: &mut Cx<Activity>) -> Element {
-    let p = theme::palette();
-    let inset = m::WINDOW_INSET - 2.0;
-    let inner_w = width - 2.0 * inset;
-
     // The search, its filters and Tree, over the list.
     let facets = facets_now(app, cx);
     let tree_w = 64.0;
     let bar_w = FilterBar::width(&app.settings.search, &facets) + m::SPACING + 40.0;
-    let one_row = inner_w - bar_w - tree_w - 2.0 * m::SPACING >= 220.0;
+    let one_row = width - bar_w - tree_w - 2.0 * m::SPACING >= 220.0;
+    // In a short tile leave room for the rows. The search field offers
+    // the same filters and the Process menu has the selection's actions.
+    let short = f32::from(cx.viewport_size().height) < 300.0;
     // (The search field clears it all.)
     let filters = FilterBar::new("activity-processes", app.settings.search.clone(), facets).no_clear().on_change(cx.listener(|a: &mut Activity, text: &String, cx| {
         let to = text.clone();
@@ -519,19 +517,16 @@ pub fn view(app: &mut Activity, width: f32, cx: &mut Cx<Activity>) -> Element {
             a.store();
             cx.invalidate();
         })));
-    let search = div().flex_1().min_w_0().child(&app.search);
+    let search = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(&app.search));
     let controls = if one_row {
-        div().flex().flex_row().items_center().gap(px(m::SPACING)).child(search).child(filters.max_width(bar_w)).child(tree)
+        search.child(filters.max_width(bar_w)).child(tree)
+    } else if short {
+        search.child(tree)
     } else {
         // Under the search, its first menu's text over the list's first
         // column's (inside the list's two lines of frame), as Logs has it.
         let indent = olo_kit::search::list_indent(cx);
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(m::SPACING))
-            .child(div().flex().flex_row().items_center().gap(px(m::SPACING)).child(search).child(tree))
-            .child(div().pl(px(indent)).child(filters.max_width(inner_w - indent)))
+        div().flex().flex_col().gap(px(m::SPACING)).child(search.child(tree)).child(div().pl(px(indent)).child(filters.max_width(width - indent)))
     };
 
     let rows = rows_now(app);
@@ -540,35 +535,25 @@ pub fn view(app: &mut Activity, width: f32, cx: &mut Cx<Activity>) -> Element {
     let summary: SharedString =
         olo_kit::tr!("{} of {} processes, {} threads · {} CPU", rows.refs.len(), app.processes.len(), threads, app.latest("cpu").map(|v| format!("{v:.0}%")).unwrap_or_default()).into();
     // The buttons act on every process chosen (Inspect on the first).
-    let sel = app.chosen_pids();
     let bw = 96.0;
-    let button = |label: &'static str, cmd: &'static str| {
+    let actions = [("Inspect", "inspect"), ("Quit", "quit"), ("Force Quit…", "force-quit")];
+    let buttons_w = actions.iter().map(|(label, _)| button_width(label, false).max(bw)).sum::<f32>() + 2.0 * m::SPACING;
+    let summary_w = f32::from(style::text_width(summary.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))).ceil();
+    let beside = summary_w + m::SPACING + buttons_w <= width;
+    let summary = StringView::new(summary);
+    let mut foot =
+        if beside { div().flex().flex_row().items_center().justify_between().gap(px(m::SPACING)).child(summary) } else { div().flex().flex_col().gap(px(m::TIGHT)).child(summary.wrap(true)) };
+    if beside || !short {
+        let sel = app.chosen_pids();
         let pids = pids_text(&sel);
-        Button::new(label).min_width(bw).enabled(!sel.is_empty()).on_click(cx.listener(move |a: &mut Activity, _: &ClickEvent, cx| a.run(&format!("{cmd}:{pids}"), cx)))
-    };
-    let text = style::c(p.panel_text);
-    let key = style::key(&summary);
-    let summary_el = canvas(move |g, b| {
-        let r = style::label_fit(g, b.left(), b.center().y, style::Align::Left, summary.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), text, b.size.width);
-        olo_kit::agent::record(g, olo_kit::agent::Node::label(summary.clone(), r));
-    })
-    .paint_key(key)
-    .flex_1()
-    .min_w_0()
-    .h_full();
-    let foot = div()
-        .flex()
-        .flex_row()
-        .items_center()
-        .gap(px(m::SPACING))
-        .h(px(m::CONTROL_HEIGHT))
-        .flex_shrink_0()
-        .child(summary_el)
-        .child(button("Inspect", "inspect"))
-        .child(button("Quit", "quit"))
-        .child(button("Force Quit…", "force-quit"));
+        let buttons = actions.map(|(label, cmd)| {
+            let command = format!("{cmd}:{pids}");
+            Button::new(label).min_width(bw).enabled(!sel.is_empty()).on_click(cx.listener(move |a: &mut Activity, _: &ClickEvent, cx| a.run(&command, cx)))
+        });
+        foot = foot.child(div().flex().flex_row().flex_wrap().justify_end().gap(px(m::SPACING)).children(buttons));
+    }
     let list = list(app, cx);
-    div().size_full().flex().flex_col().gap(px(m::SPACING)).p(px(inset)).bg(c(p.panel_background)).child(controls).child(div().flex_1().min_h_0().child(list)).child(foot).into_any_element()
+    div().size_full().flex().flex_col().gap(px(m::SPACING)).child(controls).child(div().flex_1().min_h_0().child(list)).child(foot.flex_shrink_0()).into_any_element()
 }
 
 #[cfg(test)]
