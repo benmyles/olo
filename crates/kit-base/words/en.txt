@@ -89,10 +89,11 @@ Adaptive:
 Add
 Add Fingerprint
 Add Kind
+Add a CalDAV Account…
+Add a Fastmail Account…
 Add a Folder…
 Add a Google Account…
 Add a Kind
-Add an Account…
 Add an App…
 After BeOS: glossy, bright and friendly.
 After BeOS: glossy, bright and friendly. Sky grey by day and ocean blue by night.
@@ -113,6 +114,7 @@ AirPods keep playing at music quality while you record.
 All
 All Apps
 All accounts together
+All {} connected.
 Also leave out:
 Also when running on battery
 Alt
@@ -190,10 +192,11 @@ C, C++, Zig, Haskell, Elixir and Dart build output
 CMakeFiles, .zig-cache, .stack-work, _build, .dart_tool
 CPU
 Caffeinated
+CalDAV
 Calendar
+Calendar shows the calendars of your accounts on other CalDAV servers (Nextcloud, iCloud with an app-specific password, a server of your own) beside Google’s and Fastmail’s, and writes what you change back to them.
 Calendar: Next Event
 Calendar: The Day Ahead
-Calendars
 Calendar’s assistant is handed the events of the calendars you show. It can draft events; nothing is added until you save it.
 Calls
 Cancel
@@ -351,6 +354,7 @@ Fade Colors
 Fast
 Fast when there is work, frugal when there isn't, the processors kept out of their hottest top speed. The usual choice.
 Fastest
+Fastmail
 File
 Files
 Files with these extensions are this kind wherever Olo looks at them, and open in its app. An extension another kind had is this one's now.
@@ -391,7 +395,6 @@ German
 Gestures
 Git Worktrees
 GitHub
-GitHub & Telegram
 Glide
 Glow new windows for
 Google
@@ -534,8 +537,9 @@ Machine:
 Magic Keyboard with Touch ID and Numeric Keypad
 Magic Trackpad
 Mail
-Mail & Calendars
+Mail and Calendar sign in to Fastmail with an app password of each account’s own, with access to mail and calendars. Tick what each account is used for: Mail looks in its new mail for one-time codes, Calendar shows its calendars.
 Mail is read only while a page waits for a code, for up to a minute.
+Mail, Calendar and DiskBackup sign in to Google through an app of each account’s own, “Olo (its address)”, in its Google Cloud project: an agent makes it for you. Tick what each account is used for.
 Main and Stack
 Main display: the desktop is here.
 Main window:
@@ -602,7 +606,9 @@ None. An alert’s Ignore This Process adds one here.
 None. To add an app, choose Float Window ▸ Always in the window menu of one of its windows.
 None. To give an app one, choose Always Open on Workspace in the window menu of one of its windows.
 Norwegian
+Not connected: only public repositories’ pull requests show.
 Not enough touches to learn from
+Not set up: Telegram needs an API ID to sign in with.
 Nothing
 Nothing changed: Olo's own model is still in use.
 Notifications
@@ -885,6 +891,7 @@ Tap to click
 Taps
 Teal
 Telegram
+Telegram (in Applications) shows your chats and messages, and tells you of new ones. Olo keeps its sign-in in your keyring.
 Tell coding agents about the repositories in their tab group
 Tell coding agents to use Olo’s Agent Screens
 Tell me of:
@@ -892,6 +899,7 @@ Tell me when it runs out, and when it's back
 Tell palms apart with a palm model
 Temperature
 Terminal
+Terminal shows each tab’s pull request on GitHub and whether its checks pass.
 Terra 6.1
 Test
 Text:
@@ -1088,6 +1096,7 @@ scx_lavd, made for a computer someone is sitting at: what it judges is being wai
 target/debug, target/release, ~/.cargo/registry, ~/.rustup
 {n} minutes
 {n} seconds
+{} of {} connected.
 ~/.cache, browsers’ caches, thumbnails
 ~/.gradle, ~/.m2/repository, a project’s .gradle
 ~/.local/share/Trash

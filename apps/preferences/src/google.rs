@@ -469,17 +469,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let listed = st.accounts.lock().unwrap().clone();
     let doing = st.doing.lock().unwrap().clone();
     let busy = matches!(doing, Doing::Busy(_));
-    let status = match &listed {
-        None => "Checking…".to_owned(),
-        // (DiskBackup's own account, if it has one, is listed below to bring in.)
-        Some(l) if l.is_empty() => "None connected to Olo yet.".to_owned(),
-        Some(l) if l.iter().any(|(_, s)| *s == Stands::Checking) => "Checking…".to_owned(),
-        Some(l) => match (l.iter().filter(|(_, s)| *s == Stands::Signed).count(), l.len()) {
-            (1, 1) => "Connected.".to_owned(),
-            (c, n) if c == n => format!("All {n} connected."),
-            (c, n) => format!("{c} of {n} connected."),
-        },
-    };
+    let status = crate::integrations::how_many(listed.as_ref().map(|l| (l.iter().any(|(_, s)| *s == Stands::Checking), l.iter().filter(|(_, s)| *s == Stands::Signed).count(), l.len())));
     let mut items: Vec<Element> = vec![
         service(
             "people",

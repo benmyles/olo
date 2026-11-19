@@ -248,17 +248,17 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     }
     let failure = style::c(theme::palette().failure);
     let status = match &known {
-        Known::Checking => "Checking…".to_owned(),
-        Known::NoApi => "Not set up: Telegram needs an API ID to sign in with.".to_owned(),
-        Known::SignedOut(api) => format!("Not signed in. (API ID {}.)", api.id),
+        Known::Checking => olo_kit::words::tr("Checking…").to_owned(),
+        Known::NoApi => olo_kit::words::tr("Not set up: Telegram needs an API ID to sign in with.").to_owned(),
+        Known::SignedOut(api) => olo_kit::tr!("Not signed in. (API ID {}.)", api.id),
         Known::SignedIn(_, me) => match &me.phone {
-            Some(p) => format!("Signed in as {} ({p}).", me.name),
-            None => format!("Signed in as {}.", me.name),
+            Some(p) => olo_kit::tr!("Signed in as {} ({}).", me.name, p),
+            None => olo_kit::tr!("Signed in as {}.", me.name),
         },
         Known::Failed(why) => why.clone(),
     };
     let mut items: Vec<Element> = vec![
-        service("telegram", "Telegram (in Applications) shows your chats and messages, and notifies you of new ones. Olo keeps the sign-in in your login keyring.", status).into_element(),
+        service("telegram", "Telegram (in Applications) shows your chats and messages, and tells you of new ones. Olo keeps its sign-in in your keyring.", status).into_element(),
         div().h(px(m::TIGHT)).into_element(),
     ];
     let problem_text = |p: &Option<String>| p.as_ref().map(|p| StringView::new(p.clone()).color(failure).wrap(true).into_element());

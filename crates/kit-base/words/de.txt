@@ -3325,3 +3325,63 @@ Vorschläge
 
 Turn the display off after:
 Bildschirm ausschalten nach:
+
+Add a CalDAV Account…
+CalDAV-Konto hinzufügen …
+
+Add a Fastmail Account…
+Fastmail-Konto hinzufügen …
+
+All {} connected.
+Alle {} verbunden.
+
+{} of {} connected.
+{} von {} verbunden.
+
+CalDAV
+CalDAV
+
+Fastmail
+Fastmail
+
+Checking…
+Wird geprüft …
+
+Connected.
+Verbunden.
+
+None connected to Olo yet.
+Noch keines mit Olo verbunden.
+
+Calendar shows the calendars of your accounts on other CalDAV servers (Nextcloud, iCloud with an app-specific password, a server of your own) beside Google’s and Fastmail’s, and writes what you change back to them.
+Calendar zeigt die Kalender Ihrer Konten auf anderen CalDAV-Servern (Nextcloud, iCloud mit einem app-spezifischen Passwort, ein eigener Server) neben denen von Google und Fastmail und schreibt Ihre Änderungen dorthin zurück.
+
+Mail and Calendar sign in to Fastmail with an app password of each account’s own, with access to mail and calendars. Tick what each account is used for: Mail looks in its new mail for one-time codes, Calendar shows its calendars.
+Mail und Calendar melden sich bei Fastmail mit einem eigenen App-Passwort jedes Kontos an, mit Zugriff auf Mail und Kalender. Wählen Sie, wofür jedes Konto dient: Mail sucht in seinen neuen Nachrichten nach Einmalcodes, Calendar zeigt seine Kalender.
+
+Mail, Calendar and DiskBackup sign in to Google through an app of each account’s own, “Olo (its address)”, in its Google Cloud project: an agent makes it for you. Tick what each account is used for.
+Mail, Calendar und DiskBackup melden sich bei Google über eine eigene App jedes Kontos an, „Olo (seine Adresse)“, in seinem Google-Cloud-Projekt: Ein Agent erstellt sie für Sie. Wählen Sie, wofür jedes Konto dient.
+
+Not connected: only public repositories’ pull requests show.
+Nicht verbunden: Nur Pull Requests öffentlicher Repositorys werden gezeigt.
+
+Not set up: Telegram needs an API ID to sign in with.
+Nicht eingerichtet: Telegram braucht eine API-ID zum Anmelden.
+
+Telegram (in Applications) shows your chats and messages, and tells you of new ones. Olo keeps its sign-in in your keyring.
+Telegram (unter Programme) zeigt Ihre Chats und Nachrichten und meldet neue. Olo bewahrt die Anmeldung in Ihrem Schlüsselbund auf.
+
+Terminal shows each tab’s pull request on GitHub and whether its checks pass.
+Terminal zeigt den Pull Request jedes Tabs auf GitHub und ob seine Prüfungen bestehen.
+
+Connected as {}, through {}.
+Verbunden als {}, über {}.
+
+Not signed in. (API ID {}.)
+Nicht angemeldet. (API-ID {}.)
+
+Signed in as {} ({}).
+Angemeldet als {} ({}).
+
+Signed in as {}.
+Angemeldet als {}.

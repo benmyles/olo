@@ -123,7 +123,24 @@ pub fn service(icon: &'static str, about: &str, status: String) -> impl IntoElem
         .child(art)
         // (How it stands a little apart from what it does: right under
         // the paragraph, it read as its last line, Ben, 2026-11-18.)
-        .child(div().flex_1().min_w_0().flex().flex_col().gap(px(m::TIGHT)).child(StringView::new(about.to_owned()).dim(true).wrap(true)).child(StringView::new(status).wrap(true)))
+        // (What it does in the language chosen: handed on as owned text,
+        // no header was translated, nor even listed among Olo's words. How
+        // it stands comes in the language chosen already: `how_many`.)
+        .child(div().flex_1().min_w_0().flex().flex_col().gap(px(m::TIGHT)).child(StringView::new(olo_kit::words::of_text(about)).dim(true).wrap(true)).child(StringView::new(status).wrap(true)))
+}
+
+/// How a tab's accounts stand, in the language chosen: `read`, once they
+/// are, says whether any is still being tried, how many are connected,
+/// and how many there are.
+pub fn how_many(read: Option<(bool, usize, usize)>) -> String {
+    use olo_kit::words::tr;
+    match read {
+        None | Some((true, ..)) => tr("Checking…").to_owned(),
+        Some((_, _, 0)) => tr("None connected to Olo yet.").to_owned(),
+        Some((_, 1, 1)) => tr("Connected.").to_owned(),
+        Some((_, c, n)) if c == n => olo_kit::tr!("All {} connected.", n),
+        Some((_, c, n)) => olo_kit::tr!("{} of {} connected.", c, n),
+    }
 }
 
 /// Who `token` signs in as, by asking GitHub.
@@ -245,9 +262,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
 fn github(ui: &mut Ui, st: &mut State) {
     let now = st.github.lock().unwrap().clone();
     let status = match &now {
-        GitHub::Checking => "Checking…".to_owned(),
-        GitHub::None => "Not connected: only public repositories’ pull requests show.".to_owned(),
-        GitHub::Connected { login, source } => format!("Connected as {login}, through {}.", source.describe()),
+        GitHub::Checking => olo_kit::words::tr("Checking…").to_owned(),
+        GitHub::None => olo_kit::words::tr("Not connected: only public repositories’ pull requests show.").to_owned(),
+        GitHub::Connected { login, source } => olo_kit::tr!("Connected as {}, through {}.", login, source.describe()),
         GitHub::Failed { source: Some(s), why } => format!("{why} (From {}.)", s.describe()),
         GitHub::Failed { source: None, why } => why.clone(),
     };

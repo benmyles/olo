@@ -286,16 +286,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let listed = st.accounts.lock().unwrap().clone();
     let trying = st.trying.lock().unwrap().clone();
     let busy = matches!(trying, Adding::Trying(_));
-    let status = match &listed {
-        None => "Checking…".to_owned(),
-        Some(l) if l.is_empty() => "None connected to Olo yet.".to_owned(),
-        Some(l) if l.iter().any(|(_, s)| *s == Stands::Checking) => "Checking…".to_owned(),
-        Some(l) => match (l.iter().filter(|(_, s)| matches!(s, Stands::Signed(_))).count(), l.len()) {
-            (1, 1) => "Connected.".to_owned(),
-            (c, n) if c == n => format!("All {n} connected."),
-            (c, n) => format!("{c} of {n} connected."),
-        },
-    };
+    let status = crate::integrations::how_many(listed.as_ref().map(|l| (l.iter().any(|(_, s)| *s == Stands::Checking), l.iter().filter(|(_, s)| matches!(s, Stands::Signed(_))).count(), l.len())));
     let mut items: Vec<Element> = vec![
         service(
             "mail",
