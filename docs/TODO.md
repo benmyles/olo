@@ -86,6 +86,19 @@ something nobody here has is in "Blocked", with what it waits for.
     week at Ben's pace: none spent while an account can serve, each
     where it gives back most, none lost to expiry), and the tip pictured.
 
+- **Notifications' "Waiting in apps" goes to the window and tab that
+  waits** (Ben, 2026-11-19, with a picture of Notifications' "Waiting in
+  apps", "Terminal · 1 waiting": "when i click on the waiting app, e.g.
+  terminal, it doesn't take me to the specific terminal window + tab
+  that has the activity"). A click goes where the app's own notification
+  about it says (`Notifications::open_waiting`, `waiting::about`: its
+  open note's default action, or its newest unread note's `show`); with
+  neither (a Terminal tab waiting with no note of its own), the app only
+  comes forward, in whichever window. What an app says is waiting should
+  say where (Terminal: the window and the tab; Phone: the conversation),
+  a click go there, and several waiting in one app each be listed, each
+  going to its own.
+
 - **A Language setting, and Olo in every major language** (Ben,
   2026-11-18: "we should add a language setting and also let's translate
   all olo apps and prefs and ux to support all the major languages
