@@ -73,6 +73,9 @@ pub use olo_interface::*;
 // (`clipboard` is the Interface Kit's: what a program with windows copies and
 // pastes through. One with none holds the clipboard itself: `held_clipboard`.)
 pub use olo_kit_base::clipboard as held_clipboard;
+/// A sentence in the language chosen with its parts put in:
+/// `olo_kit::tr!("Updated {} ago", when)` (the kit's words, `words`).
+pub use olo_kit_base::tr;
 pub use olo_kit_base::{Proxy, airplay, clock, commands, files, instance, metrics, moving, notify, places, restore, settings, store, tracker, watch, workspaces};
 pub use olo_theme as palette;
 pub use olo_xdg::{config_dir, state_dir};

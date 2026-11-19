@@ -64,7 +64,9 @@ fn ui_lint_a_kit_form_is_clean() {
 #[test]
 fn ui_lint_finds_controls_over_each_other() {
     let found = form(true);
-    assert!(found.iter().any(|f| f.kind == "overlap" && f.text.contains("Revert") && f.text.contains("Defaults")), "{found:#?}");
+    // (Its buttons' words as drawn: the lint runs in any language.)
+    let said = olo_kit::words::tr;
+    assert!(found.iter().any(|f| f.kind == "overlap" && f.text.contains(said("Revert")) && f.text.contains(said("Defaults"))), "{found:#?}");
     // In every look at every scale: the window with no display took each.
     let mut where_found: Vec<(&str, u32)> = found.iter().filter(|f| f.kind == "overlap").map(|f| (f.look, (f.scale * 100.0) as u32)).collect();
     where_found.sort();
@@ -645,9 +647,11 @@ fn ui_lint_a_list_acted_on_by_whats_checked_is_clean() {
         let (_, nodes) = lint.trees(&options, move |_| Picks { checked }).remove(0);
         let named =
             |role: &str, name: &str| nodes.iter().find(|n| n.role == role && n.name.as_deref() == Some(name)).unwrap_or_else(|| panic!("{checked:?}: no {role} {name:?} in {nodes:#?}")).clone();
-        assert_eq!(named("CheckBox", "Install just").checked, Some(checked[1] > 0));
+        // (By what they say, in the language the lint runs in.)
+        let said = olo_kit::words::tr;
+        assert_eq!(named("CheckBox", said("Install just")).checked, Some(checked[1] > 0));
         for link in ["All", "Problems", "Suggestions", "None"] {
-            named("Button", link);
+            named("Button", said(link));
         }
         let words = olo_kit::chosen::label(&[(&PROBLEM, checked[0]), (&SUGGESTION, checked[1])]);
         let button = named("Button", &words);

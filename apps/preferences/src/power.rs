@@ -387,11 +387,12 @@ fn idle_boxes(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server) {
 const AWAY: &[u32] = &[0, 10, 30, 60, 120, 300];
 
 fn away_text(seconds: u32) -> String {
+    // (In the language chosen, its forms for the number.)
     match seconds {
-        0 => "Never".into(),
-        s if s < 60 => format!("After {s} seconds"),
-        60 => "After a minute".into(),
-        s => format!("After {} minutes", s / 60),
+        0 => olo_kit::words::tr("Never").to_owned(),
+        s if s < 60 => olo_kit::words::count(u64::from(s), "After 1 second", "After {n} seconds"),
+        60 => olo_kit::words::tr("After a minute").to_owned(),
+        s => olo_kit::words::count(u64::from(s / 60), "After 1 minute", "After {n} minutes"),
     }
 }
 

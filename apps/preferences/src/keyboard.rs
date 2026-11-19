@@ -343,7 +343,7 @@ fn power_button(ui: &mut Ui) {
     order.sort_by_key(|&i| pb.holds[i].seconds);
     for i in order {
         let hold = pb.holds[i];
-        let seconds: Vec<SharedString> = HOLD_SECONDS.iter().map(|n| SharedString::from(if *n == 1 { "1 second".to_owned() } else { format!("{n} seconds") })).collect();
+        let seconds: Vec<SharedString> = HOLD_SECONDS.iter().map(|n| SharedString::from(olo_kit::words::count(u64::from(*n), "1 second", "{n} seconds"))).collect();
         let at = HOLD_SECONDS.iter().position(|n| *n == hold.seconds).unwrap_or(0);
         let actions = actions.clone();
         ui.row(|ui| {

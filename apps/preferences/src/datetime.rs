@@ -623,7 +623,9 @@ fn time_zone(ui: &mut Ui, clock: &ClockSettings, st: &mut State, current: &str, 
                     let _ = tx.send(Request::Zone(z.clone()));
                 }
             }))
-            .child(StringView::new(format!("Now: {}", zone_label(current)))),
+            // (The rest of the row, wrapping: a long zone's name beside a
+            // longer button, as German's, ran past the window.)
+            .child(div().flex_1().min_w_0().child(StringView::new(olo_kit::tr!("Now: {}", zone_label(current))).wrap(true))),
     );
 }
 
@@ -636,7 +638,7 @@ fn clock(ui: &mut Ui, clock: &ClockSettings, now: &Zoned) {
         ui.check("Show the day of the week", clock.show_day, |s, v| s.clock.show_day = v);
     });
     let sample = clock.format(now.hour() as u32, now.minute() as u32, now.second() as u32, now.weekday().to_sunday_zero_offset() as u32);
-    ui.label(format!("Deskbar shows: {sample}"));
+    ui.label(olo_kit::tr!("Deskbar shows: {}", sample));
 }
 
 #[cfg(test)]

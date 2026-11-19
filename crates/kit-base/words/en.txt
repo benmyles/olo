@@ -1,4 +1,3 @@
-
 %
 *.qcow2, *.vdi, *.vmdk (large, changing while in use)
 *.swp, *~, .#*
@@ -80,6 +79,7 @@ AI
 AI features use OpenAI’s models through the Token Pool’s Codex accounts, spent in its order.
 API ID:
 API hash:
+About 
 About Olo Desktop
 Accent
 Account
@@ -98,7 +98,10 @@ After BeOS: glossy, bright and friendly.
 After BeOS: glossy, bright and friendly. Sky grey by day and ocean blue by night.
 After Mac OS 9: black outlines, lilac greys.
 After Mac OS X's Aqua: shinier and bluer, with soft outlines.
+After a minute
 After the active window
+After {n} minutes
+After {n} seconds
 Again:
 Agent Screens
 AirPlay
@@ -107,6 +110,7 @@ AirPods (Call Quality)
 AirPods (High Quality)
 AirPods Settings…
 AirPods keep playing at music quality while you record.
+All
 All Apps
 All accounts together
 Also leave out:
@@ -177,6 +181,7 @@ Bottom Right Quarter
 Bottom Two Thirds
 Bright
 Brightness
+Bring It Into Olo…
 Brown
 Busy Wi-Fi
 Buttons
@@ -277,6 +282,7 @@ Delay:
 Delete
 Deskbar
 Deskbar clock
+Deskbar shows: {}
 Desktop Colour
 Destination
 Details
@@ -288,6 +294,7 @@ Disk
 Disk Space
 Disk:
 DiskBackup
+DiskBackup’s own app, from before. Bring it in for Mail and Calendar too; the backups stay put.
 Display
 Divider
 Do Not Disturb
@@ -502,6 +509,7 @@ Link:
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 List View
 Listening
+Lock after idle for:
 Lock the Screen
 Lock the screen when the display turns off
 Lock when the screen locks
@@ -600,6 +608,7 @@ Nothing changed: Olo's own model is still in use.
 Notifications
 Notifications: Inbox
 November 2026
+Now: {}
 Num Lock on when Olo starts
 Number
 Number of main windows:
@@ -696,6 +705,7 @@ Press speed:
 Press 🌐 alone to show emoji
 Previous Month
 Priorities
+Problems
 Processed
 Processor:
 Profile:
@@ -703,6 +713,7 @@ Program names, comma separated
 Programs’ Secrets
 Provider:
 Purple
+Put the computer to sleep after:
 Puts what you choose from a backup in place of what's here; the rest stays as it is. What you have now is saved first.
 Python bytecode and virtual environments
 Quad9 (9.9.9.9)
@@ -724,6 +735,7 @@ Record from:
 Recording
 Red
 Red:
+Redo
 Refresh rate:
 Removable Disks
 Remove
@@ -739,6 +751,8 @@ Restart and Shut Down end every program and stop the system in order, as Deskbar
 Restart, Asking First
 Restore…
 Rests
+Resume
+Resume Backups
 Revert
 Right
 Right Half
@@ -854,6 +868,7 @@ Stop Recording
 Strip
 Strong
 Suggest commands from a model of your own
+Suggestions
 SuperString, by Jon Watte
 Supervisor
 Swap Alt and the Windows Key
@@ -962,6 +977,7 @@ Tuned for:
 Turn Off
 Turn On
 Turn off screen
+Turn the display off after:
 Turn the touchpad off while a mouse is plugged in
 Two fingers
 Type
@@ -970,6 +986,7 @@ Type with your palms down
 Typing test:
 USB mice may sleep
 Under the Tray
+Undo
 Unless the app says; kept while the pointer is over it.
 Unread notifications put a blue dot beside their app.
 Up (sent)
@@ -1069,6 +1086,8 @@ node_modules, .next, .turbo, .parcel-cache, ~/.npm
 sav, sv2
 scx_lavd, made for a computer someone is sitting at: what it judges is being waited for runs first, with builds and other long work around it. It gives a program's priority little weight, and under heavy work the window server waited for the processor three times as long as with the kernel's own. It is loaded over the kernel's own, which takes over again by itself if LAVD ever stops.
 target/debug, target/release, ~/.cargo/registry, ~/.rustup
+{n} minutes
+{n} seconds
 ~/.cache, browsers’ caches, thumbnails
 ~/.gradle, ~/.m2/repository, a project’s .gradle
 ~/.local/share/Trash

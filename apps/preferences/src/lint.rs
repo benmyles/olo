@@ -340,6 +340,17 @@ fn ui_lint_settings_index() {
     use std::fmt::Write as _;
     const ROLES: &[&str] = &["CheckBox", "RadioButton", "Slider", "ComboBox", "TextInput", "Button", "ColorWell"];
     let mut lint = Lint::new();
+    // (In English whatever language the lint runs in: the index is
+    // English words. The language is put back as this ends, before the
+    // lint's one window is let go of, so no other test sees it.)
+    struct InEnglish(&'static str);
+    impl Drop for InEnglish {
+        fn drop(&mut self) {
+            olo_kit::words::set(self.0);
+        }
+    }
+    let _english = InEnglish(olo_kit::words::current().code);
+    olo_kit::words::set("");
     fresh();
     let mut rows: Vec<(String, String, String, String, String)> = Vec::new();
     for &panel in Panel::ALL.iter().filter(|p| **p != Panel::About) {

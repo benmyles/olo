@@ -162,7 +162,9 @@ pub fn choose(id: &str, counts: &[Count], enabled: bool, on_choice: impl Fn(&Cho
     let on_choice: OnChoice = Rc::new(on_choice);
     let link = |label: &str, key: String, choice: Choice| {
         let f = on_choice.clone();
-        LinkButton::new(label.to_owned()).id(format!("{id}-{key}")).beside(style::PLAIN_SIZE).enabled(enabled).on_click(move |_: &ClickEvent, cx| f(&choice, cx)).into_element()
+        // (In the language chosen: handed on as owned text, the links
+        // stayed English, which the lint's own test found.)
+        LinkButton::new(crate::words::of_text(label)).id(format!("{id}-{key}")).beside(style::PLAIN_SIZE).enabled(enabled).on_click(move |_: &ClickEvent, cx| f(&choice, cx)).into_element()
     };
     // (Its words and the links' on a push button's baseline: the row
     // reads as one line with the buttons beside it.)

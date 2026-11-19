@@ -89,12 +89,15 @@ something nobody here has is in "Blocked", with what it waits for.
   bubble), each language by its own name, how much of Olo is in it so
   far, and other programs given it as they start (`LANGUAGE` in the
   person's locale.conf); and Olo's word list whole (1,081: tabs, menu
-  fields' choices and boxes' titles counted too, `words/en.txt`).
-  **Left**: the translations themselves (German first, under way; the
-  catalogs hold a few words each); sentences made with `format!` turned
-  to `tr!`; what apps paint themselves; the lint run in each language;
-  formats (dates, numbers, the week's first day); Arabic (right-to-left
-  layout).
+  fields' choices and boxes' titles counted too, `words/en.txt`). Then
+  German, every word (1,100), and the layout lint run in a language
+  (`OLO_LANGUAGE=de cargo ui-lint`), clean in German (HACKING.md, "The
+  lint in a language"). **Left**: the other eleven languages' words;
+  sentences still made with `format!` (Power's "Now Performance: …",
+  Notifications' "6 seconds" and "1 hour", Keyboard's "35 per second"
+  and the like: what the lint can't see, as their English shows in any
+  language); what apps paint themselves; formats (dates, numbers, the
+  week's first day); Arabic (right-to-left layout).
 - **A sign-in's mailed code is found every time** (Ben, 2026-11-18,
   signing in at claude.ai, which mails a link and takes a "verification
   code" in its place: "i tried to login to claude and it didn't manage

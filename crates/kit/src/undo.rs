@@ -157,17 +157,21 @@ pub fn edit_items_named(menu: Menu, undo: Option<&str>, redo: Option<&str>) -> M
 
 /// [`edit_items_named`] with commands of the app's own (`edit-undo`).
 pub fn edit_items_as(menu: Menu, undo: Option<&str>, redo: Option<&str>, commands: (&'static str, &'static str)) -> Menu {
-    let label = |verb: &str, name: Option<&str>| match name {
-        Some(n) if !n.is_empty() => format!("{verb} {n}"),
-        _ => verb.to_owned(),
-    };
-    menu.item(label("Undo", undo), commands.0).key("z").enabled(undo.is_some()).item(label("Redo", redo), commands.1).shift_key("z").enabled(redo.is_some())
+    menu.item(said(true, undo), commands.0).key("z").enabled(undo.is_some()).item(said(false, redo), commands.1).shift_key("z").enabled(redo.is_some())
 }
 
 fn label<C>(verb: &str, step: Option<&Step<C>>) -> String {
-    match step {
-        Some(s) if !s.name.is_empty() => format!("{verb} {}", s.name),
-        _ => verb.to_owned(),
+    said(verb == "Undo", step.map(|s| s.name.as_str()))
+}
+
+/// "Undo Rename" (or "Redo …"), "Undo" with nothing named, in the
+/// language chosen: the step's name is the app's own words too.
+fn said(undo: bool, name: Option<&str>) -> String {
+    match (undo, name.filter(|n| !n.is_empty())) {
+        (true, Some(n)) => olo_kit_base::tr!("Undo {}", crate::words::of_text(n)),
+        (false, Some(n)) => olo_kit_base::tr!("Redo {}", crate::words::of_text(n)),
+        (true, None) => crate::words::tr("Undo").to_owned(),
+        (false, None) => crate::words::tr("Redo").to_owned(),
     }
 }
 

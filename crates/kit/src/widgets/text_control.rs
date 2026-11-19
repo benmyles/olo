@@ -47,7 +47,12 @@ impl TextControl {
 impl IntoElement for TextControl {
     fn into_element(self) -> Element {
         let font = style::ui_font(FontWeight::NORMAL);
-        let divider = self.label.as_ref().map(|l| self.divider.unwrap_or_else(|| f32::from(style::text_width(l.clone(), style::PLAIN_SIZE, font.clone())).ceil() + m::LABEL_GAP));
+        // (At the least where it was told, as a menu field's: a wider label
+        // pushes the field over.)
+        let divider = self.label.as_ref().map(|l| {
+            let own = f32::from(style::text_width(l.clone(), style::PLAIN_SIZE, font.clone())).ceil() + m::LABEL_GAP;
+            self.divider.map_or(own, |d| d.max(own))
+        });
         // A field that can't be used (`TextField::set_enabled(false)`):
         // its label and well faded.
         let enabled = self.enabled;

@@ -78,6 +78,10 @@ fn program() {
         // SAFETY: said before the display thread (which reads it) starts;
         // tests that lint are the only ones that start it.
         unsafe { std::env::set_var("OLO_HEADLESS", "1") };
+        // In the language `$OLO_LANGUAGE` names (English unless): German's
+        // longer words checked against every window, as the person sees
+        // them. (Not started here, a lint run "in German" checked English.)
+        olo_kit_base::words::start("");
         let (tx, rx) = mpsc::channel();
         std::thread::Builder::new()
             .name("lint-app".into())

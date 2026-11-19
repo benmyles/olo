@@ -88,7 +88,8 @@ impl MenuField {
         self
     }
 
-    /// Where the field starts after the label (lining fields up).
+    /// Where the field starts after the label (lining fields up), at the
+    /// least: a wider label (another language's) pushes it over.
     pub fn divider(mut self, x: f32) -> Self {
         self.divider = Some(x);
         self
@@ -115,8 +116,14 @@ impl IntoElement for MenuField {
     fn into_element(self) -> Element {
         let font = style::ui_font(FontWeight::NORMAL);
         let widest = self.options.iter().chain(self.many.as_ref().map(|(_, none)| none)).map(|o| f32::from(style::text_width(o.clone(), style::PLAIN_SIZE, font.clone()))).fold(0.0, f32::max);
+        // (A divider given is where the field starts at the least: a
+        // label wider than it, as a translation can be, pushes the field
+        // over rather than being drawn under it.)
         let label_w = match &self.label {
-            Some(l) => self.divider.unwrap_or_else(|| f32::from(style::text_width(l.clone(), style::PLAIN_SIZE, font.clone())).ceil() + m::LABEL_GAP),
+            Some(l) => {
+                let own = f32::from(style::text_width(l.clone(), style::PLAIN_SIZE, font.clone())).ceil() + m::LABEL_GAP;
+                self.divider.map_or(own, |d| d.max(own))
+            }
             None => 0.0,
         };
         let width = self.width.unwrap_or((label_w + m::TEXT_INSET + widest + 12.0 + 18.0).ceil());

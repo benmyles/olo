@@ -13027,6 +13027,28 @@ that other programs take it as they next start: `LANGUAGE` (gettext's,
 `locale::give` hands every program Olo starts, over what the starter
 had. Formats (dates, numbers) follow the system's region for now.
 
+**The lint in a language**: `OLO_LANGUAGE=de cargo ui-lint` draws every
+window in German (`lint::program` starts the words layer; before, a run
+"in German" checked English), so a translation is held to the same
+rules as English: nothing past its room, no field's column too narrow,
+every window within 1280 × 800. German's first run found 307 things,
+which came to: label columns sized for English (a field's `divider` is
+now where it starts at the least, in `MenuField` and `TextControl`: a
+wider label pushes the field over instead of being drawn under it;
+`divider_for` measures labels as drawn); words built with `format!`,
+so never translated (Undo and Redo are `tr!("Undo {}")` with the step's
+name looked up, durations `words::count("1 second", "{n} seconds")`,
+sentences `olo_kit::tr!`, and anything handed on as owned text goes
+through `words::of_text`); the menu check comparing translated menus
+with English (it compares with the same words translated); and German
+too long for its room, put right with shorter German where the English
+is right. The kit's own lint tests look for words as drawn
+(`words::tr("Revert")`), and the settings index is drawn in English
+whatever the lint runs in (`ui_lint_settings_index`, under the lint's
+one-window lock). German (`words/de.txt`) has every one of Olo's words:
+those the same in German (names, paths) as themselves, so coverage
+says all.
+
 The words stay in the code, in English, as they always were. Each
 language has a catalog of them (`crates/kit-base/words/CODE.txt`,
 built into every program: pages of which only the chosen language's

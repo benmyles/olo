@@ -282,9 +282,6 @@ fn secrets_note(ui: &mut Ui) {
 }
 
 fn seconds_text(s: u32) -> String {
-    match s {
-        60 => "1 minute".into(),
-        s if s % 60 == 0 => format!("{} minutes", s / 60),
-        s => format!("{s} seconds"),
-    }
+    // (In the language chosen, its forms for the number.)
+    if s % 60 == 0 { olo_kit::words::count(u64::from(s / 60), "1 minute", "{n} minutes") } else { olo_kit::words::count(u64::from(s), "1 second", "{n} seconds") }
 }

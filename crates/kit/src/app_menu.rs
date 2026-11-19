@@ -221,12 +221,15 @@ pub fn review(menus: &[Menu]) -> Vec<(String, String)> {
                 }
                 continue;
             };
-            let right_menu = if home.is_empty() { i == 0 } else { menu.title == *home };
+            // (In the language chosen, as the menus are made: Ablage ▸
+            // Schließen is File ▸ Close.)
+            let right_menu = if home.is_empty() { i == 0 } else { menu.title == crate::words::of(*home) };
             if !right_menu {
                 let want = if home.is_empty() { "the first menu" } else { home };
                 say(format!("{} ▸ {}: belongs in {want}", menu.title, a.label));
             }
-            if !a.label.starts_with(label) {
+            let label = crate::words::of(*label);
+            if !a.label.starts_with(label.as_ref()) {
                 say(format!("{} ▸ {}: say “{label}”", menu.title, a.label));
             }
         }
