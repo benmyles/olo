@@ -242,7 +242,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let busy = matches!(trying, Adding::Trying(_));
     let status = match &listed {
         None => "Checking…".to_owned(),
-        Some(l) if l.is_empty() => "None added.".to_owned(),
+        Some(l) if l.is_empty() => "None connected to Olo yet.".to_owned(),
         Some(l) if l.iter().any(|(_, s)| *s == Stands::Checking) => "Checking…".to_owned(),
         Some(l) => match (l.iter().filter(|(_, s)| matches!(s, Stands::Connected(_))).count(), l.len()) {
             (1, 1) => "Connected.".to_owned(),

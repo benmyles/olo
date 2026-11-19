@@ -121,7 +121,9 @@ pub fn service(icon: &'static str, about: &str, status: String) -> impl IntoElem
         .flex_row()
         .gap(px(m::SPACING))
         .child(art)
-        .child(div().flex_1().min_w_0().flex().flex_col().child(StringView::new(about.to_owned()).dim(true).wrap(true)).child(StringView::new(status).wrap(true)))
+        // (How it stands a little apart from what it does: right under
+        // the paragraph, it read as its last line, Ben, 2026-11-18.)
+        .child(div().flex_1().min_w_0().flex().flex_col().gap(px(m::TIGHT)).child(StringView::new(about.to_owned()).dim(true).wrap(true)).child(StringView::new(status).wrap(true)))
 }
 
 /// Who `token` signs in as, by asking GitHub.
