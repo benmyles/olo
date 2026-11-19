@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use olo_kit::{
     ClickEvent, Cx, Element, Hsla, InteractiveElement as _, IntoElement as _, MenuBar, ParentElement as _, Styled as _, canvas, div, metrics as m, px, style, theme,
-    widgets::{ArrowButton, Button, CheckBox, EmptyState, MonthGrid, ScrollView, StringView, TabView, month as mini},
+    widgets::{ArrowButton, Button, CheckBox, EmptyState, LinkButton, MonthGrid, ScrollView, StringView, TabView, TextControl, month as mini},
 };
 
 use crate::{Calendar, Mode, Msg, agenda, hue_of, layout, month, week, words};
@@ -21,6 +21,9 @@ const SIDEBAR: f32 = mini::WIDTH + 2.0 * m::TIGHT + 4.0;
 const MAIN_MIN: f32 = 7.0 * 78.0;
 pub const MIN_WIDTH: f32 = 2.0 * m::WINDOW_INSET + SIDEBAR + m::SPACING + MAIN_MIN;
 pub const MIN_HEIGHT: f32 = 520.0;
+/// The assistant's column, and the least it's any use at.
+const ASSISTANT: f32 = 264.0;
+const ASSISTANT_MIN: f32 = 216.0;
 /// How many days on the agenda shows.
 pub const AGENDA_DAYS: i32 = 56;
 
@@ -96,10 +99,20 @@ pub fn body(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
     let bar = MenuBar::of(v, cx, |v, _| v.menus());
     let p = theme::palette();
     let mut row = div().flex_1().min_h_0().flex().flex_row().gap(px(m::SPACING)).px(px(m::WINDOW_INSET)).pt(px(m::SPACING)).pb(px(m::WINDOW_INSET));
-    if v.settings.sidebar {
+    // The assistant's column takes what the views can spare, up to its
+    // width; in a window too narrow for all three, the calendars' column
+    // gives way to it while it shows.
+    let room = |sidebar: bool| f32::from(cx.viewport_size().width) - 2.0 * m::WINDOW_INSET - if sidebar { SIDEBAR + m::SPACING } else { 0.0 } - MAIN_MIN - m::SPACING;
+    let (sidebar_shown, column) = match (v.settings.assistant, v.settings.sidebar) {
+        (false, sidebar) => (sidebar, 0.0),
+        (true, true) if room(true) >= ASSISTANT_MIN => (true, room(true).min(ASSISTANT)),
+        (true, _) => (false, room(false).clamp(ASSISTANT_MIN, ASSISTANT)),
+    };
+    if sidebar_shown {
         row = row.child(div().w(px(SIDEBAR)).flex_shrink_0().h_full().child(sidebar(v, cx)));
     }
     let main = div().flex_1().min_w(px(MAIN_MIN)).h_full().flex().flex_col().gap(px(m::TIGHT)).child(nav(v, cx)).child(div().flex_1().min_h_0().child(views(v, cx)));
+    let pane = v.settings.assistant.then(|| div().w(px(column)).flex_shrink_0().h_full().child(assistant_pane(v, column, cx)));
     // Keys, where nothing that's typed in has the keyboard: Return opens
     // the event chosen, Delete (or Backspace) deletes it, the arrows step
     // through the days (a week up or down), Escape lets go of what's
@@ -113,6 +126,13 @@ pub fn body(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
             let to = layout::day_of(layout::day_number(v.cursor) + days);
             v.go(to, cx);
         };
+        // (An answer on its way is let go of first.)
+        if e.keystroke.key == "escape" && v.answering.is_some() {
+            v.stop_asking();
+            cx.invalidate();
+            cx.stop_propagation();
+            return;
+        }
         // Find, while it shows what it found: the arrows step through
         // it, Return goes to the one chosen, Escape ends the search.
         if !v.finding.is_empty() {
@@ -168,7 +188,7 @@ pub fn body(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
         v.step_found(up, cx);
         cx.stop_propagation();
     });
-    div().size_full().flex().flex_col().bg(style::c(p.panel_background)).on_window_key_down(keys).capture_key_down(in_field).child(bar).child(row.child(main)).into_element()
+    div().size_full().flex().flex_col().bg(style::c(p.panel_background)).on_window_key_down(keys).capture_key_down(in_field).child(bar).child(row.child(main).children(pane)).into_element()
 }
 
 /// What the view shows, in words: the month, the week's days, the day.
@@ -226,6 +246,85 @@ fn nav(v: &mut Calendar, cx: &mut Cx<Calendar>) -> Element {
         .child(div().flex_1().min_w_0().flex().justify_end().child(said))
         // Find: what's typed here is looked for in every calendar shown.
         .child(div().w(px(SEARCH)).flex_shrink_0().child(&v.search))
+        .into_element()
+}
+
+/// The assistant: the conversation (each answer with the events it
+/// points to, a click going to each, and what it proposes, a click
+/// opening it to save or not), suggestions before any, and the field to
+/// ask in. `column` is how wide it is.
+fn assistant_pane(v: &mut Calendar, column: f32, cx: &mut Cx<Calendar>) -> Element {
+    let p = theme::palette();
+    let e = edge(cx);
+    let failure = style::c(p.failure);
+    // (What's wider than the column wraps: its width less its well's
+    // edges, its padding and the scroll bar's room while there is one.)
+    let bar = if v.chat_scroll.max_offset().height > px(0.5) { olo_kit::widgets::scroll::SCROLL_BAR } else { 0.0 };
+    let wrap = column - 2.0 * e - 2.0 * m::SPACING - bar;
+    let mut conv = div().w_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::SPACING));
+    for (i, t) in v.turns.iter().enumerate() {
+        conv = conv.child(StringView::new(t.question.clone()).bold(true).wrap(true));
+        // (Stopped before a word came: said so, quietly.)
+        let answer = if t.answer.is_empty() { StringView::new("Stopped.").dim(true) } else { StringView::new(t.answer.clone()).wrap(true) };
+        conv = conv.child(if t.failed { answer.color(failure) } else { answer });
+        if !t.events.is_empty() || !t.proposals.is_empty() {
+            let mut list = div().flex().flex_col().gap(px(m::TIGHT)).mt(px(-(m::SPACING - m::TIGHT)));
+            // The events it points to: each goes to it in the view.
+            for (j, event) in t.events.iter().enumerate() {
+                let (href, start) = (event.href.clone(), event.start);
+                list = list.child(
+                    div().flex().child(LinkButton::new(event.said.clone()).wrap_at(wrap).id(format!("event-{i}-{j}")).on_click(cx.msg_with(move |_: &ClickEvent| Msg::Reveal(href.clone(), start)))),
+                );
+            }
+            // What it proposes: each opens in the event's window, to save or not.
+            for (j, proposal) in t.proposals.iter().enumerate() {
+                let said = format!("Add {}…", crate::assistant::proposal_said(proposal, v.h24));
+                list = list.child(div().flex().child(LinkButton::new(said).wrap_at(wrap).id(format!("proposal-{i}-{j}")).on_click(cx.msg(Msg::Propose(i, j)))));
+            }
+            conv = conv.child(list);
+        }
+    }
+    if let Some(a) = &v.answering {
+        conv = conv.child(StringView::new(a.question.clone()).bold(true).wrap(true));
+        let words = if a.so_far.is_empty() { format!("Thinking{}…", if a.model.is_empty() { String::new() } else { format!(" ({})", a.model) }) } else { a.so_far.clone() };
+        conv = conv.child(StringView::new(words).wrap(true).dim(a.so_far.is_empty()));
+    }
+    if v.turns.is_empty() && v.answering.is_none() {
+        conv = conv.child(
+            StringView::new(
+                "Ask about your calendars here: the assistant is given the events of the ones you show, a month back and four months on. It can draft events; nothing is added until you save it.",
+            )
+            .dim(true)
+            .wrap(true),
+        );
+        let hour = crate::now(&v.zone).hour();
+        for (i, s) in crate::assistant::suggestions(hour).into_iter().enumerate() {
+            let q = s.clone();
+            conv =
+                conv.child(div().flex().child(LinkButton::new(s).wrap_at(wrap).id(format!("suggestion-{i}")).on_click(cx.listener(move |v: &mut Calendar, _: &ClickEvent, cx| v.ask(q.clone(), cx)))));
+        }
+    }
+    let scroller = ScrollView::new(&v.chat_scroll).border(false).auto_hide(true).background(p.document_background).child(conv);
+    let answering = v.answering.is_some();
+    let button = if answering {
+        Button::new("Stop").id("stop-asking").on_click(cx.listener(|v: &mut Calendar, _: &ClickEvent, cx| {
+            v.stop_asking();
+            cx.invalidate();
+        }))
+    } else {
+        Button::new("Ask").id("ask").on_click(cx.listener(|v: &mut Calendar, _: &ClickEvent, cx| v.ask_typed(cx)))
+    };
+    let title = div().flex().flex_row().items_center().h(px(m::CONTROL_HEIGHT)).child(StringView::new("Assistant").bold(true)).child(div().flex_1()).child(
+        LinkButton::new("New Conversation").id("new-conversation").enabled(!v.turns.is_empty() || answering).on_click(cx.listener(|v: &mut Calendar, _: &ClickEvent, cx| v.new_conversation(cx))),
+    );
+    div()
+        .size_full()
+        .flex()
+        .flex_col()
+        .gap(px(m::TIGHT))
+        .child(title)
+        .child(div().flex_1().min_h_0().child(well(e, style::c(p.document_background), scroller)))
+        .child(div().flex().flex_row().gap(px(m::TIGHT)).items_center().child(div().flex_1().min_w_0().child(TextControl::new(cx, &v.question))).child(button))
         .into_element()
 }
 

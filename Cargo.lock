@@ -7206,6 +7206,7 @@ name = "olo-calendar-app"
 version = "0.1.0"
 dependencies = [
  "jiff",
+ "olo-ai",
  "olo-calendar",
  "olo-crash",
  "olo-kit",

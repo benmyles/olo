@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Calendar: an assistant
+
+*17:11* — View ▸ Show Assistant: ask about your calendars and it answers from the events of the ones you show, with links that go to the events it means. Asked to add or plan something, it drafts the event and a click opens it for you to look over and save: it never adds anything itself. Its model is in Preferences ▸ AI ▸ Calendar.
+
+![Calendar: an assistant](2026-11-18/171136-calendar-an-assistant.png)
+
 ### Calendar's events in the command palette
 
 *16:59* — Type two letters or more in the palette and the events with those words in their title, place or notes are among the results, each at its next occurrence (or its last, if it's over), with when, where and which calendar. Return opens Calendar on it.

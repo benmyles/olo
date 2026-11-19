@@ -221,8 +221,15 @@ impl<'a, 'b, 'c> Ui<'a, 'b, 'c> {
 
     /// [`Ui::columns`] of what was collected ([`Ui::collect`]) for each.
     pub fn add_columns(&mut self, left: Vec<Element>, right: Vec<Element>) {
+        self.add_columns_of(vec![left, right]);
+    }
+
+    /// Any number of columns side by side, each as wide as the others,
+    /// of what was collected for each (a panel with more groups than two
+    /// columns hold within the smallest screen's height).
+    pub fn add_columns_of(&mut self, columns: Vec<Vec<Element>>) {
         let column = |items: Vec<Element>| div().flex_1().min_w(px(0.0)).flex().flex_col().gap(px(m::SPACING)).children(items);
-        self.add(div().flex().flex_row().items_start().gap(px(m::SPACING)).child(column(left)).child(column(right)));
+        self.add(div().flex().flex_row().items_start().gap(px(m::SPACING)).children(columns.into_iter().map(column)));
     }
 
     pub fn row(&mut self, build: impl FnOnce(&mut Self)) {

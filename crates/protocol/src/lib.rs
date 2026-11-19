@@ -1805,6 +1805,10 @@ pub struct AiSettings {
     /// default (Ben, 2026-11-14: "change the default thinking level for
     /// astra to medium").
     pub weather: AiFeature,
+    /// Calendar's assistant: questions about what's on, answered from
+    /// the events of the calendars shown; it can point to events and
+    /// propose new ones, which the person confirms.
+    pub calendar: AiFeature,
     /// Agent Screens: how much of each screen's history (its actions and
     /// the frames it drew) is kept, in megabytes, and for how many days
     /// (0: for ever).
@@ -1846,6 +1850,7 @@ impl Default for AiSettings {
             // to astra on low").
             ask: AiFeature { enabled: true, model: AI_MODELS[0].0.into(), effort: "low".into() },
             weather: AiFeature { enabled: true, model: AI_MODELS[0].0.into(), effort: "medium".into() },
+            calendar: AiFeature { enabled: true, model: AI_MODELS[0].0.into(), effort: "medium".into() },
             screen_history_mb: 512,
             screen_history_days: 30,
             claude_code: ClaudeCode::default(),

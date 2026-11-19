@@ -21180,6 +21180,39 @@ Tried against the demo: Dentist's end from 4 PM to 5:15 PM, undone;
 dragged above its start, it's a quarter hour long. Tested:
 `week::tests::an_end_dragged_by_quarter_hours`.
 
+**The assistant** (`assistant.rs`; View ▸ Show Assistant, a column at
+the views' right; as Weather's is). A question about what's on is
+answered from the events themselves: it goes to Preferences ▸ AI's
+Calendar model (`AiSettings::calendar`: Astra 6 at Medium by default,
+through the Token Pool) on a worker, with the day and hour it is, the
+person's zone and calendars, and the events of the calendars shown
+from a month back to four months on, one a line (`listing`: number,
+when and weekday, title, calendar, where, whether it repeats, an
+invitation's answer; worked out on the worker too, `ask`'s `given`).
+The answer is JSON (`schema`, `read`): its words, shown as they come;
+the events it's about, by their numbers (each a link under the answer:
+a click goes to it in the view, `Msg::Reveal`); and events it proposes
+when asked to add or plan something (each a link "Add Lunch · Thu, Nov
+19, 12 PM – 1 PM…": a click opens the event's window with it filled
+in, `open_proposal`, in the calendar new events go in). **It never
+writes anything**: a proposal is saved only by the person's Save, and
+it's told to say "I've drafted", never "I've added". Before a question
+is asked the column offers nine (`suggestions`: today's become
+tomorrow's after five). A follow-up carries the conversation; Stop or
+Escape lets go of an answer on its way; New Conversation starts
+over; the conversation's words are kept across an upgrade in place.
+In a window too narrow for the calendars' column, the views and the
+assistant, the calendars' column gives way while the assistant shows.
+For agents: `assistant` shows or hides it, `ask:QUESTION` asks, and
+the conversation is in the window's tree as its words and links. At
+rest with it showing: 0 frames, 0 wakeups/s. Tested:
+`assistant::tests` (the suggestions; the events as the model is given
+them and what it's told; an answer read, with numbers that name
+nothing and proposals that aren't times passed over); tried against
+the demo with the real model: "What's next?" (Design review, and that
+it overlaps the unanswered Interview, both linked) and "Add lunch
+tomorrow at noon" (drafted, opened Thursday 12 PM – 1 PM).
+
 **Invitations** (an event with `ATTENDEE`s; "me" is the accounts'
 addresses, `Shown::going`). How one looks says what the person
 answered (`view::ground`, `view::struck`, in the week, the strip, the

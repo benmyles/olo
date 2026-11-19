@@ -1,7 +1,7 @@
 //! AI: Olo's AI features, each on or off, with its model (OpenAI's,
 //! through the Token Pool's Codex accounts) and effort:
 //! the command palette's /ask, the emoji picker's suggestions and
-//! Weather's assistant; and
+//! Weather's and Calendar's assistants; and
 //! the model and effort Olo starts Claude Code with for a task.
 
 use olo_kit::SharedString;
@@ -11,9 +11,10 @@ use crate::form::Ui;
 
 pub fn ui(ui: &mut Ui) {
     let s = ui.s.clone();
-    // (Two columns: the models, /ask and Weather; emoji, agent
-    // screens and Claude Code.)
-    let left = ui.collect(|ui| {
+    // (Three columns, each a kind: what answers where you type (the
+    // models, /ask, emoji); the apps' assistants (Weather, Calendar);
+    // agents (their screens, Claude Code).)
+    let typed = ui.collect(|ui| {
         ui.bbox("Models", |ui| {
             ui.note("AI features use OpenAI’s models through the Token Pool’s Codex accounts, spent in its order.");
         });
@@ -21,12 +22,6 @@ pub fn ui(ui: &mut Ui) {
             feature(ui, "ask", &s.ai.ask, "Answer questions in the command palette", |s| &mut s.ai.ask);
             ui.note("In the command palette, type /ask and a question: the answer shows there with code to copy (its number, then Return). Space asks a follow-up.");
         });
-        ui.bbox("Weather", |ui| {
-            feature(ui, "weather", &s.ai.weather, "Answer questions about the forecast", |s| &mut s.ai.weather);
-            ui.note("Weather’s assistant is handed the whole forecast for the place you’re looking at, every layer hour by hour, to answer from.");
-        });
-    });
-    let right = ui.collect(|ui| {
         let keys = shortcuts::by_id("emoji-picker").map(|i| shortcuts::keys_for(i, &s.keyboard.profile)).unwrap_or_default();
         let how = match keys.first() {
             Some(k) => format!("In the emoji picker ({}), describe what you want to say and press ⌘↩ for five emoji that say it.", k.label(s.keyboard.profile.platform)),
@@ -36,6 +31,18 @@ pub fn ui(ui: &mut Ui) {
             feature(ui, "emoji", &s.ai.emoji, "Suggest emoji for a description", |s| &mut s.ai.emoji);
             ui.note(how);
         });
+    });
+    let assistants = ui.collect(|ui| {
+        ui.bbox("Weather", |ui| {
+            feature(ui, "weather", &s.ai.weather, "Answer questions about the forecast", |s| &mut s.ai.weather);
+            ui.note("Weather’s assistant is handed the whole forecast for the place you’re looking at, every layer hour by hour, to answer from.");
+        });
+        ui.bbox("Calendar", |ui| {
+            feature(ui, "calendar", &s.ai.calendar, "Answer questions about your calendars", |s| &mut s.ai.calendar);
+            ui.note("Calendar’s assistant is handed the events of the calendars you show. It can draft events; nothing is added until you save it.");
+        });
+    });
+    let agents = ui.collect(|ui| {
         ui.bbox("Agent Screens", |ui| {
             ui.note("Each agent screen keeps what was done on it and the frames it drew, to replay or export as a video. The oldest goes first.");
             let size = HISTORY_MB.iter().position(|&(mb, _)| mb == s.ai.screen_history_mb).unwrap_or(2);
@@ -58,7 +65,7 @@ pub fn ui(ui: &mut Ui) {
             ui.menu("claude-code-effort", efforts, e, |f| f.label("Thinking:").divider(70.0), |s, i| s.ai.claude_code.effort = AI_EFFORTS[i].0.into());
         });
     });
-    ui.add_columns(left, right);
+    ui.add_columns_of(vec![typed, assistants, agents]);
 }
 
 /// How much of each agent screen's history to keep, and for how long.

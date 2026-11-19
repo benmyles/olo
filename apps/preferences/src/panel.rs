@@ -215,7 +215,7 @@ impl Panel {
     /// at 1×, 1.5× and 2×).
     pub fn size(self) -> (u32, u32) {
         match self {
-            Panel::Ai => (760, 408),
+            Panel::Ai => (1100, 408),
             // The receivers (their names, kinds and how each is), pairing's
             // code beneath while a receiver shows one.
             Panel::AirPlay => (500, 360),

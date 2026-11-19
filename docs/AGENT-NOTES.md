@@ -717,6 +717,14 @@ Doctor check, try its fix and look again: the finding must be gone.
 
 ## Pushing in the background
 
+**Commit `&&` push, never commit `;` push.** A commit the pre-commit
+hook refuses (the layout lint) followed by `; git push` pushes nothing,
+says "Everything up-to-date" and exits 0: the job looks done and the
+work is still only staged (2026-11-18: Calendar's assistant, refused
+for Preferences ▸ AI no longer fitting). Chain them with `&&`, and
+after the job look at `git log --oneline | head -1` and `git status
+--short`, not only at the push's exit.
+
 - Run the push so that the command's own exit is the push's, and read
   its last lines when it ends: `git push origin main > LOG 2>&1; rc=$?;
   echo "push exit $rc" >> LOG; exit $rc`. With a trailing `echo` as the

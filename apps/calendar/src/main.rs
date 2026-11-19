@@ -18,6 +18,7 @@
 //! for agents and scripts, with no window.
 
 mod agenda;
+mod assistant;
 mod edit;
 mod editor;
 mod glance;
@@ -89,6 +90,8 @@ pub struct Settings {
     /// person's region has it.
     pub week_start: Option<u8>,
     pub sidebar: bool,
+    /// The assistant shown beside the views.
+    pub assistant: bool,
     pub choices: Choices,
     /// The calendar the last new event went in (its address).
     pub calendar: Option<String>,
@@ -96,7 +99,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { mode: Mode::Month, week_start: None, sidebar: true, choices: Choices::default(), calendar: None }
+        Settings { mode: Mode::Month, week_start: None, sidebar: true, assistant: false, choices: Choices::default(), calendar: None }
     }
 }
 
@@ -196,6 +199,11 @@ pub enum Msg {
     Answer(usize, String, olo_calendar::event::Answer),
     /// What a search found (answer `n`).
     Found(u64, model::Found),
+    /// The assistant's answer, as it comes.
+    Assistant(assistant::Asked),
+    /// One of what an answer proposes (which turn's, which of them):
+    /// opened in the event's window, to save or not.
+    Propose(usize, usize),
     /// One of what was found chosen (a click), or gone to (twice, Return).
     FoundChoose(usize),
     FoundOpen(usize),
@@ -246,6 +254,16 @@ pub struct Drag {
     /// Its end is what's dragged (its bottom edge), on this day: `to` is
     /// then that day and when it would end (minutes of it, up to 1440).
     pub end: Option<Date>,
+}
+
+/// A question the assistant is answering.
+pub struct Asking {
+    n: u64,
+    cancel: Arc<std::sync::atomic::AtomicBool>,
+    pub question: String,
+    /// The answer's words as far as they've come, and the model's name.
+    pub so_far: String,
+    pub model: String,
 }
 
 /// An event being dragged among the days (the month's, the week's
@@ -311,6 +329,13 @@ pub struct Calendar {
     pub drag: Option<Drag>,
     /// An event being dragged among the days.
     pub day_drag: Option<DayDrag>,
+    /// The assistant: the field to ask in, the conversation, and the
+    /// question being answered.
+    pub question: olo_kit::Child<olo_kit::widgets::TextField>,
+    pub turns: Vec<assistant::Turn>,
+    pub answering: Option<Asking>,
+    asks: u64,
+    pub chat_scroll: ScrollHandle,
     /// What the event selected will be, once its move is written.
     moved_to: Option<Key>,
     /// The changes made here, to take back and make again.
@@ -363,6 +388,11 @@ struct Saved {
     /// What was being looked for (Find).
     #[serde(default)]
     finding: String,
+    /// The assistant's conversation: each question, its answer, and
+    /// whether that went wrong. (What an answer pointed to isn't kept:
+    /// its words are.)
+    #[serde(default)]
+    turns: Vec<(String, String, bool)>,
 }
 
 impl Calendar {
@@ -373,11 +403,20 @@ impl Calendar {
         let today = now(&zone).date();
         let mut cursor = today;
         let mut finding = String::new();
+        let mut turns: Vec<assistant::Turn> = Vec::new();
         if let Some(saved) = olo_kit::restored_state().and_then(|s| serde_json::from_str::<Saved>(&s).ok()) {
             settings.mode = saved.mode;
             cursor = saved.cursor.parse().unwrap_or(today);
             finding = saved.finding;
+            turns = saved.turns.into_iter().map(|(question, answer, failed)| assistant::Turn { question, answer, failed, ..Default::default() }).collect();
         }
+        // The assistant's field: Return asks.
+        let question = olo_kit::widgets::text_field(cx, |f| f.name("Question").hint("Ask about your calendars"));
+        cx.subscribe(&question, |v: &mut Calendar, e: &olo_kit::widgets::TextFieldEvent, cx| {
+            if matches!(e, olo_kit::widgets::TextFieldEvent::Entered) {
+                v.ask_typed(cx);
+            }
+        });
         let clock = cx.messenger();
         olo_kit::settings::watch(move |s| {
             clock.send(Msg::Clock(s.clock.twenty_four_hour));
@@ -424,6 +463,11 @@ impl Calendar {
             reveal: None,
             drag: None,
             day_drag: None,
+            question,
+            turns,
+            answering: None,
+            asks: 0,
+            chat_scroll: ScrollHandle::new(),
             moved_to: None,
             history: Default::default(),
             search,
@@ -501,12 +545,20 @@ impl Calendar {
 
     /// The editor, for a new event starting at `start`.
     pub fn open_new(&mut self, start: jiff::civil::DateTime, all_day: bool, cx: &mut Cx<Self>) {
+        if let Some(opening) = self.opening_new(start, all_day, cx) {
+            self.open_editor(opening, cx);
+        }
+    }
+
+    /// What the editor is opened with for a new event starting at
+    /// `start`; with no calendar to put one in, that's said, and None.
+    fn opening_new(&mut self, start: jiff::civil::DateTime, all_day: bool, cx: &mut Cx<Self>) -> Option<editor::Opening> {
         let calendars = self.writable();
         if calendars.is_empty() {
             let why =
                 if self.book.cals.is_empty() { "There's no calendar to put it in yet: connect an account in Preferences ▸ Integrations." } else { "None of the calendars shown can be written to." };
             olo_kit::widgets::open_alert(cx, "Calendar", "warning", why, &["OK"], |_, _| {});
-            return;
+            return None;
         }
         // The calendar the last one went in, if it's still there.
         let calendar = self.settings.calendar.as_ref().and_then(|href| calendars.iter().position(|(i, _)| self.book.cals[*i].kept.href == *href)).unwrap_or(0);
@@ -522,7 +574,7 @@ impl Calendar {
             guests: Vec::new(),
             going: None,
         };
-        self.open_editor(opening, cx);
+        Some(opening)
     }
 
     /// When a new event starts by default: on the day shown, at the next
@@ -563,6 +615,81 @@ impl Calendar {
         self.moved_to = (self.selected.as_ref() == Some(key) && shown.id.is_none()).then(|| (key.0, key.1.clone(), start));
         self.naming = Some(("Move".to_owned(), olo_kit::undo::Purpose::Do));
         cx.send(Msg::Save(Box::new(editor::Saving { target: opening.target, draft, cal: shown.cal })));
+    }
+
+    /// Ask what's typed in the assistant's field.
+    pub fn ask_typed(&mut self, cx: &mut Cx<Self>) {
+        let q = self.question.read(cx).text().trim().to_owned();
+        if !q.is_empty() {
+            self.question.update(cx, |f, cx| f.set_text("", cx));
+            self.ask(q, cx);
+        }
+    }
+
+    /// Ask the assistant `question` about the calendars shown: it's
+    /// given their events from a month back to four months on, worked
+    /// out on its own worker.
+    pub fn ask(&mut self, question: String, cx: &mut Cx<Self>) {
+        self.stop_asking();
+        if !self.settings.assistant {
+            self.settings.assistant = true;
+            self.save();
+        }
+        self.asks += 1;
+        let n = self.asks;
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        // (Answers that came: not what went wrong, nor one stopped before
+        // a word.)
+        let history: Vec<olo_ai::Turn> = self.turns.iter().filter(|t| !t.failed && !t.answer.is_empty()).map(|t| olo_ai::Turn { question: t.question.clone(), answer: t.answer.clone() }).collect();
+        let (book, zone, choices, h24) = (self.book.clone(), self.zone.clone(), self.settings.choices.clone(), self.h24);
+        let me: Vec<String> = self.sources.iter().map(|s| s.account.address.clone()).collect();
+        let now = now(&zone).datetime();
+        let given = move || -> (String, assistant::Reader) {
+            let today = now.date();
+            let (from, to) = (layout::day_of(layout::day_number(today) - assistant::BACK_DAYS), layout::day_of(layout::day_number(today) + assistant::ON_DAYS));
+            let shown = book.shown(from, to, &zone, &me, &choices);
+            let name = |s: &Shown| book.cals.get(s.cal).map(|c| c.kept.name.clone()).unwrap_or_default();
+            let (events, index) = assistant::listing(&shown, name);
+            let calendars: Vec<String> = book.cals.iter().filter(|c| !choices.hidden.contains(&c.kept.href)).map(|c| c.kept.name.clone()).collect();
+            let system = assistant::system(now, zone.iana_name().unwrap_or("the system's"), &calendars, &events, h24);
+            (system, Box::new(move |answer| assistant::read(answer, &index, &shown, h24)))
+        };
+        let send = cx.messenger();
+        assistant::ask(n, question.clone(), given, history, cancel.clone(), move |a| {
+            send.send(Msg::Assistant(a));
+        });
+        self.answering = Some(Asking { n, cancel, question, so_far: String::new(), model: String::new() });
+        self.chat_scroll.scroll_to_bottom(cx);
+        cx.invalidate();
+    }
+
+    pub fn stop_asking(&mut self) {
+        if let Some(a) = self.answering.take() {
+            a.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+            // (What was asked stays, with as much as came: none, if it
+            // was stopped before anything did.)
+            let answer = if a.so_far.is_empty() { String::new() } else { format!("{} …", a.so_far) };
+            self.turns.push(assistant::Turn { question: a.question, answer, ..Default::default() });
+        }
+    }
+
+    pub fn new_conversation(&mut self, cx: &mut Cx<Self>) {
+        self.stop_asking();
+        self.turns.clear();
+        cx.invalidate();
+    }
+
+    /// One of what an answer proposed, opened in the event's window: a
+    /// new event with its words and times, in the calendar new events
+    /// go in; saved only if the person saves it.
+    fn open_proposal(&mut self, turn: usize, i: usize, cx: &mut Cx<Self>) {
+        let Some(p) = self.turns.get(turn).and_then(|t| t.proposals.get(i)).cloned() else { return };
+        let Some(mut opening) = self.opening_new(p.start, p.all_day, cx) else { return };
+        // (A whole day's ends, as people say it, on its last day.)
+        let end = if p.all_day { p.end.date().yesterday().unwrap_or(p.end.date()).max(p.start.date()).at(0, 0, 0, 0) } else { p.end };
+        let start = if p.all_day { p.start.date().at(0, 0, 0, 0) } else { p.start };
+        opening.draft = edit::Draft { title: p.title, location: p.location, notes: p.notes, all_day: p.all_day, start, end, ..opening.draft };
+        self.open_editor(opening, cx);
     }
 
     /// An invitation answered: the person's line among the event's guests
@@ -1171,6 +1298,8 @@ impl Calendar {
                 .separator()
                 .item("Show Calendars", "sidebar")
                 .checked(self.settings.sidebar)
+                .item("Show Assistant", "assistant")
+                .checked(self.settings.assistant)
                 .submenu(week),
         ]
     }
@@ -1231,6 +1360,29 @@ impl View for Calendar {
             Msg::Move(key, start) => return self.move_event(&key, start, cx),
             Msg::Stretch(key, end) => return self.stretch_event(&key, end, cx),
             Msg::Answer(cal, href, answer) => return self.answer_event(cal, href, answer, cx),
+            Msg::Assistant(a) => match a {
+                assistant::Asked::Model(n, model) => match &mut self.answering {
+                    Some(asking) if asking.n == n => asking.model = model,
+                    _ => return,
+                },
+                assistant::Asked::SoFar(n, words) => match &mut self.answering {
+                    Some(asking) if asking.n == n => {
+                        asking.so_far = words;
+                        self.chat_scroll.scroll_to_bottom(cx);
+                    }
+                    _ => return,
+                },
+                assistant::Asked::Done(n, result) => {
+                    let Some(asking) = self.answering.take_if(|a| a.n == n) else { return };
+                    let turn = match result {
+                        Ok((answer, events, proposals)) => assistant::Turn { question: asking.question, answer, events, proposals, failed: false },
+                        Err(e) => assistant::Turn { question: asking.question, answer: e, failed: true, ..Default::default() },
+                    };
+                    self.turns.push(turn);
+                    self.chat_scroll.scroll_to_bottom(cx);
+                }
+            },
+            Msg::Propose(turn, i) => return self.open_proposal(turn, i, cx),
             Msg::Found(n, found) => {
                 if n != self.finding_n.load(std::sync::atomic::Ordering::Relaxed) {
                     return;
@@ -1410,6 +1562,22 @@ impl View for Calendar {
                 self.save();
                 cx.invalidate();
             }
+            "assistant" => {
+                self.settings.assistant = !self.settings.assistant;
+                self.save();
+                if self.settings.assistant {
+                    self.question.focus(cx);
+                }
+                cx.invalidate();
+            }
+            // (An agent's way to ask: `ask:What's on today?`.)
+            c if c.starts_with("ask:") => {
+                let q = c[4..].trim().to_owned();
+                if q.is_empty() {
+                    return false;
+                }
+                self.ask(q, cx);
+            }
             "close" | "quit" => olo_kit::quit(),
             c if c.starts_with("answer:") => {
                 use olo_calendar::event::Answer;
@@ -1466,7 +1634,8 @@ impl View for Calendar {
     }
 
     fn save_state(&mut self, _: &mut Cx<Self>) -> Option<String> {
-        serde_json::to_string(&Saved { cursor: self.cursor.to_string(), mode: self.settings.mode, finding: self.finding.clone() }).ok()
+        let turns = self.turns.iter().map(|t| (t.question.clone(), t.answer.clone(), t.failed)).collect();
+        serde_json::to_string(&Saved { cursor: self.cursor.to_string(), mode: self.settings.mode, finding: self.finding.clone(), turns }).ok()
     }
 }
 

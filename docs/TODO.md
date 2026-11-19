@@ -114,7 +114,10 @@ something nobody here has is in "Blocked", with what it waits for.
   guests with their answers (not yet: inviting people yourself).
   Deskbar widgets: Next Event and The Day Ahead (Preferences ▸
   Deskbar; a click opens Calendar on the event). The command palette
-  finds events (Return opens Calendar on one). **Next**: the assistant, the clock's menu. Reminders are shown
+  finds events (Return opens Calendar on one). An assistant (View ▸
+  Show Assistant: questions answered from your events, with links to
+  them, and events drafted for you to save; Preferences ▸ AI ▸
+  Calendar). **Next**: the clock's menu, the phone. Reminders are shown
   (`olo-calendar --service`, a session service; Show goes to the
   event). (Its cost
   is measured and in-place reload tried: HACKING.md, "Calendar".)
@@ -361,17 +364,50 @@ something nobody here has is in "Blocked", with what it waits for.
   research what the best practices are around notifications and alerts
   for web apps, other desktop environments, phones etc. and have it
   give you specific suggestions/guidance on how we can revamp olo
-  notifications to be more intuitive"). *Under way:* the study (an
-  Opus 5.5 agent at xhigh, as asked, the one time the no-subagents rule
-  is set aside, by Ben's word): how it works today as a state model and
-  a matrix of edge cases, pictures of every state and transition, what
-  confuses and why, best practice elsewhere with sources, and a
-  proposed model; its report is at `/var/tmp/opus-notif/report.md`
-  until its findings are checked and written into HACKING.md. *Then:*
-  the revamp from it: the fewest concepts that cover every case, each
-  with one name, one colour and one rule everywhere (banner, bell, tab,
-  Deskbar, the app, the Inbox widget), and what Ben decides of its open
-  questions.
+  notifications to be more intuitive"). *The study is done* (an Opus
+  5.5 agent at xhigh, as asked: the one time the no-subagents rule is
+  set aside, by Ben's word; 2026-11-18): its report, with a matrix of
+  every edge case, pictures of each state, sources, and a proposed
+  model, is at `/var/tmp/opus-notif/report.md` (pictures in
+  `/var/tmp/opus-notif/shots/`). What it found, in short: two different
+  things are drawn with the same marks (a notification, and an app's
+  own "waiting" count made into a fake list item that turns the app's
+  real notifications red); red means four things and × means four
+  things; unread notifications leave by a timer and land in the archive
+  marked read; one an app withdraws stays unread and counted. *The
+  model it proposes:* a notification is New (blue, counted on the bell,
+  in blue), Read (no dot, fades with age, tidied away after a while) or
+  Cleared (today's archive, each row saying when and why it left);
+  Waiting (red) is only an app's own count, on its Deskbar row and
+  tabs and in a "Waiting in apps" strip, never an item of the list and
+  never recolouring notifications; urgency (Quiet, Normal, Urgent) is
+  how one arrives, not a colour or a stop sign. Three rules: nothing
+  New goes by itself; × always clears (with Undo); red is only waiting,
+  blue only new. *To do, in its order of benefit, each claim checked
+  against the code first:* (1) unread never fades out
+  (`History::fade_out`); (2) × clears on a banner too; (3) a withdrawal
+  clears ("withdrawn by APP"); (4) waiting counts out of the list
+  (`attention` items, `mark_waiting`, `more()` go; the strip and the
+  Inbox's app cards come); (5) the bell counts New, in blue; (6)
+  urgency apart from kind (a call is urgent, not an error); (7) read
+  on arrival in the app in front, without the dwell's race; (8) red
+  counts, sticky banners and actions kept across restarts and
+  upgrades; (9) one word and one count everywhere; (10) window and tab
+  red dots follow what waits; (11) agents read state, urgency and why;
+  (12) the small bugs it met (a read row among the unread, a duplicate
+  id after a replacement, the cube icon on banners, "+N more" for
+  queued banners). *Decided as built* (Ben, the same day: "for the
+  notifications stuff i want you to decide and use your judgement --
+  overall i think the findings were spot on, you should use your
+  taste/judgement for any decisions and if needed consult opus 5.5
+  xhigh for a second opinion"; the report's recommendations are where
+  each starts): where the red counts live (a strip
+  and app cards); what the bell counts and its colour (New, blue);
+  what a banner's × does (clears); what a withdrawn note becomes
+  (cleared); whether the blue dot drains (yes, to a floor); how long
+  before read ones are tidied (an hour); a note from the app in front
+  (no banner unless urgent, read at once); tab dots (stay until dealt
+  with); the names (Cleared; New or Unread, one of them).
 
 - **Fans: a row of each power mode, with more than Auto** (Ben,
   2026-11-18: "in the power -> battery -> fans move the fans option to

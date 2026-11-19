@@ -10,6 +10,7 @@ name = "olo-calendar"
 path = "src/main.rs"
 
 [dependencies]
+olo-ai.workspace = true
 olo-calendar.workspace = true
 olo-crash.workspace = true
 olo-kit.workspace = true
