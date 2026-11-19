@@ -1,6 +1,7 @@
 //! Notifications' widget for Deskbar (`olo-notifications --glance`, no
-//! window: `olo_kit::glance::serve`): the Inbox, what is unread and what
-//! waits in apps, as a stack of cards to work through
+//! window: `olo_kit::glance::serve`): the Inbox, what waits in apps
+//! (red: each app's own count, with Later) and what is unread (blue:
+//! notifications, with Snooze and ×), as a stack of cards to work through
 //! (`olo_protocol::glance::Body::Inbox`, drawn by `olo_kit::glance`).
 //! Made again whenever the service says what is unread changed
 //! (`NotificationState`, which carries the cards); Deskbar asks the

@@ -34,7 +34,8 @@ const MENU: &str = "com.canonical.dbusmenu";
 const LAUNCHER: &str = "com.canonical.Unity.LauncherEntry";
 
 /// A program's launcher badge.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Badge {
     /// The desktop entry it is for (`slack`, from `application://slack.desktop`).
     pub app: String,
@@ -349,14 +350,38 @@ struct Known {
     menu_path: Option<String>,
 }
 
+/// Where the badges are kept from one Deskbar to the next (it starts
+/// again at every upgrade and reload): programs say theirs once, when it
+/// changes, so a Deskbar that forgot them showed nothing waiting until
+/// each app next had news (its row's red dot gone, and what waits in
+/// apps with it: found 2026-11-18). The runtime folder's: a login's own.
+fn badges_path() -> std::path::PathBuf {
+    olo_xdg::state_runtime_dir().join(format!("badges-{}.json", olo_xdg::display_name()))
+}
+
+/// The badges a Deskbar before this one kept, of the programs still on
+/// the bus (a sender's name is its own for as long as the bus runs: one
+/// that has gone took its badge with it).
+fn kept_badges(conn: &Connection) -> Vec<Badge> {
+    let kept: Vec<Badge> = std::fs::read(badges_path()).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    let there = |name: &str| {
+        conn.call_method(Some("org.freedesktop.DBus"), "/org/freedesktop/DBus", Some("org.freedesktop.DBus"), "NameHasOwner", &(name,))
+            .ok()
+            .and_then(|r| r.body().deserialize::<bool>().ok())
+            .unwrap_or(false)
+    };
+    kept.into_iter().filter(|b| !b.sender.is_empty() && there(&b.sender)).collect()
+}
+
 fn run(conn: Connection, rx: mpsc::Receiver<Event>, tx: mpsc::Sender<Event>, registered: Arc<olo_sync::Mutex<Vec<String>>>, changed: impl Fn(Tray)) {
     let mut known: Vec<Known> = Vec::new();
-    let mut badges: Vec<Badge> = Vec::new();
+    let mut badges: Vec<Badge> = kept_badges(&conn);
+    let mut kept = badges.clone();
     let mut serial = 0u64;
     // What apps say is waiting in them (a count, or urgency), told to the
     // notification service too, which keeps it with their notifications
-    // (`Attention::path`, written as it changes; none at the start: what
-    // a Deskbar before this one wrote is no longer known to be so).
+    // (`Attention::path`, written as it changes; at the start, what a
+    // Deskbar before this one knew of the programs still running).
     let mut waiting = None;
     let mut tell_waiting = |badges: &[Badge]| {
         use olo_protocol::notifications::Attention;
@@ -375,8 +400,17 @@ fn run(conn: Connection, rx: mpsc::Receiver<Event>, tx: mpsc::Sender<Event>, reg
     tell_waiting(&badges);
     let mut publish = |known: &[Known], badges: &[Badge]| {
         tell_waiting(badges);
+        // (Kept for the Deskbar after this one, as they change.)
+        if kept != badges {
+            olo_kit::store::save_bytes(badges_path(), serde_json::to_vec(badges).unwrap_or_default());
+            kept = badges.to_vec();
+        }
         changed(Tray { items: known.iter().map(|k| k.item.clone()).collect(), badges: badges.to_vec() });
     };
+    // (What was kept shows at once: its rows' dots, before any news.)
+    if !badges.is_empty() {
+        publish(&known, &badges);
+    }
     for event in rx {
         match event {
             Event::Registered { bus, path } => read(&conn, &tx, bus, path),

@@ -4078,13 +4078,16 @@ impl Deskbar {
                 if matches!(spot, widgets::Spot::Row(_))
                     && let Some((cards, index, minutes, preview)) = self.glances.inbox(w.id)
                     && let Some(card) = cards.get(index)
-                    && let Some((_, buttons)) = olo_kit::glance::inbox_laid(at, cards.len(), preview, w.size, TRAY_TEXT)
+                    && let Some((_, buttons)) = olo_kit::glance::inbox_laid(at, cards.len(), preview, w.size, TRAY_TEXT, card.attention)
                 {
                     for (part, bounds) in buttons {
                         let cmd = inbox_command(part.name(), w.id, card.id, minutes);
                         let m = model.clone();
                         let tip = match part {
+                            // (What waits in an app: put off, not for a time.)
+                            olo_kit::glance::InboxPart::Snooze if card.attention => "Later: until more is waiting".to_owned(),
                             olo_kit::glance::InboxPart::Snooze => format!("Snooze for {}", snooze_words(minutes)),
+                            olo_kit::glance::InboxPart::Dismiss => "Clear".to_owned(),
                             part => part.name().to_owned(),
                         };
                         // (Its own: the card under it isn't clicked too.)

@@ -6933,28 +6933,50 @@ on an app's icon *is* its notifications, one thing; GNOME turns a
 window wanting attention into a notification. Olo's is Android's idea
 with the colour's meaning kept:
 
-* **Every item is of an app, and an app is waiting or it isn't.** Red:
-  the app says something is waiting in it for the person (its launcher
-  entry's count above none, or its wish for attention). Blue: news from
-  it, not read yet. An app that is waiting has *its* items red: its
-  notifications are the things waiting, or news beside them
-  (`History::waiting`, `Entry::waiting`).
-* **Nothing said twice.** The app's own item ("3 waiting") says only
-  what its unread notifications don't: Slack counting 2 with both
-  messages' notifications there has two red cards and no third; with
-  one, "1 more waiting" (`History::more`).
-* **Seen is seen.** A card read or dismissed acknowledges what waits in
-  its app as much as there is then (`History::acknowledge`,
-  `Entry::seen`): the app still counting 2 brings nothing back; a third
-  does ("1 more waiting"), and so does its turning urgent.
-* **Red stays, blue fades.** The app's own item is there while the app
-  says so and never fades; a notification fades as it always did, red
-  or blue.
-* **The same in every place**: one dot on the app's Deskbar row, red
-  while it waits, else blue, at the row's right end (`Dot::unread`,
-  `Dot::notes`; two side by side before); Notifications' window lists
-  both, each with its dot; Deskbar's Inbox widget (below) stacks both;
-  the bell counts both (`History::unread`).
+**That unifying was undone on 2026-11-18** (the model at the head of
+"Notifications": Ben found "the red vs blue types … very confusing",
+and a study of every surface showed why: red meant an app's count, any
+notification of an app that had one, the bell's count and an error;
+the list said "2 waiting" where the Inbox said "1 more waiting"; a
+"waiting" item deleted by × came back whole). Now two things are two
+things:
+
+* **Red is what waits in an app, and only that**
+  (`apps/notifications/src/waiting.rs`, `WaitingApps`): the app's own
+  count (its launcher entry's count above none, or its wish for
+  attention). Not a notification: not in the list, not counted on the
+  bell, not cleared by ×, and it never colours the app's
+  notifications, which are blue like any others.
+* **Where it shows**: the red dot on the app's Deskbar row; a "Waiting
+  in apps" strip at the head of the Notifications window (a row an
+  app, "StyledEdit · 5 waiting"; a click goes to the app:
+  `history::waiting_strip`, on the window's ground over the list's
+  well, in line with it at every scale); a red card in Deskbar's Inbox
+  ("5 waiting in StyledEdit / Open StyledEdit to see them.":
+  `WaitingApps::cards`, before the notifications' cards), whose one
+  button, where a notification's × is, is **Later** (the clock:
+  `inbox_laid(…, waiting)`).
+* **The same words everywhere**: `Waiting::said`, "5 waiting in
+  StyledEdit"; `short`, "5 waiting", beside the app's name.
+* **Later** puts it off until more is waiting than there was, or it
+  turns urgent (`Waiting::later`, `put_off`); going to the app does the
+  same (`visited_app`: what's seen is seen). Put off, it's out of the
+  Inbox and still in the strip and on its row: those say how things
+  stand. What was put off is kept across a restart of the service
+  (`waiting.json` beside the list).
+* **Kept across Deskbar's own restarts**: programs say their badge
+  once, when it changes, so Deskbar keeps them (`sni::badges_path`,
+  `kept_badges`: those whose sender is still on the bus) and shows
+  them at once when it starts again; before, an upgrade or a reload
+  took every red dot and every waiting count away until each app next
+  had news.
+* **For agents**: `List`'s JSON has `"waiting": [{id, app, name, count,
+  urgent, time, later}]`; `--list` prints each ("waiting in apps: 5
+  waiting in StyledEdit [put off]"); `--invoke ID` goes to the app,
+  `--snooze ID N` or `--clear ID` puts it off. A list kept from before
+  is read without its old "waiting" items (`Entry::attention`).
+* **One blue dot or one red on an app's Deskbar row** (`Dot::unread`,
+  `Dot::notes`), as before: red while it waits, else blue.
 * **The bell's count in a colour of one's own** (Ben, 2026-11-18: "in
   prefs -> notifications add the ability to customize the color of the
   notifications badge in the deskbar tray (the one with the bell)").
@@ -6969,11 +6991,10 @@ with the colour's meaning kept:
   were.
 
 Deskbar hears the counts (it hosts the tray) and tells the notification
-service, which owns the list: `Attention::path`
+service: `Attention::path`
 (`$XDG_RUNTIME_DIR/olo-state/attention-DISPLAY.json`, written as they
-change, watched there: `Msg::Attention`, `History::update_attention`).
-`what_waits_in_an_app_and_its_notifications_are_one_list` (store.rs)
-walks it. The row's red dot is what the app says is unread or
+change, watched there: `Msg::Attention`, `WaitingApps::update`).
+`waiting::tests::what_waits_in_apps_is_the_apps_own` walks it. The row's red dot is what the app says is unread or
 waiting in it
 (its launcher entry's count above none, or its wish for
 attention), whole while there is anything and gone when there isn't; Preferences ▸ Deskbar ▸ Applications turns it off
@@ -17119,10 +17140,13 @@ otherwise, this is the rule.
   up), Withdrawn (its app), Replaced by a newer one ("only the latest
   of the same"), Made room for newer ones (past 200).
 - **Red is not a notification**: it is what an app says is waiting in
-  it (its own count). Still to do, in docs/TODO.md's order: that count
-  out of the list and into a strip of its own, urgency apart from
-  kind, read on arrival in the app in front, counts kept across
-  restarts.
+  it (its own count), shown on its Deskbar row, in a "Waiting in apps"
+  strip over the list and as a card with Later in the Inbox; never in
+  the list, on the bell, or colouring a notification ("One dot beside
+  an application", under Deskbar, has the whole of it). The bell
+  counts unread notifications, and nothing else.
+- Still to do, in docs/TODO.md's order: urgency apart from kind, read
+  on arrival in the app in front, sticky banners kept across restarts.
 
 
 Olo's own apps notify through the kit: `olo_kit::notify::Notifier::

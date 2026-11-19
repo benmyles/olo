@@ -299,9 +299,58 @@ fn paint_icon(g: &mut Painter, r: Bounds<Pixels>, e: &store::Entry, person: bool
 /// every note).
 /// Red (`waiting`) where its app says something is waiting in it; blue,
 /// news (as Deskbar's dot beside the app, and its Inbox widget's cards).
-fn unread_dot(g: &mut Painter, center: Point<Pixels>, p: &olo_theme::Palette, waiting: bool) {
-    // (Blue as it is beside its app in Deskbar and on the bell: unread.)
-    g.paint_sector(center, px(0.0), px(3.5), 0.0, std::f32::consts::TAU, style::c(if waiting { p.unread } else { p.notice }));
+fn unread_dot(g: &mut Painter, center: Point<Pixels>, p: &olo_theme::Palette) {
+    // (Blue as it is beside its app in Deskbar and on the bell: unread.
+    // Never red: that is what waits in an app, which isn't a notification.)
+    g.paint_sector(center, px(0.0), px(3.5), 0.0, std::f32::consts::TAU, style::c(p.notice));
+}
+
+/// A row of the strip of what waits in apps.
+const WAITING_ROW: f32 = 24.0;
+
+/// "Waiting in apps": what apps say is waiting in them, over the list
+/// and apart from it (they aren't notifications: `crate::waiting`). A
+/// heading, then a row an app: a red dot, the app's icon and name, and
+/// how much ("3 waiting"); a click goes to the app. Nothing here is
+/// selected, read or cleared: each is there while its app says so.
+fn waiting_strip(cx: &mut Cx<HistoryWindow>, waiting: &[crate::waiting::Waiting]) -> Element {
+    // On the window's own ground, over the list's well (it isn't of the
+    // list), its dots, icons and words in line with the list's: the
+    // well's edge in from the window's, at every scale.
+    let scale = cx.scale_factor();
+    let edge = style::line_pixels(scale) * 2.0 / scale;
+    let mut strip = div().w_full().flex().flex_col().flex_shrink_0().px(px(edge)).pb(px(m::TIGHT)).child(
+        canvas(|g, r| {
+            let p = theme::palette();
+            let t = style::label(g, r.left() + px(ICON_X), r.center().y, Align::Left, "Waiting in apps", style::SMALL_SIZE, style::ui_font(FontWeight::BOLD), style::secondary_text(&p));
+            agent::record(g, agent::Node::label("Waiting in apps", t));
+        })
+        .w_full()
+        .h(px(HEADING)),
+    );
+    for w in waiting {
+        let (id, name, app, short, said) = (w.id, w.name.clone(), w.app.clone(), w.short(), w.said());
+        strip = strip.child(
+            canvas(move |g, r| {
+                let p = theme::palette();
+                g.note_pointer_edge(r);
+                let cy = r.center().y;
+                g.paint_sector(point(r.left() + px(9.0), cy), px(0.0), px(3.5), 0.0, std::f32::consts::TAU, style::c(p.unread));
+                let icon = style::snap_centred(g, point(r.left() + px(ICON_X + SMALL_ICON / 2.0), cy), SMALL_ICON, SMALL_ICON);
+                paint_mark(g, icon, &name, None, false, &named_icons(None, Some(&app), &name));
+                let how = style::label(g, r.right() - px(CLOSE_W), cy, Align::Right, short.clone(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), style::secondary_text(&p));
+                let room = (how.left() - px(m::SPACING) - r.left() - px(TEXT_X)).max(px(0.0));
+                style::label_fit(g, r.left() + px(TEXT_X), cy, Align::Left, name.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::c(p.panel_text), room);
+                // (To an agent: what it says, and that a click opens the app.)
+                agent::record(g, agent::Node { role: "Button", name: Some(said.clone().into()), bounds: r, enabled: true, clickable: true, ..Default::default() });
+            })
+            .w_full()
+            .h(px(WAITING_ROW))
+            .id(("waiting", id as usize))
+            .on_click(cx.listener(move |h: &mut HistoryWindow, _: &ClickEvent, _| with(&h.shared, |n| n.open_waiting(id)))),
+        );
+    }
+    strip.into_element()
 }
 
 /// A row laid out.
@@ -1200,7 +1249,7 @@ fn paint_card(g: &mut Painter, r: Bounds<Pixels>, e: &store::Entry, laid: &CardL
         if !forgettable {
             style::label_on_baseline(g, head.right(), baseline, Align::Right, time.clone(), style::DETAIL_SIZE, small.clone(), ink.dim);
             if e.unread {
-                unread_dot(g, point(head.right() - px(time_w + CARD_DOT / 2.0 + 1.0), head.center().y), &p, e.waiting);
+                unread_dot(g, point(head.right() - px(time_w + CARD_DOT / 2.0 + 1.0), head.center().y), &p);
             }
         } else {
             style::close_box(g, close, if lit { ink.text } else { ink.dim });
@@ -1295,7 +1344,7 @@ fn paint_row(g: &mut Painter, r: Bounds<Pixels>, e: &store::Entry, laid: &RowLai
         let baseline = laid.title.baseline(title_top);
         let line1 = baseline - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
         if e.unread {
-            unread_dot(g, point(r.left() + px(x0 + 9.0), line1), &p, e.waiting);
+            unread_dot(g, point(r.left() + px(x0 + 9.0), line1), &p);
         }
         paint_icon(g, Bounds::centered_at(point(r.left() + px(x0 + ICON_X + SMALL_ICON / 2.0), line1), size(px(SMALL_ICON), px(SMALL_ICON))), e, true);
         laid.title.paint(g, point(x, title_top));
@@ -1366,9 +1415,10 @@ impl View for HistoryWindow {
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let p = theme::palette();
         let bar = MenuBar::of(self, cx, |v, _| v.menus());
-        let (dnd, quiet, schedule_quiet, archived) = {
+        let (dnd, quiet, schedule_quiet, archived, waiting) = {
             let n = self.shared.lock().unwrap();
-            (n.settings.dnd, n.quiet(), !n.settings.dnd, n.view.archived)
+            // (What waits in apps: over the list, never in the Cleared one.)
+            (n.settings.dnd, n.quiet(), !n.settings.dnd, n.view.archived, if n.view.archived { Vec::new() } else { n.waiting.apps.clone() })
         };
         let now = now_secs();
 
@@ -1396,7 +1446,7 @@ impl View for HistoryWindow {
         };
         // (An unread one shows whole: it isn't going anywhere. A read one
         // fades by the time since it was read, until it's tidied away.)
-        let strength = |e: &store::Entry| if e.pinned || e.unread || e.attention.is_some() { 1.0 } else { list.settings.strength(now.saturating_sub(e.since())) };
+        let strength = |e: &store::Entry| if e.pinned || e.unread { 1.0 } else { list.settings.strength(now.saturating_sub(e.since())) };
         // What every drawing's key starts with.
         let base = (list.generation, palette_gen, crate::icons_made());
 
@@ -1674,6 +1724,7 @@ impl View for HistoryWindow {
             .on_key_down(cx.listener(|h: &mut HistoryWindow, e: &KeyDownEvent, cx| h.key(e, cx)))
             .child(bar)
             .child(bar_row)
+            .children((!waiting.is_empty()).then(|| waiting_strip(cx, &waiting)))
             .child(div().flex_1().min_h_0().child(shown_list))
             .child(foot)
     }

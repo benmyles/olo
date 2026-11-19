@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Notifications, made plain (second step): red is what waits in an app
+
+*18:03* — What an app says is waiting in it (Slack's 3 unread) is no longer an item among the notifications. It has a red dot beside the app in Deskbar, a row under Waiting in apps at the top of the Notifications window (a click goes to the app), and a red card in the Inbox with Later in place of ×. Notifications are always blue; the bell counts only them. Deskbar remembers apps' counts across an upgrade.
+
+![Notifications, made plain (second step): red is what waits in an app](2026-11-18/180321-notifications-made-plain-second-step-red-is-what.png)
+
 ### Notifications, made plain (first step)
 
 *17:36* — Unread is blue everywhere: the dot beside an app, on a card, in the list, and now the bell's count too. Nothing unread goes away by itself any more: only what you've read is tidied away, an hour after you read it. × clears, wherever it is (a banner's too). Archived is now Cleared, and each row there says why it left: cleared by you, tidied away, withdrawn by its app, replaced, or made room.

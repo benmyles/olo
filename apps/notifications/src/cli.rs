@@ -2,7 +2,10 @@
 //! `com.olodesktop.Notifications1` (the session bus, or `--bus ADDRESS`).
 //!
 //! ```text
-//! olo-notifications --list [--json]   what is on screen and in the list
+//! olo-notifications --list [--json]   what is on screen and in the list,
+//!                                     and what waits in apps (their
+//!                                     own counts: not notifications;
+//!                                     `"waiting"` in the JSON)
 //! olo-notifications --cleared [--json]   what has left it (the Cleared
 //!                                     list), each with why and when
 //!                                     (--archived is the same)
@@ -103,6 +106,11 @@ fn list(address: Option<&str>, json: bool) -> zbus::Result<()> {
     let v: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
     let entries: Vec<Entry> = serde_json::from_value(v["notifications"].clone()).unwrap_or_default();
     println!("{} unread{}", v["unread"].as_u64().unwrap_or(0), if v["quiet"].as_bool() == Some(true) { ", Do Not Disturb" } else { "" });
+    // What apps say is waiting in them: theirs, apart from the list.
+    let waiting: Vec<crate::waiting::Waiting> = serde_json::from_value(v["waiting"].clone()).unwrap_or_default();
+    for w in &waiting {
+        println!("{:>5}  waiting in apps: {}{}{}", w.id, w.said(), if w.urgent { " (urgent)" } else { "" }, if w.put_off() { "  [put off]" } else { "" });
+    }
     for e in entries.iter().rev() {
         let strength = v["notifications"].as_array().and_then(|a| a.iter().find(|n| n["id"] == e.id)).and_then(|n| n["strength"].as_f64()).unwrap_or(1.0);
         let faded = format!("{}% faded", ((1.0 - strength) * 100.0).round());

@@ -160,7 +160,9 @@ const INBOX_IN: f32 = 7.0;
 const INBOX_HEAD: f32 = 16.0;
 const INBOX_TITLE: f32 = 19.0;
 const INBOX_TEXT: f32 = 15.0;
-const INBOX_BAR: f32 = 24.0;
+/// (A point over its buttons' 20 and their 3 below: at 1.25× a card's
+/// text came 5.4 points from them, under the least things keep apart.)
+const INBOX_BAR: f32 = 25.0;
 /// A button on it.
 const INBOX_BUTTON: (f32, f32) = (22.0, 20.0);
 /// The cards under the top one: how many show, how much of each, and how
@@ -236,7 +238,12 @@ fn inbox_height(cards: usize, preview: bool, size: Size) -> f32 {
 
 /// Where an inbox's top card and its buttons are in row `r` (what's
 /// painted, and what Deskbar's clicks land on); None with no card.
-pub fn inbox_laid(r: Bounds<Pixels>, cards: usize, preview: bool, size: Size, inset: f32) -> Option<(Bounds<Pixels>, Vec<(InboxPart, Bounds<Pixels>)>)> {
+/// `waiting`: the top card is what waits in an app, not a notification:
+/// it has no × (it can't be cleared: it's there while its app says so),
+/// and its one button, where the × would be, puts it off (Later, drawn
+/// as Snooze's clock): clicking through a stack at that spot clears the
+/// notifications and puts off what waits.
+pub fn inbox_laid(r: Bounds<Pixels>, cards: usize, preview: bool, size: Size, inset: f32, waiting: bool) -> Option<(Bounds<Pixels>, Vec<(InboxPart, Bounds<Pixels>)>)> {
     if cards == 0 {
         return None;
     }
@@ -247,16 +254,14 @@ pub fn inbox_laid(r: Bounds<Pixels>, cards: usize, preview: bool, size: Size, in
     let (bw, bh) = INBOX_BUTTON;
     let button = |x: Pixels, cy: Pixels| Bounds::new(point(x, cy - px(bh / 2.0)), olo_interface::size(px(bw), px(bh)));
     let mut buttons = Vec::with_capacity(4);
-    if size == Size::Small {
-        let cy = card.center().y;
-        buttons.push((InboxPart::Snooze, button(card.right() - px(3.0 + bw * 2.0), cy)));
-        buttons.push((InboxPart::Dismiss, button(card.right() - px(3.0 + bw), cy)));
+    let cy = if size == Size::Small { card.center().y } else { card.bottom() - px(3.0 + INBOX_BAR / 2.0) };
+    if size != Size::Small && cards > 1 {
+        buttons.push((InboxPart::Previous, button(card.left() + px(3.0), cy)));
+        buttons.push((InboxPart::Next, button(card.left() + px(3.0 + bw), cy)));
+    }
+    if waiting {
+        buttons.push((InboxPart::Snooze, button(card.right() - px(3.0 + bw), cy)));
     } else {
-        let cy = card.bottom() - px(3.0 + INBOX_BAR / 2.0);
-        if cards > 1 {
-            buttons.push((InboxPart::Previous, button(card.left() + px(3.0), cy)));
-            buttons.push((InboxPart::Next, button(card.left() + px(3.0 + bw), cy)));
-        }
         buttons.push((InboxPart::Snooze, button(card.right() - px(3.0 + bw * 2.0), cy)));
         buttons.push((InboxPart::Dismiss, button(card.right() - px(3.0 + bw), cy)));
     }
@@ -311,7 +316,8 @@ fn inbox_mark(g: &mut Painter, part: InboxPart, b: Bounds<Pixels>, color: Hsla) 
 
 #[allow(clippy::too_many_arguments)]
 fn paint_inbox(g: &mut Painter, r: Bounds<Pixels>, cards: &[olo_protocol::notifications::InboxCard], preview: bool, size: Size, inset: f32, shown: Inbox, p: &Palette) {
-    let Some((face, buttons)) = inbox_laid(r, cards.len(), preview, size, inset) else {
+    let top_waits = cards.get(shown.selected.min(cards.len().saturating_sub(1))).is_some_and(|c| c.attention);
+    let Some((face, buttons)) = inbox_laid(r, cards.len(), preview, size, inset, top_waits) else {
         // Nothing to deal with: said quietly, where a headline would be.
         let (_, dim) = inks(p);
         let left = f32::from(r.left()) + inset;
@@ -319,14 +325,16 @@ fn paint_inbox(g: &mut Painter, r: Bounds<Pixels>, cards: &[olo_protocol::notifi
         icons::paint_faded(g, icon, "notifications", 0.55);
         let b = style::label_fit(
             g,
-            icon.right() + px(6.0),
+            // (Where Deskbar's rows under it start their names: the review
+            // found it two points short of them.)
+            icon.right() + px(8.0),
             r.center().y,
             Align::Left,
             "Nothing new",
             style::PLAIN_SIZE,
             style::ui_font(FontWeight::NORMAL),
             dim,
-            r.right() - px(inset) - icon.right() - px(6.0),
+            r.right() - px(inset) - icon.right() - px(8.0),
         );
         said(g, "Nothing new", b);
         return;
@@ -414,7 +422,8 @@ fn paint_inbox(g: &mut Painter, r: Bounds<Pixels>, cards: &[olo_protocol::notifi
             g.paint_quad(fill(plate, ink.well).corner_radii(px(4.0)));
         }
         inbox_mark(g, part, b, if hot { ink.text } else { ink.dim });
-        agent::record(g, agent::Node::button(part.name(), b));
+        // (What waits in an app is put off, not snoozed for a time.)
+        agent::record(g, agent::Node::button(if card.attention && part == InboxPart::Snooze { "Later" } else { part.name() }, b));
     }
 }
 

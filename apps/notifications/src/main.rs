@@ -37,6 +37,7 @@ mod server;
 mod sound;
 mod startup;
 mod store;
+mod waiting;
 mod web;
 
 use olo_sync::Mutex;
@@ -126,6 +127,8 @@ pub struct Notifications {
     /// When `notifications.json` was last read.
     settings_read: Option<SystemTime>,
     pub history: History,
+    /// What apps say is waiting in them (red): not notifications.
+    pub waiting: waiting::WaitingApps,
     /// What has left the history (faded away, dismissed, cleared,
     /// forgotten): the History window's Archived view.
     pub archive: History,
@@ -322,7 +325,13 @@ impl Notifications {
             unread: self.history.unread(),
             quiet,
             apps: self.history.unread_apps(),
-            cards: self.history.inbox(|e| named_icons(e.icon.as_deref(), e.desktop_entry.as_deref(), &e.app), self.settings.fade.then_some(self.settings.fade_minutes)),
+            // (What waits in apps first, red; then what's unread, blue.)
+            cards: self
+                .waiting
+                .cards(|w| named_icons(None, Some(&w.app), &w.name))
+                .into_iter()
+                .chain(self.history.inbox(|e| named_icons(e.icon.as_deref(), e.desktop_entry.as_deref(), &e.app), self.settings.fade.then_some(self.settings.fade_minutes)))
+                .collect(),
             fade_minutes: self.settings.fade.then_some(self.settings.fade_minutes),
             badge: self.settings.badge,
         };
@@ -340,7 +349,7 @@ impl Notifications {
                 let mut v = serde_json::to_value(e).unwrap_or_default();
                 // (How strongly its row shows: an unread one whole, a read
                 // one fading by the time since it was read.)
-                let strength = if e.pinned || e.unread || e.attention.is_some() { 1.0 } else { self.settings.strength(now.saturating_sub(e.since())) };
+                let strength = if e.pinned || e.unread { 1.0 } else { self.settings.strength(now.saturating_sub(e.since())) };
                 v["strength"] = serde_json::json!((strength * 100.0).round() / 100.0);
                 v
             })
@@ -349,6 +358,8 @@ impl Notifications {
             "quiet": quiet,
             "unread": state.unread,
             "notifications": notes,
+            // What apps say is waiting in them: not notifications.
+            "waiting": &self.waiting.apps,
         });
         *self.snapshot.lock().unwrap() = list.to_string();
     }
@@ -472,6 +483,17 @@ impl Notifications {
         later(&self.proxy, after + Duration::from_millis(20), Msg::Tick);
     }
 
+    /// What waits in an app (`id`: its `Waiting`) gone to: its app comes
+    /// forward (which puts it off, as going there by any way does).
+    pub fn open_waiting(&mut self, id: u32) {
+        let Some(w) = self.waiting.get(id).cloned() else { return };
+        raise_app(Some(&w.app), &w.name);
+        if self.waiting.later(id) {
+            self.publish(false);
+            self.changed();
+        }
+    }
+
     /// A notification cleared by the person (its ×, on a banner, in the
     /// Inbox or in the list; `Dismiss` to an agent): off the screen, out
     /// of the list and into the Cleared one, and Edit ▸ Undo brings it
@@ -480,7 +502,7 @@ impl Notifications {
     pub fn clear(&mut self, id: u32) {
         self.remove(id, Reason::Dismissed);
         self.set_read(id, true);
-        let gone = self.history.take_out(|_, e| e.id != id || e.pinned || e.attention.is_some());
+        let gone = self.history.take_out(|_, e| e.id != id || e.pinned);
         if !gone.is_empty() {
             self.to_archive(gone.iter().map(|(_, e)| e.clone()).collect(), store::Why::Cleared);
             self.steps.done("Clear", Gone::Forgot(gone));
@@ -500,7 +522,7 @@ impl Notifications {
     pub fn remove(&mut self, id: u32, reason: Reason) {
         let on_screen = self.take(id);
         let kept = self.history.get_mut(id).is_some();
-        if reason == Reason::Closed && self.history.newest(id).is_some_and(|e| e.live && !e.pinned && e.attention.is_none()) {
+        if reason == Reason::Closed && self.history.newest(id).is_some_and(|e| e.live && !e.pinned) {
             let gone: Vec<Entry> = self.history.take_out(|_, e| e.id != id || !e.live).into_iter().map(|(_, e)| e).collect();
             self.to_archive(gone, store::Why::Withdrawn);
             if self.view.selected == Some(id) {
@@ -638,8 +660,6 @@ impl Notifications {
             }
             None => self.send(pending, None),
         }
-        // (Read: and what waits in its app seen.)
-        self.history.acknowledge(id);
         if let Some(e) = self.history.get_mut(id) {
             if e.unread {
                 e.set_unread(false, now_secs());
@@ -779,6 +799,15 @@ impl Notifications {
 
     fn control(&mut self, c: Control) {
         match c {
+            // What waits in an app (a card of the Inbox's): opening it
+            // goes to the app; Later (the card's clock, `Snooze`, or
+            // `Dismiss` from an agent) puts it off until more waits.
+            Control::Invoke(id, _) if self.waiting.get(id).is_some() => self.open_waiting(id),
+            Control::Dismiss(id) | Control::Snooze(id, _) if self.waiting.get(id).is_some() => {
+                if self.waiting.later(id) {
+                    self.publish(false);
+                }
+            }
             Control::Invoke(id, key) => {
                 // From a program, not a click: no token to hand on. One
                 // in the history as a click on it there (open at its app
@@ -861,7 +890,7 @@ impl Notifications {
             e.snoozed_until = None;
             e.set_unread(true, now);
             e.time = now;
-            let banner = e.attention.is_none() && self.settings.app_via(&e.app, e.via.as_deref()).banners && !quiet && !never;
+            let banner = self.settings.app_via(&e.app, e.via.as_deref()).banners && !quiet && !never;
             e.shown = banner;
             let note = e.to_note(Some(time));
             if banner {
@@ -949,13 +978,18 @@ impl Notifications {
             Msg::Attention(badges) => {
                 // (An app's name: Olo's own by its program, another's by its desktop entry.)
                 let name = |id: &str| olo_xdg::apps::OUR_APPS.iter().find(|(bin, ..)| *bin == id).map_or_else(|| gtk::app_name(id), |(_, name, _)| (*name).to_owned());
-                if self.history.update_attention(&badges, now_secs(), name, || self.next_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed)) {
-                    self.publish(true);
+                if self.waiting.update(&badges, now_secs(), name, || self.next_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed)) {
+                    self.publish(false);
                     self.changed();
                 }
             }
             Msg::Visited(app_id) => {
                 let read = self.history.visited_app(&app_id);
+                // (And what waits in it has been seen, as much as there is.)
+                if self.waiting.visited_app(&app_id) && read.is_empty() {
+                    self.publish(false);
+                    self.changed();
+                }
                 self.seen(&read);
             }
             Msg::In(In::Show(note)) => self.show(*note),
@@ -1392,6 +1426,7 @@ fn main() -> std::process::ExitCode {
                 settings: NotificationSettings::default(),
                 settings_read: None,
                 history,
+                waiting: waiting::WaitingApps::load(Some(waiting::WaitingApps::path())),
                 archive,
                 history_win: None,
                 view: history::HistoryState::default(),

@@ -383,8 +383,10 @@ something nobody here has is in "Blocked", with what it waits for.
   never recolouring notifications; urgency (Quiet, Normal, Urgent) is
   how one arrives, not a colour or a stop sign. Three rules: nothing
   New goes by itself; × always clears (with Undo); red is only waiting,
-  blue only new. *To do, in its order of benefit, each claim checked
-  against the code first:* (1) unread never fades out
+  blue only new. *Done so far* (HACKING.md, "The model, in one place"): (1) to
+  (5), with the Cleared list saying why each left, and Deskbar keeping
+  apps' counts across its own restarts (of 8). *The list, in its order
+  of benefit, each claim checked against the code first:* (1) unread never fades out
   (`History::fade_out`); (2) × clears on a banner too; (3) a withdrawal
   clears ("withdrawn by APP"); (4) waiting counts out of the list
   (`attention` items, `mark_waiting`, `more()` go; the strip and the
