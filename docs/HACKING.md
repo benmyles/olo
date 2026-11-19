@@ -5834,7 +5834,15 @@ recorded otherwise.
     a press among it, so a click on either is lost; a kit Button's id is
     its label unless given one, and Preferences ▸ Security's two Remove
     buttons, in no element with an id, did nothing; the controls record
-    their ids only while a review records, so nothing else pays).
+    their ids only while a review records, so nothing else pays);
+    a tab view's tab whose name it had to cut short with "…" is
+    `text-cut` too, said by the tab view (`review::cut_name`: a label
+    `style::label_fit` shortens fits what it's in, so the review alone
+    can't tell, and a tab strip's document titles may be cut; the
+    Network panel's "Service Ord…" in English and "Ordre des se…" in
+    French went by). `widgets::tabs_width` is how wide a tab view must
+    be for its names, in the language shown (the Network panel's window
+    is at least that wide).
 - **Review** (most are mistakes, a few are meant): `near-height` (bands
   stacked or side by side almost one height: a 21 bar over a 22 head),
   `near-level` (text or icons in neighbouring columns a pixel or two off
@@ -13196,12 +13204,27 @@ applied by the kit to every running app as the look is
 `OLO_LANGUAGE=de` for a test or a picture. `OLO_WORDS_SEEN=FILE`
 writes every word asked for to FILE, each once (literals, and in
 English too what's otherwise left as it is: a tab view's tabs, a menu
-field's choices, a box's title, an alert's words: `words::note`): run
-the layout lint with it (it opens every window of every app), then
-`LC_ALL=C sort -u FILE > crates/kit-base/words/en.txt`: Olo's word list
-(1,081 on 2026-11-18; sentences made with `format!` aren't in it until
-they're `tr!`). A catalog's entries are by that list's English. Tests run in
-English. Tested: `words`' `a_catalog_read`, `a_sentence_filled`,
+field's choices, a box's title, an alert's words: `words::note`).
+
+**Olo's word list** (`crates/kit-base/words/en.txt`, 2,258 words on
+2026-11-19) is what `tools/dev/words gather --write` finds: both layout
+lints run with `OLO_WORDS_SEEN` (`cargo ui-lint` opens Preferences',
+DiskBackup's and the kit's windows; `tools/dev/ui-lint` every app's,
+and their menus, built as an app starts), and the literals handed to
+widgets in the apps' code that no window either lint opens shows
+(`Button::new("…")`, `.note("…")`, `.item("…", …)`, `tr!("…")`: a
+pairing dialog, a first-run window, an error's note; ids and a
+service's log words left out). It never takes a word out. The list was
+first made from the unit lint alone (1,161 words): every app's menus
+and windows but Preferences' and DiskBackup's were missing, so German,
+Spanish and French left them in English. Sentences made with `format!`
+or owned copies of literals (`"…".into()` to a `String`) aren't looked
+up and aren't in it until they're `tr!` or `words::of_text`.
+`tools/dev/words missing LANG` lists what a catalog lacks, and `words
+merge LANG PAIRS…` puts translations in (written as "English |||
+translation"; it refuses unless every word is there and each keeps its
+English's parts, and sets French's spaces). A catalog's entries are by
+that list's English. Tests run in English. Tested: `words`' `a_catalog_read`, `a_sentence_filled`,
 `counting`, `the_catalogs` (every translation keeps its English's
 parts), `words_in_a_language_and_back`; Preferences ▸ Power looked at
 in German with a few words (`OLO_LANGUAGE=de`): tabs, radio buttons,
@@ -17839,7 +17862,9 @@ or fitted whole), kept, and the windows drawn again as each comes.
   first letter on its colour, or on one its name picks).
 - A banner's actions (`banners::lay_buttons`, when the card is
   measured, so its height counts them): side by side from the right at
-  their own widths (`widgets::button_width`), as in an alert, when
+  their own widths (`widgets::button_width`, which measures a label in
+  the language its button shows it in, as `Button::new` looks it up:
+  buttons sized to match were sized for their English), as in an alert, when
   they fit Deskbar's width; else one above another, each the card's
   width, the last at the bottom, and a label cut short with "…" only if
   even that is too narrow. (Before, a label wider than its share pushed

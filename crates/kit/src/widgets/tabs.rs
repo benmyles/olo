@@ -66,6 +66,34 @@ impl ParentElement for TabView {
     }
 }
 
+/// How wide a tab view must be to show each of `tabs` whole (each with
+/// the least room either side), in the language they're shown in: for a
+/// window with many tabs, which is at least that wide (Preferences ▸
+/// Network's eight cut "Service Order" short in English, and two names
+/// in German, Spanish and French).
+pub fn tabs_width(tabs: &[&str]) -> f32 {
+    // (A name drawn at a device scale can come out a point or two wider
+    // than measured unscaled: German's "Dienstreihenfolge" did.)
+    const HINTING: f32 = 2.0;
+    let shown: Vec<SharedString> = tabs.iter().map(|t| crate::words::of_text(t)).collect();
+    let least = Shape::now().name_pads().1;
+    let bold = style::ui_font(FontWeight::BOLD);
+    let names: Vec<f32> = shown.iter().map(|t| f32::from(style::text_width(t.clone(), style::PLAIN_SIZE, bold.clone()))).collect();
+    // (By `places` itself, at each scale it snaps to: each name whole in
+    // its tab, as the tab view draws it, chosen and so in bold.)
+    let whole = |w: f32| {
+        let outer = Bounds { origin: point(px(0.0), px(0.0)), size: olo_interface::size(px(w), px(TAB_HEIGHT)) };
+        [1.0, 1.25, 1.5, 1.75, 2.0].iter().all(|&s| places(s, outer, &shown).iter().zip(&names).all(|(r, n)| f32::from(r.size.width) - 2.0 * least >= *n + HINTING))
+    };
+    let sum: f32 = names.iter().sum();
+    let (mut lo, mut hi) = (sum, sum + 64.0 * names.len().max(1) as f32 + 2.0 * FIRST);
+    while hi - lo > 0.25 {
+        let mid = (lo + hi) / 2.0;
+        if whole(mid) { hi = mid } else { lo = mid }
+    }
+    hi.ceil()
+}
+
 /// Each tab's place along the top of `outer`, the first [`FIRST`] in
 /// and the look's gap between: as wide as its name in bold and its room
 /// either side; where they don't all fit, with less room (to the least),
@@ -201,7 +229,14 @@ fn paint_face(g: &mut Painter, outer: Bounds<Pixels>, tabs: &[SharedString], sel
         let on = i == selected;
         let label = tabs.get(i).cloned().unwrap_or_default();
         let (font, ink) = if on { (style::ui_font(FontWeight::BOLD), f.front_ink) } else { (style::ui_font(FontWeight::NORMAL), f.ink) };
-        style::label_fit(g, r.center().x, cy, style::Align::Center, label.clone(), style::PLAIN_SIZE, font, ink, r.size.width - px(2.0 * least));
+        let room = r.size.width - px(2.0 * least);
+        // (A page's name cut short hides what the page is for: the
+        // review hears of it. French's Network tabs were "Ordre des se…"
+        // and "Mise en form…", and a label cut with "…" fits.)
+        if crate::review::recording(g) && style::text_width(label.clone(), style::PLAIN_SIZE, font.clone()) > room {
+            crate::review::cut_name(g, *r, &label);
+        }
+        style::label_fit(g, r.center().x, cy, style::Align::Center, label.clone(), style::PLAIN_SIZE, font, ink, room);
         g.agent(agent::Node { role: "Tab", name: Some(label), bounds: *r, enabled: true, clickable: true, selected: Some(on), ..Default::default() });
     }
 }

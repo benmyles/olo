@@ -92,12 +92,14 @@ impl Button {
     }
 }
 
-/// A button's width for `label` (on the two-point grid).
+/// A button's width for `label` (on the two-point grid), in the
+/// language its button shows it in (`Button::new` looks a literal up: so
+/// does this, or buttons sized to match were sized for their English).
 pub fn button_width(label: &str, small: bool) -> f32 {
     let size = if small { style::DETAIL_SIZE } else { style::PLAIN_SIZE };
     let pad = if small { m::CONTROL_PAD * 0.6 } else { m::CONTROL_PAD };
     let min = if small { 48.0 } else { m::BUTTON_MIN_WIDTH };
-    let tw = f32::from(style::text_width(label.to_string(), size, style::ui_font(FontWeight::NORMAL)));
+    let tw = f32::from(style::text_width(crate::words::of_text(label), size, style::ui_font(FontWeight::NORMAL)));
     (((tw + 2.0 * pad).max(min)) / 2.0).ceil() * 2.0
 }
 

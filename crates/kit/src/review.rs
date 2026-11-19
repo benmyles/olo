@@ -111,6 +111,21 @@ pub(crate) fn text(g: &mut Painter, rect: Bounds<Pixels>, baseline: Pixels, text
     });
 }
 
+/// A name `label` cut short with "…" to fit `rect`, where it must show
+/// whole (a tab view's tab: what the page is for): "text-cut". A
+/// document's title cut so (a tab strip's) is no fault, so only the
+/// widget that knows says so.
+pub(crate) fn cut_name(g: &mut Painter, rect: Bounds<Pixels>, label: &str) {
+    if !recording(g) {
+        return;
+    }
+    with_parts(g, |parts, _| {
+        let r = kb(rect);
+        let label: String = label.chars().take(28).collect();
+        parts.cut_texts.push(CutText { rect: r, clip: r, label });
+    });
+}
+
 /// A picture drawn from a bitmap `texture` pixels in size, all of it.
 pub(crate) fn icon(g: &mut Painter, b: Bounds<Pixels>, texture: [usize; 2]) {
     if !recording(g) {

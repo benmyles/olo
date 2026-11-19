@@ -4,6 +4,9 @@
 %
 %
 
+% CPU
+% CPU
+
 (No title)
 (Sin título)
 
@@ -28,8 +31,17 @@
 1 GB a screen
 1 GB por pantalla
 
+1 Hour
+1 hora
+
 1 Hour Before
 1 hora antes
+
+1 Minute
+1 minuto
+
+1 Second
+1 segundo
 
 1 day before
 1 día antes
@@ -45,6 +57,15 @@
 
 1 second
 1 segundo
+
+1. Type your account password and choose Set Up. Olo keeps it locked so that only this key can unlock it.
+1. Escribe la contraseña de tu cuenta y elige Configurar. Olo la guarda cerrada para que solo esta llave pueda abrirla.
+
+1. Type your account password and the key’s PIN, and choose Set Up. Olo keeps the password locked so that only this key can unlock it; the PIN is asked for this once, not kept.
+1. Escribe la contraseña de tu cuenta y el PIN de la llave, y elige Configurar. Olo guarda la contraseña cerrada para que solo esta llave pueda abrirla; el PIN se pide esta vez y no se guarda.
+
+10 Minutes
+10 minutos
 
 10 Minutes Before
 10 minutos antes
@@ -76,6 +97,9 @@ fotograma de 10 ms
 14 days
 14 días
 
+15 Minutes
+15 minutos
+
 15 Minutes Before
 15 minutos antes
 
@@ -85,11 +109,17 @@ fotograma de 10 ms
 15 minutes before
 15 minutos antes
 
+1Password Accounts…
+Cuentas de 1Password…
+
 2 GB a screen
 2 GB por pantalla
 
 2 Hours Before
 2 horas antes
+
+2 Seconds
+2 segundos
 
 2 hours
 2 horas
@@ -127,6 +157,12 @@ Reloj de 24 horas
 3 hours
 3 horas
 
+3. When it blinks again, touch it once more.
+3. Cuando vuelva a parpadear, tócala otra vez.
+
+30 Minutes
+30 minutos
+
 30 Minutes Before
 30 minutos antes
 
@@ -154,8 +190,14 @@ Reloj de 24 horas
 48 hours
 48 horas
 
+5 Minutes
+5 minutos
+
 5 Minutes Before
 5 minutos antes
+
+5 Seconds
+5 segundos
 
 5 days
 5 días
@@ -202,6 +244,9 @@ Reloj de 24 horas
 90 days
 90 días
 
+A Disk or Folder
+Un disco o una carpeta
+
 A GPU's encoder takes a 4K screen in about 15 ms a frame, the processor about 110: recordings of a lot of motion keep every frame on the GPU, about nine a second on the processor.
 El codificador de una GPU procesa una pantalla 4K en unos 15 ms por fotograma; el procesador, en unos 110: las grabaciones con mucho movimiento conservan todos los fotogramas en la GPU y unos nueve por segundo en el procesador.
 
@@ -214,11 +259,17 @@ Una copia lee un archivo cada vez y no deja en memoria lo que ha leído: nunca o
 A battery kept full wears faster: for a computer that's mostly plugged in.
 Una batería siempre llena se desgasta antes: para un ordenador que casi siempre está enchufado.
 
+A classic token with the repo scope, or a fine-grained one that can read pull requests and checks. Olo keeps it in your login keyring.
+Un token clásico con el ámbito «repo», o uno detallado que pueda leer pull requests y comprobaciones. Olo lo guarda en tu llavero de inicio de sesión.
+
 A code that is surely an agent’s tab’s is put in there, and you’re told; one that isn’t sure is asked about.
 Un código que seguro es de la pestaña de un agente se pone allí y se te avisa; si no es seguro, se te pregunta.
 
 A day
 Un día
+
+A disk of its own, or a folder on one: your backups kept apart from this computer.
+Un disco propio, o una carpeta en uno: tus copias, apartadas de este ordenador.
 
 A dotted line
 Una línea de puntos
@@ -240,6 +291,9 @@ Un mes
 
 A notch scrolls as far in Chrome and other programs as in Olo’s apps.
 Un paso de la rueda desplaza lo mismo en Chrome y en otros programas que en las apps de Olo.
+
+A path: /…, ~/… or a name here
+Una ruta: /…, ~/… o un nombre de aquí
 
 A picture of your own
 Una imagen tuya
@@ -274,6 +328,12 @@ Un toque empieza con una presión de
 A touch types nothing unless something is waiting for the key; three in a row type its one-time code where you are, for a web form Olo doesn’t know.
 Un toque no escribe nada a menos que algo espere la llave; tres seguidos escriben su código de un solo uso donde estés, para un formulario web que Olo no conoce.
 
+A town, an address, or 47.61, -122.33
+Una ciudad, una dirección o 47.61, -122.33
+
+A value
+Un valor
+
 A week
 Una semana
 
@@ -283,11 +343,17 @@ IA
 AI features use OpenAI’s models through the Token Pool’s Codex accounts, spent in its order.
 Las funciones de IA usan los modelos de OpenAI a través de las cuentas de Codex del Token Pool, gastadas en su orden.
 
+API Credential
+Credencial de API
+
 API ID:
 ID de API:
 
 API hash:
 Hash de API:
+
+API key:
+Clave de API:
 
 About 
 Acerca de
@@ -295,14 +361,41 @@ Acerca de
 About Olo Desktop
 Acerca de Olo Desktop
 
+About…
+Acerca de…
+
 Accent
 Acento
+
+Access
+Acceso
 
 Account
 Cuenta
 
+Account:
+Cuenta:
+
+Accounts
+Cuentas
+
 Accounts:
 Cuentas:
+
+Action
+Acción
+
+Activity
+Actividad
+
+Activity Monitor
+Monitor de actividad
+
+Actual Size
+Tamaño real
+
+Adapter:
+Adaptador:
 
 Adaptive
 Adaptable
@@ -313,11 +406,53 @@ Adaptable:
 Add
 Añadir
 
+Add Account
+Añadir cuenta
+
+Add Column After
+Añadir columna después
+
+Add Column Before
+Añadir columna antes
+
+Add Field
+Añadir campo
+
+Add Field…
+Añadir campo…
+
 Add Fingerprint
 Añadir huella
 
+Add Graph
+Añadir gráfica
+
 Add Kind
 Añadir tipo
+
+Add Mark
+Añadir marca
+
+Add Place…
+Añadir lugar…
+
+Add Repository…
+Añadir repositorio…
+
+Add Row Above
+Añadir fila encima
+
+Add Row Below
+Añadir fila debajo
+
+Add Tab to Group
+Añadir pestaña al grupo
+
+Add Text
+Añadir texto
+
+Add Website
+Añadir sitio web
 
 Add a CalDAV Account…
 Añadir una cuenta CalDAV…
@@ -334,8 +469,29 @@ Añadir una cuenta de Google…
 Add a Kind
 Añadir un tipo
 
+Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
+Añadir un repositorio: sus paquetes y actualizaciones llegan con los de Fedora. Añade solo los que sean de confianza: quien lo mantiene puede poner cualquier cosa en este ordenador.
+
 Add an App…
 Añadir una app…
+
+Add to Collector
+Añadir al colector
+
+Added turned off.
+Añadido desactivado.
+
+Address
+Dirección
+
+Address, port, program or state
+Dirección, puerto, programa o estado
+
+Address:
+Dirección:
+
+Adjust Size…
+Ajustar tamaño…
 
 After BeOS: glossy, bright and friendly.
 Inspirado en BeOS: brillante, luminoso y amable.
@@ -366,11 +522,26 @@ other: Al cabo de {n} segundos
 Again:
 Otra vez:
 
+Against Cloudflare’s speed test servers: four connections each way, eight seconds each.
+Contra los servidores de prueba de velocidad de Cloudflare: cuatro conexiones en cada sentido, ocho segundos cada una.
+
+Agenda
+Agenda
+
+Agent Screen Logs
+Registros de las pantallas de agentes
+
 Agent Screens
 Pantallas de agentes
 
+Agree
+Acepto
+
 AirPlay
 AirPlay
+
+AirPlay Settings…
+Ajustes de AirPlay…
 
 AirPods
 AirPods
@@ -387,17 +558,53 @@ Ajustes de los AirPods…
 AirPods keep playing at music quality while you record.
 Los AirPods siguen sonando con calidad de música mientras grabas.
 
+AirPods:
+AirPods:
+
+Align Center
+Centrar
+
+Align Left
+Alinear a la izquierda
+
+Align Right
+Alinear a la derecha
+
 All
 Todo
 
 All Apps
 Todas las apps
 
+All Chats
+Todos los chats
+
+All Imperial
+Todo imperial
+
+All Items
+Todos los elementos
+
+All Metric
+Todo métrico
+
+All Preferences
+Todas las preferencias
+
 All accounts together
 Todas las cuentas juntas
 
+All day
+Todo el día
+
 All {} connected.
 Las {} están conectadas.
+
+Allow
+Permitir
+
+Along the Top
+Arriba
 
 Also leave out:
 Excluir también:
@@ -408,17 +615,44 @@ También con batería
 Alt
 Alt
 
+Always Dark
+Siempre oscuro
+
 Always Left
 Siempre a la izquierda
+
+Always Light
+Siempre claro
+
+Always Open With
+Abrir siempre con
 
 Always Right
 Siempre a la derecha
 
+Always Where It Is
+Siempre donde está
+
 Always a palm when as large as
 Siempre una palma si mide al menos
 
+Always on Top
+Siempre encima
+
 An etched line
 Una línea grabada
+
+An iPhone first: Bluetooth doesn’t yet present this computer as an iPhone expects, and the iPhone would offer it its notifications but not its contacts. Olo Doctor fixes it (Present as Hands-Free); then pair.
+Antes, un iPhone: Bluetooth aún no presenta este ordenador como espera un iPhone, y el iPhone le ofrecería sus notificaciones pero no sus contactos. Olo Doctor lo arregla (presentarse como manos libres); después, enlaza.
+
+Anonymous identity:
+Identidad anónima:
+
+Another account
+Otra cuenta
+
+Answer
+Contestar
 
 Answer 1Password’s op command
 Responder al comando op de 1Password
@@ -432,6 +666,12 @@ App
 App caches
 Cachés de apps
 
+App password:
+Contraseña de app:
+
+AppImages
+AppImages
+
 Appearance
 Apariencia
 
@@ -441,14 +681,35 @@ Aplicaciones
 Apply
 Aplicar
 
+Apply once to let Olo follow the mode and the power supply: an administrator's password is asked, this once.
+Aplica una vez para que Olo siga el modo y la alimentación: se pide la contraseña de un administrador, solo esta vez.
+
 Applying asks for an administrator's password once while this window is open.
 Al aplicar se pide una vez la contraseña de un administrador mientras esta ventana esté abierta.
+
+Applying… (an administrator's password may be asked for)
+Aplicando… (puede pedirse la contraseña de un administrador)
+
+Apps Allowed…
+Apps permitidas…
 
 Apps That Always Float
 Apps que siempre flotan
 
 Apps With Their Own Workspace
 Apps con su propio espacio de trabajo
+
+Archive
+Archivar
+
+Archive All
+Archivar todo
+
+Archived Chats
+Chats archivados
+
+Archived Conversations
+Conversaciones archivadas
 
 As BeOS R5 drew its icons: flat faces in its 8-bit colours, black outlines.
 Como BeOS R5 dibujaba sus iconos: caras planas en sus colores de 8 bits y contornos negros.
@@ -471,8 +732,44 @@ Tan ancho como los widgets
 Ask
 Preguntar
 
+Ask It
+Preguntar
+
 Ask Me First
 Preguntarme antes
+
+Ask about the weather…
+Pregunta por el tiempo…
+
+Ask about your calendars
+Pregunta por tus calendarios
+
+Ask about your calendars here: the assistant is given the events of the ones you show, a month back and four months on. It can draft events; nothing is added until you save it.
+Pregunta aquí por tus calendarios: el asistente recibe los eventos de los que muestras, un mes atrás y cuatro adelante. Puede preparar eventos; no se añade nada hasta que lo guardes.
+
+Ask anything about the forecast here: the assistant is given all of it, every layer hour by hour.
+Pregunta aquí lo que quieras de la previsión: el asistente la recibe entera, cada capa hora a hora.
+
+Ask for Full Access at Start
+Pedir acceso total al empezar
+
+Ask for sudo Passwords in a Window
+Pedir las contraseñas de sudo en una ventana
+
+Asked now:
+Preguntado ahora:
+
+Asking Telegram…
+Preguntando a Telegram…
+
+Asking…
+Preguntando…
+
+Ask…
+Preguntar…
+
+Assistant
+Asistente
 
 Astra 6
 Astra 6
@@ -489,11 +786,26 @@ Al empezar
 At the start
 Al empezar
 
+Attach Files…
+Adjuntar archivos…
+
+Authenticate
+Autenticar
+
+Authentication:
+Autenticación:
+
 Auto
 Automático
 
+Auto Approve
+Aprobar solo
+
 Auto-Tiling
 Mosaico automático
+
+Auto-Tiling Layout
+Disposición en mosaico
 
 Auto-tiling layout:
 Disposición del mosaico automático:
@@ -513,20 +825,41 @@ Automáticamente
 Automatically, every
 Automáticamente, cada
 
+Back
+Atrás
+
 Back Up Now
 Hacer copia ahora
+
+Back Up There
+Copiar ahí
 
 Back Up These Folders
 Hacer copia de estas carpetas
 
+Back to Conversations
+Volver a las conversaciones
+
+Back up this computer
+Haz copias de este ordenador
+
 Back up to a disk or folder from now on; the backups in Google Drive stay as they are
 A partir de ahora, hacer copia en un disco o una carpeta; las copias de Google Drive se quedan como están
+
+Back up to the Drive of:
+Copiar en el Drive de:
 
 Back up to your Google Drive from now on; the backups in this folder stay as they are
 A partir de ahora, hacer copia en tu Google Drive; las copias de esta carpeta se quedan como están
 
 Back up:
 Copiar:
+
+Backed Up
+Copiado
+
+Background Noise
+Ruido de fondo
 
 Background noise:
 Ruido de fondo:
@@ -555,6 +888,9 @@ Equilibrado
 Bandwidth:
 Ancho de banda:
 
+Bank Account
+Cuenta bancaria
+
 Banners
 Avisos
 
@@ -563,6 +899,9 @@ Barras
 
 Bars show:
 Las barras muestran:
+
+Basic Keypad
+Teclado básico
 
 Basics
 Lo básico
@@ -576,8 +915,20 @@ Batería y reposo
 Be the SSH agent (ssh, git)
 Ser el agente SSH (ssh, git)
 
+Begin
+Empezar
+
+Benchmark…
+Prueba de rendimiento…
+
 Beside the widget before it
 Junto al widget anterior
+
+Bigger
+Más grande
+
+Black
+Negro
 
 Blue
 Azul
@@ -588,8 +939,20 @@ Azul:
 Bluetooth
 Bluetooth
 
+Bluetooth is off.
+Bluetooth está apagado.
+
+Bluetooth isn’t running on this computer.
+Bluetooth no funciona en este ordenador.
+
 Bluetooth…
 Bluetooth…
+
+Body
+Cuerpo
+
+Bold
+Negrita
 
 Bottom Half
 Mitad inferior
@@ -615,23 +978,59 @@ Traerla a Olo…
 Brown
 Marrón
 
+Bug Fixes
+Correcciones
+
+Builds
+Compilaciones
+
+Bulleted List
+Lista con viñetas
+
 Busy Wi-Fi
 Wi-Fi saturado
 
 Buttons
 Botones
 
+By
+Por
+
 By hand
 A mano
+
+By the hour for the next 5 days (the provider’s reach):
+Hora a hora, los próximos 5 días (hasta donde llega el proveedor):
+
+C
+C
+
+C#
+C#
+
+C++
+C++
 
 C, C++, Zig, Haskell, Elixir and Dart build output
 Compilados de C, C++, Zig, Haskell, Elixir y Dart
 
+CA certificate:
+Certificado de CA:
+
+CMake
+CMake
+
 CMakeFiles, .zig-cache, .stack-work, _build, .dart_tool
 CMakeFiles, .zig-cache, .stack-work, _build, .dart_tool
 
 CPU
 CPU
+
+CPU Time
+Tiempo de CPU
+
+CSS
+CSS
 
 Caffeinated
 Con cafeína
@@ -654,8 +1053,17 @@ Calendario: próximo evento
 Calendar: The Day Ahead
 Calendario: el día de hoy
 
+Calendars
+Calendarios
+
 Calendar’s assistant is handed the events of the calendars you show. It can draft events; nothing is added until you save it.
 El asistente de Calendario recibe los eventos de los calendarios que muestras. Puede redactar eventos; no se añade nada hasta que lo guardes.
+
+Call
+Llamar
+
+Call Quality, with Microphone
+Calidad de llamada, con micrófono
 
 Calls
 Llamadas
@@ -663,14 +1071,41 @@ Llamadas
 Cancel
 Cancelar
 
+Cancel Echo from the Speakers
+Suprimir el eco de los altavoces
+
+Cancel It
+Cancelar
+
+Cancel Recording
+Cancelar grabación
+
+Cancel Sign-In
+Cancelar inicio de sesión
+
+Cancel Trimming
+Cancelar recorte
+
 Cancel echo from the speakers
 Eliminar el eco de los altavoces
 
 Caps Lock is another Control key
 Bloq Mayús es otra tecla Control
 
+Capture debug information whenever a frame drops
+Capturar información de depuración cada vez que se pierda un fotograma
+
+Cascade All
+Todo en cascada
+
+Cascade Others
+Las demás en cascada
+
 Case
 Funda
+
+Celsius (°C)
+Celsius (°C)
 
 Center Third
 Tercio central
@@ -681,20 +1116,65 @@ Dos tercios centrales
 Chance of rain
 Probabilidad de lluvia
 
+Change API ID…
+Cambiar ID de API…
+
+Change Background…
+Cambiar fondo…
+
+Change…
+Cambiar…
+
+Changing…
+Cambiando…
+
+Chat
+Chat
+
+Chat Info
+Información del chat
+
+Check
+Comprobar
+
 Check Again
 Comprobar de nuevo
+
+Check Health
+Comprobar estado
+
+Check Spelling While Typing
+Revisar la ortografía al escribir
+
+Check for Updates
+Buscar actualizaciones
 
 Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
 Comprobar rápidamente que las copias elegidas están completas: todo lo que necesitan está ahí, las sumas de verificación del almacén coinciden con lo enviado y se releen unas muestras (como tras cada copia). Lo dañado se repara en la medida de lo posible.
 
+Checking…
+Comprobando…
+
+Choose All
+Elegir todo
+
 Choose Another Folder…
 Elegir otra carpeta…
+
+Choose None
+No elegir nada
+
+Choose a Folder…
+Elegir una carpeta…
 
 Choose a network to join it.
 Elige una red para conectarte a ella.
 
 Choose a widget to change it, or add one.
 Elige un widget para cambiarlo o añade uno.
+
+Choose what to scan:
+Elige qué analizar:
 
 Choose:
 Elegir:
@@ -726,11 +1206,41 @@ Claude Code y Codex reciben una herramienta para titular su pestaña con aquello
 Claude Code and Codex started in a tab of a group whose tabs are in more than one repository are told the group’s name and those repositories and worktrees, theirs marked. Codex asks you once to trust Terminal’s hook (/hooks).
 A Claude Code y Codex iniciados en una pestaña de un grupo cuyas pestañas están en más de un repositorio se les indica el nombre del grupo y esos repositorios y worktrees, con el suyo marcado. Codex te pide una vez que confíes en el hook de Terminal (/hooks).
 
+Clean Up
+Ordenar
+
+Clean Up Microphone Sound
+Limpiar el sonido del micrófono
+
+Clean Up Now
+Limpiar ahora
+
 Clean up the microphone's sound
 Limpiar el sonido del micrófono
 
+Clear
+Borrar
+
+Clear All
+Borrar todo
+
+Clear All Tabs
+Borrar todas las pestañas
+
+Clear History
+Borrar historial
+
+Clear History…
+Borrar historial…
+
+Clear Scrollback
+Borrar historial de desplazamiento
+
 Clear copied secrets after:
 Borrar secretos copiados al cabo de:
+
+Cleared
+Borradas
 
 Click
 Clic
@@ -756,20 +1266,53 @@ Clic y arrastre
 Clicks
 Clics
 
+Client ID:
+ID de cliente:
+
+Client secret:
+Secreto de cliente:
+
+Clients
+Clientes
+
 Clock
 Reloj
 
 Close
 Cerrar
 
+Close All
+Cerrar todo
+
+Close Group
+Cerrar grupo
+
+Close Other Tabs
+Cerrar las demás pestañas
+
+Close Others
+Cerrar las demás
+
 Close Tab
 Cerrar pestaña
+
+Close Window
+Cerrar ventana
+
+Cloud Heights
+Altura de las nubes
 
 Cloud cover
 Nubosidad
 
 Cloudflare (1.1.1.1)
 Cloudflare (1.1.1.1)
+
+Code
+Código
+
+Code:
+Código:
 
 Codex
 Codex
@@ -779,6 +1322,9 @@ Agentes de programación
 
 Collection:
 Colección:
+
+Collector
+Colector
 
 Color
 Color
@@ -810,17 +1356,71 @@ Sugerencias de comandos
 Command key:
 Tecla Comando:
 
+Command or Comment
+Comando o comentario
+
+Comment
+Comentario
+
+Comment:
+Comentario:
+
+Compress
+Comprimir
+
+Compress As…
+Comprimir como…
+
+Configure IPv4:
+Configurar IPv4:
+
+Configure IPv6:
+Configurar IPv6:
+
+Confirm:
+Confirmar:
+
+Connect
+Conectar
+
+Connect Another Account…
+Conectar otra cuenta…
+
+Connect GitHub for Pull Requests…
+Conectar GitHub para las pull requests…
+
+Connect Google Drive…
+Conectar Google Drive…
+
 Connect automatically when you put them in near this computer
 Conectar automáticamente al ponértelos cerca de este ordenador
 
 Connect with a Token…
 Conectar con un token…
 
+Connected as {}, through {}.
+Conectado como {}, a través de {}.
+
+Contacts
+Contactos
+
 Container images and Flatpak runtimes
 Imágenes de contenedor y runtimes Flatpak
 
+Contents
+Contenido
+
 Control
 Control
+
+Conversation
+Conversación
+
+Conversation Awareness
+Detección de conversación
+
+Convert to Table
+Convertir en tabla
 
 Cool
 Fresco
@@ -837,17 +1437,104 @@ Lo más fresco
 Copy
 Copiar
 
+Copy Code
+Copiar código
+
+Copy Conversation
+Copiar conversación
+
+Copy Here
+Copiar aquí
+
+Copy Latest Code
+Copiar el último código
+
+Copy Link
+Copiar enlace
+
+Copy Name
+Copiar nombre
+
+Copy Name and Value
+Copiar nombre y valor
+
+Copy One-Time Password
+Copiar contraseña de un solo uso
+
+Copy Password
+Copiar contraseña
+
+Copy Path
+Copiar ruta
+
+Copy Reference
+Copiar referencia
+
+Copy Text
+Copiar texto
+
+Copy Username
+Copiar usuario
+
+Copy Value
+Copiar valor
+
 Copy a code no tab is waiting for
 Copiar un código que ninguna pestaña espera
+
+Copy the Code That Just Came
+Copiar el código recién llegado
+
+Copy to clipboard
+Copiar al portapapeles
+
+Core
+Núcleo
 
 Count accounts turned off or signed out
 Contar cuentas desactivadas o con la sesión cerrada
 
+Countdown
+Cuenta atrás
+
+Crate
+Crate
+
+Create Link
+Crear enlace
+
+Create Link Here
+Crear enlace aquí
+
+Create Partition…
+Crear partición…
+
+Create…
+Crear…
+
+Credit Card
+Tarjeta de crédito
+
+Crop
+Recortar
+
+Crop…
+Recortar…
+
 Custom
 Personalizado
 
+Custom Message…
+Mensaje propio…
+
 Customize…
 Personalizar…
+
+Cut
+Cortar
+
+Cyan
+Cian
 
 Czech
 Checo
@@ -870,14 +1557,35 @@ Danés
 Dark
 Oscuro
 
+Dart
+Dart
+
+Data Provider…
+Proveedor de datos…
+
+Database
+Base de datos
+
+Date
+Fecha
+
 Date & Time
 Fecha y hora
 
 Dates, times and numbers follow this computer’s region for now (its LANG). Date & Time sets the clock’s 12 or 24 hours.
 Por ahora, las fechas, horas y números siguen la región de este ordenador (su LANG). Fecha y hora fija el reloj de 12 o 24 horas.
 
+Day
+Día
+
 Days:
 Días:
+
+Decline
+Rechazar
+
+Decode With
+Decodificar con
 
 Decode on:
 Decodificar en:
@@ -891,6 +1599,9 @@ DeepFilterNet3 de baja latencia
 Default
 Predeterminado
 
+Default (Preferences ▸ Power)
+Predeterminado (Preferencias ▸ Energía)
+
 Default Apps
 Apps predeterminadas
 
@@ -902,6 +1613,9 @@ Modo predeterminado:
 
 Defaults
 Valores predeterminados
+
+Degrees
+Grados
 
 Delay
 Retardo
@@ -915,6 +1629,57 @@ Retardo:
 Delete
 Eliminar
 
+Delete All
+Eliminar todo
+
+Delete All…
+Eliminar todo…
+
+Delete Column
+Eliminar columna
+
+Delete Event
+Eliminar evento
+
+Delete Item
+Eliminar elemento
+
+Delete Mark
+Eliminar marca
+
+Delete Row
+Eliminar fila
+
+Delete Signature
+Eliminar firma
+
+Delete Table
+Eliminar tabla
+
+Delete Vault
+Eliminar bóveda
+
+Delete Vault…
+Eliminar bóveda…
+
+Delete…
+Eliminar…
+
+Description:
+Descripción:
+
+Deselect All Chats
+Deseleccionar todos los chats
+
+Deselect All Conversations
+Deseleccionar todas las conversaciones
+
+Deselect All Screens
+Deseleccionar todas las pantallas
+
+DeskCalc
+DeskCalc
+
 Deskbar
 Deskbar
 
@@ -923,6 +1688,9 @@ Reloj de la Deskbar
 
 Deskbar shows: {}
 La Deskbar muestra: {}
+
+Desktop Background
+Fondo del escritorio
 
 Desktop Colour
 Color del escritorio
@@ -936,11 +1704,26 @@ Detalles
 Device
 Dispositivo
 
+Diff
+Diff
+
 Dim the display while you look away
 Atenuar la pantalla mientras miras a otro lado
 
+Disagree
+No acepto
+
+Discard
+Descartar
+
+Discard Recording
+Descartar grabación
+
 Disconnect
 Desconectar
+
+Disconnect Google Drive
+Desconectar Google Drive
 
 Disconnect…
 Desconectar…
@@ -957,11 +1740,26 @@ Disco:
 DiskBackup
 DiskBackup
 
+DiskBackup copies your files, encrypted, every hour, and keeps older copies too, so any file can be brought back as it was. Where should the backups go?
+DiskBackup copia tus archivos, cifrados, cada hora, y guarda también copias anteriores, para que cualquier archivo pueda volver a estar como estaba. ¿Dónde deben ir las copias?
+
 DiskBackup’s own app, from before. Bring it in for Mail and Calendar too; the backups stay put.
 La app propia de DiskBackup, de antes. Tráela también para Mail y Calendario; las copias se quedan donde están.
 
+DiskBackup…
+DiskBackup…
+
+DiskUsage
+DiskUsage
+
+Disks
+Discos
+
 Display
 Pantalla
+
+Displays
+Pantallas
 
 Divider
 Separador
@@ -969,11 +1767,29 @@ Separador
 Do Not Disturb
 No molestar
 
+Dockerfile
+Dockerfile
+
+Document
+Documento
+
 Documents
 Documentos
 
+Domain:
+Dominio:
+
+Don't Allow
+No permitir
+
 Done
 Hecho
+
+Done Editing
+Terminar edición
+
+Don’t Trust
+No confiar
 
 Double-press speed
 Velocidad de doble pulsación
@@ -981,14 +1797,29 @@ Velocidad de doble pulsación
 Down (received)
 Bajada (recibido)
 
+Down the Side
+En un lado
+
 Download at most:
 Descargar como máximo:
+
+Download, Then Restart to Install
+Descargar y reiniciar para instalar
 
 Drag with:
 Arrastrar con:
 
+Draw
+Dibujar
+
+DriveSetup
+DriveSetup
+
 Drop on lift
 Soltar al levantar
+
+Duplicate
+Duplicar
 
 Dutch
 Neerlandés
@@ -1004,6 +1835,9 @@ Cada pantalla de agente guarda lo que se hizo en ella y los fotogramas que dibuj
 
 Each display has workspaces of its own.
 Cada pantalla tiene sus propios espacios de trabajo.
+
+Each display is at its own best resolution and scale now: no rotation, mirroring, HDR or VRR, and night light off. Yours come back as you leave.
+Cada pantalla está ahora en su mejor resolución y escala: sin rotación, duplicado, HDR ni VRR, y la luz nocturna apagada. Los tuyos vuelven al salir.
 
 Each display is drawn by the graphics it's wired to, so no frame crosses between them; the second sleeps while nothing uses it.
 Cada pantalla la dibuja la gráfica a la que está conectada, así que ningún fotograma pasa de una a otra; la segunda duerme mientras nada la usa.
@@ -1035,6 +1869,15 @@ De borde a borde
 Edit
 Edición
 
+Edit Event…
+Editar evento…
+
+Edit Name
+Editar nombre
+
+Edit Video…
+Editar vídeo…
+
 Editors’ swap and backup files
 Archivos de intercambio y copia de los editores
 
@@ -1044,14 +1887,47 @@ Editar…
 Either AirPod
 Cualquier AirPod
 
+Eject
+Expulsar
+
+Elixir
+Elixir
+
+Email Account
+Cuenta de correo
+
 Emoji
 Emojis
+
+Empty
+Vacío
+
+Empty Trash
+Vaciar la papelera
+
+Empty the Collector
+Vaciar el colector
 
 Enable Screen Saver
 Activar el salvapantallas
 
+Enclosing Folder
+Carpeta contenedora
+
 Encode on:
 Codificar en:
+
+Encrypt it with a passphrase
+Cifrarlo con una frase de contraseña
+
+End
+Fin
+
+Ends a turn going on; Codex’s windows reconnect.
+Termina un turno en curso; las ventanas de Codex se reconectan.
+
+Ends:
+Termina:
 
 English (Australia)
 Inglés (Australia)
@@ -1062,11 +1938,29 @@ Inglés (Reino Unido)
 English (US)
 Inglés (EE. UU.)
 
+Enhancements
+Mejoras
+
+Enter Full Screen
+Pantalla completa
+
 Erase All Backups…
 Borrar las copias…
 
+Erlang
+Erlang
+
 Ethernet
 Ethernet
+
+Even Columns
+Columnas iguales
+
+Even Out the Voice's Level
+Igualar el nivel de la voz
+
+Even With the Lid Closed
+Incluso con la tapa cerrada
 
 Even out the voice's level
 Igualar el nivel de la voz
@@ -1131,8 +2025,20 @@ Brillo de todo lo demás
 Export
 Exportar
 
+Export Flattened PDF…
+Exportar PDF acoplado…
+
+Export Video
+Exportar vídeo
+
+Export Video…
+Exportar vídeo…
+
 Export…
 Exportar…
+
+Expression
+Expresión
 
 Extensions
 Extensiones
@@ -1143,11 +2049,32 @@ Extensiones:
 Extra High
 Altísimo
 
+Extract All
+Extraer todo
+
+Extract Here
+Extraer aquí
+
+Extract Selected To…
+Extraer la selección en…
+
+Extract Selected…
+Extraer la selección…
+
+Extract To…
+Extraer en…
+
+FD
+FD
+
 Fable 5.1
 Fable 5.1
 
 Face Unlock
 Desbloqueo facial
+
+Face unlock isn't installed.
+El desbloqueo facial no está instalado.
 
 Fade
 Fundido
@@ -1155,11 +2082,23 @@ Fundido
 Fade Colors
 Desvanecer colores
 
+Fahrenheit (°F)
+Fahrenheit (°F)
+
+Fan Out
+Abanico
+
+Fan Out Others
+Las demás en abanico
+
 Fast
 Rápido
 
 Fast when there is work, frugal when there isn't, the processors kept out of their hottest top speed. The usual choice.
 Rápido cuando hay trabajo y frugal cuando no, con los procesadores lejos de su velocidad máxima más caliente. La opción habitual.
+
+Faster
+Más rápido
 
 Fastest
 Lo más rápido
@@ -1167,8 +2106,26 @@ Lo más rápido
 Fastmail
 Fastmail
 
+Favorites
+Favoritos
+
+Fedora
+Fedora
+
+Feet
+Pies
+
+Fetching the forecast…
+Obteniendo la previsión…
+
+Field
+Campo
+
 File
 Archivo
+
+File system:
+Sistema de archivos:
 
 Files
 Archivos
@@ -1181,6 +2138,27 @@ Rellenarlo
 
 Fills
 Rellenos
+
+Find
+Buscar
+
+Find Again
+Buscar siguiente
+
+Find Previous
+Buscar anterior
+
+Find Selection
+Buscar la selección
+
+Find in document
+Buscar en el documento
+
+Find:
+Buscar:
+
+Find…
+Buscar…
 
 Finger
 Dedo
@@ -1203,11 +2181,41 @@ Firme
 Firmer
 Más firme
 
+First Page
+Primera página
+
 First, as the main window
 Primero, como ventana principal
 
+Fish
+Fish
+
+Fit Page
+Página completa
+
+Fit Page Width
+Ancho de página
+
+Fit Width
+Ajustar al ancho
+
+Fix
+Arreglar
+
 Fix in Olo Doctor…
 Arreglar en Olo Doctor…
+
+Flip Horizontal
+Voltear en horizontal
+
+Flip Vertical
+Voltear en vertical
+
+Float Window
+Ventana flotante
+
+Float Window Group
+Grupo de ventanas flotante
 
 Focus
 Enfoque
@@ -1217,6 +2225,12 @@ El foco sigue al puntero
 
 Folders and files, separated by commas: ~/ is your home folder, **/ anywhere, * any name.
 Carpetas y archivos, separados por comas: ~/ es tu carpeta personal, **/ en cualquier sitio, * cualquier nombre.
+
+Folders by Name, Files by Date
+Carpetas por nombre, archivos por fecha
+
+Font
+Tipo de letra
 
 Font Size
 Tamaño de letra
@@ -1233,11 +2247,23 @@ Para los ratones configurados para seguir a los demás y los que conectes.
 For:
 Para:
 
+Force End
+Forzar el fin
+
+Force Quit…
+Forzar salida…
+
 Forever
 Para siempre
 
+Forget
+Olvidar
+
 Forget My Model
 Olvidar mi modelo
+
+Forget Saved Group
+Olvidar grupo guardado
 
 Forget…
 Olvidar…
@@ -1251,14 +2277,35 @@ Formato:
 Formats
 Formatos
 
+Format…
+Formatear…
+
+Forward
+Adelante
+
+Forward…
+Reenviar…
+
 Four fingers
 Cuatro dedos
+
+Free
+Libre
+
+Free (open source)
+Libre (código abierto)
 
 French
 Francés
 
 French (Canada)
 Francés (Canadá)
+
+From
+De
+
+From your next login, Passwords can be ssh’s agent here too.
+Desde tu próximo inicio de sesión, Passwords puede ser también aquí el agente de ssh.
 
 From:
 Desde:
@@ -1272,6 +2319,9 @@ GPU:
 Game saves
 Partidas guardadas
 
+Generator
+Generador
+
 Gently, below my own work
 Con suavidad, por debajo de mi trabajo
 
@@ -1281,17 +2331,38 @@ Alemán
 Gestures
 Gestos
 
+Get Full Access…
+Obtener acceso total…
+
+Get Info
+Obtener información
+
 Git Worktrees
 Worktrees de Git
 
 GitHub
 GitHub
 
+Give a new key
+Dar una clave nueva
+
 Glide
 Deslizamiento
 
 Glow new windows for
 Resaltar las ventanas nuevas durante
+
+Go
+Ir
+
+Go to End
+Ir al final
+
+Go to File or Folder…
+Ir a archivo o carpeta…
+
+Go to:
+Ir a:
 
 Going:
 Asistencia:
@@ -1301,6 +2372,21 @@ Google
 
 Google (8.8.8.8)
 Google (8.8.8.8)
+
+Google Cloud Console…
+Google Cloud Console…
+
+Google Drive
+Google Drive
+
+Google account’s login:
+Inicio de sesión de la cuenta de Google:
+
+Google and Fastmail accounts for Mail (Integrations) are looked in too.
+También se mira en las cuentas de Google y Fastmail para Mail (Integraciones).
+
+Governor:
+Regulador:
 
 Go’s downloaded modules and build cache
 Módulos descargados y caché de compilación de Go
@@ -1317,6 +2403,12 @@ El gráfico muestra:
 Graphics
 Gráficos
 
+Graphs
+Gráficas
+
+Graphs Show
+Las gráficas muestran
+
 Gray
 Gris
 
@@ -1329,14 +2421,26 @@ Verde:
 Grid
 Cuadrícula
 
+Group
+Grupo
+
+Group Windows
+Agrupar ventanas
+
 Guests:
 Invitados:
 
 H.264 (plays everywhere)
 H.264 (se reproduce en todas partes)
 
+HDR needs a setting at the computer's start: Olo Doctor offers it (“The built-in display's HDR is off”).
+El HDR necesita un ajuste al arrancar el ordenador: Olo Doctor lo ofrece («El HDR de la pantalla integrada está desactivado»).
+
 HEVC (about half the size)
 HEVC (más o menos la mitad de tamaño)
+
+HTML
+HTML
 
 Haiku 5.5
 Haiku 5.5
@@ -1344,8 +2448,71 @@ Haiku 5.5
 Halves
 Mitades
 
+Hang Up
+Colgar
+
+Hard
+Duro
+
+Hardware
+Hardware
+
+Haskell
+Haskell
+
+Header & Footer…
+Encabezado y pie…
+
+Header Row
+Fila de encabezado
+
+Heading 1
+Título 1
+
+Heading 2
+Título 2
+
+Heading 3
+Título 3
+
+Heading 4
+Título 4
+
+Heading 5
+Título 5
+
+Heading 6
+Título 6
+
+Headless
+Sin pantalla
+
 Heatmap
 Mapa de calor
+
+Hectopascals
+Hectopascales
+
+Hidden and ignored files
+Archivos ocultos e ignorados
+
+Hide
+Ocultar
+
+Hide All
+Ocultar todo
+
+Hide Chat List
+Ocultar lista de chats
+
+Hide List
+Ocultar lista
+
+Hide Others
+Ocultar las demás
+
+Hide Tab When Tiled
+Ocultar la pestaña en mosaico
 
 Hides
 Se oculta
@@ -1368,6 +2535,9 @@ Mantén Fn (🌐) para F1 a F12.
 Hold duration:
 Duración de la pulsación:
 
+Home
+Carpeta personal
+
 Hosts
 Hosts
 
@@ -1377,14 +2547,44 @@ Punto de acceso
 Hours:
 Horas:
 
+ID
+ID
+
+INI
+INI
+
+IP address:
+Dirección IP:
+
 Icon View
 Vista de iconos
 
 Icons
 Iconos
 
+Id
+Id
+
 Identify
 Identificar
+
+Identity
+Identidad
+
+Identity:
+Identidad:
+
+If it does, confirm here, and on the phone too.
+Si es así, confírmalo aquí y también en el teléfono.
+
+Ignore
+Ignorar
+
+Ignore Spelling
+Ignorar ortografía
+
+Ignore This Process
+Ignorar este proceso
 
 Ignore hovering fingers and palms
 Ignorar dedos y palmas suspendidos
@@ -1395,6 +2595,9 @@ Ignorar el touchpad mientras se usa el pivote
 Ignore the touchpad while typing
 Ignorar el touchpad mientras escribes
 
+Image
+Imagen
+
 Immediately needs a small helper that only the administrator can install. Until it's installed, Immediately restarts or shuts down as Restart and Shut Down do.
 De inmediato necesita un pequeño ayudante que solo el administrador puede instalar. Hasta que se instale, De inmediato reinicia o apaga como lo hacen Reiniciar y Apagar.
 
@@ -1403,6 +2606,12 @@ Importar
 
 Import WireGuard…
 Importar WireGuard…
+
+Import…
+Importar…
+
+In Google Cloud, signed in as the account, make its app, “Olo (its address)”:
+En Google Cloud, con la sesión de la cuenta, crea su app, «Olo (su dirección)»:
 
 In HDR on a display whose HDR is on: its lights shine brighter than the rest.
 En HDR en una pantalla con el HDR activado: sus luces brillan más que el resto.
@@ -1413,14 +2622,38 @@ En la pestaña de un agente:
 In place of the blue dot of its notifications, for as long as the app says something is unread or waiting in it.
 En lugar del punto azul de sus notificaciones, mientras la app diga que tiene algo sin leer o pendiente.
 
+In the Scratchpad
+En el borrador
+
 In the Tray
 En la bandeja
 
 In the command palette, type /ask and a question: the answer shows there with code to copy (its number, then Return). Space asks a follow-up.
 En la paleta de comandos, escribe /ask y una pregunta: la respuesta aparece allí con código para copiar (su número y luego Intro). Espacio hace una pregunta de seguimiento.
 
+In the tray it's an icon's size; its name and value are in its tip.
+En la bandeja tiene el tamaño de un icono; su nombre y valor están en su ayuda.
+
+In:
+En:
+
+Inches
+Pulgadas
+
+Inches of Mercury
+Pulgadas de mercurio
+
 Include passwords and sign-ins, sealed with a password
 Incluir contraseñas e inicios de sesión, sellados con una contraseña
+
+Indent Less
+Reducir sangría
+
+Indent More
+Aumentar sangría
+
+Ink Colour
+Color de tinta
 
 Input
 Entrada
@@ -1428,14 +2661,50 @@ Entrada
 Input level
 Nivel de entrada
 
+Inputs
+Entradas
+
+Insert
+Insertar
+
+Insert Picture…
+Insertar imagen…
+
+Insert Table
+Insertar tabla
+
+Inspect
+Inspeccionar
+
+Inspect Parent
+Inspeccionar el padre
+
+Install Now
+Instalar ahora
+
+Install When Restarting
+Instalar al reiniciar
+
+Install from:
+Instalar desde:
+
 Install just
 Instalar solo
 
 Install the Helper…
 Instalar el ayudante…
 
+Installed
+Instalado
+
+Install…
+Instalar…
+
 Integrations
 Integraciones
+
+Intel GPU (VA-API)
+GPU Intel (VA-API)
 
 Intel Graphics
 Gráficos Intel
@@ -1446,8 +2715,20 @@ Gráficos Intel (AV1 y VP9)
 Intel Graphics (VA-API)
 Gráficos Intel (VA-API)
 
+Intel Graphics (every video)
+Gráficos Intel (todo vídeo)
+
 Interface:
 Interfaz:
+
+Invert Selection
+Invertir selección
+
+Invite:
+Invitar:
+
+It Matches
+Coincide
 
 It lasts until it's turned off, the link goes away or the computer restarts. Changing it asks for an administrator's password once while this window is open.
 Dura hasta que se desactive, el enlace desaparezca o el ordenador se reinicie. Al cambiarlo se pide una vez la contraseña de un administrador mientras esta ventana esté abierta.
@@ -1464,20 +2745,56 @@ Ahora está en uso, en lugar del propio de Olo.
 Italian
 Italiano
 
+Italic
+Cursiva
+
+Item
+Elemento
+
+Its click is its own: a resting palm can't press.
+Su clic es suyo: una palma apoyada no puede pulsar.
+
 Its decoder, on its battery preset (Power Modes), costs less than the processor's cores; off, the processor decodes on battery.
 Su decodificador, con su ajuste de batería (Modos de energía), gasta menos que los núcleos del procesador; si está apagada, el procesador decodifica con batería.
 
 Its own
 El suyo
 
+Its packager wrote nothing.
+Su empaquetador no escribió nada.
+
+Its packages’ signatures aren’t checked.
+No se comprueban las firmas de sus paquetes.
+
 Its power limit is the computer's to set, as a laptop's is.
 Su límite de energía lo fija el ordenador, como en un portátil.
+
+Its release packages are installed: they add its repositories and keys.
+Sus paquetes de versión están instalados: añaden sus repositorios y claves.
+
+Its secret reference, as Passwords’ Copy Secret Reference gives it. Passwords asks once, while it runs, whether Weather may have it.
+Su referencia secreta, tal como la da «Copiar referencia secreta» de Passwords. Passwords pregunta una vez, mientras funciona, si Weather puede tenerla.
 
 Its work starts sooner, but it never sleeps: more power, more warmth.
 Su trabajo empieza antes, pero nunca duerme: más consumo, más calor.
 
+It’s Different
+Es distinto
+
+It’s the newest release: there’s nothing to upgrade to.
+Es la versión más reciente: no hay nada a lo que actualizar.
+
+JSON
+JSON
+
 Japanese
 Japonés
+
+Java
+Java
+
+JavaScript
+JavaScript
 
 JavaScript packages and build output
 Paquetes y compilados de JavaScript
@@ -1485,8 +2802,29 @@ Paquetes y compilados de JavaScript
 Jitter:
 Fluctuación:
 
+Join
+Unirse
+
+Journal
+Diario
+
+Julia
+Julia
+
+Just This Time
+Solo esta vez
+
+Justify
+Justificar
+
+Kache
+Kache
+
 Kache: Build Cache
 Kache: caché de compilación
+
+Keep It Going
+Que siga
 
 Keep It Going says
 «Sigue adelante» dice
@@ -1500,6 +2838,9 @@ Keep It Going, in a tab’s menu, types this to the coding agent in the tab when
 Keep Key in Passwords
 Guardar la clave en Passwords
 
+Keep Only on This Computer
+Guardar solo aquí
+
 Keep Them Off
 Mantenerlos apagados
 
@@ -1509,11 +2850,23 @@ Reservar un núcleo para el servidor de ventanas
 Keep briefly
 Guardar poco tiempo
 
+Keep it in Passwords
+Guardarla en Passwords
+
 Keep its driver ready
 Mantener su controlador listo
 
+Keep palms from moving the pointer
+Que las palmas no muevan el puntero
+
+Keep proportions
+Mantener proporciones
+
 Keep scrolling after a flick
 Seguir desplazando tras un gesto rápido
+
+Keep the Desktop Responsive
+Mantener el escritorio ágil
 
 Keep until tapped
 Mantener hasta tocarlo
@@ -1545,6 +2898,9 @@ Tecla
 Key Repeat
 Repetición de teclas
 
+Key password:
+Contraseña de la clave:
+
 Keyboard
 Teclado
 
@@ -1560,11 +2916,26 @@ Atajos de teclado
 Keyboards
 Teclados
 
+Key’s PIN:
+PIN de la llave:
+
+Kilometres
+Kilómetros
+
+Kilometres an Hour
+Kilómetros por hora
+
 Kind
 Tipo
 
 Kind:
 Tipo:
+
+Knots
+Nudos
+
+Kotlin
+Kotlin
 
 LAVD
 LAVD
@@ -1584,14 +2955,29 @@ Grande
 Larger
 Más grande
 
+Larger Pointer
+Puntero más grande
+
 Last
 Último
+
+Last Page
+Última página
 
 Layout:
 Disposición:
 
+Learn Spelling
+Aprender ortografía
+
 Leave Out What Can Be Downloaded or Built Again
 Excluir lo que se puede volver a descargar o compilar
+
+Leave Rescue
+Salir de Rescue
+
+Leave the DNS servers empty to use the network's. DNS servers set for every link (the DNS tab) take the place of these.
+Deja vacíos los servidores DNS para usar los de la red. Los servidores DNS fijados para cada enlace (pestaña DNS) sustituyen a estos.
 
 Left
 Izquierda
@@ -1607,6 +2993,9 @@ Dos tercios izquierdos
 
 Left-handed (swap the buttons)
 Para zurdos (intercambiar los botones)
+
+Length
+Longitud
 
 Less noise
 Menos ruido
@@ -1626,11 +3015,26 @@ Así
 Like:
 Como:
 
+Limit
+Límite
+
 Limit what waits to be written to them
 Limitar lo que espera a escribirse en ellos
 
+Line
+Línea
+
+Line Numbers
+Números de línea
+
 Line:
 Línea:
+
+Link
+Enlace
+
+Link-Local Only
+Solo enlace local
 
 Link:
 Enlace:
@@ -1643,6 +3047,24 @@ Vista de lista
 
 Listening
 Escuchando
+
+Live
+En directo
+
+Local
+Local
+
+Location
+Ubicación
+
+Lock
+Bloquear
+
+Lock After
+Bloquear tras
+
+Lock Screen
+Bloquear pantalla
 
 Lock after idle for:
 Bloquear tras inactividad de:
@@ -1662,6 +3084,12 @@ Bloquear cuando te alejes:
 Log Out
 Cerrar sesión
 
+Log Out…
+Cerrar sesión…
+
+Login
+Inicio de sesión
+
 Logitech G309 LIGHTSPEED
 Logitech G309 LIGHTSPEED
 
@@ -1671,6 +3099,12 @@ Largo
 Longest window title
 Título de ventana más largo
 
+Look
+Aspecto
+
+Look Again
+Volver a buscar
+
 Look ahead:
 Prever:
 
@@ -1679,6 +3113,30 @@ Buscar códigos en:
 
 Look:
 Aspecto:
+
+Looking at Bluetooth…
+Mirando Bluetooth…
+
+Looking for a newer release…
+Buscando una versión más reciente…
+
+Looking for apps…
+Buscando apps…
+
+Looking for network devices…
+Buscando dispositivos de red…
+
+Looking for security keys…
+Buscando llaves de seguridad…
+
+Looking for sound devices…
+Buscando dispositivos de sonido…
+
+Looking for the fingerprint sensor…
+Buscando el sensor de huellas…
+
+Looking for volumes…
+Buscando volúmenes…
 
 Looking…
 Buscando…
@@ -1701,14 +3159,23 @@ Rebaja las compilaciones y otros trabajos en segundo plano para que la app de la
 Lowest clock
 Frecuencia mínima
 
+Lua
+Lua
+
 Luna 6
 Luna 6
+
+MTU:
+MTU:
 
 MacBook
 MacBook
 
 Machine:
 Máquina:
+
+Magenta
+Magenta
 
 Magic Keyboard with Touch ID and Numeric Keypad
 Magic Keyboard con Touch ID y teclado numérico
@@ -1725,11 +3192,20 @@ Mail y Calendario inician sesión en Fastmail con una contraseña de app propia 
 Mail is read only while a page waits for a code, for up to a minute.
 El correo solo se lee mientras una página espera un código, durante un minuto como mucho.
 
+Mail is read only while a page waits for a code, for up to a minute. A phone, set up in Phone, is looked in too.
+El correo solo se lee mientras una página espera un código, un minuto como mucho. También se mira en un teléfono configurado en Teléfono.
+
 Mail, Calendar and DiskBackup sign in to Google through an app of each account’s own, “Olo (its address)”, in its Google Cloud project: an agent makes it for you. Tick what each account is used for.
 Mail, Calendario y DiskBackup inician sesión en Google mediante una app propia de cada cuenta, «Olo (su dirección)», en su proyecto de Google Cloud: un agente la crea por ti. Marca para qué se usa cada cuenta.
 
+Main Window
+Ventana principal
+
 Main and Stack
 Principal y pila
+
+Main and Stack, Main Elsewhere
+Principal y pila, principal en otro sitio
 
 Main display: the desktop is here.
 Pantalla principal: el escritorio está aquí.
@@ -1737,8 +3213,65 @@ Pantalla principal: el escritorio está aquí.
 Main window:
 Ventana principal:
 
+Make Main
+Hacer principal
+
+Make Unlimited
+Quitar el límite
+
+Make a Token…
+Crear un token…
+
+Make an App Password…
+Crear una contraseña de app…
+
+Make an app password for Olo in Fastmail (Settings ▸ Privacy & Security ▸ Manage app passwords and access) with access to mail and calendars. It’s kept in your login keyring.
+Crea una contraseña de app para Olo en Fastmail (Settings ▸ Privacy & Security ▸ Manage app passwords and access) con acceso al correo y a los calendarios. Se guarda en tu llavero de inicio de sesión.
+
 Make one at my.telegram.org ▸ API development tools (sign in there with your phone number), then copy its App api_id and api_hash here.
 Crea una en my.telegram.org ▸ API development tools (inicia sesión allí con tu número de teléfono) y copia aquí su App api_id y su api_hash.
+
+Make this the main display
+Hacer esta la pantalla principal
+
+Makefile
+Makefile
+
+Manually
+Manualmente
+
+Mapped
+Mapeado
+
+Mappings
+Mapeos
+
+Mark
+Marcar
+
+Mark All as Read
+Marcar todo como leído
+
+Mark This Moment
+Marcar este momento
+
+Mark as Read
+Marcar como leído
+
+Markdown
+Markdown
+
+Markdown…
+Markdown…
+
+Match
+Coincidencia
+
+Match Appearance
+Igual que el aspecto
+
+Match:
+Coincidencia:
 
 Max
 Máx.
@@ -1749,17 +3282,35 @@ Quizá
 Medium
 Medio
 
+Membership
+Suscripción
+
 Memory
 Memoria
 
 Memory:
 Memoria:
 
+Message
+Mensaje
+
+Messages
+Mensajes
+
 Messages: each as it comes, answered in place
 Mensajes: cada uno según llega, respondido allí mismo
 
 Meter
 Medidor
+
+Metres
+Metros
+
+Metres a Second
+Metros por segundo
+
+Mice
+Ratones
 
 Microphone boost:
 Amplificación del micrófono:
@@ -1770,8 +3321,20 @@ Micrófono:
 Middle click (three: secondary)
 Clic central (tres: secundario)
 
+Miles
+Millas
+
+Miles an Hour
+Millas por hora
+
+Millimetres
+Milímetros
+
 Mini Icon View
 Vista de iconos pequeños
+
+Mode
+Modo
 
 Model:
 Modelo:
@@ -1785,17 +3348,35 @@ Moderado
 Modern and flat: each thing seen straight on, in plain faces, no outlines.
 Moderno y plano: cada cosa vista de frente, con caras lisas y sin contornos.
 
+Modified
+Modificado
+
 Module settings
 Ajustes del módulo
 
 Modules
 Módulos
 
+Monday
+Lunes
+
 Month
 Mes
 
+More
+Más
+
+More Menus
+Más menús
+
 More noise
 Más ruido
+
+Mount
+Montar
+
+Mounted At
+Montado en
 
 Mouse
 Ratón
@@ -1803,11 +3384,41 @@ Ratón
 Mouse speed
 Velocidad del ratón
 
+Move All Windows To
+Mover todas las ventanas a
+
+Move All to Trash
+Mover todo a la papelera
+
 Move Down
 Bajar
 
+Move Group to New Window
+Mover el grupo a una ventana nueva
+
+Move Group to Window
+Mover el grupo a la ventana
+
+Move Here
+Mover aquí
+
+Move Tab to New Window
+Mover la pestaña a una ventana nueva
+
+Move Tab to Window
+Mover la pestaña a la ventana
+
 Move Up
 Subir
+
+Move Window To
+Mover la ventana a
+
+Move Windows To
+Mover las ventanas a
+
+Move Windows To…
+Mover las ventanas a…
 
 Move the pointer
 Mover el puntero
@@ -1815,11 +3426,38 @@ Mover el puntero
 Move the pointer on a thread of its own
 Mover el puntero en un hilo propio
 
+Move to Archive
+Mover al archivo
+
+Move to New Window
+Mover a una ventana nueva
+
+Move to Trash
+Mover a la papelera
+
+Move to Workspace
+Mover al espacio de trabajo
+
 Moves
 Movimientos
 
+Music
+Música
+
+Music Quality (AAC)
+Calidad de música (AAC)
+
 Mute
 Silenciar
+
+Mute All
+Silenciar todo
+
+My keys
+Mis claves
+
+NVIDIA GPU (NVDEC)
+GPU NVIDIA (NVDEC)
 
 NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU
 NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU
@@ -1833,11 +3471,20 @@ NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU (NVENC)
 Name
 Nombre
 
+Name or text
+Nombre o texto
+
 Name:
 Nombre:
 
 Named, it's a heading: its name at the left, the line going on from it.
 Con nombre, es un encabezado: su nombre a la izquierda y la línea a continuación.
+
+Names
+Nombres
+
+Names:
+Nombres:
 
 Natural scrolling (content follows your fingers)
 Desplazamiento natural (sigue a tus dedos)
@@ -1854,14 +3501,65 @@ Sin avisos nunca
 New
 Nuevo
 
+New Agent Screen
+Nueva pantalla de agente
+
+New Conversation
+Nueva conversación
+
+New Event…
+Nuevo evento…
+
+New Folder
+Nueva carpeta
+
+New Group…
+Nuevo grupo…
+
+New Item
+Nuevo elemento
+
+New Message
+Nuevo mensaje
+
+New Partition Table…
+Nueva tabla de particiones…
+
+New Screen
+Nueva pantalla
+
+New Signature…
+Nueva firma…
+
+New Tab
+Nueva pestaña
+
+New Tab in Group
+Nueva pestaña en el grupo
+
+New Terminal
+Nuevo terminal
+
+New Vault…
+Nueva bóveda…
+
+New Window
+Nueva ventana
+
 New Windows Open In
 Ventanas nuevas en
+
+New Worktree…
+Nuevo worktree…
 
 New ones go in
 Los nuevos van en
 
 New ones go in:
 Los nuevos van en:
+
+New screenshot
+Nueva captura
 
 New windows go:
 Las ventanas nuevas van:
@@ -1872,32 +3570,152 @@ Lo más reciente primero
 News (blue)
 Novedades (azul)
 
+Next
+Siguiente
+
+Next 3 Days
+Próximos 3 días
+
+Next 7 Days
+Próximos 7 días
+
+Next Action
+Acción siguiente
+
+Next Chapter
+Capítulo siguiente
+
+Next Chat
+Chat siguiente
+
+Next Day
+Día siguiente
+
+Next File
+Archivo siguiente
+
 Next Month
 Mes siguiente
+
+Next Page
+Página siguiente
+
+Next Tab
+Pestaña siguiente
+
+Next Week
+Semana siguiente
 
 Next step
 Paso siguiente
 
+Nice
+Nice
+
 Night Mode
 Modo nocturno
 
+Nix
+Nix
+
 No
 No
+
+No Agent Screens
+Sin pantallas de agentes
+
+No Group
+Sin grupo
+
+No Groups
+Sin grupos
+
+No Guesses Found
+Sin sugerencias
+
+No Keypad
+Sin teclado numérico
+
+No Other Windows
+Sin otras ventanas
+
+No Pull Request
+Sin pull request
+
+No Receivers Paired
+Ningún receptor enlazado
+
+No Saved Groups
+Ningún grupo guardado
 
 No VPNs. Import a WireGuard configuration, or add one with its maker's app.
 No hay VPN. Importa una configuración de WireGuard o añade una con la app de su fabricante.
 
+No app opens these
+Ninguna app abre estos
+
 No app opens these yet: add one.
 Ninguna app los abre todavía: añade una.
+
+No apps open this.
+Ninguna app abre esto.
 
 No banners and no sounds (errors still show).
 Sin avisos ni sonidos (los errores siguen apareciendo).
 
+No chat selected
+Ningún chat seleccionado
+
+No connections match.
+Ninguna conexión coincide.
+
+No conversations open.
+Ninguna conversación abierta.
+
+No disks.
+Sin discos.
+
+No entries.
+Sin entradas.
+
+No environment.
+Sin entorno.
+
+No keyboards are plugged in.
+No hay teclados conectados.
+
+No mouse is connected. These settings are for any you connect.
+No hay ningún ratón conectado. Estos ajustes son para los que conectes.
+
 No notes.
 Sin notas.
 
+No open files.
+Ningún archivo abierto.
+
+No phone or mail account is set up: a phone in Phone, a Google or Fastmail account for Mail in Integrations.
+No hay ningún teléfono ni cuenta de correo configurados: un teléfono en Teléfono, una cuenta de Google o Fastmail para Mail en Integraciones.
+
+No power profiles daemon is running (power-profiles-daemon, or tuned-ppd on Fedora): Olo sets the power mode through it.
+No funciona ningún servicio de perfiles de energía (power-profiles-daemon, o tuned-ppd en Fedora): Olo fija el modo de energía a través de él.
+
+No power profiles daemon is running, so there's no power mode to follow.
+No funciona ningún servicio de perfiles de energía, así que no hay modo de energía que seguir.
+
+No processes match.
+Ningún proceso coincide.
+
+No screen recordings yet. Record one with ⌘⇧6.
+Aún no hay grabaciones de pantalla. Graba una con ⌘⇧6.
+
 No space around an auto-tiled window alone
 Sin margen en torno a una ventana sola en mosaico
+
+No touchpad found.
+No se ha encontrado ningún touchpad.
+
+No update matches the search.
+Ninguna actualización coincide con la búsqueda.
 
 No widgets: add one below.
 No hay widgets: añade uno abajo.
@@ -1911,6 +3729,9 @@ Cancelación de ruido
 Noise Control
 Control de ruido
 
+Noise Model
+Modelo de ruido
+
 Noise control:
 Control de ruido:
 
@@ -1923,6 +3744,18 @@ Nada
 None (flat)
 Ninguno (plano)
 
+None connected to Olo yet.
+Ninguno conectado a Olo todavía.
+
+None just now
+Ninguno ahora mismo
+
+None run.
+Ninguno ejecutado.
+
+None yet: add one below, named by its extensions.
+Ninguno aún: añade uno abajo, con el nombre de sus extensiones.
+
 None. An alert’s Ignore This Process adds one here.
 Ninguno. «Ignorar este proceso» de una alerta añade uno aquí.
 
@@ -1931,6 +3764,9 @@ Ninguna. Para añadir una app, elige Ventana flotante ▸ Siempre en el menú de
 
 None. To give an app one, choose Always Open on Workspace in the window menu of one of its windows.
 Ninguna. Para darle uno a una app, elige Abrir siempre en el espacio de trabajo en el menú de ventana de una de sus ventanas.
+
+Nonfree (NVIDIA’s drivers, Steam, …)
+No libre (drivers de NVIDIA, Steam, …)
 
 Norwegian
 Noruego
@@ -1947,14 +3783,44 @@ Sin conectar: solo se muestran las pull requests de repositorios públicos.
 Not enough touches to learn from
 No hay suficientes toques para aprender
 
+Not in a Repository
+No está en un repositorio
+
+Not running: Codex starts it with its first window.
+No está en marcha: Codex lo inicia con su primera ventana.
+
+Not set up.
+Sin configurar.
+
 Not set up: Telegram needs an API ID to sign in with.
 Sin configurar: Telegram necesita un ID de API para iniciar sesión.
+
+Not signed in. (API ID {}.)
+Sin sesión iniciada. (ID de API {}.)
+
+Notes:
+Notas:
 
 Nothing
 Nada
 
+Nothing Found
+No se ha encontrado nada
+
 Nothing changed: Olo's own model is still in use.
 No ha cambiado nada: se sigue usando el modelo propio de Olo.
+
+Nothing in the history yet.
+Aún no hay nada en el historial.
+
+Nothing more today
+Nada más hoy
+
+Notification
+Notificación
+
+Notification Settings…
+Ajustes de notificaciones…
 
 Notifications
 Notificaciones
@@ -1965,6 +3831,9 @@ Notificaciones: bandeja de entrada
 November 2026
 Noviembre de 2026
 
+Now
+Ahora
+
 Now: {}
 Ahora: {}
 
@@ -1974,8 +3843,29 @@ Bloq Num activado al iniciar Olo
 Number
 Número
 
+Number of Main Windows
+Número de ventanas principales
+
 Number of main windows:
 Número de ventanas principales:
+
+Numbered List
+Lista numerada
+
+OCaml
+OCaml
+
+OCaml Interface
+Interfaz OCaml
+
+OK
+Aceptar
+
+OS Updates
+Actualizaciones del sistema
+
+Objective-C
+Objective-C
 
 Off
 Desactivado
@@ -1989,14 +3879,26 @@ Sin conexión (todo perdido)
 Offset
 Desplazamiento
 
+Older Versions…
+Versiones anteriores…
+
 Older ones go, and the space only they took is freed, once a day. Delete any yourself under Backups.
 Las más antiguas se eliminan y se libera el espacio que solo ellas ocupaban, una vez al día. Elimina las que quieras en Copias.
 
 Oldest first
 Lo más antiguo primero
 
+Olo
+Olo
+
 Olo Desktop
 Olo Desktop
+
+Olo Doctor
+Olo Doctor
+
+Olo Installer
+Instalador de Olo
 
 Olo saying its name
 Olo diciendo su nombre
@@ -2004,8 +3906,17 @@ Olo diciendo su nombre
 Olo's Choice
 Lo que elija Olo
 
+Olo's boot splash
+Pantalla de arranque de Olo
+
+Olo's login screen
+Pantalla de inicio de sesión de Olo
+
 Olo's own model is still in use.
 Se sigue usando el modelo propio de Olo.
+
+Olo’s keyring isn’t running here; it starts with your session.
+El llavero de Olo no funciona aquí; se inicia con tu sesión.
 
 Olo’s language:
 Idioma de Olo:
@@ -2025,6 +3936,15 @@ En este ordenador
 On a PC keyboard, Alt is where a Mac's ⌘ is: swapped, the key beside the space bar is ⌘ (with the Mac profile) and the Windows key is Option. Each keyboard keeps its own setting, so an Apple keyboard plugged in stays as it is.
 En un teclado de PC, Alt está donde un Mac tiene ⌘: al intercambiarlas, la tecla junto a la barra espaciadora es ⌘ (con el perfil de Mac) y la tecla Windows es Opción. Cada teclado conserva su ajuste, así que un teclado de Apple conectado se queda como está.
 
+On the phone, open Settings ▸ Bluetooth and keep it open there. It appears here in a moment.
+En el teléfono, abre Ajustes ▸ Bluetooth y déjalo abierto ahí. Aparecerá aquí en un momento.
+
+On your phone, open Telegram ▸ Settings ▸ Devices ▸ Link Desktop Device, and point it at this code.
+En tu teléfono, abre Telegram ▸ Ajustes ▸ Dispositivos ▸ Vincular dispositivo de escritorio, y apúntalo a este código.
+
+On: packages come from it
+Activado: los paquetes vienen de él
+
 One a day for:
 Una al día durante:
 
@@ -2042,6 +3962,9 @@ Otra igual de la misma app (mismo título y texto) sustituye a la anterior mient
 
 One-Time Codes
 Códigos de un solo uso
+
+Only Zip and 7-Zip archives can have a password.
+Solo los archivos Zip y 7-Zip pueden tener contraseña.
 
 Only on battery power
 Solo con batería
@@ -2061,14 +3984,59 @@ Solo con conexión por Ethernet
 Only when the computer is idle
 Solo cuando el ordenador esté inactivo
 
+Onto:
+En:
+
+Open
+Abrir
+
+Open Bluetooth…
+Abrir Bluetooth…
+
+Open Calendar
+Abrir Calendario
+
+Open Integrations…
+Abrir Integraciones…
+
+Open Link
+Abrir enlace
+
+Open Log File…
+Abrir archivo de registro…
+
+Open Notifications
+Abrir Notificaciones
+
+Open Olo Doctor
+Abrir Olo Doctor
+
 Open Olo Doctor…
 Abrir Olo Doctor…
+
+Open Parent
+Abrir superior
 
 Open Phone
 Abrir Teléfono
 
 Open Power
 Abrir Energía
+
+Open Saved Group
+Abrir grupo guardado
+
+Open Screenshot
+Abrir captura
+
+Open Sign-In Page
+Abrir la página de inicio de sesión
+
+Open Telegram
+Abrir Telegram
+
+Open Website
+Abrir sitio web
 
 Open With
 Abrir con
@@ -2079,11 +4047,29 @@ Ofertas de Abrir con
 Open in Google Drive
 Abrir en Google Drive
 
+Open in Terminal
+Abrir en Terminal
+
+Open in Tracker
+Abrir en Tracker
+
+Open kache's Log
+Abrir el registro de kache
+
 Open my.telegram.org
 Abrir my.telegram.org
 
+OpenDocument Text…
+Texto OpenDocument…
+
+Opening programs’ secrets…
+Abriendo los secretos de los programas…
+
 Opens in:
 Se abre en:
+
+Open…
+Abrir…
 
 Opus 5.5
 Opus 5.5
@@ -2103,14 +4089,56 @@ Original
 Other
 Otro
 
+Other Applications
+Otras aplicaciones
+
 Other Mice
 Otros ratones
+
+Other Updates
+Otras actualizaciones
 
 Other workspaces’ applications start collapsed
 Las apps de otros espacios empiezan plegadas
 
+Other…
+Otro…
+
+Out of memory:
+Sin memoria:
+
 Output
 Salida
+
+Overview
+Vista general
+
+Overwrite the old data with zeros (slow)
+Sobrescribir los datos antiguos con ceros (lento)
+
+PDF…
+PDF…
+
+PHP
+PHP
+
+Package
+Paquete
+
+Packages
+Paquetes
+
+Page View
+Vista de página
+
+Pair
+Enlazar
+
+Pairing
+Enlazando
+
+Pair…
+Enlazar…
 
 Palm-proof clicks, hovering fingers ignored, Mac-like scrolling
 Clics a prueba de palmas, dedos suspendidos ignorados, desplazamiento como en un Mac
@@ -2133,6 +4161,24 @@ Panel
 Panels
 Paneles
 
+Paragraph
+Párrafo
+
+Part of an app's name
+Parte del nombre de una app
+
+Partition
+Partición
+
+Passphrase:
+Frase de contraseña:
+
+Password
+Contraseña
+
+Password Generator
+Generador de contraseñas
+
 Password lock
 Bloqueo con contraseña
 
@@ -2141,6 +4187,12 @@ Contraseña:
 
 Passwords
 Passwords
+
+Passwords for Every Screen…
+Contraseñas para cada pantalla…
+
+Passwords has no login for a Google account: add the account’s login there first, or set the app up by hand.
+Passwords no tiene ningún inicio de sesión para una cuenta de Google: añade antes ahí el de la cuenta, o configura la app a mano.
 
 Passwords: Clipboard
 Passwords: portapapeles
@@ -2154,8 +4206,35 @@ Passwords: bloqueo
 Passwords: Syncing with 1Password
 Passwords: sincronización con 1Password
 
+Paste
+Pegar
+
+Paste the key
+Pegar la clave
+
+Pause
+Pausa
+
+Pause Backups
+Pausar las copias
+
+Pause Recording
+Pausar grabación
+
 Performance
 Rendimiento
+
+Performance Preferences…
+Preferencias de rendimiento…
+
+Performance Settings…
+Ajustes de rendimiento…
+
+Permission
+Permiso
+
+Personalized Volume
+Volumen personalizado
 
 Phone
 Teléfono
@@ -2163,20 +4242,41 @@ Teléfono
 Phone Settings…
 Ajustes del teléfono…
 
+Phone number:
+Número de teléfono:
+
 Photographs and Home Videos 2026
 Fotos y vídeos caseros 2026
 
 Picks
 Elecciones
 
+Picture
+Imagen
+
+Picture Size
+Tamaño de imagen
+
 Pictures, Movies and Music
 Imágenes, películas y música
+
+Pin
+Fijar
+
+Pin as Main
+Fijar como principal
 
 Pinch to zoom
 Pellizcar para ampliar
 
 Pink
 Rosa
+
+Place
+Lugar
+
+Places
+Lugares
 
 Play
 Reproducir
@@ -2190,8 +4290,17 @@ Reproducir un sonido al iniciar Olo
 Play sound through:
 Reproducir el sonido por:
 
+Playback
+Reproducción
+
+Playback Speed
+Velocidad de reproducción
+
 Please continue
 Please continue
+
+Plug in a security key to set it up.
+Conecta una llave de seguridad para configurarla.
 
 Point with a palm at the edge
 Señalar con una palma en el borde
@@ -2204,6 +4313,9 @@ Puntero
 
 Polish
 Polaco
+
+Pool
+Pool
 
 Portuguese
 Portugués
@@ -2226,14 +4338,29 @@ Modos de energía
 Power Saver
 Ahorro de energía
 
+Power limit
+Límite de potencia
+
 Power-saving profile
 Perfil de ahorro de energía
+
+PowerShell
+PowerShell
+
+Precipitation
+Precipitación
 
 Preemption
 Expropiación
 
+Preferences
+Preferencias
+
 Presence
 Presencia
+
+Presentation
+Presentación
 
 Press Control twice for keyboard hints
 Pulsa Control dos veces para las pistas de teclado
@@ -2253,17 +4380,68 @@ Velocidad de pulsación:
 Press 🌐 alone to show emoji
 Pulsa 🌐 sola para mostrar los emojis
 
+Pressure
+Presión
+
+Previous
+Anterior
+
+Previous Action
+Acción anterior
+
+Previous Chapter
+Capítulo anterior
+
+Previous Chat
+Chat anterior
+
+Previous Day
+Día anterior
+
+Previous File
+Archivo anterior
+
 Previous Month
 Mes anterior
+
+Previous Page
+Página anterior
+
+Previous Tab
+Pestaña anterior
+
+Previous Week
+Semana anterior
+
+Print…
+Imprimir…
 
 Priorities
 Prioridades
 
+Priorities off: background work put back
+Prioridades desactivadas: el trabajo de fondo, restablecido
+
+Priority
+Prioridad
+
 Problems
 Problemas
 
+Process
+Proceso
+
 Processed
 Procesado
+
+Processes
+Procesos
+
+Processes as a Tree
+Procesos en árbol
+
+Processor
+Procesador
 
 Processor:
 Procesador:
@@ -2271,11 +4449,26 @@ Procesador:
 Profile:
 Perfil:
 
+Program
+Programa
+
 Program names, comma separated
 Nombres de programas, separados por comas
 
 Programs’ Secrets
 Secretos de los programas
+
+Project
+Proyecto
+
+Protect it with a password
+Protegerlo con una contraseña
+
+Protocol
+Protocolo
+
+Protocol Buffers
+Protocol Buffers
 
 Provider:
 Proveedor:
@@ -2283,11 +4476,23 @@ Proveedor:
 Purple
 Morado
 
+Put AppImages in ~/AppImages
+Pon los AppImages en ~/AppImages
+
+Put Back
+Devolver
+
+Put a device in pairing mode to see it here.
+Pon un dispositivo en modo de enlace para verlo aquí.
+
 Put the computer to sleep after:
 Dormir el ordenador al cabo de:
 
 Puts what you choose from a backup in place of what's here; the rest stays as it is. What you have now is saved first.
 Pone lo que elijas de una copia en lugar de lo que hay aquí; el resto se queda como está. Lo que tienes ahora se guarda antes.
+
+Python
+Python
 
 Python bytecode and virtual environments
 Bytecode de Python y entornos virtuales
@@ -2295,8 +4500,23 @@ Bytecode de Python y entornos virtuales
 Quad9 (9.9.9.9)
 Quad9 (9.9.9.9)
 
+Question
+Pregunta
+
+Quick Look
+Vista rápida
+
+Quiet Until Morning
+Silencio hasta mañana
+
+Quiet for 1 Hour
+Silencio durante 1 hora
+
 Quit
 Salir
+
+Quit Now
+Salir ahora
 
 Quit, dropping the touches
 Salir descartando los toques
@@ -2304,8 +4524,32 @@ Salir descartando los toques
 Quotas:
 Cuotas:
 
+Quote
+Cita
+
+R
+R
+
+RPM Fusion
+RPM Fusion
+
+Radians
+Radianes
+
+Raise Soft Limit to Hard
+Subir el límite blando al duro
+
 Reaches:
 Alcanza:
+
+React
+Reaccionar
+
+Read
+Leído
+
+Read Quota Now
+Leer la cuota ahora
 
 Read every byte the backups chosen need back from where they’re kept, and check each piece, as a restore would
 Releer desde donde se guardan todos los bytes que necesitan las copias elegidas y comprobar cada pieza, como haría una restauración
@@ -2316,6 +4560,21 @@ Las leídas se apagan y van a Borradas; las demás se quedan.
 Reading /etc/hosts…
 Leyendo /etc/hosts…
 
+Reading the changelog…
+Leyendo los cambios…
+
+Reading the clock…
+Leyendo el reloj…
+
+Reading the journal…
+Leyendo el diario…
+
+Reading your logins in Passwords…
+Leyendo tus inicios de sesión en Passwords…
+
+Reading…
+Leyendo…
+
 Reads
 Lecturas
 
@@ -2325,14 +4584,32 @@ Recibido
 Receiver
 Receptor
 
+Recent Folders
+Carpetas recientes
+
+Recommended
+Recomendado
+
 Recommended for it
 Recomendado para él
 
 Record
 Grabar
 
+Record Active Window
+Grabar la ventana activa
+
 Record Again
 Volver a grabar
+
+Record Region…
+Grabar una región…
+
+Record Screen
+Grabar la pantalla
+
+Record Voice Message
+Grabar mensaje de voz
 
 Record a few seconds as you talk on a call, with the room as it is; then hear and see what each setting does to it. The recording stays in memory and goes when you close this.
 Graba unos segundos mientras hablas en una llamada, con la sala tal como está; luego escucha y mira qué hace cada ajuste. La grabación se queda en memoria y desaparece al cerrar esto.
@@ -2340,8 +4617,20 @@ Graba unos segundos mientras hablas en una llamada, con la sala tal como está; 
 Record from:
 Grabar desde:
 
+Record the Computer's Sound
+Grabar el sonido del ordenador
+
+Record the Microphone
+Grabar el micrófono
+
 Recording
 Grabando
+
+Recordings…
+Grabaciones…
+
+Record…
+Grabar…
 
 Red
 Rojo
@@ -2352,11 +4641,29 @@ Rojo:
 Redo
 Rehacer
 
+Redo {}
+Rehacer {}
+
+Reference:
+Referencia:
+
+Refresh
+Actualizar
+
 Refresh rate:
 Frecuencia de actualización:
 
+Regenerate
+Regenerar
+
+Reinstall Selected…
+Reinstalar la selección…
+
 Reminder:
 Recordatorio:
+
+Remote
+Remoto
 
 Removable Disks
 Discos extraíbles
@@ -2364,20 +4671,122 @@ Discos extraíbles
 Remove
 Quitar
 
+Remove Account
+Quitar cuenta
+
+Remove Graph
+Quitar gráfica
+
+Remove Place
+Quitar lugar
+
+Remove Repository
+Quitar repositorio
+
+Remove Repository…
+Quitar repositorio…
+
+Remove Tab
+Quitar pestaña
+
+Remove Tab from Group
+Quitar la pestaña del grupo
+
+Remove Worktree…
+Quitar worktree…
+
+Remove from Group
+Quitar del grupo
+
+Remove from Pool…
+Quitar del pool…
+
+Remove it from the pool? Its sign-in here is deleted; the account itself isn’t touched.
+¿Quitarla del pool? Su inicio de sesión aquí se elimina; la cuenta en sí no se toca.
+
+Remove…
+Quitar…
+
+Rename
+Renombrar
+
+Rename Group…
+Renombrar grupo…
+
+Rename Place…
+Renombrar lugar…
+
+Rename Worktree…
+Renombrar worktree…
+
+Rename…
+Renombrar…
+
 Repeat rate
 Velocidad de repetición
 
 Repeats:
 Se repite:
 
+Replace
+Reemplazar
+
+Replace Same
+Reemplazar iguales
+
+Replace with:
+Reemplazar por:
+
+Replace…
+Reemplazar…
+
+Reply
+Responder
+
+Repositories
+Repositorios
+
+Repository
+Repositorio
+
+Rescan
+Volver a analizar
+
 Reset
 Restablecer
+
+Reset Crop
+Restablecer recorte
+
+Reset Display Settings
+Restablecer los ajustes de pantalla
+
+Reset Display Settings…
+Restablecer los ajustes de pantalla…
+
+Reset Pane Sizes
+Restablecer el tamaño de los paneles
+
+Reset Passwords
+Restablecer contraseñas
+
+Reset Passwords…
+Restablecer contraseñas…
 
 Reset Thresholds
 Restablecer umbrales
 
+Resize
+Redimensionar
+
+Resize…
+Redimensionar…
+
 Resolution:
 Resolución:
+
+Rest of Today
+Resto del día
 
 Rest your palms
 Apoya las palmas
@@ -2388,14 +4797,38 @@ Reiniciar
 Restart Immediately
 Reiniciar de inmediato
 
+Restart Now
+Reiniciar ahora
+
+Restart Now…
+Reiniciar ahora…
+
 Restart Olo
 Reiniciar Olo
+
+Restart Recording
+Reiniciar grabación
 
 Restart and Shut Down end every program and stop the system in order, as Deskbar's menu does; Immediately doesn't wait for that. Held long, most computers' own firmware cuts the power whatever is set here (often after 4 to 10 seconds).
 Reiniciar y Apagar cierran todos los programas y detienen el sistema en orden, como el menú de la Deskbar; De inmediato no espera a eso. Si se mantiene pulsado, el firmware de la mayoría de los ordenadores corta la corriente se ajuste lo que se ajuste aquí (a menudo tras 4 a 10 segundos).
 
+Restart kache
+Reiniciar kache
+
 Restart, Asking First
 Reiniciar preguntando antes
+
+Restart…
+Reiniciar…
+
+Restore
+Restaurar
+
+Restore Files…
+Restaurar archivos…
+
+Restore To…
+Restaurar en…
 
 Restore…
 Restaurar…
@@ -2403,14 +4836,29 @@ Restaurar…
 Rests
 Apoyos
 
+Result
+Resultado
+
 Resume
 Reanudar
 
 Resume Backups
 Reanudar las copias
 
+Resume Recording
+Reanudar grabación
+
 Revert
 Revertir
+
+Revert to Saved
+Volver a lo guardado
+
+Revert to Saved…
+Volver a lo guardado…
+
+Rich Text (RTF)…
+Texto enriquecido (RTF)…
 
 Right
 Derecha
@@ -2427,26 +4875,62 @@ Dos tercios derechos
 Room:
 Espacio:
 
+Rotate Left
+Girar a la izquierda
+
+Rotate Right
+Girar a la derecha
+
+Router:
+Router:
+
 Rows
 Filas
 
 Rtkit isn't running
 Rtkit no se está ejecutando
 
+Ruby
+Ruby
+
+Ruler
+Regla
+
 Russian
 Ruso
+
+Rust
+Rust
 
 Rust build output and downloaded crates
 Compilados de Rust y crates descargados
 
+SQL
+SQL
+
 Samsung SSD 990 PRO with Heatsink 4TB
 Samsung SSD 990 PRO with Heatsink 4TB
+
+Saturday
+Sábado
 
 Save
 Guardar
 
 Save As…
 Guardar como…
+
+Save Group
+Guardar grupo
+
+Save as GIF
+Guardar como GIF
+
+Save as:
+Guardar como:
+
+Save in:
+Guardar en:
 
 Saves Olo's settings and what apps keep between runs in one file, to bring back here or to another computer. What goes in:
 Guarda los ajustes de Olo y lo que las apps conservan entre usos en un solo archivo, para recuperarlo aquí o en otro ordenador. Qué se incluye:
@@ -2460,6 +4944,21 @@ Saving Power slows the processors and turns turbo off, Balanced speeds them up f
 Saving it with your settings…
 Guardándolo con tus ajustes…
 
+Scala
+Scala
+
+Scan
+Analizar
+
+Scan Home
+Analizar la carpeta personal
+
+Scan Volume
+Analizar volumen
+
+Scan a Folder…
+Analizar una carpeta…
+
 Schedule
 Programación
 
@@ -2469,11 +4968,20 @@ Programado
 Scheduler
 Planificador
 
+Scientific Keypad
+Teclado científico
+
+Screen
+Pantalla
+
 Screen Recordings
 Grabaciones de pantalla
 
 Screen Saver
 Salvapantallas
+
+Screenshot
+Captura de pantalla
 
 Scroll
 Desplazar
@@ -2496,11 +5004,23 @@ Dominios de búsqueda:
 Search:
 Buscar:
 
+Search: name, command, user:, state:, kind:
+Buscar: nombre, comando, user:, state:, kind:
+
+Search: names, CVEs, kind:, severity:, repo:
+Buscar: nombres, CVE, kind:, severity:, repo:
+
+Search: words, program:, level:, since:
+Buscar: palabras, program:, level:, since:
+
 Searching…
 Buscando…
 
 Secondary click (three: middle)
 Clic secundario (tres: central)
+
+Secure Note
+Nota segura
 
 Security
 Seguridad
@@ -2508,23 +5028,80 @@ Seguridad
 Security Keys
 Llaves de seguridad
 
+Security Updates
+Actualizaciones de seguridad
+
+Security:
+Seguridad:
+
 Security…
 Seguridad…
+
+Select
+Seleccionar
 
 Select All
 Seleccionar todo
 
+Select All Chats
+Seleccionar todos los chats
+
+Select All Conversations
+Seleccionar todas las conversaciones
+
+Select All Screens
+Seleccionar todas las pantallas
+
 Select None
 No seleccionar nada
+
+Select a line to read it whole.
+Selecciona una línea para leerla entera.
+
+Select a repository to see everything about it.
+Selecciona un repositorio para ver todo sobre él.
+
+Select a transaction to see what it did to each package.
+Selecciona una transacción para ver qué hizo con cada paquete.
+
+Send
+Enviar
+
+Send Code
+Enviar código
+
+Send Signal
+Enviar señal
+
+Send Signal…
+Enviar señal…
+
+Send Voice Message
+Enviar mensaje de voz
+
+Send to Back
+Enviar al fondo
 
 Send with BBRv3
 Enviar con BBRv3
 
+Sending your changes to Telegram
+Enviando tus cambios a Telegram
+
 Sensor:
 Sensor:
 
+Sensors
+Sensores
+
 Sent
 Enviado
+
+Server
+Servidor
+
+Server:
+Servidor:
 
 Servers of Your Own
 Servidores propios
@@ -2536,13 +5113,31 @@ Service
 Servicio
 
 Service Order
-Orden de los servicios
+Prioridad
+
+Session:
+Sesión:
+
+Set
+Fijar
+
+Set Background
+Poner como fondo
 
 Set Time Zone
 Fijar zona horaria
 
+Set Up
+Configurar
+
 Set Up Again…
 Volver a configurar…
+
+Set Up by Hand…
+Configurar a mano…
+
+Set Up…
+Configurar…
 
 Set date and time automatically
 Ajustar la fecha y la hora automáticamente
@@ -2553,14 +5148,29 @@ Ajustar la hora
 Setting
 Ajuste
 
+Setting it: an administrator's password is asked…
+Fijándolo: se pide la contraseña de un administrador…
+
 Settings
 Ajustes
 
 Shaping
-Modelado del tráfico
+Tráfico
+
+Share
+Compartir
+
+Shared
+Compartido
 
 Shares this computer's connection as a Wi-Fi network of its own; the adapter leaves the network it's on while it does.
 Comparte la conexión de este ordenador como una red Wi-Fi propia; mientras tanto, el adaptador sale de la red en la que está.
+
+Sharing
+Compartir
+
+Shell
+Shell
 
 Shift gradually, starting at From
 Cambiar poco a poco, empezando en Desde
@@ -2586,11 +5196,62 @@ Más corto
 Shortest
 Lo más corto
 
+Show
+Mostrar
+
+Show All
+Mostrar todo
+
+Show Archived
+Mostrar archivados
+
+Show Archived Conversations
+Mostrar conversaciones archivadas
+
+Show Assistant
+Mostrar asistente
+
+Show Calendars
+Mostrar calendarios
+
+Show Camera
+Mostrar cámara
+
+Show Clicks
+Mostrar clics
+
 Show DiskBackup in Deskbar
 Mostrar DiskBackup en la Deskbar
 
+Show Display
+Mostrar pantalla
+
+Show File in Tracker
+Mostrar archivo en Tracker
+
+Show Hidden Files
+Mostrar archivos ocultos
+
+Show Notifications
+Mostrar notificaciones
+
 Show Preview
 Mostrar vista previa
+
+Show Rescue Here
+Mostrar Rescue aquí
+
+Show Ruler
+Mostrar regla
+
+Show Shortcuts
+Mostrar atajos
+
+Show Source
+Mostrar código fuente
+
+Show Toolbars
+Mostrar barras de herramientas
 
 Show a window from its tab's menu (right-click its title) or its row in Deskbar: Show on AirPlay. Play a film from Viewer or Tracker: Play On.
 Muestra una ventana desde el menú de su pestaña (clic derecho en su título) o su fila de la Deskbar: Mostrar en AirPlay. Reproduce una película desde Viewer o Tracker: Reproducir en.
@@ -2601,6 +5262,12 @@ Mostrar avisos durante:
 Show icons in the Deskbar menu
 Mostrar iconos en el menú de la Deskbar
 
+Show in Activity Monitor
+Mostrar en el Monitor de actividad
+
+Show in Context
+Mostrar en contexto
+
 Show in Tracker
 Mostrar en Tracker
 
@@ -2609,6 +5276,15 @@ Mostrar su nombre
 
 Show its value
 Mostrar su valor
+
+Show on AirPlay
+Mostrar en AirPlay
+
+Show on All Workspaces
+Mostrar en todos los espacios de trabajo
+
+Show or Hide All Windows
+Mostrar u ocultar todas las ventanas
 
 Show seconds
 Mostrar los segundos
@@ -2631,6 +5307,9 @@ Mostrar lo usado, no lo que queda
 Show:
 Mostrar:
 
+Shown
+Mostrado
+
 Shows:
 Muestra:
 
@@ -2649,8 +5328,35 @@ Iniciar sesión
 Sign In Again
 Volver a entrar
 
+Sign In Again in Terminal…
+Volver a entrar en Terminal…
+
+Sign In Again…
+Volver a entrar…
+
+Sign In with Google
+Iniciar sesión con Google
+
+Sign In…
+Iniciar sesión…
+
+Sign Out
+Cerrar sesión
+
+Sign Out…
+Cerrar sesión…
+
 Signal
 Señal
+
+Signed in as {} ({}).
+Sesión iniciada como {} ({}).
+
+Signed in as {}.
+Sesión iniciada como {}.
+
+Sign…
+Firmar…
 
 Size
 Tamaño
@@ -2682,11 +5388,32 @@ Pequeño: una línea. Medio y Grande: todo lo que muestra, con el cielo de Grand
 Smaller
 Más pequeño
 
+Smooth Pointer
+Puntero fluido
+
+Smooth Scrolling Graphs
+Gráficas con desplazamiento suave
+
+Snapshots
+Instantáneas
+
+Snooze
+Posponer
+
 Snooze for:
 Posponer durante:
 
+Soft
+Blando
+
+Software License
+Licencia de software
+
 Sol 6.1
 Sol 6.1
+
+Some of what changed takes effect only once the computer starts again.
+Algunos cambios solo surten efecto cuando el ordenador vuelva a arrancar.
 
 Some room
 Algo de espacio
@@ -2694,8 +5421,14 @@ Algo de espacio
 Sonnet 5.5
 Sonnet 5.5
 
+Sort By
+Ordenar por
+
 Sound
 Sonido
+
+Sound Settings…
+Ajustes de sonido…
 
 Sound:
 Sonido:
@@ -2718,8 +5451,14 @@ Solo espacio
 Spanish
 Español
 
+Speed
+Velocidad
+
 Speed & Resources
 Velocidad y recursos
+
+Speed Test
+Prueba de velocidad
 
 Spiral
 Espiral
@@ -2730,14 +5469,44 @@ Estándar
 Start
 Iniciar
 
+Start Olo over (Rescue stays on), log out, or restart the computer.
+Reinicia Olo (Rescue sigue activo), cierra sesión o reinicia el ordenador.
+
+Start Over
+Empezar de nuevo
+
+Start Over…
+Empezar de nuevo…
+
+Start Test
+Iniciar prueba
+
+Start the Agent
+Iniciar el agente
+
 Start this step over
 Empezar este paso de nuevo
+
+Started
+Iniciado
 
 Starting Up
 Al iniciar
 
+Starts:
+Empieza:
+
+State
+Estado
+
+Stats
+Estadísticas
+
 Status
 Estado
+
+Stay Awake
+Mantener despierto
 
 Stay awake: no display sleep, sleep, screen saver or lock
 Despierto: sin reposo, suspensión, salvapantallas ni bloqueo
@@ -2745,8 +5514,35 @@ Despierto: sin reposo, suspensión, salvapantallas ni bloqueo
 Stop
 Detener
 
+Stop All
+Detener todo
+
+Stop Ignoring
+Dejar de ignorar
+
+Stop Process
+Detener proceso
+
 Stop Recording
 Detener la grabación
+
+Stop Scanning
+Detener el análisis
+
+Stop Screen
+Detener pantalla
+
+Stop Screen…
+Detener pantalla…
+
+Stop Sharing
+Dejar de compartir
+
+Stopped.
+Detenido.
+
+Strikeout
+Tachado
 
 Strip
 Tira
@@ -2754,11 +5550,26 @@ Tira
 Strong
 Fuerte
 
+Style
+Estilo
+
+Styled Text
+Texto con estilo
+
+StyledEdit
+StyledEdit
+
 Suggest commands from a model of your own
 Sugerir comandos con un modelo propio
 
+Suggestion
+Sugerencia
+
 Suggestions
 Sugerencias
+
+Sunday
+Domingo
 
 SuperString, by Jon Watte
 SuperString, de Jon Watte
@@ -2772,8 +5583,14 @@ Intercambiar Alt y la tecla Windows
 Swap too
 Intercambio también
 
+Swap with Previous Main
+Intercambiar con la principal anterior
+
 Swedish
 Sueco
+
+Swift
+Swift
 
 Swiss
 Suizo
@@ -2784,8 +5601,47 @@ Cambiar automáticamente entre este ordenador y tu iPhone
 Switch to a woken program at once
 Cambiar al instante a un programa despertado
 
+Sync
+Sincronizar
+
+Sync Again
+Volver a sincronizar
+
+Sync Now
+Sincronizar ahora
+
+System
+Sistema
+
+System Font
+Tipo de letra del sistema
+
+TCP/IP
+TCP/IP
+
+TOML
+TOML
+
+TSX
+TSX
+
+Table
+Tabla
+
 Tabs
 Pestañas
+
+Tags:
+Etiquetas:
+
+Take Back
+Recuperar
+
+Take Screenshot
+Hacer captura de pantalla
+
+Take Screenshot…
+Hacer captura de pantalla…
 
 Take calls on this computer
 Atender llamadas en este ordenador
@@ -2802,6 +5658,9 @@ Tocar para hacer clic
 Taps
 Toques
 
+Task List
+Lista de tareas
+
 Teal
 Verde azulado
 
@@ -2810,6 +5669,9 @@ Telegram
 
 Telegram (in Applications) shows your chats and messages, and tells you of new ones. Olo keeps its sign-in in your keyring.
 Telegram (en Aplicaciones) muestra tus chats y mensajes y te avisa de los nuevos. Olo guarda su inicio de sesión en tu llavero.
+
+Telegram sent a code to Telegram on your other devices (or by text message). Type it here.
+Telegram ha enviado un código a Telegram en tus otros dispositivos (o por SMS). Escríbelo aquí.
 
 Tell coding agents about the repositories in their tab group
 Decir a los agentes los repositorios de su grupo
@@ -2826,11 +5688,20 @@ Avisarme cuando se agote y cuando vuelva
 Tell palms apart with a palm model
 Distinguir las palmas con un modelo de palma
 
+Tell palms apart with a palm model too
+Distinguir también las palmas con un modelo de palma
+
 Temperature
 Temperatura
 
 Terminal
 Terminal
+
+Terminal Daemon…
+Servicio de Terminal…
+
+Terminal Preferences…
+Preferencias de Terminal…
 
 Terminal shows each tab’s pull request on GitHub and whether its checks pass.
 Terminal muestra la pull request de cada pestaña en GitHub y si pasan sus comprobaciones.
@@ -2840,6 +5711,15 @@ Terra 6.1
 
 Test
 Probar
+
+Text
+Texto
+
+Text Message
+SMS
+
+Text Size
+Tamaño del texto
 
 Text:
 Texto:
@@ -2855,6 +5735,9 @@ La cuenta que responde ahora
 
 The bell's count in:
 El recuento de la campana en:
+
+The clock service (systemd-timedated) isn't answering.
+El servicio del reloj (systemd-timedated) no responde.
 
 The coming days, each its sky, low and high.
 Los próximos días, cada uno con su cielo, mínima y máxima.
@@ -2904,6 +5787,9 @@ En la que empezó
 The pointer keeps moving, and none of its motion is lost, while the desktop is busy: a slow frame, or a wait in the graphics driver under load. New, and being tried: if the mouse, touchpad or keyboard misbehaves with it on, turn it off.
 El puntero sigue moviéndose, sin perder nada de su movimiento, mientras el escritorio está ocupado: un fotograma lento o una espera en el controlador gráfico bajo carga. Es nuevo y está a prueba: si el ratón, el touchpad o el teclado fallan con esto activado, desactívalo.
 
+The pool
+El pool
+
 The power mode (Power Saver, Balanced or Performance) is set in Power.
 El modo de energía (Ahorro de energía, Equilibrado o Rendimiento) se elige en Energía.
 
@@ -2916,14 +5802,35 @@ El procesador (OpenH264)
 The right edge
 El borde derecho
 
+The server’s CalDAV address, and the name and password it signs you in with. The password is kept in your login keyring.
+La dirección CalDAV del servidor, y el nombre y la contraseña con los que te identifica. La contraseña se guarda en tu llavero de inicio de sesión.
+
+The shell has ended.
+El shell ha terminado.
+
 The sky and temperature now, and what's coming.
 El cielo y la temperatura ahora, y lo que viene.
+
+The store
+El almacén
 
 The system's services (updates, indexing) can still run there.
 Los servicios del sistema (actualizaciones, indexación) pueden seguir ejecutándose allí.
 
+The system's services are kept off it too.
+Los servicios del sistema también quedan fuera de él.
+
+The touchpad says which touches are palms, but lets a resting palm go back to being a finger; Olo keeps it a palm until it lifts.
+El touchpad dice qué toques son palmas, pero deja que una palma apoyada vuelva a ser un dedo; Olo la mantiene como palma hasta que se levanta.
+
 The workspace each display shows stays open in every Deskbar; each other one is its heading, with an arrow that shows its applications and puts them away again.
 El espacio de trabajo que muestra cada pantalla queda abierto en todas las Deskbar; cada uno de los demás es su encabezado, con una flecha que muestra sus aplicaciones y vuelve a guardarlas.
+
+Their new windows open there, on the display they open on. Uncheck an app to open its windows where you are again.
+Sus ventanas nuevas se abren ahí, en la pantalla en la que se abren. Desmarca una app para que sus ventanas vuelvan a abrirse donde estés.
+
+Their windows float over the tiles, and over the window Focus shows. Uncheck an app to tile its windows again.
+Sus ventanas flotan sobre el mosaico y sobre la ventana que muestra Enfoque. Desmarca una app para volver a ponerlas en mosaico.
 
 Theme
 Tema
@@ -2931,8 +5838,29 @@ Tema
 Themes
 Temas
 
+Then its client’s ID and secret here, and sign in: Google asks in your browser whether Olo may read your mail, use your calendars and keep DiskBackup’s files in your Drive.
+Después, aquí el ID y el secreto de su cliente, e inicia sesión: Google pregunta en tu navegador si Olo puede leer tu correo, usar tus calendarios y guardar los archivos de DiskBackup en tu Drive.
+
+There are no links to shape.
+No hay enlaces que limitar.
+
+There are no network interfaces.
+No hay interfaces de red.
+
+There is nothing to share.
+No hay nada que compartir.
+
 There's no Ethernet adapter. A USB or Thunderbolt one shows here once it's plugged in.
 No hay ningún adaptador Ethernet. Uno USB o Thunderbolt aparece aquí en cuanto se conecta.
+
+There's no Wi-Fi adapter.
+No hay adaptador Wi-Fi.
+
+There's no infrared camera.
+No hay cámara de infrarrojos.
+
+These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
+Necesitan Bluetooth para escuchar a los AirPods: Olo Doctor puede activarlo.
 
 ThinkPad
 ThinkPad
@@ -2949,17 +5877,38 @@ Micrófonos de este ordenador
 This Touchpad
 Este touchpad
 
+This account has a two-step password.
+Esta cuenta tiene una contraseña en dos pasos.
+
+This computer has no Bluetooth.
+Este ordenador no tiene Bluetooth.
+
+This computer has no battery.
+Este ordenador no tiene batería.
+
+This computer's kernel can't load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel's own schedules.
+El núcleo de este ordenador no puede cargar otro planificador (sched_ext: desde Linux 6.12), así que planifica el del núcleo.
+
 This computer's sensor sees when someone is in front of it.
 El sensor de este ordenador detecta cuando hay alguien delante.
 
+This display reports no modes.
+Esta pantalla no indica ningún modo.
+
 This is the recommended profile for this touchpad.
 Este es el perfil recomendado para este touchpad.
+
+This keyboard has no backlight.
+Este teclado no tiene retroiluminación.
 
 This step is done
 Este paso está hecho
 
 This touchpad doesn't report pressure, so it is left to libinput.
 Este touchpad no informa de la presión, así que se deja en manos de libinput.
+
+Threads
+Hilos
 
 Three fingers
 Tres dedos
@@ -2975,6 +5924,18 @@ Clics con el pulgar
 
 Tidy away read notifications after
 Retirar las notificaciones leídas al cabo de
+
+Tile
+Mosaico
+
+Tile All
+Todo en mosaico
+
+Tile All Tabs
+Todas las pestañas en mosaico
+
+Tile With
+Mosaico con
 
 Tiling, zooming, Tile All, cascading and fanning out all leave this space.
 El mosaico, el zoom, Mosaico total, la cascada y el abanico dejan este espacio.
@@ -2994,11 +5955,17 @@ Hora:
 Times in {}.
 Horas en {}.
 
+Title
+Título
+
 Title and preview
 Título y vista previa
 
 Title only
 Solo el título
+
+Title:
+Título:
 
 To:
 Hasta:
@@ -3012,8 +5979,20 @@ Hoy y mañana
 Token Pool
 Token Pool
 
+Token Pool isn't running: its quotas are listed once it is.
+Token Pool no está en marcha: sus cuotas aparecen cuando lo esté.
+
+Token:
+Token:
+
+Tomorrow
+Mañana
+
 Took
 Tardó
+
+Tools
+Herramientas
 
 Top Half
 Mitad superior
@@ -3075,6 +6054,30 @@ Entrenar para tu palma…
 Transparency
 Transparencia
 
+Trash
+Papelera
+
+Tree
+Árbol
+
+Trim
+Recortar
+
+Trim to Selection
+Recortar a la selección
+
+Trim…
+Recortar…
+
+Trust
+Confiar
+
+Trust this repository’s key?
+¿Confiar en la clave de este repositorio?
+
+Try Again
+Reintentar
+
 Try It…
 Probarlo…
 
@@ -3083,6 +6086,9 @@ Probar el procesamiento de voz
 
 Try it
 Pruébalo
+
+Try the Phone Again
+Volver a probar el teléfono
 
 Tuned for:
 Ajustado para:
@@ -3093,6 +6099,9 @@ Desactivar
 Turn On
 Activar
 
+Turn On Bluetooth
+Activar Bluetooth
+
 Turn off screen
 Apagar la pantalla
 
@@ -3102,11 +6111,17 @@ Apagar la pantalla al cabo de:
 Turn the touchpad off while a mouse is plugged in
 Apagar el touchpad con un ratón conectado
 
+Turned on
+Activado
+
 Two fingers
 Dos dedos
 
 Type
 Escribir
+
+Type a time like 13:05 or 1:05 PM.
+Escribe una hora como 13:05 o 1:05 PM.
 
 Type here to try the settings
 Escribe aquí para probar los ajustes
@@ -3114,32 +6129,116 @@ Escribe aquí para probar los ajustes
 Type with your palms down
 Escribe con las palmas apoyadas
 
+Type:
+Tipo:
+
+TypeScript
+TypeScript
+
 Typing test:
 Prueba de escritura:
 
 USB mice may sleep
 Los ratones USB pueden dormir
 
+Unarchive All
+Desarchivar todo
+
+Unarchive All…
+Desarchivar todo…
+
 Under the Tray
 Bajo la bandeja
+
+Underline
+Subrayado
 
 Undo
 Deshacer
 
+Undo Transaction…
+Deshacer transacción…
+
+Undo {}
+Deshacer {}
+
+Undo…
+Deshacer…
+
+Unfloat
+Dejar de flotar
+
+Ungroup
+Desagrupar
+
+Units
+Unidades
+
+Unknown Senders
+Remitentes desconocidos
+
 Unless the app says; kept while the pointer is over it.
 Salvo que la app diga; se queda con el puntero encima.
+
+Unlock…
+Desbloquear…
+
+Unmount
+Desmontar
+
+Unmute
+Activar sonido
+
+Unmute All
+Activar todo el sonido
 
 Unread notifications put a blue dot beside their app.
 Las no leídas ponen un punto azul junto a su app.
 
+Until Turned Off
+Hasta que se desactive
+
+Until:
+Hasta:
+
+Up
+Subir
+
 Up (sent)
 Subida (enviado)
+
+Update
+Actualizar
+
+Update Interval
+Intervalo de actualización
+
+Update Only This…
+Actualizar solo esto…
+
+Update Selected Only…
+Actualizar solo la selección…
 
 Update every:
 Actualizar cada:
 
+Updated
+Actualizado
+
 Updated a long while ago, longer than there is room to say
 Actualizado hace mucho, más de lo que cabe decir aquí
+
+Updated {} ago
+Actualizado hace {}
+
+Updates
+Actualizaciones
+
+Upgrade Fedora
+Actualizar Fedora
+
+Upgrade Olo
+Actualizar Olo
 
 Upload at most:
 Subir como máximo:
@@ -3149,6 +6248,12 @@ Subir es hacer copia; bajar es restaurar y ordenar. Un límite se aplica al inst
 
 Uptime:
 Encendido:
+
+Use
+Usar
+
+Use Credit
+Usar crédito
 
 Use Default
 Usar el predeterminado
@@ -3165,6 +6270,9 @@ Usar calidad de música
 Use Passwords for ssh
 Usar Passwords para ssh
 
+Use Saved Password
+Usar contraseña guardada
+
 Use Suggested
 Usar el sugerido
 
@@ -3174,11 +6282,38 @@ Usar este ajuste
 Use a Folder Instead…
 Usar una carpeta en su lugar…
 
+Use a Phone Number
+Usar un número de teléfono
+
+Use a QR Code
+Usar un código QR
+
+Use a Reset Credit…
+Usar un crédito de restablecimiento…
+
+Use a key already in Passwords
+Usar una clave que ya esté en Passwords
+
 Use the Usual Order
 Usar el orden habitual
 
+Use this account
+Usar esta cuenta
+
 Use:
 Usar:
+
+User
+Usuario
+
+Username or Site
+Usuario o sitio
+
+Username:
+Usuario:
+
+Using DHCP
+Usando DHCP
 
 VPN
 VPN
@@ -3189,8 +6324,26 @@ Validar por completo…
 Validated
 Validado
 
+Value
+Valor
+
+Value:
+Valor:
+
 Variable refresh rate
 Frecuencia de actualización variable
+
+Vault
+Bóveda
+
+Vault Info…
+Información de la bóveda…
+
+Vault:
+Bóveda:
+
+Version
+Versión
 
 Very Bad Network
 Red muy mala
@@ -3198,8 +6351,17 @@ Red muy mala
 Video Playback
 Reproducción de vídeo
 
+View
+Visualización
+
+Viewer
+Viewer
+
 Virtual machines’ disk images
 Imágenes de disco de máquinas virtuales
+
+Visibility
+Visibilidad
 
 Voice Only
 Solo voz
@@ -3212,6 +6374,12 @@ Volumen
 
 Volume:
 Volumen:
+
+Volumes
+Volúmenes
+
+Waiting for app_server…
+Esperando a app_server…
 
 Waits
 Esperas
@@ -3227,6 +6395,9 @@ Más cálido
 
 Warmth
 Calidez
+
+Watch Agent Screens
+Ver las pantallas de agentes
 
 Watchdog
 Vigilante
@@ -3246,14 +6417,38 @@ Weather: ahora
 Weather’s assistant is handed the whole forecast for the place you’re looking at, every layer hour by hour, to answer from.
 El asistente de Weather recibe toda la previsión del lugar que estás mirando, cada capa hora a hora, para responder a partir de ella.
 
+Web Page (HTML)…
+Página web (HTML)…
+
+Week
+Semana
+
+Week Starts On
+La semana empieza el
+
+What
+Qué
+
 What Each Mode Sets
 Lo que fija cada modo
+
+What follows them is from an older Olo: Apply to bring it up to date (an administrator's password is asked).
+Lo que les sigue es de un Olo anterior: Aplicar lo pone al día (se pide la contraseña de un administrador).
 
 What is made from it (shades, edges, text that has to read on it) follows.
 Lo que se deriva de él (tonos, bordes, texto que debe leerse encima) lo sigue.
 
+What it does
+Qué hace
+
 What it draws from the battery; on power, it says so.
 Lo que toma de la batería; enchufado, lo dice.
+
+What it’s for (optional)
+Para qué es (opcional)
+
+What you change applies when you leave Rescue.
+Lo que cambies se aplica al salir de Rescue.
 
 What's made for sRGB (nearly everything) looks as it was made; wider colours are for what has them.
 Lo hecho para sRGB (casi todo) se ve como se hizo; los colores más amplios son para lo que los tiene.
@@ -3312,6 +6507,9 @@ Al escribir
 While sharing or recording the screen (errors wait too)
 Al compartir o grabar la pantalla (los errores también esperan)
 
+Why
+Por qué
+
 Wi-Fi
 Wi-Fi
 
@@ -3330,6 +6528,15 @@ Nombre del widget
 Widgets
 Widgets
 
+Wind
+Viento
+
+Window Size
+Tamaño de ventana
+
+Window on a Background
+Ventana sobre un fondo
+
 Window title size
 Tamaño del título de ventana
 
@@ -3339,8 +6546,23 @@ Modo de ventanas
 Windows
 Ventanas
 
+Wireless Router
+Router inalámbrico
+
 With AirPods:
 Con AirPods:
+
+Word Document…
+Documento de Word…
+
+Working out what it comes to: every package it needs, and what it replaces…
+Calculando el resultado: cada paquete que necesita y lo que sustituye…
+
+Working…
+Trabajando…
+
+Works on a picture of the desktop.
+Funciona sobre una imagen del escritorio.
 
 Workspace:
 Espacio de trabajo:
@@ -3351,14 +6573,35 @@ Espacios de trabajo
 Worst
 Peor
 
+Wrap Lines
+Ajustar líneas
+
+Write Disk Image…
+Escribir imagen de disco…
+
 Writes
 Escrituras
+
+Written
+Escrito
+
+XML
+XML
+
+YAML
+YAML
 
 Yellow
 Amarillo
 
 Yes
 Sí
+
+Your Display
+Tu pantalla
+
+Your Google Drive keeps them anywhere: sign in once, or let an agent set it up.
+Tu Google Drive las guarda en cualquier parte: inicia sesión una vez, o deja que un agente lo configure.
 
 Your Kinds
 Tus tipos
@@ -3368,6 +6611,15 @@ Tipos propios
 
 Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
 Tus copias se cifran antes de salir de este ordenador, con una clave que solo tiene este ordenador. Guárdala también en Passwords o no se podrán leer en ningún otro sitio.
+
+Your backups are encrypted before they leave this computer. Their key is kept in Passwords (“DiskBackup Key”): with it, they can be restored on any computer.
+Tus copias se cifran antes de salir de este ordenador. Su clave se guarda en Passwords («DiskBackup Key»): con ella se pueden restaurar en cualquier ordenador.
+
+Your home folder is backed up every hour, leaving out what can be downloaded or built again. Once it’s set up, you can change any of it.
+Se copia tu carpeta personal cada hora, sin lo que se puede volver a descargar o compilar. Una vez configurado, puedes cambiar lo que quieras.
+
+Your messages, your contacts and the one-time codes texted to you, on this computer: over Bluetooth, with nothing between and nothing else to install.
+Tus mensajes, tus contactos y los códigos de un solo uso que te llegan por SMS, en este ordenador: por Bluetooth, sin nada en medio y sin nada más que instalar.
 
 Your own:
 Tuyo:
@@ -3393,8 +6645,32 @@ Tu camisa contra el touchpad
 Your touchpad
 Tu touchpad
 
+Zig
+Zig
+
+Zoom All
+Ampliar todo
+
+Zoom In
+Ampliar
+
+Zoom Out
+Reducir
+
+Zoom on Clicks
+Ampliar en los clics
+
+Zoom to Fill
+Ampliar hasta llenar
+
+Zoom to Fit
+Ajustar al tamaño
+
 __pycache__, .venv, .mypy_cache, .pytest_cache, .tox
 __pycache__, .venv, .mypy_cache, .pytest_cache, .tox
+
+as in 1Password's sidebar, or its UUID
+como en la barra lateral de 1Password, o su UUID
 
 day
 día
@@ -3420,17 +6696,26 @@ ms
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
+on
+activado
+
 optional
 opcional
 
 organizer
 organizador
 
+recommended for this touchpad
+recomendado para este touchpad
+
 sav, sv2
 sav, sv2
 
 scx_lavd, made for a computer someone is sitting at: what it judges is being waited for runs first, with builds and other long work around it. It gives a program's priority little weight, and under heavy work the window server waited for the processor three times as long as with the kernel's own. It is loaded over the kernel's own, which takes over again by itself if LAVD ever stops.
 scx_lavd, hecho para un ordenador ante el que hay alguien sentado: lo que considera que se está esperando se ejecuta primero, con las compilaciones y otros trabajos largos alrededor. Da poco peso a la prioridad de un programa, y con trabajo pesado el servidor de ventanas esperó al procesador el triple que con el propio del núcleo. Se carga sobre el del núcleo, que vuelve a tomar el control por sí solo si LAVD se detiene.
+
+ssh, git and other programs sign in with the SSH keys in Passwords, each one allowed the first time it asks.
+ssh, git y otros programas inician sesión con las claves SSH de Passwords, cada uno con permiso la primera vez que pide.
 
 target/debug, target/release, ~/.cargo/registry, ~/.rustup
 target/debug, target/release, ~/.cargo/registry, ~/.rustup
@@ -3479,11 +6764,20 @@ other: {n} segundos
 ~/worktrees
 ~/worktrees
 
+¼ Second
+¼ segundo
+
 ¼ second
 ¼ de segundo
 
+½ Second
+½ segundo
+
 ½ second
 ½ segundo
+
+↑↓ choose an app.
+↑↓ elige una app.
 
 ⌘ Command (the Super key)
 ⌘ Comando (la tecla Super)

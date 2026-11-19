@@ -271,6 +271,46 @@ fn ui_lint_a_tab_strip_is_clean() {
     }
 }
 
+/// A tab view whose names don't fit its window: each name cut short is
+/// found (as French's Network tabs were); in a window wide enough, none.
+struct Pages {
+    /// The tab showing: the one last clicked (the lint clicks each, and
+    /// waits for it to show).
+    chosen: usize,
+}
+
+impl View for Pages {
+    type Message = usize;
+
+    fn message(&mut self, tab: usize, cx: &mut Cx<Self>) {
+        self.chosen = tab;
+        cx.invalidate();
+    }
+
+    fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        let names: Vec<olo_kit::SharedString> = ["Wi-Fi", "Ordre des services", "Mise en forme du trafic", "Détails"].into_iter().map(Into::into).collect();
+        let chosen = cx.messenger();
+        let tabs = olo_kit::widgets::TabView::new("pages", names, self.chosen)
+            .on_select(move |i, _| {
+                chosen.send(*i);
+            })
+            .child(div().h(px(40.0)));
+        div().size_full().p(px(m::WINDOW_INSET)).child(tabs)
+    }
+}
+
+#[test]
+fn ui_lint_a_tab_view_cut_short_is_found() {
+    let mut lint = Lint::new();
+    let found = lint.window(&WindowOptions::new("Pages", 300.0, 140.0), |_| Pages { chosen: 0 });
+    let cut: Vec<&Found> = found.iter().filter(|f| f.kind == "text-cut").collect();
+    assert!(cut.iter().any(|f| f.text.contains("Mise en forme du trafic")), "{found:#?}");
+    // As wide as `tabs_width` says (and the window's inset): whole.
+    let wide = olo_kit::widgets::tabs_width(&["Wi-Fi", "Ordre des services", "Mise en forme du trafic", "Détails"]) + 2.0 * m::WINDOW_INSET;
+    let found = lint.window(&WindowOptions::new("Pages", wide.ceil(), 140.0), |_| Pages { chosen: 0 });
+    assert!(found.iter().all(|f| f.kind != "text-cut"), "{wide}: {found:#?}");
+}
+
 /// What a window's looper is sent of the pointer's moves: a box that
 /// lights under it (`on_hover`), one that follows it (`on_mouse_move`),
 /// one that does only with ⌘ held, one only while a button is, a

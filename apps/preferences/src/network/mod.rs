@@ -415,6 +415,13 @@ impl Drop for State {
 /// The tabs, as `--tab` names them too.
 const TABS: [&str; 8] = ["Wi-Fi", "Ethernet", "VPN", "Service Order", "DNS", "Hosts", "Shaping", "Details"];
 
+/// The panel's width with every tab's name whole (its tab view inside the
+/// window's inset), on the 2-point grid.
+pub fn least_width() -> u32 {
+    let w = olo_kit::widgets::tabs_width(&TABS) + 2.0 * m::WINDOW_INSET;
+    ((w / 2.0).ceil() * 2.0) as u32
+}
+
 /// A text field that redraws the panel as it's typed in.
 fn field(cx: &mut Cx<PanelView>, hint: &str) -> Child<TextField> {
     let hint = hint.to_owned();

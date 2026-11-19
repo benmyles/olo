@@ -244,8 +244,10 @@ impl Panel {
             Panel::Integrations => (900, 480),
             Panel::Keyboard => (520, 736),
             Panel::Language => (460, 240),
-            // Seven tabs; Hosts' four columns; Shaping's two ways side by side.
-            Panel::Network => (640, 420),
+            // Eight tabs, each name whole in the language shown (the
+            // window wider for them, `network::least_width`); Hosts' four
+            // columns; Shaping's two ways side by side.
+            Panel::Network => (crate::network::least_width().max(640), 420),
             Panel::Notifications => (440, 700),
             // Its Watchdog tab's thresholds two by two, each a pair of sliders.
             Panel::Performance => (900, 560),

@@ -1,0 +1,239 @@
+#!/usr/bin/python3
+"""Olo's word list and its translations (crates/kit-base/words).
+
+  words gather [--write] [--no-lints]
+      Every word Olo asks for that isn't in en.txt yet: both layout lints
+      run in English with OLO_WORDS_SEEN (`cargo ui-lint`: Preferences',
+      DiskBackup's and the kit's windows; `tools/dev/ui-lint`: every
+      app's, its menus too), and the literals handed to widgets in the
+      apps' code that no window either opens shows (`Button::new("…")`,
+      `.note("…")`, `.item("…", …)`, `tr!("…")` and the like; ids, a
+      service's log words and tests left out). Printed for a look; with
+      --write, added to en.txt. Never takes a word out. --no-lints reads
+      the lints' last lists (in /var/tmp/olo-words) instead of running them.
+
+  words missing LANG
+      The words of en.txt LANG's catalog doesn't have yet, one a line.
+
+  words pairs LANG
+      LANG's catalog as pairs: "English ||| translation", a counting
+      entry's forms apart by " ¦ ".
+
+  words merge LANG PAIRS… [--header "# …"]
+      LANG's catalog again, its own entries with PAIRS' over them (a
+      pair for a word it has puts the new translation in), written in
+      en.txt's order. Each line of PAIRS: the English exactly as en.txt
+      has it, " ||| " (or a tab), its translation; "=" for one that stays
+      as it is (a name, a path); a counting entry ({n}) its forms, each
+      "one: …", "few: …", "many: …" or "other: …", apart by " ¦ ". Refuses
+      unless every word of en.txt is there, nothing else is, and each
+      translation keeps its English's {} and {n} parts. French has a
+      narrow no-break space put before : ; ? ! and no-break spaces inside
+      « », as French type sets them (write plain spaces). A language
+      without a catalog yet needs --header (its first line).
+
+Translating: `words missing fr > /var/tmp/…/todo.txt`, write the pairs,
+`words merge fr PAIRS`, then `cargo test -p olo-kit-base words`, and the
+lints in the language (`OLO_LANGUAGE=fr cargo ui-lint --no-fail-fast`;
+`OLO_LANGUAGE=fr tools/dev/ui-lint --no-cache`), saying in fewer words
+what runs past its room. See "Words in the person's language" in
+docs/HACKING.md.
+"""
+import glob, os, re, subprocess, sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+WORDS = os.path.join(ROOT, "crates/kit-base/words")
+SCRATCH = "/var/tmp/olo-words"
+
+
+def english():
+    return [w for w in open(os.path.join(WORDS, "en.txt")).read().split("\n") if w]
+
+
+def catalog(lang):
+    """LANG's entries: English → translation (forms apart by " ¦ ")."""
+    path = os.path.join(WORDS, lang + ".txt")
+    if not os.path.exists(path):
+        return {}, None
+    text = open(path).read()
+    header = next((l for l in text.split("\n") if l.startswith("#")), None)
+    out = {}
+    for block in text.split("\n\n"):
+        lines = [l for l in block.split("\n") if l and not l.startswith("#")]
+        if len(lines) < 2:
+            continue
+        en, rest = lines[0], lines[1:]
+        out[en] = " ¦ ".join(rest) if rest[0].startswith(("one:", "few:", "many:", "other:")) else rest[0]
+    return out, header
+
+
+# Literals handed to the kit's widgets (and `tr!`), the first string
+# argument after at most one plain one (`ui.check(id, "…")`).
+CALLS = (r"(?:Button::new|\.label|\.title|\.item|\.check|\.note|StringView::new|\.hint|\.tip|tr!|words::tr|words::of_text|words::of|\.bbox|"
+         r"Column::new|\.submenu|RadioButton::new|CheckBox::new|\.placeholder|\.heading|\.empty_text|\.empty|alert|"
+         r"\.choose|LinkButton::new|Menu::new|\.button|\.default_button|\.cancel_button|\.message|\.explain|\.radio|"
+         r"\.group|\.section)")
+LITERAL = re.compile(CALLS + r'\(\s*(?:[a-z_&.]+,\s*)?"((?:[^"\\]|\\.)+)"')
+# A sentence that counts is known by its other form (`words::count(n,
+# "{n} window", "{n} windows")`).
+COUNTING = re.compile(r'words::count\([^"]*"(?:[^"\\]|\\.)*",\s*"((?:[^"\\]|\\.)+)"')
+# Programs without windows: their words are a log's.
+SERVICES = ("apps/chime/", "apps/fans/")
+
+
+def in_code():
+    found = set()
+    for path in sorted(glob.glob(os.path.join(ROOT, "apps/*/src/**/*.rs"), recursive=True) + glob.glob(os.path.join(ROOT, "crates/kit/src/**/*.rs"), recursive=True)):
+        rel = os.path.relpath(path, ROOT)
+        if rel.startswith(SERVICES) or rel.endswith("lint.rs"):
+            continue
+        src = open(path, errors="replace").read()
+        cut = src.find("#[cfg(test)]\nmod tests")
+        if cut >= 0:
+            src = src[:cut]
+        # (An app's own `words::count` without `{n}` is its own helper.)
+        for m in list(LITERAL.finditer(src)) + [m for m in COUNTING.finditer(src) if "{n}" in m.group(1)]:
+            s = re.sub(r"\\u\{([0-9a-fA-F]+)\}", lambda m: chr(int(m.group(1), 16)), m.group(1))
+            if "\\" in s or not re.search(r"[A-Za-z]{2}", s):
+                continue
+            found.add(s)
+    return found
+
+
+def a_word(s):
+    """Not an id ("caff:off", "widget-hue"), a number or a lone lower-case
+    token: words have a space, or are a name or a label."""
+    if re.fullmatch(r"[\d\s.,:%-]+", s):
+        return False
+    if " " in s:
+        return True
+    if s.islower():
+        return s in ("on", "off")
+    return not re.search(r"[-:_./]", s) or s.endswith((":", "…", ".")) or s in ("Objective-C", "TCP/IP")
+
+
+def gather(write, lints):
+    os.makedirs(SCRATCH, exist_ok=True)
+    unit, live = os.path.join(SCRATCH, "seen-unit.txt"), os.path.join(SCRATCH, "seen-live.txt")
+    if lints:
+        env = {k: v for k, v in os.environ.items() if k != "OLO_LANGUAGE"}
+        for path in (unit, live):
+            if os.path.exists(path):
+                os.remove(path)
+        print("words: the layout lint (cargo ui-lint)…", file=sys.stderr)
+        subprocess.run(["cargo", "ui-lint", "--no-fail-fast"], cwd=ROOT, env=dict(env, OLO_WORDS_SEEN=unit), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print("words: the live lint (tools/dev/ui-lint, every app)…", file=sys.stderr)
+        subprocess.run([sys.executable, os.path.join(ROOT, "tools/dev/ui-lint"), "--no-cache"], cwd=ROOT, env=dict(env, OLO_WORDS_SEEN=live), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    seen = set()
+    for path in (unit, live):
+        if os.path.exists(path):
+            seen |= {l.replace("\\n", "\n") for l in open(path).read().split("\n") if l}
+    known = set(english())
+    new = sorted((w for w in (seen | in_code()) - known if a_word(w) and "\n" not in w), key=lambda w: w.encode())
+    for w in new:
+        print(w)
+    print(f"words: {len(new)} not in en.txt ({len(known)} there)", file=sys.stderr)
+    if write and new:
+        words = sorted(known | set(new), key=lambda w: w.encode())
+        open(os.path.join(WORDS, "en.txt"), "w").write("\n".join(words) + "\n")
+        print(f"words: en.txt has {len(words)}", file=sys.stderr)
+
+
+def french(t):
+    for mark in (":", ";", "?", "!"):
+        t = t.replace(" " + mark, "\u202f" + mark)
+    return t.replace("« ", "«\u00a0").replace(" »", "\u00a0»")
+
+
+def parts(text):
+    return sorted(re.findall(r"\{[^}]*\}", text))
+
+
+def merge(lang, files, header):
+    pairs, own_header = catalog(lang)
+    header = header or own_header
+    if not header:
+        sys.exit(f"words: {lang} has no catalog yet: give it a --header \"# …\"")
+    words = english()
+    problems = []
+    given = set()
+    for path in files:
+        for n, line in enumerate(open(path).read().split("\n"), 1):
+            if not line.strip():
+                continue
+            sep = "\t" if "\t" in line else (" ||| " if " ||| " in line else None)
+            if sep is None:
+                problems.append(f"{path}:{n}: no tab or ' ||| ': {line[:60]}")
+                continue
+            en, tr = line.split(sep, 1)
+            if en in given:
+                problems.append(f"{path}:{n}: twice: {en[:60]}")
+            given.add(en)
+            # (A word that ends with a space, "About ", keeps its own.)
+            tr = tr.lstrip() if en != en.rstrip() else tr.strip()
+            if tr == "=":
+                tr = en
+            elif lang == "fr":
+                tr = french(tr)
+            pairs[en] = tr
+    known = set(words)
+    for w in words:
+        if w not in pairs:
+            problems.append(f"missing: {w[:80]}")
+    for w in given - known:
+        problems.append(f"not in en.txt: {w[:80]}")
+    blocks = []
+    for w in words:
+        if w not in pairs:
+            continue
+        tr = pairs[w]
+        if "{n}" in w:
+            forms = [f.strip() for f in tr.split("¦")]
+            for f in forms:
+                if not re.match(r"^(one|few|many|other): ", f):
+                    problems.append(f"a form without its name: {w} → {f[:60]}")
+                elif parts(f.split(": ", 1)[1]) != parts(w):
+                    problems.append(f"parts differ: {w} → {f}")
+            blocks.append(w + "\n" + "\n".join(forms))
+        else:
+            if parts(tr) != parts(w):
+                problems.append(f"parts differ: {w[:60]} → {tr[:60]}")
+            blocks.append(w + "\n" + tr)
+    if problems:
+        print("\n".join(problems[:60]))
+        sys.exit(f"words: {len(problems)} problems; nothing written")
+    with open(os.path.join(WORDS, lang + ".txt"), "w") as f:
+        f.write(header.rstrip("\n") + "\n# Every word of en.txt; those the same as in English (names, paths) as themselves.\n\n" + "\n\n".join(blocks) + "\n")
+    print(f"words: {lang}.txt, {len(blocks)} entries", file=sys.stderr)
+
+
+def main():
+    a = sys.argv[1:]
+    if not a or a[0] in ("-h", "--help"):
+        print(__doc__)
+        return
+    cmd = a.pop(0)
+    if cmd == "gather":
+        gather("--write" in a, "--no-lints" not in a)
+    elif cmd == "missing" and a:
+        have, _ = catalog(a[0])
+        for w in english():
+            if w not in have:
+                print(w)
+    elif cmd == "pairs" and a:
+        have, _ = catalog(a[0])
+        for en, tr in have.items():
+            print(f"{en} ||| {tr}")
+    elif cmd == "merge" and len(a) >= 2:
+        header = None
+        if "--header" in a:
+            i = a.index("--header")
+            header = a[i + 1]
+            del a[i:i + 2]
+        merge(a[0], a[1:], header)
+    else:
+        sys.exit(__doc__)
+
+
+if __name__ == "__main__":
+    main()

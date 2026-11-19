@@ -54,7 +54,7 @@ pub use slider::Slider;
 pub use slim_scroll::{SLIM_BAR, SLIM_NEAR, SlimScrollBar};
 pub use status::{StatusBar, level_bar};
 pub use strip::{STRIP_FADED, STRIP_HEIGHT, STRIP_ROW, STRIP_SIDE_HEAD, STRIP_SIDE_MAX, STRIP_SIDE_MIN, STRIP_SIDE_WIDTH, StripAction, StripGroup, StripTab, TabStrip};
-pub use tabs::{TAB_HEIGHT, TabView};
+pub use tabs::{TAB_HEIGHT, TabView, tabs_width};
 pub use text_control::TextControl;
 pub use text_field::{FieldMessage, TextField, TextFieldEvent, text_field};
 pub use text_view::{TextView, text_view};

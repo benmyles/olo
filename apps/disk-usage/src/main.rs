@@ -1153,8 +1153,10 @@ impl DiskUsage {
             );
         let busy = self.busy.is_some();
         let any = !self.collected.is_empty();
-        let bw = 112.0;
-        let mut buttons = div().w(px(bw)).flex().flex_col().gap(px(6.0)).pt(px(2.0));
+        // (At least 112 points, both as wide as the wider, as it says
+        // them: German's and French's Move to Trash ran past the window.)
+        let bw = ["Move to Trash", "Delete…", "Stop"].iter().map(|l| olo_kit::widgets::button_width(l, false)).fold(112.0, f32::max);
+        let mut buttons = div().w(px(bw)).flex_shrink_0().flex().flex_col().gap(px(6.0)).pt(px(2.0));
         if busy {
             buttons = buttons.child(Button::new("Stop").min_width(bw).on_click(cx.msg_with(|_: &ClickEvent| Msg::Command("stop-removing".into()))));
         } else {

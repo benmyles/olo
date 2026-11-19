@@ -950,7 +950,9 @@ impl View for Logs {
             foot = foot.child(div().w(px(80.0)).child(Button::new("Back").on_click(cx.msg_with(|_: &ClickEvent| Msg::Command("back".into())))));
         }
         foot = foot.child(said(self.status(), false).flex_1().h_full());
-        foot = foot.child(div().w(px(64.0)).flex().justify_center().child(CheckBox::new("Live", self.settings.live).on_toggle(cx.msg_with(|_: &bool| Msg::Command("live".into())))));
+        // (At least 64 points, as wide as its words: Spanish's "En
+        // directo" ran within 11 points of the window's edge.)
+        foot = foot.child(div().min_w(px(64.0)).flex().justify_center().child(CheckBox::new("Live", self.settings.live).on_toggle(cx.msg_with(|_: &bool| Msg::Command("live".into())))));
 
         div()
             .size_full()

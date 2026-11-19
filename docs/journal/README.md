@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-19
 
+### Olo's words, whole
+
+*04:41* — DiskBackup's first window in English and French. Olo's word list now has every app's words (its menus and windows, 2,259 of them; the first list had only Preferences' and DiskBackup's settings), German, Spanish and French each every one. Where the longer words ran out of room the layouts now follow them: these two boxes as tall as the taller, their buttons level.
+
+![Olo's words, whole](2026-11-19/044109-olo-s-words-whole.png)
+
 ### Disk Usage at its least size
 
 *03:28* — Before (left) and after: at its least window size, the list now has room for all its columns (Files was cut, with a scroll bar under it), and the chart's middle keeps room for its words (a small chart's rings narrower for it).

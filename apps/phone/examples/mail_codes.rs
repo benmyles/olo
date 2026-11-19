@@ -1,5 +1,5 @@
 //! How well Olo finds the sign-in codes in your own mail: every message
-//! of the mail accounts set up (Preferences ▸ Integrations ▸ Mail) that
+//! of the mail accounts set up (Preferences ▸ Integrations: Google and Fastmail, for Mail) that
 //! looks like one that carries a code, read (read only: nothing is
 //! marked or changed) and given to `codes::find_mail`.
 //!

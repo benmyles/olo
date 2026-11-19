@@ -875,12 +875,15 @@ impl MainWindow {
     fn welcome(&self, cx: &mut Cx<Self>) -> Element {
         let busy = self.busy;
         let dim = |t: &'static str| StringView::new(t).wrap(true).dim(true);
-        // (Side by side; their words as long as each other's, so their
-        // buttons line up.)
+        // (Side by side, as tall as the taller, each button at its box's
+        // foot: their buttons level whatever their words' lengths. They
+        // were level only while the two said as much, and French's
+        // Google Drive ran a line longer.)
         let choice = |icon: &'static str, title: &'static str, about: &'static str, button: Button| {
             BBox::new(title)
+                .grow()
                 .child(div().flex().flex_row().items_start().gap(px(m::SPACING)).child(picture(icon, 32.0)).child(div().flex_1().min_w_0().child(dim(about))))
-                .child(div().flex().flex_row().justify_end().child(button))
+                .child(div().flex_1().flex().flex_row().justify_end().items_end().child(button))
         };
         div()
             .flex()
@@ -905,22 +908,21 @@ impl MainWindow {
                 div()
                     .flex()
                     .flex_row()
-                    .items_start()
                     .gap(px(m::SPACING))
-                    .child(div().flex_1().min_w_0().child(choice(
+                    .child(div().flex_1().min_w_0().flex().flex_col().child(choice(
                         "disk",
                         "A Disk or Folder",
                         "A disk of its own, or a folder on one: your backups kept apart from this computer.",
                         Button::new("Choose a Folder…").enabled(!busy).on_click(self.cmd(cx, "choose-folder")),
                     )))
-                    .child(div().flex_1().min_w_0().child(choice(
+                    .child(div().flex_1().min_w_0().flex().flex_col().child(choice(
                         "diskbackup",
                         "Google Drive",
                         "Your Google Drive keeps them anywhere: sign in once, or let an agent set it up.",
                         Button::new("Connect Google Drive…").enabled(!busy).on_click(self.cmd(cx, "google-drive")),
                     ))),
             )
-            .child(dim("Your home folder is backed up, every hour, leaving out what can be downloaded or built again. Change any of it once it’s set up."))
+            .child(dim("Your home folder is backed up every hour, leaving out what can be downloaded or built again. Once it’s set up, you can change any of it."))
     }
 
     /// Set up: how it stands, and Back Up Now (or Stop).

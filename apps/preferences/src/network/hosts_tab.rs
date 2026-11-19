@@ -80,7 +80,11 @@ pub fn ui(ui: &mut Ui, st: &mut State, extra: &Extra, busy: bool) {
         }
     }
     let rows = hosts.clone();
-    let columns = vec![Column::new("On", 30.0), Column::new("Address", 150.0), Column::new("Names", 190.0), Column::new("Comment", 150.0)];
+    // (The first as wide as its title as shown: French's "Activé" was
+    // "A…" over its ticks. The names have the most room: the two that
+    // come with the system were cut, the comments beside them empty.)
+    let on = 30f32.max((f32::from(olo_kit::style::text_width(olo_kit::words::of_text("On"), olo_kit::style::PLAIN_SIZE, olo_kit::style::ui_font(olo_kit::FontWeight::NORMAL))) + 16.0).ceil());
+    let columns = vec![Column::new("On", on), Column::new("Address", 140.0), Column::new("Names", 260.0), Column::new("Comment", 120.0)];
     let list = ColumnListView::new(ui.cx, "hosts", &e.list, columns, rows.len(), move |_: &PanelView, cell, g| {
         let h = &rows[cell.row];
         // The machine's own, not to be edited: dim.
@@ -116,17 +120,20 @@ pub fn ui(ui: &mut Ui, st: &mut State, extra: &Extra, busy: bool) {
         st.hosts.pending = Some(h);
         cx.notify();
     });
+    // (One column for the three, from the widest label as shown: in
+    // French "Commentaire :" pushed its field a point past the others.)
+    let divider = DIVIDER.max(crate::form::divider_for(&["Address:", "Names:", "Comment:"]));
     ui.add(
         div()
             .flex()
             .flex_row()
             .items_center()
             .gap(px(m::SPACING * 2.0))
-            .child(div().flex_1().child(TextControl::new(ui.cx, &e.address).label("Address:").divider(DIVIDER)))
+            .child(div().flex_1().child(TextControl::new(ui.cx, &e.address).label("Address:").divider(divider)))
             .child(CheckBox::new("On", on).enabled(editable).on_toggle(toggle)),
     );
-    ui.add(TextControl::new(ui.cx, &e.names).label("Names:").divider(DIVIDER));
-    ui.add(TextControl::new(ui.cx, &e.comment).label("Comment:").divider(DIVIDER));
+    ui.add(TextControl::new(ui.cx, &e.names).label("Names:").divider(divider));
+    ui.add(TextControl::new(ui.cx, &e.comment).label("Comment:").divider(divider));
     let invalid = hosts.iter().find_map(|h| h.check().err());
     if let Some(why) = &invalid {
         ui.label(format!("{why}."));

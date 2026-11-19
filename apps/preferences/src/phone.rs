@@ -49,7 +49,8 @@ enum Job {
 struct Shared {
     state: PhoneState,
     settings: PhoneSettings,
-    /// The mail accounts set up (Integrations ▸ Mail), for [`codes`].
+    /// The mail accounts set up (Integrations: the Google and Fastmail
+    /// ones for Mail), for [`codes`].
     mail: Vec<olo_mail::Account>,
     /// The state file was read: something to show.
     known: bool,
@@ -593,7 +594,8 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
 /// One-time codes (Security ▸ Passwords; Ben, 2026-11-17: "move the
 /// phone prefs one-time codes stuff into prefs -> security -> passwords
 /// and change it up a bit so that you can choose what to monitor"): which
-/// of the phone set up and the mail accounts (Integrations ▸ Mail) are
+/// of the phone set up and the mail accounts (Integrations' Google and
+/// Fastmail ones for Mail) are
 /// looked in, and where a code goes. Saved in `phone.json`, which the
 /// phone service, the one that gives codes to the browsers, follows.
 pub fn codes(ui: &mut Ui) {
@@ -633,8 +635,8 @@ pub fn codes(ui: &mut Ui) {
             }));
         }
         match (phone, mail.is_empty()) {
-            (false, true) => ui.note("No phone or mail account is set up: a phone in Phone, Gmail or Fastmail in Integrations ▸ Mail."),
-            (true, true) => ui.note("Gmail and Fastmail accounts, added in Integrations ▸ Mail, are looked in too."),
+            (false, true) => ui.note("No phone or mail account is set up: a phone in Phone, a Google or Fastmail account for Mail in Integrations."),
+            (true, true) => ui.note("Google and Fastmail accounts for Mail (Integrations) are looked in too."),
             (false, false) => ui.note("Mail is read only while a page waits for a code, for up to a minute. A phone, set up in Phone, is looked in too."),
             (true, false) => ui.note("Mail is read only while a page waits for a code, for up to a minute."),
         }

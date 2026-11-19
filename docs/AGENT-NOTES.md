@@ -194,6 +194,11 @@ Each note: what to do, then why (what happened), then how to apply it.
   fixture's name in it (a volume, a keyboard) can be the fixture
   translated: a name the system gives is never looked up, so keep it
   as itself in the catalog.
+- **A window's frame, cropped from a shot, holds more than the window**:
+  beside its tab, above the window's body, is whatever is behind it. A
+  French Preferences window seemed to have a Spanish menu bar there
+  ("Visualización"): it was Logs', started before it in Spanish. Crop
+  from the content's top (`list_windows`' `content`) to judge a window.
 - **A finding the live lint made once, at every look, and never again**
   can be a race at the app's start: the lint changes the scale as soon
   as the app answers, and app_server may not have its first frame yet.

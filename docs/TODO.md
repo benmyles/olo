@@ -83,16 +83,21 @@ something nobody here has is in "Blocked", with what it waits for.
   lint in a language"). Spanish, every word (1,161; 2026-11-19), clean in
   both lints in Spanish; the menus' check reads the app's English, so
   the live lint is clean in German and Spanish too. French, every word
-  (1,161; 2026-11-19, "vous", French spacing), clean in both lints.
-  **Left**: the other nine languages' words;
-  sentences still made with `format!` (Power's "Now Performance: …",
-  Notifications' "6 seconds" and "1 hour", Keyboard's "35 per second"
-  and the like: what the lint can't see, as their English shows in any
-  language); what apps paint themselves; formats (dates, numbers, the
+  (1,161; 2026-11-19, "vous", French spacing), clean in both lints. The
+  word list whole at last (2,258, `tools/dev/words gather`: the live
+  lint's words, every app's menus and windows, and the literals in the
+  code no window the lints open shows; the first list had only
+  Preferences', DiskBackup's and the kit's), German, Spanish and French
+  each every one of them. **Left**: the other nine languages' words;
+  sentences still made with `format!`, and literals copied into a
+  `String` (`"Do Not Disturb".into()`), never looked up: about 2,000
+  places in the apps' code (1,059 `format!`s, 999 copies; Olo Doctor's
+  findings, Preferences' notes, Power's "Now Performance: …",
+  Notifications' "6 seconds" and "1 hour", Keyboard's "35 per second"),
+  the shown ones to go through `tr!` or `words::of_text`, app by app; what apps paint themselves; formats (dates, numbers, the
   week's first day); Arabic (right-to-left layout). Words the lint
-  doesn't see because no window it opens shows them are missing from
-  the list too (DiskBackup's first-run window, Keyboard's "No keyboards
-  are plugged in."): most of Calendar's (its menus, the event window's
+  doesn't see were missing from the list too (now gathered from the
+  code, `words gather`): most of Calendar's (its menus, the event window's
   labels and menus, its dates and times, `words.rs`: "Wednesday,
   November 18, 2026, 2 PM – 3:30 PM" in German too; Codex, 2026-11-19,
   on the preview pane, whose own words are in).
