@@ -5056,5 +5056,11 @@
   "title": "Fans: a row of each power mode",
   "caption": "Preferences \u25b8 Power \u25b8 Power Modes has a Fans row: Auto (the computer's own), Cool, Cooler or Coolest for each mode, and on battery. Switching power modes switches the fans' profile. What was called Cool is Cooler now (the same curve), so what you had chosen is unchanged; the Fans box has left Battery & Idle.",
   "image": "2026-11-18/183906-fans-a-row-of-each-power-mode.png"
+ },
+ {
+  "time": "2026-11-18T18:52:46",
+  "title": "The clock's menu: what the day holds",
+  "caption": "A click on Deskbar's date and time opens a menu: the day in full, what's still to come today and tomorrow in Calendar (each in its calendar's colour; choose one to open Calendar on it), Open Calendar, and Date & Time Settings\u2026, which is what the click did before.",
+  "image": "2026-11-18/185246-the-clock-s-menu-what-the-day-holds.png"
  }
 ]

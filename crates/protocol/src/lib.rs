@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 pub mod airplay;
 pub mod airpods;
 pub mod app_keys;
+pub mod calendar;
 pub mod color;
 pub mod deskbar;
 pub mod diskbackup;

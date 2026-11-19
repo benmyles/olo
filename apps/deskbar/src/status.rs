@@ -544,6 +544,23 @@ pub fn local_day(unix: i64) -> i64 {
     (unix + off).div_euclid(86_400)
 }
 
+/// The day `unix` is in here, in full: "Wednesday, November 18, 2026",
+/// or without the year.
+pub fn long_date(unix: i64, year: bool) -> String {
+    const DAYS: [&str; 7] = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const MONTHS: [&str; 12] = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    // SAFETY: localtime_r writes into the zeroed struct we own.
+    let tm = unsafe {
+        tzset();
+        let t = unix as libc::time_t;
+        let mut tm: libc::tm = std::mem::zeroed();
+        libc::localtime_r(&t, &mut tm);
+        tm
+    };
+    let said = format!("{}, {} {}", DAYS[tm.tm_wday as usize % 7], MONTHS[tm.tm_mon as usize % 12], tm.tm_mday);
+    if year { format!("{said}, {}", tm.tm_year + 1900) } else { said }
+}
+
 pub fn time_of_day(unix: u64, clock: &olo_protocol::ClockSettings) -> String {
     // SAFETY: localtime_r writes into the zeroed struct we own.
     let tm = unsafe {

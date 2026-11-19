@@ -27,6 +27,7 @@
 //! reading draws only them.
 
 mod approve;
+mod coming;
 mod glances;
 mod sni;
 mod status;
@@ -3053,21 +3054,25 @@ impl Deskbar {
             d.paint(move |g| {
                 agent::record(
                     g,
-                    agent::Node {
-                        role: "Button",
-                        name: Some("Date & Time preferences".into()),
-                        value: Some(said.clone().into()),
-                        bounds: clock_row,
-                        enabled: true,
-                        clickable: true,
-                        ..Default::default()
-                    },
+                    agent::Node { role: "MenuButton", name: Some("Clock".into()), value: Some(said.clone().into()), bounds: clock_row, enabled: true, clickable: true, ..Default::default() },
                 )
             });
-            d.hits.push(hit(view, "clock", clock_row, Some("Date & Time preferences".into())).on_any_button(move |e, cx| {
-                if button(e) == MouseButton::Left {
-                    run(&m, "pref:datetime", cx);
+            // The clock's menu, at either button: the day in full, what
+            // Calendar says is still to come, Calendar, the settings
+            // (`coming`). Read as it's opened (a small file).
+            let v = view.clone();
+            d.hits.push(hit(view, "clock", clock_row, Some(status::long_date(now_secs() as i64, true))).on_any_button(move |e, cx| {
+                if !matches!(button(e), MouseButton::Left | MouseButton::Right) {
+                    return;
                 }
+                let clock = m.update(|d| d.clock.clone());
+                let p = theme::palette();
+                let menu = coming::menu(
+                    olo_protocol::calendar::Coming::read().as_ref(),
+                    &coming::Clock { now: now_secs() as i64, day: &status::local_day, time: &|t| status::time_of_day(t.max(0) as u64, &clock), date: &status::long_date, hue: &|hue| c(p.hue(hue)) },
+                );
+                let m2 = m.clone();
+                open_menu(cx, &v, "clock", clock_row, menu, move |cmd, cx| run(&m2, cmd, cx));
             }));
         }
         // Each icon's place: rows filled in turn, each row centred, all on

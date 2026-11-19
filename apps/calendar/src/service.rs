@@ -115,6 +115,53 @@ pub fn reminders(book: &Book, choices: &Choices, from: &Zoned, zone: &TimeZone) 
     out
 }
 
+/// What's to come, for whoever shows it without being Calendar (Deskbar's
+/// clock's menu, agents: `olo_protocol::calendar`): each occurrence of
+/// the calendars shown that isn't over at `now`, from today for
+/// [`olo_protocol::calendar::DAYS`] days, in order (a whole day's first
+/// on its day; one begun on a day before, on today); an invitation
+/// declined left out.
+pub fn coming(book: &Book, choices: &Choices, me: &[String], now: &Zoned, zone: &TimeZone, set_up: bool) -> olo_protocol::calendar::Coming {
+    use olo_protocol::calendar::{Coming, DAYS, Event, MOST};
+    let at = now.datetime();
+    let today = at.date();
+    let last = crate::layout::day_of(crate::layout::day_number(today) + DAYS as i32);
+    let unix = |t: jiff::civil::DateTime| t.to_zoned(zone.clone()).map_or(0, |z| z.timestamp().as_second());
+    let mut shown: Vec<crate::model::Shown> = book.shown(today, last, zone, me, choices).into_iter().filter(|s| s.end > at && s.going != Some(event::Answer::No)).collect();
+    shown.sort_by(|a, b| (a.start.date().max(today), !a.all_day, a.start, &a.title).cmp(&(b.start.date().max(today), !b.all_day, b.start, &b.title)));
+    shown.truncate(MOST);
+    let events = shown
+        .into_iter()
+        .map(|s| Event {
+            href: s.href.to_string(),
+            starts: s.start.to_string(),
+            title: s.title.to_string(),
+            location: s.location.to_string(),
+            calendar: book.cals.get(s.cal).map(|c| c.kept.name.clone()).unwrap_or_default(),
+            hue: Some(s.hue),
+            start: unix(s.start),
+            end: unix(s.end),
+            all_day: s.all_day,
+        })
+        .collect();
+    Coming { set_up, until: unix(last.at(0, 0, 0, 0)), events }
+}
+
+/// `coming` written where it's read, if it says anything the file there
+/// doesn't (whole, then put in place: never read half written).
+fn keep_coming(coming: &olo_protocol::calendar::Coming) {
+    let path = olo_protocol::calendar::Coming::path();
+    let Ok(bytes) = serde_json::to_vec(coming) else { return };
+    if std::fs::read(&path).ok().as_deref() == Some(&bytes[..]) {
+        return;
+    }
+    let new = path.with_extension("json.new");
+    let written = path.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|()| std::fs::write(&new, &bytes)).and_then(|()| std::fs::rename(&new, &path));
+    if let Err(e) = written {
+        tracing::warn!("calendar: {}: {e}", path.display());
+    }
+}
+
 /// How far off `start` is at `now`, in words: "Now", "In 15 minutes",
 /// "In 2 hours", "Tomorrow", "In 3 days"; "Started 5 minutes ago".
 pub fn ahead(start: i64, now: i64) -> String {
@@ -225,6 +272,9 @@ pub fn run() -> std::process::ExitCode {
         }
         let settings: Settings = if demo { Settings::default() } else { olo_kit::store::load(&crate::settings_path()).unwrap_or_default() };
         let list = reminders(&book, &settings.choices, &now, &zone);
+        // What's to come, for the clock's menu (written when it changes).
+        let me: Vec<String> = sources.iter().map(|s| s.account.address.clone()).collect();
+        keep_coming(&coming(&book, &settings.choices, &me, &now, &zone, !sources.is_empty()));
         let before = fired.len();
         for r in list.iter().filter(|r| r.at <= unix && unix < r.end) {
             if fired.contains_key(&r.key) {
@@ -322,6 +372,42 @@ mod tests {
         let mut hidden = Choices::default();
         hidden.hidden.insert("https://x/work/".into());
         assert!(reminders(&book, &hidden, &now, &zone).is_empty());
+    }
+
+    /// What's to come, as the clock's menu reads it: not what's over or
+    /// declined; a whole day's first on its day; one begun before on
+    /// today; what opens Calendar on each; a hidden calendar's nothing.
+    #[test]
+    fn what_is_to_come() {
+        let zone = TimeZone::get("Europe/Amsterdam").unwrap();
+        let now = jiff::civil::date(2026, 11, 18).at(10, 30, 0, 0).to_zoned(zone.clone()).unwrap();
+        let book = book_of(&[
+            "DTSTART;TZID=Europe/Amsterdam:20261118T140000\nDTEND;TZID=Europe/Amsterdam:20261118T153000\nSUMMARY:Design review\nLOCATION:Room 2",
+            "DTSTART;TZID=Europe/Amsterdam:20261116T093000\nDTEND;TZID=Europe/Amsterdam:20261116T094500\nRRULE:FREQ=DAILY;COUNT=4\nSUMMARY:Standup",
+            "DTSTART;TZID=Europe/Amsterdam:20261118T100000\nDTEND;TZID=Europe/Amsterdam:20261118T110000\nSUMMARY:Under way",
+            "DTSTART;TZID=Europe/Amsterdam:20261118T080000\nDTEND;TZID=Europe/Amsterdam:20261118T090000\nSUMMARY:Over",
+            "DTSTART;VALUE=DATE:20261118\nDTEND;VALUE=DATE:20261119\nSUMMARY:Release",
+            "DTSTART;VALUE=DATE:20261116\nDTEND;VALUE=DATE:20261121\nSUMMARY:Away",
+            "DTSTART;TZID=Europe/Amsterdam:20261118T160000\nDTEND;TZID=Europe/Amsterdam:20261118T170000\nSUMMARY:Declined\nATTENDEE;PARTSTAT=DECLINED:mailto:me@example.org",
+            "DTSTART;TZID=Europe/Amsterdam:20261218T160000\nDTEND;TZID=Europe/Amsterdam:20261218T170000\nSUMMARY:A month on",
+        ]);
+        let me = ["me@example.org".to_owned()];
+        let c = coming(&book, &Choices::default(), &me, &now, &zone, true);
+        let unix = now.timestamp().as_second();
+        let said: Vec<String> = c.events.iter().map(|e| format!("{} {}", &e.starts[5..16], e.title)).collect();
+        assert_eq!(said, ["11-16T00:00 Away", "11-18T00:00 Release", "11-18T10:00 Under way", "11-18T14:00 Design review", "11-19T09:30 Standup"]);
+        assert_eq!(c.until - unix, 13 * 86_400 + 13 * 3600 + 1800);
+        let review = &c.events[3];
+        assert_eq!((review.start - unix, review.end - review.start, review.all_day, review.location.as_str(), review.calendar.as_str()), (3 * 3600 + 1800, 5400, false, "Room 2", "Work"));
+        assert_eq!(review.shows(), ["olo-calendar", "--show", "https://x/work/0.ics", "2026-11-18T14:00:00"]);
+        assert!(c.events[1].all_day && c.events[1].end - c.events[1].start == 86_400);
+        // (Read later, what has ended since isn't said.)
+        assert_eq!(c.from(unix + 3600).map(|e| e.title.as_str()).collect::<Vec<_>>(), ["Away", "Release", "Design review", "Standup"]);
+        // Written and read back the same.
+        assert_eq!(serde_json::from_slice::<olo_protocol::calendar::Coming>(&serde_json::to_vec(&c).unwrap()).unwrap(), c);
+        let mut hidden = Choices::default();
+        hidden.hidden.insert("https://x/work/".into());
+        assert!(coming(&book, &hidden, &me, &now, &zone, true).events.is_empty());
     }
 
     #[test]

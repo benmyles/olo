@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### The clock's menu: what the day holds
+
+*18:52* — A click on Deskbar's date and time opens a menu: the day in full, what's still to come today and tomorrow in Calendar (each in its calendar's colour; choose one to open Calendar on it), Open Calendar, and Date & Time Settings…, which is what the click did before.
+
+![The clock's menu: what the day holds](2026-11-18/185246-the-clock-s-menu-what-the-day-holds.png)
+
 ### Fans: a row of each power mode
 
 *18:39* — Preferences ▸ Power ▸ Power Modes has a Fans row: Auto (the computer's own), Cool, Cooler or Coolest for each mode, and on battery. Switching power modes switches the fans' profile. What was called Cool is Cooler now (the same curve), so what you had chosen is unchanged; the Fans box has left Battery & Idle.

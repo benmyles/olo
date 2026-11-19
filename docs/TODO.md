@@ -117,7 +117,9 @@ something nobody here has is in "Blocked", with what it waits for.
   finds events (Return opens Calendar on one). An assistant (View ▸
   Show Assistant: questions answered from your events, with links to
   them, and events drafted for you to save; Preferences ▸ AI ▸
-  Calendar). **Next**: the clock's menu, the phone. Reminders are shown
+  Calendar). The clock's menu (a click on Deskbar's date and time: the
+  day, what's still to come today and tomorrow, Open Calendar, Date &
+  Time Settings…). **Next**: the phone. Reminders are shown
   (`olo-calendar --service`, a session service; Show goes to the
   event). (Its cost
   is measured and in-place reload tried: HACKING.md, "Calendar".)

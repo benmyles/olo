@@ -368,7 +368,7 @@ fn is_provider(pid: i32, program: &str) -> bool {
 }
 
 /// One word of a command line, quoted for the shell that runs it.
-fn quoted(arg: &str) -> String {
+pub(crate) fn quoted(arg: &str) -> String {
     format!("'{}'", arg.replace('\'', "'\\''"))
 }
 

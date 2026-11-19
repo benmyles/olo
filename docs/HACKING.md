@@ -21468,6 +21468,37 @@ an_event_put_back_as_it_was` (after a change, after a removal, a
 redo, and never over another device's change); tried against the
 demo: Delete, Undo, Redo, a drag to Thursday, Undo.
 
+**The clock's menu** (Deskbar's `coming.rs`; a click on the date and
+time, either button): the day in full ("Wednesday, November 18, 2026",
+also the clock's tip), what's still to come today, each with its
+calendar's colour ("2:00 PM · Design review"; one on now "Now, until
+11:00 AM · …"; a whole day's "All day · …"; eight at most, then "3
+More in Calendar…"), tomorrow's under "Tomorrow" (five), or with
+nothing today or tomorrow the next day that has anything under its
+date (three); then Open Calendar and Date & Time Settings… (what the
+click did before). An event chosen starts `olo-calendar --show HREF
+START`. BeOS's clock showed the date at a click and its menu set the
+time; Haiku's opens a month: here it's what the day holds. With no
+account (or a Calendar that never ran) it says nothing of events.
+**Deskbar reads no calendar**: Calendar's service writes what's to
+come (`service::coming`, the same `Book::shown` the views draw: the
+calendars shown, not over, declined invitations left out, fourteen
+days, 200 at most) to `~/.cache/olo/calendar-coming.json`
+(`olo_protocol::calendar::Coming`: each event's address, title,
+place, calendar, colour, start and end in seconds since 1970 and on
+the person's clock) at each waking, written only when it says
+something the file doesn't; the menu reads the file as it's opened
+and leaves out what has ended since. Agents read the same file.
+Nothing follows it and nothing runs on a timer for it. Measured
+(release): the click's read and the menu made, 0.34 ms with the file
+full (200 events, 46 KB); the service's `coming` for a calendar of
+2,000 events (400 repeating), 2.7 ms a waking (every quarter of an
+hour, or when something changed); Deskbar at rest as before (0.0% of
+a core). Tested: `coming`'s `the_day_and_what_it_holds` and
+`nothing_and_too_much`, the service's `what_is_to_come`; tried in a
+test session with the demo's calendars (the menu at 1×, 1.5× and 2×,
+light and dark; an event chosen started Calendar on it).
+
 **Reminders** (`apps/calendar/src/service.rs`): `olo-calendar
 --service` is one of a real session's services (`REAL_SHELL`), with no
 window. It shows each reminder an event has (its `VALARM`s, as
