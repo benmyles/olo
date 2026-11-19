@@ -13,6 +13,43 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
+- **A Chrome app window's download popup opened at its top left, half on
+  the next display** (Ben, 2026-11-19, downloading a file in Slack, Olo's
+  Chrome in app mode zoomed on a display with another to its left: "it
+  showed its download notification in the top left instead of the bottom
+  right and was half over a screen"). Chrome's own download bubble showed
+  where a finished download should be Olo's notification
+  (apps/chrome/src/downloads.rs), and app_server let a popup cross from
+  its window's display onto the next. Root-causing both (a second
+  investigator on it too).
+- **Every app right in every tiling layout** (Ben, 2026-11-19, with a
+  picture of Calendar tiled in a quarter, its date, search field and
+  assistant's heading run together: "the calendar layout is breaking in
+  quarter mode. please add a standing rule to CLAUDE.md that you should
+  review all apps zoomed, horizontal half, vertical half, quarter,
+  vertical third, horizontal third to ensure that they adapt and render
+  appropriately in all those tiling configurations for a great out of
+  the box tiling experience in all olo apps/prefs. floating only windows
+  are excepted. if you need to improve the kit to better adapt to these
+  sizes/layouts do that too. and also improve the lints to check these
+  sizes/layouts and catch stuff like this."). The rule is in CLAUDE.md
+  and HACKING ("Tiling layouts"); the live lint tiles each window into
+  each layout and reviews it there (`tools/dev/ui-lint --tiles`, with
+  `--shots` for pictures). On the smallest screen it finds 352 errors:
+  12 apps' least sizes are bigger than a third (Calendar, Weather, OS
+  Updates, kache, Passwords, Phone, Telegram, Disk Usage, Doctor, Logs,
+  Activity Monitor, Viewer), Calendar's and Weather's views are cut or
+  piled up inside the sizes they take, and the pictures show more: Disk
+  Usage's rings a dot in a third, Logs' and Phone's lists with no rows
+  in a horizontal third, Telegram's and Phone's conversations strips
+  beside their lists, Passwords' welcome cut off in a short window,
+  kache's and Weather's cards cut off, Doctor's and Updates' Fix and
+  Update buttons gone in a third. To do: the kit's side panes give way
+  and show one at a time in a narrow window (a back arrow), its empty
+  state wraps, its Choose row folds; then each app, Calendar first;
+  then the pre-push hook runs `--tiles` too (not before: it would
+  refuse every push until they pass), on the smallest screen and the
+  person's.
 - **Themes: one list (Classic, Platinum, BeOS and every scheme), each
   perfect, with icons of its own, Customize…, and a wallpaper of its
   own** (Ben, 2026-11-17: "the split between themes and colors doesn't
@@ -102,11 +139,13 @@ something nobody here has is in "Blocked", with what it waits for.
   logs stay English), and StyledEdit's, Speed Test's, Logs', DeskCalc's,
   Telegram's, kache's, Weather's, Updates' and Activity Monitor's
   (2026-11-19: 727 new words; the kit's dashboards and charts ask for
-  their words; Deskbar's glances choose the language); left: Phone (its
-  service's notifications and replies, the service-words model, and
-  its tapbacks, which phones exchange in English) and Olo Doctor (its
-  findings, which Deskbar and its command line read: the same), each a
-  batch of its own; Weather's Edit ▸ Copy text (English labels
+  their words; Deskbar's glances choose the language), and Phone's
+  (2026-11-19: its service's notifications chosen in the person's
+  language, its replies English for programs and translated where shown,
+  its tapbacks English as phones exchange them; 34 new words); left:
+  Olo Doctor (its findings, which Deskbar and its command line read: the
+  service-words model), a batch of its own; Phone's and Weather's Edit ▸
+  Copy text (English labels
   throughout), and its next-hour line said whole for each kind of
   precipitation ("La pluie cessera…", not "Pluie s'arrête…": French and
   Spanish want the article the kind's name alone doesn't carry); what apps paint themselves that the unasked list shows
@@ -123,6 +162,14 @@ something nobody here has is in "Blocked", with what it waits for.
   labels and menus, its dates and times, `words.rs`: "Wednesday,
   November 18, 2026, 2 PM – 3:30 PM" in German too; Codex, 2026-11-19,
   on the preview pane, whose own words are in).
+- **Links in Calendar's event notes found and made clickable** (Ben,
+  2026-11-19, with a picture of an event's notes holding a meeting's
+  link, a dial-in page's and a help page's: "also a todo: any links in
+  the calendar notes should be detected and made clickable"). Addresses
+  (https://, www.), mail addresses and telephone numbers in the notes
+  shown as links: a click opens the page in the browser, a mail
+  address in Mail, a number with the phone; the kit's text view taught
+  to find them, so every app's notes and messages can have them.
 - **A sign-in's mailed code is found every time** (Ben, 2026-11-18,
   signing in at claude.ai, which mails a link and takes a "verification
   code" in its place: "i tried to login to claude and it didn't manage

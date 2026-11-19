@@ -5979,6 +5979,54 @@ again: side by side (Display's settings beside its panel's facts,
 Performance's thresholds two by two), in tabs (Performance: Supervisor,
 Watchdog), not scrolled.
 
+### Tiling layouts (`tools/dev/ui-lint --tiles`)
+
+Every window that tiles adapts to each layout Olo's tiling puts it in,
+out of the box (Ben, 2026-11-19, after Calendar broke in a quarter:
+"review all apps zoomed, horizontal half, vertical half, quarter,
+vertical third, horizontal third … floating only windows are
+excepted"): zoomed; a vertical half (half the width) and a horizontal
+half (half the height); a quarter; a vertical third (a third of the
+width) and a horizontal third (a third of the height). On the smallest
+screen, 1280 × 800 points, those are 1264 × 784, 628 × 784,
+1264 × 388, 628 × 388, 417 × 784 and 1264 × 257 points, tab and
+border with them. Floating windows are excepted: alerts, dialogs, a
+window with a parent, one of a fixed size (its least size its most)
+and one tagged `floating` (app_server's `floats_always` and `floats`,
+shell/autotile.rs); a window that fits what it shows has a fixed
+height, so it floats.
+
+What adapting means:
+
+- **Its least size fits every layout**: 417 × 257 points at most with
+  its tab and border, about 407 × 226 of content. App_server gives a
+  window its tile even when its least size is bigger, so what doesn't
+  fit is drawn past the window's edge and cut.
+- **What it's for stays**: Calendar's days, Weather's forecast, a
+  conversation. The rest gives way, least needed first: an assistant,
+  then a preview or a detail pane, then a sidebar or a now-playing box.
+- **Rows fold and reflow**: a title takes a shorter form, a status line
+  gives way, a field narrows; buttons go under a title they don't fit
+  beside; cards take fewer columns; the kit's tool bar wraps and puts
+  what doesn't fit in its » menu.
+- **A document scrolls, a form doesn't**: a dashboard, a forecast or a
+  month's weeks scroll in a window too short for them; a form is in a
+  window that fits what it shows (above), which floats.
+
+`tools/dev/ui-lint --tiles` tiles each window that tiles into each
+layout in turn, as a person's tiling puts it (`Arrange`), and reviews
+it there, every tab, at the session's first scale: a least size more
+than a layout's tile is an error, and so is everything the review
+finds. Run it on the smallest screen (`--screen 2560x1600 --scales 2`)
+and on the person's (`--screen 3200x2000 --scales 2`, `--screen
+5120x2880 --scales 2.5`, `--screen 1920x1080 --scales 1`). `--shots
+DIR` keeps a picture of each window in each layout and tab
+(DIR/APP-LAYOUT[-TAB].png): look at them, as a designer would, since
+the review finds what overlaps or is cut, not what's crowded or gone
+(Disk Usage's rings were a dot in a third, and nothing said so). A
+tab that opens a menu (Telegram's More) has it closed (Escape) before
+the next.
+
 ### The layout lint (`olo_kit::lint`, `cargo ui-lint`)
 
 A window's view drawn as it will be shown, without a session
@@ -6016,7 +6064,8 @@ tabs clicked: for indexes made from what windows show (Preferences'
 settings).
 
 **Every app, live** (`tools/dev/ui-lint [APP…] [--review] [--scales …]
-[--screen WxH] [--jobs N] [--no-cache]`): every app at once, each in a
+[--screen WxH] [--jobs N] [--no-cache] [--tiles [--shots DIR]]`; for
+`--tiles`, "Tiling layouts" above): every app at once, each in a
 headless session of its own with a copy of the made-up home and its own
 sound server, three quarters of the processors' worth at a time (20 s
 for all of them on the ThinkPad, from 5 min 43 s one by one); the look

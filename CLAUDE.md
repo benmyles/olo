@@ -56,6 +56,18 @@ are universal and non-negotiable:
   every window against that screen; run the live lint at your screen's
   size too (`tools/dev/ui-lint --screen WxH`). See "Windows fit what
   they show" in HACKING.md.
+- **Every tiling layout, out of the box.** Every window that tiles (all
+  but the floating-only: alerts, dialogs, a window with a parent, one
+  of a fixed size or tagged floating) adapts and renders right zoomed,
+  in a vertical half and a horizontal half, a quarter, a vertical third
+  and a horizontal third, on the smallest screen and on the person's:
+  nothing overlapping, cut or crowded, the essentials there (a side
+  panel gives way, a toolbar folds), and its least size fits each of
+  them. Review each app you change in every layout
+  (`tools/dev/ui-lint --tiles`, which tiles each window into each and
+  reviews it there; picture the ones it changes), and improve the kit
+  where an app needs help to adapt (Ben, 2026-11-19: Calendar broke in a
+  quarter). See "Tiling layouts" in HACKING.md.
 - **Measure, don't guess.** Run `tsession review` on each kit app at
   every scale, and fix what it finds. A finding at only one scale is a
   real bug until shown otherwise. The review doesn't see app_server's own

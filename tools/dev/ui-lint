@@ -8,7 +8,17 @@ Sound comes from olo-fakesound (a speaker, AirPods and a microphone), so
 Preferences ▸ Sound shows its devices, not its empty state.
 Errors fail it; review findings (look closely) are listed with --review.
 
-  tools/dev/ui-lint [--review] [--keep] [--no-cache] [--jobs N] [--scales 1,1.5,2] [--screen WxH] [APP...]
+  tools/dev/ui-lint [--review] [--keep] [--no-cache] [--jobs N] [--scales 1,1.5,2] [--screen WxH] [--tiles [--shots DIR]] [APP...]
+
+--tiles: every window that tiles (not a dialog, an alert, a fixed-size or
+floating one) is tiled into each layout in turn, by app_server as a
+person's tiling puts it (`Arrange`), and reviewed there, every tab: zoomed,
+a vertical half, a horizontal half, a quarter, a vertical third and a
+horizontal third (CLAUDE.md, "Every tiling layout"). One whose least size
+is bigger than a layout's tile is an error there. Run it on the smallest
+screen (`--screen 2560x1600`, 1280 × 800 points at 2×) and on the
+person's. --shots DIR keeps a picture of each window in each layout and
+tab (DIR/APP-LAYOUT[-TAB].png), to look at.
 
 Every app at once, each in a headless session of its own (a copy of the
 made-up home, its own sound server), --jobs at a time (three quarters of
@@ -185,7 +195,7 @@ def stamp(path):
         return "missing"
 
 
-def signature(exe, screen, scales, show_review):
+def signature(exe, screen, scales, show_review, tiles=False):
     """What an app's lint depends on: its build, app_server's, the fake
     sound server's, the lint's own scripts and how it's run."""
     h = hashlib.sha256()
@@ -196,7 +206,7 @@ def signature(exe, screen, scales, show_review):
             pass
     for b in (exe, "olo-app-server", "olo-fakesound"):
         h.update(stamp(os.path.join(ROOT, "target/release", b)).encode())
-    h.update(f"{screen}|{scales}|{show_review}".encode())
+    h.update(f"{screen}|{scales}|{show_review}|{tiles}".encode())
     return h.hexdigest()
 
 
@@ -301,6 +311,12 @@ def click(name, x, y):
     ipc(name, {"type": "synthetic", "events": [{"type": "button", "button": 0x110, "pressed": True}, {"type": "button", "button": 0x110, "pressed": False}]})
 
 
+def escape(name):
+    """Escape pressed: a menu a tab opened (Telegram's More) closed
+    before the next is clicked or pictured."""
+    ipc(name, {"type": "synthetic", "events": [{"type": "key", "key": 1, "pressed": True}, {"type": "key", "key": 1, "pressed": False}]})
+
+
 def chosen(pid, tab, within=3.0):
     """Wait for `tab` to be the one shown."""
     end = time.time() + within
@@ -312,7 +328,64 @@ def chosen(pid, tab, within=3.0):
     return False
 
 
-def lint_one(spec, slot, master, screen, scales, show_review, work, all_themes=False):
+# The layouts a tiling window is checked in (CLAUDE.md, "Every tiling
+# layout"): parts of the display's tiling area (x, y, width, height).
+LAYOUTS = [
+    ("zoomed", (0.0, 0.0, 1.0, 1.0)),
+    ("a vertical half", (0.0, 0.0, 0.5, 1.0)),
+    ("a horizontal half", (0.0, 0.0, 1.0, 0.5)),
+    ("a quarter", (0.0, 0.0, 0.5, 0.5)),
+    ("a vertical third", (0.0, 0.0, 1.0 / 3.0, 1.0)),
+    ("a horizontal third", (0.0, 2.0 / 3.0, 1.0, 1.0 / 3.0)),
+]
+
+
+def tiled(name, pid, wid, part, within=8.0):
+    """Window `wid` tiled into `part` of its display's tiling area, as
+    app_server's tiling puts it, and its frame once it has drawn there (or
+    the size it keeps, its least): (frame, tile, least). None if app_server
+    never had it settle."""
+    area = ipc(name, {"type": "arrangement"}).get("area")
+    if not area:
+        return None
+    ipc(name, {"type": "arrange", "windows": [{"id": wid, "x": part[0], "y": part[1], "w": part[2], "h": part[3]}]})
+    tile = (area["x"] + area["width"] * part[0], area["y"] + area["height"] * part[1], area["width"] * part[2], area["height"] * part[3])
+    began, waiting = time.time(), kept_waiting(pid)
+    last, same = None, 0
+    while time.time() < began + within + min(kept_waiting(pid) - waiting, 30):
+        w = next((w for w in windows_of(name, pid) if w["id"] == wid), None)
+        if w and w.get("frame") and not w.get("settling"):
+            f = w["frame"]
+            now = (f["x"], f["y"], f["width"], f["height"])
+            # (Twice the same, settled: there, or as near as its least
+            # size lets it be.)
+            same = same + 1 if now == last else 0
+            last = now
+            if same >= 2:
+                return now, tile, w.get("least")
+        time.sleep(0.05)
+    return None
+
+
+def picture(name, wid, scale, out):
+    """A picture of window `wid` as it shows (its frame, tab and border
+    with it), at `out`."""
+    tmp = os.path.join(BASE, name, "tile-shot.png")
+    r = ipc(name, {"type": "screenshot", "path": tmp})
+    w = next((w for w in ipc(name, {"type": "list_windows"}).get("windows", []) if w["id"] == wid), None)
+    if not r or r.get("type") != "ok" or not w or not w.get("frame"):
+        return
+    from PIL import Image
+    f = w["frame"]
+    box = tuple(round(v * scale) for v in (f["x"], f["y"], f["x"] + f["width"], f["y"] + f["height"]))
+    Image.open(tmp).crop(box).save(out)
+
+
+def slug(text):
+    return "".join(c if c.isalnum() else "-" for c in text.lower()).strip("-")
+
+
+def lint_one(spec, slot, master, screen, scales, show_review, work, all_themes=False, tiles=False, shots=None):
     """One app, in a headless session of its own (a copy of the made-up
     home, its own sound server): what it found, as (errors, reviews, lines
     to print)."""
@@ -404,9 +477,54 @@ def lint_one(spec, slot, master, screen, scales, show_review, work, all_themes=F
                     for window, f in found:
                         key = (f["level"], window, tab, f["kind"], f["text"])
                         seen.setdefault(key, []).append(f"{look + ' ' if look else ''}{theme} {scale:g}×")
+        # Each window that tiles, in each layout (`--tiles`): reviewed
+        # there, every tab, at the first scale, light.
+        tiled_windows = []
+        if tiles and not layers:
+            # (At the scale the session started at, so the screen is the
+            # size in points asked for: 2560x1600 at 2× is the smallest,
+            # 1280 × 800.)
+            scale = float(first)
+            set_look(name, "light", scale)
+            drawn(pid, layers, scale, False)
+            for w in windows_of(name, pid):
+                if w.get("floating") or w.get("floats_always"):
+                    continue
+                tiled_windows.append(w["title"])
+                for layout, part in LAYOUTS:
+                    got = tiled(name, pid, w["id"], part)
+                    if got is None:
+                        seen.setdefault(("Error", w["title"], None, "tiling", f"never settled in {layout}"), []).append(f"{scale:g}×")
+                        continue
+                    frame, tile, least = got
+                    # Its least size (its frame's, tab and border with it)
+                    # more than the tile: kept bigger than it, or squeezed
+                    # under what it says it needs (app_server gives it the
+                    # tile either way, and what it draws is cut).
+                    over = frame[2] > tile[2] + 2 or frame[3] > tile[3] + 2
+                    if over or (least and (least[0] > frame[2] or least[1] > frame[3])):
+                        what = f"its least size, {least[0]} × {least[1]}," if least else "it"
+                        key = ("Error", w["title"], None, "tile-fit", f"{what} is more than {layout}'s tile, {min(frame[2], tile[2]):.0f} × {min(frame[3], tile[3]):.0f}")
+                        seen.setdefault(key, []).append(f"{scale:g}×")
+                    looks = [(None, drawn(pid, layers, scale, False))]
+                    shot = lambda tab: shots and picture(name, w["id"], scale, os.path.join(shots, f"{slug(app)}-{slug(layout)}{'-' + slug(tab) if tab else ''}.png"))
+                    shot(None)
+                    for title, tab, x, y in tabs(name, pid):
+                        if title != w["title"]:
+                            continue
+                        click(name, x, y)
+                        chosen(pid, tab)
+                        looks.append((tab, drawn(pid, layers, scale, False)))
+                        shot(tab)
+                        escape(name)
+                    for tab, found in looks:
+                        for window, f in found or []:
+                            key = (f["level"], window, tab, f["kind"], f["text"])
+                            seen.setdefault(key, []).append(f"{layout}")
         app_errors = [k for k in seen if k[0].lower() == "error"]
         app_reviews = [k for k in seen if k[0].lower() != "error"]
-        lines.append(f"{app}: {len(app_errors)} errors" + (f", {len(app_reviews)} to look at" if show_review else ""))
+        lines.append(f"{app}: {len(app_errors)} errors" + (f", {len(app_reviews)} to look at" if show_review else "")
+                     + (f" (tiled in each layout: {', '.join(tiled_windows) or 'none, as its windows float'})" if tiles and not layers else ""))
         for key in app_errors + (app_reviews if show_review else []):
             level, window, tab, kind, text = key
             lines.append(f"  - {level.lower()} {kind} in {window}{' ▸ ' + tab if tab else ''}: {text} ({', '.join(seen[key])})")
@@ -426,6 +544,10 @@ def main():
     keep = "--keep" in a
     use_cache = "--no-cache" not in a
     scales = [float(s) for s in (a[a.index("--scales") + 1].split(",") if "--scales" in a else ["1", "1.5", "2"])]
+    tiles = "--tiles" in a
+    shots = os.path.abspath(a[a.index("--shots") + 1]) if "--shots" in a else None
+    if shots:
+        os.makedirs(shots, exist_ok=True)
     screen = a[a.index("--screen") + 1] if "--screen" in a else "3024x1964"
     jobs = int(a[a.index("--jobs") + 1]) if "--jobs" in a else max(2, (os.cpu_count() or 4) * 3 // 4)
     # Background work beside the person's desktop: the lint and every
@@ -440,7 +562,7 @@ def main():
         os.sched_setscheduler(0, os.SCHED_IDLE, os.sched_param(0))
     except (OSError, AttributeError):
         pass
-    picked = [x for i, x in enumerate(a) if not x.startswith("--") and (i == 0 or a[i - 1] not in ("--scales", "--screen", "--jobs"))]
+    picked = [x for i, x in enumerate(a) if not x.startswith("--") and (i == 0 or a[i - 1] not in ("--scales", "--screen", "--jobs", "--shots"))]
     work = f"/var/tmp/olo-live-lint-{os.getpid()}"
     master = os.path.join(work, "home")
     specs = apps(master)
@@ -457,8 +579,8 @@ def main():
             return 0
     # Those whose build and lint are as when they came out clean: not again.
     all_themes = "--all-themes" in a
-    cache = load_cache() if use_cache and not all_themes else {}
-    sigs = {s[0]: signature(s[1][0], screen, ",".join(f"{x:g}" for x in scales), show_review) for s in specs}
+    cache = load_cache() if use_cache and not all_themes and not shots else {}
+    sigs = {s[0]: signature(s[1][0], screen, ",".join(f"{x:g}" for x in scales), show_review, tiles) for s in specs}
     fresh = [s for s in specs if cache.get(s[0], {}).get("sig") == sigs[s[0]] and cache[s[0]].get("errors") == 0]
     for s in fresh:
         print(f"{s[0]}: 0 errors (unchanged since it was clean)", flush=True)
@@ -483,7 +605,7 @@ def main():
     slots = list(range(len(specs)))
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=min(jobs, len(specs))) as pool:
-            futures = {pool.submit(lint_one, spec, slot, master, screen, scales, show_review, work, all_themes): spec for spec, slot in zip(specs, slots)}
+            futures = {pool.submit(lint_one, spec, slot, master, screen, scales, show_review, work, all_themes, tiles, shots): spec for spec, slot in zip(specs, slots)}
             for done in concurrent.futures.as_completed(futures):
                 spec = futures[done]
                 try:
