@@ -64,6 +64,25 @@ are universal and non-negotiable:
   size), compare before and after to show it changes what you meant.
   Before telling the person how something works (how to upgrade, what a
   command does), read the code that does it.
+- **Look at everything you change, as a designer would, before it's
+  done.** Picture every window and state a change touches (headless,
+  `tsession shot`; in light and dark, at 1× and 2× at least) and judge
+  each picture closely, zoomed in: spacing (nothing set right against
+  what's above or beside it, gaps that match where they should),
+  alignment (edges, baselines, columns), text cut or crowded, every
+  state (empty, full, an error, a long name), and how it sits with the
+  rest of the window. The lint and `tsession review` find overlaps and
+  overflows, not this: a status line set right under its paragraph
+  passed both on every Integrations tab and reached the person
+  (2026-11-18: "you should be visually reviewing everything you do").
+  Check the picture shows what you meant to show (the right tab, the
+  window in front) before judging it.
+- **A second pair of eyes on every picture.** Give all the pictures of
+  a change to Codex for a second review before it's committed:
+  `tools/dev/codex-look --about "WHAT CHANGED" PICTURE.png…`
+  (gpt-6.2-astra at medium effort, looking only). Check each thing it
+  finds against the picture yourself, fix what's real, and say in the
+  commit what it found and what you did about it.
 - **Leave the person's session alone.** Never reload, upgrade or install
   into it unless asked. To get work ready, run
   `cargo build --release --workspace`. The running session watches
@@ -125,7 +144,9 @@ are universal and non-negotiable:
   only happens on the person's real session, your first theories
   didn't hold), write the brief and start it early, and keep working
   on your own line meanwhile: two brains are better than one. It looks
-  and reports; you check what it found and do the work.
+  and reports; you check what it found and do the work. The other
+  exception: `tools/dev/codex-look`, the second look at every change's
+  pictures (above).
 - **Root-cause every problem; never work around it.** (Unsure of a
   cause, or it's a hard one? Start the `olo-debug-help` skill's helper
   alongside your own digging: it found in an hour what a day of

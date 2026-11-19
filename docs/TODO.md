@@ -13,11 +13,12 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Working on now
 
-- **Calendar: an event's notes scroll** (Ben, 2026-11-18: "in calendar
-  details notes needs a scrollbar and to be scrollable"): the event
-  window's Notes in a scroll view, its bar while they overflow, the
-  caret kept in sight as it's typed (the kit's multi-line field in a
-  `ScrollView`, for every app's).
+- **Deskbar: other workspaces' applications can start collapsed too**
+  (Ben, 2026-11-18, in Preferences ▸ Deskbar: "in addition to the other
+  displays workspaces start collapsed we should have other workspace on
+  the same display start collapsed too"): beside "Other displays'
+  applications start collapsed", the same for the other workspaces of
+  a display.
 - **Calendar: a preview pane** (Ben, 2026-11-18: "there should also be
   a preview pane where if i single click an event i see the details in
   the bottom 1/3 of the main area"): one click on an event shows what
@@ -307,6 +308,21 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Calendar: an event's notes scroll** (Ben, 2026-11-18: "in calendar
+  details notes needs a scrollbar and to be scrollable"): the event
+  window's Notes in a scroll view, its bar while they overflow, the
+  caret kept in sight as it's typed (the kit's multi-line field in a
+  `ScrollView`, for every app's). **Done**: the kit's multi-line field
+  has a scroll-view mode (`TextField::scrolled_by`: as tall as its lines
+  at the width it's given, its caret's line revealed through
+  `ScrollHandle::reveal`, which any view can ask now); the event window's
+  Notes is in a `ScrollView` whose bar shows while they overflow, and
+  all of its box takes a click (below the text, the caret goes to its
+  end: a click under a short note's went to nothing, and what was typed
+  next went to the title). Looked at headless at 1×, 1.5× and 2×: eight
+  lines typed, the view following the caret, the wheel scrolling it.
+  Try: a long note in an event.
 
 - **Integrations: a tab for each provider, Fastmail's like Google's**
   (Ben, 2026-11-18, after the Mail & Calendars tab showed his Google

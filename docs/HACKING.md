@@ -2643,7 +2643,16 @@ it.
   when it emits `Entered`), scrolled to keep the caret in view, each
   line's baseline on a device pixel; its owner sizes it from
   `rows_at(window, width)` and `TextField::line_height_for` (Telegram's
-  composer). Its hint is drawn as its first row of text is (a shaped line
+  composer), or puts it in a `ScrollView` with `scrolled_by(&handle)`:
+  then it's as tall as all its lines at the width it was laid out at
+  (told by `on_bounds_changed`, and built again), the view scrolls it
+  (the wheel, the touchpad, its bar, shown while it overflows), and its
+  caret's line is revealed after each edit or move
+  (`ScrollHandle::reveal`: `reveal_span` waited for the scroller's own
+  view to be built again, which a field, a view of its own, never made
+  happen), never as the person scrolls away. Its owner lets all of the
+  view take a click (Calendar's notes: a filler under the field puts the
+  caret at the end). Its hint is drawn as its first row of text is (a shaped line
   in the row's height), so the first letter typed lands where the hint
   was (drawn as a label it sat a device pixel higher at 1.5×, and the
   review found its line cut by the field's top). ⌘↑ and ⌘↓ are left to
@@ -19218,8 +19227,25 @@ working tree unchanged, no commits, the person's session left alone,
 headless tests under a `codex-` name, scratch in the brief's folder,
 no helper of its own), in the background, and writes `answer.md` and
 `log.txt` beside the brief. What it says is a lead: checked, then
-fixed by whoever asked. It is the one exception to "no forks or
+fixed by whoever asked. It is one of two exceptions to "no forks or
 subagents" (CLAUDE.md). `.claude/` is ignored but for `.claude/skills/`.
+
+**A second look at every change's pictures** (`tools/dev/codex-look`;
+Ben, 2026-11-18, after a status line set right under its paragraph
+reached him on every Integrations tab: "provide all screenshots of
+changes to a codex agent … using astra 6.2 on medium for a second
+review / set of eyes to identify anything you missed"): `codex-look
+--about "WHAT CHANGED" PICTURE.png…` hands the pictures to `codex exec
+-m gpt-6.2-astra -c model_reasoning_effort="medium" -s read-only` with
+a designer's brief (spacing, alignment, text cut or crowded, what's out
+of keeping), prints what it finds and keeps it as `codex-look.md`
+beside the first picture. It takes a minute or two. Its first look,
+at the Fastmail tab and Calendar's notes, found four things: one fixed
+(CalDAV's empty list worded as Google's), three judged and kept (a
+scrolled view's partial lines at its edges, as the kit's other views
+have them; Integrations' one height for every tab; a refused
+connection's wording, seen only against a made-up server). What it
+says is checked against the picture, as the debug helper's is.
 
 While the person controls a screen (Take Control), the viewer writes
 `NAME.control` (its pid) in the screens' folder, and `olo-screen`
