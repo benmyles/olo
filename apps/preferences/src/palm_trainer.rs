@@ -662,7 +662,7 @@ impl TrainerWindow {
     fn now(&self) -> String {
         let step = self.step;
         if self.done() {
-            return "That's all this step needs.".into();
+            return olo_kit::words::tr("That's all this step needs.").into();
         }
         let lead = step.words().1.to_owned();
         let Some(zone) = step.rest() else { return lead };
@@ -679,20 +679,20 @@ impl TrainerWindow {
         let Some(hand) = hand else { return place.into() };
         if step.points_while_resting() {
             if hand.held_ms < PALM_REST_MS {
-                return "Hold it there…".into();
+                return olo_kit::words::tr("Hold it there…").into();
             }
             return match FINGERS_PER_REST.saturating_sub(hand.fingers_while) {
-                0 => "Good. Now lift your hand.".into(),
-                n if step == Step::LowPalm => format!("Now point or tap with a finger above it: {n} more."),
-                n => format!("Now point or tap with a finger of your other hand: {n} more."),
+                0 => olo_kit::words::tr("Good. Now lift your hand.").into(),
+                n if step == Step::LowPalm => olo_kit::tr!("Now point or tap with a finger above it: {} more.", n),
+                n => olo_kit::tr!("Now point or tap with a finger of your other hand: {} more.", n),
             };
         }
         if hand.held_ms < REST_MS {
-            if step == Step::TypeWithPalms { "Keep typing…".into() } else { "Hold it there…".into() }
+            if step == Step::TypeWithPalms { olo_kit::words::tr("Keep typing…").into() } else { olo_kit::words::tr("Hold it there…").into() }
         } else if step == Step::TypeWithPalms {
-            "Now lift your hands, and rest them again as you type.".into()
+            olo_kit::words::tr("Now lift your hands, and rest them again as you type.").into()
         } else {
-            "Good. Now lift it.".into()
+            olo_kit::words::tr("Good. Now lift it.").into()
         }
     }
 
@@ -1130,9 +1130,9 @@ impl TrainerWindow {
             s => s.exercise().map_or(EXERCISES.len() + 1, |i| i + 1),
         };
         let where_ = match self.step.exercise() {
-            Some(i) => format!("Step {} of {}", i + 1, EXERCISES.len()),
-            None if self.step == Step::Intro => "Twelve exercises, then a try".to_owned(),
-            None => "Done with the exercises".to_owned(),
+            Some(i) => olo_kit::tr!("Step {} of {}", i + 1, EXERCISES.len()),
+            None if self.step == Step::Intro => olo_kit::words::tr("Twelve exercises, then a try").to_owned(),
+            None => olo_kit::words::tr("Done with the exercises").to_owned(),
         };
         let track = canvas(move |g, b| {
             let p = theme::palette();
@@ -1173,7 +1173,10 @@ impl TrainerWindow {
                 style::label(g, r.center().x, r.center().y, style::Align::Center, "Waiting for the touchpad…", style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::disabled_text(&p));
             }
             let n = l.contacts.len();
-            agent::record(g, agent::Node { role: "Image", name: Some("Your touchpad".into()), value: Some(format!("{n} touches").into()), bounds: r, enabled: true, ..Default::default() });
+            agent::record(
+                g,
+                agent::Node { role: "Image", name: Some(olo_kit::words::tr("Your touchpad").into()), value: Some(format!("{n} touches").into()), bounds: r, enabled: true, ..Default::default() },
+            );
             if fading {
                 g.paint_again_within(1.0 / 120.0);
             }
@@ -1196,7 +1199,10 @@ impl TrainerWindow {
                     animation(g, b, shown, t, &p);
                     g.paint_again_within(1.0 / 120.0);
                 }
-                agent::record(g, agent::Node { role: "Image", name: Some("Like this".into()), value: Some(shown.words().0.into()), bounds: b, enabled: true, ..Default::default() });
+                agent::record(
+                    g,
+                    agent::Node { role: "Image", name: Some(olo_kit::words::tr("Like this").into()), value: Some(shown.words().0.into()), bounds: b, enabled: true, ..Default::default() },
+                );
             })
             .w(px(w))
             .h(px(h));
@@ -1214,8 +1220,8 @@ impl TrainerWindow {
             let key = if self.step == Step::TypeWithPalms { "Return" } else { "Space" };
             let next = EXERCISES.get(self.step.exercise().unwrap_or(0) + 1);
             let detail = match next {
-                Some(n) => format!("Press {key} for the next: {}.", n.words().0),
-                None => format!("That's all of them. Press {key} to learn your hands."),
+                Some(n) => olo_kit::tr!("Press {} for the next: {}.", key, n.words().0),
+                None => olo_kit::tr!("That's all of them. Press {} to learn your hands.", key),
             };
             let banner = Banner::new(Tone::Success, "This step is done", detail).trailing(KeyHint::new(key, if next.is_some() { "Next step" } else { "Train" }));
             return slot.child(banner).into_element();
@@ -1224,13 +1230,13 @@ impl TrainerWindow {
         let back = canvas(|g, b| banner_back(g, b, None, &theme::palette())).absolute().inset_0();
         let mut row = div().flex().flex_row().items_center().gap(px(m::SPACING)).px(px(m::SPACING * 2.0)).size_full();
         let (good, text): (Option<bool>, String) = if self.quitting {
-            (None, "Press Esc again to quit: the touches so far are dropped. Space goes on.".into())
+            (None, olo_kit::words::tr("Press Esc again to quit: the touches so far are dropped. Space goes on.").into())
         } else if let Some(s) = &self.said {
             (Some(s.good), s.text.into())
         } else if self.live.lock().unwrap().axes.is_none() {
-            (None, "Waiting for the touchpad…".into())
+            (None, olo_kit::words::tr("Waiting for the touchpad…").into())
         } else if self.step.optional() {
-            (None, "If nothing shows on the touchpad, your shirt doesn't reach it: press Space to skip this.".into())
+            (None, olo_kit::words::tr("If nothing shows on the touchpad, your shirt doesn't reach it: press Space to skip this.").into())
         } else {
             (None, String::new())
         };
@@ -1282,30 +1288,34 @@ impl TrainerWindow {
             Some(Outcome::Kept(_)) if saved == Some(false) => (
                 false,
                 "Your palm model couldn't be saved",
-                format!(
-                    "It learned from {gathered} of your touches, but app_server didn't keep it: it's likely older than this Preferences. Upgrade Olo (the new build in Deskbar's tray), then train again."
+                olo_kit::tr!(
+                    "It learned from {} of your touches, but app_server didn't keep it: it's likely older than this Preferences. Upgrade Olo (the new build in Deskbar's tray), then train again.",
+                    gathered
                 ),
             ),
             Some(Outcome::Kept(_)) => (
                 true,
                 if saved == Some(true) { "Your palm model is saved, and in use" } else { "Your palm model is ready: saving…" },
-                format!(
-                    "Trained on {gathered} of your touches ({palms} palms, {} fingers). It's kept with your settings (and in backups); Preferences ▸ Touchpad & Mouse ▸ Touch shows it, and can turn it off or forget it.",
+                olo_kit::tr!(
+                    "Trained on {} of your touches ({} palms, {} fingers). It's kept with your settings (and in backups); Preferences ▸ Touchpad & Mouse ▸ Touch shows it, and can turn it off or forget it.",
+                    gathered,
+                    palms,
                     gathered - palms
                 ),
             ),
             Some(Outcome::Worse(r)) => (
                 false,
                 "The model wasn't good enough to keep",
-                format!(
-                    "Trained on {gathered} of your touches, it did worse than Olo's untrained model on the {} kept back to test it, so it wasn't saved and nothing changed. Train again, resting your hands as you really do.",
+                olo_kit::tr!(
+                    "Trained on {} of your touches, it did worse than Olo's untrained model on the {} kept back to test it, so it wasn't saved and nothing changed. Train again, resting your hands as you really do.",
+                    gathered,
                     r.contacts
                 ),
             ),
             Some(Outcome::TooFew) | None => (
                 false,
                 "Not enough touches to learn from",
-                "It needs at least three palms and three fingers among the touches it learns from. Train again and do each exercise as its film shows.".to_owned(),
+                olo_kit::words::tr("It needs at least three palms and three fingers among the touches it learns from. Train again and do each exercise as its film shows.").to_owned(),
             ),
         };
         // (As a finished step's: the outcome first, in a banner.)
@@ -1371,7 +1381,7 @@ fn results(r: &Report, kind: Kind) -> Element {
         .flex()
         .flex_col()
         .child(
-            StringView::new(format!("Tested on the {} touches kept back from training ({} palms, {} fingers):", r.contacts, r.palms, r.fingers))
+            StringView::new(olo_kit::tr!("Tested on the {} touches kept back from training ({} palms, {} fingers):", r.contacts, r.palms, r.fingers))
                 .size(style::LEAD_SIZE)
                 .height(style::line_row(style::LEAD_SIZE) + m::SPACING),
         )
@@ -1386,7 +1396,7 @@ fn results(r: &Report, kind: Kind) -> Element {
 /// (`ui_lint_the_palm_trainer`): a name, the step, and which state.
 #[cfg(test)]
 pub(crate) fn lint_states() -> Vec<(String, Step, u8)> {
-    let mut out = vec![("the introduction".to_owned(), Step::Intro, 0)];
+    let mut out = vec![(olo_kit::words::tr("the introduction").to_owned(), Step::Intro, 0)];
     for s in EXERCISES {
         for (v, how) in ["fresh", "halfway", "a miss", "done", "quitting", "a hand resting"].into_iter().enumerate() {
             if v == 5 && s.rest().is_none() {
@@ -1397,9 +1407,9 @@ pub(crate) fn lint_states() -> Vec<(String, Step, u8)> {
     }
     out.push(("training".into(), Step::Training, 0));
     for (v, how) in ["kept, saving", "kept and saved", "kept, not saved", "worse", "too few"].into_iter().enumerate() {
-        out.push((format!("the summary, {how}"), Step::Summary, v as u8));
+        out.push((olo_kit::tr!("the summary, {}", how), Step::Summary, v as u8));
     }
-    out.push(("the try".into(), Step::Test, 0));
+    out.push((olo_kit::words::tr("the try").into(), Step::Test, 0));
     out
 }
 
@@ -1537,7 +1547,7 @@ impl View for TrainerWindow {
             Step::Training => {
                 col = col.child(self.top(title.into(), lead.into()));
                 let fraction = *self.progress.lock().unwrap();
-                col = col.child(StatusBar::new(fraction).label(format!("Refining Olo's model on {} touches…", self.samples.len())));
+                col = col.child(StatusBar::new(fraction).label(olo_kit::tr!("Refining Olo's model on {} touches…", self.samples.len())));
             }
             Step::Summary => {
                 col = col.child(self.top(String::new(), String::new()));
@@ -1558,8 +1568,8 @@ impl View for TrainerWindow {
                         .items_center()
                         .gap(px(m::SPACING * 3.0))
                         .h(px(m::CONTROL_HEIGHT))
-                        .child(legend(|p| style::c(p.navigation_base), format!("A finger ({fingers} so far)")))
-                        .child(legend(|p| style::c(p.warning), format!("A palm, ignored ({palms} so far)"))),
+                        .child(legend(|p| style::c(p.navigation_base), olo_kit::tr!("A finger ({} so far)", fingers)))
+                        .child(legend(|p| style::c(p.warning), olo_kit::tr!("A palm, ignored ({} so far)", palms))),
                 );
             }
             _ => {}

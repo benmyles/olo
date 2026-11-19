@@ -107,11 +107,11 @@ fn link(proxy: olo_kit::Proxy) -> &'static Link {
             .spawn(move || {
                 while let Ok(job) = rx.recv() {
                     let error = match job {
-                        Job::Save(s) => s.save().err().map(|e| format!("Couldn't save: {e}")),
+                        Job::Save(s) => s.save().err().map(|e| olo_kit::tr!("Couldn't save: {}", e)),
                         Job::Reconnect => match phone::ask(&Request::Reconnect, Duration::from_secs(10)) {
                             Ok(r) if r.ok => None,
                             Ok(r) => r.error,
-                            Err(_) => Some("Olo’s phone service isn’t running.".to_owned()),
+                            Err(_) => Some(olo_kit::words::tr("Olo’s phone service isn’t running.").to_owned()),
                         },
                     };
                     let mut s = sh.lock().unwrap();
@@ -404,7 +404,7 @@ fn connect(ui: &mut Ui, st: &mut State, state: &PhoneState, error: Option<String
             };
             match ask {
                 Ask::Confirm(n) | Ask::ShowPasskey(n) => {
-                    ui.add(div().w_full().flex().flex_row().justify_center().child(StringView::new(format!("Does “{device}” show this number?")).bold(true)));
+                    ui.add(div().w_full().flex().flex_row().justify_center().child(StringView::new(olo_kit::tr!("Does “{}” show this number?", device)).bold(true)));
                     ui.add(code(format!("{n:06}")));
                     ui.add(div().w_full().flex().flex_row().justify_center().child(StringView::new("If it does, confirm here, and on the phone too.").dim(true)));
                     ui.space(m::SPACING * 0.5);
@@ -422,7 +422,7 @@ fn connect(ui: &mut Ui, st: &mut State, state: &PhoneState, error: Option<String
                 _ => {
                     // (A phone that asks another way: Bluetooth's own
                     // panel has every question.)
-                    ui.add(StringView::new(format!("“{device}” is asking something else to pair.")).wrap(true));
+                    ui.add(StringView::new(olo_kit::tr!("“{}” is asking something else to pair.", device)).wrap(true));
                     ui.add(div().flex().flex_row().child(Button::new("Open Bluetooth…").default(true).on_click(|_, _| {
                         crate::prefs().open("bluetooth");
                     })));
@@ -434,11 +434,11 @@ fn connect(ui: &mut Ui, st: &mut State, state: &PhoneState, error: Option<String
             let ready = state.link == PhoneLink::Ready;
             let (first, rows) = match state.kind {
                 Kind::IPhone => (
-                    format!("On “{}”: Settings ▸ Bluetooth ▸ tap ⓘ beside this computer, and turn these on. They can take a minute or two to appear there; leaving that page and opening it again shows them sooner. (If this computer is listed twice, look in both.)", state.name),
+                    olo_kit::tr!("On “{}”: Settings ▸ Bluetooth ▸ tap ⓘ beside this computer, and turn these on. They can take a minute or two to appear there; leaving that page and opening it again shows them sooner. (If this computer is listed twice, look in both.)", state.name),
                     vec![("Show Notifications", ready), ("Sync Contacts", state.contacts)],
                 ),
                 Kind::Android => (
-                    format!("On “{}”: allow this computer to see your messages and contacts when it asks (or in Bluetooth, the gear beside this computer).", state.name),
+                    olo_kit::tr!("On “{}”: allow this computer to see your messages and contacts when it asks (or in Bluetooth, the gear beside this computer).", state.name),
                     vec![("Text messages", ready), ("Contacts", state.contacts)],
                 ),
             };
@@ -450,10 +450,10 @@ fn connect(ui: &mut Ui, st: &mut State, state: &PhoneState, error: Option<String
                 // (There, and still not spoken to: why, as Bluetooth
                 // says it.)
                 PhoneLink::Away if !state.trouble.is_empty() => state.trouble.clone(),
-                PhoneLink::Away => format!("“{}” isn’t in reach. Is it nearby, unlocked, with Bluetooth on?", state.name),
+                PhoneLink::Away => olo_kit::tr!("“{}” isn’t in reach. Is it nearby, unlocked, with Bluetooth on?", state.name),
                 PhoneLink::Taken => state.trouble.clone(),
-                PhoneLink::Ready => "Messages are coming. Contacts follow once Sync Contacts is on.".to_owned(),
-                _ => "Waiting for the phone… this page follows it by itself.".to_owned(),
+                PhoneLink::Ready => olo_kit::words::tr("Messages are coming. Contacts follow once Sync Contacts is on.").to_owned(),
+                _ => olo_kit::words::tr("Waiting for the phone… this page follows it by itself.").to_owned(),
             };
             let mut row = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(StringView::new(waiting).dim(true).wrap(true)));
             if state.link == PhoneLink::Away {
@@ -499,8 +499,8 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let connected = state.link.connected();
     let status = ui.collect(|ui| {
         let what = match state.link {
-            PhoneLink::Allow => format!("Waiting for “{}” to allow it (its switches for this computer, in its Bluetooth settings).", state.name),
-            PhoneLink::Away => format!("“{}” is out of reach or its Bluetooth is off. It’s tried again by itself.", state.name),
+            PhoneLink::Allow => olo_kit::tr!("Waiting for “{}” to allow it (its switches for this computer, in its Bluetooth settings).", state.name),
+            PhoneLink::Away => olo_kit::tr!("“{}” is out of reach or its Bluetooth is off. It’s tried again by itself.", state.name),
             PhoneLink::Taken => state.trouble.clone(),
             other => format!("{}: {}", state.name, other.words()),
         };
@@ -580,7 +580,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let right = ui.collect(|ui| {
         let items = ui.collect(|ui| {
             let said = if settings.codes { "Codes texted to this phone are offered in the browser tab waiting for them." } else { "Codes texted to this phone aren’t looked for." };
-            ui.add(StringView::new(format!("{said} What’s looked in for codes, and where they go: Security ▸ Passwords.")).wrap(true));
+            ui.add(StringView::new(olo_kit::tr!("{} What’s looked in for codes, and where they go: Security ▸ Passwords.", said)).wrap(true));
             ui.add(div().flex().flex_row().child(Button::new("Security…").on_click(|_, _| crate::prefs().handle_args(&["passwords".to_owned()]))));
         });
         ui.add(BBox::new("One-Time Codes").child(div().flex().flex_col().gap(px(m::SPACING)).py(px(m::SPACING * 0.5)).children(items)));
@@ -621,11 +621,11 @@ pub fn codes(ui: &mut Ui) {
     let items = ui.collect(|ui| {
         ui.label("Look for codes in:");
         if phone {
-            ui.add(CheckBox::new(format!("Text messages to “{}”", state.name), settings.codes).on_toggle(toggle(|s, on| s.codes = on)));
+            ui.add(CheckBox::new(olo_kit::tr!("Text messages to “{}”", state.name), settings.codes).on_toggle(toggle(|s, on| s.codes = on)));
         }
         for account in &mail {
             let address = account.address.clone();
-            ui.add(CheckBox::new(format!("Mail to {} ({})", account.address, account.provider.name()), watched(account)).on_toggle(move |on: &bool, _: &mut WindowCx| {
+            ui.add(CheckBox::new(olo_kit::tr!("Mail to {} ({})", account.address, account.provider.name()), watched(account)).on_toggle(move |on: &bool, _: &mut WindowCx| {
                 let mut s = link.shared.lock().unwrap().settings.clone();
                 s.unwatched_mail.retain(|a| *a != address);
                 if !*on {

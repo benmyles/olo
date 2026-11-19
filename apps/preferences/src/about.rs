@@ -176,7 +176,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             .flex_row()
             .gap(px(m::SPACING))
             .child(icon)
-            .child(div().flex().flex_col().pt(px(6.0)).child(title).child(StringView::new(format!("Olo Desktop, version {}", env!("CARGO_PKG_VERSION"))).dim(true))),
+            .child(div().flex().flex_col().pt(px(6.0)).child(title).child(StringView::new(olo_kit::tr!("Olo Desktop, version {}", env!("CARGO_PKG_VERSION"))).dim(true))),
     );
     let facts = st.facts.lock().unwrap().clone();
     let rows = ui.collect(|ui| {
@@ -214,8 +214,8 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     // A restart takes a moment; don't let clicks pile up meanwhile.
     let settling = st.restarted.is_some_and(|t| t.elapsed() < Duration::from_secs(5));
     let note = match (&st.error, pid, settling) {
-        (Some(e), _, _) => format!("Couldn't restart: {e}"),
-        (None, None, _) => "Not running under olo-session.".to_owned(),
+        (Some(e), _, _) => olo_kit::tr!("Couldn't restart: {}", e),
+        (None, None, _) => olo_kit::words::tr("Not running under olo-session.").to_owned(),
         (None, Some(_), true) => "Restarting…".to_owned(),
         (None, Some(_), false) => String::new(),
     };

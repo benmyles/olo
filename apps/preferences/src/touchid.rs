@@ -75,14 +75,14 @@ fn link(proxy: olo_kit::Proxy) -> &'static Link {
                     let fingers = Some(if fp::available() {
                         fp::fingers(&me).map_err(|e| {
                             if e.to_string().contains("Not Authorized") {
-                                "Fingerprints can only be changed from a session logged in at this computer.".to_owned()
+                                olo_kit::words::tr("Fingerprints can only be changed from a session logged in at this computer.").to_owned()
                             } else {
                                 tracing::warn!("fprintd: {e}");
-                                "The fingerprint sensor isn't answering.".to_owned()
+                                olo_kit::words::tr("The fingerprint sensor isn't answering.").to_owned()
                             }
                         })
                     } else {
-                        Err("There's no fingerprint sensor, or fprintd isn't running.".into())
+                        Err(olo_kit::words::tr("There's no fingerprint sensor, or fprintd isn't running.").into())
                     });
                     let changed = {
                         let mut s = sh.lock().unwrap();
@@ -106,9 +106,9 @@ fn link(proxy: olo_kit::Proxy) -> &'static Link {
                             s.busy = false;
                             s.error = r.err().map(|e| {
                                 tracing::warn!("fprintd: {e}");
-                                "The fingerprint couldn't be removed.".to_owned()
+                                olo_kit::words::tr("The fingerprint couldn't be removed.").to_owned()
                             });
-                            s.note = s.error.is_none().then(|| format!("{} was removed.", fp::finger_name(&finger)));
+                            s.note = s.error.is_none().then(|| olo_kit::tr!("{} was removed.", fp::finger_name(&finger)));
                         }
                     }
                     proxy.send(Msg::Redraw);
@@ -126,7 +126,7 @@ fn enroll(sh: &Arc<Mutex<Shared>>, proxy: &olo_kit::Proxy, me: &str, finger: Str
         let mut s = sh.lock().unwrap();
         s.error = None;
         s.note = None;
-        s.enrolling = Some(Enrolling { finger: finger.clone(), stages: 0, passed: 0, message: "Getting the sensor ready…".into(), stop: stop.clone() });
+        s.enrolling = Some(Enrolling { finger: finger.clone(), stages: 0, passed: 0, message: olo_kit::words::tr("Getting the sensor ready…").into(), stop: stop.clone() });
     }
     proxy.send(Msg::Redraw);
     let r = fp::enroll(me, &finger, &stop, |e| {
@@ -135,11 +135,11 @@ fn enroll(sh: &Arc<Mutex<Shared>>, proxy: &olo_kit::Proxy, me: &str, finger: Str
             match e {
                 EnrollEvent::Ready { stages } => {
                     en.stages = stages;
-                    en.message = "Touch the sensor, lift, and touch again.".into();
+                    en.message = olo_kit::words::tr("Touch the sensor, lift, and touch again.").into();
                 }
                 EnrollEvent::Stage => {
                     en.passed += 1;
-                    en.message = "Good. Lift, and touch again, a little differently.".into();
+                    en.message = olo_kit::words::tr("Good. Lift, and touch again, a little differently.").into();
                 }
                 EnrollEvent::Retry(why) => en.message = why,
                 EnrollEvent::Done => {}
@@ -152,14 +152,14 @@ fn enroll(sh: &Arc<Mutex<Shared>>, proxy: &olo_kit::Proxy, me: &str, finger: Str
     let mut s = sh.lock().unwrap();
     let cancelled = s.enrolling.take().is_some_and(|e| e.stop.is_stopped());
     match r {
-        Ok(true) => s.note = Some(format!("{} was added.", fp::finger_name(&finger))),
+        Ok(true) => s.note = Some(olo_kit::tr!("{} was added.", fp::finger_name(&finger))),
         Ok(false) if cancelled => {}
         Ok(false) => {
-            s.error.get_or_insert_with(|| "Enrolling didn't finish.".to_owned());
+            s.error.get_or_insert_with(|| olo_kit::words::tr("Enrolling didn't finish.").to_owned());
         }
         Err(e) => {
             tracing::warn!("fprintd: {e}");
-            s.error = Some("The fingerprint sensor couldn't be used.".into());
+            s.error = Some(olo_kit::words::tr("The fingerprint sensor couldn't be used.").into());
         }
     }
 }
@@ -187,11 +187,12 @@ fn fake_worker(sh: &Arc<Mutex<Shared>>, proxy: &olo_kit::Proxy, rx: &std::sync::
         match req {
             Request::Delete(f) => {
                 fingers.retain(|x| *x != f);
-                sh.lock().unwrap().note = Some(format!("{} was removed.", fp::finger_name(&f)));
+                sh.lock().unwrap().note = Some(olo_kit::tr!("{} was removed.", fp::finger_name(&f)));
             }
             Request::Enroll(f) => {
                 let stop = Stop::default();
-                sh.lock().unwrap().enrolling = Some(Enrolling { finger: f.clone(), stages: 5, passed: 0, message: "Touch the sensor, lift, and touch again.".into(), stop: stop.clone() });
+                sh.lock().unwrap().enrolling =
+                    Some(Enrolling { finger: f.clone(), stages: 5, passed: 0, message: olo_kit::words::tr("Touch the sensor, lift, and touch again.").into(), stop: stop.clone() });
                 for _ in 0..5 {
                     proxy.send(Msg::Redraw);
                     std::thread::sleep(Duration::from_millis(1500));
@@ -200,14 +201,14 @@ fn fake_worker(sh: &Arc<Mutex<Shared>>, proxy: &olo_kit::Proxy, rx: &std::sync::
                     }
                     if let Some(e) = sh.lock().unwrap().enrolling.as_mut() {
                         e.passed += 1;
-                        e.message = "Good. Lift, and touch again, a little differently.".into();
+                        e.message = olo_kit::words::tr("Good. Lift, and touch again, a little differently.").into();
                     }
                 }
                 let mut s = sh.lock().unwrap();
                 s.enrolling = None;
                 if !stop.is_stopped() {
                     fingers.push(f.clone());
-                    s.note = Some(format!("{} was added.", fp::finger_name(&f)));
+                    s.note = Some(olo_kit::tr!("{} was added.", fp::finger_name(&f)));
                 }
             }
         }
@@ -262,7 +263,7 @@ fn fingers(ui: &mut Ui, st: &mut State) {
     let enrolling = sh.enrolling.as_ref().map(|e| (e.finger.clone(), e.stages, e.passed, e.message.clone(), e.stop.clone()));
     drop(sh);
 
-    ui.note(format!("A finger on the fingerprint sensor can stand for your password. Fingers enrolled for {}:", user()));
+    ui.note(olo_kit::tr!("A finger on the fingerprint sensor can stand for your password. Fingers enrolled for {}:", user()));
     let selected = st.list.state().single().and_then(|i| fingers.get(i)).cloned();
     let free: Vec<&'static str> = FINGERS.iter().copied().filter(|f| !fingers.iter().any(|e| e == f)).collect();
     // The usual choices first.
@@ -311,7 +312,7 @@ fn fingers(ui: &mut Ui, st: &mut State) {
 
     if let Some((finger, stages, passed, message, stop)) = enrolling {
         let fraction = if stages == 0 { 0.0 } else { passed as f32 / stages as f32 };
-        ui.add(StatusBar::new(fraction).label(format!("Enrolling your {}", fp::finger_name(&finger).to_lowercase())).trailing(format!("{passed} of {stages}")));
+        ui.add(StatusBar::new(fraction).label(olo_kit::tr!("Enrolling your {}", fp::finger_name(&finger).to_lowercase())).trailing(format!("{passed} of {stages}")));
         ui.label(message);
         ui.add(Button::new("Cancel").id("finger-enroll-cancel").on_click(move |_, _| {
             let stop = stop.clone();
@@ -322,7 +323,7 @@ fn fingers(ui: &mut Ui, st: &mut State) {
             }
         }));
     } else if let Some(finger) = st.confirm.clone() {
-        ui.label(format!("Remove the {}? It will no longer unlock anything.", fp::finger_name(&finger).to_lowercase()));
+        ui.label(olo_kit::tr!("Remove the {}? It will no longer unlock anything.", fp::finger_name(&finger).to_lowercase()));
         let cancel = ui.on_click_view(|v, cx| {
             if let Some(st) = state_of(v) {
                 st.confirm = None;

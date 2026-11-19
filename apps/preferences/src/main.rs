@@ -137,7 +137,7 @@ pub fn ask_program(name: &str, args: &[&str]) -> Result<String, String> {
     let mut c = why.chars();
     Err(match c.next() {
         Some(first) => first.to_uppercase().chain(c).collect(),
-        None => "Olo Doctor couldn't set it.".to_owned(),
+        None => olo_kit::words::tr("Olo Doctor couldn't set it.").to_owned(),
     })
 }
 

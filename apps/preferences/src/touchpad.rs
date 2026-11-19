@@ -166,7 +166,7 @@ const ACCELS: [(&str, &str); 2] = [("adaptive", "Adaptive"), ("flat", "None (fla
 /// A menu of `choices` (value, name) for a string setting.
 fn strings(ui: &mut Ui, id: &str, label: &str, choices: &[(&str, &str)], value: &str, set: impl Fn(&mut Settings, String) + 'static) {
     let owned: Vec<(String, &str)> = choices.iter().map(|(v, n)| (v.to_string(), *n)).collect();
-    let label = SharedString::from(label.to_owned());
+    let label = olo_kit::words::of_text(label);
     ui.choose(id, &owned, &value.to_owned(), |f| f.label(label).divider(130.0), set);
 }
 
@@ -346,7 +346,7 @@ fn touch(ui: &mut Ui, t: &TouchpadSettings, pad: Option<&InputDeviceInfo>) {
                         );
                     });
                     if let Some((press, release)) = pad.and_then(|p| p.driver_click) {
-                        ui.note(format!("The pad clicks at {press}/{release} (all contacts together); with a palm on it, Olo counts the click only if the fingers press that hard alone."));
+                        ui.note(olo_kit::tr!("The pad clicks at {}/{} (all contacts together); with a palm on it, Olo counts the click only if the fingers press that hard alone.", press, release));
                     }
                 }
             });
@@ -423,7 +423,7 @@ fn problem(ui: &mut Ui, text: String) {
 fn mice_boxes(ui: &mut Ui, devices: Option<&[InputDeviceInfo]>) {
     let all = devices.unwrap_or(&[]);
     if let Some(r) = all.iter().find_map(remapper) {
-        problem(ui, format!("{r} is grabbing input devices: a mouse it has grabbed moves through its virtual pointer, and settings made here don't reach it."));
+        problem(ui, olo_kit::tr!("{} is grabbing input devices: a mouse it has grabbed moves through its virtual pointer, and settings made here don't reach it.", r));
     }
     let found: Vec<&InputDeviceInfo> = all.iter().filter(|d| d.kind == DeviceKind::Mouse && remapper(d).is_none() && d.bus != "virtual").collect();
     // (Two columns: the mice found, and what's for every mouse, the
@@ -494,21 +494,21 @@ fn one_mouse(ui: &mut Ui, d: &InputDeviceInfo) {
         match model {
             Some(m) => {
                 facts.extend(m.sensor.map(|s| format!("{s} sensor")));
-                facts.extend(m.max_dpi.map(|n| format!("up to {} dpi", mice::thousands(n))));
+                facts.extend(m.max_dpi.map(|n| olo_kit::tr!("up to {} dpi", mice::thousands(n))));
             }
             None => facts.extend(mice::maker(d.vendor).filter(|maker| !d.name.contains(maker)).map(str::to_owned)),
         }
-        facts.extend(d.dpi.map(|n| format!("{} dpi as it comes", mice::thousands(n))));
+        facts.extend(d.dpi.map(|n| olo_kit::tr!("{} dpi as it comes", mice::thousands(n))));
         let receiver = model.is_some_and(|m| m.quirks.contains(&Quirk::Receiver));
         match d.bus.as_str() {
-            "usb" if receiver => facts.push("USB receiver".into()),
+            "usb" if receiver => facts.push(olo_kit::words::tr("USB receiver").into()),
             "usb" => facts.push("USB".into()),
             "bluetooth" => facts.push("Bluetooth".into()),
             _ => {}
         }
         if d.pointing_stick {
             // (Its ids are PS/2's, the same for every one.)
-            facts = vec!["Built into the keyboard".into()];
+            facts = vec![olo_kit::words::tr("Built into the keyboard").into()];
         } else if d.vendor != 0 {
             facts.push(key.clone());
         }
@@ -533,7 +533,7 @@ fn one_mouse(ui: &mut Ui, d: &InputDeviceInfo) {
         });
         let class = model.map_or(Class::Everyday, |m| m.class);
         match s.mice.get(&key) {
-            None => ui.note(format!("Follows Other Mice below. Recommended for it: {}.", class.short())),
+            None => ui.note(olo_kit::tr!("Follows Other Mice below. Recommended for it: {}.", class.short())),
             Some(t) if t.profile == "custom" => {
                 let k = key.clone();
                 ui.slider(
@@ -563,7 +563,7 @@ fn one_mouse(ui: &mut Ui, d: &InputDeviceInfo) {
             ui.add(StringView::new(format!("• {}", q.describe())).wrap(true));
         }
         if d.may_sleep {
-            problem(ui, "USB power management may put it to sleep, and then it loses the first movement when the hand moves again.".into());
+            problem(ui, olo_kit::words::tr("USB power management may put it to sleep, and then it loses the first movement when the hand moves again.").into());
         }
     });
 }
@@ -574,25 +574,26 @@ fn model_status(trained: Option<&olo_protocol::touchpad::PalmModel>, on: bool, k
     // (Trained on another kind of pad: not this one's.)
     let trained = trained.filter(|m| olo_palm::Kind::of_model(m) == kind);
     match trained {
-        _ if !on && kind.sized() => "Off: palms are told apart by their size alone.".into(),
-        _ if !on => "Off: palms are what the touchpad says they are.".into(),
+        _ if !on && kind.sized() => olo_kit::words::tr("Off: palms are told apart by their size alone.").into(),
+        _ if !on => olo_kit::words::tr("Off: palms are what the touchpad says they are.").into(),
         None => {
             let own = kind.base_model();
-            format!(
-                "In use: Olo's own for a {}, made from {} touches of real hands on one; it caught {:.0}% of palms and took {:.0}% of fingers for palms. Train for Your Palm fits it to yours.",
+            olo_kit::tr!(
+                "In use: Olo's own for a {}, made from {} touches of real hands on one; it caught {}% of palms and took {}% of fingers for palms. Train for Your Palm fits it to yours.",
                 kind.name(),
                 own.contacts,
-                own.palms_caught * 100.0,
-                own.fingers_lost * 100.0
+                format!("{:.0}", own.palms_caught * 100.0),
+                format!("{:.0}", own.fingers_lost * 100.0)
             )
         }
         Some(m) => {
             let when = jiff::Timestamp::from_second(m.trained as i64).ok().map(|t| t.to_zoned(jiff::tz::TimeZone::system()).strftime("%-d %B %Y").to_string()).unwrap_or_default();
-            format!(
-                "In use: yours, trained {when} on {} touches; on touches kept back it caught {:.0}% of palms and took {:.0}% of fingers for palms.",
+            olo_kit::tr!(
+                "In use: yours, trained {} on {} touches; on touches kept back it caught {}% of palms and took {}% of fingers for palms.",
+                when,
                 m.contacts,
-                m.palms_caught * 100.0,
-                m.fingers_lost * 100.0
+                format!("{:.0}", m.palms_caught * 100.0),
+                format!("{:.0}", m.fingers_lost * 100.0)
             )
         }
     }

@@ -87,7 +87,7 @@ fn try_service(address: &str, password: &str, service: Service) -> Result<Option
             use olo_calendar::account::{self, Provider, Secret};
             let account = account::Account { provider: Provider::Fastmail, address: address.to_owned(), server: String::new() };
             account::check(&account, &Secret::Password(password.to_owned())).map(|c| Some(c.len())).map_err(|e| match e {
-                olo_calendar::dav::Error::SignIn => "Calendar: Fastmail didn’t take the app password for calendars (it needs access to them).".to_owned(),
+                olo_calendar::dav::Error::SignIn => olo_kit::words::tr("Calendar: Fastmail didn’t take the app password for calendars (it needs access to them).").to_owned(),
                 e => format!("Calendar: {}", sentence(&e.to_string())),
             })
         }
@@ -98,7 +98,7 @@ fn try_service(address: &str, password: &str, service: Service) -> Result<Option
 /// Blocking.
 fn stands(account: &Account) -> Stands {
     let Some(password) = fastmail::password(&account.address) else {
-        return Stands::Failed("Its app password isn’t in the keyring: remove it and add it again.".into());
+        return Stands::Failed(olo_kit::words::tr("Its app password isn’t in the keyring: remove it and add it again.").into());
     };
     let mut calendars = None;
     for s in Service::ALL.into_iter().filter(|s| account.ticked(*s)) {
@@ -164,7 +164,7 @@ impl State {
                 (Account { address: "ada@example.org".into(), services: vec![Service::Mail, Service::Calendar] }, Stands::Signed(Some(3))),
                 (
                     Account { address: "ada.lovelace@analytical-engines.example.net".into(), services: vec![Service::Mail] },
-                    Stands::Failed("Mail: Fastmail didn’t take the address and app password.".into()),
+                    Stands::Failed(olo_kit::words::tr("Mail: Fastmail didn’t take the address and app password.").into()),
                 ),
             ]);
         } else {
@@ -197,7 +197,7 @@ impl State {
         std::thread::spawn(move || {
             if on {
                 let tried = match fastmail::password(&address) {
-                    None => Err("Its app password isn’t in the keyring: remove it and add it again.".to_owned()),
+                    None => Err(olo_kit::words::tr("Its app password isn’t in the keyring: remove it and add it again.").to_owned()),
                     Some(p) => try_service(&address, &p, service),
                 };
                 if let Err(why) = tried {
@@ -222,7 +222,7 @@ impl State {
         if !address.contains('@') || password.is_empty() || matches!(*self.trying.lock().unwrap(), Adding::Trying(_)) {
             return;
         }
-        *self.trying.lock().unwrap() = Adding::Trying("Signing in to Fastmail…".into());
+        *self.trying.lock().unwrap() = Adding::Trying(olo_kit::words::tr("Signing in to Fastmail…").into());
         let (trying, proxy) = (self.trying.clone(), self.proxy.clone());
         std::thread::spawn(move || {
             let mut works = Vec::new();
@@ -234,7 +234,7 @@ impl State {
                 }
             }
             let now = if works.is_empty() {
-                Adding::Failed(format!("Fastmail didn’t take the address and app password: {}", why.join(" ")))
+                Adding::Failed(olo_kit::tr!("Fastmail didn’t take the address and app password: {}", why.join(" ")))
             } else {
                 // (The tab hears its file change, and reads it again.)
                 match fastmail::add(&address, &password, &works) {
@@ -309,9 +309,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         for (account, stands) in list {
             let how = match stands {
                 Stands::Checking => "checking…".to_owned(),
-                Stands::Signed(Some(1)) => "signed in, 1 calendar".to_owned(),
-                Stands::Signed(Some(n)) => format!("signed in, {n} calendars"),
-                Stands::Signed(None) => "signed in".to_owned(),
+                Stands::Signed(Some(1)) => olo_kit::words::tr("signed in, 1 calendar").to_owned(),
+                Stands::Signed(Some(n)) => olo_kit::tr!("signed in, {} calendars", n),
+                Stands::Signed(None) => olo_kit::words::tr("signed in").to_owned(),
                 Stands::Failed(why) => why.clone(),
             };
             let mut r = row().child(div().flex_1().min_w_0().flex().flex_col().child(StringView::new(account.address.clone()).cut(true)).child(StringView::new(how).small(true).dim(true).wrap(true)));

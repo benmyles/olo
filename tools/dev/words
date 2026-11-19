@@ -24,6 +24,18 @@
       literal copied into a `String` to hand on as the literal, or a
       helper taking `&str` to make `&'static str`.
 
+  words sweep [--dry] FILE…
+      FILE's words made at run time put through the words layer: a
+      `format!` sentence (a phrase in it) becomes `olo_kit::tr!` (its
+      number formats moved into its parts), a literal of two words or
+      more copied into a String (`.into()`, `.to_owned()`,
+      `.to_string()`) becomes `olo_kit::words::tr("…")` copied. Never in
+      a test module, a log line, an id, or a name (capitalized words
+      with a digit). Prints each change; --dry only prints. Read the
+      result as a diff: a command it runs, a file's or a keyring item's
+      name, a fixture's data or an agent's command-line output must stay
+      as they were (`format!`, the literal). Then `words gather --write`.
+
   words missing LANG
       The words of en.txt LANG's catalog doesn't have yet, one a line.
 
@@ -87,8 +99,8 @@ CALLS = (r"(?:Button::new|\.label|\.title|\.item|\.check|\.note|StringView::new|
          r"\.group|\.section)")
 LITERAL = re.compile(CALLS + r'\(\s*(?:[a-z_&.]+,\s*)?"((?:[^"\\]|\\.)+)"')
 # A sentence that counts is known by its other form (`words::count(n,
-# "{n} window", "{n} windows")`).
-COUNTING = re.compile(r'words::count\([^"]*"(?:[^"\\]|\\.)*",\s*"((?:[^"\\]|\\.)+)"')
+# "{n} window", "{n} windows")`, or `count(` brought in by a `use`).
+COUNTING = re.compile(r'\bcount\([^"]*"(?:[^"\\]|\\.)*",\s*"((?:[^"\\]|\\.)+)"')
 # Programs without windows: their words are a log's.
 SERVICES = ("apps/chime/", "apps/fans/")
 
@@ -180,6 +192,166 @@ def unasked(lint):
     print(f"words: {total} shown, never asked for, in {len(by)} programs", file=sys.stderr)
 
 
+# `words sweep`: a file's run-time words through the layer.
+SENTENCE = re.compile(r"[A-Za-z’']{2,}[,.;:]? +[A-Za-z’'(]")
+
+
+def words_in(text):
+    return len(re.findall(r"[A-Za-z’']{2,}", re.sub(r"\{[^}]*\}", " ", text)))
+
+
+def a_name(text):
+    """A product's or a place's name: every word capitalized, a digit in it
+    ("Kingston DataTraveler 3.0")."""
+    ws = re.findall(r"[A-Za-z][A-Za-z’']*", text)
+    return bool(re.search(r"\d", text)) and ws and all(w[0].isupper() for w in ws)
+
+
+def scan_string(src, i):
+    """src[i] is a '"': the end index (after the closing quote) of the literal."""
+    j = i + 1
+    while j < len(src):
+        if src[j] == "\\":
+            j += 2
+            continue
+        if src[j] == '"':
+            return j + 1
+        j += 1
+    raise ValueError("unterminated string")
+
+
+def scan_args(src, i):
+    """src[i] is just after the format string: the arguments up to the closing ')' (split at top-level commas), and the index after ')'."""
+    depth, j, start, args = 0, i, i, []
+    while j < len(src):
+        c = src[j]
+        if c == '"':
+            j = scan_string(src, j)
+            continue
+        if c == "'" and re.match(r"'(\\.|[^\\'])'", src[j:j + 4]):
+            j = src.index("'", j + 1) + 1
+            continue
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            if depth == 0:
+                if src[start:j].strip():
+                    args.append(src[start:j].strip())
+                return args, j + 1
+            depth -= 1
+        elif c == "," and depth == 0:
+            if src[start:j].strip():
+                args.append(src[start:j].strip())
+            start = j + 1
+        j += 1
+    raise ValueError("unterminated format!")
+
+
+def convert_format(fmt, args):
+    """fmt: the literal's contents. Returns (pattern, new args) or None."""
+    named = {}
+    positional = []
+    for a in args:
+        m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$", a, re.S)
+        if m and not a.startswith(("==",)):
+            named[m.group(1)] = m.group(2)
+        else:
+            positional.append(a)
+    out, new, nxt, i = [], [], 0, 0
+    while i < len(fmt):
+        c = fmt[i]
+        if fmt.startswith("{{", i) or fmt.startswith("}}", i):
+            out.append(fmt[i:i + 2])
+            i += 2
+            continue
+        if c == "{":
+            close = fmt.index("}", i)
+            spec = fmt[i + 1:close]
+            name, _, form = spec.partition(":")
+            if name == "":
+                if nxt >= len(positional):
+                    return None
+                expr = positional[nxt]
+                nxt += 1
+            elif name.isdigit():
+                expr = positional[int(name)]
+            elif name in named:
+                expr = named[name]
+            elif re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+                expr = name
+            else:
+                return None
+            if form:
+                expr = f'format!("{{:{form}}}", {expr})'
+            new.append(expr)
+            out.append("{}")
+            i = close + 1
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out), new
+
+
+SKIP_LINE = re.compile(r"tracing::|eprintln!|println!|log::|warn!|info!|debug!|error!|trace!|panic!|assert|expect\(|unreachable!|todo!|\.id\(|Command::new|\.arg\(|\.env\(|header|Header|tr!\(|words::")
+
+
+def sweep(path, dry):
+    src = open(path).read()
+    test = src.find("#[cfg(test)]\nmod tests")
+    end = test if test >= 0 else len(src)
+    out, i, changes = [], 0, []
+    while i < end:
+        m = re.compile(r'format!\(\s*"').search(src, i, end)
+        n = re.compile(r'"((?:[^"\\\n]|\\.){2,})"\.(into|to_owned|to_string)\(\)').search(src, i, end)
+        nxt = min([x for x in (m, n) if x], key=lambda x: x.start(), default=None)
+        if nxt is None:
+            break
+        line_start = src.rfind("\n", 0, nxt.start()) + 1
+        line_end = src.find("\n", nxt.start())
+        line = src[line_start:line_end]
+        out.append(src[i:nxt.start()])
+        if nxt is m:
+            q = src.index('"', m.start())
+            q_end = scan_string(src, q)
+            fmt = src[q + 1:q_end - 1]
+            try:
+                args, after = scan_args(src, q_end)
+            except ValueError:
+                out.append(src[nxt.start():q_end]); i = q_end; continue
+            # (The comma before the first argument.)
+            if args and args[0] == "":
+                args = args[1:]
+            conv = None
+            bare = re.sub(r"\{[^}]*\}", " ", fmt)
+            if re.search(r"[A-Za-z]{3,}", bare) and re.search(r"[A-Za-z’']+ +[A-Za-z’']+", bare) and not SKIP_LINE.search(line) and "\\n" not in fmt and not a_name(bare):
+                conv = convert_format(fmt, args)
+            if conv:
+                pattern, new = conv
+                text = f'olo_kit::tr!("{pattern}"' + "".join(f", {a}" for a in new) + ")"
+                out.append(text)
+                changes.append((src.count("\n", 0, nxt.start()) + 1, src[nxt.start():after].replace("\n", " ")[:110], text[:110]))
+                i = after
+            else:
+                out.append(src[nxt.start():after])
+                i = after
+        else:
+            lit, how = n.group(1), n.group(2)
+            if words_in(lit) >= 2 and SENTENCE.search(lit) and not SKIP_LINE.search(line) and "{" not in lit and not a_name(lit):
+                text = f'olo_kit::words::tr("{lit}").{how}()'
+                out.append(text)
+                changes.append((src.count("\n", 0, nxt.start()) + 1, n.group(0)[:110], text[:110]))
+            else:
+                out.append(n.group(0))
+            i = n.end()
+    out.append(src[i:])
+    new_src = "".join(out)
+    for line, a, b in changes:
+        print(f"{path}:{line}: {a}\n    → {b}")
+    if not dry and new_src != src:
+        open(path, "w").write(new_src)
+    return len(changes)
+
+
 def french(t):
     for mark in (":", ";", "?", "!"):
         t = t.replace(" " + mark, "\u202f" + mark)
@@ -256,6 +428,10 @@ def main():
     cmd = a.pop(0)
     if cmd == "gather":
         gather("--write" in a, "--no-lints" not in a)
+    elif cmd == "sweep" and a:
+        dry = "--dry" in a
+        total = sum(sweep(f, dry) for f in a if f != "--dry")
+        print(f"words: {total} changed{' (dry)' if dry else ''}", file=sys.stderr)
     elif cmd == "unasked":
         unasked("--no-lint" not in a)
     elif cmd == "missing" and a:

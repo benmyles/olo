@@ -56,9 +56,9 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
     }
     let edited = e.edited(ui.cx);
     // The resolver the servers are, if they're one.
-    let mut names: Vec<SharedString> = vec!["Each Network's Own".into()];
+    let mut names: Vec<SharedString> = vec![olo_kit::words::tr("Each Network's Own").into()];
     names.extend(RESOLVERS.iter().map(|(n, _)| SharedString::from(*n)));
-    names.push("Servers of Your Own".into());
+    names.push(olo_kit::words::tr("Servers of Your Own").into());
     let chosen = if edited.servers.is_empty() { 0 } else { RESOLVERS.iter().position(|(_, a)| words_of(a) == edited.servers).map_or(names.len() - 1, |i| i + 1) };
     let servers = e.servers.downgrade();
     let pick = move |i: &usize, cx: &mut WindowCx| {
@@ -87,8 +87,8 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
         .servers
         .iter()
         .find(|s| !valid_server(s))
-        .map(|s| format!("“{s}” isn't an IP address."))
-        .or_else(|| edited.searches.iter().find(|d| !valid_domain(d)).map(|d| format!("“{d}” isn't a domain.")));
+        .map(|s| olo_kit::tr!("“{}” isn't an IP address.", s))
+        .or_else(|| edited.searches.iter().find(|d| !valid_domain(d)).map(|d| olo_kit::tr!("“{}” isn't a domain.", d)));
     if let Some(why) = &bad {
         ui.label(why.clone());
     }

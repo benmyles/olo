@@ -51,7 +51,7 @@ impl Edit {
         let dns = self.dns.read(cx).text().split([',', ' ']).map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned).collect();
         let mtu = match self.mtu.read(cx).text().trim() {
             "" => 0,
-            t => t.parse::<u32>().map_err(|_| "The MTU is a number of bytes.".to_owned())?,
+            t => t.parse::<u32>().map_err(|_| olo_kit::words::tr("The MTU is a number of bytes.").to_owned())?,
         };
         if !self.manual {
             return Ok(nm::Addressing { manual: false, dns, ipv6: self.ipv6, mtu, ..nm::Addressing::default() });
@@ -75,7 +75,7 @@ fn ipv6_choices(now: nm::Ipv6) -> Vec<(nm::Ipv6, &'static str)> {
 /// portal wants a sign-in first).
 fn state_text(d: &Device, behind: bool) -> String {
     match d.state {
-        20 => "No cable".into(),
+        20 => olo_kit::words::tr("No cable").into(),
         100 => {
             let name = d.connection.as_ref().map(|c| format!(" with “{c}”")).unwrap_or_default();
             let speed = d.speed.map(|s| format!(", {}", nm::speed_text(s))).unwrap_or_default();

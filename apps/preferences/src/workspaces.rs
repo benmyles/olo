@@ -160,7 +160,7 @@ pub fn backgrounds_ui(ui: &mut Ui, st: &mut BackgroundsState) {
                 move || again.invalidate()
             })
         });
-        items.push(Thumbnail { picture: own_picture, color: None, label: "Your Own".into(), key: None });
+        items.push(Thumbnail { picture: own_picture, color: None, label: olo_kit::words::tr("Your Own").into(), key: None });
         // (One in another collection: none of these is.)
         let selected = match s.wallpaper.as_deref() {
             None => Some(0),

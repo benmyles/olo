@@ -45,7 +45,7 @@ impl Edit {
 pub fn ui(ui: &mut Ui, st: &mut State, extra: &Extra, busy: bool) {
     let (applied, text) = match &extra.hosts {
         None => return ui.note("Reading /etc/hosts…"),
-        Some(Err(e)) => return ui.note(format!("/etc/hosts can't be read: {e}")),
+        Some(Err(e)) => return ui.note(olo_kit::tr!("/etc/hosts can't be read: {}", e)),
         Some(Ok(h)) => h.clone(),
     };
     let e = &mut st.hosts;

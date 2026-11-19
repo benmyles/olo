@@ -51,13 +51,13 @@ pub fn ui(ui: &mut Ui, outputs: &[OutputInfo]) {
                 WindowingMode::Focus => "Only the active window shows, zoomed, with its dialogs over it.",
             };
             // Two lines for each mode, so nothing below moves as it changes.
-            ui.note(format!("{what} Choose a workspace's own from Deskbar's tray."));
+            ui.note(olo_kit::tr!("{} Choose a workspace's own from Deskbar's tray.", what));
             let layouts: Vec<SharedString> = TilingLayout::ALL.iter().map(|l| SharedString::from(l.title())).collect();
             let i = TilingLayout::ALL.iter().position(|l| *l == s.tiling.layout).unwrap_or(0);
             ui.menu("tiling-layout", layouts, i, |f| f.label("Auto-tiling layout:"), |s, i| s.tiling.layout = TilingLayout::ALL[i]);
             // (The one a workspace starts with: each keeps its own, chosen
             // from Deskbar's tray.)
-            ui.note(format!("{} A workspace starts with this; choose its own from Deskbar's tray.", s.tiling.layout.detail()));
+            ui.note(olo_kit::tr!("{} A workspace starts with this; choose its own from Deskbar's tray.", s.tiling.layout.detail()));
             // Where a new window goes among the tiles (Halves always halves
             // the active one).
             let news: Vec<SharedString> = NewWindows::ALL.iter().map(|n| SharedString::from(n.title())).collect();
@@ -108,7 +108,7 @@ pub fn ui(ui: &mut Ui, outputs: &[OutputInfo]) {
             }
             for a in &s.tiling.app_workspaces {
                 let id = a.app_id.clone();
-                ui.check(format!("{} on Workspace {}", app_name(&a.app_id), a.workspace + 1), true, move |s, on| {
+                ui.check(olo_kit::tr!("{} on Workspace {}", app_name(&a.app_id), a.workspace + 1), true, move |s, on| {
                     if !on {
                         s.tiling.set_app_workspace(&id, None);
                     }

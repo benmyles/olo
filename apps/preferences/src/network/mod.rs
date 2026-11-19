@@ -233,12 +233,12 @@ fn link(proxy: olo_kit::Proxy) -> &'static Link {
                         Request::Delete(p) => nm::delete_profile(&p).map_err(|e| (e, "The VPN couldn't be removed.")),
                         Request::ImportWireguard(path) => {
                             let name = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-                            done = Some(format!("“{name}” is imported."));
+                            done = Some(olo_kit::tr!("“{}” is imported.", name));
                             match std::fs::read_to_string(&path) {
                                 Ok(text) => nm::import_wireguard(&name, &text).map_err(|e| {
                                     said = Some(match &e {
-                                        olo_system::Error::Failure(why) => format!("It isn't a WireGuard configuration: {why}."),
-                                        _ => "The VPN couldn't be saved.".to_owned(),
+                                        olo_system::Error::Failure(why) => olo_kit::tr!("It isn't a WireGuard configuration: {}.", why),
+                                        _ => olo_kit::words::tr("The VPN couldn't be saved.").to_owned(),
                                     });
                                     (e, "")
                                 }),
@@ -263,11 +263,11 @@ fn link(proxy: olo_kit::Proxy) -> &'static Link {
                             ask(serde_json::json!({ "conf": c }))
                         }
                         Request::Hosts { text, was } => {
-                            done = Some("Saved to /etc/hosts.".to_owned());
+                            done = Some(olo_kit::words::tr("Saved to /etc/hosts.").to_owned());
                             ask(serde_json::json!({ "hosts": { "text": text, "was": was } }))
                         }
                         Request::Shape { interface, shaping } => {
-                            done = Some(if shaping.is_on() { format!("Shaping {interface}.") } else { format!("{interface} isn't shaped.") });
+                            done = Some(if shaping.is_on() { format!("Shaping {interface}.") } else { olo_kit::tr!("{} isn't shaped.", interface) });
                             ask(serde_json::json!({ "shape": { "interface": interface, "shaping": shaping } }))
                         }
                         Request::Wireless(on) => nm::set_wireless_enabled(on).map_err(|e| (e, "Wi-Fi couldn't be turned on or off.")),
@@ -424,7 +424,9 @@ pub fn least_width() -> u32 {
 
 /// A text field that redraws the panel as it's typed in.
 fn field(cx: &mut Cx<PanelView>, hint: &str) -> Child<TextField> {
-    let hint = hint.to_owned();
+    // (The panel's own words, found by what they say: copied into a
+    // String they were never looked up.)
+    let hint = olo_kit::words::of_text(hint);
     let f = crate::form::text_field(cx, |f| f.hint(hint));
     cx.subscribe(&f, |_, e: &TextFieldEvent, cx| {
         if matches!(e, TextFieldEvent::Changed) {
@@ -461,7 +463,7 @@ const SIGN_IN_NEEDED: &str = "sign-in needed";
 
 /// `label` in the label column, `then` from the divider on.
 fn labelled(divider: f32, label: &str, then: impl IntoElement) -> Element {
-    div().flex().flex_row().items_center().child(div().w(px(divider)).flex_shrink_0().child(StringView::new(label.to_owned()))).child(div().flex_1().min_w(px(0.0)).child(then))
+    div().flex().flex_row().items_center().child(div().w(px(divider)).flex_shrink_0().child(StringView::new(olo_kit::words::of_text(label)))).child(div().flex_1().min_w(px(0.0)).child(then))
 }
 
 impl State {
@@ -613,17 +615,17 @@ fn wifi(ui: &mut Ui, st: &mut State, status: &Status, busy: bool) {
         return;
     };
     let text = if !status.wireless_hardware {
-        "Turned off by the hardware switch.".to_owned()
+        olo_kit::words::tr("Turned off by the hardware switch.").to_owned()
     } else if !status.wireless_enabled {
         "Off".to_owned()
     } else if let (true, Some(name)) = (dev.connected(), &dev.connection) {
         let behind = status.portal.as_ref().is_some_and(|p| p.device == dev.path);
         if name == "Olo Hotspot" {
-            "Making a hotspot (below)".to_owned()
+            olo_kit::words::tr("Making a hotspot (below)").to_owned()
         } else if behind {
-            format!("Connected to “{name}”: {SIGN_IN_NEEDED}")
+            olo_kit::tr!("Connected to “{}”: {}", name, SIGN_IN_NEEDED)
         } else {
-            format!("Connected to “{name}”")
+            olo_kit::tr!("Connected to “{}”", name)
         }
     } else if dev.state == 120 || (dev.state == 30 && dev.failure().is_some()) {
         dev.failure().unwrap_or("Couldn't connect").to_owned()
@@ -770,7 +772,7 @@ fn hotspot(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: bo
     ui.bbox("Hotspot", |ui| match &extra.hotspot {
         Some(h) => {
             let active = h.active.clone();
-            ui.add(div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().child(StringView::new(format!("Sharing this computer's connection as “{}”.", h.ssid)))).child(
+            ui.add(div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().child(StringView::new(olo_kit::tr!("Sharing this computer's connection as “{}”.", h.ssid)))).child(
                 Button::new("Stop").enabled(!busy).on_click(move |_, _| {
                     let _ = link.tx.send(Request::Deactivate(active.clone()));
                 }),
@@ -945,7 +947,7 @@ impl View for EnterpriseForm {
             })
         }
         let mut col = div().size_full().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET));
-        col = col.child(StringView::new(format!("“{}” is an enterprise network.", self.net.ssid)));
+        col = col.child(StringView::new(olo_kit::tr!("“{}” is an enterprise network.", self.net.ssid)));
         let eaps: Vec<SharedString> = nm::Eap::ALL.iter().map(|e| SharedString::from(e.name())).collect();
         col = col.child(MenuField::new("ent-eap", eaps, self.eap).label("Security:").divider(SHEET_DIVIDER).on_change(set(cx, |f, i| f.eap = i)));
         let file_row = |label: &str, path: Option<&std::path::Path>, which: u8, cx: &mut Cx<Self>| {

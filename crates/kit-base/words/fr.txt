@@ -10,11 +10,20 @@
 (No title)
 (Sans titre)
 
+(The desktop is {} now: these show when it's {}.)
+(Le bureau est maintenant {} : ceux-ci s’affichent quand il est {}.)
+
+(not in force: {})
+(pas en vigueur : {})
+
 *.qcow2, *.vdi, *.vmdk (large, changing while in use)
 *.qcow2, *.vdi, *.vmdk (volumineux, modifiés en cours d’utilisation)
 
 *.swp, *~, .#*
 *.swp, *~, .#*
+
+/etc/hosts can't be read: {}
+Impossible de lire /etc/hosts : {}
 
 0.3 seconds
 0,3 seconde
@@ -133,6 +142,9 @@ Comptes 1Password…
 2 seconds
 2 secondes
 
+2. When the key’s light starts blinking, touch {}. A touch before it blinks does nothing.
+2. Quand le voyant de la clé se met à clignoter, touchez {}. Un toucher avant le clignotement ne fait rien.
+
 24 hours
 24 heures
 
@@ -177,6 +189,9 @@ Horloge sur 24 heures
 
 30 seconds
 30 secondes
+
+32 letters and digits
+32 lettres et chiffres
 
 3G
 3G
@@ -238,6 +253,9 @@ Horloge sur 24 heures
 8 weeks
 8 semaines
 
+8+ characters
+8 caractères ou plus
+
 9
 9
 
@@ -265,6 +283,9 @@ Un jeton classique avec la portée « repo », ou un jeton à granularité fin
 A code that is surely an agent’s tab’s is put in there, and you’re told; one that isn’t sure is asked about.
 Un code qui appartient sûrement à l’onglet d’un agent y est placé et vous en êtes averti ; en cas de doute, on vous le demande.
 
+A copy to a stick or a card goes at the disk's own pace, {} waiting in memory at most, so its progress is true and ejecting is quick.
+Une copie vers une clé USB ou une carte va au rythme du disque, {} au plus attendant en mémoire, si bien que sa progression est juste et l’éjection rapide.
+
 A day
 Un jour
 
@@ -273,6 +294,12 @@ Un disque à part, ou un dossier sur l’un d’eux : vos sauvegardes à l’�
 
 A dotted line
 Une ligne pointillée
+
+A finger ({} so far)
+Un doigt ({} pour l’instant)
+
+A finger on the fingerprint sensor can stand for your password. Fingers enrolled for {}:
+Un doigt sur le lecteur d’empreintes peut remplacer votre mot de passe. Doigts enregistrés pour {} :
 
 A letter goes on everything you can pick: controls, menu items, windows, Deskbar. Type one to pick it, or to letter what’s inside; Backspace goes back, Esc puts them away.
 Tout ce que vous pouvez choisir reçoit une lettre : commandes, menus, fenêtres, Deskbar. Tapez-la pour le choisir ou marquer son contenu ; Retour arrière recule d’un niveau, Échap masque les lettres.
@@ -292,11 +319,20 @@ Un mois
 A notch scrolls as far in Chrome and other programs as in Olo’s apps.
 Un cran fait défiler autant dans Chrome et les autres programmes que dans les apps d’Olo.
 
+A palm, ignored ({} so far)
+Une paume, ignorée ({} pour l’instant)
+
 A path: /…, ~/… or a name here
 Un chemin : /…, ~/… ou un nom d’ici
 
 A picture of your own
 Une image à vous
+
+A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
+Un programme réveillé pendant que les processeurs sont occupés s’exécute aussitôt, au lieu d’attendre le prochain tic du noyau (préemption complète). {} ordonnance en ce moment et en décide lui-même : ceci vaut pour l’ordonnanceur du noyau.
+
+A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick, up to a millisecond (full preemption).
+Un programme réveillé pendant que les processeurs sont occupés s’exécute aussitôt, au lieu d’attendre jusqu’à une milliseconde le prochain tic du noyau (préemption complète).
 
 A red dot for an app with something unread in it
 Un point rouge pour une app qui contient du non-lu
@@ -363,6 +399,9 @@ About Olo Desktop
 
 About…
 À propos…
+
+Acceleration:
+Accélération :
 
 Accent
 Accent
@@ -508,6 +547,9 @@ D’après Aqua de Mac OS X : plus brillant et plus bleu, aux contours doux.
 After a minute
 Après une minute
 
+After tap and drag:
+Après toucher et glisser :
+
 After the active window
 Après la fenêtre active
 
@@ -597,6 +639,9 @@ Tous les comptes ensemble
 All day
 Toute la journée
 
+All of Olo’s {} words are in {}.
+Les {} mots d’Olo existent en {}.
+
 All {} connected.
 Les {} sont connectés.
 
@@ -605,6 +650,9 @@ Autoriser
 
 Along the Top
 En haut
+
+Also from the Deskbar: click the cup.
+Aussi depuis la Deskbar : cliquez sur la tasse.
 
 Also leave out:
 Exclure aussi :
@@ -639,11 +687,20 @@ Toujours une paume à partir de
 Always on Top
 Toujours au premier plan
 
+An administrator's password is needed.
+Le mot de passe d’un administrateur est nécessaire.
+
+An application is keeping the display awake.
+Une application garde l’écran allumé.
+
 An etched line
 Une ligne gravée
 
 An iPhone first: Bluetooth doesn’t yet present this computer as an iPhone expects, and the iPhone would offer it its notifications but not its contacts. Olo Doctor fixes it (Present as Hands-Free); then pair.
 D’abord un iPhone : Bluetooth ne présente pas encore cet ordinateur comme un iPhone l’attend, et l’iPhone lui proposerait ses notifications mais pas ses contacts. Olo Doctor corrige cela (se présenter en mains libres) ; ensuite, jumelez.
+
+And I/O under
+Et E/S sous
 
 Anonymous identity:
 Identité anonyme :
@@ -656,6 +713,15 @@ Répondre
 
 Answer 1Password’s op command
 Répondre à la commande op de 1Password
+
+Answer questions about the forecast
+Répondre aux questions sur la prévision
+
+Answer questions about your calendars
+Répondre aux questions sur vos calendriers
+
+Answer questions in the command palette
+Répondre dans la palette de commandes
 
 Any touch
 Tout toucher
@@ -678,6 +744,9 @@ Apparence
 Applications
 Applications
 
+Applied: kept for this computer, and set again at every start.
+Appliqué : conservé pour cet ordinateur et réappliqué à chaque démarrage.
+
 Apply
 Appliquer
 
@@ -699,6 +768,12 @@ Apps toujours flottantes
 Apps With Their Own Workspace
 Apps avec leur propre espace de travail
 
+Apps appear here once they have sent a notification.
+Les apps apparaissent ici dès qu’elles ont envoyé une notification.
+
+Apps get the microphone's sound as it is.
+Les apps reçoivent le son du micro tel quel.
+
 Archive
 Archiver
 
@@ -719,6 +794,12 @@ Comme Workbench dessinait ses icônes : faces plates avec les seize crayons d�
 
 As fast as the computer goes: the processors kept quick and the firmware's power limits raised, the fans as needed. The battery runs down sooner.
 Au maximum : processeurs rapides, limites du firmware relevées, ventilateurs au besoin. La batterie dure moins.
+
+As it goes
+Aussi vite que possible
+
+As set now
+Comme réglé maintenant
 
 As the Mode
 Comme le mode
@@ -756,11 +837,17 @@ Demander l’accès complet au démarrage
 Ask for sudo Passwords in a Window
 Demander les mots de passe sudo dans une fenêtre
 
+Ask what to do about urgent ones
+Demander quoi faire des urgents
+
 Asked now:
 Demandé maintenant :
 
 Asking Telegram…
 Demande à Telegram…
+
+Asking it…
+Demande…
 
 Asking…
 Demande…
@@ -776,6 +863,9 @@ Astra 6
 
 At full speed
 À pleine vitesse
+
+At least
+Au moins
 
 At the Bottom
 En bas
@@ -818,6 +908,12 @@ Détection automatique de l’oreille : pause quand vous retirez un AirPod
 
 Automatic wakes NVIDIA's GPU on battery too
 Automatique réveille aussi le GPU NVIDIA sur batterie
+
+Automatic: {} for AV1 and VP9 (Fedora's driver has no H.264 or HEVC: Olo Doctor installs the full one){}. {}
+Automatique : {} pour AV1 et VP9 (le pilote de Fedora n’a ni H.264 ni HEVC : Olo Doctor installe le complet){}. {}
+
+Automatic: {} for every video (H.264, HEVC, VP9, AV1), 4K at 60 frames a second with a quarter of a core. {}
+Automatique : {} pour toute vidéo (H.264, HEVC, VP9, AV1), 4K à 60 images par seconde avec un quart de cœur. {}
 
 Automatically
 Automatiquement
@@ -863,6 +959,9 @@ Bruit de fond
 
 Background noise:
 Bruit de fond :
+
+Background noise: {}
+Bruit de fond : {}
 
 Background:
 Fond :
@@ -915,6 +1014,9 @@ Batterie et veille
 Be the SSH agent (ssh, git)
 Être l’agent SSH (ssh, git)
 
+Before import {}.{}
+Avant l’import {}.{}
+
 Begin
 Commencer
 
@@ -939,6 +1041,12 @@ Bleu :
 Bluetooth
 Bluetooth
 
+Bluetooth devices and Touch ID fingerprints belong to each computer: pair and enrol them again here.
+Les appareils Bluetooth et les empreintes Touch ID appartiennent à chaque ordinateur : jumelez-les et enregistrez-les de nouveau ici.
+
+Bluetooth devices, Wi-Fi networks and Touch ID fingerprints belong to each computer: pair, join and enrol them again here.
+Les appareils Bluetooth, les réseaux Wi-Fi et les empreintes Touch ID appartiennent à chaque ordinateur : jumelez, rejoignez et enregistrez-les de nouveau ici.
+
 Bluetooth is off.
 Bluetooth est éteint.
 
@@ -953,6 +1061,9 @@ Corps
 
 Bold
 Gras
+
+Boosted {} dB (suggested)
+Amplifié de {} dB (suggéré)
 
 Bottom Half
 Moitié inférieure
@@ -984,17 +1095,32 @@ Corrections de bugs
 Builds
 Compilations
 
+Built into the keyboard
+Intégré au clavier
+
+Built-in Keyboard
+Clavier intégré
+
 Bulleted List
 Liste à puces
 
 Busy Wi-Fi
 Wi-Fi saturé
 
+Busy at least
+Occupé dès
+
 Buttons
 Boutons
 
 By
 Par
+
+By a parent leaving
+Par parent, dès
+
+By at least
+D’au moins
 
 By hand
 À la main
@@ -1046,6 +1172,9 @@ Calendrier affiche les calendriers de vos comptes sur d’autres serveurs CalDAV
 
 Calendar:
 Calendrier :
+
+Calendar: Fastmail didn’t take the app password for calendars (it needs access to them).
+Calendrier : Fastmail n’a pas accepté le mot de passe d’app pour les calendriers (il lui faut y avoir accès).
 
 Calendar: Next Event
 Calendrier : prochain événement
@@ -1152,6 +1281,9 @@ Rechercher des mises à jour
 Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
 Vérifier rapidement que les sauvegardes choisies sont complètes : tout ce qu’il leur faut est là, les sommes de contrôle du stockage correspondent à l’envoi, et quelques échantillons sont relus (comme après chaque sauvegarde). Ce qui est endommagé est réparé autant que possible.
 
+Checking your password…
+Vérification de votre mot de passe…
+
 Checking…
 Vérification…
 
@@ -1167,8 +1299,14 @@ Ne rien choisir
 Choose a Folder…
 Choisir un dossier…
 
+Choose a backup to see what it holds before importing it.
+Choisissez une sauvegarde pour voir ce qu’elle contient avant de l’importer.
+
 Choose a network to join it.
 Choisissez un réseau pour vous y connecter.
+
+Choose a setting, then play the original or its sound: switching goes on from the same place.
+Choisissez un réglage, puis écoutez l’original ou son rendu : en changeant, la lecture reprend au même endroit.
 
 Choose a widget to change it, or add one.
 Choisissez un widget pour le modifier, ou ajoutez-en un.
@@ -1218,6 +1356,9 @@ Nettoyer maintenant
 Clean up the microphone's sound
 Nettoyer le son du micro
 
+Cleaning up the microphone's sound: {} ms behind{}.
+Nettoyage du son du micro : {} ms de retard{}.
+
 Clear
 Effacer
 
@@ -1244,6 +1385,9 @@ Effacées
 
 Click
 Clic
+
+Click a shortcut to give it other keys.
+Cliquez sur un raccourci pour lui donner d’autres touches.
 
 Click an event to see it here; double-click it to change it.
 Cliquez sur un événement pour le voir ici ; double-cliquez pour le modifier.
@@ -1344,6 +1488,9 @@ Couleur :
 Coloured by use: green unused, red used up.
 Coloré selon l’usage : vert inutilisé, rouge épuisé.
 
+Colours:
+Couleurs :
+
 Column View
 Présentation en colonnes
 
@@ -1400,6 +1547,18 @@ Se connecter avec un jeton…
 
 Connected as {}, through {}.
 Connecté en tant que {}, via {}.
+
+Connected to “{}”
+Connecté à « {} »
+
+Connected to “{}”: {}
+Connecté à « {} » : {}
+
+Connected {}, but its sign-in wasn’t allowed {}: Sign In Again and allow everything it asks.
+Connecté {}, mais sa connexion n’a pas été autorisée {} : reconnectez-vous et autorisez tout ce qu’il demande.
+
+Connection:
+Connexion :
 
 Contacts
 Contacts
@@ -1491,6 +1650,18 @@ Copier dans le presse-papiers
 Core
 Cœur
 
+Couldn't restart: {}
+Redémarrage impossible : {}
+
+Couldn't save the setting: {}
+Impossible d’enregistrer le réglage : {}
+
+Couldn't save: {}
+Enregistrement impossible : {}
+
+Couldn’t sign out ({}).
+Déconnexion impossible ({}).
+
 Count accounts turned off or signed out
 Compter les comptes désactivés ou déconnectés
 
@@ -1526,6 +1697,9 @@ Personnalisé
 
 Custom Message…
 Message personnalisé…
+
+Custom {} once applied (on {} until then)
+Personnalisé {} une fois appliqué ({} d’ici là)
 
 Customize…
 Personnaliser…
@@ -1689,6 +1863,12 @@ Horloge de la Deskbar
 Deskbar shows: {}
 La Deskbar affiche : {}
 
+Deskbar: a {} widget measured “{}”, which this computer hasn't; it measures {} instead.
+Deskbar : un widget {} mesurait « {} », que cet ordinateur n’a pas ; il mesure {} à la place.
+
+Desktop (Preferences)
+Bureau (Préférences)
+
 Desktop Background
 Fond du bureau
 
@@ -1740,8 +1920,20 @@ Disque :
 DiskBackup
 DiskBackup
 
+DiskBackup backs up to its Drive and couldn’t stop: {}
+DiskBackup sauvegarde dans son Drive et n’a pas pu s’arrêter : {}
+
 DiskBackup copies your files, encrypted, every hour, and keeps older copies too, so any file can be brought back as it was. Where should the backups go?
 DiskBackup copie vos fichiers, chiffrés, toutes les heures, et garde aussi les copies plus anciennes, pour que chaque fichier puisse revenir tel qu’il était. Où doivent aller les sauvegardes ?
+
+DiskBackup couldn’t: {}
+DiskBackup n’a pas pu : {}
+
+DiskBackup is setting up its backups in {}’s Google Drive…
+DiskBackup prépare ses sauvegardes dans le Google Drive de {}…
+
+DiskBackup is stopping its backups to Google Drive…
+DiskBackup arrête ses sauvegardes vers Google Drive…
 
 DiskBackup’s own app, from before. Bring it in for Mail and Calendar too; the backups stay put.
 L’app propre à DiskBackup, d’avant. Intégrez-la aussi pour Mail et Calendrier ; les sauvegardes restent en place.
@@ -1767,6 +1959,10 @@ Séparateur
 Do Not Disturb
 Ne pas déranger
 
+Do Not Disturb (for {n} more minutes)
+one: Ne pas déranger (encore {n} minute)
+other: Ne pas déranger (encore {n} minutes)
+
 Dockerfile
 Dockerfile
 
@@ -1775,6 +1971,9 @@ Document
 
 Documents
 Documents
+
+Does “{}” show this number?
+« {} » affiche-t-il ce nombre ?
 
 Domain:
 Domaine :
@@ -1787,6 +1986,9 @@ OK
 
 Done Editing
 Terminer la modification
+
+Done with the exercises
+Exercices terminés
 
 Don’t Trust
 Ne pas faire confiance
@@ -1833,6 +2035,9 @@ Chaque compte
 Each agent screen keeps what was done on it and the frames it drew, to replay or export as a video. The oldest goes first.
 Chaque écran d’agent garde ce qui y a été fait et les images qu’il a dessinées, à rejouer ou exporter en vidéo. Le plus ancien part en premier.
 
+Each core ({})
+Chaque cœur ({})
+
 Each display has workspaces of its own.
 Chaque écran a ses propres espaces de travail.
 
@@ -1851,8 +2056,14 @@ Chacun est un réglage de l’ordinateur, pas de ce compte : en changer demand
 Each kind opens in this app wherever you open it, in Olo and in other programs. Tracker's Open With ▸ Always Open With chooses too.
 Chaque type s’ouvre dans cette app où que vous l’ouvriez, dans Olo et les autres programmes. Ouvrir avec ▸ Toujours ouvrir avec, dans Tracker, le choisit aussi.
 
+Each network's own
+Ceux de chaque réseau
+
 Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
 Chacun de ceux-ci, une fois configuré, remplace votre mot de passe partout où il est demandé (Passwords, sudo dans Terminal, demandes d’administrateur ; un visage ou une empreinte aussi aux écrans de verrouillage et de connexion), tous à la fois : celui que vous utilisez en premier.
+
+Each repository gets a folder in there: olo’s worktree fix-tabs goes in {}/olo/fix-tabs.
+Chaque dépôt y a un dossier : le worktree fix-tabs d’olo va dans {}/olo/fix-tabs.
 
 Each setting tried shows here.
 Chaque réglage essayé s’affiche ici.
@@ -1941,6 +2152,12 @@ Anglais (États-Unis)
 Enhancements
 Améliorations
 
+Enrolling didn't finish.
+L’enregistrement ne s’est pas terminé.
+
+Enrolling your {}
+Enregistrement de votre {}
+
 Enter Full Screen
 Plein écran
 
@@ -2001,6 +2218,9 @@ Tous les disques
 Every interface
 Toutes les interfaces
 
+Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
+Chaque frappe et chaque image passent par la boucle du serveur de fenêtres et son fil d’entrée. Avec ceci activé, ils ont le processeur {}, l’un des plus rapides, pour eux seuls : compilations, navigateurs et tous vos autres programmes tournent sur les autres, si bien que rien ne peut les faire attendre.
+
 Every month
 Tous les mois
 
@@ -2040,6 +2260,9 @@ Exporter…
 Expression
 Expression
 
+Extended desktop
+Bureau étendu
+
 Extensions
 Extensions
 
@@ -2073,8 +2296,23 @@ Fable 5.1
 Face Unlock
 Déverrouillage facial
 
+Face unlock is installed only in the person's own session (polkit asks there).
+Le déverrouillage facial ne s’installe que dans la session propre de la personne (polkit y demande).
+
 Face unlock isn't installed.
 Le déverrouillage facial n’est pas installé.
+
+Face unlock wasn't installed: {}
+Le déverrouillage facial n’a pas été installé : {}
+
+Face unlock wasn't removed: {}
+Le déverrouillage facial n’a pas été retiré : {}
+
+Face unlock's service isn't in this build (build the whole workspace).
+Le service de déverrouillage facial n’est pas dans cette compilation (compilez tout le workspace).
+
+Face unlock's service isn't in this build.
+Le service de déverrouillage facial n’est pas dans cette compilation.
 
 Fade
 Fondu
@@ -2105,6 +2343,9 @@ Le plus rapide
 
 Fastmail
 Fastmail
+
+Fastmail didn’t take the address and app password: {}
+Fastmail n’a pas accepté l’adresse et le mot de passe d’app : {}
 
 Favorites
 Favoris
@@ -2162,6 +2403,9 @@ Rechercher…
 
 Finger
 Doigt
+
+Fingerprints can only be changed from a session logged in at this computer.
+Les empreintes ne peuvent être modifiées que depuis une session ouverte sur cet ordinateur.
 
 Fingers moving
 Doigts qui bougent
@@ -2229,11 +2473,17 @@ Dossiers et fichiers, séparés par des virgules : ~/ est votre dossier person
 Folders by Name, Files by Date
 Dossiers par nom, fichiers par date
 
+Follows Other Mice below. Recommended for it: {}.
+Suit Autres souris ci-dessous. Recommandé pour lui : {}.
+
 Font
 Police
 
 Font Size
 Taille de police
+
+For
+Pendant
 
 For Every Link
 Pour chaque lien
@@ -2267,6 +2517,9 @@ Oublier le groupe enregistré
 
 Forget…
 Oublier…
+
+Forgot {}: pair with it again to use it.
+{} oublié : jumelez-le de nouveau pour l’utiliser.
 
 Form
 Forme
@@ -2304,6 +2557,9 @@ Français (Canada)
 From
 De
 
+From the network
+Depuis le réseau
+
 From your next login, Passwords can be ssh’s agent here too.
 Dès votre prochaine connexion, Passwords peut aussi être l’agent de ssh ici.
 
@@ -2315,6 +2571,9 @@ GPU
 
 GPU:
 GPU :
+
+GPUs are tuned only in the person's own session (polkit asks there).
+Les GPU ne se règlent que dans la session propre de la personne (polkit y demande).
 
 Game saves
 Parties sauvegardées
@@ -2337,11 +2596,23 @@ Obtenir l’accès complet…
 Get Info
 Lire les informations
 
+Getting the sensor ready…
+Préparation du capteur…
+
 Git Worktrees
 Worktrees Git
 
 GitHub
 GitHub
+
+GitHub answered {}.
+GitHub a répondu {}.
+
+GitHub couldn’t be reached ({}).
+GitHub injoignable ({}).
+
+GitHub didn’t take the token: it may have expired or been revoked.
+GitHub n’a pas accepté le jeton : il a peut-être expiré ou été révoqué.
 
 Give a new key
 Donner une nouvelle clé
@@ -2367,6 +2638,15 @@ Aller à :
 Going:
 Présence :
 
+Good. Lift, and touch again, a little differently.
+Bien. Levez, puis touchez de nouveau, un peu autrement.
+
+Good. Now lift it.
+Bien. Maintenant levez-le.
+
+Good. Now lift your hand.
+Bien. Maintenant levez la main.
+
 Google
 Google
 
@@ -2384,6 +2664,12 @@ Identifiants du compte Google :
 
 Google and Fastmail accounts for Mail (Integrations) are looked in too.
 Les comptes Google et Fastmail pour Mail (Intégrations) sont aussi consultés.
+
+Google no longer takes its sign-in: sign in again.
+Google n’accepte plus sa connexion : reconnectez-vous.
+
+Got it. Touch the key once more: its light is blinking again.
+Compris. Touchez la clé encore une fois : son voyant clignote de nouveau.
 
 Governor:
 Gouverneur :
@@ -2427,14 +2713,26 @@ Groupe
 Group Windows
 Grouper les fenêtres
 
+Growing for
+En hausse depuis
+
 Guests:
 Invités :
 
 H.264 (plays everywhere)
 H.264 (lisible partout)
 
+H.264 (plays everywhere, on the processor)
+H.264 (lisible partout, sur le processeur)
+
+H.264 (plays everywhere, on {})
+H.264 (lisible partout, sur {})
+
 HDR needs a setting at the computer's start: Olo Doctor offers it (“The built-in display's HDR is off”).
 Le HDR demande un réglage au démarrage de l’ordinateur : Olo Doctor le propose (« Le HDR de l’écran intégré est désactivé »).
+
+HDR video and pictures shine up to {} cd/m²; everything else is shown this bright.
+Les vidéos et images HDR brillent jusqu’à {} cd/m² ; tout le reste s’affiche à cette luminosité.
 
 HEVC (about half the size)
 HEVC (environ moitié moins lourd)
@@ -2456,6 +2754,9 @@ Dure
 
 Hardware
 Matériel
+
+Hardware address:
+Adresse matérielle :
 
 Haskell
 Haskell
@@ -2486,6 +2787,9 @@ Titre 6
 
 Headless
 Sans écran
+
+Health: {}% of original capacity
+Santé : {} % de la capacité d’origine
 
 Heatmap
 Carte de chaleur
@@ -2535,6 +2839,12 @@ Maintenez Fn (🌐) pour F1 à F12.
 Hold duration:
 Durée d’appui :
 
+Hold it there…
+Gardez-la là…
+
+Holding at least
+Occupe au moins
+
 Home
 Dossier personnel
 
@@ -2546,6 +2856,9 @@ Point d’accès
 
 Hours:
 Heures :
+
+How loud this microphone is gets measured as you talk on a call, or with Try It.
+Le volume de ce micro se mesure pendant que vous parlez lors d’un appel, ou avec Essayer.
 
 ID
 ID
@@ -2577,6 +2890,9 @@ Identité :
 If it does, confirm here, and on the phone too.
 Si c’est le cas, confirmez ici, et sur le téléphone aussi.
 
+If nothing shows on the touchpad, your shirt doesn't reach it: press Space to skip this.
+Si rien n’apparaît sur le pavé tactile, votre chemise ne l’atteint pas : appuyez sur Espace pour passer.
+
 Ignore
 Ignorer
 
@@ -2607,6 +2923,9 @@ Importer
 Import WireGuard…
 Importer WireGuard…
 
+Imported {}{}{}. Apps that are open take some settings when they next start.{}
+Importé {}{}{}. Les apps ouvertes prennent certains réglages à leur prochain démarrage.{}
+
 Import…
 Importer…
 
@@ -2631,8 +2950,23 @@ Dans la zone d’état
 In the command palette, type /ask and a question: the answer shows there with code to copy (its number, then Return). Space asks a follow-up.
 Dans la palette de commandes, tapez /ask et une question : la réponse s’affiche là avec du code à copier (son numéro, puis Retour). Espace pose une question de suivi.
 
+In the emoji picker ({}), describe what you want to say and press ⌘↩ for five emoji that say it.
+Dans le sélecteur d’émojis ({}), décrivez ce que vous voulez dire et appuyez sur ⌘↩ pour cinq émojis qui le disent.
+
+In the emoji picker, describe what you want to say and press ⌘↩ for five emoji that say it.
+Dans le sélecteur d’émojis, décrivez ce que vous voulez dire et appuyez sur ⌘↩ pour cinq émojis qui le disent.
+
 In the tray it's an icon's size; its name and value are in its tip.
 Dans la zone d’état, il a la taille d’une icône ; son nom et sa valeur sont dans son infobulle.
+
+In use, with the weights it began from (not fine-tuned yet), on the {}.
+Utilisé, avec les poids de départ (pas encore affiné), sur le {}.
+
+In use: Olo's own for a {}, made from {} touches of real hands on one; it caught {}% of palms and took {}% of fingers for palms. Train for Your Palm fits it to yours.
+Utilisé : celui d’Olo pour un {}, fait de {} touchers de vraies mains dessus ; il a repéré {} % des paumes et pris {} % des doigts pour des paumes. Entraîner pour votre paume l’adapte aux vôtres.
+
+In use: yours, trained {} on {} touches; on touches kept back it caught {}% of palms and took {}% of fingers for palms.
+Utilisé : le vôtre, entraîné {} sur {} touchers ; sur les touchers mis de côté, il a repéré {} % des paumes et pris {} % des doigts pour des paumes.
 
 In:
 Dans :
@@ -2730,14 +3064,32 @@ Inviter :
 It Matches
 C’est pareil
 
+It didn't work.
+Ça n’a pas marché.
+
+It isn't a WireGuard configuration: {}.
+Ce n’est pas une configuration WireGuard : {}.
+
 It lasts until it's turned off, the link goes away or the computer restarts. Changing it asks for an administrator's password once while this window is open.
 Il dure jusqu’à ce qu’il soit désactivé, que le lien disparaisse ou que l’ordinateur redémarre. Le changer demande une fois le mot de passe d’un administrateur tant que cette fenêtre est ouverte.
+
+It learned from {} of your touches, but app_server didn't keep it: it's likely older than this Preferences. Upgrade Olo (the new build in Deskbar's tray), then train again.
+Il a appris de {} de vos touchers, mais app_server ne l’a pas gardé : il est sans doute plus ancien que ces Préférences. Mettez Olo à niveau (la nouvelle compilation dans la zone d’état de la Deskbar), puis réentraînez.
+
+It needs at least three palms and three fingers among the touches it learns from. Train again and do each exercise as its film shows.
+Il lui faut au moins trois paumes et trois doigts parmi les touchers dont il apprend. Réentraînez et faites chaque exercice comme le montre sa vidéo.
 
 It plays at a quarter of full volume, whatever yours is set to, and not while the sound is muted.
 Il sonne au quart du volume maximal, quel que soit le vôtre, et pas quand le son est coupé.
 
 It takes only what nothing else wants, the processor’s time and the disk’s: never in your way, though slower while you work.
 Il ne prend que ce dont rien d’autre ne veut, du temps du processeur et du disque : jamais dans vos pattes, mais plus lent pendant que vous travaillez.
+
+It wasn't forgotten ({}).
+Il n’a pas été oublié ({}).
+
+It wasn't set up ({}).
+Il n’a pas été configuré ({}).
 
 It's in use now, in place of Olo's own.
 Il est utilisé maintenant, à la place de celui d’Olo.
@@ -2751,11 +3103,20 @@ Italique
 Item
 Élément
 
+Its app password isn’t in the keyring: remove it and add it again.
+Son mot de passe d’app n’est pas dans le trousseau : retirez-le et ajoutez-le de nouveau.
+
 Its click is its own: a resting palm can't press.
 Son clic lui est propre : une paume posée ne peut pas appuyer.
 
 Its decoder, on its battery preset (Power Modes), costs less than the processor's cores; off, the processor decodes on battery.
 Son décodeur, avec son préréglage batterie (Modes d’énergie), coûte moins que les cœurs du processeur ; éteint, le processeur décode sur batterie.
+
+Its key is damaged.
+Sa clé est endommagée.
+
+Its key isn't in this login keyring: it opens only on the computer that made it.
+Sa clé n’est pas dans ce trousseau de session : elle ne s’ouvre que sur l’ordinateur qui l’a faite.
 
 Its own
 Le sien
@@ -2766,6 +3127,9 @@ Son empaqueteur n’a rien écrit.
 Its packages’ signatures aren’t checked.
 Les signatures de ses paquets ne sont pas vérifiées.
 
+Its password isn’t in the keyring: remove it and add it again.
+Son mot de passe n’est pas dans le trousseau : retirez-le et ajoutez-le de nouveau.
+
 Its power limit is the computer's to set, as a laptop's is.
 Sa limite d’énergie est fixée par l’ordinateur, comme sur un portable.
 
@@ -2774,6 +3138,9 @@ Ses paquets de version sont installés : ils ajoutent ses dépôts et ses clé
 
 Its secret reference, as Passwords’ Copy Secret Reference gives it. Passwords asks once, while it runs, whether Weather may have it.
 Sa référence secrète, telle que la donne « Copier la référence secrète » de Passwords. Passwords demande une fois, pendant qu’il tourne, si Weather peut l’avoir.
+
+Its sign-in isn’t in the keyring: sign in again.
+Sa connexion n’est pas dans le trousseau : reconnectez-vous.
 
 Its work starts sooner, but it never sleeps: more power, more warmth.
 Son travail commence plus tôt, mais il ne dort jamais : plus de consommation, plus de chaleur.
@@ -2823,6 +3190,9 @@ Kache
 Kache: Build Cache
 Kache : cache de compilation
 
+Keep HDR on for {}?
+Garder le HDR activé pour {} ?
+
 Keep It Going
 Continuer
 
@@ -2868,6 +3238,15 @@ Continuer à défiler après un geste rapide
 Keep the Desktop Responsive
 Garder le bureau réactif
 
+Keep the desktop responsive
+Garder le bureau réactif
+
+Keep the new resolution of {}?
+Garder la nouvelle résolution de {} ?
+
+Keep typing…
+Continuez à taper…
+
 Keep until tapped
 Garder jusqu’au toucher
 
@@ -2912,6 +3291,9 @@ Profil de clavier
 
 Keyboard Shortcuts
 Raccourcis clavier
+
+Keyboard: the Mac profile came along, ⌘ on the Super key (the Windows key on most PC keyboards). Preferences ▸ Keyboard picks another for this keyboard.
+Clavier : le profil Mac a suivi, ⌘ sur la touche Super (la touche Windows sur la plupart des claviers de PC). Préférences ▸ Clavier en choisit un autre pour ce clavier.
 
 Keyboards
 Claviers
@@ -2967,8 +3349,23 @@ Dernière page
 Layout:
 Disposition :
 
+Leaking memory
+Fuites de mémoire
+
 Learn Spelling
 Mémoriser l’orthographe
+
+Learned {} from {} examples in {}, but did no better on your newest commands, so it kept what it had: its first suggestion right {} of the time.
+Appris {} à partir de {} exemples en {}, mais sans faire mieux sur vos commandes les plus récentes, il a donc gardé ce qu’il avait : sa première suggestion est juste {} du temps.
+
+Learned {} from {} examples in {}: its first suggestion is right {} of the time on your newest commands ({} before).
+Appris {} à partir de {} exemples en {} : sa première suggestion est juste {} du temps sur vos commandes les plus récentes ({} avant).
+
+Learned {} from {} examples in {}: its first suggestion is right {} of the time on your newest commands.
+Appris {} à partir de {} exemples en {} : sa première suggestion est juste {} du temps sur vos commandes les plus récentes.
+
+Learning from your history…
+Apprentissage de votre historique…
 
 Leave Out What Can Be Downloaded or Built Again
 Exclure ce qui peut être retéléchargé ou recompilé
@@ -2978,6 +3375,9 @@ Quitter Rescue
 
 Leave the DNS servers empty to use the network's. DNS servers set for every link (the DNS tab) take the place of these.
 Laissez les serveurs DNS vides pour utiliser ceux du réseau. Les serveurs DNS fixés pour chaque lien (onglet DNS) remplacent ceux-ci.
+
+Leaving zombies
+Zombies laissés
 
 Left
 Gauche
@@ -3006,8 +3406,17 @@ Laisser les agents titrer leur onglet
 Level
 Niveau
 
+Level evened out
+Niveau égalisé
+
+Level not evened out
+Niveau non égalisé
+
 Light
 Clair
+
+Light:
+Clair :
 
 Like this
 Comme ceci
@@ -3066,6 +3475,9 @@ Verrouiller après
 Lock Screen
 Verrouiller l’écran
 
+Lock after
+Verrouiller après
+
 Lock after idle for:
 Verrouiller après inactivité de :
 
@@ -3123,6 +3535,9 @@ Recherche d’une version plus récente…
 Looking for apps…
 Recherche d’apps…
 
+Looking for its calendars…
+Recherche de ses calendriers…
+
 Looking for network devices…
 Recherche d’appareils réseau…
 
@@ -3141,11 +3556,17 @@ Recherche de volumes…
 Looking…
 Recherche…
 
+Looks like {} × {}
+Comme {} × {}
+
 Loss:
 Perte :
 
 Low
 Faible
+
+Lower background work
+Abaisser le travail de fond
 
 Lower this computer's sound while you speak
 Baisser le son de cet ordinateur pendant que vous parlez
@@ -3195,8 +3616,14 @@ Le courrier n’est lu que pendant qu’une page attend un code, une minute au p
 Mail is read only while a page waits for a code, for up to a minute. A phone, set up in Phone, is looked in too.
 Le courrier n’est lu que pendant qu’une page attend un code, une minute au plus. Un téléphone configuré dans Téléphone est aussi consulté.
 
+Mail to {} ({})
+Courrier à {} ({})
+
 Mail, Calendar and DiskBackup sign in to Google through an app of each account’s own, “Olo (its address)”, in its Google Cloud project: an agent makes it for you. Tick what each account is used for.
 Mail, Calendrier et DiskBackup se connectent à Google via une app propre à chaque compte, « Olo (son adresse) », dans son projet Google Cloud : un agent la crée pour vous. Cochez l’usage de chaque compte.
+
+Mail: Fastmail didn’t take the address and app password.
+Mail : Fastmail n’a pas accepté l’adresse et le mot de passe d’app.
 
 Main Window
 Fenêtre principale
@@ -3234,8 +3661,14 @@ Créez-en une sur my.telegram.org ▸ API development tools (connectez-vous avec
 Make this the main display
 En faire l’écran principal
 
+Make:
+Marque :
+
 Makefile
 Makefile
+
+Making a hotspot (below)
+Création d’un point d’accès (ci-dessous)
 
 Manually
 Manuellement
@@ -3297,6 +3730,9 @@ Message
 Messages
 Messages
 
+Messages are coming. Contacts follow once Sync Contacts is on.
+Les messages arrivent. Les contacts suivent dès que Synchroniser les contacts est activé.
+
 Messages: each as it comes, answered in place
 Messages : chacun à son arrivée, avec réponse sur place
 
@@ -3332,6 +3768,9 @@ Millimètres
 
 Mini Icon View
 Présentation en petites icônes
+
+Mirror of {}
+Recopie de {}
 
 Mode
 Mode
@@ -3468,6 +3907,9 @@ NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU (NVDEC)
 NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU (NVENC)
 NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU (NVENC)
 
+NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor. {}
+Le GPU NVIDIA décode H.264, HEVC, VP9 et AV1, 4K à 60 images par seconde avec peu de processeur. {}
+
 Name
 Nom
 
@@ -3486,17 +3928,26 @@ Noms
 Names:
 Noms :
 
+Narrower than sRGB ({}% of it)
+Plus étroit que sRGB ({} % de celui-ci)
+
 Natural scrolling (content follows your fingers)
 Défilement naturel (suit vos doigts)
 
 Network
 Réseau
 
+Network name
+Nom du réseau
+
 Never
 Jamais
 
 Never Warned About
 Jamais signalés
+
+Never fade
+Ne jamais estomper
 
 New
 Nouveau
@@ -3663,6 +4114,9 @@ Aucune app n’ouvre ceci.
 No banners and no sounds (errors still show).
 Ni bannières ni sons (les erreurs s’affichent toujours).
 
+No cable
+Pas de câble
+
 No chat selected
 Aucune discussion sélectionnée
 
@@ -3738,6 +4192,9 @@ Contrôle du bruit :
 Noise model:
 Modèle de bruit :
 
+Noise model: {}
+Modèle de bruit : {}
+
 None
 Aucun
 
@@ -3755,6 +4212,9 @@ Aucun lancé.
 
 None yet: add one below, named by its extensions.
 Aucun pour l’instant : ajoutez-en un ci-dessous, nommé d’après ses extensions.
+
+None, or corp.example
+Aucun, ou corp.example
 
 None. An alert’s Ignore This Process adds one here.
 Aucun. « Ignorer ce processus » dans une alerte en ajoute un ici.
@@ -3774,8 +4234,41 @@ Norvégien
 Not Answered
 Sans réponse
 
+Not all of it applied: {}.
+Pas entièrement appliqué : {}.
+
 Not answered
 Sans réponse
+
+Not applied.
+Non appliqué.
+
+Not applied: an administrator's password is needed.
+Non appliqué : le mot de passe d’un administrateur est nécessaire.
+
+Not boosted
+Non amplifié
+
+Not boosted (suggested)
+Non amplifié (suggéré)
+
+Not brought over from GNOME Keyring (another password): {}.
+Non repris du trousseau GNOME (autre mot de passe) : {}.
+
+Not changed. {}
+Rien n’a changé. {}
+
+Not changed: an administrator's password is needed.
+Rien n’a changé : le mot de passe d’un administrateur est nécessaire.
+
+Not changed: changes as an administrator are made in the person's own session.
+Rien n’a changé : les modifications en administrateur se font dans la session propre de la personne.
+
+Not changed: the network's helper stopped.
+Rien n’a changé : l’assistant du réseau s’est arrêté.
+
+Not connected
+Non connecté
 
 Not connected: only public repositories’ pull requests show.
 Non connecté : seules les pull requests des dépôts publics s’affichent.
@@ -3783,11 +4276,26 @@ Non connecté : seules les pull requests des dépôts publics s’affichent.
 Not enough touches to learn from
 Pas assez de touchers pour apprendre
 
+Not found
+Introuvable
+
+Not imported: {}
+Non importé : {}
+
 Not in a Repository
 Hors d’un dépôt
 
+Not paired
+Non jumelé
+
+Not running under olo-session.
+Ne tourne pas sous olo-session.
+
 Not running: Codex starts it with its first window.
 Ne tourne pas : Codex le lance avec sa première fenêtre.
+
+Not saved: {}
+Non enregistré : {}
 
 Not set up.
 Non configuré.
@@ -3795,8 +4303,17 @@ Non configuré.
 Not set up: Telegram needs an API ID to sign in with.
 Non configuré : Telegram a besoin d’un ID d’API pour se connecter.
 
+Not shaped: as fast as it goes.
+Non limité : aussi vite que possible.
+
 Not signed in. (API ID {}.)
 Non connecté. (ID d’API {}.)
+
+Not told
+Non indiqué
+
+Not working: {}.
+Ne fonctionne pas : {}.
 
 Notes:
 Notes :
@@ -3807,6 +4324,9 @@ Rien
 Nothing Found
 Rien trouvé
 
+Nothing came from the microphone.
+Rien n’est venu du micro.
+
 Nothing changed: Olo's own model is still in use.
 Rien n’a changé : le modèle d’Olo est toujours utilisé.
 
@@ -3815,6 +4335,12 @@ Rien dans l’historique pour l’instant.
 
 Nothing more today
 Plus rien aujourd’hui
+
+Nothing recorded yet. Press Record and talk for a few seconds.
+Rien n’est encore enregistré. Appuyez sur Enregistrer et parlez quelques secondes.
+
+Nothing to tune for its driver ({}) yet.
+Rien à régler pour son pilote ({}) pour l’instant.
 
 Notification
 Notification
@@ -3833,6 +4359,21 @@ Novembre 2026
 
 Now
 Maintenant
+
+Now lift your hands, and rest them again as you type.
+Levez maintenant les mains, puis reposez-les en tapant.
+
+Now point or tap with a finger above it: {} more.
+Maintenant pointez ou touchez avec un doigt au-dessus : encore {}.
+
+Now point or tap with a finger of your other hand: {} more.
+Maintenant pointez ou touchez avec un doigt de l’autre main : encore {}.
+
+Now {}{}: the processors {} at up to {}%, {}.
+Maintenant {}{} : les processeurs {} jusqu’à {} %, {}.
+
+Now:
+Maintenant :
 
 Now: {}
 Maintenant : {}
@@ -3870,6 +4411,12 @@ Objective-C
 Off
 Désactivé
 
+Off: palms are told apart by their size alone.
+Désactivé : les paumes se distinguent par leur seule taille.
+
+Off: palms are what the touchpad says they are.
+Désactivé : les paumes sont ce que le pavé tactile en dit.
+
 Offer a code in the browser tab waiting for it
 Proposer un code dans l’onglet du navigateur qui l’attend
 
@@ -3894,11 +4441,23 @@ Olo
 Olo Desktop
 Olo Desktop
 
+Olo Desktop, version {}
+Olo Desktop, version {}
+
 Olo Doctor
 Olo Doctor
 
+Olo Doctor couldn't set it.
+Olo Doctor n’a pas pu le régler.
+
 Olo Installer
 Programme d’installation d’Olo
+
+Olo doesn’t have {} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it.
+Olo n’a pas l’app {} sur cet ordinateur : donnez l’ID et le secret de son client (Google Cloud ▸ son projet Olo ▸ Clients), ou Annuler puis Ajouter un compte Google… pour que l’agent s’en charge.
+
+Olo keeps {}{}: their sign-ins, keys and Wi-Fi passwords, opened by your login password.
+Olo garde {}{} : leurs connexions, clés et mots de passe Wi-Fi, ouverts par votre mot de passe de session.
 
 Olo saying its name
 Olo qui dit son nom
@@ -3921,6 +4480,9 @@ Le trousseau d’Olo ne tourne pas ici ; il démarre avec votre session.
 Olo’s language:
 Langue d’Olo :
 
+Olo’s phone service isn’t running.
+Le service téléphonique d’Olo ne tourne pas.
+
 Olo’s windows change at once. Other programs take it as they next start, in the languages they have.
 Les fenêtres d’Olo changent aussitôt. Les autres programmes l’adoptent à leur prochain démarrage, dans les langues qu’ils ont.
 
@@ -3929,6 +4491,9 @@ Activé
 
 On Battery
 Sur batterie
+
+On Custom {}
+Sur Personnalisé {}
 
 On This Computer
 Sur cet ordinateur
@@ -3941,6 +4506,18 @@ Sur le téléphone, ouvrez Réglages ▸ Bluetooth et laissez-le ouvert. Il appa
 
 On your phone, open Telegram ▸ Settings ▸ Devices ▸ Link Desktop Device, and point it at this code.
 Sur votre téléphone, ouvrez Telegram ▸ Paramètres ▸ Appareils ▸ Lier un appareil de bureau, et visez ce code.
+
+On {} now: {}. Moving a setting makes it Custom {}; Power Modes says what each mode puts it on.
+Sur {} maintenant : {}. Déplacer un réglage le met sur Personnalisé {} ; Modes d’énergie dit où chaque mode le met.
+
+On “{}”: Settings ▸ Bluetooth ▸ tap ⓘ beside this computer, and turn these on. They can take a minute or two to appear there; leaving that page and opening it again shows them sooner. (If this computer is listed twice, look in both.)
+Sur « {} » : Réglages ▸ Bluetooth ▸ touchez ⓘ à côté de cet ordinateur et activez ceux-ci. Ils peuvent mettre une minute ou deux à apparaître ; quitter cette page et la rouvrir les montre plus tôt. (Si cet ordinateur figure deux fois, regardez dans les deux.)
+
+On “{}”: allow this computer to see your messages and contacts when it asks (or in Bluetooth, the gear beside this computer).
+Sur « {} » : autorisez cet ordinateur à voir vos messages et contacts quand il le demande (ou dans Bluetooth, la roue dentée à côté de cet ordinateur).
+
+On: brush starts olo-complete as you next type in it.
+Activé : brush lance olo-complete à votre prochaine frappe.
 
 On: packages come from it
 Activé : les paquets en viennent
@@ -3960,6 +4537,9 @@ Une par heure pendant :
 One like it again from the same app (its title and text) takes the earlier one's place while that's still showing or unread.
 Une autre identique de la même app (même titre et texte) remplace la précédente tant que celle-ci est affichée ou non lue.
 
+One of the colours things are told apart by: tags, graphs, a tab group's colour, Terminal's {}.
+Une des couleurs qui distinguent les choses : étiquettes, graphiques, la couleur d’un groupe d’onglets, le {} de Terminal.
+
 One-Time Codes
 Codes à usage unique
 
@@ -3970,7 +4550,7 @@ Only on battery power
 Seulement sur batterie
 
 Only the latest of the same notification
-Seulement la dernière d’une même notification
+Garder uniquement la dernière notification identique
 
 Only when I choose Sync Now
 Seulement quand je choisis Synchroniser
@@ -4071,8 +4651,14 @@ S’ouvre dans :
 Open…
 Ouvrir…
 
+Optional
+Facultatif
+
 Opus 5.5
 Opus 5.5
+
+Or stalls over
+Ou bloqué
 
 Orange
 Orange
@@ -4134,8 +4720,14 @@ Vue page
 Pair
 Jumeler
 
+Paired with {}.
+Jumelé avec {}.
+
 Pairing
 Jumelage
+
+Pairing with {} didn't work: {}.
+Le jumelage avec {} n’a pas marché : {}.
 
 Pair…
 Jumeler…
@@ -4187,6 +4779,12 @@ Mot de passe :
 
 Passwords
 Passwords
+
+Passwords and sign-ins: there's no login keyring here to keep them in, so they didn't come along.
+Mots de passe et connexions : pas de trousseau de session ici pour les garder, ils n’ont donc pas suivi.
+
+Passwords couldn’t give its logins: {}
+Passwords n’a pas pu donner ses identifiants : {}
 
 Passwords for Every Screen…
 Mots de passe pour chaque écran…
@@ -4296,6 +4894,9 @@ Lecture
 Playback Speed
 Vitesse de lecture
 
+Playing the {} at {} s.
+Lecture du {} à {} s.
+
 Please continue
 Please continue
 
@@ -4344,6 +4945,15 @@ Limite de puissance
 Power-saving profile
 Profil d’économie d’énergie
 
+Power: the GPUs' tuning is as it was here. {} Preferences ▸ Power sets it.
+Énergie : le réglage des GPU est resté tel qu’ici. {} Préférences ▸ Énergie le règle.
+
+Power: the backup's GPU tuning couldn't be read, so it's as it was here.
+Énergie : le réglage GPU de la sauvegarde n’a pas pu être lu, il est donc tel qu’ici.
+
+Power: what each power mode puts the processors and GPUs on came along; each GPU's own clocks are this computer's.
+Énergie : ce sur quoi chaque mode met les processeurs et les GPU a suivi ; les fréquences propres de chaque GPU sont celles de cet ordinateur.
+
 PowerShell
 PowerShell
 
@@ -4365,6 +4975,9 @@ Présentation
 Press Control twice for keyboard hints
 Appuyer deux fois sur Contrôle pour les indications clavier
 
+Press Esc again to quit: the touches so far are dropped. Space goes on.
+Appuyez de nouveau sur Échap pour quitter : les touchers faits sont abandonnés. Espace continue.
+
 Press and Hold
 Appui prolongé
 
@@ -4376,6 +4989,9 @@ Appuyer sur les deux boutons pour le clic du milieu
 
 Press speed:
 Vitesse d’appui :
+
+Press {} for the next: {}.
+Appuyez sur {} pour la suite : {}.
 
 Press 🌐 alone to show emoji
 Appuyer sur 🌐 seul pour les émojis
@@ -4434,6 +5050,9 @@ Processus
 Processed
 Traité
 
+Processed: the setting chosen below
+Traité : le réglage choisi ci-dessous
+
 Processes
 Processus
 
@@ -4457,6 +5076,9 @@ Noms de programmes, séparés par des virgules
 
 Programs’ Secrets
 Secrets des programmes
+
+Programs’ secrets are locked: {}.
+Les secrets des programmes sont verrouillés : {}.
 
 Project
 Projet
@@ -4496,6 +5118,9 @@ Python
 
 Python bytecode and virtual environments
 Bytecode Python et environnements virtuels
+
+QR code: {}
+Code QR : {}
 
 Quad9 (9.9.9.9)
 Quad9 (9.9.9.9)
@@ -4626,6 +5251,9 @@ Enregistrer le micro
 Recording
 Enregistrement
 
+Recording: {} of {} seconds. Talk as you do on a call.
+Enregistrement : {} sur {} secondes. Parlez comme lors d’un appel.
+
 Recordings…
 Enregistrements…
 
@@ -4647,11 +5275,17 @@ Rétablir {}
 Reference:
 Référence :
 
+Refining Olo's model on {} touches…
+Affinage du modèle d’Olo sur {} touchers…
+
 Refresh
 Actualiser
 
 Refresh rate:
 Fréquence de rafraîchissement :
+
+Refresh:
+Fréquence :
 
 Regenerate
 Régénérer
@@ -4703,6 +5337,12 @@ Retirer du pool…
 
 Remove it from the pool? Its sign-in here is deleted; the account itself isn’t touched.
 Le retirer du pool ? Sa connexion ici est supprimée ; le compte lui-même n’est pas touché.
+
+Remove the VPN “{}”? Its settings and keys go with it.
+Retirer le VPN « {} » ? Ses réglages et ses clés partent avec lui.
+
+Remove the {}? It will no longer unlock anything.
+Retirer la {} ? Elle ne déverrouillera plus rien.
 
 Remove…
 Retirer…
@@ -4775,6 +5415,9 @@ Réinitialiser les mots de passe…
 
 Reset Thresholds
 Réinitialiser les seuils
+
+Reset of “{}”
+Réinitialisation de « {} »
 
 Resize
 Redimensionner
@@ -4857,6 +5500,12 @@ Revenir à la version enregistrée
 Revert to Saved…
 Revenir à la version enregistrée…
 
+Reverting in 1 second.
+Retour dans 1 seconde.
+
+Reverting in {} seconds.
+Retour dans {} secondes.
+
 Rich Text (RTF)…
 Texte enrichi (RTF)…
 
@@ -4896,6 +5545,9 @@ Ruby
 Ruler
 Règle
 
+Run module
+Lancer le module
+
 Russian
 Russe
 
@@ -4931,6 +5583,9 @@ Enregistrer sous :
 
 Save in:
 Enregistrer dans :
+
+Saved to /etc/hosts.
+Enregistré dans /etc/hosts.
 
 Saves Olo's settings and what apps keep between runs in one file, to bring back here or to another computer. What goes in:
 Enregistre dans un fichier les réglages d’Olo et ce que les apps gardent entre deux lancements, à restaurer ici ou sur un autre ordinateur. Ce qui y figure :
@@ -4988,6 +5643,9 @@ Défiler
 
 Scroll while the middle button is held
 Défiler en maintenant le bouton du milieu
+
+Scroll with:
+Défiler avec :
 
 Scrolling
 Défilement
@@ -5097,6 +5755,9 @@ Capteurs
 Sent
 Envoyé
 
+Separated by spaces
+Séparés par des espaces
+
 Server
 Serveur
 
@@ -5142,8 +5803,14 @@ Configurer…
 Set date and time automatically
 Régler la date et l’heure automatiquement
 
+Set for the whole computer by {}{}.
+Réglé pour tout l’ordinateur par {}{}.
+
 Set the Time
 Régler l’heure
+
+Set up ({} looks).
+Configuré ({} apparences).
 
 Setting
 Réglage
@@ -5151,8 +5818,17 @@ Réglage
 Setting it: an administrator's password is asked…
 Réglage : le mot de passe d’un administrateur est demandé…
 
+Setting up your {} takes your password and two touches of the key:
+Configurer votre {} demande votre mot de passe et deux touchers de la clé :
+
+Setting up your {} takes your password, its PIN and two touches of the key:
+Configurer votre {} demande votre mot de passe, son code PIN et deux touchers de la clé :
+
 Settings
 Réglages
+
+Settings:
+Réglages :
 
 Shaping
 Trafic
@@ -5168,6 +5844,9 @@ Partage la connexion de cet ordinateur sous forme d’un réseau Wi-Fi propre 
 
 Sharing
 Partage
+
+Sharing this computer's connection as “{}”.
+Partage de la connexion de cet ordinateur sous « {} ».
 
 Shell
 Shell
@@ -5307,6 +5986,9 @@ Afficher l’utilisé, pas le restant
 Show:
 Afficher :
 
+Showing its code
+Affichage de son code
+
 Shown
 Affiché
 
@@ -5354,6 +6036,9 @@ Connecté en tant que {} ({}).
 
 Signed in as {}.
 Connecté en tant que {}.
+
+Signing in to Fastmail…
+Connexion à Fastmail…
 
 Sign…
 Signer…
@@ -5460,6 +6145,9 @@ Vitesse et ressources
 Speed Test
 Test de débit
 
+Speed:
+Vitesse :
+
 Spiral
 Spirale
 
@@ -5487,11 +6175,17 @@ Lancer l’agent
 Start this step over
 Recommencer cette étape
 
+Start typing
+Commencez à taper
+
 Started
 Lancé
 
 Starting Up
 Au démarrage
+
+Starting the agent…
+Lancement de l’agent…
 
 Starts:
 Début :
@@ -5505,11 +6199,20 @@ Statistiques
 Status
 État
 
+Status:
+État :
+
 Stay Awake
 Rester éveillé
 
 Stay awake: no display sleep, sleep, screen saver or lock
 Rester éveillé : ni veille, ni économiseur, ni verrouillage
+
+Steadily (fit)
+Régulier (ajusté)
+
+Step {} of {}
+Étape {} sur {}
 
 Stop
 Arrêter
@@ -5538,6 +6241,9 @@ Arrêter l’écran…
 Stop Sharing
 Arrêter le partage
 
+Stop charging at {}% (and start again below {}%)
+Arrêter la charge à {} % (et reprendre sous {} %)
+
 Stopped.
 Arrêté.
 
@@ -5550,6 +6256,9 @@ Bande
 Strong
 Fort
 
+Stuck in a loop
+Bloqué dans une boucle
+
 Style
 Style
 
@@ -5559,8 +6268,17 @@ Texte stylé
 StyledEdit
 StyledEdit
 
+Subpixel, BGR order
+Sous-pixel, ordre BGR
+
+Subpixel, RGB order
+Sous-pixel, ordre RGB
+
 Suggest commands from a model of your own
 Suggérer des commandes avec votre propre modèle
+
+Suggest emoji for a description
+Suggérer des émojis pour une description
 
 Suggestion
 Suggestion
@@ -5616,6 +6334,9 @@ Système
 System Font
 Police système
 
+TCP sends at the pace its path can carry, by a model of it, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
+TCP envoie au rythme que son chemin peut porter, d’après un modèle de celui-ci, là où celui de Linux remplit les files en route (module d’Olo, tcp_bbr3).
+
 TCP/IP
 TCP/IP
 
@@ -5654,6 +6375,9 @@ Toucher et glisser
 
 Tap to click
 Toucher pour cliquer
+
+Tap {} on its own for the command palette
+Toucher {} seule pour la palette de commandes
 
 Taps
 Touchers
@@ -5712,6 +6436,9 @@ Terra 6.1
 Test
 Tester
 
+Tested on the {} touches kept back from training ({} palms, {} fingers):
+Testé sur les {} touchers mis de côté pendant l’entraînement ({} paumes, {} doigts) :
+
 Text
 Texte
 
@@ -5721,17 +6448,68 @@ SMS
 Text Size
 Taille du texte
 
+Text messages to “{}”
+SMS à « {} »
+
 Text:
 Texte :
 
 Texts
 SMS
 
+That isn't the backup's password.
+Ce n’est pas le mot de passe de la sauvegarde.
+
+That password isn't right.
+Ce mot de passe n’est pas le bon.
+
+That password isn’t right.
+Ce mot de passe n’est pas le bon.
+
+That's all of them. Press {} to learn your hands.
+C’est tout. Appuyez sur {} pour apprendre vos mains.
+
+That's all this step needs.
+C’est tout ce dont cette étape a besoin.
+
+The API ID couldn’t be kept in the keyring ({}).
+L’ID d’API n’a pas pu être gardé dans le trousseau ({}).
+
+The API ID is a number.
+L’ID d’API est un nombre.
+
+The API hash is 32 letters and digits (0–9, a–f).
+Le hash d’API compte 32 lettres et chiffres (0–9, a–f).
+
+The AirPods service isn't running.
+Le service des AirPods ne tourne pas.
+
+The GPU
+Le GPU
+
+The MTU is a number of bytes.
+La MTU est un nombre d’octets.
+
 The Theme’s Own
 Celle du thème
 
+The VPN couldn't be saved.
+Le VPN n’a pas pu être enregistré.
+
 The account answering now
 Le compte qui répond maintenant
+
+The account couldn’t be saved ({}).
+Le compte n’a pas pu être enregistré ({}).
+
+The agent is at work in a Terminal window, on its agent screen “{}” (Agent Screens shows it): it makes the account’s app in Google Cloud and signs Olo in with it. The account shows here when it’s done; you can talk to the agent in Terminal meanwhile.
+L’agent travaille dans une fenêtre Terminal, sur son écran d’agent « {} » (Écrans d’agents le montre) : il crée l’app du compte dans Google Cloud et y connecte Olo. Le compte s’affiche ici quand c’est fait ; vous pouvez parler à l’agent dans Terminal entre-temps.
+
+The backup is damaged.
+La sauvegarde est endommagée.
+
+The backup's password is needed to open it.
+Le mot de passe de la sauvegarde est nécessaire pour l’ouvrir.
 
 The bell's count in:
 Le compteur de la cloche en :
@@ -5745,11 +6523,53 @@ Les jours à venir, chacun avec son ciel, minimale et maximale.
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
 Le taux de succès du jour, les places du pool utilisées, et les compilations et succès des dernières heures.
 
+The fans' profile isn't in force yet: {}
+Le profil des ventilateurs n’est pas encore en vigueur : {}
+
+The fingerprint couldn't be removed.
+L’empreinte n’a pas pu être retirée.
+
+The fingerprint sensor couldn't be used.
+Le lecteur d’empreintes n’a pas pu être utilisé.
+
+The fingerprint sensor isn't answering.
+Le lecteur d’empreintes ne répond pas.
+
+The first fine-tune failed: {}
+Le premier affinage a échoué : {}
+
+The icons {} is drawn with, everywhere.
+Les icônes avec lesquelles {} est dessiné, partout.
+
+The infrared camera couldn't be opened (its shutter, or another program).
+La caméra infrarouge n’a pas pu s’ouvrir (son obturateur, ou un autre programme).
+
 The kernel's own (recommended)
 Celui du noyau (recommandé)
 
+The key couldn’t be kept ({}).
+La clé n’a pas pu être gardée ({}).
+
+The key couldn’t be removed ({}).
+La clé n’a pas pu être retirée ({}).
+
 The key is only on this computer: keep it in Passwords, to restore anywhere else.
 La clé n’est que sur cet ordinateur : gardez-la dans Passwords pour restaurer ailleurs.
+
+The key is set up: from now on, a touch of it does what typing your password does.
+La clé est configurée : désormais, un toucher fait ce que fait la saisie de votre mot de passe.
+
+The key stopped waiting with no touch, and is blinking again: touch it once more now.
+La clé a cessé d’attendre sans toucher et clignote de nouveau : touchez-la encore une fois maintenant.
+
+The key stopped waiting with no touch, and is blinking again: touch {} now.
+La clé a cessé d’attendre sans toucher et clignote de nouveau : touchez {} maintenant.
+
+The key was removed: a touch of it no longer stands for your password.
+La clé a été retirée : un toucher ne remplace plus votre mot de passe.
+
+The keyring couldn’t be read ({}).
+Le trousseau n’a pas pu être lu ({}).
 
 The last 12 hours
 Les 12 dernières heures
@@ -5757,17 +6577,35 @@ Les 12 dernières heures
 The last 6 hours
 Les 6 dernières heures
 
+The list of Google accounts couldn’t be saved ({}).
+La liste des comptes Google n’a pas pu être enregistrée ({}).
+
+The login keyring couldn't be read: {}
+Le trousseau de session n’a pas pu être lu : {}
+
 The look of every icon, window and control, in every app, and a wallpaper to match.
 L’apparence de chaque icône, fenêtre et commande, dans chaque app, et un fond d’écran assorti.
 
 The look's own
 Celui de l’apparence
 
+The loss is a number, in percent.
+La perte est un nombre, en pourcentage.
+
 The model wasn't good enough to keep
 Le modèle n’était pas assez bon pour être gardé
 
 The most powerful (NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU)
 Le plus puissant (NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU)
+
+The most powerful (the processor)
+Le plus puissant (le processeur)
+
+The most powerful ({})
+Le plus puissant ({})
+
+The network couldn't be asked for receivers.
+Impossible de demander les récepteurs au réseau.
 
 The next 12 hours
 Les 12 prochaines heures
@@ -5783,6 +6621,18 @@ Les prochaines heures, chacune avec son ciel et sa température, le risque de pl
 
 The one it started on
 Celui où il a démarré
+
+The pad clicks at {}/{} (all contacts together); with a palm on it, Olo counts the click only if the fingers press that hard alone.
+Le pavé clique à {}/{} (tous les contacts ensemble) ; avec une paume dessus, Olo ne compte le clic que si les doigts appuient aussi fort seuls.
+
+The pairing with {} couldn't be forgotten: {}.
+Le jumelage avec {} n’a pas pu être oublié : {}.
+
+The password couldn’t be kept in the keyring ({}).
+Le mot de passe n’a pas pu être gardé dans le trousseau ({}).
+
+The picture on the desktop when {} is chosen. Backgrounds changes the desktop’s after, a workspace at a time.
+L’image du bureau quand {} est choisi. Fonds d’écran change ensuite celle du bureau, un espace de travail à la fois.
 
 The pointer keeps moving, and none of its motion is lost, while the desktop is busy: a slow frame, or a wait in the graphics driver under load. New, and being tried: if the mouse, touchpad or keyboard misbehaves with it on, turn it off.
 Le pointeur continue de bouger, sans rien perdre de son mouvement, pendant que le bureau est occupé : une image lente ou une attente du pilote graphique sous charge. Nouveau et à l’essai : si la souris, le pavé tactile ou le clavier se comportent mal avec, désactivez-le.
@@ -5802,6 +6652,12 @@ Le processeur (OpenH264)
 The right edge
 Le bord droit
 
+The screen
+L’écran
+
+The server didn’t take the name and password.
+Le serveur n’a pas accepté le nom et le mot de passe.
+
 The server’s CalDAV address, and the name and password it signs you in with. The password is kept in your login keyring.
 L’adresse CalDAV du serveur, et le nom et le mot de passe avec lesquels il vous connecte. Le mot de passe est gardé dans votre trousseau de session.
 
@@ -5820,11 +6676,32 @@ Les services du système (mises à jour, indexation) peuvent toujours y tourner.
 The system's services are kept off it too.
 Les services du système en sont aussi tenus à l’écart.
 
+The token couldn’t be kept in the keyring ({}).
+Le jeton n’a pas pu être gardé dans le trousseau ({}).
+
+The token couldn’t be taken out of the keyring ({}).
+Le jeton n’a pas pu être sorti du trousseau ({}).
+
 The touchpad says which touches are palms, but lets a resting palm go back to being a finger; Olo keeps it a palm until it lifts.
 Le pavé tactile indique quels touchers sont des paumes, mais laisse une paume posée redevenir un doigt ; Olo la garde comme paume jusqu’à ce qu’elle se lève.
 
+The two passwords aren't the same.
+Les deux mots de passe ne sont pas identiques.
+
+The voice service isn't running.
+Le service vocal ne tourne pas.
+
 The workspace each display shows stays open in every Deskbar; each other one is its heading, with an arrow that shows its applications and puts them away again.
 L’espace de travail que montre chaque écran reste ouvert dans chaque Deskbar ; les autres ne sont que leur titre, avec une flèche qui montre leurs applications et les replie.
+
+The {} couldn't be changed.
+{} n’a pas pu être modifié.
+
+The {} is a whole number.
+{} est un nombre entier.
+
+The {} wasn't changed: an administrator's password is needed.
+{} n’a pas été modifié : le mot de passe d’un administrateur est nécessaire.
 
 Their new windows open there, on the display they open on. Uncheck an app to open its windows where you are again.
 Leurs nouvelles fenêtres s’ouvrent là, sur l’écran où elles s’ouvrent. Décochez une app pour que ses fenêtres s’ouvrent de nouveau là où vous êtes.
@@ -5856,6 +6733,9 @@ Aucun adaptateur Ethernet. Un adaptateur USB ou Thunderbolt s’affiche ici dès
 There's no Wi-Fi adapter.
 Aucun adaptateur Wi-Fi.
 
+There's no fingerprint sensor, or fprintd isn't running.
+Aucun lecteur d’empreintes, ou fprintd ne tourne pas.
+
 There's no infrared camera.
 Aucune caméra infrarouge.
 
@@ -5880,11 +6760,20 @@ Ce pavé tactile
 This account has a two-step password.
 Ce compte a un mot de passe en deux étapes.
 
+This backup was made by a newer Olo.
+Cette sauvegarde a été faite par un Olo plus récent.
+
 This computer has no Bluetooth.
 Cet ordinateur n’a pas de Bluetooth.
 
 This computer has no battery.
 Cet ordinateur n’a pas de batterie.
+
+This computer is “{}” to AirPlay receivers.
+Cet ordinateur s’appelle « {} » pour les récepteurs AirPlay.
+
+This computer is “{}”.
+Cet ordinateur s’appelle « {} ».
 
 This computer's kernel can't load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel's own schedules.
 Le noyau de cet ordinateur ne peut pas charger un autre ordonnanceur (sched_ext : à partir de Linux 6.12) : c’est donc celui du noyau qui ordonnance.
@@ -5897,6 +6786,15 @@ Cet écran n’indique aucun mode.
 
 This is the recommended profile for this touchpad.
 C’est le profil recommandé pour ce pavé tactile.
+
+This isn't an Olo backup.
+Ce n’est pas une sauvegarde d’Olo.
+
+This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
+Ce noyau ne peut pas tenir un disque à une limite propre (Linux 6.2 et suivants le peuvent).
+
+This kernel has one way of preempting only: it wasn't built to be told another.
+Ce noyau n’a qu’une façon de préempter : il n’a pas été compilé pour en recevoir une autre.
 
 This keyboard has no backlight.
 Ce clavier n’a pas de rétroéclairage.
@@ -5982,6 +6880,9 @@ Token Pool
 Token Pool isn't running: its quotas are listed once it is.
 Token Pool ne tourne pas : ses quotas s’affichent dès qu’il tourne.
 
+Token Pool: its accounts came in paused. Turn them on here once the other computer's pool no longer uses them: each sign-in renews itself, and two computers renewing one sign each other out.
+Token Pool : ses comptes sont arrivés en pause. Activez-les ici dès que le pool de l’autre ordinateur ne les utilise plus : chaque connexion se renouvelle seule, et deux ordinateurs qui en renouvellent une se déconnectent l’un l’autre.
+
 Token:
 Jeton :
 
@@ -6006,6 +6907,9 @@ Quart supérieur droit
 Top Two Thirds
 Deux tiers supérieurs
 
+Top speed
+Vitesse max.
+
 Touch
 Tactile
 
@@ -6017,6 +6921,12 @@ Touch ID n’est pas utilisé ici : son capteur ne fonctionne qu’avec le Mac
 
 Touch screen
 Écran tactile
+
+Touch the key now: its light is blinking. Touch {}.
+Touchez la clé maintenant : son voyant clignote. Touchez {}.
+
+Touch the sensor, lift, and touch again.
+Touchez le capteur, levez, puis touchez de nouveau.
 
 Touchpad
 Pavé tactile
@@ -6039,6 +6949,9 @@ Vitesse de suivi
 Traffic goes through the first service in this list that's connected; the others stand by. Networks joined later fall in line.
 Le trafic passe par le premier service connecté de cette liste ; les autres attendent. Les réseaux rejoints ensuite prennent leur rang.
 
+Traffic:
+Trafic :
+
 Train
 Entraîner
 
@@ -6050,6 +6963,12 @@ Entraîner pour votre paume
 
 Train for Your Palm…
 Entraîner pour votre paume…
+
+Trained on {} of your touches ({} palms, {} fingers). It's kept with your settings (and in backups); Preferences ▸ Touchpad & Mouse ▸ Touch shows it, and can turn it off or forget it.
+Entraîné sur {} de vos touchers ({} paumes, {} doigts). Il est gardé avec vos réglages (et dans les sauvegardes) ; Préférences ▸ Pavé tactile et souris ▸ Tactile l’affiche et peut le désactiver ou l’oublier.
+
+Trained on {} of your touches, it did worse than Olo's untrained model on the {} kept back to test it, so it wasn't saved and nothing changed. Train again, resting your hands as you really do.
+Entraîné sur {} de vos touchers, il a fait moins bien que le modèle non entraîné d’Olo sur les {} mis de côté pour le tester ; il n’a donc pas été enregistré et rien n’a changé. Réentraînez en posant les mains comme vous le faites vraiment.
 
 Transparency
 Transparence
@@ -6090,6 +7009,12 @@ Essayez
 Try the Phone Again
 Réessayer le téléphone
 
+Trying each setting on it: {} of {}…
+Essai de chaque réglage dessus : {} sur {}…
+
+Tuned for {}
+Réglé pour {}
+
 Tuned for:
 Réglé pour :
 
@@ -6102,6 +7027,9 @@ Activer
 Turn On Bluetooth
 Activer Bluetooth
 
+Turn off after
+Éteindre après
+
 Turn off screen
 Éteindre l’écran
 
@@ -6111,11 +7039,20 @@ Turn the display off after:
 Turn the touchpad off while a mouse is plugged in
 Pavé tactile coupé avec une souris branchée
 
+Turned off by the hardware switch.
+Désactivé par l’interrupteur matériel.
+
 Turned on
 Activé
 
+Twelve exercises, then a try
+Douze exercices, puis un essai
+
 Two fingers
 Deux doigts
+
+Two fingers:
+Deux doigts :
 
 Type
 Taper
@@ -6126,8 +7063,29 @@ Tapez une heure comme 13:05 ou 1:05 PM.
 Type here to try the settings
 Tapez ici pour essayer les réglages
 
+Type the PIN for “{}” (often 0000).
+Tapez le code PIN de « {} » (souvent 0000).
+
+Type the code “{}” shows on its screen.
+Tapez le code que « {} » affiche sur son écran.
+
+Type the keys. Esc cancels; ⌫ removes them.
+Tapez les touches. Échap annule ; ⌫ les retire.
+
+Type the keys…
+Tapez les touches…
+
+Type the passkey shown by “{}”.
+Tapez la clé d’accès affichée par « {} ».
+
+Type this
+Tapez ceci
+
 Type with your palms down
 Tapez paumes posées
+
+Type {} on “{}”, then press Return.
+Tapez {} sur « {} », puis appuyez sur Retour.
 
 Type:
 Type :
@@ -6140,6 +7098,12 @@ Test de frappe :
 
 USB mice may sleep
 Les souris USB peuvent dormir
+
+USB power management may put it to sleep, and then it loses the first movement when the hand moves again.
+La gestion d’énergie USB peut la mettre en veille, et elle perd alors le premier mouvement quand la main bouge de nouveau.
+
+USB receiver
+Récepteur USB
 
 Unarchive All
 Tout désarchiver
@@ -6195,6 +7159,9 @@ Tout rétablir
 Unread notifications put a blue dot beside their app.
 Les non lues mettent un point bleu près de leur app.
 
+Unreaped for
+Non libérés depuis
+
 Until Turned Off
 Jusqu’à désactivation
 
@@ -6248,6 +7215,9 @@ Envoyer, c’est sauvegarder ; télécharger, c’est restaurer et ranger. Une
 
 Uptime:
 En marche :
+
+Urgent at
+Urgent dès
 
 Use
 Utiliser
@@ -6315,6 +7285,9 @@ Nom d’utilisateur :
 Using DHCP
 Via DHCP
 
+Using too much memory
+Trop de mémoire utilisée
+
 VPN
 VPN
 
@@ -6351,6 +7324,9 @@ Très mauvais réseau
 Video Playback
 Lecture vidéo
 
+Video is decoded on the processor. {}
+La vidéo est décodée sur le processeur. {}
+
 View
 Présentation
 
@@ -6381,8 +7357,23 @@ Volumes
 Waiting for app_server…
 En attente d’app_server…
 
+Waiting for the phone… this page follows it by itself.
+En attente du téléphone… cette page le suit d’elle-même.
+
+Waiting for the touchpad…
+En attente du pavé tactile…
+
+Waiting for you to sign in to Google in the browser…
+En attente de votre connexion à Google dans le navigateur…
+
+Waiting for “{}” to allow it (its switches for this computer, in its Bluetooth settings).
+En attente de l’autorisation de « {} » (ses interrupteurs pour cet ordinateur, dans ses réglages Bluetooth).
+
 Waits
 Attentes
+
+Waits less than
+Attend moins de
 
 Wake the display when you come back
 Réveiller l’écran à votre retour
@@ -6398,6 +7389,9 @@ Chaleur
 
 Watch Agent Screens
 Regarder les écrans d’agents
+
+Watch for stuck processes, leaks and memory hogs
+Surveiller processus bloqués, fuites et gloutons de mémoire
 
 Watchdog
 Chien de garde
@@ -6437,6 +7431,15 @@ Ce qui suit vient d’un Olo plus ancien : Appliquer le met à jour (le mot de
 
 What is made from it (shades, edges, text that has to read on it) follows.
 Ce qui en découle (nuances, bords, texte devant rester lisible dessus) suit.
+
+What it can be set to isn't known yet: asking it wakes it for a moment.
+On ne sait pas encore sur quoi le régler : le lui demander le réveille un instant.
+
+What it can be set to isn't known: {}.
+On ne sait pas sur quoi le régler : {}.
+
+What it can be set to isn't known: {}. It stays so until the computer restarts, which starts its driver again.
+On ne sait pas sur quoi le régler : {}. Cela reste ainsi jusqu’au redémarrage de l’ordinateur, qui relance son pilote.
 
 What it does
 Ce qu’il fait
@@ -6504,8 +7507,11 @@ Où :
 While Typing
 Pendant la frappe
 
+While less is free than
+Si libre sous
+
 While sharing or recording the screen (errors wait too)
-Pendant un partage ou enregistrement d’écran (erreurs aussi)
+En partage ou enregistrement d’écran (même les erreurs)
 
 Why
 Pourquoi
@@ -6515,6 +7521,21 @@ Wi-Fi
 
 Wi-Fi (Intel Wi-Fi 7 BE200 320MHz)
 Wi-Fi (Intel Wi-Fi 7 BE200 320MHz)
+
+Wi-Fi networks
+Réseaux Wi-Fi
+
+Wi-Fi: there's no NetworkManager here to save the networks in.
+Wi-Fi : pas de NetworkManager ici pour enregistrer les réseaux.
+
+Wi-Fi: {} didn't come along ({}, set up with the other computer's certificates): join {} again here.
+Wi-Fi : {} n’a pas suivi ({}, configuré avec les certificats de l’autre ordinateur) : rejoignez {} de nouveau ici.
+
+Wi-Fi: {} saved here, {}.
+Wi-Fi : {} enregistré ici, {}.
+
+Wi-Fi: “{}” couldn't be saved here ({}).
+Wi-Fi : « {} » n’a pas pu être enregistré ici ({}).
 
 Wide
 Large
@@ -6545,6 +7566,9 @@ Mode de fenêtrage
 
 Windows
 Fenêtres
+
+Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).
+Les tampons des fenêtres ne vont jamais dans le swap, si bien que le bureau n’attend pas leur retour (le correctif à chaud d’Olo pour le pilote Intel).
 
 Wireless Router
 Routeur sans fil
@@ -6606,6 +7630,9 @@ Votre Google Drive les garde partout : connectez-vous une fois, ou confiez la 
 Your Kinds
 Vos types
 
+Your Own
+Les vôtres
+
 Your Own Kinds
 Vos propres types
 
@@ -6614,6 +7641,9 @@ Vos sauvegardes sont chiffrées avant de quitter cet ordinateur, avec une clé q
 
 Your backups are encrypted before they leave this computer. Their key is kept in Passwords (“DiskBackup Key”): with it, they can be restored on any computer.
 Vos sauvegardes sont chiffrées avant de quitter cet ordinateur. Leur clé est gardée dans Passwords (« DiskBackup Key ») : avec elle, elles peuvent être restaurées sur n’importe quel ordinateur.
+
+Your face wasn't seen well enough: sit facing the camera, at arm's length, and try again.
+Votre visage n’a pas été assez bien vu : placez-vous face à la caméra, à bout de bras, et réessayez.
 
 Your home folder is backed up every hour, leaving out what can be downloaded or built again. Once it’s set up, you can change any of it.
 Votre dossier personnel est sauvegardé toutes les heures, sans ce qui peut être retéléchargé ou recompilé. Une fois configuré, vous pouvez en modifier ce que vous voulez.
@@ -6639,11 +7669,35 @@ Votre paume sur le bord gauche
 Your palm over the right edge
 Votre paume sur le bord droit
 
+Your password couldn’t be checked ({}).
+Votre mot de passe n’a pas pu être vérifié ({}).
+
+Your settings as they were are in “{}”.
+Vos réglages d’avant sont dans « {} ».
+
 Your shirt against the touchpad
 Votre chemise contre le pavé tactile
 
+Your ssh configuration (~/.ssh/config) sends ssh to another agent, {}, so it doesn’t use the keys in Passwords.
+Votre configuration ssh (~/.ssh/config) envoie ssh à un autre agent, {}, si bien qu’il n’utilise pas les clés de Passwords.
+
 Your touchpad
 Votre pavé tactile
+
+Your voice came in at {} dB; voice processing aims for {} dB.
+Votre voix arrivait à {} dB ; le traitement de la voix vise {} dB.
+
+Your voice comes in at {} dB, boosted to {} dB.
+Votre voix arrive à {} dB, amplifiée à {} dB.
+
+Your voice comes in at {} dB: loud enough as it is.
+Votre voix arrive à {} dB : assez forte telle quelle.
+
+Your voice comes in at {} dB: loud enough without a boost.
+Votre voix arrive à {} dB : assez forte sans amplification.
+
+Your voice comes in at {} dB: {} brings it to the {} dB aimed for.
+Votre voix arrive à {} dB : {} la porte aux {} dB visés.
 
 Zig
 Zig
@@ -6669,11 +7723,41 @@ Zoom pour ajuster
 __pycache__, .venv, .mypy_cache, .pytest_cache, .tox
 __pycache__, .venv, .mypy_cache, .pytest_cache, .tox
 
+a PIN set
+un code PIN défini
+
+a {} W power limit
+une limite de puissance de {} W
+
 as in 1Password's sidebar, or its UUID
 comme dans la barre latérale de 1Password, ou son UUID
 
+as it goes
+aussi vite que possible
+
+brush’s grey hint after what you type, from a tiny model of your own commands on this computer. Your shell is {}: Olo Doctor makes it brush (a suggestion).
+L’indice gris de brush après ce que vous tapez, issu d’un petit modèle de vos propres commandes sur cet ordinateur. Votre shell est {} : Olo Doctor le change en brush (une suggestion).
+
+brush’s grey hint after what you type, from a tiny model of your own commands on this computer: it weighs what’s typed, the folder, the commands before, the hour and the day, and learns as you go.
+L’indice gris de brush après ce que vous tapez, issu d’un petit modèle de vos propres commandes sur cet ordinateur : il pèse ce qui est tapé, le dossier, les commandes d’avant, l’heure et le jour, et apprend au fil de l’eau.
+
+charging, full in {}
+en charge, pleine dans {}
+
+couldn't save the boost: {}
+impossible d’enregistrer l’amplification : {}
+
+couldn't save the setting: {}
+impossible d’enregistrer le réglage : {}
+
 day
 jour
+
+full size, with a numeric keypad
+pleine taille, avec pavé numérique
+
+fully charged
+complètement chargée
 
 ghp_… or github_pat_…
 ghp_… ou github_pat_…
@@ -6684,6 +7768,15 @@ heure
 iPhone
 iPhone
 
+its clock as the driver has it, up to {} MHz
+sa fréquence selon le pilote, jusqu’à {} MHz
+
+its clock up to {} MHz
+sa fréquence jusqu’à {} MHz
+
+its ports: {}
+ses ports : {}
+
 kbit/s
 kbit/s
 
@@ -6693,17 +7786,59 @@ Celui de libinput par défaut
 ms
 ms
 
+no display ports
+aucun port d’écran
+
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
+not parts of it: {}; its parts are {}
+n’en font pas partie : {} ; ses parties sont {}
+
+not yet on this kernel's series, {}
+pas encore dans la série de ce noyau, {}
+
+nothing now (its ports: {})
+rien pour l’instant (ses ports : {})
+
+of {}
+de {}
+
+of {} and {} more
+de {} et {} autres
+
+olo-complete didn't answer while learning.
+olo-complete n’a pas répondu pendant l’apprentissage.
+
+olo-complete didn’t start: Deskbar’s Upgrade installs it.
+olo-complete n’a pas démarré : Mettre à niveau dans la Deskbar l’installe.
+
 on
 activé
+
+on battery
+sur batterie
+
+on this kernel's series, {}
+dans la série de ce noyau, {}
 
 optional
 facultatif
 
 organizer
 organisateur
+
+original
+l’original
+
+plugged in, held at the {}% limit
+branché, maintenu à la limite de {} %
+
+plugged in, not charging
+branché, pas en charge
+
+processed sound
+le son traité
 
 recommended for this touchpad
 recommandé pour ce pavé tactile
@@ -6714,14 +7849,61 @@ sav, sv2
 scx_lavd, made for a computer someone is sitting at: what it judges is being waited for runs first, with builds and other long work around it. It gives a program's priority little weight, and under heavy work the window server waited for the processor three times as long as with the kernel's own. It is loaded over the kernel's own, which takes over again by itself if LAVD ever stops.
 scx_lavd, fait pour un ordinateur devant lequel quelqu’un est assis : ce qu’il juge attendu passe d’abord, les compilations et autres longs travaux autour. Il accorde peu de poids à la priorité d’un programme, et sous forte charge le serveur de fenêtres a attendu le processeur trois fois plus longtemps qu’avec celui du noyau. Il se charge par-dessus celui du noyau, qui reprend seul la main si LAVD s’arrête.
 
+signed in
+connecté
+
+signed in, 1 calendar
+connecté, 1 calendrier
+
+signed in, {} calendars
+connecté, {} calendriers
+
 ssh, git and other programs sign in with the SSH keys in Passwords, each one allowed the first time it asks.
 ssh, git et d’autres programmes se connectent avec les clés SSH de Passwords, chacun autorisé la première fois qu’il le demande.
 
 target/debug, target/release, ~/.cargo/registry, ~/.rustup
 target/debug, target/release, ~/.cargo/registry, ~/.rustup
 
+the account’s
+celle du compte
+
+the agent didn’t start: {}
+l’agent n’a pas démarré : {}
+
+the fans {}{}
+les ventilateurs {}{}
+
+the introduction
+l’introduction
+
+the power profiles daemon, through {}
+le service de profils d’énergie, via {}
+
+the summary, {}
+le résumé, {}
+
+the system's power profiles daemon
+le service de profils d’énergie du système
+
+the try
+l’essai
+
+up to {} dpi
+jusqu’à {} ppp
+
 you
 vous
+
+your own picture
+une image à vous
+
+{n} days
+one: {n} jour
+other: {n} jours
+
+{n} hours
+one: {n} heure
+other: {n} heures
 
 {n} minutes
 one: {n} minute
@@ -6731,17 +7913,190 @@ other: {n} minutes
 one: {n} seconde
 other: {n} secondes
 
+{n} secrets
+one: {n} secret
+other: {n} secrets
+
+{n} weeks
+one: {n} semaine
+other: {n} semaines
+
+{} (AV1 and VP9)
+{} (AV1 et VP9)
+
+{} (every video)
+{} (toute vidéo)
+
+{} (in use)
+{} (utilisé)
+
+{} (not connected)
+{} (non connecté)
+
+{} (the theme’s own)
+{} (celui du thème)
+
+{} A workspace starts with this; choose its own from Deskbar's tray.
+{} Un espace de travail commence avec celui-ci ; choisissez le sien dans la zone d’état de la Deskbar.
+
+{} About a microsecond each, on the {}.
+{} Environ une microseconde chacun, sur le {}.
+
+{} Choose Set Up… to try again.
+{} Choisissez Configurer… pour réessayer.
+
+{} Choose a workspace's own from Deskbar's tray.
+{} Choisissez celui d’un espace de travail dans la zone d’état de la Deskbar.
+
+{} What’s looked in for codes, and where they go: Security ▸ Passwords.
+{} Où les codes sont cherchés et où ils vont : Sécurité ▸ Passwords.
+
+{} a second
+{}/s
+
+{} applications are keeping the display awake.
+{} applications gardent l’écran allumé.
+
+{} cd/m² at most, {} over the whole screen
+{} cd/m² au plus, {} sur tout l’écran
+
+{} didn't say where it is.
+{} n’a pas dit où il est.
+
+{} didn't start pairing: {}.
+{} n’a pas lancé le jumelage : {}.
+
+{} dpi as it comes
+{} ppp d’origine
+
+{} for each
+{} pour chacun
+
+{} h {} min
+{} h {} min
+
 {} in {}.
 {} à {}.
+
+{} is connected but plays no sound: {}.
+{} est connecté mais ne joue aucun son : {}.
+
+{} is disconnected from Olo. Its app stays in its Google Cloud project, to connect it again with.
+{} est déconnecté d’Olo. Son app reste dans son projet Google Cloud, pour le reconnecter.
+
+{} is grabbing input devices: a mouse it has grabbed moves through its virtual pointer, and settings made here don't reach it.
+{} capture des périphériques d’entrée : une souris capturée bouge via son pointeur virtuel, et les réglages faits ici ne l’atteignent pas.
+
+{} isn't paired with.
+{} n’est pas jumelé.
+
+{} isn't shaped.
+{} n’est pas limité.
+
+{} knows this computer.
+{} connaît cet ordinateur.
+
+{} later: gone
+{} plus tard : effacées
+
+{} ms, the middle of them
+{} ms, la médiane
+
+{} of Olo’s {} words are in {} so far; the rest stay in English.
+{} des {} mots d’Olo existent en {} pour l’instant ; le reste reste en anglais.
+
+{} of them
+{} d’entre eux
 
 {} of {} connected.
 {} sur {} connectés.
 
+{} of {} connections
+{} sur {} connexions
+
+{} on Workspace {}
+{} sur l’espace de travail {}
+
+{} per second
+{} par seconde
+
+{} was added.
+{} a été ajouté.
+
+{} was removed.
+{} a été retiré.
+
+{} was taken from “{}”.
+{} a été pris de « {} ».
+
+{} words a minute · {}% right
+{} mots par minute · {} % justes
+
+{} · set up {}{}
+{} · configuré {}{}
+
+{} · {} · call quality while the microphone is used
+{} · {} · qualité d’appel pendant l’usage du micro
+
+{} · {} · music quality
+{} · {} · qualité musique
+
+{}% of RAM
+{} % RAM
+
+{}% of a core
+{} % d’un cœur
+
+{}% of the time
+{} % du temps
+
+{}% of their {} segments
+{} % de leurs {} segments
+
 {}, all day
 {}, toute la journée
 
+{}, all disks
+{}, tous les disques
+
 {}, until {}
 {}, jusqu’au {}
+
+{}: it asks for its PIN at every use, so a touch can’t stand for your password
+{} : elle demande son code PIN à chaque usage, un toucher ne peut donc pas remplacer votre mot de passe
+
+{}: it can’t keep a secret for Olo (no hmac-secret)
+{} : elle ne peut pas garder de secret pour Olo (pas de hmac-secret)
+
+{}: left as it is here, as this computer's couldn't be saved first.
+{} : laissé tel quel ici, celui de cet ordinateur n’ayant pas pu être enregistré d’abord.
+
+{}: left as it is here. The backup holds no key to open what it has of it (one exported without passwords and sign-ins holds none).
+{} : laissé tel quel ici. La sauvegarde ne contient aucune clé pour ouvrir ce qu’elle en a (une exportée sans mots de passe ni connexions n’en contient aucune).
+
+{}: sign in again on this computer (each computer signs in as itself).
+{} : reconnectez-vous sur cet ordinateur (chaque ordinateur se connecte lui-même).
+
+{}: the login keyring didn't take it ({}). Import the backup again once it does.
+{} : le trousseau de session ne l’a pas accepté ({}). Importez de nouveau la sauvegarde quand il l’acceptera.
+
+{}: what's set below. Power Modes says what each mode puts it on.
+{} : ce qui est réglé ci-dessous. Modes d’énergie dit où chaque mode le met.
+
+{}; not allowed {} (sign in again)
+{} ; pas autorisé {} (reconnectez-vous)
+
+{}Run by {}. Echo cancellation isn't tried: a recording has no speakers' sound beside it to take out.
+{}Exécuté par {}. L’annulation d’écho n’est pas essayée : un enregistrement n’a pas à côté le son des haut-parleurs à retirer.
+
+{}a heading {}
+{}un titre {}
+
+{}{}, plugged in: {}.
+{}{}, branché : {}.
+
+{}″ ({} × {} mm), {} pixels per inch
+{}″ ({} × {} mm), {} pixels par pouce
 
 ~/.cache, browsers’ caches, thumbnails
 ~/.cache, caches des navigateurs, vignettes
@@ -6775,6 +8130,39 @@ other: {n} secondes
 
 ½ second
 ½ seconde
+
+“{}” can't be imported. {}
+« {} » ne peut pas être importé. {}
+
+“{}” couldn't be written: {}
+« {} » n’a pas pu être écrit : {}
+
+“{}” is an enterprise network.
+« {} » est un réseau d’entreprise.
+
+“{}” is asking something else to pair.
+« {} » demande à jumeler autre chose.
+
+“{}” is imported.
+« {} » est importé.
+
+“{}” is out of reach or its Bluetooth is off. It’s tried again by itself.
+« {} » est hors de portée ou son Bluetooth est éteint. Nouvel essai automatique.
+
+“{}” isn't a domain.
+« {} » n’est pas un domaine.
+
+“{}” isn't an IP address.
+« {} » n’est pas une adresse IP.
+
+“{}” isn’t in reach. Is it nearby, unlocked, with Bluetooth on?
+« {} » n’est pas à portée. Est-il à proximité, déverrouillé, avec le Bluetooth activé ?
+
+“{}” wants to pair with this computer.
+« {} » veut se jumeler avec cet ordinateur.
+
+“{}”, made {}{}. What's checked comes back:
+« {} », faite {}{}. Ce qui est coché revient :
 
 ↑↓ choose an app.
 ↑↓ choisit une app.

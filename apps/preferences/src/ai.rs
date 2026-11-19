@@ -24,8 +24,8 @@ pub fn ui(ui: &mut Ui) {
         });
         let keys = shortcuts::by_id("emoji-picker").map(|i| shortcuts::keys_for(i, &s.keyboard.profile)).unwrap_or_default();
         let how = match keys.first() {
-            Some(k) => format!("In the emoji picker ({}), describe what you want to say and press ⌘↩ for five emoji that say it.", k.label(s.keyboard.profile.platform)),
-            None => "In the emoji picker, describe what you want to say and press ⌘↩ for five emoji that say it.".into(),
+            Some(k) => olo_kit::tr!("In the emoji picker ({}), describe what you want to say and press ⌘↩ for five emoji that say it.", k.label(s.keyboard.profile.platform)),
+            None => olo_kit::words::tr("In the emoji picker, describe what you want to say and press ⌘↩ for five emoji that say it.").into(),
         };
         ui.bbox("Emoji", |ui| {
             feature(ui, "emoji", &s.ai.emoji, "Suggest emoji for a description", |s| &mut s.ai.emoji);
@@ -74,7 +74,7 @@ const HISTORY_DAYS: [(u32, &str); 5] = [(1, "A day"), (7, "A week"), (30, "A mon
 
 /// A feature's switch, model and effort; `of` finds it in the settings.
 fn feature(ui: &mut Ui, id: &str, f: &AiFeature, label: &str, of: fn(&mut Settings) -> &mut AiFeature) {
-    ui.check(label.to_owned(), f.enabled, move |s, v| of(s).enabled = v);
+    ui.check(olo_kit::words::of_text(label), f.enabled, move |s, v| of(s).enabled = v);
     ui.enabled_if(f.enabled, |ui| {
         let models: Vec<SharedString> = AI_MODELS.iter().map(|(_, name)| SharedString::from(*name)).collect();
         let m = AI_MODELS.iter().position(|(id, _)| *id == f.model_id()).unwrap_or(0);

@@ -75,7 +75,7 @@ pub fn ui(ui: &mut Ui, st: &mut State, extra: &Extra, busy: bool) {
     let remove = chosen.clone().map(|v| {
         Button::new("Remove").enabled(!busy && v.active.is_none()).on_click(move |_, cx| {
             let profile = v.profile.clone();
-            let message = format!("Remove the VPN “{}”? Its settings and keys go with it.", v.name);
+            let message = olo_kit::tr!("Remove the VPN “{}”? Its settings and keys go with it.", v.name);
             olo_kit::widgets::open_alert(cx, "Network", "warning", &message, &["Cancel", "Remove"], move |choice, _| {
                 if *choice == Some(1) {
                     let _ = link.tx.send(Request::Delete(profile.clone()));

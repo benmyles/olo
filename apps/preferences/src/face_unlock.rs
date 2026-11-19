@@ -63,13 +63,13 @@ fn sources() -> Option<(PathBuf, PathBuf, PathBuf)> {
 /// starting "error: " is what went wrong).
 fn as_root(faced: &Path, args: &[&str]) -> Result<(), String> {
     if !olo_system::env::at_the_computer() {
-        return Err("Face unlock is installed only in the person's own session (polkit asks there).".into());
+        return Err(olo_kit::words::tr("Face unlock is installed only in the person's own session (polkit asks there).").into());
     }
     let out = std::process::Command::new("pkexec").arg("--disable-internal-agent").arg(faced).args(args).output().map_err(|e| e.to_string())?;
     match out.status.code() {
         Some(0) => Ok(()),
-        Some(126 | 127) => Err("An administrator's password is needed.".into()),
-        _ => Err(String::from_utf8_lossy(&out.stdout).lines().find_map(|l| l.strip_prefix("error: ").map(str::to_owned)).unwrap_or_else(|| "It didn't work.".into())),
+        Some(126 | 127) => Err(olo_kit::words::tr("An administrator's password is needed.").into()),
+        _ => Err(String::from_utf8_lossy(&out.stdout).lines().find_map(|l| l.strip_prefix("error: ").map(str::to_owned)).unwrap_or_else(|| olo_kit::words::tr("It didn't work.").into())),
     }
 }
 
@@ -101,17 +101,17 @@ fn link(proxy: olo_kit::Proxy) -> &'static Link {
                     match req {
                         Request::Look => {}
                         Request::Install => match sources() {
-                            None => said(&sh, Some("Face unlock's service isn't in this build (build the whole workspace).".into()), None),
+                            None => said(&sh, Some(olo_kit::words::tr("Face unlock's service isn't in this build (build the whole workspace).").into()), None),
                             Some((faced, models, pam)) => match as_root(&faced, &["install", "--models", &models.to_string_lossy(), "--pam", &pam.to_string_lossy()]) {
                                 Ok(()) => said(&sh, None, Some("Installed. Set it up with your face next.")),
-                                Err(e) => said(&sh, Some(format!("Face unlock wasn't installed: {e}")), None),
+                                Err(e) => said(&sh, Some(olo_kit::tr!("Face unlock wasn't installed: {}", e)), None),
                             },
                         },
                         Request::Uninstall => match sources() {
-                            None => said(&sh, Some("Face unlock's service isn't in this build.".into()), None),
+                            None => said(&sh, Some(olo_kit::words::tr("Face unlock's service isn't in this build.").into()), None),
                             Some((faced, ..)) => match as_root(&faced, &["uninstall"]) {
                                 Ok(()) => said(&sh, None, Some("Face unlock was removed.")),
-                                Err(e) => said(&sh, Some(format!("Face unlock wasn't removed: {e}")), None),
+                                Err(e) => said(&sh, Some(olo_kit::tr!("Face unlock wasn't removed: {}", e)), None),
                             },
                         },
                         Request::Enroll(password) => {
@@ -124,18 +124,18 @@ fn link(proxy: olo_kit::Proxy) -> &'static Link {
                             sh.lock().unwrap().looks = None;
                             match r.as_deref() {
                                 Ok("enrolled") => said(&sh, None, Some("Set up: a look now stands for your password.")),
-                                Ok("wrong-password") => said(&sh, Some("That password isn't right.".into()), None),
-                                Ok("no-face") => said(&sh, Some("Your face wasn't seen well enough: sit facing the camera, at arm's length, and try again.".into()), None),
-                                Ok("no-camera") => said(&sh, Some("The infrared camera couldn't be opened (its shutter, or another program).".into()), None),
-                                Ok(other) => said(&sh, Some(format!("It wasn't set up ({other}).")), None),
-                                Err(e) => said(&sh, Some(format!("It wasn't set up ({e}).")), None),
+                                Ok("wrong-password") => said(&sh, Some(olo_kit::words::tr("That password isn't right.").into()), None),
+                                Ok("no-face") => said(&sh, Some(olo_kit::words::tr("Your face wasn't seen well enough: sit facing the camera, at arm's length, and try again.").into()), None),
+                                Ok("no-camera") => said(&sh, Some(olo_kit::words::tr("The infrared camera couldn't be opened (its shutter, or another program).").into()), None),
+                                Ok(other) => said(&sh, Some(olo_kit::tr!("It wasn't set up ({}).", other)), None),
+                                Err(e) => said(&sh, Some(olo_kit::tr!("It wasn't set up ({}).", e)), None),
                             }
                         }
                         Request::Forget(password) => match olo_system::face::forget(&password).as_deref() {
                             Ok("forgotten") => said(&sh, None, Some("Your face was forgotten.")),
-                            Ok("wrong-password") => said(&sh, Some("That password isn't right.".into()), None),
-                            Ok(other) => said(&sh, Some(format!("It wasn't forgotten ({other}).")), None),
-                            Err(e) => said(&sh, Some(format!("It wasn't forgotten ({e}).")), None),
+                            Ok("wrong-password") => said(&sh, Some(olo_kit::words::tr("That password isn't right.").into()), None),
+                            Ok(other) => said(&sh, Some(olo_kit::tr!("It wasn't forgotten ({}).", other)), None),
+                            Err(e) => said(&sh, Some(olo_kit::tr!("It wasn't forgotten ({}).", e)), None),
                         },
                     }
                     let status = olo_system::face::status();
@@ -243,7 +243,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 }
             }
             Some(s) => {
-                ui.add(StringView::new(format!("Set up ({} looks).", s.enrolled)).wrap(true));
+                ui.add(StringView::new(olo_kit::tr!("Set up ({} looks).", s.enrolled)).wrap(true));
                 if st.asking.is_none() {
                     let (again, forget) = (ask(ui, Asking::Enroll, "Set Up Again…"), ask(ui, Asking::Forget, "Forget…"));
                     ui.add(buttons(vec![again, forget, Button::new("Remove").id("face-remove").enabled(!busy).on_click(move |_, _| drop(link.tx.send(Request::Uninstall))).into_element()]));

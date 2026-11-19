@@ -49,7 +49,7 @@ fn minutes_text(m: u32) -> String {
         1 => "1 minute".into(),
         60 => "1 hour".into(),
         m if m >= 60 && m % 60 == 0 => format!("{} hours", m / 60),
-        m if m > 60 => format!("{} h {} min", m / 60, m % 60),
+        m if m > 60 => olo_kit::tr!("{} h {} min", m / 60, m % 60),
         m => format!("{m} minutes"),
     }
 }
@@ -58,7 +58,7 @@ fn minutes_text(m: u32) -> String {
 fn minutes_slider(ui: &mut Ui, id: &str, label: &str, value: u32, set: impl Fn(&mut Settings, u32) + 'static) {
     let i = MINUTES.iter().position(|&m| m >= value).unwrap_or(MINUTES.len() - 1);
     let text = minutes_text(MINUTES[i]);
-    let label = SharedString::from(label.to_owned());
+    let label = olo_kit::words::of_text(label);
     ui.slider(id, i as f32, 0.0..=(MINUTES.len() - 1) as f32, |s| s.step(1.0).label(label).value_text(text), move |s, v| set(s, MINUTES[(v.round() as usize).min(MINUTES.len() - 1)]));
 }
 

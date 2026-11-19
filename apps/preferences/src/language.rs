@@ -58,9 +58,9 @@ pub fn ui(ui: &mut Ui) {
         let (have, all) = words::covered(l, words::english().iter().copied());
         if now != 0 {
             ui.note(if have >= all {
-                format!("All of Olo’s {all} words are in {}.", l.english)
+                olo_kit::tr!("All of Olo’s {} words are in {}.", all, l.english)
             } else {
-                format!("{have} of Olo’s {all} words are in {} so far; the rest stay in English.", l.english)
+                olo_kit::tr!("{} of Olo’s {} words are in {} so far; the rest stay in English.", have, all, l.english)
             });
         }
         ui.note("Olo’s windows change at once. Other programs take it as they next start, in the languages they have.");

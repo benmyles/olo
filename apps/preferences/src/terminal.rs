@@ -57,7 +57,7 @@ fn worktrees(ui: &mut Ui) {
                 .child(div().flex_1().min_w_0().child(ui.control_of("worktrees").label("New ones go in:").divider(100.0)))
                 .child(Button::new("Choose…").id("worktrees-choose").enabled(enabled).on_click(choose)),
         );
-        ui.note(format!("Each repository gets a folder in there: olo’s worktree fix-tabs goes in {base}/olo/fix-tabs."));
+        ui.note(olo_kit::tr!("Each repository gets a folder in there: olo’s worktree fix-tabs goes in {}/olo/fix-tabs.", base));
     });
 }
 

@@ -413,7 +413,7 @@ impl Choice {
         let found = |w: &String| parts.iter().find(|p| p.eq_ignore_ascii_case(w.trim()));
         let unknown: Vec<&String> = wanted.iter().filter(|w| found(w).is_none()).collect();
         if !unknown.is_empty() {
-            return Err(format!("not parts of it: {}; its parts are {}", unknown.iter().map(|u| format!("“{u}”")).collect::<Vec<_>>().join(", "), parts.join(", ")));
+            return Err(olo_kit::tr!("not parts of it: {}; its parts are {}", unknown.iter().map(|u| format!("“{u}”")).collect::<Vec<_>>().join(", "), parts.join(", ")));
         }
         let keep: Vec<&String> = wanted.iter().filter_map(found).collect();
         Ok(Choice { left_out: parts.iter().filter(|p| !keep.contains(p)).cloned().collect() })
@@ -472,7 +472,7 @@ fn app_of(path: &str) -> String {
         let stem = part.split('.').next().unwrap_or(part);
         match stem {
             "olo" | "tabula" | "" => continue,
-            "app_server" => return "Desktop (Preferences)".into(),
+            "app_server" => return olo_kit::words::tr("Desktop (Preferences)").into(),
             "signatures" => return "Viewer".into(),
             "desktop" => return "Tracker".into(),
             "palette" => return "Palette".into(),
@@ -593,7 +593,7 @@ fn piece_nonce(prefix: &[u8; 16], i: u64, last: bool) -> ([u8; 24], [u8; 6]) {
 /// `seal` undone; an error if any of it was changed, or the key is
 /// another's.
 fn unseal(key: &[u8; 32], sealed: &[u8]) -> Result<Zeroizing<Vec<u8>>, String> {
-    let damaged = || "The backup is damaged.".to_string();
+    let damaged = || olo_kit::words::tr("The backup is damaged.").to_string();
     if sealed.len() < 5 + 16 + 16 || &sealed[..4] != SEAL_MAGIC || sealed[4] != SEAL_FORMAT {
         return Err(damaged());
     }
@@ -604,7 +604,9 @@ fn unseal(key: &[u8; 32], sealed: &[u8]) -> Result<Zeroizing<Vec<u8>>, String> {
     let n = pieces.len();
     for (i, piece) in pieces.into_iter().enumerate() {
         let (nonce, aad) = piece_nonce(&prefix, i as u64, i + 1 == n);
-        let plain = cipher.decrypt(&XNonce::from(nonce), Payload { msg: piece, aad: &aad }).map_err(|_| if i == 0 { "That isn't the backup's password.".to_string() } else { damaged() })?;
+        let plain = cipher
+            .decrypt(&XNonce::from(nonce), Payload { msg: piece, aad: &aad })
+            .map_err(|_| if i == 0 { olo_kit::words::tr("That isn't the backup's password.").to_string() } else { damaged() })?;
         out.extend_from_slice(&plain);
     }
     Ok(out)
@@ -667,7 +669,7 @@ pub fn export_only(roots: &[(&'static str, PathBuf)], dest: &Path, how: &Seal, h
                     kept.push((k, Secret { label: k.label.into(), attributes: k.attributes.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect(), secret: b64().encode(&value) }))
                 }
                 Ok(None) => {}
-                Err(e) => return Err(format!("The login keyring couldn't be read: {e}")),
+                Err(e) => return Err(olo_kit::tr!("The login keyring couldn't be read: {}", e)),
             }
         }
     }
@@ -686,7 +688,7 @@ pub fn export_only(roots: &[(&'static str, PathBuf)], dest: &Path, how: &Seal, h
         _ => None,
     };
     if wifi.as_ref().is_some_and(|w| !w.networks.is_empty()) {
-        whats.push("Wi-Fi networks".into());
+        whats.push(olo_kit::words::tr("Wi-Fi networks").into());
     }
     let manifest = Manifest { format: FORMAT.into(), version: VERSION, created: now(), files, from: Some(here.origin.clone()), sealed: sealing, secrets: whats };
     let total = manifest.bytes();
@@ -752,12 +754,12 @@ fn append<W: Write>(tar: &mut tar::Builder<W>, name: &str, bytes: &[u8], mode: u
 
 fn open(path: &Path) -> Result<tar::Archive<zstd::Decoder<'static, std::io::BufReader<std::fs::File>>>, String> {
     let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-    let dec = zstd::Decoder::new(file).map_err(|_| "This isn't an Olo backup.".to_string())?;
+    let dec = zstd::Decoder::new(file).map_err(|_| olo_kit::words::tr("This isn't an Olo backup.").to_string())?;
     Ok(tar::Archive::new(dec))
 }
 
 fn not_backup() -> String {
-    "This isn't an Olo backup.".into()
+    olo_kit::words::tr("This isn't an Olo backup.").into()
 }
 
 /// What the backup at `path` holds (its manifest, checked).
@@ -775,7 +777,7 @@ pub fn inspect(path: &Path) -> Result<Manifest, String> {
         return Err(not_backup());
     }
     if manifest.version > VERSION || manifest.sealed.as_ref().is_some_and(|s| s.with != "passphrase" && s.with != "keyring") {
-        return Err("This backup was made by a newer Olo.".into());
+        return Err(olo_kit::words::tr("This backup was made by a newer Olo.").into());
     }
     Ok(manifest)
 }
@@ -875,7 +877,7 @@ fn widgets_here(json: &[u8], here: &meters::Sources) -> Option<(Vec<u8>, Vec<Str
             continue;
         }
         m.insert(field.into(), default);
-        said.push(format!("Deskbar: a {kind} widget measured “{name}”, which this computer hasn't; it measures {instead} instead."));
+        said.push(olo_kit::tr!("Deskbar: a {} widget measured “{}”, which this computer hasn't; it measures {} instead.", kind, name, instead));
     }
     if said.is_empty() {
         return None;
@@ -920,20 +922,21 @@ fn contents(src: &Path, manifest: &Manifest, passphrase: Option<&str>, keyring: 
         }
     }
     let Some(how) = &manifest.sealed else { return Ok(Sealed::default()) };
-    let sealed = sealed.ok_or_else(|| "The backup is damaged.".to_string())?;
+    let sealed = sealed.ok_or_else(|| olo_kit::words::tr("The backup is damaged.").to_string())?;
     let key = match how.with.as_str() {
         "passphrase" => {
-            let words = passphrase.ok_or_else(|| "The backup's password is needed to open it.".to_string())?;
-            let salt = b64().decode(&how.salt).map_err(|_| "The backup is damaged.".to_string())?;
+            let words = passphrase.ok_or_else(|| olo_kit::words::tr("The backup's password is needed to open it.").to_string())?;
+            let salt = b64().decode(&how.salt).map_err(|_| olo_kit::words::tr("The backup is damaged.").to_string())?;
             passphrase_key(words, &salt, how.m_kib, how.passes)?
         }
         _ => {
-            let bytes = keyring.lookup(&backup_key_attrs(&how.salt))?.ok_or_else(|| "Its key isn't in this login keyring: it opens only on the computer that made it.".to_string())?;
-            Zeroizing::new(bytes.as_slice().try_into().map_err(|_| "Its key is damaged.".to_string())?)
+            let bytes =
+                keyring.lookup(&backup_key_attrs(&how.salt))?.ok_or_else(|| olo_kit::words::tr("Its key isn't in this login keyring: it opens only on the computer that made it.").to_string())?;
+            Zeroizing::new(bytes.as_slice().try_into().map_err(|_| olo_kit::words::tr("Its key is damaged.").to_string())?)
         }
     };
     let plain = unseal(&key, &sealed)?;
-    let mut inner = tar::Archive::new(zstd::Decoder::new(plain.as_slice()).map_err(|_| "The backup is damaged.".to_string())?);
+    let mut inner = tar::Archive::new(zstd::Decoder::new(plain.as_slice()).map_err(|_| olo_kit::words::tr("The backup is damaged.").to_string())?);
     let mut kept = Sealed::default();
     for entry in inner.entries().map_err(|e| e.to_string())? {
         let mut entry = entry.map_err(|e| e.to_string())?;
@@ -942,9 +945,9 @@ fn contents(src: &Path, manifest: &Manifest, passphrase: Option<&str>, keyring: 
         let mut bytes = Zeroizing::new(Vec::new());
         entry.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
         if name == Path::new(SECRETS) {
-            kept.secrets = serde_json::from_slice(&bytes).map_err(|_| "The backup is damaged.".to_string())?;
+            kept.secrets = serde_json::from_slice(&bytes).map_err(|_| olo_kit::words::tr("The backup is damaged.").to_string())?;
         } else if name == Path::new(WIFI) {
-            kept.wifi = Some(serde_json::from_slice(&bytes).map_err(|_| "The backup is damaged.".to_string())?);
+            kept.wifi = Some(serde_json::from_slice(&bytes).map_err(|_| olo_kit::words::tr("The backup is damaged.").to_string())?);
         } else if entry.header().entry_type() == tar::EntryType::Regular {
             each(&name, mode, bytes)?;
         }
@@ -984,7 +987,7 @@ pub fn import_only(roots: &[(&'static str, PathBuf)], src: &Path, passphrase: Op
     // the vaults they open stay as they are, on another computer).
     if !kept.is_empty() && !keyring.available() {
         kept.clear();
-        notes.push("Passwords and sign-ins: there's no login keyring here to keep them in, so they didn't come along.".to_string());
+        notes.push(olo_kit::words::tr("Passwords and sign-ins: there's no login keyring here to keep them in, so they didn't come along.").to_string());
     }
     // What is there, so this can be undone: sealed with a key in the
     // keyring, secrets and all; open, without them, if there is no
@@ -993,7 +996,7 @@ pub fn import_only(roots: &[(&'static str, PathBuf)], src: &Path, passphrase: Op
         Some(dir) if !collect(roots).is_empty() || !kept.is_empty() => {
             std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
             let stamp = jiff::Zoned::now().strftime("%Y-%m-%d %H.%M.%S").to_string();
-            let path = dir.join(format!("Before import {stamp}.{EXTENSION}"));
+            let path = dir.join(olo_kit::tr!("Before import {}.{}", stamp, EXTENSION));
             let sealed = export(roots, &path, &Seal::Keyring, here, &|_, _| {}, cancel).map(|_| true);
             match sealed {
                 Ok(s) => Some((path, s)),
@@ -1018,7 +1021,7 @@ pub fn import_only(roots: &[(&'static str, PathBuf)], src: &Path, passphrase: Op
     let has_secret = |k: &secrets::Kept| kept.iter().any(|s| s.kept() == Some(*k));
     let skip: Vec<&str> = VAULTS.iter().filter(|(_, k)| elsewhere && !has_secret(k)).map(|(f, _)| *f).collect();
     for (_, k) in VAULTS.iter().filter(|(f, _)| skip.contains(f) && files.iter().any(|(n, ..)| n == Path::new(f))) {
-        notes.push(format!("{}: left as it is here. The backup holds no key to open what it has of it (one exported without passwords and sign-ins holds none).", k.what));
+        notes.push(olo_kit::tr!("{}: left as it is here. The backup holds no key to open what it has of it (one exported without passwords and sign-ins holds none).", k.what));
     }
     // From here on it runs to the end: each file is replaced whole.
     let total: u64 = files.iter().map(|(_, _, b)| b.len() as u64).sum();
@@ -1051,7 +1054,7 @@ pub fn import_only(roots: &[(&'static str, PathBuf)], src: &Path, passphrase: Op
             }
             settings = serde_json::from_slice(&bytes).ok();
         }
-        write_atomic(&dest, &bytes, mode).map_err(|e| format!("“{}” couldn't be written: {e}", dest.display()))?;
+        write_atomic(&dest, &bytes, mode).map_err(|e| olo_kit::tr!("“{}” couldn't be written: {}", dest.display(), e))?;
         written += 1;
         done += bytes.len() as u64;
         progress(done, total);
@@ -1064,10 +1067,10 @@ pub fn import_only(roots: &[(&'static str, PathBuf)], src: &Path, passphrase: Op
         let kept_as = s.kept();
         let what = kept_as.map_or("A secret", |k| k.what);
         if elsewhere && kept_as.is_none_or(|k| k.carry == Carry::SameComputer) {
-            notes.push(format!("{what}: sign in again on this computer (each computer signs in as itself)."));
+            notes.push(olo_kit::tr!("{}: sign in again on this computer (each computer signs in as itself).", what));
             continue;
         }
-        let value = Zeroizing::new(b64().decode(&s.secret).map_err(|_| "The backup is damaged.".to_string())?);
+        let value = Zeroizing::new(b64().decode(&s.secret).map_err(|_| olo_kit::words::tr("The backup is damaged.").to_string())?);
         let attrs = s.attrs();
         let now = keyring.lookup(&attrs)?;
         if now.as_deref() == Some(value.as_slice()) {
@@ -1075,12 +1078,12 @@ pub fn import_only(roots: &[(&'static str, PathBuf)], src: &Path, passphrase: Op
             continue;
         }
         if now.is_some() && !saved_before {
-            notes.push(format!("{what}: left as it is here, as this computer's couldn't be saved first."));
+            notes.push(olo_kit::tr!("{}: left as it is here, as this computer's couldn't be saved first.", what));
             continue;
         }
         match keyring.store(&s.label, &attrs, &value) {
             Ok(()) => stored += 1,
-            Err(e) => notes.push(format!("{what}: the login keyring didn't take it ({e}). Import the backup again once it does.")),
+            Err(e) => notes.push(olo_kit::tr!("{}: the login keyring didn't take it ({}). Import the backup again once it does.", what, e)),
         }
     }
     // The saved Wi-Fi networks this computer hasn't saved (one it has
@@ -1092,20 +1095,20 @@ pub fn import_only(roots: &[(&'static str, PathBuf)], src: &Path, passphrase: Op
                 Ok(true) => {}
                 Ok(false) => match here.networks.add(n) {
                     Ok(()) => added.push(n.name()),
-                    Err(e) => notes.push(format!("Wi-Fi: “{}” couldn't be saved here ({e}).", n.name())),
+                    Err(e) => notes.push(olo_kit::tr!("Wi-Fi: “{}” couldn't be saved here ({}).", n.name(), e)),
                 },
                 Err(_) => {
-                    notes.push("Wi-Fi: there's no NetworkManager here to save the networks in.".into());
+                    notes.push(olo_kit::words::tr("Wi-Fi: there's no NetworkManager here to save the networks in.").into());
                     break;
                 }
             }
         }
         if !added.is_empty() {
-            notes.push(format!("Wi-Fi: {} saved here, {}.", if added.len() == 1 { "a network".to_string() } else { format!("{} networks", added.len()) }, list(&added)));
+            notes.push(olo_kit::tr!("Wi-Fi: {} saved here, {}.", if added.len() == 1 { "a network".to_string() } else { format!("{} networks", added.len()) }, list(&added)));
         }
         if !w.left.is_empty() {
             let (what, them) = if w.left.len() == 1 { ("an enterprise network", "it") } else { ("enterprise networks", "them") };
-            notes.push(format!("Wi-Fi: {} didn't come along ({what}, set up with the other computer's certificates): join {them} again here.", list(&w.left)));
+            notes.push(olo_kit::tr!("Wi-Fi: {} didn't come along ({}, set up with the other computer's certificates): join {} again here.", list(&w.left), what, them));
         }
     }
     // The GPUs' tuning, kept as Preferences ▸ Power keeps it: as root,
@@ -1120,13 +1123,15 @@ pub fn import_only(roots: &[(&'static str, PathBuf)], src: &Path, passphrase: Op
                 let wanted = if elsewhere { Tuning { plan: theirs.plan, ..now.clone() } } else { Tuning { driver: now.driver.clone(), ..theirs } };
                 if wanted != now {
                     match here.system.set_tuning(&wanted) {
-                        Ok(()) if elsewhere => notes.push("Power: what each power mode puts the processors and GPUs on came along; each GPU's own clocks are this computer's.".into()),
+                        Ok(()) if elsewhere => {
+                            notes.push(olo_kit::words::tr("Power: what each power mode puts the processors and GPUs on came along; each GPU's own clocks are this computer's.").into())
+                        }
                         Ok(()) => {}
-                        Err(e) => notes.push(format!("Power: the GPUs' tuning is as it was here. {e} Preferences ▸ Power sets it.")),
+                        Err(e) => notes.push(olo_kit::tr!("Power: the GPUs' tuning is as it was here. {} Preferences ▸ Power sets it.", e)),
                     }
                 }
             }
-            Err(_) => notes.push("Power: the backup's GPU tuning couldn't be read, so it's as it was here.".into()),
+            Err(_) => notes.push(olo_kit::words::tr("Power: the backup's GPU tuning couldn't be read, so it's as it was here.").into()),
         }
     }
     if elsewhere {
@@ -1134,15 +1139,17 @@ pub fn import_only(roots: &[(&'static str, PathBuf)], src: &Path, passphrase: Op
             if let Some(marker) = target(roots, Path::new(ARRIVED)) {
                 write_atomic(&marker, b"{}\n", 0o600).map_err(|e| e.to_string())?;
             }
-            notes.push("Token Pool: its accounts came in paused. Turn them on here once the other computer's pool no longer uses them: each sign-in renews itself, and two computers renewing one sign each other out.".into());
+            notes.push(olo_kit::words::tr("Token Pool: its accounts came in paused. Turn them on here once the other computer's pool no longer uses them: each sign-in renews itself, and two computers renewing one sign each other out.").into());
         }
         notes.push(if wifi.is_some() {
-            "Bluetooth devices and Touch ID fingerprints belong to each computer: pair and enrol them again here.".into()
+            olo_kit::words::tr("Bluetooth devices and Touch ID fingerprints belong to each computer: pair and enrol them again here.").into()
         } else {
-            "Bluetooth devices, Wi-Fi networks and Touch ID fingerprints belong to each computer: pair, join and enrol them again here.".into()
+            olo_kit::words::tr("Bluetooth devices, Wi-Fi networks and Touch ID fingerprints belong to each computer: pair, join and enrol them again here.").into()
         });
         if settings.as_ref().is_some_and(|s| s.keyboard.profile.platform == olo_protocol::shortcuts::Platform::Mac) {
-            notes.push("Keyboard: the Mac profile came along, ⌘ on the Super key (the Windows key on most PC keyboards). Preferences ▸ Keyboard picks another for this keyboard.".into());
+            notes.push(
+                olo_kit::words::tr("Keyboard: the Mac profile came along, ⌘ on the Super key (the Windows key on most PC keyboards). Preferences ▸ Keyboard picks another for this keyboard.").into(),
+            );
         }
     }
     Ok(Imported { manifest, files: written, secrets: stored, before: before.map(|(p, _)| p), settings, notes })
@@ -1433,7 +1440,7 @@ impl State {
                     self.exported = Some(match r {
                         Ok(m) if m.sealed.is_some() => (true, format!("Saved “{}”, sealed.", name_of(&dest))),
                         Ok(_) => (true, format!("Saved “{}”.", name_of(&dest))),
-                        Err(e) => (false, format!("Not saved: {e}")),
+                        Err(e) => (false, olo_kit::tr!("Not saved: {}", e)),
                     });
                 }
                 Report::Inspected(src, r) => {
@@ -1444,7 +1451,7 @@ impl State {
                             self.import_choice = Choice::all();
                             self.chosen = Some((src, m));
                         }
-                        Err(e) => self.imported = Some((false, format!("“{}” can't be imported. {e}", name_of(&src)))),
+                        Err(e) => self.imported = Some((false, olo_kit::tr!("“{}” can't be imported. {}", name_of(&src), e))),
                     }
                 }
                 Report::Imported(r) => {
@@ -1457,7 +1464,7 @@ impl State {
                             self.before = i.before.clone();
                             self.notes = i.notes.clone();
                             let undo = match &i.before {
-                                Some(p) => format!(" Your settings as they were are in “{}”.", name_of(p)),
+                                Some(p) => format!(" {}", olo_kit::tr!("Your settings as they were are in “{}”.", name_of(p))),
                                 None => String::new(),
                             };
                             let secrets = if i.secrets > 0 { format!(" and {} {}", i.secrets, if i.secrets == 1 { "password or sign-in" } else { "passwords and sign-ins" }) } else { String::new() };
@@ -1466,10 +1473,10 @@ impl State {
                             let chosen: Vec<String> = parts.iter().filter(|p| self.import_choice.has(p)).cloned().collect();
                             let of = if chosen.len() < parts.len() { format!(" of {}", list_plain(&chosen)) } else { String::new() };
                             let files = if i.files == 1 { "1 file".to_string() } else { format!("{} files", i.files) };
-                            self.imported = Some((true, format!("Imported {files}{of}{secrets}. Apps that are open take some settings when they next start.{undo}")));
+                            self.imported = Some((true, olo_kit::tr!("Imported {}{}{}. Apps that are open take some settings when they next start.{}", files, of, secrets, undo)));
                         }
                         // (Still chosen: a wrong password can be typed again.)
-                        Err(e) => self.imported = Some((false, format!("Not imported: {e}"))),
+                        Err(e) => self.imported = Some((false, olo_kit::tr!("Not imported: {}", e))),
                     }
                 }
             }
@@ -1491,7 +1498,7 @@ fn name_of(p: &Path) -> String {
 
 /// The name an export is offered under.
 pub fn suggested_name() -> String {
-    format!("Olo Settings {}.{EXTENSION}", jiff::Zoned::now().strftime("%Y-%m-%d"))
+    format!("Olo Settings {}.{}", jiff::Zoned::now().strftime("%Y-%m-%d"), EXTENSION)
 }
 
 /// A file panel for the backup (to export to, or to import), its answer
@@ -1706,7 +1713,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 // height).
                 let status = match &st.phase {
                     Phase::Working { export: true, done, total, cancel, cancellable } => progress(*done, *total, cancel, *cancellable).into_element(),
-                    _ if sealed && !again.is_empty() && password != again => line("The two passwords aren't the same.".into(), c(p.failure)).into_element(),
+                    _ if sealed && !again.is_empty() && password != again => line(olo_kit::words::tr("The two passwords aren't the same.").into(), c(p.failure)).into_element(),
                     _ => match &st.exported {
                         Some((ok, text)) => line(text.clone(), ink(*ok)).into_element(),
                         None => div().into_element(),
@@ -1726,7 +1733,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 let text = |t: String, color| div().pl(px(m::TEXT_INSET)).pr(px(m::SPACING)).py(px(m::STACK / 2.0)).child(StringView::new(t).wrap(true).color(color)).into_element();
                 if let Some((src, manifest)) = &st.chosen {
                     let from = if manifest.from_elsewhere(&Origin::here()) { ", on another computer" } else { "" };
-                    ui.add(StringView::new(format!("“{}”, made {}{from}. What's checked comes back:", name_of(src), manifest.created_text())).wrap(true));
+                    ui.add(StringView::new(olo_kit::tr!("“{}”, made {}{}. What's checked comes back:", name_of(src), manifest.created_text(), from)).wrap(true));
                     let parts: Vec<String> = manifest.parts().into_iter().map(|p| p.0).collect();
                     let links = all_or_none(ui, "import-parts", parts, &st.import_choice, idle, |st| &mut st.import_choice);
                     ui.add(links);
@@ -1755,7 +1762,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                     }
                 }
                 if rows.is_empty() {
-                    rows.push(text("Choose a backup to see what it holds before importing it.".into(), style::disabled_text(&p)));
+                    rows.push(text(olo_kit::words::tr("Choose a backup to see what it holds before importing it.").into(), style::disabled_text(&p)));
                 }
                 ui.add(
                     div().h(px(WELL_ROWS * m::LIST_ROW + 4.0)).child(

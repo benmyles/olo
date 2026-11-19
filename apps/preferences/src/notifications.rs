@@ -161,9 +161,9 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                         cx.notify();
                     });
                 }
-                format!("Do Not Disturb (for {} more minutes)", t.saturating_sub(now).div_ceil(60))
+                olo_kit::words::count(t.saturating_sub(now).div_ceil(60), "Do Not Disturb (for 1 more minute)", "Do Not Disturb (for {n} more minutes)")
             }
-            _ => "Do Not Disturb".into(),
+            _ => olo_kit::words::tr("Do Not Disturb").to_owned(),
         };
         check(ui, label, on, |s, on| {
             s.dnd = on;
@@ -181,11 +181,11 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     ui.bbox("Banners", |ui| {
         // 0: never (errors still show).
         const CHOICES: [u32; 6] = [3, 6, 10, 20, 30, 0];
-        let mut names: Vec<SharedString> = CHOICES.iter().map(|&s| if s == 0 { "Never".into() } else { format!("{s} seconds").into() }).collect();
+        let mut names: Vec<SharedString> = CHOICES.iter().map(|&s| if s == 0 { "Never".into() } else { seconds_text(s).into() }).collect();
         let i = match CHOICES.iter().position(|&c| c == s.seconds) {
             Some(i) => i,
             None => {
-                names.push(format!("{} seconds", s.seconds).into());
+                names.push(seconds_text(s.seconds).into());
                 names.len() - 1
             }
         };
@@ -234,15 +234,21 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     apps_ui(ui, st, &s);
 }
 
-/// "15 minutes", "1 hour", "8 hours", "1 day", "1 week".
+/// "15 minutes", "1 hour", "8 hours", "1 day", "1 week", in the
+/// person's language (each counted as it says it).
 fn duration_text(minutes: u32) -> String {
-    let unit = |n: u32, one: &str| if n == 1 { format!("1 {one}") } else { format!("{n} {one}s") };
+    use olo_kit::words::count;
     match minutes {
-        m if m > 0 && m % 10080 == 0 => unit(m / 10080, "week"),
-        m if m > 0 && m % 1440 == 0 => unit(m / 1440, "day"),
-        m if m > 0 && m % 60 == 0 => unit(m / 60, "hour"),
-        m => unit(m, "minute"),
+        m if m > 0 && m % 10080 == 0 => count(u64::from(m / 10080), "1 week", "{n} weeks"),
+        m if m > 0 && m % 1440 == 0 => count(u64::from(m / 1440), "1 day", "{n} days"),
+        m if m > 0 && m % 60 == 0 => count(u64::from(m / 60), "1 hour", "{n} hours"),
+        m => count(u64::from(m), "1 minute", "{n} minutes"),
     }
+}
+
+/// "6 seconds", in the person's language.
+fn seconds_text(s: u32) -> String {
+    olo_kit::words::count(u64::from(s), "1 second", "{n} seconds")
 }
 
 /// How the history fades: a sunken strip lit in the yellow of a tab in
@@ -266,9 +272,11 @@ fn fade_strip(g: &mut Painter, r: Bounds<Pixels>, s: &NotificationSettings) {
     });
     let dim = style::disabled_text(&p);
     let y = bar.bottom() + px(3.0 + style::SMALL_SIZE / 2.0);
-    let end = if s.fade { format!("{} later: gone", duration_text(s.fade_minutes)) } else { "Never fade".into() };
+    // (Painted here, so asked for here: the kit doesn't translate a
+    // painter's words.)
+    let end = if s.fade { olo_kit::tr!("{} later: gone", duration_text(s.fade_minutes)) } else { olo_kit::words::tr("Never fade").to_owned() };
     let font = style::ui_font(FontWeight::NORMAL);
-    style::label(g, bar.left(), y, style::Align::Left, "Now", style::SMALL_SIZE, font.clone(), dim);
+    style::label(g, bar.left(), y, style::Align::Left, olo_kit::words::tr("Now"), style::SMALL_SIZE, font.clone(), dim);
     style::label(g, bar.right(), y, style::Align::Right, end, style::SMALL_SIZE, font, dim);
 }
 
@@ -318,7 +326,7 @@ fn apps_ui(ui: &mut Ui, st: &mut State, s: &NotificationSettings) {
                         b.center().x,
                         b.center().y,
                         style::Align::Center,
-                        "Apps appear here once they have sent a notification.",
+                        olo_kit::words::tr("Apps appear here once they have sent a notification."),
                         style::SMALL_SIZE,
                         style::ui_font(FontWeight::NORMAL),
                         style::disabled_text(&p),

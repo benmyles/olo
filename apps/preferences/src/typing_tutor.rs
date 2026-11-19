@@ -136,9 +136,9 @@ pub fn lesson(tutor: &Tutor) -> impl IntoElement {
     let typed = tutor.typed.min(text.len());
     let wrong = tutor.wrong_now();
     let speed = match (tutor.wpm(), tutor.accuracy()) {
-        (Some(w), Some(a)) => format!("{w:.0} words a minute · {:.0}% right", a * 100.0),
+        (Some(w), Some(a)) => olo_kit::tr!("{} words a minute · {}% right", format!("{:.0}", w), format!("{:.0}", a * 100.0)),
         (None, Some(a)) => format!("{:.0}% right", a * 100.0),
-        _ => "Start typing".to_owned(),
+        _ => olo_kit::words::tr("Start typing").to_owned(),
     };
     canvas(move |g, b| {
         let p = olo_kit::theme::palette();
@@ -182,7 +182,7 @@ pub fn lesson(tutor: &Tutor) -> impl IntoElement {
         }
         // Speed and accuracy, small at the lower right.
         style::label(g, inner.right() - px(12.0), inner.bottom() - px(12.0), style::Align::Right, speed.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), c(mix(ink, sheet, 0.35)));
-        agent::record(g, agent::Node { role: "Label", name: Some("Type this".into()), value: Some(text.into()), bounds: b, enabled: true, ..Default::default() });
+        agent::record(g, agent::Node { role: "Label", name: Some(olo_kit::words::tr("Type this").into()), value: Some(text.into()), bounds: b, enabled: true, ..Default::default() });
     })
     .w_full()
     .h(px(96.0))

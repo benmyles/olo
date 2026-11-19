@@ -96,7 +96,7 @@ fn summary(w: &Widget, shares: bool, sources: &Sources) -> String {
     // under the tray". Short: how far it reaches is in its settings.)
     if let Measure::Divider { line, .. } = &w.measure {
         if !named.is_empty() {
-            return format!("{named}a heading {place}");
+            return olo_kit::tr!("{}a heading {}", named, place);
         }
         let words = line.name();
         return format!("Divider: {}{} {place}", words[..1].to_lowercase(), &words[1..]);
@@ -367,7 +367,7 @@ fn measure_options(ui: &mut Ui, w: &Widget, sources: &Sources, divider: f32) {
         );
     };
     match &w.measure {
-        Measure::Cpu { cores } => ui.check(format!("Each core ({})", sources.cores), *cores, move |s, v| set(Box::new(move |m| *m = Measure::Cpu { cores: v }))(s)),
+        Measure::Cpu { cores } => ui.check(olo_kit::tr!("Each core ({})", sources.cores), *cores, move |s, v| set(Box::new(move |m| *m = Measure::Cpu { cores: v }))(s)),
         Measure::Memory { swap } => ui.check("Swap too", *swap, move |s, v| set(Box::new(move |m| *m = Measure::Memory { swap: v }))(s)),
         Measure::Gpu { pci } => pick(ui, "widget-gpu", "GPU:", Some("The one it started on"), &sources.gpus, pci, |m, v| *m = Measure::Gpu { pci: v }),
         Measure::Disk { device, read, write } => {

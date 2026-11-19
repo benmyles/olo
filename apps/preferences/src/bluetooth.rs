@@ -262,7 +262,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         let _ = link.tx.send(Request::Search(adapter.path.clone()));
     }
 
-    let text = if adapter.powered { format!("This computer is “{}”.", adapter.name) } else { "Off".to_owned() };
+    let text = if adapter.powered { olo_kit::tr!("This computer is “{}”.", adapter.name) } else { "Off".to_owned() };
     let path = adapter.path.clone();
     ui.add(
         div()
@@ -421,11 +421,11 @@ fn question(ui: &mut Ui, st: &mut State) {
         let Some(q) = &sh.question else { return };
         let (text, typed) = match &q.ask {
             Ask::Confirm(n) => (format!("Does “{}” show {n:06}?", q.device), false),
-            Ask::ShowPasskey(n) => (format!("Type {n:06} on “{}”, then press Return.", q.device), false),
-            Ask::ShowPin(p) => (format!("Type {p} on “{}”, then press Return.", q.device), false),
-            Ask::EnterPin => (format!("Type the PIN for “{}” (often 0000).", q.device), true),
-            Ask::EnterPasskey => (format!("Type the passkey shown by “{}”.", q.device), true),
-            Ask::Authorize => (format!("“{}” wants to pair with this computer.", q.device), false),
+            Ask::ShowPasskey(n) => (olo_kit::tr!("Type {} on “{}”, then press Return.", format!("{:06}", n), q.device), false),
+            Ask::ShowPin(p) => (olo_kit::tr!("Type {} on “{}”, then press Return.", p, q.device), false),
+            Ask::EnterPin => (olo_kit::tr!("Type the PIN for “{}” (often 0000).", q.device), true),
+            Ask::EnterPasskey => (olo_kit::tr!("Type the passkey shown by “{}”.", q.device), true),
+            Ask::Authorize => (olo_kit::tr!("“{}” wants to pair with this computer.", q.device), false),
         };
         (text, typed, matches!(q.ask, Ask::ShowPasskey(_) | Ask::ShowPin(_)), q.path.clone())
     };

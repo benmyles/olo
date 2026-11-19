@@ -669,8 +669,13 @@ fn crowded(p: &Parts, screen: Rect, ppp: f32, out: &mut Vec<Finding>) {
             let overlap_x = ra.max.x.min(rb.max.x) - ra.min.x.max(rb.min.x);
             let gap_x = (rb.min.x - ra.max.x).max(ra.min.x - rb.max.x);
             let gap_y = (rb.min.y - ra.max.y).max(ra.min.y - rb.max.y);
-            let side = overlap_y >= 0.5 * ra.height().min(rb.height()) && gap_x > touching && gap_x < CROWDED;
-            let stacked = overlap_x >= 0.5 * ra.width().min(rb.width()) && gap_y > touching && gap_y < CROWDED;
+            // (Two paragraphs' boxes are snapped outward to device
+            // pixels, the next placed to the nearest: TIGHT between them
+            // can read a pixel less. Spanish's two notes under Security ▸
+            // Passwords, four lines then two, were 6 laid out, 5 read.)
+            let crowded = if na.starts_with("Label ") && nb.starts_with("Label ") { CROWDED - 1.0 / ppp } else { CROWDED };
+            let side = overlap_y >= 0.5 * ra.height().min(rb.height()) && gap_x > touching && gap_x < crowded;
+            let stacked = overlap_x >= 0.5 * ra.width().min(rb.width()) && gap_y > touching && gap_y < crowded;
             if (side && ruled(p, ra, rb, false, ppp)) || (stacked && ruled(p, ra, rb, true, ppp)) {
                 continue;
             }

@@ -347,31 +347,31 @@ fn boost_label(db: f32) -> String {
 /// with that, in a line.
 fn boost_note(speech_db: Option<f32>, boost: f32) -> String {
     let Some(at) = speech_db else {
-        return "How loud this microphone is gets measured as you talk on a call, or with Try It.".into();
+        return olo_kit::words::tr("How loud this microphone is gets measured as you talk on a call, or with Try It.").into();
     };
     let suggested = voice::suggested_boost(at);
     let aim = voice::AIM_DB;
     if suggested == boost && boost == 0.0 {
-        format!("Your voice comes in at {at:.0} dB: loud enough as it is.")
+        olo_kit::tr!("Your voice comes in at {} dB: loud enough as it is.", format!("{:.0}", at))
     } else if suggested == boost {
-        format!("Your voice comes in at {at:.0} dB, boosted to {:.0} dB.", at + boost)
+        olo_kit::tr!("Your voice comes in at {} dB, boosted to {} dB.", format!("{:.0}", at), format!("{:.0}", at + boost))
     } else if suggested == 0.0 {
-        format!("Your voice comes in at {at:.0} dB: loud enough without a boost.")
+        olo_kit::tr!("Your voice comes in at {} dB: loud enough without a boost.", format!("{:.0}", at))
     } else {
-        format!("Your voice comes in at {at:.0} dB: {} brings it to the {aim:.0} dB aimed for.", boost_label(suggested))
+        olo_kit::tr!("Your voice comes in at {} dB: {} brings it to the {} dB aimed for.", format!("{:.0}", at), boost_label(suggested), format!("{:.0}", aim))
     }
 }
 
 /// What the voice service is doing, in a line.
 fn voice_note(state: &voice::State, settings: &voice::Settings, devices: &Devices) -> String {
     if !settings.enabled {
-        return "Apps get the microphone's sound as it is.".into();
+        return olo_kit::words::tr("Apps get the microphone's sound as it is.").into();
     }
     if state.pid == 0 {
-        return "The voice service isn't running.".into();
+        return olo_kit::words::tr("The voice service isn't running.").into();
     }
     if let Some(e) = &state.error {
-        return format!("Not working: {e}.");
+        return olo_kit::tr!("Not working: {}.", e);
     }
     // (Which microphone, the Input box above says.)
     let echo = if !settings.echo_cancellation {
@@ -383,7 +383,7 @@ fn voice_note(state: &voice::State, settings: &voice::Settings, devices: &Device
     } else {
         ""
     };
-    format!("Cleaning up the microphone's sound: {} ms behind{echo}.", state.latency_ms)
+    olo_kit::tr!("Cleaning up the microphone's sound: {} ms behind{}.", state.latency_ms, echo)
 }
 
 /// The AirPods behind a sound device, if it is theirs.
@@ -400,8 +400,11 @@ fn airpods_output(ui: &mut Ui, dev: &audio::Device) {
     use olo_protocol::airpods::{Change, ListeningMode, Request};
     let Some(a) = airpods_of(ui, dev) else { return };
     let bt = dev.bluetooth.clone().unwrap_or_default();
-    let quality =
-        if bt.high_quality() { format!("{} · {} · music quality", a.model, bt.codec_name()) } else { format!("{} · {} · call quality while the microphone is used", a.model, bt.codec_name()) };
+    let quality = if bt.high_quality() {
+        olo_kit::tr!("{} · {} · music quality", a.model, bt.codec_name())
+    } else {
+        olo_kit::tr!("{} · {} · call quality while the microphone is used", a.model, bt.codec_name())
+    };
     ui.note(quality);
     let address = Some(a.address.clone());
     // (Under what it's about, on a line of its own: beside the noise
@@ -484,7 +487,7 @@ fn section(ui: &mut Ui, st: &mut State, devices: &Devices, kind: Kind) {
         // named, with why, and their sound turned on where it can be.
         if kind == Kind::Output {
             for u in &devices.unplayable {
-                ui.note(format!("{} is connected but plays no sound: {}.", u.description, u.why.said()));
+                ui.note(olo_kit::tr!("{} is connected but plays no sound: {}.", u.description, u.why.said()));
                 if let Some(profile) = u.profile.clone() {
                     let (tx3, card) = (tx.clone(), u.card.clone());
                     let id = format!("sound-play-{card}");

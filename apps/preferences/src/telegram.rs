@@ -63,7 +63,7 @@ fn state_of(v: &mut PanelView) -> Option<&mut State> {
 impl State {
     pub fn new(cx: &mut Cx<PanelView>) -> State {
         let field = |cx: &mut Cx<PanelView>, hint: &str, password: bool| {
-            let hint = hint.to_owned();
+            let hint = olo_kit::words::of_text(hint);
             let f = crate::form::text_field(cx, |f| f.hint(hint).password(password));
             // Return does what the step's default button does.
             cx.subscribe(&f, |v, e: &TextFieldEvent, cx| match e {
@@ -97,12 +97,12 @@ impl State {
 
 fn status() -> Known {
     match account::api() {
-        Err(e) => Known::Failed(format!("The keyring couldn’t be read ({e}).")),
+        Err(e) => Known::Failed(olo_kit::tr!("The keyring couldn’t be read ({}).", e)),
         Ok(None) => Known::NoApi,
         Ok(Some(api)) => match account::signed_in() {
             Ok(Some(me)) => Known::SignedIn(api, me),
             Ok(None) => Known::SignedOut(api),
-            Err(e) => Known::Failed(format!("The keyring couldn’t be read ({e}).")),
+            Err(e) => Known::Failed(olo_kit::tr!("The keyring couldn’t be read ({}).", e)),
         },
     }
 }
@@ -125,12 +125,12 @@ impl State {
 
     fn save_api(&mut self, cx: &mut Cx<PanelView>) {
         let Ok(id) = self.api_id.read(cx).text().trim().parse::<i32>() else {
-            self.problem = Some("The API ID is a number.".into());
+            self.problem = Some(olo_kit::words::tr("The API ID is a number.").into());
             return;
         };
         let api = Api { id, hash: self.api_hash.read(cx).text().trim().to_owned() };
         if api.hash.len() != 32 || !api.hash.chars().all(|c| c.is_ascii_hexdigit()) {
-            self.problem = Some("The API hash is 32 letters and digits (0–9, a–f).".into());
+            self.problem = Some(olo_kit::words::tr("The API hash is 32 letters and digits (0–9, a–f).").into());
             return;
         }
         self.problem = None;
@@ -141,7 +141,7 @@ impl State {
         std::thread::spawn(move || {
             *out.lock().unwrap() = match account::save_api(&api) {
                 Ok(()) => status(),
-                Err(e) => Known::Failed(format!("The API ID couldn’t be kept in the keyring ({e}).")),
+                Err(e) => Known::Failed(olo_kit::tr!("The API ID couldn’t be kept in the keyring ({}).", e)),
             };
             proxy.send(Msg::Redraw);
         });
@@ -172,7 +172,7 @@ impl State {
             let r = olo_tg::signin::sign_out();
             *out.lock().unwrap() = match r {
                 Ok(()) => status(),
-                Err(e) => Known::Failed(format!("Couldn’t sign out ({e}).")),
+                Err(e) => Known::Failed(olo_kit::tr!("Couldn’t sign out ({}).", e)),
             };
             tell_telegram();
             proxy.send(Msg::Redraw);
@@ -338,7 +338,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                             canvas(move |g, b| {
                                 qr(g, b, &url);
                                 if !url.is_empty() {
-                                    olo_kit::agent::record(g, olo_kit::agent::Node { role: "Image", name: Some(format!("QR code: {url}").into()), bounds: b, ..Default::default() });
+                                    olo_kit::agent::record(g, olo_kit::agent::Node { role: "Image", name: Some(olo_kit::tr!("QR code: {}", url).into()), bounds: b, ..Default::default() });
                                 }
                             })
                             .w(px(188.0))

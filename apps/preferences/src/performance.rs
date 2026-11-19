@@ -348,8 +348,8 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             // (A scheduler loaded over the kernel's asks for its switches
             // itself: the setting changes nothing while it schedules.)
             about: match scheduled_by {
-                Some(name) => format!("A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick (full preemption). {name} is scheduling now and decides that itself: this is for the kernel's own scheduler."),
-                None => "A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick, up to a millisecond (full preemption).".into(),
+                Some(name) => olo_kit::tr!("A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.", name),
+                None => olo_kit::words::tr("A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick, up to a millisecond (full preemption).").into(),
             },
             facts: vec![("Now", p.now().to_owned()), ("Next start", p.next().to_owned())],
         },
@@ -358,7 +358,7 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             setting: Setting::Preemption,
             label: "",
             on: None,
-            about: "This kernel has one way of preempting only: it wasn't built to be told another.".into(),
+            about: olo_kit::words::tr("This kernel has one way of preempting only: it wasn't built to be told another.").into(),
             facts: Vec::new(),
         },
     });
@@ -369,10 +369,10 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             setting: Setting::SlowDisks,
             label: "Limit what waits to be written to them",
             on: Some(d.on()),
-            about: format!("A copy to a stick or a card goes at the disk's own pace, {} waiting in memory at most, so its progress is true and ejecting is quick.", size(tuning::SLOW_DISK_BYTES)),
+            about: olo_kit::tr!("A copy to a stick or a card goes at the disk's own pace, {} waiting in memory at most, so its progress is true and ejecting is quick.", size(tuning::SLOW_DISK_BYTES)),
             facts: vec![
-                ("May wait", if d.kept { format!("{} for each", size(tuning::SLOW_DISK_BYTES)) } else { format!("up to {}", size(d.may_wait)) }),
-                ("Waiting now", format!("{}, all disks", size(d.waiting))),
+                ("May wait", if d.kept { olo_kit::tr!("{} for each", size(tuning::SLOW_DISK_BYTES)) } else { format!("up to {}", size(d.may_wait)) }),
+                ("Waiting now", olo_kit::tr!("{}, all disks", size(d.waiting))),
                 (
                     "Here",
                     match d.disks.as_slice() {
@@ -392,7 +392,7 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             setting: Setting::SlowDisks,
             label: "",
             on: None,
-            about: "This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).".into(),
+            about: olo_kit::words::tr("This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).").into(),
             facts: Vec::new(),
         }
     });
@@ -403,15 +403,20 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             setting: Setting::Bbr3,
             label: "Send with BBRv3",
             on: Some(b.on()),
-            about: "TCP sends at the pace its path can carry, by a model of it, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).".into(),
+            about: olo_kit::words::tr("TCP sends at the pace its path can carry, by a model of it, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).").into(),
             facts: vec![
                 ("New connections", b.control.clone()),
-                ("On it now", o.as_ref().map_or("—".to_owned(), |o| format!("{} of {} connections", count(o.connections as u64), count(o.of as u64)))),
+                ("On it now", o.as_ref().map_or("—".to_owned(), |o| olo_kit::tr!("{} of {} connections", count(o.connections as u64), count(o.of as u64)))),
                 (
                     "Their round trip",
-                    o.as_ref().and_then(|o| o.round_trip_ms).map_or("—".to_owned(), |ms| format!("{} ms, the middle of them", if ms < 10.0 { format!("{ms:.1}") } else { format!("{ms:.0}") })),
+                    o.as_ref().and_then(|o| o.round_trip_ms).map_or("—".to_owned(), |ms| olo_kit::tr!("{} ms, the middle of them", if ms < 10.0 { format!("{ms:.1}") } else { format!("{ms:.0}") })),
                 ),
-                ("Sent again", o.as_ref().filter(|o| o.sent > 0).map_or("—".to_owned(), |o| format!("{:.2}% of their {} segments", o.sent_again as f64 * 100.0 / o.sent as f64, count(o.sent)))),
+                (
+                    "Sent again",
+                    o.as_ref()
+                        .filter(|o| o.sent > 0)
+                        .map_or("—".to_owned(), |o| olo_kit::tr!("{}% of their {} segments", format!("{:.2}", o.sent_again as f64 * 100.0 / o.sent as f64), count(o.sent))),
+                ),
                 // (Built for whatever kernel an update brings; whether it
                 // has passed its self-check on that kernel's series.)
                 (
@@ -419,9 +424,9 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
                     if b.series.is_empty() {
                         "—".to_owned()
                     } else if b.checked {
-                        format!("on this kernel's series, {}", b.series)
+                        olo_kit::tr!("on this kernel's series, {}", b.series)
                     } else {
-                        format!("not yet on this kernel's series, {}", b.series)
+                        olo_kit::tr!("not yet on this kernel's series, {}", b.series)
                     },
                 ),
             ],
@@ -433,7 +438,7 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             setting: Setting::GraphicsMemory,
             label: "Keep windows' graphics memory out of swap",
             on: Some(g.on()),
-            about: "Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).".into(),
+            about: olo_kit::words::tr("Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).").into(),
             facts: vec![("The patch", if g.patched { "in the running kernel" } else { "not in the running kernel" }.to_owned()), ("At every start", if g.kept { "yes" } else { "no" }.to_owned())],
         });
     }
@@ -470,7 +475,7 @@ fn kernel_tab(ui: &mut Ui, shared: &Arc<Mutex<Kernel>>, scheduled_by: Option<&st
         pieces.into_iter().for_each(|b| one(ui, b));
         match (&k.applying, &k.said) {
             (Some(_), _) => ui.note("Setting it: an administrator's password is asked…"),
-            (None, Some(Err(why))) => ui.add(StringView::new(format!("Not changed. {why}")).wrap(true).color(style::c(p.failure))),
+            (None, Some(Err(why))) => ui.add(StringView::new(olo_kit::tr!("Not changed. {}", why)).wrap(true).color(style::c(p.failure))),
             (None, Some(Ok(said))) => ui.note(said.clone()),
             _ => {}
         }
@@ -536,7 +541,7 @@ fn scheduler_tab(ui: &mut Ui, shared: &Arc<Mutex<Scheduler>>) {
         }
         match (&sch.applying, &sch.said) {
             (Some(_), _) => ui.note("Setting it: an administrator's password is asked…"),
-            (None, Some(Err(why))) => ui.add(StringView::new(format!("Not changed. {why}")).wrap(true).color(style::c(theme::palette().failure))),
+            (None, Some(Err(why))) => ui.add(StringView::new(olo_kit::tr!("Not changed. {}", why)).wrap(true).color(style::c(theme::palette().failure))),
             _ => ui.note(state.now()),
         }
         ui.note("Chosen for the whole computer and kept across restarts. It's the computer's, not this account's, so choosing asks for an administrator's password.");
@@ -579,9 +584,7 @@ fn kept_core_box(ui: &mut Ui, shared: &Arc<Mutex<Scheduler>>) {
     ui.bbox("Kept Core", |ui| {
         let on = ui.s.keep_core;
         ui.check("Keep a core for the window server", on, |s, v| s.keep_core = v);
-        ui.note(&format!(
-            "Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {list}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting."
-        ));
+        ui.note(&olo_kit::tr!("Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.", list));
         let system_off = sch.system_kept.as_ref() == Some(&kept);
         let (text, button) = match (on, sch.system_kept.is_some()) {
             (true, _) if system_off => ("The system's services are kept off it too.", None),
@@ -599,7 +602,7 @@ fn kept_core_box(ui: &mut Ui, shared: &Arc<Mutex<Scheduler>>) {
         }
         match (&sch.keeping, &sch.keep_said) {
             (true, _) => ui.note("Setting it: an administrator's password is asked…"),
-            (false, Some(Err(why))) => ui.add(StringView::new(format!("Not changed. {why}")).wrap(true).color(style::c(theme::palette().failure))),
+            (false, Some(Err(why))) => ui.add(StringView::new(olo_kit::tr!("Not changed. {}", why)).wrap(true).color(style::c(theme::palette().failure))),
             _ => {}
         }
     });
@@ -649,7 +652,7 @@ fn set<T: Clone + 'static>(ui: &Ui, f: impl Fn(&mut PerformanceSettings, T) + 's
 }
 
 fn check(ui: &mut Ui, label: &str, on: bool, f: impl Fn(&mut PerformanceSettings, bool) + 'static) {
-    let c = CheckBox::new(label.to_owned(), on).enabled(ui.enabled()).on_toggle(set(ui, f));
+    let c = CheckBox::new(olo_kit::words::of_text(label), on).enabled(ui.enabled()).on_toggle(set(ui, f));
     ui.add(c);
 }
 
@@ -663,7 +666,7 @@ fn pair(ui: &mut Ui, a: Knob, b: Option<Knob>) {
     let mut row = div().flex().flex_row().gap(px(m::SPACING * 2.0));
     for (label, value, range, step, text, apply) in std::iter::once(a).chain(b) {
         let on = set(ui, move |s, v: f32| apply(&mut s.thresholds, v));
-        row = row.child(div().flex_1().child(Slider::new(format!("perf-{label}"), value, range).label(label.to_owned()).value_text(text).step(step).enabled(enabled).on_change(on)));
+        row = row.child(div().flex_1().child(Slider::new(format!("perf-{label}"), value, range).label(olo_kit::words::of_text(label)).value_text(text).step(step).enabled(enabled).on_change(on)));
     }
     // One alone is as wide as one of a pair.
     if alone {
@@ -674,7 +677,7 @@ fn pair(ui: &mut Ui, a: Knob, b: Option<Knob>) {
 
 fn section(ui: &mut Ui, text: &str) {
     ui.space(m::TIGHT);
-    ui.add(heading(text.to_owned()));
+    ui.add(heading(olo_kit::words::of_text(text)));
 }
 
 pub fn ui(ui: &mut Ui, st: &mut State) {
@@ -763,8 +766,8 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 // Four kinds, two by two (so it fits a laptop's screen).
                 let stuck = ui.collect(|ui| {
                     section(ui, "Stuck in a loop");
-                    pair(ui, ("Busy at least", th.spin_cpu, 50.0..=400.0, 5.0, format!("{:.0}% of a core", th.spin_cpu), |t, v| t.spin_cpu = v), Some(("For", th.spin_minutes, 0.5..=30.0, 0.5, format!("{:.1} min", th.spin_minutes), |t, v| t.spin_minutes = v)));
-                    pair(ui, ("Waits less than", th.spin_switches, 0.0..=50.0, 0.5, format!("{:.1} a second", th.spin_switches), |t, v| t.spin_switches = v), Some(("And I/O under", th.spin_io_kb, 0.0..=256.0, 1.0, format!("{:.0} KB/s", th.spin_io_kb), |t, v| t.spin_io_kb = v)));
+                    pair(ui, ("Busy at least", th.spin_cpu, 50.0..=400.0, 5.0, olo_kit::tr!("{}% of a core", format!("{:.0}", th.spin_cpu)), |t, v| t.spin_cpu = v), Some(("For", th.spin_minutes, 0.5..=30.0, 0.5, format!("{:.1} min", th.spin_minutes), |t, v| t.spin_minutes = v)));
+                    pair(ui, ("Waits less than", th.spin_switches, 0.0..=50.0, 0.5, olo_kit::tr!("{} a second", format!("{:.1}", th.spin_switches)), |t, v| t.spin_switches = v), Some(("And I/O under", th.spin_io_kb, 0.0..=256.0, 1.0, format!("{:.0} KB/s", th.spin_io_kb), |t, v| t.spin_io_kb = v)));
                 });
                 let leaks = ui.collect(|ui| {
                     section(ui, "Leaking memory");
@@ -773,13 +776,13 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 });
                 let memory = ui.collect(|ui| {
                     section(ui, "Using too much memory");
-                    pair(ui, ("Holding at least", th.memory_share, 5.0..=90.0, 1.0, format!("{:.0}% of RAM", th.memory_share), |t, v| t.memory_share = v), Some(("While less is free than", th.memory_available, 2.0..=50.0, 1.0, format!("{:.0}%", th.memory_available), |t, v| t.memory_available = v)));
-                    pair(ui, ("Or stalls over", th.memory_stall, 1.0..=80.0, 1.0, format!("{:.0}% of the time", th.memory_stall), |t, v| t.memory_stall = v), None);
+                    pair(ui, ("Holding at least", th.memory_share, 5.0..=90.0, 1.0, olo_kit::tr!("{}% of RAM", format!("{:.0}", th.memory_share)), |t, v| t.memory_share = v), Some(("While less is free than", th.memory_available, 2.0..=50.0, 1.0, format!("{:.0}%", th.memory_available), |t, v| t.memory_available = v)));
+                    pair(ui, ("Or stalls over", th.memory_stall, 1.0..=80.0, 1.0, olo_kit::tr!("{}% of the time", format!("{:.0}", th.memory_stall)), |t, v| t.memory_stall = v), None);
                 });
                 let zombies = ui.collect(|ui| {
                     section(ui, "Leaving zombies");
-                    pair(ui, ("Unreaped for", th.zombie_minutes, 0.5..=60.0, 0.5, format!("{:.1} min", th.zombie_minutes), |t, v| t.zombie_minutes = v), Some(("By a parent leaving", th.zombie_least as f32, 1.0..=20.0, 1.0, format!("{} of them", th.zombie_least), |t, v| t.zombie_least = v as u32)));
-                    pair(ui, ("Urgent at", th.zombie_count as f32, 5.0..=500.0, 5.0, format!("{} of them", th.zombie_count), |t, v| t.zombie_count = v as u32), None);
+                    pair(ui, ("Unreaped for", th.zombie_minutes, 0.5..=60.0, 0.5, format!("{:.1} min", th.zombie_minutes), |t, v| t.zombie_minutes = v), Some(("By a parent leaving", th.zombie_least as f32, 1.0..=20.0, 1.0, olo_kit::tr!("{} of them", th.zombie_least), |t, v| t.zombie_least = v as u32)));
+                    pair(ui, ("Urgent at", th.zombie_count as f32, 5.0..=500.0, 5.0, olo_kit::tr!("{} of them", th.zombie_count), |t, v| t.zombie_count = v as u32), None);
                 });
                 let column = |items: Vec<olo_kit::Element>| div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).children(items);
                 for (a, b) in [(stuck, leaks), (memory, zombies)] {

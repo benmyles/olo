@@ -148,7 +148,7 @@ fn ssh_config_note(ui: &mut Ui) {
         ui.note("ssh, git and other programs sign in with the SSH keys in Passwords, each one allowed the first time it asks.");
         return;
     };
-    ui.note(format!("Your ssh configuration (~/.ssh/config) sends ssh to another agent, {other}, so it doesn’t use the keys in Passwords."));
+    ui.note(olo_kit::tr!("Your ssh configuration (~/.ssh/config) sends ssh to another agent, {}, so it doesn’t use the keys in Passwords.", other));
     if !ours {
         ui.note("From your next login, Passwords can be ssh’s agent here too.");
         return;
@@ -253,7 +253,7 @@ fn secrets_note(ui: &mut Ui) {
         return;
     }
     if let Some(e) = &st.error {
-        ui.note(format!("Programs’ secrets are locked: {e}."));
+        ui.note(olo_kit::tr!("Programs’ secrets are locked: {}.", e));
         // (Asked on a thread: it waits for the person's password.)
         ui.button("Unlock…", |_, _| {
             std::thread::spawn(|| {
@@ -269,15 +269,15 @@ fn secrets_note(ui: &mut Ui) {
         return;
     }
     let n: usize = st.collections.iter().map(|c| c.items).sum();
-    let secrets = if n == 1 { "1 secret".to_owned() } else { format!("{n} secrets") };
+    let secrets = olo_kit::words::count(n as u64, "1 secret", "{n} secrets");
     let programs = match st.programs.len() {
         0 => String::new(),
-        k if k <= 3 => format!(", of {}", st.programs.join(", ")),
-        k => format!(", of {} and {} more", st.programs[..3].join(", "), k - 3),
+        k if k <= 3 => format!(", {}", olo_kit::tr!("of {}", st.programs.join(", "))),
+        k => format!(", {}", olo_kit::tr!("of {} and {} more", st.programs[..3].join(", "), k - 3)),
     };
-    ui.note(format!("Olo keeps {secrets}{programs}: their sign-ins, keys and Wi-Fi passwords, opened by your login password."));
+    ui.note(olo_kit::tr!("Olo keeps {}{}: their sign-ins, keys and Wi-Fi passwords, opened by your login password.", secrets, programs));
     if !st.skipped.is_empty() {
-        ui.note(format!("Not brought over from GNOME Keyring (another password): {}.", st.skipped.join(", ")));
+        ui.note(olo_kit::tr!("Not brought over from GNOME Keyring (another password): {}.", st.skipped.join(", ")));
     }
 }
 

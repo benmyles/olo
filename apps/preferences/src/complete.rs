@@ -85,21 +85,21 @@ fn ask_stats() -> Option<Stats> {
 /// Turned on: saved, olo-complete started (if it isn't), its first
 /// fine-tune from the history asked for and waited for.
 fn turn_on() -> Result<(), String> {
-    Settings { enabled: true }.save().map_err(|e| format!("Couldn't save the setting: {e}"))?;
+    Settings { enabled: true }.save().map_err(|e| olo_kit::tr!("Couldn't save the setting: {}", e))?;
     if !protocol::running() {
         protocol::start();
         let since = Instant::now();
         while !protocol::running() {
             if since.elapsed() > Duration::from_secs(5) {
-                return Err("olo-complete didn’t start: Deskbar’s Upgrade installs it.".into());
+                return Err(olo_kit::words::tr("olo-complete didn’t start: Deskbar’s Upgrade installs it.").into());
             }
             std::thread::sleep(Duration::from_millis(20));
         }
     }
     match protocol::ask(&Request::Learn, Duration::from_secs(120)) {
         Some(Reply::Learned(_)) => Ok(()),
-        Some(Reply::Error { message }) => Err(format!("The first fine-tune failed: {message}")),
-        _ => Err("olo-complete didn't answer while learning.".into()),
+        Some(Reply::Error { message }) => Err(olo_kit::tr!("The first fine-tune failed: {}", message)),
+        _ => Err(olo_kit::words::tr("olo-complete didn't answer while learning.").into()),
     }
 }
 
@@ -144,7 +144,7 @@ fn link(proxy: olo_kit::Proxy) -> &'static Link {
                             // (It reads the file again, finds itself off, goes.)
                             protocol::tell(&Request::Reload);
                             let mut s = sh.lock().unwrap();
-                            (s.on, s.stats, s.error) = (false, None, saved.err().map(|e| format!("Couldn't save the setting: {e}")));
+                            (s.on, s.stats, s.error) = (false, None, saved.err().map(|e| olo_kit::tr!("Couldn't save the setting: {}", e)));
                         }
                     }
                     proxy.send(Msg::Redraw);
@@ -175,7 +175,7 @@ fn lint_state(v: usize) -> (Shell, bool, bool, Option<Stats>, Option<String>) {
         1 => (Shell::Brush, false, false, None, None),
         2 => (Shell::Brush, true, true, None, None),
         3 => (Shell::Other("/home/someone/.nix-profile/bin/zsh".into()), false, false, None, None),
-        4 => (Shell::OldBrush, false, false, None, Some("olo-complete didn’t start: Deskbar’s Upgrade installs it.".into())),
+        4 => (Shell::OldBrush, false, false, None, Some(olo_kit::words::tr("olo-complete didn’t start: Deskbar’s Upgrade installs it.").into())),
         _ => (Shell::OldBrush, true, false, Some(protocol::demo_stats()), None),
     }
 }
@@ -198,11 +198,11 @@ fn learned(t: &Tuned, at: i64) -> String {
     let took = if ms < 10.0 { format!("{ms:.1} ms") } else { format!("{ms:.0} ms") };
     let (n, now, was) = (style::thousands(t.examples), percent(t.after.top1), percent(t.before.top1));
     if !t.kept {
-        format!("Learned {when} from {n} examples in {took}, but did no better on your newest commands, so it kept what it had: its first suggestion right {was} of the time.")
+        olo_kit::tr!("Learned {} from {} examples in {}, but did no better on your newest commands, so it kept what it had: its first suggestion right {} of the time.", when, n, took, was)
     } else if t.after.top1 > t.before.top1 {
-        format!("Learned {when} from {n} examples in {took}: its first suggestion is right {now} of the time on your newest commands ({was} before).")
+        olo_kit::tr!("Learned {} from {} examples in {}: its first suggestion is right {} of the time on your newest commands ({} before).", when, n, took, now, was)
     } else {
-        format!("Learned {when} from {n} examples in {took}: its first suggestion is right {now} of the time on your newest commands.")
+        olo_kit::tr!("Learned {} from {} examples in {}: its first suggestion is right {} of the time on your newest commands.", when, n, took, now)
     }
 }
 
@@ -223,15 +223,15 @@ pub fn ui(ui: &mut Ui) {
         }));
         let mut text = match (&shell, on) {
             (Shell::Unknown, _) => String::new(),
-            (Shell::Other(path), _) => format!("brush’s grey hint after what you type, from a tiny model of your own commands on this computer. Your shell is {path}: Olo Doctor makes it brush (a suggestion)."),
-            (_, false) => "brush’s grey hint after what you type, from a tiny model of your own commands on this computer: it weighs what’s typed, the folder, the commands before, the hour and the day, and learns as you go.".into(),
-            _ if learning => "Learning from your history…".into(),
+            (Shell::Other(path), _) => olo_kit::tr!("brush’s grey hint after what you type, from a tiny model of your own commands on this computer. Your shell is {}: Olo Doctor makes it brush (a suggestion).", path),
+            (_, false) => olo_kit::words::tr("brush’s grey hint after what you type, from a tiny model of your own commands on this computer: it weighs what’s typed, the folder, the commands before, the hour and the day, and learns as you go.").into(),
+            _ if learning => olo_kit::words::tr("Learning from your history…").into(),
             _ => match &stats {
                 Some(st) => match &st.last_tune {
-                    Some(t) => format!("{} About a microsecond each, on the {}.", learned(t, st.last_tune_at), st.backend),
-                    None => format!("In use, with the weights it began from (not fine-tuned yet), on the {}.", st.backend),
+                    Some(t) => olo_kit::tr!("{} About a microsecond each, on the {}.", learned(t, st.last_tune_at), st.backend),
+                    None => olo_kit::tr!("In use, with the weights it began from (not fine-tuned yet), on the {}.", st.backend),
                 },
-                None => "On: brush starts olo-complete as you next type in it.".into(),
+                None => olo_kit::words::tr("On: brush starts olo-complete as you next type in it.").into(),
             },
         };
         if shell == Shell::OldBrush {

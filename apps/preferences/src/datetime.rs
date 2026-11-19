@@ -144,7 +144,7 @@ fn link(proxy: olo_kit::Proxy) -> &'static Link {
                     s.busy = false;
                     s.error = r.err().map(|e| {
                         tracing::warn!("timedated: {e}");
-                        if systime::needs_auth(&e) { format!("The {what} wasn't changed: an administrator's password is needed.") } else { format!("The {what} couldn't be changed.") }
+                        if systime::needs_auth(&e) { olo_kit::tr!("The {} wasn't changed: an administrator's password is needed.", what) } else { olo_kit::tr!("The {} couldn't be changed.", what) }
                     });
                     drop(s);
                     wake();

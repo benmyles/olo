@@ -3258,7 +3258,10 @@ it.
 - `widgets::Slider::new(id, value, range)`: BSlider (label and value
   above, the bar filled to a raised thumb, `limits` under the ends;
   `step`, `fill`, `width`); a press or a drag sets it, the arrows, Home
-  and End once it has the keyboard; `on_change` gets each value.
+  and End once it has the keyboard; `on_change` gets each value. Its
+  label gives way to its value, cut short with "…" (the whole in a tip)
+  where the two don't fit: Performance's Watchdog pairs met in German,
+  Spanish and French.
 - `file_panel::show(cx, title, FilePanel::open(dir) / save(dir, name) /
   folder(dir), on_done)`: the shared Open, Save and folder panels (see
   "What every app does the same way"), in a dialog window of their own; `on_done` gets an
@@ -5812,7 +5815,9 @@ recorded otherwise.
     and what's on a grid of its own are spaced by the kit, and a rule
     drawn across the gap between two sets them apart: a status bar's
     etched edge under a scroll bar's arrow; a control's own edge, inside
-    it, isn't one),
+    it, isn't one; two paragraphs' boxes are snapped outward to device
+    pixels and the next one placed to the nearest, so a pixel of TIGHT
+    between them may read as lost, and is allowed),
     `window-edge` (content nearer the window's edge than its inset, less
     4, unless in a bar or a view along that edge), `crowded-lines` (two
     long lines a point or three apart: a box's edge almost on its
@@ -13239,6 +13244,18 @@ told apart by eye; what agents call a control, made from its label, is
 handed on with `words::of_name`, not flagged. Watching costs one load
 when nothing watches (Preferences over 180 keys typed: the same within
 the rounds' spread, before, after and with it hard-wired off).
+`tools/dev/words sweep FILE…` converts what it can by itself: a
+`format!` sentence to `olo_kit::tr!` (its number formats moved into its
+parts), a literal of two words or more copied into a `String` to
+`words::tr("…")` copied; its diff is read by eye, since a command it
+runs, a file's or a keyring item's name, a fixture's data and an
+agent's command-line output must stay as they are. A helper that takes
+a label as `&str` hands it on with `words::of_text(label)`, by what it
+says. A sentence spliced from parts moves its leading space or comma
+outside the `tr!` (`format!(", {}", tr!("of {}", …))`): a catalog line
+keeps no leading space. Preferences was swept so on 2026-11-19 (468
+places, 461 new words); its unasked list went from 378 to 258, the
+rest data and what's drawn by name.
 `tools/dev/words missing LANG` lists what a catalog lacks, and `words
 merge LANG PAIRS…` puts translations in (written as "English |||
 translation"; it refuses unless every word is there and each keeps its

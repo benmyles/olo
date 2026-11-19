@@ -468,8 +468,8 @@ fn display_box(ui: &mut Ui, o: &OutputInfo, outputs: &[OutputInfo], power: Optio
     // Extend the desktop, or show another display's picture.
     if outputs.len() > 1 {
         let sources: Vec<OutputInfo> = outputs.iter().filter(|x| x.name != o.name && x.mirror_of.is_none()).cloned().collect();
-        let mut uses: Vec<String> = vec!["Extended desktop".into()];
-        uses.extend(sources.iter().map(|x| format!("Mirror of {}", shown_name(x, outputs))));
+        let mut uses: Vec<String> = vec![olo_kit::words::tr("Extended desktop").into()];
+        uses.extend(sources.iter().map(|x| olo_kit::tr!("Mirror of {}", shown_name(x, outputs))));
         let now = o.mirror_of.as_ref().and_then(|m| sources.iter().position(|x| &x.name == m)).map_or(0, |i| i + 1);
         // A display others mirror can't mirror in turn.
         let mirrored = outputs.iter().any(|x| x.mirror_of.as_ref() == Some(&o.name));
@@ -489,7 +489,7 @@ fn display_box(ui: &mut Ui, o: &OutputInfo, outputs: &[OutputInfo], power: Optio
         let (cw, ch) = if o.rotation % 180 == 90 { (current.height, current.width) } else { (current.width, current.height) };
         let (lw, lh) = (cw as f64 / SCALES[si], ch as f64 / SCALES[si]);
         // Under the fields' text.
-        ui.add(div().pl(px(label_w + m::TEXT_INSET)).child(StringView::new(format!("Looks like {lw:.0} × {lh:.0}")).dim(true)));
+        ui.add(div().pl(px(label_w + m::TEXT_INSET)).child(StringView::new(olo_kit::tr!("Looks like {} × {}", format!("{:.0}", lw), format!("{:.0}", lh))).dim(true)));
     }
     if outputs.len() > 1 && o.mirror_of.is_none() {
         let key = if o.key.is_empty() { o.name.clone() } else { o.key.clone() };
@@ -551,21 +551,21 @@ fn panel_box(ui: &mut Ui, o: &OutputInfo, label_w: f32, server: &Server) {
                     .flex_row()
                     .items_center()
                     .min_h(px(m::CONTROL_HEIGHT))
-                    .child(div().w(px(label_w + m::TEXT_INSET)).flex_shrink_0().child(StringView::new(label.to_owned())))
+                    .child(div().w(px(label_w + m::TEXT_INSET)).flex_shrink_0().child(StringView::new(olo_kit::words::of_text(label))))
                     .child(div().flex_1().min_w_0().child(StringView::new(value.to_owned()).wrap(true))),
             );
         };
         let maker = [o.make.as_str(), o.model.as_str()].iter().filter(|s| !s.is_empty() && **s != "Unknown").copied().collect::<Vec<_>>().join(" ");
-        row(ui, "Make:", if maker.is_empty() { "Not told" } else { &maker });
+        row(ui, "Make:", if maker.is_empty() { olo_kit::words::tr("Not told") } else { &maker });
         let (w, h) = o.physical_size_mm;
         let size = if w > 0 && h > 0 {
             let inches = ((w * w + h * h) as f64).sqrt() / 25.4;
             match panel.ppi {
-                Some(ppi) => format!("{inches:.0}″ ({w} × {h} mm), {ppi:.0} pixels per inch"),
+                Some(ppi) => olo_kit::tr!("{}″ ({} × {} mm), {} pixels per inch", format!("{:.0}", inches), w, h, format!("{:.0}", ppi)),
                 None => format!("{inches:.0}″ ({w} × {h} mm)"),
             }
         } else {
-            "Not told".into()
+            olo_kit::words::tr("Not told").into()
         };
         row(ui, "Size:", &size);
         row(ui, "Refresh:", &format!("{:.0} Hz", panel.refresh_hz));
@@ -594,8 +594,8 @@ fn panel_box(ui: &mut Ui, o: &OutputInfo, label_w: f32, server: &Server) {
 
         const MODES: [TextMode; 4] = [TextMode::Hinted, TextMode::Unhinted, TextMode::Subpixel(Subpixel::Rgb), TextMode::Subpixel(Subpixel::Bgr)];
         let label = |t: TextMode| match t {
-            TextMode::Subpixel(Subpixel::Bgr) => "Subpixel, BGR order".to_string(),
-            TextMode::Subpixel(_) => "Subpixel, RGB order".to_string(),
+            TextMode::Subpixel(Subpixel::Bgr) => olo_kit::words::tr("Subpixel, BGR order").to_string(),
+            TextMode::Subpixel(_) => olo_kit::words::tr("Subpixel, RGB order").to_string(),
             t => t.label().to_string(),
         };
         let current = panel.text.unwrap_or(TextMode::Hinted);
@@ -626,19 +626,19 @@ fn color_box(ui: &mut Ui, o: &OutputInfo, shown: &str, label_w: f32, server: &Se
                     .flex_row()
                     .items_center()
                     .min_h(px(m::CONTROL_HEIGHT))
-                    .child(div().w(px(label_w + m::TEXT_INSET)).flex_shrink_0().child(StringView::new(label.to_owned())))
+                    .child(div().w(px(label_w + m::TEXT_INSET)).flex_shrink_0().child(StringView::new(olo_kit::words::of_text(label))))
                     .child(div().flex_1().min_w_0().child(StringView::new(value).wrap(true))),
             );
         };
         let gamut = match color.gamut() {
             Some((name, c)) if c < 0.995 => format!("{name} ({:.0}%)", c * 100.0),
             Some((name, _)) => name.to_string(),
-            None => format!("Narrower than sRGB ({:.0}% of it)", primaries.coverage(&olo_color::Primaries::SRGB) * 100.0),
+            None => olo_kit::tr!("Narrower than sRGB ({}% of it)", format!("{:.0}", primaries.coverage(&olo_color::Primaries::SRGB) * 100.0)),
         };
         row(ui, "Colours:", gamut);
         if let Some(peak) = color.peak_nits {
             let light = match color.full_nits.filter(|f| (f - peak).abs() > 1.0) {
-                Some(full) => format!("{peak:.0} cd/m² at most, {full:.0} over the whole screen"),
+                Some(full) => olo_kit::tr!("{} cd/m² at most, {} over the whole screen", format!("{:.0}", peak), format!("{:.0}", full)),
                 None => format!("{peak:.0} cd/m²"),
             };
             row(ui, "Light:", light);
@@ -696,7 +696,7 @@ fn color_box(ui: &mut Ui, o: &OutputInfo, shown: &str, label_w: f32, server: &Se
                 );
                 let peak = color.peak_nits.unwrap_or(1000.0);
                 // Level with the slider's label, which it draws at its own left.
-                ui.add(StringView::new(format!("HDR video and pictures shine up to {peak:.0} cd/m²; everything else is shown this bright.")).dim(true).wrap(true));
+                ui.add(StringView::new(olo_kit::tr!("HDR video and pictures shine up to {} cd/m²; everything else is shown this bright.", format!("{:.0}", peak))).dim(true).wrap(true));
             }
         }
     })(ui);
@@ -750,10 +750,10 @@ fn ask_to_keep(v: &mut PanelView, cx: &mut Cx<PanelView>, name: &str, shown: &st
     }
     let until = Rc::new(Cell::new(until));
     let question = match undo {
-        Undo::Mode(_) => format!("Keep the new resolution of {shown}?"),
-        Undo::Hdr => format!("Keep HDR on for {shown}?"),
+        Undo::Mode(_) => olo_kit::tr!("Keep the new resolution of {}?", shown),
+        Undo::Hdr => olo_kit::tr!("Keep HDR on for {}?", shown),
     };
-    let says = Rc::new(|left: u64| if left == 1 { "Reverting in 1 second.".to_owned() } else { format!("Reverting in {left} seconds.") });
+    let says = Rc::new(|left: u64| if left == 1 { olo_kit::words::tr("Reverting in 1 second.").to_owned() } else { olo_kit::tr!("Reverting in {} seconds.", left) });
     let view = cx.view_ref();
     let answered = {
         let (name, undo, until, server) = (name.to_owned(), undo.clone(), until.clone(), server.clone());
@@ -811,7 +811,7 @@ fn graphics(ui: &mut Ui, outputs: &[OutputInfo], st: &mut State) {
             // (Label and value laid out alike, as paragraphs: their first
             // lines level however the value wraps.)
             let shown: Vec<String> = outputs.iter().filter(|o| g.connectors.contains(&o.name)).map(|o| shown_name(o, outputs)).collect();
-            let what = if shown.is_empty() { format!("nothing now (its ports: {})", if g.connectors.is_empty() { "none".into() } else { g.connectors.join(", ") }) } else { shown.join(", ") };
+            let what = if shown.is_empty() { olo_kit::tr!("nothing now (its ports: {})", if g.connectors.is_empty() { "none".into() } else { g.connectors.join(", ") }) } else { shown.join(", ") };
             ui.add(
                 div()
                     .flex()

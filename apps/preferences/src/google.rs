@@ -231,7 +231,7 @@ impl State {
     fn start_agent(&mut self, task: Task, claude: olo_protocol::ClaudeCode) {
         let Logins::Read(found) = self.logins.lock().unwrap().clone() else { return };
         let Some(login) = found.get(self.login).cloned() else { return };
-        *self.doing.lock().unwrap() = Doing::Busy("Starting the agent…".into());
+        *self.doing.lock().unwrap() = Doing::Busy(olo_kit::words::tr("Starting the agent…").into());
         let account = match &task {
             Task::Extend { address, .. } => Some(address.clone()),
             Task::Make => None,
@@ -241,13 +241,14 @@ impl State {
         std::thread::spawn(move || {
             *doing.lock().unwrap() = match setup::start(&login, &task, &claude) {
                 Ok(screen) => Doing::Agent {
-                    said: format!(
-                        "The agent is at work in a Terminal window, on its agent screen “{screen}” (Agent Screens shows it): it makes the account’s app in Google Cloud and signs Olo in with it. The account shows here when it’s done; you can talk to the agent in Terminal meanwhile."
+                    said: olo_kit::tr!(
+                        "The agent is at work in a Terminal window, on its agent screen “{}” (Agent Screens shows it): it makes the account’s app in Google Cloud and signs Olo in with it. The account shows here when it’s done; you can talk to the agent in Terminal meanwhile.",
+                        screen
                     ),
                     account,
                     known,
                 },
-                Err(e) => Doing::Failed(sentence(&format!("the agent didn’t start: {e}"))),
+                Err(e) => Doing::Failed(sentence(&olo_kit::tr!("the agent didn’t start: {}", e))),
             };
             proxy.send(Msg::Redraw);
         });
@@ -260,13 +261,14 @@ impl State {
     fn sign_in(&mut self, client: Option<olo_google::Client>, address: Option<String>) {
         let Some(client) = client else {
             self.start(Adding::ByHand);
-            let whose = address.map_or_else(|| "the account’s".to_owned(), |a| format!("{a}’s"));
-            *self.doing.lock().unwrap() = Doing::Failed(format!(
-                "Olo doesn’t have {whose} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it."
+            let whose = address.map_or_else(|| olo_kit::words::tr("the account’s").to_owned(), |a| format!("{a}’s"));
+            *self.doing.lock().unwrap() = Doing::Failed(olo_kit::tr!(
+                "Olo doesn’t have {} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it.",
+                whose
             ));
             return;
         };
-        *self.doing.lock().unwrap() = Doing::Busy("Waiting for you to sign in to Google in the browser…".into());
+        *self.doing.lock().unwrap() = Doing::Busy(olo_kit::words::tr("Waiting for you to sign in to Google in the browser…").into());
         self.cancel.store(false, Ordering::Relaxed);
         let (doing, proxy, cancel, accounts_, legacy, drive) = (self.doing.clone(), self.proxy.clone(), self.cancel.clone(), self.accounts.clone(), self.legacy.clone(), self.drive.clone());
         std::thread::spawn(move || {
@@ -305,8 +307,11 @@ impl State {
             std::thread::spawn(move || tick(&address, service, on));
             return;
         }
-        *doing.lock().unwrap() =
-            Doing::Busy(if on { format!("DiskBackup is setting up its backups in {address}’s Google Drive…") } else { "DiskBackup is stopping its backups to Google Drive…".to_owned() });
+        *doing.lock().unwrap() = Doing::Busy(if on {
+            olo_kit::tr!("DiskBackup is setting up its backups in {}’s Google Drive…", address)
+        } else {
+            olo_kit::words::tr("DiskBackup is stopping its backups to Google Drive…").to_owned()
+        });
         std::thread::spawn(move || {
             let args: Vec<&str> = if on { vec!["--set-up-drive-account", &address] } else { vec!["--disconnect-drive"] };
             let now = match crate::ask_program("olo-diskbackup", &args) {
@@ -317,7 +322,7 @@ impl State {
                 }
                 Err(why) => {
                     // (As it was: the file was never changed.)
-                    Doing::Failed(sentence(&format!("DiskBackup couldn’t: {why}")))
+                    Doing::Failed(sentence(&olo_kit::tr!("DiskBackup couldn’t: {}", why)))
                 }
             };
             *doing.lock().unwrap() = now;
@@ -333,13 +338,13 @@ impl State {
         let backs_up = drive.lock().unwrap().as_deref().is_some_and(|d| d.eq_ignore_ascii_case(&address));
         std::thread::spawn(move || {
             if backs_up && let Err(why) = crate::ask_program("olo-diskbackup", &["--disconnect-drive"]) {
-                *doing.lock().unwrap() = Doing::Failed(sentence(&format!("DiskBackup backs up to its Drive and couldn’t stop: {why}")));
+                *doing.lock().unwrap() = Doing::Failed(sentence(&olo_kit::tr!("DiskBackup backs up to its Drive and couldn’t stop: {}", why)));
                 proxy.send(Msg::Redraw);
                 return;
             }
             let now = match accounts::remove(&address) {
-                Ok(()) => Doing::Said(format!("{address} is disconnected from Olo. Its app stays in its Google Cloud project, to connect it again with.")),
-                Err(e) => Doing::Failed(format!("The list of Google accounts couldn’t be saved ({e}).")),
+                Ok(()) => Doing::Said(olo_kit::tr!("{} is disconnected from Olo. Its app stays in its Google Cloud project, to connect it again with.", address)),
+                Err(e) => Doing::Failed(olo_kit::tr!("The list of Google accounts couldn’t be saved ({}).", e)),
             };
             if let Some(list) = accounts_.lock().unwrap().as_mut() {
                 list.retain(|(a, _)| !a.address.eq_ignore_ascii_case(&address));
@@ -404,9 +409,9 @@ fn read(
     for a in unchecked {
         let now = match accounts::token(&a.address, true, "Olo Preferences") {
             Ok(_) => Stands::Signed,
-            Err(accounts::NoToken::NotConnected) => Stands::Failed("Its sign-in isn’t in the keyring: sign in again.".into()),
+            Err(accounts::NoToken::NotConnected) => Stands::Failed(olo_kit::words::tr("Its sign-in isn’t in the keyring: sign in again.").into()),
             Err(accounts::NoToken::Network(e)) => Stands::Failed(sentence(&e)),
-            Err(accounts::NoToken::Refused(_)) => Stands::Failed("Google no longer takes its sign-in: sign in again.".into()),
+            Err(accounts::NoToken::Refused(_)) => Stands::Failed(olo_kit::words::tr("Google no longer takes its sign-in: sign in again.").into()),
         };
         if let Some(list) = accounts_.lock().unwrap().as_mut()
             && let Some(entry) = list.iter_mut().find(|(b, _)| b.address == a.address)
@@ -428,7 +433,7 @@ fn connect(client: &olo_google::Client, signed: &olo_google::SignedIn) -> Result
     let missing: Vec<&str> = Service::ALL.iter().filter(|s| !account.allowed(**s)).map(|s| s.name()).collect();
     Ok(match missing.as_slice() {
         [] => format!("Connected {}.", account.address),
-        some => format!("Connected {}, but its sign-in wasn’t allowed {}: Sign In Again and allow everything it asks.", account.address, some.join(" or ")),
+        some => olo_kit::tr!("Connected {}, but its sign-in wasn’t allowed {}: Sign In Again and allow everything it asks.", account.address, some.join(" or ")),
     })
 }
 
@@ -495,11 +500,11 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         for (account, stands) in list {
             let how = match stands {
                 Stands::Checking => "checking…".to_owned(),
-                Stands::Signed => "signed in".to_owned(),
+                Stands::Signed => olo_kit::words::tr("signed in").to_owned(),
                 Stands::Failed(why) => why.clone(),
             };
             let not_allowed: Vec<&str> = Service::ALL.iter().filter(|s| !account.allowed(**s)).map(|s| s.name()).collect();
-            let how = if not_allowed.is_empty() || *stands != Stands::Signed { how } else { format!("{how}; not allowed {} (sign in again)", not_allowed.join(", ")) };
+            let how = if not_allowed.is_empty() || *stands != Stands::Signed { how } else { olo_kit::tr!("{}; not allowed {} (sign in again)", how, not_allowed.join(", ")) };
             let mut r = row().child(div().flex_1().min_w_0().flex().flex_col().child(StringView::new(account.address.clone()).cut(true)).child(StringView::new(how).small(true).dim(true).wrap(true)));
             for s in Service::ALL {
                 let address = account.address.clone();
@@ -555,7 +560,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             let logins = st.logins.lock().unwrap().clone();
             match &logins {
                 Logins::Reading => items.push(StringView::new("Reading your logins in Passwords…").wrap(true).into_element()),
-                Logins::Failed(e) => items.push(StringView::new(sentence(&format!("Passwords couldn’t give its logins: {e}"))).wrap(true).into_element()),
+                Logins::Failed(e) => items.push(StringView::new(sentence(&olo_kit::tr!("Passwords couldn’t give its logins: {}", e))).wrap(true).into_element()),
                 Logins::Read(found) if found.is_empty() => {
                     items.push(StringView::new("Passwords has no login for a Google account: add the account’s login there first, or set the app up by hand.").wrap(true).into_element())
                 }

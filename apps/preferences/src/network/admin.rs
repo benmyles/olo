@@ -39,8 +39,8 @@ impl Admin {
                 let code = child.wait().ok().and_then(|s| s.code());
                 self.running = None;
                 Err(match code {
-                    Some(126) | Some(127) => "Not changed: an administrator's password is needed.".to_owned(),
-                    _ => "Not changed: the network's helper stopped.".to_owned(),
+                    Some(126) | Some(127) => olo_kit::words::tr("Not changed: an administrator's password is needed.").to_owned(),
+                    _ => olo_kit::words::tr("Not changed: the network's helper stopped.").to_owned(),
                 })
             }
         }
@@ -70,7 +70,7 @@ fn start() -> Result<(Child, ChildStdin, BufReader<ChildStdout>), String> {
         c
     } else {
         // Elsewhere polkit's dialog would come up on the person's screen.
-        return Err("Not changed: changes as an administrator are made in the person's own session.".into());
+        return Err(olo_kit::words::tr("Not changed: changes as an administrator are made in the person's own session.").into());
     };
     let mut child = cmd.arg("serve").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().map_err(|e| format!("{}: {e}", helper.display()))?;
     let input = child.stdin.take().ok_or("no input")?;

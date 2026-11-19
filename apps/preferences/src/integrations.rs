@@ -153,15 +153,15 @@ fn login_of(token: &str) -> Result<String, String> {
     let resp = olo_net::across_changes(std::time::Duration::from_secs(10), || {
         agent.get("https://api.github.com/user").header("Accept", "application/vnd.github+json").header("Authorization", &format!("Bearer {}", token.trim())).call()
     })
-    .map_err(|e| format!("GitHub couldn’t be reached ({e})."))?;
+    .map_err(|e| olo_kit::tr!("GitHub couldn’t be reached ({}).", e))?;
     match resp.status().as_u16() {
         200 => {
             let body = resp.into_body().read_to_string().map_err(|e| e.to_string())?;
             let v: serde_json::Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
             Ok(v["login"].as_str().unwrap_or("?").to_owned())
         }
-        401 => Err("GitHub didn’t take the token: it may have expired or been revoked.".into()),
-        s => Err(format!("GitHub answered {s}.")),
+        401 => Err(olo_kit::words::tr("GitHub didn’t take the token: it may have expired or been revoked.").into()),
+        s => Err(olo_kit::tr!("GitHub answered {}.", s)),
     }
 }
 
@@ -201,7 +201,7 @@ impl State {
             let now = match login_of(&token) {
                 Ok(login) => match github::save(&token) {
                     Ok(()) => GitHub::Connected { login, source: Source::Olo },
-                    Err(e) => GitHub::Failed { source: None, why: format!("The token couldn’t be kept in the keyring ({e}).") },
+                    Err(e) => GitHub::Failed { source: None, why: olo_kit::tr!("The token couldn’t be kept in the keyring ({}).", e) },
                 },
                 Err(why) => GitHub::Failed { source: None, why },
             };
@@ -217,7 +217,7 @@ impl State {
         std::thread::spawn(move || {
             *out.lock().unwrap() = match github::forget() {
                 Ok(()) => status(),
-                Err(e) => GitHub::Failed { source: Some(Source::Olo), why: format!("The token couldn’t be taken out of the keyring ({e}).") },
+                Err(e) => GitHub::Failed { source: Some(Source::Olo), why: olo_kit::tr!("The token couldn’t be taken out of the keyring ({}).", e) },
             };
             proxy.send(Msg::Redraw);
         });

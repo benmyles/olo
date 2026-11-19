@@ -31,11 +31,11 @@ impl Way {
         let text = |i: usize| self.0[i].read(cx).text().trim().to_owned();
         let whole = |i: usize, what: &str| -> Result<u64, String> {
             let t = text(i);
-            if t.is_empty() { Ok(0) } else { t.parse::<u64>().map_err(|_| format!("The {what} is a whole number.")) }
+            if t.is_empty() { Ok(0) } else { t.parse::<u64>().map_err(|_| olo_kit::tr!("The {} is a whole number.", what)) }
         };
         let loss = match text(3) {
             t if t.is_empty() => 0.0,
-            t => t.trim_end_matches('%').trim().parse::<f32>().map_err(|_| "The loss is a number, in percent.".to_owned())?,
+            t => t.trim_end_matches('%').trim().parse::<f32>().map_err(|_| olo_kit::words::tr("The loss is a number, in percent.").to_owned())?,
         };
         let s = Shape { rate_kbit: whole(0, "bandwidth")?, delay_ms: whole(1, "delay")?.min(u32::MAX as u64) as u32, jitter_ms: whole(2, "jitter")?.min(u32::MAX as u64) as u32, loss };
         s.check().map_err(|e| format!("{}{}.", e[..1].to_uppercase(), &e[1..]))?;
@@ -130,9 +130,9 @@ pub fn ui(ui: &mut Ui, st: &mut State, status: &Status, extra: &Extra, busy: boo
         e.loaded = Some((iface.clone(), now));
     }
     let state = match (now.down, now.up) {
-        (None, None) => "Not shaped: as fast as it goes.".to_owned(),
+        (None, None) => olo_kit::words::tr("Not shaped: as fast as it goes.").to_owned(),
         (d, u) => {
-            let way = |s: Option<Shape>| s.map(|s| way_text(&s)).unwrap_or_else(|| "as it goes".into());
+            let way = |s: Option<Shape>| s.map(|s| way_text(&s)).unwrap_or_else(|| olo_kit::words::tr("as it goes").into());
             format!("Shaped. Received: {}. Sent: {}.", way(d), way(u))
         }
     };

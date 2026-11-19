@@ -72,7 +72,7 @@ fn state_of(v: &mut PanelView) -> Option<&mut State> {
 /// What went wrong with an account, in words.
 fn said(e: &dav::Error) -> String {
     match e {
-        dav::Error::SignIn => "The server didn’t take the name and password.".into(),
+        dav::Error::SignIn => olo_kit::words::tr("The server didn’t take the name and password.").into(),
         e => sentence(&e.to_string()),
     }
 }
@@ -97,7 +97,7 @@ fn check(accounts: Listed, proxy: olo_kit::Proxy) {
         proxy.send(Msg::Redraw);
         for a in listed {
             let now = match account::secret(&a) {
-                None => Stands::Failed("Its password isn’t in the keyring: remove it and add it again.".into()),
+                None => Stands::Failed(olo_kit::words::tr("Its password isn’t in the keyring: remove it and add it again.").into()),
                 Some(secret) => match account::check(&a, &secret) {
                     Ok(calendars) => Stands::Connected(calendars.len()),
                     Err(e) => Stands::Failed(said(&e)),
@@ -171,7 +171,7 @@ impl State {
         }
         let read = |f: &Child<TextField>| f.read(cx).text().trim().to_owned();
         let (server, name, password) = (read(&self.server), read(&self.name), self.password.read(cx).text().to_owned());
-        *self.trying.lock().unwrap() = Adding::Trying("Looking for its calendars…".into());
+        *self.trying.lock().unwrap() = Adding::Trying(olo_kit::words::tr("Looking for its calendars…").into());
         let (trying, proxy) = (self.trying.clone(), self.proxy.clone());
         std::thread::spawn(move || {
             let server = if server.contains("://") { server } else { format!("https://{server}") };
@@ -180,14 +180,14 @@ impl State {
             let now = match account::check(&account, &secret) {
                 Err(e) => Adding::Failed(said(&e)),
                 Ok(_) => match account::keep_secret(&account, &secret) {
-                    Err(e) => Adding::Failed(format!("The password couldn’t be kept in the keyring ({e}).")),
+                    Err(e) => Adding::Failed(olo_kit::tr!("The password couldn’t be kept in the keyring ({}).", e)),
                     Ok(()) => {
                         let mut listed = account::own_accounts();
                         listed.retain(|a| a.id() != account.id());
                         listed.push(account);
                         // (The tab hears its file change, and reads it again.)
                         match account::save_accounts(&listed) {
-                            Err(e) => Adding::Failed(format!("The account couldn’t be saved ({e}).")),
+                            Err(e) => Adding::Failed(olo_kit::tr!("The account couldn’t be saved ({}).", e)),
                             Ok(()) => Adding::Done,
                         }
                     }

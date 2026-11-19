@@ -256,7 +256,10 @@ fn seen(text: &str) {
     let mut seen = seen.lock().unwrap_or_else(|e| e.into_inner());
     if !seen.0.contains(text) && seen.0.insert(text.to_owned()) {
         use std::io::Write;
-        let _ = writeln!(seen.1, "{}", text.replace('\n', "\\n"));
+        // (One write: every app appends to the one file, and a word and
+        // its newline written apart came out as "EditEdit".)
+        let line = format!("{}\n", text.replace('\n', "\\n"));
+        let _ = seen.1.write_all(line.as_bytes());
     }
 }
 

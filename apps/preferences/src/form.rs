@@ -198,7 +198,7 @@ impl<'a, 'b, 'c> Ui<'a, 'b, 'c> {
             b = b.grow();
         }
         if self.enabled && (changed(&probes) || every_reset() && !probes.is_empty()) {
-            let name = if title.is_empty() { "Reset".to_owned() } else { format!("Reset of “{title}”") };
+            let name = if title.is_empty() { "Reset".to_owned() } else { olo_kit::tr!("Reset of “{}”", title) };
             b = b.action("Reset", move |_: &ClickEvent, _: &mut WindowCx| prefs().edit_as("", &name, |s| reset(s, &probes)));
         }
         self.add(b.children(items));

@@ -166,7 +166,7 @@ impl State {
             let app = |id: &str, name: &str, icon: &str| App { id: id.into(), name: name.into(), icon: icon.into() };
             let apps = vec![app("olo.viewer.desktop", "Viewer", "viewer"), app("org.example.Long.desktop", "A Much Longer Application Name", "application")];
             let row = Row { apps: apps.clone(), current: Some(0) };
-            let own = vec![(OwnKind { name: "Game saves".into(), extensions: vec!["sav".into(), "sv2".into()], mime: "application/x-olo-kind-sav".into() }, row.clone())];
+            let own = vec![(OwnKind { name: olo_kit::words::tr("Game saves").into(), extensions: vec!["sav".into(), "sv2".into()], mime: "application/x-olo-kind-sav".into() }, row.clone())];
             let kinds: Vec<OwnKind> = own.iter().map(|(k, _)| k.clone()).collect();
             let offered = kinds_offered(&kinds).into_iter().map(|(n, t)| (n, t, Offered { set: false, apps: apps.clone() })).collect();
             *found.lock().unwrap() = Some(Found { builtin: KINDS.iter().map(|(_, kinds)| kinds.iter().map(|_| row.clone()).collect()).collect(), own, every: apps, offered });
@@ -294,7 +294,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
 /// for another.
 fn app_menu(ui: &mut Ui, id: String, label: String, row: &Row, send: impl Fn(String) + 'static) {
     if row.apps.is_empty() {
-        ui.add(MenuField::new(id, vec!["No app opens these".into()], 0).label(label).divider(LABEL_W).width(LABEL_W + MENU_W).enabled(false));
+        ui.add(MenuField::new(id, vec![olo_kit::words::tr("No app opens these").into()], 0).label(label).divider(LABEL_W).width(LABEL_W + MENU_W).enabled(false));
         return;
     }
     let names = row.apps.iter().map(|a| a.name.clone().into()).collect();
@@ -423,7 +423,7 @@ fn offered(ui: &mut Ui, st: &State, found: &Found) {
     let (can_up, can_down, can_remove) = (up.is_some(), down.is_some(), removed.is_some());
     let (up, down, remove) = (send(up), send(down), send(removed));
     let addable: Vec<&App> = found.every.iter().filter(|a| !ids.contains(&a.id)).collect();
-    let mut add_names: Vec<SharedString> = vec!["Add an App…".into()];
+    let mut add_names: Vec<SharedString> = vec![olo_kit::words::tr("Add an App…").into()];
     add_names.extend(addable.iter().map(|a| SharedString::from(a.name.clone())));
     let add_ids: Vec<String> = addable.iter().map(|a| a.id.clone()).collect();
     let (tx, add_mime, base) = (st.tx.clone(), mime.clone(), ids.clone());

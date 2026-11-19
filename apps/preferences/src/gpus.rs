@@ -138,9 +138,9 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_kit::Proxy, wake: Option<String>,
         let mut s = shared.lock().unwrap();
         s.follower = Follower::Current;
         s.mode = Some(olo_system::power_profile::Mode::Balanced);
-        s.av1 = vec!["Intel Graphics".into()];
-        s.h264 = vec!["Intel Graphics".into()];
-        s.decodes = Some(("Intel Graphics".into(), false));
+        s.av1 = vec![olo_kit::words::tr("Intel Graphics").into()];
+        s.h264 = vec![olo_kit::words::tr("Intel Graphics").into()];
+        s.decodes = Some((olo_kit::words::tr("Intel Graphics").into(), false));
         {
             use olo_system::nvme_power::{Drive, PowerState};
             let state = |index: u8, max_watts: f32, operational: bool| PowerState { index, max_watts, operational };
@@ -193,7 +193,7 @@ fn read(shared: Arc<Mutex<Shared>>, proxy: olo_kit::Proxy, wake: Option<String>,
             let mode = olo_system::power_profile::modes().ok().flatten().map(|m| m.active);
             let on_battery = !olo_system::battery::on_ac();
             // (Each driver asked, NVIDIA's left asleep: about 15 ms.)
-            let name_of = |node: &std::path::Path| gpus.iter().find(|e| e.gpu.render.as_deref() == Some(node)).map_or_else(|| "The GPU".to_owned(), |e| e.gpu.name.clone());
+            let name_of = |node: &std::path::Path| gpus.iter().find(|e| e.gpu.render.as_deref() == Some(node)).map_or_else(|| olo_kit::words::tr("The GPU").to_owned(), |e| e.gpu.name.clone());
             let abilities = olo_vaapi::abilities();
             let av1: Vec<String> = abilities.iter().filter(|a| a.av1.is_some()).map(|a| name_of(&a.node)).collect();
             let h264: Vec<String> = abilities.iter().filter(|a| a.h264.is_some()).map(|a| name_of(&a.node)).collect();
@@ -244,7 +244,7 @@ fn apply(shared: Arc<Mutex<Shared>>, proxy: olo_kit::Proxy) {
                 && let Some(profile) = fans_to_set_up(&tuning, olo_system::fans::look(&olo_system::fans::Places::here()).as_ref())
                 && let Err(why) = crate::ask_doctor(&["--fans", profile.word()])
             {
-                said = Err(format!("The fans' profile isn't in force yet: {why}"));
+                said = Err(olo_kit::tr!("The fans' profile isn't in force yet: {}", why));
             }
             shared.lock().unwrap().applying = false;
             shared.lock().unwrap().said = Some(said);
@@ -278,7 +278,7 @@ pub(crate) fn run_tune(tuning: &Tuning) -> Result<String, String> {
         c.arg("--disable-internal-agent").arg(&tune);
         c
     } else {
-        return Err("GPUs are tuned only in the person's own session (polkit asks there).".into());
+        return Err(olo_kit::words::tr("GPUs are tuned only in the person's own session (polkit asks there).").into());
     };
     let mut child = cmd.arg("set").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().map_err(|e| format!("{}: {e}", tune.display()))?;
     if let Some(mut input) = child.stdin.take() {
@@ -287,11 +287,11 @@ pub(crate) fn run_tune(tuning: &Tuning) -> Result<String, String> {
     let errors: Vec<String> = child.stdout.take().map(|o| BufReader::new(o).lines().map_while(Result::ok).filter_map(|l| l.strip_prefix("error: ").map(str::to_owned)).collect()).unwrap_or_default();
     let status = child.wait().map_err(|e| e.to_string())?;
     match status.code() {
-        Some(0) => Ok("Applied: kept for this computer, and set again at every start.".into()),
+        Some(0) => Ok(olo_kit::words::tr("Applied: kept for this computer, and set again at every start.").into()),
         // pkexec: the password dialog dismissed, or not allowed.
-        Some(126) | Some(127) => Err("Not applied: an administrator's password is needed.".into()),
-        _ if !errors.is_empty() => Err(format!("Not all of it applied: {}.", errors.join("; "))),
-        _ => Err("Not applied.".into()),
+        Some(126) | Some(127) => Err(olo_kit::words::tr("Not applied: an administrator's password is needed.").into()),
+        _ if !errors.is_empty() => Err(olo_kit::tr!("Not all of it applied: {}.", errors.join("; "))),
+        _ => Err(olo_kit::words::tr("Not applied.").into()),
     }
 }
 
@@ -308,9 +308,9 @@ fn recordings(ui: &mut Ui, gpus: &[Entry], av1: &[String], h264: &[String]) {
     let current = ui.s.screen_recording.encoder.clone();
     let codec = ui.s.screen_recording.codec.clone();
     let most = match (&nvidia, &vaapi) {
-        (Some(n), _) => format!("The most powerful ({n})"),
-        (None, Some(v)) if (codec == "av1" && v_av1) || (codec == "h264" && v_h264) => format!("The most powerful ({v})"),
-        _ => "The most powerful (the processor)".to_owned(),
+        (Some(n), _) => olo_kit::tr!("The most powerful ({})", n),
+        (None, Some(v)) if (codec == "av1" && v_av1) || (codec == "h264" && v_h264) => olo_kit::tr!("The most powerful ({})", v),
+        _ => olo_kit::words::tr("The most powerful (the processor)").to_owned(),
     };
     let on_nvidia = nvidia.as_ref().map(|n| format!("{n} (NVENC)"));
     let on_vaapi = vaapi.as_ref().map(|v| match (v_h264, v_av1) {
@@ -334,7 +334,7 @@ fn recordings(ui: &mut Ui, gpus: &[Entry], av1: &[String], h264: &[String]) {
         // chosen, without NVIDIA's: H.264 (on that GPU where it makes it,
         // else the processor) or AV1 on that GPU.
         let v = vaapi.as_deref().unwrap_or("the GPU");
-        let auto_h264 = if v_h264 { format!("H.264 (plays everywhere, on {v})") } else { "H.264 (plays everywhere, on the processor)".to_owned() };
+        let auto_h264 = if v_h264 { olo_kit::tr!("H.264 (plays everywhere, on {})", v) } else { olo_kit::words::tr("H.264 (plays everywhere, on the processor)").to_owned() };
         let auto_av1 = format!("AV1 (on {v})");
         let formats: Vec<(String, &str)> = match &nvidia {
             Some(_) if current != "cpu" && current != "vaapi" => vec![("h264".into(), "H.264 (plays everywhere)"), ("hevc".into(), "HEVC (about half the size)")],
@@ -367,7 +367,7 @@ fn recordings(ui: &mut Ui, gpus: &[Entry], av1: &[String], h264: &[String]) {
 fn playback(ui: &mut Ui, gpus: &[Entry], decodes: Option<(&str, bool)>) {
     let nvidia = gpus.iter().find(|e| e.gpu.vendor == 0x10de).map(|e| e.gpu.name.clone());
     let current = ui.s.video.decoder.clone();
-    let on_intel = decodes.map(|(n, all)| if all { format!("{n} (every video)") } else { format!("{n} (AV1 and VP9)") });
+    let on_intel = decodes.map(|(n, all)| if all { olo_kit::tr!("{} (every video)", n) } else { olo_kit::tr!("{} (AV1 and VP9)", n) });
     let on_nvidia = nvidia.as_ref().map(|n| format!("{n} (NVDEC)"));
     let mut choices: Vec<(String, &str)> = vec![("auto".into(), "Automatic")];
     if let Some(n) = &on_intel {
@@ -380,10 +380,10 @@ fn playback(ui: &mut Ui, gpus: &[Entry], decodes: Option<(&str, bool)>) {
     let menu = "The Viewer's View ▸ Decode With chooses for the video it shows.";
     let rest = if nvidia.is_some() { ", NVIDIA's GPU for the rest, else the processor" } else { ", else the processor" };
     let note = match decodes {
-        Some((i, true)) => format!("Automatic: {i} for every video (H.264, HEVC, VP9, AV1), 4K at 60 frames a second with a quarter of a core. {menu}"),
-        Some((i, false)) => format!("Automatic: {i} for AV1 and VP9 (Fedora's driver has no H.264 or HEVC: Olo Doctor installs the full one){rest}. {menu}"),
-        None if nvidia.is_some() => format!("NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor. {menu}"),
-        None => format!("Video is decoded on the processor. {menu}"),
+        Some((i, true)) => olo_kit::tr!("Automatic: {} for every video (H.264, HEVC, VP9, AV1), 4K at 60 frames a second with a quarter of a core. {}", i, menu),
+        Some((i, false)) => olo_kit::tr!("Automatic: {} for AV1 and VP9 (Fedora's driver has no H.264 or HEVC: Olo Doctor installs the full one){}. {}", i, rest, menu),
+        None if nvidia.is_some() => olo_kit::tr!("NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor. {}", menu),
+        None => olo_kit::tr!("Video is decoded on the processor. {}", menu),
     };
     let battery = ui.s.video.nvidia_on_battery;
     ui.bbox("Video Playback", |ui| {
@@ -404,9 +404,9 @@ fn playback(ui: &mut Ui, gpus: &[Entry], decodes: Option<(&str, bool)>) {
 /// What a GPU drives, said plainly.
 fn drives(g: &Gpu) -> String {
     if g.connectors.is_empty() {
-        return "no display ports".into();
+        return olo_kit::words::tr("no display ports").into();
     }
-    format!("its ports: {}", g.connectors.join(", "))
+    olo_kit::tr!("its ports: {}", g.connectors.join(", "))
 }
 
 /// Read the GPUs and the tuning once the panel shows, and again as the
@@ -476,7 +476,12 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
         let font = style::ui_font(olo_kit::FontWeight::NORMAL);
         let titles = olo_system::nvme_power::titles(&drives.iter().map(|(d, _)| d.clone()).collect::<Vec<_>>());
         let gpu_names = gpus.iter().map(|e| short_name(&e.gpu));
-        titles.into_iter().chain(gpu_names).chain(["Processors".to_owned(), "Top speed".to_owned()]).map(|n| style::text_width_app(&n, style::PLAIN_SIZE, &font)).fold(0.0f32, f32::max)
+        titles
+            .into_iter()
+            .chain(gpu_names)
+            .chain(["Processors".to_owned(), olo_kit::words::tr("Top speed").to_owned()])
+            .map(|n| style::text_width_app(&n, style::PLAIN_SIZE, &font))
+            .fold(0.0f32, f32::max)
     };
     let label_w = (((names_w + 2.0) / 4.0).ceil() * 4.0).clamp(152.0, 216.0);
     let plain = theme::palette().panel_text;
@@ -540,7 +545,7 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
                 (top_names(battery), chosen, set)
             })
             .collect();
-        row(ui, "cpu-top", "Top speed".into(), cells);
+        row(ui, "cpu-top", olo_kit::words::tr("Top speed").into(), cells);
         // Each GPU that can be tuned.
         for e in gpus.iter().filter(|e| !matches!(e.caps, Some(Caps::None))) {
             let (pci, nvidia) = (e.gpu.pci.clone(), e.gpu.vendor == 0x10de);
@@ -635,13 +640,13 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
                 if let Some(f) = &fans {
                     let profile = kept.plan.fans_now(m, on_battery).unwrap_or(f.profile);
                     let doing = match (f.amiss(), f.level()) {
-                        (Some(amiss), _) => format!(" (not in force: {})", amiss.words()),
+                        (Some(amiss), _) => format!(" {}", olo_kit::tr!("(not in force: {})", amiss.words())),
                         (None, Some((level, _))) if profile.ours() && !matches!(level, "" | "auto") => format!(" (at {})", if level == "full-speed" { "full speed".to_owned() } else { format!("level {level} of 7") }),
                         _ => String::new(),
                     };
-                    now.push(format!("the fans {}{doing}", profile.label()));
+                    now.push(olo_kit::tr!("the fans {}{}", profile.label(), doing));
                 }
-                ui.note(format!("Now {}{}: the processors {cpu} at up to {top}%, {}.", m.label(), if on_battery { ", on battery" } else { "" }, now.join(", ")));
+                ui.note(olo_kit::tr!("Now {}{}: the processors {} at up to {}%, {}.", m.label(), if on_battery { ", on battery" } else { "" }, cpu, top, now.join(", ")));
             }
             (None, Follower::Current) => ui.note("No power profiles daemon is running, so there's no power mode to follow."),
         }
@@ -757,11 +762,11 @@ fn in_force(tune: &GpuTune, caps: &Caps) -> String {
         }
         Caps::Nvidia(n) => {
             let mut s = match tune.max_gpu_mhz {
-                Some(max) => format!("its clock up to {max} MHz"),
-                None => format!("its clock as the driver has it, up to {} MHz", n.max_gpu_mhz),
+                Some(max) => olo_kit::tr!("its clock up to {} MHz", max),
+                None => olo_kit::tr!("its clock as the driver has it, up to {} MHz", n.max_gpu_mhz),
             };
             if let Some(w) = tune.power_limit_w {
-                s.push_str(&format!(", a {w} W power limit"));
+                s.push_str(&format!(", {}", olo_kit::tr!("a {} W power limit", w)));
             }
             if tune.persistent == Some(true) {
                 s.push_str(", its driver kept ready");
@@ -795,10 +800,10 @@ fn gpu_box(ui: &mut Ui, e: &Entry, edited: &Tuning, shared: &Arc<Mutex<Shared>>)
             // (Asking, it says so; asked, what its driver said: Ask It
             // came back to the same words, and looked to do nothing.)
             let words = match (&e.unanswered, e.power_failed) {
-                _ if asking => "Asking it…".to_owned(),
-                (Some(why), true) => format!("What it can be set to isn't known: {why}. It stays so until the computer restarts, which starts its driver again."),
-                (Some(why), false) => format!("What it can be set to isn't known: {why}."),
-                (None, _) => "What it can be set to isn't known yet: asking it wakes it for a moment.".to_owned(),
+                _ if asking => olo_kit::words::tr("Asking it…").to_owned(),
+                (Some(why), true) => olo_kit::tr!("What it can be set to isn't known: {}. It stays so until the computer restarts, which starts its driver again.", why),
+                (Some(why), false) => olo_kit::tr!("What it can be set to isn't known: {}.", why),
+                (None, _) => olo_kit::words::tr("What it can be set to isn't known yet: asking it wakes it for a moment.").to_owned(),
             };
             ui.note(words);
             let (shared, proxy, pci) = (shared.clone(), olo_kit::proxy(), pci.clone());
@@ -812,7 +817,7 @@ fn gpu_box(ui: &mut Ui, e: &Entry, edited: &Tuning, shared: &Arc<Mutex<Shared>>)
             return;
         };
         if matches!(caps, Caps::None) {
-            ui.note(format!("Nothing to tune for its driver ({}) yet.", g.driver));
+            ui.note(olo_kit::tr!("Nothing to tune for its driver ({}) yet.", g.driver));
             return;
         }
         // The settings show what it runs at now (Ben, 2026-11-07: "it
@@ -823,16 +828,16 @@ fn gpu_box(ui: &mut Ui, e: &Entry, edited: &Tuning, shared: &Arc<Mutex<Shared>>)
         let when = situation(&edited.plan, mode, on_battery, &pci, nvidia);
         let custom = edited.plan.gpu_now(mode, on_battery, &pci, nvidia) == Preset::Custom;
         let place = match when {
-            When::Battery => "on battery".to_owned(),
+            When::Battery => olo_kit::words::tr("on battery").to_owned(),
             When::Mode(m) => format!("in {}", m.label()),
         };
         if custom {
             // (Made Custom here, not applied yet: it's still on its preset.)
-            let on = if now == Preset::Custom { format!("On Custom {place}") } else { format!("Custom {place} once applied (on {} until then)", now.name()) };
-            ui.note(format!("{on}: what's set below. Power Modes says what each mode puts it on."));
+            let on = if now == Preset::Custom { olo_kit::tr!("On Custom {}", place) } else { olo_kit::tr!("Custom {} once applied (on {} until then)", place, now.name()) };
+            ui.note(olo_kit::tr!("{}: what's set below. Power Modes says what each mode puts it on.", on));
             knobs(ui, &caps, &edited.custom_of(&pci), driver.as_ref(), shared, &pci, None);
         } else {
-            ui.note(format!("On {} now: {}. Moving a setting makes it Custom {place}; Power Modes says what each mode puts it on.", now.name(), in_force(&tune, &caps)));
+            ui.note(olo_kit::tr!("On {} now: {}. Moving a setting makes it Custom {}; Power Modes says what each mode puts it on.", now.name(), in_force(&tune, &caps), place));
             knobs(ui, &caps, &shown(&tune, &caps), driver.as_ref(), shared, &pci, Some((when, nvidia)));
         }
     });

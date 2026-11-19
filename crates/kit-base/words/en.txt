@@ -1,8 +1,11 @@
 %
 % CPU
 (No title)
+(The desktop is {} now: these show when it's {}.)
+(not in force: {})
 *.qcow2, *.vdi, *.vmdk (large, changing while in use)
 *.swp, *~, .#*
+/etc/hosts can't be read: {}
 0.3 seconds
 0.5 seconds
 1
@@ -42,6 +45,7 @@
 2 hours before
 2 minutes
 2 seconds
+2. When the key’s light starts blinking, touch {}. A touch before it blinks does nothing.
 24 hours
 24 months
 24-hour clock
@@ -57,6 +61,7 @@
 30 minutes
 30 minutes before
 30 seconds
+32 letters and digits
 3G
 4 hours
 4 weeks
@@ -77,6 +82,7 @@
 7 days
 8 events
 8 weeks
+8+ characters
 9
 90 days
 A Disk or Folder
@@ -86,17 +92,23 @@ A backup reads one file at a time, and leaves what it read out of memory: it nev
 A battery kept full wears faster: for a computer that's mostly plugged in.
 A classic token with the repo scope, or a fine-grained one that can read pull requests and checks. Olo keeps it in your login keyring.
 A code that is surely an agent’s tab’s is put in there, and you’re told; one that isn’t sure is asked about.
+A copy to a stick or a card goes at the disk's own pace, {} waiting in memory at most, so its progress is true and ejecting is quick.
 A day
 A disk of its own, or a folder on one: your backups kept apart from this computer.
 A dotted line
+A finger ({} so far)
+A finger on the fingerprint sensor can stand for your password. Fingers enrolled for {}:
 A letter goes on everything you can pick: controls, menu items, windows, Deskbar. Type one to pick it, or to letter what’s inside; Backspace goes back, Esc puts them away.
 A little room
 A look at the infrared camera can stand for your password: sudo in Terminal, administrator requests, Passwords and the lock screen. Only infrared counts, so a photo on a screen can't pass it.
 A lot of room
 A month
 A notch scrolls as far in Chrome and other programs as in Olo’s apps.
+A palm, ignored ({} so far)
 A path: /…, ~/… or a name here
 A picture of your own
+A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
+A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick, up to a millisecond (full preemption).
 A red dot for an app with something unread in it
 A resting palm can't click (its pressure doesn't count)
 A rising swell
@@ -119,6 +131,7 @@ API key:
 About 
 About Olo Desktop
 About…
+Acceleration:
 Accent
 Access
 Account
@@ -167,6 +180,7 @@ After BeOS: glossy, bright and friendly. Sky grey by day and ocean blue by night
 After Mac OS 9: black outlines, lilac greys.
 After Mac OS X's Aqua: shinier and bluer, with soft outlines.
 After a minute
+After tap and drag:
 After the active window
 After {n} minutes
 After {n} seconds
@@ -196,9 +210,11 @@ All Metric
 All Preferences
 All accounts together
 All day
+All of Olo’s {} words are in {}.
 All {} connected.
 Allow
 Along the Top
+Also from the Deskbar: click the cup.
 Also leave out:
 Also when running on battery
 Alt
@@ -210,12 +226,18 @@ Always Right
 Always Where It Is
 Always a palm when as large as
 Always on Top
+An administrator's password is needed.
+An application is keeping the display awake.
 An etched line
 An iPhone first: Bluetooth doesn’t yet present this computer as an iPhone expects, and the iPhone would offer it its notifications but not its contacts. Olo Doctor fixes it (Present as Hands-Free); then pair.
+And I/O under
 Anonymous identity:
 Another account
 Answer
 Answer 1Password’s op command
+Answer questions about the forecast
+Answer questions about your calendars
+Answer questions in the command palette
 Any touch
 App
 App caches
@@ -223,6 +245,7 @@ App password:
 AppImages
 Appearance
 Applications
+Applied: kept for this computer, and set again at every start.
 Apply
 Apply once to let Olo follow the mode and the power supply: an administrator's password is asked, this once.
 Applying asks for an administrator's password once while this window is open.
@@ -230,6 +253,8 @@ Applying… (an administrator's password may be asked for)
 Apps Allowed…
 Apps That Always Float
 Apps With Their Own Workspace
+Apps appear here once they have sent a notification.
+Apps get the microphone's sound as it is.
 Archive
 Archive All
 Archived Chats
@@ -237,6 +262,8 @@ Archived Conversations
 As BeOS R5 drew its icons: flat faces in its 8-bit colours, black outlines.
 As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines.
 As fast as the computer goes: the processors kept quick and the firmware's power limits raised, the fans as needed. The battery runs down sooner.
+As it goes
+As set now
 As the Mode
 As the other mice
 As wide as the widgets
@@ -249,13 +276,16 @@ Ask about your calendars here: the assistant is given the events of the ones you
 Ask anything about the forecast here: the assistant is given all of it, every layer hour by hour.
 Ask for Full Access at Start
 Ask for sudo Passwords in a Window
+Ask what to do about urgent ones
 Asked now:
 Asking Telegram…
+Asking it…
 Asking…
 Ask…
 Assistant
 Astra 6
 At full speed
+At least
 At the Bottom
 At the Start
 At the start
@@ -270,6 +300,8 @@ Auto-tiling layout:
 Automatic
 Automatic Ear Detection: pause when you take an AirPod out
 Automatic wakes NVIDIA's GPU on battery too
+Automatic: {} for AV1 and VP9 (Fedora's driver has no H.264 or HEVC: Olo Doctor installs the full one){}. {}
+Automatic: {} for every video (H.264, HEVC, VP9, AV1), 4K at 60 frames a second with a quarter of a core. {}
 Automatically
 Automatically, every
 Back
@@ -285,6 +317,7 @@ Back up:
 Backed Up
 Background Noise
 Background noise:
+Background noise: {}
 Background:
 Backgrounds
 Backlight
@@ -302,6 +335,7 @@ Basics
 Battery
 Battery & Idle
 Be the SSH agent (ssh, git)
+Before import {}.{}
 Begin
 Benchmark…
 Beside the widget before it
@@ -310,11 +344,14 @@ Black
 Blue
 Blue:
 Bluetooth
+Bluetooth devices and Touch ID fingerprints belong to each computer: pair and enrol them again here.
+Bluetooth devices, Wi-Fi networks and Touch ID fingerprints belong to each computer: pair, join and enrol them again here.
 Bluetooth is off.
 Bluetooth isn’t running on this computer.
 Bluetooth…
 Body
 Bold
+Boosted {} dB (suggested)
 Bottom Half
 Bottom Left Quarter
 Bottom Right Quarter
@@ -325,10 +362,15 @@ Bring It Into Olo…
 Brown
 Bug Fixes
 Builds
+Built into the keyboard
+Built-in Keyboard
 Bulleted List
 Busy Wi-Fi
+Busy at least
 Buttons
 By
+By a parent leaving
+By at least
 By hand
 By the hour for the next 5 days (the provider’s reach):
 C
@@ -346,6 +388,7 @@ CalDAV
 Calendar
 Calendar shows the calendars of your accounts on other CalDAV servers (Nextcloud, iCloud with an app-specific password, a server of your own) beside Google’s and Fastmail’s, and writes what you change back to them.
 Calendar:
+Calendar: Fastmail didn’t take the app password for calendars (it needs access to them).
 Calendar: Next Event
 Calendar: The Day Ahead
 Calendars
@@ -381,12 +424,15 @@ Check Health
 Check Spelling While Typing
 Check for Updates
 Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
+Checking your password…
 Checking…
 Choose All
 Choose Another Folder…
 Choose None
 Choose a Folder…
+Choose a backup to see what it holds before importing it.
 Choose a network to join it.
+Choose a setting, then play the original or its sound: switching goes on from the same place.
 Choose a widget to change it, or add one.
 Choose what to scan:
 Choose:
@@ -403,6 +449,7 @@ Clean Up
 Clean Up Microphone Sound
 Clean Up Now
 Clean up the microphone's sound
+Cleaning up the microphone's sound: {} ms behind{}.
 Clear
 Clear All
 Clear All Tabs
@@ -412,6 +459,7 @@ Clear Scrollback
 Clear copied secrets after:
 Cleared
 Click
+Click a shortcut to give it other keys.
 Click an event to see it here; double-click it to change it.
 Click and hold
 Click pressure:
@@ -445,6 +493,7 @@ Colors in:
 Colour
 Colour:
 Coloured by use: green unused, red used up.
+Colours:
 Column View
 Columns
 Command Suggestions
@@ -464,6 +513,10 @@ Connect Google Drive…
 Connect automatically when you put them in near this computer
 Connect with a Token…
 Connected as {}, through {}.
+Connected to “{}”
+Connected to “{}”: {}
+Connected {}, but its sign-in wasn’t allowed {}: Sign In Again and allow everything it asks.
+Connection:
 Contacts
 Container images and Flatpak runtimes
 Contents
@@ -494,6 +547,10 @@ Copy a code no tab is waiting for
 Copy the Code That Just Came
 Copy to clipboard
 Core
+Couldn't restart: {}
+Couldn't save the setting: {}
+Couldn't save: {}
+Couldn’t sign out ({}).
 Count accounts turned off or signed out
 Countdown
 Crate
@@ -506,6 +563,7 @@ Crop
 Crop…
 Custom
 Custom Message…
+Custom {} once applied (on {} until then)
 Customize…
 Cut
 Cyan
@@ -560,6 +618,8 @@ DeskCalc
 Deskbar
 Deskbar clock
 Deskbar shows: {}
+Deskbar: a {} widget measured “{}”, which this computer hasn't; it measures {} instead.
+Desktop (Preferences)
 Desktop Background
 Desktop Colour
 Destination
@@ -577,7 +637,11 @@ Disk
 Disk Space
 Disk:
 DiskBackup
+DiskBackup backs up to its Drive and couldn’t stop: {}
 DiskBackup copies your files, encrypted, every hour, and keeps older copies too, so any file can be brought back as it was. Where should the backups go?
+DiskBackup couldn’t: {}
+DiskBackup is setting up its backups in {}’s Google Drive…
+DiskBackup is stopping its backups to Google Drive…
 DiskBackup’s own app, from before. Bring it in for Mail and Calendar too; the backups stay put.
 DiskBackup…
 DiskUsage
@@ -586,13 +650,16 @@ Display
 Displays
 Divider
 Do Not Disturb
+Do Not Disturb (for {n} more minutes)
 Dockerfile
 Document
 Documents
+Does “{}” show this number?
 Domain:
 Don't Allow
 Done
 Done Editing
+Done with the exercises
 Don’t Trust
 Double-press speed
 Down (received)
@@ -608,13 +675,16 @@ Dutch
 Each Network's Own
 Each account
 Each agent screen keeps what was done on it and the frames it drew, to replay or export as a video. The oldest goes first.
+Each core ({})
 Each display has workspaces of its own.
 Each display is at its own best resolution and scale now: no rotation, mirroring, HDR or VRR, and night light off. Yours come back as you leave.
 Each display is drawn by the graphics it's wired to, so no frame crosses between them; the second sleeps while nothing uses it.
 Each is judged from several signals together; a finding says how sure it is and why.
 Each is the computer's, not this account's, so switching one asks for an administrator's password. Olo Doctor suggests each, with what was measured for it.
 Each kind opens in this app wherever you open it, in Olo and in other programs. Tracker's Open With ▸ Always Open With chooses too.
+Each network's own
 Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
+Each repository gets a folder in there: olo’s worktree fix-tabs goes in {}/olo/fix-tabs.
 Each setting tried shows here.
 Each shows in the Deskbar as it changes. A click on one there opens its app: Activity Monitor, Token Pool or the app it’s from.
 Edge
@@ -644,6 +714,8 @@ English (Australia)
 English (UK)
 English (US)
 Enhancements
+Enrolling didn't finish.
+Enrolling your {}
 Enter Full Screen
 Erase All Backups…
 Erlang
@@ -664,6 +736,7 @@ Every day
 Every day at set times
 Every disk
 Every interface
+Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
 Every month
 Every week
 Every weekday
@@ -677,6 +750,7 @@ Export Video
 Export Video…
 Export…
 Expression
+Extended desktop
 Extensions
 Extensions:
 Extra High
@@ -688,7 +762,12 @@ Extract To…
 FD
 Fable 5.1
 Face Unlock
+Face unlock is installed only in the person's own session (polkit asks there).
 Face unlock isn't installed.
+Face unlock wasn't installed: {}
+Face unlock wasn't removed: {}
+Face unlock's service isn't in this build (build the whole workspace).
+Face unlock's service isn't in this build.
 Fade
 Fade Colors
 Fahrenheit (°F)
@@ -699,6 +778,7 @@ Fast when there is work, frugal when there isn't, the processors kept out of the
 Faster
 Fastest
 Fastmail
+Fastmail didn’t take the address and app password: {}
 Favorites
 Fedora
 Feet
@@ -718,6 +798,7 @@ Find in document
 Find:
 Find…
 Finger
+Fingerprints can only be changed from a session logged in at this computer.
 Fingers moving
 Fingers scrolling
 Fingers taken for palms
@@ -740,8 +821,10 @@ Focus
 Focus follows the pointer
 Folders and files, separated by commas: ~/ is your home folder, **/ anywhere, * any name.
 Folders by Name, Files by Date
+Follows Other Mice below. Recommended for it: {}.
 Font
 Font Size
+For
 For Every Link
 For ever
 For the mice set to follow the others, and any you connect.
@@ -753,6 +836,7 @@ Forget
 Forget My Model
 Forget Saved Group
 Forget…
+Forgot {}: pair with it again to use it.
 Form
 Format:
 Formats
@@ -765,10 +849,12 @@ Free (open source)
 French
 French (Canada)
 From
+From the network
 From your next login, Passwords can be ssh’s agent here too.
 From:
 GPU
 GPU:
+GPUs are tuned only in the person's own session (polkit asks there).
 Game saves
 Generator
 Gently, below my own work
@@ -776,8 +862,12 @@ German
 Gestures
 Get Full Access…
 Get Info
+Getting the sensor ready…
 Git Worktrees
 GitHub
+GitHub answered {}.
+GitHub couldn’t be reached ({}).
+GitHub didn’t take the token: it may have expired or been revoked.
 Give a new key
 Glide
 Glow new windows for
@@ -786,12 +876,17 @@ Go to End
 Go to File or Folder…
 Go to:
 Going:
+Good. Lift, and touch again, a little differently.
+Good. Now lift it.
+Good. Now lift your hand.
 Google
 Google (8.8.8.8)
 Google Cloud Console…
 Google Drive
 Google account’s login:
 Google and Fastmail accounts for Mail (Integrations) are looked in too.
+Google no longer takes its sign-in: sign in again.
+Got it. Touch the key once more: its light is blinking again.
 Governor:
 Go’s downloaded modules and build cache
 Gradle’s and Maven’s downloads and caches
@@ -806,9 +901,13 @@ Green:
 Grid
 Group
 Group Windows
+Growing for
 Guests:
 H.264 (plays everywhere)
+H.264 (plays everywhere, on the processor)
+H.264 (plays everywhere, on {})
 HDR needs a setting at the computer's start: Olo Doctor offers it (“The built-in display's HDR is off”).
+HDR video and pictures shine up to {} cd/m²; everything else is shown this bright.
 HEVC (about half the size)
 HTML
 Haiku 5.5
@@ -816,6 +915,7 @@ Halves
 Hang Up
 Hard
 Hardware
+Hardware address:
 Haskell
 Header & Footer…
 Header Row
@@ -826,6 +926,7 @@ Heading 4
 Heading 5
 Heading 6
 Headless
+Health: {}% of original capacity
 Heatmap
 Hectopascals
 Hidden and ignored files
@@ -842,10 +943,13 @@ Highest clock
 History
 Hold Fn (🌐) for F1 to F12.
 Hold duration:
+Hold it there…
+Holding at least
 Home
 Hosts
 Hotspot
 Hours:
+How loud this microphone is gets measured as you talk on a call, or with Try It.
 ID
 INI
 IP address:
@@ -856,6 +960,7 @@ Identify
 Identity
 Identity:
 If it does, confirm here, and on the phone too.
+If nothing shows on the touchpad, your shirt doesn't reach it: press Space to skip this.
 Ignore
 Ignore Spelling
 Ignore This Process
@@ -866,6 +971,7 @@ Image
 Immediately needs a small helper that only the administrator can install. Until it's installed, Immediately restarts or shuts down as Restart and Shut Down do.
 Import
 Import WireGuard…
+Imported {}{}{}. Apps that are open take some settings when they next start.{}
 Import…
 In Google Cloud, signed in as the account, make its app, “Olo (its address)”:
 In HDR on a display whose HDR is on: its lights shine brighter than the rest.
@@ -874,7 +980,12 @@ In place of the blue dot of its notifications, for as long as the app says somet
 In the Scratchpad
 In the Tray
 In the command palette, type /ask and a question: the answer shows there with code to copy (its number, then Return). Space asks a follow-up.
+In the emoji picker ({}), describe what you want to say and press ⌘↩ for five emoji that say it.
+In the emoji picker, describe what you want to say and press ⌘↩ for five emoji that say it.
 In the tray it's an icon's size; its name and value are in its tip.
+In use, with the weights it began from (not fine-tuned yet), on the {}.
+In use: Olo's own for a {}, made from {} touches of real hands on one; it caught {}% of palms and took {}% of fingers for palms. Train for Your Palm fits it to yours.
+In use: yours, trained {} on {} touches; on touches kept back it caught {}% of palms and took {}% of fingers for palms.
 In:
 Inches
 Inches of Mercury
@@ -907,21 +1018,32 @@ Interface:
 Invert Selection
 Invite:
 It Matches
+It didn't work.
+It isn't a WireGuard configuration: {}.
 It lasts until it's turned off, the link goes away or the computer restarts. Changing it asks for an administrator's password once while this window is open.
+It learned from {} of your touches, but app_server didn't keep it: it's likely older than this Preferences. Upgrade Olo (the new build in Deskbar's tray), then train again.
+It needs at least three palms and three fingers among the touches it learns from. Train again and do each exercise as its film shows.
 It plays at a quarter of full volume, whatever yours is set to, and not while the sound is muted.
 It takes only what nothing else wants, the processor’s time and the disk’s: never in your way, though slower while you work.
+It wasn't forgotten ({}).
+It wasn't set up ({}).
 It's in use now, in place of Olo's own.
 Italian
 Italic
 Item
+Its app password isn’t in the keyring: remove it and add it again.
 Its click is its own: a resting palm can't press.
 Its decoder, on its battery preset (Power Modes), costs less than the processor's cores; off, the processor decodes on battery.
+Its key is damaged.
+Its key isn't in this login keyring: it opens only on the computer that made it.
 Its own
 Its packager wrote nothing.
 Its packages’ signatures aren’t checked.
+Its password isn’t in the keyring: remove it and add it again.
 Its power limit is the computer's to set, as a laptop's is.
 Its release packages are installed: they add its repositories and keys.
 Its secret reference, as Passwords’ Copy Secret Reference gives it. Passwords asks once, while it runs, whether Weather may have it.
+Its sign-in isn’t in the keyring: sign in again.
 Its work starts sooner, but it never sleeps: more power, more warmth.
 It’s Different
 It’s the newest release: there’s nothing to upgrade to.
@@ -938,6 +1060,7 @@ Just This Time
 Justify
 Kache
 Kache: Build Cache
+Keep HDR on for {}?
 Keep It Going
 Keep It Going says
 Keep It Going says:
@@ -953,6 +1076,9 @@ Keep palms from moving the pointer
 Keep proportions
 Keep scrolling after a flick
 Keep the Desktop Responsive
+Keep the desktop responsive
+Keep the new resolution of {}?
+Keep typing…
 Keep until tapped
 Keep up to:
 Keep windows' graphics memory out of swap
@@ -968,6 +1094,7 @@ Keyboard
 Keyboard Hints
 Keyboard Profile
 Keyboard Shortcuts
+Keyboard: the Mac profile came along, ⌘ on the Super key (the Windows key on most PC keyboards). Preferences ▸ Keyboard picks another for this keyboard.
 Keyboards
 Key’s PIN:
 Kilometres
@@ -986,10 +1113,16 @@ Larger Pointer
 Last
 Last Page
 Layout:
+Leaking memory
 Learn Spelling
+Learned {} from {} examples in {}, but did no better on your newest commands, so it kept what it had: its first suggestion right {} of the time.
+Learned {} from {} examples in {}: its first suggestion is right {} of the time on your newest commands ({} before).
+Learned {} from {} examples in {}: its first suggestion is right {} of the time on your newest commands.
+Learning from your history…
 Leave Out What Can Be Downloaded or Built Again
 Leave Rescue
 Leave the DNS servers empty to use the network's. DNS servers set for every link (the DNS tab) take the place of these.
+Leaving zombies
 Left
 Left Half
 Left Third
@@ -999,7 +1132,10 @@ Length
 Less noise
 Let coding agents keep their tab’s title current
 Level
+Level evened out
+Level not evened out
 Light
+Light:
 Like this
 Like:
 Limit
@@ -1019,6 +1155,7 @@ Location
 Lock
 Lock After
 Lock Screen
+Lock after
 Lock after idle for:
 Lock the Screen
 Lock the screen when the display turns off
@@ -1038,14 +1175,17 @@ Look:
 Looking at Bluetooth…
 Looking for a newer release…
 Looking for apps…
+Looking for its calendars…
 Looking for network devices…
 Looking for security keys…
 Looking for sound devices…
 Looking for the fingerprint sensor…
 Looking for volumes…
 Looking…
+Looks like {} × {}
 Loss:
 Low
+Lower background work
 Lower this computer's sound while you speak
 Lower to nice
 Lowers builds and other background work so the active window’s app and Olo itself stay quick, and watches for stuck processes, leaks and memory hogs. What it does is in Activity Monitor’s Supervisor section, and Deskbar’s gauge turns it on and off.
@@ -1062,7 +1202,9 @@ Mail
 Mail and Calendar sign in to Fastmail with an app password of each account’s own, with access to mail and calendars. Tick what each account is used for: Mail looks in its new mail for one-time codes, Calendar shows its calendars.
 Mail is read only while a page waits for a code, for up to a minute.
 Mail is read only while a page waits for a code, for up to a minute. A phone, set up in Phone, is looked in too.
+Mail to {} ({})
 Mail, Calendar and DiskBackup sign in to Google through an app of each account’s own, “Olo (its address)”, in its Google Cloud project: an agent makes it for you. Tick what each account is used for.
+Mail: Fastmail didn’t take the address and app password.
 Main Window
 Main and Stack
 Main and Stack, Main Elsewhere
@@ -1075,7 +1217,9 @@ Make an App Password…
 Make an app password for Olo in Fastmail (Settings ▸ Privacy & Security ▸ Manage app passwords and access) with access to mail and calendars. It’s kept in your login keyring.
 Make one at my.telegram.org ▸ API development tools (sign in there with your phone number), then copy its App api_id and api_hash here.
 Make this the main display
+Make:
 Makefile
+Making a hotspot (below)
 Manually
 Mapped
 Mappings
@@ -1096,6 +1240,7 @@ Memory
 Memory:
 Message
 Messages
+Messages are coming. Contacts follow once Sync Contacts is on.
 Messages: each as it comes, answered in place
 Meter
 Metres
@@ -1108,6 +1253,7 @@ Miles
 Miles an Hour
 Millimetres
 Mini Icon View
+Mirror of {}
 Mode
 Model:
 Models
@@ -1153,16 +1299,20 @@ NVIDIA GPU (NVDEC)
 NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU
 NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU (NVDEC)
 NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU (NVENC)
+NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor. {}
 Name
 Name or text
 Name:
 Named, it's a heading: its name at the left, the line going on from it.
 Names
 Names:
+Narrower than sRGB ({}% of it)
 Natural scrolling (content follows your fingers)
 Network
+Network name
 Never
 Never Warned About
+Never fade
 New
 New Agent Screen
 New Conversation
@@ -1218,6 +1368,7 @@ No app opens these
 No app opens these yet: add one.
 No apps open this.
 No banners and no sounds (errors still show).
+No cable
 No chat selected
 No connections match.
 No conversations open.
@@ -1243,38 +1394,67 @@ Noise Control
 Noise Model
 Noise control:
 Noise model:
+Noise model: {}
 None
 None (flat)
 None connected to Olo yet.
 None just now
 None run.
 None yet: add one below, named by its extensions.
+None, or corp.example
 None. An alert’s Ignore This Process adds one here.
 None. To add an app, choose Float Window ▸ Always in the window menu of one of its windows.
 None. To give an app one, choose Always Open on Workspace in the window menu of one of its windows.
 Nonfree (NVIDIA’s drivers, Steam, …)
 Norwegian
 Not Answered
+Not all of it applied: {}.
 Not answered
+Not applied.
+Not applied: an administrator's password is needed.
+Not boosted
+Not boosted (suggested)
+Not brought over from GNOME Keyring (another password): {}.
+Not changed. {}
+Not changed: an administrator's password is needed.
+Not changed: changes as an administrator are made in the person's own session.
+Not changed: the network's helper stopped.
+Not connected
 Not connected: only public repositories’ pull requests show.
 Not enough touches to learn from
+Not found
+Not imported: {}
 Not in a Repository
+Not paired
+Not running under olo-session.
 Not running: Codex starts it with its first window.
+Not saved: {}
 Not set up.
 Not set up: Telegram needs an API ID to sign in with.
+Not shaped: as fast as it goes.
 Not signed in. (API ID {}.)
+Not told
+Not working: {}.
 Notes:
 Nothing
 Nothing Found
+Nothing came from the microphone.
 Nothing changed: Olo's own model is still in use.
 Nothing in the history yet.
 Nothing more today
+Nothing recorded yet. Press Record and talk for a few seconds.
+Nothing to tune for its driver ({}) yet.
 Notification
 Notification Settings…
 Notifications
 Notifications: Inbox
 November 2026
 Now
+Now lift your hands, and rest them again as you type.
+Now point or tap with a finger above it: {} more.
+Now point or tap with a finger of your other hand: {} more.
+Now {}{}: the processors {} at up to {}%, {}.
+Now:
 Now: {}
 Num Lock on when Olo starts
 Number
@@ -1287,6 +1467,8 @@ OK
 OS Updates
 Objective-C
 Off
+Off: palms are told apart by their size alone.
+Off: palms are what the touchpad says they are.
 Offer a code in the browser tab waiting for it
 Offline (Everything Lost)
 Offset
@@ -1295,8 +1477,12 @@ Older ones go, and the space only they took is freed, once a day. Delete any you
 Oldest first
 Olo
 Olo Desktop
+Olo Desktop, version {}
 Olo Doctor
+Olo Doctor couldn't set it.
 Olo Installer
+Olo doesn’t have {} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it.
+Olo keeps {}{}: their sign-ins, keys and Wi-Fi passwords, opened by your login password.
 Olo saying its name
 Olo's Choice
 Olo's boot splash
@@ -1304,19 +1490,26 @@ Olo's login screen
 Olo's own model is still in use.
 Olo’s keyring isn’t running here; it starts with your session.
 Olo’s language:
+Olo’s phone service isn’t running.
 Olo’s windows change at once. Other programs take it as they next start, in the languages they have.
 On
 On Battery
+On Custom {}
 On This Computer
 On a PC keyboard, Alt is where a Mac's ⌘ is: swapped, the key beside the space bar is ⌘ (with the Mac profile) and the Windows key is Option. Each keyboard keeps its own setting, so an Apple keyboard plugged in stays as it is.
 On the phone, open Settings ▸ Bluetooth and keep it open there. It appears here in a moment.
 On your phone, open Telegram ▸ Settings ▸ Devices ▸ Link Desktop Device, and point it at this code.
+On {} now: {}. Moving a setting makes it Custom {}; Power Modes says what each mode puts it on.
+On “{}”: Settings ▸ Bluetooth ▸ tap ⓘ beside this computer, and turn these on. They can take a minute or two to appear there; leaving that page and opening it again shows them sooner. (If this computer is listed twice, look in both.)
+On “{}”: allow this computer to see your messages and contacts when it asks (or in Bluetooth, the gear beside this computer).
+On: brush starts olo-complete as you next type in it.
 On: packages come from it
 One a day for:
 One a month for:
 One a week for:
 One an hour for:
 One like it again from the same app (its title and text) takes the earlier one's place while that's still showing or unread.
+One of the colours things are told apart by: tags, graphs, a tab group's colour, Terminal's {}.
 One-Time Codes
 Only Zip and 7-Zip archives can have a password.
 Only on battery power
@@ -1354,7 +1547,9 @@ OpenDocument Text…
 Opening programs’ secrets…
 Opens in:
 Open…
+Optional
 Opus 5.5
+Or stalls over
 Orange
 Orange, then red, as it runs low
 Order:
@@ -1375,7 +1570,9 @@ Package
 Packages
 Page View
 Pair
+Paired with {}.
 Pairing
+Pairing with {} didn't work: {}.
 Pair…
 Palm-proof clicks, hovering fingers ignored, Mac-like scrolling
 Palms
@@ -1393,6 +1590,8 @@ Password Generator
 Password lock
 Password:
 Passwords
+Passwords and sign-ins: there's no login keyring here to keep them in, so they didn't come along.
+Passwords couldn’t give its logins: {}
 Passwords for Every Screen…
 Passwords has no login for a Google account: add the account’s login there first, or set the app up by hand.
 Passwords: Clipboard
@@ -1429,6 +1628,7 @@ Play a sound when Olo starts
 Play sound through:
 Playback
 Playback Speed
+Playing the {} at {} s.
 Please continue
 Plug in a security key to set it up.
 Point with a palm at the edge
@@ -1445,6 +1645,9 @@ Power Modes
 Power Saver
 Power limit
 Power-saving profile
+Power: the GPUs' tuning is as it was here. {} Preferences ▸ Power sets it.
+Power: the backup's GPU tuning couldn't be read, so it's as it was here.
+Power: what each power mode puts the processors and GPUs on came along; each GPU's own clocks are this computer's.
 PowerShell
 Precipitation
 Preemption
@@ -1452,10 +1655,12 @@ Preferences
 Presence
 Presentation
 Press Control twice for keyboard hints
+Press Esc again to quit: the touches so far are dropped. Space goes on.
 Press and Hold
 Press and hold a stem to switch between:
 Press both buttons for a middle click
 Press speed:
+Press {} for the next: {}.
 Press 🌐 alone to show emoji
 Pressure
 Previous
@@ -1475,6 +1680,7 @@ Priority
 Problems
 Process
 Processed
+Processed: the setting chosen below
 Processes
 Processes as a Tree
 Processor
@@ -1483,6 +1689,7 @@ Profile:
 Program
 Program names, comma separated
 Programs’ Secrets
+Programs’ secrets are locked: {}.
 Project
 Protect it with a password
 Protocol
@@ -1496,6 +1703,7 @@ Put the computer to sleep after:
 Puts what you choose from a backup in place of what's here; the rest stays as it is. What you have now is saved first.
 Python
 Python bytecode and virtual environments
+QR code: {}
 Quad9 (9.9.9.9)
 Question
 Quick Look
@@ -1539,6 +1747,7 @@ Record from:
 Record the Computer's Sound
 Record the Microphone
 Recording
+Recording: {} of {} seconds. Talk as you do on a call.
 Recordings…
 Record…
 Red
@@ -1546,8 +1755,10 @@ Red:
 Redo
 Redo {}
 Reference:
+Refining Olo's model on {} touches…
 Refresh
 Refresh rate:
+Refresh:
 Regenerate
 Reinstall Selected…
 Reminder:
@@ -1565,6 +1776,8 @@ Remove Worktree…
 Remove from Group
 Remove from Pool…
 Remove it from the pool? Its sign-in here is deleted; the account itself isn’t touched.
+Remove the VPN “{}”? Its settings and keys go with it.
+Remove the {}? It will no longer unlock anything.
 Remove…
 Rename
 Rename Group…
@@ -1589,6 +1802,7 @@ Reset Pane Sizes
 Reset Passwords
 Reset Passwords…
 Reset Thresholds
+Reset of “{}”
 Resize
 Resize…
 Resolution:
@@ -1616,6 +1830,8 @@ Resume Recording
 Revert
 Revert to Saved
 Revert to Saved…
+Reverting in 1 second.
+Reverting in {} seconds.
 Rich Text (RTF)…
 Right
 Right Half
@@ -1629,6 +1845,7 @@ Rows
 Rtkit isn't running
 Ruby
 Ruler
+Run module
 Russian
 Rust
 Rust build output and downloaded crates
@@ -1641,6 +1858,7 @@ Save Group
 Save as GIF
 Save as:
 Save in:
+Saved to /etc/hosts.
 Saves Olo's settings and what apps keep between runs in one file, to bring back here or to another computer. What goes in:
 Saving Power
 Saving Power slows the processors and turns turbo off, Balanced speeds them up for work (leaning to saving on battery), Fastest keeps them quick; Top speed caps them (Balanced's 75% leaves out their hottest quarter). A GPU's Cooler and Quieter caps its clocks (Custom: its own, on Graphics), an SSD's Cooler and Coolest the power it may draw (a SATA SSD's, how deeply its link may sleep between commands), the fans' Cool, Cooler and Coolest how early they speed up (Auto: the computer's own way). On battery, a row not As the Mode holds whatever the mode.
@@ -1660,6 +1878,7 @@ Screen Saver
 Screenshot
 Scroll
 Scroll while the middle button is held
+Scroll with:
 Scrolling
 Scrolling speed
 Search
@@ -1696,6 +1915,7 @@ Sending your changes to Telegram
 Sensor:
 Sensors
 Sent
+Separated by spaces
 Server
 Server:
 Servers of Your Own
@@ -1711,15 +1931,21 @@ Set Up Again…
 Set Up by Hand…
 Set Up…
 Set date and time automatically
+Set for the whole computer by {}{}.
 Set the Time
+Set up ({} looks).
 Setting
 Setting it: an administrator's password is asked…
+Setting up your {} takes your password and two touches of the key:
+Setting up your {} takes your password, its PIN and two touches of the key:
 Settings
+Settings:
 Shaping
 Share
 Shared
 Shares this computer's connection as a Wi-Fi network of its own; the adapter leaves the network it's on while it does.
 Sharing
+Sharing this computer's connection as “{}”.
 Shell
 Shift gradually, starting at From
 Shift over
@@ -1766,6 +1992,7 @@ Show the phone’s other notifications
 Show what a message says
 Show what's used, not what's left
 Show:
+Showing its code
 Shown
 Shows:
 Shut Down
@@ -1782,6 +2009,7 @@ Sign Out…
 Signal
 Signed in as {} ({}).
 Signed in as {}.
+Signing in to Fastmail…
 Sign…
 Size
 Size:
@@ -1817,6 +2045,7 @@ Spanish
 Speed
 Speed & Resources
 Speed Test
+Speed:
 Spiral
 Standard
 Start
@@ -1826,14 +2055,19 @@ Start Over…
 Start Test
 Start the Agent
 Start this step over
+Start typing
 Started
 Starting Up
+Starting the agent…
 Starts:
 State
 Stats
 Status
+Status:
 Stay Awake
 Stay awake: no display sleep, sleep, screen saver or lock
+Steadily (fit)
+Step {} of {}
 Stop
 Stop All
 Stop Ignoring
@@ -1843,14 +2077,19 @@ Stop Scanning
 Stop Screen
 Stop Screen…
 Stop Sharing
+Stop charging at {}% (and start again below {}%)
 Stopped.
 Strikeout
 Strip
 Strong
+Stuck in a loop
 Style
 Styled Text
 StyledEdit
+Subpixel, BGR order
+Subpixel, RGB order
 Suggest commands from a model of your own
+Suggest emoji for a description
 Suggestion
 Suggestions
 Sunday
@@ -1869,6 +2108,7 @@ Sync Again
 Sync Now
 System
 System Font
+TCP sends at the pace its path can carry, by a model of it, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
 TCP/IP
 TOML
 TSX
@@ -1882,6 +2122,7 @@ Take calls on this computer
 Tap
 Tap and drag
 Tap to click
+Tap {} on its own for the command palette
 Taps
 Task List
 Teal
@@ -1901,44 +2142,95 @@ Terminal Preferences…
 Terminal shows each tab’s pull request on GitHub and whether its checks pass.
 Terra 6.1
 Test
+Tested on the {} touches kept back from training ({} palms, {} fingers):
 Text
 Text Message
 Text Size
+Text messages to “{}”
 Text:
 Texts
+That isn't the backup's password.
+That password isn't right.
+That password isn’t right.
+That's all of them. Press {} to learn your hands.
+That's all this step needs.
+The API ID couldn’t be kept in the keyring ({}).
+The API ID is a number.
+The API hash is 32 letters and digits (0–9, a–f).
+The AirPods service isn't running.
+The GPU
+The MTU is a number of bytes.
 The Theme’s Own
+The VPN couldn't be saved.
 The account answering now
+The account couldn’t be saved ({}).
+The agent is at work in a Terminal window, on its agent screen “{}” (Agent Screens shows it): it makes the account’s app in Google Cloud and signs Olo in with it. The account shows here when it’s done; you can talk to the agent in Terminal meanwhile.
+The backup is damaged.
+The backup's password is needed to open it.
 The bell's count in:
 The clock service (systemd-timedated) isn't answering.
 The coming days, each its sky, low and high.
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
+The fans' profile isn't in force yet: {}
+The fingerprint couldn't be removed.
+The fingerprint sensor couldn't be used.
+The fingerprint sensor isn't answering.
+The first fine-tune failed: {}
+The icons {} is drawn with, everywhere.
+The infrared camera couldn't be opened (its shutter, or another program).
 The kernel's own (recommended)
+The key couldn’t be kept ({}).
+The key couldn’t be removed ({}).
 The key is only on this computer: keep it in Passwords, to restore anywhere else.
+The key is set up: from now on, a touch of it does what typing your password does.
+The key stopped waiting with no touch, and is blinking again: touch it once more now.
+The key stopped waiting with no touch, and is blinking again: touch {} now.
+The key was removed: a touch of it no longer stands for your password.
+The keyring couldn’t be read ({}).
 The last 12 hours
 The last 6 hours
+The list of Google accounts couldn’t be saved ({}).
+The login keyring couldn't be read: {}
 The look of every icon, window and control, in every app, and a wallpaper to match.
 The look's own
+The loss is a number, in percent.
 The model wasn't good enough to keep
 The most powerful (NVIDIA RTX PRO 2000 Blackwell Generation Laptop GPU)
+The most powerful (the processor)
+The most powerful ({})
+The network couldn't be asked for receivers.
 The next 12 hours
 The next 3 hours
 The next 6 hours
 The next hours, each its sky and temperature, with the chance of rain or the cloud.
 The one it started on
+The pad clicks at {}/{} (all contacts together); with a palm on it, Olo counts the click only if the fingers press that hard alone.
+The pairing with {} couldn't be forgotten: {}.
+The password couldn’t be kept in the keyring ({}).
+The picture on the desktop when {} is chosen. Backgrounds changes the desktop’s after, a workspace at a time.
 The pointer keeps moving, and none of its motion is lost, while the desktop is busy: a slow frame, or a wait in the graphics driver under load. New, and being tried: if the mouse, touchpad or keyboard misbehaves with it on, turn it off.
 The pool
 The power mode (Power Saver, Balanced or Performance) is set in Power.
 The processor
 The processor (OpenH264)
 The right edge
+The screen
+The server didn’t take the name and password.
 The server’s CalDAV address, and the name and password it signs you in with. The password is kept in your login keyring.
 The shell has ended.
 The sky and temperature now, and what's coming.
 The store
 The system's services (updates, indexing) can still run there.
 The system's services are kept off it too.
+The token couldn’t be kept in the keyring ({}).
+The token couldn’t be taken out of the keyring ({}).
 The touchpad says which touches are palms, but lets a resting palm go back to being a finger; Olo keeps it a palm until it lifts.
+The two passwords aren't the same.
+The voice service isn't running.
 The workspace each display shows stays open in every Deskbar; each other one is its heading, with an arrow that shows its applications and puts them away again.
+The {} couldn't be changed.
+The {} is a whole number.
+The {} wasn't changed: an administrator's password is needed.
 Their new windows open there, on the display they open on. Uncheck an app to open its windows where you are again.
 Their windows float over the tiles, and over the window Focus shows. Uncheck an app to tile its windows again.
 Theme
@@ -1949,6 +2241,7 @@ There are no network interfaces.
 There is nothing to share.
 There's no Ethernet adapter. A USB or Thunderbolt one shows here once it's plugged in.
 There's no Wi-Fi adapter.
+There's no fingerprint sensor, or fprintd isn't running.
 There's no infrared camera.
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 ThinkPad
@@ -1957,12 +2250,18 @@ This Computer
 This Computer's Microphones
 This Touchpad
 This account has a two-step password.
+This backup was made by a newer Olo.
 This computer has no Bluetooth.
 This computer has no battery.
+This computer is “{}” to AirPlay receivers.
+This computer is “{}”.
 This computer's kernel can't load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel's own schedules.
 This computer's sensor sees when someone is in front of it.
 This display reports no modes.
 This is the recommended profile for this touchpad.
+This isn't an Olo backup.
+This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
+This kernel has one way of preempting only: it wasn't built to be told another.
 This keyboard has no backlight.
 This step is done
 This touchpad doesn't report pressure, so it is left to libinput.
@@ -1991,6 +2290,7 @@ Today
 Today and tomorrow
 Token Pool
 Token Pool isn't running: its quotas are listed once it is.
+Token Pool: its accounts came in paused. Turn them on here once the other computer's pool no longer uses them: each sign-in renews itself, and two computers renewing one sign each other out.
 Token:
 Tomorrow
 Took
@@ -1999,10 +2299,13 @@ Top Half
 Top Left Quarter
 Top Right Quarter
 Top Two Thirds
+Top speed
 Touch
 Touch ID
 Touch ID isn't used here: its sensor works only with the Mac it's paired to, whose Secure Enclave alone can read what it senses. Use the computer's own fingerprint reader, or your password.
 Touch screen
+Touch the key now: its light is blinking. Touch {}.
+Touch the sensor, lift, and touch again.
 Touchpad
 Touchpad & Mouse
 TrackPoint
@@ -2010,10 +2313,13 @@ Tracker
 Tracker's Open With ▸ offers these for this kind, in this order.
 Tracking speed
 Traffic goes through the first service in this list that's connected; the others stand by. Networks joined later fall in line.
+Traffic:
 Train
 Train again
 Train for Your Palm
 Train for Your Palm…
+Trained on {} of your touches ({} palms, {} fingers). It's kept with your settings (and in backups); Preferences ▸ Touchpad & Mouse ▸ Touch shows it, and can turn it off or forget it.
+Trained on {} of your touches, it did worse than Olo's untrained model on the {} kept back to test it, so it wasn't saved and nothing changed. Train again, resting your hands as you really do.
 Transparency
 Trash
 Tree
@@ -2027,23 +2333,38 @@ Try It…
 Try Voice Processing
 Try it
 Try the Phone Again
+Trying each setting on it: {} of {}…
+Tuned for {}
 Tuned for:
 Turn Off
 Turn On
 Turn On Bluetooth
+Turn off after
 Turn off screen
 Turn the display off after:
 Turn the touchpad off while a mouse is plugged in
+Turned off by the hardware switch.
 Turned on
+Twelve exercises, then a try
 Two fingers
+Two fingers:
 Type
 Type a time like 13:05 or 1:05 PM.
 Type here to try the settings
+Type the PIN for “{}” (often 0000).
+Type the code “{}” shows on its screen.
+Type the keys. Esc cancels; ⌫ removes them.
+Type the keys…
+Type the passkey shown by “{}”.
+Type this
 Type with your palms down
+Type {} on “{}”, then press Return.
 Type:
 TypeScript
 Typing test:
 USB mice may sleep
+USB power management may put it to sleep, and then it loses the first movement when the hand moves again.
+USB receiver
 Unarchive All
 Unarchive All…
 Under the Tray
@@ -2062,6 +2383,7 @@ Unmount
 Unmute
 Unmute All
 Unread notifications put a blue dot beside their app.
+Unreaped for
 Until Turned Off
 Until:
 Up
@@ -2080,6 +2402,7 @@ Upgrade Olo
 Upload at most:
 Uploading is backing up; downloading is restoring, and tidying. A limit holds at once, for a backup under way too.
 Uptime:
+Urgent at
 Use
 Use Credit
 Use Default
@@ -2102,6 +2425,7 @@ User
 Username or Site
 Username:
 Using DHCP
+Using too much memory
 VPN
 Validate Fully…
 Validated
@@ -2114,6 +2438,7 @@ Vault:
 Version
 Very Bad Network
 Video Playback
+Video is decoded on the processor. {}
 View
 Viewer
 Virtual machines’ disk images
@@ -2124,12 +2449,18 @@ Volume
 Volume:
 Volumes
 Waiting for app_server…
+Waiting for the phone… this page follows it by itself.
+Waiting for the touchpad…
+Waiting for you to sign in to Google in the browser…
+Waiting for “{}” to allow it (its switches for this computer, in its Bluetooth settings).
 Waits
+Waits less than
 Wake the display when you come back
 Wallpaper
 Warmer
 Warmth
 Watch Agent Screens
+Watch for stuck processes, leaks and memory hogs
 Watchdog
 Weather
 Weather: Next Days
@@ -2143,6 +2474,9 @@ What
 What Each Mode Sets
 What follows them is from an older Olo: Apply to bring it up to date (an administrator's password is asked).
 What is made from it (shades, edges, text that has to read on it) follows.
+What it can be set to isn't known yet: asking it wakes it for a moment.
+What it can be set to isn't known: {}.
+What it can be set to isn't known: {}. It stays so until the computer restarts, which starts its driver again.
 What it does
 What it draws from the battery; on power, it says so.
 What it’s for (optional)
@@ -2165,10 +2499,16 @@ When:
 Where Backups Go
 Where:
 While Typing
+While less is free than
 While sharing or recording the screen (errors wait too)
 Why
 Wi-Fi
 Wi-Fi (Intel Wi-Fi 7 BE200 320MHz)
+Wi-Fi networks
+Wi-Fi: there's no NetworkManager here to save the networks in.
+Wi-Fi: {} didn't come along ({}, set up with the other computer's certificates): join {} again here.
+Wi-Fi: {} saved here, {}.
+Wi-Fi: “{}” couldn't be saved here ({}).
 Wide
 Widget
 Widget name
@@ -2179,6 +2519,7 @@ Window on a Background
 Window title size
 Windowing Mode
 Windows
+Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).
 Wireless Router
 With AirPods:
 Word Document…
@@ -2199,9 +2540,11 @@ Yes
 Your Display
 Your Google Drive keeps them anywhere: sign in once, or let an agent set it up.
 Your Kinds
+Your Own
 Your Own Kinds
 Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
 Your backups are encrypted before they leave this computer. Their key is kept in Passwords (“DiskBackup Key”): with it, they can be restored on any computer.
+Your face wasn't seen well enough: sit facing the camera, at arm's length, and try again.
 Your home folder is backed up every hour, leaving out what can be downloaded or built again. Once it’s set up, you can change any of it.
 Your messages, your contacts and the one-time codes texted to you, on this computer: over Bluetooth, with nothing between and nothing else to install.
 Your own:
@@ -2210,8 +2553,16 @@ Your palm model is ready: saving…
 Your palm model is saved, and in use
 Your palm over the left edge
 Your palm over the right edge
+Your password couldn’t be checked ({}).
+Your settings as they were are in “{}”.
 Your shirt against the touchpad
+Your ssh configuration (~/.ssh/config) sends ssh to another agent, {}, so it doesn’t use the keys in Passwords.
 Your touchpad
+Your voice came in at {} dB; voice processing aims for {} dB.
+Your voice comes in at {} dB, boosted to {} dB.
+Your voice comes in at {} dB: loud enough as it is.
+Your voice comes in at {} dB: loud enough without a boost.
+Your voice comes in at {} dB: {} brings it to the {} dB aimed for.
 Zig
 Zoom All
 Zoom In
@@ -2220,30 +2571,129 @@ Zoom on Clicks
 Zoom to Fill
 Zoom to Fit
 __pycache__, .venv, .mypy_cache, .pytest_cache, .tox
+a PIN set
+a {} W power limit
 as in 1Password's sidebar, or its UUID
+as it goes
+brush’s grey hint after what you type, from a tiny model of your own commands on this computer. Your shell is {}: Olo Doctor makes it brush (a suggestion).
+brush’s grey hint after what you type, from a tiny model of your own commands on this computer: it weighs what’s typed, the folder, the commands before, the hour and the day, and learns as you go.
+charging, full in {}
+couldn't save the boost: {}
+couldn't save the setting: {}
 day
+full size, with a numeric keypad
+fully charged
 ghp_… or github_pat_…
 hour
 iPhone
+its clock as the driver has it, up to {} MHz
+its clock up to {} MHz
+its ports: {}
 kbit/s
 libinput's default
 ms
+no display ports
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
+not parts of it: {}; its parts are {}
+not yet on this kernel's series, {}
+nothing now (its ports: {})
+of {}
+of {} and {} more
+olo-complete didn't answer while learning.
+olo-complete didn’t start: Deskbar’s Upgrade installs it.
 on
+on battery
+on this kernel's series, {}
 optional
 organizer
+original
+plugged in, held at the {}% limit
+plugged in, not charging
+processed sound
 recommended for this touchpad
 sav, sv2
 scx_lavd, made for a computer someone is sitting at: what it judges is being waited for runs first, with builds and other long work around it. It gives a program's priority little weight, and under heavy work the window server waited for the processor three times as long as with the kernel's own. It is loaded over the kernel's own, which takes over again by itself if LAVD ever stops.
+signed in
+signed in, 1 calendar
+signed in, {} calendars
 ssh, git and other programs sign in with the SSH keys in Passwords, each one allowed the first time it asks.
 target/debug, target/release, ~/.cargo/registry, ~/.rustup
+the account’s
+the agent didn’t start: {}
+the fans {}{}
+the introduction
+the power profiles daemon, through {}
+the summary, {}
+the system's power profiles daemon
+the try
+up to {} dpi
 you
+your own picture
+{n} days
+{n} hours
 {n} minutes
 {n} seconds
+{n} secrets
+{n} weeks
+{} (AV1 and VP9)
+{} (every video)
+{} (in use)
+{} (not connected)
+{} (the theme’s own)
+{} A workspace starts with this; choose its own from Deskbar's tray.
+{} About a microsecond each, on the {}.
+{} Choose Set Up… to try again.
+{} Choose a workspace's own from Deskbar's tray.
+{} What’s looked in for codes, and where they go: Security ▸ Passwords.
+{} a second
+{} applications are keeping the display awake.
+{} cd/m² at most, {} over the whole screen
+{} didn't say where it is.
+{} didn't start pairing: {}.
+{} dpi as it comes
+{} for each
+{} h {} min
 {} in {}.
+{} is connected but plays no sound: {}.
+{} is disconnected from Olo. Its app stays in its Google Cloud project, to connect it again with.
+{} is grabbing input devices: a mouse it has grabbed moves through its virtual pointer, and settings made here don't reach it.
+{} isn't paired with.
+{} isn't shaped.
+{} knows this computer.
+{} later: gone
+{} ms, the middle of them
+{} of Olo’s {} words are in {} so far; the rest stay in English.
+{} of them
 {} of {} connected.
+{} of {} connections
+{} on Workspace {}
+{} per second
+{} was added.
+{} was removed.
+{} was taken from “{}”.
+{} words a minute · {}% right
+{} · set up {}{}
+{} · {} · call quality while the microphone is used
+{} · {} · music quality
+{}% of RAM
+{}% of a core
+{}% of the time
+{}% of their {} segments
 {}, all day
+{}, all disks
 {}, until {}
+{}: it asks for its PIN at every use, so a touch can’t stand for your password
+{}: it can’t keep a secret for Olo (no hmac-secret)
+{}: left as it is here, as this computer's couldn't be saved first.
+{}: left as it is here. The backup holds no key to open what it has of it (one exported without passwords and sign-ins holds none).
+{}: sign in again on this computer (each computer signs in as itself).
+{}: the login keyring didn't take it ({}). Import the backup again once it does.
+{}: what's set below. Power Modes says what each mode puts it on.
+{}; not allowed {} (sign in again)
+{}Run by {}. Echo cancellation isn't tried: a recording has no speakers' sound beside it to take out.
+{}a heading {}
+{}{}, plugged in: {}.
+{}″ ({} × {} mm), {} pixels per inch
 ~/.cache, browsers’ caches, thumbnails
 ~/.gradle, ~/.m2/repository, a project’s .gradle
 ~/.local/share/Trash
@@ -2255,5 +2705,16 @@ you
 ¼ second
 ½ Second
 ½ second
+“{}” can't be imported. {}
+“{}” couldn't be written: {}
+“{}” is an enterprise network.
+“{}” is asking something else to pair.
+“{}” is imported.
+“{}” is out of reach or its Bluetooth is off. It’s tried again by itself.
+“{}” isn't a domain.
+“{}” isn't an IP address.
+“{}” isn’t in reach. Is it nearby, unlocked, with Bluetooth on?
+“{}” wants to pair with this computer.
+“{}”, made {}{}. What's checked comes back:
 ↑↓ choose an app.
 ⌘ Command (the Super key)

@@ -121,7 +121,10 @@ impl IntoElement for Slider {
             let font = style::ui_font(FontWeight::NORMAL);
             let track = track_in(b, top);
             if let Some(l) = &label {
-                let r = style::label(g, b.left(), b.top() + px(m::LABEL_ROW / 2.0), style::Align::Left, l.clone(), style::PLAIN_SIZE, font.clone(), ink);
+                // (Cut short to leave its value whole, the whole of it in
+                // a tip: a narrow slider's two met in translation.)
+                let value_w = value_text.as_ref().map_or(px(0.0), |t| style::text_width(t.clone(), style::PLAIN_SIZE, font.clone()) + px(m::SPACING));
+                let r = style::label_fit(g, b.left(), b.top() + px(m::LABEL_ROW / 2.0), style::Align::Left, l.clone(), style::PLAIN_SIZE, font.clone(), ink, b.size.width - value_w);
                 if state.focused {
                     style::hline_above(g, r.left(), r.right(), r.bottom(), style::c(p.keyboard_navigation));
                 }

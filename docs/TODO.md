@@ -90,11 +90,16 @@ something nobody here has is in "Blocked", with what it waits for.
   Preferences', DiskBackup's and the kit's), German, Spanish and French
   each every one of them. **Left**: the other nine languages' words;
   sentences still made with `format!`, and literals copied into a
-  `String` (`"Do Not Disturb".into()`), never looked up: about 2,000
-  places in the apps' code (1,059 `format!`s, 999 copies; Olo Doctor's
-  findings, Preferences' notes, Power's "Now Performance: …",
-  Notifications' "6 seconds" and "1 hour", Keyboard's "35 per second"),
-  the shown ones to go through `tr!` or `words::of_text`, app by app; what apps paint themselves; formats (dates, numbers, the
+  `String` (`"Do Not Disturb".into()`), never looked up: `tools/dev/words
+  unasked` lists what the live lint shows of them by program (1,136 in
+  20 programs on 2026-11-19). Preferences' are through the words layer
+  (2026-11-19: 468 places, its helpers' labels by `of_text`, 404 new
+  words in German, Spanish and French); left, by that list: StyledEdit
+  (143), Calendar (77), Terminal (73), Speed Test and Weather (68 each),
+  Updates (62), Telegram (61), Activity Monitor (46), kache (35), Logs
+  (30), Phone and Olo Doctor (22 each), Disk Usage and Tracker (17
+  each), Deskbar, Passwords, Viewer, DiskBackup, DeskCalc (a few each),
+  and what no window the lint opens shows (Olo Doctor's findings); what apps paint themselves; formats (dates, numbers, the
   week's first day); Arabic (right-to-left layout). Words the lint
   doesn't see were missing from the list too (now gathered from the
   code, `words gather`): most of Calendar's (its menus, the event window's

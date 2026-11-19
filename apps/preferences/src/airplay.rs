@@ -83,7 +83,7 @@ fn test_shared() -> Shared {
     let plays = vec![Playing {
         pid: 1,
         receiver: front.name.clone(),
-        title: "The screen".into(),
+        title: olo_kit::words::tr("The screen").into(),
         path: None,
         state: "showing".into(),
         position: None,
@@ -144,7 +144,7 @@ fn search(link: &'static Link) {
             Err(e) => {
                 tracing::warn!("airplay: the network couldn't be asked: {e}");
                 s.found.get_or_insert_with(Vec::new);
-                s.said = Some((true, "The network couldn't be asked for receivers.".into()));
+                s.said = Some((true, olo_kit::words::tr("The network couldn't be asked for receivers.").into()));
             }
         }
         drop(s);
@@ -177,7 +177,7 @@ fn begin_pairing(link: &'static Link, r: Receiver) {
     let key = key_of(&r);
     link.shared.lock().unwrap().said = None;
     act(link, key.clone(), "Asking…", move || {
-        let p = Pairing::begin(at, &r.device_id, &r.name, WAIT).map_err(|e| format!("{} didn't start pairing: {e}.", r.name))?;
+        let p = Pairing::begin(at, &r.device_id, &r.name, WAIT).map_err(|e| olo_kit::tr!("{} didn't start pairing: {}.", r.name, e))?;
         *link.pairing.lock().unwrap() = Some(p);
         link.shared.lock().unwrap().asking = Some((key, r.name.clone()));
         Ok(None)
@@ -189,8 +189,8 @@ fn finish_pairing(link: &'static Link, code: String) {
     let Some((key, name)) = link.shared.lock().unwrap().asking.take() else { return };
     let Some(p) = link.pairing.lock().unwrap().take() else { return };
     act(link, key, "Pairing…", move || match p.finish(code.trim()) {
-        Ok(_) => Ok(Some(format!("Paired with {name}."))),
-        Err(e) => Err(format!("Pairing with {name} didn't work: {e}.")),
+        Ok(_) => Ok(Some(olo_kit::tr!("Paired with {}.", name))),
+        Err(e) => Err(olo_kit::tr!("Pairing with {} didn't work: {}.", name, e)),
     });
 }
 
@@ -265,7 +265,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         let s = link.shared.lock().unwrap();
         (s.found.clone(), s.searching, s.paired.clone(), s.plays.clone(), s.doing.clone(), s.asking.clone(), s.said.clone())
     };
-    ui.add(StringView::new(format!("This computer is “{}” to AirPlay receivers.", olo_airplay::our_name())).dim(true));
+    ui.add(StringView::new(olo_kit::tr!("This computer is “{}” to AirPlay receivers.", olo_airplay::our_name())).dim(true));
 
     // Those that answered, then those paired with that didn't.
     let is_paired = |key: &str, name: &str| paired.iter().any(|p| (!p.device_id.is_empty() && p.device_id.eq_ignore_ascii_case(key)) || (p.device_id.is_empty() && p.name == name));
@@ -320,13 +320,13 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                     let on: Vec<&Playing> = plays2.iter().filter(|p| p.receiver == r.name).collect();
                     let text = match (doing2.get(&r.key), on.first(), &r.found, r.paired) {
                         (Some(doing), ..) => (*doing).to_owned(),
-                        _ if asked.as_deref() == Some(r.key.as_str()) => "Showing its code".to_owned(),
+                        _ if asked.as_deref() == Some(r.key.as_str()) => olo_kit::words::tr("Showing its code").to_owned(),
                         (None, Some(p), ..) if p.paused() => "Paused".to_owned(),
                         (None, Some(p), ..) if p.live => "Showing".to_owned(),
                         (None, Some(_), ..) => "Playing".to_owned(),
-                        (None, None, None, _) => "Not found".to_owned(),
+                        (None, None, None, _) => olo_kit::words::tr("Not found").to_owned(),
                         (None, None, Some(_), true) => "Paired".to_owned(),
-                        (None, None, Some(_), false) => "Not paired".to_owned(),
+                        (None, None, Some(_), false) => olo_kit::words::tr("Not paired").to_owned(),
                     };
                     cell.text(g, text);
                 }
@@ -343,7 +343,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         let field = st.code.downgrade();
         let code_field = &st.code;
         ui.bbox("Pairing", |ui| {
-            ui.label(format!("Type the code “{name}” shows on its screen."));
+            ui.label(olo_kit::tr!("Type the code “{}” shows on its screen.", name));
             ui.add(TextControl::new(ui.cx, code_field).label("Code:").divider(72.0));
             let pair = ui.on_click_view(move |v, cx| {
                 if let Some(st) = state_of(v) {
@@ -402,10 +402,10 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                         let f = f.clone();
                         link.shared.lock().unwrap().said = None;
                         act(link, key.clone(), "Checking…", move || {
-                            let at = f.at().ok_or_else(|| format!("{} didn't say where it is.", f.name))?;
-                            let k = kept::of(&f.device_id, &f.name).ok_or_else(|| format!("{} isn't paired with.", f.name))?;
+                            let at = f.at().ok_or_else(|| olo_kit::tr!("{} didn't say where it is.", f.name))?;
+                            let k = kept::of(&f.device_id, &f.name).ok_or_else(|| olo_kit::tr!("{} isn't paired with.", f.name))?;
                             olo_airplay::check(at, &k, WAIT).map_err(|e| format!("{}: {e}.", f.name))?;
-                            Ok(Some(format!("{} knows this computer.", f.name)))
+                            Ok(Some(olo_kit::tr!("{} knows this computer.", f.name)))
                         });
                     }));
                 }
@@ -413,8 +413,8 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                 row = row.child(Button::new("Forget").enabled(!busy).on_click(move |_, _| {
                     let (key, name) = (key.clone(), name.clone());
                     act(link, key.clone(), "Forgetting…", move || {
-                        kept::forget(&key).map_err(|e| format!("The pairing with {name} couldn't be forgotten: {e}."))?;
-                        Ok(Some(format!("Forgot {name}: pair with it again to use it.")))
+                        kept::forget(&key).map_err(|e| olo_kit::tr!("The pairing with {} couldn't be forgotten: {}.", name, e))?;
+                        Ok(Some(olo_kit::tr!("Forgot {}: pair with it again to use it.", name)))
                     });
                 }));
             }

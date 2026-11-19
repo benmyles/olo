@@ -180,25 +180,25 @@ pub fn duration_text(d: Duration) -> String {
     match (m / 60, m % 60) {
         (0, m) => format!("{m} min"),
         (h, 0) => format!("{h} h"),
-        (h, m) => format!("{h} h {m} min"),
+        (h, m) => olo_kit::tr!("{} h {} min", h, m),
     }
 }
 
 /// "87% — 2 h 10 min remaining" and friends.
 pub fn summary(b: &Battery) -> String {
     let detail = match b.state {
-        Charge::Full => "fully charged".to_owned(),
+        Charge::Full => olo_kit::words::tr("fully charged").to_owned(),
         Charge::Charging => match b.time_to_full {
-            Some(t) => format!("charging, full in {}", duration_text(t)),
+            Some(t) => olo_kit::tr!("charging, full in {}", duration_text(t)),
             None => "charging".to_owned(),
         },
         Charge::Discharging => match b.time_to_empty {
             Some(t) => format!("{} remaining", duration_text(t)),
-            None => "on battery".to_owned(),
+            None => olo_kit::words::tr("on battery").to_owned(),
         },
         Charge::NotCharging => match b.charge_limit {
-            Some(l) if l < 100 && b.percent + 2 >= l => format!("plugged in, held at the {l}% limit"),
-            _ => "plugged in, not charging".to_owned(),
+            Some(l) if l < 100 && b.percent + 2 >= l => olo_kit::tr!("plugged in, held at the {}% limit", l),
+            _ => olo_kit::words::tr("plugged in, not charging").to_owned(),
         },
         Charge::Unknown => String::new(),
     };
@@ -270,8 +270,12 @@ fn power_mode(ui: &mut Ui, modes: Option<Option<Modes>>, shared: &Modes_, gpus_f
         if let Some(why) = modes.degraded_text() {
             ui.note(why);
         }
-        let what = if modes.drivers.is_empty() { "the system's power profiles daemon".to_string() } else { format!("the power profiles daemon, through {}", modes.drivers.join(" and ")) };
-        ui.note(format!("Set for the whole computer by {what}{}.", if gpus_follow { ", and on every GPU as below" } else { "" }));
+        let what = if modes.drivers.is_empty() {
+            olo_kit::words::tr("the system's power profiles daemon").to_string()
+        } else {
+            olo_kit::tr!("the power profiles daemon, through {}", modes.drivers.join(" and "))
+        };
+        ui.note(olo_kit::tr!("Set for the whole computer by {}{}.", what, if gpus_follow { ", and on every GPU as below" } else { "" }));
     });
 }
 
@@ -326,7 +330,7 @@ fn battery_box(ui: &mut Ui, battery: Option<Option<Battery>>, st: &State) {
             ui.label(summary(&b));
             let mut facts = Vec::new();
             if let Some(h) = b.health {
-                facts.push(format!("Health: {h}% of original capacity"));
+                facts.push(olo_kit::tr!("Health: {}% of original capacity", h));
             }
             if let Some(c) = b.cycle_count {
                 facts.push(format!("{c} cycles"));
@@ -347,7 +351,7 @@ fn battery_box(ui: &mut Ui, battery: Option<Option<Battery>>, st: &State) {
                         read_limit(&shared, proxy);
                     });
                 };
-                let label = format!("Stop charging at {}% (and start again below {}%)", l.end, l.start);
+                let label = olo_kit::tr!("Stop charging at {}% (and start again below {}%)", l.end, l.start);
                 ui.add(CheckBox::new(label, l.enabled).on_toggle(toggle));
                 ui.add(div().pl(px(m::MARK_SIZE + m::MARK_GAP)).child(StringView::new("A battery kept full wears faster: for a computer that's mostly plugged in.").dim(true).wrap(true)));
             }
@@ -375,9 +379,9 @@ fn idle_boxes(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server) {
         let server = server.clone();
         ui.add(CheckBox::new("Stay awake: no display sleep, sleep, screen saver or lock", status.caffeinated).on_toggle(move |on, _| server.set_caffeinated(*on)));
         let note = match status.app_inhibitors {
-            0 => "Also from the Deskbar: click the cup.".to_owned(),
-            1 => "An application is keeping the display awake.".to_owned(),
-            n => format!("{n} applications are keeping the display awake."),
+            0 => olo_kit::words::tr("Also from the Deskbar: click the cup.").to_owned(),
+            1 => olo_kit::words::tr("An application is keeping the display awake.").to_owned(),
+            n => olo_kit::tr!("{} applications are keeping the display awake.", n),
         };
         ui.note(note);
     });

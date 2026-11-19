@@ -82,7 +82,7 @@ pub fn ui(ui: &mut Ui, server: &Server, st: &mut State) {
                 keyboard.profile_changed();
                 let platform = keyboard.profile.platform;
                 crate::prefs().edit_as("", "Shortcut", |s| s.keyboard = keyboard);
-                (!taken.is_empty()).then(|| format!("{} was taken from “{}”.", chord.map(|c| c.label(platform)).unwrap_or_default(), taken.join("”, “")))
+                (!taken.is_empty()).then(|| olo_kit::tr!("{} was taken from “{}”.", chord.map(|c| c.label(platform)).unwrap_or_default(), taken.join("”, “")))
             }
         };
     }
@@ -129,7 +129,7 @@ pub fn ui(ui: &mut Ui, server: &Server, st: &mut State) {
                     let on = recording == Some(info.id);
                     let (fg, keys) = if on {
                         style::fill_rect(g, r, c(p.list_selected_background));
-                        (c(p.list_selected_item_text), "Type the keys…".to_owned())
+                        (c(p.list_selected_item_text), olo_kit::words::tr("Type the keys…").to_owned())
                     } else {
                         (text, keys_text(info, &s))
                     };
@@ -168,9 +168,9 @@ pub fn ui(ui: &mut Ui, server: &Server, st: &mut State) {
     ui.add(div().flex_1().min_h_0().child(ScrollView::new(&st.scroll).background(p.document_background).child(list)));
 
     let text = match (&st.recording, &st.note) {
-        (Some(_), _) => "Type the keys. Esc cancels; ⌫ removes them.".to_owned(),
+        (Some(_), _) => olo_kit::words::tr("Type the keys. Esc cancels; ⌫ removes them.").to_owned(),
         (None, Some(note)) => note.clone(),
-        (None, None) => "Click a shortcut to give it other keys.".to_owned(),
+        (None, None) => olo_kit::words::tr("Click a shortcut to give it other keys.").to_owned(),
     };
     let dim = st.note.is_none() || st.recording.is_some();
     let defaults = ui.edit_click(|s| {
@@ -183,8 +183,12 @@ pub fn ui(ui: &mut Ui, server: &Server, st: &mut State) {
         }
         cx.notify();
     });
-    ui.add(div().flex().flex_row().items_center().child(div().flex_1().child(StringView::new(text).dim(dim))).child(Button::new("Default Keys").enabled(has_own).on_click(move |window, cx| {
-        defaults(window, cx);
-        clear_note(window, cx);
-    })));
+    // (The note wraps, its button kept: German's and French's longer
+    // words pushed Default Keys out of the box.)
+    ui.add(div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(StringView::new(text).dim(dim).wrap(true))).child(
+        Button::new("Default Keys").enabled(has_own).on_click(move |window, cx| {
+            defaults(window, cx);
+            clear_note(window, cx);
+        }),
+    ));
 }

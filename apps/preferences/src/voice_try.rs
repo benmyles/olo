@@ -62,26 +62,26 @@ pub type Variant = (String, Settings, f32);
 /// none at all for a boosted one.
 pub fn variants(now: Settings, boost_db: f32, suggested: Option<f32>) -> Vec<Variant> {
     let now = Settings { enabled: true, ..now };
-    let mut out = vec![("As set now".to_owned(), now, boost_db)];
+    let mut out = vec![(olo_kit::words::tr("As set now").to_owned(), now, boost_db)];
     for n in voice::Noise::ALL.into_iter().filter(|n| *n != now.noise) {
-        out.push((format!("Background noise: {}", n.label()), Settings { noise: n, ..now }, boost_db));
+        out.push((olo_kit::tr!("Background noise: {}", n.label()), Settings { noise: n, ..now }, boost_db));
     }
     if now.noise != voice::Noise::Off {
         for model in voice::Model::ALL.into_iter().filter(|m| *m != now.model) {
-            out.push((format!("Noise model: {}", model.label()), Settings { model, ..now }, boost_db));
+            out.push((olo_kit::tr!("Noise model: {}", model.label()), Settings { model, ..now }, boost_db));
         }
     }
-    out.push((if now.normalize { "Level not evened out".into() } else { "Level evened out".into() }, Settings { normalize: !now.normalize, ..now }, boost_db));
+    out.push((if now.normalize { olo_kit::words::tr("Level not evened out").into() } else { olo_kit::words::tr("Level evened out").into() }, Settings { normalize: !now.normalize, ..now }, boost_db));
     for mode in voice::Mode::ALL.into_iter().filter(|m| *m != now.mode) {
-        out.push((format!("Tuned for {}", mode.label().to_lowercase()), Settings { mode, ..now }, boost_db));
+        out.push((olo_kit::tr!("Tuned for {}", mode.label().to_lowercase()), Settings { mode, ..now }, boost_db));
     }
     if let Some(s) = suggested.filter(|s| *s != boost_db) {
         // (Short enough for the list's first column: "Microphone boosted
         // +15 dB (suggested)" was cut off there.)
-        out.push((if s > 0.0 { format!("Boosted {s:+.0} dB (suggested)") } else { "Not boosted (suggested)".into() }, now, s));
+        out.push((if s > 0.0 { olo_kit::tr!("Boosted {} dB (suggested)", format!("{:+.0}", s)) } else { olo_kit::words::tr("Not boosted (suggested)").into() }, now, s));
     }
     if boost_db > 0.0 && suggested != Some(0.0) {
-        out.push(("Not boosted".into(), now, 0.0));
+        out.push((olo_kit::words::tr("Not boosted").into(), now, 0.0));
     }
     out
 }
@@ -243,7 +243,7 @@ impl TryWindow {
             let mut got = r.finish();
             got.truncate(enough);
             if got.len() < olo_system::recording::RATE as usize / 2 {
-                shared.lock().unwrap().error = Some("Nothing came from the microphone.".into());
+                shared.lock().unwrap().error = Some(olo_kit::words::tr("Nothing came from the microphone.").into());
                 news.send(());
                 return;
             }
@@ -363,7 +363,7 @@ impl TryWindow {
         let Some((settings, boost_db)) = self.shared.lock().unwrap().tried.get(chosen).map(|t| (t.settings, t.boost_db)) else { return };
         let settings = Settings { enabled: true, echo_cancellation: self.settings.echo_cancellation, ..settings };
         if let Err(e) = settings.save() {
-            self.shared.lock().unwrap().error = Some(format!("couldn't save the setting: {e}"));
+            self.shared.lock().unwrap().error = Some(olo_kit::tr!("couldn't save the setting: {}", e));
         }
         if let Some(m) = &self.microphone
             && boost_db != self.boost_db
@@ -371,7 +371,7 @@ impl TryWindow {
             let mut boosts = voice::Boosts::load();
             boosts.set(m, boost_db);
             if let Err(e) = boosts.save() {
-                self.shared.lock().unwrap().error = Some(format!("couldn't save the boost: {e}"));
+                self.shared.lock().unwrap().error = Some(olo_kit::tr!("couldn't save the boost: {}", e));
             }
         }
         (self.settings, self.boost_db) = (settings, boost_db);
@@ -472,18 +472,23 @@ impl View for LivePane {
         let (grey, blue) = (style::c(olo_theme::mix(p.document_text, p.document_background, 0.45)), style::c(p.navigation_base));
         let series = vec![SpectrumSeries::new("Original", grey, self.shown.0.clone()).fill(true), SpectrumSeries::new("Processed", blue, self.shown.1.clone())];
         // Which line is which.
-        let items = vec![LegendItem { color: grey, name: "Original".into(), value: "".into() }, LegendItem { color: blue, name: "Processed: the setting chosen below".into(), value: "".into() }];
+        let items = vec![
+            LegendItem { color: grey, name: "Original".into(), value: "".into() },
+            LegendItem { color: blue, name: olo_kit::words::tr("Processed: the setting chosen below").into(), value: "".into() },
+        ];
         let tall = legend_height(728.0, &items);
         // What's going on, in a line.
         let rate = olo_system::recording::RATE as f32;
         let status: (String, Option<f32>) = match (phase, &error) {
             (_, Some(e)) => (e.clone(), None),
-            (Phase::Ready, _) => ("Nothing recorded yet. Press Record and talk for a few seconds.".into(), None),
-            (Phase::Recording, _) => (format!("Recording: {:.1} of {SECONDS:.0} seconds. Talk as you do on a call.", recorded as f32 / rate), Some(recorded as f32 / rate / SECONDS)),
-            (Phase::Trying, _) => (format!("Trying each setting on it: {done} of {rows}…"), Some(done as f32 / rows.max(1) as f32)),
+            (Phase::Ready, _) => (olo_kit::words::tr("Nothing recorded yet. Press Record and talk for a few seconds.").into(), None),
+            (Phase::Recording, _) => {
+                (olo_kit::tr!("Recording: {} of {} seconds. Talk as you do on a call.", format!("{:.1}", recorded as f32 / rate), format!("{:.0}", SECONDS)), Some(recorded as f32 / rate / SECONDS))
+            }
+            (Phase::Trying, _) => (olo_kit::tr!("Trying each setting on it: {} of {}…", done, rows), Some(done as f32 / rows.max(1) as f32)),
             (Phase::Tried, _) => match at {
-                Some(at) => (format!("Playing the {} at {:.1} s.", if processed { "processed sound" } else { "original" }, at as f32 / rate), None),
-                None => ("Choose a setting, then play the original or its sound: switching goes on from the same place.".into(), None),
+                Some(at) => (olo_kit::tr!("Playing the {} at {} s.", olo_kit::words::tr(if processed { "processed sound" } else { "original" }), format!("{:.1}", at as f32 / rate)), None),
+                None => (olo_kit::words::tr("Choose a setting, then play the original or its sound: switching goes on from the same place.").into(), None),
             },
         };
         div()
@@ -495,7 +500,8 @@ impl View for LivePane {
             .child(div().w_full().h(px(170.0)).child(Spectrum::new(series, olo_voice::SPECTRUM_LOW, olo_voice::SPECTRUM_HIGH).floor(-100.0)))
             .child(match status.1 {
                 Some(f) => StatusBar::new(f).label(status.0).into_element(),
-                None => div().h(px(m::CONTROL_HEIGHT)).flex().items_center().child(StringView::new(status.0)),
+                // (Wrapping: German's ran past the window on one line.)
+                None => div().min_h(px(m::CONTROL_HEIGHT)).flex().items_center().child(StringView::new(status.0).wrap(true)),
             })
     }
 }
@@ -529,7 +535,7 @@ impl TryWindow {
             let ok = trial.as_ref().and_then(|t| t.as_ref().ok());
             let using = tried2.get(cell.row).is_some_and(same);
             match cell.column {
-                0 => cell.text(g, if using { format!("{name} (in use)") } else { name.clone() }),
+                0 => cell.text(g, if using { olo_kit::tr!("{} (in use)", name) } else { name.clone() }),
                 1 => cell.text(g, ok.map(|t| ms(t.latency)).unwrap_or_else(|| if trial.is_some() { "failed".into() } else { "…".into() })),
                 2 => cell.text(g, ok.map(|t| ms(t.frame_median)).unwrap_or_default()),
                 3 => cell.text(g, ok.map(|t| ms(t.frame_worst)).unwrap_or_default()),
@@ -580,11 +586,13 @@ impl TryWindow {
             .child(Button::new("Use This Setting").enabled(chosen_done).on_click(act(cx, TryWindow::use_chosen)));
         col = col.child(row);
         let heard = match speech_db {
-            Some(at) => format!("Your voice came in at {at:.0} dB; voice processing aims for {:.0} dB. ", voice::AIM_DB),
+            Some(at) => format!("{} ", olo_kit::tr!("Your voice came in at {} dB; voice processing aims for {} dB.", format!("{:.0}", at), format!("{:.0}", voice::AIM_DB))),
             None => String::new(),
         };
         col.child(
-            StringView::new(format!("{heard}Run by {}. Echo cancellation isn't tried: a recording has no speakers' sound beside it to take out.", olo_voice::accelerated_by())).dim(true).wrap(true),
+            StringView::new(olo_kit::tr!("{}Run by {}. Echo cancellation isn't tried: a recording has no speakers' sound beside it to take out.", heard, olo_voice::accelerated_by()))
+                .dim(true)
+                .wrap(true),
         )
     }
 }

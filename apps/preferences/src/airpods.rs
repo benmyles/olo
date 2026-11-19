@@ -87,9 +87,9 @@ fn link(proxy: olo_kit::Proxy) -> &'static Link {
                         Job::Ask(r) => match ap::ask(&r, Duration::from_secs(20)) {
                             Ok(reply) if reply.ok => None,
                             Ok(reply) => reply.error,
-                            Err(_) => Some("The AirPods service isn't running.".to_owned()),
+                            Err(_) => Some(olo_kit::words::tr("The AirPods service isn't running.").to_owned()),
                         },
-                        Job::Save(s) => s.save().err().map(|e| format!("Couldn't save: {e}")),
+                        Job::Save(s) => s.save().err().map(|e| olo_kit::tr!("Couldn't save: {}", e)),
                     };
                     let mut s = sh.lock().unwrap();
                     if s.error != error {
@@ -388,7 +388,7 @@ fn header(ui: &mut Ui, st: &mut State, state: &AirPodsState, a: &AirPods) {
     let status = match (a.connected, a.linked) {
         (true, true) => "Connected".to_owned(),
         (true, false) => "Connecting…".to_owned(),
-        _ => "Not connected".to_owned(),
+        _ => olo_kit::words::tr("Not connected").to_owned(),
     };
     let address = Some(a.address.clone());
     let button = if a.connected {

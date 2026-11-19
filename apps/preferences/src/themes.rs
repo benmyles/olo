@@ -196,7 +196,7 @@ fn browse(ui: &mut Ui, st: &mut State, s: &Settings, chosen: &'static Theme) {
     // What it comes with, as the person has it.
     let pack = st.pack.get_or_insert_with(wallpapers::pack);
     let wallpaper = a.wallpaper_of(id);
-    let wallpaper = pack.iter().find(|w| w.setting() == wallpaper).map(|w| w.label.clone()).unwrap_or_else(|| "your own picture".into());
+    let wallpaper = pack.iter().find(|w| w.setting() == wallpaper).map(|w| w.label.clone()).unwrap_or_else(|| olo_kit::words::tr("your own picture").into());
     let facts = format!("{} icons. Wallpaper: {wallpaper}.{}", looks::icon_set(set).name, if a.custom_of(id).is_some() { " Customized." } else { "" });
     let customize = ui.on_click_view(|v, cx| {
         if let Some(st) = state_of(v) {
@@ -322,7 +322,7 @@ fn colors(ui: &mut Ui, st: &mut State, a: &Appearance, t: &'static Theme) {
         }
         if mode != a.effective_theme {
             ui.add(
-                StringView::new(format!(
+                StringView::new(olo_kit::tr!(
                     "(The desktop is {} now: these show when it's {}.)",
                     if a.effective_theme == ThemeMode::Dark { "dark" } else { "light" },
                     if mode == ThemeMode::Dark { "dark" } else { "light" }
@@ -361,7 +361,7 @@ fn colors(ui: &mut Ui, st: &mut State, a: &Appearance, t: &'static Theme) {
     let control = ColorControl::new(format!("theme-colour-{}-{}-{}", id, if mode == ThemeMode::Dark { "dark" } else { "light" }, role.id), [r, g, b]).ramp_width(ramps).on_change(set).build(ui.cx);
     let back = ui.edit_click(move |s| set_colour(s, id, mode, role.id, None));
     let about = if role.about.is_empty() {
-        format!("One of the colours things are told apart by: tags, graphs, a tab group's colour, Terminal's {}.", role.name.to_lowercase())
+        olo_kit::tr!("One of the colours things are told apart by: tags, graphs, a tab group's colour, Terminal's {}.", role.name.to_lowercase())
     } else {
         role.about.to_owned()
     };
@@ -386,7 +386,7 @@ fn colors(ui: &mut Ui, st: &mut State, a: &Appearance, t: &'static Theme) {
 fn icon_sets(ui: &mut Ui, a: &Appearance, t: &'static Theme) {
     let id = t.id;
     let now = a.icons_of(id);
-    ui.add(StringView::new(format!("The icons {} is drawn with, everywhere.", t.name)).wrap(true));
+    ui.add(StringView::new(olo_kit::tr!("The icons {} is drawn with, everywhere.", t.name)).wrap(true));
     for set in ICON_SETS {
         let (set_id, own) = (set.id, set.id == t.icons);
         let pick = ui.bind_click(set_id == now, move |s| {
@@ -405,7 +405,7 @@ fn icon_sets(ui: &mut Ui, a: &Appearance, t: &'static Theme) {
         .w(px(SAMPLES.len() as f32 * (ICON + m::SPACING) - m::SPACING))
         .h(px(ICON))
         .flex_shrink_0();
-        let name = if own { format!("{} (the theme’s own)", set.name) } else { set.name.to_owned() };
+        let name = if own { olo_kit::tr!("{} (the theme’s own)", set.name) } else { set.name.to_owned() };
         ui.add(
             div()
                 .flex()
@@ -444,7 +444,7 @@ fn wallpaper(ui: &mut Ui, st: &mut State, s: &Settings, t: &'static Theme) {
     let current = all.iter().find(|p| p.setting() == now).map(|p| p.collection.clone());
     let shown = st.collection.clone().filter(|c| collections.contains(c)).or(current).or_else(|| collections.first().cloned()).unwrap_or_default();
     let pack: Vec<Wallpaper> = all.iter().filter(|w| w.collection == shown && w.tile.is_none()).cloned().collect();
-    ui.add(StringView::new(format!("The picture on the desktop when {} is chosen. Backgrounds changes the desktop’s after, a workspace at a time.", t.name)).wrap(true));
+    ui.add(StringView::new(olo_kit::tr!("The picture on the desktop when {} is chosen. Backgrounds changes the desktop’s after, a workspace at a time.", t.name)).wrap(true));
     if collections.len() > 1 {
         let at = collections.iter().position(|c| *c == shown).unwrap_or(0);
         let names: Vec<SharedString> = collections.iter().map(|c| c.clone().into()).collect();
@@ -470,7 +470,7 @@ fn wallpaper(ui: &mut Ui, st: &mut State, s: &Settings, t: &'static Theme) {
         Thumbnail { picture, color: None, label: label.into(), key: None }
     };
     // The theme's own first, then the collection's.
-    let mut items = vec![thumb(t.wallpaper, "The Theme’s Own".into())];
+    let mut items = vec![thumb(t.wallpaper, olo_kit::words::tr("The Theme’s Own").into())];
     items.extend(pack.iter().map(|w| thumb(&w.name, w.label.clone())));
     let selected = if now == own { Some(0) } else { pack.iter().position(|p| p.setting() == now).map(|i| i + 1) };
     let set = ui.bind(selected.unwrap_or(0), {

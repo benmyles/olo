@@ -125,7 +125,7 @@ const BUILT_IN: &str = "AT Translated Set 2 keyboard";
 
 /// What to call a keyboard.
 fn keyboard_name(name: &str) -> String {
-    if name == BUILT_IN { "Built-in Keyboard".into() } else { name.to_owned() }
+    if name == BUILT_IN { olo_kit::words::tr("Built-in Keyboard").into() } else { name.to_owned() }
 }
 
 /// The Keyboards tab shown (the layout lint's).
@@ -142,7 +142,7 @@ const KEYBOARD_PICTURE: f32 = 64.0;
 fn known_keyboard(ui: &mut Ui, model: &'static olo_protocol::keyboards::Model, name: &str) {
     use olo_kit::{canvas, widgets::StringView};
     let mut facts = vec![format!("{} {}", model.maker, model.model)];
-    facts.push(if model.keypad { "full size, with a numeric keypad".into() } else { "compact".into() });
+    facts.push(if model.keypad { olo_kit::words::tr("full size, with a numeric keypad").into() } else { "compact".into() });
     facts.push(model.connection.to_owned());
     let picture = canvas(move |g, b| {
         let at = olo_kit::style::snap_centred(g, b.center(), KEYBOARD_PICTURE, KEYBOARD_PICTURE);
@@ -202,7 +202,7 @@ fn keyboards(ui: &mut Ui, st: &State) {
     }
     ui.bbox("Swap Alt and the Windows Key", |ui| {
         for (name, here) in all {
-            let label = if here { keyboard_name(&name) } else { format!("{} (not connected)", keyboard_name(&name)) };
+            let label = if here { keyboard_name(&name) } else { olo_kit::tr!("{} (not connected)", keyboard_name(&name)) };
             let key = name.clone();
             ui.check(label, swapped.contains(&name), move |s, v| {
                 let list = &mut s.keyboard.swap_alt_super;
@@ -269,7 +269,7 @@ fn keyboard(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut 
             "repeat-rate",
             rate,
             5.0..=60.0,
-            |s| s.step(1.0).label("Repeat rate").value_text(format!("{rate:.0} per second")).limits("Slow", "Fast"),
+            |s| s.step(1.0).label("Repeat rate").value_text(olo_kit::tr!("{} per second", format!("{:.0}", rate))).limits("Slow", "Fast"),
             |s, v| s.keyboard.repeat_rate_hz = v as i32,
         );
         let delay = k.repeat_delay_ms as f32;
@@ -498,7 +498,7 @@ pub fn profile(ui: &mut Ui, saving: Option<&Child<TextField>>) {
             }
         });
         let super_key = if k.profile.platform == Platform::Windows { "the Windows key" } else { "⌘ (the Super key)" };
-        ui.check(format!("Tap {super_key} on its own for the command palette"), k.profile.palette_on_tap, |s, v| {
+        ui.check(olo_kit::tr!("Tap {} on its own for the command palette", super_key), k.profile.palette_on_tap, |s, v| {
             if s.keyboard.profile.palette_on_tap != v {
                 s.keyboard.profile.palette_on_tap = v;
                 s.keyboard.profile_changed();
