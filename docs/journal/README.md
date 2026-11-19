@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-18
 
+### Fans: a row of each power mode
+
+*18:39* — Preferences ▸ Power ▸ Power Modes has a Fans row: Auto (the computer's own), Cool, Cooler or Coolest for each mode, and on battery. Switching power modes switches the fans' profile. What was called Cool is Cooler now (the same curve), so what you had chosen is unchanged; the Fans box has left Battery & Idle.
+
+![Fans: a row of each power mode](2026-11-18/183906-fans-a-row-of-each-power-mode.png)
+
 ### Notifications, made plain (last step)
 
 *18:16* — When more banners arrive than fit, a line under them says how many are waiting, and a click on it opens the list. Also: a notification an app replaces after closing it no longer shows twice, and Olo's own apps have their icons on notifications sent by name.

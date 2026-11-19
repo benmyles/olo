@@ -320,6 +320,38 @@ impl Plan {
         on_battery.then(|| self.nvme(When::Battery, serial)).flatten().or_else(|| self.nvme(When::Mode(mode), serial)).unwrap_or_default()
     }
 
+    /// The fans' profile chosen `when` (Ben, 2026-11-18: "move the fans
+    /// option to be another mode row setting in the power modes tab").
+    /// None: nothing chosen for it; on battery, the mode's. Unlike the
+    /// other rows there's no default kept as "no choice": while no mode
+    /// has one, the fans' profile is whatever it was (the one choice
+    /// there was before the modes had their own), and the follower
+    /// leaves it alone ([`Plan::fans_now`]).
+    pub fn fans(&self, when: When) -> Option<crate::fans::Profile> {
+        self.chosen.get(&format!("{}/fans", when.key())).and_then(|word| crate::fans::Profile::parse(word))
+    }
+
+    /// The fans' profile chosen `when` (None: no choice; on battery, the
+    /// mode's).
+    pub fn set_fans(&mut self, when: When, profile: Option<crate::fans::Profile>) {
+        let key = format!("{}/fans", when.key());
+        match profile {
+            Some(p) => {
+                self.chosen.insert(key, p.word().to_owned());
+            }
+            None => {
+                self.chosen.remove(&key);
+            }
+        }
+    }
+
+    /// The fans' profile in force in `mode`, on battery or not: the
+    /// battery's choice there, else the mode's. None: the modes have no
+    /// fans of their own (the profile is left as it is).
+    pub fn fans_now(&self, mode: crate::power_profile::Mode, on_battery: bool) -> Option<crate::fans::Profile> {
+        on_battery.then(|| self.fans(When::Battery)).flatten().or_else(|| self.fans(When::Mode(mode)))
+    }
+
     /// The processors' preset chosen `when` (None on battery: the mode's).
     pub fn set_cpu(&mut self, when: When, preset: Option<crate::cpu_tuning::CpuPreset>) {
         let key = format!("{}/cpu", when.key());
@@ -832,6 +864,29 @@ mod tests {
         plan.set_cpu(When::Battery, None);
         // Back on the defaults: nothing kept.
         plan.set_cpu_top(When::Mode(Mode::Balanced), Some(75));
+        assert!(plan.chosen.is_empty(), "{plan:?}");
+    }
+
+    /// The fans: nothing chosen, nothing said (the profile is left as it
+    /// is); a mode's own; on battery the battery's, else the mode's; a
+    /// choice taken back is no choice. Auto is a choice like the others.
+    #[test]
+    fn the_plan_s_fans() {
+        use crate::{fans::Profile, power_profile::Mode};
+        let mut plan = Plan::default();
+        assert_eq!(plan.fans_now(Mode::Performance, true), None);
+        plan.set_fans(When::Mode(Mode::Performance), Some(Profile::Coolest));
+        plan.set_fans(When::Mode(Mode::PowerSaver), Some(Profile::Auto));
+        assert_eq!(
+            (plan.fans_now(Mode::Performance, false), plan.fans_now(Mode::Performance, true), plan.fans_now(Mode::PowerSaver, false), plan.fans_now(Mode::Balanced, false)),
+            (Some(Profile::Coolest), Some(Profile::Coolest), Some(Profile::Auto), None)
+        );
+        plan.set_fans(When::Battery, Some(Profile::Cool));
+        assert_eq!((plan.fans_now(Mode::Performance, true), plan.fans_now(Mode::Performance, false)), (Some(Profile::Cool), Some(Profile::Coolest)));
+        assert_eq!(plan.chosen.get("battery/fans").map(String::as_str), Some("cool-1"));
+        for when in [When::Battery, When::Mode(Mode::Performance), When::Mode(Mode::PowerSaver)] {
+            plan.set_fans(when, None);
+        }
         assert!(plan.chosen.is_empty(), "{plan:?}");
     }
 

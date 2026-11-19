@@ -245,7 +245,37 @@ fn follow_plan(mode: power_profile::Mode, on_battery: bool) -> Vec<(String, gpu_
     let mut out = gpu_tuning::apply_kept(None, true);
     let (cpu, top) = (kept.plan.cpu_now(mode, on_battery), kept.plan.cpu_top_now(mode, on_battery));
     out.push((format!("processors ({})", cpu.name()), cpu_tuning::apply(cpu, top, on_battery)));
+    // The fans' profile, where the modes have their own.
+    if let Some(profile) = kept.plan.fans_now(mode, on_battery) {
+        out.push((format!("fans ({})", profile.label()), vec![follow_fans(profile, &olo_system::fans::Places::here())]));
+    }
     out
+}
+
+/// The fans' profile made `profile`: its word written where `olo-fans`
+/// watches for it (it takes it within the moment). Nothing written
+/// where it's that already. One of Olo's own with the service not set
+/// up is said, not written: Preferences sets it up as it's first chosen
+/// (Olo Doctor's steps: the program, the unit, the driver told to take
+/// levels).
+fn follow_fans(profile: olo_system::fans::Profile, places: &olo_system::fans::Places) -> Result<String, String> {
+    let Some(state) = olo_system::fans::look(places) else { return Err("this computer's fans can't be set".into()) };
+    if profile.ours() && !state.installed {
+        return Err("the fan service isn't set up yet: Preferences sets it up when one of its profiles is first chosen".into());
+    }
+    let file = places.profile();
+    if std::fs::read_to_string(&file).ok().and_then(|w| olo_system::fans::Profile::parse(&w)) == Some(profile) {
+        return Ok(format!("{} already", profile.label()));
+    }
+    // (Nothing there and Auto wanted: nothing to say to anyone.)
+    if !file.exists() && !profile.ours() {
+        return Ok("the computer's own".into());
+    }
+    file.parent()
+        .map_or(Ok(()), std::fs::create_dir_all)
+        .and_then(|()| std::fs::write(&file, format!("{}\n", profile.word())))
+        .map(|()| profile.label().to_owned())
+        .map_err(|e| format!("{}: {e}", file.display()))
 }
 
 /// `tuning` kept (written whole, then put in place).
@@ -467,6 +497,40 @@ fn follow() -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The fans follow the plan: the profile's word written where the
+    /// fan service watches for it, once; one of Olo's own with the
+    /// service not set up is said, not written; where the fans can't be
+    /// set at all, that's said. The word there was before (`cool`) is
+    /// Cooler already.
+    #[test]
+    fn the_fans_follow_the_plan() {
+        use olo_system::fans::{Places, Profile};
+        let root = std::path::PathBuf::from(format!("/var/tmp/olo-gpu-tune-fans-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let places = Places::under(&root);
+        let put = |path: std::path::PathBuf, text: &str| {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        assert!(follow_fans(Profile::Cooler, &places).unwrap_err().contains("can't be set"));
+        put(places.fan(), "status:\t\tenabled\n");
+        assert!(follow_fans(Profile::Cooler, &places).unwrap_err().contains("isn't set up"));
+        assert_eq!(follow_fans(Profile::Auto, &places), Ok("the computer's own".to_owned()));
+        assert!(!places.profile().exists());
+        put(places.program(), "");
+        put(places.unit(), "");
+        assert_eq!(follow_fans(Profile::Cooler, &places), Ok("Cooler".to_owned()));
+        assert_eq!(std::fs::read_to_string(places.profile()).unwrap(), "cool-2\n");
+        assert_eq!(follow_fans(Profile::Cooler, &places), Ok("Cooler already".to_owned()));
+        put(places.profile(), "cool\n");
+        assert_eq!(follow_fans(Profile::Cooler, &places), Ok("Cooler already".to_owned()));
+        assert_eq!(std::fs::read_to_string(places.profile()).unwrap(), "cool\n", "left as it was written");
+        assert_eq!(follow_fans(Profile::Coolest, &places), Ok("Coolest".to_owned()));
+        assert_eq!(follow_fans(Profile::Auto, &places), Ok("Auto".to_owned()));
+        assert_eq!(std::fs::read_to_string(places.profile()).unwrap(), "auto\n");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     fn ms(n: u64) -> Duration {
         Duration::from_millis(n)

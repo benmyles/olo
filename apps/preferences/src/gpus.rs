@@ -234,13 +234,36 @@ fn apply(shared: Arc<Mutex<Shared>>, proxy: olo_kit::Proxy) {
     std::thread::Builder::new()
         .name("gpus-apply".into())
         .spawn(move || {
-            let said = run_tune(&tuning);
+            let mut said = run_tune(&tuning);
+            // One of Olo's fan profiles chosen and its service not set
+            // up yet: Olo Doctor sets it up (the program where root
+            // keeps it, its unit, the driver told to take levels), with
+            // the profile in force now. Once: after that the follower
+            // writes the profile as the mode changes.
+            if said.is_ok()
+                && let Some(profile) = fans_to_set_up(&tuning, olo_system::fans::look(&olo_system::fans::Places::here()).as_ref())
+                && let Err(why) = crate::ask_doctor(&["--fans", profile.word()])
+            {
+                said = Err(format!("The fans' profile isn't in force yet: {why}"));
+            }
             shared.lock().unwrap().applying = false;
             shared.lock().unwrap().said = Some(said);
             proxy.send(Msg::Redraw);
             read(shared, proxy, None, None);
         })
         .expect("thread");
+}
+
+/// The profile to set the fan service up with, if the plan has one of
+/// Olo's and the service isn't there yet: the one for the mode and the
+/// supply now if that's one of Olo's, else the first of them (the
+/// service is told the right one as the mode next changes).
+fn fans_to_set_up(tuning: &Tuning, state: Option<&olo_system::fans::State>) -> Option<olo_system::fans::Profile> {
+    state.filter(|s| !s.installed)?;
+    let chosen: Vec<olo_system::fans::Profile> = When::ALL.into_iter().filter_map(|w| tuning.plan.fans(w)).filter(|p| p.ours()).collect();
+    let mode = olo_system::power_profile::modes().ok().flatten().map(|m| m.active);
+    let now = mode.and_then(|m| tuning.plan.fans_now(m, !olo_system::battery::on_ac())).filter(|p| p.ours());
+    now.or(chosen.first().copied())
 }
 
 pub(crate) fn run_tune(tuning: &Tuning) -> Result<String, String> {
@@ -428,6 +451,14 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
         let s = st.shared.lock().unwrap();
         (s.gpus.clone(), s.kept.clone(), s.edited.clone(), s.follower, s.mode, s.on_battery, s.drives.clone())
     };
+    // The fans' keeper (a few small files; None: this computer's fans
+    // can't be set, and there's no row for them). (Tests: a ThinkPad's,
+    // on Olo's Cooler, at work.)
+    let fans = if cfg!(test) {
+        Some(olo_system::fans::State { profile: olo_system::fans::Profile::Cooler, installed: true, control: true, control_kept: true, running: true, held: Some(("4".into(), "19 W".into())) })
+    } else {
+        olo_system::fans::look(&olo_system::fans::Places::here())
+    };
     let Some(gpus) = gpus else {
         ui.note("Reading…");
         return;
@@ -555,7 +586,39 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
                 .collect();
             row(ui, &format!("nvme-{}", d.serial), titles[k].clone(), cells);
         }
-        ui.note("Saving Power slows the processors and turns turbo off, Balanced speeds them up for work (leaning to saving on battery), Fastest keeps them quick; Top speed caps them (Balanced's 75% leaves out their hottest quarter). A GPU's Cooler and Quieter caps its clocks (Custom: its own, on Graphics), an SSD's Cooler and Coolest the power it may draw (a SATA SSD's, how deeply its link may sleep between commands). On battery, a row not As the Mode holds whatever the mode.");
+        // The fans, where they can be set (a ThinkPad's): the computer's
+        // own curve (Auto) or Olo's at three strengths, for each mode
+        // (Ben, 2026-11-18: "move the fans option to be another mode row
+        // setting in the power modes tab"). Until a mode has one of its
+        // own, every mode shows the one profile there is; the first
+        // choice gives each mode what it shows, so nothing changes but
+        // what was chosen.
+        if let Some(fans) = &fans {
+            use olo_system::fans::Profile;
+            let global = fans.profile;
+            let names = |battery: bool| -> Vec<SharedString> { battery.then(|| SharedString::from("As the Mode")).into_iter().chain(Profile::ALL.iter().map(|p| SharedString::from(p.label()))).collect() };
+            let cells = When::ALL
+                .into_iter()
+                .map(|w| {
+                    let battery = w == When::Battery;
+                    let shown = edited.plan.fans(w).or((!battery).then_some(global));
+                    let chosen = shown.and_then(|p| Profile::ALL.iter().position(|q| *q == p)).map_or(0, |i| i + usize::from(battery));
+                    let set: Box<dyn Fn(&mut Tuning, usize)> = Box::new(move |t: &mut Tuning, i: usize| {
+                        // (Each mode's, as it shows, before this one's.)
+                        for mode in When::ALL.into_iter().filter(|m| *m != When::Battery) {
+                            if t.plan.fans(mode).is_none() {
+                                t.plan.set_fans(mode, Some(global));
+                            }
+                        }
+                        let profile = if battery { i.checked_sub(1).map(|i| Profile::ALL[i]) } else { Some(Profile::ALL[i]) };
+                        t.plan.set_fans(w, profile);
+                    });
+                    (names(battery), chosen, set)
+                })
+                .collect();
+            row(ui, "fans", "Fans".into(), cells);
+        }
+        ui.note("Saving Power slows the processors and turns turbo off, Balanced speeds them up for work (leaning to saving on battery), Fastest keeps them quick; Top speed caps them (Balanced's 75% leaves out their hottest quarter). A GPU's Cooler and Quieter caps its clocks (Custom: its own, on Graphics), an SSD's Cooler and Coolest the power it may draw (a SATA SSD's, how deeply its link may sleep between commands), the fans' Cool, Cooler and Coolest how early they speed up (Auto: the computer's own way). On battery, a row not As the Mode holds whatever the mode.");
         match (mode, follower) {
             (_, Follower::Missing) => ui.note("Apply once to let Olo follow the mode and the power supply: an administrator's password is asked, this once."),
             (_, Follower::Old) => ui.note("What follows them is from an older Olo: Apply to bring it up to date (an administrator's password is asked)."),
@@ -567,6 +630,16 @@ pub fn modes(ui: &mut Ui, st: &mut State) {
                 let titles = olo_system::nvme_power::titles(&drives.iter().map(|(d, _)| d.clone()).collect::<Vec<_>>());
                 for (k, (d, _)) in drives.iter().enumerate() {
                     now.push(format!("the {} {}", titles[k], kept.plan.nvme_now(m, on_battery, &d.serial).name()));
+                }
+                // (The fans: the profile in force, and what they're doing.)
+                if let Some(f) = &fans {
+                    let profile = kept.plan.fans_now(m, on_battery).unwrap_or(f.profile);
+                    let doing = match (f.amiss(), f.level()) {
+                        (Some(amiss), _) => format!(" (not in force: {})", amiss.words()),
+                        (None, Some((level, _))) if profile.ours() && !matches!(level, "" | "auto") => format!(" (at {})", if level == "full-speed" { "full speed".to_owned() } else { format!("level {level} of 7") }),
+                        _ => String::new(),
+                    };
+                    now.push(format!("the fans {}{doing}", profile.label()));
                 }
                 ui.note(format!("Now {}{}: the processors {cpu} at up to {top}%, {}.", m.label(), if on_battery { ", on battery" } else { "" }, now.join(", ")));
             }

@@ -13011,9 +13011,31 @@ sensor is throttled: **not yet measured against the firmware's own
 curve on this computer**, which needs the fans' profile changed under
 a steady load (the fans' file is root's, and the person's to change).
 `olo-fans --status` says what each of the three would set now.
-Preferences ▸ Power ▸ Battery & Idle ▸ Fans offers the four (a row of
-each power mode instead is next: docs/TODO.md); Activity Monitor's
-fans card names the one in force. Tested: `olo-fans`'s
+**A row of each power mode** (Preferences ▸ Power ▸ Power Modes ▸
+What Each Mode Sets ▸ Fans; Ben: "move the fans option to be another
+mode row setting in the power modes tab"): Auto, Cool, Cooler or
+Coolest for Power Saver, Balanced and Performance, and on battery (As
+the Mode, or one of its own). In the plan as `MODE/fans` (`Plan::fans`,
+`set_fans`, `fans_now`), applied with the rest by the root follower as
+the mode or the supply changes (`gpu_tune`'s `follow_fans`: the
+profile's word written to `/etc/olo/fans`, which `olo-fans` watches;
+nothing written where it's that already). Until a mode has a profile
+of its own the plan says nothing and the follower leaves the fans as
+they are: every mode's menu shows the one profile there is (what was
+chosen before the modes had their own), and the first choice gives
+each mode what it shows, so only what's chosen changes. The first
+time one of Olo's is applied with the fan service not set up,
+Preferences has Olo Doctor set it up (`fans_to_set_up`,
+`olo-doctor --fans`: the program, the unit, the driver told to take
+levels; its password asked once). The tab's "Now …" line says the
+profile in force and what the fans are doing ("the fans Cooler (at
+level 5 of 7)"), drawn again as that changes. The Fans box that was
+in Battery & Idle is gone. Activity Monitor's fans card names the one
+in force. Tested: `gpu_tuning`'s `the_plan_s_fans`, `gpu_tune`'s
+`the_fans_follow_the_plan` (a stand-in tree: can't be set, not set up,
+written once, the old word left as it is). **Not tried applied on
+this computer** (it writes root's `/etc/olo/fans` and changes how the
+fans run: Ben's to try); the tab was looked at, reading only. Tested: `olo-fans`'s
 `three_strengths_each_a_step_earlier` and `power_asks_ahead_of_heat`;
 `olo_system::fans`'s `words`; Doctor's (the word written, the service
 installed for any of the three).

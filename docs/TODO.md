@@ -353,33 +353,6 @@ something nobody here has is in "Blocked", with what it waits for.
   order); it's in the next build. Olo's own programs' Open panels with
   several files, where there are any, take the same function.
 
-- **Fans: a row of each power mode, with more than Auto** (Ben,
-  2026-11-18: "in the power -> battery -> fans move the fans option to
-  be another mode row setting in the power modes tab instead, and also
-  provide more options, i.e. default is Auto, but then have Cool, Very
-  Cool, Coolest where Cool is about +10% more aggressive than Auto at
-  ramping up fans, Very Cool is +20% and Coolest is +30%. if you can
-  think of a better name for the 3 options you can use that instead").
-  *Done so far* (2026-11-18): the four profiles themselves, Auto,
-  Cool, Cooler, Coolest (HACKING.md, "The fans": each of Olo's three
-  a step earlier than the last; what was called Cool is Cooler, the
-  same curve), offered where the one choice was. *Next:*
-  Preferences ▸ Power: the Fans setting leaves the Battery tab and
-  becomes a row of the Power Modes tab, set for each mode like its
-  other rows (the plan's `MODE/fans`, applied by the root helper as
-  the mode changes, as an SSD's is). Auto (the default: the firmware's own curve), and three
-  that bring the fans up sooner and further than Auto: about 10%, 20%
-  and 30% more. Names (Ben, after: "and maybe we use
-  Auto/Cool/Cooler/Coolest"): Auto, Cool, Cooler, Coolest, a ladder
-  that ends as the SSD rows' Cooler and Coolest do; whatever today's
-  options are called is carried over to the nearest. Ben, the same day: "also
-  standardise the ssd one on the names too, so change As It Is to
-  Auto": *done* (the SSD rows' untouched choice is Auto; its stored id
-  is the same, so nothing set is lost). The curve each one makes is measured on this computer
-  (temperatures and fan speeds under the same load, each setting) and
-  the numbers written down; what a computer's fans can't be told is
-  said rather than offered.
-
 - **Last, once everything above that isn't blocked is done: the website,
   the README and the docs refreshed, and a new GitHub release** (Ben,
   2026-11-17: "when all the other todos that aren't blocked are
@@ -394,6 +367,27 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Fans: a row of each power mode, with more than Auto** (Ben,
+  2026-11-18: "in the power -> battery -> fans move the fans option to
+  be another mode row setting in the power modes tab instead, and also
+  provide more options, i.e. default is Auto, but then have Cool, Very
+  Cool, Coolest where Cool is about +10% more aggressive than Auto at
+  ramping up fans, Very Cool is +20% and Coolest is +30%. if you can
+  think of a better name for the 3 options you can use that instead").
+  *Done* (2026-11-18; HACKING.md, "The fans"): Auto, Cool, Cooler,
+  Coolest (each of Olo's three a step earlier than the last; what was
+  called Cool is Cooler, the same curve, so nothing chosen before
+  changes), as a row of each power mode and on battery in Preferences
+  ▸ Power ▸ Power Modes, applied by the root follower as the mode
+  changes; the Fans box is gone from Battery & Idle. **For Ben, to
+  try**: Upgrade, then Preferences ▸ Power ▸ Power Modes ▸ Fans:
+  choose per mode and Apply (a password; switching modes then changes
+  the fans' profile by itself: `olo-fans --status` and the tab's "Now"
+  line say which). **Not done, and his to say when:** the curve each one makes measured on this computer
+  (temperatures and fan speeds under the same load, each setting) and
+  the numbers written down; what a computer's fans can't be told is
+  said rather than offered.
 
 - **Notifications, made plain: one model for what shows, stays, fades
   and is read** (Ben, 2026-11-18: "the red vs blue types and what fades
