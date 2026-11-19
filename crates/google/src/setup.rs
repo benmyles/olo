@@ -180,7 +180,7 @@ pub const CLIENTS: &str = "https://console.cloud.google.com/auth/clients";
 pub fn steps(app: &str) -> Vec<(&'static str, String, &'static str)> {
     let scopes: Vec<&str> = Service::ALL.iter().map(|s| s.scope()).collect();
     vec![
-        ("Make a project", "Signed in as the account being connected: name it “Olo” (a project's name takes no @ or brackets), then Create, and choose it at the top of the page.".to_owned(), NEW_PROJECT),
+        ("Make a project", "Signed in as the account being connected: name it “Olo Desktop” (a project's name takes no @ or brackets, and at least four letters: Google refuses “Olo”), then Create, and choose it at the top of the page.".to_owned(), NEW_PROJECT),
         ("Turn on its APIs", "With that project chosen: Enable (the Gmail API, the CalDAV API and the Google Drive API, all three).".to_owned(), ENABLE_APIS),
         (
             "Set up its sign-in",
@@ -222,7 +222,7 @@ The Google account: \"{title}\" ({subtitle}), the person's login in Olo Password
             let listed: String = steps("Olo (the account's address)").iter().enumerate().map(|(i, (title, how, url))| format!("{}. {title}: {how} ({url})\n", i + 1)).collect();
             format!(
                 "
-The steps (Google Cloud Console, as that account). First look whether the account already has a project named “Olo” with a Desktop app client (a set-up begun before): then finish that one instead of making another.
+The steps (Google Cloud Console, as that account). First look whether the account already has a project named “Olo Desktop” with a Desktop app client (a set-up begun before): then finish that one instead of making another.
 {listed}
 Download JSON at the end saves the client's file to ~/Downloads (client_secret_….json).
 
@@ -240,7 +240,7 @@ Keep to what's needed: one project, the three APIs, the sign-in's consent screen
 This account ({address}) has an app already: Olo's DiskBackup made it (probably a project named “Olo DiskBackup”), with the client whose ID is
   {client_id}
 Do NOT make another project or client: the backups DiskBackup wrote to this account's Drive are visible only to that project's app, and Olo keeps that client. Bring that app up to date instead (Google Cloud Console, as that account, with the project that holds that client chosen at the top of the page: find it under {CLIENTS} in each project if there are several):
-1. Rename the app: Branding ▸ App name “{app}”, Save ({BRANDING}). (The project itself may be renamed “Olo” too, in IAM & Admin ▸ Settings; it doesn't matter if not.)
+1. Rename the app: Branding ▸ App name “{app}”, Save ({BRANDING}). (The project itself may be renamed “Olo Desktop” too, in IAM & Admin ▸ Settings; it doesn't matter if not.)
 2. Turn on its APIs: Enable the Gmail API and the CalDAV API (the Google Drive API is on already) ({ENABLE_APIS}).
 3. Say what it may ask for: Data Access ▸ Add or Remove Scopes: under “Manually add scopes” paste {mail} and {calendar}, Add to Table, Update, then Save; leave …/auth/drive.file as it is ({SCOPES_PAGE}).
 

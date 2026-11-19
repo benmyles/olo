@@ -13180,7 +13180,8 @@ account shows at once.
   `~/.local/state/olo/google-agent-setup`, the task kept there as
   TASK.md). The task (`setup::brief`): sign in to Google Cloud there
   with the shared login without seeing its password, then the steps
-  (`setup::steps`: a project named "Olo"; the three APIs; the consent
+  (`setup::steps`: a project named "Olo Desktop", as Google refuses a
+  name under four letters ("Olo", Ben, 2026-11-18); the three APIs; the consent
   screen "Olo (its address)", Internal for Workspace; the three scopes;
   publish if External; a Desktop app client, its JSON downloaded),
   first looking for a set-up begun before; and the finish:
