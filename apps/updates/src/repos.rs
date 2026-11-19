@@ -30,8 +30,6 @@ use crate::{
     words,
 };
 
-const DETAILS: f32 = 300.0;
-
 #[derive(Clone)]
 pub enum Msg {
     Selected,
@@ -210,7 +208,6 @@ pub fn body(app: &mut OsUpdates, cx: &mut Cx<OsUpdates>) -> Element {
     let head = StringView::new(if app.session.is_some() { olo_kit::tr!("{} repositories, {} on. Packages come from those that are on.", app.repos.len(), on) } else { String::new() }).dim(true);
     let list = list_view(app, cx);
     let list = crate::well(cx, p.list_background, list);
-    let details = details_view(app, cx);
     let selected = app.r.selected(&app.repos).cloned();
     let foot = div()
         .flex()
@@ -226,15 +223,8 @@ pub fn body(app: &mut OsUpdates, cx: &mut Cx<OsUpdates>) -> Element {
             Some(b) => StringView::new(b.clone()).dim(true).into_element(),
             None => app.status(cx),
         }));
-    div()
-        .size_full()
-        .flex()
-        .flex_col()
-        .gap(px(m::SPACING))
-        .child(head)
-        .child(div().flex_1().min_h_0().flex().flex_row().gap(px(m::SPACING)).child(div().flex_1().min_w_0().h_full().child(list)).child(div().w(px(DETAILS)).flex_shrink_0().h_full().child(details)))
-        .child(foot)
-        .into_element()
+    let at = app.details_at(cx);
+    div().size_full().flex().flex_col().gap(px(m::SPACING)).child(head).child(crate::list_and_details(at, list, || details_view(app, cx))).child(foot).into_element()
 }
 
 fn cell_text(r: &Repo, c: usize) -> String {

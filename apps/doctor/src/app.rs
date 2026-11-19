@@ -655,6 +655,7 @@ impl View for Doctor {
             &counts,
             self.report.is_some(),
             beside,
+            room,
             cx.listener(|d: &mut Doctor, c: &Choice, cx| d.choose(*c, cx)),
             cx.listener(|d: &mut Doctor, _: &ClickEvent, cx| d.act(cx)),
         );

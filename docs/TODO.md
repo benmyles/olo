@@ -47,10 +47,12 @@ something nobody here has is in "Blocked", with what it waits for.
   one); kache (its sidebar gives way to a menu of its sections, cards
   reflow, buttons go under its title, Settings in one column); Doctor
   (its Choose links over its buttons where narrow, `chosen::bar_within`;
-  its summary wraps, or one line where short). To do: OS Updates (the
-  Choose row folds;
-  Updates' detail and sources give way), Logs (its detail gives way in
-  a short window, its filters wrap), Disk Usage (the rings over the list
+  its summary wraps, or one line where short); OS Updates (its sidebar
+  gives way to a section menu, each section's details go under its list
+  or give way, its filter menus wrap into rows, its Choose links fold
+  into a pull-down; the kit's `FilterBar` and `chosen::bar_within` do the
+  wrapping and folding). To do: Logs (its detail gives way in a short
+  window; its filters wrap now, with the kit's), Disk Usage (the rings over the list
   in a narrow window, the Collector giving way in a short one),
   Passwords (its welcome's picture gives way; its three columns one at
   a time, pictured with a made-up vault), Activity Monitor and Viewer
@@ -96,6 +98,21 @@ something nobody here has is in "Blocked", with what it waits for.
   (`tools/dev/scheme-shots` pictures every theme).
 
 ## Not started (highest priority first)
+
+- **Deskbar's fold arrows: ▸ closed, ▾ open** (Ben, 2026-11-19, with
+  pictures of D0's Deskbar, its folded workspaces' ▼ and an open one's
+  ▲, passing on: "▼ when collapsed and ▲ when expanded is a common
+  accordion convention, especially when the arrow sits on the right …
+  For Deskbar, I'd use ▸ when collapsed and ▾ when expanded. That's the
+  familiar desktop outline convention, including in BeOS. In your
+  second screenshot, the open workspace's triangle would point down
+  toward Phone and Telegram, while the closed workspaces would point
+  right." Be Book: vendor/bebook/BOutlineListView_Overview.md:95; W3C's
+  disclosure pattern). A workspace heading's arrow (`workspace_heading`,
+  `style::arrow_down`) points right while its applications are put
+  away and down once they show, as BOutlineListView's latches do; drawn
+  on whole pixels at every scale; agents' "collapsed"/"expanded" as
+  now. Check Doctor's and Logs' latches ("Fixed (2)") use the same.
 
 - **A Language setting, and Olo in every major language** (Ben,
   2026-11-18: "we should add a language setting and also let's translate

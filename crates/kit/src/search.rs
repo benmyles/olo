@@ -486,7 +486,12 @@ type OnChange = Rc<dyn Fn(&String, &mut WindowCx)>;
 /// A row of filter menus, one for each of `facets` in the bar ("Program:
 /// Any ▾"), each choosing its filter's values in `text` (a [`Query`]'s);
 /// those with values chosen are tinted and in bold. Clear, at the end,
-/// empties the query. `on_change` gets the new text.
+/// empties the query. `on_change` gets the new text. In less room than
+/// they take ([`FilterBar::max_width`]: a window a third of a screen
+/// wide), the menus that don't fit go on in a row under it, each whole
+/// (one wider than the room alone, cut to it): never cut short or left
+/// out, as they were (OS Updates' Severity cut, its Repository and
+/// Chosen gone, 2026-11-19).
 pub struct FilterBar {
     id: SharedString,
     text: String,
@@ -507,7 +512,8 @@ impl FilterBar {
         self
     }
 
-    /// The room it has: menus that don't fit are left out.
+    /// The room it has across: menus that don't fit go on in the next
+    /// row.
     pub fn max_width(mut self, w: f32) -> Self {
         self.max_width = Some(w);
         self
@@ -716,18 +722,25 @@ impl IntoElement for FilterBar {
     fn into_element(self) -> Element {
         let keys_owned: Vec<String> = keys(&self.facets).iter().map(|k| k.to_string()).collect();
         let q = Query::parse(&self.text, &keys(&self.facets));
-        let mut row = div().flex().flex_row().gap(px(m::SPACING)).h(px(m::CONTROL_HEIGHT));
-        let mut room = self.max_width.unwrap_or(f32::INFINITY);
-        for f in self.facets.iter().filter(|f| f.bar) {
-            let chosen = chosen_values(f, &q);
-            let label: SharedString = pill_text(f, &q).into();
-            let w = pill_width_shaped(&label, !chosen.is_empty()).min(room.max(0.0));
-            if w < 40.0 {
-                break;
-            }
-            room -= w + m::SPACING;
-            let (facet, text, keys, on_change) = (f.clone(), self.text.clone(), keys_owned.clone(), self.on_change.clone());
-            let filters = !chosen.is_empty();
+        let most = self.max_width.unwrap_or(f32::INFINITY).max(40.0);
+        let bar: Vec<&Facet> = self.facets.iter().filter(|f| f.bar).collect();
+        let labels: Vec<(SharedString, bool)> = bar
+            .iter()
+            .map(|f| {
+                let filters = !chosen_values(f, &q).is_empty();
+                (SharedString::from(pill_text(f, &q)), filters)
+            })
+            .collect();
+        let clear_w = (self.clear && !self.text.trim().is_empty()).then(|| (f32::from(style::text_width("Clear", style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))) + 2.0 * m::TEXT_INSET).ceil());
+        // Each menu's row and width (and Clear's, last), wrapped in `most`.
+        let mut widths: Vec<(f32, bool)> = labels.iter().map(|(l, filters)| (pill_width_shaped(l, *filters), true)).collect();
+        widths.extend(clear_w.map(|w| (w, false)));
+        let placed = rows_of(&widths, most);
+        let mut cells: Vec<Vec<Element>> = (0..=placed.last().map_or(0, |p| p.0)).map(|_| Vec::new()).collect();
+        for (i, f) in bar.iter().enumerate() {
+            let (label, filters) = labels[i].clone();
+            let (at, w) = placed[i];
+            let (facet, text, keys, on_change) = ((*f).clone(), self.text.clone(), keys_owned.clone(), self.on_change.clone());
             let shown = label.clone();
             let pill = control(SharedString::from(format!("{}-{}", self.id, f.key)), w, m::CONTROL_HEIGHT, move |g, pill, _| {
                 // Raised, as a menu field; tinted when it filters.
@@ -793,13 +806,14 @@ impl IntoElement for FilterBar {
                     }
                 });
             });
-            row = row.child(pill);
+            cells[at].push(pill.into_element());
         }
-        if self.clear && !self.text.trim().is_empty() {
-            let w = (f32::from(style::text_width("Clear", style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))) + 2.0 * m::TEXT_INSET).ceil();
-            if w <= room {
+        if clear_w.is_some()
+            && let Some(&(at, w)) = placed.last()
+        {
+            {
                 let on_change = self.on_change.clone();
-                row = row.child(
+                cells[at].push(
                     control(SharedString::from(format!("{}-clear", self.id)), w, m::CONTROL_HEIGHT, |g, r, s| {
                         let p = theme::palette();
                         let ink = if s.hovered { c(p.keyboard_navigation) } else { c(p.hues.blue) };
@@ -811,12 +825,48 @@ impl IntoElement for FilterBar {
                         if let Some(f) = &on_change {
                             f(&String::new(), cx);
                         }
-                    }),
+                    })
+                    .into_element(),
                 );
             }
         }
-        row
+        let mut rows: Vec<Element> = cells.into_iter().map(|row| div().flex().flex_row().gap(px(m::SPACING)).h(px(m::CONTROL_HEIGHT)).children(row)).collect();
+        if rows.len() == 1 {
+            return rows.remove(0);
+        }
+        div().flex().flex_col().gap(px(m::TIGHT)).children(rows)
     }
+}
+
+/// Where a bar's items go in `most` points across, a spacing apart, from
+/// their widths (and whether each may be widened): each one's row and
+/// the width it's given. Each starts a row when it doesn't fit the room
+/// its row has left (a row's first wider than `most` is cut to it). In
+/// more than one row, each row's last that may be widened takes what its
+/// row has left, so every row ends at the bar's edge: never a ragged
+/// edge a few points off another (the layout lint's `control-edges`).
+fn rows_of(widths: &[(f32, bool)], most: f32) -> Vec<(usize, f32)> {
+    let mut placed: Vec<(usize, f32)> = Vec::with_capacity(widths.len());
+    let (mut row, mut room, mut first) = (0, most, true);
+    for &(w, _) in widths {
+        if !first && w > room {
+            (row, room) = (row + 1, most);
+        }
+        let w = w.min(room);
+        placed.push((row, w));
+        room -= w + m::SPACING;
+        first = false;
+    }
+    if row > 0 {
+        for r in 0..=row {
+            let at: Vec<usize> = (0..placed.len()).filter(|&i| placed[i].0 == r).collect();
+            let used: f32 = at.iter().map(|&i| placed[i].1).sum::<f32>() + m::SPACING * (at.len().saturating_sub(1)) as f32;
+            if let Some(&last) = at.iter().rev().find(|&&i| widths[i].1) {
+                placed[last].1 += (most - used).max(0.0);
+            }
+        }
+    }
+    placed
 }
 
 #[cfg(test)]
@@ -834,5 +884,26 @@ mod tests {
         assert_eq!(r.iter().map(|r| r.len).sum::<usize>(), text.len());
         assert_eq!(thousands(1234567), "1,234,567");
         assert_eq!(thousands(12), "12");
+    }
+
+    /// In room for them, in one row as they are; wrapped, each row's last
+    /// menu (not Clear) takes its row's room, every row ending at the
+    /// bar's edge; one alone wider than the room is cut to it.
+    #[test]
+    fn a_bar_wraps_into_rows_that_end_together() {
+        let menus = [(110.0, true), (140.0, true), (184.0, true), (150.0, true)];
+        let all: f32 = 110.0 + 140.0 + 184.0 + 150.0 + 3.0 * m::SPACING;
+        assert_eq!(rows_of(&menus, all), vec![(0, 110.0), (0, 140.0), (0, 184.0), (0, 150.0)]);
+        let placed = rows_of(&menus, 385.0);
+        assert_eq!(placed.iter().map(|p| p.0).collect::<Vec<_>>(), [0, 0, 1, 1]);
+        for r in 0..2 {
+            let row: Vec<f32> = placed.iter().filter(|p| p.0 == r).map(|p| p.1).collect();
+            assert_eq!(row.iter().sum::<f32>() + m::SPACING * (row.len() - 1) as f32, 385.0, "row {r} ends at the edge");
+        }
+        assert_eq!(placed[0].1, 110.0, "only the last widens");
+        let with_clear = rows_of(&[(110.0, true), (140.0, true), (184.0, true), (40.0, false)], 300.0);
+        assert_eq!(with_clear[3].1, 40.0, "Clear keeps its width");
+        assert_eq!(with_clear[2].1, 300.0 - 40.0 - m::SPACING, "the menu before it takes the room");
+        assert_eq!(rows_of(&[(500.0, true)], 300.0), vec![(0, 300.0)]);
     }
 }

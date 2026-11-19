@@ -679,7 +679,9 @@ impl View for Picks {
 /// beside it moves.
 #[test]
 fn ui_lint_a_list_acted_on_by_whats_checked_is_clean() {
-    let options = WindowOptions::new("Picks", 420.0, 146.0);
+    // (Wide enough for the bar in one row, its links set apart by dots;
+    // a narrower window has `chosen::bar_within` fold them, as Doctor's.)
+    let options = WindowOptions::new("Picks", 440.0, 146.0);
     let mut widths = Vec::new();
     for checked in [[0, 0], [2, 0], [1, 1], [2, 1], [0, 1]] {
         let mut lint = Lint::new();

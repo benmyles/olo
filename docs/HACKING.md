@@ -2200,13 +2200,18 @@ pattern (the Olo Book's "Acting on what's chosen"):
   counts). `counts` is `[(kind, checked, of)]`, in the kinds' order;
   `of` counts items being acted on too, so the width holds while they
   run. Ids: `{id}-all`, `{id}-kind-N`, `{id}-none`, `{id}-act`.
-- `chosen::bar_within(id, counts, enabled, room, on_choice, on_act)`:
-  the bar where the app's row leaves it `room` points (`fits`), else
-  `(Some(links), button)`: the links in a row of their own at the right,
-  for the app to put a stack's spacing over its row, and the button
-  alone in the row (a window a third of a screen wide: Doctor's Fix
-  button was cut off). `choose_width`, `act_width` and `bar_width`
-  measure them in the language shown.
+- `chosen::bar_within(id, counts, enabled, room, row, on_choice,
+  on_act)`: the bar where the app's row leaves it `room` points
+  (`fits`); else `(Some(links), button)`, the links in a row of their
+  own at the right, for the app to put a stack's spacing over its row
+  (`row` points wide), and the button alone in the row (a window a third
+  of a screen wide: Doctor's Fix button was cut off); where the links
+  don't fit a row of their own either (OS Updates' five kinds), `(None,
+  …)` with the links folded into `chosen::choose_menu`, "Choose ▾", a
+  link whose menu has All, each kind and None, beside the button.
+  `choose_width`, `act_width` and `bar_width` measure them in the
+  language shown. The links are set apart by dots ("All · Security
+  Updates · Bug Fixes"): names of two words ran together.
 - `chosen::menu(menu, act, counts, enabled)` adds the same to a menu:
   the button's command with its words, Choose All (`choose-all`, ⌘A:
   list it in `app_keys` for the app, so it's configurable and isn't
@@ -2257,14 +2262,23 @@ before key listeners. `FilterBar::new(id, text, facets).max_width(w)
 .on_change(|text, cx| …)` is the bar as an element
 (`FilterBar::width(text, facets)`, about: each menu is sized from
 its text as shaped in the window, and a pixel more, so rounding to
-device pixels never cuts it short); its menus are kit popups.
+device pixels never cuts it short); its menus are kit popups. In less
+room across than its menus take (`max_width`: a window a third of a
+screen wide), they go on in rows under it, each whole (one wider than
+the room alone cut to it), each row's last menu widened so every row
+ends at the bar's edge (`rows_of`; a ragged edge a few points off the
+field's was the lint's `control-edges`); they had been cut short and
+then left out (OS Updates' Severity cut, its Repository and Chosen
+gone, 2026-11-19).
 `.drives(&field)` has its choices go into the field (`choose`), so an
 app follows the field alone, one subscription for typed and chosen.
 `search::header(&field, id, facets, width)` is the search over a list
 as Log Viewer and Replay have it: the field and the bar in one row when
 the field keeps `min_field` points (240 unless said), else the bar
 under it, `indent(search::list_indent(window))` putting its first
-menu's text over the list's first column's; `count("12 of 340")` at
+menu's text over the list's first column's (not where that column is
+check boxes, OS Updates': its menus then start where the field and a
+section's menu over them do); `count("12 of 340")` at
 the end of the field's row; `no_clear()`. The field takes whatever
 width the row leaves, so `width` only decides which of the two it is:
 hand it `search::header_width(window, id)` (the width the header was
@@ -5895,6 +5909,12 @@ recorded otherwise.
     French's DNS form and German's Shaping were 28 and 20 points off;
     DiskBackup's kept-backups menus, each column of two, in French and
     Spanish, which the check doesn't see across a box's two columns).
+    A control's own words aren't the label of the one beside it: a row
+    of filter menus wrapped in two ("Kind: All Kinds" over "Repository:
+    All Repositories") isn't a form. And `crowded` passes what scrolls
+    by its own scroll bar: a control its scroller clips, beside a bar's
+    part outside the clip (a list's check box at the list's foot over
+    its left arrow, as it scrolls).
 - **Review** (most are mistakes, a few are meant): `near-height` (bands
   stacked or side by side almost one height: a 21 bar over a 22 head),
   `near-level` (text or icons in neighbouring columns a pixel or two off

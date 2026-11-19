@@ -48,7 +48,7 @@ use olo_kit::{
     instance::{self, Launch},
     metrics as m, px, style, theme,
     widgets::{
-        StatusBar, StringView,
+        MenuField, StatusBar, StringView,
         sidebar::{Row, Sidebar},
     },
 };
@@ -59,8 +59,43 @@ pub const APP_ID: &str = "olo.updates";
 
 /// The sidebar's width.
 const SIDEBAR: f32 = 172.0;
-pub const MIN_WIDTH: f32 = 960.0;
-pub const MIN_HEIGHT: f32 = 600.0;
+/// What a section keeps beside the sidebar: less (a third of a screen),
+/// the sidebar gives way to a menu of the sections over the section
+/// (CLAUDE.md, "Every tiling layout").
+const CONTENT_LEAST: f32 = 360.0;
+/// The window's least: a third of the smallest screen, either way.
+pub const MIN_WIDTH: f32 = 400.0;
+pub const MIN_HEIGHT: f32 = 220.0;
+/// What's selected in a section's list, beside it.
+const DETAILS: f32 = 300.0;
+/// The list's least beside the details: with less (a third of a screen
+/// wide, or half of one with the sidebar), the details go under the list
+/// in a tall window and give way in a short one, as Calendar's preview
+/// does (CLAUDE.md, "Every tiling layout").
+const LIST_LEAST: f32 = 360.0;
+/// A window at least this tall has the details under the list.
+const UNDER_ROOM: f32 = 560.0;
+/// The details' height under the list.
+const DETAILS_UNDER: f32 = 220.0;
+
+/// Where a section shows what's selected in its list ([`OsUpdates::details_at`]).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DetailsAt {
+    Beside,
+    Under,
+    Gone,
+}
+
+/// A section's list and what's selected in it, placed `at` (`details`
+/// made only where it shows).
+pub fn list_and_details(at: DetailsAt, list: Element, details: impl FnOnce() -> Element) -> Element {
+    let list = div().flex_1().min_w_0().min_h_0().h_full().child(list);
+    match at {
+        DetailsAt::Beside => div().flex_1().min_h_0().flex().flex_row().gap(px(m::SPACING)).child(list).child(div().w(px(DETAILS)).flex_shrink_0().h_full().child(details())),
+        DetailsAt::Under => div().flex_1().min_h_0().flex().flex_col().gap(px(m::SPACING)).child(list).child(div().h(px(DETAILS_UNDER)).flex_shrink_0().child(details())),
+        DetailsAt::Gone => div().flex_1().min_h_0().flex().child(list),
+    }
+}
 
 /// The four sections.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -287,6 +322,31 @@ impl OsUpdates {
             .build(cx)
     }
 
+    /// Whether the sidebar shows beside the section (see `body`).
+    fn sidebar_shows(&self, cx: &Cx<Self>) -> bool {
+        f32::from(cx.viewport_size().width) - 2.0 * m::WINDOW_INSET - SIDEBAR - m::SPACING >= CONTENT_LEAST
+    }
+
+    /// How wide the section beside the sidebar is (the window's width,
+    /// less the sidebar where it shows).
+    pub fn content_width(&self, cx: &Cx<Self>) -> f32 {
+        let w = f32::from(cx.viewport_size().width) - 2.0 * m::WINDOW_INSET;
+        if self.sidebar_shows(cx) { w - SIDEBAR - m::SPACING } else { w }
+    }
+
+    /// Where the section shows what's selected in its list: beside the
+    /// list where it keeps its least, else under it in a tall window,
+    /// else (a quarter of a screen) nowhere.
+    pub fn details_at(&self, cx: &Cx<Self>) -> DetailsAt {
+        if self.content_width(cx) - DETAILS - m::SPACING >= LIST_LEAST {
+            DetailsAt::Beside
+        } else if f32::from(cx.viewport_size().height) >= UNDER_ROOM {
+            DetailsAt::Under
+        } else {
+            DetailsAt::Gone
+        }
+    }
+
     /// The line under a section: what's being done, or the last word.
     pub fn status(&self, cx: &mut Cx<Self>) -> Element {
         if let Some(l) = &self.loading {
@@ -504,6 +564,20 @@ impl View for OsUpdates {
             Section::History => history::body(self, cx),
             Section::Upgrade => release::body(self, cx),
         };
+        // The sidebar gives way where the section would have less than
+        // its least beside it: the section's name over it instead, a
+        // menu of each (View has them too), as kache has it.
+        let shows = self.sidebar_shows(cx);
+        let section = (!shows).then(|| {
+            let names: Vec<olo_kit::SharedString> = Section::ALL.iter().map(|s| olo_kit::SharedString::from(s.name())).collect();
+            let at = Section::ALL.iter().position(|s| *s == self.section).unwrap_or(0);
+            div().flex().flex_shrink_0().child(MenuField::new("updates-section", names, at).name("Section").on_change(cx.listener(|v: &mut OsUpdates, i: &usize, cx| {
+                if let Some(s) = Section::ALL.get(*i) {
+                    v.section = *s;
+                    cx.invalidate();
+                }
+            })))
+        });
         let row = div()
             .flex_1()
             .min_h_0()
@@ -513,8 +587,8 @@ impl View for OsUpdates {
             .px(px(m::WINDOW_INSET))
             .pt(px(m::SPACING))
             .pb(px(m::WINDOW_INSET))
-            .child(div().w(px(SIDEBAR)).flex_shrink_0().h_full().child(well(cx, p.list_background, sidebar)))
-            .child(div().flex_1().min_w_0().h_full().flex().flex_col().gap(px(m::SPACING)).child(content));
+            .children(shows.then(|| div().w(px(SIDEBAR)).flex_shrink_0().h_full().child(well(cx, p.list_background, sidebar))))
+            .child(div().flex_1().min_w_0().h_full().flex().flex_col().gap(px(m::SPACING)).children(section).child(div().flex_1().min_h_0().flex().flex_col().gap(px(m::SPACING)).child(content)));
         div().size_full().flex().flex_col().bg(style::c(p.panel_background)).child(bar).child(row).into_element()
     }
 

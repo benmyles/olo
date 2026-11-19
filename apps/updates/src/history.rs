@@ -20,8 +20,6 @@ use crate::{
     words,
 };
 
-const DETAILS: f32 = 300.0;
-
 #[derive(Clone)]
 pub enum Msg {
     Selected,
@@ -148,7 +146,6 @@ pub fn body(app: &mut OsUpdates, cx: &mut Cx<OsUpdates>) -> Element {
     .on_open(cx.listener(|v: &mut OsUpdates, _: &usize, cx| {
         message(v, Msg::Undo, cx);
     }));
-    let details = details_view(app, cx);
     let can = app.h.selected(&app.history).is_some_and(undoable) && app.loading.is_none();
     let foot = div()
         .flex()
@@ -156,23 +153,9 @@ pub fn body(app: &mut OsUpdates, cx: &mut Cx<OsUpdates>) -> Element {
         .gap(px(m::SPACING))
         .child(Button::new("Undo…").id("undo").enabled(can).on_click(cx.listener(|v: &mut OsUpdates, _: &ClickEvent, cx| message(v, Msg::Undo, cx))))
         .child(div().flex_1().min_w_0().child(app.status(cx)));
-    div()
-        .size_full()
-        .flex()
-        .flex_col()
-        .gap(px(m::SPACING))
-        .child(
-            div()
-                .flex_1()
-                .min_h_0()
-                .flex()
-                .flex_row()
-                .gap(px(m::SPACING))
-                .child(div().flex_1().min_w_0().h_full().child(crate::well(cx, p.list_background, list)))
-                .child(div().w(px(DETAILS)).flex_shrink_0().h_full().child(details)),
-        )
-        .child(foot)
-        .into_element()
+    let list = crate::well(cx, p.list_background, list);
+    let at = app.details_at(cx);
+    div().size_full().flex().flex_col().gap(px(m::SPACING)).child(crate::list_and_details(at, list, || details_view(app, cx))).child(foot).into_element()
 }
 
 fn details_view(app: &mut OsUpdates, cx: &mut Cx<OsUpdates>) -> Element {

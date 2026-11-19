@@ -320,6 +320,10 @@ pub fn review(parts: &Parts, width: f32, height: f32, ppp: f32) -> Vec<Finding> 
 /// French's Search domains field 28 points right of DNS servers'). A
 /// few points off is `control-edges`'; this is a column's worth.
 fn label_columns(p: &Parts, out: &mut Vec<Finding>) {
+    // (A control's own words, a filter menu's "Kind: All Kinds", aren't
+    // the label of the one beside it: a row of such menus wrapped in
+    // two isn't a form, 2026-11-19.)
+    let inside = |t: &Text| p.controls.iter().any(|o| o.rect.expand(0.5).contains_rect(t.rect));
     let fields: Vec<(&Control, &Text)> = showing(p)
         .filter(|c| matches!(c.role.as_str(), "TextInput" | "ComboBox" | "SpinButton"))
         .filter_map(|c| {
@@ -327,7 +331,7 @@ fn label_columns(p: &Parts, out: &mut Vec<Finding>) {
             let label = p
                 .texts
                 .iter()
-                .filter(|t| t.rect.max.x <= c.rect.min.x + SAME && c.rect.min.x - t.rect.max.x <= 80.0 && t.middle >= c.rect.min.y && t.middle <= c.rect.max.y)
+                .filter(|t| t.rect.max.x <= c.rect.min.x + SAME && c.rect.min.x - t.rect.max.x <= 80.0 && t.middle >= c.rect.min.y && t.middle <= c.rect.max.y && !inside(t))
                 .max_by(|a, b| a.rect.max.x.total_cmp(&b.rect.max.x))?;
             Some((c, label))
         })
@@ -631,6 +635,13 @@ fn items(p: &Parts) -> Vec<(Rect, String, bool, f32)> {
 fn crowded(p: &Parts, screen: Rect, ppp: f32, out: &mut Vec<Finding>) {
     let all = items(p);
     let touching = SAME.max(1.0 / ppp);
+    // (What scrolls passes its own scroll bar: a list's row at the foot
+    // of the list, its check box over the bar's left arrow as it scrolls,
+    // isn't crowded with the bar. Something its scroller clips, beside a
+    // bar's part outside the clip: OS Updates' list in a third of a
+    // screen, 2026-11-19.)
+    let bars: Vec<Rect> = p.controls.iter().filter(|c| c.role == "ScrollBar" || (c.role == "Button" && SCROLL_ARROWS.contains(&c.name.as_str()))).map(|c| c.shown()).collect();
+    let scrolls_past = |r: &Rect, bar: &Rect| bars.contains(bar) && p.controls.iter().any(|c| c.shown() == *r && !c.clip.expand(SAME).contains_rect(*bar));
     // (A view across the window, a document's or a list's, sets its own
     // insets: under a menu bar it's flush, as BeOS has it.)
     let across = |r: &Rect| r.width() >= 0.8 * screen.width();
@@ -646,6 +657,9 @@ fn crowded(p: &Parts, screen: Rect, ppp: f32, out: &mut Vec<Finding>) {
             }
             // (A line of text set in pieces, a word apart, is one line.)
             if *ta && *tb && (ba - bb).abs() <= SAME {
+                continue;
+            }
+            if scrolls_past(ra, rb) || scrolls_past(rb, ra) {
                 continue;
             }
             // (A control's own text is as near its neighbour as the
@@ -1409,6 +1423,15 @@ mod tests {
             ..Parts::default()
         };
         assert_eq!(found(&p), 0, "labels apart: another column of labels");
+        // Filter menus wrapped in two rows: each first menu's words are
+        // inside it, not the label of the menu beside it.
+        let menu = |x: f32, y: f32, w: f32| Control { rect: Rect::from_min_max(pos2(x, y), pos2(x + w, y + 24.0)), role: "ComboBox".into(), ..button("", 0.0, &format!("[m{x}{y}]")) };
+        let p = Parts {
+            controls: vec![menu(16.0, 20.0, 110.0), menu(138.0, 20.0, 140.0), menu(16.0, 52.0, 184.0), menu(212.0, 52.0, 150.0)],
+            texts: vec![label("Kind: All Kinds", 22.0, 104.0, 20.0), label("Repository: All Repositories", 22.0, 180.0, 52.0)],
+            ..Parts::default()
+        };
+        assert_eq!(found(&p), 0, "menus wrapped in rows");
     }
 
     /// Something close under a form's Save is found; a scroll bar's
@@ -1440,6 +1463,25 @@ mod tests {
         assert_eq!(found(&p), 0);
         let p = Parts { controls: vec![save, beside(220.0)], containers: vec![left, right], ..Parts::default() };
         assert_eq!(found(&p), 1);
+    }
+
+    /// A list's check box at the foot of the list, a point over the
+    /// list's own scroll arrow, isn't crowded (it scrolls past it); the
+    /// same box not clipped by a scroller is.
+    #[test]
+    fn what_scrolls_passes_its_scroll_bar() {
+        let found = |p: &Parts| review(p, 400.0, 300.0, 2.0).into_iter().filter(|f| f.kind == "crowded").count();
+        let mut check = button("systemd", 20.0, "[row]");
+        check.role = "CheckBox".into();
+        check.rect = Rect::from_min_max(pos2(20.0, 187.0), pos2(32.0, 199.0));
+        let mut arrow = button("Scroll Left", 20.0, "[left]");
+        arrow.rect = Rect::from_min_max(pos2(18.0, 200.0), pos2(32.0, 214.0));
+        let mut clipped = check.clone();
+        clipped.clip = Rect::from_min_max(pos2(16.0, 40.0), pos2(380.0, 199.5));
+        let p = Parts { controls: vec![clipped, arrow.clone()], ..Parts::default() };
+        assert_eq!(found(&p), 0, "a row scrolled to the bar");
+        let p = Parts { controls: vec![check, arrow], ..Parts::default() };
+        assert_eq!(found(&p), 1, "laid out against it");
     }
 
     /// Text a few points under a button is crowded; with a rule drawn

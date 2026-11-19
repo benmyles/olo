@@ -29,13 +29,13 @@
 
 use std::{collections::BTreeMap, rc::Rc};
 
-use olo_interface::{ClickEvent, Element, FontWeight, IntoElement as _, ParentElement as _, Styled as _, WindowCx, div, px};
+use olo_interface::{ClickEvent, Corner, Element, FontWeight, IntoElement as _, ParentElement as _, PathBuilder, Styled as _, WindowCx, div, point, px};
 use olo_kit_base::metrics as m;
 
 use crate::{
-    menu::Menu,
-    style,
-    widgets::{Button, LinkButton, StringView, button_width, link_button_width},
+    menu::{self, Menu},
+    style, theme,
+    widgets::{Button, LinkButton, StringView, button_width, buttons::focus_underline, control, link_button_width},
 };
 
 /// A kind of item, and what acting on it is called.
@@ -170,13 +170,20 @@ pub fn choose(id: &str, counts: &[Count], enabled: bool, on_choice: impl Fn(&Cho
     };
     // (Its words and the links' on a push button's baseline: the row
     // reads as one line with the buttons beside it.)
-    let mut row = div().flex().items_center().gap(px(m::TIGHT)).child(StringView::new("Choose:").dim(true).small(true).height(m::LABEL_ROW).beside(style::PLAIN_SIZE));
+    let quiet = |text: &'static str| StringView::new(text).dim(true).small(true).height(m::LABEL_ROW).beside(style::PLAIN_SIZE);
+    let mut row = div().flex().items_center().gap(px(m::TIGHT)).child(quiet("Choose:"));
+    // (A dot between each two: names of two words, "Security Updates Bug
+    // Fixes", ran together with only a gap between them; a second look,
+    // 2026-11-19.)
     row = row.child(link("All", "all".into(), Choice::All));
     for (i, (kind, ..)) in counts.iter().enumerate() {
-        row = row.child(link(kind.many, format!("kind-{i}"), Choice::Kind(i)));
+        row = row.child(quiet(SEPARATOR)).child(link(kind.many, format!("kind-{i}"), Choice::Kind(i)));
     }
-    row.child(link("None", "none".into(), Choice::None))
+    row.child(quiet(SEPARATOR)).child(link("None", "none".into(), Choice::None))
 }
+
+/// What sets the links apart.
+const SEPARATOR: &str = "·";
 
 /// The counted default button: [`label`] of what's checked, dimmed with
 /// nothing checked or `enabled` false. As wide as its widest words could
@@ -201,9 +208,10 @@ pub fn act_width(counts: &[Count]) -> f32 {
 /// How wide [`choose`] is, in the language it's shown in: "Choose:" and
 /// its links, a tight gap apart.
 pub fn choose_width(counts: &[Count]) -> f32 {
-    let word = f32::from(style::text_width(crate::words::of_text("Choose:"), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL)));
+    let small = |text: &str| (f32::from(style::text_width(crate::words::of_text(text), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL))) / 2.0).ceil() * 2.0;
     let links: Vec<_> = std::iter::once("All").chain(counts.iter().map(|(k, ..)| k.many)).chain(std::iter::once("None")).map(crate::words::of_text).collect();
-    (word / 2.0).ceil() * 2.0 + links.iter().map(|l| link_button_width(l) + m::TIGHT).sum::<f32>()
+    let dots = links.len().saturating_sub(1) as f32 * (small(SEPARATOR) + m::TIGHT);
+    small("Choose:") + links.iter().map(|l| link_button_width(l) + m::TIGHT).sum::<f32>() + dots
 }
 
 /// How wide [`bar`] is.
@@ -218,23 +226,97 @@ pub fn bar(id: &str, counts: &[Count], enabled: bool, on_choice: impl Fn(&Choice
 
 /// [`bar`] where a row leaves it `room` points; else (a window a third
 /// of a screen wide: CLAUDE.md, "Every tiling layout") its links in a
-/// row of their own, at the right, to go over the app's row, and the
-/// button alone in it: (the row over it, if any; what goes in the row).
-/// Nothing cut or squeezed, the button always there.
+/// row of their own, at the right, to go over the app's row (`row`
+/// points wide), and the button alone in it; where the links don't fit
+/// that either (OS Updates' five kinds), folded into "Choose ▾"
+/// ([`choose_menu`]) beside the button. (The row over it, if any; what
+/// goes in the row.) Nothing cut or squeezed, the button always there.
 pub fn bar_within(
     id: &str,
     counts: &[Count],
     enabled: bool,
     room: f32,
+    row: f32,
     on_choice: impl Fn(&Choice, &mut WindowCx) + 'static,
     on_act: impl Fn(&ClickEvent, &mut WindowCx) + 'static,
 ) -> (Option<Element>, Element) {
     if fits(counts, room) {
         (None, bar(id, counts, enabled, on_choice, on_act))
-    } else {
+    } else if choose_width(counts) <= row {
         (Some(div().flex().justify_end().child(choose(id, counts, enabled, on_choice)).into_element()), act(id, counts, enabled, on_act))
+    } else {
+        (None, div().flex().items_center().gap(px(m::SPACING)).child(choose_menu(id, counts, enabled, on_choice)).child(act(id, counts, enabled, on_act)).into_element())
     }
 }
+
+/// [`choose`] folded into one link, "Choose ▾", its menu All, each kind
+/// and None: where there's no room for the links (a pull-down, as
+/// Tracker's and Mac OS's have it). Its word on a push button's
+/// baseline, as the links' are. Id `{id}-menu`; agents find it as a
+/// `Button` named "Choose", its menu's items as the links' words.
+pub fn choose_menu(id: &str, counts: &[Count], enabled: bool, on_choice: impl Fn(&Choice, &mut WindowCx) + 'static) -> Element {
+    let on_choice: OnChoice = Rc::new(on_choice);
+    let word = crate::words::of_text("Choose");
+    let kinds: Vec<&'static str> = counts.iter().map(|(k, ..)| k.many).collect();
+    let text_w = link_button_width(&word);
+    let width = text_w + MENU_MARK;
+    let (drawn, named) = (word.clone(), word.clone());
+    control(format!("{id}-menu"), width, m::LABEL_ROW, move |g, r, s| {
+        let p = theme::palette();
+        // (The blue of links, readable on the panel: it is one.)
+        let link = olo_theme::readable(p.hue(olo_theme::Hue::Blue), p.panel_background, 4.5);
+        let color = if !s.enabled {
+            style::disabled_text(&p)
+        } else if s.pressed {
+            style::shade(&p, link, 1.25)
+        } else {
+            style::c(link)
+        };
+        let font = style::ui_font(FontWeight::NORMAL);
+        let on = style::baseline_at(g, r.center().y, style::PLAIN_SIZE);
+        let text = style::label_on_baseline(g, r.left(), on, style::Align::Left, drawn.to_string(), style::DETAIL_SIZE, font, color);
+        // The menu's mark: a small triangle, its middle on the words'
+        // middle (their x-height's), on whole device pixels.
+        let ax = style::snap_coord(g, r.left() + px(text_w + MENU_MARK / 2.0 + 1.0));
+        let ay = style::snap_coord(g, text.center().y);
+        let mut path = PathBuilder::fill();
+        path.move_to(point(ax - px(3.5), ay - px(1.5)));
+        path.line_to(point(ax + px(3.5), ay - px(1.5)));
+        path.line_to(point(ax, ay + px(2.0)));
+        path.close();
+        if let Ok(path) = path.build() {
+            g.paint_path(path, color);
+        }
+        if s.focused {
+            focus_underline(g, text, &p);
+        } else if s.hovered && s.enabled {
+            style::hline_above(g, text.left(), text.right(), text.bottom(), color);
+        }
+    })
+    .look((word, kinds.len()))
+    .enabled(enabled)
+    .focusable()
+    .pointing()
+    .agent("Button", named, None)
+    .on_click(move |_, cx| {
+        let at = cx.listener_bounds();
+        let mut m = Menu::new("Choose").item("All", "choose-all");
+        for (i, many) in kinds.iter().enumerate() {
+            m = m.item(*many, format!("choose-kind-{i}"));
+        }
+        m = m.item("None", "choose-none");
+        let f = on_choice.clone();
+        menu::popup(cx, m, at, Corner::BottomLeft, move |cmd, cx| {
+            if let Some(choice) = Choice::of_command(cmd) {
+                f(&choice, cx);
+            }
+        });
+    })
+    .into_element()
+}
+
+/// The room "Choose ▾" keeps after its word for its mark.
+const MENU_MARK: f32 = 12.0;
 
 /// Whether [`bar`] fits in `room` points, the links beside the button.
 pub fn fits(counts: &[Count], room: f32) -> bool {

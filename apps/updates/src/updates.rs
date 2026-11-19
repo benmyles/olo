@@ -31,7 +31,8 @@ pub const OTHER: chosen::Kind = chosen::Kind { verb: "Update", one: "Other Updat
 const KINDS: [&chosen::Kind; 4] = [&SECURITY, &BUGFIX, &ENHANCEMENT, &OTHER];
 
 /// The details' column.
-const DETAILS: f32 = 300.0;
+/// The least the status keeps beside the Choose links and the button.
+const STATUS_LEAST: f32 = 160.0;
 /// The labels' column in the details.
 const LABELS: f32 = 84.0;
 const KEYS: &[&str] = &["kind", "severity", "repo", "chosen"];
@@ -405,11 +406,10 @@ pub fn body(app: &mut OsUpdates, cx: &mut Cx<OsUpdates>) -> Element {
     let width = search::header_width(cx, "updates").unwrap_or(800.0);
     let shown = app.u.rows.len();
     let total = updates.updates.len();
-    let header = search::header(cx, &app.u.search, "updates", facets, width).min_field(240.0).indent(search::list_indent(cx)).count(if app.session.is_some() {
-        format!("{shown} of {total}")
-    } else {
-        String::new()
-    });
+    // (Its menus under the field where narrow start where the field does,
+    // as the section's menu over them: the list's first column is check
+    // boxes, no words to put them over.)
+    let header = search::header(cx, &app.u.search, "updates", facets, width).min_field(240.0).count(if app.session.is_some() { format!("{shown} of {total}") } else { String::new() });
 
     let list: Element = if app.session.is_none() {
         let (title, detail) = match (&app.error, &app.loading) {
@@ -430,26 +430,31 @@ pub fn body(app: &mut OsUpdates, cx: &mut Cx<OsUpdates>) -> Element {
         list_view(app, cx)
     };
 
-    let details = details_view(app, cx);
     let counts = app.u.counts(&updates);
     let busy = app.loading.is_some();
-    let foot = div().flex().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(app.status(cx))).child(chosen::bar(
+    // The Choose links and the button beside the status where they fit,
+    // the links over the row or folded into "Choose ▾" where they don't
+    // (olo_kit::chosen::bar_within).
+    let row = app.content_width(cx);
+    let (over, act) = chosen::bar_within(
         "updates",
         &counts,
         !busy && app.session.is_some(),
+        row - STATUS_LEAST - m::SPACING,
+        row,
         cx.listener(|v: &mut OsUpdates, c: &chosen::Choice, cx| {
             v.u.choose(&v.updates, *c);
             cx.invalidate();
         }),
         cx.listener(|v: &mut OsUpdates, _: &ClickEvent, cx| message(v, Msg::Act, cx)),
-    ));
+    );
+    let foot = div().flex().flex_col().gap(px(m::STACK)).children(over).child(div().flex().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(app.status(cx))).child(act));
     let mut col = div().size_full().flex().flex_col().gap(px(m::SPACING)).child(header);
     if let Some(b) = crate::release::waiting_banner(app, cx) {
         col = col.child(b);
     }
-    col.child(div().flex_1().min_h_0().flex().flex_row().gap(px(m::SPACING)).child(div().flex_1().min_w_0().h_full().child(list)).child(div().w(px(DETAILS)).flex_shrink_0().h_full().child(details)))
-        .child(foot)
-        .into_element()
+    let at = app.details_at(cx);
+    col.child(crate::list_and_details(at, list, || details_view(app, cx))).child(foot).into_element()
 }
 
 fn list_view(app: &mut OsUpdates, cx: &mut Cx<OsUpdates>) -> Element {
