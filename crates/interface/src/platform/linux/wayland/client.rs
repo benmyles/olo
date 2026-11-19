@@ -772,7 +772,15 @@ impl WaylandClient {
                         tries += 1;
                         std::thread::sleep(std::time::Duration::from_millis(100));
                     }
-                    Err(e) => panic!("could not connect to the compositor: {e}"),
+                    // (None came: its session or screen has ended, or there
+                    // never was one. That's where it runs, not a fault of
+                    // its own: said, and ended, not a crash to report, which
+                    // the person was told of for every stopped screen.)
+                    Err(e) => {
+                        log::error!("no compositor to connect to ({e}): ending");
+                        eprintln!("{}: no Wayland compositor to show its windows on ({e})", std::env::args().next().unwrap_or_default());
+                        std::process::exit(1);
+                    }
                 }
             }
         };

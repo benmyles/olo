@@ -274,6 +274,14 @@ fn lost_compositor(binary: &Binary) {
     // The person's app on an agent screen that has gone goes back to
     // their display.
     let env = (!gpu).then(going_home).flatten();
+    // An app started on an agent screen that has ended (stopped) ends
+    // with it: its compositor isn't coming back. (It re-executed to
+    // reconnect, waited 15 s for it and panicked: every stopped screen's
+    // Passwords reported to the person as crashed, 2026-11-18.)
+    if !gpu && env.is_none() && olo_kit_base::moving::home().is_none() && screen_ended() {
+        tracing::info!("the agent screen this app was on has ended: ending with it");
+        std::process::exit(0);
+    }
     binary.exec_with(state, gpu, errors.map(|(_, n)| n), env.as_ref());
     // (It couldn't: nothing to show on, nothing to become.)
     olo_interface::quit();
@@ -295,6 +303,23 @@ fn going_home() -> Option<olo_kit_base::moving::MoveTo> {
     }
     tracing::warn!("the agent screen this app was moved to has gone: back to the person's display");
     Some(moving::env_for(&home, |k| std::env::var(k).ok()))
+}
+
+/// Whether this app was on an agent screen (`OLO_SCREEN`) that has
+/// ended, as seen within [`HOME_WAIT`] (an app_server restarting in place
+/// keeps the screen's session and socket).
+fn screen_ended() -> bool {
+    if std::env::var_os("OLO_SCREEN").is_none_or(|s| s.is_empty()) {
+        return false;
+    }
+    let until = std::time::Instant::now() + HOME_WAIT;
+    while !olo_kit_base::moving::screen_gone() {
+        if std::time::Instant::now() > until {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    true
 }
 
 /// How long a lost compositor's screen has to be seen to end.

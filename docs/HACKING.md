@@ -4493,6 +4493,20 @@ for a 3-second `sleep`.
   out once, "Acquire timed out", and re-executed onto the next
   app_server; the old code waits there for good, as Activity Monitor,
   Tracker and olo-screen did on 2026-11-13.)
+* **A compositor that's gone for good ends its programs quietly, not as a
+  crash.** A program whose compositor goes re-executes to reconnect and
+  waits for it (an app_server restarting in place is back in a second
+  or two). One started on an agent screen that has ended (stopped:
+  `olo_kit_base::moving::screen_gone`, its session or socket gone,
+  watched for 2 s), with no display of the person's to go home to, ends
+  with it at once (`upgrade.rs`, `screen_ended`); and where no
+  compositor comes within 15 s the program says so and exits (1), not
+  a panic: no crash report, which the person was told of as "Passwords
+  crashed" for every stopped screen's Passwords (Ben, 2026-11-18:
+  "every time i upgrade i get notifications that passwords has crashed
+  too"). Tried on a screen of my own, stopped under StyledEdit: the old
+  build ended 15.2 s later with two crash reports, the new one 163 ms
+  later with none.
 * Never replace an installed binary by writing over it (install to a temporary
   name and rename, as `tools/install-session.sh` does).
 
