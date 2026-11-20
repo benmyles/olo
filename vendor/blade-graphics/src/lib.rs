@@ -127,10 +127,6 @@ pub struct ContextDesc {
     pub overlay: bool,
     /// Force selection of a specific Device ID, unless 0.
     pub device_id: u32,
-    /// Olo: the queue at the lowest global priority (VK_KHR/EXT_global_priority,
-    /// where the driver has it; asking lower never needs privilege): a
-    /// program on an agent's screen yields the GPU to the person's.
-    pub low_priority: bool,
 }
 
 #[derive(Debug)]

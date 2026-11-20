@@ -1,0 +1,218 @@
+#!/usr/bin/python3
+"""What a GPU priority is worth on this computer, measured: how long a
+tiny draw waits, at each priority, while other programs keep the GPU
+busy (HACKING, "The GPU has priorities too").
+
+  gpu-priority-check [--loads N] [--seconds S]
+        a probe at low, then at medium (and at high, where this process
+        may ask for it: CAP_SYS_NICE), each beside N (1) programs
+        drawing at the ordinary priority for S (2, at most 2.5) seconds
+  sudo gpu-priority-check asked [SECONDS]
+        which programs ask Intel's driver for which queue priority (0
+        low, 1 normal, 2 high) over SECONDS (30): start a program
+        meanwhile to see what it asks (bpftrace; read only)
+  gpu-priority-check probe|load low|medium|high SECONDS [DELAY]
+        one of the parts, by itself
+
+On Intel's xe (Linux 7.2, 2026-11-20) a low-priority draw waited for as
+long as one ordinary program kept the GPU busy (2012 ms of a 2.0 s
+load; an ordinary one 12 ms), and the driver resets the whole GPU when
+a job has waited five seconds to start. So this never loads the GPU for
+more than 2.5 s, refuses when the kernel has said anything of a timed
+out job or a reset in the last five minutes, and should be run with
+nothing else heavy on the GPU: a low job that was already waiting
+counts its wait from before.
+"""
+import ctypes as C, os, signal, sys, time
+
+EGL = C.CDLL("libEGL.so.1"); GL = C.CDLL("libGLESv2.so.2"); GBM = C.CDLL("libgbm.so.1")
+P = C.c_void_p
+EGL.eglGetPlatformDisplay.restype = P; EGL.eglGetPlatformDisplay.argtypes = [C.c_uint, P, P]
+EGL.eglInitialize.argtypes = [P, C.POINTER(C.c_int), C.POINTER(C.c_int)]
+EGL.eglCreateContext.restype = P; EGL.eglCreateContext.argtypes = [P, P, P, C.POINTER(C.c_int)]
+EGL.eglMakeCurrent.argtypes = [P, P, P, P]
+EGL.eglQueryContext.argtypes = [P, P, C.c_int, C.POINTER(C.c_int)]
+EGL.eglQueryString.restype = C.c_char_p; EGL.eglQueryString.argtypes = [P, C.c_int]
+GBM.gbm_create_device.restype = P; GBM.gbm_create_device.argtypes = [C.c_int]
+GL.glGetString.restype = C.c_char_p
+GL.glFenceSync.restype = P; GL.glFenceSync.argtypes = [C.c_uint, C.c_uint]
+GL.glClientWaitSync.restype = C.c_uint; GL.glClientWaitSync.argtypes = [P, C.c_uint, C.c_uint64]
+GL.glDeleteSync.argtypes = [P]
+GL.glUniform1f.argtypes = [C.c_int, C.c_float]
+GL.glVertexAttribPointer.argtypes = [C.c_uint, C.c_int, C.c_uint, C.c_ubyte, C.c_int, P]
+LEVEL = {"high": 0x3101, "medium": 0x3102, "low": 0x3103}
+NAME = {v: k for k, v in LEVEL.items()}
+
+
+def render_node():
+    for n in sorted(os.listdir("/sys/class/drm")):
+        if n.startswith("renderD"):
+            drv = os.path.basename(os.path.realpath(f"/sys/class/drm/{n}/device/driver"))
+            if drv in ("xe", "i915"):
+                return "/dev/dri/" + n, drv
+    sys.exit("no Intel render node")
+
+
+def context(level):
+    node, drv = render_node()
+    fd = os.open(node, os.O_RDWR | os.O_CLOEXEC)
+    dev = GBM.gbm_create_device(fd)
+    dpy = EGL.eglGetPlatformDisplay(0x31D7, dev, None)  # EGL_PLATFORM_GBM_KHR
+    major, minor = C.c_int(), C.c_int()
+    assert EGL.eglInitialize(dpy, major, minor), "eglInitialize"
+    assert EGL.eglBindAPI(0x30A0)  # GLES
+    attribs = (C.c_int * 5)(0x3098, 3, 0x3100, LEVEL[level], 0x3038)
+    ctx = EGL.eglCreateContext(dpy, None, None, attribs)
+    assert ctx, "eglCreateContext failed: 0x%x" % EGL.eglGetError()
+    assert EGL.eglMakeCurrent(dpy, None, None, ctx), "eglMakeCurrent"
+    got = C.c_int()
+    EGL.eglQueryContext(dpy, ctx, 0x3100, got)
+    return node, drv, NAME.get(got.value, hex(got.value)), GL.glGetString(0x1F01).decode()
+
+
+def shader(kind, src):
+    s = GL.glCreateShader(kind)
+    b = src.encode(); arr = (C.c_char_p * 1)(b)
+    GL.glShaderSource(s, 1, arr, None); GL.glCompileShader(s)
+    ok = C.c_int(); GL.glGetShaderiv(s, 0x8B81, C.byref(ok))
+    if not ok.value:
+        log = C.create_string_buffer(2000); GL.glGetShaderInfoLog(s, 2000, None, log); sys.exit(log.value.decode())
+    return s
+
+
+QUAD = (C.c_float * 12)(-1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1)
+
+
+def target(w, h):
+    tex = C.c_uint(); GL.glGenTextures(1, C.byref(tex)); GL.glBindTexture(0x0DE1, tex)
+    GL.glTexStorage2D(0x0DE1, 1, 0x8058, w, h)
+    fbo = C.c_uint(); GL.glGenFramebuffers(1, C.byref(fbo)); GL.glBindFramebuffer(0x8D40, fbo)
+    GL.glFramebufferTexture2D(0x8D40, 0x8CE0, 0x0DE1, tex, 0)
+    assert GL.glCheckFramebufferStatus(0x8D40) == 0x8CD5, "framebuffer"
+    GL.glViewport(0, 0, w, h)
+    prog = GL.glCreateProgram()
+    GL.glAttachShader(prog, shader(0x8B31, "#version 300 es\nin vec2 p; void main(){ gl_Position = vec4(p, 0., 1.); }"))
+    GL.glAttachShader(prog, shader(0x8B30, """#version 300 es
+precision highp float; uniform float n; uniform float seed; out vec4 c;
+void main(){ float a = gl_FragCoord.x * 0.001 + seed; int m = int(n);
+  for (int i = 0; i < m; i++) { a = sin(a * 1.7 + float(i)) * cos(a * 0.3 + 0.1); }
+  c = vec4(a, a, a, 1.); }"""))
+    GL.glBindAttribLocation(prog, 0, b"p"); GL.glLinkProgram(prog); GL.glUseProgram(prog)
+    GL.glEnableVertexAttribArray(0); GL.glVertexAttribPointer(0, 2, 0x1406, 0, 0, C.cast(QUAD, P))
+    GL.glEnable(0x0C11)  # scissor
+    return GL.glGetUniformLocation(prog, b"n"), GL.glGetUniformLocation(prog, b"seed")
+
+
+def wait(sync, seconds):
+    r = GL.glClientWaitSync(sync, 1, int(seconds * 1e9)); GL.glDeleteSync(sync)
+    return r != 0x911B  # not GL_TIMEOUT_EXPIRED
+
+
+def probe(level, seconds):
+    node, drv, got, renderer = context(level)
+    n, seed = target(64, 64)
+    GL.glUniform1f(n, 1.0)
+    print(f"probe: asked {level}, EGL says {got}; {renderer} ({drv}, {node})", flush=True)
+    t0 = time.monotonic(); worst = 0.0; lat = []; i = 0; second = 0
+    while time.monotonic() - t0 < seconds:
+        a = time.monotonic()
+        GL.glUniform1f(seed, float(i % 97)); GL.glScissor(0, 0, 64, 64); GL.glDrawArrays(4, 0, 6)
+        ok = wait(GL.glFenceSync(0x9117, 0), 4.5)
+        d = (time.monotonic() - a) * 1e3
+        lat.append(d); worst = max(worst, d); i += 1
+        if not ok:
+            print(f"probe: +{a - t0:.2f} s a draw NOT done after 4.5 s: stopping", flush=True); break
+        if d >= 50:
+            print(f"probe: +{a - t0:.2f} s a draw waited {d:.0f} ms", flush=True)
+        s = int(time.monotonic() - t0)
+        if s != second:
+            recent = lat[-min(len(lat), 60):]
+            print(f"probe: second {second}: {len(lat)} draws so far, worst so far {worst:.1f} ms, last ones' median {sorted(recent)[len(recent) // 2]:.2f} ms", flush=True)
+            second = s
+        time.sleep(0.015)
+    lat.sort()
+    print(f"probe ({got}): {len(lat)} draws; median {lat[len(lat) // 2]:.2f} ms, p99 {lat[int(len(lat) * 0.99) - 1]:.1f} ms, worst {lat[-1]:.0f} ms", flush=True)
+
+
+def load(level, seconds, delay):
+    seconds = min(seconds, 2.5)   # never near the watchdog
+    signal.alarm(int(delay + seconds + 2))
+    node, drv, got, renderer = context(level)
+    W = H = 2048; n, seed = target(W, H)
+    # Calibrate: how many loop turns make one 256x256 tile about half a millisecond.
+    turns = 40.0
+    for _ in range(6):
+        GL.glUniform1f(n, turns); GL.glScissor(0, 0, 256, 256); a = time.monotonic()
+        for k in range(8): GL.glDrawArrays(4, 0, 6)
+        GL.glFinish(); per = (time.monotonic() - a) / 8 * 1e3
+        turns = max(4.0, min(4000.0, turns * 0.5 / max(per, 0.02)))
+    GL.glUniform1f(n, turns)
+    print(f"load: asked {level}, EGL says {got}; {turns:.0f} turns a pixel make a tile {per:.2f} ms; starting in {delay:.1f} s for {seconds:.1f} s", flush=True)
+    time.sleep(delay)
+    t0 = time.monotonic(); pending = []; frames = 0
+    while time.monotonic() - t0 < seconds:
+        GL.glUniform1f(seed, float(frames % 89))
+        for ty in range(0, H, 256):
+            for tx in range(0, W, 512):          # 32 tiles a frame: about 16 ms of GPU time
+                GL.glScissor(tx, ty, 256, 256); GL.glDrawArrays(4, 0, 6)
+        pending.append(GL.glFenceSync(0x9117, 0)); GL.glFlush(); frames += 1
+        if len(pending) >= 3:
+            wait(pending.pop(0), 3.0)
+    took = time.monotonic() - t0
+    for s in pending: wait(s, 3.0)
+    print(f"load ({got}): {frames} frames in {took:.2f} s, all done {time.monotonic() - t0:.2f} s after its start", flush=True)
+
+
+def trouble():
+    """The kernel's lines of the last five minutes about a job timed out or a reset."""
+    import subprocess
+    out = subprocess.run(["journalctl", "-k", "--since", "-5 min", "--no-pager"], capture_output=True, text=True).stdout
+    return [l for l in out.splitlines() if "Timedout job" in l or "not started" in l or "reset started" in l]
+
+
+def may_ask_high():
+    try:
+        eff = int(next(l for l in open("/proc/self/status") if l.startswith("CapEff")).split()[1], 16)
+    except (OSError, StopIteration, ValueError):
+        return False
+    return bool(eff >> 23 & 1)   # CAP_SYS_NICE
+
+
+def asked(seconds):
+    import subprocess
+    prog = 'kprobe:exec_queue_set_priority /arg3 == 0 && arg2 <= 3/ { @asked[comm, arg2] = count(); } interval:s:%d { exit(); }' % seconds
+    print(f"which programs ask the driver for which queue priority, for {seconds} s (0 low, 1 normal, 2 high):", flush=True)
+    sys.exit(subprocess.run(["bpftrace", "-e", prog]).returncode)
+
+
+def measure(loads, seconds):
+    import subprocess
+    if trouble():
+        sys.exit("the kernel has said of a timed out job or a reset in the last five minutes: not now")
+    me = os.path.abspath(__file__)
+    levels = ["low", "medium"] + (["high"] if may_ask_high() else [])
+    if "high" not in levels:
+        print("(high isn't tried: this process may not ask for it; a login gives CAP_SYS_NICE to the person's compositor alone)")
+    for level in levels:
+        probe = subprocess.Popen([sys.executable, me, "probe", level, str(seconds + 4)], stdout=subprocess.PIPE, text=True)
+        burners = [subprocess.Popen([sys.executable, me, "load", "medium", str(seconds), "1.5"], stdout=subprocess.DEVNULL) for _ in range(loads)]
+        for b in burners: b.wait()
+        out = probe.communicate()[0]
+        print(f"{level}, beside {loads} ordinary load{'s' if loads != 1 else ''} for {min(seconds, 2.5):.1f} s: " + next((l.split(": ", 1)[1] for l in out.splitlines() if l.startswith("probe (")), out.strip()), flush=True)
+        if trouble():
+            sys.exit("the kernel has said of a timed out job or a reset: stopping")
+        time.sleep(4)   # what waited drains before the next
+
+
+if __name__ == "__main__":
+    a = sys.argv[1:]
+    if a and a[0] in ("probe", "load"):
+        mode, level, seconds = a[0], a[1], float(a[2])
+        if mode == "probe": probe(level, seconds)
+        else: load(level, seconds, float(a[3]) if len(a) > 3 else 0.0)
+    elif a and a[0] == "asked":
+        asked(int(a[1]) if len(a) > 1 else 30)
+    else:
+        loads = int(a[a.index("--loads") + 1]) if "--loads" in a else 1
+        seconds = float(a[a.index("--seconds") + 1]) if "--seconds" in a else 2.0
+        measure(max(1, min(loads, 8)), seconds)

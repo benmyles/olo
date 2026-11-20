@@ -1089,17 +1089,39 @@ Learned on the second pass (2026-11-20):
   again over it gets "busy" and learns nothing. bluetoothd's journal
   (`journalctl -u bluetooth`, readable here) has what each attempt
   came to ("Unable to get … SDP record: Host is down").
-- **A push's live lint can reset the person's GPU** (2026-11-20). Its
-  headless desktops draw on the real GPU, a dozen and more at once.
-  With the machine loaded and agent screens up, GPU jobs time out
-  (`journalctl -k | grep "Timedout job"`: the person's compositor
-  shows there as `systemd-logind`), the driver resets the GPU, and
-  the person's programs lose their device and start again: to them,
-  a desktop that lags and a Deskbar that keeps crashing. Before a
-  push or a live lint, look at the load (`uptime`,
-  `/proc/pressure/cpu`) and at what else is running; don't run pushes
-  one after another; and after any lint or check, see that no
+- **A push's live lint could reset the person's GPU** (2026-11-20):
+  fifteen resets that day, each freezing the screen and starting
+  Terminal, Deskbar and Activity Monitor again. The cause was Olo's
+  own: headless app_servers asked the GPU's lowest priority, the
+  firmware gives such a queue nothing while ordinary work is queued,
+  and xe (Linux 7.2) resets the whole GPU when a job has waited five
+  seconds to start (HACKING, "The GPU has priorities too"). Nothing of
+  Olo's asks for less than ordinary any more, but **a screen or test
+  desktop started before that change keeps its low queue until it
+  starts again**, and any other program's low queue is the same
+  hazard: don't load the GPU for seconds on end (a live lint, many
+  `tsession`s drawing) while such screens are up and the person is at
+  the machine. No push until the lint draws off the GPU (TODO). What
+  a reset looks like: `journalctl -k | grep "Timedout job\|reset
+  started"` (the person's compositor shows there as `systemd-logind`,
+  which opened its device). And after any lint or check, see that no
   `olo-app-server` of yours is left (`ps -eo pid,etimes,args | grep
-  olo-app-server`: a test's has a HOME under /var/tmp). Until the
-  lint draws elsewhere (TODO), ask before pushing while the person
-  is at the machine.
+  olo-app-server`: a test's has a HOME under /var/tmp).
+- **EGL says High whether or not it is.** `eglQueryContext` reports the
+  priority asked for; what the kernel was asked is seen only there
+  (`sudo tools/dev/gpu-priority-check asked`, a probe on xe's
+  `exec_queue_set_priority`: bpftrace fires twice a call, the second
+  with a fourth argument that isn't 0, which the tool leaves out).
+- **Measuring what waits for a processor**: `sudo perf sched record -o
+  /var/tmp/…/sched.data -- sleep 6`, then `perf sched latency -p
+  --sort max` and `perf sched timehist -w`. The first 0.3 s of a
+  capture holds waits counted from the capture's start (a "166 ms"
+  that wasn't): leave them out. A thread's name with a space in it
+  (a window's looper, `w>…`) shifts `timehist`'s columns: parse from
+  the right.
+- **Where a frame waits after app_server hands it over**: bpftrace on
+  `tracepoint:gpu_scheduler:drm_sched_job_queue` (in the program's
+  own thread: filter by pid), `…_job_run` (the kernel worker passing
+  it on) and `…_job_done`, keyed by `fence_context, fence_seqno`;
+  `…_job_unschedulable` marks a job that waited for another program's
+  drawing (1% of the compositor's, under 3 ms).

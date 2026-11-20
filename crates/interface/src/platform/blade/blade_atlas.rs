@@ -340,7 +340,7 @@ mod tests {
     /// gets only its own picture. Needs a GPU (skipped without one).
     #[test]
     fn a_texture_let_go_before_its_frame() {
-        let Ok(gpu) = (unsafe { gpu::Context::init(gpu::ContextDesc { presentation: false, low_priority: crate::platform::blade::gpu_low_priority(), ..Default::default() }) }) else {
+        let Ok(gpu) = (unsafe { gpu::Context::init(gpu::ContextDesc { presentation: false, ..Default::default() }) }) else {
             eprintln!("no GPU here: nothing to try");
             return;
         };

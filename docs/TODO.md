@@ -60,133 +60,116 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **The pre-push check must never cost the person their desktop**
-  (Ben, 2026-11-20, 11:05: "something is really broken my desktop is
-  lagging … deskbar keeps crashing"). What it was: the Intel GPU reset
-  six times between 10:59 and 11:03 (the kernel: `xe … GT0: Timedout
-  job … in systemd-logind` (the person's compositor's), `in
-  olo-terminal`, `in olo-deskbar`, `in olo-app-server` of agent
-  screens; then `reset started`), and at each reset the person's
-  Terminal, Deskbar and Activity Monitor lost their GPU device and
-  started again ("the GPU device is lost: re-executing", which is the
-  kit doing as it should, and reads as crashing). Those minutes were
-  a push's live lint: about fourteen headless desktops at once, each
-  drawing on the same GPU, on a machine at a load of 60 (other builds,
-  ten agent screens). Fifteen resets that day in all, the first at
-  06:50, each in a push or a lint of mine. **No push until this is
-  fixed** (the hook runs the lint). To do, in order: the live lint
-  and `tsession` desktops draw where they can't starve the person's
-  (software drawing for headless test sessions, or the GPU's low
-  priority for them and their apps if the driver has one: to find
-  out which on `xe`; pictures must stay pixel-true, so compare a
-  lint's pictures both ways); the lint runs as many desktops at once
-  as the machine has room for, not a fixed number, and waits while
-  the person's desktop is short of GPU or processor (PSI, and
-  app_server's own late frames); the hook says what it's waiting
-  for. **Ben, as it was being looked at: "why are they so impactful?
-  those headless sessions and agent screens should be super
-  efficient … i don't want you to just limit concurrency i want it
-  to work more efficiently."** So the cause is to be found and
-  removed, not only kept away from. Measured at rest just after (the
-  kernel's count for each GPU client, `drm-cycles` in
-  /proc/PID/fdinfo, six seconds): the whole GPU about 10% busy with
-  84 clients; the person's compositor 2.4%, ten agent screens'
-  compositors 1.9% together (most 0.1% each, two of them 0.3% and
-  0.9%), Terminal 2.9%, Chrome 1.4%, eleven Deskbars 1.3%. So at
-  rest they are light on the GPU, and steady load doesn't explain a
-  stall of seconds. (Not light on the processor: agent screens'
-  compositors stood at 1 to 8% of a core each with nobody at them:
-  to look at by itself.) Before each of the day's fifteen resets the
-  first job to time out was now a compositor's, now Deskbar's, the
-  person's compositor's, Terminal's: the whole GPU stalls, whoever
-  is drawing. Not yet known which it is: what a lint desktop does in
-  a burst (a 5120 × 3200 output drawn at three scales and read back
-  as pictures, a dozen beginning at once: buffers of 64 MB each on a
-  GPU that shares the machine's memory), the driver's own timing out
-  of jobs while the processors are at a load of 60 (its completions
-  handled late), or a fault of the driver's (its dump of the stalled
-  job is root's to read: /sys/class/devcoredump). To do, in this
-  order: one lint desktop alone, measured the same way (its share of
-  the GPU, its buffers, its processor time: what it should cost
-  against what it does); then two, four, eight, at night or with Ben
-  away, watching for the first late job; the dump read (ask Ben to
-  `sudo cat` it to a file); and what it shows fixed where it is
-  (smaller outputs for the lint where the picture doesn't need the
-  size, pictures read back without stalling, sessions that draw
-  nothing they aren't asked for). **Read since, with sudo (Ben:
-  "you can run sudo whenever you need")**: the driver's dump of one
-  stalled job (`/sys/class/devcoredump`, an agent screen's
-  compositor's, on the render engine) shows the engine doing nothing
-  when the job was given up on (ring head and tail 0, ACTHD 0,
-  everything "done") and the channel from the driver to the GPU's
-  firmware scheduler (GuC, H2G) nearly full: work handed over and not
-  begun, for five seconds (`job_timeout_ms` 5000), not a GPU with too
-  much to draw. So what stalls is between the driver and the
-  firmware, under a machine at a load of 60 (the driver's own
-  handling starved of a processor is the first thing to test), or in
-  the GT coming out of its idle state (`gt-c6`; Ben set the power
-  mode to low latency meanwhile, "that might be helping
-  temporarily"). The NVIDIA GPU's waking (another agent's CUDA work)
-  is not it: 201 wakes that day, 15 stalls, none within fifteen
-  seconds of a wake (Ben asked). To do: reproduce on purpose with
-  processor load alone (no lint), then the lint alone on a quiet
-  machine, each time reading the dump; whether Olo's power modes
-  touch the GT's idle states or frequencies; and report it to the
-  driver's people with the dump if it's theirs. Still wanted from
-  Olo's side whatever the cause: sessions that cost little (one
-  agent screen's compositor stood at 8% of a core with 418 wake-ups
-  a second, an Activity Monitor on a screen at 11%: to find what
-  they were drawing). **Found**: that compositor was drawing 115
-  frames a second (its headless output at 120 Hz, one Chrome window
-  animating on it); and, measured as Olo's own meter measures it
-  (`gtidle/idle_residency_ms`), the GPU's render side was awake over
-  half the time with the lint long over, at its lowest frequency (700
-  of 2450 MHz, `freq0/cur_freq`: the firmware's choice, Olo sets
-  none): many small jobs from eleven compositors keep it awake and
-  slow, each job waiting behind the others. **Done**: an agent's
-  screen is drawn thirty times a second at the most
-  (`headless::UNATTENDED_MHZ`; Ben: "agent screens can be 30 fps they
-  don't need to ever be higher than that"): 117 frames a second as a
-  person's screen and 30 as an agent's, the same scrolling, measured.
-  **Next** (Ben: "but they also should be more efficient beyond that
-  too"): an agent's screen composited only when something looks (its
-  viewer open, a picture or a recording asked for), its windows'
-  frame callbacks kept going at a few a second otherwise; what its
-  Deskbar and its other programs draw with nobody looking; one
-  compositor's cost at rest against nothing; and the GPU's frequency
-  under Olo's power modes (whether "low latency" should raise its
-  floor: `freq0/min_freq`, `power_profile`). **Measured since
-  (11:26 to 11:32)**: the person's compositor's own warnings ("slow
-  frame: finishing it took 4 to 10 ms": waiting for the GPU to end a
-  frame of half a millisecond's work) by the minute: 10:58 to 11:03
-  (101, the push's lint), 11:08 (1), 11:13 to 11:16 (21), none
-  between and none after. 11:13 to 11:16 had no lint: a release
-  build at the lowest priority, and the Codex agent's headless
-  desktops (its last pictures and `snap-check`). Fifteen busy loops
-  at the lowest priority for 20 s, nothing drawing: no slow frame,
-  with the GPU's floor at 1600 MHz and again at 700 (it rose to 2450
-  by itself). So neither processor load alone nor the GPU's clock is
-  it: it is **other desktops drawing on the same GPU** that makes the
-  person's frames wait. Yet a headless compositor already asks for
-  the GPU's low priority and the person's for high
-  (`headless.rs`, `udev.rs`: EGL's context priority), and Olo's
-  programs on an agent's screen for Vulkan's lowest
-  (`gpu_low_priority`): so either the driver doesn't honour them
-  (`xe`: whether Mesa passes them on and the firmware scheduler
-  acts on them is to be read from the GPU's own list of contexts,
-  /sys/kernel/debug/dri/*/gt0/uc/guc_info, with sudo), or what a
-  test desktop draws can't be interrupted in time (a 5120 × 3200
-  output redrawn whole: one long job; the scheduler's preemption
-  timeout is 640 ms and its timeslice 1 ms). The floor was left at
-  1600 MHz by hand (it resets at a restart). A second investigator
-  (codex-help, max) has the dump and the day's kernel lines:
-  /var/tmp/claude-blueferry/gpuhelp/answer.md. The lint was meanwhile made to run
-  four desktops at once at the most and to wait for room
-  (`wait_for_room`): a guard, not the fix. Also: three test desktops from earlier runs were still up,
-  one two and a half days old (`/var/tmp/olo-live-lint-*`,
-  `/var/tmp/olo-takeover.*`: ended by hand): the lint and the checks
-  end what they start however they end (`tsession start --owner`),
-  and Olo Doctor lists test desktops older than an hour.
+- **Nothing may hold the desktop up, whatever the load: the GPU's
+  resets, the desktop's place on the GPU, the kernel's own threads**
+  (Ben, 2026-11-20: "something is really broken my desktop is lagging
+  … deskbar keeps crashing"; "why are they so impactful? those
+  headless sessions and agent screens should be super efficient … i
+  don't want you to just limit concurrency i want it to work more
+  efficiently"; "whatever you find don't just fix it for me right now
+  manually, you need to fix the root cause and make sure none of this
+  will happen again in olo"; "the desktop responsiveness must never
+  suffer no matter the load"; "if you need to write a new kernel
+  module as part of olo … that's also on the table if it can't be
+  done through standard linux mechanisms. if you do that, work with
+  astra 6.2 max on the design and implementation and review"). Three
+  causes, each measured (HACKING, "The GPU has priorities too"):
+  1. **The freezes of seconds, and programs starting again, were
+     GPU resets Olo brought on itself.** Since 2026-11-15 every
+     headless app_server asked the GPU's lowest priority, and kit
+     programs on agents' screens too. Intel's firmware scheduler
+     gives such a queue nothing while any ordinary one has work
+     (measured: a 0.2 ms draw waited 2012 ms beside one ordinary
+     program busy for 2.0 s; 12 ms at the ordinary priority), and xe
+     (Linux 7.2) resets the whole GPU when a job has waited five
+     seconds to start (`check_timeout`, read in the kernel's source;
+     all fifteen resets that day began with a headless app_server's
+     job "not started"; the second investigator decoded the dump: no
+     hung job, no full channel). Each reset then timed out up to
+     fifteen other programs' work: their devices lost, the kit
+     starting them again, the person's screen still meanwhile. The
+     trigger each time was a push's live lint (a dozen desktops
+     drawing at once). **Done**: nothing of Olo's asks for less than
+     the ordinary priority (`headless::gpu_priority`, a test; the
+     kit's and blade's low queue removed), seen from the kernel (a
+     headless compositor and a kit program on an agent's screen both
+     ask 1, normal); `tools/dev/gpu-priority-check` measures it again
+     (guarded: two seconds, never near the five). **Left**: (a)
+     agents' screens started before the upgrade keep their low
+     queues until they start again: do they start again at an
+     upgrade? if not, make them; (b) the root follower sets the
+     driver's patience to its most (`job_timeout_ms`, 10 s, for
+     queues made after) for other programs' low queues (Chrome's?
+     `gpu-priority-check asked` says who asks what); (c) the live
+     lint and `tsession` desktops drawn in software, off the GPU
+     altogether (the investigator's diff:
+     /var/tmp/claude-blueferry/gpuhelp/software-headless.diff, to
+     review, try and compare pictures both ways): **no push until
+     then**, the hook's lint can still reset a GPU with old screens
+     on it; (d) an agent's screen's recorder asks for a whole picture
+     every second with nothing happening: from what changed instead
+     (the viewer's `Painted`); a screen composited only when
+     something looks; (e) the kit recovering from a lost device in
+     place, not by starting again (blade's device made anew, the
+     window's swapchain and caches rebuilt); (f) the driver's
+     behaviour written up for its people (a low queue's wait is not
+     a failed firmware), for Ben to send; (g) a kernel patch of
+     Olo's for it, as for windows' buffers (`kernel/gpu-memory`), if
+     another program's low queue can still bring a reset: with Astra
+     at max, as Ben said.
+  2. **The person's desktop was never first on the GPU.** Its
+     compositor asks EGL for High and EGL answers High, but Intel's
+     drivers give it only to a process with CAP_SYS_NICE; Mesa asks
+     the kernel for ordinary instead and says nothing (seen from the
+     kernel: 1 where 2 was asked; with the capability, 2). Beside six
+     ordinary programs drawing, an ordinary probe's draws waited 49 ms
+     at the 99th percentile (56 at the worst), a high one's 22 (24).
+     **To do**: Olo's login (root) hands the session the capability,
+     olo-session passes it to the person's app_server alone, nothing
+     else inherits it; Doctor says when the desktop doesn't have it
+     and installs the login that gives it.
+  3. **The kernel's own worker threads run at the ordinary priority
+     in the path of every frame and every key.** A frame the
+     (realtime) compositor hands to the GPU is passed on by a kernel
+     worker (the DRM scheduler's, `kworker/u…`), and a byte through a
+     terminal's pty by another (`flush_to_ldisc`). Measured on the
+     person's compositor, 30 s at a load of 29: 17% of its jobs
+     waited over 1 ms for that worker, 3.6% over 4 ms, the worst
+     27.6 ms; at a load of 23, 1.3% and 2.9 ms. Typing in Terminal
+     was laggy then, with Claude Code answering each key in 2 to 4 ms
+     and the compositor late on no frame. And Terminal's own threads
+     on that path (`termd reader`, `termd writer`, `shell output`)
+     are at nice 0, with five of olo-termd's whose raise rtkit
+     refused. **To do**: Terminal's threads into the tier; then the
+     kernel's side: its scheduler's knobs (how long a running program
+     keeps a processor before a waiting one gets it), a
+     latency-first scheduler again now that Olo's own threads are
+     realtime, or a kernel patch (those workers above ordinary work);
+     measured with the same trace each time (`gpu_scheduler`'s
+     tracepoints: queue to run).
+  Also found: memory was short under the builds (programs held in
+  the kernel's reclaim, Chrome up to 12 ms at a time, 484 stalls in
+  9 s; 9 GB in swap with 31 GB reclaimable): Ben asked for **swap
+  only when nothing else is left, as an option in Performance ▸
+  Kernel, on by default**, and the kernel should keep more memory
+  free ahead of need (`vm.watermark_scale_factor`). Not it: the
+  GPU's clock (it stands at 700 of 2450 MHz because the GPU is idle
+  half the time; a floor of 1600 changed nothing and it rose to
+  2450 by itself under load), processor load alone on the
+  compositor's loop (realtime: it waited 0.1 ms at the most), the
+  compositor held in the driver's locks (none over 1 ms in a
+  minute: `gpu-holds`), GPU buffers in swap (none: Olo's patch is
+  in), the NVIDIA GPU's waking (no reset within 15 s of a wake),
+  Claude Code. **Done too**: an agent's screen draws thirty times a
+  second at the most (one drew 115 for a browser nobody watched);
+  the lint runs four desktops at once at the most and waits for
+  room (a guard). Still: test desktops left behind by earlier runs
+  (three, one two and a half days old, ended by hand): the lint and
+  the checks end what they start however they end, and Olo Doctor
+  lists test desktops older than an hour; and a measure of its own
+  in app_server for what the person feels (a key or a click to the
+  window's next frame, and to the screen), said in the log with who
+  was late, so the next time it is known at once.
 
 - **Phone: what's left of the night it wasn't found again** (Ben,
   2026-11-20; the faults on Olo's side are fixed: under Done). Left:

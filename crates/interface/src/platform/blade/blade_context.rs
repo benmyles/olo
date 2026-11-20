@@ -69,9 +69,6 @@ impl BladeContext {
                 // a time by the renderer (for measuring).
                 timing: super::gpu_timings(),
                 device_id: device_id_forced.unwrap_or(0),
-                // Olo: on an agent's screen, the GPU's lowest priority:
-                // the person's desktop draws first (`gpu_low_priority`).
-                low_priority: super::gpu_low_priority(),
                 ..Default::default()
             })
         };

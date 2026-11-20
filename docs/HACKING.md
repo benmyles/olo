@@ -14379,19 +14379,44 @@ waiting: the loop's frames on the fastest core at its full clock, its
 caches its own, and a core free when other realtime work (PipeWire's at
 20, other programs' sound) is on the rest.
 
-**The GPU** has priorities too. The person's app_server asks for a
-high-priority context (`EGL_IMG_context_priority`, udev.rs) and gets it:
-its frames run ahead of programs' work on the GPU. A headless one (an
-agent's screen, a test session) asks for the lowest (headless.rs;
-`OLO_REALTIME=1`, to measure one as the person's: high): it had asked
-high too, and every agent's screen was granted it, drawing as the
-person's equal on the same GPU. A kit program on an agent's screen
-(`OLO_SCREEN`; `OLO_GPU_PRIORITY=low|normal` says instead) makes its
-Vulkan queue at the lowest global priority (`VK_KHR_global_priority`,
-blade's `ContextDesc::low_priority`, an Olo change in
-vendor/blade-graphics). Asking lower never needs privilege; the logs
-say what was granted ("EGL context created priority=Some(Low)", "The
-GPU queue at the lowest global priority").
+**The GPU has priorities too**, and they are not what they seem
+(measured 2026-11-20, on Intel's xe, Linux 7.2, Mesa's iris and anv;
+`tools/dev/gpu-priority-check` measures them again, and with `asked`,
+as root, shows what each program really asks the driver for):
+
+- **Nothing of Olo's asks for less than the ordinary priority, ever.**
+  The firmware's scheduler (GuC) runs strictly by priority: a queue
+  below ordinary gets the GPU only when no ordinary queue has work. One
+  ordinary program kept the GPU busy for 2.0 s and a low context's
+  0.2 ms draw waited 2012 ms, all of it (12 ms at the ordinary
+  priority). And xe takes a job that hasn't started five seconds after
+  it was handed over for the firmware having failed, and resets the
+  whole GPU (`check_timeout` in xe_guc_submit.c: "GuC never scheduled
+  this job - let the caller trigger a GT reset"); the reset then times
+  out other programs' work in flight, a dozen and more: their Vulkan
+  device is lost and the kit starts them again, with the person's
+  screen still meanwhile. From 2026-11-15 a headless app_server (an
+  agent's screen, a test session) asked EGL for Low, and a kit program
+  on an agent's screen for Vulkan's lowest global priority, so that
+  agents' screens drew after the person's desktop. On 2026-11-20 that
+  reset the person's GPU fifteen times, each time under a push's live
+  lint, each begun by a headless app_server's job "not started" (Ben:
+  "something is really broken my desktop is lagging", "deskbar keeps
+  crashing"). A headless one asks Medium now (`headless::gpu_priority`,
+  with a test), and the kit asks nothing (blade's Olo change for it is
+  gone).
+- **What a context is granted isn't what EGL says.** The person's
+  app_server asks for High (udev.rs) and EGL reports High; Intel's
+  drivers grant it only to a process with CAP_SYS_NICE
+  (`xe_exec_queue_device_get_max_priority`), Mesa finds that out and
+  asks the kernel for the ordinary priority instead, silently. Seen
+  from the kernel, the person's desktop has drawn at the ordinary
+  priority all along. With the capability it is granted (2), and beside
+  six ordinary programs drawing a probe's draws waited 22 ms at the
+  99th percentile where an ordinary one's waited 49 (TODO: the
+  capability from Olo's login, to the person's app_server alone).
+- `OLO_REALTIME=1` on a headless one asks High as the person's does,
+  to measure.
 
 **Groups' weights.** The processor is shared between sibling cgroups by
 weight first. Fedora's uresourced raises the active user's manager

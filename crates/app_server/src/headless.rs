@@ -72,6 +72,38 @@ struct Screen {
     hdr: Option<crate::color::HdrFrame>,
 }
 
+/// The GPU priority a headless app_server asks for its drawing: ordinary
+/// (EGL's Medium), or High as the person's does (`as_the_persons`:
+/// `OLO_REALTIME=1`, to measure). Never Low. It asked Low from
+/// 2026-11-15 to 2026-11-20, so that agents' screens drew after the
+/// person's desktop, and that is what froze the person's desktop for
+/// seconds at a time and restarted its programs (2026-11-20, Ben:
+/// "something is really broken my desktop is lagging", "deskbar keeps
+/// crashing"):
+///
+/// * Intel's firmware scheduler (GuC) runs strictly by priority: a
+///   queue below ordinary gets the GPU only when no ordinary queue has
+///   work. Measured (`tools/dev/gpu-priority-check`): one ordinary
+///   program kept the GPU busy for 2.0 s, and a Low context's 0.2 ms
+///   draw waited 2012 ms, all of it; an ordinary context's waited 12 ms
+///   at the worst.
+/// * xe (Linux 7.2) takes a job that hasn't started five seconds after
+///   it was handed over for the firmware having failed, and resets the
+///   whole GPU (`check_timeout`: "GuC never scheduled this job - let
+///   the caller trigger a GT reset"). Every program's work in flight is
+///   lost with it: windows lose their GPU device and start again, and
+///   the person's screen stands still meanwhile.
+///
+/// So a busy GPU (a push's live lint: a dozen test desktops) plus one
+/// waiting Low job (every agent's screen had one a second) was a reset:
+/// fifteen that day, each begun by a headless app_server's job that
+/// "never started". Putting the person's desktop first is done from the
+/// other side: its own compositor above ordinary (udev.rs, with the
+/// capability the driver wants for it), nothing below.
+fn gpu_priority(as_the_persons: bool) -> smithay::backend::egl::context::ContextPriority {
+    if as_the_persons { smithay::backend::egl::context::ContextPriority::High } else { smithay::backend::egl::context::ContextPriority::Medium }
+}
+
 /// The most frames a second an agent's screen is drawn at, whatever its
 /// mode says (Ben, 2026-11-20: "agent screens can be 30 fps they don't
 /// need to ever be higher than that"). Nobody sits at one; what watches
@@ -310,13 +342,14 @@ pub fn run_headless(size_arg: Option<&str>) {
     let gbm = GbmDevice::new(file).expect("gbm device");
     // SAFETY: the gbm device outlives the display (moved into it).
     let egl = unsafe { EGLDisplay::new(gbm) }.expect("EGL display");
-    // A headless app_server (an agent's screen, a test session) is
-    // background work beside the person's desktop: the GPU's lowest
-    // priority, as its threads stay at their nice (the person's asks
-    // High, udev.rs, and gets it; this asked High too, and every agent's
-    // screen got it, drawing as an equal of the person's on the same
-    // GPU). `OLO_REALTIME=1`, to measure one as the person's: High.
-    let priority = if std::env::var("OLO_REALTIME").as_deref() == Ok("1") { smithay::backend::egl::context::ContextPriority::High } else { smithay::backend::egl::context::ContextPriority::Low };
+    // A headless app_server (an agent's screen, a test session) draws at
+    // the GPU's ordinary priority: never above the person's desktop
+    // (it asked High once, as the person's does), and **never below
+    // ordinary** (`gpu_priority`, which says why: a queue below is given
+    // nothing while any ordinary one has work, and Intel's driver resets
+    // the whole GPU when a job has waited five seconds to start).
+    // `OLO_REALTIME=1`, to measure one as the person's: High.
+    let priority = gpu_priority(std::env::var("OLO_REALTIME").as_deref() == Ok("1"));
     let context = EGLContext::new_with_priority(&egl, priority).expect("EGL context");
     // SAFETY: the context is current only on this thread.
     let mut renderer = unsafe { GlesRenderer::new(context) }.expect("GLES renderer");
@@ -1004,6 +1037,20 @@ fn read_target(renderer: &mut GlesRenderer, target: &mut GlesTexture) -> Result<
         img = image::imageops::flip_vertical(&img);
     }
     Ok(img)
+}
+
+#[cfg(test)]
+mod gpu_priority_tests {
+    use smithay::backend::egl::context::ContextPriority;
+
+    /// A headless desktop never asks the GPU for less than the ordinary
+    /// priority: below it a job can wait for as long as the GPU is busy,
+    /// and the driver resets the GPU for everyone at five seconds.
+    #[test]
+    fn a_headless_desktop_never_asks_for_less_than_ordinary() {
+        assert!(matches!(super::gpu_priority(false), ContextPriority::Medium));
+        assert!(matches!(super::gpu_priority(true), ContextPriority::High));
+    }
 }
 
 #[cfg(test)]
