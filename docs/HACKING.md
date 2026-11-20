@@ -951,7 +951,7 @@ long after a way out comes back.
 | `crates/yuv` | `olo-yuv`: a video's picture as its decoder made it (`YuvFrame`: Y'CbCr 4:2:0 planes, or `YuvMemory`, the decoder's own memory) and the matrix that makes RGB of it. olo-interface draws it (`Painter::paint_yuv`) and re-exports it; what decodes (olo-images, olo-video, olo-vaapi) makes it. |
 | `crates/xdg` | `olo-xdg`: freedesktop plumbing shared by app_server and the kit: data dirs, `.desktop` entries, icon lookup/decoding (`load_icon`, in the current theme: `themes`; Olo's icons are drawings rendered for the size and kept, `svg`, a theme's colours over the classic set's, `svg::recolour`: docs/ICONS.md), our own apps (`apps::our_app`), MIME types (`mime::for_path`), opening files and URLs with the right app (`open::open`, `open::handler_cached`: never `xdg-open`; the person's own choice first (`open::set_default`, kept in `~/.config/olo/default-apps.list` in mimeapps.list's form and copied into `olo-mimeapps.list` for other programs; `handler_cached` notices it changed, in any process), then Olo's apps, except that links and web pages go to the browser chosen in mimeapps.list, else `olo-chrome`; Open With's few apps for a kind, `open::handlers_for`: as the person set them (`set_offered`, Preferences ▸ Default Apps ▸ Open With), else the one it opens in, Olo's own for it, then those whose entries claim it or a broader kind, by name, eight at most; worked out off the UI thread by `open::warm` (a folder's kinds, as Tracker lists it) and read by menus from `offer_cached`; `open::kind_of` names a kind by the file's name alone; `open::every_app` is every app whose command takes files (`DesktopEntry::takes_files`), Olo's first, and `Handler::icon` its icon; the person's own kinds of file are `mime::own_kinds` (`set_own_kinds`; `mime::type_for_extensions` keeps the type its extensions all share, else makes one of Olo's own, `application/x-olo-kind-EXT`, which `mime::from_name` gives first); desktop entries are kept until an applications folder changes, `desktop_entry::all_cached`; and the same for other programs: `open::for_others` gives the hidden `olo.viewer`, `olo.styled-edit` and `olo.tracker` desktop entries, each listing every type shared-mime-info knows that Olo opens with it, and an `olo-mimeapps.list` making them the defaults, which GIO, `gio open`/xdg-open and xdg-desktop-portal's OpenURI read before `mimeapps.list` while `XDG_CURRENT_DESKTOP` names Olo; olo-session writes them into `~/.local/share/applications` at start, makes that folder's `mimeinfo.cache` again when they change (`open::mime_cache`, as update-desktop-database would: GIO only finds an app for a type through it) and removes ones it wrote that are no longer wanted, `X-Olo-Written=true`; and, once Olo's Chrome is installed, `open::offer_browser` writes `~/.local/share/applications/olo-mimeapps.list` naming it for web pages and links, read after every `mimeapps.list` in the config directories so a browser the person chose wins, but ahead of the system's lists), `find_program`, `spawn_detached` (`spawn_detached_app` and `open::spawn_app` for a desktop entry's program, in a scope of its own: `scope`; Olo's own programs keep the launcher's stderr, the session's journal, so what Deskbar, Tracker or the palette starts logs like the rest; others' goes nowhere). Olo's own icons are drawings (`icons/svg/NAME.svg`), rendered for the size asked and kept once rendered (`svg`: the classes a drawing is drawn for its size by, `own`'s cache in `~/.cache/olo/icons`; docs/ICONS.md, "Drawings"); an icon not yet drawn uses its pre-scaled pictures. |
 | `crates/release` | `olo-release`: Olo's releases on GitHub (the newest, with its checksum file and commit's time; downloaded, checked, unpacked, put in place): Setup's install, and the program an installed Olo's session asks for upgrades (`olo-release latest`, `install`). |
-| `crates/mail` | `olo-mail`: mail accounts read for one-time codes (see "Codes sent by mail"): Gmail and Fastmail over IMAP with an app password kept in the login keyring, natively (rustls with the system's certificates; IMAP: LOGIN, SELECT, SEARCH, FETCH, IDLE; MIME: encoded words, multipart, quoted-printable, base64, charsets, HTML made words); `Watch` an inbox for a while on a thread of its own; `standin`, a stand-in IMAP server for tests. |
+| `crates/mail` | `olo-mail`: mail accounts read for one-time codes (see "Codes sent by mail"): Gmail and Fastmail over IMAP with an app password kept in the login keyring, natively (rustls with the system's certificates; IMAP: LOGIN, SELECT, SEARCH, FETCH, IDLE; MIME: encoded words, multipart, quoted-printable, base64, charsets, HTML made words); `Watch` an account's mail for a while on a thread of its own (the inbox told at once, IDLE; where else mail lands, a rule's folder or the junk, every five seconds); `standin`, a stand-in IMAP server for tests (an inbox and mailboxes beside it). |
 | `crates/calendar` | `olo-calendar`: Calendar's engine (see "Calendar's engine"): iCalendar read and written back whole (`ical`), repeating events worked out (`rrule`), events with their zones, exceptions and occurrences (`event`), CalDAV for every account (`dav`), the accounts and their sign-ins (`account`), calendars kept on disk in step with their servers (`store`), and a stand-in server (`standin`). |
 | `crates/google` | `olo-google`: signing in to Google with a person's own "Desktop app" OAuth client (the consent page in the browser, the answer to a loopback port, PKCE): `SignIn::start(client, endpoints, scopes, app)`, `access_token`, `agent(name)`. DiskBackup's Drive (`olo_diskbackup::oauth` is its scopes over this) and Calendar. |
 | `crates/net` | `olo-net`: the network changing under a program that talks over it (see "The network changing"): connections on a network that went cut at once, what's kept for the network (`PerNetwork`: an HTTP client) made again for the new one, requests tried again across a change (`across_changes`), waits for a network (`wait_online`), and with its `ureq` feature a download that goes on where it broke off (`http::Download`).; and one TCP connection as the kernel keeps it (`tcp_info`: `TCP_INFO`'s every figure, the congestion control read and set, BBR's model of the path, which BBR the kernel's own is). `examples/tcp-flow`: flows to measure a congestion control with (tools/dev/bbr3-check). |
@@ -15790,7 +15790,20 @@ newest five, by INTERNALDATE), then each message as it comes, the
 server telling (IDLE; one without it asked every five seconds), until
 the minute is up (signed out) or a code is given to a tab (the watch's
 connection shut: over at once); another field coming up watches
-longer. A message's code (`codes::find_mail`: in its subject, else in
+longer. **Where else mail lands is watched beside the inbox**
+(`Session::elsewhere`; Ben's code that a rule filed away, 2026-11-18):
+Gmail's All Mail (every label's and an archived message's are there)
+and its spam; another account's every mailbox but sent mail, drafts and
+the trash (by their special-use flags), its junk and archive first, 30
+at most. What came to them in the last five minutes is read as the
+inbox's is, then what each will number next is asked every five
+seconds (`ELSEWHERE_EVERY`; in one asking where the server lists with
+it, LIST-STATUS, else STATUS each), and what came to one that grew is
+read, the inbox opened again where it had got to (`read_from`), so
+nothing that came there meanwhile is missed. Each message goes on with
+a key of its own, its Message-ID (else its mailbox and UID), so one in
+two mailboxes (Gmail's inbox and All Mail) is one. A message's code
+(`codes::find_mail`: in its subject, else in
 its words read after the subject; who it's from, its sender's name if
 the words don't say) becomes a pending code as a texted one does
 (`mail_came`; each message once, the same code had already not again)
@@ -15880,9 +15893,9 @@ olo-phone --example mail_codes [MONTHS] [--misses]` runs
 carries a code (any mailbox, read only: `Session::mailboxes`,
 `look_in`, `search`, `read`), and prints counts by sender's domain
 and, for a miss, its subject and the sentence that says so. On a year
-of two accounts: 254 found; what wasn't found carried no code. Still
-only the inbox's newest five are watched as mail comes: a rule that
-files a sender's mail elsewhere hides it (to do).
+of two accounts: 254 found; what wasn't found carried no code. A code
+sent to an address that isn't an account set up can't be found: the
+address a sign-in mails is the account's to give.
 
 **What's looked in, and where codes go, is Security ▸ Passwords'**
 One-Time Codes box (`phone::codes`; Ben: "move the phone prefs

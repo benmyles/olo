@@ -23,6 +23,10 @@ pub struct Message {
     /// and nowhere else; else the addresses written out in its plain
     /// text): what each is shown as, and where it goes. Only `https`.
     pub links: Vec<Link>,
+    /// Its Message-ID, without its brackets, if it has one: the same
+    /// message, found in two mailboxes (Gmail's inbox and All Mail), is
+    /// one.
+    pub id: String,
 }
 
 /// A link in a message: the words it's shown as ("Sign in"), and where
@@ -46,6 +50,7 @@ pub fn parse(raw: &[u8]) -> Message {
     let headers = Headers::parse(head);
     let (name, address) = mailbox(&decode_words(headers.get("from").unwrap_or_default()));
     let subject = squeeze(&decode_words(headers.get("subject").unwrap_or_default()));
+    let id = headers.get("message-id").unwrap_or_default().trim().trim_start_matches('<').trim_end_matches('>').trim().to_owned();
     let mut parts = Parts::default();
     walk(&headers, body, &mut parts, 0);
     let plain = parts.plain.unwrap_or_default();
@@ -54,7 +59,7 @@ pub fn parse(raw: &[u8]) -> Message {
         links = plain_links(&plain);
     }
     let text = if plain.chars().any(|c| c.is_ascii_digit()) || parts.html.is_none() { plain } else { html_text(&parts.html.unwrap_or_default()) };
-    Message { from: if name.is_empty() { address.clone() } else { name }, address, subject, text: text.trim().to_owned(), links }
+    Message { from: if name.is_empty() { address.clone() } else { name }, address, subject, text: text.trim().to_owned(), links, id }
 }
 
 /// An HTML part's links: each `<a href>` that goes to an `https`

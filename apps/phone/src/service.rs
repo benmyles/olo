@@ -184,7 +184,7 @@ enum Ev {
     Note(NoteEvent),
     /// A mail account (its address) watched for a code has this message
     /// (its UID there).
-    Mail(String, u32, olo_mail::Message),
+    Mail(String, String, olo_mail::Message),
 }
 
 /// What a session's thread is asked.
@@ -448,7 +448,7 @@ struct Service {
     /// (by address): stopped when dropped.
     mail: HashMap<String, olo_mail::Watch>,
     /// The mail messages looked in (account, UID): each once.
-    mail_seen: HashSet<(String, u32)>,
+    mail_seen: HashSet<(String, String)>,
     notes: Notifier,
     about: Vec<(NoteId, About)>,
     tx: mpsc::Sender<Ev>,
@@ -856,7 +856,7 @@ impl Service {
                 }
             }
             Ev::Note(e) => self.note(e),
-            Ev::Mail(address, uid, message) => self.mail_came(address, uid, message),
+            Ev::Mail(address, key, message) => self.mail_came(address, key, message),
         }
     }
 
@@ -2193,15 +2193,17 @@ impl Service {
                 continue;
             }
             let (tx, key, address) = (self.tx.clone(), account.address.clone(), account.address.clone());
-            let w = olo_mail::Watch::start(account, Duration::from_secs(JUST as u64), until, move |uid, m| tx.send(Ev::Mail(address.clone(), uid, m)).is_ok());
+            let w = olo_mail::Watch::start(account, Duration::from_secs(JUST as u64), until, move |key, m| tx.send(Ev::Mail(address.clone(), key, m)).is_ok());
             self.mail.insert(key, w);
         }
     }
 
     /// A message in a mail account watched: its code, if it has one,
     /// given to the tab waiting for it as a texted one is.
-    fn mail_came(&mut self, address: String, uid: u32, m: olo_mail::Message) {
-        if !self.mail_seen.insert((address.clone(), uid)) {
+    fn mail_came(&mut self, address: String, key: String, m: olo_mail::Message) {
+        // (Once each: by its Message-ID, found in two mailboxes or two
+        // watches.)
+        if !self.mail_seen.insert((address.clone(), key)) {
             return;
         }
         let Some(code) = codes::find_mail(&m.subject, &m.text, &m.from) else { return self.mail_link(address, m) };

@@ -1,7 +1,9 @@
 //! A stand-in IMAP server on loopback, for tests (this crate's, and the
-//! phone service's, which reads mail for codes): an inbox of messages, a
-//! message delivered while a client waits (told at once, as IDLE tells),
-//! and what was asked of it. Any password but "wrong" signs in. Plain
+//! phone service's, which reads mail for codes): an inbox of messages,
+//! other mailboxes beside it (a folder, the junk, Gmail's All Mail, each
+//! with its special-use flags), a message delivered to one while a client
+//! waits (told at once, as IDLE tells, of the mailbox it has open), and
+//! what was asked of it. Any password but "wrong" signs in. Plain
 //! TCP: a session reaches it through `OLO_MAIL_IMAP` (`HOST:PORT`).
 
 use std::{
@@ -23,13 +25,27 @@ pub fn ago(secs: u64) -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs()).saturating_sub(secs)
 }
 
-#[derive(Default)]
-struct State {
-    /// The inbox: each message's arrival (Unix seconds) and its bytes;
-    /// its UID is its place, from 1.
+/// A mailbox: its name, its flags as LIST says them (`\\Junk`), and each
+/// message's arrival (Unix seconds) and bytes, its UID its place from 1.
+struct Mailbox {
+    name: String,
+    flags: String,
     messages: Vec<(u64, String)>,
+}
+
+struct State {
+    /// The inbox first.
+    boxes: Vec<Mailbox>,
     logins: Vec<String>,
     said: Vec<String>,
+    /// It lists with what each mailbox has (LIST-STATUS).
+    list_status: bool,
+}
+
+impl State {
+    fn find(&self, name: &str) -> Option<usize> {
+        self.boxes.iter().position(|b| b.name == name || b.name == "INBOX" && name.eq_ignore_ascii_case("INBOX"))
+    }
 }
 
 /// The server, running for as long as the test does.
@@ -43,7 +59,8 @@ impl Server {
     pub fn start(messages: Vec<(u64, String)>) -> Server {
         let listener = TcpListener::bind("127.0.0.1:0").expect("a loopback port");
         let address = listener.local_addr().expect("its address").to_string();
-        let state = Arc::new(Mutex::new(State { messages, ..State::default() }));
+        let inbox = Mailbox { name: "INBOX".into(), flags: String::new(), messages };
+        let state = Arc::new(Mutex::new(State { boxes: vec![inbox], logins: Vec::new(), said: Vec::new(), list_status: true }));
         let st = state.clone();
         std::thread::spawn(move || {
             for stream in listener.incoming().map_while(Result::ok) {
@@ -59,9 +76,32 @@ impl Server {
         self.address.clone()
     }
 
-    /// A message comes, now.
+    /// A message comes to the inbox, now.
     pub fn deliver(&self, raw: &str) {
-        self.lock().messages.push((ago(0), raw.to_owned()));
+        self.deliver_to("INBOX", raw);
+    }
+
+    /// A message comes to mailbox `name`, now.
+    pub fn deliver_to(&self, name: &str, raw: &str) {
+        self.put(name, ago(0), raw);
+    }
+
+    /// A message in mailbox `name` that came at `at` (Unix seconds).
+    pub fn put(&self, name: &str, at: u64, raw: &str) {
+        let mut st = self.lock();
+        let i = st.find(name).expect("a mailbox of the stand-in's");
+        st.boxes[i].messages.push((at, raw.to_owned()));
+    }
+
+    /// A mailbox beside the inbox, its special-use flags as LIST says
+    /// them (`"\\Junk"`, `"\\All"`, `""` for a folder of the person's).
+    pub fn mailbox(&self, name: &str, flags: &str) {
+        self.lock().boxes.push(Mailbox { name: name.into(), flags: flags.into(), messages: Vec::new() });
+    }
+
+    /// It asks each mailbox's STATUS, not listing them with it.
+    pub fn without_list_status(&self) {
+        self.lock().list_status = false;
     }
 
     /// Each sign-in: "ADDRESS PASSWORD".
@@ -146,7 +186,9 @@ fn serve(stream: TcpStream, state: &Mutex<State>) {
     if !say(&mut w, "* OK [CAPABILITY IMAP4rev1 IDLE] Stand-in ready\r\n") {
         return;
     }
-    // How many messages this client has been told of.
+    // The mailbox this client has open, and how many of its messages it
+    // has been told of.
+    let mut current = 0usize;
     let mut told = 0u32;
     let mut line = String::new();
     loop {
@@ -158,7 +200,7 @@ fn serve(stream: TcpStream, state: &Mutex<State>) {
         let Some((tag, cmd)) = line.trim_end().split_once(' ') else { continue };
         let (tag, cmd) = (tag.to_owned(), cmd.to_owned());
         let upper = cmd.to_ascii_uppercase();
-        let count = lock().messages.len() as u32;
+        let count = lock().boxes[current].messages.len() as u32;
         let reply = if let Some(args) = cmd.strip_prefix("LOGIN ") {
             lock().said.push("LOGIN".into());
             let (address, rest) = unquote(args);
@@ -189,10 +231,39 @@ fn serve(stream: TcpStream, state: &Mutex<State>) {
         } else {
             lock().said.push(cmd.clone());
             if upper == "CAPABILITY" {
-                format!("* CAPABILITY IMAP4rev1 IDLE\r\n{tag} OK\r\n")
-            } else if upper == "SELECT INBOX" {
-                told = count;
-                format!("* {count} EXISTS\r\n* OK [UIDNEXT {}] next\r\n{tag} OK [READ-WRITE] selected\r\n", count + 1)
+                let more = if lock().list_status { " LIST-STATUS" } else { "" };
+                format!("* CAPABILITY IMAP4rev1 IDLE{more}\r\n{tag} OK\r\n")
+            } else if let Some((verb, name)) = cmd.split_once(' ').filter(|(v, _)| v.eq_ignore_ascii_case("SELECT") || v.eq_ignore_ascii_case("EXAMINE")) {
+                let (name, _) = unquote(name);
+                let st = lock();
+                match st.find(&name) {
+                    Some(i) => {
+                        current = i;
+                        let n = st.boxes[i].messages.len() as u32;
+                        told = n;
+                        let how = if verb.eq_ignore_ascii_case("EXAMINE") { "READ-ONLY" } else { "READ-WRITE" };
+                        format!("* {n} EXISTS\r\n* OK [UIDNEXT {}] next\r\n{tag} OK [{how}] selected\r\n", n + 1)
+                    }
+                    None => format!("{tag} NO no such mailbox\r\n"),
+                }
+            } else if upper.starts_with("LIST \"\" \"*\"") {
+                let st = lock();
+                let with_status = upper.contains("RETURN (STATUS");
+                let mut out = String::new();
+                for b in &st.boxes {
+                    out.push_str(&format!("* LIST ({}) \"/\" \"{}\"\r\n", b.flags, b.name));
+                    if with_status && st.list_status {
+                        out.push_str(&format!("* STATUS \"{}\" (UIDNEXT {})\r\n", b.name, b.messages.len() + 1));
+                    }
+                }
+                format!("{out}{tag} OK\r\n")
+            } else if let Some(rest) = cmd.strip_prefix("STATUS ") {
+                let (name, _) = unquote(rest);
+                let st = lock();
+                match st.find(&name) {
+                    Some(i) => format!("* STATUS \"{}\" (UIDNEXT {})\r\n{tag} OK\r\n", st.boxes[i].name, st.boxes[i].messages.len() + 1),
+                    None => format!("{tag} NO no such mailbox\r\n"),
+                }
             } else if upper == "NOOP" {
                 let news = if count > told { format!("* {count} EXISTS\r\n") } else { String::new() };
                 told = count;
@@ -201,7 +272,7 @@ fn serve(stream: TcpStream, state: &Mutex<State>) {
                 let st = lock();
                 let mut out = String::new();
                 for n in set(s, count) {
-                    if let Some((at, _)) = st.messages.get(n as usize - 1) {
+                    if let Some((at, _)) = st.boxes[current].messages.get(n as usize - 1) {
                         out.push_str(&format!("* {n} FETCH (UID {n} INTERNALDATE \"{}\")\r\n", internal_date(*at)));
                     }
                 }
@@ -216,7 +287,7 @@ fn serve(stream: TcpStream, state: &Mutex<State>) {
                 let st = lock();
                 let mut out = String::new();
                 for n in set(s, count) {
-                    if let Some((_, raw)) = st.messages.get(n as usize - 1) {
+                    if let Some((_, raw)) = st.boxes[current].messages.get(n as usize - 1) {
                         out.push_str(&format!("* {n} FETCH (UID {n} BODY[]<0> {{{}}}\r\n{raw})\r\n", raw.len()));
                     }
                 }
@@ -229,7 +300,7 @@ fn serve(stream: TcpStream, state: &Mutex<State>) {
                 let _ = reader.get_ref().set_read_timeout(Some(Duration::from_millis(40)));
                 let mut done = String::new();
                 loop {
-                    let now = lock().messages.len() as u32;
+                    let now = lock().boxes[current].messages.len() as u32;
                     if now > told {
                         told = now;
                         if !say(&mut w, &format!("* {now} EXISTS\r\n")) {

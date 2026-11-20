@@ -300,31 +300,6 @@ something nobody here has is in "Blocked", with what it waits for.
   (`adaptive seed`, `adaptive active`, `automatic worktree seed`),
   counted among "Couldn't be cached" now.
 
-- **A sign-in's mailed code is found every time** (Ben, 2026-11-18,
-  signing in at claude.ai, which mails a link and takes a "verification
-  code" in its place: "i tried to login to claude and it didn't manage
-  to find the verification code in my email. we need that to work more
-  reliably. you can use my olo integration to read my email and look at
-  the format it used. also search through my email for all verification
-  codes in my archive etc to make sure that what you come up with covers
-  everything"). **Looked into** (`cargo run --release -p olo-phone
-  --example mail_codes`: a year of the two accounts' mail, read only):
-  the 254 messages that carry a code all have it found; what wasn't
-  found carries none. Claude's mail ("Your secure link to Claude is
-  here") has no code: it is a button, its address only in the
-  message's HTML, which the mail reader dropped. **Done** (Ben: "the
-  ones that send links -- support that too by having olo passwords
-  extension offer to navigate to the link received"): the extension
-  offers "Open sign-in link" under the field of the page that waits,
-  and takes the tab there (HACKING.md, "A link to sign in with, sent
-  by mail"; extension 1.15.4, which a running Chrome takes when it's
-  next started, twice). **Left**: mail watched beyond the inbox's
-  newest five (a rule that files a sender's mail elsewhere hides it);
-  the address a sign-in goes to must be one of the accounts set up
-  (today's went to a third address, of neither account: nothing could
-  have been found). "Check for Codes" is in the field's menu
-  (Passwords ▸ Check for Codes), and a mailed code's offer says "by
-  mail" (extension 1.15.5).
 - **Go through Olo's logs for other warnings and errors and fix what
   should be fixed** (Ben, 2026-11-18). A first pass done (HACKING.md,
   "What a day's logs showed"): Notifications' history kept apart on
@@ -500,6 +475,32 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Done, waiting for Ben to try or confirm
 
+- **A sign-in's mailed code is found every time** (Ben, 2026-11-18,
+  signing in at claude.ai, which mails a link and takes a "verification
+  code" in its place: "i tried to login to claude and it didn't manage
+  to find the verification code in my email. we need that to work more
+  reliably. you can use my olo integration to read my email and look at
+  the format it used. also search through my email for all verification
+  codes in my archive etc to make sure that what you come up with covers
+  everything"). **Looked into** (`cargo run --release -p olo-phone
+  --example mail_codes`: a year of the two accounts' mail, read only):
+  the 254 messages that carry a code all have it found; what wasn't
+  found carries none. Claude's mail ("Your secure link to Claude is
+  here") has no code: it is a button, its address only in the
+  message's HTML, which the mail reader dropped. **Done** (Ben: "the
+  ones that send links -- support that too by having olo passwords
+  extension offer to navigate to the link received"): the extension
+  offers "Open sign-in link" under the field of the page that waits,
+  and takes the tab there (HACKING.md, "A link to sign in with, sent
+  by mail"; extension 1.15.4, which a running Chrome takes when it's
+  next started, twice). **Done** (2026-11-19): where else mail lands is
+  watched beside the inbox (Gmail's All Mail and spam; another's every
+  folder but sent, drafts and trash, the junk first), so a code a rule
+  files away is found. What no code can do: the address a sign-in goes
+  to must be one of the accounts set up (that day's went to a third
+  address, of neither account). "Check for Codes" is in the field's menu
+  (Passwords ▸ Check for Codes), and a mailed code's offer says "by
+  mail" (extension 1.15.5).
 - **Links in Calendar's event notes found and made clickable** (Ben,
   2026-11-19). Done: the kit's text view finds them (`links(true)`,
   `olo_kit::links`): web addresses, mail addresses and numbers to dial,

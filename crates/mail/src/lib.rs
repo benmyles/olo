@@ -15,10 +15,11 @@
 //! the newest messages' sender, subject and words, to look for a code in;
 //! nothing of it is kept or logged.
 //!
-//! [`Session`]: signed in to an account's inbox. [`Watch`]: an inbox
-//! watched on a thread of its own for a while (what came in the last few
-//! minutes, then each message as it comes, the server telling: IDLE),
-//! stopped when it's dropped. [`check`]: whether an account signs in
+//! [`Session`]: signed in to an account's inbox. [`Watch`]: an account's
+//! mail watched on a thread of its own for a while (what came in the last
+//! few minutes, then each message as it comes: the inbox's at once, the
+//! server telling, IDLE; where else mail lands, a rule's folder or the
+//! junk, every few seconds), stopped when it's dropped. [`check`]: whether an account signs in
 //! (Preferences ▸ Integrations, adding one). [`standin`]: a stand-in
 //! server, for tests.
 
@@ -403,9 +404,18 @@ pub struct Session {
     exists: u32,
     /// The server waits with us for what comes (IDLE).
     idle: bool,
+    /// It lists its mailboxes with what each has, in one asking
+    /// (LIST-STATUS, RFC 5819).
+    list_status: bool,
     /// What's come of a line not ended yet (a wait that ran out in it).
     partial: Vec<u8>,
 }
+
+/// The most mailboxes besides the inbox a watch looks in.
+pub const ELSEWHERE_MOST: usize = 30;
+/// How often a watch looks in them, between what the inbox's server
+/// tells at once.
+pub const ELSEWHERE_EVERY: Duration = Duration::from_secs(5);
 
 /// TLS as the system's certificates have it.
 fn tls_config() -> Result<Arc<rustls::ClientConfig>, String> {
@@ -485,16 +495,89 @@ impl Session {
             }
         }
         let caps = s.command("CAPABILITY")?;
-        s.idle = caps.iter().any(|c| c.text.split_whitespace().any(|w| w.eq_ignore_ascii_case("IDLE")));
-        let answers = s.command("SELECT INBOX")?;
-        s.exists = answers.iter().find_map(|a| a.text.strip_prefix("* ").and_then(|r| r.strip_suffix(" EXISTS")).and_then(|n| n.trim().parse().ok())).unwrap_or(0);
-        s.uid_next = answers.iter().find_map(|a| bracket_number(&a.text, "UIDNEXT")).unwrap_or(0);
-        if s.uid_next == 0 {
-            // (A server that doesn't say: the last one there, plus one.)
-            let found = s.command("UID SEARCH ALL")?;
-            s.uid_next = found.iter().filter_map(|a| a.text.strip_prefix("* SEARCH")).flat_map(|r| r.split_whitespace().filter_map(|n| n.parse::<u32>().ok())).max().map_or(1, |m| m + 1);
-        }
+        let can = |what: &str| caps.iter().any(|c| c.text.split_whitespace().any(|w| w.eq_ignore_ascii_case(what)));
+        (s.idle, s.list_status) = (can("IDLE"), can("LIST-STATUS"));
+        s.select_inbox()?;
         Ok(s)
+    }
+
+    /// The inbox opened (again), to watch: how many it has, and the UID
+    /// the next will have.
+    pub fn select_inbox(&mut self) -> Result<(), String> {
+        let answers = self.command("SELECT INBOX")?;
+        self.exists = answers.iter().find_map(|a| a.text.strip_prefix("* ").and_then(|r| r.strip_suffix(" EXISTS")).and_then(|n| n.trim().parse().ok())).unwrap_or(0);
+        self.uid_next = answers.iter().find_map(|a| bracket_number(&a.text, "UIDNEXT")).unwrap_or(0);
+        if self.uid_next == 0 {
+            // (A server that doesn't say: the last one there, plus one.)
+            let found = self.command("UID SEARCH ALL")?;
+            self.uid_next = found.iter().filter_map(|a| a.text.strip_prefix("* SEARCH")).flat_map(|r| r.split_whitespace().filter_map(|n| n.parse::<u32>().ok())).max().map_or(1, |m| m + 1);
+        }
+        Ok(())
+    }
+
+    /// Where else than the inbox a message may land, to watch beside it
+    /// (Ben's mailed code that a rule filed away, 2026-11-18): Gmail's All
+    /// Mail (every label's, an archived one's) and its spam; another's
+    /// every mailbox but the inbox, sent mail, drafts and the trash, its
+    /// junk and archive first. [`ELSEWHERE_MOST`] at most.
+    pub fn elsewhere(&mut self, provider: Provider) -> Result<Vec<String>, String> {
+        let has = |flags: &[String], f: &str| flags.iter().any(|x| x.eq_ignore_ascii_case(f));
+        let mut boxes: Vec<(u8, String)> = self
+            .mailboxes()?
+            .into_iter()
+            .filter(|(name, flags)| {
+                !name.eq_ignore_ascii_case("INBOX")
+                    && match provider {
+                        Provider::Gmail => has(flags, "\\All") || has(flags, "\\Junk"),
+                        Provider::Fastmail => !["\\Sent", "\\Drafts", "\\Trash", "\\All", "\\Flagged", "\\Important"].iter().any(|f| has(flags, f)),
+                    }
+            })
+            .map(|(name, flags)| {
+                (
+                    if has(&flags, "\\Junk") {
+                        0
+                    } else if has(&flags, "\\Archive") || has(&flags, "\\All") {
+                        1
+                    } else {
+                        2
+                    },
+                    name,
+                )
+            })
+            .collect();
+        boxes.sort_by_key(|(first, _)| *first);
+        Ok(boxes.into_iter().take(ELSEWHERE_MOST).map(|(_, name)| name).collect())
+    }
+
+    /// The UID the next message of each of `boxes` will have, as each is
+    /// now: in one asking where the server lists with what each has
+    /// (LIST-STATUS), else each asked (STATUS). A mailbox gone is left
+    /// out.
+    pub fn uid_nexts(&mut self, boxes: &[String]) -> Result<Vec<(String, u32)>, String> {
+        let status = |text: &str| -> Option<(String, u32)> {
+            let rest = text.strip_prefix("* STATUS ")?;
+            let (name, rest) = if let Some(q) = rest.strip_prefix('"') {
+                let (n, r) = q.split_once("\" (")?;
+                (n.replace("\\\"", "\"").replace("\\\\", "\\"), r)
+            } else {
+                let (n, r) = rest.split_once(" (")?;
+                (n.to_owned(), r)
+            };
+            Some((name, bracket_free_number(rest, "UIDNEXT")?))
+        };
+        let answers = if self.list_status {
+            self.command("LIST \"\" \"*\" RETURN (STATUS (UIDNEXT))")?
+        } else {
+            let mut all = Vec::new();
+            for b in boxes {
+                // (One gone since it was listed: the rest still asked.)
+                if let Ok(a) = self.command(&format!("STATUS {} (UIDNEXT)", quoted(b))) {
+                    all.extend(a);
+                }
+            }
+            all
+        };
+        Ok(answers.iter().filter_map(|a| status(&a.text)).filter(|(name, _)| boxes.contains(name)).collect())
     }
 
     /// Connected to `server`, and greeted (not signed in).
@@ -519,7 +602,7 @@ impl Session {
         };
         socket.set_read_timeout(Some(PATIENCE)).map_err(|e| e.to_string())?;
         socket.set_write_timeout(Some(PATIENCE)).map_err(|e| e.to_string())?;
-        let mut s = Session { stream: BufReader::new(raw), socket, tag: 0, uid_next: 0, exists: 0, idle: false, partial: Vec::new() };
+        let mut s = Session { stream: BufReader::new(raw), socket, tag: 0, uid_next: 0, exists: 0, idle: false, list_status: false, partial: Vec::new() };
         let greeting = s.line().map_err(|e| format!("the server didn’t greet ({e})"))?;
         if !greeting.starts_with("* OK") && !greeting.starts_with("* PREAUTH") {
             return Err(format!("the server didn’t greet: {}", greeting.trim()));
@@ -538,8 +621,8 @@ impl Session {
         self.socket.try_clone().ok()
     }
 
-    /// The messages that came within `within` of now (of the inbox's
-    /// newest five), oldest first.
+    /// The messages that came within `within` of now (of the newest five
+    /// of the mailbox open), oldest first.
     pub fn recent(&mut self, within: Duration) -> Result<Vec<(u32, Message)>, String> {
         if self.exists == 0 {
             return Ok(Vec::new());
@@ -557,9 +640,9 @@ impl Session {
         self.fetch(&uids)
     }
 
-    /// The messages that came since the last read (or since signing in),
-    /// oldest first, each read whole up to 64 KB (a code is in its first
-    /// lines).
+    /// The messages that came since the last read (or since signing in,
+    /// or since [`Session::read_from`]), oldest first, each read whole up
+    /// to 64 KB (a code is in its first lines).
     pub fn new_messages(&mut self) -> Result<Vec<(u32, Message)>, String> {
         let from = self.uid_next.max(1);
         let found = self.command(&format!("UID SEARCH UID {from}:*"))?;
@@ -570,6 +653,12 @@ impl Session {
             self.uid_next = self.uid_next.max(last + 1);
         }
         Ok(got)
+    }
+
+    /// What [`Session::new_messages`] reads next: from UID `uid` on (the
+    /// inbox again after looking elsewhere, from where it had got to).
+    pub fn read_from(&mut self, uid: u32) {
+        self.uid_next = uid;
     }
 
     /// The account's mailboxes that can be opened: each one's name as
@@ -805,6 +894,11 @@ fn bracket_number(line: &str, key: &str) -> Option<u32> {
     line[at..].split(|c: char| !c.is_ascii_digit()).next()?.parse().ok()
 }
 
+/// The number after `key` in a STATUS's list ("MESSAGES 3 UIDNEXT 42)").
+fn bracket_free_number(text: &str, key: &str) -> Option<u32> {
+    word_after(text, key)?.parse().ok()
+}
+
 /// The word after `key` in a line ("UID 42").
 fn word_after<'a>(line: &'a str, key: &str) -> Option<&'a str> {
     let mut words = line.split(|c: char| c.is_whitespace() || c == '(' || c == ')');
@@ -850,10 +944,14 @@ pub fn check(account: &Account, auth: impl Into<Auth>) -> Result<(), String> {
     Session::open(account, auth).map(Session::close)
 }
 
-/// An inbox watched on a thread of its own (named "mail"): the messages
-/// of the last `recent`, then each as it comes, until its time is up or
-/// it's stopped (dropped). Each message read goes to `found`, which says
-/// whether to go on.
+/// An account's mail watched on a thread of its own (named "mail"): the
+/// messages of the last `recent`, then each as it comes, until its time
+/// is up or it's stopped (dropped): the inbox's, the server telling at
+/// once (IDLE), and those of where else mail lands ([`Session::elsewhere`],
+/// a rule's folder, the junk), looked at every [`ELSEWHERE_EVERY`]. Each
+/// message read goes to `found` with a key of its own (its Message-ID,
+/// else its mailbox and UID: found in two mailboxes, the same key), which
+/// says whether to go on.
 pub struct Watch {
     shared: Arc<WatchShared>,
 }
@@ -873,7 +971,7 @@ impl WatchShared {
 }
 
 impl Watch {
-    pub fn start(account: Account, recent: Duration, until: Instant, mut found: impl FnMut(u32, Message) -> bool + Send + 'static) -> Watch {
+    pub fn start(account: Account, recent: Duration, until: Instant, mut found: impl FnMut(String, Message) -> bool + Send + 'static) -> Watch {
         let shared = WatchShared::new(until);
         let sh = shared.clone();
         let spawned = std::thread::Builder::new().name("mail".into()).spawn(move || {
@@ -916,35 +1014,100 @@ impl Drop for Watch {
     }
 }
 
-fn watch(account: &Account, recent: Duration, sh: &WatchShared, found: &mut dyn FnMut(u32, Message) -> bool) -> Result<(), String> {
+fn watch(account: &Account, recent: Duration, sh: &WatchShared, found: &mut dyn FnMut(String, Message) -> bool) -> Result<(), String> {
     let stopped = || sh.stopped.load(Ordering::SeqCst);
-    let until = || *sh.until.lock().unwrap_or_else(|e| e.into_inner());
     let password = auth_of(account)?;
     if stopped() {
         return Ok(());
     }
-    let mut s = Session::open(account, &password)?;
+    let s = Session::open(account, &password)?;
     *sh.socket.lock().unwrap_or_else(|e| e.into_inner()) = s.stopper();
     // (Stopped while it signed in: the stop had no connection to shut.)
     if stopped() {
         return Ok(());
     }
-    for (uid, m) in s.recent(recent)? {
-        if !found(uid, m) {
-            s.close();
-            return Ok(());
-        }
-    }
-    while !stopped() && Instant::now() < until() {
-        if !s.wait(until())? || stopped() {
-            continue;
-        }
-        for (uid, m) in s.new_messages()? {
-            if !found(uid, m) {
+    watch_in(s, account.provider, recent, sh, found)
+}
+
+/// A message's key: its Message-ID, else where it is.
+fn key_of(mailbox: &str, uid: u32, m: &Message) -> String {
+    if m.id.is_empty() { format!("{mailbox}/{uid}") } else { m.id.clone() }
+}
+
+/// [`watch`], signed in.
+fn watch_in(mut s: Session, provider: Provider, recent: Duration, sh: &WatchShared, found: &mut dyn FnMut(String, Message) -> bool) -> Result<(), String> {
+    let stopped = || sh.stopped.load(Ordering::SeqCst);
+    let until = || *sh.until.lock().unwrap_or_else(|e| e.into_inner());
+    let mut give = |s: Session, mailbox: &str, got: Vec<(u32, Message)>| -> Result<Session, ()> {
+        for (uid, m) in got {
+            if !found(key_of(mailbox, uid, &m), m) {
                 s.close();
-                return Ok(());
+                return Err(());
             }
         }
+        Ok(s)
+    };
+    let got = s.recent(recent)?;
+    let Ok(s2) = give(s, "INBOX", got) else { return Ok(()) };
+    s = s2;
+    // Where else mail lands, and what came there of late. (A server that
+    // can't say: the inbox alone.)
+    let elsewhere = s.elsewhere(provider).unwrap_or_default();
+    let mut next: Vec<(String, u32)> = Vec::new();
+    if !elsewhere.is_empty() {
+        let inbox_next = s.uid_next();
+        for b in &elsewhere {
+            if s.look_in(b).is_err() {
+                continue;
+            }
+            next.push((b.clone(), s.uid_next()));
+            let got = s.recent(recent)?;
+            let Ok(s2) = give(s, b, got) else { return Ok(()) };
+            s = s2;
+        }
+        s.select_inbox()?;
+        s.read_from(inbox_next);
+        let got = s.new_messages()?;
+        let Ok(s2) = give(s, "INBOX", got) else { return Ok(()) };
+        s = s2;
+    }
+    let mut looked = Instant::now();
+    while !stopped() && Instant::now() < until() {
+        let wake = if next.is_empty() { until() } else { until().min(looked + ELSEWHERE_EVERY) };
+        if s.wait(wake)? && !stopped() {
+            let got = s.new_messages()?;
+            let Ok(s2) = give(s, "INBOX", got) else { return Ok(()) };
+            s = s2;
+        }
+        if next.is_empty() || stopped() || Instant::now() < looked + ELSEWHERE_EVERY {
+            continue;
+        }
+        looked = Instant::now();
+        // What's grown since it was last looked in: what came, read.
+        let names: Vec<String> = next.iter().map(|(b, _)| b.clone()).collect();
+        let now: Vec<(String, u32)> = s.uid_nexts(&names)?;
+        let grown: Vec<(String, u32)> = next.iter().filter(|(b, was)| now.iter().any(|(n, is)| n == b && is > was)).cloned().collect();
+        if grown.is_empty() {
+            continue;
+        }
+        let inbox_next = s.uid_next();
+        for (b, was) in grown {
+            if s.look_in(&b).is_err() {
+                continue;
+            }
+            let uids: Vec<u32> = s.search(&format!("UID {was}:*"))?.into_iter().filter(|&u| u >= was).collect();
+            if let Some(n) = next.iter_mut().find(|(n, _)| *n == b) {
+                n.1 = uids.iter().max().map_or(n.1, |m| m + 1).max(s.uid_next());
+            }
+            let got = s.read(&uids)?;
+            let Ok(s2) = give(s, &b, got) else { return Ok(()) };
+            s = s2;
+        }
+        s.select_inbox()?;
+        s.read_from(inbox_next);
+        let got = s.new_messages()?;
+        let Ok(s2) = give(s, "INBOX", got) else { return Ok(()) };
+        s = s2;
     }
     if !stopped() {
         s.close();
@@ -1085,6 +1248,76 @@ mod tests {
         stopper.stop();
         assert!(waiting.join().unwrap().is_err());
         assert!(t.elapsed() < Duration::from_secs(3), "a stop ends the wait at once");
+    }
+
+    /// Where else than the inbox a watch looks: Gmail's All Mail and spam
+    /// (a label's mail is in All Mail); another's every mailbox but sent
+    /// mail, drafts and the trash, the junk and the archive first. What
+    /// each will number next, in one asking or one a mailbox.
+    #[test]
+    fn where_else_mail_lands() {
+        let server = standin::Server::start(Vec::new());
+        for (name, flags) in [("Receipts", ""), ("Sent", "\\Sent"), ("Junk", "\\Junk"), ("Trash", "\\Trash"), ("Archive", "\\Archive"), ("Drafts", "\\Drafts")] {
+            server.mailbox(name, flags);
+        }
+        server.put("Receipts", standin::ago(60), CODE);
+        let mut s = Session::open_at(&Server::Plain(server.address()), &account(), "x").unwrap();
+        let boxes = s.elsewhere(Provider::Fastmail).unwrap();
+        assert_eq!(boxes, ["Junk", "Archive", "Receipts"]);
+        assert_eq!(s.uid_nexts(&boxes).unwrap(), [("Receipts".to_owned(), 2), ("Junk".to_owned(), 1), ("Archive".to_owned(), 1)]);
+        assert!(server.said().iter().any(|c| c.contains("RETURN (STATUS (UIDNEXT))")), "LIST-STATUS used where the server has it");
+        s.close();
+
+        let server = standin::Server::start(Vec::new());
+        for (name, flags) in [("[Gmail]/All Mail", "\\HasNoChildren \\All"), ("[Gmail]/Spam", "\\HasNoChildren \\Junk"), ("Work", "\\HasNoChildren"), ("[Gmail]/Sent Mail", "\\Sent")] {
+            server.mailbox(name, flags);
+        }
+        server.without_list_status();
+        let mut s = Session::open_at(&Server::Plain(server.address()), &account(), "x").unwrap();
+        let boxes = s.elsewhere(Provider::Gmail).unwrap();
+        assert_eq!(boxes, ["[Gmail]/Spam", "[Gmail]/All Mail"]);
+        assert_eq!(s.uid_nexts(&boxes).unwrap(), [("[Gmail]/Spam".to_owned(), 1), ("[Gmail]/All Mail".to_owned(), 1)]);
+        assert!(server.said().iter().any(|c| c.starts_with("STATUS ")), "STATUS asked where it can't list with it");
+        s.close();
+    }
+
+    /// A watch finds a code wherever the account's mail lands: one that
+    /// came to the junk a minute ago, one a rule files in a folder while it
+    /// watches (Ben's, 2026-11-18, filed away and never found), and the
+    /// inbox's still at once after looking elsewhere; never sent mail's or
+    /// the trash's. The same message in two mailboxes has one key.
+    #[test]
+    fn a_watch_looks_where_mail_lands() {
+        let server = standin::Server::start(Vec::new());
+        for (name, flags) in [("Receipts", ""), ("Junk", "\\Junk"), ("Sent", "\\Sent"), ("Trash", "\\Trash")] {
+            server.mailbox(name, flags);
+        }
+        let mail = |id: &str, code: &str| format!("From: Acme <no-reply@acme.example>\r\nMessage-ID: <{id}@acme.example>\r\nSubject: Your code\r\n\r\nYour Acme verification code is {code}.\r\n");
+        server.put("Junk", standin::ago(60), &mail("junk", "300001"));
+        server.put("Sent", standin::ago(30), &mail("sent", "300002"));
+        server.put("Trash", standin::ago(30), &mail("trash", "300003"));
+        let (tx, rx) = std::sync::mpsc::channel();
+        let s = Session::open_at(&Server::Plain(server.address()), &account(), "x").unwrap();
+        let shared = WatchShared::new(Instant::now() + Duration::from_secs(8));
+        let sh = shared.clone();
+        let t = std::thread::spawn(move || {
+            let mut found = |key: String, m: Message| tx.send((key, m.text)).is_ok();
+            watch_in(s, Provider::Fastmail, Duration::from_secs(300), &sh, &mut found).unwrap();
+        });
+        let next = || rx.recv_timeout(Duration::from_secs(8)).unwrap();
+        assert_eq!(next(), ("junk@acme.example".to_owned(), "Your Acme verification code is 300001.".to_owned()));
+        let filed = Instant::now();
+        server.deliver_to("Receipts", &mail("filed", "300004"));
+        assert_eq!(next().0, "filed@acme.example");
+        assert!(filed.elapsed() < ELSEWHERE_EVERY + Duration::from_secs(2), "a filed message waited {:?}", filed.elapsed());
+        let came = Instant::now();
+        server.deliver(&mail("inbox", "300005"));
+        assert_eq!(next().0, "inbox@acme.example");
+        assert!(came.elapsed() < Duration::from_secs(2), "the inbox's waited {:?}", came.elapsed());
+        t.join().unwrap();
+        assert!(rx.try_recv().is_err(), "sent mail's or the trash's read");
+        assert_eq!(key_of("INBOX", 4, &parse(b"Subject: x\r\n\r\ny")), "INBOX/4");
+        assert!(server.said().iter().all(|c| !c.contains("\"Sent\"") && !c.contains("\"Trash\"")), "{:?}", server.said());
     }
 
     /// An account added here is left out only where a Google account is
