@@ -24,11 +24,15 @@
 //!       messages through pipes: messages a second. Work that is all
 //!       waking and waiting, where a kernel that switches more eagerly
 //!       gets less done.
-//!   kbench hog --mb N [--rate MB-A-SECOND] [--hold SECS] [--random BYTES]
+//!   kbench hog --mb N [--rate MB-A-SECOND] [--hold SECS] [--random BYTES] [--then-walk]
 //!       memory taken and written to, N megabytes of it, then held; of
 //!       each page BYTES are random (2 unless said: 2048 is memory that
 //!       compresses to half). How long a megabyte took to get (the
-//!       middle, 99 in 100, the worst), in milliseconds.
+//!       middle, 99 in 100, the worst), in milliseconds. With
+//!       --then-walk, a second line after the hold: every page read
+//!       again (a program that sat idle, used again), how long that
+//!       took in milliseconds and how many pages had to be brought
+//!       back (major faults: from swap).
 //!   kbench touch PATH|--own --mb N [--secs N]
 //!       a program's working set: N megabytes of PATH mapped (its code
 //!       and files), or of memory of its own (--own: what it has made),
@@ -321,6 +325,19 @@ fn hog(args: &[String]) {
     let (p50, p99, _, max) = spread(&mut took);
     println!("{{\"what\":\"hog\",\"mb\":{mb},\"secs\":{:.2},\"ms_p50\":{p50:.2},\"ms_p99\":{p99:.2},\"ms_max\":{max:.1}}}", t0.elapsed().as_secs_f64());
     std::thread::sleep(Duration::from_secs_f64(hold));
+    if args.iter().any(|a| a == "--then-walk") {
+        // (This process's major faults: the 12th field of its stat line.)
+        let faults = || std::fs::read_to_string("/proc/self/stat").ok().and_then(|t| t.rsplit(')').next()?.split_whitespace().nth(9)?.parse::<u64>().ok()).unwrap_or(0);
+        let (before, w0) = (faults(), Instant::now());
+        let mut sum = 0u64;
+        for chunk in &held {
+            for page in chunk.chunks(4096) {
+                sum = sum.wrapping_add(std::hint::black_box(page[0]) as u64);
+            }
+        }
+        std::hint::black_box(sum);
+        println!("{{\"what\":\"walk\",\"mb\":{mb},\"ms\":{:.1},\"brought_back\":{}}}", w0.elapsed().as_secs_f64() * 1e3, faults() - before);
+    }
     drop(held);
 }
 

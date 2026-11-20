@@ -4062,7 +4062,12 @@ it.
   .figure(..).caption(..).selected(..).figure_ink(..).on_click(..)`
   holds its content as children under its head (`Card::height(content,
   caption)`), `Facts::new(rows)` (label: value rows, `.colors(label,
-  value)` on a panel), `meter`, `flow`/`flow_rows` for cards placed by
+  value)` on a panel; `.label_width(w)` for several of them one under
+  another with their values in one line, given `facts_label_width` of
+  all their labels as shown; `.row_height(h)` for rows as far apart as
+  a paragraph's lines, `style::PLAIN_SIZE * style::LINE_HEIGHT`, where
+  boxes side by side hold a paragraph and facts each and should end on
+  one line: Preferences' Kernel tab), `meter`, `flow`/`flow_rows` for cards placed by
   hand, `across(width, least, most)` for a grid of them (`grid_cols`: as
   many across as fit, so they reflow in a third of a screen rather than
   be cut: Weather's), `GAP`, `FACT_ROW`, `gutter(p)`. Cards in a flex row
@@ -10266,19 +10271,23 @@ Then "The desktop's core keeps its memory from Olo's next start" until
 the person's app_server has locked its own (`VmLck` in its status), and
 fine after.
 
-### Swappiness and the size of swap (Olo Doctor)
+### Swap used last, and the size of swap (Olo Doctor)
 
 `vm.swappiness` is how readily the kernel moves programs' own memory to
 swap rather than dropping file cache: 60 as the kernel has it. Doctor's
-**Keep Programs in Memory** sets it to 1 where swap is on
-(`/etc/sysctl.d/80-olo-memory.conf`, and now): cache goes first, and
-swap is used when memory is truly short (Ben: "could we just make it
-set swapiness to 1 … without losing the benefits when it's really
-needed?"). It doesn't govern the graphics driver's shrinker (above),
-which is asked whenever kswapd runs. Measured little either way once
-the patch was in: in 26 minutes with a whole release build, 7.8 MiB of
-programs' memory went to swap at 60 (the 16.8 GB written to swap in the
-21 hours before were with windows' buffers among them).
+**Keep Programs in Memory** set it to 1 where swap is on (Ben,
+2026-11-16: "could we just make it set swapiness to 1 … without losing
+the benefits when it's really needed?"), and under Fedora's
+multi-generational LRU that wasn't enough: 102 GB went to swap in three
+days on Ben's computer with tens of GB free (2026-11-20: "i want the
+swap to only get used when absolutely necessary"). It is a kernel
+setting now, **Swap used last** ("The kernel's settings", below, and
+kernel/TUNING.md): swappiness 0 with the kernel's older reclaim, the
+one combination that swaps only when the cache is all but gone, in the
+same file (`/etc/sysctl.d/80-olo-memory.conf`); Doctor recommends it
+(`kernel:swap-last`, Use Swap Last) and its switch is in Preferences ▸
+Performance ▸ Kernel. It doesn't govern the graphics driver's shrinker
+(above), which is asked whenever kswapd runs.
 
 With graphics memory kept out of it, more swap costs nothing until it's
 used but its tables, and gives what should be moved out somewhere to go
@@ -10437,7 +10446,8 @@ an empty disk, slow with QEMU's `throttling.bps-write=`; and `--module
 disk latency, wake latency alone and from another thread, compute, pipe
 chatter, a memory hog, a working set in use, saves, a copy).
 
-Two settings came of it:
+Four settings there are (two came of that research, two of a day of
+looking at why the desktop lagged under agents' builds, 2026-11-20):
 
 - **Preemption: full** (`preempt=full`). A program woken while the
   processors are busy runs at once, where Fedora's lazy kernel has it
@@ -10452,6 +10462,36 @@ Two settings came of it:
   loses nothing to the limit, busy computer or not (one that takes
   1 GB a second loses a fifth to two fifths while the computer is busy,
   so a disk on a USB link of 10 Gbit/s or faster is left out).
+- **Short turns: 0.7 ms** (the scheduler's base slice,
+  `/sys/kernel/debug/sched/base_slice_ns`). How long a busy program
+  keeps a processor before one that is waiting gets it. The kernel
+  lengthens it with the number of processors (0.7 ms for one, 2.8 ms
+  for eight and more); kept at 0.7, what waits under load waits a
+  fraction as long: on Ben's computer beside fifteen more busy
+  programs, the kernel's own workers (which hand every frame to the
+  GPU and every byte through a terminal) waited over a millisecond
+  six times less often (0.45% of their wakes to 0.07%), Terminal's
+  threads seven times (2.0% to 0.28%, the worst 29 ms to 4), and the
+  compositor's GPU jobs were handed on in 5.7 ms at the worst where
+  it had been 14.5. Why it matters though Olo's own threads are
+  realtime: what they hand work to in the kernel isn't (HACKING,
+  "Realtime threads and the kept core").
+- **Swap used last** (`vm.swappiness` 0 with the multi-generational
+  LRU put out, `vm.watermark_scale_factor` 200; Ben, 2026-11-20: "i
+  want the swap to only get used when absolutely necessary, i.e.
+  without it we'd run out of memory … make it an option in olo
+  performance -> kernel on by default"). His computer had written
+  102 GB to swap in three days with tens of GB free throughout, at
+  the swappiness 1 Olo Doctor had set: under the multi-generational
+  LRU that is "the files' cache first" of each generation, not of the
+  whole, and at 0 it never swaps and ends a program instead (measured
+  in the guest: ended after 56 s, with all of swap free). The
+  kernel's older reclaim at 0 is the one combination that swaps only
+  once the cache is all but gone. The one setting here that is a
+  trade, and offered because it was asked for: when memory really
+  runs out, programs in use lose their files from memory before
+  anything is swapped (TUNING.md has the figures, and why more room
+  is kept free with it).
 
 **Read** (`olo_system::kernel_tuning`; anyone, no root):
 `look(&Places::here())` gives a `State` of `Preemption` (what the
@@ -10462,7 +10502,14 @@ which the kernel tells only root, so Olo notes it in
 `/run/olo-kernel/preemption`; whether the running kernel can be
 switched, which a locked-down one, Secure Boot's, can't), `SlowDisks`
 (Olo's rule; each removable disk here with its limit; what waits now
-and what may), and Olo's own pieces in the kernel: `Bbr3` (the
+and what may), `Turns` (what the kernel starts on for its processors, counted from
+`/sys/devices/system/cpu/online`; what it was set to since, Olo's
+note in `/run/olo-kernel/turns`; whether Olo's unit keeps it),
+`SwapLast` (`vm.swappiness`, the multi-generational LRU's switch and
+whether the kernel was built to start with it, the room kept free,
+whether Olo's files keep them; the swap there is, what's in it, and
+what is to be had without it), and Olo's own pieces in the kernel:
+`Bbr3` (the
 congestion control, the module, and the connections on it now: how many
 of all TCP's, their round trips' middle, the share of their segments
 sent again, from `olo_system::netdiag::flows`, one walk of the kernel's
@@ -10481,6 +10528,8 @@ isn't so already.
 | --- | --- | --- |
 | preemption | `Step::AddKernelArgument` `preempt=full`; where the kernel isn't locked down, `full` written to `/sys/kernel/debug/sched/preempt` and noted | `Step::RemoveKernelArgument` `preempt` (new: an argument taken out wherever one is put); the running kernel back on what it was built with |
 | slow-disks | `/etc/udev/rules.d/61-olo-slow-disks.rules` (data/udev); each removable disk here without a limit given `strict_limit` 1 and `max_bytes` 16777216 (which reads back a little under: the kernel keeps a share of its whole limit) | the rule removed; each back to `strict_limit` 0, `max_ratio` 100 |
+| short-turns | `/etc/olo/short-turns.conf` (two lines in tmpfiles' form: the scheduler's file, and Olo's note of it) and `olo-short-turns.service`, enabled, which has systemd's own tool apply them once debugfs is mounted (among /etc/tmpfiles.d's they could run before it is; tried as a service under SELinux: it may write there); where the kernel isn't locked down, 700000 written and noted now | the unit disabled and removed with its lines; the running kernel back on what it comes with for its processors |
+| swap-last | `/etc/sysctl.d/80-olo-memory.conf` (`vm.swappiness = 0`, `vm.watermark_scale_factor = 200`; Olo's earlier `vm.swappiness = 1` was this file) and `/etc/tmpfiles.d/olo-swap-last.conf` (the multi-generational LRU put out at every start; not written where the kernel hasn't it); the three written now; and `Step::SwapBack` where what's in swap fits in memory twice over (each area turned off, which brings it back, and on again at its priority): only as the setting is put on | both files removed; the LRU back on where the kernel was built to start with it, swappiness 60, the room 10 |
 | bbr3, graphics-memory | Olo Doctor's own fix for each (its service installed, enabled, started) | its service stopped (which takes its work out of the running kernel) and disabled |
 
 The kernel-argument steps carry the file system's root, so a test's tree
@@ -10528,7 +10577,10 @@ On 2026-11-16 it passed on 7.3.3-300.fc45, with BBRv3's full self-check
 
 **Offered** (apps/doctor/src/checks.rs, `kernel_settings`): the
 suggestions `kernel:preemption` (Preempt at Once) and
-`kernel:slow-disks` (Limit Removable Disks), each with what was
+`kernel:slow-disks` (Limit Removable Disks), and, recommended,
+`kernel:short-turns` (Keep Turns Short) and `kernel:swap-last` (Use
+Swap Last: Doctor's older "Keep Programs in Memory", which set
+swappiness to 1, is gone into it), each with what was
 measured, where the kernel has the setting and it isn't on. A `preempt=` of the person's own choosing is theirs (nothing
 is suggested), and nothing is suggested while a scheduler loaded over
 the kernel's is chosen or scheduling: it asks for each switch itself,
@@ -10539,10 +10591,19 @@ is offered its limit.
 
 **Shown and switched** (Preferences ▸ Performance ▸ Kernel;
 `olo-preferences kernel`, or `performance --tab Kernel`): a box for
-each, the kernel's settings on the left and Olo's pieces on the right,
-with a check box (`kernel-preemption`, `kernel-slow-disks`,
-`kernel-bbr3`, `kernel-graphics-memory`), what it does in a sentence,
-and its figures as facts: what the kernel is on now and at the next
+each, how programs share the processors and memory on the left
+(Preemption, Processor Turns, Memory) and disks, the network and
+graphics on the right (four on one side were taller than the
+smallest screen), with a check box (`kernel-preemption`,
+`kernel-short-turns`, `kernel-swap-last`, `kernel-slow-disks`,
+`kernel-bbr3`, `kernel-graphics-memory`), what it does in a sentence
+that ends with the kernel's own name for it, and its figures as
+facts, every box's values in one line (`Facts::label_width`: one
+width for the tab's labels) and its rows as far apart as the
+paragraph's lines (`Facts::row_height`), so boxes side by side with
+as many lines and rows between them end on one line, and both
+columns do; the note across both says whose the settings are, and a
+switch's result takes its place. The facts: what the kernel is on now and at the next
 start; what may wait for a removable disk, what waits now, and the
 disks here with whether each is limited; what new connections use, how
 many connections are on BBRv3 now, their round trip and the share of

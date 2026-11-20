@@ -712,7 +712,6 @@ pub fn scan(roots: &Roots) -> Report {
     open_files(roots, &procs, &mut r);
     inotify(roots, &procs, &mut r);
     language(roots, &procs, &mut r);
-    swappiness(roots, &mut r);
     swap_size(roots, &gpus, &mut r);
     tcp_bbr3(roots, &mut r);
     ec_storm(roots, &mut r);
@@ -2132,51 +2131,6 @@ fn memory_kept(roots: &Roots, procs: &[Proc], r: &mut Report) {
     }
 }
 
-/// Where the kernel's readiness to swap is kept, and Olo's setting of it.
-const SWAPPINESS_PATH: &str = "proc/sys/vm/swappiness";
-pub const MEMORY_SYSCTL_PATH: &str = "etc/sysctl.d/80-olo-memory.conf";
-pub const MEMORY_SYSCTL: &str = "# Olo: when memory fills, files' cache goes before programs' own memory is moved to swap (Olo Doctor,\n# Keep Programs in Memory). Swap is still there for when memory is truly short.\nvm.swappiness = 1\n";
-
-/// Programs' own memory moved to swap while there is file cache to drop
-/// (`vm.swappiness`, 60 as the kernel has it: how readily it takes
-/// programs' memory rather than cache). A build fills memory with cache;
-/// at 60 the kernel moves part of what idle programs hold to swap to keep
-/// more of it, and they wait for it when next used. At 1 cache goes
-/// first, and swap is used when memory is truly short (Ben, 2026-11-16:
-/// "could we just make it set swapiness to 1 … without losing the
-/// benefits when it's really needed?"). It doesn't govern the graphics
-/// driver's own shrinker (`graphics_swap`).
-fn swappiness(roots: &Roots, r: &mut Report) {
-    let fs = &roots.fs;
-    if read(&fs.join(SWAPS_PATH)).map(|t| crate::fix::swap_areas(&t)).unwrap_or_default().is_empty() {
-        return;
-    }
-    let Some(now) = read(&fs.join(SWAPPINESS_PATH)).and_then(|v| v.parse::<u32>().ok()) else { return };
-    if now <= 1 {
-        r.fine.push(Fine {
-            title: "Programs stay in memory while there's cache to drop".into(),
-            detail: format!("vm.swappiness is {now}: files' cache goes first, and swap is used when memory is truly short."),
-        });
-        return;
-    }
-    r.findings.push(Finding {
-        id: "swappiness".into(),
-        severity: Severity::Advice,
-        title: "Programs' memory is moved to swap while files' cache could go".into(),
-        detail: format!(
-            "vm.swappiness is {now}: when memory fills with files' cache (a build, a big copy), the kernel moves part of programs' own memory to swap to keep more of the cache, and a program waits for it when it's next used. The fix sets it to 1, now and at every start: cache goes first, and swap is used when memory is truly short."
-        ),
-        fix: Some(Fix {
-            label: "Keep Programs in Memory".into(),
-            root: true,
-            steps: vec![
-                Step::WriteFile { path: PathBuf::from("/").join(MEMORY_SYSCTL_PATH), content: MEMORY_SYSCTL.into(), mode: 0o644 },
-                Step::WriteSysfs { path: PathBuf::from("/").join(SWAPPINESS_PATH), value: "1".into() },
-            ],
-        }),
-    });
-}
-
 /// zram-generator's own settings (Fedora's: a swap in compressed memory
 /// of 8 GB at most), and the one that makes it as large as memory.
 const ZRAM_DEFAULTS_PATH: &str = "usr/lib/systemd/zram-generator.conf";
@@ -3587,6 +3541,71 @@ fn kernel_settings(roots: &Roots, r: &mut Report) {
                     if p.live { ", and switches the running kernel now" } else { " (the running kernel is locked down, so it can't be switched until then)" }
                 ),
                 fix: Some(Fix { label: "Preempt at Once".into(), root: true, steps }),
+            });
+        }
+    }
+
+    // Short turns on the processors.
+    if let Some(t) = tuning::turns(&places) {
+        let steps = crate::kernel::steps(Setting::ShortTurns, true, &places);
+        let ms = |ns: u64| format!("{} ms", ns as f64 / 1e6);
+        if t.on() {
+            r.fine.push(Fine {
+                title: "A busy program's turn on a processor is short".into(),
+                detail: format!("{}, now and at every start (the kernel comes with {} here).", ms(t.now_ns()), ms(t.built_ns)),
+            });
+        } else if steps.is_empty() {
+            r.fine.push(Fine {
+                title: "A busy program's turn on a processor is short from the next restart".into(),
+                detail: format!("{} is set for every start; the running kernel is on {} until then (it's locked down, so it can't be set while it runs).", ms(tuning::SHORT_TURN_NS), ms(t.now_ns())),
+            });
+        } else if !scheduled_by_another(&roots.fs) {
+            r.findings.push(Finding {
+                id: "kernel:short-turns".into(),
+                severity: Severity::Advice,
+                title: "Under load, what you're waiting for waits its turn behind busy programs".into(),
+                detail: format!(
+                    "A busy program keeps a processor for {} here before one that is waiting gets it: Linux lengthens that turn with the number of processors, from {}. Whatever is woken while every processor is busy waits out a turn, at each step of what it does: a window drawing, the Terminal passing a key on, and the kernel's own workers that hand every frame to the GPU. With turns of {} (measured on a computer of 16 processors under a build), such waits of over a millisecond were six times rarer and the longest a third as long. The fix sets it for every start{}.",
+                    ms(t.now_ns()),
+                    ms(tuning::SHORT_TURN_NS),
+                    ms(tuning::SHORT_TURN_NS),
+                    if t.live { ", and now" } else { " (the running kernel is locked down, so it can't be set until then)" }
+                ),
+                fix: Some(Fix { label: "Keep Turns Short".into(), root: true, steps }),
+            });
+        }
+    }
+
+    // Swap used last.
+    if let Some(w) = tuning::swap_last(&places) {
+        let steps = crate::kernel::steps(Setting::SwapLast, true, &places);
+        if w.on() {
+            r.fine.push(Fine {
+                title: "Swap is used only when nothing else is left".into(),
+                detail: if w.in_swap > 0 {
+                    format!("Programs' own memory stays in memory while there is files' cache to drop; {} is in swap now.", size(w.in_swap))
+                } else {
+                    "Programs' own memory stays in memory while there is files' cache to drop; nothing is in swap.".into()
+                },
+            });
+        } else {
+            let how = match w.generations {
+                Some(true) => format!(
+                    "Linux's newer way of making room (its multi-generational LRU) moves programs' own memory to swap while there is still files' cache to drop, whatever it's told (vm.swappiness is {} here): a build fills memory with cache, and what idle programs hold goes to swap beside it. Told never to (0), it doesn't use swap even when memory runs out, and ends a program instead.",
+                    w.swappiness
+                ),
+                _ => format!("vm.swappiness is {}: the kernel moves part of programs' own memory to swap to keep more of the files' cache.", w.swappiness),
+            };
+            let now = if w.in_swap > 0 { format!(" {} of {} are in swap now, with {} to be had without it.", size(w.in_swap), size(w.swap), size(w.available)) } else { String::new() };
+            r.findings.push(Finding {
+                id: "kernel:swap-last".into(),
+                severity: Severity::Advice,
+                title: "Programs' memory is moved to swap while files' cache could go".into(),
+                detail: format!(
+                    "{how}{now} The fix has the kernel make room its older way with vm.swappiness 0, which uses swap only once the cache is all but gone, and keep more memory free ahead of need (2% of it) so that point comes before the programs in use have lost their code from memory; now and at every start{}.",
+                    if w.can_bring_back() { ", and brings back what's in swap now" } else { "" }
+                ),
+                fix: Some(Fix { label: "Use Swap Last".into(), root: true, steps }),
             });
         }
     }
@@ -5202,45 +5221,6 @@ mod tests {
         assert!(r.findings.is_empty() && r.fine[0].detail.starts_with("Up to 8,192 programs"), "{:?}", r.fine);
     }
 
-    /// Swappiness: with swap on and the kernel's 60, set to 1 now and at
-    /// every start; fine at 1; nothing to say with no swap.
-    #[test]
-    fn swappiness_is_set_to_one() {
-        let (fs, roots) = machine("swappiness");
-        let w = |p: &str, c: &str| {
-            let path = fs.join(p);
-            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-            std::fs::write(path, c).unwrap();
-        };
-        let heading = "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n";
-        let look = |roots: &Roots| {
-            let mut r = Report::default();
-            swappiness(roots, &mut r);
-            r
-        };
-        w("proc/sys/vm/swappiness", "60\n");
-        w("proc/swaps", heading);
-        assert!(look(&roots).findings.is_empty() && look(&roots).fine.is_empty());
-        w("proc/swaps", &format!("{heading}/dev/zram0 partition 8388604 0 100\n"));
-        let r = look(&roots);
-        let f = r.find("swappiness").unwrap();
-        assert_eq!((f.severity, f.title.as_str()), (Severity::Advice, "Programs' memory is moved to swap while files' cache could go"));
-        assert!(f.detail.starts_with("vm.swappiness is 60: "), "{}", f.detail);
-        let fix = f.fix.as_ref().unwrap();
-        assert!(fix.root && fix.label == "Keep Programs in Memory");
-        assert_eq!(
-            fix.steps,
-            [
-                Step::WriteFile { path: "/etc/sysctl.d/80-olo-memory.conf".into(), content: MEMORY_SYSCTL.into(), mode: 0o644 },
-                Step::WriteSysfs { path: "/proc/sys/vm/swappiness".into(), value: "1".into() }
-            ]
-        );
-        assert!(MEMORY_SYSCTL.lines().any(|l| l == "vm.swappiness = 1"));
-        w("proc/sys/vm/swappiness", "1\n");
-        let r = look(&roots);
-        assert!(r.findings.is_empty() && r.fine[0].detail.starts_with("vm.swappiness is 1: "));
-    }
-
     /// Swap as large as memory is suggested where it's the generator's
     /// compressed-memory swap and smaller, and the graphics driver can't
     /// take the room for windows' buffers; not otherwise.
@@ -6666,11 +6646,20 @@ mod tests {
         assert!(ids(&roots).is_empty());
         // Fedora's, as it comes, with a stick plugged in.
         w("proc/sys/kernel/osrelease", "7.2.15-300.fc45.x86_64\n");
-        w("lib/modules/7.2.15-300.fc45.x86_64/config", "CONFIG_PREEMPT_LAZY=y\nCONFIG_PREEMPT_DYNAMIC=y\n");
+        w("lib/modules/7.2.15-300.fc45.x86_64/config", "CONFIG_PREEMPT_LAZY=y\nCONFIG_PREEMPT_DYNAMIC=y\nCONFIG_LRU_GEN=y\nCONFIG_LRU_GEN_ENABLED=y\n");
         w("proc/cmdline", "BOOT_IMAGE=(hd0,gpt2)/vmlinuz ro rhgb quiet\n");
         w("etc/kernel/cmdline", "root=UUID=1 ro rhgb quiet\n");
         w("sys/kernel/debug/sched/preempt", "none voluntary full (lazy)\n");
         w("proc/vmstat", "nr_dirty 100\nnr_writeback 0\nnr_dirty_threshold 3748981\noom_kill 0\n");
+        // Sixteen processors, and swap with something in it, as an
+        // earlier Olo left it (vm.swappiness 1).
+        w("sys/devices/system/cpu/online", "0-15\n");
+        w("sys/kernel/debug/sched/base_slice_ns", "2800000\n");
+        w("proc/meminfo", "MemTotal:       65262588 kB\nMemAvailable:   30000000 kB\nSwapTotal:      65262588 kB\nSwapFree:       55262588 kB\n");
+        w("proc/sys/vm/swappiness", "1\n");
+        w("proc/sys/vm/watermark_scale_factor", "10\n");
+        w("sys/kernel/mm/lru_gen/enabled", "0x0007\n");
+        w("etc/sysctl.d/80-olo-memory.conf", "vm.swappiness = 1\n");
         for (name, removable) in [("nvme0n1", "0"), ("sdb", "1")] {
             w(&format!("sys/block/{name}/removable"), removable);
             w(&format!("sys/block/{name}/size"), "60000");
@@ -6678,24 +6667,41 @@ mod tests {
             w(&format!("sys/block/{name}/bdi/max_bytes"), "15355826176\n");
             w(&format!("sys/block/{name}/bdi/max_ratio"), "100\n");
         }
-        assert_eq!(ids(&roots), ["kernel:preemption", "kernel:slow-disks"]);
+        assert_eq!(ids(&roots), ["kernel:preemption", "kernel:short-turns", "kernel:swap-last", "kernel:slow-disks"]);
         let r = scan(&roots);
-        for (id, label) in [("kernel:preemption", "Preempt at Once"), ("kernel:slow-disks", "Limit Removable Disks")] {
+        for (id, label, severity) in [
+            ("kernel:preemption", "Preempt at Once", Severity::Suggestion),
+            ("kernel:short-turns", "Keep Turns Short", Severity::Advice),
+            ("kernel:swap-last", "Use Swap Last", Severity::Advice),
+            ("kernel:slow-disks", "Limit Removable Disks", Severity::Suggestion),
+        ] {
             let f = r.find(id).unwrap();
-            assert_eq!((f.severity, f.fix.as_ref().unwrap().label.as_str(), f.fix.as_ref().unwrap().root), (Severity::Suggestion, label, true), "{id}");
+            assert_eq!((f.severity, f.fix.as_ref().unwrap().label.as_str(), f.fix.as_ref().unwrap().root), (severity, label, true), "{id}");
         }
+        let turns = &r.find("kernel:short-turns").unwrap().detail;
+        assert!(turns.starts_with("A busy program keeps a processor for 2.8 ms here") && turns.ends_with("The fix sets it for every start, and now."), "{turns}");
+        let swap = &r.find("kernel:swap-last").unwrap().detail;
+        assert!(swap.contains("(vm.swappiness is 1 here)") && swap.contains("9.5 GB of 62.2 GB are in swap now, with 28.6 GB to be had without it."), "{swap}");
+        // (A test's tree has no swap to bring back: the step is the real computer's.)
+        assert!(swap.ends_with("now and at every start, and brings back what's in swap now."), "{swap}");
         assert!(r.find("kernel:preemption").unwrap().detail.ends_with("from the next restart, and switches the running kernel now."));
         assert!(r.find("kernel:slow-disks").unwrap().detail.starts_with("Up to 14.3 GB written to a USB stick"), "{}", r.find("kernel:slow-disks").unwrap().detail);
         assert!(r.find("kernel:slow-disks").unwrap().detail.ends_with("The fix limits those here now and installs a rule that limits each as it's plugged in."));
         // Each fix, run (the tree is ours to write), leaves it fine.
-        for id in ["kernel:preemption", "kernel:slow-disks"] {
+        for id in ["kernel:preemption", "kernel:short-turns", "kernel:swap-last", "kernel:slow-disks"] {
             for done in crate::helper::run_steps(&scan(&roots).find(id).unwrap().fix.as_ref().unwrap().steps) {
                 done.unwrap();
+            }
+            // (The kernel says its mask back, where the tree has the word written.)
+            if id == "kernel:swap-last" {
+                w("sys/kernel/mm/lru_gen/enabled", "0x0000\n");
             }
             assert!(scan(&roots).find(id).is_none(), "{id} is offered still");
         }
         let fine: Vec<String> = scan(&roots).fine.iter().map(|f| f.title.clone()).collect();
-        for title in ["The kernel switches to a woken program at once", "Removable disks' writes are limited"] {
+        for title in
+            ["The kernel switches to a woken program at once", "A busy program's turn on a processor is short", "Swap is used only when nothing else is left", "Removable disks' writes are limited"]
+        {
             assert!(fine.iter().any(|t| t == title), "{title}: {fine:?}");
         }
         assert_eq!(std::fs::read_to_string(fs.join("etc/kernel/cmdline")).unwrap(), "root=UUID=1 ro rhgb quiet preempt=full\n");

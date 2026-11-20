@@ -11,9 +11,9 @@
 //! the kernel comes. kernel/README.md has what was measured for each.
 //!
 //! `olo-doctor --kernel` says what there is, to anyone, in JSON;
-//! `olo-doctor --kernel SETTING on|off` (preemption, slow-disks, bbr3,
-//! graphics-memory) is how Preferences, a person at a
-//! terminal and an agent all set one.
+//! `olo-doctor --kernel SETTING on|off` (preemption, short-turns,
+//! swap-last, slow-disks, bbr3, graphics-memory) is how Preferences, a
+//! person at a terminal and an agent all set one.
 
 use std::path::Path;
 
@@ -76,6 +76,105 @@ pub fn steps(setting: Setting, on: bool, places: &Places) -> Vec<Step> {
                 for d in s.disks.iter().filter(|d| d.limit.is_some()) {
                     steps.push(Step::WriteSysfs { path: places.strict_limit(&d.name), value: "0".into() });
                     steps.push(Step::WriteSysfs { path: places.max_ratio(&d.name), value: "100".into() });
+                }
+            }
+        }
+        Setting::ShortTurns => {
+            let Some(t) = tuning::turns(places) else { return steps };
+            let (lines, unit, wanted) = (places.short_turns_lines(), places.short_turns_unit(), places.short_turns_wanted());
+            let is = |path: &Path, text: &str| std::fs::read_to_string(path).is_ok_and(|t| t == text);
+            // (A test's tree has no systemd: the link it would make to
+            // the unit stands for choosing it.)
+            let chosen = std::fs::symlink_metadata(&wanted).is_ok();
+            let set = |ns: u64, steps: &mut Vec<Step>| {
+                steps.push(Step::WriteSysfs { path: places.turn_switch(), value: ns.to_string() });
+                steps.push(Step::WriteFile { path: places.turn_note(), content: format!("{ns}\n"), mode: 0o644 });
+            };
+            if on {
+                if !is(&lines, tuning::SHORT_TURNS_LINES) {
+                    steps.push(Step::WriteFile { path: lines, content: tuning::SHORT_TURNS_LINES.into(), mode: 0o644 });
+                }
+                let changed = !is(&unit, tuning::SHORT_TURNS_UNIT);
+                if changed {
+                    steps.push(Step::WriteFile { path: unit, content: tuning::SHORT_TURNS_UNIT.into(), mode: 0o644 });
+                }
+                if places.stand_in() {
+                    if !chosen {
+                        steps.push(Step::WriteFile { path: wanted, content: String::new(), mode: 0o644 });
+                    }
+                } else {
+                    if changed {
+                        steps.push(Step::Unit { name: tuning::SHORT_TURNS_SERVICE.into(), action: UnitAction::Reload });
+                    }
+                    if changed || !chosen {
+                        steps.push(Step::Unit { name: tuning::SHORT_TURNS_SERVICE.into(), action: UnitAction::Enable });
+                    }
+                }
+                if t.live && t.now_ns() > tuning::SHORT_TURN_NS {
+                    set(tuning::SHORT_TURN_NS, &mut steps);
+                }
+            } else {
+                if chosen {
+                    steps.push(if places.stand_in() { Step::RemoveFile { path: wanted } } else { Step::Unit { name: tuning::SHORT_TURNS_SERVICE.into(), action: UnitAction::Disable } });
+                }
+                if lines.exists() {
+                    steps.push(Step::RemoveFile { path: lines });
+                }
+                if unit.exists() {
+                    steps.push(Step::RemoveFile { path: unit });
+                    if !places.stand_in() {
+                        steps.push(Step::Unit { name: tuning::SHORT_TURNS_SERVICE.into(), action: UnitAction::Reload });
+                    }
+                }
+                if t.live && t.now_ns() != t.built_ns {
+                    set(t.built_ns, &mut steps);
+                }
+            }
+        }
+        Setting::SwapLast => {
+            let Some(s) = tuning::swap_last(places) else { return steps };
+            let (sysctl, lines) = (places.swap_last_sysctl(), places.swap_last_lines());
+            let is = |path: &Path, text: &str| std::fs::read_to_string(path).is_ok_and(|t| t == text);
+            let set = |path: std::path::PathBuf, value: &str| Step::WriteSysfs { path, value: value.into() };
+            if on {
+                if !is(&sysctl, tuning::SWAP_LAST_SYSCTL) {
+                    steps.push(Step::WriteFile { path: sysctl, content: tuning::SWAP_LAST_SYSCTL.into(), mode: 0o644 });
+                }
+                if s.generations.is_some() && !is(&lines, tuning::SWAP_LAST_LINES) {
+                    steps.push(Step::WriteFile { path: lines, content: tuning::SWAP_LAST_LINES.into(), mode: 0o644 });
+                }
+                if s.generations == Some(true) {
+                    steps.push(set(places.generations(), "0"));
+                }
+                if s.swappiness != 0 {
+                    steps.push(set(places.swappiness(), "0"));
+                }
+                if s.room != tuning::SWAP_LAST_ROOM {
+                    steps.push(set(places.room(), &tuning::SWAP_LAST_ROOM.to_string()));
+                }
+                // What went to swap before comes back at once, where
+                // there's room for it twice over: only as the setting is
+                // put on (on already, what's there was needed there).
+                if !steps.is_empty() && s.can_bring_back() && !places.stand_in() {
+                    steps.push(Step::SwapBack);
+                }
+            } else {
+                // (Olo's own files only: the sysctls' file as an earlier
+                // Olo wrote it, `vm.swappiness = 1`, is Olo's too.)
+                if sysctl.exists() {
+                    steps.push(Step::RemoveFile { path: sysctl });
+                }
+                if lines.exists() {
+                    steps.push(Step::RemoveFile { path: lines });
+                }
+                if s.generations == Some(false) && s.generations_built {
+                    steps.push(set(places.generations(), "y"));
+                }
+                if s.swappiness != tuning::KERNELS_SWAPPINESS {
+                    steps.push(set(places.swappiness(), &tuning::KERNELS_SWAPPINESS.to_string()));
+                }
+                if s.room != tuning::KERNELS_ROOM {
+                    steps.push(set(places.room(), &tuning::KERNELS_ROOM.to_string()));
                 }
             }
         }
@@ -149,6 +248,10 @@ fn piece_steps(setting: Setting, on: bool, places: &Places) -> Result<Vec<Step>,
 fn cannot(setting: Setting, places: &Places) -> Option<&'static str> {
     match setting {
         Setting::Preemption if tuning::preemption(places).is_none() => Some("This kernel has one way of preempting only (it wasn't built to be told another)."),
+        Setting::ShortTurns if tuning::turns(places).is_none() => {
+            Some("This computer's turns on its processor are the short ones already (the kernel lengthens them where there are more processors).")
+        }
+        Setting::SwapLast if tuning::swap_last(places).is_none() => Some("This computer has no swap to hold back."),
         Setting::SlowDisks if !tuning::slow_disks(places).can => Some("This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can)."),
         Setting::Bbr3 if tuning::bbr3(places).is_none() => Some("This computer has no TCP to set."),
         _ => None,
@@ -168,6 +271,8 @@ pub fn apply(setting: Setting, on: bool, places: &Places, progress: &mut dyn FnM
     };
     // (Read before the steps: what the start argument can't change now.)
     let before = tuning::preemption(places);
+    let (turns_before, swap_before) = (tuning::turns(places), tuning::swap_last(places));
+    let brought_back = steps.contains(&Step::SwapBack);
     if !steps.is_empty() {
         // (A test's tree is the person's to write.)
         let results = if places.stand_in() { helper::run_steps_with(&steps, progress) } else { helper::run_as_root(&steps, progress)? };
@@ -185,6 +290,29 @@ pub fn apply(setting: Setting, on: bool, places: &Places, progress: &mut dyn FnM
             Some(p) => format!("The kernel's preemption is as it comes ({}).", p.built),
             None => "The kernel's preemption is as it comes.".to_owned(),
         },
+        (Setting::ShortTurns, true) => match turns_before {
+            Some(t) if !t.live && t.now_ns() > tuning::SHORT_TURN_NS => {
+                "A busy program's turn on a processor is 0.7 ms from the next restart (the kernel is locked down, so it can't be set while it runs).".to_owned()
+            }
+            _ => "A busy program's turn on a processor is 0.7 ms, now and from every start.".to_owned(),
+        },
+        (Setting::ShortTurns, false) => match turns_before {
+            Some(t) => format!("Turns on the processors are as the kernel comes ({} ms).", t.built_ns as f64 / 1e6),
+            None => "Turns on the processors are as the kernel comes.".to_owned(),
+        },
+        (Setting::SwapLast, true) => match swap_before {
+            Some(s) if brought_back => {
+                format!("Swap is used only when nothing else is left, now and from every start; the {:.1} GB that were in it are back in memory.", s.in_swap as f64 / (1u64 << 30) as f64)
+            }
+            Some(s) if s.in_swap > 0 && !s.on() => {
+                format!(
+                    "Swap is used only when nothing else is left, now and from every start; the {:.1} GB in it now come back as they're next used (there wasn't room to bring them back at once).",
+                    s.in_swap as f64 / (1u64 << 30) as f64
+                )
+            }
+            _ => "Swap is used only when nothing else is left, now and from every start.".to_owned(),
+        },
+        (Setting::SwapLast, false) => "Memory is made room in as the kernel comes: programs' own memory is moved to swap while there is files' cache to drop.".to_owned(),
         (Setting::SlowDisks, true) => "What waits in memory for a removable disk is limited to 16 MB: those here now, and each as it's plugged in.".to_owned(),
         (Setting::SlowDisks, false) => "Writes to removable disks wait in memory like any others, as the kernel comes.".to_owned(),
         (Setting::Bbr3, true) => "New connections send with BBRv3, now and from every start.".to_owned(),
@@ -203,6 +331,13 @@ pub fn status(places: &Places) -> serde_json::Value {
     json!({
         "preemption": s.preemption.map(|p| json!({
             "on": p.on(), "now": p.now(), "next_start": p.next(), "built": p.built, "started_with": p.started, "can_switch_now": p.live, "boot_entry_lacks_it": p.lost,
+        })),
+        "short-turns": s.turns.map(|t| json!({
+            "on": t.on(), "now_ns": t.now_ns(), "as_the_kernel_comes_ns": t.built_ns, "short_ns": tuning::SHORT_TURN_NS, "kept_at_start": t.kept, "can_set_now": t.live,
+        })),
+        "swap-last": s.swap_last.map(|w| json!({
+            "on": w.on(), "swappiness": w.swappiness, "multi_generational_lru": w.generations, "room_kept_free": w.room, "kept_at_start": w.kept,
+            "swap_bytes": w.swap, "in_swap_bytes": w.in_swap, "available_bytes": w.available,
         })),
         "slow-disks": json!({
             "on": s.slow_disks.on(), "can": s.slow_disks.can, "rule": s.slow_disks.kept, "limit_bytes": tuning::SLOW_DISK_BYTES,
@@ -338,6 +473,89 @@ mod tests {
         assert!(said.contains("from the next restart"), "{said}");
         let p = tuning::preemption(&places).unwrap();
         assert_eq!((p.now(), p.next()), ("lazy", "full"));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn short_turns_are_set_now_and_kept_by_a_unit_and_put_back() {
+        let (root, places) = tree("turns");
+        assert!(steps(Setting::ShortTurns, true, &places).is_empty(), "no processors to count: nothing to do");
+        assert!(apply(Setting::ShortTurns, true, &places, &mut |_| {}).is_err());
+        put(&places, "sys/devices/system/cpu/online", "0-15\n");
+        put(&places, "sys/kernel/debug/sched/base_slice_ns", "2800000\n");
+        let on = steps(Setting::ShortTurns, true, &places);
+        assert!(
+            matches!(on.as_slice(), [Step::WriteFile { content: lines, .. }, Step::WriteFile { content: unit, .. }, Step::WriteFile { path: wanted, .. }, Step::WriteSysfs { value, .. }, Step::WriteFile { content: note, .. }]
+            if lines == tuning::SHORT_TURNS_LINES && unit == tuning::SHORT_TURNS_UNIT && wanted.ends_with("multi-user.target.wants/olo-short-turns.service") && value == "700000" && note == "700000\n"),
+            "{on:?}"
+        );
+        run(&on);
+        let read = |p: &str| std::fs::read_to_string(places.at(p)).unwrap();
+        assert_eq!(read("sys/kernel/debug/sched/base_slice_ns"), "700000");
+        let t = tuning::turns(&places).unwrap();
+        assert!(t.on() && t.now_ns() == tuning::SHORT_TURN_NS);
+        assert!(steps(Setting::ShortTurns, true, &places).is_empty(), "again: nothing to do");
+        assert!(apply(Setting::ShortTurns, true, &places, &mut |_| {}).unwrap().contains("0.7 ms, now and from every start"));
+        // Off: the unit unchosen and gone with its lines, the turn as the kernel has it for sixteen processors.
+        let off = steps(Setting::ShortTurns, false, &places);
+        assert!(
+            matches!(off.as_slice(), [Step::RemoveFile { .. }, Step::RemoveFile { .. }, Step::RemoveFile { .. }, Step::WriteSysfs { value, .. }, Step::WriteFile { .. }] if value == "2800000"),
+            "{off:?}"
+        );
+        run(&off);
+        let t = tuning::turns(&places).unwrap();
+        assert_eq!((t.on(), t.kept, t.now_ns()), (false, false, 2_800_000));
+        assert!(steps(Setting::ShortTurns, false, &places).is_empty());
+        assert!(apply(Setting::ShortTurns, false, &places, &mut |_| {}).unwrap().contains("2.8 ms"));
+        // Locked down: kept for every start only, and it says so.
+        put(&places, "sys/kernel/security/lockdown", "none [integrity] confidentiality\n");
+        let locked = steps(Setting::ShortTurns, true, &places);
+        assert!(matches!(locked.as_slice(), [Step::WriteFile { .. }, Step::WriteFile { .. }, Step::WriteFile { .. }]), "{locked:?}");
+        assert!(apply(Setting::ShortTurns, true, &places, &mut |_| {}).unwrap().contains("from the next restart"));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn swap_is_put_last_now_and_kept_and_put_back() {
+        let (root, places) = tree("swap");
+        assert!(apply(Setting::SwapLast, true, &places, &mut |_| {}).is_err(), "no swap: nothing to hold back");
+        put(&places, "proc/meminfo", "MemAvailable:   30000000 kB\nSwapTotal:      65262588 kB\nSwapFree:       55262588 kB\n");
+        put(&places, "proc/sys/vm/swappiness", "1\n");
+        put(&places, "proc/sys/vm/watermark_scale_factor", "10\n");
+        put(&places, "sys/kernel/mm/lru_gen/enabled", "0x0007\n");
+        put(&places, "proc/sys/kernel/osrelease", "7.2.15-300.fc45.x86_64\n");
+        put(&places, "lib/modules/7.2.15-300.fc45.x86_64/config", "CONFIG_LRU_GEN=y\nCONFIG_LRU_GEN_ENABLED=y\n");
+        // (As an earlier Olo left it.)
+        put(&places, "etc/sysctl.d/80-olo-memory.conf", "vm.swappiness = 1\n");
+        let on = steps(Setting::SwapLast, true, &places);
+        assert!(
+            matches!(on.as_slice(), [Step::WriteFile { content: sysctl, .. }, Step::WriteFile { content: lines, .. }, Step::WriteSysfs { path: lru, value: none }, Step::WriteSysfs { path: swappiness, value: zero }, Step::WriteSysfs { path: room, value: two }]
+            if sysctl == tuning::SWAP_LAST_SYSCTL && lines == tuning::SWAP_LAST_LINES && lru.ends_with("lru_gen/enabled") && none == "0" && swappiness.ends_with("vm/swappiness") && zero == "0" && room.ends_with("watermark_scale_factor") && two == "200"),
+            "{on:?}"
+        );
+        run(&on);
+        let s = tuning::swap_last(&places).unwrap();
+        assert!(s.on(), "{s:?}");
+        assert!(steps(Setting::SwapLast, true, &places).is_empty(), "again: nothing to do, and what's in swap is left there");
+        // Off: Olo's files gone, the kernel's own readiness, room and reclaim.
+        let off = steps(Setting::SwapLast, false, &places);
+        assert!(
+            matches!(off.as_slice(), [Step::RemoveFile { .. }, Step::RemoveFile { .. }, Step::WriteSysfs { value: lru, .. }, Step::WriteSysfs { value: sixty, .. }, Step::WriteSysfs { value: ten, .. }] if lru == "y" && sixty == "60" && ten == "10"),
+            "{off:?}"
+        );
+        run(&off);
+        // (The kernel says its mask back, where the tree has the word written.)
+        put(&places, "sys/kernel/mm/lru_gen/enabled", "0x0007\n");
+        let s = tuning::swap_last(&places).unwrap();
+        assert_eq!((s.on(), s.kept, s.swappiness, s.room), (false, false, 60, 10));
+        assert!(steps(Setting::SwapLast, false, &places).is_empty());
+        // A kernel without the multi-generational LRU: the sysctls alone.
+        std::fs::remove_file(places.generations()).unwrap();
+        let on = steps(Setting::SwapLast, true, &places);
+        assert!(matches!(on.as_slice(), [Step::WriteFile { .. }, Step::WriteSysfs { .. }, Step::WriteSysfs { .. }]), "{on:?}");
+        let said = apply(Setting::SwapLast, true, &places, &mut |_| {}).unwrap();
+        assert!(said.contains("come back as they're next used"), "{said}");
+        assert!(tuning::swap_last(&places).unwrap().on());
         let _ = std::fs::remove_dir_all(root);
     }
 

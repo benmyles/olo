@@ -159,6 +159,17 @@ impl Drop for KernelWatch {
 fn made_up_kernel() -> tuning::State {
     tuning::State {
         preemption: Some(tuning::Preemption { built: "lazy".into(), started: Some("full".into()), kept: Some("full".into()), switched: None, live: true, lost: false }),
+        turns: Some(tuning::Turns { built_ns: 2_800_000, switched_ns: Some(tuning::SHORT_TURN_NS), kept: true, live: true }),
+        swap_last: Some(tuning::SwapLast {
+            swappiness: 0,
+            generations: Some(false),
+            generations_built: true,
+            room: tuning::SWAP_LAST_ROOM,
+            kept: true,
+            swap: 66_828_890_112,
+            in_swap: 0,
+            available: 33_671_446_528,
+        }),
         slow_disks: tuning::SlowDisks {
             can: true,
             kept: true,
@@ -362,6 +373,53 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             facts: Vec::new(),
         },
     });
+    if let Some(t) = &s.turns {
+        let ms = |ns: u64| olo_kit::tr!("{} ms", format!("{}", ns as f64 / 1e6));
+        boxes.push(KernelBox {
+            title: "Processor Turns",
+            setting: Setting::ShortTurns,
+            label: "Keep a busy program's turn short",
+            on: Some(t.on()),
+            // (As preemption: a scheduler loaded over the kernel's has
+            // turns of its own.)
+            about: match scheduled_by {
+                Some(name) => olo_kit::tr!(
+                    "When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.",
+                    ms(t.built_ns),
+                    name
+                ),
+                None => olo_kit::tr!("When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up (base slice).", ms(t.built_ns)),
+            },
+            // (The same rows on and off: off, both say Linux's own.)
+            facts: vec![("Turn now", ms(t.now_ns())), ("Linux's own", ms(t.built_ns)), ("At every start", olo_kit::words::tr(if t.kept { "yes" } else { "no" }).to_owned())],
+        });
+    }
+    if let Some(w) = &s.swap_last {
+        boxes.push(KernelBox {
+            title: "Memory",
+            setting: Setting::SwapLast,
+            label: "Use swap only when nothing else is left",
+            on: Some(w.on()),
+            about: olo_kit::words::tr("Copies of files in memory are freed first; programs go to swap only when those run out (vm.swappiness 0, MGLRU off).").into(),
+            facts: vec![
+                ("Swap used", if w.in_swap == 0 { olo_kit::tr!("none of {}", size(w.swap)) } else { olo_kit::tr!("{} of {}", size(w.in_swap), size(w.swap)) }),
+                ("Memory free", size(w.available)),
+                // (What the kernel takes first when it makes room: its
+                // older reclaim at vm.swappiness 0 the files' cache; its
+                // multi-generational LRU whatever was used longest ago,
+                // programs' own memory among it.)
+                (
+                    "Frees first",
+                    olo_kit::words::tr(match (w.generations, w.swappiness) {
+                        (Some(true), _) => "the least used",
+                        (_, 0) => "copies of files",
+                        _ => "some of each",
+                    })
+                    .to_owned(),
+                ),
+            ],
+        });
+    }
     let d = &s.slow_disks;
     boxes.push(if d.can {
         KernelBox {
@@ -369,7 +427,7 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             setting: Setting::SlowDisks,
             label: "Limit what waits to be written to them",
             on: Some(d.on()),
-            about: olo_kit::tr!("A copy to a stick or a card goes at the disk's own pace, {} waiting in memory at most, so its progress is true and ejecting is quick.", size(tuning::SLOW_DISK_BYTES)),
+            about: olo_kit::words::tr("A copy to a stick or a card goes at the disk's own pace, so its progress is true and ejecting is quick.").into(),
             facts: vec![
                 ("May wait", if d.kept { olo_kit::tr!("{} for each", size(tuning::SLOW_DISK_BYTES)) } else { format!("up to {}", size(d.may_wait)) }),
                 ("Waiting now", olo_kit::tr!("{}, all disks", size(d.waiting))),
@@ -403,7 +461,7 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             setting: Setting::Bbr3,
             label: "Send with BBRv3",
             on: Some(b.on()),
-            about: olo_kit::words::tr("TCP sends at the pace its path can carry, by a model of it, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).").into(),
+            about: olo_kit::words::tr("TCP sends at the pace its path can carry, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).").into(),
             facts: vec![
                 ("New connections", b.control.clone()),
                 ("On it now", o.as_ref().map_or("—".to_owned(), |o| olo_kit::tr!("{} of {} connections", count(o.connections as u64), count(o.of as u64)))),
@@ -438,8 +496,11 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             setting: Setting::GraphicsMemory,
             label: "Keep windows' graphics memory out of swap",
             on: Some(g.on()),
-            about: olo_kit::words::tr("Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).").into(),
-            facts: vec![("The patch", if g.patched { "in the running kernel" } else { "not in the running kernel" }.to_owned()), ("At every start", if g.kept { "yes" } else { "no" }.to_owned())],
+            about: olo_kit::words::tr("Windows' buffers stay out of swap, so the desktop never waits for one (Olo's live patch of Intel's driver).").into(),
+            facts: vec![
+                ("The patch", if g.patched { "in the running kernel" } else { "not in the running kernel" }.to_owned()),
+                ("At every start", olo_kit::words::tr(if g.kept { "yes" } else { "no" }).to_owned()),
+            ],
         });
     }
     boxes
@@ -452,10 +513,17 @@ fn kernel_tab(ui: &mut Ui, shared: &Arc<Mutex<Kernel>>, scheduled_by: Option<&st
     let k = shared.lock().unwrap().clone();
     let Some(state) = k.state else { return ui.note("Reading…") };
     let p = theme::palette();
-    let (dim, text) = (style::disabled_text(&p), style::c(p.panel_text));
+    // (The facts' labels in the secondary ink, as the paragraph over
+    // them: in the disabled one they read as switched off, and they
+    // name what is so now. Astra's look, 2026-11-20.)
+    let (dim, text) = (style::secondary_text(&p), style::c(p.panel_text));
     let busy = k.applying.is_some();
-    let one = |ui: &mut Ui, b: KernelBox| {
-        ui.bbox(b.title, |ui| {
+    // (`labels`: how far this column's values stand from its labels'
+    // left, the same in every box of it; `last`: the column's last box,
+    // which takes what height the column has spare, so both columns
+    // end on one line.)
+    let one = |ui: &mut Ui, b: KernelBox, labels: f32, last: bool| {
+        let build = |ui: &mut Ui| {
             let Some(on) = b.on else { return ui.note(b.about) };
             let shown = match k.applying {
                 Some((s, to)) if s == b.setting => to,
@@ -465,24 +533,55 @@ fn kernel_tab(ui: &mut Ui, shared: &Arc<Mutex<Kernel>>, scheduled_by: Option<&st
             ui.add(CheckBox::new(b.label, shown).id(format!("kernel-{}", setting.word())).enabled(!busy).on_toggle(move |on, _| set_kernel(shared.clone(), proxy.clone(), setting, *on)));
             // (Under the label, past the mark.)
             let rows: Vec<(SharedString, SharedString)> = b.facts.into_iter().map(|(l, v)| (SharedString::from(l), SharedString::from(v))).collect();
-            ui.add(div().pl(px(m::MARK_SIZE + m::MARK_GAP)).flex().flex_col().gap(px(m::TIGHT)).child(StringView::new(b.about).dim(true).wrap(true)).child(Facts::new(rows).colors(dim, text)));
-        });
+            ui.add(
+                div()
+                    .pl(px(m::MARK_SIZE + m::MARK_GAP))
+                    .flex()
+                    .flex_col()
+                    // (As far under the paragraph as the paragraph is
+                    // under the check box: nearer, the facts read as its
+                    // next line. Opus's look.)
+                    .gap(px(m::STACK))
+                    .child(StringView::new(b.about).dim(true).wrap(true))
+                    // (Its rows as far apart as the paragraph's lines: two
+                    // boxes side by side with as many lines and rows
+                    // between them are then as tall as each other, and
+                    // both columns of the tab.)
+                    .child(Facts::new(rows).colors(dim, text).label_width(labels).row_height(style::PLAIN_SIZE * style::LINE_HEIGHT)),
+            );
+        };
+        if last { ui.growing_bbox(b.title, build) } else { ui.bbox(b.title, build) }
     };
-    // The kernel's settings on the left, Olo's pieces on the right.
-    let (settings, pieces): (Vec<KernelBox>, Vec<KernelBox>) = kernel_boxes(&state, scheduled_by).into_iter().partition(|b| !matches!(b.setting, Setting::Bbr3 | Setting::GraphicsMemory));
-    let left = ui.collect(|ui| settings.into_iter().for_each(|b| one(ui, b)));
-    let right = ui.collect(|ui| {
-        pieces.into_iter().for_each(|b| one(ui, b));
-        match (&k.applying, &k.said) {
-            (Some(_), _) => ui.note("Setting it: an administrator's password is asked…"),
-            (None, Some(Err(why))) => ui.add(StringView::new(olo_kit::tr!("Not changed. {}", why)).wrap(true).color(style::c(p.failure))),
-            (None, Some(Ok(said))) => ui.note(said.clone()),
-            _ => {}
-        }
-        ui.note("Each is the computer's, not this account's, so switching one asks for an administrator's password. Olo Doctor suggests each, with what was measured for it.");
-    });
-    let column = |items: Vec<olo_kit::Element>| div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).children(items);
-    ui.add(div().flex().flex_row().gap(px(m::SPACING)).child(column(left)).child(column(right)));
+    // How programs share the processors and memory on the left; disks,
+    // the network and graphics on the right. (The kernel's settings were
+    // all on the left and Olo's own pieces on the right until there were
+    // six: four on one side was taller than the smallest screen.)
+    let (settings, pieces): (Vec<KernelBox>, Vec<KernelBox>) =
+        kernel_boxes(&state, scheduled_by).into_iter().partition(|b| matches!(b.setting, Setting::Preemption | Setting::ShortTurns | Setting::SwapLast));
+    // (One width for every box's labels, the tab's widest as it's shown,
+    // each a literal looked up: the values in one line down each
+    // column, and the two columns' alike.)
+    let shown: Vec<SharedString> = settings.iter().chain(&pieces).flat_map(|b| b.facts.iter().map(|(l, _)| olo_kit::words::of(SharedString::from(*l)))).collect();
+    let labels = olo_kit::widgets::dashboard::facts_label_width(shown.iter().map(|l| l.as_ref()));
+    let mut column = |boxes: Vec<KernelBox>| {
+        let count = boxes.len();
+        let items = ui.collect(|ui| boxes.into_iter().enumerate().for_each(|(i, b)| one(ui, b, labels, i + 1 == count)));
+        div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).children(items)
+    };
+    let (left, right) = (column(settings), column(pieces));
+    ui.add(div().flex().flex_row().gap(px(m::SPACING)).child(left).child(right));
+    // Whose these are, across both columns (under one it read as that
+    // column's last box's footnote: both looks), a row's step further
+    // under the boxes than rows are from each other (as far as the
+    // boxes stand from one another with their titles), until a switch
+    // has something to say in its place.
+    ui.add(div().h(px(0.0)));
+    match (&k.applying, &k.said) {
+        (Some(_), _) => ui.note("Setting it: an administrator's password is asked…"),
+        (None, Some(Err(why))) => ui.add(StringView::new(olo_kit::tr!("Not changed. {}", why)).wrap(true).color(style::c(p.failure))),
+        (None, Some(Ok(said))) => ui.note(said.clone()),
+        _ => ui.note("These settings are for the whole computer, so changing one asks for an administrator's password."),
+    }
 }
 
 /// Put `choice` in force: Olo Doctor does it (`olo-doctor --scheduler`:

@@ -334,8 +334,8 @@ repo 범위의 클래식 토큰이나 풀 리퀘스트와 검사를 읽을 수 �
 A code that is surely an agent’s tab’s is put in there, and you’re told; one that isn’t sure is asked about.
 어느 에이전트 탭에 쓸 코드인지 확실하면 그 탭에 입력하고 알려 줍니다. 확실하지 않으면 먼저 물어봅니다.
 
-A copy to a stick or a card goes at the disk's own pace, {} waiting in memory at most, so its progress is true and ejecting is quick.
-USB 메모리나 카드에 복사할 때 디스크 속도에 맞춰 메모리에는 최대 {}만 대기시킵니다. 진행률이 정확하고 꺼낼 때도 빠릅니다.
+A copy to a stick or a card goes at the disk's own pace, so its progress is true and ejecting is quick.
+USB 메모리나 카드로의 복사는 디스크 자체의 속도로 진행되므로 진행률이 정확하고 꺼내기가 빠릅니다.
 
 A day
 하루
@@ -1158,6 +1158,9 @@ At 20%
 
 At a time of its own
 직접 지정한 시간에
+
+At every start
+시작할 때마다
 
 At full speed
 최고 속도로
@@ -2389,6 +2392,9 @@ Copied the {}.
 Copied {}. It leaves the clipboard in {} seconds.
 {} 복사 완료. {}초 후 클립보드에서 지웁니다.
 
+Copies of files in memory are freed first; programs go to swap only when those run out (vm.swappiness 0, MGLRU off).
+메모리에 있는 파일 사본을 먼저 비우고, 그것이 다 떨어졌을 때만 프로그램을 스왑으로 보냅니다(vm.swappiness 0, MGLRU 끔).
+
 Copr project
 Copr 프로젝트
 
@@ -3274,9 +3280,6 @@ Each display’s Deskbar keeps the workspace that display shows open; each other
 Each is judged from several signals together; a finding says how sure it is and why.
 여러 신호를 종합해 판단합니다. 각 결과에 얼마나 확실한지와 그 이유가 표시됩니다.
 
-Each is the computer's, not this account's, so switching one asks for an administrator's password. Olo Doctor suggests each, with what was measured for it.
-컴퓨터 전체에 적용되므로 바꾸려면 관리자 암호가 필요합니다. Olo Doctor에서 각 설정의 권장값과 측정 결과를 볼 수 있습니다.
-
 Each kind of input in the last minute: how many, never which keys
 지난 1분간 종류별 입력 횟수만 집계하며 누른 키는 기록하지 않습니다
 
@@ -4065,6 +4068,9 @@ Free (open source)
 
 Freeing the space only backups past keeping took, in {}.
 {}에서 보관 기간이 지난 백업만 사용하던 공간을 비우고 있습니다.
+
+Frees first
+먼저 비우는 것
 
 Freezing
 결빙
@@ -5029,6 +5035,9 @@ Keep Only on This Computer
 Keep Them Off
 계속 끄기
 
+Keep a busy program's turn short
+바쁜 프로그램의 차례를 짧게 유지
+
 Keep a core for the window server
 창 서버 전용 코어 확보
 
@@ -5382,6 +5391,9 @@ Link’s rate
 
 Link…
 링크…
+
+Linux's own
+Linux 기본값
 
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Linux 기본 스케줄러(EEVDF)는 작업 종류와 관계없이 모든 프로그램에 공평하게 시간을 배분합니다. 어느 스케줄러를 쓰든 다른 작업이 기다리는 Olo 스레드는 실시간 우선순위로 실행됩니다. 빌드 등 부하가 클 때는 이 설정에서 데스크톱이 가장 빠르게 반응합니다.
@@ -7912,6 +7924,9 @@ Processes as a Tree
 Processor
 프로세서
 
+Processor Turns
+프로세서 차례
+
 Processor:
 프로세서:
 
@@ -9703,6 +9718,9 @@ Alt와 Windows 키 바꾸기
 Swap too
 스왑도 포함
 
+Swap used
+사용 중인 스왑
+
 Swap with Previous Main
 이전 기본 창과 교체
 
@@ -9781,8 +9799,8 @@ System Font
 TCP opened in
 TCP 연결 시간
 
-TCP sends at the pace its path can carry, by a model of it, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
-경로의 전송 용량을 추정해 TCP 전송 속도를 맞춥니다. Linux 기본 방식은 경로상의 대기열을 채웁니다(Olo 모듈 tcp_bbr3).
+TCP sends at the pace its path can carry, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
+TCP는 경로가 감당할 수 있는 속도로 전송합니다. Linux 기본 방식은 도중의 대기열을 채웁니다(Olo 모듈, tcp_bbr3).
 
 TCP/IP
 TCP/IP
@@ -10522,6 +10540,9 @@ These apps may have these items whenever they ask. Take one back and the app is 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 이 기능에는 Bluetooth의 AirPods 감지가 필요합니다. Olo Doctor에서 켤 수 있습니다.
 
+These settings are for the whole computer, so changing one asks for an administrator's password.
+이 설정은 컴퓨터 전체에 적용되므로 변경하려면 관리자 암호가 필요합니다.
+
 ThinkPad
 ThinkPad
 
@@ -10978,6 +10999,9 @@ Turn On
 Turn On Bluetooth
 Bluetooth 켜기
 
+Turn now
+현재 차례
+
 Turn off after
 끄기까지
 
@@ -11316,6 +11340,9 @@ Use a Reset Credit…
 
 Use a key already in Passwords
 Passwords에 있는 키 사용
+
+Use swap only when nothing else is left
+다른 방법이 없을 때만 스왑 사용
 
 Use the Usual Order
 기본 순서 사용
@@ -11719,6 +11746,12 @@ When am I free tomorrow?
 When does the sun rise tomorrow?
 내일 해는 언제 뜨나요?
 
+When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
+모든 프로세서가 바쁠 때 프로그램이 {} 대신 0.7ms 후에 대기 중인 프로그램에 양보합니다(base slice). 지금은 {}이(가) 스케줄링하며 이를 직접 결정합니다.
+
+When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up (base slice).
+모든 프로세서가 바쁠 때 프로그램이 {} 대신 0.7ms 후에 대기 중인 프로그램에 양보하므로 윈도우와 입력이 밀리지 않습니다(base slice).
+
 When held for:
 길게 누르는 시간:
 
@@ -11884,8 +11917,8 @@ Windows
 Windows stay where you put them.
 창은 놓은 자리에 그대로 있습니다.
 
-Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).
-창 버퍼를 스왑으로 내보내지 않아 다시 읽느라 데스크톱이 멈추지 않습니다(Intel 드라이버용 Olo 라이브 패치).
+Windows' buffers stay out of swap, so the desktop never waits for one (Olo's live patch of Intel's driver).
+윈도우의 버퍼는 스왑으로 가지 않으므로 데스크탑이 버퍼를 기다리는 일이 없습니다(Intel 드라이버용 Olo 라이브 패치).
 
 Wireless Router
 무선 라우터
@@ -12241,6 +12274,9 @@ ceiling {}%
 charging, full in {}
 충전 중, {} 후 완충
 
+copies of files
+파일 사본
+
 couldn't save the boost: {}
 증폭 설정을 저장할 수 없음: {}
 
@@ -12469,6 +12505,9 @@ misses, the last 24 hours
 ms
 ms
 
+no
+아니요
+
 no display ports
 디스플레이 포트 없음
 
@@ -12483,6 +12522,9 @@ no wired network: it waits for one
 
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
+
+none of {}
+{} 중 없음
 
 not parts of it: {}; its parts are {}
 구성 요소가 아닙니다: {}. 구성 요소는 {}입니다
@@ -12661,6 +12703,9 @@ signed in, {} calendars
 slots of the pool in use
 사용 중인 풀 슬롯
 
+some of each
+양쪽에서 조금씩
+
 some of it couldn't be read
 일부 내용을 읽을 수 없음
 
@@ -12738,6 +12783,9 @@ other: 지난 {n}분
 
 the last {n} seconds
 other: 지난 {n}초
+
+the least used
+가장 적게 쓰인 것
 
 the package {}
 패키지 {}
@@ -12870,6 +12918,9 @@ where the scheduler puts it
 
 with the {n} files changed in it and not committed
 other: 커밋하지 않은 변경 파일 {n}개 포함
+
+yes
+예
 
 yesterday
 어제
@@ -13356,6 +13407,9 @@ other: {n}주
 
 {} minutes before
 {}분 전
+
+{} ms
+{}ms
 
 {} ms, the middle of them
 중앙값 {}ms

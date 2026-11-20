@@ -336,8 +336,8 @@ repo दायरे वाला क्लासिक टोकन या ऐ�
 A code that is surely an agent’s tab’s is put in there, and you’re told; one that isn’t sure is asked about.
 अगर यह तय है कि कोड किस एजेंट टैब का है, तो Olo वहाँ कोड भरकर आपको बताएगा। संदेह होने पर पहले पूछेगा।
 
-A copy to a stick or a card goes at the disk's own pace, {} waiting in memory at most, so its progress is true and ejecting is quick.
-USB ड्राइव या कार्ड पर कॉपी करते समय डेटा डिस्क की गति से लिखा जाता है। मेमोरी में अधिकतम {} प्रतीक्षा करता है, इसलिए प्रगति सही दिखती है और ड्राइव जल्दी निकाली जा सकती है।
+A copy to a stick or a card goes at the disk's own pace, so its progress is true and ejecting is quick.
+स्टिक या कार्ड पर कॉपी डिस्क की अपनी गति से चलती है, इसलिए उसकी प्रगति सही दिखती है और निकालना जल्दी होता है।
 
 A day
 एक दिन
@@ -1164,6 +1164,9 @@ At 20%
 
 At a time of its own
 अपने चुने समय पर
+
+At every start
+हर शुरुआत पर
 
 At full speed
 पूरी गति पर
@@ -2399,6 +2402,9 @@ Copied the {}.
 Copied {}. It leaves the clipboard in {} seconds.
 {} कॉपी किया गया। {} सेकंड में क्लिपबोर्ड से हट जाएगा।
 
+Copies of files in memory are freed first; programs go to swap only when those run out (vm.swappiness 0, MGLRU off).
+मेमोरी में रखी फ़ाइलों की प्रतियाँ पहले खाली की जाती हैं; प्रोग्राम स्वैप में तभी जाते हैं जब वे खत्म हो जाएँ (vm.swappiness 0, MGLRU बंद)।
+
 Copr project
 Copr प्रोजेक्ट
 
@@ -3285,9 +3291,6 @@ Each display’s Deskbar keeps the workspace that display shows open; each other
 Each is judged from several signals together; a finding says how sure it is and why.
 कई संकेतों को साथ देखकर निर्णय होता है। हर नतीजे में वजह और भरोसे का स्तर बताया जाता है।
 
-Each is the computer's, not this account's, so switching one asks for an administrator's password. Olo Doctor suggests each, with what was measured for it.
-हर सेटिंग पूरे कंप्यूटर की है, इसलिए उसे बदलने पर प्रशासक का पासवर्ड पूछा जाता है। Olo Doctor सुझाव के साथ मापे गए नतीजे भी दिखाता है।
-
 Each kind of input in the last minute: how many, never which keys
 पिछले मिनट के इनपुट प्रकार और उनकी गिनती। कौन-सी कुंजी दबाई, यह दर्ज नहीं होता
 
@@ -4080,6 +4083,9 @@ Free (open source)
 
 Freeing the space only backups past keeping took, in {}.
 {} में सिर्फ़ पुराने बैकअप की जगह खाली हो रही है।
+
+Frees first
+पहले खाली करता है
 
 Freezing
 जमाव
@@ -5049,6 +5055,9 @@ Keep Only on This Computer
 Keep Them Off
 बंद रखें
 
+Keep a busy program's turn short
+व्यस्त प्रोग्राम की बारी छोटी रखें
+
 Keep a core for the window server
 विंडो सर्वर के लिए एक कोर रखें
 
@@ -5402,6 +5411,9 @@ Link’s rate
 
 Link…
 लिंक…
+
+Linux's own
+Linux की अपनी
 
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Linux का अपना शेड्यूलर (EEVDF) हर प्रोग्राम को निष्पक्ष समय देता है। दोनों शेड्यूलर में Olo के वे थ्रेड रीयल-टाइम प्राथमिकता पर चलते हैं जिनका कोई इंतज़ार कर रहा है। बिल्ड जैसे भारी काम के बीच डेस्कटॉप इस शेड्यूलर पर सबसे तेज़ रहता है।
@@ -7934,6 +7946,9 @@ Processes as a Tree
 Processor
 प्रोसेसर
 
+Processor Turns
+प्रोसेसर की बारी
+
 Processor:
 प्रोसेसर:
 
@@ -9728,6 +9743,9 @@ Alt और Windows कुंजियाँ बदलें
 Swap too
 स्वैप भी
 
+Swap used
+स्वैप में
+
 Swap with Previous Main
 पिछली मुख्य विंडो से बदलें
 
@@ -9806,8 +9824,8 @@ System Font
 TCP opened in
 TCP कनेक्शन का समय
 
-TCP sends at the pace its path can carry, by a model of it, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
-TCP रास्ते की क्षमता का अनुमान लगाकर उतनी ही गति से डेटा भेजता है। Linux का सामान्य तरीका रास्ते की कतारें भर देता है। इसके लिए Olo का tcp_bbr3 मॉड्यूल इस्तेमाल होता है।
+TCP sends at the pace its path can carry, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
+TCP उसी गति से भेजता है जो उसका रास्ता सँभाल सके, जबकि Linux का अपना तरीका रास्ते की कतारें भर देता है (Olo का मॉड्यूल, tcp_bbr3)।
 
 TCP/IP
 TCP/IP
@@ -10547,6 +10565,9 @@ These apps may have these items whenever they ask. Take one back and the app is 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 इन सुविधाओं के लिए Bluetooth का AirPods को सुनना ज़रूरी है। Olo Doctor इसे चालू कर सकता है।
 
+These settings are for the whole computer, so changing one asks for an administrator's password.
+ये सेटिंग पूरे कंप्यूटर की हैं, इसलिए किसी को बदलने पर व्यवस्थापक का पासवर्ड पूछा जाता है।
+
 ThinkPad
 ThinkPad
 
@@ -11003,6 +11024,9 @@ Turn On
 Turn On Bluetooth
 Bluetooth चालू करें
 
+Turn now
+अभी की बारी
+
 Turn off after
 इतनी देर बाद बंद करें
 
@@ -11341,6 +11365,9 @@ Use a Reset Credit…
 
 Use a key already in Passwords
 Passwords में पहले से रखी कुंजी इस्तेमाल करें
+
+Use swap only when nothing else is left
+स्वैप तभी इस्तेमाल करें जब और कुछ न बचे
 
 Use the Usual Order
 सामान्य क्रम इस्तेमाल करें
@@ -11744,6 +11771,12 @@ When am I free tomorrow?
 When does the sun rise tomorrow?
 कल सूरज कब निकलेगा?
 
+When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
+जब हर प्रोसेसर व्यस्त हो, तो प्रोग्राम {} के बजाय 0.7 ms बाद प्रतीक्षा कर रहे प्रोग्राम को जगह देता है (base slice)। अभी {} शेड्यूल कर रहा है और यह खुद तय करता है।
+
+When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up (base slice).
+जब हर प्रोसेसर व्यस्त हो, तो प्रोग्राम {} के बजाय 0.7 ms बाद प्रतीक्षा कर रहे प्रोग्राम को जगह देता है, ताकि विंडो और टाइपिंग साथ चलें (base slice)।
+
 When held for:
 इतनी देर दबाने पर:
 
@@ -11909,8 +11942,8 @@ Windows
 Windows stay where you put them.
 विंडो वहीं रहती हैं जहाँ आप उन्हें रखते हैं।
 
-Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).
-विंडो के बफ़र स्वैप में नहीं जाते। इससे डेस्कटॉप को उनके वापस आने का इंतज़ार नहीं करना पड़ता (Intel ड्राइवर के लिए Olo का लाइव पैच)।
+Windows' buffers stay out of swap, so the desktop never waits for one (Olo's live patch of Intel's driver).
+विंडो के बफ़र स्वैप से बाहर रहते हैं, इसलिए डेस्कटॉप को किसी के लौटने का इंतज़ार नहीं करना पड़ता (Intel के ड्राइवर के लिए Olo का लाइव पैच)।
 
 Wireless Router
 वायरलेस राउटर
@@ -12267,6 +12300,9 @@ ceiling {}%
 charging, full in {}
 चार्ज हो रहा है, {} में पूरा होगा
 
+copies of files
+फ़ाइलों की प्रतियाँ
+
 couldn't save the boost: {}
 आवाज़ का बूस्ट सहेज नहीं सके: {}
 
@@ -12500,6 +12536,9 @@ misses, the last 24 hours
 ms
 ms
 
+no
+नहीं
+
 no display ports
 कोई डिस्प्ले पोर्ट नहीं
 
@@ -12514,6 +12553,9 @@ no wired network: it waits for one
 
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
+
+none of {}
+{} में से कुछ नहीं
 
 not parts of it: {}; its parts are {}
 इसके भाग नहीं हैं: {}। इसके भाग हैं {}
@@ -12699,6 +12741,9 @@ signed in, {} calendars
 slots of the pool in use
 पूल के इस्तेमाल में स्लॉट
 
+some of each
+दोनों में से कुछ
+
 some of it couldn't be read
 इसका कुछ हिस्सा पढ़ नहीं सके
 
@@ -12779,6 +12824,9 @@ other: पिछले {n} मिनट
 the last {n} seconds
 one: पिछले {n} सेकंड
 other: पिछले {n} सेकंड
+
+the least used
+सबसे कम इस्तेमाल हुआ
 
 the package {}
 पैकेज {}
@@ -12914,6 +12962,9 @@ where the scheduler puts it
 with the {n} files changed in it and not committed
 one: इसमें बदली और कमिट न हुई {n} फ़ाइल सहित
 other: इसमें बदली और कमिट न हुई {n} फ़ाइलों सहित
+
+yes
+हाँ
 
 yesterday
 बीता कल
@@ -13448,6 +13499,9 @@ other: {n} हफ़्ते
 
 {} minutes before
 {} मिनट पहले
+
+{} ms
+{} ms
 
 {} ms, the middle of them
 मध्य मान {} ms

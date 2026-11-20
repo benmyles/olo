@@ -334,8 +334,8 @@ A classic token with the repo scope, or a fine-grained one that can read pull re
 A code that is surely an agent’s tab’s is put in there, and you’re told; one that isn’t sure is asked about.
 如果能確定驗證碼屬於哪個代理程式分頁，Olo 會自動填入並通知您；不確定時會先詢問。
 
-A copy to a stick or a card goes at the disk's own pace, {} waiting in memory at most, so its progress is true and ejecting is quick.
-複製到 U 盤或儲存卡時按磁碟的實際速度寫入，記憶體中最多暫存 {}。這樣進度準確，也能很快退出裝置。
+A copy to a stick or a card goes at the disk's own pace, so its progress is true and ejecting is quick.
+拷貝到隨身碟或記憶卡時按磁碟本身的速度進行，因此進度真實，退出也很快。
 
 A day
 一天
@@ -1158,6 +1158,9 @@ At 20%
 
 At a time of its own
 於自訂時間
+
+At every start
+每次啟動時
 
 At full speed
 全速
@@ -2389,6 +2392,9 @@ Copied the {}.
 Copied {}. It leaves the clipboard in {} seconds.
 已複製{}。{} 秒後會從剪貼簿清除。
 
+Copies of files in memory are freed first; programs go to swap only when those run out (vm.swappiness 0, MGLRU off).
+先釋放記憶體中的檔案副本；只有在這些用盡時，程式才會進入置換空間（vm.swappiness 0，MGLRU 關閉）。
+
 Copr project
 Copr 專案
 
@@ -3274,9 +3280,6 @@ Each display’s Deskbar keeps the workspace that display shows open; each other
 Each is judged from several signals together; a finding says how sure it is and why.
 綜合多種訊號判斷。每項結果都會說明把握有多大，以及這樣判斷的原因。
 
-Each is the computer's, not this account's, so switching one asks for an administrator's password. Olo Doctor suggests each, with what was measured for it.
-這些設定對整台電腦生效，更改時需要管理員密碼。Olo Doctor 會列出各項建議及相應的測量結果。
-
 Each kind of input in the last minute: how many, never which keys
 過去一分鐘各類輸入的次數，不記錄具體按鍵
 
@@ -4065,6 +4068,9 @@ Free (open source)
 
 Freeing the space only backups past keeping took, in {}.
 正在 {} 中釋放僅由過期備份佔用的空間。
+
+Frees first
+優先釋放
 
 Freezing
 冰凍
@@ -5029,6 +5035,9 @@ Keep Only on This Computer
 Keep Them Off
 保持關閉
 
+Keep a busy program's turn short
+縮短忙碌程式的每輪執行時間
+
 Keep a core for the window server
 為視窗伺服器預留一個核心
 
@@ -5382,6 +5391,9 @@ Link’s rate
 
 Link…
 連結…
+
+Linux's own
+Linux 預設
 
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Linux 內建的排程器（EEVDF）公平對待各類程式。無論選擇哪種排程器，其他工作正在等待的 Olo 執行緒都以即時優先順序執行，高於普通程式。建置等重負載下，使用此排程器時桌面回應最快。
@@ -7912,6 +7924,9 @@ Processes as a Tree
 Processor
 處理器
 
+Processor Turns
+處理器輪轉
+
 Processor:
 處理器：
 
@@ -9703,6 +9718,9 @@ Swap Alt and the Windows Key
 Swap too
 同時交換
 
+Swap used
+已用置換空間
+
 Swap with Previous Main
 與上一個主視窗交換
 
@@ -9781,8 +9799,8 @@ System Font
 TCP opened in
 TCP 建連用時
 
-TCP sends at the pace its path can carry, by a model of it, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
-TCP 根據模型估算路徑的承載能力，按適當速率傳送，而 Linux 預設演算法會填滿沿途的佇列。此項使用 Olo 的 tcp_bbr3 模組。
+TCP sends at the pace its path can carry, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
+TCP 依路徑所能承載的速度傳送，而 Linux 內建的方式會把沿途的佇列填滿（Olo 的模組 tcp_bbr3）。
 
 TCP/IP
 TCP/IP
@@ -10522,6 +10540,9 @@ These apps may have these items whenever they ask. Take one back and the app is 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 這些功能需要藍牙監聽 AirPods。可用 Olo Doctor 開啟。
 
+These settings are for the whole computer, so changing one asks for an administrator's password.
+這些設定作用於整部電腦，因此更改時需要管理員密碼。
+
 ThinkPad
 ThinkPad
 
@@ -10978,6 +10999,9 @@ Turn On
 Turn On Bluetooth
 開啟藍牙
 
+Turn now
+目前每輪
+
 Turn off after
 關閉前的等待時間
 
@@ -11316,6 +11340,9 @@ Use a Reset Credit…
 
 Use a key already in Passwords
 使用已存入 Passwords 的金鑰
+
+Use swap only when nothing else is left
+僅在別無他法時才使用置換空間
 
 Use the Usual Order
 恢復常用順序
@@ -11719,6 +11746,12 @@ When am I free tomorrow?
 When does the sun rise tomorrow?
 明天幾點日出？
 
+When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
+所有處理器都忙碌時，程式會在 0.7 毫秒（而非 {}）後讓位給等待中的程式（base slice）。目前由 {} 排程，並由它自行決定。
+
+When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up (base slice).
+所有處理器都忙碌時，程式會在 0.7 毫秒（而非 {}）後讓位給等待中的程式，視窗和輸入因此不會卡頓（base slice）。
+
 When held for:
 長按時間長度：
 
@@ -11884,8 +11917,8 @@ Windows
 Windows stay where you put them.
 視窗停留在您放置的位置。
 
-Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).
-視窗緩衝區不會換出，因此桌面不必等待它們換回記憶體（使用 Olo 對 Intel 驅動程式的熱修補程式）。
+Windows' buffers stay out of swap, so the desktop never waits for one (Olo's live patch of Intel's driver).
+視窗的緩衝區不會進入置換空間，因此桌面不必等待它們換回（Olo 針對 Intel 驅動程式的即時修補）。
 
 Wireless Router
 無線路由器
@@ -12241,6 +12274,9 @@ ceiling {}%
 charging, full in {}
 正在充電，{} 後充滿
 
+copies of files
+檔案副本
+
 couldn't save the boost: {}
 無法儲存增益：{}
 
@@ -12469,6 +12505,9 @@ misses, the last 24 hours
 ms
 ms
 
+no
+否
+
 no display ports
 無顯示介面
 
@@ -12483,6 +12522,9 @@ no wired network: it waits for one
 
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
+
+none of {}
+{} 中未使用
 
 not parts of it: {}; its parts are {}
 以下不是其組成部分：{}；其組成部分為 {}
@@ -12661,6 +12703,9 @@ signed in, {} calendars
 slots of the pool in use
 池中已用插槽
 
+some of each
+兩者各一些
+
 some of it couldn't be read
 部分內容無法讀取
 
@@ -12738,6 +12783,9 @@ other: 過去 {n} 分鐘
 
 the last {n} seconds
 other: 過去 {n} 秒
+
+the least used
+最少使用的內容
 
 the package {}
 套件 {}
@@ -12870,6 +12918,9 @@ where the scheduler puts it
 
 with the {n} files changed in it and not committed
 other: 包含 {n} 個已修改但未提交的檔案
+
+yes
+是
 
 yesterday
 昨天
@@ -13356,6 +13407,9 @@ other: {n} 週
 
 {} minutes before
 {} 分鐘前
+
+{} ms
+{} 毫秒
 
 {} ms, the middle of them
 中位數 {} 毫秒

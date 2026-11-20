@@ -336,8 +336,8 @@ Gebruik een klassiek token met het bereik repo, of een fijnmazig token dat pull 
 A code that is surely an agent’s tab’s is put in there, and you’re told; one that isn’t sure is asked about.
 Als duidelijk is voor welk tabblad van een agent de code bedoeld is, vult Olo hem daar in en krijgt u bericht. Bij twijfel vraagt Olo het u eerst.
 
-A copy to a stick or a card goes at the disk's own pace, {} waiting in memory at most, so its progress is true and ejecting is quick.
-Kopiëren naar een USB-stick of geheugenkaart gaat op het tempo van de schijf. Er wacht hoogstens {} in het geheugen. Zo klopt de voortgang en gaat uitwerpen snel.
+A copy to a stick or a card goes at the disk's own pace, so its progress is true and ejecting is quick.
+Een kopie naar een stick of kaart gaat in het tempo van de schijf zelf, zodat de voortgang klopt en uitwerpen snel gaat.
 
 A day
 Een dag
@@ -1164,6 +1164,9 @@ Bij 20%
 
 At a time of its own
 Op een zelfgekozen tijdstip
+
+At every start
+Bij elke start
 
 At full speed
 Op volle snelheid
@@ -2399,6 +2402,9 @@ Copied the {}.
 Copied {}. It leaves the clipboard in {} seconds.
 {} gekopieerd. Wordt over {} seconden van het klembord gewist.
 
+Copies of files in memory are freed first; programs go to swap only when those run out (vm.swappiness 0, MGLRU off).
+Kopieën van bestanden in het geheugen worden eerst vrijgegeven; programma’s gaan pas naar swap als die op zijn (vm.swappiness 0, MGLRU uit).
+
 Copr project
 Copr-project
 
@@ -3285,9 +3291,6 @@ De Deskbar van elk scherm houdt het zichtbare werkblad open. Van de andere werkb
 Each is judged from several signals together; a finding says how sure it is and why.
 Elke beoordeling berust op meerdere signalen. Bij een melding ziet u hoe zeker de uitkomst is en waarom.
 
-Each is the computer's, not this account's, so switching one asks for an administrator's password. Olo Doctor suggests each, with what was measured for it.
-Deze opties gelden voor de hele computer. Wijzigen vereist een beheerderswachtwoord. Olo Doctor toont de metingen waarop elk advies berust.
-
 Each kind of input in the last minute: how many, never which keys
 Invoer per soort in de afgelopen minuut: alleen aantallen, nooit welke toetsen
 
@@ -4080,6 +4083,9 @@ Vrij (open source)
 
 Freeing the space only backups past keeping took, in {}.
 In {} wordt ruimte vrijgemaakt die alleen door verlopen back-ups werd gebruikt.
+
+Frees first
+Geeft eerst vrij
 
 Freezing
 Vorst
@@ -5049,6 +5055,9 @@ Alleen op deze computer bewaren
 Keep Them Off
 Uit laten
 
+Keep a busy program's turn short
+De beurt van een druk programma kort houden
+
 Keep a core for the window server
 Een kern vrijhouden voor de vensterserver
 
@@ -5402,6 +5411,9 @@ Verbindingssnelheid
 
 Link…
 Link…
+
+Linux's own
+Van Linux zelf
 
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 De standaardscheduler van Linux (EEVDF) verdeelt tijd eerlijk over alle programma’s. Olo-threads waarop iets wacht, draaien bij beide schedulers met realtimeprioriteit. Bij builds en ander zwaar werk reageert het bureaublad met deze scheduler het snelst.
@@ -7934,6 +7946,9 @@ Procesboom
 Processor
 Processor
 
+Processor Turns
+Processorbeurten
+
 Processor:
 Processor:
 
@@ -9728,6 +9743,9 @@ Alt en de Windows-toets omwisselen
 Swap too
 Ook wisselgeheugen
 
+Swap used
+Swap in gebruik
+
 Swap with Previous Main
 Met vorig hoofdvenster wisselen
 
@@ -9806,8 +9824,8 @@ Systeemlettertype
 TCP opened in
 TCP-verbinding geopend in
 
-TCP sends at the pace its path can carry, by a model of it, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
-TCP past de verzendsnelheid aan op basis van een model van de netwerkroute. De standaardinstelling van Linux vult de wachtrijen onderweg. Gebruikt Olo’s module tcp_bbr3.
+TCP sends at the pace its path can carry, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
+TCP verstuurt in het tempo dat zijn pad aankan, waar dat van Linux zelf de wachtrijen onderweg vult (Olo’s module, tcp_bbr3).
 
 TCP/IP
 TCP/IP
@@ -10547,6 +10565,9 @@ Deze apps krijgen de vermelde onderdelen wanneer ze erom vragen. Trek een toeste
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 Voor deze opties moet Bluetooth naar AirPods luisteren. Olo Doctor kan dat inschakelen.
 
+These settings are for the whole computer, so changing one asks for an administrator's password.
+Deze instellingen gelden voor de hele computer, dus het wijzigen ervan vraagt om het wachtwoord van een beheerder.
+
 ThinkPad
 ThinkPad
 
@@ -11003,6 +11024,9 @@ Inschakelen
 Turn On Bluetooth
 Bluetooth inschakelen
 
+Turn now
+Beurt nu
+
 Turn off after
 Uitschakelen na
 
@@ -11341,6 +11365,9 @@ Vernieuwingstegoed gebruiken…
 
 Use a key already in Passwords
 Een al in Passwords bewaarde sleutel gebruiken
+
+Use swap only when nothing else is left
+Swap pas gebruiken als er niets anders meer is
 
 Use the Usual Order
 Gebruikelijke volgorde gebruiken
@@ -11744,6 +11771,12 @@ Wanneer heb ik morgen tijd vrij?
 When does the sun rise tomorrow?
 Hoe laat komt de zon morgen op?
 
+When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
+Als elke processor bezet is, maakt een programma na 0,7 ms in plaats van {} plaats voor een wachtend programma (base slice). {} plant nu en bepaalt dat zelf.
+
+When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up (base slice).
+Als elke processor bezet is, maakt een programma na 0,7 ms in plaats van {} plaats voor een wachtend programma, zodat vensters en typen bijblijven (base slice).
+
 When held for:
 Bij ingedrukt houden gedurende:
 
@@ -11909,8 +11942,8 @@ Vensters
 Windows stay where you put them.
 Vensters blijven waar u ze neerzet.
 
-Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).
-Vensterbuffers blijven buiten het wisselgeheugen, zodat het bureaublad niet hoeft te wachten tot ze zijn teruggelezen. Hiervoor gebruikt Olo een livepatch voor het Intel-stuurprogramma.
+Windows' buffers stay out of swap, so the desktop never waits for one (Olo's live patch of Intel's driver).
+De buffers van vensters blijven buiten swap, zodat het bureaublad er nooit op wacht (Olo’s livepatch voor Intels stuurprogramma).
 
 Wireless Router
 Draadloze router
@@ -12267,6 +12300,9 @@ bovengrens {}%
 charging, full in {}
 bezig met opladen, vol over {}
 
+copies of files
+kopieën van bestanden
+
 couldn't save the boost: {}
 versterking opslaan mislukt: {}
 
@@ -12500,6 +12536,9 @@ cachemissers in de afgelopen 24 uur
 ms
 ms
 
+no
+nee
+
 no display ports
 geen beeldschermpoorten
 
@@ -12514,6 +12553,9 @@ geen bekabeld netwerk: wacht op verbinding
 
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
+
+none of {}
+niets van {}
 
 not parts of it: {}; its parts are {}
 horen er niet bij: {}. De onderdelen zijn {}
@@ -12699,6 +12741,9 @@ aangemeld, {} agenda’s
 slots of the pool in use
 plaatsen van de pool bezet
 
+some of each
+van elk wat
+
 some of it couldn't be read
 een deel kon niet worden gelezen
 
@@ -12779,6 +12824,9 @@ other: de afgelopen {n} minuten
 the last {n} seconds
 one: de afgelopen {n} seconde
 other: de afgelopen {n} seconden
+
+the least used
+het minst gebruikte
 
 the package {}
 het pakket {}
@@ -12914,6 +12962,9 @@ waar de scheduler het plaatst
 with the {n} files changed in it and not committed
 one: met {n} gewijzigd bestand dat nog niet is vastgelegd
 other: met {n} gewijzigde bestanden die nog niet zijn vastgelegd
+
+yes
+ja
 
 yesterday
 gisteren
@@ -13448,6 +13499,9 @@ minimaal {}, nu {}
 
 {} minutes before
 {} min ervoor
+
+{} ms
+{} ms
 
 {} ms, the middle of them
 {} ms, de mediaan

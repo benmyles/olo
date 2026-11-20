@@ -140,19 +140,43 @@ something nobody here has is in "Blocked", with what it waits for.
      and the compositor late on no frame. And Terminal's own threads
      on that path (`termd reader`, `termd writer`, `shell output`)
      are at nice 0, with five of olo-termd's whose raise rtkit
-     refused. **To do**: Terminal's threads into the tier; then the
-     kernel's side: its scheduler's knobs (how long a running program
-     keeps a processor before a waiting one gets it), a
-     latency-first scheduler again now that Olo's own threads are
-     realtime, or a kernel patch (those workers above ordinary work);
-     measured with the same trace each time (`gpu_scheduler`'s
-     tracepoints: queue to run).
-  Also found: memory was short under the builds (programs held in
-  the kernel's reclaim, Chrome up to 12 ms at a time, 484 stalls in
-  9 s; 9 GB in swap with 31 GB reclaimable): Ben asked for **swap
-  only when nothing else is left, as an option in Performance ▸
-  Kernel, on by default**, and the kernel should keep more memory
-  free ahead of need (`vm.watermark_scale_factor`). Not it: the
+     refused. **Done**: a kernel setting, **Short turns** (the
+     scheduler's base slice at its base, 0.7 ms, where the kernel
+     comes with 2.8 on this many processors: Preferences ▸
+     Performance ▸ Kernel, Doctor's `kernel:short-turns`,
+     `olo-doctor --kernel short-turns on`): beside fifteen more busy
+     programs, the kernel's workers waited over a millisecond six
+     times less often, Terminal's threads seven times (their worst
+     29 ms to 4), the compositor's hand-overs 14.5 ms to 5.7 at the
+     worst (kernel/TUNING.md). **To do**: Terminal's own threads
+     into the tier (`termd reader`, `termd writer`, `shell output`
+     at nice 0; olo-termd's that rtkit refused); what is still left
+     of those waits after it, and whether that wants a latency-first
+     scheduler again (Olo's own threads are realtime now) or a
+     kernel patch (the workers that pass GPU jobs and pty bytes on
+     above ordinary work: with Astra, as Ben said); the guest's wake
+     figures taken again on a quiet computer (`kernel-check turns`).
+  Also found: memory. 102 GB had been written to swap in three days
+  with tens of GB free throughout, and programs were held 2.9
+  million times while the kernel made room. **Done** (Ben: "i want
+  the swap to only get used when absolutely necessary … make it an
+  option in olo performance -> kernel on by default"): a kernel
+  setting, **Swap used last** (`vm.swappiness` 0 with the kernel's
+  older reclaim, more room kept free; Doctor recommends it; why
+  swappiness 1 didn't do it, and that 0 with the multi-generational
+  LRU ends programs: kernel/TUNING.md). **To do**: what the kernel's
+  counts say of it on Ben's computer once it's on (`pswpout` by the
+  minute: /var/tmp/claude-blueferry/mem/sample.py). And **the
+  holding is for huge pages**: every program held making room in a
+  20 s trace was asking for 2 MB pages (the linker 1,267 times, with
+  3,595 compactions taking 8.8 s between them, one 311 ms; Chrome
+  37 compactions): Fedora has such programs reclaim and compact for
+  themselves (`transparent_hugepage/defrag`: madvise). To make a
+  third setting of it, measured both ways under a link (deferred:
+  the kernel's own threads do it in the background and nobody
+  waits), with a place for it in the Kernel tab, which has no room
+  for a seventh box on the smallest screen (a tab of its own for
+  Olo's pieces, or boxes that hold two switches). Not it: the
   GPU's clock (it stands at 700 of 2450 MHz because the GPU is idle
   half the time; a floor of 1600 changed nothing and it rose to
   2450 by itself under load), processor load alone on the
@@ -183,6 +207,21 @@ something nobody here has is in "Blocked", with what it waits for.
   setting's, decide first and start none of the ways in. With a test
   that nothing was opened (the stand-ins for the camera and the
   reader count their starts). After the responsiveness work.
+
+- **Left from the reviews of the Kernel tab** (2026-11-20; three
+  rounds with both; what was about the two new boxes and the tab's
+  layout is done). Of the older boxes, real and not done: "where"
+  for "whereas" in Preemption's and Network's sentences reads as a
+  place; Network's check box is the only one named in jargon ("Send
+  with BBRv3") and its facts make the reader decode ("Their round
+  trip: 68 ms, the middle of them", "Checked: on this kernel's
+  series", "segments"); "Windows' buffers" in Graphics reads as
+  Microsoft's; Removable Disks' "Here" and "May wait"; only some
+  boxes say "At every start"; a lock beside the note. And the tab's
+  facts in other languages: labels are looked up now where they're
+  in the list, most of the older ones and every value built with
+  `format!` aren't ("May wait", "Next start", "in the running
+  kernel", "limited").
 
 - **Phone: what's left of the night it wasn't found again** (Ben,
   2026-11-20; the faults on Olo's side are fixed: under Done). Left:

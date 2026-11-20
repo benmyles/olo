@@ -334,8 +334,8 @@ repoスコープの従来型トークンか、プルリクエストとチェッ�
 A code that is surely an agent’s tab’s is put in there, and you’re told; one that isn’t sure is asked about.
 どのエージェントのタブ宛てか確認できたコードは、そのタブに入力してお知らせします。不明な場合は入力前に確認します。
 
-A copy to a stick or a card goes at the disk's own pace, {} waiting in memory at most, so its progress is true and ejecting is quick.
-USBメモリやカードへのコピーは書き込み速度に合わせて進めます。メモリに残すのは最大{}なので、進捗が正確で、取り出すときも待たずに済みます。
+A copy to a stick or a card goes at the disk's own pace, so its progress is true and ejecting is quick.
+USBメモリやカードへのコピーは書き込み速度に合わせて進むため、進捗が正確で、取り出すときも待たずに済みます。
 
 A day
 1日
@@ -1158,6 +1158,9 @@ At 20%
 
 At a time of its own
 指定した日時
+
+At every start
+起動のたびに
 
 At full speed
 最高速度
@@ -2389,6 +2392,9 @@ Copied the {}.
 Copied {}. It leaves the clipboard in {} seconds.
 {}をコピーしました。{}秒後にクリップボードから消去します。
 
+Copies of files in memory are freed first; programs go to swap only when those run out (vm.swappiness 0, MGLRU off).
+メモリ上のファイルのコピーを先に解放し、それが尽きたときだけプログラムをスワップします（vm.swappiness 0、MGLRUオフ）。
+
 Copr project
 Coprプロジェクト
 
@@ -3274,9 +3280,6 @@ Each display’s Deskbar keeps the workspace that display shows open; each other
 Each is judged from several signals together; a finding says how sure it is and why.
 複数の兆候を組み合わせて判断します。検出結果には確度と理由を表示します。
 
-Each is the computer's, not this account's, so switching one asks for an administrator's password. Olo Doctor suggests each, with what was measured for it.
-設定はコンピューター全体で共通です。変更には管理者のパスワードが必要です。Olo Doctorで推奨設定とその根拠となる測定値を確認できます。
-
 Each kind of input in the last minute: how many, never which keys
 直近1分の入力を種類別に集計します。押したキーの内容は記録しません
 
@@ -4065,6 +4068,9 @@ Free (open source)
 
 Freeing the space only backups past keeping took, in {}.
 期限切れのバックアップだけが使う容量を{}で解放しています。
+
+Frees first
+先に解放
 
 Freezing
 氷点下
@@ -5029,6 +5035,9 @@ Keep Only on This Computer
 Keep Them Off
 オフのままにする
 
+Keep a busy program's turn short
+ビジーなプログラムの持ち時間を短く保つ
+
 Keep a core for the window server
 ウィンドウサーバー用に1コア確保
 
@@ -5382,6 +5391,9 @@ Link’s rate
 
 Link…
 リンク…
+
+Linux's own
+Linux標準
 
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Linux標準のスケジューラー（EEVDF）は、すべてのプログラムにCPU時間を公平に割り当てます。どちらのスケジューラーでも、ほかの処理が待っているOloのスレッドはリアルタイム優先度で動きます。ビルドなどで高負荷のときは、こちらの方がデスクトップの応答が速くなります。
@@ -7912,6 +7924,9 @@ Processes as a Tree
 Processor
 プロセッサー
 
+Processor Turns
+プロセッサの持ち時間
+
 Processor:
 プロセッサー:
 
@@ -9703,6 +9718,9 @@ AltとWindowsキーを入れ替える
 Swap too
 スワップも含める
 
+Swap used
+スワップ使用量
+
 Swap with Previous Main
 前のメインウィンドウと入れ替える
 
@@ -9781,8 +9799,8 @@ System Font
 TCP opened in
 TCP接続時間
 
-TCP sends at the pace its path can carry, by a model of it, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
-回線の特性を推定して、流せる速度でTCPを送信します。Linux標準の方式では途中のキューが埋まります。Oloのtcp_bbr3モジュールを使います。
+TCP sends at the pace its path can carry, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
+経路が流せる速度でTCPを送信します。Linux標準の方式では途中のキューが埋まります（Oloのtcp_bbr3モジュール）。
 
 TCP/IP
 TCP/IP
@@ -10522,6 +10540,9 @@ These apps may have these items whenever they ask. Take one back and the app is 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 これらの機能にはBluetoothでAirPodsを検出する設定が必要です。Olo Doctorで有効にできます。
 
+These settings are for the whole computer, so changing one asks for an administrator's password.
+これらの設定はコンピューター全体のものなので、変更には管理者のパスワードが必要です。
+
 ThinkPad
 ThinkPad
 
@@ -10978,6 +10999,9 @@ Turn On
 Turn On Bluetooth
 Bluetoothをオン
 
+Turn now
+現在の持ち時間
+
 Turn off after
 オフにするまでの時間
 
@@ -11316,6 +11340,9 @@ Use a Reset Credit…
 
 Use a key already in Passwords
 Passwordsに保存済みのキーを使う
+
+Use swap only when nothing else is left
+ほかに手段がないときだけスワップを使う
 
 Use the Usual Order
 通常の順序に戻す
@@ -11719,6 +11746,12 @@ When am I free tomorrow?
 When does the sun rise tomorrow?
 明日の日の出は何時ですか？
 
+When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
+すべてのプロセッサがビジーのとき、プログラムは{}ではなく0.7 msで待機中のプログラムに譲ります（base slice）。現在は{}がスケジューリングしており、それ自身が決めています。
+
+When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up (base slice).
+すべてのプロセッサがビジーのとき、プログラムは{}ではなく0.7 msで待機中のプログラムに譲るため、ウィンドウや入力が遅れません（base slice）。
+
 When held for:
 長押し時間:
 
@@ -11884,8 +11917,8 @@ Windows
 Windows stay where you put them.
 ウィンドウは置いた場所にとどまります。
 
-Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).
-ウィンドウのバッファーをスワップさせず、画面の描画時に読み戻しを待たずに済むようにします。Intelドライバー用のOloのライブパッチを使います。
+Windows' buffers stay out of swap, so the desktop never waits for one (Olo's live patch of Intel's driver).
+ウィンドウのバッファーをスワップさせないので、デスクトップが読み戻しを待つことはありません（Intelドライバー用のOloのライブパッチ）。
 
 Wireless Router
 無線ルーター
@@ -12241,6 +12274,9 @@ ceiling {}%
 charging, full in {}
 充電中、満充電まで{}
 
+copies of files
+ファイルのコピー
+
 couldn't save the boost: {}
 ゲインを保存できません：{}
 
@@ -12469,6 +12505,9 @@ misses, the last 24 hours
 ms
 ms
 
+no
+いいえ
+
 no display ports
 映像出力ポートなし
 
@@ -12483,6 +12522,9 @@ no wired network: it waits for one
 
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
+
+none of {}
+{}のうちなし
 
 not parts of it: {}; its parts are {}
 対象外：{}。対象は{}です
@@ -12661,6 +12703,9 @@ signed in, {} calendars
 slots of the pool in use
 プールの使用中の枠
 
+some of each
+両方から少しずつ
+
 some of it couldn't be read
 一部のデータを読み取れませんでした
 
@@ -12738,6 +12783,9 @@ other: 過去{n}分間
 
 the last {n} seconds
 other: 過去{n}秒間
+
+the least used
+最も使われていないもの
 
 the package {}
 パッケージ「{}」
@@ -12870,6 +12918,9 @@ where the scheduler puts it
 
 with the {n} files changed in it and not committed
 other: 未コミットの変更があるファイル{n}個を含む
+
+yes
+はい
 
 yesterday
 昨日
@@ -13356,6 +13407,9 @@ other: {n}週間
 
 {} minutes before
 {}分前
+
+{} ms
+{} ms
 
 {} ms, the middle of them
 中央値 {} ms

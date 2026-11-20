@@ -12,7 +12,11 @@ kernel. What was left to gain is two settings: **full preemption**, and
 **a limit on what waits in memory for a removable disk**. Each was
 measured on this kernel (7.2.15-300.fc45) in a KVM guest, off and on,
 and is offered only because the measurement showed a gain with nothing
-given up for it. Four more things were measured and left as the kernel
+given up for it. Two more came of looking at why the desktop lagged
+under agents' builds (2026-11-20), measured on the computer itself and
+in the guest: **short turns on the processors**, and **swap used only
+when nothing else is left**, the one setting here that is a trade, and
+there because it was asked for. Four more things were measured and left as the kernel
 comes, because each gives something up or gains nothing: the
 multi-generational LRU's thrash protection (the one most often
 recommended: it ended a program that fitted in memory in 3 runs of 9),
@@ -54,7 +58,7 @@ Fedora's. What can be added to it is a module (BBRv3), a live patch of
 one function (graphics memory), a scheduler through `sched_ext`, and
 settings.
 
-## The two settings
+## The settings
 
 ### Preemption: full
 
@@ -163,6 +167,174 @@ mapping is a disk of its own to the kernel) are as before.
 How it's set: the udev rule, for each disk as it's plugged in, and the
 same two values written now for those here.
 
+### Turns: 0.7 ms
+
+A busy program keeps its processor for a turn before another that is
+waiting gets it (the scheduler's base slice,
+`/sys/kernel/debug/sched/base_slice_ns`). The kernel's base is 0.7 ms,
+and it lengthens it with the number of processors: by as much again for
+each doubling up to eight, so 2.8 ms on eight and more. Longer turns
+are for getting work done with fewer switches; what they cost is that
+whatever is woken while every processor is busy waits out the rest of
+somebody's turn, at each step of what it does.
+
+Olo's own threads someone waits on are realtime and wait for no turn
+(docs/HACKING.md, "Realtime threads and the kept core"). What they hand
+work to in the kernel isn't: a frame the compositor gives the GPU is
+passed on by a kernel worker (the DRM scheduler's, an unbound
+`kworker`), a byte through a terminal's pty by another
+(`flush_to_ldisc`), and those are ordinary threads at nice 0. Measured
+on Ben's computer (16 processors, full preemption, Olo's supervisor
+on) while other agents' builds kept it at a load of 29: 17% of the
+compositor's GPU jobs waited over a millisecond for that worker, 3.6%
+over 4 ms, the worst 27.6 ms; typing in Terminal lagged, with the
+program typed into answering each key in 2 to 4 ms and the compositor
+late on no frame.
+
+The same computer, fifteen more busy programs added at nice 10 as the
+supervisor lowers a build's (`SCHED_BATCH`), each setting 12 s at a
+time and in turn, three rounds (bpftrace: every wake of an unbound
+kernel worker, of Terminal's and its pty service's threads, and the
+compositor's GPU jobs from handed over to passed on):
+
+| a turn | kernel workers: woken, waited over 1 ms | over 4 ms | the compositor's jobs: over 1 ms | worst | Terminal's threads: over 1 ms | worst |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2.8 ms (as it comes) | 0.45% | 0.024% | 0.81% | 14.5 ms | 2.01% | 29.1 ms |
+| **0.7 ms** | 0.07% | 0.002% | 0.33% | 5.7 ms | 0.28% | 4.3 ms |
+| 0.7 ms, and a woken program let in at once (`NO_RUN_TO_PARITY`) | 0.24% | 0.002% | 0.90% | 2.1 ms | 0.26% | 15.0 ms |
+| 0.4 ms | 0.09% | 0.003% | 0.48% | 1.9 ms | 0.23% | 32.4 ms |
+
+Shorter than the kernel's own base gains nothing more, nor does letting
+a woken program in before the running one's turn is up; the base it is.
+With the fifteen at nice 0 (not yet lowered) the same: Terminal's
+threads' worst wait went from 59.9 ms to 7.8. Putting the fifteen in
+the kernel's idle class (`SCHED_IDLE`), which is preempted by anything,
+did not help the kernel's workers (2.4% over a millisecond): not
+pursued.
+
+The plainest form of it, on the same computer (`kbench relay`: one
+ordinary thread wakes another through a pipe and goes on working,
+while 30 threads compute on its 16 processors; each way in turn, three
+rounds, the middle of them, in microseconds until the woken thread
+runs):
+
+| 30 threads computing | a turn | 99 in 100 | 999 in 1000 | worst |
+| --- | --- | ---: | ---: | ---: |
+| at nice 10 | 2.8 ms | 270 | 1,476 | 2,726 |
+| | 0.7 ms | 162 | 543 | 2,084 |
+| at nice 0 | 2.8 ms | 343 | 2,648 | 4,129 |
+| | 0.7 ms | 162 | 281 | 707 |
+
+`tools/dev/kernel-check turns` asks it of a guest (4 processors: 2.1 ms
+as it comes), with what the shorter turn costs. What the work itself
+got done at 0.7 ms against as it comes (the middle of three guests each
+way; the computer was at a load of 20 to 30 meanwhile, so the spread is
+wide): 8 threads computing on 4 processors 1.08×, pipes with 16 writers
+and 16 readers 1.21×, with 4 and 4 0.97×, 16 threads writing one file
+1.08×. Nothing lost that shows. (That run's wake figures aren't quoted:
+a guest's processors are themselves made to wait on a computer that
+busy, and its tails were the host's. They are to be taken again on a
+quiet one.)
+
+With a scheduler loaded through `sched_ext` the setting changes
+nothing: it has turns of its own. Olo Doctor doesn't recommend it then,
+and the tab says so.
+
+How it's set: the file is in debugfs, root's, and there is no start
+argument or sysctl for it. `/etc/olo/short-turns.conf` holds two lines
+in systemd-tmpfiles' form (the file's value, and Olo's note of it in
+`/run/olo-kernel/turns`, since the kernel tells only root), and
+`olo-short-turns.service` has systemd's own tool apply them once
+debugfs is mounted (among /etc/tmpfiles.d's they could be run before it
+is). Where the kernel isn't locked down it is written at once too.
+
+### Swap: used last
+
+Ben, 2026-11-20: "i also see we're using 10gb of swap right now but
+there is still over 32gb of memory free. i want the swap to only get
+used when absolutely necessary, i.e. without it we'd run out of memory.
+how can we make linux do that? figure it out and make it an option in
+olo performance -> kernel on by default".
+
+His computer (64 GB, swap in compressed memory as large, the
+multi-generational LRU as Fedora starts it, `vm.swappiness` 1 as Olo
+Doctor had set it) had written 102 GB to swap in three days and read
+51 GB back, with tens of GB free or holding files' cache throughout;
+in one minute that was watched, 1,458 MB went to swap with 21 GB free.
+
+Why swappiness doesn't say what it seems to (mm/vmscan.c of this
+kernel, read):
+
+- **The multi-generational LRU at 1** takes "the files' cache first"
+  of each generation, not of the whole: `isolate_folios` scans the
+  files' oldest generation and falls back to programs' memory whenever
+  that has nothing to scan (`if (!scanned) type = !type`), which under
+  a build is often, with tens of GB of younger cache beside it.
+- **The multi-generational LRU at 0** never swaps: programs' memory
+  isn't evictable at all (`min_type(0)` is the files' type, and
+  `for_each_evictable_type` runs over it alone), and nothing brings it
+  back in when the cache is gone. The program that asked for memory is
+  ended, with all of swap free.
+- **The kernel's older reclaim at 0** (the multi-generational LRU put
+  out: `/sys/kernel/mm/lru_gen/enabled`) scans programs' memory only
+  when the files' cache and what's free are together under the zones'
+  high marks (`file_is_tiny`, `prepare_scan_control`). That is what
+  the kernel's documentation says of swappiness 0, and it is true of
+  this reclaim only. At 1 it swaps an idle program out beside a build.
+
+`tools/dev/kernel-check swap`: a guest with 1 GB, swap in compressed
+memory as large. First a program takes 300 MB of its own and sits idle
+for 75 s while a build goes on beside it (files written and read back,
+100 to 170 GB of them through 1 GB of memory, and compilers that each
+take 350 MB for a second), then it's used again. Then memory really
+runs out: one takes 950 MB at 12 MB a second (it fits only with swap)
+while another keeps reading 250 MB of a file it has mapped and 150 MB
+of its own, ten times a second. One guest each:
+
+| | beside the build: moved to swap | the idle program used again | memory running out: the program | moved to swap | the one in use, a round through its file: 99 in 100 within | worst |
+| --- | ---: | ---: | --- | ---: | ---: | ---: |
+| the multi-generational LRU, swappiness 60 (as Fedora comes) | 0 MB | 1 ms | got it all | 1,504 MB | 76 ms | 100 ms |
+| the same, 1 (as Olo had it) | 0 MB | 3 ms | got it all | 1,664 MB | 55 ms | 71 ms |
+| the same, 0 | 0 MB | 8 ms | **was ended after 56 s** | 0 MB | 133 ms | 837 ms |
+| the older reclaim, 0 | 0 MB | 19 ms | got it all | 813 MB | 200 ms | 317 ms |
+| **the older reclaim, 0, room kept free 200 (the setting)** | 0 MB | 1 ms | got it all | 869 MB | 132 ms | 178 ms |
+| the older reclaim, 1 | 1,015 MB | 204 ms | got it all | 1,480 MB | 123 ms | 228 ms |
+| the older reclaim, 1, room kept free 200 | 1,010 MB | 142 ms | got it all | 1,369 MB | 240 ms | 723 ms |
+| the older reclaim, 60 (as kernels came before) | 290 MB | 413 ms | got it all | 1,542 MB | 294 ms | 391 ms |
+
+So the setting is the older reclaim with swappiness 0: nothing goes to
+swap beside a build, and swap is used when memory runs out, with
+nothing ended. (The guest's build didn't make the multi-generational
+LRU swap as Ben's computer does, where more goes on than a build:
+programs that ask for huge pages wake the kernel's reclaim for them,
+below. What it does there is to be read from the kernel's own counts
+once it's on: `pswpout` in /proc/vmstat, by the minute.)
+
+**It is a trade, and the person's to make.** When memory really runs
+out, the files' cache goes before any program's own memory, and the
+files of programs in use are among it: a round through a mapped file
+took 132 ms at the 99th where it took 55 to 76 with the
+multi-generational LRU, which moves the largest program's memory out
+sooner. That is what "only when nothing else is left" means. More
+room is kept free with it for that reason
+(`vm.watermark_scale_factor` 200: 2% of memory between the kernel's
+marks, where it comes with 0.1%): swap begins when the cache and
+what's free are together under the high mark, and with the mark
+higher that point comes while programs in use still have some of
+their files in memory (the worst round 178 ms where it was 317).
+Measured for its own sake that setting gained nothing ("Room kept
+free", below); here it moves where swap begins.
+
+How it's set: `/etc/sysctl.d/80-olo-memory.conf` (the two sysctls;
+Olo's `vm.swappiness = 1` was in this file before) and
+`/etc/tmpfiles.d/olo-swap-last.conf` (the multi-generational LRU put
+out at every start), and the three written at once. Put on, what is in
+swap already is brought back where memory has room for it twice over
+(each area turned off, which brings what's in it back, and on again at
+its priority); otherwise it comes back as it's next used. Put off:
+both files removed, the LRU on again where the kernel was built to
+start with it, swappiness 60, the room 10.
+
 ## After a kernel update
 
 Ben, 2026-11-16: "make sure all these kernel tunings/mods will continue
@@ -183,6 +355,13 @@ to work properly after doing os updates that update the kernel."
 - **The removable disks' limit** is a udev rule and two attributes the
   kernel has had since 6.2: nothing of it is the kernel's version's. On
   a kernel without them the rule does nothing.
+- **Short turns** are a file in debugfs the kernel has had under this
+  name since 6.6 (`sched/base_slice_ns`), written at every start by
+  Olo's unit; where a kernel hasn't it the line does nothing, and
+  Preferences shows the turn as the kernel comes.
+- **Swap used last** is two sysctls and the multi-generational LRU's
+  switch (`lru_gen/enabled`, since 6.1; a kernel without it has only
+  the older reclaim, and the sysctls are all there is to keep).
 - **BBRv3 and the graphics-memory patch** are built again for the new
   kernel by their services at its first start (kernel/README.md).
 
@@ -319,9 +498,8 @@ cache faster than a program takes memory. Left at 10.
 
 ### Not measured, and why
 
-- **`vm.swappiness`, the size of swap**: Olo Doctor sets them already
-  (1, and swap as large as memory; docs/HACKING.md, "Swappiness and the
-  size of swap").
+- **The size of swap**: Olo Doctor suggests it already (as large as
+  memory; docs/HACKING.md, "Swap used last, and the size of swap").
 - **`vm.page-cluster=0`** (swap read a page at a time): with swap in
   compressed memory the kernel already reads one page at a time for a
   page only one program has (`SWP_SYNCHRONOUS_IO`).
@@ -344,8 +522,10 @@ cache faster than a program takes memory. Left at 10.
   now, what the next start brings, its figures), as anyone.
 - `apps/doctor/src/kernel.rs`: the steps that put each on or back, as
   root; `olo-doctor --kernel` (what there is, as JSON) and `olo-doctor
-  --kernel preemption|slow-disks|bbr3|graphics-memory on|off`.
-- Olo Doctor's suggestions `kernel:preemption` and `kernel:slow-disks`
+  --kernel preemption|short-turns|swap-last|slow-disks|bbr3|graphics-memory
+  on|off`.
+- Olo Doctor's suggestions `kernel:preemption` and `kernel:slow-disks`,
+  and what it recommends, `kernel:short-turns` and `kernel:swap-last`
   (apps/doctor/src/checks.rs, `kernel_settings`).
 - Preferences ▸ Performance ▸ Kernel (apps/preferences/src/performance.rs).
 - `tools/dev/kernel-check` and `crates/system/examples/kbench.rs`: the

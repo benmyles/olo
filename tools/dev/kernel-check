@@ -12,6 +12,15 @@ settings were chosen.
       against full), and what full costs: computing, pipe chatter,
       16 threads writing one file. N (3) guests each way, in turn; the
       middle of them.
+  tools/dev/kernel-check turns [--reps N]
+      a busy program's turn on a processor (the scheduler's base
+      slice): as the kernel lengthens it for the guest's processors
+      (2.1 ms on four) against its base, 0.7 ms, with full preemption
+      both ways. A thread woken while twice as many threads compute as
+      there are processors (a build beside what someone waits for),
+      and what the shorter turn costs: computing with the processors
+      shared out twice over, pipe chatter, 16 threads writing one file.
+      N (3) guests each way, in turn; the middle of them.
   tools/dev/kernel-check thrashing [--reps N]
       left alone: MGLRU's thrash protection. A program takes memory
       (more than there is: it's ended either way; then what fits only
@@ -34,6 +43,18 @@ settings were chosen.
       or 64 MB costs disks of 400 MB/s, 1 GB/s and this computer's own
       speed, with the computer quiet and with every processor busy (it
       makes them so itself, for a quarter of a minute at a time).
+  tools/dev/kernel-check swap [--reps N]
+      swap used only when nothing else is left. A program takes 300 MB
+      of its own and sits idle while a build's worth of files is
+      written and read beside it (more than memory holds) for a
+      minute: what was moved to swap meanwhile, and what the idle
+      program waits when it's next used; then memory really running
+      out (a program takes more than there is, with swap it fits): is
+      swap used then, is anything ended. Each as Olo had it (the
+      multi-generational LRU with vm.swappiness 1), with swappiness 0
+      there (it never swaps), and with the kernel's older reclaim and
+      swappiness 0, the room kept free as it comes and widened. N (2)
+      guests each.
   tools/dev/kernel-check left-alone
       what was measured and left as the kernel comes: dm-crypt without
       its work queues (a ramdisk, and a disk), and the room kept free
@@ -99,6 +120,49 @@ echo "chat1|$(/bin/kbench chat --secs 4 --groups 1)"
 dd if=/dev/zero of=/tmp/f bs=1M count=256 2>/dev/null
 echo "write16|$(/bin/kbench io /tmp/f --secs 4 --bs 4096 --threads 16 --buffered --write)"
 """
+
+
+# $1: the scheduler's base slice, in nanoseconds.
+TURNS = r"""
+mount -t debugfs none /sys/kernel/debug 2>/dev/null
+echo "built|{\"ns\":$(cat /sys/kernel/debug/sched/base_slice_ns)}"
+echo $1 > /sys/kernel/debug/sched/base_slice_ns
+/bin/kbench spin --secs 8 --threads 8 --nice 10 > /tmp/s & S=$!
+sleep 1; echo "wake-low|$(/bin/kbench relay --secs 6)"; wait $S
+/bin/kbench spin --secs 8 --threads 8 > /tmp/s & S=$!
+sleep 1; echo "wake-same|$(/bin/kbench relay --secs 6)"; wait $S
+echo "compute|$(/bin/kbench spin --secs 6 --threads 8)"
+echo "chat4|$(/bin/kbench chat --secs 4 --groups 4)"
+echo "chat1|$(/bin/kbench chat --secs 4 --groups 1)"
+dd if=/dev/zero of=/tmp/f bs=1M count=256 2>/dev/null
+echo "write16|$(/bin/kbench io /tmp/f --secs 4 --bs 4096 --threads 16 --buffered --write)"
+"""
+
+
+def turns(reps):
+    print(f"A busy program's turn (the scheduler's base slice): as the kernel lengthens it for 4 processors against its base, 0.7 ms; full preemption both ways; {reps} guests each; the middle of them\n")
+    got = {"as it comes": {}, "0.7 ms": {}}
+    built = 0
+    for _ in range(reps):
+        for mode in got:
+            # (As it comes: what the guest's kernel says it started on, written back.)
+            for name, d in guest(TURNS, args=["700000" if mode == "0.7 ms" else str(built or 2100000)], bins=["dd"], append="preempt=full"):
+                if name == "built":
+                    built = built or d["ns"]
+                else:
+                    got[mode].setdefault(name, []).append(d)
+    med = statistics.median
+    print(f"  (the guest's kernel starts on {built / 1e6} ms)")
+    print("  a thread woken by another that goes on working, microseconds until it runs:")
+    for name, what in [("wake-low", "8 threads computing at nice 10"), ("wake-same", "8 threads computing, same priority")]:
+        for mode in got:
+            r = got[mode][name]
+            print(f"    {what:36} {mode:11} middle {med([x['us_p50'] for x in r]):5.0f}   99 in 100 {med([x['us_p99'] for x in r]):5.0f}   999 in 1000 {med([x['us_p999'] for x in r]):5.0f}   worst {med([x['us_max'] for x in r]):6.0f}")
+    print("\n  what the work itself gets done, 0.7 ms against as it comes:")
+    for name, key, what in [("compute", "rounds_per_sec", "8 threads computing on 4 processors"), ("chat4", "messages_per_sec", "pipes, 16 writers and 16 readers"), ("chat1", "messages_per_sec", "pipes, 4 writers and 4 readers"), ("write16", "mb_per_sec", "16 threads writing one file")]:
+        a, b = (med([x[key] for x in got[m][name]]) for m in got)
+        print(f"    {what:36} as it comes {a:12,.0f}   0.7 ms {b:12,.0f} a second   {b / a:.3f}×")
+    print()
 
 
 def preemption(reps):
@@ -179,6 +243,74 @@ def thrashing(reps, ttl_only=None):
     print(f"\n  the program that fits (700 MB), {reps} times more with min_ttl_ms 1000:")
     ended = sum(run(1000, 700) for _ in range(reps))
     print(f"\n  ended in {ended} of {reps}\n")
+
+
+# $1: the multi-generational LRU (y: all of it, as Fedora starts; n), $2: vm.swappiness, $3:
+# vm.watermark_scale_factor, $4: megabytes the last program takes.
+SWAP = r"""
+mkfs.ext4 -q -F /dev/vda; mkdir -p /d; mount /dev/vda /d
+dd if=/dev/urandom of=/d/file bs=1M count=320 2>/dev/null; sync; echo 3 > /proc/sys/vm/drop_caches
+echo $(( $(awk '/MemTotal/ {print $2}' /proc/meminfo) * 1024 )) > /sys/block/zram0/disksize
+mkswap /dev/zram0 > /dev/null; swapon -p 100 /dev/zram0
+echo $1 > /sys/kernel/mm/lru_gen/enabled; echo $2 > /proc/sys/vm/swappiness; echo $3 > /proc/sys/vm/watermark_scale_factor
+swapped() { awk '/SwapTotal/ {t=$2} /SwapFree/ {f=$2} END {printf "%d", (t-f)/1024}' /proc/meminfo; }
+out() { awk '/^pswpout / {print $2}' /proc/vmstat; }
+# A program with 300 MB of its own, idle for 75 s, then used again.
+/bin/kbench hog --mb 300 --hold 75 --random 2048 --then-walk > /tmp/idle & I=$!
+sleep 5
+# A build beside it for a minute: files written and read back, more
+# than memory holds, and compilers that each take 350 MB of their own
+# for a second and go (with the idle program's and the files' cache,
+# more than there is: the kernel has to make room each time).
+t0=$(date +%s); n=0; mb=0
+( while [ $(( $(date +%s) - t0 )) -lt 60 ]; do /bin/kbench hog --mb 350 --hold 1 --random 2048 > /dev/null 2>&1; done ) & C=$!
+while [ $(( $(date +%s) - t0 )) -lt 60 ]; do
+  /bin/kbench fill /d/f$(( n % 6 )) --mb 200 > /dev/null; dd if=/d/f$(( n % 6 )) of=/dev/null bs=1M 2>/dev/null
+  n=$(( n + 1 )); mb=$(( mb + 400 ))
+done
+wait $C
+echo "build|{\"mb\":$mb,\"swapped_mb\":$(swapped),\"pages_out\":$(out)}"
+wait $I; echo "idle|$(sed -n 2p /tmp/idle)"
+rm -f /d/f?; sync; echo 3 > /proc/sys/vm/drop_caches
+# Memory really running out, with a program in use beside it (250 MB of
+# a file it has mapped, 150 MB of its own, read ten times a second).
+/bin/kbench touch /d/file --mb 250 --secs 125 > /tmp/t & T=$!
+/bin/kbench touch --own --mb 150 --secs 125 > /tmp/o & O=$!
+sleep 10
+o0=$(out); f0=$(awk '/^pgmajfault / {print $2}' /proc/vmstat); t0=$(date +%s.%N)
+/bin/kbench hog --mb $4 --rate 12 --hold 20 --random 2048 > /tmp/h 2>/dev/null; hs=$?
+echo "out|{\"ended\":$hs,\"secs\":$(echo "$(date +%s.%N) $t0" | awk '{printf "%.1f", $1-$2}'),\"swapped_mb\":$(swapped),\"pages_out\":$(( $(out) - o0 )),\"read_back\":$(( $(awk '/^pgmajfault / {print $2}' /proc/vmstat) - f0 ))}"
+wait $T; echo "files|$(cat /tmp/t)"
+wait $O; echo "own|$(cat /tmp/o)"
+"""
+
+
+def swap(reps):
+    print("Swap used only when nothing else is left: 1 GB of memory, swap in compressed memory as large.")
+    print("First a program with 300 MB of its own sits idle beside a minute of a build's files (written and read back: more than memory holds), and is used again;")
+    print("then one takes 950 MB at 12 MB a second (it fits only with swap) while another keeps reading 250 MB of a file it has mapped and 150 MB of its own.\n")
+    cases = [
+        ("as Fedora comes: the multi-generational LRU, vm.swappiness 60", "y", 60, 10),
+        ("as Olo had it: the multi-generational LRU, vm.swappiness 1", "y", 1, 10),
+        ("the multi-generational LRU, vm.swappiness 0", "y", 0, 10),
+        ("the older reclaim, vm.swappiness 0", "n", 0, 10),
+        ("the older reclaim, vm.swappiness 0, more room kept free (watermark_scale_factor 200)", "n", 0, 200),
+        ("the older reclaim, vm.swappiness 1", "n", 1, 10),
+        ("the older reclaim, vm.swappiness 1, more room kept free (200)", "n", 1, 200),
+        ("the older reclaim, vm.swappiness 60 (as kernels came before)", "n", 60, 10),
+    ]
+    only = os.environ.get("OLO_SWAP_CASES")   # "0,3": some of them, by their place
+    if only:
+        cases = [cases[int(i)] for i in only.split(",")]
+    for what, gen, swappiness, room in cases:
+        print(f"  {what}:")
+        for _ in range(reps):
+            rows = {r[0]: r[-1] for r in guest(SWAP, args=[str(gen), str(swappiness), str(room), "950"], bins=["/usr/sbin/mkfs.ext4", "dd", "/usr/sbin/mkswap", "/usr/sbin/swapon"], modules=["zram"], disks=["4G"], mem=1024, timeout=500)}
+            build, idle, out, files, own = (rows.get(k) if isinstance(rows.get(k), dict) else {} for k in ("build", "idle", "out", "files", "own"))
+            fate = f"was ended after {out.get('secs', 0):.0f} s" if out.get("ended") else "got it all"
+            print(f"    beside the build ({build.get('mb', 0) / 1000:.0f} GB of files): {build.get('pages_out', 0) * 4 // 1024} MB moved to swap, {build.get('swapped_mb', '?')} MB there at its end; the idle program used again: {idle.get('ms', float('nan')):.0f} ms, {idle.get('brought_back', '?')} pages brought back")
+            print(f"    memory running out: the program {fate}, {out.get('pages_out', 0) * 4 // 1024} MB moved to swap; the one in use: a round through its file 99 in 100 within {files.get('ms_p99', float('nan')):.1f} ms, worst {files.get('ms_max', float('nan')):.0f}; through its own {own.get('ms_p99', float('nan')):.1f} ms, worst {own.get('ms_max', float('nan')):.0f}; read back from disk {out.get('read_back', '?')} times")
+    print()
 
 
 SLOW_DISK = r"""
@@ -279,11 +411,11 @@ def main():
         sys.exit("kernel-check: no kbench: cargo build --release -p olo-system --example kbench")
     ttl = int(args[args.index("--ttl") + 1]) if "--ttl" in args else None
     reps = int(args[args.index("--reps") + 1]) if "--reps" in args else (3 if ttl is None else 20)
-    which = [a for a in args if not a.startswith("--") and not a.isdigit()] or ["preemption", "slow-disks", "thrashing", "left-alone"]
+    which = [a for a in args if not a.startswith("--") and not a.isdigit()] or ["preemption", "turns", "slow-disks", "swap", "thrashing", "left-alone"]
     for name in which:
-        run = {"preemption": lambda: preemption(reps), "thrashing": lambda: thrashing(reps, ttl), "slow-disks": slow_disks, "left-alone": left_alone}.get(name)
+        run = {"preemption": lambda: preemption(reps), "thrashing": lambda: thrashing(reps, ttl), "turns": lambda: turns(reps), "slow-disks": slow_disks, "swap": lambda: swap(2 if "--reps" not in args else reps), "left-alone": left_alone}.get(name)
         if run is None:
-            sys.exit(f"kernel-check: {name}? preemption, thrashing, slow-disks or left-alone")
+            sys.exit(f"kernel-check: {name}? preemption, turns, thrashing, slow-disks, swap or left-alone")
         run()
 
 

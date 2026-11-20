@@ -196,6 +196,8 @@ pub fn facts_height(rows: usize) -> f32 {
 pub struct Facts {
     rows: Rc<[(SharedString, SharedString)]>,
     colors: Option<(Hsla, Hsla)>,
+    label_w: Option<f32>,
+    row: Option<f32>,
 }
 
 impl Facts {
@@ -203,7 +205,34 @@ impl Facts {
         // (Each label in the language chosen: a literal looked up.)
         let rows: Rc<[(SharedString, SharedString)]> = rows.into();
         let rows = rows.iter().map(|(label, value)| (crate::words::of(label.clone()), value.clone())).collect();
-        Facts { rows, colors: None }
+        Facts { rows, colors: None, label_w: None, row: None }
+    }
+
+    /// Its rows `height` apart, where they would be [`FACT_ROW`]: under
+    /// a wrapped paragraph in boxes set side by side, as far apart as
+    /// the paragraph's lines (`style::PLAIN_SIZE * style::LINE_HEIGHT`),
+    /// so two boxes with as many lines and rows between them, however
+    /// shared out, are as tall as each other and their neighbours'
+    /// edges meet. With two steps, three lines and two rows came 1.5
+    /// points taller than two lines and three rows, and the boxes under
+    /// them started that far apart: a miss that reads as a mistake
+    /// (both looks at Preferences' Kernel tab, 2026-11-20).
+    pub fn row_height(mut self, height: f32) -> Self {
+        self.row = Some(height);
+        self
+    }
+
+    /// Its values `width` from its labels' left, where its own widest
+    /// label would put them nearer: several of them one under another
+    /// (a column of boxes, each with its facts) have their values in one
+    /// line, given the widest of all their labels
+    /// (`facts_label_width`, of the labels as shown: `words::of` each).
+    /// Each sized by its own, values a pixel or two apart in
+    /// neighbouring boxes read as a mistake (both looks at Preferences'
+    /// Kernel tab, 2026-11-20).
+    pub fn label_width(mut self, width: f32) -> Self {
+        self.label_w = Some(width);
+        self
     }
 
     /// On a panel rather than a card: its labels' colour and its values'
@@ -216,9 +245,15 @@ impl Facts {
 
 impl IntoElement for Facts {
     fn into_element(self) -> Element {
-        let Facts { rows, colors } = self;
-        let h = facts_height(rows.len());
-        let key = style::key((&rows, colors.map(|(label, value)| (style::ink_key(Some(label)), style::ink_key(Some(value))))));
+        let Facts { rows, colors, label_w, row } = self;
+        // (Rows a fraction of a point apart, as a paragraph's lines are,
+        // begin a point down: a row's text is set on whole pixels, and
+        // the first's would stand a fraction above its row's top, cut
+        // by the element's own edge, as the layout review said.)
+        let inset = if row.is_some() { 1.0 } else { 0.0 };
+        let row = row.unwrap_or(FACT_ROW);
+        let h = (rows.len() as f32 * row + inset).ceil();
+        let key = style::key((&rows, colors.map(|(label, value)| (style::ink_key(Some(label)), style::ink_key(Some(value)))), label_w.map(f32::to_bits), row.to_bits()));
         canvas(move |g, b| {
             let p = theme::palette();
             let (dim, text) = colors.unwrap_or_else(|| {
@@ -226,10 +261,11 @@ impl IntoElement for Facts {
                 (ink.dim, ink.text)
             });
             let font = style::ui_font(FontWeight::NORMAL);
-            let label_w = px(facts_label_width(rows.iter().map(|(l, _)| l.as_ref())));
+            let own = facts_label_width(rows.iter().map(|(l, _)| l.as_ref()));
+            let label_w = px(label_w.map_or(own, |w| w.max(own)));
             g.with_content_mask(Some(olo_interface::ContentMask { bounds: b }), |g| {
                 for (i, (label, value)) in rows.iter().enumerate() {
-                    let mid = b.top() + px(i as f32 * FACT_ROW + FACT_ROW / 2.0);
+                    let mid = b.top() + px(inset + i as f32 * row + row / 2.0);
                     let l = style::label(g, b.left(), mid, style::Align::Left, label.clone(), style::PLAIN_SIZE, font.clone(), dim);
                     let v = style::label_fit(g, b.left() + label_w, mid, style::Align::Left, value.clone(), style::PLAIN_SIZE, font.clone(), text, (b.size.width - label_w).max(px(0.0)));
                     g.agent(agent::Node { value: Some(value.clone()), ..agent::Node::label(label.clone(), l.union(&v)) });

@@ -24,7 +24,10 @@ On that kernel it then checks, and says for each:
                  disk takes its own limit (bdi/strict_limit,
                  bdi/max_bytes) and gives it back; udev, with Olo's rule,
                  limits a USB stick and leaves the guest's own disk
-                 alone.
+                 alone; the scheduler's base slice takes 0.7 ms; the
+                 multi-generational LRU is put out and back, and
+                 vm.swappiness and vm.watermark_scale_factor take 0
+                 and 200 (short turns; swap used last).
   BBRv3          the module builds against its headers and passes its
                  self-check there (tools/dev/bbr3-check --on; --quick:
                  six links, else all).
@@ -63,6 +66,11 @@ echo "started|$(cat /sys/kernel/debug/sched/preempt)"
 relay() { /bin/kbench spin --secs 5 --threads 4 --nice 19 > /dev/null & S=$!; sleep 1; echo "$1|$(/bin/kbench relay --secs 3)"; wait $S; }
 printf lazy > /sys/kernel/debug/sched/preempt; echo "switched-lazy|$(cat /sys/kernel/debug/sched/preempt)"; relay lazy
 printf full > /sys/kernel/debug/sched/preempt; echo "switched-full|$(cat /sys/kernel/debug/sched/preempt)"; relay full
+T=/sys/kernel/debug/sched/base_slice_ns
+echo "turn|$(cat $T) $(printf 700000 > $T; cat $T)"
+G=/sys/kernel/mm/lru_gen/enabled
+echo "generations|$(cat $G) $(printf 0 > $G; cat $G) $(printf y > $G; cat $G)"
+echo "sysctls|$(printf 0 > /proc/sys/vm/swappiness; cat /proc/sys/vm/swappiness) $(printf 200 > /proc/sys/vm/watermark_scale_factor; cat /proc/sys/vm/watermark_scale_factor)"
 B=/sys/block/vda/bdi
 printf 1 > $B/strict_limit; printf 16777216 > $B/max_bytes; echo "limited|$(cat $B/strict_limit) $(cat $B/max_bytes)"
 printf 0 > $B/strict_limit; printf 100 > $B/max_ratio; echo "unlimited|$(cat $B/strict_limit) $(cat $B/max_ratio)"
@@ -186,6 +194,13 @@ def settings(release, tree):
         say(full * 10 < lazy, f"woken across processors under load, 99 in 100 run within {full:.0f} µs on full ({lazy:.0f} on lazy)")
     except (KeyError, ValueError):
         say(False, "the wake measurement gave nothing")
+    # (Short turns and swap used last: the files Olo's unit and lines
+    # write, and what they then say. Four processors: 2.1 ms as it comes.)
+    turn = rows.get("turn", "").split()
+    say(len(turn) == 2 and int(turn[0]) > 700_000 and turn[1] == "700000", f"the scheduler's base slice takes 0.7 ms: {' then '.join(turn) or 'no answer'}")
+    gens = rows.get("generations", "").split()
+    say(len(gens) == 3 and int(gens[0], 16) & 1 == 1 and int(gens[1], 16) == 0 and gens[2] == gens[0], f"the multi-generational LRU is put out and back: {' '.join(gens) or 'no answer'}")
+    say(rows.get("sysctls", "").split() == ["0", "200"], "vm.swappiness takes 0 and vm.watermark_scale_factor 200")
     limited = rows.get("limited", "").split()
     say(len(limited) == 2 and limited[0] == "1" and 16_000_000 < int(limited[1]) <= 16_777_216, f"a disk takes its own limit: strict_limit {' max_bytes '.join(limited) or 'no answer'}")
     say(rows.get("unlimited", "").split() == ["0", "100"], "and gives it back")

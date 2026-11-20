@@ -109,7 +109,7 @@ A build of Olo is running: Olo upgrades as soon as it has finished.
 A build of Olo is still running. Olo upgrades as soon as it has finished: your windows stay open.
 A classic token with the repo scope, or a fine-grained one that can read pull requests and checks. Olo keeps it in your login keyring.
 A code that is surely an agent’s tab’s is put in there, and you’re told; one that isn’t sure is asked about.
-A copy to a stick or a card goes at the disk's own pace, {} waiting in memory at most, so its progress is true and ejecting is quick.
+A copy to a stick or a card goes at the disk's own pace, so its progress is true and ejecting is quick.
 A day
 A disk of its own, or a folder on one: your backups kept apart from this computer.
 A dotted line
@@ -384,6 +384,7 @@ At 10%
 At 15%
 At 20%
 At a time of its own
+At every start
 At full speed
 At least
 At the Bottom
@@ -794,6 +795,7 @@ Cooling
 Copied the reference to “{}”’s {}.
 Copied the {}.
 Copied {}. It leaves the clipboard in {} seconds.
+Copies of files in memory are freed first; programs go to swap only when those run out (vm.swappiness 0, MGLRU off).
 Copr project
 Copy
 Copy Code
@@ -1089,7 +1091,6 @@ Each display is at its own best resolution and scale now: no rotation, mirroring
 Each display is drawn by the graphics it's wired to, so no frame crosses between them; the second sleeps while nothing uses it.
 Each display’s Deskbar keeps the workspace that display shows open; each other one is its heading, with an arrow that shows its applications and puts them away again, in that Deskbar alone.
 Each is judged from several signals together; a finding says how sure it is and why.
-Each is the computer's, not this account's, so switching one asks for an administrator's password. Olo Doctor suggests each, with what was measured for it.
 Each kind of input in the last minute: how many, never which keys
 Each kind opens in this app wherever you open it, in Olo and in other programs. Tracker's Open With ▸ Always Open With chooses too.
 Each network's own
@@ -1353,6 +1354,7 @@ Fourth folder
 Free
 Free (open source)
 Freeing the space only backups past keeping took, in {}.
+Frees first
 Freezing
 Freezing drizzle
 Freezing rain
@@ -1674,6 +1676,7 @@ Keep It Going, in a tab’s menu, types this to the coding agent in the tab when
 Keep Key in Passwords
 Keep Only on This Computer
 Keep Them Off
+Keep a busy program's turn short
 Keep a core for the window server
 Keep briefly
 Keep foreground work ready between bursts. Fans start sooner.
@@ -1792,6 +1795,7 @@ Link-Local Only
 Link:
 Link’s rate
 Link…
+Linux's own
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 List
 List View
@@ -2635,6 +2639,7 @@ Processed: the setting chosen below
 Processes
 Processes as a Tree
 Processor
+Processor Turns
 Processor:
 Profile
 Profile:
@@ -3232,6 +3237,7 @@ Supervisor
 Swap
 Swap Alt and the Windows Key
 Swap too
+Swap used
 Swap with Previous Main
 Swap with the next tile
 Swap with the previous main window
@@ -3258,7 +3264,7 @@ Syncing with {} makes {}. Nothing changes on either side until you apply them.
 System
 System Font
 TCP opened in
-TCP sends at the pace its path can carry, by a model of it, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
+TCP sends at the pace its path can carry, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
 TCP/IP
 TCP’s own, idle
 TCP’s round trip
@@ -3505,6 +3511,7 @@ There's no fingerprint sensor, or fprintd isn't running.
 There's no infrared camera.
 These apps may have these items whenever they ask. Take one back and the app is asked again the next time.
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
+These settings are for the whole computer, so changing one asks for an administrator's password.
 ThinkPad
 Thinking ({})…
 Thinking:
@@ -3657,6 +3664,7 @@ Turbo on
 Turn Off
 Turn On
 Turn On Bluetooth
+Turn now
 Turn off after
 Turn off displays
 Turn off screen
@@ -3770,6 +3778,7 @@ Use a Phone Number
 Use a QR Code
 Use a Reset Credit…
 Use a key already in Passwords
+Use swap only when nothing else is left
 Use the Usual Order
 Use this account
 Use:
@@ -3904,6 +3913,8 @@ When a Frame Drops
 When am I free today?
 When am I free tomorrow?
 When does the sun rise tomorrow?
+When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
+When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up (base slice).
 When held for:
 When pressed:
 When to Back Up
@@ -3959,7 +3970,7 @@ Window to workspace 9
 Windowing Mode
 Windows
 Windows stay where you put them.
-Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).
+Windows' buffers stay out of swap, so the desktop never waits for one (Olo's live patch of Intel's driver).
 Wireless Router
 With AirPods:
 With Another Window
@@ -4078,6 +4089,7 @@ brush’s grey hints, from a tiny model of your own commands
 built most, the last 24 hours
 ceiling {}%
 charging, full in {}
+copies of files
 couldn't save the boost: {}
 couldn't save the setting: {}
 day
@@ -4154,11 +4166,13 @@ medium
 minimum and maximum both {}%
 misses, the last 24 hours
 ms
+no
 no display ports
 no limit to its space
 no network: it goes on once there’s one
 no wired network: it waits for one
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
+none of {}
 not parts of it: {}; its parts are {}
 not set up yet
 not understood: {}
@@ -4218,6 +4232,7 @@ signed in
 signed in, 1 calendar
 signed in, {} calendars
 slots of the pool in use
+some of each
 some of it couldn't be read
 something else is called “{}” there now
 ssh, git and other programs sign in with the SSH keys in Passwords, each one allowed the first time it asks.
@@ -4244,6 +4259,7 @@ the last backup didn’t finish ({})
 the last {n} hours
 the last {n} minutes
 the last {n} seconds
+the least used
 the package {}
 the phone didn't take it: {}
 the power profiles daemon, through {}
@@ -4288,6 +4304,7 @@ visibility down to {}
 what holds it back
 where the scheduler puts it
 with the {n} files changed in it and not committed
+yes
 yesterday
 yesterday at {}
 you
@@ -4450,6 +4467,7 @@ your own picture
 {} minutes after
 {} minutes ago
 {} minutes before
+{} ms
 {} ms, the middle of them
 {} needs full access.
 {} needs signing in again

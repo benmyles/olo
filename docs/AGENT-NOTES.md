@@ -1125,3 +1125,27 @@ Learned on the second pass (2026-11-20):
   it on) and `…_job_done`, keyed by `fence_context, fence_seqno`;
   `…_job_unschedulable` marks a job that waited for another program's
   drawing (1% of the compositor's, under 3 ms).
+- **A guest's timings are the host's when the host is busy**
+  (2026-11-20): `kernel-check`'s wake figures from guests run at a
+  load of 20 to 30 had tails of milliseconds that weren't the
+  setting's (a guest's processors are made to wait too), and said the
+  opposite of the same test run on the computer itself. Costs
+  (throughput) survive it roughly; latencies don't. Measure latency
+  on the computer when it's busy (`kbench relay` beside `kbench spin`,
+  each setting in turn, several rounds), or in a guest when it's quiet.
+- **`vm.swappiness` means three different things** on this kernel
+  (7.2; mm/vmscan.c): under the multi-generational LRU, 1 is "files
+  first" a generation at a time (idle programs still go to swap under
+  a build) and 0 is "never" (a program is ended with swap free); only
+  under the older reclaim (`echo 0 > /sys/kernel/mm/lru_gen/enabled`)
+  is 0 "when the cache is all but gone". kernel/TUNING.md, "Swap: used
+  last".
+- **What holds programs "making room" is mostly huge pages**: trace
+  `vmscan:mm_vmscan_direct_reclaim_begin` and
+  `compaction:mm_compaction_try_to_compact_pages` by `args->order`
+  and `comm` before blaming memory being short (order 9 is a 2 MB
+  page asked for with `madvise`: the linker, Chrome).
+- **Every `sudo` a tool runs is asked of the person's Terminal**, and
+  until auto-approval starts nothing first (TODO) each one runs the
+  face camera for a few seconds: one `sudo sh -c '…'` or one script
+  run as root, not a `sudo` a line.

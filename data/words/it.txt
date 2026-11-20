@@ -336,8 +336,8 @@ Usa un token classico con ambito repo o uno con permessi dettagliati per leggere
 A code that is surely an agent’s tab’s is put in there, and you’re told; one that isn’t sure is asked about.
 Se la scheda dell’agente è identificata con certezza, Olo vi inserisce il codice e ti avvisa. In caso di dubbio chiede conferma.
 
-A copy to a stick or a card goes at the disk's own pace, {} waiting in memory at most, so its progress is true and ejecting is quick.
-La copia su chiavetta o scheda segue la velocità del disco. In memoria restano al massimo {} di dati in attesa, così l’avanzamento è preciso e l’espulsione è rapida.
+A copy to a stick or a card goes at the disk's own pace, so its progress is true and ejecting is quick.
+Una copia su una chiavetta o una scheda va al ritmo del disco, così il suo avanzamento è reale e l’espulsione è rapida.
 
 A day
 Un giorno
@@ -1164,6 +1164,9 @@ Al 20%
 
 At a time of its own
 A un’ora personalizzata
+
+At every start
+A ogni avvio
 
 At full speed
 Alla massima velocità
@@ -2399,6 +2402,9 @@ Copia di {} completata.
 Copied {}. It leaves the clipboard in {} seconds.
 {} copiato. Verrà cancellato dagli appunti tra {} secondi.
 
+Copies of files in memory are freed first; programs go to swap only when those run out (vm.swappiness 0, MGLRU off).
+Le copie dei file in memoria vengono liberate per prime; i programmi vanno nello swap solo quando sono finite (vm.swappiness 0, MGLRU disattivato).
+
 Copr project
 Progetto Copr
 
@@ -3285,9 +3291,6 @@ La Deskbar di ogni schermo tiene aperto lo spazio di lavoro visualizzato. Per gl
 Each is judged from several signals together; a finding says how sure it is and why.
 Ogni valutazione combina più segnali. Per ogni problema trovi il grado di certezza e il motivo.
 
-Each is the computer's, not this account's, so switching one asks for an administrator's password. Olo Doctor suggests each, with what was measured for it.
-Le opzioni valgono per l’intero computer. Per cambiarle serve una password di amministratore. Olo Doctor indica le misurazioni alla base di ciascun suggerimento.
-
 Each kind of input in the last minute: how many, never which keys
 Ingressi dell’ultimo minuto per tipo: solo il conteggio, mai i singoli tasti
 
@@ -4080,6 +4083,9 @@ Libero (open source)
 
 Freeing the space only backups past keeping took, in {}.
 Recupero in {} dello spazio occupato solo dai backup scaduti.
+
+Frees first
+Libera per primo
 
 Freezing
 Gelo
@@ -5049,6 +5055,9 @@ Conserva solo su questo computer
 Keep Them Off
 Lasciali disattivati
 
+Keep a busy program's turn short
+Mantieni breve il turno di un programma occupato
+
 Keep a core for the window server
 Riserva un core al server delle finestre
 
@@ -5402,6 +5411,9 @@ Velocità del collegamento
 
 Link…
 Link…
+
+Linux's own
+Quello di Linux
 
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Lo scheduler standard di Linux (EEVDF) ripartisce equamente il tempo tra i programmi. I thread di Olo da cui dipendono altre attività lavorano in tempo reale con entrambi gli scheduler. Durante build e altri lavori pesanti, questo mantiene la scrivania più reattiva.
@@ -7934,6 +7946,9 @@ Processi ad albero
 Processor
 Processore
 
+Processor Turns
+Turni del processore
+
 Processor:
 Processore:
 
@@ -9728,6 +9743,9 @@ Scambia Alt e il tasto Windows
 Swap too
 Includi la swap
 
+Swap used
+Swap usato
+
 Swap with Previous Main
 Scambia con la principale precedente
 
@@ -9806,8 +9824,8 @@ Carattere di sistema
 TCP opened in
 Connessione TCP in
 
-TCP sends at the pace its path can carry, by a model of it, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
-TCP usa un modello del percorso per inviare al ritmo sostenuto dalla rete. L’algoritmo standard di Linux tende a riempire le code lungo il percorso. Usa il modulo tcp_bbr3 di Olo.
+TCP sends at the pace its path can carry, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
+TCP invia al ritmo che il suo percorso può reggere, dove quello di Linux riempie le code lungo la strada (modulo di Olo, tcp_bbr3).
 
 TCP/IP
 TCP/IP
@@ -10547,6 +10565,9 @@ Queste app possono accedere agli elementi elencati ogni volta che li richiedono.
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 Queste funzioni richiedono che Bluetooth cerchi gli AirPods. Puoi attivare la ricerca con Olo Doctor.
 
+These settings are for the whole computer, so changing one asks for an administrator's password.
+Queste impostazioni valgono per tutto il computer, quindi cambiarne una richiede la password di un amministratore.
+
 ThinkPad
 ThinkPad
 
@@ -11003,6 +11024,9 @@ Attiva
 Turn On Bluetooth
 Attiva Bluetooth
 
+Turn now
+Turno attuale
+
 Turn off after
 Spegni dopo
 
@@ -11341,6 +11365,9 @@ Usa un credito di rinnovo…
 
 Use a key already in Passwords
 Usa una chiave già salvata in Passwords
+
+Use swap only when nothing else is left
+Usa lo swap solo quando non resta altro
 
 Use the Usual Order
 Usa l’ordine abituale
@@ -11744,6 +11771,12 @@ Quando ho tempo libero domani?
 When does the sun rise tomorrow?
 A che ora sorge il sole domani?
 
+When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
+Quando tutti i processori sono occupati, un programma lascia il posto a uno in attesa dopo 0,7 ms invece di {} (base slice). Ora pianifica {} e lo decide da sé.
+
+When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up (base slice).
+Quando tutti i processori sono occupati, un programma lascia il posto a uno in attesa dopo 0,7 ms invece di {}, così finestre e digitazione restano al passo (base slice).
+
 When held for:
 Se tenuto premuto per:
 
@@ -11909,8 +11942,8 @@ Finestre
 Windows stay where you put them.
 Le finestre restano dove le metti.
 
-Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).
-I buffer delle finestre restano fuori dalla swap, così la scrivania non deve aspettare che vengano riletti. Usa la patch a caldo di Olo per il driver Intel.
+Windows' buffers stay out of swap, so the desktop never waits for one (Olo's live patch of Intel's driver).
+I buffer delle finestre restano fuori dallo swap, così la scrivania non ne aspetta mai uno (patch live di Olo per il driver Intel).
 
 Wireless Router
 Router wireless
@@ -12267,6 +12300,9 @@ limite {}%
 charging, full in {}
 in carica, completa tra {}
 
+copies of files
+copie dei file
+
 couldn't save the boost: {}
 impossibile salvare il guadagno: {}
 
@@ -12500,6 +12536,9 @@ mancati riscontri nelle ultime 24 ore
 ms
 ms
 
+no
+no
+
 no display ports
 nessuna porta video
 
@@ -12514,6 +12553,9 @@ rete cablata assente: in attesa di connessione
 
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
+
+none of {}
+niente di {}
 
 not parts of it: {}; its parts are {}
 parti estranee: {}. Le parti previste sono {}
@@ -12699,6 +12741,9 @@ accesso effettuato, {} calendari
 slots of the pool in use
 posti del pool occupati
 
+some of each
+un po’ di entrambi
+
 some of it couldn't be read
 impossibile leggere parte dei dati
 
@@ -12779,6 +12824,9 @@ other: da {n} minuti
 the last {n} seconds
 one: da {n} secondo
 other: da {n} secondi
+
+the least used
+il meno usato
 
 the package {}
 il pacchetto {}
@@ -12914,6 +12962,9 @@ dove lo assegna lo scheduler
 with the {n} files changed in it and not committed
 one: con {n} file modificato e senza commit
 other: con {n} file modificati e senza commit
+
+yes
+sì
 
 yesterday
 ieri
@@ -13448,6 +13499,9 @@ minimo {}, ora {}
 
 {} minutes before
 {} min prima
+
+{} ms
+{} ms
 
 {} ms, the middle of them
 {} ms di mediana

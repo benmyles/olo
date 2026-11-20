@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-20
 
+### Performance ▸ Kernel: Processor Turns and Memory, and a tab that ends on one line
+
+*13:24* — Two settings are new: Keep a busy program's turn short (the scheduler's base slice at 0.7 ms) and Use swap only when nothing else is left (vm.swappiness 0 with the kernel's older reclaim). The six boxes are in two balanced columns (processors and memory left; disks, network, graphics right), every box's facts share one label width and their rows are as far apart as the paragraph's lines, so boxes side by side and both columns end on one line; the note runs across both. Three rounds with Astra and Opus.
+
+![Performance ▸ Kernel: Processor Turns and Memory, and a tab that ends on one line](2026-11-20/132433-performance-kernel-processor-turns-and-memory-an.png)
+
 ### A note never ends on one word alone
 
 *09:02* — Wrapping fills each line before the next, which left "tray." and "space." alone under Preferences ▸ Windows' menus and preview. The last word takes the one before it down now, where both fit and the line they leave stays the longer: a rule of the kits' text layout, for every paragraph set to read.
