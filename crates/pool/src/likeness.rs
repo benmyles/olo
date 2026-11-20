@@ -43,34 +43,40 @@ pub struct Like {
     pub capture: Arc<Capture>,
     pub org: Option<String>,
     pub email: Option<String>,
-    /// The cookies the server set for this account's requests, which its
-    /// client keeps and sends back (Codex's cookie store): the pool's jar.
-    pub jar: Arc<std::sync::Mutex<Vec<(String, String)>>>,
+    /// The cookies each host set for this account's requests, which its
+    /// client keeps and sends back to that host (Codex's cookie store):
+    /// the pool's jar, (host, name, value).
+    pub jar: Arc<std::sync::Mutex<Vec<(String, String, String)>>>,
 }
 
-/// The runs to take a request from, the session's first: what a person's
-/// own client sends.
-const RUNS: &[&str] = &["session", "wall", "print", "app-server", "renewal"];
+/// The runs to take Claude's requests from, the session's first: what a
+/// person's own Claude Code sends.
+const CLAUDE_RUNS: &[&str] = &["session", "wall", "print", "renewal"];
+/// Codex's: its app server's first, whose reads are the passive ones a
+/// background poll makes (its TUI's ask for Reserve, which the pool can't
+/// use: Codex's review), and whose claim is Codex's own.
+const CODEX_RUNS: &[&str] = &["app-server", "session", "print", "renewal"];
 
 impl Like {
-    pub fn fill(&self, c: &Credential) -> Fill {
+    /// The account's own values, for a request to `host`.
+    pub fn fill(&self, c: &Credential, host: &str) -> Fill {
         let jar = self.jar.lock().unwrap();
-        let cookie = (!jar.is_empty()).then(|| jar.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join("; "));
+        let theirs: Vec<String> = jar.iter().filter(|(h, _, _)| h == host).map(|(_, k, v)| format!("{k}={v}")).collect();
+        let cookie = (!theirs.is_empty()).then(|| theirs.join("; "));
         Fill { access: c.access.clone(), refresh: c.refresh.clone(), account_id: c.account_id.clone(), org: self.org.clone(), account_uuid: None, email: self.email.clone(), cookie }
     }
 
-    /// What an answer's `set-cookie`s set, kept (a name's value replaced;
-    /// one set to expire, gone).
-    pub fn remember(&self, headers: &[(String, String)]) {
+    /// What an answer from `host` set (`set-cookie`), kept for that host (a
+    /// name's value replaced; one set to expire, gone).
+    pub fn remember(&self, host: &str, headers: &[(String, String)]) {
         let mut jar = self.jar.lock().unwrap();
-        for (k, v) in headers.iter().filter(|(k, _)| k.eq_ignore_ascii_case("set-cookie")) {
-            let _ = k;
+        for (_, v) in headers.iter().filter(|(k, _)| k.eq_ignore_ascii_case("set-cookie")) {
             let mut parts = v.split(';');
             let Some((name, value)) = parts.next().and_then(|nv| nv.split_once('=')).map(|(n, v)| (n.trim().to_owned(), v.trim().to_owned())) else { continue };
             let gone = value.is_empty() || parts.any(|a| a.trim().eq_ignore_ascii_case("max-age=0"));
-            jar.retain(|(n, _)| *n != name);
+            jar.retain(|(h, n, _)| !(h == host && *n == name));
             if !gone {
-                jar.push((name, value));
+                jar.push((host.to_owned(), name, value));
             }
         }
     }
@@ -80,34 +86,36 @@ impl Like {
     pub fn request(&self, what: What) -> Option<Sent> {
         let c = &self.capture;
         match (c.provider, what) {
-            (Provider::Claude, What::Usage | What::Credits) => c.find("api.anthropic.com", "GET", "/api/oauth/usage", RUNS).cloned(),
+            (Provider::Claude, What::Usage | What::Credits) => c.find("api.anthropic.com", "GET", "/api/oauth/usage", CLAUDE_RUNS).cloned().map(as_session),
             (Provider::Claude, What::Claim) => {
                 let path = format!("/api/organizations/{}/reset_rate_limits", capture::ORG);
-                c.find("api.anthropic.com", "POST", &path, RUNS).cloned().or_else(|| claude_claim(c.find("api.anthropic.com", "GET", "/api/oauth/usage", RUNS)?))
+                c.find("api.anthropic.com", "POST", &path, CLAUDE_RUNS).cloned().or_else(|| claude_claim(c.find("api.anthropic.com", "GET", "/api/oauth/usage", CLAUDE_RUNS)?))
             }
-            (Provider::Claude, What::Renewal) => c.find("platform.claude.com", "POST", "/v1/oauth/token", RUNS).or_else(|| c.find("console.anthropic.com", "POST", "/v1/oauth/token", RUNS)).cloned(),
-            (Provider::Codex, What::Usage) => c.find("chatgpt.com", "GET", "/backend-api/wham/usage", RUNS).cloned(),
-            (Provider::Codex, What::Credits) => c.find("chatgpt.com", "GET", "/backend-api/wham/rate-limit-reset-credits", RUNS).cloned(),
-            (Provider::Codex, What::Claim) => {
-                let mut claim = c.find("chatgpt.com", "POST", "/backend-api/wham/rate-limit-reset-credits/consume", RUNS)?.clone();
-                // (Captured through its app server, which names itself
-                // otherwise: the same backend client, so a session's claim is
-                // this with the session's own name, as its credits read has it.)
-                if claim.run != "session"
-                    && let Some(ua) = c.find("chatgpt.com", "GET", "/backend-api/wham/rate-limit-reset-credits", &["session"]).filter(|s| s.run == "session").and_then(|s| s.header("user-agent"))
-                {
-                    let ua = ua.to_owned();
-                    for (k, v) in claim.headers.iter_mut() {
-                        if k.eq_ignore_ascii_case("user-agent") {
-                            *v = ua.clone();
-                        }
-                    }
-                }
-                Some(claim)
+            (Provider::Claude, What::Renewal) => {
+                c.find("platform.claude.com", "POST", "/v1/oauth/token", &["renewal"]).or_else(|| c.find("console.anthropic.com", "POST", "/v1/oauth/token", &["renewal"])).cloned()
             }
-            (Provider::Codex, What::Renewal) => c.find("auth.openai.com", "POST", "/oauth/token", RUNS).cloned(),
+            (Provider::Codex, What::Usage) => c.find("chatgpt.com", "GET", "/backend-api/wham/usage", CODEX_RUNS).cloned(),
+            (Provider::Codex, What::Credits) => c.find("chatgpt.com", "GET", "/backend-api/wham/rate-limit-reset-credits", CODEX_RUNS).cloned(),
+            (Provider::Codex, What::Claim) => c.find("chatgpt.com", "POST", "/backend-api/wham/rate-limit-reset-credits/consume", CODEX_RUNS).cloned(),
+            (Provider::Codex, What::Renewal) => c.find("auth.openai.com", "POST", "/oauth/token", &["renewal"]).cloned(),
         }
     }
+}
+
+/// A Claude Code request as its session sends it: print mode's names its
+/// entrypoint `sdk-cli` where a session says `cli`, the only difference
+/// between the two's quota reads as captured, and Claude answers the credit
+/// read of print mode's as the wrong surface (no credits). Used where a
+/// capture's session missed its read.
+fn as_session(mut s: Sent) -> Sent {
+    if s.run != "session" && s.run != "wall" {
+        for (k, v) in s.headers.iter_mut() {
+            if k.eq_ignore_ascii_case("user-agent") && v.ends_with("(external, sdk-cli)") {
+                *v = v.replace("(external, sdk-cli)", "(external, cli)");
+            }
+        }
+    }
+    s
 }
 
 /// Claude Code's claim of a reset, which it makes with the same API client
@@ -321,9 +329,13 @@ pub async fn send(b: &Built, up: &Upstreams) -> Result<Answer, String> {
         rustls::ClientConfig::builder_with_provider(crypto).with_safe_default_protocol_versions().map_err(|e| e.to_string())?.with_root_certificates(capture::roots()).with_no_client_auth();
     config.alpn_protocols = b.alpn.iter().map(|p| p.as_bytes().to_vec()).collect();
     let name = ServerName::try_from(host.clone()).map_err(|e| e.to_string())?;
-    let stream = tokio_rustls::TlsConnector::from(Arc::new(config)).connect(name, tcp).await.map_err(|e| format!("{host}: {e}"))?;
-    let h2 = stream.get_ref().1.alpn_protocol() == Some(b"h2".as_slice());
-    let work = async { if h2 { http2(stream, b).await } else { http1(stream, b).await } };
+    // (One deadline for all of it, the handshake too: a host that takes
+    // the connection and stalls holds nothing up for long.)
+    let work = async {
+        let stream = tokio_rustls::TlsConnector::from(Arc::new(config)).connect(name, tcp).await.map_err(|e| format!("{host}: {e}"))?;
+        let h2 = stream.get_ref().1.alpn_protocol() == Some(b"h2".as_slice());
+        if h2 { http2(stream, b).await } else { http1(stream, b).await }
+    };
     tokio::time::timeout(Duration::from_secs(60), work).await.map_err(|_| format!("{host}: no answer"))?
 }
 
@@ -388,7 +400,7 @@ fn unchunk(raw: &[u8]) -> Vec<u8> {
             break;
         }
         plain.extend_from_slice(&raw[at..at + size]);
-        at += size + 2;
+        at = (at + size + 2).min(raw.len());
     }
     plain
 }
@@ -495,5 +507,10 @@ mod tests {
         assert_eq!(decode("gzip", gz.finish().unwrap()).unwrap(), b"{\"a\":1}");
         assert_eq!(decode("", b"x".to_vec()).unwrap(), b"x");
         assert_eq!(unchunk(b"3\r\nabc\r\n2\r\nde\r\n0\r\n\r\n"), b"abcde");
+        // (Cut off anywhere: what came, never a panic.)
+        let whole = b"3\r\nabc\r\n2\r\nde\r\n0\r\n\r\n";
+        for n in 0..whole.len() {
+            let _ = unchunk(&whole[..n]);
+        }
     }
 }

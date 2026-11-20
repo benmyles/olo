@@ -118,13 +118,13 @@ impl std::fmt::Display for Failure {
 async fn as_client(like: Option<&Like>, what: What, up: &Upstreams, c: &Credential, target: Option<&str>, body: Option<Vec<u8>>, doing: &str) -> Option<Result<likeness::Answer, Failure>> {
     let like = like?;
     let sent = like.request(what)?;
-    let built = match likeness::build(&sent, &like.fill(c), target, body.as_deref()) {
+    let built = match likeness::build(&sent, &like.fill(c, &sent.host), target, body.as_deref()) {
         Ok(b) => b,
         Err(e) => return Some(Err(Failure::Other(format!("{doing}: {e}")))),
     };
     let answer = likeness::send(&built, up).await.map_err(|e| Failure::Other(format!("{doing}: {e}")));
     if let Ok(a) = &answer {
-        like.remember(&a.headers);
+        like.remember(&sent.host, &a.headers);
     }
     Some(answer)
 }
@@ -407,21 +407,31 @@ pub fn parse_credits(p: Provider, d: &Value) -> Vec<ResetCredit> {
     match p {
         // ChatGPT's (Codex's `RateLimitResetCreditDetails`): `status`,
         // `reset_type`, `title`.
-        Provider::Codex => list(&d["credits"])
-            .iter()
-            .filter(|r| r["status"] == "available" && r["is_supported_by_plan"] != false)
-            .filter_map(|r| {
-                Some(ResetCredit {
-                    id: r["id"].as_str()?.to_owned(),
-                    expires_at: timestamp(&r["expires_at"]),
-                    remaining: 1,
-                    usable: true,
-                    label: text(&r["title"]),
-                    kind: text(&r["reset_type"]),
-                    ..Default::default()
+        Provider::Codex => {
+            let mut out: Vec<ResetCredit> = list(&d["credits"])
+                .iter()
+                .filter(|r| r["status"] == "available" && r["is_supported_by_plan"] != false)
+                .filter_map(|r| {
+                    Some(ResetCredit {
+                        id: r["id"].as_str()?.to_owned(),
+                        expires_at: timestamp(&r["expires_at"]),
+                        remaining: 1,
+                        usable: true,
+                        label: text(&r["title"]),
+                        kind: text(&r["reset_type"]),
+                        ..Default::default()
+                    })
                 })
-            })
-            .collect(),
+                .collect();
+            // (The list of details can stop short of what ChatGPT counts,
+            // `available_count`: the rest, as ones it chooses itself.)
+            let counted = d["available_count"].as_u64().unwrap_or(0) as u32;
+            let listed = out.len() as u32;
+            if counted > listed {
+                out.push(ResetCredit { id: String::new(), expires_at: None, remaining: counted - listed, usable: true, label: None, kind: None, ..Default::default() });
+            }
+            out
+        }
         // Claude's grants (`cedar_ember`), read whole: what each clears,
         // its kind, when it starts and ends, and whether it waits for a
         // limit; none where the account may not use them (`eligible`).
@@ -494,13 +504,15 @@ pub async fn redeem(client: &Client, up: &Upstreams, p: Provider, c: &Credential
             Provider::Codex => likeness::with_fields(&sent.body, &[("redeem_request_id", json!(request))]),
         }
         .map_err(|e| Failure::Other(format!("{DOING}: {e}")))?;
-        let built = likeness::build(&sent, &l.fill(c), None, Some(&body)).map_err(|e| Failure::Other(format!("{DOING}: {e}")))?;
+        let built = likeness::build(&sent, &l.fill(c, &sent.host), None, Some(&body)).map_err(|e| Failure::Other(format!("{DOING}: {e}")))?;
         let answer = likeness::send(&built, up).await.map_err(|e| Failure::Other(format!("{DOING}: {e}")))?;
-        l.remember(&answer.headers);
+        l.remember(&sent.host, &answer.headers);
         return claimed(p, &ok_json(DOING, answer)?);
     }
     let (url, body) = match p {
         // (In Codex's order: its request id, then the credit.)
+        // (One ChatGPT chooses, `available_count`'s, named by none.)
+        Provider::Codex if credit.id.is_empty() => (format!("{}/wham/rate-limit-reset-credits/consume", up.chatgpt), json!({"redeem_request_id": request})),
         Provider::Codex => (format!("{}/wham/rate-limit-reset-credits/consume", up.chatgpt), json!({"redeem_request_id": request, "credit_id": credit.id})),
         Provider::Claude => {
             let org = org.filter(|o| !o.is_empty() && o.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
@@ -618,10 +630,17 @@ pub fn header_windows(h: &axum::http::HeaderMap, p: Provider, family: &str, stat
     let model_only = p == Provider::Claude && !family.is_empty() && (claim == "seven_day_overage_included" || claude_models(claim).iter().any(|m| m == family));
     if model_only && claim == "seven_day_overage_included" {
         out.push(Window { name: format!("model:{family}/seven_day"), label: format!("Weekly {}", words(family)), used: 100.0, resets_at: Some(until), models: vec![family.to_owned()] });
-    } else if p == Provider::Claude && (claim.starts_with("five_hour") || claim.starts_with("seven_day")) && !out.iter().any(|w| w.name == claim) {
-        // (The meter it names is used up until then: so the card says
-        // what stopped it, and a reset credit that clears it can be used.)
-        out.push(Window { name: claim.to_owned(), label: claude_label(claim), used: 100.0, resets_at: Some(until), models: claude_models(claim) });
+    } else if p == Provider::Claude && (claim.starts_with("five_hour") || claim.starts_with("seven_day")) {
+        // (The meter it names is used up until then, whatever its row said
+        // a moment before: so the card says what stopped it, and a reset
+        // credit that clears it can be used.)
+        match out.iter_mut().find(|w| w.name == claim) {
+            Some(w) => {
+                w.used = w.used.max(100.0);
+                w.resets_at = Some(until);
+            }
+            None => out.push(Window { name: claim.to_owned(), label: claude_label(claim), used: 100.0, resets_at: Some(until), models: claude_models(claim) }),
+        }
     }
     (out, Some(Rejection { until, model_only }))
 }

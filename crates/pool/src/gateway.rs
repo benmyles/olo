@@ -182,7 +182,7 @@ pub struct Shared {
     /// Each account's capture as last read (`capture::path`'s time with
     /// it, so a new capture is read again), and its cookie jar.
     captures: Mutex<HashMap<String, (std::time::SystemTime, Arc<crate::capture::Capture>)>>,
-    jars: Mutex<HashMap<String, Arc<std::sync::Mutex<Vec<(String, String)>>>>>,
+    jars: Mutex<HashMap<String, Arc<std::sync::Mutex<Vec<(String, String, String)>>>>>,
     /// The account whose client is being captured now (`capture`), for
     /// the window and agents; whether a capture runs, and whether one more
     /// was asked for meanwhile (1: what's due, 2: every account).
@@ -192,8 +192,10 @@ pub struct Shared {
     /// Each account's own HTTP/1.1 connections to Claude, for requests
     /// passed on exactly as they came (`relay`).
     exact: Arc<crate::relay::Exact>,
-    capture_busy: std::sync::atomic::AtomicBool,
-    capture_again: std::sync::atomic::AtomicU8,
+    /// Whether a capture runs, and what was asked for meanwhile (0:
+    /// nothing, 1: what's due, 2: every account): one lock, so an ask
+    /// never falls between a run's last look and its end.
+    capture_state: std::sync::Mutex<(bool, u8)>,
 }
 
 /// How often an account's quota is read while nothing asks for it (its
@@ -319,8 +321,7 @@ impl Shared {
             capturing: Mutex::new(None),
             clients: Mutex::new(HashMap::new()),
             exact: Default::default(),
-            capture_busy: Default::default(),
-            capture_again: Default::default(),
+            capture_state: std::sync::Mutex::new((false, 0)),
         });
         // Saving off every async and UI thread, a batch at a time: what
         // changed of the accounts a moment after, a request's bookkeeping
@@ -401,19 +402,19 @@ impl Shared {
     /// install of its client than the one there now (`all`: every one).
     fn capture_due(&self, all: bool) -> Vec<(String, Provider)> {
         let installed: Vec<(Provider, String)> = [Provider::Claude, Provider::Codex].into_iter().filter_map(|p| crate::capture::installed(p).map(|i| (p, i.stamp))).collect();
-        let p = self.pool.lock().unwrap();
-        let mut out = Vec::new();
-        for (provider, stamp) in &installed {
-            for a in p.saved.accounts.iter().filter(|a| a.provider == *provider && a.enabled && a.signed_out.is_none() && p.saved.credentials.contains_key(&a.id)) {
-                // (The kept capture's install, read from its file's head
-                // alone would do; a capture is small enough to read.)
-                let stale = all || crate::capture::load(&a.id).is_none_or(|c| c.installed != *stamp);
-                if stale {
-                    out.push((a.id.clone(), *provider));
-                }
-            }
-        }
-        out
+        // (The accounts at a glance under the lock; their captures read
+        // after, with nothing held.)
+        let accounts: Vec<(String, Provider)> = {
+            let p = self.pool.lock().unwrap();
+            p.saved.accounts.iter().filter(|a| a.enabled && a.signed_out.is_none() && p.saved.credentials.contains_key(&a.id)).map(|a| (a.id.clone(), a.provider)).collect()
+        };
+        accounts
+            .into_iter()
+            .filter(|(id, provider)| {
+                let Some((_, stamp)) = installed.iter().find(|(p, _)| p == provider) else { return false };
+                all || crate::capture::load(id).is_none_or(|c| c.installed != *stamp)
+            })
+            .collect()
     }
 
     /// What's being captured now ("Claude Code · NAME"), if anything.
@@ -428,10 +429,19 @@ impl Shared {
     /// client changes, when the pool starts, and by hand (Pool ▸ Capture Client
     /// Requests Again, `olo-pool --capture`).
     pub fn capture(self: &Arc<Self>, all: bool) {
-        use std::sync::atomic::Ordering::SeqCst;
-        if self.capture_busy.swap(true, SeqCst) {
-            self.capture_again.fetch_max(if all { 2 } else { 1 }, SeqCst);
+        // Only a pool talking to the providers' own hosts: one pointed at
+        // made-up ones (a test's) never runs a client, whose reads would go
+        // to the real ones with its made-up sign-ins.
+        if self.up.origin.is_some() || self.up.claude != Upstreams::default().claude || self.up.chatgpt != Upstreams::default().chatgpt {
             return;
+        }
+        {
+            let mut st = self.capture_state.lock().unwrap();
+            if st.0 {
+                st.1 = st.1.max(if all { 2 } else { 1 });
+                return;
+            }
+            st.0 = true;
         }
         let s = self.clone();
         let started = std::thread::Builder::new().name("pool-capture".into()).spawn(move || {
@@ -443,16 +453,20 @@ impl Shared {
             let mut all = all;
             loop {
                 for (id, provider) in s.capture_due(all) {
-                    let Some(rt) = s.runtime.lock().unwrap().clone() else { break };
-                    let Some(account) = s.pool.lock().unwrap().saved.accounts.iter().find(|a| a.id == id).cloned() else { continue };
-                    // (A sign-in good for the capture's few minutes.)
-                    let cred = match rt.block_on(s.fresh(&id, provider, false, 900)) {
-                        Ok(c) => c,
-                        Err(e) => {
-                            tracing::warn!("pool: no sign-in to capture {} for {}: {e}", provider.client(), account.name);
-                            continue;
-                        }
+                    // The sign-in as the pool keeps it, never renewed for a
+                    // capture (Codex's review: a renewal is the pool's own
+                    // business); one due within a quarter of an hour waits
+                    // for the next capture.
+                    let (account, cred) = {
+                        let p = s.pool.lock().unwrap();
+                        let Some(a) = p.saved.accounts.iter().find(|a| a.id == id).cloned() else { continue };
+                        let Some(c) = p.saved.credentials.get(&id).cloned() else { continue };
+                        (a, c)
                     };
+                    if cred.expires_at.is_some_and(|e| e - now() < 900) {
+                        tracing::info!("pool: {} for {} not captured now: its sign-in is due for renewal", provider.client(), account.name);
+                        continue;
+                    }
                     *s.capturing.lock().unwrap() = Some(format!("{} · {}", provider.client(), account.name));
                     (s.changed)();
                     let began = std::time::Instant::now();
@@ -466,15 +480,18 @@ impl Shared {
                 }
                 *s.capturing.lock().unwrap() = None;
                 (s.changed)();
-                match s.capture_again.swap(0, SeqCst) {
-                    0 => break,
+                let mut st = s.capture_state.lock().unwrap();
+                match std::mem::take(&mut st.1) {
+                    0 => {
+                        st.0 = false;
+                        break;
+                    }
                     n => all = n == 2,
                 }
             }
-            s.capture_busy.store(false, SeqCst);
         });
         if started.is_err() {
-            self.capture_busy.store(false, std::sync::atomic::Ordering::SeqCst);
+            self.capture_state.lock().unwrap().0 = false;
         }
     }
 
@@ -631,6 +648,8 @@ impl Shared {
         }
         self.touch();
         self.sync_soon(Some(id));
+        // (Its client captured for it, in a moment: what's due.)
+        self.capture(false);
         Ok(())
     }
 
@@ -644,8 +663,16 @@ impl Shared {
                 a.cooldown_until = None;
             }
         }
+        // (Signed in again, perhaps as another account under the same name:
+        // what was captured and kept of the old goes, and it's captured
+        // anew.)
+        let _ = std::fs::remove_file(crate::capture::path(id));
+        self.captures.lock().unwrap().remove(id);
+        self.jars.lock().unwrap().remove(id);
+        self.exact.forget(id);
         self.touch();
         self.sync_soon(Some(id.to_owned()));
+        self.capture(false);
     }
 
     pub fn set_enabled(&self, id: &str, on: bool) {
@@ -672,6 +699,13 @@ impl Shared {
             p.saved.accounts.retain(|a| a.id != id);
             p.saved.credentials.remove(id);
         }
+        // (What was kept of it goes with it: its capture, its cookies, its
+        // connections.)
+        let _ = std::fs::remove_file(crate::capture::path(id));
+        self.captures.lock().unwrap().remove(id);
+        self.jars.lock().unwrap().remove(id);
+        self.clients.lock().unwrap().remove(id);
+        self.exact.forget(id);
         self.touch();
         Ok(())
     }
@@ -822,43 +856,66 @@ impl Shared {
     /// Spend one of account `id`'s reset credits (the soonest to expire),
     /// then read its quota again.
     pub async fn redeem(&self, id: &str) -> Result<(), String> {
-        self.redeem_credit(id, None).await
+        self.redeem_credit(id, None, Why::Asked).await.map_err(|e| e.to_string())
     }
 
-    /// Claim the credit `credit` of account `id` (None: the one to use
-    /// next: one that resets what's out, else the soonest to expire).
-    pub async fn redeem_credit(&self, id: &str, credit: Option<&str>) -> Result<(), String> {
+    /// Claim the credit `credit` of account `id` (None: the one that gives
+    /// back most now, the narrowest and soonest to expire of those as good)
+    /// for `why`. A claim left unclear is made again first, the same credit
+    /// under the same request id (gone from the account's credits, it went
+    /// through: nothing more). An automatic one is checked again under the
+    /// lock (another request may have restored service meanwhile), and none
+    /// is made by a copy of the pool that has handed over. The claim's
+    /// intent is kept on disk before the provider is asked.
+    pub async fn redeem_credit(&self, id: &str, credit: Option<&str>, why: Why) -> Result<(), Claimed> {
+        if self.drain.retired() {
+            return Err(Claimed::NotNow("This copy of the pool has handed over.".into()));
+        }
         let lock = self.lock_for(&format!("redeem:{id}"));
         let _held = lock.lock().await;
         let (provider, org, credit, request) = {
             let mut p = self.pool.lock().unwrap();
-            let a = p.account_mut(id).ok_or("No such account.")?;
+            let a = p.account_mut(id).ok_or_else(|| Claimed::NotNow("No such account.".into()))?;
             let t = now();
-            let chosen = match credit {
-                Some(c) => a.credits.iter().find(|x| x.id == c).cloned(),
-                // (By hand: the one that gives back most now, the
-                // narrowest and soonest to expire of those as good.)
-                None => a
-                    .credits
-                    .iter()
-                    .filter(|c| c.usable_at(t))
-                    .map(|c| (c, a.claim_worth(c, t, t)))
-                    .max_by(|x, y| x.1.total_cmp(&y.1).then_with(|| (y.0.breadth(), y.0.expires_at.unwrap_or(i64::MAX)).cmp(&(x.0.breadth(), x.0.expires_at.unwrap_or(i64::MAX)))))
-                    .map(|(c, _)| c.clone())
-                    .or_else(|| a.credit().cloned()),
-            };
-            let credit = chosen.ok_or("It has no reset credit to use now.")?;
-            // The same redemption again, if one was left unclear.
-            let request = match &a.redeeming {
-                Some((c, r)) if *c == credit.id => r.clone(),
-                _ => crate::store::new_uuid(),
-            };
-            a.redeeming = Some((credit.id.clone(), request.clone()));
-            a.redeem_tried = Some(now());
-            (a.provider, a.org.clone(), credit, request)
+            match a.redeeming.clone() {
+                Some((cid, request)) => match a.credits.iter().find(|c| c.id == cid).cloned() {
+                    Some(c) => (a.provider, a.org.clone(), c, request),
+                    None => {
+                        // (Gone from what the provider lists: it was used.)
+                        a.redeeming = None;
+                        drop(p);
+                        self.touch();
+                        return Ok(());
+                    }
+                },
+                None => {
+                    let chosen = match (credit, &why) {
+                        (Some(c), Why::Blocked(family)) => a.claim_for(family, t).filter(|(x, _)| x.id == c).map(|(x, _)| x.clone()),
+                        (Some(c), Why::Expiring) => a.expiring_claim(t).filter(|x| x.id == c).cloned(),
+                        (Some(c), Why::Asked) => a.credits.iter().find(|x| x.id == c && x.usable_at(t)).cloned(),
+                        (None, _) => a
+                            .credits
+                            .iter()
+                            .filter(|c| c.usable_at(t))
+                            .map(|c| (c, a.claim_worth(c, t, t)))
+                            .max_by(|x, y| x.1.total_cmp(&y.1).then_with(|| (y.0.breadth(), y.0.expires_at.unwrap_or(i64::MAX)).cmp(&(x.0.breadth(), x.0.expires_at.unwrap_or(i64::MAX)))))
+                            .map(|(c, _)| c.clone()),
+                    };
+                    let c = chosen.ok_or_else(|| Claimed::NotNow("No reset credit to use for it now.".into()))?;
+                    (a.provider, a.org.clone(), c, crate::store::new_uuid())
+                }
+            }
         };
-        self.save_now().await;
-        let cred = self.fresh(id, provider, false, 60).await.map_err(|e| e.to_string())?;
+        {
+            let mut p = self.pool.lock().unwrap();
+            if let Some(a) = p.account_mut(id) {
+                a.redeeming = Some((credit.id.clone(), request.clone()));
+                a.redeem_tried = Some(now());
+            }
+        }
+        // (Kept before the provider is asked, or not asked.)
+        self.save_checked().await.map_err(Claimed::NotNow)?;
+        let cred = self.fresh(id, provider, false, 60).await.map_err(|e| Claimed::NotNow(e.to_string()))?;
         let result = upstream::redeem(&self.client(), &self.up, provider, &cred, org.as_deref(), &credit, &request, self.like(id).as_ref()).await;
         {
             let mut p = self.pool.lock().unwrap();
@@ -866,14 +923,18 @@ impl Shared {
                 match &result {
                     Ok(()) => {
                         a.redeeming = None;
-                        a.cooldown_until = None;
                         // What it resets starts again (a Fable reset, Fable's
-                        // week alone); the report says by how much.
+                        // week alone), and only what stopped on it goes on
+                        // (another meter's wait stays); the report says by how
+                        // much.
                         let provider = a.provider;
+                        if a.windows.iter().any(|w| w.models.is_empty() && credit.clears(provider, w)) {
+                            a.cooldown_until = None;
+                        }
                         for w in a.windows.iter_mut().filter(|w| credit.clears(provider, w)) {
                             w.used = 0.0;
                         }
-                        for (family, _) in a.windows.iter().filter(|w| credit.clears(provider, w)).flat_map(|w| w.models.iter().map(|m| (m.clone(), ()))).collect::<Vec<_>>() {
+                        for family in a.windows.iter().filter(|w| credit.clears(provider, w)).flat_map(|w| w.models.clone()).collect::<Vec<_>>() {
                             a.model_cooldowns.remove(&family);
                         }
                         if let Some(c) = a.credits.iter_mut().find(|c| c.id == credit.id) {
@@ -888,47 +949,79 @@ impl Shared {
             }
         }
         self.touch();
-        let result = result.map_err(|e| e.to_string());
-        if result.is_ok() {
-            self.sync(Some(id)).await;
+        // (What the provider says now, after either: what it reset, or the
+        // credit it refused, which may be gone.)
+        self.sync(Some(id)).await;
+        match result {
+            Ok(()) => Ok(()),
+            Err(Failure::Refused(e)) => Err(Claimed::Refused(e)),
+            Err(Failure::Other(e)) => Err(Claimed::Unclear(e)),
         }
-        result
+    }
+
+    /// Save now and say whether it was kept (none to keep it in, as in
+    /// tests: kept enough).
+    async fn save_checked(&self) -> Result<(), String> {
+        let snapshot = {
+            let p = self.pool.lock().unwrap();
+            if !p.loaded {
+                return Err("The pool’s accounts aren’t open.".into());
+            }
+            p.saved.clone()
+        };
+        if self.store.lock().unwrap().is_none() {
+            return Ok(());
+        }
+        let result = tokio::task::block_in_place(|| self.store.lock().unwrap().as_ref().map(|s| s.save(&snapshot)));
+        match result {
+            Some(Err(e)) => Err(format!("The pool couldn’t keep the claim before making it: {e}")),
+            _ => Ok(()),
+        }
     }
 
     /// When no account can serve a request of `family`: claim the credit
-    /// that gives back most (`Account::claim_for`: one that resets a window
-    /// that's out for it, never one that gives back under
+    /// that gives back most (`Account::claim_for`: one that clears every
+    /// limit that's out for it, never one that gives back under
     /// `WORTH_REDEEMING`, as a window about to reset by itself does), on the
     /// account it gives back most on, the soonest to expire of those as
-    /// good. At most once a minute per account.
+    /// good; one refused (nothing spent), the next. At most once a minute
+    /// per account. None from a copy that has handed over.
     async fn redeem_for(&self, provider: Provider, family: &str) -> Option<String> {
+        if self.drain.retired() {
+            return None;
+        }
         let t = now();
-        let (id, credit) = {
+        let mut candidates: Vec<(String, String, f64, i64)> = {
             let p = self.pool.lock().unwrap();
             p.saved
                 .accounts
                 .iter()
                 .filter(|a| a.provider == provider && a.enabled && a.signed_out.is_none())
                 .filter(|a| a.redeem_tried.is_none_or(|r| t - r >= 60))
-                // Its own model meter would still block it after a reset.
-                .filter(|a| !a.model_cooldowns.get(family).is_some_and(|&c| c > t) || a.windows.iter().any(|w| w.applies_to(family) && w.exhausted(t)))
                 .filter_map(|a| a.claim_for(family, t).map(|(c, worth)| (a.id.clone(), c.id.clone(), worth, c.expires_at.unwrap_or(i64::MAX))))
-                .max_by(|x, y| x.2.total_cmp(&y.2).then(y.3.cmp(&x.3)))
-                .map(|(id, c, _, _)| (id, c))
-        }?;
-        match self.redeem_credit(&id, Some(&credit)).await {
-            Ok(()) => Some(id),
-            Err(e) => {
-                tracing::warn!("pool: redeeming a reset credit: {e}");
-                None
+                .collect()
+        };
+        candidates.sort_by(|x, y| y.2.total_cmp(&x.2).then(x.3.cmp(&y.3)));
+        for (id, credit, _, _) in candidates {
+            match self.redeem_credit(&id, Some(&credit), Why::Blocked(family.to_owned())).await {
+                Ok(()) => return Some(id),
+                Err(e @ (Claimed::Refused(_) | Claimed::NotNow(_))) => tracing::info!("pool: a reset credit not used: {e}; the next"),
+                Err(e) => {
+                    tracing::warn!("pool: redeeming a reset credit: {e}");
+                    return None;
+                }
             }
         }
+        None
     }
 
     /// Claim credits that would otherwise expire unused, each at its best
     /// moment (`Account::expiring_claim`). At most once a minute per
-    /// account.
+    /// account; none from a copy that has handed over.
     async fn spend_expiring(&self) {
+        if self.drain.retired() {
+            return;
+        }
         let t = now();
         let due: Vec<(String, String)> = {
             let p = self.pool.lock().unwrap();
@@ -940,7 +1033,7 @@ impl Shared {
                 .collect()
         };
         for (id, credit) in due {
-            match self.redeem_credit(&id, Some(&credit)).await {
+            match self.redeem_credit(&id, Some(&credit), Why::Expiring).await {
                 Ok(()) => tracing::info!("pool: redeemed a reset credit before it expired"),
                 Err(e) => tracing::warn!("pool: redeeming an expiring reset credit: {e}"),
             }
@@ -1207,6 +1300,33 @@ async fn codex(State(ctx): State<Ctx>, Path(rest): Path<String>, RawQuery(q): Ra
 /// network that went is cut at once).
 fn new_client() -> reqwest::Client {
     reqwest::Client::builder().connect_timeout(Duration::from_secs(20)).read_timeout(Duration::from_secs(15 * 60)).build().expect("HTTP client")
+}
+
+/// Why a reset credit is claimed: a request of a model family no account
+/// could serve, one about to expire, or the person asked.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Why {
+    Blocked(String),
+    Expiring,
+    Asked,
+}
+
+/// A claim that didn't reset: refused (nothing spent), not made now (not
+/// needed, not allowed, not kept first), or unclear (it may have gone: the
+/// same claim is made again first).
+#[derive(Debug, Clone, PartialEq)]
+pub enum Claimed {
+    Refused(String),
+    NotNow(String),
+    Unclear(String),
+}
+
+impl std::fmt::Display for Claimed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Claimed::Refused(e) | Claimed::NotNow(e) | Claimed::Unclear(e) => f.write_str(e),
+        }
+    }
 }
 
 /// What a request for one account carries of its own (`Shared::own`).

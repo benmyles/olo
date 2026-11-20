@@ -390,6 +390,9 @@ fn follow_clients(shared: std::sync::Arc<olo_token_pool::gateway::Shared>) {
     let _ = std::thread::Builder::new().name("pool-clients".into()).spawn(move || {
         // (Kept as long as this thread follows.)
         let _watched = watched;
+        // (What a capture killed with an earlier copy left: its sign-in
+        // goes now.)
+        olo_token_pool::capture::sweep_at_start();
         std::thread::sleep(Duration::from_secs(60));
         shared.capture(false);
         while rx.recv().is_ok() {

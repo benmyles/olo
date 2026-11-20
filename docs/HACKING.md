@@ -23190,13 +23190,25 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   through a proxy of the capture's own (its own authority, trusted only
   by the sandbox, made each time) that writes down every request as it
   came and every TLS ClientHello's offer, even one the client then
-  refuses. It passes on only reads on the providers' hosts that carry
-  the account's own sign-in (or none): a model request, a reset's claim,
-  a sign-in's renewal, logging and analytics are answered there and
-  never sent (no quota spent, no reset used, no sign-in rotated), and a
-  request carrying anything made up never reaches a provider (Ben: "we
-  don't want to make requests to the real api with fake data though
-  that is not polite"). Each `Sent` says whether it was passed on.
+  refuses. The client can reach nothing but that proxy: Landlock's
+  network rules let it connect over TCP to the proxy's port alone
+  (`capture::confine`, between fork and exec; no Landlock, no capture),
+  whatever it makes of its proxy settings. The proxy passes on only the
+  reads named in `capture::reads` (each client's profile, flags, limits
+  and settings), and only with the account's own sign-in (or none): a
+  model request, a reset's claim, a sign-in's renewal, logging and
+  analytics are answered there and never sent (no quota spent, no reset
+  used, no sign-in rotated), and a request carrying anything made up
+  never reaches a provider (Ben: "we don't want to make requests to the
+  real api with fake data though that is not polite"). Each `Sent` says
+  whether it was passed on. A capture uses the sign-in as the pool keeps
+  it, never renewing it (one due within a quarter of an hour waits);
+  its client's process has its own session, nothing of the pool's open
+  in it, ends with the capture's thread, and its group is ended when it
+  stops; a sandbox names its owner, and the pool removes only those
+  whose owner is gone (as it starts, its own earlier one too: an upgrade
+  in place keeps the process's id). Only a pool talking to the
+  providers' own hosts captures (a test's never runs a client).
   Claude Code is run as `claude -p hi` and `-p /usage`, in a terminal of
   its own (a pseudo-terminal, typed into: `/usage`, a message), at its
   used-up limit where the account has one (its model request answered
@@ -23210,7 +23222,9 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   What's kept (`capture::path`: Olo's state folder, `pool/captures/
   ACCOUNT.json`, readable by the person alone) has every secret and the
   account's ids as placeholders (`{{access_token}}`, `{{organization_uuid}}`,
-  `{{cookie}}`…). Captured when the pool starts (a minute in, each
+  `{{cookie}}`…), and a body only where the pool makes the request
+  itself (a claim, a renewal); a removed or re-signed-in account's goes
+  with it. Captured when the pool starts (a minute in, each
   account whose capture is of another install), when a client changes
   (the folder `claude` and `codex` are found in, watched: an update
   points them at another version), and by hand (Pool ▸ Capture Client
@@ -23230,10 +23244,31 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   server the client's name) and adds `x-openai-codex-luna-reserve: 1` to
   its TUI's quota read; its claim (`{"redeem_request_id": …}`, the credit
   left to ChatGPT) is answered `{"code": "reset"|"nothing_to_reset"|
-  "no_credit"|"already_redeemed", "windows_reset": n}`. Not yet the
-  same: the TLS handshake (Claude Code's is BoringSSL's, two of them;
-  Codex's native one OpenSSL's; the pool's rustls), and model requests
-  (below).
+  "no_credit"|"already_redeemed", "windows_reset": n}`; the pool takes
+  Codex's own requests from its app server (its TUI's quota read asks
+  for Reserve, which the pool can't use). Cookies are kept per account
+  and host. Not yet the same: the TLS handshake (Claude Code's is
+  BoringSSL's, two of them; Codex's native one OpenSSL's; the pool's
+  rustls), and Codex's WebSockets (below).
+- **Passed on exactly** (`relay.rs`): a Claude model request goes on as
+  Claude Code sent it, byte for byte: each header's name in its own
+  case (hyper's server writes it down, its client writes it back:
+  `preserve_header_case` on both, the case map in the request's
+  extensions, which the proxy carries over), in its order, its value,
+  the account's own in the client's places (its sign-in; the
+  organization headers; the `account_uuid` in `metadata.user_id`, the
+  account's as its capture has it), over HTTP/1.1 as Claude Code speaks
+  to Anthropic, on a connection of the account's own kept alive (no
+  connection carries two accounts' requests; a request a kept
+  connection never sent goes again on a new one, one that may have
+  gone, never), offering in its TLS what the client offered the proxy
+  (`relay::ClientOffer`). The client's `accept-encoding` goes on and
+  the answer comes back compressed as it came, the pool reading a
+  decoded copy as it streams (`Decode`). Claude Code's own requests the
+  pool passes through go the same way. Codex's go on in their order,
+  the account's own in place, HTTP/2 as Codex would get it (reqwest,
+  per account); its WebSockets are still answered 426 (Codex then speaks
+  HTTP).
 - **Reset credits** (some subscriptions get a few, to reset their quota
   early): read with each sync (Claude's `cedar_ember` grants in the
   usage report, `?cedar_ember=1&skip_spend=1`, each read whole: its kind
@@ -23246,20 +23281,30 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   their usual day and time"); a Codex one starts a new week at the next
   request and loses what was left of the old (OpenAI's help, for bought
   resets). One is spent
-  automatically when no account can serve and an account's
-  *shared* quota (not just a model's meter) is what stops it, at most
-  once a minute per account; or by hand (Account ▸ Use a Reset Credit…,
-  after a confirmation). The redemption's request id is saved before
-  the provider is asked, so a retry after an unclear outcome can't spend
-  two. Claude's needs the account's organization (`organizationUuid`,
-  read at sign-in). A credit due to expire within 48 hours is also
-  spent before it's lost, at its best moment
-  (`Account::spend_before_expiry`, checked after each sync): a reset
-  gives back what the shared quota has used, so it waits while a later
-  moment (just before the quota resets by itself, or 30 minutes before
-  the credit expires) would give back more, projecting use from each
-  window's rate (`Window::rate`: percent used over time since it began;
-  its length known from its name); never for under 5%.
+  automatically when no account can serve a request (`redeem_for`): one
+  that clears every limit that's out for it (`Account::claim_for`; a
+  Fable-only reset never for a request the week stops too), the
+  narrowest of those, then the soonest to expire, on the account where
+  it gives back most, never for under 5%; one refused (nothing spent),
+  the next account's. What a reset gives back follows each provider's
+  rule (`Window::reset_worth`): Claude's, the use to come before the
+  limit resets by itself that a refill lets through past what's left
+  (so it's worth most once the limit is out, and next to nothing just
+  before its reset); Codex's, what's used less the part of the week
+  gone. A credit due to expire within 48 hours is claimed at its best
+  moment of those left (`Account::expiring_claim`, every expiring one
+  weighed; one that only works at a limit, only then); by hand (Account
+  ▸ Use a Reset Credit…) the one that gives back most now. A claim's
+  intent (its credit and request id) is kept on disk before the
+  provider is asked, or it isn't asked; one left unclear is made again
+  first, the same under the same id (its credit gone from the list, it
+  went: nothing more); an automatic one is checked again under the
+  lock, and a copy of the pool that has handed over makes none. After
+  a claim only what it reset starts again, and only the waits it lifts
+  end; a Claude 429 marks the meter it names used up until its reset.
+  Claude's claims need the account's organization (`organizationUuid`,
+  read at sign-in). Codex's count is ChatGPT's (`available_count`), its
+  list of details being shorter at times.
 - **Activity** (a heatmap, after Token Pooler's menu, drawn as Pulse's
   LEDs with the kit's `CellGrid`): the requests open now are lit cells
   under the header (`Pool::open`, blue, marked C or X for Claude or

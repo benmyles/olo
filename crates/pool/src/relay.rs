@@ -129,6 +129,11 @@ impl Exact {
         self.idle.lock().unwrap().clear();
     }
 
+    /// One account's connections closed (it left the pool).
+    pub fn forget(&self, account: &str) {
+        self.idle.lock().unwrap().remove(account);
+    }
+
     /// Send `req` for `account` to `base` (the host's origin: `https://…`,
     /// or a test's `http://…`), on an idle connection of the account's or a
     /// new one; `alpn`, what its TLS handshake offers (Claude Code's SDK:

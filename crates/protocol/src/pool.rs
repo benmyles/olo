@@ -402,9 +402,11 @@ pub fn availability(m: &PoolMeters, provider: &str, quota: Option<&str>, count_o
         };
         if counted {
             whole += 1.0;
+            // (An account stopped counts its resets most of all: they are
+            // what starts it again.)
+            resets += w.resets;
             if usable {
                 left += have / 100.0;
-                resets += w.resets;
                 if let Some(p) = w.pace_at(now) {
                     *pace.get_or_insert(0.0) += p.max(0.0) / 100.0;
                 }

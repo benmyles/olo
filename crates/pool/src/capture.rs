@@ -24,7 +24,10 @@
 use std::{
     collections::HashMap,
     io::{Read, Write},
-    os::fd::{AsRawFd, FromRawFd, OwnedFd},
+    os::{
+        fd::{AsRawFd, FromRawFd, OwnedFd},
+        unix::fs::DirBuilderExt,
+    },
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -241,14 +244,60 @@ fn fate(host: &str, method: &str, target: &str) -> Fate {
     if path.starts_with("/v1/messages") || path.starts_with("/backend-api/codex/responses") {
         return Fate::Answer(400, r#"{"type":"error","error":{"type":"invalid_request_error","message":"Captured by Olo's Token Pool, not sent."}}"#);
     }
-    match (host, method) {
-        ("api.anthropic.com", "GET") => Fate::Forward,
-        // (Claude Code's feature flags, read for the account.)
-        ("api.anthropic.com", "POST") if path.starts_with("/api/eval/") => Fate::Forward,
-        ("chatgpt.com", "GET") if path.starts_with("/backend-api/") => Fate::Forward,
+    if reads(host, method, path) {
+        return Fate::Forward;
+    }
+    match method {
         // Logging, analytics and anything else: taken, not sent.
-        (_, "POST") => Fate::Answer(200, "{}"),
+        "POST" => Fate::Answer(200, "{}"),
         _ => Fate::Answer(404, r#"{"error":"Captured by Olo's Token Pool, not sent."}"#),
+    }
+}
+
+/// The reads a client needs answered as its account's to go on as it would
+/// (its profile, flags, limits, settings), each named: nothing else is
+/// ever sent on (Codex's review: "an allowlist of concrete, necessary read
+/// operations").
+fn reads(host: &str, method: &str, path: &str) -> bool {
+    // ("{}" stands for one part of a path: an organization's id.)
+    let like = |pattern: &str| {
+        let (p, q): (Vec<&str>, Vec<&str>) = (pattern.split('/').collect(), path.split('/').collect());
+        p.len() == q.len() && p.iter().zip(&q).all(|(a, b)| *a == "{}" && !b.is_empty() || a == b)
+    };
+    match (host, method) {
+        ("api.anthropic.com", "GET") => [
+            "/api/oauth/profile",
+            "/api/oauth/usage",
+            "/api/oauth/account/settings",
+            "/api/claude_cli/bootstrap",
+            "/api/claude_code_penguin_mode",
+            "/api/claude_code_grove",
+            "/api/directory/server-urls",
+            "/api/frame/contract/latest",
+            "/v1/mcp_servers",
+            "/v1/privacy-consents/checkup",
+            "/v1/ultrareview/quota",
+            "/api/oauth/organizations/{}/referral/eligibility",
+            "/api/oauth/organizations/{}/skills/list-skills",
+            "/api/oauth/organizations/{}/sync/github/auth",
+            "/api/oauth/organizations/{}/quirky-lollipop/link-offer",
+            "/api/organizations/{}/model_selector/cc",
+        ]
+        .iter()
+        .any(|p| like(p)),
+        // (Claude Code's feature flags, read for the account.)
+        ("api.anthropic.com", "POST") => like("/api/eval/{}"),
+        ("chatgpt.com", "GET") => [
+            "/backend-api/wham/accounts/check",
+            "/backend-api/codex/models",
+            "/backend-api/wham/usage",
+            "/backend-api/wham/rate-limit-reset-credits",
+            "/backend-api/wham/settings/user",
+            "/backend-api/wham/security-setup",
+        ]
+        .iter()
+        .any(|p| like(p)),
+        _ => false,
     }
 }
 
@@ -371,7 +420,7 @@ async fn read_body<S: AsyncRead + Unpin>(s: &mut S, mut have: Vec<u8>, length: O
                 break;
             }
             plain.extend_from_slice(&have[at..at + size]);
-            at += size + 2;
+            at = (at + size + 2).min(have.len());
         }
         return plain;
     }
@@ -432,7 +481,10 @@ async fn forward<W: AsyncWrite + Unpin>(crypto: &Arc<rustls::crypto::CryptoProvi
         rustls::ClientConfig::builder_with_provider(crypto.clone()).with_safe_default_protocol_versions().map_err(|e| e.to_string())?.with_root_certificates(roots()).with_no_client_auth();
     config.alpn_protocols = vec![b"http/1.1".to_vec()];
     let name = ServerName::try_from(host.to_owned()).map_err(|e| e.to_string())?;
-    let mut tls = tokio_rustls::TlsConnector::from(Arc::new(config)).connect(name, tcp).await.map_err(|e| e.to_string())?;
+    let mut tls = tokio::time::timeout(Duration::from_secs(20), tokio_rustls::TlsConnector::from(Arc::new(config)).connect(name, tcp))
+        .await
+        .map_err(|_| format!("{host}: no TLS"))?
+        .map_err(|e| e.to_string())?;
     tls.write_all(closing(head).as_bytes()).await.map_err(|e| e.to_string())?;
     tls.write_all(body).await.map_err(|e| e.to_string())?;
     let _ = tokio::time::timeout(Duration::from_secs(60), tokio::io::copy(&mut tls, out)).await;
@@ -567,18 +619,17 @@ struct Sandbox {
 
 impl Sandbox {
     fn new() -> Result<Sandbox, String> {
-        // (One a crashed capture left: its sign-in goes with it.)
-        let base = olo_xdg::cache_dir().join("pool-capture");
-        if let Ok(old) = std::fs::read_dir(&base) {
-            for e in old.flatten() {
-                let _ = std::fs::remove_dir_all(e.path());
-            }
-        }
+        sweep();
         let mut id = [0u8; 8];
         getrandom::fill(&mut id).map_err(|e| e.to_string())?;
-        let dir = olo_xdg::cache_dir().join("pool-capture").join(id.iter().map(|b| format!("{b:02x}")).collect::<String>());
-        std::fs::create_dir_all(dir.join("work")).map_err(|e| e.to_string())?;
-        set_private(&dir);
+        let base = olo_xdg::cache_dir().join("pool-capture");
+        std::fs::create_dir_all(&base).map_err(|e| e.to_string())?;
+        let dir = base.join(id.iter().map(|b| format!("{b:02x}")).collect::<String>());
+        // (Private from its making: no moment it can be read by another.)
+        std::fs::DirBuilder::new().mode(0o700).create(&dir).map_err(|e| e.to_string())?;
+        std::fs::DirBuilder::new().mode(0o700).create(dir.join("work")).map_err(|e| e.to_string())?;
+        // Its owner, so a sweep takes only a dead one's.
+        std::fs::write(dir.join("owner"), std::process::id().to_string()).map_err(|e| e.to_string())?;
         Ok(Sandbox { dir })
     }
     fn home(&self) -> PathBuf {
@@ -595,9 +646,30 @@ impl Drop for Sandbox {
     }
 }
 
-fn set_private(p: &Path) {
-    use std::os::unix::fs::PermissionsExt;
-    let _ = std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o700));
+/// Sandboxes a capture left when it was killed (an access token in
+/// each), removed: those whose owner is gone, never a live one's. Run at
+/// each capture and when the pool starts.
+pub fn sweep() {
+    sweep_where(false);
+}
+
+/// The same, as the pool starts: its own too (an upgrade in place keeps the
+/// process's id, and nothing of this copy is capturing yet).
+pub fn sweep_at_start() {
+    sweep_where(true);
+}
+
+fn sweep_where(own_too: bool) {
+    let base = olo_xdg::cache_dir().join("pool-capture");
+    let Ok(old) = std::fs::read_dir(&base) else { return };
+    let me = std::process::id() as i32;
+    for e in old.flatten() {
+        let owner: Option<i32> = std::fs::read_to_string(e.path().join("owner")).ok().and_then(|s| s.trim().parse().ok());
+        let alive = owner.is_some_and(|pid| pid != 0 && Path::new(&format!("/proc/{pid}")).exists() && !(own_too && pid == me));
+        if !alive {
+            let _ = std::fs::remove_dir_all(e.path());
+        }
+    }
 }
 
 fn write_secret(p: &Path, text: &str) -> Result<(), String> {
@@ -745,26 +817,30 @@ fn steps(p: Provider) -> Vec<Step> {
     let args = |a: &[&str]| a.iter().map(|x| (*x).to_owned()).collect::<Vec<String>>();
     match p {
         Provider::Claude => vec![
-            // (Print mode first: it reads the account's profile, which
-            // Claude Code keeps for the session after it.)
-            Step::Command { run: "print", args: args(&["-p", "hi"]), wait: s(60), trusted: true },
-            Step::Command { run: "print", args: args(&["-p", "/usage"]), wait: s(60), trusted: true },
+            // (A session first: what it reads it asks for itself, before
+            // print mode's runs leave it kept, its usage among it.)
             Step::Terminal {
                 run: "session",
                 args: Vec::new(),
+                // (Its usage read asked for twice: the first `/usage` can come
+                // before it's ready for it.)
                 keys: vec![
-                    (String::new(), s(12)),
-                    ("/usage\r".into(), s(6)),
+                    (String::new(), s(15)),
+                    ("/usage\r".into(), s(8)),
                     ("\u{1b}".into(), s(2)),
                     ("/limit-reset\r".into(), s(6)),
                     ("\r".into(), s(5)),
                     ("\r".into(), s(5)),
                     ("\u{1b}".into(), s(2)),
                     ("hi\r".into(), s(8)),
+                    ("/usage\r".into(), s(8)),
+                    ("\u{1b}".into(), s(2)),
                     ("/exit\r".into(), s(4)),
                 ],
                 wall: false,
             },
+            Step::Command { run: "print", args: args(&["-p", "hi"]), wait: s(60), trusted: true },
+            Step::Command { run: "print", args: args(&["-p", "/usage"]), wait: s(60), trusted: true },
             // At the limit: the reset Claude Code offers there, used (its
             // claim answered as needing nothing, so none is spent).
             Step::Terminal {
@@ -806,7 +882,11 @@ fn steps(p: Provider) -> Vec<Step> {
 /// `OLO_POOL_CAPTURE_TRANSCRIPT` set (a folder), what a terminal showed is
 /// written there, to see what a client did.
 fn drain(fd: OwnedFd, stop: Arc<std::sync::atomic::AtomicBool>) -> std::thread::JoinHandle<()> {
-    let mut keep = std::env::var_os("OLO_POOL_CAPTURE_TRANSCRIPT").and_then(|d| std::fs::File::create(PathBuf::from(d).join(format!("transcript-{}.txt", now()))).ok());
+    // (Readable by the person alone: a terminal shows what it shows.)
+    let mut keep = std::env::var_os("OLO_POOL_CAPTURE_TRANSCRIPT").and_then(|d| {
+        use std::os::unix::fs::OpenOptionsExt;
+        std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(PathBuf::from(d).join(format!("transcript-{}.txt", now()))).ok()
+    });
     std::thread::spawn(move || {
         let mut sink = [0u8; 8192];
         while !stop.load(std::sync::atomic::Ordering::Relaxed) {
@@ -840,18 +920,69 @@ fn end_group(pid: u32) {
     }
 }
 
-/// Run one step (blocking: on a thread of its own).
-fn run_step(step: &Step, exe: &Path, env: &[(String, String)], work: &Path) -> Result<(), String> {
+/// Allow the calling process (and what it starts) to connect over TCP
+/// only to `port`: the capture's recorder (Linux's Landlock, its network
+/// rules, kernel 6.7 on). Nothing it runs can reach a provider but through
+/// the recorder, whatever it makes of its proxy settings (Codex's review:
+/// "Give the child OS-enforced access only to its recorder ... Fail closed
+/// if confinement cannot start"). Plain system calls, nothing allocated: it
+/// runs between fork and exec.
+fn confine(port: u16) -> std::io::Result<()> {
+    const ACCESS_NET_CONNECT_TCP: u64 = 1 << 1;
+    const RULE_NET_PORT: libc::c_int = 2;
+    #[repr(C)]
+    struct RulesetAttr {
+        handled_access_fs: u64,
+        handled_access_net: u64,
+    }
+    #[repr(C, packed)]
+    struct NetPortAttr {
+        allowed_access: u64,
+        port: u64,
+    }
+    let attr = RulesetAttr { handled_access_fs: 0, handled_access_net: ACCESS_NET_CONNECT_TCP };
+    // SAFETY: Landlock's own calls, with structs laid out as it reads them.
+    unsafe {
+        let fd = libc::syscall(libc::SYS_landlock_create_ruleset, &attr as *const RulesetAttr, std::mem::size_of::<RulesetAttr>(), 0u32) as libc::c_int;
+        if fd < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        let rule = NetPortAttr { allowed_access: ACCESS_NET_CONNECT_TCP, port: port as u64 };
+        let added = libc::syscall(libc::SYS_landlock_add_rule, fd, RULE_NET_PORT, &rule as *const NetPortAttr, 0u32);
+        let quiet = libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
+        let restricted = if added == 0 && quiet == 0 { libc::syscall(libc::SYS_landlock_restrict_self, fd, 0u32) } else { -1 };
+        libc::close(fd);
+        if restricted != 0 {
+            return Err(std::io::Error::other("Landlock refused the capture's network rule"));
+        }
+    }
+    Ok(())
+}
+
+/// Run one step (blocking: on a thread of its own); `port`, the recorder's,
+/// the only one it may connect to.
+fn run_step(step: &Step, exe: &Path, env: &[(String, String)], work: &Path, port: u16) -> Result<(), String> {
     use std::os::unix::process::CommandExt;
-    let command = |args: &[String]| {
+    let command = |args: &[String], terminal: bool| {
         let mut c = std::process::Command::new(exe);
         c.args(args).env_clear().envs(env.iter().map(|(k, v)| (k, v))).current_dir(work);
-        // SAFETY: setsid in the child before exec: its own group, ended
-        // whole after.
+        // SAFETY: in the child before exec, system calls alone: its own
+        // session (its group ended whole after), its terminal the
+        // controlling one, nothing of the pool's open in it, and its
+        // network confined to the recorder.
         unsafe {
-            c.pre_exec(|| {
-                libc::setsid();
-                Ok(())
+            c.pre_exec(move || {
+                if libc::setsid() < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                // (Ended with the capture's thread, should the pool go
+                // mid-capture: an upgrade in place.)
+                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL, 0, 0, 0);
+                if terminal && libc::ioctl(0, libc::TIOCSCTTY as _, 0) < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                libc::syscall(libc::SYS_close_range, 3u32, u32::MAX, 0u32);
+                confine(port)
             });
         }
         c
@@ -859,24 +990,22 @@ fn run_step(step: &Step, exe: &Path, env: &[(String, String)], work: &Path) -> R
     match step {
         Step::Expire => Ok(()),
         Step::Command { args, wait, trusted, .. } => {
-            let mut c = command(args);
+            let mut c = command(args, false);
             if !trusted {
                 c.env_remove("SSL_CERT_FILE").env_remove("NODE_EXTRA_CA_CERTS");
             }
             let mut child = c.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().map_err(|e| e.to_string())?;
             let end = Instant::now() + *wait;
-            while Instant::now() < end {
-                if child.try_wait().ok().flatten().is_some() {
-                    return Ok(());
-                }
+            while Instant::now() < end && child.try_wait().ok().flatten().is_none() {
                 std::thread::sleep(Duration::from_millis(200));
             }
+            // (What it started ends with it.)
             end_group(child.id());
             let _ = child.wait();
             Ok(())
         }
         Step::Lines { args, lines, .. } => {
-            let mut child = command(args).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn().map_err(|e| e.to_string())?;
+            let mut child = command(args, false).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn().map_err(|e| e.to_string())?;
             // (Its answers read and let go, so it never waits on a full pipe.)
             let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
             let out = child.stdout.take().map(OwnedFd::from);
@@ -902,23 +1031,23 @@ fn run_step(step: &Step, exe: &Path, env: &[(String, String)], work: &Path) -> R
         Step::Terminal { args, keys, .. } => {
             let (master, slave) = open_terminal(50, 160)?;
             let stdio = |f: &OwnedFd| f.try_clone().map(std::process::Stdio::from).map_err(|e| e.to_string());
-            let mut c = command(args);
-            let slave_fd = slave.as_raw_fd();
+            let mut c = command(args, true);
             c.stdin(stdio(&slave)?).stdout(stdio(&slave)?).stderr(stdio(&slave)?);
-            // SAFETY: the terminal made the child's controlling one, before exec.
-            unsafe {
-                c.pre_exec(move || {
-                    libc::ioctl(slave_fd, libc::TIOCSCTTY as _, 0);
-                    Ok(())
-                });
-            }
             let mut child = c.spawn().map_err(|e| e.to_string())?;
             // (The command holds its copies of the terminal's other end
             // until it goes: gone now, with ours.)
             drop(c);
             drop(slave);
             let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
-            let drained = drain(master.try_clone().map_err(|e| e.to_string())?, stop.clone());
+            let reader = match master.try_clone() {
+                Ok(r) => r,
+                Err(e) => {
+                    end_group(child.id());
+                    let _ = child.wait();
+                    return Err(e.to_string());
+                }
+            };
+            let drained = drain(reader, stop.clone());
             let mut writer = std::fs::File::from(master);
             for (keys, wait) in keys {
                 if !keys.is_empty() {
@@ -952,8 +1081,13 @@ fn open_terminal(rows: u16, cols: u16) -> Result<(OwnedFd, OwnedFd), String> {
     if unsafe { libc::openpty(&mut master, &mut slave, std::ptr::null_mut(), std::ptr::null(), &ws) } != 0 {
         return Err(std::io::Error::last_os_error().to_string());
     }
-    // SAFETY: openpty just gave us these, and nothing else owns them.
-    Ok(unsafe { (OwnedFd::from_raw_fd(master), OwnedFd::from_raw_fd(slave)) })
+    // SAFETY: openpty just gave us these, and nothing else owns them; kept
+    // from every program the pool starts but the one given them.
+    unsafe {
+        libc::fcntl(master, libc::F_SETFD, libc::FD_CLOEXEC);
+        libc::fcntl(slave, libc::F_SETFD, libc::FD_CLOEXEC);
+        Ok((OwnedFd::from_raw_fd(master), OwnedFd::from_raw_fd(slave)))
+    }
 }
 
 // ---------------------------------------------------------------------
@@ -1076,7 +1210,7 @@ pub fn capture(account: &Account, cred: &Credential, progress: &dyn Fn(&str)) ->
                     write(false)?;
                 }
                 progress(&format!("{} {run}: {} requests so far", p.client(), rec.sent.lock().unwrap().len()));
-                if let Err(e) = run_step(&step, &client.exe, &env, &sb.work()) {
+                if let Err(e) = run_step(&step, &client.exe, &env, &sb.work(), port) {
                     tracing::warn!("pool capture: {} {run}: {e}", p.client());
                 }
             }
@@ -1095,6 +1229,12 @@ pub fn capture(account: &Account, cred: &Credential, progress: &dyn Fn(&str)) ->
     let secrets = secrets_of(account, cred, &sent);
     let account_uuid = secrets.iter().find(|(_, p)| *p == ACCOUNT_UUID).map(|(v, _)| v.clone());
     for s in sent.iter_mut() {
+        // (A body kept only where the pool makes the request itself: a
+        // claim's and a renewal's; the rest, its head alone.)
+        let p = s.path().to_owned();
+        if !(p.ends_with("/reset_rate_limits") || p.ends_with("rate-limit-reset-credits/consume") || p.ends_with("/oauth/token")) {
+            s.body.clear();
+        }
         hide(s, &secrets);
     }
     if sent.is_empty() {
@@ -1142,6 +1282,27 @@ mod tests {
         ] {
             assert_eq!(fate(host, method, target), Fate::Forward, "{method} {host}{target}");
         }
+    }
+
+    /// A program confined to the recorder's port reaches it, and nothing
+    /// else, however open (Landlock: the kernel refuses the connection).
+    #[test]
+    fn a_capture_reaches_its_recorder_alone() {
+        use std::os::unix::process::CommandExt;
+        let allowed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let other = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let (a, o) = (allowed.local_addr().unwrap().port(), other.local_addr().unwrap().port());
+        let connects = |port: u16| {
+            let mut c = std::process::Command::new("/usr/bin/bash");
+            c.args(["-c", &format!("exec 3<>/dev/tcp/127.0.0.1/{port}")]).stderr(std::process::Stdio::null());
+            // SAFETY: confine is system calls alone, as between fork and exec.
+            unsafe {
+                c.pre_exec(move || confine(a));
+            }
+            c.status().unwrap().success()
+        };
+        assert!(connects(a), "its recorder refused");
+        assert!(!connects(o), "it reached another port");
     }
 
     /// Only the account's own credential (or none) is ever sent on.
