@@ -159,17 +159,40 @@ impl IntoElement for Slider {
             let base = p.control_background;
             // (Held: dragged, wherever the pointer has wandered.)
             let pressed = *g.node_state::<bool>();
-            let (tt, tb) = if pressed { (style::shade(&p, base, 1.15), style::shade(&p, base, 1.08)) } else { (style::tint(base, 0.8), style::shade(&p, base, 1.06)) };
+            // In a dark look the thumb is a lighter block, its face the
+            // control's colour a third of the way to the text's: a dark face
+            // as the buttons' barely stood off the empty track beside it
+            // (under 3:1; macOS's is light: the study of every theme). Its
+            // grip and lower edge darker than it, so it's raised still.
+            let dark = p.mode == olo_theme::ThemeMode::Dark;
+            // (At least 3:1 on the panel, however dark its control colour
+            // and dim its text: Ayu's mix alone was too dark, Codex's look.)
+            let face = |k: f32, at_least: f32| olo_theme::readable(olo_theme::mix(base, p.panel_text, k), p.panel_background, at_least);
+            let (tt, tb) = match (dark, pressed) {
+                (true, false) => (style::c(face(0.38, 3.0)), style::c(face(0.28, 2.6))),
+                (true, true) => (style::c(face(0.28, 2.6)), style::c(face(0.22, 2.3))),
+                (false, true) => (style::shade(&p, base, 1.15), style::shade(&p, base, 1.08)),
+                (false, false) => (style::tint(base, 0.8), style::shade(&p, base, 1.06)),
+            };
+            // Its top and left lighter than its face, its bottom, right and
+            // grip darker: raised (the dark look's own shine is darker than
+            // this face, and made it look sunk).
+            let (high, low, grip) = if dark {
+                let mid = face(0.28, 2.6);
+                (style::c(olo_theme::mix(face(0.38, 3.0), olo_theme::WHITE, 0.3)), style::c(olo_theme::mix(mid, olo_theme::BLACK, 0.3)), style::c(olo_theme::mix(mid, olo_theme::BLACK, 0.45)))
+            } else {
+                (style::c(p.shine), style::shade(&p, base, 1.2), style::shade(&p, base, 1.35))
+            };
             let line = style::hairline(g);
             g.paint_quad(fill(Bounds { origin: point(thumb.left() + line, thumb.top() + line), size: thumb.size }, style::c(p.drop_shadow)).corner_radii(px(1.0)));
             let in_thumb = style::inset(g, thumb, 1.0);
             style::vgradient(g, in_thumb, tt, tb);
             style::frame_rect(g, thumb, style::shade(&p, p.panel_background, 1.6));
-            style::bevel(g, in_thumb, style::c(p.shine), style::shade(&p, base, 1.2));
+            style::bevel(g, in_thumb, high, low);
             // The grip line.
             let gx = px((f32::from(thumb.center().x) * s).floor() / s);
-            style::vline_left_of(g, gx, thumb.top() + px(4.0), thumb.bottom() - px(4.0), style::shade(&p, base, 1.35));
-            style::vline(g, gx, thumb.top() + px(4.0), thumb.bottom() - px(4.0), style::c(p.shine));
+            style::vline_left_of(g, gx, thumb.top() + px(4.0), thumb.bottom() - px(4.0), grip);
+            style::vline(g, gx, thumb.top() + px(4.0), thumb.bottom() - px(4.0), high);
             if let Some((min, max)) = &limits {
                 let y = b.bottom() - px(m::LABEL_ROW / 2.0 - 1.0);
                 style::label(g, b.left(), y, style::Align::Left, min.clone(), style::SMALL_SIZE, font.clone(), ink);

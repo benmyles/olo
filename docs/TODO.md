@@ -54,9 +54,9 @@ something nobody here has is in "Blocked", with what it waits for.
   other theme's gallery and Terminal, light and dark: the schemes'
   progress bars were in their blue beside their accent's sliders (Ayu's
   orange, Monokai's and SynthWave's pink): now in their accent.
-  **Left**: in dark looks a slider's thumb, a dark face with a black
-  frame, barely stands off its empty track (under 3:1; macOS's is
-  light); more apps in each theme, closer up.
+  In dark looks a slider's thumb, a dark face with a black frame,
+  barely stood off its empty track: now a lighter, raised block, 3:1 at
+  least on the panel. **Left**: more apps in each theme, closer up.
 
 ## Not started (highest priority first)
 
