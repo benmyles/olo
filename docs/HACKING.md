@@ -2751,6 +2751,47 @@ it.
   its text, for text beside it to be set the same: Calendar's preview
   sets an event's facts so in a box beside its notes, their first lines
   on one line at every scale.
+  **Links in it** (`links(true)`: an event's notes, a message; Ben,
+  2026-11-19: "any links in the calendar notes should be detected and
+  made clickable"): the web addresses, mail addresses and numbers to
+  dial in its text, found once as it's set (`olo_kit::links::find`),
+  are in the look's link colour (`Syntax::Link`), underlined under the
+  pointer as a document's are (Preview's rich view), the pointer a hand
+  over them (selected, in the text's colour, which reads on the
+  selection); a click opens one (a press and a release on it, nothing
+  dragged: a drag from one selects), its context menu has Open Link and
+  Copy Link (the address, the mail address without `mailto:`, the
+  number as written). Agents read each as a `Link` (its words, where it
+  goes its value) and click it. Only a view with links hears the
+  pointer move without a button. `olo_kit::links`: what a reader takes
+  for a link and no more: any of the schemes a browser or a calendar
+  opens (`https`, `http`, `ftp`, `webcal`, `file`; another app's
+  scheme isn't a click away, as notes can come from anyone), a bare
+  `www.`, a mail address, `mailto:`/`tel:`; a sentence's full stop or
+  an unopened closing bracket after an address isn't in it
+  (Wikipedia's `…_(planet)` keeps its own). A number is one only as
+  numbers to dial are written: with its country code (`+1 650-555-0100`,
+  `+44 (0)20 7946 0018`, as invitations give their dial-ins; at most
+  fifteen digits, a `+1` one ending at its eleventh) or as a North
+  American one is (`(650) 555-0100`, `650-555-0100`, `650.555.0100`);
+  a meeting's ID or PIN (`845 1234 5678`), a date, a time or a
+  version isn't one. Its target keeps the groups a `-` apart (RFC
+  3966's visual separator: `tel:+1-650-555-0100`). `links::open` opens
+  one off the UI thread with what opens its kind (`olo_xdg::open`): a
+  page in the person's browser, an address in their mail app, a number
+  in Phone (`x-scheme-handler/tel`), at its card. Finding them in a
+  page of an invitation's notes ten times over (3.4 KB, 60 links): 26
+  µs, once per text (`finding_cost`, release). Underneath, the
+  Interface Kit's text takes links (`Element::links`, `TextLink`: a
+  range, a target, an underline colour or none): where each shows is
+  worked out from how the text is laid out (`WrappedLine::range_rects`,
+  a rectangle a row, placed as its rows are), for the pointer's shape,
+  the agents' nodes and the underline (a device pixel thick, a device
+  pixel under the baseline, drawn beside the text, which stays a plain
+  run: an underlined run is painted glyph by glyph); a change of links
+  only draws it again. `Window::text_hit_at` is the character under
+  the pointer, if it's over one (beside a line's end it's over none),
+  where `text_index_at` is the nearest.
 - `style::label_runs`/`label_runs_fit` (one line in runs, cut short to
   fit), `Cell::text_runs` (a list cell's), `ListModel::at_end` (its last
   row shows: a list following what's added keeps following only then),
@@ -3332,7 +3373,8 @@ it.
   of text or XML is StyledEdit's, after any installed app that says it
   opens that very kind) and `also` (offered in Open With without being
   what the kind opens in: StyledEdit for a Word or OpenDocument text,
-  the Viewer for text). Open With, what a double click opens
+  the Viewer for text; Phone for a number to dial, `x-scheme-handler/tel`,
+  as a link in a text view opens one). Open With, what a double click opens
   (`open::handler`) and the entries written for other programs
   (`open::for_others`, from `opens` alone) all read it, so **an app
   that learns a format is added there and nowhere else**; the test
@@ -16124,7 +16166,15 @@ With no phone connected it says what to do (Connect a Phone…:
 Preferences ▸ Phone); a phone refusing or out of reach is a line over
 the conversation, with Try Again. A message's notification, clicked,
 opens it at that conversation (`--open`); Deskbar's phone menu has
-Open Phone.
+Open Phone. **A `tel:` link** (a number in an event's notes, clicked:
+Phone is the app for `x-scheme-handler/tel`, `olo-phone tel:NUMBER`)
+opens it at the number's card on the Contacts tab: its contact's, or
+one of its own (`Shown::Number`: the number, Call and Message), the
+number written as a phone's contacts write it (`+1 (646) 555-0100`;
+another country's groups a space apart, E.123's `+44 20 7946 0018`),
+the one the link gave in bold among its contact's others; Call there
+calls it, as a click on a link calls nobody by itself. A number given as Phone starts is matched to its
+contact once the contacts come (`contact_with`, by `pbap::key`).
 
 It holds nothing of its own: it asks the service on its socket, off
 the UI thread (`cx.work`), whenever the published state says something

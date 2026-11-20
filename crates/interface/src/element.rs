@@ -169,6 +169,24 @@ pub(crate) struct TextSpec {
     pub(crate) text: SharedString,
     /// Its runs, if it has more than one look.
     pub(crate) runs: Option<Vec<TextRun>>,
+    /// The stretches of it that are links ([`Element::links`]).
+    pub(crate) links: Vec<TextLink>,
+}
+
+/// A stretch of a text that's a link ([`Element::links`]): the pointer
+/// is a hand over it, agents read it as a link (its words, and where it
+/// goes as its value), and it's underlined while `underline` says (under
+/// the pointer, as its owner follows it), the line a device pixel under
+/// its baseline, a device pixel thick.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TextLink {
+    /// Its bytes in the text.
+    pub range: std::ops::Range<usize>,
+    /// Where it goes (a web address, `mailto:`, `tel:`): its value to
+    /// agents.
+    pub target: SharedString,
+    /// Underlined, in this colour, or not.
+    pub underline: Option<crate::Hsla>,
 }
 
 pub(crate) enum Kind {
@@ -412,6 +430,18 @@ impl Element {
         self.inter.get_or_insert_with(Default::default)
     }
 
+    /// A text's links (in order, apart): where they are is known from
+    /// how it's laid out, so the pointer, agents and the underline find
+    /// them where they show, wrapped or not. Changing them (an underline
+    /// under the pointer) draws the text again without laying it out.
+    /// Nothing, on what isn't a text.
+    pub fn links(mut self, links: Vec<TextLink>) -> Self {
+        if let Kind::Text(spec) = &mut self.kind {
+            spec.links = links;
+        }
+        self
+    }
+
     /// [`Self::paint_key`], worked out from the view (of type `V`) when
     /// the element takes its place in the window's tree: for what's
     /// built where the view isn't to hand (a list's rows, keyed by what
@@ -503,7 +533,7 @@ pub fn control_canvas(paint: impl Fn(&mut Painter, Bounds<Pixels>, ControlState)
 /// Text of more than one look: `runs` say how much of it (in bytes) is
 /// drawn how.
 pub fn styled_text(text: impl Into<SharedString>, runs: Vec<TextRun>) -> Element {
-    Element::new(Kind::Text(TextSpec { text: text.into(), runs: Some(runs) }))
+    Element::new(Kind::Text(TextSpec { text: text.into(), runs: Some(runs), links: Vec::new() }))
 }
 
 impl Styled for Element {
@@ -531,19 +561,19 @@ impl IntoElement for Element {
 
 impl IntoElement for &'static str {
     fn into_element(self) -> Element {
-        Element::new(Kind::Text(TextSpec { text: self.into(), runs: None }))
+        Element::new(Kind::Text(TextSpec { text: self.into(), runs: None, links: Vec::new() }))
     }
 }
 
 impl IntoElement for String {
     fn into_element(self) -> Element {
-        Element::new(Kind::Text(TextSpec { text: self.into(), runs: None }))
+        Element::new(Kind::Text(TextSpec { text: self.into(), runs: None, links: Vec::new() }))
     }
 }
 
 impl IntoElement for SharedString {
     fn into_element(self) -> Element {
-        Element::new(Kind::Text(TextSpec { text: self, runs: None }))
+        Element::new(Kind::Text(TextSpec { text: self, runs: None, links: Vec::new() }))
     }
 }
 

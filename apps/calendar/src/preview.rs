@@ -73,7 +73,7 @@ pub struct Pane {
 impl Pane {
     pub fn new(cx: &mut Cx<Calendar>) -> Child<Pane> {
         let calendar = cx.messenger();
-        cx.new_view(move |cx| Pane { notes: text_view(cx, |t| t.empty_text("No notes.").auto_hide(true)), scroll: ScrollHandle::new(), shown: None, calendar })
+        cx.new_view(move |cx| Pane { notes: text_view(cx, |t| t.empty_text("No notes.").auto_hide(true).links(true)), scroll: ScrollHandle::new(), shown: None, calendar })
     }
 
     fn show(&mut self, shown: Option<Showing>, cx: &mut Cx<Pane>) {

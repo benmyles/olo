@@ -25,6 +25,7 @@ pub mod go_to;
 pub mod icons;
 mod kept;
 pub mod keys;
+pub mod links;
 #[cfg(feature = "lint")]
 pub mod lint;
 mod lock;

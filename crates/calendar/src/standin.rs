@@ -199,7 +199,9 @@ impl Standin {
                 at(2, 15, 45),
                 "Interview",
                 &format!(
-                    "LOCATION:https://meet.example.org/j/81234567890?pwd=Zk9vV2pLd0NhR3FlT1hNcz09\nORGANIZER;CN=\"Jansen, Dana\":mailto:dana@example.org\nATTENDEE;CN=\"Jansen, Dana\";PARTSTAT=ACCEPTED:mailto:dana@example.org\n{}",
+                    // (Notes as an invitation has them: a link to join, a
+                    // number to dial in, an address to write to.)
+                    "LOCATION:https://meet.example.org/j/81234567890?pwd=Zk9vV2pLd0NhR3FlT1hNcz09\nDESCRIPTION:Join the call: https://meet.example.org/j/81234567890\\n\\nOr dial in: +1 646-555-0100\\, PIN 812 345 678#\\n\\nQuestions before then? Write to recruiting@example.org.\nORGANIZER;CN=\"Jansen, Dana\":mailto:dana@example.org\nATTENDEE;CN=\"Jansen, Dana\";PARTSTAT=ACCEPTED:mailto:dana@example.org\n{}",
                     me("NEEDS-ACTION")
                 ),
             ),

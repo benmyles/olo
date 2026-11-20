@@ -2600,6 +2600,24 @@ impl<'a> WindowCx<'a> {
         None
     }
 
+    /// The byte of the character under `position` (in the window) of the
+    /// text the element whose handler is running is, or the first text
+    /// it holds, if it's over one: [`Self::text_index_at`], for what only
+    /// a character itself takes (a link: not beside its line's end).
+    pub fn text_hit_at(&self, position: Point<Pixels>) -> Option<usize> {
+        let mut stack: Vec<NodeId> = self.core.current.into_iter().collect();
+        while let Some(id) = stack.pop() {
+            let node = self.core.nodes.get(id)?;
+            if let NodeKind::Text(text) = &node.kind {
+                let laid = text.laid.as_ref()?;
+                let origin = self.core.window_bounds(id).origin;
+                return crate::tree::text_hit_at(laid, point(position.x - origin.x, position.y - origin.y));
+            }
+            stack.extend(node.children.iter().rev().copied());
+        }
+        None
+    }
+
     /// What the element whose handler is running keeps for itself, from
     /// one handler to the next and for its drawing
     /// (`Painter::node_state`).

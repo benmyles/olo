@@ -31,6 +31,19 @@ Each note: what to do, then why (what happened), then how to apply it.
   the process you started by its start time and parent (`ps -eo
   pid,ppid,etimes,args --sort=etimes`), check it's yours and idle, and
   end that one PID.
+- **A click that opens a link, tested headless: a stand-in for the
+  browser.** In a `tsession`, a web or mail link opens through
+  `olo_xdg::open`, whose app for `https:` is the session's chosen
+  browser, else Olo's Chrome, which may hand the page to the person's
+  running Chrome. Give the session a stand-in first: a desktop entry in
+  its HOME's `.local/share/applications` (`--home DIR`) whose `Exec`
+  writes `%u` to a file, named for `x-scheme-handler/https`, `http` and
+  `mailto` in `/var/tmp/olo-dev/NAME/config/mimeapps.list` (the
+  session's `XDG_CONFIG_HOME`), then read the file (links in Calendar's
+  notes, 2026-11-19). A `tel:` link opens `olo-phone` from the dev
+  build (tsession puts `target/debug` first on PATH; give the app
+  `OLO_PHONE_DEMO=1` to see a card): an instance socket is per display
+  (`{app_id}-{display}.sock`), so it can't reach the person's Phone.
 - **Kill test processes by PID, only after checking they're yours.**
   `pkill -f` once killed Ben's real Tracker. Find the PID, check its
   `/proc/PID/environ` names your test session (`olo-dev/NAME`), then

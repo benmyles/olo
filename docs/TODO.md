@@ -292,14 +292,6 @@ something nobody here has is in "Blocked", with what it waits for.
   (`adaptive seed`, `adaptive active`, `automatic worktree seed`),
   counted among "Couldn't be cached" now.
 
-- **Links in Calendar's event notes found and made clickable** (Ben,
-  2026-11-19, with a picture of an event's notes holding a meeting's
-  link, a dial-in page's and a help page's: "also a todo: any links in
-  the calendar notes should be detected and made clickable"). Addresses
-  (https://, www.), mail addresses and telephone numbers in the notes
-  shown as links: a click opens the page in the browser, a mail
-  address in Mail, a number with the phone; the kit's text view taught
-  to find them, so every app's notes and messages can have them.
 - **A sign-in's mailed code is found every time** (Ben, 2026-11-18,
   signing in at claude.ai, which mails a link and takes a "verification
   code" in its place: "i tried to login to claude and it didn't manage
@@ -499,6 +491,15 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Links in Calendar's event notes found and made clickable** (Ben,
+  2026-11-19). Done: the kit's text view finds them (`links(true)`,
+  `olo_kit::links`): web addresses, mail addresses and numbers to dial,
+  in the link colour, underlined under the pointer, opened by a click
+  (the browser, the mail app, Phone at the number's card, where Call
+  calls it); Copy Link and Open Link in its menu; agents read and click
+  each as a `Link`. Calendar's notes have them; the demo's Interview
+  has an invitation's notes to show them.
 
 - **olo-fakesound in a package of its own, with only its own
   dependencies** (2026-11-19, from a study of kache's misses: 66 of its

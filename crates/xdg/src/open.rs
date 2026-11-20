@@ -128,6 +128,8 @@ const OPENS: &[Opens] = &[
     Opens { bin: "olo-tracker", opens: &["inode/directory"], narrower: &[], also: &[] },
     Opens { bin: "olo-chrome", opens: &["text/html", "application/xhtml+xml", "x-scheme-handler/http", "x-scheme-handler/https"], narrower: &[], also: &[] },
     Opens { bin: "olo-slack", opens: &["x-scheme-handler/slack"], narrower: &[], also: &[] },
+    // A number to call (`tel:`): its card in Phone, where Call calls it.
+    Opens { bin: "olo-phone", opens: &["x-scheme-handler/tel"], narrower: &[], also: &[] },
     Opens { bin: "olo-preferences", opens: &[crate::mime::SETTINGS_BACKUP], narrower: &[], also: &[] },
     Opens {
         bin: "olo-styled-edit",
@@ -1042,6 +1044,8 @@ mod opens {
         assert_eq!(ours_for("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"), ["olo-viewer"]);
         assert_eq!(ours_for("inode/directory"), ["olo-tracker"]);
         assert_eq!(ours_for("x-scheme-handler/https"), ["olo-chrome"]);
+        assert_eq!(ours_for("x-scheme-handler/tel"), ["olo-phone"]);
+        assert_eq!(crate::mime::for_url("tel:+16505550100"), "x-scheme-handler/tel");
         assert!(ours_for("application/x-nothing-olo-opens").is_empty());
         // A name however long and dotted is the kind its last extension
         // says.

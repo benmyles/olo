@@ -110,6 +110,9 @@ enum Shown {
     New(String),
     /// A contact's card (their name).
     Person(String),
+    /// A number no contact has, to call or write to: a `tel:` link
+    /// opened (a number in an event's notes).
+    Number(String),
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -302,6 +305,9 @@ pub struct Phone {
     failed: Option<String>,
     tab: Tab,
     shown: Shown,
+    /// The number a `tel:` link opened the card at: in bold there, among
+    /// the contact's others (Codex's look: which Call was the link's?).
+    linked: Option<String>,
     search: Child<SearchField>,
     draft: Child<TextField>,
     side: SidePane,
@@ -361,6 +367,28 @@ pub struct Phone {
 
 fn key_of(address: &str) -> String {
     pbap::key(address)
+}
+
+/// The number a `tel:` link (RFC 3966) dials, less its parameters
+/// (`;ext=…`), what's escaped decoded, written as a phone's contacts
+/// write it: a North American one as `+1 (650) 555-0100` (the demo's,
+/// and Ben's), any other with its groups a space apart (E.123:
+/// `tel:+44-20-7946-0018` is `+44 20 7946 0018`). None for anything
+/// else.
+pub(crate) fn tel_number(arg: &str) -> Option<String> {
+    let rest = arg.get(..4).filter(|t| t.eq_ignore_ascii_case("tel:")).map(|_| &arg[4..])?;
+    let number = rest.split(';').next().unwrap_or("").replace("%20", " ").replace("%2B", "+").replace("%2b", "+");
+    if number.chars().filter(char::is_ascii_digit).count() < 3 || !number.chars().all(|c| c.is_ascii_digit() || matches!(c, '+' | '-' | '.' | ' ' | '(' | ')')) {
+        return None;
+    }
+    let digits: String = number.chars().filter(char::is_ascii_digit).collect();
+    let american = |d: &str| format!("({}) {}-{}", &d[..3], &d[3..6], &d[6..]);
+    Some(match (number.trim_start().starts_with('+'), digits.len()) {
+        (true, 11) if digits.starts_with('1') => format!("+1 {}", american(&digits[1..])),
+        (false, 10) => american(&digits),
+        (false, 11) if digits.starts_with('1') => format!("1 {}", american(&digits[1..])),
+        _ => number.split([' ', '-', '.']).filter(|g| !g.is_empty()).collect::<Vec<_>>().join(" "),
+    })
 }
 
 /// A name with letters in it (a person's), not a number or an address.
@@ -432,6 +460,7 @@ impl Phone {
             failed: None,
             tab: saved.tab,
             shown: saved.shown,
+            linked: None,
             search,
             draft,
             side: SidePane::new(LIST, LIST_MIN).restored(saved.list_width, saved.list_hidden),
@@ -600,6 +629,12 @@ impl Phone {
 
     /// A message to `address`: its conversation if there is one, else a
     /// new one.
+    /// The name of the contact `number` is one of the numbers of.
+    fn contact_with(&self, number: &str) -> Option<String> {
+        let key = key_of(number);
+        self.contacts.iter().find(|p| p.phones.iter().any(|n| key_of(n) == key)).map(|p| p.name.clone())
+    }
+
     fn write_to(&mut self, address: &str, cx: &mut Cx<Self>) {
         let key = key_of(address);
         match self.threads.iter().find(|t| t.key == key).map(|t| t.key.clone()) {
@@ -819,6 +854,13 @@ impl View for Phone {
                 }
                 self.contacts = contacts;
                 self.data += 1;
+                // A number shown before the contacts came (a `tel:` link
+                // that started Phone): its contact's card, if it has one.
+                if let Shown::Number(number) = &self.shown
+                    && let Some(person) = self.contact_with(number)
+                {
+                    self.shown = Shown::Person(person);
+                }
                 // More unread while the window isn't in front: its tab's
                 // red dot, until it's looked at (as Deskbar's is the app's).
                 let unread: usize = self.threads.iter().map(Conversation::unread).sum();
@@ -852,6 +894,16 @@ impl View for Phone {
                 return;
             }
             Msg::Launch(args) => {
+                // A `tel:` link: its number's card (its contact's), where
+                // Call calls it: a click on a link calls nobody by itself.
+                if let Some(number) = args.iter().find_map(|a| tel_number(a)) {
+                    self.linked = Some(key_of(&number));
+                    self.tab = Tab::Contacts;
+                    self.shown = match self.contact_with(&number) {
+                        Some(person) => Shown::Person(person),
+                        None => Shown::Number(number),
+                    };
+                }
                 if let Some(key) = args.iter().position(|a| a == "--open").and_then(|i| args.get(i + 1)).cloned() {
                     match self.threads.iter().find(|t| t.key == key || t.name == key).map(|t| t.key.clone()) {
                         Some(key) => self.open_thread(&key, cx),
@@ -1608,7 +1660,11 @@ impl Phone {
             return div().size_full().bg(ground).child(EmptyState::new(text).icon("phone").detail(detail).action("Connect a Phone…", settings)).into_element();
         }
         let content = match self.shown.clone() {
-            Shown::Person(name) => self.card(&name, cx),
+            Shown::Person(name) => match self.contacts.iter().find(|p| p.name == name).cloned() {
+                Some(person) => self.card(person, cx),
+                None => div().size_full().child(EmptyState::new("No such contact").icon("phone")).into_element(),
+            },
+            Shown::Number(number) => self.card(Person { name: number.clone(), phones: vec![number], emails: Vec::new() }, cx),
             Shown::Nothing => div()
                 .size_full()
                 .relative()
@@ -1651,11 +1707,8 @@ impl Phone {
     }
 
     /// A contact's card: who, and each way to write to them.
-    fn card(&mut self, name: &str, cx: &mut Cx<Self>) -> Element {
+    fn card(&mut self, person: Person, cx: &mut Cx<Self>) -> Element {
         let p = theme::palette();
-        let Some(person) = self.contacts.iter().find(|p| p.name == name).cloned() else {
-            return div().size_full().child(EmptyState::new("No such contact").icon("phone")).into_element();
-        };
         let dark = p.mode == olo_kit::palette::ThemeMode::Dark;
         let (who, first) = (person.name.clone(), person.phones.first().or(person.emails.first()).cloned().unwrap_or_default());
         let face = canvas(move |g, b: Bounds<Pixels>| {
@@ -1668,7 +1721,9 @@ impl Phone {
         let mut ways = div().w_full().flex().flex_col().gap(px(m::SPACING));
         for (i, address) in person.phones.iter().chain(&person.emails).enumerate() {
             let (to, number) = (address.clone(), address.clone());
-            let mut way = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(StringView::new(address.clone()).cut(true)));
+            // (Among others only: alone, it's the one anyway.)
+            let linked = person.phones.len() > 1 && i < person.phones.len() && self.linked.as_deref() == Some(key_of(address).as_str());
+            let mut way = div().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(StringView::new(address.clone()).cut(true).bold(linked)));
             // (A number can be called too: through the phone, the call's
             // sound here.)
             if i < person.phones.len() {
@@ -2220,6 +2275,22 @@ impl Look {
         let small_h = para::line_height(META);
         let cy = br.bottom() - px(PAD.1 + small_h / 2.0) + px(if bl.time_under { 0.0 } else { 1.0 });
         style::label(g, br.right() - px(PAD.0), cy, Align::Right, bl.time.clone(), META, style::ui_font(FontWeight::NORMAL), if bl.ours { self.ours_dim } else { self.dim });
+    }
+}
+
+#[cfg(test)]
+mod tel_tests {
+    /// A `tel:` link's number, as found in text or written by hand.
+    #[test]
+    fn a_links_number() {
+        assert_eq!(super::tel_number("tel:+16505550100").as_deref(), Some("+1 (650) 555-0100"));
+        assert_eq!(super::tel_number("TEL:+1-650-555-0100;ext=12").as_deref(), Some("+1 (650) 555-0100"));
+        assert_eq!(super::tel_number("tel:650-555-0100").as_deref(), Some("(650) 555-0100"));
+        assert_eq!(super::tel_number("tel:%2B44%2020%207946%200018").as_deref(), Some("+44 20 7946 0018"));
+        assert_eq!(super::tel_number("tel:+49-30-901820").as_deref(), Some("+49 30 901820"));
+        for not in ["tel:", "tel:12", "tel:+1650x", "mailto:a@b.org", "+16505550100", "tel:+1650555*0100#"] {
+            assert_eq!(super::tel_number(not), None, "{not}");
+        }
     }
 }
 

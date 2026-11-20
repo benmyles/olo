@@ -5,16 +5,24 @@
 //! whole."). Selected with the pointer (a drag, a double click a word),
 //! ⌘A all; ⌘C or the context menu's Copy copies it. Agents read it as a
 //! `Document` with its text.
+//!
+//! With [`TextView::links`], the web addresses, mail addresses and
+//! numbers to dial in it are links ([`crate::links`]): in the look's
+//! link colour, underlined under the pointer (as a document's are,
+//! Preview's rich view), the pointer a hand over them. A click opens one
+//! (a press and a release on it, not a drag: a drag from one selects);
+//! the context menu on one has Open Link and Copy Link. Agents read each
+//! as a `Link`, where it goes as its value, and click it.
 
 use std::ops::Range;
 
 use olo_interface::{
-    Bounds, Child, ClipboardItem, Cx, Element, FocusHandle, Font, FontWeight, InteractiveElement as _, IntoElement as _, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _,
-    ScrollHandle, SharedString, Styled as _, TextRun, View, agent, canvas, clipboard, div, point, px, styled_text,
+    Bounds, Child, ClipboardItem, Cx, Element, FocusHandle, Font, FontWeight, InteractiveElement as _, IntoElement as _, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    ParentElement as _, ScrollHandle, SharedString, Styled as _, TextLink, TextRun, View, agent, canvas, clipboard, div, point, px, styled_text,
 };
 use olo_kit_base::metrics as m;
 
-use crate::{Menu, menu, style, theme, widgets::ScrollView};
+use crate::{Menu, links, menu, style, theme, widgets::ScrollView};
 
 /// The text's margin inside the view.
 const MARGIN_X: f32 = 6.0;
@@ -33,6 +41,14 @@ pub struct TextView {
     anchor: Option<usize>,
     /// Its bar only while the text overflows (`auto_hide`).
     auto_hide: bool,
+    /// Its links found ([`TextView::links`]), and those found: once for a
+    /// text, as it's set.
+    find_links: bool,
+    links: Vec<links::Link>,
+    /// The link under the pointer (underlined), by its place in `links`.
+    hovered: Option<usize>,
+    /// The link a press began on: it opens if the press ends on it.
+    pressed: Option<usize>,
 }
 
 /// `text` to the clipboard, if there's any.
@@ -55,6 +71,10 @@ pub fn text_view<V: View>(cx: &mut Cx<V>, build: impl FnOnce(TextView) -> TextVi
             selected: 0..0,
             anchor: None,
             auto_hide: false,
+            find_links: false,
+            links: Vec::new(),
+            hovered: None,
+            pressed: None,
         })
     })
 }
@@ -86,6 +106,29 @@ impl TextView {
         (style::PLAIN_SIZE * style::LINE_HEIGHT).ceil()
     }
 
+    /// Its web addresses, mail addresses and numbers to dial as links
+    /// (the module's doc): an event's notes, a message.
+    pub fn links(mut self, on: bool) -> Self {
+        self.find_links = on;
+        self.found();
+        self
+    }
+
+    /// Its links, found again for its text.
+    fn found(&mut self) {
+        self.links = if self.find_links { links::find(&self.text) } else { Vec::new() };
+        (self.hovered, self.pressed) = (None, None);
+    }
+
+    /// The link the pointer at `at` (in the window) is on, if any.
+    fn link_at(&self, at: olo_interface::Point<olo_interface::Pixels>, cx: &Cx<Self>) -> Option<usize> {
+        if self.links.is_empty() {
+            return None;
+        }
+        let byte = cx.text_hit_at(at)?;
+        self.links.iter().position(|l| l.range.contains(&byte))
+    }
+
     /// What it says, dim, in the middle, while there's no text.
     pub fn empty_text(mut self, text: impl Into<SharedString>) -> Self {
         self.empty = crate::words::of(text);
@@ -96,6 +139,7 @@ impl TextView {
     pub fn with_text(mut self, text: impl Into<SharedString>, runs: Option<Vec<TextRun>>) -> Self {
         self.text = text.into();
         self.runs = runs.filter(|r| r.iter().map(|r| r.len).sum::<usize>() == self.text.len());
+        self.found();
         self
     }
 
@@ -112,12 +156,16 @@ impl TextView {
     /// or plain: scrolled to its top, nothing selected.
     pub fn set_text(&mut self, text: impl Into<SharedString>, runs: Option<Vec<TextRun>>, cx: &mut Cx<Self>) {
         let text = text.into();
-        if text != self.text {
+        let changed = text != self.text;
+        if changed {
             self.scroll.set_offset(cx, point(px(0.0), px(0.0)));
             self.selected = 0..0;
         }
         self.text = text;
         self.runs = runs.filter(|r| r.iter().map(|r| r.len).sum::<usize>() == self.text.len());
+        if changed {
+            self.found();
+        }
         cx.notify();
     }
 
@@ -135,13 +183,17 @@ impl TextView {
         word_at(&self.text, at)
     }
 
-    /// Its runs, the selection behind (see-through, as a field's).
+    /// Its runs: its links in the link colour, the selection behind
+    /// (see-through, as a field's).
     fn shown_runs(&self, focused: bool) -> Vec<TextRun> {
         let p = theme::palette();
-        let mut runs = self
+        let runs = self
             .runs
             .clone()
             .unwrap_or_else(|| vec![TextRun { len: self.text.len(), font: self.font(), color: style::c(p.document_text), background_color: None, underline: None, strikethrough: None, size: None }]);
+        let link = style::c(p.syntax(olo_theme::Syntax::Link));
+        let ranges: Vec<Range<usize>> = self.links.iter().map(|l| l.range.clone()).collect();
+        let runs = marked(runs, &ranges, |r| r.color = link);
         if self.selected.is_empty() {
             return runs;
         }
@@ -153,25 +205,54 @@ impl TextView {
         } else {
             0.55
         });
-        // Split the runs where the selection starts and ends.
-        let mut out = Vec::with_capacity(runs.len() + 2);
-        let mut at = 0;
-        for r in runs.drain(..) {
-            let (a, b) = (at, at + r.len);
-            at = b;
-            let cuts = [a, self.selected.start.clamp(a, b), self.selected.end.clamp(a, b), b];
-            for w in cuts.windows(2) {
-                if w[1] > w[0] {
-                    let inside = w[0] >= self.selected.start && w[1] <= self.selected.end;
-                    out.push(TextRun { len: w[1] - w[0], background_color: if inside { Some(sel) } else { r.background_color }, ..r.clone() });
+        // (A link selected is in the text's colour: the link's on the
+        // selection read poorly, Codex's look.)
+        let text = style::c(p.document_text);
+        marked(runs, std::slice::from_ref(&self.selected), |r| {
+            r.background_color = Some(sel);
+            if r.color == link {
+                r.color = text;
+            }
+        })
+    }
+
+    /// Its links as the text element takes them: the one under the
+    /// pointer underlined.
+    fn text_links(&self) -> Vec<TextLink> {
+        let link = style::c(theme::palette().syntax(olo_theme::Syntax::Link));
+        self.links.iter().enumerate().map(|(i, l)| TextLink { range: l.range.clone(), target: l.target.clone().into(), underline: (self.hovered == Some(i)).then_some(link) }).collect()
+    }
+
+    /// Its context menu, on its link `on` (Open Link, Copy Link) or not.
+    fn context_menu(&mut self, e: &MouseDownEvent, cx: &mut Cx<Self>) {
+        let on = self.link_at(e.position, cx);
+        let any = !self.selected.is_empty();
+        let mut m = Menu::new("");
+        if on.is_some() {
+            m = m.item("Open Link", "open-link").item("Copy Link", "copy-link").separator();
+        }
+        let m = m.item("Copy", "copy").enabled(any).keys("⌘C").item("Select All", "select-all").keys("⌘A");
+        let chosen = cx.listener(move |v: &mut Self, cmd: &str, cx| match cmd {
+            "open-link" => {
+                if let Some(l) = on.and_then(|i| v.links.get(i)) {
+                    links::open(l);
                 }
             }
-        }
-        out
+            "copy-link" => {
+                if let Some(l) = on.and_then(|i| v.links.get(i)) {
+                    copy(l.copied(&v.text));
+                }
+            }
+            "copy" => copy(v.selected_text().to_owned()),
+            "select-all" => v.select_all(cx),
+            _ => {}
+        });
+        menu::context_menu(cx, m, e.position, chosen);
     }
 
     fn mouse_down(&mut self, e: &MouseDownEvent, cx: &mut Cx<Self>) {
         let at = cx.text_index_at(e.position).unwrap_or(0);
+        self.pressed = if e.click_count == 1 && !e.modifiers.shift { self.link_at(e.position, cx) } else { None };
         self.focus.focus(cx);
         if e.click_count == 2 {
             self.selected = self.word_at(at);
@@ -189,6 +270,12 @@ impl TextView {
 
     fn mouse_move(&mut self, e: &MouseMoveEvent, cx: &mut Cx<Self>) {
         if e.pressed_button != Some(MouseButton::Left) {
+            // (Only a text with links hears moves without a button.)
+            let on = self.link_at(e.position, cx);
+            if on != self.hovered {
+                self.hovered = on;
+                cx.notify();
+            }
             return;
         }
         let (Some(from), Some(at)) = (self.anchor, cx.text_index_at(e.position)) else { return };
@@ -198,6 +285,48 @@ impl TextView {
             cx.notify();
         }
     }
+
+    fn mouse_up(&mut self, e: &MouseUpEvent, cx: &mut Cx<Self>) {
+        self.anchor = None;
+        // A press and a release on the same link, nothing dragged: it
+        // opens.
+        if let Some(i) = self.pressed.take()
+            && self.selected.is_empty()
+            && self.link_at(e.position, cx) == Some(i)
+        {
+            links::open(&self.links[i]);
+        }
+    }
+}
+
+/// `runs` cut where `ranges` (in order, apart) start and end, `mark` done
+/// to the pieces inside them: one pass over both.
+fn marked(runs: Vec<TextRun>, ranges: &[Range<usize>], mark: impl Fn(&mut TextRun)) -> Vec<TextRun> {
+    if ranges.is_empty() {
+        return runs;
+    }
+    let mut out = Vec::with_capacity(runs.len() + 2 * ranges.len());
+    let (mut at, mut next) = (0, 0);
+    for r in runs {
+        let end = at + r.len;
+        while at < end {
+            while ranges.get(next).is_some_and(|m| m.end <= at) {
+                next += 1;
+            }
+            let (to, inside) = match ranges.get(next) {
+                Some(m) if m.start <= at => (m.end.min(end), true),
+                Some(m) => (m.start.min(end), false),
+                None => (end, false),
+            };
+            let mut piece = TextRun { len: to - at, ..r.clone() };
+            if inside {
+                mark(&mut piece);
+            }
+            out.push(piece);
+            at = to;
+        }
+    }
+    out
 }
 
 /// The word around byte `at` of `t`.
@@ -218,7 +347,7 @@ impl View for TextView {
         let size = if self.mono { style::MONO_SIZE } else { style::PLAIN_SIZE };
         // (The view says what it is to agents: its text isn't a label
         // too.)
-        let styled = styled_text(self.text.clone(), self.shown_runs(focused)).unlabelled();
+        let styled = styled_text(self.text.clone(), self.shown_runs(focused)).unlabelled().links(self.text_links());
         let body = div()
             .px(px(MARGIN_X))
             .py(px(MARGIN_Y))
@@ -229,10 +358,18 @@ impl View for TextView {
             .cursor_text()
             .child(styled)
             .on_mouse_down(MouseButton::Left, cx.listener(Self::mouse_down))
-            // (A selection dragged: only with the button held.)
-            .moves_matter_while_pressed()
             .on_mouse_move(cx.listener(Self::mouse_move))
-            .on_mouse_up(MouseButton::Left, cx.listener(|v: &mut Self, _, _| v.anchor = None));
+            .on_mouse_up(MouseButton::Left, cx.listener(Self::mouse_up))
+            // (The pointer gone, from the view or the window: its link is
+            // no longer under it.)
+            .on_hover(cx.listener(|v: &mut Self, inside: &bool, cx| {
+                if !*inside && v.hovered.take().is_some() {
+                    cx.notify();
+                }
+            }));
+        // (A selection dragged: only with the button held; a link under
+        // the pointer, without.)
+        let body = if self.links.is_empty() { body.moves_matter_while_pressed() } else { body };
 
         // The note while empty, and what agents read.
         let (empty, text, auto_hide) = (self.empty.clone(), self.text.clone(), self.auto_hide);
@@ -273,19 +410,7 @@ impl View for TextView {
                 }
                 cx.stop_propagation();
             }))
-            .on_mouse_down(
-                MouseButton::Right,
-                cx.listener(|v: &mut Self, e: &MouseDownEvent, cx| {
-                    let any = !v.selected.is_empty();
-                    let m = Menu::new("").item("Copy", "copy").enabled(any).keys("⌘C").item("Select All", "select-all").keys("⌘A");
-                    let chosen = cx.listener(|v: &mut Self, cmd: &str, cx| match cmd {
-                        "copy" => copy(v.selected_text().to_owned()),
-                        "select-all" => v.select_all(cx),
-                        _ => {}
-                    });
-                    menu::context_menu(cx, m, e.position, chosen);
-                }),
-            )
+            .on_mouse_down(MouseButton::Right, cx.listener(Self::context_menu))
             .child(ScrollView::new(&self.scroll).auto_hide(self.auto_hide).focused(focused).background(p.document_background).child(body).into_element())
             .child(note)
     }
@@ -293,9 +418,25 @@ impl View for TextView {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn words_are_found() {
         let t = "error: quota_left 429 reached";
         assert_eq!(&t[super::word_at(t, 9)], "quota_left");
+    }
+
+    /// Links and a selection marked over a text's runs: cut where they
+    /// start and end, nothing else changed.
+    #[test]
+    fn runs_marked() {
+        let run = |len, color| TextRun { len, font: style::ui_font(FontWeight::NORMAL), color, background_color: None, underline: None, strikethrough: None, size: None };
+        let (a, b, x) = (olo_interface::black(), olo_interface::white(), olo_interface::red());
+        let runs = vec![run(10, a), run(10, b)];
+        let out = marked(runs.clone(), &[2..4, 8..13, 19..20], |r| r.color = x);
+        let got: Vec<(usize, bool)> = out.iter().map(|r| (r.len, r.color == x)).collect();
+        assert_eq!(got, [(2, false), (2, true), (4, false), (2, true), (3, true), (6, false), (1, true)]);
+        assert_eq!(out.iter().map(|r| r.len).sum::<usize>(), 20);
+        assert_eq!(marked(runs.clone(), &[], |r| r.color = x), runs);
     }
 }

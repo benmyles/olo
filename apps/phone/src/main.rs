@@ -32,6 +32,7 @@ const USAGE: &str = "usage: olo-phone [COMMAND]
   (nothing)                   Phone, the app: the conversations and the
                               contacts in a window
   --open WHO                  the app, at a conversation (its key or name)
+  tel:NUMBER                  the app, at the number's card (Call calls it)
   --status [--json]           the phone: paired, connected, its battery,
                               how many conversations and unread messages
   --conversations [--json]    the conversations, the latest first
@@ -81,6 +82,8 @@ fn main() -> ExitCode {
     let rest = |i: usize| args.get(i..).map(|a| a.join(" ")).unwrap_or_default();
     match arg(0).as_str() {
         "" | "--open" => app(&args),
+        // A `tel:` link opened (a number in an event's notes): its card.
+        a if a.get(..4).is_some_and(|t| t.eq_ignore_ascii_case("tel:")) => app(&args),
         "--status" => status(json),
         "--conversations" => conversations(|all| {
             if json {
@@ -331,7 +334,7 @@ fn app(args: &[String]) -> ExitCode {
         let tell = |window: &olo_kit::WindowHandle<window::Phone>, args: Vec<String>| {
             window.update(move |v, cx| olo_kit::View::message(v, window::Msg::Launch(args), cx));
         };
-        if first.iter().any(|a| a == "--open") {
+        if first.iter().any(|a| a == "--open" || window::tel_number(a).is_some()) {
             tell(&window, first.clone());
         }
         let to = window.clone();

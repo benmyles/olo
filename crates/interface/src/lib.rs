@@ -51,7 +51,9 @@ pub use asset_cache::*;
 pub use assets::*;
 pub use color::*;
 pub use elastic::*;
-pub use element::{AnyElement, ControlState, Element, ElementId, InteractiveElement, IntoElement, ParentElement, TextInputEvent, canvas, control_canvas, div, styled_text, uniform_rows, view_canvas};
+pub use element::{
+    AnyElement, ControlState, Element, ElementId, InteractiveElement, IntoElement, ParentElement, TextInputEvent, TextLink, canvas, control_canvas, div, styled_text, uniform_rows, view_canvas,
+};
 pub(crate) use executor::*;
 pub use geometry::*;
 pub use interactive::*;

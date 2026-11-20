@@ -126,6 +126,36 @@ impl WrappedLine {
         Ok(())
     }
 
+    /// Olo: where bytes `range` of the line show, a rectangle for each row
+    /// they're on (the line's top-left at `origin`), placed as `paint`
+    /// places its rows: a link's, for the pointer and agents.
+    pub fn range_rects(&self, origin: Point<Pixels>, line_height: Pixels, align: TextAlign, align_width: Option<Pixels>, range: std::ops::Range<usize>) -> SmallVec<[Bounds<Pixels>; 2]> {
+        let layout = &self.layout.unwrapped_layout;
+        let glyph_at = |b: &WrapBoundary| &layout.runs[b.run_ix].glyphs[b.glyph_ix];
+        let mut rects = SmallVec::new();
+        if range.is_empty() {
+            return rects;
+        }
+        let (mut row_start, mut row_x) = (0, px(0.));
+        for row in 0..=self.wrap_boundaries.len() {
+            let next = self.wrap_boundaries.get(row);
+            let row_end = next.map_or(layout.len, |b| glyph_at(b).index);
+            let (a, b) = (range.start.max(row_start), range.end.min(row_end));
+            if a < b {
+                let x = aligned_origin_x(origin, align_width.unwrap_or(layout.width), row_x, &align, layout, next.as_ref(), &self.text);
+                let (x0, x1) = (layout.x_for_index(a) - row_x, layout.x_for_index(b) - row_x);
+                rects.push(Bounds::new(point(x + x0, origin.y + line_height * row as f32), size(x1 - x0, line_height)));
+            }
+            if row_end >= range.end {
+                break;
+            }
+            if let Some(b) = next {
+                (row_start, row_x) = (glyph_at(b).index, glyph_at(b).position.x);
+            }
+        }
+        rects
+    }
+
     /// Paint the background of line of text to the p.
     pub fn paint_background(&self, origin: Point<Pixels>, line_height: Pixels, align: TextAlign, bounds: Option<Bounds<Pixels>>, p: &mut Painter) -> Result<()> {
         let align_width = match bounds {

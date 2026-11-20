@@ -44,6 +44,7 @@ pub struct Measuring<'a> {
 pub(crate) struct TextNode {
     pub(crate) text: SharedString,
     pub(crate) runs: Option<Vec<TextRun>>,
+    pub(crate) links: Vec<crate::TextLink>,
     pub(crate) laid: Option<TextLaid>,
 }
 
@@ -205,7 +206,7 @@ impl WindowCore {
         }
         let kind = match kind {
             Kind::Group | Kind::View(_) => NodeKind::Group,
-            Kind::Text(spec) => NodeKind::Text(TextNode { text: spec.text, runs: spec.runs, laid: None }),
+            Kind::Text(spec) => NodeKind::Text(TextNode { text: spec.text, runs: spec.runs, links: spec.links, laid: None }),
             Kind::Canvas(spec) => NodeKind::Canvas(spec),
         };
         let measured = match &kind {
@@ -436,6 +437,11 @@ impl WindowCore {
                         text_changed = true;
                         repaint = true;
                     }
+                    // (Links laid over it: drawn again, not laid out.)
+                    if text.links != spec.links {
+                        text.links = spec.links;
+                        repaint = true;
+                    }
                 }
                 (NodeKind::Canvas(canvas), Kind::Canvas(spec)) => {
                     let same = canvas.key.is_some() && canvas.key == spec.key;
@@ -452,7 +458,7 @@ impl WindowCore {
                 (_, new) => {
                     let (kind, measured) = match new {
                         Kind::Group | Kind::View(_) => (NodeKind::Group, false),
-                        Kind::Text(spec) => (NodeKind::Text(TextNode { text: spec.text, runs: spec.runs, laid: None }), true),
+                        Kind::Text(spec) => (NodeKind::Text(TextNode { text: spec.text, runs: spec.runs, links: spec.links, laid: None }), true),
                         Kind::Canvas(spec) => {
                             let measured = spec.measure.is_some();
                             (NodeKind::Canvas(spec), measured)
@@ -1012,6 +1018,9 @@ fn paint_text(text: &TextNode, bounds: Bounds<Pixels>, p: &mut Painter, labelled
         let _ = line.paint(origin, laid.line_height, laid.align, Some(bounds), p);
         origin.y += line.size(laid.line_height).height;
     }
+    if !text.links.is_empty() {
+        paint_links(text, laid, bounds, p);
+    }
     // What agents read: its text, where it is; whole, if it's cut
     // short here.
     if labelled && !text.text.trim().is_empty() {
@@ -1020,6 +1029,60 @@ fn paint_text(text: &TextNode, bounds: Bounds<Pixels>, p: &mut Painter, labelled
             p.note_cut(text.text.clone(), bounds);
         }
     }
+}
+
+/// A text's links where they show (`Element::links`): the pointer a hand
+/// over each, each told to agents, the underlined ones underlined.
+fn paint_links(text: &TextNode, laid: &TextLaid, bounds: Bounds<Pixels>, p: &mut Painter) {
+    let s = p.scale_factor();
+    let device = |v: Pixels| px((f32::from(v) * s).round() / s);
+    let (mut top, mut start) = (bounds.origin.y, 0);
+    let mut links = text.links.iter().peekable();
+    for line in &laid.lines {
+        let end = start + line.len();
+        // (A line's links: those that start in it; one going on past its
+        // end, which no link found in a text does, is cut there.)
+        while let Some(link) = links.next_if(|l| l.range.start <= end) {
+            let range = link.range.start.max(start) - start..link.range.end.min(end).max(link.range.start.max(start)) - start;
+            let rects = line.range_rects(point(bounds.origin.x, top), laid.line_height, laid.align, Some(bounds.size.width), range.clone());
+            let Some(widest) = rects.iter().copied().max_by(|a, b| f32::from(a.size.width).total_cmp(&f32::from(b.size.width))) else { continue };
+            for r in &rects {
+                p.set_cursor_style(crate::CursorStyle::PointingHand, *r);
+                if let Some(color) = link.underline {
+                    // (A device pixel under its baseline, a device pixel
+                    // thick, on the device's pixels.)
+                    let baseline = r.origin.y + (laid.line_height - line.unwrapped_layout.ascent - line.unwrapped_layout.descent) / 2. + line.unwrapped_layout.ascent;
+                    let y = device(baseline) + px(1.0 / s);
+                    let (x0, x1) = (device(r.origin.x), device(r.origin.x + r.size.width));
+                    p.paint_quad(crate::fill(Bounds::from_corners(point(x0, y), point(x1, y + px(1.0 / s))), color));
+                }
+            }
+            let words = text.text.get(link.range.clone()).unwrap_or("").to_owned();
+            p.agent(crate::agent::Node { role: "Link", name: Some(words.into()), value: Some(link.target.clone()), bounds: widest, enabled: true, clickable: true, ..Default::default() });
+        }
+        top += line.size(laid.line_height).height;
+        start = end + 1;
+    }
+}
+
+/// The byte of the character under `position` (from the text's own
+/// corner), if it's over one: where a click on a link lands (beside a
+/// line's end, or under the last, it's on none).
+pub(crate) fn text_hit_at(laid: &TextLaid, position: Point<Pixels>) -> Option<usize> {
+    let (mut line_top, mut line_start) = (px(0.), 0);
+    for line in &laid.lines {
+        let line_bottom = line_top + line.size(laid.line_height).height;
+        if position.y >= line_bottom {
+            line_top = line_bottom;
+            line_start += line.len() + 1;
+            continue;
+        }
+        if position.y < line_top || position.x < px(0.) {
+            return None;
+        }
+        return line.index_for_position(point(position.x, position.y - line_top), laid.line_height).ok().map(|i| line_start + i);
+    }
+    None
 }
 
 /// The byte of a laid-out text nearest `position` (from the text's own
