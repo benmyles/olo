@@ -282,6 +282,15 @@ something nobody here has is in "Blocked", with what it waits for.
   (in the kache repository, docs/getting-started/configuration.mdx,
   storage). Another agent works on kache in a worktree of its own
   (branch `kache`): see what it has done first.
+  **Done** (2026-11-19): the Store card's figure is what kache's budget
+  counts, as its trigger counts it (its registered blob bytes less what
+  its last sweep found held, for six hours, unless
+  `count_held_in_max_size`), red only past the 110% kache lets it
+  float to; Slowest compiles ranked by what a crate's misses took
+  together. **Left**: incremental builds a category of their own in
+  Builds: kache's log names them only by its passthrough reasons
+  (`adaptive seed`, `adaptive active`, `automatic worktree seed`),
+  counted among "Couldn't be cached" now.
 
 - **Links in Calendar's event notes found and made clickable** (Ben,
   2026-11-19, with a picture of an event's notes holding a meeting's

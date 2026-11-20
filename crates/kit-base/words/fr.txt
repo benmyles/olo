@@ -10865,6 +10865,9 @@ une sauvegarde
 a backup and the unfinished one
 une sauvegarde et l’inachevée
 
+a crate's misses together, the last 24 hours
+les échecs d'une crate cumulés, dernières 24 heures
+
 a day ago
 il y a un jour
 

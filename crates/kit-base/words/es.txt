@@ -10865,6 +10865,9 @@ una copia
 a backup and the unfinished one
 una copia y la sin terminar
 
+a crate's misses together, the last 24 hours
+los fallos de cada crate sumados, últimas 24 horas
+
 a day ago
 hace un día
 

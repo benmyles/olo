@@ -10865,6 +10865,9 @@ eine Sicherung
 a backup and the unfinished one
 eine Sicherung und die unfertige
 
+a crate's misses together, the last 24 hours
+die Fehltreffer eines Crates zusammen, die letzten 24 Stunden
+
 a day ago
 vor einem Tag
 

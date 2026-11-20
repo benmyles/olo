@@ -444,24 +444,33 @@ impl Kache {
         // The store and the day, side by side.
         let store = match &snap.daemon {
             Some(d) => {
-                let mut facts: Vec<(olo_kit::SharedString, olo_kit::SharedString)> =
-                    vec![(olo_kit::words::tr("On disk").into(), data::bytes(d.disk).into()), ("Entries".into(), style::thousands(d.entries as usize).into())];
+                let mut facts: Vec<(olo_kit::SharedString, olo_kit::SharedString)> = vec![(olo_kit::words::tr("On disk").into(), data::bytes(d.disk).into())];
+                // (What builds' target folders still share, which no clean-up
+                // takes: as kache's last sweep found it while kache counts on
+                // it, else as its last clean-up did. Beside what's on disk:
+                // the figure is the one less the other.)
+                if let Some(held) = snap.held_now.or_else(|| snap.cleanup.as_ref().and_then(|c| c.held)) {
+                    facts.push((olo_kit::words::tr("Held by builds").into(), data::bytes(held).into()));
+                }
+                facts.push(("Entries".into(), style::thousands(d.entries as usize).into()));
                 if let Some(c) = &snap.cleanup {
-                    // (What builds' target folders still share: no clean-up
-                    // takes it. Known only from a clean-up that looked.)
-                    if let Some(held) = c.held {
-                        facts.push((olo_kit::words::tr("Held by builds").into(), data::bytes(held).into()));
-                    }
                     if c.at_ms > 0 {
                         let when = olo_kit::ago::ago_ms(c.at_ms, olo_kit::ago::long);
                         let freed = if c.freed > 0 { olo_kit::tr!("{} freed", data::bytes(c.freed)) } else { olo_kit::words::tr("nothing freed").to_owned() };
                         facts.push((olo_kit::words::tr("Last clean-up").into(), format!("{when}, {freed}").into()));
                     }
                 }
-                let over = d.limit > 0 && d.size > d.limit;
+                // What kache's limit counts, as kache counts it: the bytes its
+                // store registers less what builds still hold (kache's own
+                // trigger; every entry's own size, 486 GB, was shown red
+                // against a 322 GB limit the store was under: a study of
+                // kache's misses, 2026-11-19), over it only past the 110%
+                // kache lets it float to.
+                let counted = data::budgeted(d.disk, snap.held_now, snap.counts_held);
+                let over = data::sweep_due(counted, d.limit);
                 let caption =
                     if d.limit > 0 { if over { olo_kit::tr!("of a {} limit: over it", data::bytes(d.limit)) } else { olo_kit::tr!("of a {} limit", data::bytes(d.limit)) } } else { String::new() };
-                let mut card = Card::new("kache-store", "Store").figure(data::bytes(d.size)).caption(caption);
+                let mut card = Card::new("kache-store", "Store").figure(data::bytes(counted)).caption(caption);
                 if over {
                     card = card.figure_ink(style::c(theme::palette().failure));
                 }
@@ -588,7 +597,7 @@ impl Kache {
                 .flex_shrink_0()
                 .gap(px(m::SPACING))
                 .child(div().min_w_0().child(Card::new("kache-projects", "Projects").caption("built most, the last 24 hours").child(Facts::new(projects))))
-                .child(div().min_w_0().child(Card::new("kache-slowest", "Slowest compiles").caption("misses, the last 24 hours").child(Facts::new(slowest))))
+                .child(div().min_w_0().child(Card::new("kache-slowest", "Slowest compiles").caption("a crate's misses together, the last 24 hours").child(Facts::new(slowest))))
                 .child(div().min_w_0().child(Card::new("kache-causes", "Why misses missed").caption("the last 24 hours").child(Facts::new(causes))))
         });
         // A crate and what came of it side by side, however narrow the

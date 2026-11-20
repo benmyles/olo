@@ -265,6 +265,37 @@ pub struct Snapshot {
     pub pool: Option<Pool>,
     /// Tests holding the pool's slots.
     pub held: Vec<crate::held::Held>,
+    /// What its last automatic sweep found builds' target folders hold, while
+    /// kache still counts on it (`auto-gc-backoff.json`, six hours), and
+    /// whether its budget counts that too (`count_held_in_max_size`).
+    pub held_now: Option<u64>,
+    pub counts_held: bool,
+}
+
+/// How long kache's trigger takes a sweep's held bytes as still held
+/// (its `AUTO_GC_HELD_TTL`).
+const HELD_COUNTED_FOR_MS: u64 = 6 * 3_600_000;
+
+/// What kache's size budget counts of a store that registers `blobs`
+/// bytes (`blob_stats.total_blob_size`): all of it less what builds still
+/// hold (`held_now`), unless it counts that too, as its trigger does
+/// (kache's configuration docs, "storage"; `auto_gc_due_at`).
+pub fn budgeted(blobs: u64, held_now: Option<u64>, counts_held: bool) -> u64 {
+    if counts_held { blobs } else { blobs.saturating_sub(held_now.unwrap_or(0)) }
+}
+
+/// Whether a sweep is due: what's budgeted is past 110% of the limit
+/// (kache lets the store float above it by that much: `auto_gc_threshold`).
+pub fn sweep_due(budgeted: u64, limit: u64) -> bool {
+    limit > 0 && budgeted > limit.saturating_add(limit / 100 * 10)
+}
+
+/// The held bytes of kache's last automatic sweep (`auto-gc-backoff.json`:
+/// `since` in seconds, `held`), while it still counts on them at `now`.
+fn held_now(dir: &std::path::Path, now: u64) -> Option<u64> {
+    let v: Value = serde_json::from_slice(&std::fs::read(dir.join("auto-gc-backoff.json")).ok()?).ok()?;
+    let since_ms = v["since"].as_u64()?.saturating_mul(1000);
+    (now < since_ms.saturating_add(HELD_COUNTED_FOR_MS)).then(|| v["held"].as_u64()).flatten()
 }
 
 /// The builds kept to list.
@@ -290,7 +321,9 @@ pub fn read() -> Snapshot {
     let permits = settings_at(&config_path(), "scheduler_permits").and_then(|v| v.parse().ok());
     let pool = pool(&dir, permits);
     let held = crate::held::held(&dir);
-    Snapshot { unit, daemon, cleanup, day, recent, pool, held }
+    let held_now = held_now(&dir, now);
+    let counts_held = settings_at(&config_path(), "count_held_in_max_size").is_some_and(|v| v.trim() == "true");
+    Snapshot { unit, daemon, cleanup, day, recent, pool, held, held_now, counts_held }
 }
 
 /// The live build log, read as it grows: what was read is kept, and each
@@ -503,9 +536,10 @@ pub fn day_of(events: &[Event], now: u64) -> Day {
             None => projects.entry(name.to_owned()).or_insert_with(|| Tally { name: name.to_owned(), ..Tally::default() }),
         };
         *[&mut t.hits, &mut t.misses, &mut t.others][k] += 1;
+        // (Ranked by what a crate's misses took together: one compiled
+        // twenty times a day costs more than the slowest once.)
         if k == 1 {
-            let ms = slowest.entry(e.crate_name.as_str()).or_insert(0);
-            *ms = (*ms).max(e.elapsed_ms);
+            *slowest.entry(e.crate_name.as_str()).or_insert(0) += e.elapsed_ms;
         }
     }
     let mut projects: Vec<Tally> = projects.into_values().collect();
@@ -698,7 +732,7 @@ pub fn size_bytes(v: &str) -> Option<u64> {
 fn settings_at(path: &std::path::Path, key: &str) -> Option<String> {
     let doc = std::fs::read_to_string(path).ok()?.parse::<toml_edit::DocumentMut>().ok()?;
     let item = doc.get("cache")?.get(key)?;
-    item.as_str().map(str::to_owned).or_else(|| item.as_integer().map(|i| i.to_string()))
+    item.as_str().map(str::to_owned).or_else(|| item.as_integer().map(|i| i.to_string())).or_else(|| item.as_bool().map(|b| b.to_string()))
 }
 
 /// Each setting's value in the file (None: not set, kache's own).
@@ -824,12 +858,58 @@ pub fn made_up(now: u64) -> Snapshot {
     let cleanup = Cleanup { at_ms: now - 40 * 60_000, freed: 19_702_859_847, held: Some(41_000_000_000), unreclaimable: 512 };
     let pool = Pool { size: 16, compiles: 5, tests: 4, waiting: 2 };
     let held = vec![crate::held::Held { pid: 41_002, name: "olo_kit".into(), project: "olo".into(), slots: 4, since_ms: now - 3 * 60_000 }];
-    Snapshot { unit: Some(unit), daemon: Some(daemon), cleanup: Some(cleanup), day, recent: events.into_iter().rev().take(RECENT).collect(), pool: Some(pool), held }
+    Snapshot {
+        unit: Some(unit),
+        daemon: Some(daemon),
+        cleanup: Some(cleanup),
+        day,
+        recent: events.into_iter().rev().take(RECENT).collect(),
+        pool: Some(pool),
+        held,
+        held_now: Some(41_000_000_000),
+        counts_held: false,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The Store card shows what kache's budget counts, as its trigger
+    /// counts it (the study's numbers: 418 GB of blobs, 118 GB of it held
+    /// by builds, a 322 GB limit: 300 GB counted, under it, where every
+    /// entry's own 486 GB was shown over it), over only past 110%.
+    #[test]
+    fn the_store_as_its_budget_counts_it() {
+        const G: u64 = 1_000_000_000;
+        assert_eq!(budgeted(418 * G, Some(118 * G), false), 300 * G);
+        assert!(!sweep_due(300 * G, 322 * G));
+        // Held bytes kache no longer counts on, or a budget counting them.
+        assert!(sweep_due(budgeted(418 * G, None, false), 322 * G));
+        assert_eq!(budgeted(418 * G, Some(118 * G), true), 418 * G);
+        // Over the limit but within the 10% kache lets it float.
+        assert!(!sweep_due(340 * G, 322 * G) && sweep_due(355 * G, 322 * G));
+        assert!(!sweep_due(5 * G, 0));
+        // Its last sweep's held bytes: counted on for six hours.
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-kache-budget-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let now = now_ms();
+        std::fs::write(dir.join("auto-gc-backoff.json"), serde_json::json!({"since": (now - 3_600_000) / 1000, "interval_secs": 0, "size_after": 418 * G, "held": 118 * G}).to_string()).unwrap();
+        assert_eq!(held_now(&dir, now), Some(118 * G));
+        assert_eq!(held_now(&dir, now + 6 * 3_600_000), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The slowest compiles are the crates whose misses took longest
+    /// together, not the slowest once.
+    #[test]
+    fn slowest_by_what_its_misses_took() {
+        let now = now_ms();
+        let miss = |name: &str, ms: u64| Event { at_ms: now - 60_000, crate_name: name.into(), result: "miss".into(), elapsed_ms: ms, ..Event::default() };
+        let events = vec![miss("once", 9_000), miss("often", 4_000), miss("often", 4_000), miss("often", 4_000)];
+        let d = day_of(&events, now);
+        assert_eq!(d.slowest, [("often".to_owned(), 12_000), ("once".to_owned(), 9_000)]);
+    }
 
     /// A test's folder on disk, removed however the test ends (a failed
     /// one left `/var/tmp/olo-kache-pool-PID` behind, 2026-11-15).
