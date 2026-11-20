@@ -14572,6 +14572,63 @@ as root, shows what each program really asks the driver for):
 - `OLO_REALTIME=1` on a headless one asks High as the person's does,
   to measure.
 
+**One Vulkan driver, handed to the loader** (vendor/blade-graphics,
+`vulkan/direct.rs`; Olo's change to it). The Vulkan loader finds its
+drivers by loading every one installed and asking each what it has:
+on a desktop with Mesa a dozen libraries, and NVIDIA's where its
+driver is installed, which wakes its card to answer (2.3 s a start on
+a ThinkPad P1 Gen 9 whose card slept, 2026-11-04, and the card kept
+awake for a GPU the program never draws with). Olo first kept
+NVIDIA's out with the loader's own variable, set while the context is
+made (`VK_LOADER_DRIVERS_DISABLE`), where there was a DRM card of
+NVIDIA's beside another. That told NVIDIA's card by its DRM card, and
+on 2026-11-20, with its display module stuck unloading and that card
+gone, every program loaded NVIDIA's driver again, for a card that no
+longer answered: a window 684 ms after its program started, and the
+kit's tests crashed in NVIDIA's library as they exited.
+
+A program is given the one driver of the GPU it draws on instead, the
+one the computer started on (the device the renderer always took
+first), which depends on nothing else that is installed: its kernel
+driver read from sysfs (`boot_driver`: the card whose device says
+`boot_vga`, or the only card), the Vulkan driver's library for it
+found in the loader's own manifests (`libraries_of`, `installed`:
+Mesa's by kernel driver; two for i915, where the GPU's generation
+decides and each driver knows its own; not NVIDIA's own driver,
+untried on a computer that draws with it: there the loader does as it
+always did), loaded, and handed to the loader with
+`VK_LUNARG_direct_driver_loading`, exclusively: the loader then loads
+no other. What the driver has is asked of the driver (the loader
+can't say before the instance exists, and asking the loader is what
+loads every driver). It steps aside, and the loader does as it always
+did, wherever that isn't plainly right: a loader variable that
+chooses drivers is set (`VK_LOADER_DRIVERS_SELECT` and the like: a
+test session's lavapipe, a person's own choice, which an exclusive
+list would override), the person asked for NVIDIA
+(`__NV_PRIME_RENDER_OFFLOAD`), `OLO_VULKAN_DRIVERS=all`, a device
+forced by its id, no one GPU the computer started on, a kernel driver
+not in the table, no manifest for it, a library that won't load; and
+`Context::init` goes the ordinary way if the instance made so can't
+be made or has no device it can use (an instance with no usable
+device is destroyed now, not left behind). The ordinary way still
+leaves NVIDIA's out beside another GPU (`nvidia_aside`, the older
+filter, moved into the renderer), and now knows NVIDIA's card from
+the PCI bus, whatever became of its DRM card. The log says which way
+was gone ("Vulkan: libvulkan_intel.so alone, handed to the loader
+directly").
+
+Measured (2026-11-20, release builds, a test session on the GPU, ten
+starts each, the two builds in turn, a load of 18; the build before
+with NVIDIA's driver left out, as it was on a healthy computer):
+DeskCalc's window is shown 23 ms after it starts where it took 55
+(the least 20 where 47), StyledEdit's 30 where 58; a program has 3 MB
+less of its own written to (10 and 13 MB where 13 and 16) and 28 MB
+less resident, lavapipe and LLVM no longer mapped beside the driver
+in use (shared between programs, so each one's share is as it was);
+a start's processor time is as it was. Against the state of that
+afternoon, NVIDIA's driver loaded for a dead card: 71 and 49 ms
+where 684 and 339.
+
 **Groups' weights.** The processor is shared between sibling cgroups by
 weight first. Fedora's uresourced raises the active user's manager
 (`user@UID.service`, where GNOME's shell runs) to 500; Olo runs in

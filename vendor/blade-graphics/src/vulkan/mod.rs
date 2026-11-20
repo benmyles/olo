@@ -6,6 +6,8 @@ use std::{mem, num::NonZeroU32, path::PathBuf, ptr, sync::Mutex};
 
 mod command;
 mod descriptor;
+#[cfg(target_os = "linux")]
+mod direct;
 mod init;
 mod pipeline;
 mod resource;

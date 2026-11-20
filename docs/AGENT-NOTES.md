@@ -1188,6 +1188,48 @@ Learned on the second pass (2026-11-20):
   computer to list devices (thirteen libraries here, NVIDIA's waking
   its card each time). A crash "at exit" in a test with all tests
   passed: `coredumpctl info PID` and look at every thread.
+- **Writing "on" to a device's `power/control` wakes it.** It is the
+  kernel's `pm_runtime_forbid`: it resumes the device then and there
+  (a sleeping one is woken, one in the middle of suspending is waited
+  for without limit). There is no way from user space to keep a
+  device from suspending without that (`pm_qos_resume_latency_us`
+  set to "n/a" forbids the next suspend without a resume, where a
+  device has the file: PCI cards mostly don't). Reading
+  `runtime_status` first proves nothing: it can change before the
+  write. Found by Astra's review of a hold I had committed
+  (2026-11-20), reproduced in a guest with a USB hub.
+- **Look for what Olo already does before saying what it doesn't**
+  (the same day): I told Ben that Olo's programs woke the NVIDIA
+  card by loading its Vulkan driver at every start, and built on
+  it; Olo had kept that driver out since 2026-11-04 (`asleep_aside`,
+  the interface kit's), and it failed only in that afternoon's
+  state. `grep -rn` the names of the thing (the loader's variables,
+  the driver's name) across `crates/` and `apps/` before proposing
+  a mechanism, and say "not traced" until it is.
+- **A review at max effort before anything that touches a driver, a
+  kernel interface or memory is relied on** (Ben, 2026-11-20: "very
+  important so that there are no mistakes"): `tools/dev/codex-help`
+  with a brief that names the commits, asks for the kernel's source
+  behind each claim, and asks plainly whether each is safe to run.
+  It found a hold that woke what it was to protect, a finding that
+  said "stuck" at one glance, three claims in commit messages that
+  weren't shown, and a spin in a root service that had been there for days. Nothing
+  reviewed so is pushed before its findings are
+  dealt with.
+- **A kit program loads one Vulkan driver** (the GPU's the computer
+  started on, handed to the loader: HACKING, "One Vulkan driver,
+  handed to the loader"). To have the loader ask every driver again,
+  as before 2026-11-20 (to tell a fault of this from a driver's):
+  `OLO_VULKAN_DRIVERS=all`, or any of the loader's own variables
+  (`VK_LOADER_DRIVERS_SELECT=…`, which is how a test session gets
+  lavapipe). Which it did is in the program's log ("Vulkan: … alone,
+  handed to the loader directly"), and in what it has mapped (`grep
+  vulkan_ /proc/PID/maps`: one library, not a dozen).
+- **Measuring a program's start**: /var/tmp/claude-blueferry/vk/starts.py
+  was the way (two builds in turn in one `TSESSION_GPU=1` session:
+  time to the window in app_server's list, memory from
+  `smaps_rollup`, processor time); worth a tool of its own under
+  tools/dev the next time it's needed.
 - **Every `sudo` a tool runs is asked of the person's Terminal**, and
   until auto-approval starts nothing first (TODO) each one runs the
   face camera for a few seconds: one `sudo sh -c '…'` or one script

@@ -192,6 +192,11 @@ features = [
 [target.'cfg(any(vulkan, windows, target_os = "linux", target_os = "android", target_os = "freebsd"))'.dependencies.slab]
 version = "0.4"
 
+# (Olo: a Vulkan driver loaded here and handed to the loader,
+# src/vulkan/direct.rs.)
+[target.'cfg(target_os = "linux")'.dependencies.libloading]
+version = "0.8"
+
 [target.'cfg(target_os = "ios")'.dependencies.objc2-ui-kit]
 version = "0.3"
 features = [

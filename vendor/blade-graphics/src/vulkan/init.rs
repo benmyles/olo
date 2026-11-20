@@ -316,7 +316,44 @@ unsafe fn inspect_adapter(
 }
 
 impl super::Context {
+    /// (Olo: with the one driver of the GPU the computer started on
+    /// handed to the loader, where that is plainly right, `direct`; and
+    /// the ordinary way, every driver installed asked, where it isn't
+    /// or where that came to nothing. A device forced by its id may be
+    /// any driver's.)
     pub unsafe fn init(desc: crate::ContextDesc) -> Result<Self, NotSupportedError> {
+        #[cfg(target_os = "linux")]
+        if desc.device_id == 0 {
+            if let Some(drivers) = super::direct::find() {
+                let names = drivers.names.join(", ");
+                match Self::init_with(desc.clone(), Some(&drivers)) {
+                    Ok(context) => {
+                        log::info!("Vulkan: {names} alone, handed to the loader directly");
+                        return Ok(context);
+                    }
+                    Err(err) => {
+                        log::warn!(
+                            "Vulkan: with {names} alone: {err:?}; every driver asked instead"
+                        )
+                    }
+                }
+            }
+        }
+        // (Olo: the ordinary way, with NVIDIA's driver left out beside
+        // another GPU, `direct::nvidia_aside`; not where a device was
+        // asked for by its id, which may be NVIDIA's.)
+        #[cfg(target_os = "linux")]
+        let _aside = (desc.device_id == 0)
+            .then(super::direct::nvidia_aside)
+            .flatten();
+        Self::init_with(desc, None)
+    }
+
+    unsafe fn init_with(
+        desc: crate::ContextDesc,
+        #[cfg(target_os = "linux")] direct: Option<&super::direct::Drivers>,
+        #[cfg(not(target_os = "linux"))] direct: Option<&()>,
+    ) -> Result<Self, NotSupportedError> {
         let entry = match ash::Entry::load() {
             Ok(entry) => entry,
             Err(err) => {
@@ -362,18 +399,30 @@ impl super::Context {
             }
         }
 
-        let supported_instance_extension_properties =
-            match entry.enumerate_instance_extension_properties(None) {
+        // (Olo: of a driver handed over directly, what the driver says
+        // it has: the loader can't say before the instance exists, and
+        // asking it is what loads every driver installed.)
+        #[cfg(target_os = "linux")]
+        let direct_extensions = direct.map(|drivers| drivers.extensions());
+        #[cfg(not(target_os = "linux"))]
+        let direct_extensions: Option<Vec<&ffi::CStr>> = direct.map(|_| Vec::new());
+        let supported_instance_extension_properties = match direct_extensions {
+            Some(_) => Vec::new(),
+            None => match entry.enumerate_instance_extension_properties(None) {
                 Ok(extensions) => extensions,
                 Err(err) => {
                     log::error!("enumerate_instance_extension_properties: {:?}", err);
                     return Err(super::PlatformError::Init(err).into());
                 }
-            };
-        let supported_instance_extensions = supported_instance_extension_properties
-            .iter()
-            .map(|ext_prop| ffi::CStr::from_ptr(ext_prop.extension_name.as_ptr()))
-            .collect::<Vec<_>>();
+            },
+        };
+        let supported_instance_extensions = match direct_extensions {
+            Some(extensions) => extensions,
+            None => supported_instance_extension_properties
+                .iter()
+                .map(|ext_prop| ffi::CStr::from_ptr(ext_prop.extension_name.as_ptr()))
+                .collect::<Vec<_>>(),
+        };
 
         let core_instance = {
             let mut create_flags = vk::InstanceCreateFlags::empty();
@@ -422,6 +471,12 @@ impl super::Context {
                 create_flags |= vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR;
             }
 
+            // (Olo: the loader's own extension that takes the list.)
+            #[cfg(target_os = "linux")]
+            if direct.is_some() {
+                enabled_instance_extensions.push(vk::LUNARG_DIRECT_DRIVER_LOADING_NAME);
+            }
+
             let app_info = vk::ApplicationInfo::default()
                 .engine_name(ffi::CStr::from_bytes_with_nul(b"blade\0").unwrap())
                 .engine_version(1)
@@ -437,6 +492,13 @@ impl super::Context {
                 .flags(create_flags)
                 .enabled_layer_names(layer_strings)
                 .enabled_extension_names(extension_strings);
+            #[cfg(target_os = "linux")]
+            let mut direct_list = direct.map(|drivers| drivers.list());
+            #[cfg(target_os = "linux")]
+            let create_info = match direct_list.as_mut() {
+                Some(list) => create_info.push_next(list),
+                None => create_info,
+            };
             unsafe { entry.create_instance(&create_info, None) }
                 .map_err(super::PlatformError::Init)?
         };
@@ -462,16 +524,21 @@ impl super::Context {
                 core: core_instance,
             };
 
-        let physical_devices = instance
-            .core
-            .enumerate_physical_devices()
-            .map_err(super::PlatformError::Init)?;
-        let (physical_device, capabilities) = physical_devices
-            .into_iter()
-            .find_map(|phd| {
-                inspect_adapter(phd, &instance, driver_api_version, &desc).map(|caps| (phd, caps))
-            })
-            .ok_or_else(|| NotSupportedError::NoSupportedDeviceFound)?;
+        // (Olo: an instance with no device to use is given up, not
+        // left behind: there may be another try after it, `init`.)
+        let physical_devices = match instance.core.enumerate_physical_devices() {
+            Ok(devices) => devices,
+            Err(err) => {
+                instance.core.destroy_instance(None);
+                return Err(super::PlatformError::Init(err).into());
+            }
+        };
+        let Some((physical_device, capabilities)) = physical_devices.into_iter().find_map(|phd| {
+            inspect_adapter(phd, &instance, driver_api_version, &desc).map(|caps| (phd, caps))
+        }) else {
+            instance.core.destroy_instance(None);
+            return Err(NotSupportedError::NoSupportedDeviceFound);
+        };
 
         log::debug!("Adapter {:#?}", capabilities);
         let mut min_buffer_alignment = 1;

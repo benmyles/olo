@@ -221,16 +221,63 @@ something nobody here has is in "Blocked", with what it waits for.
   list of compilers, linkers and the like; a terminal's job busy for
   a minute) goes into a group of its own with no protection, an idle
   processor weight and a low disk weight; the desktop's group is
-  protected. **Now**: the design is with Astra at max
-  (/var/tmp/claude-blueferry/groups/brief.md: where the groups live
-  under logind's session scope or the user manager, what `memory.low`
-  really does under `memory_recursiveprot` and the multi-generational
-  LRU, charges that don't move with a process, systemd-oomd, what
-  must never go in the background group). Then: built, measured in
-  the guest (who is swapped, what the protected group waits, what a
-  thread in it waits while the other computes), Doctor's part, the
-  docs; on Ben's computer only on their word, at a quiet moment, with
-  the memory record running.
+  protected. **The design was reviewed by Astra at max, and
+  measured in the guest, and both changed it**
+  (/var/tmp/claude-blueferry/groups/answer.md; guest runs in
+  groups/guest/):
+  - *Not `memory.low` on the desktop.* The review: Fedora's
+    uresourced already owns the ancestors' budgets (it writes
+    `MemoryLow=0` on user.slice and the user's slice at every change
+    of who is at the computer), so a drop-in of Doctor's would be a
+    second writer; and protection that covers memory which ought to
+    be swapped has a cliff. The guest showed the cliff (1 GB, the
+    multi-generational LRU, swappiness 1, a desktop group with an
+    idle 200 MB program and a working set, a background group
+    building): with the desktop protected for all it held, **the
+    kernel ended a program (an OOM kill, with all of swap free)**
+    where without groups nothing was ended. Splitting alone, with no
+    protection, was no better than one group (the idle program was
+    swapped out whole either way: 51,210 pages brought back). So
+    nothing protects the desktop's memory from the kernel; nothing of
+    Olo's may make an allocation fail that succeeds today.
+  - *Instead the background group keeps to what is left*: the
+    supervisor sets the group's `memory.high` to what it holds plus
+    what is to be had beyond a reserve, so as memory fills the
+    background's own cache is dropped and its own programs are
+    swapped, by the kernel, at once, in their own time; the kernel's
+    reclaim of everything (which is what swaps an idle window) seldom
+    has to run, and memory is kept free for a driver's allocation.
+    `memory.high` only slows who is over it; it ends nothing and
+    fails nothing. To be measured in the same guest scenario before
+    any of it is built in.
+  - *Where the groups live*: inside the login session's scope
+    (outside it a process loses its session, and under the user
+    manager systemd-oomd watches and would end builds), made by Olo's
+    login as root before the session starts: the root login worker
+    parked in a leaf of its own that the account can't touch, a
+    subtree handed to the account, the desktop and the background as
+    leaves in it. A drop-in (`Delegate=`) so systemd leaves the
+    subtree alone.
+  - *Classified at birth*: a process moved later leaves what it
+    already holds charged where it was. The build's driver (cargo,
+    make, ninja…) is moved once, and every compiler it starts is
+    born in the group; a test desktop puts itself there as it starts
+    (`tsession`); an agent's screen is a third group, to be weighed.
+  - *The supervisor's own fault found in review*: a process lowered
+    and then brought to the front stays lowered until the supervisor
+    is turned off (it skips what is already lowered): to be put
+    back as it is favoured.
+  - *Processors*: the group idle against the desktop's (`cpu.idle`),
+    measured on this computer with two scopes of the user manager
+    before it is relied on; it does nothing for the kernel's own
+    workers (they are outside every group), which is the Short turns
+    setting's and a patch's. Disks: `io.weight` does nothing here
+    (no I/O cost model, no BFQ on the NVMe queue), so the idle I/O
+    class per thread stays.
+  Then: built (login, session, supervisor, `tsession`, Doctor's
+  drop-in and finding), reviewed by Astra at max, and on Ben's
+  computer only on their word, at a quiet moment, with the memory
+  record running.
 
 - **The NVIDIA card can never again be left stuck and unrecoverable**
   (Ben, 2026-11-20: "can you also put an astra 6.2 max agent on
@@ -271,35 +318,69 @@ something nobody here has is in "Blocked", with what it waits for.
      run for minutes says how long and at what (the window said
      "Fixing…" under a finding whose fix was only queued); what a
      fix stops it starts again however it ends (the follower stayed
-     stopped).
+     stopped); a card whose only advice is to restart could have
+     Restart… on it (Opus's look: a new form of card); the orange
+     Problem tag's white letters are weak at 1× (Astra's look: the
+     tag's, every card's); "Fix 5 Problems" counts recommendations.
   3. **Far fewer suspends.** The card suspended and woke 455 times
      in three days, each a firmware unload and boot, each a chance
-     of this. Olo's own programs wake it: a kit program loads every
-     graphics driver on the computer as it starts, to list devices
-     (the Vulkan loader's thirteen libraries, NVIDIA's among them),
-     and its panels ask NVML. A kit program names the driver of the
-     GPU the compositor draws on and loads that one (the loader's
-     direct driver loading), measured as a start's time and memory
-     too; the panels never ask a card that stopped answering
-     (done: `gpu_load::failed`; twelve Deskbars asked 160 times a
-     minute, each a kernel error line), and still to do: they say so
-     where they show it (it reads as asleep now), and let go of
-     NVIDIA's library when a card stops answering (it is held for the
-     program's life, the card's device open with it).
-  4. ~~No suspend while memory is short~~: the root follower keeps
-     an awake card awake while programs are held for memory and lets
-     it sleep after two calm minutes (HACKING, "Power modes"; the
-     kernel's trigger checked in the guest). Its mark (100 ms of
-     stall in two seconds) is a first one: to be watched on Ben's
-     computer once the new follower is installed (its journal says
-     each hold and release), and it has never yet held a real card.
-  5. **No console on a card with no display.** NVIDIA's display
-     module takes a framebuffer console there (`nvidia_drm fbdev=1`,
-     Fedora's default), and giving it up is what the unload hung
-     in. Doctor finds a card of NVIDIA's with no connector and the
-     console taken, and offers the option that leaves it
-     (`/etc/modprobe.d`: in force from the next start); what render
-     offload still needs of the module said.
+     of this. **What wakes it isn't known yet** (I told Ben it was
+     Olo's own programs loading NVIDIA's driver as they start; on a
+     healthy computer they didn't: an older filter kept it out,
+     which failed only once the card's display module was stuck,
+     as Astra's review found). To be traced once the card is back,
+     as root: who resumes it (`bpftrace -e 'tracepoint:rpm:rpm_resume
+     /str(args->name) == "0000:01:00.0"/ { @[comm] = count(); }'`)
+     and who opens its nodes (`kprobe:nvidia_open`), for a day: the
+     person's own computing on it, Chrome, Olo's panels (twelve
+     Deskbars, one for each agent's screen, each asking every twenty
+     seconds while it is awake: does that keep it from sleeping, or
+     wake it?), the follower. Then whatever of Olo's it is, stopped.
+     **Done meanwhile**: a kit program is handed the one driver of
+     the GPU it draws on, whatever state NVIDIA's is in (HACKING,
+     "One Vulkan driver, handed to the loader"; a start is 30 ms
+     quicker too); only a card that says it is awake is asked
+     (`gpu_load::askable`), by the panels, the follower and the video
+     encoder and decoder. **Still** (from Astra's review,
+     /var/tmp/claude-blueferry/review1/answer.md): the panels say a
+     card that stopped answering where they show it (it reads as
+     asleep or as idle; Preferences ▸ Power says "awake"), and let go
+     of NVIDIA's library then (held for the program's life, the
+     card's device open with it: one owner that can stop and close,
+     off the UI thread; the follower's own, which holds its clock
+     setting, apart); a Deskbar on an agent's screen that nobody
+     watches samples nothing; tests with stand-in libraries that
+     count loads, starts and opens (a `None` passes today whether or
+     not NVIDIA's library was tried). And of the same review, other
+     fixes that call into drivers: Doctor's and the healer's
+     Bluetooth and Wi-Fi restarts (unbind, reset, bind: each write
+     can wait in the kernel; look again that it is the same device
+     and driver just before, one at a time between the two, and keep
+     the window usable if one never returns), Thunderbolt's
+     authorization and the USB fixes that write `power/control`
+     (which wakes the device: AGENT-NOTES).
+  4. **No suspend while memory is short: in the driver, not from
+     outside.** Built as a hold from the follower (the card's
+     `power/control` written "on" while programs were held for
+     memory) and **withdrawn on Astra's review before it ever ran**:
+     that write resumes the device, so a card that had just gone to
+     sleep was woken under the very pressure it was to be spared
+     (reproduced in a guest), one in the middle of suspending is
+     waited for without limit, and the mark it used would have held
+     the card awake most of a day (HACKING, "Power modes"). The
+     driver's own suspend can refuse before it has touched anything
+     (`-EAGAIN`, tried again later) and can keep its save buffer from
+     one suspend to the next so a suspend allocates nothing: part of
+     the patched driver, below.
+  5. ~~No console on a card with no display~~: Doctor finds a card
+     of NVIDIA's with no connector whose display module took a
+     console (`nvidia_drm`'s `fbdev`), and offers the option that
+     leaves it (Take No Console: `/etc/modprobe.d`, from the next
+     start). To check on the card once it is back: that the module's
+     parameter reads N after a restart (its modules aren't in the
+     initramfs here, or the option would have to be there too), and
+     that render offload to the card still works without the
+     console.
   6. **Olo's own build of NVIDIA's open kernel modules**, patched
      (they are MIT/GPL; the firmware and the libraries aren't, and
      all three faults are in the modules): the halt check given a
