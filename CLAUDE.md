@@ -89,12 +89,21 @@ are universal and non-negotiable:
   (2026-11-18: "you should be visually reviewing everything you do").
   Check the picture shows what you meant to show (the right tab, the
   window in front) before judging it.
-- **A second pair of eyes on every picture.** Give all the pictures of
-  a change to Codex for a second review before it's committed:
+- **Two more pairs of eyes on every picture: Astra 6.2's and Opus
+  5.5's.** Give all the pictures of a change to both for a design
+  review before it's committed (Ben, 2026-11-19, of a new app's first
+  pictures: "omg so much is ugly make sure you get visual design reviews
+  from opus 5.5 and astra 6.2"):
   `tools/dev/codex-look --about "WHAT CHANGED" PICTURE.png…`
-  (gpt-6.2-astra at medium effort, looking only). Check each thing it
-  finds against the picture yourself, fix what's real, and say in the
-  commit what it found and what you did about it.
+  (gpt-6.2-astra at medium effort, looking only: what's wrong by a
+  pixel) and `tools/dev/opus-look --about "WHAT IT IS, WHAT CHANGED"
+  PICTURE.png…` (Claude Opus 5.5, looking only: the design itself, what
+  looks amateur or unfinished). Whole windows and enlarged crops, each
+  state, look and scale. Something new (an app, a window, a widget)
+  goes to both early, before it's built out, and again when it's
+  done. Check each thing they find against the picture yourself, fix
+  what's real, and say in the commit what each found and what you did
+  about it.
 - **Leave the person's session alone.** Never reload, upgrade or install
   into it unless asked. To get work ready, run
   `cargo build --release --workspace`. The running session watches
@@ -160,8 +169,8 @@ are universal and non-negotiable:
   stops being true). Never store memories in an agent's own memory
   outside the repository.
 - **Subagents: Codex, narrow, watched, reviewed.** Do the work yourself,
-  in this session, but for three kinds of help, all Codex (never a
-  Claude fork, nor the Agent tool):
+  in this session, but for three kinds of help, all Codex but the design
+  review (never a Claude fork, nor the Agent tool):
   - Narrow, targeted work items that can go on in parallel: Codex
     subagents (gpt-6.2-astra at xhigh), each interactive in a tmux
     session of its own, started, watched and steered with
@@ -185,7 +194,9 @@ are universal and non-negotiable:
     on your own line: two brains are better than one. It looks and
     reports; you check what it found and do the work.
   - `tools/dev/codex-look`, the second look at every change's pictures
-    (above).
+    (above); and, the one Claude among them, `tools/dev/opus-look`, Opus
+    5.5's design review of the same pictures (the Claude CLI headless,
+    reading pictures and nothing else).
 - **A bug you can't see at once gets a second investigator at once.**
   If a quick first look (the logs, the code on its path: minutes, not
   an hour) hasn't shown you the cause, start the `olo-debug-help`

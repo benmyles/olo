@@ -1,0 +1,96 @@
+#!/bin/bash
+# A designer's review of what a change looks like, from Claude Opus 5.5
+# (Ben, 2026-11-19, of a new app's first pictures: "omg so much is ugly
+# make sure you get visual design reviews from opus 5.5 and astra 6.2").
+# Beside tools/dev/codex-look (Astra 6.2's): every change's pictures go
+# to both before it's committed. Where codex-look hunts what's wrong by
+# a pixel, this judges the design: what the eye lands on, hierarchy,
+# rhythm, colour, what looks amateur or unfinished, and what to do about
+# each, most important first.
+#
+#   tools/dev/opus-look [--about "WHAT IT IS, WHAT CHANGED"] PICTURE.png…
+#
+# PICTUREs: the change's pictures (headless: tools/dev/tsession shot),
+# each state, look and scale worth judging, in a folder of yours under
+# /var/tmp; whole windows, and crops enlarged where detail matters (it
+# can only look: it can't crop for itself). It prints its review and
+# writes it to opus-look.md beside the first picture. Check each thing it
+# says against the pictures yourself, fix what's real, and say in the
+# commit what it found and what you did.
+#
+# It runs the Claude CLI headless (`claude -p`), with the Read tool alone
+# (to see the pictures) and from the pictures' folder, not the
+# repository: nothing of the project is loaded, nothing can be changed.
+set -u
+# (A subagent doesn't start agents: CLAUDE.md, "Subagents". Its lead
+# looks at its pictures.)
+if [ -n "${OLO_SUBAGENT:-}" ]; then
+    echo "opus-look: you are a subagent; the lead has pictures looked at, say in your report what to look at" >&2
+    exit 2
+fi
+about=""
+if [ "${1:-}" = "--about" ]; then
+    about=${2:-}
+    shift 2
+fi
+if [ $# -eq 0 ]; then
+    echo "usage: tools/dev/opus-look [--about \"WHAT IT IS, WHAT CHANGED\"] PICTURE.png…" >&2
+    exit 2
+fi
+paths=()
+for p in "$@"; do
+    case "$p" in
+        /tmp/*) echo "opus-look: $p is in RAM (/tmp); keep pictures under /var/tmp" >&2; exit 2 ;;
+    esac
+    [ -s "$p" ] || { echo "opus-look: no picture $p" >&2; exit 2; }
+    paths+=("$(cd "$(dirname "$p")" && pwd)/$(basename "$p")")
+done
+if ! command -v claude > /dev/null; then
+    echo "opus-look: no claude on PATH (the Claude CLI, signed in)" >&2
+    exit 2
+fi
+dir=$(dirname "${paths[0]}")
+out=$dir/opus-look.md
+prompt=$(
+    cat <<PROMPT
+You are reviewing the visual design of screenshots from Olo, a
+BeOS-inspired desktop (yellow window tabs, bevelled buttons, sunken
+wells, a blue-grey panel, its own isometric icons) whose every window is
+meant to be beautiful and pixel-perfect. Read each picture below with
+the Read tool, then judge them as a senior product designer would, and
+bluntly: the agent that made this has looked already and thinks it's
+fine.
+
+- Composition: what the eye lands on first, how the parts sit together,
+  proportions and margins.
+- Hierarchy and type: sizes, weights, what's loud that should be quiet.
+- Spacing and rhythm: anything cramped, floating, or uneven where it
+  should match.
+- Alignment: edges, baselines, columns.
+- Colour: roles, contrast, light against dark looks.
+- Icons and marks, controls, each state shown.
+- What looks amateur, unfinished, or out of keeping with the desktop
+  (it should belong there, not look like a web page), and what's missing
+  that would make it feel finished.
+
+Only look: change nothing, run nothing. Report a list, the most
+important first: for each, which picture and where, what's wrong, and
+exactly what to do instead (sizes in points, what moves where, which
+colour role, what to remove). Then, briefly, what already works and
+should be kept. If a picture is fine, say so plainly; don't invent.
+
+The pictures:
+$(printf '%s\n' "${paths[@]}")
+PROMPT
+    if [ -n "$about" ]; then
+        printf '\nWhat it is, and what changed: %s\n' "$about"
+    fi
+)
+(cd "$dir" && printf '%s' "$prompt" | claude -p --model claude-opus-5-5 --effort high --tools Read --allowedTools Read --no-session-persistence > "$out" 2> "${out%.md}.log")
+rc=$?
+if [ -s "$out" ]; then
+    cat "$out"
+else
+    echo "opus-look: no answer (ended with $rc); see ${out%.md}.log" >&2
+fi
+exit $rc

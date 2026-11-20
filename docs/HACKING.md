@@ -19581,6 +19581,22 @@ have them; Integrations' one height for every tab; a refused
 connection's wording, seen only against a made-up server). What it
 says is checked against the picture, as the debug helper's is.
 
+**And a designer's review of them** (`tools/dev/opus-look`; Ben,
+2026-11-19, of To-Do's first pictures: "omg so much is ugly make sure
+you get visual design reviews from opus 5.5 and astra 6.2"): `opus-look
+--about "WHAT IT IS, WHAT CHANGED" PICTURE.png…` hands the same
+pictures to Claude Opus 5.5 (`claude -p --model claude-opus-5-5
+--effort high`, the Read tool alone, run from the pictures' folder so
+nothing of the project is loaded and nothing can be changed) with a
+product designer's brief: composition, hierarchy, rhythm, colour, what
+looks amateur or unfinished or out of keeping with the desktop, and
+what to do about each, the most important first. It keeps its review as
+`opus-look.md` beside the first picture. It can only look, so give it
+whole windows and enlarged crops. Every change's pictures go to both
+before a commit, and something new goes to both early, before it's
+built out: codex-look is for what's wrong by a pixel, opus-look for
+whether the design is any good.
+
 **Codex subagents** (`tools/dev/agents`, the `olo-codex-agents` skill;
 Ben, 2026-11-19: "you now have permission to utilize subagents for
 narrow, targeted work items that can be parallelized. they must be able
