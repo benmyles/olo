@@ -86,8 +86,10 @@ pub fn laptop_mapping(conf: &str) -> Option<String> {
 /// drives' power states, and set again after a resume. 4: SATA SSDs'
 /// link power (`sata_power`), kept per drive. 5: a change of supply
 /// counts once it has held two seconds, and a supply that keeps changing
-/// is planned for as the battery (`Supply`, gpu_tune.rs).
-pub const FOLLOWER_VERSION: u32 = 6;
+/// is planned for as the battery (`Supply`, gpu_tune.rs). 7: an NVIDIA
+/// card that is awake isn't let suspend while memory is short
+/// (`hold_awake`, `crate::memory_pressure`).
+pub const FOLLOWER_VERSION: u32 = 7;
 
 /// What the follower last did, written by it after each change to
 /// `/run/olo-gpu-follow.json` (readable by all): which version it is,
@@ -122,6 +124,11 @@ pub struct Followed {
     /// first changed it (by serial): put back when the plan says Auto
     /// again (`crate::sata_power`).
     pub sata_found: std::collections::BTreeMap<String, String>,
+    /// The NVIDIA cards the follower keeps awake while memory is short
+    /// (by PCI address; `hold_awake`): their `power/control` is "on"
+    /// by its hand, not the person's, and goes back to "auto" once
+    /// memory has been calm.
+    pub held_awake: Vec<String>,
 }
 
 impl Followed {
@@ -584,6 +591,70 @@ pub(crate) fn nvml() -> Result<&'static nvml_wrapper::Nvml, String> {
     Ok(NVML.get_or_init(|| n))
 }
 
+/// The NVIDIA cards under `sys` (a `/sys`) that are awake and may
+/// suspend by themselves (`power/control` "auto", `runtime_status`
+/// "active") told to stay awake ("on"), for as long as memory is short
+/// (`crate::memory_pressure`): the addresses of those newly held, added
+/// to `held`. One asleep is left asleep (waking it allocates as a
+/// suspend does), one that stopped answering is left alone, and one
+/// the person keeps awake themselves ("on" already) isn't taken for
+/// Olo's to let go.
+pub fn hold_awake(sys: &Path, held: &mut Vec<String>) -> Vec<String> {
+    let mut newly = Vec::new();
+    for dir in nvidia_cards(sys) {
+        let Some(pci) = dir.file_name().map(|n| n.to_string_lossy().into_owned()) else { continue };
+        let read = |name: &str| std::fs::read_to_string(dir.join("power").join(name)).unwrap_or_default().trim().to_owned();
+        if held.contains(&pci) || read("control") != "auto" || read("runtime_status") != "active" {
+            continue;
+        }
+        if std::fs::write(dir.join("power/control"), "on").is_ok() {
+            held.push(pci.clone());
+            newly.push(pci);
+        }
+    }
+    newly
+}
+
+/// The cards in `held` let sleep again ("auto"), those still as
+/// `hold_awake` left them: one the person has set since, or that is
+/// gone, is only forgotten. The addresses let go; `held` emptied.
+pub fn let_sleep(sys: &Path, held: &mut Vec<String>) -> Vec<String> {
+    let mut let_go = Vec::new();
+    for pci in held.drain(..) {
+        let control = sys.join("bus/pci/devices").join(&pci).join("power/control");
+        if std::fs::read_to_string(&control).is_ok_and(|c| c.trim() == "on") && std::fs::write(&control, "auto").is_ok() {
+            let_go.push(pci);
+        }
+    }
+    let_go
+}
+
+/// The sysfs folders of NVIDIA's display devices with its driver, under
+/// `sys`.
+fn nvidia_cards(sys: &Path) -> Vec<PathBuf> {
+    let read = |p: PathBuf| std::fs::read_to_string(p).unwrap_or_default().trim().to_owned();
+    let mut cards: Vec<PathBuf> = std::fs::read_dir(sys.join("bus/pci/devices"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|d| read(d.join("vendor")) == "0x10de" && read(d.join("class")).starts_with("0x03"))
+        .filter(|d| std::fs::read_link(d.join("driver")).is_ok_and(|l| l.file_name().is_some_and(|n| n == "nvidia")))
+        .collect();
+    cards.sort();
+    cards
+}
+
+/// Err with what to say where the card at `pci` stopped answering (its
+/// power management failed, `gpu_load::failed`): NVIDIA's library is
+/// neither started nor asked for it then.
+fn not_failed(pci: &str) -> Result<(), String> {
+    if crate::gpu_load::failed(&Path::new("/sys/bus/pci/devices").join(pci)) {
+        return Err("it stopped answering (its power management failed): restarting the computer starts it again".into());
+    }
+    Ok(())
+}
+
 /// Its PCI address as NVML has it ("00000000:01:00.0").
 fn nvml_bus(pci: &str) -> String {
     format!("0000{pci}")
@@ -592,6 +663,7 @@ fn nvml_bus(pci: &str) -> String {
 /// What NVIDIA's GPU `pci` allows, or what its driver said instead.
 fn nvidia_caps(pci: &str) -> Result<NvidiaCaps, String> {
     use nvml_wrapper::enum_wrappers::device::Clock;
+    not_failed(pci)?;
     let d = nvml()?.device_by_pci_bus_id(nvml_bus(pci)).map_err(|e| format!("its driver didn't answer ({e})"))?;
     let power = (|| {
         let c = d.power_management_limit_constraints().ok()?;
@@ -788,6 +860,9 @@ fn apply_xe(device: &Path, tune: &GpuTune, driver: Option<&DriverLimits>) -> App
 
 fn apply_nvidia(pci: &str, tune: &GpuTune) -> Applied {
     use nvml_wrapper::enums::device::GpuLockedClocksSetting;
+    if let Err(e) = not_failed(pci) {
+        return vec![Err(e)];
+    }
     let nvml = match nvml() {
         Ok(n) => n,
         Err(e) => return vec![Err(e)],
@@ -847,6 +922,52 @@ pub fn with_driver_limits(mut new: Tuning, kept: &Tuning) -> Tuning {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// While memory is short: a card that is awake and may sleep is
+    /// kept awake; one asleep, one that stopped answering, one the
+    /// person keeps awake and another maker's are left as they are.
+    /// After: only what was held is let sleep, and only if it is still
+    /// as it was left.
+    #[test]
+    fn an_awake_nvidia_card_is_held_awake_and_let_sleep_after() {
+        let sys = std::env::temp_dir().join(format!("olo-hold-awake-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&sys);
+        let card = |pci: &str, vendor: &str, driver: &str, control: &str, status: &str| {
+            let dir = sys.join("bus/pci/devices").join(pci);
+            std::fs::create_dir_all(dir.join("power")).unwrap();
+            std::fs::write(dir.join("vendor"), format!("{vendor}\n")).unwrap();
+            std::fs::write(dir.join("class"), "0x030000\n").unwrap();
+            std::fs::write(dir.join("power/control"), format!("{control}\n")).unwrap();
+            std::fs::write(dir.join("power/runtime_status"), format!("{status}\n")).unwrap();
+            std::fs::create_dir_all(sys.join("bus/pci/drivers").join(driver)).unwrap();
+            std::os::unix::fs::symlink(sys.join("bus/pci/drivers").join(driver), dir.join("driver")).unwrap();
+        };
+        card("0000:01:00.0", "0x10de", "nvidia", "auto", "active");
+        card("0000:02:00.0", "0x10de", "nvidia", "auto", "suspended");
+        card("0000:03:00.0", "0x10de", "nvidia", "auto", "error");
+        card("0000:04:00.0", "0x10de", "nvidia", "on", "active");
+        card("0000:05:00.0", "0x1002", "amdgpu", "auto", "active");
+        card("0000:06:00.0", "0x10de", "nouveau", "auto", "active");
+        let control = |pci: &str| std::fs::read_to_string(sys.join("bus/pci/devices").join(pci).join("power/control")).unwrap().trim().to_owned();
+        let mut held = Vec::new();
+        assert_eq!(hold_awake(&sys, &mut held), ["0000:01:00.0"]);
+        assert_eq!(held, ["0000:01:00.0"]);
+        assert_eq!(["0000:01:00.0", "0000:02:00.0", "0000:03:00.0", "0000:04:00.0", "0000:05:00.0", "0000:06:00.0"].map(control), ["on", "auto", "auto", "on", "auto", "auto"]);
+        // Again while still short: nothing new, nothing twice.
+        assert!(hold_awake(&sys, &mut held).is_empty());
+        assert_eq!(held, ["0000:01:00.0"]);
+        // The sleeping one woke meanwhile (something uses it): held too.
+        std::fs::write(sys.join("bus/pci/devices/0000:02:00.0/power/runtime_status"), "active\n").unwrap();
+        assert_eq!(hold_awake(&sys, &mut held), ["0000:02:00.0"]);
+        // The person set the first to sleep by themselves again
+        // meanwhile: theirs, only forgotten. The other is let sleep; the
+        // one they keep awake stays awake.
+        std::fs::write(sys.join("bus/pci/devices/0000:01:00.0/power/control"), "auto\n").unwrap();
+        assert_eq!(let_sleep(&sys, &mut held), ["0000:02:00.0"]);
+        assert!(held.is_empty());
+        assert_eq!(["0000:01:00.0", "0000:02:00.0", "0000:04:00.0"].map(control), ["auto", "auto", "on"]);
+        let _ = std::fs::remove_dir_all(&sys);
+    }
 
     fn xe() -> Caps {
         Caps::Xe(XeCaps { lowest: 100, efficient: 700, highest: 2450, min_now: 700, max_now: 2450, profiles: true, power_saving_now: false })

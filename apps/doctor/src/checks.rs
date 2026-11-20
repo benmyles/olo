@@ -2884,10 +2884,19 @@ fn idle_gpu(roots: &Roots, pcis: &[Pci], r: &mut Report) {
         return;
     }
     let installed = std::fs::read_to_string(roots.fs.join(IDLE_GPU_RULE_PATH)).ok();
-    let awake: Vec<&&Pci> = second.iter().filter(|p| p.power_control.as_deref() == Some("on")).collect();
+    // (One Olo's follower keeps awake just now, because memory is short
+    // and a suspend can fail for good then, isn't one that never
+    // sleeps: `olo_system::gpu_tuning::hold_awake`.)
+    let held = olo_system::gpu_tuning::Followed::load(&roots.fs).map(|f| f.held_awake).unwrap_or_default();
+    let awake: Vec<&&Pci> = second.iter().filter(|p| p.power_control.as_deref() == Some("on") && !held.contains(&p.address)).collect();
     let maker = second[0].maker();
     if awake.is_empty() && installed.as_deref() == Some(IDLE_GPU_RULE) {
-        r.fine.push(Fine { title: format!("The {maker} graphics card sleeps when unused"), detail: "Runtime power management is on for it (72-olo-idle-gpu.rules).".into() });
+        let detail = if second.iter().any(|p| held.contains(&p.address)) {
+            "Runtime power management is on for it (72-olo-idle-gpu.rules). Olo keeps it awake just now, while memory is short: a suspend can fail for good then."
+        } else {
+            "Runtime power management is on for it (72-olo-idle-gpu.rules)."
+        };
+        r.fine.push(Fine { title: format!("The {maker} graphics card sleeps when unused"), detail: detail.into() });
         return;
     }
     let mut steps = vec![Step::WriteFile { path: PathBuf::from("/").join(IDLE_GPU_RULE_PATH), content: IDLE_GPU_RULE.into(), mode: 0o644 }];
@@ -7040,6 +7049,18 @@ mod tests {
         let r = scan(&roots);
         assert!(r.find("gpu:idle").is_none() && r.find("sound:builtin").is_none());
         assert!(r.fine.iter().any(|f| f.title == "The NVIDIA graphics card sleeps when unused"));
+        // Kept awake by Olo's follower just now, because memory is
+        // short: not a card that never sleeps, and said so.
+        w(&format!("{pci}/0000:01:00.0/power/control"), "on\n");
+        assert!(scan(&roots).find("gpu:idle").is_some(), "awake by someone else's hand: said");
+        w("run/olo-gpu-follow.json", r#"{"version":7,"held_awake":["0000:01:00.0"]}"#);
+        let r = scan(&roots);
+        assert!(r.find("gpu:idle").is_none());
+        assert!(
+            r.fine.iter().any(|f| f.title == "The NVIDIA graphics card sleeps when unused" && f.detail.contains("while memory is short")),
+            "{:?}",
+            r.fine.iter().map(|f| &f.detail).collect::<Vec<_>>()
+        );
         let _ = std::fs::remove_dir_all(&fs);
     }
 

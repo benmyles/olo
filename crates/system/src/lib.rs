@@ -35,6 +35,7 @@ pub mod kernel_tuning;
 pub mod keyring_prompt;
 pub mod listening;
 pub mod media;
+pub mod memory_pressure;
 pub mod meters;
 pub mod netconf;
 pub mod netdiag;

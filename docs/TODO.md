@@ -280,17 +280,19 @@ something nobody here has is in "Blocked", with what it waits for.
      and its panels ask NVML. A kit program names the driver of the
      GPU the compositor draws on and loads that one (the loader's
      direct driver loading), measured as a start's time and memory
-     too; the panels read a sleeping or failed card from sysfs and
-     never open it (they held it open through the restart, twelve
-     Deskbars asking 160 times a minute, each a kernel error line),
-     and let go of one that stops answering.
-  4. **No suspend while memory is short.** The suspend allocates
-     (the firmware's save image, 2 MB pages first) and runs against
-     one deadline; under pressure both go wrong. Olo's root follower
-     holds the card awake (`power/control`) while memory is under
-     pressure and lets it sleep after, keeping the person's own
-     setting; measured in the guest for the logic, on the card only
-     on Ben's word.
+     too; the panels never ask a card that stopped answering
+     (done: `gpu_load::failed`; twelve Deskbars asked 160 times a
+     minute, each a kernel error line), and still to do: they say so
+     where they show it (it reads as asleep now), and let go of
+     NVIDIA's library when a card stops answering (it is held for the
+     program's life, the card's device open with it).
+  4. ~~No suspend while memory is short~~: the root follower keeps
+     an awake card awake while programs are held for memory and lets
+     it sleep after two calm minutes (HACKING, "Power modes"; the
+     kernel's trigger checked in the guest). Its mark (100 ms of
+     stall in two seconds) is a first one: to be watched on Ben's
+     computer once the new follower is installed (its journal says
+     each hold and release), and it has never yet held a real card.
   5. **No console on a card with no display.** NVIDIA's display
      module takes a framebuffer console there (`nvidia_drm fbdev=1`,
      Fedora's default), and giving it up is what the unload hung

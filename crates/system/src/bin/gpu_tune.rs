@@ -32,7 +32,7 @@ use std::{
 use olo_system::{
     battery, cpu_tuning,
     gpu_tuning::{self, Tuning},
-    gpus, nvme_power, power_profile, sata_power, systemd,
+    gpus, memory_pressure, nvme_power, power_profile, sata_power, systemd,
 };
 
 use gpu_tuning::{
@@ -390,6 +390,10 @@ fn follow() -> i32 {
         Device,
         Topology,
         Cooling,
+        /// Programs are being held for memory (`memory_pressure`).
+        Pressure,
+        /// What was held for that may be let go, if memory is calm.
+        Calm,
     }
     let (tx, rx) = std::sync::mpsc::channel();
     let device = tx.clone();
@@ -414,6 +418,23 @@ fn follow() -> i32 {
     // A new process has no NVML handles or verified driver requests yet.
     state.gpus.clear();
     state.deferred.clear();
+    // An NVIDIA card that is awake isn't let suspend while memory is
+    // short (`memory_pressure`: its suspend fails then, for good). What
+    // a follower before this one held and never let go (it was stopped
+    // meanwhile) is let sleep first: memory says again if it is short.
+    let sys = std::path::Path::new("/sys");
+    if !state.held_awake.is_empty() {
+        let let_go = gpu_tuning::let_sleep(sys, &mut state.held_awake);
+        if !let_go.is_empty() {
+            println!("{} may sleep again (kept awake by the follower before this one)", let_go.join(", "));
+        }
+        let _ = state.save();
+    }
+    let mut held = memory_pressure::Held::default();
+    let pressure = tx.clone();
+    if let Err(e) = memory_pressure::watch(memory_pressure::STALL, memory_pressure::WINDOW, move || pressure.send(Change::Pressure).is_ok()) {
+        eprintln!("olo-gpu-tune: not told when memory is short: {e}");
+    }
     let modes = tx.clone();
     power_profile::watch(move |m| {
         let _ = modes.send(Change::Mode(m));
@@ -440,10 +461,11 @@ fn follow() -> i32 {
     let mut probe = None;
     let mut probe_end = None;
     loop {
-        let change = match supply.deadline().into_iter().chain(probe).min() {
+        let change = match supply.deadline().into_iter().chain(probe).chain(held.deadline()).min() {
             Some(end) => match rx.recv_timeout(end.saturating_duration_since(Instant::now())) {
                 Ok(change) => change,
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) if probe.is_some_and(|t| Instant::now() >= t) => Change::Device,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) if held.deadline().is_some_and(|t| Instant::now() >= t) => Change::Calm,
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Change::Settled,
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
             },
@@ -517,6 +539,26 @@ fn follow() -> i32 {
                 continue;
             }
             Change::Woke => state.gpus.clear(),
+            Change::Pressure => {
+                held.pressed(Instant::now());
+                // (Each time it's said: a card that woke since is held too.)
+                let newly = gpu_tuning::hold_awake(sys, &mut state.held_awake);
+                if !newly.is_empty() {
+                    println!("memory is short: {} kept awake until it has been calm for {} s (a suspend can fail for good meanwhile)", newly.join(", "), memory_pressure::CALM.as_secs());
+                    let _ = state.save();
+                }
+                continue;
+            }
+            Change::Calm => {
+                if held.due(Instant::now(), memory_pressure::short_now()) {
+                    let let_go = gpu_tuning::let_sleep(sys, &mut state.held_awake);
+                    if !let_go.is_empty() {
+                        println!("memory has been calm: {} may sleep again", let_go.join(", "));
+                    }
+                    let _ = state.save();
+                }
+                continue;
+            }
         }
         let Some(m) = mode else { continue };
         let on_battery = supply.battery(Instant::now());

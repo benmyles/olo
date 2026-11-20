@@ -11210,6 +11210,49 @@ follower's NVML context. Fine-grained runtime D3 remains available. On
 resume the follower reconciles hardware state again. `olo-gpu-tune show`
 reports GPU readback as JSON. `--wake` explicitly queries sleeping devices.
 
+**No suspend while memory is short.** An NVIDIA card's runtime suspend
+allocates memory (its firmware's saved image, 2 MB pages first) and
+runs the whole way against one deadline of four seconds; held for
+memory on the way, it reaches its last check with the deadline spent,
+calls the suspend failed, and leaves the card unusable until the
+computer restarts (2026-11-20: "A graphics card that stopped
+answering"). So the follower keeps a card that is awake from
+suspending while programs are being held for memory, and lets it
+sleep once memory has been calm:
+`olo_system::memory_pressure::watch` sets a trigger on the kernel's
+pressure stall information (`/proc/pressure/memory`, "some 100000
+2000000": programs held for 100 ms or more within two seconds) and
+sleeps in the kernel until it fires, so nothing is polled; each time
+it fires, `gpu_tuning::hold_awake` writes "on" to the `power/control`
+of every NVIDIA card with its driver that is awake
+(`runtime_status` "active") and may sleep by itself ("auto"), and
+notes them in the state file (`held_awake`); two minutes after the
+last time it fired (`memory_pressure::Held`, `CALM`), unless less
+than 15% of memory is to be had still (then two minutes more),
+`let_sleep` writes "auto" again to those still as it left them. A
+card asleep is left asleep (waking it allocates too); one that
+stopped answering is left alone; one the person keeps awake
+themselves ("on" already) is theirs, never taken for Olo's to let
+go; and what a follower before this one held and never let go is let
+sleep as the next one starts. Doctor's "never sleeps" doesn't count a
+card held so, and says why it's awake. Measured in the guest
+(`kbench pressure`, this kernel): the trigger is taken; nothing is
+said in eight calm seconds; with more taken than memory holds it is
+said within three seconds. The follower's version is 7 for it (Doctor
+offers the new one). What the mark should be on a computer is to be
+watched there: the minute the suspend failed had programs held
+39,000 times with a tenth of memory to be had; an ordinary busy
+minute of builds has them held a few hundred to a few thousand times,
+a hundredth of the time.
+
+And **a card that stopped answering isn't asked**
+(`gpu_load::failed`: `runtime_status` "error"): the panels' figures
+(`nvidia_now`), the processes on it (`procs`), its capabilities and
+the follower's settings (`gpu_tuning`) all say nothing of it without
+starting or asking NVIDIA's library, each question of which is
+refused in the kernel with a line in its log, and a library started
+then opens the card and holds it.
+
 **Thermal headroom.** The fan service uses its existing sensor samples
 and the hardware's individual trip points. Within 8 °C it signals
 background work to ease off. Within 5 °C for eight seconds it also asks

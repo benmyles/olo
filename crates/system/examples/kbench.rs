@@ -52,6 +52,12 @@
 //!   kbench splitlock [--count N]
 //!       N atomic additions across a cache line's edge (a "split lock"):
 //!       how long each took, in microseconds.
+//!   kbench pressure [--secs N] [--stall MS] [--window MS]
+//!       how often the kernel says programs were held for memory (a
+//!       pressure-stall trigger, as `olo_system::memory_pressure::watch`
+//!       sets for Olo's follower: MS of stall within a window, 100 in
+//!       2000 unless said), for N seconds: how many times it said so,
+//!       and when first and last. Root (the guest's).
 
 use std::{
     fs::OpenOptions,
@@ -439,6 +445,30 @@ fn splitlock(args: &[String]) {
     println!("{{\"what\":\"splitlock\",\"count\":{count},\"secs\":{all:.3},\"us_p50\":{p50:.1},\"us_p99\":{p99:.1},\"us_max\":{max:.1}}}");
 }
 
+fn pressure(args: &[String]) {
+    use std::sync::{Arc, Mutex};
+    let secs = num(args, "--secs", 30u64);
+    let (stall, window) = (num(args, "--stall", 100u64), num(args, "--window", 2000u64));
+    let t0 = Instant::now();
+    let told: Arc<Mutex<Vec<f64>>> = Arc::default();
+    let heard = told.clone();
+    if let Err(e) = olo_system::memory_pressure::watch(Duration::from_millis(stall), Duration::from_millis(window), move || {
+        heard.lock().unwrap().push(t0.elapsed().as_secs_f64());
+        true
+    }) {
+        println!("{{\"what\":\"pressure\",\"error\":\"{e}\"}}");
+        return;
+    }
+    std::thread::sleep(Duration::from_secs(secs));
+    let told = told.lock().unwrap();
+    println!(
+        "{{\"what\":\"pressure\",\"secs\":{secs},\"stall_ms\":{stall},\"window_ms\":{window},\"told\":{},\"first_s\":{:.1},\"last_s\":{:.1}}}",
+        told.len(),
+        told.first().copied().unwrap_or(-1.0),
+        told.last().copied().unwrap_or(-1.0)
+    );
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let rest = args.get(1..).unwrap_or_default();
@@ -453,6 +483,7 @@ fn main() {
         Some("writer") => writer(rest),
         Some("fill") => fill(rest),
         Some("splitlock") => splitlock(rest),
+        Some("pressure") => pressure(rest),
         _ => {
             eprintln!("kbench io|wake|relay|spin|chat|hog|touch|writer|fill|splitlock … (see the top of crates/system/examples/kbench.rs)");
             std::process::exit(2);

@@ -117,6 +117,19 @@ pub fn asleep(device: &Path) -> bool {
     read(device.join("power/runtime_status")).trim() == "suspended"
 }
 
+/// Whether the GPU's power management failed (the kernel's
+/// `runtime_status` "error": a suspend or a resume its driver couldn't
+/// finish). Its driver answers nothing then, until the computer
+/// restarts, and **it isn't asked**: each question of NVIDIA's library
+/// is refused in the kernel with a line in its log, a library started
+/// then opens the card's device and holds it, and neither brings
+/// anything back. Twelve Deskbars asked a dead card 160 times a minute
+/// and held it open through an unload that never finished
+/// (2026-11-20). Olo Doctor says the card's state (`gpu_stuck`).
+pub fn failed(device: &Path) -> bool {
+    read(device.join("power/runtime_status")).trim() == "error"
+}
+
 /// How busy a GPU is, of how busy each of its engines is (%): as busy as
 /// its busiest (they are separate hardware: a card encoding video with
 /// its 3D engine idle is busy, and two at 60% aren't 120%). NaN where
@@ -163,8 +176,14 @@ pub fn nvidia_now(device: &Path, bus: &str) -> Option<NvidiaNow> {
     static SLEPT: Mutex<Option<HashMap<String, Instant>>> = Mutex::new(None);
     let mut slept = SLEPT.lock().unwrap_or_else(|e| e.into_inner());
     let slept = slept.get_or_insert_with(HashMap::new);
-    if asleep(device) {
+    // (Read once: what `asleep` and `failed` each read.)
+    let status = read(device.join("power/runtime_status"));
+    if status.trim() == "suspended" {
         slept.insert(bus.to_owned(), Instant::now());
+        return None;
+    }
+    // (Not answering: nothing to ask, and nothing to hold it open with.)
+    if status.trim() == "error" {
         return None;
     }
     // Just woken: something has begun to use it, and what it does shows
@@ -241,6 +260,22 @@ mod tests {
         assert!(busiest(&[f64::NAN]).is_nan() && busiest(&[]).is_nan());
         let recording = NvidiaNow { busy: 2.0, encode: 38.0, decode: 0.0, memory_used: 0, memory_total: 0, watts: 0.0, celsius: 0.0, mhz: 0.0 };
         assert_eq!(recording.total(), 38.0);
+    }
+
+    /// A card whose power management failed is told from one asleep
+    /// and one awake, and isn't asked: `nvidia_now` says nothing of it
+    /// (before NVIDIA's library is touched: a made-up card has none).
+    #[test]
+    fn a_card_whose_power_management_failed_isnt_asked() {
+        let dir = std::env::temp_dir().join(format!("olo-gpu-failed-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("power")).unwrap();
+        let status = dir.join("power/runtime_status");
+        for (said, asleep, failed) in [("active", false, false), ("suspended", true, false), ("error", false, true)] {
+            std::fs::write(&status, format!("{said}\n")).unwrap();
+            assert_eq!((super::asleep(&dir), super::failed(&dir)), (asleep, failed), "{said}");
+        }
+        assert!(super::nvidia_now(&dir, "00000000:ff:1f.7").is_none());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// This computer's GPUs (`cargo test -- --ignored`).
