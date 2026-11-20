@@ -1099,9 +1099,12 @@ Learned on the second pass (2026-11-20):
   Olo's asks for less than ordinary any more, but **a screen or test
   desktop started before that change keeps its low queue until it
   starts again**, and any other program's low queue is the same
-  hazard: don't load the GPU for seconds on end (a live lint, many
-  `tsession`s drawing) while such screens are up and the person is at
-  the machine. No push until the lint draws off the GPU (TODO). What
+  hazard: don't load the GPU for seconds on end (many sessions
+  started with `TSESSION_GPU=1` drawing) while such screens are up and
+  the person is at the machine. A test session draws in software now
+  (HACKING, "Test desktops draw in software": the live lint's
+  desktops and their programs hold no GPU device open, checked), so
+  the hook's lint and a push are safe again. What
   a reset looks like: `journalctl -k | grep "Timedout job\|reset
   started"` (the person's compositor shows there as `systemd-logind`,
   which opened its device). And after any lint or check, see that no
@@ -1173,6 +1176,18 @@ Learned on the second pass (2026-11-20):
   `compaction:mm_compaction_try_to_compact_pages` by `args->order`
   and `comm` before blaming memory being short (order 9 is a 2 MB
   page asked for with `madvise`: the linker, Chrome).
+- **Run tests without the person's display in the environment**
+  (`env -u WAYLAND_DISPLAY -u OLO_SOCKET cargo test …`), as the commit
+  is made. A unit test can no longer connect to their compositor (the
+  kit connects only for a program that runs an app, 2026-11-20), but
+  what a test starts as a child still can.
+- **A dead NVIDIA card crashes programs that only list devices.**
+  NVIDIA's user-space library (libnvidia-glsi, under its EGL and its
+  Vulkan driver) crashed a program that was merely creating a Vulkan
+  instance while exiting; the Vulkan loader loads every driver on the
+  computer to list devices (thirteen libraries here, NVIDIA's waking
+  its card each time). A crash "at exit" in a test with all tests
+  passed: `coredumpctl info PID` and look at every thread.
 - **Every `sudo` a tool runs is asked of the person's Terminal**, and
   until auto-approval starts nothing first (TODO) each one runs the
   face camera for a few seconds: one `sudo sh -c '…'` or one script

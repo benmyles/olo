@@ -39,6 +39,9 @@
   tsession ipc NAME JSON                       raw IPC request
   tsession env NAME                            print env to source
   tsession stop NAME | list
+  TSESSION_GPU=1 tsession start …              the session and its programs draw on the GPU
+                                               (they draw in software, off the person's GPU,
+                                               otherwise: for what measures drawing itself)
   tsession tidy                                what ended sessions left in the runtime dir
                                                (sockets and files of displays no session
                                                holds); `stop` does it for its own
@@ -184,6 +187,23 @@ def ipc(name, req):
 def synth(name, events):
     return ipc(name, {"type": "synthetic", "events": events})
 
+def mesa_egl_vendor():
+    """glvnd's vendor file for Mesa's EGL (the one whose library is Mesa's), or None."""
+    for folder in ("/etc/glvnd/egl_vendor.d", "/usr/share/glvnd/egl_vendor.d"):
+        try:
+            names = sorted(os.listdir(folder))
+        except OSError:
+            continue
+        for n in names:
+            try:
+                lib = json.load(open(os.path.join(folder, n)))["ICD"]["library_path"]
+            except (OSError, ValueError, KeyError):
+                continue
+            if "mesa" in lib.lower():
+                return os.path.join(folder, n)
+    return None
+
+
 def start(name, args):
     size = next((a for a in args if re.fullmatch(r"\d+x\d+(,\d+x\d+)*", a)), "2560x1600")
     theme = "dark" if "--dark" in args else "light"
@@ -206,6 +226,26 @@ def start(name, args):
     json.dump(cfg, open(os.path.join(d, "config", "olo", "app_server.json"), "w"))
     subprocess.run(["chown", "-R", f"{OWNER.pw_uid}:{OWNER.pw_gid}", d]) if os.getuid() == 0 else None
     env = dict(os.environ, XDG_RUNTIME_DIR=RUNTIME, XDG_CONFIG_HOME=os.path.join(d, "config"), RUST_LOG=os.environ.get("RUST_LOG", "info"))
+    # A test session and what runs in it draw in software, on the
+    # processors (Mesa's llvmpipe for app_server and GL programs,
+    # lavapipe for the kit's Vulkan, two of its threads each): nothing a
+    # test draws touches the person's GPU. Lints and checks drawing on
+    # it, a dozen desktops at once, froze the person's desktop and
+    # restarted its programs (2026-11-20; HACKING, "Test desktops draw
+    # in software"). TSESSION_GPU=1: on the GPU, for what measures
+    # drawing itself or a path only a GPU has (tools/dev/bench,
+    # scroll-check, resize-cost, perf-fuzz, hdr-check do).
+    graphics = {} if os.environ.get("TSESSION_GPU") == "1" else {
+        "OLO_HEADLESS_RENDERER": "software", "LIBGL_ALWAYS_SOFTWARE": "1", "GALLIUM_DRIVER": "llvmpipe",
+        "VK_LOADER_DRIVERS_SELECT": "lvp*", "LP_NUM_THREADS": "2"}
+    # And only Mesa's EGL is loaded: listing EGL's devices loads every
+    # maker's library otherwise, NVIDIA's among them, which wakes its
+    # card for a test and, with the card not answering, crashed the
+    # program that loaded it (2026-11-20).
+    mesa = mesa_egl_vendor()
+    if graphics and mesa:
+        graphics["__EGL_VENDOR_LIBRARY_FILENAMES"] = mesa
+    env.update(graphics)
     # A lock-order cycle (olo-sync, debug builds) is reported with the
     # stacks of both orders only when backtraces are captured.
     env.setdefault("RUST_LIB_BACKTRACE", "1")
@@ -270,6 +310,8 @@ def start(name, args):
             if home:
                 e["HOME"] = os.path.abspath(home)
             e.update(own)
+            # (What the session's programs are started with, `run`.)
+            e.update(graphics)
             if session:
                 e["OLO_SESSION"] = "1"
                 pidfile = os.path.join(RUNTIME, f"olo-session-{m.group(1)}.pid")

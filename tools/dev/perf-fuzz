@@ -9,9 +9,10 @@ and check after every burst that nothing kept anyone waiting.
                  [--stall MS] [--frame MS] [--app-frame MS] [--answer MS] [--rss MB]
                  [--only drag,resize,...]
 
-NAME is a tsession with two screens and the shell, e.g.
+NAME is a tsession with two screens and the shell, drawing on the GPU
+(a test session draws in software unless asked), e.g.
 
-  tsession start pf 2560x1600,1920x1080 --session --shell
+  TSESSION_GPU=1 tsession start pf 2560x1600,1920x1080 --session --shell
   tools/dev/perf-fuzz pf --steps 60
 
 A run is reproducible from its seed. What is checked, per burst:

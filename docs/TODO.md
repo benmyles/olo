@@ -100,13 +100,12 @@ something nobody here has is in "Blocked", with what it waits for.
      upgrade? if not, make them; (b) the root follower sets the
      driver's patience to its most (`job_timeout_ms`, 10 s, for
      queues made after) for other programs' low queues (Chrome's?
-     `gpu-priority-check asked` says who asks what); (c) the live
+     `gpu-priority-check asked` says who asks what); (c) ~~the live
      lint and `tsession` desktops drawn in software, off the GPU
-     altogether (the investigator's diff:
-     /var/tmp/claude-blueferry/gpuhelp/software-headless.diff, to
-     review, try and compare pictures both ways): **no push until
-     then**, the hook's lint can still reset a GPU with old screens
-     on it; (d) an agent's screen's recorder asks for a whole picture
+     altogether~~ done: a test session and its programs draw on the
+     processors and hold no GPU device open (the whole live lint in
+     32 s on dev builds so; HACKING, "Test desktops draw in
+     software"), and a unit test never connects to a compositor; (d) an agent's screen's recorder asks for a whole picture
      every second with nothing happening: from what changed instead
      (the viewer's `Painted`); a screen composited only when
      something looks; (e) the kit recovering from a lost device in
@@ -269,7 +268,15 @@ something nobody here has is in "Blocked", with what it waits for.
   rarely (twelve Deskbars asked 160 times a minute, each a kernel
   error line, and held it open through the restart); (e) Doctor's
   finding says what state the card is in and what will bring it
-  back; (f) if it's a driver bug, written up for Ben to send.
+  back; (f) if it's a driver bug, written up for Ben to send; (g) a
+  kit program loads every graphics driver on the computer as it
+  starts, to list devices (the Vulkan loader's thirteen libraries,
+  NVIDIA's among them, which wakes a sleeping card: 455 wakes in
+  three days, each a suspend that can fail as this one did, and with
+  the card dead its library crashed a program that was exiting): a
+  kit program names the driver of the GPU the compositor draws on
+  and loads that one (the loader's direct driver loading), measured
+  as a start's time and memory too.
 
 - **Elevated permissions approved by themselves are approved at once,
   with nothing started** (Ben, 2026-11-20: "when auto-approve

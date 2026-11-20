@@ -159,7 +159,7 @@ def now_us():
 
 
 def tsession(*args, quiet=True):
-    env = dict(os.environ, TSESSION_PROFILE="release")
+    env = dict(os.environ, TSESSION_PROFILE="release", TSESSION_GPU="1")
     env.pop("WAYLAND_DISPLAY", None)
     # As the person's session runs (see the top): realtime, unless asked not.
     if "--no-realtime" not in sys.argv:

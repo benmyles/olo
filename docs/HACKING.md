@@ -5300,8 +5300,9 @@ touching the person's session and how it last went. Run it after a change that c
 crates, and before saying a change is done.
 
 Never open windows on the user's screen. `tools/dev/tsession` runs a
-headless app_server (GPU, offscreen, 2560×1600 device pixels at 2× by
-default, i.e. 1280×800 logical) and drives it:
+headless app_server (offscreen, 2560×1600 device pixels at 2× by
+default, i.e. 1280×800 logical; drawn in software, below) and drives
+it:
 
 ```sh
 T=tools/dev/tsession
@@ -5443,9 +5444,49 @@ volumes; "clipped" where a stream louder than its samples' room goes
 to a card with its own volume). That is how a sound of a set loudness
 (the start-up chime) is tested.
 
-The headless server renders on the GPU's render node and announces it
-in dmabuf feedback, so GL clients (Chrome) get hardware GL
-as on the desktop rather than Mesa's software fallback.
+**Test desktops draw in software.** A test session and everything
+started in it draw on the processors, not on the person's GPU:
+app_server through Mesa's software EGL device
+(`OLO_HEADLESS_RENDERER=software`: `headless_display` takes the EGL
+device that is software in place of the render node's; no dmabuf
+global, since nothing there has a GPU buffer to hand over), kit
+programs through lavapipe (`VK_LOADER_DRIVERS_SELECT=lvp*`), GL
+programs through llvmpipe (`LIBGL_ALWAYS_SOFTWARE=1`,
+`GALLIUM_DRIVER=llvmpipe`), each on two threads (`LP_NUM_THREADS=2`),
+and only Mesa's EGL is loaded (`__EGL_VENDOR_LIBRARY_FILENAMES`:
+listing EGL's devices loads every maker's library otherwise, NVIDIA's
+among them, which woke its card for every test). `tsession start`
+sets them for app_server and keeps them for what `run` starts. Why:
+lints and checks drawing a dozen desktops at once on the one GPU the
+person's desktop draws on froze it for seconds and restarted its
+programs (2026-11-20, "The GPU has priorities too"), and a test has
+no business on that GPU at all. What it draws is the same to within
+two levels in a pixel here and there (99.67% of a Preferences
+window's pixels identical, the rest text's edges: the two
+rasterizers round coverage differently), so pictures, the layout
+review and the lints are as good; judge colour and spacing from
+them as before, and a hairline's exact grey on the GPU.
+
+`TSESSION_GPU=1 tsession start …` puts a session on the GPU (the
+render node, dmabuf feedback announced, GL clients such as Chrome
+with hardware GL as on the desktop): for what measures drawing itself
+or needs a path only a GPU has. `tools/dev/bench`, `resize-cost` and
+`hdr-check` ask for it themselves; `scroll-check` and `perf-fuzz`
+are given a session started so. An agent's screen (`olo-screen`) is
+the person's to watch and draws on the GPU, thirty times a second at
+the most.
+
+**And a unit test has no compositor.** The interface kit connects to
+one only for a program that runs an app (`olo_interface::run`, which
+says so first: `display::runs_an_app`). Anything else that asks for
+the display (a test measuring text, a service laying something out)
+gets it without, whatever `WAYLAND_DISPLAY` the shell it was started
+from has (an agent's has the person's). Until 2026-11-20 every `cargo
+test` connected its test programs to the person's compositor and made
+a GPU context there with every graphics driver on the computer loaded;
+it was found when NVIDIA's, its card not answering, crashed the kit's
+tests as they exited. A program that asks for the display before its
+`run` panics saying so (it would have had no windows).
 
 The fuzzers are one program, `olo-fuzz` (crates/fuzz, built with the
 workspace: `target/release/olo-fuzz`), in Rust like the rest. Every run

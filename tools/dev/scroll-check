@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """How smoothly a kit app scrolls: drives timed scrolls into a tsession
 and measures, frame by frame, where the app's scroll view was
-(`{"frames":true}`'s marks, olo_kit::commands::FrameMark).
+(`{"frames":true}`'s marks, olo_kit::commands::FrameMark). The session
+is to draw on the GPU, as the person's does (`TSESSION_GPU=1 tsession
+start NAME …`: drawn in software, as test sessions are unless asked,
+frames cost what the processors make of them, not what is measured
+here).
 
   scroll-check NAME [--pid PID | --app NAME] [--at X Y] [--rate HZ]
                [--speed PX/S] [--only drag,flick,wheel] [--json] [--trace]

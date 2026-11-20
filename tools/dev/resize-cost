@@ -4,8 +4,9 @@
 
   resize-cost NAME LABEL ROUNDS APP_ID CMD [ARGS…]
 
-In test session NAME (started already: `tsession start NAME 3456x2234
---home /var/tmp/olo-bench/home`, the benchmark's home), closes what's
+In test session NAME (started already, on the GPU as the person's
+programs draw: `TSESSION_GPU=1 tsession start NAME 3456x2234 --home
+/var/tmp/olo-bench/home`, the benchmark's home), closes what's
 open, starts CMD under perf, lets it settle (SETTLE seconds, 14), then
 drags its window's corner as tools/dev/bench's "live resize" does,
 ROUNDS times over (36 steps each, STEP_MS apart, 45: long enough that
@@ -45,7 +46,7 @@ def main():
     name, label, rounds, app_id, cmd = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4], sys.argv[5:]
     cmd[0] = os.path.abspath(os.path.expanduser(cmd[0]))
     d = f"/var/tmp/olo-dev/{name}"
-    env = dict(os.environ, TSESSION_PROFILE="release")
+    env = dict(os.environ, TSESSION_PROFILE="release", TSESSION_GPU="1")
     step = float(os.environ.get("STEP_MS", "45")) / 1000
 
     def ts(*a):

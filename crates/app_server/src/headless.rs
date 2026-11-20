@@ -15,7 +15,7 @@ use std::{fs::OpenOptions, sync::atomic::Ordering, time::Duration};
 use smithay::{
     backend::{
         allocator::{Fourcc, dmabuf::Dmabuf, gbm::GbmDevice},
-        egl::{EGLContext, EGLDisplay},
+        egl::{EGLContext, EGLDevice, EGLDisplay},
         renderer::{
             Bind, ImportDma, ImportMemWl, Offscreen,
             damage::OutputDamageTracker,
@@ -127,8 +127,10 @@ fn frame_time_at(mode_mhz: i32, unattended: bool) -> Duration {
 pub struct HeadlessData {
     renderer: GlesRenderer,
     screens: Vec<Screen>,
-    dmabuf_state: (DmabufState, DmabufGlobal),
-    dmabuf_checks: crate::dmabuf_check::Checks,
+    /// (No global and no checks where it draws in software,
+    /// `RENDERER_ENV`: clients hand in memory, not GPU buffers.)
+    dmabuf_state: (DmabufState, Option<DmabufGlobal>),
+    dmabuf_checks: Option<crate::dmabuf_check::Checks>,
     handle: LoopHandle<'static, AnvilState<HeadlessData>>,
     /// The timer for the screen due next (`frames_due`), and when it fires.
     frame_timer: Option<(RegistrationToken, std::time::Instant)>,
@@ -149,7 +151,11 @@ impl DmabufHandler for AnvilState<HeadlessData> {
 
     fn dmabuf_imported(&mut self, _global: &DmabufGlobal, dmabuf: Dmabuf, notifier: ImportNotifier) {
         // Checked off the loop (`dmabuf_check`); here only if that can't be.
-        if let Some((dmabuf, notifier)) = self.backend_data.dmabuf_checks.start(dmabuf, notifier) {
+        let Some(checks) = self.backend_data.dmabuf_checks.as_mut() else {
+            notifier.failed();
+            return;
+        };
+        if let Some((dmabuf, notifier)) = checks.start(dmabuf, notifier) {
             self.dmabuf_checked(dmabuf, notifier, true, None);
         }
     }
@@ -160,7 +166,9 @@ impl AnvilState<HeadlessData> {
     /// its commits waiting for that through.
     fn dmabuf_checked(&mut self, dmabuf: Dmabuf, notifier: ImportNotifier, ok: bool, gate: Option<crate::dmabuf_check::Gate>) {
         let imported = ok && self.backend_data.renderer.import_dmabuf(&dmabuf, None).is_ok();
-        self.backend_data.dmabuf_checks.bound();
+        if let Some(checks) = &self.backend_data.dmabuf_checks {
+            checks.bound();
+        }
         if imported {
             let _ = notifier.successful::<AnvilState<HeadlessData>>();
         } else {
@@ -176,10 +184,12 @@ impl Backend for HeadlessData {
     // (A synthetic touch screen's two fingers pinch: `input_handler`.)
     const HAS_GESTURES: bool = true;
     fn dmabuf_gate(&self, dmabuf: &Dmabuf) -> Option<crate::dmabuf_check::Gate> {
-        self.dmabuf_checks.gate(dmabuf)
+        self.dmabuf_checks.as_ref()?.gate(dmabuf)
     }
     fn buffer_gone(&self) {
-        self.dmabuf_checks.gone();
+        if let Some(checks) = &self.dmabuf_checks {
+            checks.gone();
+        }
     }
     fn seat_name(&self) -> String {
         "headless".into()
@@ -321,6 +331,39 @@ fn modes_for((w, h): (i32, i32)) -> Vec<Mode> {
     modes
 }
 
+/// The variable that says where a headless app_server and the programs
+/// on it draw: "software" (Mesa's own drawing on the processors: its
+/// llvmpipe for app_server and GL programs, lavapipe for the kit's
+/// Vulkan), anything else or unset the GPU. A test desktop draws in
+/// software (`tools/dev/tsession` sets it, with what makes Mesa's
+/// programs follow; `TSESSION_GPU=1` for a check of the GPU itself):
+/// what tests draw then touches the person's GPU not at all. A push's
+/// live lint, a dozen desktops drawing at once on the GPU the person's
+/// desktop draws on, froze that desktop and restarted its programs
+/// fifteen times on 2026-11-20 (`gpu_priority`); and at the ordinary
+/// priority it would still take the GPU's turns from them. On the
+/// processors, tests are ordinary work, which the desktop's realtime
+/// threads never wait for. An agent's screen stays on the GPU: programs
+/// are moved between it and the person's screen with their GPU buffers.
+pub const RENDERER_ENV: &str = "OLO_HEADLESS_RENDERER";
+
+/// The EGL display a headless app_server draws on, and the GPU's render
+/// node where that is a GPU's (None: in software, `RENDERER_ENV`).
+fn headless_display() -> Result<(EGLDisplay, Option<std::path::PathBuf>), String> {
+    if std::env::var(RENDERER_ENV).as_deref() == Ok("software") {
+        let device = EGLDevice::enumerate().map_err(|e| format!("no EGL devices: {e}"))?.find(EGLDevice::is_software).ok_or("Mesa's software EGL device isn't here (mesa-dri-drivers)")?;
+        // SAFETY: the display keeps the device it was made from.
+        let egl = unsafe { EGLDisplay::new(device) }.map_err(|e| format!("the software EGL display: {e}"))?;
+        return Ok((egl, None));
+    }
+    let node = render_node().ok_or("no GPU render node in /dev/dri")?;
+    let file = OpenOptions::new().read(true).write(true).open(&node).map_err(|e| format!("cannot open render node {}: {e}", node.display()))?;
+    let gbm = GbmDevice::new(file).map_err(|e| format!("gbm device: {e}"))?;
+    // SAFETY: the gbm device outlives the display (moved into it).
+    let egl = unsafe { EGLDisplay::new(gbm) }.map_err(|e| format!("EGL display: {e}"))?;
+    Ok((egl, Some(node)))
+}
+
 pub fn run_headless(size_arg: Option<&str>) {
     let sizes = parse_sizes(size_arg);
 
@@ -328,20 +371,13 @@ pub fn run_headless(size_arg: Option<&str>) {
     let display = Display::new().unwrap();
     let display_handle = display.handle();
 
-    let Some(node) = render_node() else {
-        error!("no GPU render node in /dev/dri");
-        return;
-    };
-    let file = match OpenOptions::new().read(true).write(true).open(&node) {
-        Ok(f) => f,
-        Err(e) => {
-            error!(?node, "cannot open render node: {e}");
+    let (egl, node) = match headless_display() {
+        Ok(found) => found,
+        Err(why) => {
+            error!("{why}");
             return;
         }
     };
-    let gbm = GbmDevice::new(file).expect("gbm device");
-    // SAFETY: the gbm device outlives the display (moved into it).
-    let egl = unsafe { EGLDisplay::new(gbm) }.expect("EGL display");
     // A headless app_server (an agent's screen, a test session) draws at
     // the GPU's ordinary priority: never above the person's desktop
     // (it asked High once, as the person's does), and **never below
@@ -353,7 +389,14 @@ pub fn run_headless(size_arg: Option<&str>) {
     let context = EGLContext::new_with_priority(&egl, priority).expect("EGL context");
     // SAFETY: the context is current only on this thread.
     let mut renderer = unsafe { GlesRenderer::new(context) }.expect("GLES renderer");
-    info!(?node, "headless renderer ready");
+    // (Asked for software and given a GPU, or the other way about, is
+    // not what was asked: a test must not draw on the person's GPU
+    // believing it doesn't.)
+    if node.is_none() != renderer.is_software() {
+        error!(software = renderer.is_software(), "the headless renderer isn't the kind asked for ({RENDERER_ENV})");
+        return;
+    }
+    info!(?node, software = renderer.is_software(), "headless renderer ready");
 
     // The displays come this long after the start, one after another (a
     // test of what a real one sees: windows reconnecting before DRM has
@@ -395,41 +438,50 @@ pub fn run_headless(size_arg: Option<&str>) {
     }
 
     // Feedback naming the render node: Mesa's EGL finds the GPU through it
-    // (without, GL clients fall back to software rendering).
-    let formats = renderer.dmabuf_formats();
+    // (without, GL clients fall back to software rendering). In software
+    // there is no global at all: clients draw on the processors too and
+    // hand in memory (wl_shm).
     let mut dmabuf_state = DmabufState::new();
-    let feedback = smithay::backend::drm::DrmNode::from_path(&node).ok().and_then(|n| smithay::wayland::dmabuf::DmabufFeedbackBuilder::new(n.dev_id(), formats.clone()).build().ok());
-    let dmabuf_global = match &feedback {
-        Some(f) => dmabuf_state.create_global_with_default_feedback::<AnvilState<HeadlessData>>(&display_handle, f),
-        None => dmabuf_state.create_global::<AnvilState<HeadlessData>>(&display_handle, formats),
-    };
+    let dmabuf_global = node.as_ref().map(|node| {
+        let formats = renderer.dmabuf_formats();
+        let feedback = smithay::backend::drm::DrmNode::from_path(node).ok().and_then(|n| smithay::wayland::dmabuf::DmabufFeedbackBuilder::new(n.dev_id(), formats.clone()).build().ok());
+        match &feedback {
+            Some(f) => dmabuf_state.create_global_with_default_feedback::<AnvilState<HeadlessData>>(&display_handle, f),
+            None => dmabuf_state.create_global::<AnvilState<HeadlessData>>(&display_handle, formats),
+        }
+    });
 
-    let (checked, answers) = smithay::reexports::calloop::channel::channel();
-    let dmabuf_checks = crate::dmabuf_check::Checks::new(renderer.egl_context().display().clone(), Some(node.clone()), checked);
-    event_loop
-        .handle()
-        .insert_source(answers, |event, _, state: &mut AnvilState<HeadlessData>| {
-            use crate::dmabuf_check::Answer;
-            match event {
-                smithay::reexports::calloop::channel::Event::Msg(Answer::Checked { id, ok }) => {
-                    if let Some((dmabuf, notifier, gate)) = state.backend_data.dmabuf_checks.finish(id) {
-                        state.dmabuf_checked(dmabuf, notifier, ok, Some(gate));
+    let dmabuf_checks = node.as_ref().map(|node| {
+        let (checked, answers) = smithay::reexports::calloop::channel::channel();
+        let checks = crate::dmabuf_check::Checks::new(renderer.egl_context().display().clone(), Some(node.clone()), checked);
+        event_loop
+            .handle()
+            .insert_source(answers, |event, _, state: &mut AnvilState<HeadlessData>| {
+                use crate::dmabuf_check::Answer;
+                match event {
+                    smithay::reexports::calloop::channel::Event::Msg(Answer::Checked { id, ok }) => {
+                        if let Some((dmabuf, notifier, gate)) = state.backend_data.dmabuf_checks.as_mut().and_then(|checks| checks.finish(id)) {
+                            state.dmabuf_checked(dmabuf, notifier, ok, Some(gate));
+                        }
                     }
+                    smithay::reexports::calloop::channel::Event::Msg(Answer::Bind) => {
+                        let data = &mut state.backend_data;
+                        let Some(checks) = data.dmabuf_checks.as_mut() else { return };
+                        checks.bind_renderer(|| {
+                            let _ = smithay::backend::renderer::Renderer::cleanup_texture_cache(&mut data.renderer);
+                            let _ = data.renderer.with_context(|gl| unsafe { gl.Finish() });
+                        });
+                    }
+                    smithay::reexports::calloop::channel::Event::Closed => {}
                 }
-                smithay::reexports::calloop::channel::Event::Msg(Answer::Bind) => {
-                    let data = &mut state.backend_data;
-                    data.dmabuf_checks.bind_renderer(|| {
-                        let _ = smithay::backend::renderer::Renderer::cleanup_texture_cache(&mut data.renderer);
-                        let _ = data.renderer.with_context(|gl| unsafe { gl.Finish() });
-                    });
-                }
-                smithay::reexports::calloop::channel::Event::Closed => {}
-            }
-        })
-        .expect("dmabuf checks");
+            })
+            .expect("dmabuf checks");
+        checks
+    });
 
     // Screen captures draw into dmabufs of what this GPU renders.
-    let capture_dma = smithay::backend::drm::DrmNode::from_path(&node).ok().and_then(|n| crate::capture::dma_constraints(n, renderer.egl_context().dmabuf_render_formats()));
+    let capture_dma =
+        node.as_ref().and_then(|node| smithay::backend::drm::DrmNode::from_path(node).ok()).and_then(|n| crate::capture::dma_constraints(n, renderer.egl_context().dmabuf_render_formats()));
     let outputs: Vec<Output> = screens.iter().map(|s| s.output.clone()).collect();
     let data = HeadlessData {
         renderer,
@@ -613,7 +665,9 @@ pub fn run_headless(size_arg: Option<&str>) {
     state.save_layout();
     state.save_handover();
     // The dmabuf worker ends while EGL is still up.
-    state.backend_data.dmabuf_checks.stop();
+    if let Some(checks) = state.backend_data.dmabuf_checks.as_mut() {
+        checks.stop();
+    }
 }
 
 /// Keyboard hints and Twitcher, if they are up, as elements for `output`
@@ -826,7 +880,9 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) -> bool {
         if bind.elapsed() > std::time::Duration::from_millis(4) {
             tracing::info!("slow frame on {name}: {:.1} ms binding the target", bind.elapsed().as_secs_f64() * 1e3);
         }
-        data.dmabuf_checks.frame_done();
+        if let Some(checks) = &data.dmabuf_checks {
+            checks.frame_done();
+        }
         match crate::color::drawing(output) {
             crate::color::Drawing::Plain => render_output(
                 output,

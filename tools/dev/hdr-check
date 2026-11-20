@@ -55,7 +55,7 @@ OUT = "/var/tmp/olo-hdr-check"
 
 
 def ts(*args, env=None):
-    e = dict(os.environ, TSESSION_PROFILE="release", **(env or {}))
+    e = dict(os.environ, TSESSION_PROFILE="release", TSESSION_GPU="1", **(env or {}))
     return subprocess.run(TSESSION + list(args), capture_output=True, text=True, env=e)
 
 
