@@ -72,9 +72,23 @@ struct Screen {
     hdr: Option<crate::color::HdrFrame>,
 }
 
-/// How long a frame of `output` lasts, at its mode's rate (60 or 120 Hz).
+/// The most frames a second an agent's screen is drawn at, whatever its
+/// mode says (Ben, 2026-11-20: "agent screens can be 30 fps they don't
+/// need to ever be higher than that"). Nobody sits at one; what watches
+/// it (the viewer, a recording, a look) is served well at thirty; and a
+/// page that animates there (one screen drew 115 frames a second for a
+/// browser nobody was looking at, ten such screens beside the person's
+/// desktop on the same GPU) costs a quarter of what it did.
+const UNATTENDED_MHZ: i32 = 30_000;
+
+/// How long a frame of `output` lasts, at its mode's rate (60 or 120 Hz;
+/// an agent's screen: thirty at the most).
 fn frame_time(output: &Output) -> Duration {
-    let mhz = output.current_mode().map_or(60_000, |m| m.refresh).max(1_000);
+    frame_time_at(output.current_mode().map_or(60_000, |m| m.refresh), crate::power::unattended())
+}
+
+fn frame_time_at(mode_mhz: i32, unattended: bool) -> Duration {
+    let mhz = if unattended { mode_mhz.min(UNATTENDED_MHZ) } else { mode_mhz }.max(1_000);
     Duration::from_nanos(1_000_000_000_000 / mhz as u64)
 }
 
@@ -990,4 +1004,18 @@ fn read_target(renderer: &mut GlesRenderer, target: &mut GlesTexture) -> Result<
         img = image::imageops::flip_vertical(&img);
     }
     Ok(img)
+}
+
+#[cfg(test)]
+mod frame_time_tests {
+    use super::*;
+
+    /// A screen nobody sits at is drawn thirty times a second at the
+    /// most, at 60 and at 120 Hz; the person's own at its mode's rate.
+    #[test]
+    fn an_agents_screen_is_never_drawn_faster_than_thirty() {
+        let ms = |mhz, unattended| frame_time_at(mhz, unattended).as_micros();
+        assert_eq!((ms(60_000, true), ms(120_000, true), ms(24_000, true)), (33_333, 33_333, 41_666));
+        assert_eq!((ms(60_000, false), ms(120_000, false)), (16_666, 8_333));
+    }
 }

@@ -515,7 +515,7 @@ fn run(job: Job, w: &mut Worker) {
 /// five minutes after an in-place restart, then locked itself with the
 /// person's lock screen, and stayed locked through every restart after
 /// (2026-11-07). Its lock comes only when asked for (`Request::Lock`).
-fn unattended() -> bool {
+pub(crate) fn unattended() -> bool {
     static UNATTENDED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *UNATTENDED.get_or_init(|| std::env::var_os("OLO_SCREEN").is_some_and(|s| !s.is_empty()))
 }

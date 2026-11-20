@@ -136,7 +136,26 @@ something nobody here has is in "Blocked", with what it waits for.
   Olo's side whatever the cause: sessions that cost little (one
   agent screen's compositor stood at 8% of a core with 418 wake-ups
   a second, an Activity Monitor on a screen at 11%: to find what
-  they were drawing). The lint was meanwhile made to run
+  they were drawing). **Found**: that compositor was drawing 115
+  frames a second (its headless output at 120 Hz, one Chrome window
+  animating on it); and, measured as Olo's own meter measures it
+  (`gtidle/idle_residency_ms`), the GPU's render side was awake over
+  half the time with the lint long over, at its lowest frequency (700
+  of 2450 MHz, `freq0/cur_freq`: the firmware's choice, Olo sets
+  none): many small jobs from eleven compositors keep it awake and
+  slow, each job waiting behind the others. **Done**: an agent's
+  screen is drawn thirty times a second at the most
+  (`headless::UNATTENDED_MHZ`; Ben: "agent screens can be 30 fps they
+  don't need to ever be higher than that"): 117 frames a second as a
+  person's screen and 30 as an agent's, the same scrolling, measured.
+  **Next** (Ben: "but they also should be more efficient beyond that
+  too"): an agent's screen composited only when something looks (its
+  viewer open, a picture or a recording asked for), its windows'
+  frame callbacks kept going at a few a second otherwise; what its
+  Deskbar and its other programs draw with nobody looking; one
+  compositor's cost at rest against nothing; and the GPU's frequency
+  under Olo's power modes (whether "low latency" should raise its
+  floor: `freq0/min_freq`, `power_profile`). The lint was meanwhile made to run
   four desktops at once at the most and to wait for room
   (`wait_for_room`): a guard, not the fix. Also: three test desktops from earlier runs were still up,
   one two and a half days old (`/var/tmp/olo-live-lint-*`,
