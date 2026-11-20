@@ -427,6 +427,9 @@ A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference
 A repository’s key needs to be trusted
 Нужно подтвердить доверие к ключу репозитория
 
+A reset this account asked for hasn’t been answered yet. Sign in as the same account, or remove this account and add the other.
+На сброс, запрошенный этой учётной записью, ещё нет ответа. Войдите в ту же учётную запись или удалите эту и добавьте другую.
+
 A resting palm can't click (its pressure doesn't count)
 Не учитывать давление лежащей ладони
 
@@ -630,6 +633,9 @@ Add a Second Key
 
 Add a Section…
 Добавить раздел…
+
+Add a place
+Добавить место
 
 Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
 Пакеты и обновления из нового репозитория будут доступны вместе с пакетами Fedora. Добавляйте только доверенные репозитории: их владельцы могут установить на этот компьютер что угодно.
@@ -1104,6 +1110,9 @@ Ask for Full Access at Start
 
 Ask for sudo Passwords in a Window
 Запрашивать пароль sudo в окне
+
+Ask the assistant
+Спросить ассистента
 
 Ask what to do about urgent ones
 Спрашивать, что делать со срочными
@@ -1854,6 +1863,9 @@ Choose a to-do to see its details.
 
 Choose a widget to change it, or add one.
 Выберите виджет для настройки или добавьте новый.
+
+Choose every update
+Выбрать все обновления
 
 Choose what to scan:
 Что сканировать:
@@ -2635,6 +2647,9 @@ Delete Vault
 Delete Vault…
 Удалить сейф…
 
+Delete the event
+Удалить событие
+
 Delete the unfinished backup? What it sent ({}) is freed, and the next backup reads and sends again what it had done. It can’t be undone.
 Удалить незавершённую копию? Отправленные данные ({}) будут удалены. При следующем копировании их придётся прочитать и передать заново. Это действие необратимо.
 
@@ -3144,6 +3159,9 @@ Edit Name
 
 Edit Video…
 Редактировать видео…
+
+Edit the event
+Изменить событие
 
 Editors’ swap and backup files
 Временные и резервные файлы редакторов
@@ -5926,6 +5944,9 @@ New Worktree…
 New description
 Новое описание
 
+New event
+Новое событие
+
 New message
 Новое сообщение
 
@@ -5988,6 +6009,9 @@ Next Tab
 
 Next Week
 Следующая неделя
+
+Next day, week or month
+Следующий день, неделя или месяц
 
 Next step
 Следующий шаг
@@ -6835,6 +6859,9 @@ Open kache's Log
 Open my.telegram.org
 Открыть my.telegram.org
 
+Open the website
+Открыть сайт
+
 Open with {}
 Открыть в {}
 
@@ -7264,6 +7291,9 @@ Play Sound Through It
 Play a sound when Olo starts
 Воспроизводить звук при запуске Olo
 
+Play or pause the phone's music
+Воспроизвести или приостановить музыку на телефоне
+
 Play sound through:
 Вывод звука:
 
@@ -7422,6 +7452,12 @@ Previous Tab
 
 Previous Week
 Предыдущая неделя
+
+Previous day, week or month
+Предыдущий день, неделя или месяц
+
+Print
+Печать
 
 Print…
 Печать…
@@ -8671,6 +8707,12 @@ Show on All Workspaces
 Show or Hide All Windows
 Показать или скрыть все окна
 
+Show or hide the assistant
+Показать или скрыть ассистента
+
+Show or hide the source
+Показать или скрыть исходный текст
+
 Show seconds
 Показать секунды
 
@@ -9415,6 +9457,9 @@ The account answering now
 The account couldn’t be saved ({}).
 Не удалось сохранить учётную запись ({}).
 
+The account left the pool while signing in.
+Учётная запись покинула пул во время входа.
+
 The address search answered {}.
 Ответ службы поиска адресов: {}.
 
@@ -9471,6 +9516,12 @@ The coming days, each its sky, low and high.
 
 The computer couldn't be restarted: {}
 Не удалось перезапустить компьютер: {}
+
+The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
+Копия Token Pool, которую заменила эта, ещё завершает свои запросы. Добавьте учётную запись через минуту.
+
+The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
+Копия Token Pool, которую заменила эта, ещё завершает свои запросы. Войдите снова через минуту.
 
 The day before, at 9 AM
 Накануне, в 9:00

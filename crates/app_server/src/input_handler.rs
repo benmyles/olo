@@ -1358,6 +1358,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         };
         let serial = SCOUNTER.next_serial();
         self.update_keyboard_focus(touch_location, serial);
+        self.touch_sent = true;
         handle.down(self, under, &DownEvent { slot: touch_slot, location: touch_location, serial, time });
     }
 
@@ -1405,6 +1406,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             return;
         };
         let serial = SCOUNTER.next_serial();
+        self.touch_sent = true;
         handle.up(self, &UpEvent { slot, serial, time })
     }
 
@@ -1483,14 +1485,24 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             return;
         };
         let under = self.surface_under(touch_location);
+        self.touch_sent = true;
         handle.motion(self, under, &smithay::input::touch::MotionEvent { slot, location: touch_location, time });
     }
 
     fn on_touch_frame<B: InputBackend>(&mut self, _evt: B::TouchFrameEvent) {
-        let Some(handle) = self.seat.get_touch() else {
+        self.touch_frame();
+    }
+
+    /// The end of a touch screen's report: the seat's touch ends its
+    /// frame, if any of the report was its (none of a finger that is
+    /// the pointer's is).
+    fn touch_frame(&mut self) {
+        if !std::mem::take(&mut self.touch_sent) {
             return;
-        };
-        handle.frame(self);
+        }
+        if let Some(handle) = self.seat.get_touch() {
+            handle.frame(self);
+        }
     }
 
     fn on_touch_cancel<B: InputBackend>(&mut self, _evt: B::TouchCancelEvent) {
@@ -1874,21 +1886,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 match phase {
                     olo_protocol::TouchPhase::Down => {
                         self.touch_down(slot, at, time);
-                        if let Some(t) = self.seat.get_touch() {
-                            t.frame(self);
-                        }
+                        self.touch_frame();
                     }
                     olo_protocol::TouchPhase::Motion => {
                         self.touch_motion(slot, at, time);
-                        if let Some(t) = self.seat.get_touch() {
-                            t.frame(self);
-                        }
+                        self.touch_frame();
                     }
                     olo_protocol::TouchPhase::Up => {
                         self.touch_up(slot, time);
-                        if let Some(t) = self.seat.get_touch() {
-                            t.frame(self);
-                        }
+                        self.touch_frame();
                     }
                 }
             }

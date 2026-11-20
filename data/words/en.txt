@@ -138,6 +138,7 @@ A program woken while the processors are busy runs at once, where it would wait 
 A red dot for an app with something unread in it
 A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference gives one).
 A repository’s key needs to be trusted
+A reset this account asked for hasn’t been answered yet. Sign in as the same account, or remove this account and add the other.
 A resting palm can't click (its pressure doesn't count)
 A rising swell
 A row of dots
@@ -206,6 +207,7 @@ Add a Google Account…
 Add a Kind
 Add a Second Key
 Add a Section…
+Add a place
 Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
 Add an App…
 Add an account in Preferences
@@ -360,6 +362,7 @@ Ask about your calendars here: the assistant is given the events of the ones you
 Ask anything about the forecast here: the assistant has all of it, hour by hour.
 Ask for Full Access at Start
 Ask for sudo Passwords in a Window
+Ask the assistant
 Ask what to do about urgent ones
 Asked now:
 Asking Passwords…
@@ -607,6 +610,7 @@ Choose a network to join it.
 Choose a setting, then play the original or its sound: switching goes on from the same place.
 Choose a to-do to see its details.
 Choose a widget to change it, or add one.
+Choose every update
 Choose what to scan:
 Choose:
 Choose…
@@ -866,6 +870,7 @@ Delete Signature
 Delete Table
 Delete Vault
 Delete Vault…
+Delete the event
 Delete the unfinished backup? What it sent ({}) is freed, and the next backup reads and sends again what it had done. It can’t be undone.
 Delete the vault “{}”{}{}? This can’t be undone.
 Delete these {} backups, the unfinished one too? The space only they took is freed (what the unfinished one sent, {}); files other backups hold too stay in those. It can’t be undone.
@@ -1035,6 +1040,7 @@ Edit Event…
 Edit Message
 Edit Name
 Edit Video…
+Edit the event
 Editors’ swap and backup files
 Edit…
 Either AirPod
@@ -1953,6 +1959,7 @@ New Window
 New Windows Open In
 New Worktree…
 New description
+New event
 New message
 New ones go in
 New ones go in:
@@ -1974,6 +1981,7 @@ Next Month
 Next Page
 Next Tab
 Next Week
+Next day, week or month
 Next step
 Next when you click Back Up Now.
 Next {}.
@@ -2256,6 +2264,7 @@ Open in Terminal
 Open in Tracker
 Open kache's Log
 Open my.telegram.org
+Open the website
 Open with {}
 Open {} to see it.
 Open {} to see them.
@@ -2397,6 +2406,7 @@ Places can’t be looked up: {}
 Play
 Play Sound Through It
 Play a sound when Olo starts
+Play or pause the phone's music
 Play sound through:
 Playback
 Playback Speed
@@ -2450,6 +2460,8 @@ Previous Month
 Previous Page
 Previous Tab
 Previous Week
+Previous day, week or month
+Print
 Print…
 Priorities
 Priorities off: background work put back
@@ -2865,6 +2877,8 @@ Show its value
 Show on AirPlay
 Show on All Workspaces
 Show or Hide All Windows
+Show or hide the assistant
+Show or hide the source
 Show seconds
 Show the day of the week
 Show the phone’s other notifications
@@ -3111,6 +3125,7 @@ The Theme’s Own
 The VPN couldn't be saved.
 The account answering now
 The account couldn’t be saved ({}).
+The account left the pool while signing in.
 The address search answered {}.
 The address search’s answer can’t be read: {}
 The agent is at work in a Terminal window, on its agent screen “{}” (Agent Screens shows it): it makes the account’s app in Google Cloud and signs Olo in with it. The account shows here when it’s done; you can talk to the agent in Terminal meanwhile.
@@ -3130,6 +3145,8 @@ The clock service (systemd-timedated) isn't answering.
 The code from {}, at {}.
 The coming days, each its sky, low and high.
 The computer couldn't be restarted: {}
+The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
+The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
 The day before, at 9 AM
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
 The displays' settings are Olo's own again, from when you leave Rescue.

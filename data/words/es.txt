@@ -423,6 +423,9 @@ Una referencia es como op://bóveda/elemento/campo (Copiar referencia del secret
 A repository’s key needs to be trusted
 Hay que confiar en la clave de un repositorio
 
+A reset this account asked for hasn’t been answered yet. Sign in as the same account, or remove this account and add the other.
+Un restablecimiento que pidió esta cuenta aún no ha recibido respuesta. Inicia sesión con la misma cuenta, o elimina esta cuenta y añade la otra.
+
 A resting palm can't click (its pressure doesn't count)
 Palma apoyada: sin clic (su presión no cuenta)
 
@@ -626,6 +629,9 @@ Añadir una segunda tecla
 
 Add a Section…
 Añadir sección…
+
+Add a place
+Añadir un lugar
 
 Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
 Añadir un repositorio: sus paquetes y actualizaciones llegan con los de Fedora. Añade solo los que sean de confianza: quien lo mantiene puede poner cualquier cosa en este ordenador.
@@ -1092,6 +1098,9 @@ Pedir acceso total al empezar
 
 Ask for sudo Passwords in a Window
 Pedir las contraseñas de sudo en una ventana
+
+Ask the assistant
+Preguntar al asistente
 
 Ask what to do about urgent ones
 Preguntar qué hacer con los urgentes
@@ -1836,6 +1845,9 @@ Selecciona una tarea para ver sus detalles.
 
 Choose a widget to change it, or add one.
 Elige un widget para cambiarlo o añade uno.
+
+Choose every update
+Elegir todas las actualizaciones
 
 Choose what to scan:
 Elige qué analizar:
@@ -2615,6 +2627,9 @@ Eliminar bóveda
 Delete Vault…
 Eliminar bóveda…
 
+Delete the event
+Eliminar el evento
+
 Delete the unfinished backup? What it sent ({}) is freed, and the next backup reads and sends again what it had done. It can’t be undone.
 ¿Eliminar la copia sin terminar? Lo que envió ({}) se libera, y la próxima copia vuelve a leer y enviar lo que ya había hecho. No se puede deshacer.
 
@@ -3122,6 +3137,9 @@ Editar nombre
 
 Edit Video…
 Editar vídeo…
+
+Edit the event
+Editar el evento
 
 Editors’ swap and backup files
 Archivos de intercambio y copia de los editores
@@ -5886,6 +5904,9 @@ Nuevo worktree…
 New description
 Nueva descripción
 
+New event
+Evento nuevo
+
 New message
 Mensaje nuevo
 
@@ -5948,6 +5969,9 @@ Pestaña siguiente
 
 Next Week
 Semana siguiente
+
+Next day, week or month
+Día, semana o mes siguiente
 
 Next step
 Paso siguiente
@@ -6795,6 +6819,9 @@ Abrir el registro de kache
 Open my.telegram.org
 Abrir my.telegram.org
 
+Open the website
+Abrir el sitio web
+
 Open with {}
 Abrir con {}
 
@@ -7220,6 +7247,9 @@ Reproducir el sonido por él
 Play a sound when Olo starts
 Reproducir un sonido al iniciar Olo
 
+Play or pause the phone's music
+Reproducir o pausar la música del teléfono
+
 Play sound through:
 Reproducir el sonido por:
 
@@ -7378,6 +7408,12 @@ Pestaña anterior
 
 Previous Week
 Semana anterior
+
+Previous day, week or month
+Día, semana o mes anterior
+
+Print
+Imprimir
 
 Print…
 Imprimir…
@@ -8625,6 +8661,12 @@ Mostrar en todos los espacios de trabajo
 Show or Hide All Windows
 Mostrar u ocultar todas las ventanas
 
+Show or hide the assistant
+Mostrar u ocultar el asistente
+
+Show or hide the source
+Mostrar u ocultar el código fuente
+
 Show seconds
 Mostrar los segundos
 
@@ -9365,6 +9407,9 @@ La cuenta que responde ahora
 The account couldn’t be saved ({}).
 No se pudo guardar la cuenta ({}).
 
+The account left the pool while signing in.
+La cuenta salió del grupo mientras se iniciaba sesión.
+
 The address search answered {}.
 La búsqueda de direcciones respondió {}.
 
@@ -9421,6 +9466,12 @@ Los próximos días, cada uno con su cielo, mínima y máxima.
 
 The computer couldn't be restarted: {}
 No se pudo reiniciar el ordenador: {}
+
+The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
+La copia de Token Pool a la que esta sustituyó aún está terminando sus solicitudes. Añade la cuenta en un momento.
+
+The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
+La copia de Token Pool a la que esta sustituyó aún está terminando sus solicitudes. Vuelve a iniciar sesión en un momento.
 
 The day before, at 9 AM
 El día anterior a las 9:00

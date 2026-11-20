@@ -421,6 +421,9 @@ A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference
 A repository’s key needs to be trusted
 需要確認是否信任套件來源的金鑰
 
+A reset this account asked for hasn’t been answered yet. Sign in as the same account, or remove this account and add the other.
+此帳號要求的一次重置尚未得到回覆。請以同一帳號登入，或移除此帳號並加入另一個。
+
 A resting palm can't click (its pressure doesn't count)
 手掌停放時不會觸發點按（不計入手掌壓力）
 
@@ -624,6 +627,9 @@ Add a Second Key
 
 Add a Section…
 新增區段…
+
+Add a place
+加入地點
 
 Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
 這個來源的套件和更新會和 Fedora 的一起提供。請只新增您信任的來源，因為維護者可以在這台電腦上安裝任何軟體。
@@ -1086,6 +1092,9 @@ Ask for Full Access at Start
 
 Ask for sudo Passwords in a Window
 在視窗中詢問 sudo 密碼
+
+Ask the assistant
+詢問助理
 
 Ask what to do about urgent ones
 詢問如何處理緊急問題
@@ -1827,6 +1836,9 @@ Choose a to-do to see its details.
 
 Choose a widget to change it, or add one.
 選擇要更改的小工具，也可以新增新的。
+
+Choose every update
+選取所有更新項目
 
 Choose what to scan:
 選擇掃描範圍：
@@ -2605,6 +2617,9 @@ Delete Vault
 Delete Vault…
 刪除保險庫…
 
+Delete the event
+刪除行程
+
 Delete the unfinished backup? What it sent ({}) is freed, and the next backup reads and sends again what it had done. It can’t be undone.
 刪除未完成的備份嗎？已傳輸的資料（{}）會被清除。下次備份將重新讀取並傳送這部分資料。此操作無法復原。
 
@@ -3111,6 +3126,9 @@ Edit Name
 
 Edit Video…
 編輯影片…
+
+Edit the event
+編輯行程
 
 Editors’ swap and backup files
 編輯器的交換檔案和備份檔案
@@ -5866,6 +5884,9 @@ New Worktree…
 New description
 新說明
 
+New event
+新增行程
+
 New message
 新訊息
 
@@ -5928,6 +5949,9 @@ Next Tab
 
 Next Week
 下週
+
+Next day, week or month
+下一天、下一週或下個月
 
 Next step
 下一步
@@ -6775,6 +6799,9 @@ Open kache's Log
 Open my.telegram.org
 開啟 my.telegram.org
 
+Open the website
+打開網站
+
 Open with {}
 使用 {} 開啟
 
@@ -7198,6 +7225,9 @@ Play Sound Through It
 Play a sound when Olo starts
 Olo 啟動時播放聲音
 
+Play or pause the phone's music
+播放或暫停手機上的音樂
+
 Play sound through:
 音訊輸出裝置：
 
@@ -7356,6 +7386,12 @@ Previous Tab
 
 Previous Week
 上週
+
+Previous day, week or month
+上一天、上一週或上個月
+
+Print
+列印
 
 Print…
 列印…
@@ -8602,6 +8638,12 @@ Show on All Workspaces
 Show or Hide All Windows
 顯示或隱藏所有視窗
 
+Show or hide the assistant
+顯示或隱藏助理
+
+Show or hide the source
+顯示或隱藏原始碼
+
 Show seconds
 顯示秒數
 
@@ -9340,6 +9382,9 @@ The account answering now
 The account couldn’t be saved ({}).
 無法儲存帳號（{}）。
 
+The account left the pool while signing in.
+登入期間該帳號已離開池。
+
 The address search answered {}.
 地址搜尋服務回傳了 {}。
 
@@ -9396,6 +9441,12 @@ The coming days, each its sky, low and high.
 
 The computer couldn't be restarted: {}
 無法重新啟動電腦：{}
+
+The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
+被此副本取代的 Token Pool 仍在完成其要求。請稍後再加入帳號。
+
+The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
+被此副本取代的 Token Pool 仍在完成其要求。請稍後再次登入。
 
 The day before, at 9 AM
 前一天上午 9 點

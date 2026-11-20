@@ -421,6 +421,9 @@ A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference
 A repository’s key needs to be trusted
 需要确认是否信任软件源的密钥
 
+A reset this account asked for hasn’t been answered yet. Sign in as the same account, or remove this account and add the other.
+此账户请求的一次重置尚未得到答复。请以同一账户登录，或移除此账户并添加另一个。
+
 A resting palm can't click (its pressure doesn't count)
 手掌停放时不会触发点击（不计入手掌压力）
 
@@ -624,6 +627,9 @@ Add a Second Key
 
 Add a Section…
 添加分组…
+
+Add a place
+添加地点
 
 Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
 添加软件源后，它的包和更新会与 Fedora 的一起提供。请只添加信任的软件源，因为维护者可以在这台电脑上安装任何内容。
@@ -1086,6 +1092,9 @@ Ask for Full Access at Start
 
 Ask for sudo Passwords in a Window
 在窗口中询问 sudo 密码
+
+Ask the assistant
+询问助理
 
 Ask what to do about urgent ones
 询问如何处理紧急问题
@@ -1827,6 +1836,9 @@ Choose a to-do to see its details.
 
 Choose a widget to change it, or add one.
 选择要更改的小组件，也可以添加新的。
+
+Choose every update
+选取所有更新
 
 Choose what to scan:
 选择扫描范围：
@@ -2605,6 +2617,9 @@ Delete Vault
 Delete Vault…
 删除保险库…
 
+Delete the event
+删除日程
+
 Delete the unfinished backup? What it sent ({}) is freed, and the next backup reads and sends again what it had done. It can’t be undone.
 删除未完成的备份吗？已传输的数据（{}）会被清除。下次备份将重新读取并发送这部分数据。此操作无法撤销。
 
@@ -3111,6 +3126,9 @@ Edit Name
 
 Edit Video…
 编辑视频…
+
+Edit the event
+编辑日程
 
 Editors’ swap and backup files
 编辑器的交换文件和备份文件
@@ -5866,6 +5884,9 @@ New Worktree…
 New description
 新说明
 
+New event
+新建日程
+
 New message
 新消息
 
@@ -5928,6 +5949,9 @@ Next Tab
 
 Next Week
 下周
+
+Next day, week or month
+下一天、下一周或下个月
 
 Next step
 下一步
@@ -6775,6 +6799,9 @@ Open kache's Log
 Open my.telegram.org
 打开 my.telegram.org
 
+Open the website
+打开网站
+
 Open with {}
 使用 {} 打开
 
@@ -7198,6 +7225,9 @@ Play Sound Through It
 Play a sound when Olo starts
 Olo 启动时播放声音
 
+Play or pause the phone's music
+播放或暂停手机上的音乐
+
 Play sound through:
 声音输出设备：
 
@@ -7356,6 +7386,12 @@ Previous Tab
 
 Previous Week
 上周
+
+Previous day, week or month
+上一天、上一周或上个月
+
+Print
+打印
 
 Print…
 打印…
@@ -8602,6 +8638,12 @@ Show on All Workspaces
 Show or Hide All Windows
 显示或隐藏所有窗口
 
+Show or hide the assistant
+显示或隐藏助理
+
+Show or hide the source
+显示或隐藏源代码
+
 Show seconds
 显示秒数
 
@@ -9340,6 +9382,9 @@ The account answering now
 The account couldn’t be saved ({}).
 无法保存账户（{}）。
 
+The account left the pool while signing in.
+登录期间该账户已离开池。
+
 The address search answered {}.
 地址搜索响应：{}。
 
@@ -9396,6 +9441,12 @@ The coming days, each its sky, low and high.
 
 The computer couldn't be restarted: {}
 无法重启电脑：{}
+
+The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
+被此副本替换的 Token Pool 仍在完成其请求。请稍后再添加账户。
+
+The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
+被此副本替换的 Token Pool 仍在完成其请求。请稍后再次登录。
 
 The day before, at 9 AM
 前一天上午 9 点

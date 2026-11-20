@@ -423,6 +423,9 @@ Een verwijzing ziet eruit als op://vault/item/field. U vindt deze in Passwords v
 A repository’s key needs to be trusted
 De sleutel van een pakketbron moet worden vertrouwd
 
+A reset this account asked for hasn’t been answered yet. Sign in as the same account, or remove this account and add the other.
+Een reset die deze account heeft aangevraagd, is nog niet beantwoord. Log in met dezelfde account, of verwijder deze account en voeg de andere toe.
+
 A resting palm can't click (its pressure doesn't count)
 Druk van een rustende handpalm telt niet als klik
 
@@ -626,6 +629,9 @@ Tweede toets toevoegen
 
 Add a Section…
 Onderdeel toevoegen…
+
+Add a place
+Voeg een plaats toe
 
 Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
 De pakketten en updates uit deze bron verschijnen naast die van Fedora. Voeg alleen bronnen toe die u vertrouwt: de beheerder kan van alles op deze computer installeren.
@@ -1092,6 +1098,9 @@ Bij opstarten om volledige toegang vragen
 
 Ask for sudo Passwords in a Window
 Sudo-wachtwoord in een venster vragen
+
+Ask the assistant
+Vraag het de assistent
 
 Ask what to do about urgent ones
 Vragen wat te doen bij dringende problemen
@@ -1836,6 +1845,9 @@ Selecteer een taak om de details te bekijken.
 
 Choose a widget to change it, or add one.
 Kies een widget om die te wijzigen of voeg er een toe.
+
+Choose every update
+Kies alle updates
 
 Choose what to scan:
 Kies wat u wilt scannen:
@@ -2615,6 +2627,9 @@ Kluis verwijderen
 Delete Vault…
 Kluis verwijderen…
 
+Delete the event
+Verwijder de activiteit
+
 Delete the unfinished backup? What it sent ({}) is freed, and the next backup reads and sends again what it had done. It can’t be undone.
 De onvoltooide back-up verwijderen? De ruimte voor de al verzonden gegevens ({}) komt vrij. De volgende back-up moet die gegevens opnieuw lezen en verzenden. Dit kan niet ongedaan worden gemaakt.
 
@@ -3122,6 +3137,9 @@ Naam bewerken
 
 Edit Video…
 Video bewerken…
+
+Edit the event
+Wijzig de activiteit
 
 Editors’ swap and backup files
 Wissel- en back-upbestanden van editors
@@ -5886,6 +5904,9 @@ Nieuwe werkboom…
 New description
 Nieuwe beschrijving
 
+New event
+Nieuwe activiteit
+
 New message
 Nieuw bericht
 
@@ -5948,6 +5969,9 @@ Volgend tabblad
 
 Next Week
 Volgende week
+
+Next day, week or month
+Volgende dag, week of maand
 
 Next step
 Volgende stap
@@ -6795,6 +6819,9 @@ Logboek van kache openen
 Open my.telegram.org
 my.telegram.org openen
 
+Open the website
+Open de website
+
 Open with {}
 Openen met {}
 
@@ -7220,6 +7247,9 @@ Geluid via dit apparaat afspelen
 Play a sound when Olo starts
 Een geluid afspelen bij het starten van Olo
 
+Play or pause the phone's music
+Muziek van de telefoon afspelen of pauzeren
+
 Play sound through:
 Geluid afspelen via:
 
@@ -7378,6 +7408,12 @@ Vorig tabblad
 
 Previous Week
 Vorige week
+
+Previous day, week or month
+Vorige dag, week of maand
+
+Print
+Druk af
 
 Print…
 Afdrukken…
@@ -8625,6 +8661,12 @@ Op alle werkbladen tonen
 Show or Hide All Windows
 Alle vensters tonen of verbergen
 
+Show or hide the assistant
+Toon of verberg de assistent
+
+Show or hide the source
+Toon of verberg de bron
+
 Show seconds
 Seconden tonen
 
@@ -9365,6 +9407,9 @@ Het account dat nu antwoordt
 The account couldn’t be saved ({}).
 Account opslaan is mislukt ({}).
 
+The account left the pool while signing in.
+De account heeft de pool verlaten tijdens het inloggen.
+
 The address search answered {}.
 De adreszoekopdracht gaf {} terug.
 
@@ -9421,6 +9466,12 @@ De komende dagen met bewolking, minimum- en maximumtemperatuur.
 
 The computer couldn't be restarted: {}
 De computer herstarten is mislukt: {}
+
+The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
+De kopie van Token Pool die door deze is vervangen, rondt nog haar verzoeken af. Voeg de account over een ogenblik toe.
+
+The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
+De kopie van Token Pool die door deze is vervangen, rondt nog haar verzoeken af. Log over een ogenblik opnieuw in.
 
 The day before, at 9 AM
 De dag ervoor om 9.00 uur

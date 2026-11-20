@@ -421,6 +421,9 @@ A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference
 A repository’s key needs to be trusted
 リポジトリの鍵を信頼するか確認してください
 
+A reset this account asked for hasn’t been answered yet. Sign in as the same account, or remove this account and add the other.
+このアカウントが要求したリセットにまだ応答がありません。同じアカウントでサインインするか、このアカウントを削除してもう一方を追加してください。
+
 A resting palm can't click (its pressure doesn't count)
 手のひらの圧力をクリックに含めない
 
@@ -624,6 +627,9 @@ Add a Second Key
 
 Add a Section…
 セクションを追加…
+
+Add a place
+場所を追加
 
 Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
 追加したリポジトリのパッケージと更新はFedoraのものと一緒に表示されます。提供元はこのコンピューターに任意のソフトウェアをインストールできるので、信頼できるものだけを追加してください。
@@ -1086,6 +1092,9 @@ Ask for Full Access at Start
 
 Ask for sudo Passwords in a Window
 sudoのパスワードをウィンドウで入力
+
+Ask the assistant
+アシスタントに質問
 
 Ask what to do about urgent ones
 緊急の問題は対処方法を確認
@@ -1827,6 +1836,9 @@ Choose a to-do to see its details.
 
 Choose a widget to change it, or add one.
 変更するウィジェットを選ぶか、新しく追加してください。
+
+Choose every update
+すべてのアップデートを選択
 
 Choose what to scan:
 スキャン対象を選択:
@@ -2605,6 +2617,9 @@ Delete Vault
 Delete Vault…
 保管庫を削除…
 
+Delete the event
+イベントを削除
+
 Delete the unfinished backup? What it sent ({}) is freed, and the next backup reads and sends again what it had done. It can’t be undone.
 未完了のバックアップを削除しますか？ 送信済みの{}が解放され、次回はその分も読み直して再送します。削除は取り消せません。
 
@@ -3111,6 +3126,9 @@ Edit Name
 
 Edit Video…
 動画を編集…
+
+Edit the event
+イベントを編集
 
 Editors’ swap and backup files
 エディターのスワップ・バックアップファイル
@@ -5866,6 +5884,9 @@ New Worktree…
 New description
 新しい説明
 
+New event
+新規イベント
+
 New message
 新規メッセージ
 
@@ -5928,6 +5949,9 @@ Next Tab
 
 Next Week
 来週
+
+Next day, week or month
+次の日、週、または月
 
 Next step
 次の手順
@@ -6775,6 +6799,9 @@ kacheのログを開く
 Open my.telegram.org
 my.telegram.orgを開く
 
+Open the website
+ウェブサイトを開く
+
 Open with {}
 {}で開く
 
@@ -7198,6 +7225,9 @@ Play Sound Through It
 Play a sound when Olo starts
 Oloの起動時に音を鳴らす
 
+Play or pause the phone's music
+電話の音楽を再生または一時停止
+
 Play sound through:
 音声の出力先:
 
@@ -7356,6 +7386,12 @@ Previous Tab
 
 Previous Week
 先週
+
+Previous day, week or month
+前の日、週、または月
+
+Print
+プリント
 
 Print…
 印刷…
@@ -8602,6 +8638,12 @@ Show on All Workspaces
 Show or Hide All Windows
 全ウィンドウの表示・非表示
 
+Show or hide the assistant
+アシスタントを表示/非表示
+
+Show or hide the source
+ソースを表示/非表示
+
 Show seconds
 秒を表示
 
@@ -9340,6 +9382,9 @@ The account answering now
 The account couldn’t be saved ({}).
 アカウントを保存できませんでした（{}）。
 
+The account left the pool while signing in.
+サインイン中にアカウントがプールから外されました。
+
 The address search answered {}.
 アドレス検索の応答：{}。
 
@@ -9396,6 +9441,12 @@ The coming days, each its sky, low and high.
 
 The computer couldn't be restarted: {}
 コンピューターを再起動できませんでした：{}
+
+The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
+置き換えられたToken Poolのコピーが、まだリクエストを処理しています。少ししてからアカウントを追加してください。
+
+The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
+置き換えられたToken Poolのコピーが、まだリクエストを処理しています。少ししてからもう一度サインインしてください。
 
 The day before, at 9 AM
 前日の午前9時

@@ -118,9 +118,16 @@ pub fn set_language_in(path: &Path, value: Option<&str>) -> std::io::Result<()> 
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let new = path.with_extension("conf.new");
+    // (Through a sibling of this write's own: two writers at once, each
+    // through `locale.conf.new`, had the second find its file moved away
+    // by the first: "No such file or directory", eleven times in a day's
+    // log, from Preferences telling the language twice at a change.)
+    static WRITES: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let new = path.with_extension(format!("conf.new.{}.{}", std::process::id(), WRITES.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
     std::fs::write(&new, after)?;
-    std::fs::rename(new, path)
+    std::fs::rename(&new, path).inspect_err(|_| {
+        let _ = std::fs::remove_file(&new);
+    })
 }
 
 /// The locale for this process and what it starts, where the login gave
@@ -135,6 +142,32 @@ pub fn set() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Many writers at once each get their file in: none finds its own
+    /// moved away by another (they wrote through one sibling's name).
+    #[test]
+    fn writers_at_once_dont_take_each_others_file() {
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-locale-race-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let file = dir.join("locale.conf");
+        set_language_in(&file, Some("en_US:en")).unwrap();
+        let writers: Vec<_> = (0..16)
+            .map(|i| {
+                let file = file.clone();
+                std::thread::spawn(move || (0..40).map(|n| set_language_in(&file, Some(if (i + n) % 2 == 0 { "de_DE:de" } else { "fr_FR:fr" }))).collect::<Vec<_>>())
+            })
+            .collect();
+        for w in writers {
+            for result in w.join().unwrap() {
+                result.unwrap();
+            }
+        }
+        let kept = std::fs::read_to_string(&file).unwrap();
+        assert!(kept == "LANGUAGE=\"de_DE:de\"\n" || kept == "LANGUAGE=\"fr_FR:fr\"\n", "{kept}");
+        // Nothing left beside it.
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// The language for programs' words kept in the person's file, the
     /// rest of it as it was; changed, the old line goes; taken out, the

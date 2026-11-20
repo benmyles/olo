@@ -423,6 +423,9 @@ Une référence ressemble à op://coffre/élément/champ (Copier la référence 
 A repository’s key needs to be trusted
 La clé d’un dépôt doit être approuvée
 
+A reset this account asked for hasn’t been answered yet. Sign in as the same account, or remove this account and add the other.
+Une réinitialisation demandée par ce compte n'a pas encore reçu de réponse. Connectez-vous avec le même compte, ou supprimez ce compte et ajoutez l'autre.
+
 A resting palm can't click (its pressure doesn't count)
 Paume posée : pas de clic (pression ignorée)
 
@@ -626,6 +629,9 @@ Ajouter une seconde touche
 
 Add a Section…
 Ajouter une section…
+
+Add a place
+Ajouter un lieu
 
 Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
 Ajouter un dépôt : ses paquets et mises à jour arrivent avec ceux de Fedora. N’ajoutez que des dépôts de confiance : qui le tient peut mettre n’importe quoi sur cet ordinateur.
@@ -1092,6 +1098,9 @@ Demander l’accès complet au démarrage
 
 Ask for sudo Passwords in a Window
 Demander les mots de passe sudo dans une fenêtre
+
+Ask the assistant
+Demander à l'assistant
 
 Ask what to do about urgent ones
 Demander quoi faire des urgents
@@ -1836,6 +1845,9 @@ Sélectionnez une tâche pour en voir les détails.
 
 Choose a widget to change it, or add one.
 Choisissez un widget pour le modifier, ou ajoutez-en un.
+
+Choose every update
+Choisir toutes les mises à jour
 
 Choose what to scan:
 Choisissez quoi analyser :
@@ -2615,6 +2627,9 @@ Supprimer le coffre
 Delete Vault…
 Supprimer le coffre…
 
+Delete the event
+Supprimer l'évènement
+
 Delete the unfinished backup? What it sent ({}) is freed, and the next backup reads and sends again what it had done. It can’t be undone.
 Supprimer la sauvegarde inachevée ? Ce qu’elle a envoyé ({}) est libéré, et la prochaine sauvegarde relit et renvoie ce qu’elle avait fait. Action irréversible.
 
@@ -3122,6 +3137,9 @@ Modifier le nom
 
 Edit Video…
 Modifier la vidéo…
+
+Edit the event
+Modifier l'évènement
 
 Editors’ swap and backup files
 Fichiers d’échange et de secours des éditeurs
@@ -5886,6 +5904,9 @@ Nouveau worktree…
 New description
 Nouvelle description
 
+New event
+Nouvel évènement
+
 New message
 Nouveau message
 
@@ -5948,6 +5969,9 @@ Onglet suivant
 
 Next Week
 Semaine suivante
+
+Next day, week or month
+Jour, semaine ou mois suivant
 
 Next step
 Étape suivante
@@ -6795,6 +6819,9 @@ Ouvrir le journal de kache
 Open my.telegram.org
 Ouvrir my.telegram.org
 
+Open the website
+Ouvrir le site web
+
 Open with {}
 Ouvrir avec {}
 
@@ -7220,6 +7247,9 @@ Faire passer le son par là
 Play a sound when Olo starts
 Jouer un son au démarrage d’Olo
 
+Play or pause the phone's music
+Lire ou mettre en pause la musique du téléphone
+
 Play sound through:
 Faire passer le son par :
 
@@ -7378,6 +7408,12 @@ Onglet précédent
 
 Previous Week
 Semaine précédente
+
+Previous day, week or month
+Jour, semaine ou mois précédent
+
+Print
+Imprimer
 
 Print…
 Imprimer…
@@ -8625,6 +8661,12 @@ Afficher dans tous les espaces de travail
 Show or Hide All Windows
 Afficher ou masquer toutes les fenêtres
 
+Show or hide the assistant
+Afficher ou masquer l'assistant
+
+Show or hide the source
+Afficher ou masquer la source
+
 Show seconds
 Afficher les secondes
 
@@ -9365,6 +9407,9 @@ Le compte qui répond maintenant
 The account couldn’t be saved ({}).
 Le compte n’a pas pu être enregistré ({}).
 
+The account left the pool while signing in.
+Le compte a quitté le pool pendant la connexion.
+
 The address search answered {}.
 La recherche d’adresses a répondu {}.
 
@@ -9421,6 +9466,12 @@ Les jours à venir, chacun avec son ciel, minimale et maximale.
 
 The computer couldn't be restarted: {}
 L’ordinateur n’a pas pu redémarrer : {}
+
+The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
+La copie de Token Pool que celle-ci a remplacée termine encore ses requêtes. Ajoutez le compte dans un instant.
+
+The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
+La copie de Token Pool que celle-ci a remplacée termine encore ses requêtes. Reconnectez-vous dans un instant.
 
 The day before, at 9 AM
 La veille à 9 h

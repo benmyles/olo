@@ -1113,8 +1113,16 @@ impl LinuxClient for WaylandClient {
         // half millisecond luckier, reconnected (2026-11-18).
         match ended {
             Err(e) => {
+                // (The connection hanging up is the compositor going, said
+                // once, by whoever acts on it: with this and the two lines
+                // after it, every program wrote three warnings at every
+                // reload. Any other error is its own.)
                 if !self.0.borrow().lost {
-                    log::warn!("the event loop ended: {e:?}");
+                    if loop_hung_up(&e) {
+                        log::debug!("the event loop ended: {e:?}");
+                    } else {
+                        log::warn!("the event loop ended: {e:?}");
+                    }
                 }
                 compositor_lost_check(&self.0, true);
             }
@@ -2649,6 +2657,35 @@ fn connect() -> Result<Connection, wayland_client::ConnectError> {
     Connection::connect_to_env()
 }
 
+/// Whether the event loop's error is its connection hanging up (the
+/// compositor gone: a broken pipe, a reset) and nothing of its own.
+fn loop_hung_up(e: &calloop::Error) -> bool {
+    use std::io::ErrorKind as K;
+    // (The loop wraps a source's own error, which is the Wayland source's
+    // `calloop::Error::IoError`: looked for all the way down.)
+    fn kind(e: &(dyn std::error::Error + 'static)) -> Option<K> {
+        let mut at = Some(e);
+        while let Some(e) = at {
+            if let Some(io) = e.downcast_ref::<std::io::Error>() {
+                return Some(io.kind());
+            }
+            match e.downcast_ref::<calloop::Error>() {
+                Some(calloop::Error::IoError(io)) => return Some(io.kind()),
+                Some(calloop::Error::OtherError(inner)) => return kind(inner.as_ref()),
+                _ => {}
+            }
+            at = e.source();
+        }
+        None
+    }
+    let found = match e {
+        calloop::Error::IoError(io) => Some(io.kind()),
+        calloop::Error::OtherError(inner) => kind(inner.as_ref()),
+        _ => None,
+    };
+    found.is_some_and(|k| matches!(k, K::BrokenPipe | K::ConnectionReset | K::ConnectionAborted | K::UnexpectedEof))
+}
+
 /// (Olo) The compositor's connection gone (hung up, or in protocol
 /// error), or the GPU device lost (`gpu_device_lost`): told once to whoever asked (`Platform::on_compositor_lost`:
 /// olo-kit re-executes the program with its state saved, and doesn't
@@ -2676,10 +2713,17 @@ fn compositor_lost_check(state: &Rc<RefCell<WaylandClientState>>, ended: bool) {
         // (A driver reset: the windows can't be drawn again, so the
         // program starts anew as it does for the compositor gone.)
         log::error!("the GPU device is lost");
-    } else {
-        log::warn!("the compositor's connection is gone");
     }
     let callback = state.borrow_mut().common.callbacks.compositor_lost.take();
+    // (Said here only if nobody is told: whoever is says what it does
+    // about it, olo-kit's "re-executing to reconnect".)
+    if !gpu {
+        if callback.is_some() {
+            log::debug!("the compositor's connection is gone");
+        } else {
+            log::warn!("the compositor's connection is gone");
+        }
+    }
     if let Some(mut f) = callback {
         f();
         state.borrow_mut().common.callbacks.compositor_lost = Some(f);
@@ -2690,4 +2734,25 @@ fn compositor_lost_check(state: &Rc<RefCell<WaylandClientState>>, ended: bool) {
 /// Olo: the paths in a `text/uri-list`.
 fn uri_paths(data: &[u8]) -> Vec<std::path::PathBuf> {
     String::from_utf8_lossy(data).lines().filter(|l| !l.starts_with('#')).filter_map(|l| crate::file_uri_path(l.trim())).collect()
+}
+
+#[cfg(test)]
+mod hung_up_tests {
+    use super::loop_hung_up;
+
+    /// The loop's error for a compositor that went is its source's broken
+    /// pipe, wrapped as the loop wraps it (as the log printed it:
+    /// `OtherError(IoError(Os { code: 32, kind: BrokenPipe … }))`); an
+    /// error of another kind is its own.
+    #[test]
+    fn a_broken_pipe_is_the_compositor_going() {
+        let io = |kind| std::io::Error::from(kind);
+        let wrapped = |kind| calloop::Error::OtherError(Box::new(calloop::Error::IoError(io(kind))));
+        assert!(loop_hung_up(&wrapped(std::io::ErrorKind::BrokenPipe)));
+        assert!(loop_hung_up(&wrapped(std::io::ErrorKind::ConnectionReset)));
+        assert!(loop_hung_up(&calloop::Error::IoError(io(std::io::ErrorKind::BrokenPipe))));
+        assert!(loop_hung_up(&calloop::Error::OtherError(Box::new(io(std::io::ErrorKind::BrokenPipe)))));
+        assert!(!loop_hung_up(&wrapped(std::io::ErrorKind::InvalidData)));
+        assert!(!loop_hung_up(&calloop::Error::OtherError("something else".into())));
+    }
 }

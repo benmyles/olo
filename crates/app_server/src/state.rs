@@ -160,6 +160,11 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// app, or app_server's own frames and tabs): one drags or taps, two
     /// scroll. `input_handler::touch_down`.
     pub touch_pointer: Option<crate::input_handler::TouchPointer>,
+    /// A touch was handed to the seat's touch since its last frame: only
+    /// then is the frame its to end (`touch_frame`). A finger that is
+    /// the pointer hands it nothing, and its frames told Smithay "frame
+    /// called without prior events", 36 times in a day's log.
+    pub touch_sent: bool,
     /// The pointer hidden: a finger has been the pointer since a mouse or
     /// touchpad last moved it.
     pub touch_hides_pointer: bool,
@@ -1282,6 +1287,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             pacer: Default::default(),
             pinching: false,
             touch_pointer: None,
+            touch_sent: false,
             touch_hides_pointer: false,
             pointer_constrained: false,
             touch_screens: 0,

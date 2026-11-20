@@ -781,6 +781,32 @@ Learned measuring catalogs as data (2026-11-20):
   that counts none ends 1, and the job is reported failed with every
   number in its output right. Read the output before believing either.
 
+### Reading a day's logs
+
+Learned on the second pass (2026-11-20):
+
+- **`olo-logs --print --since 1d --level warning --all-programs`** to a
+  file under /var/tmp, then grouped by program and by the message with
+  its numbers taken out, is the whole method; `--program olo-app-server
+  --level info` around a moment says what else was going on. Keep the
+  file local: it has the person's programs' lines too.
+- **The journal has every test session's programs in it**, and tests'
+  own (PAM's lines from `cargo test -p olo_system`, a reviewer's crashed
+  test binaries): a warning there may be a dev build's (the kit's
+  "menu keys not in …" is said only with debug assertions). Check the
+  pid against the person's session before calling it theirs.
+- **Who wakes a sleeping GPU**: watch its `power/runtime_status` (a
+  sysfs attribute: reading it doesn't wake it) every 50 ms and, the
+  moment it leaves `suspended`, list the processes that have
+  `/dev/nvidia*` open or its libraries mapped, and those started in
+  the last seconds (`/proc/PID/{stat,fd,maps}`). Fifteen minutes of it
+  showed the kernel log's "Enabling HDA controller" lines were another
+  program's, not Olo's. Don't test this by running Olo's programs and
+  reading the status after: something else wakes it meanwhile.
+- **A test that stashes or checks out to compare can't be run while a
+  reviewer reads the tree** (`codex-help`): compare by copying the one
+  file aside and putting it back, or wait.
+
 ## Ben's computer
 
 - **Don't probe sudo.** Even `sudo -n` runs face unlock (the IR camera)

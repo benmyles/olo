@@ -421,6 +421,9 @@ A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference
 A repository’s key needs to be trusted
 저장소 키를 신뢰할지 확인하세요
 
+A reset this account asked for hasn’t been answered yet. Sign in as the same account, or remove this account and add the other.
+이 계정이 요청한 재설정에 아직 응답이 없습니다. 같은 계정으로 로그인하거나, 이 계정을 제거하고 다른 계정을 추가하세요.
+
 A resting palm can't click (its pressure doesn't count)
 손바닥을 올려놓아도 클릭되지 않음 (압력 제외)
 
@@ -624,6 +627,9 @@ Add a Second Key
 
 Add a Section…
 섹션 추가…
+
+Add a place
+장소 추가
 
 Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
 저장소를 추가하면 Fedora 패키지와 함께 그곳의 패키지와 업데이트를 받습니다. 운영자가 이 컴퓨터에 무엇이든 설치할 수 있으므로 신뢰하는 저장소만 추가하세요.
@@ -1086,6 +1092,9 @@ Ask for Full Access at Start
 
 Ask for sudo Passwords in a Window
 창에서 sudo 암호 묻기
+
+Ask the assistant
+어시스턴트에게 묻기
 
 Ask what to do about urgent ones
 긴급 알림 처리 방법 묻기
@@ -1827,6 +1836,9 @@ Choose a to-do to see its details.
 
 Choose a widget to change it, or add one.
 변경할 위젯을 선택하거나 새 위젯을 추가하세요.
+
+Choose every update
+모든 업데이트 선택
 
 Choose what to scan:
 검사 대상:
@@ -2605,6 +2617,9 @@ Delete Vault
 Delete Vault…
 금고 삭제…
 
+Delete the event
+이벤트 삭제
+
 Delete the unfinished backup? What it sent ({}) is freed, and the next backup reads and sends again what it had done. It can’t be undone.
 미완료 백업을 삭제할까요? 전송한 데이터({})가 지워지고 다음 백업에서 다시 읽고 전송합니다. 되돌릴 수 없습니다.
 
@@ -3111,6 +3126,9 @@ Edit Name
 
 Edit Video…
 동영상 편집…
+
+Edit the event
+이벤트 편집
 
 Editors’ swap and backup files
 편집기의 스왑 및 백업 파일
@@ -5866,6 +5884,9 @@ New Worktree…
 New description
 새 설명
 
+New event
+새로운 이벤트
+
 New message
 새 메시지
 
@@ -5928,6 +5949,9 @@ Next Tab
 
 Next Week
 다음 주
+
+Next day, week or month
+다음 일, 주 또는 월
 
 Next step
 다음 단계
@@ -6775,6 +6799,9 @@ kache 로그 열기
 Open my.telegram.org
 my.telegram.org 열기
 
+Open the website
+웹사이트 열기
+
 Open with {}
 {} 앱으로 열기
 
@@ -7198,6 +7225,9 @@ Play Sound Through It
 Play a sound when Olo starts
 Olo 시작 시 소리 재생
 
+Play or pause the phone's music
+휴대폰의 음악 재생 또는 일시 정지
+
 Play sound through:
 소리 출력 장치:
 
@@ -7356,6 +7386,12 @@ Previous Tab
 
 Previous Week
 이전 주
+
+Previous day, week or month
+이전 일, 주 또는 월
+
+Print
+프린트
 
 Print…
 인쇄…
@@ -8602,6 +8638,12 @@ Show on All Workspaces
 Show or Hide All Windows
 모든 창 표시 또는 가리기
 
+Show or hide the assistant
+어시스턴트 보기 또는 가리기
+
+Show or hide the source
+소스 보기 또는 가리기
+
 Show seconds
 초 표시
 
@@ -9340,6 +9382,9 @@ The account answering now
 The account couldn’t be saved ({}).
 계정을 저장할 수 없습니다({}).
 
+The account left the pool while signing in.
+로그인하는 동안 계정이 풀에서 제거되었습니다.
+
 The address search answered {}.
 주소 검색 응답: {}.
 
@@ -9396,6 +9441,12 @@ The coming days, each its sky, low and high.
 
 The computer couldn't be restarted: {}
 컴퓨터를 다시 시작할 수 없습니다: {}
+
+The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
+이 복사본이 대체한 Token Pool이 아직 요청을 마무리하고 있습니다. 잠시 후 계정을 추가하세요.
+
+The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
+이 복사본이 대체한 Token Pool이 아직 요청을 마무리하고 있습니다. 잠시 후 다시 로그인하세요.
 
 The day before, at 9 AM
 하루 전 오전 9시

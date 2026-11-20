@@ -423,6 +423,9 @@ Un riferimento ha la forma op://vault/item/field. Per ottenerlo, scegli Copia ri
 A repository’s key needs to be trusted
 Occorre autorizzare la chiave del repository
 
+A reset this account asked for hasn’t been answered yet. Sign in as the same account, or remove this account and add the other.
+Un ripristino richiesto da questo account non ha ancora avuto risposta. Accedi con lo stesso account, oppure rimuovi questo account e aggiungi l'altro.
+
 A resting palm can't click (its pressure doesn't count)
 Ignora la pressione del palmo durante il clic
 
@@ -626,6 +629,9 @@ Aggiungi un secondo tasto
 
 Add a Section…
 Aggiungi una sezione…
+
+Add a place
+Aggiungi un luogo
 
 Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
 I pacchetti e gli aggiornamenti di questo repository appariranno insieme a quelli di Fedora. Aggiungi solo repository di cui ti fidi: chi li gestisce può installare qualsiasi cosa sul computer.
@@ -1092,6 +1098,9 @@ Richiedi accesso completo all’avvio
 
 Ask for sudo Passwords in a Window
 Chiedi la password di sudo in una finestra
+
+Ask the assistant
+Chiedi all'assistente
 
 Ask what to do about urgent ones
 Chiedi cosa fare nei casi urgenti
@@ -1836,6 +1845,9 @@ Seleziona un’attività per vederne i dettagli.
 
 Choose a widget to change it, or add one.
 Scegli un widget da modificare o aggiungine uno.
+
+Choose every update
+Scegli tutti gli aggiornamenti
 
 Choose what to scan:
 Scegli cosa analizzare:
@@ -2615,6 +2627,9 @@ Elimina cassaforte
 Delete Vault…
 Elimina cassaforte…
 
+Delete the event
+Elimina l'evento
+
 Delete the unfinished backup? What it sent ({}) is freed, and the next backup reads and sends again what it had done. It can’t be undone.
 Eliminare il backup incompleto? Verrà liberato lo spazio già usato ({}) e il prossimo backup dovrà rileggere e inviare di nuovo quei dati. L’eliminazione è definitiva.
 
@@ -3122,6 +3137,9 @@ Modifica nome
 
 Edit Video…
 Modifica video…
+
+Edit the event
+Modifica l'evento
 
 Editors’ swap and backup files
 File di swap e backup degli editor
@@ -5886,6 +5904,9 @@ Nuovo albero di lavoro…
 New description
 Nuova descrizione
 
+New event
+Nuovo evento
+
 New message
 Nuovo messaggio
 
@@ -5948,6 +5969,9 @@ Scheda successiva
 
 Next Week
 Settimana successiva
+
+Next day, week or month
+Giorno, settimana o mese successivo
 
 Next step
 Passaggio successivo
@@ -6795,6 +6819,9 @@ Apri registro di kache
 Open my.telegram.org
 Apri my.telegram.org
 
+Open the website
+Apri il sito web
+
 Open with {}
 Apri con {}
 
@@ -7220,6 +7247,9 @@ Riproduci l’audio su questo dispositivo
 Play a sound when Olo starts
 Riproduci un suono all’avvio di Olo
 
+Play or pause the phone's music
+Riproduci o metti in pausa la musica del telefono
+
 Play sound through:
 Riproduci audio su:
 
@@ -7378,6 +7408,12 @@ Scheda precedente
 
 Previous Week
 Settimana precedente
+
+Previous day, week or month
+Giorno, settimana o mese precedente
+
+Print
+Stampa
 
 Print…
 Stampa…
@@ -8625,6 +8661,12 @@ Mostra in tutti gli spazi di lavoro
 Show or Hide All Windows
 Mostra o nascondi tutte le finestre
 
+Show or hide the assistant
+Mostra o nascondi l'assistente
+
+Show or hide the source
+Mostra o nascondi il sorgente
+
 Show seconds
 Mostra i secondi
 
@@ -9365,6 +9407,9 @@ L’account che sta rispondendo
 The account couldn’t be saved ({}).
 Impossibile salvare l’account ({}).
 
+The account left the pool while signing in.
+L'account ha lasciato il pool durante l'accesso.
+
 The address search answered {}.
 La ricerca dell’indirizzo ha restituito {}.
 
@@ -9421,6 +9466,12 @@ I prossimi giorni con condizioni del cielo, minime e massime.
 
 The computer couldn't be restarted: {}
 Impossibile riavviare il computer: {}
+
+The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
+La copia di Token Pool sostituita da questa sta ancora completando le sue richieste. Aggiungi l'account tra un momento.
+
+The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
+La copia di Token Pool sostituita da questa sta ancora completando le sue richieste. Accedi di nuovo tra un momento.
 
 The day before, at 9 AM
 Il giorno prima, alle 9:00

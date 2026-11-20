@@ -925,7 +925,10 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut AppCx)) {
     // when it went nowhere; `main` has done it already, as every
     // program's should.)
     olo_crash::install();
-    let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,usvg=error,olo=info"));
+    // (Two libraries warn of what's ordinary: usvg of what it doesn't
+    // draw, and the MP4 reader behind a video's sound of each table it
+    // has no use for, "ignoring stss atom", at every video opened.)
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,usvg=error,symphonia_format_isomp4=error,olo=info"));
     // Colours only for a terminal: not in the journal's lines.
     let ansi = std::io::IsTerminal::is_terminal(&std::io::stderr());
     let _ = tracing_subscriber::fmt().with_env_filter(filter).with_ansi(ansi).with_writer(std::io::stderr).try_init();

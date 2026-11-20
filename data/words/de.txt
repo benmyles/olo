@@ -423,6 +423,9 @@ Ein Verweis sieht aus wie op://tresor/eintrag/feld („Geheimnis-Verweis kopiere
 A repository’s key needs to be trusted
 Dem Schlüssel eines Repositorys muss vertraut werden
 
+A reset this account asked for hasn’t been answered yet. Sign in as the same account, or remove this account and add the other.
+Eine Zurücksetzung, die dieser Account angefordert hat, ist noch nicht beantwortet. Melden Sie sich mit demselben Account an, oder entfernen Sie diesen Account und fügen Sie den anderen hinzu.
+
 A resting palm can't click (its pressure doesn't count)
 Aufgelegte Hand klickt nicht (ihr Druck zählt nicht)
 
@@ -626,6 +629,9 @@ Zweite Taste hinzufügen
 
 Add a Section…
 Bereich hinzufügen…
+
+Add a place
+Ort hinzufügen
 
 Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
 Ein Repository hinzufügen: Seine Pakete und Updates kommen mit denen von Fedora. Fügen Sie nur vertrauenswürdige hinzu: Wer es betreibt, kann alles auf diesen Computer bringen.
@@ -1092,6 +1098,9 @@ Beim Start nach vollem Zugriff fragen
 
 Ask for sudo Passwords in a Window
 sudo-Passwörter in einem Fenster abfragen
+
+Ask the assistant
+Assistenten fragen
 
 Ask what to do about urgent ones
 Bei dringenden fragen, was zu tun ist
@@ -1836,6 +1845,9 @@ Wählen Sie eine Aufgabe aus, um ihre Details zu sehen.
 
 Choose a widget to change it, or add one.
 Wählen Sie ein Widget, um es zu ändern, oder fügen Sie eines hinzu.
+
+Choose every update
+Alle Aktualisierungen auswählen
 
 Choose what to scan:
 Wählen Sie, was untersucht wird:
@@ -2615,6 +2627,9 @@ Tresor löschen
 Delete Vault…
 Tresor löschen …
 
+Delete the event
+Termin löschen
+
 Delete the unfinished backup? What it sent ({}) is freed, and the next backup reads and sends again what it had done. It can’t be undone.
 Die unfertige Sicherung löschen? Was sie gesendet hat ({}), wird freigegeben, und die nächste Sicherung liest und sendet erneut, was sie schon erledigt hatte. Das kann nicht widerrufen werden.
 
@@ -3122,6 +3137,9 @@ Namen bearbeiten
 
 Edit Video…
 Video bearbeiten …
+
+Edit the event
+Termin bearbeiten
 
 Editors’ swap and backup files
 Swap- und Backupdateien von Editoren
@@ -5886,6 +5904,9 @@ Neuer Worktree …
 New description
 Neue Beschreibung
 
+New event
+Neuer Termin
+
 New message
 Neue Nachricht
 
@@ -5948,6 +5969,9 @@ Nächster Tab
 
 Next Week
 Nächste Woche
+
+Next day, week or month
+Nächster Tag, Woche oder Monat
 
 Next step
 Nächster Schritt
@@ -6795,6 +6819,9 @@ Protokoll von kache öffnen
 Open my.telegram.org
 my.telegram.org öffnen
 
+Open the website
+Website öffnen
+
 Open with {}
 Mit {} öffnen
 
@@ -7220,6 +7247,9 @@ Ton darüber abspielen
 Play a sound when Olo starts
 Beim Start von Olo einen Ton abspielen
 
+Play or pause the phone's music
+Musik des Telefons wiedergeben oder anhalten
+
 Play sound through:
 Ton abspielen über:
 
@@ -7378,6 +7408,12 @@ Vorheriger Tab
 
 Previous Week
 Vorherige Woche
+
+Previous day, week or month
+Vorheriger Tag, Woche oder Monat
+
+Print
+Drucken
 
 Print…
 Drucken …
@@ -8625,6 +8661,12 @@ Auf allen Arbeitsflächen zeigen
 Show or Hide All Windows
 Alle Fenster ein- oder ausblenden
 
+Show or hide the assistant
+Assistent ein- oder ausblenden
+
+Show or hide the source
+Quelltext ein- oder ausblenden
+
 Show seconds
 Sekunden zeigen
 
@@ -9365,6 +9407,9 @@ Das gerade antwortende Konto
 The account couldn’t be saved ({}).
 Das Konto konnte nicht gesichert werden ({}).
 
+The account left the pool while signing in.
+Der Account hat den Pool während der Anmeldung verlassen.
+
 The address search answered {}.
 Die Adresssuche antwortete {}.
 
@@ -9421,6 +9466,12 @@ Die kommenden Tage, jeder mit Himmel, Tiefst- und Höchstwert.
 
 The computer couldn't be restarted: {}
 Der Computer konnte nicht neu gestartet werden: {}
+
+The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
+Die ersetzte Kopie von Token Pool schließt noch ihre Anfragen ab. Fügen Sie den Account gleich hinzu.
+
+The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
+Die ersetzte Kopie von Token Pool schließt noch ihre Anfragen ab. Melden Sie sich gleich noch einmal an.
 
 The day before, at 9 AM
 Am Vortag um 9 Uhr

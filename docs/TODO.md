@@ -272,15 +272,6 @@ something nobody here has is in "Blocked", with what it waits for.
   keyboard.rs:500; Phone's sentence about codes from text messages,
   phone.rs:582; Windows' windowing mode and tiling layout,
   windows.rs:54): each to be said whole.
-- **Go through Olo's logs for other warnings and errors and fix what
-  should be fixed** (Ben, 2026-11-18). A first pass done (HACKING.md,
-  "What a day's logs showed"): Notifications' history kept apart on
-  agent screens, the saver's sibling files, widgets' providers ending
-  with Deskbar, the session's language, a program that didn't
-  reconnect, a surface's format, a hidden popup message, the
-  "non-existent source" warnings (a display's timer cancelled in the
-  round it came due). **Left**: another pass once these are in Ben's
-  session a day.
 - **A Mail app, native, every account in one place, and the assistant
   in both Mail and Calendar** (Ben, 2026-11-17: "build a beautiful olo
   native email app. use/extend the email integration support in prefs ->
@@ -417,16 +408,32 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Done, waiting for Ben to try or confirm
 
-- **Menus tidied into groups, and chords for what's in them** (Ben,
-  2026-11-18: "in the menu from right clicking a window tab (and
-  anywhere else we show it), group the 3 zoom options under a "Zoom ->"
-  parent and the 3 float options under a "Float ->" parent, the move
-  options under a "Move ->" parent, and anything else that makes sense
-  to be grouped to clean things up do that too. and, idk if we support
-  chord keyboard shortcuts yet but let's also make the shortcuts for
-  all those chords, so you do the first part to start Float/Move/etc
-  and then the second part to select the specific option. this chord
-  support must be made native to olo, supported and customizable in
+- **Go through Olo's logs for other warnings and errors and fix what
+  should be fixed** (Ben, 2026-11-18). A first pass done (HACKING.md,
+  "What a day's logs showed"): Notifications' history kept apart on
+  agent screens, the saver's sibling files, widgets' providers ending
+  with Deskbar, the session's language, a program that didn't
+  reconnect, a surface's format, a hidden popup message, the
+  "non-existent source" warnings (a display's timer cancelled in the
+  round it came due).
+  **The second pass, done** (2026-11-20; HACKING, "A second day's
+  logs"): the first pass's fixes held. Found and fixed: three warnings
+  from every program at every reload (one now); Smithay's "frame
+  called without prior events" for a finger that is the pointer;
+  Preferences writing locale.conf through one sibling file from two
+  threads, which came from the panel telling other programs the
+  language every time it was drawn (looking at Language & Region could
+  leave it saying English); Deskbar asking for a bar on a display its
+  connection hadn't heard of; the kit's own "non-existence source"
+  (a frame's timer removed in the round it came due); Phone's menu
+  keys missing from the keyboard profile, and the window review now
+  reports any such; the MP4 reader's chatter. Not fixed, made
+  findable: thirteen holds of the compositor's loop of 100 ms to 1.7 s
+  in fifty minutes of 2026-11-19 (its frames waiting on the GPU's
+  side), cause unknown; such a line now says what the computer was
+  short of (memory, disks, processors) when it happened. To do when
+  one is seen again: read that line.
+
 - **Translations as resources, not compiled in: measure it**
   (2026-11-19, from another agent's study of kache's misses, which Ben
   passed on: "packaging catalogs as separately updatable resources is
@@ -539,6 +546,16 @@ something nobody here has is in "Blocked", with what it waits for.
   a glide; a zoom's or a tile's first frame): mended in the kit. **Not
   as asked, to decide**: the pads aren't see-through. They were, at
   four strengths, and each time a window's words behind a pad read as
+- **Menus tidied into groups, and chords for what's in them** (Ben,
+  2026-11-18: "in the menu from right clicking a window tab (and
+  anywhere else we show it), group the 3 zoom options under a "Zoom ->"
+  parent and the 3 float options under a "Float ->" parent, the move
+  options under a "Move ->" parent, and anything else that makes sense
+  to be grouped to clean things up do that too. and, idk if we support
+  chord keyboard shortcuts yet but let's also make the shortcuts for
+  all those chords, so you do the first part to start Float/Move/etc
+  and then the second part to select the specific option. this chord
+  support must be made native to olo, supported and customizable in
   the pad's own (both reviewers); so the plates are opaque, and what's
   see-through is the screen while a place is previewed, every other
   pad then only its letter (`snap::PAD_ALPHA` brings it back). **To

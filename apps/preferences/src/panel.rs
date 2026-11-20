@@ -316,7 +316,19 @@ impl Panel {
         )
     }
 
-    /// Put this panel's part of `settings` back to `from`.
+    /// Defaults or Revert pressed (`what`): this panel's settings put
+    /// back to `from`'s, and what a change of them tells others told
+    /// (the language, to the programs Olo starts).
+    pub fn reset_pressed(self, what: &'static str, from: &Settings) {
+        prefs().edit_as("", what, |s| self.reset(s, from));
+        if self == Panel::Language {
+            crate::language::tell_others(&from.language);
+        }
+    }
+
+    /// Put this panel's part of `settings` back to `from`, and nothing
+    /// else: it's also how the panel asks whether that would change
+    /// anything (at every drawing).
     pub fn reset(self, settings: &mut Settings, from: &Settings) {
         match self {
             Panel::Appearance => {
@@ -353,10 +365,13 @@ impl Panel {
             Panel::Terminal => settings.terminal = from.terminal.clone(),
             Panel::Workspaces => settings.workspace_count = from.workspace_count,
             Panel::DateTime => settings.clock = from.clock.clone(),
-            Panel::Language => {
-                settings.language = from.language.clone();
-                crate::language::tell_others(&settings.language);
-            }
+            // (Only the setting: `reset` is also how the panel asks, at
+            // every drawing, whether Defaults and Revert would change
+            // anything, and it told other programs the language each
+            // time, the default's then the opened one's, on two threads:
+            // looking at Language & Region could leave locale.conf saying
+            // English. Said where they're pressed: `reset_pressed`.)
+            Panel::Language => settings.language = from.language.clone(),
             Panel::Deskbar => settings.deskbar = from.deskbar.clone(),
             Panel::Power => settings.power = from.power.clone(),
             Panel::ScreenSaver => settings.screen_saver = from.screen_saver.clone(),
@@ -536,8 +551,8 @@ pub fn render(v: &mut PanelView, cx: &mut Cx<PanelView>) -> Element {
         .gap(px(m::SPACING))
         .px(px(m::WINDOW_INSET))
         .pb(px(m::WINDOW_INSET))
-        .child(Button::new("Defaults").min_width(m::BUTTON_MIN_WIDTH).enabled(to_defaults).on_click(move |_, _| prefs().edit_as("", "Defaults", |s| panel.reset(s, &Settings::default()))))
-        .child(Button::new("Revert").min_width(m::BUTTON_MIN_WIDTH).enabled(to_opened).on_click(move |_, _| prefs().edit_as("", "Revert", |s| panel.reset(s, &opened))));
+        .child(Button::new("Defaults").min_width(m::BUTTON_MIN_WIDTH).enabled(to_defaults).on_click(move |_, _| panel.reset_pressed("Defaults", &Settings::default())))
+        .child(Button::new("Revert").min_width(m::BUTTON_MIN_WIDTH).enabled(to_opened).on_click(move |_, _| panel.reset_pressed("Revert", &opened)));
     root.child(footer)
 }
 

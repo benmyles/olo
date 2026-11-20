@@ -4322,9 +4322,15 @@ impl Hub {
         // or came back as another) is no bar: its display gets a new
         // one below. (Kept, it hid the Dell's missing Deskbar, 2026-11-01.)
         self.bars.retain(|(_, bar)| bar.is_open());
-        // (The new ones first, so the app always has one.)
+        // (The new ones first, so the app always has one. Only on a
+        // display this connection has learned of: app_server lists one a
+        // moment before the connection hears of it, a bar asked for then
+        // is refused, and the log had an error for it at each display
+        // plugged in. It's asked for when the connection says its
+        // displays changed, which comes here again.)
+        let known = olo_kit::display_names();
         for output in &wanted {
-            if !self.bars.iter().any(|(o, _)| o == output) {
+            if !self.bars.iter().any(|(o, _)| o == output) && known.contains(output) {
                 self.bars.push((output.clone(), open_bar(self.model.clone(), output.clone())));
             }
         }

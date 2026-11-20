@@ -54,6 +54,11 @@ const TELEGRAM: Option<&str> = Some("olo.telegram");
 const DOCTOR: Option<&str> = Some("olo.doctor");
 const SPEEDTEST: Option<&str> = Some("olo.speedtest");
 const TODO: Option<&str> = Some("olo.todo");
+const PHONE: Option<&str> = Some("olo.phone");
+const CALENDAR: Option<&str> = Some("olo.calendar");
+const WEATHER: Option<&str> = Some("olo.weather");
+const DISKBACKUP: Option<&str> = Some("olo.diskbackup");
+const UPDATES: Option<&str> = Some("olo.updates");
 /// Chrome's keys (its own, not Olo's: what Chrome takes on Linux is
 /// [`CHROME_NATIVE`]), kept in a profile under its app id, and used for
 /// every Chromium browser ([`CHROMIUM_APPS`]).
@@ -78,6 +83,11 @@ pub const APPS: &[(&str, &str)] = &[
     ("olo.doctor", "Olo Doctor"),
     ("olo.speedtest", "Speed Test"),
     ("olo.todo", "To-Do"),
+    ("olo.phone", "Phone"),
+    ("olo.calendar", "Calendar"),
+    ("olo.weather", "Weather"),
+    ("olo.diskbackup", "DiskBackup"),
+    ("olo.updates", "OS Updates"),
     // (Slack is Chrome too, olo-slack: these are its keys as well.)
     ("google-chrome", "Chrome and Slack"),
 ];
@@ -150,6 +160,10 @@ pub const APP_KEYS: &[AppKey] = &[
     // View ▸ Hide Sidebar, ⌥⌘S as Finder's was (⌃⌘S is ⌘S to a kit app:
     // its keys have no Control of their own).
     k("app.sidebar", None, "sidebar", "Hide or show the sidebar", &["Alt+Cmd+S"], &["Ctrl+Alt+S"], &["Alt+Cmd+S"]),
+    // What several apps do under one name (kache, Calendar, Weather;
+    // Token Pool's is its own, "Read Quota Now"; StyledEdit's Print).
+    k("app.refresh", None, "refresh", "Refresh", &["Cmd+R"], &["F5"], &["Alt+R"]),
+    k("app.print", None, "print", "Print", &["Cmd+P"], &["Ctrl+P"], &["Alt+P"]),
     // Tracker: Finder's on a Mac, Explorer's on Windows, Tracker's on BeOS.
     // (A new window: ⌘N as Finder's, Ctrl+N as Explorer's; BeOS's Tracker
     // had none, Alt+N its New Folder.)
@@ -297,6 +311,39 @@ pub const APP_KEYS: &[AppKey] = &[
     k("todo.list", TODO, "layout:list", "As a list", &["Cmd+L"], &["Ctrl+L"], &["Alt+L"]),
     k("todo.details", TODO, "details", "Hide or show the details", &["Cmd+I"], &["Ctrl+I"], &["Alt+I"]),
     k("todo.paste-attachment", TODO, "paste-attachment", "Attach what's on the clipboard", &["Shift+Cmd+V"], &["Ctrl+Shift+V"], &["Alt+Shift+V"]),
+    // Phone (its menus' keys were its own alone: not in Preferences, nor
+    // on the shortcuts sheet, and the kit said so in the log at each
+    // start).
+    k("phone.new-message", PHONE, "new-message", "New message", &["Cmd+N"], &["Ctrl+N"], &["Alt+N"]),
+    k("phone.messages", PHONE, "tab:messages", "Messages", &["Cmd+1"], &["Ctrl+1"], &["Alt+1"]),
+    k("phone.contacts", PHONE, "tab:contacts", "Contacts", &["Cmd+2"], &["Ctrl+2"], &["Alt+2"]),
+    k("phone.music", PHONE, "music:toggle", "Play or pause the phone's music", &["Cmd+P"], &["Ctrl+P"], &["Alt+P"]),
+    // The others whose menus had keys of their own alone (found by the
+    // window review, which now reports any: `app_menu::review`).
+    k("calendar.new-event", CALENDAR, "new-event", "New event", &["Cmd+N"], &["Ctrl+N"], &["Alt+N"]),
+    k("calendar.edit-event", CALENDAR, "edit-event", "Edit the event", &["Cmd+E"], &["Ctrl+E"], &["Alt+E"]),
+    k("calendar.delete-event", CALENDAR, "delete-event", "Delete the event", &["Cmd+Backspace"], &["Ctrl+Backspace"], &["Alt+Backspace"]),
+    k("calendar.day", CALENDAR, "mode:day", "Day", &["Cmd+1"], &["Ctrl+1"], &["Alt+1"]),
+    k("calendar.week", CALENDAR, "mode:week", "Week", &["Cmd+2"], &["Ctrl+2"], &["Alt+2"]),
+    k("calendar.month", CALENDAR, "mode:month", "Month", &["Cmd+3"], &["Ctrl+3"], &["Alt+3"]),
+    k("calendar.agenda", CALENDAR, "mode:agenda", "Agenda", &["Cmd+4"], &["Ctrl+4"], &["Alt+4"]),
+    k("calendar.today", CALENDAR, "today", "Today", &["Cmd+T"], &["Ctrl+T"], &["Alt+T"]),
+    k("calendar.previous", CALENDAR, "previous", "Previous day, week or month", &["Cmd+BracketLeft"], &["Ctrl+BracketLeft"], &["Alt+BracketLeft"]),
+    k("calendar.next", CALENDAR, "next", "Next day, week or month", &["Cmd+BracketRight"], &["Ctrl+BracketRight"], &["Alt+BracketRight"]),
+    k("weather.add-place", WEATHER, "add-place", "Add a place", &["Cmd+N"], &["Ctrl+N"], &["Alt+N"]),
+    k("weather.today", WEATHER, "tab:0", "Rest of Today", &["Cmd+1"], &["Ctrl+1"], &["Alt+1"]),
+    k("weather.three-days", WEATHER, "tab:1", "Next 3 Days", &["Cmd+2"], &["Ctrl+2"], &["Alt+2"]),
+    k("weather.seven-days", WEATHER, "tab:2", "Next 7 Days", &["Cmd+3"], &["Ctrl+3"], &["Alt+3"]),
+    k("weather.assistant", WEATHER, "assistant", "Show or hide the assistant", &["Cmd+J"], &["Ctrl+J"], &["Alt+J"]),
+    k("weather.ask", WEATHER, "ask", "Ask the assistant", &["Cmd+L"], &["Ctrl+L"], &["Alt+L"]),
+    k("diskbackup.back-up-now", DISKBACKUP, "back-up-now", "Back Up Now", &["Cmd+B"], &["Ctrl+B"], &["Alt+B"]),
+    k("diskbackup.restore", DISKBACKUP, "restore", "Restore", &["Cmd+R"], &["Ctrl+R"], &["Alt+R"]),
+    k("updates.check", UPDATES, "check", "Check for Updates", &["Cmd+R"], &["F5"], &["Alt+R"]),
+    k("updates.choose-all", UPDATES, "choose-all", "Choose every update", &["Cmd+A"], &["Ctrl+A"], &["Alt+A"]),
+    k("styled-edit.code", STYLED_EDIT, "md:code", "Code", &["Cmd+E"], &["Ctrl+E"], &["Alt+E"]),
+    k("styled-edit.link", STYLED_EDIT, "md:link", "Link", &["Cmd+K"], &["Ctrl+K"], &["Alt+K"]),
+    k("styled-edit.source", STYLED_EDIT, "source", "Show or hide the source", &["Cmd+Slash"], &["Ctrl+Slash"], &["Alt+Slash"]),
+    k("passwords.open-website", PASSWORDS, "open-website", "Open the website", &["Cmd+O"], &["Ctrl+O"], &["Alt+O"]),
     k("pool.refresh", Some("olo.pool"), "refresh", "Read Quota Now", &["Cmd+R"], &["F5"], &["Alt+R"]),
     k("screen.control", Some("olo.screen"), "control", "Take or give back control", &["Cmd+K"], &["Ctrl+K"], &["Alt+K"]),
     k("screen.export", Some("olo.screen"), "export", "Export Video", &["Cmd+E"], &["Ctrl+E"], &["Alt+E"]),

@@ -753,6 +753,80 @@ message). Each was a fault, not a line to hide:
   `set_output_brightness` a day before (not seen since: its writes are
   on a worker).
 
+**A second day's logs** (2026-11-20, the same command a day and a half
+after the first pass's fixes; 24,933 lines, 9,791 of them a container
+of the person's, not Olo's). What the first pass fixed stayed fixed
+(no "non-existent source" from app_server, no notification history
+errors, no "surface missing from known popups"). What this one found:
+- *Three warnings from every program at every reload* ("the event loop
+  ended: …BrokenPipe", "the compositor's connection is gone", "the
+  compositor is gone: re-executing to reconnect"): sixty lines an
+  upgrade. The first two are the third said earlier: a loop that ends
+  on its connection hanging up says so at `debug` (`loop_hung_up`: the
+  broken pipe inside the loop's wrapped error; any other error is still
+  a warning), and the connection's going is a warning only where nobody
+  is told who would say what's done about it. One line a program.
+- *"frame called without prior events"* (Smithay's touch, 36 in one
+  minute of a finger on the touch screen): a finger that is the pointer
+  (on a tab, on Olo's own apps) hands the seat's touch nothing, and
+  every report of the screen still ended its frame. The frame is ended
+  only when something of the report was the seat's (`touch_frame`,
+  `touch_sent`), on the made-up path too.
+- *Preferences: "language: locale.conf: No such file or directory"*, 11
+  times. Two writers at once through one sibling file
+  (`locale.conf.new`), the second finding it moved away: each write
+  goes through a sibling of its own. And why two at once: the panel's
+  `reset`, which is also how every panel asks at each drawing whether
+  Defaults and Revert would change anything, told other programs the
+  language as a side effect, the default's and then the opened one's,
+  each on a thread: **looking at Language & Region could leave
+  locale.conf saying English**. `reset` only resets; the telling is
+  where the buttons are pressed (`reset_pressed`), and the latest
+  language asked for is the one written. **A function that's used to
+  ask "would this change anything" can't do anything.**
+- *Deskbar: "a window couldn't be opened: display DP-N isn't known to
+  this connection yet"* (an error, at each display plugged in):
+  app_server lists a display a moment before Deskbar's own connection
+  hears of it, and the bar asked for then is refused, as it should be.
+  Deskbar asks only for displays its connection knows; the connection
+  saying its displays changed brings it there again.
+- *Tracker: "Received an event for non-existence source"* (calloop's,
+  once): the first pass's fault again, in the kit's own loop. A
+  window's timer for a frame kept back (`frame_after`) was removed
+  when a frame was drawn, in the round of the loop in which it had
+  already come due. One due is disarmed and its slot freed after the
+  round (`cancel_timer`, as app_server's `cancel_look`); a test hears
+  calloop's warning with the plain removal and none with this.
+- *Phone: "menu keys not in olo_protocol::app_keys"* (a dev build's
+  note; a release build says nothing, and the keys were simply not in
+  Preferences nor on the shortcuts sheet, and stayed ⌘ whatever the
+  profile). Phone's are listed, and so that it's seen without a log:
+  the window review reports any menu item with keys the profile
+  doesn't list (`app_menu::review`, kind `menus`).
+- *Viewer: "ignoring stss atom"* and the like from the MP4 reader behind
+  a video's sound, at every video: what it has no use for, said at
+  `error` only now (`symphonia_format_isomp4=error`, beside usvg's).
+- *"input (pointer motion) came 1692 ms late: the loop was held by look
+  (whole)"*, thirteen such in fifty minutes of one afternoon, with
+  frames that took 100 to 600 ms "finishing" (the GPU's side), and
+  none in the day and a half around it. The log couldn't say what the
+  computer was doing: now each such line ends with what was waited for
+  over the last ten seconds, as the kernel counts it (`/proc/pressure`:
+  memory, disks, processors; `timings::pressure`), so the next one
+  says whether it was Olo or the computer. (Looked for and ruled out:
+  NVIDIA's GPU waking, a hundred and fifty times that day in the
+  kernel's log, none of them at those moments, and none of them Olo's:
+  a watcher on its `runtime_status` showed another program of the
+  person's opening it. Olo's own stay away from it, as "The discrete
+  GPU stays asleep" has it.)
+- Left, and why: the surface that "can't be reconfigured" when the
+  compositor has gone (a line a window at each reload: true, and
+  bounded); Telegram's network library on a dropped connection (it
+  reconnects); PipeWire's AirPlay module's notes and a container's
+  9,791 errors (not Olo's); PAM's and crashed test programs' lines
+  (tests'). A day's log is also every test session's: their programs
+  write to the journal as the person's do.
+
 **Open files** (Ben, 2026-11-18: "why is there a 1024 soft limit? the
 file limits should be huuuuge … make sure all our apps will raise it as
 needed not just app_server"). A program starts with a login's soft

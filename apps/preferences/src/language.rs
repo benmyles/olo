@@ -30,8 +30,13 @@ pub fn for_others(code: &str) -> String {
 /// The language chosen given to the programs Olo starts from now on (the
 /// person's locale.conf). Off the looper: a small file.
 pub fn tell_others(code: &str) {
-    let value = for_others(code);
+    // (The latest asked for is what's kept: two tellings close together,
+    // each on a thread of its own, wrote in whichever order they ran.)
+    static WANTED: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+    *WANTED.lock().unwrap() = for_others(code);
     std::thread::spawn(move || {
+        let wanted = WANTED.lock().unwrap();
+        let value = wanted.clone();
         if let Err(e) = olo_xdg::locale::set_language(Some(&value)) {
             tracing::warn!("language: locale.conf: {e}");
         }

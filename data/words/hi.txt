@@ -423,6 +423,9 @@ A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference
 A repository’s key needs to be trusted
 सॉफ़्टवेयर स्रोत की कुंजी पर भरोसे की पुष्टि चाहिए
 
+A reset this account asked for hasn’t been answered yet. Sign in as the same account, or remove this account and add the other.
+इस खाते के माँगे एक रीसेट का अभी उत्तर नहीं आया है। उसी खाते से साइन इन करें, या यह खाता हटाकर दूसरा जोड़ें।
+
 A resting palm can't click (its pressure doesn't count)
 हथेली टिकाने पर क्लिक नहीं होगा (उसका दबाव नहीं गिना जाता)
 
@@ -626,6 +629,9 @@ Add a Second Key
 
 Add a Section…
 खंड जोड़ें…
+
+Add a place
+स्थान जोड़ें
 
 Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
 सॉफ़्टवेयर स्रोत जोड़ने पर उसके पैकेज और अपडेट Fedora के साथ मिलेंगे। सिर्फ़ भरोसेमंद स्रोत जोड़ें, क्योंकि उसका संचालक इस कंप्यूटर पर कुछ भी इंस्टॉल कर सकता है।
@@ -1092,6 +1098,9 @@ Ask for Full Access at Start
 
 Ask for sudo Passwords in a Window
 sudo पासवर्ड अलग विंडो में पूछें
+
+Ask the assistant
+सहायक से पूछें
 
 Ask what to do about urgent ones
 ज़रूरी मामलों के लिए पूछें कि क्या करें
@@ -1836,6 +1845,9 @@ Choose a to-do to see its details.
 
 Choose a widget to change it, or add one.
 बदलने के लिए विजेट चुनें या नया जोड़ें।
+
+Choose every update
+सभी अपडेट चुनें
 
 Choose what to scan:
 स्कैन का दायरा:
@@ -2615,6 +2627,9 @@ Delete Vault
 Delete Vault…
 तिजोरी मिटाएँ…
 
+Delete the event
+इवेंट हटाएँ
+
 Delete the unfinished backup? What it sent ({}) is freed, and the next backup reads and sends again what it had done. It can’t be undone.
 अधूरा बैकअप मिटाएँ? भेजा गया डेटा ({}) हट जाएगा। अगला बैकअप उसे फिर पढ़ेगा और भेजेगा। इसे पलटा नहीं जा सकता।
 
@@ -3122,6 +3137,9 @@ Edit Name
 
 Edit Video…
 वीडियो बदलें…
+
+Edit the event
+इवेंट संपादित करें
 
 Editors’ swap and backup files
 एडिटर की स्वैप और बैकअप फ़ाइलें
@@ -5886,6 +5904,9 @@ New Worktree…
 New description
 नया विवरण
 
+New event
+नया इवेंट
+
 New message
 नया संदेश
 
@@ -5948,6 +5969,9 @@ Next Tab
 
 Next Week
 अगला हफ़्ता
+
+Next day, week or month
+अगला दिन, सप्ताह या महीना
 
 Next step
 अगला चरण
@@ -6795,6 +6819,9 @@ kache का लॉग खोलें
 Open my.telegram.org
 my.telegram.org खोलें
 
+Open the website
+वेबसाइट खोलें
+
 Open with {}
 {} से खोलें
 
@@ -7220,6 +7247,9 @@ Play Sound Through It
 Play a sound when Olo starts
 Olo शुरू होने पर ध्वनि बजाएँ
 
+Play or pause the phone's music
+फ़ोन का संगीत चलाएँ या रोकें
+
 Play sound through:
 आवाज़ यहाँ से बजाएँ:
 
@@ -7378,6 +7408,12 @@ Previous Tab
 
 Previous Week
 पिछला हफ़्ता
+
+Previous day, week or month
+पिछला दिन, सप्ताह या महीना
+
+Print
+प्रिंट करें
 
 Print…
 छापें…
@@ -8625,6 +8661,12 @@ Show on All Workspaces
 Show or Hide All Windows
 सभी विंडो दिखाएँ या छिपाएँ
 
+Show or hide the assistant
+सहायक दिखाएँ या छिपाएँ
+
+Show or hide the source
+स्रोत दिखाएँ या छिपाएँ
+
 Show seconds
 सेकंड दिखाएँ
 
@@ -9365,6 +9407,9 @@ The account answering now
 The account couldn’t be saved ({}).
 खाता सहेज नहीं सके ({})।
 
+The account left the pool while signing in.
+साइन इन करते समय खाता पूल से निकल गया।
+
 The address search answered {}.
 पते की खोज का जवाब: {}।
 
@@ -9421,6 +9466,12 @@ The coming days, each its sky, low and high.
 
 The computer couldn't be restarted: {}
 कंप्यूटर रीस्टार्ट नहीं हो सका: {}
+
+The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
+Token Pool की जिस प्रति की जगह इसने ली, वह अभी अपने अनुरोध पूरे कर रही है। थोड़ी देर में खाता जोड़ें।
+
+The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
+Token Pool की जिस प्रति की जगह इसने ली, वह अभी अपने अनुरोध पूरे कर रही है। थोड़ी देर में फिर साइन इन करें।
 
 The day before, at 9 AM
 एक दिन पहले, सुबह 9 बजे

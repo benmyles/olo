@@ -423,6 +423,9 @@ A referência tem a forma op://vault/item/field. Para obtê-la, escolha Copiar r
 A repository’s key needs to be trusted
 É preciso confiar na chave do repositório
 
+A reset this account asked for hasn’t been answered yet. Sign in as the same account, or remove this account and add the other.
+Uma redefinição pedida por esta conta ainda não foi respondida. Inicie a sessão com a mesma conta, ou remova esta conta e adicione a outra.
+
 A resting palm can't click (its pressure doesn't count)
 Ignorar a pressão da palma ao clicar
 
@@ -626,6 +629,9 @@ Adicionar uma segunda tecla
 
 Add a Section…
 Adicionar seção…
+
+Add a place
+Adicionar um lugar
 
 Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
 Os pacotes e as atualizações do repositório aparecerão junto com os do Fedora. Adicione apenas repositórios de confiança. Quem os mantém pode instalar qualquer coisa neste computador.
@@ -1092,6 +1098,9 @@ Pedir acesso total ao iniciar
 
 Ask for sudo Passwords in a Window
 Pedir a senha do sudo em uma janela
+
+Ask the assistant
+Perguntar ao assistente
 
 Ask what to do about urgent ones
 Perguntar o que fazer em casos urgentes
@@ -1836,6 +1845,9 @@ Selecione uma tarefa para ver os detalhes.
 
 Choose a widget to change it, or add one.
 Escolha um widget para editá-lo ou adicione um novo.
+
+Choose every update
+Escolher todas as atualizações
 
 Choose what to scan:
 Escolha o que analisar:
@@ -2615,6 +2627,9 @@ Excluir cofre
 Delete Vault…
 Excluir cofre…
 
+Delete the event
+Apagar o evento
+
 Delete the unfinished backup? What it sent ({}) is freed, and the next backup reads and sends again what it had done. It can’t be undone.
 Excluir o backup incompleto? O espaço usado pelo que já foi enviado ({}) será liberado. O próximo backup terá que ler e enviar esses dados novamente. A exclusão é definitiva.
 
@@ -3122,6 +3137,9 @@ Editar nome
 
 Edit Video…
 Editar vídeo…
+
+Edit the event
+Editar o evento
 
 Editors’ swap and backup files
 Arquivos temporários e de backup dos editores
@@ -5886,6 +5904,9 @@ Nova árvore de trabalho…
 New description
 Nova descrição
 
+New event
+Novo evento
+
 New message
 Nova mensagem
 
@@ -5948,6 +5969,9 @@ Próxima aba
 
 Next Week
 Próxima semana
+
+Next day, week or month
+Próximo dia, semana ou mês
 
 Next step
 Próxima etapa
@@ -6795,6 +6819,9 @@ Abrir registro do kache
 Open my.telegram.org
 Abrir my.telegram.org
 
+Open the website
+Abrir o site
+
 Open with {}
 Abrir com {}
 
@@ -7220,6 +7247,9 @@ Reproduzir som neste dispositivo
 Play a sound when Olo starts
 Reproduzir um som ao iniciar o Olo
 
+Play or pause the phone's music
+Reproduzir ou pausar a música do telefone
+
 Play sound through:
 Reproduzir som em:
 
@@ -7378,6 +7408,12 @@ Aba anterior
 
 Previous Week
 Semana anterior
+
+Previous day, week or month
+Dia, semana ou mês anterior
+
+Print
+Imprimir
 
 Print…
 Imprimir…
@@ -8625,6 +8661,12 @@ Mostrar em todos os espaços de trabalho
 Show or Hide All Windows
 Mostrar ou ocultar todas as janelas
 
+Show or hide the assistant
+Mostrar ou ocultar o assistente
+
+Show or hide the source
+Mostrar ou ocultar o código-fonte
+
 Show seconds
 Mostrar segundos
 
@@ -9365,6 +9407,9 @@ A conta que está respondendo
 The account couldn’t be saved ({}).
 Não foi possível salvar a conta ({}).
 
+The account left the pool while signing in.
+A conta saiu do pool durante o início de sessão.
+
 The address search answered {}.
 A busca de endereço retornou {}.
 
@@ -9421,6 +9466,12 @@ Previsão para os próximos dias, com o céu e as temperaturas mínima e máxima
 
 The computer couldn't be restarted: {}
 Não foi possível reiniciar o computador: {}
+
+The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
+A cópia do Token Pool que esta substituiu ainda está terminando suas solicitações. Adicione a conta em instantes.
+
+The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
+A cópia do Token Pool que esta substituiu ainda está terminando suas solicitações. Inicie a sessão novamente em instantes.
 
 The day before, at 9 AM
 No dia anterior, às 9h

@@ -244,6 +244,23 @@ pub fn review(menus: &[Menu]) -> Vec<(String, String)> {
     if has("find-again") != has("find-previous") {
         say("Find Again and Find Previous come together (Menu::find_items)".to_owned());
     }
+    // Every item with keys is in the keyboard profile's table
+    // (`olo_protocol::app_keys`): one that isn't can't be given other
+    // keys in Preferences, isn't on the shortcuts sheet, and keeps its
+    // keys whatever the profile (⌘ on a Windows profile). Phone's and
+    // Weather's menus had seven such each, said only in a dev build's
+    // log (2026-11-20).
+    // (Asked of a program that has said which app it is: the layout
+    // lint draws windows with no app round them, whose own keys nothing
+    // could look up; the live lint and `tsession review` ask the app.)
+    let app = !olo_kit_base::keys::app_id().is_empty();
+    for menu in menus.iter().filter(|_| app) {
+        for a in actions(menu) {
+            if a.shortcut.is_some() && olo_kit_base::keys::known(&a.command, false).is_none() {
+                say(format!("{} ▸ {}: its keys aren’t in the keyboard profile (olo_protocol::app_keys, command “{}”)", menu.title, a.label, a.command));
+            }
+        }
+    }
     // Their submenus, as every menu's groups are (HACKING, "Menus in
     // groups").
     for menu in menus {

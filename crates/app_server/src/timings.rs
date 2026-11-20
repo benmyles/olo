@@ -26,6 +26,35 @@ const HELD: Duration = Duration::from_millis(20);
 /// Input this late is said in the log, with what held the loop.
 const LATE: Duration = Duration::from_millis(100);
 
+/// What the computer was short of over the last ten seconds, as the
+/// kernel counts it (`/proc/pressure`: the share of that time in which
+/// something waited for memory, for a disk or for a processor; for
+/// memory and disks, also the share in which everything did): said with
+/// input that came late, so the log says whether app_server was slow or
+/// the computer was (a build at full tilt, memory being swapped).
+fn pressure() -> String {
+    let read = |what: &str| std::fs::read_to_string(format!("/proc/pressure/{what}")).ok().map(|t| pressure_of(&t));
+    let said: Vec<String> = [("memory", "memory"), ("io", "disks"), ("cpu", "processors")]
+        .into_iter()
+        .filter_map(|(file, name)| {
+            let (some, full) = read(file)?;
+            match (some >= 1.0, full >= 1.0) {
+                (true, true) => Some(format!("{name} {some:.0}% (everything {full:.0}%)")),
+                (true, false) => Some(format!("{name} {some:.0}%")),
+                _ => None,
+            }
+        })
+        .collect();
+    if said.is_empty() { "nothing was waited for over the last 10 s (memory, disks, processors)".to_owned() } else { format!("waited for over the last 10 s: {}", said.join(", ")) }
+}
+
+/// A `/proc/pressure` file's ten-second averages: of some task waiting,
+/// and of all of them (0 where the kernel doesn't say).
+fn pressure_of(text: &str) -> (f32, f32) {
+    let avg10 = |line: &str| text.lines().find(|l| l.starts_with(line)).and_then(|l| l.split_whitespace().find_map(|f| f.strip_prefix("avg10="))).and_then(|v| v.parse().ok()).unwrap_or(0.0);
+    (avg10("some"), avg10("full"))
+}
+
 #[derive(Debug, Default)]
 pub struct Timings {
     /// Until when someone is watching (the heartbeat runs till then).
@@ -129,12 +158,22 @@ impl Timings {
         }
         self.late_said = Some(now);
         let ms = |d: Duration| d.as_secs_f64() * 1000.0;
+        // (What the computer was short of meanwhile, read now, on the way
+        // to a warning: a look held a second and more wasn't app_server's
+        // own work every time, and the log couldn't say whose it was.)
+        let under = pressure();
         match held {
-            Some((what, took)) if took * 2 >= late => tracing::warn!("input ({kind}) came {:.0} ms late: the loop was held by {what} ({:.0} ms)", ms(late), ms(took)),
+            Some((what, took)) if took * 2 >= late => tracing::warn!("input ({kind}) came {:.0} ms late: the loop was held by {what} ({:.0} ms); {under}", ms(late), ms(took)),
             Some((what, took)) => {
-                tracing::warn!("input ({kind}) came {:.0} ms late; the loop's longest part meanwhile was {what} ({:.0} ms): app_server wasn't run, or the event came late to it", ms(late), ms(took))
+                tracing::warn!(
+                    "input ({kind}) came {:.0} ms late; the loop's longest part meanwhile was {what} ({:.0} ms): app_server wasn't run, or the event came late to it; {under}",
+                    ms(late),
+                    ms(took)
+                )
             }
-            None => tracing::warn!("input ({kind}) came {:.0} ms late, with nothing in the loop as long as {} ms: app_server wasn't run, or the event came late to it", ms(late), HELD.as_millis()),
+            None => {
+                tracing::warn!("input ({kind}) came {:.0} ms late, with nothing in the loop as long as {} ms: app_server wasn't run, or the event came late to it; {under}", ms(late), HELD.as_millis())
+            }
         }
     }
 
@@ -224,5 +263,24 @@ impl<B: Backend + 'static> AnvilState<B> {
             });
         }
         self.timings.take()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The kernel's pressure files read: the ten-second averages of some
+    /// task waiting and of all of them; a file with no `full` line (the
+    /// processors' on older kernels) is 0 there.
+    #[test]
+    fn pressure_read() {
+        let memory = "some avg10=43.21 avg60=12.00 avg300=3.10 total=1291937611\nfull avg10=12.50 avg60=4.00 avg300=1.00 total=819337426\n";
+        assert_eq!(pressure_of(memory), (43.21, 12.5));
+        assert_eq!(pressure_of("some avg10=0.15 avg60=0.57 avg300=2.97 total=24025628159\n"), (0.15, 0.0));
+        assert_eq!(pressure_of(""), (0.0, 0.0));
+        // What's said names only what was waited for.
+        let said = pressure();
+        assert!(said.starts_with("waited for over the last 10 s: ") || said.starts_with("nothing was waited for"), "{said}");
     }
 }

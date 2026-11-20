@@ -319,7 +319,7 @@ struct FrameLoop {
     /// happens (`frame_after`): its timer, taken away if one is drawn
     /// first (so a frame kept back and drawn half a millisecond later,
     /// as most are, wakes nothing).
-    frame_after: Cell<Option<calloop::RegistrationToken>>,
+    frame_after: Cell<Option<(calloop::RegistrationToken, std::time::Instant)>>,
     /// Olo: when a frame was last drawn, and whether the timer that
     /// lets a rested window's swapchain go is set (`rest_later`).
     drawn_at: Cell<std::time::Instant>,
@@ -1067,7 +1067,7 @@ impl WaylandWindowStatePtr {
         log::trace!(target: "olo_frames", "frame: drew {drew}, callback {:?}", frames.callback.get());
         if drew {
             if let Some(timer) = frames.frame_after.take() {
-                frames.handle.remove(timer);
+                cancel_timer(&frames.handle, timer);
             }
         }
         if wheel.is_some() && !drew && !frames.wheel_held.take() {
@@ -1676,10 +1676,11 @@ impl WaylandWindowStatePtr {
     /// Asked again, it's from then.
     fn frame_after(&self, after: std::time::Duration) {
         if let Some(timer) = self.frames.frame_after.take() {
-            self.frames.handle.remove(timer);
+            cancel_timer(&self.frames.handle, timer);
         }
         let this = self.downgrade();
-        let timer = self.frames.handle.insert_source(calloop::timer::Timer::from_duration(after), move |_, _, _| {
+        let due = std::time::Instant::now() + after;
+        let timer = self.frames.handle.insert_source(calloop::timer::Timer::from_deadline(due), move |_, _, _| {
             if let Some(this) = this.upgrade() {
                 // (Its source goes with this call: nothing to take away.)
                 this.frames.frame_after.set(None);
@@ -1687,7 +1688,7 @@ impl WaylandWindowStatePtr {
             }
             calloop::timer::TimeoutAction::Drop
         });
-        self.frames.frame_after.set(timer.ok());
+        self.frames.frame_after.set(timer.ok().map(|t| (t, due)));
     }
 
     /// Olo: a window that has drawn nothing for [`REST_AFTER`], and
@@ -2439,6 +2440,23 @@ fn layer_keyboard(layer: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, keyboard: c
 const REST_AFTER: std::time::Duration = std::time::Duration::from_secs(30);
 const REST_FROM_BYTES: u64 = 8 << 20;
 
+/// Olo: a timer of the loop's taken away before it fires (`due`: when
+/// it would). One already due may have been gathered by the round of
+/// the loop this is called in (calloop gathers a round's ready sources
+/// together, and what took the timer away ran earlier in the round):
+/// removed then, its event finds no source and calloop warns "Received
+/// an event for non-existence source" (Tracker, once in a day's log; the
+/// same as app_server's resting displays had, `cancel_look`). So one
+/// that's due is disarmed, and its slot freed once the round is over.
+fn cancel_timer<D: 'static>(handle: &LoopHandle<'static, D>, (token, due): (calloop::RegistrationToken, std::time::Instant)) {
+    if due > std::time::Instant::now() {
+        handle.remove(token);
+    } else if handle.disable(&token).is_ok() {
+        let freeing = handle.clone();
+        handle.insert_idle(move |_| freeing.remove(token));
+    }
+}
+
 /// [`REST_AFTER`], or `OLO_REST_SECS` (a test's: read once).
 fn rest_after() -> std::time::Duration {
     static AFTER: std::sync::OnceLock<std::time::Duration> = std::sync::OnceLock::new();
@@ -2507,6 +2525,86 @@ fn resize_room(state: &WaylandWindowState, size: Size<DevicePixels>) -> Size<Dev
         _ => {
             let up = |n: i32| ((n as f64 * 1.25 / 64.0).ceil() as i32 * 64).max(n);
             Size { width: DevicePixels(up(size.width.0)), height: DevicePixels(up(size.height.0)) }
+        }
+    }
+}
+
+#[cfg(test)]
+mod timer_tests {
+    use super::cancel_timer;
+    use std::{
+        cell::Cell,
+        rc::Rc,
+        time::{Duration, Instant},
+    };
+
+    /// calloop's warnings of an event for a source that's gone, counted.
+    struct Warnings;
+    static WARNED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    impl log::Log for Warnings {
+        fn enabled(&self, m: &log::Metadata) -> bool {
+            m.level() <= log::Level::Warn
+        }
+        fn log(&self, r: &log::Record) {
+            if r.level() <= log::Level::Warn && r.args().to_string().contains("non-existence source") {
+                WARNED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }
+        }
+        fn flush(&self) {}
+    }
+
+    /// A timer already due, taken away by what ran before it in the same
+    /// round of the loop, never fires, and calloop has no event left for
+    /// a source that's gone (it warned of one: the timer's slot is freed
+    /// only after the round); one not yet due is simply removed.
+    #[test]
+    fn a_due_timer_cancelled_in_its_round_never_fires() {
+        // (The warnings are heard if no other test's logger is: one a
+        // process.)
+        let heard = log::set_logger(&Warnings).is_ok();
+        if heard {
+            log::set_max_level(log::LevelFilter::Warn);
+        }
+        let mut event_loop: calloop::EventLoop<'static, ()> = calloop::EventLoop::try_new().unwrap();
+        let handle = event_loop.handle();
+        let (fired, later_fired) = (Rc::new(Cell::new(0)), Rc::new(Cell::new(false)));
+        // Two due at once, and one far off; whichever of the two runs
+        // first takes the other two away.
+        let due = Instant::now();
+        let later = due + Duration::from_secs(60);
+        let tokens: Rc<Cell<[Option<(calloop::RegistrationToken, Instant)>; 3]>> = Rc::new(Cell::new([None, None, None]));
+        let mut made = [None, None, None];
+        for (i, at) in [due, due, later].into_iter().enumerate() {
+            let (fired, later_fired, tokens, canceller) = (fired.clone(), later_fired.clone(), tokens.clone(), handle.clone());
+            made[i] = handle
+                .insert_source(calloop::timer::Timer::from_deadline(at), move |_, _, _| {
+                    if i == 2 {
+                        later_fired.set(true);
+                    } else {
+                        fired.set(fired.get() + 1);
+                        let mut all = tokens.take();
+                        for (other, slot) in all.iter_mut().enumerate() {
+                            if other != i
+                                && let Some(timer) = slot.take()
+                            {
+                                cancel_timer(&canceller, timer);
+                            }
+                        }
+                        tokens.set(all);
+                    }
+                    calloop::timer::TimeoutAction::Drop
+                })
+                .ok()
+                .map(|t| (t, at));
+        }
+        tokens.set(made);
+        std::thread::sleep(Duration::from_millis(5));
+        for _ in 0..3 {
+            event_loop.dispatch(Some(Duration::from_millis(10)), &mut ()).unwrap();
+        }
+        assert_eq!((fired.get(), later_fired.get()), (1, false));
+        if heard {
+            assert_eq!(WARNED.load(std::sync::atomic::Ordering::SeqCst), 0, "calloop had an event for a source taken away");
         }
     }
 }
