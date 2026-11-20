@@ -13967,6 +13967,9 @@ other: „{}“ und {n} weitere Programme laufen noch in diesem Fenster. Trotzde
 “{}” is asking something else to pair.
 „{}“ bittet etwas anderes um Kopplung.
 
+“{}” is here but isn’t taking connections. On the phone: Settings ▸ Bluetooth, turn it on there, then tap this computer.
+„{}“ ist da, nimmt aber keine Verbindungen an. Am Telefon: Einstellungen ▸ Bluetooth, dort einschalten, dann diesen Computer antippen.
+
 “{}” is imported.
 „{}“ ist importiert.
 

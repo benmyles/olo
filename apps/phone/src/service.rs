@@ -1711,7 +1711,17 @@ impl Service {
                 // is down", its low-energy try given up:
                 // "le-connection-abort-by-local", which the notice
                 // showed as it came, 2026-11-20). The log has the name.
-                self.state.trouble = if connected {
+                // (The phone there, over low energy, and answering no
+                // classic page, which its messages need: an iPhone whose
+                // Bluetooth was turned off from Control Centre does
+                // exactly that, until the next day or until it's turned
+                // on in Settings. Said as what to do on the phone: Ben's
+                // sat so for a morning behind "br-connection-page-
+                // timeout", 2026-11-20.)
+                let unanswered = why.contains("page-timeout") || why.contains("Host is down");
+                self.state.trouble = if connected && unanswered {
+                    olo_kit::en!("“{}” is here but isn’t taking connections. On the phone: Settings ▸ Bluetooth, turn it on there, then tap this computer.", self.state.name)
+                } else if connected {
                     olo_kit::en!("Bluetooth couldn’t open the phone’s messages ({}).", why.rsplit(": ").next().unwrap_or(&why).trim_end_matches('.'))
                 } else if self.report_retries {
                     olo_kit::en!("“{}” isn’t in reach. Is it nearby, unlocked, with Bluetooth on?", self.state.name)

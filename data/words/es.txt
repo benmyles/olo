@@ -13967,6 +13967,9 @@ No se pudo escribir «{}»: {}
 “{}” is asking something else to pair.
 «{}» pide enlazar otra cosa.
 
+“{}” is here but isn’t taking connections. On the phone: Settings ▸ Bluetooth, turn it on there, then tap this computer.
+«{}» está aquí pero no acepta conexiones. En el teléfono: Ajustes ▸ Bluetooth, actívalo ahí y luego toca este ordenador.
+
 “{}” is imported.
 «{}» importado.
 

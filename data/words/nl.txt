@@ -13967,6 +13967,9 @@ other: ‘{}’ en nog {n} programma’s zijn actief in dit venster. Toch sluite
 “{}” is asking something else to pair.
 ‘{}’ probeert een ander apparaat te koppelen.
 
+“{}” is here but isn’t taking connections. On the phone: Settings ▸ Bluetooth, turn it on there, then tap this computer.
+‘{}’ is hier maar accepteert geen verbindingen. Op de telefoon: Instellingen ▸ Bluetooth, zet het daar aan en tik dan op deze computer.
+
 “{}” is imported.
 ‘{}’ is geïmporteerd.
 
