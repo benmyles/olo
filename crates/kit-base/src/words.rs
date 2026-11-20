@@ -293,8 +293,11 @@ fn read(text: &'static str) -> HashMap<&'static str, Entry> {
         }
         block.clear();
     };
+    // (A line's spaces at its end are its own: "About " is a key, what a
+    // menu's About item starts with, and its translations end in a space
+    // too. They were trimmed, and it was found in no catalog: the agent
+    // translating Olo's words, 2026-11-19.)
     for line in text.lines() {
-        let line = line.trim_end();
         if line.trim().is_empty() {
             end(&mut block);
         } else if !line.starts_with('#') {
@@ -784,6 +787,13 @@ mod tests {
                     assert!(got == wanted || (english.contains("{n}") && got == numberless), "{}: “{english}” is “{text}”", language.code);
                 }
                 assert!(!entry.text.is_empty() || !entry.forms.is_empty(), "{}: “{english}” has no translation", language.code);
+                // (A space at the end is a translation's only where it's
+                // its English's: one by chance would be read as its own.)
+                let spaced = |t: &str| t.ends_with(char::is_whitespace);
+                assert!(!spaced(entry.text) || spaced(english), "{}: “{}” ends in a space “{english}” doesn't", language.code, entry.text);
+            }
+            if words.len() > 4000 {
+                assert!(words.get("About ").is_some_and(|e| e.text.ends_with(' ')), "{}: “About ” not found as itself", language.code);
             }
         }
         assert_eq!(language("de_DE").map(|l| l.code), Some("de"));

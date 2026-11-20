@@ -679,9 +679,14 @@ impl View for Picks {
 /// beside it moves.
 #[test]
 fn ui_lint_a_list_acted_on_by_whats_checked_is_clean() {
-    // (Wide enough for the bar in one row, its links set apart by dots;
-    // a narrower window has `chosen::bar_within` fold them, as Doctor's.)
-    let options = WindowOptions::new("Picks", 440.0, 146.0);
+    // (Wide enough for the bar in one row, its links set apart by dots,
+    // as `chosen::bar_width` measures it in the language the lint runs in:
+    // French's was 2 points wider than the 440 English has room in; a
+    // narrower window has `chosen::bar_within` fold them, as Doctor's.)
+    let lint = Lint::new();
+    let bar = olo_kit::chosen::bar_width(&[(&PROBLEM, 0, 2), (&SUGGESTION, 0, 1)]) + 2.0 * m::WINDOW_INSET;
+    drop(lint);
+    let options = WindowOptions::new("Picks", bar.ceil().max(440.0), 146.0);
     let mut widths = Vec::new();
     for checked in [[0, 0], [2, 0], [1, 1], [2, 1], [0, 1]] {
         let mut lint = Lint::new();

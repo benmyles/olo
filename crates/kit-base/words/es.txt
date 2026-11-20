@@ -478,7 +478,7 @@ API key:
 Clave de API:
 
 About 
-Acerca de
+Acerca de 
 
 About Olo Desktop
 Acerca de Olo Desktop
