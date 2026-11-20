@@ -429,7 +429,10 @@ impl IntoElement for EmptyState {
                 .mb(px(m::SPACING - m::TIGHT)),
             );
         }
-        col = col.child(div().w_full().text_center().line_height(olo_interface::relative(style::LINE_HEIGHT)).child(self.text.clone()));
+        // (Its line is what the view says: read, in the secondary colour;
+        // its detail quieter under it. Both were the disabled colour, and
+        // a view with nothing in it looked turned off.)
+        col = col.child(div().w_full().text_center().text_color(style::secondary_text(&p)).line_height(olo_interface::relative(style::LINE_HEIGHT)).child(self.text.clone()));
         if let Some(d) = self.detail.clone() {
             col = col.child(div().w_full().text_center().text_size(px(style::DETAIL_SIZE)).line_height(olo_interface::relative(style::LINE_HEIGHT)).child(d));
         }

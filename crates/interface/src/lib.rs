@@ -52,7 +52,8 @@ pub use assets::*;
 pub use color::*;
 pub use elastic::*;
 pub use element::{
-    AnyElement, ControlState, Element, ElementId, InteractiveElement, IntoElement, ParentElement, TextInputEvent, TextLink, canvas, control_canvas, div, styled_text, uniform_rows, view_canvas,
+    AnyElement, ControlState, Element, ElementId, InteractiveElement, IntoElement, ParentElement, TextInputEvent, TextLink, canvas, control_canvas, div, row_tops, sized_rows, styled_text,
+    uniform_rows, view_canvas,
 };
 pub(crate) use executor::*;
 pub use geometry::*;

@@ -45,6 +45,23 @@ use crate::{icons, review, style, theme, widgets::ScrollView};
 pub const ROW: f32 = 24.0;
 /// A heading's.
 pub const HEADING: f32 = 22.0;
+/// What a heading after other rows has over it besides, so its group
+/// stands apart from the one before (with a heading a row's step from
+/// the row over it, two groups read as one list with a small word in it:
+/// Opus's reviews of To-Do, 2026-11-19).
+pub const HEADING_OVER: f32 = 6.0;
+
+/// How tall row `i` of `rows` stands.
+pub fn tall_at(rows: &[Row], i: usize) -> f32 {
+    let Some(row) = rows.get(i) else { return 0.0 };
+    row.tall() + if i > 0 && row.heading && !row.label.is_empty() { HEADING_OVER } else { 0.0 }
+}
+
+/// Where row `i` starts under the sidebar's top (past the last: where
+/// they end).
+fn top_of(rows: &[Row], i: usize) -> f32 {
+    m::TIGHT + (0..i.min(rows.len())).map(|n| tall_at(rows, n)).sum::<f32>()
+}
 
 /// One row of a [`Sidebar`], or a heading over the rows after it.
 #[derive(Clone, Debug, PartialEq, Hash)]
@@ -55,20 +72,23 @@ pub struct Row {
     pub value: Option<SharedString>,
     /// A heading over the rows that follow (not chosen).
     pub heading: bool,
+    /// A dot of this colour where its icon would be (To-Do's lists,
+    /// each in its own colour).
+    pub dot: Option<olo_theme::Hue>,
 }
 
 impl Row {
     pub fn new(icon: impl Into<SharedString>, label: impl Into<SharedString>) -> Row {
-        Row { icon: icon.into(), label: crate::words::of(label), value: None, heading: false }
+        Row { icon: icon.into(), label: crate::words::of(label), value: None, heading: false, dot: None }
     }
 
     /// A heading; with no words, a gap setting what follows apart
     /// (Passwords' Archive, under its categories).
     pub fn heading(label: impl Into<SharedString>) -> Row {
-        Row { icon: SharedString::default(), label: crate::words::of(label), value: None, heading: true }
+        Row { icon: SharedString::default(), label: crate::words::of(label), value: None, heading: true, dot: None }
     }
 
-    /// How tall it stands.
+    /// How tall it stands by itself ([`tall_at`]: among its rows).
     pub fn tall(&self) -> f32 {
         match (self.heading, self.label.is_empty()) {
             (false, _) => ROW,
@@ -81,11 +101,31 @@ impl Row {
         self.value = Some(crate::words::of(value));
         self
     }
+
+    /// A dot of `hue` in its icon's place: something of the person's
+    /// own, told apart by its colour (a list, a calendar).
+    pub fn dot(mut self, hue: olo_theme::Hue) -> Row {
+        self.dot = Some(hue);
+        self
+    }
+}
+
+/// A dot of `fill` in the middle of `icon` (an icon's 16 points): 12
+/// points across, its edge a little darker, so a pale colour holds its
+/// own on a pale ground and a dark one on a dark.
+pub fn paint_dot(g: &mut olo_interface::Painter, icon: Bounds<Pixels>, fill: olo_theme::Rgba, p: &olo_theme::Palette) {
+    let across = 12.0;
+    let r = style::snap_centred(g, icon.center(), across, across);
+    let rim = if p.mode == olo_theme::ThemeMode::Light { olo_theme::mix(fill, p.panel_text, 0.28) } else { olo_theme::mix(fill, [255, 255, 255, 255], 0.3) };
+    g.paint_quad(olo_interface::fill(r, style::c(rim)).corner_radii(px(across / 2.0)));
+    let line = 1.0 / g.scale_factor();
+    let inner = Bounds { origin: point(r.left() + px(line), r.top() + px(line)), size: size(r.size.width - px(2.0 * line), r.size.height - px(2.0 * line)) };
+    g.paint_quad(olo_interface::fill(inner, style::c(fill)).corner_radii(px(across / 2.0 - line)));
 }
 
 /// How tall `rows` stand in a sidebar.
 pub fn height(rows: &[Row]) -> f32 {
-    m::TIGHT + rows.iter().map(Row::tall).sum::<f32>()
+    top_of(rows, rows.len())
 }
 
 /// The sidebar's ground: the panel's, a little darker.
@@ -205,8 +245,7 @@ fn section(rows: &[Row], i: usize) -> std::ops::Range<usize> {
 /// (its end: after the last).
 fn drop_slot(rows: &[Row], from: usize, y: f32) -> usize {
     let s = section(rows, from);
-    let top = |i: usize| m::TIGHT + rows[..i].iter().map(Row::tall).sum::<f32>();
-    (s.start..s.end).find(|&i| y < top(i) + rows[i].tall() / 2.0).unwrap_or(s.end)
+    (s.start..s.end).find(|&i| y < top_of(rows, i) + tall_at(rows, i) / 2.0).unwrap_or(s.end)
 }
 
 /// The index row `from` is to have, dropped before `slot`.
@@ -244,14 +283,14 @@ impl Sidebar {
         let Sidebar { id, rows, chosen, also, on_choose, on_pick, on_menu, on_select_all, on_reorder, bare } = self;
         // The chosen row brought into view when it changes.
         if state.revealed.replace(Some(chosen)) != Some(chosen) {
-            let top: f32 = m::TIGHT + rows[..chosen.min(rows.len())].iter().map(Row::tall).sum::<f32>();
+            let top: f32 = top_of(&rows, chosen);
             state.scroll.reveal_span(px(top - m::TIGHT), px(top + ROW));
         }
         // Up to its edge line, on device pixels.
         let line = 1.0 / cx.scale_factor();
         let several = !also.is_empty();
         let list = div().w_full().flex().flex_col().pt(px(m::TIGHT)).children(rows.iter().enumerate().map(|(i, row)| {
-            let tall = row.tall();
+            let tall = tall_at(&rows, i);
             if row.heading && row.label.is_empty() {
                 return div().h(px(tall)).flex_shrink_0();
             }
@@ -263,7 +302,17 @@ impl Sidebar {
                 let (plain, bold) = (style::ui_font(FontWeight::NORMAL), style::ui_font(FontWeight::BOLD));
                 let row = &painted;
                 if row.heading {
-                    let t = style::label(g, r.left() + px(m::WINDOW_INSET), r.center().y + px(2.0), style::Align::Left, row.label.to_uppercase(), style::SMALL_SIZE, bold, style::disabled_text(&p));
+                    // (Low in its row, where it's taller: over its own rows.)
+                    let t = style::label(
+                        g,
+                        r.left() + px(m::WINDOW_INSET),
+                        r.bottom() - px(HEADING / 2.0 - 2.0),
+                        style::Align::Left,
+                        row.label.to_uppercase(),
+                        style::SMALL_SIZE,
+                        bold,
+                        style::secondary_text(&p),
+                    );
                     g.agent(agent::Node { role: "Heading", name: Some(row.label.clone()), bounds: t, enabled: true, ..Default::default() });
                     return;
                 }
@@ -275,7 +324,9 @@ impl Sidebar {
                 }
                 let text = if selected { style::c(p.list_selected_item_text) } else { style::c(p.panel_text) };
                 let icon = Bounds { origin: point(r.left() + px(m::WINDOW_INSET), r.center().y - px(8.0)), size: size(px(16.0), px(16.0)) };
-                if !row.icon.is_empty() {
+                if let Some(hue) = row.dot {
+                    paint_dot(g, icon, p.hue(hue), &p);
+                } else if !row.icon.is_empty() {
                     icons::paint(g, icon, &row.icon);
                 }
                 let value_w = row.value.as_ref().map_or(0.0, |v| f32::from(style::text_width(v.clone(), style::PLAIN_SIZE, plain.clone())) + m::SPACING);
@@ -283,7 +334,8 @@ impl Sidebar {
                 let room = (r.right() - px(m::WINDOW_INSET + value_w) - left).max(px(0.0));
                 style::label_fit(g, left, r.center().y, style::Align::Left, row.label.clone(), style::PLAIN_SIZE, plain.clone(), text, room);
                 if let Some(v) = &row.value {
-                    let quiet = if selected { text } else { style::disabled_text(&p) };
+                    // (Read, not disabled: a count, a temperature.)
+                    let quiet = if selected { text } else { style::secondary_text(&p) };
                     style::label(g, r.right() - px(m::WINDOW_INSET), r.center().y, style::Align::Right, v.clone(), style::PLAIN_SIZE, plain, quiet);
                 }
                 g.agent(agent::Node {
@@ -345,7 +397,7 @@ impl Sidebar {
         let (kept, line_rows) = (state.clone(), rows.clone());
         let drop_line = canvas(move |g, b| {
             let Some(slot) = kept.drop_at.get() else { return };
-            let y = b.top() + px(m::TIGHT + line_rows[..slot.min(line_rows.len())].iter().map(Row::tall).sum::<f32>());
+            let y = b.top() + px(top_of(&line_rows, slot));
             let p = theme::palette();
             let thick = 2.0;
             let r = style::snap_centred(g, point(b.center().x, y), f32::from(b.size.width) - 2.0 * m::TIGHT, thick);
@@ -439,7 +491,9 @@ mod tests {
         assert_eq!(stepped(&rows, 1, 1), Some(3));
         assert_eq!(stepped(&rows, 3, -1), Some(1));
         assert_eq!(stepped(&rows, 1, -1), None);
-        assert_eq!(height(&rows), m::TIGHT + 2.0 * HEADING + 2.0 * ROW);
+        // (The second heading has air over it; the first none.)
+        assert_eq!(height(&rows), m::TIGHT + 2.0 * HEADING + HEADING_OVER + 2.0 * ROW);
+        assert_eq!((tall_at(&rows, 0), tall_at(&rows, 2), tall_at(&rows, 1)), (HEADING, HEADING + HEADING_OVER, ROW));
     }
 
     /// A row dragged goes among its section's rows: before the one whose

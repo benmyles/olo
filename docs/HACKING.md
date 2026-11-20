@@ -491,8 +491,9 @@ How Olo keeps it (do the same):
   Terminal's rows (`RowCache`: each row's cells compared with those it
   was drawn from, only changed rows laid out again), a drawing's
   display list (`paint_key`, `key_by`), a list's rows (`row_key`, and
-  `uniform_rows(..).row_key_by(..)` for rows of your own: a row whose
-  key is the same isn't made again when the view says what it shows),
+  `uniform_rows(..).row_key_by(..)` for rows of your own, `sized_rows`
+  where they're of different heights: a row whose key is the same isn't
+  made again when the view says what it shows),
   window tab looks, the wallpaper's strips. Compare the source (cells, a version counter)
   rather than hashing what you'd draw: finding out what changed must
   cost far less than drawing it.
@@ -2860,7 +2861,9 @@ it.
   wide as its room, cut short with "…", the whole in its tip and to
   agents: an address among facts, Calendar's preview),
   `EmptyState` (an icon, a line, a detail and an action button,
-  centred in what it's given: a list or pane with nothing in it),
+  centred in what it's given: a list or pane with nothing in it; its
+  line in `secondary_text`, its detail quieter: both in the disabled
+  colour, a view with nothing in it looked turned off),
   `Tag` (a word in a pill saying what kind a thing is, Olo Doctor's
   Critical, Problem, Recommended or Suggestion: bold, in the detail
   size, black or white on its `fill`, from the palette's hues, else
@@ -3815,9 +3818,12 @@ it.
   panel.
 - `widgets::MonthGrid::new(name, year, month, today)` (`widgets::month`):
   a month to pick a day from. Its name and year over six weeks of days
-  (always six, so nothing under it moves as months turn), the days of
-  the months either side dim, today on the look's mark colour, the days
-  `chosen(first, last)` on the list's selection, a dot under each day
+  (always six, so nothing under it moves as months turn), the weekdays'
+  letters quiet and the days of the months either side quieter, today's
+  box outlined in the look's highlight, the days `chosen(first, last)`
+  bold on the list's selection (outlined is today, filled is chosen: a
+  disc of the mark colour for today was louder than the day picked,
+  To-Do's reviews), a dot under each day
   in `marked(days)` (sorted), weeks from `week_start(0 Monday … 6
   Sunday)`. It keeps nothing: `on_pick` says a day clicked, `on_turn`
   the month its arrows ask for, and its owner shows that. `month::Day`
@@ -3887,7 +3893,12 @@ it.
   label).value(v)` and `Row::heading(label)`, `sidebar::height(rows)`,
   its `ground` and `edge` colours for what sits on it; ↑ ↓ step over
   headings, rows past its height scroll, the chosen one is brought into
-  view; `ListItem`s and `Heading`s to agents). `Row::heading("")` is a
+  view; `ListItem`s and `Heading`s to agents). `Row::dot(hue)` puts a
+  dot of a hue where its icon would be (To-Do's lists; `paint_dot` for
+  the same dot elsewhere). A heading after other rows has
+  `HEADING_OVER` more over it, so its group stands apart from the one
+  before (`tall_at`), and headings and values are in `secondary_text`.
+  `Row::heading("")` is a
   short gap setting what follows apart, said to no one; `.bare()` drops
   its ground and edge, over what's behind it (a list's sunken well:
   Passwords' sources). Several chosen together, the app keeping which:

@@ -159,9 +159,14 @@ impl IntoElement for MenuField {
             let inside = paint_field(g, field, color, &p);
             // (Cut short with "…" when the field is narrower than its
             // choice: it's no wider than what it's in.)
-            let room = inside.right() - (inside.left() + px(m::TEXT_INSET));
+            // (Its words inset from its frame's edge as that's drawn, on
+            // its device pixel, as a text field's are from its box's: from
+            // where the edge would be between pixels, they stood a pixel
+            // left of a text field's under them at 1.25× and 1.75×.)
+            let left = style::snap_coord(g, inside.left()) + px(m::TEXT_INSET);
+            let room = inside.right() - left;
             let value = g.with_content_mask(Some(ContentMask { bounds: inside }), |g| {
-                style::label_fit(g, inside.left() + px(m::TEXT_INSET), field.center().y, style::Align::Left, shown.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color, room)
+                style::label_fit(g, left, field.center().y, style::Align::Left, shown.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), color, room)
             });
             // With the keyboard: its label underlined (the choice, when
             // it has none).

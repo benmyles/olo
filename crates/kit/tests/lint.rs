@@ -502,6 +502,68 @@ fn ui_lint_keyed_rows_are_kept() {
     }
 }
 
+/// Rows of their own heights (`sized_rows`): 20 points, and 40 for every
+/// fifth (a heading with air over it). Which are made, and where each
+/// was drawn and how tall.
+#[derive(Default)]
+struct Sized {
+    scroll: olo_kit::ScrollHandle,
+    made: std::rc::Rc<std::cell::RefCell<Vec<usize>>>,
+    drawn: std::rc::Rc<std::cell::RefCell<Vec<(usize, f32, f32)>>>,
+}
+
+impl View for Sized {
+    type Message = ();
+
+    fn body(&mut self, _: &mut Cx<Self>) -> Element {
+        use olo_kit::InteractiveElement as _;
+        let made = self.made.clone();
+        let tops = olo_kit::row_tops((0..1000).map(|row| if row % 5 == 0 { 40.0 } else { 20.0 }));
+        let rows = olo_kit::sized_rows(tops, move |near| {
+            near.map(|row| {
+                made.borrow_mut().push(row);
+                olo_kit::view_canvas::<Sized>(move |v, _, b| v.drawn.borrow_mut().push((row, f32::from(b.top()), f32::from(b.size.height)))).id(row).w_full()
+            })
+            .collect()
+        });
+        div().size_full().overflow_y_scroll().track_scroll(&self.scroll).child(rows)
+    }
+}
+
+/// Rows of their own heights are made only near what shows, each where
+/// the heights before it put it and as tall as its own, at the list's
+/// top and scrolled far down it.
+#[test]
+fn ui_lint_sized_rows_are_made_where_they_show() {
+    use olo_kit::point;
+    let _lint = Lint::new();
+    let window = olo_kit::open_window(WindowOptions::new("Sized", 200.0, 100.0), |_| Sized::default());
+    let settle = || {
+        ask(&window, |_, _| ());
+        ask(&window, |_, _| ());
+    };
+    let taken = |v: &mut Sized| (std::mem::take(&mut *v.made.borrow_mut()), std::mem::take(&mut *v.drawn.borrow_mut()));
+    let check = |first: usize, made: &[usize], drawn: &[(usize, f32, f32)]| {
+        assert!(made.contains(&first) && made.len() < 100, "only rows near what shows are made: {made:?}");
+        let at = |row: usize| drawn.iter().rev().find(|d| d.0 == row).copied().unwrap_or_else(|| panic!("row {row} drawn: {drawn:?}"));
+        for row in first..first + 5 {
+            let ((_, top, height), (_, next, _)) = (at(row), at(row + 1));
+            assert_eq!(height, if row % 5 == 0 { 40.0 } else { 20.0 }, "row {row}'s height");
+            assert_eq!(next - top, height, "row {} starts where row {row} ends", row + 1);
+        }
+    };
+    settle();
+    let (made, drawn) = ask(&window, move |v, _| taken(v));
+    check(0, &made, &drawn);
+    // Scrolled to row 500 (a hundred fives of 120 points each down).
+    ask(&window, |v, cx| v.scroll.set_offset(cx, point(px(0.0), px(-12_000.0))));
+    settle();
+    let (made, drawn) = ask(&window, move |v, _| taken(v));
+    check(500, &made, &drawn);
+    assert!(!made.contains(&0) && !made.contains(&999), "{made:?}");
+    window.close();
+}
+
 /// A window that fits what it shows whose body fills it over a footer,
 /// as Quick Look's picture over its bar.
 #[derive(Default)]

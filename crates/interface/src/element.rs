@@ -390,15 +390,65 @@ pub struct Element {
     pub(crate) rows: Option<RowsSpec>,
 }
 
-/// Rows of one height, made as they come near what shows.
+/// Rows made as they come near what shows: of one height
+/// ([`uniform_rows`]) or each of its own ([`sized_rows`]).
 #[derive(Clone)]
 pub(crate) struct RowsSpec {
     pub(crate) count: usize,
     pub(crate) row_height: Pixels,
+    /// Rows of their own heights: where each starts under the first's
+    /// top, and last where they end (one more than `count`). None: each
+    /// `row_height` tall.
+    pub(crate) tops: Option<Rc<[f32]>>,
     pub(crate) make: Rc<dyn Fn(std::ops::Range<usize>) -> Vec<Element>>,
     /// What each row is, from the view ([`Element::row_key_by`]): None
     /// for a view of another type (the row is made again).
     pub(crate) key: Option<Rc<dyn Fn(&dyn std::any::Any, usize) -> Option<u64>>>,
+}
+
+impl RowsSpec {
+    /// Where row `row` starts, under the first's top (`count`: where the
+    /// last ends).
+    pub(crate) fn top(&self, row: usize) -> Pixels {
+        match &self.tops {
+            Some(tops) => crate::px(tops[row.min(self.count)]),
+            None => self.row_height * row as f32,
+        }
+    }
+
+    pub(crate) fn height(&self, row: usize) -> Pixels {
+        self.top(row + 1) - self.top(row)
+    }
+
+    /// The rows that touch what's between `from` and `to` under the
+    /// first's top.
+    pub(crate) fn touching(&self, from: f32, to: f32) -> std::ops::Range<usize> {
+        match &self.tops {
+            // (The first that ends past `from`, to the first that starts
+            // at `to` or after: found by halving, the rows being in
+            // order, so a hundred thousand cost seventeen looks.)
+            Some(tops) => {
+                let first = tops[1..].partition_point(|end| *end <= from).min(self.count);
+                let last = tops[..self.count].partition_point(|top| *top < to);
+                first..last.max(first)
+            }
+            None => {
+                let h = self.row_height.0.max(1.0);
+                let first = (from / h).floor().max(0.0) as usize;
+                let last = (to / h).ceil().max(0.0) as usize;
+                first.min(self.count)..last.min(self.count)
+            }
+        }
+    }
+
+    /// Whether rows `near` are where they were in `was`, and as tall.
+    pub(crate) fn placed_as(&self, was: &RowsSpec, near: &std::ops::Range<usize>) -> bool {
+        match (&self.tops, &was.tops) {
+            (None, None) => self.row_height == was.row_height,
+            (Some(now), Some(then)) => Rc::ptr_eq(now, then) || (near.end < now.len() && near.end < then.len() && now[near.start..=near.end] == then[near.start..=near.end]),
+            _ => false,
+        }
+    }
 }
 
 /// `count` rows, each `row_height` tall, one under the other: only
@@ -414,8 +464,41 @@ pub(crate) struct RowsSpec {
 pub fn uniform_rows(count: usize, row_height: Pixels, make: impl Fn(std::ops::Range<usize>) -> Vec<Element> + 'static) -> Element {
     use crate::Styled as _;
     let mut element = div().relative().w_full().h(row_height * count as f32).flex_shrink_0();
-    element.rows = Some(RowsSpec { count, row_height, make: Rc::new(make), key: None });
+    element.rows = Some(RowsSpec { count, row_height, tops: None, make: Rc::new(make), key: None });
     element
+}
+
+/// [`uniform_rows`] for rows of their own heights (a list whose
+/// headings stand clear of the group before them, To-Do's): `tops` is
+/// where each row starts under the first's top, and last where they end,
+/// so one more than there are rows ([`row_tops`] adds heights up; keep it
+/// with what the rows are made from, made again only when they change:
+/// it's every row's, not only those that show). Everything else is as
+/// `uniform_rows`: `make`, the rows' ids, `row_key_by`. Which rows show
+/// is found by halving, so a long list still costs what a screenful
+/// does.
+pub fn sized_rows(tops: impl Into<Rc<[f32]>>, make: impl Fn(std::ops::Range<usize>) -> Vec<Element> + 'static) -> Element {
+    use crate::Styled as _;
+    let mut tops: Rc<[f32]> = tops.into();
+    if tops.is_empty() {
+        tops = Rc::from([0.0]);
+    }
+    let count = tops.len() - 1;
+    let mut element = div().relative().w_full().h(crate::px(tops[count])).flex_shrink_0();
+    element.rows = Some(RowsSpec { count, row_height: crate::px(0.), tops: Some(tops), make: Rc::new(make), key: None });
+    element
+}
+
+/// Where each row of [`sized_rows`] starts, from their heights: one more
+/// than there are rows, the last where they end.
+pub fn row_tops(heights: impl IntoIterator<Item = f32>) -> Rc<[f32]> {
+    let mut top = 0.0;
+    std::iter::once(0.0)
+        .chain(heights.into_iter().map(|h| {
+            top += h;
+            top
+        }))
+        .collect()
 }
 
 /// (The name GPUI had for an element of any kind: here there is one.)
@@ -453,7 +536,7 @@ impl Element {
         self
     }
 
-    /// For [`uniform_rows`]: what row `row` is, worked out from the view
+    /// For [`uniform_rows`] and [`sized_rows`]: what row `row` is, worked out from the view
     /// (of type `V`), as a number that changes when it does. When the
     /// view says what it shows again, a row near what shows whose key is
     /// the same as when it was made is kept as it is: not made, compared
@@ -1006,5 +1089,37 @@ impl InteractiveElement for Element {
 
     fn set_key(&mut self, key: ElementId) {
         self.key = Some(key);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::px;
+
+    #[test]
+    fn rows_of_their_own_heights_found_by_where_they_are() {
+        let tops = row_tops([30.0, 36.0, 30.0, 30.0, 36.0]);
+        assert_eq!(&tops[..], [0.0, 30.0, 66.0, 96.0, 126.0, 162.0]);
+        let Some(spec) = sized_rows(tops, |_| Vec::new()).rows else { panic!("rows") };
+        assert_eq!((spec.count, spec.top(2), spec.height(1), spec.top(5)), (5, px(66.0), px(36.0), px(162.0)));
+        // What touches a span (a row that only meets its edge doesn't).
+        assert_eq!(spec.touching(0.0, 30.0), 0..1);
+        assert_eq!(spec.touching(29.0, 67.0), 0..3);
+        assert_eq!(spec.touching(30.0, 66.0), 1..2);
+        assert_eq!(spec.touching(-50.0, 10.0), 0..1);
+        assert_eq!(spec.touching(100.0, 1000.0), 3..5);
+        assert_eq!(spec.touching(162.0, 500.0), 5..5);
+        assert_eq!(spec.touching(-10.0, 0.0), 0..0);
+        // Rows of one height find theirs the same.
+        let Some(same) = uniform_rows(5, px(30.0), |_| Vec::new()).rows else { panic!("rows") };
+        assert_eq!((same.touching(29.0, 61.0), same.touching(100.0, 1000.0), same.top(5)), (0..3, 3..5, px(150.0)));
+        // Where they are: the same heights are the same places, to the
+        // rows asked of; others aren't, nor rows of one height.
+        let Some(again) = sized_rows(row_tops([30.0, 36.0, 30.0, 30.0, 40.0]), |_| Vec::new()).rows else { panic!("rows") };
+        assert!(spec.placed_as(&again, &(0..3)) && !spec.placed_as(&again, &(0..5)) && !spec.placed_as(&same, &(0..1)));
+        // None: nothing, wherever asked.
+        let Some(none) = sized_rows(Vec::<f32>::new(), |_| Vec::new()).rows else { panic!("rows") };
+        assert_eq!((none.count, none.touching(0.0, 100.0)), (0, 0..0));
     }
 }

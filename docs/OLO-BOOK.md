@@ -433,7 +433,11 @@ is one (`.child(&self.field)`).
   scroller's place) follows it.
 - `uniform_rows(count, row_height, make)` is a list of rows all the
   same height: only the rows near what shows are ever made. The kit's
-  `ColumnListView` is built on it; use that for lists. With
+  `ColumnListView` is built on it; use that for lists.
+  `sized_rows(tops, make)` is the same for rows of their own heights (a
+  heading with air over it, a board's cards): `tops` says where each
+  starts and where they end, `row_tops(heights)` adds heights up; keep
+  it with what the rows are made from. With
   `.row_key_by(|v: &V, row| key)` (what the row shows, as a number),
   a row whose key hasn't changed when the view says what it shows
   again is kept as it is, not made: a selection moved makes two rows.

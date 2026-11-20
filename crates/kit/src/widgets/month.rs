@@ -6,8 +6,13 @@
 //!
 //! BeOS had no such control (its Time preferences drew a month of their
 //! own); this is the one every desktop since has had, in Olo's look: no
-//! frames round the days, the chosen ones on the list's selection, today
-//! in the look's mark colour.
+//! frames round the days, the chosen ones bold on the list's selection,
+//! today in a fine outline of the look's highlight, the box a chosen
+//! day's ground fills: outlined is today, filled is chosen. (Today was a
+//! disc of the mark colour, the heaviest thing in the month, then a
+//! ring: louder than the day chosen, and another shape. Where a day is
+//! picked from a month, the one chosen is what it's for. Opus's reviews
+//! of To-Do's, 2026-11-19.)
 //!
 //! The widget keeps nothing: the month shown, the days chosen and
 //! what's marked are its owner's, which is told of a day picked
@@ -175,7 +180,9 @@ impl IntoElement for MonthGrid {
         let (pickable, turnable) = (on_pick.is_some(), on_turn.is_some());
         let mut element = canvas(move |g, b| {
             let p = theme::palette();
-            let (text, dim) = (style::c(p.list_item_text), style::disabled_text(&p));
+            // (Three steps: the month's days, the weekdays' letters over
+            // them quieter, the days of the months either side quietest.)
+            let (text, quiet, dim) = (style::c(p.list_item_text), style::secondary_text(&p), style::disabled_text(&p));
             let hover = g.node_state::<State>().hover;
             let mut parts: Vec<(Bounds<Pixels>, Part)> = Vec::with_capacity(WEEKS * 7 + 2);
             // Centred in what it's given, on device pixels.
@@ -203,7 +210,7 @@ impl IntoElement for MonthGrid {
             for col in 0..7 {
                 let x = b.left() + px(col as f32 * COLUMN + COLUMN / 2.0);
                 let letter = &WEEKDAYS[((week_start as usize) + col) % 7][..1];
-                style::label(g, x, top + px(NAMES / 2.0), style::Align::Center, letter, style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), dim);
+                style::label(g, x, top + px(NAMES / 2.0), style::Align::Center, letter, style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), quiet);
             }
             let top = top + px(NAMES);
             for i in 0..WEEKS * 7 {
@@ -219,19 +226,21 @@ impl IntoElement for MonthGrid {
                 }
                 let centre = cell.center();
                 let is_today = day == today;
-                let ink = if is_today {
-                    // Today: its number on the look's mark colour.
-                    let disc = style::snap_centred(g, centre, 18.0, 18.0);
-                    g.paint_quad(olo_interface::fill(disc, style::c(p.control_mark)).corner_radii(px(9.0)));
-                    style::c(p.ink_on(p.control_mark))
-                } else if picked {
+                if is_today {
+                    // Today: its box outlined in the look's highlight, a
+                    // point wide in whole device pixels.
+                    let s = g.scale_factor();
+                    let line = px(s.round().max(1.0) / s);
+                    g.paint_quad(olo_interface::outline(cell, style::c(p.control_highlight), Default::default()).border_widths(line));
+                }
+                let ink = if picked {
                     style::c(p.list_selected_item_text)
-                } else if inside {
+                } else if inside || is_today {
                     text
                 } else {
                     dim
                 };
-                let weight = if is_today { FontWeight::BOLD } else { FontWeight::NORMAL };
+                let weight = if picked { FontWeight::BOLD } else { FontWeight::NORMAL };
                 style::label(g, centre.x, centre.y, style::Align::Center, day.day.to_string(), style::DETAIL_SIZE, style::ui_font(weight), ink);
                 // Something's on it: a dot under its number.
                 if marked.binary_search(&day).is_ok() && !is_today {

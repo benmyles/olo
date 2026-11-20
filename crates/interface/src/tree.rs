@@ -544,7 +544,7 @@ impl WindowCore {
             Some(spec) => {
                 let node = &mut self.nodes[id];
                 let (near, old) = match node.rows.take() {
-                    Some((old_spec, near, keys)) => (near.start.min(spec.count)..near.end.min(spec.count), Some((old_spec.row_height, near, keys))),
+                    Some((old_spec, near, keys)) => (near.start.min(spec.count)..near.end.min(spec.count), Some((old_spec, near, keys))),
                     None => {
                         self.row_nodes.push(id);
                         (0..0, None)
@@ -553,11 +553,11 @@ impl WindowCore {
                 // Keyed rows: those whose key is what it was when they
                 // were made are kept as they are, and only the others
                 // made again (unless the look changed: then all are).
-                if let Some((height, was, old_keys)) = &old
+                if let Some((old_spec, was, old_keys)) = &old
                     && spec.key.is_some()
                     && !self.everything
-                    && *height == spec.row_height
                     && *was == near
+                    && spec.placed_as(old_spec, &near)
                     && old_keys.len() == near.len()
                     && self.nodes[id].children.len() == near.len()
                 {
@@ -602,16 +602,8 @@ impl WindowCore {
             }
             // The rows that can be seen (what can be seen is already
             // taken to a grid, with room to spare: `visible_at`).
-            let visible =
-                self.visible_at(id).intersect(&Bounds { origin: point(px(-1.0e7), node.bounds.top()), size: crate::size(px(2.0e7), node.bounds.size.height.max(spec.row_height * spec.count as f32)) });
-            let h = spec.row_height.0.max(1.0);
-            let wanted = if visible.size.height > px(0.) {
-                let first = ((visible.top() - node.bounds.top()).0 / h).floor().max(0.0) as usize;
-                let last = ((visible.bottom() - node.bounds.top()).0 / h).ceil().max(0.0) as usize;
-                first.min(spec.count)..last.min(spec.count)
-            } else {
-                0..0
-            };
+            let visible = self.visible_at(id).intersect(&Bounds { origin: point(px(-1.0e7), node.bounds.top()), size: crate::size(px(2.0e7), node.bounds.size.height.max(spec.top(spec.count))) });
+            let wanted = if visible.size.height > px(0.) { spec.touching((visible.top() - node.bounds.top()).0, (visible.bottom() - node.bounds.top()).0) } else { 0..0 };
             if wanted == *near {
                 continue;
             }
@@ -936,7 +928,7 @@ fn place_rows(spec: &crate::element::RowsSpec, near: std::ops::Range<usize>) -> 
         return Vec::new();
     }
     let made = (spec.make)(near.clone());
-    made.into_iter().zip(near).map(|(row, at)| row.absolute().left(px(0.)).top(spec.row_height * at as f32).h(spec.row_height)).collect()
+    made.into_iter().zip(near).map(|(row, at)| row.absolute().left(px(0.)).top(spec.top(at)).h(spec.height(at))).collect()
 }
 
 /// The grid what can be seen inside a scroller is taken to (points).
