@@ -14907,29 +14907,52 @@ What it looks for:
   RTX PRO 2000 went from D0 to D3cold.
 - **A graphics card that stopped answering** (`gpu_stuck`: its
   `power/runtime_status` "error", the kernel's word for power
-  management that failed, its driver not answering until it starts
-  again: NVIDIA's after memory ran out on 2026-11-07, NVML saying "an
-  internal driver error occurred"). NVIDIA's is started again without
-  restarting the computer (Ben: "i don't want you to restart the
-  machine just fix the card/driver or whatever"), Start It Again: the
-  person's programs with its nodes open quit (`/dev/nvidia*`, its
-  `/dev/dri` card and render node; named, each program once: Chrome
-  writes its whole command line into its first word, so a process is
-  named by its executable then), then one root step,
-  `Step::RestartGpu`: the services that keep it open stopped
-  (nvidia-powerd, nvidia-persistenced, Olo's own olo-gpu-follow, which
-  holds NVML), its modules unloaded in order (nvidia_drm,
-  nvidia_modeset, nvidia_uvm, nvidia_peermem, nvidia: `delete_module`
-  with `O_NONBLOCK`, refused at once while anything has them open,
-  asked again for 8 s, then the error names what has the nodes open),
-  the card reset (`reset`: FLR, else its bus), taken off the bus and
-  found again (`remove`, its bridge's `rescan`: a fresh device, its
-  power management new), udev loading its driver by the card's PCI
-  alias (nvidia_drm's) as at start, and the services started. Failing
-  partway it leaves nothing off: the card's `uevent` told "add" (the
-  driver loaded again) and the services started. Not while the
-  session's display server has it open (a display on its ports): then
-  what to do. Another maker's card stuck: said, a restart its fix.
+  management that failed, its driver not answering after: NVIDIA's
+  when memory ran short while it suspended, 2026-11-07 and
+  2026-11-20). Said, with what brings it back, a restart of the
+  computer, and **no fix: Olo doesn't start such a card again in
+  place.** It did (Ben, 2026-11-07: "i don't want you to restart the
+  machine just fix the card/driver or whatever"): the programs with
+  its nodes open quit, the services that hold it stopped, NVIDIA's
+  modules unloaded, the card reset and found on the bus again, its
+  driver loaded. That worked once. On 2026-11-20 the first unload
+  (`delete_module("nvidia_drm")`) never came back: NVIDIA's display
+  module, giving up a console it had taken on a card that drives no
+  display, programs the card's display engine and waits for it to
+  take the commands (`nvEvoMakeRoom`), with no time limit, no look
+  at a signal, and its own lock held; the card's firmware had been
+  told to stop by the failed suspend and took nothing. From there
+  nothing ends it but a restart: the module stays "going" (it can't
+  be loaded again, and what it uses can't be unloaded), the thread
+  spins on a processor and can't be killed, the computer can't sleep
+  (the thread never freezes), and Doctor's helper, which made the
+  call, said "Fixing…" for ever. Read against the driver's source
+  and the kernel's (an investigation with Astra at max,
+  2026-11-20): no other order is safe either. A reset under the
+  bound driver leaves its objects pointing at a reset chip;
+  unbinding or removing the device waits without limit on a
+  reference the stuck teardown holds; a live patch can't reach a
+  thread already inside the loop, and the loop is in NVIDIA's
+  prelinked core, which has no entry to patch at; and nothing that
+  can be read beforehand (the PCI state, the driver's link, NVML's
+  cache) tells the state that hangs from the one that doesn't. So
+  the finding offers nothing, and says why. A module of NVIDIA's
+  already "going" (`/sys/module/NAME/initstate`: an unload begun and
+  not finished, by anyone's hand) is said as that, "NVIDIA's driver
+  is stuck unloading", with what it costs until the restart.
+  `Step::RestartGpu` is kept only to be refused: a request holding
+  it (a Doctor window from before an upgrade) is turned down whole,
+  before its first step (`fix::refused`: the old request quit the
+  card's programs first). What would make an in-place restart
+  possible is in the driver, not in the order of calls: docs/TODO.md,
+  "The NVIDIA card stopped answering". A stuck thread like that one
+  can be put out of the way meanwhile, not ended: the idle
+  scheduling class and one slow core (`chrt --idle -p 0 PID`,
+  `taskset -pc CPU PID`: 91% of a performance core to 6% of an
+  efficiency core at a load of 22); a CPU quota does nothing to it,
+  since this kernel throttles a thread only as it returns to user
+  space (kernel/sched/fair.c, `throttle_cfs_rq_work`), which it
+  never does.
 - **A graphics card with no working driver** (NVIDIA's, no driver
   bound; nouveau loaded and gone says it tried): NVIDIA's driver
   (`akmod-nvidia`, built for each kernel) installed from the system's

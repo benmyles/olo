@@ -232,51 +232,91 @@ something nobody here has is in "Blocked", with what it waits for.
   docs; on Ben's computer only on their word, at a quiet moment, with
   the memory record running.
 
-- **The NVIDIA card stopped answering, and Olo's fix for it hung in
-  the kernel** (Ben, 2026-11-20: "can you also put an astra 6.2 max
-  agent on trying to figure out at a low level how we can unfuck the
-  nvidia card without rebooting / restarting everything"; "after
-  upgrading olo doctor came up with this and now it's stuck on
-  'fixing'"). What happened: memory ran short (the withdrawn swap
-  setting), NVIDIA's driver failed an allocation, and a minute and a
-  half later the card's runtime suspend failed with its firmware not
-  halting ("GSP unload failed at suspend"); the kernel has had the
-  card in a power-management error since, and every call to it
-  fails. Doctor's own fix for that state ("The NVIDIA graphics card
-  stopped answering: Start It Again", `Step::RestartGpu`, which
-  worked on 2026-11-07) ran after the upgrade: it stopped Olo's power
-  follower (which holds the card) and began unloading NVIDIA's
-  display module, and the kernel never came back from that
-  (`delete_module` → `nv_drm_dev_unload` → nvkms's `nvEvoMakeRoom`,
-  which waits for the GPU with no way out: a whole processor
-  spinning, the module left "Unloading", Doctor's helper unkillable
-  and its window saying "Fixing…" under the follower's finding, whose
-  fix is queued behind it). **Now**: a second Astra at max is on it
-  (/var/tmp/claude-blueferry/nvhelp/: the facts, the kernel's lines,
-  the stack), asked for a way out of this exact state without a
-  restart, whether the firmware can be started again in place, and
-  a restart order for Olo that can't block. **To do in Olo
-  whatever it finds**: (a) `RestartGpu` never begins a step that can
-  block for ever: it knows the card answers first, or goes a way
-  that doesn't need it to, or says "restart the computer"; (b) no
-  kernel call that may not return on Doctor's only worker: a thread
-  of its own, a deadline in what the window says, the other fixes
-  not held behind it; (c) what the fix stops, it starts again
-  however it ends (the follower has been stopped since 13:53: the
-  processors keep the last mode set); (d) Deskbar and Activity
-  Monitor let go of a card that stopped answering and ask again
-  rarely (twelve Deskbars asked 160 times a minute, each a kernel
-  error line, and held it open through the restart); (e) Doctor's
-  finding says what state the card is in and what will bring it
-  back; (f) if it's a driver bug, written up for Ben to send; (g) a
-  kit program loads every graphics driver on the computer as it
-  starts, to list devices (the Vulkan loader's thirteen libraries,
-  NVIDIA's among them, which wakes a sleeping card: 455 wakes in
-  three days, each a suspend that can fail as this one did, and with
-  the card dead its library crashed a program that was exiting): a
-  kit program names the driver of the GPU the compositor draws on
-  and loads that one (the loader's direct driver loading), measured
-  as a start's time and memory too.
+- **The NVIDIA card can never again be left stuck and unrecoverable**
+  (Ben, 2026-11-20: "can you also put an astra 6.2 max agent on
+  trying to figure out at a low level how we can unfuck the nvidia
+  card without rebooting / restarting everything"; "after upgrading
+  olo doctor came up with this and now it's stuck on 'fixing'"; "how
+  can we prevent the nvidia card from being stuck and unrecoverable
+  again in the future?"; "can we create our own olo version of the
+  nvidia driver that fixes this bug?"; of the five things below and
+  the patched driver: "let's do the patch as well as 1 through 5 all
+  of them make it all rock solid bulletproof").
+  What happened: memory ran short (the withdrawn swap setting);
+  NVIDIA's driver failed an allocation; a minute and a half later
+  the card's runtime suspend failed (its last check, whether the
+  firmware's processor had halted, was made against the driver's
+  one deadline for the whole call, already three seconds past: "GSP
+  unload failed at suspend"); the driver was left half suspended
+  with no way back, the kernel's power management for the card in
+  an error state. Then Doctor's own fix for that ("Start It Again",
+  which had worked on 2026-11-07) unloaded NVIDIA's display module,
+  and the kernel never came back from it (`nvEvoMakeRoom`: a wait
+  with no end). The investigation (Astra at max, read against the
+  driver's source 615.71.09 and Linux 7.2.15;
+  /var/tmp/claude-blueferry/nvhelp/answer.md): no way out on that
+  boot short of a restart, and no order of calls that would have
+  been safe (HACKING, "A graphics card that stopped answering").
+  **Done**: (2) Doctor says the state and offers nothing that can
+  hang; a request for the old restart is refused before its first
+  step. The stuck thread was put out of the way by hand (idle class,
+  one slow core: 91% of a performance core to 6%). The write-up for
+  NVIDIA is kernel/nvidia/report-615.71.09-runtime-suspend.md, for
+  Ben to send.
+  **To do, all of it**:
+  1. ~~The trigger~~ (the swap setting is gone; memory policy is
+     never tried on the person's computer: AGENT-NOTES).
+  2. ~~Doctor never unloads a driver whose card doesn't answer~~;
+     still: a fix waiting behind another says so, and one that has
+     run for minutes says how long and at what (the window said
+     "Fixing…" under a finding whose fix was only queued); what a
+     fix stops it starts again however it ends (the follower stayed
+     stopped).
+  3. **Far fewer suspends.** The card suspended and woke 455 times
+     in three days, each a firmware unload and boot, each a chance
+     of this. Olo's own programs wake it: a kit program loads every
+     graphics driver on the computer as it starts, to list devices
+     (the Vulkan loader's thirteen libraries, NVIDIA's among them),
+     and its panels ask NVML. A kit program names the driver of the
+     GPU the compositor draws on and loads that one (the loader's
+     direct driver loading), measured as a start's time and memory
+     too; the panels read a sleeping or failed card from sysfs and
+     never open it (they held it open through the restart, twelve
+     Deskbars asking 160 times a minute, each a kernel error line),
+     and let go of one that stops answering.
+  4. **No suspend while memory is short.** The suspend allocates
+     (the firmware's save image, 2 MB pages first) and runs against
+     one deadline; under pressure both go wrong. Olo's root follower
+     holds the card awake (`power/control`) while memory is under
+     pressure and lets it sleep after, keeping the person's own
+     setting; measured in the guest for the logic, on the card only
+     on Ben's word.
+  5. **No console on a card with no display.** NVIDIA's display
+     module takes a framebuffer console there (`nvidia_drm fbdev=1`,
+     Fedora's default), and giving it up is what the unload hung
+     in. Doctor finds a card of NVIDIA's with no connector and the
+     console taken, and offers the option that leaves it
+     (`/etc/modprobe.d`: in force from the next start); what render
+     offload still needs of the module said.
+  6. **Olo's own build of NVIDIA's open kernel modules**, patched
+     (they are MIT/GPL; the firmware and the libraries aren't, and
+     all three faults are in the modules): the halt check given a
+     time limit of its own (what would most likely have kept the
+     suspend from failing); a failed suspend rolled back or put in
+     one state from which unbinding, resetting and probing again
+     works in bounded time; no wait without an end in the display
+     module's teardown; the reference that makes removal deadlock;
+     and fault injection, so each of those paths can be made to
+     happen on purpose. With Astra at max for the design, the
+     implementation and the review, as Ben said
+     (/var/tmp/claude-blueferry/nvfork/brief.md: the patch series,
+     a build it has made, a test plan). Built for each kernel and
+     driver version as Olo's three modules are, the same version as
+     NVIDIA's libraries, falling back to NVIDIA's own where a patch
+     no longer applies, Doctor saying which is loaded. Run on the
+     card only on Ben's word, at a quiet moment, a restart the way
+     back. Then, with a driver whose teardown is bounded, Doctor's
+     in-place restart can come back.
 
 - **Elevated permissions approved by themselves are approved at once,
   with nothing started** (Ben, 2026-11-20: "when auto-approve

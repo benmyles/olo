@@ -91,6 +91,11 @@ pub struct Ran {
 /// it just before it does: `Step::inverse`). A step that fails changed
 /// nothing to undo; those before it did, and their undo is kept.
 pub fn run_steps_keeping(steps: &[Step], progress: &mut dyn FnMut(String)) -> Ran {
+    // (A request that holds a step no longer done is refused whole,
+    // before its first step: `fix::refused`.)
+    if let Some(why) = crate::fix::refused(steps) {
+        return Ran { results: vec![Err(why.to_owned())], ..Ran::default() };
+    }
     let mut results = Vec::with_capacity(steps.len());
     let mut done = Vec::new();
     for s in steps {
@@ -267,6 +272,17 @@ mod tests {
     /// What `way` is in the environment this is run in (to find out why
     /// a session says root can't be asked for): `… way_here --ignored
     /// --nocapture`.
+    #[test]
+    fn a_request_to_start_a_card_again_is_refused_before_any_step_begins() {
+        // (As a Doctor from before sends it: the programs to quit first,
+        // then the restart. Had the first step run, a process would be
+        // signalled: none is, and nothing is said to have begun.)
+        let steps = [Step::Signal { pid: i32::MAX, signal: libc::SIGTERM }, Step::RestartGpu { address: "0000:01:00.0".into(), modules: vec![], services: vec![], in_use_by: vec![] }];
+        let ran = run_steps_keeping(&steps, &mut |step| panic!("a step began: {step}"));
+        assert_eq!(ran.results, [Err(crate::fix::GPU_RESTART_GONE.to_owned())]);
+        assert!(ran.undo.is_empty() && ran.kept.is_empty());
+    }
+
     #[test]
     #[ignore]
     fn way_here() {
