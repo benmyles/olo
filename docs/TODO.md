@@ -60,6 +60,68 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **Phone: not found again after a night apart, and Try Again does
+  nothing** (Ben, 2026-11-20: "there seems to be a problem with the
+  phone service reconnecting to my phone after i was away for the night
+  … try again doesn't do anything either"; the app's banner says the
+  phone is out of reach). **In hand**: a second investigator is on it
+  (`tools/dev/codex-help`, its brief and masked extracts in
+  /var/tmp/claude-blueferry/phonehelp; its answer is `answer.md`
+  there). What a first look showed (the service's log and bluetoothd's
+  journal, read locally):
+  - From midnight to four the phone connected over low energy and
+    dropped about every six seconds, 2,400 times, and the service
+    asked again each time ("its other notifications don't stay open:
+    tried again in 5 s"): hours of churn, a fault by itself (asked
+    further and further apart, as a phone out of reach is).
+  - From four on, every asking for the messages' channel is answered
+    "br-connection-busy" (180 running by nine), and the service's
+    remedy (`Profiles::unstick`: BlueZ's `Disconnect`) changes
+    nothing. BlueZ 5.87's source says why it can't: `Disconnect` does
+    drop the pending list, and what keeps it busy is a real attempt in
+    flight (its SDP lookup of the phone, which fails "Host is down"
+    every six to sixty seconds: the phone answers no page). The
+    service gives up on its own asking after a while, asks again over
+    it, is told busy, and takes that for stuck; the unstick then
+    cancels the attempt that was real. To check with the
+    investigator's answer, then: an asking in flight is waited for,
+    busy while one's own asking is unanswered is no fault, and what
+    BlueZ answers it ("page timeout") is what the app says.
+  - Try Again (`Request::Reconnect`) asks once more and shows nothing
+    of it: it should say it's looking, then what came of it, and what
+    to do on the phone (its Bluetooth settings, this computer's row).
+  - Why the phone answers no page, back beside the computer, isn't
+    known: the adapter was searching the whole time (some program
+    holds a search: none of Olo's; eighteen Chrome processes are on
+    the system bus, and a passkey prompt scans), which may or may not
+    matter; the phone's side can't be seen from here.
+- **Snap pads while tiling, a swap pad that reads as one, Zoom to 75%
+  and 50%** (Ben, 2026-11-20: "what is the J hotspot supposed to be?
+  visually it looks like it'd be full screen but it like swaps it with
+  a window … the hotspots only show up when i'm not in tiling mode.
+  wouldn't it make sense to still have them in tiling mode but in
+  tiling mode the hotspots are the other tile positions to swap the
+  window with each one? also under the Zoom menu for a window let's
+  have an option to Zoom to 75% and Zoom to 50% … if in tiling mode
+  and it's not already a floated window choosing that should float it
+  too. if it's a window with a max size … just center it at the max
+  size. and just make sure you test all these dragging scenarios in
+  all the different tiling and non tiling modes … this might be a good
+  one to put an astra 6.2 agent on in a different worktree"). **In
+  hand**: a Codex agent (`tools/dev/agents`, named `snap-tiles`) in
+  the worktree /home/ben/worktrees/olo/snap-tiles (branch
+  `snap-tiles`, from e770d16cb), run from that worktree's own
+  `tools/dev/agents`; its brief is its folder's `brief.md`
+  (/var/tmp/olo-agents/snap-tiles). The swap pad's new picture (two
+  tabbed windows, an arrow each way) passed its checkpoint and both
+  reviewers' looks, whose points went back to it (tabs narrower with
+  the zoom mark, the pad 112 × 88, even margins, dark outlines). To
+  do when it reports: read the whole diff, run its checks
+  (`tools/dev/snap-check`, `chord-check`, the crates' tests), picture
+  every state at 1×, 1.5× and 2× in light and dark, both reviewers,
+  the docs (HACKING's snapping and Zoom sections, the report), then
+  commit on the branch and bring it to main.
+
 - **Token Pool sends exactly what Claude Code and Codex send, and counts
   and spends every reset credit** (Ben, 2026-11-19, with pictures of the
   Codex widget's tip and Token Pool's window: "i don't think the token
