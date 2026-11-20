@@ -1412,6 +1412,9 @@ Builds per uur
 Builds go on without the cache until it starts.
 Builds gaan zonder cache door totdat deze is gestart.
 
+Built incrementally
+Incrementeel gebouwd
+
 Built into the keyboard
 In het toetsenbord ingebouwd
 
@@ -2792,6 +2795,9 @@ Dockerfile
 
 Document
 Document
+
+Documentation
+Documentatie
 
 Documents
 Documenten
@@ -5951,6 +5957,9 @@ Niet beantwoord
 
 Not Signed In
 Niet aangemeld
+
+Not a compile
+Geen compilatie
 
 Not a number
 Geen getal
@@ -12461,8 +12470,8 @@ quotum {1} van {0}
 {}: {}. {}. {}
 {}: {}. {}. {}
 
-{}:00 {} hits, {} misses, {} not cacheable
-{}:00 · {} treffers, {} missers, {} niet cachebaar
+{}:00 {} hits, {} misses, {} built incrementally, {} not cacheable
+{}:00 · {} treffers, {} missers, {} incrementeel gebouwd, {} niet cachebaar
 
 {}; not allowed {} (sign in again)
 {}. Geen toegang tot {} (meld u opnieuw aan)

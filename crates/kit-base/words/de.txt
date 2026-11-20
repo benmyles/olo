@@ -1412,6 +1412,9 @@ Builds nach Stunde
 Builds go on without the cache until it starts.
 Builds laufen ohne den Cache weiter, bis er startet.
 
+Built incrementally
+Inkrementell gebaut
+
 Built into the keyboard
 In die Tastatur eingebaut
 
@@ -2792,6 +2795,9 @@ Dockerfile
 
 Document
 Dokument
+
+Documentation
+Dokumentation
 
 Documents
 Dokumente
@@ -5951,6 +5957,9 @@ Nicht beantwortet
 
 Not Signed In
 Nicht angemeldet
+
+Not a compile
+Kein Kompiliervorgang
 
 Not a number
 Keine Zahl
@@ -12461,8 +12470,8 @@ Kontingent von {}
 {}: {}. {}. {}
 {}: {}. {}. {}
 
-{}:00 {} hits, {} misses, {} not cacheable
-{}:00 {} Treffer, {} Fehltreffer, {} nicht zwischenspeicherbar
+{}:00 {} hits, {} misses, {} built incrementally, {} not cacheable
+{}:00 {} Treffer, {} Fehltreffer, {} inkrementell gebaut, {} nicht zwischenspeicherbar
 
 {}; not allowed {} (sign in again)
 {}; {} nicht erlaubt (erneut anmelden)

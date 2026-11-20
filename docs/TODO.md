@@ -269,34 +269,6 @@ something nobody here has is in "Blocked", with what it waits for.
   each app's start (and what in-place reload, tests and agents' screens
   need); then do it if it pays.
 
-- **kache's storage warning says what counts** (2026-11-19, from the
-  same study, which Ben passed on: "Fix the dashboard's storage warning
-  before increasing capacity. The red 486 GB is the logical size of all
-  entries. Kache's budget uses deduplicated blob bytes and discounts
-  blocks still held by build directories. The screenshot implies
-  roughly 418 − 118 = 300 GB counted against a 322 GB limit, using the
-  last cleanup's held-byte measurement. I matched 529 misses to recorded
-  size evictions. Those cost about 25 aggregate compiler-minutes in this
-  window. I'd show the budgeted size on the card, give incremental
-  builds their own category, and rank misses by total compile time").
-  Olo's kache window (`apps/kache`: the Store card's warning, around
-  main.rs:461) shows the size the budget counts, against the limit, not
-  every entry's logical size; incremental builds a category of their
-  own in Builds; Slowest compiles ranked by total compile time (a
-  crate's misses added up). How kache counts: its configuration docs
-  (in the kache repository, docs/getting-started/configuration.mdx,
-  storage). Another agent works on kache in a worktree of its own
-  (branch `kache`): see what it has done first.
-  **Done** (2026-11-19): the Store card's figure is what kache's budget
-  counts, as its trigger counts it (its registered blob bytes less what
-  its last sweep found held, for six hours, unless
-  `count_held_in_max_size`), red only past the 110% kache lets it
-  float to; Slowest compiles ranked by what a crate's misses took
-  together. **Left**: incremental builds a category of their own in
-  Builds: kache's log names them only by its passthrough reasons
-  (`adaptive seed`, `adaptive active`, `automatic worktree seed`),
-  counted among "Couldn't be cached" now.
-
 - **Go through Olo's logs for other warnings and errors and fix what
   should be fixed** (Ben, 2026-11-18). A first pass done (HACKING.md,
   "What a day's logs showed"): Notifications' history kept apart on
@@ -455,6 +427,33 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **kache's storage warning says what counts** (2026-11-19, from the
+  same study, which Ben passed on: "Fix the dashboard's storage warning
+  before increasing capacity. The red 486 GB is the logical size of all
+  entries. Kache's budget uses deduplicated blob bytes and discounts
+  blocks still held by build directories. The screenshot implies
+  roughly 418 − 118 = 300 GB counted against a 322 GB limit, using the
+  last cleanup's held-byte measurement. I matched 529 misses to recorded
+  size evictions. Those cost about 25 aggregate compiler-minutes in this
+  window. I'd show the budgeted size on the card, give incremental
+  builds their own category, and rank misses by total compile time").
+  Olo's kache window (`apps/kache`: the Store card's warning, around
+  main.rs:461) shows the size the budget counts, against the limit, not
+  every entry's logical size; incremental builds a category of their
+  own in Builds; Slowest compiles ranked by total compile time (a
+  crate's misses added up). How kache counts: its configuration docs
+  (in the kache repository, docs/getting-started/configuration.mdx,
+  storage). Another agent works on kache in a worktree of its own
+  (branch `kache`): see what it has done first.
+  **Done** (2026-11-19): the Store card's figure is what kache's budget
+  counts, as its trigger counts it (its registered blob bytes less what
+  its last sweep found held, for six hours, unless
+  `count_held_in_max_size`), red only past the 110% kache lets it
+  float to; Slowest compiles ranked by what a crate's misses took
+  together. And (2026-11-19) incremental builds a kind of their own:
+  "Built incrementally" in Builds (by the log's `passthrough_reason`),
+  on the day's card, in the chart, apart from what couldn't be cached.
 
 - **A sign-in's mailed code is found every time** (Ben, 2026-11-18,
   signing in at claude.ai, which mails a link and takes a "verification

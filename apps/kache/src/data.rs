@@ -109,6 +109,9 @@ pub struct Event {
     pub ident: u64,
     /// kache's own word for a miss ("unsupported"; "other" for most).
     pub miss_reason: Option<Box<str>>,
+    /// Why kache passed it to the compiler uncached ("adaptive seed",
+    /// "rustdoc flag (not yet supported)", "not-a-compile|…").
+    pub passthrough: Option<Box<str>>,
     /// Why a miss missed, worked out ([`causes`]).
     pub cause: Option<&'static str>,
 }
@@ -116,6 +119,36 @@ pub struct Event {
 impl Event {
     pub fn hit(&self) -> bool {
         self.result.ends_with("hit")
+    }
+
+    /// kache passed it to the compiler so that its incremental build
+    /// goes on (a crate being worked on: its adaptive passthrough, a new
+    /// worktree's seed): not cached on purpose, not a failure to.
+    pub fn incremental(&self) -> bool {
+        self.result == "passthrough" && self.passthrough.as_deref().is_some_and(|r| r.starts_with("adaptive") || r.contains("worktree seed"))
+    }
+
+    /// What it was, said in Builds' list: a hit, a miss and why, built
+    /// incrementally, documentation or not a compile (rustdoc, a
+    /// compiler asked a question), else not cacheable.
+    pub fn said(&self) -> String {
+        let result = match self.result.as_str() {
+            "local_hit" => "Hit",
+            "remote_hit" => "Hit (remote)",
+            "miss" => "Miss",
+            "passthrough" if self.incremental() => "Built incrementally",
+            "passthrough" if self.passthrough.as_deref().is_some_and(|r| r.starts_with("rustdoc")) => "Documentation",
+            "passthrough" if self.passthrough.as_deref().is_some_and(|r| r.starts_with("not-a-compile")) => "Not a compile",
+            "passthrough" => "Not cacheable",
+            "dup" => "Shared",
+            "error" => "Error",
+            other => other,
+        };
+        // (A miss says why: "Miss: its source changed".)
+        match self.cause {
+            Some(c) if self.result == "miss" => format!("{result}: {c}"),
+            _ => result.to_owned(),
+        }
     }
 }
 
@@ -181,13 +214,15 @@ fn changed(before: &[(u8, u64)], now: &[(u8, u64)]) -> &'static str {
     }
 }
 
-/// The last 24 hours of builds: each hour's hits, misses and others
-/// (oldest first), and the totals.
+/// The last 24 hours of builds: each hour's hits, misses, those built
+/// incrementally and the others, not cacheable (oldest first), and the
+/// totals.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Day {
-    pub hours: Vec<[u32; 3]>,
+    pub hours: Vec<[u32; 4]>,
     pub hits: u64,
     pub misses: u64,
+    pub incremental: u64,
     pub others: u64,
     /// The hour the first bar is (ms since 1970).
     pub from_ms: u64,
@@ -207,6 +242,7 @@ pub struct Tally {
     pub name: String,
     pub hits: u64,
     pub misses: u64,
+    pub incremental: u64,
     pub others: u64,
 }
 
@@ -477,6 +513,8 @@ pub fn parse_events(text: &str) -> Vec<Event> {
         key_fields: Option<std::collections::BTreeMap<Cow<'a, str>, Cow<'a, str>>>,
         #[serde(borrow, default)]
         miss_reason: Option<Cow<'a, str>>,
+        #[serde(borrow, default)]
+        passthrough_reason: Option<Cow<'a, str>>,
     }
     text.lines()
         .filter_map(|l| serde_json::from_str::<Line>(l).ok())
@@ -503,6 +541,7 @@ pub fn parse_events(text: &str) -> Vec<Event> {
                 keys,
                 ident,
                 miss_reason: v.miss_reason.map(|r| r.into()),
+                passthrough: v.passthrough_reason.map(|r| r.into()),
                 cause: None,
             })
         })
@@ -513,7 +552,7 @@ pub fn parse_events(text: &str) -> Vec<Event> {
 pub fn day_of(events: &[Event], now: u64) -> Day {
     const HOUR: u64 = 3_600_000;
     let from = (now / HOUR + 1) * HOUR - 24 * HOUR;
-    let mut d = Day { hours: vec![[0; 3]; 24], from_ms: from, ..Day::default() };
+    let mut d = Day { hours: vec![[0; 4]; 24], from_ms: from, ..Day::default() };
     let mut projects: std::collections::HashMap<String, Tally> = std::collections::HashMap::new();
     let mut slowest: std::collections::HashMap<&str, u64> = std::collections::HashMap::new();
     for e in events.iter().filter(|e| e.at_ms >= from && e.at_ms <= now) {
@@ -525,9 +564,12 @@ pub fn day_of(events: &[Event], now: u64) -> Day {
         } else if e.result == "miss" {
             d.misses += 1;
             1
+        } else if e.incremental() {
+            d.incremental += 1;
+            2
         } else {
             d.others += 1;
-            2
+            3
         };
         d.hours[h][k] += 1;
         let name = if e.project.is_empty() { "(no project)" } else { e.project.as_str() };
@@ -535,7 +577,7 @@ pub fn day_of(events: &[Event], now: u64) -> Day {
             Some(t) => t,
             None => projects.entry(name.to_owned()).or_insert_with(|| Tally { name: name.to_owned(), ..Tally::default() }),
         };
-        *[&mut t.hits, &mut t.misses, &mut t.others][k] += 1;
+        *[&mut t.hits, &mut t.misses, &mut t.incremental, &mut t.others][k] += 1;
         // (Ranked by what a crate's misses took together: one compiled
         // twenty times a day costs more than the slowest once.)
         if k == 1 {
@@ -845,9 +887,11 @@ pub fn made_up(now: u64) -> Snapshot {
             result: result.into(),
             elapsed_ms: 200 + (i * 37) % 9000,
             compile_ms: 20_000 + (i * 53) % 9000,
-            size: (i % 5) * 4_000_000,
+            // (A passthrough keeps nothing in the store.)
+            size: if result == "passthrough" { 0 } else { (i % 5) * 4_000_000 },
             cause: (result == "miss")
                 .then(|| ["its source changed", "a dependency changed", "its source changed", "first build here", "flags or features", "evicted from the store"][(i % 6) as usize]),
+            passthrough: (result == "passthrough").then(|| ["adaptive active", "adaptive seed", "rustdoc flag (not yet supported)"][(i % 3) as usize].into()),
             ..Event::default()
         });
     }
@@ -898,6 +942,32 @@ mod tests {
         assert_eq!(held_now(&dir, now), Some(118 * G));
         assert_eq!(held_now(&dir, now + 6 * 3_600_000), None);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// What kache passed to the compiler is named by why (its log's
+    /// `passthrough_reason`): a crate it builds incrementally on purpose
+    /// isn't counted with what it couldn't cache (3,001 of the 3,275 in a
+    /// day's log here were).
+    #[test]
+    fn passed_through_by_why() {
+        let now = now_ms();
+        let passed = |why: &str| Event { at_ms: now - 60_000, crate_name: "c".into(), result: "passthrough".into(), passthrough: Some(why.into()), ..Event::default() };
+        let events = [
+            passed("adaptive seed"),
+            passed("adaptive active"),
+            passed("automatic worktree seed"),
+            passed("rustdoc flag (not yet supported)"),
+            passed("not-a-compile|query / probe (--print, -vV)"),
+            passed("uncacheable|dep-info pre-pass failed for x"),
+            Event { at_ms: now - 60_000, crate_name: "c".into(), result: "passthrough".into(), ..Event::default() },
+        ];
+        let said: Vec<String> = events.iter().map(Event::said).collect();
+        assert_eq!(said, ["Built incrementally", "Built incrementally", "Built incrementally", "Documentation", "Not a compile", "Not cacheable", "Not cacheable"]);
+        let d = day_of(&events, now);
+        assert_eq!((d.incremental, d.others), (3, 4));
+        assert_eq!(d.hours[23], [0, 0, 3, 4]);
+        let line = r#"{"ts":"2026-11-19T23:29:02.445Z","crate_name":"x","result":"passthrough","passthrough_reason":"adaptive seed"}"#;
+        assert!(parse_events(line).first().is_some_and(Event::incremental), "the log's reason read");
     }
 
     /// The slowest compiles are the crates whose misses took longest
@@ -958,7 +1028,7 @@ mod tests {
         let d = day_of(&events, now);
         assert_eq!((d.hits, d.misses, d.others), (1, 1, 1), "the day's only");
         assert_eq!(d.hours.len(), 24);
-        assert_eq!(d.hours[23][0] + d.hours[23][2], 2, "this hour: the hit and the passthrough");
+        assert_eq!(d.hours[23][0] + d.hours[23][3], 2, "this hour: the hit and the passthrough");
         assert_eq!(d.rate(), Some(0.5));
         assert_eq!(d.projects.iter().map(|t| (t.name.as_str(), t.hits, t.misses, t.others)).collect::<Vec<_>>(), [("olo", 1, 1, 0), ("(no project)", 0, 0, 1)]);
         assert_eq!(d.slowest, [("syn".to_owned(), 4000)]);

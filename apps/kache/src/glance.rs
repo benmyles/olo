@@ -77,7 +77,7 @@ pub fn glance(snap: &data::Snapshot, span: usize) -> Glance {
             let at = day.from_ms + ((first + i) as u64) * 3_600_000;
             let label = chrono::DateTime::from_timestamp_millis(at as i64).map(|t| t.with_timezone(&chrono::Local).format("%H").to_string()).unwrap_or_default();
             let cacheable = h[0] + h[1];
-            Slot { label, icon: None, value: style_count(h[0] + h[1] + h[2]), level: (cacheable > 0).then(|| h[0] as f32 / cacheable as f32) }
+            Slot { label, icon: None, value: style_count(h.iter().sum()), level: (cacheable > 0).then(|| h[0] as f32 / cacheable as f32) }
         })
         .collect();
     let tip = format!(

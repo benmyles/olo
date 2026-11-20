@@ -480,11 +480,14 @@ impl Kache {
         };
         let day = &snap.day;
         let rate = day.rate().map_or("—".to_owned(), |r| format!("{}%", (r * 100.0).round()));
-        let mut facts: Vec<(olo_kit::SharedString, olo_kit::SharedString)> = vec![
-            ("Hits".into(), style::thousands(day.hits as usize).into()),
-            ("Misses".into(), style::thousands(day.misses as usize).into()),
-            (olo_kit::words::tr("Couldn't be cached").into(), style::thousands(day.others as usize).into()),
-        ];
+        let mut facts: Vec<(olo_kit::SharedString, olo_kit::SharedString)> =
+            vec![("Hits".into(), style::thousands(day.hits as usize).into()), ("Misses".into(), style::thousands(day.misses as usize).into())];
+        // (Built incrementally: kache's choice, for a crate being worked
+        // on, not something it couldn't do.)
+        if day.incremental > 0 {
+            facts.push((olo_kit::words::tr("Built incrementally").into(), style::thousands(day.incremental as usize).into()));
+        }
+        facts.push((olo_kit::words::tr("Couldn't be cached").into(), style::thousands(day.others as usize).into()));
         if day.saved_ms > 0 {
             facts.push((olo_kit::words::tr("Time saved").into(), olo_kit::tr!("about {}", data::span(day.saved_ms)).into()));
         }
@@ -546,20 +549,7 @@ impl Kache {
             .iter()
             .map(|e| {
                 let when = chrono::DateTime::from_timestamp_millis(e.at_ms as i64).map(|t| t.with_timezone(&chrono::Local).format("%H:%M:%S").to_string()).unwrap_or_default();
-                let result = match e.result.as_str() {
-                    "local_hit" => "Hit",
-                    "remote_hit" => "Hit (remote)",
-                    "miss" => "Miss",
-                    "passthrough" => "Not cacheable",
-                    "dup" => "Shared",
-                    "error" => "Error",
-                    other => other,
-                };
-                // (A miss says why: "Miss: its source changed".)
-                let result = match e.cause {
-                    Some(c) if e.result == "miss" => format!("{result}: {c}"),
-                    _ => result.to_owned(),
-                };
+                let result = e.said();
                 // (In the columns' order: see `builds`.)
                 [when, e.crate_name.clone(), result, e.project.clone(), data::span(e.elapsed_ms), if e.size > 0 { data::bytes(e.size) } else { String::new() }]
             })
@@ -576,7 +566,7 @@ impl Kache {
             .projects
             .iter()
             .map(|t| {
-                let n = t.hits + t.misses + t.others;
+                let n = t.hits + t.misses + t.incremental + t.others;
                 let rate = if t.hits + t.misses > 0 { format!(", {}% hits", (t.hits as f64 * 100.0 / (t.hits + t.misses) as f64).round()) } else { String::new() };
                 (t.name.clone().into(), format!("{} builds{rate}", style::thousands(n as usize)).into())
             })
@@ -603,10 +593,15 @@ impl Kache {
         // A crate and what came of it side by side, however narrow the
         // list (a third of a screen's width: the rest scrolls sideways).
         let narrow = width < LIST_NARROW;
+        // (What a list wider than its columns has to spare goes to Result,
+        // the longest words, not past Size at the end: the figures stay
+        // together at the right. Codex's look.)
+        let fixed = if narrow { 70.0 + 116.0 } else { 90.0 + 160.0 } + 110.0 + 80.0 + 80.0;
+        let result = (width - fixed - olo_kit::widgets::SCROLL_BAR - 2.0).max(if narrow { 166.0 } else { 210.0 });
         let columns = vec![
             Column::new("When", if narrow { 70.0 } else { 90.0 }),
             Column::new("Crate", if narrow { 116.0 } else { 160.0 }),
-            Column::new("Result", if narrow { 166.0 } else { 210.0 }),
+            Column::new("Result", result),
             Column::new("Project", 110.0),
             Column::new("Took", 80.0).right(),
             Column::new("Size", 80.0).right(),
@@ -739,8 +734,9 @@ fn sentence_case(s: &str) -> String {
     c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
 }
 
-/// The last 24 hours, a bar an hour: hits, misses, and what couldn't be
-/// cached, stacked; the hours under them every six.
+/// The last 24 hours, a bar an hour: hits, misses, what was built
+/// incrementally and what couldn't be cached, stacked; the hours under
+/// them every six.
 fn hours_chart(day: &data::Day) -> Element {
     let hours = day.hours.clone();
     let from = day.from_ms;
@@ -750,7 +746,7 @@ fn hours_chart(day: &data::Day) -> Element {
         let s = g.scale_factor();
         let label_h = 16.0;
         let chart = olo_kit::Bounds::from_corners(b.origin, olo_kit::point(b.right(), b.bottom() - px(label_h)));
-        let most = hours.iter().map(|h| h[0] + h[1] + h[2]).max().unwrap_or(0).max(1) as f32;
+        let most = hours.iter().map(|h| h.iter().sum::<u32>()).max().unwrap_or(0).max(1) as f32;
         let n = hours.len().max(1) as f32;
         let w = f32::from(chart.size.width) / n;
         let colours = hour_colours(&p);
@@ -774,7 +770,7 @@ fn hours_chart(day: &data::Day) -> Element {
             if i % 6 == 0 {
                 style::label(g, px(x0), chart.bottom() + px(label_h / 2.0 + 1.0), style::Align::Left, hour.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), style::secondary_text(&p));
             }
-            said.push(olo_kit::tr!("{}:00 {} hits, {} misses, {} not cacheable", hour, h[0], h[1], h[2]));
+            said.push(olo_kit::tr!("{}:00 {} hits, {} misses, {} built incrementally, {} not cacheable", hour, h[0], h[1], h[2], h[3]));
         }
         let _ = s;
         olo_kit::agent::record(
@@ -788,25 +784,42 @@ fn hours_chart(day: &data::Day) -> Element {
     .into_element()
 }
 
-/// The chart's colours: hits, misses, what couldn't be cached.
-fn hour_colours(p: &olo_theme::Palette) -> [olo_kit::Hsla; 3] {
-    [style::c(p.hue(olo_theme::Hue::Green)), style::c(p.hue(olo_theme::Hue::Orange)), style::c(olo_theme::mix(p.panel_background, p.panel_text, 0.25))]
+/// The chart's colours: hits, misses, what was built incrementally, what
+/// couldn't be cached.
+fn hour_colours(p: &olo_theme::Palette) -> [olo_kit::Hsla; 4] {
+    [
+        style::c(p.hue(olo_theme::Hue::Green)),
+        style::c(p.hue(olo_theme::Hue::Orange)),
+        style::c(p.hue(olo_theme::Hue::Blue)),
+        // (A grey of its own: clearly not the axis's, 0.3, in either look;
+        // 0.25 all but vanished on a dark card, Codex's look.)
+        style::c(olo_theme::mix(p.panel_background, p.panel_text, 0.55)),
+    ]
 }
 
-/// What the chart's colours are, with the day's counts.
+/// What the chart's colours are, with the day's counts: as tall as its
+/// rows in the width it's given (four don't fit one row in a narrow
+/// window: a third of a screen).
 fn hours_legend(day: &data::Day) -> Element {
-    let counts = [day.hits, day.misses, day.others];
+    let counts = [day.hits, day.misses, day.incremental, day.others];
+    const NAMES: [&str; 4] = ["Hits", "Misses", "Built incrementally", "Couldn't be cached"];
+    let items = move |colours: [olo_kit::Hsla; 4]| -> Vec<olo_kit::widgets::charts::LegendItem> {
+        (0..4).map(|i| olo_kit::widgets::charts::LegendItem { color: colours[i], name: NAMES[i].into(), value: style::thousands(counts[i] as usize).into() }).collect()
+    };
+    let measured = items([olo_kit::Hsla::default(); 4]);
     canvas(move |g, b| {
         let p = theme::palette();
-        let colours = hour_colours(&p);
-        let names = ["Hits", "Misses", "Couldn't be cached"];
-        let items: Vec<olo_kit::widgets::charts::LegendItem> =
-            (0..3).map(|i| olo_kit::widgets::charts::LegendItem { color: colours[i], name: names[i].into(), value: style::thousands(counts[i] as usize).into() }).collect();
-        olo_kit::widgets::charts::legend(g, b, &items);
+        olo_kit::widgets::charts::legend(g, b, &items(hour_colours(&p)));
     })
     .paint_key(style::key(counts))
+    .measured(move |known, available, _| {
+        let width = known.width.map(f32::from).unwrap_or(match available.width {
+            olo_kit::AvailableSpace::Definite(w) => f32::from(w),
+            _ => f32::INFINITY,
+        });
+        olo_kit::size(px(width), px(olo_kit::widgets::charts::legend_height(width, &measured).max(olo_kit::widgets::charts::FACT_ROW)))
+    })
     .w_full()
-    .h(px(olo_kit::widgets::charts::FACT_ROW))
     .into_element()
 }
 

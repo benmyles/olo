@@ -466,6 +466,7 @@ Bug Fixes
 Builds
 Builds by the hour
 Builds go on without the cache until it starts.
+Built incrementally
 Built into the keyboard
 Built-in Keyboard
 Bulleted List
@@ -925,6 +926,7 @@ Do Not Disturb is on
 Do Not Disturb is on — {} unread
 Dockerfile
 Document
+Documentation
 Documents
 Does “{}” show this number?
 Domain:
@@ -1975,6 +1977,7 @@ Nonfree (NVIDIA’s drivers, Steam, …)
 Norwegian
 Not Answered
 Not Signed In
+Not a compile
 Not a number
 Not all of it applied: {}.
 Not answered
@@ -4123,7 +4126,7 @@ your own picture
 {}: {} applications. Click to show them.
 {}: {} examples, {} steps, {} ms on the {}
 {}: {}. {}. {}
-{}:00 {} hits, {} misses, {} not cacheable
+{}:00 {} hits, {} misses, {} built incrementally, {} not cacheable
 {}; not allowed {} (sign in again)
 {}Run by {}. Echo cancellation isn't tried: a recording has no speakers' sound beside it to take out.
 {}a heading {}

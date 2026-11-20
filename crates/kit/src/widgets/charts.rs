@@ -729,21 +729,27 @@ fn swatch_w(it: &LegendItem) -> f32 {
     if it.color.a == 0.0 { 0.0 } else { SWATCH + 5.0 }
 }
 
-/// Where each item goes in `width`, flowing onto as many rows as need.
+/// Where each item goes in `width`: in one row where they fit; else in
+/// columns lined up, as many as fit, each as wide as its widest item, the
+/// rows filled evenly (four that don't fit a row are two rows of two, not
+/// three and one left alone: Codex's look at kache's legend).
 fn legend_places(width: f32, items: &[LegendItem]) -> Vec<(f32, usize)> {
     let (plain, bold) = (style::ui_font(FontWeight::NORMAL), style::ui_font(FontWeight::BOLD));
-    let mut out = Vec::new();
-    let (mut x, mut row) = (0.0, 0);
-    for it in items {
-        let w = swatch_w(it) + style::text_width_app(&shown_name(it), style::DETAIL_SIZE, &plain) + 6.0 + style::text_width_app(&it.value, style::SMALL_SIZE, &bold) + 2.0 * m::SPACING;
-        if x > 0.0 && x + w > width {
-            x = 0.0;
-            row += 1;
-        }
-        out.push((x, row));
-        x += w;
+    let widths: Vec<f32> = items
+        .iter()
+        .map(|it| swatch_w(it) + style::text_width_app(&shown_name(it), style::DETAIL_SIZE, &plain) + 6.0 + style::text_width_app(&it.value, style::SMALL_SIZE, &bold) + 2.0 * m::SPACING)
+        .collect();
+    // Each column's width, `across` to a row.
+    let columns = |across: usize| -> Vec<f32> { (0..across).map(|c| widths.iter().skip(c).step_by(across).fold(0.0, |a: f32, &w| a.max(w))).collect() };
+    let placed = |across: usize, columns: &[f32]| -> Vec<(f32, usize)> { (0..widths.len()).map(|i| (columns[..i % across].iter().sum(), i / across)).collect() };
+    let n = widths.len();
+    if n == 0 || widths.iter().sum::<f32>() <= width {
+        return placed(n.max(1), &widths);
     }
-    out
+    let across = (1..n).rev().find(|&a| columns(a).iter().sum::<f32>() <= width).unwrap_or(1);
+    // (As few across as keep that many rows: the rows filled evenly.)
+    let even = n.div_ceil(n.div_ceil(across));
+    placed(even, &columns(even))
 }
 
 /// How tall a [`legend`] of `items` is in `width`.
@@ -756,7 +762,11 @@ pub fn legend_height(width: f32, items: &[LegendItem]) -> f32 {
 pub fn legend(g: &mut Painter, r: Bounds<Pixels>, items: &[LegendItem]) {
     let p = theme::palette();
     let text = style::c(p.document_text);
-    let dim = text.opacity(0.52);
+    // (Names quieter than their values, but readable, 4.5:1 on the card,
+    // as `style::secondary_text` is on a panel: half the text's opacity
+    // was paler, Codex's look at kache's.)
+    let dark = p.mode == olo_theme::ThemeMode::Dark;
+    let dim = style::c(olo_theme::readable(olo_theme::mix(p.document_text, p.document_background, if dark { 0.37 } else { 0.42 }), p.document_background, 4.5));
     let places = legend_places(f32::from(r.size.width), items);
     // (Its items go where their lengths put them: lined up with what's
     // above or below only by chance.)
@@ -781,6 +791,24 @@ pub fn legend(g: &mut Painter, r: Bounds<Pixels>, items: &[LegendItem]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A legend in one row where it fits; else in columns lined up, the
+    /// rows filled evenly: four that would go three and one go two and
+    /// two, each under the one above.
+    #[test]
+    fn a_legend_wraps_into_even_columns() {
+        let item = |name: &str| LegendItem { color: Hsla { h: 0.3, s: 0.5, l: 0.5, a: 1.0 }, name: name.to_owned().into(), value: "19".into() };
+        let items = [item("Hits"), item("Misses"), item("Built incrementally"), item("Couldn't be cached")];
+        let one_row = legend_places(10_000.0, &items);
+        assert!(one_row.iter().all(|(_, row)| *row == 0) && one_row.windows(2).all(|w| w[0].0 < w[1].0));
+        // As wide as the first three take, not the four.
+        let three = one_row[3].0;
+        let wrapped = legend_places(three, &items);
+        assert_eq!(wrapped.iter().map(|(_, row)| *row).collect::<Vec<_>>(), [0, 0, 1, 1]);
+        assert_eq!((wrapped[0].0, wrapped[2].0), (0.0, 0.0));
+        assert_eq!(wrapped[1].0, wrapped[3].0, "the second column lined up");
+        assert!(legend_places(1.0, &items).iter().enumerate().all(|(i, (x, row))| *x == 0.0 && *row == i), "one a row where none fit beside another");
+    }
 
     #[test]
     fn nice_tops() {

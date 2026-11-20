@@ -1412,6 +1412,9 @@ Compilations par heure
 Builds go on without the cache until it starts.
 Les compilations continuent sans le cache jusqu’à son démarrage.
 
+Built incrementally
+Compilé de façon incrémentale
+
 Built into the keyboard
 Intégré au clavier
 
@@ -2792,6 +2795,9 @@ Dockerfile
 
 Document
 Document
+
+Documentation
+Documentation
 
 Documents
 Documents
@@ -5951,6 +5957,9 @@ Sans réponse
 
 Not Signed In
 Non connecté
+
+Not a compile
+Pas une compilation
 
 Not a number
 Pas un nombre
@@ -12461,8 +12470,8 @@ quota de {}
 {}: {}. {}. {}
 {} : {}. {}. {}
 
-{}:00 {} hits, {} misses, {} not cacheable
-{}:00 {} réussites, {} échecs, {} non mis en cache
+{}:00 {} hits, {} misses, {} built incrementally, {} not cacheable
+{}:00 {} réussites, {} échecs, {} compilés de façon incrémentale, {} non mis en cache
 
 {}; not allowed {} (sign in again)
 {} ; pas autorisé {} (reconnectez-vous)

@@ -3154,10 +3154,13 @@ it.
   `paint_heatmap_by` colours each cell from its level, as
   `usage_colour` does where full is what to watch: green at none,
   yellow at half, red at all),
-  `widgets::legend`/`legend_height` (swatches, names and values in
-  wrapping rows, each name and value on one baseline; laid out by their
-  lengths, the review keeps them on a grid of their own, as it does a
-  `TabView`'s tabs). A window's graphs move together on one clock,
+  `widgets::legend`/`legend_height` (swatches, names and values, each
+  name and value on one baseline: in one row where they fit, else in
+  columns lined up, as many as fit, the rows filled evenly, four that
+  don't fit a row two rows of two; the names quieter than the values
+  but 4.5:1 on the card, as `style::secondary_text` is on a panel; laid
+  out by their lengths, the review keeps them on a grid of their own,
+  as it does a `TabView`'s tabs). A window's graphs move together on one clock,
   ticking at the finest step of those drawn (graphs of many sizes each
   on its own timer drew a frame for each: twice the frames); each
   graph's grid, fills (`paint_area`) and lines are one layer.
@@ -24299,11 +24302,19 @@ service on or off, the day's hit rate):
   what's on disk once shared files are counted once; what builds'
   target folders still share, which no clean-up can take; the last
   clean-up and what it freed), the last 24 hours (the hit rate of what
-  could be cached, hits, misses, what couldn't be, the time hits saved:
-  each hit's original compile less what the hit took), Now (the pool's
-  slots held by compiles and by tests, of its size, builds waiting,
-  what's compiling) and the day by the hour, stacked (hits, misses, the
-  rest) with its legend. Under them, the tests holding slots, each with
+  could be cached, hits, misses, what was built incrementally, what
+  couldn't be cached, the time hits saved: each hit's original compile
+  less what the hit took), Now (the pool's slots held by compiles and by
+  tests, of its size, builds waiting, what's compiling) and the day by
+  the hour, stacked (hits green, misses orange, built incrementally
+  blue, the rest a grey of its own, not the axis's) with its legend, as
+  tall as its rows in the width it has (`Element::measured`: two rows
+  of two in a third of a screen). **Built incrementally**: what kache
+  passes to the compiler on purpose so a crate being worked on builds
+  incrementally (its log's `passthrough_reason`: `adaptive seed`,
+  `adaptive active`, `automatic worktree seed`; 3,001 of a day's 3,275
+  passthroughs here), counted apart from what it couldn't cache
+  (`Event::incremental`). Under them, the tests holding slots, each with
   End (`held.rs`: kache's test runner holds a marker a slot under
   `scheduler/tests/`, each locked; the kernel's list of locks names the
   process holding each, so each is its program, its project, its slots
@@ -24311,8 +24322,12 @@ service on or off, the day's hit rate):
   agents' `end-test:PID`).
 - *Builds*: the projects built most over the day (builds, hit rate),
   the slowest compiles (misses, by crate), why the misses missed, and
-  the latest 300 builds: when, crate, project, result (a miss with its
-  cause: "Miss: its source changed"), how long, how big. Why (`data::
+  the latest 300 builds: when, crate, result (a miss with its cause:
+  "Miss: its source changed"; a passthrough by why: "Built
+  incrementally", "Documentation" for rustdoc, "Not a compile" for a
+  compiler asked a question, else "Not cacheable": `Event::said`),
+  project, how long, how big; Result takes what a wide list has to
+  spare, the figures together at the right. Why (`data::
   causes`): each build records what its cache key was made of (kache's
   `key_fields`: a hash for its compiler, flags, sources, dependencies,
   environment…), so a miss is set against the last build of the same
