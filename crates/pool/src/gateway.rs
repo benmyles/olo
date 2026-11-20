@@ -113,6 +113,11 @@ pub struct Pool {
     /// The saved accounts have been read (until then nothing is saved,
     /// so a keyring that isn't open yet can't cost them).
     pub loaded: bool,
+    /// Reset credits claimed for each provider's accounts (by
+    /// `provider_index`): how many, and the account the last reset. A
+    /// request every account turned away looks whether one was claimed
+    /// since, before claiming one itself.
+    claims: [(u64, Option<String>); 2],
 }
 
 impl Pool {
@@ -179,10 +184,12 @@ pub struct Shared {
     /// (`/pool/open`: a launch that found no copy taking launches, while
     /// this one serves).
     opener: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
-    /// Each account's capture as last read (`capture::path`'s time with
-    /// it, so a new capture is read again), and its cookie jar.
-    captures: Mutex<HashMap<String, (std::time::SystemTime, Arc<crate::capture::Capture>)>>,
-    jars: Mutex<HashMap<String, Arc<std::sync::Mutex<Vec<(String, String, String)>>>>>,
+    /// Each account's capture, read once (None: it has none yet), kept as
+    /// the pool makes another; and how often each account has left the
+    /// pool or signed in again, so a capture made before isn't kept.
+    captures: Mutex<HashMap<String, Option<Arc<crate::capture::Capture>>>>,
+    captures_gen: Mutex<HashMap<String, u64>>,
+    jars: Mutex<HashMap<String, crate::likeness::Jar>>,
     /// The account whose client is being captured now (`capture`), for
     /// the window and agents; whether a capture runs, and whether one more
     /// was asked for meanwhile (1: what's due, 2: every account).
@@ -317,6 +324,7 @@ impl Shared {
             paused: Default::default(),
             opener: Mutex::new(None),
             captures: Mutex::new(HashMap::new()),
+            captures_gen: Mutex::new(HashMap::new()),
             jars: Mutex::new(HashMap::new()),
             capturing: Mutex::new(None),
             clients: Mutex::new(HashMap::new()),
@@ -412,7 +420,7 @@ impl Shared {
             .into_iter()
             .filter(|(id, provider)| {
                 let Some((_, stamp)) = installed.iter().find(|(p, _)| p == provider) else { return false };
-                all || crate::capture::load(id).is_none_or(|c| c.installed != *stamp)
+                all || self.capture_of(id).is_none_or(|c| c.installed != *stamp)
             })
             .collect()
     }
@@ -463,6 +471,7 @@ impl Shared {
                         let Some(c) = p.saved.credentials.get(&id).cloned() else { continue };
                         (a, c)
                     };
+                    let made = s.captures_gen.lock().unwrap().get(&id).copied().unwrap_or(0);
                     if cred.expires_at.is_some_and(|e| e - now() < 900) {
                         tracing::info!("pool: {} for {} not captured now: its sign-in is due for renewal", provider.client(), account.name);
                         continue;
@@ -471,10 +480,24 @@ impl Shared {
                     (s.changed)();
                     let began = std::time::Instant::now();
                     match crate::capture::capture(&account, &cred, &|_| {}) {
-                        Ok(c) => match crate::capture::save(&c) {
-                            Ok(()) => tracing::info!("pool: captured {} {} for {} ({} requests, {:.0?})", provider.client(), c.version, account.name, c.requests.len(), began.elapsed()),
-                            Err(e) => tracing::warn!("pool: keeping the capture of {} for {}: {e}", provider.client(), account.name),
-                        },
+                        Ok(c) => {
+                            // (Kept only if the account is still the one
+                            // captured: it may have left the pool, or signed
+                            // in again, meanwhile.)
+                            let now_made = s.captures_gen.lock().unwrap();
+                            if now_made.get(&id).copied().unwrap_or(0) != made {
+                                tracing::info!("pool: a capture of {} for {} not kept: the account changed meanwhile", provider.client(), account.name);
+                                continue;
+                            }
+                            match crate::capture::save(&c) {
+                                Ok(()) => {
+                                    tracing::info!("pool: captured {} {} for {} ({} requests, {:.0?})", provider.client(), c.version, account.name, c.requests.len(), began.elapsed());
+                                    s.captures.lock().unwrap().insert(id.clone(), Some(Arc::new(c)));
+                                }
+                                Err(e) => tracing::warn!("pool: keeping the capture of {} for {}: {e}", provider.client(), account.name),
+                            }
+                            drop(now_made);
+                        }
                         Err(e) => tracing::warn!("pool: capturing {} for {}: {e}", provider.client(), account.name),
                     }
                 }
@@ -504,21 +527,39 @@ impl Shared {
             let a = p.saved.accounts.iter().find(|a| a.id == id)?;
             (a.org.clone(), a.email.clone())
         };
-        let path = crate::capture::path(id);
-        let stamp = std::fs::metadata(&path).ok()?.modified().ok()?;
-        let capture = {
-            let mut cache = self.captures.lock().unwrap();
-            match cache.get(id) {
-                Some((t, c)) if *t == stamp => c.clone(),
-                _ => {
-                    let c = Arc::new(crate::capture::load(id)?);
-                    cache.insert(id.to_owned(), (stamp, c.clone()));
-                    c
-                }
-            }
-        };
-        let jar = self.jars.lock().unwrap().entry(id.to_owned()).or_default().clone();
-        Some(crate::likeness::Like { capture, org, email, jar })
+        let capture = self.capture_of(id)?;
+        Some(crate::likeness::Like { capture, org, email, jar: self.jar(id) })
+    }
+
+    /// Account `id`'s capture: read from its file the first time it's
+    /// asked for, kept after (the pool keeps it current as it makes one).
+    fn capture_of(&self, id: &str) -> Option<Arc<crate::capture::Capture>> {
+        if let Some(c) = self.captures.lock().unwrap().get(id) {
+            return c.clone();
+        }
+        let c = crate::capture::load(id).map(Arc::new);
+        self.captures.lock().unwrap().entry(id.to_owned()).or_insert(c).clone()
+    }
+
+    /// What was kept of account `id`'s client goes (it left the pool, or
+    /// signed in again, perhaps as another account): its capture (one
+    /// under way isn't kept either), cookies and connections.
+    fn forget_kept(&self, id: &str) {
+        {
+            let mut made = self.captures_gen.lock().unwrap();
+            *made.entry(id.to_owned()).or_default() += 1;
+            self.captures.lock().unwrap().insert(id.to_owned(), None);
+            // (One small file.)
+            let _ = std::fs::remove_file(crate::capture::path(id));
+        }
+        self.jars.lock().unwrap().remove(id);
+        self.clients.lock().unwrap().remove(id);
+        self.exact.forget(id);
+    }
+
+    /// Account `id`'s cookies (`likeness::Jar`).
+    pub fn jar(&self, id: &str) -> crate::likeness::Jar {
+        self.jars.lock().unwrap().entry(id.to_owned()).or_default().clone()
     }
 
     /// The HTTP client for account `id`'s requests: one of its own, so no
@@ -529,43 +570,27 @@ impl Shared {
         made.get()
     }
 
-    /// Send on a connection of `key`'s own (an account's, or the client's
-    /// own sign-in's, `relay::OWN`), exactly as built (`relay`).
-    pub async fn send_exact(&self, key: &str, base: &str, alpn: &[&str], req: hyper::Request<http_body_util::Full<Bytes>>) -> Result<crate::relay::Answer, crate::relay::SendError> {
-        self.exact.send(key, base, alpn, req).await
+    /// The connections requests are passed on exactly on (`relay`).
+    pub fn exact(&self) -> &Arc<crate::relay::Exact> {
+        &self.exact
     }
 
     /// What a request for account `id` carries of its own: its
-    /// organization, and the body with its Claude account id where the
-    /// client named its own (`metadata.user_id`: a JSON string holding
-    /// `account_uuid`; the same length, so the body is otherwise as it
-    /// came).
+    /// organization, and (Claude) the body with the account's id where the
+    /// client named its own: in `metadata.user_id`'s string (a JSON text
+    /// holding `account_uuid`), there alone, as the client wrote it; the
+    /// rest of the body byte for byte (Codex's review: one replaced in what
+    /// a person wrote changed their words).
     fn own(&self, id: &str, provider: Provider, headers: &HeaderMap, body: &Bytes) -> Own {
         let org = self.pool.lock().unwrap().saved.accounts.iter().find(|a| a.id == id).and_then(|a| a.org.clone());
         let mut out = Own { org, body: body.clone() };
         if provider != Provider::Claude || headers.get("content-encoding").is_some_and(|c| c.to_str().map(|c| !c.trim().eq_ignore_ascii_case("identity")).unwrap_or(true)) {
             return out;
         }
-        let Some(theirs) = serde_json::from_slice::<Value>(body)
-            .ok()
-            .and_then(|v| v["metadata"]["user_id"].as_str().map(str::to_owned))
-            .and_then(|u| serde_json::from_str::<Value>(&u).ok())
-            .and_then(|u| u["account_uuid"].as_str().map(str::to_owned))
-            .filter(|u| !u.is_empty())
-        else {
-            return out;
-        };
+        let Some(span) = user_id_span(body) else { return out };
         let Some(ours) = self.like(id).and_then(|l| l.capture.account_uuid.clone()) else { return out };
-        if ours == theirs || ours.len() != theirs.len() {
-            return out;
-        }
-        // (Only where it is, once: never anything else that looks like it.)
-        let (t, o) = (theirs.as_bytes(), ours.as_bytes());
-        let at: Vec<usize> = body.windows(t.len()).enumerate().filter(|(_, w)| *w == t).map(|(i, _)| i).collect();
-        if at.len() == 1 {
-            let mut b = body.to_vec();
-            b[at[0]..at[0] + t.len()].copy_from_slice(o);
-            out.body = Bytes::from(b);
+        if let Some(b) = with_account(body, span, &ours) {
+            out.body = b;
         }
         out
     }
@@ -627,6 +652,7 @@ impl Shared {
             error: p.error.clone(),
             loaded: p.loaded,
             activity: Activity::default(),
+            claims: p.claims.clone(),
         }
     }
 
@@ -666,10 +692,7 @@ impl Shared {
         // (Signed in again, perhaps as another account under the same name:
         // what was captured and kept of the old goes, and it's captured
         // anew.)
-        let _ = std::fs::remove_file(crate::capture::path(id));
-        self.captures.lock().unwrap().remove(id);
-        self.jars.lock().unwrap().remove(id);
-        self.exact.forget(id);
+        self.forget_kept(id);
         self.touch();
         self.sync_soon(Some(id.to_owned()));
         self.capture(false);
@@ -701,11 +724,7 @@ impl Shared {
         }
         // (What was kept of it goes with it: its capture, its cookies, its
         // connections.)
-        let _ = std::fs::remove_file(crate::capture::path(id));
-        self.captures.lock().unwrap().remove(id);
-        self.jars.lock().unwrap().remove(id);
-        self.clients.lock().unwrap().remove(id);
-        self.exact.forget(id);
+        self.forget_kept(id);
         self.touch();
         Ok(())
     }
@@ -831,32 +850,61 @@ impl Shared {
         self.touch();
     }
 
-    /// Write the pool now (for what must be kept before a provider is asked).
+    /// Write the pool now (for what must be kept before a provider is
+    /// asked), with the store's lock already held (`fresh`).
     async fn save_now(&self) {
-        let snapshot = {
+        // A small write, on this worker thread, before the provider is asked.
+        if let Err(e) = tokio::task::block_in_place(|| self.write(false)) {
+            tracing::warn!("pool: {e}");
+        }
+    }
+
+    /// Write the pool as it is now: the store first (made now, the first
+    /// time there's something to keep), the snapshot after, so that of two
+    /// writes the later always has what the earlier had (Codex's review: a
+    /// save's older snapshot written after a claim's own left the claim's
+    /// intent out of the file). With `file_lock`, while another copy is at
+    /// work, under the store's lock, keeping the sign-ins it renewed.
+    /// Blocks.
+    fn write(&self, file_lock: bool) -> Result<(), String> {
+        let held = if file_lock && self.drain.overlapping() { self.store_lock() } else { None };
+        let mut store = self.store.lock().unwrap();
+        let mut snapshot = {
             let p = self.pool.lock().unwrap();
             if !p.loaded {
-                return;
+                return Err("The pool’s accounts aren’t open.".into());
             }
             p.saved.clone()
         };
-        let store = self.store.lock().unwrap().is_some();
-        if !store {
-            // Not made yet: the saver makes it.
-            self.touch();
-            return;
+        if held.is_some()
+            && let Some(Ok(disk)) = store.as_ref().map(Store::read)
+        {
+            self.adopt_newer(&disk, &mut snapshot);
         }
-        // A small write, on this worker thread, before the provider is asked.
-        let result = tokio::task::block_in_place(|| self.store.lock().unwrap().as_ref().map(|s| s.save(&snapshot)));
-        if let Some(Err(e)) = result {
-            tracing::warn!("pool: {e}");
+        if store.is_none() && self.lazy {
+            *store = Some(Store::open()?.0);
+        }
+        match store.as_ref() {
+            Some(st) => st.save(&snapshot),
+            // (None to keep it in: a test's.)
+            None => Ok(()),
         }
     }
 
     /// Spend one of account `id`'s reset credits (the soonest to expire),
     /// then read its quota again.
     pub async fn redeem(&self, id: &str) -> Result<(), String> {
+        let provider = self.pool.lock().unwrap().account(id).map(|a| a.provider).ok_or("No such account.")?;
+        let gate = self.claims_gate(provider);
+        let _gate = gate.lock().await;
         self.redeem_credit(id, None, Why::Asked).await.map_err(|e| e.to_string())
+    }
+
+    /// The lock a provider's claims are made under, one at a time: one
+    /// claimed while a request waited may serve it too (Codex's review: two
+    /// requests turned away together each claimed one).
+    fn claims_gate(&self, provider: Provider) -> Arc<tokio::sync::Mutex<()>> {
+        self.lock_for(&format!("\u{0}claims {}", provider_index(provider)))
     }
 
     /// Claim the credit `credit` of account `id` (None: the one that gives
@@ -873,6 +921,9 @@ impl Shared {
         }
         let lock = self.lock_for(&format!("redeem:{id}"));
         let _held = lock.lock().await;
+        if self.drain.retired() {
+            return Err(Claimed::NotNow("This copy of the pool has handed over.".into()));
+        }
         let (provider, org, credit, request) = {
             let mut p = self.pool.lock().unwrap();
             let a = p.account_mut(id).ok_or_else(|| Claimed::NotNow("No such account.".into()))?;
@@ -890,7 +941,7 @@ impl Shared {
                 },
                 None => {
                     let chosen = match (credit, &why) {
-                        (Some(c), Why::Blocked(family)) => a.claim_for(family, t).filter(|(x, _)| x.id == c).map(|(x, _)| x.clone()),
+                        (Some(c), Why::Blocked(family)) => a.claims_for(family, t).into_iter().find(|(x, _)| x.id == c).map(|(x, _)| x.clone()),
                         (Some(c), Why::Expiring) => a.expiring_claim(t).filter(|x| x.id == c).cloned(),
                         (Some(c), Why::Asked) => a.credits.iter().find(|x| x.id == c && x.usable_at(t)).cloned(),
                         (None, _) => a
@@ -916,9 +967,19 @@ impl Shared {
         // (Kept before the provider is asked, or not asked.)
         self.save_checked().await.map_err(Claimed::NotNow)?;
         let cred = self.fresh(id, provider, false, 60).await.map_err(|e| Claimed::NotNow(e.to_string()))?;
+        // (Handed over while it waited: the copy now at work makes it, from
+        // the intent kept, if it's still wanted.)
+        if self.drain.retired() {
+            return Err(Claimed::NotNow("This copy of the pool has handed over.".into()));
+        }
         let result = upstream::redeem(&self.client(), &self.up, provider, &cred, org.as_deref(), &credit, &request, self.like(id).as_ref()).await;
         {
             let mut p = self.pool.lock().unwrap();
+            if result.is_ok() {
+                let claims = &mut p.claims[provider_index(provider)];
+                claims.0 += 1;
+                claims.1 = Some(id.to_owned());
+            }
             if let Some(a) = p.account_mut(id) {
                 match &result {
                     Ok(()) => {
@@ -962,57 +1023,83 @@ impl Shared {
     /// Save now and say whether it was kept (none to keep it in, as in
     /// tests: kept enough).
     async fn save_checked(&self) -> Result<(), String> {
-        let snapshot = {
-            let p = self.pool.lock().unwrap();
-            if !p.loaded {
-                return Err("The pool’s accounts aren’t open.".into());
-            }
-            p.saved.clone()
-        };
-        if self.store.lock().unwrap().is_none() {
-            return Ok(());
-        }
-        let result = tokio::task::block_in_place(|| self.store.lock().unwrap().as_ref().map(|s| s.save(&snapshot)));
-        match result {
-            Some(Err(e)) => Err(format!("The pool couldn’t keep the claim before making it: {e}")),
-            _ => Ok(()),
-        }
+        tokio::task::block_in_place(|| self.write(true)).map_err(|e| format!("The pool couldn’t keep the claim before making it: {e}"))
     }
 
-    /// When no account can serve a request of `family`: claim the credit
-    /// that gives back most (`Account::claim_for`: one that clears every
-    /// limit that's out for it, never one that gives back under
-    /// `WORTH_REDEEMING`, as a window about to reset by itself does), on the
-    /// account it gives back most on, the soonest to expire of those as
-    /// good; one refused (nothing spent), the next. At most once a minute
-    /// per account. None from a copy that has handed over.
-    async fn redeem_for(&self, provider: Provider, family: &str) -> Option<String> {
+    /// When no account can serve a request of `family` (all out as it
+    /// looked, `seen` claims made by then): the account to try again, after
+    /// claiming a reset credit for it if need be. One claimed since it
+    /// looked: that one's account, nothing claimed. An unclear claim
+    /// outstanding: that one again (the same credit, the same request id)
+    /// before any other is made, so a reset that went through isn't paid
+    /// for twice. Else the credit that gives back most (`claims_for`: one
+    /// that clears every limit that's out for it, never one that gives back
+    /// under `WORTH_REDEEMING`, as a window about to reset by itself does),
+    /// the narrowest and soonest to expire of those as good; one refused
+    /// (nothing spent), the next, the same account's others too. Each
+    /// account at most once a minute; none from a copy that has handed
+    /// over.
+    async fn redeem_for(&self, provider: Provider, family: &str, seen: u64) -> Option<String> {
+        let gate = self.claims_gate(provider);
+        let _gate = gate.lock().await;
         if self.drain.retired() {
             return None;
         }
         let t = now();
-        let mut candidates: Vec<(String, String, f64, i64)> = {
+        let pending = {
+            let p = self.pool.lock().unwrap();
+            let (made, last) = &p.claims[provider_index(provider)];
+            if *made != seen {
+                return last.clone();
+            }
+            p.saved.accounts.iter().find(|a| a.provider == provider && a.enabled && a.signed_out.is_none() && a.redeeming.is_some()).map(|a| (a.id.clone(), a.redeem_tried))
+        };
+        if let Some((id, tried)) = pending {
+            // (Not asked again at once: the provider may be having trouble.)
+            if tried.is_some_and(|r| t - r < 10) {
+                return None;
+            }
+            match self.redeem_credit(&id, None, Why::Blocked(family.to_owned())).await {
+                Ok(()) => return Some(id),
+                Err(Claimed::Unclear(e)) => {
+                    tracing::warn!("pool: a reset claim still unclear: {e}");
+                    return None;
+                }
+                Err(e) => tracing::info!("pool: an unclear reset claim settled, nothing spent: {e}"),
+            }
+        }
+        let mut candidates: Vec<(String, String, f64, usize, i64)> = {
             let p = self.pool.lock().unwrap();
             p.saved
                 .accounts
                 .iter()
                 .filter(|a| a.provider == provider && a.enabled && a.signed_out.is_none())
                 .filter(|a| a.redeem_tried.is_none_or(|r| t - r >= 60))
-                .filter_map(|a| a.claim_for(family, t).map(|(c, worth)| (a.id.clone(), c.id.clone(), worth, c.expires_at.unwrap_or(i64::MAX))))
+                .flat_map(|a| a.claims_for(family, t).into_iter().enumerate().map(|(rank, (c, worth))| (a.id.clone(), c.id.clone(), worth, rank, c.expires_at.unwrap_or(i64::MAX))))
                 .collect()
         };
-        candidates.sort_by(|x, y| y.2.total_cmp(&x.2).then(x.3.cmp(&y.3)));
-        for (id, credit, _, _) in candidates {
+        candidates.sort_by(|x, y| y.2.total_cmp(&x.2).then(x.3.cmp(&y.3)).then(x.4.cmp(&y.4)));
+        // Accounts whose claims were refused, their quotas read again since.
+        let mut refused: Vec<String> = Vec::new();
+        for (id, credit, _, _, _) in candidates {
             match self.redeem_credit(&id, Some(&credit), Why::Blocked(family.to_owned())).await {
                 Ok(()) => return Some(id),
-                Err(e @ (Claimed::Refused(_) | Claimed::NotNow(_))) => tracing::info!("pool: a reset credit not used: {e}; the next"),
+                Err(e @ Claimed::Refused(_)) => {
+                    tracing::info!("pool: a reset credit not used: {e}; the next");
+                    refused.push(id);
+                }
+                Err(e @ Claimed::NotNow(_)) => tracing::info!("pool: a reset credit not used: {e}; the next"),
                 Err(e) => {
                     tracing::warn!("pool: redeeming a reset credit: {e}");
                     return None;
                 }
             }
         }
-        None
+        // (A refusal as the account wasn't out after all, a window having
+        // reset by itself: read again, it serves.)
+        let p = self.pool.lock().unwrap();
+        let creds = &p.saved.credentials;
+        schedule::pick(&p.saved.accounts, provider, family, None, now(), &[], |a| creds.contains_key(&a.id)).map(|a| a.id.clone()).filter(|id| refused.contains(id))
     }
 
     /// Claim credits that would otherwise expire unused, each at its best
@@ -1023,16 +1110,18 @@ impl Shared {
             return;
         }
         let t = now();
-        let due: Vec<(String, String)> = {
+        let due: Vec<(String, String, Provider)> = {
             let p = self.pool.lock().unwrap();
             p.saved
                 .accounts
                 .iter()
                 .filter(|a| a.enabled && a.signed_out.is_none() && a.redeem_tried.is_none_or(|r| t - r >= 60))
-                .filter_map(|a| a.expiring_claim(t).map(|c| (a.id.clone(), c.id.clone())))
+                .filter_map(|a| a.expiring_claim(t).map(|c| (a.id.clone(), c.id.clone(), a.provider)))
                 .collect()
         };
-        for (id, credit) in due {
+        for (id, credit, provider) in due {
+            let gate = self.claims_gate(provider);
+            let _gate = gate.lock().await;
             match self.redeem_credit(&id, Some(&credit), Why::Expiring).await {
                 Ok(()) => tracing::info!("pool: redeemed a reset credit before it expired"),
                 Err(e) => tracing::warn!("pool: redeeming an expiring reset credit: {e}"),
@@ -1298,8 +1387,10 @@ async fn codex(State(ctx): State<Ctx>, Path(rest): Path<String>, RawQuery(q): Ra
 /// An HTTP client as the pool's are: a connection's own time to come,
 /// and long enough for thinking before the first byte (a connection on a
 /// network that went is cut at once).
+/// Answers pass as they came, never decoded on the way (the pool reads a
+/// decoded copy itself), and nothing asked for that the client didn't.
 fn new_client() -> reqwest::Client {
-    reqwest::Client::builder().connect_timeout(Duration::from_secs(20)).read_timeout(Duration::from_secs(15 * 60)).build().expect("HTTP client")
+    reqwest::Client::builder().connect_timeout(Duration::from_secs(20)).read_timeout(Duration::from_secs(15 * 60)).no_gzip().no_brotli().no_deflate().no_zstd().build().expect("HTTP client")
 }
 
 /// Why a reset credit is claimed: a request of a model family no account
@@ -1353,14 +1444,31 @@ fn forwarded(name: &str) -> bool {
             | "te"
             | "trailer"
             | "upgrade"
-            // (Until the pool reads compressed answers as it passes them on.)
-            | "accept-encoding"
+            // (The account's own: `Shared::jar`.)
+            | "cookie"
     ) && !name.starts_with("x-olo-pool-")
 }
 
-/// Response headers not passed back.
+/// Response headers not passed back: the connection's own, and the
+/// cookies the host set for the account (kept in its jar, never the
+/// client's: they'd go back with its own sign-in).
 fn returned(name: &str) -> bool {
-    !matches!(name, "content-length" | "connection" | "transfer-encoding" | "keep-alive")
+    !matches!(name, "connection" | "transfer-encoding" | "keep-alive" | "set-cookie")
+}
+
+/// The host a provider's requests go to, whose cookies an account keeps.
+fn host_of(provider: Provider) -> &'static str {
+    match provider {
+        Provider::Claude => "api.anthropic.com",
+        Provider::Codex => "chatgpt.com",
+    }
+}
+
+/// `base`'s authority (`https://api.anthropic.com` → `api.anthropic.com`),
+/// a request to it names in its `Host`.
+fn authority_of(base: &str) -> &str {
+    let rest = base.split_once("://").map_or(base, |(_, r)| r);
+    rest.split('/').next().unwrap_or(rest)
 }
 
 /// The answer when no account can serve, shaped as the client expects.
@@ -1452,6 +1560,11 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
         }
     };
     let client = client_of(&headers);
+    // The client's connection (the pool's upstream follow it), and whether
+    // the request came through the proxy (to the provider's own host, its
+    // `Host` the host's) or to the gateway's own address.
+    let conn = ext.get::<crate::relay::ClientConn>().copied().unwrap_or_default();
+    let proxied = ext.get::<crate::relay::ClientOffer>().is_some();
     let mut tried: Vec<String> = Vec::new();
     // Tries the network failed (not counted against an account).
     let mut network_tries = 0;
@@ -1480,7 +1593,7 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                     }
                     let any = p.saved.accounts.iter().any(|a| a.provider == provider && a.enabled && a.signed_out.is_none());
                     let retry = schedule::next_available(&p.saved.accounts, provider, &family, t);
-                    Err((any, retry))
+                    Err((any, retry, p.claims[provider_index(provider)].0))
                 }
             }
         };
@@ -1490,9 +1603,9 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                 s.noted();
                 c
             }
-            Err((any, retry)) => {
+            Err((any, retry, seen)) => {
                 // Every account out: a reset credit keeps things going.
-                if any && let Some(id) = s.redeem_for(provider, &family).await {
+                if any && let Some(id) = s.redeem_for(provider, &family, seen).await {
                     tried.retain(|t| *t != id);
                     continue;
                 }
@@ -1517,6 +1630,8 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
             status: 0,
             outcome: Some(Outcome::Failed),
             ended: false,
+            length: None,
+            passed: 0,
             broken: false,
             scan: Scan::new(),
             shared: Some(s.clone()),
@@ -1561,6 +1676,7 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                 };
                 let mut b = hyper::Request::builder().method(method.clone()).uri(target);
                 let mut signed = false;
+                let cookie = crate::likeness::cookie(&s.jar(&id), host_of(provider));
                 for (k, v) in headers.iter() {
                     match k.as_str() {
                         "authorization" | "x-api-key" if !signed => {
@@ -1574,6 +1690,16 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                             }
                         }
                         "anthropic-beta" => b = b.header(k, upstream::with_oauth_beta(v.to_str().ok())),
+                        // (To the gateway's own address: the host's.)
+                        "host" if !proxied => b = b.header(k, authority_of(&s.up.claude)),
+                        // (The body's, which may have the account's id.)
+                        "content-length" => b = b.header(k, own.body.len()),
+                        // (The account's cookies, where the client's were.)
+                        "cookie" => {
+                            if let Some(c) = &cookie {
+                                b = b.header(k, c.as_str());
+                            }
+                        }
                         // (The connection's own.)
                         "proxy-connection" | "proxy-authorization" | "te" | "trailer" | "upgrade" => {}
                         name if name.starts_with("x-olo-pool-") => {}
@@ -1586,6 +1712,11 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                 if !headers.contains_key("anthropic-beta") {
                     b = b.header("anthropic-beta", upstream::with_oauth_beta(None));
                 }
+                if !headers.contains_key("cookie")
+                    && let Some(c) = &cookie
+                {
+                    b = b.header("cookie", c.as_str());
+                }
                 match b.body(http_body_util::Full::new(own.body.clone())) {
                     Ok(mut req) => {
                         *req.extensions_mut() = ext.clone();
@@ -1595,7 +1726,7 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                             Some(o) => o.0.iter().map(String::as_str).collect(),
                             None => vec!["http/1.1"],
                         };
-                        s.exact.send(&id, &s.up.claude, &alpn, req).await.map_err(Sent::from)
+                        s.exact.send(&id, conn, &s.up.claude, &alpn, req).await.map_err(Sent::from)
                     }
                     Err(e) => Err(Sent::Other(e.to_string())),
                 }
@@ -1629,6 +1760,10 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                 if !signed {
                     req = upstream::authorize(req, provider, &cred);
                 }
+                // (The account's cookies, as Codex's store adds its own.)
+                if let Some(c) = crate::likeness::cookie(&s.jar(&id), host_of(provider)) {
+                    req = req.header("cookie", c);
+                }
                 req.body(sent_plain.clone().unwrap_or_else(|| own.body.clone())).send().await.map(crate::relay::Answer::Reqwest).map_err(Sent::from)
             };
             match sent {
@@ -1648,19 +1783,27 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                     }
                 }
                 Ok(r) => break Some(r),
-                // Not connected, or the network changed under it (its
-                // connection cut with the network that went), or there's
-                // none: again, on the network there is (once there's one).
-                Err(e) if network_tries < NETWORK_TRIES && (e.is_connect() || network_failed(seen)) => {
+                // Never reached the host: again, once there's a network.
+                Err(e) if network_tries < NETWORK_TRIES && e.is_connect() => {
                     network_tries += 1;
-                    tracing::info!("pool: the network failed a request to {} ({e}): again", provider.client());
+                    tracing::info!("pool: a request to {} couldn’t go ({e}): again", provider.client());
                     if network_failed(seen) {
                         s.exact.clear();
                     }
                     network_back().await;
                 }
+                // It may have reached the host (sent, then its connection
+                // cut, the network changing under it): never sent twice by
+                // the pool, which the host would see as no client sends it
+                // (Codex's review reproduced the double). Answered once
+                // there's a network again, so the client's own retry
+                // (Claude Code's SDK, Codex's) asks again on it, as a
+                // client whose own connection dropped does.
                 Err(e) => {
-                    // Not replayed: it may have reached the provider.
+                    if network_failed(seen) {
+                        s.exact.clear();
+                        network_back().await;
+                    }
                     drop(finish);
                     return unavailable(provider, StatusCode::BAD_GATEWAY, &format!("The pool couldn’t reach {}: {e}", provider.client()), None);
                 }
@@ -1674,6 +1817,8 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
         };
         let status = r.status();
         finish.status = status.as_u16();
+        // (What the host set, kept for the account.)
+        crate::likeness::keep(&s.jar(&id), host_of(provider), r.headers().get_all("set-cookie").iter().filter_map(|v| v.to_str().ok()));
         let t = now();
         let (windows, rejection) = upstream::header_windows(r.headers(), provider, &family, status.as_u16(), t);
         {
@@ -1705,6 +1850,61 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
         finish.outcome = None;
         return respond(r, finish);
     }
+}
+
+/// Where `metadata.user_id`'s string is in a JSON request body (its
+/// quotes with it), if it has one.
+fn user_id_span(body: &[u8]) -> Option<std::ops::Range<usize>> {
+    use serde_json::value::RawValue;
+    #[derive(serde::Deserialize)]
+    struct Top<'a> {
+        #[serde(borrow)]
+        metadata: Option<&'a RawValue>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Meta<'a> {
+        #[serde(borrow)]
+        user_id: Option<&'a RawValue>,
+    }
+    let top: Top = serde_json::from_slice(body).ok()?;
+    let meta: Meta = serde_json::from_str(top.metadata?.get()).ok()?;
+    let raw = meta.user_id?.get();
+    if !raw.starts_with('"') {
+        return None;
+    }
+    // (Both read in place: the string's own bytes in the body.)
+    let start = (raw.as_ptr() as usize).checked_sub(body.as_ptr() as usize)?;
+    (start + raw.len() <= body.len()).then(|| start..start + raw.len())
+}
+
+/// `body` with the `account_uuid` named in its `metadata.user_id` string
+/// (at `span`) made `ours`: in that string alone, where it's written once
+/// as it is (the client's bytes kept around it); written otherwise (escaped),
+/// the string written again as JSON writes it. None if there's nothing to
+/// change, or it can't be told where.
+fn with_account(body: &[u8], span: std::ops::Range<usize>, ours: &str) -> Option<Bytes> {
+    let token = &body[span.clone()];
+    let text: String = serde_json::from_slice(token).ok()?;
+    let theirs = serde_json::from_str::<Value>(&text).ok()?["account_uuid"].as_str().filter(|u| !u.is_empty())?.to_owned();
+    if theirs == ours {
+        return None;
+    }
+    let t = theirs.as_bytes();
+    let at: Vec<usize> = token.windows(t.len()).enumerate().filter(|(_, w)| *w == t).map(|(i, _)| i).collect();
+    let made = if let [at] = at[..] {
+        let mut v = token.to_vec();
+        v.splice(at..at + t.len(), ours.bytes());
+        v
+    } else if text.matches(theirs.as_str()).count() == 1 {
+        serde_json::to_vec(&text.replacen(theirs.as_str(), ours, 1)).ok()?
+    } else {
+        return None;
+    };
+    let mut b = Vec::with_capacity(body.len() - token.len() + made.len());
+    b.extend_from_slice(&body[..span.start]);
+    b.extend_from_slice(&made);
+    b.extend_from_slice(&body[span.end..]);
+    Some(Bytes::from(b))
 }
 
 /// Why a try failed: before it reached the host (`is_connect`), or
@@ -1778,8 +1978,12 @@ struct Finish {
     status: u16,
     /// How it ended, when known before the answer (None: passed on).
     outcome: Option<Outcome>,
-    /// The answer reached its end.
+    /// The answer reached its end; how long it said it is, and how much of
+    /// it has passed (a server passing on an answer of a known length reads
+    /// no further than that: its end is its last byte).
     ended: bool,
+    length: Option<u64>,
+    passed: u64,
     /// The answer broke off upstream.
     broken: bool,
     scan: Scan,
@@ -1832,8 +2036,10 @@ impl Drop for Finish {
     }
 }
 
-fn respond(r: crate::relay::Answer, finish: Finish) -> Response {
+fn respond(mut r: crate::relay::Answer, finish: Finish) -> Response {
     let status = r.status();
+    // (Each name in its case, the status line's reason: hyper's notes.)
+    let ext = r.take_extensions();
     let mut out = HeaderMap::new();
     for (k, v) in r.headers().iter().filter(|(k, _)| returned(k.as_str())) {
         out.append(k.clone(), v.clone());
@@ -1842,7 +2048,12 @@ fn respond(r: crate::relay::Answer, finish: Finish) -> Response {
         out.insert(HeaderName::from_static("x-olo-pool-account"), v);
     }
     let finish = Arc::new(Mutex::new(finish));
-    finish.lock().unwrap().scan.sse = r.headers().get("content-type").and_then(|v| v.to_str().ok()).is_some_and(|c| c.starts_with("text/event-stream"));
+    {
+        let mut f = finish.lock().unwrap();
+        f.scan.sse = r.headers().get("content-type").and_then(|v| v.to_str().ok()).is_some_and(|c| c.starts_with("text/event-stream"));
+        f.length = r.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.trim().parse().ok());
+        f.ended = f.length == Some(0);
+    }
     // (Passed on as it came, compressed as the client asked; the pool reads
     // a decoded copy as it goes by.)
     let mut decode = Decode::of(r.headers().get("content-encoding").and_then(|v| v.to_str().ok()).unwrap_or(""));
@@ -1852,7 +2063,13 @@ fn respond(r: crate::relay::Answer, finish: Finish) -> Response {
         .map(move |chunk| {
             let mut f = finish.lock().unwrap();
             match &chunk {
-                Ok(b) => f.scan.feed(&decode.push(b)),
+                Ok(b) => {
+                    f.scan.feed(&decode.push(b));
+                    f.passed += b.len() as u64;
+                    if f.length.is_some_and(|n| f.passed >= n) {
+                        f.ended = true;
+                    }
+                }
                 Err(_) => f.broken = true,
             }
             chunk
@@ -1865,6 +2082,7 @@ fn respond(r: crate::relay::Answer, finish: Finish) -> Response {
     let mut resp = Response::new(Body::from_stream(stream));
     *resp.status_mut() = status;
     *resp.headers_mut() = out;
+    *resp.extensions_mut() = ext;
     resp
 }
 
@@ -1892,21 +2110,29 @@ impl Decode {
         }
     }
 
-    /// What `chunk` decodes to, as far as it goes so far.
+    /// What `chunk` decodes to, as far as it goes so far (nothing more,
+    /// once it doesn't decode: that answer's usage goes unread).
     fn push<'a>(&mut self, chunk: &'a [u8]) -> std::borrow::Cow<'a, [u8]> {
         use std::io::Write;
-        fn out<W: Write>(w: &mut W, chunk: &[u8], inner: impl FnOnce(&mut W) -> &mut Vec<u8>) -> Vec<u8> {
-            let _ = w.write_all(chunk);
-            let _ = w.flush();
-            std::mem::take(inner(w))
+        fn out<W: Write>(w: &mut W, chunk: &[u8], inner: impl FnOnce(&mut W) -> &mut Vec<u8>) -> Option<Vec<u8>> {
+            w.write_all(chunk).ok()?;
+            w.flush().ok()?;
+            Some(std::mem::take(inner(w)))
         }
-        match self {
-            Decode::Plain => std::borrow::Cow::Borrowed(chunk),
-            Decode::Gzip(d) => std::borrow::Cow::Owned(out(d, chunk, |d| d.get_mut())),
-            Decode::Deflate(d) => std::borrow::Cow::Owned(out(d, chunk, |d| d.get_mut())),
-            Decode::Br(d) => std::borrow::Cow::Owned(out(d.as_mut(), chunk, |d| d.get_mut())),
-            Decode::Zstd(d) => std::borrow::Cow::Owned(out(d.as_mut(), chunk, |d| d.get_mut())),
-            Decode::Unread => std::borrow::Cow::Borrowed(&[]),
+        let decoded = match self {
+            Decode::Plain => return std::borrow::Cow::Borrowed(chunk),
+            Decode::Unread => return std::borrow::Cow::Borrowed(&[]),
+            Decode::Gzip(d) => out(d, chunk, |d| d.get_mut()),
+            Decode::Deflate(d) => out(d, chunk, |d| d.get_mut()),
+            Decode::Br(d) => out(d.as_mut(), chunk, |d| d.get_mut()),
+            Decode::Zstd(d) => out(d.as_mut(), chunk, |d| d.get_mut()),
+        };
+        match decoded {
+            Some(d) => std::borrow::Cow::Owned(d),
+            None => {
+                *self = Decode::Unread;
+                std::borrow::Cow::Borrowed(&[])
+            }
         }
     }
 }
@@ -1997,40 +2223,15 @@ fn save_once(s: &Shared) {
     if s.drain.retired() {
         return;
     }
-    let mut snapshot = {
-        let p = s.pool.lock().unwrap();
-        if !p.loaded {
-            return;
+    match s.write(true) {
+        Ok(()) => {}
+        // (Not open yet: nothing to save.)
+        Err(_) if !s.pool.lock().unwrap().loaded => {}
+        Err(e) => {
+            tracing::warn!("pool: {e}");
+            s.pool.lock().unwrap().error = Some(e);
+            (s.changed)();
         }
-        p.saved.clone()
-    };
-    // The copy this one took over from still finishing: a sign-in it
-    // renewed meanwhile is kept, not written over. (The store's lock
-    // first, then the store: `store_lock`.)
-    let held = if s.drain.overlapping() { s.store_lock() } else { None };
-    let mut store = s.store.lock().unwrap();
-    if held.is_some()
-        && let Some(Ok(disk)) = store.as_ref().map(Store::read)
-    {
-        s.adopt_newer(&disk, &mut snapshot);
-    }
-    // The first account made: the sealed file (and its key) now.
-    if store.is_none() && s.lazy {
-        match Store::open() {
-            Ok((st, _)) => *store = Some(st),
-            Err(e) => {
-                s.pool.lock().unwrap().error = Some(e);
-                (s.changed)();
-                return;
-            }
-        }
-    }
-    if let Some(st) = store.as_ref()
-        && let Err(e) = st.save(&snapshot)
-    {
-        tracing::warn!("pool: {e}");
-        s.pool.lock().unwrap().error = Some(e);
-        (s.changed)();
     }
 }
 
@@ -2095,12 +2296,43 @@ mod tests {
     /// back so (its cookies too).
     #[test]
     fn headers_kept_back() {
-        for h in ["authorization", "x-api-key", "host", "connection", "content-length", "x-olo-pool-x"] {
+        // (The client's cookies: the account's go instead.)
+        for h in ["authorization", "x-api-key", "host", "connection", "content-length", "x-olo-pool-x", "cookie"] {
             assert!(!forwarded(h), "{h}");
         }
-        for h in ["anthropic-version", "x-stainless-lang", "session_id", "cookie", "origin", "x-organization-uuid"] {
+        for h in ["anthropic-version", "x-stainless-lang", "session_id", "origin", "x-organization-uuid", "accept-encoding"] {
             assert!(forwarded(h), "{h}");
         }
-        assert!(returned("set-cookie") && returned("anthropic-ratelimit-unified-5h-utilization") && returned("content-encoding"));
+        // (Cookies set for the account stay with it.)
+        assert!(!returned("set-cookie") && !returned("transfer-encoding"));
+        assert!(returned("anthropic-ratelimit-unified-5h-utilization") && returned("content-encoding") && returned("content-length"));
+    }
+
+    /// The account's id goes into `metadata.user_id` alone: the same id in
+    /// what a person wrote stays as they wrote it (Codex's review), and one
+    /// written escaped is still found; the rest of the body byte for byte.
+    #[test]
+    fn the_account_id_changes_in_its_place_alone() {
+        let (theirs, ours) = ("11111111-2222-3333-4444-555555555555", "99999999-8888-7777-6666-000000000000");
+        let user_id = format!(r#"{{\"device_id\":\"d\",\"account_uuid\":\"{theirs}\",\"session_id\":\"s\"}}"#);
+        let body = format!(r#"{{"model":"claude-opus-5-5","messages":[{{"role":"user","content":"my id is {theirs}"}}],"metadata":{{"user_id":"{user_id}"}}}}"#);
+        let span = user_id_span(body.as_bytes()).expect("found");
+        let made = with_account(body.as_bytes(), span, ours).expect("changed");
+        assert_eq!(String::from_utf8(made.to_vec()).unwrap(), body.replacen(&format!(r#"account_uuid\":\"{theirs}"#), &format!(r#"account_uuid\":\"{ours}"#), 1));
+        assert!(String::from_utf8_lossy(&made).contains(&format!("my id is {theirs}")));
+        // Escaped where it's named (its first character), and only there.
+        let escaped = body.replacen(&format!(r#"account_uuid\":\"{theirs}"#), &format!(r#"account_uuid\":\"\\u0031{}"#, &theirs[1..]), 1);
+        let span = user_id_span(escaped.as_bytes()).expect("found");
+        let made = with_account(escaped.as_bytes(), span.clone(), ours).expect("changed");
+        let v: Value = serde_json::from_slice(&made).unwrap();
+        let named: Value = serde_json::from_str(v["metadata"]["user_id"].as_str().unwrap()).unwrap();
+        assert_eq!(named["account_uuid"], ours);
+        assert_eq!(v["messages"][0]["content"], format!("my id is {theirs}"));
+        assert_eq!(&made[..span.start], &escaped.as_bytes()[..span.start]);
+        // Nothing to change: its own already, or none named.
+        let span = user_id_span(body.as_bytes()).unwrap();
+        assert!(with_account(body.as_bytes(), span, theirs).is_none());
+        assert!(user_id_span(br#"{"model":"m","metadata":{"user_id":7}}"#).is_none());
+        assert!(user_id_span(br#"{"model":"m"}"#).is_none());
     }
 }

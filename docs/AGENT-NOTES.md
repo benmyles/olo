@@ -808,6 +808,21 @@ Doctor check, try its fix and look again: the finding must be gone.
   notifications still go to the session's own bus). To find such a
   program again, look in `/proc/PID/environ` for the folder: started
   through `env`, `ps`'s command line doesn't show Olo's path.
+- **A worktree never shares the main checkout's target folder**
+  (2026-11-19). To measure the code before a change, a `git worktree`
+  of the old commit built with `CARGO_TARGET_DIR` set to the main
+  `target/` wrote the same files: cargo names a workspace crate's units
+  by its path relative to the workspace root, so the two trees' units
+  are one. Each build then replaced the other's, and the main tree's
+  sources, older than what the worktree had just built, made those
+  outputs look fresh to it: its "after" test binary was the old code
+  (`cmp` said so), and the release build the pre-push hook makes would
+  have linked it. Build a worktree with a target folder of its own under
+  `/var/tmp` (kache makes it seconds); if it happened, `cargo clean
+  --release -p` each crate the worktree's build compiled (its
+  `Compiling … (/var/tmp/…)` lines). The release bench of passing a
+  request on is `cargo test --release -p olo-token-pool --test intercept
+  pass_on_cost -- --ignored --nocapture`.
 - **Dependency build units vanishing from `target/release`: explained
   (2026-11-19).** It was Olo's own nightly sweep (`tools/dev/sweep`,
   `olo-sweep.timer`, between 00:00 and 01:00): it took a unit's

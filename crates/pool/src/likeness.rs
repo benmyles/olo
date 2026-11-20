@@ -46,7 +46,7 @@ pub struct Like {
     /// The cookies each host set for this account's requests, which its
     /// client keeps and sends back to that host (Codex's cookie store):
     /// the pool's jar, (host, name, value).
-    pub jar: Arc<std::sync::Mutex<Vec<(String, String, String)>>>,
+    pub jar: Jar,
 }
 
 /// The runs to take Claude's requests from, the session's first: what a
@@ -57,28 +57,43 @@ const CLAUDE_RUNS: &[&str] = &["session", "wall", "print", "renewal"];
 /// use: Codex's review), and whose claim is Codex's own.
 const CODEX_RUNS: &[&str] = &["app-server", "session", "print", "renewal"];
 
+/// An account's cookies, (host, name, value): what each host set for its
+/// requests, sent back to that host alone, as its client's cookie store
+/// does (Codex's); never another account's, nor the client's own.
+pub type Jar = Arc<std::sync::Mutex<Vec<(String, String, String)>>>;
+
+/// The `Cookie` a request to `host` carries from `jar`, if it has any.
+pub fn cookie(jar: &Jar, host: &str) -> Option<String> {
+    let jar = jar.lock().unwrap();
+    let theirs: Vec<String> = jar.iter().filter(|(h, _, _)| h == host).map(|(_, k, v)| format!("{k}={v}")).collect();
+    (!theirs.is_empty()).then(|| theirs.join("; "))
+}
+
+/// What an answer from `host` set (each `set-cookie` value), kept in `jar`
+/// for that host (a name's value replaced; one set to expire, gone).
+pub fn keep<'a>(jar: &Jar, host: &str, set: impl IntoIterator<Item = &'a str>) {
+    let mut jar = jar.lock().unwrap();
+    for v in set {
+        let mut parts = v.split(';');
+        let Some((name, value)) = parts.next().and_then(|nv| nv.split_once('=')).map(|(n, v)| (n.trim().to_owned(), v.trim().to_owned())) else { continue };
+        let gone = value.is_empty() || parts.any(|a| a.trim().eq_ignore_ascii_case("max-age=0"));
+        jar.retain(|(h, n, _)| !(h == host && *n == name));
+        if !gone {
+            jar.push((host.to_owned(), name, value));
+        }
+    }
+}
+
 impl Like {
     /// The account's own values, for a request to `host`.
     pub fn fill(&self, c: &Credential, host: &str) -> Fill {
-        let jar = self.jar.lock().unwrap();
-        let theirs: Vec<String> = jar.iter().filter(|(h, _, _)| h == host).map(|(_, k, v)| format!("{k}={v}")).collect();
-        let cookie = (!theirs.is_empty()).then(|| theirs.join("; "));
+        let cookie = cookie(&self.jar, host);
         Fill { access: c.access.clone(), refresh: c.refresh.clone(), account_id: c.account_id.clone(), org: self.org.clone(), account_uuid: None, email: self.email.clone(), cookie }
     }
 
-    /// What an answer from `host` set (`set-cookie`), kept for that host (a
-    /// name's value replaced; one set to expire, gone).
+    /// What an answer from `host` set (`set-cookie`), kept for that host.
     pub fn remember(&self, host: &str, headers: &[(String, String)]) {
-        let mut jar = self.jar.lock().unwrap();
-        for (_, v) in headers.iter().filter(|(k, _)| k.eq_ignore_ascii_case("set-cookie")) {
-            let mut parts = v.split(';');
-            let Some((name, value)) = parts.next().and_then(|nv| nv.split_once('=')).map(|(n, v)| (n.trim().to_owned(), v.trim().to_owned())) else { continue };
-            let gone = value.is_empty() || parts.any(|a| a.trim().eq_ignore_ascii_case("max-age=0"));
-            jar.retain(|(h, n, _)| !(h == host && *n == name));
-            if !gone {
-                jar.push((host.to_owned(), name, value));
-            }
-        }
+        keep(&self.jar, host, headers.iter().filter(|(k, _)| k.eq_ignore_ascii_case("set-cookie")).map(|(_, v)| v.as_str()));
     }
 
     /// The captured request `what` is made from, if this account's client
@@ -94,12 +109,29 @@ impl Like {
             (Provider::Claude, What::Renewal) => {
                 c.find("platform.claude.com", "POST", "/v1/oauth/token", &["renewal"]).or_else(|| c.find("console.anthropic.com", "POST", "/v1/oauth/token", &["renewal"])).cloned()
             }
-            (Provider::Codex, What::Usage) => c.find("chatgpt.com", "GET", "/backend-api/wham/usage", CODEX_RUNS).cloned(),
-            (Provider::Codex, What::Credits) => c.find("chatgpt.com", "GET", "/backend-api/wham/rate-limit-reset-credits", CODEX_RUNS).cloned(),
+            // (The reads Codex makes on its own, never its TUI's, which asks
+            // for Reserve: Codex's review. None captured, the pool's own.)
+            (Provider::Codex, What::Usage) => passive(c, "/backend-api/wham/usage"),
+            (Provider::Codex, What::Credits) => passive(c, "/backend-api/wham/rate-limit-reset-credits"),
             (Provider::Codex, What::Claim) => c.find("chatgpt.com", "POST", "/backend-api/wham/rate-limit-reset-credits/consume", CODEX_RUNS).cloned(),
             (Provider::Codex, What::Renewal) => c.find("auth.openai.com", "POST", "/oauth/token", &["renewal"]).cloned(),
         }
     }
+}
+
+/// The last read of ChatGPT's `path` Codex made on its own (its app
+/// server's, its `exec`'s), not its TUI's: that one asks for Reserve
+/// (`x-openai-codex-luna-reserve`), which a poll of the pool's mustn't.
+fn passive(c: &crate::capture::Capture, path: &str) -> Option<Sent> {
+    ["app-server", "print", "renewal"]
+        .iter()
+        .find_map(|run| {
+            c.requests
+                .iter()
+                .rev()
+                .find(|s| s.run == *run && s.host == "chatgpt.com" && s.method == "GET" && s.path() == path && !s.headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("x-openai-codex-luna-reserve")))
+        })
+        .cloned()
 }
 
 /// A Claude Code request as its session sends it: print mode's names its
@@ -390,17 +422,16 @@ async fn http1<S: AsyncRead + AsyncWrite + Unpin>(mut s: S, b: &Built) -> Result
 }
 
 /// A chunked body's chunks, joined.
-fn unchunk(raw: &[u8]) -> Vec<u8> {
+pub(crate) fn unchunk(raw: &[u8]) -> Vec<u8> {
     let mut plain = Vec::new();
     let mut at = 0;
     while let Some(eol) = raw[at..].windows(2).position(|w| w == b"\r\n") {
         let size = usize::from_str_radix(String::from_utf8_lossy(&raw[at..at + eol]).split(';').next().unwrap_or("").trim(), 16).unwrap_or(0);
         at += eol + 2;
-        if size == 0 || at + size > raw.len() {
-            break;
-        }
-        plain.extend_from_slice(&raw[at..at + size]);
-        at = (at + size + 2).min(raw.len());
+        // (A size past what came, or past what a size can say, ends it.)
+        let Some(end) = at.checked_add(size).filter(|&e| size > 0 && e <= raw.len()) else { break };
+        plain.extend_from_slice(&raw[at..end]);
+        at = end.saturating_add(2).min(raw.len());
     }
     plain
 }
@@ -465,6 +496,29 @@ mod tests {
         }
     }
 
+    /// Codex's quota read for the pool's polls is one it makes on its own
+    /// (its app server's), never its TUI's, which asks for Reserve (Codex's
+    /// review: a capture with only the TUI's had the pool poll with it).
+    #[test]
+    fn codex_polls_with_a_passive_read() {
+        let read = |run: &str, reserve: bool| {
+            let mut s = sent(&[("user-agent", "codex")], "");
+            (s.run, s.host, s.method, s.target) = (run.into(), "chatgpt.com".into(), "GET".into(), "/backend-api/wham/usage".into());
+            if reserve {
+                s.headers.push(("x-openai-codex-luna-reserve".into(), "1".into()));
+            }
+            s
+        };
+        let like = |requests: Vec<Sent>| Like {
+            capture: Arc::new(Capture { provider: Provider::Codex, version: "0".into(), installed: String::new(), account: "a".into(), at: 0, requests, account_uuid: None, hellos: vec![] }),
+            org: None,
+            email: None,
+            jar: Default::default(),
+        };
+        assert!(like(vec![read("session", true)]).request(What::Usage).is_none());
+        assert_eq!(like(vec![read("app-server", false), read("session", true)]).request(What::Usage).map(|s| s.run), Some("app-server".to_owned()));
+    }
+
     /// A request is the client's, byte for byte, but for the account's own
     /// values and the length of the body it carries.
     #[test]
@@ -498,6 +552,11 @@ mod tests {
     fn nothing_sent_with_a_placeholder() {
         let s = sent(&[("Authorization", "Bearer {{access_token}}")], "");
         assert!(build(&s, &Fill { access: "tok".into(), ..Fill::default() }, None, None).is_err());
+    }
+
+    #[test]
+    fn a_chunk_too_big_ends_it() {
+        assert_eq!(unchunk(b"2\r\nok\r\nffffffffffffffff\r\nrest"), b"ok");
     }
 
     #[test]

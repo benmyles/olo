@@ -402,29 +402,23 @@ async fn read_head<S: AsyncRead + Unpin>(s: &mut S, buf: &mut Vec<u8>) -> Option
 
 /// The rest of a request's body after its head (`have`: what came with the
 /// head): by its length, or its chunks until the last (decoded).
+/// The most of a request body a capture reads (a model request's is
+/// answered without its body kept).
+const BODY_MOST: usize = 64 << 20;
+
 async fn read_body<S: AsyncRead + Unpin>(s: &mut S, mut have: Vec<u8>, length: Option<usize>, chunked: bool) -> Vec<u8> {
     let mut chunk = [0u8; 16384];
     if chunked {
-        while !have.windows(5).any(|w| w == b"0\r\n\r\n") {
+        // (Up to its last chunk, or `BODY_MOST`.)
+        while !have.windows(5).any(|w| w == b"0\r\n\r\n") && have.len() < BODY_MOST {
             match tokio::time::timeout(Duration::from_secs(30), s.read(&mut chunk)).await {
                 Ok(Ok(n)) if n > 0 => have.extend_from_slice(&chunk[..n]),
                 _ => break,
             }
         }
-        let mut plain = Vec::new();
-        let mut at = 0;
-        while let Some(eol) = have[at..].windows(2).position(|w| w == b"\r\n") {
-            let size = usize::from_str_radix(String::from_utf8_lossy(&have[at..at + eol]).trim(), 16).unwrap_or(0);
-            at += eol + 2;
-            if size == 0 || at + size > have.len() {
-                break;
-            }
-            plain.extend_from_slice(&have[at..at + size]);
-            at = (at + size + 2).min(have.len());
-        }
-        return plain;
+        return crate::likeness::unchunk(&have);
     }
-    let want = length.unwrap_or(0);
+    let want = length.unwrap_or(0).min(BODY_MOST);
     while have.len() < want {
         match tokio::time::timeout(Duration::from_secs(30), s.read(&mut chunk)).await {
             Ok(Ok(n)) if n > 0 => have.extend_from_slice(&chunk[..n]),
@@ -505,7 +499,7 @@ async fn connection(rec: Arc<Recorder>, mut client: TcpStream) -> Option<()> {
     }
     let host = target.rsplit_once(':').map(|(h, _)| h.trim_matches(['[', ']']).to_ascii_lowercase()).unwrap_or(target.to_ascii_lowercase());
     client.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n").await.ok()?;
-    let start = tokio_rustls::LazyConfigAcceptor::new(rustls::server::Acceptor::default(), client).await.ok()?;
+    let start = tokio::time::timeout(Duration::from_secs(20), tokio_rustls::LazyConfigAcceptor::new(rustls::server::Acceptor::default(), client)).await.ok()?.ok()?;
     let hello = start.client_hello();
     let sni = hello.server_name().map(str::to_ascii_lowercase).unwrap_or_else(|| host.clone());
     let alpn: Vec<String> = hello.alpn().map(|a| a.map(|p| String::from_utf8_lossy(p).into_owned()).collect()).unwrap_or_default();
@@ -520,7 +514,7 @@ async fn connection(rec: Arc<Recorder>, mut client: TcpStream) -> Option<()> {
     // (HTTP/1.1, so each head is read as it came; what the client would
     // speak with the host, from its offer, is kept with it.)
     config.alpn_protocols = vec![b"http/1.1".to_vec()];
-    let mut tls = start.into_stream(Arc::new(config)).await.ok()?;
+    let mut tls = tokio::time::timeout(Duration::from_secs(20), start.into_stream(Arc::new(config))).await.ok()?.ok()?;
     let mut buf = Vec::new();
     let end = read_head(&mut tls, &mut buf).await?;
     let head = String::from_utf8_lossy(&buf[..end]).into_owned();
@@ -628,8 +622,10 @@ impl Sandbox {
         // (Private from its making: no moment it can be read by another.)
         std::fs::DirBuilder::new().mode(0o700).create(&dir).map_err(|e| e.to_string())?;
         std::fs::DirBuilder::new().mode(0o700).create(dir.join("work")).map_err(|e| e.to_string())?;
-        // Its owner, so a sweep takes only a dead one's.
-        std::fs::write(dir.join("owner"), std::process::id().to_string()).map_err(|e| e.to_string())?;
+        // Its owner (and when it started, so another process given its id
+        // later isn't taken for it), so a sweep takes only a dead one's.
+        let me = std::process::id() as i32;
+        std::fs::write(dir.join("owner"), format!("{me} {}", crate::drain::started(me).unwrap_or(0))).map_err(|e| e.to_string())?;
         Ok(Sandbox { dir })
     }
     fn home(&self) -> PathBuf {
@@ -664,8 +660,10 @@ fn sweep_where(own_too: bool) {
     let Ok(old) = std::fs::read_dir(&base) else { return };
     let me = std::process::id() as i32;
     for e in old.flatten() {
-        let owner: Option<i32> = std::fs::read_to_string(e.path().join("owner")).ok().and_then(|s| s.trim().parse().ok());
-        let alive = owner.is_some_and(|pid| pid != 0 && Path::new(&format!("/proc/{pid}")).exists() && !(own_too && pid == me));
+        let owner = std::fs::read_to_string(e.path().join("owner")).unwrap_or_default();
+        let mut owner = owner.split_whitespace().map(|n| n.parse::<u64>().ok());
+        let (pid, started) = (owner.next().flatten(), owner.next().flatten());
+        let alive = pid.and_then(|p| i32::try_from(p).ok()).is_some_and(|pid| pid != 0 && !(own_too && pid == me) && crate::drain::started(pid).is_some_and(|now| started.is_none_or(|s| s == now)));
         if !alive {
             let _ = std::fs::remove_dir_all(e.path());
         }
@@ -981,7 +979,9 @@ fn run_step(step: &Step, exe: &Path, env: &[(String, String)], work: &Path, port
                 if terminal && libc::ioctl(0, libc::TIOCSCTTY as _, 0) < 0 {
                     return Err(std::io::Error::last_os_error());
                 }
-                libc::syscall(libc::SYS_close_range, 3u32, u32::MAX, 0u32);
+                if libc::syscall(libc::SYS_close_range, 3u32, u32::MAX, 0u32) < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
                 confine(port)
             });
         }

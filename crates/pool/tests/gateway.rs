@@ -333,9 +333,11 @@ async fn switches_by_the_model_whose_meter_ran_out() {
 
 /// The network changes while a request waits for its answer (Ben,
 /// 2026-11-09: a cable pulled, Wi-Fi left): its connection is cut, as one
-/// on a network that went is (`olo_net`), and the gateway asks again on
-/// the network there is now, so the client gets its answer, not an error;
-/// with no network at all, it waits for one, then asks.
+/// on a network that went is (`olo_net`). The host may have it already, so
+/// the pool never sends it twice (Codex's review reproduced the double):
+/// it answers 502 once there's a network again, and the client asks again
+/// on it, as Claude Code's and Codex's own retries do; with no network at
+/// all, it waits for one before answering.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_request_goes_on_across_a_network_change() {
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst};
@@ -378,7 +380,8 @@ async fn a_request_goes_on_across_a_network_change() {
         }
     };
 
-    // Changed under it: asked again, on the new network.
+    // Changed under it: never sent twice; the client's own retry, on the
+    // new network.
     let started = std::time::Instant::now();
     let pending = tokio::spawn(ask());
     until(1, asked.clone()).await;
@@ -386,6 +389,9 @@ async fn a_request_goes_on_across_a_network_change() {
     let cut = olo_net::pretend_change(true, Some(up_addr.port()));
     assert!(cut >= 1, "the gateway's connection upstream was cut");
     let r = pending.await.unwrap();
+    assert_eq!(r.status(), 502);
+    assert_eq!(asked.load(SeqCst), 1, "the pool sent it twice");
+    let r = ask().await;
     assert_eq!(r.status(), 200);
     assert!(r.text().await.unwrap().contains("hello"));
     assert_eq!(asked.load(SeqCst), 2);
@@ -402,6 +408,9 @@ async fn a_request_goes_on_across_a_network_change() {
     assert_eq!(asked.load(SeqCst), 3);
     olo_net::pretend_change(true, None);
     let r = pending.await.unwrap();
+    assert_eq!(r.status(), 502);
+    assert_eq!(asked.load(SeqCst), 3, "the pool sent it twice");
+    let r = ask().await;
     assert_eq!(r.status(), 200);
     assert_eq!(asked.load(SeqCst), 4);
     assert_eq!(shared.snapshot().in_flight.values().sum::<u32>(), 0);
@@ -490,4 +499,184 @@ async fn a_compressed_codex_request_refused_goes_again_plain() {
     let r = send(json.clone(), None).await.unwrap();
     assert_eq!(r.status(), 400);
     assert_eq!(got.lock().unwrap().len(), 1);
+}
+
+/// A fake Claude for the claims below: `/v1/messages` serves an account
+/// once it's been reset (else a 429 naming its 5-hour meter), and names
+/// the host it was sent to; its usage read says so too, its grants
+/// `grants` (those not used); each claim is written down (organization,
+/// grant, request id), answered by `answer` after `delay`.
+struct Claims {
+    reset: Mutex<Vec<String>>,
+    made: Mutex<Vec<(String, String, String)>>,
+    hosts: Mutex<Vec<String>>,
+}
+
+type Answer = Arc<dyn Fn(&str, &str, usize) -> (u16, Value) + Send + Sync>;
+
+fn claims_fake(state: Arc<Claims>, grants: Vec<(&'static str, &'static str)>, delay: std::time::Duration, answer: Answer) -> Router {
+    let (s1, s2, s3) = (state.clone(), state.clone(), state.clone());
+    Router::new()
+        .route(
+            "/v1/messages",
+            post(move |h: HeaderMap| {
+                let s = s1.clone();
+                async move {
+                    s.hosts.lock().unwrap().push(h.get("host").and_then(|v| v.to_str().ok()).unwrap_or("").to_owned());
+                    if s.reset.lock().unwrap().contains(&token(&h)) {
+                        Response::builder().header("content-type", "application/json").body(Body::from(r#"{"usage":{"input_tokens":3,"output_tokens":4}}"#)).unwrap()
+                    } else {
+                        Response::builder()
+                            .status(429)
+                            .header("anthropic-ratelimit-unified-status", "rejected")
+                            .header("anthropic-ratelimit-unified-representative-claim", "five_hour")
+                            .header("anthropic-ratelimit-unified-reset", (now() + 3600).to_string())
+                            .body(Body::from("{}"))
+                            .unwrap()
+                    }
+                }
+            }),
+        )
+        .route(
+            "/api/organizations/{org}/reset_rate_limits",
+            post(move |axum::extract::Path(org): axum::extract::Path<String>, body: axum::body::Bytes| {
+                let (s, answer) = (s2.clone(), answer.clone());
+                async move {
+                    let v: Value = serde_json::from_slice(&body).unwrap();
+                    let (grant, request) = (v["grant_id"].as_str().unwrap().to_owned(), v["request_id"].as_str().unwrap().to_owned());
+                    let n = {
+                        let mut made = s.made.lock().unwrap();
+                        made.push((org.clone(), grant.clone(), request));
+                        made.iter().filter(|m| m.0 == org).count()
+                    };
+                    tokio::time::sleep(delay).await;
+                    let (status, v) = answer(&org, &grant, n);
+                    if v["result"] == "reset" {
+                        // (Its account's token: the organization's name, "org-" taken off.)
+                        s.reset.lock().unwrap().push(org.trim_start_matches("org-").to_owned());
+                    }
+                    (StatusCode::from_u16(status).unwrap(), axum::Json(v))
+                }
+            }),
+        )
+        .route(
+            "/api/oauth/usage",
+            get(move |h: HeaderMap| {
+                let s = s3.clone();
+                let grants = grants.clone();
+                async move {
+                    let t = token(&h);
+                    let reset = s.reset.lock().unwrap().contains(&t);
+                    let used: Vec<String> = s.made.lock().unwrap().iter().filter(|m| m.0 == format!("org-{t}") && reset).map(|m| m.1.clone()).collect();
+                    let grants: Vec<Value> = grants
+                        .iter()
+                        .filter(|(who, id)| *who == t && !used.contains(&id.to_string()))
+                        .map(|(_, id)| json!({"id": id, "resets_left": 1, "usable_now": true, "use_requires_limit": false, "clears": ["five_hour"], "ends_at": now() + 86400 + id.len() as i64}))
+                        .collect();
+                    axum::Json(json!({
+                        "five_hour": {"utilization": if reset { 1.0 } else { 100.0 }, "resets_at": now() + 18000},
+                        "cedar_ember": {"eligible": true, "grants": grants},
+                    }))
+                }
+            }),
+        )
+}
+
+/// Accounts out of their 5-hour quota, each with the grants named for it
+/// in `grants`; a gateway for them in front of `fake`.
+async fn out_of_quota(ids: &[&str], grants: &[(&'static str, &'static str)], fake: Router) -> (Arc<Shared>, SocketAddr, String) {
+    let base = format!("http://{}", serve(fake).await);
+    let up = Upstreams { claude: base.clone(), codex: base.clone(), chatgpt: base.clone(), claude_oauth: format!("{base}/oauth"), codex_oauth: format!("{base}/oauth"), origin: None };
+    let mut saved = Saved::default();
+    for (n, id) in ids.iter().enumerate() {
+        let mut a = account(id, n as i64 + 1, 18000);
+        a.windows[0].used = 100.0;
+        a.org = Some(format!("org-{id}"));
+        for (who, g) in grants.iter().filter(|(who, _)| who == id) {
+            let _ = who;
+            a.credits.push(olo_token_pool::model::ResetCredit {
+                id: (*g).into(),
+                expires_at: Some(now() + 86400 + g.len() as i64 + n as i64),
+                remaining: 1,
+                usable: true,
+                program: Some("cedar_ember".into()),
+                clears: vec!["five_hour".into()],
+                needs_limit: false,
+                ..Default::default()
+            });
+        }
+        saved.accounts.push(a);
+        saved.credentials.insert((*id).into(), Credential { access: (*id).into(), refresh: None, expires_at: Some(now() + 3600), account_id: None });
+    }
+    let shared = Shared::new(saved, None, up, || {});
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = l.local_addr().unwrap();
+    let app = gateway::router(shared.clone(), addr.port());
+    tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+    (shared, addr, base.trim_start_matches("http://").to_owned())
+}
+
+async fn ask_claude(addr: SocketAddr) -> (u16, String) {
+    let r = reqwest::Client::new().post(format!("http://{addr}/claude/v1/messages")).json(&json!({"model": "claude-opus-5-5", "messages": []})).send().await.unwrap();
+    let who = r.headers().get("x-olo-pool-account").and_then(|v| v.to_str().ok()).unwrap_or("").to_owned();
+    (r.status().as_u16(), who)
+}
+
+/// Two requests turned away together, every account out: one reset claimed,
+/// and both served by it (Codex's review: each claimed one, two credits
+/// for what one gave back). Sent to the gateway's own address, each went
+/// to the host naming the host's own name, not the gateway's.
+#[tokio::test(flavor = "multi_thread")]
+async fn two_turned_away_together_claim_one_reset() {
+    let state = Arc::new(Claims { reset: Default::default(), made: Default::default(), hosts: Default::default() });
+    let fake = claims_fake(state.clone(), vec![("a", "ga"), ("b", "gb")], std::time::Duration::from_millis(300), Arc::new(|_, _, _| (200, json!({"result": "reset"}))));
+    let (_shared, addr, host) = out_of_quota(&["a", "b"], &[("a", "ga"), ("b", "gb")], fake).await;
+    let (one, two) = tokio::join!(ask_claude(addr), async {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        ask_claude(addr).await
+    });
+    assert_eq!((one, two), ((200, "a".to_owned()), (200, "a".to_owned())));
+    let made = state.made.lock().unwrap().clone();
+    assert_eq!(made.iter().map(|m| m.1.as_str()).collect::<Vec<_>>(), ["ga"], "one reset for both");
+    assert!(state.hosts.lock().unwrap().iter().all(|h| *h == host), "{:?} not {host}", state.hosts.lock().unwrap());
+}
+
+/// A claim left unclear (the provider answered 503: it may have gone
+/// through): no other account's credit is claimed meanwhile (that could pay
+/// twice for one reset), and the same claim, under the same request id, is
+/// made again first.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_unclear_claim_is_made_again_before_any_other() {
+    let state = Arc::new(Claims { reset: Default::default(), made: Default::default(), hosts: Default::default() });
+    let answer: Answer = Arc::new(|org, _, n| if org == "org-a" && n == 1 { (503, json!({"error": "busy"})) } else { (200, json!({"result": "reset"})) });
+    let fake = claims_fake(state.clone(), vec![("a", "ga"), ("b", "gb")], std::time::Duration::ZERO, answer);
+    let (shared, addr, _) = out_of_quota(&["a", "b"], &[("a", "ga"), ("b", "gb")], fake).await;
+    assert_eq!(ask_claude(addr).await.0, 429);
+    assert_eq!(ask_claude(addr).await.0, 429);
+    {
+        let made = state.made.lock().unwrap();
+        assert_eq!(made.iter().map(|m| m.0.as_str()).collect::<Vec<_>>(), ["org-a"], "another account's credit claimed while one claim was unclear");
+    }
+    assert!(shared.snapshot().account("a").unwrap().redeeming.is_some(), "the unclear claim forgotten");
+    // Asked again (by hand here): the same claim, the same id; then served.
+    shared.redeem("a").await.unwrap();
+    let made = state.made.lock().unwrap().clone();
+    assert_eq!(made.len(), 2);
+    assert_eq!((&made[0].1, &made[0].2), (&made[1].1, &made[1].2), "made again under another id");
+    assert_eq!(ask_claude(addr).await, (200, "a".to_owned()));
+    assert!(state.made.lock().unwrap().iter().all(|m| m.0 == "org-a"));
+}
+
+/// One account, two grants that would let the request through: the first
+/// refused (nothing spent), the second is claimed (Codex's review: the
+/// search ended at the first).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_refused_grant_then_the_same_accounts_next() {
+    let state = Arc::new(Claims { reset: Default::default(), made: Default::default(), hosts: Default::default() });
+    let answer: Answer = Arc::new(|_, grant, _| if grant == "g1" { (200, json!({"result": "cooldown"})) } else { (200, json!({"result": "reset"})) });
+    let fake = claims_fake(state.clone(), vec![("a", "g1"), ("a", "g22")], std::time::Duration::ZERO, answer);
+    let (_shared, addr, _) = out_of_quota(&["a"], &[("a", "g1"), ("a", "g22")], fake).await;
+    assert_eq!(ask_claude(addr).await, (200, "a".to_owned()));
+    let made = state.made.lock().unwrap().clone();
+    assert_eq!(made.iter().map(|m| m.1.as_str()).collect::<Vec<_>>(), ["g1", "g22"]);
 }

@@ -1,24 +1,36 @@
 //! Requests passed on exactly as the client sent them (Ben, 2026-11-19:
 //! "all requests from the pool need to be exactly the same as if they came
-//! from claude code / codex"): over a connection of the account's own (a
-//! client has one account, so none of its connections ever carries
-//! another's requests), HTTP/1.1 as Claude Code speaks it to Anthropic
-//! (its SDK offers no more), each header in the client's own case and
-//! order (hyper's server writes down each name's case, its client writes
-//! it back: `preserve_header_case` on both, the case map in the request's
-//! extensions, which the proxy carries over), kept alive between requests
-//! as the client keeps its own.
+//! from claude code / codex"): each header in the client's own case and
+//! order (hyper's server writes down each name's case, its client writes it
+//! back: `preserve_header_case` on both, the case map in the request's
+//! extensions, which the proxy carries over), the body as it came, over
+//! connections that follow the client's own. For each connection the
+//! client opens to the proxy, the pool opens one of its own to the host for
+//! each account it passes that connection's requests on for (never one
+//! carrying two accounts', nor two sign-ins'), offering in its handshake
+//! what the client offered, kept alive as long as the client keeps its
+//! own, and closed with it. The answer comes back as it came, each name in
+//! its case, its status line's reason too.
+//!
+//! What isn't kept: a header's spacing, and a header repeated with another
+//! between (hyper groups a name's values); neither is what a client sends.
 
 use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-    time::Duration,
+    collections::{HashMap, HashSet},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::{Duration, Instant},
 };
 
 use bytes::Bytes;
-use futures_util::{Stream, StreamExt, TryStreamExt};
+use futures_util::Stream;
 use http_body_util::{BodyExt, Full};
-use hyper::{HeaderMap, StatusCode, client::conn::http1::SendRequest};
+use hyper::{
+    HeaderMap, StatusCode,
+    client::conn::{TrySendError, http1, http2},
+};
 use rustls::pki_types::ServerName;
 use tokio::net::TcpStream;
 
@@ -28,20 +40,62 @@ use tokio::net::TcpStream;
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ClientOffer(pub Vec<String>);
 
-/// An answer from upstream: reqwest's, or one from an account's own
-/// connection (`Exact`), which goes back to its pool once read to its end.
+/// The client's connection a request came on (the proxy's numbering; 0:
+/// none known, a request to the gateway's own address), on each of its
+/// requests: the pool's connections upstream follow it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub struct ClientConn(pub u64);
+
+static NEXT_CONN: AtomicU64 = AtomicU64::new(1);
+
+impl ClientConn {
+    /// A new client connection's number.
+    pub fn next() -> ClientConn {
+        ClientConn(NEXT_CONN.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
+/// An answer from upstream: reqwest's, or one from a connection of the
+/// pool's that follows the client's (`Exact`), which goes back to be used
+/// again once read to its end.
 pub enum Answer {
     Reqwest(reqwest::Response),
     Exact(hyper::Response<hyper::body::Incoming>, Option<Back>),
 }
 
-/// A connection to put back in its account's pool when its answer has
+/// A connection to keep for its key's next request, once its answer has
 /// been read whole.
 pub struct Back {
     pool: Arc<Exact>,
-    account: String,
-    sender: SendRequest<Full<Bytes>>,
+    key: Key,
+    made: (u64, u64),
+    sender: Sender,
 }
+
+impl Back {
+    fn put(self) {
+        let pool = self.pool.clone();
+        pool.put(self);
+    }
+}
+
+/// How long the host has to answer what the pool asks of it: a connection
+/// made (TCP, TLS and the protocol's own start, together), a kept one ready
+/// again, the head of an answer (a model thinking at length before a
+/// single answer: the client gives up first, as reqwest's read timeout
+/// let it), and each next piece of an answer.
+const CONNECT_WITHIN: Duration = Duration::from_secs(20);
+const READY_WITHIN: Duration = Duration::from_secs(5);
+const HEAD_WITHIN: Duration = Duration::from_secs(15 * 60);
+const PIECE_WITHIN: Duration = Duration::from_secs(15 * 60);
+
+/// How long a connection the pool made for no client connection (the
+/// gateway's own address) is kept idle.
+const IDLE_FOR: Duration = Duration::from_secs(60);
+
+/// How many idle connections a key keeps (one for a client connection's,
+/// whose requests come one at a time).
+const IDLE_MOST: usize = 4;
 
 impl Answer {
     pub fn status(&self) -> StatusCode {
@@ -58,27 +112,52 @@ impl Answer {
         }
     }
 
-    /// Its body as it comes (its connection back in its pool once it has
-    /// all come; a body left unread closes it).
+    /// What hyper wrote down of the answer beside its headers (each name's
+    /// case, a status line's own reason), for the proxy's server to write
+    /// it back so.
+    pub fn take_extensions(&mut self) -> hyper::http::Extensions {
+        match self {
+            Answer::Reqwest(_) => Default::default(),
+            Answer::Exact(r, _) => std::mem::take(r.extensions_mut()),
+        }
+    }
+
+    /// Its body as it comes (its connection kept once it has all come; a
+    /// body left unread, broken off or stalled closes it).
     pub fn into_stream(self) -> std::pin::Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>> {
+        use futures_util::TryStreamExt;
         match self {
             Answer::Reqwest(r) => Box::pin(r.bytes_stream().map_err(std::io::Error::other)),
-            Answer::Exact(r, back) => {
-                let mut back = back;
-                let body = http_body_util::BodyStream::new(r.into_body()).filter_map(|f| async move {
-                    match f {
-                        Ok(frame) => frame.into_data().ok().map(Ok),
-                        Err(e) => Some(Err(std::io::Error::other(e))),
+            Answer::Exact(r, back) => Box::pin(futures_util::stream::unfold(Some((r.into_body(), back)), |state| async move {
+                let (mut body, mut back) = state?;
+                loop {
+                    match tokio::time::timeout(PIECE_WITHIN, body.frame()).await {
+                        Err(_) => return Some((Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "the answer stopped coming")), None)),
+                        Ok(None) => {
+                            if let Some(b) = back.take() {
+                                b.put();
+                            }
+                            return None;
+                        }
+                        Ok(Some(Ok(frame))) => {
+                            // (Trailers, which no answer here has, aside.)
+                            if let Ok(data) = frame.into_data() {
+                                // Its last byte, by its length: kept now
+                                // (a server passing on an answer of a known
+                                // length reads no further).
+                                if http_body::Body::is_end_stream(&body) {
+                                    if let Some(b) = back.take() {
+                                        b.put();
+                                    }
+                                    return Some((Ok(data), None));
+                                }
+                                return Some((Ok(data), Some((body, back))));
+                            }
+                        }
+                        Ok(Some(Err(e))) => return Some((Err(std::io::Error::other(e)), None)),
                     }
-                });
-                let done = futures_util::stream::poll_fn(move |_| {
-                    if let Some(b) = back.take() {
-                        b.pool.put(&b.account, b.sender);
-                    }
-                    std::task::Poll::Ready(None)
-                });
-                Box::pin(body.chain(done))
-            }
+                }
+            })),
         }
     }
 }
@@ -99,68 +178,199 @@ impl std::fmt::Display for SendError {
     }
 }
 
-/// Each account's idle HTTP/1.1 connections to a host, by account.
-#[derive(Default)]
-pub struct Exact {
-    idle: Mutex<HashMap<String, Vec<SendRequest<Full<Bytes>>>>>,
-}
-
 /// The pool's key for connections carrying a client's own sign-in (its
 /// requests the pool passes through), apart from every account's.
 pub const OWN: &str = "\u{0}own";
 
-/// How many idle connections an account keeps (a client keeps a few).
-const IDLE_MOST: usize = 4;
+/// Whose a connection is: an account's (or the client's own sign-in's,
+/// `OWN`), for one client connection.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct Key {
+    account: String,
+    conn: u64,
+}
+
+/// A connection of the pool's: HTTP/1.1, or HTTP/2 where the client
+/// offered it and the host chose it (requests then name their origin, as
+/// HTTP/2 has them do).
+enum Sender {
+    H1(http1::SendRequest<Full<Bytes>>),
+    H2(http2::SendRequest<Full<Bytes>>, String),
+}
+
+impl Sender {
+    fn is_closed(&self) -> bool {
+        match self {
+            Sender::H1(s) => s.is_closed(),
+            Sender::H2(s, _) => s.is_closed(),
+        }
+    }
+
+    async fn ready(&mut self) -> hyper::Result<()> {
+        match self {
+            Sender::H1(s) => s.ready().await,
+            Sender::H2(s, _) => s.ready().await,
+        }
+    }
+
+    #[allow(clippy::result_large_err)]
+    async fn send(&mut self, req: hyper::Request<Full<Bytes>>) -> Result<hyper::Response<hyper::body::Incoming>, TrySendError<hyper::Request<Full<Bytes>>>> {
+        match self {
+            Sender::H1(s) => s.try_send_request(req).await,
+            Sender::H2(s, origin) => s.try_send_request(as_h2(req, origin)).await,
+        }
+    }
+}
+
+/// A request as HTTP/2 sends it: its origin in its target (`:scheme`,
+/// `:authority`, from its `Host`), no `Host` or connection headers.
+fn as_h2(req: hyper::Request<Full<Bytes>>, origin: &str) -> hyper::Request<Full<Bytes>> {
+    let (mut parts, body) = req.into_parts();
+    let authority = parts.headers.get(hyper::header::HOST).and_then(|h| h.to_str().ok()).map(str::to_owned).unwrap_or_else(|| origin.to_owned());
+    for h in ["host", "connection", "keep-alive", "proxy-connection", "transfer-encoding", "upgrade"] {
+        parts.headers.remove(h);
+    }
+    let target = parts.uri.path_and_query().map(|p| p.as_str().to_owned()).unwrap_or_else(|| "/".into());
+    if let Ok(uri) = format!("https://{authority}{target}").parse() {
+        parts.uri = uri;
+    }
+    parts.version = hyper::Version::HTTP_2;
+    hyper::Request::from_parts(parts, body)
+}
+
+struct Idle {
+    sender: Sender,
+    since: Instant,
+}
+
+/// The pool's connections that follow clients', idle between requests.
+#[derive(Default)]
+pub struct Exact {
+    inner: Mutex<Inner>,
+}
+
+#[derive(Default)]
+struct Inner {
+    idle: HashMap<Key, Vec<Idle>>,
+    /// The client connections open now: one of the pool's for a client
+    /// connection that has closed is closed too, never kept.
+    open: HashSet<u64>,
+    /// Each account's connections' generation (a new one as it leaves the
+    /// pool or signs in again), and every connection's (the network
+    /// changed): one made before isn't kept.
+    gens: HashMap<String, u64>,
+    all: u64,
+    /// The network the connections were made on (`olo_net::generation`):
+    /// another, and none is kept.
+    net: u64,
+}
+
+impl Inner {
+    fn made(&self, account: &str) -> (u64, u64) {
+        (self.all, self.gens.get(account).copied().unwrap_or(0))
+    }
+}
 
 impl Exact {
-    fn put(&self, account: &str, sender: SendRequest<Full<Bytes>>) {
-        if sender.is_closed() {
+    fn put(&self, back: Back) {
+        if back.sender.is_closed() {
             return;
         }
-        let mut idle = self.idle.lock().unwrap();
-        let list = idle.entry(account.to_owned()).or_default();
+        let mut inner = self.inner.lock().unwrap();
+        if inner.made(&back.key.account) != back.made || (back.key.conn != 0 && !inner.open.contains(&back.key.conn)) {
+            return;
+        }
+        let list = inner.idle.entry(back.key).or_default();
         if list.len() < IDLE_MOST {
-            list.push(sender);
+            list.push(Idle { sender: back.sender, since: Instant::now() });
         }
     }
 
-    /// Every account's connections closed (the network changed).
+    /// A client connection opened (its requests' connections are kept for
+    /// it until `closed`).
+    pub fn opened(&self, conn: ClientConn) {
+        self.inner.lock().unwrap().open.insert(conn.0);
+    }
+
+    /// A client connection closed: the pool's that followed it close too.
+    pub fn closed(&self, conn: ClientConn) {
+        let mut inner = self.inner.lock().unwrap();
+        inner.open.remove(&conn.0);
+        inner.idle.retain(|k, _| k.conn != conn.0);
+    }
+
+    /// Every connection closed, and none made before kept (the network
+    /// changed).
     pub fn clear(&self) {
-        self.idle.lock().unwrap().clear();
+        let mut inner = self.inner.lock().unwrap();
+        inner.all += 1;
+        inner.idle.clear();
     }
 
-    /// One account's connections closed (it left the pool).
+    /// One account's connections closed, and none made before kept (it
+    /// left the pool, or signed in again, perhaps as another account).
     pub fn forget(&self, account: &str) {
-        self.idle.lock().unwrap().remove(account);
+        let mut inner = self.inner.lock().unwrap();
+        *inner.gens.entry(account.to_owned()).or_default() += 1;
+        inner.idle.retain(|k, _| k.account != account);
     }
 
-    /// Send `req` for `account` to `base` (the host's origin: `https://…`,
-    /// or a test's `http://…`), on an idle connection of the account's or a
-    /// new one; `alpn`, what its TLS handshake offers (Claude Code's SDK:
-    /// `http/1.1`).
-    pub async fn send(self: &Arc<Self>, account: &str, base: &str, alpn: &[&str], req: hyper::Request<Full<Bytes>>) -> Result<Answer, SendError> {
+    /// How many idle connections are kept, all told (for tests).
+    pub fn idle(&self) -> usize {
+        self.inner.lock().unwrap().idle.values().map(Vec::len).sum()
+    }
+
+    /// Send `req` for `account` (or `OWN`) on client connection `conn`'s
+    /// behalf to `base` (the host's origin: `https://…`, or a test's
+    /// `http://…`): on the connection kept for them, or a new one, whose
+    /// handshake offers `alpn` (the client's own offer). A request that
+    /// never went (a kept connection the host had closed) goes once more
+    /// on a new one; one that may have gone, never.
+    pub async fn send(self: &Arc<Self>, account: &str, conn: ClientConn, base: &str, alpn: &[&str], req: hyper::Request<Full<Bytes>>) -> Result<Answer, SendError> {
+        let key = Key { account: account.to_owned(), conn: conn.0 };
+        let made = {
+            let mut inner = self.inner.lock().unwrap();
+            let net = olo_net::generation();
+            if inner.net != net {
+                inner.net = net;
+                inner.all += 1;
+                inner.idle.clear();
+            }
+            inner.made(account)
+        };
         let mut sender = loop {
-            let idle = self.idle.lock().unwrap().get_mut(account).and_then(|l| l.pop());
+            let idle = {
+                let mut inner = self.inner.lock().unwrap();
+                let list = inner.idle.get_mut(&key);
+                list.and_then(|l| {
+                    // (One the gateway's own address made, idle long, goes.)
+                    if key.conn == 0 {
+                        l.retain(|i| i.since.elapsed() < IDLE_FOR);
+                    }
+                    l.pop()
+                })
+            };
             match idle {
-                Some(mut s) if !s.is_closed() => {
-                    if s.ready().await.is_ok() {
-                        break s;
+                Some(mut i) if !i.sender.is_closed() => {
+                    if matches!(tokio::time::timeout(READY_WITHIN, i.sender.ready()).await, Ok(Ok(()))) {
+                        break i.sender;
                     }
                 }
                 Some(_) => continue,
                 None => break connect(base, alpn).await?,
             }
         };
-        match sender.try_send_request(req).await {
-            Ok(r) => Ok(Answer::Exact(r, Some(Back { pool: self.clone(), account: account.to_owned(), sender }))),
-            // Never sent (a kept connection the host had closed): again on
-            // a new one. Once it may have gone, never again.
-            Err(mut e) => match e.take_message() {
+        let back = |sender| Back { pool: self.clone(), key: key.clone(), made, sender };
+        match tokio::time::timeout(HEAD_WITHIN, sender.send(req)).await {
+            Err(_) => Err(SendError::Other("no answer came".into())),
+            Ok(Ok(r)) => Ok(Answer::Exact(r, Some(back(sender)))),
+            Ok(Err(mut e)) => match e.take_message() {
                 Some(req) => {
                     let mut fresh = connect(base, alpn).await?;
-                    match fresh.send_request(req).await {
-                        Ok(r) => Ok(Answer::Exact(r, Some(Back { pool: self.clone(), account: account.to_owned(), sender: fresh }))),
-                        Err(e) => Err(SendError::Other(e.to_string())),
+                    match tokio::time::timeout(HEAD_WITHIN, fresh.send(req)).await {
+                        Err(_) => Err(SendError::Other("no answer came".into())),
+                        Ok(Ok(r)) => Ok(Answer::Exact(r, Some(back(fresh)))),
+                        Ok(Err(e)) => Err(SendError::Other(e.into_error().to_string())),
                     }
                 }
                 None => Err(SendError::Other(e.into_error().to_string())),
@@ -169,9 +379,17 @@ impl Exact {
     }
 }
 
-/// A new HTTP/1.1 connection to `base`'s host: TLS (with `alpn`) for
-/// `https`, plain for a test's `http`.
-async fn connect(base: &str, alpn: &[&str]) -> Result<SendRequest<Full<Bytes>>, SendError> {
+/// A new connection to `base`'s host: TLS (offering `alpn`) for `https`,
+/// plain for a test's `http`; HTTP/2 if the host chose it, else HTTP/1.1.
+/// All of it within `CONNECT_WITHIN`.
+async fn connect(base: &str, alpn: &[&str]) -> Result<Sender, SendError> {
+    match tokio::time::timeout(CONNECT_WITHIN, connect_now(base, alpn)).await {
+        Ok(r) => r,
+        Err(_) => Err(SendError::Connect(format!("{base}: no connection"))),
+    }
+}
+
+async fn connect_now(base: &str, alpn: &[&str]) -> Result<Sender, SendError> {
     let (tls, rest) = if let Some(r) = base.strip_prefix("https://") {
         (true, r)
     } else if let Some(r) = base.strip_prefix("http://") {
@@ -184,22 +402,19 @@ async fn connect(base: &str, alpn: &[&str]) -> Result<SendRequest<Full<Bytes>>, 
         Some((h, p)) => (h.to_owned(), p.parse::<u16>().map_err(|_| SendError::Connect(format!("not a port: {p}")))?),
         None => (authority.to_owned(), if tls { 443 } else { 80 }),
     };
-    let tcp = tokio::time::timeout(Duration::from_secs(20), TcpStream::connect((host.as_str(), port)))
-        .await
-        .map_err(|_| SendError::Connect(format!("{host}: no connection")))?
-        .map_err(|e| SendError::Connect(format!("{host}: {e}")))?;
+    let tcp = TcpStream::connect((host.as_str(), port)).await.map_err(|e| SendError::Connect(format!("{host}: {e}")))?;
     let _ = tcp.set_nodelay(true);
-    let builder = || {
-        let mut b = hyper::client::conn::http1::Builder::new();
+    let h1 = || {
+        let mut b = http1::Builder::new();
         b.preserve_header_case(true);
         b
     };
     if !tls {
-        let (sender, conn) = builder().handshake(hyper_util::rt::TokioIo::new(tcp)).await.map_err(|e| SendError::Connect(e.to_string()))?;
+        let (sender, conn) = h1().handshake(hyper_util::rt::TokioIo::new(tcp)).await.map_err(|e| SendError::Connect(e.to_string()))?;
         tokio::spawn(async move {
             let _ = conn.await;
         });
-        return Ok(sender);
+        return Ok(Sender::H1(sender));
     }
     let crypto = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
     let mut config = rustls::ClientConfig::builder_with_provider(crypto)
@@ -210,23 +425,92 @@ async fn connect(base: &str, alpn: &[&str]) -> Result<SendRequest<Full<Bytes>>, 
     config.alpn_protocols = alpn.iter().map(|p| p.as_bytes().to_vec()).collect();
     let name = ServerName::try_from(host.clone()).map_err(|e| SendError::Connect(e.to_string()))?;
     let stream = tokio_rustls::TlsConnector::from(Arc::new(config)).connect(name, tcp).await.map_err(|e| SendError::Connect(format!("{host}: {e}")))?;
-    let (sender, conn) = builder().handshake(hyper_util::rt::TokioIo::new(stream)).await.map_err(|e| SendError::Connect(e.to_string()))?;
+    if stream.get_ref().1.alpn_protocol() == Some(b"h2") {
+        let (sender, conn) = http2::Builder::new(hyper_util::rt::TokioExecutor::new()).handshake(hyper_util::rt::TokioIo::new(stream)).await.map_err(|e| SendError::Connect(e.to_string()))?;
+        tokio::spawn(async move {
+            let _ = conn.await;
+        });
+        return Ok(Sender::H2(sender, authority.to_owned()));
+    }
+    let (sender, conn) = h1().handshake(hyper_util::rt::TokioIo::new(stream)).await.map_err(|e| SendError::Connect(e.to_string()))?;
     tokio::spawn(async move {
         let _ = conn.await;
     });
-    Ok(sender)
+    Ok(Sender::H1(sender))
 }
 
-/// A body read whole (an answer the pool reads itself).
-pub async fn read_all(a: Answer) -> Result<Bytes, std::io::Error> {
-    match a {
-        Answer::Reqwest(r) => r.bytes().await.map_err(std::io::Error::other),
-        Answer::Exact(r, back) => {
-            let body = r.into_body().collect().await.map_err(std::io::Error::other)?.to_bytes();
-            if let Some(b) = back {
-                b.pool.put(&b.account, b.sender);
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// A host answering each request on a kept connection.
+    async fn host() -> String {
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let at = l.local_addr().unwrap();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut s, _)) = l.accept().await else { return };
+                tokio::spawn(async move {
+                    let mut buf = Vec::new();
+                    let mut chunk = [0u8; 1024];
+                    loop {
+                        while !buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                            match s.read(&mut chunk).await {
+                                Ok(0) | Err(_) => return,
+                                Ok(n) => buf.extend_from_slice(&chunk[..n]),
+                            }
+                        }
+                        buf.clear();
+                        if s.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok").await.is_err() {
+                            return;
+                        }
+                    }
+                });
             }
-            Ok(body)
+        });
+        format!("http://{at}")
+    }
+
+    fn get() -> hyper::Request<Full<Bytes>> {
+        hyper::Request::builder().uri("/").header("host", "example").body(Full::new(Bytes::new())).unwrap()
+    }
+
+    async fn read(a: Answer) {
+        use futures_util::StreamExt;
+        let mut s = a.into_stream();
+        while let Some(piece) = s.next().await {
+            piece.unwrap();
         }
+    }
+
+    /// A connection is kept for its account's next request once its answer
+    /// is read; not one whose account left (or signed in again) or whose
+    /// client connection closed while its answer was still coming, nor any
+    /// made before every connection was let go (Codex's review: the old one
+    /// came back, a new sign-in sent on the old account's connection).
+    #[tokio::test]
+    async fn nothing_made_before_is_kept() {
+        let base = host().await;
+        let pool = Arc::new(Exact::default());
+        let conn = ClientConn::next();
+        pool.opened(conn);
+        read(pool.send("a", conn, &base, &[], get()).await.unwrap()).await;
+        assert_eq!(pool.idle(), 1);
+        let answer = pool.send("a", conn, &base, &[], get()).await.unwrap();
+        pool.forget("a");
+        read(answer).await;
+        assert_eq!(pool.idle(), 0, "kept after its account left");
+        let answer = pool.send("a", conn, &base, &[], get()).await.unwrap();
+        pool.clear();
+        read(answer).await;
+        assert_eq!(pool.idle(), 0, "kept after every connection was let go");
+        let answer = pool.send("a", conn, &base, &[], get()).await.unwrap();
+        pool.closed(conn);
+        read(answer).await;
+        assert_eq!(pool.idle(), 0, "kept after its client connection closed");
+        // (The gateway's own address: no client connection to follow.)
+        read(pool.send("a", ClientConn::default(), &base, &[], get()).await.unwrap()).await;
+        assert_eq!(pool.idle(), 1);
     }
 }

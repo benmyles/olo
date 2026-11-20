@@ -423,12 +423,19 @@ pub fn parse_credits(p: Provider, d: &Value) -> Vec<ResetCredit> {
                     })
                 })
                 .collect();
-            // (The list of details can stop short of what ChatGPT counts,
-            // `available_count`: the rest, as ones it chooses itself.)
-            let counted = d["available_count"].as_u64().unwrap_or(0) as u32;
-            let listed = out.len() as u32;
+            // What ChatGPT counts (`available_count`) is the number, either
+            // way: the details can stop short of it (the rest, as ones it
+            // chooses itself) or list more than it counts (the soonest to
+            // expire of them, which it spends first). Without a count, the
+            // details.
+            let Some(counted) = d["available_count"].as_u64() else { return out };
+            let counted = u32::try_from(counted).unwrap_or(u32::MAX);
+            let listed = u32::try_from(out.len()).unwrap_or(u32::MAX);
             if counted > listed {
                 out.push(ResetCredit { id: String::new(), expires_at: None, remaining: counted - listed, usable: true, label: None, kind: None, ..Default::default() });
+            } else if counted < listed {
+                out.sort_by_key(|c| c.expires_at.unwrap_or(i64::MAX));
+                out.truncate(counted as usize);
             }
             out
         }
@@ -648,6 +655,29 @@ pub fn header_windows(h: &axum::http::HeaderMap, p: Provider, family: &str, stat
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What ChatGPT counts (`available_count`) is the number either way
+    /// (Codex's review: two rows and a count of 0 made two credits): more
+    /// than its details list, the rest as its own choice; fewer, the
+    /// soonest to expire of those listed; no count, the details.
+    #[test]
+    fn chatgpts_count_is_the_number() {
+        let row = |id: &str, at: &str| json!({"id": id, "status": "available", "expires_at": at});
+        let rows = json!([row("late", "2026-12-20T00:00:00Z"), row("soon", "2026-12-01T00:00:00Z")]);
+        let count = |n: Option<u64>| {
+            let mut d = json!({"credits": rows});
+            if let Some(n) = n {
+                d["available_count"] = json!(n);
+            }
+            let got = parse_credits(Provider::Codex, &d);
+            (got.iter().map(|c| c.remaining).sum::<u32>(), got.iter().map(|c| c.id.clone()).collect::<Vec<_>>())
+        };
+        assert_eq!(count(Some(0)), (0, vec![]));
+        assert_eq!(count(Some(1)), (1, vec!["soon".to_owned()]));
+        assert_eq!(count(Some(3)).0, 3);
+        assert_eq!(count(None).0, 2);
+        assert_eq!(count(Some(u64::MAX)).0, u32::MAX);
+    }
 
     /// A window of no length is named by its place ("Primary"), never
     /// "0-day" (Ben's Token Pool showed one, 2026-11-19).

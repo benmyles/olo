@@ -119,24 +119,32 @@ something nobody here has is in "Blocked", with what it waits for.
   account whose Fable week was out): Fable 100% to 3%, its week 50% to
   1%, the same reset day (a Claude reset keeps the day; one that
   `gives_back_weekly` gives the week too).
+  Then (2026-11-19): Claude's requests passed on byte for byte on
+  connections of each account's own (`relay.rs`: hyper keeps each
+  header's case from its server to its client; the client's compression
+  asked for and the answer read decoded as it streams; the client's ALPN
+  offer; Claude Code's own requests passed through the same way), and
+  Codex's review (astra 6.2) of the first commits, every finding fixed
+  (the capture confined by Landlock to its recorder, named reads only,
+  no renewal, owned sandboxes; claims clearing every blocker, Claude's
+  marginal worth, unclear claims first and kept on disk, no claims from
+  a retired copy, the next account after a refusal; the widget counting
+  a stopped account's resets; Codex's own requests from its app server).
+  Then Codex's second review (of the fixes and the relay), every finding
+  fixed: a request that may have arrived never sent twice, the account's
+  id in its place alone, connections that follow the client's (one per
+  client connection and account, closed with it), each account's own
+  cookies, deadlines, HTTP/2 where chosen, the answer as it came; claims
+  one at a time, an unclear one again before any other, the same
+  account's other grants, one writer for saves.
   **To do**:
-  - Codex's review (astra 6.2) of the three commits: its findings
-    fixed, then pushed.
+  - Codex's third look, at the second's fixes; then pushed.
   - The one real Codex reset Ben allowed, when its account runs out
-    (91% on 2026-11-19: a Codex reset starts a new week and loses what's
+    (92% on 2026-11-19: a Codex reset starts a new week and loses what's
     left), through the pool's claim: what it does to the week's reset.
-  - The relay exact to the byte (hyper 1.12 carries a header's case from
-    its server to its client, `preserve_header_case` on both, the case
-    map in the request's extensions): Claude's requests on an HTTP/1.1
-    connection of the account's own (hyper's client over rustls, ALPN
-    as Claude Code offers it, kept alive), the inbound extensions carried
-    over; Codex offered HTTP/2 (as it offers it to ChatGPT) and sent so;
-    the client's `accept-encoding` passed on and the answer read decoded
-    for the pool's own use (gzip, br, zstd as they stream); Codex's
-    WebSockets passed through on the account chosen (no 426), its turns
-    counted from their frames; reqwest's `accept: */*` never added; a
-    redirect passed back, not followed. Measured on release builds
-    (latency to the first byte, CPU a request).
+  - Codex's WebSockets passed through on the account chosen (no 426),
+    its turns counted from their frames; Codex offered HTTP/2 by the
+    proxy as it offers it to ChatGPT.
   - TLS: Claude Code's two ClientHellos are BoringSSL's (Bun), Codex's
     native one OpenSSL's: the pool's rustls offers otherwise (ALPN,
     suites, extensions). Matching them means BoringSSL (`boring`) for

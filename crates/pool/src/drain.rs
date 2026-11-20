@@ -96,7 +96,7 @@ pub const FINISHING_ENV: &str = "OLO_POOL_FINISHING";
 pub const PREDECESSOR_ENV: &str = "OLO_POOL_PREDECESSOR";
 
 /// When process `pid` started (clock ticks after boot), to know it again.
-fn started(pid: i32) -> Option<u64> {
+pub(crate) fn started(pid: i32) -> Option<u64> {
     let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
     stat.rsplit_once(')')?.1.split_whitespace().nth(19)?.parse().ok()
 }

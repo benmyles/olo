@@ -169,14 +169,25 @@ async fn connection(mut client: TcpStream, peer: SocketAddr, shared: Arc<Shared>
     // answer, is the start of its TLS.)
     // (What its handshake offers, written down: the pool offers the host
     // the same on its behalf, `relay::ClientOffer`.)
-    let start =
-        tokio_rustls::LazyConfigAcceptor::new(rustls::server::Acceptor::default(), Prefixed { first: rest, at: 0, inner: client }).await.map_err(|e| format!("TLS with the client for {host}: {e}"))?;
-    let offer = crate::relay::ClientOffer(start.client_hello().alpn().map(|a| a.map(|p| String::from_utf8_lossy(p).into_owned()).collect()).unwrap_or_default());
-    let stream = start.into_stream(tls.config().clone()).await.map_err(|e| format!("TLS with the client for {host}: {e}"))?;
+    // (The handshake within `HANDSHAKE_WITHIN`, as a client's is.)
+    let handshake = async {
+        let start = tokio_rustls::LazyConfigAcceptor::new(rustls::server::Acceptor::default(), Prefixed { first: rest, at: 0, inner: client }).await?;
+        let offer = crate::relay::ClientOffer(start.client_hello().alpn().map(|a| a.map(|p| String::from_utf8_lossy(p).into_owned()).collect()).unwrap_or_default());
+        Ok::<_, std::io::Error>((offer, start.into_stream(tls.config().clone()).await?))
+    };
+    let (offer, stream) = match tokio::time::timeout(HANDSHAKE_WITHIN, handshake).await {
+        Ok(r) => r.map_err(|e| format!("TLS with the client for {host}: {e}"))?,
+        Err(_) => return Err(format!("TLS with the client for {host}: no handshake")),
+    };
+    // Which client connection each request came on: the pool's own
+    // connections upstream follow it, closed with it (`relay`).
+    let conn = crate::relay::ClientConn::next();
+    let _open = Open::new(shared.clone(), conn);
     let mut stop = shared.drain.watch();
     let service = hyper::service::service_fn(move |mut req: hyper::Request<hyper::body::Incoming>| {
         let (shared, host) = (shared.clone(), host.clone());
         req.extensions_mut().insert(offer.clone());
+        req.extensions_mut().insert(conn);
         async move { Ok::<_, std::convert::Infallible>(request(shared, &host, req).await) }
     });
     // (Each header's name written down in the client's own case, for a
@@ -196,6 +207,31 @@ async fn connection(mut client: TcpStream, peer: SocketAddr, shared: Arc<Shared>
             r = conn.as_mut() => return r.map_err(|e| e.to_string()),
             _ = stop.changed(), if !closing => {}
         }
+    }
+}
+
+/// How long a client has for its TLS handshake, and for the rest of a
+/// request once its head has come.
+const HANDSHAKE_WITHIN: Duration = Duration::from_secs(20);
+const BODY_WITHIN: Duration = Duration::from_secs(60);
+
+/// A client connection open (`relay::Exact::opened`) until this goes, as
+/// it does however the connection ends.
+struct Open {
+    shared: Arc<Shared>,
+    conn: crate::relay::ClientConn,
+}
+
+impl Open {
+    fn new(shared: Arc<Shared>, conn: crate::relay::ClientConn) -> Open {
+        shared.exact().opened(conn);
+        Open { shared, conn }
+    }
+}
+
+impl Drop for Open {
+    fn drop(&mut self) {
+        self.shared.exact().closed(self.conn);
     }
 }
 
@@ -272,9 +308,10 @@ async fn request(shared: Arc<Shared>, host: &str, req: hyper::Request<hyper::bod
     }
     // Under way until its answer has gone (an upgrade waits for it).
     let underway = crate::drain::Underway::new(&shared);
-    let body = match body.collect().await {
-        Ok(b) => b.to_bytes(),
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("The request didn’t arrive whole: {e}")).into_response(),
+    let body = match tokio::time::timeout(BODY_WITHIN, body.collect()).await {
+        Ok(Ok(b)) => b.to_bytes(),
+        Ok(Err(e)) => return (StatusCode::BAD_REQUEST, format!("The request didn’t arrive whole: {e}")).into_response(),
+        Err(_) => return (StatusCode::REQUEST_TIMEOUT, "The request didn’t arrive whole.").into_response(),
     };
     // The pool's, unless its client is turned off (or it has no account
     // for it): then the client's own, passed through. Decided for each
@@ -306,10 +343,11 @@ async fn through(shared: &Shared, host: &str, path: &str, query: Option<&str>, m
         }
         let alpn: Vec<String> = ext.get::<crate::relay::ClientOffer>().map(|o| o.0.clone()).unwrap_or_default();
         let alpn: Vec<&str> = alpn.iter().map(String::as_str).collect();
+        let conn = ext.get::<crate::relay::ClientConn>().copied().unwrap_or_default();
         return match b.body(http_body_util::Full::new(body)) {
             Ok(mut req) => {
                 *req.extensions_mut() = ext;
-                match shared.send_exact(crate::relay::OWN, &shared.upstream_origin(host), &alpn, req).await {
+                match shared.exact().send(crate::relay::OWN, conn, &shared.upstream_origin(host), &alpn, req).await {
                     Ok(a) => answered_exact(a),
                     Err(e) => (StatusCode::BAD_GATEWAY, format!("The pool couldn’t reach {host}: {e}")).into_response(),
                 }
@@ -328,13 +366,14 @@ async fn through(shared: &Shared, host: &str, path: &str, query: Option<&str>, m
     }
 }
 
-/// An exact relay's answer, as it came (its connection back in its pool
-/// once read).
-fn answered_exact(a: crate::relay::Answer) -> Response {
-    let (status, headers) = (a.status(), a.headers().clone());
+/// An exact relay's answer, as it came: each name in its case, its status
+/// line's reason, its length (its connection kept once it's read).
+fn answered_exact(mut a: crate::relay::Answer) -> Response {
+    let (status, headers, ext) = (a.status(), a.headers().clone(), a.take_extensions());
     let mut out = Response::new(Body::from_stream(a.into_stream()));
     *out.status_mut() = status;
-    for (k, v) in headers.iter().filter(|(k, _)| !hop(k.as_str())) {
+    *out.extensions_mut() = ext;
+    for (k, v) in headers.iter().filter(|(k, _)| k.as_str() == "content-length" || !hop(k.as_str())) {
         out.headers_mut().append(k.clone(), v.clone());
     }
     out

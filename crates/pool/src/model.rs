@@ -376,18 +376,28 @@ impl Account {
     /// soonest to expire; none that gives back under `WORTH_REDEEMING` (a
     /// window about to reset by itself is better waited for).
     pub fn claim_for(&self, family: &str, now: i64) -> Option<(&ResetCredit, f64)> {
+        self.claims_for(family, now).into_iter().next()
+    }
+
+    /// Every credit that would let a request of `family` through now, as
+    /// `claim_for` ranks them (the first is its choice): one refused, the
+    /// next.
+    pub fn claims_for(&self, family: &str, now: i64) -> Vec<(&ResetCredit, f64)> {
         let out: Vec<&Window> = self.windows.iter().filter(|w| w.applies_to(family) && w.exhausted(now)).collect();
         if out.is_empty() {
-            return None;
+            return Vec::new();
         }
         // (One that clears every limit that's out for it: one that leaves
         // another standing lets the request through no more than before.)
-        self.credits
+        let mut all: Vec<(&ResetCredit, f64)> = self
+            .credits
             .iter()
             .filter(|c| c.usable_at(now) && out.iter().all(|w| c.clears(self.provider, w)))
             .map(|c| (c, out.iter().filter(|w| c.clears(self.provider, w)).map(|w| w.reset_worth(self.provider, now, now)).fold(0.0, f64::max)))
             .filter(|(_, worth)| *worth >= WORTH_REDEEMING)
-            .min_by_key(|(c, _)| (c.breadth(), c.expires_at.unwrap_or(i64::MAX)))
+            .collect();
+        all.sort_by_key(|(c, _)| (c.breadth(), c.expires_at.unwrap_or(i64::MAX)));
+        all
     }
 
     /// A credit about to expire unused (within `EXPIRY_LOOKAHEAD`) to
@@ -397,21 +407,24 @@ impl Account {
     /// `WORTH_REDEEMING`. A later moment as good wins (it keeps the
     /// choice open).
     pub fn expiring_claim(&self, now: i64) -> Option<&ResetCredit> {
-        // (Each about to expire weighed, the soonest first: one worth
-        // nothing never hides another worth claiming.)
-        let mut expiring: Vec<&ResetCredit> = self.credits.iter().filter(|c| c.usable_at(now) && c.expires_at.is_some_and(|e| e - now <= EXPIRY_LOOKAHEAD)).collect();
-        expiring.sort_by_key(|c| c.expires_at);
-        expiring.into_iter().find(|c| {
-            // (One that only works at a limit, only when one it clears is out.)
-            if c.needs_limit && !self.windows.iter().any(|w| c.clears(self.provider, w) && w.exhausted(now)) {
-                return false;
-            }
-            let Some(expires) = c.expires_at else { return false };
-            let last = expires - EXPIRY_MARGIN;
-            let here = self.claim_worth(c, now, now);
-            let later = (1..).map(|h| now + h * 3600).take_while(|&t| t < last).chain(std::iter::once(last)).filter(|&t| t > now).map(|t| self.claim_worth(c, now, t)).fold(0.0, f64::max);
-            here >= WORTH_REDEEMING && (here > later || now >= last)
-        })
+        // (Each about to expire weighed: one worth nothing never hides
+        // another worth claiming; of those due now, the one that gives back
+        // most, the soonest to expire of those as good.)
+        self.credits
+            .iter()
+            .filter(|c| c.usable_at(now) && c.expires_at.is_some_and(|e| e - now <= EXPIRY_LOOKAHEAD))
+            .filter_map(|c| {
+                // (One that only works at a limit, only when one it clears is out.)
+                if c.needs_limit && !self.windows.iter().any(|w| c.clears(self.provider, w) && w.exhausted(now)) {
+                    return None;
+                }
+                let last = c.expires_at? - EXPIRY_MARGIN;
+                let here = self.claim_worth(c, now, now);
+                let later = (1..).map(|h| now + h * 3600).take_while(|&t| t < last).chain(std::iter::once(last)).filter(|&t| t > now).map(|t| self.claim_worth(c, now, t)).fold(0.0, f64::max);
+                (here >= WORTH_REDEEMING && (here > later || now >= last)).then_some((c, here))
+            })
+            .max_by(|(x, a), (y, b)| a.total_cmp(b).then_with(|| y.expires_at.cmp(&x.expires_at)))
+            .map(|(c, _)| c)
     }
 
     /// Whether to claim its next credit now so that it isn't lost
@@ -555,6 +568,21 @@ mod tests {
         // Plenty of time left.
         let d = holding(t + 4 * 24 * H, 90.0, t + 3 * 24 * H);
         assert!(!d.spend_before_expiry(t));
+    }
+
+    /// Of two credits due before they expire, the one that gives back most
+    /// (Codex's review: the first due won, one worth less): a reset of the
+    /// used-up week over one of the 5-hour window, half used.
+    #[test]
+    fn the_expiring_credit_worth_most() {
+        let t = 1_000_000;
+        let mut a = holding(t + 20 * H, 100.0, t + 3 * 24 * H);
+        a.windows.push(Window { name: "five_hour".into(), label: "5-hour".into(), used: 50.0, resets_at: Some(t + 4 * H), models: Vec::new() });
+        a.credits = vec![
+            ResetCredit { id: "hour".into(), expires_at: Some(t + EXPIRY_MARGIN), remaining: 1, usable: true, clears: vec!["five_hour".into()], ..Default::default() },
+            ResetCredit { id: "week".into(), expires_at: Some(t + EXPIRY_MARGIN + H), remaining: 1, usable: true, clears: vec!["seven_day".into()], ..Default::default() },
+        ];
+        assert_eq!(a.expiring_claim(t).map(|c| c.id.as_str()), Some("week"));
     }
 
     /// What a reset gives back, by each provider's rule: Claude's what can
