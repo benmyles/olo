@@ -1705,11 +1705,13 @@ impl Service {
                 }
                 // Why, where there's something to say: the phone there
                 // and still not spoken to (Bluetooth's own word for it);
-                // or asked for by hand and not answering, which is said
-                // as what to look at on the phone, not as Bluetooth's
-                // name for a page that timed out.
-                let unanswered = why.contains("page-timeout") || why.contains("Host is down");
-                self.state.trouble = if connected || (self.report_retries && !unanswered) {
+                // or asked for by hand and not there, which is said as
+                // what to look at on the phone, whichever of Bluetooth's
+                // names its not answering had (a page timed out, "Host
+                // is down", its low-energy try given up:
+                // "le-connection-abort-by-local", which the notice
+                // showed as it came, 2026-11-20). The log has the name.
+                self.state.trouble = if connected {
                     olo_kit::en!("Bluetooth couldn’t open the phone’s messages ({}).", why.rsplit(": ").next().unwrap_or(&why).trim_end_matches('.'))
                 } else if self.report_retries {
                     olo_kit::en!("“{}” isn’t in reach. Is it nearby, unlocked, with Bluetooth on?", self.state.name)
