@@ -165,6 +165,39 @@ static ENDED: AtomicBool = AtomicBool::new(false);
 /// Who waits for that (`wait_until_ended`), woken as it ends.
 static WAITING: Mutex<Option<std::thread::Thread>> = Mutex::new(None);
 
+/// Whether this program runs an app (`run`, which says so as it
+/// begins): only such a one has a compositor. Anything else that asks
+/// for the display gets it without one, whatever `WAYLAND_DISPLAY`
+/// says: a unit test measuring text, a service laying something out.
+/// (Until 2026-11-20 every `cargo test` from a shell with the person's
+/// `WAYLAND_DISPLAY` connected its test programs to their compositor
+/// and made a GPU context there, every graphics driver on the computer
+/// loaded with it: found when NVIDIA's, its card dead, crashed the
+/// kit's tests as they exited.)
+static RUNS: AtomicBool = AtomicBool::new(false);
+
+/// The program is about to run an app: its display is the compositor's
+/// (where there is one). Said first of all, before anything asks for
+/// the display; one asked for already, and without a compositor only
+/// for that, is a mistake in the program, said plainly rather than
+/// left as a program that shows nothing.
+pub(crate) fn runs_an_app() {
+    RUNS.store(true, Ordering::Release);
+    if let Some(display) = DISPLAY.get()
+        && display.headless
+        && wants_wayland()
+    {
+        panic!("the display was asked for before the program's run(), so it has no compositor: call run() first (olo_interface::display)");
+    }
+}
+
+/// Whether the environment names a compositor to connect to (and
+/// nothing asks for none, `OLO_HEADLESS`: the layout lint).
+fn wants_wayland() -> bool {
+    let named = std::env::var_os("WAYLAND_DISPLAY").filter(|d| !d.is_empty()).or_else(|| std::env::var_os("WAYLAND_SOCKET")).is_some();
+    named && std::env::var_os("OLO_HEADLESS").is_none()
+}
+
 /// The display thread, started the first time it's asked for.
 pub(crate) fn display() -> &'static Display {
     DISPLAY.get_or_init(Display::start)
@@ -181,8 +214,7 @@ impl Display {
                 // realtime while the program has the keyboard.
                 crate::util_floor();
                 crate::guard_ui_thread(crate::app::DISPLAY_RT_PRIORITY);
-                let wayland = std::env::var_os("WAYLAND_DISPLAY").filter(|d| !d.is_empty()).or_else(|| std::env::var_os("WAYLAND_SOCKET")).is_some();
-                let client = if wayland && std::env::var_os("OLO_HEADLESS").is_none() { Client::Wayland(WaylandClient::new()) } else { Client::Headless(HeadlessClient::new()) };
+                let client = if RUNS.load(Ordering::Acquire) && wants_wayland() { Client::Wayland(WaylandClient::new()) } else { Client::Headless(HeadlessClient::new()) };
                 let headless = matches!(client, Client::Headless(_));
                 let (commands, receiver) = calloop::channel::channel::<Command>();
                 let run = |command: Command| {

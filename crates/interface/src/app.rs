@@ -60,7 +60,8 @@ pub fn on_displays_changed(f: impl Fn() + Send + Sync + 'static) {
 }
 
 /// Whether there's a compositor to show windows on (not a headless
-/// run: tests, the layout lint).
+/// run: the layout lint; nor a program that runs no app: a unit test,
+/// whose display never connects to one).
 pub fn has_compositor() -> bool {
     !crate::display::display().headless
 }
@@ -457,6 +458,7 @@ pub fn open_window<V: View>(options: WindowSpec, build: impl FnOnce(&mut Cx<V>) 
 /// program quits (its last window closed, unless it's
 /// [`stay_resident`]).
 pub fn run(app_id: &str, build: impl FnOnce(&mut AppCx)) {
+    crate::display::runs_an_app();
     let mut looper = Looper::new("app");
     let state =
         Shared { app_id: app_id.to_owned(), main: looper.handle(), windows: AtomicUsize::new(0), resident: AtomicBool::new(false), quitting: AtomicBool::new(false), loopers: Mutex::new(Vec::new()) };
