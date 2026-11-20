@@ -406,6 +406,13 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     self.close_window(&w);
                 }
             }
+            // Deskbar folded away or back, as its button does it (every
+            // display's; saved, so it stays so).
+            S::ToggleDeskbar => {
+                let mut settings = self.settings.clone();
+                settings.deskbar.folded = !settings.deskbar.folded;
+                self.set_settings(settings);
+            }
             S::Caffeinate => {
                 let on = !self.power.caffeinated();
                 self.set_caffeinated(on, None, false);

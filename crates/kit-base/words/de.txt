@@ -3967,6 +3967,9 @@ Andere ausblenden
 Hide Tab When Tiled
 Tab beim Kacheln ausblenden
 
+Hide or show Deskbar
+Deskbar aus- oder einblenden
+
 High
 Hoch
 

@@ -217,9 +217,11 @@ const KNOWN_AS: &[(&str, &str, &str)] = &[
     ("keyboard", "Profile", "mac windows beos shortcuts keys"),
     ("network", "Wi-Fi", "wifi wireless wlan internet"),
     ("notifications", "Do Not Disturb", "dnd focus quiet silence mute notifications"),
-    ("power", "Turn the display off after", "screen sleep blank monitor off"),
-    ("power", "Put the computer to sleep after", "suspend standby"),
-    ("power", "Caffeinated", "caffeine amphetamine keep awake no sleep"),
+    // (One setting a power source since Power had three modes, df96bdbde.)
+    ("power", "Turn off displays on battery", "screen sleep blank monitor off display after idle"),
+    ("power", "Turn off displays plugged in", "screen sleep blank monitor off display after idle ac"),
+    ("power", "Sleep on battery", "suspend standby put the computer to sleep after idle"),
+    ("power", "Sleep plugged in", "suspend standby put the computer to sleep after idle ac"),
     ("screensaver", "Enable Screen Saver", "screensaver"),
     ("screensaver", "Password lock", "lock screen"),
     ("sound", "Volume", "loudness speaker output level"),
@@ -303,14 +305,20 @@ pub fn context() -> (Option<WindowInfo>, Vec<Item>) {
         Ok(Reply::Windows { windows }) => windows,
         _ => Vec::new(),
     };
-    let profile = match client.request(&Request::GetSettings) {
-        Ok(Reply::Settings { settings }) => settings.keyboard.profile,
+    let (profile, folded) = match client.request(&Request::GetSettings) {
+        Ok(Reply::Settings { settings }) => (settings.keyboard.profile, settings.deskbar.folded),
         _ => Default::default(),
     };
     let front = windows.iter().find(|w| w.focused).cloned();
     for info in shortcuts::SHORTCUTS.iter().filter(|i| i.action != olo_protocol::Shortcut::Palette) {
         let keys = shortcuts::keys_for(info, &profile);
-        let mut item = Item::new(Kind::Shortcut, info.title, Action::Shortcut(info.id.into())).subtitle(info.group).icon(shortcut_icon(info.group)).keywords(format!(
+        // (Deskbar's fold said as it stands: Hide Deskbar, Show Deskbar.)
+        let title = match info.action {
+            olo_protocol::Shortcut::ToggleDeskbar if folded => "Show Deskbar",
+            olo_protocol::Shortcut::ToggleDeskbar => "Hide Deskbar",
+            _ => info.title,
+        };
+        let mut item = Item::new(Kind::Shortcut, title, Action::Shortcut(info.id.into())).subtitle(info.group).icon(shortcut_icon(info.group)).keywords(format!(
             "{} {}{}",
             info.id.replace('-', " "),
             info.group,
@@ -333,6 +341,9 @@ pub fn context() -> (Option<WindowInfo>, Vec<Item>) {
                 olo_protocol::Shortcut::ColumnWidth => " tiling scrolling niri column width wider narrower preset",
                 olo_protocol::Shortcut::RotateWindows(_) => " tiling rotate cycle windows round order",
                 olo_protocol::Shortcut::ToScratchpad | olo_protocol::Shortcut::Scratchpad => " scratchpad hidden toggle quake drop down special workspace",
+                olo_protocol::Shortcut::ToggleDeskbar => " deskbar fold unfold collapse expand hide show taskbar dock panel bar",
+                // (Power's Caffeinated box is this now.)
+                olo_protocol::Shortcut::Caffeinate => " caffeinated caffeine amphetamine keep awake no sleep",
                 _ => "",
             }
         ));

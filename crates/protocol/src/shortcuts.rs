@@ -393,6 +393,10 @@ pub enum Shortcut {
     Find,
     Lock,
     Caffeinate,
+    /// Fold Deskbar away to the screen's edge, or bring it back (as its
+    /// own button does: `deskbar.folded`, every display's; Ben,
+    /// 2026-11-18: "ctrl+cmd+d by default (but customizable)").
+    ToggleDeskbar,
     ScreenshotScreen,
     ScreenshotRegion,
     ScreenshotWindow,
@@ -884,6 +888,8 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::ActivityMonitor, "activity-monitor", DESKTOP, "Activity Monitor", &["Alt+Cmd+Escape"], &["Ctrl+Shift+Escape"], &["Ctrl+Alt+Delete"]),
     s(Shortcut::Lock, "lock", DESKTOP, "Lock the screen", &["Ctrl+Cmd+Q"], &["Cmd+L"], &["Ctrl+Alt+L"]),
     s(Shortcut::Caffeinate, "caffeinate", DESKTOP, "Stay awake, or not", &["Ctrl+Cmd+A"], &["Alt+Cmd+A"], &["Ctrl+Alt+A"]),
+    // (BeOS's ⌃⌘D is its left third: ⌥⌘D there.)
+    s(Shortcut::ToggleDeskbar, "toggle-deskbar", DESKTOP, "Hide or show Deskbar", &["Ctrl+Cmd+D"], &["Ctrl+Cmd+D"], &["Alt+Cmd+D"]),
     s(Shortcut::ScreenshotScreen, "screenshot-screen", SCREENSHOTS, "Screenshot of the screen", &["Shift+Cmd+3", "Print"], &["Cmd+Print"], &["Shift+Print"]),
     s(Shortcut::ScreenshotRegion, "screenshot-region", SCREENSHOTS, "Screenshot of an area", &["Shift+Cmd+4"], &["Shift+Cmd+S", "Print"], &["Ctrl+Print"]),
     s(Shortcut::ScreenshotWindow, "screenshot-window", SCREENSHOTS, "Screenshot of the window", &["Alt+Print"], &["Alt+Print"], &["Alt+Print"]),

@@ -181,6 +181,7 @@ pub fn in_rescue(action: Action) -> Option<Action> {
             | S::WindowToPreviousWorkspace
             | S::WindowToWorkspace(_)
             | S::ShowDesktop
+            | S::ToggleDeskbar
             | S::Hide
             | S::HideApp
             | S::RestoreOrHide

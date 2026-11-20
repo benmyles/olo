@@ -419,17 +419,6 @@ something nobody here has is in "Blocked", with what it waits for.
   what order, named how), written down in HACKING.md and held by the
   window review where it can be.
 
-- **Deskbar folded and unfolded from the keyboard, and the palette**
-  (Ben, 2026-11-18: "the collapse/expand deskbar needs a keyboard
-  toggle to cycle it and it should be ctrl+cmd+d by default (but
-  customizable). it should also be available in the command
-  palette"). One shortcut that folds Deskbar away and brings it back
-  (⌃⌘D by default; in Preferences ▸ Keyboard ▸ Shortcuts like the
-  others, so it can be changed), and the same as a command in the
-  command palette ("Hide Deskbar" / "Show Deskbar", as it stands).
-  The fold itself is done (Deskbar's little button: HACKING.md,
-  Deskbar).
-
 - **Last, once everything above that isn't blocked is done: the website,
   the README and the docs refreshed, and a new GitHub release** (Ben,
   2026-11-17: "when all the other todos that aren't blocked are
@@ -444,6 +433,21 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Deskbar folded and unfolded from the keyboard, and the palette**
+  (Ben, 2026-11-18: "the collapse/expand deskbar needs a keyboard
+  toggle to cycle it and it should be ctrl+cmd+d by default (but
+  customizable). it should also be available in the command
+  palette"). One shortcut that folds Deskbar away and brings it back
+  (⌃⌘D by default; in Preferences ▸ Keyboard ▸ Shortcuts like the
+  others, so it can be changed), and the same as a command in the
+  command palette ("Hide Deskbar" / "Show Deskbar", as it stands).
+  The fold itself is done (Deskbar's little button: HACKING.md,
+  Deskbar).
+  **Done** (2026-11-19): Hide or show Deskbar, ⌃⌘D (⌥⌘D in the BeOS
+  profile, whose ⌃⌘D is its left third), in Preferences ▸ Keyboard ▸
+  Shortcuts; in the palette as "Hide Deskbar" or "Show Deskbar" as it
+  stands.
 
 - **kache's storage warning says what counts** (2026-11-19, from the
   same study, which Ben passed on: "Fix the dashboard's storage warning

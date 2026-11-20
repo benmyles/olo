@@ -3967,6 +3967,9 @@ Anderen verbergen
 Hide Tab When Tiled
 Titelrand verbergen in tegelindeling
 
+Hide or show Deskbar
+Deskbar verbergen of tonen
+
 High
 Hoog
 

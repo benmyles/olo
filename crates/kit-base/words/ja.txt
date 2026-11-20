@@ -3952,6 +3952,9 @@ Hide Others
 Hide Tab When Tiled
 タイル表示時にタイトルタブを隠す
 
+Hide or show Deskbar
+Deskbarを隠す／表示
+
 High
 高
 

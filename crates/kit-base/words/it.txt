@@ -3967,6 +3967,9 @@ Nascondi le altre
 Hide Tab When Tiled
 Nascondi linguetta se affiancata
 
+Hide or show Deskbar
+Nascondi o mostra Deskbar
+
 High
 Alta
 

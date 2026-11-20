@@ -20774,7 +20774,16 @@ it sits in the row of tabs over no window's content. It is a setting
 settings, changes that and writes them), so it stays so across a
 reload, and an agent folds it with `set_settings`; a Deskbar's layer
 surface is anchored at the top right and takes its new width
-(`BarView::width`).
+(`BarView::width`). **From the keyboard and the palette** (Ben, 2026-11-18:
+"ctrl+cmd+d by default (but customizable). it should also be available
+in the command palette"): the shortcut Hide or show Deskbar
+(`Shortcut::ToggleDeskbar`, `toggle-deskbar`, in the Desktop group:
+⌃⌘D in the Mac and Windows profiles, ⌥⌘D in BeOS's, whose ⌃⌘D is its
+left third), changed in Preferences ▸ Keyboard ▸ Shortcuts as any
+other; app_server flips `deskbar.folded` (`set_settings`, so every
+display's folds and it's saved). The palette has it as a command said
+as Deskbar stands, "Hide Deskbar" or "Show Deskbar", found by "fold",
+"collapse", "taskbar" too.
 
 **Other workspaces' applications, collapsed** (Ben, 2026-11-18: "add an
 option in deskbar prefs (disabled by default) to default to showing

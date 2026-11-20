@@ -1315,6 +1315,7 @@ Hide Deskbar
 Hide List
 Hide Others
 Hide Tab When Tiled
+Hide or show Deskbar
 High
 High dynamic range (HDR)
 High {}, low {}
