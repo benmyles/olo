@@ -194,10 +194,15 @@ pub struct Closer(Option<std::fs::File>);
 impl Closer {
     pub fn close(&self) {
         if let Some(f) = &self.0 {
-            // SAFETY: shutting down our own descriptor.
-            unsafe { libc::shutdown(f.as_raw_fd(), libc::SHUT_RDWR) };
+            shutdown_socket(f);
         }
     }
+}
+
+/// Shut down a channel, including any blocking read of the same socket on another thread.
+pub fn shutdown_socket(file: &std::fs::File) {
+    // SAFETY: the borrowed descriptor stays open for the call.
+    unsafe { libc::shutdown(file.as_raw_fd(), libc::SHUT_RDWR) };
 }
 
 /// A channel's end, waited for ([`Stream::gone`]).
@@ -545,20 +550,17 @@ impl Profiles {
         let _ = self.conn.call_method(Some(DEST), phone, Some(DEVICE), "DisconnectProfile", &(channel.uuid(),));
     }
 
-    /// Have BlueZ give up what it's stuck on with `phone`, one that isn't
-    /// connected: a connecting that never ended, and every asking after it
-    /// refused "br-connection-busy" (BlueZ 5.87's hands-free side never
-    /// says that a connection it couldn't make failed: profiles/audio/
-    /// hfp-hf.c's `connect_cb` leaves the service connecting, and the
-    /// device's pending list with it, for good; seen 2026-11-17 after
-    /// the phone went out of reach, ever after). `Disconnect` on a device
-    /// that isn't connected does that and nothing more (src/device.c's
-    /// `device_request_disconnect`: the pending connections dropped, an
-    /// unanswered Connect answered, a lookup of its services cancelled;
-    /// answered at once). Never for a phone that's connected: it would
-    /// drop it.
+    /// Cancel BlueZ's outstanding device request while both bearers are
+    /// down. This releases its device-level queue. A resolving external
+    /// profile can hold its SDP search until the callback runs.
     pub fn unstick(&self, phone: &str) -> Result<()> {
-        self.conn.call_method(Some(DEST), phone, Some(DEVICE), "Disconnect", &()).map(|_| ())
+        // The cached observation used to schedule this check can be seconds old.
+        let reply = self.conn.call_method(Some(DEST), phone, Some("org.freedesktop.DBus.Properties"), "Get", &(DEVICE, "Connected"))?;
+        let connected: OwnedValue = reply.body().deserialize()?;
+        if bool::try_from(&*connected).ok() == Some(false) {
+            self.conn.call_method(Some(DEST), phone, Some(DEVICE), "Disconnect", &())?;
+        }
+        Ok(())
     }
 
     /// `phone`'s characteristics with BlueZ, by their UUIDs: the ones it

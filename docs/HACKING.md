@@ -16077,7 +16077,8 @@ phone that does each: `--tell set asleep`, `classic-gatt`, `deaf`,
   drops what's pending, answers an unanswered Connect and cancels a
   lookup (`device_request_disconnect`), and the asking after it pages
   the phone afresh; no more than every 2 minutes (`UNSTICK_AFTER`,
-  `UNSTICK_EVERY`), said in the log. A failure the same as the last is
+  `UNSTICK_EVERY`), and once a spell of busy answers
+  (`tried_unstick`), said in the log. A failure the same as the last is
   logged again every 10 minutes with how many times it has been
   (`SAY_AGAIN`), so a service that keeps trying never reads as one that
   stopped. The stand-in plays it: `--tell set stuck yes` (refused busy
@@ -16401,6 +16402,52 @@ went, with a Security… button (Security on its Passwords tab). The
 palette's index names the sources by kind ("Text Messages", "Mail"),
 and the spotlight lights their box (`spotlight::show`: no control so
 named, its box).
+
+**A phone asked for once at a time** (2026-11-20; Ben: "a problem
+with the phone service reconnecting to my phone after i was away for
+the night … try again doesn't do anything either"). Three faults, found
+with a second investigator who reproduced each on a private bus:
+- *The service asked over its own asking.* `devices` (the survey BlueZ's
+  every announcement runs) took a phone not connected with an opening
+  under way for a session gone: it dropped the opening and began
+  another. But a phone being paged is not connected, and BlueZ
+  announces every device to everyone: with some program holding a
+  search, strangers come and go several times a second. So each
+  asking was abandoned mid-page, the next was answered
+  `br-connection-busy` (BlueZ busy with the first), and the first's
+  real answer, a page timed out, was thrown away as an old one's. The
+  service heard "busy" for five hours, took it for stuck, and its
+  remedy (`Disconnect`) cancelled the one attempt that was real, every
+  two minutes; `tries` was set to nought at each announcement, so it
+  asked every fifteen seconds for good. Now an opening is its phone's
+  until BlueZ answers it or its time is up (`OPEN_ANSWER`); a session
+  ends when its phone goes from connected to not (`went`); what's
+  counted (`tries`, `busy`, `hangs`) is kept through announcements and
+  short drops and begun again for another phone, a long absence
+  (`lost_at`) or messages open.
+- *The notifications' waits were forgotten at every drop.* Their
+  asking again goes 5, 30, 120, 600 seconds (`OTHERS_AGAIN`), but a
+  survey that found the phone not connected set the count and the wait
+  to nought, so a link that came and went every six seconds was asked
+  at once each time: 2,400 times in four hours. The wait is kept
+  across a drop (not woken for while the phone is away,
+  `others_due`), and begun again only after a link that held or said
+  something (`others_lost`). The two threads that read its sockets
+  kept them when the link was let go (BlueZ then answered "Notify
+  acquired"): the sockets are shut, which wakes and ends them
+  (`link::shutdown_socket`).
+- *Try Again threw its answer away.* It joins the asking in flight or
+  begins one, says "Connecting to …" (`Link::Connecting`), and what
+  comes of it stays in the notice until the phone works again
+  (`report_retries`): Bluetooth's word where the phone is there, and
+  where it answered no page, "… isn't in reach. Is it nearby,
+  unlocked, with Bluetooth on?". An asking the service couldn't be
+  given is said too (`Msg::RetryFailed`).
+`Profiles::unstick` looks at `Connected` itself just before
+(`Disconnect` on a phone that has connected meanwhile would drop it).
+Phone's demo has the two states for pictures (`OLO_PHONE_DEMO=away`,
+`=connecting`). Why the phone answered no page that morning isn't
+known (TODO).
 
 **Connecting a phone is Preferences ▸ Phone**, three steps each seen to
 happen (phone.rs, `connect`; Ben: "make the pairing/setup process much

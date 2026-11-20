@@ -60,41 +60,40 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
-- **Phone: not found again after a night apart, and Try Again does
-  nothing** (Ben, 2026-11-20: "there seems to be a problem with the
-  phone service reconnecting to my phone after i was away for the night
-  … try again doesn't do anything either"; the app's banner says the
-  phone is out of reach). **In hand**: a second investigator is on it
-  (`tools/dev/codex-help`, its brief and masked extracts in
-  /var/tmp/claude-blueferry/phonehelp; its answer is `answer.md`
-  there). What a first look showed (the service's log and bluetoothd's
-  journal, read locally):
-  - From midnight to four the phone connected over low energy and
-    dropped about every six seconds, 2,400 times, and the service
-    asked again each time ("its other notifications don't stay open:
-    tried again in 5 s"): hours of churn, a fault by itself (asked
-    further and further apart, as a phone out of reach is).
-  - From four on, every asking for the messages' channel is answered
-    "br-connection-busy" (180 running by nine), and the service's
-    remedy (`Profiles::unstick`: BlueZ's `Disconnect`) changes
-    nothing. BlueZ 5.87's source says why it can't: `Disconnect` does
-    drop the pending list, and what keeps it busy is a real attempt in
-    flight (its SDP lookup of the phone, which fails "Host is down"
-    every six to sixty seconds: the phone answers no page). The
-    service gives up on its own asking after a while, asks again over
-    it, is told busy, and takes that for stuck; the unstick then
-    cancels the attempt that was real. To check with the
-    investigator's answer, then: an asking in flight is waited for,
-    busy while one's own asking is unanswered is no fault, and what
-    BlueZ answers it ("page timeout") is what the app says.
-  - Try Again (`Request::Reconnect`) asks once more and shows nothing
-    of it: it should say it's looking, then what came of it, and what
-    to do on the phone (its Bluetooth settings, this computer's row).
-  - Why the phone answers no page, back beside the computer, isn't
-    known: the adapter was searching the whole time (some program
-    holds a search: none of Olo's; eighteen Chrome processes are on
-    the system bus, and a passkey prompt scans), which may or may not
-    matter; the phone's side can't be seen from here.
+- **Phone: what's left of the night it wasn't found again** (Ben,
+  2026-11-20; the faults on Olo's side are fixed: under Done). Left:
+  - **Why the phone answered no page**, back beside the computer, for
+    an hour and more (BlueZ's lookup of it failed "Host is down" every
+    six to sixty seconds): not known, and not to be seen from the
+    computer. To ask Ben when it next happens: does opening Settings ▸
+    Bluetooth on the phone, or tapping this computer there, bring it
+    back at once (then the phone wasn't listening for the computer,
+    and the notice should say to do that); was its Bluetooth "off
+    until tomorrow" from Control Centre. And one trace then, with each
+    asking matched to its answer.
+  - **The notice over Phone's window, as the kit's banner** (both
+    looks at it, 2026-11-20; real, and how it was before): its ground
+    is a warm grey that reads as dingy in light and muddy in dark, it
+    has no edge to the bars over and under it, no picture, and nothing
+    that moves while the phone is looked for. `olo_kit::widgets::Banner`
+    (Preferences' "Bluetooth's hardware isn't answering") has the
+    tones, the edges and a place for a picture: Phone's notice to be
+    one, with something busy where Try Again is while it's connecting,
+    and the fact and the question each on a line of its own (the
+    question in the quieter ink).
+  - **The investigator's probe as a test**: the stand-in's `stuck`
+    mode is cleared by `Disconnect` by construction and can't hold an
+    asking unanswered; its private-bus probe did (a page held, an
+    unrelated device announced meanwhile, Try Again during it, the
+    notifications' link dropped four times a second). The stand-in to
+    hold a page and count askings, so `apps/phone/tests/service.rs`
+    has the four cases.
+  - **A search some program holds for hours** (the adapter was
+    discovering all morning, and none of Olo's programs was the one:
+    Chrome scans while a passkey prompt is up, and agent screens have
+    many): each device it finds or forgets is an announcement to every
+    program on BlueZ. Olo Doctor to say when a search has run for an
+    hour, and whose it is if that can be told.
 - **Snap pads while tiling, a swap pad that reads as one, Zoom to 75%
   and 50%** (Ben, 2026-11-20: "what is the J hotspot supposed to be?
   visually it looks like it'd be full screen but it like swaps it with
@@ -596,6 +595,20 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Phone: not found again after a night apart, and Try Again did
+  nothing** (Ben, 2026-11-20). Three faults of the service's, found
+  with a second investigator and reproduced on a private bus (HACKING,
+  "A phone asked for once at a time"): any announcement from BlueZ, of
+  any device, made the service give up the asking it had in flight and
+  ask over it, so it heard only "busy", took that for stuck, and
+  cancelled the real attempt every two minutes; the notifications'
+  waits were forgotten at every drop of the link (2,400 askings in
+  four hours); and Try Again threw its answer away. Now one asking at
+  a time, waits kept across a drop, and Try Again says "Connecting to
+  …", then, unanswered, "… isn't in reach. Is it nearby, unlocked,
+  with Bluetooth on?". To try: Try Again with the phone's Bluetooth
+  off, then on.
 
 - **A note's last line of one word** (2026-11-20; Astra's review, of
   Preferences ▸ Windows: "tray." and "space." each alone on a line).

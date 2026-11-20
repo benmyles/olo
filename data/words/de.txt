@@ -14046,7 +14046,7 @@ other: „{}“ und {n} weitere Programme laufen noch in diesem Fenster. Trotzde
 „{}“ ist keine Adresse, die ich einladen kann: Schreiben Sie jede als name@example.org, mit Kommas dazwischen.
 
 “{}” isn’t in reach. Is it nearby, unlocked, with Bluetooth on?
-„{}“ ist nicht in Reichweite. Ist es in der Nähe, entsperrt, mit Bluetooth an?
+„{}“ ist außer Reichweite. Ist es entsperrt und Bluetooth eingeschaltet?
 
 “{}” repeats. Delete only this one, or every one of them?
 „{}“ wiederholt sich. Nur diesen löschen oder alle?

@@ -17,9 +17,8 @@
 //! tell of messages as they come, which it does by connecting to Olo's
 //! own Notification Server, and the newest of its inbox is read. Its
 //! contacts are fetched once a session (names for numbers). A phone out
-//! of reach is tried again when BlueZ says anything of it and otherwise
-//! after 15 s, 30 s, 1, 2 and then every 5 minutes: nothing else runs
-//! while it's away.
+//! of reach is tried again when it returns or its retry deadline comes.
+//! BlueZ can announce unrelated devices while a page is in flight.
 //!
 //! **Codes.** Every browser's extension host stays connected to the
 //! service's socket, is asked which of its tabs are waiting for a code
@@ -117,10 +116,9 @@ const SILENT: [u64; 4] = [30, 120, 300, 900];
 /// How many times in a row BlueZ, busy with the phone, is asked again in
 /// three seconds; past that, as a phone out of reach.
 const BUSY_SOON: usize = 5;
-/// BlueZ busy with a phone that isn't connected this many times running
-/// (six seconds and more: no connecting takes that long, its page timing
-/// out in five) is stuck: told to let go (`Profiles::unstick`), and
-/// asked again; no more often than `UNSTICK_EVERY`.
+/// After this many busy answers with the phone disconnected, try one
+/// device-level cancellation. A fresh page can still fail or collide
+/// with another client. Keep the normal backoff through that busy spell.
 const UNSTICK_AFTER: usize = 3;
 const UNSTICK_EVERY: Duration = Duration::from_secs(120);
 /// A failure the same as the last is logged again after this, with how
@@ -314,6 +312,8 @@ struct OthersLink {
     /// When it opened, and whether the phone has said anything on it.
     opened_at: Instant,
     heard: bool,
+    /// The same sockets the readers hold. Shutting them wakes both readers.
+    sockets: [Arc<std::fs::File>; 2],
     state: Others,
     /// To the thread that writes its commands to the phone.
     write: mpsc::Sender<Vec<u8>>,
@@ -356,6 +356,10 @@ struct Service {
     /// next asking (`UNSTICK_AFTER`), and when it last was.
     unstick: bool,
     unstuck_at: Option<Instant>,
+    /// A recovery was already tried in this run of busy answers.
+    tried_unstick: bool,
+    /// Keep a user-requested failure visible until the phone works again.
+    report_retries: bool,
     /// While a channel is being opened: when to give up on it
     /// (`OPEN_ANSWER`, `OPEN_COMES`).
     opening_until: Option<Instant>,
@@ -408,6 +412,8 @@ struct Service {
     /// connecting just after is that asking's doing, not its own), and
     /// when the session's channel came.
     paged_at: Option<Instant>,
+    /// A brief down/up on a failing bearer adds no new evidence of reachability.
+    lost_at: Option<Instant>,
     channel_at: Option<Instant>,
     /// When the open session is next looked in on (`CHECK`); whether
     /// the phone has connected back to tell of messages this session,
@@ -658,6 +664,8 @@ pub fn run() -> ! {
         why_said_at: None,
         unstick: false,
         unstuck_at: None,
+        tried_unstick: false,
+        report_retries: false,
         opening_until: None,
         let_go: false,
         digest: 0,
@@ -682,6 +690,7 @@ pub fn run() -> ! {
         busy: 0,
         hangs: 0,
         paged_at: None,
+        lost_at: None,
         channel_at: None,
         check_at: None,
         told: false,
@@ -782,7 +791,7 @@ impl Service {
             ("opening_until", self.opening_until),
             ("keep_at", self.keep_at),
             ("check_at", self.check_at),
-            ("others_at", self.others_at),
+            ("others_at", self.others_due()),
             ("le_ask_at", le_ask_due(self.le_ask_at, self.others.is_some(), self.others_since, self.others_at)),
             ("its other notifications' answer", self.others.as_ref().and_then(|o| o.state.due())),
             ("a call's", self.calling.due()),
@@ -797,11 +806,7 @@ impl Service {
     fn take(&mut self, ev: Ev) {
         match ev {
             Ev::Opened(opened) => self.opened(opened),
-            Ev::Devices => {
-                // (Something changed: a phone back in reach is tried now.)
-                self.tries = 0;
-                self.devices();
-            }
+            Ev::Devices => self.devices(),
             Ev::Detail => {
                 if let (Some(profiles), Some(phone)) = (self.profiles.clone(), self.phone.as_mut())
                     && let Ok(phones) = profiles.phones()
@@ -955,6 +960,13 @@ impl Service {
         if phone.as_ref().map(|p| &p.path) != self.phone.as_ref().map(|p| &p.path) {
             // Another phone, or none: what the last one had is let go.
             self.end_session();
+            self.others_end();
+            (self.others_since, self.others_at, self.others_fails, self.le_ask_at) = (None, None, 0, None);
+            (self.tries, self.busy, self.hangs, self.silent) = (0, 0, 0, 0);
+            (self.retry_at, self.paged_at, self.unstuck_at) = (None, None, None);
+            self.lost_at = phone.as_ref().filter(|p| !p.connected).map(|_| Instant::now());
+            (self.unstick, self.tried_unstick, self.let_go, self.report_retries) = (false, false, false, false);
+            self.state.trouble.clear();
             (self.threads, self.contacts, self.seen, self.whole) = (Vec::new(), Vec::new(), HashSet::new(), HashSet::new());
             self.codes.clear();
             (self.state.conversations, self.state.unread, self.state.contacts, self.state.code_at) = (0, 0, false, None);
@@ -983,7 +995,16 @@ impl Service {
             }
         }
         let came = phone.as_ref().is_some_and(|p| p.connected) && !self.phone.as_ref().is_some_and(|p| p.connected);
+        let went = self.phone.as_ref().zip(phone.as_ref()).is_some_and(|(old, new)| old.path == new.path && old.connected && !new.connected);
         self.phone = phone;
+        if went {
+            self.lost_at = Some(Instant::now());
+            // Hung closes an established session and paces repeated short-lived channels.
+            // A page in flight owns its result even while Device1 still says disconnected.
+            if self.session.is_some() {
+                self.from_session(FromSession::Hung);
+            }
+        }
         self.details();
         self.others_link();
         self.calls_survey();
@@ -998,17 +1019,6 @@ impl Service {
                 st.path = p.path.clone();
                 st.kind = if p.kind == link::Kind::IPhone { Kind::IPhone } else { Kind::Android };
                 st.battery = p.battery.filter(|_| p.connected);
-                // Out of reach with a session open: the session has
-                // ended, whether or not its channel has said so yet.
-                let gone = !p.connected && (self.session.is_some() || self.opening);
-                if gone {
-                    if let Some(cmds) = self.session.take() {
-                        let _ = cmds.send(Cmd::Close);
-                    }
-                    (self.opening, self.opening_until) = (false, None);
-                    self.generation += 1;
-                    st.link = Link::Away;
-                }
                 if self.session.is_none() && !self.opening {
                     if st.link == Link::NotPaired || st.link == Link::Ready {
                         st.link = Link::Away;
@@ -1018,7 +1028,10 @@ impl Service {
                     // silences, no sooner than its first waits (a phone
                     // asleep that comes and goes isn't asked a minute a
                     // round).
-                    if came && self.paged_at.is_none_or(|at| at.elapsed() > Duration::from_secs(20)) {
+                    let quiet = Duration::from_secs(20);
+                    let long_absence = self.lost_at.is_some_and(|at| at.elapsed() > quiet);
+                    let first_return = self.tries == 0 && self.hangs <= 2 && self.paged_at.is_none_or(|at| at.elapsed() > quiet);
+                    if came && (long_absence || first_return) {
                         let soon = Instant::now() + if self.silent == 0 { Duration::ZERO } else { paced(Duration::from_secs(SILENT[self.silent.min(2) - 1])) };
                         if self.retry_at.is_some_and(|at| at > soon) {
                             (self.retry_at, self.tries) = (Some(soon), 0);
@@ -1197,12 +1210,19 @@ impl Service {
     /// a while (`solicit`).
     fn others_link(&mut self) {
         let wanted = self.settings.others;
-        let phone = self.phone.clone().filter(|p| p.connected && p.kind == link::Kind::IPhone && wanted);
+        let phone = self.phone.clone().filter(|p| p.kind == link::Kind::IPhone && wanted);
         let Some((phone, profiles)) = phone.zip(self.profiles.clone()) else {
             self.others_end();
             (self.others_since, self.others_at, self.others_fails, self.le_ask_at) = (None, None, 0, None);
             return;
         };
+        if !phone.connected {
+            if self.others.is_some() {
+                self.others_lost();
+            }
+            self.others_since = None;
+            return;
+        }
         if self.state.model.is_empty()
             && let Some(model) = profiles.model(&phone.path)
         {
@@ -1229,7 +1249,6 @@ impl Service {
                 // and every few minutes, and advertised to for a while
                 // from when it came (`solicit`); the link is taken the
                 // moment BlueZ says it's up.
-                self.others_fails = 0;
                 self.others_since.get_or_insert(now);
                 if self.le_ask_at.is_none_or(|at| at <= now) {
                     self.le_ask_at = Some(now + paced(LE_ASK));
@@ -1251,10 +1270,12 @@ impl Service {
         let generation = self.others_opened;
         // A thread each: the two streams (a packet a read, until the
         // link goes), and the commands (a write waits for the phone).
-        for (name, mut stream, data) in [("phone-told", source, false), ("phone-answers", data, true)] {
+        let sockets = [Arc::new(source), Arc::new(data)];
+        for (name, socket, data) in [("phone-told", sockets[0].clone(), false), ("phone-answers", sockets[1].clone(), true)] {
             let to = self.tx.clone();
             let _ = std::thread::Builder::new().name(name.into()).spawn(move || {
                 use std::io::Read as _;
+                let mut stream = socket.as_ref();
                 let mut packet = [0u8; 1024];
                 loop {
                     match stream.read(&mut packet) {
@@ -1291,7 +1312,7 @@ impl Service {
             let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
             olo_protocol::calendar::Coming::read().is_some_and(|coming| coming.reminds(title, now, REMINDED_WITHIN))
         })));
-        self.others = Some(OthersLink { generation, opened_at: now, heard: false, state, write, notes: HashMap::new() });
+        self.others = Some(OthersLink { generation, opened_at: now, heard: false, sockets, state, write, notes: HashMap::new() });
         self.state.others = true;
     }
 
@@ -1301,10 +1322,25 @@ impl Service {
         let wait = paced(Duration::from_secs(OTHERS_AGAIN[self.others_fails.min(OTHERS_AGAIN.len() - 1)]));
         self.others_fails += 1;
         self.others_at = Some(Instant::now() + wait);
-        // (Its low-energy link is there: no more asking for it.)
-        self.le_ask_at = None;
         if self.others_fails == 1 || self.others_fails == OTHERS_AGAIN.len() {
             tracing::info!("phone: its other notifications don't stay open: tried again in {} s", wait.as_secs());
+        }
+    }
+
+    // Keep the deadline across a flap, without waking up for it while offline.
+    fn others_due(&self) -> Option<Instant> {
+        self.others_at.filter(|_| self.phone.as_ref().is_some_and(|p| p.connected))
+    }
+
+    fn others_lost(&mut self) {
+        let Some(link) = &self.others else { return };
+        let held = link.heard || link.opened_at.elapsed() >= paced(OTHERS_HELD);
+        self.others_end();
+        self.others_since = None;
+        if held {
+            (self.others_fails, self.others_at, self.le_ask_at) = (0, None, None);
+        } else {
+            self.others_failed();
         }
     }
 
@@ -1313,6 +1349,9 @@ impl Service {
     /// the rest stay, as read.
     fn others_end(&mut self) {
         let Some(link) = self.others.take() else { return };
+        for socket in &link.sockets {
+            link::shutdown_socket(socket);
+        }
         // (Said of one that held; one closed as it opened is said of in
         // `others_failed`, not a line an opening.)
         if link.heard || link.opened_at.elapsed() >= paced(OTHERS_HELD) || self.others_fails == 0 {
@@ -1346,15 +1385,8 @@ impl Service {
                 // A link that held and went (the phone out of its reach
                 // a moment) may come again: asked for anew, at once. One
                 // that closed as it opened isn't asked for at once.
-                let held = o.heard || o.opened_at.elapsed() >= paced(OTHERS_HELD);
-                self.others_end();
-                self.others_since = None;
-                if held {
-                    self.others_fails = 0;
-                    self.others_link();
-                } else {
-                    self.others_failed();
-                }
+                self.others_lost();
+                self.others_link();
                 return;
             }
         };
@@ -1638,15 +1670,17 @@ impl Service {
                 // not every three seconds for ever.)
                 let busy = why.contains("InProgress") || why.contains("no channel came");
                 self.busy = if busy { self.busy + 1 } else { 0 };
+                if !busy {
+                    self.tried_unstick = false;
+                }
                 let connected = self.phone.as_ref().is_some_and(|p| p.connected);
-                // BlueZ busy, time after time, with a phone that isn't
-                // connected: stuck (a connecting it never ended). Told to
-                // let go before the next asking, which pages the phone
-                // afresh.
+                // A disconnected phone can have a stranded device request.
+                // Allow one attempt to clear it per busy spell, with the
+                // same cooldown when the person requests another try.
                 let stuck = why.contains("InProgress") && !connected && self.busy >= UNSTICK_AFTER;
-                if stuck && self.unstuck_at.is_none_or(|at| at.elapsed() >= UNSTICK_EVERY) {
+                if stuck && !self.tried_unstick && self.unstuck_at.is_none_or(|at| at.elapsed() >= UNSTICK_EVERY) {
                     tracing::info!("phone: Bluetooth has said it's busy with the phone {} times running, the phone not connected: told to let go of what it's stuck on, and asked again", self.busy);
-                    (self.unstick, self.unstuck_at) = (true, Some(Instant::now()));
+                    (self.unstick, self.tried_unstick, self.unstuck_at) = (true, true, Some(Instant::now()));
                 }
                 let wait = if busy && (self.busy <= BUSY_SOON || self.unstick) { 3 } else { self.away_wait() };
                 self.tries += 1;
@@ -1669,8 +1703,19 @@ impl Service {
                         self.why_said_at = Some(Instant::now());
                     }
                 }
-                self.state.trouble =
-                    if connected { olo_kit::en!("Bluetooth couldn’t open the phone’s messages ({}).", why.rsplit(": ").next().unwrap_or(&why).trim_end_matches('.')) } else { String::new() };
+                // Why, where there's something to say: the phone there
+                // and still not spoken to (Bluetooth's own word for it);
+                // or asked for by hand and not answering, which is said
+                // as what to look at on the phone, not as Bluetooth's
+                // name for a page that timed out.
+                let unanswered = why.contains("page-timeout") || why.contains("Host is down");
+                self.state.trouble = if connected || (self.report_retries && !unanswered) {
+                    olo_kit::en!("Bluetooth couldn’t open the phone’s messages ({}).", why.rsplit(": ").next().unwrap_or(&why).trim_end_matches('.'))
+                } else if self.report_retries {
+                    olo_kit::en!("“{}” isn’t in reach. Is it nearby, unlocked, with Bluetooth on?", self.state.name)
+                } else {
+                    String::new()
+                };
             }
             FromSession::NotAllowed => {
                 (self.opening, self.session, self.opening_until) = (false, None, None);
@@ -1685,6 +1730,7 @@ impl Service {
             }
             FromSession::Up(listed) => {
                 (self.tries, self.retry_at, self.silent, self.busy) = (0, None, 0, 0);
+                (self.report_retries, self.tried_unstick, self.unstick) = (false, false, false);
                 tracing::info!("phone: its messages are open ({} in its inbox)", listed.len());
                 self.state.link = Link::Ready;
                 self.state.trouble.clear();
@@ -2040,8 +2086,15 @@ impl Service {
                     self.contacts_tries = 0;
                     self.ask_contacts();
                 }
-                if self.session.is_none() && !self.opening && self.phone.is_some() {
-                    self.open();
+                if self.phone.is_some() && self.state.profiles && self.state.link != Link::Ready {
+                    (self.report_retries, self.tried_unstick) = (true, false);
+                    if self.session.is_none() && !self.opening {
+                        self.open();
+                    }
+                    if self.opening || self.session.is_some() {
+                        self.state.link = Link::Connecting;
+                        self.state.trouble.clear();
+                    }
                 }
                 Reply { ok: true, state: Some(self.state.clone()), ..Default::default() }
             }
@@ -2425,7 +2478,7 @@ impl Service {
         }
         // Its other notifications, tried again; the phone asked again
         // to connect over low energy.
-        if self.others_at.is_some_and(|at| at <= t) || le_ask_due(self.le_ask_at, self.others.is_some(), self.others_since, self.others_at).is_some_and(|at| at <= t) {
+        if self.others_due().is_some_and(|at| at <= t) || le_ask_due(self.le_ask_at, self.others.is_some(), self.others_since, self.others_at).is_some_and(|at| at <= t) {
             self.others_link();
         }
         if self.retry_at.is_some_and(|at| at <= t) {

@@ -1073,3 +1073,19 @@ Learned on the second pass (2026-11-20):
   itself. Ask the reviewer one narrow question each round ("does this
   do anything HEAD doesn't that loses X"): it kept the looks short and
   the findings comparable.
+- **BlueZ announces every device to every program**, and a search some
+  other program holds (Chrome while a passkey prompt is up) makes that
+  constant: `InterfacesAdded` and `InterfacesRemoved` for strangers,
+  several a second. A service that takes any announcement as news of
+  its own device does its work again each time (the phone service
+  abandoned its own asking at each, 2026-11-20). Compare what changed
+  for the device you follow; and read `busctl --system get-property
+  org.bluez /org/bluez/hci0 org.bluez.Adapter1 Discovering` when a
+  Bluetooth fault makes no sense.
+- **BlueZ's "br-connection-busy" is an asking in flight**, the
+  program's own as likely as not (`dev->pending || dev->connect ||
+  dev->browse`, src/device.c): the first asking's answer (a page
+  timing out) comes when BlueZ is done, up to a minute on. Asking
+  again over it gets "busy" and learns nothing. bluetoothd's journal
+  (`journalctl -u bluetooth`, readable here) has what each attempt
+  came to ("Unable to get … SDP record: Host is down").

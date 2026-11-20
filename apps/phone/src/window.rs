@@ -195,6 +195,8 @@ pub enum Msg {
     Launch(Vec<String>),
     /// Something told to the service, with nothing to hear back.
     Told,
+    /// The request to retry could not reach the service.
+    RetryFailed(String),
     /// The latest one-time code, asked for to copy.
     Code(Option<String>),
 }
@@ -303,6 +305,7 @@ pub struct Phone {
     contacts: Vec<Person>,
     /// The service couldn't be asked (it isn't running, or says no).
     failed: Option<String>,
+    retry_error: Option<String>,
     tab: Tab,
     shown: Shown,
     /// The number a `tel:` link opened the card at: in bold there, among
@@ -458,6 +461,7 @@ impl Phone {
             threads: Vec::new(),
             contacts: Vec::new(),
             failed: None,
+            retry_error: None,
             tab: saved.tab,
             shown: saved.shown,
             linked: None,
@@ -494,6 +498,18 @@ impl Phone {
         if let Some(many) = demo {
             let (state, threads, contacts) = crate::demo::sample(when::now(), many);
             (phone.state, phone.threads, phone.contacts) = (state, threads, contacts);
+            // (`OLO_PHONE_DEMO=away`, `=connecting`: the made-up phone
+            // out of reach after Try Again, or being looked for, so
+            // the notice over the window can be pictured with nobody's
+            // own messages under it.)
+            match std::env::var("OLO_PHONE_DEMO").as_deref() {
+                Ok("away") => {
+                    phone.state.link = Link::Away;
+                    phone.state.trouble = olo_kit::en!("“{}” isn’t in reach. Is it nearby, unlocked, with Bluetooth on?", phone.state.name);
+                }
+                Ok("connecting") => phone.state.link = Link::Connecting,
+                _ => {}
+            }
             if phone.shown == Shown::Nothing {
                 phone.shown = phone.threads.first().map(|t| Shown::Thread(t.key.clone())).unwrap_or_default();
             }
@@ -809,6 +825,7 @@ impl View for Phone {
     fn message(&mut self, message: Msg, cx: &mut Cx<Self>) {
         match message {
             Msg::State(state) => {
+                self.retry_error = None;
                 if state.music != self.state.music {
                     cx.invalidate();
                 }
@@ -887,6 +904,7 @@ impl View for Phone {
             }
             Msg::Clock(h24) => self.h24 = h24,
             Msg::Told => return,
+            Msg::RetryFailed(why) => self.retry_error = Some(why),
             Msg::Code(code) => {
                 if let Some(code) = code {
                     olo_kit::clipboard::write(ClipboardItem::new_string(code));
@@ -973,7 +991,15 @@ impl View for Phone {
                 }
             }
             "reconnect" => {
-                cx.work(|| drop(phone::ask(&Request::Reconnect, ASK)), |()| Msg::Told);
+                self.retry_error = None;
+                cx.work(
+                    || phone::ask(&Request::Reconnect, ASK),
+                    |reply| match reply {
+                        Ok(reply) if reply.ok => Msg::Told,
+                        Ok(reply) => Msg::RetryFailed(reply.error.unwrap_or_else(|| olo_kit::words::en("The phone service wouldn’t say.").into())),
+                        Err(e) => Msg::RetryFailed(e.to_string()),
+                    },
+                );
             }
             // A call through the phone to a number (its sound here);
             // the call ringing answered here; the call ended.
@@ -1674,11 +1700,12 @@ impl Phone {
             Shown::Thread(_) | Shown::New(_) => self.talk(width, cx),
         };
         // How the phone stands, while it isn't simply connected.
-        let notice = (!self.demo && self.state.link != Link::Ready).then(|| {
-            let words = match (self.state.link, self.state.trouble.is_empty()) {
-                (Link::Allow, _) => olo_kit::tr!("“{}” hasn’t allowed this computer its messages yet.", self.state.name),
-                (Link::Connecting, _) => olo_kit::tr!("Connecting to “{}”…", self.state.name),
-                (_, false) => olo_kit::words::of_said(&self.state.trouble),
+        let notice = (self.state.link != Link::Ready).then(|| {
+            let words = match (self.retry_error.as_deref(), self.state.link, self.state.trouble.is_empty()) {
+                (Some(why), _, _) => olo_kit::words::of_said(why),
+                (None, Link::Allow, _) => olo_kit::tr!("“{}” hasn’t allowed this computer its messages yet.", self.state.name),
+                (None, Link::Connecting, _) => olo_kit::tr!("Connecting to “{}”…", self.state.name),
+                (None, _, false) => olo_kit::words::of_said(&self.state.trouble),
                 _ => olo_kit::tr!("“{}” is out of reach. It’s tried again by itself.", self.state.name),
             };
             let mut row = div()
@@ -1688,6 +1715,11 @@ impl Phone {
                 .gap(px(m::SPACING))
                 .px(px(m::SPACING))
                 .py(px(m::TIGHT))
+                // (As tall as two lines whatever it says: "Connecting
+                // to …" is one line and what comes of it two, and the
+                // window under it mustn't jump as Try Again is pressed
+                // and answered. Both reviewers' looks, 2026-11-20.)
+                .min_h(px((2.0 * style::PLAIN_SIZE * style::LINE_HEIGHT).ceil() + 2.0 * m::TIGHT))
                 .bg(c(olo_kit::palette::mix(p.panel_background, p.warning, 0.18)))
                 .child(div().flex_1().min_w_0().child(StringView::new(words).wrap(true)));
             row = match self.state.link {
