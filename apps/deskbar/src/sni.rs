@@ -44,6 +44,10 @@ pub struct Badge {
     /// How far along what it is doing is (0–1), if it shows that.
     pub progress: Option<f64>,
     pub urgent: bool,
+    /// What waits and where, where an Olo app says
+    /// (`notifications::WAITS_PROPERTY`).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub waits: Vec<olo_protocol::notifications::Waits>,
     /// Who sent it (dropped when they leave the bus).
     sender: String,
 }
@@ -389,7 +393,7 @@ fn run(conn: Connection, rx: mpsc::Receiver<Event>, tx: mpsc::Sender<Event>, reg
             .iter()
             .filter_map(|b| {
                 let count = b.count.unwrap_or(0).max(0) as u64;
-                (count > 0 || b.urgent).then(|| Attention { app: b.app.clone(), count, urgent: b.urgent })
+                (count > 0 || b.urgent).then(|| Attention { app: b.app.clone(), count, urgent: b.urgent, waits: b.waits.clone() })
             })
             .collect();
         if waiting.as_ref() != Some(&now) {
@@ -495,7 +499,7 @@ fn run(conn: Connection, rx: mpsc::Receiver<Event>, tx: mpsc::Sender<Event>, reg
 
 /// Apply a launcher Update's properties to `b`: each only changes what it
 /// names (`count` with `count-visible`, `progress` with
-/// `progress-visible`, `urgent`).
+/// `progress-visible`, `urgent`, an Olo app's what-waits-where).
 fn update_badge(b: &mut Badge, sender: String, props: &HashMap<String, OwnedValue>) {
     b.sender = sender;
     let get = |key: &str| props.get(key).and_then(|v| v.try_clone().ok());
@@ -509,6 +513,9 @@ fn update_badge(b: &mut Badge, sender: String, props: &HashMap<String, OwnedValu
     b.progress = if shown_progress { progress.or(b.progress).map(|p| p.clamp(0.0, 1.0)) } else { None };
     if let Some(u) = visible("urgent") {
         b.urgent = u;
+    }
+    if let Some(w) = get(olo_protocol::notifications::WAITS_PROPERTY).and_then(|v| String::try_from(v).ok()) {
+        b.waits = serde_json::from_str(&w).unwrap_or_default();
     }
 }
 
@@ -843,6 +850,14 @@ mod tests {
         // Zero unread is no count.
         update_badge(&mut b, ":1.5".into(), &props(&[("count", Value::from(0i64)), ("count-visible", Value::from(true))]));
         assert_eq!(b.count, None);
+        // An Olo app's what-waits-where, kept until it says again.
+        let w = r#"[{"what":"Claude Code needs your answer","place":"Fix login","shows":["--show-shell","9"]}]"#;
+        update_badge(&mut b, ":1.5".into(), &props(&[("count", Value::from(1i64)), ("olo-waits", Value::from(w))]));
+        assert_eq!(b.waits.iter().map(|w| (w.place.as_str(), w.shows.clone())).collect::<Vec<_>>(), [("Fix login", vec!["--show-shell".to_owned(), "9".to_owned()])]);
+        update_badge(&mut b, ":1.5".into(), &props(&[("urgent", Value::from(false))]));
+        assert_eq!(b.waits.len(), 1);
+        update_badge(&mut b, ":1.5".into(), &props(&[("count", Value::from(0i64)), ("olo-waits", Value::from("[]"))]));
+        assert!(b.waits.is_empty());
     }
 
     #[test]

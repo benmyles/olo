@@ -559,17 +559,28 @@ impl Notifications {
     /// off, as going there by any way does.
     pub fn open_waiting(&mut self, id: u32) {
         let Some(w) = self.waiting.get(id).cloned() else { return };
-        match waiting::about(&self.history.entries, &w.app).cloned() {
-            Some(e) if e.live => self.invoke(None, e.id, "default".into()),
-            Some(e) => {
-                self.set_read(e.id, true);
-                if !show_what(e.desktop_entry.as_deref(), &e.show) {
+        // Where the app said what waits where: that one (an app's own id,
+        // the first it names), shown as the app shows it (Terminal's
+        // window and tab, `--show-shell ID`).
+        let wait = w.waits.iter().find(|x| x.id == id).or(w.waits.first());
+        match wait {
+            Some(x) => {
+                if !show_what(Some(&w.app), &x.waits.shows) {
                     raise_app(Some(&w.app), &w.name);
                 }
             }
-            None => raise_app(Some(&w.app), &w.name),
+            None => match waiting::about(&self.history.entries, &w.app).cloned() {
+                Some(e) if e.live => self.invoke(None, e.id, "default".into()),
+                Some(e) => {
+                    self.set_read(e.id, true);
+                    if !show_what(e.desktop_entry.as_deref(), &e.show) {
+                        raise_app(Some(&w.app), &w.name);
+                    }
+                }
+                None => raise_app(Some(&w.app), &w.name),
+            },
         }
-        if self.waiting.later(id) {
+        if self.waiting.later(wait.map_or(w.id, |x| x.id)) {
             self.publish(false);
             self.changed();
         }

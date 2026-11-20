@@ -2492,7 +2492,9 @@ a quotation or a bulleted, numbered or task list, by their marks.
    be longer than its room (a title, a path, a name the person typed)
    goes through `style::label_fit(…, max_width)` instead, which ends it
    with "…" rather than clipping a letter in half or running into its
-   neighbour (agents still read the whole text). Counts people read have
+   neighbour (agents still read the whole text), never just after a
+   space, dash or stop ("Token Pool…", not "Token Pool —…": a separator
+   with nothing after it looks unfinished). Counts people read have
    their thousands separated, `style::thousands(n)` ("30,001 actions").
    Fonts: `style::ui_font(weight)` and `style::mono_font(weight)`, at
    `PLAIN_SIZE` (12), `DETAIL_SIZE` (11: a subtitle, a caption, a chip)
@@ -7292,12 +7294,25 @@ ringed in it. **The standard is the launcher entry's**
 (`com.canonical.Unity.LauncherEntry`, what Chromium, Electron and
 Telegram send and Deskbar already heard): an Olo app says its count
 with `Notifier::badge(n)` (kit-base, for its desktop entry; 0 takes
-it away, and it goes when the app leaves the bus). Olo's that have
+it away, and it goes when the app leaves the bus), or, better, what
+waits and where with `Notifier::waiting(waits)`: each thing's words
+("Claude Code needs your answer"), where it is in the app (a tab, a
+conversation) and the app's command line that shows it, as a
+notification's `show` (`notifications::Waits`, sent whole with the
+count as the badge's `olo-waits` property, JSON; Deskbar keeps it with
+the badge, `Attention::waits`). Notifications then lists each in its
+"Waiting in apps" strip (what, then quieter where, the app at the end)
+and gives each an Inbox card of its own, a click on either going there
+(Ben, 2026-11-19: "when i click on the waiting app, e.g. terminal, it
+doesn't take me to the specific terminal window + tab that has the
+activity"); each is put off on its own as it's gone to, and comes back
+when what it says changes. Olo's that have
 something unread say it: Telegram (unread chats), Phone (unread
 messages), Slack (olo-slack's count, from its page), **Terminal**
 (tabs waiting for the person: an agent that needs an answer or has
 finished in a tab not looked at since, `Tab::attention`,
-`say_waiting`), **OS Updates** (updates waiting, while it's open) and
+`say_waiting`: each tab with its agent's words and `--show-shell
+ID`), **OS Updates** (updates waiting, while it's open) and
 **Olo Doctor** (critical findings and problems, from its background
 look). The others have nothing that is unread.
 
@@ -17855,8 +17870,10 @@ banner brought back after a restart, having no action, brought its
 app forward as it was left (`Did::Raise`), now shows what it's about
 first; and Terminal's window kept the old tab's title when a click
 chose a tab (`show_shell` retitles). "Waiting in apps" (red) goes to
-the app's own open note about it, else its newest unread one that says
-how to show it (`waiting::about`), and only then to the app. Measured
+the thing that waits where the app said where (`Notifier::waiting`:
+Terminal's tab), else to the app's own open note about it, else its
+newest unread one that says how to show it (`waiting::about`), and
+only then to the app. Measured
 (release): at rest 0 wakeups a second; twenty short-lived connections
 coming and going in five seconds woke only the bus's own threads (0.0%
 of a core), not the UI. Tried headless: a note from `gdbus call` (gone

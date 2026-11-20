@@ -196,7 +196,8 @@ enum Ask {
     Show(NoteId, Box<Note>),
     Close(NoteId),
     Seen(NoteId),
-    Badge(u32),
+    /// The count, and what waits where it's said (None: a count alone).
+    Badge(u32, Option<Vec<olo_protocol::notifications::Waits>>),
 }
 
 /// Shows an app's notifications. Cheap to clone; one thread per notifier.
@@ -249,7 +250,16 @@ impl Notifier {
     /// its row's dot (`com.canonical.Unity.LauncherEntry`'s count, for
     /// the app's desktop entry, as chat apps send it).
     pub fn badge(&self, count: u32) {
-        let _ = self.to.send(Ask::Badge(count));
+        let _ = self.to.send(Ask::Badge(count, None));
+    }
+
+    /// What waits in the app, each thing with where it is and how it's
+    /// shown (`Waits`; empty: nothing): its count on its Deskbar row, and
+    /// each listed in Notifications' "Waiting in apps" and Deskbar's
+    /// Inbox, where a click goes to it (its `shows`, which the app takes
+    /// as it takes a notification's).
+    pub fn waiting(&self, waits: Vec<olo_protocol::notifications::Waits>) {
+        let _ = self.to.send(Ask::Badge(u32::try_from(waits.len()).unwrap_or(u32::MAX), Some(waits)));
     }
 }
 
@@ -355,11 +365,14 @@ fn run(from: mpsc::Receiver<Ask>, proxy: Events, app: String, entry: String) {
                 }
                 None => Ok(()),
             },
-            Ask::Badge(count) => {
+            Ask::Badge(count, waits) => {
                 use zbus::zvariant::Value;
                 let mut props: HashMap<&str, Value> = HashMap::new();
                 props.insert("count", Value::from(count as i64));
                 props.insert("count-visible", Value::from(count > 0));
+                if let Some(w) = waits {
+                    props.insert(olo_protocol::notifications::WAITS_PROPERTY, Value::from(serde_json::to_string(&w).unwrap_or_default()));
+                }
                 let uri = format!("application://{entry}.desktop");
                 c.emit_signal(None::<&str>, "/com/canonical/unity/launcherentry/olo", "com.canonical.Unity.LauncherEntry", "Update", &(uri.as_str(), props))
             }

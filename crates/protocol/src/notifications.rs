@@ -400,7 +400,31 @@ pub struct Attention {
     pub app: String,
     pub count: u64,
     pub urgent: bool,
+    /// Each thing waiting and where it is, where the app says (an Olo
+    /// app's own: `Waits`); none from one that only counts.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub waits: Vec<Waits>,
 }
+
+/// One thing an app says is waiting in it, and where (Ben, 2026-11-19:
+/// "when i click on the waiting app, e.g. terminal, it doesn't take me to
+/// the specific terminal window + tab that has the activity"): what it is
+/// ("Claude Code needs your answer"), where in the app ("Fix login
+/// redirect": a tab, a conversation), and the app's command line that
+/// shows it, as a notification's `show` (Terminal's `--show-shell 9`). Said
+/// with the app's launcher badge, as its [`WAITS_PROPERTY`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct Waits {
+    pub what: String,
+    pub place: String,
+    pub shows: Vec<String>,
+}
+
+/// The launcher badge's property (`com.canonical.Unity.LauncherEntry`'s
+/// Update) saying what waits in an Olo app: its [`Waits`], as JSON; sent
+/// whole each time (`[]`: nothing named), absent from other apps'.
+pub const WAITS_PROPERTY: &str = "olo-waits";
 
 impl Attention {
     pub fn path() -> std::path::PathBuf {

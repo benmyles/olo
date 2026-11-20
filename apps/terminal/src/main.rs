@@ -52,6 +52,7 @@ use olo_theme::{Palette, ThemeMode, looks};
 use agent::{Agent, State};
 use colors::Scheme;
 use groups::Group;
+use olo_protocol::notifications::Waits;
 use session::{Message, Session, Size, Start, TermEvent};
 use ui::{Cx, FieldSpec, Timer, WindowId, WindowOptions, terminal};
 use view::{Metrics, Mouse};
@@ -281,6 +282,9 @@ pub(crate) struct Tab {
     agent_title_until: Option<Instant>,
     /// Its agent stopped (done, or asking) while no one was looking.
     attention: bool,
+    /// For what, and since when: its agent and how it stood then (what
+    /// Terminal says waits in it, `say_waiting`).
+    attention_for: Option<(Agent, State, Instant)>,
     /// When it was looked at after it wanted attention: its tab's red dot
     /// fades from then (`strip::STRIP_DOT_FADE`).
     attention_seen: Option<Instant>,
@@ -437,6 +441,7 @@ impl Tab {
             agent_title: None,
             agent_title_until: None,
             attention: false,
+            attention_for: None,
             attention_seen: None,
             repo: None,
             group: None,
@@ -840,8 +845,10 @@ pub(crate) struct Terminal {
     /// Preferences ▸ Terminal: what Keep It Going says.
     pub(crate) keep_going_says: String,
     notifier: Notifier,
-    /// How many tabs waiting for the person were last said (`say_waiting`).
-    waiting_said: u32,
+    /// What waits for the person, as last said (`say_waiting`), and the
+    /// hash of what it was made of.
+    waiting_said: Vec<Waits>,
+    waiting_made_of: u64,
     /// The notification each shell's agent last put up.
     notes: HashMap<u64, NoteId>,
     /// The windows as last kept on disk (`remember`).
@@ -2200,15 +2207,46 @@ impl Terminal {
         }
     }
 
-    /// How many tabs wait for the person (an agent that needs an answer,
-    /// or is done, in a tab not looked at since: `Tab::attention`), said
-    /// as the app's unread count when it changes: Deskbar's red dot
-    /// beside Terminal (`Notifier::badge`).
+    /// The tabs that wait for the person (an agent that needs an answer,
+    /// or is done, in a tab not looked at since: `Tab::attention`), the
+    /// longest waiting first, each with what waits ("Claude Code needs
+    /// your answer", as its note says), where (its tab) and how it's shown
+    /// (`--show-shell ID`), said when it changes: Deskbar's red dot beside
+    /// Terminal, and each listed in Notifications' "Waiting in apps" and
+    /// the Inbox, where a click goes to its window and tab
+    /// (`Notifier::waiting`; Ben, 2026-11-19: "it doesn't take me to the
+    /// specific terminal window + tab that has the activity").
     pub(crate) fn say_waiting(&mut self) {
-        let waiting = self.windows.values().map(|w| if let Win::Term(t) = w { t.tabs.iter().filter(|tab| tab.attention).count() } else { 0 }).sum::<usize>() as u32;
-        if self.waiting_said != waiting {
-            self.waiting_said = waiting;
-            self.notifier.badge(waiting);
+        // (Asked each frame: the words are made only when what they're
+        // made of changed, told by its hash; with no tab waiting, nothing.)
+        let made_of = waits_made_of(self.windows.values().filter_map(|w| if let Win::Term(t) = w { Some(t) } else { None }).flat_map(|t| {
+            t.tabs.iter().filter(|tab| tab.attention).map(move |tab| (tab.session.id, tab.attention_for, tab.title.as_str(), tab.group.and_then(|g| t.groups.get(g)).map(|g| g.name.as_str())))
+        }));
+        if self.waiting_made_of == made_of {
+            return;
+        }
+        self.waiting_made_of = made_of;
+        let mut waits: Vec<(Instant, Waits)> = Vec::new();
+        for w in self.windows.values() {
+            let Win::Term(t) = w else { continue };
+            for tab in t.tabs.iter().filter(|tab| tab.attention) {
+                let Some((agent, state, since)) = tab.attention_for else { continue };
+                let what = match state {
+                    State::Blocked => olo_kit::tr!("{} needs your answer", agent.name()),
+                    _ => olo_kit::tr!("{} is waiting for you", agent.name()),
+                };
+                let place = match tab.group.and_then(|g| t.groups.get(g)) {
+                    Some(g) => format!("{} — {}", g.name, tab.title),
+                    None => tab.title.clone(),
+                };
+                waits.push((since, Waits { what, place, shows: vec![SHOW_SHELL.to_owned(), tab.session.id.to_string()] }));
+            }
+        }
+        waits.sort_by_key(|(since, w)| (*since, w.shows.clone()));
+        let waits: Vec<Waits> = waits.into_iter().map(|(_, w)| w).collect();
+        if self.waiting_said != waits {
+            self.waiting_said = waits.clone();
+            self.notifier.waiting(waits);
         }
     }
 
@@ -2241,6 +2279,7 @@ impl Terminal {
             return;
         };
         tab.attention = true;
+        tab.attention_for = Some((agent, state, Instant::now()));
         tab.attention_seen = None;
         // Its window's tab gets the red dot too, until this tab is looked
         // at (`Tab::look_at`; said in the window's body).
@@ -2276,6 +2315,18 @@ impl Terminal {
         let id = self.notifier.show(self.notes.get(&shell).copied(), note);
         self.notes.insert(shell, id);
     }
+}
+
+/// What `say_waiting`'s words are made of (each waiting tab's shell, its
+/// agent and how it stood, its title and group), as a hash: asked each
+/// frame, so the words are made only when it changes.
+fn waits_made_of<'a>(tabs: impl Iterator<Item = (u64, Option<(Agent, State, Instant)>, &'a str, Option<&'a str>)>) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    for tab in tabs {
+        tab.hash(&mut h);
+    }
+    h.finish()
 }
 
 const NAME_W: f32 = 340.0;
@@ -3562,7 +3613,8 @@ fn main() {
             worktrees_at: olo_protocol::TerminalSettings::default().worktrees,
             keep_going_says: olo_protocol::TerminalSettings::KEEP_GOING_SAYS.into(),
             notifier: Notifier::new(proxy.clone(), "Terminal", "olo-terminal"),
-            waiting_said: 0,
+            waiting_said: Vec::new(),
+            waiting_made_of: std::hash::Hasher::finish(&std::collections::hash_map::DefaultHasher::new()),
             notes: HashMap::new(),
             remembered: None,
             remembering: false,
@@ -3819,5 +3871,38 @@ mod settings_tests {
         assert_eq!(colors(&s), (Some("frappe"), Some("beos-dark")));
         let round = Settings::parse(&serde_json::to_string(&s).unwrap());
         assert_eq!((round.scheme, colors(&round)), (s.scheme, colors(&s)));
+    }
+}
+
+#[cfg(test)]
+mod waits_cost {
+    use super::*;
+
+    /// What `say_waiting` costs a frame: its check (`waits_made_of`) beside
+    /// what it did before (counting the waiting tabs), over 3 windows of 8
+    /// tabs with none, and then 3, waiting. Run on a release build:
+    /// `cargo test --release -p olo-terminal waits_check_cost -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn waits_check_cost() {
+        const N: u32 = 2_000_000;
+        let now = Instant::now();
+        let titles: Vec<String> = (0..24).map(|i| format!("ben@host:~/src/project-{i}")).collect();
+        for waiting in [0usize, 3] {
+            let tabs: Vec<(u64, Option<(Agent, State, Instant)>, &str, Option<&str>, bool)> =
+                (0..24).map(|i| (i as u64, (i < waiting).then_some((Agent::Claude, State::Blocked, now)), titles[i].as_str(), None, i < waiting)).collect();
+            let t = Instant::now();
+            let mut sink = 0u64;
+            for _ in 0..N {
+                sink = sink.wrapping_add(tabs.iter().filter(|t| t.4).count() as u64);
+            }
+            let before = t.elapsed().as_nanos() as f64 / N as f64;
+            let t = Instant::now();
+            for _ in 0..N {
+                sink = sink.wrapping_add(waits_made_of(std::hint::black_box(&tabs).iter().filter(|t| t.4).map(|t| (t.0, t.1, t.2, t.3))));
+            }
+            let after = t.elapsed().as_nanos() as f64 / N as f64;
+            println!("{waiting} of 24 tabs waiting: counting {before:.1} ns a frame, the check {after:.1} ns ({sink})");
+        }
     }
 }

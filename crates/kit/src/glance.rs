@@ -392,14 +392,27 @@ fn paint_inbox(g: &mut Painter, r: Bounds<Pixels>, cards: &[olo_protocol::notifi
         let x = icon.right() + px(5.0);
         style::label_fit(g, x, cy, Align::Left, who.to_owned(), style::DETAIL_SIZE, bold.clone(), ink.dim, name_right - x);
         y += px(INBOX_HEAD);
-        // What it is.
+        // What it is: on two lines where one won't hold it and the card
+        // shows text (its second line in the first line of the text's
+        // place, the card as tall as ever): cut short, "Claude Code needs
+        // y…" lost the word that said what to do (Codex's look, 2026-11-19).
         let cy = y + px(INBOX_TITLE / 2.0 + 1.0);
         style::draining_dot(g, style::snap_centred(g, point(left + px(INBOX_DOT), cy), INBOX_DOT * 2.0, INBOX_DOT * 2.0).center(), INBOX_DOT, fresh, dot);
         let x = left + px(INBOX_DOT * 2.0 + 5.0);
-        style::label_fit(g, x, cy, Align::Left, card.title.clone(), style::PLAIN_SIZE, bold, ink.text, right - x);
+        let lines = inbox_lines(preview, size);
+        // (Measured as it's drawn: the window's text system.)
+        let long = lines > 0 && style::fit(g, card.title.clone().into(), style::PLAIN_SIZE, &bold, right - x).as_ref() != card.title.as_str();
+        if long {
+            for (i, line) in inbox_wrap(g, &card.title, 2, f32::from(right - x), &bold, style::PLAIN_SIZE).into_iter().enumerate() {
+                style::label(g, x, cy + px((INBOX_TITLE / 2.0 - 1.0 + INBOX_TEXT / 2.0) * i as f32), Align::Left, line, style::PLAIN_SIZE, bold.clone(), ink.text);
+            }
+        } else {
+            style::label_fit(g, x, cy, Align::Left, card.title.clone(), style::PLAIN_SIZE, bold, ink.text, right - x);
+        }
         y += px(INBOX_TITLE);
-        for (i, line) in inbox_wrap(g, &card.detail, inbox_lines(preview, size), f32::from(right - left), &plain, style::SMALL_SIZE).into_iter().enumerate() {
-            style::label(g, left, y + px(INBOX_TEXT * (i as f32 + 0.5)), Align::Left, line, style::SMALL_SIZE, plain.clone(), ink.dim);
+        let taken = usize::from(long);
+        for (i, line) in inbox_wrap(g, &card.detail, lines - taken, f32::from(right - left), &plain, style::SMALL_SIZE).into_iter().enumerate() {
+            style::label(g, left, y + px(INBOX_TEXT * ((i + taken) as f32 + 0.5)), Align::Left, line, style::SMALL_SIZE, plain.clone(), ink.dim);
         }
     }
     // For agents: the card as one item, its buttons after.

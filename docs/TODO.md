@@ -165,18 +165,11 @@ something nobody here has is in "Blocked", with what it waits for.
     Claude Code's and OpenSSL for Codex's; weigh it, with the captured
     offers (`Capture::hellos`) as the reference, and say.
 
-- **Notifications' "Waiting in apps" goes to the window and tab that
-  waits** (Ben, 2026-11-19, with a picture of Notifications' "Waiting in
-  apps", "Terminal · 1 waiting": "when i click on the waiting app, e.g.
-  terminal, it doesn't take me to the specific terminal window + tab
-  that has the activity"). A click goes where the app's own notification
-  about it says (`Notifications::open_waiting`, `waiting::about`: its
-  open note's default action, or its newest unread note's `show`); with
-  neither (a Terminal tab waiting with no note of its own), the app only
-  comes forward, in whichever window. What an app says is waiting should
-  say where (Terminal: the window and the tab; Phone: the conversation),
-  a click go there, and several waiting in one app each be listed, each
-  going to its own.
+- **A list's scroll bar shows its arrows enabled when there's nothing
+  to scroll** (Codex's look at Notifications, 2026-11-19: one row in a
+  tall pane, both arrows drawn as if they'd scroll, no thumb). The
+  kit's `ScrollBar` should draw its arrows (and track) disabled when
+  the content fits, as BeOS's did.
 
 - **A Language setting, and Olo in every major language** (Ben,
   2026-11-18: "we should add a language setting and also let's translate
@@ -514,6 +507,20 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Notifications' "Waiting in apps" goes to the window and tab that
+  waits** (Ben, 2026-11-19: "when i click on the waiting app, e.g.
+  terminal, it doesn't take me to the specific terminal window + tab
+  that has the activity"). Done: an app says what waits and where
+  (`Notifier::waiting`: each thing's words, its place, the command line
+  that shows it, with its badge as `olo-waits`); Terminal names each
+  tab that waits (its agent's words, `--show-shell ID`); Notifications
+  lists each in "Waiting in apps" (what, then where, the app at the
+  end) and gives each an Inbox card of its own, a click on either
+  going there, each put off on its own. On the way: the Inbox card's
+  title takes two lines where one won't hold it, and a cut-short label
+  never ends at a separator. To look at: click a waiting tab in
+  Notifications or the Inbox.
 
 - **Every app right in every tiling layout** (Ben, 2026-11-19, with a
   picture of Calendar tiled in a quarter, its date, search field and

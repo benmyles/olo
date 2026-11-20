@@ -525,12 +525,22 @@ pub fn fit_with(text_system: &olo_interface::WindowTextSystem, text: SharedStrin
     // Shaped as a whole, a cut can still come out a little wider (a
     // kern, a ligature taken apart): one character back until it fits.
     loop {
-        let cut: SharedString = format!("{}…", text[..end].trim_end()).into();
+        let cut: SharedString = cut_short(&text, end).into();
         if end == 0 || shape(cut.clone()).width <= max_width {
             return cut;
         }
         end = text[..end].char_indices().next_back().map_or(0, |(i, _)| i);
     }
+}
+
+/// `text` cut at byte `end` with "…": without the space, or the dash or
+/// stop it came to, before it ("Token Pool…", not "Token Pool —…": a
+/// separator with nothing after it looks unfinished; Codex's look at
+/// Notifications' waiting rows, 2026-11-19).
+fn cut_short(text: &str, end: usize) -> String {
+    let kept = text[..end].trim_end();
+    let bare = kept.trim_end_matches(['—', '–', '-', ':', ';', ',', '·', '/', '|']).trim_end();
+    format!("{}…", if bare.is_empty() { kept } else { bare })
 }
 
 /// Keys as menus and the shortcuts sheet write them ("⇧⌘P", "Ctrl+Q"),
@@ -1281,4 +1291,21 @@ pub fn cross_mark(g: &mut Painter, r: Bounds<Pixels>, color: Hsla) {
 pub fn paint_swatch(g: &mut Painter, b: Bounds<Pixels>, color: Hsla, p: &Palette) {
     fill_rect(g, inset(g, b, 2.0), color);
     sunken(g, b, p, false);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Cut short, a text ends at a word, never at the space, dash or stop
+    /// before what was cut off.
+    #[test]
+    fn cut_short_at_a_word() {
+        let t = "Token Pool — capture clients";
+        assert_eq!(cut_short(t, "Token Pool —".len()), "Token Pool…");
+        assert_eq!(cut_short(t, "Token Pool — ".len()), "Token Pool…");
+        assert_eq!(cut_short(t, "Token Po".len()), "Token Po…");
+        assert_eq!(cut_short("a, b", 2), "a…");
+        assert_eq!(cut_short("— x", "—".len()), "—…");
+    }
 }

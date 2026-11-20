@@ -22,7 +22,7 @@ use crate::{
     session::{Listener, Nudge},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Agent {
     Claude,
     Codex,
@@ -37,7 +37,7 @@ impl Agent {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum State {
     /// Busy with its turn.
     Working,

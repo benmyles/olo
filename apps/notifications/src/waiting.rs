@@ -21,7 +21,7 @@
 
 use std::path::PathBuf;
 
-use olo_protocol::notifications::{Attention, InboxCard};
+use olo_protocol::notifications::{Attention, InboxCard, Waits};
 use serde::{Deserialize, Serialize};
 
 use crate::store;
@@ -46,11 +46,44 @@ pub struct Waiting {
     /// Put off (Later, or the app gone to): the count and urgency then.
     /// Hidden from the Inbox until it's more than that.
     pub later: Option<(u64, bool)>,
+    /// Each thing waiting and where it is, where the app says (an Olo
+    /// app's: Terminal's tabs), in its order: each a row of the strip and
+    /// a card of the Inbox, going to itself. None: only a count.
+    pub waits: Vec<Wait>,
+}
+
+/// One thing waiting in an app, and where (`Waits`), with an id of its
+/// own among the notifications' (its Inbox card's): kept while the app
+/// says it, as long as it shows the same place.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct Wait {
+    pub id: u32,
+    #[serde(flatten)]
+    pub waits: Waits,
+    /// Gone to, or put off (Later): out of the Inbox while it stays as it
+    /// is (what it says changing, it's back).
+    pub seen: bool,
+}
+
+impl Wait {
+    /// "Claude Code needs your answer, in “Fix login redirect”": the same
+    /// words on every surface.
+    pub fn said(&self) -> String {
+        match self.waits.place.as_str() {
+            "" => self.waits.what.clone(),
+            place => olo_kit::tr!("{}, in “{}”", self.waits.what, place),
+        }
+    }
 }
 
 impl Waiting {
-    /// Put off, and nothing more waiting than when it was.
+    /// Put off, and nothing more waiting than when it was (where it says
+    /// what waits: each of those put off).
     pub fn put_off(&self) -> bool {
+        if !self.waits.is_empty() {
+            return self.waits.iter().all(|w| w.seen);
+        }
         self.later.is_some_and(|(count, urgent)| self.count <= count && (!self.urgent || urgent))
     }
 
@@ -117,11 +150,14 @@ impl WaitingApps {
                     }
                     (w.count, w.urgent) = (badge.count, badge.urgent);
                     w.later = w.later.map(|(count, urgent)| (count.min(badge.count), urgent && badge.urgent));
+                    w.waits = Self::waits(&w.waits, &badge.waits, true, &mut id);
                 }
                 None => {
                     // (Put off before a restart: still put off, for as much.)
-                    let later = self.remembered.iter().find(|w| w.app == badge.app).and_then(|w| w.later).map(|(count, urgent)| (count.min(badge.count), urgent && badge.urgent));
-                    self.apps.push(Waiting { id: id(), app: badge.app.clone(), name: name(&badge.app), count: badge.count, urgent: badge.urgent, time: now, later });
+                    let before = self.remembered.iter().find(|w| w.app == badge.app);
+                    let later = before.and_then(|w| w.later).map(|(count, urgent)| (count.min(badge.count), urgent && badge.urgent));
+                    let waits = Self::waits(before.map_or(&[][..], |w| &w.waits), &badge.waits, false, &mut id);
+                    self.apps.push(Waiting { id: id(), app: badge.app.clone(), name: name(&badge.app), count: badge.count, urgent: badge.urgent, time: now, later, waits });
                 }
             }
         }
@@ -133,24 +169,46 @@ impl WaitingApps {
         changed
     }
 
-    pub fn get(&self, id: u32) -> Option<&Waiting> {
-        self.apps.iter().find(|w| w.id == id)
+    /// What the app says waits where (`said`): each one it said before
+    /// (`had`, the same place) keeps whether it was seen while it says the
+    /// same, and its id (`same_ids`: from this run, not before a restart);
+    /// a new one is given one.
+    fn waits(had: &[Wait], said: &[Waits], same_ids: bool, id: &mut impl FnMut() -> u32) -> Vec<Wait> {
+        said.iter()
+            .map(|w| {
+                let before = had.iter().find(|h| h.waits.shows == w.shows);
+                Wait { id: before.filter(|_| same_ids).map_or_else(&mut *id, |h| h.id), waits: w.clone(), seen: before.is_some_and(|h| h.seen && h.waits.what == w.what) }
+            })
+            .collect()
     }
 
-    /// Put `id` off (Later): out of the Inbox until more is waiting.
+    /// The app `id` is of: its own id, or one of what waits in it.
+    pub fn get(&self, id: u32) -> Option<&Waiting> {
+        self.apps.iter().find(|w| w.id == id || w.waits.iter().any(|x| x.id == id))
+    }
+
+    /// Put `id` off (Later, or gone to): out of the Inbox until more is
+    /// waiting; one thing waiting in an app (its id), that one alone.
     /// Whether it changed.
     pub fn later(&mut self, id: u32) -> bool {
-        let Some(w) = self.apps.iter_mut().find(|w| w.id == id) else { return false };
-        Self::put_off(w) && {
+        let Some(w) = self.apps.iter_mut().find(|w| w.id == id || w.waits.iter().any(|x| x.id == id)) else { return false };
+        let changed = match w.waits.iter_mut().find(|x| x.id == id) {
+            Some(x) => !std::mem::replace(&mut x.seen, true),
+            None => Self::put_off(w),
+        };
+        changed && {
             self.save();
             true
         }
     }
 
     fn put_off(w: &mut Waiting) -> bool {
-        let was = w.later;
+        let was = (w.later, w.waits.iter().filter(|x| x.seen).count());
         w.later = Some((w.count, w.urgent));
-        w.later != was
+        for x in &mut w.waits {
+            x.seen = true;
+        }
+        (w.later, w.waits.iter().filter(|x| x.seen).count()) != was
     }
 
     /// The person went to a window of app `app_id`: what waits in it has
@@ -166,26 +224,39 @@ impl WaitingApps {
         changed
     }
 
-    /// Deskbar's Inbox cards: one for each app not put off, the urgent
-    /// first, then the newest (`icons`: the names an app's icon may
-    /// have).
+    /// Deskbar's Inbox cards: one for each app not put off (one for each
+    /// thing waiting in it, where it says where), the urgent first, then
+    /// the newest (`icons`: the names an app's icon may have).
     pub fn cards(&self, icons: impl Fn(&Waiting) -> Vec<String>) -> Vec<InboxCard> {
         let mut shown: Vec<&Waiting> = self.apps.iter().filter(|w| !w.put_off()).collect();
         shown.sort_by_key(|w| (!w.urgent, std::cmp::Reverse((w.time, w.id))));
         shown
             .into_iter()
-            .map(|w| InboxCard {
-                id: w.id,
-                app: w.name.clone(),
-                icons: icons(w),
-                title: w.said(),
-                detail: match w.count {
-                    0 | 1 => olo_kit::tr!("Open {} to see it.", w.name),
-                    _ => olo_kit::tr!("Open {} to see them.", w.name),
-                },
-                attention: true,
-                time: w.time,
-                fade_minutes: None,
+            .flat_map(|w| {
+                let waits: Vec<&Wait> = w.waits.iter().filter(|x| !x.seen).collect();
+                let card = |id: u32, title: String, detail: String| InboxCard { id, app: w.name.clone(), icons: icons(w), title, detail, attention: true, time: w.time, fade_minutes: None };
+                if w.waits.is_empty() {
+                    let detail = match w.count {
+                        0 | 1 => olo_kit::tr!("Open {} to see it.", w.name),
+                        _ => olo_kit::tr!("Open {} to see them.", w.name),
+                    };
+                    vec![card(w.id, w.said(), detail)]
+                } else {
+                    waits
+                        .into_iter()
+                        .map(|x| {
+                            // (Its app's name heads the card; the place
+                            // under what waits, bare, cut short cleanly:
+                            // "In “Token Pool — capture cli…" opened a
+                            // quote it never closed, Codex's look.)
+                            let detail = match x.waits.place.as_str() {
+                                "" => olo_kit::tr!("Open {} to see it.", w.name),
+                                place => place.to_owned(),
+                            };
+                            card(x.id, x.waits.what.clone(), detail)
+                        })
+                        .collect()
+                }
             })
             .collect()
     }
@@ -244,7 +315,7 @@ mod tests {
     }
 
     fn badge(app: &str, count: u64, urgent: bool) -> Attention {
-        Attention { app: app.into(), count, urgent }
+        Attention { app: app.into(), count, urgent, waits: Vec::new() }
     }
 
     /// What waits in apps follows what they say: there while they say so,
@@ -303,5 +374,62 @@ mod tests {
         assert!(again.update(&[badge("olo-slack", 4, true)], 2100, name, &mut id));
         assert!(!again.apps[0].put_off());
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+}
+
+#[cfg(test)]
+mod waits {
+    use super::*;
+
+    fn tab(what: &str, place: &str, shell: u32) -> Waits {
+        Waits { what: what.into(), place: place.into(), shows: vec!["--show-shell".into(), shell.to_string()] }
+    }
+
+    fn terminal(waits: Vec<Waits>) -> Attention {
+        Attention { app: "olo-terminal".into(), count: waits.len() as u64, urgent: false, waits }
+    }
+
+    /// Where an app says what waits where (Terminal's tabs), each is its
+    /// own: an Inbox card of its own (its words, its place), its id kept
+    /// while the app says it, gone to and put off alone, back when what it
+    /// says changes; the app is out of the Inbox once each is seen.
+    #[test]
+    fn each_thing_waiting_is_its_own() {
+        let mut next = 100;
+        let mut id = || {
+            next += 1;
+            next
+        };
+        let mut w = WaitingApps::load(None);
+        let (a, b) = (tab("Claude Code needs your answer", "Fix login", 7), tab("Codex is waiting for you", "Pool", 9));
+        assert!(w.update(&[terminal(vec![a.clone(), b.clone()])], 1000, |_| "Terminal".into(), &mut id));
+        let ids: Vec<u32> = w.apps[0].waits.iter().map(|x| x.id).collect();
+        let cards = w.cards(|_| Vec::new());
+        assert_eq!(
+            cards.iter().map(|c| (c.id, c.title.as_str(), c.detail.as_str())).collect::<Vec<_>>(),
+            [(ids[0], "Claude Code needs your answer", "Fix login"), (ids[1], "Codex is waiting for you", "Pool")]
+        );
+        assert_eq!(w.apps[0].waits[0].said(), "Claude Code needs your answer, in “Fix login”");
+        // Each found by its own id, and the app by its.
+        assert_eq!(w.get(ids[1]).map(|x| x.app.as_str()), Some("olo-terminal"));
+        // One gone to: out of the Inbox alone.
+        assert!(w.later(ids[0]));
+        assert_eq!(w.cards(|_| Vec::new()).iter().map(|c| c.id).collect::<Vec<_>>(), [ids[1]]);
+        // Said again, the same places: the same ids, the seen one still seen.
+        w.update(&[terminal(vec![a.clone(), b.clone()])], 1100, |_| "Terminal".into(), &mut id);
+        assert_eq!(w.apps[0].waits.iter().map(|x| (x.id, x.seen)).collect::<Vec<_>>(), [(ids[0], true), (ids[1], false)]);
+        // What it says changes (answered, then waiting again): back.
+        let a2 = Waits { what: "Claude Code is waiting for you".into(), ..a.clone() };
+        w.update(&[terminal(vec![a2.clone(), b.clone()])], 1200, |_| "Terminal".into(), &mut id);
+        assert!(!w.apps[0].waits[0].seen);
+        // The app gone to: each seen, the app out of the Inbox; a new one
+        // brings it back.
+        assert!(w.visited_app("olo-terminal"));
+        assert!(w.apps[0].put_off() && w.cards(|_| Vec::new()).is_empty());
+        w.update(&[terminal(vec![a2, b.clone(), tab("Claude Code is waiting for you", "Docs", 11)])], 1300, |_| "Terminal".into(), &mut id);
+        assert_eq!(w.cards(|_| Vec::new()).iter().map(|c| c.detail.as_str()).collect::<Vec<_>>(), ["Docs"]);
+        // Nothing waiting: gone.
+        assert!(w.update(&[], 1400, |_| "Terminal".into(), &mut id));
+        assert!(w.apps.is_empty());
     }
 }

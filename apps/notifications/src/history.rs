@@ -311,8 +311,11 @@ const WAITING_ROW: f32 = 24.0;
 /// "Waiting in apps": what apps say is waiting in them, over the list
 /// and apart from it (they aren't notifications: `crate::waiting`). A
 /// heading, then a row an app: a red dot, the app's icon and name, and
-/// how much ("3 waiting"); a click goes to the app. Nothing here is
-/// selected, read or cleared: each is there while its app says so.
+/// how much ("3 waiting"); a click goes to the app. Where the app says
+/// what waits where (Terminal's tabs), a row for each instead: what it is
+/// and where, the app's name at the end, a click going there. Nothing
+/// here is selected, read or cleared: each is there while its app says
+/// so.
 fn waiting_strip(cx: &mut Cx<HistoryWindow>, waiting: &[crate::waiting::Waiting]) -> Element {
     // On the window's own ground, over the list's well (it isn't of the
     // list), its dots, icons and words in line with the list's: the
@@ -329,6 +332,59 @@ fn waiting_strip(cx: &mut Cx<HistoryWindow>, waiting: &[crate::waiting::Waiting]
         .h(px(HEADING)),
     );
     for w in waiting {
+        for x in &w.waits {
+            let (id, name, app, what, place, said) = (x.id, w.name.clone(), w.app.clone(), x.waits.what.clone(), x.waits.place.clone(), x.said());
+            strip = strip.child(
+                canvas(move |g, r| {
+                    let p = theme::palette();
+                    g.note_pointer_edge(r);
+                    let cy = r.center().y;
+                    g.paint_sector(point(r.left() + px(9.0), cy), px(0.0), px(3.5), 0.0, std::f32::consts::TAU, style::c(p.unread));
+                    let icon = style::snap_centred(g, point(r.left() + px(ICON_X + SMALL_ICON / 2.0), cy), SMALL_ICON, SMALL_ICON);
+                    paint_mark(g, icon, &name, None, false, &named_icons(None, Some(&app), &name));
+                    // What it is, then where (quieter), the app at the end,
+                    // all on one baseline.
+                    let base = style::baseline_at(g, cy, style::PLAIN_SIZE);
+                    let whose =
+                        style::label_on_baseline(g, r.right() - px(CLOSE_W), base, Align::Right, name.clone(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), style::secondary_text(&p));
+                    let end = whose.left() - px(m::SPACING);
+                    let it = style::label_on_baseline_fit(
+                        g,
+                        r.left() + px(TEXT_X),
+                        base,
+                        Align::Left,
+                        what.clone(),
+                        style::PLAIN_SIZE,
+                        style::ui_font(FontWeight::NORMAL),
+                        style::c(p.panel_text),
+                        (end - r.left() - px(TEXT_X)).max(px(0.0)),
+                    );
+                    let room = end - it.right() - px(m::SPACING);
+                    if !place.is_empty() && room > px(m::SPACING * 2.0) {
+                        style::label_on_baseline_fit(
+                            g,
+                            it.right() + px(m::SPACING),
+                            base,
+                            Align::Left,
+                            place.clone(),
+                            style::DETAIL_SIZE,
+                            style::ui_font(FontWeight::NORMAL),
+                            style::secondary_text(&p),
+                            room,
+                        );
+                    }
+                    // (To an agent: what it says, and that a click goes there.)
+                    agent::record(g, agent::Node { role: "Button", name: Some(format!("{said} ({name})").into()), bounds: r, enabled: true, clickable: true, ..Default::default() });
+                })
+                .w_full()
+                .h(px(WAITING_ROW))
+                .id(("waiting", id as usize))
+                .on_click(cx.listener(move |h: &mut HistoryWindow, _: &ClickEvent, _| with(&h.shared, |n| n.open_waiting(id)))),
+            );
+        }
+        if !w.waits.is_empty() {
+            continue;
+        }
         let (id, name, app, short, said) = (w.id, w.name.clone(), w.app.clone(), w.short(), w.said());
         strip = strip.child(
             canvas(move |g, r| {
@@ -338,9 +394,11 @@ fn waiting_strip(cx: &mut Cx<HistoryWindow>, waiting: &[crate::waiting::Waiting]
                 g.paint_sector(point(r.left() + px(9.0), cy), px(0.0), px(3.5), 0.0, std::f32::consts::TAU, style::c(p.unread));
                 let icon = style::snap_centred(g, point(r.left() + px(ICON_X + SMALL_ICON / 2.0), cy), SMALL_ICON, SMALL_ICON);
                 paint_mark(g, icon, &name, None, false, &named_icons(None, Some(&app), &name));
-                let how = style::label(g, r.right() - px(CLOSE_W), cy, Align::Right, short.clone(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), style::secondary_text(&p));
+                // (Its name and how much on one baseline.)
+                let base = style::baseline_at(g, cy, style::PLAIN_SIZE);
+                let how = style::label_on_baseline(g, r.right() - px(CLOSE_W), base, Align::Right, short.clone(), style::DETAIL_SIZE, style::ui_font(FontWeight::NORMAL), style::secondary_text(&p));
                 let room = (how.left() - px(m::SPACING) - r.left() - px(TEXT_X)).max(px(0.0));
-                style::label_fit(g, r.left() + px(TEXT_X), cy, Align::Left, name.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::c(p.panel_text), room);
+                style::label_on_baseline_fit(g, r.left() + px(TEXT_X), base, Align::Left, name.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), style::c(p.panel_text), room);
                 // (To an agent: what it says, and that a click opens the app.)
                 agent::record(g, agent::Node { role: "Button", name: Some(said.clone().into()), bounds: r, enabled: true, clickable: true, ..Default::default() });
             })
