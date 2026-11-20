@@ -94,6 +94,21 @@ something nobody here has is in "Blocked", with what it waits for.
     many): each device it finds or forgets is an announcement to every
     program on BlueZ. Olo Doctor to say when a search has run for an
     hour, and whose it is if that can be told.
+- **Back and Forward in Passwords, and in every app** (Ben,
+  2026-11-20: "navigate forward and back should work in passwords app
+  (and every app for that matter)"). Wherever an app shows one thing
+  after another (Passwords: a vault, an item, a search; Preferences'
+  panels; Calendar's days and events; Phone's conversations; To-Do's
+  lists; Weather's places; Tracker's folders), going back and forward
+  through where one has been: by the mouse's back and forward buttons,
+  a touchpad's swipe, the platform's keys (as the keyboard profile has
+  them for Tracker and Chrome), and Go ▸ Back and Forward in the menu,
+  dimmed where there's nowhere to go. First which apps have it and how
+  each keeps where it's been; then one history in the kit (what a
+  place is to an app, kept across a reload, read and driven by agents),
+  Passwords first, then each app; the keys in `olo_protocol::app_keys`
+  as every app's.
+
 - **Snap pads while tiling, a swap pad that reads as one, Zoom to 75%
   and 50%** (Ben, 2026-11-20: "what is the J hotspot supposed to be?
   visually it looks like it'd be full screen but it like swaps it with
