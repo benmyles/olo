@@ -94,6 +94,27 @@ something nobody here has is in "Blocked", with what it waits for.
     many): each device it finds or forgets is an announcement to every
     program on BlueZ. Olo Doctor to say when a search has run for an
     hour, and whose it is if that can be told.
+- **A whole new instance of a program from Deskbar, Chrome's too**
+  (Ben, 2026-11-20: "is there a way in the deskbar to open a new
+  instance of an app, e.g. a new instance of chrome? i thought maybe
+  super click but that didn't work … i don't want a new window i want
+  a whole new program instance"). What's there: a click on an
+  application's row with ⌘ or Ctrl held starts it again as a copy of
+  its own (`Deskbar::launch_again`, `OLO_NEW_INSTANCE`, which Olo's
+  own programs honour: `instance.rs`), and the same from the Olo
+  menu's applications; nothing says so (the row's menu has only "New
+  Window", and only for Olo's apps). For Chrome it can't work as it
+  is: its launcher run again is handed to the Chrome already running
+  on that profile folder (one process to a folder), so at most a
+  window comes. To do: "New Instance" in every application's menu in
+  Deskbar (what ⌘-click does, found without being told); for Chrome
+  and its kind, a copy with a profile folder of its own (as each
+  agent screen's Chrome has: kept and numbered, or thrown away when
+  it quits: to decide, and say in the menu which), shown as an
+  application of its own in Deskbar; and why Ben's own ⌘-click showed
+  nothing (whether the click was taken as one with the key held:
+  `command_held` asks app_server).
+
 - **Back and Forward in Passwords, and in every app** (Ben,
   2026-11-20: "navigate forward and back should work in passwords app
   (and every app for that matter)"). Wherever an app shows one thing
