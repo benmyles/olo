@@ -337,10 +337,21 @@ def say(name, text):
     if not live(name):
         sys.exit(f"agents: {name} isn't running")
     # (Typed fast, the words come as a paste, and an Enter in the same
-    # burst is a new line in it: Enter goes on its own, a moment after.)
+    # burst is a new line in it: Enter goes on its own, a moment after.
+    # A long message comes as several pastes, still arriving half a
+    # second on, and the Enter was lost among them: its words sat in the
+    # agent's field unsent, the agent idle (2026-11-20). So the wait is
+    # longer for a longer one, and while the field still holds a paste,
+    # Enter is sent again.)
     tmux("send-keys", "-t", f"={name}:0.0", "-l", text, check=True)
-    time.sleep(0.5)
-    tmux("send-keys", "-t", f"={name}:0.0", "C-m", check=True)
+    time.sleep(0.5 + len(text) / 1500)
+    for _ in range(4):
+        tmux("send-keys", "-t", f"={name}:0.0", "C-m", check=True)
+        time.sleep(1.5)
+        if "[Pasted Content" not in "\n".join(screen(name, 12).splitlines()[-8:]):
+            break
+    else:
+        sys.exit(f"agents: said to {name}, but its field still holds the words: look (agents peek {name})")
     seen(name)
     print(f"agents: said to {name}")
 

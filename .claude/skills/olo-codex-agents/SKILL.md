@@ -134,6 +134,11 @@ When it says DONE:
   "Would you like to …" and "Press enter to confirm or esc to cancel"
   when it asks; neither, after "Worked for …", when its turn is over.
 - Text typed into it arrives as a paste: an Enter in the same burst is a
-  new line, so `say` sends Enter on its own a moment later.
+  new line, so `say` sends Enter on its own a moment later. A long
+  message arrives as several pastes over a second or two, and an Enter
+  sent among them is lost (the words sit in its field, the agent idle):
+  `say` waits longer for a longer message and sends Enter again while
+  the field still holds a paste, and says so if it still does. After a
+  long `say`, `peek` to see it took it up.
 - Its sandbox lets it write in the repository, `/tmp` and `/var/tmp`;
   the network and other places go through approval.
