@@ -1580,6 +1580,9 @@ No puede volver a como estaba: {}.
 Caps Lock is another Control key
 Bloq Mayús es otra tecla Control
 
+Capture Client Requests Again
+Volver a capturar las solicitudes de los clientes
+
 Capture debug information whenever a frame drops
 Capturar información de depuración cada vez que se pierda un fotograma
 

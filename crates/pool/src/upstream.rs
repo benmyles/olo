@@ -446,6 +446,7 @@ pub fn parse_credits(p: Provider, d: &Value) -> Vec<ResetCredit> {
                         starts_at: timestamp(&r["starts_at"]),
                         // (Claude Code's own default: true.)
                         needs_limit: r["use_requires_limit"].as_bool().unwrap_or(true),
+                        gives_back_weekly: r["gives_back_weekly"] == true,
                     })
                 })
                 .collect()

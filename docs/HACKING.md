@@ -23213,8 +23213,8 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   `{{cookie}}`…). Captured when the pool starts (a minute in, each
   account whose capture is of another install), when a client changes
   (the folder `claude` and `codex` are found in, watched: an update
-  points them at another version), and by hand (Pool ▸ Capture Clients
-  Again, `olo-pool --capture`): one account at a time, on a thread at
+  points them at another version), and by hand (Pool ▸ Capture Client
+  Requests Again, `olo-pool --capture`): one account at a time, on a thread at
   idle priority (what it runs too); `capturing` in `--status --json`.
   Found so: Claude Code 2.1.329 speaks over three stacks (its API client
   for `/api/*`, axios under Bun: no ALPN, `Connection: close`; the SDK

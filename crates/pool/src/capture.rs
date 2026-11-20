@@ -125,6 +125,11 @@ pub struct Capture {
     pub account: String,
     pub at: i64,
     pub requests: Vec<Sent>,
+    /// The account's own id as its client names it (Claude's
+    /// `account_uuid`, in each model request's `metadata.user_id`): what
+    /// a request the pool passes on for this account says in its place.
+    #[serde(default)]
+    pub account_uuid: Option<String>,
     /// Every handshake's offer, the native one among them (`native`: the
     /// client trusting only its own roots, which for Codex is another TLS
     /// stack than the one a custom authority makes it use).
@@ -1088,6 +1093,7 @@ pub fn capture(account: &Account, cred: &Credential, progress: &dyn Fn(&str)) ->
     };
     sent.retain(|s| hosts.contains(&s.host.as_str()));
     let secrets = secrets_of(account, cred, &sent);
+    let account_uuid = secrets.iter().find(|(_, p)| *p == ACCOUNT_UUID).map(|(v, _)| v.clone());
     for s in sent.iter_mut() {
         hide(s, &secrets);
     }
@@ -1098,7 +1104,7 @@ pub fn capture(account: &Account, cred: &Credential, progress: &dyn Fn(&str)) ->
     hellos.retain(|h| hosts.contains(&h.host.as_str()));
     // (One a run and host: they repeat.)
     hellos.dedup_by(|a, b| a.run == b.run && a.host == b.host && a.alpn == b.alpn && a.suites == b.suites);
-    Ok(Capture { provider: p, version: client.version, installed: client.stamp, account: account.id.clone(), at: now(), requests: sent, hellos })
+    Ok(Capture { provider: p, version: client.version, installed: client.stamp, account: account.id.clone(), at: now(), requests: sent, account_uuid, hellos })
 }
 
 #[cfg(test)]

@@ -706,6 +706,22 @@ Doctor check, try its fix and look again: the finding must be gone.
 
 ## Working with the repository
 
+- **Claude's usage report answers 429 to a token read too often.** A
+  handful of reads of `/api/oauth/usage` for one account within a few
+  minutes (a capture, a check by hand, the pool's own) got "Rate limited"
+  for more than ten minutes after (2026-11-19). Token Pool reads each
+  account every five minutes; anything read by hand on top of that
+  should be one read, then wait. The pool's state (`olo-pool --status
+  --json`, `synced`) says what it last read without asking again.
+- **Captures of the clients run them for real.** Token Pool's capture
+  (crates/pool/src/capture.rs) runs the installed Claude Code and Codex
+  with an account's access token in a sandbox in `~/.cache/olo/
+  pool-capture/` (removed after; one a killed capture leaves is removed
+  by the next) and passes their reads to the providers. To work on it,
+  `OLO_POOL_CAPTURE_ONLY=session` runs one step and
+  `OLO_POOL_CAPTURE_TRANSCRIPT=DIR` keeps what a terminal showed. Never
+  let a claim, a renewal or a model request through, and never send a
+  made-up credential to a provider (Ben: "that is not polite").
 - **A test session's Passwords can show a lock that checks the person's
   real login password.** A session's config folder
   (/var/tmp/olo-dev/NAME/config) outlives `tsession stop`: started again

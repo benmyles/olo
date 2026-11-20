@@ -187,6 +187,8 @@ pub struct Shared {
     /// the window and agents; whether a capture runs, and whether one more
     /// was asked for meanwhile (1: what's due, 2: every account).
     capturing: Mutex<Option<String>>,
+    /// Each account's own HTTP client (`client_for`).
+    clients: Mutex<HashMap<String, Arc<olo_net::PerNetwork<reqwest::Client>>>>,
     capture_busy: std::sync::atomic::AtomicBool,
     capture_again: std::sync::atomic::AtomicU8,
 }
@@ -293,15 +295,7 @@ impl Shared {
 
     fn make(saved: Saved, store: Option<Store>, up: Upstreams, lazy: bool, changed: impl Fn() + Send + Sync + 'static) -> Arc<Shared> {
         let (tx, rx) = std::sync::mpsc::channel::<Save>();
-        let http = olo_net::PerNetwork::new(|| {
-            reqwest::Client::builder()
-                .connect_timeout(Duration::from_secs(20))
-                // Thinking can take a while before the first byte (a
-                // connection on a network that went is cut at once).
-                .read_timeout(Duration::from_secs(15 * 60))
-                .build()
-                .expect("HTTP client")
-        });
+        let http = olo_net::PerNetwork::new(new_client);
         let shared = Arc::new(Shared {
             pool: Mutex::new(Pool { saved, loaded: true, ..Default::default() }),
             store: Mutex::new(store),
@@ -320,6 +314,7 @@ impl Shared {
             captures: Mutex::new(HashMap::new()),
             jars: Mutex::new(HashMap::new()),
             capturing: Mutex::new(None),
+            clients: Mutex::new(HashMap::new()),
             capture_busy: Default::default(),
             capture_again: Default::default(),
         });
@@ -426,8 +421,8 @@ impl Shared {
     /// account's again: the person asked), one account at a time, on a
     /// thread of its own at idle priority (the clients it runs too); one
     /// asked for while one runs is looked at when it ends. Started when a
-    /// client changes, when the pool starts, and by hand (Pool ▸ Capture
-    /// Clients Again, `olo-pool --capture`).
+    /// client changes, when the pool starts, and by hand (Pool ▸ Capture Client
+    /// Requests Again, `olo-pool --capture`).
     pub fn capture(self: &Arc<Self>, all: bool) {
         use std::sync::atomic::Ordering::SeqCst;
         if self.capture_busy.swap(true, SeqCst) {
@@ -503,6 +498,49 @@ impl Shared {
         };
         let jar = self.jars.lock().unwrap().entry(id.to_owned()).or_default().clone();
         Some(crate::likeness::Like { capture, org, email, jar })
+    }
+
+    /// The HTTP client for account `id`'s requests: one of its own, so no
+    /// connection ever carries two accounts' requests (a client has one
+    /// account), for the network there is now.
+    pub fn client_for(&self, id: &str) -> reqwest::Client {
+        let made = self.clients.lock().unwrap().entry(id.to_owned()).or_insert_with(|| Arc::new(olo_net::PerNetwork::new(new_client))).clone();
+        made.get()
+    }
+
+    /// What a request for account `id` carries of its own: its
+    /// organization, and the body with its Claude account id where the
+    /// client named its own (`metadata.user_id`: a JSON string holding
+    /// `account_uuid`; the same length, so the body is otherwise as it
+    /// came).
+    fn own(&self, id: &str, provider: Provider, headers: &HeaderMap, body: &Bytes) -> Own {
+        let org = self.pool.lock().unwrap().saved.accounts.iter().find(|a| a.id == id).and_then(|a| a.org.clone());
+        let mut out = Own { org, body: body.clone() };
+        if provider != Provider::Claude || headers.get("content-encoding").is_some_and(|c| c.to_str().map(|c| !c.trim().eq_ignore_ascii_case("identity")).unwrap_or(true)) {
+            return out;
+        }
+        let Some(theirs) = serde_json::from_slice::<Value>(body)
+            .ok()
+            .and_then(|v| v["metadata"]["user_id"].as_str().map(str::to_owned))
+            .and_then(|u| serde_json::from_str::<Value>(&u).ok())
+            .and_then(|u| u["account_uuid"].as_str().map(str::to_owned))
+            .filter(|u| !u.is_empty())
+        else {
+            return out;
+        };
+        let Some(ours) = self.like(id).and_then(|l| l.capture.account_uuid.clone()) else { return out };
+        if ours == theirs || ours.len() != theirs.len() {
+            return out;
+        }
+        // (Only where it is, once: never anything else that looks like it.)
+        let (t, o) = (theirs.as_bytes(), ours.as_bytes());
+        let at: Vec<usize> = body.windows(t.len()).enumerate().filter(|(_, w)| *w == t).map(|(i, _)| i).collect();
+        if at.len() == 1 {
+            let mut b = body.to_vec();
+            b[at[0]..at[0] + t.len()].copy_from_slice(o);
+            out.body = Bytes::from(b);
+        }
+        out
     }
 
     pub fn client(&self) -> reqwest::Client {
@@ -795,7 +833,7 @@ impl Shared {
                     .iter()
                     .filter(|c| c.usable_at(t))
                     .map(|c| (c, a.claim_worth(c, t, t)))
-                    .max_by(|x, y| x.1.total_cmp(&y.1).then_with(|| (y.0.clears.len(), y.0.expires_at.unwrap_or(i64::MAX)).cmp(&(x.0.clears.len(), x.0.expires_at.unwrap_or(i64::MAX)))))
+                    .max_by(|x, y| x.1.total_cmp(&y.1).then_with(|| (y.0.breadth(), y.0.expires_at.unwrap_or(i64::MAX)).cmp(&(x.0.breadth(), x.0.expires_at.unwrap_or(i64::MAX)))))
                     .map(|(c, _)| c.clone())
                     .or_else(|| a.credit().cloned()),
             };
@@ -1154,6 +1192,19 @@ async fn codex(State(ctx): State<Ctx>, Path(rest): Path<String>, RawQuery(q): Ra
     proxy(ctx, Provider::Codex, rest, q, method, headers, body).await
 }
 
+/// An HTTP client as the pool's are: a connection's own time to come,
+/// and long enough for thinking before the first byte (a connection on a
+/// network that went is cut at once).
+fn new_client() -> reqwest::Client {
+    reqwest::Client::builder().connect_timeout(Duration::from_secs(20)).read_timeout(Duration::from_secs(15 * 60)).build().expect("HTTP client")
+}
+
+/// What a request for one account carries of its own (`Shared::own`).
+struct Own {
+    org: Option<String>,
+    body: Bytes,
+}
+
 /// Request headers not passed on: the client's own credentials (the
 /// account's go instead), and hop-by-hop ones.
 fn forwarded(name: &str) -> bool {
@@ -1172,18 +1223,14 @@ fn forwarded(name: &str) -> bool {
             | "te"
             | "trailer"
             | "upgrade"
-            | "cookie"
+            // (Until the pool reads compressed answers as it passes them on.)
             | "accept-encoding"
-            | "origin"
-            // The client's own account's (another, through the proxy).
-            | "x-organization-uuid"
-            | "anthropic-organization-id"
     ) && !name.starts_with("x-olo-pool-")
 }
 
 /// Response headers not passed back.
 fn returned(name: &str) -> bool {
-    !matches!(name, "content-length" | "connection" | "transfer-encoding" | "keep-alive" | "set-cookie" | "content-encoding")
+    !matches!(name, "content-length" | "connection" | "transfer-encoding" | "keep-alive" | "content-encoding")
 }
 
 /// The answer when no account can serve, shaped as the client expects.
@@ -1362,24 +1409,62 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                 continue;
             }
         };
+        // The account's own in what's sent: its organization, and (Claude)
+        // its id in the request's `metadata.user_id` where the client named
+        // its own (Claude Code signed in to it names it there).
+        let own = s.own(&id, provider, &headers, &body);
         let mut refreshed = false;
         // The body as decoded, once sent so (`resend_plain`).
         let mut sent_plain: Option<Bytes> = None;
         let response = loop {
             let seen = olo_net::generation();
-            let mut req = upstream::authorize(s.client().request(method.clone(), &url), provider, &cred);
-            for (k, v) in headers.iter().filter(|(k, _)| forwarded(k.as_str())) {
-                if (provider == Provider::Claude && k == "anthropic-beta") || (sent_plain.is_some() && k == "content-encoding") {
-                    continue;
+            // The client's request as it came, in its order, the account's
+            // own in place of the client's: its sign-in where the client's
+            // was, its ChatGPT account and Claude organization, the OAuth
+            // beta in the client's list (Claude Code signed in to it sends
+            // them so).
+            let mut req = s.client_for(&id).request(method.clone(), &url);
+            let mut signed = false;
+            for (k, v) in headers.iter() {
+                match k.as_str() {
+                    "authorization" | "x-api-key" if !signed => {
+                        signed = true;
+                        req = req.header("authorization", format!("Bearer {}", cred.access));
+                        // (Codex names its account right after: where it
+                        // names none, the account's goes there.)
+                        if provider == Provider::Codex
+                            && !headers.contains_key("chatgpt-account-id")
+                            && let Some(account) = &cred.account_id
+                        {
+                            req = req.header("chatgpt-account-id", account.as_str());
+                        }
+                    }
+                    "authorization" | "x-api-key" => {}
+                    "chatgpt-account-id" => {
+                        if let Some(account) = &cred.account_id {
+                            req = req.header(k, account.as_str());
+                        }
+                    }
+                    "x-organization-uuid" | "anthropic-organization-id" => {
+                        if let Some(o) = &own.org {
+                            req = req.header(k, o.as_str());
+                        }
+                    }
+                    "anthropic-beta" if provider == Provider::Claude => req = req.header(k, upstream::with_oauth_beta(v.to_str().ok())),
+                    "content-encoding" if sent_plain.is_some() => {}
+                    name if forwarded(name) => req = req.header(k, v),
+                    _ => {}
                 }
-                req = req.header(k, v);
             }
-            if provider == Provider::Claude {
-                req = req.header("anthropic-beta", upstream::with_oauth_beta(headers.get("anthropic-beta").and_then(|v| v.to_str().ok())));
+            if !signed {
+                req = upstream::authorize(req, provider, &cred);
             }
-            match req.body(sent_plain.clone().unwrap_or_else(|| body.clone())).send().await {
+            if provider == Provider::Claude && !headers.contains_key("anthropic-beta") {
+                req = req.header("anthropic-beta", upstream::with_oauth_beta(None));
+            }
+            match req.body(sent_plain.clone().unwrap_or_else(|| own.body.clone())).send().await {
                 Ok(r) if sent_plain.is_none() && resend_plain(provider, r.status(), &headers) => {
-                    let plain = plain(&headers, &body);
+                    let plain = plain(&headers, &own.body);
                     if plain.is_empty() {
                         break Some(r);
                     }
@@ -1719,12 +1804,19 @@ mod tests {
         assert_eq!(s.finish(), Usage { requests: 0, input_tokens: 101, output_tokens: 13 });
     }
 
+    /// The client's sign-in is put in its place (the account's), never
+    /// passed on as it came, nor what belongs to its connection; the rest
+    /// of what it sends goes on as it is (its cookies and origin too, as
+    /// Claude Code and Codex send them), and what the host answers comes
+    /// back so (its cookies too).
     #[test]
     fn headers_kept_back() {
-        for h in ["authorization", "x-api-key", "cookie", "host", "origin", "x-olo-pool-x"] {
+        for h in ["authorization", "x-api-key", "host", "connection", "content-length", "x-olo-pool-x"] {
             assert!(!forwarded(h), "{h}");
         }
-        assert!(forwarded("anthropic-version") && forwarded("x-stainless-lang") && forwarded("session_id"));
-        assert!(!returned("set-cookie") && returned("anthropic-ratelimit-unified-5h-utilization"));
+        for h in ["anthropic-version", "x-stainless-lang", "session_id", "cookie", "origin", "x-organization-uuid"] {
+            assert!(forwarded(h), "{h}");
+        }
+        assert!(returned("set-cookie") && returned("anthropic-ratelimit-unified-5h-utilization") && !returned("content-encoding"));
     }
 }

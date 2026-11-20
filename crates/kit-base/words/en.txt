@@ -522,6 +522,7 @@ Cancel echo from the speakers
 Can’t come back as it was: {} and {} more.
 Can’t come back as it was: {}.
 Caps Lock is another Control key
+Capture Client Requests Again
 Capture debug information whenever a frame drops
 Cascade All
 Cascade Others

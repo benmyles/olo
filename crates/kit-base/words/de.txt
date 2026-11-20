@@ -1580,6 +1580,9 @@ Kann nicht wie zuvor wiederhergestellt werden: {}.
 Caps Lock is another Control key
 Feststelltaste ist eine weitere Strg-Taste
 
+Capture Client Requests Again
+Client-Anfragen erneut aufzeichnen
+
 Capture debug information whenever a frame drops
 Bei jedem ausgelassenen Frame Debug-Informationen aufzeichnen
 

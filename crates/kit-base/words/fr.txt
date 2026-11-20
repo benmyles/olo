@@ -1580,6 +1580,9 @@ Ne peut pas revenir tel quel : {}.
 Caps Lock is another Control key
 Utiliser Verr. Maj comme touche Contrôle
 
+Capture Client Requests Again
+Capturer à nouveau les requêtes des clients
+
 Capture debug information whenever a frame drops
 Capturer des informations de débogage à chaque image perdue
 

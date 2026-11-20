@@ -238,7 +238,12 @@ impl ResetCredit {
             return w.models.is_empty();
         }
         let fable = w.models.iter().any(|m| m == "fable") || w.name.ends_with("_fable");
-        self.clears.iter().any(|c| *c == w.name || (fable && c == "seven_day_overage_included"))
+        (self.gives_back_weekly && w.name == "seven_day") || self.clears.iter().any(|c| *c == w.name || (fable && c == "seven_day_overage_included"))
+    }
+
+    /// How many limits it clears (giving the week back counts as one).
+    pub fn breadth(&self) -> usize {
+        self.clears.len() + usize::from(self.gives_back_weekly && !self.clears.iter().any(|c| c == "seven_day"))
     }
 
     /// Usable at `now`: started, not expired, some left.
@@ -278,6 +283,11 @@ pub struct ResetCredit {
     /// Only at a limit it clears (Claude's `use_requires_limit`).
     #[serde(default)]
     pub needs_limit: bool,
+    /// It gives back the week's use too (Claude's `gives_back_weekly`): a
+    /// Fable reset claimed on 2026-11-19 took its account's week from 50%
+    /// to 1% with its Fable week, though it `clears` Fable's alone.
+    #[serde(default)]
+    pub gives_back_weekly: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -360,7 +370,7 @@ impl Account {
             .filter(|c| c.usable_at(now) && out.iter().any(|w| c.clears(self.provider, w)))
             .map(|c| (c, out.iter().filter(|w| c.clears(self.provider, w)).map(|w| w.reset_worth(self.provider, now, now)).fold(0.0, f64::max)))
             .filter(|(_, worth)| *worth >= WORTH_REDEEMING)
-            .min_by_key(|(c, _)| (c.clears.len(), c.expires_at.unwrap_or(i64::MAX)))
+            .min_by_key(|(c, _)| (c.breadth(), c.expires_at.unwrap_or(i64::MAX)))
     }
 
     /// A credit about to expire unused (within `EXPIRY_LOOKAHEAD`) to
@@ -551,6 +561,12 @@ mod tests {
         };
         a.credits = vec![grant("november", &["seven_day", "seven_day_overage_included"], 21), grant("fable", &["seven_day_overage_included"], 109)];
         assert_eq!(a.claim_for("fable", t).map(|(c, _)| c.id.as_str()), Some("fable"));
+        // One that gives the week back too (as a real one did) clears as
+        // much as November's: the sooner to expire of the two, then.
+        a.credits[1].gives_back_weekly = true;
+        assert!(a.credits[1].clears(Provider::Claude, &week));
+        assert_eq!(a.claim_for("fable", t).map(|(c, _)| c.id.as_str()), Some("november"));
+        a.credits[1].gives_back_weekly = false;
         // Nothing out for Opus: no claim.
         assert!(a.claim_for("opus", t).is_none());
         // The week used up: only November's clears it.
