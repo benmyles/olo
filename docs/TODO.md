@@ -113,7 +113,30 @@ something nobody here has is in "Blocked", with what it waits for.
   `sudo cat` it to a file); and what it shows fixed where it is
   (smaller outputs for the lint where the picture doesn't need the
   size, pictures read back without stalling, sessions that draw
-  nothing they aren't asked for). The lint was meanwhile made to run
+  nothing they aren't asked for). **Read since, with sudo (Ben:
+  "you can run sudo whenever you need")**: the driver's dump of one
+  stalled job (`/sys/class/devcoredump`, an agent screen's
+  compositor's, on the render engine) shows the engine doing nothing
+  when the job was given up on (ring head and tail 0, ACTHD 0,
+  everything "done") and the channel from the driver to the GPU's
+  firmware scheduler (GuC, H2G) nearly full: work handed over and not
+  begun, for five seconds (`job_timeout_ms` 5000), not a GPU with too
+  much to draw. So what stalls is between the driver and the
+  firmware, under a machine at a load of 60 (the driver's own
+  handling starved of a processor is the first thing to test), or in
+  the GT coming out of its idle state (`gt-c6`; Ben set the power
+  mode to low latency meanwhile, "that might be helping
+  temporarily"). The NVIDIA GPU's waking (another agent's CUDA work)
+  is not it: 201 wakes that day, 15 stalls, none within fifteen
+  seconds of a wake (Ben asked). To do: reproduce on purpose with
+  processor load alone (no lint), then the lint alone on a quiet
+  machine, each time reading the dump; whether Olo's power modes
+  touch the GT's idle states or frequencies; and report it to the
+  driver's people with the dump if it's theirs. Still wanted from
+  Olo's side whatever the cause: sessions that cost little (one
+  agent screen's compositor stood at 8% of a core with 418 wake-ups
+  a second, an Activity Monitor on a screen at 11%: to find what
+  they were drawing). The lint was meanwhile made to run
   four desktops at once at the most and to wait for room
   (`wait_for_room`): a guard, not the fix. Also: three test desktops from earlier runs were still up,
   one two and a half days old (`/var/tmp/olo-live-lint-*`,
@@ -123,6 +146,21 @@ something nobody here has is in "Blocked", with what it waits for.
 
 - **Phone: what's left of the night it wasn't found again** (Ben,
   2026-11-20; the faults on Olo's side are fixed: under Done). Left:
+  - **Seen at 11:09, after the adapter was turned off and on by hand**
+    (Ben: "my phone/bluetooth is still broken too and won't connect"):
+    the phone connected at once over low energy, the first time since
+    four ("it says it is iPhone18,1"), and still answers no classic
+    page ("br-connection-page-timeout", bluetoothd: "Host is down"),
+    which its messages need. So the computer's radio and the pairing
+    work, and the phone isn't taking classic connections: on the
+    phone, Settings ▸ Bluetooth (on there, not from Control Centre,
+    which stops accessories until the next day), and this computer's
+    row tapped. Its notifications answered "Notify acquired" again
+    just after: the acquisition kept by BlueZ across the adapter's
+    going, to look at. And the Bluetooth controller made a firmware
+    dump of its own at 11:04:55 (`btintel_pcie`, in
+    /sys/class/devcoredump): what set it off isn't in the kernel's
+    log; to watch for.
   - **Why the phone answered no page**, back beside the computer, for
     an hour and more (BlueZ's lookup of it failed "Host is down" every
     six to sixty seconds): not known, and not to be seen from the
