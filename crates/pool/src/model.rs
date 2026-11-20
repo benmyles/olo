@@ -112,6 +112,38 @@ impl Window {
         (elapsed >= 600).then(|| self.used / elapsed as f64)
     }
 
+    /// What claiming a reset of it at `at` gives back, in percent of its
+    /// quota, by how each provider's reset works. Claude's fills it up
+    /// again and leaves its reset as it was ("Your weekly limits still
+    /// reset on their usual day and time"): what's used then, as much of
+    /// it as there's time to use before it resets by itself, at the rate
+    /// it's used. Codex's starts a new window at the next request and loses
+    /// what was left (OpenAI's help: it "pulls your normal weekly allowance
+    /// forward"): what's used then, less the part of the window that's
+    /// gone. Either way next to nothing just before it resets by itself.
+    pub fn reset_worth(&self, provider: Provider, now: i64, at: i64) -> f64 {
+        let (Some(reset), Some(len)) = (self.resets_at, self.length()) else { return 0.0 };
+        if len <= 0 {
+            return 0.0;
+        }
+        // (Its reset after `at`: a new window runs from each reset.)
+        let mut next = reset;
+        while next <= at {
+            next += len;
+        }
+        let used = self.used_at(now, at);
+        match provider {
+            Provider::Claude => {
+                let rate = self.rate(now).unwrap_or(0.0);
+                used.min(rate * (next - at) as f64).clamp(0.0, 100.0)
+            }
+            Provider::Codex => {
+                let gone = 100.0 * (len - (next - at)) as f64 / len as f64;
+                (used - gone).clamp(0.0, 100.0)
+            }
+        }
+    }
+
     /// How much a reset at `at` would give back (percent): what it is
     /// expected to have used by then, at today's rate, starting afresh
     /// after its own reset.
@@ -195,6 +227,25 @@ pub struct Request {
 
 /// How many of an account's latest requests it keeps.
 pub const RECENT: usize = 25;
+
+impl ResetCredit {
+    /// Whether claiming it resets `w`: a Codex credit, any of the account's
+    /// own windows; a Claude grant, the limits it `clears` (its week,
+    /// `seven_day`; Fable's week, `seven_day_overage_included`; or by the
+    /// window's own name); one that doesn't say, the shared windows.
+    pub fn clears(&self, provider: Provider, w: &Window) -> bool {
+        if provider == Provider::Codex || self.clears.is_empty() {
+            return w.models.is_empty();
+        }
+        let fable = w.models.iter().any(|m| m == "fable") || w.name.ends_with("_fable");
+        self.clears.iter().any(|c| *c == w.name || (fable && c == "seven_day_overage_included"))
+    }
+
+    /// Usable at `now`: started, not expired, some left.
+    pub fn usable_at(&self, now: i64) -> bool {
+        self.usable && self.remaining > 0 && self.starts_at.is_none_or(|s| s <= now) && self.expires_at.is_none_or(|e| e > now)
+    }
+}
 
 /// A provider-issued credit that resets an account's quota early (some
 /// subscriptions get a few).
@@ -287,25 +338,49 @@ impl Account {
         self.credits.iter().filter(|c| c.usable && c.remaining > 0).min_by_key(|c| c.expires_at.unwrap_or(i64::MAX))
     }
 
-    /// Whether to redeem its next credit now so that it isn't lost: it
-    /// expires within [`EXPIRY_LOOKAHEAD`], and no later moment before
-    /// then (just before its quota resets by itself, or the last chance)
-    /// would give back more of its shared quota. A reset is worth most
-    /// when the most is used, so a credit waits for that, but never past
-    /// its expiry.
-    pub fn spend_before_expiry(&self, now: i64) -> bool {
-        let Some(expires) = self.credit().and_then(|c| c.expires_at) else { return false };
-        if expires <= now || expires - now > EXPIRY_LOOKAHEAD {
-            return false;
+    /// What claiming `c` at `at` gives back: the most it gives back of a
+    /// window it resets (`Window::reset_worth`).
+    pub fn claim_worth(&self, c: &ResetCredit, now: i64, at: i64) -> f64 {
+        self.windows.iter().filter(|w| c.clears(self.provider, w)).map(|w| w.reset_worth(self.provider, now, at)).fold(0.0, f64::max)
+    }
+
+    /// The credit to claim now for a request of `family` this account
+    /// can't serve, and what it gives back: one that resets a window that's
+    /// out for it, the narrowest that does (a Fable reset before one that
+    /// clears the whole week too, which a used-up week will want), then the
+    /// soonest to expire; none that gives back under `WORTH_REDEEMING` (a
+    /// window about to reset by itself is better waited for).
+    pub fn claim_for(&self, family: &str, now: i64) -> Option<(&ResetCredit, f64)> {
+        let out: Vec<&Window> = self.windows.iter().filter(|w| w.applies_to(family) && w.exhausted(now)).collect();
+        if out.is_empty() {
+            return None;
         }
-        let shared: Vec<&Window> = self.windows.iter().filter(|w| w.models.is_empty()).collect();
-        let worth = |at: i64| shared.iter().map(|w| w.used_at(now, at)).fold(0.0, f64::max);
-        let last = expires - EXPIRY_MARGIN;
-        let later = shared.iter().filter_map(|w| w.resets_at.map(|r| r - RESET_MARGIN)).chain(std::iter::once(last)).filter(|&m| m > now && m < expires);
-        let best_later = later.map(worth).fold(0.0, f64::max);
-        let here = worth(now);
-        // Ties wait: later is as good, and keeps the choice open.
-        here >= WORTH_REDEEMING && (here > best_later || now >= last)
+        self.credits
+            .iter()
+            .filter(|c| c.usable_at(now) && out.iter().any(|w| c.clears(self.provider, w)))
+            .map(|c| (c, out.iter().filter(|w| c.clears(self.provider, w)).map(|w| w.reset_worth(self.provider, now, now)).fold(0.0, f64::max)))
+            .filter(|(_, worth)| *worth >= WORTH_REDEEMING)
+            .min_by_key(|(c, _)| (c.clears.len(), c.expires_at.unwrap_or(i64::MAX)))
+    }
+
+    /// A credit about to expire unused (within `EXPIRY_LOOKAHEAD`) to
+    /// claim now: now is its best moment of those left (each hour until 30
+    /// minutes before it expires, and that last chance), by what a claim
+    /// then gives back (`claim_worth`), and that's at least
+    /// `WORTH_REDEEMING`. A later moment as good wins (it keeps the
+    /// choice open).
+    pub fn expiring_claim(&self, now: i64) -> Option<&ResetCredit> {
+        let c = self.credits.iter().filter(|c| c.usable_at(now) && c.expires_at.is_some_and(|e| e - now <= EXPIRY_LOOKAHEAD)).min_by_key(|c| c.expires_at)?;
+        let last = c.expires_at? - EXPIRY_MARGIN;
+        let here = self.claim_worth(c, now, now);
+        let later = (1..).map(|h| now + h * 3600).take_while(|&t| t < last).chain(std::iter::once(last)).filter(|&t| t > now).map(|t| self.claim_worth(c, now, t)).fold(0.0, f64::max);
+        (here >= WORTH_REDEEMING && (here > later || now >= last)).then_some(c)
+    }
+
+    /// Whether to claim its next credit now so that it isn't lost
+    /// (`expiring_claim`).
+    pub fn spend_before_expiry(&self, now: i64) -> bool {
+        self.expiring_claim(now).is_some()
     }
 }
 
@@ -416,22 +491,79 @@ mod tests {
     #[test]
     fn credits_are_spent_before_they_expire() {
         let t = 1_000_000;
-        // Weekly: 4 days in, 60% used, resets in 3 days; the credit goes in
-        // 20 hours. It waits for its last chance, when the most is used.
+        // Claude's: its week 4 days in, 60% used (15% a day), resetting in
+        // 3 days; the credit goes in 20 hours. A refill now gives back 45%
+        // (what 3 days can use: the reset day stays), at its last chance
+        // 32.5%: now.
         let a = holding(t + 20 * H, 60.0, t + 3 * 24 * H);
-        assert!(!a.spend_before_expiry(t));
-        assert!(a.spend_before_expiry(t + 20 * H - EXPIRY_MARGIN));
-        // The quota resets by itself in 5 hours, before the credit goes:
-        // spend it just before that, when 90% is used, not after.
+        assert!(a.spend_before_expiry(t));
+        // Its week resets by itself in 5 hours: a refill before that gives
+        // back what 5 hours can use (under 3%); after it, what the new week
+        // has used by the credit's last chance (8%): then.
         let b = holding(t + 20 * H, 90.0, t + 5 * H);
         assert!(!b.spend_before_expiry(t));
-        assert!(b.spend_before_expiry(t + 5 * H - RESET_MARGIN));
+        assert!(!b.spend_before_expiry(t + 5 * H - RESET_MARGIN));
+        assert!(b.spend_before_expiry(t + 20 * H - EXPIRY_MARGIN));
         // Hardly used: not worth it even at the end.
         let c = holding(t + 20 * H, 2.0, t + 24 * H);
         assert!(!c.spend_before_expiry(t + 20 * H - EXPIRY_MARGIN));
         // Plenty of time left.
         let d = holding(t + 4 * 24 * H, 90.0, t + 3 * 24 * H);
         assert!(!d.spend_before_expiry(t));
+    }
+
+    /// What a reset gives back, by each provider's rule: Claude's what can
+    /// be used before the window's own reset; Codex's what's used less the
+    /// part of the week gone; next to nothing just before a reset.
+    #[test]
+    fn a_reset_is_worth_what_it_gives_back() {
+        let t = 1_000_000;
+        let week = |used: f64, resets: i64| Window { name: "seven_day".into(), label: "Weekly".into(), used, resets_at: Some(resets), models: vec![] };
+        // Used up a day into its week: a Claude refill has 6 days to use at
+        // 100% a day (all of it); Codex's new week loses the day gone.
+        let w = week(100.0, t + 6 * 24 * H);
+        assert!((w.reset_worth(Provider::Claude, t, t) - 100.0).abs() < 0.01);
+        assert!((w.reset_worth(Provider::Codex, t, t) - 100.0 * 6.0 / 7.0).abs() < 0.01);
+        // Used up with half an hour of its week left: next to nothing.
+        let late = week(100.0, t + H / 2);
+        assert!(late.reset_worth(Provider::Claude, t, t) < WORTH_REDEEMING);
+        assert!(late.reset_worth(Provider::Codex, t, t) < WORTH_REDEEMING);
+    }
+
+    /// Claimed where it gives back most: a Fable-only reset for a used-up
+    /// Fable week before the November one that clears the whole week too;
+    /// that one for a used-up week; none for a week about to reset itself.
+    #[test]
+    fn the_narrowest_credit_that_clears_what_is_out() {
+        let t = 1_000_000;
+        let mut a = Account::new("a".into(), "a".into(), Provider::Claude);
+        let fable = Window { name: "seven_day_fable".into(), label: "Weekly Fable".into(), used: 100.0, resets_at: Some(t + 3 * 24 * H), models: vec!["fable".into()] };
+        let week = Window { name: "seven_day".into(), label: "Weekly".into(), used: 50.0, resets_at: Some(t + 3 * 24 * H), models: vec![] };
+        a.windows = vec![week.clone(), fable.clone()];
+        let grant = |id: &str, clears: &[&str], days: i64| ResetCredit {
+            id: id.into(),
+            expires_at: Some(t + days * 24 * H),
+            remaining: 1,
+            usable: true,
+            clears: clears.iter().map(|c| (*c).to_owned()).collect(),
+            needs_limit: false,
+            ..Default::default()
+        };
+        a.credits = vec![grant("november", &["seven_day", "seven_day_overage_included"], 21), grant("fable", &["seven_day_overage_included"], 109)];
+        assert_eq!(a.claim_for("fable", t).map(|(c, _)| c.id.as_str()), Some("fable"));
+        // Nothing out for Opus: no claim.
+        assert!(a.claim_for("opus", t).is_none());
+        // The week used up: only November's clears it.
+        a.windows[0].used = 100.0;
+        assert_eq!(a.claim_for("opus", t).map(|(c, _)| c.id.as_str()), Some("november"));
+        // Its week resets in 20 minutes: better waited for.
+        a.windows[0].resets_at = Some(t + 20 * 60);
+        assert!(a.claim_for("opus", t).is_none());
+        // Codex: any credit resets its week; the soonest to expire first.
+        let mut c = Account::new("c".into(), "c".into(), Provider::Codex);
+        c.windows = vec![Window { name: "secondary_window".into(), label: "Weekly".into(), used: 100.0, resets_at: Some(t + 5 * 24 * H), models: vec![] }];
+        c.credits = vec![grant("later", &[], 24), grant("sooner", &[], 12)];
+        assert_eq!(c.claim_for("gpt-6-astra", t).map(|(c, _)| c.id.as_str()), Some("sooner"));
     }
 
     #[test]

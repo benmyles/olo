@@ -76,6 +76,7 @@ impl Paces {
 /// The pool as its meters say it: each account's quotas, and where they
 /// stood as far back as an hour.
 pub fn of(p: &Pool, paused: &[Provider], paces: &Paces, pid: u32) -> PoolMeters {
+    let now = crate::model::now();
     let provider = |p: Provider| match p {
         Provider::Claude => "claude",
         Provider::Codex => "codex",
@@ -98,7 +99,15 @@ pub fn of(p: &Pool, paused: &[Provider], paces: &Paces, pid: u32) -> PoolMeters 
             windows: a
                 .windows
                 .iter()
-                .map(|w| PoolWindow { name: w.name.clone(), label: w.label.clone(), used: w.used, resets_at: w.resets_at, models: w.models.clone(), since: paces.since(&a.id, &w.name) })
+                .map(|w| PoolWindow {
+                    name: w.name.clone(),
+                    label: w.label.clone(),
+                    used: w.used,
+                    resets_at: w.resets_at,
+                    models: w.models.clone(),
+                    since: paces.since(&a.id, &w.name),
+                    resets: a.credits.iter().filter(|c| c.usable_at(now) && c.clears(a.provider, w)).map(|c| c.remaining).sum(),
+                })
                 .collect(),
         })
         .collect();

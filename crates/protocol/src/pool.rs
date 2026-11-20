@@ -75,6 +75,9 @@ pub struct PoolWindow {
     /// out from that to now by whoever reads it (`pace_at`), so it falls
     /// as it stands still with nothing written.
     pub since: Option<(i64, f64)>,
+    /// How many of the account's reset credits fill this up again (usable
+    /// now): the pool spends them when the account runs out.
+    pub resets: u32,
 }
 
 impl PoolWindow {
@@ -222,6 +225,10 @@ pub struct Availability {
     /// Accounts' worth used an hour, at the last hour's pace (None: not
     /// known).
     pub pace: Option<f64>,
+    /// The reset credits that fill this quota up again, on the accounts
+    /// counted: each up to one account's worth more, when that account
+    /// runs out.
+    pub resets: u32,
     /// The pool serves this provider's client (not turned off for it).
     pub serves: bool,
 }
@@ -236,7 +243,14 @@ impl Availability {
     /// to go by).
     pub fn lasts(&self) -> Option<i64> {
         let pace = self.pace.filter(|p| *p > 0.001)?;
-        Some((self.left / pace * 3600.0) as i64)
+        Some((self.left / pace * 3600.0).round() as i64)
+    }
+
+    /// How long what's left and the reset credits last at this pace, in
+    /// seconds (each credit up to one account's worth).
+    pub fn lasts_with_resets(&self) -> Option<i64> {
+        let pace = self.pace.filter(|p| *p > 0.001)?;
+        Some(((self.left + self.resets as f64) / pace * 3600.0).round() as i64)
     }
 
     /// Whether it's out on every account.
@@ -266,10 +280,22 @@ impl Availability {
         {
             out.push(format!("{who} back in {}", duration_text(at - now)));
         }
-        match self.lasts() {
-            Some(s) if self.next_reset.as_ref().is_none_or(|(r, _)| s < r - now) => out.push(format!("At this pace, what's left lasts {}", duration_text(s))),
+        let before_reset = |s: i64| self.next_reset.as_ref().is_none_or(|(r, _)| s < r - now);
+        let lasts = self.lasts();
+        match lasts {
+            Some(s) if before_reset(s) => out.push(format!("At this pace, what's left lasts {}", duration_text(s))),
             Some(_) => out.push("At this pace, it lasts until the next reset".into()),
             None => {}
+        }
+        // The reset credits, a line of their own (a card's lines are
+        // short): how much longer they carry it, used as accounts run out.
+        if self.resets > 0 {
+            let them = if self.resets == 1 { "its reset".to_owned() } else { format!("its {} resets", self.resets) };
+            out.push(match (lasts, self.lasts_with_resets()) {
+                (Some(s), Some(w)) if before_reset(s) && before_reset(w) => format!("With {them}, it lasts {}", duration_text(w)),
+                (Some(s), Some(_)) if before_reset(s) => format!("With {them}, until the next reset"),
+                _ => format!("{} for when an account runs out", if self.resets == 1 { "A reset".to_owned() } else { format!("{} resets", self.resets) }),
+            });
         }
         if !self.serves {
             out.push(format!("Turned off for {}: it uses its own sign-in", client_name(&self.provider)));
@@ -335,6 +361,7 @@ pub fn availability(m: &PoolMeters, provider: &str, quota: Option<&str>, count_o
     let mut next_reset: Option<(i64, String)> = None;
     let mut back: Option<(i64, String)> = None;
     let mut pace: Option<f64> = None;
+    let mut resets = 0;
     let sooner = |slot: &mut Option<(i64, String)>, at: i64, who: &str| {
         if slot.as_ref().is_none_or(|(t, _)| at < *t) {
             *slot = Some((at, who.to_owned()));
@@ -377,6 +404,7 @@ pub fn availability(m: &PoolMeters, provider: &str, quota: Option<&str>, count_o
             whole += 1.0;
             if usable {
                 left += have / 100.0;
+                resets += w.resets;
                 if let Some(p) = w.pace_at(now) {
                     *pace.get_or_insert(0.0) += p.max(0.0) / 100.0;
                 }
@@ -395,7 +423,7 @@ pub fn availability(m: &PoolMeters, provider: &str, quota: Option<&str>, count_o
     if accounts.is_empty() {
         return None;
     }
-    Some(Availability { provider: provider.to_owned(), quota: quota.map(str::to_owned), accounts, left, whole, next_reset, back, pace, serves: !m.paused(provider) })
+    Some(Availability { provider: provider.to_owned(), quota: quota.map(str::to_owned), accounts, left, whole, next_reset, back, pace, resets, serves: !m.paused(provider) })
 }
 
 #[cfg(test)]
@@ -403,7 +431,7 @@ mod tests {
     use super::*;
 
     fn window(label: &str, used: f64, resets_at: Option<i64>) -> PoolWindow {
-        PoolWindow { name: label.to_lowercase(), label: label.into(), used, resets_at, models: Vec::new(), since: None }
+        PoolWindow { name: label.to_lowercase(), label: label.into(), used, resets_at, models: Vec::new(), since: None, resets: 0 }
     }
 
     fn account(name: &str, provider: &str, windows: Vec<PoolWindow>) -> PoolAccount {
@@ -515,5 +543,35 @@ mod tests {
         assert_eq!(tip[5], "Old: signed out");
         assert_eq!(duration_text(4_800), "1 h 20");
         assert_eq!(duration_text(90_000), "1 day 1 h");
+    }
+
+    /// The reset credits count (Ben, 2026-11-19: the widget's "At this
+    /// pace, what's left lasts" counted none of the six he had): how many
+    /// there are, and how much longer they carry it at this pace, each up
+    /// to an account's worth; until the next reset when that comes first.
+    #[test]
+    fn resets_carry_it_on() {
+        let week = 10 * 86_400;
+        let mut a = window("Weekly", 50.0, Some(1_000 + week));
+        // (40% an hour ago: 10% an hour, a tenth of an account.)
+        a.since = Some((1_000 - 3_600, 40.0));
+        a.resets = 2;
+        let mut b = window("Weekly", 80.0, Some(1_000 + week));
+        b.since = Some((1_000 - 3_600, 80.0));
+        b.resets = 1;
+        let m = PoolMeters { pid: 1, loaded: true, accounts: vec![account("A", "codex", vec![a]), account("B", "codex", vec![b])], paused: Vec::new() };
+        let q = availability(&m, "codex", None, false, 1_000).unwrap();
+        assert_eq!(q.resets, 3);
+        let tip = q.detail(1_000);
+        assert_eq!(tip[0], "35% left: 0.7 of 2 accounts' worth");
+        assert_eq!(tip[2], "At this pace, what's left lasts 7 h");
+        assert_eq!(tip[3], "With its 3 resets, it lasts 1 day 13 h");
+        // The next reset sooner than they'd last: until then.
+        let mut m = m;
+        for acc in m.accounts.iter_mut() {
+            acc.windows[0].resets_at = Some(1_000 + 20 * 3_600);
+        }
+        let tip = availability(&m, "codex", None, false, 1_000).unwrap().detail(1_000);
+        assert_eq!(tip[3], "With its 3 resets, until the next reset");
     }
 }

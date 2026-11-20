@@ -525,15 +525,17 @@ pub async fn redeem(client: &Client, up: &Upstreams, p: Provider, c: &Credential
 /// `nothing_to_reset` and `no_credit` spent nothing.
 fn claimed(p: Provider, d: &Value) -> Result<(), Failure> {
     match p {
+        // (Refused: nothing was spent, so no claim is left unclear.)
         Provider::Claude => match d["result"].as_str() {
             Some("reset" | "already_used") => Ok(()),
-            Some("not_limited") => Err(Failure::Other("Claude found nothing to reset: no reset was used.".into())),
+            Some("not_limited") => Err(Failure::Refused("Claude found nothing to reset: no reset was used.".into())),
+            Some(other @ ("ineligible" | "cooldown" | "unavailable")) => Err(Failure::Refused(format!("Claude refused the reset ({other}): none was used."))),
             _ => Err(Failure::Other("Claude didn't confirm the reset.".into())),
         },
         Provider::Codex => match d["code"].as_str() {
             Some("reset" | "already_redeemed") => Ok(()),
-            Some("nothing_to_reset") => Err(Failure::Other("ChatGPT found nothing to reset: no credit was used.".into())),
-            Some("no_credit") => Err(Failure::Other("ChatGPT says this account has no reset credit left.".into())),
+            Some("nothing_to_reset") => Err(Failure::Refused("ChatGPT found nothing to reset: no credit was used.".into())),
+            Some("no_credit") => Err(Failure::Refused("ChatGPT says this account has no reset credit left.".into())),
             _ => Err(Failure::Other("ChatGPT didn't confirm the reset.".into())),
         },
     }
@@ -615,6 +617,10 @@ pub fn header_windows(h: &axum::http::HeaderMap, p: Provider, family: &str, stat
     let model_only = p == Provider::Claude && !family.is_empty() && (claim == "seven_day_overage_included" || claude_models(claim).iter().any(|m| m == family));
     if model_only && claim == "seven_day_overage_included" {
         out.push(Window { name: format!("model:{family}/seven_day"), label: format!("Weekly {}", words(family)), used: 100.0, resets_at: Some(until), models: vec![family.to_owned()] });
+    } else if p == Provider::Claude && (claim.starts_with("five_hour") || claim.starts_with("seven_day")) && !out.iter().any(|w| w.name == claim) {
+        // (The meter it names is used up until then: so the card says
+        // what stopped it, and a reset credit that clears it can be used.)
+        out.push(Window { name: claim.to_owned(), label: claude_label(claim), used: 100.0, resets_at: Some(until), models: claude_models(claim) });
     }
     (out, Some(Rejection { until, model_only }))
 }

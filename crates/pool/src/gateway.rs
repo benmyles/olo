@@ -774,12 +774,32 @@ impl Shared {
     /// Spend one of account `id`'s reset credits (the soonest to expire),
     /// then read its quota again.
     pub async fn redeem(&self, id: &str) -> Result<(), String> {
+        self.redeem_credit(id, None).await
+    }
+
+    /// Claim the credit `credit` of account `id` (None: the one to use
+    /// next: one that resets what's out, else the soonest to expire).
+    pub async fn redeem_credit(&self, id: &str, credit: Option<&str>) -> Result<(), String> {
         let lock = self.lock_for(&format!("redeem:{id}"));
         let _held = lock.lock().await;
         let (provider, org, credit, request) = {
             let mut p = self.pool.lock().unwrap();
             let a = p.account_mut(id).ok_or("No such account.")?;
-            let credit = a.credit().cloned().ok_or("It has no reset credit to use now.")?;
+            let t = now();
+            let chosen = match credit {
+                Some(c) => a.credits.iter().find(|x| x.id == c).cloned(),
+                // (By hand: the one that gives back most now, the
+                // narrowest and soonest to expire of those as good.)
+                None => a
+                    .credits
+                    .iter()
+                    .filter(|c| c.usable_at(t))
+                    .map(|c| (c, a.claim_worth(c, t, t)))
+                    .max_by(|x, y| x.1.total_cmp(&y.1).then_with(|| (y.0.clears.len(), y.0.expires_at.unwrap_or(i64::MAX)).cmp(&(x.0.clears.len(), x.0.expires_at.unwrap_or(i64::MAX)))))
+                    .map(|(c, _)| c.clone())
+                    .or_else(|| a.credit().cloned()),
+            };
+            let credit = chosen.ok_or("It has no reset credit to use now.")?;
             // The same redemption again, if one was left unclear.
             let request = match &a.redeeming {
                 Some((c, r)) if *c == credit.id => r.clone(),
@@ -799,9 +819,14 @@ impl Shared {
                     Ok(()) => {
                         a.redeeming = None;
                         a.cooldown_until = None;
-                        // The shared windows start again; the report says by how much.
-                        for w in a.windows.iter_mut().filter(|w| w.models.is_empty()) {
+                        // What it resets starts again (a Fable reset, Fable's
+                        // week alone); the report says by how much.
+                        let provider = a.provider;
+                        for w in a.windows.iter_mut().filter(|w| credit.clears(provider, w)) {
                             w.used = 0.0;
+                        }
+                        for (family, _) in a.windows.iter().filter(|w| credit.clears(provider, w)).flat_map(|w| w.models.iter().map(|m| (m.clone(), ()))).collect::<Vec<_>>() {
+                            a.model_cooldowns.remove(&family);
                         }
                         if let Some(c) = a.credits.iter_mut().find(|c| c.id == credit.id) {
                             c.remaining = c.remaining.saturating_sub(1);
@@ -822,26 +847,28 @@ impl Shared {
         result
     }
 
-    /// When no account can serve: redeem a credit for one whose shared
-    /// quota (not just a model's meter) ran out, if one has a credit it
-    /// may use now. At most once a minute per account.
+    /// When no account can serve a request of `family`: claim the credit
+    /// that gives back most (`Account::claim_for`: one that resets a window
+    /// that's out for it, never one that gives back under
+    /// `WORTH_REDEEMING`, as a window about to reset by itself does), on the
+    /// account it gives back most on, the soonest to expire of those as
+    /// good. At most once a minute per account.
     async fn redeem_for(&self, provider: Provider, family: &str) -> Option<String> {
         let t = now();
-        let id = {
+        let (id, credit) = {
             let p = self.pool.lock().unwrap();
             p.saved
                 .accounts
                 .iter()
-                .filter(|a| a.provider == provider && a.enabled && a.signed_out.is_none() && a.credit().is_some())
+                .filter(|a| a.provider == provider && a.enabled && a.signed_out.is_none())
                 .filter(|a| a.redeem_tried.is_none_or(|r| t - r >= 60))
                 // Its own model meter would still block it after a reset.
-                .filter(|a| !a.model_cooldowns.get(family).is_some_and(|&c| c > t))
-                .filter(|a| !a.windows.iter().any(|w| !w.models.is_empty() && w.applies_to(family) && w.exhausted(t)))
-                .filter(|a| a.cooldown_until.is_some_and(|c| c > t) || a.windows.iter().any(|w| w.models.is_empty() && w.exhausted(t)))
-                .min_by_key(|a| a.credit().and_then(|c| c.expires_at).unwrap_or(i64::MAX))
-                .map(|a| a.id.clone())
+                .filter(|a| !a.model_cooldowns.get(family).is_some_and(|&c| c > t) || a.windows.iter().any(|w| w.applies_to(family) && w.exhausted(t)))
+                .filter_map(|a| a.claim_for(family, t).map(|(c, worth)| (a.id.clone(), c.id.clone(), worth, c.expires_at.unwrap_or(i64::MAX))))
+                .max_by(|x, y| x.2.total_cmp(&y.2).then(y.3.cmp(&x.3)))
+                .map(|(id, c, _, _)| (id, c))
         }?;
-        match self.redeem(&id).await {
+        match self.redeem_credit(&id, Some(&credit)).await {
             Ok(()) => Some(id),
             Err(e) => {
                 tracing::warn!("pool: redeeming a reset credit: {e}");
@@ -850,17 +877,22 @@ impl Shared {
         }
     }
 
-    /// Redeem credits that would otherwise expire unused, each at its best
-    /// moment (`Account::spend_before_expiry`). At most once a minute per
+    /// Claim credits that would otherwise expire unused, each at its best
+    /// moment (`Account::expiring_claim`). At most once a minute per
     /// account.
     async fn spend_expiring(&self) {
         let t = now();
-        let due: Vec<String> = {
+        let due: Vec<(String, String)> = {
             let p = self.pool.lock().unwrap();
-            p.saved.accounts.iter().filter(|a| a.enabled && a.signed_out.is_none() && a.redeem_tried.is_none_or(|r| t - r >= 60)).filter(|a| a.spend_before_expiry(t)).map(|a| a.id.clone()).collect()
+            p.saved
+                .accounts
+                .iter()
+                .filter(|a| a.enabled && a.signed_out.is_none() && a.redeem_tried.is_none_or(|r| t - r >= 60))
+                .filter_map(|a| a.expiring_claim(t).map(|c| (a.id.clone(), c.id.clone())))
+                .collect()
         };
-        for id in due {
-            match self.redeem(&id).await {
+        for (id, credit) in due {
+            match self.redeem_credit(&id, Some(&credit)).await {
                 Ok(()) => tracing::info!("pool: redeemed a reset credit before it expired"),
                 Err(e) => tracing::warn!("pool: redeeming an expiring reset credit: {e}"),
             }
