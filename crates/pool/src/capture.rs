@@ -499,6 +499,9 @@ async fn connection(rec: Arc<Recorder>, mut client: TcpStream) -> Option<()> {
     }
     let host = target.rsplit_once(':').map(|(h, _)| h.trim_matches(['[', ']']).to_ascii_lowercase()).unwrap_or(target.to_ascii_lowercase());
     client.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n").await.ok()?;
+    // (What came after the head, a client not waiting for the answer: the
+    // start of its TLS.)
+    let client = crate::intercept::Prefixed::new(buf[end..].to_vec(), client);
     let start = tokio::time::timeout(Duration::from_secs(20), tokio_rustls::LazyConfigAcceptor::new(rustls::server::Acceptor::default(), client)).await.ok()?.ok()?;
     let hello = start.client_hello();
     let sni = hello.server_name().map(str::to_ascii_lowercase).unwrap_or_else(|| host.clone());
@@ -541,8 +544,14 @@ async fn connection(rec: Arc<Recorder>, mut client: TcpStream) -> Option<()> {
     let wall = rec.wall.lock().unwrap().clone().filter(|_| sni == "api.anthropic.com" && method == "POST" && target.starts_with("/v1/messages"));
     // Sent on only with the account's own credential, or none: a request
     // carrying a made-up one (a renewal's run) is answered here.
+    // Nor one whose body didn't come whole, or came chunked (sent on, it
+    // would go as it was framed with what was read of it), nor Codex's TUI
+    // asking for Reserve (Codex's third look: none of these is a plain read).
+    let whole = !chunked && length.is_none_or(|n| body.len() == n);
+    let reserve = headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("x-openai-codex-luna-reserve"));
     let fate = match fate(&sni, &method, &target) {
         Fate::Forward if !honest || wall.is_some() => Fate::Answer(401, r#"{"error":"Captured by Olo's Token Pool, not sent: not the account's own sign-in."}"#),
+        Fate::Forward if !whole || reserve => Fate::Answer(400, r#"{"error":"Captured by Olo's Token Pool, not sent: not a plain read."}"#),
         f => f,
     };
     rec.sent.lock().unwrap().push(Sent {
@@ -660,6 +669,11 @@ fn sweep_where(own_too: bool) {
     let Ok(old) = std::fs::read_dir(&base) else { return };
     let me = std::process::id() as i32;
     for e in old.flatten() {
+        // (One being made has no owner yet: left alone its first ten
+        // minutes.)
+        if !e.path().join("owner").exists() && e.metadata().and_then(|m| m.modified()).is_ok_and(|t| t.elapsed().is_ok_and(|d| d < Duration::from_secs(600))) {
+            continue;
+        }
         let owner = std::fs::read_to_string(e.path().join("owner")).unwrap_or_default();
         let mut owner = owner.split_whitespace().map(|n| n.parse::<u64>().ok());
         let (pid, started) = (owner.next().flatten(), owner.next().flatten());
@@ -979,7 +993,7 @@ fn run_step(step: &Step, exe: &Path, env: &[(String, String)], work: &Path, port
                 if terminal && libc::ioctl(0, libc::TIOCSCTTY as _, 0) < 0 {
                     return Err(std::io::Error::last_os_error());
                 }
-                if libc::syscall(libc::SYS_close_range, 3u32, u32::MAX, 0u32) < 0 {
+                if libc::syscall(libc::SYS_close_range, 3u32, u32::MAX, libc::CLOSE_RANGE_CLOEXEC) < 0 {
                     return Err(std::io::Error::last_os_error());
                 }
                 confine(port)

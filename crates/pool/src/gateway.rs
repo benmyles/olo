@@ -113,11 +113,9 @@ pub struct Pool {
     /// The saved accounts have been read (until then nothing is saved,
     /// so a keyring that isn't open yet can't cost them).
     pub loaded: bool,
-    /// Reset credits claimed for each provider's accounts (by
-    /// `provider_index`): how many, and the account the last reset. A
-    /// request every account turned away looks whether one was claimed
-    /// since, before claiming one itself.
-    claims: [(u64, Option<String>); 2],
+    /// Each account's latest confirmed reset. An observation from an older
+    /// revision cannot put the account back at its former limit.
+    resets: HashMap<String, u64>,
 }
 
 impl Pool {
@@ -127,6 +125,16 @@ impl Pool {
     pub fn account_mut(&mut self, id: &str) -> Option<&mut Account> {
         self.saved.accounts.iter_mut().find(|a| a.id == id)
     }
+    fn reset_revision(&self, id: &str) -> u64 {
+        self.resets.get(id).copied().unwrap_or(0)
+    }
+
+    fn pick<'a>(&'a self, provider: Provider, family: &str, sticky: Option<&str>, tried: &HashMap<String, u64>, reconsider: &[String]) -> Option<&'a Account> {
+        schedule::pick(&self.saved.accounts, provider, family, sticky, now(), &[], |a| {
+            self.saved.credentials.contains_key(&a.id) && (reconsider.contains(&a.id) || tried.get(&a.id) != Some(&self.reset_revision(&a.id)))
+        })
+    }
+
     pub fn busy(&self, id: &str) -> bool {
         self.in_flight.get(id).is_some_and(|&n| n > 0)
     }
@@ -194,8 +202,10 @@ pub struct Shared {
     /// the window and agents; whether a capture runs, and whether one more
     /// was asked for meanwhile (1: what's due, 2: every account).
     capturing: Mutex<Option<String>>,
-    /// Each account's own HTTP client (`client_for`).
+    /// Each account's own HTTP client (`client_for`), and the latest few
+    /// sign-ins' own whose requests pass through (`own_client`).
     clients: Mutex<HashMap<String, Arc<olo_net::PerNetwork<reqwest::Client>>>>,
+    own_clients: Mutex<std::collections::VecDeque<(String, Arc<olo_net::PerNetwork<reqwest::Client>>)>>,
     /// Each account's own HTTP/1.1 connections to Claude, for requests
     /// passed on exactly as they came (`relay`).
     exact: Arc<crate::relay::Exact>,
@@ -328,6 +338,7 @@ impl Shared {
             jars: Mutex::new(HashMap::new()),
             capturing: Mutex::new(None),
             clients: Mutex::new(HashMap::new()),
+            own_clients: Mutex::new(std::collections::VecDeque::new()),
             exact: Default::default(),
             capture_state: std::sync::Mutex::new((false, 0)),
         });
@@ -465,13 +476,13 @@ impl Shared {
                     // capture (Codex's review: a renewal is the pool's own
                     // business); one due within a quarter of an hour waits
                     // for the next capture.
+                    let made = s.captures_gen.lock().unwrap().get(&id).copied().unwrap_or(0);
                     let (account, cred) = {
                         let p = s.pool.lock().unwrap();
                         let Some(a) = p.saved.accounts.iter().find(|a| a.id == id).cloned() else { continue };
                         let Some(c) = p.saved.credentials.get(&id).cloned() else { continue };
                         (a, c)
                     };
-                    let made = s.captures_gen.lock().unwrap().get(&id).copied().unwrap_or(0);
                     if cred.expires_at.is_some_and(|e| e - now() < 900) {
                         tracing::info!("pool: {} for {} not captured now: its sign-in is due for renewal", provider.client(), account.name);
                         continue;
@@ -492,7 +503,7 @@ impl Shared {
                             match crate::capture::save(&c) {
                                 Ok(()) => {
                                     tracing::info!("pool: captured {} {} for {} ({} requests, {:.0?})", provider.client(), c.version, account.name, c.requests.len(), began.elapsed());
-                                    s.captures.lock().unwrap().insert(id.clone(), Some(Arc::new(c)));
+                                    s.keep_capture(&id, c);
                                 }
                                 Err(e) => tracing::warn!("pool: keeping the capture of {} for {}: {e}", provider.client(), account.name),
                             }
@@ -531,6 +542,12 @@ impl Shared {
         Some(crate::likeness::Like { capture, org, email, jar: self.jar(id) })
     }
 
+    /// Account `id`'s capture `c`, kept for its requests from now (the
+    /// capture's own, once saved; a test's, never saved).
+    pub fn keep_capture(&self, id: &str, c: crate::capture::Capture) {
+        self.captures.lock().unwrap().insert(id.to_owned(), Some(Arc::new(c)));
+    }
+
     /// Account `id`'s capture: read from its file the first time it's
     /// asked for, kept after (the pool keeps it current as it makes one).
     fn capture_of(&self, id: &str) -> Option<Arc<crate::capture::Capture>> {
@@ -550,11 +567,32 @@ impl Shared {
             *made.entry(id.to_owned()).or_default() += 1;
             self.captures.lock().unwrap().insert(id.to_owned(), None);
             // (One small file.)
-            let _ = std::fs::remove_file(crate::capture::path(id));
+            match std::fs::remove_file(crate::capture::path(id)) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => tracing::warn!("pool: removing a capture: {e}"),
+            }
         }
         self.jars.lock().unwrap().remove(id);
         self.clients.lock().unwrap().remove(id);
         self.exact.forget(id);
+    }
+
+    /// The HTTP client for requests passed through on sign-in `key`'s own
+    /// (`intercept::own_key`): one of its own, the latest eight kept (a
+    /// sign-in renewed is another).
+    pub fn own_client(&self, key: &str) -> reqwest::Client {
+        let mut own = self.own_clients.lock().unwrap();
+        if let Some(at) = own.iter().position(|(k, _)| k == key) {
+            let kept = own.remove(at).expect("found");
+            own.push_back(kept);
+        } else {
+            own.push_back((key.to_owned(), Arc::new(olo_net::PerNetwork::new(new_client))));
+            if own.len() > 8 {
+                own.pop_front();
+            }
+        }
+        own.back().expect("just put").1.get()
     }
 
     /// Account `id`'s cookies (`likeness::Jar`).
@@ -652,7 +690,7 @@ impl Shared {
             error: p.error.clone(),
             loaded: p.loaded,
             activity: Activity::default(),
-            claims: p.claims.clone(),
+            resets: p.resets.clone(),
         }
     }
 
@@ -721,6 +759,7 @@ impl Shared {
             }
             p.saved.accounts.retain(|a| a.id != id);
             p.saved.credentials.remove(id);
+            p.resets.remove(id);
         }
         // (What was kept of it goes with it: its capture, its cookies, its
         // connections.)
@@ -751,7 +790,7 @@ impl Shared {
         // Another copy of the pool at work beside this one (an upgrade
         // handing over): renewed under the store's lock, after reading what
         // the other may have renewed already.
-        let shared_file = if self.drain.overlapping() { tokio::task::block_in_place(|| self.store_lock_and_adopt(id)) } else { None };
+        let shared_file = if self.drain.overlapping() { tokio::task::block_in_place(|| self.store_lock_and_adopt(id)).map_err(Failure::Other)? } else { None };
         let renewed_there = shared_file.as_ref().is_some_and(|(_, adopted)| *adopted);
         // Someone else may have refreshed it while we waited.
         let current = self.pool.lock().unwrap().saved.credentials.get(id).cloned().ok_or_else(|| Failure::Refused("No sign-in".into()))?;
@@ -760,7 +799,7 @@ impl Shared {
         if (!force || renewed_there) && !due {
             return Ok(current);
         }
-        match upstream::refresh(&self.client(), &self.up, provider, &current, self.like(id).as_ref()).await {
+        match upstream::refresh(&self.client_for(id), &self.up, provider, &current, self.like(id).as_ref()).await {
             Ok(c) => {
                 self.pool.lock().unwrap().saved.credentials.insert(id.to_owned(), c.clone());
                 if self.drain.retired() {
@@ -801,15 +840,19 @@ impl Shared {
     /// The store's lock (`store::lock_at`), waited for with the store itself
     /// let go: its holder takes the store next, so the two are only ever
     /// taken in that order. Blocks.
-    fn store_lock(&self) -> Option<std::fs::File> {
-        let at = self.store.lock().unwrap().as_ref().map(Store::lock_path)?;
-        crate::store::lock_at(&at)
+    fn store_lock(&self) -> Result<Option<std::fs::File>, String> {
+        let at = self.store.lock().unwrap().as_ref().map(Store::lock_path).or_else(|| self.lazy.then(|| crate::store::path().with_extension("lock")));
+        let Some(at) = at else { return Ok(None) }; // An in-memory fixture.
+        if let Some(dir) = at.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        crate::store::lock_at(&at).map(Some).ok_or_else(|| "Couldn’t acquire the shared pool store lock.".to_owned())
     }
 
     /// The store's lock, and whether the file had a newer sign-in for `id`
     /// than this copy's, taken in (the other copy renewed it). Blocks.
-    fn store_lock_and_adopt(&self, id: &str) -> Option<(std::fs::File, bool)> {
-        let held = self.store_lock()?;
+    fn store_lock_and_adopt(&self, id: &str) -> Result<Option<(std::fs::File, bool)>, String> {
+        let Some(held) = self.store_lock()? else { return Ok(None) };
         let disk = self.store.lock().unwrap().as_ref().map(Store::read);
         let adopted = match disk {
             Some(Ok(disk)) => {
@@ -822,13 +865,10 @@ impl Shared {
                     _ => false,
                 }
             }
-            Some(Err(e)) => {
-                tracing::warn!("pool: {e}");
-                false
-            }
+            Some(Err(e)) => return Err(e),
             None => false,
         };
-        Some((held, adopted))
+        Ok(Some((held, adopted)))
     }
 
     /// The sign-ins in `disk` newer than `snapshot`'s (another copy renewed
@@ -867,8 +907,11 @@ impl Shared {
     /// work, under the store's lock, keeping the sign-ins it renewed.
     /// Blocks.
     fn write(&self, file_lock: bool) -> Result<(), String> {
-        let held = if file_lock && self.drain.overlapping() { self.store_lock() } else { None };
+        let held = if file_lock && self.drain.overlapping() { self.store_lock()? } else { None };
         let mut store = self.store.lock().unwrap();
+        if self.drain.retired() {
+            return Err("This copy of the pool has handed over.".into());
+        }
         let mut snapshot = {
             let p = self.pool.lock().unwrap();
             if !p.loaded {
@@ -877,9 +920,9 @@ impl Shared {
             p.saved.clone()
         };
         if held.is_some()
-            && let Some(Ok(disk)) = store.as_ref().map(Store::read)
+            && let Some(st) = store.as_ref()
         {
-            self.adopt_newer(&disk, &mut snapshot);
+            self.adopt_newer(&st.read()?, &mut snapshot);
         }
         if store.is_none() && self.lazy {
             *store = Some(Store::open()?.0);
@@ -894,9 +937,6 @@ impl Shared {
     /// Spend one of account `id`'s reset credits (the soonest to expire),
     /// then read its quota again.
     pub async fn redeem(&self, id: &str) -> Result<(), String> {
-        let provider = self.pool.lock().unwrap().account(id).map(|a| a.provider).ok_or("No such account.")?;
-        let gate = self.claims_gate(provider);
-        let _gate = gate.lock().await;
         self.redeem_credit(id, None, Why::Asked).await.map_err(|e| e.to_string())
     }
 
@@ -916,6 +956,13 @@ impl Shared {
     /// is made by a copy of the pool that has handed over. The claim's
     /// intent is kept on disk before the provider is asked.
     pub async fn redeem_credit(&self, id: &str, credit: Option<&str>, why: Why) -> Result<(), Claimed> {
+        let provider = self.pool.lock().unwrap().account(id).map(|a| a.provider).ok_or_else(|| Claimed::NotNow("No such account.".into()))?;
+        let gate = self.claims_gate(provider);
+        let _gate = gate.lock().await;
+        self.redeem_locked(id, credit, why).await
+    }
+
+    async fn redeem_locked(&self, id: &str, credit: Option<&str>, why: Why) -> Result<(), Claimed> {
         if self.drain.retired() {
             return Err(Claimed::NotNow("This copy of the pool has handed over.".into()));
         }
@@ -926,7 +973,14 @@ impl Shared {
         }
         let (provider, org, credit, request) = {
             let mut p = self.pool.lock().unwrap();
-            let a = p.account_mut(id).ok_or_else(|| Claimed::NotNow("No such account.".into()))?;
+            let a = p.account(id).ok_or_else(|| Claimed::NotNow("No such account.".into()))?;
+            if a.redeeming.is_none() && p.saved.accounts.iter().any(|other| other.provider == a.provider && other.redeeming.is_some()) {
+                return Err(Claimed::Unclear("A previous reset claim still needs to be reconciled.".into()));
+            }
+            if why != Why::Asked && (!a.enabled || a.signed_out.is_some() || !p.saved.credentials.contains_key(id)) {
+                return Err(Claimed::NotNow("This account is unavailable.".into()));
+            }
+            let a = p.account_mut(id).expect("account checked under this lock");
             let t = now();
             match a.redeeming.clone() {
                 Some((cid, request)) => match a.credits.iter().find(|c| c.id == cid).cloned() {
@@ -972,13 +1026,11 @@ impl Shared {
         if self.drain.retired() {
             return Err(Claimed::NotNow("This copy of the pool has handed over.".into()));
         }
-        let result = upstream::redeem(&self.client(), &self.up, provider, &cred, org.as_deref(), &credit, &request, self.like(id).as_ref()).await;
+        let result = upstream::redeem(&self.client_for(id), &self.up, provider, &cred, org.as_deref(), &credit, &request, self.like(id).as_ref()).await;
         {
             let mut p = self.pool.lock().unwrap();
             if result.is_ok() {
-                let claims = &mut p.claims[provider_index(provider)];
-                claims.0 += 1;
-                claims.1 = Some(id.to_owned());
+                *p.resets.entry(id.to_owned()).or_default() += 1;
             }
             if let Some(a) = p.account_mut(id) {
                 match &result {
@@ -1026,46 +1078,40 @@ impl Shared {
         tokio::task::block_in_place(|| self.write(true)).map_err(|e| format!("The pool couldn’t keep the claim before making it: {e}"))
     }
 
-    /// When no account can serve a request of `family` (all out as it
-    /// looked, `seen` claims made by then): the account to try again, after
-    /// claiming a reset credit for it if need be. One claimed since it
-    /// looked: that one's account, nothing claimed. An unclear claim
-    /// outstanding: that one again (the same credit, the same request id)
-    /// before any other is made, so a reset that went through isn't paid
-    /// for twice. Else the credit that gives back most (`claims_for`: one
-    /// that clears every limit that's out for it, never one that gives back
-    /// under `WORTH_REDEEMING`, as a window about to reset by itself does),
-    /// the narrowest and soonest to expire of those as good; one refused
-    /// (nothing spent), the next, the same account's others too. Each
-    /// account at most once a minute; none from a copy that has handed
-    /// over.
-    async fn redeem_for(&self, provider: Provider, family: &str, seen: u64) -> Option<String> {
+    /// Recheck which account can serve under the provider's claim lock. A
+    /// refusal or another request's reset may already have released one.
+    async fn redeem_for(&self, provider: Provider, family: &str, tried: &HashMap<String, u64>) -> Option<String> {
         let gate = self.claims_gate(provider);
         let _gate = gate.lock().await;
         if self.drain.retired() {
             return None;
         }
+        let available = |refused: &[String]| self.pool.lock().unwrap().pick(provider, family, None, tried, refused).map(|a| a.id.clone());
+        if let Some(id) = available(&[]) {
+            return Some(id);
+        }
         let t = now();
         let pending = {
             let p = self.pool.lock().unwrap();
-            let (made, last) = &p.claims[provider_index(provider)];
-            if *made != seen {
-                return last.clone();
-            }
-            p.saved.accounts.iter().find(|a| a.provider == provider && a.enabled && a.signed_out.is_none() && a.redeeming.is_some()).map(|a| (a.id.clone(), a.redeem_tried))
+            p.saved.accounts.iter().find(|a| a.provider == provider && a.redeeming.is_some()).map(|a| (a.id.clone(), a.redeem_tried))
         };
         if let Some((id, tried)) = pending {
             // (Not asked again at once: the provider may be having trouble.)
             if tried.is_some_and(|r| t - r < 10) {
                 return None;
             }
-            match self.redeem_credit(&id, None, Why::Blocked(family.to_owned())).await {
+            match self.redeem_locked(&id, None, Why::Blocked(family.to_owned())).await {
                 Ok(()) => return Some(id),
                 Err(Claimed::Unclear(e)) => {
                     tracing::warn!("pool: a reset claim still unclear: {e}");
                     return None;
                 }
-                Err(e) => tracing::info!("pool: an unclear reset claim settled, nothing spent: {e}"),
+                Err(Claimed::NotNow(_)) => return None,
+                Err(Claimed::Refused(_)) => {
+                    if let Some(ready) = available(std::slice::from_ref(&id)) {
+                        return Some(ready);
+                    }
+                }
             }
         }
         let mut candidates: Vec<(String, String, f64, usize, i64)> = {
@@ -1075,14 +1121,17 @@ impl Shared {
                 .iter()
                 .filter(|a| a.provider == provider && a.enabled && a.signed_out.is_none())
                 .filter(|a| a.redeem_tried.is_none_or(|r| t - r >= 60))
-                .flat_map(|a| a.claims_for(family, t).into_iter().enumerate().map(|(rank, (c, worth))| (a.id.clone(), c.id.clone(), worth, rank, c.expires_at.unwrap_or(i64::MAX))))
+                .flat_map(|a| a.claims_for(family, t).into_iter().map(|(c, worth)| (a.id.clone(), c.id.clone(), worth, c.breadth(), c.expires_at.unwrap_or(i64::MAX))))
                 .collect()
         };
         candidates.sort_by(|x, y| y.2.total_cmp(&x.2).then(x.3.cmp(&y.3)).then(x.4.cmp(&y.4)));
         // Accounts whose claims were refused, their quotas read again since.
         let mut refused: Vec<String> = Vec::new();
         for (id, credit, _, _, _) in candidates {
-            match self.redeem_credit(&id, Some(&credit), Why::Blocked(family.to_owned())).await {
+            if let Some(ready) = available(&refused) {
+                return Some(ready);
+            }
+            match self.redeem_locked(&id, Some(&credit), Why::Blocked(family.to_owned())).await {
                 Ok(()) => return Some(id),
                 Err(e @ Claimed::Refused(_)) => {
                     tracing::info!("pool: a reset credit not used: {e}; the next");
@@ -1097,9 +1146,7 @@ impl Shared {
         }
         // (A refusal as the account wasn't out after all, a window having
         // reset by itself: read again, it serves.)
-        let p = self.pool.lock().unwrap();
-        let creds = &p.saved.credentials;
-        schedule::pick(&p.saved.accounts, provider, family, None, now(), &[], |a| creds.contains_key(&a.id)).map(|a| a.id.clone()).filter(|id| refused.contains(id))
+        available(&refused)
     }
 
     /// Claim credits that would otherwise expire unused, each at its best
@@ -1110,18 +1157,16 @@ impl Shared {
             return;
         }
         let t = now();
-        let due: Vec<(String, String, Provider)> = {
+        let due: Vec<(String, String)> = {
             let p = self.pool.lock().unwrap();
             p.saved
                 .accounts
                 .iter()
                 .filter(|a| a.enabled && a.signed_out.is_none() && a.redeem_tried.is_none_or(|r| t - r >= 60))
-                .filter_map(|a| a.expiring_claim(t).map(|c| (a.id.clone(), c.id.clone(), a.provider)))
+                .filter_map(|a| a.expiring_claim(t).map(|c| (a.id.clone(), c.id.clone())))
                 .collect()
         };
-        for (id, credit, provider) in due {
-            let gate = self.claims_gate(provider);
-            let _gate = gate.lock().await;
+        for (id, credit) in due {
             match self.redeem_credit(&id, Some(&credit), Why::Expiring).await {
                 Ok(()) => tracing::info!("pool: redeemed a reset credit before it expired"),
                 Err(e) => tracing::warn!("pool: redeeming an expiring reset credit: {e}"),
@@ -1150,11 +1195,12 @@ impl Shared {
                 .collect()
         };
         for (id, provider) in accounts {
+            let revision = self.pool.lock().unwrap().reset_revision(&id);
             let Ok(cred) = self.fresh(&id, provider, false, 600).await else { continue };
             let like = self.like(&id);
-            let report = match upstream::usage(&self.client(), &self.up, provider, &cred, like.as_ref()).await {
+            let report = match upstream::usage(&self.client_for(&id), &self.up, provider, &cred, like.as_ref()).await {
                 Err(Failure::Refused(_)) => match self.fresh(&id, provider, true, 0).await {
-                    Ok(c) => upstream::usage(&self.client(), &self.up, provider, &c, like.as_ref()).await,
+                    Ok(c) => upstream::usage(&self.client_for(&id), &self.up, provider, &c, like.as_ref()).await,
                     Err(e) => Err(e),
                 },
                 r => r,
@@ -1182,10 +1228,13 @@ impl Shared {
                 _ => None,
             };
             let credits = match credits {
-                Some(c) => upstream::credits(&self.client(), &self.up, provider, &c, like.as_ref()).await.ok(),
+                Some(c) => upstream::credits(&self.client_for(&id), &self.up, provider, &c, like.as_ref()).await.ok(),
                 None => None,
             };
             let mut p = self.pool.lock().unwrap();
+            if p.reset_revision(&id) != revision {
+                continue;
+            }
             let Some(a) = p.account_mut(&id) else { continue };
             if let Some(c) = credits {
                 a.credits = c;
@@ -1390,7 +1439,16 @@ async fn codex(State(ctx): State<Ctx>, Path(rest): Path<String>, RawQuery(q): Ra
 /// Answers pass as they came, never decoded on the way (the pool reads a
 /// decoded copy itself), and nothing asked for that the client didn't.
 fn new_client() -> reqwest::Client {
-    reqwest::Client::builder().connect_timeout(Duration::from_secs(20)).read_timeout(Duration::from_secs(15 * 60)).no_gzip().no_brotli().no_deflate().no_zstd().build().expect("HTTP client")
+    reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(Duration::from_secs(20))
+        .read_timeout(Duration::from_secs(15 * 60))
+        .no_gzip()
+        .no_brotli()
+        .no_deflate()
+        .no_zstd()
+        .build()
+        .expect("HTTP client")
 }
 
 /// Why a reset credit is claimed: a request of a model family no account
@@ -1565,7 +1623,7 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
     // `Host` the host's) or to the gateway's own address.
     let conn = ext.get::<crate::relay::ClientConn>().copied().unwrap_or_default();
     let proxied = ext.get::<crate::relay::ClientOffer>().is_some();
-    let mut tried: Vec<String> = Vec::new();
+    let mut tried: HashMap<String, u64> = HashMap::new();
     // Tries the network failed (not counted against an account).
     let mut network_tries = 0;
     loop {
@@ -1573,9 +1631,8 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
         let chosen = {
             let mut p = s.pool.lock().unwrap();
             let t = now();
-            let creds = &p.saved.credentials;
             let sticky = p.sticky.get(&(provider, family.clone())).cloned();
-            let pick = schedule::pick(&p.saved.accounts, provider, &family, sticky.as_deref(), t, &tried, |a| creds.contains_key(&a.id)).map(|a| (a.id.clone(), a.name.clone()));
+            let pick = p.pick(provider, &family, sticky.as_deref(), &tried, &[]).map(|a| (a.id.clone(), a.name.clone()));
             match pick {
                 Some((id, name)) => {
                     p.sticky.insert((provider, family.clone()), id.clone());
@@ -1584,7 +1641,8 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                     let open = p.next_open;
                     let o = Open { id: open, account: name.clone(), account_id: id.clone(), provider, model: model.clone(), client: client.clone(), started: now_ms() };
                     p.open.push(o);
-                    Ok((id, name, open))
+                    let revision = p.reset_revision(&id);
+                    Ok((id, name, open, revision))
                 }
                 None => {
                     if !p.loaded {
@@ -1593,20 +1651,20 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                     }
                     let any = p.saved.accounts.iter().any(|a| a.provider == provider && a.enabled && a.signed_out.is_none());
                     let retry = schedule::next_available(&p.saved.accounts, provider, &family, t);
-                    Err((any, retry, p.claims[provider_index(provider)].0))
+                    Err((any, retry))
                 }
             }
         };
-        let (id, name, open) = match chosen {
+        let (id, name, open, mut revision) = match chosen {
             Ok(c) => {
                 // (Its use, bookkeeping: saved with the next, or soon.)
                 s.noted();
                 c
             }
-            Err((any, retry, seen)) => {
+            Err((any, retry)) => {
                 // Every account out: a reset credit keeps things going.
-                if any && let Some(id) = s.redeem_for(provider, &family, seen).await {
-                    tried.retain(|t| *t != id);
+                if any && let Some(id) = s.redeem_for(provider, &family, &tried).await {
+                    tried.remove(&id);
                     continue;
                 }
                 return if any {
@@ -1634,6 +1692,7 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
             passed: 0,
             broken: false,
             scan: Scan::new(),
+            decode: Decode::Plain,
             shared: Some(s.clone()),
         };
         let seen = olo_net::generation();
@@ -1650,7 +1709,7 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
             }
             Err(_) => {
                 drop(finish);
-                tried.push(id.clone());
+                tried.insert(id.clone(), revision);
                 continue;
             }
         };
@@ -1663,12 +1722,14 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
         let mut sent_plain: Option<Bytes> = None;
         let response = loop {
             let seen = olo_net::generation();
+            revision = s.pool.lock().unwrap().reset_revision(&id);
             // The client's request as it came, in its order, the account's
             // own in place of the client's: its sign-in where the client's
             // was, its ChatGPT account and Claude organization, the OAuth
             // beta in the client's list (Claude Code signed in to it sends
             // them so). Claude's goes exactly so, each name in its case, on
             // a connection of the account's own (`relay`).
+            let response_jar = s.jar(&id);
             let sent = if provider == Provider::Claude {
                 let target = match &query {
                     Some(q) => format!("/v1/{rest}?{q}"),
@@ -1676,7 +1737,7 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                 };
                 let mut b = hyper::Request::builder().method(method.clone()).uri(target);
                 let mut signed = false;
-                let cookie = crate::likeness::cookie(&s.jar(&id), host_of(provider));
+                let cookie = crate::likeness::cookie(&response_jar, host_of(provider));
                 for (k, v) in headers.iter() {
                     match k.as_str() {
                         "authorization" | "x-api-key" if !signed => {
@@ -1761,11 +1822,14 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                     req = upstream::authorize(req, provider, &cred);
                 }
                 // (The account's cookies, as Codex's store adds its own.)
-                if let Some(c) = crate::likeness::cookie(&s.jar(&id), host_of(provider)) {
+                if let Some(c) = crate::likeness::cookie(&response_jar, host_of(provider)) {
                     req = req.header("cookie", c);
                 }
                 req.body(sent_plain.clone().unwrap_or_else(|| own.body.clone())).send().await.map(crate::relay::Answer::Reqwest).map_err(Sent::from)
             };
+            if let Ok(r) = &sent {
+                crate::likeness::keep(&response_jar, host_of(provider), r.headers().get_all("set-cookie").iter().filter_map(|v| v.to_str().ok()));
+            }
             match sent {
                 Ok(r) if sent_plain.is_none() && resend_plain(provider, r.status(), &headers) => {
                     let plain = plain(&headers, &own.body);
@@ -1812,23 +1876,24 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
         let Some(r) = response else {
             finish.status = StatusCode::UNAUTHORIZED.as_u16();
             drop(finish);
-            tried.push(id.clone());
+            tried.insert(id.clone(), revision);
             continue;
         };
         let status = r.status();
         finish.status = status.as_u16();
-        // (What the host set, kept for the account.)
-        crate::likeness::keep(&s.jar(&id), host_of(provider), r.headers().get_all("set-cookie").iter().filter_map(|v| v.to_str().ok()));
         let t = now();
         let (windows, rejection) = upstream::header_windows(r.headers(), provider, &family, status.as_u16(), t);
         {
             let mut p = s.pool.lock().unwrap();
+            let current = p.reset_revision(&id) == revision;
             if let Some(a) = p.account_mut(&id) {
-                a.merge_windows(windows);
+                if current {
+                    a.merge_windows(windows);
+                }
                 if status == StatusCode::UNAUTHORIZED {
                     a.signed_out = Some("Its provider refused the sign-in.".into());
                 }
-                if let Some(rej) = &rejection {
+                if current && let Some(rej) = &rejection {
                     if rej.model_only {
                         a.model_cooldowns.insert(family.clone(), rej.until);
                     } else {
@@ -1843,12 +1908,12 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                 finish.outcome = Some(Outcome::RateLimited);
             }
             drop(finish);
-            tried.push(id.clone());
+            tried.insert(id.clone(), revision);
             continue;
         }
         // Passed on: how it ends is up to the answer.
         finish.outcome = None;
-        return respond(r, finish);
+        return respond(r, finish, &method);
     }
 }
 
@@ -1877,34 +1942,49 @@ fn user_id_span(body: &[u8]) -> Option<std::ops::Range<usize>> {
     (start + raw.len() <= body.len()).then(|| start..start + raw.len())
 }
 
-/// `body` with the `account_uuid` named in its `metadata.user_id` string
-/// (at `span`) made `ours`: in that string alone, where it's written once
-/// as it is (the client's bytes kept around it); written otherwise (escaped),
-/// the string written again as JSON writes it. None if there's nothing to
-/// change, or it can't be told where.
+/// Map a byte boundary in a decoded JSON string back to its original
+/// spelling. `text` is the validated decoding of `raw`, including any
+/// escaped BMP characters or surrogate pairs.
+fn spelling_offset(raw: &[u8], text: &str, offset: usize) -> Option<usize> {
+    let mut at = 1;
+    for (decoded, c) in text.char_indices() {
+        if decoded == offset {
+            return Some(at);
+        }
+        at += match raw.get(at)? {
+            b'\\' if raw.get(at + 1) == Some(&b'u') => 6 * c.len_utf16(),
+            b'\\' => 2,
+            _ => c.len_utf8(),
+        };
+    }
+    (offset == text.len()).then_some(at)
+}
+
+/// Replace the actual inner JSON field, preserving the original spelling
+/// of everything around it at both levels of JSON encoding.
 fn with_account(body: &[u8], span: std::ops::Range<usize>, ours: &str) -> Option<Bytes> {
-    let token = &body[span.clone()];
-    let text: String = serde_json::from_slice(token).ok()?;
-    let theirs = serde_json::from_str::<Value>(&text).ok()?["account_uuid"].as_str().filter(|u| !u.is_empty())?.to_owned();
-    if theirs == ours {
+    #[derive(serde::Deserialize)]
+    struct UserId<'a> {
+        #[serde(borrow)]
+        account_uuid: &'a serde_json::value::RawValue,
+    }
+    let raw = &body[span.clone()];
+    let text: String = serde_json::from_slice(raw).ok()?;
+    let id = serde_json::from_str::<UserId<'_>>(&text).ok()?.account_uuid.get();
+    let theirs: String = serde_json::from_str(id).ok()?;
+    if theirs.is_empty() || theirs == ours {
         return None;
     }
-    let t = theirs.as_bytes();
-    let at: Vec<usize> = token.windows(t.len()).enumerate().filter(|(_, w)| *w == t).map(|(i, _)| i).collect();
-    let made = if let [at] = at[..] {
-        let mut v = token.to_vec();
-        v.splice(at..at + t.len(), ours.bytes());
-        v
-    } else if text.matches(theirs.as_str()).count() == 1 {
-        serde_json::to_vec(&text.replacen(theirs.as_str(), ours, 1)).ok()?
-    } else {
-        return None;
-    };
-    let mut b = Vec::with_capacity(body.len() - token.len() + made.len());
-    b.extend_from_slice(&body[..span.start]);
-    b.extend_from_slice(&made);
-    b.extend_from_slice(&body[span.end..]);
-    Some(Bytes::from(b))
+    let start = (id.as_ptr() as usize).checked_sub(text.as_ptr() as usize)?;
+    let from = span.start + spelling_offset(raw, &text, start + 1)?;
+    let to = span.start + spelling_offset(raw, &text, start + id.len() - 1)?;
+    let inner = serde_json::to_string(ours).ok()?;
+    let outer = serde_json::to_vec(&inner[1..inner.len() - 1]).ok()?;
+    let mut result = Vec::with_capacity(body.len() - (to - from) + outer.len() - 2);
+    result.extend_from_slice(&body[..from]);
+    result.extend_from_slice(&outer[1..outer.len() - 1]);
+    result.extend_from_slice(&body[to..]);
+    Some(Bytes::from(result))
 }
 
 /// Why a try failed: before it reached the host (`is_connect`), or
@@ -1987,6 +2067,7 @@ struct Finish {
     /// The answer broke off upstream.
     broken: bool,
     scan: Scan,
+    decode: Decode,
     shared: Option<Arc<Shared>>,
 }
 
@@ -2001,7 +2082,18 @@ impl Drop for Finish {
             400.. => Outcome::Failed,
             _ => Outcome::Completed,
         });
-        let mut usage = self.scan.finish();
+        let decode = std::mem::replace(&mut self.decode, Decode::Plain);
+        let mut usage = if matches!(decode, Decode::Plain) {
+            self.scan.finish()
+        } else if self.ended
+            && !self.broken
+            && let Some(tail) = decode.finish()
+        {
+            self.scan.feed(&tail);
+            self.scan.finish()
+        } else {
+            Usage::default()
+        };
         usage.requests = 1;
         let t = now();
         let request = Request {
@@ -2036,12 +2128,13 @@ impl Drop for Finish {
     }
 }
 
-fn respond(mut r: crate::relay::Answer, finish: Finish) -> Response {
+fn respond(mut r: crate::relay::Answer, finish: Finish, method: &Method) -> Response {
     let status = r.status();
     // (Each name in its case, the status line's reason: hyper's notes.)
     let ext = r.take_extensions();
     let mut out = HeaderMap::new();
-    for (k, v) in r.headers().iter().filter(|(k, _)| returned(k.as_str())) {
+    let transfer_coded = r.headers().contains_key("transfer-encoding");
+    for (k, v) in r.headers().iter().filter(|(k, _)| returned(k.as_str()) && !(transfer_coded && k.as_str() == "content-length")) {
         out.append(k.clone(), v.clone());
     }
     if let Ok(v) = HeaderValue::from_str(&finish.name) {
@@ -2051,12 +2144,12 @@ fn respond(mut r: crate::relay::Answer, finish: Finish) -> Response {
     {
         let mut f = finish.lock().unwrap();
         f.scan.sse = r.headers().get("content-type").and_then(|v| v.to_str().ok()).is_some_and(|c| c.starts_with("text/event-stream"));
-        f.length = r.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.trim().parse().ok());
-        f.ended = f.length == Some(0);
+        f.length = out.get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.trim().parse().ok());
+        f.ended = f.length == Some(0) || method == Method::HEAD || matches!(status, StatusCode::NO_CONTENT | StatusCode::NOT_MODIFIED);
     }
     // (Passed on as it came, compressed as the client asked; the pool reads
     // a decoded copy as it goes by.)
-    let mut decode = Decode::of(r.headers().get("content-encoding").and_then(|v| v.to_str().ok()).unwrap_or(""));
+    finish.lock().unwrap().decode = Decode::of(r.headers().get("content-encoding").and_then(|v| v.to_str().ok()).unwrap_or(""));
     let end = finish.clone();
     let stream = r
         .into_stream()
@@ -2064,7 +2157,8 @@ fn respond(mut r: crate::relay::Answer, finish: Finish) -> Response {
             let mut f = finish.lock().unwrap();
             match &chunk {
                 Ok(b) => {
-                    f.scan.feed(&decode.push(b));
+                    let Finish { scan, decode, .. } = &mut *f;
+                    scan.feed(&decode.push(b));
                     f.passed += b.len() as u64;
                     if f.length.is_some_and(|n| f.passed >= n) {
                         f.ended = true;
@@ -2092,7 +2186,7 @@ fn respond(mut r: crate::relay::Answer, finish: Finish) -> Response {
 enum Decode {
     Plain,
     Gzip(flate2::write::GzDecoder<Vec<u8>>),
-    Deflate(flate2::write::ZlibDecoder<Vec<u8>>),
+    Deflate(flate2::Decompress, bool),
     Br(Box<brotli_decompressor::DecompressorWriter<Vec<u8>>>),
     Zstd(Box<zstd::stream::write::Decoder<'static, Vec<u8>>>),
     Unread,
@@ -2103,10 +2197,20 @@ impl Decode {
         match coding.trim().to_ascii_lowercase().as_str() {
             "" | "identity" => Decode::Plain,
             "gzip" | "x-gzip" => Decode::Gzip(flate2::write::GzDecoder::new(Vec::new())),
-            "deflate" => Decode::Deflate(flate2::write::ZlibDecoder::new(Vec::new())),
+            "deflate" => Decode::Deflate(flate2::Decompress::new(true), false),
             "br" => Decode::Br(Box::new(brotli_decompressor::DecompressorWriter::new(Vec::new(), 4096))),
             "zstd" => zstd::stream::write::Decoder::new(Vec::new()).map(|d| Decode::Zstd(Box::new(d))).unwrap_or(Decode::Unread),
             _ => Decode::Unread,
+        }
+    }
+
+    fn finish(self) -> Option<Vec<u8>> {
+        match self {
+            Decode::Plain | Decode::Deflate(_, true) => Some(Vec::new()),
+            Decode::Unread | Decode::Deflate(_, false) => None,
+            Decode::Gzip(d) => d.finish().ok(),
+            Decode::Br(d) => d.into_inner().ok(),
+            Decode::Zstd(d) => d.finish().ok(),
         }
     }
 
@@ -2123,7 +2227,7 @@ impl Decode {
             Decode::Plain => return std::borrow::Cow::Borrowed(chunk),
             Decode::Unread => return std::borrow::Cow::Borrowed(&[]),
             Decode::Gzip(d) => out(d, chunk, |d| d.get_mut()),
-            Decode::Deflate(d) => out(d, chunk, |d| d.get_mut()),
+            Decode::Deflate(d, ended) => inflate(d, ended, chunk),
             Decode::Br(d) => out(d.as_mut(), chunk, |d| d.get_mut()),
             Decode::Zstd(d) => out(d.as_mut(), chunk, |d| d.get_mut()),
         };
@@ -2133,6 +2237,34 @@ impl Decode {
                 *self = Decode::Unread;
                 std::borrow::Cow::Borrowed(&[])
             }
+        }
+    }
+}
+
+/// A zlib writer's flush accepts an incomplete input. Remember whether the
+/// inflater actually reached the end, including the checksum.
+fn inflate(d: &mut flate2::Decompress, ended: &mut bool, mut input: &[u8]) -> Option<Vec<u8>> {
+    let mut out = Vec::new();
+    if *ended {
+        return input.is_empty().then_some(out);
+    }
+    let mut buf = [0; 8192];
+    loop {
+        let (before_in, before_out) = (d.total_in(), d.total_out());
+        let status = d.decompress(input, &mut buf, flate2::FlushDecompress::None).ok()?;
+        let consumed = (d.total_in() - before_in) as usize;
+        let produced = (d.total_out() - before_out) as usize;
+        input = &input[consumed..];
+        out.extend_from_slice(&buf[..produced]);
+        if status == flate2::Status::StreamEnd {
+            *ended = true;
+            return input.is_empty().then_some(out);
+        }
+        if input.is_empty() && produced < buf.len() {
+            return Some(out);
+        }
+        if consumed == 0 && produced == 0 {
+            return None;
         }
     }
 }
@@ -2226,7 +2358,7 @@ fn save_once(s: &Shared) {
     match s.write(true) {
         Ok(()) => {}
         // (Not open yet: nothing to save.)
-        Err(_) if !s.pool.lock().unwrap().loaded => {}
+        Err(_) if s.drain.retired() || !s.pool.lock().unwrap().loaded => {}
         Err(e) => {
             tracing::warn!("pool: {e}");
             s.pool.lock().unwrap().error = Some(e);

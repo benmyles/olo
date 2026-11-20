@@ -109,7 +109,7 @@ impl Window {
     /// or when its length isn't known).
     pub fn rate(&self, now: i64) -> Option<f64> {
         let elapsed = now - (self.resets_at? - self.length()?);
-        (elapsed >= 600).then(|| self.used / elapsed as f64)
+        (elapsed >= 600).then_some(self.used / elapsed as f64)
     }
 
     /// What claiming a reset of it at `at` gives back, in percent of its

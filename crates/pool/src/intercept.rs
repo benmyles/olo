@@ -192,7 +192,13 @@ async fn connection(mut client: TcpStream, peer: SocketAddr, shared: Arc<Shared>
     });
     // (Each header's name written down in the client's own case, for a
     // request passed on to be sent so: `relay`.)
-    let conn = hyper::server::conn::http1::Builder::new().keep_alive(true).preserve_header_case(true).serve_connection(hyper_util::rt::TokioIo::new(stream), service).with_upgrades();
+    let conn = hyper::server::conn::http1::Builder::new()
+        .keep_alive(true)
+        .timer(hyper_util::rt::TokioTimer::new())
+        .header_read_timeout(Duration::from_secs(30))
+        .preserve_header_case(true)
+        .serve_connection(hyper_util::rt::TokioIo::new(stream), service)
+        .with_upgrades();
     tokio::pin!(conn);
     // An upgrade waiting: the request under way finishes, and then the
     // connection closes (the client opens another for its next, which
@@ -214,6 +220,7 @@ async fn connection(mut client: TcpStream, peer: SocketAddr, shared: Arc<Shared>
 /// request once its head has come.
 const HANDSHAKE_WITHIN: Duration = Duration::from_secs(20);
 const BODY_WITHIN: Duration = Duration::from_secs(60);
+const BODY_MOST: usize = 64 << 20;
 
 /// A client connection open (`relay::Exact::opened`) until this goes, as
 /// it does however the connection ends.
@@ -236,10 +243,16 @@ impl Drop for Open {
 }
 
 /// A connection with bytes already read from it put back in front.
-struct Prefixed {
+pub(crate) struct Prefixed {
     first: Vec<u8>,
     at: usize,
     inner: TcpStream,
+}
+
+impl Prefixed {
+    pub(crate) fn new(first: Vec<u8>, inner: TcpStream) -> Prefixed {
+        Prefixed { first, at: 0, inner }
+    }
 }
 
 impl tokio::io::AsyncRead for Prefixed {
@@ -308,8 +321,10 @@ async fn request(shared: Arc<Shared>, host: &str, req: hyper::Request<hyper::bod
     }
     // Under way until its answer has gone (an upgrade waits for it).
     let underway = crate::drain::Underway::new(&shared);
-    let body = match tokio::time::timeout(BODY_WITHIN, body.collect()).await {
+    // (No more than `BODY_MOST`: twice what Anthropic takes.)
+    let body = match tokio::time::timeout(BODY_WITHIN, http_body_util::Limited::new(body, BODY_MOST).collect()).await {
         Ok(Ok(b)) => b.to_bytes(),
+        Ok(Err(e)) if e.is::<http_body_util::LengthLimitError>() => return (StatusCode::PAYLOAD_TOO_LARGE, "The request is larger than the pool takes.").into_response(),
         Ok(Err(e)) => return (StatusCode::BAD_REQUEST, format!("The request didn’t arrive whole: {e}")).into_response(),
         Err(_) => return (StatusCode::REQUEST_TIMEOUT, "The request didn’t arrive whole.").into_response(),
     };
@@ -347,7 +362,7 @@ async fn through(shared: &Shared, host: &str, path: &str, query: Option<&str>, m
         return match b.body(http_body_util::Full::new(body)) {
             Ok(mut req) => {
                 *req.extensions_mut() = ext;
-                match shared.exact().send(crate::relay::OWN, conn, &shared.upstream_origin(host), &alpn, req).await {
+                match shared.exact().send(&own_key(req.headers()), conn, &shared.upstream_origin(host), &alpn, req).await {
                     Ok(a) => answered_exact(a),
                     Err(e) => (StatusCode::BAD_GATEWAY, format!("The pool couldn’t reach {host}: {e}")).into_response(),
                 }
@@ -355,8 +370,10 @@ async fn through(shared: &Shared, host: &str, path: &str, query: Option<&str>, m
             Err(e) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
         };
     }
+    // (On a client of the sign-in's own: ChatGPT's HTTP/2 would carry two
+    // sign-ins' requests on one connection.)
     let url = format!("{}{path}{}", shared.upstream_origin(host), query.map(|q| format!("?{q}")).unwrap_or_default());
-    let mut req = shared.client().request(method, &url);
+    let mut req = shared.own_client(&own_key(&headers)).request(method, &url);
     for (k, v) in headers.iter().filter(|(k, _)| !hop(k.as_str())) {
         req = req.header(k, v);
     }
@@ -366,6 +383,18 @@ async fn through(shared: &Shared, host: &str, path: &str, query: Option<&str>, m
     }
 }
 
+/// Whose own a request passed through is: its sign-in, as a hash of its
+/// credentials (kept in memory alone), so no connection carries two
+/// sign-ins' requests (Codex's third look: two on one).
+fn own_key(headers: &HeaderMap) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    for name in ["authorization", "x-api-key", "chatgpt-account-id"] {
+        headers.get(name).map(|v| v.as_bytes()).hash(&mut h);
+    }
+    format!("{}{:016x}", crate::relay::OWN, h.finish())
+}
+
 /// An exact relay's answer, as it came: each name in its case, its status
 /// line's reason, its length (its connection kept once it's read).
 fn answered_exact(mut a: crate::relay::Answer) -> Response {
@@ -373,7 +402,8 @@ fn answered_exact(mut a: crate::relay::Answer) -> Response {
     let mut out = Response::new(Body::from_stream(a.into_stream()));
     *out.status_mut() = status;
     *out.extensions_mut() = ext;
-    for (k, v) in headers.iter().filter(|(k, _)| k.as_str() == "content-length" || !hop(k.as_str())) {
+    let transfer_coded = headers.contains_key("transfer-encoding");
+    for (k, v) in headers.iter().filter(|(k, _)| (!transfer_coded && k.as_str() == "content-length") || !hop(k.as_str())) {
         out.headers_mut().append(k.clone(), v.clone());
     }
     out
@@ -403,15 +433,35 @@ async fn upgrade_through(shared: &Arc<Shared>, host: &str, path: &str, query: Op
     // HTTP/1.1 (HTTP/2 has no 101), and no read timeout: a socket may be
     // quiet for long. (Made again for a new network: `olo_net`.)
     static CLIENT: OnceLock<olo_net::PerNetwork<reqwest::Client>> = OnceLock::new();
-    let client = CLIENT.get_or_init(|| olo_net::PerNetwork::new(|| reqwest::Client::builder().http1_only().connect_timeout(Duration::from_secs(20)).build().expect("HTTP client"))).get();
+    // (Nothing kept between upgrades: a connection a refused upgrade left
+    // would carry the next client's, another sign-in's.)
+    let client = CLIENT
+        .get_or_init(|| {
+            olo_net::PerNetwork::new(|| {
+                reqwest::Client::builder()
+                    .http1_only()
+                    .redirect(reqwest::redirect::Policy::none())
+                    .pool_max_idle_per_host(0)
+                    .connect_timeout(Duration::from_secs(20))
+                    .no_gzip()
+                    .no_deflate()
+                    .no_brotli()
+                    .no_zstd()
+                    .build()
+                    .expect("HTTP client")
+            })
+        })
+        .get();
     let url = format!("{}{path}{}", shared.upstream_origin(host), query.map(|q| format!("?{q}")).unwrap_or_default());
     let mut req = client.request(method, &url);
     for (k, v) in headers.iter().filter(|(k, _)| *k == CONNECTION || *k == UPGRADE || !hop(k.as_str())) {
         req = req.header(k, v);
     }
-    let r = match req.send().await {
-        Ok(r) => r,
-        Err(e) => return (StatusCode::BAD_GATEWAY, format!("The pool couldn’t reach {host}: {e}")).into_response(),
+    // (Its answer within a minute; once switched, as quiet as it likes.)
+    let r = match tokio::time::timeout(Duration::from_secs(60), req.send()).await {
+        Ok(Ok(r)) => r,
+        Ok(Err(e)) => return (StatusCode::BAD_GATEWAY, format!("The pool couldn’t reach {host}: {e}")).into_response(),
+        Err(_) => return (StatusCode::GATEWAY_TIMEOUT, format!("{host} didn’t answer.")).into_response(),
     };
     if r.status() != StatusCode::SWITCHING_PROTOCOLS {
         return answered(r);

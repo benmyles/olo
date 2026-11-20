@@ -128,6 +128,12 @@ impl Answer {
         use futures_util::TryStreamExt;
         match self {
             Answer::Reqwest(r) => Box::pin(r.bytes_stream().map_err(std::io::Error::other)),
+            Answer::Exact(r, back) if http_body::Body::is_end_stream(r.body()) => {
+                if let Some(b) = back {
+                    b.put();
+                }
+                Box::pin(futures_util::stream::empty())
+            }
             Answer::Exact(r, back) => Box::pin(futures_util::stream::unfold(Some((r.into_body(), back)), |state| async move {
                 let (mut body, mut back) = state?;
                 loop {
@@ -227,6 +233,11 @@ impl Sender {
 fn as_h2(req: hyper::Request<Full<Bytes>>, origin: &str) -> hyper::Request<Full<Bytes>> {
     let (mut parts, body) = req.into_parts();
     let authority = parts.headers.get(hyper::header::HOST).and_then(|h| h.to_str().ok()).map(str::to_owned).unwrap_or_else(|| origin.to_owned());
+    let nominated: Vec<hyper::header::HeaderName> =
+        parts.headers.get_all(hyper::header::CONNECTION).iter().filter_map(|v| v.to_str().ok()).flat_map(|v| v.split(',')).filter_map(|v| v.trim().parse().ok()).collect();
+    for name in nominated {
+        parts.headers.remove(name);
+    }
     for h in ["host", "connection", "keep-alive", "proxy-connection", "transfer-encoding", "upgrade"] {
         parts.headers.remove(h);
     }
@@ -259,6 +270,7 @@ struct Inner {
     /// pool or signs in again), and every connection's (the network
     /// changed): one made before isn't kept.
     gens: HashMap<String, u64>,
+    next_gen: u64,
     all: u64,
     /// The network the connections were made on (`olo_net::generation`):
     /// another, and none is kept.
@@ -266,8 +278,20 @@ struct Inner {
 }
 
 impl Inner {
-    fn made(&self, account: &str) -> (u64, u64) {
-        (self.all, self.gens.get(account).copied().unwrap_or(0))
+    fn made(&mut self, account: &str) -> (u64, u64) {
+        let generation = match self.gens.get(account) {
+            Some(&generation) => generation,
+            None => {
+                self.next_gen += 1;
+                self.gens.insert(account.to_owned(), self.next_gen);
+                self.next_gen
+            }
+        };
+        (self.all, generation)
+    }
+
+    fn current(&self, account: &str, made: (u64, u64)) -> bool {
+        self.all == made.0 && self.gens.get(account) == Some(&made.1)
     }
 }
 
@@ -277,7 +301,7 @@ impl Exact {
             return;
         }
         let mut inner = self.inner.lock().unwrap();
-        if inner.made(&back.key.account) != back.made || (back.key.conn != 0 && !inner.open.contains(&back.key.conn)) {
+        if !inner.current(&back.key.account, back.made) || (back.key.conn != 0 && !inner.open.contains(&back.key.conn)) {
             return;
         }
         let list = inner.idle.entry(back.key).or_default();
@@ -297,6 +321,10 @@ impl Exact {
         let mut inner = self.inner.lock().unwrap();
         inner.open.remove(&conn.0);
         inner.idle.retain(|k, _| k.conn != conn.0);
+        // (A client's own sign-ins come and go, renewed: one with no
+        // connection kept any more is forgotten.)
+        let Inner { idle, gens, .. } = &mut *inner;
+        gens.retain(|account, _| !account.starts_with(OWN) || idle.keys().any(|k| k.account == *account));
     }
 
     /// Every connection closed, and none made before kept (the network
@@ -311,7 +339,7 @@ impl Exact {
     /// left the pool, or signed in again, perhaps as another account).
     pub fn forget(&self, account: &str) {
         let mut inner = self.inner.lock().unwrap();
-        *inner.gens.entry(account.to_owned()).or_default() += 1;
+        inner.gens.remove(account);
         inner.idle.retain(|k, _| k.account != account);
     }
 
@@ -341,6 +369,11 @@ impl Exact {
         let mut sender = loop {
             let idle = {
                 let mut inner = self.inner.lock().unwrap();
+                // (Let go meanwhile, its account gone or the network
+                // changed: never sent, so free to send again.)
+                if !inner.current(account, made) {
+                    return Err(SendError::Connect("its connections were let go before it was sent".into()));
+                }
                 let list = inner.idle.get_mut(&key);
                 list.and_then(|l| {
                     // (One the gateway's own address made, idle long, goes.)
@@ -361,13 +394,16 @@ impl Exact {
             }
         };
         let back = |sender| Back { pool: self.clone(), key: key.clone(), made, sender };
+        // Hyper returns the converted request on an unsent HTTP/2 failure.
+        // A replacement connection can negotiate a different protocol.
+        let original = matches!(sender, Sender::H2(..)).then(|| req.clone());
         match tokio::time::timeout(HEAD_WITHIN, sender.send(req)).await {
             Err(_) => Err(SendError::Other("no answer came".into())),
             Ok(Ok(r)) => Ok(Answer::Exact(r, Some(back(sender)))),
             Ok(Err(mut e)) => match e.take_message() {
                 Some(req) => {
                     let mut fresh = connect(base, alpn).await?;
-                    match tokio::time::timeout(HEAD_WITHIN, fresh.send(req)).await {
+                    match tokio::time::timeout(HEAD_WITHIN, fresh.send(original.unwrap_or(req))).await {
                         Err(_) => Err(SendError::Other("no answer came".into())),
                         Ok(Ok(r)) => Ok(Answer::Exact(r, Some(back(fresh)))),
                         Ok(Err(e)) => Err(SendError::Other(e.into_error().to_string())),
@@ -512,5 +548,55 @@ mod tests {
         // (The gateway's own address: no client connection to follow.)
         read(pool.send("a", ClientConn::default(), &base, &[], get()).await.unwrap()).await;
         assert_eq!(pool.idle(), 1);
+    }
+}
+
+#[cfg(test)]
+mod more {
+    use super::*;
+
+    /// A request sent over HTTP/2 names its origin in its target and has
+    /// no `Host`, nor any header its `Connection` named (Codex's third look:
+    /// those went on).
+    #[tokio::test]
+    async fn over_http2_as_http2_has_it() {
+        use hyper_util::rt::{TokioExecutor, TokioIo};
+        let (client, server) = tokio::io::duplex(32768);
+        tokio::spawn(async move {
+            let svc = hyper::service::service_fn(|req: hyper::Request<hyper::body::Incoming>| async move {
+                let said = format!("{:?} {} host={} hop={}", req.version(), req.uri(), req.headers().contains_key("host"), req.headers().contains_key("x-test-hop"));
+                Ok::<_, std::convert::Infallible>(hyper::Response::new(Full::new(Bytes::from(said))))
+            });
+            let _ = hyper::server::conn::http2::Builder::new(TokioExecutor::new()).serve_connection(TokioIo::new(server), svc).await;
+        });
+        let (sender, driver) = http2::Builder::new(TokioExecutor::new()).handshake(TokioIo::new(client)).await.unwrap();
+        tokio::spawn(driver);
+        let mut sender = Sender::H2(sender, "fixture.invalid".into());
+        let req = hyper::Request::builder()
+            .method("POST")
+            .uri("/resource?q=1")
+            .header("host", "fixture.invalid")
+            .header("connection", "x-test-hop")
+            .header("x-test-hop", "local")
+            .body(Full::new(Bytes::from_static(b"{}")))
+            .unwrap();
+        let said = sender.send(req).await.unwrap().into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(String::from_utf8_lossy(&said), "HTTP/2.0 https://fixture.invalid/resource?q=1 host=false hop=false");
+    }
+
+    /// Nothing is kept of client connections that closed, nor of accounts
+    /// forgotten (Codex's third look: a generation stayed for each).
+    #[test]
+    fn nothing_kept_of_what_went() {
+        let pool = Exact::default();
+        for i in 0..128 {
+            let c = ClientConn::next();
+            pool.opened(c);
+            pool.closed(c);
+            pool.forget(&format!("fixture-{i}"));
+        }
+        pool.clear();
+        let inner = pool.inner.lock().unwrap();
+        assert_eq!((inner.open.len(), inner.idle.len(), inner.gens.len()), (0, 0, 0));
     }
 }

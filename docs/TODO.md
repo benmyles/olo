@@ -137,8 +137,22 @@ something nobody here has is in "Blocked", with what it waits for.
   cookies, deadlines, HTTP/2 where chosen, the answer as it came; claims
   one at a time, an unclear one again before any other, the same
   account's other grants, one writer for saves.
+  Then Codex's third look, every reproduced finding fixed: each
+  account's resets counted (a 429 from before a reset is stale), every
+  way of claiming through one gate and none while a claim is unclear,
+  redirects passed back, the account id found by its JSON's own
+  spelling, each sign-in's own connections for what passes through, an
+  old sign-in's cookies kept apart, empty and HEAD answers, usage only
+  from what decoded whole, deadlines on the client's head and a cap on
+  its body, saves never without the shared lock.
   **To do**:
-  - Codex's third look, at the second's fixes; then pushed.
+  - What the third look left as design work: one object for a sign-in
+    (its credential, jar, capture and connections taken together, so a
+    request in flight across a re-sign-in keeps the old ones whole);
+    cookies scoped by path and expiry as a browser's are; a handover
+    that closes claims before the new copy starts; trailers passed on;
+    the recorder parsing chunked framing rather than looking for its
+    end.
   - The one real Codex reset Ben allowed, when its account runs out
     (92% on 2026-11-19: a Codex reset starts a new week and loses what's
     left), through the pool's claim: what it does to the week's reset.

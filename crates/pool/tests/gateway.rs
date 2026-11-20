@@ -680,3 +680,351 @@ async fn a_refused_grant_then_the_same_accounts_next() {
     let made = state.made.lock().unwrap().clone();
     assert_eq!(made.iter().map(|m| m.1.as_str()).collect::<Vec<_>>(), ["g1", "g22"]);
 }
+use std::time::Duration;
+
+fn claimed_grants(state: &Claims) -> Vec<String> {
+    state.made.lock().unwrap().iter().map(|r| r.1.clone()).collect()
+}
+
+fn claims_state() -> Arc<Claims> {
+    Arc::new(Claims { reset: Default::default(), made: Default::default(), hosts: Default::default() })
+}
+
+/// While a claim is unclear, no credit is claimed by any way in: by hand
+/// on another account (Codex's third look: `redeem("b")` claimed B's).
+#[tokio::test(flavor = "multi_thread")]
+async fn no_claim_by_hand_while_one_is_unclear() {
+    let state = claims_state();
+    let grants = [("a", "ga"), ("b", "gb")];
+    let fake = claims_fake(state.clone(), grants.to_vec(), Duration::ZERO, Arc::new(|org, _, _| if org == "org-a" { (503, json!({})) } else { (200, json!({"result": "reset"})) }));
+    let (s, addr, _) = out_of_quota(&["a", "b"], &grants, fake).await;
+    assert_eq!(ask_claude(addr).await.0, 429);
+    assert!(s.snapshot().account("a").unwrap().redeeming.is_some());
+    assert!(s.redeem("b").await.is_err(), "claimed by hand while another was unclear");
+    assert_eq!(claimed_grants(&state), ["ga"]);
+}
+
+/// An unclear claim that can't be made again now (its sign-in can't be
+/// renewed) stops claims, never lets another account's through (Codex's
+/// third look: B's was claimed with A's still pending).
+#[tokio::test(flavor = "multi_thread")]
+async fn an_unclear_claim_that_cant_go_again_stops_claims() {
+    let state = claims_state();
+    let grants = [("a", "ga"), ("b", "gb")];
+    let fake = claims_fake(state.clone(), grants.to_vec(), Duration::ZERO, Arc::new(|_, _, _| (200, json!({"result": "reset"}))));
+    let (s, addr, _) = out_of_quota(&["a", "b"], &grants, fake).await;
+    {
+        let mut p = s.pool.lock().unwrap();
+        let a = p.account_mut("a").unwrap();
+        a.redeeming = Some(("ga".into(), "prior-id".into()));
+        a.redeem_tried = Some(now() - 20);
+        let c = p.saved.credentials.get_mut("a").unwrap();
+        c.expires_at = Some(now() - 10);
+        c.refresh = None;
+    }
+    assert_eq!(ask_claude(addr).await.0, 429);
+    assert!(s.snapshot().account("a").unwrap().redeeming.is_some());
+    assert!(claimed_grants(&state).is_empty(), "{:?}", claimed_grants(&state));
+}
+
+/// A claim refused as the account wasn't out after all (`not_limited`):
+/// read again, that account serves, and no other credit is claimed
+/// (Codex's third look: B's was).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_refusal_that_frees_the_account_claims_nothing_more() {
+    let state = claims_state();
+    let grants = [("a", "ga"), ("b", "gb")];
+    let st = state.clone();
+    let fake = claims_fake(
+        state.clone(),
+        grants.to_vec(),
+        Duration::ZERO,
+        Arc::new(move |org, _, _| {
+            if org == "org-a" {
+                st.reset.lock().unwrap().push("a".into());
+                (200, json!({"result": "not_limited"}))
+            } else {
+                (200, json!({"result": "reset"}))
+            }
+        }),
+    );
+    let (_s, addr, _) = out_of_quota(&["a", "b"], &grants, fake).await;
+    assert_eq!(ask_claude(addr).await, (200, "a".to_owned()));
+    assert_eq!(claimed_grants(&state), ["ga"]);
+}
+
+/// A 429 for a request sent before an account's reset, coming after it,
+/// doesn't put the account back at its limit, so no second credit is
+/// claimed (Codex's third look: B's was, though A had been reset).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_rejection_from_before_a_reset_is_stale() {
+    use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+    let state = claims_state();
+    let grants = [("a", "ga"), ("b", "gb")];
+    let fallback = claims_fake(state.clone(), grants.to_vec(), Duration::ZERO, Arc::new(|_, _, _| (200, json!({"result": "reset"}))));
+    let (began, release) = (Arc::new(tokio::sync::Notify::new()), Arc::new(tokio::sync::Notify::new()));
+    let signals = (began.clone(), release.clone());
+    let counter = Arc::new(AtomicUsize::new(0));
+    let st = state.clone();
+    let fake = Router::new()
+        .route(
+            "/v1/messages",
+            post(move |h: HeaderMap| {
+                let (began, release) = signals.clone();
+                let st = st.clone();
+                let n = counter.fetch_add(1, SeqCst);
+                async move {
+                    let ready = st.reset.lock().unwrap().contains(&token(&h));
+                    // (The first, held until another request has had A reset.)
+                    if n == 0 {
+                        began.notify_one();
+                        tokio::time::timeout(Duration::from_secs(4), release.notified()).await.unwrap();
+                    }
+                    if ready {
+                        return axum::Json(json!({})).into_response();
+                    }
+                    Response::builder()
+                        .status(429)
+                        .header("anthropic-ratelimit-unified-status", "rejected")
+                        .header("anthropic-ratelimit-unified-representative-claim", "five_hour")
+                        .header("anthropic-ratelimit-unified-reset", (now() + 18000).to_string())
+                        .body(Body::from("{}"))
+                        .unwrap()
+                }
+            }),
+        )
+        .fallback_service(fallback);
+    let (s, addr, _) = out_of_quota(&["a", "b"], &grants, fake).await;
+    s.pool.lock().unwrap().account_mut("a").unwrap().windows[0].used = 10.0;
+    let slow = tokio::spawn(ask_claude(addr));
+    tokio::time::timeout(Duration::from_secs(4), began.notified()).await.unwrap();
+    assert_eq!(ask_claude(addr).await, (200, "a".to_owned()));
+    release.notify_one();
+    assert_eq!(slow.await.unwrap(), (200, "a".to_owned()));
+    assert_eq!(claimed_grants(&state), ["ga"]);
+}
+
+/// A redirect goes back to the client, as Codex would get it (it follows
+/// it itself): the pool never follows it, nor sends the request again when
+/// where it points can't be reached (Codex's third look: sent twice).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_redirect_goes_back_to_the_client() {
+    use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+    let calls = Arc::new(AtomicUsize::new(0));
+    let count = calls.clone();
+    let fake = Router::new().route(
+        "/backend-api/codex/responses",
+        post(move || {
+            count.fetch_add(1, SeqCst);
+            async move { Response::builder().status(307).header("Location", "http://127.0.0.1:1/elsewhere").body(Body::empty()).unwrap() }
+        }),
+    );
+    let base = format!("http://{}", serve(fake).await);
+    let mut saved = Saved::default();
+    saved.accounts.push(Account::new("a".into(), "a".into(), Provider::Codex));
+    saved.credentials.insert("a".into(), cred("sample"));
+    let s = Shared::new(saved, None, Upstreams::fake(&base), || {});
+    let r = gateway::serve(s, Provider::Codex, "responses".into(), None, hyper::Method::POST, HeaderMap::new(), Default::default(), axum::body::Bytes::from_static(b"{}")).await;
+    assert_eq!((r.status().as_u16(), calls.load(SeqCst)), (307, 1));
+}
+
+/// Answers with nothing in them end at once: an empty one's connection is
+/// kept, a HEAD's (its length the representation's) completes; and usage
+/// is counted only from an answer that decoded whole (one cut short of its
+/// gzip trailer counts none).
+#[tokio::test(flavor = "multi_thread")]
+async fn empty_answers_end_and_only_whole_ones_count() {
+    use olo_token_pool::model::Outcome;
+    use std::io::Write;
+    let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    enc.write_all(br#"{"usage":{"output_tokens":7}}"#).unwrap();
+    let mut cut = enc.finish().unwrap();
+    cut.truncate(cut.len() - 8);
+    let fake = Router::new()
+        .route(
+            "/v1/messages",
+            post(move || {
+                let bytes = cut.clone();
+                async move { Response::builder().header("content-encoding", "gzip").header("content-type", "application/json").body(Body::from(bytes)).unwrap() }
+            })
+            .head(|| async { Response::builder().header("content-length", 47).body(Body::empty()).unwrap() }),
+        )
+        .route("/v1/empty", post(|| async { Response::builder().header("content-length", 0).body(Body::empty()).unwrap() }));
+    let base = format!("http://{}", serve(fake).await);
+    let mut saved = Saved::default();
+    saved.accounts.push(account("a", 1, 18000));
+    saved.credentials.insert("a".into(), cred("sample"));
+    let s = Shared::new(saved, None, Upstreams::fake(&base), || {});
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = l.local_addr().unwrap();
+    let app = gateway::router(s.clone(), addr.port());
+    tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+    let c = reqwest::Client::builder().no_gzip().no_deflate().no_brotli().no_zstd().build().unwrap();
+    let url = format!("http://{addr}/claude/v1/messages");
+    let last = || {
+        let p = s.snapshot();
+        p.served.back().map(|v| (v.request.outcome, v.request.usage.output_tokens))
+    };
+    c.post(format!("http://{addr}/claude/v1/empty")).body("{}").send().await.unwrap().bytes().await.unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert_eq!(s.exact().idle(), 1, "an empty answer's connection not kept");
+    let r = c.head(&url).send().await.unwrap();
+    assert_eq!(r.headers().get("content-length").and_then(|v| v.to_str().ok()), Some("47"));
+    assert!(r.bytes().await.unwrap().is_empty());
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert_eq!(last(), Some((Outcome::Completed, 0)));
+    let r = c.post(&url).body("{}").send().await.unwrap();
+    assert!(!r.bytes().await.unwrap().is_empty());
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert_eq!(last().map(|(_, tokens)| tokens), Some(0), "usage counted from an answer that didn't decode whole");
+}
+
+/// After a refusal, the account that can serve now serves, whichever ranks
+/// first (Codex's third look: the one ranked first had been tried, and the
+/// request was answered 429 though B could serve).
+#[tokio::test(flavor = "multi_thread")]
+async fn after_a_refusal_whoever_can_serve_does() {
+    let state = claims_state();
+    let st = state.clone();
+    let grants = [("b", "gb")];
+    let fake = claims_fake(
+        state.clone(),
+        grants.to_vec(),
+        Duration::ZERO,
+        Arc::new(move |_, _, _| {
+            st.reset.lock().unwrap().push("b".into());
+            (200, json!({"result": "not_limited"}))
+        }),
+    );
+    let (s, addr, _) = out_of_quota(&["a", "b"], &grants, fake).await;
+    {
+        let mut p = s.pool.lock().unwrap();
+        let a = p.account_mut("a").unwrap();
+        a.windows[0].used = 10.0;
+        a.windows[0].resets_at = Some(now() + 7200);
+        let c = p.saved.credentials.get_mut("a").unwrap();
+        c.expires_at = Some(now() - 1);
+        c.refresh = Some("fixture".into());
+    }
+    assert_eq!(ask_claude(addr).await, (200, "b".to_owned()));
+}
+
+/// An answer for a sign-in replaced while it came: its cookies go to the
+/// old sign-in's jar, never the new one's (Codex's third look: the new jar
+/// got the old answer's cookie).
+#[tokio::test(flavor = "multi_thread")]
+async fn an_old_sign_ins_cookies_stay_its_own() {
+    let (arrived, release) = (Arc::new(tokio::sync::Notify::new()), Arc::new(tokio::sync::Notify::new()));
+    let signals = (arrived.clone(), release.clone());
+    let fake = Router::new().route(
+        "/v1/messages",
+        post(move || {
+            let (arrived, release) = signals.clone();
+            async move {
+                arrived.notify_one();
+                tokio::time::timeout(Duration::from_secs(4), release.notified()).await.unwrap();
+                Response::builder().header("set-cookie", "marker=old; Path=/v1").body(Body::from("{}")).unwrap()
+            }
+        }),
+    );
+    let (s, addr, _) = out_of_quota(&["a"], &[], fake).await;
+    s.pool.lock().unwrap().account_mut("a").unwrap().windows[0].used = 10.0;
+    let request = tokio::spawn(ask_claude(addr));
+    tokio::time::timeout(Duration::from_secs(4), arrived.notified()).await.unwrap();
+    s.reauth("a", cred("replacement"));
+    release.notify_one();
+    let _ = request.await.unwrap();
+    assert_eq!(olo_token_pool::likeness::cookie(&s.jar("a"), "api.anthropic.com"), None);
+}
+
+/// The account id named escaped (its first character as `1`) is
+/// replaced whole, where it is: the person's words that name it untouched
+/// (Codex's third look: the escape's last digit was taken for the id's
+/// first, and the id came out starting with ':').
+#[tokio::test(flavor = "multi_thread")]
+async fn an_escaped_account_id_is_replaced_whole() {
+    let id = "escaped";
+    let (theirs, ours) = ("11111111-2222-3333-4444-555555555555", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+    let fake = Router::new().route("/v1/messages", post(|body: axum::body::Bytes| async move { body }));
+    let base = format!("http://{}", serve(fake).await);
+    let mut saved = Saved::default();
+    saved.accounts.push(account(id, 1, 100));
+    saved.credentials.insert(id.into(), cred("fixture"));
+    let s = Shared::new(saved, None, Upstreams::fake(&base), || {});
+    s.keep_capture(
+        id,
+        olo_token_pool::capture::Capture {
+            provider: Provider::Claude,
+            version: "0".into(),
+            installed: String::new(),
+            account: id.into(),
+            at: now(),
+            requests: vec![],
+            account_uuid: Some(ours.into()),
+            hellos: vec![],
+        },
+    );
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = l.local_addr().unwrap();
+    let app = gateway::router(s, addr.port());
+    tokio::spawn(async move { axum::serve(l, app).await.unwrap() });
+    let inner = format!(r#"{{"account_uuid":"1{}"}}"#, &theirs[1..]);
+    let body = json!({"metadata": {"user_id": inner}, "messages": [theirs]}).to_string();
+    let v: Value = reqwest::Client::new().post(format!("http://{addr}/claude/v1/messages")).header("content-type", "application/json").body(body).send().await.unwrap().json().await.unwrap();
+    let named: Value = serde_json::from_str(v["metadata"]["user_id"].as_str().unwrap()).unwrap();
+    assert_eq!(named["account_uuid"], ours);
+    assert_eq!(v["messages"][0], theirs);
+}
+
+/// A capture's client is started with every descriptor of the pool's
+/// marked to close on exec, not closed before it: closed, the channel by
+/// which a failed start is told went too, and the start looked to work
+/// (Codex's third look: `spawn` was Ok and the child aborted).
+#[test]
+fn a_failed_start_is_told_with_descriptors_marked() {
+    use std::os::unix::process::CommandExt;
+    let mut cmd = std::process::Command::new("/usr/bin/true");
+    // SAFETY: only async-signal-safe calls between fork and exec.
+    unsafe {
+        cmd.pre_exec(|| {
+            if libc::syscall(libc::SYS_close_range, 3u32, u32::MAX, libc::CLOSE_RANGE_CLOEXEC) < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Err(std::io::Error::from_raw_os_error(libc::EINVAL))
+        });
+    }
+    assert_eq!(cmd.spawn().err().and_then(|e| e.raw_os_error()), Some(libc::EINVAL));
+}
+
+/// Each account's own reads go on connections of its own, a capture or
+/// not (Codex's third look: two accounts' quota reads shared one).
+#[tokio::test(flavor = "multi_thread")]
+async fn each_accounts_reads_on_its_own_connection() {
+    use axum::extract::ConnectInfo;
+    let seen = Arc::new(Mutex::new(Vec::<(String, SocketAddr)>::new()));
+    let log = seen.clone();
+    let fake = Router::new().route(
+        "/api/oauth/usage",
+        get(move |ConnectInfo(peer): ConnectInfo<SocketAddr>, headers: HeaderMap| {
+            let log = log.clone();
+            async move {
+                log.lock().unwrap().push((token(&headers), peer));
+                axum::Json(json!({"five_hour": {"utilization": 10.0, "resets_at": now() + 7200}}))
+            }
+        }),
+    );
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = l.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(l, fake.into_make_service_with_connect_info::<SocketAddr>()).await.unwrap() });
+    let mut saved = Saved::default();
+    for id in ["a", "b"] {
+        saved.accounts.push(account(id, 1, 3600));
+        saved.credentials.insert(id.into(), cred(id));
+    }
+    let s = Shared::new(saved, None, Upstreams::fake(&format!("http://{addr}")), || {});
+    s.sync(Some("a")).await;
+    s.sync(Some("b")).await;
+    let rows = seen.lock().unwrap().clone();
+    let socket = |who: &str| rows.iter().filter(|(t, _)| t == who).map(|(_, p)| *p).collect::<std::collections::HashSet<_>>();
+    assert!(socket("a").is_disjoint(&socket("b")), "two accounts' reads on one connection: {rows:?}");
+}

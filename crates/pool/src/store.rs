@@ -177,7 +177,10 @@ impl Store {
     /// async threads).
     pub fn save(&self, saved: &Saved) -> Result<(), String> {
         let plain = Zeroizing::new(serde_json::to_vec(saved).map_err(|e| e.to_string())?);
-        write_private(&self.path, &seal(&self.key, &plain)).map_err(|e| format!("Couldn’t save the pool: {e}"))
+        write_private(&self.path, &seal(&self.key, &plain)).map_err(|e| format!("Couldn’t save the pool: {e}"))?;
+        let dir = self.path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or_else(|| Path::new("."));
+        std::fs::File::open(dir).and_then(|d| d.sync_all()).map_err(|e| format!("Couldn’t sync the pool directory: {e}"))?;
+        Ok(())
     }
 
     /// What the file holds now (another copy of the pool, the one an

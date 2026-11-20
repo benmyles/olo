@@ -23200,8 +23200,9 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   analytics are answered there and never sent (no quota spent, no reset
   used, no sign-in rotated), and a request carrying anything made up
   never reaches a provider (Ben: "we don't want to make requests to the
-  real api with fake data though that is not polite"). Each `Sent` says
-  whether it was passed on. A capture uses the sign-in as the pool keeps
+  real api with fake data though that is not polite"), nor one whose
+  body didn't come whole or came chunked, nor Codex's TUI asking for
+  Reserve. Each `Sent` says whether it was passed on. A capture uses the sign-in as the pool keeps
   it, never renewing it (one due within a quarter of an hour waits);
   its client's process has its own session, nothing of the pool's open
   in it, ends with the capture's thread, and its group is ended when it
@@ -23274,18 +23275,26 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   connections follow the client's (`relay::ClientConn`): for each
   connection a client opens to the proxy, one of the pool's for each
   account its requests go on for (and one for its own sign-in's, passed
-  through), kept between its requests and closed with it; none made
-  before an account left or signed in again, or before the network
-  changed, is kept. A request a kept connection never sent goes again
+  through, one for each sign-in: a hash of its credential, in memory
+  alone; ChatGPT's passed through on a client of the sign-in's own),
+  kept between its requests and closed with it; none made before an
+  account left or signed in again, or before the network changed, is
+  kept. The pool's own reads for an account go on that account's own
+  connections, a capture or not. A request a kept connection never sent goes again
   on a new one; one that may have reached the host is never sent again
   by the pool, which answers 502 (once there's a network) for the
-  client's own retry, as a dropped connection would. Each step has a
-  deadline (a connection 20 s, a kept one ready 5 s, an answer's head
-  and each next piece 15 minutes). The client's `accept-encoding` goes
+  client's own retry, as a dropped connection would; a redirect goes
+  back to the client, never followed (followed, a failure after it had
+  the request sent again). Each step has a deadline (a connection 20 s,
+  a kept one ready 5 s, an answer's head and each next piece 15
+  minutes; the client's request head 30 s and its body 60 s, at most
+  64 MB). The client's `accept-encoding` goes
   on, Codex's too, and the answer comes back as it came (its status
-  line's reason, each name's case, its length, compressed as it came),
-  the pool reading a decoded copy as it streams (`Decode`; one that
-  doesn't decode goes unread). To the gateway's own address (no proxy)
+  line's reason, each name's case, its length, compressed as it came;
+  a length beside chunking dropped, as the chunks frame it), the pool
+  reading a decoded copy as it streams (`Decode`: usage counted only
+  from an answer that decoded whole, its compression's own end and
+  check reached; an empty answer, a HEAD's, ends at once). To the gateway's own address (no proxy)
   the `Host` is the host's. What isn't kept: a header's spacing, and a
   header repeated with another between (hyper groups a name's values);
   no client sends either. Codex's go on in their order, the account's
@@ -23309,9 +23318,16 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   narrowest of those, then the soonest to expire, on the account where
   it gives back most, never for under 5%; one refused (nothing spent),
   the next (the same account's others too). Claims are made one at a
-  time for each provider, and a request every account turned away first
-  looks whether one was claimed since (two turned away together once
-  claimed two). What a reset gives back follows each provider's
+  time for each provider, every way in (a request turned away, one by
+  hand, one about to expire) through the same gate, and before each the
+  pool looks again whether an account can serve (two turned away
+  together once claimed two; a refusal as the account wasn't out after
+  all had another's claimed). Each account's resets are counted (a
+  revision): a request remembers the one it was sent at, so a 429 for a
+  request sent before a reset, coming after it, is stale and marks
+  nothing (it once had a second credit claimed), and an account reset
+  after a request tried it is tried again; a quota read that a reset
+  overtook is let go. What a reset gives back follows each provider's
   rule (`Window::reset_worth`): Claude's, the use to come before the
   limit resets by itself that a refill lets through past what's left
   (so it's worth most once the limit is out, and next to nothing just
@@ -23324,11 +23340,15 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   provider is asked, or it isn't asked; one left unclear is made again
   first, the same under the same id (its credit gone from the list, it
   went: nothing more), and no other credit is claimed while one is
-  unclear (it may have gone through); an automatic one is checked again
+  unclear, by any way in, by hand too (it may have gone through); one
+  that can't be made again now (its sign-in not renewed) stops claims; an automatic one is checked again
   under the lock, and a copy of the pool that has handed over makes
   none (checked again just before it's sent). The intent and every
   save are written by one writer that takes its snapshot after the
-  store (an older snapshot written later once dropped an intent). After
+  store (an older snapshot written later once dropped an intent),
+  synced with its folder; while another copy is at work, never without
+  the store's lock (a claim waits rather), and never by a copy that
+  handed over. After
   a claim only what it reset starts again, and only the waits it lifts
   end; a Claude 429 marks the meter it names used up until its reset.
   Claude's claims need the account's organization (`organizationUuid`,
