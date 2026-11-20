@@ -3898,6 +3898,20 @@ it.
   than pushing that word down a row, as typesetters and CSS wrap
   ("…with Ann at" fits when "at" does); leading spaces still count. The
   multi-line field keeps its caret at the edge among hanging spaces.
+- **A paragraph's last line is never one word alone** where the word
+  before can come down to it (`WrappedLine::keep_last_words_together`:
+  both fit the last line, and the line they leave stays the longer, so
+  a short line over a long one never comes of it; the number of lines
+  is the same). Wrapping fills each line before the next begins, which
+  left "…from Deskbar's / tray." in one language or another whatever
+  the words said. For text set to read: an element's wrapped text
+  (`StringView::wrap`, a note, an alert) and the kit's `Para`; not for
+  text being typed (a word would jump as the next is begun), nor text
+  cut to so many lines, nor a script that breaks anywhere (no spaces,
+  no such word). Its decision is a function of the text and its
+  glyphs' places alone (`last_words_break`, tested with a face of ten
+  points a letter). To-Do's cards have their own, with their three
+  lines (`board::wrap`).
 - `WindowOptions::foreign_parent(handle)` (xdg-foreign): a window over
   another program's (a portal's dialog over the app asking; `wayland:`
   stripped, nothing if empty). `file_panel::window_options(title)` and

@@ -71,8 +71,14 @@ fn row_starts(p: &WrappedLine) -> Vec<usize> {
 impl Para {
     pub fn new(text: &str, size: f32, runs: &[TextRun], width: f32, lines_at_most: Option<usize>) -> Para {
         let lh = line_height(size);
-        let lines: Vec<WrappedLine> =
+        let mut lines: Vec<WrappedLine> =
             crate::thread_text_system().shape_text(SharedString::from(text.to_owned()), px(size), runs, Some(px(width)), lines_at_most).map(|l| l.into_vec()).unwrap_or_default();
+        // (A paragraph to read never ends on one word alone where the
+        // word before can join it; one cut to so many lines ends where
+        // it's cut.)
+        if lines_at_most.is_none() {
+            lines.iter_mut().for_each(WrappedLine::keep_last_words_together);
+        }
         // As wide as its widest line (not the width it was wrapped to).
         let mut w: f32 = 0.0;
         let mut rows = 0;

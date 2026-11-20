@@ -981,10 +981,15 @@ fn measure_text(text: &mut TextNode, text_style: &TextStyle, rem_size: Pixels, t
         None => whole.clone(),
     };
     let mut truncated = shown != whole;
-    let Ok(lines) = text_system.shape_text(shown, font_size, &runs, wrap_width, text_style.line_clamp) else {
+    let Ok(mut lines) = text_system.shape_text(shown, font_size, &runs, wrap_width, text_style.line_clamp) else {
         text.laid = Some(TextLaid { lines: SmallVec::new(), line_height, wrap_width, size: Size::default(), truncated: false, align: text_style.text_align });
         return Size::default();
     };
+    // (Text set to read never ends on one word alone where the word
+    // before can join it; text cut to so many lines ends where it's cut.)
+    if text_style.line_clamp.is_none() && wrap_width.is_some() {
+        lines.iter_mut().for_each(WrappedLine::keep_last_words_together);
+    }
     // Clamped short of the rows it takes (each line's rows counted again
     // unclamped: the line cache keeps a clamped layout under the
     // unclamped one's key).

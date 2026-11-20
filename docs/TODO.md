@@ -510,11 +510,15 @@ something nobody here has is in "Blocked", with what it waits for.
   (`OLO_CAPS_SHEET=DIR cargo test -p app_server --lib caps_to_look_at
   -- --ignored` writes every cap).
 
-- **A note's last line of one word** (2026-11-20; Astra's review, of
-  Preferences ▸ Windows: "tray." and "space." each alone on a line).
-  The kit wraps a paragraph greedily; a rule for all of them (the last
-  two words kept together, as To-Do's cards do theirs) rather than each
-  note reworded in thirteen languages.
+- **Two more rules for a paragraph's breaks** (2026-11-20; Opus's and
+  Astra's looks at the last-line rule, both of what was there before
+  it). A word of one letter doesn't end a line ("…stack around it. A /
+  workspace starts…": it comes down to the word it belongs with, where
+  the next line still has room, so no line is added), beside
+  `keep_last_words_together`. And a menu's name put into a sentence
+  isn't broken across lines („Fenster / schweben lassen ▸ Immer"):
+  no-break spaces inside it where the sentence is made, in every
+  language, not left to translators.
 
 - **Last, once everything above that isn't blocked is done: the website,
   the README and the docs refreshed, and a new GitHub release** (Ben,
@@ -530,6 +534,14 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **A note's last line of one word** (2026-11-20; Astra's review, of
+  Preferences ▸ Windows: "tray." and "space." each alone on a line).
+  Done as a rule of the kits' text layout, for every paragraph set to
+  read in every language: the last word takes the one before it down
+  where both fit and the line they leave stays the longer (HACKING.md,
+  "A paragraph's last line is never one word alone"). To try: any note
+  that ended on one word.
 
 - **Go through Olo's logs for other warnings and errors and fix what
   should be fixed** (Ben, 2026-11-18). A first pass done (HACKING.md,

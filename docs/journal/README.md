@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-20
 
+### A note never ends on one word alone
+
+*09:02* — Wrapping fills each line before the next, which left "tray." and "space." alone under Preferences ▸ Windows' menus and preview. The last word takes the one before it down now, where both fit and the line they leave stays the longer: a rule of the kits' text layout, for every paragraph set to read.
+
+![A note never ends on one word alone](2026-11-20/090208-a-note-never-ends-on-one-word-alone.png)
+
 ### Preferences ▸ Phone's first step, in Russian
 
 *08:23* — The set-up's steps, a device's state and what failed were in no catalog (53 words, with Bluetooth's). Pictured with a made-up phone (OLO_PHONE_DEMO=connect): a test session lists the person's own.

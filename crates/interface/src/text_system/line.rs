@@ -107,7 +107,55 @@ pub struct WrappedLine {
     pub(crate) decoration_runs: DecorationRuns,
 }
 
+/// Where a paragraph's last line begins instead, so it isn't one word
+/// alone (`WrappedLine::keep_last_words_together`): the byte of the
+/// last word of the line over it. `text` wrapped to `room` has its last
+/// line from `last_at` and the one over it from `over` (its byte and
+/// its x); `width` is the text's on one line, `x_of` a byte's x. None
+/// where the last line isn't one word begun after a space, the line
+/// over it is one word too, the two words don't fit the last line, or
+/// the line they'd leave would be the shorter.
+fn last_words_break(text: &str, over: (usize, Pixels), last_at: usize, width: Pixels, room: Pixels, x_of: impl Fn(usize) -> Option<Pixels>) -> Option<usize> {
+    let last_line = text.get(last_at..)?.trim_end();
+    if last_line.is_empty() || last_line.contains(' ') || !text[..last_at].ends_with(' ') {
+        return None;
+    }
+    let (over_at, over_x) = over;
+    let space_at = over_at + text.get(over_at..last_at)?.trim_end().rfind(' ')?;
+    let (space_x, word_x) = (x_of(space_at)?, x_of(space_at + 1)?);
+    let below = width - word_x;
+    (below <= room && space_x - over_x >= below).then_some(space_at + 1)
+}
+
 impl WrappedLine {
+    /// Olo: a paragraph's last line is never one word alone where the
+    /// word before can come down to it. Wrapping fills each line before
+    /// the next begins, which leaves "…in Deskbar's / tray." in one
+    /// language or another whatever the words; a paragraph set to read
+    /// (a note, an alert's message) takes its last two words together
+    /// instead, where both fit the last line and the line they leave
+    /// stays the longer (so a short line over a long one never comes of
+    /// it). The number of lines is the same. For words apart by spaces:
+    /// a script that breaks anywhere has no such word. Not for text
+    /// being typed, where a word would jump as the next is begun, nor
+    /// for text cut to so many lines: the kit's `Para` asks for it.
+    pub fn keep_last_words_together(&mut self) {
+        let layout = &self.layout;
+        let (Some(room), Some(&last)) = (layout.wrap_width, layout.wrap_boundaries.last()) else { return };
+        let glyph = |b: WrapBoundary| &layout.unwrapped_layout.runs[b.run_ix].glyphs[b.glyph_ix];
+        let text: &str = self.text.as_ref();
+        let last_at = glyph(last).index;
+        let over = layout.wrap_boundaries.len().checked_sub(2).map(|i| layout.wrap_boundaries[i]);
+        let over = over.map_or((0, px(0.)), |b| (glyph(b).index, glyph(b).position.x));
+        let glyphs = || layout.unwrapped_layout.runs.iter().enumerate().flat_map(|(run_ix, run)| run.glyphs.iter().enumerate().map(move |(glyph_ix, g)| (WrapBoundary { run_ix, glyph_ix }, g)));
+        let x_of = |at: usize| glyphs().find(|(_, g)| g.index == at).map(|(_, g)| g.position.x);
+        let Some(word_at) = last_words_break(text, over, last_at, layout.unwrapped_layout.width, room, x_of) else { return };
+        let Some((word, _)) = glyphs().find(|(_, g)| g.index == word_at) else { return };
+        let mut wrap_boundaries = layout.wrap_boundaries.clone();
+        *wrap_boundaries.last_mut().expect("a boundary") = word;
+        self.layout = Arc::new(WrappedLineLayout { unwrapped_layout: layout.unwrapped_layout.clone(), wrap_boundaries, wrap_width: layout.wrap_width });
+    }
+
     /// The length of the underlying, unwrapped layout, in utf-8 bytes.
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
@@ -562,4 +610,60 @@ fn row_end(layout: &LineLayout, text: &str, boundary: &WrapBoundary) -> Pixels {
         end = g.position.x;
     }
     end
+}
+
+#[cfg(test)]
+mod last_words_tests {
+    use super::*;
+
+    /// Text in a face of ten points a letter, wrapped as the layout
+    /// wraps it (each line as many words as fit): the last line's start,
+    /// and where the rule would have it.
+    fn wrapped(text: &str, room: f32) -> (Vec<&str>, Option<Vec<&str>>) {
+        let x = |at: usize| px(at as f32 * 10.0);
+        let mut starts = vec![0];
+        let mut line = 0;
+        for (at, _) in text.match_indices(' ') {
+            let end = text[at + 1..].find(' ').map_or(text.len(), |n| at + 1 + n);
+            if (end - line) as f32 * 10.0 > room {
+                line = at + 1;
+                starts.push(line);
+            }
+        }
+        let lines = |starts: &[usize]| starts.iter().enumerate().map(|(i, s)| text[*s..starts.get(i + 1).copied().unwrap_or(text.len())].trim_end()).collect::<Vec<_>>();
+        let n = starts.len();
+        let ruled = (n >= 2).then(|| last_words_break(text, (starts[n - 2], x(starts[n - 2])), starts[n - 1], x(text.len()), px(room), |at| Some(x(at)))).flatten().map(|at| {
+            let mut s = starts.clone();
+            s[n - 1] = at;
+            lines(&s)
+        });
+        (lines(&starts), ruled)
+    }
+
+    #[test]
+    fn a_last_word_takes_the_one_before_it_down() {
+        // "…from Deskbar's / tray." becomes "…from / Deskbar's tray."
+        let (was, now) = wrapped("Choose a workspace's own from Deskbar's tray.", 400.0);
+        assert_eq!(was, ["Choose a workspace's own from Deskbar's", "tray."]);
+        assert_eq!(now.unwrap(), ["Choose a workspace's own from", "Deskbar's tray."]);
+        // Three lines: only the last two change.
+        let (was, now) = wrapped("one two three four five six seven", 130.0);
+        assert_eq!(was, ["one two three", "four five six", "seven"]);
+        assert_eq!(now.unwrap(), ["one two three", "four five", "six seven"]);
+    }
+
+    #[test]
+    fn where_it_would_read_worse_nothing_moves() {
+        // The line it would leave would be the shorter.
+        let (was, now) = wrapped("Write up the design review", 200.0);
+        assert_eq!((was, now), (vec!["Write up the design", "review"], None));
+        // The two words don't fit one line.
+        assert_eq!(wrapped("a extraordinarily long", 170.0).1, None);
+        // The line over it is one word; two words on the last line; one line.
+        assert_eq!(wrapped("extraordinary word", 130.0).1, None);
+        assert_eq!(wrapped("one two three four five", 130.0), (vec!["one two three", "four five"], None));
+        assert_eq!(wrapped("one two", 130.0).1, None);
+        // A script that breaks anywhere has no such word.
+        assert_eq!(last_words_break("各ウィンドウが残りのスペース", (0, px(0.)), 12, px(140.0), px(60.0), |at| Some(px(at as f32))), None);
+    }
 }
