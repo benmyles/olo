@@ -195,6 +195,9 @@ Open 1Password, schakel Instellingen ▸ Ontwikkelaar ▸ Integratie met andere 
 3 hours
 3 uur
 
+3 to-dos
+3 taken
+
 3. When it blinks again, touch it once more.
 3. Raak de sleutel nogmaals aan zodra het lampje weer knippert.
 
@@ -258,6 +261,9 @@ Open 1Password, schakel Instellingen ▸ Ontwikkelaar ▸ Integratie met andere 
 5 seconds
 5 seconden
 
+5 to-dos
+5 taken
+
 5 years
 5 jaar
 
@@ -278,6 +284,9 @@ Open 1Password, schakel Instellingen ▸ Ontwikkelaar ▸ Integratie met andere 
 
 8 events
 8 afspraken
+
+8 to-dos
+8 taken
 
 8 weeks
 8 weken
@@ -311,6 +320,9 @@ Een back-up leest één bestand tegelijk en geeft het geheugen na het lezen vrij
 
 A battery kept full wears faster: for a computer that's mostly plugged in.
 Een accu die altijd helemaal vol is, slijt sneller. Gebruik dit voor een computer die meestal op netvoeding werkt.
+
+A board's lanes are the list's sections, one for each stage of the work, and last what's done. Drag to-dos between them.
+Elk onderdeel van de lijst is een kolom op het bord voor één fase van het werk. De laatste kolom bevat de afgeronde taken. Sleep taken van de ene kolom naar de andere.
 
 A build of Olo is running: Olo upgrades as soon as it has finished.
 Olo wordt nu gebouwd. De update begint zodra de build klaar is.
@@ -456,6 +468,9 @@ Geef de kluis een naam.
 A week
 Een week
 
+A week before, at 9 AM
+Een week van tevoren om 9.00 uur
+
 AI
 AI
 
@@ -585,6 +600,9 @@ Tabblad aan groep toevoegen
 Add Text
 Tekst toevoegen
 
+Add To-Do: {}
+Taak toevoegen: {}
+
 Add Website
 Website toevoegen
 
@@ -602,6 +620,9 @@ Google-account toevoegen…
 
 Add a Kind
 Type toevoegen
+
+Add a Section…
+Onderdeel toevoegen…
 
 Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
 De pakketten en updates uit deze bron verschijnen naast die van Fedora. Voeg alleen bronnen toe die u vertrouwt: de beheerder kan van alles op deze computer installeren.
@@ -894,6 +915,9 @@ Een van de {}
 Any storms on the way?
 Is er onweer op komst?
 
+Any time
+Elk tijdstip
+
 Any touch
 Elke aanraking
 
@@ -981,6 +1005,12 @@ In verkeerde volgorde ontvangen
 
 As BeOS R5 drew its icons: flat faces in its 8-bit colours, black outlines.
 Zoals de pictogrammen van BeOS R5: platte vlakken in 8-bitskleuren met zwarte contouren.
+
+As Board
+Als bord
+
+As List
+Als lijst
 
 As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines.
 Zoals de pictogrammen van Workbench: platte vlakken in de zestien schermkleuren met zwarte contouren.
@@ -1078,6 +1108,9 @@ Bij 15%
 At 20%
 Bij 20%
 
+At a time of its own
+Op een zelfgekozen tijdstip
+
 At full speed
 Op volle snelheid
 
@@ -1093,11 +1126,32 @@ Aan het begin
 At the start
 Aan het begin
 
+At the time it's due
+Op de vervaltijd
+
 At {}. Give it the code from {}?
 Op {}. De code van {} doorgeven?
 
+Attach
+Bijvoegen
+
 Attach Files…
 Bestanden bijvoegen…
+
+Attach File…
+Bestand bijvoegen…
+
+Attach Link
+Link bijvoegen
+
+Attach Link…
+Link bijvoegen…
+
+Attach a file or a link
+Bestand of link bijvoegen
+
+Attachments
+Bijlagen
 
 Authenticate
 Authenticeren
@@ -1179,6 +1233,12 @@ Terug naar de verwachting
 
 Back to the Items
 Terug naar de onderdelen
+
+Back to the List
+Terug naar de lijst
+
+Back to the To-Dos
+Terug naar de taken
 
 Back up this computer
 Een back-up van deze computer maken
@@ -1360,6 +1420,9 @@ Bluetooth heeft het verzoek geaccepteerd, maar er is geen kanaal geopend
 
 Bluetooth…
 Bluetooth…
+
+Board
+Bord
 
 Body
 Hoofdtekst
@@ -1746,6 +1809,9 @@ Kies een netwerk om verbinding te maken.
 
 Choose a setting, then play the original or its sound: switching goes on from the same place.
 Kies een instelling en speel het origineel of het bewerkte geluid af. Bij wisselen gaat het afspelen op dezelfde plek verder.
+
+Choose a to-do to see its details.
+Selecteer een taak om de details te bekijken.
 
 Choose a widget to change it, or add one.
 Kies een widget om die te wijzigen of voeg er een toe.
@@ -2228,6 +2294,9 @@ Couldn't rename “{}”: {}
 Couldn't restart: {}
 Herstarten mislukt: {}
 
+Couldn't save the change: {}
+De wijziging kon niet worden bewaard: {}
+
 Couldn't save the setting: {}
 Instelling opslaan mislukt: {}
 
@@ -2504,11 +2573,17 @@ Afspraak verwijderen
 Delete Item
 Onderdeel verwijderen
 
+Delete List
+Lijst verwijderen
+
 Delete Mark
 Markering verwijderen
 
 Delete Row
 Rij verwijderen
+
+Delete Section
+Onderdeel verwijderen
 
 Delete Signature
 Handtekening verwijderen
@@ -2808,6 +2883,9 @@ Documenten
 Does “{}” show this number?
 Staat dit nummer op ‘{}’?
 
+Doing
+Bezig
+
 Domain:
 Domein:
 
@@ -2822,6 +2900,12 @@ Bewerken voltooien
 
 Done with the exercises
 Oefeningen afronden
+
+Done {}
+Afgerond: {}
+
+Done: {}
+Afgerond: {}
 
 Don’t Trust
 Niet vertrouwen
@@ -2891,6 +2975,36 @@ Overgeslagen
 
 Dry for the next {} hours
 De komende {} uur blijft het droog
+
+Due
+Uiterlijk
+
+Due Date
+Vervaldatum
+
+Due Day
+Vervaldag
+
+Due Next Week
+Volgende week af te ronden
+
+Due Time
+Vervaltijd
+
+Due Today
+Vandaag af te ronden
+
+Due Tomorrow
+Morgen af te ronden
+
+Due {}
+Uiterlijk: {}
+
+Due {} · {}
+Uiterlijk: {} · {}
+
+Due:
+Uiterlijk:
 
 Duplicate
 Dupliceren
@@ -3174,6 +3288,9 @@ Elke interface
 Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
 De vensterserver verwerkt elke toetsaanslag en elk frame. Met deze optie zijn de hoofdlus en de invoerthread de enige gebruikers van processor {}, een van de snelste. Builds, browsers en andere programma’s draaien op de overige processors. Zo hoeven scherm en invoer niet te wachten.
 
+Every list's to-dos show here.
+Hier staan de taken van alle lijsten.
+
 Every month
 Elke maand
 
@@ -3381,6 +3498,9 @@ Bestanden
 
 Files with these extensions are this kind wherever Olo looks at them, and open in its app. An extension another kind had is this one's now.
 Olo herkent bestanden met deze extensies als dit type en opent ze in de bijbehorende app. Extensies die al bij een ander type hoorden, horen voortaan bij dit type.
+
+File…
+Bestand…
 
 Fill It In
 Invullen
@@ -4033,6 +4153,9 @@ Huidige snelheid
 How loud this microphone is gets measured as you talk on a call, or with Try It.
 Het microfoonvolume wordt gemeten terwijl u belt of via Uitproberen.
 
+How many are due today, and the first of them, the overdue first, each in its list's colour.
+Hoeveel er vandaag af moeten, en de eerste daarvan, eerst wat te laat is, elk in de kleur van zijn lijst.
+
 How warm will it get today?
 Hoe warm wordt het vandaag?
 
@@ -4146,6 +4269,9 @@ Met HDR ingeschakeld op het scherm lichten heldere delen van HDR-beelden sterker
 
 In Use for Internet Traffic
 In gebruik voor internetverkeer
+
+In an Hour
+Over een uur
 
 In an agent’s tab:
 In het tabblad van een agent:
@@ -4872,14 +4998,26 @@ Koppeling:
 Link’s rate
 Verbindingssnelheid
 
+Link…
+Link…
+
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 De standaardscheduler van Linux (EEVDF) verdeelt tijd eerlijk over alle programma’s. Olo-threads waarop iets wacht, draaien bij beide schedulers met realtimeprioriteit. Bij builds en ander zwaar werk reageert het bureaublad met deze scheduler het snelst.
+
+List
+Lijst
 
 List View
 Lijstweergave
 
+List:
+Lijst:
+
 Listening
 Luistert
+
+Lists
+Lijsten
 
 Live
 Live
@@ -5064,6 +5202,9 @@ Vervallen om plaats te maken voor nieuwere
 Made the vault “{}”.
 Kluis ‘{}’ aangemaakt.
 
+Made {}
+Aangemaakt: {}
+
 Magenta
 Magenta
 
@@ -5111,6 +5252,9 @@ Hoofdscherm met het bureaublad.
 
 Main window:
 Hoofdvenster:
+
+Make
+Aanmaken
 
 Make Main
 Als hoofdvenster instellen
@@ -5165,6 +5309,12 @@ Alles als gelezen markeren
 
 Mark This Moment
 Dit moment markeren
+
+Mark as Done
+Markeren als afgerond
+
+Mark as Not Done
+Markeren als openstaand
 
 Mark as Read
 Als gelezen markeren
@@ -5442,6 +5592,9 @@ Muis
 Mouse speed
 Muissnelheid
 
+Move
+Verplaatsen
+
 Move All Windows To
 Alle vensters verplaatsen naar
 
@@ -5465,6 +5618,9 @@ Tabblad verplaatsen naar nieuw venster
 
 Move Tab to Window
 Tabblad naar venster verplaatsen
+
+Move To
+Verplaatsen naar
 
 Move Up
 Omhoog
@@ -5625,6 +5781,12 @@ Nieuwe groep…
 New Item
 Nieuw onderdeel
 
+New List
+Nieuwe lijst
+
+New List…
+Nieuwe lijst…
+
 New Message
 Nieuw bericht
 
@@ -5633,6 +5795,15 @@ Nieuwe partitietabel…
 
 New Screen
 Nieuw scherm
+
+New Section
+Nieuw onderdeel
+
+New Sections
+Nieuwe onderdelen
+
+New Section…
+Nieuw onderdeel…
 
 New Signature…
 Nieuwe handtekening…
@@ -5645,6 +5816,12 @@ Nieuw tabblad in groep
 
 New Terminal
 Nieuwe terminal
+
+New To-Do
+Nieuwe taak
+
+New To-Do in {}
+Nieuwe taak in ‘{}’
 
 New Vault…
 Nieuwe kluis…
@@ -5745,6 +5922,9 @@ Nee
 No Agent Screens
 Geen agentschermen
 
+No Due Date
+Geen vervaldatum
+
 No Group
 Geen groep
 
@@ -5769,6 +5949,12 @@ Geen gekoppelde ontvangers
 No Saved Groups
 Geen bewaarde groepen
 
+No Section
+Geen onderdeel
+
+No To-Do Chosen
+Geen taak geselecteerd
+
 No VPNs. Import a WireGuard configuration, or add one with its maker's app.
 Geen VPN’s. Importeer een WireGuard-configuratie of voeg een VPN toe via de app van de aanbieder.
 
@@ -5783,6 +5969,9 @@ Nog geen app voor deze bestanden. Voeg er een toe.
 
 No apps open this.
 Geen app opent dit onderdeel.
+
+No attachments
+Geen bijlagen
 
 No backup has finished yet
 Nog geen back-up voltooid
@@ -5813,6 +6002,9 @@ Geen gesprekken geopend.
 
 No disks.
 Geen schijven.
+
+No due date
+Geen vervaldatum
 
 No entries.
 Geen vermeldingen.
@@ -5876,6 +6068,9 @@ Nog geen schermopnamen. Maak er een met ⌘⇧6.
 
 No space around an auto-tiled window alone
 Geen marge rond een enkele tegel
+
+No to-dos
+Geen taken
 
 No touches in the last minute
 Geen aanrakingen in de afgelopen minuut
@@ -5964,11 +6159,17 @@ Noors
 Not Answered
 Niet beantwoord
 
+Not Done
+Openstaand
+
 Not Signed In
 Niet aangemeld
 
 Not a compile
 Geen compilatie
+
+Not a due: keep the words in its title
+Geen datum: laat de woorden in de titel staan
 
 Not a number
 Geen getal
@@ -6126,6 +6327,12 @@ Niets gewijzigd. Het model van Olo blijft in gebruik.
 Nothing coming up
 Geen komende afspraken
 
+Nothing done yet
+Nog niets afgerond
+
+Nothing due today
+Vandaag hoeft er niets af
+
 Nothing found
 Niets gevonden
 
@@ -6155,6 +6362,12 @@ Nog geen opname. Klik op Opnemen en spreek een paar seconden.
 
 Nothing to calculate
 Niets te berekenen
+
+Nothing to do
+Niets te doen
+
+Nothing to do here
+Hier is niets te doen
 
 Nothing to do.
 Niets te doen.
@@ -6359,6 +6572,9 @@ Op schijf
 
 On hold
 In de wacht
+
+On the day, at 9 AM
+Op de dag zelf om 9.00 uur
 
 On the network
 Op het netwerk
@@ -6597,6 +6813,9 @@ Bij geheugentekort:
 Output
 Uitvoer
 
+Overdue
+Te laat
+
 Overview
 Overzicht
 
@@ -6828,11 +7047,17 @@ Voer nu het wachtwoord van Passwords in en probeer het opnieuw.
 Paste
 Plakken
 
+Paste as Attachment
+Plakken als bijlage
+
 Paste the key
 Plak de sleutel
 
 Paste the key first.
 Plak eerst de sleutel.
+
+Pasted Picture
+Geplakte afbeelding
 
 Pasted Picture.{}
 Geplakte afbeelding.{}
@@ -6886,6 +7111,12 @@ Telefoon instellen…
 
 Phone number:
 Telefoonnummer:
+
+Pick a day
+Dag kiezen
+
+Pick from a Month
+Kiezen in de kalender
 
 Picture
 Afbeelding
@@ -7454,6 +7685,12 @@ Opnieuw genereren
 Reinstall Selected…
 Selectie opnieuw installeren…
 
+Remind:
+Herinneren:
+
+Reminder
+Herinnering
+
 Reminder:
 Herinnering:
 
@@ -7505,6 +7742,9 @@ VPN ‘{}’ verwijderen? De instellingen en sleutels worden ook verwijderd.
 Remove the {}? It will no longer unlock anything.
 {} verwijderen? U kunt dit daarna niet meer gebruiken om iets te ontgrendelen.
 
+Remove {}
+‘{}’ verwijderen
+
 Remove {} from the Collector
 {} uit het verzamelvak verwijderen
 
@@ -7520,8 +7760,17 @@ Hernoemen
 Rename Group…
 Groep hernoemen…
 
+Rename List
+Lijst hernoemen
+
+Rename List…
+Lijst hernoemen…
+
 Rename Place…
 Locatie hernoemen…
+
+Rename Section
+Onderdeel hernoemen
 
 Rename Worktree…
 Werkboom hernoemen…
@@ -7964,6 +8213,9 @@ Secundaire klik (drie vingers: middelklik)
 Section
 Onderdeel
 
+Section:
+Onderdeel:
+
 Secure Note
 Beveiligde notitie
 
@@ -8232,11 +8484,17 @@ Klikken tonen
 Show Deskbar
 Deskbar tonen
 
+Show Details
+Details tonen
+
 Show DiskBackup in Deskbar
 DiskBackup in Deskbar tonen
 
 Show Display
 Scherm tonen
+
+Show Done
+Afgeronde taken tonen
 
 Show File in Tracker
 Bestand in Tracker tonen
@@ -8264,6 +8522,9 @@ Liniaal tonen
 
 Show Shortcuts
 Sneltoetsen tonen
+
+Show Sidebar
+Zijbalk tonen
 
 Show Source
 Broncode tonen
@@ -8579,6 +8840,9 @@ Deze stap opnieuw beginnen
 
 Start typing
 Begin met typen
+
+Start with To Do and Doing
+Beginnen met ‘Te doen’ en ‘Bezig’
 
 Started
 Gestart
@@ -9094,6 +9358,9 @@ De komende dagen met bewolking, minimum- en maximumtemperatuur.
 
 The computer couldn't be restarted: {}
 De computer herstarten is mislukt: {}
+
+The day before, at 9 AM
+De dag ervoor om 9.00 uur
 
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
 Het trefferpercentage van vandaag, de bezette plaatsen in de pool en de builds en treffers van de afgelopen uren.
@@ -9668,6 +9935,9 @@ Alleen titel
 Title:
 Titel:
 
+To Do
+Te doen
+
 To allow it, you can also {}.
 U kunt ook {} om dit toe te staan.
 
@@ -9676,6 +9946,30 @@ Naar {}
 
 To {}.
 Naar {}.
+
+To-Do
+Taken
+
+To-Do: Today
+Taken: Vandaag
+
+To-Do: Upcoming
+Taken: Binnenkort
+
+To-Do: nothing due after today.
+Taken: na vandaag hoeft er niets af.
+
+To-Do: nothing due today.
+Taken: vandaag hoeft er niets af.
+
+To-Do: {}: {}.
+Taken: {} — {}.
+
+To-dos due after today show here, by day.
+Hier staan de taken die na vandaag af moeten, op volgorde van datum.
+
+To-dos:
+Taken:
 
 To:
 Aan:
@@ -9911,6 +10205,9 @@ Type
 Type a time like 13:05 or 1:05 PM.
 Typ een tijd zoals 13:05 of 1:05 PM.
 
+Type a to-do above, and press Return.
+Typ hierboven een taak en druk op Enter.
+
 Type here to try the settings
 Typ hier om de instellingen uit te proberen
 
@@ -10072,6 +10369,9 @@ Upload (verzonden)
 
 Up for
 Actief sinds
+
+Upcoming
+Binnenkort
 
 Update
 Bijwerken
@@ -10397,6 +10697,9 @@ Warmer
 Warmth
 Warmte
 
+Was due {} · {}
+Had af moeten zijn: {} · {}
+
 Watch Agent Screens
 Meekijken op agentschermen
 
@@ -10484,11 +10787,23 @@ Wat kan ik morgen het beste aantrekken?
 What you change applies when you leave Rescue.
 Wijzigingen gaan in zodra u de herstelmodus verlaat.
 
+What's checked off shows here, the newest first.
+Hier staan de afgeronde taken, de nieuwste eerst.
+
+What's due after today, the soonest first, each by its day.
+Wat na vandaag af moet, het eerstvolgende eerst, elk met zijn dag.
+
+What's due today, and anything overdue, shows here.
+Hier staan de taken die vandaag af moeten of al te laat zijn.
+
 What's made for sRGB (nearly everything) looks as it was made; wider colours are for what has them.
 Wat voor sRGB is gemaakt, zoals vrijwel alle inhoud, behoudt zijn oorspronkelijke kleuren. Alleen inhoud met een groter kleurbereik gebruikt dat bereik.
 
 What's next (or on now): when, what and where, and what comes after it.
 De eerstvolgende of huidige afspraak: wanneer, wat en waar, met de afspraak die erop volgt.
+
+What's on the Clipboard
+Inhoud van het klembord
 
 What's still to come today, in order, each in its calendar's colour; then the days after.
 De resterende afspraken van vandaag op volgorde en elk in de kleur van de eigen agenda. Daarna volgen de komende dagen.
@@ -11002,6 +11317,9 @@ other: {n} pakketten downgraden
 driving {}
 stuurt {} aan
 
+due {}
+uiterlijk: {}
+
 ending one gives its slots back to the pool
 een test beëindigen geeft de bezette plaatsen terug aan de pool
 
@@ -11097,6 +11415,9 @@ other: over {n} dagen
 in {n} minutes
 one: over {n} minuut
 other: over {n} minuten
+
+in {}
+in ‘{}’
 
 install {n} packages
 one: {n} pakket installeren
@@ -11353,6 +11674,9 @@ organisator
 out of the archive
 uit het archief
 
+overdue, {}
+te laat, {}
+
 part of the screen
 een deel van het scherm
 
@@ -11545,11 +11869,17 @@ deze site
 tidying
 opruimen
 
+today
+vandaag
+
 today at {}
 vandaag om {}
 
 today or tomorrow
 vandaag of morgen
+
+tomorrow
+morgen
 
 tomorrow at {}
 morgen om {}
@@ -11616,6 +11946,9 @@ with the {n} files changed in it and not committed
 one: met {n} gewijzigd bestand dat nog niet is vastgelegd
 other: met {n} gewijzigde bestanden die nog niet zijn vastgelegd
 
+yesterday
+gisteren
+
 yesterday at {}
 gisteren om {}
 
@@ -11659,6 +11992,10 @@ other: {n} back-ups
 one: {n} back-up geselecteerd.
 other: {n} back-ups geselecteerd.
 
+{n} coming up
+one: {n} binnenkort
+other: {n} binnenkort
+
 {n} days
 one: {n} dag
 other: {n} dagen
@@ -11666,6 +12003,10 @@ other: {n} dagen
 {n} days ago
 one: {n} dag geleden
 other: {n} dagen geleden
+
+{n} due today
+one: {n} voor vandaag
+other: {n} voor vandaag
 
 {n} events
 one: {n} afspraak
@@ -11731,6 +12072,10 @@ other: {n} nieuwe meldingen
 one: Er staat {n} update voor Fedora {} klaar. Installeer die eerst in Updates.
 other: Er staan {n} updates voor Fedora {} klaar. Installeer die eerst in Updates.
 
+{n} overdue
+one: {n} te laat
+other: {n} te laat
+
 {n} packs as sent, by their checksums
 one: {n} pakket komt volgens de controlesom overeen met het verzonden pakket
 other: {n} pakketten komen volgens de controlesommen overeen met de verzonden pakketten
@@ -11787,6 +12132,14 @@ other: {n} keer
 one: nog {n} op komst
 other: nog {n} op komst
 
+{n} to do
+one: {n} openstaand
+other: {n} openstaand
+
+{n} to-dos
+one: {n} taak
+other: {n} taken
+
 {n} waiting in their apps
 one: {n} wacht in de app
 other: {n} wachten in hun apps
@@ -11830,6 +12183,9 @@ other: {n} weken
 
 {} ({} to {})
 {} ({} tot {})
+
+{} ({})
+{} ({})
 
 {} A workspace starts with this; choose its own from Deskbar's tray.
 {} Elk werkblad begint hiermee. Kies per werkblad een eigen instelling via het systeemvak van de Deskbar.
@@ -12104,8 +12460,14 @@ minimaal {}, nu {}
 {} min ago
 {} min geleden
 
+{} minutes after
+{} min erna
+
 {} minutes ago
 {} minuten geleden
+
+{} minutes before
+{} min ervoor
 
 {} ms, the middle of them
 {} ms, de mediaan
@@ -12335,6 +12697,9 @@ doorgaans {} µs per meting, langste {} µs
 {} · set up {}{}
 {} · ingesteld {}{}
 
+{} · {}
+{} · {}
+
 {} · {} · call quality while the microphone is used
 {} · {} · gesprekskwaliteit bij gebruik van de microfoon
 
@@ -12400,6 +12765,9 @@ quotum {1} van {0}
 
 {}, until {}
 {}, tot {}
+
+{}, {}
+{}, {}
 
 {}, {} new to the backup, {} sent so far.
 {}, {} nieuw in de back-up, {} tot nu toe verzonden.
@@ -12676,6 +13044,9 @@ Ongeldige begindatum ‘{}’. Probeer 20/11, 2026-11-20 of een Engelse dagnaam 
 “{}” isn’t a day I can read for when it stops repeating: leave it empty to go on for good.
 ‘{}’ is geen geldige einddatum voor de herhaling. Laat leeg om te blijven herhalen.
 
+“{}” isn’t a day I can read: try tomorrow, Friday, Nov 21 or 2026-11-21.
+‘{}’ is geen herkenbare datum. Probeer 2026-11-21, tomorrow, Friday of Nov 21.
+
 “{}” isn’t a setting.
 ‘{}’ is geen instelling.
 
@@ -12684,6 +13055,9 @@ Ongeldige eindtijd ‘{}’. Probeer 14:30 of 2:30 PM.
 
 “{}” isn’t a time I can read for when it starts: try 14:30 or 2:30 PM.
 Ongeldige begintijd ‘{}’. Probeer 14:30 of 2:30 PM.
+
+“{}” isn’t a time I can read: try 14:30 or 2:30 PM.
+‘{}’ is geen herkenbare tijd. Probeer 14:30 of 2:30 PM.
 
 “{}” isn’t an address I can invite: write each as name@example.org, with commas between.
 ‘{}’ is geen geldig adres voor een uitnodiging. Gebruik naam@example.org en zet komma’s tussen adressen.

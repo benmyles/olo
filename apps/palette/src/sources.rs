@@ -28,6 +28,8 @@ pub enum Kind {
     Password,
     /// A calendar's event.
     Event,
+    /// One of To-Do's to-dos.
+    ToDo,
     File,
     Web,
 }
@@ -44,6 +46,7 @@ impl Kind {
             Kind::Setting => "Setting",
             Kind::Password => "Password",
             Kind::Event => "Event",
+            Kind::ToDo => "To-Do",
             Kind::File => "File",
             Kind::Web => "Web",
         }
@@ -58,7 +61,7 @@ impl Kind {
             Kind::Shortcut | Kind::Setting => 35,
             Kind::Preference => 15,
             Kind::Window => 10,
-            Kind::Password | Kind::Event => 0,
+            Kind::Password | Kind::Event | Kind::ToDo => 0,
             // Files come after anything else that matches as well.
             Kind::File => -60,
             Kind::Web => -1000,
@@ -661,6 +664,138 @@ pub fn event_items(cals: &[olo_calendar::find::Read], hidden: &dyn Fn(&str) -> b
         .collect()
 }
 
+/// To-Do's to-dos as they're kept on this computer, read once and again
+/// only when their files change (`stamp`: each file's time and size).
+#[derive(Default)]
+pub struct ToDos {
+    stamp: Vec<(PathBuf, Option<std::time::SystemTime>, u64)>,
+    book: olo_todo::Book,
+}
+
+impl ToDos {
+    fn stamp_of(root: &Path) -> Vec<(PathBuf, Option<std::time::SystemTime>, u64)> {
+        let mut out = Vec::new();
+        for list in std::fs::read_dir(root).into_iter().flatten().flatten() {
+            for file in std::fs::read_dir(list.path()).into_iter().flatten().flatten() {
+                if let Ok(m) = file.metadata()
+                    && m.is_file()
+                {
+                    out.push((file.path(), m.modified().ok(), m.len()));
+                }
+            }
+        }
+        out.sort();
+        out
+    }
+
+    /// The to-dos for `query` (two letters at least), and, for one that
+    /// starts "todo ", the to-do it would add.
+    pub fn find(&mut self, query: &str) -> Vec<Item> {
+        if query.trim().chars().count() < 2 {
+            return Vec::new();
+        }
+        let now = jiff::Zoned::now();
+        let h24 = olo_kit::settings::current().is_some_and(|s| s.clock.twenty_four_hour);
+        let mut out: Vec<Item> = new_todo_item(query, &now, h24).into_iter().collect();
+        let root = olo_todo::store::root();
+        let stamp = Self::stamp_of(&root);
+        if stamp != self.stamp {
+            self.book = olo_todo::Book::load(&root);
+            self.stamp = stamp;
+        }
+        out.extend(todo_items(&self.book, query, &now, h24));
+        out
+    }
+}
+
+/// How many to-dos a query lists.
+const TODOS: usize = 6;
+
+/// When a to-do is due, said short: "Today", "Tomorrow, 3 PM", "Fri, Nov 27".
+fn due_said(due: &olo_calendar::event::When, now: &jiff::Zoned, h24: bool) -> String {
+    let today = now.date();
+    let day = |d: jiff::civil::Date| match d.since((jiff::Unit::Day, today)).map_or(i64::MAX, |s| s.get_days() as i64) {
+        0 => "Today".to_owned(),
+        1 => "Tomorrow".to_owned(),
+        -1 => "Yesterday".to_owned(),
+        _ if d.year() == today.year() => d.strftime("%a, %b %-d").to_string(),
+        _ => d.strftime("%a, %b %-d, %Y").to_string(),
+    };
+    match due {
+        olo_calendar::event::When::Date(d) => day(*d),
+        other => {
+            let at = other.moment(now.time_zone());
+            let t = at.time();
+            let clock = match (h24, t.minute()) {
+                (true, m) => format!("{:02}:{m:02}", t.hour()),
+                (false, 0) => format!("{} {}", (t.hour() + 11) % 12 + 1, if t.hour() < 12 { "AM" } else { "PM" }),
+                (false, m) => format!("{}:{m:02} {}", (t.hour() + 11) % 12 + 1, if t.hour() < 12 { "AM" } else { "PM" }),
+            };
+            format!("{}, {clock}", day(at.date()))
+        }
+    }
+}
+
+/// "todo Call Ann tomorrow at 3pm" (or "to-do …"): a to-do to add, as
+/// typed, from anywhere (Things' quick entry; `olo-todo --add`, no
+/// window). Its title, and under it its due as its words read.
+pub fn new_todo_item(query: &str, now: &jiff::Zoned, h24: bool) -> Option<Item> {
+    let typed = query.trim_start();
+    let lower = typed.to_lowercase();
+    let rest = ["todo ", "to-do ", "to do "].iter().find_map(|p| lower.starts_with(p).then(|| typed[p.len()..].trim()))?;
+    if rest.is_empty() {
+        return None;
+    }
+    let locale = ["LC_ALL", "LC_TIME", "LANG"].iter().find_map(|v| std::env::var(v).ok().filter(|s| !s.is_empty())).unwrap_or_default();
+    let region = locale.split(['.', '@']).next().unwrap_or_default().rsplit('_').next().unwrap_or_default().to_ascii_uppercase();
+    let read = olo_todo::quick::read(rest, now, matches!(region.as_str(), "US" | "PH" | "FM" | "PW" | "MH"));
+    let due = read.due.as_ref().map(|d| olo_kit::tr!("Due {}", due_said(d, now, h24))).unwrap_or_else(|| olo_kit::words::tr("No due date").to_owned());
+    Some(
+        Item::new(Kind::Command, olo_kit::tr!("Add To-Do: {}", read.title), Action::Spawn(vec!["olo-todo".into(), "--add".into(), rest.to_owned()]))
+            .subtitle(due)
+            .icon("todo")
+            .keywords(query.to_lowercase()),
+    )
+}
+
+/// `query`'s to-dos in `book` as results: those still to do first (the
+/// soonest due first), then the done; its list and its due under each.
+pub fn todo_items(book: &olo_todo::Book, query: &str, now: &jiff::Zoned, h24: bool) -> Vec<Item> {
+    let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+    if words.is_empty() {
+        return Vec::new();
+    }
+    let list_name = |id: &str| book.list(id).map(|l| l.name.clone()).unwrap_or_default();
+    let mut found: Vec<&olo_todo::Item> = book
+        .items
+        .iter()
+        .filter(|i| {
+            let hay = format!("{} {} {}", i.todo.title, i.todo.notes, list_name(&i.list)).to_lowercase();
+            words.iter().all(|w| hay.contains(w.as_str()))
+        })
+        .collect();
+    let due_key = |i: &olo_todo::Item| i.todo.due.as_ref().map_or(i64::MAX, |d| d.moment(now.time_zone()).timestamp().as_second());
+    found.sort_by(|a, b| (!a.todo.open()).cmp(&!b.todo.open()).then(due_key(a).cmp(&due_key(b))).then_with(|| a.todo.title.cmp(&b.todo.title)));
+    found
+        .into_iter()
+        .take(TODOS)
+        .map(|i| {
+            let list = list_name(&i.list);
+            let when = match (&i.todo.due, i.todo.open()) {
+                (_, false) => olo_kit::words::tr("Done").to_owned(),
+                (Some(d), true) => olo_kit::tr!("Due {}", due_said(d, now, h24)),
+                (None, true) => String::new(),
+            };
+            let said: Vec<&str> = [when.as_str(), list.as_str()].into_iter().filter(|w| !w.is_empty()).collect();
+            // (Found by its notes too: it answers to what was typed.)
+            Item::new(Kind::ToDo, i.todo.title.clone(), Action::Spawn(vec!["olo-todo".into(), "--show".into(), i.todo.uid.clone()]))
+                .subtitle(said.join(" · "))
+                .icon("todo")
+                .keywords(format!("{list} {query}"))
+        })
+        .collect()
+}
+
 /// Text editing's keys (`sheet::text_keys`), each a shortcut done in the
 /// window the palette was opened over, and with Shift what selects as it
 /// moves: so every key is there to find, and learn (Ben, 2026-11-03:
@@ -961,13 +1096,17 @@ pub fn workers(proxy: Proxy) -> Workers {
     let events_to_ui = proxy.clone();
     let _ = std::thread::Builder::new().name("palette-events".into()).spawn(move || {
         let mut kept = Events::default();
+        // (To-Do's to-dos with them: the person's own days, both.)
+        let mut todos = ToDos::default();
         while let Ok(mut q) = events_rx.recv() {
             // Typing fast: wait for a pause, take the newest.
             std::thread::sleep(Duration::from_millis(120));
             while let Ok(newer) = events_rx.try_recv() {
                 q = newer;
             }
-            events_to_ui.send(Found::Events(q.0, kept.find(&q.1)));
+            let mut found = kept.find(&q.1);
+            found.extend(todos.find(&q.1));
+            events_to_ui.send(Found::Events(q.0, found));
         }
     });
     let (passwords, pass_rx) = mpsc::channel::<(u64, String)>();

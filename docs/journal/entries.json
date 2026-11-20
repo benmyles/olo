@@ -5152,5 +5152,35 @@
   "title": "Battery and idle settings by power source",
   "caption": "The charging limit, display timeout and sleep timeout share one panel. Each timeout can be set independently on battery and while plugged in.",
   "image": "2026-11-19/124300-battery-and-idle-settings-by-power-source.png"
+ },
+ {
+  "time": "2026-11-20T00:59:45",
+  "title": "To-Do: a new app",
+  "caption": "Olo's own to-do app (Ben: \"a beautiful olo native todo app that supports reminders / due dates / simple kanban style board / attaching links, images, etc. / beautiful styled deskbar widgets\"). Today: what's overdue and what's due, each in its list's colour; the chosen to-do's details at the right, with its reminder, notes and what's attached.",
+  "image": "2026-11-20/005945-to-do-a-new-app.png"
+ },
+ {
+  "time": "2026-11-20T00:59:47",
+  "title": "To-Do: a list as a board",
+  "caption": "A lane a section, and a last lane of what's done: cards dragged between them, one dropped on Done checked off.",
+  "image": "2026-11-20/005947-to-do-a-list-as-a-board.png"
+ },
+ {
+  "time": "2026-11-20T00:59:48",
+  "title": "To-Do: a new to-do typed as you'd say it",
+  "caption": "On a board, a lane's + puts a card there to type in. The words read as its due turn blue as they're typed, the due they say under them as the card will have it, with an \u00d7 that keeps them as words.",
+  "image": "2026-11-20/005948-to-do-a-new-to-do-typed-as-you-d-say-it.png"
+ },
+ {
+  "time": "2026-11-20T00:59:49",
+  "title": "To-Do: Upcoming, and a day picked from a month",
+  "caption": "Upcoming's days as headings; the kit's small month in the details, today outlined and the chosen day filled (Calendar's small month too).",
+  "image": "2026-11-20/005949-to-do-upcoming-and-a-day-picked-from-a-month.png"
+ },
+ {
+  "time": "2026-11-20T00:59:50",
+  "title": "To-Do's board in the dark look",
+  "caption": "",
+  "image": "2026-11-20/005950-to-do-s-board-in-the-dark-look.png"
  }
 ]

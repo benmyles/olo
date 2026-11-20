@@ -3,6 +3,38 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-20
+
+### To-Do's board in the dark look
+
+*00:59*
+
+![To-Do's board in the dark look](2026-11-20/005950-to-do-s-board-in-the-dark-look.png)
+
+### To-Do: Upcoming, and a day picked from a month
+
+*00:59* — Upcoming's days as headings; the kit's small month in the details, today outlined and the chosen day filled (Calendar's small month too).
+
+![To-Do: Upcoming, and a day picked from a month](2026-11-20/005949-to-do-upcoming-and-a-day-picked-from-a-month.png)
+
+### To-Do: a new to-do typed as you'd say it
+
+*00:59* — On a board, a lane's + puts a card there to type in. The words read as its due turn blue as they're typed, the due they say under them as the card will have it, with an × that keeps them as words.
+
+![To-Do: a new to-do typed as you'd say it](2026-11-20/005948-to-do-a-new-to-do-typed-as-you-d-say-it.png)
+
+### To-Do: a list as a board
+
+*00:59* — A lane a section, and a last lane of what's done: cards dragged between them, one dropped on Done checked off.
+
+![To-Do: a list as a board](2026-11-20/005947-to-do-a-list-as-a-board.png)
+
+### To-Do: a new app
+
+*00:59* — Olo's own to-do app (Ben: "a beautiful olo native todo app that supports reminders / due dates / simple kanban style board / attaching links, images, etc. / beautiful styled deskbar widgets"). Today: what's overdue and what's due, each in its list's colour; the chosen to-do's details at the right, with its reminder, notes and what's attached.
+
+![To-Do: a new app](2026-11-20/005945-to-do-a-new-app.png)
+
 ## 2026-11-19
 
 ### Battery and idle settings by power source

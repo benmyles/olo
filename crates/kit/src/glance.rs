@@ -639,14 +639,34 @@ fn paint_lines(g: &mut Painter, left: f32, right: f32, top: f32, lines: &[olo_pr
     let plain = style::ui_font(FontWeight::NORMAL);
     // (The labels' column no wider than half of it: the words keep room.)
     let label_w = lines.iter().map(|l| style::text_width_app(&l.label, style::SMALL_SIZE, &plain)).fold(0.0, f32::max).min((right - left) / 2.0);
-    let mark_x = left + label_w + 6.0 + 3.5;
-    let text_x = mark_x + 3.5 + 5.0;
+    // (A ring is a little wider than a square: the words start after
+    // whichever the lines have.)
+    let half = if lines.iter().any(|l| l.ring) { 4.5 } else { 3.5 };
+    let mark_x = left + label_w + 6.0 + half;
+    let text_x = mark_x + half + 5.0;
     for (i, line) in lines.iter().enumerate() {
         let cy = top + SPAN * (i as f32 + 0.5);
         let row = Bounds::from_corners(point(px(left), px(top + SPAN * i as f32)), point(px(right), px(top + SPAN * (i + 1) as f32)));
         style::label_fit(g, px(left), px(cy), Align::Left, line.label.clone(), style::SMALL_SIZE, plain.clone(), dim, px(label_w));
-        let mark = style::snap_centred(g, point(px(mark_x), px(cy)), 7.0, 7.0);
-        style::fill_rect(g, mark, hue_of(p, line.hue));
+        if line.ring {
+            // (A to-do's: a ring of its colour, its line whole device
+            // pixels wide, round a middle on one.)
+            let s = g.scale_factor();
+            let w = (1.5 * s).round().max(1.0) / s;
+            let c = style::snap_centred(g, point(px(mark_x), px(cy)), 9.0, 9.0).center();
+            let r = px(4.5 - w / 2.0);
+            let mut ring = olo_interface::PathBuilder::stroke(px(w));
+            ring.move_to(point(c.x + r, c.y));
+            ring.arc_to(point(r, r), px(0.0), false, true, point(c.x - r, c.y));
+            ring.arc_to(point(r, r), px(0.0), false, true, point(c.x + r, c.y));
+            ring.close();
+            if let Ok(path) = ring.build() {
+                g.paint_path(path, hue_of(p, line.hue));
+            }
+        } else {
+            let mark = style::snap_centred(g, point(px(mark_x), px(cy)), 7.0, 7.0);
+            style::fill_rect(g, mark, hue_of(p, line.hue));
+        }
         style::label_fit(g, px(text_x), px(cy), Align::Left, line.text.clone(), style::SMALL_SIZE, plain.clone(), if line.dim { dim } else { ink }, px((right - text_x).max(0.0)));
         agent::record(g, agent::Node { role: "ListItem", name: Some(line.text.clone().into()), value: Some(line.label.clone().into()), bounds: row, enabled: true, ..Default::default() });
     }

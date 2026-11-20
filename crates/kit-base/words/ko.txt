@@ -193,6 +193,9 @@ other: 외 {n}개
 3 hours
 3시간
 
+3 to-dos
+3개 할 일
+
 3. When it blinks again, touch it once more.
 3. 표시등이 다시 깜박이면 한 번 더 터치하세요.
 
@@ -256,6 +259,9 @@ other: 외 {n}개
 5 seconds
 5초
 
+5 to-dos
+5개 할 일
+
 5 years
 5년
 
@@ -276,6 +282,9 @@ other: 외 {n}개
 
 8 events
 8개 일정
+
+8 to-dos
+8개 할 일
 
 8 weeks
 8주
@@ -309,6 +318,9 @@ A backup reads one file at a time, and leaves what it read out of memory: it nev
 
 A battery kept full wears faster: for a computer that's mostly plugged in.
 배터리를 완전히 충전해 두면 수명이 짧아집니다. 주로 전원을 연결해 쓰는 컴퓨터를 위한 설정입니다.
+
+A board's lanes are the list's sections, one for each stage of the work, and last what's done. Drag to-dos between them.
+목록의 각 섹션은 보드에서 작업 단계별 열로 표시됩니다. 마지막 열에는 완료한 할 일이 모입니다. 할 일을 다른 열로 드래그해 옮기세요.
 
 A build of Olo is running: Olo upgrades as soon as it has finished.
 Olo를 빌드하는 중입니다. 빌드가 끝나면 바로 업그레이드합니다.
@@ -454,6 +466,9 @@ A vault needs a name.
 A week
 일주일
 
+A week before, at 9 AM
+일주일 전 오전 9시
+
 AI
 AI
 
@@ -583,6 +598,9 @@ Add Tab to Group
 Add Text
 텍스트 추가
 
+Add To-Do: {}
+할 일 추가: {}
+
 Add Website
 웹사이트 추가
 
@@ -600,6 +618,9 @@ Google 계정 추가…
 
 Add a Kind
 종류 추가
+
+Add a Section…
+섹션 추가…
 
 Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
 저장소를 추가하면 Fedora 패키지와 함께 그곳의 패키지와 업데이트를 받습니다. 운영자가 이 컴퓨터에 무엇이든 설치할 수 있으므로 신뢰하는 저장소만 추가하세요.
@@ -889,6 +910,9 @@ Any of the {}
 Any storms on the way?
 폭풍이 오나요?
 
+Any time
+시간 지정 안 함
+
 Any touch
 모든 터치
 
@@ -975,6 +999,12 @@ Arrived out of order
 
 As BeOS R5 drew its icons: flat faces in its 8-bit colours, black outlines.
 BeOS R5 아이콘처럼 8비트 단색 면에 검은 테두리를 씁니다.
+
+As Board
+보드로 보기
+
+As List
+목록으로 보기
 
 As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines.
 Workbench 아이콘처럼 화면의 펜 16색으로 면을 채우고 검은 테두리를 씁니다.
@@ -1072,6 +1102,9 @@ At 15%
 At 20%
 20%에서
 
+At a time of its own
+직접 지정한 시간에
+
 At full speed
 최고 속도로
 
@@ -1087,11 +1120,32 @@ At the Start
 At the start
 맨 앞에
 
+At the time it's due
+마감 시간에
+
 At {}. Give it the code from {}?
 위치: {0}. {1}에서 받은 코드를 전달할까요?
 
+Attach
+첨부
+
 Attach Files…
 파일 첨부…
+
+Attach File…
+파일 첨부…
+
+Attach Link
+링크 첨부
+
+Attach Link…
+링크 첨부…
+
+Attach a file or a link
+파일 또는 링크 첨부
+
+Attachments
+첨부 항목
 
 Authenticate
 인증
@@ -1173,6 +1227,12 @@ Back to the Forecast
 
 Back to the Items
 항목으로 돌아가기
+
+Back to the List
+목록으로 돌아가기
+
+Back to the To-Dos
+할 일로 돌아가기
 
 Back up this computer
 이 컴퓨터 백업
@@ -1353,6 +1413,9 @@ Bluetooth가 열겠다고 응답했지만 채널이 연결되지 않았습니다
 
 Bluetooth…
 Bluetooth…
+
+Board
+보드
 
 Body
 본문
@@ -1737,6 +1800,9 @@ Choose a network to join it.
 
 Choose a setting, then play the original or its sound: switching goes on from the same place.
 설정을 선택한 다음 원본이나 처리된 소리를 재생하세요. 전환해도 같은 위치에서 재생합니다.
+
+Choose a to-do to see its details.
+할 일을 선택하면 세부 사항이 표시됩니다.
 
 Choose a widget to change it, or add one.
 변경할 위젯을 선택하거나 새 위젯을 추가하세요.
@@ -2218,6 +2284,9 @@ Couldn't rename “{}”: {}
 Couldn't restart: {}
 다시 시작할 수 없습니다: {}
 
+Couldn't save the change: {}
+변경 사항을 저장하지 못했습니다: {}
+
 Couldn't save the setting: {}
 설정을 저장할 수 없습니다: {}
 
@@ -2494,11 +2563,17 @@ Delete Event
 Delete Item
 항목 삭제
 
+Delete List
+목록 삭제
+
 Delete Mark
 표시 삭제
 
 Delete Row
 행 삭제
+
+Delete Section
+섹션 삭제
 
 Delete Signature
 서명 삭제
@@ -2797,6 +2872,9 @@ Documents
 Does “{}” show this number?
 ‘{}’에 이 번호가 표시되나요?
 
+Doing
+진행 중
+
 Domain:
 도메인:
 
@@ -2811,6 +2889,12 @@ Done Editing
 
 Done with the exercises
 연습 완료
+
+Done {}
+완료일: {}
+
+Done: {}
+완료: {}
 
 Don’t Trust
 신뢰하지 않음
@@ -2880,6 +2964,36 @@ Dropped
 
 Dry for the next {} hours
 앞으로 {}시간 동안 비 소식 없음
+
+Due
+마감
+
+Due Date
+마감일
+
+Due Day
+마감 날짜
+
+Due Next Week
+다음 주 마감
+
+Due Time
+마감 시간
+
+Due Today
+오늘 마감
+
+Due Tomorrow
+내일 마감
+
+Due {}
+마감: {}
+
+Due {} · {}
+마감: {} · {}
+
+Due:
+마감:
 
 Duplicate
 복제
@@ -3163,6 +3277,9 @@ Every interface
 Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
 모든 키 입력과 프레임은 창 서버의 루프와 입력 스레드를 거칩니다. 이 옵션을 켜면 가장 빠른 프로세서 중 하나인 {}번을 전용으로 사용합니다. 빌드, 브라우저 등 다른 프로그램은 나머지 프로세서에서 실행되어 입력과 화면 갱신을 지연시키지 않습니다.
 
+Every list's to-dos show here.
+모든 목록의 할 일이 여기에 표시됩니다.
+
 Every month
 매월
 
@@ -3366,6 +3483,9 @@ Files
 
 Files with these extensions are this kind wherever Olo looks at them, and open in its app. An extension another kind had is this one's now.
 Olo는 이 확장자를 가진 파일을 어디서든 이 종류로 인식하고 지정된 앱에서 엽니다. 다른 종류에 있던 확장자는 이쪽으로 옮겨집니다.
+
+File…
+파일…
 
 Fill It In
 채우기
@@ -4018,6 +4138,9 @@ How fast it runs now
 How loud this microphone is gets measured as you talk on a call, or with Try It.
 통화 중 말할 때나 ‘시험해 보기’를 사용할 때 마이크 음량을 측정합니다.
 
+How many are due today, and the first of them, the overdue first, each in its list's colour.
+오늘 마감인 할 일의 수와 그중 처음 몇 개를, 기한 지난 것부터, 각각 목록의 색으로 보여 줍니다.
+
 How warm will it get today?
 오늘 얼마나 따뜻해질까요?
 
@@ -4131,6 +4254,9 @@ HDR이 켜진 디스플레이에서는 영상의 밝은 부분이 나머지보�
 
 In Use for Internet Traffic
 인터넷 트래픽에 사용 중
+
+In an Hour
+1시간 후
 
 In an agent’s tab:
 에이전트 탭에서:
@@ -4852,14 +4978,26 @@ Link:
 Link’s rate
 연결 속도
 
+Link…
+링크…
+
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Linux 기본 스케줄러(EEVDF)는 작업 종류와 관계없이 모든 프로그램에 공평하게 시간을 배분합니다. 어느 스케줄러를 쓰든 다른 작업이 기다리는 Olo 스레드는 실시간 우선순위로 실행됩니다. 빌드 등 부하가 클 때는 이 설정에서 데스크톱이 가장 빠르게 반응합니다.
+
+List
+목록
 
 List View
 목록 보기
 
+List:
+목록:
+
 Listening
 듣는 중
+
+Lists
+목록
 
 Live
 라이브
@@ -5044,6 +5182,9 @@ Made room for newer ones
 Made the vault “{}”.
 ‘{}’ 금고를 만들었습니다.
 
+Made {}
+만든 날짜: {}
+
 Magenta
 자홍색
 
@@ -5091,6 +5232,9 @@ Main display: the desktop is here.
 
 Main window:
 기본 창:
+
+Make
+만들기
 
 Make Main
 기본 창으로 설정
@@ -5145,6 +5289,12 @@ Mark All as Read
 
 Mark This Moment
 이 순간 표시
+
+Mark as Done
+완료로 표시
+
+Mark as Not Done
+미완료로 표시
 
 Mark as Read
 읽음으로 표시
@@ -5422,6 +5572,9 @@ Mouse
 Mouse speed
 마우스 속도
 
+Move
+이동
+
 Move All Windows To
 모든 창 이동
 
@@ -5445,6 +5598,9 @@ Move Tab to New Window
 
 Move Tab to Window
 탭을 다른 창으로 이동
+
+Move To
+다음으로 이동
 
 Move Up
 위로 이동
@@ -5605,6 +5761,12 @@ New Group…
 New Item
 새 항목
 
+New List
+새 목록
+
+New List…
+새 목록…
+
 New Message
 새 메시지
 
@@ -5613,6 +5775,15 @@ New Partition Table…
 
 New Screen
 새 화면
+
+New Section
+새 섹션
+
+New Sections
+새 섹션
+
+New Section…
+새 섹션…
 
 New Signature…
 새 서명…
@@ -5625,6 +5796,12 @@ New Tab in Group
 
 New Terminal
 새 터미널
+
+New To-Do
+새 할 일
+
+New To-Do in {}
+‘{}’에 할 일 추가
 
 New Vault…
 새 금고…
@@ -5725,6 +5902,9 @@ No
 No Agent Screens
 에이전트 화면 없음
 
+No Due Date
+마감일 없음
+
 No Group
 그룹 없음
 
@@ -5749,6 +5929,12 @@ No Receivers Paired
 No Saved Groups
 저장한 그룹 없음
 
+No Section
+섹션 없음
+
+No To-Do Chosen
+선택한 할 일 없음
+
 No VPNs. Import a WireGuard configuration, or add one with its maker's app.
 VPN이 없습니다. WireGuard 설정을 가져오거나 제공업체 앱에서 추가하세요.
 
@@ -5763,6 +5949,9 @@ No app opens these yet: add one.
 
 No apps open this.
 이 항목을 여는 앱이 없습니다.
+
+No attachments
+첨부 항목 없음
 
 No backup has finished yet
 아직 완료된 백업 없음
@@ -5793,6 +5982,9 @@ No conversations open.
 
 No disks.
 디스크가 없습니다.
+
+No due date
+마감일 없음
 
 No entries.
 항목이 없습니다.
@@ -5856,6 +6048,9 @@ No screen recordings yet. Record one with ⌘⇧6.
 
 No space around an auto-tiled window alone
 자동 타일 창이 하나면 여백 없애기
+
+No to-dos
+할 일 없음
 
 No touches in the last minute
 지난 1분간 터치 없음
@@ -5944,11 +6139,17 @@ Norwegian
 Not Answered
 응답 없음
 
+Not Done
+미완료
+
 Not Signed In
 로그인하지 않음
 
 Not a compile
 컴파일 아님
+
+Not a due: keep the words in its title
+마감일로 쓰지 않고 제목에 그대로 두기
 
 Not a number
 숫자가 아님
@@ -6106,6 +6307,12 @@ Nothing changed: Olo's own model is still in use.
 Nothing coming up
 다가오는 일정 없음
 
+Nothing done yet
+아직 완료한 일이 없습니다
+
+Nothing due today
+오늘 마감인 일이 없습니다
+
 Nothing found
 검색 결과 없음
 
@@ -6135,6 +6342,12 @@ Nothing recorded yet. Press Record and talk for a few seconds.
 
 Nothing to calculate
 계산할 내용 없음
+
+Nothing to do
+남은 할 일이 없습니다
+
+Nothing to do here
+여기에는 남은 할 일이 없습니다
 
 Nothing to do.
 처리가 필요하지 않습니다.
@@ -6339,6 +6552,9 @@ On disk
 
 On hold
 보류
+
+On the day, at 9 AM
+마감 당일 오전 9시
 
 On the network
 네트워크에서
@@ -6577,6 +6793,9 @@ Out of memory:
 Output
 출력
 
+Overdue
+기한 지남
+
 Overview
 개요
 
@@ -6808,11 +7027,17 @@ Passwords’ password is used now: try again.
 Paste
 붙여넣기
 
+Paste as Attachment
+첨부 항목으로 붙여넣기
+
 Paste the key
 키 붙여넣기
 
 Paste the key first.
 먼저 키를 붙여 넣으세요.
+
+Pasted Picture
+붙여넣은 그림
 
 Pasted Picture.{}
 붙여 넣은 그림.{}
@@ -6864,6 +7089,12 @@ Phone Settings…
 
 Phone number:
 전화번호:
+
+Pick a day
+날짜 선택
+
+Pick from a Month
+달력에서 선택
 
 Picture
 그림
@@ -7432,6 +7663,12 @@ Regenerate
 Reinstall Selected…
 선택 항목 다시 설치…
 
+Remind:
+알림:
+
+Reminder
+미리 알림
+
 Reminder:
 미리 알림:
 
@@ -7483,6 +7720,9 @@ Remove the VPN “{}”? Its settings and keys go with it.
 Remove the {}? It will no longer unlock anything.
 {} 등록을 해제할까요? 이후에는 이 수단으로 잠금을 해제할 수 없습니다.
 
+Remove {}
+‘{}’ 제거
+
 Remove {} from the Collector
 수집기에서 {} 제거
 
@@ -7498,8 +7738,17 @@ Rename
 Rename Group…
 그룹 이름 변경…
 
+Rename List
+목록 이름 변경
+
+Rename List…
+목록 이름 변경…
+
 Rename Place…
 장소 이름 변경…
+
+Rename Section
+섹션 이름 변경
 
 Rename Worktree…
 작업 트리 이름 변경…
@@ -7942,6 +8191,9 @@ Secondary click (three: middle)
 Section
 섹션
 
+Section:
+섹션:
+
 Secure Note
 보안 메모
 
@@ -8209,11 +8461,17 @@ Show Clicks
 Show Deskbar
 Deskbar 표시
 
+Show Details
+세부 사항 보기
+
 Show DiskBackup in Deskbar
 Deskbar에 DiskBackup 표시
 
 Show Display
 디스플레이 표시
+
+Show Done
+완료한 일 보기
 
 Show File in Tracker
 Tracker에서 파일 보기
@@ -8241,6 +8499,9 @@ Show Ruler
 
 Show Shortcuts
 단축키 표시
+
+Show Sidebar
+사이드바 보기
 
 Show Source
 소스 보기
@@ -8556,6 +8817,9 @@ Start this step over
 
 Start typing
 입력 시작
+
+Start with To Do and Doing
+‘시작 전’과 ‘진행 중’으로 시작
 
 Started
 시작됨
@@ -9069,6 +9333,9 @@ The coming days, each its sky, low and high.
 
 The computer couldn't be restarted: {}
 컴퓨터를 다시 시작할 수 없습니다: {}
+
+The day before, at 9 AM
+하루 전 오전 9시
 
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
 오늘의 캐시 적중률, 풀의 사용 중인 슬롯, 최근 몇 시간의 빌드와 적중 횟수.
@@ -9643,6 +9910,9 @@ Title only
 Title:
 제목:
 
+To Do
+시작 전
+
 To allow it, you can also {}.
 {} 방법으로도 허용할 수 있습니다.
 
@@ -9651,6 +9921,30 @@ To {}
 
 To {}.
 대상: {}.
+
+To-Do
+할 일
+
+To-Do: Today
+할 일: 오늘
+
+To-Do: Upcoming
+할 일: 예정
+
+To-Do: nothing due after today.
+할 일: 내일 이후에 마감되는 일이 없습니다.
+
+To-Do: nothing due today.
+할 일: 오늘 마감인 일이 없습니다.
+
+To-Do: {}: {}.
+할 일: {} — {}.
+
+To-dos due after today show here, by day.
+내일부터 마감되는 할 일이 날짜순으로 표시됩니다.
+
+To-dos:
+할 일:
 
 To:
 대상:
@@ -9886,6 +10180,9 @@ Type
 Type a time like 13:05 or 1:05 PM.
 13:05 또는 1:05 PM 형식으로 입력하세요.
 
+Type a to-do above, and press Return.
+위에 할 일을 입력하고 Enter 키를 누르세요.
+
 Type here to try the settings
 여기에 입력해 설정을 시험하세요
 
@@ -10047,6 +10344,9 @@ Up (sent)
 
 Up for
 가동 시간
+
+Upcoming
+예정
 
 Update
 업데이트
@@ -10372,6 +10672,9 @@ Warmer
 Warmth
 색온도
 
+Was due {} · {}
+지난 마감일: {} · {}
+
 Watch Agent Screens
 에이전트 화면 보기
 
@@ -10459,11 +10762,23 @@ What should I wear tomorrow?
 What you change applies when you leave Rescue.
 변경 사항은 복구 모드에서 나갈 때 적용됩니다.
 
+What's checked off shows here, the newest first.
+완료한 일이 최근에 완료한 순서로 표시됩니다.
+
+What's due after today, the soonest first, each by its day.
+오늘 이후에 마감되는 할 일을, 가까운 것부터, 각각 날짜와 함께 보여 줍니다.
+
+What's due today, and anything overdue, shows here.
+오늘 마감인 일과 기한이 지난 일이 표시됩니다.
+
 What's made for sRGB (nearly everything) looks as it was made; wider colours are for what has them.
 sRGB용 콘텐츠(거의 모든 콘텐츠)는 원래 의도한 색으로 표시합니다. 넓은 색 영역은 이를 지원하는 콘텐츠에만 적용합니다.
 
 What's next (or on now): when, what and where, and what comes after it.
 현재 또는 다음 일정의 시각, 내용, 장소와 그다음 일정.
+
+What's on the Clipboard
+클립보드 내용
 
 What's still to come today, in order, each in its calendar's colour; then the days after.
 오늘 남은 일정을 캘린더 색상으로 시간순으로 표시하고 이후 날짜의 일정도 보여 줍니다.
@@ -10975,6 +11290,9 @@ other: 패키지 {n}개 다운그레이드
 driving {}
 {} 구동
 
+due {}
+마감: {}
+
 ending one gives its slots back to the pool
 테스트를 끝내면 슬롯을 풀에 반환
 
@@ -11067,6 +11385,9 @@ other: {n}일 후
 
 in {n} minutes
 other: {n}분 후
+
+in {}
+섹션: {}
 
 install {n} packages
 other: 패키지 {n}개 설치
@@ -11317,6 +11638,9 @@ organizer
 out of the archive
 압축 파일 밖으로
 
+overdue, {}
+기한 지남, {}
+
 part of the screen
 화면 일부
 
@@ -11503,11 +11827,17 @@ this site
 tidying
 정리 중
 
+today
+오늘
+
 today at {}
 오늘 {}
 
 today or tomorrow
 오늘 또는 내일
+
+tomorrow
+내일
 
 tomorrow at {}
 내일 {}
@@ -11572,6 +11902,9 @@ where the scheduler puts it
 with the {n} files changed in it and not committed
 other: 커밋하지 않은 변경 파일 {n}개 포함
 
+yesterday
+어제
+
 yesterday at {}
 어제 {}
 
@@ -11608,11 +11941,17 @@ other: 백업 {n}개
 {n} backups chosen.
 other: 백업 {n}개 선택됨.
 
+{n} coming up
+other: 예정 {n}건
+
 {n} days
 other: {n}일
 
 {n} days ago
 other: {n}일 전
+
+{n} due today
+other: 오늘 마감 {n}건
 
 {n} events
 other: 일정 {n}개
@@ -11662,6 +12001,9 @@ other: 새 알림 {n}개
 {n} of Fedora {} updates are waiting: install them first, in Updates.
 other: Fedora {} 업데이트 {n}개가 대기 중입니다. ‘업데이트’에서 먼저 설치하세요.
 
+{n} overdue
+other: 기한 지남 {n}건
+
 {n} packs as sent, by their checksums
 other: 팩 {n}개의 체크섬이 전송 당시와 일치
 
@@ -11704,6 +12046,12 @@ other: {n}회
 {n} to come
 other: 예정 {n}개
 
+{n} to do
+other: 미완료 {n}건
+
+{n} to-dos
+other: 할 일 {n}건
+
 {n} waiting in their apps
 other: 앱에서 {n}개 대기 중
 
@@ -11745,6 +12093,9 @@ other: {n}주
 
 {} ({} to {})
 {} ({}~{})
+
+{} ({})
+{} ({})
 
 {} A workspace starts with this; choose its own from Deskbar's tray.
 {} 새 작업 공간에는 이 설정을 사용합니다. Deskbar 트레이에서 각 작업 공간의 설정을 고르세요.
@@ -12019,7 +12370,13 @@ other: {n}주
 {} min ago
 {}분 전
 
+{} minutes after
+{}분 후
+
 {} minutes ago
+{}분 전
+
+{} minutes before
 {}분 전
 
 {} ms, the middle of them
@@ -12250,6 +12607,9 @@ Olo 문구 {1}개 중 {0}개가 {2}(으)로 제공됩니다. 나머지는 영어
 {} · set up {}{}
 {} · 설정 완료 {}{}
 
+{} · {}
+{} · {}
+
 {} · {} · call quality while the microphone is used
 {} · {} · 마이크 사용 중 통화 음질
 
@@ -12315,6 +12675,9 @@ RAM의 {}%
 
 {}, until {}
 {}, {}까지
+
+{}, {}
+{} {}
 
 {}, {} new to the backup, {} sent so far.
 {}, 새 백업 데이터 {}, 지금까지 {} 전송.
@@ -12589,6 +12952,9 @@ Tracker에서 ‘{}’ 항목을 표시할 수 없습니다. {}
 “{}” isn’t a day I can read for when it stops repeating: leave it empty to go on for good.
 반복 종료일 ‘{}’을 읽을 수 없습니다. 계속 반복하려면 비워 두세요.
 
+“{}” isn’t a day I can read: try tomorrow, Friday, Nov 21 or 2026-11-21.
+입력한 날짜 ‘{}’: 알아볼 수 없는 형식입니다. 2026-11-21, tomorrow, Friday 또는 Nov 21처럼 입력하세요.
+
 “{}” isn’t a setting.
 ‘{}’ 값은 설정이 아닙니다.
 
@@ -12597,6 +12963,9 @@ Tracker에서 ‘{}’ 항목을 표시할 수 없습니다. {}
 
 “{}” isn’t a time I can read for when it starts: try 14:30 or 2:30 PM.
 시작 시각 ‘{}’을 읽을 수 없습니다. 14:30 또는 2:30 PM 형식으로 입력하세요.
+
+“{}” isn’t a time I can read: try 14:30 or 2:30 PM.
+입력한 시간 ‘{}’: 알아볼 수 없는 형식입니다. 14:30 또는 2:30 PM처럼 입력하세요.
 
 “{}” isn’t an address I can invite: write each as name@example.org, with commas between.
 ‘{}’ 주소로 초대할 수 없습니다. name@example.org 형식으로 입력하고 쉼표로 구분하세요.

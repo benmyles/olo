@@ -493,6 +493,14 @@ pub fn cache_dir() -> PathBuf {
     std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| home().join(".cache")).join("olo")
 }
 
+/// Olo's data directory (`$XDG_DATA_HOME/olo`): what the person makes
+/// with Olo's apps that isn't a document of theirs elsewhere (To-Do's
+/// lists).
+pub fn data_dir() -> PathBuf {
+    let home = || PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
+    std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).filter(|p| p.is_absolute()).unwrap_or_else(|| home().join(".local/share")).join("olo")
+}
+
 /// Olo's state directory (`$XDG_STATE_HOME/olo`): what programs
 /// keep between runs that is neither a setting nor a cache (histories).
 pub fn state_dir() -> PathBuf {

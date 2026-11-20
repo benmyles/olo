@@ -95,6 +95,9 @@ def apps(home):
         # (Its demo calendars, on a server of its own in the process, on a
         # day of its own: no account, the same picture every day.)
         ("Calendar", ["olo-calendar"], {"OLO_CALENDAR_DEMO": "1", "OLO_CALENDAR_NOW": "2026-11-18T10:30"}, False),
+        # (Its made-up lists, in a folder of the made-up home, on a day of
+        # its own: never the person's to-dos, the same picture every day.)
+        ("To-Do", ["olo-todo"], {"OLO_TODO_DEMO": "1", "OLO_TODO_DIR": os.path.join(home, ".todo"), "OLO_TODO_NOW": "2026-11-19T10:30"}, False),
         ("Kache", ["olo-kache"], {"OLO_KACHE_DEMO": "1"}, False),
         # (Made-up results: nothing is connected to.)
         ("Speed Test", ["olo-speedtest"], {"OLO_SPEEDTEST_DEMO": "1"}, False),

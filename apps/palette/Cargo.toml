@@ -19,6 +19,7 @@ olo-kit-base.workspace = true
 olo-xdg.workspace = true
 olo-protocol.workspace = true
 olo-calendar.workspace = true
+olo-todo.workspace = true
 olo-keychain.workspace = true
 ignore = "0.4"
 serde.workspace = true

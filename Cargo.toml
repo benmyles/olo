@@ -23,6 +23,7 @@ olo-mail = { path = "crates/mail" }
 olo-google = { path = "crates/google" }
 olo-fastmail = { path = "crates/fastmail" }
 olo-calendar = { path = "crates/calendar" }
+olo-todo = { path = "crates/todo" }
 olo-crash = { path = "crates/crash" }
 olo-kmod = { path = "crates/kmod" }
 olo-video = { path = "crates/video" }

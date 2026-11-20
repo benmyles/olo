@@ -22515,6 +22515,182 @@ nothing. The editing was tried there against the demo's server: one
 occurrence of a repeating event renamed, then all of them from it, an
 event deleted, one made by a double-click among the hours.
 
+## To-Do's engine (crates/todo, `olo-todo`)
+
+Ben, 2026-11-18: "a beautiful olo native todo app that supports
+reminders / due dates / simple kanban style board / attaching links,
+images, etc. / beautiful styled deskbar widgets". The app (apps/todo) is
+below; this is what it stands on, each part tested by itself (`cargo
+test -p olo-todo`):
+
+- **Where to-dos are kept: a vdir**, the layout vdirsyncer and todoman
+  use, so other programs read it and a CalDAV sync can be put under it
+  with nothing moved: `$XDG_DATA_HOME/olo/todo/` (`store::root()`;
+  `OLO_TODO_DIR` instead, for tests and pictures), a folder a list
+  (`displayname`; `color`, `#RRGGBB`, read back as the nearest of the
+  look's `Hue`s; `olo-sections`, a section a line, in order), in it a
+  file a to-do (`UID.ics`: a VCALENDAR of one VTODO), and what's
+  attached to a to-do copied into `LIST/.files/UID/`.
+- **`item`**: `ToDo` (uid, title, notes, `Status`, when it was made,
+  changed and done, its due as Calendar's `When`, `Remind`, section,
+  order, `Attachment`s) read from a VTODO and written into one through
+  `olo_calendar::ical`, so what Olo doesn't know of a to-do survives its
+  changing one (`write_into(was, component, now)` writes only what
+  changed; `rewrite(text, was, todo, now)` a file's text). SUMMARY,
+  DESCRIPTION, STATUS with COMPLETED and PERCENT-COMPLETE, DUE; a
+  reminder is a VALARM, `TRIGGER;RELATED=END` so long before it's due
+  (`Remind::Before(seconds)`: negative, into the day, for one due on a
+  day) or `TRIGGER;VALUE=DATE-TIME` at a time of its own (`Remind::At`);
+  `X-OLO-SECTION`; `X-OLO-ORDER` (whole numbers 1024 apart, so one is
+  put between two without the rest written again); `ATTACH` (a link, or
+  a `file:` address with FMTTYPE and FILENAME). `remind_at(todo, zone)`
+  is when it reminds.
+- **`store`**: `Book` (every list and to-do; `load`, and `refresh(root,
+  changed)` reading only the folders and files that changed),
+  `create_list`, `change_list`, `trash_list` and `untrash_list` (a list
+  deleted is moved aside whole, to be put back by Undo), `create`,
+  `change(item, todo)` (the file read again and only what the person
+  changed written over it, so two programs changing different things
+  of one to-do both keep theirs; it returns the text there was, which
+  `put_back` writes again: Undo), `remove`, `move_to` (another list:
+  its file and its attachments), `attach` and `attach_bytes` (a file
+  copied, or what was pasted written, into the to-do's own folder, a
+  name already there numbered), `sweep` (folders of attachments whose
+  to-do is gone).
+- **`quick`**: a line typed, read: `read(text, now, month_first)` gives
+  its title and, where its last words say one, its due (`Typed`:
+  "Call Ann tomorrow at 3pm", "Book flights Friday", "Pay the rent by
+  Dec 1", "in 3 weeks", "11/24 at 9:30", "2027-04-15", "tonight": its
+  tests are the list), with the words it read as the due
+  (`said`), so the window can show which they are and keep them as
+  words if they were meant so ("Read Tomorrow and Tomorrow and
+  Tomorrow": a day's word after `and`, `of`, `the`… stays in the title).
+  A time typed gives a reminder at that time (`Typed::to_do`).
+  `fields(day, time, …)` reads the details pane's two fields and says
+  which one it couldn't.
+- **`view`**: what each place shows, in order (`rows(book, place, now,
+  done)`: `Place::Today`, what's overdue then today's by time;
+  `Upcoming`, by day; `All`, a list after another, each by when its
+  to-dos are due and those with no due after, in the list's order;
+  `Done`, by the day done on the person's clock, the newest first;
+  `List`, its sections in order, then, with `done`, what's done of it),
+  a list's board (`columns`: a lane a section, what's in none first;
+  `done_of`, its last lane), where a to-do dropped among others goes
+  (`place`: the orders to write, its neighbours' too only where there's
+  no room between them), `overdue`, `due_day`. Each of `rows`,
+  `columns` and `done_of` has a `_where` that takes what counts as
+  still to do, for the window's to-do just checked off, kept where it
+  was a moment. A sort asks when a to-do is due of a table made once,
+  not of each pair it compares.
+- **`demo::fill(root, now)`**: made-up lists for pictures and the
+  layout lint (`OLO_TODO_DEMO=1` with an empty `OLO_TODO_DIR`).
+
+## To-Do (apps/todo, `olo-todo`)
+
+One window of three panes (`view.rs`): the places and the lists down the
+left (the kit's `Sidebar`, each list a dot of its colour, how many each
+has to do; New List at its foot), the chosen place in the middle under
+its header, and the chosen to-do's details at the right (`SidePane`s:
+in a window too narrow for all three the details give way, then the
+sidebar, each brought back in front with a way back; `ui-lint --tiles`
+shows every layout).
+
+- **A place as a list** (`list.rs`): the row a new to-do is typed in
+  first (not in Done), then headings and to-dos, made as they come near
+  what shows (`sized_rows`: a heading after the first is six points
+  taller, the more over its words, so groups stand apart; every row a
+  whole number of device pixels tall at the scale it's shown at). A
+  row: its check circle in its list's colour, its title, quiet marks
+  for what it has (notes, attachments, a reminder: `marks.rs`, drawn on
+  whole device pixels), and at the right its list (where a place mixes
+  lists) and its due, in columns as wide as the widest of each, on its
+  title's baseline. A heading counts what's still to do under it; a
+  day's says its name and its date. A to-do checked off is struck
+  through where it was for two seconds (`lingering`), then goes where
+  done ones are.
+- **A list as a board** (`board.rs`, View ▸ As Board, kept by list): a
+  lane a section, sunken wells with cards in them, and last the lane of
+  what's done (a card dropped on it is checked off; one dragged out of
+  it is to do again). A card is its title on up to three lines, under
+  it when it's due (red: overdue) or when it was done, and its marks at
+  its right edge on its last line. A press moved four points is a drag:
+  the card stays faint where it was, its copy follows the pointer, a
+  line shows where it would drop. A lane's + (and New To-Do) puts a
+  card at the lane's top to type the new one in. Each lane's cards are
+  laid out once for the board as it is and the lane's width
+  (`lane_layout`: laying a card out measures its title's words) and
+  only those that show are made (`sized_rows`); a card is found by its
+  place among the book's to-dos, never looked for by its name. With
+  900 cards, choosing one took 40 ms a frame before that and takes
+  under 1 ms.
+- **What's typed for a new to-do** is read as it's typed (`quick`): the
+  words read as its due turn blue in the field, the due they say shows
+  beside them (the row's right end; a card's own foot) with an × that
+  keeps them as words.
+- **The details** (`details.rs`): its title, typed in where it is; its
+  list and section; its due as a day and a time, typed ("friday",
+  "nov 21", "3pm") or picked (the calendar button: the usual days, or
+  the kit's `MonthGrid` in a well); its reminder (the usual ones for
+  one due at a time or on a day; none to offer once it's done); its
+  notes, in a well as tall as what's written; and what's attached, a
+  row each (a file from a panel, a link typed, what's on the clipboard,
+  or files dropped on the pane or on a row). Delete and when it was
+  made, and done, at its foot. Every change is kept as it's made, on a
+  worker (`Job`, one at a time), and can be undone (`History<Back>`:
+  the file's text as it was, put back).
+- **Kept on this computer only** for now: no account, nothing asked of
+  a server. The store's folders are watched (`olo_kit::watch`), so what
+  another program, `olo-todo --add` or the palette writes shows at
+  once; the window's own writes aren't read back as news.
+- **The day turning, what becomes overdue**: one timer (`Due`) for the
+  next moment something changes (midnight, a to-do's due passing); at
+  rest the window wakes 0 times a second.
+- **For agents**: everything in its menus by name through its socket
+  (`{"invoke": "check"}`; `new`, `new-list`, `new-section`,
+  `rename-list`, `delete-list`, `delete`, `attach-file`, `attach-link`,
+  `paste-attachment`, `undo`, `redo`, `show-done`, `sidebar`, `details`,
+  `place:today|upcoming|all|done|LIST`, `layout:list|board`,
+  `due:today|tomorrow|next-week|none|month|YYYY-MM-DD`, `move-to:N`,
+  `select:UID` (`select:` alone: none) and `add:WHAT TO DO WHEN`), its
+  rows, cards and fields in its tree (a to-do a ListItem named by its
+  title, its value what it's due and what it has; its check a CheckBox),
+  and without a window: `olo-todo --print [today|upcoming|all|done|LIST]`
+  (JSON: uid, title, list, section, done, due, reminder, notes,
+  attachments, file), `--add "WHAT [WHEN]" [--list NAME]` (as typed in
+  the window; prints its uid and file), `--done UID`, `--show UID`
+  (opens it in the window, the running one's if there is one). The
+  palette offers "todo …" (or "to-do …") to add one, and finds to-dos by
+  their titles (`apps/palette/src/sources.rs`).
+- **Reminders** (`service.rs`, `olo-todo --service`, started with the
+  session): one `olo_kit::clock::Alarm` for the next reminder, the store
+  watched; a notification with Done, In an Hour and Show (its title the
+  to-do's, under it when it's due and its list). What fired and what
+  was put off are kept (`todo-reminders.json` in the state folder), so
+  a reminder isn't shown twice across a restart, and one whose time
+  passed while the computer slept shows on waking (unless long past:
+  `STALE`); a to-do done or gone meanwhile takes its notification with
+  it. At rest: 0 wakeups.
+- **Deskbar widgets** (`glance.rs`, `olo-todo --glance`; the `todo`
+  provider in `olo_protocol::glance::PROVIDERS`): Due Today ("3 due
+  today", "1 overdue" under it; a line a to-do, a ring in its list's
+  colour, `Line.ring`, red where it's overdue, its time or its day
+  before it) and Coming Up (the next days'), 3, 5 or 8 lines; a click
+  opens the first of them in the window.
+- **Words**: through the words layer; a day said inside a sentence
+  ("Done today", "Was due yesterday, 3 PM") has its own entries in
+  small letters (`words::in_words`). Weekdays' and months' names are
+  English still, as Calendar's (docs/TODO.md, Language).
+- **For tests and pictures**: `OLO_TODO_DIR` (the store), `OLO_TODO_NOW`
+  (`2026-11-19T10:30`: the clock the window, the widgets and the
+  reminders go by, and what a to-do is stamped done and made with, so
+  a picture's "today" is one day everywhere), `OLO_TODO_DEMO=1`.
+- **Measured** (release, a store of 5,000 to-dos, 2026-11-20): read and
+  printed in 45 ms; the window at rest 0.0% of a core and 0 wakeups a
+  second, 74 MB; scrolling All's 4,500 rows 60 frames a second at
+  0.34 ms a frame (slowest 3.0); a step of the selection 0.9 ms;
+  checking one off 2.7 ms (slowest 5.7); a letter typed 0.7 ms; on a
+  board of 900 cards, choosing one 0.9 ms.
+
 ## Passwords (apps/passwords, crates/onepassword)
 
 **Undo** (undo.rs, `olo_kit::undo`): Edit ▸ Undo and Redo for items

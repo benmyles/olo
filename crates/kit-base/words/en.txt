@@ -62,6 +62,7 @@
 3 days
 3 events
 3 hours
+3 to-dos
 3. When it blinks again, touch it once more.
 30 Minutes
 30 Minutes Before
@@ -83,6 +84,7 @@
 5 minutes
 5 minutes before
 5 seconds
+5 to-dos
 5 years
 512 MB a screen
 52 weeks
@@ -90,6 +92,7 @@
 60 min
 7 days
 8 events
+8 to-dos
 8 weeks
 8+ characters
 9
@@ -101,6 +104,7 @@ A GPU's encoder takes a 4K screen in about 15 ms a frame, the processor about 11
 A WireGuard file (from the server, or wg-quick's) is kept with its keys; its DNS servers are asked alone while it's connected.
 A backup reads one file at a time, and leaves what it read out of memory: it never takes much of either.
 A battery kept full wears faster: for a computer that's mostly plugged in.
+A board's lanes are the list's sections, one for each stage of the work, and last what's done. Drag to-dos between them.
 A build of Olo is running: Olo upgrades as soon as it has finished.
 A build of Olo is still running. Olo upgrades as soon as it has finished: your windows stay open.
 A classic token with the repo scope, or a fine-grained one that can read pull requests and checks. Olo keeps it in your login keyring.
@@ -149,6 +153,7 @@ A town, an address, or 47.61, -122.33
 A value
 A vault needs a name.
 A week
+A week before, at 9 AM
 AI
 AI features use OpenAI’s models through the Token Pool’s Codex accounts, spent in its order.
 API Credential
@@ -192,12 +197,14 @@ Add Row Above
 Add Row Below
 Add Tab to Group
 Add Text
+Add To-Do: {}
 Add Website
 Add a CalDAV Account…
 Add a Fastmail Account…
 Add a Folder…
 Add a Google Account…
 Add a Kind
+Add a Section…
 Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
 Add an App…
 Add an account in Preferences
@@ -294,6 +301,7 @@ Answering now
 Answering now · {}
 Any of the {}
 Any storms on the way?
+Any time
 Any touch
 App
 App caches
@@ -323,6 +331,8 @@ Archived Chats
 Archived Conversations
 Arrived out of order
 As BeOS R5 drew its icons: flat faces in its 8-bit colours, black outlines.
+As Board
+As List
 As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines.
 As fast as the computer goes: the processors kept quick and the firmware's power limits raised, the fans as needed. The battery runs down sooner.
 As in Themes ({})
@@ -355,13 +365,21 @@ Astra 6
 At 10%
 At 15%
 At 20%
+At a time of its own
 At full speed
 At least
 At the Bottom
 At the Start
 At the start
+At the time it's due
 At {}. Give it the code from {}?
+Attach
 Attach Files…
+Attach File…
+Attach Link
+Attach Link…
+Attach a file or a link
+Attachments
 Authenticate
 Authentication:
 Auto
@@ -389,6 +407,8 @@ Back to Conversations
 Back to the Days
 Back to the Forecast
 Back to the Items
+Back to the List
+Back to the To-Dos
 Back up this computer
 Back up to a disk or folder from now on; the backups in Google Drive stay as they are
 Back up to the Drive of:
@@ -449,6 +469,7 @@ Bluetooth isn’t answering.
 Bluetooth isn’t running on this computer.
 Bluetooth said it would open them and no channel came
 Bluetooth…
+Board
 Body
 Bold
 Boost when work arrives and ease back between tasks.
@@ -577,6 +598,7 @@ Choose a backup to see what it holds before importing it.
 Choose a chat from the list to start messaging.
 Choose a network to join it.
 Choose a setting, then play the original or its sound: switching goes on from the same place.
+Choose a to-do to see its details.
 Choose a widget to change it, or add one.
 Choose what to scan:
 Choose:
@@ -737,6 +759,7 @@ Couldn't create a link: {}
 Couldn't paste: {}
 Couldn't rename “{}”: {}
 Couldn't restart: {}
+Couldn't save the change: {}
 Couldn't save the setting: {}
 Couldn't save what was dropped: {}
 Couldn't save: {}
@@ -829,8 +852,10 @@ Delete All…
 Delete Column
 Delete Event
 Delete Item
+Delete List
 Delete Mark
 Delete Row
+Delete Section
 Delete Signature
 Delete Table
 Delete Vault
@@ -930,11 +955,14 @@ Document
 Documentation
 Documents
 Does “{}” show this number?
+Doing
 Domain:
 Don't Allow
 Done
 Done Editing
 Done with the exercises
+Done {}
+Done: {}
 Don’t Trust
 Double-press speed
 Down (received)
@@ -958,6 +986,16 @@ Drizzle and snow
 Drop on lift
 Dropped
 Dry for the next {} hours
+Due
+Due Date
+Due Day
+Due Next Week
+Due Time
+Due Today
+Due Tomorrow
+Due {}
+Due {} · {}
+Due:
 Duplicate
 Dutch
 E
@@ -1052,6 +1090,7 @@ Every disk
 Every frame on time this last minute
 Every interface
 Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
+Every list's to-dos show here.
 Every month
 Every week
 Every weekday
@@ -1120,6 +1159,7 @@ File
 File system:
 Files
 Files with these extensions are this kind wherever Olo looks at them, and open in its app. An extension another kind had is this one's now.
+File…
 Fill It In
 Find
 Find Again
@@ -1337,6 +1377,7 @@ How cloudy will it be tomorrow?
 How cold will it get tonight?
 How fast it runs now
 How loud this microphone is gets measured as you talk on a call, or with Try It.
+How many are due today, and the first of them, the overdue first, each in its list's colour.
 How warm will it get today?
 How windy will it be today?
 How windy will it be tomorrow?
@@ -1375,6 +1416,7 @@ Import…
 In Google Cloud, signed in as the account, make its app, “Olo (its address)”:
 In HDR on a display whose HDR is on: its lights shine brighter than the rest.
 In Use for Internet Traffic
+In an Hour
 In an agent’s tab:
 In its own way
 In place of the blue dot of its notifications, for as long as the app says something is unread or waiting in it.
@@ -1615,9 +1657,13 @@ Link
 Link-Local Only
 Link:
 Link’s rate
+Link…
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
+List
 List View
+List:
 Listening
+Lists
 Live
 Load
 Load average
@@ -1679,6 +1725,7 @@ Machine:
 Made here now, and in 1Password ({}) at the next sync, once you’ve reviewed it.
 Made room for newer ones
 Made the vault “{}”.
+Made {}
 Magenta
 Magic Keyboard with Touch ID and Numeric Keypad
 Magic Trackpad
@@ -1695,6 +1742,7 @@ Main and Stack
 Main and Stack, Main Elsewhere
 Main display: the desktop is here.
 Main window:
+Make
 Make Main
 Make Unlimited
 Make a Token…
@@ -1713,6 +1761,8 @@ Mappings
 Mark
 Mark All as Read
 Mark This Moment
+Mark as Done
+Mark as Not Done
 Mark as Read
 Markdown
 Markdown…
@@ -1805,6 +1855,7 @@ Mount
 Mounted At
 Mouse
 Mouse speed
+Move
 Move All Windows To
 Move All to Trash
 Move Down
@@ -1813,6 +1864,7 @@ Move Group to Window
 Move Here
 Move Tab to New Window
 Move Tab to Window
+Move To
 Move Up
 Move Window To
 Move Windows To
@@ -1866,13 +1918,20 @@ New Event…
 New Folder
 New Group…
 New Item
+New List
+New List…
 New Message
 New Partition Table…
 New Screen
+New Section
+New Sections
+New Section…
 New Signature…
 New Tab
 New Tab in Group
 New Terminal
+New To-Do
+New To-Do in {}
 New Vault…
 New Window
 New Windows Open In
@@ -1906,6 +1965,7 @@ Night Mode
 Nix
 No
 No Agent Screens
+No Due Date
 No Group
 No Groups
 No Guesses Found
@@ -1914,11 +1974,14 @@ No Other Windows
 No Pull Request
 No Receivers Paired
 No Saved Groups
+No Section
+No To-Do Chosen
 No VPNs. Import a WireGuard configuration, or add one with its maker's app.
 No app may have an item without asking. When one asks for an item, Approve Always allows it for good, and it’s listed here to take back.
 No app opens these
 No app opens these yet: add one.
 No apps open this.
+No attachments
 No backup has finished yet
 No backup has finished yet.
 No banners and no sounds (errors still show).
@@ -1929,6 +1992,7 @@ No cloud
 No connections match.
 No conversations open.
 No disks.
+No due date
 No entries.
 No environment.
 No event from a year back to two years on has “{}” in its title, its place or its notes.
@@ -1950,6 +2014,7 @@ No process uses much of it now
 No processes match.
 No screen recordings yet. Record one with ⌘⇧6.
 No space around an auto-tiled window alone
+No to-dos
 No touches in the last minute
 No touchpad found.
 No update matches the search.
@@ -1979,8 +2044,10 @@ None. To give an app one, choose Always Open on Workspace in the window menu of 
 Nonfree (NVIDIA’s drivers, Steam, …)
 Norwegian
 Not Answered
+Not Done
 Not Signed In
 Not a compile
+Not a due: keep the words in its title
 Not a number
 Not all of it applied: {}.
 Not answered
@@ -2033,6 +2100,8 @@ Nothing backed up yet.
 Nothing came from the microphone.
 Nothing changed: Olo's own model is still in use.
 Nothing coming up
+Nothing done yet
+Nothing due today
 Nothing found
 Nothing found by that name or address.
 Nothing in the history yet.
@@ -2043,6 +2112,8 @@ Nothing new to learn
 Nothing read yet
 Nothing recorded yet. Press Record and talk for a few seconds.
 Nothing to calculate
+Nothing to do
+Nothing to do here
 Nothing to do.
 Nothing to show yet
 Nothing to tune for its driver ({}) yet.
@@ -2111,6 +2182,7 @@ On a plane of its own: moving it draws nothing
 On battery
 On disk
 On hold
+On the day, at 9 AM
 On the network
 On the phone, open Settings ▸ Bluetooth and keep it open there. It appears here in a moment.
 On your phone, open Telegram ▸ Settings ▸ Devices ▸ Link Desktop Device, and point it at this code.
@@ -2190,6 +2262,7 @@ Other workspaces’ applications start collapsed
 Other…
 Out of memory:
 Output
+Overdue
 Overview
 Overwrite the old data with zeros (slow)
 PDF…
@@ -2267,8 +2340,10 @@ Passwords: Locking
 Passwords: Syncing with 1Password
 Passwords’ password is used now: try again.
 Paste
+Paste as Attachment
 Paste the key
 Paste the key first.
+Pasted Picture
 Pasted Picture.{}
 Pause
 Pause Backups
@@ -2286,6 +2361,8 @@ Personalized Volume
 Phone
 Phone Settings…
 Phone number:
+Pick a day
+Pick from a Month
 Picture
 Picture Size
 Pictures can be saved as PNG, JPEG, WebP, BMP, TIFF or GIF.
@@ -2475,6 +2552,8 @@ Refresh rate:
 Refresh:
 Regenerate
 Reinstall Selected…
+Remind:
+Reminder
 Reminder:
 Remote
 Removable Disks
@@ -2492,12 +2571,16 @@ Remove from Pool…
 Remove it from the pool? Its sign-in here is deleted; the account itself isn’t touched.
 Remove the VPN “{}”? Its settings and keys go with it.
 Remove the {}? It will no longer unlock anything.
+Remove {}
 Remove {} from the Collector
 Remove “{}” from Favorites
 Remove…
 Rename
 Rename Group…
+Rename List
+Rename List…
 Rename Place…
+Rename Section
 Rename Worktree…
 Rename…
 Repeat rate
@@ -2645,6 +2728,7 @@ Search: words, program:, level:, since:
 Searching…
 Secondary click (three: middle)
 Section
+Section:
 Secure Note
 Security
 Security Keys
@@ -2734,8 +2818,10 @@ Show Calendars
 Show Camera
 Show Clicks
 Show Deskbar
+Show Details
 Show DiskBackup in Deskbar
 Show Display
+Show Done
 Show File in Tracker
 Show Hidden Files
 Show Notifications
@@ -2745,6 +2831,7 @@ Show Preview
 Show Rescue Here
 Show Ruler
 Show Shortcuts
+Show Sidebar
 Show Source
 Show Toolbars
 Show a window from its tab's menu (right-click its title) or its row in Deskbar: Show on AirPlay. Play a film from Viewer or Tracker: Play On.
@@ -2850,6 +2937,7 @@ Start Test
 Start the Agent
 Start this step over
 Start typing
+Start with To Do and Doing
 Started
 Started {n} hours ago
 Started {n} minutes ago
@@ -3021,6 +3109,7 @@ The clock service (systemd-timedated) isn't answering.
 The code from {}, at {}.
 The coming days, each its sky, low and high.
 The computer couldn't be restarted: {}
+The day before, at 9 AM
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
 The displays' settings are Olo's own again, from when you leave Rescue.
 The export failed: {}
@@ -3212,9 +3301,18 @@ Title
 Title and preview
 Title only
 Title:
+To Do
 To allow it, you can also {}.
 To {}
 To {}.
+To-Do
+To-Do: Today
+To-Do: Upcoming
+To-Do: nothing due after today.
+To-Do: nothing due today.
+To-Do: {}: {}.
+To-dos due after today show here, by day.
+To-dos:
 To:
 Today
 Today and tomorrow
@@ -3293,6 +3391,7 @@ Two fingers:
 Two upgrades are ready: a new build of Olo ({}{}), and {} from GitHub, made {} ({} to download). Which do you want? Your windows stay open either way.
 Type
 Type a time like 13:05 or 1:05 PM.
+Type a to-do above, and press Return.
 Type here to try the settings
 Type the PIN for “{}” (often 0000).
 Type the code “{}” shows on its screen.
@@ -3347,6 +3446,7 @@ Until:
 Up
 Up (sent)
 Up for
+Upcoming
 Update
 Update Interval
 Update Only This…
@@ -3455,6 +3555,7 @@ Wallpaper
 Wants attention
 Warmer
 Warmth
+Was due {} · {}
 Watch Agent Screens
 Watch for stuck processes, leaks and memory hogs
 Watchdog
@@ -3484,8 +3585,12 @@ What it’s for (optional)
 What should I wear today?
 What should I wear tomorrow?
 What you change applies when you leave Rescue.
+What's checked off shows here, the newest first.
+What's due after today, the soonest first, each by its day.
+What's due today, and anything overdue, shows here.
 What's made for sRGB (nearly everything) looks as it was made; wider colours are for what has them.
 What's next (or on now): when, what and where, and what comes after it.
+What's on the Clipboard
 What's still to come today, in order, each in its calendar's colour; then the days after.
 What's unread and what waits in apps, as cards to work through.
 What's waiting (red)
@@ -3656,6 +3761,7 @@ day
 deleting
 downgrade {n} packages
 driving {}
+due {}
 ending one gives its slots back to the pool
 erasing
 erasing every backup didn't finish: {}
@@ -3687,6 +3793,7 @@ in the next week
 in the next {} days
 in {n} days
 in {n} minutes
+in {}
 install {n} packages
 it couldn't be ended: {}
 it is on a different volume from the Trash, so it can only be deleted
@@ -3770,6 +3877,7 @@ only terminal windows move
 optional
 organizer
 out of the archive
+overdue, {}
 part of the screen
 plugged in, charge limit {}%
 plugged in, held at the {}% limit
@@ -3832,8 +3940,10 @@ these {n} backups need
 this event
 this site
 tidying
+today
 today at {}
 today or tomorrow
+tomorrow
 tomorrow at {}
 tomorrow.io answered {}{}
 tomorrow.io can’t be reached: {}
@@ -3855,6 +3965,7 @@ visibility down to {}
 what holds it back
 where the scheduler puts it
 with the {n} files changed in it and not committed
+yesterday
 yesterday at {}
 you
 you don't have permission
@@ -3867,8 +3978,10 @@ your own picture
 {n} archived items aren’t
 {n} backups
 {n} backups chosen.
+{n} coming up
 {n} days
 {n} days ago
+{n} due today
 {n} events
 {n} files
 {n} files couldn’t be read.
@@ -3885,6 +3998,7 @@ your own picture
 {n} more waiting
 {n} new notifications
 {n} of Fedora {} updates are waiting: install them first, in Updates.
+{n} overdue
 {n} packs as sent, by their checksums
 {n} playing and shown on AirPlay receivers. Click to pause or stop them.
 {n} problems reading 1Password…
@@ -3899,6 +4013,8 @@ your own picture
 {n} sync changes to review
 {n} times
 {n} to come
+{n} to do
+{n} to-dos
 {n} waiting in their apps
 {n} weeks
 {} (AV1 and VP9)
@@ -3913,6 +4029,7 @@ your own picture
 {} ({} more)
 {} ({} packets)
 {} ({} to {})
+{} ({})
 {} A workspace starts with this; choose its own from Deskbar's tray.
 {} About a microsecond each, on the {}.
 {} Activity Monitor can do it once you give it full access, with an administrator's password.
@@ -4004,7 +4121,9 @@ your own picture
 {} link clipping.txt
 {} min
 {} min ago
+{} minutes after
 {} minutes ago
+{} minutes before
 {} ms, the middle of them
 {} needs full access.
 {} needs signing in again
@@ -4081,6 +4200,7 @@ your own picture
 {} · easing background work
 {} · limiting sustained power
 {} · set up {}{}
+{} · {}
 {} · {} · call quality while the microphone is used
 {} · {} · music quality
 {} — {} ({}% of this folder){}{}
@@ -4103,6 +4223,7 @@ your own picture
 {}, no limit
 {}, on set days
 {}, until {}
+{}, {}
 {}, {} new to the backup, {} sent so far.
 {}, {} shown in this Terminal.
 {}, {}% of its life used
@@ -4194,9 +4315,11 @@ your own picture
 “{}” isn’t a day I can read for when it ends: try Nov 20, 2026-11-20 or Friday.
 “{}” isn’t a day I can read for when it starts: try Nov 20, 2026-11-20 or Friday.
 “{}” isn’t a day I can read for when it stops repeating: leave it empty to go on for good.
+“{}” isn’t a day I can read: try tomorrow, Friday, Nov 21 or 2026-11-21.
 “{}” isn’t a setting.
 “{}” isn’t a time I can read for when it ends: try 14:30 or 2:30 PM.
 “{}” isn’t a time I can read for when it starts: try 14:30 or 2:30 PM.
+“{}” isn’t a time I can read: try 14:30 or 2:30 PM.
 “{}” isn’t an address I can invite: write each as name@example.org, with commas between.
 “{}” isn’t in reach. Is it nearby, unlocked, with Bluetooth on?
 “{}” repeats. Delete only this one, or every one of them?

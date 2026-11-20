@@ -48,3 +48,16 @@ def _():
         for c in range(2):
             out.append(R(13 + c * 20, 30 + r * 13, 18, 10, 2, BLUE if (r, c) == (1, 1) else G300, "upto24"))
     return out
+@icon("todo", "To-Do")
+def _():
+    # A clipboard seen straight on: its sheet, its clip, a list ticked off (two rows at small sizes, three from 32).
+    out = [R(9, 9, 46, 51, 7, AMBER), R(14, 15, 36, 40, 3, PAPER, extra=RIMMED), R(22, 4, 20, 12, 4, G600), R(27, 7, 10, 4, 2, G300, "from24")]
+    for r in range(3):
+        y = 25 + r * 9.5
+        out += [R(18, y - 3.5, 7, 7, 2, GREEN if r < 2 else G300, "from32"), L(29, y, 45, y, G400, 3, "from32")]
+    for r in range(2):
+        y = 28 + r * 14
+        out += [R(18, y - 5, 10, 10, 2.5, GREEN if r == 0 else G300, "upto24"), L(32, y, 45, y, G400, 4, "upto24")]
+    return out
+@icon("todo-done", "Done")
+def _(): return disc(GREEN) + [check(32, 33, 13, WHITE, 6.5)]

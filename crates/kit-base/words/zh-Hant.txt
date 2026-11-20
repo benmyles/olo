@@ -193,6 +193,9 @@ other: 另有 {n} 項
 3 hours
 3 小時
 
+3 to-dos
+3 項待辦事項
+
 3. When it blinks again, touch it once more.
 3. 指示燈再次閃爍時，再觸碰一次。
 
@@ -256,6 +259,9 @@ other: 另有 {n} 項
 5 seconds
 5 秒
 
+5 to-dos
+5 項待辦事項
+
 5 years
 5 年
 
@@ -276,6 +282,9 @@ other: 另有 {n} 項
 
 8 events
 8 個行程
+
+8 to-dos
+8 項待辦事項
 
 8 weeks
 8 週
@@ -309,6 +318,9 @@ A backup reads one file at a time, and leaves what it read out of memory: it nev
 
 A battery kept full wears faster: for a computer that's mostly plugged in.
 電池長期滿電會加速老化。此設定適合經常接電使用的電腦。
+
+A board's lanes are the list's sections, one for each stage of the work, and last what's done. Drag to-dos between them.
+看板上的每一欄都是清單中的一個區段，代表工作的不同階段。最後一欄放已完成的待辦事項。拖曳待辦事項即可移到另一欄。
 
 A build of Olo is running: Olo upgrades as soon as it has finished.
 正在建置 Olo，完成後會立即升級。
@@ -454,6 +466,9 @@ A vault needs a name.
 A week
 一週
 
+A week before, at 9 AM
+一週前上午 9 點
+
 AI
 AI
 
@@ -583,6 +598,9 @@ Add Tab to Group
 Add Text
 新增文字
 
+Add To-Do: {}
+新增待辦事項：{}
+
 Add Website
 新增網站
 
@@ -600,6 +618,9 @@ Add a Google Account…
 
 Add a Kind
 新增類型
+
+Add a Section…
+新增區段…
 
 Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
 這個來源的套件和更新會和 Fedora 的一起提供。請只新增您信任的來源，因為維護者可以在這台電腦上安裝任何軟體。
@@ -889,6 +910,9 @@ Any of the {}
 Any storms on the way?
 會有暴風雨嗎？
 
+Any time
+不限時間
+
 Any touch
 任意觸碰
 
@@ -975,6 +999,12 @@ Arrived out of order
 
 As BeOS R5 drew its icons: flat faces in its 8-bit colours, black outlines.
 沿用 BeOS R5 的圖示風格，以 8 位色填充色塊，配上黑色輪廓。
+
+As Board
+以看板顯示
+
+As List
+以清單顯示
 
 As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines.
 沿用 Workbench 的圖示風格，以螢幕的 16 種顏色填充色塊，配上黑色輪廓。
@@ -1072,6 +1102,9 @@ At 15%
 At 20%
 電量降至 20% 時
 
+At a time of its own
+於自訂時間
+
 At full speed
 全速
 
@@ -1087,11 +1120,32 @@ At the Start
 At the start
 開頭
 
+At the time it's due
+到期時
+
 At {}. Give it the code from {}?
 目前在 {0}。要填入來自 {1} 的驗證碼嗎？
 
+Attach
+附加
+
 Attach Files…
 新增附件…
+
+Attach File…
+附加檔案…
+
+Attach Link
+附加連結
+
+Attach Link…
+附加連結…
+
+Attach a file or a link
+附加檔案或連結
+
+Attachments
+附件
 
 Authenticate
 驗證
@@ -1173,6 +1227,12 @@ Back to the Forecast
 
 Back to the Items
 返回項目清單
+
+Back to the List
+返回清單
+
+Back to the To-Dos
+返回待辦事項
 
 Back up this computer
 備份這台電腦
@@ -1353,6 +1413,9 @@ Bluetooth said it would open them and no channel came
 
 Bluetooth…
 Bluetooth…
+
+Board
+看板
 
 Body
 正文
@@ -1737,6 +1800,9 @@ Choose a network to join it.
 
 Choose a setting, then play the original or its sound: switching goes on from the same place.
 選擇設定後可播放原音或處理後的聲音。切換時會從相同位置繼續播放。
+
+Choose a to-do to see its details.
+選取待辦事項即可查看詳細資訊。
 
 Choose a widget to change it, or add one.
 選擇要更改的小工具，也可以新增新的。
@@ -2218,6 +2284,9 @@ Couldn't rename “{}”: {}
 Couldn't restart: {}
 無法重新啟動：{}
 
+Couldn't save the change: {}
+無法儲存變更：{}
+
 Couldn't save the setting: {}
 無法儲存設定：{}
 
@@ -2494,11 +2563,17 @@ Delete Event
 Delete Item
 刪除項目
 
+Delete List
+刪除清單
+
 Delete Mark
 刪除標記
 
 Delete Row
 刪除列
+
+Delete Section
+刪除區段
 
 Delete Signature
 刪除簽名
@@ -2797,6 +2872,9 @@ Documents
 Does “{}” show this number?
 「{}」上顯示的是這個號碼嗎？
 
+Doing
+進行中
+
 Domain:
 網域：
 
@@ -2811,6 +2889,12 @@ Done Editing
 
 Done with the exercises
 完成練習
+
+Done {}
+完成時間：{}
+
+Done: {}
+已完成：{}
 
 Don’t Trust
 不信任
@@ -2880,6 +2964,36 @@ Dropped
 
 Dry for the next {} hours
 未來 {} 小時無降水
+
+Due
+到期
+
+Due Date
+到期日期
+
+Due Day
+到期日
+
+Due Next Week
+下週到期
+
+Due Time
+到期時間
+
+Due Today
+今天到期
+
+Due Tomorrow
+明天到期
+
+Due {}
+{}到期
+
+Due {} · {}
+{}到期 · {}
+
+Due:
+到期：
 
 Duplicate
 複製
@@ -3163,6 +3277,9 @@ Every interface
 Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
 每次按鍵和每一影格畫面都經過視窗伺服器的主迴圈和輸入執行緒。啟用後，它們將獨占速度最快的處理器之一（{}）。建置、瀏覽器及其他程式在其餘處理器上執行，因此不會耽誤輸入和繪製。
 
+Every list's to-dos show here.
+所有清單中的待辦事項都會顯示在這裡。
+
 Every month
 每月
 
@@ -3366,6 +3483,9 @@ Files
 
 Files with these extensions are this kind wherever Olo looks at them, and open in its app. An extension another kind had is this one's now.
 Olo 會根據這些副檔名辨識檔案類型，並用相應應用程式開啟。如果某個副檔名已分配給其他類型，現在將改為此類型。
+
+File…
+檔案…
 
 Fill It In
 填入
@@ -4018,6 +4138,9 @@ How fast it runs now
 How loud this microphone is gets measured as you talk on a call, or with Try It.
 通話時說話或選擇「試一試」，即可測量此麥克風的輸入音量。
 
+How many are due today, and the first of them, the overdue first, each in its list's colour.
+今天到期的事項數，以及其中最先的幾項，已逾期的在前，各用其清單的顏色。
+
 How warm will it get today?
 今天最高能到幾度？
 
@@ -4131,6 +4254,9 @@ In HDR on a display whose HDR is on: its lights shine brighter than the rest.
 
 In Use for Internet Traffic
 用於網際網路流量
+
+In an Hour
+一小時後
 
 In an agent’s tab:
 在代理程式分頁中：
@@ -4852,14 +4978,26 @@ Link:
 Link’s rate
 連線速率
 
+Link…
+連結…
+
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Linux 內建的排程器（EEVDF）公平對待各類程式。無論選擇哪種排程器，其他工作正在等待的 Olo 執行緒都以即時優先順序執行，高於普通程式。建置等重負載下，使用此排程器時桌面回應最快。
+
+List
+清單
 
 List View
 列表顯示
 
+List:
+清單：
+
 Listening
 正在監聽
+
+Lists
+清單
 
 Live
 即時
@@ -5044,6 +5182,9 @@ Made room for newer ones
 Made the vault “{}”.
 已建立保險庫「{}」。
 
+Made {}
+建立時間：{}
+
 Magenta
 品紅
 
@@ -5091,6 +5232,9 @@ Main display: the desktop is here.
 
 Main window:
 主視窗：
+
+Make
+建立
 
 Make Main
 設為主視窗
@@ -5145,6 +5289,12 @@ Mark All as Read
 
 Mark This Moment
 標記此時刻
+
+Mark as Done
+標示為已完成
+
+Mark as Not Done
+標示為未完成
 
 Mark as Read
 標為已讀
@@ -5422,6 +5572,9 @@ Mouse
 Mouse speed
 滑鼠速度
 
+Move
+移動
+
 Move All Windows To
 將所有視窗移至
 
@@ -5445,6 +5598,9 @@ Move Tab to New Window
 
 Move Tab to Window
 將分頁移到其他視窗
+
+Move To
+移至
 
 Move Up
 上移
@@ -5605,6 +5761,12 @@ New Group…
 New Item
 新增項目
 
+New List
+新增清單
+
+New List…
+新增清單…
+
 New Message
 新訊息
 
@@ -5613,6 +5775,15 @@ New Partition Table…
 
 New Screen
 新增螢幕
+
+New Section
+新增區段
+
+New Sections
+新區段
+
+New Section…
+新增區段…
 
 New Signature…
 新增簽名…
@@ -5625,6 +5796,12 @@ New Tab in Group
 
 New Terminal
 新增終端
+
+New To-Do
+新增待辦事項
+
+New To-Do in {}
+在「{}」新增待辦事項
 
 New Vault…
 新增保險庫…
@@ -5725,6 +5902,9 @@ No
 No Agent Screens
 沒有代理螢幕
 
+No Due Date
+無到期日
+
 No Group
 無群組
 
@@ -5749,6 +5929,12 @@ No Receivers Paired
 No Saved Groups
 沒有已儲存的群組
 
+No Section
+無區段
+
+No To-Do Chosen
+未選取待辦事項
+
 No VPNs. Import a WireGuard configuration, or add one with its maker's app.
 沒有 VPN。請匯入 WireGuard 設定，或使用提供方的應用程式新增 VPN。
 
@@ -5763,6 +5949,9 @@ No app opens these yet: add one.
 
 No apps open this.
 沒有應用程式可開啟此項。
+
+No attachments
+沒有附件
 
 No backup has finished yet
 尚無已完成的備份
@@ -5793,6 +5982,9 @@ No conversations open.
 
 No disks.
 沒有磁碟。
+
+No due date
+無到期日
 
 No entries.
 沒有項目。
@@ -5856,6 +6048,9 @@ No screen recordings yet. Record one with ⌘⇧6.
 
 No space around an auto-tiled window alone
 只有一個自動平鋪視窗時不留邊距
+
+No to-dos
+沒有待辦事項
 
 No touches in the last minute
 過去一分鐘沒有觸碰
@@ -5944,11 +6139,17 @@ Norwegian
 Not Answered
 未應答
 
+Not Done
+未完成
+
 Not Signed In
 未登入
 
 Not a compile
 非編譯工作
+
+Not a due: keep the words in its title
+不設為到期日，將這些文字保留在標題中
 
 Not a number
 不是數字
@@ -6106,6 +6307,12 @@ Nothing changed: Olo's own model is still in use.
 Nothing coming up
 目前沒有即將開始的行程
 
+Nothing done yet
+還沒有已完成的事項
+
+Nothing due today
+今天沒有到期的事項
+
 Nothing found
 找不到
 
@@ -6135,6 +6342,12 @@ Nothing recorded yet. Press Record and talk for a few seconds.
 
 Nothing to calculate
 沒有可計算的內容
+
+Nothing to do
+沒有待辦事項
+
+Nothing to do here
+這裡沒有待辦事項
 
 Nothing to do.
 不必操作。
@@ -6339,6 +6552,9 @@ On disk
 
 On hold
 等待
+
+On the day, at 9 AM
+當天上午 9 點
 
 On the network
 網路上
@@ -6577,6 +6793,9 @@ Out of memory:
 Output
 輸出
 
+Overdue
+已逾期
+
 Overview
 概覽
 
@@ -6808,11 +7027,17 @@ Passwords’ password is used now: try again.
 Paste
 貼上
 
+Paste as Attachment
+貼上為附件
+
 Paste the key
 貼上金鑰
 
 Paste the key first.
 請先貼上金鑰。
+
+Pasted Picture
+貼上的圖片
 
 Pasted Picture.{}
 貼上的圖片。{}
@@ -6864,6 +7089,12 @@ Phone Settings…
 
 Phone number:
 電話號碼：
+
+Pick a day
+選擇日期
+
+Pick from a Month
+從行事曆選擇
 
 Picture
 圖片
@@ -7432,6 +7663,12 @@ Regenerate
 Reinstall Selected…
 重新安裝所選項目…
 
+Remind:
+提醒：
+
+Reminder
+提醒
+
 Reminder:
 提醒：
 
@@ -7483,6 +7720,9 @@ Remove the VPN “{}”? Its settings and keys go with it.
 Remove the {}? It will no longer unlock anything.
 移除{}嗎？此後將無法再用它解鎖。
 
+Remove {}
+移除「{}」
+
 Remove {} from the Collector
 從收集器中移除{}
 
@@ -7498,8 +7738,17 @@ Rename
 Rename Group…
 重新命名群組…
 
+Rename List
+重新命名清單
+
+Rename List…
+重新命名清單…
+
 Rename Place…
 重新命名地點…
+
+Rename Section
+重新命名區段
 
 Rename Worktree…
 重新命名工作樹…
@@ -7942,6 +8191,9 @@ Secondary click (three: middle)
 Section
 節
 
+Section:
+區段：
+
 Secure Note
 安全備注
 
@@ -8209,11 +8461,17 @@ Show Clicks
 Show Deskbar
 顯示 Deskbar
 
+Show Details
+顯示詳細資訊
+
 Show DiskBackup in Deskbar
 在 Deskbar 中顯示 DiskBackup
 
 Show Display
 投放螢幕畫面
+
+Show Done
+顯示已完成事項
 
 Show File in Tracker
 在 Tracker 中顯示檔案
@@ -8241,6 +8499,9 @@ Show Ruler
 
 Show Shortcuts
 顯示快速鍵
+
+Show Sidebar
+顯示側邊欄
 
 Show Source
 顯示源
@@ -8556,6 +8817,9 @@ Start this step over
 
 Start typing
 開始輸入
+
+Start with To Do and Doing
+從「待處理」和「進行中」開始
 
 Started
 開始於
@@ -9069,6 +9333,9 @@ The coming days, each its sky, low and high.
 
 The computer couldn't be restarted: {}
 無法重新啟動電腦：{}
+
+The day before, at 9 AM
+前一天上午 9 點
 
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
 當天的命中率、池中已用插槽，以及最近幾小時的建置與命中次數。
@@ -9643,6 +9910,9 @@ Title only
 Title:
 標題：
 
+To Do
+待處理
+
 To allow it, you can also {}.
 也可以透過{}來授權。
 
@@ -9651,6 +9921,30 @@ To {}
 
 To {}.
 目標：{}。
+
+To-Do
+待辦事項
+
+To-Do: Today
+待辦事項：今天
+
+To-Do: Upcoming
+待辦事項：即將到期
+
+To-Do: nothing due after today.
+待辦事項：今天之後沒有到期的事項。
+
+To-Do: nothing due today.
+待辦事項：今天沒有到期的事項。
+
+To-Do: {}: {}.
+待辦事項：{}：{}。
+
+To-dos due after today show here, by day.
+今天之後到期的事項會依日期顯示在這裡。
+
+To-dos:
+待辦事項：
 
 To:
 到：
@@ -9886,6 +10180,9 @@ Type
 Type a time like 13:05 or 1:05 PM.
 請輸入 13:05 或 1:05 PM 這樣的時間。
 
+Type a to-do above, and press Return.
+在上方輸入待辦事項，再按 Return 鍵。
+
 Type here to try the settings
 在這裡輸入以試用設定
 
@@ -10047,6 +10344,9 @@ Up (sent)
 
 Up for
 運作時間
+
+Upcoming
+即將到期
 
 Update
 更新
@@ -10372,6 +10672,9 @@ Warmer
 Warmth
 暖色程度
 
+Was due {} · {}
+原訂{}到期 · {}
+
 Watch Agent Screens
 查看代理螢幕
 
@@ -10459,11 +10762,23 @@ What should I wear tomorrow?
 What you change applies when you leave Rescue.
 所做更改在離開救援模式時生效。
 
+What's checked off shows here, the newest first.
+已完成的事項會顯示在這裡，最近完成的排在最前面。
+
+What's due after today, the soonest first, each by its day.
+今天之後到期的事項，最近的在前，各依其日期。
+
+What's due today, and anything overdue, shows here.
+今天到期和已逾期的事項會顯示在這裡。
+
 What's made for sRGB (nearly everything) looks as it was made; wider colours are for what has them.
 sRGB 內容（絕大多數內容）按原本的色彩顯示，僅廣色域內容會使用更寬的色域。
 
 What's next (or on now): when, what and where, and what comes after it.
 目前或下一個行程的時間、內容和地點，以及緊隨其後的安排。
+
+What's on the Clipboard
+剪貼簿內容
 
 What's still to come today, in order, each in its calendar's colour; then the days after.
 按時間順序顯示今天余下的行程，再顯示之後幾天的安排；各項使用所屬行事曆的顏色。
@@ -10975,6 +11290,9 @@ other: 降級 {n} 個套件
 driving {}
 驅動{}
 
+due {}
+{}到期
+
 ending one gives its slots back to the pool
 結束一個測試會將其插槽歸還到池中
 
@@ -11067,6 +11385,9 @@ other: {n} 天後
 
 in {n} minutes
 other: {n} 分鐘後
+
+in {}
+在「{}」中
 
 install {n} packages
 other: 安裝 {n} 個套件
@@ -11317,6 +11638,9 @@ organizer
 out of the archive
 從封存中取出
 
+overdue, {}
+已逾期，{}
+
 part of the screen
 螢幕的一部分
 
@@ -11503,11 +11827,17 @@ this site
 tidying
 正在清理
 
+today
+今天
+
 today at {}
 今天 {}
 
 today or tomorrow
 今天或明天
+
+tomorrow
+明天
 
 tomorrow at {}
 明天 {}
@@ -11572,6 +11902,9 @@ where the scheduler puts it
 with the {n} files changed in it and not committed
 other: 包含 {n} 個已修改但未提交的檔案
 
+yesterday
+昨天
+
 yesterday at {}
 昨天 {}
 
@@ -11608,11 +11941,17 @@ other: {n} 份備份
 {n} backups chosen.
 other: 已選擇 {n} 份備份。
 
+{n} coming up
+other: {n} 項即將到期
+
 {n} days
 other: {n} 天
 
 {n} days ago
 other: {n} 天前
+
+{n} due today
+other: {n} 項今天到期
 
 {n} events
 other: {n} 個行程
@@ -11662,6 +12001,9 @@ other: {n} 則新通知
 {n} of Fedora {} updates are waiting: install them first, in Updates.
 other: Fedora {} 有 {n} 項待安裝的更新，請先在「更新」中安裝。
 
+{n} overdue
+other: {n} 項已逾期
+
 {n} packs as sent, by their checksums
 other: {n} 個資料封包的總和檢查碼與傳送時一致
 
@@ -11704,6 +12046,12 @@ other: {n} 次
 {n} to come
 other: 即將開始 {n} 項
 
+{n} to do
+other: {n} 項待辦
+
+{n} to-dos
+other: {n} 項待辦事項
+
 {n} waiting in their apps
 other: 有 {n} 項等待在應用程式中處理
 
@@ -11745,6 +12093,9 @@ other: {n} 週
 
 {} ({} to {})
 {}（{} 至 {}）
+
+{} ({})
+{}（{}）
 
 {} A workspace starts with this; choose its own from Deskbar's tray.
 {} 新工作區會採用這個配置。您可以在 Deskbar 系統匣為各個工作區選擇不同配置。
@@ -12019,7 +12370,13 @@ other: {n} 週
 {} min ago
 {} 分鐘前
 
+{} minutes after
+{} 分鐘後
+
 {} minutes ago
+{} 分鐘前
+
+{} minutes before
 {} 分鐘前
 
 {} ms, the middle of them
@@ -12250,6 +12607,9 @@ Olo 的 {1} 條文案中，已有 {0} 條譯為{2}，其餘仍以英語顯示。
 {} · set up {}{}
 {} · 已設定 {}{}
 
+{} · {}
+{} · {}
+
 {} · {} · call quality while the microphone is used
 {} · {} · 使用麥克風時為通話音質
 
@@ -12315,6 +12675,9 @@ Olo 的 {1} 條文案中，已有 {0} 條譯為{2}，其餘仍以英語顯示。
 
 {}, until {}
 {}，直至 {}
+
+{}, {}
+{} {}
 
 {}, {} new to the backup, {} sent so far.
 {}，本次備份新增 {}，目前已傳送 {}。
@@ -12589,6 +12952,9 @@ other: 「{}」和另外 {n} 個程式仍在此視窗中執行。仍要關閉嗎
 “{}” isn’t a day I can read for when it stops repeating: leave it empty to go on for good.
 無法辨識重復結束日期「{}」。如需一直重復，請留空。
 
+“{}” isn’t a day I can read: try tomorrow, Friday, Nov 21 or 2026-11-21.
+無法辨識日期「{}」。請試試 2026-11-21、tomorrow、Friday 或 Nov 21。
+
 “{}” isn’t a setting.
 「{}」不是有效的設定。
 
@@ -12597,6 +12963,9 @@ other: 「{}」和另外 {n} 個程式仍在此視窗中執行。仍要關閉嗎
 
 “{}” isn’t a time I can read for when it starts: try 14:30 or 2:30 PM.
 無法辨識開始時間「{}」。請嘗試 14:30 或 2:30 PM。
+
+“{}” isn’t a time I can read: try 14:30 or 2:30 PM.
+無法辨識時間「{}」。請試試 14:30 或 2:30 PM。
 
 “{}” isn’t an address I can invite: write each as name@example.org, with commas between.
 無法把邀請寄給「{}」。請輸入 name@example.org 格式的電子郵件地址，並以逗號分隔。

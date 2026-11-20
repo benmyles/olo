@@ -199,6 +199,9 @@ other: Ещё {n}
 3 hours
 3 часа
 
+3 to-dos
+3 задачи
+
 3. When it blinks again, touch it once more.
 3. Когда индикатор снова замигает, коснитесь ключа ещё раз.
 
@@ -262,6 +265,9 @@ other: Ещё {n}
 5 seconds
 5 секунд
 
+5 to-dos
+5 задач
+
 5 years
 5 лет
 
@@ -282,6 +288,9 @@ other: Ещё {n}
 
 8 events
 8 событий
+
+8 to-dos
+8 задач
 
 8 weeks
 8 недель
@@ -315,6 +324,9 @@ A backup reads one file at a time, and leaves what it read out of memory: it nev
 
 A battery kept full wears faster: for a computer that's mostly plugged in.
 Постоянная полная зарядка ускоряет износ батареи. Эта настройка пригодится, если компьютер обычно работает от сети.
+
+A board's lanes are the list's sections, one for each stage of the work, and last what's done. Drag to-dos between them.
+Каждый раздел списка — это колонка на доске для одного этапа работы. В последнюю колонку попадают выполненные задачи. Перетаскивайте задачи между колонками.
 
 A build of Olo is running: Olo upgrades as soon as it has finished.
 Идёт сборка Olo. Обновление начнётся, как только она завершится.
@@ -460,6 +472,9 @@ A vault needs a name.
 A week
 Неделя
 
+A week before, at 9 AM
+За неделю, в 9:00
+
 AI
 ИИ
 
@@ -589,6 +604,9 @@ Add Tab to Group
 Add Text
 Добавить текст
 
+Add To-Do: {}
+Добавить задачу: {}
+
 Add Website
 Добавить сайт
 
@@ -606,6 +624,9 @@ Add a Google Account…
 
 Add a Kind
 Добавить тип
+
+Add a Section…
+Добавить раздел…
 
 Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
 Пакеты и обновления из нового репозитория будут доступны вместе с пакетами Fedora. Добавляйте только доверенные репозитории: их владельцы могут установить на этот компьютер что угодно.
@@ -904,6 +925,9 @@ Any of the {}
 Any storms on the way?
 Ожидается ли гроза?
 
+Any time
+В любое время
+
 Any touch
 Любое касание
 
@@ -993,6 +1017,12 @@ Arrived out of order
 
 As BeOS R5 drew its icons: flat faces in its 8-bit colours, black outlines.
 Как у значков BeOS R5: плоские заливки в 8-битной палитре и чёрные контуры.
+
+As Board
+В виде доски
+
+As List
+В виде списка
 
 As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines.
 Как у значков Workbench: плоские заливки в 16 цветах экрана и чёрные контуры.
@@ -1090,6 +1120,9 @@ At 15%
 At 20%
 При 20%
 
+At a time of its own
+В указанное время
+
 At full speed
 На полной скорости
 
@@ -1105,11 +1138,32 @@ At the Start
 At the start
 В начале
 
+At the time it's due
+В назначенный срок
+
 At {}. Give it the code from {}?
 Сайт: {0}. Передать ему код от {1}?
 
+Attach
+Прикрепить
+
 Attach Files…
 Прикрепить файлы…
+
+Attach File…
+Прикрепить файл…
+
+Attach Link
+Прикрепить ссылку
+
+Attach Link…
+Прикрепить ссылку…
+
+Attach a file or a link
+Прикрепить файл или ссылку
+
+Attachments
+Вложения
 
 Authenticate
 Подтвердить личность
@@ -1191,6 +1245,12 @@ Back to the Forecast
 
 Back to the Items
 К списку элементов
+
+Back to the List
+Назад к списку
+
+Back to the To-Dos
+Назад к задачам
 
 Back up this computer
 Резервная копия компьютера
@@ -1374,6 +1434,9 @@ Bluetooth подтвердил открытие, но канал связи та
 
 Bluetooth…
 Bluetooth…
+
+Board
+Доска
 
 Body
 Основной текст
@@ -1764,6 +1827,9 @@ Choose a network to join it.
 
 Choose a setting, then play the original or its sound: switching goes on from the same place.
 Выберите настройку и послушайте исходный или обработанный звук. При переключении воспроизведение продолжится с того же места.
+
+Choose a to-do to see its details.
+Выберите задачу, чтобы посмотреть подробности.
 
 Choose a widget to change it, or add one.
 Выберите виджет для настройки или добавьте новый.
@@ -2248,6 +2314,9 @@ Couldn't rename “{}”: {}
 Couldn't restart: {}
 Не удалось перезапустить: {}
 
+Couldn't save the change: {}
+Не удалось сохранить изменение: {}
+
 Couldn't save the setting: {}
 Не удалось сохранить настройку: {}
 
@@ -2524,11 +2593,17 @@ Delete Event
 Delete Item
 Удалить запись
 
+Delete List
+Удалить список
+
 Delete Mark
 Удалить метку
 
 Delete Row
 Удалить строку
+
+Delete Section
+Удалить раздел
 
 Delete Signature
 Удалить подпись
@@ -2830,6 +2905,9 @@ Documents
 Does “{}” show this number?
 На устройстве «{}» показано это число?
 
+Doing
+В работе
+
 Domain:
 Домен:
 
@@ -2844,6 +2922,12 @@ Done Editing
 
 Done with the exercises
 Завершить упражнения
+
+Done {}
+Выполнена: {}
+
+Done: {}
+Выполнено: {}
 
 Don’t Trust
 Не доверять
@@ -2913,6 +2997,36 @@ Dropped
 
 Dry for the next {} hours
 Без осадков ещё около {} ч
+
+Due
+Срок
+
+Due Date
+Дата выполнения
+
+Due Day
+День выполнения
+
+Due Next Week
+На следующую неделю
+
+Due Time
+Время выполнения
+
+Due Today
+На сегодня
+
+Due Tomorrow
+На завтра
+
+Due {}
+Срок: {}
+
+Due {} · {}
+Срок: {} · {}
+
+Due:
+Срок:
 
 Duplicate
 Дублировать
@@ -3196,6 +3310,9 @@ Every interface
 Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
 Каждое нажатие клавиши и каждый кадр проходят через цикл оконного сервера и его поток ввода. Если включить эту настройку, им будет выделен один из самых быстрых процессоров — {}. Сборки, браузеры и прочие программы будут работать на остальных и не задержат ввод и вывод.
 
+Every list's to-dos show here.
+Здесь собраны задачи из всех списков.
+
 Every month
 Каждый месяц
 
@@ -3411,6 +3528,9 @@ Files
 
 Files with these extensions are this kind wherever Olo looks at them, and open in its app. An extension another kind had is this one's now.
 Olo распознаёт файлы с этими расширениями как файлы этого типа и открывает их в выбранном приложении. Если расширение уже было назначено другому типу, оно перейдёт к этому.
+
+File…
+Файл…
 
 Fill It In
 Заполнить
@@ -4063,6 +4183,9 @@ How fast it runs now
 How loud this microphone is gets measured as you talk on a call, or with Try It.
 Уровень измеряется во время звонка или проверки.
 
+How many are due today, and the first of them, the overdue first, each in its list's colour.
+Сколько задач на сегодня и первые из них, сначала просроченные, каждая цветом своего списка.
+
 How warm will it get today?
 Как тепло будет сегодня?
 
@@ -4176,6 +4299,9 @@ In HDR on a display whose HDR is on: its lights shine brighter than the rest.
 
 In Use for Internet Traffic
 Используется для интернета
+
+In an Hour
+Через час
 
 In an agent’s tab:
 На вкладке агента:
@@ -4912,14 +5038,26 @@ Link:
 Link’s rate
 Скорость соединения
 
+Link…
+Ссылка…
+
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Штатный планировщик Linux (EEVDF) справедливо распределяет время между всеми программами. В обоих планировщиках потоки Olo, от которых зависит отклик, работают с приоритетом реального времени. Под нагрузкой, например во время сборки, рабочий стол быстрее всего реагирует со штатным планировщиком.
+
+List
+Список
 
 List View
 Вид списком
 
+List:
+Список:
+
 Listening
 Прослушивание
+
+Lists
+Списки
 
 Live
 В реальном времени
@@ -5104,6 +5242,9 @@ Made room for newer ones
 Made the vault “{}”.
 Сейф «{}» создан.
 
+Made {}
+Создана: {}
+
 Magenta
 Пурпурный
 
@@ -5151,6 +5292,9 @@ Main display: the desktop is here.
 
 Main window:
 Главное окно:
+
+Make
+Создать
 
 Make Main
 Сделать главным
@@ -5205,6 +5349,12 @@ Mark All as Read
 
 Mark This Moment
 Отметить этот момент
+
+Mark as Done
+Отметить как выполненную
+
+Mark as Not Done
+Отметить как невыполненную
 
 Mark as Read
 Отметить как прочитанное
@@ -5482,6 +5632,9 @@ Mouse
 Mouse speed
 Скорость мыши
 
+Move
+Переместить
+
 Move All Windows To
 Переместить все окна в
 
@@ -5505,6 +5658,9 @@ Move Tab to New Window
 
 Move Tab to Window
 Перенести вкладку в окно
+
+Move To
+Переместить в
 
 Move Up
 Поднять
@@ -5665,6 +5821,12 @@ New Group…
 New Item
 Новая запись
 
+New List
+Новый список
+
+New List…
+Новый список…
+
 New Message
 Новое сообщение
 
@@ -5673,6 +5835,15 @@ New Partition Table…
 
 New Screen
 Новый экран
+
+New Section
+Новый раздел
+
+New Sections
+Новые разделы
+
+New Section…
+Новый раздел…
 
 New Signature…
 Новая подпись…
@@ -5685,6 +5856,12 @@ New Tab in Group
 
 New Terminal
 Новый терминал
+
+New To-Do
+Новая задача
+
+New To-Do in {}
+Новая задача в разделе «{}»
 
 New Vault…
 Новый сейф…
@@ -5785,6 +5962,9 @@ No
 No Agent Screens
 Нет экранов агентов
 
+No Due Date
+Без срока
+
 No Group
 Без группы
 
@@ -5809,6 +5989,12 @@ No Receivers Paired
 No Saved Groups
 Нет сохранённых групп
 
+No Section
+Без раздела
+
+No To-Do Chosen
+Задача не выбрана
+
 No VPNs. Import a WireGuard configuration, or add one with its maker's app.
 Нет VPN. Импортируйте конфигурацию WireGuard или добавьте VPN через приложение поставщика.
 
@@ -5823,6 +6009,9 @@ No app opens these yet: add one.
 
 No apps open this.
 Нет приложения для этого файла.
+
+No attachments
+Нет вложений
 
 No backup has finished yet
 Нет завершённых копий
@@ -5853,6 +6042,9 @@ No conversations open.
 
 No disks.
 Дисков нет.
+
+No due date
+Без срока
 
 No entries.
 Записей нет.
@@ -5916,6 +6108,9 @@ No screen recordings yet. Record one with ⌘⇧6.
 
 No space around an auto-tiled window alone
 Без отступов, если в мозаике одно окно
+
+No to-dos
+Нет задач
 
 No touches in the last minute
 За последнюю минуту касаний не было
@@ -6004,11 +6199,17 @@ Norwegian
 Not Answered
 Без ответа
 
+Not Done
+Не выполнено
+
 Not Signed In
 Вход не выполнен
 
 Not a compile
 Не компиляция
+
+Not a due: keep the words in its title
+Это не срок: оставить слова в названии
 
 Not a number
 Не число
@@ -6166,6 +6367,12 @@ Nothing changed: Olo's own model is still in use.
 Nothing coming up
 Предстоящих событий нет
 
+Nothing done yet
+Пока нет выполненных задач
+
+Nothing due today
+На сегодня задач нет
+
 Nothing found
 Ничего не найдено
 
@@ -6195,6 +6402,12 @@ Nothing recorded yet. Press Record and talk for a few seconds.
 
 Nothing to calculate
 Нечего вычислять
+
+Nothing to do
+Нет открытых задач
+
+Nothing to do here
+Здесь нет открытых задач
 
 Nothing to do.
 Всё готово.
@@ -6399,6 +6612,9 @@ On disk
 
 On hold
 Ожидание
+
+On the day, at 9 AM
+В день выполнения, в 9:00
 
 On the network
 В сети
@@ -6637,6 +6853,9 @@ Out of memory:
 Output
 Вывод
 
+Overdue
+Просрочено
+
 Overview
 Обзор
 
@@ -6868,11 +7087,17 @@ Passwords’ password is used now: try again.
 Paste
 Вставить
 
+Paste as Attachment
+Вставить как вложение
+
 Paste the key
 Вставить ключ
 
 Paste the key first.
 Сначала вставьте ключ.
+
+Pasted Picture
+Вставленное изображение
 
 Pasted Picture.{}
 Вставленное изображение.{}
@@ -6930,6 +7155,12 @@ Phone Settings…
 
 Phone number:
 Номер телефона:
+
+Pick a day
+Выбрать день
+
+Pick from a Month
+Выбрать в календаре
 
 Picture
 Изображение
@@ -7498,6 +7729,12 @@ Regenerate
 Reinstall Selected…
 Переустановить выбранное…
 
+Remind:
+Напомнить:
+
+Reminder
+Напоминание
+
 Reminder:
 Напоминание:
 
@@ -7549,6 +7786,9 @@ Remove the VPN “{}”? Its settings and keys go with it.
 Remove the {}? It will no longer unlock anything.
 Удалить {}? После этого такой способ разблокировки больше не будет доступен.
 
+Remove {}
+Убрать «{}»
+
 Remove {} from the Collector
 Убрать {} из подборки
 
@@ -7564,8 +7804,17 @@ Rename
 Rename Group…
 Переименовать группу…
 
+Rename List
+Переименовать список
+
+Rename List…
+Переименовать список…
+
 Rename Place…
 Переименовать место…
+
+Rename Section
+Переименовать раздел
 
 Rename Worktree…
 Переименовать рабочее дерево…
@@ -8008,6 +8257,9 @@ Secondary click (three: middle)
 Section
 Раздел
 
+Section:
+Раздел:
+
 Secure Note
 Защищённая заметка
 
@@ -8278,11 +8530,17 @@ Show Clicks
 Show Deskbar
 Показать Deskbar
 
+Show Details
+Показать подробности
+
 Show DiskBackup in Deskbar
 Показывать DiskBackup в Deskbar
 
 Show Display
 Показать экран
+
+Show Done
+Показать выполненные
 
 Show File in Tracker
 Показать файл в Tracker
@@ -8310,6 +8568,9 @@ Show Ruler
 
 Show Shortcuts
 Показать сочетания клавиш
+
+Show Sidebar
+Показать боковую панель
 
 Show Source
 Показать источник
@@ -8625,6 +8886,9 @@ Start this step over
 
 Start typing
 Начните ввод
+
+Start with To Do and Doing
+Начать с разделов «К выполнению» и «В работе»
 
 Started
 Запущено
@@ -9144,6 +9408,9 @@ The coming days, each its sky, low and high.
 
 The computer couldn't be restarted: {}
 Не удалось перезапустить компьютер: {}
+
+The day before, at 9 AM
+Накануне, в 9:00
 
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
 Доля попаданий за день, занятые слоты пула, сборки и попадания за последние часы.
@@ -9718,6 +9985,9 @@ Title only
 Title:
 Заголовок:
 
+To Do
+К выполнению
+
 To allow it, you can also {}.
 Также можно разрешить доступ так: {}.
 
@@ -9726,6 +9996,30 @@ To {}
 
 To {}.
 В {}.
+
+To-Do
+Задачи
+
+To-Do: Today
+Задачи: Сегодня
+
+To-Do: Upcoming
+Задачи: Предстоящие
+
+To-Do: nothing due after today.
+Задачи: после сегодняшнего дня сроков нет.
+
+To-Do: nothing due today.
+Задачи: на сегодня задач нет.
+
+To-Do: {}: {}.
+Задачи: {} — {}.
+
+To-dos due after today show here, by day.
+Здесь задачи со сроком после сегодняшнего дня сгруппированы по датам.
+
+To-dos:
+Задачи:
 
 To:
 До:
@@ -9961,6 +10255,9 @@ Type
 Type a time like 13:05 or 1:05 PM.
 Введите время в формате 13:05 или 1:05 PM.
 
+Type a to-do above, and press Return.
+Введите задачу вверху и нажмите Enter.
+
 Type here to try the settings
 Введите текст, чтобы проверить настройки
 
@@ -10122,6 +10419,9 @@ Up (sent)
 
 Up for
 Время работы
+
+Upcoming
+Предстоящие
 
 Update
 Обновить
@@ -10447,6 +10747,9 @@ Warmer
 Warmth
 Теплота
 
+Was due {} · {}
+Срок истёк: {} · {}
+
 Watch Agent Screens
 Посмотреть экраны агентов
 
@@ -10534,11 +10837,23 @@ What should I wear tomorrow?
 What you change applies when you leave Rescue.
 Изменения применятся при выходе из режима восстановления.
 
+What's checked off shows here, the newest first.
+Здесь показаны выполненные задачи, начиная с последних.
+
+What's due after today, the soonest first, each by its day.
+Задачи со сроком после сегодняшнего дня, сначала ближайшие, каждая со своим днём.
+
+What's due today, and anything overdue, shows here.
+Здесь показаны задачи на сегодня и все просроченные.
+
 What's made for sRGB (nearly everything) looks as it was made; wider colours are for what has them.
 Содержимое в sRGB (почти всё) выглядит так, как задумано. Более широкая палитра используется для материалов с расширенным цветовым охватом.
 
 What's next (or on now): when, what and where, and what comes after it.
 Текущее или ближайшее событие: время, название и место, а также что будет после него.
+
+What's on the Clipboard
+Содержимое буфера обмена
 
 What's still to come today, in order, each in its calendar's colour; then the days after.
 Оставшиеся события дня по порядку, каждое в цвете календаря. Затем — события следующих дней.
@@ -11056,6 +11371,9 @@ other: понизить версию {n} пакетов
 driving {}
 обслуживает {}
 
+due {}
+срок: {}
+
 ending one gives its slots back to the pool
 при завершении теста его слоты вернутся в пул
 
@@ -11157,6 +11475,9 @@ one: через {n} минуту
 few: через {n} минуты
 many: через {n} минут
 other: через {n} минуты
+
+in {}
+в разделе «{}»
 
 install {n} packages
 one: установить {n} пакет
@@ -11425,6 +11746,9 @@ organizer
 out of the archive
 из архива
 
+overdue, {}
+просрочена, {}
+
 part of the screen
 часть экрана
 
@@ -11629,11 +11953,17 @@ this site
 tidying
 очистка
 
+today
+сегодня
+
 today at {}
 сегодня в {}
 
 today or tomorrow
 сегодня или завтра
+
+tomorrow
+завтра
 
 tomorrow at {}
 завтра в {}
@@ -11704,6 +12034,9 @@ few: изменения в файлах ещё не зафиксированы (
 many: изменения в файлах ещё не зафиксированы ({n})
 other: изменения в файлах ещё не зафиксированы ({n})
 
+yesterday
+вчера
+
 yesterday at {}
 вчера в {}
 
@@ -11761,6 +12094,12 @@ few: Выбрано резервных копий: {n}.
 many: Выбрано резервных копий: {n}.
 other: Выбрано резервных копий: {n}.
 
+{n} coming up
+one: {n} предстоящая задача
+few: {n} предстоящие задачи
+many: {n} предстоящих задач
+other: Предстоящих задач: {n}
+
 {n} days
 one: {n} день
 few: {n} дня
@@ -11772,6 +12111,12 @@ one: {n} день назад
 few: {n} дня назад
 many: {n} дней назад
 other: {n} дня назад
+
+{n} due today
+one: {n} задача на сегодня
+few: {n} задачи на сегодня
+many: {n} задач на сегодня
+other: Задач на сегодня: {n}
 
 {n} events
 one: {n} событие
@@ -11869,6 +12214,12 @@ few: Ожидают установки обновления Fedora {} ({n}). С�
 many: Ожидают установки обновления Fedora {} ({n}). Сначала установите их в «Обновлениях».
 other: Ожидают установки обновления Fedora {} ({n}). Сначала установите их в «Обновлениях».
 
+{n} overdue
+one: {n} просроченная задача
+few: {n} просроченные задачи
+many: {n} просроченных задач
+other: Просроченных задач: {n}
+
 {n} packs as sent, by their checksums
 one: Контрольные суммы совпали у {n} отправленного пакета
 few: Контрольные суммы совпали у {n} отправленных пакетов
@@ -11953,6 +12304,18 @@ few: Ещё предстоит: {n}
 many: Ещё предстоит: {n}
 other: Ещё предстоит: {n}
 
+{n} to do
+one: {n} открытая задача
+few: {n} открытые задачи
+many: {n} открытых задач
+other: Открытых задач: {n}
+
+{n} to-dos
+one: {n} задача
+few: {n} задачи
+many: {n} задач
+other: {n} задачи
+
 {n} waiting in their apps
 one: Ожидают в приложениях: {n}
 few: Ожидают в приложениях: {n}
@@ -12000,6 +12363,9 @@ other: {n} недели
 
 {} ({} to {})
 {} (от {} до {})
+
+{} ({})
+{} ({})
 
 {} A workspace starts with this; choose its own from Deskbar's tray.
 {} Это начальная раскладка. Свою для каждого пространства можно выбрать в лотке Deskbar.
@@ -12274,8 +12640,14 @@ other: {n} недели
 {} min ago
 {} мин назад
 
+{} minutes after
+Через {} мин
+
 {} minutes ago
 {} мин назад
+
+{} minutes before
+За {} мин
 
 {} ms, the middle of them
 Медиана: {} мс
@@ -12505,6 +12877,9 @@ other: {n} недели
 {} · set up {}{}
 {} · настроено {}{}
 
+{} · {}
+{} · {}
+
 {} · {} · call quality while the microphone is used
 {} · {} · при работе микрофона — качество связи
 
@@ -12570,6 +12945,9 @@ other: {n} недели
 
 {}, until {}
 {}, до {}
+
+{}, {}
+{}, {}
 
 {}, {} new to the backup, {} sent so far.
 {}, новых данных для копии: {}, уже отправлено: {}.
@@ -12850,6 +13228,9 @@ StyledEdit не может прочитать изображение «{}».
 “{}” isn’t a day I can read for when it stops repeating: leave it empty to go on for good.
 Не удалось распознать дату последнего повтора «{}». Оставьте поле пустым для бессрочного повтора.
 
+“{}” isn’t a day I can read: try tomorrow, Friday, Nov 21 or 2026-11-21.
+Не удалось распознать дату «{}». Попробуйте 2026-11-21, tomorrow, Friday или Nov 21.
+
 “{}” isn’t a setting.
 Неизвестная настройка «{}».
 
@@ -12858,6 +13239,9 @@ StyledEdit не может прочитать изображение «{}».
 
 “{}” isn’t a time I can read for when it starts: try 14:30 or 2:30 PM.
 Не удалось распознать время начала «{}». Попробуйте 14:30 или 2:30 PM.
+
+“{}” isn’t a time I can read: try 14:30 or 2:30 PM.
+Не удалось распознать время «{}». Попробуйте 14:30 или 2:30 PM.
 
 “{}” isn’t an address I can invite: write each as name@example.org, with commas between.
 Не удалось распознать адрес «{}». Введите адреса через запятую в формате name@example.org.

@@ -341,25 +341,26 @@ something nobody here has is in "Blocked", with what it waits for.
   `olo-codex-agents` skill: CLAUDE.md, "Subagents"); I review, fit
   together and judge every picture.
 
-- **Calendar and Mail in Deskbar: widgets of their own** (Ben,
-  2026-11-17: "both the calendar and email should also integrate with
-  deskbar and provide widgets"). With the two apps above, as Weather's
+- **Mail in Deskbar: widgets of its own** (Ben, 2026-11-17: "both the
+  calendar and email should also integrate with deskbar and provide
+  widgets"). Calendar's are there (Next Event, The Day Ahead: under
+  Done, with Calendar). Mail's, with the Mail app above, as Weather's
   and Notifications' are (`olo_protocol::glance::PROVIDERS`,
-  `olo_kit::glance::serve`): Calendar's, what's next and the day ahead;
-  Mail's, what's unread, by account or together; each with its options
-  in Preferences ▸ Deskbar, and a click that opens the event or the
+  `olo_kit::glance::serve`): what's unread, by account or together;
+  with its options in Preferences ▸ Deskbar, and a click that opens the
   message.
 
-- **A To-Do app, native** (Ben, 2026-11-18: "a beautiful olo native
-  todo app that supports reminders / due dates / simple kanban style
-  board / attaching links, images, etc. / beautiful styled deskbar
-  widgets"). `olo-todo`: lists of things to do, each with its notes, a
-  due date and reminders (as notifications, and in Calendar once that
-  is there), links, pictures and files attached; a list, and a simple
-  board of columns to drag cards between; Deskbar widgets of its own
-  (what's due, a list's next few), styled as Weather's and the Inbox
-  are. Olo's own: the palette, an agents' API, in-place reload, native
-  in Rust.
+- **To-Do: what's left after its first version** (from building it,
+  2026-11-20; the app is under Done). In the order they'd matter:
+  to-dos kept with an account (CalDAV's VTODO: the store is a vdir so a
+  sync can be put under it with nothing moved; Fastmail and others have
+  task lists); to-dos due on a day shown in Calendar on that day (the
+  item as first written said "in Calendar once that is there"); a
+  to-do that repeats (RRULE: Calendar's engine reads them); ↑ and ↓ on
+  a board stepping down a lane and ← → across lanes (they step in the
+  list's order now); several to-dos chosen at once (to move, to check
+  off); weekdays' and months' names in the person's language (with
+  Calendar's: Language, below).
 
 - **Chrome with several profiles: agents' trees and codes reach one
   profile** (found 2026-11-18, mending links). Chrome's socket for
@@ -439,6 +440,42 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **A To-Do app, native** (Ben, 2026-11-18: "a beautiful olo native
+  todo app that supports reminders / due dates / simple kanban style
+  board / attaching links, images, etc. / beautiful styled deskbar
+  widgets"; and of its first pictures, 2026-11-19: "omg so much is ugly
+  make sure you get visual design reviews from opus 5.5 and astra
+  6.2").
+  **Done** (2026-11-20; HACKING, "To-Do" and "To-Do's engine"): `To-Do`
+  in the apps menu. Lists in colours down the left under Today,
+  Upcoming, All and Done; a list as a list (its sections as headings)
+  or as a board (a lane a section and a last lane of what's done: drag
+  cards between them, drop one on Done to check it off); a to-do typed
+  as you'd say it ("Call Ann tomorrow at 3pm": the words read as its
+  due turn blue as you type, with an × to keep them as words); its
+  details at the right (list, section, due day and time typed or picked
+  from a month, a reminder, notes, and files, pictures, links or what's
+  on the clipboard attached; files dropped on it too); reminders as
+  notifications with Done, In an Hour and Show, from a service of its
+  own, whether or not the window is open; two Deskbar widgets (To-Do:
+  Today, To-Do: Upcoming, in Preferences ▸ Deskbar); "todo buy milk
+  friday" in the palette adds one, and the palette finds to-dos by
+  title; everything by name for agents, and `olo-todo --print`,
+  `--add`, `--done`, `--show` with no window; undo for every change;
+  in twelve languages; kept as plain files other programs can read
+  (`~/.local/share/olo/todo`, a vdir). Its design went through a dozen
+  rounds of pictures with the two reviewers before each called it fit
+  to ship. For the
+  kit, out of it: lists whose rows are of different heights
+  (`sized_rows`), a sidebar's later headings with air over them and
+  its headings darker, the small month's today as an outline (Calendar's
+  too), a menu field's words on the same pixel as a text field's at
+  1.25× and 1.75×.
+  **To try**: open To-Do; type a few with days and times; make a list
+  a board (View ▸ As Board) and drag cards; add the widgets; let a
+  reminder come. Say what's ugly or missing: what's left that I know
+  of is under Not started ("To-Do: what's left").
 
 - **Deskbar folded and unfolded from the keyboard, and the palette**
   (Ben, 2026-11-18: "the collapse/expand deskbar needs a keyboard

@@ -214,7 +214,7 @@ fn the_day(coming: &[Shown], t: DateTime, count: usize, with: &With) -> Glance {
                 (false, true, _) => (weekday.to_owned(), weekday.to_owned()),
                 (false, false, _) => (weekday.to_owned(), format!("{weekday} {}", words::time(s.start.time(), with.h24))),
             };
-            (Line { label, text: s.title.to_string(), hue: Some(s.hue), dim: s.going == Some(Answer::NotYet) || s.tentative }, format!("{full} {}", s.title))
+            (Line { label, text: s.title.to_string(), hue: Some(s.hue), dim: s.going == Some(Answer::NotYet) || s.tentative, ring: false }, format!("{full} {}", s.title))
         })
         .unzip();
     let detail = match to_come {

@@ -195,6 +195,9 @@ Horloge sur 24 heures
 3 hours
 3 heures
 
+3 to-dos
+3 tâches
+
 3. When it blinks again, touch it once more.
 3. Quand elle clignote de nouveau, touchez-la encore une fois.
 
@@ -258,6 +261,9 @@ Horloge sur 24 heures
 5 seconds
 5 secondes
 
+5 to-dos
+5 tâches
+
 5 years
 5 ans
 
@@ -278,6 +284,9 @@ Horloge sur 24 heures
 
 8 events
 8 événements
+
+8 to-dos
+8 tâches
 
 8 weeks
 8 semaines
@@ -311,6 +320,9 @@ Une sauvegarde lit un fichier à la fois et ne garde pas en mémoire ce qu’ell
 
 A battery kept full wears faster: for a computer that's mostly plugged in.
 Une batterie toujours pleine s’use plus vite : pour un ordinateur presque toujours branché.
+
+A board's lanes are the list's sections, one for each stage of the work, and last what's done. Drag to-dos between them.
+Chaque section de la liste forme une colonne du tableau pour une étape du travail. La dernière regroupe les tâches terminées. Faites glisser les tâches d’une colonne à l’autre.
 
 A build of Olo is running: Olo upgrades as soon as it has finished.
 Une compilation d’Olo est en cours : Olo se met à jour dès qu’elle est terminée.
@@ -456,6 +468,9 @@ Un coffre a besoin d’un nom.
 A week
 Une semaine
 
+A week before, at 9 AM
+Une semaine avant, à 9 h
+
 AI
 IA
 
@@ -585,6 +600,9 @@ Ajouter l’onglet au groupe
 Add Text
 Ajouter du texte
 
+Add To-Do: {}
+Ajouter une tâche : {}
+
 Add Website
 Ajouter un site web
 
@@ -602,6 +620,9 @@ Ajouter un compte Google…
 
 Add a Kind
 Ajouter un type
+
+Add a Section…
+Ajouter une section…
 
 Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
 Ajouter un dépôt : ses paquets et mises à jour arrivent avec ceux de Fedora. N’ajoutez que des dépôts de confiance : qui le tient peut mettre n’importe quoi sur cet ordinateur.
@@ -894,6 +915,9 @@ N’importe lequel des {}
 Any storms on the way?
 Des orages en vue ?
 
+Any time
+À toute heure
+
 Any touch
 Tout toucher
 
@@ -981,6 +1005,12 @@ Arrivés dans le désordre
 
 As BeOS R5 drew its icons: flat faces in its 8-bit colours, black outlines.
 Comme BeOS R5 dessinait ses icônes : faces plates dans ses couleurs 8 bits, contours noirs.
+
+As Board
+En tableau
+
+As List
+En liste
 
 As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines.
 Comme Workbench dessinait ses icônes : faces plates avec les seize crayons d’un écran, contours noirs.
@@ -1078,6 +1108,9 @@ At 15%
 At 20%
 À 20 %
 
+At a time of its own
+À une heure personnalisée
+
 At full speed
 À pleine vitesse
 
@@ -1093,11 +1126,32 @@ Au début
 At the start
 Au début
 
+At the time it's due
+À l’échéance
+
 At {}. Give it the code from {}?
 Sur {}. Lui donner le code de {} ?
 
+Attach
+Joindre
+
 Attach Files…
 Joindre des fichiers…
+
+Attach File…
+Joindre un fichier…
+
+Attach Link
+Joindre un lien
+
+Attach Link…
+Joindre un lien…
+
+Attach a file or a link
+Joindre un fichier ou un lien
+
+Attachments
+Pièces jointes
 
 Authenticate
 S’authentifier
@@ -1179,6 +1233,12 @@ Retour aux prévisions
 
 Back to the Items
 Retour aux éléments
+
+Back to the List
+Revenir à la liste
+
+Back to the To-Dos
+Revenir aux tâches
 
 Back up this computer
 Sauvegarder cet ordinateur
@@ -1360,6 +1420,9 @@ Bluetooth a dit qu’il les ouvrirait et aucun canal n’est venu
 
 Bluetooth…
 Bluetooth…
+
+Board
+Tableau
 
 Body
 Corps
@@ -1746,6 +1809,9 @@ Choisissez un réseau pour vous y connecter.
 
 Choose a setting, then play the original or its sound: switching goes on from the same place.
 Choisissez un réglage, puis écoutez l’original ou son rendu : en changeant, la lecture reprend au même endroit.
+
+Choose a to-do to see its details.
+Sélectionnez une tâche pour en voir les détails.
 
 Choose a widget to change it, or add one.
 Choisissez un widget pour le modifier, ou ajoutez-en un.
@@ -2228,6 +2294,9 @@ Impossible de renommer « {} » : {}
 Couldn't restart: {}
 Redémarrage impossible : {}
 
+Couldn't save the change: {}
+Impossible d’enregistrer la modification : {}
+
 Couldn't save the setting: {}
 Impossible d’enregistrer le réglage : {}
 
@@ -2504,11 +2573,17 @@ Supprimer l’événement
 Delete Item
 Supprimer l’élément
 
+Delete List
+Supprimer la liste
+
 Delete Mark
 Supprimer le repère
 
 Delete Row
 Supprimer la ligne
+
+Delete Section
+Supprimer la section
 
 Delete Signature
 Supprimer la signature
@@ -2808,6 +2883,9 @@ Documents
 Does “{}” show this number?
 « {} » affiche-t-il ce nombre ?
 
+Doing
+En cours
+
 Domain:
 Domaine :
 
@@ -2815,13 +2893,19 @@ Don't Allow
 Ne pas autoriser
 
 Done
-OK
+Terminé
 
 Done Editing
 Terminer la modification
 
 Done with the exercises
 Exercices terminés
+
+Done {}
+Terminée : {}
+
+Done: {}
+Terminée : {}
 
 Don’t Trust
 Ne pas faire confiance
@@ -2891,6 +2975,36 @@ Perdues
 
 Dry for the next {} hours
 Sec pendant les {} prochaines heures
+
+Due
+Échéance
+
+Due Date
+Date d’échéance
+
+Due Day
+Jour d’échéance
+
+Due Next Week
+À faire la semaine prochaine
+
+Due Time
+Heure d’échéance
+
+Due Today
+À faire aujourd’hui
+
+Due Tomorrow
+À faire demain
+
+Due {}
+Échéance : {}
+
+Due {} · {}
+Échéance : {} · {}
+
+Due:
+Échéance :
 
 Duplicate
 Dupliquer
@@ -3174,6 +3288,9 @@ Toutes les interfaces
 Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
 Chaque frappe et chaque image passent par la boucle du serveur de fenêtres et son fil d’entrée. Avec ceci activé, ils ont le processeur {}, l’un des plus rapides, pour eux seuls : compilations, navigateurs et tous vos autres programmes tournent sur les autres, si bien que rien ne peut les faire attendre.
 
+Every list's to-dos show here.
+Les tâches de toutes les listes s’affichent ici.
+
 Every month
 Tous les mois
 
@@ -3381,6 +3498,9 @@ Fichiers
 
 Files with these extensions are this kind wherever Olo looks at them, and open in its app. An extension another kind had is this one's now.
 Les fichiers ayant ces extensions sont de ce type partout où Olo les regarde, et s’ouvrent dans son app. Une extension d’un autre type devient celle-ci.
+
+File…
+Fichier…
 
 Fill It In
 Le remplir
@@ -4033,6 +4153,9 @@ How fast it runs now
 How loud this microphone is gets measured as you talk on a call, or with Try It.
 Le volume de ce micro se mesure pendant que vous parlez lors d’un appel, ou avec Essayer.
 
+How many are due today, and the first of them, the overdue first, each in its list's colour.
+Combien sont à faire aujourd’hui, et les premières d’entre elles, celles en retard d’abord, chacune dans la couleur de sa liste.
+
 How warm will it get today?
 Quelle chaleur aujourd’hui ?
 
@@ -4146,6 +4269,9 @@ En HDR sur un écran au HDR activé : ses lumières brillent plus que le reste
 
 In Use for Internet Traffic
 Utilisé pour le trafic Internet
+
+In an Hour
+Dans une heure
 
 In an agent’s tab:
 Dans l’onglet d’un agent :
@@ -4872,14 +4998,26 @@ Lien :
 Link’s rate
 Débit du lien
 
+Link…
+Lien…
+
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 L’ordonnanceur de Linux tel quel (EEVDF) : équitable envers chaque programme, quoi qu’il fasse. Les fils d’Olo qu’on attend sont en temps réel, au-dessus de tout programme avec l’un ou l’autre ordonnanceur, et sous les compilations et autres gros travaux le bureau reste le plus réactif avec celui-ci.
+
+List
+Liste
 
 List View
 Présentation en liste
 
+List:
+Liste :
+
 Listening
 À l’écoute
+
+Lists
+Listes
 
 Live
 En direct
@@ -5064,6 +5202,9 @@ Place faite aux plus récentes
 Made the vault “{}”.
 Coffre « {} » créé.
 
+Made {}
+Créée : {}
+
 Magenta
 Magenta
 
@@ -5111,6 +5252,9 @@ Main display: the desktop is here.
 
 Main window:
 Fenêtre principale :
+
+Make
+Créer
 
 Make Main
 Rendre principale
@@ -5165,6 +5309,12 @@ Tout marquer comme lu
 
 Mark This Moment
 Marquer ce moment
+
+Mark as Done
+Marquer comme terminée
+
+Mark as Not Done
+Marquer comme à faire
 
 Mark as Read
 Marquer comme lu
@@ -5442,6 +5592,9 @@ Souris
 Mouse speed
 Vitesse de la souris
 
+Move
+Déplacer
+
 Move All Windows To
 Déplacer toutes les fenêtres vers
 
@@ -5465,6 +5618,9 @@ Déplacer l’onglet dans une nouvelle fenêtre
 
 Move Tab to Window
 Déplacer l’onglet dans la fenêtre
+
+Move To
+Déplacer vers
 
 Move Up
 Monter
@@ -5625,6 +5781,12 @@ Nouveau groupe…
 New Item
 Nouvel élément
 
+New List
+Nouvelle liste
+
+New List…
+Nouvelle liste…
+
 New Message
 Nouveau message
 
@@ -5633,6 +5795,15 @@ Nouvelle table de partitions…
 
 New Screen
 Nouvel écran
+
+New Section
+Nouvelle section
+
+New Sections
+Nouvelles sections
+
+New Section…
+Nouvelle section…
 
 New Signature…
 Nouvelle signature…
@@ -5645,6 +5816,12 @@ Nouvel onglet dans le groupe
 
 New Terminal
 Nouveau terminal
+
+New To-Do
+Nouvelle tâche
+
+New To-Do in {}
+Nouvelle tâche dans « {} »
 
 New Vault…
 Nouveau coffre…
@@ -5745,6 +5922,9 @@ Non
 No Agent Screens
 Aucun écran d’agent
 
+No Due Date
+Sans échéance
+
 No Group
 Aucun groupe
 
@@ -5769,6 +5949,12 @@ Aucun récepteur jumelé
 No Saved Groups
 Aucun groupe enregistré
 
+No Section
+Sans section
+
+No To-Do Chosen
+Aucune tâche sélectionnée
+
 No VPNs. Import a WireGuard configuration, or add one with its maker's app.
 Aucun VPN. Importez une configuration WireGuard ou ajoutez-en un avec l’app de son fabricant.
 
@@ -5783,6 +5969,9 @@ Aucune app ne les ouvre encore : ajoutez-en une.
 
 No apps open this.
 Aucune app n’ouvre ceci.
+
+No attachments
+Aucune pièce jointe
 
 No backup has finished yet
 Aucune sauvegarde n’est encore terminée
@@ -5813,6 +6002,9 @@ Aucune conversation ouverte.
 
 No disks.
 Aucun disque.
+
+No due date
+Sans échéance
 
 No entries.
 Aucune entrée.
@@ -5876,6 +6068,9 @@ Aucun enregistrement d’écran pour l’instant. Enregistrez-en un avec ⌘⇧6
 
 No space around an auto-tiled window alone
 Sans marge si une fenêtre est seule en mosaïque
+
+No to-dos
+Aucune tâche
 
 No touches in the last minute
 Aucun toucher dans la dernière minute
@@ -5964,11 +6159,17 @@ Norvégien
 Not Answered
 Sans réponse
 
+Not Done
+À faire
+
 Not Signed In
 Non connecté
 
 Not a compile
 Pas une compilation
+
+Not a due: keep the words in its title
+Ce n’est pas une échéance : garder ces mots dans le titre
 
 Not a number
 Pas un nombre
@@ -6126,6 +6327,12 @@ Rien n’a changé : le modèle d’Olo est toujours utilisé.
 Nothing coming up
 Rien de prévu
 
+Nothing done yet
+Aucune tâche terminée pour l’instant
+
+Nothing due today
+Aucune échéance aujourd’hui
+
 Nothing found
 Rien trouvé
 
@@ -6155,6 +6362,12 @@ Rien n’est encore enregistré. Appuyez sur Enregistrer et parlez quelques seco
 
 Nothing to calculate
 Rien à calculer
+
+Nothing to do
+Rien à faire
+
+Nothing to do here
+Rien à faire ici
 
 Nothing to do.
 Rien à faire.
@@ -6359,6 +6572,9 @@ Sur le disque
 
 On hold
 En attente
+
+On the day, at 9 AM
+Le jour même à 9 h
 
 On the network
 Sur le réseau
@@ -6597,6 +6813,9 @@ Mémoire épuisée :
 Output
 Sortie
 
+Overdue
+En retard
+
 Overview
 Vue d’ensemble
 
@@ -6828,11 +7047,17 @@ Le mot de passe de Passwords est utilisé maintenant : réessayez.
 Paste
 Coller
 
+Paste as Attachment
+Coller comme pièce jointe
+
 Paste the key
 Coller la clé
 
 Paste the key first.
 Collez d’abord la clé.
+
+Pasted Picture
+Image collée
 
 Pasted Picture.{}
 Image collée.{}
@@ -6886,6 +7111,12 @@ Réglages du téléphone…
 
 Phone number:
 Numéro de téléphone :
+
+Pick a day
+Choisir un jour
+
+Pick from a Month
+Choisir dans le calendrier
 
 Picture
 Image
@@ -7454,6 +7685,12 @@ Régénérer
 Reinstall Selected…
 Réinstaller la sélection…
 
+Remind:
+Rappel :
+
+Reminder
+Rappel
+
 Reminder:
 Rappel :
 
@@ -7505,6 +7742,9 @@ Retirer le VPN « {} » ? Ses réglages et ses clés partent avec lui.
 Remove the {}? It will no longer unlock anything.
 Retirer la {} ? Elle ne déverrouillera plus rien.
 
+Remove {}
+Retirer « {} »
+
 Remove {} from the Collector
 Retirer {} du Collecteur
 
@@ -7520,8 +7760,17 @@ Renommer
 Rename Group…
 Renommer le groupe…
 
+Rename List
+Renommer la liste
+
+Rename List…
+Renommer la liste…
+
 Rename Place…
 Renommer le lieu…
+
+Rename Section
+Renommer la section
 
 Rename Worktree…
 Renommer le worktree…
@@ -7964,6 +8213,9 @@ Clic secondaire (trois : milieu)
 Section
 Section
 
+Section:
+Section :
+
 Secure Note
 Note sécurisée
 
@@ -8232,11 +8484,17 @@ Afficher les clics
 Show Deskbar
 Afficher la Deskbar
 
+Show Details
+Afficher les détails
+
 Show DiskBackup in Deskbar
 Afficher DiskBackup dans la Deskbar
 
 Show Display
 Afficher l’écran
+
+Show Done
+Afficher les tâches terminées
 
 Show File in Tracker
 Afficher le fichier dans Tracker
@@ -8264,6 +8522,9 @@ Afficher la règle
 
 Show Shortcuts
 Afficher les raccourcis
+
+Show Sidebar
+Afficher la barre latérale
 
 Show Source
 Afficher la source
@@ -8579,6 +8840,9 @@ Recommencer cette étape
 
 Start typing
 Commencez à taper
+
+Start with To Do and Doing
+Commencer avec « À faire » et « En cours »
 
 Started
 Lancé
@@ -9094,6 +9358,9 @@ Les jours à venir, chacun avec son ciel, minimale et maximale.
 
 The computer couldn't be restarted: {}
 L’ordinateur n’a pas pu redémarrer : {}
+
+The day before, at 9 AM
+La veille à 9 h
 
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
 Le taux de succès du jour, les places du pool utilisées, et les compilations et succès des dernières heures.
@@ -9668,6 +9935,9 @@ Titre seulement
 Title:
 Titre :
 
+To Do
+À faire
+
 To allow it, you can also {}.
 Pour l’autoriser, vous pouvez aussi {}.
 
@@ -9676,6 +9946,30 @@ Vers {}
 
 To {}.
 Vers {}.
+
+To-Do
+Tâches
+
+To-Do: Today
+Tâches : aujourd’hui
+
+To-Do: Upcoming
+Tâches : à venir
+
+To-Do: nothing due after today.
+Tâches : aucune échéance après aujourd’hui.
+
+To-Do: nothing due today.
+Tâches : aucune échéance aujourd’hui.
+
+To-Do: {}: {}.
+Tâches : {} — {}.
+
+To-dos due after today show here, by day.
+Les tâches prévues après aujourd’hui s’affichent ici, classées par jour.
+
+To-dos:
+Tâches :
 
 To:
 À :
@@ -9911,6 +10205,9 @@ Taper
 Type a time like 13:05 or 1:05 PM.
 Tapez une heure comme 13:05 ou 1:05 PM.
 
+Type a to-do above, and press Return.
+Saisissez une tâche ci-dessus et appuyez sur Entrée.
+
 Type here to try the settings
 Tapez ici pour essayer les réglages
 
@@ -10072,6 +10369,9 @@ Montant (envoyé)
 
 Up for
 Actif depuis
+
+Upcoming
+À venir
 
 Update
 Mettre à jour
@@ -10397,6 +10697,9 @@ Plus chaud
 Warmth
 Chaleur
 
+Was due {} · {}
+Échéance passée : {} · {}
+
 Watch Agent Screens
 Regarder les écrans d’agents
 
@@ -10484,11 +10787,23 @@ Que porter demain ?
 What you change applies when you leave Rescue.
 Vos modifications s’appliquent quand vous quittez Rescue.
 
+What's checked off shows here, the newest first.
+Les tâches terminées s’affichent ici, les plus récentes en premier.
+
+What's due after today, the soonest first, each by its day.
+Ce qui est à faire après aujourd’hui, le plus proche d’abord, chaque tâche avec son jour.
+
+What's due today, and anything overdue, shows here.
+Les tâches en retard et celles qui arrivent à échéance aujourd’hui s’affichent ici.
+
 What's made for sRGB (nearly everything) looks as it was made; wider colours are for what has them.
 Ce qui est fait pour le sRGB (presque tout) s’affiche tel qu’il a été fait ; les couleurs plus étendues sont pour ce qui en a.
 
 What's next (or on now): when, what and where, and what comes after it.
 La suite (ou ce qui a lieu) : quand, quoi et où, et ce qui vient après.
+
+What's on the Clipboard
+Contenu du presse-papiers
 
 What's still to come today, in order, each in its calendar's colour; then the days after.
 Ce qui reste aujourd’hui, dans l’ordre, chacun à la couleur de son calendrier ; puis les jours suivants.
@@ -11002,6 +11317,9 @@ other: rétrograder {n} paquets
 driving {}
 pilote {}
 
+due {}
+échéance : {}
+
 ending one gives its slots back to the pool
 en arrêter un rend ses emplacements au pool
 
@@ -11097,6 +11415,9 @@ other: dans {n} jours
 in {n} minutes
 one: dans une minute
 other: dans {n} minutes
+
+in {}
+dans « {} »
 
 install {n} packages
 one: installer {n} paquet
@@ -11353,6 +11674,9 @@ organisateur
 out of the archive
 hors de l’archive
 
+overdue, {}
+en retard, {}
+
 part of the screen
 une partie de l’écran
 
@@ -11545,11 +11869,17 @@ ce site
 tidying
 range
 
+today
+aujourd’hui
+
 today at {}
 aujourd’hui à {}
 
 today or tomorrow
 aujourd’hui ou demain
+
+tomorrow
+demain
 
 tomorrow at {}
 demain à {}
@@ -11616,6 +11946,9 @@ with the {n} files changed in it and not committed
 one: avec le fichier modifié dedans et non validé
 other: avec les {n} fichiers modifiés dedans et non validés
 
+yesterday
+hier
+
 yesterday at {}
 hier à {}
 
@@ -11659,6 +11992,10 @@ other: {n} sauvegardes
 one: {n} sauvegarde choisie.
 other: {n} sauvegardes choisies.
 
+{n} coming up
+one: {n} à venir
+other: {n} à venir
+
 {n} days
 one: {n} jour
 other: {n} jours
@@ -11666,6 +12003,10 @@ other: {n} jours
 {n} days ago
 one: il y a {n} jour
 other: il y a {n} jours
+
+{n} due today
+one: {n} pour aujourd’hui
+other: {n} pour aujourd’hui
 
 {n} events
 one: {n} événement
@@ -11731,6 +12072,10 @@ other: {n} nouvelles notifications
 one: {n} mise à jour de Fedora {} attend : installez-la d’abord, dans Updates.
 other: {n} mises à jour de Fedora {} attendent : installez-les d’abord, dans Updates.
 
+{n} overdue
+one: {n} en retard
+other: {n} en retard
+
 {n} packs as sent, by their checksums
 one: {n} paquet tel qu’envoyé, d’après ses sommes de contrôle
 other: {n} paquets tels qu’envoyés, d’après leurs sommes de contrôle
@@ -11787,6 +12132,14 @@ other: {n} fois
 one: {n} à venir
 other: {n} à venir
 
+{n} to do
+one: {n} à faire
+other: {n} à faire
+
+{n} to-dos
+one: {n} tâche
+other: {n} tâches
+
 {n} waiting in their apps
 one: {n} en attente dans son app
 other: {n} en attente dans leurs apps
@@ -11830,6 +12183,9 @@ other: {n} semaines
 
 {} ({} to {})
 {} ({}–{})
+
+{} ({})
+{} ({})
 
 {} A workspace starts with this; choose its own from Deskbar's tray.
 {} Un espace de travail commence avec celui-ci ; choisissez le sien dans la zone d’état de la Deskbar.
@@ -12104,8 +12460,14 @@ Installation de {} ({}, {} %). Olo y passe une fois terminé : vos fenêtres r
 {} min ago
 il y a {} min
 
+{} minutes after
+{} min après
+
 {} minutes ago
 il y a {} minutes
+
+{} minutes before
+{} min avant
 
 {} ms, the middle of them
 {} ms, la médiane
@@ -12335,6 +12697,9 @@ il y a {} s
 {} · set up {}{}
 {} · configuré {}{}
 
+{} · {}
+{} · {}
+
 {} · {} · call quality while the microphone is used
 {} · {} · qualité d’appel pendant l’usage du micro
 
@@ -12400,6 +12765,9 @@ quota de {}
 
 {}, until {}
 {}, jusqu’au {}
+
+{}, {}
+{} à {}
 
 {}, {} new to the backup, {} sent so far.
 {}, {} nouveaux pour la sauvegarde, {} envoyés jusqu’ici.
@@ -12676,6 +13044,9 @@ other: « {} » et {n} autres programmes tournent encore dans cette fenêtre. 
 “{}” isn’t a day I can read for when it stops repeating: leave it empty to go on for good.
 « {} » n’est pas un jour que je sais lire pour la fin de la répétition : laissez vide pour continuer indéfiniment.
 
+“{}” isn’t a day I can read: try tomorrow, Friday, Nov 21 or 2026-11-21.
+Date « {} » non reconnue. Essayez 2026-11-21, tomorrow, Friday ou Nov 21.
+
 “{}” isn’t a setting.
 « {} » n’est pas un réglage.
 
@@ -12684,6 +13055,9 @@ other: « {} » et {n} autres programmes tournent encore dans cette fenêtre. 
 
 “{}” isn’t a time I can read for when it starts: try 14:30 or 2:30 PM.
 « {} » n’est pas une heure que je sais lire pour le début : essayez 14:30 ou 2:30 PM.
+
+“{}” isn’t a time I can read: try 14:30 or 2:30 PM.
+Heure « {} » non reconnue. Essayez 14:30 ou 2:30 PM.
 
 “{}” isn’t an address I can invite: write each as name@example.org, with commas between.
 « {} » n’est pas une adresse que je peux inviter : écrivez chacune sous la forme nom@example.org, séparées par des virgules.

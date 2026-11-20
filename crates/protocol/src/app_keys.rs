@@ -53,6 +53,7 @@ const PALETTE: Option<&str> = Some("olo.palette");
 const TELEGRAM: Option<&str> = Some("olo.telegram");
 const DOCTOR: Option<&str> = Some("olo.doctor");
 const SPEEDTEST: Option<&str> = Some("olo.speedtest");
+const TODO: Option<&str> = Some("olo.todo");
 /// Chrome's keys (its own, not Olo's: what Chrome takes on Linux is
 /// [`CHROME_NATIVE`]), kept in a profile under its app id, and used for
 /// every Chromium browser ([`CHROMIUM_APPS`]).
@@ -76,6 +77,7 @@ pub const APPS: &[(&str, &str)] = &[
     ("olo.telegram", "Telegram"),
     ("olo.doctor", "Olo Doctor"),
     ("olo.speedtest", "Speed Test"),
+    ("olo.todo", "To-Do"),
     // (Slack is Chrome too, olo-slack: these are its keys as well.)
     ("google-chrome", "Chrome and Slack"),
 ];
@@ -280,6 +282,21 @@ pub const APP_KEYS: &[AppKey] = &[
     k("doctor.choose-all", DOCTOR, "choose-all", "Check everything", &["Cmd+A"], &["Ctrl+A"], &["Alt+A"]),
     k("speedtest.start", SPEEDTEST, "start", "Start Test", &["Cmd+R"], &["F5"], &["Alt+R"]),
     k("speedtest.stop", SPEEDTEST, "stop", "Stop", &["Cmd+Period"], &["Ctrl+Period"], &["Alt+Period"]),
+    // To-Do: a new to-do is every app's New. ⌘K checks off, as Things'
+    // does; ⌘T is due today (Things' Today); its places by number, as
+    // Calendar's views and Activity Monitor's sections are.
+    k("todo.new-list", TODO, "new-list", "New List", &["Shift+Cmd+N"], &["Ctrl+Shift+N"], &["Alt+Shift+N"]),
+    k("todo.check", TODO, "check", "Mark as done, or not done", &["Cmd+K"], &["Ctrl+K"], &["Alt+K"]),
+    k("todo.due-today", TODO, "due:today", "Due Today", &["Cmd+T"], &["Ctrl+T"], &["Alt+T"]),
+    k("todo.delete", TODO, "delete", "Delete", &["Cmd+Backspace"], &["Delete"], &["Alt+Backspace"]),
+    k("todo.today", TODO, "place:today", "Today", &["Cmd+1"], &["Ctrl+1"], &["Alt+1"]),
+    k("todo.upcoming", TODO, "place:upcoming", "Upcoming", &["Cmd+2"], &["Ctrl+2"], &["Alt+2"]),
+    k("todo.all", TODO, "place:all", "All", &["Cmd+3"], &["Ctrl+3"], &["Alt+3"]),
+    k("todo.done", TODO, "place:done", "Done", &["Cmd+4"], &["Ctrl+4"], &["Alt+4"]),
+    k("todo.board", TODO, "layout:board", "As a board", &["Cmd+B"], &["Ctrl+B"], &["Alt+B"]),
+    k("todo.list", TODO, "layout:list", "As a list", &["Cmd+L"], &["Ctrl+L"], &["Alt+L"]),
+    k("todo.details", TODO, "details", "Hide or show the details", &["Cmd+I"], &["Ctrl+I"], &["Alt+I"]),
+    k("todo.paste-attachment", TODO, "paste-attachment", "Attach what's on the clipboard", &["Shift+Cmd+V"], &["Ctrl+Shift+V"], &["Alt+Shift+V"]),
     k("pool.refresh", Some("olo.pool"), "refresh", "Read Quota Now", &["Cmd+R"], &["F5"], &["Alt+R"]),
     k("screen.control", Some("olo.screen"), "control", "Take or give back control", &["Cmd+K"], &["Ctrl+K"], &["Alt+K"]),
     k("screen.export", Some("olo.screen"), "export", "Export Video", &["Cmd+E"], &["Ctrl+E"], &["Alt+E"]),

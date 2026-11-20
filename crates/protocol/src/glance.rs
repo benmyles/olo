@@ -138,6 +138,27 @@ pub const PROVIDERS: &[Provider] = &[
         ],
     },
     Provider {
+        app: "todo",
+        name: "To-Do",
+        program: "olo-todo",
+        arg: "--glance",
+        icon: "todo",
+        kinds: &[
+            Kind {
+                id: "today",
+                menu: "To-Do: Today",
+                about: "How many are due today, and the first of them, the overdue first, each in its list's colour.",
+                options: &[Opt { id: "count", label: "To-dos:", values: &[("5", "5 to-dos"), ("3", "3 to-dos"), ("8", "8 to-dos")] }],
+            },
+            Kind {
+                id: "upcoming",
+                menu: "To-Do: Upcoming",
+                about: "What's due after today, the soonest first, each by its day.",
+                options: &[Opt { id: "count", label: "To-dos:", values: &[("5", "5 to-dos"), ("3", "3 to-dos"), ("8", "8 to-dos")] }],
+            },
+        ],
+    },
+    Provider {
         app: "kache",
         name: "Kache",
         program: "olo-kache",
@@ -285,6 +306,10 @@ pub struct Line {
     pub hue: Option<olo_theme::Hue>,
     /// Quieter than the others (on now, or not for certain).
     pub dim: bool,
+    /// Its mark a ring, as a to-do's check circle is (a thing to be
+    /// done, not a time taken up).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub ring: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]

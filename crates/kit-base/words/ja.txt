@@ -193,6 +193,9 @@ other: ほか{n}件
 3 hours
 3時間
 
+3 to-dos
+3件のタスク
+
 3. When it blinks again, touch it once more.
 3. ランプが再び点滅したら、もう一度触れてください。
 
@@ -256,6 +259,9 @@ other: ほか{n}件
 5 seconds
 5秒
 
+5 to-dos
+5件のタスク
+
 5 years
 5年
 
@@ -276,6 +282,9 @@ other: ほか{n}件
 
 8 events
 8件の予定
+
+8 to-dos
+8件のタスク
 
 8 weeks
 8週間
@@ -309,6 +318,9 @@ A backup reads one file at a time, and leaves what it read out of memory: it nev
 
 A battery kept full wears faster: for a computer that's mostly plugged in.
 満充電を保つとバッテリーの劣化が早まります。普段は電源につないで使う場合の設定です。
+
+A board's lanes are the list's sections, one for each stage of the work, and last what's done. Drag to-dos between them.
+ボードでは、リストのセクションが作業段階ごとに列で並びます。最後の列は完了したタスク用です。タスクはドラッグして別の列に移せます。
 
 A build of Olo is running: Olo upgrades as soon as it has finished.
 Oloをビルド中です。完了すると更新を開始します。
@@ -454,6 +466,9 @@ A vault needs a name.
 A week
 1週間
 
+A week before, at 9 AM
+1週間前の午前9時
+
 AI
 AI
 
@@ -583,6 +598,9 @@ Add Tab to Group
 Add Text
 テキストを追加
 
+Add To-Do: {}
+タスクを追加：{}
+
 Add Website
 Webサイトを追加
 
@@ -600,6 +618,9 @@ Googleアカウントを追加…
 
 Add a Kind
 種類を追加
+
+Add a Section…
+セクションを追加…
 
 Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
 追加したリポジトリのパッケージと更新はFedoraのものと一緒に表示されます。提供元はこのコンピューターに任意のソフトウェアをインストールできるので、信頼できるものだけを追加してください。
@@ -889,6 +910,9 @@ Any of the {}
 Any storms on the way?
 雷雨が近づいていますか？
 
+Any time
+時刻指定なし
+
 Any touch
 すべてのタッチ
 
@@ -975,6 +999,12 @@ Arrived out of order
 
 As BeOS R5 drew its icons: flat faces in its 8-bit colours, black outlines.
 BeOS R5風のアイコン。8ビットの色で平らな面を塗り、黒い線で縁取ります。
+
+As Board
+ボード表示
+
+As List
+リスト表示
 
 As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines.
 Workbench風のアイコン。画面の16色で平らな面を塗り、黒い線で縁取ります。
@@ -1072,6 +1102,9 @@ At 15%
 At 20%
 20%になったら
 
+At a time of its own
+指定した日時
+
 At full speed
 最高速度
 
@@ -1087,11 +1120,32 @@ At the Start
 At the start
 先頭
 
+At the time it's due
+期限の時刻
+
 At {}. Give it the code from {}?
 {}でコードを待っています。{}からのコードを渡しますか？
 
+Attach
+添付
+
 Attach Files…
 ファイルを添付…
+
+Attach File…
+ファイルを添付…
+
+Attach Link
+リンクを添付
+
+Attach Link…
+リンクを添付…
+
+Attach a file or a link
+ファイルまたはリンクを添付
+
+Attachments
+添付項目
 
 Authenticate
 認証
@@ -1173,6 +1227,12 @@ Back to the Forecast
 
 Back to the Items
 項目一覧に戻る
+
+Back to the List
+リストに戻る
+
+Back to the To-Dos
+タスクに戻る
 
 Back up this computer
 このコンピューターをバックアップ
@@ -1353,6 +1413,9 @@ Bluetoothは要求を受け付けましたが、通信チャネルが開きま�
 
 Bluetooth…
 Bluetooth…
+
+Board
+ボード
 
 Body
 本文
@@ -1737,6 +1800,9 @@ Choose a network to join it.
 
 Choose a setting, then play the original or its sound: switching goes on from the same place.
 設定を選び、元の音と処理後の音を聞き比べられます。切り替えても同じ位置から再生します。
+
+Choose a to-do to see its details.
+タスクを選ぶと詳細が表示されます。
 
 Choose a widget to change it, or add one.
 変更するウィジェットを選ぶか、新しく追加してください。
@@ -2218,6 +2284,9 @@ Couldn't rename “{}”: {}
 Couldn't restart: {}
 再起動できません：{}
 
+Couldn't save the change: {}
+変更を保存できませんでした：{}
+
 Couldn't save the setting: {}
 設定を保存できません：{}
 
@@ -2494,11 +2563,17 @@ Delete Event
 Delete Item
 項目を削除
 
+Delete List
+リストを削除
+
 Delete Mark
 マークを削除
 
 Delete Row
 行を削除
+
+Delete Section
+セクションを削除
 
 Delete Signature
 署名を削除
@@ -2797,6 +2872,9 @@ Documents
 Does “{}” show this number?
 「{}」にもこの番号が表示されていますか？
 
+Doing
+進行中
+
 Domain:
 ドメイン:
 
@@ -2811,6 +2889,12 @@ Done Editing
 
 Done with the exercises
 練習を終了
+
+Done {}
+完了日：{}
+
+Done: {}
+完了：{}
 
 Don’t Trust
 信頼しない
@@ -2880,6 +2964,36 @@ Dropped
 
 Dry for the next {} hours
 今後{}時間は降水なし
+
+Due
+期限
+
+Due Date
+期限日
+
+Due Day
+期限の日付
+
+Due Next Week
+来週が期限
+
+Due Time
+期限の時刻
+
+Due Today
+今日が期限
+
+Due Tomorrow
+明日が期限
+
+Due {}
+期限：{}
+
+Due {} · {}
+期限：{} · {}
+
+Due:
+期限：
 
 Duplicate
 複製
@@ -3163,6 +3277,9 @@ Every interface
 Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
 キー入力と描画はウィンドウサーバーのメインループと入力スレッドが処理します。オンにすると、高速なプロセッサー{}を専用に確保します。ビルドやブラウザーなどはほかのプロセッサー上で動くので、入力や描画を待たせません。
 
+Every list's to-dos show here.
+すべてのリストのタスクがここに表示されます。
+
 Every month
 毎月
 
@@ -3366,6 +3483,9 @@ Files
 
 Files with these extensions are this kind wherever Olo looks at them, and open in its app. An extension another kind had is this one's now.
 Oloはこの拡張子を持つファイルを指定の種類として認識し、対応するアプリで開きます。ほかの種類で使っていた拡張子もこちらに割り当てます。
+
+File…
+ファイル…
 
 Fill It In
 入力する
@@ -4018,6 +4138,9 @@ How fast it runs now
 How loud this microphone is gets measured as you talk on a call, or with Try It.
 通話中に話すか「試す」を選ぶと、マイクの音量を測定します。
 
+How many are due today, and the first of them, the overdue first, each in its list's colour.
+今日が期限のタスクの数と、その最初のいくつか。期限超過を先に、それぞれリストの色で表示します。
+
 How warm will it get today?
 今日はどのくらい暖かくなりますか？
 
@@ -4131,6 +4254,9 @@ HDR対応画面でHDRを有効にすると、映像の光の部分がほかよ�
 
 In Use for Internet Traffic
 インターネット通信に使用中
+
+In an Hour
+1時間後
 
 In an agent’s tab:
 エージェントのタブ:
@@ -4852,14 +4978,26 @@ Link:
 Link’s rate
 リンク速度
 
+Link…
+リンク…
+
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Linux標準のスケジューラー（EEVDF）は、すべてのプログラムにCPU時間を公平に割り当てます。どちらのスケジューラーでも、ほかの処理が待っているOloのスレッドはリアルタイム優先度で動きます。ビルドなどで高負荷のときは、こちらの方がデスクトップの応答が速くなります。
+
+List
+リスト
 
 List View
 一覧表示
 
+List:
+リスト：
+
 Listening
 待ち受け中
+
+Lists
+リスト
 
 Live
 ライブ
@@ -5044,6 +5182,9 @@ Made room for newer ones
 Made the vault “{}”.
 保管庫「{}」を作成しました。
 
+Made {}
+作成日：{}
+
 Magenta
 マゼンタ
 
@@ -5091,6 +5232,9 @@ Main display: the desktop is here.
 
 Main window:
 メインウィンドウ:
+
+Make
+作成
 
 Make Main
 メインにする
@@ -5145,6 +5289,12 @@ Mark All as Read
 
 Mark This Moment
 この時点に印を付ける
+
+Mark as Done
+完了にする
+
+Mark as Not Done
+未完了に戻す
 
 Mark as Read
 既読にする
@@ -5422,6 +5572,9 @@ Mouse
 Mouse speed
 マウスの速度
 
+Move
+移動
+
 Move All Windows To
 すべてのウィンドウの移動先
 
@@ -5445,6 +5598,9 @@ Move Tab to New Window
 
 Move Tab to Window
 タブを別のウィンドウに移動
+
+Move To
+移動先
 
 Move Up
 上へ
@@ -5605,6 +5761,12 @@ New Group…
 New Item
 新規項目
 
+New List
+新規リスト
+
+New List…
+新規リスト…
+
 New Message
 新規メッセージ
 
@@ -5613,6 +5775,15 @@ New Partition Table…
 
 New Screen
 新しい画面
+
+New Section
+新規セクション
+
+New Sections
+新しいセクション
+
+New Section…
+新規セクション…
 
 New Signature…
 新しい署名…
@@ -5625,6 +5796,12 @@ New Tab in Group
 
 New Terminal
 新しいターミナル
+
+New To-Do
+新規タスク
+
+New To-Do in {}
+「{}」にタスクを追加
 
 New Vault…
 新しい保管庫…
@@ -5725,6 +5902,9 @@ No
 No Agent Screens
 エージェント画面はありません
 
+No Due Date
+期限なし
+
 No Group
 グループなし
 
@@ -5749,6 +5929,12 @@ No Receivers Paired
 No Saved Groups
 保存したグループはありません
 
+No Section
+セクションなし
+
+No To-Do Chosen
+タスクが選択されていません
+
 No VPNs. Import a WireGuard configuration, or add one with its maker's app.
 VPNはありません。WireGuardの設定をインポートするか、提供元のアプリで追加してください。
 
@@ -5763,6 +5949,9 @@ No app opens these yet: add one.
 
 No apps open this.
 この項目を開くアプリはありません。
+
+No attachments
+添付項目なし
 
 No backup has finished yet
 完了したバックアップはまだありません
@@ -5793,6 +5982,9 @@ No conversations open.
 
 No disks.
 ディスクはありません。
+
+No due date
+期限なし
 
 No entries.
 項目はありません。
@@ -5856,6 +6048,9 @@ No screen recordings yet. Record one with ⌘⇧6.
 
 No space around an auto-tiled window alone
 タイルが1枚のときは余白なし
+
+No to-dos
+タスクなし
 
 No touches in the last minute
 直近1分はタッチなし
@@ -5944,11 +6139,17 @@ Norwegian
 Not Answered
 未回答
 
+Not Done
+未完了
+
 Not Signed In
 未サインイン
 
 Not a compile
 コンパイル対象外
+
+Not a due: keep the words in its title
+期限にせず、タイトルに文字を残す
 
 Not a number
 数値ではありません
@@ -6106,6 +6307,12 @@ Nothing changed: Olo's own model is still in use.
 Nothing coming up
 今後の予定はありません
 
+Nothing done yet
+完了したタスクはまだありません
+
+Nothing due today
+今日が期限のタスクはありません
+
 Nothing found
 見つかりませんでした
 
@@ -6135,6 +6342,12 @@ Nothing recorded yet. Press Record and talk for a few seconds.
 
 Nothing to calculate
 計算する式がありません
+
+Nothing to do
+未完了のタスクはありません
+
+Nothing to do here
+ここに未完了のタスクはありません
 
 Nothing to do.
 必要な操作はありません。
@@ -6339,6 +6552,9 @@ On disk
 
 On hold
 保留中
+
+On the day, at 9 AM
+当日の午前9時
 
 On the network
 ネットワーク上
@@ -6577,6 +6793,9 @@ Out of memory:
 Output
 出力
 
+Overdue
+期限超過
+
 Overview
 概要
 
@@ -6808,11 +7027,17 @@ Passwordsのパスワードで、もう一度お試しください。
 Paste
 貼り付け
 
+Paste as Attachment
+添付項目として貼り付け
+
 Paste the key
 キーを貼り付け
 
 Paste the key first.
 先にキーを貼り付けてください。
+
+Pasted Picture
+貼り付けた画像
 
 Pasted Picture.{}
 貼り付けた画像.{}
@@ -6864,6 +7089,12 @@ Phone Settings…
 
 Phone number:
 電話番号:
+
+Pick a day
+日付を選択
+
+Pick from a Month
+カレンダーから選択
 
 Picture
 画像
@@ -7432,6 +7663,12 @@ Regenerate
 Reinstall Selected…
 選択した項目を再インストール…
 
+Remind:
+通知：
+
+Reminder
+リマインダー
+
 Reminder:
 リマインダー:
 
@@ -7483,6 +7720,9 @@ VPN「{}」を削除しますか？ 設定と鍵も削除します。
 Remove the {}? It will no longer unlock anything.
 {}を削除しますか？ 以後はロック解除に使えません。
 
+Remove {}
+「{}」を取り除く
+
 Remove {} from the Collector
 {}をコレクターから外す
 
@@ -7498,8 +7738,17 @@ Rename
 Rename Group…
 グループ名を変更…
 
+Rename List
+リスト名を変更
+
+Rename List…
+リスト名を変更…
+
 Rename Place…
 場所の名前を変更…
+
+Rename Section
+セクション名を変更
 
 Rename Worktree…
 ワークツリー名を変更…
@@ -7942,6 +8191,9 @@ Secondary click (three: middle)
 Section
 セクション
 
+Section:
+セクション：
+
 Secure Note
 セキュアノート
 
@@ -8209,11 +8461,17 @@ Show Clicks
 Show Deskbar
 Deskbarを表示
 
+Show Details
+詳細を表示
+
 Show DiskBackup in Deskbar
 DiskBackupをDeskbarに表示
 
 Show Display
 ディスプレイを表示
+
+Show Done
+完了済みを表示
 
 Show File in Tracker
 Trackerでファイルを表示
@@ -8241,6 +8499,9 @@ Show Ruler
 
 Show Shortcuts
 ショートカットを表示
+
+Show Sidebar
+サイドバーを表示
 
 Show Source
 ソースを表示
@@ -8556,6 +8817,9 @@ Start this step over
 
 Start typing
 入力を開始
+
+Start with To Do and Doing
+「未着手」と「進行中」で始める
 
 Started
 開始日時
@@ -9069,6 +9333,9 @@ The coming days, each its sky, low and high.
 
 The computer couldn't be restarted: {}
 コンピューターを再起動できませんでした：{}
+
+The day before, at 9 AM
+前日の午前9時
 
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
 今日のヒット率、プールの使用中の枠、直近数時間のビルド数とキャッシュヒット数。
@@ -9643,6 +9910,9 @@ Title only
 Title:
 タイトル:
 
+To Do
+未着手
+
 To allow it, you can also {}.
 {}でも許可できます。
 
@@ -9651,6 +9921,30 @@ To {}
 
 To {}.
 {}へ。
+
+To-Do
+タスク
+
+To-Do: Today
+タスク：今日
+
+To-Do: Upcoming
+タスク：今後の予定
+
+To-Do: nothing due after today.
+タスク：明日以降が期限のタスクはありません。
+
+To-Do: nothing due today.
+タスク：今日が期限のタスクはありません。
+
+To-Do: {}: {}.
+タスク：{} — {}。
+
+To-dos due after today show here, by day.
+明日以降が期限のタスクが日付順に表示されます。
+
+To-dos:
+タスク:
 
 To:
 終了:
@@ -9886,6 +10180,9 @@ Type
 Type a time like 13:05 or 1:05 PM.
 13:05や1:05 PMの形式で時刻を入力してください。
 
+Type a to-do above, and press Return.
+上にタスクを入力して Return キーを押してください。
+
 Type here to try the settings
 ここに入力して設定を試す
 
@@ -10047,6 +10344,9 @@ Up (sent)
 
 Up for
 稼働時間
+
+Upcoming
+今後の予定
 
 Update
 アップデート
@@ -10372,6 +10672,9 @@ Warmer
 Warmth
 暖色の強さ
 
+Was due {} · {}
+期限超過：{} · {}
+
 Watch Agent Screens
 エージェント画面を見る
 
@@ -10459,11 +10762,23 @@ What should I wear tomorrow?
 What you change applies when you leave Rescue.
 変更は復旧モードの終了時に反映されます。
 
+What's checked off shows here, the newest first.
+完了したタスクが新しい順に表示されます。
+
+What's due after today, the soonest first, each by its day.
+明日以降が期限のタスクを、期限の近い順に、日付とともに表示します。
+
+What's due today, and anything overdue, shows here.
+今日が期限のタスクと期限を過ぎたタスクが表示されます。
+
 What's made for sRGB (nearly everything) looks as it was made; wider colours are for what has them.
 ほとんどのコンテンツが使うsRGBは、本来の色で表示します。広色域はそれに対応したコンテンツで使います。
 
 What's next (or on now): when, what and where, and what comes after it.
 次の予定または進行中の予定の日時、内容、場所と、その後に続く予定。
+
+What's on the Clipboard
+クリップボードの内容
 
 What's still to come today, in order, each in its calendar's colour; then the days after.
 今日これからの予定を時刻順に、それぞれのカレンダーの色で表示します。その後に翌日以降の予定が続きます。
@@ -10975,6 +11290,9 @@ other: {n}個のパッケージをダウングレード
 driving {}
 {}を駆動
 
+due {}
+期限：{}
+
 ending one gives its slots back to the pool
 終了すると使用中の枠をプールに戻します
 
@@ -11067,6 +11385,9 @@ other: {n}日後
 
 in {n} minutes
 other: {n}分後
+
+in {}
+「{}」内
 
 install {n} packages
 other: {n}個のパッケージをインストール
@@ -11317,6 +11638,9 @@ organizer
 out of the archive
 アーカイブから戻す
 
+overdue, {}
+期限超過、{}
+
 part of the screen
 画面の一部
 
@@ -11503,11 +11827,17 @@ this site
 tidying
 整理中
 
+today
+今日
+
 today at {}
 今日の{}
 
 today or tomorrow
 今日または明日
+
+tomorrow
+明日
 
 tomorrow at {}
 明日の{}
@@ -11572,6 +11902,9 @@ where the scheduler puts it
 with the {n} files changed in it and not committed
 other: 未コミットの変更があるファイル{n}個を含む
 
+yesterday
+昨日
+
 yesterday at {}
 昨日の{}
 
@@ -11608,11 +11941,17 @@ other: {n}件のバックアップ
 {n} backups chosen.
 other: {n}件のバックアップを選択しました。
 
+{n} coming up
+other: 今後の予定 {n} 件
+
 {n} days
 other: {n}日
 
 {n} days ago
 other: {n}日前
+
+{n} due today
+other: 今日が期限 {n} 件
 
 {n} events
 other: {n}件の予定
@@ -11662,6 +12001,9 @@ other: 新着通知{n}件
 {n} of Fedora {} updates are waiting: install them first, in Updates.
 other: Fedora {}の更新が{n}件あります。先に「更新」でインストールしてください。
 
+{n} overdue
+other: 期限超過 {n} 件
+
 {n} packs as sent, by their checksums
 other: {n}個のパックが送信時のチェックサムと一致
 
@@ -11704,6 +12046,12 @@ other: {n}回
 {n} to come
 other: 今後{n}件
 
+{n} to do
+other: 未完了 {n} 件
+
+{n} to-dos
+other: タスク {n} 件
+
 {n} waiting in their apps
 other: アプリ内で{n}件待機中
 
@@ -11745,6 +12093,9 @@ other: {n}週間
 
 {} ({} to {})
 {}（{}～{}）
+
+{} ({})
+{}（{}）
 
 {} A workspace starts with this; choose its own from Deskbar's tray.
 {} 新しいワークスペースはこの設定で始まります。Deskbarのトレイで個別に変更できます。
@@ -12019,7 +12370,13 @@ other: {n}週間
 {} min ago
 {}分前
 
+{} minutes after
+{}分後
+
 {} minutes ago
+{}分前
+
+{} minutes before
 {}分前
 
 {} ms, the middle of them
@@ -12250,6 +12607,9 @@ Oloの全{1}項目のうち{0}項目を{2}で利用できます。残りは英�
 {} · set up {}{}
 {} · 設定済み {}{}
 
+{} · {}
+{} · {}
+
 {} · {} · call quality while the microphone is used
 {} · {} · マイク使用中は通話音質
 
@@ -12315,6 +12675,9 @@ RAMの{}%
 
 {}, until {}
 {}、{}まで
+
+{}, {}
+{} {}
 
 {}, {} new to the backup, {} sent so far.
 {}、バックアップの新規データ{}、これまでに{}送信。
@@ -12589,6 +12952,9 @@ other: このウィンドウで「{}」とほか{n}個のプログラムが実�
 “{}” isn’t a day I can read for when it stops repeating: leave it empty to go on for good.
 繰り返しの終了日「{}」を読み取れません。期限なしにするには空欄にしてください。
 
+“{}” isn’t a day I can read: try tomorrow, Friday, Nov 21 or 2026-11-21.
+「{}」を日付として読み取れません。2026-11-21、tomorrow、Friday、Nov 21 などと入力してください。
+
 “{}” isn’t a setting.
 「{}」は設定項目ではありません。
 
@@ -12597,6 +12963,9 @@ other: このウィンドウで「{}」とほか{n}個のプログラムが実�
 
 “{}” isn’t a time I can read for when it starts: try 14:30 or 2:30 PM.
 開始時刻「{}」を読み取れません。14:30や2:30 PMの形式を使ってください。
+
+“{}” isn’t a time I can read: try 14:30 or 2:30 PM.
+「{}」を時刻として読み取れません。14:30 または 2:30 PM のように入力してください。
 
 “{}” isn’t an address I can invite: write each as name@example.org, with commas between.
 「{}」は有効な招待先ではありません。name@example.orgの形式で、複数の場合はカンマで区切ってください。

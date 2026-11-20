@@ -1,0 +1,15 @@
+[package]
+name = "olo-todo"
+description = "To-Do's engine: lists of to-dos kept as iCalendar files, one to-do a file and a list a folder (a vdir), read and written back whole"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+olo-calendar.workspace = true
+olo-theme.workspace = true
+olo-xdg.workspace = true
+jiff = "0.2"
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true

@@ -193,6 +193,9 @@ other: 另有 {n} 项
 3 hours
 3 小时
 
+3 to-dos
+3 项任务
+
 3. When it blinks again, touch it once more.
 3. 指示灯再次闪烁时，再触摸一次。
 
@@ -256,6 +259,9 @@ other: 另有 {n} 项
 5 seconds
 5 秒
 
+5 to-dos
+5 项任务
+
 5 years
 5 年
 
@@ -276,6 +282,9 @@ other: 另有 {n} 项
 
 8 events
 8 个日程
+
+8 to-dos
+8 项任务
 
 8 weeks
 8 周
@@ -309,6 +318,9 @@ A backup reads one file at a time, and leaves what it read out of memory: it nev
 
 A battery kept full wears faster: for a computer that's mostly plugged in.
 电池长期满电会加速老化。此设置适合经常接电使用的电脑。
+
+A board's lanes are the list's sections, one for each stage of the work, and last what's done. Drag to-dos between them.
+看板上的每一列都是列表中的一个分组，对应一个工作阶段。最后一列放已完成的任务。拖动任务即可将它移到另一列。
 
 A build of Olo is running: Olo upgrades as soon as it has finished.
 正在构建 Olo，完成后会立即升级。
@@ -454,6 +466,9 @@ A vault needs a name.
 A week
 一周
 
+A week before, at 9 AM
+提前一周，上午 9 点
+
 AI
 AI
 
@@ -583,6 +598,9 @@ Add Tab to Group
 Add Text
 添加文字
 
+Add To-Do: {}
+添加任务：{}
+
 Add Website
 添加网站
 
@@ -600,6 +618,9 @@ Add a Google Account…
 
 Add a Kind
 添加类型
+
+Add a Section…
+添加分组…
 
 Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
 添加软件源后，它的包和更新会与 Fedora 的一起提供。请只添加信任的软件源，因为维护者可以在这台电脑上安装任何内容。
@@ -889,6 +910,9 @@ Any of the {}
 Any storms on the way?
 会有暴风雨吗？
 
+Any time
+不限时间
+
 Any touch
 任意触摸
 
@@ -975,6 +999,12 @@ Arrived out of order
 
 As BeOS R5 drew its icons: flat faces in its 8-bit colours, black outlines.
 沿用 BeOS R5 的图标风格，以 8 位色填充色块，配上黑色轮廓。
+
+As Board
+看板视图
+
+As List
+列表视图
 
 As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines.
 沿用 Workbench 的图标风格，以屏幕的 16 种颜色填充色块，配上黑色轮廓。
@@ -1072,6 +1102,9 @@ At 15%
 At 20%
 电量降至 20% 时
 
+At a time of its own
+在自定时间
+
 At full speed
 全速
 
@@ -1087,11 +1120,32 @@ At the Start
 At the start
 开头
 
+At the time it's due
+到期时
+
 At {}. Give it the code from {}?
 位于 {0}。要将来自 {1} 的验证码填入吗？
 
+Attach
+附加
+
 Attach Files…
 添加附件…
+
+Attach File…
+添加文件附件…
+
+Attach Link
+添加链接
+
+Attach Link…
+添加链接…
+
+Attach a file or a link
+附加文件或链接
+
+Attachments
+附件
 
 Authenticate
 认证
@@ -1173,6 +1227,12 @@ Back to the Forecast
 
 Back to the Items
 返回项目列表
+
+Back to the List
+返回列表
+
+Back to the To-Dos
+返回任务
 
 Back up this computer
 备份这台电脑
@@ -1353,6 +1413,9 @@ Bluetooth said it would open them and no channel came
 
 Bluetooth…
 Bluetooth…
+
+Board
+看板
 
 Body
 正文
@@ -1737,6 +1800,9 @@ Choose a network to join it.
 
 Choose a setting, then play the original or its sound: switching goes on from the same place.
 选择设置后可播放原声或处理后的声音。切换时会从相同位置继续播放。
+
+Choose a to-do to see its details.
+选择一项任务即可查看详情。
 
 Choose a widget to change it, or add one.
 选择要更改的小组件，也可以添加新的。
@@ -2218,6 +2284,9 @@ Couldn't rename “{}”: {}
 Couldn't restart: {}
 无法重启：{}
 
+Couldn't save the change: {}
+无法保存更改：{}
+
 Couldn't save the setting: {}
 无法保存设置：{}
 
@@ -2494,11 +2563,17 @@ Delete Event
 Delete Item
 删除项目
 
+Delete List
+删除列表
+
 Delete Mark
 删除标记
 
 Delete Row
 删除行
+
+Delete Section
+删除分组
 
 Delete Signature
 删除签名
@@ -2797,6 +2872,9 @@ Documents
 Does “{}” show this number?
 “{}”上显示的是这个号码吗？
 
+Doing
+进行中
+
 Domain:
 域：
 
@@ -2811,6 +2889,12 @@ Done Editing
 
 Done with the exercises
 完成练习
+
+Done {}
+完成于{}
+
+Done: {}
+已完成：{}
 
 Don’t Trust
 不信任
@@ -2880,6 +2964,36 @@ Dropped
 
 Dry for the next {} hours
 未来 {} 小时无降水
+
+Due
+到期
+
+Due Date
+截止日期
+
+Due Day
+截止日
+
+Due Next Week
+下周到期
+
+Due Time
+截止时间
+
+Due Today
+今天到期
+
+Due Tomorrow
+明天到期
+
+Due {}
+{}到期
+
+Due {} · {}
+{}到期 · {}
+
+Due:
+截止：
 
 Duplicate
 复制
@@ -3163,6 +3277,9 @@ Every interface
 Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
 每次按键和每一帧画面都经过窗口服务器的主循环和输入线程。启用后，它们将独占速度最快的处理器之一（{}）。构建、浏览器及其他程序在其余处理器上运行，因此不会耽误输入和绘制。
 
+Every list's to-dos show here.
+所有列表中的任务都会显示在这里。
+
 Every month
 每月
 
@@ -3366,6 +3483,9 @@ Files
 
 Files with these extensions are this kind wherever Olo looks at them, and open in its app. An extension another kind had is this one's now.
 Olo 会根据这些扩展名识别文件类型，并用相应应用打开。如果某个扩展名已分配给其他类型，现在将改为此类型。
+
+File…
+文件…
 
 Fill It In
 填入
@@ -4018,6 +4138,9 @@ How fast it runs now
 How loud this microphone is gets measured as you talk on a call, or with Try It.
 通话时说话或选择“试一试”，即可测量此麦克风的输入音量。
 
+How many are due today, and the first of them, the overdue first, each in its list's colour.
+今天到期的任务数，以及其中最先的几项，已逾期的在前，各用其列表的颜色。
+
 How warm will it get today?
 今天最高能到几度？
 
@@ -4131,6 +4254,9 @@ In HDR on a display whose HDR is on: its lights shine brighter than the rest.
 
 In Use for Internet Traffic
 用于互联网流量
+
+In an Hour
+一小时后
 
 In an agent’s tab:
 在智能体标签页中：
@@ -4852,14 +4978,26 @@ Link:
 Link’s rate
 链路速率
 
+Link…
+链接…
+
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Linux 自带的调度器（EEVDF）公平对待各类程序。无论选择哪种调度器，其他任务正在等待的 Olo 线程都以实时优先级运行，高于普通程序。构建等重负载下，使用此调度器时桌面响应最快。
+
+List
+列表
 
 List View
 列表视图
 
+List:
+列表：
+
 Listening
 正在监听
+
+Lists
+列表
 
 Live
 实时
@@ -5044,6 +5182,9 @@ Made room for newer ones
 Made the vault “{}”.
 已创建保险库“{}”。
 
+Made {}
+创建于{}
+
 Magenta
 品红
 
@@ -5091,6 +5232,9 @@ Main display: the desktop is here.
 
 Main window:
 主窗口：
+
+Make
+创建
 
 Make Main
 设为主窗口
@@ -5145,6 +5289,12 @@ Mark All as Read
 
 Mark This Moment
 标记此时刻
+
+Mark as Done
+标记为已完成
+
+Mark as Not Done
+标记为未完成
 
 Mark as Read
 标为已读
@@ -5422,6 +5572,9 @@ Mouse
 Mouse speed
 鼠标速度
 
+Move
+移动
+
 Move All Windows To
 将所有窗口移至
 
@@ -5445,6 +5598,9 @@ Move Tab to New Window
 
 Move Tab to Window
 将标签页移到其他窗口
+
+Move To
+移到
 
 Move Up
 上移
@@ -5605,6 +5761,12 @@ New Group…
 New Item
 新建项目
 
+New List
+新建列表
+
+New List…
+新建列表…
+
 New Message
 新消息
 
@@ -5613,6 +5775,15 @@ New Partition Table…
 
 New Screen
 新建屏幕
+
+New Section
+新建分组
+
+New Sections
+新分组
+
+New Section…
+新建分组…
 
 New Signature…
 新建签名…
@@ -5625,6 +5796,12 @@ New Tab in Group
 
 New Terminal
 新建终端
+
+New To-Do
+新建任务
+
+New To-Do in {}
+在“{}”中新建任务
 
 New Vault…
 新建保险库…
@@ -5725,6 +5902,9 @@ No
 No Agent Screens
 没有智能体屏幕
 
+No Due Date
+无截止日期
+
 No Group
 无分组
 
@@ -5749,6 +5929,12 @@ No Receivers Paired
 No Saved Groups
 没有已保存的组
 
+No Section
+未分组
+
+No To-Do Chosen
+未选择任务
+
 No VPNs. Import a WireGuard configuration, or add one with its maker's app.
 没有 VPN。请导入 WireGuard 配置，或使用提供方的应用添加 VPN。
 
@@ -5763,6 +5949,9 @@ No app opens these yet: add one.
 
 No apps open this.
 没有应用可打开此项。
+
+No attachments
+无附件
 
 No backup has finished yet
 尚无已完成的备份
@@ -5793,6 +5982,9 @@ No conversations open.
 
 No disks.
 没有磁盘。
+
+No due date
+无截止日期
 
 No entries.
 没有条目。
@@ -5856,6 +6048,9 @@ No screen recordings yet. Record one with ⌘⇧6.
 
 No space around an auto-tiled window alone
 只有一个自动平铺窗口时不留边距
+
+No to-dos
+没有任务
 
 No touches in the last minute
 过去一分钟没有触摸
@@ -5944,11 +6139,17 @@ Norwegian
 Not Answered
 未应答
 
+Not Done
+未完成
+
 Not Signed In
 未登录
 
 Not a compile
 非编译任务
+
+Not a due: keep the words in its title
+不设为截止日期，把这些字留在标题里
 
 Not a number
 不是数字
@@ -6106,6 +6307,12 @@ Nothing changed: Olo's own model is still in use.
 Nothing coming up
 暂无即将开始的日程
 
+Nothing done yet
+还没有已完成的任务
+
+Nothing due today
+今天没有到期的任务
+
 Nothing found
 未找到
 
@@ -6135,6 +6342,12 @@ Nothing recorded yet. Press Record and talk for a few seconds.
 
 Nothing to calculate
 没有可计算的内容
+
+Nothing to do
+没有待办任务
+
+Nothing to do here
+这里没有待办任务
 
 Nothing to do.
 无需操作。
@@ -6339,6 +6552,9 @@ On disk
 
 On hold
 等待
+
+On the day, at 9 AM
+当天上午 9 点
 
 On the network
 网络上
@@ -6577,6 +6793,9 @@ Out of memory:
 Output
 输出
 
+Overdue
+已逾期
+
 Overview
 概览
 
@@ -6808,11 +7027,17 @@ Passwords’ password is used now: try again.
 Paste
 粘贴
 
+Paste as Attachment
+粘贴为附件
+
 Paste the key
 粘贴密钥
 
 Paste the key first.
 请先粘贴密钥。
+
+Pasted Picture
+粘贴的图片
 
 Pasted Picture.{}
 粘贴的图片。{}
@@ -6864,6 +7089,12 @@ Phone Settings…
 
 Phone number:
 电话号码：
+
+Pick a day
+选择日期
+
+Pick from a Month
+从日历中选择
 
 Picture
 图片
@@ -7432,6 +7663,12 @@ Regenerate
 Reinstall Selected…
 重新安装所选项目…
 
+Remind:
+提醒：
+
+Reminder
+提醒
+
 Reminder:
 提醒：
 
@@ -7483,6 +7720,9 @@ Remove the VPN “{}”? Its settings and keys go with it.
 Remove the {}? It will no longer unlock anything.
 移除{}吗？此后将无法再用它解锁。
 
+Remove {}
+移除“{}”
+
 Remove {} from the Collector
 从收集器中移除{}
 
@@ -7498,8 +7738,17 @@ Rename
 Rename Group…
 重命名组…
 
+Rename List
+重命名列表
+
+Rename List…
+重命名列表…
+
 Rename Place…
 重命名地点…
+
+Rename Section
+重命名分组
 
 Rename Worktree…
 重命名工作树…
@@ -7942,6 +8191,9 @@ Secondary click (three: middle)
 Section
 节
 
+Section:
+分组：
+
 Secure Note
 安全备注
 
@@ -8209,11 +8461,17 @@ Show Clicks
 Show Deskbar
 显示 Deskbar
 
+Show Details
+显示详情
+
 Show DiskBackup in Deskbar
 在 Deskbar 中显示 DiskBackup
 
 Show Display
 显示显示器
+
+Show Done
+显示已完成的任务
 
 Show File in Tracker
 在 Tracker 中显示文件
@@ -8241,6 +8499,9 @@ Show Ruler
 
 Show Shortcuts
 显示快捷键
+
+Show Sidebar
+显示侧边栏
 
 Show Source
 显示源
@@ -8556,6 +8817,9 @@ Start this step over
 
 Start typing
 开始输入
+
+Start with To Do and Doing
+从“待处理”和“进行中”开始
 
 Started
 开始于
@@ -9069,6 +9333,9 @@ The coming days, each its sky, low and high.
 
 The computer couldn't be restarted: {}
 无法重启电脑：{}
+
+The day before, at 9 AM
+前一天上午 9 点
 
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
 当天的命中率、池中已用插槽，以及最近几小时的构建与命中次数。
@@ -9643,6 +9910,9 @@ Title only
 Title:
 标题：
 
+To Do
+待处理
+
 To allow it, you can also {}.
 也可以通过{}来授权。
 
@@ -9651,6 +9921,30 @@ To {}
 
 To {}.
 目标：{}。
+
+To-Do
+待办事项
+
+To-Do: Today
+待办事项：今天
+
+To-Do: Upcoming
+待办事项：即将到期
+
+To-Do: nothing due after today.
+待办事项：今天之后没有任务到期。
+
+To-Do: nothing due today.
+待办事项：今天没有任务到期。
+
+To-Do: {}: {}.
+待办事项：{}：{}。
+
+To-dos due after today show here, by day.
+今天之后到期的任务会按日期显示在这里。
+
+To-dos:
+任务：
 
 To:
 到：
@@ -9886,6 +10180,9 @@ Type
 Type a time like 13:05 or 1:05 PM.
 请输入 13:05 或 1:05 PM 这样的时间。
 
+Type a to-do above, and press Return.
+在上方输入任务，然后按回车键。
+
 Type here to try the settings
 在这里输入以试用设置
 
@@ -10047,6 +10344,9 @@ Up (sent)
 
 Up for
 运行时长
+
+Upcoming
+即将到期
 
 Update
 更新
@@ -10372,6 +10672,9 @@ Warmer
 Warmth
 暖色程度
 
+Was due {} · {}
+原定{}到期 · {}
+
 Watch Agent Screens
 查看智能体屏幕
 
@@ -10459,11 +10762,23 @@ What should I wear tomorrow?
 What you change applies when you leave Rescue.
 所做更改在退出救援模式时生效。
 
+What's checked off shows here, the newest first.
+已完成的任务会显示在这里，最近完成的排在最前面。
+
+What's due after today, the soonest first, each by its day.
+今天之后到期的任务，最近的在前，各按其日期。
+
+What's due today, and anything overdue, shows here.
+今天到期和已逾期的任务会显示在这里。
+
 What's made for sRGB (nearly everything) looks as it was made; wider colours are for what has them.
 sRGB 内容（绝大多数内容）按原本的色彩显示，仅广色域内容会使用更宽的色域。
 
 What's next (or on now): when, what and where, and what comes after it.
 当前或下一个日程的时间、内容和地点，以及紧随其后的安排。
+
+What's on the Clipboard
+剪贴板内容
 
 What's still to come today, in order, each in its calendar's colour; then the days after.
 按时间顺序显示今天余下的日程，再显示之后几天的安排；各项使用所属日历的颜色。
@@ -10975,6 +11290,9 @@ other: 降级 {n} 个软件包
 driving {}
 驱动{}
 
+due {}
+{}到期
+
 ending one gives its slots back to the pool
 结束一个测试会将其插槽归还到池中
 
@@ -11067,6 +11385,9 @@ other: {n} 天后
 
 in {n} minutes
 other: {n} 分钟后
+
+in {}
+在“{}”中
 
 install {n} packages
 other: 安装 {n} 个软件包
@@ -11317,6 +11638,9 @@ organizer
 out of the archive
 从归档中取出
 
+overdue, {}
+已逾期，{}
+
 part of the screen
 屏幕的一部分
 
@@ -11503,11 +11827,17 @@ this site
 tidying
 正在清理
 
+today
+今天
+
 today at {}
 今天 {}
 
 today or tomorrow
 今天或明天
+
+tomorrow
+明天
 
 tomorrow at {}
 明天 {}
@@ -11572,6 +11902,9 @@ where the scheduler puts it
 with the {n} files changed in it and not committed
 other: 包含 {n} 个已修改但未提交的文件
 
+yesterday
+昨天
+
 yesterday at {}
 昨天 {}
 
@@ -11608,11 +11941,17 @@ other: {n} 份备份
 {n} backups chosen.
 other: 已选择 {n} 份备份。
 
+{n} coming up
+other: {n} 项即将到期
+
 {n} days
 other: {n} 天
 
 {n} days ago
 other: {n} 天前
+
+{n} due today
+other: {n} 项今天到期
 
 {n} events
 other: {n} 个日程
@@ -11662,6 +12001,9 @@ other: {n} 条新通知
 {n} of Fedora {} updates are waiting: install them first, in Updates.
 other: Fedora {} 有 {n} 项待安装的更新，请先在“更新”中安装。
 
+{n} overdue
+other: {n} 项已逾期
+
 {n} packs as sent, by their checksums
 other: {n} 个数据包的校验和与发送时一致
 
@@ -11704,6 +12046,12 @@ other: {n} 次
 {n} to come
 other: 即将开始 {n} 项
 
+{n} to do
+other: {n} 项待办
+
+{n} to-dos
+other: {n} 项任务
+
 {n} waiting in their apps
 other: 有 {n} 项等待在应用中处理
 
@@ -11745,6 +12093,9 @@ other: {n} 周
 
 {} ({} to {})
 {}（{} 至 {}）
+
+{} ({})
+{}（{}）
 
 {} A workspace starts with this; choose its own from Deskbar's tray.
 {} 新工作区默认使用此设置，可在 Deskbar 托盘中为各工作区单独选择。
@@ -12019,7 +12370,13 @@ other: {n} 周
 {} min ago
 {} 分钟前
 
+{} minutes after
+{} 分钟后
+
 {} minutes ago
+{} 分钟前
+
+{} minutes before
 {} 分钟前
 
 {} ms, the middle of them
@@ -12250,6 +12607,9 @@ Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
 {} · set up {}{}
 {} · 已设置 {}{}
 
+{} · {}
+{} · {}
+
 {} · {} · call quality while the microphone is used
 {} · {} · 使用麦克风时为通话音质
 
@@ -12315,6 +12675,9 @@ Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
 
 {}, until {}
 {}，直至 {}
+
+{}, {}
+{} {}
 
 {}, {} new to the backup, {} sent so far.
 {}，本次备份新增 {}，目前已发送 {}。
@@ -12589,6 +12952,9 @@ other: “{}”和另外 {n} 个程序仍在此窗口中运行。仍要关闭吗
 “{}” isn’t a day I can read for when it stops repeating: leave it empty to go on for good.
 无法识别重复结束日期“{}”。如需一直重复，请留空。
 
+“{}” isn’t a day I can read: try tomorrow, Friday, Nov 21 or 2026-11-21.
+无法识别日期“{}”。请试试 2026-11-21、tomorrow、Friday 或 Nov 21。
+
 “{}” isn’t a setting.
 “{}”不是有效的设置。
 
@@ -12597,6 +12963,9 @@ other: “{}”和另外 {n} 个程序仍在此窗口中运行。仍要关闭吗
 
 “{}” isn’t a time I can read for when it starts: try 14:30 or 2:30 PM.
 无法识别开始时间“{}”。请尝试 14:30 或 2:30 PM。
+
+“{}” isn’t a time I can read: try 14:30 or 2:30 PM.
+无法识别时间“{}”。请试试 14:30 或 2:30 PM。
 
 “{}” isn’t an address I can invite: write each as name@example.org, with commas between.
 无法向“{}”发送邀请。请按 name@example.org 格式输入地址，多个地址用逗号分隔。

@@ -195,6 +195,9 @@ other: +{n} और
 3 hours
 3 घंटे
 
+3 to-dos
+3 कार्य
+
 3. When it blinks again, touch it once more.
 3. बत्ती फिर झपके तो एक बार और छुएँ।
 
@@ -258,6 +261,9 @@ other: +{n} और
 5 seconds
 5 सेकंड
 
+5 to-dos
+5 कार्य
+
 5 years
 5 साल
 
@@ -278,6 +284,9 @@ other: +{n} और
 
 8 events
 8 कार्यक्रम
+
+8 to-dos
+8 कार्य
 
 8 weeks
 8 हफ़्ते
@@ -311,6 +320,9 @@ A backup reads one file at a time, and leaves what it read out of memory: it nev
 
 A battery kept full wears faster: for a computer that's mostly plugged in.
 बैटरी हमेशा पूरी चार्ज रहे तो जल्दी घिसती है। यह सेटिंग उन कंप्यूटरों के लिए है जो अक्सर बिजली से जुड़े रहते हैं।
+
+A board's lanes are the list's sections, one for each stage of the work, and last what's done. Drag to-dos between them.
+सूची का हर खंड बोर्ड पर एक कॉलम बनता है। हर कॉलम काम का एक चरण दिखाता है और आखिरी कॉलम में पूरे हुए कार्य रहते हैं। कार्य को खींचकर दूसरे कॉलम में ले जाएँ।
 
 A build of Olo is running: Olo upgrades as soon as it has finished.
 Olo का बिल्ड चल रहा है। पूरा होते ही अपग्रेड हो जाएगा।
@@ -456,6 +468,9 @@ A vault needs a name.
 A week
 एक हफ़्ता
 
+A week before, at 9 AM
+एक सप्ताह पहले, सुबह 9 बजे
+
 AI
 AI
 
@@ -585,6 +600,9 @@ Add Tab to Group
 Add Text
 टेक्स्ट जोड़ें
 
+Add To-Do: {}
+कार्य जोड़ें: {}
+
 Add Website
 वेबसाइट जोड़ें
 
@@ -602,6 +620,9 @@ Google खाता जोड़ें…
 
 Add a Kind
 प्रकार जोड़ें
+
+Add a Section…
+खंड जोड़ें…
 
 Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
 सॉफ़्टवेयर स्रोत जोड़ने पर उसके पैकेज और अपडेट Fedora के साथ मिलेंगे। सिर्फ़ भरोसेमंद स्रोत जोड़ें, क्योंकि उसका संचालक इस कंप्यूटर पर कुछ भी इंस्टॉल कर सकता है।
@@ -894,6 +915,9 @@ Any of the {}
 Any storms on the way?
 क्या कोई तूफ़ान आने वाला है?
 
+Any time
+कोई भी समय
+
 Any touch
 कोई भी स्पर्श
 
@@ -981,6 +1005,12 @@ Arrived out of order
 
 As BeOS R5 drew its icons: flat faces in its 8-bit colours, black outlines.
 BeOS R5 के आइकन जैसे: सपाट सतहें, 8-बिट रंग और काली बाहरी रेखाएँ।
+
+As Board
+बोर्ड के रूप में
+
+As List
+सूची के रूप में
 
 As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines.
 Workbench के आइकन जैसे: स्क्रीन के सोलह रंग, सपाट सतहें और काली बाहरी रेखाएँ।
@@ -1078,6 +1108,9 @@ At 15%
 At 20%
 20% पर
 
+At a time of its own
+अपने चुने समय पर
+
 At full speed
 पूरी गति पर
 
@@ -1093,11 +1126,32 @@ At the Start
 At the start
 शुरुआत में
 
+At the time it's due
+तय समय पर
+
 At {}. Give it the code from {}?
 स्थान: {0}। इसे {1} से मिला कोड दें?
 
+Attach
+संलग्न करें
+
 Attach Files…
 फ़ाइलें संलग्न करें…
+
+Attach File…
+फ़ाइल संलग्न करें…
+
+Attach Link
+लिंक संलग्न करें
+
+Attach Link…
+लिंक संलग्न करें…
+
+Attach a file or a link
+फ़ाइल या लिंक संलग्न करें
+
+Attachments
+अटैचमेंट
 
 Authenticate
 प्रमाणित करें
@@ -1179,6 +1233,12 @@ Back to the Forecast
 
 Back to the Items
 आइटम पर लौटें
+
+Back to the List
+सूची पर लौटें
+
+Back to the To-Dos
+कार्यों पर लौटें
 
 Back up this computer
 इस कंप्यूटर का बैकअप लें
@@ -1360,6 +1420,9 @@ Bluetooth ने खोलने की सहमति दी, लेकिन 
 
 Bluetooth…
 Bluetooth…
+
+Board
+बोर्ड
 
 Body
 मुख्य भाग
@@ -1746,6 +1809,9 @@ Choose a network to join it.
 
 Choose a setting, then play the original or its sound: switching goes on from the same place.
 सेटिंग चुनें, फिर मूल या बदली हुई आवाज़ सुनें। बदलने पर आवाज़ वहीं से चलती रहेगी।
+
+Choose a to-do to see its details.
+विवरण देखने के लिए कोई कार्य चुनें।
 
 Choose a widget to change it, or add one.
 बदलने के लिए विजेट चुनें या नया जोड़ें।
@@ -2228,6 +2294,9 @@ Couldn't rename “{}”: {}
 Couldn't restart: {}
 फिर शुरू नहीं कर सके: {}
 
+Couldn't save the change: {}
+बदलाव सहेजा नहीं जा सका: {}
+
 Couldn't save the setting: {}
 सेटिंग नहीं सहेज सके: {}
 
@@ -2504,11 +2573,17 @@ Delete Event
 Delete Item
 आइटम मिटाएँ
 
+Delete List
+सूची मिटाएँ
+
 Delete Mark
 निशान मिटाएँ
 
 Delete Row
 पंक्ति मिटाएँ
+
+Delete Section
+खंड मिटाएँ
 
 Delete Signature
 हस्ताक्षर मिटाएँ
@@ -2808,6 +2883,9 @@ Documents
 Does “{}” show this number?
 क्या “{}” पर यह संख्या दिख रही है?
 
+Doing
+जारी
+
 Domain:
 डोमेन:
 
@@ -2822,6 +2900,12 @@ Done Editing
 
 Done with the exercises
 अभ्यास पूरे हुए
+
+Done {}
+पूरा हुआ: {}
+
+Done: {}
+पूरा हुआ: {}
 
 Don’t Trust
 भरोसा न करें
@@ -2891,6 +2975,36 @@ Dropped
 
 Dry for the next {} hours
 अगले {} घंटे बारिश नहीं
+
+Due
+समय सीमा
+
+Due Date
+अंतिम तारीख
+
+Due Day
+अंतिम दिन
+
+Due Next Week
+अगले सप्ताह तक
+
+Due Time
+अंतिम समय
+
+Due Today
+आज तक
+
+Due Tomorrow
+कल तक
+
+Due {}
+समय सीमा: {}
+
+Due {} · {}
+समय सीमा: {} · {}
+
+Due:
+समय सीमा:
 
 Duplicate
 प्रतिलिपि बनाएँ
@@ -3174,6 +3288,9 @@ Every interface
 Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
 हर कुंजी और फ़्रेम विंडो सर्वर के लूप और इनपुट थ्रेड से होकर जाता है। इसे चालू करने पर तेज़ प्रोसेसरों में से एक, {}, सिर्फ़ इनके लिए रहेगा। बिल्ड, ब्राउज़र और बाकी प्रोग्राम दूसरे प्रोसेसरों पर चलेंगे, ताकि इनपुट या फ़्रेम को इंतज़ार न करना पड़े।
 
+Every list's to-dos show here.
+यहाँ सभी सूचियों के कार्य दिखते हैं।
+
 Every month
 हर महीने
 
@@ -3381,6 +3498,9 @@ Files
 
 Files with these extensions are this kind wherever Olo looks at them, and open in its app. An extension another kind had is this one's now.
 इन एक्सटेंशन वाली फ़ाइलें पूरे Olo में इस प्रकार की मानी जाएँगी और इसके ऐप में खुलेंगी। कोई एक्सटेंशन पहले दूसरे प्रकार का हो तो अब यहाँ जुड़ जाएगा।
+
+File…
+फ़ाइल…
 
 Fill It In
 भरें
@@ -4033,6 +4153,9 @@ How fast it runs now
 How loud this microphone is gets measured as you talk on a call, or with Try It.
 कॉल पर बोलते समय या “आज़माएँ” चुनने पर इस माइक्रोफ़ोन की आवाज़ का स्तर मापा जाता है।
 
+How many are due today, and the first of them, the overdue first, each in its list's colour.
+आज तक कितने कार्य हैं और उनमें से पहले कुछ, समय सीमा बीत चुके पहले, हर एक अपनी सूची के रंग में।
+
 How warm will it get today?
 आज कितनी गर्मी होगी?
 
@@ -4146,6 +4269,9 @@ HDR चालू डिस्प्ले पर HDR सामग्री क�
 
 In Use for Internet Traffic
 इंटरनेट ट्रैफ़िक के लिए इस्तेमाल हो रहा है
+
+In an Hour
+एक घंटे बाद
 
 In an agent’s tab:
 एजेंट के टैब में:
@@ -4872,14 +4998,26 @@ Link:
 Link’s rate
 कनेक्शन की दर
 
+Link…
+लिंक…
+
 Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
 Linux का अपना शेड्यूलर (EEVDF) हर प्रोग्राम को निष्पक्ष समय देता है। दोनों शेड्यूलर में Olo के वे थ्रेड रीयल-टाइम प्राथमिकता पर चलते हैं जिनका कोई इंतज़ार कर रहा है। बिल्ड जैसे भारी काम के बीच डेस्कटॉप इस शेड्यूलर पर सबसे तेज़ रहता है।
+
+List
+सूची
 
 List View
 सूची दृश्य
 
+List:
+सूची:
+
 Listening
 सुन रहा है
+
+Lists
+सूचियाँ
 
 Live
 लाइव
@@ -5064,6 +5202,9 @@ Made room for newer ones
 Made the vault “{}”.
 “{}” तिजोरी बनाई गई।
 
+Made {}
+बनाया गया: {}
+
 Magenta
 मैजेंटा
 
@@ -5111,6 +5252,9 @@ Main display: the desktop is here.
 
 Main window:
 मुख्य विंडो:
+
+Make
+बनाएँ
 
 Make Main
 मुख्य बनाएँ
@@ -5165,6 +5309,12 @@ Mark All as Read
 
 Mark This Moment
 इस क्षण को चिह्नित करें
+
+Mark as Done
+पूरा चिह्नित करें
+
+Mark as Not Done
+अधूरा चिह्नित करें
 
 Mark as Read
 पढ़ा हुआ चिह्नित करें
@@ -5442,6 +5592,9 @@ Mouse
 Mouse speed
 माउस की गति
 
+Move
+ले जाएँ
+
 Move All Windows To
 सभी विंडो यहाँ ले जाएँ
 
@@ -5465,6 +5618,9 @@ Move Tab to New Window
 
 Move Tab to Window
 टैब दूसरी विंडो में ले जाएँ
+
+Move To
+यहाँ ले जाएँ
 
 Move Up
 ऊपर ले जाएँ
@@ -5625,6 +5781,12 @@ New Group…
 New Item
 नया आइटम
 
+New List
+नई सूची
+
+New List…
+नई सूची…
+
 New Message
 नया संदेश
 
@@ -5633,6 +5795,15 @@ New Partition Table…
 
 New Screen
 नई स्क्रीन
+
+New Section
+नया खंड
+
+New Sections
+नए खंड
+
+New Section…
+नया खंड…
 
 New Signature…
 नया हस्ताक्षर…
@@ -5645,6 +5816,12 @@ New Tab in Group
 
 New Terminal
 नया टर्मिनल
+
+New To-Do
+नया कार्य
+
+New To-Do in {}
+“{}” में नया कार्य
 
 New Vault…
 नई तिजोरी…
@@ -5745,6 +5922,9 @@ No
 No Agent Screens
 कोई एजेंट स्क्रीन नहीं
 
+No Due Date
+कोई अंतिम तारीख नहीं
+
 No Group
 कोई समूह नहीं
 
@@ -5769,6 +5949,12 @@ No Receivers Paired
 No Saved Groups
 कोई सहेजा समूह नहीं
 
+No Section
+कोई खंड नहीं
+
+No To-Do Chosen
+कोई कार्य नहीं चुना गया
+
 No VPNs. Import a WireGuard configuration, or add one with its maker's app.
 कोई VPN नहीं है। WireGuard कॉन्फ़िगरेशन आयात करें या प्रदाता के ऐप से जोड़ें।
 
@@ -5783,6 +5969,9 @@ No app opens these yet: add one.
 
 No apps open this.
 इसे खोलने वाला कोई ऐप नहीं।
+
+No attachments
+कोई अटैचमेंट नहीं
 
 No backup has finished yet
 अभी कोई बैकअप पूरा नहीं हुआ
@@ -5813,6 +6002,9 @@ No conversations open.
 
 No disks.
 कोई डिस्क नहीं।
+
+No due date
+कोई अंतिम तारीख नहीं
 
 No entries.
 कोई प्रविष्टि नहीं।
@@ -5876,6 +6068,9 @@ No screen recordings yet. Record one with ⌘⇧6.
 
 No space around an auto-tiled window alone
 अकेली टाइल वाली विंडो के चारों ओर जगह न छोड़ें
+
+No to-dos
+कोई कार्य नहीं
 
 No touches in the last minute
 पिछले मिनट में कोई स्पर्श नहीं
@@ -5964,11 +6159,17 @@ Norwegian
 Not Answered
 जवाब नहीं मिला
 
+Not Done
+अधूरा
+
 Not Signed In
 लॉगिन नहीं है
 
 Not a compile
 कम्पाइल नहीं है
+
+Not a due: keep the words in its title
+यह समय सीमा नहीं है: शब्द शीर्षक में ही रखें
 
 Not a number
 संख्या नहीं है
@@ -6126,6 +6327,12 @@ Nothing changed: Olo's own model is still in use.
 Nothing coming up
 आगे कोई कार्यक्रम नहीं
 
+Nothing done yet
+अभी कोई कार्य पूरा नहीं हुआ
+
+Nothing due today
+आज किसी कार्य की अंतिम तारीख नहीं है
+
 Nothing found
 कुछ नहीं मिला
 
@@ -6155,6 +6362,12 @@ Nothing recorded yet. Press Record and talk for a few seconds.
 
 Nothing to calculate
 गणना के लिए कुछ नहीं
+
+Nothing to do
+कोई कार्य बाकी नहीं
+
+Nothing to do here
+यहाँ कोई कार्य बाकी नहीं
 
 Nothing to do.
 कुछ करने को नहीं है।
@@ -6359,6 +6572,9 @@ On disk
 
 On hold
 होल्ड पर
+
+On the day, at 9 AM
+उसी दिन सुबह 9 बजे
 
 On the network
 नेटवर्क पर
@@ -6597,6 +6813,9 @@ Out of memory:
 Output
 आउटपुट
 
+Overdue
+समय सीमा बीत गई
+
 Overview
 अवलोकन
 
@@ -6828,11 +7047,17 @@ Passwords’ password is used now: try again.
 Paste
 पेस्ट करें
 
+Paste as Attachment
+अटैचमेंट के रूप में पेस्ट करें
+
 Paste the key
 कुंजी पेस्ट करें
 
 Paste the key first.
 पहले कुंजी पेस्ट करें।
+
+Pasted Picture
+पेस्ट किया गया चित्र
 
 Pasted Picture.{}
 पेस्ट की गई तस्वीर।{}
@@ -6886,6 +7111,12 @@ Phone Settings…
 
 Phone number:
 फ़ोन नंबर:
+
+Pick a day
+दिन चुनें
+
+Pick from a Month
+कैलेंडर से चुनें
 
 Picture
 तस्वीर
@@ -7454,6 +7685,12 @@ Regenerate
 Reinstall Selected…
 चुने हुए फिर इंस्टॉल करें…
 
+Remind:
+याद दिलाएँ:
+
+Reminder
+अनुस्मारक
+
 Reminder:
 रिमाइंडर:
 
@@ -7505,6 +7742,9 @@ Remove the VPN “{}”? Its settings and keys go with it.
 Remove the {}? It will no longer unlock anything.
 {} हटाएँ? फिर इससे ताला नहीं खोल सकेंगे।
 
+Remove {}
+“{}” हटाएँ
+
 Remove {} from the Collector
 संग्रह-पटल से {} हटाएँ
 
@@ -7520,8 +7760,17 @@ Rename
 Rename Group…
 समूह का नाम बदलें…
 
+Rename List
+सूची का नाम बदलें
+
+Rename List…
+सूची का नाम बदलें…
+
 Rename Place…
 स्थान का नाम बदलें…
+
+Rename Section
+खंड का नाम बदलें
 
 Rename Worktree…
 वर्कट्री का नाम बदलें…
@@ -7964,6 +8213,9 @@ Secondary click (three: middle)
 Section
 खंड
 
+Section:
+खंड:
+
 Secure Note
 सुरक्षित नोट
 
@@ -8232,11 +8484,17 @@ Show Clicks
 Show Deskbar
 Deskbar दिखाएँ
 
+Show Details
+विवरण दिखाएँ
+
 Show DiskBackup in Deskbar
 Deskbar में DiskBackup दिखाएँ
 
 Show Display
 डिस्प्ले दिखाएँ
+
+Show Done
+पूरे हुए कार्य दिखाएँ
 
 Show File in Tracker
 Tracker में फ़ाइल दिखाएँ
@@ -8264,6 +8522,9 @@ Show Ruler
 
 Show Shortcuts
 शॉर्टकट दिखाएँ
+
+Show Sidebar
+साइडबार दिखाएँ
 
 Show Source
 स्रोत दिखाएँ
@@ -8579,6 +8840,9 @@ Start this step over
 
 Start typing
 टाइप करना शुरू करें
+
+Start with To Do and Doing
+“करना है” और “जारी” से शुरू करें
 
 Started
 शुरू हुआ
@@ -9094,6 +9358,9 @@ The coming days, each its sky, low and high.
 
 The computer couldn't be restarted: {}
 कंप्यूटर रीस्टार्ट नहीं हो सका: {}
+
+The day before, at 9 AM
+एक दिन पहले, सुबह 9 बजे
 
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
 आज की कैश हिट दर, पूल के इस्तेमाल में स्लॉट और पिछले घंटों के बिल्ड व हिट।
@@ -9668,6 +9935,9 @@ Title only
 Title:
 शीर्षक:
 
+To Do
+करना है
+
 To allow it, you can also {}.
 अनुमति देने के लिए {} भी कर सकते हैं।
 
@@ -9676,6 +9946,30 @@ To {}
 
 To {}.
 गंतव्य: {}।
+
+To-Do
+कार्य
+
+To-Do: Today
+कार्य: आज
+
+To-Do: Upcoming
+कार्य: आगामी
+
+To-Do: nothing due after today.
+कार्य: आज के बाद किसी कार्य की अंतिम तारीख नहीं है।
+
+To-Do: nothing due today.
+कार्य: आज किसी कार्य की अंतिम तारीख नहीं है।
+
+To-Do: {}: {}.
+कार्य: {} — {}।
+
+To-dos due after today show here, by day.
+आज के बाद जिन कार्यों की अंतिम तारीख है, वे यहाँ दिन के क्रम में दिखते हैं।
+
+To-dos:
+कार्य:
 
 To:
 तक:
@@ -9911,6 +10205,9 @@ Type
 Type a time like 13:05 or 1:05 PM.
 13:05 या 1:05 PM की तरह समय लिखें।
 
+Type a to-do above, and press Return.
+ऊपर कार्य लिखें और Enter दबाएँ।
+
 Type here to try the settings
 सेटिंग आज़माने के लिए यहाँ टाइप करें
 
@@ -10072,6 +10369,9 @@ Up (sent)
 
 Up for
 चालू हुए
+
+Upcoming
+आगामी
 
 Update
 अपडेट
@@ -10397,6 +10697,9 @@ Warmer
 Warmth
 रंगों की गर्माहट
 
+Was due {} · {}
+समय सीमा थी: {} · {}
+
 Watch Agent Screens
 एजेंट स्क्रीन देखें
 
@@ -10484,11 +10787,23 @@ What should I wear tomorrow?
 What you change applies when you leave Rescue.
 बचाव मोड से निकलने पर बदलाव लागू होंगे।
 
+What's checked off shows here, the newest first.
+पूरे हुए कार्य यहाँ दिखते हैं। सबसे हाल में पूरा हुआ कार्य पहले दिखता है।
+
+What's due after today, the soonest first, each by its day.
+आज के बाद जिनकी अंतिम तारीख है, सबसे निकट वाला पहले, हर एक अपने दिन के साथ।
+
+What's due today, and anything overdue, shows here.
+आज के कार्य और वे कार्य जिनकी समय सीमा बीत चुकी है, यहाँ दिखते हैं।
+
 What's made for sRGB (nearly everything) looks as it was made; wider colours are for what has them.
 sRGB में बनी सामग्री (लगभग सभी सामग्री) अपने असली रंगों में दिखेगी। विस्तृत रंग उन्हीं चीज़ों पर लागू होंगे जिनमें वे मौजूद हैं।
 
 What's next (or on now): when, what and where, and what comes after it.
 अभी या आगे होने वाले कार्यक्रम का समय, नाम, स्थान और उसके बाद का कार्यक्रम।
+
+What's on the Clipboard
+क्लिपबोर्ड की सामग्री
 
 What's still to come today, in order, each in its calendar's colour; then the days after.
 आज के बाकी कार्यक्रम समय के क्रम में, हर एक अपने कैलेंडर के रंग में। फिर अगले दिनों के कार्यक्रम।
@@ -11002,6 +11317,9 @@ other: {n} पैकेजों के पुराने संस्करण
 driving {}
 {} चला रहा है
 
+due {}
+समय सीमा: {}
+
 ending one gives its slots back to the pool
 परीक्षण बंद करने से उसके स्लॉट पूल को लौटेंगे
 
@@ -11097,6 +11415,9 @@ other: {n} दिनों में
 in {n} minutes
 one: {n} मिनट में
 other: {n} मिनट में
+
+in {}
+“{}” में
 
 install {n} packages
 one: {n} पैकेज इंस्टॉल करें
@@ -11353,6 +11674,9 @@ organizer
 out of the archive
 संग्रह से बाहर
 
+overdue, {}
+समय सीमा बीत गई, {}
+
 part of the screen
 स्क्रीन का हिस्सा
 
@@ -11545,11 +11869,17 @@ this site
 tidying
 सफ़ाई जारी
 
+today
+आज
+
 today at {}
 आज {}
 
 today or tomorrow
 आज या कल
+
+tomorrow
+कल
 
 tomorrow at {}
 कल {}
@@ -11616,6 +11946,9 @@ with the {n} files changed in it and not committed
 one: इसमें बदली और कमिट न हुई {n} फ़ाइल सहित
 other: इसमें बदली और कमिट न हुई {n} फ़ाइलों सहित
 
+yesterday
+बीता कल
+
 yesterday at {}
 कल {}
 
@@ -11659,6 +11992,10 @@ other: {n} बैकअप
 one: {n} बैकअप चुना गया।
 other: {n} बैकअप चुने गए।
 
+{n} coming up
+one: {n} आगामी कार्य
+other: {n} आगामी कार्य
+
 {n} days
 one: {n} दिन
 other: {n} दिन
@@ -11666,6 +12003,10 @@ other: {n} दिन
 {n} days ago
 one: {n} दिन पहले
 other: {n} दिन पहले
+
+{n} due today
+one: {n} कार्य आज तक
+other: {n} कार्य आज तक
 
 {n} events
 one: {n} कार्यक्रम
@@ -11731,6 +12072,10 @@ other: {n} नई सूचनाएँ
 one: Fedora {} का {n} अपडेट लंबित है। पहले “अपडेट” में इसे इंस्टॉल करें।
 other: Fedora {} के {n} अपडेट लंबित हैं। पहले “अपडेट” में इन्हें इंस्टॉल करें।
 
+{n} overdue
+one: {n} कार्य की समय सीमा बीत गई
+other: {n} कार्यों की समय सीमा बीत गई
+
 {n} packs as sent, by their checksums
 one: {n} पैक का चेकसम भेजे गए डेटा से मिला
 other: {n} पैक के चेकसम भेजे गए डेटा से मिले
@@ -11787,6 +12132,14 @@ other: {n} बार
 one: आगे {n} कार्यक्रम
 other: आगे {n} कार्यक्रम
 
+{n} to do
+one: {n} कार्य बाकी
+other: {n} कार्य बाकी
+
+{n} to-dos
+one: {n} कार्य
+other: {n} कार्य
+
 {n} waiting in their apps
 one: {n} आइटम ऐप में लंबित है
 other: {n} आइटम ऐप में लंबित हैं
@@ -11830,6 +12183,9 @@ other: {n} हफ़्ते
 
 {} ({} to {})
 {} ({} से {})
+
+{} ({})
+{} ({})
 
 {} A workspace starts with this; choose its own from Deskbar's tray.
 {} नए कार्यक्षेत्र की शुरुआत इससे होती है। Deskbar की ट्रे से हर कार्यक्षेत्र के लिए अलग चुनें।
@@ -12104,7 +12460,13 @@ other: {n} हफ़्ते
 {} min ago
 {} मिनट पहले
 
+{} minutes after
+{} मिनट बाद
+
 {} minutes ago
+{} मिनट पहले
+
+{} minutes before
 {} मिनट पहले
 
 {} ms, the middle of them
@@ -12335,6 +12697,9 @@ Olo के {1} संदेशों में से {0} अभी {2} मे�
 {} · set up {}{}
 {} · सेटअप {}{}
 
+{} · {}
+{} · {}
+
 {} · {} · call quality while the microphone is used
 {} · {} · माइक्रोफ़ोन इस्तेमाल करते समय कॉल की गुणवत्ता
 
@@ -12400,6 +12765,9 @@ RAM का {}%
 
 {}, until {}
 {}, {} तक
+
+{}, {}
+{}, {}
 
 {}, {} new to the backup, {} sent so far.
 {}, बैकअप में {} नया, अब तक {} भेजा।
@@ -12492,7 +12860,7 @@ RAM का {}%
 {}; {} की अनुमति नहीं मिली (फिर लॉगिन करें)
 
 {}Run by {}. Echo cancellation isn't tried: a recording has no speakers' sound beside it to take out.
-{}{1} ने चलाया। रिकॉर्डिंग में हटाने के लिए स्पीकर की आवाज़ नहीं होती, इसलिए गूँज हटाने का परीक्षण नहीं हुआ।
+{0}{1} ने चलाया। रिकॉर्डिंग में हटाने के लिए स्पीकर की आवाज़ नहीं होती, इसलिए गूँज हटाने का परीक्षण नहीं हुआ।
 
 {}a heading {}
 {}शीर्षक {}
@@ -12676,6 +13044,9 @@ other: इस विंडो में “{}” और {n} अन्य प्�
 “{}” isn’t a day I can read for when it stops repeating: leave it empty to go on for good.
 दोहराव खत्म होने की तारीख “{}” समझ नहीं आई। हमेशा जारी रखने के लिए खाली छोड़ें।
 
+“{}” isn’t a day I can read: try tomorrow, Friday, Nov 21 or 2026-11-21.
+“{}” तारीख समझ में नहीं आई। 2026-11-21, tomorrow, Friday या Nov 21 आज़माएँ।
+
 “{}” isn’t a setting.
 “{}” कोई सेटिंग नहीं है।
 
@@ -12684,6 +13055,9 @@ other: इस विंडो में “{}” और {n} अन्य प्�
 
 “{}” isn’t a time I can read for when it starts: try 14:30 or 2:30 PM.
 शुरुआत का समय “{}” समझ नहीं आया। 14:30 या 2:30 PM लिखकर देखें।
+
+“{}” isn’t a time I can read: try 14:30 or 2:30 PM.
+“{}” समय समझ में नहीं आया। 14:30 या 2:30 PM आज़माएँ।
 
 “{}” isn’t an address I can invite: write each as name@example.org, with commas between.
 “{}” निमंत्रण भेजने लायक पता नहीं है। पते name@example.org जैसे लिखें और कॉमा से अलग करें।

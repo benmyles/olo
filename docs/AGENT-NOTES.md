@@ -484,6 +484,64 @@ For the service itself, point HOME, every XDG folder and
 `--set-up-folder` keeps its key in the login keyring, so don't run it
 in a test.
 
+### Pictures of a window, and what has caught them out
+
+Learned making To-Do (2026-11-19 and 20):
+
+- **A session's screen is in device pixels.** `tsession start NAME
+  1280x800` at the default 2× is a screen of 640 × 400 points, on which
+  every window is in its narrowest layout (Calendar and Weather showed
+  no side panel, and a before-and-after "differed nowhere"). For the
+  smallest screen at 2×: `2560x1600`.
+- **app_server remembers a window's size for the session.** Change an
+  app's first size (`WindowOptions::new`) and its window in a session
+  that had it open comes back the old size: stop the session and start
+  it again.
+- **A made-up clock is the app's only if the app asks nothing else.**
+  With `OLO_TODO_NOW` (or `OLO_CALENDAR_NOW`) a window believes it's
+  another day, and anything stamped by the real clock
+  (`Timestamp::now()`) is then of another day than the picture's: a
+  to-do checked off in pictures of the 19th read "Done tomorrow" once
+  the real date had moved on, and both reviewers took it for a bug of
+  time zones. Stamp through the same function the window reads the
+  time with.
+- **Run the layout review at 1.25× and 1.75× too, in every state you
+  picture.** Clean at 1×, 1.5× and 2×, To-Do had six kinds of finding
+  at the other two (and one at 1.5×): a menu field's words a pixel left
+  of a text field's under it, a label of another size beside a row's
+  title a pixel off its baseline (`style::baseline_at`, then
+  `label_on_baseline`), an icon a pixel off the name beside it (centre
+  it on the snapped baseline less half the capitals), rows of 30
+  points landing on 52.5 device pixels (make a row a whole number of
+  them at the scale: `(points * scale).round() / scale`), and a line
+  drawn at the top of one flex child a pixel under the bottom of the
+  one over it (two siblings' shared edge isn't one pixel row at every
+  scale: draw the line from the pane both are in, `view::foot_line`).
+- **Reviewers' pictures: absolute paths, one command each.**
+  `codex-look` and `opus-look` run from the pictures' folder; started
+  together in one shell line with `&`, one ran from the repository.
+  Run each as its own background command.
+- **A bare `TextField` shows nothing until it has a size.** One line:
+  a container of a set height with the field in it `absolute().
+  inset_0()`. Several lines: `.scrolled_by(&handle)`, in a `ScrollView`
+  of that handle. Its hint is drawn in the faint colour: for a row
+  whose hint is what the row is for, draw your own label over it while
+  it's empty.
+- **A `ScrollView` that can scroll across shows its bar always.**
+  `.horizontal(true)` reserves and draws the bar whether or not what's
+  in it is wider: ask for it only when it is.
+- **Keys reach a view's `on_key_down` only through what has the
+  keyboard.** A handler on a plain `div` hears keys a focused field
+  under it lets through, and nothing once no field has the keyboard:
+  give the div a `FocusHandle` (`track_focus`) and focus it where the
+  person presses (To-Do's ↑ ↓ and Space did nothing until then, and no
+  picture shows that: try the keys).
+- **Look for what a picture can't show.** To-Do's board had no field
+  to type a new to-do in at all (its + focused a field that wasn't in
+  the window): nine review rounds of pictures passed it. Drive each
+  thing the window offers once (`tsession click`, `type`, `key`) and
+  picture what happens.
+
 ### A program with no network, without root
 
 `unshare -rn PROGRAM` runs it in a network of its own with only
@@ -517,6 +575,23 @@ Doctor check, try its fix and look again: the finding must be gone.
   cpu_core/instructions/u,cpu_core/cycles/u BINARY` (not CPU 2: Olo's
   realtime threads have it) repeats to within a few hundred
   instructions.
+- **Measure with a great many of whatever the window lists.** To-Do
+  with its demo's fifteen to-dos cost nothing anywhere; with 5,000
+  (a store made by a script: a vdir is files), choosing a card on a
+  board of 900 took 40 ms a frame, and checking a to-do off 7. What it
+  was: something found by its name inside per-row code (`Book::item`
+  is a search of every to-do, and each card's key and drawing asked
+  it: find by place, as rows do), every card made whether it showed or
+  not (`sized_rows`), each card's wrapped title measured again at each
+  `body` (keep the layout, keyed by what it's made from), the sidebar's
+  counts counted at each `body` (count in the one place the book
+  changes), a sort that worked out its key at every comparison, and a
+  copy of the whole book made to pretend one to-do was still open.
+  `tools/dev/cost PID` while `tsession wheel`, `key` and `click` drive
+  it says which; time the parts with `Instant` in a release build to
+  find where a frame goes. And this computer is rarely idle (a load of
+  ten is common): one slow frame in a run is as likely another
+  program's doing; measure thrice.
 - **Measure in absolute terms**, against a frame's budget (8.3 ms at
   120 Hz), CPU at rest and while animating, and latency; compare a
   change with the build from just before it, never with another toolkit

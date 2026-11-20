@@ -28,6 +28,7 @@ pub const OUR_APPS: &[(&str, &str, &str)] = &[
     ("olo-speedtest", "Speed Test", "speed-test"),
     ("olo-kache", "Kache", "kache"),
     ("olo-calendar", "Calendar", "calendar"),
+    ("olo-todo", "To-Do", "todo"),
 ];
 
 /// Our apps that are a web app in Olo's Chrome (olo-slack): the Wayland
