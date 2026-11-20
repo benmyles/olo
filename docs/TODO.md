@@ -129,8 +129,22 @@ something nobody here has is in "Blocked", with what it waits for.
   (/var/tmp/olo-agents/snap-tiles). The swap pad's new picture (two
   tabbed windows, an arrow each way) passed its checkpoint and both
   reviewers' looks, whose points went back to it (tabs narrower with
-  the zoom mark, the pad 112 × 88, even margins, dark outlines). To
-  do when it reports: read the whole diff, run its checks
+  the zoom mark, the pad 112 × 88, even margins, dark outlines), and
+  it has done them. **Its work is written and uncommitted in the
+  worktree** (10:40: 26 files, +1,621 lines: `shell/snap.rs`,
+  `autotile.rs`, `tiling.rs`, `xdg.rs`, the shortcuts' table, the
+  window menu, the catalogs, `tools/dev/snap-check` with a matrix of
+  modes, layouts, scales and displays, and a small Wayland client for
+  it, `crates/app_server/examples/snap_probe.rs`); its report is
+  /var/tmp/olo-agents/snap-tiles/report.md and its pictures the
+  folder's `look/` (the pad revised, lit, with a long title; tiles
+  dragged; the zooms). Two edits outside its brief were allowed it:
+  `tools/dev/chord-check` (Zoom has six commands) and the kit's menu
+  lint (`crates/kit/src/menu.rs`: "Zoom to 75%" keeps its verb, a
+  percentage being an amount and not a destination). Its strict log
+  check failed only on slow-frame warnings it puts down to the
+  machine's load (0.8 ms of CPU in a 14 ms frame): to see again on a
+  quiet machine. To do when it says done: read the whole diff, run its checks
   (`tools/dev/snap-check`, `chord-check`, the crates' tests), picture
   every state at 1×, 1.5× and 2× in light and dark, both reviewers,
   the docs (HACKING's snapping and Zoom sections, the report), then
