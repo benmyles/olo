@@ -2937,6 +2937,9 @@ Descargando…
 Drag with:
 Arrastrar con:
 
+Dragging a Window
+Al arrastrar una ventana
+
 Draw
 Dibujar
 
@@ -8574,6 +8577,9 @@ Mostrar el día de la semana
 Show the phone’s other notifications
 Mostrar las demás notificaciones del teléfono
 
+Show the places a window can go
+Mostrar los lugares que puede ocupar una ventana
+
 Show what a message says
 Mostrar lo que dice un mensaje
 
@@ -10909,6 +10915,9 @@ Al compartir o grabar la pantalla (los errores también esperan)
 
 While uploading
 Al subir
+
+Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
+Mientras arrastra una ventana por su pestaña, suéltela en un lugar, o pulse su letra, para ponerla allí. Suéltela en el lugar de otra ventana para intercambiarlas. Escape lo deja todo como estaba.
 
 Why
 Por qué

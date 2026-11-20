@@ -2926,6 +2926,9 @@ Downloading…
 Drag with:
 拖移方式：
 
+Dragging a Window
+拖移窗口
+
 Draw
 绘制
 
@@ -8551,6 +8554,9 @@ Show the day of the week
 Show the phone’s other notifications
 显示手机的其他通知
 
+Show the places a window can go
+显示窗口可以放置的位置
+
 Show what a message says
 显示消息内容
 
@@ -10884,6 +10890,9 @@ While sharing or recording the screen (errors wait too)
 
 While uploading
 上传时
+
+Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
+按住标签拖移窗口时，在某个位置松开，或按下该位置的字母，窗口就会移到那里。在另一个窗口的位置松开，两个窗口互换位置。按 Escape 可全部恢复原状。
 
 Why
 原因

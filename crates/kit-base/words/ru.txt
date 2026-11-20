@@ -2959,6 +2959,9 @@ Downloading…
 Drag with:
 Перетаскивать:
 
+Dragging a Window
+Перетаскивание окна
+
 Draw
 Рисовать
 
@@ -8620,6 +8623,9 @@ Show the day of the week
 Show the phone’s other notifications
 Показывать другие уведомления телефона
 
+Show the places a window can go
+Показывать места, куда можно поставить окно
+
 Show what a message says
 Показывать текст сообщений
 
@@ -10959,6 +10965,9 @@ While sharing or recording the screen (errors wait too)
 
 While uploading
 При отправке
+
+Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
+Перетаскивая окно за заголовок, отпустите его в нужном месте или нажмите букву этого места, и окно встанет туда. Отпустите его на месте другого окна, чтобы поменять их местами. Escape возвращает всё как было.
 
 Why
 Причина

@@ -343,5 +343,6 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "windows", tab: "", group: "Space Around Arranged Windows", name: "Space at the edges", role: "Slider" },
     Setting { panel: "windows", tab: "", group: "Space Around Arranged Windows", name: "Space between windows", role: "Slider" },
     Setting { panel: "windows", tab: "", group: "Space Around Arranged Windows", name: "No space around an auto-tiled window alone", role: "CheckBox" },
+    Setting { panel: "windows", tab: "", group: "Dragging a Window", name: "Show the places a window can go", role: "CheckBox" },
     Setting { panel: "workspaces", tab: "", group: "", name: "Workspaces", role: "Slider" },
 ];

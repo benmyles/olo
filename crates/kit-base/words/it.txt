@@ -2937,6 +2937,9 @@ Download in corso…
 Drag with:
 Trascina con:
 
+Dragging a Window
+Trascinare una finestra
+
 Draw
 Disegna
 
@@ -8574,6 +8577,9 @@ Mostra il giorno della settimana
 Show the phone’s other notifications
 Mostra le altre notifiche del telefono
 
+Show the places a window can go
+Mostra i posti in cui può andare una finestra
+
 Show what a message says
 Mostra il testo del messaggio
 
@@ -10909,6 +10915,9 @@ Se condividi o registri lo schermo (rinvia anche gli errori)
 
 While uploading
 Durante l’upload
+
+Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
+Mentre trascini una finestra dalla sua linguetta, rilasciala in un posto, o premine la lettera, per metterla lì. Rilasciala nel posto di un'altra finestra per scambiarle. Esc rimette tutto com'era.
 
 Why
 Motivo

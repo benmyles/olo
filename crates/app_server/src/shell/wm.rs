@@ -447,6 +447,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let Some(area) = self.zoom_area(window) else {
             return;
         };
+        // (On its way somewhere: here instead.)
+        self.glide_stop(window);
         if let Some(location) = self.space.element_location(window)
             && !self.is_zoomed(window)
         {
@@ -498,6 +500,12 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             return;
         }
         let pre = window.user_data().get::<PreZoom>().and_then(|p| p.0.borrow_mut().take()).map(|r| self.put_back_at(r));
+        // (Gliding back: its own frame is where it glides to.)
+        if let Some(r) = pre.filter(|_| self.glide_frames) {
+            self.set_frame(window, r, false);
+            return;
+        }
+        self.glide_stop(window);
         // (Worked out before taking the surface's lock: inner_size takes it
         // too, and taking it twice hangs the whole desktop.)
         let size = pre.map(|r| window.inner_size(r.size));
@@ -523,12 +531,47 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         }
     }
 
+    /// Zoom, or unzoom, at the person's word (the tab's box, the key,
+    /// Deskbar's menu): the window glides there (`glide`). An auto-tiled
+    /// one's is its tree's to show.
     pub fn toggle_zoom(&mut self, window: &WindowElement) {
-        if self.is_zoomed(window) {
-            self.unzoom_window(window);
-        } else {
-            self.zoom_window(window);
+        if self.auto_tiled(window) {
+            if self.is_zoomed(window) {
+                self.unzoom_window(window);
+            } else {
+                self.zoom_window(window);
+            }
+            return;
         }
+        // (On its way into a zoom, it's as good as zoomed.)
+        if self.is_zoomed(window) || self.glide_goal(window).is_some_and(|(_, zoom)| zoom) {
+            self.glided(|s| s.unzoom_window(window));
+        } else {
+            self.zoom_gliding(window);
+        }
+    }
+
+    /// `zoom_window`, the window gliding into the zoom's frame: what it
+    /// unzooms to is kept now, from where it is (where it's going, if
+    /// it's on its way), and it's zoomed once it's there.
+    fn zoom_gliding(&mut self, window: &WindowElement) {
+        let (Some(area), Some(location)) = (self.zoom_area(window), self.space.element_location(window)) else { return self.zoom_window(window) };
+        let here = self.glide_goal(window).map_or(Rectangle::new(location, window.geometry().size), |(to, _)| to);
+        if here == area {
+            return self.zoom_window(window);
+        }
+        window.user_data().insert_if_missing(PreZoom::default);
+        window.user_data().insert_if_missing(ZoomedFrom::default);
+        {
+            let pre = window.user_data().get::<PreZoom>().unwrap();
+            // Tiled or arranged (its own frame already kept): come back
+            // here, not to its own frame.
+            let arranged = pre.0.borrow().is_some();
+            *window.user_data().get::<ZoomedFrom>().unwrap().0.borrow_mut() = arranged.then_some(here);
+            pre.0.borrow_mut().get_or_insert(here);
+        }
+        self.glided(|s| s.set_frame(window, area, false));
+        self.glide_then_zoom(window);
     }
 }
 

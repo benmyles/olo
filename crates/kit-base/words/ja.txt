@@ -2926,6 +2926,9 @@ Downloading…
 Drag with:
 ドラッグ方法:
 
+Dragging a Window
+ウィンドウのドラッグ
+
 Draw
 描画
 
@@ -8551,6 +8554,9 @@ Show the day of the week
 Show the phone’s other notifications
 電話のその他の通知を表示
 
+Show the places a window can go
+ウィンドウを置ける場所を表示
+
 Show what a message says
 メッセージ本文を表示
 
@@ -10884,6 +10890,9 @@ While sharing or recording the screen (errors wait too)
 
 While uploading
 アップロード中
+
+Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
+ウィンドウをタブでドラッグ中に、場所の上で放すか、その文字キーを押すと、ウィンドウがそこに移動します。ほかのウィンドウの場所で放すと、2つが入れ替わります。Escapeですべて元に戻ります。
 
 Why
 理由

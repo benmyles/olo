@@ -528,6 +528,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     }
 
     pub fn resize_request_xdg(&mut self, surface: &ToplevelSurface, seat: &Seat<Self>, serial: Serial, edges: ResizeEdge) {
+        // (On its way somewhere: there, before its edge is taken in hand.)
+        if let Some(window) = self.window_for_surface(surface.wl_surface()) {
+            self.glide_finish(&window);
+        }
         if let Some(touch) = seat.get_touch()
             && touch.has_grab(serial)
         {
@@ -651,7 +655,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             // Taken in hand: no longer on its way to a tile it was asked into.
             self.unfollow(&window);
             window.meta().moved_on_purpose.set(true);
-            let grab = TouchMoveSurfaceGrab { start_data, window, initial_window_location, started: false };
+            let grab = TouchMoveSurfaceGrab { start_data, window, initial_window_location, started: false, cancelled: false };
 
             touch.set_grab(self, grab, serial);
             return;

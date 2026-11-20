@@ -2937,6 +2937,9 @@ Downloading…
 Drag with:
 खींचने का तरीका:
 
+Dragging a Window
+विंडो खींचना
+
 Draw
 चित्र बनाएँ
 
@@ -8574,6 +8577,9 @@ Show the day of the week
 Show the phone’s other notifications
 फ़ोन की अन्य सूचनाएँ दिखाएँ
 
+Show the places a window can go
+वे जगहें दिखाएँ जहाँ विंडो जा सकती है
+
 Show what a message says
 संदेश की सामग्री दिखाएँ
 
@@ -10909,6 +10915,9 @@ While sharing or recording the screen (errors wait too)
 
 While uploading
 अपलोड के दौरान
+
+Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
+किसी विंडो को उसके टैब से खींचते समय, उसे किसी जगह में छोड़ें या उस जगह का अक्षर दबाएँ, और विंडो वहाँ आ जाती है। दूसरी विंडो की जगह में छोड़ने पर दोनों की अदला-बदली होती है। Escape सब कुछ वापस रख देता है।
 
 Why
 कारण

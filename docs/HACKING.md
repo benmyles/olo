@@ -8992,6 +8992,155 @@ window-manager fuzzer does it): Smart Tiling, a model that looked at
 the screen and arranged it, was its first user and is gone (Ben,
 2026-11-16: "it never worked well and is, frankly, silly").
 
+## Windows snap into place as they're dragged (app_server shell/snap.rs, shell/glide.rs)
+
+A window moved by its tab can be let go into a place (Ben, 2026-11-18:
+"if i drag to different areas of the screen it takes that tile location
+while dragging but isn't "saved" until i let go … show each hotspot as a
+semi-transparent overlay with a letter in each … or they can just press
+the letter"). How Windows 11, macOS Sequoia, GNOME, KDE, Rectangle,
+FancyZones and BeOS/Haiku's Stack and Tile do it, and why Olo's is as it
+is: [reports/window-snapping.md](reports/window-snapping.md).
+
+**The places** (`snap::pads`, a pure function of the display, its tiling
+area and the other windows' frames, tested on its own): nine, a map of
+the screen on the nine keys at a keyboard's left, and one for each other
+window there.
+
+    Q  top left quarter      W  top half          E  top right quarter
+    A  left half             S  the whole screen  D  right half
+    Z  bottom left quarter   X  bottom half       C  bottom right quarter
+
+Each has a pad where a hand goes for it: the quarters' at the tiling
+area's corners, the halves' at the middle of each side, the whole
+screen's a bar along the very top between the corners ("very top of the
+screen anywhere should be full screen"), the top half's under it in the
+middle. A pad at the area's edge counts out to the display's edge
+(`Pad::hot`): the pointer stops there, past the windows' margin and
+whatever Deskbar takes. Another window's pad is at its middle, not the
+whole of it (a window dragged across a screen of windows passes over
+others all the way), lettered from the right hand's keys (J K L H U I O
+P …, the front window first); one whose middle would lie under a pad
+already there has none, nor has a window of the dragged one's own app
+(let go on one of those, it becomes its tab: `window_drop`). The letters
+are keys' places, as keyboard hints' are (`hints::letter`): the same
+keys on every layout.
+
+**What's seen.** The pads come up as the move begins (past a click's
+distance, `PointerMoveSurfaceGrab::started`; a finger's move too) on the
+display the pointer is on, and go as it ends. With the pointer in a pad
+the window itself is in that place, not an outline of it, and the other
+pads step back (`OTHERS`); out of it again, it's under the pointer at
+its own size. On another window's pad the two are shown swapped: the
+other one where the dragged one was. Let go in a pad, it stays, as a
+tiling command would have put it (tiled there, or zoomed; its own frame
+kept for Restore; a swap gives each the other's frame, tile and zoom:
+`Arranged`). Let go anywhere else, it's where it was let go: a window
+taken out of a tile or a zoom is its own size from the moment it's
+taken, its tab still under the pointer, and that is its own frame now.
+Escape puts everything back as it was, the other window of a swap too.
+A letter pressed is the window let go in that pad (`snap_key`: the move
+ends; its letting up types nothing; with ⌃, ⌥ or ⌘ held it's a
+shortcut's key).
+
+**Which windows.** Those that tile: not dialogs, alerts, windows of one
+size, full screen ones (`snaps`). A tile of an auto-tiled display's tree
+keeps what dragging does there (onto a tile: swap; beside one:
+`auto_dropped`). Preferences ▸ Windows ▸ Dragging a Window turns it off
+(`TilingSettings::snap`).
+
+**A pad** (`pad_pixmap`) is a plate raised as Olo's panels are, with
+the highlight's edge and a point of shadow; on it a small picture of the
+display in a sunken well, the place filled with the highlight behind a
+line of the screen's white (another window's: a small window, raised,
+its yellow tab and close box on its top edge, and under it that window's
+title, so a pad over a covered window says whose it is), and the
+letter's key cap as keyboard hints draw theirs (`hints::key_cap`). Three
+looks (`Look`): at rest; with the dragged window in it, the selection's
+ground, an edge twice as wide and the cap pressed in; and stepped back,
+while the window is in another: its key cap alone, on a collar of plate,
+where it was. Everything on whole device pixels, a line `floor(scale)`
+of them. The plates are opaque (`PAD_ALPHA`): Ben asked for see-through
+hotspots, and so they were first, but a pad is a small plate over
+whatever is there, a window's words more often than not, and at 80%, 92%
+and 95% those words still read through it as the pad's own (Astra's and
+Opus's reviews, each time). What's see-through now is the screen: with
+the window in a place, every other pad is no more than its letter. The
+other window of a swap glows while it's shown swapped, as a new window
+can (`glow`, at its own place among the windows), and the glow fades
+once it's let go or put back. The pad a move begins in (a window at the
+top is taken by its tab inside the whole screen's bar) counts only once
+the pointer has left it and come back (`Snap::began_in`).
+
+The pictures are made when the pads change (`snap_show`, kept by scale
+and look), not in a frame: a frame places them (`snap::elements`, under
+what `showing` draws). The scale or the look changing while they're up
+makes them again (`snap_tick`).
+
+A key cap's letter (keyboard hints' and Twitcher's caps too) that hangs
+below the line, Q's tail and J's hook, is raised until a point of the
+cap's face shows under it (`hints::cap_raise`: found by drawing it, as
+the face's metrics say only where capitals stand); every other capital
+is where its capitals' height centres it (tested at every scale).
+
+**For agents**: `{"type":"snap"}` answers the window being dragged, the
+display, and each pad's letter, place (`TopLeft`, `Left`, `Whole`,
+`Window 7`…), rectangle and whether the window is in it; dragging is
+the pointer's (`synthetic` button and moves), a letter a key. Without
+dragging: the tiling shortcuts (`run_shortcut`) and `place`.
+
+**Gliding** (`glide.rs`; Ben: "windows should smoothly animate when they
+move not jarringly just redraw somewhere else"). A window put somewhere
+at the person's word glides there: a place taken while dragging, a drop,
+the other window of a swap, Escape; a tiling shortcut, Zoom (the key,
+the tab's box, `toggle_zoom`), Restore, Centre (`glided`, which makes
+`set_frame` a glide for what it wraps). Not what arranges many windows
+at once (auto-tiling, Tile All: those show every window's new size in
+one frame, `rounds`), nor `place` over the socket, whose asker reads
+the frame back.
+
+It's the window itself at each size on the way, drawn by its app as when
+its edge is dragged (`tiling::follow`: asked a size, put where that size
+belongs when it draws it, told it's being resized so it keeps room in
+its buffers): nothing is stretched. Each step is where the glide has got
+to by the clock, closing on its target as a critically damped spring
+does (`RATE`: half way in 30 ms, there in 0.28 s), so a slow app takes
+fewer steps and arrives when a fast one does, and a target that moves
+(the pointer, as a window goes back under it) is followed without a
+jump. `glide_tick` is each frame's (`pre_repaint`), a test for an empty
+list when nothing glides; frames are asked for only while something
+does.
+
+A gliding window that something else places is that thing's: a layout or
+a drag that asks it a size (`ask_to_follow`, when the asking isn't the
+glide's own, `glide_stepping`) and a zoom end the glide; what needs the
+window where it belongs first (an edge taken in hand, its workspace put
+away: `park`) has it there at once (`glide_finish`); another frame given
+it (`set_frame`) is where it glides to instead. A zoom at the end of a
+glide (`glide_then_zoom`) leaves what the window unzooms to as it was
+(`zoom_there`: `zoom_window` would take the zoom's own frame for it).
+
+Measured (release, 2560 × 1600 at 2×, 120 Hz, Kache and Weather; the
+machine busy with other builds, two runs): at rest 0 ms of CPU and 20
+wakeups in 10 s, before and after; a window dragged in the open for 4 s,
+ten pads up, 230 to 290 ms of app_server's CPU against 240 before, a
+frame's work 0.30 to 0.37 ms (slowest 0.9) against 0.30 (1.05); into the
+left half and back out, eight times: in place 271 to 276 ms after the
+pointer enters the pad, the first step 5 to 10 ms after, Weather
+drawing 26 frames of its own on the way at 0.9 ms each (slowest 1.7),
+app_server's frame 0.25 to 0.28 ms (slowest 2.2) of the 8.3 it has,
+`pre_repaint` with the glide's step in it 25 µs; onto another window's
+pad and off, eight times, the other gliding and glowing: 0.56 to 0.61 ms
+a frame (slowest 3.0). (A stepped-back pad's picture is its collar, no
+bigger: as eleven pad-sized pictures, the frame that first showed a
+place was 5.7 ms, handing them to the GPU.)
+
+`tools/dev/snap-check` drags a window through every way a drag can end
+in a session of its own (a corner, out of a tile, Escape from each
+state, a letter, the whole screen, a swap and its preview, the
+shortcuts' glides and one given while the last still glides, the
+setting off) and reads the frames and tiles back.
+
 ## Keyboard hints (app_server hints.rs, Preferences ▸ Keyboard)
 
 Opt-in (`KeyboardSettings::hints`). Pressing Control twice quickly
@@ -9322,6 +9471,24 @@ keeps it hidden.
 
 Test headless: `tsession ipc NAME '{"type":"start_screen_saver"}'`, or set
 `screen_saver.module` with get/set_settings first.
+
+## A new size is committed with its frame (olo_interface, the Wayland window)
+
+A window given a size (a configure) acknowledges it and sets its
+viewport to it at once, and the frame at that size is drawn when the
+looper's layout for it comes (`Stage::draw_frame` draws nothing until
+then, for `SIZE_WAIT` at most). Nothing of that is committed until that
+frame is (`FrameLoop::size_undrawn`): the viewport's new size with the
+buffer before it is that buffer stretched to the size. `frame()` used
+to commit what was acknowledged whenever it drew nothing, so a size
+that came just before a frame's callback (the two in one read) showed
+the old picture stretched until the next frame: a pixel or two in a
+resize by hand, a whole frame of a zoom or a tile, and every step of
+app_server's glide, which sends each size as a frame begins (found
+2026-11-20 with `WAYLAND_DEBUG=1` on the app: `set_destination`,
+`ack_configure`, `commit` with no `attach` between). With the commit
+held, the stage asks for the frame itself when the wait is over
+(`frame_after`), as no callback is on its way.
 
 ## Fractional scaling (app_server render.rs, shell/deco.rs; the kits)
 

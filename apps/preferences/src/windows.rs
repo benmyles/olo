@@ -130,9 +130,16 @@ pub fn ui(ui: &mut Ui, outputs: &[OutputInfo]) {
         });
         let main = outputs.iter().find(|o| o.main).or(outputs.first());
         let display = main.map(crate::display::logical).map_or((1280.0, 800.0), |(w, h)| (w as f32, h as f32));
+        let snap = s.tiling.snap;
         let s = s.clone();
         ui.add(canvas(move |g, b| miniature(g, b, &theme::palette(), &s, display)).w_full().h(px(MINIATURE_H)).flex_shrink_0());
         ui.note("Tiling, zooming, Tile All, cascading and fanning out all leave this space.");
+        // Places a window dragged by its tab can be let go into
+        // (app_server's `shell::snap`).
+        ui.bbox("Dragging a Window", |ui| {
+            ui.check("Show the places a window can go", snap, |s, on| s.tiling.snap = on);
+            ui.note("Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.");
+        });
     });
     ui.add_columns(left, right);
 }

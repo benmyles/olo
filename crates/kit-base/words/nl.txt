@@ -2937,6 +2937,9 @@ Downloaden…
 Drag with:
 Slepen met:
 
+Dragging a Window
+Een venster slepen
+
 Draw
 Tekenen
 
@@ -8574,6 +8577,9 @@ Dag van de week tonen
 Show the phone’s other notifications
 Andere meldingen van de telefoon tonen
 
+Show the places a window can go
+Plekken tonen waar een venster heen kan
+
 Show what a message says
 Inhoud van berichten tonen
 
@@ -10909,6 +10915,9 @@ Bij schermdelen of -opname (ook fouten uitstellen)
 
 While uploading
 Tijdens uploaden
+
+Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
+Terwijl u een venster aan zijn tab sleept, laat u het los op een plek, of drukt u op de letter ervan, om het daar te zetten. Laat het los op de plek van een ander venster om de twee te verwisselen. Escape zet alles terug.
 
 Why
 Reden

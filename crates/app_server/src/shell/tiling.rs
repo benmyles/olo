@@ -645,6 +645,16 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             let pre = window.user_data().get::<PreZoom>().unwrap();
             pre.0.borrow_mut().get_or_insert(Rectangle::new(location, window.geometry().size));
         }
+        // Gliding there (a place taken as it's dragged, `snap`; a
+        // shortcut's; or already on its way somewhere): each size on the
+        // way is asked as the glide gets to it (`glide`), no longer
+        // zoomed from now.
+        if self.glide_frames || self.gliding(window) {
+            let WindowSurface::Wayland(t) = window.0.underlying_surface();
+            t.with_pending_state(|state| state.states.unset(xdg_toplevel::State::Maximized));
+            self.glide_to(window, frame);
+            return;
+        }
         // Put here now: no longer on its way to where a drag or a layout
         // asked before (that would put it back by its old edges when it
         // draws this size).
@@ -672,7 +682,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// Tiled into `tile` (or not), in its tile's own part. Either way
     /// no longer zoomed along one axis: every arrangement, and any hand
     /// move or resize, comes through here.
-    fn set_tiled(window: &WindowElement, tile: Option<Tile>) {
+    pub(super) fn set_tiled(window: &WindowElement, tile: Option<Tile>) {
         window.user_data().insert_if_missing(Tiled::default);
         window.user_data().get::<Tiled>().unwrap().0.set(tile);
         Self::set_part(window, None);
@@ -807,7 +817,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         info!(window = window.id(), ?axis, along = ?Self::zoomed_axis(window), zoomed = self.is_zoomed(window), "zoomed along");
     }
 
-    fn set_part(window: &WindowElement, part: Option<Part>) {
+    pub(super) fn set_part(window: &WindowElement, part: Option<Part>) {
         window.user_data().insert_if_missing(TilePart::default);
         window.user_data().get::<TilePart>().unwrap().0.set(part);
     }
@@ -1019,7 +1029,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// for where the window ends up, rather than passing through its part
     /// on the way (a flicker, each time it is put back: from another
     /// workspace, from being hidden).
-    fn given_way(&self, window: &WindowElement, frame: Rectangle<i32, Logical>, area: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {
+    pub(super) fn given_way(&self, window: &WindowElement, frame: Rectangle<i32, Logical>, area: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {
         give_way(frame, self.least_frame(window), area)
     }
 
@@ -1116,6 +1126,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
     /// `follow`, the size left to send (a round sends it).
     fn ask_to_follow(&mut self, window: &WindowElement, start: Rectangle<i32, Logical>, target: Rectangle<i32, Logical>) {
+        // (Asked by a layout or a drag while it glides somewhere: theirs
+        // now, `glide`.)
+        if !self.glide_stepping {
+            self.glide_stop(window);
+        }
         let asked = Instant::now();
         match self.tile_followers.iter_mut().find(|f| f.window == *window) {
             Some(f) => {
@@ -1149,7 +1164,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         // does, rather than making new buffers at every step, a new
         // swapchain of GPU memory each, and each new buffer checked and
         // freed here too, which a round then waits for.)
-        let resizing = self.tile_drag.is_some();
+        // (And one gliding to a frame, at each size on its way but the
+        // last: `glide`.)
+        let resizing = self.tile_drag.is_some() || self.glide_resizing;
         let WindowSurface::Wayland(t) = window.0.underlying_surface();
         t.with_pending_state(|state| {
             state.states.unset(xdg_toplevel::State::Maximized);
@@ -1172,6 +1189,18 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// follows no more.
     pub(super) fn unfollow(&mut self, window: &WindowElement) {
         self.tile_followers.retain(|f| f.window != *window);
+    }
+
+    /// `window`, still to draw a size it was asked for, has been moved
+    /// (by its tab, under the pointer) to `at`: what it draws goes there,
+    /// not back where it was when it was asked.
+    pub(super) fn follower_moved(&mut self, window: &WindowElement, at: Point<i32, Logical>) {
+        if let Some(f) = self.tile_followers.iter_mut().find(|f| f.window == *window) {
+            (f.start.loc, f.target.loc) = (at, at);
+            for (start, target) in &mut f.before {
+                (start.loc, target.loc) = (at, at);
+            }
+        }
     }
 
     /// A window committed: if it is following a drag, put it where the

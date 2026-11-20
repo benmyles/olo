@@ -362,32 +362,6 @@ something nobody here has is in "Blocked", with what it waits for.
   off); weekdays' and months' names in the person's language (with
   Calendar's: Language, below).
 
-- **Windows snap into place as they're dragged** (Ben, 2026-11-18: "add
-  support for window "snapping" when dragging so that e.g. if i drag to
-  different areas of the screen it takes that tile location while
-  dragging but isn't "saved" until i let go, e.g. like if i drag to one
-  of the corners it shows it in that corner, if i drag to the top half
-  in the center area that'd be top half, very top of the screen anywhere
-  should be full screen, over another window should take its place. make
-  it intuitive, look at how other operating systems handle it. windows
-  should smoothly animate when they move not jarringly just redraw
-  somewhere else. also, when dragging, show each hotspot as a
-  semi-transparent overlay with a letter in each. the user can drag to
-  that hotspot and let go, or they can just press the letter and it'll
-  be like they dragged it there."). In app_server, with the tiling it
-  has: while a window is dragged, each place it can snap to shown as a
-  see-through overlay with its letter (halves, corners, the top half in
-  the middle of the top, the whole screen along the very top, another
-  window's place over that window); the window takes the place the
-  pointer is in at once, as a preview, and keeps it only when let go
-  (dragged out again, or Escape, it's as it was); a letter pressed is
-  the same as dropping it there. Every such move animated (the window
-  glides and resizes; nothing jumps), on the display thread's clock,
-  measured against the frame budget. First a study of how Windows 11's
-  Snap Layouts, macOS Sequoia's tiling, GNOME, KDE's and Rectangle and
-  FancyZones do it, and what BeOS/Haiku's Stack and Tile did; then the
-  design; agents drive it by command as people do by hand.
-
 - **Menus tidied into groups, and chords for what's in them** (Ben,
   2026-11-18: "in the menu from right clicking a window tab (and
   anywhere else we show it), group the 3 zoom options under a "Zoom ->"
@@ -415,6 +389,33 @@ something nobody here has is in "Blocked", with what it waits for.
   what order, named how), written down in HACKING.md and held by the
   window review where it can be.
 
+- **What Olo moves that still jumps** (2026-11-20, from the snapping
+  work). A window glides where a drag's place, a tiling shortcut, Zoom,
+  Restore or Centre puts it (HACKING, "Windows snap into place as
+  they're dragged"). Still in one frame: what arranges many windows at
+  once (auto-tiling's layouts, Tile All, Cascade, Fan Out: `rounds`
+  shows every window's new size together, by design, and a glide of
+  them all is each app drawing some thirty sizes at once: to be
+  measured before it's built), a window sent to another display or
+  workspace, one shown again from hidden, and `place` over the socket.
+
+- **app_server's own text, hinted as the kit's is** (2026-11-20; Opus's
+  review of the snap's pads, every round: "the 1× dark E looks
+  double-struck"). Tabs' titles and key caps' letters (keyboard hints,
+  Twitcher, the snap's pads) are drawn by `text.rs` with cosmic-text's
+  rasteriser, unhinted (Noto ships without hints), so at 1× a capital's
+  arms fall between pixels; the kit hints its text with skrifa's
+  autohinter, vertically only (`text_system.rs`). To draw app_server's
+  the same way, tabs' titles compared before and after at every scale
+  (`OLO_CAPS_SHEET=DIR cargo test -p app_server --lib caps_to_look_at
+  -- --ignored` writes every cap).
+
+- **A note's last line of one word** (2026-11-20; Astra's review, of
+  Preferences ▸ Windows: "tray." and "space." each alone on a line).
+  The kit wraps a paragraph greedily; a rule for all of them (the last
+  two words kept together, as To-Do's cards do theirs) rather than each
+  note reworded in thirteen languages.
+
 - **Last, once everything above that isn't blocked is done: the website,
   the README and the docs refreshed, and a new GitHub release** (Ben,
   2026-11-17: "when all the other todos that aren't blocked are
@@ -429,6 +430,47 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Windows snap into place as they're dragged** (Ben, 2026-11-18: "add
+  support for window "snapping" when dragging so that e.g. if i drag to
+  different areas of the screen it takes that tile location while
+  dragging but isn't "saved" until i let go … very top of the screen
+  anywhere should be full screen, over another window should take its
+  place. make it intuitive, look at how other operating systems handle
+  it. windows should smoothly animate when they move not jarringly just
+  redraw somewhere else. also, when dragging, show each hotspot as a
+  semi-transparent overlay with a letter in each. the user can drag to
+  that hotspot and let go, or they can just press the letter and it'll
+  be like they dragged it there."). **Done** (2026-11-20; the study and
+  the design: docs/reports/window-snapping.md; HACKING, "Windows snap
+  into place as they're dragged"): drag a window by its tab and each
+  place it can go has a pad, a small plate with a picture of the
+  screen, the place filled in, and a letter's key cap: Q E Z C
+  the quarters at the corners, A D the halves at the sides, W X the top
+  and bottom halves in the middle, S the whole screen (a bar along the
+  very top), and J K L … one on each other window (the two swap). In a
+  pad the window itself glides into the place, the other pads stepping
+  back to their letters; out of it, it's under the pointer again at its
+  own size; let
+  go, it's tiled there; Escape puts everything back; a letter is the
+  same as letting go in its pad. A finger's drag too. Windows glide
+  where the tiling shortcuts, Zoom, Restore and Centre put them as
+  well. Preferences ▸ Windows ▸ Dragging a Window turns the places off.
+  Agents: `{"type":"snap"}` reads the pads. Checked by
+  `tools/dev/snap-check` (every way a drag can end) and 400 steps of
+  the tiling fuzzer; measured (in the commit and HACKING). On the way:
+  the kit committed a new size before its frame was drawn, so a window
+  given one showed its old picture stretched for a frame (every step of
+  a glide; a zoom's or a tile's first frame): mended in the kit. **Not
+  as asked, to decide**: the pads aren't see-through. They were, at
+  four strengths, and each time a window's words behind a pad read as
+  the pad's own (both reviewers); so the plates are opaque, and what's
+  see-through is the screen while a place is previewed, every other
+  pad then only its letter (`snap::PAD_ALPHA` brings it back). **To
+  try**: drag windows about, to the corners, the top, onto one
+  another; the letters; and say whether the pads are where a hand looks
+  for them, whether they should be see-through after all, and whether
+  the glide's speed is right (`glide::RATE`).
 
 - **Chrome with several profiles: agents see every profile's windows**
   (found 2026-11-18, mending links: Chrome's socket for agents was one,

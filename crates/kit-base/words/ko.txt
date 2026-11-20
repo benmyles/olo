@@ -2926,6 +2926,9 @@ Downloading…
 Drag with:
 드래그 방식:
 
+Dragging a Window
+창 드래그
+
 Draw
 그리기
 
@@ -8551,6 +8554,9 @@ Show the day of the week
 Show the phone’s other notifications
 휴대전화의 다른 알림 표시
 
+Show the places a window can go
+창을 놓을 수 있는 자리 보이기
+
 Show what a message says
 메시지 내용 표시
 
@@ -10884,6 +10890,9 @@ While sharing or recording the screen (errors wait too)
 
 While uploading
 업로드 중
+
+Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
+창을 탭으로 끄는 동안 자리에 놓거나 그 자리의 글자를 누르면 창이 그곳으로 갑니다. 다른 창의 자리에 놓으면 두 창이 서로 바뀝니다. Escape를 누르면 모두 원래대로 돌아갑니다.
 
 Why
 이유

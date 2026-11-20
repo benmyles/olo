@@ -285,6 +285,16 @@ struct FrameLoop {
     /// Olo: a frame was ever drawn (the surface has a buffer: until then
     /// it isn't shown, and a commit gets no frame callback).
     drawn: Cell<bool>,
+    /// Olo: the window was given a size whose frame isn't drawn yet (the
+    /// looper's layout for it is on its way). What was acknowledged is
+    /// not committed without that frame: the viewport's new size with
+    /// the buffer before it is that buffer stretched to the size, for as
+    /// long as the frame takes. A size that came just before a frame's
+    /// callback always did so; app_server's glide sends each of its
+    /// sizes then, and every step of one showed the window's old
+    /// picture stretched (2026-11-20). A tile's or a zoom's size did for
+    /// a frame.
+    size_undrawn: Cell<bool>,
     /// When the frame last committed (a callback that never comes, as
     /// for a hidden window, holds changes back for a second at most).
     committed_at: Cell<std::time::Instant>,
@@ -820,6 +830,7 @@ impl WaylandWindow {
                 needs_commit: Cell::new(false),
                 called: Cell::new(false),
                 drawn: Cell::new(false),
+                size_undrawn: Cell::new(false),
                 committed_at: Cell::new(std::time::Instant::now()),
                 force: Cell::new(false),
                 text_rendering: Cell::new(text_rendering),
@@ -1063,10 +1074,17 @@ impl WaylandWindowStatePtr {
             // Nothing moved (an edge): the rest goes.
             frames.wheel.take();
         }
-        if !drew && frames.needs_commit.get() {
+        if drew {
+            frames.size_undrawn.set(false);
+        }
+        // (A size acknowledged and not drawn yet: committed by the frame
+        // that draws it, `size_undrawn`. The stage asks for that frame
+        // when the looper's layout comes, or its wait for it is over.)
+        let held = !drew && frames.size_undrawn.get();
+        if !drew && !held && frames.needs_commit.get() {
             self.state.borrow().surface.commit();
         }
-        if drew || frames.needs_commit.get() {
+        if drew || (frames.needs_commit.get() && !held) {
             frames.needs_commit.set(false);
             // (A surface not shown yet (its first frame skipped, to be
             // drawn at another size) gets no callback for a commit
@@ -1577,6 +1595,11 @@ impl WaylandWindowStatePtr {
                 return;
             }
             if let Some(size) = size {
+                // (With a buffer showing: not committed until its frame
+                // at this size is drawn, `size_undrawn`.)
+                if size != state.bounds.size && self.frames.drawn.get() {
+                    self.frames.size_undrawn.set(true);
+                }
                 state.bounds.size = size;
                 set_geometry(&state);
             }

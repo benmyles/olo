@@ -1,0 +1,345 @@
+#!/usr/bin/env python3
+"""Windows snap into place as they're dragged (app_server's `shell::snap`
+and `shell::glide`): every way a drag can end, in a headless session.
+
+  snap-check [--release] [--keep]
+
+Dev builds (`cargo build -p app_server -p olo-kache -p olo-weather`), or
+with --release the release ones. In a session of its own (a new name each
+run, a scratch home under /var/tmp, removed after; --keep leaves both for
+a look), Kache and Weather with made-up data. A window is dragged by its
+tab with made-up pointer events, as `tsession down/move/up` make them,
+and after each step the windows' frames and tiles are read back:
+
+- let go in a corner's pad: tiled there, having glided (frames on the
+  way, none past where it was going);
+- dragged out of its tile: its own size again, its tab under the pointer
+  (not the whole screen, though its tab was in that pad as it was
+  taken); let go in the open, it stays;
+- Escape in a pad: as it was (floating, tiled, zoomed);
+- a pad's letter pressed: let go there;
+- the very top: the whole screen, and Restore-sized when dragged away;
+- another window's pad: the two shown swapped while held, as they were
+  off it and after Escape, swapped when let go (out of a tile: the other
+  takes the tile);
+- the tiling shortcuts, Zoom and Restore glide too, and one given while
+  the last still glides, or the window hidden meanwhile, ends where it
+  should;
+- the setting off: no pads.
+
+Exits 1 on a mismatch.
+"""
+
+import json
+import os
+import random
+import shutil
+import subprocess
+import sys
+import time
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+TSESSION = ["/usr/bin/python3", os.path.join(ROOT, "tools/dev/tsession")]
+NAME = f"snapc{random.randrange(10000)}"
+HOME = f"/var/tmp/olo-snap-check/{NAME}"
+PROFILE = "release" if "--release" in sys.argv else "debug"
+FAILED = []
+
+
+def ts(*args, env=None):
+    e = dict(os.environ, TSESSION_PROFILE=PROFILE)
+    for k in ("WAYLAND_DISPLAY", "OLO_SOCKET", "OLO_SESSION", "OLO_SESSION_PID"):
+        e.pop(k, None)
+    return subprocess.run(TSESSION + [str(a) for a in args], capture_output=True, text=True, env=e).stdout
+
+
+def ipc(req):
+    out = ts("ipc", NAME, json.dumps(req))
+    try:
+        return json.loads(out[out.index("{"):])
+    except ValueError:
+        return {}
+
+
+def wins():
+    return {w["id"]: w for w in ipc({"type": "list_windows"}).get("windows", [])}
+
+
+def frame(i):
+    f = wins()[i]["frame"]
+    return (f["x"], f["y"], f["width"], f["height"])
+
+
+def tab(i):
+    f = wins()[i]["tab_frame"]
+    return (f["x"], f["y"], f["width"], f["height"])
+
+
+def arranged(i):
+    """(its tile's part, zoomed)."""
+    for w in ipc({"type": "arrangement"}).get("windows", []):
+        if w["id"] == i:
+            return (tuple(w["part"]) if w.get("tiled") else None, bool(w.get("zoomed")))
+
+
+def settled(i, want=None, within=3.0):
+    """The window's frame once it has stopped changing (or is `want`)."""
+    end, last, same = time.time() + within, None, 0
+    while time.time() < end:
+        f = frame(i)
+        same = same + 1 if f == last else 0
+        last = f
+        if f == want or (want is None and same >= 3):
+            return f
+        time.sleep(0.05)
+    return last
+
+
+def pads():
+    return {p["letter"]: p for p in ipc({"type": "snap"}).get("snap", {}).get("pads", [])}
+
+
+def take(i):
+    """Press on window i's tab and move past a click's distance: where
+    the pointer is then."""
+    x, y, _, _ = tab(i)
+    px, py = x + 40, y + 10
+    ts("down", NAME, px, py)
+    ts("move", NAME, px + 6, py + 6)
+    ts("move", NAME, px + 12, py + 12)
+    return px + 12, py + 12
+
+
+def move(x, y):
+    ts("move", NAME, x, y)
+
+
+def up():
+    ts("up", NAME)
+
+
+def key(code):
+    ts("key", NAME, code)
+
+
+def check(what, ok, got=None):
+    print(("ok    " if ok else "FAIL  ") + what + ("" if ok else f": {got}"))
+    if not ok:
+        FAILED.append(what)
+
+
+def on_pad(p):
+    return p["x"] + p["width"] // 2, p["y"] + p["height"] // 2
+
+
+def main():
+    os.makedirs(HOME, exist_ok=True)
+    try:
+        print(ts("start", NAME, "2560x1600", "--home", HOME, "--owner", os.getpid()).strip().splitlines()[-1])
+        for app, var in (("olo-kache", "OLO_KACHE_DEMO"), ("olo-weather", "OLO_WEATHER_DEMO")):
+            ts("run", NAME, f"{var}=1", os.path.join(ROOT, "target", PROFILE, app))
+        end = time.time() + 30
+        while len(wins()) < 2 and time.time() < end:
+            time.sleep(0.3)
+        ids = {w["app_id"]: i for i, w in wins().items()}
+        if len(ids) < 2:
+            print("snap-check: the two apps' windows didn't come up")
+            return 2
+        w, other = ids["olo.weather"], ids["olo.kache"]
+        # Each at a size of its own, apart, the dragged one in front.
+        for i, (x, y, cw, ch) in ((other, (60, 60, 560, 420)), (w, (520, 300, 640, 440))):
+            ipc({"type": "place", "id": i, "frame": {"x": x, "y": y, "width": cw, "height": ch}})
+        ipc({"type": "activate", "id": w})
+        start, theirs = settled(w), settled(other)
+        area = ipc({"type": "arrangement"})["area"]
+        ax, ay, aw, ah = area["x"], area["y"], area["width"], area["height"]
+        gap = ipc({"type": "get_settings"}).get("settings", {}).get("tiling", {}).get("gap", 8)
+        right_top = (ax + (aw + gap) // 2, ay, (aw - gap) // 2, (ah - gap) // 2)
+        left = (ax, ay, (aw - gap) // 2, ah)
+        bottom = (ax, ay + (ah + gap) // 2, aw, (ah - gap) // 2)
+        whole = (ax, ay, aw, ah)
+
+        # A corner: it glides there while held, and is tiled there let go.
+        take(w)
+        move(700, 500)
+        letters = "".join(pads())
+        check("the nine places and the other window have pads", letters.startswith("QEZCADSWX") and len(letters) == 10, letters)
+        move(ax + aw + 6, 1)
+        seen, end = [], time.time() + 1.5
+        while time.time() < end and (not seen or seen[-1] != right_top):
+            f = frame(w)
+            if not seen or seen[-1] != f:
+                seen.append(f)
+        check("in the top right corner's pad it's shown there", seen[-1] == right_top, seen[-1])
+        between = [f for f in seen[1:-1]]
+        check("it glided there (frames on the way)", len(between) >= 2, seen)
+        lo = [min(a, b) for a, b in zip(seen[0], right_top)]
+        hi = [max(a, b) for a, b in zip(seen[0], right_top)]
+        check("no frame on the way past where it was going", all(lo[k] - 1 <= f[k] <= hi[k] + 1 for f in between for k in range(4)), seen)
+        check("the pad it's in says so", [l for l, p in pads().items() if p["inside"]] == ["E"], pads())
+        up()
+        check("let go there: tiled there", (settled(w, right_top), arranged(w)) == (right_top, ((0.5, 0.0, 0.5, 0.5), False)), (frame(w), arranged(w)))
+        check("no pads after", pads() == {}, pads())
+
+        # Out of its tile: its own size, its tab under the pointer. (Its
+        # tab is in the whole screen's bar there, at the top: the pad a
+        # move begins in isn't a place it was dragged to.)
+        px, py = take(w)
+        f = settled(w)
+        t = tab(w)
+        check("dragged out of its tile it's its own size", f[2:] == start[2:], f)
+        check("its tab is under the pointer", t[0] <= px <= t[0] + t[2] and t[1] <= py <= t[1] + t[3], (t, px, py))
+        move(700, 400)
+        f = settled(w)
+        t = tab(w)
+        check("and stays under it as it moves", t[0] <= 700 <= t[0] + t[2] and t[1] <= 400 <= t[1] + t[3], t)
+        up()
+        check("let go in the open: there, in no tile", (settled(w), arranged(w)) == (f, (None, False)), (frame(w), arranged(w)))
+        free = f
+
+        # Escape in a pad: as it was.
+        take(w)
+        move(1, ay + ah // 2)
+        check("in the left side's pad it's the left half", settled(w, left) == left, frame(w))
+        key(1)
+        check("Escape: where it was, as big", (settled(w, free), arranged(w)) == (free, (None, False)), (frame(w), arranged(w)))
+        up()
+        check("and still after the button is let up", settled(w) == free and pads() == {}, frame(w))
+
+        # A letter: X is the bottom half.
+        take(w)
+        move(700, 400)
+        key(45)
+        check("X pressed: let go in the bottom half", (settled(w, bottom), arranged(w)) == (bottom, ((0.0, 0.5, 1.0, 0.5), False)), (frame(w), arranged(w)))
+        check("the move is over, the button still down", pads() == {}, pads())
+        up()
+        check("and it stays as the button is let up", settled(w) == bottom, frame(w))
+
+        # Tiled, dragged, Escape: back in its tile.
+        take(w)
+        move(700, 300)
+        settled(w)
+        key(1)
+        check("Escape out of a tile: back in it", (settled(w, bottom), arranged(w)) == (bottom, ((0.0, 0.5, 1.0, 0.5), False)), (frame(w), arranged(w)))
+        up()
+
+        # The very top: the whole screen; zoomed, Escape leaves it zoomed.
+        take(w)
+        move(ax + aw // 2, 0)
+        check("at the very top it's the whole screen", settled(w, whole) == whole, frame(w))
+        up()
+        check("let go there: zoomed", (settled(w, whole), arranged(w)) == (whole, (None, True)), (frame(w), arranged(w)))
+        take(w)
+        move(700, 400)
+        check("dragged away it's its own size again", settled(w)[2:] == start[2:], frame(w))
+        key(1)
+        check("Escape: zoomed again", (settled(w, whole), arranged(w)) == (whole, (None, True)), (frame(w), arranged(w)))
+        up()
+        take(w)
+        move(700, 400)
+        free = settled(w)
+        up()
+        check("dragged away and let go: its own size, not zoomed", (settled(w)[2:], arranged(w)) == (start[2:], (None, False)), (frame(w), arranged(w)))
+
+        # Another window's place.
+        def their_pad():
+            return next((p for p in pads().values() if p["place"] == f"Window {other}"), None)
+
+        take(w)
+        move(900, 700)
+        p = their_pad()
+        check("the other window has a pad at its middle", p is not None and (p["x"] + p["width"] // 2, p["y"] + p["height"] // 2) == (theirs[0] + theirs[2] // 2, theirs[1] + theirs[3] // 2), p)
+        move(*on_pad(p))
+        check("on it: this one in its place, that one where this was", (settled(w, theirs), settled(other, free)) == (theirs, free), (frame(w), frame(other)))
+        move(900, 700)
+        check("off it: that one back where it was", settled(other, theirs) == theirs and settled(w)[2:] == free[2:], (frame(w), frame(other)))
+        move(*on_pad(p))
+        settled(other, free)
+        key(1)
+        check("Escape on it: both as they were", (settled(w, free), settled(other, theirs)) == (free, theirs), (frame(w), frame(other)))
+        up()
+        take(w)
+        move(900, 700)
+        move(*on_pad(their_pad()))
+        up()
+        check("let go on it: the two have swapped", (settled(w, theirs), settled(other, free), arranged(w), arranged(other)) == (theirs, free, (None, False), (None, False)), (frame(w), frame(other)))
+
+        # Out of a tile onto the other: that one takes the tile.
+        take(w)
+        move(700, 400)
+        move(1, ay + ah // 2)
+        up()
+        settled(w, left)
+        there = settled(other)
+        take(w)
+        settled(w)
+        move(*on_pad(their_pad()))
+        up()
+        check("swapped out of a tile: the other is in the tile, this one where that was", (settled(w, there), settled(other, left), arranged(w), arranged(other)) == (there, left, (None, False), ((0.0, 0.0, 0.5, 1.0), False)), (frame(w), frame(other), arranged(w), arranged(other)))
+
+        # The shortcuts glide too: a tile, a zoom, Restore; one given
+        # while the last still glides ends where the last one said.
+        def cut(sc):
+            ipc({"type": "run_shortcut", "id": sc, "window": w})
+
+        def on_the_way(want):
+            seen, end = [frame(w)], time.time() + 1.5
+            while time.time() < end and seen[-1] != want:
+                f = frame(w)
+                if seen[-1] != f:
+                    seen.append(f)
+            return seen
+
+        own = settled(w)
+        cut("tile-right")
+        right = (ax + (aw + gap) // 2, ay, (aw - gap) // 2, ah)
+        seen = on_the_way(right)
+        check("Right half, by its shortcut: glides there and is tiled", seen[-1] == right and len(seen) >= 4 and arranged(w) == ((0.5, 0.0, 0.5, 1.0), False), (seen, arranged(w)))
+        cut("zoom")
+        seen = on_the_way(whole)
+        check("Zoom glides to the whole screen", (seen[-1], len(seen) >= 4, settled(w, whole), arranged(w)[1]) == (whole, True, whole, True), (seen, arranged(w)))
+        cut("zoom")
+        check("Zoom again: back in its tile", (settled(w, right), arranged(w)) == (right, ((0.5, 0.0, 0.5, 1.0), False)), (frame(w), arranged(w)))
+        cut("restore")
+        check("Restore: its own frame", (settled(w, own), arranged(w)) == (own, (None, False)), (frame(w), arranged(w)))
+        cut("tile-left")
+        cut("zoom")
+        check("Zoom while it glides into a tile: zoomed", (settled(w, whole), arranged(w)[1]) == (whole, True), (frame(w), arranged(w)))
+        cut("zoom")
+        cut("zoom")
+        cut("zoom")
+        check("Zoom three times at once: out of the zoom, in its tile", (settled(w, left), arranged(w)) == (left, ((0.0, 0.0, 0.5, 1.0), False)), (frame(w), arranged(w)))
+        cut("tile-right")
+        cut("hide-window")
+        time.sleep(0.5)
+        ipc({"type": "activate", "id": w})
+        check("hidden while it glides, shown again: where it was going", (settled(w, right), arranged(w)) == (right, ((0.5, 0.0, 0.5, 1.0), False)), (frame(w), arranged(w)))
+        cut("restore")
+        there = settled(w, own)
+        check("Restore: its own frame again", there == own, there)
+
+        # The setting off: no pads, and a drag is a move.
+        s = ipc({"type": "get_settings"}).get("settings")
+        if s:
+            s["tiling"]["snap"] = False
+            ipc({"type": "set_settings", "settings": s})
+            take(w)
+            move(1, ay + ah // 2)
+            check("with the setting off there are no pads", pads() == {}, pads())
+            f = settled(w)
+            up()
+            check("and a window dragged to the side is just moved", f[2:] == there[2:], f)
+        else:
+            check("the settings could be read", False, s)
+    finally:
+        if "--keep" not in sys.argv:
+            ts("stop", NAME)
+            shutil.rmtree(HOME, ignore_errors=True)
+        else:
+            print(f"kept: session {NAME}, home {HOME}")
+    print(f"snap-check: {len(FAILED)} failed" if FAILED else "snap-check: all as it should be")
+    return 1 if FAILED else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

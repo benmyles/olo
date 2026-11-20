@@ -67,11 +67,23 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerMoveS
                 return;
             }
             self.started = true;
-            // Zoomed, it unzooms as it's taken away, under the pointer.
+            // (Taken by its tab, it goes where the pointer takes it: no
+            // longer where it was asked to be when it next draws.)
+            data.unfollow(&self.window);
             self.back_to = data.space.element_location(&self.window);
-            if data.unzoom_to_move(&self.window) {
-                self.unzoomed = true;
-                self.initial_window_location = self.start_data.location.to_i32_round();
+            let from = data.space.element_geometry(&self.window).unwrap_or_default();
+            // The places it can be let go into come up (`snap`): out of a
+            // tile or a zoom, it glides to its own size again, its tab
+            // still under the pointer. One that doesn't snap, zoomed,
+            // unzooms as it's taken away, under the pointer.
+            match data.snap_begin(&self.window, from, self.start_data.location, event.location) {
+                Some(at) => self.initial_window_location = at,
+                None => {
+                    if data.unzoom_to_move(&self.window) {
+                        self.unzoomed = true;
+                        self.initial_window_location = self.start_data.location.to_i32_round();
+                    }
+                }
             }
         }
         let new_location = self.initial_window_location.to_f64() + delta;
@@ -79,8 +91,24 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerMoveS
         if new_location.to_i32_round() != self.initial_window_location && !data.auto_moving(&self.window) {
             data.forget_tile(&self.window);
         }
+        // In a place's pad it's shown in that place, and stays there
+        // while the pointer does.
+        if data.snap_motion(&self.window, event.location, new_location.to_i32_round()) {
+            self.window.meta().ghost.set(false);
+            if self.over.take().is_some() {
+                crate::window_drop::tell(&self.window, None, false);
+            }
+            return;
+        }
 
-        data.space.map_element(self.window.clone(), new_location.to_i32_round(), true);
+        // (Still on its way back under the pointer, out of a place: there
+        // it's headed, at the size it's getting back to.)
+        if data.gliding(&self.window) {
+            data.glide_under(&self.window, new_location.to_i32_round());
+        } else {
+            data.follower_moved(&self.window, new_location.to_i32_round());
+            data.space.map_element(self.window.clone(), new_location.to_i32_round(), true);
+        }
         // Over another of its app's windows (a window let go on another's
         // tab strip becomes tabs there): its app is told.
         let over = data.own_window_under(&self.window, event.location);
@@ -166,6 +194,10 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerMoveS
             if self.over.take().is_some() {
                 crate::window_drop::tell(&self.window, None, false);
             }
+            // (One that snaps glides back, as it was: `snap`.)
+            if data.snap_end(&self.window, super::snap::End::Cancelled) {
+                return;
+            }
             if let Some(at) = self.back_to {
                 data.space.map_element(self.window.clone(), at, true);
             }
@@ -173,6 +205,11 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerMoveS
                 data.zoom_window(&self.window);
             }
             data.auto_dropped(&self.window, self.start_data.location);
+            return;
+        }
+        // Let go in a place's pad: it's there (`snap`).
+        if data.snap_end(&self.window, super::snap::End::Dropped) {
+            self.window.meta().ghost.set(false);
             return;
         }
         if let Some((onto, at)) = self.over.take() {
@@ -191,6 +228,9 @@ pub struct TouchMoveSurfaceGrab<BackendData: Backend + 'static> {
     pub initial_window_location: Point<i32, Logical>,
     /// The finger has gone `TOUCH_MOVE_AFTER` from where it touched.
     pub started: bool,
+    /// The touch was taken away (a gesture began, the screen went): the
+    /// window is as it was, not let go where it is.
+    pub cancelled: bool,
 }
 
 impl<BackendData: Backend> TouchGrab<AnvilState<BackendData>> for TouchMoveSurfaceGrab<BackendData> {
@@ -229,8 +269,17 @@ impl<BackendData: Backend> TouchGrab<AnvilState<BackendData>> for TouchMoveSurfa
                 return;
             }
             self.started = true;
-            if data.unzoom_to_move(&self.window) {
-                self.initial_window_location = self.start_data.location.to_i32_round();
+            data.unfollow(&self.window);
+            // (Its places come up, as when it's moved by the pointer:
+            // `snap`.)
+            let from = data.space.element_geometry(&self.window).unwrap_or_default();
+            match data.snap_begin(&self.window, from, self.start_data.location, event.location) {
+                Some(at) => self.initial_window_location = at,
+                None => {
+                    if data.unzoom_to_move(&self.window) {
+                        self.initial_window_location = self.start_data.location.to_i32_round();
+                    }
+                }
             }
         }
         let new_location = self.initial_window_location.to_f64() + delta;
@@ -238,12 +287,21 @@ impl<BackendData: Backend> TouchGrab<AnvilState<BackendData>> for TouchMoveSurfa
         if new_location.to_i32_round() != self.initial_window_location && !data.auto_moving(&self.window) {
             data.forget_tile(&self.window);
         }
-        data.space.map_element(self.window.clone(), new_location.to_i32_round(), true);
+        if data.snap_motion(&self.window, event.location, new_location.to_i32_round()) {
+            return;
+        }
+        if data.gliding(&self.window) {
+            data.glide_under(&self.window, new_location.to_i32_round());
+        } else {
+            data.follower_moved(&self.window, new_location.to_i32_round());
+            data.space.map_element(self.window.clone(), new_location.to_i32_round(), true);
+        }
     }
 
     fn frame(&mut self, _data: &mut AnvilState<BackendData>, _handle: &mut smithay::input::touch::TouchInnerHandle<'_, AnvilState<BackendData>>) {}
 
     fn cancel(&mut self, data: &mut AnvilState<BackendData>, handle: &mut smithay::input::touch::TouchInnerHandle<'_, AnvilState<BackendData>>) {
+        self.cancelled = true;
         handle.cancel(data);
         handle.unset_grab(self, data);
     }
@@ -263,6 +321,12 @@ impl<BackendData: Backend> TouchGrab<AnvilState<BackendData>> for TouchMoveSurfa
     fn unset(&mut self, data: &mut AnvilState<BackendData>) {
         // A tap: nothing moved.
         if !self.started {
+            return;
+        }
+        // Let go in a place's pad: it's there; taken away: as it was
+        // (`snap`).
+        let how = if self.cancelled { super::snap::End::Cancelled } else { super::snap::End::Dropped };
+        if data.snap_end(&self.window, how) {
             return;
         }
         // Where the pointer (or finger) let go of it.

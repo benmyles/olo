@@ -973,6 +973,7 @@ Download, Then Restart to Install
 Downloading: {}
 Downloading…
 Drag with:
+Dragging a Window
 Draw
 Drawing
 Drawn into each frame
@@ -2848,6 +2849,7 @@ Show or Hide All Windows
 Show seconds
 Show the day of the week
 Show the phone’s other notifications
+Show the places a window can go
 Show what a message says
 Show what's used, not what's left
 Show:
@@ -3626,6 +3628,7 @@ While downloading
 While less is free than
 While sharing or recording the screen (errors wait too)
 While uploading
+Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
 Why
 Why misses missed
 Wi-Fi

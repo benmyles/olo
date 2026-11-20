@@ -2937,6 +2937,9 @@ Téléchargement…
 Drag with:
 Glisser avec :
 
+Dragging a Window
+Déplacement d'une fenêtre
+
 Draw
 Dessiner
 
@@ -8574,6 +8577,9 @@ Afficher le jour de la semaine
 Show the phone’s other notifications
 Afficher les autres notifications du téléphone
 
+Show the places a window can go
+Montrer les emplacements possibles d'une fenêtre
+
 Show what a message says
 Afficher le contenu d’un message
 
@@ -10909,6 +10915,9 @@ En partage ou enregistrement d’écran (même les erreurs)
 
 While uploading
 Pendant l’envoi
+
+Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
+Pendant que vous faites glisser une fenêtre par son onglet, lâchez-la dans un emplacement, ou appuyez sur sa lettre, pour l'y placer. Lâchez-la dans l'emplacement d'une autre fenêtre pour échanger les deux. Échap remet tout en place.
 
 Why
 Pourquoi

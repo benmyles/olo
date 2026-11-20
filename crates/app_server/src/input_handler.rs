@@ -242,6 +242,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 return KeyAction::None;
             }
         }
+        // A window being dragged: a place's letter puts it there
+        // (`shell::snap`).
+        if self.snap_key(key, pressed) {
+            return KeyAction::None;
+        }
         // Olo Rescue's keys, before anything else sees them (rescue.rs).
         match self.rescue_chord.feed(key, pressed) {
             crate::rescue::Fed::Pass => {}
@@ -645,20 +650,15 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     }
                 }
                 match shortcut {
+                    // (Where a shortcut puts one window, it glides: `glide`.)
                     S::Tile(tile) => {
                         if !self.auto_tile_window(&w, tile) {
-                            self.tile_window(&w, tile);
+                            self.glided(|s| s.tile_window(&w, tile));
                         }
                     }
-                    S::Zoom => {
-                        // Unzooming puts it back in its tile, if it was
-                        // tiled (Restore goes back to its own frame).
-                        if self.is_zoomed(&w) {
-                            self.unzoom_window(&w);
-                        } else {
-                            self.zoom_window(&w);
-                        }
-                    }
+                    // Unzooming puts it back in its tile, if it was
+                    // tiled (Restore goes back to its own frame).
+                    S::Zoom => self.toggle_zoom(&w),
                     S::ZoomVertical | S::ZoomHorizontal => {
                         let axis = if shortcut == S::ZoomVertical { crate::shell::tiling::Axis::Vertical } else { crate::shell::tiling::Axis::Horizontal };
                         if !self.auto_zoom_along(&w, axis) {
@@ -671,9 +671,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                             self.set_floating(&w, Some(true));
                         }
                         if shortcut == S::Restore {
-                            self.restore_frame(&w);
+                            self.glided(|s| s.restore_frame(&w));
                         } else {
-                            self.center_window(&w);
+                            self.glided(|s| s.center_window(&w));
                         }
                     }
                     S::Hide => self.minimize_window(&w),

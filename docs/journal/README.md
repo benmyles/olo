@@ -5,6 +5,30 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-20
 
+### Preferences ▸ Windows: Dragging a Window
+
+*03:06* — The places can be turned off.
+
+![Preferences ▸ Windows: Dragging a Window](2026-11-20/030654-preferences-windows-dragging-a-window.png)
+
+### Snapping: another window's place swaps the two
+
+*03:06* — On another window's pad the dragged window takes its place and the other glides to where this one was, glowing as a new window can. By night: the plates a step lighter than the panels, with a bevel that shows.
+
+![Snapping: another window's place swaps the two](2026-11-20/030651-snapping-another-window-s-place-swaps-the-two.png)
+
+### Snapping: the window itself is the preview
+
+*03:06* — With the pointer in a pad (A, the left half) the window glides into the place, drawn by its app at every size on the way, and the other pads step back to their letters. Let go and it's tiled there; Escape puts it back.
+
+![Snapping: the window itself is the preview](2026-11-20/030649-snapping-the-window-itself-is-the-preview.png)
+
+### Windows snap into place: the places while a window is dragged
+
+*03:06* — Drag a window by its tab and each place it can go has a pad: a plate with a picture of the screen, the place filled in, and a letter's key cap. Q E Z C the quarters, A D and W X the halves, S the whole screen along the top, and one on each other window (the two swap). A letter pressed is the window let go there.
+
+![Windows snap into place: the places while a window is dragged](2026-11-20/030647-windows-snap-into-place-the-places-while-a-windo.png)
+
 ### To-Do's board in the dark look
 
 *00:59*

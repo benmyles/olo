@@ -542,6 +542,39 @@ Learned making To-Do (2026-11-19 and 20):
   thing the window offers once (`tsession click`, `type`, `key`) and
   picture what happens.
 
+### What a window does on the way: pictures mid-move, and the wire
+
+Learned making windows snap and glide (2026-11-20):
+
+- **Picture the middle of anything that moves.** A glide's first and
+  last frames were right and every frame between was the window's old
+  picture stretched to the size on the way (the kit committed a size
+  before its frame: HACKING, "A new size is committed with its frame").
+  Only a picture taken 30 ms in showed it: send the move and ask for the
+  `screenshot` in one script, through tsession's own `ipc` and `synth`
+  (load `tools/dev/tsession` as a module, as `tile-qa` does: a call is
+  under a millisecond; `tsession move` from a shell is 60 ms, and the
+  glide is over by the third).
+- **`WAYLAND_DEBUG=1` on one app says who did it.** `tsession run NAME
+  WAYLAND_DEBUG=1 olo-weather` puts every request and event in the app's
+  log in the session's folder (the kit's own client prints them, Mesa's
+  queues too, marked `{mesa …}`). `configure`, `set_destination`,
+  `ack_configure` and `commit` with no `attach` between was the whole
+  bug, read in a minute, after an hour of counting frames from outside.
+- **`list_windows` says what's drawn, `cost` what the app drew.** A
+  window's `frame` there changed thirty times in a glide while
+  `tools/dev/cost` counted four frames of the app's own: the two
+  disagreeing was the stretch (sizes committed without frames).
+- **A held drag draws on.** While a window is held by its tab the
+  displays don't rest (`keeps_awake`, by design: the next move shows at
+  once): 120 looks a second that find nothing new, a quarter of a
+  millisecond each. Count a drag's frames against that, not against 0.
+- **`tsession key` takes evdev codes** (1 is Escape, 45 X), not names.
+- **A place's letter can't be timed from a shell either**: a check that
+  must act mid-glide belongs in app_server's tests or isn't made; what
+  `tools/dev/snap-check` does is wait for each frame to settle
+  (`settled`) and read it.
+
 ### A program with no network, without root
 
 `unshare -rn PROGRAM` runs it in a network of its own with only

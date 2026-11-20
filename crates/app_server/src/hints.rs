@@ -1047,9 +1047,38 @@ fn badge(p: &olo_theme::Palette, c: char, s: f64) -> (MemoryRenderBuffer, Size<i
     (buffer, (w, h).into())
 }
 
+/// How far up a cap's letter goes so a point of the cap's face shows
+/// under its ink: nothing for a capital that stands on the line, a pixel
+/// or two for Q's tail and J's hook. Not so far that its top meets the
+/// bevel over it: where the cap hasn't room for both (a J at 1.5×), the
+/// letter is midway. Found by drawing it (`at`, in a cap `size` across,
+/// its face from row `face.0` to `face.1`, `under` rows to keep): the
+/// face's metrics say where capitals stand, not how far one hangs.
+fn cap_raise(label: &str, font: f32, size: (i32, i32), at: (f32, f32), face: (i32, i32), under: i32) -> i32 {
+    let (w, h) = size;
+    let Some(mut probe) = Pixmap::new(w.max(1) as u32, h.max(1) as u32) else { return 0 };
+    text::draw(&mut probe, label, at.0, at.1, font, true, [0, 0, 0, 255]);
+    let inked = |r: i32| probe.pixels()[(r * w) as usize..((r + 1) * w) as usize].iter().any(|p| p.alpha() > 96);
+    let (Some(top), Some(bottom)) = ((0..h).find(|r| inked(*r)), (0..h).rev().find(|r| inked(*r))) else { return 0 };
+    let (over, below) = (top - face.0, face.1 - bottom);
+    let needed = (under - below).max(0);
+    if over - needed >= 1 { needed } else { ((over - below) / 2).max(0) }
+}
+
 /// A hint's yellow badge with `c` on it, at scale `s` (Twitcher letters
 /// its cells with the same).
 pub fn badge_pixmap(p: &olo_theme::Palette, c: char, s: f64) -> Pixmap {
+    key_cap(p, c, s, false)
+}
+
+/// The badge as a key's cap, up or `pressed` in (its bevel the other
+/// way round, its face a step darker, its letter a device pixel down
+/// and right): a place's key, in the pad the dragged window is in
+/// (`shell::snap`). A letter that hangs below the line (Q's tail, J's
+/// hook) is raised until a point of the face shows under it: centred as
+/// the others are by its capitals' height, it sat on the bevel (Astra's
+/// and Opus's reviews, 2026-11-20).
+pub fn key_cap(p: &olo_theme::Palette, c: char, s: f64, pressed: bool) -> Pixmap {
     let px = |l: f64| (l * s).round() as i32;
     let u = px(1.0).max(1);
     let label = c.to_ascii_uppercase().to_string();
@@ -1058,20 +1087,76 @@ pub fn badge_pixmap(p: &olo_theme::Palette, c: char, s: f64) -> Pixmap {
     let h = px(BADGE_H as f64);
     let w = (tw + 2 * px(BADGE_PAD as f64)).max(h);
     let mut pm = Pixmap::new(w as u32, h as u32).expect("hint pixmap");
+    let (light, shadow) = if pressed { (p.tab_focused_shadow, p.tab_focused_light) } else { (p.tab_focused_light, p.tab_focused_shadow) };
+    let face = if pressed { olo_theme::mix(p.tab_focused, p.tab_focused_shadow, 0.35) } else { p.tab_focused };
     fill(&mut pm, 0, 0, w, h, p.frame_focused[0]);
-    fill(&mut pm, u, u, w - 2 * u, h - 2 * u, p.tab_focused);
-    fill(&mut pm, u, u, w - 2 * u, u, p.tab_focused_light);
-    fill(&mut pm, u, u, u, h - 2 * u, p.tab_focused_light);
-    fill(&mut pm, u, h - 2 * u, w - 2 * u, u, p.tab_focused_shadow);
-    fill(&mut pm, w - 2 * u, u, u, h - 2 * u, p.tab_focused_shadow);
-    let y = text::top_for_centre(h as f32 / 2.0, size, true);
-    text::draw(&mut pm, &label, ((w - tw) as f32 / 2.0).round(), y, size, true, p.tab_text_focused);
+    fill(&mut pm, u, u, w - 2 * u, h - 2 * u, face);
+    fill(&mut pm, u, u, w - 2 * u, u, light);
+    fill(&mut pm, u, u, u, h - 2 * u, light);
+    fill(&mut pm, u, h - 2 * u, w - 2 * u, u, shadow);
+    fill(&mut pm, w - 2 * u, u, u, h - 2 * u, shadow);
+    // (Pressed, a device pixel down and right; raised from there.)
+    let down = if pressed { 1.0 } else { 0.0 };
+    let x = ((w - tw) as f32 / 2.0).round() + down;
+    let y = text::top_for_centre(h as f32 / 2.0, size, true) + down;
+    let y = y - cap_raise(&label, size, (w, h), (x, y), (2 * u, h - 2 * u - 1), px(1.0).max(1)) as f32;
+    text::draw(&mut pm, &label, x, y, size, true, p.tab_text_focused);
     pm
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A key cap's letter is raised only if it hangs below the line: Q
+    /// and J, by a pixel or two where the cap is small; every other
+    /// capital is where it was, at every scale (the caps are keyboard
+    /// hints' and Twitcher's too).
+    #[test]
+    fn only_a_letter_that_hangs_is_raised() {
+        for s in [1.0f64, 1.25, 1.5, 1.75, 2.0] {
+            let px = |l: f64| (l * s).round() as i32;
+            let u = px(1.0).max(1);
+            let font = FONT * s as f32;
+            let h = px(BADGE_H as f64);
+            for c in LETTERS.chars() {
+                let label = c.to_ascii_uppercase().to_string();
+                let tw = text::measure(&label, font, true).ceil() as i32;
+                let w = (tw + 2 * px(BADGE_PAD as f64)).max(h);
+                let at = (((w - tw) as f32 / 2.0).round(), text::top_for_centre(h as f32 / 2.0, font, true));
+                let raise = cap_raise(&label, font, (w, h), at, (2 * u, h - 2 * u - 1), px(1.0).max(1));
+                if "jq".contains(c) {
+                    // (As far as it hangs at that size: at 1×, where it
+                    // sat on the bevel, a pixel at least.)
+                    assert!((0..=2 * u).contains(&raise) && (s > 1.0 || raise >= 1), "{label} at {s}: raised {raise}");
+                } else {
+                    assert_eq!(raise, 0, "{label} at {s}");
+                }
+            }
+        }
+    }
+
+    /// Every cap at every scale, written out to look at (`cargo test -p
+    /// app_server --lib caps_to_look_at -- --ignored`; `OLO_CAPS_SHEET`
+    /// says where).
+    #[test]
+    #[ignore]
+    fn caps_to_look_at() {
+        let Some(dir) = std::env::var_os("OLO_CAPS_SHEET") else { return };
+        let p = crate::theme::palette();
+        for s in [1.0f64, 1.25, 1.5, 1.75, 2.0] {
+            let caps: Vec<Pixmap> = LETTERS.chars().map(|c| key_cap(&p, c, s, false)).collect();
+            let (w, h) = (caps.iter().map(|c| c.width() + 4).sum::<u32>(), caps[0].height() + 4);
+            let mut sheet = Pixmap::new(w, h).unwrap();
+            sheet.fill(tiny_skia::Color::from_rgba8(220, 225, 235, 255));
+            let mut x = 2;
+            for c in &caps {
+                sheet.draw_pixmap(x, 2, c.as_ref(), &tiny_skia::PixmapPaint::default(), tiny_skia::Transform::identity(), None);
+                x += c.width() as i32 + 4;
+            }
+            sheet.save_png(std::path::Path::new(&dir).join(format!("caps-{s}.png"))).unwrap();
+        }
+    }
 
     fn n(id: u64, parent: Option<u64>, role: &str, name: Option<&str>, (x, y, w, h): (f64, f64, f64, f64), clickable: bool) -> UiNode {
         UiNode { id, parent, role: role.into(), name: name.map(Into::into), x, y, width: w, height: h, enabled: true, clickable }

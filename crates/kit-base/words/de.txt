@@ -2937,6 +2937,9 @@ Download …
 Drag with:
 Ziehen mit:
 
+Dragging a Window
+Fenster ziehen
+
 Draw
 Zeichnen
 
@@ -8574,6 +8577,9 @@ Wochentag zeigen
 Show the phone’s other notifications
 Die anderen Mitteilungen des Telefons zeigen
 
+Show the places a window can go
+Plätze zeigen, die ein Fenster einnehmen kann
+
 Show what a message says
 Inhalt von Nachrichten zeigen
 
@@ -10909,6 +10915,9 @@ Beim Teilen oder Aufnehmen des Bildschirms (Fehler auch)
 
 While uploading
 Beim Upload
+
+Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
+Ziehen Sie ein Fenster an seinem Tab und lassen Sie es in einem Platz los, oder drücken Sie dessen Buchstaben: Das Fenster nimmt ihn ein. Im Platz eines anderen Fensters losgelassen, tauschen die beiden. Esc setzt alles zurück.
 
 Why
 Warum

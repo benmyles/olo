@@ -1023,7 +1023,15 @@ impl Stage {
         // A size the looper hasn't laid out for yet: its commit for it is
         // on its way, and draws then. (Unless it's taking too long.)
         if let Some(since) = showing.resized_at {
-            if since.elapsed() < SIZE_WAIT {
+            let waited = since.elapsed();
+            if waited < SIZE_WAIT {
+                // (Drawn when the wait is over whether or not the looper
+                // has laid out for it: nothing else may ask for a frame
+                // by then, as the size isn't committed, and so no frame
+                // called for, until one is drawn at it.)
+                if let Some(window) = self.window.borrow().as_ref() {
+                    window.frame_after(SIZE_WAIT - waited);
+                }
                 return false;
             }
             showing.dirty = true;

@@ -1246,6 +1246,9 @@ pub struct TilingSettings {
     /// written.
     #[serde(skip_serializing)]
     pub auto: Vec<AutoTiling>,
+    /// A window dragged by its tab snaps into the places shown while it's
+    /// dragged (app_server's `shell::snap`; Preferences ▸ Windows).
+    pub snap: bool,
 }
 
 /// What [`TilingSettings`] are written as today (`version`).
@@ -1272,6 +1275,7 @@ impl Default for TilingSettings {
             main_counts: Vec::new(),
             modes: Vec::new(),
             auto: Vec::new(),
+            snap: true,
         }
     }
 }

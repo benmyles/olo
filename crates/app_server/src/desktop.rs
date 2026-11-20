@@ -958,6 +958,8 @@ impl<B: Backend + 'static> AnvilState<B> {
     }
 
     fn park(&mut self, window: &WindowElement) {
+        // (On its way somewhere: there, before where it is is kept.)
+        self.glide_finish(window);
         if self.space.element_location(window).is_some() {
             // The workspace its display shows, which it is on.
             window.meta().workspace.set(Some(self.workspace_of(window)));

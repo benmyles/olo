@@ -638,8 +638,11 @@ where
     let indicator = crate::osd::element(renderer, output, screen).map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e)));
     // A tab's cut title, whole (`tabtip`), as high.
     let tab_tip = crate::tabtip::element(renderer, output).map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e)));
-    // Clicks and keys shown (`showing`), as high: in captures too.
-    let shown: Vec<_> = crate::showing::elements(renderer, output, screen).into_iter().map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))).collect();
+    // Clicks and keys shown (`showing`), as high: in captures too; and
+    // under them the places a window being dragged can be let go into
+    // (`shell::snap`).
+    let mut shown: Vec<_> = crate::shell::snap::elements(renderer, output).into_iter().map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))).collect();
+    shown.extend(crate::showing::elements(renderer, output, screen).into_iter().map(|e| OutputRenderElements::Custom(CustomRenderElements::Overlay(e))));
     // Locked: nothing but what the caller passed (the pointer and the lock
     // screen) over an opaque background.
     if locked {

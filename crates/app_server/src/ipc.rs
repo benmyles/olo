@@ -945,6 +945,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 }
                 Reply::Overview { overview: self.overview_info() }
             }
+            Request::Snap => Reply::Snap { snap: self.snap_info() },
             Request::SetSettings { settings } => {
                 self.set_settings(settings);
                 Reply::Ok

@@ -263,6 +263,10 @@ pub enum Request {
         #[serde(default)]
         show: Option<bool>,
     },
+    /// The places a window being dragged by its tab can be let go into
+    /// (app_server's `shell::snap`): each pad's letter, what it is and
+    /// where; none while no window is dragged.
+    Snap,
     SetSettings {
         settings: Settings,
     },
@@ -879,6 +883,10 @@ pub enum Reply {
     /// [`Request::Overview`]'s answer.
     Overview {
         overview: OverviewInfo,
+    },
+    /// [`Request::Snap`]'s answer.
+    Snap {
+        snap: SnapInfo,
     },
     /// [`Request::Arrangement`]'s answer: the display's connector, the
     /// area tiling uses (global logical pixels: the display less Deskbar
@@ -2801,6 +2809,33 @@ pub struct KeyboardSettings {
     pub double_press_ms: u32,
     /// What the built-in power button does, pressed and held.
     pub power_button: power_button::PowerButton,
+}
+
+/// [`Request::Snap`]'s answer: the window being dragged and its places.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SnapInfo {
+    /// The window dragged (None: none is, and there are no pads).
+    pub window: Option<u64>,
+    /// The display the pads are on.
+    pub output: Option<String>,
+    pub pads: Vec<SnapPad>,
+}
+
+/// One place a dragged window can be let go into.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SnapPad {
+    /// The key that puts the window there.
+    pub letter: String,
+    /// What it is: a part of the display (`TopLeft`, `Left`, `Top`…),
+    /// `Whole`, or `Window N` (that window's place: the two swap).
+    pub place: String,
+    /// Where the pad is, global logical pixels.
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+    /// The pointer is in it: the window is shown there.
+    pub inside: bool,
 }
 
 /// [`Request::Overview`]'s answer: what the overview shows.

@@ -2937,6 +2937,9 @@ Baixando…
 Drag with:
 Arrastar com:
 
+Dragging a Window
+Ao arrastar uma janela
+
 Draw
 Desenhar
 
@@ -8574,6 +8577,9 @@ Mostrar dia da semana
 Show the phone’s other notifications
 Mostrar as outras notificações do celular
 
+Show the places a window can go
+Mostrar os lugares que uma janela pode ocupar
+
 Show what a message says
 Mostrar o conteúdo da mensagem
 
@@ -10909,6 +10915,9 @@ Ao compartilhar ou gravar a tela (adiar os erros também)
 
 While uploading
 Durante o upload
+
+Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
+Enquanto arrasta uma janela pela aba, solte-a em um lugar, ou pressione a letra dele, para colocá-la ali. Solte-a no lugar de outra janela para trocar as duas. Escape deixa tudo como estava.
 
 Why
 Motivo

@@ -2926,6 +2926,9 @@ Downloading…
 Drag with:
 拖曳方式：
 
+Dragging a Window
+拖移視窗
+
 Draw
 繪圖
 
@@ -8551,6 +8554,9 @@ Show the day of the week
 Show the phone’s other notifications
 顯示手機的其他通知
 
+Show the places a window can go
+顯示視窗可以放置的位置
+
 Show what a message says
 顯示訊息內容
 
@@ -10884,6 +10890,9 @@ While sharing or recording the screen (errors wait too)
 
 While uploading
 上傳時
+
+Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
+按住標籤拖移視窗時，在某個位置放開，或按下該位置的字母，視窗就會移到那裡。在另一個視窗的位置放開，兩個視窗互換位置。按 Escape 可全部恢復原狀。
 
 Why
 原因

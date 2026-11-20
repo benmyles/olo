@@ -232,6 +232,20 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// The tab a drag rests on, its window to come forward (shell/spring.rs),
     /// and the count its waits go by.
     pub spring: Option<crate::shell::spring::Spring>,
+    /// A window being moved by its tab, and the places it can be let go
+    /// into (`shell::snap`); and the key that chose one, till it's let up.
+    pub snap: Option<crate::shell::snap::Snap>,
+    pub snap_key_up: Option<u32>,
+    /// Windows on their way to a frame (`shell::glide`), and whether
+    /// what puts a frame now (`set_frame`) is to glide it there.
+    pub glides: Vec<crate::shell::glide::Glide>,
+    pub glide_frames: bool,
+    /// A glide is asking a size on its way (not its last): the app is
+    /// told it's being resized, as one following a drag is.
+    pub glide_resizing: bool,
+    /// The glides are being stepped: what's asked of a window now is its
+    /// glide's asking, not something else taking the window over.
+    pub glide_stepping: bool,
     pub spring_token: u64,
     /// Escape ended a drag or a move: its release reaches nobody either,
     /// and the move grab, ending, puts its window back (`MoveCancelled`).
@@ -1303,6 +1317,12 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             dnd_icon: None,
             dragging: false,
             spring: None,
+            snap: None,
+            snap_key_up: None,
+            glides: Vec::new(),
+            glide_frames: false,
+            glide_resizing: false,
+            glide_stepping: false,
             spring_token: 0,
             escaped: false,
             move_cancelled: false,
@@ -1507,6 +1527,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
     pub fn pre_repaint(&mut self, output: &Output, frame_target: impl Into<Time<Monotonic>>) {
         let frame_target = frame_target.into();
         self.overview_tick();
+        self.glide_tick();
+        self.snap_tick();
         self.pace_scroll(output);
         self.update_wallpaper(output);
 
