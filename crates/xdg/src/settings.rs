@@ -219,7 +219,6 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "performance", tab: "Scheduler", group: "Pointer", name: "Move the pointer on a thread of its own", role: "CheckBox" },
     Setting { panel: "performance", tab: "Kernel", group: "Preemption", name: "Switch to a woken program at once", role: "CheckBox" },
     Setting { panel: "performance", tab: "Kernel", group: "Processor Turns", name: "Keep a busy program's turn short", role: "CheckBox" },
-    Setting { panel: "performance", tab: "Kernel", group: "Memory", name: "Use swap only when nothing else is left", role: "CheckBox" },
     Setting { panel: "performance", tab: "Kernel", group: "Removable Disks", name: "Limit what waits to be written to them", role: "CheckBox" },
     Setting { panel: "performance", tab: "Kernel", group: "Network", name: "Send with BBRv3", role: "CheckBox" },
     Setting { panel: "performance", tab: "Kernel", group: "Graphics", name: "Keep windows' graphics memory out of swap", role: "CheckBox" },

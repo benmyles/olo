@@ -1138,8 +1138,36 @@ Learned on the second pass (2026-11-20):
   first" a generation at a time (idle programs still go to swap under
   a build) and 0 is "never" (a program is ended with swap free); only
   under the older reclaim (`echo 0 > /sys/kernel/mm/lru_gen/enabled`)
-  is 0 "when the cache is all but gone". kernel/TUNING.md, "Swap: used
-  last".
+  is 0 "when the cache is all but gone". kernel/TUNING.md, "Swap used
+  last (a setting for an hour)".
+- **Never change memory policy on the person's computer to see what
+  it does** (2026-11-20, the worst hour of this project): "swap used
+  last" had passed every guest measurement, was put on on Ben's
+  loaded computer, and within six minutes NVIDIA's driver had failed
+  an allocation, then its runtime suspend, and the card was dead with
+  their work on it ("did you just kill my nvidia gpu?? i was using
+  it"). A guest measures programs, whose allocations wait; it has no
+  drivers whose allocations may be refused, no card that suspends,
+  and no 30 GB of the person's own work in memory. For anything that
+  changes how memory, swap or reclaim behave (a sysctl, a cgroup
+  limit or protection, `swapoff`, huge pages): the guest first; then
+  the person's computer only when they say so, at a quiet moment,
+  with the minute record running
+  (/var/tmp/claude-blueferry/mem/sample.py: free, cache, swap in and
+  out), a way back written down first, and never anything that
+  reduces what the kernel may reclaim or swap in total. Putting it
+  back at once (as was done) doesn't bring back what a driver lost.
+- **A fix that calls into a driver can hang for ever, in the kernel**
+  (the same day): Doctor's "Start It Again" for that card unloaded
+  NVIDIA's display module while the card didn't answer, and
+  `delete_module` never returned (nvkms waits for the GPU with no way
+  out, a whole processor spinning; the module left "Unloading", the
+  helper unkillable, Doctor's window saying "Fixing…"). Before
+  unloading or unbinding a driver, know that its device answers, and
+  never make such a call on the only thread that reports progress.
+  How to tell where a thread that never sleeps is: `/proc/PID/stack`
+  is empty for it; `perf record -g -p PID` for a few seconds as root
+  names the functions.
 - **What holds programs "making room" is mostly huge pages**: trace
   `vmscan:mm_vmscan_direct_reclaim_begin` and
   `compaction:mm_compaction_try_to_compact_pages` by `args->order`

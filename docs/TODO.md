@@ -158,15 +158,19 @@ something nobody here has is in "Blocked", with what it waits for.
      figures taken again on a quiet computer (`kernel-check turns`).
   Also found: memory. 102 GB had been written to swap in three days
   with tens of GB free throughout, and programs were held 2.9
-  million times while the kernel made room. **Done** (Ben: "i want
-  the swap to only get used when absolutely necessary … make it an
-  option in olo performance -> kernel on by default"): a kernel
-  setting, **Swap used last** (`vm.swappiness` 0 with the kernel's
-  older reclaim, more room kept free; Doctor recommends it; why
-  swappiness 1 didn't do it, and that 0 with the multi-generational
-  LRU ends programs: kernel/TUNING.md). **To do**: what the kernel's
-  counts say of it on Ben's computer once it's on (`pswpout` by the
-  minute: /var/tmp/claude-blueferry/mem/sample.py). And **the
+  million times while the kernel made room. **Tried and withdrawn**
+  (Ben: "i want the swap to only get used when absolutely necessary
+  … make it an option in olo performance -> kernel on by default"):
+  a kernel setting, Swap used last (`vm.swappiness` 0 with the
+  kernel's older reclaim), which passed in the guest and, put on on
+  Ben's loaded computer, ran it short within minutes: NVIDIA's
+  driver failed an allocation, then its card's suspend, and the card
+  stopped answering ("did you just kill my nvidia gpu?? i was using
+  it"; "just remove that particular swap setting it's obviously
+  dangerous"). Removed from Olo and from that computer the same
+  hour; kernel/TUNING.md, "Tried and withdrawn", has what was
+  measured, what happened and why the guest didn't show it. What is
+  to be done instead is the next two items. And **the
   holding is for huge pages**: every program held making room in a
   20 s trace was asking for 2 MB pages (the linker 1,267 times, with
   3,595 compactions taking 8.8 s between them, one 311 ms; Chrome
@@ -174,9 +178,10 @@ something nobody here has is in "Blocked", with what it waits for.
   themselves (`transparent_hugepage/defrag`: madvise). To make a
   third setting of it, measured both ways under a link (deferred:
   the kernel's own threads do it in the background and nobody
-  waits), with a place for it in the Kernel tab, which has no room
-  for a seventh box on the smallest screen (a tab of its own for
-  Olo's pieces, or boxes that hold two switches). Not it: the
+  waits), in the guest first and on Ben's computer only on their
+  word (AGENT-NOTES: memory policy), with a place for it in the
+  Kernel tab, which has room for a sixth box on the smallest screen
+  and not a seventh. Not it: the
   GPU's clock (it stands at 700 of 2450 MHz because the GPU is idle
   half the time; a floor of 1600 changed nothing and it rose to
   2450 by itself under load), processor load alone on the
@@ -195,6 +200,77 @@ something nobody here has is in "Blocked", with what it waits for.
   window's next frame, and to the screen), said in the log with who
   was late, so the next time it is known at once.
 
+- **Background work is swapped first, and gives way on the processors
+  and the disks as one group** (Ben, 2026-11-20, of swap: "how can we
+  optimize what gets swapper better? i.e. can we somehow use the
+  process priorities as an indication of how 'swappy' a certain
+  process should be? so then the work that gets background priority,
+  like rustc etc would be more likely to get swapped than interactive
+  apps that will really impact me"; of the outline below: "yes
+  perfect, implement it in full … however please also review your
+  plan/design for it with astra 6.2 max to make sure it is sound and
+  you haven't missed anything"). Linux has no link between a
+  process's priority and reclaim, but reclaim is chosen by control
+  group, and a group can be given protection (`memory.low`): the
+  kernel takes from unprotected groups first and from a protected one
+  only when nothing else is left. It orders, it doesn't forbid: swap
+  stays whole (the rule the withdrawn setting left). On Ben's
+  computer everything of the session is one group today
+  (`session-N.scope`: 560 processes, 33 GB, the compositor and every
+  agent's compiler together), so the kernel can't tell them apart.
+  The outline: what the supervisor already lowers as background (its
+  list of compilers, linkers and the like; a terminal's job busy for
+  a minute) goes into a group of its own with no protection, an idle
+  processor weight and a low disk weight; the desktop's group is
+  protected. **Now**: the design is with Astra at max
+  (/var/tmp/claude-blueferry/groups/brief.md: where the groups live
+  under logind's session scope or the user manager, what `memory.low`
+  really does under `memory_recursiveprot` and the multi-generational
+  LRU, charges that don't move with a process, systemd-oomd, what
+  must never go in the background group). Then: built, measured in
+  the guest (who is swapped, what the protected group waits, what a
+  thread in it waits while the other computes), Doctor's part, the
+  docs; on Ben's computer only on their word, at a quiet moment, with
+  the memory record running.
+
+- **The NVIDIA card stopped answering, and Olo's fix for it hung in
+  the kernel** (Ben, 2026-11-20: "can you also put an astra 6.2 max
+  agent on trying to figure out at a low level how we can unfuck the
+  nvidia card without rebooting / restarting everything"; "after
+  upgrading olo doctor came up with this and now it's stuck on
+  'fixing'"). What happened: memory ran short (the withdrawn swap
+  setting), NVIDIA's driver failed an allocation, and a minute and a
+  half later the card's runtime suspend failed with its firmware not
+  halting ("GSP unload failed at suspend"); the kernel has had the
+  card in a power-management error since, and every call to it
+  fails. Doctor's own fix for that state ("The NVIDIA graphics card
+  stopped answering: Start It Again", `Step::RestartGpu`, which
+  worked on 2026-11-07) ran after the upgrade: it stopped Olo's power
+  follower (which holds the card) and began unloading NVIDIA's
+  display module, and the kernel never came back from that
+  (`delete_module` → `nv_drm_dev_unload` → nvkms's `nvEvoMakeRoom`,
+  which waits for the GPU with no way out: a whole processor
+  spinning, the module left "Unloading", Doctor's helper unkillable
+  and its window saying "Fixing…" under the follower's finding, whose
+  fix is queued behind it). **Now**: a second Astra at max is on it
+  (/var/tmp/claude-blueferry/nvhelp/: the facts, the kernel's lines,
+  the stack), asked for a way out of this exact state without a
+  restart, whether the firmware can be started again in place, and
+  a restart order for Olo that can't block. **To do in Olo
+  whatever it finds**: (a) `RestartGpu` never begins a step that can
+  block for ever: it knows the card answers first, or goes a way
+  that doesn't need it to, or says "restart the computer"; (b) no
+  kernel call that may not return on Doctor's only worker: a thread
+  of its own, a deadline in what the window says, the other fixes
+  not held behind it; (c) what the fix stops, it starts again
+  however it ends (the follower has been stopped since 13:53: the
+  processors keep the last mode set); (d) Deskbar and Activity
+  Monitor let go of a card that stopped answering and ask again
+  rarely (twelve Deskbars asked 160 times a minute, each a kernel
+  error line, and held it open through the restart); (e) Doctor's
+  finding says what state the card is in and what will bring it
+  back; (f) if it's a driver bug, written up for Ben to send.
+
 - **Elevated permissions approved by themselves are approved at once,
   with nothing started** (Ben, 2026-11-20: "when auto-approve
   sudo/elevated permissions is enabled, it still starts the ir camera
@@ -208,9 +284,15 @@ something nobody here has is in "Blocked", with what it waits for.
   that nothing was opened (the stand-ins for the camera and the
   reader count their starts). After the responsiveness work.
 
-- **Left from the reviews of the Kernel tab** (2026-11-20; three
-  rounds with both; what was about the two new boxes and the tab's
-  layout is done). Of the older boxes, real and not done: "where"
+- **Left from the reviews of the Kernel tab** (2026-11-20; five
+  rounds with both; what was about the new box and the tab's layout
+  is done). From the last round, real and not this tab's alone: in
+  dark looks the tabs not chosen are lighter than the panel, so they
+  read as in front of the chosen one (the kit's tab view, every
+  app's: to be judged before and after across apps); and smaller:
+  the left column's values could start nearer their labels (a label
+  width for each column, not one for the tab), and with Processor
+  Turns off its first two rows say the same. Of the older boxes, real and not done: "where"
   for "whereas" in Preemption's and Network's sentences reads as a
   place; Network's check box is the only one named in jargon ("Send
   with BBRv3") and its facts make the reader decode ("Their round

@@ -2422,9 +2422,6 @@ Copied the {}.
 Copied {}. It leaves the clipboard in {} seconds.
 Скопировано: {}. Буфер обмена очистится через {} с.
 
-Copies of files in memory are freed first; programs go to swap only when those run out (vm.swappiness 0, MGLRU off).
-Сначала освобождаются копии файлов в памяти; программы уходят в подкачку, только когда они закончились (vm.swappiness 0, MGLRU выключен).
-
 Copr project
 Проект Copr
 
@@ -4113,9 +4110,6 @@ Free (open source)
 
 Freeing the space only backups past keeping took, in {}.
 Освобождение места в {}, занятого только устаревшими копиями.
-
-Frees first
-Освобождает первым
 
 Freezing
 Замерзание
@@ -9793,9 +9787,6 @@ Swap Alt and the Windows Key
 Swap too
 Также подкачка
 
-Swap used
-В подкачке
-
 Swap with Previous Main
 Поменять с предыдущим главным окном
 
@@ -10615,8 +10606,8 @@ These apps may have these items whenever they ask. Take one back and the app is 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 Для этих функций Bluetooth должен прослушивать сигналы AirPods. Это можно включить в Olo Doctor.
 
-These settings are for the whole computer, so changing one asks for an administrator's password.
-Эти настройки относятся ко всему компьютеру, поэтому для их изменения запрашивается пароль администратора.
+All these settings are for the whole computer, so changing one asks for an administrator's password.
+Все эти настройки относятся ко всему компьютеру, поэтому для их изменения запрашивается пароль администратора.
 
 ThinkPad
 ThinkPad
@@ -11416,9 +11407,6 @@ Use a Reset Credit…
 Use a key already in Passwords
 Использовать ключ из Passwords
 
-Use swap only when nothing else is left
-Подкачка только в крайнем случае
-
 Use the Usual Order
 Вернуть обычный порядок
 
@@ -11821,11 +11809,11 @@ When am I free tomorrow?
 When does the sun rise tomorrow?
 Во сколько завтра восход?
 
-When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
-Когда все процессоры заняты, программа уступает ожидающей через 0,7 мс вместо {} (base slice). Сейчас планирует {} и решает это сам.
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
+Если включено, занятая программа уступает ожидающей через 0,7 мс вместо {} (base slice). Сейчас планирует {} и решает это сам.
 
-When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up (base slice).
-Когда все процессоры заняты, программа уступает ожидающей через 0,7 мс вместо {}, так что окна и ввод не отстают (base slice).
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
+Если включено, занятая программа уступает ожидающей через 0,7 мс вместо {}, так что окна и ввод не отстают и под нагрузкой (base slice).
 
 When held for:
 При удержании:
@@ -12352,9 +12340,6 @@ ceiling {}%
 charging, full in {}
 заряжается, до полной зарядки {}
 
-copies of files
-копии файлов
-
 couldn't save the boost: {}
 не удалось сохранить усиление: {}
 
@@ -12616,9 +12601,6 @@ no wired network: it waits for one
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
-none of {}
-ничего из {}
-
 not parts of it: {}; its parts are {}
 не входят в состав: {}; состав: {}
 
@@ -12817,9 +12799,6 @@ signed in, {} calendars
 slots of the pool in use
 занято слотов пула
 
-some of each
-понемногу того и другого
-
 some of it couldn't be read
 часть данных прочитать не удалось
 
@@ -12906,9 +12885,6 @@ one: за последнюю {n} секунду
 few: за последние {n} секунды
 many: за последние {n} секунд
 other: за последние {n} секунды
-
-the least used
-наименее используемое
 
 the package {}
 пакет {}

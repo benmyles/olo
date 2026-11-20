@@ -247,14 +247,6 @@ pub enum Step {
     /// Take the swap lines out of /etc/fstab (each commented, saying who
     /// did), so none is turned on at the next start.
     FstabSwapOff,
-    /// Bring back into memory what is in swap, and leave swap as it
-    /// was: every area in use (`/proc/swaps`) turned off (swapoff(2),
-    /// which brings what's in it back first, and fails, the area left
-    /// as it is, where there isn't the memory) and on again at the
-    /// priority it had. For when swap is to be used only once nothing
-    /// else is left: what went there before comes back at once, where
-    /// it would come back a page at a time as each is next used.
-    SwapBack,
     /// Make a zram swap device again at the size its settings now give
     /// (zram-generator's, read at systemd's reload before this step):
     /// the swap on it turned off (`swapoff(2)`: what's in it comes back
@@ -339,7 +331,6 @@ impl Step {
             Step::RemoveKeptBuild { home, name } => format!("Removing the kept build {} and its login screen entry", home.join(KEPT_BUILDS).join(name).display()),
             Step::SwapOff => "Turning swap off".into(),
             Step::FstabSwapOff => "Taking swap out of /etc/fstab".into(),
-            Step::SwapBack => "Bringing back what's in swap".into(),
             Step::LetSessionLockMemory { .. } => "Letting the programs running now keep their memory in RAM".into(),
             Step::LetOloOpenFiles { .. } => "Letting Olo's programs running now keep more files open".into(),
             Step::RemakeZramSwap { device } => format!("Making the swap on /dev/{device} again at its new size"),
@@ -466,7 +457,6 @@ impl Step {
             Step::RemoveKeptBuild { home, name } => remove_kept_build(home, name, SESSION_ENTRIES).map_err(failed),
             Step::SwapOff => swap_off(Path::new("/proc/swaps")).map_err(|e| format!("{}: {e}", self.describe())),
             Step::FstabSwapOff => fstab_swap_off(Path::new("/etc/fstab")).map_err(failed),
-            Step::SwapBack => swap_back(Path::new("/proc/swaps"), &swap_area_off, &swap_area_on).map_err(|e| format!("{}: {e}", self.describe())),
             Step::LetSessionLockMemory { uid } => let_lock_memory(Path::new("/proc"), *uid).map_err(|e| format!("{}: {e}", self.describe())),
             Step::LetOloOpenFiles { uid, hard } => let_open_files(Path::new("/proc"), *uid, *hard).map_err(|e| format!("{}: {e}", self.describe())),
             Step::RemakeZramSwap { device } => {
@@ -757,8 +747,6 @@ impl Step {
             Step::MakeSystemUsers { .. } => cant("The system users it made stay."),
             Step::RemoveKeptBuild { name, .. } => cant(&format!("The kept build {name} is gone for good.")),
             Step::SwapOff => cant("Swap is back at the next start (or as /etc/fstab says once it's put back)."),
-            // (Nothing to put back: what was in swap is in memory.)
-            Step::SwapBack => Inverse::default(),
             Step::RemakeZramSwap { .. } => Inverse::default(),
             // What changes nothing that stays: a process ended, hardware
             // started again, a program run.
@@ -1092,68 +1080,6 @@ fn swap_off(swaps: &Path) -> Result<(), String> {
             let e = std::io::Error::last_os_error();
             failed.get_or_insert(format!("{area}: {e}"));
         }
-    }
-    failed.map_or(Ok(()), Err)
-}
-
-/// swapoff(2) of one area.
-fn swap_area_off(area: &str) -> std::io::Result<()> {
-    let path = std::ffi::CString::new(area.as_bytes())?;
-    // SAFETY: swapoff(2) with a NUL-terminated path.
-    if unsafe { libc::swapoff(path.as_ptr()) } != 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-    Ok(())
-}
-
-/// swapon(2) of one area at `priority` (as /proc/swaps had it: below 0
-/// is the kernel's own ordering, which is asked for by naming none). A
-/// swap in compressed memory is told of what's freed, as
-/// zram-generator's own unit turns it on (`discard`). One already on
-/// (systemd's unit for it turned it on meanwhile, which it does for an
-/// area its target wants) is as wanted.
-fn swap_area_on(area: &str, priority: i32) -> std::io::Result<()> {
-    // (linux/swap.h's: a priority is given, its bits, and discards wanted.)
-    const PREFER: i32 = 0x8000;
-    const PRIORITY: i32 = 0x7fff;
-    const DISCARD: i32 = 0x10000;
-    let path = std::ffi::CString::new(area.as_bytes())?;
-    let mut flags = if priority >= 0 { PREFER | (priority & PRIORITY) } else { 0 };
-    if area.starts_with("/dev/zram") {
-        flags |= DISCARD;
-    }
-    // SAFETY: swapon(2) with a NUL-terminated path.
-    if unsafe { libc::swapon(path.as_ptr(), flags) } != 0 {
-        let e = std::io::Error::last_os_error();
-        if e.raw_os_error() != Some(libc::EBUSY) {
-            return Err(e);
-        }
-    }
-    Ok(())
-}
-
-/// See `Step::SwapBack`. Each area of `swaps` (/proc/swaps) with
-/// something in it: `off`, then `on` at its priority. One that can't
-/// be turned off (not the memory for what's in it) stays as it is and
-/// is the error, after the others were tried; one that can't be turned
-/// on again ends it there, said plainly: the computer is without that
-/// swap until it's turned on.
-fn swap_back(swaps: &Path, off: &dyn Fn(&str) -> std::io::Result<()>, on: &dyn Fn(&str, i32) -> std::io::Result<()>) -> Result<(), String> {
-    let text = std::fs::read_to_string(swaps).map_err(|e| e.to_string())?;
-    let names = swap_areas(&text);
-    let mut failed = None;
-    for (line, (area, _)) in text.lines().skip(1).filter(|l| l.split_whitespace().count() >= 5).zip(names) {
-        // ("Filename Type Size Used Priority": the last two.)
-        let mut last = line.split_whitespace().rev();
-        let (Some(priority), Some(used)) = (last.next().and_then(|p| p.parse::<i32>().ok()), last.next().and_then(|u| u.parse::<u64>().ok())) else { continue };
-        if used == 0 {
-            continue;
-        }
-        if let Err(e) = off(&area) {
-            failed.get_or_insert(format!("{area}: {e}"));
-            continue;
-        }
-        on(&area, priority).map_err(|e| format!("{area} was emptied and couldn't be turned on again ({e}): swapon {area} turns it on"))?;
     }
     failed.map_or(Ok(()), Err)
 }
@@ -1679,45 +1605,6 @@ mod tests {
         assert_eq!(swap_areas(swaps), [("/dev/zram0".to_owned(), 8388604 * 1024), ("/var/swap file".to_owned(), 1048572 * 1024)]);
         assert!(swap_areas("Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n").is_empty());
         assert!(swap_areas("").is_empty());
-    }
-
-    /// What's in swap brought back: each area with something in it
-    /// turned off and on again at its priority; an empty one left alone;
-    /// one that can't be turned off stays on and is said; one that
-    /// can't be turned on again is said plainly.
-    #[test]
-    fn what_is_in_swap_is_brought_back_and_swap_left_on() {
-        let dir = PathBuf::from(format!("/var/tmp/olo-doctor-swap-back-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let swaps = dir.join("swaps");
-        std::fs::write(&swaps, "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n/dev/zram0                              partition\t8388604\t\t6403060\t\t100\n/dev/nvme0n1p3                          partition\t1048572\t\t0\t\t-2\n/var/swap\\040file                         file\t\t1048572\t\t12\t\t-3\n").unwrap();
-        let did = std::cell::RefCell::new(Vec::new());
-        let off = |a: &str| {
-            did.borrow_mut().push(format!("off {a}"));
-            Ok(())
-        };
-        let on = |a: &str, p: i32| {
-            did.borrow_mut().push(format!("on {a} {p}"));
-            Ok(())
-        };
-        swap_back(&swaps, &off, &on).unwrap();
-        assert_eq!(*did.borrow(), ["off /dev/zram0", "on /dev/zram0 100", "off /var/swap file", "on /var/swap file -3"]);
-        // Not the memory for the first: it stays on, the other is still brought back.
-        did.borrow_mut().clear();
-        let off = |a: &str| {
-            did.borrow_mut().push(format!("off {a}"));
-            if a == "/dev/zram0" { Err(std::io::Error::from_raw_os_error(libc::ENOMEM)) } else { Ok(()) }
-        };
-        let e = swap_back(&swaps, &off, &on).unwrap_err();
-        assert!(e.starts_with("/dev/zram0: "), "{e}");
-        assert_eq!(*did.borrow(), ["off /dev/zram0", "off /var/swap file", "on /var/swap file -3"]);
-        // Emptied and not turned on again: said, with how to.
-        let off = |_: &str| Ok(());
-        let on = |_: &str, _: i32| Err(std::io::Error::from_raw_os_error(libc::EPERM));
-        let e = swap_back(&swaps, &off, &on).unwrap_err();
-        assert!(e.contains("couldn't be turned on again") && e.contains("swapon /dev/zram0"), "{e}");
-        assert_eq!(Step::SwapBack.describe(), "Bringing back what's in swap");
-        let _ = std::fs::remove_dir_all(dir);
     }
 
     /// /etc/fstab's swap lines commented out, the rest as it was; one

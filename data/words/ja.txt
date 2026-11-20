@@ -2392,9 +2392,6 @@ Copied the {}.
 Copied {}. It leaves the clipboard in {} seconds.
 {}をコピーしました。{}秒後にクリップボードから消去します。
 
-Copies of files in memory are freed first; programs go to swap only when those run out (vm.swappiness 0, MGLRU off).
-メモリ上のファイルのコピーを先に解放し、それが尽きたときだけプログラムをスワップします（vm.swappiness 0、MGLRUオフ）。
-
 Copr project
 Coprプロジェクト
 
@@ -4068,9 +4065,6 @@ Free (open source)
 
 Freeing the space only backups past keeping took, in {}.
 期限切れのバックアップだけが使う容量を{}で解放しています。
-
-Frees first
-先に解放
 
 Freezing
 氷点下
@@ -9718,9 +9712,6 @@ AltとWindowsキーを入れ替える
 Swap too
 スワップも含める
 
-Swap used
-スワップ使用量
-
 Swap with Previous Main
 前のメインウィンドウと入れ替える
 
@@ -10540,8 +10531,8 @@ These apps may have these items whenever they ask. Take one back and the app is 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 これらの機能にはBluetoothでAirPodsを検出する設定が必要です。Olo Doctorで有効にできます。
 
-These settings are for the whole computer, so changing one asks for an administrator's password.
-これらの設定はコンピューター全体のものなので、変更には管理者のパスワードが必要です。
+All these settings are for the whole computer, so changing one asks for an administrator's password.
+これらの設定はすべてコンピューター全体のものなので、変更には管理者のパスワードが必要です。
 
 ThinkPad
 ThinkPad
@@ -11341,9 +11332,6 @@ Use a Reset Credit…
 Use a key already in Passwords
 Passwordsに保存済みのキーを使う
 
-Use swap only when nothing else is left
-ほかに手段がないときだけスワップを使う
-
 Use the Usual Order
 通常の順序に戻す
 
@@ -11746,11 +11734,11 @@ When am I free tomorrow?
 When does the sun rise tomorrow?
 明日の日の出は何時ですか？
 
-When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
-すべてのプロセッサがビジーのとき、プログラムは{}ではなく0.7 msで待機中のプログラムに譲ります（base slice）。現在は{}がスケジューリングしており、それ自身が決めています。
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
+オンにすると、ビジーなプログラムは{}ではなく0.7 msで待機中のプログラムに譲ります（base slice）。現在は{}がスケジューリングしており、それ自身が決めています。
 
-When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up (base slice).
-すべてのプロセッサがビジーのとき、プログラムは{}ではなく0.7 msで待機中のプログラムに譲るため、ウィンドウや入力が遅れません（base slice）。
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
+オンにすると、ビジーなプログラムは{}ではなく0.7 msで待機中のプログラムに譲るため、負荷が高くてもウィンドウや入力が遅れません（base slice）。
 
 When held for:
 長押し時間:
@@ -12274,9 +12262,6 @@ ceiling {}%
 charging, full in {}
 充電中、満充電まで{}
 
-copies of files
-ファイルのコピー
-
 couldn't save the boost: {}
 ゲインを保存できません：{}
 
@@ -12523,9 +12508,6 @@ no wired network: it waits for one
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
-none of {}
-{}のうちなし
-
 not parts of it: {}; its parts are {}
 対象外：{}。対象は{}です
 
@@ -12703,9 +12685,6 @@ signed in, {} calendars
 slots of the pool in use
 プールの使用中の枠
 
-some of each
-両方から少しずつ
-
 some of it couldn't be read
 一部のデータを読み取れませんでした
 
@@ -12783,9 +12762,6 @@ other: 過去{n}分間
 
 the last {n} seconds
 other: 過去{n}秒間
-
-the least used
-最も使われていないもの
 
 the package {}
 パッケージ「{}」

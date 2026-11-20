@@ -2402,9 +2402,6 @@ Cópia de {} concluída.
 Copied {}. It leaves the clipboard in {} seconds.
 {} copiado. Será apagado da área de transferência em {} segundos.
 
-Copies of files in memory are freed first; programs go to swap only when those run out (vm.swappiness 0, MGLRU off).
-As cópias de arquivos na memória são liberadas primeiro; os programas só vão para a troca quando elas acabam (vm.swappiness 0, MGLRU desativado).
-
 Copr project
 Projeto Copr
 
@@ -4083,9 +4080,6 @@ Livre (código aberto)
 
 Freeing the space only backups past keeping took, in {}.
 Liberando em {} o espaço exclusivo dos backups que passaram do prazo.
-
-Frees first
-Libera primeiro
 
 Freezing
 Congelante
@@ -9743,9 +9737,6 @@ Inverter Alt e a tecla Windows
 Swap too
 Inverter também
 
-Swap used
-Troca em uso
-
 Swap with Previous Main
 Trocar com a janela principal anterior
 
@@ -10565,8 +10556,8 @@ Estes apps têm acesso aos itens listados sempre que pedem. Revogue uma autoriza
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 O Bluetooth precisa procurar os AirPods para usar estes recursos. O Olo Doctor pode ativar essa opção.
 
-These settings are for the whole computer, so changing one asks for an administrator's password.
-Estes ajustes valem para o computador inteiro, então alterar um pede a senha de um administrador.
+All these settings are for the whole computer, so changing one asks for an administrator's password.
+Todos estes ajustes valem para o computador inteiro, então alterar um pede a senha de um administrador.
 
 ThinkPad
 ThinkPad
@@ -11366,9 +11357,6 @@ Usar crédito de renovação…
 Use a key already in Passwords
 Usar uma chave já salva no Passwords
 
-Use swap only when nothing else is left
-Usar a troca (swap) somente quando não restar mais nada
-
 Use the Usual Order
 Usar ordem habitual
 
@@ -11771,11 +11759,11 @@ Quando tenho tempo livre amanhã?
 When does the sun rise tomorrow?
 A que horas o sol nasce amanhã?
 
-When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
-Quando todos os processadores estão ocupados, um programa dá a vez a outro que espera após 0,7 ms em vez de {} (base slice). {} está escalonando agora e decide isso por conta própria.
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
+Com isto ativado, um programa ocupado dá a vez a outro que espera após 0,7 ms em vez de {} (base slice). {} está escalonando agora e decide isso por conta própria.
 
-When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up (base slice).
-Quando todos os processadores estão ocupados, um programa dá a vez a outro que espera após 0,7 ms em vez de {}, para que janelas e digitação acompanhem (base slice).
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
+Com isto ativado, um programa ocupado dá a vez a outro que espera após 0,7 ms em vez de {}, para que janelas e digitação acompanhem mesmo sob carga (base slice).
 
 When held for:
 Ao manter pressionado por:
@@ -12300,9 +12288,6 @@ limite de {}%
 charging, full in {}
 carregando, carga completa em {}
 
-copies of files
-cópias de arquivos
-
 couldn't save the boost: {}
 não foi possível salvar o ganho: {}
 
@@ -12554,9 +12539,6 @@ sem rede com fio: aguardando conexão
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
-none of {}
-nada de {}
-
 not parts of it: {}; its parts are {}
 não fazem parte: {}. As partes são {}
 
@@ -12741,9 +12723,6 @@ conta conectada, {} calendários
 slots of the pool in use
 vagas do pool em uso
 
-some of each
-um pouco de cada
-
 some of it couldn't be read
 não foi possível ler parte dos dados
 
@@ -12824,9 +12803,6 @@ other: os últimos {n} minutos
 the last {n} seconds
 one: o último {n} segundo
 other: os últimos {n} segundos
-
-the least used
-o menos usado
 
 the package {}
 o pacote {}

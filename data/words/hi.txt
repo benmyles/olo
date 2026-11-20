@@ -2402,9 +2402,6 @@ Copied the {}.
 Copied {}. It leaves the clipboard in {} seconds.
 {} कॉपी किया गया। {} सेकंड में क्लिपबोर्ड से हट जाएगा।
 
-Copies of files in memory are freed first; programs go to swap only when those run out (vm.swappiness 0, MGLRU off).
-मेमोरी में रखी फ़ाइलों की प्रतियाँ पहले खाली की जाती हैं; प्रोग्राम स्वैप में तभी जाते हैं जब वे खत्म हो जाएँ (vm.swappiness 0, MGLRU बंद)।
-
 Copr project
 Copr प्रोजेक्ट
 
@@ -4083,9 +4080,6 @@ Free (open source)
 
 Freeing the space only backups past keeping took, in {}.
 {} में सिर्फ़ पुराने बैकअप की जगह खाली हो रही है।
-
-Frees first
-पहले खाली करता है
 
 Freezing
 जमाव
@@ -9743,9 +9737,6 @@ Alt और Windows कुंजियाँ बदलें
 Swap too
 स्वैप भी
 
-Swap used
-स्वैप में
-
 Swap with Previous Main
 पिछली मुख्य विंडो से बदलें
 
@@ -10565,8 +10556,8 @@ These apps may have these items whenever they ask. Take one back and the app is 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 इन सुविधाओं के लिए Bluetooth का AirPods को सुनना ज़रूरी है। Olo Doctor इसे चालू कर सकता है।
 
-These settings are for the whole computer, so changing one asks for an administrator's password.
-ये सेटिंग पूरे कंप्यूटर की हैं, इसलिए किसी को बदलने पर व्यवस्थापक का पासवर्ड पूछा जाता है।
+All these settings are for the whole computer, so changing one asks for an administrator's password.
+ये सभी सेटिंग पूरे कंप्यूटर की हैं, इसलिए किसी को बदलने पर व्यवस्थापक का पासवर्ड पूछा जाता है।
 
 ThinkPad
 ThinkPad
@@ -11366,9 +11357,6 @@ Use a Reset Credit…
 Use a key already in Passwords
 Passwords में पहले से रखी कुंजी इस्तेमाल करें
 
-Use swap only when nothing else is left
-स्वैप तभी इस्तेमाल करें जब और कुछ न बचे
-
 Use the Usual Order
 सामान्य क्रम इस्तेमाल करें
 
@@ -11771,11 +11759,11 @@ When am I free tomorrow?
 When does the sun rise tomorrow?
 कल सूरज कब निकलेगा?
 
-When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
-जब हर प्रोसेसर व्यस्त हो, तो प्रोग्राम {} के बजाय 0.7 ms बाद प्रतीक्षा कर रहे प्रोग्राम को जगह देता है (base slice)। अभी {} शेड्यूल कर रहा है और यह खुद तय करता है।
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
+इसे चालू करने पर, व्यस्त प्रोग्राम {} के बजाय 0.7 ms बाद प्रतीक्षा कर रहे प्रोग्राम को जगह देता है (base slice)। अभी {} शेड्यूल कर रहा है और यह खुद तय करता है।
 
-When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up (base slice).
-जब हर प्रोसेसर व्यस्त हो, तो प्रोग्राम {} के बजाय 0.7 ms बाद प्रतीक्षा कर रहे प्रोग्राम को जगह देता है, ताकि विंडो और टाइपिंग साथ चलें (base slice)।
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
+इसे चालू करने पर, व्यस्त प्रोग्राम {} के बजाय 0.7 ms बाद प्रतीक्षा कर रहे प्रोग्राम को जगह देता है, ताकि भारी लोड में भी विंडो और टाइपिंग साथ चलें (base slice)।
 
 When held for:
 इतनी देर दबाने पर:
@@ -12300,9 +12288,6 @@ ceiling {}%
 charging, full in {}
 चार्ज हो रहा है, {} में पूरा होगा
 
-copies of files
-फ़ाइलों की प्रतियाँ
-
 couldn't save the boost: {}
 आवाज़ का बूस्ट सहेज नहीं सके: {}
 
@@ -12554,9 +12539,6 @@ no wired network: it waits for one
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
-none of {}
-{} में से कुछ नहीं
-
 not parts of it: {}; its parts are {}
 इसके भाग नहीं हैं: {}। इसके भाग हैं {}
 
@@ -12741,9 +12723,6 @@ signed in, {} calendars
 slots of the pool in use
 पूल के इस्तेमाल में स्लॉट
 
-some of each
-दोनों में से कुछ
-
 some of it couldn't be read
 इसका कुछ हिस्सा पढ़ नहीं सके
 
@@ -12824,9 +12803,6 @@ other: पिछले {n} मिनट
 the last {n} seconds
 one: पिछले {n} सेकंड
 other: पिछले {n} सेकंड
-
-the least used
-सबसे कम इस्तेमाल हुआ
 
 the package {}
 पैकेज {}

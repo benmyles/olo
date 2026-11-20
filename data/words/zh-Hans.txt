@@ -2392,9 +2392,6 @@ Copied the {}.
 Copied {}. It leaves the clipboard in {} seconds.
 已复制{}。{} 秒后会从剪贴板清除。
 
-Copies of files in memory are freed first; programs go to swap only when those run out (vm.swappiness 0, MGLRU off).
-先释放内存中的文件副本；只有在这些用尽时，程序才会进入交换空间（vm.swappiness 0，MGLRU 关闭）。
-
 Copr project
 Copr 项目
 
@@ -4068,9 +4065,6 @@ Free (open source)
 
 Freeing the space only backups past keeping took, in {}.
 正在 {} 中释放仅由过期备份占用的空间。
-
-Frees first
-优先释放
 
 Freezing
 冰冻
@@ -9718,9 +9712,6 @@ Swap Alt and the Windows Key
 Swap too
 同时交换
 
-Swap used
-已用交换空间
-
 Swap with Previous Main
 与上一个主窗口交换
 
@@ -10540,8 +10531,8 @@ These apps may have these items whenever they ask. Take one back and the app is 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 这些功能需要蓝牙监听 AirPods。可用 Olo Doctor 开启。
 
-These settings are for the whole computer, so changing one asks for an administrator's password.
-这些设置作用于整台电脑，因此更改时需要管理员密码。
+All these settings are for the whole computer, so changing one asks for an administrator's password.
+这些设置全都作用于整台电脑，因此更改时需要管理员密码。
 
 ThinkPad
 ThinkPad
@@ -11341,9 +11332,6 @@ Use a Reset Credit…
 Use a key already in Passwords
 使用已存入 Passwords 的密钥
 
-Use swap only when nothing else is left
-仅在别无他法时才使用交换空间
-
 Use the Usual Order
 恢复常用顺序
 
@@ -11746,11 +11734,11 @@ When am I free tomorrow?
 When does the sun rise tomorrow?
 明天几点日出？
 
-When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
-所有处理器都繁忙时，程序会在 0.7 毫秒（而非 {}）后让位给等待中的程序（base slice）。目前由 {} 调度，并由它自行决定。
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
+开启后，繁忙的程序会在 0.7 毫秒（而非 {}）后让位给等待中的程序（base slice）。目前由 {} 调度，并由它自行决定。
 
-When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up (base slice).
-所有处理器都繁忙时，程序会在 0.7 毫秒（而非 {}）后让位给等待中的程序，窗口和输入因此不会卡顿（base slice）。
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
+开启后，繁忙的程序会在 0.7 毫秒（而非 {}）后让位给等待中的程序，负载高时窗口和输入也不会卡顿（base slice）。
 
 When held for:
 长按时长：
@@ -12274,9 +12262,6 @@ ceiling {}%
 charging, full in {}
 正在充电，{} 后充满
 
-copies of files
-文件副本
-
 couldn't save the boost: {}
 无法保存增益：{}
 
@@ -12523,9 +12508,6 @@ no wired network: it waits for one
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
-none of {}
-{} 中未使用
-
 not parts of it: {}; its parts are {}
 以下不是其组成部分：{}；其组成部分为 {}
 
@@ -12703,9 +12685,6 @@ signed in, {} calendars
 slots of the pool in use
 池中已用插槽
 
-some of each
-两者各一些
-
 some of it couldn't be read
 部分内容无法读取
 
@@ -12783,9 +12762,6 @@ other: 过去 {n} 分钟
 
 the last {n} seconds
 other: 过去 {n} 秒
-
-the least used
-最少使用的内容
 
 the package {}
 软件包 {}

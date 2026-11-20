@@ -247,12 +247,15 @@ impl IntoElement for Facts {
     fn into_element(self) -> Element {
         let Facts { rows, colors, label_w, row } = self;
         // (Rows a fraction of a point apart, as a paragraph's lines are,
-        // begin a point down: a row's text is set on whole pixels, and
-        // the first's would stand a fraction above its row's top, cut
-        // by the element's own edge, as the layout review said.)
+        // have a point over and a point under them: a row's text is set
+        // on whole pixels, and the first's or the last's would stand a
+        // fraction past its row, cut by the element's own edge, as the
+        // layout review said. And the height isn't rounded: two columns
+        // of boxes with as many rows and lines between them are then
+        // exactly as tall as each other.)
         let inset = if row.is_some() { 1.0 } else { 0.0 };
         let row = row.unwrap_or(FACT_ROW);
-        let h = (rows.len() as f32 * row + inset).ceil();
+        let h = rows.len() as f32 * row + 2.0 * inset;
         let key = style::key((&rows, colors.map(|(label, value)| (style::ink_key(Some(label)), style::ink_key(Some(value)))), label_w.map(f32::to_bits), row.to_bits()));
         canvas(move |g, b| {
             let p = theme::palette();

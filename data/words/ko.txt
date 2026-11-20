@@ -2392,9 +2392,6 @@ Copied the {}.
 Copied {}. It leaves the clipboard in {} seconds.
 {} 복사 완료. {}초 후 클립보드에서 지웁니다.
 
-Copies of files in memory are freed first; programs go to swap only when those run out (vm.swappiness 0, MGLRU off).
-메모리에 있는 파일 사본을 먼저 비우고, 그것이 다 떨어졌을 때만 프로그램을 스왑으로 보냅니다(vm.swappiness 0, MGLRU 끔).
-
 Copr project
 Copr 프로젝트
 
@@ -4068,9 +4065,6 @@ Free (open source)
 
 Freeing the space only backups past keeping took, in {}.
 {}에서 보관 기간이 지난 백업만 사용하던 공간을 비우고 있습니다.
-
-Frees first
-먼저 비우는 것
 
 Freezing
 결빙
@@ -9718,9 +9712,6 @@ Alt와 Windows 키 바꾸기
 Swap too
 스왑도 포함
 
-Swap used
-사용 중인 스왑
-
 Swap with Previous Main
 이전 기본 창과 교체
 
@@ -10540,8 +10531,8 @@ These apps may have these items whenever they ask. Take one back and the app is 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 이 기능에는 Bluetooth의 AirPods 감지가 필요합니다. Olo Doctor에서 켤 수 있습니다.
 
-These settings are for the whole computer, so changing one asks for an administrator's password.
-이 설정은 컴퓨터 전체에 적용되므로 변경하려면 관리자 암호가 필요합니다.
+All these settings are for the whole computer, so changing one asks for an administrator's password.
+이 설정은 모두 컴퓨터 전체에 적용되므로 변경하려면 관리자 암호가 필요합니다.
 
 ThinkPad
 ThinkPad
@@ -11341,9 +11332,6 @@ Use a Reset Credit…
 Use a key already in Passwords
 Passwords에 있는 키 사용
 
-Use swap only when nothing else is left
-다른 방법이 없을 때만 스왑 사용
-
 Use the Usual Order
 기본 순서 사용
 
@@ -11746,11 +11734,11 @@ When am I free tomorrow?
 When does the sun rise tomorrow?
 내일 해는 언제 뜨나요?
 
-When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
-모든 프로세서가 바쁠 때 프로그램이 {} 대신 0.7ms 후에 대기 중인 프로그램에 양보합니다(base slice). 지금은 {}이(가) 스케줄링하며 이를 직접 결정합니다.
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
+켜면 바쁜 프로그램이 {} 대신 0.7ms 후에 대기 중인 프로그램에 양보합니다(base slice). 지금은 {}이(가) 스케줄링하며 이를 직접 결정합니다.
 
-When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up (base slice).
-모든 프로세서가 바쁠 때 프로그램이 {} 대신 0.7ms 후에 대기 중인 프로그램에 양보하므로 윈도우와 입력이 밀리지 않습니다(base slice).
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
+켜면 바쁜 프로그램이 {} 대신 0.7ms 후에 대기 중인 프로그램에 양보하므로 부하가 걸려도 윈도우와 입력이 밀리지 않습니다(base slice).
 
 When held for:
 길게 누르는 시간:
@@ -12274,9 +12262,6 @@ ceiling {}%
 charging, full in {}
 충전 중, {} 후 완충
 
-copies of files
-파일 사본
-
 couldn't save the boost: {}
 증폭 설정을 저장할 수 없음: {}
 
@@ -12523,9 +12508,6 @@ no wired network: it waits for one
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
-none of {}
-{} 중 없음
-
 not parts of it: {}; its parts are {}
 구성 요소가 아닙니다: {}. 구성 요소는 {}입니다
 
@@ -12703,9 +12685,6 @@ signed in, {} calendars
 slots of the pool in use
 사용 중인 풀 슬롯
 
-some of each
-양쪽에서 조금씩
-
 some of it couldn't be read
 일부 내용을 읽을 수 없음
 
@@ -12783,9 +12762,6 @@ other: 지난 {n}분
 
 the last {n} seconds
 other: 지난 {n}초
-
-the least used
-가장 적게 쓰인 것
 
 the package {}
 패키지 {}

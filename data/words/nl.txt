@@ -2402,9 +2402,6 @@ Copied the {}.
 Copied {}. It leaves the clipboard in {} seconds.
 {} gekopieerd. Wordt over {} seconden van het klembord gewist.
 
-Copies of files in memory are freed first; programs go to swap only when those run out (vm.swappiness 0, MGLRU off).
-Kopieën van bestanden in het geheugen worden eerst vrijgegeven; programma’s gaan pas naar swap als die op zijn (vm.swappiness 0, MGLRU uit).
-
 Copr project
 Copr-project
 
@@ -4083,9 +4080,6 @@ Vrij (open source)
 
 Freeing the space only backups past keeping took, in {}.
 In {} wordt ruimte vrijgemaakt die alleen door verlopen back-ups werd gebruikt.
-
-Frees first
-Geeft eerst vrij
 
 Freezing
 Vorst
@@ -9743,9 +9737,6 @@ Alt en de Windows-toets omwisselen
 Swap too
 Ook wisselgeheugen
 
-Swap used
-Swap in gebruik
-
 Swap with Previous Main
 Met vorig hoofdvenster wisselen
 
@@ -10565,8 +10556,8 @@ Deze apps krijgen de vermelde onderdelen wanneer ze erom vragen. Trek een toeste
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 Voor deze opties moet Bluetooth naar AirPods luisteren. Olo Doctor kan dat inschakelen.
 
-These settings are for the whole computer, so changing one asks for an administrator's password.
-Deze instellingen gelden voor de hele computer, dus het wijzigen ervan vraagt om het wachtwoord van een beheerder.
+All these settings are for the whole computer, so changing one asks for an administrator's password.
+Al deze instellingen gelden voor de hele computer, dus het wijzigen ervan vraagt om het wachtwoord van een beheerder.
 
 ThinkPad
 ThinkPad
@@ -11366,9 +11357,6 @@ Vernieuwingstegoed gebruiken…
 Use a key already in Passwords
 Een al in Passwords bewaarde sleutel gebruiken
 
-Use swap only when nothing else is left
-Swap pas gebruiken als er niets anders meer is
-
 Use the Usual Order
 Gebruikelijke volgorde gebruiken
 
@@ -11771,11 +11759,11 @@ Wanneer heb ik morgen tijd vrij?
 When does the sun rise tomorrow?
 Hoe laat komt de zon morgen op?
 
-When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
-Als elke processor bezet is, maakt een programma na 0,7 ms in plaats van {} plaats voor een wachtend programma (base slice). {} plant nu en bepaalt dat zelf.
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
+Staat dit aan, dan maakt een bezig programma na 0,7 ms in plaats van {} plaats voor een wachtend programma (base slice). {} plant nu en bepaalt dat zelf.
 
-When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up (base slice).
-Als elke processor bezet is, maakt een programma na 0,7 ms in plaats van {} plaats voor een wachtend programma, zodat vensters en typen bijblijven (base slice).
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
+Staat dit aan, dan maakt een bezig programma na 0,7 ms in plaats van {} plaats voor een wachtend programma, zodat vensters en typen ook onder belasting bijblijven (base slice).
 
 When held for:
 Bij ingedrukt houden gedurende:
@@ -12300,9 +12288,6 @@ bovengrens {}%
 charging, full in {}
 bezig met opladen, vol over {}
 
-copies of files
-kopieën van bestanden
-
 couldn't save the boost: {}
 versterking opslaan mislukt: {}
 
@@ -12554,9 +12539,6 @@ geen bekabeld netwerk: wacht op verbinding
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
-none of {}
-niets van {}
-
 not parts of it: {}; its parts are {}
 horen er niet bij: {}. De onderdelen zijn {}
 
@@ -12741,9 +12723,6 @@ aangemeld, {} agenda’s
 slots of the pool in use
 plaatsen van de pool bezet
 
-some of each
-van elk wat
-
 some of it couldn't be read
 een deel kon niet worden gelezen
 
@@ -12824,9 +12803,6 @@ other: de afgelopen {n} minuten
 the last {n} seconds
 one: de afgelopen {n} seconde
 other: de afgelopen {n} seconden
-
-the least used
-het minst gebruikte
 
 the package {}
 het pakket {}

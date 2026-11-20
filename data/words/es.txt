@@ -2402,9 +2402,6 @@ Se copió {}.
 Copied {}. It leaves the clipboard in {} seconds.
 Se copió {}. Sale del portapapeles en {} segundos.
 
-Copies of files in memory are freed first; programs go to swap only when those run out (vm.swappiness 0, MGLRU off).
-Las copias de archivos en memoria se liberan primero; los programas pasan al intercambio solo cuando se agotan (vm.swappiness 0, MGLRU desactivado).
-
 Copr project
 Proyecto de Copr
 
@@ -4083,9 +4080,6 @@ Libre (código abierto)
 
 Freeing the space only backups past keeping took, in {}.
 Liberando el espacio que solo ocupaban copias que ya no se conservan, en {}.
-
-Frees first
-Libera primero
 
 Freezing
 Congelación
@@ -9743,9 +9737,6 @@ Intercambiar Alt y la tecla Windows
 Swap too
 Intercambio también
 
-Swap used
-Intercambio usado
-
 Swap with Previous Main
 Intercambiar con la principal anterior
 
@@ -10565,8 +10556,8 @@ Estas apps pueden tener estos elementos siempre que los pidan. Retira una y se l
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 Necesitan Bluetooth para escuchar a los AirPods: Olo Doctor puede activarlo.
 
-These settings are for the whole computer, so changing one asks for an administrator's password.
-Estos ajustes son de todo el ordenador, así que cambiar uno pide la contraseña de un administrador.
+All these settings are for the whole computer, so changing one asks for an administrator's password.
+Todos estos ajustes son de todo el ordenador, así que cambiar uno pide la contraseña de un administrador.
 
 ThinkPad
 ThinkPad
@@ -11366,9 +11357,6 @@ Usar un crédito de restablecimiento…
 Use a key already in Passwords
 Usar una clave que ya esté en Passwords
 
-Use swap only when nothing else is left
-Usar el intercambio solo cuando no quede nada más
-
 Use the Usual Order
 Usar el orden habitual
 
@@ -11771,11 +11759,11 @@ When am I free tomorrow?
 When does the sun rise tomorrow?
 ¿A qué hora sale el sol mañana?
 
-When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
-Cuando todos los procesadores están ocupados, un programa cede el paso a otro que espera tras 0,7 ms en lugar de {} (base slice). Ahora planifica {} y lo decide por sí mismo.
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
+Con esto activado, un programa ocupado cede el paso a otro que espera tras 0,7 ms en lugar de {} (base slice). Ahora planifica {} y lo decide por sí mismo.
 
-When every processor is busy, a program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up (base slice).
-Cuando todos los procesadores están ocupados, un programa cede el paso a otro que espera tras 0,7 ms en lugar de {}, para que las ventanas y la escritura sigan el ritmo (base slice).
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
+Con esto activado, un programa ocupado cede el paso a otro que espera tras 0,7 ms en lugar de {}, para que las ventanas y la escritura sigan el ritmo bajo carga (base slice).
 
 When held for:
 Al mantener durante:
@@ -12300,9 +12288,6 @@ límite superior del {} %
 charging, full in {}
 cargando, lleno en {}
 
-copies of files
-copias de archivos
-
 couldn't save the boost: {}
 no se pudo guardar la subida: {}
 
@@ -12554,9 +12539,6 @@ sin red por cable: espera a que haya una
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
-none of {}
-nada de {}
-
 not parts of it: {}; its parts are {}
 no son partes suyas: {}; sus partes son {}
 
@@ -12741,9 +12723,6 @@ sesión iniciada, {} calendarios
 slots of the pool in use
 huecos del conjunto en uso
 
-some of each
-algo de cada
-
 some of it couldn't be read
 parte no se pudo leer
 
@@ -12824,9 +12803,6 @@ other: los últimos {n} minutos
 the last {n} seconds
 one: el último segundo
 other: los últimos {n} segundos
-
-the least used
-lo menos usado
 
 the package {}
 el paquete {}

@@ -54,7 +54,10 @@ settings were chosen.
       multi-generational LRU with vm.swappiness 1), with swappiness 0
       there (it never swaps), and with the kernel's older reclaim and
       swappiness 0, the room kept free as it comes and widened. N (2)
-      guests each.
+      guests each. (That last was a setting for an hour and was
+      withdrawn: kernel/TUNING.md, "Tried and withdrawn". The scenario
+      stays, for what is tried next: it measures programs, not a
+      driver whose allocation may be refused.)
   tools/dev/kernel-check left-alone
       what was measured and left as the kernel comes: dm-crypt without
       its work queues (a ramdisk, and a disk), and the room kept free

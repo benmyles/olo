@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-20
 
+### Performance ▸ Kernel: five boxes, the kernel's settings beside Olo's pieces
+
+*14:21* — The Memory box (Swap used last) is gone: the setting was withdrawn the day it was made. What is left is laid out again: the kernel's own settings on the left (Preemption, Processor Turns, Removable Disks), Olo's pieces in the kernel on the right (Network, Graphics), the columns as far apart as the boxes are from each other, Processor Turns and Graphics ending on one line, and the note that says whose the settings are under the right column, level with the title beside it.
+
+![Performance ▸ Kernel: five boxes, the kernel's settings beside Olo's pieces](2026-11-20/142128-performance-kernel-five-boxes-the-kernel-s-setti.png)
+
 ### Performance ▸ Kernel: Processor Turns and Memory, and a tab that ends on one line
 
 *13:24* — Two settings are new: Keep a busy program's turn short (the scheduler's base slice at 0.7 ms) and Use swap only when nothing else is left (vm.swappiness 0 with the kernel's older reclaim). The six boxes are in two balanced columns (processors and memory left; disks, network, graphics right), every box's facts share one label width and their rows are as far apart as the paragraph's lines, so boxes side by side and both columns end on one line; the note runs across both. Three rounds with Astra and Opus.

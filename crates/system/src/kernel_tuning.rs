@@ -17,12 +17,6 @@
 //!   lengthens it with the number of processors (2.8 ms on eight and
 //!   more); kept at its base, 0.7 ms, what a window, a key and the
 //!   kernel's own workers wait under load is a fraction of what it was.
-//! - [`SwapLast`]: swap used only when nothing else is left. Programs'
-//!   own memory is moved to swap only once the files' cache is all but
-//!   gone, which the kernel's older reclaim keeps to at
-//!   `vm.swappiness` 0 and its multi-generational LRU doesn't at any
-//!   setting (at 1 it swaps idle programs out while a build fills the
-//!   cache; at 0 it never swaps, and ends a program instead).
 //! - [`SlowDisks`]: a limit on what may wait in memory to be written to
 //!   a removable disk (its `bdi/strict_limit` and `bdi/max_bytes`, set by
 //!   a udev rule as each is plugged in), so a copy's progress is true and
@@ -43,21 +37,19 @@ use std::path::{Path, PathBuf};
 pub enum Setting {
     Preemption,
     ShortTurns,
-    SwapLast,
     SlowDisks,
     Bbr3,
     GraphicsMemory,
 }
 
 impl Setting {
-    pub const ALL: [Setting; 6] = [Setting::Preemption, Setting::ShortTurns, Setting::SwapLast, Setting::SlowDisks, Setting::Bbr3, Setting::GraphicsMemory];
+    pub const ALL: [Setting; 5] = [Setting::Preemption, Setting::ShortTurns, Setting::SlowDisks, Setting::Bbr3, Setting::GraphicsMemory];
 
     /// As the command line says it.
     pub fn word(self) -> &'static str {
         match self {
             Setting::Preemption => "preemption",
             Setting::ShortTurns => "short-turns",
-            Setting::SwapLast => "swap-last",
             Setting::SlowDisks => "slow-disks",
             Setting::Bbr3 => "bbr3",
             Setting::GraphicsMemory => "graphics-memory",
@@ -92,19 +84,6 @@ pub const SHORT_TURN_NS: u64 = 700_000;
 pub const SHORT_TURNS_SERVICE: &str = "olo-short-turns.service";
 pub const SHORT_TURNS_UNIT: &str = "[Unit]\nDescription=Olo: short turns on the processors (the scheduler's base slice)\nAfter=sys-kernel-debug.mount\nWants=sys-kernel-debug.mount\nConditionPathExists=/etc/olo/short-turns.conf\n\n[Service]\nType=oneshot\nRemainAfterExit=yes\nExecStart=/usr/bin/systemd-tmpfiles --create /etc/olo/short-turns.conf\n\n[Install]\nWantedBy=multi-user.target\n";
 pub const SHORT_TURNS_LINES: &str = "# Olo: short turns on the processors (Preferences ▸ Performance ▸ Kernel; kernel/TUNING.md).\nw /sys/kernel/debug/sched/base_slice_ns - - - - 700000\nf+ /run/olo-kernel/turns 0644 root root - 700000\n";
-
-/// Swap used last: the sysctls (at every start, by systemd-sysctl) and
-/// the line that puts the multi-generational LRU out (by
-/// systemd-tmpfiles: /sys is there before anything runs).
-pub const SWAP_LAST_SYSCTL: &str = "# Olo: swap is used only when nothing else is left (Preferences ▸ Performance ▸ Kernel; kernel/TUNING.md).\n# Programs' own memory is moved to swap only once the files' cache is all but gone, and the kernel keeps\n# more memory free ahead of need (2% of it, where it comes with 0.1%), so that point is reached before the\n# programs in use have lost their code from memory.\nvm.swappiness = 0\nvm.watermark_scale_factor = 200\n";
-pub const SWAP_LAST_LINES: &str = "# Olo: swap is used only when nothing else is left: the kernel's older reclaim keeps to that at\n# vm.swappiness 0; its multi-generational LRU doesn't (kernel/TUNING.md).\nw /sys/kernel/mm/lru_gen/enabled - - - - 0\n";
-/// The room kept free with it (`vm.watermark_scale_factor`: hundredths
-/// of a percent of memory between the kernel's marks), and as the
-/// kernel comes.
-pub const SWAP_LAST_ROOM: u32 = 200;
-pub const KERNELS_ROOM: u32 = 10;
-/// `vm.swappiness` as the kernel comes.
-pub const KERNELS_SWAPPINESS: u32 = 60;
 
 /// The kernel series Olo's BBRv3 module has passed its self-check on
 /// (kernel/bbr3/CHECKED: "7.2", "7.3").
@@ -191,31 +170,6 @@ impl Places {
 
     pub fn short_turns_wanted(&self) -> PathBuf {
         self.at("/etc/systemd/system/multi-user.target.wants").join(SHORT_TURNS_SERVICE)
-    }
-
-    /// Swap used last, kept: the sysctls' file (Olo's memory settings
-    /// were here before, with `vm.swappiness = 1`) and the line for the
-    /// multi-generational LRU.
-    pub fn swap_last_sysctl(&self) -> PathBuf {
-        self.at("/etc/sysctl.d/80-olo-memory.conf")
-    }
-
-    pub fn swap_last_lines(&self) -> PathBuf {
-        self.at("/etc/tmpfiles.d/olo-swap-last.conf")
-    }
-
-    pub fn swappiness(&self) -> PathBuf {
-        self.at("/proc/sys/vm/swappiness")
-    }
-
-    pub fn room(&self) -> PathBuf {
-        self.at("/proc/sys/vm/watermark_scale_factor")
-    }
-
-    /// The multi-generational LRU's switch (a mask of its parts in hex;
-    /// absent where the kernel wasn't built with it).
-    pub fn generations(&self) -> PathBuf {
-        self.at("/sys/kernel/mm/lru_gen/enabled")
     }
 
     pub fn slow_disk_rule(&self) -> PathBuf {
@@ -412,65 +366,6 @@ pub fn turns(places: &Places) -> Option<Turns> {
         && std::fs::symlink_metadata(places.short_turns_wanted()).is_ok();
     let live = read(&places.at("/sys/kernel/security/lockdown")).is_none_or(|l| l.contains("[none]"));
     Some(Turns { built_ns, switched_ns, kept, live })
-}
-
-/// Swap used only when nothing else is left.
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct SwapLast {
-    /// `vm.swappiness` now.
-    pub swappiness: u32,
-    /// The multi-generational LRU is making room (None: this kernel
-    /// hasn't it, and makes room the older way).
-    pub generations: Option<bool>,
-    /// The kernel was built to start with the multi-generational LRU
-    /// on: what putting the setting off goes back to.
-    pub generations_built: bool,
-    /// The room kept free ahead of need (`vm.watermark_scale_factor`).
-    pub room: u32,
-    /// Kept for every start (Olo's sysctls and, where the kernel has
-    /// the multi-generational LRU, the line that puts it out).
-    pub kept: bool,
-    /// The swap there is and what's in it now, in bytes.
-    pub swap: u64,
-    pub in_swap: u64,
-    /// Memory that could be had without swapping (free, and cache that
-    /// can be dropped), in bytes.
-    pub available: u64,
-}
-
-impl SwapLast {
-    /// Swap is used last, now and from every start.
-    pub fn on(&self) -> bool {
-        self.kept && self.swappiness == 0 && self.generations != Some(true)
-    }
-
-    /// What's in swap now can be brought back with room to spare:
-    /// twice its size is to be had without swapping.
-    pub fn can_bring_back(&self) -> bool {
-        self.in_swap > 0 && self.available >= self.in_swap.saturating_mul(2)
-    }
-}
-
-/// A line of /proc/meminfo, in bytes ("SwapTotal:  65262588 kB").
-fn meminfo(text: &str, name: &str) -> u64 {
-    text.lines().find_map(|l| l.strip_prefix(name)?.strip_prefix(':')?.split_whitespace().next()?.parse::<u64>().ok()).unwrap_or(0) * 1024
-}
-
-/// None where there is no swap at all (nothing to hold back).
-pub fn swap_last(places: &Places) -> Option<SwapLast> {
-    let info = read(&places.at("/proc/meminfo")).unwrap_or_default();
-    let swap = meminfo(&info, "SwapTotal");
-    if swap == 0 {
-        return None;
-    }
-    let swappiness = read(&places.swappiness())?.parse().ok()?;
-    // ("0x0007": each bit a part of it; the first is the LRU itself.)
-    let generations = read(&places.generations()).and_then(|t| u32::from_str_radix(t.trim_start_matches("0x"), 16).ok()).map(|mask| mask & 1 == 1);
-    let generations_built = build_options(places).is_some_and(|c| c.lines().any(|l| l == "CONFIG_LRU_GEN_ENABLED=y"));
-    let room = read(&places.room()).and_then(|t| t.parse().ok()).unwrap_or(KERNELS_ROOM);
-    let kept = std::fs::read_to_string(places.swap_last_sysctl()).is_ok_and(|t| t == SWAP_LAST_SYSCTL)
-        && (generations.is_none() || std::fs::read_to_string(places.swap_last_lines()).is_ok_and(|t| t == SWAP_LAST_LINES));
-    Some(SwapLast { swappiness, generations, generations_built, room, kept, swap, in_swap: swap.saturating_sub(meminfo(&info, "SwapFree")), available: meminfo(&info, "MemAvailable") })
 }
 
 /// A line's number in a file of "name number" lines (/proc/vmstat).
@@ -702,14 +597,13 @@ pub fn graphics_memory(places: &Places) -> Option<GraphicsMemory> {
 pub struct State {
     pub preemption: Option<Preemption>,
     pub turns: Option<Turns>,
-    pub swap_last: Option<SwapLast>,
     pub slow_disks: SlowDisks,
     pub bbr3: Option<Bbr3>,
     pub graphics_memory: Option<GraphicsMemory>,
 }
 
 pub fn look(places: &Places) -> State {
-    State { preemption: preemption(places), turns: turns(places), swap_last: swap_last(places), slow_disks: slow_disks(places), bbr3: bbr3(places), graphics_memory: graphics_memory(places) }
+    State { preemption: preemption(places), turns: turns(places), slow_disks: slow_disks(places), bbr3: bbr3(places), graphics_memory: graphics_memory(places) }
 }
 
 /// [`look`] for a reader that looks every couple of seconds: everything
@@ -719,14 +613,7 @@ pub fn look(places: &Places) -> State {
 /// fifth time.
 pub fn look_again(places: &Places, before: &State) -> State {
     let on_it = before.bbr3.as_ref().map(|b| b.on_it.clone());
-    State {
-        preemption: preemption(places),
-        turns: turns(places),
-        swap_last: swap_last(places),
-        slow_disks: slow_disks(places),
-        bbr3: bbr3_with(places, on_it),
-        graphics_memory: graphics_memory(places),
-    }
+    State { preemption: preemption(places), turns: turns(places), slow_disks: slow_disks(places), bbr3: bbr3_with(places, on_it), graphics_memory: graphics_memory(places) }
 }
 
 #[cfg(test)]
@@ -827,49 +714,6 @@ mod tests {
         // What the unit applies is what the note says, and nothing but the two.
         assert!(SHORT_TURNS_LINES.contains("w /sys/kernel/debug/sched/base_slice_ns - - - - 700000\n") && SHORT_TURNS_LINES.contains("/run/olo-kernel/turns"));
         assert!(SHORT_TURNS_UNIT.contains("After=sys-kernel-debug.mount") && SHORT_TURNS_UNIT.contains("systemd-tmpfiles --create /etc/olo/short-turns.conf"));
-        let _ = std::fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn swap_is_used_last_with_the_older_reclaim_and_no_readiness_to_swap() {
-        let (root, places) = tree("swap");
-        assert_eq!(swap_last(&places), None, "nothing to read");
-        put(&places, "proc/meminfo", "MemTotal:       65262588 kB\nMemAvailable:   30000000 kB\nSwapTotal:             0 kB\nSwapFree:              0 kB\n");
-        put(&places, "proc/sys/vm/swappiness", "60\n");
-        assert_eq!(swap_last(&places), None, "no swap: nothing to hold back");
-        // Fedora as it comes, with Olo's earlier setting (swappiness 1).
-        put(&places, "proc/meminfo", "MemTotal:       65262588 kB\nMemAvailable:   30000000 kB\nSwapTotal:      65262588 kB\nSwapFree:       55262588 kB\n");
-        put(&places, "proc/sys/vm/swappiness", "1\n");
-        put(&places, "proc/sys/vm/watermark_scale_factor", "10\n");
-        put(&places, "sys/kernel/mm/lru_gen/enabled", "0x0007\n");
-        put(&places, "proc/sys/kernel/osrelease", "7.2.15-300.fc45.x86_64\n");
-        put(&places, "lib/modules/7.2.15-300.fc45.x86_64/config", "CONFIG_LRU_GEN=y\nCONFIG_LRU_GEN_ENABLED=y\n");
-        put(&places, "etc/sysctl.d/80-olo-memory.conf", "vm.swappiness = 1\n");
-        let s = swap_last(&places).unwrap();
-        assert_eq!((s.swappiness, s.generations, s.generations_built, s.room, s.kept, s.on()), (1, Some(true), true, 10, false, false));
-        assert_eq!((s.swap, s.in_swap, s.available), (65262588 << 10, 10_000_000 << 10, 30_000_000 << 10));
-        assert!(s.can_bring_back(), "10 GB in swap and 30 to be had");
-        // In force but not kept, kept but not in force, then both.
-        put(&places, "proc/sys/vm/swappiness", "0\n");
-        put(&places, "sys/kernel/mm/lru_gen/enabled", "0x0000\n");
-        assert!(!swap_last(&places).unwrap().on(), "not kept");
-        put(&places, "etc/sysctl.d/80-olo-memory.conf", SWAP_LAST_SYSCTL);
-        assert!(!swap_last(&places).unwrap().on(), "the LRU's line isn't there");
-        put(&places, "etc/tmpfiles.d/olo-swap-last.conf", SWAP_LAST_LINES);
-        assert!(swap_last(&places).unwrap().on());
-        put(&places, "sys/kernel/mm/lru_gen/enabled", "0x0007\n");
-        assert!(!swap_last(&places).unwrap().on(), "the multi-generational LRU is making room");
-        // A kernel without it makes room the older way: the sysctls are all there is to keep.
-        std::fs::remove_file(places.generations()).unwrap();
-        std::fs::remove_file(places.swap_last_lines()).unwrap();
-        let s = swap_last(&places).unwrap();
-        assert_eq!((s.generations, s.on()), (None, true));
-        // Too little to be had: what's in swap stays there.
-        put(&places, "proc/meminfo", "MemAvailable:   15000000 kB\nSwapTotal:      65262588 kB\nSwapFree:       55262588 kB\n");
-        assert!(!swap_last(&places).unwrap().can_bring_back());
-        // What is kept says what it sets.
-        assert!(SWAP_LAST_SYSCTL.contains("vm.swappiness = 0\n") && SWAP_LAST_SYSCTL.contains(&format!("vm.watermark_scale_factor = {SWAP_LAST_ROOM}\n")));
-        assert!(SWAP_LAST_LINES.contains("w /sys/kernel/mm/lru_gen/enabled - - - - 0\n"));
         let _ = std::fs::remove_dir_all(root);
     }
 
