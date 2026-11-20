@@ -469,6 +469,18 @@ async fn open(base: &str, alpn: &[&str]) -> Result<Box<dyn Io>, SendError> {
     Ok(Box::new(stream))
 }
 
+/// The pool's own ClientHello for `host` with `alpn`, as a host would
+/// read it (`hello::Offer`): set beside a client's captured one, where
+/// the two differ is what tells the pool from the client before any
+/// request (`capture`, which says so in the log at each capture).
+pub(crate) fn own_offer(alpn: &[&str], host: &str) -> Option<crate::hello::Offer> {
+    let name = ServerName::try_from(host.to_owned()).ok()?;
+    let mut conn = rustls::ClientConnection::new(Arc::new(tls_offer(alpn).ok()?), name).ok()?;
+    let mut records = Vec::new();
+    conn.write_tls(&mut records).ok()?;
+    crate::hello::Offer::from_records(&records)
+}
+
 /// What the pool offers a host in its TLS handshake: rustls with
 /// aws-lc-rs's suites and schemes in their own order, and `alpn` (the
 /// client's own offer). It is what Codex 0.170 itself offers when it

@@ -24074,7 +24074,18 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   (`the_pools_offer_is_codexs_under_an_authority`). It is neither of
   Claude Code's two (BoringSSL's, Bun's), nor Codex's with only its own
   roots (OpenSSL's): docs/reports/token-pool-tls.md says what each
-  offers and what matching would take.
+  offers and what matching would take. A capture keeps each client's
+  whole ClientHello (`hello.rs`: read off the connection before the
+  recorder's acceptor has it, then put back, `Prefixed::unread`;
+  `capture::Hello::offer`: suites and extensions in the client's order
+  with what's in them, and nothing that is one connection's alone: no
+  random, keys, tickets or name), and says in the log, once a capture,
+  where it and the pool's own for that host and ALPN differ
+  (`relay::own_offer`, `Offer::differences`: "pool: Claude Code's TLS
+  offer to … and the pool's differ in N things (the client's | the
+  pool's): …"). rustls writes its extensions in a new order at each
+  connection, so that order is said apart and never counts between
+  two rustls programs (`hello::ORDER`).
 - **Passed on exactly** (`relay.rs`): a Claude model request goes on as
   Claude Code sent it, byte for byte: each header's name in its own
   case (hyper's server writes it down, its client writes it back:

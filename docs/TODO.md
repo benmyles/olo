@@ -215,11 +215,17 @@ something nobody here has is in "Blocked", with what it waits for.
     to the captures'), and its other one (OpenSSL's, with only its own
     roots) would be no nearer. For Claude Code the pool is plainly not
     the client at this layer: both of its offers are BoringSSL's
-    (Bun's). **To do** (not blocked): captures that keep the whole
-    ClientHello (extensions and their order, groups, key shares: the
-    recorder's acceptor gives only suites, schemes, ALPN and the name),
-    so "should match" becomes a diff, for the sockets' own connection
-    too (the fourth look's). **To decide (Ben)**: BoringSSL (`boring`:
+    (Bun's). Captures keep the whole ClientHello now (`hello.rs`:
+    extensions and their order, groups, key shares' groups; the
+    recorder's acceptor gave only suites, schemes, ALPN and the name),
+    and each capture logs where the client's offer and the pool's own
+    differ: "should match" is a diff, for the sockets' own connection
+    too (the fourth look's). **To do, once Ben's session has upgraded
+    and the pool has captured each client again**: read those lines
+    (`olo-logs --print`, "TLS offer") into the report: for Codex they
+    should say the same but for the order of extensions (rustls writes
+    them in a new order each time), for Claude Code what BoringSSL
+    would have to be told. **To decide (Ben)**: BoringSSL (`boring`:
     cmake and a C++ compiler at build time, a second TLS library in
     the program that holds the accounts) for Anthropic's hosts, a
     profile for each of Claude Code's two stacks. The report says

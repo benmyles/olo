@@ -115,6 +115,12 @@ pub struct Hello {
     pub alpn: Vec<String>,
     pub suites: Vec<String>,
     pub schemes: Vec<String>,
+    /// The whole ClientHello as the client wrote it (`hello::Offer`:
+    /// every suite and extension in its order, and what's in them, less
+    /// what is one connection's alone), read off the connection before
+    /// the acceptor has it. None in a capture from before 2026-11-20.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub offer: Option<crate::hello::Offer>,
 }
 
 /// What one installed client sent for one account.
@@ -510,7 +516,11 @@ async fn connection(rec: Arc<Recorder>, mut client: TcpStream) -> Option<()> {
     client.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n").await.ok()?;
     // (What came after the head, a client not waiting for the answer: the
     // start of its TLS.)
-    let client = crate::intercept::Prefixed::new(buf[end..].to_vec(), client);
+    let mut client = crate::intercept::Prefixed::new(buf[end..].to_vec(), client);
+    // (Its ClientHello read as it came, for the whole of what it offers,
+    // and given to the acceptor before the rest of the stream.)
+    let (read, offer) = tokio::time::timeout(Duration::from_secs(20), crate::hello::read(&mut client)).await.ok()??;
+    client.unread(read);
     let start = tokio::time::timeout(Duration::from_secs(20), tokio_rustls::LazyConfigAcceptor::new(rustls::server::Acceptor::default(), client)).await.ok()?.ok()?;
     let hello = start.client_hello();
     let sni = hello.server_name().map(str::to_ascii_lowercase).unwrap_or_else(|| host.clone());
@@ -520,7 +530,7 @@ async fn connection(rec: Arc<Recorder>, mut client: TcpStream) -> Option<()> {
     // (Written down before the handshake goes on: a client that doesn't
     // trust this capture still shows what it offers.)
     let run = rec.run.lock().unwrap().clone();
-    rec.hellos.lock().unwrap().push(Hello { run, host: sni.clone(), alpn: alpn.clone(), suites: suites.clone(), schemes: schemes.clone() });
+    rec.hellos.lock().unwrap().push(Hello { run, host: sni.clone(), alpn: alpn.clone(), suites: suites.clone(), schemes: schemes.clone(), offer });
     let mut config =
         rustls::ServerConfig::builder_with_provider(rec.crypto.clone()).with_safe_default_protocol_versions().ok()?.with_no_client_auth().with_cert_resolver(Arc::new(OneCert(rec.leaf(&sni).ok()?)));
     // (HTTP/1.1, so each head is read as it came; what the client would
@@ -1267,6 +1277,27 @@ pub fn capture(account: &Account, cred: &Credential, progress: &dyn Fn(&str)) ->
     hellos.retain(|h| hosts.contains(&h.host.as_str()));
     // (One a run and host: they repeat.)
     hellos.dedup_by(|a, b| a.run == b.run && a.host == b.host && a.alpn == b.alpn && a.suites == b.suites);
+    // Each of the client's offers beside the pool's own for the same
+    // host and protocols, said once a capture: where they differ is
+    // what a host could tell the pool from the client by, before any
+    // request (docs/reports/token-pool-tls.md). No request is made.
+    let mut said: Vec<String> = Vec::new();
+    for h in &hellos {
+        let alpn: Vec<&str> = h.alpn.iter().map(String::as_str).collect();
+        let (Some(theirs), Some(ours)) = (&h.offer, crate::relay::own_offer(&alpn, &h.host)) else { continue };
+        let apart = theirs.differences(&ours);
+        let what = match apart.as_slice() {
+            [] => "are the same".to_owned(),
+            // (Two of rustls's never agree on it: said once, whatever
+            // the two orders were.)
+            [only] if only.starts_with(crate::hello::ORDER) => "are the same but for the order of their extensions".to_owned(),
+            _ => format!("differ in {} things (the client's | the pool's): {}", apart.len(), apart.join("; ")),
+        };
+        if !said.contains(&what) {
+            tracing::info!("pool: {}'s TLS offer to {} ({}) and the pool's {what}", p.client(), h.host, h.run);
+            said.push(what);
+        }
+    }
     Ok(Capture { provider: p, version: client.version, installed: client.stamp, account: account.id.clone(), at: now(), requests: sent, account_uuid, hellos })
 }
 
@@ -1305,6 +1336,45 @@ mod tests {
         ] {
             assert_eq!(fate(host, method, target), Fate::Forward, "{method} {host}{target}");
         }
+    }
+
+    /// A client's ClientHello is read whole before the acceptor has
+    /// it (`hello::read`), kept with what the acceptor says of it, and
+    /// the handshake goes on with the same bytes.
+    #[tokio::test]
+    async fn the_whole_offer_is_kept_and_the_handshake_goes_on() {
+        let rec = Arc::new(Recorder::new().unwrap());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let serving = {
+            let rec = rec.clone();
+            tokio::spawn(async move {
+                let (client, _) = listener.accept().await.unwrap();
+                connection(rec, client).await;
+            })
+        };
+        let mut tcp = TcpStream::connect(addr).await.unwrap();
+        tcp.write_all(b"CONNECT example.test:443 HTTP/1.1\r\nHost: example.test:443\r\n\r\n").await.unwrap();
+        let mut answer = [0u8; 39];
+        tcp.read_exact(&mut answer).await.unwrap();
+        assert_eq!(&answer, b"HTTP/1.1 200 Connection Established\r\n\r\n");
+        let mut roots = rustls::RootCertStore::empty();
+        roots.add(rec.ca_der.clone()).unwrap();
+        let mut config = rustls::ClientConfig::builder_with_provider(rec.crypto.clone()).with_safe_default_protocol_versions().unwrap().with_root_certificates(roots).with_no_client_auth();
+        config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+        let tls = tokio_rustls::TlsConnector::from(Arc::new(config)).connect("example.test".try_into().unwrap(), tcp).await.unwrap();
+        let hellos = rec.hellos.lock().unwrap().clone();
+        assert_eq!(hellos.len(), 1);
+        assert_eq!((hellos[0].host.as_str(), hellos[0].alpn.as_slice()), ("example.test", &["h2".to_owned(), "http/1.1".to_owned()][..]));
+        let offer = hellos[0].offer.as_ref().expect("the whole offer");
+        assert_eq!(offer.suites.len(), hellos[0].suites.len());
+        assert!(offer.extensions.iter().any(|e| e.kind == 16 && e.body.as_deref() == Some("000c02683208687474702f312e31")));
+        // The pool's own, for the same host and protocols, is this
+        // library's too: the same but for the order of its extensions.
+        let ours = crate::relay::own_offer(&["h2", "http/1.1"], "example.test").unwrap();
+        assert!(offer.differences(&ours).iter().all(|d| d.starts_with(crate::hello::ORDER)), "{:?}", offer.differences(&ours));
+        drop(tls);
+        serving.abort();
     }
 
     /// A program confined to the recorder's port reaches it, and nothing

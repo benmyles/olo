@@ -252,6 +252,12 @@ impl Prefixed {
     pub(crate) fn new(first: Vec<u8>, inner: TcpStream) -> Prefixed {
         Prefixed { first, at: 0, inner }
     }
+
+    /// Puts `read`, just read from it, back in front of what's left.
+    pub(crate) fn unread(&mut self, mut read: Vec<u8>) {
+        read.extend_from_slice(&self.first[self.at..]);
+        (self.first, self.at) = (read, 0);
+    }
 }
 
 impl tokio::io::AsyncRead for Prefixed {

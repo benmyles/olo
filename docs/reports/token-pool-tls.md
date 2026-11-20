@@ -62,10 +62,25 @@ another order, other schemes (ML-DSA, no SHA-1), and rustls's
 extensions. Anything that keys on the handshake sees "not Bun" there,
 whatever the request under it says.
 
-What the captures don't record is the rest of the ClientHello:
+What those captures didn't record is the rest of the ClientHello:
 extensions and their order, the groups and key shares, session
 tickets, GREASE. rustls's acceptor gives the recorder suites, schemes,
-ALPN and the name; a byte-for-byte comparison needs the record itself.
+ALPN and the name; a comparison of the whole needs the record itself.
+**Since 2026-11-20 a capture keeps it** (`hello.rs`: the message read
+off the connection before the acceptor has it; `capture::Hello::offer`:
+every suite and extension in the client's order and what's in them,
+less what is one connection's alone: no random, no keys, no tickets,
+no name), and each capture says in the log where each of the client's
+offers and the pool's own for the same host differ ("TLS offer": `the
+client's | the pool's`, line by line; `olo-logs --print` finds it).
+
+One thing that already shows: **rustls writes its extensions in a new
+order at every connection** (a test holds that it still does), so two
+handshakes of the pool, or of Codex under an authority, never agree on
+the order, and a host can't go by it for either. BoringSSL keeps one
+order unless a program asks it to permute (Chrome does; Bun's `fetch`
+isn't known to): for Claude Code the order is part of what would have
+to match.
 
 ## What matching would take
 
@@ -100,10 +115,9 @@ using). Not worth doing.
    Codex's own, and the test now says so if rustls ever drifts from
    it.
 2. **Record the whole ClientHello in captures** before deciding the
-   rest: the recorder keeps the first record's bytes beside what it
-   keeps now (the random, session id and key shares aside), for each
-   stack. No new dependency, and it turns "should match" into a diff.
-   A day's work, with the recorder's tests.
+   rest: done (above). No new dependency, and it turns "should match"
+   into a diff, read from the log once the pool has captured each
+   client with this build.
 3. **Then BoringSSL for Anthropic's hosts, if likeness at this layer
    matters to you**, checked the same way the Codex test checks rustls
    (the pool's offer read by a local acceptor, compared with the
