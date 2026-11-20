@@ -1480,10 +1480,24 @@ impl Deskbar {
             Some(("arrange", id)) => request(Request::RunShortcut { id: id.into(), window: self.focused_window() }),
             Some(("notif", "history")) => spawn("olo-notifications --history"),
             Some(("notif", arg)) => self.do_not_disturb(arg),
-            // With ⌘ held, a copy of its own beside one running.
+            // An application chosen from the menu that is running already
+            // opens another window, where the person is (Ben, 2026-11-20:
+            // "if i go through the menu as if i want to launch an app
+            // again then it should open a new window *on the current
+            // display/workspace*"; its row in the list of what's running
+            // is what goes to it). With ⌘ held, a copy of its own beside
+            // the one running.
             Some(("desktop", id)) => {
-                if let Some(e) = self.installed.entries.iter().find(|e| e.id == id) {
-                    let _ = if CHOSEN_WITH_COMMAND.with(|c| c.get()) { e.launch_new_instance() } else { e.launch() };
+                if let Some(e) = self.installed.entries.iter().find(|e| e.id == id).cloned() {
+                    let apps: Vec<String> = self.windows.iter().map(|w| w.app_id.clone()).collect();
+                    let running = apps.into_iter().find(|app| self.entry(app).is_some_and(|x| x.id == e.id));
+                    let _ = if CHOSEN_WITH_COMMAND.with(|c| c.get()) {
+                        e.launch_new_instance()
+                    } else if let Some(app) = running {
+                        another_window(&e, &app)
+                    } else {
+                        e.launch()
+                    };
                 }
             }
             _ => match cmd {
@@ -1972,6 +1986,29 @@ enum Taken {
 }
 
 /// Whether `app_id` is one of ours that opens a new window when asked.
+/// Another window of `entry`'s application, running as `app`: asked of
+/// the copy running where it's one of Olo's that opens several
+/// (`--new-window`, as the row's "New Window" asks), of a Chromium
+/// browser by its own flag (run again without it, it's a window too,
+/// but in the profile it used last, wherever that was), and of any
+/// other program by running it again, which is how most open a window.
+/// One of Olo's with a single window comes forward: it has no second.
+/// The window opens on the display and workspace the person is on, as
+/// every new window does.
+fn another_window(entry: &olo_xdg::desktop_entry::DesktopEntry, app: &str) -> std::io::Result<()> {
+    if new_window_app(app) {
+        let app = app.to_owned();
+        std::thread::spawn(move || olo_kit::instance::forward(&app, &["--new-window".to_owned()]));
+        return Ok(());
+    }
+    if olo_protocol::app_keys::CHROMIUM_APPS.contains(&app)
+        && let Some(cmd) = entry.command()
+    {
+        return olo_xdg::spawn_detached_app_with(&format!("{cmd} --new-window"), &entry.id, &[]);
+    }
+    entry.launch()
+}
+
 fn new_window_app(app_id: &str) -> bool {
     app_id.strip_prefix("olo.").is_some_and(|rest| olo_xdg::apps::NEW_WINDOW.contains(&format!("olo-{rest}").as_str()))
 }

@@ -94,47 +94,45 @@ something nobody here has is in "Blocked", with what it waits for.
     many): each device it finds or forgets is an announcement to every
     program on BlueZ. Olo Doctor to say when a search has run for an
     hour, and whose it is if that can be told.
-- **A whole new instance of a program from Deskbar, Chrome's too**
-  (Ben, 2026-11-20: "is there a way in the deskbar to open a new
-  instance of an app, e.g. a new instance of chrome? i thought maybe
-  super click but that didn't work … i don't want a new window i want
-  a whole new program instance"). What's there: a click on an
-  application's row with ⌘ or Ctrl held starts it again as a copy of
-  its own (`Deskbar::launch_again`, `OLO_NEW_INSTANCE`, which Olo's
-  own programs honour: `instance.rs`), and the same from the Olo
-  menu's applications; nothing says so (the row's menu has only "New
-  Window", and only for Olo's apps). For Chrome it can't work as it
-  is: its launcher run again is handed to the Chrome already running
-  on that profile folder (one process to a folder), so at most a
-  window comes. To do: "New Instance" in every application's menu in
-  Deskbar (what ⌘-click does, found without being told); for Chrome
-  and its kind, a copy with a profile folder of its own (as each
-  agent screen's Chrome has: kept and numbered, or thrown away when
-  it quits: to decide, and say in the menu which), shown as an
-  application of its own in Deskbar; and why Ben's own ⌘-click showed
-  nothing (whether the click was taken as one with the key held:
-  `command_held` asks app_server).
-  **Ben, the same day: "yeah it should work for all apps in the
-  deskbar menu" … "prioritize that one please" … and of Chrome: "no it
-  shouldn't have its own profile folder / same profiles / just a new
-  process".** So: "New Instance" in every application's menu in
-  Deskbar (`Deskbar::team_menu`, after "New Window" where that is; the
-  command runs `launch_again`), in twelve languages: to build first.
-  Chrome is the hard one: Chromium itself keeps one browser process
-  to a profile folder (its `SingletonLock` and socket there: a second
-  one started on the same folder hands its launch to the first and
-  exits, and its databases are locked to one process besides), so
-  "the same profiles, another process" isn't something a launcher
-  can ask of it. What can be had, for Ben to choose: another window
-  of the same Chrome (not wanted); a second Chrome on a folder of its
-  own (not wanted: no sign-ins, no extensions); or a second Chrome
-  started on a copy of the profiles as they are at that moment (a
-  reflink copy, free on this disk: the same sign-ins and extensions
-  to begin with, but two sets from then on, history and new sign-ins
-  not shared, and the copy to be thrown away or kept). Asked
-  2026-11-20; a separate Chrome was opened for Ben by hand on a
-  folder of its own (`~/.local/state/olo/chrome/instances/2`) before
-  this was said: to remove when they've closed it.
+- **An application chosen again from Deskbar's menu opens another
+  window, where the person is** (Ben, 2026-11-20, after asking for a
+  whole new instance of Chrome and letting that go: "forget new
+  instance for chrome. but make it so that for all apps, including
+  chrome, if i choose it again from the deskbar apps menu it should
+  create a new window of that app, not just take me to the app.
+  clicking a running program row in the programs list for a workspace
+  should just take me to that app but if i go through the menu as if
+  i want to launch an app again then it should open a new window *on
+  the current display/workspace*"; and, when a window opened that way
+  joined the group of their Chrome's window on an agent's screen: "so
+  the rule should be, if the user has the app on one of their own
+  display-workspaces then open it as a new window in that group. but,
+  if it's on an agent screen then open it as a new ungrouped window
+  on the user's current/active display-workspace"; "prioritize that
+  one please").
+  **Done** (2026-11-20): Deskbar's menu, for an application with a
+  window on the person's displays, asks for another window
+  (`another_window`: `--new-window` of Olo's own that open several, a
+  Chromium browser's own flag, any other program run again; an Olo
+  app of one window comes forward), which joins the application's
+  group there as every new window does. A row in the list of what's
+  running still only goes to it.
+  **To do, first**: the other half of the rule. A program whose
+  windows are all on an agent's screen (the person moved them there:
+  `olo-screen take`; the program is then a client of that screen's
+  compositor through `olo-wlproxy`) opens its next window there, in
+  that group, whoever asked. Where the person asked (Deskbar's menu,
+  the palette, a link opened on their display: the launch carries an
+  activation token of the person's compositor, `activation_token`),
+  the new window belongs on the person's active display and
+  workspace, on its own, not in a group on a screen they aren't
+  looking at: to find where `olo-wlproxy` decides which compositor a
+  client's new window is made on, and have it go by who asked. To
+  test with two headless sessions and a kit app moved between them,
+  then with Chrome as Chrome is tested here (scratch HOME and
+  profile). And "New Instance" in the row's menu for what ⌘-click
+  does (a second process of Olo's own apps), since nothing says it's
+  there; not for Chrome, which keeps one process to a profile folder.
 
 - **Back and Forward in Passwords, and in every app** (Ben,
   2026-11-20: "navigate forward and back should work in passwords app
