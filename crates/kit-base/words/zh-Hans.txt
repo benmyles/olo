@@ -1,4 +1,12623 @@
-# Olo in this language: see crates/kit-base/src/words.rs for the format.
+# Olo 简体中文. The format: crates/kit-base/src/words.rs.
+# Every word of en.txt; those the same as in English (names, paths) as themselves.
+
+! needs a whole number
+! 需要整数
+
+%
+%
+
+% CPU
+% CPU
+
+(No title)
+（无标题）
+
+(The desktop is {} now: these show when it's {}.)
+（桌面当前为{0}，以下设置在{1}时生效。）
+
+(The last try didn't go through: {}.)
+（上次尝试失败：{}。）
+
+(not in force: {})
+（未生效：{}）
+
+({n} more were refused too.)
+other: （另有 {n} 项也被拒绝。）
+
+({} by their size)
+（其中 {} 次根据接触面积判断）
+
+*.qcow2, *.vdi, *.vmdk (large, changing while in use)
+*.qcow2, *.vdi, *.vmdk（文件大，使用时会变化）
+
+*.swp, *~, .#*
+*.swp, *~, .#*
+
++{n} more
+other: 另有 {n} 项
+
+/etc/hosts can't be read: {}
+无法读取 /etc/hosts：{}
+
+0.3 seconds
+0.3 秒
+
+0.5 seconds
+0.5 秒
+
+1
+1
+
+1 Day Before
+1 天前
+
+1 GB a screen
+每个屏幕 1 GB
+
+1 Hour
+1 小时
+
+1 Hour Before
+1 小时前
+
+1 Minute
+1 分钟
+
+1 Second
+1 秒
+
+1 day before
+1 天前
+
+1 hour
+1 小时
+
+1 hour before
+1 小时前
+
+1 minute
+1 分钟
+
+1 second
+1 秒
+
+1. Type your account password and choose Set Up. Olo keeps it locked so that only this key can unlock it.
+1. 输入账户密码，然后选择“设置”。Olo 会加密保存密码，只有这把密钥才能解锁。
+
+1. Type your account password and the key’s PIN, and choose Set Up. Olo keeps the password locked so that only this key can unlock it; the PIN is asked for this once, not kept.
+1. 输入账户密码和密钥的 PIN，然后选择“设置”。Olo 会加密保存密码，只有这把密钥才能解锁。PIN 仅用于这次设置，不会保存。
+
+10 Minutes
+10 分钟
+
+10 Minutes Before
+10 分钟前
+
+10 minutes
+10 分钟
+
+10 minutes before
+10 分钟前
+
+10 ms frame
+每帧 10 毫秒
+
+10 seconds
+10 秒
+
+12 hours
+12 小时
+
+12 months
+12 个月
+
+12 weeks
+12 周
+
+128 MB a screen
+每个屏幕 128 MB
+
+14 days
+14 天
+
+15 Minutes
+15 分钟
+
+15 Minutes Before
+15 分钟前
+
+15 minutes
+15 分钟
+
+15 minutes before
+15 分钟前
+
+1Password Accounts…
+1Password 账户…
+
+1Password closed the connection. If it asked whether to allow Passwords, choose Allow, then try again.
+1Password 已断开连接。如果它询问是否允许 Passwords 访问，请选择“允许”，然后重试。
+
+1Password is open but isn’t letting other apps in. In 1Password, turn on Settings ▸ Developer ▸ Integrate with other apps, then try again.
+1Password 已打开，但未允许其他应用访问。请在 1Password 的“设置 ▸ 开发者”中启用“与其他应用集成”，然后重试。
+
+1Password isn’t running. Open it (and turn on Settings ▸ Developer ▸ Integrate with other apps), then try again.
+1Password 未运行。请打开它，在“设置 ▸ 开发者”中启用“与其他应用集成”，然后重试。
+
+1Password won’t take it, so it wasn’t sent. {} Change it here and sync again.
+1Password 拒绝接收，因此没有发送。{} 请在这里修改后重新同步。
+
+2 GB a screen
+每个屏幕 2 GB
+
+2 Hours Before
+2 小时前
+
+2 Seconds
+2 秒
+
+2 hours before
+2 小时前
+
+2 minutes
+2 分钟
+
+2 seconds
+2 秒
+
+2. When the key’s light starts blinking, touch {}. A touch before it blinks does nothing.
+2. 密钥指示灯开始闪烁后，触摸{}。提前触摸不会生效。
+
+24 hours
+24 小时
+
+24 months
+24 个月
+
+24-hour clock
+24 小时制
+
+256 MB a screen
+每个屏幕 256 MB
+
+26 weeks
+26 周
+
+3 days
+3 天
+
+3 events
+3 个日程
+
+3 hours
+3 小时
+
+3. When it blinks again, touch it once more.
+3. 指示灯再次闪烁时，再触摸一次。
+
+30 Minutes
+30 分钟
+
+30 Minutes Before
+30 分钟前
+
+30 days
+30 天
+
+30 min
+30 min
+
+30 minutes
+30 分钟
+
+30 minutes before
+30 分钟前
+
+30 seconds
+30 秒
+
+32 letters and digits
+32 个字母和数字
+
+3G
+3G
+
+4 hours
+4 小时
+
+4 weeks
+4 周
+
+48 hours
+48 小时
+
+5 Minutes
+5 分钟
+
+5 Minutes Before
+5 分钟前
+
+5 Seconds
+5 秒
+
+5 days
+5 天
+
+5 events
+5 个日程
+
+5 minutes
+5 分钟
+
+5 minutes before
+5 分钟前
+
+5 seconds
+5 秒
+
+5 years
+5 年
+
+512 MB a screen
+每个屏幕 512 MB
+
+52 weeks
+52 周
+
+6 months
+6 个月
+
+60 min
+60 min
+
+7 days
+7 天
+
+8 events
+8 个日程
+
+8 weeks
+8 周
+
+8+ characters
+至少 8 个字符
+
+9
+9
+
+90 days
+90 天
+
+95th percentile
+第 95 百分位数
+
+A Copr project is owner/project (as “@group/project” for a group’s).
+Copr 项目的格式为“所有者/项目”。小组项目使用“@小组/项目”。
+
+A Disk or Folder
+磁盘或文件夹
+
+A GPU's encoder takes a 4K screen in about 15 ms a frame, the processor about 110: recordings of a lot of motion keep every frame on the GPU, about nine a second on the processor.
+编码一帧 4K 画面，GPU 约需 15 毫秒，CPU 约需 110 毫秒。录制快速运动的画面时，GPU 能保留每一帧，CPU 每秒约能录下 9 帧。
+
+A WireGuard file (from the server, or wg-quick's) is kept with its keys; its DNS servers are asked alone while it's connected.
+WireGuard 配置文件（来自服务器或 wg-quick）会与密钥一起保存。连接期间只使用其中指定的 DNS 服务器。
+
+A backup reads one file at a time, and leaves what it read out of memory: it never takes much of either.
+备份每次只读一个文件，读完即释放内存，因此不会长期占用磁盘或大量内存。
+
+A battery kept full wears faster: for a computer that's mostly plugged in.
+电池长期满电会加速老化。此设置适合经常接电使用的电脑。
+
+A build of Olo is running: Olo upgrades as soon as it has finished.
+正在构建 Olo，完成后会立即升级。
+
+A build of Olo is still running. Olo upgrades as soon as it has finished: your windows stay open.
+Olo 仍在构建中。完成后会立即升级，已打开的窗口会保留。
+
+A classic token with the repo scope, or a fine-grained one that can read pull requests and checks. Olo keeps it in your login keyring.
+可以使用具有 repo 权限的经典令牌，或能读取拉取请求和检查结果的细粒度令牌。Olo 会将它保存在登录密钥环中。
+
+A code that is surely an agent’s tab’s is put in there, and you’re told; one that isn’t sure is asked about.
+如果能确定验证码属于哪个智能体标签页，Olo 会自动填入并通知您；不确定时会先询问。
+
+A copy to a stick or a card goes at the disk's own pace, {} waiting in memory at most, so its progress is true and ejecting is quick.
+复制到 U 盘或存储卡时按磁盘的实际速度写入，内存中最多暂存 {}。这样进度准确，也能很快弹出设备。
+
+A day
+一天
+
+A disk of its own, or a folder on one: your backups kept apart from this computer.
+使用单独的磁盘或其中的文件夹，让备份与这台电脑分开存放。
+
+A dotted line
+点线
+
+A finger ({} so far)
+手指（目前 {} 次）
+
+A finger on the fingerprint sensor can stand for your password. Fingers enrolled for {}:
+将手指放在指纹传感器上即可代替输入密码。{} 已录入的手指：
+
+A frame dropped in the last minute
+过去一分钟丢了 1 帧
+
+A letter goes on everything you can pick: controls, menu items, windows, Deskbar. Type one to pick it, or to letter what’s inside; Backspace goes back, Esc puts them away.
+可选择的控件、菜单项、窗口和 Deskbar 上都会显示字母。按字母即可选择，或让其中的项目显示字母。按退格键返回，按 Esc 隐藏。
+
+A little room
+少量留白
+
+A look at the infrared camera can stand for your password: sudo in Terminal, administrator requests, Passwords and the lock screen. Only infrared counts, so a photo on a screen can't pass it.
+在 Terminal 使用 sudo、批准管理员请求、打开 Passwords 或解锁屏幕时，可以看向红外摄像头来代替输入密码。只识别红外图像，屏幕上的照片无法通过验证。
+
+A lot of room
+较多留白
+
+A mirror failed ({}): {}
+镜像源出错（{}）：{}
+
+A month
+一个月
+
+A name can't have a slash, start with a dot or a dash, or end in .lock.
+名称不能包含斜杠，不能以点或短横线开头，也不能以 .lock 结尾。
+
+A name, without “/”.
+请输入名称，不要包含“/”。
+
+A new build of Olo ({}) and {} are ready. Click to choose.
+Olo 新构建版本（{}）和 {} 已就绪。点击选择。
+
+A new build of Olo is ready ({}). Click to upgrade.
+Olo 新构建版本已就绪（{}）。点击升级。
+
+A new build of Olo is ready ({}). Install it now? Your windows stay open.
+Olo 新构建版本已就绪（{}）。现在安装吗？打开的窗口会保留。
+
+A new build of Olo is ready ({}). Installing it restarts the window server: Olo's windows stay open, but {} will close.
+Olo 新构建版本已就绪（{}）。安装时会重启窗口服务器。Olo 的窗口会保留，但 {} 将关闭。
+
+A notch scrolls as far in Chrome and other programs as in Olo’s apps.
+在 Chrome 和其他程序中，滚轮每滚动一格的距离与 Olo 应用一致。
+
+A palm, ignored ({} so far)
+已忽略的手掌（目前 {} 次）
+
+A path: /…, ~/… or a name here
+输入路径：/…、~/… 或此处的名称
+
+A picture of your own
+自选图片
+
+A process needs at least one core.
+进程至少需要一个核心。
+
+A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
+即使处理器繁忙，刚唤醒的程序也能立即运行，无需等待内核的下一个时钟节拍（完全抢占）。当前由 {} 自行调度，此项仅用于内核自带的调度器。
+
+A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick, up to a millisecond (full preemption).
+即使处理器繁忙，刚唤醒的程序也能立即运行，无需等待最长一毫秒的下一个内核时钟节拍（完全抢占）。
+
+A red dot for an app with something unread in it
+应用有未读内容时显示红点
+
+A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference gives one).
+引用格式为 op://vault/item/field。可在 Passwords 中选择“复制密钥引用”获取。
+
+A repository’s key needs to be trusted
+需要确认是否信任软件源的密钥
+
+A resting palm can't click (its pressure doesn't count)
+手掌停放时不会触发点击（不计入手掌压力）
+
+A rising swell
+渐强音
+
+A row of dots
+一排圆点
+
+A script of {} failed (code {}).
+{} 的脚本运行失败（代码 {}）。
+
+A setting comes before any [repository].
+有一项设置出现在第一个 [repository] 段之前。
+
+A terminal’s job busy for a minute and more is lowered too. Batch scheduling and idle I/O are put back when this is turned off; a raised nice stays until the program ends.
+终端中连续繁忙一分钟以上的任务也会降低优先级。关闭此项后，批处理调度和空闲 I/O 会恢复原状；已调高的 nice 值会保留到程序结束。
+
+A thick line
+粗线
+
+A thin line
+细线
+
+A touch of a security key (a YubiKey) can stand for your password once you're signed in: sudo in Terminal, Passwords and administrator requests. Not to unlock the computer or sign in: someone who found it with the key plugged in could.
+登录后，触摸安全密钥（YubiKey）即可在 Terminal 的 sudo、Passwords 和管理员请求中代替输入密码。登录和解锁电脑时不能使用，以免他人捡到插着密钥的电脑就能进入。
+
+A touch starts at pressure
+触摸起始压力
+
+A touch types nothing unless something is waiting for the key; three in a row type its one-time code where you are, for a web form Olo doesn’t know.
+只有在等待密钥输入时，触摸才会输入内容。如果网页表单未被 Olo 识别，请连续触摸三次，将一次性验证码输入当前位置。
+
+A town, an address, or 47.61, -122.33
+城市、地址或经纬度（如 47.61, -122.33）
+
+A value
+一个值
+
+A vault needs a name.
+请为保险库命名。
+
+A week
+一周
+
+AI
+AI
+
+AI features use OpenAI’s models through the Token Pool’s Codex accounts, spent in its order.
+AI 功能通过 Token Pool 中的 Codex 账户使用 OpenAI 模型，按池中顺序使用各账户的额度。
+
+API Credential
+API 凭据
+
+API ID:
+API ID:
+
+API hash:
+API 哈希：
+
+API key
+API 密钥
+
+API key:
+API 密钥：
+
+About 
+关于 
+
+About Olo Desktop
+关于 Olo Desktop
+
+About…
+关于…
+
+Acceleration:
+加速度：
+
+Accent
+强调色
+
+Access
+访问
+
+Account
+账户
+
+Account:
+账户：
+
+Accounts
+账户
+
+Accounts:
+账户：
+
+Action
+操作
+
+Activity
+活动
+
+Activity Monitor
+活动监视器
+
+Activity Monitor doesn't change {}.
+活动监视器不会更改{}。
+
+Actual Size
+实际大小
+
+Adapter:
+适配器：
+
+Adaptive
+自适应
+
+Adaptive Performance
+自适应性能
+
+Adaptive:
+自适应：
+
+Add
+添加
+
+Add Account
+添加账户
+
+Add Column After
+在后面插入列
+
+Add Column Before
+在前面插入列
+
+Add Field
+添加字段
+
+Add Field…
+添加字段…
+
+Add Fingerprint
+添加指纹
+
+Add Graph
+添加图表
+
+Add Kind
+添加类型
+
+Add Mark
+添加标记
+
+Add Place…
+添加地点…
+
+Add RPM Fusion
+添加 RPM Fusion
+
+Add Repository…
+添加软件源…
+
+Add Row Above
+在上方插入行
+
+Add Row Below
+在下方插入行
+
+Add Tab to Group
+将标签页添加到组
+
+Add Text
+添加文字
+
+Add Website
+添加网站
+
+Add a CalDAV Account…
+添加 CalDAV 账户…
+
+Add a Fastmail Account…
+添加 Fastmail 账户…
+
+Add a Folder…
+添加文件夹…
+
+Add a Google Account…
+添加 Google 账户…
+
+Add a Kind
+添加类型
+
+Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
+添加软件源后，它的包和更新会与 Fedora 的一起提供。请只添加信任的软件源，因为维护者可以在这台电脑上安装任何内容。
+
+Add an App…
+添加应用…
+
+Add an account in Preferences
+在偏好设置中添加账户
+
+Add lunch tomorrow at noon
+添加明天中午的午餐日程
+
+Add the one-time code this page shows to your login {}?
+将此页面显示的一次性验证码添加到登录项“{}”吗？
+
+Add to Collector
+添加到收集器
+
+Add “{}” to Favorites
+将“{}”添加到收藏
+
+Added by a busy line
+线路繁忙增加的延迟
+
+Added turned off.
+已添加，尚未启用。
+
+Address
+地址
+
+Address, port, program or state
+地址、端口、程序或状态
+
+Address:
+地址：
+
+Addresses can’t be looked up: {}
+无法查询地址：{}
+
+Adjust Size…
+调整大小…
+
+After BeOS: glossy, bright and friendly.
+沿用 BeOS 明亮亲切的光泽质感。
+
+After BeOS: glossy, bright and friendly. Sky grey by day and ocean blue by night.
+沿用 BeOS 明亮亲切的光泽质感，白天是晴空灰，夜晚是海蓝色。
+
+After Mac OS 9: black outlines, lilac greys.
+沿用 Mac OS 9 的黑色轮廓和淡紫灰色。
+
+After Mac OS X's Aqua: shinier and bluer, with soft outlines.
+沿用 Mac OS X 的 Aqua 风格，蓝色更鲜亮，轮廓更柔和。
+
+After a minute
+一分钟后
+
+After tap and drag:
+轻点拖移后：
+
+After the active window
+在活动窗口之后
+
+After {n} minutes
+other: {n} 分钟后
+
+After {n} seconds
+other: {n} 秒后
+
+Again
+再次
+
+Again:
+再次输入：
+
+Against Cloudflare’s speed test servers: four connections each way, eight seconds each.
+使用 Cloudflare 的测速服务器，上传和下载各用四条连接，分别测试八秒。
+
+Agenda
+日程列表
+
+Agent Screen Logs
+智能体屏幕日志
+
+Agent Screen “{}” is waiting for a code
+智能体屏幕“{}”正在等待验证码
+
+Agent Screens
+智能体屏幕
+
+Agree
+同意
+
+AirPlay
+AirPlay
+
+AirPlay Settings…
+AirPlay 设置…
+
+AirPods
+AirPods
+
+AirPods (Call Quality)
+AirPods（通话音质）
+
+AirPods (High Quality)
+AirPods（高音质）
+
+AirPods Settings…
+AirPods 设置…
+
+AirPods keep playing at music quality while you record.
+录音时 AirPods 仍以音乐音质播放。
+
+AirPods:
+AirPods:
+
+Align Center
+居中对齐
+
+Align Left
+左对齐
+
+Align Right
+右对齐
+
+All
+全部
+
+All Apps
+所有应用
+
+All Chats
+所有聊天
+
+All Imperial
+全部使用英制
+
+All Items
+所有项目
+
+All Metric
+全部使用公制
+
+All Preferences
+所有偏好设置
+
+All accounts together
+合并显示所有账户
+
+All day
+全天
+
+All lines around the selected one. {}
+显示所选行的前后文。{}
+
+All of Olo’s {} words are in {}.
+Olo 的 {0} 条文案均已译为{1}。
+
+All waiting
+全部等待中
+
+All {} connected.
+已全部连接，共 {} 个。
+
+Allow
+允许
+
+Allow NVIDIA Fallback on Battery
+使用电池时允许回退到 NVIDIA
+
+Allow Sleep
+允许睡眠
+
+Allow Sleep (awake until {})
+允许睡眠（保持唤醒至 {}）
+
+Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).
+允许“{0}”使用{1}{2}吗？选择“始终允许”后，此应用每次请求时都可使用。可在“文件 ▸ 已获准的应用…”中撤销。
+
+Allowed with {}
+已通过{}授权
+
+Along the Top
+沿顶部排列
+
+Also from the Deskbar: click the cup.
+也可以点击 Deskbar 上的杯子。
+
+Also leave out:
+同时排除：
+
+Also when running on battery
+使用电池时也启用
+
+Alt
+Alt
+
+Always Dark
+始终深色
+
+Always Left
+始终靠左
+
+Always Light
+始终浅色
+
+Always Open With
+始终以此方式打开
+
+Always Right
+始终靠右
+
+Always Where It Is
+始终在原处
+
+Always a palm when as large as
+始终判为手掌的最小面积
+
+Always on Top
+置顶
+
+An account can answer again.
+已有账户恢复可用。
+
+An administrator's password is needed.
+需要管理员密码。
+
+An app
+应用
+
+An application is keeping the display awake.
+有应用正在阻止显示器休眠。
+
+An error occurred while {}: {}
+{}时出错：{}
+
+An etched line
+凹刻线
+
+An iPhone first: Bluetooth doesn’t yet present this computer as an iPhone expects, and the iPhone would offer it its notifications but not its contacts. Olo Doctor fixes it (Present as Hands-Free); then pair.
+要先为 iPhone 配置蓝牙。此电脑当前的蓝牙身份不符合 iPhone 的预期，iPhone 只会提供通知，不会提供联系人。请在 Olo Doctor 中选择“以免提设备身份连接”，再进行配对。
+
+And I/O under
+且 I/O 低于
+
+And {n} More
+other: 另有 {n} 项
+
+And {} more
+另有 {} 项
+
+Anonymous identity:
+匿名身份：
+
+Another account
+其他账户
+
+Another program has the phone’s message profiles (BlueFerry’s or GNOME’s obexd). Olo Doctor removes BlueFerry.
+手机的消息服务已被其他程序占用（BlueFerry 或 GNOME 的 obexd）。可用 Olo Doctor 移除 BlueFerry。
+
+Answer
+接听
+
+Answer 1Password’s op command
+响应 1Password 的 op 命令
+
+Answer questions about the forecast
+回答关于天气预报的问题
+
+Answer questions about your calendars
+回答关于日历的问题
+
+Answer questions in the command palette
+在命令面板中回答问题
+
+Answering now
+正在响应
+
+Answering now · {}
+正在响应 · {}
+
+Any of the {}
+{} 中的任意一个
+
+Any storms on the way?
+会有暴风雨吗？
+
+Any touch
+任意触摸
+
+App
+应用
+
+App caches
+应用缓存
+
+App password:
+应用密码：
+
+AppImages
+AppImages
+
+Appearance
+外观
+
+Apple {} GPU
+Apple {} GPU
+
+Applications
+应用程序
+
+Applied: kept for this computer, and set again at every start.
+已应用。此设置保存在这台电脑上，每次启动时都会重新应用。
+
+Apply
+应用
+
+Apply once to let Olo follow the mode and the power supply: an administrator's password is asked, this once.
+应用一次，Olo 即可根据模式和供电状态自动调节。仅需这一次输入管理员密码。
+
+Apply {n} Changes
+other: 应用 {n} 项更改
+
+Applying asks for an administrator's password once while this window is open.
+在此窗口打开期间，只在首次应用时询问管理员密码。
+
+Applying… (an administrator's password may be asked for)
+正在应用…（可能需要管理员密码）
+
+Approve requests without asking, for a while
+暂时自动批准请求
+
+Approving without asking: {} left (until {})
+正在自动批准：剩余 {}（至 {}）
+
+Apps Allowed…
+已获准的应用…
+
+Apps That Always Float
+始终浮动的应用
+
+Apps With Their Own Workspace
+使用独立工作区的应用
+
+Apps appear here once they have sent a notification.
+应用发送过通知后便会出现在这里。
+
+Apps are waiting for logins.
+有应用正在等待登录信息。
+
+Apps get the microphone's sound as it is.
+应用会收到麦克风的原始声音。
+
+Archive
+归档
+
+Archive All
+全部归档
+
+Archive {} Chats
+归档 {} 个聊天
+
+Archived Chats
+已归档的聊天
+
+Archived Conversations
+已归档的对话
+
+Arrived out of order
+到达顺序有误
+
+As BeOS R5 drew its icons: flat faces in its 8-bit colours, black outlines.
+沿用 BeOS R5 的图标风格，以 8 位色填充色块，配上黑色轮廓。
+
+As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines.
+沿用 Workbench 的图标风格，以屏幕的 16 种颜色填充色块，配上黑色轮廓。
+
+As fast as the computer goes: the processors kept quick and the firmware's power limits raised, the fans as needed. The battery runs down sooner.
+以电脑的最高性能运行。处理器保持高速，固件提高功耗上限，风扇按需提速。电池耗电更快。
+
+As in Themes ({})
+跟随主题（{}）
+
+As it goes
+随进度调整
+
+As set now
+按当前设置
+
+As the Mode
+跟随模式
+
+As the other mice
+与其他鼠标一致
+
+As wide as the widgets
+与小组件等宽
+
+As {}: nice {} → {}, {} scheduling, {} I/O priority{}, so the active window’s app and Olo stay quick.
+按{0}处理：nice 从 {1} 调为 {2}，调度为{3}，I/O 优先级为{4}{5}，以保持活动窗口和 Olo 反应灵敏。
+
+Ask
+询问
+
+Ask Again
+重新询问
+
+Ask Again ({} left, until {})
+重新询问（剩余 {}，至 {}）
+
+Ask It
+提问
+
+Ask Me First
+先询问我
+
+Ask about the weather…
+询问天气…
+
+Ask about your calendars
+询问日历
+
+Ask about your calendars here: the assistant is given the events of the ones you show, a month back and four months on. It can draft events; nothing is added until you save it.
+在这里询问日历。助手可查看已显示日历中过去一个月到未来四个月的日程，也可以起草日程，由您保存后才会添加。
+
+Ask anything about the forecast here: the assistant has all of it, hour by hour.
+在这里询问天气。助手可以参考完整的逐小时预报。
+
+Ask for Full Access at Start
+启动时请求完全访问权限
+
+Ask for sudo Passwords in a Window
+在窗口中询问 sudo 密码
+
+Ask what to do about urgent ones
+询问如何处理紧急问题
+
+Asked now:
+当前请求值：
+
+Asking Passwords…
+正在询问 Passwords…
+
+Asking Telegram…
+正在询问 Telegram…
+
+Asking it…
+正在请求…
+
+Asking…
+正在询问…
+
+Ask…
+询问…
+
+Assistant
+助手
+
+Astra 6
+Astra 6
+
+At 10%
+电量降至 10% 时
+
+At 15%
+电量降至 15% 时
+
+At 20%
+电量降至 20% 时
+
+At full speed
+全速
+
+At least
+至少
+
+At the Bottom
+底部
+
+At the Start
+开头
+
+At the start
+开头
+
+At {}. Give it the code from {}?
+位于 {0}。要将来自 {1} 的验证码填入吗？
+
+Attach Files…
+添加附件…
+
+Authenticate
+认证
+
+Authentication:
+身份验证：
+
+Auto
+自动
+
+Auto Approve
+自动批准
+
+Auto Approve: Yes in {} s
+自动批准：{} 秒后同意
+
+Auto profile · the firmware's own curve
+自动配置 · 使用固件风扇曲线
+
+Auto-Tiling
+自动平铺
+
+Auto-Tiling Layout
+自动平铺布局
+
+Auto-tiling layout:
+自动平铺布局：
+
+Automatic
+自动
+
+Automatic Ear Detection: pause when you take an AirPod out
+自动入耳检测：摘下一只 AirPod 时暂停播放
+
+Automatic wakes NVIDIA's GPU on battery too
+自动模式在使用电池时也会唤醒 NVIDIA GPU
+
+Automatic: {} for AV1 and VP9 (Fedora's driver has no H.264 or HEVC: Olo Doctor installs the full one){}. {}
+自动：使用 {0} 解码 AV1 和 VP9（Fedora 自带的驱动不支持 H.264 或 HEVC，可用 Olo Doctor 安装完整版）{1}。{2}
+
+Automatic: {} for every video (H.264, HEVC, VP9, AV1), 4K at 60 frames a second with a quarter of a core. {}
+自动：使用 {} 解码所有视频（H.264、HEVC、VP9、AV1），播放 4K 60 帧视频仅占用四分之一个 CPU 核心。{}
+
+Automatically
+自动
+
+Automatically,
+自动，
+
+BBR’s model
+BBR 模型
+
+Back
+后退
+
+Back Up Now
+立即备份
+
+Back Up Now goes on from where it got to
+选择“立即备份”可从中断处继续
+
+Back Up There
+备份到这里
+
+Back Up These Folders
+备份以下文件夹
+
+Back to Chats
+返回聊天列表
+
+Back to Conversations
+返回对话列表
+
+Back to the Days
+返回日期列表
+
+Back to the Forecast
+返回预报
+
+Back to the Items
+返回项目列表
+
+Back up this computer
+备份这台电脑
+
+Back up to a disk or folder from now on; the backups in Google Drive stay as they are
+今后备份到磁盘或文件夹，Google Drive 中的备份会保留
+
+Back up to the Drive of:
+备份到此账户的 Google Drive：
+
+Back up to your Google Drive from now on; the backups in this folder stay as they are
+今后备份到 Google Drive，此文件夹中的备份会保留
+
+Back up:
+备份内容：
+
+Backed Up
+已备份
+
+Backed up {}
+已于 {} 备份
+
+Backed up: {}
+已备份：{}
+
+Background Noise
+背景噪声
+
+Background noise:
+背景噪声：
+
+Background noise: {}
+背景噪声：{}
+
+Background work, so the rest stays quick
+在后台运行，让其他任务保持流畅
+
+Background:
+背景：
+
+Backgrounds
+桌面背景
+
+Backing up to Google Drive ({}), in the folder “{}”.
+正在备份到 Google Drive（{}）中的“{}”文件夹。
+
+Backing up to {}. Its key is kept in Passwords.
+正在备份到 {}。密钥已存入 Passwords。
+
+Backing up to {}. Keep its key in Passwords when you can ({}).
+正在备份到 {}。方便时请将密钥存入 Passwords（{}）。
+
+Backing up your home folder
+正在备份主文件夹
+
+Backing up {n} folders
+other: 正在备份 {n} 个文件夹
+
+Backing up {}
+正在备份{}
+
+Backlight
+背光
+
+Backup
+备份
+
+Backup didn’t finish
+备份未完成
+
+Backup stopped
+备份已停止
+
+Backups
+备份
+
+Backups Kept
+保留的备份
+
+Balanced
+平衡
+
+Bandwidth:
+带宽：
+
+Bank Account
+银行账户
+
+Banners
+横幅
+
+Bars
+条形图
+
+Bars show:
+柱状图显示：
+
+Basic Keypad
+基础键盘
+
+Basics
+基本信息
+
+Battery
+电池
+
+Battery & Idle
+电池与空闲状态
+
+Battery Saver
+省电模式
+
+Battery Saver at {}% · {} resumes on AC
+电量降至 {}% 时启用省电模式 · 接电后恢复{}
+
+Be the SSH agent (ssh, git)
+用作 SSH 代理（ssh、git）
+
+Because
+原因
+
+Before import {}.{}
+导入前 {}。{}
+
+Begin
+开始
+
+Benchmark…
+性能测试…
+
+Beside the widget before it
+紧挨上一个小组件
+
+Best second {}; {} moved
+最快一秒的速率为 {}，共传输了 {}
+
+Best time for a run today?
+今天什么时候适合跑步？
+
+Best time for a run tomorrow?
+明天什么时候适合跑步？
+
+Bigger
+更大
+
+Black
+黑色
+
+Blue
+蓝色
+
+Blue:
+蓝色：
+
+Bluetooth
+Bluetooth
+
+Bluetooth couldn’t open the phone’s messages ({}).
+蓝牙无法打开手机上的信息（{}）。
+
+Bluetooth devices and Touch ID fingerprints belong to each computer: pair and enrol them again here.
+蓝牙设备和 Touch ID 指纹按电脑保存，请在这里重新配对并录入指纹。
+
+Bluetooth devices, Wi-Fi networks and Touch ID fingerprints belong to each computer: pair, join and enrol them again here.
+蓝牙设备、Wi-Fi 网络和 Touch ID 指纹按电脑保存，请在这里重新配对、连接网络并录入指纹。
+
+Bluetooth is off.
+蓝牙已关闭。
+
+Bluetooth isn’t answering.
+蓝牙未响应。
+
+Bluetooth isn’t running on this computer.
+这台电脑的蓝牙服务未运行。
+
+Bluetooth said it would open them and no channel came
+蓝牙已同意打开消息服务，但未建立通道
+
+Bluetooth…
+Bluetooth…
+
+Body
+正文
+
+Bold
+粗体
+
+Boost when work arrives and ease back between tasks.
+有任务时提速，任务间隙降速。
+
+Boosted {} dB (suggested)
+已增益 {} dB（建议）
+
+Bottom Half
+下半部分
+
+Bottom Left Quarter
+左下四分之一区域
+
+Bottom Right Quarter
+右下四分之一区域
+
+Bottom Two Thirds
+底部三分之二区域
+
+Branch {} is checked out in {} already.
+分支 {} 已在 {} 签出。
+
+Bright
+明亮
+
+Brightness
+亮度
+
+Bring It Into Olo…
+导入 Olo…
+
+Brown
+棕色
+
+Bug Fixes
+问题修复
+
+Builds
+构建
+
+Builds by the hour
+每小时构建次数
+
+Builds go on without the cache until it starts.
+缓存启动前，构建会继续，但不使用缓存。
+
+Built incrementally
+增量构建
+
+Built into the keyboard
+键盘内置
+
+Built-in Keyboard
+内置键盘
+
+Bulleted List
+项目符号列表
+
+Busiest Now
+当前最繁忙
+
+Busy Wi-Fi
+繁忙的 Wi-Fi
+
+Busy at least
+最低使用率
+
+Buttons
+按钮
+
+By
+执行者
+
+By a parent leaving
+父进程退出
+
+By at least
+增量至少为
+
+By the hour for the next 5 days (the provider’s reach):
+未来 5 天的逐小时预报（数据提供方的预报范围）：
+
+By their size alone: the palm model is off (Preferences ▸ Touchpad & Mouse ▸ Touch)
+仅按面积判断：手掌模型已关闭（偏好设置 ▸ 触控板与鼠标 ▸ 触摸）
+
+C
+C
+
+C#
+C#
+
+C++
+C++
+
+C, C++, Zig, Haskell, Elixir and Dart build output
+C/C++/Zig/Haskell/Elixir/Dart 构建产物
+
+CA certificate:
+CA 证书：
+
+CMake
+CMake
+
+CMakeFiles, .zig-cache, .stack-work, _build, .dart_tool
+CMakeFiles, .zig-cache, .stack-work, _build, .dart_tool
+
+CPU
+CPU
+
+CPU Time
+CPU 时间
+
+CPU time
+CPU 时间
+
+CPU {} frequency
+CPU {} 频率
+
+CSS
+CSS
+
+Caffeinated
+保持唤醒
+
+Caffeinated until {}
+保持唤醒至 {}
+
+Caffeinated: staying awake
+已阻止睡眠
+
+CalDAV
+CalDAV
+
+Calendar
+日历
+
+Calendar for {}
+{} 的日历
+
+Calendar shows the calendars of your accounts on other CalDAV servers (Nextcloud, iCloud with an app-specific password, a server of your own) beside Google’s and Fastmail’s, and writes what you change back to them.
+日历会同时显示 Google、Fastmail 和其他 CalDAV 服务器上的日历，包括 Nextcloud、使用应用专用密码的 iCloud 以及自建服务器。所做更改会同步回对应服务器。
+
+Calendar:
+日历：
+
+Calendar: Fastmail didn’t take the app password for calendars (it needs access to them).
+日历：Fastmail 拒绝了应用密码，请确认它具有日历访问权限。
+
+Calendar: Next Event
+日历：下一个日程
+
+Calendar: The Day Ahead
+日历：今日安排
+
+Calendar: no account set up. Add one in Preferences ▸ Integrations.
+日历：尚未设置账户。请在“偏好设置 ▸ 服务集成”中添加。
+
+Calendar: nothing coming up {}.
+日历：{}没有即将开始的日程。
+
+Calendars
+日历
+
+Calendar’s assistant is handed the events of the calendars you show. It can draft events; nothing is added until you save it.
+日历助手可以查看当前显示的日程，也可以起草新日程，由您保存后才会添加。
+
+Call
+通话
+
+Call Quality, with Microphone
+通话音质，使用麦克风
+
+Calling…
+正在呼叫…
+
+Calls
+通话
+
+Can't make {}: {}
+无法创建 {}：{}
+
+Can't move it: {}
+无法移动：{}
+
+Can't remove {}: {}
+无法移除 {}：{}
+
+Can't tell git where it went: {}
+无法将新位置告知 git：{}
 
 Cancel
-Cancel
+取消
+
+Cancel Echo from the Speakers
+消除扬声器回声
+
+Cancel It
+取消
+
+Cancel Recording
+取消录制
+
+Cancel Sign-In
+取消登录
+
+Cancel Trimming
+取消修剪
+
+Cancel echo from the speakers
+消除扬声器回声
+
+Can’t come back as it was: {} and {} more.
+以下项目无法恢复原状：{}，另有 {} 项。
+
+Can’t come back as it was: {}.
+无法恢复原状：{}。
+
+Caps Lock is another Control key
+将 Caps Lock 用作额外的 Control 键
+
+Capture Client Requests Again
+重新捕获客户端请求
+
+Capture debug information whenever a frame drops
+每次丢帧时收集调试信息
+
+Cascade All
+层叠所有窗口
+
+Cascade Others
+层叠其他窗口
+
+Case
+大小写
+
+Catching up…
+正在追赶进度…
+
+Ceiling
+云幕高
+
+Ceiling {}
+云幕高 {}
+
+Celsius (°C)
+Celsius (°C)
+
+Center Third
+中间三分之一区域
+
+Center Two Thirds
+中间三分之二区域
+
+Chance
+概率
+
+Chance of rain
+降雨概率
+
+Change API ID…
+更改 API ID…
+
+Change Background…
+更换桌面背景…
+
+Changed both here and in 1Password: 1Password’s version replaces it here, and yours is kept as “{} (conflict)”
+此处和 1Password 中都已修改。将采用 1Password 的版本，并把您的版本保留为“{} (conflict)”
+
+Changed here now, and in 1Password at the next sync.
+更改已保存在本机，下次同步时会更新到 1Password。
+
+Changes to “{}”
+对“{}”的更改
+
+Change…
+更改…
+
+Changing a limit of process {}
+正在更改进程 {} 的资源限制
+
+Changing how process {} fares when memory runs out
+正在更改内存耗尽时对进程 {} 的处理方式
+
+Changing the CPU governor
+正在更改 CPU 调频策略
+
+Changing the cores process {} may use
+正在更改进程 {} 可使用的核心
+
+Changing the priority of process {}
+正在更改进程 {} 的优先级
+
+Changing…
+正在更改…
+
+Charging resumes below {}%.
+电量降至 {}% 以下时恢复充电。
+
+Chat
+聊天
+
+Chat Info
+聊天信息
+
+Check
+检查
+
+Check Again
+重新检查
+
+Check Health
+检查健康状况
+
+Check Spelling While Typing
+键入时检查拼写
+
+Check for Updates
+检查更新
+
+Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
+快速检查所选备份是否完整：确认数据齐全、核对存储中的校验和与发送时是否一致，再抽样读回检查，步骤与每次备份完成后的检查相同。发现损坏时会尽量修复。
+
+Checking for updates…
+正在检查更新…
+
+Checking out {} of {} files
+正在签出文件：{} / {}
+
+Checking the backup
+正在检查备份
+
+Checking the connection…
+正在检查连接…
+
+Checking the packages…
+正在检查软件包…
+
+Checking your password…
+正在验证密码…
+
+Checking…
+正在检查…
+
+Choose
+选择
+
+Choose All
+全选
+
+Choose Another Folder…
+选择其他文件夹…
+
+Choose None
+取消全选
+
+Choose None of These {n}
+other: 取消选择这 {n} 项
+
+Choose These {n}
+other: 选择这 {n} 项
+
+Choose a Folder…
+选择文件夹…
+
+Choose a backup to see how it was last checked.
+选择一个备份，查看上次检查结果。
+
+Choose a backup to see what it holds before importing it.
+选择一个备份，先查看内容再导入。
+
+Choose a chat from the list to start messaging.
+选择列表中的聊天即可发送消息。
+
+Choose a network to join it.
+选择要加入的网络。
+
+Choose a setting, then play the original or its sound: switching goes on from the same place.
+选择设置后可播放原声或处理后的声音。切换时会从相同位置继续播放。
+
+Choose a widget to change it, or add one.
+选择要更改的小组件，也可以添加新的。
+
+Choose what to scan:
+选择扫描范围：
+
+Choose:
+选择：
+
+Choose…
+选择…
+
+Chosen by someone
+由用户选择
+
+Chosen for the whole computer and kept across restarts. It's the computer's, not this account's, so choosing asks for an administrator's password.
+此设置对整台电脑生效，重启后仍会保留。更改时需要管理员密码。
+
+Chosen outside dnf
+在 dnf 之外选择
+
+Chrome holds it, as it may be harmful: keep it or delete it in Chrome’s Downloads.
+Chrome 已暂扣此文件，因为它可能有害。可在 Chrome 的“下载内容”中选择保留或删除。
+
+City or region
+城市或地区
+
+Classic
+经典
+
+Claude
+Claude
+
+Claude Code
+Claude Code
+
+Claude Code and Codex are told, as they start, to test and use desktop apps and web pages on screens of their own that you can watch and take over, never on yours, and how: Olo’s Chrome included, so they never start one on your screen.
+Claude Code 和 Codex 启动时会收到操作说明，在各自的屏幕上测试和使用桌面应用及网页。您可以查看或接管这些屏幕。Olo 的 Chrome 也在专用屏幕上打开，不会占用您的屏幕。
+
+Claude Code and Codex get a tool to title their tab with what they’re working on, and are asked to keep it current. They see the tool from their next start.
+为 Claude Code 和 Codex 提供按当前任务命名标签页的工具，并要求随进度更新标题。下次启动时即可使用。
+
+Claude Code and Codex started in a tab of a group whose tabs are in more than one repository are told the group’s name and those repositories and worktrees, theirs marked. Codex asks you once to trust Terminal’s hook (/hooks).
+如果标签页组涉及多个仓库，组内启动的 Claude Code 和 Codex 会收到组名、各仓库和工作树的信息，以及当前位置标记。Codex 会询问一次是否信任 Terminal 的钩子（/hooks）。
+
+Clean Up
+清理
+
+Clean Up Microphone Sound
+净化麦克风声音
+
+Clean Up Now
+立即清理
+
+Clean up the microphone's sound
+净化麦克风声音
+
+Cleaned up (made up).
+已清理（模拟数据）。
+
+Cleaned up: nothing to remove
+清理完成：无需移除任何内容
+
+Cleaned up: {n} entries removed, {} freed
+other: 清理完成：已移除 {n} 项，释放 {}
+
+Cleaning up the microphone's sound: {} ms behind{}.
+正在净化麦克风声音：延迟 {} 毫秒{}。
+
+Clear
+清除
+
+Clear All
+全部清除
+
+Clear All Tabs
+清除所有制表位
+
+Clear History
+清除历史记录
+
+Clear History…
+清除历史记录…
+
+Clear Scrollback
+清除回滚缓冲区
+
+Clear copied secrets after:
+清除已复制机密信息的延时：
+
+Clear sky
+晴天
+
+Cleared
+已清除
+
+Click
+点击
+
+Click Back Up Now to make the first.
+点按“立即备份”创建首个备份。
+
+Click a graph to see what was busy then
+点击图表查看当时哪些任务最繁忙
+
+Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.
+点击圆环进入文件夹，点击中心返回上级；不需要的项目可以拖到收集器中。
+
+Click a shortcut to give it other keys.
+点击快捷键可重新指定按键。
+
+Click an event to see it here; double-click it to change it.
+点击日程在此查看，连按两下可编辑。
+
+Click and hold
+点击并按住
+
+Click pressure:
+点击压力：
+
+Click with two fingers for a secondary click
+双指按下以辅助点击
+
+Click with your thumb
+用拇指点击
+
+Clicking and Dragging
+点击与拖移
+
+Clicks
+点击次数
+
+Client ID:
+客户端 ID：
+
+Client secret:
+客户端密钥：
+
+Clients
+客户端
+
+Clock
+时钟
+
+Close
+关闭
+
+Close All
+全部关闭
+
+Close All from {}
+关闭 {} 的所有窗口
+
+Close Group
+关闭组
+
+Close Other Tabs
+关闭其他标签页
+
+Close Others
+关闭其他
+
+Close Tab
+关闭标签页
+
+Close Window
+关闭窗口
+
+Cloud Heights
+云层高度
+
+Cloud base
+云底高度
+
+Cloud cover
+云量
+
+Cloud cover about {}%
+云量约 {}%
+
+Cloud cover {}–{}%
+云量 {}–{}%
+
+Cloudflare (1.1.1.1)
+Cloudflare (1.1.1.1)
+
+Clouds ({} above the ground)
+云层（距地面 {}）
+
+Cloudy
+阴
+
+Code
+代码
+
+Code given to Agent Screen “{}”
+验证码已交给智能体屏幕“{}”
+
+Code:
+代码：
+
+Codex
+Codex
+
+Coding Agents
+编程智能体
+
+Collection:
+集合：
+
+Collector
+收集器
+
+Collector: drag files and folders here
+收集器：将文件和文件夹拖到这里
+
+Collector: {} — {}
+收集器：{} — {}
+
+Color
+颜色
+
+Colors
+颜色
+
+Colors in:
+颜色用于：
+
+Colour
+颜色
+
+Colour:
+颜色：
+
+Coloured by use: green unused, red used up.
+按用量着色：绿色表示未使用，红色表示已用完。
+
+Colours:
+颜色：
+
+Column View
+分栏视图
+
+Columns
+列
+
+Command Suggestions
+命令建议
+
+Command key:
+命令键：
+
+Command or Comment
+命令或注释
+
+Comment
+注释
+
+Comment:
+注释：
+
+Compiles
+编译次数
+
+Compiling
+正在编译
+
+Compress
+压缩
+
+Compress As…
+压缩为…
+
+Compress {} into a new archive beside it:
+将 {} 压缩到同一目录的新归档文件中：
+
+Compress {} into a new archive beside them:
+将 {} 压缩到同一目录的新归档文件中：
+
+Compressed Swap
+压缩交换空间
+
+Compressed to
+压缩后大小
+
+Computes with
+计算设备
+
+Configure IPv4:
+配置 IPv4：
+
+Configure IPv6:
+配置 IPv6：
+
+Confirm
+确认
+
+Confirm:
+确认：
+
+Connect
+连接
+
+Connect Another Account…
+连接其他账户…
+
+Connect GitHub for Pull Requests…
+连接 GitHub 以查看拉取请求…
+
+Connect Google Drive…
+连接 Google Drive…
+
+Connect automatically when you put them in near this computer
+在此电脑附近戴上时自动连接
+
+Connect with a Token…
+使用令牌连接…
+
+Connected as {}, through {}.
+已通过 {1} 以 {0} 身份连接。
+
+Connected to “{}”
+已连接到“{}”
+
+Connected to “{}”: {}
+已连接到“{}”：{}
+
+Connected {}, but its sign-in wasn’t allowed {}: Sign In Again and allow everything it asks.
+已连接 {}，但登录时未授予{}权限。请重新登录并允许所请求的全部权限。
+
+Connected.
+已连接。
+
+Connecting to Telegram…
+正在连接 Telegram…
+
+Connecting to “{}”…
+正在连接“{}”…
+
+Connection
+连接
+
+Connection:
+连接：
+
+Connections
+连接
+
+Contacts
+联系人
+
+Container images and Flatpak runtimes
+容器镜像和 Flatpak 运行时
+
+Contents
+内容
+
+Context switches
+上下文切换
+
+Control
+Control
+
+Conversation
+对话
+
+Conversation Awareness
+对话感知
+
+Convert to Table
+转换为表格
+
+Cool
+凉爽
+
+Cooler
+更凉爽
+
+Cooler and Quieter
+更凉爽、更安静
+
+Coolest
+最凉爽
+
+Cooling
+散热
+
+Copied the reference to “{}”’s {}.
+已复制“{}”的“{}”字段引用。
+
+Copied the {}.
+已复制{}。
+
+Copied {}. It leaves the clipboard in {} seconds.
+已复制{}。{} 秒后会从剪贴板清除。
+
+Copr project
+Copr 项目
+
+Copy
+复制
+
+Copy Code
+复制验证码
+
+Copy Conversation
+复制对话
+
+Copy Here
+复制到此处
+
+Copy Latest Code
+复制最新验证码
+
+Copy Link
+复制链接
+
+Copy Name
+复制名称
+
+Copy Name and Value
+复制名称和值
+
+Copy One-Time Password
+复制一次性密码
+
+Copy Password
+复制密码
+
+Copy Path
+复制路径
+
+Copy Reference
+复制引用
+
+Copy Text
+复制文字
+
+Copy Username
+复制用户名
+
+Copy Value
+复制值
+
+Copy a code no tab is waiting for
+复制没有标签页在等待的验证码
+
+Copy the Code That Just Came
+复制刚收到的验证码
+
+Copy to clipboard
+复制到剪贴板
+
+Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
+正在从 1Password 复制 {} 中的项目。如果 1Password 询问是否允许 Passwords 访问，请选择“允许”。如已锁定，请先解锁。
+
+Core
+核心
+
+Cores
+核心
+
+Couldn't be cached
+无法缓存
+
+Couldn't create a folder: {}
+无法创建文件夹：{}
+
+Couldn't create a link: {}
+无法创建链接：{}
+
+Couldn't paste: {}
+无法粘贴：{}
+
+Couldn't rename “{}”: {}
+无法重命名“{}”：{}
+
+Couldn't restart: {}
+无法重启：{}
+
+Couldn't save the setting: {}
+无法保存设置：{}
+
+Couldn't save what was dropped: {}
+无法保存拖入的项目：{}
+
+Couldn't save: {}
+无法保存：{}
+
+Couldn’t archive it. {}
+无法归档。{}
+
+Couldn’t ask for emoji
+无法请求表情符号
+
+Couldn’t ask for your keyring to be unlocked: {}
+无法请求解锁密钥环：{}
+
+Couldn’t be checked {}: {}.
+{}检查失败：{}。
+
+Couldn’t change this vault in 1Password. {}
+无法在 1Password 中更改此保险库。{}
+
+Couldn’t delete it in 1Password. {}
+无法在 1Password 中删除此项。{}
+
+Couldn’t delete this vault from 1Password. {}
+无法从 1Password 删除此保险库。{}
+
+Couldn’t keep the approval: {}
+无法保存授权：{}
+
+Couldn’t keep the key in the login keyring: {}
+无法将密钥存入登录密钥环：{}
+
+Couldn’t keep the key: {}
+无法保存密钥：{}
+
+Couldn’t list its items. {}
+无法列出其中的项目。{}
+
+Couldn’t make this vault in 1Password, so its items weren’t sent either. {}
+无法在 1Password 中创建此保险库，因此其中的项目也未发送。{}
+
+Couldn’t open this item: {}
+无法打开此项：{}
+
+Couldn’t reach the login keyring: {}
+无法访问登录密钥环：{}
+
+Couldn’t read 1Password’s copy to compare, so yours wasn’t sent. {}
+无法读取 1Password 中的副本进行比较，因此没有发送您的版本。{}
+
+Couldn’t read the key: {}
+无法读取密钥：{}
+
+Couldn’t remove the account: {}
+无法移除账户：{}
+
+Couldn’t remove the worktree in {}: {}
+无法移除 {} 中的工作树：{}
+
+Couldn’t reset: {}
+无法重置：{}
+
+Couldn’t restore: {}.
+无法恢复：{}。
+
+Couldn’t save the settings: {}
+无法保存设置：{}
+
+Couldn’t save your passwords: {}
+无法保存密码：{}
+
+Couldn’t save “{}”: {}
+无法保存“{}”：{}
+
+Couldn’t send it. {}
+无法发送。{}
+
+Couldn’t send this account’s changes. {}
+无法发送此账户的更改。{}
+
+Couldn’t sign out ({}).
+无法退出登录（{}）。
+
+Couldn’t sync this account. {}
+无法同步此账户。{}
+
+Couldn’t take the approval back: {}
+无法撤销授权：{}
+
+Couldn’t write the shared copy: {}
+无法写入共享副本：{}
+
+Count accounts turned off or signed out
+计入已停用或已退出登录的账户
+
+Countdown
+倒计时
+
+Counting what there is to back up: {}, {} so far.
+正在统计要备份的内容：目前 {}，{}。
+
+Counting what to back up
+正在统计备份内容
+
+Cover
+云量
+
+Crate
+Crate
+
+Create Link
+新建链接
+
+Create Link Here
+在此处创建链接
+
+Create Partition…
+创建分区…
+
+Create…
+创建…
+
+Credit Card
+信用卡
+
+Crop
+裁剪
+
+Cropped to {} × {}
+已裁剪为 {} × {}
+
+Crop…
+裁剪…
+
+Current hardware state
+当前硬件状态
+
+Custom
+自定义
+
+Custom Message…
+自定义消息…
+
+Custom {} once applied (on {} until then)
+应用后使用自定义{0}（当前为{1}）
+
+Customize…
+自定义…
+
+Cut
+剪切
+
+Cut {} to {}
+剪去 {0} 至 {1} 的片段
+
+Cyan
+青色
+
+Cycles
+周期数
+
+Czech
+捷克语
+
+DNS
+DNS
+
+DNS servers:
+DNS 服务器：
+
+DSL
+DSL
+
+Danish
+丹麦语
+
+Dark
+深色
+
+Dart
+Dart
+
+Data Provider…
+数据提供方…
+
+Database
+数据库
+
+Date
+日期
+
+Date & Time
+日期与时间
+
+Dates, times and numbers follow this computer’s region for now (its LANG). Date & Time sets the clock’s 12 or 24 hours.
+日期、时间和数字格式目前遵循这台电脑的地区设置（LANG）。可在“日期与时间”中选择 12 或 24 小时制。
+
+Day
+日
+
+Days:
+天数：
+
+Decline
+拒绝
+
+Decode With
+解码方式
+
+Decode on:
+解码设备：
+
+Decoding on {}
+正在使用 {} 解码
+
+DeepFilterNet3
+DeepFilterNet3
+
+DeepFilterNet3 Low Delay
+DeepFilterNet3 低延迟
+
+Default
+默认
+
+Default (Preferences ▸ Power)
+默认（偏好设置 ▸ 电源）
+
+Default Apps
+默认应用
+
+Default Keys
+默认按键
+
+Default Message ({})
+默认消息（{}）
+
+Default mode:
+默认模式：
+
+Defaults
+默认值
+
+Degrees
+度
+
+Delay
+延时
+
+Delay until repeat
+按键重复前的延迟
+
+Delay:
+延迟：
+
+Delete
+删除
+
+Delete All
+全部删除
+
+Delete All…
+全部删除…
+
+Delete Column
+删除列
+
+Delete Event
+删除日程
+
+Delete Item
+删除项目
+
+Delete Mark
+删除标记
+
+Delete Row
+删除行
+
+Delete Signature
+删除签名
+
+Delete Table
+删除表格
+
+Delete Vault
+删除保险库
+
+Delete Vault…
+删除保险库…
+
+Delete the unfinished backup? What it sent ({}) is freed, and the next backup reads and sends again what it had done. It can’t be undone.
+删除未完成的备份吗？已传输的数据（{}）会被清除。下次备份将重新读取并发送这部分数据。此操作无法撤销。
+
+Delete the vault “{}”{}{}? This can’t be undone.
+删除保险库“{}”{}{}吗？此操作无法撤销。
+
+Delete these {} backups, the unfinished one too? The space only they took is freed (what the unfinished one sent, {}); files other backups hold too stay in those. It can’t be undone.
+删除这 {} 个备份和未完成的备份吗？将释放仅由这些备份占用的空间（未完成的备份已发送 {}）。其他备份共用的文件会保留。此操作无法撤销。
+
+Delete these {} backups? The space only they took is freed; files other backups hold too stay in those. It can’t be undone.
+删除这 {} 个备份吗？将释放仅由这些备份占用的空间，其他备份共用的文件会保留。此操作无法撤销。
+
+Delete this backup? The space only it took is freed; files other backups hold too stay in those. It can’t be undone.
+删除此备份吗？将释放仅由此备份占用的空间，其他备份共用的文件会保留。此操作无法撤销。
+
+Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
+永久删除 {}（{}）吗？这些项目不会移入废纸篓，此操作无法撤销。
+
+Delete {} Backups…
+删除 {} 个备份…
+
+Delete {} Chats…
+删除 {} 个聊天…
+
+Delete {} chats? Their messages go from this account{}. This can’t be undone.
+删除这 {} 个聊天吗？此账户中的聊天消息将被删除{}。此操作无法撤销。
+
+Delete “{}” ({}) for good? It won't go to the Trash, and this can't be undone.
+永久删除“{}”（{}）吗？此项不会移入废纸篓，此操作无法撤销。
+
+Delete “{}” for good? Its attached files can’t come back.
+永久删除“{}”吗？其附件将无法恢复。
+
+Delete “{}”? Edit ▸ Undo makes it again until Passwords locks.
+删除“{}”吗？在 Passwords 锁定前，仍可通过“编辑 ▸ 撤销”恢复。
+
+Deleted in 1Password
+已在 1Password 中删除
+
+Deleted in 1Password but changed here: kept here, to be added back
+已在 1Password 中删除，但本机有更改；已保留本机副本，稍后会重新添加
+
+Deleted the vault “{}” and its item.
+已删除保险库“{}”及其中的项目。
+
+Deleted the vault “{}” and its {} items.
+已删除保险库“{}”及其中的 {} 个项目。
+
+Deleted the vault “{}”.
+已删除保险库“{}”。
+
+Delete…
+删除…
+
+Deleting a backup
+正在删除备份
+
+Deleting backups
+正在删除多个备份
+
+Deleting the backups’ folder in Google Drive
+正在删除 Google Drive 中的备份文件夹
+
+Deleting the unfinished backup
+正在删除未完成的备份
+
+Deleting {}
+正在删除{}
+
+Deleting {} of {}
+正在删除：{} / {}
+
+Deleting {}: {} of {}
+正在删除 {}：{} / {}
+
+Description
+描述
+
+Description removed
+已移除说明
+
+Description:
+描述：
+
+Deselect All Chats
+取消选择所有聊天
+
+Deselect All Conversations
+取消选择所有对话
+
+Deselect All Screens
+取消选择所有屏幕
+
+DeskCalc
+DeskCalc
+
+Deskbar
+Deskbar
+
+Deskbar clock
+Deskbar 时钟
+
+Deskbar shows: {}
+Deskbar 显示：{}
+
+Deskbar: a {} widget measured “{}”, which this computer hasn't; it measures {} instead.
+Deskbar：{} 小组件原本测量“{}”，此电脑没有这一项，已改为测量“{}”。
+
+Desktop (Preferences)
+桌面（偏好设置）
+
+Desktop Background
+桌面背景
+
+Desktop Colour
+桌面颜色
+
+Destination
+目标位置
+
+Details
+详细信息
+
+Device
+设备
+
+Dew point
+露点
+
+Dew point spread
+气温与露点之差
+
+Dew point spread {}
+气温与露点相差 {}
+
+Dew point {}
+露点 {}
+
+Diff
+Diff
+
+Dim the display while you look away
+移开视线时调暗显示器
+
+Disagree
+不同意
+
+Discard
+丢弃
+
+Discard Recording
+丢弃录制内容
+
+Discard the changes to this item?
+丢弃对此项的更改吗？
+
+Disconnect
+断开连接
+
+Disconnect Google Drive
+断开 Google Drive
+
+Disconnect Google Drive ({})? DiskBackup stops backing up there, and forgets its sign-in on this computer. The backups in your Drive stay as they are: connect again to go on from them, or to restore from them.
+断开 Google Drive（{}）吗？DiskBackup 将停止向该账户备份并移除本机的登录信息。Drive 中的备份会保留，重新连接即可继续备份或从中恢复。
+
+Disconnecting from Google Drive…
+正在断开 Google Drive…
+
+Disconnect…
+断开连接…
+
+Disk
+磁盘
+
+Disk Space
+磁盘空间
+
+Disk:
+磁盘：
+
+DiskBackup
+DiskBackup
+
+DiskBackup backs up to a Google account’s Drive through that account’s own app, which Olo makes once for each account you connect (Mail and Calendar sign in through it too). Connect yours in Preferences ▸ Integrations ▸ Google: it shows here as soon as it’s connected.
+DiskBackup 通过各 Google 账户专属的应用备份到其 Drive。每连接一个账户，Olo 只为它创建一次应用，Mail 和日历也使用它登录。请前往“偏好设置 ▸ 服务集成 ▸ Google”连接账户，完成后即可在此看到。
+
+DiskBackup backs up to its Drive and couldn’t stop: {}
+DiskBackup 正在向此账户的 Drive 备份，无法停止：{}
+
+DiskBackup copies your files, encrypted, every hour, and keeps older copies too, so any file can be brought back as it was. Where should the backups go?
+DiskBackup 每小时加密备份文件，也会保留旧版本，以便将文件恢复到过去的状态。备份要存在哪里？
+
+DiskBackup couldn’t: {}
+DiskBackup 操作失败：{}
+
+DiskBackup is disconnected from Google Drive on this computer: connect it again (Connect Google Drive…)
+本机的 DiskBackup 已断开 Google Drive。请选择“连接 Google Drive…”重新连接
+
+DiskBackup is setting up its backups in {}’s Google Drive…
+DiskBackup 正在 {} 的 Google Drive 中设置备份…
+
+DiskBackup is stopping its backups to Google Drive…
+DiskBackup 正在停止向 Google Drive 备份…
+
+DiskBackup isn't signed in to Google Drive on this computer: set it up again (Back Up To ▸ Google Drive…)
+本机的 DiskBackup 尚未登录 Google Drive。请在“备份到 ▸ Google Drive…”中重新设置
+
+DiskBackup isn’t running
+DiskBackup 未运行
+
+DiskBackup keeps its backups in a folder “{}” in that account’s Drive, which only Olo’s app for the account sees: nothing else of your Drive. Backups there already (another computer’s) are added to, with their key from Passwords.
+DiskBackup 将备份存放在该账户 Drive 的“{}”文件夹中。账户的 Olo 专属应用只能看到这个文件夹。如果已有其他电脑的备份，将从 Passwords 读取密钥并继续添加。
+
+DiskBackup: backed up at {}.
+DiskBackup：已于 {} 备份。
+
+DiskBackup: not backed up yet.
+DiskBackup：尚未备份。
+
+DiskBackup: not backing up ({}).
+DiskBackup：未在备份（{}）。
+
+DiskBackup: {}. Click to see how far it is.
+DiskBackup：{}。点击查看进度。
+
+DiskBackup: {}. Click to see more.
+DiskBackup：{}。点击查看详情。
+
+DiskBackup’s own app, from before. Bring it in for Mail and Calendar too; the backups stay put.
+这是原先的 DiskBackup 专属应用。导入后，Mail 和日历也可以使用它，备份仍在原处。
+
+DiskBackup…
+DiskBackup…
+
+DiskUsage
+DiskUsage
+
+Disks
+磁盘
+
+Display
+显示器
+
+Display {}: {}. Click to go to another display.
+显示器 {}：{}。点击切换到其他显示器。
+
+Displays
+显示器
+
+Divider
+分隔线
+
+Division by zero
+除以零
+
+Do I need sunscreen today?
+今天需要防晒吗？
+
+Do Not Disturb
+勿扰模式
+
+Do Not Disturb (for {n} more minutes)
+other: 勿扰模式（还剩 {n} 分钟）
+
+Do Not Disturb is on
+勿扰模式已开启
+
+Do Not Disturb is on — {} unread
+勿扰模式已开启 — {} 条未读
+
+Dockerfile
+Dockerfile
+
+Document
+文档
+
+Documentation
+文档
+
+Documents
+文档
+
+Does “{}” show this number?
+“{}”上显示的是这个号码吗？
+
+Domain:
+域：
+
+Don't Allow
+不允许
+
+Done
+完成
+
+Done Editing
+结束编辑
+
+Done with the exercises
+完成练习
+
+Don’t Trust
+不信任
+
+Double-press speed
+连按两次的速度
+
+Down (received)
+下行（接收）
+
+Down the Side
+沿侧边排列
+
+Download
+下载
+
+Download at most:
+最高下载速度：
+
+Download, Then Restart to Install
+下载后重启安装
+
+Downloading: {}
+正在下载：{}
+
+Downloading…
+正在下载…
+
+Drag with:
+拖移方式：
+
+Draw
+绘制
+
+Drawing
+绘图
+
+Drawn into each frame
+每帧重新绘制
+
+DriveSetup
+DriveSetup
+
+Drizzle
+毛毛雨
+
+Drizzle and freezing drizzle
+毛毛雨，伴有冻毛毛雨
+
+Drizzle and freezing rain
+毛毛雨，伴有冻雨
+
+Drizzle and ice pellets
+毛毛雨，伴有冰粒
+
+Drizzle and light snow
+毛毛雨，伴有小雪
+
+Drizzle and snow
+毛毛雨，伴有雪
+
+Drop on lift
+抬起时放下
+
+Dropped
+已丢弃
+
+Dry for the next {} hours
+未来 {} 小时无降水
+
+Duplicate
+复制
+
+Dutch
+荷兰语
+
+E
+东
+
+ENE
+东北偏东
+
+ESE
+东南偏东
+
+Each Network's Own
+使用各网络的设置
+
+Each above everything else, as it started (rtkit)
+各自保持启动时的最高优先级（rtkit）
+
+Each account
+每个账户
+
+Each agent screen keeps what was done on it and the frames it drew, to replay or export as a video. The oldest goes first.
+每个智能体屏幕都会保存操作记录和绘制的画面，以便回放或导出为视频。最早的记录会最先清除。
+
+Each cluster's cores change speed together; the governor decides how
+同一簇的核心一起变频，调频策略决定如何调节
+
+Each core ({})
+每个核心（{}）
+
+Each display has workspaces of its own.
+每台显示器都有自己的工作区。
+
+Each display is at its own best resolution and scale now: no rotation, mirroring, HDR or VRR, and night light off. Yours come back as you leave.
+各显示器已采用各自的最佳分辨率和缩放比例。旋转、镜像、HDR、VRR 和夜间模式均已关闭。退出时将恢复您的设置。
+
+Each display is drawn by the graphics it's wired to, so no frame crosses between them; the second sleeps while nothing uses it.
+每台显示器由与其相连的显卡绘制，因此无需在显卡之间传送画面。第二块显卡空闲时会休眠。
+
+Each display’s Deskbar keeps the workspace that display shows open; each other one is its heading, with an arrow that shows its applications and puts them away again, in that Deskbar alone.
+各显示器的 Deskbar 会展开本屏的当前工作区，其他工作区只显示标题。点击箭头可以在该 Deskbar 中展开或收起其应用列表。
+
+Each is judged from several signals together; a finding says how sure it is and why.
+综合多种信号判断。每项结果都会说明把握有多大，以及这样判断的原因。
+
+Each is the computer's, not this account's, so switching one asks for an administrator's password. Olo Doctor suggests each, with what was measured for it.
+这些设置对整台电脑生效，更改时需要管理员密码。Olo Doctor 会列出各项建议及相应的测量结果。
+
+Each kind of input in the last minute: how many, never which keys
+过去一分钟各类输入的次数，不记录具体按键
+
+Each kind opens in this app wherever you open it, in Olo and in other programs. Tracker's Open With ▸ Always Open With chooses too.
+无论从 Olo 还是其他程序打开，此类文件都会使用指定的应用。也可在 Tracker 的“打开方式 ▸ 始终以此方式打开”中选择。
+
+Each network's own
+使用各网络的设置
+
+Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
+设置后，各种验证方式可同时代替密码，用于 Passwords、Terminal 中的 sudo 和管理员请求。人脸和指纹还可用于锁屏和登录。先使用哪一种，就用哪一种验证。
+
+Each repository gets a folder in there: olo’s worktree fix-tabs goes in {}/olo/fix-tabs.
+每个仓库在此各有一个文件夹，例如 olo 的 fix-tabs 工作树位于 {}/olo/fix-tabs。
+
+Each setting tried shows here.
+试用过的各项设置会显示在这里。
+
+Each shows in the Deskbar as it changes. A click on one there opens its app: Activity Monitor, Token Pool or the app it’s from.
+各项数值会在 Deskbar 中实时显示。点击可打开相应的应用，如活动监视器或 Token Pool。
+
+Edge
+EDGE
+
+Edge to edge
+铺满边缘
+
+Edit
+编辑
+
+Edit Event…
+编辑日程…
+
+Edit Message
+编辑消息
+
+Edit Name
+编辑名称
+
+Edit Video…
+编辑视频…
+
+Editors’ swap and backup files
+编辑器的交换文件和备份文件
+
+Edit…
+编辑…
+
+Either AirPod
+任意一只 AirPod
+
+Eject
+弹出
+
+Elixir
+Elixir
+
+Email Account
+电子邮件账户
+
+Email Accounts
+电子邮件账户
+
+Emoji
+表情符号
+
+Empty
+空
+
+Empty Trash
+清倒废纸篓
+
+Empty the Collector
+清空收集器
+
+Emptying the Trash
+正在清倒废纸篓
+
+Enable Screen Saver
+启用屏幕保护程序
+
+Enclosing Folder
+上级文件夹
+
+Encode With
+编码方式
+
+Encode on:
+编码设备：
+
+Encrypt it with a passphrase
+使用口令加密
+
+End
+结束
+
+End Test
+结束测试
+
+Ended the test (process {}): its slots go back to the pool.
+测试已结束（进程 {}），其插槽已归还到池中。
+
+Ended the test (process {}, made up).
+测试已结束（进程 {}，模拟数据）。
+
+Ends a turn going on; Codex’s windows reconnect.
+结束当前轮次；Codex 窗口会重新连接。
+
+Ends:
+结束：
+
+English (Australia)
+英语（澳大利亚）
+
+English (UK)
+英语（英国）
+
+English (US)
+英语（美国）
+
+Enhancements
+增强功能
+
+Enrolling didn't finish.
+未完成录入。
+
+Enrolling your {}
+正在录入{}
+
+Enter Full Screen
+进入全屏
+
+Enter the password for “{}” to unlock it.
+输入“{}”的密码以解锁。
+
+Entire disk
+整个磁盘
+
+Entries
+条目
+
+Erase All Backups…
+抹掉所有备份…
+
+Erase every backup in {}? Every version of every file kept there goes (another computer’s backups there too), and the space is freed. {} It can’t be undone.
+抹掉 {} 中的所有备份吗？所有文件的所有版本（包括其他电脑的备份）都将删除，占用的空间会释放。{} 此操作无法撤销。
+
+Erasing every backup
+正在抹掉所有备份
+
+Erasing every backup, to start fresh
+正在抹掉所有备份以便重新开始
+
+Erasing goes on by itself once it’s back, from where it got to.
+重新连接后会自动从中断处继续抹除。
+
+Erlang
+Erlang
+
+Ethernet
+Ethernet
+
+Even Columns
+均分列宽
+
+Even Out the Voice's Level
+均衡人声音量
+
+Even With the Lid Closed
+合上盖子时也启用
+
+Even out the voice's level
+均衡人声音量
+
+Events:
+日程：
+
+Every 2 Weeks
+每两周
+
+Every 2 weeks
+每两周
+
+Every Counter
+所有计数器
+
+Every Day
+每天
+
+Every Month
+每月
+
+Every Week
+每周
+
+Every Weekday
+每个工作日
+
+Every Year
+每年
+
+Every backup from the last hour, then {} and {}.
+保留过去一小时的每个备份，更早的按以下方式保留：{}、{}。
+
+Every backup from the last hour, then {}.
+保留过去一小时的每个备份，更早的按以下方式保留：{}。
+
+Every backup from the last hour; older ones go.
+保留过去一小时的每个备份，更早的将删除。
+
+Every byte read back and checked, from {}.
+已从 {} 读回全部数据并逐字节核对。
+
+Every day
+每天
+
+Every day at set times
+每天定时
+
+Every disk
+所有磁盘
+
+Every frame on time this last minute
+过去一分钟每帧都按时显示
+
+Every interface
+所有接口
+
+Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
+每次按键和每一帧画面都经过窗口服务器的主循环和输入线程。启用后，它们将独占速度最快的处理器之一（{}）。构建、浏览器及其他程序在其余处理器上运行，因此不会耽误输入和绘制。
+
+Every month
+每月
+
+Every week
+每周
+
+Every weekday
+每个工作日
+
+Every year
+每年
+
+Every {n} days
+other: 每 {n} 天
+
+Every {n} months
+other: 每 {n} 个月
+
+Every {n} weeks
+other: 每 {n} 周
+
+Every {n} years
+other: 每 {n} 年
+
+Everything
+全部
+
+Everything Else
+其他所有内容
+
+Everything else's brightness
+其他内容的亮度
+
+Everything it needs looked for, in {}.
+已在 {} 中检查所有必需数据。
+
+Export
+导出
+
+Export Flattened PDF…
+导出扁平化 PDF…
+
+Export Video
+导出视频
+
+Export Video…
+导出视频…
+
+Export cancelled.
+已取消导出。
+
+Export…
+导出…
+
+Expression
+表达式
+
+Extended desktop
+扩展桌面
+
+Extensions
+扩展名
+
+Extensions:
+扩展名：
+
+Extra High
+极高
+
+Extract All
+全部解压
+
+Extract Here
+解压到此处
+
+Extract Selected To…
+将所选项目解压到…
+
+Extract Selected…
+解压所选项目…
+
+Extract To…
+解压到…
+
+Extreme
+极高
+
+FD
+FD
+
+Fable 5.1
+Fable 5.1
+
+Face Unlock
+人脸解锁
+
+Face unlock is installed only in the person's own session (polkit asks there).
+只能在用户自己的会话中安装人脸解锁，polkit 会在那里请求授权。
+
+Face unlock isn't installed.
+尚未安装人脸解锁。
+
+Face unlock wasn't installed: {}
+未能安装人脸解锁：{}
+
+Face unlock wasn't removed: {}
+未能移除人脸解锁：{}
+
+Face unlock's service isn't in this build (build the whole workspace).
+此构建不含人脸解锁服务（请构建整个工作区）。
+
+Face unlock's service isn't in this build.
+此构建不含人脸解锁服务。
+
+Fade
+淡出
+
+Fade Colors
+淡化颜色
+
+Fahrenheit (°F)
+Fahrenheit (°F)
+
+Fan Out
+扇形排列
+
+Fan Out Others
+扇形排列其他窗口
+
+Fan level {}
+风扇档位 {}
+
+Fan level {} · {}
+风扇档位 {} · {}
+
+Fans
+风扇
+
+Fast
+快
+
+Fast when there is work, frugal when there isn't, the processors kept out of their hottest top speed. The usual choice.
+有任务时快速响应，空闲时省电，避免处理器进入发热最高的频段。适合日常使用。
+
+Faster
+更快
+
+Fastest
+最快
+
+Fastmail
+Fastmail
+
+Fastmail didn’t take the address and app password: {}
+Fastmail 拒绝了此地址和应用密码：{}
+
+Favorites
+收藏
+
+Favoured
+优先
+
+Fedora
+Fedora
+
+Fedora {} is out too: after this upgrade, the next.
+Fedora {} 也已发布。完成本次升级后可继续升级。
+
+Fedora {} is out.
+Fedora {} 已发布。
+
+Fedora’s list of releases couldn’t be read: {}
+无法读取 Fedora 版本列表：{}
+
+Feels like
+体感温度
+
+Feels like {}
+体感 {}
+
+Feet
+英尺
+
+Fetching the forecast…
+正在获取天气预报…
+
+Fetching…
+正在获取…
+
+Field
+字段
+
+File
+文件
+
+File system:
+文件系统：
+
+Files
+文件
+
+Files with these extensions are this kind wherever Olo looks at them, and open in its app. An extension another kind had is this one's now.
+Olo 会根据这些扩展名识别文件类型，并用相应应用打开。如果某个扩展名已分配给其他类型，现在将改为此类型。
+
+Fill It In
+填入
+
+Find
+查找
+
+Find Again
+再次查找
+
+Find Previous
+查找上一个
+
+Find Selection
+查找所选内容
+
+Find a free hour this week
+查找本周空闲的一小时
+
+Find an app
+查找应用
+
+Find in document
+在文稿中查找
+
+Find:
+查找：
+
+Finding the server…
+正在查找服务器…
+
+Find…
+查找…
+
+Fine-tuned on your newest commands a minute after you type them
+输入命令一分钟后，用最近的命令微调模型
+
+Finger
+手指
+
+Fingerprints can only be changed from a session logged in at this computer.
+只能在这台电脑上直接登录的会话中更改指纹。
+
+Fingers moving
+移动时的手指
+
+Fingers scrolling
+滚动时的手指
+
+Fingers taken for palms
+误判为手掌的手指
+
+Finishing sending a pack: {} of {}
+正在完成数据包的发送：{} / {}
+
+Finishing the backup
+正在完成备份
+
+Finishing what’s being sent, then keeping what’s done.
+正在传完当前数据，随后会保存已完成的部分。
+
+Finnish
+芬兰语
+
+Firm
+硬
+
+Firmer
+更用力
+
+Firmware curve
+固件曲线
+
+First Page
+第一页
+
+First, as the main window
+排在首位，作为主窗口
+
+Fish
+Fish
+
+Fit Page
+适合页面
+
+Fit Page Width
+适合页面宽度
+
+Fit Width
+适合宽度
+
+Fix
+修复
+
+Fix in Olo Doctor…
+在 Olo Doctor 中修复…
+
+Flip Horizontal
+水平翻转
+
+Flip Vertical
+垂直翻转
+
+Float Window
+浮动窗口
+
+Float Window Group
+浮动窗口组
+
+Flurries
+零星小雪
+
+Focus
+专注
+
+Focus follows the pointer
+焦点跟随指针
+
+Fog
+雾
+
+Fog likely · spread {}
+可能有雾 · 气温与露点相差 {}
+
+Folder
+文件夹
+
+Folders and files, separated by commas: ~/ is your home folder, **/ anywhere, * any name.
+文件和文件夹用逗号分隔。~/ 表示主文件夹，**/ 表示任意位置，* 匹配任意名称。
+
+Folders by Name, Files by Date
+文件夹按名称，文件按日期
+
+Follows Other Mice below. Recommended for it: {}.
+跟随下方“其他鼠标”设置。此设备的建议值为{}。
+
+Font
+字体
+
+For
+持续时间
+
+For Every Link
+用于所有连接
+
+For ever
+永久
+
+For finding out why
+用于查找原因
+
+For the mice set to follow the others, and any you connect.
+适用于已设为跟随其他鼠标的设备，以及新连接的鼠标。
+
+For {} · process {}
+已运行 {} · 进程 {}
+
+For:
+时长：
+
+Force End
+强制结束
+
+Force Quit {} Processes…
+强制退出 {} 个进程…
+
+Force Quit…
+强制退出…
+
+Force {} processes to quit ({})? Any unsaved work in them will be lost.
+强制退出 {} 个进程（{}）吗？其中未保存的工作将丢失。
+
+Force “{}” ({}) to quit? Any unsaved work in it will be lost.
+强制退出“{}”（{}）吗？其中未保存的工作将丢失。
+
+Forecasts from {}
+预报来源：{}
+
+Forever
+永久
+
+Forget
+忘记
+
+Forget My Model
+删除我的模型
+
+Forget Saved Group
+移除已保存的组
+
+Forget…
+忘记…
+
+Forgot {}: pair with it again to use it.
+已忘记 {}。要再次使用，请重新配对。
+
+Form
+表单
+
+Format:
+格式：
+
+Formats
+格式
+
+Format…
+格式化…
+
+Forward
+前进
+
+Forwarded from {}
+转发自 {}
+
+Forward…
+转发…
+
+Found as {}. Leave it empty for that name.
+检测到名称“{}”。留空即可使用此名称。
+
+Four fingers
+四指
+
+Free
+空闲
+
+Free (open source)
+自由软件（开源）
+
+Freeing the space only backups past keeping took, in {}.
+正在 {} 中释放仅由过期备份占用的空间。
+
+Freezing
+冰冻
+
+Freezing drizzle
+冻毛毛雨
+
+Freezing rain
+冻雨
+
+Freezing rain and heavy ice pellets
+冻雨，伴有强冰粒
+
+Freezing rain and ice pellets
+冻雨，伴有冰粒
+
+French
+法语
+
+French (Canada)
+法语（加拿大）
+
+Frequencies
+频率
+
+From
+从
+
+From the network
+来自网络
+
+From your next login, Passwords can be ssh’s agent here too.
+从下次登录起，Passwords 也可在这里充当 SSH 代理。
+
+From {}
+从 {} 起
+
+From {} to {}
+从 {} 到 {}
+
+From:
+从：
+
+Full access couldn't be asked for. {}
+无法请求完全访问权限。{}
+
+Full speed
+全速
+
+GPU
+GPU
+
+GPU:
+GPU:
+
+GPUs are tuned only in the person's own session (polkit asks there).
+只能在用户自己的会话中调节 GPU，polkit 会在那里请求授权。
+
+Game saves
+游戏存档
+
+Gaps
+间距
+
+Generator
+生成器
+
+Gently, below my own work
+低优先级，不打扰当前工作
+
+German
+德语
+
+Gestures
+手势
+
+Get Full Access…
+获取完全访问权限…
+
+Get Info
+显示简介
+
+Getting ready
+正在准备
+
+Getting the sensor ready…
+正在准备传感器…
+
+Git Worktrees
+Git 工作树
+
+GitHub
+GitHub
+
+GitHub answered {}
+GitHub 响应：{}
+
+GitHub answered {}.
+GitHub 响应：{}。
+
+GitHub couldn’t be reached ({}).
+无法连接 GitHub（{}）。
+
+GitHub didn’t take the token: it may have expired or been revoked.
+GitHub 拒绝了令牌。令牌可能已过期或被撤销。
+
+Give a new key
+提供新密钥
+
+Give it a name.
+请为其命名。
+
+Glide
+滑行距离
+
+Glow new windows for
+新窗口高亮时长
+
+Go
+跳转
+
+Go to
+转到
+
+Go to End
+前往末尾
+
+Go to File or Folder…
+前往文件或文件夹…
+
+Go to:
+前往：
+
+Going:
+将执行：
+
+Good. Lift, and touch again, a little differently.
+很好。请抬起手指，稍微换个角度再触摸。
+
+Good. Now lift it.
+很好。请抬起手指。
+
+Good. Now lift your hand.
+很好。请抬起手。
+
+Google
+Google
+
+Google (8.8.8.8)
+Google (8.8.8.8)
+
+Google Cloud Console…
+Google Cloud 控制台…
+
+Google Drive
+Google Drive
+
+Google account’s login:
+Google 账户的登录项：
+
+Google and Fastmail accounts for Mail (Integrations) are looked in too.
+还会检查在“服务集成”中为 Mail 设置的 Google 和 Fastmail 账户。
+
+Google no longer takes its sign-in: sign in again.
+Google 不再接受现有的登录凭据，请重新登录。
+
+Got it. Touch the key once more: its light is blinking again.
+已确认。密钥指示灯又开始闪烁了，请再触摸一次。
+
+Governor:
+调频策略：
+
+Go’s downloaded modules and build cache
+Go 下载的模块和构建缓存
+
+Gradle’s and Maven’s downloads and caches
+Gradle 和 Maven 的下载内容及缓存
+
+Graph
+图表
+
+Graph shows:
+图表显示：
+
+Graphics
+图形
+
+Graphs
+图表
+
+Graphs Show
+图表显示内容
+
+Gray
+灰色
+
+Green
+绿色
+
+Green:
+绿色：
+
+Grid
+网格
+
+Group
+组
+
+Group Windows
+将窗口分组
+
+Growing for
+持续增长时间
+
+Guests:
+受邀者：
+
+Gusts
+阵风
+
+Gusts {}
+阵风 {}
+
+H.264 (plays everywhere)
+H.264（兼容性好）
+
+H.264 (plays everywhere, on the processor)
+H.264（兼容性好，使用 CPU）
+
+H.264 (plays everywhere, on {})
+H.264（兼容性好，使用 {}）
+
+HDR needs a setting at the computer's start: Olo Doctor offers it (“The built-in display's HDR is off”).
+HDR 需要在电脑启动时应用一项设置。可在 Olo Doctor 的“内置显示器的 HDR 已关闭”中设置。
+
+HDR video and pictures shine up to {} cd/m²; everything else is shown this bright.
+HDR 视频和图片的峰值亮度可达 {} cd/m²，其他内容按此亮度显示。
+
+HEVC (about half the size)
+HEVC（体积约减半）
+
+HTML
+HTML
+
+Haiku 5.5
+Haiku 5.5
+
+Halves
+二等分
+
+Hang Up
+挂断
+
+Hard
+硬限制
+
+Hardware
+硬件
+
+Hardware Address: {}
+硬件地址：{}
+
+Hardware address:
+硬件地址：
+
+Haskell
+Haskell
+
+Header & Footer…
+页眉与页脚…
+
+Header Row
+表头行
+
+Heading 1
+标题 1
+
+Heading 2
+标题 2
+
+Heading 3
+标题 3
+
+Heading 4
+标题 4
+
+Heading 5
+标题 5
+
+Heading 6
+标题 6
+
+Headless
+无头模式
+
+Health
+健康状况
+
+Health: {}% of original capacity
+健康度：初始容量的 {}%
+
+Heatmap
+热力图
+
+Heavy freezing rain
+强冻雨
+
+Heavy ice pellets
+强冰粒
+
+Heavy rain
+大雨
+
+Heavy sleet
+强雨夹雪
+
+Heavy snow
+大雪
+
+Hectopascals
+百帕
+
+Height
+高度
+
+Held by builds
+构建占用
+
+Held by the server
+受服务器限制
+
+Hidden and ignored files
+隐藏及已忽略的文件
+
+Hide
+隐藏
+
+Hide All
+全部隐藏
+
+Hide Chat List
+隐藏聊天列表
+
+Hide Deskbar
+隐藏 Deskbar
+
+Hide List
+隐藏列表
+
+Hide Others
+隐藏其他
+
+Hide Tab When Tiled
+平铺时隐藏标题标签
+
+Hide or show Deskbar
+隐藏或显示 Deskbar
+
+High
+高
+
+High dynamic range (HDR)
+高动态范围（HDR）
+
+High {}, low {}
+最高 {}，最低 {}
+
+Highest clock
+最高频率
+
+History
+历史记录
+
+Hits
+命中次数
+
+Hold Fn (🌐) for F1 to F12.
+按住 Fn（🌐）即可使用 F1 至 F12。
+
+Hold duration:
+按住时长：
+
+Hold it there…
+请保持不动…
+
+Hold the microphone button down while you speak, or click it to record until you click Send.
+说话时按住麦克风按钮，也可以点一下开始录制，录完后点“发送”。
+
+Holding at least
+至少占用
+
+Holds
+满充容量
+
+Home
+主文件夹
+
+Hosts
+主机
+
+Hotspot
+热点
+
+Hours:
+小时数：
+
+How cloudy will it be today?
+今天云多吗？
+
+How cloudy will it be tomorrow?
+明天云多吗？
+
+How cold will it get tonight?
+今晚最低能到几度？
+
+How fast it runs now
+当前运行速度
+
+How loud this microphone is gets measured as you talk on a call, or with Try It.
+通话时说话或选择“试一试”，即可测量此麦克风的输入音量。
+
+How warm will it get today?
+今天最高能到几度？
+
+How windy will it be today?
+今天风大吗？
+
+How windy will it be tomorrow?
+明天风大吗？
+
+How’s the weekend looking?
+周末天气怎么样？
+
+Humidity
+湿度
+
+Humidity and pressure ({})
+湿度与气压（{}）
+
+I/O Pressure
+I/O 压力
+
+ID
+ID
+
+INI
+INI
+
+IP Address: {}
+IP 地址：{}
+
+IP address:
+IP 地址：
+
+Ice pellets
+冰粒
+
+Icon View
+图标视图
+
+Icons
+图标
+
+Id
+Id
+
+Identify
+识别
+
+Identity
+身份
+
+Identity:
+身份：
+
+Idle
+空闲
+
+Idle States
+空闲状态
+
+Idle: the middle of {} round trips
+空闲时：{} 次往返的中位数
+
+If it does, confirm here, and on the phone too.
+如果一致，请在这里和手机上分别确认。
+
+If nothing shows on the touchpad, your shirt doesn't reach it: press Space to skip this.
+如果触控板没有反应，说明衣袖碰不到它。按空格键跳过。
+
+Ignore
+忽略
+
+Ignore Spelling
+忽略拼写
+
+Ignore This Process
+忽略此进程
+
+Ignore hovering fingers and palms
+忽略悬停的手指和手掌
+
+Ignore the touchpad while the pointing stick is used
+使用指点杆时停用触控板
+
+Ignore the touchpad while typing
+打字时停用触控板
+
+Image
+图像
+
+Immediately needs a small helper that only the administrator can install. Until it's installed, Immediately restarts or shuts down as Restart and Shut Down do.
+“立即”操作需要一个只能由管理员安装的辅助程序。在安装前，立即重启和关机仍按普通重启和关机的方式执行。
+
+Import
+导入
+
+Import WireGuard…
+导入 WireGuard…
+
+Imported {}{}{}. Apps that are open take some settings when they next start.{}
+已导入{}{}{}。已打开的应用会在下次启动时应用部分设置。{}
+
+Import…
+导入…
+
+In Google Cloud, signed in as the account, make its app, “Olo (its address)”:
+用此账户登录 Google Cloud，为它创建名为“Olo（账户地址）”的应用：
+
+In HDR on a display whose HDR is on: its lights shine brighter than the rest.
+在已开启 HDR 的显示器上，画面中的高光比其他部分更亮。
+
+In Use for Internet Traffic
+用于互联网流量
+
+In an agent’s tab:
+在智能体标签页中：
+
+In its own way
+使用自身方式
+
+In place of the blue dot of its notifications, for as long as the app says something is unread or waiting in it.
+只要应用报告有未读或待办事项，就以此替代通知的蓝点。
+
+In the Scratchpad
+在暂存区
+
+In the Tray
+在托盘中
+
+In the archive
+在归档文件中
+
+In the command palette, type /ask and a question: the answer shows there with code to copy (its number, then Return). Space asks a follow-up.
+在命令面板中输入 /ask 和问题，答案会显示在面板中。输入代码的编号并按回车即可复制，按空格键可继续提问。
+
+In the emoji picker ({}), describe what you want to say and press ⌘↩ for five emoji that say it.
+在表情符号选取器（{}）中描述想表达的意思，按 ⌘↩ 即可获得五个合适的表情。
+
+In the emoji picker, describe what you want to say and press ⌘↩ for five emoji that say it.
+在表情符号选取器中描述想表达的意思，按 ⌘↩ 即可获得五个合适的表情。
+
+In the tray it's an icon's size; its name and value are in its tip.
+在托盘中仅占一个图标的位置，悬停即可查看名称和值。
+
+In use
+使用中
+
+In use, with the weights it began from (not fine-tuned yet), on the {}.
+正在 {} 上使用初始权重（尚未微调）。
+
+In use: Olo's own for a {}, made from {} touches of real hands on one; it caught {}% of palms and took {}% of fingers for palms. Train for Your Palm fits it to yours.
+当前使用 Olo 自带的 {} 模型，由真实用户在同款设备上的 {} 次触摸训练而成。它识别出了 {}% 的手掌触摸，并将 {}% 的手指触摸误判为手掌。选择“训练手掌识别”可使其更适合您。
+
+In use: yours, trained {} on {} touches; on touches kept back it caught {}% of palms and took {}% of fingers for palms.
+当前使用您的模型，于 {} 用 {} 次触摸训练。在留出的测试样本中，识别出了 {}% 的手掌触摸，并将 {}% 的手指触摸误判为手掌。
+
+In {n} days
+other: {n} 天后
+
+In {n} hours
+other: {n} 小时后
+
+In {n} minutes
+other: {n} 分钟后
+
+In {}, on a new branch of its name{}.
+位于 {}，使用与其同名的新分支{}。
+
+In {}, on a new branch, {}, from {}.
+位于 {0}，使用从 {2} 创建的新分支 {1}。
+
+In {}, on a new branch, {}.
+位于 {}，使用新分支 {}。
+
+In {}, on its branch, {}.
+位于 {}，使用现有分支 {}。
+
+In:
+位置：
+
+Inches
+英寸
+
+Inches of Mercury
+英寸汞柱
+
+Include passwords and sign-ins, sealed with a password
+包含密码和登录信息，使用密码加密
+
+Incoming call
+来电
+
+Incomplete expression
+表达式不完整
+
+Indent Less
+减少缩进
+
+Indent More
+增加缩进
+
+Ink Colour
+墨迹颜色
+
+Input
+输入
+
+Input level
+输入电平
+
+Inputs
+输入
+
+Insert
+插入
+
+Insert Picture…
+插入图片…
+
+Insert Table
+插入表格
+
+Inspect
+检查
+
+Inspect Parent
+检查父进程
+
+Install Now
+现在安装
+
+Install When Restarting
+重启时安装
+
+Install from:
+安装来源：
+
+Install just
+仅安装
+
+Install the Helper…
+安装辅助程序…
+
+Installed
+已安装
+
+Install…
+安装…
+
+Integrated GPU (VA-API)
+集成 GPU（VA-API）
+
+Integrations
+服务集成
+
+Intel GPU (VA-API)
+Intel GPU (VA-API)
+
+Interface:
+接口：
+
+Interrupts
+中断
+
+Invalid one-time password secret
+一次性密码的密钥无效
+
+Invert Selection
+反选
+
+Invite:
+邀请：
+
+It Matches
+号码一致
+
+It backs up once the computer is connected by a cable. {}. {}.
+电脑接入有线网络后会开始备份。{}。{}。
+
+It backs up once the computer is plugged in. {}. {}.
+电脑接通电源后会开始备份。{}。{}。
+
+It couldn’t be fetched: {}
+无法获取：{}
+
+It couldn’t be read: {}
+无法读取：{}
+
+It didn't work.
+未成功。
+
+It didn’t open: {}.
+未能打开：{}。
+
+It downloads {}
+需下载 {}
+
+It goes on once there’s one. {}. {}.
+网络可用后会自动继续。{}。{}。
+
+It has no [repository] in it.
+文件中没有 [repository] 段。
+
+It has the active window: never lowered while it does.
+它拥有当前活动窗口，因此不会降低其优先级。
+
+It isn't a WireGuard configuration: {}.
+这不是 WireGuard 配置：{}。
+
+It lasts until it's turned off, the link goes away or the computer restarts. Changing it asks for an administrator's password once while this window is open.
+设置在关闭、连接断开或电脑重启前有效。在此窗口打开期间，只需输入一次管理员密码即可更改。
+
+It learned from {} of your touches, but app_server didn't keep it: it's likely older than this Preferences. Upgrade Olo (the new build in Deskbar's tray), then train again.
+已用您的 {} 次触摸完成训练，但 app_server 未保存结果。其版本可能早于当前的偏好设置。请在 Deskbar 托盘中升级 Olo，然后重新训练。
+
+It needs at least three palms and three fingers among the touches it learns from. Train again and do each exercise as its film shows.
+训练样本中至少要有三次手掌触摸和三次手指触摸。请参照各项练习的演示重新训练。
+
+It plays at a quarter of full volume, whatever yours is set to, and not while the sound is muted.
+无论当前音量如何，都会以最大音量的四分之一播放。静音时不会播放。
+
+It takes only what nothing else wants, the processor’s time and the disk’s: never in your way, though slower while you work.
+只使用空闲的 CPU 时间和磁盘资源。您工作时它会慢一些，但不会妨碍其他任务。
+
+It was run by {} in {}.
+由 {0} 在 {1} 中运行。
+
+It was run by {}.
+由 {} 运行。
+
+It wasn't forgotten ({}).
+未能忘记此设备（{}）。
+
+It wasn't set up ({}).
+未能完成设置（{}）。
+
+It's in use now, in place of Olo's own.
+现已使用此模型代替 Olo 自带的模型。
+
+Italian
+意大利语
+
+Italic
+斜体
+
+Item
+项目
+
+Its app password isn’t in the keyring: remove it and add it again.
+密钥环中没有此账户的应用密码，请移除账户后重新添加。
+
+Its click is its own: a resting palm can't press.
+点击需要手指主动按下，放在触控板上的手掌不会触发。
+
+Its decoder, on its battery preset (Power Modes), costs less than the processor's cores; off, the processor decodes on battery.
+使用电池预设（见“电源模式”）时，其解码器比 CPU 核心更省电。关闭此项后，电池供电时将使用 CPU 解码。
+
+Its file, {}, is removed
+将移除其文件 {}
+
+Its folder becomes {}, and its branch, {}, takes the new name too.
+文件夹将改名为 {0}，其分支 {1} 也将采用新名称。
+
+Its folder becomes {}; its branch stays as it is.
+文件夹将改名为 {}，分支名保持不变。
+
+Its key is damaged.
+密钥已损坏。
+
+Its key isn't in this login keyring: it opens only on the computer that made it.
+登录密钥环中没有此密钥，只能在创建它的电脑上打开。
+
+Its own
+使用自身设置
+
+Its own sensor
+自带传感器
+
+Its packager wrote nothing.
+打包者未提供说明。
+
+Its packages’ signatures aren’t checked.
+不检查此软件源的软件包签名。
+
+Its password isn’t in the keyring: remove it and add it again.
+密钥环中没有此账户的密码，请移除账户后重新添加。
+
+Its power limit is the computer's to set, as a laptop's is.
+功耗上限由电脑本身设定，与笔记本电脑一样。
+
+Its release packages are installed: they add its repositories and keys.
+已安装其发行配置包，相关软件源和密钥也已添加。
+
+Its secret reference, as Passwords’ Copy Secret Reference gives it. Passwords asks once, while it runs, whether Weather may have it.
+在 Passwords 中选择“复制密钥引用”获取此引用。每次运行 Passwords 时，只会询问一次是否允许 Weather 访问。
+
+Its service starts with your session: log out and in again, or ask Olo Doctor to start it.
+此服务随会话启动。请退出后重新登录，或在 Olo Doctor 中启动它。
+
+Its sign-in isn’t in the keyring: sign in again.
+密钥环中没有登录信息，请重新登录。
+
+Its vault is gone from 1Password
+它所属的保险库已不在 1Password 中
+
+Its versions can’t be read: {}.
+无法读取版本：{}。
+
+Its work starts sooner, but it never sleeps: more power, more warmth.
+工作能更快开始，但设备始终不会休眠，耗电和发热都会增加。
+
+Its {n} items too
+other: 以及其中的 {n} 个项目
+
+Its {n} tabs close.
+other: 其中的 {n} 个标签页将关闭。
+
+It’s Different
+号码不同
+
+It’s archived in 1Password, which doesn’t let other apps read archived items.
+此项已在 1Password 中归档。1Password 不允许其他应用读取已归档的项目。
+
+It’s kept in Passwords as “{}”, and nowhere else.
+仅存放在 Passwords 中，名称为“{}”。
+
+It’s no longer in 1Password.
+1Password 中已无此项。
+
+It’s the newest release: there’s nothing to upgrade to.
+已是最新版本，无需升级。
+
+JSON
+JSON
+
+Japanese
+日语
+
+Java
+Java
+
+JavaScript
+JavaScript
+
+JavaScript packages and build output
+JavaScript 包与构建产物
+
+Jitter:
+抖动：
+
+Join
+加入
+
+Journal
+日志
+
+Judged
+判定结果
+
+Julia
+Julia
+
+Just This Time
+仅限本次
+
+Justify
+两端对齐
+
+Kache
+Kache
+
+Kache: Build Cache
+Kache：构建缓存
+
+Keep HDR on for {}?
+为 {} 保持 HDR 开启吗？
+
+Keep It Going
+继续工作
+
+Keep It Going says
+继续工作提示语
+
+Keep It Going says:
+继续工作提示语：
+
+Keep It Going, in a tab’s menu, types this to the coding agent in the tab when it has stopped: after two quiet minutes, at most once an hour. Left empty, it says “Please continue”.
+在标签页菜单中启用“继续工作”后，如果编程智能体停下来两分钟，便会向它输入以下文字，每小时最多一次。留空时发送“Please continue”。
+
+Keep Key in Passwords
+将密钥存入 Passwords
+
+Keep Only on This Computer
+仅在本机保留
+
+Keep Them Off
+保持关闭
+
+Keep a core for the window server
+为窗口服务器预留一个核心
+
+Keep briefly
+短暂保留
+
+Keep foreground work ready between bursts. Fans start sooner.
+让前台任务在间歇后也能立即响应。风扇会更早提速。
+
+Keep it in Passwords
+存入 Passwords
+
+Keep its driver ready
+让驱动保持就绪
+
+Keep palms from moving the pointer
+防止手掌移动指针
+
+Keep proportions
+保持比例
+
+Keep scrolling after a flick
+轻扫后继续滚动
+
+Keep the Desktop Responsive
+保持桌面流畅
+
+Keep the desktop responsive
+保持桌面流畅
+
+Keep the new resolution of {}?
+保留 {} 的新分辨率吗？
+
+Keep typing…
+继续输入…
+
+Keep until tapped
+保留到点按为止
+
+Keep up to:
+最多保留：
+
+Keep windows' graphics memory out of swap
+防止窗口显存被换出
+
+Keeping it in Passwords…
+正在存入 Passwords…
+
+Keeping the key in Passwords (unlock it if it asks)…
+正在将密钥存入 Passwords（如有提示，请解锁）…
+
+Keeping what’s done…
+正在保存已完成的部分…
+
+Kept
+已保留
+
+Kept Core
+预留核心
+
+Kept for this computer and set again at every start.
+已为本机保存，每次启动时都会重新应用。
+
+Kept in step with network time servers.
+与网络时间服务器保持同步。
+
+Kept on this computer.
+已存储在本机。
+
+Kept on this computer; made in 1Password once you sync an account.
+已存储在本机；同步账户时会在 1Password 中创建。
+
+Kernel
+内核
+
+Kernel:
+内核：
+
+Key
+密钥
+
+Key Repeat
+按键重复
+
+Key password:
+密钥密码：
+
+Key {} trusted.
+已信任密钥 {}。
+
+Keyboard
+键盘
+
+Keyboard Hints
+键盘提示
+
+Keyboard Profile
+键盘配置
+
+Keyboard Shortcuts
+键盘快捷键
+
+Keyboard: the Mac profile came along, ⌘ on the Super key (the Windows key on most PC keyboards). Preferences ▸ Keyboard picks another for this keyboard.
+键盘：已导入 Mac 配置。⌘ 位于 Super 键（通常是 PC 键盘的 Windows 键）。可在“偏好设置 ▸ 键盘”中为这把键盘另选配置。
+
+Keyboards
+键盘
+
+Keys
+按键
+
+Key’s PIN:
+密钥 PIN：
+
+Kilometres
+千米
+
+Kilometres an Hour
+千米/小时
+
+Kind
+类型
+
+Kind:
+类型：
+
+Knots
+节
+
+Knows
+已学会
+
+Kotlin
+Kotlin
+
+LAVD
+LAVD
+
+LTE
+LTE
+
+Language
+语言
+
+Language & Region
+语言与地区
+
+Large
+大
+
+Larger
+更大
+
+Larger Pointer
+放大指针
+
+Last
+上次
+
+Last Page
+最后一页
+
+Last backed up whole {}
+上次完整备份：{}
+
+Last backed up {}
+上次备份：{}
+
+Last clean-up
+上次清理
+
+Last used
+上次使用
+
+Last: {}, {} new or changed, {} new, took {}.
+上次：{}，新增或更改 {}，其中新增 {}，用时 {}。
+
+Lately
+最近
+
+Latency
+延迟
+
+Later: until more is waiting
+稍后：等待更多项目
+
+Layout:
+布局：
+
+Leaking memory
+内存泄漏
+
+Learn Spelling
+学习拼写
+
+Learned {} from {} examples in {}, but did no better on your newest commands, so it kept what it had: its first suggestion right {} of the time.
+训练时间：{0}。使用 {1} 个样本，耗时 {2}。最近命令的预测效果没有改善，因此保留了原模型，首选建议准确率为 {3}。
+
+Learned {} from {} examples in {}: its first suggestion is right {} of the time on your newest commands ({} before).
+训练时间：{0}。使用 {1} 个样本，耗时 {2}。最近命令的首选建议准确率为 {3}（此前为 {4}）。
+
+Learned {} from {} examples in {}: its first suggestion is right {} of the time on your newest commands.
+训练时间：{0}。使用 {1} 个样本，耗时 {2}。最近命令的首选建议准确率为 {3}。
+
+Learning
+学习
+
+Learning from your history…
+正在从历史记录学习…
+
+Leave Out What Can Be Downloaded or Built Again
+排除可重新下载或构建的内容
+
+Leave Rescue
+退出救援模式
+
+Leave the DNS servers empty to use the network's. DNS servers set for every link (the DNS tab) take the place of these.
+留空即可使用网络提供的 DNS 服务器。如果在“DNS”标签页为所有连接指定了服务器，则优先使用那些服务器。
+
+Leaving zombies
+留下僵尸进程
+
+Left
+左
+
+Left Half
+左半部分
+
+Left Third
+左侧三分之一区域
+
+Left Two Thirds
+左侧三分之二区域
+
+Left out, as dnf wouldn’t take it: {}. ({})
+dnf 不接受，已略过：{}。（{}）
+
+Left out, as dnf wouldn’t take them: {}. ({})
+dnf 不接受，已略过：{}。（{}）
+
+Left to the firmware for now
+暂由固件控制
+
+Left-handed (swap the buttons)
+左手使用（交换左右键）
+
+Length
+长度
+
+Less noise
+降低噪声
+
+Let coding agents keep their tab’s title current
+允许编程智能体更新标签页标题
+
+Letting go of backups past keeping
+正在清理已过期的备份
+
+Level
+等级
+
+Level evened out
+已均衡音量
+
+Level not evened out
+未均衡音量
+
+Light
+浅色
+
+Light fog
+薄雾
+
+Light freezing rain
+小冻雨
+
+Light ice pellets
+少量冰粒
+
+Light rain
+小雨
+
+Light rain and freezing drizzle
+小雨，伴有冻毛毛雨
+
+Light rain and freezing rain
+小雨，伴有冻雨
+
+Light rain and ice pellets
+小雨，伴有冰粒
+
+Light sleet
+小雨夹雪
+
+Light snow
+小雪
+
+Light:
+光线：
+
+Like this
+如下
+
+Like:
+模拟网络：
+
+Limit
+限制
+
+Limit charging to {}%
+将充电上限设为 {}%
+
+Limit what waits to be written to them
+限制等待写入的数据量
+
+Line
+行
+
+Line Numbers
+行号
+
+Line:
+行：
+
+Link
+链接
+
+Link-Local Only
+仅本地链路
+
+Link:
+连接：
+
+Link’s rate
+链路速率
+
+Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
+Linux 自带的调度器（EEVDF）公平对待各类程序。无论选择哪种调度器，其他任务正在等待的 Olo 线程都以实时优先级运行，高于普通程序。构建等重负载下，使用此调度器时桌面响应最快。
+
+List View
+列表视图
+
+Listening
+正在监听
+
+Live
+实时
+
+Load
+负载
+
+Load average
+平均负载
+
+Local
+本地
+
+Local socket
+本地套接字
+
+Location
+位置
+
+Lock
+锁定
+
+Lock & presence
+锁定与人员感应
+
+Lock After
+延时锁定
+
+Lock Screen
+锁定屏幕
+
+Lock after
+延时锁定
+
+Lock after idle for:
+空闲多久后锁定：
+
+Lock the Screen
+锁定屏幕
+
+Lock the screen when the display turns off
+显示器关闭时锁定屏幕
+
+Lock when the displays turn off
+显示器关闭时锁定
+
+Lock when the screen locks
+锁屏时锁定
+
+Lock when you walk away:
+离开后锁定：
+
+Log Out
+退出登录
+
+Log Out…
+退出登录…
+
+Login
+登录
+
+Long
+长
+
+Longest window title
+最长的窗口标题
+
+Look
+外观
+
+Look Again
+重新查找
+
+Look ahead:
+预看时长：
+
+Look for codes in:
+查找验证码的位置：
+
+Look:
+外观：
+
+Looking at Bluetooth…
+正在检查蓝牙…
+
+Looking at its disk…
+正在检查磁盘…
+
+Looking at what’s there
+正在检查已有内容
+
+Looking at what’s there…
+正在检查已有内容…
+
+Looking at which processes use it…
+正在查找使用它的进程…
+
+Looking for a newer release…
+正在查找新版本…
+
+Looking for apps…
+正在查找应用…
+
+Looking for its calendars…
+正在查找此账户的日历…
+
+Looking for network devices…
+正在查找网络设备…
+
+Looking for security keys…
+正在查找安全密钥…
+
+Looking for sound devices…
+正在查找音频设备…
+
+Looking for the fingerprint sensor…
+正在查找指纹传感器…
+
+Looking for volumes…
+正在查找卷…
+
+Looking this computer over…
+正在检查这台电脑…
+
+Looking…
+正在查找…
+
+Looks like {} × {}
+显示效果相当于 {} × {}
+
+Loss:
+丢包率：
+
+Lost, by its count
+设备报告的丢失数
+
+Low
+低
+
+Low Latency
+低延迟
+
+Lower background work
+降低后台任务优先级
+
+Lower this computer's sound while you speak
+说话时降低本机音量
+
+Lower to nice
+将 nice 值调至
+
+Lowered
+已降低优先级
+
+Lowers builds and other background work so the active window’s app and Olo itself stay quick, and watches for stuck processes, leaks and memory hogs. What it does is in Activity Monitor’s Supervisor section, and Deskbar’s gauge turns it on and off.
+降低构建等后台任务的优先级，使活动窗口和 Olo 保持灵敏，并监测卡住的进程、内存泄漏和内存占用过高的程序。可在活动监视器的 Supervisor 中查看处理记录，点击 Deskbar 的仪表即可开关。
+
+Lowest clock
+最低频率
+
+Lua
+Lua
+
+Luna 6
+Luna 6
+
+MTU:
+MTU:
+
+MacBook
+MacBook
+
+Machine:
+机器：
+
+Made here now, and in 1Password ({}) at the next sync, once you’ve reviewed it.
+已在本机创建。经您确认后，下次同步时会在 1Password（{}）中创建。
+
+Made room for newer ones
+已腾出空间存放较新的项目
+
+Made the vault “{}”.
+已创建保险库“{}”。
+
+Magenta
+品红
+
+Magic Keyboard with Touch ID and Numeric Keypad
+Magic Keyboard with Touch ID and Numeric Keypad
+
+Magic Trackpad
+Magic Trackpad
+
+Mail
+Mail
+
+Mail and Calendar sign in to Fastmail with an app password of each account’s own, with access to mail and calendars. Tick what each account is used for: Mail looks in its new mail for one-time codes, Calendar shows its calendars.
+Mail 和日历使用各账户的应用密码登录 Fastmail，密码需具有邮件和日历权限。请选择每个账户的用途：Mail 会在新邮件中查找一次性验证码，日历会显示该账户的日历。
+
+Mail for {}
+{} 的邮件
+
+Mail is read only while a page waits for a code, for up to a minute.
+仅当页面等待验证码时才读取邮件，最多一分钟。
+
+Mail is read only while a page waits for a code, for up to a minute. A phone, set up in Phone, is looked in too.
+仅当页面等待验证码时才读取邮件，最多一分钟。也会检查“电话”中设置的手机。
+
+Mail to {} ({})
+发往 {} 的邮件（{}）
+
+Mail, Calendar and DiskBackup sign in to Google through an app of each account’s own, “Olo (its address)”, in its Google Cloud project: an agent makes it for you. Tick what each account is used for.
+Mail、日历和 DiskBackup 通过各 Google 账户专属的应用登录。智能体会在该账户的 Google Cloud 项目中创建“Olo（账户地址）”应用。请勾选各账户的用途。
+
+Mail: Fastmail didn’t take the address and app password.
+Mail：Fastmail 拒绝了此地址和应用密码。
+
+Main Window
+主窗口
+
+Main and Stack
+主窗口与堆叠区
+
+Main and Stack, Main Elsewhere
+主窗口与堆叠区，主窗口另置
+
+Main display: the desktop is here.
+主显示器：桌面位于此处。
+
+Main window:
+主窗口：
+
+Make Main
+设为主窗口
+
+Make Unlimited
+设为不限
+
+Make a Token…
+创建令牌…
+
+Make an App Password…
+创建应用密码…
+
+Make an app password for Olo in Fastmail (Settings ▸ Privacy & Security ▸ Manage app passwords and access) with access to mail and calendars. It’s kept in your login keyring.
+在 Fastmail 的“设置 ▸ 隐私与安全 ▸ 管理应用密码和访问权限”中为 Olo 创建应用密码，允许访问邮件和日历。密码将保存在登录密钥环中。
+
+Make one at my.telegram.org ▸ API development tools (sign in there with your phone number), then copy its App api_id and api_hash here.
+请用手机号登录 my.telegram.org，在“API development tools”中创建应用，再将 App api_id 和 api_hash 复制到这里。
+
+Make this the main display
+设为主显示器
+
+Make:
+制造商：
+
+Makefile
+Makefile
+
+Making a hotspot (below)
+正在创建热点（见下方）
+
+Making it again, empty
+正在重新创建空项目
+
+Making it…
+正在创建…
+
+Manually
+手动
+
+Mapped
+已映射
+
+Mappings
+映射
+
+Mark
+标记
+
+Mark All as Read
+全部标为已读
+
+Mark This Moment
+标记此时刻
+
+Mark as Read
+标为已读
+
+Markdown
+Markdown
+
+Markdown…
+Markdown…
+
+Match
+匹配
+
+Match Appearance
+跟随系统外观
+
+Match:
+匹配：
+
+Max
+最大值
+
+Maybe
+可能
+
+Measuring the round trip…
+正在测量往返时间…
+
+Media errors
+介质错误
+
+Medium
+中
+
+Membership
+成员身份
+
+Memory
+内存
+
+Memory Pressure
+内存压力
+
+Memory free
+可用内存
+
+Memory stalls
+内存等待
+
+Memory:
+内存：
+
+Message
+消息
+
+Message queues
+消息队列
+
+Messages
+消息
+
+Messages ({})
+消息（{}）
+
+Messages are coming. Contacts follow once Sync Contacts is on.
+正在接收消息。开启“同步联系人”后会接收联系人。
+
+Messages: each as it comes, answered in place
+消息：收到即显示，可直接回复
+
+Meter
+仪表
+
+Metres
+米
+
+Metres a Second
+米/秒
+
+Mice
+鼠标
+
+Microphone boost:
+麦克风增益：
+
+Microphone:
+麦克风：
+
+Middle click (three: secondary)
+中键点击（三指为辅助点击）
+
+Miles
+英里
+
+Miles an Hour
+英里/小时
+
+Millimetres
+毫米
+
+Mini Icon View
+小图标视图
+
+Mirror of {}
+镜像显示 {}
+
+Misses
+未命中次数
+
+Mode
+模式
+
+Model
+型号
+
+Model:
+模型：
+
+Models
+模型
+
+Moderate
+适中
+
+Modern and flat: each thing seen straight on, in plain faces, no outlines.
+现代扁平风格：正面视角，纯色块，没有轮廓线。
+
+Modified
+修改日期
+
+Module settings
+模块设置
+
+Modules
+模块
+
+Monday
+星期一
+
+Month
+月
+
+More
+更多
+
+More Menus
+更多菜单
+
+More noise
+更多噪声
+
+Mostly clear
+大部晴朗
+
+Mostly clear and drizzle
+大部晴朗，伴有毛毛雨
+
+Mostly clear and flurries
+大部晴朗，伴有零星小雪
+
+Mostly clear and fog
+大部晴朗，伴有雾
+
+Mostly clear and freezing drizzle
+大部晴朗，伴有冻毛毛雨
+
+Mostly clear and freezing rain
+大部晴朗，伴有冻雨
+
+Mostly clear and heavy freezing rain
+大部晴朗，伴有强冻雨
+
+Mostly clear and heavy ice pellets
+大部晴朗，伴有强冰粒
+
+Mostly clear and heavy rain
+大部晴朗，伴有大雨
+
+Mostly clear and heavy snow
+大部晴朗，伴有大雪
+
+Mostly clear and ice pellets
+大部晴朗，伴有冰粒
+
+Mostly clear and light fog
+大部晴朗，伴有薄雾
+
+Mostly clear and light freezing rain
+大部晴朗，伴有小冻雨
+
+Mostly clear and light ice pellets
+大部晴朗，伴有少量冰粒
+
+Mostly clear and light rain
+大部晴朗，伴有小雨
+
+Mostly clear and light snow
+大部晴朗，伴有小雪
+
+Mostly clear and rain
+大部晴朗，伴有雨
+
+Mostly clear and snow
+大部晴朗，伴有雪
+
+Mostly clear and thunderstorm
+大部晴朗，伴有雷暴
+
+Mostly cloudy
+大部多云
+
+Mostly cloudy and drizzle
+大部多云，伴有毛毛雨
+
+Mostly cloudy and flurries
+大部多云，伴有零星小雪
+
+Mostly cloudy and fog
+大部多云，伴有雾
+
+Mostly cloudy and freezing drizzle
+大部多云，伴有冻毛毛雨
+
+Mostly cloudy and freezing rain
+大部多云，伴有冻雨
+
+Mostly cloudy and heavy freezing rain
+大部多云，伴有强冻雨
+
+Mostly cloudy and heavy ice pellets
+大部多云，伴有强冰粒
+
+Mostly cloudy and heavy rain
+大部多云，伴有大雨
+
+Mostly cloudy and heavy snow
+大部多云，伴有大雪
+
+Mostly cloudy and ice pellets
+大部多云，伴有冰粒
+
+Mostly cloudy and light fog
+大部多云，伴有薄雾
+
+Mostly cloudy and light freezing rain
+大部多云，伴有小冻雨
+
+Mostly cloudy and light ice pellets
+大部多云，伴有少量冰粒
+
+Mostly cloudy and light rain
+大部多云，伴有小雨
+
+Mostly cloudy and light snow
+大部多云，伴有小雪
+
+Mostly cloudy and rain
+大部多云，伴有雨
+
+Mostly cloudy and snow
+大部多云，伴有雪
+
+Mostly cloudy and thunderstorm
+大部多云，伴有雷暴
+
+Mount
+挂载
+
+Mounted At
+挂载位置
+
+Mouse
+鼠标
+
+Mouse speed
+鼠标速度
+
+Move All Windows To
+将所有窗口移至
+
+Move All to Trash
+全部移到废纸篓
+
+Move Down
+下移
+
+Move Group to New Window
+将组移到新窗口
+
+Move Group to Window
+将组移到其他窗口
+
+Move Here
+移动到此处
+
+Move Tab to New Window
+将标签页移动到新窗口
+
+Move Tab to Window
+将标签页移到其他窗口
+
+Move Up
+上移
+
+Move Window To
+将窗口移至
+
+Move Windows To
+将多个窗口移至
+
+Move Windows To…
+将窗口移至…
+
+Move all {} archived chats back to your chat list?
+将全部 {} 个已归档聊天移回聊天列表吗？
+
+Move both archived chats back to your chat list?
+将这两个已归档聊天都移回聊天列表吗？
+
+Move the archived chat back to your chat list?
+将此已归档聊天移回聊天列表吗？
+
+Move the pointer
+移动指针
+
+Move the pointer on a thread of its own
+使用独立线程移动指针
+
+Move to Archive
+移至归档
+
+Move to New Window
+移动到新窗口
+
+Move to Trash
+移到废纸篓
+
+Move to Workspace
+移到工作区
+
+Move to {}
+移到 {}
+
+Moved “{}” to the Archive.
+已将“{}”移至归档。
+
+Moving {} to the Trash
+正在将 {} 移到废纸篓
+
+Moving {} to the Trash…
+正在将 {} 移到废纸篓…
+
+Music
+音乐
+
+Music Quality (AAC)
+音乐音质（AAC）
+
+Mute
+静音
+
+Mute All
+全部静音
+
+My keys
+我的密钥
+
+N
+北
+
+NE
+东北
+
+NNE
+东北偏北
+
+NNW
+西北偏北
+
+NVIDIA GPU (NVDEC)
+NVIDIA GPU (NVDEC)
+
+NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor. {}
+NVIDIA GPU 可解码 H.264、HEVC、VP9 和 AV1，播放 4K 60 帧视频时很少占用 CPU。{}
+
+NW
+西北
+
+Name
+名称
+
+Name looked up in
+域名查询用时
+
+Name or text
+名称或文本
+
+Name:
+名称：
+
+Named, it's a heading: its name at the left, the line going on from it.
+命名后可用作标题，名称显示在左侧，线条从其右侧延伸。
+
+Names
+名称
+
+Names:
+名称：
+
+Narrower than sRGB ({}% of it)
+色域小于 sRGB（覆盖 {}%）
+
+Natural scrolling (content follows your fingers)
+自然滚动（内容随手指移动）
+
+Needed by another package
+其他软件包所需
+
+Needs full access
+需要完全访问权限
+
+Network
+网络
+
+Network name
+网络名称
+
+Never
+从不
+
+Never Warned About
+不再警告的项目
+
+Never fade
+不淡出
+
+Never since the computer started
+开机以来从未发生
+
+New
+新建
+
+New Agent Screen
+新建智能体屏幕
+
+New Conversation
+新建对话
+
+New Event…
+新建日程…
+
+New Folder
+新建文件夹
+
+New Group…
+新建组…
+
+New Item
+新建项目
+
+New Message
+新消息
+
+New Partition Table…
+新建分区表…
+
+New Screen
+新建屏幕
+
+New Signature…
+新建签名…
+
+New Tab
+新建标签页
+
+New Tab in Group
+在组中新建标签页
+
+New Terminal
+新建终端
+
+New Vault…
+新建保险库…
+
+New Window
+新建窗口
+
+New Windows Open In
+新窗口打开位置
+
+New Worktree…
+新建工作树…
+
+New description
+新说明
+
+New message
+新消息
+
+New ones go in
+新项目存放位置
+
+New ones go in:
+新项目存放位置：
+
+New screenshot
+新截图
+
+New shells can't start until it's running again.
+服务重新运行前无法启动新 shell。
+
+New windows go:
+新窗口位置：
+
+Newest first
+最新优先
+
+News (blue)
+新消息（蓝色）
+
+Next
+下一步
+
+Next 3 Days
+未来 3 天
+
+Next 7 Days
+未来 7 天
+
+Next Action
+下一个操作
+
+Next Chapter
+下一章
+
+Next Chat
+下一个聊天
+
+Next Day
+下一天
+
+Next File
+下个文件
+
+Next Month
+下个月
+
+Next Page
+下一页
+
+Next Tab
+下一个标签页
+
+Next Week
+下周
+
+Next step
+下一步
+
+Next when you click Back Up Now.
+点击“立即备份”开始下次备份。
+
+Next {}.
+下次：{}。
+
+Nice
+Nice
+
+Night Mode
+夜间模式
+
+Nix
+Nix
+
+No
+否
+
+No Agent Screens
+没有智能体屏幕
+
+No Group
+无分组
+
+No Groups
+没有组
+
+No Guesses Found
+无拼写建议
+
+No Keypad
+隐藏键盘区
+
+No Other Windows
+没有其他窗口
+
+No Pull Request
+没有拉取请求
+
+No Receivers Paired
+没有已配对的接收器
+
+No Saved Groups
+没有已保存的组
+
+No VPNs. Import a WireGuard configuration, or add one with its maker's app.
+没有 VPN。请导入 WireGuard 配置，或使用提供方的应用添加 VPN。
+
+No app may have an item without asking. When one asks for an item, Approve Always allows it for good, and it’s listed here to take back.
+应用必须先请求授权才能访问项目。请求出现时，选择“始终批准”即可长期授权，之后可在这里撤销。
+
+No app opens these
+没有可打开此类文件的应用
+
+No app opens these yet: add one.
+尚无可打开此类文件的应用，请添加一个。
+
+No apps open this.
+没有应用可打开此项。
+
+No backup has finished yet
+尚无已完成的备份
+
+No backup has finished yet.
+尚无已完成的备份。
+
+No banners and no sounds (errors still show).
+不显示横幅，也不播放声音（错误仍会显示）。
+
+No cable
+未接网线
+
+No calendars yet
+暂无日历
+
+No chat selected
+未选择聊天
+
+No cloud
+无云
+
+No connections match.
+没有匹配的连接。
+
+No conversations open.
+未打开任何对话。
+
+No disks.
+没有磁盘。
+
+No entries.
+没有条目。
+
+No environment.
+没有环境信息。
+
+No event from a year back to two years on has “{}” in its title, its place or its notes.
+从一年前到未来两年的日程中，标题、地点和备注均未找到“{}”。
+
+No key yet.
+尚无密钥。
+
+No keyboards are plugged in.
+未连接键盘。
+
+No limit
+没有限制
+
+No messages with {} yet. What you write below goes as a text message from your phone.
+尚未与 {} 互发消息。下方输入的内容将由您的手机作为短信发送。
+
+No mouse is connected. These settings are for any you connect.
+未连接鼠标。此处设置适用于之后连接的鼠标。
+
+No new notifications
+没有新通知
+
+No notes.
+没有备注。
+
+No one on Telegram is called {}.
+Telegram 上没有名为 {} 的用户。
+
+No open files.
+没有打开的文件。
+
+No phone or mail account is set up: a phone in Phone, a Google or Fastmail account for Mail in Integrations.
+尚未设置手机或邮件账户。可在“电话”中设置手机，或在“服务集成”中为 Mail 添加 Google 或 Fastmail 账户。
+
+No power profiles daemon is running (power-profiles-daemon, or tuned-ppd on Fedora): Olo sets the power mode through it.
+电源配置服务未运行（power-profiles-daemon，Fedora 也可用 tuned-ppd）。Olo 需要通过此服务设置电源模式。
+
+No power profiles daemon is running, so there's no power mode to follow.
+电源配置服务未运行，因此没有可跟随的电源模式。
+
+No precipitation in the next hour
+未来一小时无降水
+
+No precipitation this hour
+本小时无降水
+
+No process uses much of it now
+当前没有大量使用它的进程
+
+No processes match.
+没有匹配的进程。
+
+No screen recordings yet. Record one with ⌘⇧6.
+尚无屏幕录像。按 ⌘⇧6 开始录制。
+
+No space around an auto-tiled window alone
+只有一个自动平铺窗口时不留边距
+
+No touches in the last minute
+过去一分钟没有触摸
+
+No touchpad found.
+未找到触控板。
+
+No update matches the search.
+没有匹配的更新。
+
+No widgets: add one below.
+没有小组件，请在下方添加。
+
+No {} for this account.
+此账户没有 {}。
+
+No: it did no better ({}), so the weights before stay
+否：效果未改善（{}），保留原权重
+
+Noise
+噪声
+
+Noise Cancellation
+主动降噪
+
+Noise Control
+噪声控制
+
+Noise Model
+降噪模型
+
+Noise control:
+噪声控制：
+
+Noise model:
+降噪模型：
+
+Noise model: {}
+降噪模型：{}
+
+None
+无
+
+None (flat)
+无（平直）
+
+None asked for yet: type in brush
+尚未请求建议，请在 brush 中输入
+
+None connected to Olo yet.
+尚无设备连接到 Olo。
+
+None in the last minute
+过去一分钟没有
+
+None in the last second
+过去一秒没有
+
+None just now
+当前没有
+
+None run.
+尚未运行。
+
+None yet: add one below, named by its extensions.
+尚无类型。请在下方添加，并指定扩展名。
+
+None, or corp.example
+留空，或填入 corp.example
+
+None. An alert’s Ignore This Process adds one here.
+暂无。在警告中选择“忽略此进程”即可添加。
+
+None. To add an app, choose Float Window ▸ Always in the window menu of one of its windows.
+暂无。要添加应用，请在其窗口菜单中选择“浮动窗口 ▸ 始终”。
+
+None. To give an app one, choose Always Open on Workspace in the window menu of one of its windows.
+暂无。要为应用指定工作区，请在其窗口菜单中选择“始终在指定工作区打开”。
+
+Nonfree (NVIDIA’s drivers, Steam, …)
+非自由软件（NVIDIA 驱动、Steam 等）
+
+Norwegian
+挪威语
+
+Not Answered
+未应答
+
+Not Signed In
+未登录
+
+Not a compile
+非编译任务
+
+Not a number
+不是数字
+
+Not all of it applied: {}.
+部分设置未能应用：{}。
+
+Not answered
+未应答
+
+Not applied.
+未应用。
+
+Not applied: an administrator's password is needed.
+未应用：需要管理员密码。
+
+Not backed up yet
+尚未备份
+
+Not boosted
+未增益
+
+Not boosted (suggested)
+未增益（建议）
+
+Not brought over from GNOME Keyring (another password): {}.
+未能从 GNOME 密钥环迁入（密码不同）：{}。
+
+Not changed. {}
+未更改。{}
+
+Not changed: an administrator's password is needed.
+未更改：需要管理员密码。
+
+Not changed: changes as an administrator are made in the person's own session.
+未更改：需在用户自己的会话中执行管理员操作。
+
+Not changed: the network's helper stopped.
+未更改：网络辅助程序已停止。
+
+Not checked ({}).
+未检查（{}）。
+
+Not checked yet: Validate reads it back and checks it’s whole.
+尚未检查。选择“验证”可读回数据并检查完整性。
+
+Not connected
+未连接
+
+Not connected: only public repositories’ pull requests show.
+未连接：仅显示公开仓库的拉取请求。
+
+Not connected: {}.
+未连接：{}。
+
+Not enough touches to learn from
+触摸样本不足
+
+Not found
+未找到
+
+Not imported: {}
+未导入：{}
+
+Not in a Repository
+不在仓库中
+
+Not in a vault
+不在保险库中
+
+Not in force: {}
+未生效：{}
+
+Not in the last minute; {} since this window opened
+过去一分钟没有，自此窗口打开以来有 {}
+
+Not paired
+未配对
+
+Not recognised. Try again
+未识别，请重试
+
+Not running under olo-session.
+未在 olo-session 中运行。
+
+Not running: Codex starts it with its first window.
+未运行。Codex 打开第一个窗口时会启动它。
+
+Not saved: {}
+未保存：{}
+
+Not sent: {}
+未发送：{}
+
+Not set up
+未设置
+
+Not set up.
+尚未设置。
+
+Not set up: Telegram needs an API ID to sign in with.
+尚未设置：Telegram 登录时需要 API ID。
+
+Not set up: {}.
+尚未设置：{}。
+
+Not shaped: as fast as it goes.
+不限速，全速传输。
+
+Not signed in. (API ID {}.)
+未登录（API ID：{}）。
+
+Not since this window opened
+自此窗口打开以来未发生
+
+Not synced: changes not applied{}
+未同步：更改尚未应用{}
+
+Not synced: {}{}
+未同步：{}{}
+
+Not tested yet.
+尚未测试。
+
+Not told
+未告知
+
+Not trusted: stopping…
+不信任，正在停止…
+
+Not working: {}.
+未正常工作：{}。
+
+Notes
+备注
+
+Notes:
+备注：
+
+Nothing
+不处理
+
+Nothing Found
+未找到
+
+Nothing backed up yet.
+尚未备份任何内容。
+
+Nothing came from the microphone.
+未收到麦克风输入。
+
+Nothing changed: Olo's own model is still in use.
+未作更改，仍在使用 Olo 自带的模型。
+
+Nothing coming up
+暂无即将开始的日程
+
+Nothing found
+未找到
+
+Nothing found by that name or address.
+未找到此名称或地址。
+
+Nothing in the history yet.
+暂无历史记录。
+
+Nothing is backed up or sent until you resume. {}. {}.
+恢复前不会备份或发送任何内容。{}。{}。
+
+Nothing more today
+今天没有其他日程
+
+Nothing new
+没有新内容
+
+Nothing new to learn
+没有新的学习内容
+
+Nothing read yet
+尚未读取
+
+Nothing recorded yet. Press Record and talk for a few seconds.
+尚无录音。点击“录制”，然后说几秒钟的话。
+
+Nothing to calculate
+没有可计算的内容
+
+Nothing to do.
+无需操作。
+
+Nothing to show yet
+暂无可显示的内容
+
+Nothing to tune for its driver ({}) yet.
+暂时无法调节此驱动（{}）。
+
+Notification
+通知
+
+Notification Settings…
+通知设置…
+
+Notifications
+通知
+
+Notifications: Inbox
+通知：收件箱
+
+Now
+现在
+
+Now lift your hands, and rest them again as you type.
+现在抬起双手，再按平时打字的姿势放回去。
+
+Now point or tap with a finger above it: {} more.
+现在用手指在其上方移动指针或轻点，还需 {} 次。
+
+Now point or tap with a finger of your other hand: {} more.
+现在换另一只手的手指移动指针或轻点，还需 {} 次。
+
+Now {}{}: the processors {} at up to {}%, {}.
+当前{0}{1}：处理器{2}，最高 {3}%，{4}。
+
+Now:
+当前：
+
+Now: kept in Passwords as “{}”.
+当前：已存入 Passwords，名称为“{}”。
+
+Now: {}
+当前：{}
+
+Now: {}, in Passwords.
+当前：{}，存放在 Passwords 中。
+
+Num Lock on when Olo starts
+Olo 启动时开启数字锁定
+
+Number
+数字
+
+Number of Main Windows
+主窗口数量
+
+Number of main windows:
+主窗口数量：
+
+Numbered List
+编号列表
+
+OCaml
+OCaml
+
+OCaml Interface
+OCaml 接口
+
+OK
+OK
+
+OS Updates
+系统更新
+
+Objective-C
+Objective-C
+
+Off
+关
+
+Off: palms are told apart by their size alone.
+已关闭：仅按面积区分手掌。
+
+Off: palms are what the touchpad says they are.
+已关闭：由触控板判断哪些触摸来自手掌。
+
+Offer a code in the browser tab waiting for it
+在等待验证码的浏览器标签页中提供验证码
+
+Offered
+已给出建议
+
+Offline (Everything Lost)
+离线（100% 丢包）
+
+Offset
+偏移量
+
+Older Versions…
+旧版本…
+
+Older ones go, and the space only they took is freed, once a day. Delete any yourself under Backups.
+每天清理一次旧备份，释放仅由它们占用的空间。您也可以在“备份”中手动删除。
+
+Oldest first
+最早优先
+
+Olo
+Olo
+
+Olo Desktop
+Olo Desktop
+
+Olo Desktop, version {}
+Olo Desktop，版本 {}
+
+Olo Doctor
+Olo Doctor
+
+Olo Doctor can set up the hardware power service.
+可使用 Olo Doctor 设置硬件电源服务。
+
+Olo Doctor couldn't set it.
+Olo Doctor 未能完成设置。
+
+Olo Doctor found {} things to fix: {}, and more. Click to see them.
+Olo Doctor 发现 {} 个可修复的问题，包括{}等。点击查看。
+
+Olo Doctor: {}. Click to see it.
+Olo Doctor：{}。点击查看。
+
+Olo Installer
+Olo 安装程序
+
+Olo doesn’t have {} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it.
+这台电脑上没有 {} 的专属应用。请填入客户端 ID 和密钥（Google Cloud ▸ 对应的 Olo 项目 ▸ 客户端），或取消并选择“添加 Google 账户…”，让智能体代为设置。
+
+Olo keeps {}{}: their sign-ins, keys and Wi-Fi passwords, opened by your login password.
+Olo 保存着{}{}的登录凭据、密钥和 Wi-Fi 密码，可用登录密码解锁。
+
+Olo saying its name
+Olo 读出自己的名字
+
+Olo's Choice
+Olo 推荐
+
+Olo's boot splash
+Olo 启动画面
+
+Olo's login screen
+Olo 登录界面
+
+Olo's own
+Olo 自带
+
+Olo's own model is still in use.
+仍在使用 Olo 自带的模型。
+
+Olo's own palm model, made from {} touches of real hands (Preferences ▸ Touchpad & Mouse ▸ Touch trains one of yours)
+Olo 自带的手掌模型，由 {} 次真实手部触摸训练而成。可在“偏好设置 ▸ 触控板与鼠标 ▸ 触摸”中训练自己的模型
+
+Olo’s keyring isn’t running here; it starts with your session.
+Olo 密钥环未在此处运行，它会随您的会话启动。
+
+Olo’s language:
+Olo 语言：
+
+Olo’s phone service isn’t running.
+Olo 电话服务未运行。
+
+Olo’s windows change at once. Other programs take it as they next start, in the languages they have.
+Olo 窗口会立即切换语言。其他程序会在下次启动时切换到各自支持的语言。
+
+On
+开
+
+On Battery
+电池供电
+
+On Custom {}
+使用自定义{}
+
+On This Computer
+在这台电脑上
+
+On a PC keyboard, Alt is where a Mac's ⌘ is: swapped, the key beside the space bar is ⌘ (with the Mac profile) and the Windows key is Option. Each keyboard keeps its own setting, so an Apple keyboard plugged in stays as it is.
+PC 键盘的 Alt 键位于 Mac 键盘的 ⌘ 键处。交换后，在 Mac 配置下，空格键旁的键就是 ⌘，Windows 键则是 Option。每把键盘单独保存设置，另接的 Apple 键盘不受影响。
+
+On a call
+通话中
+
+On a plane of its own: moving it draws nothing
+使用独立显示平面，移动时无需重绘
+
+On battery
+电池供电
+
+On disk
+磁盘占用
+
+On hold
+等待
+
+On the network
+网络上
+
+On the phone, open Settings ▸ Bluetooth and keep it open there. It appears here in a moment.
+在手机上打开“设置 ▸ 蓝牙”并停留在该页面。片刻后，手机就会出现在这里。
+
+On your phone, open Telegram ▸ Settings ▸ Devices ▸ Link Desktop Device, and point it at this code.
+在手机的 Telegram 中打开“设置 ▸ 设备 ▸ 连接桌面设备”，然后扫描此码。
+
+On {} now: {}. Moving a setting makes it Custom {}; Power Modes says what each mode puts it on.
+当前使用{0}：{1}。改动设置后会切换到自定义{2}。各模式的具体配置见“电源模式”。
+
+On “{}”: Settings ▸ Bluetooth ▸ tap ⓘ beside this computer, and turn these on. They can take a minute or two to appear there; leaving that page and opening it again shows them sooner. (If this computer is listed twice, look in both.)
+在“{}”上打开“设置 ▸ 蓝牙”，点按此电脑旁的 ⓘ，然后启用以下选项。选项可能需要一两分钟才会出现，退出并重新打开页面会更快。如果此电脑出现了两次，请分别查看。
+
+On “{}”: allow this computer to see your messages and contacts when it asks (or in Bluetooth, the gear beside this computer).
+在“{}”上收到请求时，允许此电脑访问信息和联系人。也可在蓝牙设置中点按此电脑旁的齿轮来授权。
+
+On: brush starts olo-complete as you next type in it.
+已开启：下次在 brush 中输入时会启动 olo-complete。
+
+On: packages come from it
+已开启：从此软件源获取软件包
+
+One a day for:
+每天保留一份，保留期：
+
+One a month for:
+每月保留一份，保留期：
+
+One a week for:
+每周保留一份，保留期：
+
+One account connected wasn’t allowed Google Drive: sign in again there, and allow it.
+有一个已连接账户未授权使用 Google Drive。请重新登录该账户并授权。
+
+One an hour for:
+每小时保留一份，保留期：
+
+One differs from the next by
+相邻两项之差
+
+One like it again from the same app (its title and text) takes the earlier one's place while that's still showing or unread.
+同一应用发来标题和正文均相同的通知时，会替换仍在显示或尚未读过的旧通知。
+
+One of the colours things are told apart by: tags, graphs, a tab group's colour, Terminal's {}.
+用于区分标签、图表、标签页组和 Terminal 的{}等项目的颜色之一。
+
+One of {}'s quotas
+{} 的一项额度
+
+One-Time Codes
+一次性验证码
+
+Only Zip and 7-Zip archives can have a password.
+只有 ZIP 和 7-Zip 压缩文件支持设置密码。
+
+Only an https:// address: one that can be listened in on could be changed on its way.
+只接受 https:// 地址，明文连接的内容可能在传输中被篡改。
+
+Only on battery power
+仅在电池供电时
+
+Only the latest of the same notification
+相同通知仅保留最新一条
+
+Only when I choose Sync Now
+仅在选择“立即同步”时
+
+Only when I click Back Up Now
+仅在点击“立即备份”时
+
+Only when connected to Ethernet
+仅在连接以太网时
+
+Only when the computer is idle
+仅在电脑空闲时
+
+Onto:
+目标位置：
+
+Open
+打开
+
+Open Bluetooth…
+打开蓝牙…
+
+Open Calendar
+打开日历
+
+Open Integrations…
+打开服务集成…
+
+Open Link
+打开链接
+
+Open Log File…
+打开日志文件…
+
+Open Notifications
+打开通知
+
+Open Olo Doctor
+打开 Olo Doctor
+
+Open Olo Doctor…
+打开 Olo Doctor…
+
+Open Parent
+打开上级文件夹
+
+Open Phone
+打开电话
+
+Open Power
+打开电源设置
+
+Open Pull Request #{}
+打开拉取请求 #{}
+
+Open Saved Group
+打开已保存的组
+
+Open Screenshot
+打开截图
+
+Open Sign-In Page
+打开登录页面
+
+Open Telegram
+打开 Telegram
+
+Open Weather to set up its data provider
+打开 Weather 设置数据提供方
+
+Open Website
+打开网站
+
+Open With
+打开方式
+
+Open With Offers
+“打开方式”选项
+
+Open files
+打开文件
+
+Open in Google Drive
+在 Google Drive 中打开
+
+Open in Terminal
+在 Terminal 中打开
+
+Open in Tracker
+在 Tracker 中打开
+
+Open kache's Log
+打开 kache 日志
+
+Open my.telegram.org
+打开 my.telegram.org
+
+Open with {}
+使用 {} 打开
+
+Open {} to see it.
+打开 {} 即可查看。
+
+Open {} to see them.
+打开 {} 即可查看这些项目。
+
+OpenDocument Text…
+OpenDocument 文本…
+
+Opening programs’ secrets…
+正在打开程序的机密信息…
+
+Opening the backup in {}
+正在打开 {} 中的备份
+
+Opening the backup…
+正在打开备份…
+
+Opening…
+正在打开…
+
+Opens in:
+打开方式：
+
+Open…
+打开…
+
+Optional
+可选
+
+Opus 5.5
+Opus 5.5
+
+Or stalls over
+或停滞超过
+
+Orange
+橙色
+
+Orange, then red, as it runs low
+余量不足时先变橙，再变红
+
+Order:
+顺序：
+
+Original
+原始
+
+Other
+其他
+
+Other Applications
+其他应用程序
+
+Other Mice
+其他鼠标
+
+Other Updates
+其他更新
+
+Other workspaces’ applications start collapsed
+默认折叠其他工作区的应用
+
+Other…
+其他…
+
+Out of memory:
+内存耗尽时：
+
+Output
+输出
+
+Overview
+概览
+
+Overwrite the old data with zeros (slow)
+用零覆盖旧数据（较慢）
+
+PDF…
+PDF…
+
+PHP
+PHP
+
+Pacing
+发送节奏
+
+Package
+软件包
+
+Packages
+软件包
+
+Page View
+页面视图
+
+Page faults
+缺页次数
+
+Page {} of {}
+第 {} 页，共 {} 页
+
+Pair
+配对
+
+Paired with {}.
+已与 {} 配对。
+
+Pairing
+配对
+
+Pairing with {} didn't work: {}.
+与 {} 配对失败：{}。
+
+Pair…
+配对…
+
+Palm-proof clicks, hovering fingers ignored, Mac-like scrolling
+防止手掌误点，忽略悬停手指，采用 Mac 式滚动
+
+Palms
+手掌
+
+Palms and Hovering Fingers
+手掌与悬停的手指
+
+Palms caught
+识别出的手掌
+
+Palms while typing
+打字时的手掌
+
+Panel
+面板
+
+Panels
+面板
+
+Paragraph
+段落
+
+Part of a package group
+软件包组的一部分
+
+Part of an app's name
+应用名称的一部分
+
+Partition
+分区
+
+Partly cloudy
+局部多云
+
+Partly cloudy and drizzle
+局部多云，伴有毛毛雨
+
+Partly cloudy and flurries
+局部多云，伴有零星小雪
+
+Partly cloudy and fog
+局部多云，伴有雾
+
+Partly cloudy and freezing drizzle
+局部多云，伴有冻毛毛雨
+
+Partly cloudy and freezing rain
+局部多云，伴有冻雨
+
+Partly cloudy and heavy freezing rain
+局部多云，伴有强冻雨
+
+Partly cloudy and heavy ice pellets
+局部多云，伴有强冰粒
+
+Partly cloudy and heavy rain
+局部多云，伴有大雨
+
+Partly cloudy and heavy snow
+局部多云，伴有大雪
+
+Partly cloudy and ice pellets
+局部多云，伴有冰粒
+
+Partly cloudy and light fog
+局部多云，伴有薄雾
+
+Partly cloudy and light freezing rain
+局部多云，伴有小冻雨
+
+Partly cloudy and light ice pellets
+局部多云，伴有少量冰粒
+
+Partly cloudy and light rain
+局部多云，伴有小雨
+
+Partly cloudy and light snow
+局部多云，伴有小雪
+
+Partly cloudy and mostly clear
+局部多云，伴有大部晴朗
+
+Partly cloudy and rain
+局部多云，伴有雨
+
+Partly cloudy and snow
+局部多云，伴有雪
+
+Partly cloudy and thunderstorm
+局部多云，伴有雷暴
+
+Passphrase
+口令
+
+Passphrase:
+口令：
+
+Password
+密码
+
+Password Generator
+密码生成器
+
+Password lock
+密码锁
+
+Password:
+密码：
+
+Passwords
+Passwords
+
+Passwords and sign-ins: there's no login keyring here to keep them in, so they didn't come along.
+密码和登录信息：这里没有可用于存储的登录密钥环，因此未导入。
+
+Passwords answered something else.
+Passwords 返回了意外的响应。
+
+Passwords answered {}
+Passwords 响应：{}
+
+Passwords can’t be reached ({}).
+无法连接 Passwords（{}）。
+
+Passwords can’t be reached ({}). Is it running?
+无法连接 Passwords（{}）。它正在运行吗？
+
+Passwords couldn’t give its logins: {}
+Passwords 无法提供登录信息：{}
+
+Passwords didn’t keep it.
+Passwords 未保存此项。
+
+Passwords didn’t keep the key.
+Passwords 未保存密钥。
+
+Passwords for Every Screen…
+所有屏幕的密码…
+
+Passwords has no login for a Google account: add the account’s login there first, or set the app up by hand.
+Passwords 中没有 Google 账户的登录项。请先添加登录项，或手动设置应用。
+
+Passwords has no “{}” item: give the key again in File ▸ Data Provider…
+Passwords 中没有“{}”项目。请在“文件 ▸ 数据提供方…”中重新输入密钥。
+
+Passwords is locked.
+Passwords 已锁定。
+
+Passwords isn’t running.
+Passwords 未运行。
+
+Passwords isn’t set up yet.
+尚未设置 Passwords。
+
+Passwords isn’t set up yet: open it to set it up, then try again.
+尚未设置 Passwords。请打开它完成设置后重试。
+
+Passwords keeps no password for it (an item “{}”).
+Passwords 中没有对应的密码（名为“{}”的项目）。
+
+Passwords keeps your items on this computer, encrypted, and can keep them in step with your 1Password accounts both ways. To sync, turn on Settings ▸ Developer ▸ Integrate with other apps in 1Password, then choose the accounts.
+Passwords 会在本机加密保存项目，也可以与 1Password 账户双向同步。要启用同步，请在 1Password 的“设置 ▸ 开发者”中开启“与其他应用集成”，然后选择账户。
+
+Passwords keeps your items on this computer, encrypted, and can keep them in step with your 1Password accounts both ways. To sync, turn on Settings ▸ Developer ▸ Integrate with other apps in 1Password, then name the accounts.
+Passwords 会在本机加密保存项目，也可以与 1Password 账户双向同步。要启用同步，请在 1Password 的“设置 ▸ 开发者”中开启“与其他应用集成”，然后输入账户名称。
+
+Passwords: Clipboard
+Passwords：剪贴板
+
+Passwords: Command line
+Passwords：命令行
+
+Passwords: Locking
+Passwords：锁定
+
+Passwords: Syncing with 1Password
+Passwords：与 1Password 同步
+
+Passwords’ password is used now: try again.
+现在使用 Passwords 的密码，请重试。
+
+Paste
+粘贴
+
+Paste the key
+粘贴密钥
+
+Paste the key first.
+请先粘贴密钥。
+
+Pasted Picture.{}
+粘贴的图片。{}
+
+Pause
+暂停
+
+Pause Backups
+暂停备份
+
+Pause Recording
+暂停录制
+
+Paused
+已暂停
+
+Performance
+性能
+
+Performance Preferences…
+性能偏好设置…
+
+Performance Settings…
+性能设置…
+
+Performance supervisor: off
+性能监控：已关闭
+
+Performance supervisor: on, nothing found
+性能监控：已开启，未发现问题
+
+Performance supervisor: {n} findings
+other: 性能监控：发现 {n} 项问题
+
+Performance supervisor: {n} urgent findings
+other: 性能监控：发现 {n} 项紧急问题
+
+Permission
+权限
+
+Personalized Volume
+个性化音量
+
+Phone
+电话
+
+Phone Settings…
+电话设置…
+
+Phone number:
+电话号码：
+
+Picture
+图片
+
+Picture Size
+图片大小
+
+Pictures can be saved as PNG, JPEG, WebP, BMP, TIFF or GIF.
+图片可保存为 PNG、JPEG、WebP、BMP、TIFF 或 GIF。
+
+Pictures, Movies and Music
+图片、影片和音乐
+
+Pin
+固定
+
+Pin as Main
+固定为主窗口
+
+Pinch to zoom
+双指开合缩放
+
+Pink
+粉红
+
+Pipe
+管道
+
+Place
+地点
+
+Places
+地点
+
+Places can’t be looked up: {}
+无法查询地点：{}
+
+Play
+播放
+
+Play Sound Through It
+使用此设备播放声音
+
+Play a sound when Olo starts
+Olo 启动时播放声音
+
+Play sound through:
+声音输出设备：
+
+Playback
+回放
+
+Playback Speed
+播放速度
+
+Playing the original at {} s.
+正在播放原声，位置 {} 秒。
+
+Playing the processed sound at {} s.
+正在播放处理后的声音，位置 {} 秒。
+
+Please continue
+Please continue
+
+Plug in a security key to set it up.
+请插入安全密钥以进行设置。
+
+Plugged in
+已接入电源
+
+Point with a palm at the edge
+手掌放在边缘时移动指针
+
+Point with your hand resting low
+手掌靠下时移动指针
+
+Pointer
+指针
+
+Polish
+波兰语
+
+Pool
+Pool
+
+Portuguese
+葡萄牙语
+
+Portuguese (Brazil)
+葡萄牙语（巴西）
+
+Power
+电源
+
+Power Button
+电源按钮
+
+Power Mode
+电源模式
+
+Power Modes
+电源模式
+
+Power Saver
+省电
+
+Power limit
+功耗上限
+
+Power-saving profile
+节能配置
+
+Power: the GPUs' tuning is as it was here. {} Preferences ▸ Power sets it.
+电源：GPU 保留了本机原有的调节设置。{} 可在“偏好设置 ▸ 电源”中更改。
+
+Power: the backup's GPU tuning couldn't be read, so it's as it was here.
+电源：无法读取备份中的 GPU 设置，已保留本机原有设置。
+
+Power: what each power mode puts the processors and GPUs on came along; each GPU's own clocks are this computer's.
+电源：已导入各电源模式下的 CPU 和 GPU 策略；各 GPU 的具体频率仍按本机设置。
+
+PowerShell
+PowerShell
+
+Powered on
+已接通电源
+
+Precipitation
+降水
+
+Precipitation ({})
+降水（{}）
+
+Preemption
+抢占
+
+Preferences
+偏好设置
+
+Presence
+人员感应
+
+Presentation
+演示
+
+Press Control twice for keyboard hints
+连按两次 Control 显示键盘提示
+
+Press Esc again to quit: the touches so far are dropped. Space goes on.
+再按一次 Esc 即可退出并丢弃目前记录的触摸。按空格键继续。
+
+Press and Hold
+按住
+
+Press and hold a stem to switch between:
+按住耳机柄，在以下模式间切换：
+
+Press both buttons for a middle click
+同时按下左右键以进行中键点击
+
+Press speed:
+按压速度：
+
+Press {} for the next: {}.
+按 {0} 进入下一项：{1}。
+
+Press 🌐 alone to show emoji
+单按 🌐 显示表情符号
+
+Pressure
+压力
+
+Previous
+上一个
+
+Previous Action
+上一个操作
+
+Previous Chapter
+上一章
+
+Previous Chat
+上一个聊天
+
+Previous Day
+前一天
+
+Previous File
+上一个文件
+
+Previous Month
+上个月
+
+Previous Page
+上一页
+
+Previous Tab
+上一个标签页
+
+Previous Week
+上周
+
+Print…
+打印…
+
+Priorities
+优先级
+
+Priorities off: background work put back
+已关闭优先级调整，后台任务已恢复原状
+
+Priority
+优先级
+
+Problems
+问题
+
+Process
+进程
+
+Process {} has quit
+进程 {} 已退出
+
+Processed
+处理后
+
+Processed: the setting chosen below
+处理后：使用下方所选设置
+
+Processes
+进程
+
+Processes as a Tree
+以树状结构显示进程
+
+Processor
+处理器
+
+Processor:
+处理器：
+
+Profile
+配置
+
+Profile:
+配置：
+
+Program
+程序
+
+Program names, comma separated
+程序名称，以逗号分隔
+
+Programs Using the Network
+使用网络的程序
+
+Programs Using the {}
+使用{}的程序
+
+Programs’ Secrets
+程序的机密信息
+
+Programs’ secrets are locked: {}.
+程序的机密信息已锁定：{}。
+
+Project
+项目
+
+Projects
+项目
+
+Protect it with a password
+使用密码保护
+
+Protocol
+协议
+
+Protocol Buffers
+Protocol Buffers
+
+Provider:
+提供方：
+
+Purple
+紫色
+
+Put AppImages in ~/AppImages
+将 AppImage 放入 ~/AppImages
+
+Put Back
+放回原处
+
+Put a device in pairing mode to see it here.
+请将设备切换到配对模式，它就会出现在这里。
+
+Put the computer to sleep after:
+电脑进入睡眠前的等待时间：
+
+Puts what you choose from a backup in place of what's here; the rest stays as it is. What you have now is saved first.
+将备份中的所选项目恢复到当前位置，其他内容会保留。操作前会先保存现有内容。
+
+Putting {} back
+正在将 {} 放回原处
+
+Putting {} back…
+正在将 {} 放回原处…
+
+Python
+Python
+
+Python bytecode and virtual environments
+Python 字节码和虚拟环境
+
+QR code: {}
+二维码：{}
+
+Quad9 (9.9.9.9)
+Quad9 (9.9.9.9)
+
+Question
+问题
+
+Quick Look
+快速查看
+
+Quiet Until Morning
+静音至明早
+
+Quiet for 1 Hour
+静音 1 小时
+
+Quit
+退出
+
+Quit Now
+立即退出
+
+Quit {} Processes
+退出 {} 个进程
+
+Quit, dropping the touches
+退出并丢弃触摸记录
+
+Quotas:
+额度：
+
+Quote
+引用
+
+R
+R
+
+RPM Fusion
+RPM Fusion
+
+Radians
+弧度
+
+Rain
+雨
+
+Rain and freezing rain
+雨，伴有冻雨
+
+Rain and ice pellets
+雨，伴有冰粒
+
+Rain and snow
+雨，伴有雪
+
+Raise Soft Limit to Hard
+将软限制提高到硬限制
+
+Ran for
+运行时长
+
+Range
+范围
+
+Reaches:
+范围：
+
+React
+添加表情回应
+
+Read
+读取
+
+Read Quota Now
+立即读取额度
+
+Read every byte the backups chosen need back from where they’re kept, and check each piece, as a restore would
+从存储位置读回所选备份所需的每个字节，并像实际恢复时一样逐块验证
+
+Read ones fade, then move to Cleared; unread ones stay.
+已读通知会淡出并移至“已清除”，未读通知会保留。
+
+Read only
+只读
+
+Reading /etc/hosts…
+正在读取 /etc/hosts…
+
+Reading battery…
+正在读取电池信息…
+
+Reading hardware…
+正在读取硬件信息…
+
+Reading power modes…
+正在读取电源模式…
+
+Reading the Google accounts connected to Olo…
+正在读取已连接到 Olo 的 Google 账户…
+
+Reading the backups…
+正在读取备份…
+
+Reading the changelog…
+正在读取更新日志…
+
+Reading the clock…
+正在读取时钟…
+
+Reading the index again
+正在重新读取索引
+
+Reading the journal…
+正在读取日志…
+
+Reading the packages…
+正在读取软件包…
+
+Reading the updates…
+正在读取更新…
+
+Reading your logins in Passwords…
+正在读取 Passwords 中的登录项…
+
+Reading…
+正在读取…
+
+Reads
+读取次数
+
+Real-time priority
+实时优先级
+
+Real-time timeout
+实时运行超时
+
+Received
+已接收
+
+Receiver
+接收器
+
+Recent Folders
+最近使用的文件夹
+
+Recommended
+建议
+
+Recommended by another package
+其他软件包推荐
+
+Recommended for it
+此设备的建议值
+
+Record
+录制
+
+Record Active Window
+录制活动窗口
+
+Record Again
+重新录音
+
+Record Region…
+录制区域…
+
+Record Screen
+录制屏幕
+
+Record Voice Message
+录制语音消息
+
+Record a few seconds as you talk on a call, with the room as it is; then hear and see what each setting does to it. The recording stays in memory and goes when you close this.
+保持房间现状，像平时通话那样录几秒，再试听和查看各项设置的效果。录音仅存于内存，关闭此窗口后就会清除。
+
+Record from:
+录制来源：
+
+Record the Computer's Sound
+录制电脑声音
+
+Record the Microphone
+录制麦克风声音
+
+Recording
+正在录制
+
+Recording a voice message, {}
+正在录制语音消息，{}
+
+Recording a voice message, {}: Send Voice Message or Cancel Recording
+正在录制语音消息，{}。请选择“发送语音消息”或“取消录制”
+
+Recording {} since {}
+从 {1} 开始录制{0}
+
+Recording {} since {} (paused)
+从 {1} 开始录制{0}（已暂停）
+
+Recording {} since {}, paused. Click to resume or stop.
+从 {1} 开始录制{0}，现已暂停。点击继续或停止。
+
+Recording {} since {}. Click to pause or stop.
+从 {1} 开始录制{0}。点击暂停或停止。
+
+Recording: {} of {} seconds. Talk as you do on a call.
+正在录音：{} / {} 秒。请像通话时一样说话。
+
+Recordings…
+录制记录…
+
+Record…
+录制…
+
+Red
+红色
+
+Red:
+红色：
+
+Redo
+重做
+
+Redo Window Arrangement
+重做窗口排列
+
+Redo {}
+重做{}
+
+Reference
+引用
+
+Reference:
+引用：
+
+Refining Olo's model on {} touches…
+正在用 {} 次触摸微调 Olo 模型…
+
+Refresh
+刷新
+
+Refresh rate:
+刷新率：
+
+Refresh:
+刷新：
+
+Regenerate
+重新生成
+
+Reinstall Selected…
+重新安装所选项目…
+
+Reminder:
+提醒：
+
+Remote
+远程
+
+Removable Disks
+可移动磁盘
+
+Remove
+移除
+
+Remove Account
+移除账户
+
+Remove Graph
+移除图表
+
+Remove Place
+移除地点
+
+Remove Repository
+移除软件源
+
+Remove Repository…
+移除软件源…
+
+Remove Tab
+移除标签页
+
+Remove Tab from Group
+从组中移除标签页
+
+Remove Worktree…
+移除工作树…
+
+Remove from Group
+从组中移除
+
+Remove from Pool…
+从池中移除…
+
+Remove it from the pool? Its sign-in here is deleted; the account itself isn’t touched.
+从池中移除此账户吗？本机的登录信息会被删除，账户本身会保留。
+
+Remove the VPN “{}”? Its settings and keys go with it.
+移除 VPN“{}”吗？其设置和密钥也将移除。
+
+Remove the {}? It will no longer unlock anything.
+移除{}吗？此后将无法再用它解锁。
+
+Remove {} from the Collector
+从收集器中移除{}
+
+Remove “{}” from Favorites
+从收藏中移除“{}”
+
+Remove…
+移除…
+
+Rename
+重命名
+
+Rename Group…
+重命名组…
+
+Rename Place…
+重命名地点…
+
+Rename Worktree…
+重命名工作树…
+
+Rename…
+重命名…
+
+Repeat rate
+重复速率
+
+Repeats:
+重复：
+
+Replace
+替换
+
+Replace Same
+替换相同通知
+
+Replace the one-time code of your login {} with the one this page shows?
+用此页显示的一次性验证码替换登录项“{}”中的验证码吗？
+
+Replace with
+替换为
+
+Replace with:
+替换为：
+
+Replaced by a newer one
+已被较新的项目替换
+
+Replace…
+替换…
+
+Reply
+回复
+
+Reply to
+回复给
+
+Reply to {}
+回复 {}
+
+Reports
+报告
+
+Repositories
+软件源
+
+Repository
+仓库
+
+Rescan
+重新扫描
+
+Reset
+重置
+
+Reset Crop
+重置裁剪
+
+Reset Display Settings
+重置显示器设置
+
+Reset Display Settings…
+重置显示器设置…
+
+Reset Pane Sizes
+重置面板大小
+
+Reset Passwords
+重置 Passwords
+
+Reset Passwords…
+重置 Passwords…
+
+Reset Thresholds
+重置阈值
+
+Reset of “{}”
+重置“{}”
+
+Resetting the displays' settings…
+正在重置显示器设置…
+
+Resident memory
+常驻内存
+
+Resize
+调整大小
+
+Resize…
+调整大小…
+
+Resolution:
+分辨率：
+
+Responsiveness
+响应速度
+
+Rest of Today
+今日剩余时段
+
+Rest your palms
+放下手掌
+
+Restart
+重启
+
+Restart Immediately
+立即强制重启
+
+Restart Now
+现在重启
+
+Restart Now…
+现在重启…
+
+Restart Olo
+重启 Olo
+
+Restart Recording
+重新开始录制
+
+Restart and Shut Down end every program and stop the system in order, as Deskbar's menu does; Immediately doesn't wait for that. Held long, most computers' own firmware cuts the power whatever is set here (often after 4 to 10 seconds).
+“重启”和“关机”与 Deskbar 菜单一样，会先退出所有程序，再有序关闭系统。“立即”操作不会等待此过程。无论这里如何设置，大多数电脑的固件在长按电源键时都会切断电源（通常为 4 至 10 秒）。
+
+Restart kache
+重启 kache
+
+Restart, Asking First
+先询问再重启
+
+Restart…
+重启…
+
+Resting: nothing new on it
+空闲：没有新内容
+
+Restore
+恢复
+
+Restore Files…
+恢复文件…
+
+Restore To…
+恢复到…
+
+Restored as {}.
+已恢复为 {}。
+
+Restore…
+恢复…
+
+Restoring
+正在恢复
+
+Restoring: {} so far…
+正在恢复：目前已恢复 {}…
+
+Restoring: {}, {} so far. {}
+正在恢复：{}，目前已恢复 {}。{}
+
+Restoring…
+正在恢复…
+
+Rests
+手掌放置次数
+
+Result
+结果
+
+Resume
+继续
+
+Resume Backups
+继续备份
+
+Resume Recording
+继续录制
+
+Resuming the backup
+正在继续备份
+
+Revert
+还原
+
+Revert to Saved
+还原到已保存版本
+
+Revert to Saved…
+还原到已保存版本…
+
+Revert to the last saved version of “{}”?
+将“{}”还原到上次保存的版本吗？
+
+Reverting in 1 second.
+1 秒后还原。
+
+Reverting in {} seconds.
+{} 秒后还原。
+
+Rich Text (RTF)…
+富文本（RTF）…
+
+Right
+右
+
+Right Half
+右半部分
+
+Right Third
+右侧三分之一区域
+
+Right Two Thirds
+右侧三分之二区域
+
+Right first
+首选建议准确率
+
+Room:
+空间：
+
+Rotate Left
+向左旋转
+
+Rotate Right
+向右旋转
+
+Round trip
+往返时间
+
+Round trip meanwhile
+传输时的往返时间
+
+Router:
+路由器：
+
+Rows
+行
+
+Ruby
+Ruby
+
+Ruler
+标尺
+
+Run module
+运行模块
+
+Run on it with “olo-screen run”
+使用“olo-screen run”在此运行
+
+Running
+运行中
+
+Runs on
+运行设备
+
+Russian
+俄语
+
+Rust
+Rust
+
+Rust build output and downloaded crates
+Rust 构建产物和下载的 crate
+
+S
+南
+
+SE
+东南
+
+SQL
+SQL
+
+SSD temperature
+SSD 温度
+
+SSE
+东南偏南
+
+SSW
+西南偏南
+
+SW
+西南
+
+Saturday
+星期六
+
+Save
+保存
+
+Save As…
+另存为…
+
+Save Group
+保存组
+
+Save a login for {} with the one-time code this page shows?
+为 {} 保存登录项，并附上此页显示的一次性验证码吗？
+
+Save a passkey for “{}” on {} in Passwords?
+将 {1} 上“{0}”的通行密钥存入 Passwords 吗？
+
+Save a passkey for “{}” on {} in Passwords? It goes with your login “{}”.
+将 {1} 上“{0}”的通行密钥存入 Passwords 吗？它会关联到登录项“{2}”。
+
+Save a passkey on {} in Passwords?
+将 {} 的通行密钥存入 Passwords 吗？
+
+Save a passkey on {} in Passwords? It goes with your login “{}”.
+将 {} 的通行密钥存入 Passwords 吗？它会关联到登录项“{}”。
+
+Save as
+另存为
+
+Save as GIF
+存为 GIF
+
+Save as:
+另存为：
+
+Save in:
+保存位置：
+
+Saved the vault “{}”.
+已保存保险库“{}”。
+
+Saved to /etc/hosts.
+已保存到 /etc/hosts。
+
+Saved, but it can't be reopened: {}
+已保存，但无法重新打开：{}
+
+Saves Olo's settings and what apps keep between runs in one file, to bring back here or to another computer. What goes in:
+将 Olo 设置和应用在退出后保留的内容保存到一个文件，以便在本机或其他电脑恢复。包含以下内容：
+
+Saving Power
+节能
+
+Saving Power slows the processors and turns turbo off, Balanced speeds them up for work (leaning to saving on battery), Fastest keeps them quick; Top speed caps them (Balanced's 75% leaves out their hottest quarter). A GPU's Cooler and Quieter caps its clocks (Custom: its own, on Graphics), an SSD's Cooler and Coolest the power it may draw (a SATA SSD's, how deeply its link may sleep between commands), the fans' Cool, Cooler and Coolest how early they speed up (Auto: the computer's own way). On battery, a row not As the Mode holds whatever the mode.
+“节能”会降低处理器频率并关闭睿频；“平衡”会在工作时提速，电池供电时偏向节能；“最快”则保持高速。“最高速度”可限制频率，例如平衡模式的 75% 会避开发热最高的四分之一频段。GPU 的“更凉爽”和“更安静”限制频率，自定义值在“图形”中设置。SSD 的冷却档位限制功耗，SATA SSD 则调整命令间隙中链路的休眠深度。风扇的冷却档位越高，提速越早；“自动”由电脑决定。电池供电时，未选择“跟随模式”的项目在各模式下均保持所选值。
+
+Saving it with your settings…
+正在与设置一起保存…
+
+Saving…
+正在保存…
+
+Scala
+Scala
+
+Scan
+扫描
+
+Scan Home
+扫描主文件夹
+
+Scan Volume
+扫描卷
+
+Scan a Folder…
+扫描文件夹…
+
+Scanning…
+扫描中…
+
+Scanning… {}, {}
+正在扫描… {}，{}
+
+Schedule
+计划
+
+Scheduled
+已计划
+
+Scheduler
+调度器
+
+Scientific Keypad
+科学计算键盘
+
+Score {} of 2000
+得分 {}，满分 2000
+
+Screen
+屏幕
+
+Screen Recordings
+屏幕录像
+
+Screen Saver
+屏幕保护程序
+
+Screenshot
+截图
+
+Scroll
+滚动
+
+Scroll while the middle button is held
+按住中键时滚动
+
+Scroll with:
+滚动方式：
+
+Scrolling
+滚动
+
+Scrolling speed
+滚动速度
+
+Search
+搜索
+
+Search domains:
+搜索域：
+
+Search:
+搜索：
+
+Search: name, command, user:, state:, kind:
+搜索：名称、命令、user:、state:、kind:
+
+Search: names, CVEs, kind:, severity:, repo:
+搜索：名称、CVE、kind:、severity:、repo:
+
+Search: words, program:, level:, since:
+搜索：文字、program:、level:、since:
+
+Searching…
+正在搜索…
+
+Secondary click (three: middle)
+辅助点击（三指为中键）
+
+Section
+节
+
+Secure Note
+安全备注
+
+Security
+安全性
+
+Security Keys
+安全密钥
+
+Security Updates
+安全更新
+
+Security:
+安全性：
+
+Security…
+安全性…
+
+Sees this computer in
+发现本机所需时间
+
+Segment size
+分段大小
+
+Select
+选择
+
+Select All
+全选
+
+Select All Chats
+选择所有聊天
+
+Select All Conversations
+选择所有对话
+
+Select All Screens
+选择所有屏幕
+
+Select None
+取消全选
+
+Select a line to read it whole.
+选择一行查看完整内容。
+
+Select a repository to see everything about it.
+选择软件源可查看详细信息。
+
+Select a transaction to see what it did to each package.
+选择一笔事务，查看它对每个软件包所做的更改。
+
+Select an update to read about it: its versions, why it came out, what changed.
+选择更新可查看版本、发布原因和更改内容。
+
+Selected {} to {}
+已选择 {} 至 {}
+
+Send
+发送
+
+Send Code
+发送验证码
+
+Send Signal
+发送信号
+
+Send Signal…
+发送信号…
+
+Send Voice Message
+发送语音消息
+
+Send to Back
+置于底层
+
+Send with BBRv3
+使用 BBRv3 发送
+
+Sending your changes to Telegram
+正在向 Telegram 发送更改
+
+Sending {n} changes to Telegram…
+other: 正在向 Telegram 发送 {n} 项更改…
+
+Sending {} to process {}
+正在向进程 {1} 发送 {0}
+
+Sends with
+发送方式
+
+Sensor:
+传感器：
+
+Sensors
+传感器
+
+Sent
+已发送
+
+Sent again
+已重传
+
+Sent again by the server
+服务器重传
+
+Separated by spaces
+以空格分隔
+
+Server
+服务器
+
+Server delivers at
+服务器传输速率
+
+Server:
+服务器：
+
+Servers of Your Own
+自定义服务器
+
+Servers of your own are asked in place of what each network hands out, on every link. Search domains are tried after a short name: nas, then nas.corp.example.
+指定的服务器将替代各网络分配的服务器，对所有连接生效。查找短名称时会尝试追加搜索域，例如先查 nas，再查 nas.corp.example。
+
+Server’s round trip
+服务器往返时间
+
+Server’s window
+服务器窗口
+
+Service
+服务
+
+Service Order
+服务顺序
+
+Session:
+会话：
+
+Set
+设置
+
+Set Background
+设置背景
+
+Set Time Zone
+设置时区
+
+Set Up
+设置
+
+Set Up Again…
+重新设置…
+
+Set Up by Hand…
+手动设置…
+
+Set Up…
+设置…
+
+Set date and time automatically
+自动设置日期与时间
+
+Set for the whole computer by {}{}.
+由 {}{} 为整台电脑设置。
+
+Set up ({} looks).
+已设置（已录入 {} 种面容）。
+
+Setting
+设置
+
+Setting it: an administrator's password is asked…
+正在设置：需要输入管理员密码…
+
+Setting up backups to {}…
+正在设置到 {} 的备份…
+
+Setting up the backups in {}’s Google Drive…
+正在 {} 的 Google Drive 中设置备份…
+
+Setting up your {} takes your password and two touches of the key:
+设置{}需要输入密码，并触摸密钥两次：
+
+Setting up your {} takes your password, its PIN and two touches of the key:
+设置{}需要输入密码和密钥 PIN，并触摸密钥两次：
+
+Settings
+设置
+
+Settings:
+设置：
+
+Shaping
+流量整形
+
+Share
+共享
+
+Shared
+共享
+
+Shared with this screen: change it in your own Passwords.
+已与此屏幕共享。请在您自己的 Passwords 中更改。
+
+Shares this computer's connection as a Wi-Fi network of its own; the adapter leaves the network it's on while it does.
+将本机连接共享为独立的 Wi-Fi 网络。共享期间，适配器会断开原先连接的网络。
+
+Sharing
+共享
+
+Sharing this computer's connection as “{}”.
+正以“{}”为网络名称共享本机连接。
+
+Shell
+Shell
+
+Shift gradually, starting at From
+从起始时刻逐渐过渡
+
+Shift over
+过渡时长
+
+Shirt touches
+衣袖接触
+
+Short
+短
+
+Short, in the middle
+短线居中
+
+Shortcuts
+快捷键
+
+Shorter
+较短
+
+Shortest
+最短
+
+Show
+显示
+
+Show All
+显示全部
+
+Show Archived
+显示已归档项目
+
+Show Archived Conversations
+显示已归档的对话
+
+Show Assistant
+显示助手
+
+Show Calendars
+显示日历
+
+Show Camera
+显示摄像头
+
+Show Clicks
+显示点击位置
+
+Show Deskbar
+显示 Deskbar
+
+Show DiskBackup in Deskbar
+在 Deskbar 中显示 DiskBackup
+
+Show Display
+显示显示器
+
+Show File in Tracker
+在 Tracker 中显示文件
+
+Show Hidden Files
+显示隐藏文件
+
+Show Notifications
+显示通知
+
+Show Only {}
+仅显示{}
+
+Show Places
+显示地点
+
+Show Preview
+显示预览
+
+Show Rescue Here
+在此显示救援窗口
+
+Show Ruler
+显示标尺
+
+Show Shortcuts
+显示快捷键
+
+Show Source
+显示源
+
+Show Toolbars
+显示工具栏
+
+Show a window from its tab's menu (right-click its title) or its row in Deskbar: Show on AirPlay. Play a film from Viewer or Tracker: Play On.
+右键点击窗口标题或打开其 Deskbar 菜单，选择“通过 AirPlay 显示”即可投送窗口。在 Viewer 或 Tracker 中选择“播放到”可投送影片。
+
+Show banners for:
+横幅显示时长：
+
+Show icons in the Deskbar menu
+在 Deskbar 菜单中显示图标
+
+Show in Activity Monitor
+在活动监视器中显示
+
+Show in Context
+显示上下文
+
+Show in Tracker
+在 Tracker 中显示
+
+Show its name
+显示名称
+
+Show its value
+显示数值
+
+Show on AirPlay
+通过 AirPlay 显示
+
+Show on All Workspaces
+在所有工作区显示
+
+Show or Hide All Windows
+显示或隐藏所有窗口
+
+Show seconds
+显示秒数
+
+Show the day of the week
+显示星期
+
+Show the phone’s other notifications
+显示手机的其他通知
+
+Show what a message says
+显示消息内容
+
+Show what's used, not what's left
+显示已用量
+
+Show:
+显示：
+
+Showing its code
+正在显示验证码
+
+Showing the forecast from {}.
+正在显示来自 {} 的预报。
+
+Shown
+已显示
+
+Shows:
+显示内容：
+
+Shut Down
+关机
+
+Shut Down Immediately
+立即强制关机
+
+Shut Down, Asking First
+先询问再关机
+
+Sign In
+登录
+
+Sign In Again
+重新登录
+
+Sign In Again in Terminal…
+在 Terminal 中重新登录…
+
+Sign In Again…
+重新登录…
+
+Sign In with Google
+使用 Google 登录
+
+Sign In…
+登录…
+
+Sign Out
+退出登录
+
+Sign Out…
+退出登录…
+
+Sign in to {} as “{}” with your passkey?
+使用通行密钥以“{1}”的身份登录 {0} 吗？
+
+Sign in to {} with which passkey?
+使用哪个通行密钥登录 {}？
+
+Sign in to “{}”
+登录“{}”
+
+Sign-In Needed
+需要登录
+
+Signal
+信号
+
+Signed in as {} ({}).
+已以 {} 的身份登录（{}）。
+
+Signed in as {}.
+已以 {} 的身份登录。
+
+Signing in to Fastmail…
+正在登录 Fastmail…
+
+Sign…
+签名…
+
+Site Settings
+网站设置
+
+Size
+大小
+
+Size:
+大小：
+
+Skip this step
+跳过此步骤
+
+Sleet
+雨夹雪
+
+Slow
+慢
+
+Slower
+更慢
+
+Slower, cooler and quieter: the processors favour saving energy and the firmware lowers its power limits. The battery lasts longest.
+速度较低，更凉爽安静。处理器优先节能，固件会降低功耗上限，电池续航最长。
+
+Slowest
+最慢
+
+Slowest compiles
+最耗时的编译
+
+Small
+小
+
+Small: one line. Medium and Large: all it shows, Large's sky bigger.
+小尺寸仅显示一行。中、大尺寸显示全部信息，大尺寸的天空图更大。
+
+Smaller
+更小
+
+Smooth Pointer
+平滑指针
+
+Smooth Scrolling Graphs
+平滑滚动图表
+
+Snapshots
+快照
+
+Snooze
+稍后提醒
+
+Snooze for {}
+推迟 {}
+
+Snooze for:
+推迟时长：
+
+Snow
+雪
+
+Snow and freezing rain
+雪，伴有冻雨
+
+Snow and ice pellets
+雪，伴有冰粒
+
+So the next backup goes on from there.
+下次备份将从那里继续。
+
+Socket
+Socket
+
+Soft
+软限制
+
+Software License
+软件许可证
+
+Sol 6.1
+Sol 6.1
+
+Some accounts connected weren’t allowed Google Drive: sign in again there, and allow it.
+部分已连接账户未授权使用 Google Drive。请重新登录这些账户并授权。
+
+Some items are left out…
+部分项目已排除…
+
+Some of what changed takes effect only once the computer starts again.
+部分更改需要重启电脑才能生效。
+
+Some room
+适量留白
+
+Some waiting
+部分正在等待
+
+Sonnet 5.5
+Sonnet 5.5
+
+Sorry, that didn't work. Please try again.
+未能完成，请重试。
+
+Sort By
+排序方式
+
+Sound
+声音
+
+Sound Settings…
+声音设置…
+
+Sound:
+声音：
+
+Sounds
+声音
+
+Source
+来源
+
+Space Around Arranged Windows
+排列窗口周围的留白
+
+Space at the edges
+边缘留白
+
+Space between windows
+窗口间距
+
+Space only
+仅空格
+
+Spanish
+西班牙语
+
+Spare
+备用空间
+
+Speaker amp {}
+扬声器功放 {}
+
+Speed
+速度
+
+Speed & Resources
+速度与资源
+
+Speed Test
+测速
+
+Speed:
+速度：
+
+Spiral
+螺旋
+
+Standard
+标准
+
+Standing By: {} Is in Use
+待命中：正在使用{}
+
+Start
+开始
+
+Start Olo over (Rescue stays on), log out, or restart the computer.
+重新启动 Olo（保持救援模式）、退出登录或重启电脑。
+
+Start Over
+重新开始
+
+Start Over…
+重新开始…
+
+Start Test
+开始测试
+
+Start the Agent
+启动智能体
+
+Start this step over
+重新开始此步骤
+
+Start typing
+开始输入
+
+Started
+开始于
+
+Started {n} hours ago
+other: 开始于 {n} 小时前
+
+Started {n} minutes ago
+other: 开始于 {n} 分钟前
+
+Starting Up
+正在启动
+
+Starting over…
+正在重新开始…
+
+Starting the agent…
+正在启动智能体…
+
+Starting…
+正在启动…
+
+Starts:
+开始：
+
+State
+状态
+
+Stats
+统计
+
+Status
+状态
+
+Status:
+状态：
+
+Stay Awake
+保持唤醒
+
+Stay awake (caffeinated)
+保持唤醒（防止睡眠）
+
+Stay awake: no display sleep, sleep, screen saver or lock
+保持唤醒：不熄屏、不睡眠、不启动屏保或锁屏
+
+Steadily (fit)
+持续增长（拟合度）
+
+Steady freezing rain
+持续冻雨
+
+Steady rain
+持续降雨
+
+Steady sleet
+持续雨夹雪
+
+Steady snow
+持续降雪
+
+Step {} of {}
+第 {} 步，共 {} 步
+
+Stop
+停止
+
+Stop All
+全部停止
+
+Stop Ignoring
+不再忽略
+
+Stop Process
+停止进程
+
+Stop Recording
+停止录制
+
+Stop Scanning
+停止扫描
+
+Stop Screen
+停止屏幕
+
+Stop Screen…
+停止屏幕…
+
+Stop Sharing
+停止共享
+
+Stop charging at {}% (and start again below {}%)
+充到 {}% 时停止，低于 {}% 时恢复充电
+
+Stop syncing with {}? Its items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
+停止与 {} 同步吗？此账户的项目以及本机尚未发送的更改都将从本机移除。1Password 中的内容不受影响。
+
+Stop syncing with {}? Their items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
+停止与 {} 同步吗？这些账户的项目以及本机尚未发送的更改都将从本机移除。1Password 中的内容不受影响。
+
+Stopped part way, {}
+中途停止，{}
+
+Stopped · {}
+已停止 · {}
+
+Stopped.
+已停止。
+
+Stopped: what was restored so far is there.
+已停止。已经恢复的内容仍会保留。
+
+Stopping the backup
+正在停止备份
+
+Store
+存储区
+
+Stretch the remaining charge while keeping everyday work responsive.
+延长剩余电量的使用时间，同时保持日常操作流畅。
+
+Strikeout
+删除线
+
+Strong
+强
+
+Stuck in a loop
+陷入循环
+
+Style
+样式
+
+Styled Text
+带格式文本
+
+StyledEdit
+StyledEdit
+
+Subpixel, BGR order
+次像素，BGR 排列
+
+Subpixel, RGB order
+次像素，RGB 排列
+
+Suggest commands from a model of your own
+用自己的模型推荐命令
+
+Suggest emoji for a description
+根据描述推荐表情符号
+
+Suggestion
+建议
+
+Suggestions
+建议
+
+Sun {}–{}
+日出至日落 {}–{}
+
+Sunday
+星期日
+
+SuperString, by Jon Watte
+SuperString，作者 Jon Watte
+
+Supervisor
+Supervisor
+
+Swap
+交换空间
+
+Swap Alt and the Windows Key
+交换 Alt 键与 Windows 键
+
+Swap too
+同时交换
+
+Swap with Previous Main
+与上一个主窗口交换
+
+Swedish
+瑞典语
+
+Swift
+Swift
+
+Swiss
+瑞士
+
+Switch automatically between this computer and your iPhone
+在本机和 iPhone 之间自动切换
+
+Switch to a woken program at once
+立即运行刚唤醒的程序
+
+Sync
+同步
+
+Sync Again
+重新同步
+
+Sync Now
+立即同步
+
+Syncing with 1Password…
+正在与 1Password 同步…
+
+Syncing with {} makes {}. Nothing changes on either side until you apply them.
+与 {0} 同步将产生以下更改：{1}。只有应用更改后，两端的数据才会更新。
+
+System
+系统
+
+System Font
+系统字体
+
+TCP opened in
+TCP 建连用时
+
+TCP sends at the pace its path can carry, by a model of it, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
+TCP 根据模型估算路径的承载能力，按适当速率发送，而 Linux 默认算法会填满沿途的队列。此项使用 Olo 的 tcp_bbr3 模块。
+
+TCP/IP
+TCP/IP
+
+TCP’s own, idle
+TCP 自测值（空闲时）
+
+TCP’s round trip
+TCP 往返时间
+
+TLS couldn't be set up: {}
+无法建立 TLS 连接：{}
+
+TLS opened in
+TLS 建连用时
+
+TOML
+TOML
+
+TSX
+TSX
+
+Table
+表格
+
+Tabs
+标签页
+
+Tags:
+标签：
+
+Take Back
+撤销授权
+
+Take Screenshot
+截图
+
+Take Screenshot…
+截屏…
+
+Take calls on this computer
+在此电脑上接听电话
+
+Taken
+已采纳
+
+Tap
+轻点
+
+Tap and drag
+轻点并拖移
+
+Tap to click
+轻点以点击
+
+Tap {} on its own for the command palette
+单按 {} 打开命令面板
+
+Taps
+轻点次数
+
+Task List
+任务列表
+
+Teal
+蓝绿
+
+Telegram
+Telegram
+
+Telegram (in Applications) shows your chats and messages, and tells you of new ones. Olo keeps its sign-in in your keyring.
+“应用程序”中的 Telegram 会显示聊天和消息，并在有新消息时通知您。Olo 将登录信息保存在密钥环中。
+
+Telegram asks to wait {} s
+Telegram 要求等待 {} 秒
+
+Telegram asks us to wait {} seconds.
+Telegram 要求等待 {} 秒。
+
+Telegram sent a code to Telegram on your other devices (or by text message). Type it here.
+Telegram 已向您其他设备上的 Telegram 发送验证码（也可能通过短信发送）。请在此输入。
+
+Tell coding agents about the repositories in their tab group
+告知编程智能体本标签页组中的仓库
+
+Tell coding agents to use Olo’s Agent Screens
+引导编程智能体使用 Olo 的智能体屏幕
+
+Tell me of:
+通知我：
+
+Tell me when it runs out, and when it's back
+额度耗尽或恢复时通知我
+
+Tell palms apart with a palm model
+用手掌模型识别手掌
+
+Tell palms apart with a palm model too
+同时使用手掌模型辅助识别
+
+Temperature
+温度
+
+Temperature ({})
+温度（{}）
+
+Terminal
+Terminal
+
+Terminal Daemon…
+Terminal 后台服务…
+
+Terminal Preferences…
+Terminal 偏好设置…
+
+Terminal shows each tab’s pull request on GitHub and whether its checks pass.
+Terminal 会显示各标签页对应的 GitHub 拉取请求及其检查结果。
+
+Terminal's shells here belong to this screen and end with it: open the person's own Terminal for work to keep
+此屏幕中的 Terminal shell 会随屏幕关闭而结束。需要保留的工作请在您自己的 Terminal 中进行
+
+Terra 6.1
+Terra 6.1
+
+Test
+测试
+
+Tested
+已测试
+
+Tested on the {} touches kept back from training ({} palms, {} fingers):
+使用训练时留出的 {} 次触摸测试（手掌 {} 次，手指 {} 次）：
+
+Tested {}
+测试时间：{}
+
+Tests
+测试
+
+Tests holding slots
+占用插槽的测试
+
+Text
+文本
+
+Text Box
+文本框
+
+Text Message
+短信
+
+Text Size
+文字大小
+
+Text messages to “{}”
+发给“{}”的短信
+
+Text:
+文本：
+
+That isn't a telephone number or an address.
+这不是电话号码或地址。
+
+That isn't a value.
+这不是有效值。
+
+That isn't one of the repository's worktrees.
+这不是此仓库的工作树。
+
+That isn't the backup's password.
+这不是此备份的密码。
+
+That isn’t a Copr project’s name.
+这不是有效的 Copr 项目名称。
+
+That password isn't right.
+密码不正确。
+
+That password isn’t right.
+密码不正确。
+
+That password isn’t right. Try again:
+密码不正确，请重试：
+
+That secret is empty in Passwords.
+Passwords 中的机密值为空。
+
+That's all of them. Press {} to learn your hands.
+触摸已收集完毕。按 {} 学习您的手部特征。
+
+That's all this step needs.
+此步骤需要的样本已收集完毕。
+
+That’s too big to be a .repo file.
+文件太大，不像是 .repo 文件。
+
+The API ID couldn’t be kept in the keyring ({}).
+无法将 API ID 存入密钥环（{}）。
+
+The API ID is a number.
+API ID 必须是数字。
+
+The API hash is 32 letters and digits (0–9, a–f).
+API 哈希由 32 个字符组成，只能使用 0–9 和 a–f。
+
+The AirPods service isn't running.
+AirPods 服务未运行。
+
+The CPU doesn't offer “{}”.
+CPU 不支持“{}”。
+
+The DiskBackup service isn’t running
+DiskBackup 服务未运行
+
+The GPU
+GPU
+
+The MTU is a number of bytes.
+MTU 必须是以字节为单位的数值。
+
+The New Build
+新构建版本
+
+The Theme’s Own
+主题默认值
+
+The VPN couldn't be saved.
+无法保存 VPN。
+
+The account answering now
+当前响应的账户
+
+The account couldn’t be saved ({}).
+无法保存账户（{}）。
+
+The address search answered {}.
+地址搜索响应：{}。
+
+The address search’s answer can’t be read: {}
+无法读取地址搜索结果：{}
+
+The agent is at work in a Terminal window, on its agent screen “{}” (Agent Screens shows it): it makes the account’s app in Google Cloud and signs Olo in with it. The account shows here when it’s done; you can talk to the agent in Terminal meanwhile.
+智能体正在专用屏幕“{}”的 Terminal 窗口中工作，可在“智能体屏幕”中查看。它会在 Google Cloud 中创建账户专属的应用，并用它登录 Olo。完成后账户将出现在这里。在此期间您可以在 Terminal 中与智能体交谈。
+
+The assistant is off in Preferences ▸ AI ▸ Calendar.
+“偏好设置 ▸ AI ▸ 日历”中的助手已关闭。
+
+The backup can’t be opened: {}.
+无法打开备份：{}。
+
+The backup goes on by itself once it’s back, from where it got to.
+重新连接后会从中断处自动继续备份。
+
+The backup is damaged.
+备份已损坏。
+
+The backup {} didn’t finish: {}
+备份 {} 未完成：{}
+
+The backup's password is needed to open it.
+打开此备份需要其密码。
+
+The backups can’t be listed: {}.
+无法列出备份：{}。
+
+The backups have no version of it.
+备份中没有此项的任何版本。
+
+The backups have only the version there now.
+备份中只有此项现在的版本。
+
+The backups take {} there
+备份在该位置占用 {}
+
+The bell's count in:
+铃铛上的计数显示：
+
+The change couldn’t be made: {}.
+未能完成更改：{}。
+
+The clock service (systemd-timedated) isn't answering.
+时钟服务（systemd-timedated）未响应。
+
+The code from {}, at {}.
+来自 {0} 的验证码已填入 {1}。
+
+The coming days, each its sky, low and high.
+未来几天的天气，以及每天的最低和最高气温。
+
+The computer couldn't be restarted: {}
+无法重启电脑：{}
+
+The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
+当天的命中率、池中已用插槽，以及最近几小时的构建与命中次数。
+
+The displays' settings are Olo's own again, from when you leave Rescue.
+退出救援模式后，显示器将重新使用 Olo 的原有设置。
+
+The export failed: {}
+导出失败：{}
+
+The fans' profile isn't in force yet: {}
+风扇配置尚未生效：{}
+
+The fingerprint couldn't be removed.
+无法移除指纹。
+
+The fingerprint sensor couldn't be used.
+无法使用指纹传感器。
+
+The fingerprint sensor isn't answering.
+指纹传感器未响应。
+
+The first backup reads everything; later ones read only what changed, in a fraction of the time.
+首次备份会读取全部内容。以后只读取更改的部分，所需时间短得多。
+
+The first backup starts in a moment.
+即将开始首次备份。
+
+The first fine-tune failed: {}
+首次微调失败：{}
+
+The hand-written ones: not fine-tuned yet
+手写规则：尚未微调
+
+The icons {} is drawn with, everywhere.
+{} 在各处使用的图标。
+
+The infrared camera couldn't be opened (its shutter, or another program).
+无法打开红外摄像头。请检查遮挡开关，或确认是否有其他程序正在使用。
+
+The journal couldn't be read: {}
+无法读取系统日志：{}
+
+The kernel's own (recommended)
+内核自带（推荐）
+
+The key couldn’t be kept ({}).
+无法保存密钥（{}）。
+
+The key couldn’t be removed ({}).
+无法移除密钥（{}）。
+
+The key is in your login keyring.
+密钥已存放在登录密钥环中。
+
+The key is kept in Passwords as “DiskBackup Key”.
+密钥已存入 Passwords，名称为“DiskBackup Key”。
+
+The key is only on this computer: keep it in Passwords, to restore anywhere else.
+密钥只在本机上。请将它存入 Passwords，以便在其他电脑上恢复备份。
+
+The key is set up: from now on, a touch of it does what typing your password does.
+密钥已设置。今后触摸密钥即可代替输入密码。
+
+The key stopped waiting with no touch, and is blinking again: touch it once more now.
+未检测到触摸，等待已超时。指示灯再次闪烁，请再触摸一次密钥。
+
+The key stopped waiting with no touch, and is blinking again: touch {} now.
+未检测到触摸，等待已超时。指示灯再次闪烁，请现在触摸{}。
+
+The key to DiskBackup's backups: without it they can't be read. DiskBackup keeps a copy in this computer's keyring; on another computer, it reads it from here.
+这是读取 DiskBackup 备份所需的密钥。DiskBackup 会在本机密钥环中保留一份副本；在其他电脑上则从这里读取。
+
+The key was removed: a touch of it no longer stands for your password.
+密钥已移除，触摸此密钥将不能再代替输入密码。
+
+The keyring couldn’t be read ({}).
+无法读取密钥环（{}）。
+
+The last 12 hours
+过去 12 小时
+
+The last 24 hours
+过去 24 小时
+
+The last 6 hours
+过去 6 小时
+
+The last backup isn’t whole: {}. The next backup sends again what it can.
+最近的备份不完整：{}。下次备份会尽可能重新发送。
+
+The last backup was {}
+上次备份：{}
+
+The last hour of use
+最近一小时的使用情况
+
+The last whole one was {}
+上次完整备份：{}
+
+The list of Google accounts couldn’t be saved ({}).
+无法保存 Google 账户列表（{}）。
+
+The log can't be opened: {}
+无法打开日志：{}
+
+The login keyring couldn't be read: {}
+无法读取登录密钥环：{}
+
+The look of every icon, window and control, in every app, and a wallpaper to match.
+所有应用的图标、窗口和控件外观，以及相配的墙纸。
+
+The look's own
+外观默认值
+
+The loss is a number, in percent.
+丢包率须以百分数输入。
+
+The microphone can’t be recorded ({}).
+无法从麦克风录音（{}）。
+
+The model
+模型
+
+The model wasn't good enough to keep
+模型表现不佳，未保留
+
+The most powerful (the processor)
+最强（CPU）
+
+The most powerful ({})
+最强（{}）
+
+The network couldn't be asked for receivers.
+无法在网络上查找接收器。
+
+The next 12 hours
+未来 12 小时
+
+The next 3 hours
+未来 3 小时
+
+The next 6 hours
+未来 6 小时
+
+The next backup sends again what it can.
+下次备份会尽可能重新发送。
+
+The next hours, each its sky and temperature, with the chance of rain or the cloud.
+未来几小时逐时的天气、气温，以及降雨概率或云量。
+
+The one it started on
+最初所在的位置
+
+The package service reads what’s installed and what each repository has.
+软件包服务正在读取已安装的软件包和各软件源的内容。
+
+The packages can’t be read
+无法读取软件包
+
+The pad clicks at {}/{} (all contacts together); with a palm on it, Olo counts the click only if the fingers press that hard alone.
+触控板所有接触点的总压力达到 {}/{} 时触发点击。有手掌放在上面时，只有手指自身的压力达到此值，Olo 才会将其识别为点击。
+
+The pairing with {} couldn't be forgotten: {}.
+无法取消与 {} 的配对：{}。
+
+The password couldn’t be kept in the keyring ({}).
+无法将密码存入密钥环（{}）。
+
+The password of “{}” couldn’t be kept: {}
+无法保存“{}”的密码：{}
+
+The passwords file is damaged: {}
+密码文件已损坏：{}
+
+The phone didn’t take it.
+手机未接受。
+
+The phone is connected but isn’t answering (it may be asleep). It’s asked again from time to time, and at once when it wakes.
+手机已连接但未响应，可能处于睡眠状态。系统会不时重试，并在手机唤醒后立即重试。
+
+The phone isn’t connected.
+手机未连接。
+
+The phone service isn’t running.
+电话服务未运行。
+
+The phone service wouldn’t say.
+电话服务未提供详情。
+
+The phone went.
+手机已断开连接。
+
+The phone’s messages stopped ({}).
+手机的消息服务已停止（{}）。
+
+The picture on the desktop when {} is chosen. Backgrounds changes the desktop’s after, a workspace at a time.
+选择{}时显示的桌面图片。之后可在“桌面背景”中为各工作区分别更换。
+
+The place search answered {}.
+地点搜索响应：{}。
+
+The place search’s answer can’t be read: {}
+无法读取地点搜索结果：{}
+
+The place’s time zone can’t be looked up: {}
+无法查询此地的时区：{}
+
+The pointer keeps moving, and none of its motion is lost, while the desktop is busy: a slow frame, or a wait in the graphics driver under load. New, and being tried: if the mouse, touchpad or keyboard misbehaves with it on, turn it off.
+桌面忙碌时，例如某一帧绘制较慢，或图形驱动在高负载下等待，指针仍会跟随每一个动作。这是试用中的新功能。如果启用后鼠标、触控板或键盘出现异常，请关闭它。
+
+The pool
+资源池
+
+The power mode (Power Saver, Balanced or Performance) is set in Power.
+电源模式（省电、平衡或性能）可在“电源”中设置。
+
+The power service reported a problem applying this mode. Olo Doctor has the details.
+电源服务报告应用此模式时出了问题。详情见 Olo Doctor。
+
+The process has quit.
+进程已退出。
+
+The processor
+CPU
+
+The processor (OpenH264)
+CPU（OpenH264）
+
+The repository has a worktree called {} already.
+此仓库已有名为 {} 的工作树。
+
+The right edge
+右侧边缘
+
+The screen
+屏幕
+
+The server answered {}{}.
+服务器响应：{}{}。
+
+The server didn’t take the name and password.
+服务器拒绝了用户名和密码。
+
+The server’s CalDAV address, and the name and password it signs you in with. The password is kept in your login keyring.
+输入服务器的 CalDAV 地址、登录名和密码。密码将保存在登录密钥环中。
+
+The shell has ended.
+Shell 已结束。
+
+The sky and temperature now, and what's coming.
+当前天气和气温，以及接下来的预报。
+
+The store
+存储区
+
+The store is over its {} limit
+存储区已超过 {} 的上限
+
+The system power profiles service is unavailable.
+系统电源配置服务不可用。
+
+The system's services (updates, indexing) can still run there.
+更新、索引等系统服务仍可在此核心上运行。
+
+The system's services are kept off it too.
+系统服务也不会在此核心上运行。
+
+The test didn't finish: {}.
+测试未完成：{}。
+
+The time zone lookup answered {}.
+时区查询响应：{}。
+
+The time zone lookup’s answer can’t be read: {}
+无法读取时区查询结果：{}
+
+The token couldn’t be kept in the keyring ({}).
+无法将令牌存入密钥环（{}）。
+
+The token couldn’t be taken out of the keyring ({}).
+无法从密钥环移除令牌（{}）。
+
+The touchpad says which touches are palms, but lets a resting palm go back to being a finger; Olo keeps it a palm until it lifts.
+触控板会识别手掌，但有时会把静止的手掌重新判为手指。Olo 会持续将其视为手掌，直到抬起。
+
+The two passwords aren't the same.
+两次输入的密码不一致。
+
+The upgrade to Fedora {} is downloaded and waits for the computer to restart.
+Fedora {} 升级已下载，重启电脑后即可安装。
+
+The user session's systemd didn't answer.
+用户会话的 systemd 未响应。
+
+The voice message couldn’t be recorded ({}).
+无法录制语音消息（{}）。
+
+The voice service isn't running.
+语音服务未运行。
+
+The window server didn’t give its settings.
+窗口服务器未提供设置。
+
+The workspace each display shows stays open in every Deskbar; each other one is its heading, with an arrow that shows its applications and puts them away again.
+每个 Deskbar 都会展开各显示器当前的工作区，其他工作区只显示标题。点击箭头可展开或收起其中的应用。
+
+The {} couldn't be changed.
+无法更改{}。
+
+The {} is a whole number.
+{}必须是整数。
+
+The {} wasn't changed: an administrator's password is needed.
+未更改{}：需要管理员密码。
+
+Their new windows open there, on the display they open on. Uncheck an app to open its windows where you are again.
+这些应用的新窗口会出现在对应显示器的指定工作区。取消勾选后，新窗口会重新在当前工作区打开。
+
+Their windows float over the tiles, and over the window Focus shows. Uncheck an app to tile its windows again.
+这些应用的窗口会浮在平铺窗口及专注模式的窗口之上。取消勾选即可恢复平铺。
+
+Theme
+主题
+
+Themes
+主题
+
+Then its client’s ID and secret here, and sign in: Google asks in your browser whether Olo may read your mail, use your calendars and keep DiskBackup’s files in your Drive.
+然后在这里输入客户端 ID 和密钥并登录。Google 会在浏览器中询问是否允许 Olo 读取邮件、使用日历，以及在 Drive 中保存 DiskBackup 文件。
+
+Then the space only it took is freed, in {}.
+随后会释放它在 {} 中独占的空间。
+
+Then the space only they took is freed, in {}.
+随后会释放这些备份在 {} 中独占的空间。
+
+There are no links to shape.
+没有可进行流量整形的连接。
+
+There are no network interfaces.
+没有网络接口。
+
+There is no journal for this user to read (in /var/log/journal or /run/log/journal).
+在 /var/log/journal 和 /run/log/journal 中都没有此用户可读的日志。
+
+There is no limit “{}”.
+没有名为“{}”的限制。
+
+There is nothing to share.
+没有可共享的内容。
+
+There's no Ethernet adapter. A USB or Thunderbolt one shows here once it's plugged in.
+没有以太网适配器。插入 USB 或雷雳适配器后，它就会显示在这里。
+
+There's no Wi-Fi adapter.
+没有 Wi-Fi 适配器。
+
+There's no fingerprint sensor, or fprintd isn't running.
+没有指纹传感器，或 fprintd 未运行。
+
+There's no infrared camera.
+没有红外摄像头。
+
+These apps may have these items whenever they ask. Take one back and the app is asked again the next time.
+这些应用每次请求时都可以访问列出的项目。撤销授权后，下次请求时会重新询问。
+
+These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
+这些功能需要蓝牙监听 AirPods。可用 Olo Doctor 开启。
+
+ThinkPad
+ThinkPad
+
+Thinking ({})…
+正在思考（{}）…
+
+Thinking:
+思考：
+
+Thinking…
+正在思考…
+
+This Computer
+这台电脑
+
+This Computer's Microphones
+本机麦克风
+
+This PDF can't be edited, so it can't be saved.
+此 PDF 无法编辑，因此无法保存。
+
+This PDF can't be edited.
+此 PDF 无法编辑。
+
+This PDF can't be read.
+无法读取此 PDF。
+
+This PDF has no pages.
+此 PDF 没有页面。
+
+This PDF is protected by a password.
+此 PDF 受密码保护。
+
+This Touchpad
+此触控板
+
+This account has a two-step password.
+此账户启用了两步验证密码。
+
+This backup was made by a newer Olo.
+此备份由更新版本的 Olo 创建。
+
+This computer has no Bluetooth.
+这台电脑没有蓝牙。
+
+This computer has no battery.
+这台电脑没有电池。
+
+This computer is “{}” to AirPlay receivers.
+AirPlay 接收器会将这台电脑显示为“{}”。
+
+This computer is “{}”.
+这台电脑的名称是“{}”。
+
+This computer runs Fedora {}.
+这台电脑运行 Fedora {}。
+
+This computer's kernel can't load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel's own schedules.
+此内核不能加载其他调度器，因此使用内核自带的调度器。Linux 6.12 及以上版本支持 sched_ext。
+
+This computer's sensor sees when someone is in front of it.
+本机的传感器可以检测电脑前是否有人。
+
+This display reports no modes.
+此显示器未报告任何显示模式。
+
+This event
+此日程
+
+This folder was moved or deleted.
+此文件夹已被移动或删除。
+
+This is the recommended profile for this touchpad.
+这是此触控板的推荐配置。
+
+This isn't an Olo backup.
+这不是 Olo 备份。
+
+This isn't the session at the computer, so the computer isn't restarted.
+这不是电脑本地会话，因此未重启电脑。
+
+This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
+此内核不支持按磁盘分别设定限制（Linux 6.2 及以上版本支持）。
+
+This kernel has one way of preempting only: it wasn't built to be told another.
+此内核在构建时只启用了一种抢占方式，无法切换。
+
+This keyboard has no backlight.
+此键盘没有背光。
+
+This page shows a one-time code for {}. Add it to which login?
+此页显示了 {} 的一次性验证码。要将它添加到哪个登录项？
+
+This step is done
+此步骤已完成
+
+This touchpad doesn't report pressure, so it is left to libinput.
+此触控板不报告压力，因此交由 libinput 处理。
+
+This will {} and {}.
+这将{}并{}。
+
+This will {}.
+这将{}。
+
+Threads
+线程
+
+Three fingers
+三指
+
+Three months
+三个月
+
+Three touches type a code
+触摸三次输入验证码
+
+Throttled
+已限速
+
+Through
+经由
+
+Thumb clicks
+拇指点击
+
+Thunderstorm
+雷暴
+
+Thunderstorms
+雷暴
+
+Tidied away
+已清理
+
+Tidy away read notifications after
+已读通知清理延时
+
+Tidying goes on by itself once it’s back, from where it got to.
+重新连接后会从中断处自动继续清理。
+
+Tidying old backups
+正在清理旧备份
+
+Tidying: letting go of old snapshots
+正在清理：删除旧快照
+
+Tile
+平铺
+
+Tile All
+全部平铺
+
+Tile All Tabs
+平铺所有标签页
+
+Tile With
+与其他窗口平铺
+
+Tiling, zooming, Tile All, cascading and fanning out all leave this space.
+平铺、放大、全部平铺、层叠和扇形排列都会保留此间距。
+
+Time
+时间
+
+Time Zone
+时区
+
+Time saved
+节省的时间
+
+Time tasks waited for disks
+任务等待磁盘的时间
+
+Time tasks waited for each, over 10 s, 1 min and 5 min
+过去 10 秒、1 分钟及 5 分钟内，任务等待各项资源的时间
+
+Time tasks waited for memory: 10 s, 1 min, 5 min
+任务等待内存的时间：过去 10 秒、1 分钟、5 分钟
+
+Time zone
+时区
+
+Time:
+时间：
+
+Timeouts
+超时次数
+
+Times in {}.
+时间按 {} 显示。
+
+Title
+标题
+
+Title and preview
+标题和预览
+
+Title only
+仅标题
+
+Title:
+标题：
+
+To allow it, you can also {}.
+也可以通过{}来授权。
+
+To {}
+到 {}
+
+To {}.
+目标：{}。
+
+To:
+到：
+
+Today
+今天
+
+Today and tomorrow
+今天和明天
+
+Today {}
+今天 {}
+
+Token Pool
+Token Pool
+
+Token Pool asks {} to wait until one resets.
+Token Pool 已请 {} 等待，直至有额度重置。
+
+Token Pool isn't running: its quotas are listed once it is.
+Token Pool 未运行，启动后即可查看额度。
+
+Token Pool · {} · {}
+Token Pool · {} · {}
+
+Token Pool: its accounts came in paused. Turn them on here once the other computer's pool no longer uses them: each sign-in renews itself, and two computers renewing one sign each other out.
+Token Pool：导入的账户已暂停使用。请在另一台电脑的池不再使用它们后，再在这里启用。登录凭据会自动续期；两台电脑若同时续期同一份凭据，会导致彼此退出登录。
+
+Token:
+令牌：
+
+Tomorrow
+明天
+
+Took
+用时
+
+Tool
+工具
+
+Tools
+工具
+
+Top Half
+上半部分
+
+Top Left Quarter
+左上四分之一区域
+
+Top Right Quarter
+右上四分之一区域
+
+Top Two Thirds
+顶部三分之二区域
+
+Top speed
+最高速度
+
+Touch
+触摸
+
+Touch ID
+Touch ID
+
+Touch ID isn't used here: its sensor works only with the Mac it's paired to, whose Secure Enclave alone can read what it senses. Use the computer's own fingerprint reader, or your password.
+此处无法使用 Touch ID。传感器仅与已配对的 Mac 配合工作，只有那台 Mac 的安全隔区能读取其数据。请使用本机的指纹读取器或输入密码。
+
+Touch ID, touch your security key, or enter your password
+使用 Touch ID、触摸安全密钥或输入密码
+
+Touch screen
+触摸屏
+
+Touch the key now: its light is blinking. Touch {}.
+密钥指示灯正在闪烁，请现在触摸{}。
+
+Touch the sensor, lift, and touch again.
+触摸传感器，抬起手指，然后再触摸一次。
+
+Touchpad
+触控板
+
+Touchpad & Mouse
+触控板与鼠标
+
+TrackPoint
+TrackPoint
+
+Tracker
+Tracker
+
+Tracker's Open With ▸ offers these for this kind, in this order.
+在 Tracker 的“打开方式”中，此类文件的候选应用按以下顺序排列。
+
+Tracking speed
+跟踪速度
+
+Traffic goes through the first service in this list that's connected; the others stand by. Networks joined later fall in line.
+流量优先使用列表中第一个已连接的服务，其余服务待命。之后加入的网络也遵循此顺序。
+
+Traffic:
+流量：
+
+Train
+训练
+
+Train again
+重新训练
+
+Train for Your Palm
+训练手掌识别
+
+Train for Your Palm…
+训练手掌识别…
+
+Trained on {} of your touches ({} palms, {} fingers). It's kept with your settings (and in backups); Preferences ▸ Touchpad & Mouse ▸ Touch shows it, and can turn it off or forget it.
+已使用您的 {} 次触摸训练（手掌 {} 次，手指 {} 次）。模型随设置一起保存，也会纳入备份。在“偏好设置 ▸ 触控板与鼠标 ▸ 触摸”中可查看、关闭或删除它。
+
+Trained on {} of your touches, it did worse than Olo's untrained model on the {} kept back to test it, so it wasn't saved and nothing changed. Train again, resting your hands as you really do.
+已使用您的 {0} 次触摸训练，但在留作测试的 {1} 次触摸中，效果不如 Olo 未经调整的模型，因此没有保存或更改设置。请按平时的习惯放置双手后重新训练。
+
+Transparency
+透明度
+
+Trash
+废纸篓
+
+Tree
+树
+
+Trim
+修剪
+
+Trim to Selection
+仅保留所选片段
+
+Trim…
+修剪…
+
+Trust
+信任
+
+Trust this repository’s key?
+信任此软件源的密钥吗？
+
+Trusting the key…
+正在设为信任…
+
+Try Again
+重试
+
+Try It…
+试一试…
+
+Try Voice Processing
+试用语音处理
+
+Try again now.
+请现在重试。
+
+Try it
+试一试
+
+Try the Phone Again
+重新连接手机
+
+Trying each setting on it: {} of {}…
+正在逐项试用设置：{} / {}…
+
+Tuned for {}
+已针对 {} 调整
+
+Tuned for:
+调节目标：
+
+Tuning
+调节
+
+Turbo off
+睿频已关闭
+
+Turbo on
+睿频已开启
+
+Turn Off
+关闭
+
+Turn On
+打开
+
+Turn On Bluetooth
+打开蓝牙
+
+Turn off after
+关闭前的等待时间
+
+Turn off displays
+关闭显示器
+
+Turn off screen
+关闭屏幕
+
+Turn on for a laptop usually plugged in.
+经常接电使用的笔记本电脑建议开启。
+
+Turn the display off after:
+关闭显示器前的等待时间：
+
+Turn the touchpad off while a mouse is plugged in
+连接鼠标时停用触控板
+
+Turned off by the hardware switch.
+已由硬件开关关闭。
+
+Turned on
+已开启
+
+Twelve exercises, then a try
+先做十二项练习，再测试
+
+Two fingers
+双指
+
+Two fingers:
+双指：
+
+Two upgrades are ready: a new build of Olo ({}{}), and {} from GitHub, made {} ({} to download). Which do you want? Your windows stay open either way.
+有两个升级可用：本机的新 Olo 构建版本（{0}{1}），以及 GitHub 上的 {2}（构建于 {3}，需下载 {4}）。要安装哪一个？两种方式都会保留打开的窗口。
+
+Type
+类型
+
+Type a time like 13:05 or 1:05 PM.
+请输入 13:05 或 1:05 PM 这样的时间。
+
+Type here to try the settings
+在这里输入以试用设置
+
+Type the PIN for “{}” (often 0000).
+请输入“{}”的 PIN（通常为 0000）。
+
+Type the code “{}” shows on its screen.
+输入“{}”屏幕上显示的代码。
+
+Type the keys. Esc cancels; ⌫ removes them.
+请按下要使用的按键。Esc 取消，⌫ 移除。
+
+Type the keys…
+请按下按键…
+
+Type the passkey shown by “{}”.
+输入“{}”上显示的配对码。
+
+Type the password it’s to be opened with.
+输入用于解锁的密码。
+
+Type this
+输入以下内容
+
+Type with your palms down
+放下手掌打字
+
+Type {} on “{}”, then press Return.
+在“{1}”上输入 {0}，然后按回车。
+
+Type:
+类型：
+
+TypeScript
+TypeScript
+
+Typically
+通常
+
+Typing
+打字
+
+Typing test:
+打字测试：
+
+USB power management may put it to sleep, and then it loses the first movement when the hand moves again.
+USB 电源管理可能会让它休眠，手再次移动时的第一个动作便会丢失。
+
+USB receiver
+USB 接收器
+
+UV index
+紫外线指数
+
+Unarchive All
+全部取消归档
+
+Unarchive All…
+全部取消归档…
+
+Unarchive {} Chats
+取消归档 {} 个聊天
+
+Unavailable with this computer's power driver.
+本机的电源驱动不支持此项。
+
+Under the Tray
+在托盘下方
+
+Underline
+下划线
+
+Undo
+撤销
+
+Undo Transaction {}
+撤销事务 {}
+
+Undo Transaction…
+撤销事务…
+
+Undo Window Arrangement
+撤销窗口排列
+
+Undo {}
+撤销{}
+
+Undo…
+撤销…
+
+Unexpected input
+意外的输入
+
+Unfinished: {} ({}) done and {} sent; the next backup goes on from there.
+未完成：已处理 {}（{}），已发送 {}；下次备份将从这里继续。
+
+Unfinished: {} sent before it stopped; the next backup goes on from there.
+未完成：停止前已发送 {}；下次备份将从这里继续。
+
+Unfloat
+取消浮动
+
+Ungroup
+取消分组
+
+Units
+单位
+
+Unix socket
+Unix 套接字
+
+Unix socket {}
+Unix 套接字 {}
+
+Unknown
+未知
+
+Unknown Senders
+未知发件人
+
+Unknown caller
+未知来电者
+
+Unless the app says; kept while the pointer is over it.
+应用另有设置时优先；指针悬停时保留。
+
+Unlock…
+解锁…
+
+Unmount
+卸载
+
+Unmute
+取消静音
+
+Unmute All
+全部取消静音
+
+Unread notifications put a blue dot beside their app.
+有未读通知时，在应用旁显示蓝点。
+
+Unreaped for
+未回收时长
+
+Unsafe shutdowns
+非正常关机次数
+
+Until Turned Off
+直到手动关闭
+
+Until:
+截止：
+
+Up
+上
+
+Up (sent)
+上行（发送）
+
+Up for
+运行时长
+
+Update
+更新
+
+Update Interval
+更新间隔
+
+Update Only This…
+仅更新此项…
+
+Update Selected Only…
+仅更新所选项目…
+
+Update These {}…
+更新这 {} 项…
+
+Update every:
+更新间隔：
+
+Update the power service in Olo Doctor to use these policies.
+请在 Olo Doctor 中更新电源服务以使用这些策略。
+
+Updated
+已更新
+
+Updated {} · {}
+更新于 {} · {}
+
+Updates
+更新
+
+Updates are downloaded and wait for the computer to restart: they’re installed then.
+更新会先下载，等电脑重启时安装。
+
+Updating…
+正在更新…
+
+Upgrade Fedora
+升级 Fedora
+
+Upgrade Olo
+升级 Olo
+
+Upgrade to Fedora {}
+升级到 Fedora {}
+
+Upgrading downloads every package of Fedora {} now, while you work, then installs them as the computer restarts: that takes a while, and the computer can’t be used meanwhile. Your files, settings and apps stay. Update to the newest of this release first, and have a backup.
+升级会先在后台下载 Fedora {} 的所有软件包，再在重启时安装。安装需要一段时间，其间无法使用电脑。文件、设置和应用都会保留。请先将当前发行版更新到最新状态，并做好备份。
+
+Upload
+上传
+
+Upload at most:
+最高上传速度：
+
+Uploading is backing up; downloading is restoring, and tidying. A limit holds at once, for a backup under way too.
+备份时上传，恢复和清理时下载。限速立即生效，正在进行的备份也会受到限制。
+
+Uploading: {}
+正在上传：{}
+
+Uploading…
+正在上传…
+
+Uptime:
+运行时长：
+
+Urgent at
+紧急阈值
+
+Use
+使用
+
+Use Battery Saver automatically
+自动启用省电模式
+
+Use Credit
+使用点数
+
+Use Default
+使用默认值
+
+Use F1, F2, etc. as standard function keys
+将 F1、F2 等键用作标准功能键
+
+Use Google Drive Instead…
+改用 Google Drive…
+
+Use Music Quality
+使用音乐音质
+
+Use Passwords for ssh
+让 SSH 使用 Passwords
+
+Use Saved Password
+使用已保存的密码
+
+Use Suggested
+采用建议值
+
+Use This Setting
+使用此设置
+
+Use a Folder Instead…
+改用文件夹…
+
+Use a Phone Number
+使用手机号码
+
+Use a QR Code
+使用二维码
+
+Use a Reset Credit…
+使用重置点数…
+
+Use a key already in Passwords
+使用已存入 Passwords 的密钥
+
+Use the Usual Order
+恢复常用顺序
+
+Use this account
+使用此账户
+
+Use:
+使用：
+
+User
+用户
+
+Username or Site
+用户名或网站
+
+Username:
+用户名：
+
+Using
+正在使用
+
+Using DHCP
+使用 DHCP
+
+Using the most
+占用最多
+
+Using too much memory
+内存占用过高
+
+VPN
+VPN
+
+Validate Fully…
+完整验证…
+
+Validate fully? Every byte {}{} is read back from {} and checked, as a restore would: it can take a while, at the download limit. The usual Validate compares checksums and reads only a sample back.
+进行完整验证吗？将从 {2} 读回{0}{1}的全部数据，像实际恢复时一样逐字节核对。受下载速度限制，可能需要一些时间。常规验证只比较校验和并抽样读回数据。
+
+Validated
+已验证
+
+Validated fully {}: all it needs ({}) read back, and whole.
+已于 {} 完整验证：已读回全部所需数据（{}），内容完整。
+
+Validated {}: everything it needs is there{}. Validate Fully reads it all back.
+已于 {} 验证：所需数据齐全{}。“完整验证”会读回全部数据。
+
+Validated: all there.
+验证完成：数据齐全。
+
+Validating backups
+正在验证备份
+
+Validating backups: reading them back
+正在验证备份：读回数据
+
+Validating goes on by itself once it’s back, from where it got to.
+重新连接后会从中断处自动继续验证。
+
+Value
+值
+
+Value:
+值：
+
+Variable refresh rate
+可变刷新率
+
+Vault
+保险库
+
+Vault Info…
+保险库信息…
+
+Vault:
+保险库：
+
+Vaults
+保险库
+
+Version
+版本
+
+Versions of {}
+{} 的版本
+
+Very Bad Network
+网络状况极差
+
+Very high
+非常高
+
+Video Format
+视频格式
+
+Video Playback
+视频播放
+
+Video is decoded on the processor. {}
+正在使用 CPU 解码视频。{}
+
+View
+视图
+
+Viewer
+Viewer
+
+Virtual machines’ disk images
+虚拟机磁盘映像
+
+Visibility
+能见度
+
+Visibility ({})
+能见度（{}）
+
+Visibility · fog
+能见度 · 雾
+
+Voice Only
+仅语音
+
+Voice Processing
+语音处理
+
+Voice message {}.ogg
+语音消息 {}.ogg
+
+Voltage
+电压
+
+Volume
+音量
+
+Volume:
+卷：
+
+Volumes
+卷
+
+W
+西
+
+WNW
+西北偏西
+
+WSW
+西南偏西
+
+Wait for the sync to finish, then remove the account.
+请等待同步完成后再移除账户。
+
+Wait for the sync to finish, then reset.
+请等待同步完成后再重置。
+
+Waiting
+等候
+
+Waiting for Ethernet
+正在等待以太网连接
+
+Waiting for app_server…
+正在等待 app_server…
+
+Waiting for it…
+正在等待响应…
+
+Waiting for power
+正在等待接通电源
+
+Waiting for the network
+正在等待网络连接
+
+Waiting for the phone… this page follows it by itself.
+正在等待手机…此页会随手机状态自动更新。
+
+Waiting for the touchpad…
+正在等待触控板…
+
+Waiting for you to sign in to Google in the browser…
+正在等待您在浏览器中登录 Google…
+
+Waiting for “{}” to allow it (its switches for this computer, in its Bluetooth settings).
+正在等待“{}”授权。请检查其蓝牙设置中此电脑对应的开关。
+
+Waiting: {}
+正在等待：{}
+
+Waits less than
+每秒等待次数低于
+
+Wake the display when you come back
+返回时唤醒显示器
+
+Wallpaper
+墙纸
+
+Wants attention
+需要处理
+
+Warmer
+偏暖
+
+Warmth
+暖色程度
+
+Watch Agent Screens
+查看智能体屏幕
+
+Watch for stuck processes, leaks and memory hogs
+监测卡死的进程、内存泄漏和内存占用过高的程序
+
+Watchdog
+看门狗
+
+Weather
+Weather
+
+Weather: Next Days
+Weather：未来几天
+
+Weather: Next Hours
+Weather：未来几小时
+
+Weather: Now
+Weather：现在
+
+Weather’s assistant is handed the whole forecast for the place you’re looking at, every layer hour by hour, to answer from.
+Weather 助手会参考您正在查看地点的完整逐小时预报，包括所有气象要素，据此回答问题。
+
+Weather’s forecasts come from {}, which needs an API key (a free one takes a minute to make). Give it once and it’s kept in Passwords, or point to one already there.
+Weather 的预报由 {} 提供，需要 API 密钥。免费密钥约一分钟即可创建。输入一次即可存入 Passwords，也可以选用其中已有的密钥。
+
+Web Page (HTML)…
+网页（HTML）…
+
+Week
+周
+
+Week Starts On
+每周开始于
+
+Weights
+权重
+
+What
+类型
+
+What Each Mode Sets
+各模式的设置
+
+What You Did
+操作记录
+
+What does my week look like?
+这周有什么安排？
+
+What follows them is from an older Olo: Apply to bring it up to date (an administrator's password is asked).
+当前用于应用这些模式的配置来自旧版 Olo。点击“应用”即可更新，需要管理员密码。
+
+What is made from it (shades, edges, text that has to read on it) follows.
+由此生成的色调、边缘和叠加其上的可读文字颜色也会随之调整。
+
+What it can be set to isn't known yet: asking it wakes it for a moment.
+尚不清楚可用的设置，查询时会短暂唤醒设备。
+
+What it can be set to isn't known: {}.
+无法确定可用的设置：{}。
+
+What it can be set to isn't known: {}. It stays so until the computer restarts, which starts its driver again.
+无法确定可用的设置：{}。重启电脑后驱动会重新启动，在此之前会保持现状。
+
+What it does
+用途
+
+What it draws
+功耗
+
+What it draws from the battery; on power, it says so.
+显示电池供电时的耗电量；接电时会注明。
+
+What it’s for (optional)
+用途（可选）
+
+What should I wear today?
+今天穿什么合适？
+
+What should I wear tomorrow?
+明天穿什么合适？
+
+What you change applies when you leave Rescue.
+所做更改在退出救援模式时生效。
+
+What's made for sRGB (nearly everything) looks as it was made; wider colours are for what has them.
+sRGB 内容（绝大多数内容）按原本的色彩显示，仅广色域内容会使用更宽的色域。
+
+What's next (or on now): when, what and where, and what comes after it.
+当前或下一个日程的时间、内容和地点，以及紧随其后的安排。
+
+What's still to come today, in order, each in its calendar's colour; then the days after.
+按时间顺序显示今天余下的日程，再显示之后几天的安排；各项使用所属日历的颜色。
+
+What's unread and what waits in apps, as cards to work through.
+以卡片显示未读通知和应用中待处理的事项，便于逐项处理。
+
+What's waiting (red)
+待处理（红色）
+
+Whatever the model says: it adds palms, never takes these away.
+无论模型如何判断，这些触摸都算手掌。模型只会补充识别其他手掌触摸。
+
+What’s coming up next week?
+下周有什么安排？
+
+What’s in the Trash
+废纸篓中的内容
+
+What’s next?
+接下来有什么安排？
+
+What’s on this weekend?
+这周末有什么安排？
+
+What’s on today?
+今天有什么安排？
+
+What’s on tomorrow?
+明天有什么安排？
+
+Wheel
+滚轮
+
+When
+时间
+
+When Idle
+空闲时
+
+When Olo starts Claude Code for a task (DiskBackup’s Agent Setup), in a Terminal window you can follow, it uses this model.
+Olo 为任务启动 Claude Code 时（例如 DiskBackup 的智能体设置），会使用此模型。您可以在 Terminal 窗口中查看进度。
+
+When a Frame Drops
+丢帧时
+
+When am I free today?
+我今天什么时候有空？
+
+When am I free tomorrow?
+我明天什么时候有空？
+
+When does the sun rise tomorrow?
+明天几点日出？
+
+When held for:
+长按时长：
+
+When pressed:
+按下时：
+
+When to Back Up
+备份时机
+
+When will the rain stop?
+雨什么时候停？
+
+When:
+时间：
+
+Where Backups Go
+备份位置
+
+Where the cores' time goes: the deeper a state, the less power and the slower to wake
+核心在各状态花费的时间。状态越深，耗电越少，唤醒越慢
+
+Where:
+位置：
+
+Whether a newer release is out can’t be told: {}
+无法确定是否有新版本：{}
+
+Which Fedora this computer runs can’t be told (/etc/os-release says nothing).
+无法确定本机的 Fedora 版本（/etc/os-release 未提供信息）。
+
+Which day this week looks best?
+这周哪天天气最好？
+
+Which invitations haven’t I answered?
+我还有哪些邀请没回复？
+
+While Typing
+打字时
+
+While downloading
+下载时
+
+While less is free than
+可用空间低于
+
+While sharing or recording the screen (errors wait too)
+共享或录制屏幕时（错误也延后）
+
+While uploading
+上传时
+
+Why
+原因
+
+Why misses missed
+缓存未命中的原因
+
+Wi-Fi
+Wi-Fi
+
+Wi-Fi networks
+Wi-Fi 网络
+
+Wi-Fi: there's no NetworkManager here to save the networks in.
+Wi-Fi：本机没有 NetworkManager，无法保存网络。
+
+Wi-Fi: {} didn't come along ({}, set up with the other computer's certificates): join {} again here.
+Wi-Fi：未导入 {0}（{1}，使用了另一台电脑的证书）。请在本机重新加入 {2}。
+
+Wi-Fi: {} saved here, {}.
+Wi-Fi：已在此保存 {}，{}。
+
+Wi-Fi: “{}” couldn't be saved here ({}).
+Wi-Fi：未能在此保存“{}”（{}）。
+
+Wide
+宽
+
+Widget
+小组件
+
+Widget name
+小组件名称
+
+Widgets
+小组件
+
+Width
+宽度
+
+Will it rain today?
+今天会下雨吗？
+
+Will it rain tomorrow?
+明天会下雨吗？
+
+Wind
+风
+
+Wind ({})
+风（{}）
+
+Wind {}{}
+风 {}{}
+
+Wind {}{}, gusts {}
+风 {}{}，阵风 {}
+
+Window
+窗口
+
+Window Arrangement
+窗口排列
+
+Window Size
+窗口大小
+
+Window on a Background
+带背景的窗口
+
+Window title size
+窗口标题大小
+
+Windowing Mode
+窗口模式
+
+Windows
+窗口
+
+Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).
+窗口缓冲区不会换出，因此桌面无需等待它们换回内存（使用 Olo 对 Intel 驱动的热补丁）。
+
+Wireless Router
+无线路由器
+
+With AirPods:
+使用 AirPods 时：
+
+Withdrawn by {}
+已由 {} 撤回
+
+Word Document…
+Word 文档…
+
+Working out what it comes to: every package it needs, and what it replaces…
+正在计算所需的软件包及其替换的内容…
+
+Working…
+正在处理…
+
+Works on a picture of the desktop.
+对桌面图像生效。
+
+Workspace:
+工作区：
+
+Workspaces
+工作区
+
+Worst
+最差
+
+Wrap Lines
+自动换行
+
+Write Disk Image…
+写入磁盘映像…
+
+Writes
+写入次数
+
+Writing the backup’s lists…
+正在写入备份清单…
+
+Written
+已写入
+
+XML
+XML
+
+YAML
+YAML
+
+Yellow
+黄色
+
+Yes
+是
+
+Yesterday
+昨天
+
+Yesterday {}
+昨天 {}
+
+You don't have permission to see inside this folder.
+您没有权限查看此文件夹的内容。
+
+You don’t have permission to read it in 1Password.
+您没有权限在 1Password 中读取此项。
+
+You stopped it {}. {}. {}
+您已于 {} 停止。{}。{}
+
+You stopped the backup {}
+您已于 {} 停止备份
+
+You: {}
+您：{}
+
+Your Display
+您的显示器
+
+Your Google Drive keeps them anywhere: sign in once, or let an agent set it up.
+备份存入 Google Drive 后即可在其他地方使用。登录一次，或让智能体协助设置。
+
+Your Kinds
+您的文件类型
+
+Your Own
+自定义
+
+Your Own Kinds
+自定义文件类型
+
+Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
+备份离开本机前已用本机独有的密钥加密。请也将密钥存入 Passwords，否则在其他电脑上无法读取备份。
+
+Your backups are encrypted before they leave this computer. Their key is kept in Passwords (“DiskBackup Key”): with it, they can be restored on any computer.
+备份离开本机前会先加密。密钥保存在 Passwords 的“DiskBackup Key”项中，可用它在任意电脑上恢复备份。
+
+Your face wasn't seen well enough: sit facing the camera, at arm's length, and try again.
+未能看清您的脸。请坐在离摄像头约一臂远的地方，面向镜头重试。
+
+Your face wasn’t recognised. Type your password.
+未能识别您的脸，请输入密码。
+
+Your home folder
+您的主文件夹
+
+Your home folder is backed up every hour, leaving out what can be downloaded or built again. Once it’s set up, you can change any of it.
+每小时备份主文件夹，排除可以重新下载或构建的内容。完成设置后，您可以随时调整。
+
+Your messages, your contacts and the one-time codes texted to you, on this computer: over Bluetooth, with nothing between and nothing else to install.
+在这台电脑上查看手机信息、联系人和短信验证码。通过蓝牙直接连接，无需中转或另装软件。
+
+Your notes, files and forwarded messages
+您的笔记、文件和转发的消息
+
+Your own files and folders
+您的文件和文件夹
+
+Your own:
+自定义：
+
+Your palm model couldn't be saved
+无法保存您的手掌识别模型
+
+Your palm model is ready: saving…
+手掌识别模型已就绪，正在保存…
+
+Your palm model is saved, and in use
+手掌识别模型已保存并启用
+
+Your palm model, trained {} on {} touches
+您的手掌模型：于 {} 使用 {} 次触摸训练
+
+Your palm over the left edge
+将手掌放在左侧边缘
+
+Your palm over the right edge
+将手掌放在右侧边缘
+
+Your password couldn’t be checked ({}).
+无法验证您的密码（{}）。
+
+Your settings as they were are in “{}”.
+您原有的设置保存在“{}”中。
+
+Your shirt against the touchpad
+用衣袖接触触控板
+
+Your ssh configuration (~/.ssh/config) sends ssh to another agent, {}, so it doesn’t use the keys in Passwords.
+SSH 配置（~/.ssh/config）指定了另一个代理 {}，因此 SSH 不会使用 Passwords 中的密钥。
+
+Your touchpad
+您的触控板
+
+Your voice came in at {} dB; voice processing aims for {} dB.
+您的语音输入为 {} dB，语音处理的目标是 {} dB。
+
+Your voice comes in at {} dB, boosted to {} dB.
+您的语音输入为 {} dB，增益后为 {} dB。
+
+Your voice comes in at {} dB: loud enough as it is.
+您的语音输入为 {} dB，音量已足够。
+
+Your voice comes in at {} dB: loud enough without a boost.
+您的语音输入为 {} dB，无需增益。
+
+Your voice comes in at {} dB: {} brings it to the {} dB aimed for.
+您的语音输入为 {} dB，采用{}可达到 {} dB 的目标。
+
+Yours, as last learned
+您的模型（上次训练结果）
+
+Yours: fine-tuned once since it started
+您的模型：启动后已微调一次
+
+Yours: fine-tuned {} times since it started
+您的模型：启动后已微调 {} 次
+
+Zig
+Zig
+
+Zoom All
+放大所有窗口
+
+Zoom In
+放大
+
+Zoom Out
+缩小
+
+Zoom on Clicks
+放大点击位置
+
+Zoom to Fill
+缩放以填满
+
+Zoom to Fit
+缩放以适应大小
+
+__pycache__, .venv, .mypy_cache, .pytest_cache, .tox
+__pycache__, .venv, .mypy_cache, .pytest_cache, .tox
+
+a PIN set
+已设置 PIN
+
+a backup
+一份备份
+
+a backup and the unfinished one
+一份备份和未完成的备份
+
+a crate's misses together, the last 24 hours
+过去 24 小时按 crate 汇总的未命中次数
+
+a day ago
+一天前
+
+a kernel thread
+内核线程
+
+a minute ago
+一分钟前
+
+a secure connection failed ({})
+安全连接失败（{}）
+
+a window ({})
+一个窗口（{}）
+
+a {} W power limit
+{} W 功耗上限
+
+about {}
+约 {}
+
+about {} min left
+约剩 {} 分钟
+
+about {} s left
+约剩 {} 秒
+
+all day
+全天
+
+an hour ago
+一小时前
+
+and frees {}.
+并释放 {}。
+
+and needs no more disk space.
+且无需额外磁盘空间。
+
+and takes {} more disk space.
+并另外占用 {} 磁盘空间。
+
+and the {n} items in it
+other: 及其中的 {n} 个项目
+
+and {} more
+以及另外 {} 项
+
+app_server's main thread: nice {}{}, {}
+app_server 主线程：nice {}{}，{}
+
+as in 1Password's sidebar, or its UUID
+与 1Password 边栏中的名称一致，也可用 UUID
+
+as it goes
+随进度调整
+
+at most {}
+最多 {}
+
+at {}
+在 {}
+
+auto approving (Yes after {} s; {} answered)
+自动批准中（{} 秒后同意，已答复 {} 次）
+
+backing up
+正在备份
+
+bell rang
+铃声已响
+
+brush’s grey hint after what you type, from a tiny model of your own commands on this computer. Your shell is {}: Olo Doctor makes it brush (a suggestion).
+brush 会在输入内容后显示灰色提示，来自用您本机命令训练的小模型。您当前使用的 shell 是 {}。可在 Olo Doctor 中按建议改用 brush。
+
+brush’s grey hint after what you type, from a tiny model of your own commands on this computer: it weighs what’s typed, the folder, the commands before, the hour and the day, and learns as you go.
+brush 会在输入内容后显示灰色提示。提示来自用本机命令训练的小模型，它会根据输入、当前文件夹、之前的命令、时刻和日期持续学习。
+
+brush’s grey hints, from a tiny model of your own commands
+brush 的灰色提示，来自用您自己的命令训练的小模型
+
+built most, the last 24 hours
+过去 24 小时构建次数最多
+
+ceiling {}%
+上限 {}%
+
+charging, full in {}
+正在充电，{} 后充满
+
+couldn't save the boost: {}
+无法保存增益：{}
+
+couldn't save the setting: {}
+无法保存设置：{}
+
+day
+日
+
+deleting
+正在删除
+
+downgrade {n} packages
+other: 降级 {n} 个软件包
+
+driving {}
+驱动{}
+
+ending one gives its slots back to the pool
+结束一个测试会将其插槽归还到池中
+
+erasing
+正在抹除
+
+erasing every backup didn't finish: {}
+未能抹掉所有备份：{}
+
+every 12 hours
+每 12 小时
+
+every 15 minutes
+每 15 分钟
+
+every 2 hours
+每 2 小时
+
+every 30 minutes
+每 30 分钟
+
+every 6 hours
+每 6 小时
+
+every day
+每天
+
+every hour
+每小时
+
+every {n} minutes
+other: 每 {n} 分钟
+
+for {}
+持续 {}
+
+from {}
+来自 {}
+
+full size, with a numeric keypad
+全尺寸，带数字键盘
+
+full speed
+全速
+
+fully charged
+已充满
+
+ghp_… or github_pat_…
+ghp_… 或 github_pat_…
+
+gusts {}
+阵风 {}
+
+has notifications
+有通知
+
+has notifications ({})
+有通知（{}）
+
+has notifications ({}, the dot {}% full)
+有通知（{}，圆点已填充 {}%）
+
+here now and in 1Password at the next sync (after you review it)
+立即在本机生效，经您确认后会在下次同步时更新到 1Password
+
+hidden when tiled
+平铺时隐藏
+
+high
+高
+
+hour
+时
+
+iPhone
+iPhone
+
+in a minute
+一分钟后
+
+in the next week
+未来一周内
+
+in the next {} days
+未来 {} 天内
+
+in {n} days
+other: {n} 天后
+
+in {n} minutes
+other: {n} 分钟后
+
+install {n} packages
+other: 安装 {n} 个软件包
+
+it couldn't be ended: {}
+无法结束：{}
+
+it is on a different volume from the Trash, so it can only be deleted
+它与废纸篓不在同一卷上，只能直接删除
+
+it took too long
+等待超时
+
+its address can’t be found (is the computer online?)
+找不到地址（电脑已联网吗？）
+
+its clock as the driver has it, up to {} MHz
+按驱动的频率设置，最高 {} MHz
+
+its clock up to {} MHz
+频率最高 {} MHz
+
+its disk has {}
+其磁盘上有 {}
+
+its ports: {}
+其端口：{}
+
+its shells have all ended
+其所有 shell 均已结束
+
+just now
+刚刚
+
+kache is stopped
+kache 已停止
+
+kache is stopped: builds go on uncached
+kache 已停止，构建将继续但不使用缓存
+
+kache is stopped: it failed
+kache 因故障停止
+
+kache isn't set up as a service
+kache 未设置为服务
+
+kache's daemon answered something unreadable ({})
+无法解析 kache 后台进程的响应（{}）
+
+kache's daemon didn't answer ({})
+kache 后台进程未响应（{}）
+
+kache's daemon isn't answering
+kache 后台进程未响应
+
+kache's daemon isn't answering ({})
+kache 后台进程未响应（{}）
+
+kache's own settings, in {}; kache takes them as it starts again.
+kache 的设置存储在 {}，下次启动 kache 时生效。
+
+kache's own: {}
+kache 自身设置：{}
+
+kache's own: {} now
+kache 自身设置：当前为 {}
+
+kache's service can't be asked
+无法查询 kache 服务
+
+kache's service: {}
+kache 服务：{}
+
+kache's settings file can't be read: {}
+无法读取 kache 设置文件：{}
+
+kache{} is running
+kache{} 正在运行
+
+kbit/s
+kbit/s
+
+last seen recently
+最近上线过
+
+left to the firmware for now
+暂由固件控制
+
+level {} of 7
+第 {} 档，共 7 档
+
+libinput's default
+libinput 默认值
+
+libinput's own: Olo's touch filter is off
+由 libinput 处理：Olo 触摸过滤已关闭
+
+low
+低
+
+medium
+中
+
+minimum and maximum both {}%
+最小值和最大值均为 {}%
+
+misses, the last 24 hours
+过去 24 小时的未命中次数
+
+ms
+ms
+
+no display ports
+无显示接口
+
+no limit to its space
+存储空间不限
+
+no network: it goes on once there’s one
+无网络，重新联网后继续
+
+no wired network: it waits for one
+无有线网络，正在等待连接
+
+node_modules, .next, .turbo, .parcel-cache, ~/.npm
+node_modules, .next, .turbo, .parcel-cache, ~/.npm
+
+not parts of it: {}; its parts are {}
+以下不是其组成部分：{}；其组成部分为 {}
+
+not set up yet
+尚未设置
+
+not understood: {}
+无法识别：{}
+
+not yet on this kernel's series, {}
+尚不适用于当前内核系列 {}
+
+nothing backed up for {n} days
+other: 已有 {n} 天未备份
+
+nothing freed
+未释放空间
+
+nothing moved
+未移动任何数据
+
+nothing now (its ports: {})
+目前没有（端口：{}）
+
+nothing yet
+暂无
+
+now
+现在
+
+of a {} limit
+上限为 {}
+
+of a {} limit: over it
+已超过 {} 的上限
+
+of what could be cached came from it
+的可缓存数据取自缓存
+
+of {}
+共 {}
+
+of {} and {} more
+来自 {}，另有 {} 项
+
+of {} it may use
+可用额度为 {}
+
+of {} · {} swap used
+共 {} · 已用交换空间 {}
+
+offline: sent when back
+离线：重新连接后发送
+
+olo-complete didn't answer while learning.
+学习期间 olo-complete 未响应。
+
+olo-complete didn’t start: Deskbar’s Upgrade installs it.
+olo-complete 未启动。可在 Deskbar 中选择“升级”来安装。
+
+olo-termd is running (process {}, up {}).
+olo-termd 正在运行（进程 {}，已运行 {}）。
+
+on
+开
+
+on a fast core at a high clock
+在高频率的高性能核心上
+
+on battery
+电池供电
+
+on battery: it waits for power
+电池供电中：等待接通电源
+
+on this kernel's series, {}
+适用于当前内核系列 {}
+
+on {}
+在 {} 上
+
+on {} at {}
+在 {} 上的 {}
+
+one a day for ever
+每天保留一份，永久保留
+
+one a day for {n} days
+other: 每天保留一份，保留 {n} 天
+
+one a month for ever
+每月保留一份，永久保留
+
+one a month for {n} months
+other: 每月保留一份，保留 {n} 个月
+
+one a week for ever
+每周保留一份，永久保留
+
+one a week for {n} weeks
+other: 每周保留一份，保留 {n} 周
+
+one an hour for ever
+每小时保留一份，永久保留
+
+one an hour for {n} hours
+other: 每小时保留一份，保留 {n} 小时
+
+only folder and Find windows move
+仅移动文件夹窗口和查找窗口
+
+only terminal windows move
+仅移动终端窗口
+
+optional
+可选
+
+organizer
+组织者
+
+out of the archive
+从归档中取出
+
+part of the screen
+屏幕的一部分
+
+plugged in, charge limit {}%
+已接电，充电上限 {}%
+
+plugged in, held at the {}% limit
+已接电，电量保持在 {}% 的上限
+
+plugged in, not charging
+已接电，未充电
+
+process {}
+进程 {}
+
+pull request #{} {}{}
+拉取请求 #{} {}{}
+
+quitting in {} s at most
+最迟 {} 秒后退出
+
+recommended for this touchpad
+此触控板推荐设置
+
+reinstall {n} packages
+other: 重新安装 {n} 个软件包
+
+remove {n} packages
+other: 移除 {n} 个软件包
+
+restoring
+正在恢复
+
+sav, sv2
+sav, sv2
+
+scx_lavd, made for a computer someone is sitting at: what it judges is being waited for runs first, with builds and other long work around it. It gives a program's priority little weight, and under heavy work the window server waited for the processor three times as long as with the kernel's own. It is loaded over the kernel's own, which takes over again by itself if LAVD ever stops.
+scx_lavd 面向有人直接操作的电脑。它优先运行自己判断为有人等待的任务，在其余时间安排构建等长任务。它不太看重程序优先级：在重负载下，窗口服务器等待 CPU 的时间是内核自带调度器的三倍。它加载在内核自带调度器之上，若 LAVD 停止，内核会自动接管。
+
+signed in
+已登录
+
+signed in, 1 calendar
+已登录，1 个日历
+
+signed in, {} calendars
+已登录，{} 个日历
+
+slots of the pool in use
+池中已用插槽
+
+some of it couldn't be read
+部分内容无法读取
+
+something else is called “{}” there now
+该位置已有其他项目名为“{}”
+
+ssh, git and other programs sign in with the SSH keys in Passwords, each one allowed the first time it asks.
+ssh、git 等程序可使用 Passwords 中的 SSH 密钥登录。每个程序在首次请求使用时需获得授权。
+
+sudo needs your password to run this{}:
+sudo 需要您的密码以运行以下命令{}：
+
+taken as at least {}% busy
+视为使用率至少达到 {}%
+
+tan is undefined there
+tan 在此处无定义
+
+target/debug, target/release, ~/.cargo/registry, ~/.rustup
+target/debug, target/release, ~/.cargo/registry, ~/.rustup
+
+that test no longer holds slots
+该测试已释放插槽
+
+the DiskBackup service isn’t running
+DiskBackup 服务未运行
+
+the account’s
+此账户的
+
+the agent didn’t start: {}
+智能体未能启动：{}
+
+the backup isn't open
+备份尚未打开
+
+the backups' folder in Google Drive was made again elsewhere: following it there
+Google Drive 的备份文件夹已在其他位置重新创建，现已切换到新位置
+
+the built-in display
+内置显示器
+
+the connection failed
+连接失败
+
+the desktop stays with its display
+桌面保留在所属显示器上
+
+the fans {}{}
+风扇{}{}
+
+the key in the keyring is damaged
+密钥环中的密钥已损坏
+
+the key isn't in this computer's keyring: set DiskBackup up again, or put its key back from Passwords
+本机密钥环中没有此密钥，请重新设置 DiskBackup 或从 Passwords 恢复密钥
+
+the keyring can't be read: {}
+无法读取密钥环：{}
+
+the keyring can't keep it: {}
+无法存入密钥环：{}
+
+the last 24 hours
+过去 24 小时
+
+the last backup didn’t finish ({})
+上次备份未完成（{}）
+
+the last {n} hours
+other: 过去 {n} 小时
+
+the last {n} minutes
+other: 过去 {n} 分钟
+
+the last {n} seconds
+other: 过去 {n} 秒
+
+the package {}
+软件包 {}
+
+the phone didn't take it: {}
+手机未接受：{}
+
+the power profiles daemon, through {}
+电源配置服务，经由 {}
+
+the recording failed
+录制失败
+
+the request failed
+请求失败
+
+the screen
+屏幕
+
+the secret at {}
+{} 处的机密值
+
+the server answered {}
+服务器响应：{}
+
+the service answered {}
+服务响应：{}
+
+the service is busy
+服务正忙
+
+the session
+会话
+
+the system's power profiles daemon
+系统的电源配置服务
+
+the unfinished backup
+未完成的备份
+
+the window server
+窗口服务器
+
+the {} didn't get going: {}
+{} 未能启动：{}
+
+these {n} backups need
+other: 这 {n} 个备份所需的
+
+this event
+此日程
+
+this site
+此网站
+
+tidying
+正在清理
+
+today at {}
+今天 {}
+
+today or tomorrow
+今天或明天
+
+tomorrow at {}
+明天 {}
+
+tomorrow.io answered {}{}
+tomorrow.io 响应：{}{}
+
+tomorrow.io can’t be reached: {}
+无法连接 tomorrow.io：{}
+
+tomorrow.io didn’t accept the API key. Check it in File ▸ Data Provider…
+tomorrow.io 拒绝了 API 密钥。请在“文件 ▸ 数据提供方…”中核对
+
+tomorrow.io refused the request.
+tomorrow.io 拒绝了请求。
+
+tomorrow.io’s answer had no forecast in it.
+tomorrow.io 的响应中没有预报。
+
+tomorrow.io’s answer was cut short: {}
+tomorrow.io 的响应不完整：{}
+
+tomorrow.io’s answer wasn’t a forecast.
+tomorrow.io 返回的不是预报。
+
+tomorrow.io’s limit for your key is reached for now{}
+此密钥暂时已达到 tomorrow.io 的使用上限{}
+
+turned off
+已关闭
+
+under a minute
+不到一分钟
+
+under a second
+不到一秒
+
+up to {} dpi
+最高 {} dpi
+
+up to {} today
+今天最高 {}
+
+update {n} packages
+other: 更新 {n} 个软件包
+
+use . for decimals
+小数点请使用 .
+
+validating
+正在验证
+
+visibility down to {}
+能见度低至 {}
+
+what holds it back
+限制因素
+
+where the scheduler puts it
+由调度器分配位置
+
+with the {n} files changed in it and not committed
+other: 包含 {n} 个已修改但未提交的文件
+
+yesterday at {}
+昨天 {}
+
+you
+您
+
+you don't have permission
+您没有权限
+
+your cloud storage
+您的云存储空间
+
+your own picture
+您的图片
+
+{n} Background Processes Lowered
+other: 已降低 {n} 个后台进程的优先级
+
+{n} Events Found
+other: 找到 {n} 个日程
+
+{n} More in Calendar…
+other: 在日历中查看更多（{n} 个）…
+
+{n} agent screens are running. Click to watch them.
+other: 有 {n} 个智能体屏幕正在运行。点击查看。
+
+{n} archived items aren’t
+other: 另有 {n} 个已归档项目不在其中
+
+{n} backups
+other: {n} 份备份
+
+{n} backups chosen.
+other: 已选择 {n} 份备份。
+
+{n} days
+other: {n} 天
+
+{n} days ago
+other: {n} 天前
+
+{n} events
+other: {n} 个日程
+
+{n} files
+other: {n} 个文件
+
+{n} files couldn’t be read.
+other: 有 {n} 个文件无法读取。
+
+{n} films playing on AirPlay receivers. Click to pause or stop them.
+other: AirPlay 接收器正在播放 {n} 部影片。点击暂停或停止。
+
+{n} folders couldn't be read
+other: 有 {n} 个文件夹无法读取
+
+{n} hours
+other: {n} 小时
+
+{n} hours ago
+other: {n} 小时前
+
+{n} items
+other: {n} 项
+
+{n} items found
+other: 找到 {n} 项
+
+{n} items found so far
+other: 目前已找到 {n} 项
+
+{n} items taken out.
+other: 已取出 {n} 项。
+
+{n} minutes
+other: {n} 分钟
+
+{n} minutes ago
+other: {n} 分钟前
+
+{n} more waiting
+other: 另有 {n} 项正在等待
+
+{n} new notifications
+other: {n} 条新通知
+
+{n} of Fedora {} updates are waiting: install them first, in Updates.
+other: Fedora {} 有 {n} 项待安装的更新，请先在“更新”中安装。
+
+{n} packs as sent, by their checksums
+other: {n} 个数据包的校验和与发送时一致
+
+{n} playing and shown on AirPlay receivers. Click to pause or stop them.
+other: AirPlay 接收器上有 {n} 项正在播放或显示。点击暂停或停止。
+
+{n} problems reading 1Password…
+other: 读取 1Password 时遇到 {n} 个问题…
+
+{n} programs
+other: {n} 个程序
+
+{n} samples
+other: {n} 个样本
+
+{n} screen shares. Click to stop them.
+other: 正在共享 {n} 个屏幕。点击停止。
+
+{n} screens shown on AirPlay receivers. Click to pause or stop them.
+other: AirPlay 接收器上正在显示 {n} 个屏幕。点击暂停或停止。
+
+{n} seconds
+other: {n} 秒
+
+{n} secrets
+other: {n} 项机密信息
+
+{n} shares, control among them. Click to stop them.
+other: 有 {n} 项共享，其中包括远程控制。点击停止。
+
+{n} slots
+other: {n} 个插槽
+
+{n} sync changes to review
+other: 有 {n} 项同步更改待确认
+
+{n} times
+other: {n} 次
+
+{n} to come
+other: 即将开始 {n} 项
+
+{n} waiting in their apps
+other: 有 {n} 项等待在应用中处理
+
+{n} weeks
+other: {n} 周
+
+{} (AV1 and VP9)
+{}（AV1 和 VP9）
+
+{} (every video)
+{}（所有视频）
+
+{} (in use)
+{}（使用中）
+
+{} (lower wins)
+{}（越低越优先）
+
+{} (not connected)
+{}（未连接）
+
+{} (of the last {})
+{}（最近 {} 次中）
+
+{} (the theme’s own)
+{}（主题默认）
+
+{} (there now)
+{}（当前已有）
+
+{} ({} a minute)
+{}（每分钟 {}）
+
+{} ({} more)
+{}（增加 {}）
+
+{} ({} packets)
+{}（{} 个包）
+
+{} ({} to {})
+{}（{} 至 {}）
+
+{} A workspace starts with this; choose its own from Deskbar's tray.
+{} 新工作区默认使用此设置，可在 Deskbar 托盘中为各工作区单独选择。
+
+{} About a microsecond each, on the {}.
+{} 在 {} 上每次约需一微秒。
+
+{} Activity Monitor can do it once you give it full access, with an administrator's password.
+{} 用管理员密码授予完全访问权限后，活动监视器即可执行此操作。
+
+{} Auto Approve answers Yes in {} s.
+{} 将在 {} 秒后自动批准。
+
+{} Choose Set Up… to try again.
+{} 选择“设置…”重试。
+
+{} Choose a workspace's own from Deskbar's tray.
+{} 可在 Deskbar 托盘中为各工作区单独选择。
+
+{} Hz, {} ms a frame
+{} Hz，每帧 {} 毫秒
+
+{} Replace with the version backed up {}, or keep both (the restored one named with its time)?
+{} 用 {} 备份的版本替换，还是两者都保留？两者都保留时，会在恢复的文件名中加上时间。
+
+{} Type your password.
+{} 请输入密码。
+
+{} Wh of {} Wh new ({}%)
+当前 {} Wh，初始容量 {} Wh（{}%）
+
+{} What’s looked in for codes, and where they go: Security ▸ Passwords.
+{} 在“安全性 ▸ Passwords”中可设置查找验证码的位置及传递目标。
+
+{} a minute
+每分钟 {}
+
+{} a second
+每秒 {}
+
+{} ago · click a graph for another moment
+{}前 · 点击图表查看其他时刻
+
+{} and {} are typing…
+{} 和 {} 正在输入…
+
+{} and {} more
+{}，另有 {} 项
+
+{} and {} others
+{}，另有 {} 项
+
+{} answered {} (not a speed test server?)
+{} 响应：{}（可能不是测速服务器）
+
+{} applications are keeping the display awake.
+有 {} 个应用正在阻止显示器休眠。
+
+{} at {}
+{} {}
+
+{} backups
+{} 份备份
+
+{} backups and the unfinished one
+{} 份备份和未完成的备份
+
+{} begun in the last minute (swipes, pinches, holds)
+过去一分钟内开始了 {} 次手势（轻扫、双指开合或长按）
+
+{} bytes
+{} 字节
+
+{} cd/m² at most, {} over the whole screen
+峰值 {} cd/m²，全屏 {} cd/m²
+
+{} cleared · kept for {} days, the last {}
+已清除 {} 条 · 保存 {} 天，最多保留最近 {} 条
+
+{} copied: 1Password doesn’t let other apps read its archive.
+已复制 {}。1Password 不允许其他应用读取归档。
+
+{} couldn't be found: {}
+找不到 {}：{}
+
+{} couldn’t be unpacked.
+无法解压 {}。
+
+{} d
+{} 天
+
+{} days ago
+{} 天前
+
+{} didn't answer ({})
+{} 未响应（{}）
+
+{} didn't answer a request: {}
+{} 未响应请求：{}
+
+{} didn't say where it is.
+{} 未报告位置。
+
+{} didn't start pairing: {}.
+{} 未开始配对：{}。
+
+{} didn’t download: {}
+{} 下载失败：{}
+
+{} different commands, of {} run
+共运行 {1} 次，涉及 {0} 条不同的命令
+
+{} dpi as it comes
+默认 {} dpi
+
+{} for each
+每个 {}
+
+{} for the next hour
+未来一小时{}
+
+{} for the next {} hours
+未来 {1} 小时{0}
+
+{} found · {} items searched · {}
+已找到 {} 项 · 已搜索 {} 项 · {}
+
+{} frames a second
+每秒 {} 帧
+
+{} frames dropped in the last minute
+过去一分钟丢失 {} 帧
+
+{} free of {}
+可用 {0}，共 {1}
+
+{} free on {}
+{1} 上有 {0} 可用
+
+{} freed
+已释放 {}
+
+{} h
+{} h
+
+{} h ago
+{} 小时前
+
+{} h {} min
+{} 小时 {} 分钟
+
+{} hours ago
+{} 小时前
+
+{} in all
+共 {}
+
+{} in the last minute
+过去一分钟 {}
+
+{} in the last minute, {} of {} in all
+过去一分钟 {}，累计 {} / {}
+
+{} in the last minute, {} since this window opened
+过去一分钟 {}，自打开此窗口以来 {}
+
+{} in the last second
+过去一秒 {}
+
+{} in the last second, at {}
+过去一秒 {}，速率 {}
+
+{} in {}
+{1}，共 {0}
+
+{} in {} s
+{}，用时 {} 秒
+
+{} in {}, by the last backup.
+上次备份：{1}，共 {0}。
+
+{} in {}.
+{}（{} 当地时间）。
+
+{} is Fedora’s own: it can be turned off, not removed.
+{} 是 Fedora 自带的软件源，可以停用，但不能移除。
+
+{} is back
+{} 已恢复可用
+
+{} is being installed ({}, {}%). Olo switches to it when it's done: your windows stay open.
+正在安装 {}（{}，{}%）。完成后 Olo 会切换到新版本，打开的窗口会保留。
+
+{} is connected but plays no sound: {}.
+{} 已连接但不播放声音：{}。
+
+{} is disconnected from Olo. Its app stays in its Google Cloud project, to connect it again with.
+{} 已与 Olo 断开连接。专属应用仍在其 Google Cloud 项目中，可供重新连接。
+
+{} is grabbing input devices: a mouse it has grabbed moves through its virtual pointer, and settings made here don't reach it.
+{} 正在独占输入设备。它接管的鼠标通过虚拟指针移动，这里的设置对其无效。
+
+{} is protected by a password.
+{} 受密码保护。
+
+{} is ready, made {} ({} to download). Install it? Olo downloads it in the background and switches to it when it's done: your windows stay open.{}
+{0} 已就绪，构建于 {1}（需下载 {2}）。现在安装吗？Olo 会在后台下载，完成后切换到新版本，打开的窗口会保留。{3}
+
+{} is ready. Click to upgrade.
+{} 已就绪。点击升级。
+
+{} is there already.
+{} 已存在。
+
+{} is too big a picture
+图片 {} 太大
+
+{} is undefined there
+{} 在此处无定义
+
+{} is used up on every account
+所有账户的 {} 额度均已用完
+
+{} is waiting for a login.
+{} 正在等待登录信息。
+
+{} is waiting for a passkey.
+{} 正在等待通行密钥。
+
+{} is waiting for you
+{} 正在等您回复
+
+{} isn't paired with.
+尚未与 {} 配对。
+
+{} isn't shaped.
+{} 未限速。
+
+{} isn't there (a disk not plugged in?)
+找不到 {}（磁盘是否未连接？）
+
+{} items in it, {} unpacked
+包含 {} 项，解压后为 {}
+
+{} kept in {}{}.
+{} 保存在 {} 中{}。
+
+{} kept of {}
+共 {1}，保留 {0}
+
+{} kept, still shared with builds' target folders
+保留 {}，仍与构建目标目录共享
+
+{} knows this computer.
+{} 已识别此电脑。
+
+{} later: gone
+{} 后已消失
+
+{} least, {} now
+最低 {}，当前 {}
+
+{} likely from {}
+预计从 {1} 开始{0}
+
+{} link clipping.txt
+{} 链接摘录.txt
+
+{} min
+{} min
+
+{} min ago
+{} 分钟前
+
+{} minutes ago
+{} 分钟前
+
+{} ms, the middle of them
+中位数 {} 毫秒
+
+{} needs full access.
+{} 需要完全访问权限。
+
+{} needs signing in again
+{} 需要重新登录
+
+{} needs your answer
+{} 等待您答复
+
+{} new examples, learned within a second
+新增 {} 个样本，一秒内即可学完
+
+{} new to the backup · {} sent, compressed and encrypted ({}/s{})
+本次新增 {} · 已压缩并加密发送 {}（{}/秒{}）
+
+{} of Olo’s {} words are in {} so far; the rest stay in English.
+Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
+
+{} of each frame kept for drawing: a frame starts {} after the vblank
+每帧预留 {} 用于绘制，帧在垂直消隐后 {} 开始
+
+{} of memory
+{} 内存
+
+{} of the time
+占总时间的 {}
+
+{} of them
+其中 {} 个
+
+{} of them belong to someone else. Activity Monitor can act on those once you give it full access, with an administrator's password.
+其中 {} 个属于其他用户。用管理员密码授予活动监视器完全访问权限后，即可操作这些进程。
+
+{} of these are there now.
+其中已有 {} 个。
+
+{} of what?
+要对什么计算 {}？
+
+{} of your newest commands, kept back to test it ({} hand-written)
+留作测试的最近命令中，首选建议的准确率为 {}（手写规则为 {}）
+
+{} of {}
+{} / {}
+
+{} of {} Events Found
+找到 {} 个日程，共 {} 个
+
+{} of {} connected.
+已连接 {} 个，共 {} 个。
+
+{} of {} connections
+连接数：{} / {}
+
+{} of {} free
+可用 {}，共 {}
+
+{} of {} freed
+已释放 {}，共 {}
+
+{} of {} pages
+第 {} 页，共 {} 页
+
+{} of {} processes, {} threads · {} CPU
+进程 {} / {}，线程 {} · CPU {}
+
+{} of {} read back
+已读回 {}，共 {}
+
+{} of {} selected
+已选择 {} 项，共 {} 项
+
+{} of {} sent
+已发送 {}，共 {}
+
+{} of {} slots
+插槽 {} / {}
+
+{} on Workspace {}
+{1} 号工作区中的 {0}
+
+{} on this computer
+本机上有 {}
+
+{} over 5 ms in the last minute, the longest {}
+过去一分钟超过 5 毫秒的有 {} 次，最长 {}
+
+{} packets
+{} 个包
+
+{} people are typing…
+有 {} 人正在输入…
+
+{} per second
+每秒 {}
+
+{} pressed in the last minute
+过去一分钟按下 {} 次
+
+{} profile · not in force: {}
+{} 配置 · 未生效：{}
+
+{} read back
+已读回 {}
+
+{} repeats. Change only this one, or every one of them?
+{} 是重复日程。只更改本次，还是更改全部？
+
+{} repositories, {} on. Packages come from those that are on.
+共 {} 个软件源，已启用 {} 个。软件包来自已启用的软件源。
+
+{} right first
+首选建议准确率 {}
+
+{} s
+{} s
+
+{} s ago
+{} 秒前
+
+{} shared with this screen
+与此屏幕共享的有 {}
+
+{} since the computer started{}
+开机以来 {}{}
+
+{} starting in about {} minutes
+约 {1} 分钟后开始{0}
+
+{} steps in the last minute (a wheel's notches, a touchpad's moves)
+过去一分钟滚动 {} 格（滚轮刻度或触控板移动）
+
+{} stopped answering: {}
+{} 已停止响应：{}
+
+{} stopping in about {} minutes
+{} 将在约 {} 分钟后停止
+
+{} suggestions since it started
+启动以来已给出 {} 条建议
+
+{} this hour
+本小时{}
+
+{} to chats (archived, read, muted or pinned) still to send. Whatever isn’t sent now is kept and sent when Telegram next opens.
+还有 {} 项聊天更改（归档、已读、静音或置顶）尚未发送。未发送的更改将保留，等下次打开 Telegram 时发送。
+
+{} to deal with, {}
+有 {} 项待处理，{}
+
+{} to nice {}
+将 {} 的 nice 值改为 {}
+
+{} to read
+有 {} 条待阅读
+
+{} to send
+还有 {} 项待发送
+
+{} touches in the last minute, {} taken for palms{}
+过去一分钟触摸 {} 次，其中 {} 次判为手掌{}
+
+{} typically, {} at the 95th percentile, {} to {}
+通常为 {}，第 95 百分位数为 {}，范围 {} 至 {}
+
+{} typically, {} at the 99th percentile, the longest {} ({} reports in the last minute)
+通常为 {}，第 99 百分位数为 {}，最长 {}（过去一分钟收到 {} 份报告）
+
+{} until about {}
+{}将持续到约 {}
+
+{} updates selected
+已选择 {} 项更新
+
+{} waiting in {}
+{1} 中有 {0} 项待处理
+
+{} wants to run this with sudo{}:
+{} 想用 sudo 执行以下命令{}：
+
+{} wants your attention
+{} 需要您查看
+
+{} was added.
+已添加 {}。
+
+{} was removed.
+已移除 {}。
+
+{} was taken from “{}”.
+已从“{1}”取出{0}。
+
+{} was turned off.
+已关闭 {}。
+
+{} was turned on.
+已开启 {}。
+
+{} whole{}, and {} a word at a time
+整条采纳 {} 次{}，逐词采纳 {} 次
+
+{} will hold:
+{} 将包含：
+
+{} words a minute · {}% right
+每分钟 {} 个词 · 准确率 {}%
+
+{} {}, {} there
+当地时间：{1} 日（{0}）{2}
+
+{} µs a report typically, the longest {} µs
+通常每份报告 {} 微秒，最长 {} 微秒
+
+{} · and {} more
+{} · 另有 {} 项
+
+{} · easing background work
+{} · 正在降低后台负载
+
+{} · limiting sustained power
+{} · 正在限制持续功耗
+
+{} · set up {}{}
+{} · 已设置 {}{}
+
+{} · {} · call quality while the microphone is used
+{} · {} · 使用麦克风时为通话音质
+
+{} · {} · music quality
+{} · {} · 音乐音质
+
+{} — {} ({}% of this folder){}{}
+{} — {}（占此文件夹的 {}%）{}{}
+
+{}% chance this hour
+本小时降水概率 {}%
+
+{}% cover
+云量 {}%
+
+{}% left (warns under {}%)
+剩余 {}%（低于 {}% 时警告）
+
+{}% of RAM
+占内存的 {}%
+
+{}% of a core
+占一个核心的 {}%
+
+{}% of palms caught, {}% of fingers taken for palms, on touches kept back
+在留出的测试样本中识别出 {}% 的手掌，误将 {}% 的手指判为手掌
+
+{}% of the time
+占总时间的 {}%
+
+{}% of the time, waking in {} µs
+占总时间的 {}%，唤醒耗时 {} 微秒
+
+{}% of their {} segments
+在 {1} 个分段中占 {0}%
+
+{}'s quota
+{} 的额度
+
+{}'s {} quota
+{} 的 {} 额度
+
+{}, all day
+{}，全天
+
+{}, all disks
+{}，所有磁盘
+
+{}, in place of its code
+{}，代替其验证码
+
+{}, in the folder “{}”
+{}，位于“{}”文件夹
+
+{}, in “{}”
+{}，在“{}”中
+
+{}, no limit
+{}，不限
+
+{}, on set days
+{}，在指定日期
+
+{}, until {}
+{}，直至 {}
+
+{}, {} new to the backup, {} sent so far.
+{}，本次备份新增 {}，目前已发送 {}。
+
+{}, {} shown in this Terminal.
+{}，此 Terminal 中显示 {} 个。
+
+{}, {}% of its life used
+{}，已用寿命 {}%
+
+{}. Click to pause or stop.
+{}。点击暂停或停止。
+
+{}. Click to put its applications away.
+{}。点击收起其应用。
+
+{}. Click to resume or stop.
+{}。点击继续或停止。
+
+{}. Click to stop.
+{}。点击停止。
+
+{}. The next backup starts afresh.
+{}。下次备份会重新开始。
+
+{}. Until then Token Pool asks {} to wait.
+{}。在此之前 Token Pool 会请 {} 等待。
+
+{}: 1 application. Click to show it.
+{}：1 个应用。点击显示。
+
+{}: Auto-Tiling, every window takes a tile. Click to choose a windowing mode.
+{}：自动平铺，每个窗口占一格。点击选择窗口模式。
+
+{}: Focus, only the active window shows, zoomed. Click to choose a windowing mode.
+{}：专注模式，仅放大显示活动窗口。点击选择窗口模式。
+
+{}: Not Connected
+{}：未连接
+
+{}: Show Notifications
+{}：显示通知
+
+{}: a size such as 95GiB, please
+{}：请输入大小，例如 95GiB
+
+{}: a whole number, please
+{}：请输入整数
+
+{}: it asks for its PIN at every use, so a touch can’t stand for your password
+{}：每次使用都需要输入 PIN，无法通过触摸来代替密码
+
+{}: it can’t keep a secret for Olo (no hmac-secret)
+{}：无法为 Olo 保存机密值（不支持 hmac-secret）
+
+{}: left as it is here, as this computer's couldn't be saved first.
+{}：未能预先保存本机的设置，因此保留原状。
+
+{}: left as it is here. The backup holds no key to open what it has of it (one exported without passwords and sign-ins holds none).
+{}：已保留原状。备份中没有用于解锁此项的密钥；导出时未包含密码和登录信息的备份不含密钥。
+
+{}: not here yet
+{}：此处尚无
+
+{}: sign in again on this computer (each computer signs in as itself).
+{}：请在此电脑上重新登录（每台电脑均须单独登录）。
+
+{}: the login keyring didn't take it ({}). Import the backup again once it does.
+{}：登录密钥环未接受（{}）。待它恢复可用后，请重新导入备份。
+
+{}: what's set below. Power Modes says what each mode puts it on.
+{}：使用下方设置。各模式的具体配置见“电源模式”。
+
+{}: windows stay where you put them. Click to choose a windowing mode.
+{}：窗口保留在放置的位置。点击选择窗口模式。
+
+{}: {} applications. Click to show them.
+{}：{} 个应用。点击显示。
+
+{}: {} examples, {} steps, {} ms on the {}
+{0}：{1} 个样本，{2} 步，在 {4} 上用时 {3} 毫秒
+
+{}: {}. {}. {}
+{}：{}。{}。{}
+
+{}:00 {} hits, {} misses, {} built incrementally, {} not cacheable
+{}:00 命中 {} 次，未命中 {} 次，增量构建 {} 次，不可缓存 {} 次
+
+{}; not allowed {} (sign in again)
+{}；未获准使用{}（请重新登录）
+
+{}Run by {}. Echo cancellation isn't tried: a recording has no speakers' sound beside it to take out.
+{}由{}运行。录音中没有需要消除的扬声器声音，因此不测试回声消除。
+
+{}a heading {}
+{}标题 {}
+
+{}pid {} · found {} ago
+{}PID {} · {}前发现
+
+{}{} · {} so far
+{}{} · 目前 {}
+
+{}{}, plugged in: {}.
+{}{}，已接电：{}。
+
+{}–{}% performance range
+性能范围 {}–{}%
+
+{}’s data centre
+{} 的数据中心
+
+{}″ ({} × {} mm), {} pixels per inch
+{} 英寸（{} × {} 毫米），每英寸 {} 像素
+
+~/.cache, browsers’ caches, thumbnails
+~/.cache、浏览器缓存和缩略图
+
+~/.gradle, ~/.m2/repository, a project’s .gradle
+~/.gradle、~/.m2/repository 和项目中的 .gradle
+
+~/.local/share/Trash
+~/.local/share/Trash
+
+~/.local/share/containers, ~/.local/share/flatpak
+~/.local/share/containers, ~/.local/share/flatpak
+
+~/Videos/raw, **/*.iso
+~/Videos/raw, **/*.iso
+
+~/go/pkg/mod, ~/.cache/go-build
+~/go/pkg/mod, ~/.cache/go-build
+
+~/worktrees
+~/worktrees
+
+¼ Second
+0.25 秒
+
+¼ second
+0.25 秒
+
+½ Second
+0.5 秒
+
+½ second
+0.5 秒
+
+“[{}]” isn’t a repository’s id.
+“[{}]”不是有效的软件源 ID。
+
+“{}” and {n} more are still running in them, and stop.
+other: “{}”和另外 {n} 个程序仍在运行，关闭后将停止。
+
+“{}” and {n} other programs are still running in this window. Close it anyway?
+other: “{}”和另外 {n} 个程序仍在此窗口中运行。仍要关闭吗？
+
+“{}” can't be found.
+找不到“{}”。
+
+“{}” can't be imported. {}
+无法导入“{}”。{}
+
+“{}” can't go inside itself.
+不能将“{}”放进其自身。
+
+“{}” can’t be deleted: 1Password keeps it for every account.
+无法删除“{}”：1Password 的每个账户都会保留此项。
+
+“{}” couldn't be imported. {}
+未能导入“{}”。{}
+
+“{}” couldn't be opened. {}
+未能打开“{}”。{}
+
+“{}” couldn't be printed. {}
+未能打印“{}”。{}
+
+“{}” couldn't be read: {}
+无法读取“{}”：{}
+
+“{}” couldn't be saved. {}
+未能保存“{}”。{}
+
+“{}” couldn't be shown in Tracker. {}
+未能在 Tracker 中显示“{}”。{}
+
+“{}” couldn't be written. {}
+未能写入“{}”。{}
+
+“{}” couldn't be written: {}
+无法写入“{}”：{}
+
+“{}” doesn’t say where its packages are (no baseurl, metalink or mirrorlist).
+“{}”未指明软件包位置（缺少 baseurl、metalink 或 mirrorlist）。
+
+“{}” has no {}.
+“{}”没有{}。
+
+“{}” has nothing to refer to.
+“{}”中没有可引用的内容。
+
+“{}” hasn’t allowed this computer its messages yet.
+“{}”尚未允许此电脑访问其信息。
+
+“{}” is a folder: StyledEdit opens files.
+“{}”是文件夹。StyledEdit 只能打开文件。
+
+“{}” is an enterprise network.
+“{}”是企业网络。
+
+“{}” is asking something else to pair.
+“{}”正在请求与其他设备配对。
+
+“{}” is imported.
+已导入“{}”。
+
+“{}” is out of reach or its Bluetooth is off. It’s tried again by itself.
+“{}”不在通信范围内或蓝牙已关闭。稍后会自动重试。
+
+“{}” is out of reach. It’s tried again by itself.
+“{}”不在通信范围内。稍后会自动重试。
+
+“{}” is protected by a password.
+“{}”受密码保护。
+
+“{}” is still running in it, and stops.
+“{}”仍在其中运行，关闭后将停止。
+
+“{}” is still running in this tab. Close it anyway?
+“{}”仍在此标签页中运行。仍要关闭吗？
+
+“{}” is still running in this window. Close it anyway?
+“{}”仍在此窗口中运行。仍要关闭吗？
+
+“{}” is there now.
+“{}”已存在。
+
+“{}” is there now. Replace it with the version modified {}, or keep both (the restored one named with its time)?
+“{}”已存在。用 {} 修改的版本替换，还是两者都保留？若两者都保留，会在恢复的文件名中加上时间。
+
+“{}” isn't a domain.
+“{}”不是域名。
+
+“{}” isn't a number
+“{}”不是数字
+
+“{}” isn't a picture StyledEdit can read.
+“{}”不是 StyledEdit 可读取的图片。
+
+“{}” isn't an IP address.
+“{}”不是 IP 地址。
+
+“{}” isn't in the Trash any more
+“{}”已不在废纸篓中
+
+“{}” isn't known
+无法识别“{}”
+
+“{}” isn't there any more
+“{}”已不在原处
+
+“{}” isn't understood
+无法解析“{}”
+
+“{}” isn’t a day I can read for when it ends: try Nov 20, 2026-11-20 or Friday.
+无法识别结束日期“{}”。请尝试 2026-11-20、Nov 20 或 Friday。
+
+“{}” isn’t a day I can read for when it starts: try Nov 20, 2026-11-20 or Friday.
+无法识别开始日期“{}”。请尝试 2026-11-20、Nov 20 或 Friday。
+
+“{}” isn’t a day I can read for when it stops repeating: leave it empty to go on for good.
+无法识别重复结束日期“{}”。如需一直重复，请留空。
+
+“{}” isn’t a setting.
+“{}”不是有效的设置。
+
+“{}” isn’t a time I can read for when it ends: try 14:30 or 2:30 PM.
+无法识别结束时间“{}”。请尝试 14:30 或 2:30 PM。
+
+“{}” isn’t a time I can read for when it starts: try 14:30 or 2:30 PM.
+无法识别开始时间“{}”。请尝试 14:30 或 2:30 PM。
+
+“{}” isn’t an address I can invite: write each as name@example.org, with commas between.
+无法向“{}”发送邀请。请按 name@example.org 格式输入地址，多个地址用逗号分隔。
+
+“{}” isn’t in reach. Is it nearby, unlocked, with Bluetooth on?
+无法连接“{}”。请确认设备在附近、已解锁并已开启蓝牙。
+
+“{}” repeats. Delete only this one, or every one of them?
+“{}”是重复日程。只删除本次，还是删除全部？
+
+“{}” wants to pair with this computer.
+“{}”想与此电脑配对。
+
+“{}” wants you to sign in before it lets anything through. Click to open its sign-in page.
+“{}”需要先登录才能访问网络。点击打开登录页面。
+
+“{}”, made {}{}. What's checked comes back:
+“{}”，创建于 {}{}。将恢复勾选的内容：
+
+↑↓ choose an app.
+按 ↑↓ 选择应用。
+
+⌘ Command (the Super key)
+⌘ Command（Super 键）
