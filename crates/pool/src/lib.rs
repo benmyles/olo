@@ -6,12 +6,14 @@
 
 pub mod activity;
 pub mod authority;
+pub mod capture;
 pub mod clients;
 pub mod codex_daemon;
 pub mod drain;
 pub mod gateway;
 pub mod import;
 pub mod intercept;
+pub mod likeness;
 pub mod meters;
 pub mod model;
 pub mod peer;

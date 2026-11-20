@@ -23166,10 +23166,86 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   `olo-pool --clients [--json]` (the same, without the window),
   `olo-pool --restart-codex-service`, and the activity in
   `--status --json` (`activity`: the day's minutes).
+- **As the clients send** (`capture.rs`, `likeness.rs`; Ben,
+  2026-11-19: "all requests from the pool need to be exactly the same as
+  if they came from claude code / codex"). Every request the pool makes
+  for itself (a quota read, a reset credits read, a reset's claim, a
+  sign-in's renewal) is sent as the account's own client sends it:
+  built from what that client was captured sending for that account,
+  byte for byte (each header's name in its case, its order, its value;
+  the body as the client writes it; HTTP/1.1 written as is, or HTTP/2
+  where the client's offer has it and the host agrees; the client's ALPN
+  offer), the account's own values in place of placeholders (its
+  sign-in, organization, ChatGPT account id, the cookies ChatGPT set for
+  it, kept in a jar the way Codex keeps them). Sent the pool's own way
+  (reqwest), the credit read was refused by Claude as the wrong
+  "surface" for every account, where sent as Claude Code it lists each
+  account's resets.
+  **Capture** (`capture::capture`, blocking a minute or two): the
+  installed client (`capture::installed`: `claude` or `codex` on PATH,
+  symlinks followed, its version from the install's folder) is run in a
+  sandbox (a scratch home in Olo's cache folder, removed after; nothing
+  of the person's but PATH and language) holding the account's access
+  token and a made-up refresh token (a real one never goes there),
+  through a proxy of the capture's own (its own authority, trusted only
+  by the sandbox, made each time) that writes down every request as it
+  came and every TLS ClientHello's offer, even one the client then
+  refuses. It passes on only reads on the providers' hosts that carry
+  the account's own sign-in (or none): a model request, a reset's claim,
+  a sign-in's renewal, logging and analytics are answered there and
+  never sent (no quota spent, no reset used, no sign-in rotated), and a
+  request carrying anything made up never reaches a provider (Ben: "we
+  don't want to make requests to the real api with fake data though
+  that is not polite"). Each `Sent` says whether it was passed on.
+  Claude Code is run as `claude -p hi` and `-p /usage`, in a terminal of
+  its own (a pseudo-terminal, typed into: `/usage`, a message), at its
+  used-up limit where the account has one (its model request answered
+  with the 429 Anthropic sends there, `anthropic-ratelimit-unified-*`,
+  then `/limit-reset`), and with its sign-in expired (its renewal);
+  Codex through its app server (`account/rateLimits/read`,
+  `account/rateLimitResetCredit/consume`), as `codex exec`, in its TUI,
+  without the sandbox's authority (its native TLS: OpenSSL's, where a
+  custom authority makes it use rustls), and with an expired token made
+  up for its renewal (every request carrying it answered by the capture).
+  What's kept (`capture::path`: Olo's state folder, `pool/captures/
+  ACCOUNT.json`, readable by the person alone) has every secret and the
+  account's ids as placeholders (`{{access_token}}`, `{{organization_uuid}}`,
+  `{{cookie}}`…). Captured when the pool starts (a minute in, each
+  account whose capture is of another install), when a client changes
+  (the folder `claude` and `codex` are found in, watched: an update
+  points them at another version), and by hand (Pool ▸ Capture Clients
+  Again, `olo-pool --capture`): one account at a time, on a thread at
+  idle priority (what it runs too); `capturing` in `--status --json`.
+  Found so: Claude Code 2.1.329 speaks over three stacks (its API client
+  for `/api/*`, axios under Bun: no ALPN, `Connection: close`; the SDK
+  for `/v1/messages`, Bun's fetch, ALPN `http/1.1`; Bun's fetch for
+  flags and logging), names its entrypoint in its User-Agent (`cli` in a
+  terminal, `sdk-cli` in print mode), and its interface offers no
+  `cedar_ember` reset to claim (`/limit-reset` is `juniper_tide`'s 5-hour
+  one; at the limit only "Stop and wait"): its claim is made as its API
+  client makes it (`Xt.post` with the program, grant and request ids),
+  the quota read's head as a POST with `Content-Length` where that
+  client puts it (`likeness::claude_claim`). Codex 0.170.0 speaks
+  HTTP/2, names its front end in its User-Agent (`codex-tui`; its app
+  server the client's name) and adds `x-openai-codex-luna-reserve: 1` to
+  its TUI's quota read; its claim (`{"redeem_request_id": …}`, the credit
+  left to ChatGPT) is answered `{"code": "reset"|"nothing_to_reset"|
+  "no_credit"|"already_redeemed", "windows_reset": n}`. Not yet the
+  same: the TLS handshake (Claude Code's is BoringSSL's, two of them;
+  Codex's native one OpenSSL's; the pool's rustls), and model requests
+  (below).
 - **Reset credits** (some subscriptions get a few, to reset their quota
   early): read with each sync (Claude's `cedar_ember` grants in the
-  usage report, `?cedar_ember=1`; ChatGPT's
-  `/wham/rate-limit-reset-credits`) and shown on the card. One is spent
+  usage report, `?cedar_ember=1&skip_spend=1`, each read whole: its kind
+  (`session`, `weekly`, `full`), the limits it `clears`
+  (`seven_day_overage_included` is Fable's week), when it starts and
+  ends, whether it waits for a limit; ChatGPT's
+  `/wham/rate-limit-reset-credits`: `reset_type`, `title`, `expires_at`)
+  and shown on the card. A Claude reset fills a limit up again and
+  leaves its reset day as it was ("Your weekly limits still reset on
+  their usual day and time"); a Codex one starts a new week at the next
+  request and loses what was left of the old (OpenAI's help, for bought
+  resets). One is spent
   automatically when no account can serve and an account's
   *shared* quota (not just a model's meter) is what stops it, at most
   once a minute per account; or by hand (Account ▸ Use a Reset Credit…,

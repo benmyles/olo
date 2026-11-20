@@ -8679,6 +8679,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
+ "brotli-decompressor",
  "bytes",
  "chacha20poly1305",
  "chrono",
@@ -8706,6 +8707,7 @@ dependencies = [
  "toml_edit",
  "tracing",
  "tungstenite",
+ "webpki-roots",
  "zeroize",
  "zstd 0.14.3",
 ]

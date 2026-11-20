@@ -214,7 +214,7 @@ async fn redeems_a_credit_when_all_are_out() {
     let mut saved = Saved::default();
     let mut a = account("a", 1, 100);
     a.org = Some("org-1".into());
-    a.credits.push(olo_token_pool::model::ResetCredit { id: "g1".into(), expires_at: Some(now() + 86400), remaining: 2, usable: true, program: Some("cedar_ember".into()) });
+    a.credits.push(olo_token_pool::model::ResetCredit { id: "g1".into(), expires_at: Some(now() + 86400), remaining: 2, usable: true, program: Some("cedar_ember".into()), ..Default::default() });
     saved.accounts.push(a);
     saved.credentials.insert("a".into(), cred("ok"));
     let shared = Shared::new(saved, None, up, || {});

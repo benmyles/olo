@@ -198,7 +198,7 @@ pub const RECENT: usize = 25;
 
 /// A provider-issued credit that resets an account's quota early (some
 /// subscriptions get a few).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ResetCredit {
     pub id: String,
     pub expires_at: Option<i64>,
@@ -209,6 +209,24 @@ pub struct ResetCredit {
     /// Claude's program name for it.
     #[serde(default)]
     pub program: Option<String>,
+    /// What the provider calls it ("One full limit reset (November
+    /// 2026)").
+    #[serde(default)]
+    pub label: Option<String>,
+    /// Its kind: Claude's "session", "weekly" or "full"; ChatGPT's
+    /// `reset_type`.
+    #[serde(default)]
+    pub kind: Option<String>,
+    /// The limits it clears, as the rate-limit headers name them
+    /// ("seven_day", "seven_day_overage_included": Fable's week).
+    #[serde(default)]
+    pub clears: Vec<String>,
+    /// When it can first be used.
+    #[serde(default)]
+    pub starts_at: Option<i64>,
+    /// Only at a limit it clears (Claude's `use_requires_limit`).
+    #[serde(default)]
+    pub needs_limit: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -390,7 +408,7 @@ mod tests {
     /// rate, follow from its week).
     fn holding(expires: i64, used: f64, resets: i64) -> Account {
         let mut a = Account::new("a".into(), "a".into(), Provider::Claude);
-        a.credits = vec![ResetCredit { id: "c".into(), expires_at: Some(expires), remaining: 1, usable: true, program: None }];
+        a.credits = vec![ResetCredit { id: "c".into(), expires_at: Some(expires), remaining: 1, usable: true, ..Default::default() }];
         a.windows = vec![Window { name: "seven_day".into(), label: "Weekly".into(), used, resets_at: Some(resets), models: Vec::new() }];
         a
     }

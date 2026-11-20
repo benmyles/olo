@@ -92,7 +92,7 @@ fn duration(ms: u64) -> String {
 
 // ---- the command line -------------------------------------------------
 
-const USAGE: &str = "usage: olo-pool [--service | --status [--json] | --clients [--json] | --restart-codex-service | --put-back claude|codex]
+const USAGE: &str = "usage: olo-pool [--service | --status [--json] | --clients [--json] | --capture | --restart-codex-service | --put-back claude|codex]
   (none)            open Token Pool (starting the gateway if it isn't running)
   --service         run the gateway in the background (the session does)
   --status [--json] the pool's accounts, quota and state (no sign-ins), and
@@ -100,6 +100,9 @@ const USAGE: &str = "usage: olo-pool [--service | --status [--json] | --clients 
   --clients [--json]
                     the Claude Code and Codex running, where each one's
                     connections go, and Codex's service (its daemon)
+  --capture         capture again what Claude Code and Codex send for each
+                    account (the pool's own requests are made as they
+                    are; done by itself when either changes)
   --restart-codex-service
                     restart Codex's service onto its settings now (a turn
                     going on ends; Codex's windows reconnect)
@@ -107,6 +110,32 @@ const USAGE: &str = "usage: olo-pool [--service | --status [--json] | --clients 
                     take the client off the pool's proxy altogether, its
                     settings as before the pool (turned off in Token Pool,
                     it only passes through, needing no restart)";
+
+/// Ask the running gateway to capture every account's client again.
+fn capture_now(port: u16) -> std::process::ExitCode {
+    let asked = (|| -> Result<bool, String> {
+        let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).map_err(|_| "Token Pool isn’t running.".to_owned())?;
+        s.set_read_timeout(Some(Duration::from_secs(5))).ok();
+        write!(s, "POST /pool/capture HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        s.read_to_end(&mut out).map_err(|e| e.to_string())?;
+        Ok(out.starts_with(b"HTTP/1.1 202"))
+    })();
+    match asked {
+        Ok(true) => {
+            println!("Capturing Claude Code and Codex for each account, one at a time (`olo-pool --status --json` shows which).");
+            std::process::ExitCode::SUCCESS
+        }
+        Ok(false) => {
+            eprintln!("olo-pool: the running Token Pool is older: upgrade it first.");
+            std::process::ExitCode::FAILURE
+        }
+        Err(e) => {
+            eprintln!("olo-pool: {e}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
 
 /// The running gateway's status, over loopback.
 fn fetch_status(port: u16) -> Result<Value, String> {
@@ -341,6 +370,37 @@ fn ask_to_open(port: u16) -> bool {
     out.starts_with(b"HTTP/1.1 204")
 }
 
+/// Capture what's due a minute after the start, then whenever an install
+/// folder of a client changes (a moment after: an update writes a few
+/// things).
+fn follow_clients(shared: std::sync::Arc<olo_token_pool::gateway::Shared>) {
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    let mut dirs: Vec<std::path::PathBuf> = Vec::new();
+    for p in [Provider::Claude, Provider::Codex] {
+        if let Some(i) = olo_token_pool::capture::installed(p)
+            && let Some(dir) = i.exe.parent()
+            && !dirs.iter().any(|d| d == dir)
+        {
+            dirs.push(dir.to_owned());
+        }
+    }
+    let watched = olo_kit::watch::watch_dir_entries(dirs, &[], move |_| {
+        let _ = tx.send(());
+    });
+    let _ = std::thread::Builder::new().name("pool-clients".into()).spawn(move || {
+        // (Kept as long as this thread follows.)
+        let _watched = watched;
+        std::thread::sleep(Duration::from_secs(60));
+        shared.capture(false);
+        while rx.recv().is_ok() {
+            // (Settled: what else came within the minute goes with it.)
+            std::thread::sleep(Duration::from_secs(60));
+            while rx.try_recv().is_ok() {}
+            shared.capture(false);
+        }
+    });
+}
+
 fn main() -> std::process::ExitCode {
     olo_crash::install();
     if std::env::var_os(ui::KEEPER_ENV).is_some() {
@@ -360,6 +420,9 @@ fn main() -> std::process::ExitCode {
     }
     if has("--clients") {
         return clients_now(has("--json"));
+    }
+    if has("--capture") {
+        return capture_now(port);
     }
     if let Some(i) = args.iter().position(|a| a == "--put-back") {
         let Some(p) = args.get(i + 1).and_then(|a| Provider::parse(a)) else {
@@ -449,6 +512,14 @@ fn main() -> std::process::ExitCode {
         std::thread::spawn(move || clients::migrate(proxy_port));
         // Codex's daemon, which outlives its windows, kept on the settings.
         codex_daemon::keep_following(Duration::from_secs(10));
+        // What the clients send, captured for each account (`capture`): a
+        // minute after the pool starts, and whenever a client changes (its
+        // install folder watched: an update points `claude` or `codex`
+        // there at another version), each account whose capture is of
+        // another install.
+        if service {
+            follow_clients(shared.clone());
+        }
         // (The app's state lives in the hub the app's looper keeps.)
         ui::start(app, ui::Hub::new(shared, proxy_port, proxy), service);
     });

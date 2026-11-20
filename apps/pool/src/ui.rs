@@ -398,7 +398,10 @@ fn add_menu() -> Menu {
 pub fn menu_bar<V: View>(cx: &mut Cx<V>) -> MenuBar {
     // (The gateway stays running: Close, no Quit. Its settings: whether
     // Olo's AI uses it, and its Deskbar widgets.)
-    let menus = vec![Menu::new("Pool").app_items(&["ai", "deskbar"]).item("Read Quota Now", "refresh").key("r").item("Clients", "clients").key("l").close_item(), add_menu()];
+    let menus = vec![
+        Menu::new("Pool").app_items(&["ai", "deskbar"]).item("Read Quota Now", "refresh").key("r").item("Clients", "clients").key("l").item("Capture Clients Again", "capture").close_item(),
+        add_menu(),
+    ];
     MenuBar::fixed(cx, menus)
 }
 
@@ -408,6 +411,9 @@ pub fn command<V: View>(shared: &Arc<Shared>, command: &str, cx: &mut Cx<V>) -> 
     match command {
         "close" => cx.close_window(),
         "refresh" => shared.sync_soon(None),
+        // (What Claude Code and Codex send, captured for each account
+        // again: the pool's own requests are made as they are.)
+        "capture" => shared.capture(true),
         _ => olo_kit::proxy().send(Msg::Command(command.to_owned())),
     }
     true

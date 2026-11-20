@@ -8,6 +8,7 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use reqwest::{Client, RequestBuilder};
 use serde_json::{Value, json};
 
+use crate::likeness::{self, Like, What};
 use crate::model::{Credential, Provider, ResetCredit, Window, now};
 
 /// The providers' addresses (tests point them at fakes).
@@ -111,6 +112,32 @@ impl std::fmt::Display for Failure {
     }
 }
 
+/// A request the pool makes for itself, sent as the account's client sends
+/// it when its capture has it (`likeness`): its answer; None when none was
+/// captured (the pool's own way, then).
+async fn as_client(like: Option<&Like>, what: What, up: &Upstreams, c: &Credential, target: Option<&str>, body: Option<Vec<u8>>, doing: &str) -> Option<Result<likeness::Answer, Failure>> {
+    let like = like?;
+    let sent = like.request(what)?;
+    let built = match likeness::build(&sent, &like.fill(c), target, body.as_deref()) {
+        Ok(b) => b,
+        Err(e) => return Some(Err(Failure::Other(format!("{doing}: {e}")))),
+    };
+    let answer = likeness::send(&built, up).await.map_err(|e| Failure::Other(format!("{doing}: {e}")));
+    if let Ok(a) = &answer {
+        like.remember(&a.headers);
+    }
+    Some(answer)
+}
+
+/// An answer's JSON, when it says it went well.
+fn ok_json(doing: &str, a: likeness::Answer) -> Result<Value, Failure> {
+    if !(200..300).contains(&a.status) {
+        let msg = format!("{doing}: HTTP {}{}", a.status, if a.body.is_empty() { String::new() } else { format!(" ({})", a.text()) });
+        return Err(if matches!(a.status, 400 | 401 | 403) { Failure::Refused(msg) } else { Failure::Other(msg) });
+    }
+    a.json().map_err(|e| Failure::Other(format!("{doing}: {e}")))
+}
+
 async fn http_failure(what: &str, r: reqwest::Response) -> Failure {
     let status = r.status();
     // The body can explain, but never holds a secret worth keeping; cut it short.
@@ -121,25 +148,30 @@ async fn http_failure(what: &str, r: reqwest::Response) -> Failure {
 
 /// A fresh sign-in from `c`'s refresh token (providers rotate it: keep
 /// the new one).
-pub async fn refresh(client: &Client, up: &Upstreams, p: Provider, c: &Credential) -> Result<Credential, Failure> {
+pub async fn refresh(client: &Client, up: &Upstreams, p: Provider, c: &Credential, like: Option<&Like>) -> Result<Credential, Failure> {
     let Some(token) = c.refresh.as_deref().filter(|t| !t.trim().is_empty()) else {
         return Err(Failure::Refused("No refresh token: sign in again.".into()));
     };
-    let (url, id) = match p {
-        Provider::Claude => (&up.claude_oauth, CLAUDE_CLIENT),
-        Provider::Codex => (&up.codex_oauth, CODEX_CLIENT),
+    let d: Value = match as_client(like, What::Renewal, up, c, None, None, "Refreshing the sign-in").await {
+        Some(answer) => ok_json("Refreshing the sign-in", answer?)?,
+        None => {
+            let (url, id) = match p {
+                Provider::Claude => (&up.claude_oauth, CLAUDE_CLIENT),
+                Provider::Codex => (&up.codex_oauth, CODEX_CLIENT),
+            };
+            let r = client
+                .post(url)
+                .timeout(Duration::from_secs(30))
+                .json(&json!({"grant_type": "refresh_token", "refresh_token": token, "client_id": id}))
+                .send()
+                .await
+                .map_err(|e| Failure::Other(format!("Refreshing the sign-in: {e}")))?;
+            if !r.status().is_success() {
+                return Err(http_failure("Refreshing the sign-in", r).await);
+            }
+            r.json().await.map_err(|e| Failure::Other(format!("Refreshing the sign-in: {e}")))?
+        }
     };
-    let r = client
-        .post(url)
-        .timeout(Duration::from_secs(30))
-        .json(&json!({"grant_type": "refresh_token", "refresh_token": token, "client_id": id}))
-        .send()
-        .await
-        .map_err(|e| Failure::Other(format!("Refreshing the sign-in: {e}")))?;
-    if !r.status().is_success() {
-        return Err(http_failure("Refreshing the sign-in", r).await);
-    }
-    let d: Value = r.json().await.map_err(|e| Failure::Other(format!("Refreshing the sign-in: {e}")))?;
     let access = d["access_token"].as_str().filter(|t| !t.is_empty()).ok_or_else(|| Failure::Other("Refreshing the sign-in: no token came back".into()))?;
     let expires_at = d["expires_in"].as_i64().map(|s| now() + s).or_else(|| jwt_exp(access));
     Ok(Credential {
@@ -224,8 +256,10 @@ fn codex_label(kind: &str, seconds: Option<i64>) -> String {
     match seconds {
         Some(18_000) => "5-hour".into(),
         Some(604_800) => "Weekly".into(),
-        Some(s) if s % 86_400 == 0 => format!("{}-day", s / 86_400),
-        Some(s) if s % 3_600 == 0 => format!("{}-hour", s / 3_600),
+        // (A length of nothing, as ChatGPT gives a window not started:
+        // named by its place, not "0-day".)
+        Some(s) if s > 0 && s % 86_400 == 0 => format!("{}-day", s / 86_400),
+        Some(s) if s > 0 && s % 3_600 == 0 => format!("{}-hour", s / 3_600),
         _ => {
             if kind == "primary" {
                 "Primary".into()
@@ -343,7 +377,12 @@ pub fn parse_usage(p: Provider, d: &Value) -> (Vec<Window>, Option<String>) {
 }
 
 /// Read a subscription's quota from its provider.
-pub async fn usage(client: &Client, up: &Upstreams, p: Provider, c: &Credential) -> Result<(Vec<Window>, Option<String>), Failure> {
+pub async fn usage(client: &Client, up: &Upstreams, p: Provider, c: &Credential, like: Option<&Like>) -> Result<(Vec<Window>, Option<String>), Failure> {
+    // (Claude Code's own read: no query; Codex's as its session sends it.)
+    let target = (p == Provider::Claude).then_some("/api/oauth/usage");
+    if let Some(answer) = as_client(like, What::Usage, up, c, target, None, "Reading the quota").await {
+        return Ok(parse_usage(p, &ok_json("Reading the quota", answer?)?));
+    }
     let url = match p {
         Provider::Claude => format!("{}/api/oauth/usage", up.claude),
         Provider::Codex => format!("{}/wham/usage", up.chatgpt),
@@ -364,12 +403,28 @@ pub async fn usage(client: &Client, up: &Upstreams, p: Provider, c: &Credential)
 /// account may use).
 pub fn parse_credits(p: Provider, d: &Value) -> Vec<ResetCredit> {
     let list = |v: &Value| v.as_array().cloned().unwrap_or_default();
+    let text = |v: &Value| v.as_str().map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned);
     match p {
+        // ChatGPT's (Codex's `RateLimitResetCreditDetails`): `status`,
+        // `reset_type`, `title`.
         Provider::Codex => list(&d["credits"])
             .iter()
-            .filter(|r| r["status"] == "available" && r["is_supported_by_plan"] == true)
-            .filter_map(|r| Some(ResetCredit { id: r["id"].as_str()?.to_owned(), expires_at: timestamp(&r["expires_at"]), remaining: 1, usable: true, program: None }))
+            .filter(|r| r["status"] == "available" && r["is_supported_by_plan"] != false)
+            .filter_map(|r| {
+                Some(ResetCredit {
+                    id: r["id"].as_str()?.to_owned(),
+                    expires_at: timestamp(&r["expires_at"]),
+                    remaining: 1,
+                    usable: true,
+                    label: text(&r["title"]),
+                    kind: text(&r["reset_type"]),
+                    ..Default::default()
+                })
+            })
             .collect(),
+        // Claude's grants (`cedar_ember`), read whole: what each clears,
+        // its kind, when it starts and ends, and whether it waits for a
+        // limit; none where the account may not use them (`eligible`).
         Provider::Claude => {
             let program = &d["cedar_ember"];
             if program["eligible"] != true {
@@ -385,6 +440,12 @@ pub fn parse_credits(p: Provider, d: &Value) -> Vec<ResetCredit> {
                         remaining: r["resets_left"].as_u64()?.min(u32::MAX as u64) as u32,
                         usable: r["usable_now"] == true,
                         program: Some("cedar_ember".into()),
+                        label: text(&r["label"]),
+                        kind: text(&r["type"]),
+                        clears: r["clears"].as_array().into_iter().flatten().filter_map(|c| c.as_str().map(str::to_owned)).collect(),
+                        starts_at: timestamp(&r["starts_at"]),
+                        // (Claude Code's own default: true.)
+                        needs_limit: r["use_requires_limit"].as_bool().unwrap_or(true),
                     })
                 })
                 .collect()
@@ -393,12 +454,21 @@ pub fn parse_credits(p: Provider, d: &Value) -> Vec<ResetCredit> {
 }
 
 /// Read an account's reset credits.
-pub async fn credits(client: &Client, up: &Upstreams, p: Provider, c: &Credential) -> Result<Vec<ResetCredit>, Failure> {
+pub async fn credits(client: &Client, up: &Upstreams, p: Provider, c: &Credential, like: Option<&Like>) -> Result<Vec<ResetCredit>, Failure> {
+    // (Claude Code's read of its resets: its quota read with this query.)
+    let target = (p == Provider::Claude).then_some("/api/oauth/usage?cedar_ember=1&skip_spend=1");
+    if let Some(answer) = as_client(like, What::Credits, up, c, target, None, "Reading reset credits").await {
+        return Ok(parse_credits(p, &ok_json("Reading reset credits", answer?)?));
+    }
     let url = match p {
         Provider::Claude => format!("{}/api/oauth/usage?cedar_ember=1&skip_spend=1", up.claude),
         Provider::Codex => format!("{}/wham/rate-limit-reset-credits", up.chatgpt),
     };
-    let r = authorize(client.get(url), p, c).header("anthropic-beta", OAUTH_BETA).timeout(Duration::from_secs(20)).send().await.map_err(|e| Failure::Other(format!("Reading reset credits: {e}")))?;
+    let mut req = authorize(client.get(url), p, c).timeout(Duration::from_secs(20));
+    if p == Provider::Claude {
+        req = req.header("anthropic-beta", OAUTH_BETA);
+    }
+    let r = req.send().await.map_err(|e| Failure::Other(format!("Reading reset credits: {e}")))?;
     if !r.status().is_success() {
         return Err(http_failure("Reading reset credits", r).await);
     }
@@ -408,9 +478,29 @@ pub async fn credits(client: &Client, up: &Upstreams, p: Provider, c: &Credentia
 
 /// Redeem `credit` (`request` identifies this redemption, so asking
 /// again after an unclear outcome redeems it once).
-pub async fn redeem(client: &Client, up: &Upstreams, p: Provider, c: &Credential, org: Option<&str>, credit: &ResetCredit, request: &str) -> Result<(), Failure> {
+pub async fn redeem(client: &Client, up: &Upstreams, p: Provider, c: &Credential, org: Option<&str>, credit: &ResetCredit, request: &str, like: Option<&Like>) -> Result<(), Failure> {
+    const DOING: &str = "Redeeming a reset credit";
+    if let Some(l) = like
+        && let Some(sent) = l.request(What::Claim)
+    {
+        // The client's own claim: Claude Code names the grant; Codex lets
+        // ChatGPT choose the next credit, as its own session does.
+        let body = match p {
+            Provider::Claude => {
+                let program = credit.program.as_deref().unwrap_or("cedar_ember");
+                likeness::with_fields(&sent.body, &[("program", json!(program)), ("grant_id", json!(credit.id)), ("request_id", json!(request))])
+            }
+            Provider::Codex => likeness::with_fields(&sent.body, &[("redeem_request_id", json!(request))]),
+        }
+        .map_err(|e| Failure::Other(format!("{DOING}: {e}")))?;
+        let built = likeness::build(&sent, &l.fill(c), None, Some(&body)).map_err(|e| Failure::Other(format!("{DOING}: {e}")))?;
+        let answer = likeness::send(&built, up).await.map_err(|e| Failure::Other(format!("{DOING}: {e}")))?;
+        l.remember(&answer.headers);
+        return claimed(p, &ok_json(DOING, answer)?);
+    }
     let (url, body) = match p {
-        Provider::Codex => (format!("{}/wham/rate-limit-reset-credits/consume", up.chatgpt), json!({"credit_id": credit.id, "redeem_request_id": request})),
+        // (In Codex's order: its request id, then the credit.)
+        Provider::Codex => (format!("{}/wham/rate-limit-reset-credits/consume", up.chatgpt), json!({"redeem_request_id": request, "credit_id": credit.id})),
         Provider::Claude => {
             let org = org.filter(|o| !o.is_empty() && o.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
             let org = org.ok_or_else(|| Failure::Other("This account's Claude organization isn't known: sign in again.".into()))?;
@@ -418,23 +508,35 @@ pub async fn redeem(client: &Client, up: &Upstreams, p: Provider, c: &Credential
             (format!("{}/api/organizations/{org}/reset_rate_limits", up.claude), json!({"program": program, "grant_id": credit.id, "request_id": request}))
         }
     };
-    let r = authorize(client.post(url), p, c)
-        .header("anthropic-beta", OAUTH_BETA)
-        .timeout(Duration::from_secs(30))
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| Failure::Other(format!("Redeeming a reset credit: {e}")))?;
-    if !r.status().is_success() {
-        return Err(http_failure("Redeeming a reset credit", r).await);
-    }
+    let mut req = authorize(client.post(url), p, c).timeout(Duration::from_secs(30)).json(&body);
     if p == Provider::Claude {
-        let d: Value = r.json().await.map_err(|e| Failure::Other(format!("Redeeming a reset credit: {e}")))?;
-        if d["result"] != "reset" && d["result"] != "already_used" {
-            return Err(Failure::Other("Claude didn't confirm the reset.".into()));
-        }
+        req = req.header("anthropic-beta", OAUTH_BETA);
     }
-    Ok(())
+    let r = req.send().await.map_err(|e| Failure::Other(format!("{DOING}: {e}")))?;
+    if !r.status().is_success() {
+        return Err(http_failure(DOING, r).await);
+    }
+    let d: Value = r.json().await.map_err(|e| Failure::Other(format!("{DOING}: {e}")))?;
+    claimed(p, &d)
+}
+
+/// Whether a claim's answer says a reset was used: Claude's `result`;
+/// ChatGPT's `code` (Codex's `ConsumeRateLimitResetCreditResponse`), whose
+/// `nothing_to_reset` and `no_credit` spent nothing.
+fn claimed(p: Provider, d: &Value) -> Result<(), Failure> {
+    match p {
+        Provider::Claude => match d["result"].as_str() {
+            Some("reset" | "already_used") => Ok(()),
+            Some("not_limited") => Err(Failure::Other("Claude found nothing to reset: no reset was used.".into())),
+            _ => Err(Failure::Other("Claude didn't confirm the reset.".into())),
+        },
+        Provider::Codex => match d["code"].as_str() {
+            Some("reset" | "already_redeemed") => Ok(()),
+            Some("nothing_to_reset") => Err(Failure::Other("ChatGPT found nothing to reset: no credit was used.".into())),
+            Some("no_credit") => Err(Failure::Other("ChatGPT says this account has no reset credit left.".into())),
+            _ => Err(Failure::Other("ChatGPT didn't confirm the reset.".into())),
+        },
+    }
 }
 
 /// What a rejection (429) says: until when, and whether only this
@@ -520,6 +622,17 @@ pub fn header_windows(h: &axum::http::HeaderMap, p: Provider, family: &str, stat
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A window of no length is named by its place ("Primary"), never
+    /// "0-day" (Ben's Token Pool showed one, 2026-11-19).
+    #[test]
+    fn a_window_of_no_length_has_a_name() {
+        assert_eq!(codex_label("primary", Some(0)), "Primary");
+        assert_eq!(codex_label("secondary", Some(0)), "Secondary");
+        assert_eq!(codex_label("primary", Some(18_000)), "5-hour");
+        assert_eq!(codex_label("secondary", Some(604_800)), "Weekly");
+        assert_eq!(codex_label("secondary", Some(2 * 86_400)), "2-day");
+    }
 
     #[test]
     fn usage_reports() {

@@ -179,6 +179,16 @@ pub struct Shared {
     /// (`/pool/open`: a launch that found no copy taking launches, while
     /// this one serves).
     opener: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
+    /// Each account's capture as last read (`capture::path`'s time with
+    /// it, so a new capture is read again), and its cookie jar.
+    captures: Mutex<HashMap<String, (std::time::SystemTime, Arc<crate::capture::Capture>)>>,
+    jars: Mutex<HashMap<String, Arc<std::sync::Mutex<Vec<(String, String)>>>>>,
+    /// The account whose client is being captured now (`capture`), for
+    /// the window and agents; whether a capture runs, and whether one more
+    /// was asked for meanwhile (1: what's due, 2: every account).
+    capturing: Mutex<Option<String>>,
+    capture_busy: std::sync::atomic::AtomicBool,
+    capture_again: std::sync::atomic::AtomicU8,
 }
 
 /// How often an account's quota is read while nothing asks for it (its
@@ -307,6 +317,11 @@ impl Shared {
             drain: Default::default(),
             paused: Default::default(),
             opener: Mutex::new(None),
+            captures: Mutex::new(HashMap::new()),
+            jars: Mutex::new(HashMap::new()),
+            capturing: Mutex::new(None),
+            capture_busy: Default::default(),
+            capture_again: Default::default(),
         });
         // Saving off every async and UI thread, a batch at a time: what
         // changed of the accounts a moment after, a request's bookkeeping
@@ -382,6 +397,114 @@ impl Shared {
     }
 
     /// The HTTP client requests go out with (the network's there is now).
+    /// The accounts whose clients are due a capture: each enabled,
+    /// signed-in one whose capture is missing or was made of another
+    /// install of its client than the one there now (`all`: every one).
+    fn capture_due(&self, all: bool) -> Vec<(String, Provider)> {
+        let installed: Vec<(Provider, String)> = [Provider::Claude, Provider::Codex].into_iter().filter_map(|p| crate::capture::installed(p).map(|i| (p, i.stamp))).collect();
+        let p = self.pool.lock().unwrap();
+        let mut out = Vec::new();
+        for (provider, stamp) in &installed {
+            for a in p.saved.accounts.iter().filter(|a| a.provider == *provider && a.enabled && a.signed_out.is_none() && p.saved.credentials.contains_key(&a.id)) {
+                // (The kept capture's install, read from its file's head
+                // alone would do; a capture is small enough to read.)
+                let stale = all || crate::capture::load(&a.id).is_none_or(|c| c.installed != *stamp);
+                if stale {
+                    out.push((a.id.clone(), *provider));
+                }
+            }
+        }
+        out
+    }
+
+    /// What's being captured now ("Claude Code · NAME"), if anything.
+    pub fn capturing(&self) -> Option<String> {
+        self.capturing.lock().unwrap().clone()
+    }
+
+    /// Capture the clients of the accounts that are due one (`all`: every
+    /// account's again: the person asked), one account at a time, on a
+    /// thread of its own at idle priority (the clients it runs too); one
+    /// asked for while one runs is looked at when it ends. Started when a
+    /// client changes, when the pool starts, and by hand (Pool ▸ Capture
+    /// Clients Again, `olo-pool --capture`).
+    pub fn capture(self: &Arc<Self>, all: bool) {
+        use std::sync::atomic::Ordering::SeqCst;
+        if self.capture_busy.swap(true, SeqCst) {
+            self.capture_again.fetch_max(if all { 2 } else { 1 }, SeqCst);
+            return;
+        }
+        let s = self.clone();
+        let started = std::thread::Builder::new().name("pool-capture".into()).spawn(move || {
+            // SAFETY: lowers this thread's own priority; what it starts
+            // inherits it.
+            unsafe {
+                libc::setpriority(libc::PRIO_PROCESS, 0, 19);
+            }
+            let mut all = all;
+            loop {
+                for (id, provider) in s.capture_due(all) {
+                    let Some(rt) = s.runtime.lock().unwrap().clone() else { break };
+                    let Some(account) = s.pool.lock().unwrap().saved.accounts.iter().find(|a| a.id == id).cloned() else { continue };
+                    // (A sign-in good for the capture's few minutes.)
+                    let cred = match rt.block_on(s.fresh(&id, provider, false, 900)) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            tracing::warn!("pool: no sign-in to capture {} for {}: {e}", provider.client(), account.name);
+                            continue;
+                        }
+                    };
+                    *s.capturing.lock().unwrap() = Some(format!("{} · {}", provider.client(), account.name));
+                    (s.changed)();
+                    let began = std::time::Instant::now();
+                    match crate::capture::capture(&account, &cred, &|_| {}) {
+                        Ok(c) => match crate::capture::save(&c) {
+                            Ok(()) => tracing::info!("pool: captured {} {} for {} ({} requests, {:.0?})", provider.client(), c.version, account.name, c.requests.len(), began.elapsed()),
+                            Err(e) => tracing::warn!("pool: keeping the capture of {} for {}: {e}", provider.client(), account.name),
+                        },
+                        Err(e) => tracing::warn!("pool: capturing {} for {}: {e}", provider.client(), account.name),
+                    }
+                }
+                *s.capturing.lock().unwrap() = None;
+                (s.changed)();
+                match s.capture_again.swap(0, SeqCst) {
+                    0 => break,
+                    n => all = n == 2,
+                }
+            }
+            s.capture_busy.store(false, SeqCst);
+        });
+        if started.is_err() {
+            self.capture_busy.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+
+    /// An account's capture and its own values (`likeness::Like`): what
+    /// the pool's own requests for it are made from, when its client was
+    /// captured (`capture`).
+    pub fn like(&self, id: &str) -> Option<crate::likeness::Like> {
+        let (org, email) = {
+            let p = self.pool.lock().unwrap();
+            let a = p.saved.accounts.iter().find(|a| a.id == id)?;
+            (a.org.clone(), a.email.clone())
+        };
+        let path = crate::capture::path(id);
+        let stamp = std::fs::metadata(&path).ok()?.modified().ok()?;
+        let capture = {
+            let mut cache = self.captures.lock().unwrap();
+            match cache.get(id) {
+                Some((t, c)) if *t == stamp => c.clone(),
+                _ => {
+                    let c = Arc::new(crate::capture::load(id)?);
+                    cache.insert(id.to_owned(), (stamp, c.clone()));
+                    c
+                }
+            }
+        };
+        let jar = self.jars.lock().unwrap().entry(id.to_owned()).or_default().clone();
+        Some(crate::likeness::Like { capture, org, email, jar })
+    }
+
     pub fn client(&self) -> reqwest::Client {
         self.http.get()
     }
@@ -536,7 +659,7 @@ impl Shared {
         if (!force || renewed_there) && !due {
             return Ok(current);
         }
-        match upstream::refresh(&self.client(), &self.up, provider, &current).await {
+        match upstream::refresh(&self.client(), &self.up, provider, &current, self.like(id).as_ref()).await {
             Ok(c) => {
                 self.pool.lock().unwrap().saved.credentials.insert(id.to_owned(), c.clone());
                 if self.drain.retired() {
@@ -668,7 +791,7 @@ impl Shared {
         };
         self.save_now().await;
         let cred = self.fresh(id, provider, false, 60).await.map_err(|e| e.to_string())?;
-        let result = upstream::redeem(&self.client(), &self.up, provider, &cred, org.as_deref(), &credit, &request).await;
+        let result = upstream::redeem(&self.client(), &self.up, provider, &cred, org.as_deref(), &credit, &request, self.like(id).as_ref()).await;
         {
             let mut p = self.pool.lock().unwrap();
             if let Some(a) = p.account_mut(id) {
@@ -766,9 +889,10 @@ impl Shared {
         };
         for (id, provider) in accounts {
             let Ok(cred) = self.fresh(&id, provider, false, 600).await else { continue };
-            let report = match upstream::usage(&self.client(), &self.up, provider, &cred).await {
+            let like = self.like(&id);
+            let report = match upstream::usage(&self.client(), &self.up, provider, &cred, like.as_ref()).await {
                 Err(Failure::Refused(_)) => match self.fresh(&id, provider, true, 0).await {
-                    Ok(c) => upstream::usage(&self.client(), &self.up, provider, &c).await,
+                    Ok(c) => upstream::usage(&self.client(), &self.up, provider, &c, like.as_ref()).await,
                     Err(e) => Err(e),
                 },
                 r => r,
@@ -796,7 +920,7 @@ impl Shared {
                 _ => None,
             };
             let credits = match credits {
-                Some(c) => upstream::credits(&self.client(), &self.up, provider, &c).await.ok(),
+                Some(c) => upstream::credits(&self.client(), &self.up, provider, &c, like.as_ref()).await.ok(),
                 None => None,
             };
             let mut p = self.pool.lock().unwrap();
@@ -911,7 +1035,13 @@ struct Ctx {
 }
 
 pub fn router(shared: Arc<Shared>, port: u16) -> Router {
-    Router::new().route("/claude/v1/{*rest}", any(claude)).route("/codex/v1/{*rest}", any(codex)).route("/pool/status", get(status)).route("/pool/open", post(open)).with_state(Ctx { shared, port })
+    Router::new()
+        .route("/claude/v1/{*rest}", any(claude))
+        .route("/codex/v1/{*rest}", any(codex))
+        .route("/pool/status", get(status))
+        .route("/pool/open", post(open))
+        .route("/pool/capture", post(capture_now))
+        .with_state(Ctx { shared, port })
 }
 
 /// Only clients on this computer, and never a web page: a browser sends
@@ -931,6 +1061,7 @@ async fn status(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
     }
     let mut v = status_json(&ctx.shared.snapshot());
     v["drain"] = ctx.shared.drain.status();
+    v["capturing"] = json!(ctx.shared.capturing());
     v["pid"] = json!(std::process::id());
     axum::Json(v).into_response()
 }
@@ -950,6 +1081,15 @@ async fn open(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
         }
         None => StatusCode::NOT_FOUND.into_response(),
     }
+}
+
+/// Capture every account's client again (`olo-pool --capture`).
+async fn capture_now(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
+    if let Err(r) = local_only(&headers, ctx.port) {
+        return *r;
+    }
+    ctx.shared.capture(true);
+    StatusCode::ACCEPTED.into_response()
 }
 
 /// The pool for agents and the command line: no sign-ins.
