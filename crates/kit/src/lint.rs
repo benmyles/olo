@@ -249,54 +249,33 @@ impl Lint {
                 on(&window, move |cx| cx.set_headless_scale(scale));
                 until(&window, move |cx| cx.scale_factor() == scale);
                 settle(&window);
-                let (errors, mut over, mut slack, mut lowest) = check(&window, dark);
+                // (As tall as the window is with what it shows now: one
+                // that sizes itself to what it shows has.)
+                let height = |window: &WindowHandle<V>| on(window, |cx| f32::from(cx.viewport_size().height)).unwrap_or(0.0);
+                let first = tabs(&window);
+                let (errors, over, slack, lowest) = check(&window, dark);
                 for (kind, text) in errors {
                     found.push(Found { look, scale, kind, text });
                 }
-                // The window fits what it shows: its tallest tab ends the
+                // The window fits what it shows: each tab ends the
                 // window's inset above its bottom, nothing running out of
                 // its box or pane (a tab's content under Defaults). Every
                 // tab of its tab views: each clicked (as agents find
                 // them) and checked, then the first again.
-                let first = tabs(&window);
+                let mut shown = vec![Shown { tab: first.iter().find(|t| t.2).map(|t| t.0.clone()), height: height(&window), over, slack, lowest }];
                 for (name, at, selected) in &first {
                     if *selected {
                         continue;
                     }
                     click_tab(&window, name, *at);
-                    let (errors, o, s, l) = check(&window, dark);
+                    let (errors, over, slack, lowest) = check(&window, dark);
                     for (kind, text) in errors {
                         found.push(Found { look, scale, kind, text: format!("{name} tab: {text}") });
                     }
-                    (over, slack, lowest) = (over.max(o), slack.min(s), lowest.max(l));
+                    shown.push(Shown { tab: Some(name.clone()), height: height(&window), over, slack, lowest });
                 }
-                // (As tall as the window is now: one that sizes itself to
-                // what it shows has.)
-                let height = on(&window, |cx| f32::from(cx.viewport_size().height)).unwrap_or(0.0);
-                let room = height - lowest;
-                if over > 0.5 {
-                    let fits = (((height + over) / 2.0).ceil() * 2.0) as u32;
-                    found.push(Found { look, scale, kind: "fit".into(), text: format!("what it shows runs {over:.1} pt out of its box or pane: make it {fits} tall") });
-                } else if room < m::WINDOW_INSET - 4.0 {
-                    let fits = (((lowest + m::WINDOW_INSET) / 2.0).ceil() * 2.0) as u32;
-                    found.push(Found {
-                        look,
-                        scale,
-                        kind: "fit".into(),
-                        text: format!("what it shows ends {room:.1} pt above its bottom (the window's inset is {}): make it {fits} tall", m::WINDOW_INSET),
-                    });
-                } else if !options.fullscreen && slack > 2.0 * m::WINDOW_INSET + self.room + 0.5 {
-                    // (Its tallest tab leaves this much empty at the
-                    // bottom of its pane, or of the window. Not a full
-                    // screen one's: the screen sizes it, and what it shows
-                    // is centred in it.)
-                    let fits = (((height - (slack - m::WINDOW_INSET)) / 2.0).ceil() * 2.0) as u32;
-                    found.push(Found {
-                        look,
-                        scale,
-                        kind: "fit".into(),
-                        text: format!("its tallest page leaves {slack:.1} pt empty at the bottom (the inset is {}): make it {fits} tall", m::WINDOW_INSET),
-                    });
+                if let Some(text) = fit(&shown, options.fullscreen, self.room) {
+                    found.push(Found { look, scale, kind: "fit".into(), text });
                 }
                 if let Some((name, at, _)) = first.iter().find(|t| t.2) {
                     click_tab(&window, name, *at);
@@ -333,7 +312,102 @@ impl Lint {
     }
 }
 
+/// A window as the lint saw it with one of its tabs showing (`tab`; None:
+/// a window of no tabs): how tall it was then, how far what it shows ran
+/// out of its box or pane, the empty space at its bottom, and how far down
+/// it's laid out.
+#[derive(Debug, Clone, PartialEq)]
+struct Shown {
+    tab: Option<String>,
+    height: f32,
+    over: f32,
+    slack: f32,
+    lowest: f32,
+}
+
+/// What's wrong with how a window fits what it shows (`shown`: each of
+/// its tabs), if anything. Each tab is held against the window as tall as
+/// it was with that tab showing: one that fits what it shows is as tall
+/// as each tab needs (DiskBackup's), and its tallest tab's content was
+/// once held against the height its last tab gave it (2026-11-19, in
+/// Chinese: 156 findings that were the lint's own). `kept`: room the
+/// window keeps for a state the lint doesn't draw (`Lint::keeps_room`);
+/// `fullscreen`: the screen sizes it, and what it shows is centred in it.
+fn fit(shown: &[Shown], fullscreen: bool, kept: f32) -> Option<String> {
+    let named = |s: &Shown| s.tab.as_ref().map(|t| format!("{t} tab: ")).unwrap_or_default();
+    let even = |points: f32| ((points / 2.0).ceil() * 2.0) as u32;
+    let worst = shown.iter().max_by(|a, b| a.over.total_cmp(&b.over))?;
+    if worst.over > 0.5 {
+        return Some(format!("{}what it shows runs {:.1} pt out of its box or pane: make it {} tall", named(worst), worst.over, even(worst.height + worst.over)));
+    }
+    let tightest = shown.iter().min_by(|a, b| (a.height - a.lowest).total_cmp(&(b.height - b.lowest)))?;
+    let room = tightest.height - tightest.lowest;
+    if room < m::WINDOW_INSET - 4.0 {
+        return Some(format!(
+            "{}what it shows ends {room:.1} pt above its bottom (the window's inset is {}): make it {} tall",
+            named(tightest),
+            m::WINDOW_INSET,
+            even(tightest.lowest + m::WINDOW_INSET)
+        ));
+    }
+    // The empty space under its tallest tab: the least any tab leaves (a
+    // window as tall as its tallest tab leaves more under the others).
+    let fullest = shown.iter().min_by(|a, b| a.slack.total_cmp(&b.slack))?;
+    if !fullscreen && fullest.slack > 2.0 * m::WINDOW_INSET + kept + 0.5 {
+        return Some(format!(
+            "{}its tallest page leaves {:.1} pt empty at the bottom (the inset is {}): make it {} tall",
+            named(fullest),
+            fullest.slack,
+            m::WINDOW_INSET,
+            even(fullest.height - (fullest.slack - m::WINDOW_INSET))
+        ));
+    }
+    None
+}
+
 /// Fails with everything found, one a line.
 pub fn assert_clean(what: &str, found: &[Found]) {
     assert!(found.is_empty(), "{what}: {} found\n{}", found.len(), found.iter().map(|f| format!("  {f}")).collect::<Vec<_>>().join("\n"));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn shown(tab: &str, height: f32, lowest: f32, slack: f32) -> Shown {
+        Shown { tab: Some(tab.into()), height, over: 0.0, slack, lowest }
+    }
+
+    #[test]
+    fn each_tab_against_its_own_height() {
+        // DiskBackup in Chinese, not running, at 1×: its window fits each
+        // tab, so each is held against its own height (the tallest
+        // tab's content, 564, against the last tab's 571 was the lint's
+        // own finding).
+        let disk_backup = [
+            shown("Schedule", 597.0, 553.0, 20.0),
+            shown("Files", 608.0, 564.0, 20.0),
+            shown("Backups", 565.0, 521.0, 20.0),
+            shown("Speed & Resources", 509.0, 464.0, 20.0),
+            shown("Destination", 571.0, 526.0, 20.0),
+        ];
+        assert_eq!(fit(&disk_backup, false, 0.0), None);
+        // A window as tall as it was made, whatever the tab: its tallest
+        // tab's content too low in it is found, and named.
+        let fixed = [shown("General", 400.0, 300.0, 20.0), shown("Advanced", 400.0, 392.0, 20.0)];
+        assert_eq!(fit(&fixed, false, 0.0).as_deref(), Some("Advanced tab: what it shows ends 8.0 pt above its bottom (the window's inset is 16): make it 408 tall"));
+        // What runs out of its box, with the height its tab gave the window.
+        let mut over = fixed.clone();
+        over[1].lowest = 300.0;
+        over[0].over = 3.0;
+        assert_eq!(fit(&over, false, 0.0).as_deref(), Some("General tab: what it shows runs 3.0 pt out of its box or pane: make it 404 tall"));
+        // The empty space under its tallest tab: the least any leaves.
+        let roomy = [shown("General", 400.0, 300.0, 60.0), shown("Advanced", 400.0, 300.0, 40.0)];
+        assert_eq!(fit(&roomy, false, 0.0).as_deref(), Some("Advanced tab: its tallest page leaves 40.0 pt empty at the bottom (the inset is 16): make it 376 tall"));
+        assert_eq!(fit(&roomy, true, 0.0), None);
+        assert_eq!(fit(&roomy, false, 8.0), None);
+        // A window of no tabs says no tab.
+        let plain = [Shown { tab: None, height: 200.0, over: 0.0, slack: 20.0, lowest: 195.0 }];
+        assert_eq!(fit(&plain, false, 0.0).as_deref(), Some("what it shows ends 5.0 pt above its bottom (the window's inset is 16): make it 212 tall"));
+    }
 }

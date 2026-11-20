@@ -6184,10 +6184,13 @@ wakes its view once. Each
 time it is reviewed (the errors above), every tab of its tab views too,
 and the lint's `fit` check runs over all of them: the window fits what
 it shows, nothing running out of its boxes or pane (it says how much
-taller: "make it 742 tall"), its tallest page ending the window's inset
+taller: "make it 742 tall"), each page ending the window's inset
 above the bottom of its pane (or of the window), with no more than
-twice that empty (`Lint::keeps_room(points, why)` allows room for a state
-the lint doesn't draw: Telegram's QR sign-in, a finger being enrolled).
+twice that empty under its tallest (`Lint::keeps_room(points, why)`
+allows room for a state the lint doesn't draw: Telegram's QR sign-in, a
+finger being enrolled). Each tab is held against the window as tall as
+it is with that tab showing: one that fits what it shows (DiskBackup's)
+is as tall as each tab needs, and a finding names its tab.
 A control never shrinks below its height in a squeezed column, and a
 Preferences panel's body never below its content, so too little room
 shows as overflow the check can measure. `Lint::window(options, build)`
