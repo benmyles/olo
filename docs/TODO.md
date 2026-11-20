@@ -114,6 +114,23 @@ something nobody here has is in "Blocked", with what it waits for.
   application of its own in Deskbar; and why Ben's own ⌘-click showed
   nothing (whether the click was taken as one with the key held:
   `command_held` asks app_server).
+  **Ben, the same day: "yeah it should work for all apps in the
+  deskbar menu".** So, being built: "New Instance" in every
+  application's menu in Deskbar (`Deskbar::team_menu`, after "New
+  Window" where that is; the command runs `launch_again`), in twelve
+  languages. Chrome's: `olo-chrome`, started with `OLO_NEW_INSTANCE=1`
+  and no `--user-data-dir` of its own (`start_chrome`,
+  `prefs::user_data_dir`), gives Chrome the lowest-numbered profile
+  folder not in use under Olo's state folder
+  (`chrome/instances/N`: kept, so instance 2 has its sign-ins next
+  time; in use while Chrome's `SingletonLock` there names a live
+  process), set up as any profile is (`set_up_profile`: Passwords'
+  extension), and `--class` for an app id of its own
+  (`google-chrome-instance-N`), which Deskbar and the palette name
+  from Chrome's own entry ("Google Chrome 2", its icon). The same for
+  the other Chromium browsers Olo knows (`app_keys::CHROMIUM_APPS`).
+  To test as Chrome is always tested here: a scratch HOME, runtime
+  folder and copy of Chrome's install, never the person's profile.
 
 - **Back and Forward in Passwords, and in every app** (Ben,
   2026-11-20: "navigate forward and back should work in passwords app
