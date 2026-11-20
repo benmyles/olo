@@ -180,6 +180,23 @@ something nobody here has is in "Blocked", with what it waits for.
     dump of its own at 11:04:55 (`btintel_pcie`, in
     /sys/class/devcoredump): what set it off isn't in the kernel's
     log; to watch for.
+  - **The adapter wasn't connectable** (11:12, `btmgmt info`: current
+    settings without `connectable`; BlueZ's `Adapter1.Connectable`
+    false): the computer wasn't listening for classic connections, so
+    the phone couldn't connect back, by itself or when its row is
+    tapped. Set true by hand to see (it took). Nothing in Olo sets it
+    and BlueZ's saved settings for the adapter are empty, so either
+    BlueZ leaves it off on purpose (with the kernel's connection
+    control it listens only while a paired classic device is on the
+    kernel's accept list: then is the phone on it, with only Olo's
+    own profiles to speak for it?) or something cleared it. To do, in
+    Olo: the phone service makes sure the computer can be connected
+    to by its phone (the phone on the accept list, or `Connectable`
+    set, checked when the service starts, when the adapter is powered
+    and when the phone goes away), Olo Doctor says when a paired phone
+    can't connect back, and a test with the stand-in; and whether the
+    phone's messages come back on Ben's computer now tells which it
+    was.
   - **Why the phone answered no page**, back beside the computer, for
     an hour and more (BlueZ's lookup of it failed "Host is down" every
     six to sixty seconds): not known, and not to be seen from the
