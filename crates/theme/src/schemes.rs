@@ -127,7 +127,12 @@ impl Scheme {
             tab: v.tab,
             on_tab: on(v.tab),
             tooltip: if light { mix(v.ground, v.yellow, 0.12) } else { mix(v.raised, v.ink, 0.06) },
-            status: v.blue,
+            // (Progress bars in the scheme's accent, as its sliders and
+            // selections are: in its blue, Ayu's bars were blue beside its
+            // orange slider, Monokai's and SynthWave's beside their pink;
+            // Olo's own themes keep the two together. The study of every
+            // theme, 2026-11-19.)
+            status: v.accent,
             success: readable(v.green, v.panel, 3.0),
             failure: readable(v.red, v.panel, 3.0),
             warning: readable(v.yellow, v.panel, 3.0),

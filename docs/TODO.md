@@ -50,8 +50,13 @@ something nobody here has is in "Blocked", with what it waits for.
   gallery, Tracker, Terminal, Preferences ▸ Themes, StyledEdit and
   Calendar, light, dark and night, at 1×, 1.5× and 2×: consistent;
   one defect, a working button's label over Platinum's purple fill in
-  black at 3:1 (now the ink better over all of the fill). **Left**:
-  the rest of the themes so, and more apps in each.
+  black at 3:1 (now the ink better over all of the fill). Then every
+  other theme's gallery and Terminal, light and dark: the schemes'
+  progress bars were in their blue beside their accent's sliders (Ayu's
+  orange, Monokai's and SynthWave's pink): now in their accent.
+  **Left**: in dark looks a slider's thumb, a dark face with a black
+  frame, barely stands off its empty track (under 3:1; macOS's is
+  light); more apps in each theme, closer up.
 
 ## Not started (highest priority first)
 
