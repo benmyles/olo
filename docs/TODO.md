@@ -60,6 +60,35 @@ something nobody here has is in "Blocked", with what it waits for.
 
 ## Not started (highest priority first)
 
+- **The pre-push check must never cost the person their desktop**
+  (Ben, 2026-11-20, 11:05: "something is really broken my desktop is
+  lagging … deskbar keeps crashing"). What it was: the Intel GPU reset
+  six times between 10:59 and 11:03 (the kernel: `xe … GT0: Timedout
+  job … in systemd-logind` (the person's compositor's), `in
+  olo-terminal`, `in olo-deskbar`, `in olo-app-server` of agent
+  screens; then `reset started`), and at each reset the person's
+  Terminal, Deskbar and Activity Monitor lost their GPU device and
+  started again ("the GPU device is lost: re-executing", which is the
+  kit doing as it should, and reads as crashing). Those minutes were
+  a push's live lint: about fourteen headless desktops at once, each
+  drawing on the same GPU, on a machine at a load of 60 (other builds,
+  ten agent screens). Fifteen resets that day in all, the first at
+  06:50, each in a push or a lint of mine. **No push until this is
+  fixed** (the hook runs the lint). To do, in order: the live lint
+  and `tsession` desktops draw where they can't starve the person's
+  (software drawing for headless test sessions, or the GPU's low
+  priority for them and their apps if the driver has one: to find
+  out which on `xe`; pictures must stay pixel-true, so compare a
+  lint's pictures both ways); the lint runs as many desktops at once
+  as the machine has room for, not a fixed number, and waits while
+  the person's desktop is short of GPU or processor (PSI, and
+  app_server's own late frames); the hook says what it's waiting
+  for. Also: three test desktops from earlier runs were still up,
+  one two and a half days old (`/var/tmp/olo-live-lint-*`,
+  `/var/tmp/olo-takeover.*`: ended by hand): the lint and the checks
+  end what they start however they end (`tsession start --owner`),
+  and Olo Doctor lists test desktops older than an hour.
+
 - **Phone: what's left of the night it wasn't found again** (Ben,
   2026-11-20; the faults on Olo's side are fixed: under Done). Left:
   - **Why the phone answered no page**, back beside the computer, for

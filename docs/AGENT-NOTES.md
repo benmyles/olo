@@ -1089,3 +1089,17 @@ Learned on the second pass (2026-11-20):
   again over it gets "busy" and learns nothing. bluetoothd's journal
   (`journalctl -u bluetooth`, readable here) has what each attempt
   came to ("Unable to get … SDP record: Host is down").
+- **A push's live lint can reset the person's GPU** (2026-11-20). Its
+  headless desktops draw on the real GPU, a dozen and more at once.
+  With the machine loaded and agent screens up, GPU jobs time out
+  (`journalctl -k | grep "Timedout job"`: the person's compositor
+  shows there as `systemd-logind`), the driver resets the GPU, and
+  the person's programs lose their device and start again: to them,
+  a desktop that lags and a Deskbar that keeps crashing. Before a
+  push or a live lint, look at the load (`uptime`,
+  `/proc/pressure/cpu`) and at what else is running; don't run pushes
+  one after another; and after any lint or check, see that no
+  `olo-app-server` of yours is left (`ps -eo pid,etimes,args | grep
+  olo-app-server`: a test's has a HOME under /var/tmp). Until the
+  lint draws elsewhere (TODO), ask before pushing while the person
+  is at the machine.
