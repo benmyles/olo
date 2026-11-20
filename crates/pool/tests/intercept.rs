@@ -1201,3 +1201,41 @@ async fn a_half_closed_socket_hears_the_rest() {
     }
     assert_eq!(got, [&whole[..], &broken[..5]].concat());
 }
+
+/// A turn that finishes in a copy that handed over (an upgrade) is booked
+/// in the copy now at work, which saves it: told over the pipe the old copy
+/// is known to be finishing by (Codex's fourth review: it was counted in
+/// the old copy's memory only, gone with it); a meter it hears then too.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_turn_that_ends_after_a_handover_is_booked() {
+    let (old, mut client, mut host) = one_socket().await;
+    let new = one_account("127.0.0.1:9".parse().unwrap()).await;
+    let pipe = old.drain.finishing().expect("a pipe");
+    new.drain.took_over_from(pipe);
+    new.follow_predecessor();
+
+    client.write_all(&client_frame(0x1, br#"{"type":"response.create","model":"gpt-5"}"#)).await.unwrap();
+    let mut asked = vec![0u8; 64];
+    let _ = host.read(&mut asked).await.unwrap();
+    host.write_all(&event(json!({"type": "response.created", "response": {"model": "gpt-5"}}))).await.unwrap();
+    heard(&mut client, "response.created").await;
+    old.drain.retire();
+    let limits = event(json!({"type": "codex.rate_limits", "rate_limits": {"primary": {"used_percent": 77.0, "window_minutes": 300, "reset_at": now() + 3600}}}));
+    let done = event(json!({"type": "response.completed", "response": {"usage": {"input_tokens": 11, "output_tokens": 4}}}));
+    host.write_all(&[&limits[..], &done[..]].concat()).await.unwrap();
+    heard(&mut client, "response.completed").await;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let p = new.snapshot();
+        let a = p.account("test").unwrap();
+        if a.total.input_tokens == 11 && a.windows.iter().any(|w| (w.used - 77.0).abs() < 0.01) {
+            assert_eq!((a.total.requests, a.total.output_tokens), (1, 4));
+            assert!(p.served.iter().any(|s| s.account_id == "test" && s.request.usage.input_tokens == 11));
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline, "not booked in the copy at work: {:?} {:?}", a.total, a.windows);
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    // (The old copy's own books aren't the ones saved.)
+    old.drain.finished();
+}

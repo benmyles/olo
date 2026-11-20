@@ -203,12 +203,47 @@ impl Drain {
             }
             (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1]))
         };
-        // SAFETY: as above.
-        if unsafe { libc::fcntl(r.as_raw_fd(), libc::F_SETFD, 0) } != 0 {
+        // SAFETY: as above. (Its end here never waits: what's told the
+        // new copy, `tell`, is dropped rather than wait for it.)
+        if unsafe { libc::fcntl(r.as_raw_fd(), libc::F_SETFD, 0) } != 0 || unsafe { libc::fcntl(w.as_raw_fd(), libc::F_SETFL, libc::O_NONBLOCK) } != 0 {
             return None;
         }
         *self.finishing.lock().unwrap() = Some(w);
         Some(r)
+    }
+
+    /// Retired: tell the copy now at work `line` (a line of JSON, written
+    /// whole or not at all: at most a pipe's atomic write), over the pipe
+    /// it knows this one is finishing by. Never waits: a copy that doesn't
+    /// read it (one from before) misses it.
+    pub fn tell(&self, line: &str) -> bool {
+        if !self.retired() || line.len() + 1 > libc::PIPE_BUF || line.contains('\n') {
+            return false;
+        }
+        let held = self.finishing.lock().unwrap();
+        let Some(w) = held.as_ref() else { return false };
+        let mut bytes = Vec::with_capacity(line.len() + 1);
+        bytes.extend_from_slice(line.as_bytes());
+        bytes.push(b'\n');
+        // SAFETY: a write of our own bytes on a descriptor we own.
+        let n = unsafe { libc::write(w.as_raw_fd(), bytes.as_ptr().cast(), bytes.len()) };
+        n == bytes.len() as isize
+    }
+
+    /// The copy this one took over from, as it tells what finished there
+    /// after the handover (`tell`): the pipe to read it from, if it was
+    /// handed one.
+    pub fn told_by_predecessor(&self) -> Option<OwnedFd> {
+        match &*self.predecessor.lock().unwrap() {
+            Some(Predecessor::Pipe(fd)) => fd.try_clone().ok(),
+            _ => None,
+        }
+    }
+
+    /// For a test: this copy took over from the one holding `pipe`'s other
+    /// end (as `FINISHING_ENV` names it to a copy started for real).
+    pub fn took_over_from(&self, pipe: OwnedFd) {
+        *self.predecessor.lock().unwrap() = Some(Predecessor::Pipe(pipe));
     }
 
     /// This copy, retired, has finished (or never handed over after all):

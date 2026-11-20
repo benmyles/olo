@@ -116,6 +116,9 @@ pub struct Pool {
     /// Each account's latest confirmed reset. An observation from an older
     /// revision cannot put the account back at its former limit.
     resets: HashMap<String, u64>,
+    /// When each account's latest reset was confirmed here: what the copy
+    /// handed over from saw before it is old ([`Late::Seen`]).
+    reset_at: HashMap<String, i64>,
 }
 
 impl Pool {
@@ -342,6 +345,9 @@ impl Shared {
             exact: Default::default(),
             capture_state: std::sync::Mutex::new((false, 0)),
         });
+        // What the copy it took over from finishes after the handover,
+        // booked here, where it's saved.
+        shared.follow_predecessor();
         // Saving off every async and UI thread, a batch at a time: what
         // changed of the accounts a moment after, a request's bookkeeping
         // with it or `USAGE_EVERY` on at the latest, all of it at a flush.
@@ -691,6 +697,7 @@ impl Shared {
             loaded: p.loaded,
             activity: Activity::default(),
             resets: p.resets.clone(),
+            reset_at: p.reset_at.clone(),
         }
     }
 
@@ -760,6 +767,7 @@ impl Shared {
             p.saved.accounts.retain(|a| a.id != id);
             p.saved.credentials.remove(id);
             p.resets.remove(id);
+            p.reset_at.remove(id);
         }
         // (What was kept of it goes with it: its capture, its cookies, its
         // connections.)
@@ -1031,6 +1039,7 @@ impl Shared {
             let mut p = self.pool.lock().unwrap();
             if result.is_ok() {
                 *p.resets.entry(id.to_owned()).or_default() += 1;
+                p.reset_at.insert(id.to_owned(), now());
             }
             if let Some(a) = p.account_mut(id) {
                 match &result {
@@ -1886,6 +1895,15 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
         finish.status = status.as_u16();
         let t = now();
         let (windows, rejection) = upstream::header_windows(r.headers(), provider, &family, status.as_u16(), t);
+        // (Handed over: what it says told the copy at work too.)
+        if s.drain.retired() && (!windows.is_empty() || rejection.is_some()) {
+            let (cooldown, model_cooldown) = match &rejection {
+                Some(rej) if rej.model_only => (None, Some((family.clone(), rej.until))),
+                Some(rej) => (Some(rej.until), None),
+                None => (None, None),
+            };
+            s.tell_late(&Late::Seen { id: id.clone(), at: t, windows: windows.clone(), cooldown, model_cooldown });
+        }
         {
             let mut p = s.pool.lock().unwrap();
             let current = p.reset_revision(&id) == revision;
@@ -2498,6 +2516,9 @@ impl Shared {
                         true
                     });
                 }
+                if self.drain.retired() {
+                    self.tell_late(&Late::Seen { id: turns.id.clone(), at: now(), windows: windows.clone(), cooldown: None, model_cooldown: None });
+                }
                 a.merge_windows(windows);
             }
         }
@@ -2531,12 +2552,110 @@ impl Shared {
             if p.reset_revision(&turns.id) != turns.revision {
                 return;
             }
+            if self.drain.retired() {
+                self.tell_late(&Late::Seen { id: turns.id.clone(), at: t, windows: windows.clone(), cooldown: Some(until), model_cooldown: None });
+            }
             if let Some(a) = p.account_mut(&turns.id) {
                 a.merge_windows(windows);
                 a.cooldown_until = a.cooldown_until.max(Some(until));
             }
         }
         self.noted();
+    }
+}
+
+/// What a copy of the pool that handed over (retired) tells the copy now
+/// at work of what it saw after: a turn it finished, what an answer or a
+/// socket said of an account. The copy at work books it, and saves it: the
+/// retired one saves nothing (Codex's fourth review: a turn that finished
+/// there was counted in its memory only, a refusal it learned too).
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+#[serde(tag = "late", rename_all = "snake_case")]
+pub(crate) enum Late {
+    Turn {
+        id: String,
+        name: String,
+        provider: Provider,
+        usage: Usage,
+        passed: bool,
+        request: Request,
+    },
+    /// Its meters, and a refusal's cooldown (the account's, or a model
+    /// family's), as of `at`.
+    Seen {
+        id: String,
+        at: i64,
+        windows: Vec<crate::model::Window>,
+        cooldown: Option<i64>,
+        model_cooldown: Option<(String, i64)>,
+    },
+}
+
+impl Shared {
+    /// Retired: tell the copy at work `late` (`Drain::tell`); else nothing.
+    fn tell_late(&self, late: &Late) {
+        if !self.drain.retired() {
+            return;
+        }
+        match serde_json::to_string(late) {
+            Ok(line) if self.drain.tell(&line) => {}
+            Ok(_) => tracing::info!("pool: what finished here after the handover couldn't be told the copy at work"),
+            Err(e) => tracing::warn!("pool: {e}"),
+        }
+    }
+
+    /// Book what the copy handed over from tells (`Late`), as this copy
+    /// books its own; what it saw before a reset confirmed here is old.
+    pub(crate) fn book_late(&self, late: Late) {
+        {
+            let mut p = self.pool.lock().unwrap();
+            match late {
+                Late::Turn { id, name, provider, usage, passed, request } => {
+                    if let Some(a) = p.account_mut(&id) {
+                        if passed {
+                            a.record(&usage, &today(), request.at);
+                        }
+                        a.finished(request.clone());
+                    }
+                    p.activity.record(&request);
+                    p.served.push_back(Served { account: name, account_id: id, provider, request });
+                    while p.served.len() > 50 {
+                        p.served.pop_front();
+                    }
+                }
+                Late::Seen { id, at, windows, cooldown, model_cooldown } => {
+                    if p.reset_at.get(&id).is_some_and(|&r| r > at) {
+                        return;
+                    }
+                    if let Some(a) = p.account_mut(&id) {
+                        a.merge_windows(windows);
+                        a.cooldown_until = a.cooldown_until.max(cooldown);
+                        if let Some((family, until)) = model_cooldown {
+                            let kept = a.model_cooldowns.entry(family).or_insert(until);
+                            *kept = (*kept).max(until);
+                        }
+                    }
+                }
+            }
+        }
+        self.noted();
+    }
+
+    /// Read what the copy this one took over from tells (`Drain::tell`),
+    /// on a thread of its own, until it has finished: booked as it comes.
+    pub fn follow_predecessor(self: &Arc<Self>) {
+        let Some(pipe) = self.drain.told_by_predecessor() else { return };
+        let weak = Arc::downgrade(self);
+        let _ = std::thread::Builder::new().name("pool-late".into()).spawn(move || {
+            use std::io::BufRead as _;
+            for line in std::io::BufReader::new(std::fs::File::from(pipe)).lines() {
+                let (Ok(line), Some(s)) = (line, weak.upgrade()) else { break };
+                match serde_json::from_str::<Late>(&line) {
+                    Ok(late) => s.book_late(late),
+                    Err(e) => tracing::warn!("pool: what the copy handed over from told: {e}"),
+                }
+            }
+        });
     }
 }
 
@@ -2741,10 +2860,14 @@ impl Drop for Finish {
                 a.finished(request.clone());
             }
             p.activity.record(&request);
-            p.served.push_back(Served { account: self.name.clone(), account_id: self.id.clone(), provider: self.provider, request });
+            p.served.push_back(Served { account: self.name.clone(), account_id: self.id.clone(), provider: self.provider, request: request.clone() });
             while p.served.len() > 50 {
                 p.served.pop_front();
             }
+        }
+        // (Handed over: booked where it's saved.)
+        if s.drain.retired() {
+            s.tell_late(&Late::Turn { id: self.id.clone(), name: self.name.clone(), provider: self.provider, usage, passed, request });
         }
         // (What it used, bookkeeping: saved with the next, or soon.)
         s.noted();
@@ -2993,6 +3116,41 @@ fn save_once(s: &Shared) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What the copy handed over from tells is booked as this copy's own,
+    /// but what it saw before a reset confirmed here is old: it doesn't
+    /// put the account back at its former limit.
+    #[test]
+    fn a_late_observation_from_before_a_reset_is_old() {
+        let mut saved = Saved::default();
+        saved.accounts.push(Account::new("a".into(), "a".into(), Provider::Codex));
+        let s = Shared::new(saved, None, Upstreams::fake("http://127.0.0.1:9"), || {});
+        let window = |used: f64| crate::model::Window { name: "primary_window".into(), label: String::new(), used, resets_at: Some(now() + 3600), models: vec![] };
+        let seen = |at: i64, used: f64| Late::Seen { id: "a".into(), at, windows: vec![window(used)], cooldown: Some(now() + 600), model_cooldown: None };
+        s.pool.lock().unwrap().reset_at.insert("a".into(), now() - 10);
+        s.book_late(seen(now() - 60, 100.0));
+        let p = s.snapshot();
+        let a = p.account("a").unwrap();
+        assert!(a.windows.is_empty() && a.cooldown_until.is_none(), "an old observation taken: {:?}", a.windows);
+        s.book_late(seen(now(), 12.0));
+        let p = s.snapshot();
+        let a = p.account("a").unwrap();
+        assert_eq!(a.windows.iter().map(|w| w.used).collect::<Vec<_>>(), [12.0]);
+        assert!(a.cooldown_until.is_some());
+        // A turn: its usage counted, its request among those served.
+        let request = Request {
+            at: now(),
+            model: "gpt-5".into(),
+            client: "codex".into(),
+            outcome: Outcome::Completed,
+            status: 200,
+            ms: 5,
+            usage: Usage { requests: 1, input_tokens: 11, output_tokens: 4, ..Usage::default() },
+        };
+        s.book_late(Late::Turn { id: "a".into(), name: "a".into(), provider: Provider::Codex, usage: request.usage.clone(), passed: true, request });
+        let p = s.snapshot();
+        assert_eq!((p.account("a").unwrap().total.input_tokens, p.served.len()), (11, 1));
+    }
 
     #[test]
     fn scans_usage_only() {

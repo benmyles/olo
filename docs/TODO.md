@@ -161,14 +161,11 @@ something nobody here has is in "Blocked", with what it waits for.
     that closes claims before the new copy starts; trailers passed on;
     the recorder parsing chunked framing rather than looking for its
     end.
-  - What the fourth look (pooled sockets) left: a turn that finishes in
-    the retired copy after a handover is counted in its memory only, as
-    is a refusal it learns then (its save is the new copy's to make):
-    send late completions and cooldowns to the copy now at work, with a
-    turn's id against counting it twice and the account's reset
-    revision against stale ones. Matching Codex's TLS for the socket's
-    own connection (a ClientHello compared, direct and through the
-    pool) belongs with the TLS item below.
+  - What the fourth look (pooled sockets) left: matching Codex's TLS
+    for the socket's own connection (a ClientHello compared, direct and
+    through the pool) belongs with the TLS item below. (Its late
+    bookkeeping across a handover is done: told over the pipe, booked
+    by the copy at work.)
   - The one real Codex reset Ben allowed, when its account runs out
     (92% on 2026-11-19: a Codex reset starts a new week and loses what's
     left), through the pool's claim: what it does to the week's reset.
@@ -309,22 +306,6 @@ something nobody here has is in "Blocked", with what it waits for.
   "non-existent source" warnings (a display's timer cancelled in the
   round it came due). **Left**: another pass once these are in Ben's
   session a day.
-- **One account for Mail and Calendar** (Ben, 2026-11-18: "can the
-  calendar and mail just use the same integration connection so we
-  don't have to set it up twice? like can it just be Mail & Calendar").
-  Yes: the first step of Mail. Preferences ▸ Integrations ▸ Mail &
-  Calendar, one list of accounts, each signed in once (Google: one
-  consent with the mail and the calendar scopes; Fastmail: one app
-  password, good for both) with a switch each for Mail and for
-  Calendars. The accounts move out of Calendar's engine
-  (`olo_calendar::account`) into a crate of their own that both apps
-  read; an account added before this (`calendar-accounts.json`) is
-  carried over.
-  **So far** (2026-11-18): Google's is done, as one Google integration
-  (the item in "Waiting for Ben", "One Google integration"): one
-  sign-in per account, ticked for Mail, Calendar and DiskBackup.
-  **Left**: Fastmail's (one app password for both, and its accounts in
-  the same list).
 - **A Mail app, native, every account in one place, and the assistant
   in both Mail and Calendar** (Ben, 2026-11-17: "build a beautiful olo
   native email app. use/extend the email integration support in prefs ->
@@ -737,6 +718,12 @@ something nobody here has is in "Blocked", with what it waits for.
   follows its file. Looked at headless in light and dark, 1× to 2×.
   Try: after Upgrade, Integrations ▸ Fastmail should list the Fastmail
   account Mail had, with Mail ticked (Calendar can be ticked there too).
+  (This is also "One account for Mail and Calendar", Ben, 2026-11-18:
+  "can the calendar and mail just use the same integration connection
+  so we don't have to set it up twice?": each Google account signed in
+  once for Mail, Calendar and DiskBackup, each Fastmail account one app
+  password for Mail and Calendar, in a tab of its provider's as Ben
+  then asked, rather than one list.)
 
 - **A passkey shared with an agent screen wasn't offered there** (Ben,
   2026-11-18, the google-setup screen: "google showed its own qr code

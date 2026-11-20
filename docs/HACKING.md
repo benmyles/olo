@@ -23129,7 +23129,17 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   the proxy's requests and the gateway's own `/claude/v1`, `/codex/v1`
   alike), closes connections as they fall idle (a client's next request
   opens one to the copy), and saves nothing (no quota reads, no activity,
-  no whole-file writes: the copy owns the file). A sign-in either renews
+  no whole-file writes: the copy owns the file). **What finishes there
+  is booked by the copy** (Codex's fourth review: a turn that ended in
+  the old copy was counted in its memory only): each turn it finishes,
+  and what an answer or a socket tells it of an account (its meters, a
+  refusal's cooldown), goes to the copy as a line of JSON on the pipe
+  it's known to be finishing by (`gateway::Late`, `Drain::tell`: written
+  whole or not at all, never waiting), and the copy reads them on a
+  thread of its own (`follow_predecessor`) and books each as its own
+  (`book_late`), then saves it; what the old one saw before a reset the
+  copy confirmed since is old (`reset_at`) and let go. A copy from
+  before reads none (they fill the pipe, then are dropped). A sign-in either renews
   meanwhile goes under the store's lock file (`store::lock_at`), after
   reading the file again for one the other renewed (`newer`: another
   token lasting longer), so it's renewed once; the old writes only that
