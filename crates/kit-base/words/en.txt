@@ -204,6 +204,7 @@ Add a Fastmail Account…
 Add a Folder…
 Add a Google Account…
 Add a Kind
+Add a Second Key
 Add a Section…
 Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
 Add an App…
@@ -232,6 +233,7 @@ Again
 Again:
 Against Cloudflare’s speed test servers: four connections each way, eight seconds each.
 Agenda
+Agent Screen
 Agent Screen Logs
 Agent Screen “{}” is waiting for a code
 Agent Screens
@@ -250,6 +252,7 @@ Align Right
 All
 All Apps
 All Chats
+All Default Keys
 All Imperial
 All Items
 All Metric
@@ -272,12 +275,15 @@ Also leave out:
 Also when running on battery
 Alt
 Always Dark
+Always Float Its Application
+Always Float {}
 Always Left
 Always Light
 Always Open With
 Always Right
 Always Where It Is
 Always a palm when as large as
+Always float the application, or not
 Always on Top
 An account can answer again.
 An administrator's password is needed.
@@ -290,6 +296,7 @@ And I/O under
 And {n} More
 And {} more
 Anonymous identity:
+Another Window
 Another account
 Another program has the phone’s message profiles (BlueFerry’s or GNOME’s obexd). Olo Doctor removes BlueFerry.
 Answer
@@ -838,7 +845,6 @@ DeepFilterNet3 Low Delay
 Default
 Default (Preferences ▸ Power)
 Default Apps
-Default Keys
 Default Message ({})
 Default mode:
 Defaults
@@ -972,6 +978,7 @@ Download at most:
 Download, Then Restart to Install
 Downloading: {}
 Downloading…
+Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
 Drag with:
 Dragging a Window
 Draw
@@ -1067,6 +1074,7 @@ Erasing every backup
 Erasing every backup, to start fresh
 Erasing goes on by itself once it’s back, from where it got to.
 Erlang
+Esc cancels
 Ethernet
 Even Columns
 Even Out the Voice's Level
@@ -1195,8 +1203,12 @@ Fix
 Fix in Olo Doctor…
 Flip Horizontal
 Flip Vertical
+Float
+Float Its Group
+Float This Window
 Float Window
 Float Window Group
+Float out of its group, or tile
 Flurries
 Focus
 Focus follows the pointer
@@ -1496,6 +1508,7 @@ It's in use now, in place of Olo's own.
 Italian
 Italic
 Item
+Its Group to Another Window
 Its app password isn’t in the keyring: remove it and add it again.
 Its click is its own: a resting palm can't press.
 Its decoder, on its battery preset (Power Modes), costs less than the processor's cores; off, the processor decodes on battery.
@@ -1857,6 +1870,7 @@ Mounted At
 Mouse
 Mouse speed
 Move
+Move All
 Move All Windows To
 Move All to Trash
 Move Down
@@ -1867,6 +1881,7 @@ Move Tab to New Window
 Move Tab to Window
 Move To
 Move Up
+Move Window
 Move Window To
 Move Windows To
 Move Windows To…
@@ -1953,6 +1968,7 @@ Next Action
 Next Chapter
 Next Chat
 Next Day
+Next Display
 Next File
 Next Month
 Next Page
@@ -2174,6 +2190,8 @@ Olo’s language:
 Olo’s phone service isn’t running.
 Olo’s windows change at once. Other programs take it as they next start, in the languages they have.
 On
+On AirPlay
+On All Workspaces
 On Battery
 On Custom {}
 On This Computer
@@ -2426,6 +2444,7 @@ Previous Action
 Previous Chapter
 Previous Chat
 Previous Day
+Previous Display
 Previous File
 Previous Month
 Previous Page
@@ -3195,6 +3214,7 @@ The server answered {}{}.
 The server didn’t take the name and password.
 The server’s CalDAV address, and the name and password it signs you in with. The password is kept in your login keyring.
 The shell has ended.
+The shortcut you just gave keys can have a second, pressed after them: the first keys begin a group of shortcuts, the second picks one.
 The sky and temperature now, and what's coming.
 The store
 The store is over its {} limit
@@ -3397,6 +3417,7 @@ Type a to-do above, and press Return.
 Type here to try the settings
 Type the PIN for “{}” (often 0000).
 Type the code “{}” shows on its screen.
+Type the key to press after {}. Esc leaves it as it is.
 Type the keys. Esc cancels; ⌫ removes them.
 Type the keys…
 Type the passkey shown by “{}”.
@@ -3628,7 +3649,6 @@ While downloading
 While less is free than
 While sharing or recording the screen (errors wait too)
 While uploading
-Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
 Why
 Why misses missed
 Wi-Fi
@@ -3658,6 +3678,7 @@ Windows
 Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).
 Wireless Router
 With AirPods:
+With Another Window
 Withdrawn by {}
 Word Document…
 Working out what it comes to: every package it needs, and what it replaces…
@@ -3717,6 +3738,7 @@ Yours, as last learned
 Yours: fine-tuned once since it started
 Yours: fine-tuned {} times since it started
 Zig
+Zoom
 Zoom All
 Zoom In
 Zoom Out

@@ -3037,6 +3037,22 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// own frame again, in front. Its group's windows with it: a group is
     /// one tile or floats as its front window does, and whichever is in
     /// front (after a restart, another may be) must say the same.
+    /// `set_floating`, the window `alone` taken out of its group first if
+    /// it's to float (the window menu's Float ▸ This Window, the Float
+    /// group's W, `Request::SetFloating`): in this turn, so it never
+    /// shows as a tile of its own on its way out, the groups brought up
+    /// to date then, as each turn does (else its old group's windows
+    /// float with it). In Focus, out without being moved (stepped out
+    /// from the group's zoom it floated nearly as big): Focus unzooms it
+    /// to its own size as it floats.
+    pub fn float_window(&mut self, w: &WindowElement, floating: Option<bool>, alone: bool) {
+        let out = |s: &mut Self| if s.in_focus_mode(w) { s.take_out_of_group(w) } else { s.ungroup_window(w) };
+        if alone && floating == Some(true) && !self.groups.mates(w).is_empty() && out(self) {
+            self.sync_groups();
+        }
+        self.set_floating(w, floating);
+    }
+
     pub fn set_floating(&mut self, w: &WindowElement, floating: Option<bool>) {
         if Self::floats_always(w) {
             info!(window = w.id(), ?floating, "floating: it floats always (a dialog, an alert): left as it is");

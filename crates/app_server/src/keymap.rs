@@ -38,7 +38,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use olo_protocol::{Chord, Shortcut, shortcuts::CommandKey};
+use olo_protocol::{Chord, Keys, Shortcut, shortcuts::CommandKey};
 
 /// evdev key codes used here.
 pub mod code {
@@ -135,6 +135,11 @@ const CTRL: [u32; 2] = [LEFTCTRL, RIGHTCTRL];
 const SHIFT: [u32; 2] = [LEFTSHIFT, RIGHTSHIFT];
 const ALT: [u32; 2] = [LEFTALT, RIGHTALT];
 
+/// How long a group begun waits for its second chord before it's let go
+/// of (app_server's timer takes it down then, `chord`; here, for a key
+/// that comes later all the same).
+pub const CHORD_WAIT: Duration = Duration::from_secs(5);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
     /// Switch Applications (⌘Tab; `back` with Shift): the next app in
@@ -161,6 +166,15 @@ pub enum Action {
     HintsAhead,
     /// One of the shortcuts in the settings.
     Shortcut(Shortcut),
+    /// The first chord of a group went down (⌃⌥⌘Z, Zoom's): what it
+    /// begins waits for its second, and is shown meanwhile (`chord`).
+    ChordBegun(Chord),
+    /// The group begun waits no more: a second chord picked from it (its
+    /// action comes after this), or it was let go of.
+    ChordEnded,
+    /// A group's second chord picked a command of the focused app's (the
+    /// profile's entry for it, by its id: `olo_protocol::app_keys`).
+    AppCommand(&'static str),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -253,7 +267,13 @@ pub struct Keymap {
     /// Twitcher is up, while its modifiers are held.
     switching: Option<Switching>,
     /// The shortcuts (from the settings).
-    bindings: Vec<(Chord, Shortcut)>,
+    bindings: Vec<(Keys, Shortcut)>,
+    /// The focused app's commands with keys of two parts in the profile
+    /// (every app's and its own), by their entries' ids.
+    app_chords: Vec<(Keys, &'static str)>,
+    /// A group begun and waiting for its second chord: its first, and
+    /// when that went down.
+    pending: Option<(Chord, Instant)>,
     /// Chrome's keys as the profile has them, and what Chrome takes for
     /// each (modifier pairs and the key), for [`Focus::Chrome`].
     chrome: Vec<(Chord, Vec<[u32; 2]>, u32)>,
@@ -349,16 +369,22 @@ impl Keymap {
         if self.switching.is_some() {
             out.push(Out::Action(Action::SwitchDone));
         }
+        if self.pending.is_some() {
+            out.push(Out::Action(Action::ChordEnded));
+        }
         let (bindings, grabs, recording, chrome) = (std::mem::take(&mut self.bindings), std::mem::take(&mut self.grabs), self.recording, std::mem::take(&mut self.chrome));
-        *self = Keymap { bindings, grabs, recording, chrome, ..Keymap::default() };
+        let app_chords = std::mem::take(&mut self.app_chords);
+        *self = Keymap { bindings, grabs, recording, chrome, app_chords, ..Keymap::default() };
         out
     }
 
     /// Chrome's keys as the profile has them, each with what Chrome takes
     /// for its command (`app_keys::chrome_keys`).
-    pub fn set_chrome(&mut self, keys: Vec<(Chord, Chord)>) {
+    pub fn set_chrome(&mut self, keys: Vec<(Keys, Chord)>) {
         self.chrome = keys
             .into_iter()
+            // (One of two parts is a group's: `app_chords`.)
+            .filter_map(|(from, to)| Some((from.single()?, to)))
             .map(|(from, to)| {
                 let mods = [(to.ctrl, CTRL), (to.alt, ALT), (to.shift, SHIFT)].into_iter().filter(|(on, _)| *on).map(|(_, pair)| pair).collect();
                 (from, mods, to.key)
@@ -366,8 +392,24 @@ impl Keymap {
             .collect();
     }
 
-    pub fn set_bindings(&mut self, bindings: Vec<(Chord, Shortcut)>) {
+    pub fn set_bindings(&mut self, bindings: Vec<(Keys, Shortcut)>) {
         self.bindings = bindings;
+    }
+
+    /// The focused app's commands that have keys of two parts.
+    pub fn set_app_chords(&mut self, chords: Vec<(Keys, &'static str)>) {
+        self.app_chords = chords;
+    }
+
+    /// The first chord of the group that's waiting for its second.
+    pub fn chord_waiting(&self) -> Option<Chord> {
+        self.pending.map(|(first, _)| first)
+    }
+
+    /// The group that's waiting is let go of (it waited too long, the
+    /// pointer was pressed): true if one was.
+    pub fn chord_let_go(&mut self) -> bool {
+        self.pending.take().is_some()
     }
 
     /// The chords other programs have taken.
@@ -375,9 +417,10 @@ impl Keymap {
         self.grabs = grabs;
     }
 
-    /// Whether `chord` is one of app_server's own shortcuts.
+    /// Whether `chord` is one of app_server's own shortcuts (or begins
+    /// some).
     pub fn is_bound(&self, chord: Chord) -> bool {
-        self.bindings.iter().any(|(c, _)| *c == chord)
+        self.bindings.iter().any(|(c, _)| c.first == chord)
     }
 
     /// Take the next key as a shortcut being recorded (or stop).
@@ -645,6 +688,40 @@ impl Keymap {
             return;
         }
         let chord = self.chord(key);
+        // A group begun, waiting for its second chord: this key picks
+        // from it (pressed alone, or with the first's modifiers still
+        // held), or lets go of it (Escape, a key that's none of the
+        // group's). Either way it goes nowhere else. (Modifiers came by
+        // above: they're still to be part of the second.)
+        if !olo_protocol::shortcuts::MODIFIER_KEYS.contains(&key)
+            && let Some((first, since)) = self.pending.take()
+        {
+            out.push(Out::Action(Action::ChordEnded));
+            // (Waited too long, and nothing let go of it: this key is
+            // its own.)
+            if now.duration_since(since) <= CHORD_WAIT {
+                if let Some(&(_, s)) = self.bindings.iter().find(|(k, _)| k.first == first && k.picked_by(chord)) {
+                    if switcher(s) {
+                        out.extend([Out::Action(self.switch_step(s, false)), Out::Action(Action::SwitchDone)]);
+                    } else {
+                        out.push(Out::Action(Action::Shortcut(s)));
+                    }
+                } else if let Some(&(_, id)) = self.app_chords.iter().find(|(k, _)| k.first == first && k.picked_by(chord)) {
+                    // Chrome's: pressed as Chrome takes it (what's held
+                    // of the two parts let go of for it). A kit app's
+                    // is chosen from its menus (`chord::app_command`).
+                    match olo_protocol::app_keys::CHROME_NATIVE.iter().find(|(i, _)| *i == id).and_then(|(_, native)| native.parse::<Chord>().ok()) {
+                        Some(to) if focus == Focus::Chrome => {
+                            let with: Vec<[u32; 2]> = [(to.ctrl, CTRL), (to.alt, ALT), (to.shift, SHIFT)].into_iter().filter(|(on, _)| *on).map(|(_, pair)| pair).collect();
+                            self.stand_for(&mut h, &with, to.key, out);
+                        }
+                        _ => out.push(Out::Action(Action::AppCommand(id))),
+                    }
+                }
+                self.held.insert(key, h);
+                return;
+            }
+        }
         if let Some(sw) = self.switching.filter(|sw| self.holding(sw.hold)) {
             // Twitcher is up: its key again (with Shift, back), and with
             // just its modifiers the arrows, Esc and the hints' letters.
@@ -667,6 +744,14 @@ impl Keymap {
                 self.held.insert(key, h);
                 return;
             }
+        }
+        // The first chord of a group (one of app_server's, or of the
+        // focused app's commands): it waits for its second.
+        if self.bindings.iter().any(|(k, _)| k.then.is_some() && k.first == chord) || self.app_chords.iter().any(|(k, _)| k.first == chord) {
+            self.pending = Some((chord, now));
+            out.push(Out::Action(Action::ChordBegun(chord)));
+            self.held.insert(key, h);
+            return;
         }
         let mut shortcut = self.bindings.iter().find(|(c, _)| *c == chord).map(|&(_, s)| s);
         let mut back = false;
@@ -1481,6 +1566,149 @@ mod tests {
         let off = Options { palette_on_tap: false, ..OPTS };
         r.t += Duration::from_millis(10);
         assert_eq!(r.k.feed(LEFTMETA, false, r.t, off, Focus::Olo), [Key(RIGHTCTRL, false)]);
+    }
+
+    /// A group of shortcuts: its first chord begins it (and reaches no
+    /// program); the next key picks from it, alone or with the first's
+    /// modifiers still held, or lets go of it (Escape, a key that's none
+    /// of its own), and reaches no program either way; modifiers
+    /// meanwhile are still modifiers; left too long, the next key is its
+    /// own again.
+    #[test]
+    fn a_group_is_begun_and_picked_from() {
+        const Z: u32 = 44;
+        const V: u32 = 47;
+        const F: u32 = 33;
+        const W: u32 = 17;
+        const C: u32 = 46;
+        let mut r = Rig::new();
+        let begun = |first: &str| vec![Out::Action(Action::ChordBegun(first.parse().unwrap()))];
+        let picked = |s: Shortcut| vec![Out::Action(Action::ChordEnded), Out::Action(Action::Shortcut(s))];
+        let hold = |r: &mut Rig| {
+            for k in [LEFTCTRL, LEFTALT, LEFTMETA] {
+                r.down(k);
+            }
+        };
+        let lift = |r: &mut Rig| {
+            for k in [LEFTMETA, LEFTALT, LEFTCTRL] {
+                r.up(k);
+            }
+        };
+        // ⌃⌥⌘Z, let go of, then V: Zoom Vertically. Neither key is typed.
+        hold(&mut r);
+        assert_eq!(r.down(Z), begun("Ctrl+Alt+Cmd+Z"));
+        assert_eq!((r.up(Z), r.k.chord_waiting()), (vec![], "Ctrl+Alt+Cmd+Z".parse().ok()));
+        lift(&mut r);
+        assert_eq!(r.down(V), picked(Shortcut::ZoomVertical));
+        assert_eq!((r.up(V), r.k.chord_waiting()), (vec![], None));
+        // The same with ⌃⌥⌘ still held for the second key.
+        hold(&mut r);
+        assert_eq!(r.down(Z), begun("Ctrl+Alt+Cmd+Z"));
+        r.up(Z);
+        assert_eq!(r.down(Z), picked(Shortcut::Zoom));
+        r.up(Z);
+        // Float's three, and one of Move's.
+        for (first, key, does) in
+            [(F, F, Shortcut::Float), (F, W, Shortcut::FloatAlone), (F, A, Shortcut::FloatApp), (V, KEY3, Shortcut::WindowToWorkspace(2)), (V, RIGHT, Shortcut::WindowToNextWorkspace)]
+        {
+            assert_eq!(r.down(first).len(), 1, "{first} begins a group");
+            r.up(first);
+            assert_eq!(r.down(key), picked(does));
+            r.up(key);
+        }
+        lift(&mut r);
+        // Escape, or a key that's none of the group's: let go of, typed nowhere.
+        for key in [ESC, Q] {
+            hold(&mut r);
+            r.down(Z);
+            r.up(Z);
+            lift(&mut r);
+            assert_eq!((r.down(key), r.up(key)), (vec![Out::Action(Action::ChordEnded)], vec![]));
+        }
+        // A modifier meanwhile is a modifier; with Shift, V is not V.
+        hold(&mut r);
+        r.down(Z);
+        r.up(Z);
+        lift(&mut r);
+        assert_eq!(r.down(LEFTSHIFT), [Key(LEFTSHIFT, true)]);
+        assert!(r.k.chord_waiting().is_some());
+        assert_eq!(r.down(V), [Out::Action(Action::ChordEnded)]);
+        r.up(V);
+        r.up(LEFTSHIFT);
+        // Left too long (app_server's timer lets go of it then; a key
+        // that came all the same is typed).
+        hold(&mut r);
+        r.down(Z);
+        r.up(Z);
+        lift(&mut r);
+        r.t += CHORD_WAIT;
+        assert_eq!(r.down(C), [Out::Action(Action::ChordEnded), Key(C, true)]);
+        r.up(C);
+        // Let go of by something else (the pointer pressed): gone.
+        hold(&mut r);
+        r.down(Z);
+        assert!(r.k.chord_let_go() && !r.k.chord_let_go() && r.k.chord_waiting().is_none());
+        r.up(Z);
+        lift(&mut r);
+        // Its first chord is app_server's: no program may take it.
+        assert!(r.k.is_bound("Ctrl+Alt+Cmd+Z".parse().unwrap()) && r.k.is_bound("Ctrl+Alt+Return".parse().unwrap()));
+    }
+
+    /// An app's command with keys of two parts: begun and picked as
+    /// app_server's are, and handed on by its entry's id; Chrome's is
+    /// pressed as Chrome takes it.
+    #[test]
+    fn an_apps_command_by_two_parts() {
+        const K: u32 = 37;
+        const S: u32 = 31;
+        const T: u32 = 20;
+        let mut r = Rig::new();
+        r.k.set_app_chords(vec![("Cmd+K Cmd+S".parse().unwrap(), "app.save"), ("Cmd+K T".parse().unwrap(), "chrome.new-tab")]);
+        r.down(LEFTMETA);
+        assert_eq!(r.down(K), [Out::Action(Action::ChordBegun("Cmd+K".parse().unwrap()))]);
+        r.up(K);
+        assert_eq!(r.down(S), [Out::Action(Action::ChordEnded), Out::Action(Action::AppCommand("app.save"))]);
+        r.up(S);
+        r.up(LEFTMETA);
+        // In Chrome, New Tab by ⌘K T is Ctrl+T to Chrome.
+        r.focus = Focus::Chrome;
+        r.down(LEFTMETA);
+        r.down(K);
+        r.up(K);
+        r.up(LEFTMETA);
+        let outs = r.down(T);
+        assert_eq!(outs.first(), Some(&Out::Action(Action::ChordEnded)));
+        assert!(outs.contains(&Key(LEFTCTRL, true)) && outs.contains(&Key(T, true)) && !outs.iter().any(|o| matches!(o, Out::Action(Action::AppCommand(_)))), "{outs:?}");
+        let outs = r.up(T);
+        assert!(outs.contains(&Key(T, false)), "{outs:?}");
+    }
+
+    /// What a key costs the keymap (`cargo test --release -p app_server
+    /// --lib what_a_key_costs -- --ignored --nocapture`): a plain key down
+    /// and up, and one with ⌘ held, with a Mac profile's shortcuts.
+    #[test]
+    #[ignore]
+    fn what_a_key_costs() {
+        const C: u32 = 46;
+        const N: u32 = 400_000;
+        let mut r = Rig::new();
+        for round in 0..3 {
+            let t = Instant::now();
+            for _ in 0..N {
+                std::hint::black_box(r.k.feed(C, true, r.t, r.opts, r.focus));
+                std::hint::black_box(r.k.feed(C, false, r.t, r.opts, r.focus));
+            }
+            let plain = t.elapsed().as_nanos() as f64 / N as f64;
+            r.k.feed(LEFTMETA, true, r.t, r.opts, r.focus);
+            let t = Instant::now();
+            for _ in 0..N {
+                std::hint::black_box(r.k.feed(C, true, r.t, r.opts, r.focus));
+                std::hint::black_box(r.k.feed(C, false, r.t, r.opts, r.focus));
+            }
+            let held = t.elapsed().as_nanos() as f64 / N as f64;
+            r.k.feed(LEFTMETA, false, r.t, r.opts, r.focus);
+            eprintln!("round {round}: a plain key, down and up: {plain:.0} ns; with the command key held: {held:.0} ns");
+        }
     }
 
     #[test]

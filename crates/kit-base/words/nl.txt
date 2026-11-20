@@ -621,6 +621,9 @@ Google-account toevoegen…
 Add a Kind
 Type toevoegen
 
+Add a Second Key
+Tweede toets toevoegen
+
 Add a Section…
 Onderdeel toevoegen…
 
@@ -707,6 +710,9 @@ Test met de servers van Cloudflare: vier verbindingen per richting, elk acht sec
 Agenda
 Agenda
 
+Agent Screen
+Agentscherm
+
 Agent Screen Logs
 Logboeken van agentschermen
 
@@ -760,6 +766,9 @@ Alle apps
 
 All Chats
 Alle chats
+
+All Default Keys
+Alle standaardtoetsen
 
 All Imperial
 Brits-Amerikaanse eenheden
@@ -827,6 +836,12 @@ Alt
 Always Dark
 Altijd donker
 
+Always Float Its Application
+Zijn programma altijd laten zweven
+
+Always Float {}
+{} altijd laten zweven
+
 Always Left
 Altijd links
 
@@ -844,6 +859,9 @@ Altijd op de huidige plek
 
 Always a palm when as large as
 Altijd een handpalm vanaf deze grootte
+
+Always float the application, or not
+Vensters van zijn programma altijd laten zweven, of niet
 
 Always on Top
 Altijd bovenop
@@ -881,6 +899,9 @@ En nog {}
 
 Anonymous identity:
 Anonieme identiteit:
+
+Another Window
+Ander venster
 
 Another account
 Een ander account
@@ -2531,9 +2552,6 @@ Standaard (Voorkeuren ▸ Energie)
 Default Apps
 Standaardapps
 
-Default Keys
-Standaardtoetsen
-
 Default Message ({})
 Standaardbericht ({})
 
@@ -2934,6 +2952,9 @@ Downloaden: {}
 Downloading…
 Downloaden…
 
+Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
+Terwijl u een venster aan zijn tab sleept, laat u het los op een plek, of drukt u op de letter ervan, om het daar te zetten. Laat het los op de plek van een ander venster om de twee te verwisselen. Escape zet alles terug.
+
 Drag with:
 Slepen met:
 
@@ -3218,6 +3239,9 @@ Het wissen gaat automatisch verder zodra de bestemming weer beschikbaar is.
 
 Erlang
 Erlang
+
+Esc cancels
+Esc annuleert
 
 Ethernet
 Ethernet
@@ -3607,11 +3631,23 @@ Horizontaal spiegelen
 Flip Vertical
 Verticaal spiegelen
 
+Float
+Zweven
+
+Float Its Group
+Zijn groep laten zweven
+
+Float This Window
+Dit venster laten zweven
+
 Float Window
 Venster laten zweven
 
 Float Window Group
 Venstergroep laten zweven
+
+Float out of its group, or tile
+Buiten zijn groep laten zweven, of tegelen
 
 Flurries
 Lichte sneeuwbuien
@@ -4512,6 +4548,9 @@ Cursief
 
 Item
 Onderdeel
+
+Its Group to Another Window
+Zijn groep naar een ander venster
 
 Its app password isn’t in the keyring: remove it and add it again.
 Het appwachtwoord staat niet in de sleutelbos. Verwijder het account en voeg het opnieuw toe.
@@ -5598,6 +5637,9 @@ Muissnelheid
 Move
 Verplaatsen
 
+Move All
+Alle verplaatsen
+
 Move All Windows To
 Alle vensters verplaatsen naar
 
@@ -5627,6 +5669,9 @@ Verplaatsen naar
 
 Move Up
 Omhoog
+
+Move Window
+Venster verplaatsen
 
 Move Window To
 Venster verplaatsen naar
@@ -5885,6 +5930,9 @@ Volgende chat
 
 Next Day
 Volgende dag
+
+Next Display
+Volgend beeldscherm
 
 Next File
 Volgend bestand
@@ -6548,6 +6596,12 @@ Olo-vensters veranderen meteen van taal. Andere programma’s gebruiken de taal 
 
 On
 Aan
+
+On AirPlay
+Op AirPlay
+
+On All Workspaces
+Op alle werkbladen
 
 On Battery
 Op accuvoeding
@@ -7306,6 +7360,9 @@ Vorige chat
 
 Previous Day
 Vorige dag
+
+Previous Display
+Vorig beeldscherm
 
 Previous File
 Vorig bestand
@@ -9617,6 +9674,9 @@ Het CalDAV-adres van de server en de naam en het wachtwoord voor aanmelding. Het
 The shell has ended.
 De shell is afgesloten.
 
+The shortcut you just gave keys can have a second, pressed after them: the first keys begin a group of shortcuts, the second picks one.
+De toetscombinatie die u net toetsen hebt gegeven, kan een tweede krijgen, die erna wordt ingedrukt: de eerste toetsen openen een groep toetscombinaties, de tweede kiest er een.
+
 The sky and temperature now, and what's coming.
 Het weer en de temperatuur nu, met de verwachting.
 
@@ -10222,6 +10282,9 @@ Typ de pincode voor ‘{}’ (vaak 0000).
 
 Type the code “{}” shows on its screen.
 Typ de code op het scherm van ‘{}’.
+
+Type the key to press after {}. Esc leaves it as it is.
+Druk op de toets die na {} moet komen. Esc laat het zoals het is.
 
 Type the keys. Esc cancels; ⌫ removes them.
 Druk op de gewenste toetsen. Esc annuleert en ⌫ verwijdert de combinatie.
@@ -10916,9 +10979,6 @@ Bij schermdelen of -opname (ook fouten uitstellen)
 While uploading
 Tijdens uploaden
 
-Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
-Terwijl u een venster aan zijn tab sleept, laat u het los op een plek, of drukt u op de letter ervan, om het daar te zetten. Laat het los op de plek van een ander venster om de twee te verwisselen. Escape zet alles terug.
-
 Why
 Reden
 
@@ -11005,6 +11065,9 @@ Draadloze router
 
 With AirPods:
 Met AirPods:
+
+With Another Window
+Met een ander venster
 
 Withdrawn by {}
 Ingetrokken door {}
@@ -11182,6 +11245,9 @@ Uw model: {} keer bijgetraind sinds de start
 
 Zig
 Zig
+
+Zoom
+Zoomen
 
 Zoom All
 Alle vensters maximaliseren

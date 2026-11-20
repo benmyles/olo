@@ -2829,7 +2829,10 @@ it.
   `MenuField` (label, divider, `quiet_label`: a field set among facts,
   its label theirs and its choice on their values' line; `name`: its
   name for agents and the settings index with no label shown, a field in
-  a grid named by its row and column; its menu opens with the current
+  a grid named by its row and column; `room_for(texts)`: as wide as
+  those would need too, what it may come to show that isn't among its
+  options yet, so it and what's beside it stay put when it does; its
+  menu opens with the current
   choice over the field: `menu::popup_over`; `MenuField::many(id,
   options, chosen, none)` for any number of choices (a `BMenu` out of
   radio mode marks any number of items, but its field then stops
@@ -3136,7 +3139,18 @@ it.
   `key_combo_width`: keys as menus write them ("⇧⌘P"), each symbol
   laid out on its own a point closer to what follows; one about as tall
   as the capitals (⇧ ⌘ ↵ ⌫ ⏏) is set on their line by its outline
-  (Noto's ⇧ sits a pixel low; kept per symbol). `style::DETAIL_SIZE`
+  (Noto's ⇧ sits a pixel low; kept per symbol). Where keys are listed
+  one under another (a menu's items, the shortcuts lists, the command
+  palette's rows), `style::key_combo_column` and
+  `key_combo_column_width` instead: the last key at the left of a cell
+  as wide as a capital W, the keys before it against the cell, so the
+  modifiers stand in a straight column whatever the last key's width
+  (right-aligned as one string each, "⌃⌥I" began five points right of
+  "⌃⌥U"; a key wider than the cell, F12 or Space, takes what it needs).
+  `key_combo` is for keys by themselves, flush right (a heading's). (A
+  menu's frame with the pointer going over its items, release, 2× :
+  0.27 ms before, 0.23 after, its `ui` 90 and 94 µs.)
+  `style::DETAIL_SIZE`
   (11 points) is for secondary words (a row's subtitle and kind, a
   chip, a caption, a small button); `SMALL_SIZE` (10.5) for graphs'
   labels and headings in capitals. `style::soft_shadow` (an overlay
@@ -8991,6 +9005,164 @@ It is for an arranger outside app_server (an agent, a script; the
 window-manager fuzzer does it): Smart Tiling, a model that looked at
 the screen and arranged it, was its first user and is gone (Ben,
 2026-11-16: "it never worked well and is, frankly, silly").
+
+## Shortcuts of two parts (olo_protocol::shortcuts::Keys, app_server chord.rs, the palette's chord.rs)
+
+A shortcut's keys are one chord, or two pressed in turn (Ben,
+2026-11-18: "you do the first part to start Float/Move/etc and then the
+second part to select the specific option. this chord support must be
+made native to olo, supported and customizable in keyboard shortcut
+prefs"). `Keys { first, then }`, written with a space between
+("Ctrl+Alt+Cmd+Z V") wherever keys are written: a profile's
+`shortcuts`, the tables' defaults; shown (`Keys::label`) with room
+between the two ("⌃⌥⌘Z  V", two spaces: with one, "⌃⌥⌘Z Z" read as a
+letter said twice at 1×), and several keys for one thing with a comma
+and more room (`Keys::labels`: "⌃⌥↵,   ⌃⌥⌘Z  Z"). BeOS had none; Emacs's prefix keys
+and VS Code's chords are the model, with which-key's panel for what the
+second can be. (In Olo's code a "chord" is still one key with its
+modifiers, `Chord`: the two-part kind is `Keys` with a `then`.)
+
+**The groups that come with Olo**, the same keys in every profile (on
+⌃⌥⌘, where Olo's own extras are): ⌃⌥⌘Z begins Zoom's (Z zoom, V
+vertically, H horizontally, B back to its own size), ⌃⌥⌘F Float's (F
+the window, with its group; W the window alone; A its application
+always), ⌃⌥⌘V Move's (1 to 9 a workspace, ← → the one before or after,
+N P the next or previous display). They are second keys of those
+shortcuts: each keeps the chord it had (⌃⌥↵ still zooms). Float's ⌃⌥⌘F
+was a shortcut by itself; F again does what it did. A group is nothing
+but the shortcuts whose keys begin with one chord
+(`shortcuts::begun_by`): give any shortcut keys of two parts in
+Preferences and its first chord begins a group, named (`menu_of`) if
+all of it is one of the window menu's submenus.
+
+**Clashes** (`Keys::clashes`): two shortcuts can't have the same keys,
+and a chord that is a shortcut by itself can't begin another. `assign`
+takes keys from whatever they clash with, as it always did;
+`bindings` gives what the person chose precedence over what comes with
+the platform, so a chord given to a shortcut before a group began with
+it stays that shortcut's.
+
+**In app_server** (`keymap.rs`, `chord.rs`): the keymap takes a
+group's first chord (`Action::ChordBegun`: it reaches no program) and
+waits (`pending`); the next key that isn't a modifier picks from the
+group, pressed alone or with the first's modifiers still held
+(`Keys::picked_by`: ⌃⌥⌘Z then V with the fingers still on ⌃⌥⌘ is ⌃⌥⌘Z
+V), or lets go of it (Escape, any key that's none of its own), and
+reaches no program either way (`ChordEnded`, then the shortcut). Left
+waiting, it's let go of after `CHORD_WAIT` (5 s), and by a press of the
+pointer. A key costs the keymap what it did (0.13 to 0.25 µs down and
+up, release, before and after: `what_a_key_costs`), and nothing ticks
+while a group waits (release, 2560×1600 at 2×: app_server 0.0% of a
+core and its two wakeups a second at rest, as before; the panel's
+program 0.0%).
+
+**What's shown while it waits**: `olo-palette --chord FIRST OUTPUT`,
+started once a group has waited `SHOW_AFTER` (350 ms: keys typed
+straight through show nothing), handed to the running palette: a panel
+at the foot of the display, as wide as what it says (220 to 420
+points), with the group's name, the chord that began it, each second
+key on a cap with what it does (the shortcuts' titles, as Preferences
+and the shortcuts sheet list them, through the words layer), and "Esc
+cancels" under a rule. What it lists is what can be done here, as a
+menu would (`chord_info`): the workspaces there are, another display
+only where there is one, the number keys first as Move's menu has its
+workspaces, and what's so already checked and stepped back
+(`ChordOption::current`: the workspace the window is on, as its menu's
+item is). It takes no keys
+and no pointer; it goes at `Event::Chord` with no first (or when a
+group can wait no longer). Agents: `{"type":"chord"}` answers the group
+that's waiting (`ChordInfo`: first, name, each option's keys, id and
+title), or with `"first":"Ctrl+Alt+Cmd+Z"` what that chord begins;
+`Event::Chord` (by name) says when one begins and ends; the panel is a
+kit window, read as any. `tools/dev/chord-check` goes through all of it
+in a headless session (a group begun, picked from with the modifiers
+let go of or held, let go of by Escape, another key, the pointer and
+the wait; the panel; Move's and Float's; a second key of the person's
+own), 41 checks.
+
+Not done, to decide (both reviewers asked for it): the panel says what
+each shortcut is, in the words Preferences and the shortcuts sheet use
+("Float over the tiles, or tile"), not what its key would do now, in
+the menu's words ("Unfloat"). TODO, "The chord panel in the menu's
+words".
+
+**An app's commands** can have keys of two parts too. The app never
+sees them: app_server takes both (`app_chords`, the profile's entries
+for the app that has the keyboard, told the keymap when that app
+changes; an empty list, as profiles come, costs a key one test) and
+chooses the command from the app's menus over its commands socket, as
+an agent would (`window_drop::invoke`, the kit's `invoke_in`, from the
+worker thread that already tells apps where a window was dropped);
+Chrome's is pressed as what Chrome takes for it (`CHROME_NATIVE`). The
+kit shows such keys beside the item (`keys::Known`: words, and no
+`Shortcut` to press).
+
+**In Preferences ▸ Keyboard ▸ Shortcuts**: a shortcut's keys read
+"⌃⌥↵,  ⌃⌥⌘Z Z" (a comma between its keys, a space between the two
+parts of one). Click a shortcut and type a chord, as ever; Add a Second
+Key then records the chord to press after it. It's asked for, not
+waited for after every chord: the next key typed after giving a
+shortcut its keys is as likely the shortcut being tried. The shortcut
+last changed stays lit, faintly, till another is clicked (the one Add
+a Second Key is for, at the left under the note about it); while the second
+key is waited for its row reads "⌃⌥⌘J  …", the ellipsis where the key
+will be. The note is the list's caption: a line of its own right under
+it (`TIGHT`), over the buttons (beside both it had half the width, and
+wrapped in English too), dimmed only as the idle hint. All Default Keys
+(it was Default Keys, read by both reviewers as the lit shortcut's
+alone), at the right, gives every shortcut the profile's own keys
+again. The profile row's Save As… and Delete are as wide as their
+words (`Button::min_width`): at the kit's least width they left the
+menu six points short of "Mac (Customized)".
+
+## Menus in groups (the window menu, Deskbar's; every menu of Olo's)
+
+Ben, 2026-11-18: "group the 3 zoom options under a "Zoom ->" parent and
+the 3 float options under a "Float ->" parent, the move options under a
+"Move ->" parent, and anything else that makes sense to be grouped …
+similarly clean up the deskbar right click menus and any other menus
+that are unwieldly. try to make everything follow consistent
+patterns/groupings where appropriate". The pattern, top to bottom:
+
+1. **What it is**: the windows of an application, a state said in
+   words (Deskbar's rows).
+2. **What's done to it at once**: Hide, Show, Roll Up, Send to Back.
+3. **Its size and shape**: Zoom ▸, Float ▸, Tile ▸ (and Make Main,
+   where the tiles have a main window).
+4. **Where it is and shows**: Pin ▸, Move ▸ (workspaces first, each
+   display's with a line between; then Next Display and Previous
+   Display; then elsewhere: Agent Screen ▸, Another Window ▸), Show ▸
+   (Always on Top, On All Workspaces, In the Scratchpad, On AirPlay ▸).
+5. **What it is to others**: its group, its file (Show in Tracker).
+   Deskbar's Group All Windows goes with where they go: a line round
+   one item makes a slab of it.
+6. **Closing and quitting**, last, under a line of their own; a tray
+   menu's Settings… after even those.
+
+A submenu is named for the verb alone (Zoom, Float, Tile, Pin, Move,
+Show; Move All where it acts on several), and its items for where the
+thing goes or what with, without saying the verb again (Move ▸
+Workspace 2, Next Display, Agent Screen; Show ▸ On All Workspaces;
+Tile ▸ With Another Window). An item says the verb only where it is the
+verb, or the verb and how (Zoom ▸ Zoom, Zoom Vertically; Float ▸ Float
+Its Group). Three of a kind make a submenu; two stay where they are.
+An item in a group shows its keys of two parts, the ones that begin
+with the group's chord; at a menu's top it shows its one chord. What's
+said of one thing is said in the singular (Deskbar's Show, Hide, Move
+and Close for an application with one window; Show All, Hide All, Move
+All and Close All with several).
+
+Held by: the kit's `menu::review_groups` (a submenu's item or submenu
+that says its verb again before "to", "on", "in", "with"…: "Move ▸ Move
+to Workspace 2: the verb is the menu's, say “Workspace 2”"), which the
+window review runs over every window's menu bar (`app_menu::review`,
+kind `menus`) and the window menu's test over the popup; and that test
+(`apps/palette/src/window_menu.rs`, `asks_and_items`), which has the
+menu's top level and each group item by item. The window menu went
+from twenty-odd items to ten; Deskbar's application and workspace
+menus (`team_menu`, `heading_menu`) have Show All and Hide All, Move ▸
+or Move All ▸, Show on AirPlay ▸ and grouping, and Close All last.
+Items' keys stand in a straight column (`style::key_combo_column`).
 
 ## Windows snap into place as they're dragged (app_server shell/snap.rs, shell/glide.rs)
 

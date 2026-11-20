@@ -884,6 +884,22 @@ items with the same keys), so `tsession review` and the layout lint
 fail a bar that strays. Windows without a bar (Preferences, DeskCalc,
 whose menu is a right-click's, as BeOS's were) aren't held to it.
 
+**A menu that has grown is put in groups** (HACKING, "Menus in groups":
+the window menu went from twenty-odd items to ten). What's done at
+once first; then submenus named for a verb alone (Zoom, Tile, Move,
+Show), their items for where the thing goes or what with, the verb
+not said again (Move ▸ Workspace 2, not Move ▸ Move to Workspace 2;
+Zoom ▸ Zoom Vertically, the verb and how, is right); Close and Quit
+last under a line. Three of a kind make a submenu, two stay. The
+review holds the wording for every bar's submenus
+(`menu::review_groups`; call it in a test for a popup you build, as
+the window menu's does). Items' keys are drawn in a straight column,
+the last key in a cell (`style::key_combo_column`), and a command can
+have keys of two parts, the first pressed, then the second ("⌃⌥⌘Z  V":
+HACKING, "Shortcuts of two parts"): the person gives them in
+Preferences, app_server takes both and chooses your command from your
+menus, so your code does nothing for them.
+
 **A window's menus are asked of its view** (`MenuBar::of(self, cx,
 |v, cx| v.menus(cx))`; with no bar, `menu::offer`), at every body and
 again whenever they're used: a key that may be an item's, a menu

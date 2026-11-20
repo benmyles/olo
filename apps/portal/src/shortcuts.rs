@@ -422,10 +422,10 @@ impl View for Dialog {
             for (i, (what, keys, usable)) in rows.iter().enumerate() {
                 let top = b.top() + px(i as f32 * m::LABEL_ROW);
                 let mid = top + px(m::LABEL_ROW / 2.0);
-                let keys_w = if *usable { px(style::key_combo_width(keys)) } else { style::text_width(keys.clone(), style::PLAIN_SIZE, font.clone()) };
+                let keys_w = if *usable { px(style::key_combo_column_width(keys)) } else { style::text_width(keys.clone(), style::PLAIN_SIZE, font.clone()) };
                 style::label_fit(g, b.left(), mid, Align::Left, what.clone(), style::PLAIN_SIZE, font.clone(), style::c(p.panel_text), (b.size.width - keys_w - px(m::SPACING)).max(px(0.0)));
                 if *usable {
-                    style::key_combo(g, point(b.right(), mid), keys, style::c(p.panel_text));
+                    style::key_combo_column(g, point(b.right(), mid), keys, style::c(p.panel_text));
                 } else {
                     style::label(g, b.right(), mid, Align::Right, keys.clone(), style::PLAIN_SIZE, font.clone(), style::disabled_text(&p));
                 }

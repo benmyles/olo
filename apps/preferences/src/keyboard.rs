@@ -440,9 +440,21 @@ pub fn profile(ui: &mut Ui, saving: Option<&Child<TextField>>) {
                         // whose buttons are longer, never pushes the
                         // buttons out of the box. The French lint found
                         // Delete past it.)
-                        .child(div().flex_1().min_w_0().child(MenuField::new("profile", names, i).label("Profile:").divider(DIVIDER).on_change(pick)))
-                        .child(Button::new("Save As…").on_click(save_as))
-                        .child(Button::new("Delete").enabled(saved).on_click(delete)),
+                        .child(
+                            div().flex_1().min_w_0().child(
+                                MenuField::new("profile", names, i)
+                                    .label("Profile:")
+                                    .divider(DIVIDER)
+                                    .room_for(Platform::ALL.iter().map(|p| SharedString::from(KeyboardProfile::customized_name(*p))))
+                                    .on_change(pick),
+                            ),
+                        )
+                        // (The buttons as wide as their words: at the
+                        // kit's least width they left the menu six
+                        // points short of "Mac (Customized)", the name
+                        // any change to a shortcut gives the profile.)
+                        .child(Button::new("Save As…").min_width(64.0).on_click(save_as))
+                        .child(Button::new("Delete").min_width(64.0).enabled(saved).on_click(delete)),
                 );
             }
             Some(field) => {

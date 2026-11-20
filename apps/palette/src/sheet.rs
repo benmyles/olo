@@ -73,7 +73,7 @@ pub fn groups(profile: &KeyboardProfile, menus: Option<&commands::Menus>, front:
                 .filter_map(|id| {
                     let e = shortcuts::entry(id)?;
                     let keys = e.keys(profile);
-                    (!keys.is_empty()).then(|| (e.title.to_owned(), keys.iter().map(|c| c.label(profile.platform)).collect::<Vec<_>>().join("  ")))
+                    (!keys.is_empty()).then(|| (e.title.to_owned(), olo_protocol::Keys::labels(&keys, profile.platform)))
                 })
                 .collect();
             if !rows.is_empty() {
@@ -100,7 +100,7 @@ pub fn groups(profile: &KeyboardProfile, menus: Option<&commands::Menus>, front:
             .filter(|i| i.group == *g)
             .filter_map(|i| {
                 let keys = shortcuts::keys_for(i, profile);
-                (!keys.is_empty()).then(|| (i.title.to_owned(), keys.iter().map(|c| c.label(profile.platform)).collect::<Vec<_>>().join("  ")))
+                (!keys.is_empty()).then(|| (i.title.to_owned(), olo_protocol::Keys::labels(&keys, profile.platform)))
             })
             .collect();
         if !rows.is_empty() {
@@ -215,8 +215,8 @@ impl Sheet {
             agent::record(g, agent::Node { role: "Heading", name: Some(group.title.clone().into()), bounds: heading, enabled: true, ..Default::default() });
             for (i, (title, keys)) in group.rows.iter().enumerate() {
                 let y = r.top() + px(HEADING + i as f32 * ROW + ROW / 2.0);
-                let keys_w = style::key_combo_width(keys);
-                style::key_combo(g, point(r.right(), y), keys, fg);
+                let keys_w = style::key_combo_column_width(keys);
+                style::key_combo_column(g, point(r.right(), y), keys, fg);
                 style::label_fit(g, r.left(), y, style::Align::Left, title.clone(), style::PLAIN_SIZE, font.clone(), fg, (r.size.width - px(keys_w + m::SPACING)).max(px(40.0)));
                 // For agents: each shortcut and its keys.
                 let row = Bounds { origin: point(r.left(), y - px(ROW / 2.0)), size: size(r.size.width, px(ROW)) };

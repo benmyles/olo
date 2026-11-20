@@ -168,6 +168,9 @@ pub fn in_rescue(action: Action) -> Option<Action> {
     Some(match action {
         Action::NextApp { back, .. } => Action::NextApp { back, all: false },
         Action::NextWindow { .. } | Action::SwitchDone | Action::SwitchMove { .. } | Action::SwitchPick(_) | Action::SwitchCancel => action,
+        // (A group of shortcuts begun: what's picked from it is judged
+        // as any shortcut is, when it comes.)
+        Action::ChordBegun(_) | Action::ChordEnded | Action::AppCommand(_) => action,
         Action::Palette | Action::Hints | Action::HintsAhead => return None,
         Action::Shortcut(s) => match s {
             S::Overview

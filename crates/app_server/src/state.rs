@@ -232,6 +232,12 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     /// The tab a drag rests on, its window to come forward (shell/spring.rs),
     /// and the count its waits go by.
     pub spring: Option<crate::shell::spring::Spring>,
+    /// Apps' commands with keys of two parts in the profile, whose each
+    /// is (`chord`); the app the keymap has them for; and a count that
+    /// tells one group's wait from the next (its timers').
+    pub app_chords: Vec<(olo_protocol::Keys, Option<&'static str>, &'static str)>,
+    pub chord_app: Option<String>,
+    pub chord_turn: u64,
     /// A window being moved by its tab, and the places it can be let go
     /// into (`shell::snap`); and the key that chose one, till it's let up.
     pub snap: Option<crate::shell::snap::Snap>,
@@ -1317,6 +1323,9 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             dnd_icon: None,
             dragging: false,
             spring: None,
+            app_chords: Vec::new(),
+            chord_app: None,
+            chord_turn: 0,
             snap: None,
             snap_key_up: None,
             glides: Vec::new(),
@@ -1503,6 +1512,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         }
         state.presence_settings();
         state.keymap.set_bindings(olo_protocol::shortcuts::bindings(&state.settings.keyboard.profile));
+        state.chords_changed();
         state.keymap.set_chrome(olo_protocol::app_keys::chrome_keys(&state.settings.keyboard.profile));
         if let Some(found) = state.power.displays_found.take() {
             let _ = state.handle.insert_source(found, |event, _, state| {

@@ -25,6 +25,7 @@
 mod answer;
 mod ask;
 mod calc;
+mod chord;
 mod model;
 mod rank;
 mod sheet;
@@ -153,6 +154,10 @@ struct Hub {
     window_menu: Option<WindowHandle<window_menu::Layer>>,
     /// The shortcuts sheet, while it shows.
     sheet: Option<WindowHandle<sheet::Sheet>>,
+    /// What a group of shortcuts can be finished with, while it waits
+    /// (`chord`), and which asking it's for.
+    chord: Option<WindowHandle<chord::Panel>>,
+    chord_turn: u64,
 }
 
 impl Hub {
@@ -214,6 +219,33 @@ impl Hub {
             Ok(launch) => {
                 if let Some(ask) = window_menu::Ask::parse(&launch.args) {
                     self.ask_window_menu(ask);
+                } else if let Some(ask) = chord::Ask::parse(&launch.args) {
+                    self.chord_turn += 1;
+                    chord::learn(ask, self.chord_turn, olo_kit::proxy());
+                }
+                return;
+            }
+            Err(m) => m,
+        };
+        let message = match message.downcast::<chord::Learned>() {
+            Ok(learned) => {
+                if let Some(old) = self.chord.take() {
+                    old.close();
+                }
+                // (Not one a later asking has overtaken.)
+                if learned.turn == self.chord_turn {
+                    self.chord = Some(chord::open(*learned));
+                }
+                return;
+            }
+            Err(m) => m,
+        };
+        let message = match message.downcast::<chord::Ended>() {
+            Ok(ended) => {
+                if ended.0 == self.chord_turn
+                    && let Some(old) = self.chord.take()
+                {
+                    old.close();
                 }
                 return;
             }
@@ -1023,8 +1055,8 @@ impl Palette {
             let kind = style::label(g, r.right() - px(8.0), detail_y, style::Align::Right, label, style::DETAIL_SIZE, small.clone(), dim);
             let mut right = kind.left() - px(m::SPACING);
             if let Some(keys) = &item.keys {
-                let w = style::key_combo_width(keys);
-                style::key_combo(g, point(right, mid), keys, fg);
+                let w = style::key_combo_column_width(keys);
+                style::key_combo_column(g, point(right, mid), keys, fg);
                 right -= px(w + m::SPACING);
             }
             // Title, and the subtitle after it in grey.
@@ -1318,7 +1350,7 @@ fn main() {
             tuning: Arc::default(),
             workers: sources::workers(olo_kit::proxy()),
         };
-        let hub = Rc::new(RefCell::new(Hub { shared, win: None, opening: false, window_menu: None, sheet: None }));
+        let hub = Rc::new(RefCell::new(Hub { shared, win: None, opening: false, window_menu: None, sheet: None, chord: None, chord_turn: 0 }));
         let messages = hub.clone();
         olo_kit::message_handler(app, move |message, _| messages.borrow_mut().message(message));
         // Nothing to keep but that this is a new version of a running
@@ -1330,6 +1362,11 @@ fn main() {
             let mut hub = hub.borrow_mut();
             if let Some(ask) = ask {
                 hub.ask_window_menu(ask);
+            }
+            // (The first copy started for a group's panel shows it.)
+            if let Some(ask) = chord::Ask::parse(&args) {
+                hub.chord_turn += 1;
+                chord::learn(ask, hub.chord_turn, olo_kit::proxy());
             }
             if toggle {
                 hub.toggle();

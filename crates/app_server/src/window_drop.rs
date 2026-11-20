@@ -62,6 +62,16 @@ fn send(note: Note) {
     let _ = tx.lock().unwrap_or_else(|e| e.into_inner()).send(note);
 }
 
+/// Choose `command` from the menus of the window with surface `surface`
+/// of the kit app `pid`, as from its menu bar (the kit's `invoke_in`):
+/// an app's command picked by keys of two parts (`chord`). Sent from the
+/// worker thread, as every word to an app is; its answer isn't waited
+/// for.
+pub fn invoke(pid: i32, surface: u32, command: &str) {
+    let line = serde_json::json!({ "invoke_in": { "surface": surface, "command": command } }).to_string();
+    send(Note { pid, line, dropped: true });
+}
+
 /// Over window `onto` at `at` (its content's coordinates), or over none
 /// of its app's (`onto` None); or let go there.
 pub fn tell(moved: &WindowElement, onto: Option<(&WindowElement, Point<f64, Logical>)>, dropped: bool) {

@@ -625,6 +625,9 @@ Add a Google Account…
 Add a Kind
 Добавить тип
 
+Add a Second Key
+Добавить вторую клавишу
+
 Add a Section…
 Добавить раздел…
 
@@ -715,6 +718,9 @@ Against Cloudflare’s speed test servers: four connections each way, eight seco
 Agenda
 Расписание
 
+Agent Screen
+Экран агента
+
 Agent Screen Logs
 Журналы экранов агентов
 
@@ -768,6 +774,9 @@ All Apps
 
 All Chats
 Все чаты
+
+All Default Keys
+Все стандартные клавиши
 
 All Imperial
 Только британские единицы
@@ -835,6 +844,12 @@ Alt
 Always Dark
 Всегда тёмная
 
+Always Float Its Application
+Всегда делать его программу плавающей
+
+Always Float {}
+Всегда делать {} плавающим
+
 Always Left
 Всегда слева
 
@@ -852,6 +867,9 @@ Always Where It Is
 
 Always a palm when as large as
 Всегда считать ладонью при размере от
+
+Always float the application, or not
+Окна его программы всегда плавающие, или нет
 
 Always on Top
 Всегда сверху
@@ -891,6 +909,9 @@ And {} more
 
 Anonymous identity:
 Анонимная идентификация:
+
+Another Window
+Другое окно
 
 Another account
 Другая учётная запись
@@ -2551,9 +2572,6 @@ Default (Preferences ▸ Power)
 Default Apps
 По умолчанию
 
-Default Keys
-Стандартные клавиши
-
 Default Message ({})
 Стандартный текст ({})
 
@@ -2956,6 +2974,9 @@ Downloading: {}
 Downloading…
 Загрузка…
 
+Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
+Перетаскивая окно за заголовок, отпустите его в нужном месте или нажмите букву этого места, и окно встанет туда. Отпустите его на месте другого окна, чтобы поменять их местами. Escape возвращает всё как было.
+
 Drag with:
 Перетаскивать:
 
@@ -3240,6 +3261,9 @@ Erasing goes on by itself once it’s back, from where it got to.
 
 Erlang
 Erlang
+
+Esc cancels
+Esc отменяет
 
 Ethernet
 Ethernet
@@ -3637,11 +3661,23 @@ Flip Horizontal
 Flip Vertical
 Отразить по вертикали
 
+Float
+Плавающее
+
+Float Its Group
+Сделать его группу плавающей
+
+Float This Window
+Сделать это окно плавающим
+
 Float Window
 Сделать окно плавающим
 
 Float Window Group
 Сделать группу плавающей
+
+Float out of its group, or tile
+Сделать плавающим вне группы или уложить
 
 Flurries
 Кратковременный снег
@@ -4548,6 +4584,9 @@ Italic
 
 Item
 Элемент
+
+Its Group to Another Window
+Его группу в другое окно
 
 Its app password isn’t in the keyring: remove it and add it again.
 Пароля приложения нет в связке ключей. Удалите учётную запись и добавьте её заново.
@@ -5638,6 +5677,9 @@ Mouse speed
 Move
 Переместить
 
+Move All
+Переместить все
+
 Move All Windows To
 Переместить все окна в
 
@@ -5667,6 +5709,9 @@ Move To
 
 Move Up
 Поднять
+
+Move Window
+Переместить окно
 
 Move Window To
 Переместить окно в
@@ -5925,6 +5970,9 @@ Next Chat
 
 Next Day
 Следующий день
+
+Next Display
+Следующий экран
 
 Next File
 Следующий файл
@@ -6588,6 +6636,12 @@ Olo’s windows change at once. Other programs take it as they next start, in th
 
 On
 Включено
+
+On AirPlay
+По AirPlay
+
+On All Workspaces
+Во всех пространствах
 
 On Battery
 От батареи
@@ -7350,6 +7404,9 @@ Previous Chat
 
 Previous Day
 Предыдущий день
+
+Previous Display
+Предыдущий экран
 
 Previous File
 Предыдущий файл
@@ -9667,6 +9724,9 @@ The server’s CalDAV address, and the name and password it signs you in with. T
 The shell has ended.
 Работа оболочки завершена.
 
+The shortcut you just gave keys can have a second, pressed after them: the first keys begin a group of shortcuts, the second picks one.
+У сочетания, которому вы только что дали клавиши, может быть вторая клавиша, нажимаемая после них: первые клавиши открывают группу сочетаний, вторая выбирает одно из них.
+
 The sky and temperature now, and what's coming.
 Текущая погода и температура, а также ближайший прогноз.
 
@@ -10272,6 +10332,9 @@ Type the PIN for “{}” (often 0000).
 
 Type the code “{}” shows on its screen.
 Введите код с экрана устройства «{}».
+
+Type the key to press after {}. Esc leaves it as it is.
+Нажмите клавишу, которая пойдёт после {}. Esc оставляет всё как есть.
 
 Type the keys. Esc cancels; ⌫ removes them.
 Нажмите клавиши. Esc отменяет ввод, ⌫ удаляет сочетание.
@@ -10966,9 +11029,6 @@ While sharing or recording the screen (errors wait too)
 While uploading
 При отправке
 
-Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
-Перетаскивая окно за заголовок, отпустите его в нужном месте или нажмите букву этого места, и окно встанет туда. Отпустите его на месте другого окна, чтобы поменять их местами. Escape возвращает всё как было.
-
 Why
 Причина
 
@@ -11055,6 +11115,9 @@ Wireless Router
 
 With AirPods:
 С AirPods:
+
+With Another Window
+С другим окном
 
 Withdrawn by {}
 Отозвано приложением {}
@@ -11232,6 +11295,9 @@ Yours: fine-tuned {} times since it started
 
 Zig
 Zig
+
+Zoom
+Масштаб
 
 Zoom All
 Увеличить все окна

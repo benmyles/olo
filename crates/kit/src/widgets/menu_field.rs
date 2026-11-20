@@ -39,6 +39,9 @@ pub struct MenuField {
     options: Vec<SharedString>,
     selected: usize,
     width: Option<f32>,
+    /// What it may come to show that isn't among its options now
+    /// (`room_for`).
+    room: Vec<SharedString>,
     enabled: bool,
     on_change: Option<OnChange>,
     /// Several chosen ([`MenuField::many`]): which, and what none means.
@@ -62,7 +65,7 @@ impl MenuField {
         } else {
             options.into_iter().map(crate::words::of).collect()
         };
-        MenuField { id: id.into(), label: None, name: None, quiet: false, divider: None, options, selected, width: None, enabled: true, on_change: None, many: None }
+        MenuField { id: id.into(), label: None, name: None, quiet: false, divider: None, options, selected, width: None, room: Vec::new(), enabled: true, on_change: None, many: None }
     }
 
     /// A field of several choices, those `chosen` on (one for each of
@@ -109,6 +112,15 @@ impl MenuField {
         self
     }
 
+    /// As wide as these would need too: what it may come to show that
+    /// isn't among its options yet, so the field (and what's beside it)
+    /// stays where it is when it does (Preferences' keyboard profile,
+    /// "Mac" till a shortcut is changed, then "Mac (Customized)").
+    pub fn room_for(mut self, texts: impl IntoIterator<Item = SharedString>) -> Self {
+        self.room.extend(texts);
+        self
+    }
+
     pub fn enabled(mut self, on: bool) -> Self {
         self.enabled = on;
         self
@@ -124,7 +136,8 @@ impl MenuField {
 impl IntoElement for MenuField {
     fn into_element(self) -> Element {
         let font = style::ui_font(FontWeight::NORMAL);
-        let widest = self.options.iter().chain(self.many.as_ref().map(|(_, none)| none)).map(|o| f32::from(style::text_width(o.clone(), style::PLAIN_SIZE, font.clone()))).fold(0.0, f32::max);
+        let widest =
+            self.options.iter().chain(self.many.as_ref().map(|(_, none)| none)).chain(&self.room).map(|o| f32::from(style::text_width(o.clone(), style::PLAIN_SIZE, font.clone()))).fold(0.0, f32::max);
         // (A divider given is where the field starts at the least: a
         // label wider than it, as a translation can be, pushes the field
         // over rather than being drawn under it.)

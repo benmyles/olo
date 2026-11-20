@@ -271,6 +271,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         if pressed && focused.is_some() && self.pressed_display.is_some() && !olo_protocol::shortcuts::MODIFIER_KEYS.contains(&key) {
             self.pressed_display = None;
         }
+        // (The focused app's own keys of two parts, if the profile has any.)
+        if !self.app_chords.is_empty() {
+            let app = focused.as_ref().map(|w| w.app_id()).unwrap_or_default();
+            self.chord_focus(&app);
+        }
         let focus = focused.map_or(crate::keymap::Focus::Olo, |w| crate::keymap::Focus::of(&w.app_id(), &self.settings.keyboard.terminal_apps, &self.settings.keyboard.browser_apps));
         let outs = self.keymap.feed(key, pressed, std::time::Instant::now(), opts, focus);
         // ⌘ on a tab's cut title: its tip at once (`tabtip`).
@@ -340,6 +345,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             A::Shortcut(s) => self.shortcut(s),
             A::Hints => self.toggle_hints(),
             A::HintsAhead => self.hints_ahead(),
+            A::ChordBegun(first) => self.chord_begun(first),
+            A::ChordEnded => self.chord_ended(),
+            A::AppCommand(id) => self.app_command(id),
         }
     }
 
@@ -518,6 +526,19 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 let Some(w) = focused else { return };
                 let floats = self.floats(&w);
                 self.set_floating(&w, Some(!floats));
+            }
+            // Alone: out of its group, if it's in one (the window menu's
+            // Float ▸ This Window).
+            S::FloatAlone => {
+                let Some(w) = focused else { return };
+                let floats = self.floats(&w);
+                self.float_window(&w, Some(!floats), true);
+            }
+            // Its app's windows always, or no longer (Float ▸ Always).
+            S::FloatApp => {
+                let Some(app_id) = focused.map(|w| w.app_id()).filter(|a| !a.is_empty()) else { return };
+                let always = self.settings.tiling.floating_apps.iter().any(|a| *a == app_id);
+                self.set_app_floating(&app_id, !always);
             }
             // Main and Stack's; nothing where the tiles aren't laid out so.
             S::MakeMain => {
@@ -774,6 +795,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
     /// finger on the touch screen being the pointer.
     fn pointer_button(&mut self, button: u32, state: wl_pointer::ButtonState, time: InputTime) {
         self.stop_glide();
+        // (A group of shortcuts waiting for its second chord is let go
+        // of: the hand went elsewhere.)
+        if state == wl_pointer::ButtonState::Pressed {
+            self.chord_let_go();
+        }
         let serial = SCOUNTER.next_serial();
 
         if self.overview_button(button, state == wl_pointer::ButtonState::Pressed) || self.twitch_button(button, state == wl_pointer::ButtonState::Pressed) {
@@ -1785,6 +1811,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 self.spring_pointer();
             }
             S::Button { button, pressed } => {
+                // (As a real press: a group of shortcuts that waits is
+                // let go of.)
+                if pressed {
+                    self.chord_let_go();
+                }
                 if self.overview_button(button, pressed) || self.twitch_button(button, pressed) {
                     return;
                 }

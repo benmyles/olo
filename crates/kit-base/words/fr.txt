@@ -621,6 +621,9 @@ Ajouter un compte Google…
 Add a Kind
 Ajouter un type
 
+Add a Second Key
+Ajouter une seconde touche
+
 Add a Section…
 Ajouter une section…
 
@@ -707,6 +710,9 @@ Avec les serveurs de test de débit de Cloudflare : quatre connexions dans cha
 Agenda
 Agenda
 
+Agent Screen
+Écran d'agent
+
 Agent Screen Logs
 Journaux des écrans d’agents
 
@@ -760,6 +766,9 @@ Toutes les apps
 
 All Chats
 Toutes les discussions
+
+All Default Keys
+Toutes les touches par défaut
 
 All Imperial
 Tout impérial
@@ -827,6 +836,12 @@ Alt
 Always Dark
 Toujours sombre
 
+Always Float Its Application
+Son application toujours flottante
+
+Always Float {}
+{} toujours flottant
+
 Always Left
 Toujours à gauche
 
@@ -844,6 +859,9 @@ Toujours là où il est
 
 Always a palm when as large as
 Toujours une paume à partir de
+
+Always float the application, or not
+Fenêtres de son application toujours flottantes, ou non
 
 Always on Top
 Toujours au premier plan
@@ -881,6 +899,9 @@ Et {} de plus
 
 Anonymous identity:
 Identité anonyme :
+
+Another Window
+Autre fenêtre
 
 Another account
 Un autre compte
@@ -2531,9 +2552,6 @@ Par défaut (Préférences ▸ Énergie)
 Default Apps
 Apps par défaut
 
-Default Keys
-Touches par défaut
-
 Default Message ({})
 Message par défaut ({})
 
@@ -2934,6 +2952,9 @@ Téléchargement : {}
 Downloading…
 Téléchargement…
 
+Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
+Pendant que vous faites glisser une fenêtre par son onglet, lâchez-la dans un emplacement, ou appuyez sur sa lettre, pour l'y placer. Lâchez-la dans l'emplacement d'une autre fenêtre pour échanger les deux. Échap remet tout en place.
+
 Drag with:
 Glisser avec :
 
@@ -3218,6 +3239,9 @@ L’effacement reprend tout seul dès qu’il revient, là où il en était.
 
 Erlang
 Erlang
+
+Esc cancels
+Échap annule
 
 Ethernet
 Ethernet
@@ -3607,11 +3631,23 @@ Retourner horizontalement
 Flip Vertical
 Retourner verticalement
 
+Float
+Flottante
+
+Float Its Group
+Son groupe flottant
+
+Float This Window
+Cette fenêtre flottante
+
 Float Window
 Fenêtre flottante
 
 Float Window Group
 Groupe de fenêtres flottant
+
+Float out of its group, or tile
+Flottante hors de son groupe, ou en mosaïque
 
 Flurries
 Quelques flocons
@@ -4512,6 +4548,9 @@ Italique
 
 Item
 Élément
+
+Its Group to Another Window
+Son groupe vers une autre fenêtre
 
 Its app password isn’t in the keyring: remove it and add it again.
 Son mot de passe d’app n’est pas dans le trousseau : retirez-le et ajoutez-le de nouveau.
@@ -5598,6 +5637,9 @@ Vitesse de la souris
 Move
 Déplacer
 
+Move All
+Tout déplacer
+
 Move All Windows To
 Déplacer toutes les fenêtres vers
 
@@ -5627,6 +5669,9 @@ Déplacer vers
 
 Move Up
 Monter
+
+Move Window
+Déplacer la fenêtre
 
 Move Window To
 Déplacer la fenêtre vers
@@ -5885,6 +5930,9 @@ Discussion suivante
 
 Next Day
 Jour suivant
+
+Next Display
+Écran suivant
 
 Next File
 Fichier suivant
@@ -6548,6 +6596,12 @@ Les fenêtres d’Olo changent aussitôt. Les autres programmes l’adoptent à 
 
 On
 Activé
+
+On AirPlay
+Sur AirPlay
+
+On All Workspaces
+Dans tous les espaces de travail
 
 On Battery
 Sur batterie
@@ -7306,6 +7360,9 @@ Discussion précédente
 
 Previous Day
 Jour précédent
+
+Previous Display
+Écran précédent
 
 Previous File
 Fichier précédent
@@ -9617,6 +9674,9 @@ L’adresse CalDAV du serveur, et le nom et le mot de passe avec lesquels il vou
 The shell has ended.
 Le shell s’est terminé.
 
+The shortcut you just gave keys can have a second, pressed after them: the first keys begin a group of shortcuts, the second picks one.
+Le raccourci auquel vous venez de donner des touches peut en avoir une seconde, pressée ensuite : les premières touches ouvrent un groupe de raccourcis, la seconde en choisit un.
+
 The sky and temperature now, and what's coming.
 Le ciel et la température maintenant, et la suite.
 
@@ -10222,6 +10282,9 @@ Tapez le code PIN de « {} » (souvent 0000).
 
 Type the code “{}” shows on its screen.
 Tapez le code que « {} » affiche sur son écran.
+
+Type the key to press after {}. Esc leaves it as it is.
+Tapez la touche à presser après {}. Échap le laisse tel quel.
 
 Type the keys. Esc cancels; ⌫ removes them.
 Tapez les touches. Échap annule ; ⌫ les retire.
@@ -10916,9 +10979,6 @@ En partage ou enregistrement d’écran (même les erreurs)
 While uploading
 Pendant l’envoi
 
-Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
-Pendant que vous faites glisser une fenêtre par son onglet, lâchez-la dans un emplacement, ou appuyez sur sa lettre, pour l'y placer. Lâchez-la dans l'emplacement d'une autre fenêtre pour échanger les deux. Échap remet tout en place.
-
 Why
 Pourquoi
 
@@ -11005,6 +11065,9 @@ Routeur sans fil
 
 With AirPods:
 Avec les AirPods :
+
+With Another Window
+Avec une autre fenêtre
 
 Withdrawn by {}
 Retirée par {}
@@ -11182,6 +11245,9 @@ Le vôtre : affiné {} fois depuis son démarrage
 
 Zig
 Zig
+
+Zoom
+Zoom
 
 Zoom All
 Tout agrandir
@@ -12764,7 +12830,7 @@ quota de {}
 {}, dans le dossier « {} »
 
 {}, in “{}”
-{}, dans « {} »
+{}, dans « {} »
 
 {}, no limit
 {}, sans limite

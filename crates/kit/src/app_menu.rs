@@ -244,6 +244,13 @@ pub fn review(menus: &[Menu]) -> Vec<(String, String)> {
     if has("find-again") != has("find-previous") {
         say("Find Again and Find Previous come together (Menu::find_items)".to_owned());
     }
+    // Their submenus, as every menu's groups are (HACKING, "Menus in
+    // groups").
+    for menu in menus {
+        for text in crate::menu::review_groups(menu) {
+            say(text);
+        }
+    }
     // No two of a window's items pressed with the same keys.
     let mut seen: Vec<(&str, &str)> = Vec::new();
     for menu in menus {

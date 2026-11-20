@@ -619,6 +619,9 @@ Add a Google Account…
 Add a Kind
 新增類型
 
+Add a Second Key
+加入第二個按鍵
+
 Add a Section…
 新增區段…
 
@@ -703,6 +706,9 @@ Against Cloudflare’s speed test servers: four connections each way, eight seco
 Agenda
 行程清單
 
+Agent Screen
+代理螢幕
+
 Agent Screen Logs
 代理螢幕日誌
 
@@ -756,6 +762,9 @@ All Apps
 
 All Chats
 所有聊天
+
+All Default Keys
+全部預設按鍵
 
 All Imperial
 全部使用英制
@@ -823,6 +832,12 @@ Alt
 Always Dark
 始終深色
 
+Always Float Its Application
+一律讓其應用程式浮動
+
+Always Float {}
+一律讓 {} 浮動
+
 Always Left
 始終靠左
 
@@ -840,6 +855,9 @@ Always Where It Is
 
 Always a palm when as large as
 始終判為手掌的最小面積
+
+Always float the application, or not
+一律讓其應用程式的視窗浮動，或取消
 
 Always on Top
 置頂
@@ -876,6 +894,9 @@ And {} more
 
 Anonymous identity:
 匿名身分：
+
+Another Window
+其他視窗
 
 Another account
 其他帳號
@@ -2521,9 +2542,6 @@ Default (Preferences ▸ Power)
 Default Apps
 預設應用程式
 
-Default Keys
-預設按鍵
-
 Default Message ({})
 預設訊息（{}）
 
@@ -2923,6 +2941,9 @@ Downloading: {}
 Downloading…
 正在下載…
 
+Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
+按住標籤拖移視窗時，在某個位置放開，或按下該位置的字母，視窗就會移到那裡。在另一個視窗的位置放開，兩個視窗互換位置。按 Escape 可全部恢復原狀。
+
 Drag with:
 拖曳方式：
 
@@ -3207,6 +3228,9 @@ Erasing goes on by itself once it’s back, from where it got to.
 
 Erlang
 Erlang
+
+Esc cancels
+按 Esc 取消
 
 Ethernet
 Ethernet
@@ -3592,11 +3616,23 @@ Flip Horizontal
 Flip Vertical
 垂直翻轉
 
+Float
+浮動
+
+Float Its Group
+讓其視窗群組浮動
+
+Float This Window
+讓此視窗浮動
+
 Float Window
 浮動視窗
 
 Float Window Group
 讓視窗群組浮動
+
+Float out of its group, or tile
+移出群組並浮動，或平鋪
 
 Flurries
 零星小雪
@@ -4494,6 +4530,9 @@ Italic
 
 Item
 項目
+
+Its Group to Another Window
+將其視窗群組移至其他視窗
 
 Its app password isn’t in the keyring: remove it and add it again.
 鑰匙圈中沒有此帳號的應用程式密碼，請移除帳號後重新新增。
@@ -5578,6 +5617,9 @@ Mouse speed
 Move
 移動
 
+Move All
+全部移動
+
 Move All Windows To
 將所有視窗移至
 
@@ -5607,6 +5649,9 @@ Move To
 
 Move Up
 上移
+
+Move Window
+移動視窗
 
 Move Window To
 將視窗移至
@@ -5865,6 +5910,9 @@ Next Chat
 
 Next Day
 下一天
+
+Next Display
+下一個顯示器
 
 Next File
 下個檔案
@@ -6528,6 +6576,12 @@ Olo 視窗會立即切換語言。其他程式會在下次啟動時切換到各�
 
 On
 開
+
+On AirPlay
+透過 AirPlay
+
+On All Workspaces
+在所有工作區
 
 On Battery
 電池供電
@@ -7284,6 +7338,9 @@ Previous Chat
 
 Previous Day
 前一天
+
+Previous Display
+上一個顯示器
 
 Previous File
 上一個檔案
@@ -9592,6 +9649,9 @@ The server’s CalDAV address, and the name and password it signs you in with. T
 The shell has ended.
 Shell 已結束。
 
+The shortcut you just gave keys can have a second, pressed after them: the first keys begin a group of shortcuts, the second picks one.
+剛設定按鍵的快速鍵還可以有第二個按鍵，在其後按下：前面的按鍵開啟一組快速鍵，第二個按鍵從中選擇一個。
+
 The sky and temperature now, and what's coming.
 目前天氣和氣溫，以及接下來的預報。
 
@@ -10197,6 +10257,9 @@ Type the PIN for “{}” (often 0000).
 
 Type the code “{}” shows on its screen.
 輸入「{}」螢幕上顯示的代碼。
+
+Type the key to press after {}. Esc leaves it as it is.
+請按下要在 {} 之後按的鍵。按 Esc 維持不變。
 
 Type the keys. Esc cancels; ⌫ removes them.
 請按下要使用的按鍵。Esc 取消，⌫ 移除。
@@ -10891,9 +10954,6 @@ While sharing or recording the screen (errors wait too)
 While uploading
 上傳時
 
-Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
-按住標籤拖移視窗時，在某個位置放開，或按下該位置的字母，視窗就會移到那裡。在另一個視窗的位置放開，兩個視窗互換位置。按 Escape 可全部恢復原狀。
-
 Why
 原因
 
@@ -10980,6 +11040,9 @@ Wireless Router
 
 With AirPods:
 使用 AirPods 時：
+
+With Another Window
+與其他視窗並排
 
 Withdrawn by {}
 已由 {} 撤回
@@ -11157,6 +11220,9 @@ Yours: fine-tuned {} times since it started
 
 Zig
 Zig
+
+Zoom
+縮放
 
 Zoom All
 放大所有視窗

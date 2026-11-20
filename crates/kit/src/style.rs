@@ -571,6 +571,73 @@ pub fn key_combo_width(keys: &str) -> f32 {
     parts.iter().map(|t| f32::from(text_width(t.clone(), PLAIN_SIZE, font.clone()))).sum::<f32>() - SHORTCUT_KERN * parts.len().saturating_sub(1) as f32
 }
 
+/// Keys where they're listed one under another (a menu's items, the
+/// shortcuts lists): as [`key_combo`], but the last key is set at the
+/// left of a cell as wide as a capital W, the keys before it against
+/// the cell, so they stand in a straight column whatever the last
+/// key's own width ("⌃⌥I" under "⌃⌥U" under "⌃⌥←": right-aligned as one
+/// string each, the modifiers moved sideways by up to five points from
+/// row to row; both reviewers of the menus, 2026-11-20). A key wider
+/// than the cell (F12, Space) takes what it needs. Returns where they
+/// were drawn.
+pub fn key_combo_column(g: &mut Painter, right_center: Point<Pixels>, keys: &str, color: Hsla) -> Bounds<Pixels> {
+    let font = ui_font(FontWeight::NORMAL);
+    let (before, key) = combo_split(keys);
+    let left = right_center.x - px(key_cell(key, &font));
+    let lift = snap_coord(g, px(symbol_lift(g, key, &font)));
+    let at = label(g, left, right_center.y + lift, Align::Left, key.to_owned(), PLAIN_SIZE, font.clone(), color);
+    let parts = combo_parts(before);
+    let mut x = at.left() + px(if combo_kerned(before, key) { SHORTCUT_KERN } else { 0.0 });
+    for (i, part) in parts.iter().enumerate().rev() {
+        let lift = snap_coord(g, px(symbol_lift(g, part, &font)));
+        let at = label(g, x, right_center.y + lift, Align::Right, part.clone(), PLAIN_SIZE, font.clone(), color);
+        x = at.left();
+        if i > 0 {
+            x += px(SHORTCUT_KERN);
+        }
+    }
+    Bounds::from_corners(point(x, right_center.y - px(PLAIN_SIZE / 2.0)), point(right_center.x, right_center.y + px(PLAIN_SIZE / 2.0)))
+}
+
+/// The width of keys as [`key_combo_column`] draws them.
+pub fn key_combo_column_width(keys: &str) -> f32 {
+    let font = ui_font(FontWeight::NORMAL);
+    let (before, key) = combo_split(keys);
+    let before_w = if before.is_empty() { 0.0 } else { key_combo_width(before) - if combo_kerned(before, key) { SHORTCUT_KERN } else { 0.0 } };
+    before_w + key_cell(key, &font)
+}
+
+/// The cell a combination's last key is set in ([`key_combo_column`]):
+/// a capital W's width, or the key's own if that's more, in whole
+/// points.
+fn key_cell(key: &str, font: &Font) -> f32 {
+    let w = |t: &str| f32::from(text_width(t.to_owned(), PLAIN_SIZE, font.clone()));
+    w(key).max(w("W")).ceil()
+}
+
+/// Whether the keys before the last key sit [`SHORTCUT_KERN`] closer to
+/// it, as two parts of [`key_combo`] do: not where both are of one run
+/// of letters ("Z  " and "V", "Ctrl+" and "Q"), which is set as it is.
+fn combo_kerned(before: &str, key: &str) -> bool {
+    match (before.chars().next_back(), key.chars().next()) {
+        (Some(a), Some(b)) => !(a.is_ascii() && b.is_ascii()),
+        _ => false,
+    }
+}
+
+/// Keys split where their last key begins: what's before it, and the
+/// key ("⌃⌥⌘Z  " and "V"; "⌘" and "M"; "⌃⌥" and "←"; "Ctrl+" and "Q";
+/// "⌃⌥⌘ " and "Space"; a "+" is itself the key of "Ctrl++").
+fn combo_split(keys: &str) -> (&str, &str) {
+    let Some((last_at, last)) = keys.char_indices().next_back() else { return ("", "") };
+    if !last.is_ascii() {
+        return keys.split_at(last_at);
+    }
+    let body = &keys[..last_at];
+    let start = body.char_indices().rev().find(|(_, ch)| !ch.is_ascii() || *ch == ' ' || *ch == '+').map_or(0, |(i, ch)| i + ch.len_utf8());
+    keys.split_at(start)
+}
+
 /// ⌘ and ⇧ sit this much closer to what follows than their advance width.
 const SHORTCUT_KERN: f32 = 1.0;
 
@@ -1296,6 +1363,22 @@ pub fn paint_swatch(g: &mut Painter, b: Bounds<Pixels>, color: Hsla, p: &Palette
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn keys_split_at_their_last_key() {
+        assert_eq!(combo_split("⌘M"), ("⌘", "M"));
+        assert_eq!(combo_split("⌃⌥←"), ("⌃⌥", "←"));
+        assert_eq!(combo_split("⌃⌥⌘Z  V"), ("⌃⌥⌘Z  ", "V"));
+        assert_eq!(combo_split("⌃⌥⌘ Space"), ("⌃⌥⌘ ", "Space"));
+        assert_eq!(combo_split("Win+Ctrl+Alt+Z  V"), ("Win+Ctrl+Alt+Z  ", "V"));
+        assert_eq!(combo_split("Ctrl+Q"), ("Ctrl+", "Q"));
+        assert_eq!(combo_split("Ctrl++"), ("Ctrl+", "+"));
+        assert_eq!(combo_split("F3"), ("", "F3"));
+        assert_eq!(combo_split("⌃⌥↵,   ⌃⌥⌘Z  Z"), ("⌃⌥↵,   ⌃⌥⌘Z  ", "Z"));
+        assert_eq!(combo_split(""), ("", ""));
+        // A symbol and what follows sit a point closer; letters of one run don't.
+        assert!(combo_kerned("⌘", "M") && combo_kerned("⌃⌥", "←") && !combo_kerned("Z  ", "V") && !combo_kerned("Ctrl+", "Q") && !combo_kerned("", "F3"));
+    }
 
     /// Cut short, a text ends at a word, never at the space, dash or stop
     /// before what was cut off.

@@ -621,6 +621,9 @@ Google खाता जोड़ें…
 Add a Kind
 प्रकार जोड़ें
 
+Add a Second Key
+दूसरी कुंजी जोड़ें
+
 Add a Section…
 खंड जोड़ें…
 
@@ -707,6 +710,9 @@ Cloudflare के गति परीक्षण सर्वर पर दो�
 Agenda
 कार्यसूची
 
+Agent Screen
+एजेंट स्क्रीन
+
 Agent Screen Logs
 एजेंट स्क्रीन के लॉग
 
@@ -760,6 +766,9 @@ All Apps
 
 All Chats
 सभी चैट
+
+All Default Keys
+सभी डिफ़ॉल्ट कुंजियाँ
 
 All Imperial
 सभी इकाइयाँ इम्पीरियल
@@ -827,6 +836,12 @@ Alt
 Always Dark
 हमेशा गहरा
 
+Always Float Its Application
+इसका ऐप हमेशा तैरता रखें
+
+Always Float {}
+{} हमेशा तैरता रखें
+
 Always Left
 हमेशा बाएँ
 
@@ -844,6 +859,9 @@ Always Where It Is
 
 Always a palm when as large as
 इस आकार से बड़ी छाप हमेशा हथेली मानें
+
+Always float the application, or not
+इसके ऐप की विंडो हमेशा तैरती रखें, या नहीं
 
 Always on Top
 हमेशा ऊपर
@@ -881,6 +899,9 @@ And {} more
 
 Anonymous identity:
 अनाम पहचान:
+
+Another Window
+दूसरी विंडो
 
 Another account
 दूसरा खाता
@@ -2531,9 +2552,6 @@ Default (Preferences ▸ Power)
 Default Apps
 डिफ़ॉल्ट ऐप
 
-Default Keys
-डिफ़ॉल्ट कुंजियाँ
-
 Default Message ({})
 डिफ़ॉल्ट संदेश ({})
 
@@ -2934,6 +2952,9 @@ Downloading: {}
 Downloading…
 डाउनलोड हो रहा है…
 
+Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
+किसी विंडो को उसके टैब से खींचते समय, उसे किसी जगह में छोड़ें या उस जगह का अक्षर दबाएँ, और विंडो वहाँ आ जाती है। दूसरी विंडो की जगह में छोड़ने पर दोनों की अदला-बदली होती है। Escape सब कुछ वापस रख देता है।
+
 Drag with:
 खींचने का तरीका:
 
@@ -3218,6 +3239,9 @@ Erasing goes on by itself once it’s back, from where it got to.
 
 Erlang
 Erlang
+
+Esc cancels
+Esc रद्द करता है
 
 Ethernet
 Ethernet
@@ -3607,11 +3631,23 @@ Flip Horizontal
 Flip Vertical
 लंबवत पलटें
 
+Float
+तैरती
+
+Float Its Group
+इसका समूह तैरता रखें
+
+Float This Window
+यह विंडो तैरती रखें
+
 Float Window
 विंडो तैरती रखें
 
 Float Window Group
 विंडो समूह तैरता रखें
+
+Float out of its group, or tile
+समूह से बाहर तैरती रखें, या टाइल करें
 
 Flurries
 हल्की बर्फ़ की फुहारें
@@ -4512,6 +4548,9 @@ Italic
 
 Item
 आइटम
+
+Its Group to Another Window
+इसका समूह दूसरी विंडो में
 
 Its app password isn’t in the keyring: remove it and add it again.
 इसका ऐप पासवर्ड कीरिंग में नहीं है। खाते को हटाकर फिर जोड़ें।
@@ -5598,6 +5637,9 @@ Mouse speed
 Move
 ले जाएँ
 
+Move All
+सभी ले जाएँ
+
 Move All Windows To
 सभी विंडो यहाँ ले जाएँ
 
@@ -5627,6 +5669,9 @@ Move To
 
 Move Up
 ऊपर ले जाएँ
+
+Move Window
+विंडो ले जाएँ
 
 Move Window To
 विंडो यहाँ ले जाएँ
@@ -5885,6 +5930,9 @@ Next Chat
 
 Next Day
 अगला दिन
+
+Next Display
+अगला डिस्प्ले
 
 Next File
 अगली फ़ाइल
@@ -6548,6 +6596,12 @@ Olo की विंडो तुरंत बदलेंगी। दूसर
 
 On
 चालू
+
+On AirPlay
+AirPlay पर
+
+On All Workspaces
+सभी कार्यक्षेत्रों में
 
 On Battery
 बैटरी पर
@@ -7306,6 +7360,9 @@ Previous Chat
 
 Previous Day
 पिछला दिन
+
+Previous Display
+पिछला डिस्प्ले
 
 Previous File
 पिछली फ़ाइल
@@ -9617,6 +9674,9 @@ The server’s CalDAV address, and the name and password it signs you in with. T
 The shell has ended.
 शेल समाप्त हो गया।
 
+The shortcut you just gave keys can have a second, pressed after them: the first keys begin a group of shortcuts, the second picks one.
+जिस शॉर्टकट को आपने अभी कुंजियाँ दीं, उसे एक दूसरी कुंजी मिल सकती है, जो उनके बाद दबाई जाती है: पहली कुंजियाँ शॉर्टकट का एक समूह शुरू करती हैं, दूसरी उनमें से एक चुनती है।
+
 The sky and temperature now, and what's coming.
 अभी का मौसम और तापमान, और आगे का पूर्वानुमान।
 
@@ -10222,6 +10282,9 @@ Type the PIN for “{}” (often 0000).
 
 Type the code “{}” shows on its screen.
 “{}” की स्क्रीन पर दिख रहा कोड लिखें।
+
+Type the key to press after {}. Esc leaves it as it is.
+वह कुंजी दबाएँ जो {} के बाद दबानी है। Esc इसे जैसा है वैसा छोड़ देता है।
 
 Type the keys. Esc cancels; ⌫ removes them.
 कुंजियाँ दबाएँ। Esc रद्द करता है और ⌫ उन्हें हटाता है।
@@ -10916,9 +10979,6 @@ While sharing or recording the screen (errors wait too)
 While uploading
 अपलोड के दौरान
 
-Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
-किसी विंडो को उसके टैब से खींचते समय, उसे किसी जगह में छोड़ें या उस जगह का अक्षर दबाएँ, और विंडो वहाँ आ जाती है। दूसरी विंडो की जगह में छोड़ने पर दोनों की अदला-बदली होती है। Escape सब कुछ वापस रख देता है।
-
 Why
 कारण
 
@@ -11005,6 +11065,9 @@ Wireless Router
 
 With AirPods:
 AirPods के साथ:
+
+With Another Window
+दूसरी विंडो के साथ
 
 Withdrawn by {}
 {} ने वापस लिया
@@ -11182,6 +11245,9 @@ Yours: fine-tuned {} times since it started
 
 Zig
 Zig
+
+Zoom
+ज़ूम
 
 Zoom All
 सभी विंडो ज़ूम करें

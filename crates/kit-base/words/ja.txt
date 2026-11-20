@@ -619,6 +619,9 @@ Googleアカウントを追加…
 Add a Kind
 種類を追加
 
+Add a Second Key
+2つ目のキーを追加
+
 Add a Section…
 セクションを追加…
 
@@ -703,6 +706,9 @@ Cloudflareの速度測定サーバーに対して、送受信それぞれ4接続
 Agenda
 予定一覧
 
+Agent Screen
+エージェントスクリーン
+
 Agent Screen Logs
 エージェント画面のログ
 
@@ -756,6 +762,9 @@ All Apps
 
 All Chats
 すべてのチャット
+
+All Default Keys
+すべて標準のキー設定に
 
 All Imperial
 すべてヤード・ポンド法
@@ -823,6 +832,12 @@ Alt
 Always Dark
 常にダーク
 
+Always Float Its Application
+このアプリケーションを常にフローティング表示
+
+Always Float {}
+{}を常にフローティング表示
+
 Always Left
 常に左
 
@@ -840,6 +855,9 @@ Always Where It Is
 
 Always a palm when as large as
 必ず手のひらと判定する大きさ
+
+Always float the application, or not
+アプリケーションのウィンドウを常にフローティング表示（切り替え）
 
 Always on Top
 常に最前面に表示
@@ -876,6 +894,9 @@ And {} more
 
 Anonymous identity:
 匿名ID:
+
+Another Window
+ほかのウィンドウ
 
 Another account
 別のアカウント
@@ -2521,9 +2542,6 @@ Default (Preferences ▸ Power)
 Default Apps
 デフォルトのアプリ
 
-Default Keys
-標準のキー設定
-
 Default Message ({})
 標準メッセージ（{}）
 
@@ -2923,6 +2941,9 @@ Downloading: {}
 Downloading…
 ダウンロード中…
 
+Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
+ウィンドウをタブでドラッグ中に、場所の上で放すか、その文字キーを押すと、ウィンドウがそこに移動します。ほかのウィンドウの場所で放すと、2つが入れ替わります。Escapeですべて元に戻ります。
+
 Drag with:
 ドラッグ方法:
 
@@ -3207,6 +3228,9 @@ Erasing goes on by itself once it’s back, from where it got to.
 
 Erlang
 Erlang
+
+Esc cancels
+Escでキャンセル
 
 Ethernet
 Ethernet
@@ -3592,11 +3616,23 @@ Flip Horizontal
 Flip Vertical
 上下反転
 
+Float
+フローティング
+
+Float Its Group
+グループをフローティング表示
+
+Float This Window
+このウィンドウをフローティング表示
+
 Float Window
 ウィンドウをフローティング表示
 
 Float Window Group
 ウィンドウグループをフローティング表示
+
+Float out of its group, or tile
+グループから出してフローティング表示（またはタイル表示）
 
 Flurries
 にわか雪
@@ -4494,6 +4530,9 @@ Italic
 
 Item
 項目
+
+Its Group to Another Window
+グループをほかのウィンドウへ
 
 Its app password isn’t in the keyring: remove it and add it again.
 アプリ用パスワードがキーリングにありません。アカウントを削除して追加し直してください。
@@ -5578,6 +5617,9 @@ Mouse speed
 Move
 移動
 
+Move All
+すべて移動
+
 Move All Windows To
 すべてのウィンドウの移動先
 
@@ -5607,6 +5649,9 @@ Move To
 
 Move Up
 上へ
+
+Move Window
+ウィンドウを移動
 
 Move Window To
 ウィンドウの移動先
@@ -5865,6 +5910,9 @@ Next Chat
 
 Next Day
 翌日
+
+Next Display
+次のディスプレイ
 
 Next File
 次のファイル
@@ -6528,6 +6576,12 @@ Oloのウィンドウにはすぐに反映されます。他のプログラム�
 
 On
 オン
+
+On AirPlay
+AirPlayで
+
+On All Workspaces
+すべてのワークスペースに
 
 On Battery
 バッテリー駆動時
@@ -7284,6 +7338,9 @@ Previous Chat
 
 Previous Day
 前日
+
+Previous Display
+前のディスプレイ
 
 Previous File
 前のファイル
@@ -9592,6 +9649,9 @@ The server’s CalDAV address, and the name and password it signs you in with. T
 The shell has ended.
 シェルは終了しました。
 
+The shortcut you just gave keys can have a second, pressed after them: the first keys begin a group of shortcuts, the second picks one.
+いまキーを割り当てたショートカットには、そのあとに押す2つ目のキーを追加できます。最初のキーでショートカットのグループが始まり、2つ目のキーでその中から1つを選びます。
+
 The sky and temperature now, and what's coming.
 現在の空模様と気温、これからの予報。
 
@@ -10197,6 +10257,9 @@ Type the PIN for “{}” (often 0000).
 
 Type the code “{}” shows on its screen.
 「{}」の画面に表示されたコードを入力してください。
+
+Type the key to press after {}. Esc leaves it as it is.
+{}のあとに押すキーを押してください。Escでそのままにします。
 
 Type the keys. Esc cancels; ⌫ removes them.
 キーを押してください。Escでキャンセル、⌫で割り当てを削除します。
@@ -10891,9 +10954,6 @@ While sharing or recording the screen (errors wait too)
 While uploading
 アップロード中
 
-Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
-ウィンドウをタブでドラッグ中に、場所の上で放すか、その文字キーを押すと、ウィンドウがそこに移動します。ほかのウィンドウの場所で放すと、2つが入れ替わります。Escapeですべて元に戻ります。
-
 Why
 理由
 
@@ -10980,6 +11040,9 @@ Wireless Router
 
 With AirPods:
 AirPods使用時:
+
+With Another Window
+ほかのウィンドウと並べる
 
 Withdrawn by {}
 {}が取り消しました
@@ -11157,6 +11220,9 @@ Yours: fine-tuned {} times since it started
 
 Zig
 Zig
+
+Zoom
+ズーム
 
 Zoom All
 すべて最大化

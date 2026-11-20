@@ -5206,5 +5206,29 @@
   "title": "Preferences \u25b8 Windows: Dragging a Window",
   "caption": "The places can be turned off.",
   "image": "2026-11-20/030654-preferences-windows-dragging-a-window.png"
+ },
+ {
+  "time": "2026-11-20T05:09:26",
+  "title": "The window menu, in groups",
+  "caption": "A tab's right-click menu was twenty-odd items in one list. Now ten in four groups: Hide, Roll Up, Send to Back; Zoom, Float and Tile (its size and shape); Pin, Move and Show (where it is); Close and Quit. Items in a group show their keys of two parts, and every menu's keys stand in a straight column (the last key in a cell).",
+  "image": "2026-11-20/050926-the-window-menu-in-groups.png"
+ },
+ {
+  "time": "2026-11-20T05:09:27",
+  "title": "Shortcuts of two parts: the panel while a group waits",
+  "caption": "Ctrl+Alt+Cmd+Z, F or V begins a group (Zoom, Float, Move); a second key picks from it. Held a third of a second, a panel at the foot of the screen says what each key does; the workspace the window is on is checked. Escape, any other key, a click or five seconds lets go.",
+  "image": "2026-11-20/050927-shortcuts-of-two-parts-the-panel-while-a-group-w.png"
+ },
+ {
+  "time": "2026-11-20T05:09:28",
+  "title": "Preferences, Keyboard, Shortcuts: a second key",
+  "caption": "Any shortcut can have keys of two parts: click it, type its keys, then Add a Second Key and type the key to press after them. The row last changed stays lit; the note is the list's caption; All Default Keys (it was Default Keys) is at the right.",
+  "image": "2026-11-20/050928-preferences-keyboard-shortcuts-a-second-key.png"
+ },
+ {
+  "time": "2026-11-20T05:09:29",
+  "title": "Deskbar's menus, in groups",
+  "caption": "An application's and a workspace's right-click menus as the window menu is: Show and Hide, Move (workspaces, displays, an agent's screen) and Show on AirPlay with the grouping, Close last; said in the singular for one window.",
+  "image": "2026-11-20/050929-deskbar-s-menus-in-groups.png"
  }
 ]

@@ -621,6 +621,9 @@ Aggiungi account Google…
 Add a Kind
 Aggiungi tipo
 
+Add a Second Key
+Aggiungi un secondo tasto
+
 Add a Section…
 Aggiungi una sezione…
 
@@ -707,6 +710,9 @@ Test con i server di Cloudflare: quattro connessioni per direzione, otto secondi
 Agenda
 Agenda
 
+Agent Screen
+Schermo dell'agente
+
 Agent Screen Logs
 Registri degli schermi agente
 
@@ -760,6 +766,9 @@ Tutte le app
 
 All Chats
 Tutte le chat
+
+All Default Keys
+Tutti i tasti predefiniti
 
 All Imperial
 Unità imperiali
@@ -827,6 +836,12 @@ Alt
 Always Dark
 Sempre scuro
 
+Always Float Its Application
+Rendi sempre mobile la sua applicazione
+
+Always Float {}
+Rendi sempre mobile {}
+
 Always Left
 Sempre a sinistra
 
@@ -844,6 +859,9 @@ Sempre dove si trova
 
 Always a palm when as large as
 Considera palmo a partire da questa dimensione
+
+Always float the application, or not
+Finestre della sua applicazione sempre mobili, o no
 
 Always on Top
 Sempre in primo piano
@@ -881,6 +899,9 @@ E altri {}
 
 Anonymous identity:
 Identità anonima:
+
+Another Window
+Altra finestra
 
 Another account
 Un altro account
@@ -2531,9 +2552,6 @@ Predefinito (Preferenze ▸ Alimentazione)
 Default Apps
 Applicazioni predefinite
 
-Default Keys
-Tasti predefiniti
-
 Default Message ({})
 Messaggio predefinito ({})
 
@@ -2934,6 +2952,9 @@ Download: {}
 Downloading…
 Download in corso…
 
+Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
+Mentre trascini una finestra dalla sua linguetta, rilasciala in un posto, o premine la lettera, per metterla lì. Rilasciala nel posto di un'altra finestra per scambiarle. Esc rimette tutto com'era.
+
 Drag with:
 Trascina con:
 
@@ -3218,6 +3239,9 @@ L’eliminazione riprenderà automaticamente dal punto raggiunto quando la desti
 
 Erlang
 Erlang
+
+Esc cancels
+Esc annulla
 
 Ethernet
 Ethernet
@@ -3607,11 +3631,23 @@ Rifletti in orizzontale
 Flip Vertical
 Rifletti in verticale
 
+Float
+Mobile
+
+Float Its Group
+Rendi mobile il suo gruppo
+
+Float This Window
+Rendi mobile questa finestra
+
 Float Window
 Rendi mobile la finestra
 
 Float Window Group
 Rendi mobile il gruppo di finestre
+
+Float out of its group, or tile
+Rendi mobile fuori dal gruppo, o affianca
 
 Flurries
 Rovesci di neve
@@ -4512,6 +4548,9 @@ Corsivo
 
 Item
 Elemento
+
+Its Group to Another Window
+Il suo gruppo in un'altra finestra
 
 Its app password isn’t in the keyring: remove it and add it again.
 La password per l’app non è nel portachiavi. Rimuovi e aggiungi di nuovo l’account.
@@ -5598,6 +5637,9 @@ Velocità del mouse
 Move
 Sposta
 
+Move All
+Sposta tutte
+
 Move All Windows To
 Sposta tutte le finestre in
 
@@ -5627,6 +5669,9 @@ Sposta in
 
 Move Up
 Sposta su
+
+Move Window
+Sposta la finestra
 
 Move Window To
 Sposta finestra in
@@ -5885,6 +5930,9 @@ Chat successiva
 
 Next Day
 Giorno successivo
+
+Next Display
+Schermo successivo
 
 Next File
 File successivo
@@ -6548,6 +6596,12 @@ Le finestre di Olo cambiano lingua subito. Gli altri programmi la useranno al pr
 
 On
 Attivato
+
+On AirPlay
+Su AirPlay
+
+On All Workspaces
+In tutti gli spazi di lavoro
 
 On Battery
 A batteria
@@ -7306,6 +7360,9 @@ Chat precedente
 
 Previous Day
 Giorno precedente
+
+Previous Display
+Schermo precedente
 
 Previous File
 File precedente
@@ -9617,6 +9674,9 @@ Inserisci l’indirizzo CalDAV del server e il nome e la password di accesso. La
 The shell has ended.
 La shell è terminata.
 
+The shortcut you just gave keys can have a second, pressed after them: the first keys begin a group of shortcuts, the second picks one.
+L'abbreviazione a cui hai appena dato dei tasti può averne un secondo, premuto dopo: i primi tasti aprono un gruppo di abbreviazioni, il secondo ne sceglie una.
+
 The sky and temperature now, and what's coming.
 Il cielo e la temperatura attuali, con le previsioni.
 
@@ -10222,6 +10282,9 @@ Inserisci il PIN di “{}” (spesso è 0000).
 
 Type the code “{}” shows on its screen.
 Inserisci il codice che appare sullo schermo di “{}”.
+
+Type the key to press after {}. Esc leaves it as it is.
+Premi il tasto da premere dopo {}. Esc lascia tutto com'è.
 
 Type the keys. Esc cancels; ⌫ removes them.
 Premi i tasti. Esc annulla, ⌫ rimuove l’abbreviazione.
@@ -10916,9 +10979,6 @@ Se condividi o registri lo schermo (rinvia anche gli errori)
 While uploading
 Durante l’upload
 
-Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
-Mentre trascini una finestra dalla sua linguetta, rilasciala in un posto, o premine la lettera, per metterla lì. Rilasciala nel posto di un'altra finestra per scambiarle. Esc rimette tutto com'era.
-
 Why
 Motivo
 
@@ -11005,6 +11065,9 @@ Router wireless
 
 With AirPods:
 Con AirPods:
+
+With Another Window
+Con un'altra finestra
 
 Withdrawn by {}
 Ritirata da {}
@@ -11182,6 +11245,9 @@ Modello personale: affinato {} volte dall’avvio
 
 Zig
 Zig
+
+Zoom
+Zoom
 
 Zoom All
 Massimizza tutte

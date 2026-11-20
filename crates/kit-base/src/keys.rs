@@ -129,10 +129,12 @@ pub struct Known {
     /// The app's own entry, not every app's.
     pub own: bool,
     /// Its keys as the app presses them, and as the platform writes them
-    /// (None: it has none). (Shared: menus look every item up at every
-    /// body, and a copy of the words each time was an allocation an
-    /// item.)
-    pub keys: Option<(Shortcut, Arc<str>)>,
+    /// (None: it has none). Keys of two parts ("⌃⌥⌘Z V") aren't pressed
+    /// in the app at all: app_server takes both and chooses the command
+    /// from the app's menus (its `chord`), so there are only the words to
+    /// show. (Shared: menus look every item up at every body, and a copy
+    /// of the words each time was an allocation an item.)
+    pub keys: Option<(Option<Shortcut>, Arc<str>)>,
 }
 
 /// The keys `command` has in this app (as a terminal-style window, `raw`,
@@ -155,7 +157,10 @@ pub fn known(command: &str, raw: bool) -> Option<Known> {
     let known = app_keys::app_key(app_id(), command).map(|entry| {
         let p = profile();
         let chords = shortcuts::entry(entry.id).map(|e| e.keys(&p)).unwrap_or_default();
-        let keys = chords.iter().find_map(|c| Some((app_side(c, p.command_key, raw)?, Arc::from(c.label(p.platform)))));
+        let keys = chords.iter().find_map(|k| match k.single() {
+            Some(c) => Some((Some(app_side(&c, p.command_key, raw)?), Arc::from(k.label(p.platform)))),
+            None => Some((None, Arc::from(k.label(p.platform)))),
+        });
         Known { own: entry.app.is_some(), keys }
     });
     map.insert(command.to_owned(), known.clone());
@@ -164,7 +169,7 @@ pub fn known(command: &str, raw: bool) -> Option<Known> {
 
 /// The shortcut `command` has in this app (from the profile), if any.
 pub fn shortcut(command: &str) -> Option<Shortcut> {
-    known(command, false)?.keys.map(|(s, _)| s)
+    known(command, false)?.keys.and_then(|(s, _)| s)
 }
 
 /// The shortcut the profile's entry `id` ("tracker.go-to") has, as an app
@@ -183,7 +188,7 @@ pub fn shortcut_of(id: &str) -> Option<Shortcut> {
         return *known;
     }
     let p = profile();
-    let known = shortcuts::entry(id).map(|e| e.keys(&p)).unwrap_or_default().iter().find_map(|c| app_side(c, p.command_key, false));
+    let known = shortcuts::entry(id).map(|e| e.keys(&p)).unwrap_or_default().iter().find_map(|k| app_side(&k.single()?, p.command_key, false));
     map.insert(id.to_owned(), known);
     known
 }
@@ -193,7 +198,12 @@ pub fn shortcut_of(id: &str) -> Option<Shortcut> {
 /// (Terminal, to its shell).
 pub fn own_shortcuts(app: &str, raw: bool) -> Vec<Shortcut> {
     let p = profile();
-    app_keys::APP_KEYS.iter().filter(|e| e.app == Some(app)).flat_map(|e| shortcuts::entry(e.id).map(|x| x.keys(&p)).unwrap_or_default()).filter_map(|c| app_side(&c, p.command_key, raw)).collect()
+    app_keys::APP_KEYS
+        .iter()
+        .filter(|e| e.app == Some(app))
+        .flat_map(|e| shortcuts::entry(e.id).map(|x| x.keys(&p)).unwrap_or_default())
+        .filter_map(|k| app_side(&k.single()?, p.command_key, raw))
+        .collect()
 }
 
 /// A menu item with keys the profile doesn't list: they can't be changed

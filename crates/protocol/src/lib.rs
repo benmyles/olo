@@ -42,7 +42,7 @@ pub mod voice;
 pub use notifications::{AppNotifications, CardSize, HistoryView, NoteApp, NoteLook, NoteStyle, NotificationSettings, NotificationState};
 pub use sharing::SharingState;
 pub use shortcuts::{
-    AppPin, AppWorkspace, AutoTiling, Chord, CommandKey, Dir, KeyboardProfile, LAYOUT_PRESETS, LayoutChoice, MAX_MAINS, MainCountChoice, MainPlaceChoice, ModeChoice, NewWindows, Pin, Platform,
+    AppPin, AppWorkspace, AutoTiling, Chord, CommandKey, Dir, KeyboardProfile, Keys, LAYOUT_PRESETS, LayoutChoice, MAX_MAINS, MainCountChoice, MainPlaceChoice, ModeChoice, NewWindows, Pin, Platform,
     Shortcut, ShortcutSettings, TILING_VERSION, Tile, TilingLayout, TilingSettings, WindowingMode,
 };
 
@@ -267,6 +267,14 @@ pub enum Request {
     /// (app_server's `shell::snap`): each pad's letter, what it is and
     /// where; none while no window is dragged.
     Snap,
+    /// The group of shortcuts a first chord begins (app_server's
+    /// `chord`): the one waiting for its second chord now, or, with
+    /// `first` ("Ctrl+Alt+Cmd+Z"), what that chord begins whether or
+    /// not it's waiting.
+    Chord {
+        #[serde(default)]
+        first: Option<String>,
+    },
     SetSettings {
         settings: Settings,
     },
@@ -888,6 +896,10 @@ pub enum Reply {
     Snap {
         snap: SnapInfo,
     },
+    /// [`Request::Chord`]'s answer.
+    Chord {
+        chord: ChordInfo,
+    },
     /// [`Request::Arrangement`]'s answer: the display's connector, the
     /// area tiling uses (global logical pixels: the display less Deskbar
     /// and the margins), and its windows on this workspace, front first.
@@ -1147,6 +1159,9 @@ pub enum EventKind {
     /// [`Event::PowerButton`]: only by name (Deskbar's), so a program
     /// from before it, subscribed to all, never meets it.
     PowerButton,
+    /// [`Event::Chord`]: only by name (the palette's, which shows what
+    /// a group begun can be finished with).
+    Chord,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1190,6 +1205,12 @@ pub enum Event {
     /// [`Reply::InputDevices`].
     InputDevicesChanged {
         devices: Vec<touchpad::InputDeviceInfo>,
+    },
+    /// The first chord of a group of shortcuts went down and waits for
+    /// its second (`first`, as profiles write it: "Ctrl+Alt+Cmd+Z"), or
+    /// the group waits no more (None: picked from, or let go of).
+    Chord {
+        first: Option<String>,
     },
     /// A key taken with [`Request::GrabKeys`] went down or up (sent only
     /// to the connection that took it).
@@ -1250,6 +1271,7 @@ impl Event {
             Event::TouchContacts { .. } => EventKind::TouchContacts,
             Event::InputDevicesChanged { .. } => EventKind::InputDevices,
             Event::PowerButton { .. } => EventKind::PowerButton,
+            Event::Chord { .. } => EventKind::Chord,
             Event::KeyGrab { .. } => return None,
         })
     }
@@ -2809,6 +2831,39 @@ pub struct KeyboardSettings {
     pub double_press_ms: u32,
     /// What the built-in power button does, pressed and held.
     pub power_button: power_button::PowerButton,
+}
+
+/// [`Request::Chord`]'s answer: a first chord and what it begins.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ChordInfo {
+    /// The first chord, as profiles write it ("Ctrl+Alt+Cmd+Z"); None:
+    /// none waits (and none was asked about).
+    pub first: Option<String>,
+    /// As the profile's platform writes it ("⌃⌥⌘Z").
+    pub label: String,
+    /// What the group is (Zoom, Float, Move: the window menu's submenu
+    /// its shortcuts are in), if all it begins is one's.
+    pub name: Option<String>,
+    /// It is waiting for its second chord now.
+    pub waiting: bool,
+    pub options: Vec<ChordOption>,
+}
+
+/// One thing a group's second chord can pick.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChordOption {
+    /// The second chord, as profiles write it ("V") and as the
+    /// profile's platform does.
+    pub keys: String,
+    pub label: String,
+    /// The shortcut's id (`shortcuts::SHORTCUTS`, or an app's:
+    /// `app_keys::APP_KEYS`) and what it's called.
+    pub id: String,
+    pub title: String,
+    /// It's so already (the workspace the focused window is on): shown
+    /// stepped back, as its menu's item is checked and dimmed.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub current: bool,
 }
 
 /// [`Request::Snap`]'s answer: the window being dragged and its places.

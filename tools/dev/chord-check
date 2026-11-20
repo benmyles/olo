@@ -1,0 +1,322 @@
+#!/usr/bin/env python3
+"""Shortcuts of two parts (app_server's `keymap` and `chord`, the
+palette's panel): a group begun, picked from, let go of, in a headless
+session.
+
+  chord-check [--release] [--keep]
+
+Dev builds (`cargo build -p app_server -p olo-palette -p olo-kache -p
+olo-weather`), or with --release the release ones. In a session of its
+own (a new name each run, a scratch home under /var/tmp, removed after;
+--keep leaves both for a look), Kache and Weather with made-up data.
+Keys are made-up key events (evdev codes), and after each step the
+group that's waiting (`{"type":"chord"}`), the windows and the layer
+windows are read back:
+
+- what a first chord begins is answered without pressing anything;
+- ⌃⌥⌘Z begins Zoom's group and V, H, Z and B pick from it, the
+  modifiers let go of first or still held;
+- Escape, a key that's none of the group's, a press of the pointer and a
+  few seconds' wait each let go of it, and nothing is done;
+- the panel shows once a group has waited a moment, goes when it ends,
+  and never shows for keys typed straight through;
+- ⌃⌥⌘V and a number moves the window to that workspace;
+- with auto-tiling on, ⌃⌥⌘F and F floats the window and tiles it again,
+  W floats it out of its group, A floats its application always and no
+  longer;
+- a second key given in the profile is the one that picks, and the old
+  one no longer does.
+
+Exits 1 on a mismatch.
+"""
+
+import json
+import os
+import random
+import shutil
+import subprocess
+import sys
+import time
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+TSESSION = ["/usr/bin/python3", os.path.join(ROOT, "tools/dev/tsession")]
+NAME = f"chordc{random.randrange(10000)}"
+HOME = f"/var/tmp/olo-chord-check/{NAME}"
+PROFILE = "release" if "--release" in sys.argv else "debug"
+FAILED = []
+
+CTRL, ALT, CMD, ESC = 29, 56, 125, 1
+MODS = [CTRL, ALT, CMD]
+KEY = {"z": 44, "x": 45, "v": 47, "b": 48, "h": 35, "f": 33, "w": 17, "a": 30, "k": 37, "2": 3, "1": 2}
+
+
+def ts(*args):
+    e = dict(os.environ, TSESSION_PROFILE=PROFILE)
+    for k in ("WAYLAND_DISPLAY", "OLO_SOCKET", "OLO_SESSION", "OLO_SESSION_PID"):
+        e.pop(k, None)
+    return subprocess.run(TSESSION + [str(a) for a in args], capture_output=True, text=True, env=e).stdout
+
+
+def ipc(req):
+    out = ts("ipc", NAME, json.dumps(req))
+    try:
+        return json.loads(out[out.index("{"):])
+    except ValueError:
+        return {}
+
+
+def events(*steps):
+    """Key events in one request: (code, pressed) each, as fast as
+    app_server reads them."""
+    ipc({"type": "synthetic", "events": [{"type": "key", "key": c, "pressed": p} for c, p in steps]})
+
+
+def down(codes):
+    return [(c, True) for c in codes]
+
+
+def up(codes):
+    return [(c, False) for c in reversed(codes)]
+
+
+def begin(letter, held=False):
+    """The group's first chord: ⌃⌥⌘ and a letter, the modifiers let go of
+    after it or still held."""
+    k = KEY[letter]
+    events(*down(MODS), (k, True), (k, False), *([] if held else up(MODS)))
+
+
+def then(code, held=False):
+    """The second key (after `begin` with the same `held`)."""
+    events((code, True), (code, False), *(up(MODS) if held else []))
+
+
+def wins():
+    return {w["id"]: w for w in ipc({"type": "list_windows"}).get("windows", [])}
+
+
+def win(i):
+    return wins().get(i, {})
+
+
+def frame(i):
+    f = win(i).get("frame") or {}
+    return (f.get("x"), f.get("y"), f.get("width"), f.get("height"))
+
+
+def settled(i, within=3.0):
+    """The window's frame once it has stopped changing (it glides)."""
+    end, last, same = time.time() + within, None, 0
+    while time.time() < end:
+        f = frame(i)
+        same = same + 1 if f == last else 0
+        last = f
+        if same >= 3:
+            return f
+        time.sleep(0.05)
+    return last
+
+
+def waiting():
+    """The first chord of the group that waits, or None."""
+    c = ipc({"type": "chord"}).get("chord", {})
+    return c.get("first") if c.get("waiting") else None
+
+
+def panel(within, want):
+    """Whether the panel is up, asked until it's as wanted or `within`
+    seconds have gone."""
+    end = time.time() + within
+    while True:
+        there = any(ns == "chord" for _, ns in ipc({"type": "layer_clients"}).get("clients", []))
+        if there == want or time.time() >= end:
+            return there
+        time.sleep(0.1)
+
+
+def until(what, within=3.0):
+    end = time.time() + within
+    while time.time() < end:
+        got = what()
+        if got:
+            return got
+        time.sleep(0.05)
+    return what()
+
+
+def check(what, ok, got=None):
+    print(("ok    " if ok else "FAIL  ") + what + ("" if ok else f": {got}"))
+    if not ok:
+        FAILED.append(what)
+
+
+def main():
+    os.makedirs(HOME, exist_ok=True)
+    try:
+        print(ts("start", NAME, "2560x1600", "--home", HOME, "--owner", os.getpid()).strip().splitlines()[-1])
+        for app, var in (("olo-kache", "OLO_KACHE_DEMO"), ("olo-weather", "OLO_WEATHER_DEMO")):
+            ts("run", NAME, f"{var}=1", os.path.join(ROOT, "target", PROFILE, app))
+        until(lambda: len(wins()) >= 2, 30)
+        ids = {w["app_id"]: i for i, w in wins().items()}
+        if len(ids) < 2:
+            print("chord-check: the two apps' windows didn't come up")
+            return 2
+        w, other = ids["olo.weather"], ids["olo.kache"]
+        for i, (x, y, cw, ch) in ((other, (60, 60, 560, 420)), (w, (520, 300, 640, 440))):
+            ipc({"type": "place", "id": i, "frame": {"x": x, "y": y, "width": cw, "height": ch}})
+        ipc({"type": "activate", "id": w})
+        own = settled(w)
+
+        # What a chord begins, asked without pressing it.
+        c = ipc({"type": "chord", "first": "Ctrl+Alt+Cmd+Z"}).get("chord", {})
+        got = [(o.get("keys"), o.get("id")) for o in c.get("options", [])]
+        check("⌃⌥⌘Z begins Zoom's four", (c.get("name"), c.get("waiting"), got) == ("Zoom", False, [("Z", "zoom"), ("V", "zoom-vertical"), ("H", "zoom-horizontal"), ("B", "restore")]), (c.get("name"), c.get("waiting"), got))
+        c = ipc({"type": "chord", "first": "Ctrl+Alt+Cmd+F"}).get("chord", {})
+        got = [o.get("id") for o in c.get("options", [])]
+        check("⌃⌥⌘F begins Float's three", (c.get("name"), got) == ("Float", ["float-window", "float-alone", "float-app"]), (c.get("name"), got))
+        c = ipc({"type": "chord", "first": "Ctrl+Alt+Cmd+V"}).get("chord", {})
+        # (What can be done here: four workspaces, one display.)
+        got = [o.get("keys") for o in c.get("options", [])]
+        check("⌃⌥⌘V begins Move's, the workspaces there are first", (c.get("name"), got) == ("Move", ["1", "2", "3", "4", "Right", "Left"]), (c.get("name"), got))
+        c = ipc({"type": "chord", "first": "Ctrl+Alt+Cmd+J"}).get("chord", {})
+        check("a chord that begins nothing has no options", c.get("options") == [] and not c.get("waiting"), c)
+        check("no group waits to begin with", waiting() is None, waiting())
+
+        # Picked from, the modifiers let go of first.
+        begin("z")
+        check("⌃⌥⌘Z waits for its second key", waiting() == "Ctrl+Alt+Cmd+Z", waiting())
+        check("and nothing is done meanwhile", frame(w) == own, frame(w))
+        then(KEY["v"])
+        check("V zooms it vertically", until(lambda: win(w).get("zoomed_along") == "vertical"), win(w).get("zoomed_along"))
+        check("and the group waits no more", waiting() is None, waiting())
+        tall = settled(w)
+        check("as tall as its display's room, as wide as it was", tall[2] == own[2] and tall[3] > own[3], tall)
+        # The modifiers still held for the second.
+        begin("z", held=True)
+        then(KEY["b"], held=True)
+        check("⌃⌥⌘Z then B, the modifiers still held, is its own size again", until(lambda: frame(w) == own), frame(w))
+        begin("z", held=True)
+        then(KEY["h"], held=True)
+        check("and H zooms it horizontally", until(lambda: win(w).get("zoomed_along") == "horizontal"), win(w).get("zoomed_along"))
+        settled(w)
+        begin("z")
+        then(KEY["z"])
+        check("Z zooms it whole", until(lambda: win(w).get("zoomed")), win(w).get("zoomed"))
+        settled(w)
+        begin("z")
+        then(KEY["b"])
+        check("B is back to its own size", until(lambda: frame(w) == own), frame(w))
+
+        # Let go of: Escape, a key that isn't the group's, the pointer, a wait.
+        for what, how in (("Escape", lambda: then(ESC)), ("a key that's none of its own", lambda: then(KEY["x"])), ("a press of the pointer", lambda: (ts("down", NAME, 2000, 1000), ts("up", NAME)))):
+            begin("z")
+            was = waiting()
+            how()
+            time.sleep(0.3)
+            check(f"{what} lets go of it, and nothing is done", was == "Ctrl+Alt+Cmd+Z" and waiting() is None and frame(w) == own and not win(w).get("zoomed"), (was, waiting(), frame(w)))
+        ipc({"type": "activate", "id": w})
+
+        # The panel: after a moment, gone when the group ends.
+        begin("z")
+        check("the panel shows once the group has waited a moment", panel(4.0, True))
+        then(ESC)
+        check("and goes when it's let go of", not panel(3.0, False))
+        begin("z")
+        then(KEY["v"])
+        time.sleep(1.2)
+        check("keys typed straight through show no panel", not panel(0.0, False) and win(w).get("zoomed_along") == "vertical", win(w).get("zoomed_along"))
+        begin("z")
+        then(KEY["b"])
+        until(lambda: frame(w) == own)
+        begin("z")
+        check("left waiting, the panel is up", panel(4.0, True))
+        time.sleep(5.2)
+        check("and after five seconds the group is let go of", waiting() is None, waiting())
+        check("its panel with it", not panel(3.0, False))
+        then(KEY["v"])
+        time.sleep(0.4)
+        check("V by itself then is only a key", not win(w).get("zoomed_along") and frame(w) == own, frame(w))
+
+        # Move's: a number is a workspace.
+        begin("v")
+        then(KEY["2"])
+        check("⌃⌥⌘V then 2 moves it to workspace 2", until(lambda: win(w).get("workspace") == 1), win(w).get("workspace"))
+        ipc({"type": "activate", "id": w})
+        until(lambda: win(w).get("focused"))
+        begin("v")
+        then(KEY["1"])
+        check("and 1 back to workspace 1", until(lambda: win(w).get("workspace") == 0), win(w).get("workspace"))
+        ipc({"type": "activate", "id": w})
+        until(lambda: win(w).get("focused"))
+
+        # Float's, where windows are tiled for the person.
+        ipc({"type": "set_windowing_mode", "mode": "auto_tiling"})
+        until(lambda: win(w).get("tiled") and win(other).get("tiled"))
+        check("auto-tiling tiles the two", win(w).get("tiled") and win(other).get("tiled"), (win(w).get("tiled"), win(other).get("tiled")))
+        ipc({"type": "activate", "id": w})
+        begin("f")
+        check("⌃⌥⌘F alone floats nothing: it begins Float's group", waiting() == "Ctrl+Alt+Cmd+F" and not win(w).get("floating"), (waiting(), win(w).get("floating")))
+        then(KEY["f"])
+        check("F floats the window", until(lambda: win(w).get("floating")), win(w).get("floating"))
+        begin("f")
+        then(KEY["f"])
+        check("and F again tiles it", until(lambda: win(w).get("tiled") and not win(w).get("floating")), (win(w).get("tiled"), win(w).get("floating")))
+        floating_apps = lambda: ipc({"type": "get_settings"}).get("settings", {}).get("tiling", {}).get("floating_apps", [])
+        begin("f")
+        then(KEY["a"])
+        check("A floats its application always", until(lambda: "olo.weather" in floating_apps() and win(w).get("floating")), (floating_apps(), win(w).get("floating")))
+        begin("f")
+        then(KEY["a"])
+        check("and A again no longer", until(lambda: "olo.weather" not in floating_apps() and not win(w).get("floating")), (floating_apps(), win(w).get("floating")))
+        ipc({"type": "group_window", "id": w, "with": other})
+        until(lambda: win(w).get("group") is not None and win(w).get("group") == win(other).get("group"))
+        check("the two in one group", win(w).get("group") is not None and win(w).get("group") == win(other).get("group"), (win(w).get("group"), win(other).get("group")))
+        ipc({"type": "activate", "id": w})
+        begin("f")
+        then(KEY["f"])
+        check("F floats a window in a group with its group", until(lambda: win(w).get("floating") and win(other).get("floating")), (win(w).get("floating"), win(other).get("floating")))
+        begin("f")
+        then(KEY["f"])
+        check("and F again tiles them", until(lambda: not win(w).get("floating") and not win(other).get("floating")), (win(w).get("floating"), win(other).get("floating")))
+        check("still one group", win(w).get("group") is not None and win(w).get("group") == win(other).get("group"), (win(w).get("group"), win(other).get("group")))
+        begin("f")
+        then(KEY["w"])
+        check("W floats the window alone, out of its group", until(lambda: win(w).get("floating") and not win(other).get("floating") and win(other).get("tiled") and win(w).get("group") is None), (win(w).get("floating"), win(other).get("floating"), win(other).get("tiled"), win(w).get("group")))
+        begin("f")
+        then(KEY["w"])
+        check("and W again tiles it", until(lambda: not win(w).get("floating") and win(w).get("tiled")), (win(w).get("floating"), win(w).get("tiled")))
+        ipc({"type": "set_windowing_mode", "mode": "standard"})
+        ipc({"type": "ungroup_window", "id": w})
+        ipc({"type": "place", "id": w, "frame": {"x": own[0], "y": own[1], "width": own[2], "height": own[3]}})
+        ipc({"type": "activate", "id": w})
+        own = settled(w)
+
+        # A second key of the person's own.
+        s = ipc({"type": "get_settings"}).get("settings")
+        if s and "keyboard" in s:
+            s["keyboard"]["profile"]["shortcuts"] = {"zoom-vertical": ["Ctrl+Alt+Cmd+Z K"]}
+            ipc({"type": "set_settings", "settings": s})
+            c = ipc({"type": "chord", "first": "Ctrl+Alt+Cmd+Z"}).get("chord", {})
+            got = [(o.get("keys"), o.get("id")) for o in c.get("options", [])]
+            check("a second key given in the profile is the group's", ("K", "zoom-vertical") in got and ("V", "zoom-vertical") not in got, got)
+            begin("z")
+            then(KEY["v"])
+            time.sleep(0.4)
+            check("the old one picks nothing", not win(w).get("zoomed_along"), win(w).get("zoomed_along"))
+            begin("z")
+            then(KEY["k"])
+            check("and the new one zooms it vertically", until(lambda: win(w).get("zoomed_along") == "vertical"), win(w).get("zoomed_along"))
+        else:
+            check("the settings could be read", False, s)
+    finally:
+        if "--keep" not in sys.argv:
+            ts("stop", NAME)
+            shutil.rmtree(HOME, ignore_errors=True)
+        else:
+            print(f"kept: session {NAME}, home {HOME}")
+    print(f"chord-check: {len(FAILED)} failed" if FAILED else "chord-check: all as it should be")
+    return 1 if FAILED else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

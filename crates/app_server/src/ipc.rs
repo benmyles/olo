@@ -134,7 +134,7 @@ impl Subscriber {
         match &self.kinds {
             Some(k) => k.contains(&kind),
             // (Frames only by name: they come as often as frames do.)
-            None => !matches!(kind, EventKind::Painted | EventKind::TouchContacts | EventKind::PowerButton),
+            None => !matches!(kind, EventKind::Painted | EventKind::TouchContacts | EventKind::PowerButton | EventKind::Chord),
         }
     }
 }
@@ -622,18 +622,7 @@ impl<B: Backend + 'static> AnvilState<B> {
             }
             Request::SetFloating { id, floating, alone } => match self.window_by_id(id) {
                 Some(w) => {
-                    // (Out of its group first, in this turn: it never
-                    // shows as a tile of its own on its way out. The
-                    // groups brought up to date then, as each turn does:
-                    // else its old group's windows float with it.)
-                    // In Focus, out without being moved (stepped out from
-                    // the group's zoom it floated nearly as big): Focus
-                    // unzooms it to its own size as it floats.
-                    let out = |s: &mut Self| if s.in_focus_mode(&w) { s.take_out_of_group(&w) } else { s.ungroup_window(&w) };
-                    if alone && floating == Some(true) && !self.groups.mates(&w).is_empty() && out(self) {
-                        self.sync_groups();
-                    }
-                    self.set_floating(&w, floating);
+                    self.float_window(&w, floating, alone);
                     Reply::Ok
                 }
                 None => not_found(),
@@ -946,6 +935,7 @@ impl<B: Backend + 'static> AnvilState<B> {
                 Reply::Overview { overview: self.overview_info() }
             }
             Request::Snap => Reply::Snap { snap: self.snap_info() },
+            Request::Chord { first } => Reply::Chord { chord: self.chord_info(first.as_deref()) },
             Request::SetSettings { settings } => {
                 self.set_settings(settings);
                 Reply::Ok

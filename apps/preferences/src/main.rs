@@ -398,6 +398,12 @@ pub enum PanelMsg {
         name: String,
         tries: u8,
     },
+    /// The tab called `tab` is chosen once the panel has drawn it (a tab
+    /// alone asked for, of a panel that keeps no tab of its own to set).
+    Tab {
+        tab: String,
+        tries: u8,
+    },
     /// A backup opened from Tracker is waiting (`backup::open_later`).
     TakeOpened,
 }
@@ -442,7 +448,9 @@ impl View for PanelView {
                         panel::State::Power(st) => power::show_tab(st, tab),
                         panel::State::Performance(st) => performance::show_tab(st, tab),
                         panel::State::Security(st) => security::show_tab(st, tab),
-                        _ => {}
+                        // (Any other panel's, as a click on it would:
+                        // `keyboard --tab Shortcuts` opened on Keyboard.)
+                        _ => cx.after(LIGHT_AFTER, PanelMsg::Tab { tab: tab.clone(), tries: 20 }),
                     }
                 }
                 if let Some(name) = name {
@@ -456,6 +464,12 @@ impl View for PanelView {
                 let on_tab = tab.as_deref().is_none_or(|t| t.is_empty() || !olo_kit::spotlight::show_tab(cx, t) || olo_kit::spotlight::tab_selected(cx, t));
                 if !(on_tab && olo_kit::spotlight::show(cx, group.as_deref(), &name)) && tries > 0 {
                     cx.after(LIGHT_AFTER, PanelMsg::Light { tab, group, name, tries: tries - 1 });
+                }
+                return;
+            }
+            PanelMsg::Tab { tab, tries } => {
+                if !olo_kit::spotlight::show_tab(cx, &tab) && tries > 0 {
+                    cx.after(LIGHT_AFTER, PanelMsg::Tab { tab, tries: tries - 1 });
                 }
                 return;
             }

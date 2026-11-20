@@ -362,32 +362,38 @@ something nobody here has is in "Blocked", with what it waits for.
   off); weekdays' and months' names in the person's language (with
   Calendar's: Language, below).
 
-- **Menus tidied into groups, and chords for what's in them** (Ben,
-  2026-11-18: "in the menu from right clicking a window tab (and
-  anywhere else we show it), group the 3 zoom options under a "Zoom ->"
-  parent and the 3 float options under a "Float ->" parent, the move
-  options under a "Move ->" parent, and anything else that makes sense
-  to be grouped to clean things up do that too. and, idk if we support
-  chord keyboard shortcuts yet but let's also make the shortcuts for
-  all those chords, so you do the first part to start Float/Move/etc
-  and then the second part to select the specific option. this chord
-  support must be made native to olo, supported and customizable in
-  keyboard shortcut prefs. similarly clean up the deskbar right click
-  menus and any other menus that are unwieldly. try to make everything
-  follow consistent patterns/groupings where appropriate."). The
-  window menu (a tab's right click, and everywhere else it's shown:
-  Deskbar's entry for a window, the window switcher): Zoom ▸, Float ▸
-  and Move ▸ submenus, and whatever else groups naturally. Chords, a
-  part of Olo itself: a shortcut of two parts (the first starts Float,
-  Move, Zoom…; the second picks which), in the keyboard profiles, the
-  kit's menus (shown beside the item, both parts) and app_server's own
-  shortcuts, set and changed in Preferences ▸ Keyboard ▸ Shortcuts like
-  any other, with something shown while a chord waits for its second
-  part (and Escape, or a moment's wait, letting go of it). Then the
-  same pass over Deskbar's right-click menus and every other menu
-  that's grown unwieldy, to one set of patterns (what's grouped, in
-  what order, named how), written down in HACKING.md and held by the
-  window review where it can be.
+- **The chord panel in the menu's words** (2026-11-20; both reviewers
+  of the panel). While a group of shortcuts waits, the panel names each
+  second key as Preferences and the shortcuts sheet name the shortcut
+  ("Float over the tiles, or tile", "Always float the application, or
+  not", "Window to workspace 2"); the menu's own group says what would
+  happen now ("Unfloat", "Float Its Group", "Workspace 2"). To decide,
+  then do: the panel saying what each key does now, in the menu's
+  names, for the groups that are a menu's (app_server knows the focused
+  window's state; the names in one place, `olo_protocol::shortcuts`,
+  for the menu and the panel both; twelve languages).
+
+- **Left from the reviews of the menus and the panel** (2026-11-20;
+  Astra's and Opus's, checked against the pictures, real, and not this
+  change's): key symbols (⌃ is Noto's and reads as an ASCII caret, ⌘ is
+  heavier than ⌥ beside it, the arrows lighter than letters, the minus
+  key a hair-thin hyphen: one face at one weight, or drawn as the kit
+  draws its check marks; every menu, the sheet, Preferences); the dark
+  look's menus and panels against a dark window (the body nearly the
+  window's value, the edge faint: for the Themes study); Deskbar's
+  window items have no window mark (an application's own window reads
+  as a second "Kache" under its row), and a selected workspace
+  heading's group icon stays dark on the selection; Preferences ▸
+  Keyboard ▸ Shortcuts' list ends through a row (a list of whole rows
+  is the kit's to offer), a row waiting for keys looks like any selected
+  row (a well, a caret), and "… was taken from …" doesn't say what that
+  shortcut has now, and the panel's Defaults and Revert stay live
+  while a key is waited for; Keyboard's tabs "Keyboard" and "Keyboards"
+  side by side, and its two check boxes further apart than the rows
+  over them; Tile ▸ has Top and Bottom Two Thirds and no Top or Bottom
+  Third; a menu's check mark sits in the margin with two points to
+  spare (BeOS's place for it; Opus would give it a column); Deskbar's
+  "Group All Windows" for an application with one window.
 
 - **What Olo moves that still jumps** (2026-11-20, from the snapping
   work). A window glides where a drag's place, a tiling shortcut, Zoom,
@@ -430,6 +436,59 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Menus tidied into groups, and chords for what's in them** (Ben,
+  2026-11-18: "in the menu from right clicking a window tab (and
+  anywhere else we show it), group the 3 zoom options under a "Zoom ->"
+  parent and the 3 float options under a "Float ->" parent, the move
+  options under a "Move ->" parent, and anything else that makes sense
+  to be grouped to clean things up do that too. and, idk if we support
+  chord keyboard shortcuts yet but let's also make the shortcuts for
+  all those chords, so you do the first part to start Float/Move/etc
+  and then the second part to select the specific option. this chord
+  support must be made native to olo, supported and customizable in
+  keyboard shortcut prefs. similarly clean up the deskbar right click
+  menus and any other menus that are unwieldly. try to make everything
+  follow consistent patterns/groupings where appropriate."). **Done** (2026-11-20; HACKING,
+  "Shortcuts of two parts" and "Menus in groups"). **The window menu**
+  is ten items in four groups where it was twenty-odd: Hide, Roll Up,
+  Send to Back; its size and shape, Zoom ▸ (Zoom, Vertically,
+  Horizontally, Back to Its Own Size), Float ▸ (where windows are tiled
+  for you: This Window, Its Group, Always its application) and Tile ▸
+  (the tiles, Center, With Another Window ▸); where it is and shows,
+  Pin ▸, Move ▸ (every display's workspaces, Next and Previous Display,
+  Agent Screen ▸, Another Window ▸) and Show ▸ (Always on Top, On All
+  Workspaces, In the Scratchpad, On AirPlay ▸); its group and its file;
+  and Close and Quit last. **Shortcuts of two
+  parts** are Olo's own: ⌃⌥⌘Z begins Zoom's (then Z, V, H, B), ⌃⌥⌘F
+  Float's (F, W, A), ⌃⌥⌘V Move's (1 to 9, ← →, N P), in every profile,
+  beside the single chords they had; the second key is pressed alone or
+  with the modifiers still down; Escape, any other key, a click or five
+  seconds lets go. While a group waits a panel at the foot of the
+  screen lists its keys (after a third of a second: keys typed straight
+  through show nothing). The menus show them beside their items
+  ("⌃⌥⌘Z  V"), apps' commands can have them too, and in Preferences ▸
+  Keyboard ▸ Shortcuts any shortcut can be given one: click it, type
+  its keys, then Add a Second Key. Agents: `{"type":"chord"}`.
+  **Deskbar's** application and workspace menus the same way: Show and
+  Hide, Move ▸ (workspaces, displays, an agent's screen), Show on
+  AirPlay ▸, grouping, Close last; said in the singular for one window.
+  **The pattern** is in HACKING and held by the kit's
+  `menu::review_groups` in every window's review, and by the window
+  menu's test. **Keys in menus and lists stand in a straight column**
+  now (the last key in a cell: every menu of Olo's), and a submenu's
+  first row is level with its item (it was a point low, in every
+  menu). `tools/dev/chord-check` goes through it live (41 checks).
+  Changed on the way, to know: ⌃⌥⌘F by itself no longer floats a window
+  (it begins Float's group: F again does); "Tile With" is Tile ▸ With
+  Another Window; Send to Back is at the menu's top; Preferences'
+  "Default Keys" is "All Default Keys", at the right of Add a Second
+  Key; `olo-preferences PANEL --tab NAME` opens any panel on that tab. Not done, to
+  decide: the panel in the menu's words (above), and what the two
+  reviews found that isn't this change's (above). The other menus were
+  looked through (the largest flat ones left are Tracker's file menu,
+  13 items as BeOS's had them, and Deskbar's Arrange, 12 in five
+  sections): left as they are.
 
 - **Windows snap into place as they're dragged** (Ben, 2026-11-18: "add
   support for window "snapping" when dragging so that e.g. if i drag to

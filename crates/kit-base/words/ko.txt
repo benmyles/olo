@@ -619,6 +619,9 @@ Google 계정 추가…
 Add a Kind
 종류 추가
 
+Add a Second Key
+두 번째 키 추가
+
 Add a Section…
 섹션 추가…
 
@@ -703,6 +706,9 @@ Cloudflare 속도 측정 서버와 송수신 방향별로 4개 연결을 열어 
 Agenda
 일정 목록
 
+Agent Screen
+에이전트 화면
+
 Agent Screen Logs
 에이전트 화면 로그
 
@@ -756,6 +762,9 @@ All Apps
 
 All Chats
 모든 채팅
+
+All Default Keys
+모든 기본 키
 
 All Imperial
 모두 야드파운드법
@@ -823,6 +832,12 @@ Alt
 Always Dark
 항상 어둡게
 
+Always Float Its Application
+이 응용 프로그램을 항상 플로팅으로
+
+Always Float {}
+{}을(를) 항상 플로팅으로
+
 Always Left
 항상 왼쪽
 
@@ -840,6 +855,9 @@ Always Where It Is
 
 Always a palm when as large as
 항상 손바닥으로 볼 최소 크기
+
+Always float the application, or not
+응용 프로그램의 창을 항상 플로팅으로 전환 또는 해제
 
 Always on Top
 항상 위
@@ -876,6 +894,9 @@ And {} more
 
 Anonymous identity:
 익명 ID:
+
+Another Window
+다른 창
 
 Another account
 다른 계정
@@ -2521,9 +2542,6 @@ Default (Preferences ▸ Power)
 Default Apps
 기본 앱
 
-Default Keys
-기본 키
-
 Default Message ({})
 기본 메시지 ({})
 
@@ -2923,6 +2941,9 @@ Downloading: {}
 Downloading…
 다운로드 중…
 
+Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
+창을 탭으로 끄는 동안 자리에 놓거나 그 자리의 글자를 누르면 창이 그곳으로 갑니다. 다른 창의 자리에 놓으면 두 창이 서로 바뀝니다. Escape를 누르면 모두 원래대로 돌아갑니다.
+
 Drag with:
 드래그 방식:
 
@@ -3207,6 +3228,9 @@ Erasing goes on by itself once it’s back, from where it got to.
 
 Erlang
 Erlang
+
+Esc cancels
+Esc로 취소
 
 Ethernet
 Ethernet
@@ -3592,11 +3616,23 @@ Flip Horizontal
 Flip Vertical
 상하 뒤집기
 
+Float
+플로팅
+
+Float Its Group
+그룹을 플로팅으로 전환
+
+Float This Window
+이 창을 플로팅으로 전환
+
 Float Window
 창을 플로팅으로 전환
 
 Float Window Group
 창 그룹을 플로팅으로 전환
+
+Float out of its group, or tile
+그룹에서 꺼내 플로팅으로 전환 또는 타일 배치
 
 Flurries
 눈발
@@ -4494,6 +4530,9 @@ Italic
 
 Item
 항목
+
+Its Group to Another Window
+그룹을 다른 창으로
 
 Its app password isn’t in the keyring: remove it and add it again.
 키 모음에 앱 암호가 없습니다. 계정을 제거하고 다시 추가하세요.
@@ -5578,6 +5617,9 @@ Mouse speed
 Move
 이동
 
+Move All
+모두 이동
+
 Move All Windows To
 모든 창 이동
 
@@ -5607,6 +5649,9 @@ Move To
 
 Move Up
 위로 이동
+
+Move Window
+창 이동
 
 Move Window To
 창 이동
@@ -5865,6 +5910,9 @@ Next Chat
 
 Next Day
 다음 날
+
+Next Display
+다음 디스플레이
 
 Next File
 다음 파일
@@ -6528,6 +6576,12 @@ Olo 창에는 바로 적용됩니다. 다른 프로그램은 해당 언어를 �
 
 On
 켬
+
+On AirPlay
+AirPlay로
+
+On All Workspaces
+모든 작업 공간에
 
 On Battery
 배터리 사용 시
@@ -7284,6 +7338,9 @@ Previous Chat
 
 Previous Day
 전날
+
+Previous Display
+이전 디스플레이
 
 Previous File
 이전 파일
@@ -9592,6 +9649,9 @@ The server’s CalDAV address, and the name and password it signs you in with. T
 The shell has ended.
 셸이 종료되었습니다.
 
+The shortcut you just gave keys can have a second, pressed after them: the first keys begin a group of shortcuts, the second picks one.
+방금 키를 지정한 단축키에는 그다음에 누르는 두 번째 키를 추가할 수 있습니다. 첫 번째 키가 단축키 그룹을 시작하고 두 번째 키가 그중 하나를 고릅니다.
+
 The sky and temperature now, and what's coming.
 현재 하늘 상태와 기온, 앞으로의 예보.
 
@@ -10197,6 +10257,9 @@ Type the PIN for “{}” (often 0000).
 
 Type the code “{}” shows on its screen.
 ‘{}’ 화면에 표시된 코드를 입력하세요.
+
+Type the key to press after {}. Esc leaves it as it is.
+{} 다음에 누를 키를 누르세요. Esc를 누르면 그대로 둡니다.
 
 Type the keys. Esc cancels; ⌫ removes them.
 키를 누르세요. Esc로 취소하고 ⌫로 삭제합니다.
@@ -10891,9 +10954,6 @@ While sharing or recording the screen (errors wait too)
 While uploading
 업로드 중
 
-Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
-창을 탭으로 끄는 동안 자리에 놓거나 그 자리의 글자를 누르면 창이 그곳으로 갑니다. 다른 창의 자리에 놓으면 두 창이 서로 바뀝니다. Escape를 누르면 모두 원래대로 돌아갑니다.
-
 Why
 이유
 
@@ -10980,6 +11040,9 @@ Wireless Router
 
 With AirPods:
 AirPods 사용 시:
+
+With Another Window
+다른 창과 함께
 
 Withdrawn by {}
 {}에서 철회함
@@ -11157,6 +11220,9 @@ Yours: fine-tuned {} times since it started
 
 Zig
 Zig
+
+Zoom
+확대/축소
 
 Zoom All
 모든 창 확대

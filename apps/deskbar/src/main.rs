@@ -1034,7 +1034,7 @@ impl Deskbar {
         if let Some(w) = self.focused_window().and_then(|id| self.windows.iter().find(|w| w.id == id))
             && count > 1
         {
-            let mut to = Menu::new("Move Window To");
+            let mut to = Menu::new("Move Window");
             for i in 0..count {
                 let name = self.workspace_name(w.output.as_deref(), i);
                 to = to.item(name, format!("arrange:window-to-workspace-{}", i + 1)).enabled(i != w.workspace);
@@ -1049,20 +1049,11 @@ impl Deskbar {
     /// another display, or to any workspace of any display.
     fn heading_menu(&self, display: Option<&str>, ws: u32) -> Menu {
         let any = self.windows_on(display).any(|w| w.workspace == ws);
-        let mut m = Menu::new(self.workspace_name(display, ws))
-            .item("Show All", format!("ws-show:{ws}"))
-            .enabled(any)
-            .item("Hide All", format!("ws-hide:{ws}"))
-            .enabled(any)
-            .item("Close All", format!("ws-close:{ws}"))
-            .enabled(any)
-            .separator();
+        // (As an application's menu: Show and Hide, Move All ▸, Close last.)
+        let mut m = Menu::new(self.workspace_name(display, ws)).item("Show All", format!("ws-show:{ws}")).enabled(any).item("Hide All", format!("ws-hide:{ws}")).enabled(any).separator();
         let mut displays: Vec<&OutputInfo> = self.outputs.iter().filter(|o| o.mirror_of.is_none()).collect();
         displays.sort_by_key(|o| o.position);
-        for d in displays.iter().filter(|d| Some(d.name.as_str()) != display) {
-            m = m.item(olo_kit::tr!("Move to {}", self.workspace_name(Some(&d.name), ws)), format!("ws-move:{ws}:{ws}:{}", d.name)).enabled(any);
-        }
-        let mut to = Menu::new("Move All Windows To");
+        let mut to = Menu::new("Move All");
         for (k, d) in displays.iter().enumerate() {
             if k > 0 {
                 to = to.separator();
@@ -1072,15 +1063,16 @@ impl Deskbar {
                 to = to.item(self.workspace_name(Some(&d.name), i), format!("ws-move:{ws}:{i}:{}", d.name)).enabled(any && !here);
             }
         }
-        m = m.submenu(to);
         // Or onto an agent screen, programs running on.
         if olo_kit::moving::menus_offer() && self.windows_on(display).any(|w| w.workspace == ws && w.kept) {
-            m = m.submenu(Menu::agent_screens("Move All Windows to Agent Screen", &self.status.agent_screens, &format!("ws-screen:{ws}:")));
+            to = to.separator().submenu(Menu::agent_screens("Agent Screen", &self.status.agent_screens, &format!("ws-screen:{ws}:")));
         }
+        m = m.submenu(to);
         // Live on a television, though the display shows another (Ben,
         // 2026-11-12: "a specific workspace … by right clicking the …
         // workspace").
-        m = m.separator().submenu(Menu::airplay("Show on AirPlay", &self.status.airplay_paired, &format!("ws-airplay:{ws}:")));
+        m = m.submenu(Menu::airplay("Show on AirPlay", &self.status.airplay_paired, &format!("ws-airplay:{ws}:")));
+        m = m.separator().item("Close All", format!("ws-close:{ws}")).enabled(any);
         m.separator().item(olo_kit::app_menu::settings_label("workspaces"), "pref:workspaces")
     }
 
@@ -1133,13 +1125,18 @@ impl Deskbar {
             m = m.separator().item("New Window", "new-window");
         }
         let app = team.windows.first().map(|w| w.app_id.clone()).unwrap_or_default();
-        m = m.separator().item("Hide All", "hide-all").item("Show All", "show-all").item("Close All", "close-all").separator();
-        // Its windows to any workspace of any display, as their tabs'
-        // menus move one.
+        // In the order every menu of Olo's has (HACKING, "Menus in
+        // groups"): what's done to them where they are, where they go
+        // (Move ▸), how they're kept together, and Close last.
+        // (Said of one window as of one: Show, Hide, Move, Close.)
         let several = team.windows.len() > 1;
+        m = m.separator().item(if several { "Show All" } else { "Show" }, "show-all").item(if several { "Hide All" } else { "Hide" }, "hide-all").separator();
+        // Its windows to any workspace of any display, another display,
+        // or an agent's screen, as their tabs' menus move one (Move ▸,
+        // its items named for where: the verb is the menu's).
         let mut displays: Vec<&OutputInfo> = self.outputs.iter().filter(|o| o.mirror_of.is_none()).collect();
         displays.sort_by_key(|o| o.position);
-        let mut to = Menu::new(if several { "Move All to Workspace" } else { "Move to Workspace" });
+        let mut to = Menu::new(if several { "Move All" } else { "Move" });
         for (k, d) in displays.iter().enumerate() {
             if k > 0 {
                 to = to.separator();
@@ -1149,16 +1146,14 @@ impl Deskbar {
                 to = to.item(self.workspace_name(Some(&d.name), i), format!("move:{i}:{}", d.name)).checked(there).enabled(!there);
             }
         }
-        m = m.submenu(to);
         if displays.len() > 1 {
-            m = m
-                .item(if several { "All to the Next Display" } else { "To the Next Display" }, "shortcut:next-display")
-                .item(if several { "All to the Previous Display" } else { "To the Previous Display" }, "shortcut:previous-display");
+            to = to.separator().item("Next Display", "shortcut:next-display").item("Previous Display", "shortcut:previous-display");
         }
-        // Or onto an agent screen, the program running on.
+        // (The program running on.)
         if olo_kit::moving::menus_offer() && team.windows.iter().any(|w| w.kept) {
-            m = m.submenu(Menu::agent_screens(if several { "Move All to Agent Screen" } else { "Move to Agent Screen" }, &self.status.agent_screens, ""));
+            to = to.separator().submenu(Menu::agent_screens("Agent Screen", &self.status.agent_screens, ""));
         }
+        m = m.submenu(to);
         // Live on a television (Ben, 2026-11-12: "integrated airplay … by
         // right clicking the … deskbar row"): its window, or one of them.
         let paired = &self.status.airplay_paired;
@@ -1177,7 +1172,9 @@ impl Deskbar {
         // changes based on the state"): grouped, Ungroup All; else Group All.
         let grouped = self.all_grouped(&team.windows, !self.tiling.ungrouped_apps.contains(&app));
         let (label, cmd) = if grouped { ("Ungroup All Windows", "ungroup-all") } else { ("Group All Windows", "group-all") };
-        m.separator().item(label, cmd).enabled(!app.is_empty())
+        // (With where they go, not a slab of its own: five groups for
+        // seven items read as a stack; Opus's look, 2026-11-20.)
+        m.item(label, cmd).enabled(!app.is_empty()).separator().item(if several { "Close All" } else { "Close" }, "close-all")
     }
 
     /// Whether all of a team's windows are grouped, as they show now:

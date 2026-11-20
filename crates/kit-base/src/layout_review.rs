@@ -655,8 +655,13 @@ fn crowded(p: &Parts, screen: Rect, ppp: f32, out: &mut Vec<Finding>) {
             if ra.expand(SAME).contains_rect(*rb) || rb.expand(SAME).contains_rect(*ra) || grid != grid_of(p, rb) || grid.is_some() {
                 continue;
             }
-            // (A line of text set in pieces, a word apart, is one line.)
-            if *ta && *tb && (ba - bb).abs() <= SAME {
+            // (A line of text set in pieces, a word apart, is one line; a
+            // piece set a device pixel off its line is on it still: a
+            // key's symbol stood on the capitals' line, `style::
+            // key_combo`'s ⇧, which at 1.5× is 0.67 pt from the comma's
+            // line two pieces on. Preferences ▸ Keyboard ▸ Shortcuts,
+            // "⌃⌥⇧↑,   ⌃⌥⇧↓", 2026-11-20.)
+            if *ta && *tb && (ba - bb).abs() <= touching + 0.01 {
                 continue;
             }
             if scrolls_past(ra, rb) || scrolls_past(rb, ra) {
@@ -1514,6 +1519,25 @@ mod tests {
         assert_eq!(found(&p), 1, "the button's own edge is no rule between");
         p.fills = vec![line(44.0, 44.5), line(44.5, 45.0)];
         assert_eq!(found(&p), 0, "an etched edge between them");
+    }
+
+    /// Pieces of one line of text aren't crowded with each other, one
+    /// set a device pixel off the line too (a key's symbol); text on
+    /// another line that near is.
+    #[test]
+    fn pieces_of_a_line_a_pixel_off_are_one_line() {
+        let found = |p: &Parts| review(p, 400.0, 300.0, 1.5).into_iter().filter(|f| f.kind == "crowded").count();
+        let piece = |label: &str, x: f32, width: f32, baseline: f32| {
+            let mut t = text(label, x, width);
+            t.rect = Rect::from_min_max(pos2(x, baseline - 9.0), pos2(x + width, baseline + 3.0));
+            (t.baseline, t.middle, t.size) = (baseline, baseline - 4.0, 12.0);
+            t
+        };
+        // ⇧ a device pixel (0.67 pt at 1.5×) under the comma's line, 4.7 pt from it.
+        let p = Parts { texts: vec![piece("⇧", 100.0, 9.0, 44.0 + 1.0 / 1.5), piece(",", 113.7, 3.0, 44.0)], ..Parts::default() };
+        assert_eq!(found(&p), 0, "one line");
+        let p = Parts { texts: vec![piece("⇧", 100.0, 9.0, 47.0), piece(",", 113.7, 3.0, 44.0)], ..Parts::default() };
+        assert_eq!(found(&p), 1, "another line, as near");
     }
 
     /// Two long lines a few points apart are found; a thin level bar's

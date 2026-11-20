@@ -5,6 +5,12 @@
 //! made to them. Keys are written "Ctrl+Cmd+Shift+Left" and are the
 //! physical ones: Cmd is the Super key (⌘ on a Mac, the Windows key,
 //! BeOS's Option), Alt is ⌥ (BeOS's command key).
+//!
+//! A shortcut's keys are one chord, or two pressed in turn ([`Keys`],
+//! written with a space between: "Ctrl+Alt+Cmd+Z V"): the first starts a
+//! group (Zoom, Float, Move), the second picks from it (Ben, 2026-11-18:
+//! "you do the first part to start Float/Move/etc and then the second
+//! part to select the specific option").
 
 use std::{collections::BTreeMap, fmt, str::FromStr};
 
@@ -218,6 +224,93 @@ impl FromStr for Chord {
     }
 }
 
+/// A shortcut's keys: a chord, or two pressed in turn (the first starts a
+/// group, whose others begin with it too; the second picks from the
+/// group). Written with a space between the two: "Ctrl+Alt+Cmd+Z V".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Keys {
+    pub first: Chord,
+    pub then: Option<Chord>,
+}
+
+impl Keys {
+    /// The chord, if it's all there is.
+    pub fn single(&self) -> Option<Chord> {
+        self.then.is_none().then_some(self.first)
+    }
+
+    /// As `platform` writes it, room between its two parts: "⌃⌥⌘Z  V",
+    /// "Win+Ctrl+Alt+Z  V" (two spaces: one was easy to miss at 1×,
+    /// where "⌃⌥⌘Z Z" read as a letter said twice; Astra's look,
+    /// 2026-11-20).
+    pub fn label(&self, platform: Platform) -> String {
+        match self.then {
+            Some(then) => format!("{}  {}", self.first.label(platform), then.label(platform)),
+            None => self.first.label(platform),
+        }
+    }
+
+    /// Several keys for one thing, as Preferences and the shortcuts
+    /// sheet list them: a comma and room between ("⌃⌥↵,   ⌃⌥⌘Z  Z":
+    /// more room than between the two parts of one).
+    pub fn labels(keys: &[Keys], platform: Platform) -> String {
+        keys.iter().map(|k| k.label(platform)).collect::<Vec<_>>().join(",   ")
+    }
+
+    /// Two shortcuts can't both have these: they're the same keys, or
+    /// one is the other's first part alone (a chord that is a shortcut
+    /// by itself can't start another).
+    pub fn clashes(&self, other: &Keys) -> bool {
+        self.first == other.first && (self.then.is_none() || other.then.is_none() || self.then == other.then)
+    }
+
+    /// The second chord as it's pressed after `self.first`: `pressed`
+    /// itself, or `pressed` with the first's modifiers still held (⌃⌥⌘Z,
+    /// then V before the fingers are off ⌃⌥⌘, is ⌃⌥⌘Z V).
+    pub fn picked_by(&self, pressed: Chord) -> bool {
+        let Some(then) = self.then else { return false };
+        let f = self.first;
+        let held = Chord { ctrl: then.ctrl || f.ctrl, alt: then.alt || f.alt, shift: then.shift || f.shift, cmd: then.cmd || f.cmd, key: then.key };
+        pressed == then || pressed == held
+    }
+}
+
+impl From<Chord> for Keys {
+    fn from(first: Chord) -> Keys {
+        Keys { first, then: None }
+    }
+}
+
+impl PartialEq<Chord> for Keys {
+    fn eq(&self, other: &Chord) -> bool {
+        self.single() == Some(*other)
+    }
+}
+
+impl fmt::Display for Keys {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.first)?;
+        match self.then {
+            Some(then) => write!(f, " {then}"),
+            None => Ok(()),
+        }
+    }
+}
+
+impl FromStr for Keys {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Keys, String> {
+        let mut parts = s.split_whitespace();
+        let first = parts.next().ok_or_else(|| format!("no keys in {s:?}"))?.parse()?;
+        let then = parts.next().map(str::parse).transpose()?;
+        match parts.next() {
+            Some(_) => Err(format!("more than two parts in {s:?}")),
+            None => Ok(Keys { first, then }),
+        }
+    }
+}
+
 /// A direction on screen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -258,8 +351,15 @@ pub enum Shortcut {
     Restore,
     /// The focused window to the middle of its display.
     Center,
-    /// Float the focused window over auto-tiled ones, or tile it again.
+    /// Float the focused window over auto-tiled ones, or tile it again
+    /// (its group with it, if it's in one).
     Float,
+    /// Float the focused window alone (out of its group, if it's in
+    /// one), or tile it again.
+    FloatAlone,
+    /// The focused window's app's windows always float, or no longer do
+    /// (`TilingSettings::floating_apps`).
+    FloatApp,
     /// Main and Stack: the focused window is the main one, in the main
     /// window's place; the one that was takes its place in the stack.
     MakeMain,
@@ -735,7 +835,7 @@ pub struct ShortcutInfo {
 
 impl ShortcutInfo {
     /// Its keys on `platform`, as it comes.
-    pub fn default_keys(&self, platform: Platform) -> Vec<Chord> {
+    pub fn default_keys(&self, platform: Platform) -> Vec<Keys> {
         self.keys[platform.index()].iter().filter_map(|k| k.parse().ok()).collect()
     }
 }
@@ -783,13 +883,35 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::Tile(Tile::RightTwoThirds), "tile-right-two-thirds", WINDOWS, "Right two thirds", &["Ctrl+Alt+T"], &["Alt+Cmd+R"], &["Ctrl+Cmd+T"]),
     s(Shortcut::Tile(Tile::TopTwoThirds), "tile-top-two-thirds", WINDOWS, "Top two thirds", &["Ctrl+Alt+Y"], &["Alt+Cmd+Y"], &["Ctrl+Cmd+Y"]),
     s(Shortcut::Tile(Tile::BottomTwoThirds), "tile-bottom-two-thirds", WINDOWS, "Bottom two thirds", &["Ctrl+Alt+B"], &["Alt+Cmd+B"], &["Ctrl+Cmd+B"]),
-    s(Shortcut::Zoom, "zoom", WINDOWS, "Zoom or unzoom", &["Ctrl+Alt+Return"], &["Cmd+Up"], &["Ctrl+Alt+Z"]),
-    s(Shortcut::ZoomVertical, "zoom-vertical", WINDOWS, "Zoom vertically", &["Ctrl+Alt+Shift+Up", "Ctrl+Alt+Shift+Down"], &["Shift+Cmd+Up"], &["Ctrl+Shift+Cmd+Up", "Ctrl+Shift+Cmd+Down"]),
-    s(Shortcut::ZoomHorizontal, "zoom-horizontal", WINDOWS, "Zoom horizontally", &["Ctrl+Alt+Shift+Left", "Ctrl+Alt+Shift+Right"], &[], &["Ctrl+Shift+Cmd+Left", "Ctrl+Shift+Cmd+Right"]),
-    s(Shortcut::Restore, "restore", WINDOWS, "Back to its own size", &["Ctrl+Alt+Backspace"], &[], &["Ctrl+Cmd+Backspace"]),
+    // Zoom's four are a group besides, begun by ⌃⌥⌘Z in every profile
+    // (as Float's by ⌃⌥⌘F and Move's by ⌃⌥⌘V: `Keys`, `menu_of`).
+    s(Shortcut::Zoom, "zoom", WINDOWS, "Zoom or unzoom", &["Ctrl+Alt+Return", "Ctrl+Alt+Cmd+Z Z"], &["Cmd+Up", "Ctrl+Alt+Cmd+Z Z"], &["Ctrl+Alt+Z", "Ctrl+Alt+Cmd+Z Z"]),
+    s(
+        Shortcut::ZoomVertical,
+        "zoom-vertical",
+        WINDOWS,
+        "Zoom vertically",
+        &["Ctrl+Alt+Shift+Up", "Ctrl+Alt+Shift+Down", "Ctrl+Alt+Cmd+Z V"],
+        &["Shift+Cmd+Up", "Ctrl+Alt+Cmd+Z V"],
+        &["Ctrl+Shift+Cmd+Up", "Ctrl+Shift+Cmd+Down", "Ctrl+Alt+Cmd+Z V"],
+    ),
+    s(
+        Shortcut::ZoomHorizontal,
+        "zoom-horizontal",
+        WINDOWS,
+        "Zoom horizontally",
+        &["Ctrl+Alt+Shift+Left", "Ctrl+Alt+Shift+Right", "Ctrl+Alt+Cmd+Z H"],
+        &["Ctrl+Alt+Cmd+Z H"],
+        &["Ctrl+Shift+Cmd+Left", "Ctrl+Shift+Cmd+Right", "Ctrl+Alt+Cmd+Z H"],
+    ),
+    s(Shortcut::Restore, "restore", WINDOWS, "Back to its own size", &["Ctrl+Alt+Backspace", "Ctrl+Alt+Cmd+Z B"], &["Ctrl+Alt+Cmd+Z B"], &["Ctrl+Cmd+Backspace", "Ctrl+Alt+Cmd+Z B"]),
     s(Shortcut::RestoreOrHide, "restore-or-hide", WINDOWS, "Back to its own size, or hide", &[], &["Cmd+Down"], &[]),
     s(Shortcut::Center, "center", WINDOWS, "Center", &["Ctrl+Alt+C"], &["Alt+Cmd+C"], &["Ctrl+Cmd+C"]),
-    s(Shortcut::Float, "float-window", WINDOWS, "Float over the tiles, or tile", &["Ctrl+Alt+Cmd+F"], &["Ctrl+Alt+Cmd+F"], &["Ctrl+Alt+Cmd+F"]),
+    // (⌃⌥⌘F by itself floated a window, until Float was a group: F again
+    // does what it did.)
+    s(Shortcut::Float, "float-window", WINDOWS, "Float over the tiles, or tile", &["Ctrl+Alt+Cmd+F F"], &["Ctrl+Alt+Cmd+F F"], &["Ctrl+Alt+Cmd+F F"]),
+    s(Shortcut::FloatAlone, "float-alone", WINDOWS, "Float out of its group, or tile", &["Ctrl+Alt+Cmd+F W"], &["Ctrl+Alt+Cmd+F W"], &["Ctrl+Alt+Cmd+F W"]),
+    s(Shortcut::FloatApp, "float-app", WINDOWS, "Always float the application, or not", &["Ctrl+Alt+Cmd+F A"], &["Ctrl+Alt+Cmd+F A"], &["Ctrl+Alt+Cmd+F A"]),
     s(Shortcut::MakeMain, "make-main", WINDOWS, "Make it the main window", &["Ctrl+Alt+Cmd+M"], &["Ctrl+Alt+Cmd+M"], &["Ctrl+Alt+Cmd+M"]),
     s(Shortcut::PinMain, "pin-main", WINDOWS, "Pin it as the main window, or let it go", &["Ctrl+Alt+Shift+Cmd+M"], &["Ctrl+Alt+Shift+Cmd+M"], &["Ctrl+Alt+Shift+Cmd+M"]),
     s(Shortcut::SwapMain, "swap-main", WINDOWS, "Swap with the previous main window", &["Ctrl+Alt+Cmd+Backspace"], &["Ctrl+Alt+Cmd+Backspace"], &["Ctrl+Alt+Cmd+Backspace"]),
@@ -842,8 +964,24 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::CloseWindow, "close-window", WINDOWS, "Close the window", &[], &["Alt+F4"], &[]),
     s(Shortcut::NextTab, "next-tab", WINDOWS, "Next tab in the window", &["Ctrl+Tab"], &["Ctrl+Tab"], &["Cmd+Tab"]),
     s(Shortcut::PreviousTab, "previous-tab", WINDOWS, "Previous tab in the window", &["Ctrl+Shift+Tab"], &["Ctrl+Shift+Tab"], &["Shift+Cmd+Tab"]),
-    s(Shortcut::NextDisplay, "next-display", WINDOWS, "To the next display", &["Ctrl+Alt+Cmd+Right"], &["Shift+Cmd+Right"], &["Ctrl+Alt+Cmd+Right"]),
-    s(Shortcut::PreviousDisplay, "previous-display", WINDOWS, "To the previous display", &["Ctrl+Alt+Cmd+Left"], &["Shift+Cmd+Left"], &["Ctrl+Alt+Cmd+Left"]),
+    s(
+        Shortcut::NextDisplay,
+        "next-display",
+        WINDOWS,
+        "To the next display",
+        &["Ctrl+Alt+Cmd+Right", "Ctrl+Alt+Cmd+V N"],
+        &["Shift+Cmd+Right", "Ctrl+Alt+Cmd+V N"],
+        &["Ctrl+Alt+Cmd+Right", "Ctrl+Alt+Cmd+V N"],
+    ),
+    s(
+        Shortcut::PreviousDisplay,
+        "previous-display",
+        WINDOWS,
+        "To the previous display",
+        &["Ctrl+Alt+Cmd+Left", "Ctrl+Alt+Cmd+V P"],
+        &["Shift+Cmd+Left", "Ctrl+Alt+Cmd+V P"],
+        &["Ctrl+Alt+Cmd+Left", "Ctrl+Alt+Cmd+V P"],
+    ),
     s(Shortcut::TileAll, "tile-all", ARRANGE, "Tile all windows on the display", &["Ctrl+Cmd+Return"], &["Alt+Cmd+Return"], &["Ctrl+Cmd+Return"]),
     s(Shortcut::AutoTile, "auto-tiling", ARRANGE, "Auto-tiling on or off", &["Ctrl+Alt+Cmd+T"], &["Alt+Cmd+T"], &["Ctrl+Alt+Cmd+T"]),
     s(Shortcut::FocusMode, "focus-mode", ARRANGE, "Focus mode on or off", &["Ctrl+Alt+Cmd+O"], &["Alt+Cmd+O"], &["Ctrl+Alt+Cmd+O"]),
@@ -857,8 +995,24 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::ShowDesktop, "show-desktop", ARRANGE, "Show the desktop", &["Cmd+F3"], &["Cmd+D"], &["Ctrl+Alt+D"]),
     s(Shortcut::NextWorkspace, "next-workspace", WORKSPACES, "Next workspace", &["Ctrl+Right"], &["Ctrl+Cmd+Right"], &["Ctrl+Alt+Right"]),
     s(Shortcut::PreviousWorkspace, "previous-workspace", WORKSPACES, "Previous workspace", &["Ctrl+Left"], &["Ctrl+Cmd+Left"], &["Ctrl+Alt+Left"]),
-    s(Shortcut::WindowToNextWorkspace, "window-to-next-workspace", WORKSPACES, "Window to the next workspace", &["Ctrl+Shift+Right"], &["Ctrl+Shift+Cmd+Right"], &["Ctrl+Alt+Shift+Right"]),
-    s(Shortcut::WindowToPreviousWorkspace, "window-to-previous-workspace", WORKSPACES, "Window to the previous workspace", &["Ctrl+Shift+Left"], &["Ctrl+Shift+Cmd+Left"], &["Ctrl+Alt+Shift+Left"]),
+    s(
+        Shortcut::WindowToNextWorkspace,
+        "window-to-next-workspace",
+        WORKSPACES,
+        "Window to the next workspace",
+        &["Ctrl+Shift+Right", "Ctrl+Alt+Cmd+V Right"],
+        &["Ctrl+Shift+Cmd+Right", "Ctrl+Alt+Cmd+V Right"],
+        &["Ctrl+Alt+Shift+Right", "Ctrl+Alt+Cmd+V Right"],
+    ),
+    s(
+        Shortcut::WindowToPreviousWorkspace,
+        "window-to-previous-workspace",
+        WORKSPACES,
+        "Window to the previous workspace",
+        &["Ctrl+Shift+Left", "Ctrl+Alt+Cmd+V Left"],
+        &["Ctrl+Shift+Cmd+Left", "Ctrl+Alt+Cmd+V Left"],
+        &["Ctrl+Alt+Shift+Left", "Ctrl+Alt+Cmd+V Left"],
+    ),
     s(Shortcut::Workspace(0), "workspace-1", WORKSPACES, "Workspace 1", &["Ctrl+1"], &["Ctrl+Cmd+1"], &["Alt+F1"]),
     s(Shortcut::Workspace(1), "workspace-2", WORKSPACES, "Workspace 2", &["Ctrl+2"], &["Ctrl+Cmd+2"], &["Alt+F2"]),
     s(Shortcut::Workspace(2), "workspace-3", WORKSPACES, "Workspace 3", &["Ctrl+3"], &["Ctrl+Cmd+3"], &["Alt+F3"]),
@@ -868,15 +1022,87 @@ pub const SHORTCUTS: &[ShortcutInfo] = &[
     s(Shortcut::Workspace(6), "workspace-7", WORKSPACES, "Workspace 7", &["Ctrl+7"], &["Ctrl+Cmd+7"], &["Alt+F7"]),
     s(Shortcut::Workspace(7), "workspace-8", WORKSPACES, "Workspace 8", &["Ctrl+8"], &["Ctrl+Cmd+8"], &["Alt+F8"]),
     s(Shortcut::Workspace(8), "workspace-9", WORKSPACES, "Workspace 9", &["Ctrl+9"], &["Ctrl+Cmd+9"], &["Alt+F9"]),
-    s(Shortcut::WindowToWorkspace(0), "window-to-workspace-1", WORKSPACES, "Window to workspace 1", &["Ctrl+Shift+1"], &["Ctrl+Shift+Cmd+1"], &["Alt+Shift+F1"]),
-    s(Shortcut::WindowToWorkspace(1), "window-to-workspace-2", WORKSPACES, "Window to workspace 2", &["Ctrl+Shift+2"], &["Ctrl+Shift+Cmd+2"], &["Alt+Shift+F2"]),
-    s(Shortcut::WindowToWorkspace(2), "window-to-workspace-3", WORKSPACES, "Window to workspace 3", &["Ctrl+Shift+3"], &["Ctrl+Shift+Cmd+3"], &["Alt+Shift+F3"]),
-    s(Shortcut::WindowToWorkspace(3), "window-to-workspace-4", WORKSPACES, "Window to workspace 4", &["Ctrl+Shift+4"], &["Ctrl+Shift+Cmd+4"], &["Alt+Shift+F4"]),
-    s(Shortcut::WindowToWorkspace(4), "window-to-workspace-5", WORKSPACES, "Window to workspace 5", &["Ctrl+Shift+5"], &["Ctrl+Shift+Cmd+5"], &["Alt+Shift+F5"]),
-    s(Shortcut::WindowToWorkspace(5), "window-to-workspace-6", WORKSPACES, "Window to workspace 6", &["Ctrl+Shift+6"], &["Ctrl+Shift+Cmd+6"], &["Alt+Shift+F6"]),
-    s(Shortcut::WindowToWorkspace(6), "window-to-workspace-7", WORKSPACES, "Window to workspace 7", &["Ctrl+Shift+7"], &["Ctrl+Shift+Cmd+7"], &["Alt+Shift+F7"]),
-    s(Shortcut::WindowToWorkspace(7), "window-to-workspace-8", WORKSPACES, "Window to workspace 8", &["Ctrl+Shift+8"], &["Ctrl+Shift+Cmd+8"], &["Alt+Shift+F8"]),
-    s(Shortcut::WindowToWorkspace(8), "window-to-workspace-9", WORKSPACES, "Window to workspace 9", &["Ctrl+Shift+9"], &["Ctrl+Shift+Cmd+9"], &["Alt+Shift+F9"]),
+    s(
+        Shortcut::WindowToWorkspace(0),
+        "window-to-workspace-1",
+        WORKSPACES,
+        "Window to workspace 1",
+        &["Ctrl+Shift+1", "Ctrl+Alt+Cmd+V 1"],
+        &["Ctrl+Shift+Cmd+1", "Ctrl+Alt+Cmd+V 1"],
+        &["Alt+Shift+F1", "Ctrl+Alt+Cmd+V 1"],
+    ),
+    s(
+        Shortcut::WindowToWorkspace(1),
+        "window-to-workspace-2",
+        WORKSPACES,
+        "Window to workspace 2",
+        &["Ctrl+Shift+2", "Ctrl+Alt+Cmd+V 2"],
+        &["Ctrl+Shift+Cmd+2", "Ctrl+Alt+Cmd+V 2"],
+        &["Alt+Shift+F2", "Ctrl+Alt+Cmd+V 2"],
+    ),
+    s(
+        Shortcut::WindowToWorkspace(2),
+        "window-to-workspace-3",
+        WORKSPACES,
+        "Window to workspace 3",
+        &["Ctrl+Shift+3", "Ctrl+Alt+Cmd+V 3"],
+        &["Ctrl+Shift+Cmd+3", "Ctrl+Alt+Cmd+V 3"],
+        &["Alt+Shift+F3", "Ctrl+Alt+Cmd+V 3"],
+    ),
+    s(
+        Shortcut::WindowToWorkspace(3),
+        "window-to-workspace-4",
+        WORKSPACES,
+        "Window to workspace 4",
+        &["Ctrl+Shift+4", "Ctrl+Alt+Cmd+V 4"],
+        &["Ctrl+Shift+Cmd+4", "Ctrl+Alt+Cmd+V 4"],
+        &["Alt+Shift+F4", "Ctrl+Alt+Cmd+V 4"],
+    ),
+    s(
+        Shortcut::WindowToWorkspace(4),
+        "window-to-workspace-5",
+        WORKSPACES,
+        "Window to workspace 5",
+        &["Ctrl+Shift+5", "Ctrl+Alt+Cmd+V 5"],
+        &["Ctrl+Shift+Cmd+5", "Ctrl+Alt+Cmd+V 5"],
+        &["Alt+Shift+F5", "Ctrl+Alt+Cmd+V 5"],
+    ),
+    s(
+        Shortcut::WindowToWorkspace(5),
+        "window-to-workspace-6",
+        WORKSPACES,
+        "Window to workspace 6",
+        &["Ctrl+Shift+6", "Ctrl+Alt+Cmd+V 6"],
+        &["Ctrl+Shift+Cmd+6", "Ctrl+Alt+Cmd+V 6"],
+        &["Alt+Shift+F6", "Ctrl+Alt+Cmd+V 6"],
+    ),
+    s(
+        Shortcut::WindowToWorkspace(6),
+        "window-to-workspace-7",
+        WORKSPACES,
+        "Window to workspace 7",
+        &["Ctrl+Shift+7", "Ctrl+Alt+Cmd+V 7"],
+        &["Ctrl+Shift+Cmd+7", "Ctrl+Alt+Cmd+V 7"],
+        &["Alt+Shift+F7", "Ctrl+Alt+Cmd+V 7"],
+    ),
+    s(
+        Shortcut::WindowToWorkspace(7),
+        "window-to-workspace-8",
+        WORKSPACES,
+        "Window to workspace 8",
+        &["Ctrl+Shift+8", "Ctrl+Alt+Cmd+V 8"],
+        &["Ctrl+Shift+Cmd+8", "Ctrl+Alt+Cmd+V 8"],
+        &["Alt+Shift+F8", "Ctrl+Alt+Cmd+V 8"],
+    ),
+    s(
+        Shortcut::WindowToWorkspace(8),
+        "window-to-workspace-9",
+        WORKSPACES,
+        "Window to workspace 9",
+        &["Ctrl+Shift+9", "Ctrl+Alt+Cmd+V 9"],
+        &["Ctrl+Shift+Cmd+9", "Ctrl+Alt+Cmd+V 9"],
+        &["Alt+Shift+F9", "Ctrl+Alt+Cmd+V 9"],
+    ),
     s(Shortcut::SwitchApps, "switch-apps", SWITCHING, "Switch applications (Twitcher)", &["Cmd+Tab"], &["Alt+Tab"], &["Ctrl+Tab"]),
     s(Shortcut::SwitchAppsHere, "switch-apps-here", SWITCHING, "Switch applications on the workspaces showing", &["Alt+Tab"], &[], &[]),
     s(Shortcut::SwitchWindows, "switch-windows", SWITCHING, "Switch windows of the application", &["Cmd+Grave"], &["Alt+Grave"], &["Ctrl+Grave"]),
@@ -910,25 +1136,64 @@ pub const GROUPS: &[&str] = &[WINDOWS, ARRANGE, WORKSPACES, SWITCHING, DESKTOP, 
 pub type ShortcutSettings = BTreeMap<String, Vec<String>>;
 
 /// The keys of a shortcut in `profile`.
-pub fn keys_for(info: &ShortcutInfo, profile: &KeyboardProfile) -> Vec<Chord> {
+pub fn keys_for(info: &ShortcutInfo, profile: &KeyboardProfile) -> Vec<Keys> {
     match profile.shortcuts.get(info.id) {
         Some(keys) => keys.iter().filter_map(|k| k.parse().ok()).collect(),
         None => info.default_keys(profile.platform),
     }
 }
 
-/// Every chord and what it does in `profile` (the first shortcut wins a
-/// clash).
-pub fn bindings(profile: &KeyboardProfile) -> Vec<(Chord, Shortcut)> {
-    let mut out: Vec<(Chord, Shortcut)> = Vec::new();
-    for info in SHORTCUTS {
-        for c in keys_for(info, profile) {
-            if !out.iter().any(|(o, _)| *o == c) {
-                out.push((c, info.action));
+/// Every shortcut's keys and what they do in `profile` (the first
+/// shortcut wins a clash).
+pub fn bindings(profile: &KeyboardProfile) -> Vec<(Keys, Shortcut)> {
+    let mut out: Vec<(Keys, Shortcut)> = Vec::new();
+    // What the person chose before what comes with the platform: a chord
+    // they gave a shortcut isn't taken from it by a group that begins
+    // with that chord in a newer Olo.
+    for chosen in [true, false] {
+        for info in SHORTCUTS.iter().filter(|i| profile.shortcuts.contains_key(i.id) == chosen) {
+            for c in keys_for(info, profile) {
+                if !out.iter().any(|(o, _)| o.clashes(&c)) {
+                    out.push((c, info.action));
+                }
             }
         }
     }
     out
+}
+
+/// The submenu of the window menu a shortcut is in (by its id): what a
+/// group begun by a first chord is called while it waits for its second
+/// (app_server's `chord`), if everything the chord begins is in one.
+pub fn menu_of(id: &str) -> Option<&'static str> {
+    match id {
+        "zoom" | "zoom-vertical" | "zoom-horizontal" | "restore" => Some("Zoom"),
+        "float-window" | "float-alone" | "float-app" => Some("Float"),
+        "next-display" | "previous-display" | "window-to-next-workspace" | "window-to-previous-workspace" => Some("Move"),
+        id if id.starts_with("window-to-workspace-") => Some("Move"),
+        _ => None,
+    }
+}
+
+/// What a first chord begins in `profile`: each second chord and its
+/// shortcut, the number keys first (as Move's menu has its workspaces),
+/// in the order Preferences lists them otherwise, and what the group is
+/// called (if all of it is one menu's). Empty: the chord begins nothing.
+pub fn begun_by(first: Chord, profile: &KeyboardProfile) -> (Option<&'static str>, Vec<(Chord, &'static ShortcutInfo)>) {
+    let mut out: Vec<(Chord, &'static ShortcutInfo)> = Vec::new();
+    for info in SHORTCUTS {
+        for k in keys_for(info, profile) {
+            if let Some(then) = k.then.filter(|_| k.first == first)
+                && !out.iter().any(|(c, _)| *c == then)
+            {
+                out.push((then, info));
+            }
+        }
+    }
+    // (1 to 9 and 0: the top row's keys, 2 to 11.)
+    out.sort_by_key(|(c, _)| !(2..=11).contains(&c.key));
+    let name = out.first().and_then(|(_, i)| menu_of(i.id)).filter(|n| out.iter().all(|(_, i)| menu_of(i.id) == Some(*n)));
+    (name, out)
 }
 
 /// Any shortcut, app_server's or an app's, as Preferences and the
@@ -944,12 +1209,12 @@ pub struct Entry {
 }
 
 impl Entry {
-    pub fn default_keys(&self, platform: Platform) -> Vec<Chord> {
+    pub fn default_keys(&self, platform: Platform) -> Vec<Keys> {
         self.defaults[platform.index()].iter().filter_map(|k| k.parse().ok()).collect()
     }
 
     /// Its keys in `profile`.
-    pub fn keys(&self, profile: &KeyboardProfile) -> Vec<Chord> {
+    pub fn keys(&self, profile: &KeyboardProfile) -> Vec<Keys> {
         match profile.shortcuts.get(self.id) {
             Some(keys) => keys.iter().filter_map(|k| k.parse().ok()).collect(),
             None => self.default_keys(profile.platform),
@@ -979,23 +1244,25 @@ pub fn entry(id: &str) -> Option<Entry> {
     entries().find(|e| e.id == id)
 }
 
-/// Give shortcut `id` (app_server's or an app's) just `chord` (None: no
-/// keys) in `profile`, taking it from any other it would clash with.
-/// Returns the titles of those it was taken from.
-pub fn assign(profile: &mut KeyboardProfile, id: &str, chord: Option<Chord>) -> Vec<&'static str> {
+/// Give shortcut `id` (app_server's or an app's) just `keys` (None: no
+/// keys) in `profile`, taking them from any other they would clash with
+/// (the same keys; or one of them the other's first part alone: a chord
+/// that is a shortcut by itself can't begin another). Returns the titles
+/// of those they were taken from.
+pub fn assign(profile: &mut KeyboardProfile, id: &str, keys: Option<Keys>) -> Vec<&'static str> {
     let mut taken = Vec::new();
     let Some(this) = entry(id) else { return taken };
-    if let Some(c) = chord {
+    if let Some(c) = keys {
         for other in entries().filter(|e| e.id != id && e.clashes_with(&this)) {
-            let keys = other.keys(profile);
-            if keys.contains(&c) {
-                let rest: Vec<String> = keys.iter().filter(|k| **k != c).map(|k| k.to_string()).collect();
+            let theirs = other.keys(profile);
+            if theirs.iter().any(|k| k.clashes(&c)) {
+                let rest: Vec<String> = theirs.iter().filter(|k| !k.clashes(&c)).map(|k| k.to_string()).collect();
                 profile.shortcuts.insert(other.id.to_owned(), rest);
                 taken.push(other.title);
             }
         }
     }
-    profile.shortcuts.insert(id.to_owned(), chord.into_iter().map(|c| c.to_string()).collect());
+    profile.shortcuts.insert(id.to_owned(), keys.into_iter().map(|c| c.to_string()).collect());
     // Back to the platform's: nothing to keep.
     for e in entries() {
         if profile.shortcuts.get(e.id).is_some_and(|_| e.keys(profile) == e.default_keys(profile.platform)) {
@@ -1617,7 +1884,7 @@ mod tests {
     fn chords_round_trip() {
         for info in SHORTCUTS {
             for k in info.keys.iter().copied().flatten() {
-                let c: Chord = k.parse().unwrap_or_else(|e| panic!("{}: {e}", info.id));
+                let c: Keys = k.parse().unwrap_or_else(|e| panic!("{}: {e}", info.id));
                 assert_eq!(c.to_string(), *k, "{}", info.id);
             }
         }
@@ -1632,6 +1899,60 @@ mod tests {
         assert_eq!(c.label(Platform::Beos), "Ctrl+Opt+Shift+←");
         assert_eq!("Ctrl+Alt+Delete".parse::<Chord>().unwrap().label(Platform::Beos), "Ctrl+Alt+Del");
         assert_eq!("win+s".parse::<Chord>().unwrap().label(Platform::Windows), "Win+S");
+    }
+
+    /// Keys of two parts: written with a space, labelled as each
+    /// platform writes chords; the second pressed alone or with the
+    /// first's modifiers still held; a chord that is a shortcut by itself
+    /// can't begin another; and what a first chord begins, by name.
+    #[test]
+    fn keys_of_two_parts() {
+        let k: Keys = "Ctrl+Alt+Cmd+Z V".parse().unwrap();
+        assert_eq!((k.first, k.then), ("Ctrl+Alt+Cmd+Z".parse().unwrap(), Some("V".parse().unwrap())));
+        assert_eq!((k.to_string(), k.single()), ("Ctrl+Alt+Cmd+Z V".to_owned(), None));
+        assert_eq!((k.label(Platform::Mac), k.label(Platform::Windows), k.label(Platform::Beos)), ("⌃⌥⌘Z  V".to_owned(), "Win+Ctrl+Alt+Z  V".to_owned(), "Ctrl+Alt+Opt+Z  V".to_owned()));
+        let one: Keys = "Ctrl+Alt+Return".parse().unwrap();
+        assert_eq!((one.single(), one.label(Platform::Mac)), (Some("Ctrl+Alt+Return".parse().unwrap()), "⌃⌥↵".to_owned()));
+        assert!("Cmd+K Cmd+S Cmd+X".parse::<Keys>().is_err() && "".parse::<Keys>().is_err() && "Cmd+K Nope".parse::<Keys>().is_err());
+        // The second key, alone or with what the first held.
+        let c = |s: &str| s.parse::<Chord>().unwrap();
+        assert!(k.picked_by(c("V")) && k.picked_by(c("Ctrl+Alt+Cmd+V")) && !k.picked_by(c("Shift+V")) && !k.picked_by(c("Ctrl+V")) && !k.picked_by(c("H")));
+        assert!(!one.picked_by(c("Return")));
+        // Clashes: the same keys; a chord alone and what would begin with it.
+        let z: Keys = "Ctrl+Alt+Cmd+Z".parse().unwrap();
+        assert!(k.clashes(&k) && k.clashes(&z) && z.clashes(&k) && !k.clashes(&"Ctrl+Alt+Cmd+Z H".parse().unwrap()) && !k.clashes(&"Ctrl+Alt+Cmd+F V".parse().unwrap()));
+        // What ⌃⌥⌘Z begins on a Mac: Zoom's four, by that name.
+        let p = KeyboardProfile::default();
+        let (name, group) = begun_by(c("Ctrl+Alt+Cmd+Z"), &p);
+        assert_eq!(name, Some("Zoom"));
+        assert_eq!(
+            group.iter().map(|(then, i)| (then.to_string(), i.id)).collect::<Vec<_>>(),
+            [("Z".to_owned(), "zoom"), ("V".to_owned(), "zoom-vertical"), ("H".to_owned(), "zoom-horizontal"), ("B".to_owned(), "restore")]
+        );
+        assert_eq!(begun_by(c("Ctrl+Alt+Cmd+F"), &p).0, Some("Float"));
+        let (name, moves) = begun_by(c("Ctrl+Alt+Cmd+V"), &p);
+        assert_eq!((name, moves.len()), (Some("Move"), 13));
+        // (The number keys first, as Move's menu has its workspaces.)
+        assert_eq!((moves[0].0.key, moves[0].1.id, moves[8].1.id, moves[9].1.id), (2, "window-to-workspace-1", "window-to-workspace-9", "next-display"));
+        assert!(begun_by(c("Ctrl+Alt+Return"), &p).1.is_empty());
+        // Both of a shortcut's keys work.
+        let b = bindings(&p);
+        assert!(b.contains(&(one, Shortcut::Zoom)) && b.contains(&("Ctrl+Alt+Cmd+Z Z".parse().unwrap(), Shortcut::Zoom)));
+        // A chord the person gave a shortcut is theirs: nothing begins
+        // with it any more (it is taken from Zoom's four), and one from
+        // a profile saved before the groups keeps it too.
+        let mut p = KeyboardProfile::default();
+        assert_eq!(assign(&mut p, "lock", Some(z)), ["Zoom or unzoom", "Zoom vertically", "Zoom horizontally", "Back to its own size"]);
+        assert!(begun_by(c("Ctrl+Alt+Cmd+Z"), &p).1.is_empty() && bindings(&p).contains(&(z, Shortcut::Lock)));
+        assert_eq!(entry("zoom").unwrap().keys(&p), [one]);
+        let mut old = KeyboardProfile::default();
+        old.shortcuts.insert("caffeinate".into(), vec!["Ctrl+Alt+Cmd+V".into()]);
+        let b = bindings(&old);
+        assert!(b.contains(&("Ctrl+Alt+Cmd+V".parse().unwrap(), Shortcut::Caffeinate)) && !b.iter().any(|(k, _)| k.first == c("Ctrl+Alt+Cmd+V") && k.then.is_some()));
+        // And a group can be begun by another chord: its members given it.
+        let mut p = KeyboardProfile::default();
+        assert!(assign(&mut p, "zoom", "Ctrl+Alt+Q Z".parse().ok()).is_empty());
+        assert_eq!(begun_by(c("Ctrl+Alt+Q"), &p).1.len(), 1);
     }
 
     #[test]
@@ -1653,10 +1974,10 @@ mod tests {
     #[test]
     fn defaults_never_clash() {
         for platform in Platform::ALL {
-            let all: Vec<Chord> = SHORTCUTS.iter().flat_map(|i| i.default_keys(platform)).collect();
+            let all: Vec<Keys> = SHORTCUTS.iter().flat_map(|i| i.default_keys(platform)).collect();
             assert_eq!(all.len(), SHORTCUTS.iter().map(|i| i.keys[platform.index()].len()).sum::<usize>(), "{platform:?}: a key doesn't parse");
             for (i, c) in all.iter().enumerate() {
-                assert!(!all[i + 1..].contains(c), "{platform:?}: {c} is used twice");
+                assert!(!all[i + 1..].iter().any(|o| o.clashes(c)), "{platform:?}: {c} is used twice, or begins another");
             }
         }
         let ids: std::collections::HashSet<&str> = SHORTCUTS.iter().map(|i| i.id).collect();
@@ -1709,7 +2030,7 @@ mod tests {
     #[test]
     fn assigning_takes_keys_from_others() {
         let mut p = KeyboardProfile::default();
-        let c: Chord = "Ctrl+Alt+Left".parse().unwrap();
+        let c: Keys = "Ctrl+Alt+Left".parse().unwrap();
         assert_eq!(assign(&mut p, "center", Some(c)), ["Left half"]);
         assert_eq!(p.shortcuts["tile-left"], Vec::<String>::new());
         assert_eq!(p.shortcuts["center"], ["Ctrl+Alt+Left"]);
@@ -1730,12 +2051,12 @@ mod tests {
     #[test]
     fn app_keys_never_clash() {
         for platform in Platform::ALL {
-            let all: Vec<(Entry, Chord)> = entries().flat_map(|e| e.default_keys(platform).into_iter().map(move |c| (e, c))).collect();
+            let all: Vec<(Entry, Keys)> = entries().flat_map(|e| e.default_keys(platform).into_iter().map(move |c| (e, c))).collect();
             let written: usize = entries().map(|e| e.defaults[platform.index()].len()).sum();
             assert_eq!(all.len(), written, "{platform:?}: a key doesn't parse");
             for (i, (a, c)) in all.iter().enumerate() {
                 for (b, d) in &all[i + 1..] {
-                    assert!(!(c == d && a.clashes_with(b)), "{platform:?}: {c} is both {} and {}", a.id, b.id);
+                    assert!(!(c.clashes(d) && a.clashes_with(b)), "{platform:?}: {c} is both {} and {}", a.id, b.id);
                 }
             }
         }
@@ -1750,7 +2071,7 @@ mod tests {
         // (Logs' Live), nor every app's (an app's own is its choice).
         let mut p = KeyboardProfile::default();
         assert_eq!(assign(&mut p, "viewer.crop", "Cmd+L".parse().ok()), ["Rotate Left"]);
-        assert_eq!(entry("logs.live").unwrap().keys(&p), ["Cmd+L".parse::<Chord>().unwrap()]);
+        assert_eq!(entry("logs.live").unwrap().keys(&p), ["Cmd+L".parse::<Keys>().unwrap()]);
         assert!(assign(&mut p, "viewer.crop", "Cmd+T".parse().ok()).is_empty());
     }
 
@@ -1772,7 +2093,7 @@ mod tests {
         assign(&mut p, "chrome.history", "Shift+Cmd+H".parse().ok());
         let keys = crate::app_keys::chrome_keys(&p);
         assert!(keys.contains(&("Shift+Cmd+H".parse().unwrap(), "Ctrl+H".parse().unwrap())));
-        assert!(!keys.iter().any(|(from, _)| *from == "Cmd+Y".parse().unwrap()));
+        assert!(!keys.iter().any(|(from, _)| *from == "Cmd+Y".parse::<Chord>().unwrap()));
     }
 
     #[test]

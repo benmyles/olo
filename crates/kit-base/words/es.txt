@@ -621,6 +621,9 @@ Añadir una cuenta de Google…
 Add a Kind
 Añadir un tipo
 
+Add a Second Key
+Añadir una segunda tecla
+
 Add a Section…
 Añadir sección…
 
@@ -707,6 +710,9 @@ Contra los servidores de prueba de velocidad de Cloudflare: cuatro conexiones en
 Agenda
 Agenda
 
+Agent Screen
+Pantalla de agente
+
 Agent Screen Logs
 Registros de las pantallas de agentes
 
@@ -760,6 +766,9 @@ Todas las apps
 
 All Chats
 Todos los chats
+
+All Default Keys
+Todas las teclas predeterminadas
 
 All Imperial
 Todo imperial
@@ -827,6 +836,12 @@ Alt
 Always Dark
 Siempre oscuro
 
+Always Float Its Application
+Su aplicación siempre flotante
+
+Always Float {}
+{} siempre flotante
+
 Always Left
 Siempre a la izquierda
 
@@ -844,6 +859,9 @@ Siempre donde está
 
 Always a palm when as large as
 Siempre una palma si mide al menos
+
+Always float the application, or not
+Ventanas de su aplicación siempre flotantes, o no
 
 Always on Top
 Siempre encima
@@ -881,6 +899,9 @@ Y {} más
 
 Anonymous identity:
 Identidad anónima:
+
+Another Window
+Otra ventana
 
 Another account
 Otra cuenta
@@ -2531,9 +2552,6 @@ Predeterminado (Preferencias ▸ Energía)
 Default Apps
 Apps predeterminadas
 
-Default Keys
-Teclas predeterminadas
-
 Default Message ({})
 Mensaje predeterminado ({})
 
@@ -2934,6 +2952,9 @@ Descargando: {}
 Downloading…
 Descargando…
 
+Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
+Mientras arrastra una ventana por su pestaña, suéltela en un lugar, o pulse su letra, para ponerla allí. Suéltela en el lugar de otra ventana para intercambiarlas. Escape lo deja todo como estaba.
+
 Drag with:
 Arrastrar con:
 
@@ -3218,6 +3239,9 @@ El borrado sigue solo en cuanto vuelva, desde donde se quedó.
 
 Erlang
 Erlang
+
+Esc cancels
+Esc cancela
 
 Ethernet
 Ethernet
@@ -3607,11 +3631,23 @@ Voltear en horizontal
 Flip Vertical
 Voltear en vertical
 
+Float
+Flotante
+
+Float Its Group
+Su grupo flotante
+
+Float This Window
+Esta ventana flotante
+
 Float Window
 Ventana flotante
 
 Float Window Group
 Grupo de ventanas flotante
+
+Float out of its group, or tile
+Flotante fuera de su grupo, o en mosaico
 
 Flurries
 Nevisca
@@ -4512,6 +4548,9 @@ Cursiva
 
 Item
 Elemento
+
+Its Group to Another Window
+Su grupo a otra ventana
 
 Its app password isn’t in the keyring: remove it and add it again.
 Su contraseña de app no está en el llavero: quítala y vuelve a añadirla.
@@ -5598,6 +5637,9 @@ Velocidad del ratón
 Move
 Mover
 
+Move All
+Mover todas
+
 Move All Windows To
 Mover todas las ventanas a
 
@@ -5627,6 +5669,9 @@ Mover a
 
 Move Up
 Subir
+
+Move Window
+Mover ventana
 
 Move Window To
 Mover la ventana a
@@ -5885,6 +5930,9 @@ Chat siguiente
 
 Next Day
 Día siguiente
+
+Next Display
+Pantalla siguiente
 
 Next File
 Archivo siguiente
@@ -6548,6 +6596,12 @@ Las ventanas de Olo cambian al instante. Los demás programas lo adoptan la pró
 
 On
 Activado
+
+On AirPlay
+En AirPlay
+
+On All Workspaces
+En todos los espacios de trabajo
 
 On Battery
 Con batería
@@ -7306,6 +7360,9 @@ Chat anterior
 
 Previous Day
 Día anterior
+
+Previous Display
+Pantalla anterior
 
 Previous File
 Archivo anterior
@@ -9617,6 +9674,9 @@ La dirección CalDAV del servidor, y el nombre y la contraseña con los que te i
 The shell has ended.
 El shell ha terminado.
 
+The shortcut you just gave keys can have a second, pressed after them: the first keys begin a group of shortcuts, the second picks one.
+El atajo al que acaba de dar teclas puede tener una segunda, que se pulsa después: las primeras teclas inician un grupo de atajos y la segunda elige uno.
+
 The sky and temperature now, and what's coming.
 El cielo y la temperatura ahora, y lo que viene.
 
@@ -10222,6 +10282,9 @@ Escribe el PIN de «{}» (a menudo 0000).
 
 Type the code “{}” shows on its screen.
 Escribe el código que muestra «{}» en su pantalla.
+
+Type the key to press after {}. Esc leaves it as it is.
+Pulsa la tecla que irá después de {}. Esc lo deja como está.
 
 Type the keys. Esc cancels; ⌫ removes them.
 Pulsa las teclas. Esc cancela; ⌫ las quita.
@@ -10916,9 +10979,6 @@ Al compartir o grabar la pantalla (los errores también esperan)
 While uploading
 Al subir
 
-Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
-Mientras arrastra una ventana por su pestaña, suéltela en un lugar, o pulse su letra, para ponerla allí. Suéltela en el lugar de otra ventana para intercambiarlas. Escape lo deja todo como estaba.
-
 Why
 Por qué
 
@@ -11005,6 +11065,9 @@ Router inalámbrico
 
 With AirPods:
 Con AirPods:
+
+With Another Window
+Con otra ventana
 
 Withdrawn by {}
 Retirada por {}
@@ -11182,6 +11245,9 @@ El tuyo: ajustado {} veces desde que se inició
 
 Zig
 Zig
+
+Zoom
+Zoom
 
 Zoom All
 Ampliar todo

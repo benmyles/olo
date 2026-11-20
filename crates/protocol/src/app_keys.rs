@@ -359,7 +359,7 @@ pub const APP_KEYS: &[AppKey] = &[
 
 /// For a profile: each of Chrome's keys it has (its own, changed or not)
 /// and what Chrome takes for that command on Linux ([`CHROME_NATIVE`]).
-pub fn chrome_keys(profile: &crate::shortcuts::KeyboardProfile) -> Vec<(crate::Chord, crate::Chord)> {
+pub fn chrome_keys(profile: &crate::shortcuts::KeyboardProfile) -> Vec<(crate::Keys, crate::Chord)> {
     let mut out = Vec::new();
     for (id, native) in CHROME_NATIVE {
         let (Some(e), Ok(to)) = (crate::shortcuts::entry(id), native.parse::<crate::Chord>()) else { continue };

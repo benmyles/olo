@@ -5,6 +5,30 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-20
 
+### Deskbar's menus, in groups
+
+*05:09* — An application's and a workspace's right-click menus as the window menu is: Show and Hide, Move (workspaces, displays, an agent's screen) and Show on AirPlay with the grouping, Close last; said in the singular for one window.
+
+![Deskbar's menus, in groups](2026-11-20/050929-deskbar-s-menus-in-groups.png)
+
+### Preferences, Keyboard, Shortcuts: a second key
+
+*05:09* — Any shortcut can have keys of two parts: click it, type its keys, then Add a Second Key and type the key to press after them. The row last changed stays lit; the note is the list's caption; All Default Keys (it was Default Keys) is at the right.
+
+![Preferences, Keyboard, Shortcuts: a second key](2026-11-20/050928-preferences-keyboard-shortcuts-a-second-key.png)
+
+### Shortcuts of two parts: the panel while a group waits
+
+*05:09* — Ctrl+Alt+Cmd+Z, F or V begins a group (Zoom, Float, Move); a second key picks from it. Held a third of a second, a panel at the foot of the screen says what each key does; the workspace the window is on is checked. Escape, any other key, a click or five seconds lets go.
+
+![Shortcuts of two parts: the panel while a group waits](2026-11-20/050927-shortcuts-of-two-parts-the-panel-while-a-group-w.png)
+
+### The window menu, in groups
+
+*05:09* — A tab's right-click menu was twenty-odd items in one list. Now ten in four groups: Hide, Roll Up, Send to Back; Zoom, Float and Tile (its size and shape); Pin, Move and Show (where it is); Close and Quit. Items in a group show their keys of two parts, and every menu's keys stand in a straight column (the last key in a cell).
+
+![The window menu, in groups](2026-11-20/050926-the-window-menu-in-groups.png)
+
 ### Preferences ▸ Windows: Dragging a Window
 
 *03:06* — The places can be turned off.

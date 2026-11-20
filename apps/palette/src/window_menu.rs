@@ -69,7 +69,7 @@ pub struct Facts {
     /// On every workspace of its display; in the scratchpad.
     pub all_workspaces: bool,
     pub scratch: bool,
-    /// The windows it can be tiled with (Tile With): the others on its
+    /// The windows it can be tiled with (Tile ▸ With Another Window): the others on its
     /// display's workspace, not minimized (auto-tiled: tiles only, not
     /// floating ones), each with its app's name and title.
     pub beside: Vec<(u64, String)>,
@@ -251,14 +251,6 @@ pub fn learn(ask: Ask, proxy: Proxy) {
     });
 }
 
-/// The keys shortcut `id` has now, as the profile's platform writes them
-/// ("⌃⌘H", "Win+D").
-fn keys(f: &Facts, id: &str) -> Option<String> {
-    let info = shortcuts::by_id(id);
-    debug_assert!(info.is_some(), "{id}");
-    shortcuts::keys_for(info?, &f.keys).first().map(|c| c.label(f.keys.platform))
-}
-
 /// The keys every app's command `command` ("close", "quit") has in the
 /// profile, as its platform writes them.
 fn app_keys(f: &Facts, command: &str) -> Option<String> {
@@ -275,16 +267,87 @@ fn quit_label(f: &Facts, own: Option<&str>) -> String {
     }
 }
 
+/// The window's menu, in groups (Ben, 2026-11-18: "group the 3 zoom
+/// options under a "Zoom ->" parent and the 3 float options under a
+/// "Float ->" parent, the move options under a "Move ->" parent, and
+/// anything else that makes sense to be grouped"): what's done to the
+/// window where it is (Hide, Roll Up, Zoom ▸, Float ▸), where it goes
+/// (Tile ▸, Pin ▸, Move ▸, Show ▸), what it is to its group and its
+/// file, then Close and Quit. An item in a group shows the keys of two
+/// parts that begin with its group's chord (⌃⌥⌘Z V), where it has some:
+/// the same pattern as every menu of Olo's (HACKING, "Menus in groups").
 pub fn build(f: &Facts) -> Menu {
-    // A shortcut's item, by its id, with its keys.
-    let shortcut = |m: Menu, id: &str, label: &'static str| {
-        let m = m.item(label, format!("shortcut:{id}"));
-        match keys(f, id) {
-            Some(k) => m.keys(k),
+    // A shortcut's item, by its id, with its keys: at the menu's top, its
+    // one chord if it has one; in a group, its two in turn.
+    let keyed = |m: Menu, id: &str, grouped: bool| {
+        let all = shortcuts::by_id(id).map(|i| shortcuts::keys_for(i, &f.keys)).unwrap_or_default();
+        debug_assert!(shortcuts::by_id(id).is_some(), "{id}");
+        let pick = all.iter().find(|k| k.then.is_some() == grouped).or(all.first());
+        match pick {
+            Some(k) => m.keys(k.label(f.keys.platform)),
             None => m,
         }
     };
-    // Halves, quarters, thirds and two thirds, a line between each.
+    let shortcut = |m: Menu, id: &str, label: &'static str| keyed(m.item(label, format!("shortcut:{id}")), id, false);
+    let in_group = |m: Menu, id: &str, label: &'static str| keyed(m.item(label, format!("shortcut:{id}")), id, true);
+    let has_app = !f.app.app_id.is_empty();
+    let mut m = Menu::new(f.title.clone());
+    // In a group, Hide and Close are each a menu: the window, the others
+    // of its group, all of them (Ben, 2026-11-16: "we need a Close All
+    // option when right clicking a window tab (we have Close and Close
+    // Others already)"; "we need Hide Others and Hide All too. just nest
+    // both of them under like Hide -> ... and Close -> ...").
+    m = if f.grouped { m.submenu(shortcut(Menu::new("Hide"), "hide-window", "Hide").item("Hide Others", "hide-others").item("Hide All", "hide-all")) } else { shortcut(m, "hide-window", "Hide") };
+    m = shortcut(m, "roll-up", if f.rolled { "Roll Down" } else { "Roll Up" });
+    // (Behind them all: out of the way as Hide and Roll Up are, and no
+    // way of showing it, so not Show's.)
+    m = keyed(m.item("Send to Back", "send-to-back"), "send-to-back", false).separator();
+    // Its size and shape: Zoom's three, and the way back from them;
+    // Float; Tile (one group: Opus's look, 2026-11-20, of Zoom ▸ under
+    // three commands that act at once).
+    let mut zoom = Menu::new("Zoom");
+    zoom = in_group(zoom, "zoom", "Zoom");
+    zoom = in_group(zoom, "zoom-vertical", "Zoom Vertically");
+    zoom = in_group(zoom, "zoom-horizontal", "Zoom Horizontally").separator();
+    zoom = in_group(zoom, "restore", "Back to Its Own Size");
+    m = m.submenu(zoom);
+    if f.auto || f.focus {
+        // Out of the tiles (or Focus's zoom), or back in (Ben, 2026-11-07:
+        // "if we are in auto-tiling or focus mode i should be able to
+        // choose "Float Window" and if it's part of a group then also an
+        // option for "Float Window Group" … if it's part of a group and i
+        // just choose to float window then it should also pull it out of
+        // that group"; "an option to "Unfloat" a floating window"), and
+        // every window of its app from now on (2026-11-14: "when always
+        // is chosen it should remember so anytime that app window is
+        // launched in the future it always floats when in tile mode":
+        // `TilingSettings::floating_apps`; checked while it does, and
+        // chosen again lets each of its windows go by that).
+        let mut float = Menu::new("Float");
+        if f.floating {
+            // (A dialog or an alert floats whatever is asked: dimmed.)
+            float = keyed(float.item("Unfloat", "unfloat"), "float-window", true).enabled(!f.floats_always);
+        } else if f.grouped {
+            float = keyed(float.item("Float This Window", "float"), "float-alone", true);
+            float = keyed(float.item("Float Its Group", "float-group"), "float-window", true);
+        } else {
+            float = keyed(float.item("Float", "float"), "float-window", true);
+        }
+        let always = if f.app.name.is_empty() { olo_kit::words::tr("Always Float Its Application").to_owned() } else { olo_kit::tr!("Always Float {}", f.app.name) };
+        let command = if f.app_floats { "unfloat-always" } else { "float-always" };
+        float = keyed(float.separator().item(always, command), "float-app", true).checked(f.app_floats).enabled(has_app && !f.floats_always);
+        m = m.submenu(float);
+    }
+    // Main and Stack: this one the main window, or the one before back
+    // (Ben, 2026-11-14: "if a new window takes the main area i want to be
+    // able to swap it back with the previous window").
+    if f.main_and_stack {
+        m = shortcut(m, "make-main", "Make Main").enabled(!f.main);
+        m = shortcut(m, "swap-main", "Swap with Previous Main").enabled(f.previous_main);
+    }
+    // Halves, quarters, thirds and two thirds, a line between each; the
+    // middle; beside another window (not in Focus, which zooms them all;
+    // not a window floating over auto-tiled ones).
     let mut tile = Menu::new("Tile");
     let mut family = None;
     for t in olo_protocol::Tile::CHOOSABLE {
@@ -295,97 +358,12 @@ pub fn build(f: &Facts) -> Menu {
         family = Some(t.family());
         tile = shortcut(tile, id, t.title());
     }
-    // Every display's workspaces, left to right as Deskbar's heading
-    // menus list them; its own display's with their keys.
-    let mut displays: Vec<(Option<&str>, Option<i32>)> = f.others.iter().map(|(o, n)| (Some(o.as_str()), Some(*n))).collect();
-    displays.push((None, f.display));
-    displays.sort_by_key(|(_, n)| *n);
-    let mut spaces = Menu::new("Move to Workspace");
-    for (k, (output, number)) in displays.into_iter().enumerate() {
-        if k > 0 {
-            spaces = spaces.separator();
-        }
-        for n in 0..f.workspaces.max(1) {
-            let command = match output {
-                Some(o) => format!("workspace:{n}:{o}"),
-                None => format!("workspace:{n}"),
-            };
-            spaces = spaces.item(olo_protocol::workspace_name(number, n), command);
-            if output.is_some() {
-                continue;
-            }
-            if let Some(k) = keys(f, &format!("window-to-workspace-{}", n + 1)) {
-                spaces = spaces.keys(k);
-            }
-            if n == f.workspace {
-                spaces = spaces.checked(true).enabled(false);
-            }
-        }
+    tile = shortcut(tile.separator(), "center", "Center");
+    if !f.focus && !(f.auto && f.floating) && !f.beside.is_empty() {
+        tile = tile.separator().submenu(f.beside.iter().fold(Menu::new("With Another Window"), |m, (id, label)| m.item(label.clone(), format!("tile-with:{id}"))));
     }
-    let mut m = Menu::new(f.title.clone());
-    // In a group, Hide and Close are each a menu: the window, the others
-    // of its group, all of them (Ben, 2026-11-16: "we need a Close All
-    // option when right clicking a window tab (we have Close and Close
-    // Others already)"; "we need Hide Others and Hide All too. just nest
-    // both of them under like Hide -> ... and Close -> ...").
-    m = if f.grouped { m.submenu(shortcut(Menu::new("Hide"), "hide-window", "Hide").item("Hide Others", "hide-others").item("Hide All", "hide-all")) } else { shortcut(m, "hide-window", "Hide") };
-    m = shortcut(m, "roll-up", if f.rolled { "Roll Down" } else { "Roll Up" });
-    m = shortcut(m, "zoom", "Zoom");
-    m = shortcut(m, "zoom-vertical", "Zoom Vertically");
-    m = shortcut(m, "zoom-horizontal", "Zoom Horizontally");
-    m = shortcut(m, "restore", "Back to Its Own Size");
-    m = shortcut(m, "center", "Center");
-    if f.auto || f.focus {
-        // Out of the tiles (or Focus's zoom), or back in (Ben, 2026-11-07:
-        // "if we are in auto-tiling or focus mode i should be able to
-        // choose "Float Window" and if it's part of a group then also an
-        // option for "Float Window Group" … if it's part of a group and i
-        // just choose to float window then it should also pull it out of
-        // that group"; "an option to "Unfloat" a floating window"). The
-        // keys float or tile it with its group, as Float Window Group.
-        let with_keys = |m: Menu| match keys(f, "float-window") {
-            Some(k) => m.keys(k),
-            None => m,
-        };
-        // Just this window this time, or every window of its app from now
-        // on (Ben, 2026-11-14: "a submenu under that for doing it just
-        // this time or always and when always is chosen it should
-        // remember so anytime that app window is launched in the future
-        // it always floats when in tile mode"): app_server keeps the app's id
-        // (`TilingSettings::floating_apps`). Always is checked while the
-        // app floats always, and choosing it again lets each of its
-        // windows go by that, any tiled by hand too; Unfloat ▸ Always
-        // forgets it.
-        let always = if f.app.name.is_empty() { "Always".to_owned() } else { format!("Always for {}", f.app.name) };
-        let has_app = !f.app.app_id.is_empty();
-        if f.floating && f.floats_always {
-            // (A dialog or an alert floats whatever is asked: dimmed.)
-            m = with_keys(m.item("Unfloat", "unfloat")).enabled(false);
-        } else if f.floating && f.app_floats {
-            let unfloat = with_keys(Menu::new("Unfloat").item("Just This Time", "unfloat"));
-            m = m.submenu(unfloat.item(always.clone(), "unfloat-always"));
-        } else if f.floating {
-            m = with_keys(m.item("Unfloat", "unfloat"));
-        } else {
-            // In a group, the keys float its group (Float Window Group);
-            // alone, just the window.
-            let just = Menu::new("Float Window").item("Just This Time", "float");
-            let just = if f.grouped { just } else { with_keys(just) };
-            m = m.submenu(just.item(always, "float-always").checked(f.app_floats).enabled(has_app));
-            if f.grouped {
-                m = with_keys(m.item("Float Window Group", "float-group"));
-            }
-        }
-    }
-    // Main and Stack: this one the main window, or the one before back
-    // (Ben, 2026-11-14: "if a new window takes the main area i want to be
-    // able to swap it back with the previous window").
-    if f.main_and_stack {
-        m = shortcut(m, "make-main", "Make Main").enabled(!f.main);
-        m = shortcut(m, "swap-main", "Swap with Previous Main").enabled(f.previous_main);
-    }
-    m = m.separator().submenu(tile);
-    // Pin (Ben, 2026-11-17: "i often have some windows like telegram
+    m = m.submenu(tile).separator();
+    // Where it is and shows: Pin (Ben, 2026-11-17: "i often have some windows like telegram
     // where i want it to always open in the top-left quarter, and phone
     // in the top-right quarter (of whatever desktop-workspace they
     // happen to be opened on) … right click the window title tab and
@@ -395,8 +373,9 @@ pub fn build(f: &Facts) -> Menu {
     // as Main: windows that open leave it its place), and its app's
     // windows always, wherever they open: the main one, or in the part
     // of the display this one is in now. An app's pin that is another
-    // place is listed too, checked, to take away.
-    let has_app = !f.app.app_id.is_empty();
+    // place is listed too, checked, to take away. And the workspace its
+    // app's new windows open on (i3's `assign`): checked if they open
+    // here; chosen again, as any app's.
     let mut pin = Menu::new("Pin");
     if f.main_and_stack {
         pin = shortcut(pin, "pin-main", "Pin as Main").checked(f.main_pinned).separator();
@@ -417,57 +396,80 @@ pub fn build(f: &Facts) -> Menu {
     if let Some(Pin::Part(other)) = f.app_pin.filter(|p| Some(*p) != f.place.map(Pin::Part)) {
         pin = pin.item(Pin::Part(other).title(), "app-pin:none").checked(true);
     }
+    if has_app && f.workspaces > 1 {
+        let here = f.app_workspace == Some(f.workspace);
+        let command = if here { "app-workspace:none".to_owned() } else { format!("app-workspace:{}", f.workspace) };
+        pin = pin.separator().item(format!("Always Open {} on Workspace {}", f.app.name, f.workspace + 1), command).checked(here);
+    }
     m = m.submenu(pin);
-    // Beside another window (not in Focus, which zooms them all; not a
-    // window floating over auto-tiled ones).
-    if !f.focus && !(f.auto && f.floating) && !f.beside.is_empty() {
-        let with = f.beside.iter().fold(Menu::new("Tile With"), |m, (id, label)| m.item(label.clone(), format!("tile-with:{id}")));
-        m = m.submenu(with);
+    // Move: to a workspace (every display's, left to right as Deskbar's
+    // heading menus list them, its own display's with their keys), to
+    // another display, an agent's screen, or another window of its app
+    // as a tab (as every tabbed app's tabs go: `Menu::move_to_window`;
+    // its whole group, if it's in one).
+    let mut displays: Vec<(Option<&str>, Option<i32>)> = f.others.iter().map(|(o, n)| (Some(o.as_str()), Some(*n))).collect();
+    displays.push((None, f.display));
+    displays.sort_by_key(|(_, n)| *n);
+    let mut moves = Menu::new("Move");
+    for (k, (output, number)) in displays.into_iter().enumerate() {
+        if k > 0 {
+            moves = moves.separator();
+        }
+        for n in 0..f.workspaces.max(1) {
+            let command = match output {
+                Some(o) => format!("workspace:{n}:{o}"),
+                None => format!("workspace:{n}"),
+            };
+            moves = moves.item(olo_protocol::workspace_name(number, n), command);
+            if output.is_some() {
+                continue;
+            }
+            moves = keyed(moves, &format!("window-to-workspace-{}", n + 1), true);
+            if n == f.workspace {
+                moves = moves.checked(true).enabled(false);
+            }
+        }
     }
-    m = m.submenu(spaces);
     if f.displays > 1 {
-        m = shortcut(m, "next-display", "To the Next Display");
-        m = shortcut(m, "previous-display", "To the Previous Display");
+        moves = in_group(moves.separator(), "next-display", "Next Display");
+        moves = in_group(moves, "previous-display", "Previous Display");
     }
-    if let Some(screens) = &f.screens {
-        m = m.submenu(Menu::agent_screens("Move to Agent Screen", screens, ""));
+    let screens = f.screens.as_ref().map(|screens| Menu::agent_screens("Agent Screen", screens, ""));
+    let windows = (!f.windows.is_empty()).then(|| Menu::move_to_window("Another Window", f.windows.iter().map(|(id, title)| (title.clone(), format!("window-to:{id}")))));
+    if screens.is_some() || windows.is_some() {
+        moves = moves.separator();
     }
-    // Live on a television (Ben, 2026-11-12: "integrated airplay … by
-    // right clicking the window title"): `olo-airplay show --window`.
-    m = m.submenu(Menu::airplay("Show on AirPlay", &f.airplay, ""));
-    m = m.separator();
+    if let Some(screens) = screens {
+        moves = moves.submenu(screens);
+    }
+    if let Some(windows) = windows {
+        moves = moves.submenu(windows);
+        if f.grouped {
+            moves = moves.submenu(Menu::move_to_window("Its Group to Another Window", f.windows.iter().map(|(id, title)| (title.clone(), format!("group-to:{id}")))));
+        }
+    }
+    m = m.submenu(moves);
+    // Show: over the others, on every workspace (BeOS's All Workspaces,
+    // i3's sticky), in the scratchpad (i3's and sway's, shown again by
+    // its key), live on a television (Ben, 2026-11-12: "integrated
+    // airplay … by right clicking the window title": `olo-airplay show
+    // --window`).
+    let mut show = Menu::new("Show");
+    show = show.item("Always on Top", "on-top").checked(f.on_top);
+    show = keyed(show.item("On All Workspaces", "shortcut:all-workspaces").checked(f.all_workspaces), "all-workspaces", false);
+    show = keyed(show.item("In the Scratchpad", "shortcut:to-scratchpad").checked(f.scratch), "to-scratchpad", false);
+    show = show.submenu(Menu::airplay("On AirPlay", &f.airplay, ""));
+    m = m.submenu(show).separator();
     if f.path.is_some() {
-        m = m.item(tracker::LABEL, tracker::COMMAND).separator();
+        m = m.item(tracker::LABEL, tracker::COMMAND);
     }
     if f.grouped {
         // As ⌘-dragging its tab out of the group does.
         m = m.item("Remove from Group", "ungroup");
     }
-    // A tab into another window of its app (its group), as every tabbed
-    // app's tabs go (`Menu::move_to_window`); its whole group, if in one.
-    if !f.windows.is_empty() {
-        m = m.submenu(Menu::move_to_window("Move to Window", f.windows.iter().map(|(id, title)| (title.clone(), format!("window-to:{id}")))));
-        if f.grouped {
-            m = m.submenu(Menu::move_to_window("Move Group to Window", f.windows.iter().map(|(id, title)| (title.clone(), format!("group-to:{id}")))));
-        }
+    if f.path.is_some() || f.grouped {
+        m = m.separator();
     }
-    m = m.item("Always on Top", "on-top").checked(f.on_top);
-    // On every workspace (BeOS's All Workspaces, i3's sticky); in the
-    // scratchpad (i3's and sway's), shown again by its key.
-    let with = |m: Menu, id: &str| match keys(f, id) {
-        Some(k) => m.keys(k),
-        None => m,
-    };
-    m = with(m.item("Show on All Workspaces", "shortcut:all-workspaces").checked(f.all_workspaces), "all-workspaces");
-    m = with(m.item("In the Scratchpad", "shortcut:to-scratchpad").checked(f.scratch), "to-scratchpad");
-    // Its app's new windows on this workspace (i3's `assign`): checked if
-    // they open here; chosen again, as any app's.
-    if !f.app.app_id.is_empty() && f.workspaces > 1 {
-        let here = f.app_workspace == Some(f.workspace);
-        let command = if here { "app-workspace:none".to_owned() } else { format!("app-workspace:{}", f.workspace) };
-        m = m.item(format!("Always Open {} on Workspace {}", f.app.name, f.workspace + 1), command).checked(here);
-    }
-    m = m.item("Send to Back", "send-to-back").separator();
     // The app's own Close and Quit, as its keys press them.
     let item = |m: Menu, label: String, command: &'static str, keys: Option<String>, enabled: bool| {
         let m = m.item(label, command).enabled(enabled);
@@ -844,7 +846,8 @@ mod tests {
                         m.items
                             .iter()
                             .filter_map(|i| match i {
-                                menu::MenuItem::Action(a) => Some((a.label.to_string(), a.command.to_string(), a.checked, a.enabled)),
+                                // (Its app's own workspace, at Pin's foot: below.)
+                                menu::MenuItem::Action(a) if !a.command.starts_with("app-workspace:") => Some((a.label.to_string(), a.command.to_string(), a.checked, a.enabled)),
                                 _ => None,
                             })
                             .collect::<Vec<_>>(),
@@ -881,6 +884,19 @@ mod tests {
         // (An app pinned as Main, its window where tiles aren't Main and
         // Stack's: still there to take away.)
         assert_eq!(pins(&Facts { app_pin: Some(Pin::Main), ..quarter.clone() })[0], it("Always Main", "app-pin:none", true, true));
+        // Its app's own workspace is Pin's too: the one it's on, checked
+        // once its app's windows open there, chosen again to let go.
+        fn within<'a>(menu: &'a Menu, title: &str) -> &'a Menu {
+            menu.items.iter().find_map(|i| if let menu::MenuItem::Submenu(s) = i { (s.title == title).then_some(s) } else { None }).unwrap_or_else(|| panic!("no {title} menu"))
+        }
+        let own_space = |f: &Facts| {
+            within(&build(f), "Pin").items.iter().find_map(|i| match i {
+                menu::MenuItem::Action(a) if a.command.starts_with("app-workspace:") => Some((a.label.to_string(), a.command.to_string(), a.checked)),
+                _ => None,
+            })
+        };
+        assert_eq!(own_space(&facts), Some(("Always Open Gedit on Workspace 2".into(), "app-workspace:1".into(), false)));
+        assert_eq!(own_space(&Facts { app_workspace: Some(1), ..facts.clone() }), Some(("Always Open Gedit on Workspace 2".into(), "app-workspace:none".into(), true)));
         // Open in Tracker only for a window that shows a file or folder.
         assert!(!all.contains(&tracker::COMMAND.to_owned()));
         let mut doc = Vec::new();
@@ -912,43 +928,49 @@ mod tests {
         };
         let item = |sub: &str, label: &str, enabled: bool, keys: bool, checked: bool| (sub.to_owned(), label.to_owned(), enabled, keys, checked);
         assert!(floats(&facts).is_empty());
-        // In a group: the window alone, just this time or always for its
-        // app, or its group (the keys', ⌃⌥⌘F).
+        // In a group: the window alone or its group (each with the keys
+        // that begin with Float's chord, ⌃⌥⌘F), and its app always.
         let grouped = floats(&Facts { auto: true, ..facts.clone() });
-        assert_eq!(
-            grouped,
-            [item("Float Window", "Just This Time", true, false, false), item("Float Window", "Always for Gedit", true, false, false), item("", "Float Window Group", true, true, false)]
-        );
+        assert_eq!(grouped, [item("Float", "Float This Window", true, true, false), item("Float", "Float Its Group", true, true, false), item("Float", "Always Float Gedit", true, true, false)]);
         assert_eq!(floats(&Facts { focus: true, ..facts.clone() }), grouped);
-        // On its own: the window, with the keys; Always checked while its
-        // app floats always (a window of it tiled by hand).
+        let keys_in = |f: &Facts, label: &str| {
+            within(&build(f), "Float").items.iter().find_map(|i| match i {
+                menu::MenuItem::Action(a) if a.label == label => a.keys.as_ref().map(|k| k.to_string()),
+                _ => None,
+            })
+        };
+        let auto = Facts { auto: true, ..facts.clone() };
+        assert_eq!(
+            (keys_in(&auto, "Float This Window"), keys_in(&auto, "Float Its Group"), keys_in(&auto, "Always Float Gedit")),
+            (Some("⌃⌥⌘F  W".into()), Some("⌃⌥⌘F  F".into()), Some("⌃⌥⌘F  A".into()))
+        );
+        // On its own: the window; Always checked while its app floats
+        // always (a window of it tiled by hand).
         assert_eq!(
             floats(&Facts { auto: true, grouped: false, app_floats: true, ..facts.clone() }),
-            [item("Float Window", "Just This Time", true, true, false), item("Float Window", "Always for Gedit", true, false, true)]
+            [item("Float", "Float", true, true, false), item("Float", "Always Float Gedit", true, true, true)]
         );
         // No app id to remember: Always dimmed.
         let nameless = Owner::default();
         assert_eq!(
             floats(&Facts { auto: true, grouped: false, app: nameless, ..facts.clone() }),
-            [item("Float Window", "Just This Time", true, true, false), item("Float Window", "Always", false, false, false)]
+            [item("Float", "Float", true, true, false), item("Float", "Always Float Its Application", false, true, false)]
         );
-        // Floating: Unfloat; its app floating always, just this time or
-        // always; a dialog or an alert floats whatever is asked: shown,
-        // dimmed.
-        assert_eq!(floats(&Facts { focus: true, floating: true, ..facts.clone() }), [item("", "Unfloat", true, true, false)]);
+        // Floating: Unfloat, and its app always (checked if it does); a
+        // dialog or an alert floats whatever is asked: shown, dimmed.
+        assert_eq!(floats(&Facts { focus: true, floating: true, ..facts.clone() }), [item("Float", "Unfloat", true, true, false), item("Float", "Always Float Gedit", true, true, false)]);
         assert_eq!(
             floats(&Facts { auto: true, floating: true, app_floats: true, ..facts.clone() }),
-            [item("Unfloat", "Just This Time", true, true, false), item("Unfloat", "Always for Gedit", true, false, false)]
+            [item("Float", "Unfloat", true, true, false), item("Float", "Always Float Gedit", true, true, true)]
         );
-        assert_eq!(floats(&Facts { auto: true, floating: true, floats_always: true, ..facts.clone() }), [item("", "Unfloat", false, true, false)]);
+        assert_eq!(
+            floats(&Facts { auto: true, floating: true, floats_always: true, ..facts.clone() }),
+            [item("Float", "Unfloat", false, true, false), item("Float", "Always Float Gedit", false, true, false)]
+        );
         assert!(all.contains(&"shortcut:next-display".to_owned()) && all.contains(&"workspace:2".to_owned()));
         // Each shows the keys it has now: changed, default, or none.
         let menu = build(&facts);
-        // (The menu's own items, and those of Hide ▸ and Close ▸, which a
-        // window in a group has.)
-        fn within<'a>(menu: &'a Menu, title: &str) -> &'a Menu {
-            menu.items.iter().find_map(|i| if let menu::MenuItem::Submenu(s) = i { (s.title == title).then_some(s) } else { None }).unwrap_or_else(|| panic!("no {title} menu"))
-        }
+        // (The menu's own items, and those of its groups.)
         let said = |menu: &Menu| -> Vec<(String, String, Option<String>)> {
             menu.items
                 .iter()
@@ -957,7 +979,7 @@ mod tests {
         };
         let item = |label: &str, command: &str, keys: Option<&str>| (label.to_owned(), command.to_owned(), keys.map(str::to_owned));
         let keys_of = |label: &str| {
-            menu.items.iter().chain(&within(&menu, "Hide").items).chain(&within(&menu, "Close").items).find_map(|i| match i {
+            menu.items.iter().chain(["Hide", "Close", "Zoom", "Tile"].iter().flat_map(|t| &within(&menu, t).items)).find_map(|i| match i {
                 menu::MenuItem::Action(a) if a.label == label => Some(a.keys.clone()),
                 _ => None,
             })
@@ -1004,7 +1026,28 @@ mod tests {
         assert_eq!(group_targets(&listed, 3, true), [1, 5, 3]);
         assert_eq!(group_targets(&listed, 2, true), Vec::<u64>::new());
         assert_eq!((of_group("close-all"), of_group("hide-others"), of_group("close")), (Some((true, true)), Some((false, false)), None));
-        let Some(menu::MenuItem::Submenu(spaces)) = menu.items.iter().find(|i| matches!(i, menu::MenuItem::Submenu(s) if s.title == "Move to Workspace")) else { panic!() };
+        // Its groups as every menu's are (the kit's rule: no "Move ▸ Move
+        // to …"), whatever the window.
+        for f in [&facts, &Facts { auto: true, ..facts.clone() }, &Facts { floating: true, focus: true, ..facts.clone() }] {
+            assert_eq!(menu::review_groups(&build(f)), Vec::<String>::new());
+        }
+        // The menu in its groups, top to bottom (a window in a group, on
+        // one of two displays, where auto-tiling isn't on).
+        let tops: Vec<String> = menu
+            .items
+            .iter()
+            .map(|i| match i {
+                menu::MenuItem::Action(a) => a.label.to_string(),
+                menu::MenuItem::Submenu(s) => format!("{} ▸", s.title),
+                _ => "—".to_owned(),
+            })
+            .collect();
+        assert_eq!(tops, ["Hide ▸", "Roll Up", "Send to Back", "—", "Zoom ▸", "Tile ▸", "—", "Pin ▸", "Move ▸", "Show ▸", "—", "Remove from Group", "—", "Close ▸", "Quit Gedit"]);
+        assert_eq!(said(within(&menu, "Zoom")).iter().map(|(l, ..)| l.as_str()).collect::<Vec<_>>(), ["Zoom", "Zoom Vertically", "Zoom Horizontally", "Back to Its Own Size"]);
+        assert_eq!(said(within(&menu, "Show")).iter().map(|(l, ..)| l.as_str()).collect::<Vec<_>>(), ["Always on Top", "On All Workspaces", "In the Scratchpad"]);
+        // Zoom's others have the keys that begin with its chord.
+        assert_eq!(said(within(&menu, "Zoom"))[1], item("Zoom Vertically", "shortcut:zoom-vertical", Some("⌃⌥⌘Z  V")));
+        let spaces = within(&menu, "Move");
         let menu::MenuItem::Action(first) = &spaces.items[0] else { panic!() };
         // Every display's workspaces, named for theirs, left to right: its
         // own with keys and a check, another's moving it there.
@@ -1013,7 +1056,7 @@ mod tests {
         assert_eq!(first.keys.clone(), None);
         let own: Vec<&menu::Action> = spaces.items.iter().filter_map(|i| if let menu::MenuItem::Action(a) = i { Some(a) } else { None }).filter(|a| a.label.starts_with("D1")).collect();
         assert_eq!(own.len(), 3);
-        assert_eq!((own[0].command.as_ref(), own[0].keys.as_ref().map(|k| k.as_ref())), ("workspace:0", Some("⌃⇧1")));
+        assert_eq!((own[0].command.as_ref(), own[0].keys.as_ref().map(|k| k.as_ref())), ("workspace:0", Some("⌃⌥⌘V  1")));
         assert!(own[1].checked && !own[0].checked);
     }
 }

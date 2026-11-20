@@ -101,6 +101,40 @@ pub enum MenuItem {
     Submenu(Menu),
 }
 
+/// What in `menu` (a bar's menu, or a popup) isn't as Olo's menus are
+/// grouped (HACKING, "Menus in groups"), a line each: in a submenu named
+/// for a verb, an item or a submenu that says the verb again before
+/// where it goes or what with ("Move ▸ Move to Workspace 2", "Show ▸
+/// Show on AirPlay": the verb is the menu's). The verb itself, or the
+/// verb and how ("Zoom ▸ Zoom Vertically"), is as it should be. By the
+/// words as the app wrote them, in English: in another language a
+/// submenu's title is that language's, and nothing is found.
+pub fn review_groups(menu: &Menu) -> Vec<String> {
+    const WHERE: &[&str] = &["to", "on", "in", "into", "onto", "with", "from"];
+    fn walk(menu: &Menu, group: bool, found: &mut Vec<String>) {
+        for item in &menu.items {
+            let (said, sub) = match item {
+                MenuItem::Action(a) => (if a.english.is_empty() { &a.label } else { &a.english }, None),
+                MenuItem::Submenu(s) => (&s.title, Some(s)),
+                MenuItem::Separator => continue,
+            };
+            if group
+                && let Some(rest) = said.strip_prefix(menu.title.as_ref()).and_then(|r| r.strip_prefix(' '))
+                && let Some((first, what)) = rest.split_once(' ')
+                && WHERE.contains(&first.to_lowercase().as_str())
+            {
+                found.push(format!("{} ▸ {said}: the verb is the menu’s, say “{what}”", menu.title));
+            }
+            if let Some(s) = sub {
+                walk(s, true, found);
+            }
+        }
+    }
+    let mut found = Vec::new();
+    walk(menu, false, &mut found);
+    found
+}
+
 /// A command in a menu.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Action {
@@ -431,8 +465,10 @@ pub fn resolve(menus: &mut [Menu], raw: bool) {
         for item in items {
             match item {
                 MenuItem::Action(a) => match olo_kit_base::keys::known(&a.command, raw) {
+                    // (Keys of two parts are shown, and pressed nowhere in
+                    // the app: app_server takes both and chooses the item.)
                     Some(known) if known.own || a.shortcut.is_some() => {
-                        a.shortcut = known.keys.as_ref().map(|(s, _)| *s);
+                        a.shortcut = known.keys.as_ref().and_then(|(s, _)| *s);
                         a.keys = known.keys.map(|(_, label)| label.into());
                     }
                     Some(_) => {}
@@ -482,7 +518,7 @@ fn popup_size(menu: &Menu) -> (f32, f32) {
             MenuItem::Action(a) => {
                 label_w = label_w.max(f32::from(style::text_width(a.label.clone(), style::PLAIN_SIZE, font.clone())));
                 if let Some(keys) = &a.keys {
-                    key_w = key_w.max(style::key_combo_width(keys));
+                    key_w = key_w.max(style::key_combo_column_width(keys));
                 }
                 h += ITEM_HEIGHT;
             }
@@ -857,9 +893,11 @@ impl MenuPopup {
         let MenuItem::Submenu(menu) = self.menu.items[i].clone() else { return };
         let row = self.row(i, cx.viewport_size().width);
         let me = LocalWindow::<MenuPopup>::of(cx);
-        // Beside the item, its first item level with it, overlapping
-        // this menu's edge.
-        let anchor = Bounds { origin: point(row.left(), row.top() - px(POPUP_PAD - 1.0)), size: size(row.size.width - px(2.0), row.size.height) };
+        // Beside the item, its first item level with it (the popup's
+        // own pad above its first item: a point less set every submenu's
+        // first label a point under its item's, 2 px at 2×; Astra's look
+        // at the window menu, 2026-11-20), overlapping this menu's edge.
+        let anchor = Bounds { origin: point(row.left(), row.top() - px(POPUP_PAD)), size: size(row.size.width - px(2.0), row.size.height) };
         let place = Place { anchor, corner: Corner::TopRight, ..Place::default() };
         if let Some(handle) = open(cx, menu, place, self.on_choose.clone(), Some(me), self.origin, None) {
             self.sub = Some((i, handle));
@@ -1033,7 +1071,7 @@ impl MenuPopup {
                         }
                         style::label(g, row.left() + px(label_left), cy, style::Align::Left, a.label.clone(), style::PLAIN_SIZE, font.clone(), ink);
                         if let Some(keys) = &a.keys {
-                            style::key_combo(g, point(row.right() - px(ITEM_RIGHT), cy), keys, ink);
+                            style::key_combo_column(g, point(row.right() - px(ITEM_RIGHT), cy), keys, ink);
                         }
                         g.agent(agent::Node {
                             role: if a.informational { "Label" } else { "MenuItem" },
@@ -1692,6 +1730,23 @@ mod tests {
         assert_eq!(said, ["Games", "Item 2", "Item 10", "terminal", "|", "A", "b"]);
         let MenuItem::Submenu(games) = &m.items[0] else { panic!() };
         assert!(matches!(&games.items[..], [MenuItem::Action(a), MenuItem::Action(b)] if a.label == "chess" && b.label == "Zork"));
+    }
+
+    #[test]
+    fn the_verb_is_the_menus() {
+        let menu = Menu::new("Weather").item("Hide", "hide").submenu(
+            Menu::new("Move")
+                .item("Workspace 2", "ws:1")
+                .item("Move to Workspace 3", "ws:2")
+                .submenu(Menu::new("Move to Agent Screen").item("agent", "screen:agent"))
+                .submenu(Menu::new("Another Window").item("Kache", "to:1")),
+        );
+        assert_eq!(review_groups(&menu), ["Move ▸ Move to Workspace 3: the verb is the menu’s, say “Workspace 3”", "Move ▸ Move to Agent Screen: the verb is the menu’s, say “Agent Screen”"]);
+        // The verb itself, and the verb and how, are as they should be;
+        // a bar's menu (or a popup itself) isn't a group named for a verb.
+        let zoom = Menu::new("Weather").submenu(Menu::new("Zoom").item("Zoom", "zoom").item("Zoom Vertically", "zoom-v").item("Back to Its Own Size", "restore"));
+        assert!(review_groups(&zoom).is_empty());
+        assert!(review_groups(&Menu::new("Go").item("Go to Line…", "go-to-line")).is_empty());
     }
 
     #[test]

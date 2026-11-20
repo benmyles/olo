@@ -575,6 +575,36 @@ Learned making windows snap and glide (2026-11-20):
   `tools/dev/snap-check` does is wait for each frame to settle
   (`settled`) and read it.
 
+### Keys in a test session: together, in turn, and what a made-up press skips
+
+Learned making shortcuts of two parts (2026-11-20):
+
+- **`tsession key` is one chord**: every code down, then every code up.
+  Keys in turn with something still held (⌃⌥⌘ held across two letters)
+  are one `synthetic` request with the key events in order
+  (`{"type":"synthetic","events":[{"type":"key","key":29,"pressed":true},
+  …]}`, as `tools/dev/chord-check`'s `events` sends them): app_server
+  takes them one after another with nothing between, which is also how
+  "typed straight through" is tested (two `tsession key` calls are 100
+  ms apart, a person's pause).
+- **A made-up pointer press isn't a real one's code.** Real input goes
+  through `pointer_button`, `synthetic` events through
+  `synthetic_input_inner`: a second, shorter path. What's hooked on a
+  press (a waiting group of shortcuts let go of) has to be hooked on
+  both, or it works for the person and not for the test, or the other
+  way round. The same for keys' side effects: look at both paths.
+- **`{"type":"layer_clients"}` says which layer windows are up** (pid
+  and namespace: the chord panel's is `chord`), the way to check that
+  something app_server started for a moment (a panel, a banner) came
+  and went, without a picture.
+- **A check that toggles must leave no toggle behind.** One failed step
+  that left a group waiting made the next three fail for a reason of
+  their own (the first chord pressed again picked from the group).
+  Read the first failure; the rest are usually its echo.
+- **`olo-preferences PANEL --tab NAME`** opens any panel on that tab
+  (it did only for Network, Power, Performance and Security until
+  2026-11-20; elsewhere the tab was silently ignored).
+
 ### A program with no network, without root
 
 `unshare -rn PROGRAM` runs it in a network of its own with only

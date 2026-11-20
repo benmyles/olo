@@ -525,7 +525,10 @@ pub fn render(v: &mut PanelView, cx: &mut Cx<PanelView>) -> Element {
         panel.reset(&mut probe, from);
         probe != s
     };
-    let (to_defaults, to_opened) = (differs(&defaults), differs(&v.opened));
+    // (While a shortcut's keys are typed, only Esc is the way out: they'd
+    // throw the change away under the hand typing it.)
+    let typing = matches!(&v.state, State::Keyboard(k) if k.shortcuts.recording());
+    let (to_defaults, to_opened) = (differs(&defaults) && !typing, differs(&v.opened) && !typing);
     let opened = v.opened.clone();
     let footer = div()
         .flex()
