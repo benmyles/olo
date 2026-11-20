@@ -171,6 +171,19 @@ something nobody here has is in "Blocked", with what it waits for.
   window's next frame, and to the screen), said in the log with who
   was late, so the next time it is known at once.
 
+- **Elevated permissions approved by themselves are approved at once,
+  with nothing started** (Ben, 2026-11-20: "when auto-approve
+  sudo/elevated permissions is enabled, it still starts the ir camera
+  etc. for a few seconds before it stops and approves. it should just
+  approve immediately without doing that at all"). Terminal's sudo
+  (apps/terminal/src/sudo.rs; its log says "sudo -n approved without
+  asking: the password didn't do", so the asking had begun: the face
+  camera, the fingerprint reader, the key) and whatever else asks
+  through the same ways (the polkit agent): where approval is the
+  setting's, decide first and start none of the ways in. With a test
+  that nothing was opened (the stand-ins for the camera and the
+  reader count their starts). After the responsiveness work.
+
 - **Phone: what's left of the night it wasn't found again** (Ben,
   2026-11-20; the faults on Olo's side are fixed: under Done). Left:
   - **The phone connects over low energy and answers no classic
