@@ -18,6 +18,10 @@
 //! It also answers agents' questions about Chrome's windows (a kit app's
 //! `tree` socket, for Chrome's process): `{tree: n}` goes to the
 //! extension, which answers `{tree: n, windows}` (background.js, tree.js).
+//! A Chrome with several profiles open has a host for each, and one
+//! socket for agents: the host that has it asks the others for their
+//! profiles' windows too (each on its own socket, `hosts_dir`), and when
+//! it goes another takes the socket (`keep_answering`).
 //! There too, the command `open-in-front URL` (choose.rs: Open in Which
 //! Window?) has the extension open a link in a new tab of the window
 //! Chrome had the focus in last (`{open_in_front: URL}`): Chrome's own
@@ -73,27 +77,38 @@ pub fn hosts_dir() -> std::path::PathBuf {
     olo_xdg::runtime_dir().join("olo-chrome-hosts")
 }
 
-/// Take links to open in a window of this host's profile, once its
-/// extension says it can (`{can: ["open_in_window"]}`: an older one
-/// opens the link whatever it's asked and never answers, so it isn't
-/// asked this way). Each asking is a line of JSON (`{url, title, width,
-/// height, must_match, focused}`, as the extension takes it) on this
-/// host's own socket, answered `{"ok": true}` if the extension opened it.
+/// This host's own socket: `{chrome}-{me}.sock` in [`hosts_dir`].
+fn own_socket() -> std::path::PathBuf {
+    hosts_dir().join(format!("{}-{}.sock", std::os::unix::process::parent_id(), std::process::id()))
+}
+
+/// This host's own socket, answered: what's asked of one profile of a
+/// Chrome that may have several open (a host for each). Each asking is a
+/// line of JSON, answered with one:
+///
+/// - `{"tree": true}`: this profile's windows' widget trees, for the
+///   host that has Chrome's socket for agents to put with its own
+///   ([`others_trees`]).
+/// - `{url, title, width, height, must_match, focused}`: a link to open
+///   in a window of this profile's, as the extension takes it, answered
+///   `{"ok": true}` if the extension opened it. Only once its extension
+///   says it can (`{can: ["open_in_window"]}`, `can_open`): an older one
+///   opens the link whatever it's asked and never answers, so it's
+///   answered `{"ok": false}` for, and whoever asked goes on to the next.
 ///
 /// A socket a host, not the one Chrome's process has for agents
-/// (`commands::serve`, which the host started last takes over): a Chrome
-/// with several profiles open has a host for each, and a window is one
-/// profile's, so whoever opens a link asks each in turn.
-fn open_in_window(out: Arc<Mutex<std::io::Stdout>>, opening: Opening) {
-    let (chrome, me) = (std::os::unix::process::parent_id(), std::process::id());
+/// (`commands::serve`, which one host has): a window is one profile's,
+/// so whoever opens a link asks each in turn.
+fn own_socket_answered(out: Arc<Mutex<std::io::Stdout>>, opening: Opening, waiting: Waiting, can_open: Arc<AtomicBool>) {
     let dir = hosts_dir();
-    let path = dir.join(format!("{chrome}-{me}.sock"));
+    let path = own_socket();
     let listening = std::fs::create_dir_all(&dir).and_then(|()| {
-        // (Sockets of Chromes that have gone, left by hosts that ended
-        // with them: swept as a host starts.)
+        // (Sockets of Chromes that have gone, and of hosts that have:
+        // swept as a host starts.)
         for old in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
             let name = old.file_name().to_string_lossy().into_owned();
-            let gone = name.split('-').next().and_then(|pid| pid.parse::<u32>().ok()).is_some_and(|pid| !std::path::Path::new(&format!("/proc/{pid}")).exists());
+            let pids = name.strip_suffix(".sock").and_then(|n| n.split_once('-')).and_then(|(chrome, host)| Some((chrome.parse::<u32>().ok()?, host.parse::<u32>().ok()?)));
+            let gone = pids.is_some_and(|(chrome, host)| [chrome, host].iter().any(|pid| !std::path::Path::new(&format!("/proc/{pid}")).exists()));
             if gone {
                 let _ = std::fs::remove_file(old.path());
             }
@@ -104,12 +119,12 @@ fn open_in_window(out: Arc<Mutex<std::io::Stdout>>, opening: Opening) {
     let listener = match listening {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("olo-chrome: can't take links to open in this profile's windows: {e}");
+            eprintln!("olo-chrome: can't answer for this profile's windows: {e}");
             return;
         }
     };
-    let next = AtomicU64::new(1);
-    let _ = std::thread::Builder::new().name("open-in-window".into()).spawn(move || {
+    let next = Arc::new(AtomicU64::new(1));
+    let _ = std::thread::Builder::new().name("own-socket".into()).spawn(move || {
         for s in listener.incoming().flatten() {
             let _ = s.set_read_timeout(Some(Duration::from_secs(2)));
             let mut line = String::new();
@@ -117,8 +132,20 @@ fn open_in_window(out: Arc<Mutex<std::io::Stdout>>, opening: Opening) {
                 continue;
             }
             let Ok(ask) = serde_json::from_str::<Value>(&line) else { continue };
+            // (Its trees take as long as the extension does: asked on a
+            // thread of their own, so a link isn't kept waiting for them.)
+            if ask.get("tree").is_some() {
+                let (out, waiting) = (out.clone(), waiting.clone());
+                let _ = std::thread::Builder::new().name("own-trees".into()).spawn(move || {
+                    let trees = own_trees(&out, &waiting);
+                    if let Ok(answer) = serde_json::to_string(&trees) {
+                        let _ = (&s).write_all(format!("{answer}\n").as_bytes());
+                    }
+                });
+                continue;
+            }
             let web = ask["url"].as_str().is_some_and(|u| ["http://", "https://"].iter().any(|p| u.starts_with(p)));
-            let ok = web && {
+            let ok = web && can_open.load(Ordering::Relaxed) && {
                 let n = next.fetch_add(1, Ordering::Relaxed);
                 let (tx, rx) = mpsc::channel();
                 opening.lock().unwrap_or_else(|e| e.into_inner()).insert(n, tx);
@@ -132,6 +159,78 @@ fn open_in_window(out: Arc<Mutex<std::io::Stdout>>, opening: Opening) {
     });
 }
 
+/// The numbers tree questions to the extension go by.
+static TREE_ASKED: AtomicU64 = AtomicU64::new(1);
+
+/// This profile's windows' widget trees, asked of its extension (none,
+/// if it doesn't answer in `TREE_WAIT_FOR`).
+fn own_trees(out: &Mutex<std::io::Stdout>, waiting: &Waiting) -> Vec<WindowTree> {
+    let n = TREE_ASKED.fetch_add(1, Ordering::Relaxed);
+    let (tx, rx) = mpsc::channel();
+    waiting.lock().unwrap_or_else(|e| e.into_inner()).insert(n, tx);
+    send(out, &json!({ "tree": n }));
+    let got = rx.recv_timeout(commands::TREE_WAIT_FOR).unwrap_or_default();
+    waiting.lock().unwrap_or_else(|e| e.into_inner()).remove(&n);
+    got
+}
+
+/// The windows' trees of the other profiles of Chrome `chrome`: each of
+/// its hosts but `me` asked on its own socket in `dir`, all at once (each
+/// may take as long as its extension does), their answers put together.
+/// A host that has gone, or says nothing in time, adds nothing.
+fn others_trees(dir: &std::path::Path, chrome: u32, me: u32) -> Vec<WindowTree> {
+    use std::io::BufRead as _;
+    let (prefix, mine) = (format!("{chrome}-"), format!("{chrome}-{me}.sock"));
+    let mut hosts: Vec<std::path::PathBuf> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with(&prefix) && n.ends_with(".sock") && n != mine))
+        .collect();
+    hosts.sort();
+    let ask = |host: &std::path::Path| -> Vec<WindowTree> {
+        let Ok(mut s) = std::os::unix::net::UnixStream::connect(host) else { return Vec::new() };
+        let _ = s.set_read_timeout(Some(commands::TREE_WAIT_FOR + Duration::from_millis(300)));
+        if s.write_all(b"{\"tree\":true}\n").is_err() {
+            return Vec::new();
+        }
+        let mut answer = String::new();
+        let _ = std::io::BufReader::new(&s).read_line(&mut answer);
+        serde_json::from_str(&answer).unwrap_or_default()
+    };
+    std::thread::scope(|scope| {
+        let asked: Vec<_> = hosts.iter().map(|host| scope.spawn(|| ask(host))).collect();
+        asked.into_iter().flat_map(|a| a.join().unwrap_or_default()).collect()
+    })
+}
+
+/// Another host takes Chrome's socket for agents when the one that had
+/// it has gone (its profile's last window closed): told by the hosts'
+/// folder changing (a host takes its own socket away as it ends), each
+/// one left looks whether the agents' socket still has someone behind
+/// it, and answers it itself if not. Asleep otherwise: nothing is asked
+/// on a clock. (Two that take it at once: the later has it, as when two
+/// start.)
+fn keep_answering(out: Arc<Mutex<std::io::Stdout>>, waiting: Waiting) {
+    let chrome = std::os::unix::process::parent_id();
+    let _ = std::thread::Builder::new().name("agents-socket".into()).spawn(move || {
+        let (tx, rx) = mpsc::channel();
+        let Some(_watch) = olo_kit_base::watch::watch([hosts_dir()], move |_| {
+            let _ = tx.send(());
+        }) else {
+            return;
+        };
+        while rx.recv().is_ok() {
+            // (What came with it, its own doing too: looked at once.)
+            while rx.try_recv().is_ok() {}
+            if !commands::answered(chrome) {
+                serve_trees(out.clone(), waiting.clone(), None);
+            }
+        }
+    });
+}
+
 /// Requests waiting for Passwords' answer, by the extension's id: their
 /// connections, to end on `{cancel}`.
 static ASKING: Mutex<Option<HashMap<u64, std::os::unix::net::UnixStream>>> = Mutex::new(None);
@@ -141,6 +240,17 @@ static ASKING: Mutex<Option<HashMap<u64, std::os::unix::net::UnixStream>>> = Mut
 /// starting the new one), so a Fill waiting for an unlock isn't cut off.
 static ANSWERING: AtomicUsize = AtomicUsize::new(0);
 static UPGRADED: AtomicBool = AtomicBool::new(false);
+
+/// This host's own socket, taken away as the host ends (Chrome closed
+/// its pipe): the other hosts, following the folder, hear of it
+/// ([`keep_answering`]).
+struct OwnSocket;
+
+impl Drop for OwnSocket {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(own_socket());
+    }
+}
 
 /// Gone for the new version, if upgraded and nothing is being answered.
 fn make_way() {
@@ -159,9 +269,17 @@ pub fn run() {
     let out = Arc::new(Mutex::new(std::io::stdout()));
     let trees: Waiting = Arc::default();
     let opening: Opening = Arc::default();
-    let mut listening_for_links = false;
+    let can_open = Arc::new(AtomicBool::new(false));
     let mut slack = slack_here.map(|here| Slack::new(here, out.clone()));
+    // (Before Chrome's socket for agents: whoever has that asks this.)
+    let _own = slack.is_none().then(|| {
+        own_socket_answered(out.clone(), opening.clone(), trees.clone(), can_open.clone());
+        OwnSocket
+    });
     serve_trees(out.clone(), trees.clone(), slack.as_ref());
+    if slack.is_none() {
+        keep_answering(out.clone(), trees.clone());
+    }
     if let Some(s) = &slack {
         s.hello();
     }
@@ -193,9 +311,8 @@ pub fn run() {
         if let Ok(m) = &message
             && let Some(can) = m.get("can").and_then(Value::as_array)
         {
-            if can.iter().any(|c| c == "open_in_window") && slack.is_none() && !listening_for_links {
-                listening_for_links = true;
-                open_in_window(out.clone(), opening.clone());
+            if can.iter().any(|c| c == "open_in_window") {
+                can_open.store(true, Ordering::Relaxed);
             }
             continue;
         }
@@ -291,17 +408,23 @@ pub fn run() {
 /// answered on Chrome's own process's socket (Chrome starts us), so they
 /// are found as a kit app's are: each is asked of the extension.
 fn serve_trees(out: Arc<Mutex<std::io::Stdout>>, waiting: Waiting, slack: Option<&Slack>) {
-    let chrome = std::os::unix::process::parent_id();
+    let (chrome, me) = (std::os::unix::process::parent_id(), std::process::id());
     let out_for_invoke = out.clone();
-    let next = AtomicU64::new(1);
+    // (Olo's Slack is a Chrome of one profile: its own trees are all.
+    // Chrome's: every profile's, this one's asked of its extension while
+    // the others' hosts are asked for theirs. It read only the windows of
+    // the profile whose host started last.)
+    let alone = slack.is_some();
     let trees = move || {
-        let n = next.fetch_add(1, Ordering::Relaxed);
-        let (tx, rx) = mpsc::channel();
-        waiting.lock().unwrap_or_else(|e| e.into_inner()).insert(n, tx);
-        send(&out, &json!({ "tree": n }));
-        let got = rx.recv_timeout(commands::TREE_WAIT_FOR).unwrap_or_default();
-        waiting.lock().unwrap_or_else(|e| e.into_inner()).remove(&n);
-        got
+        if alone {
+            return own_trees(&out, &waiting);
+        }
+        std::thread::scope(|scope| {
+            let others = scope.spawn(|| others_trees(&hosts_dir(), chrome, me));
+            let mut all = own_trees(&out, &waiting);
+            all.extend(others.join().unwrap_or_default());
+            all
+        })
     };
     let served = match slack {
         // Slack's channels and people, Jump To… and Search…, for the palette.
@@ -321,10 +444,21 @@ fn serve_trees(out: Arc<Mutex<std::io::Stdout>>, waiting: Waiting, slack: Option
             commands::serve(chrome, commands::Served { app_id: "google-chrome".into(), trees: Box::new(trees), menus: Box::new(Vec::new), invoke: Box::new(invoke) })
         }
     };
-    if let Err(e) = served {
-        eprintln!("olo-chrome: can't answer for Chrome's widget trees: {e}");
+    match served {
+        // (What this host answered it with before, when it had it and
+        // another took it: ended, not left asleep at each taking.)
+        Ok(serving) => {
+            if let Some(before) = SERVING.lock().unwrap_or_else(|e| e.into_inner()).replace(serving) {
+                before.stop();
+            }
+        }
+        Err(e) => eprintln!("olo-chrome: can't answer for Chrome's widget trees: {e}"),
     }
 }
+
+/// Chrome's socket for agents as this host answers it (or did, until
+/// another host took it).
+static SERVING: Mutex<Option<commands::Serving>> = Mutex::new(None);
 
 pub(crate) fn send(out: &Mutex<std::io::Stdout>, reply: &Value) {
     let Ok(mut bytes) = serde_json::to_vec(reply) else { return };
@@ -456,5 +590,45 @@ mod tests {
         let m = json!({ "id": 4, "request": { "type": "nonsense" } });
         assert!(answer(&m)["error"].as_str().unwrap().starts_with("not a request Passwords knows"));
         assert!(allowed(&Request::Logins { url: "https://a.example".into() }));
+    }
+
+    /// The other profiles' hosts are each asked for their windows' trees
+    /// on their own sockets, and what they answer is put together: not
+    /// this host's own (it asks its extension itself), not another
+    /// Chrome's, and a host that has gone, or answers with what isn't
+    /// trees, adds nothing and holds nothing up.
+    #[test]
+    fn the_other_profiles_trees_are_gathered() {
+        use std::io::{BufRead as _, Write as _};
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-chrome-trees-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let tree = |title: &str| WindowTree { title: title.into(), width: 800, height: 600, ..Default::default() };
+        // A host: answers a tree asking with `answer`.
+        let host = |name: &str, answer: String| {
+            let listener = std::os::unix::net::UnixListener::bind(dir.join(name)).unwrap();
+            std::thread::spawn(move || {
+                for s in listener.incoming().flatten() {
+                    let mut line = String::new();
+                    std::io::BufReader::new(&s).read_line(&mut line).unwrap();
+                    assert!(serde_json::from_str::<Value>(&line).unwrap().get("tree").is_some(), "{line}");
+                    let _ = (&s).write_all(format!("{answer}\n").as_bytes());
+                }
+            });
+        };
+        host("700-1.sock", serde_json::to_string(&vec![tree("Mine")]).unwrap());
+        host("700-2.sock", serde_json::to_string(&vec![tree("Work - Inbox"), tree("Work - Docs")]).unwrap());
+        host("700-3.sock", serde_json::to_string(&vec![tree("Home - News")]).unwrap());
+        host("700-4.sock", "not trees".into());
+        host("900-1.sock", serde_json::to_string(&vec![tree("Another Chrome's")]).unwrap());
+        // A host that ended: its socket left, nobody behind it.
+        drop(std::os::unix::net::UnixListener::bind(dir.join("700-5.sock")).unwrap());
+        let started = Instant::now();
+        let titles: Vec<String> = others_trees(&dir, 700, 1).into_iter().map(|t| t.title).collect();
+        assert_eq!(titles, ["Work - Inbox", "Work - Docs", "Home - News"]);
+        assert!(started.elapsed() < Duration::from_secs(1), "nothing waited for: {:?}", started.elapsed());
+        // With no others, none.
+        assert!(others_trees(&dir, 900, 1).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

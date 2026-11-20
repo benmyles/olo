@@ -362,17 +362,6 @@ something nobody here has is in "Blocked", with what it waits for.
   off); weekdays' and months' names in the person's language (with
   Calendar's: Language, below).
 
-- **Chrome with several profiles: agents' trees and codes reach one
-  profile** (found 2026-11-18, mending links). Chrome's socket for
-  agents (`commands::serve` for its pid: widget trees, Slack's
-  commands) is one, taken over by the extension's host that started
-  last, so `olo-screen tree` of a Chrome with two profiles' windows
-  reads only one profile's, and whatever else goes through that socket
-  reaches one profile. Links no longer do (a socket a host). The same
-  for the rest: each host's own socket asked and the answers put
-  together (the trees), or the one whose it is (a code for the tab
-  that's waiting).
-
 - **Windows snap into place as they're dragged** (Ben, 2026-11-18: "add
   support for window "snapping" when dragging so that e.g. if i drag to
   different areas of the screen it takes that tile location while
@@ -440,6 +429,21 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Chrome with several profiles: agents see every profile's windows**
+  (found 2026-11-18, mending links: Chrome's socket for agents was one,
+  taken over by the extension's host that started last, so `olo-screen
+  tree` of a Chrome with two profiles' windows read only one profile's).
+  **Done** (2026-11-20; HACKING, Google Chrome): every profile's host
+  answers for its own windows on its own socket, the host that has the
+  agents' socket gathers them all, and when that host goes with its
+  profile's last window another takes the socket (before, it was left
+  with nobody behind it, and Chrome's trees were gone until a host
+  started). One-time codes never went that way (each host is the phone
+  service's own browser), and links have had a socket a host since
+  2026-11-18. Tried with a Chrome of two profiles in a test session.
+  **To try**: nothing to do; an agent reading a Chrome with windows of
+  two profiles (`olo-screen tree`) now reads both.
 
 - **A To-Do app, native** (Ben, 2026-11-18: "a beautiful olo native
   todo app that supports reminders / due dates / simple kanban style

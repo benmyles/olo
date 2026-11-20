@@ -506,8 +506,28 @@ pub fn listen(to: impl Fn(Query) + Send + 'static) -> Option<Listening> {
 /// listening thread for each question and may take up to `TREE_WAIT`.
 /// Its menus are empty and nothing can be invoked. Runs until the
 /// process ends; the socket is left for the next sweep.
-pub fn serve_trees(pid: u32, app_id: &str, trees: impl Fn() -> Vec<WindowTree> + Send + 'static) -> std::io::Result<()> {
+pub fn serve_trees(pid: u32, app_id: &str, trees: impl Fn() -> Vec<WindowTree> + Send + 'static) -> std::io::Result<Serving> {
     serve(pid, Served { app_id: app_id.to_owned(), trees: Box::new(trees), menus: Box::new(Vec::new), invoke: Box::new(|_| false) })
+}
+
+/// A socket being answered by [`serve`]: `stop` ends it (its thread, its
+/// listening), for a helper that takes the socket again after another
+/// had it, so the listening it did before isn't left behind, a thread
+/// asleep on a socket nobody can reach, at each taking.
+pub struct Serving {
+    listener: UnixListener,
+    stopped: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl Serving {
+    pub fn stop(&self) {
+        use std::os::fd::AsRawFd as _;
+        self.stopped.store(true, std::sync::atomic::Ordering::SeqCst);
+        // (Its thread, asleep in accept, wakes to an error and ends.)
+        // SAFETY: the listener is ours and open: shutting it down only
+        // ends what's waiting on it.
+        unsafe { libc::shutdown(self.listener.as_raw_fd(), libc::SHUT_RDWR) };
+    }
 }
 
 /// What [`serve`] answers for a program that isn't a kit app.
@@ -526,13 +546,22 @@ pub struct Served {
 /// Answer a kit app's socket for process `pid`, a program that isn't one
 /// (the Olo extension's host does it for Chrome, and for olo-slack's
 /// Chrome with Slack's commands), with `served`. Runs until the process
-/// ends; the socket is left for the next sweep.
-pub fn serve(pid: u32, served: Served) -> std::io::Result<()> {
+/// ends, or the [`Serving`] it returns is stopped; the socket is left for
+/// the next sweep.
+pub fn serve(pid: u32, served: Served) -> std::io::Result<Serving> {
     let path = socket_path(pid);
     let _ = std::fs::remove_file(&path);
     let listener = UnixListener::bind(&path)?;
+    let serving = Serving { listener: listener.try_clone()?, stopped: Default::default() };
+    let stopped = serving.stopped.clone();
     std::thread::Builder::new().name("trees".into()).spawn(move || {
-        for s in listener.incoming().flatten() {
+        for s in listener.incoming() {
+            let Ok(s) = s else {
+                if stopped.load(std::sync::atomic::Ordering::SeqCst) {
+                    break;
+                }
+                continue;
+            };
             let _ = s.set_read_timeout(Some(WAIT));
             let mut line = String::new();
             if BufReader::new(&s).read_line(&mut line).is_err() {
@@ -559,11 +588,18 @@ pub fn serve(pid: u32, served: Served) -> std::io::Result<()> {
             }
         }
     })?;
-    Ok(())
+    Ok(serving)
 }
 
 /// How long [`serve_trees`]' `trees` may take.
 pub const TREE_WAIT_FOR: Duration = TREE_WAIT;
+
+/// Whether process `pid`'s socket for agents has someone behind it
+/// ([`serve`]'s, or a kit app's): for a program whose socket one of
+/// several helpers answers, to know when the one that did has gone.
+pub fn answered(pid: u32) -> bool {
+    UnixStream::connect(socket_path(pid)).is_ok()
+}
 
 fn ask(pid: u32, ask: &Ask) -> Option<String> {
     let s = UnixStream::connect(socket_path(pid)).ok()?;
@@ -661,4 +697,33 @@ pub(crate) fn ask_move(pid: u32, to: &crate::moving::MoveTo) -> Option<crate::mo
 /// up to two seconds: call it off the UI thread.
 pub fn review(pid: u32) -> Option<Vec<WindowReview>> {
     serde_json::from_str(&ask(pid, &Ask::Review(true))?).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A socket answered for another program stops being answered when
+    /// told: the helper that takes the socket again leaves no listening
+    /// of its own behind, and the socket can be answered anew.
+    #[test]
+    fn a_served_socket_stops_when_told() {
+        // (No process has this number: beyond the kernel's most.)
+        let pid = 4_100_000_000 + std::process::id() % 100_000;
+        let served = || Served { app_id: "test".into(), trees: Box::new(Vec::new), menus: Box::new(Vec::new), invoke: Box::new(|_| false) };
+        let first = serve(pid, served()).expect("served");
+        assert!(answered(pid));
+        assert_eq!(ask(pid, &Ask::Tree(true)).as_deref().map(str::trim), Some("[]"));
+        first.stop();
+        let until = std::time::Instant::now() + Duration::from_secs(2);
+        while answered(pid) {
+            assert!(std::time::Instant::now() < until, "still answered after it was stopped");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        // Taken again: answered again.
+        let second = serve(pid, served()).expect("served again");
+        assert_eq!(ask(pid, &Ask::Tree(true)).as_deref().map(str::trim), Some("[]"));
+        second.stop();
+        let _ = std::fs::remove_file(socket_path(pid));
+    }
 }

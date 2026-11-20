@@ -20048,6 +20048,35 @@ it when it suits it, and in the trial it named the profile whose window
 had gone. Tried in the test session: the failing state made again, the
 link in the one window; then windows of two profiles, the picker, each
 window chosen in turn by its letter, each link in the window chosen.
+
+The trees too (2026-11-20): `olo-screen tree` of a Chrome with two
+profiles' windows read only the windows of the profile whose host had
+the agents' socket, and none at all once that host had gone with its
+profile's last window (the socket was left with nobody behind it). Now
+every host listens on its own socket from its start (`host::
+own_socket_answered`), and answers `{"tree": true}` there with its own
+profile's windows; the host that has the agents' socket asks its
+extension and, at the same time, each other host of that Chrome
+(`others_trees`: all at once, each given as long as an extension has,
+a host that has gone or says something else adding nothing), and
+answers with them all. A host takes its own socket away as it ends
+(`OwnSocket`), each host follows the hosts' folder (`keep_answering`:
+one inotify watch, asleep until it changes, nothing asked on a clock),
+and one that finds the agents' socket unanswered (`commands::answered`)
+takes it, ending what it answered it with before
+(`commands::Serving::stop`: a host that takes the socket again and
+again keeps one listening thread, not one more each time). A host
+killed outright leaves its socket file, and nothing is told: the next
+host to start or end puts it right, as does the extension, which
+starts its host again when its port drops. Tried in a test session
+(a Chrome and profile in scratch, its runtime folder its own): two
+profiles' windows in one answer; the second profile's window closed
+and opened three times, one window then two each time, the first host
+at one `trees` thread throughout and 0 wakeups a second at rest; a link
+asked of each host with `must_match` opened by the one whose window it
+was. Tests: `the_other_profiles_trees_are_gathered`,
+`a_served_socket_stops_when_told`. (One-time codes never went through
+that socket: each host is the phone service's own "browser", `codes.rs`.)
 To try Chrome in a test session: its own copy of Chrome
 (`cp -r --reflink=auto ~/.local/share/olo/chrome/VERSION` into the
 session's home, with `current` and a fresh `.checked`), a
@@ -20334,6 +20363,8 @@ client app_server names in `WindowInfo::pid`), with
 `commands::serve_trees`: each question goes to the extension as
 `{tree: n}`, which injects `tree.js` into every frame of each window's
 active tab and answers `{tree: n, windows}` within `TREE_WAIT`.
+(A Chrome with several profiles open has a host for each: the one that
+has the socket gathers the others' windows with its own, above.)
 **Iframes**: in each frame, `tree.js` tells every iframe element a token
 of its own (kept per element in the extension's isolated world, posted
 to the iframe's window each time, since it may have navigated); the
