@@ -1502,6 +1502,9 @@ CalDAV
 Calendar
 Agenda
 
+Calendar for {}
+Agenda voor {}
+
 Calendar shows the calendars of your accounts on other CalDAV servers (Nextcloud, iCloud with an app-specific password, a server of your own) beside Google’s and Fastmail’s, and writes what you change back to them.
 Agenda toont de agenda’s van andere CalDAV-accounts (Nextcloud, iCloud met een appwachtwoord of een eigen server) naast die van Google en Fastmail. Wijzigingen worden op de bijbehorende server opgeslagen.
 
@@ -5073,6 +5076,9 @@ Mail
 Mail and Calendar sign in to Fastmail with an app password of each account’s own, with access to mail and calendars. Tick what each account is used for: Mail looks in its new mail for one-time codes, Calendar shows its calendars.
 Mail en Agenda gebruiken voor elk Fastmail-account een eigen appwachtwoord met toegang tot mail en agenda’s. Vink aan waarvoor u elk account gebruikt. Mail zoekt in nieuwe berichten naar eenmalige codes en Agenda toont de agenda’s.
 
+Mail for {}
+Mail voor {}
+
 Mail is read only while a page waits for a code, for up to a minute.
 Olo leest alleen e-mail terwijl een pagina op een code wacht, maximaal een minuut.
 
@@ -7817,11 +7823,17 @@ Groep opslaan
 Save a login for {} with the one-time code this page shows?
 Een login voor {} opslaan met de eenmalige code op deze pagina?
 
-Save a passkey{} on {} in Passwords?
-Een toegangssleutel{} voor {} bewaren in Passwords?
+Save a passkey for “{}” on {} in Passwords?
+Een toegangssleutel van ‘{}’ voor {} bewaren in Passwords?
 
-Save a passkey{} on {} in Passwords? It goes with your login “{}”.
-Een toegangssleutel{} voor {} bewaren in Passwords? Die wordt aan uw login ‘{}’ toegevoegd.
+Save a passkey for “{}” on {} in Passwords? It goes with your login “{}”.
+Een toegangssleutel van ‘{}’ voor {} bewaren in Passwords? Die wordt aan uw login ‘{}’ toegevoegd.
+
+Save a passkey on {} in Passwords?
+Een toegangssleutel voor {} bewaren in Passwords?
+
+Save a passkey on {} in Passwords? It goes with your login “{}”.
+Een toegangssleutel voor {} bewaren in Passwords? Die wordt aan uw login ‘{}’ toegevoegd.
 
 Save as
 Opslaan als

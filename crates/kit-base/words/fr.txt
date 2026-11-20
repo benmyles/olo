@@ -1502,6 +1502,9 @@ CalDAV
 Calendar
 Calendrier
 
+Calendar for {}
+Calendrier pour {}
+
 Calendar shows the calendars of your accounts on other CalDAV servers (Nextcloud, iCloud with an app-specific password, a server of your own) beside Google’s and Fastmail’s, and writes what you change back to them.
 Calendrier affiche les calendriers de vos comptes sur d’autres serveurs CalDAV (Nextcloud, iCloud avec un mot de passe d’app, votre propre serveur) à côté de ceux de Google et Fastmail, et y enregistre vos modifications.
 
@@ -5073,6 +5076,9 @@ Mail
 Mail and Calendar sign in to Fastmail with an app password of each account’s own, with access to mail and calendars. Tick what each account is used for: Mail looks in its new mail for one-time codes, Calendar shows its calendars.
 Mail et Calendrier se connectent à Fastmail avec un mot de passe d’app propre à chaque compte, avec accès au courrier et aux calendriers. Cochez l’usage de chaque compte : Mail cherche les codes à usage unique dans son nouveau courrier, Calendrier affiche ses calendriers.
 
+Mail for {}
+Mail pour {}
+
 Mail is read only while a page waits for a code, for up to a minute.
 Le courrier n’est lu que pendant qu’une page attend un code, une minute au plus.
 
@@ -7817,11 +7823,17 @@ Enregistrer le groupe
 Save a login for {} with the one-time code this page shows?
 Enregistrer un identifiant pour {} avec le code à usage unique affiché par cette page ?
 
-Save a passkey{} on {} in Passwords?
-Enregistrer une clé d’accès{} pour {} dans Passwords ?
+Save a passkey for “{}” on {} in Passwords?
+Enregistrer une clé d’accès de « {} » pour {} dans Passwords ?
 
-Save a passkey{} on {} in Passwords? It goes with your login “{}”.
-Enregistrer une clé d’accès{} pour {} dans Passwords ? Elle va avec votre identifiant « {} ».
+Save a passkey for “{}” on {} in Passwords? It goes with your login “{}”.
+Enregistrer une clé d’accès de « {} » pour {} dans Passwords ? Elle va avec votre identifiant « {} ».
+
+Save a passkey on {} in Passwords?
+Enregistrer une clé d’accès pour {} dans Passwords ?
+
+Save a passkey on {} in Passwords? It goes with your login “{}”.
+Enregistrer une clé d’accès pour {} dans Passwords ? Elle va avec votre identifiant « {} ».
 
 Save as
 Enregistrer sous

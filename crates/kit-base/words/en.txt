@@ -496,6 +496,7 @@ Caffeinated until {}
 Caffeinated: staying awake
 CalDAV
 Calendar
+Calendar for {}
 Calendar shows the calendars of your accounts on other CalDAV servers (Nextcloud, iCloud with an app-specific password, a server of your own) beside Google’s and Fastmail’s, and writes what you change back to them.
 Calendar:
 Calendar: Fastmail didn’t take the app password for calendars (it needs access to them).
@@ -1682,6 +1683,7 @@ Magic Keyboard with Touch ID and Numeric Keypad
 Magic Trackpad
 Mail
 Mail and Calendar sign in to Fastmail with an app password of each account’s own, with access to mail and calendars. Tick what each account is used for: Mail looks in its new mail for one-time codes, Calendar shows its calendars.
+Mail for {}
 Mail is read only while a page waits for a code, for up to a minute.
 Mail is read only while a page waits for a code, for up to a minute. A phone, set up in Phone, is looked in too.
 Mail to {} ({})
@@ -2596,8 +2598,10 @@ Save
 Save As…
 Save Group
 Save a login for {} with the one-time code this page shows?
-Save a passkey{} on {} in Passwords?
-Save a passkey{} on {} in Passwords? It goes with your login “{}”.
+Save a passkey for “{}” on {} in Passwords?
+Save a passkey for “{}” on {} in Passwords? It goes with your login “{}”.
+Save a passkey on {} in Passwords?
+Save a passkey on {} in Passwords? It goes with your login “{}”.
 Save as
 Save as GIF
 Save as:

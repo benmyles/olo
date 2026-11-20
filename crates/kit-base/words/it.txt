@@ -1502,6 +1502,9 @@ CalDAV
 Calendar
 Calendario
 
+Calendar for {}
+Calendario di {}
+
 Calendar shows the calendars of your accounts on other CalDAV servers (Nextcloud, iCloud with an app-specific password, a server of your own) beside Google’s and Fastmail’s, and writes what you change back to them.
 Calendario mostra i calendari degli altri account CalDAV (Nextcloud, iCloud con una password specifica per l’app o un tuo server) insieme a quelli di Google e Fastmail. Le modifiche vengono salvate sui rispettivi server.
 
@@ -5073,6 +5076,9 @@ Mail
 Mail and Calendar sign in to Fastmail with an app password of each account’s own, with access to mail and calendars. Tick what each account is used for: Mail looks in its new mail for one-time codes, Calendar shows its calendars.
 Mail e Calendario usano per ogni account Fastmail una password per l’app con accesso alla posta e ai calendari. Scegli come usare ogni account. Mail cerca codici monouso nei nuovi messaggi, Calendario mostra i calendari.
 
+Mail for {}
+Posta di {}
+
 Mail is read only while a page waits for a code, for up to a minute.
 La posta viene letta solo quando una pagina attende un codice, per un minuto al massimo.
 
@@ -7817,11 +7823,17 @@ Salva gruppo
 Save a login for {} with the one-time code this page shows?
 Salvare un login per {} con il codice monouso di questa pagina?
 
-Save a passkey{} on {} in Passwords?
-Salvare in Passwords una passkey{} per {}?
+Save a passkey for “{}” on {} in Passwords?
+Salvare in Passwords una passkey di “{}” per {}?
 
-Save a passkey{} on {} in Passwords? It goes with your login “{}”.
-Salvare in Passwords una passkey{} per {}? Verrà associata al login “{}”.
+Save a passkey for “{}” on {} in Passwords? It goes with your login “{}”.
+Salvare in Passwords una passkey di “{}” per {}? Verrà associata al login “{}”.
+
+Save a passkey on {} in Passwords?
+Salvare in Passwords una passkey per {}?
+
+Save a passkey on {} in Passwords? It goes with your login “{}”.
+Salvare in Passwords una passkey per {}? Verrà associata al login “{}”.
 
 Save as
 Salva come

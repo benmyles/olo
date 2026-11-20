@@ -1292,10 +1292,13 @@ impl Passwords {
                     .filter(|i| i.websites.iter().any(|w| passkey::near(&w.url, rp_id)) || self.index.get(&i.id).and_then(|s| s.passkey.as_ref()).is_some_and(|p| p.rp_id.eq_ignore_ascii_case(rp_id)))
                     .collect();
                 let joins = near.iter().find(|i| self.username_of(i).eq_ignore_ascii_case(user_name) && !user_name.is_empty());
-                let who = if user_name.is_empty() { String::new() } else { format!(" for “{user_name}”") };
-                let message = match joins {
-                    Some(i) => olo_kit::tr!("Save a passkey{} on {} in Passwords? It goes with your login “{}”.", who, rp_id, i.title),
-                    None => olo_kit::tr!("Save a passkey{} on {} in Passwords?", who, rp_id),
+                // (Each a whole sentence: an English " for “name”" put in a
+                // translated one was English in every language.)
+                let message = match (joins, user_name.is_empty()) {
+                    (Some(i), false) => olo_kit::tr!("Save a passkey for “{}” on {} in Passwords? It goes with your login “{}”.", user_name, rp_id, i.title),
+                    (Some(i), true) => olo_kit::tr!("Save a passkey on {} in Passwords? It goes with your login “{}”.", rp_id, i.title),
+                    (None, false) => olo_kit::tr!("Save a passkey for “{}” on {} in Passwords?", user_name, rp_id),
+                    (None, true) => olo_kit::tr!("Save a passkey on {} in Passwords?", rp_id),
                 };
                 let candidates = near.iter().map(|i| (i.vault_id.clone(), i.id.clone())).collect();
                 return self.ask_passkey(incoming, message, Vec::new(), candidates);

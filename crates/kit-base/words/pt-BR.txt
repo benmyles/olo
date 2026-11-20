@@ -1502,6 +1502,9 @@ CalDAV
 Calendar
 Calendário
 
+Calendar for {}
+Calendário de {}
+
 Calendar shows the calendars of your accounts on other CalDAV servers (Nextcloud, iCloud with an app-specific password, a server of your own) beside Google’s and Fastmail’s, and writes what you change back to them.
 O Calendário exibe suas contas de outros servidores CalDAV (Nextcloud, iCloud com senha de app ou seu próprio servidor) junto com as do Google e do Fastmail. As alterações são salvas nos respectivos servidores.
 
@@ -5073,6 +5076,9 @@ Mail
 Mail and Calendar sign in to Fastmail with an app password of each account’s own, with access to mail and calendars. Tick what each account is used for: Mail looks in its new mail for one-time codes, Calendar shows its calendars.
 O Mail e o Calendário usam uma senha de app para cada conta do Fastmail, com acesso a e-mail e calendários. Marque como quer usar cada conta. O Mail procura códigos de uso único nas novas mensagens e o Calendário mostra seus calendários.
 
+Mail for {}
+E-mail de {}
+
 Mail is read only while a page waits for a code, for up to a minute.
 O Olo só consulta os e-mails enquanto uma página aguarda um código, por até um minuto.
 
@@ -7817,11 +7823,17 @@ Salvar grupo
 Save a login for {} with the one-time code this page shows?
 Salvar um login para {} com o código de uso único desta página?
 
-Save a passkey{} on {} in Passwords?
-Salvar no Passwords uma chave de acesso{} para {}?
+Save a passkey for “{}” on {} in Passwords?
+Salvar no Passwords uma chave de acesso de “{}” para {}?
 
-Save a passkey{} on {} in Passwords? It goes with your login “{}”.
-Salvar no Passwords uma chave de acesso{} para {}? Ela ficará junto ao login “{}”.
+Save a passkey for “{}” on {} in Passwords? It goes with your login “{}”.
+Salvar no Passwords uma chave de acesso de “{}” para {}? Ela ficará junto ao login “{}”.
+
+Save a passkey on {} in Passwords?
+Salvar no Passwords uma chave de acesso para {}?
+
+Save a passkey on {} in Passwords? It goes with your login “{}”.
+Salvar no Passwords uma chave de acesso para {}? Ela ficará junto ao login “{}”.
 
 Save as
 Salvar como

@@ -1495,6 +1495,9 @@ CalDAV
 Calendar
 캘린더
 
+Calendar for {}
+{}의 캘린더
+
 Calendar shows the calendars of your accounts on other CalDAV servers (Nextcloud, iCloud with an app-specific password, a server of your own) beside Google’s and Fastmail’s, and writes what you change back to them.
 캘린더에서 Google, Fastmail 계정과 함께 다른 CalDAV 서버(Nextcloud, 앱 전용 암호를 쓰는 iCloud, 개인 서버)의 일정도 보고 수정할 수 있습니다. 변경 사항은 서버에 반영됩니다.
 
@@ -5053,6 +5056,9 @@ Mail
 Mail and Calendar sign in to Fastmail with an app password of each account’s own, with access to mail and calendars. Tick what each account is used for: Mail looks in its new mail for one-time codes, Calendar shows its calendars.
 Mail과 캘린더는 메일 및 캘린더 접근 권한이 있는 계정별 앱 암호로 Fastmail에 로그인합니다. 계정별 용도를 선택하세요. Mail은 새 메일에서 일회용 코드를 찾고 캘린더는 일정을 표시합니다.
 
+Mail for {}
+{}의 메일
+
 Mail is read only while a page waits for a code, for up to a minute.
 페이지가 코드를 기다릴 때만 최대 1분간 메일을 읽습니다.
 
@@ -7795,11 +7801,17 @@ Save Group
 Save a login for {} with the one-time code this page shows?
 이 페이지의 일회용 코드를 포함해 {} 로그인 정보를 저장할까요?
 
-Save a passkey{} on {} in Passwords?
-Passwords에 {1}용 패스키{0} 저장을 허용할까요?
+Save a passkey for “{}” on {} in Passwords?
+Passwords에 {1}용 ‘{0}’ 패스키 저장을 허용할까요?
 
-Save a passkey{} on {} in Passwords? It goes with your login “{}”.
-Passwords에 {1}용 패스키{0} 저장을 허용할까요? 로그인 항목 ‘{2}’에 추가합니다.
+Save a passkey for “{}” on {} in Passwords? It goes with your login “{}”.
+Passwords에 {1}용 ‘{0}’ 패스키 저장을 허용할까요? 로그인 항목 ‘{2}’에 추가합니다.
+
+Save a passkey on {} in Passwords?
+Passwords에 {}용 패스키 저장을 허용할까요?
+
+Save a passkey on {} in Passwords? It goes with your login “{}”.
+Passwords에 {0}용 패스키 저장을 허용할까요? 로그인 항목 ‘{1}’에 추가합니다.
 
 Save as
 다른 이름으로 저장

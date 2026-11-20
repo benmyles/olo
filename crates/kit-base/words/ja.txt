@@ -1495,6 +1495,9 @@ CalDAV
 Calendar
 カレンダー
 
+Calendar for {}
+{}のカレンダー
+
 Calendar shows the calendars of your accounts on other CalDAV servers (Nextcloud, iCloud with an app-specific password, a server of your own) beside Google’s and Fastmail’s, and writes what you change back to them.
 Google、Fastmailのほか、NextcloudやiCloud（アプリ用パスワードが必要）、自分のサーバーなどのCalDAVカレンダーも表示します。変更は各サーバーに保存されます。
 
@@ -5053,6 +5056,9 @@ Mail
 Mail and Calendar sign in to Fastmail with an app password of each account’s own, with access to mail and calendars. Tick what each account is used for: Mail looks in its new mail for one-time codes, Calendar shows its calendars.
 Mailとカレンダーは、アカウントごとにメールとカレンダーへのアクセスを許可したアプリ用パスワードでFastmailに接続します。用途を選んでください。Mailは新着メールのワンタイムコードを検索し、カレンダーは予定を表示します。
 
+Mail for {}
+{}のメール
+
 Mail is read only while a page waits for a code, for up to a minute.
 ページがコードを待っている間だけ、最長1分間メールを確認します。
 
@@ -7795,11 +7801,17 @@ Save Group
 Save a login for {} with the one-time code this page shows?
 {}のログイン項目にこのページのワンタイムコードを保存しますか？
 
-Save a passkey{} on {} in Passwords?
-{1}用のパスキー{0}をPasswordsに保存しますか？
+Save a passkey for “{}” on {} in Passwords?
+{1}用の「{0}」のパスキーをPasswordsに保存しますか？
 
-Save a passkey{} on {} in Passwords? It goes with your login “{}”.
-{1}用のパスキー{0}をPasswordsに保存しますか？ ログイン項目「{2}」に追加されます。
+Save a passkey for “{}” on {} in Passwords? It goes with your login “{}”.
+{1}用の「{0}」のパスキーをPasswordsに保存しますか？ ログイン項目「{2}」に追加されます。
+
+Save a passkey on {} in Passwords?
+{}用のパスキーをPasswordsに保存しますか？
+
+Save a passkey on {} in Passwords? It goes with your login “{}”.
+{0}用のパスキーをPasswordsに保存しますか？ ログイン項目「{1}」に追加されます。
 
 Save as
 名前を付けて保存

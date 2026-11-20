@@ -317,16 +317,20 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             let mut r = row().child(div().flex_1().min_w_0().flex().flex_col().child(StringView::new(account.address.clone()).cut(true)).child(StringView::new(how).small(true).dim(true).wrap(true)));
             for s in Service::ALL {
                 let address = account.address.clone();
-                let tick = CheckBox::new(format!("{} for {}", s.name(), account.address), account.ticked(s))
-                    .mark_only()
-                    .id(format!("fastmail-{}-{}", s.name(), account.address))
-                    .enabled(!busy && *stands != Stands::Checking)
-                    .on_toggle(ui.on_view(move |v: &mut PanelView, on: &bool, cx| {
+                // (Its name for agents, a sentence of its own in each
+                // language: "{} for {}" left "for" in English.)
+                let named = match s {
+                    Service::Mail => olo_kit::tr!("Mail for {}", account.address),
+                    Service::Calendar => olo_kit::tr!("Calendar for {}", account.address),
+                };
+                let tick = CheckBox::new(named, account.ticked(s)).mark_only().id(format!("fastmail-{}-{}", s.name(), account.address)).enabled(!busy && *stands != Stands::Checking).on_toggle(
+                    ui.on_view(move |v: &mut PanelView, on: &bool, cx| {
                         if let Some(st) = state_of(v) {
                             st.set(address.clone(), s, *on);
                         }
                         cx.notify();
-                    }));
+                    }),
+                );
                 r = r.child(div().w(px(COLUMN)).flex_shrink_0().flex().justify_center().child(tick));
             }
             let address = account.address.clone();

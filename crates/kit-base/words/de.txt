@@ -1502,6 +1502,9 @@ CalDAV
 Calendar
 Kalender
 
+Calendar for {}
+Kalender für {}
+
 Calendar shows the calendars of your accounts on other CalDAV servers (Nextcloud, iCloud with an app-specific password, a server of your own) beside Google’s and Fastmail’s, and writes what you change back to them.
 Calendar zeigt die Kalender Ihrer Konten auf anderen CalDAV-Servern (Nextcloud, iCloud mit einem app-spezifischen Passwort, ein eigener Server) neben denen von Google und Fastmail und schreibt Ihre Änderungen dorthin zurück.
 
@@ -5073,6 +5076,9 @@ Mail
 Mail and Calendar sign in to Fastmail with an app password of each account’s own, with access to mail and calendars. Tick what each account is used for: Mail looks in its new mail for one-time codes, Calendar shows its calendars.
 Mail und Calendar melden sich bei Fastmail mit einem eigenen App-Passwort jedes Kontos an, mit Zugriff auf Mail und Kalender. Wählen Sie, wofür jedes Konto dient: Mail sucht in seinen neuen Nachrichten nach Einmalcodes, Calendar zeigt seine Kalender.
 
+Mail for {}
+Mail für {}
+
 Mail is read only while a page waits for a code, for up to a minute.
 Mails werden nur gelesen, während eine Seite auf einen Code wartet, höchstens eine Minute lang.
 
@@ -7817,11 +7823,17 @@ Gruppe sichern
 Save a login for {} with the one-time code this page shows?
 Eine Anmeldung für {} mit dem Einmalcode speichern, den diese Seite zeigt?
 
-Save a passkey{} on {} in Passwords?
-Einen Passkey{} für {} in Passwords speichern?
+Save a passkey for “{}” on {} in Passwords?
+Einen Passkey für „{}“ auf {} in Passwords speichern?
 
-Save a passkey{} on {} in Passwords? It goes with your login “{}”.
-Einen Passkey{} für {} in Passwords speichern? Er gehört zu Ihrer Anmeldung „{}“.
+Save a passkey for “{}” on {} in Passwords? It goes with your login “{}”.
+Einen Passkey für „{}“ auf {} in Passwords speichern? Er gehört zu Ihrer Anmeldung „{}“.
+
+Save a passkey on {} in Passwords?
+Einen Passkey für {} in Passwords speichern?
+
+Save a passkey on {} in Passwords? It goes with your login “{}”.
+Einen Passkey für {} in Passwords speichern? Er gehört zu Ihrer Anmeldung „{}“.
 
 Save as
 Sichern unter

@@ -262,11 +262,10 @@ something nobody here has is in "Blocked", with what it waits for.
   time axes and Weather's lines and widget, `month::WEEKDAYS` and
   `MONTHS` in the month widget and Calendar, `clock::DAYS`), most of
   them in no catalog; to do with the formats, once for all: the names,
-  long and short, and a date's order, by language. And two labels apps build in
-  English around a value (the agent translating Korean): Preferences ▸
-  Fastmail's check boxes' names for agents ("Mail for ADDRESS",
-  `fastmail.rs`) and Passwords' passkey prompt's "for USERNAME"
-  (`passwords/src/main.rs`).
+  long and short, and a date's order, by language. (Two labels apps built in English
+  around a value, found by the agent translating Korean, Fastmail's
+  check boxes' names for agents and Passwords' passkey question's "for
+  “name”", are whole sentences now.)
 - **Translations as resources, not compiled in: measure it**
   (2026-11-19, from another agent's study of kache's misses, which Ben
   passed on: "packaging catalogs as separately updatable resources is
