@@ -760,6 +760,27 @@ Doctor check, try its fix and look again: the finding must be gone.
   3,600 K default: red ×1.0, green ×0.769, blue ×0.585; the formula is
   `night::white_point`).
 
+### What a change costs to build, measured without touching the person's builds
+
+Learned measuring catalogs as data (2026-11-20):
+
+- **A copy of `target/release` is free here** (`cp -a --reflink=always
+  target/release /var/tmp/YOURS/target/release`, with
+  `target/.rustc_info.json`: btrfs shares the 33 GB) and cargo takes it
+  as fresh (`CARGO_TARGET_DIR=/var/tmp/YOURS/target cargo build
+  --release --workspace`: 13 s, only what the working tree changed).
+  Then make the edit to measure and build again there: the time and
+  the `Compiling` lines are what the edit costs, and the session's own
+  `target/release` (which it watches to offer an upgrade) never
+  changes. Put the edit back, remove the copy.
+- **A test built elsewhere reads the tree's data** now
+  (`olo_xdg::data_dirs` takes the package's folder from cargo at run
+  time): before, with `CARGO_TARGET_DIR` set, a test read the
+  installed icons and would have read the installed words.
+- **A background job's last command is its exit code**: a `grep -c`
+  that counts none ends 1, and the job is reported failed with every
+  number in its output right. Read the output before believing either.
+
 ## Ben's computer
 
 - **Don't probe sudo.** Even `sudo -n` runs face unlock (the IR camera)

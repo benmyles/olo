@@ -272,26 +272,6 @@ something nobody here has is in "Blocked", with what it waits for.
   keyboard.rs:500; Phone's sentence about codes from text messages,
   phone.rs:582; Windows' windowing mode and tiling layout,
   windows.rs:54): each to be said whole.
-- **Translations as resources, not compiled in: measure it**
-  (2026-11-19, from another agent's study of kache's misses, which Ben
-  passed on: "packaging catalogs as separately updatable resources is
-  worth measuring"; then: "Misses consumed 53.0 compiler-hours.
-  Dependency changes accounted for 47.1 hours. In the main Olo checkout
-  alone, 4,148 misses had identical source, flags, and every other
-  recorded input except dependency artifacts … Start with translations
-  … 22 commits touched them during this window. In six, the catalogs
-  were the only shared-crate change. Shipping catalogs as versioned data
-  would let a wording edit bypass recompilation of dependent apps. A
-  one-string edit is a good benchmark"). The catalogs are compiled into
-  olo-kit-base (`crates/kit-base/src/words.rs`), so every word added
-  rebuilds the 41 apps built on it, and the pre-push hook builds the
-  whole workspace in release (`tools/hooks/pre-push`). Read at start
-  instead, as versioned data (from the build's or the installed share
-  folder), a catalog change would rebuild nothing. Measure first, with a
-  one-string edit: the builds it costs now and after, against a read at
-  each app's start (and what in-place reload, tests and agents' screens
-  need); then do it if it pays.
-
 - **Go through Olo's logs for other warnings and errors and fix what
   should be fixed** (Ben, 2026-11-18). A first pass done (HACKING.md,
   "What a day's logs showed"): Notifications' history kept apart on
@@ -447,6 +427,42 @@ something nobody here has is in "Blocked", with what it waits for.
   all those chords, so you do the first part to start Float/Move/etc
   and then the second part to select the specific option. this chord
   support must be made native to olo, supported and customizable in
+- **Translations as resources, not compiled in: measure it**
+  (2026-11-19, from another agent's study of kache's misses, which Ben
+  passed on: "packaging catalogs as separately updatable resources is
+  worth measuring"; then: "Misses consumed 53.0 compiler-hours.
+  Dependency changes accounted for 47.1 hours. In the main Olo checkout
+  alone, 4,148 misses had identical source, flags, and every other
+  recorded input except dependency artifacts … Start with translations
+  … 22 commits touched them during this window. In six, the catalogs
+  were the only shared-crate change. Shipping catalogs as versioned data
+  would let a wording edit bypass recompilation of dependent apps. A
+  one-string edit is a good benchmark"). The catalogs are compiled into
+  olo-kit-base (`crates/kit-base/src/words.rs`), so every word added
+  rebuilds the 41 apps built on it, and the pre-push hook builds the
+  whole workspace in release (`tools/hooks/pre-push`). Read at start
+  instead, as versioned data (from the build's or the installed share
+  folder), a catalog change would rebuild nothing. Measure first, with a
+  one-string edit: the builds it costs now and after, against a read at
+  each app's start (and what in-place reload, tests and agents' screens
+  need); then do it if it pays.
+  **Measured, and done** (2026-11-20; HACKING, "Words in the person's
+  language", "The catalogs are data, read at start"). A one-word edit
+  of the German catalog, release, this computer: 48 crates built again,
+  2 min 35 s for the workspace; and 38 of the 81 programs each carried
+  all twelve catalogs (3.5 MB). Against a read at start: 0.2 ms for a
+  program starting in a language other than English (268 KB read, then
+  the same 1 ms making its table), nothing in English. It pays, so the
+  catalogs are data now: `data/words/CODE.txt`, read by each program
+  the first time a word is wanted, installed with the other data and
+  brought along by each upgrade; the same edit builds nothing (0
+  crates, 0.7 s). Tests, the lints and test sessions read the tree's.
+  To know: a change of words alone, like a change of icons alone,
+  isn't offered as an upgrade (nothing was built): it comes with the
+  next one. And the first upgrade onto this is made by a session that
+  doesn't know to bring the catalogs: programs read the tree's until
+  the upgrade after it does.
+
   keyboard shortcut prefs. similarly clean up the deskbar right click
   menus and any other menus that are unwieldly. try to make everything
   follow consistent patterns/groupings where appropriate."). **Done** (2026-11-20; HACKING,

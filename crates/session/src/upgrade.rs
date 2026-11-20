@@ -798,6 +798,29 @@ fn sync_brand(from: &Path, to: &Path) -> std::io::Result<usize> {
     Ok(sync_pngs(&src, to)? + sizes)
 }
 
+/// Copy the build tree's catalogs (`data/words`: Olo's word list and each
+/// language's words, which every program reads at its start:
+/// `olo_kit_base::words`) into `to` where new or newer; how many. Each
+/// written beside and moved into place, so a program starting meanwhile
+/// reads a whole one.
+fn sync_words(from: &Path, to: &Path) -> std::io::Result<usize> {
+    let Some(src) = from.ancestors().skip(1).take(4).map(|d| d.join("data/words")).find(|d| d.is_dir()) else {
+        return Ok(0);
+    };
+    let mut n = 0;
+    std::fs::create_dir_all(to)?;
+    for e in std::fs::read_dir(&src)?.flatten() {
+        let (path, dest) = (e.path(), to.join(e.file_name()));
+        if path.extension().is_some_and(|x| x == "txt") && is_newer(&path, &dest) {
+            let new = dest.with_extension("txt.new");
+            std::fs::copy(&path, &new)?;
+            std::fs::rename(&new, &dest)?;
+            n += 1;
+        }
+    }
+    Ok(n)
+}
+
 /// Copy the build tree's models that read the text in pictures
 /// (`data/ocr`: the two models, their licence and what they are) into
 /// `to` where new or newer; how many files.
@@ -880,6 +903,12 @@ pub fn sync_data(from: &Path, to: &Path) {
         Ok(0) => {}
         Ok(n) => crate::log(format!("installed {n} new or changed icons")),
         Err(e) => crate::log(format!("could not install icons: {e}")),
+    }
+    // (Before the programs start again in them.)
+    match sync_words(from, &prefix.join("share/olo/words")) {
+        Ok(0) => {}
+        Ok(n) => crate::log(format!("installed {n} new or changed catalogs of words")),
+        Err(e) => crate::log(format!("could not install the catalogs of words: {e}")),
     }
     match sync_brand(from, &prefix.join("share/olo/brand")) {
         Ok(0) => {}
@@ -1216,6 +1245,24 @@ mod tests {
         assert_eq!(std::fs::metadata(to.join("OFL.txt")).unwrap().permissions().mode() & 0o777, 0o644);
         // Nothing new: nothing copied.
         assert_eq!(sync_fonts(&build, &to).unwrap(), 0);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn words_come_along() {
+        let base = std::env::temp_dir().join(format!("olo-words-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let build = base.join("repo/target/release");
+        std::fs::create_dir_all(&build).unwrap();
+        std::fs::create_dir_all(base.join("repo/data/words")).unwrap();
+        for name in ["en.txt", "de.txt", "notes.md"] {
+            std::fs::write(base.join("repo/data/words").join(name), name).unwrap();
+        }
+        let to = base.join("prefix/share/olo/words");
+        assert_eq!(sync_words(&build, &to).unwrap(), 2);
+        assert!(to.join("en.txt").is_file() && to.join("de.txt").is_file() && !to.join("notes.md").exists() && !to.join("de.txt.new").exists());
+        // Nothing new: nothing copied.
+        assert_eq!(sync_words(&build, &to).unwrap(), 0);
         let _ = std::fs::remove_dir_all(&base);
     }
 

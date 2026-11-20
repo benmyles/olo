@@ -87,6 +87,22 @@ pub fn data_dirs() -> &'static [PathBuf] {
                 }
             }
         }
+        // Run by cargo (`cargo test`, `cargo run`) with its builds kept
+        // somewhere else (`CARGO_TARGET_DIR`: an agent's own folder, a
+        // scratch one): the tree of the package being run, which cargo
+        // names. Without it such a test read the installed data, stale
+        // or missing; with the catalogs data too, the wrong words.
+        if let Some(package) = std::env::var_os("CARGO_MANIFEST_DIR") {
+            for up in Path::new(&package).ancestors().take(5) {
+                let d = up.join("data");
+                if d.join("icons").is_dir() {
+                    if !v.contains(&d) {
+                        v.push(d);
+                    }
+                    break;
+                }
+            }
+        }
         if let Some(home) = std::env::var_os("HOME") {
             let installed = Path::new(&home).join(".local/share/olo");
             // The tree it was built from (recorded by the installer): new

@@ -101,7 +101,7 @@ done
 # ours from before the rename is made new.
 [ "$(readlink "$PREFIX/bin/op" 2>/dev/null)" = tabula-op ] && as_user ln -sfn olo-op "$PREFIX/bin/op"
 [ -e "$PREFIX/bin/op" ] || [ -L "$PREFIX/bin/op" ] || as_user ln -s olo-op "$PREFIX/bin/op"
-as_user cp -r data/brand data/fonts data/ocr "$PREFIX/share/olo/"
+as_user cp -r data/brand data/fonts data/ocr data/words "$PREFIX/share/olo/"
 # The icons: their drawings (not what a tree may hold beside them).
 as_user mkdir -p "$PREFIX/share/olo/icons"
 as_user cp -r data/icons/svg "$PREFIX/share/olo/icons/"

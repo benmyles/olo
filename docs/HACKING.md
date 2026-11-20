@@ -13592,7 +13592,7 @@ its icon `language`, a globe with a speech bubble standing before it,
 drawn as the clock and calendar of Date & Time are): Olo's language,
 each language by its own name ("Deutsch (German)"; never translated),
 saying how much of Olo is in it so far (`words::covered` against
-`words::english()`, the list in `crates/kit-base/words/en.txt`), and
+`words::english()`, the list in `data/words/en.txt`), and
 that other programs take it as they next start: `LANGUAGE` (gettext's,
 "de_DE:de") in the person's own `~/.config/locale.conf`
 (`olo_xdg::locale::set_language`, the rest of the file kept), which
@@ -13637,14 +13637,39 @@ room (Noto Sans at the line's size and weight; DiskBackup's headline is
 24 pt bold beside its buttons), and picture the app in each language.
 
 The words stay in the code, in English, as they always were. Each
-language has a catalog of them (`crates/kit-base/words/CODE.txt`,
-built into every program: pages of which only the chosen language's
-are touched): blocks apart by an empty line, the English then the
+language has a catalog of them (`data/words/CODE.txt`): blocks
+apart by an empty line, the English then the
 translation; a sentence that counts something has the English with
 `{n}`, then a line for each form the language has (`one:`, `few:`,
 `many:`, `other:`; `Counting` is CLDR's rule for each language). `\n`
 is a new line, `#` a comment.
 
+- **The catalogs are data, read at start** (`words::text_of`): a
+  program reads its language's catalog from Olo's data
+  (`olo_xdg::data_dirs`: the tree's `data/words` beside a build or
+  under cargo, `OLO_DATA`, the installed `share/olo/words`, then the
+  tree an install was built from) the first time a word is wanted, and
+  keeps it; none found, its words stay English and the log says so. A
+  first install copies them (`tools/install-session.sh`) and each
+  upgrade brings the new or changed ones before programs start again
+  (`upgrade::sync_words`, each moved into place whole); an upgrade
+  made by a session from before they were data doesn't know to, and
+  programs then read the tree's until the next one does. They were
+  compiled into olo-kit-base until 2026-11-20 (another agent's study
+  of kache's misses, which Ben passed on: "packaging catalogs as
+  separately updatable resources is worth measuring … a one-string
+  edit is a good benchmark"). Measured, release, this computer: one
+  word changed in the German catalog built 48 crates again, 2 min 35 s
+  for the workspace (and the same again for whoever builds dev), and
+  38 of the 81 programs each carried all twelve catalogs, 3.5 MB; now
+  it builds nothing. Against that, a program starting in German reads
+  268 KB, 0.2 ms, before making the same table as before (1 ms:
+  `what_a_catalog_costs`); one in English reads nothing, as before.
+  A catalog is matched to the code by the English itself, so a
+  program a build behind or ahead of its catalog shows English for the
+  words the other lacks, nothing worse. Tests and the lints read the
+  tree's (`cargo` names the package's folder at run time, so a build
+  kept elsewhere, `CARGO_TARGET_DIR`, reads the tree's too).
 - **A literal handed to a widget is translated with nothing said**
   (`olo_kit::words::of`, called where the kit's widgets take their
   words: a button's label, a menu's title and items, a check box, a
@@ -13677,7 +13702,7 @@ writes every word asked for to FILE, each once (literals, and in
 English too what's otherwise left as it is: a tab view's tabs, a menu
 field's choices, a box's title, an alert's words: `words::note`).
 
-**Olo's word list** (`crates/kit-base/words/en.txt`, 4,083 words on
+**Olo's word list** (`data/words/en.txt`, 4,083 words on
 2026-11-19) is what `tools/dev/words gather --write` finds: both layout
 lints run with `OLO_WORDS_SEEN` (`cargo ui-lint` opens Preferences',
 DiskBackup's and the kit's windows; `tools/dev/ui-lint` every app's,

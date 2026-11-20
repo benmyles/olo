@@ -4,7 +4,7 @@
 //! english)").
 //!
 //! The words are written in the code in English, as they always were;
-//! each language has a catalog of them (`crates/kit-base/words/CODE.txt`,
+//! each language has a catalog of them (`data/words/CODE.txt`,
 //! in every program: a few pages, of which only the chosen language's
 //! are ever touched), and [`tr`] gives a word's in the language chosen,
 //! or the word itself where the catalog has none (and always, in
@@ -97,34 +97,52 @@ pub struct Language {
     /// Whether it writes every noun with a capital (German): a phrase set
     /// into a sentence keeps its first letter then (`mid_sentence`).
     pub capital_nouns: bool,
-    /// Its catalog (empty: English).
-    text: &'static str,
+}
+
+/// A language's catalog as text (`en`: Olo's word list): the file
+/// `words/CODE.txt` in Olo's data (`olo_xdg::data_dirs`: the tree's
+/// `data/` beside a build, the installed share folder), read the first
+/// time it's wanted and kept for good. Empty where there's none: the
+/// words stay English.
+///
+/// They were compiled in (`include_str!`) until 2026-11-20: a word
+/// changed in one catalog built olo-kit-base and the 47 crates on it
+/// again, 2 min 35 s of release build here for the workspace, and each
+/// of 38 programs carried all twelve (3.5 MB). Read at start, a catalog
+/// costs a program in that language 0.2 ms more than it did (the read,
+/// 268 KB; making its table is the same 1 ms: `what_a_catalog_costs`),
+/// and one in English nothing, as before.
+fn text_of(code: &str) -> &'static str {
+    static READ: OnceLock<Mutex<HashMap<String, &'static str>>> = OnceLock::new();
+    let mut read = READ.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(text) = read.get(code) {
+        return text;
+    }
+    let found = olo_xdg::data_dirs().iter().map(|d| d.join("words").join(format!("{code}.txt"))).find_map(|p| std::fs::read_to_string(p).ok());
+    if found.is_none() {
+        tracing::warn!("words: no catalog for {code} in Olo's data (words/{code}.txt): its words stay English");
+    }
+    let text: &'static str = found.map_or("", |t| Box::leak(t.into_boxed_str()));
+    read.insert(code.to_owned(), text);
+    text
 }
 
 /// English first (what the code is written in), then by their English
 /// names.
 pub static LANGUAGES: [Language; 13] = [
-    Language { code: "en", name: "English", english: "English", locale: "en_US", counting: Counting::OneOther, capital_nouns: false, text: "" },
-    Language { code: "zh-Hans", name: "简体中文", english: "Chinese, Simplified", locale: "zh_CN", counting: Counting::Other, capital_nouns: false, text: include_str!("../words/zh-Hans.txt") },
-    Language { code: "zh-Hant", name: "繁體中文", english: "Chinese, Traditional", locale: "zh_TW", counting: Counting::Other, capital_nouns: false, text: include_str!("../words/zh-Hant.txt") },
-    Language { code: "nl", name: "Nederlands", english: "Dutch", locale: "nl_NL", counting: Counting::OneOther, capital_nouns: false, text: include_str!("../words/nl.txt") },
-    Language { code: "fr", name: "Français", english: "French", locale: "fr_FR", counting: Counting::UpToOneOther, capital_nouns: false, text: include_str!("../words/fr.txt") },
-    Language { code: "de", name: "Deutsch", english: "German", locale: "de_DE", counting: Counting::OneOther, capital_nouns: true, text: include_str!("../words/de.txt") },
-    Language { code: "hi", name: "हिन्दी", english: "Hindi", locale: "hi_IN", counting: Counting::UpToOneOther, capital_nouns: false, text: include_str!("../words/hi.txt") },
-    Language { code: "it", name: "Italiano", english: "Italian", locale: "it_IT", counting: Counting::OneOther, capital_nouns: false, text: include_str!("../words/it.txt") },
-    Language { code: "ja", name: "日本語", english: "Japanese", locale: "ja_JP", counting: Counting::Other, capital_nouns: false, text: include_str!("../words/ja.txt") },
-    Language { code: "ko", name: "한국어", english: "Korean", locale: "ko_KR", counting: Counting::Other, capital_nouns: false, text: include_str!("../words/ko.txt") },
-    Language {
-        code: "pt-BR",
-        name: "Português (Brasil)",
-        english: "Portuguese, Brazil",
-        locale: "pt_BR",
-        counting: Counting::UpToOneOther,
-        capital_nouns: false,
-        text: include_str!("../words/pt-BR.txt"),
-    },
-    Language { code: "ru", name: "Русский", english: "Russian", locale: "ru_RU", counting: Counting::Slavic, capital_nouns: false, text: include_str!("../words/ru.txt") },
-    Language { code: "es", name: "Español", english: "Spanish", locale: "es_ES", counting: Counting::OneOther, capital_nouns: false, text: include_str!("../words/es.txt") },
+    Language { code: "en", name: "English", english: "English", locale: "en_US", counting: Counting::OneOther, capital_nouns: false },
+    Language { code: "zh-Hans", name: "简体中文", english: "Chinese, Simplified", locale: "zh_CN", counting: Counting::Other, capital_nouns: false },
+    Language { code: "zh-Hant", name: "繁體中文", english: "Chinese, Traditional", locale: "zh_TW", counting: Counting::Other, capital_nouns: false },
+    Language { code: "nl", name: "Nederlands", english: "Dutch", locale: "nl_NL", counting: Counting::OneOther, capital_nouns: false },
+    Language { code: "fr", name: "Français", english: "French", locale: "fr_FR", counting: Counting::UpToOneOther, capital_nouns: false },
+    Language { code: "de", name: "Deutsch", english: "German", locale: "de_DE", counting: Counting::OneOther, capital_nouns: true },
+    Language { code: "hi", name: "हिन्दी", english: "Hindi", locale: "hi_IN", counting: Counting::UpToOneOther, capital_nouns: false },
+    Language { code: "it", name: "Italiano", english: "Italian", locale: "it_IT", counting: Counting::OneOther, capital_nouns: false },
+    Language { code: "ja", name: "日本語", english: "Japanese", locale: "ja_JP", counting: Counting::Other, capital_nouns: false },
+    Language { code: "ko", name: "한국어", english: "Korean", locale: "ko_KR", counting: Counting::Other, capital_nouns: false },
+    Language { code: "pt-BR", name: "Português (Brasil)", english: "Portuguese, Brazil", locale: "pt_BR", counting: Counting::UpToOneOther, capital_nouns: false },
+    Language { code: "ru", name: "Русский", english: "Russian", locale: "ru_RU", counting: Counting::Slavic, capital_nouns: false },
+    Language { code: "es", name: "Español", english: "Spanish", locale: "es_ES", counting: Counting::OneOther, capital_nouns: false },
 ];
 
 /// The language with this tag (whatever its case; "de-DE" and "de_DE"
@@ -161,7 +179,7 @@ struct Catalog {
 
 impl Catalog {
     fn new(language: &'static Language) -> Catalog {
-        Catalog { language, words: read(language.text), patterns: OnceLock::new(), told: Mutex::default() }
+        Catalog { language, words: read(text_of(language.code)), patterns: OnceLock::new(), told: Mutex::default() }
     }
 
     /// `text` in this language, if it's one of Olo's sentences: whole,
@@ -323,7 +341,7 @@ fn catalog(language: &'static Language) -> Arc<Catalog> {
 /// The language set: `code` ("de"; empty or one Olo hasn't: English).
 /// Whether that changed anything (the windows are then drawn again).
 pub fn set(code: &str) -> bool {
-    let wanted = language(code).filter(|l| !l.text.is_empty());
+    let wanted = language(code).filter(|l| l.code != "en");
     let mut now = NOW.write().unwrap_or_else(|e| e.into_inner());
     if now.as_ref().map(|c| c.language.code) == wanted.map(|l| l.code) {
         return false;
@@ -622,18 +640,18 @@ fn count_in(n: u64, one: &'static str, other: &'static str) -> String {
 }
 
 /// Olo's words, in English: every literal the kit was asked for across
-/// the layout lint's windows (`crates/kit-base/words/en.txt`, made with
+/// the layout lint's windows (`data/words/en.txt`, made with
 /// `OLO_WORDS_SEEN`: HACKING.md, "Words in the person's language"),
 /// for saying how far a translation has got and as what's to translate.
 pub fn english() -> &'static [&'static str] {
     static LIST: OnceLock<Vec<&'static str>> = OnceLock::new();
-    LIST.get_or_init(|| include_str!("../words/en.txt").lines().filter(|l| !l.trim().is_empty() && !l.starts_with('#')).map(plain).collect())
+    LIST.get_or_init(|| text_of("en").lines().filter(|l| !l.trim().is_empty() && !l.starts_with('#')).map(plain).collect())
 }
 
 /// How many of a language's words `asked` (the English) has: for
 /// saying how far a translation has got.
 pub fn covered(language: &'static Language, asked: impl Iterator<Item = &'static str>) -> (usize, usize) {
-    if language.text.is_empty() {
+    if language.code == "en" {
         let n = asked.count();
         return (n, n);
     }
@@ -671,6 +689,23 @@ macro_rules! tr {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What a catalog costs a program that starts in its language
+    /// (`cargo test --release -p olo-kit-base --lib what_a_catalog_costs
+    /// -- --ignored --nocapture`): its file read, and its table made.
+    /// (Compiled in, the table alone: 0.96 ms; 2026-11-20.)
+    #[test]
+    #[ignore]
+    fn what_a_catalog_costs() {
+        let file = olo_xdg::data_dirs().iter().map(|d| d.join("words/de.txt")).find(|p| p.is_file()).expect("data/words/de.txt");
+        for round in 0..3 {
+            let t = std::time::Instant::now();
+            let text: &'static str = Box::leak(std::fs::read_to_string(&file).unwrap().into_boxed_str());
+            let was_read = t.elapsed();
+            let n = std::hint::black_box(read(text)).len();
+            eprintln!("round {round}: {n} words read and made a table in {:.2?} (the read {was_read:.2?}, {} KB)", t.elapsed(), text.len() / 1024);
+        }
+    }
 
     /// A catalog read: a word, a sentence with a new line, one that
     /// counts with its forms; comments and stray lines passed over.
@@ -755,8 +790,10 @@ mod tests {
     /// language is found by its tag however it's written.
     #[test]
     fn the_catalogs() {
-        for language in LANGUAGES.iter().filter(|l| !l.text.is_empty()) {
-            let words = read(language.text);
+        assert!(!english().is_empty(), "Olo's word list wasn't found (data/words/en.txt)");
+        for language in LANGUAGES.iter().filter(|l| l.code != "en") {
+            let words = read(text_of(language.code));
+            assert!(!words.is_empty(), "{}: its catalog wasn't found (data/words/{}.txt)", language.code, language.code);
             assert!(!words.is_empty(), "{}: no words", language.code);
             let parts = |text: &str| {
                 let mut found: Vec<String> = Vec::new();

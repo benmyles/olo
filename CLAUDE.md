@@ -122,8 +122,9 @@ are universal and non-negotiable:
   (the pre-push hook builds it too). Measure on release builds of the
   packages measured (`cargo build --release -p`). Release builds were
   49.1 of the 52 compiler-hours kache spent on misses (measured,
-  2026-11-19): a change to olo-kit-base, a word in a catalog, rebuilds
-  every app.
+  2026-11-19): a change to olo-kit-base rebuilds every app. (A word in
+  a catalog no longer does: the catalogs are data, `data/words`,
+  2026-11-20.)
 - **Wayland only, no X11.** Olo runs Wayland programs and nothing
   else: no Xwayland, no X11 window management, no `DISPLAY`, no code or
   dependencies for X11-only programs. Programs that can speak either
