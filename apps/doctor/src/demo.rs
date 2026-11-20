@@ -42,6 +42,9 @@ pub fn report() -> Report {
             "The backup DiskBackup made at 09:12 on the backup disk “Archive” stopped part way through (the disk was unplugged), and the one before it is from 6 days ago. Back up again now, with the disk plugged in, so what changed since is kept.",
             Some(("Back Up Now", false)),
         ),
+        // (A finding with no fix and the most words of any: how a card
+        // holds four sentences.)
+        finding("gpu:stuck:0000:01:00.0", Severity::Problem, crate::checks::STUCK_TITLE, &format!("{}{}", crate::checks::stuck_detail("nvidia_drm"), crate::checks::STUCK_AGAIN), None),
         finding(
             "remapper:keyd",
             Severity::Problem,
@@ -56,6 +59,7 @@ pub fn report() -> Report {
             "At this start Olo's login screen didn't come up within 20 seconds, so GDM's was shown in its place. Its log has why: open Logs on olo-greeter. Restarting the computer tries again.",
             None,
         ),
+        finding("gpu:console:0000:01:00.0", Severity::Advice, crate::checks::CONSOLE_KEPT.0, crate::checks::CONSOLE_KEPT.1, Some((crate::checks::CONSOLE_KEPT.2, true))),
         finding(
             "power-modes:follower-old",
             Severity::Advice,

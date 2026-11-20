@@ -379,7 +379,9 @@ pub fn gpu_clients(gpus: &[crate::gpu_load::Probe], pids: &[(i32, String)], befo
         let crate::gpu_load::Kind::Nvidia { bus } = &g.kind else { continue };
         // (Asleep, or idle when last asked: its users aren't asked for,
         // which would keep it awake.)
-        if crate::gpu_load::asleep(&g.device) || crate::gpu_load::failed(&g.device) || !crate::gpu_load::nvidia_busy(bus) {
+        // (Busy when last asked, which only an awake card is; and awake
+        // and well still: `askable`.)
+        if !crate::gpu_load::nvidia_busy(bus) || !crate::gpu_load::askable(&g.device) {
             continue;
         }
         let Some(d) = crate::gpu_load::nvml().and_then(|n| n.device_by_pci_bus_id(bus.as_str()).ok()) else { continue };

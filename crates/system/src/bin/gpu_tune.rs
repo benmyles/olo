@@ -32,7 +32,7 @@ use std::{
 use olo_system::{
     battery, cpu_tuning,
     gpu_tuning::{self, Tuning},
-    gpus, memory_pressure, nvme_power, power_profile, sata_power, systemd,
+    gpus, nvme_power, power_profile, sata_power, systemd,
 };
 
 use gpu_tuning::{
@@ -149,6 +149,14 @@ fn follow_gpus(mode: power_profile::Mode, battery: bool, state: &mut gpu_tuning:
         if !matches!(g.driver.as_str(), "xe" | "nvidia") || (pending_only && !state.deferred.contains(&g.pci)) {
             continue;
         }
+        // (An NVIDIA card that stopped answering, or whose driver is
+        // being unloaded, is left wholly alone: nothing of it written,
+        // nothing asked, and no setting counted as refused. Olo Doctor
+        // says its state, `gpu_stuck`.)
+        if g.vendor == 0x10de && (olo_system::gpu_load::failed(&g.sysfs) || olo_system::gpu_load::unloading(std::path::Path::new("/sys"))) {
+            state.deferred.retain(|id| id != &g.pci);
+            continue;
+        }
         let preset = if battery && mode == power_profile::Mode::Balanced && g.vendor == 0x10de { Preset::Cooler } else { gpu_tuning::for_mode(mode) };
         let previous = state.autosuspend_ms.get(&g.pci).copied();
         match gpu_tuning::runtime_tail(&g.sysfs, mode == power_profile::Mode::Performance, previous) {
@@ -160,7 +168,9 @@ fn follow_gpus(mode: power_profile::Mode, battery: bool, state: &mut gpu_tuning:
             }
             Err(e) => out.push((g.name.clone(), vec![Err(format!("GPU idle delay: {e}"))])),
         }
-        if g.vendor == 0x10de && gpu_tuning::asleep(&g) {
+        // (Asleep, or on its way to sleep or out of it: set at its next
+        // open, once it says it's awake.)
+        if g.vendor == 0x10de && !olo_system::gpu_load::askable(&g.sysfs) {
             if !state.gpus.iter().any(|t| t.pci == g.pci && t.preset == preset) {
                 if !state.deferred.contains(&g.pci) {
                     state.deferred.push(g.pci.clone());
@@ -390,10 +400,6 @@ fn follow() -> i32 {
         Device,
         Topology,
         Cooling,
-        /// Programs are being held for memory (`memory_pressure`).
-        Pressure,
-        /// What was held for that may be let go, if memory is calm.
-        Calm,
     }
     let (tx, rx) = std::sync::mpsc::channel();
     let device = tx.clone();
@@ -418,23 +424,6 @@ fn follow() -> i32 {
     // A new process has no NVML handles or verified driver requests yet.
     state.gpus.clear();
     state.deferred.clear();
-    // An NVIDIA card that is awake isn't let suspend while memory is
-    // short (`memory_pressure`: its suspend fails then, for good). What
-    // a follower before this one held and never let go (it was stopped
-    // meanwhile) is let sleep first: memory says again if it is short.
-    let sys = std::path::Path::new("/sys");
-    if !state.held_awake.is_empty() {
-        let let_go = gpu_tuning::let_sleep(sys, &mut state.held_awake);
-        if !let_go.is_empty() {
-            println!("{} may sleep again (kept awake by the follower before this one)", let_go.join(", "));
-        }
-        let _ = state.save();
-    }
-    let mut held = memory_pressure::Held::default();
-    let pressure = tx.clone();
-    if let Err(e) = memory_pressure::watch(memory_pressure::STALL, memory_pressure::WINDOW, move || pressure.send(Change::Pressure).is_ok()) {
-        eprintln!("olo-gpu-tune: not told when memory is short: {e}");
-    }
     let modes = tx.clone();
     power_profile::watch(move |m| {
         let _ = modes.send(Change::Mode(m));
@@ -461,11 +450,10 @@ fn follow() -> i32 {
     let mut probe = None;
     let mut probe_end = None;
     loop {
-        let change = match supply.deadline().into_iter().chain(probe).chain(held.deadline()).min() {
+        let change = match supply.deadline().into_iter().chain(probe).min() {
             Some(end) => match rx.recv_timeout(end.saturating_duration_since(Instant::now())) {
                 Ok(change) => change,
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) if probe.is_some_and(|t| Instant::now() >= t) => Change::Device,
-                Err(std::sync::mpsc::RecvTimeoutError::Timeout) if held.deadline().is_some_and(|t| Instant::now() >= t) => Change::Calm,
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Change::Settled,
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
             },
@@ -539,29 +527,13 @@ fn follow() -> i32 {
                 continue;
             }
             Change::Woke => state.gpus.clear(),
-            Change::Pressure => {
-                held.pressed(Instant::now());
-                // (Each time it's said: a card that woke since is held too.)
-                let newly = gpu_tuning::hold_awake(sys, &mut state.held_awake);
-                if !newly.is_empty() {
-                    println!("memory is short: {} kept awake until it has been calm for {} s (a suspend can fail for good meanwhile)", newly.join(", "), memory_pressure::CALM.as_secs());
-                    let _ = state.save();
-                }
-                continue;
-            }
-            Change::Calm => {
-                if held.due(Instant::now(), memory_pressure::short_now()) {
-                    let let_go = gpu_tuning::let_sleep(sys, &mut state.held_awake);
-                    if !let_go.is_empty() {
-                        println!("memory has been calm: {} may sleep again", let_go.join(", "));
-                    }
-                    let _ = state.save();
-                }
-                continue;
-            }
         }
-        let Some(m) = mode else { continue };
+        // (The supply's settling is taken up whether or not there is a
+        // mode to plan for yet: left for after, a deadline already past
+        // stayed past, and the wait above came back at once, over and
+        // over, until a mode was known. Found in review, 2026-11-20.)
         let on_battery = supply.battery(Instant::now());
+        let Some(m) = mode else { continue };
         // Switching profiles returns before TuneD has finished writing.
         // Its completion signal is the next event for this transition.
         if uses_tuned && power_profile::tuned_profile() != last_tuned {

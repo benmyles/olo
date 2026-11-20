@@ -123,11 +123,27 @@ pub fn asleep(device: &Path) -> bool {
 /// restarts, and **it isn't asked**: each question of NVIDIA's library
 /// is refused in the kernel with a line in its log, a library started
 /// then opens the card's device and holds it, and neither brings
-/// anything back. Twelve Deskbars asked a dead card 160 times a minute
-/// and held it open through an unload that never finished
+/// anything back. With twelve Deskbars holding a dead card open, the
+/// kernel's log took 168 lines a minute of refused calls
 /// (2026-11-20). Olo Doctor says the card's state (`gpu_stuck`).
 pub fn failed(device: &Path) -> bool {
     read(device.join("power/runtime_status")).trim() == "error"
+}
+
+/// Whether the GPU can be asked now without harm: awake and well
+/// (`runtime_status` exactly "active": not asleep, not failed, not on
+/// its way either way, and not unknown, its status unreadable), and no
+/// module of NVIDIA's on its way out (`unloading`). What every question
+/// of NVIDIA's library is asked behind.
+pub fn askable(device: &Path) -> bool {
+    read(device.join("power/runtime_status")).trim() == "active" && !unloading(Path::new("/sys"))
+}
+
+/// Whether a kernel module of NVIDIA's is being unloaded, under `sys`
+/// (a `/sys`; its `initstate` "going"): its driver is going away, or
+/// stuck going (Olo Doctor's `gpu_stuck`), and isn't asked anything.
+pub fn unloading(sys: &Path) -> bool {
+    ["nvidia_drm", "nvidia_modeset", "nvidia_uvm", "nvidia_peermem", "nvidia"].iter().any(|m| read(sys.join("module").join(m).join("initstate")).trim() == "going")
 }
 
 /// How busy a GPU is, of how busy each of its engines is (%): as busy as
@@ -182,8 +198,11 @@ pub fn nvidia_now(device: &Path, bus: &str) -> Option<NvidiaNow> {
         slept.insert(bus.to_owned(), Instant::now());
         return None;
     }
-    // (Not answering: nothing to ask, and nothing to hold it open with.)
-    if status.trim() == "error" {
+    // (Only one that says it's awake is asked: not one that stopped
+    // answering, nor one going to sleep or waking, nor one whose state
+    // can't be read, nor any while its driver is being unloaded:
+    // `askable`.)
+    if status.trim() != "active" || unloading(Path::new("/sys")) {
         return None;
     }
     // Just woken: something has begun to use it, and what it does shows
@@ -270,11 +289,25 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("olo-gpu-failed-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("power")).unwrap();
         let status = dir.join("power/runtime_status");
-        for (said, asleep, failed) in [("active", false, false), ("suspended", true, false), ("error", false, true)] {
+        for (said, asleep, failed) in [("active", false, false), ("suspended", true, false), ("error", false, true), ("suspending", false, false), ("resuming", false, false)] {
             std::fs::write(&status, format!("{said}\n")).unwrap();
             assert_eq!((super::asleep(&dir), super::failed(&dir)), (asleep, failed), "{said}");
+            // (Only "active" is asked; a made-up card has no library to
+            // ask, so none of these may get as far as asking.)
+            if said != "active" {
+                assert!(super::nvidia_now(&dir, "00000000:ff:1f.7").is_none(), "{said}");
+            }
         }
+        // Its status unreadable: not asked.
+        std::fs::remove_file(&status).unwrap();
         assert!(super::nvidia_now(&dir, "00000000:ff:1f.7").is_none());
+        // A module of NVIDIA's on its way out, in a made-up /sys.
+        let sys = dir.join("sys");
+        std::fs::create_dir_all(sys.join("module/nvidia_uvm")).unwrap();
+        std::fs::write(sys.join("module/nvidia_uvm/initstate"), "live\n").unwrap();
+        assert!(!super::unloading(&sys));
+        std::fs::write(sys.join("module/nvidia_uvm/initstate"), "going\n").unwrap();
+        assert!(super::unloading(&sys));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

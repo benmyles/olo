@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-20
 
+### Olo Doctor: NVIDIA's driver stuck, and the console that causes it
+
+*15:53* — Two findings new to Doctor (shown in its demo report): NVIDIA's graphics driver stuck shutting down, said as what it is with what it costs until the restart and no fix that could hang; and, recommended, the text console NVIDIA's driver keeps on a card nothing is connected to, with Turn Off the Console. The first points to the second where both are there. Words after both reviewers' looks.
+
+![Olo Doctor: NVIDIA's driver stuck, and the console that causes it](2026-11-20/155326-olo-doctor-nvidia-s-driver-stuck-and-the-console.png)
+
 ### Performance ▸ Kernel: five boxes, the kernel's settings beside Olo's pieces
 
 *14:21* — The Memory box (Swap used last) is gone: the setting was withdrawn the day it was made. What is left is laid out again: the kernel's own settings on the left (Preemption, Processor Turns, Removable Disks), Olo's pieces in the kernel on the right (Network, Graphics), the columns as far apart as the boxes are from each other, Processor Turns and Graphics ending on one line, and the note that says whose the settings are under the right column, level with the title beside it.

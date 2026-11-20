@@ -919,7 +919,8 @@ fn restart_bluetooth(device: &Path, driver: &Path) -> Result<(), String> {
 
 /// What a request to start a graphics card again in place is answered
 /// (`Step::RestartGpu`).
-pub(crate) const GPU_RESTART_GONE: &str = "Olo no longer starts a graphics card again in place: unloading its driver can hang in the kernel. Restarting the computer does it";
+pub(crate) const GPU_RESTART_GONE: &str =
+    "Olo no longer starts a graphics card again in place: unloading its driver after a failed power change can hang in the kernel. Restarting the computer is what brings the card back";
 
 /// Why `steps` are refused as a whole, if they are: before any of them
 /// is begun, so nothing of a request that can't be finished is done (the

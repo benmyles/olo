@@ -11210,48 +11210,48 @@ follower's NVML context. Fine-grained runtime D3 remains available. On
 resume the follower reconciles hardware state again. `olo-gpu-tune show`
 reports GPU readback as JSON. `--wake` explicitly queries sleeping devices.
 
-**No suspend while memory is short.** An NVIDIA card's runtime suspend
-allocates memory (its firmware's saved image, 2 MB pages first) and
-runs the whole way against one deadline of four seconds; held for
-memory on the way, it reaches its last check with the deadline spent,
-calls the suspend failed, and leaves the card unusable until the
-computer restarts (2026-11-20: "A graphics card that stopped
-answering"). So the follower keeps a card that is awake from
-suspending while programs are being held for memory, and lets it
-sleep once memory has been calm:
-`olo_system::memory_pressure::watch` sets a trigger on the kernel's
-pressure stall information (`/proc/pressure/memory`, "some 100000
-2000000": programs held for 100 ms or more within two seconds) and
-sleeps in the kernel until it fires, so nothing is polled; each time
-it fires, `gpu_tuning::hold_awake` writes "on" to the `power/control`
-of every NVIDIA card with its driver that is awake
-(`runtime_status` "active") and may sleep by itself ("auto"), and
-notes them in the state file (`held_awake`); two minutes after the
-last time it fired (`memory_pressure::Held`, `CALM`), unless less
-than 15% of memory is to be had still (then two minutes more),
-`let_sleep` writes "auto" again to those still as it left them. A
-card asleep is left asleep (waking it allocates too); one that
-stopped answering is left alone; one the person keeps awake
-themselves ("on" already) is theirs, never taken for Olo's to let
-go; and what a follower before this one held and never let go is let
-sleep as the next one starts. Doctor's "never sleeps" doesn't count a
-card held so, and says why it's awake. Measured in the guest
-(`kbench pressure`, this kernel): the trigger is taken; nothing is
-said in eight calm seconds; with more taken than memory holds it is
-said within three seconds. The follower's version is 7 for it (Doctor
-offers the new one). What the mark should be on a computer is to be
-watched there: the minute the suspend failed had programs held
-39,000 times with a tenth of memory to be had; an ordinary busy
-minute of builds has them held a few hundred to a few thousand times,
-a hundredth of the time.
+**Not done from here: keeping a card awake while memory is short.**
+A runtime suspend of NVIDIA's card failed for good on 2026-11-20 with
+memory short ("A graphics card that stopped answering": its last
+check was made against a deadline already three seconds past; that
+memory being short is what spent it is likely, not shown). The
+follower was made to hold an awake card awake while programs were
+being held for memory, by writing "on" to its `power/control` at each
+telling of the kernel's (`olo_system::memory_pressure::watch`, a
+pressure-stall trigger), and "auto" again after two calm minutes. It
+was withdrawn on review before it ever ran, for what that write is:
+the kernel's `pm_runtime_forbid`, which resumes the device then and
+there. A card that went to sleep between Olo's look at it and its
+write was woken, under the very pressure it was to be spared
+(reproduced on this kernel in a guest, with a USB hub); one in the
+middle of suspending is waited for with no limit; and the one policy
+bit can't be shared with the person's own "on", the udev rules that
+write "auto" as a card is bound (Olo's and NVIDIA's), or a follower
+started again in the middle. Measured on this computer besides: the
+mark it used (100 ms of stall in two seconds) was met in 315 of 891
+two-second spans of three ordinary minutes with 17 GB and more to be
+had, so the card would have been held awake most of a working day.
+User space has no way to keep a device from suspending without
+resuming it; the place for it is the driver's own suspend, which can
+refuse before it has touched anything (docs/TODO.md, the patched
+driver). The watcher itself is kept (`memory_pressure`, with what it
+costs the kernel), and `kbench pressure` measures it.
 
-And **a card that stopped answering isn't asked**
-(`gpu_load::failed`: `runtime_status` "error"): the panels' figures
-(`nvidia_now`), the processes on it (`procs`), its capabilities and
-the follower's settings (`gpu_tuning`) all say nothing of it without
-starting or asking NVIDIA's library, each question of which is
-refused in the kernel with a line in its log, and a library started
-then opens the card and holds it.
+And **only a card that says it is awake is asked**
+(`gpu_load::askable`: `runtime_status` exactly "active", and no
+module of NVIDIA's on its way out): the panels' figures
+(`nvidia_now`), the processes on it (`procs`), and the follower, which
+leaves a card that stopped answering wholly alone (nothing written,
+nothing counted as refused) and sets one that is going to sleep or
+waking at its next open. A caller that means to wake a card may ask
+one asleep (`not_failed`: Preferences, `olo-gpu-tune show --wake`),
+never one that failed or whose driver is being unloaded. NVIDIA's
+video encoder and decoder ask the kernel's files the same before
+anything of NVIDIA's is loaded or started (`olo_video`'s
+`nvidia_card::usable`), so the menus don't offer what can't work.
+What still isn't done: NVIDIA's library, once started in a program,
+is held for the program's life with the card's device open
+(`gpu_tuning::nvml`): TODO.
 
 **Thermal headroom.** The fan service uses its existing sensor samples
 and the hardware's individual trip points. Within 8 °C it signals
@@ -14948,6 +14948,17 @@ What it looks for:
   `data/udev/72-olo-idle-gpu.rules` (runtime power management for such
   cards, at every start) and sets it now. On the ThinkPad P1 Gen 9 the
   RTX PRO 2000 went from D0 to D3cold.
+- **NVIDIA's console on a card with no display** (`nvidia_console`:
+  `nvidia_drm`'s `fbdev` reads Y, as it comes, and the card has no
+  connector at all: a laptop's second card, there to compute). The
+  console shows nothing there, and giving it up as the module
+  unloads is where the driver can wait for ever on a card that
+  stopped answering (below). Recommended, Take No Console:
+  `/etc/modprobe.d/olo-nvidia-console.conf` (`options nvidia_drm
+  fbdev=0`), read as the module loads, so from the next start; fine,
+  "from the next start", once the file is there. Never offered for a
+  card with a connector: there the console is the text before the
+  desktop.
 - **A graphics card that stopped answering** (`gpu_stuck`: its
   `power/runtime_status` "error", the kernel's word for power
   management that failed, its driver not answering after: NVIDIA's
@@ -14979,10 +14990,17 @@ What it looks for:
   prelinked core, which has no entry to patch at; and nothing that
   can be read beforehand (the PCI state, the driver's link, NVML's
   cache) tells the state that hangs from the one that doesn't. So
-  the finding offers nothing, and says why. A module of NVIDIA's
-  already "going" (`/sys/module/NAME/initstate`: an unload begun and
-  not finished, by anyone's hand) is said as that, "NVIDIA's driver
-  is stuck unloading", with what it costs until the restart.
+  the finding offers nothing, and says why, in the kernel's terms
+  ("The NVIDIA graphics card's power management failed": that state
+  alone doesn't say every use of the card is gone, nor that a restart
+  is sure to mend it). A module of NVIDIA's that stays on its way
+  out (`/sys/module/NAME/initstate` "going", and still so three
+  seconds on: every unload passes through "going" for a moment) is
+  said as "NVIDIA's graphics driver is stuck", by the module's name,
+  with what it costs until the restart: the card can't be used, a
+  processor may stay busy, and putting the computer to sleep may
+  fail or hang (the stuck thread can't be frozen, and NVIDIA's own
+  preparation for sleep waits, with no limit, for a lock it holds).
   `Step::RestartGpu` is kept only to be refused: a request holding
   it (a Doctor window from before an upgrade) is turned down whole,
   before its first step (`fix::refused`: the old request quit the
@@ -14992,7 +15010,8 @@ What it looks for:
   can be put out of the way meanwhile, not ended: the idle
   scheduling class and one slow core (`chrt --idle -p 0 PID`,
   `taskset -pc CPU PID`: 91% of a performance core to 6% of an
-  efficiency core at a load of 22); a CPU quota does nothing to it,
+  efficiency core at a load of 22, as it was seen then, not a cap); a
+  CPU quota does nothing to it,
   since this kernel throttles a thread only as it returns to user
   space (kernel/sched/fair.c, `throttle_cfs_rq_work`), which it
   never does.

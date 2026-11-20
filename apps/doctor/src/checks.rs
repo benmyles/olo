@@ -706,6 +706,7 @@ pub fn scan(roots: &Roots) -> Report {
     let gpus = pci_devices(&roots.fs);
     idle_gpu(roots, &gpus, &mut r);
     gpu_stuck(roots, &gpus, &mut r);
+    nvidia_console(roots, &gpus, &mut r);
     gpu_driver(roots, &gpus, &mut r);
     graphics_swap(roots, &gpus, &mut r);
     memory_kept(roots, &procs, &mut r);
@@ -2884,19 +2885,10 @@ fn idle_gpu(roots: &Roots, pcis: &[Pci], r: &mut Report) {
         return;
     }
     let installed = std::fs::read_to_string(roots.fs.join(IDLE_GPU_RULE_PATH)).ok();
-    // (One Olo's follower keeps awake just now, because memory is short
-    // and a suspend can fail for good then, isn't one that never
-    // sleeps: `olo_system::gpu_tuning::hold_awake`.)
-    let held = olo_system::gpu_tuning::Followed::load(&roots.fs).map(|f| f.held_awake).unwrap_or_default();
-    let awake: Vec<&&Pci> = second.iter().filter(|p| p.power_control.as_deref() == Some("on") && !held.contains(&p.address)).collect();
+    let awake: Vec<&&Pci> = second.iter().filter(|p| p.power_control.as_deref() == Some("on")).collect();
     let maker = second[0].maker();
     if awake.is_empty() && installed.as_deref() == Some(IDLE_GPU_RULE) {
-        let detail = if second.iter().any(|p| held.contains(&p.address)) {
-            "Runtime power management is on for it (72-olo-idle-gpu.rules). Olo keeps it awake just now, while memory is short: a suspend can fail for good then."
-        } else {
-            "Runtime power management is on for it (72-olo-idle-gpu.rules)."
-        };
-        r.fine.push(Fine { title: format!("The {maker} graphics card sleeps when unused"), detail: detail.into() });
+        r.fine.push(Fine { title: format!("The {maker} graphics card sleeps when unused"), detail: "Runtime power management is on for it (72-olo-idle-gpu.rules).".into() });
         return;
     }
     let mut steps = vec![Step::WriteFile { path: PathBuf::from("/").join(IDLE_GPU_RULE_PATH), content: IDLE_GPU_RULE.into(), mode: 0o644 }];
@@ -2922,42 +2914,129 @@ fn idle_gpu(roots: &Roots, pcis: &[Pci], r: &mut Report) {
 const NVIDIA_MODULES: [&str; 5] = ["nvidia_drm", "nvidia_modeset", "nvidia_uvm", "nvidia_peermem", "nvidia"];
 
 /// A graphics card whose power management failed: the kernel has it in
-/// an error state (`runtime_status` "error") and its driver doesn't
-/// answer, as NVIDIA's after memory ran short while it suspended
-/// (2026-11-07, 2026-11-20). Said, with what brings it back: a restart
-/// of the computer. **Olo doesn't start such a card again in place.**
-/// It did (unloading NVIDIA's modules, resetting the card, loading them
-/// again), it worked once, and the second time the unload never came
-/// back from the kernel: NVIDIA's display module waits for a card that
-/// doesn't answer with no way out, and nothing short of a restart ends
-/// that (HACKING, "A graphics card that stopped answering"). No order
-/// of unloading, unbinding and resetting is safe with that driver, and
-/// nothing readable beforehand tells the state that hangs from the one
-/// that doesn't.
+/// an error state (`runtime_status` "error": a suspend or a resume its
+/// driver couldn't finish), as NVIDIA's on 2026-11-07 and 2026-11-20.
+/// Said as what the kernel says, with what brings the card back, a
+/// restart of the computer. **Olo doesn't start such a card again in
+/// place.** It did (unloading NVIDIA's modules, resetting the card,
+/// loading them again), it worked once, and the second time the unload
+/// never came back from the kernel: NVIDIA's display module waits for a
+/// card that doesn't answer with no way out, and nothing short of a
+/// restart ends that (HACKING, "A graphics card that stopped
+/// answering"). No order of unloading, unbinding and resetting is safe
+/// with that driver, and nothing readable beforehand tells the state
+/// that hangs from the one that doesn't.
 ///
-/// And a driver already stuck so (a module of NVIDIA's "going": its
-/// unload begun and not finished) is said as what it is, since it
-/// keeps a processor busy and the computer from sleeping until the
-/// restart.
+/// And a module of NVIDIA's that stays on its way out (`initstate`
+/// "going" now and still after `STUCK_FOR`: every unload passes through
+/// "going", for a moment) is said as stuck, by its name, with what that
+/// costs until the restart.
 fn gpu_stuck(roots: &Roots, pcis: &[Pci], r: &mut Report) {
-    let unloading = NVIDIA_MODULES.iter().any(|m| read(&roots.fs.join("sys/module").join(m).join("initstate")).as_deref() == Some("going"));
-    for p in pcis.iter().filter(|p| p.display()) {
-        let failed = read(&p.dir.join("power/runtime_status")).as_deref() == Some("error");
-        let nvidia = p.vendor == 0x10de;
-        let (title, detail) = if nvidia && unloading {
-            (
-                "NVIDIA's driver is stuck unloading".to_owned(),
-                "The kernel began unloading NVIDIA's driver and hasn't come back from it: its card had stopped answering, and the driver waits for it with no way out. Nothing can use the card, the unload keeps a processor busy, and the computer can't go to sleep while it runs. Only restarting the computer ends it: save your work first.".to_owned(),
-            )
-        } else if failed {
-            let broken = "Its power management failed (the kernel has it in an error state) and its driver doesn't answer, so nothing can use it: video it would decode, screen recordings it would encode, a display on its ports.";
-            let why = if nvidia { " Olo doesn't try to start it again in place: unloading its driver while the card doesn't answer can hang in the kernel until the restart." } else { "" };
-            (format!("The {} graphics card stopped answering", p.maker()), format!("{broken} Restarting the computer starts it again: save your work first.{why}"))
-        } else {
-            continue;
-        };
-        r.findings.push(Finding { id: format!("gpu:stuck:{}", p.address), severity: Severity::Problem, title, detail, fix: None });
+    let going = |m: &&str| read(&roots.fs.join("sys/module").join(m).join("initstate")).as_deref().map(str::trim) == Some("going");
+    let mut stuck = NVIDIA_MODULES.into_iter().find(|m| going(m));
+    if let Some(module) = stuck {
+        // (Looked at again for a while: an ordinary unload is over in
+        // well under that.)
+        let until = std::time::Instant::now() + STUCK_FOR;
+        while going(&module) && std::time::Instant::now() < until {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+        }
+        if !going(&module) {
+            stuck = None;
+        }
     }
+    let nvidia = pcis.iter().find(|p| p.display() && p.vendor == 0x10de);
+    if let (Some(module), Some(card)) = (stuck, nvidia) {
+        r.findings.push(Finding { id: format!("gpu:stuck:{}", card.address), severity: Severity::Problem, title: STUCK_TITLE.into(), detail: stuck_detail(module), fix: None });
+    }
+    for p in pcis.iter().filter(|p| p.display() && read(&p.dir.join("power/runtime_status")).as_deref().map(str::trim) == Some("error")) {
+        // (NVIDIA's with its driver stuck is said above, once.)
+        if stuck.is_some() && nvidia.is_some_and(|n| n.address == p.address) {
+            continue;
+        }
+        let why = if p.vendor == 0x10de { " Olo doesn't try to start it again in place: unloading its driver after that can hang in the kernel." } else { "" };
+        r.findings.push(Finding {
+            id: format!("gpu:stuck:{}", p.address),
+            severity: Severity::Problem,
+            title: format!("The {} graphics card's power management failed", p.maker()),
+            detail: format!("The kernel has the card in an error state after a power change it couldn't finish, and its driver may not answer: video it would decode, screen recordings it would encode, a display on its ports. Restarting the computer is what starts it again: save your work first.{why}"),
+            fix: None,
+        });
+    }
+}
+
+/// How long a module of NVIDIA's is watched on its way out before it is
+/// called stuck (none of it in a test).
+const STUCK_FOR: std::time::Duration = if cfg!(test) { std::time::Duration::ZERO } else { std::time::Duration::from_secs(3) };
+
+/// What is said of NVIDIA's driver stuck unloading: its title, and its
+/// words with the module's name (the demo's too).
+pub(crate) const STUCK_TITLE: &str = "NVIDIA's graphics driver is stuck";
+pub(crate) fn stuck_detail(module: &str) -> String {
+    format!(
+        "The kernel began shutting down NVIDIA's graphics driver ({module}) and hasn't finished. Until the computer restarts, the card can't be used, a processor may stay busy with it, and putting the computer to sleep may fail or hang. Save your work, then restart."
+    )
+}
+/// Added to it where the finding that keeps it from happening again is
+/// in the same report (`nvidia_console`: its fix's name).
+pub(crate) const STUCK_AGAIN: &str = " To keep it from happening again, use Turn Off the Console below.";
+
+/// The option that keeps NVIDIA's display module from taking a console:
+/// read as the module loads, so in force from the next start.
+const NVIDIA_CONSOLE_PATH: &str = "etc/modprobe.d/olo-nvidia-console.conf";
+const NVIDIA_CONSOLE: &str = "# Olo Doctor: NVIDIA's display module takes no framebuffer console on a card that has no display.\n# (Giving that console up as the module unloads is where it can wait for ever on a card that\n# stopped answering; nothing shows on a card with no display anyway.)\noptions nvidia_drm fbdev=0\n";
+
+/// NVIDIA's display module holding a framebuffer console on a card that
+/// has no display (`nvidia_drm`'s `fbdev`, on as it comes): a laptop's
+/// second card, wired to no screen and no port, there to compute. The
+/// console shows nothing there, and giving it up is what the module
+/// does as it unloads, by programming the card's display engine and
+/// waiting for it with no time limit: on a card that had stopped
+/// answering that wait never ended, the unload stuck in the kernel
+/// until the computer restarted (2026-11-20; `gpu_stuck`). Without the
+/// console the module has nothing to give up. Offered only where the
+/// card has no connector at all: on one that drives a screen the
+/// console is the text shown before the desktop, and stays.
+/// What is said of it: its title, its words and its fix's name (the
+/// demo's too).
+pub(crate) const CONSOLE_KEPT: (&str, &str, &str) = (
+    "NVIDIA's driver keeps a console no one can see",
+    "NVIDIA's driver holds a text console on its graphics card, though nothing is connected to the card to show it. If the card ever stops answering, the driver can get stuck giving that console back, until the computer restarts. The fix turns the console off from the next start (an option in /etc/modprobe.d); the card works as before.",
+    "Turn Off the Console",
+);
+
+fn nvidia_console(roots: &Roots, pcis: &[Pci], r: &mut Report) {
+    if read(&roots.fs.join("sys/module/nvidia_drm/parameters/fbdev")).as_deref().map(str::trim) != Some("Y") {
+        return;
+    }
+    if std::fs::read_to_string(roots.fs.join(NVIDIA_CONSOLE_PATH)).is_ok_and(|kept| kept == NVIDIA_CONSOLE) {
+        r.fine.push(Fine {
+            title: "NVIDIA's display driver takes no console from the next start".into(),
+            detail: "The option is kept (olo-nvidia-console.conf); the module read its options before, and reads them again as the computer starts.".into(),
+        });
+        return;
+    }
+    // Its DRM cards' connectors ("card1-DP-3" in "card1"): none, on a
+    // card that drives no display.
+    let connectors = |p: &Pci| {
+        std::fs::read_dir(p.dir.join("drm")).into_iter().flatten().flatten().filter(|c| c.file_name().to_string_lossy().starts_with("card")).any(|card| {
+            let name = card.file_name().to_string_lossy().into_owned();
+            std::fs::read_dir(card.path()).into_iter().flatten().flatten().any(|e| e.file_name().to_string_lossy().starts_with(&format!("{name}-")))
+        })
+    };
+    let Some(card) = pcis.iter().find(|p| p.display() && p.vendor == 0x10de && p.driver.as_deref() == Some("nvidia") && !p.boot_vga && !connectors(p)) else { return };
+    // (Stuck that way now: its finding says what keeps it from
+    // happening again.)
+    if let Some(stuck) = r.findings.iter_mut().find(|f| f.id.starts_with("gpu:stuck:") && f.title == STUCK_TITLE) {
+        stuck.detail.push_str(STUCK_AGAIN);
+    }
+    r.findings.push(Finding {
+        id: format!("gpu:console:{}", card.address),
+        severity: Severity::Advice,
+        title: CONSOLE_KEPT.0.into(),
+        detail: CONSOLE_KEPT.1.into(),
+        fix: Some(Fix { label: CONSOLE_KEPT.2.into(), root: true, steps: vec![Step::WriteFile { path: PathBuf::from("/").join(NVIDIA_CONSOLE_PATH), content: NVIDIA_CONSOLE.into(), mode: 0o644 }] }),
+    });
 }
 
 /// A graphics card no driver has, when one tried (nouveau loaded and
@@ -7049,25 +7128,9 @@ mod tests {
         let r = scan(&roots);
         assert!(r.find("gpu:idle").is_none() && r.find("sound:builtin").is_none());
         assert!(r.fine.iter().any(|f| f.title == "The NVIDIA graphics card sleeps when unused"));
-        // Kept awake by Olo's follower just now, because memory is
-        // short: not a card that never sleeps, and said so.
-        w(&format!("{pci}/0000:01:00.0/power/control"), "on\n");
-        assert!(scan(&roots).find("gpu:idle").is_some(), "awake by someone else's hand: said");
-        w("run/olo-gpu-follow.json", r#"{"version":7,"held_awake":["0000:01:00.0"]}"#);
-        let r = scan(&roots);
-        assert!(r.find("gpu:idle").is_none());
-        assert!(
-            r.fine.iter().any(|f| f.title == "The NVIDIA graphics card sleeps when unused" && f.detail.contains("while memory is short")),
-            "{:?}",
-            r.fine.iter().map(|f| &f.detail).collect::<Vec<_>>()
-        );
         let _ = std::fs::remove_dir_all(&fs);
     }
 
-    /// NVIDIA's card with its power management failed: started again
-    /// without a restart, what uses it quit first, nvidia-powerd stopped
-    /// and started; none offered while the session's display server has
-    /// it open; nothing said once it answers again.
     /// The session's TMPDIR: systemd's when it answers; else Olo's file,
     /// never Doctor's own (the watcher's, from before the fix) over it.
     #[test]
@@ -7114,18 +7177,18 @@ mod tests {
         // and why Olo offers none.
         let id = "gpu:stuck:0000:01:00.0";
         let f = scan(&roots).find(id).cloned().expect("the stuck card");
-        assert_eq!((f.title.as_str(), f.severity), ("The NVIDIA graphics card stopped answering", Severity::Problem));
+        assert_eq!((f.title.as_str(), f.severity), ("The NVIDIA graphics card's power management failed", Severity::Problem));
         assert!(f.fix.is_none(), "no fix that unloads a driver whose card doesn't answer: {:?}", f.fix);
-        assert!(f.detail.contains("Restarting the computer starts it again") && f.detail.contains("can hang in the kernel"), "{}", f.detail);
+        assert!(f.detail.contains("Restarting the computer is what starts it again") && f.detail.contains("can hang in the kernel"), "{}", f.detail);
         // Its driver's unload begun and never finished (the fix that is
         // gone, or anyone's `modprobe -r`): said as that, whatever the
         // card's own state reads.
         w("sys/module/nvidia_drm/initstate", "going\n");
         let f = scan(&roots).find(id).cloned().unwrap();
-        assert_eq!(f.title, "NVIDIA's driver is stuck unloading");
-        assert!(f.fix.is_none() && f.detail.contains("can't go to sleep") && f.detail.contains("Only restarting the computer ends it"), "{}", f.detail);
+        assert_eq!(f.title, STUCK_TITLE);
+        assert!(f.fix.is_none() && f.detail.contains("(nvidia_drm)") && f.detail.contains("may fail or hang") && f.detail.ends_with("Save your work, then restart."), "{}", f.detail);
         w(&format!("{card}/power/runtime_status"), "active\n");
-        assert_eq!(scan(&roots).find(id).map(|f| f.title.clone()).as_deref(), Some("NVIDIA's driver is stuck unloading"));
+        assert_eq!(scan(&roots).find(id).map(|f| f.title.clone()).as_deref(), Some(STUCK_TITLE));
         // Answering, and nothing unloading: nothing to say.
         w("sys/module/nvidia_drm/initstate", "live\n");
         assert!(scan(&roots).find(id).is_none());
@@ -7134,6 +7197,63 @@ mod tests {
         w(&format!("{card}/power/runtime_status"), "error\n");
         let f = scan(&roots).find(id).cloned().unwrap();
         assert!(f.fix.is_none() && f.detail.ends_with("save your work first."), "{}", f.detail);
+    }
+
+    #[test]
+    fn nvidias_console_on_a_card_with_no_display_is_given_up() {
+        let (fs, roots) = machine("nvidia-console");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        let pci = "sys/bus/pci/devices";
+        w(&format!("{pci}/0000:00:02.0/class"), "0x030000\n");
+        w(&format!("{pci}/0000:00:02.0/vendor"), "0x8086\n");
+        w(&format!("{pci}/0000:00:02.0/boot_vga"), "1\n");
+        w(&format!("{pci}/0000:01:00.0/class"), "0x030000\n");
+        w(&format!("{pci}/0000:01:00.0/vendor"), "0x10de\n");
+        w(&format!("{pci}/0000:01:00.0/boot_vga"), "0\n");
+        w(&format!("{pci}/0000:01:00.0/power/control"), "auto\n");
+        std::fs::create_dir_all(fs.join("sys/bus/pci/drivers/nvidia")).unwrap();
+        std::os::unix::fs::symlink(fs.join("sys/bus/pci/drivers/nvidia"), fs.join(format!("{pci}/0000:01:00.0/driver"))).unwrap();
+        std::fs::create_dir_all(fs.join(format!("{pci}/0000:01:00.0/drm/card1"))).unwrap();
+        std::fs::create_dir_all(fs.join(format!("{pci}/0000:01:00.0/drm/renderD129"))).unwrap();
+        let id = "gpu:console:0000:01:00.0";
+        // The module isn't loaded, or takes no console: nothing to say.
+        assert!(scan(&roots).find(id).is_none());
+        w("sys/module/nvidia_drm/parameters/fbdev", "N\n");
+        assert!(scan(&roots).find(id).is_none());
+        // It takes one, on a card with no connector: offered.
+        w("sys/module/nvidia_drm/parameters/fbdev", "Y\n");
+        let f = scan(&roots).find(id).cloned().expect("the console");
+        assert_eq!((f.severity, f.title.as_str()), (Severity::Advice, CONSOLE_KEPT.0));
+        let fix = f.fix.expect("a fix");
+        assert_eq!((fix.label.as_str(), fix.root), ("Turn Off the Console", true));
+        assert_eq!(fix.steps, vec![Step::WriteFile { path: "/etc/modprobe.d/olo-nvidia-console.conf".into(), content: NVIDIA_CONSOLE.into(), mode: 0o644 }]);
+        assert!(NVIDIA_CONSOLE.lines().any(|l| l == "options nvidia_drm fbdev=0"));
+        // Its driver stuck unloading in the same report: that finding
+        // says what keeps it from happening again; alone, it doesn't.
+        w("sys/module/nvidia_drm/initstate", "going\n");
+        let r = scan(&roots);
+        assert!(r.find(id).is_some());
+        assert!(r.find("gpu:stuck:0000:01:00.0").is_some_and(|f| f.detail.ends_with(STUCK_AGAIN)), "{:?}", r.find("gpu:stuck:0000:01:00.0").map(|f| &f.detail));
+        w("sys/module/nvidia_drm/parameters/fbdev", "N\n");
+        assert!(scan(&roots).find("gpu:stuck:0000:01:00.0").is_some_and(|f| f.detail.ends_with("then restart.")));
+        w("sys/module/nvidia_drm/parameters/fbdev", "Y\n");
+        w("sys/module/nvidia_drm/initstate", "live\n");
+        // A card with a port: its console is the text before the
+        // desktop, and nothing is offered.
+        std::fs::create_dir_all(fs.join(format!("{pci}/0000:01:00.0/drm/card1/card1-DP-3"))).unwrap();
+        assert!(scan(&roots).find(id).is_none());
+        std::fs::remove_dir_all(fs.join(format!("{pci}/0000:01:00.0/drm/card1/card1-DP-3"))).unwrap();
+        // The option kept: fine, from the next start (the running
+        // module still says Y).
+        w("etc/modprobe.d/olo-nvidia-console.conf", NVIDIA_CONSOLE);
+        let r = scan(&roots);
+        assert!(r.find(id).is_none());
+        assert!(r.fine.iter().any(|f| f.title == "NVIDIA's display driver takes no console from the next start"));
+        let _ = std::fs::remove_dir_all(&fs);
     }
 
     #[test]

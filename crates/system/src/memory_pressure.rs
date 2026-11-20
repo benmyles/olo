@@ -1,42 +1,32 @@
-//! Memory pressure, told as it happens, and what waits it out.
+//! Memory pressure, told as it happens.
 //!
 //! The kernel counts the time programs are held because memory is short
 //! (pressure stall information, `/proc/pressure/memory`) and wakes
-//! whoever asked when that passes a mark (a trigger): [`watch`] sleeps
-//! in the kernel until then, so nothing is polled. Root's here (a
-//! window that isn't a multiple of two seconds is; Olo's follower,
-//! `olo-gpu-tune follow`, is root).
+//! whoever asked when that passes a mark (a trigger): [`watch`] waits in
+//! the kernel until then, on a thread of its own. Root's here (a window
+//! that isn't a multiple of two seconds is; one of two seconds an
+//! ordinary program may set too).
 //!
-//! What it is for: **an NVIDIA card isn't let suspend while memory is
-//! short.** Its runtime suspend allocates memory (the firmware's saved
-//! image, in 2 MB pages first) and runs the whole way against one
-//! deadline of four seconds; held for memory on the way, it comes to
-//! its last check with the deadline spent, calls the suspend failed,
-//! and leaves the card unusable until the computer restarts
-//! (2026-11-20: HACKING, "A graphics card that stopped answering").
-//! So while programs are being held for memory, a card that is awake
-//! stays awake ([`Held`]), and sleeps once memory has been calm a
-//! while. One that is asleep is left asleep: waking it allocates too.
+//! What the kernel does for it, measured in a guest on Linux 7.2.15: its
+//! own monitor thread (`psimon`) runs about five times a second while
+//! programs are being held and sleeps otherwise (3 wakes in four calm
+//! seconds, 54 under pressure); it tells at most once a window, and
+//! what wasn't read is one telling.
+//!
+//! Nothing of Olo's uses it yet but the measuring tool (`kbench
+//! pressure`). It was made to keep an NVIDIA card from suspending while
+//! memory is short (2026-11-20), by writing "on" to the card's
+//! `power/control` at each telling: withdrawn before it ever ran, on
+//! review. That write is the kernel's `pm_runtime_forbid`, which
+//! resumes the device then and there: a card that had gone to sleep
+//! between Olo's look and its write was woken, under the very pressure
+//! it was to be spared, and one in the middle of suspending was waited
+//! for without limit (reproduced on this kernel with a USB hub in a
+//! guest). User space has no way to keep a device from suspending
+//! without that; the place for it is the driver's own suspend
+//! (docs/TODO.md, "The NVIDIA card can never again be left stuck").
 
-use std::{
-    io::Write as _,
-    time::{Duration, Instant},
-};
-
-/// Programs held for memory this long within [`WINDOW`] count as memory
-/// being short: a twentieth of the time. (The minute the card's suspend
-/// failed had them held 39,000 times; an ordinary busy minute of
-/// builds, a few hundred to a few thousand, about a hundredth of the
-/// time.)
-pub const STALL: Duration = Duration::from_millis(100);
-pub const WINDOW: Duration = Duration::from_secs(2);
-/// How long memory has to have been calm before what was held is let
-/// go: long enough that the builds that made the pressure are over,
-/// not a pause between two of their steps.
-pub const CALM: Duration = Duration::from_secs(120);
-/// With less than this share of memory to be had, memory is short
-/// whatever the stalls say (the failing suspend's minute had a tenth).
-pub const SHORT: f64 = 0.15;
+use std::{io::Write as _, time::Duration};
 
 /// Calls `told` each time programs have been held for memory for
 /// `stall` or more within `window` (the kernel says so once a window at
@@ -58,8 +48,9 @@ pub fn watch(stall: Duration, window: Duration, told: impl Fn() -> bool + Send +
                 }
                 break;
             }
-            // (POLLERR: the trigger is gone with the file.)
-            if fd.revents & libc::POLLERR != 0 || (fd.revents & libc::POLLPRI != 0 && !told()) {
+            // (An error, a hang-up or a file that is no more: the trigger
+            // is gone, and waiting on would spin.)
+            if fd.revents & (libc::POLLERR | libc::POLLHUP | libc::POLLNVAL) != 0 || (fd.revents & libc::POLLPRI != 0 && !told()) {
                 break;
             }
         }
@@ -75,51 +66,6 @@ pub fn available_share(meminfo: &str) -> Option<f64> {
     (total > 0.0).then(|| available / total)
 }
 
-/// Whether memory is short now, by what can be had ([`SHORT`]).
-pub fn short_now() -> bool {
-    std::fs::read_to_string("/proc/meminfo").ok().and_then(|m| available_share(&m)).is_some_and(|share| share < SHORT)
-}
-
-/// Something held while memory is short, and when it may be let go:
-/// [`CALM`] after the last time the kernel said programs were held for
-/// memory, and not while there is little to be had.
-#[derive(Debug, Default)]
-pub struct Held {
-    until: Option<Instant>,
-}
-
-impl Held {
-    /// Programs were held for memory just now: held from now (true if
-    /// it wasn't), for [`CALM`] from now.
-    pub fn pressed(&mut self, now: Instant) -> bool {
-        let was = self.until.is_some();
-        self.until = Some(now + CALM);
-        !was
-    }
-
-    /// When to look again (`due`), while something is held.
-    pub fn deadline(&self) -> Option<Instant> {
-        self.until
-    }
-
-    /// At the deadline: whether what was held is let go now. Not while
-    /// memory is `short` still (held for another [`CALM`]), nor before
-    /// the deadline.
-    pub fn due(&mut self, now: Instant, short: bool) -> bool {
-        match self.until {
-            Some(until) if now >= until && short => {
-                self.until = Some(now + CALM);
-                false
-            }
-            Some(until) if now >= until => {
-                self.until = None;
-                true
-            }
-            _ => false,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,31 +75,7 @@ mod tests {
         let text = "MemTotal:       65263568 kB\nMemFree:         9075576 kB\nMemAvailable:    5912000 kB\nBuffers:              16 kB\n";
         let share = available_share(text).unwrap();
         assert!((share - 0.0906).abs() < 0.001, "{share}");
-        assert!(share < SHORT);
         assert_eq!(available_share("MemTotal: 0 kB\nMemAvailable: 0 kB\n"), None);
         assert_eq!(available_share("nothing"), None);
-    }
-
-    /// Held from the first stall, let go a while after the last, and
-    /// not while there is still little memory to be had.
-    #[test]
-    fn held_until_memory_has_been_calm() {
-        let t0 = Instant::now();
-        let mut held = Held::default();
-        assert_eq!(held.deadline(), None);
-        assert!(!held.due(t0, false));
-        assert!(held.pressed(t0), "the first stall holds");
-        assert!(!held.pressed(t0 + Duration::from_secs(30)), "held already");
-        assert_eq!(held.deadline(), Some(t0 + Duration::from_secs(30) + CALM));
-        // Before the deadline: still held.
-        assert!(!held.due(t0 + CALM, false));
-        // At it, with little memory to be had: held for as long again.
-        let at = t0 + Duration::from_secs(30) + CALM;
-        assert!(!held.due(at, true));
-        assert_eq!(held.deadline(), Some(at + CALM));
-        // Calm, and memory to be had: let go.
-        assert!(held.due(at + CALM, false));
-        assert_eq!(held.deadline(), None);
-        assert!(held.pressed(at + CALM + Duration::from_secs(1)), "and held again by the next stall");
     }
 }

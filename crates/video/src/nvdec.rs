@@ -277,12 +277,16 @@ unsafe impl Send for Nvdec {}
 /// Whether NVIDIA's decoder is here at all (its libraries; the GPU itself
 /// is asked when one is made).
 pub fn available() -> bool {
-    Lib::open("libnvcuvid.so.1").is_ok() && Lib::open("libcuda.so.1").is_ok()
+    // (A card that can be used, asked of the kernel's files first:
+    // `nvidia_card::usable`.)
+    crate::nvidia_card::usable().is_ok() && Lib::open("libnvcuvid.so.1").is_ok() && Lib::open("libcuda.so.1").is_ok()
 }
 
 impl Nvdec {
     /// A decoder for `codec` on the first NVIDIA GPU, or why not.
     pub fn new(codec: Codec) -> Result<Nvdec, String> {
+        // (Before anything of NVIDIA's is loaded or started.)
+        crate::nvidia_card::usable()?;
         let cuda = Lib::open("libcuda.so.1")?;
         let cuvid = Lib::open("libnvcuvid.so.1")?;
         // SAFETY: the libraries' own functions, called as declared; the

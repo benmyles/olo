@@ -72,9 +72,12 @@ type CuCtxCreate = unsafe extern "C" fn(*mut *mut c_void, u32, i32) -> i32;
 type CuCtxDestroy = unsafe extern "C" fn(*mut c_void) -> i32;
 type CreateInstance = unsafe extern "C" fn(*mut nv::NV_ENCODE_API_FUNCTION_LIST) -> nv::NVENCSTATUS;
 
-/// Whether NVIDIA's encoder can be opened here (its libraries are).
+/// Whether NVIDIA's encoder can be opened here: a card of NVIDIA's that
+/// can be used (`nvidia_card::usable`: asked of the kernel's files
+/// first, so nothing of NVIDIA's is loaded for a card that stopped
+/// answering), and its libraries.
 pub fn available() -> bool {
-    Lib::open("libnvidia-encode.so.1").is_ok() && Lib::open("libcuda.so.1").is_ok()
+    crate::nvidia_card::usable().is_ok() && Lib::open("libnvidia-encode.so.1").is_ok() && Lib::open("libcuda.so.1").is_ok()
 }
 
 /// How many bits pictures get.
@@ -126,6 +129,8 @@ impl Nvenc {
 
     /// [`Nvenc::new`] at a rate of `rate`'s kind.
     pub fn with_rate(width: u32, height: u32, fps: u32, rate: Rate, codec: crate::Codec) -> Result<Nvenc, String> {
+        // (Before anything of NVIDIA's is loaded or started.)
+        crate::nvidia_card::usable()?;
         let nvenc = Lib::open("libnvidia-encode.so.1")?;
         let cuda = Lib::open("libcuda.so.1")?;
         // SAFETY: the functions' types are CUDA's driver API and NVENC's.

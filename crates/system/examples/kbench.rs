@@ -54,10 +54,10 @@
 //!       how long each took, in microseconds.
 //!   kbench pressure [--secs N] [--stall MS] [--window MS]
 //!       how often the kernel says programs were held for memory (a
-//!       pressure-stall trigger, as `olo_system::memory_pressure::watch`
-//!       sets for Olo's follower: MS of stall within a window, 100 in
-//!       2000 unless said), for N seconds: how many times it said so,
-//!       and when first and last. Root (the guest's).
+//!       pressure-stall trigger, `olo_system::memory_pressure::watch`:
+//!       MS of stall within a window, 100 in 2000 unless said), for N
+//!       seconds: how many times it said so, and when first and last.
+//!       Root (the guest's).
 
 use std::{
     fs::OpenOptions,
