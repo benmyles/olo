@@ -102,37 +102,46 @@ something nobody here has is in "Blocked", with what it waits for.
   A Claude reset leaves the weekly reset day as it is; a Codex one
   (OpenAI's help article, for bought resets) starts a new week at the
   next request and loses what was left.
+  **Done** (2026-11-19, three commits): each real account's client
+  captured (`capture.rs`: print, a terminal, at the limit, renewal; app
+  server, exec, TUI, native TLS), kept, captured again at the start, when
+  a client changes and by hand (Pool ▸ Capture Client Requests Again,
+  `olo-pool --capture`); the pool's own requests (quota, credits, claims,
+  renewals) sent byte for byte as captured (`likeness.rs`), so Claude
+  lists each account's resets; credits spent where they give back most
+  (`Window::reset_worth` by each provider's rule, the narrowest credit
+  that clears what's out, never just before a limit resets by itself,
+  expiring ones at their best moment); the tip counts them ("With its 6
+  resets, it lasts until the next reset", pictured); model requests in
+  the client's order with the account's own sign-in, ids, organization
+  and `metadata.user_id` in place, cookies and origin kept, a connection
+  pool for each account. One real Claude reset used (a Fable one on the
+  account whose Fable week was out): Fable 100% to 3%, its week 50% to
+  1%, the same reset day (a Claude reset keeps the day; one that
+  `gives_back_weekly` gives the week too).
   **To do**:
-  - Capture each real account (Ben's design): the installed client run
-    in a sandbox (a scratch home, the account's access token, a made-up
-    refresh token: a real one never goes there), through the pool's own
-    capturing proxy, which passes on only the reads the client needs to
-    go on as it would and answers everything else itself (a model
-    request, a reset claim, a sign-in renewal, logging: never sent, so
-    no quota spent, no reset used, no sign-in rotated); kept in the
-    pool's data folder with every secret a placeholder, one an account
-    and client version; captured again when a client changes (its
-    install watched, not polled) and from Token Pool's menu.
-  - Every request the pool makes itself (quota, credits, claims, sign-in
-    renewals, sign-ins) sent as the capture of that account shows, byte
-    for byte (header names, case, order, values; the body; HTTP/1.1 or
-    HTTP/2 as the client would get), with the session's own identity
-    (its User-Agent and originator, from the client's live requests).
-  - Model requests passed on as the client sent them, only the account's
-    parts in place: its sign-in, `chatgpt-account-id`, organization
-    headers, the `account_uuid` in `metadata.user_id`; the client's
-    `accept-encoding` kept (the answer decoded for the pool's own
-    reading); nothing added; the client's HTTP version and case.
-  - TLS: what each client's ClientHello offers (Claude Code's is
-    BoringSSL's, through Bun) against the pool's rustls; say how far it
-    can match.
-  - Credits: every `cedar_ember` grant read whole; the tip and the pace
-    line count them; spent when a limit a grant clears is reached, on
-    the account whose own reset is furthest off, the soonest to expire
-    first, never on one about to reset by itself; Codex's the same,
-    knowing a reset starts a new week. Tested in the model tests, the
-    tip pictured.
-  - A Codex reviewer (astra 6.2) over all of it before it's pushed.
+  - Codex's review (astra 6.2) of the three commits: its findings
+    fixed, then pushed.
+  - The one real Codex reset Ben allowed, when its account runs out
+    (91% on 2026-11-19: a Codex reset starts a new week and loses what's
+    left), through the pool's claim: what it does to the week's reset.
+  - The relay exact to the byte (hyper 1.12 carries a header's case from
+    its server to its client, `preserve_header_case` on both, the case
+    map in the request's extensions): Claude's requests on an HTTP/1.1
+    connection of the account's own (hyper's client over rustls, ALPN
+    as Claude Code offers it, kept alive), the inbound extensions carried
+    over; Codex offered HTTP/2 (as it offers it to ChatGPT) and sent so;
+    the client's `accept-encoding` passed on and the answer read decoded
+    for the pool's own use (gzip, br, zstd as they stream); Codex's
+    WebSockets passed through on the account chosen (no 426), its turns
+    counted from their frames; reqwest's `accept: */*` never added; a
+    redirect passed back, not followed. Measured on release builds
+    (latency to the first byte, CPU a request).
+  - TLS: Claude Code's two ClientHellos are BoringSSL's (Bun), Codex's
+    native one OpenSSL's: the pool's rustls offers otherwise (ALPN,
+    suites, extensions). Matching them means BoringSSL (`boring`) for
+    Claude Code's and OpenSSL for Codex's; weigh it, with the captured
+    offers (`Capture::hellos`) as the reference, and say.
 
 - **Notifications' "Waiting in apps" goes to the window and tab that
   waits** (Ben, 2026-11-19, with a picture of Notifications' "Waiting in

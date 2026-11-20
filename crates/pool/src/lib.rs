@@ -17,6 +17,7 @@ pub mod likeness;
 pub mod meters;
 pub mod model;
 pub mod peer;
+pub mod relay;
 pub mod running;
 pub mod schedule;
 pub mod store;

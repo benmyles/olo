@@ -167,13 +167,21 @@ async fn connection(mut client: TcpStream, peer: SocketAddr, shared: Arc<Shared>
     client.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n").await.map_err(|e| e.to_string())?;
     // (What came after the head, if the client didn't wait for the
     // answer, is the start of its TLS.)
-    let stream = tls.accept(Prefixed { first: rest, at: 0, inner: client }).await.map_err(|e| format!("TLS with the client for {host}: {e}"))?;
+    // (What its handshake offers, written down: the pool offers the host
+    // the same on its behalf, `relay::ClientOffer`.)
+    let start =
+        tokio_rustls::LazyConfigAcceptor::new(rustls::server::Acceptor::default(), Prefixed { first: rest, at: 0, inner: client }).await.map_err(|e| format!("TLS with the client for {host}: {e}"))?;
+    let offer = crate::relay::ClientOffer(start.client_hello().alpn().map(|a| a.map(|p| String::from_utf8_lossy(p).into_owned()).collect()).unwrap_or_default());
+    let stream = start.into_stream(tls.config().clone()).await.map_err(|e| format!("TLS with the client for {host}: {e}"))?;
     let mut stop = shared.drain.watch();
-    let service = hyper::service::service_fn(move |req: hyper::Request<hyper::body::Incoming>| {
+    let service = hyper::service::service_fn(move |mut req: hyper::Request<hyper::body::Incoming>| {
         let (shared, host) = (shared.clone(), host.clone());
+        req.extensions_mut().insert(offer.clone());
         async move { Ok::<_, std::convert::Infallible>(request(shared, &host, req).await) }
     });
-    let conn = hyper::server::conn::http1::Builder::new().keep_alive(true).serve_connection(hyper_util::rt::TokioIo::new(stream), service).with_upgrades();
+    // (Each header's name written down in the client's own case, for a
+    // request passed on to be sent so: `relay`.)
+    let conn = hyper::server::conn::http1::Builder::new().keep_alive(true).preserve_header_case(true).serve_connection(hyper_util::rt::TokioIo::new(stream), service).with_upgrades();
     tokio::pin!(conn);
     // An upgrade waiting: the request under way finishes, and then the
     // connection closes (the client opens another for its next, which
@@ -272,8 +280,8 @@ async fn request(shared: Arc<Shared>, host: &str, req: hyper::Request<hyper::bod
     // for it): then the client's own, passed through. Decided for each
     // request, so turning a client off or on needs no restart of it.
     let answer = match pooled(host, &path) {
-        Some((provider, rest)) if shared.routes(provider) => crate::gateway::serve(shared, provider, rest, query, parts.method, parts.headers, body).await,
-        _ => through(&shared, host, &path, query.as_deref(), parts.method, parts.headers, body).await,
+        Some((provider, rest)) if shared.routes(provider) => crate::gateway::serve(shared, provider, rest, query, parts.method, parts.headers, parts.extensions, body).await,
+        _ => through(&shared, host, &path, query.as_deref(), parts.method, parts.headers, parts.extensions, body).await,
     };
     let (parts, body) = answer.into_parts();
     Response::from_parts(parts, Body::new(crate::drain::Counted { inner: body, underway }))
@@ -286,7 +294,29 @@ fn hop(name: &str) -> bool {
 
 /// A request the pool doesn't serve, sent on as it came (the client's
 /// own sign-in, its encodings) and answered as it is.
-async fn through(shared: &Shared, host: &str, path: &str, query: Option<&str>, method: Method, headers: HeaderMap, body: Bytes) -> Response {
+async fn through(shared: &Shared, host: &str, path: &str, query: Option<&str>, method: Method, headers: HeaderMap, ext: hyper::http::Extensions, body: Bytes) -> Response {
+    // Anthropic's: exactly as it came, each name in its case, over
+    // HTTP/1.1 as Claude Code speaks it there, on connections of the
+    // client's own sign-in's (`relay`).
+    if host == "api.anthropic.com" {
+        let target = format!("{path}{}", query.map(|q| format!("?{q}")).unwrap_or_default());
+        let mut b = hyper::Request::builder().method(method).uri(target);
+        for (k, v) in headers.iter().filter(|(k, _)| !matches!(k.as_str(), "proxy-connection" | "proxy-authorization" | "te" | "trailer" | "upgrade")) {
+            b = b.header(k, v);
+        }
+        let alpn: Vec<String> = ext.get::<crate::relay::ClientOffer>().map(|o| o.0.clone()).unwrap_or_default();
+        let alpn: Vec<&str> = alpn.iter().map(String::as_str).collect();
+        return match b.body(http_body_util::Full::new(body)) {
+            Ok(mut req) => {
+                *req.extensions_mut() = ext;
+                match shared.send_exact(crate::relay::OWN, &shared.upstream_origin(host), &alpn, req).await {
+                    Ok(a) => answered_exact(a),
+                    Err(e) => (StatusCode::BAD_GATEWAY, format!("The pool couldn’t reach {host}: {e}")).into_response(),
+                }
+            }
+            Err(e) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
+        };
+    }
     let url = format!("{}{path}{}", shared.upstream_origin(host), query.map(|q| format!("?{q}")).unwrap_or_default());
     let mut req = shared.client().request(method, &url);
     for (k, v) in headers.iter().filter(|(k, _)| !hop(k.as_str())) {
@@ -296,6 +326,18 @@ async fn through(shared: &Shared, host: &str, path: &str, query: Option<&str>, m
         Ok(r) => answered(r),
         Err(e) => (StatusCode::BAD_GATEWAY, format!("The pool couldn’t reach {host}: {e}")).into_response(),
     }
+}
+
+/// An exact relay's answer, as it came (its connection back in its pool
+/// once read).
+fn answered_exact(a: crate::relay::Answer) -> Response {
+    let (status, headers) = (a.status(), a.headers().clone());
+    let mut out = Response::new(Body::from_stream(a.into_stream()));
+    *out.status_mut() = status;
+    for (k, v) in headers.iter().filter(|(k, _)| !hop(k.as_str())) {
+        out.headers_mut().append(k.clone(), v.clone());
+    }
+    out
 }
 
 /// The host's answer, as it came.

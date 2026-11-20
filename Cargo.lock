@@ -8679,6 +8679,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
+ "brotli",
  "brotli-decompressor",
  "bytes",
  "chacha20poly1305",

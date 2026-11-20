@@ -293,7 +293,7 @@ impl Availability {
             let them = if self.resets == 1 { "its reset".to_owned() } else { format!("its {} resets", self.resets) };
             out.push(match (lasts, self.lasts_with_resets()) {
                 (Some(s), Some(w)) if before_reset(s) && before_reset(w) => format!("With {them}, it lasts {}", duration_text(w)),
-                (Some(s), Some(_)) if before_reset(s) => format!("With {them}, until the next reset"),
+                (Some(s), Some(_)) if before_reset(s) => format!("With {them}, it lasts until the next reset"),
                 _ => format!("{} for when an account runs out", if self.resets == 1 { "A reset".to_owned() } else { format!("{} resets", self.resets) }),
             });
         }
@@ -572,6 +572,6 @@ mod tests {
             acc.windows[0].resets_at = Some(1_000 + 20 * 3_600);
         }
         let tip = availability(&m, "codex", None, false, 1_000).unwrap().detail(1_000);
-        assert_eq!(tip[3], "With its 3 resets, until the next reset");
+        assert_eq!(tip[3], "With its 3 resets, it lasts until the next reset");
     }
 }

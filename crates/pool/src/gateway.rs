@@ -189,6 +189,9 @@ pub struct Shared {
     capturing: Mutex<Option<String>>,
     /// Each account's own HTTP client (`client_for`).
     clients: Mutex<HashMap<String, Arc<olo_net::PerNetwork<reqwest::Client>>>>,
+    /// Each account's own HTTP/1.1 connections to Claude, for requests
+    /// passed on exactly as they came (`relay`).
+    exact: Arc<crate::relay::Exact>,
     capture_busy: std::sync::atomic::AtomicBool,
     capture_again: std::sync::atomic::AtomicU8,
 }
@@ -315,6 +318,7 @@ impl Shared {
             jars: Mutex::new(HashMap::new()),
             capturing: Mutex::new(None),
             clients: Mutex::new(HashMap::new()),
+            exact: Default::default(),
             capture_busy: Default::default(),
             capture_again: Default::default(),
         });
@@ -506,6 +510,12 @@ impl Shared {
     pub fn client_for(&self, id: &str) -> reqwest::Client {
         let made = self.clients.lock().unwrap().entry(id.to_owned()).or_insert_with(|| Arc::new(olo_net::PerNetwork::new(new_client))).clone();
         made.get()
+    }
+
+    /// Send on a connection of `key`'s own (an account's, or the client's
+    /// own sign-in's, `relay::OWN`), exactly as built (`relay`).
+    pub async fn send_exact(&self, key: &str, base: &str, alpn: &[&str], req: hyper::Request<http_body_util::Full<Bytes>>) -> Result<crate::relay::Answer, crate::relay::SendError> {
+        self.exact.send(key, base, alpn, req).await
     }
 
     /// What a request for account `id` carries of its own: its
@@ -1230,7 +1240,7 @@ fn forwarded(name: &str) -> bool {
 
 /// Response headers not passed back.
 fn returned(name: &str) -> bool {
-    !matches!(name, "content-length" | "connection" | "transfer-encoding" | "keep-alive" | "content-encoding")
+    !matches!(name, "content-length" | "connection" | "transfer-encoding" | "keep-alive")
 }
 
 /// The answer when no account can serve, shaped as the client expects.
@@ -1258,7 +1268,7 @@ async fn proxy(ctx: Ctx, provider: Provider, rest: String, query: Option<String>
     // Under way until its answer has gone (an upgrade waits for it), as a
     // request through the clients' proxy is (`intercept`).
     let underway = crate::drain::Underway::new(&ctx.shared);
-    let (parts, body) = serve(ctx.shared, provider, rest, query, method, headers, body).await.into_parts();
+    let (parts, body) = serve(ctx.shared, provider, rest, query, method, headers, Default::default(), body).await.into_parts();
     Response::from_parts(parts, axum::body::Body::new(crate::drain::Counted { inner: body, underway }))
 }
 
@@ -1306,7 +1316,7 @@ fn plain<'a>(headers: &HeaderMap, body: &'a [u8]) -> std::borrow::Cow<'a, [u8]> 
 /// Serve a model request from the pool: `rest` is its path after the
 /// provider's API base (`messages`, `responses`), from the gateway's own
 /// address or the proxy (`intercept`).
-pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Option<String>, method: Method, headers: HeaderMap, body: Bytes) -> Response {
+pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Option<String>, method: Method, headers: HeaderMap, ext: axum::http::Extensions, body: Bytes) -> Response {
     // (The body goes on as it came; Codex compresses it on ChatGPT's
     // backend.)
     let model = serde_json::from_slice::<Value>(&plain(&headers, &body)).ok().and_then(|v| v["model"].as_str().map(str::to_owned)).unwrap_or_default();
@@ -1422,47 +1432,86 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
             // own in place of the client's: its sign-in where the client's
             // was, its ChatGPT account and Claude organization, the OAuth
             // beta in the client's list (Claude Code signed in to it sends
-            // them so).
-            let mut req = s.client_for(&id).request(method.clone(), &url);
-            let mut signed = false;
-            for (k, v) in headers.iter() {
-                match k.as_str() {
-                    "authorization" | "x-api-key" if !signed => {
-                        signed = true;
-                        req = req.header("authorization", format!("Bearer {}", cred.access));
-                        // (Codex names its account right after: where it
-                        // names none, the account's goes there.)
-                        if provider == Provider::Codex
-                            && !headers.contains_key("chatgpt-account-id")
-                            && let Some(account) = &cred.account_id
-                        {
-                            req = req.header("chatgpt-account-id", account.as_str());
+            // them so). Claude's goes exactly so, each name in its case, on
+            // a connection of the account's own (`relay`).
+            let sent = if provider == Provider::Claude {
+                let target = match &query {
+                    Some(q) => format!("/v1/{rest}?{q}"),
+                    None => format!("/v1/{rest}"),
+                };
+                let mut b = hyper::Request::builder().method(method.clone()).uri(target);
+                let mut signed = false;
+                for (k, v) in headers.iter() {
+                    match k.as_str() {
+                        "authorization" | "x-api-key" if !signed => {
+                            signed = true;
+                            b = b.header("authorization", format!("Bearer {}", cred.access));
                         }
-                    }
-                    "authorization" | "x-api-key" => {}
-                    "chatgpt-account-id" => {
-                        if let Some(account) = &cred.account_id {
-                            req = req.header(k, account.as_str());
+                        "authorization" | "x-api-key" => {}
+                        "x-organization-uuid" | "anthropic-organization-id" => {
+                            if let Some(o) = &own.org {
+                                b = b.header(k, o.as_str());
+                            }
                         }
+                        "anthropic-beta" => b = b.header(k, upstream::with_oauth_beta(v.to_str().ok())),
+                        // (The connection's own.)
+                        "proxy-connection" | "proxy-authorization" | "te" | "trailer" | "upgrade" => {}
+                        name if name.starts_with("x-olo-pool-") => {}
+                        _ => b = b.header(k, v),
                     }
-                    "x-organization-uuid" | "anthropic-organization-id" => {
-                        if let Some(o) = &own.org {
-                            req = req.header(k, o.as_str());
-                        }
-                    }
-                    "anthropic-beta" if provider == Provider::Claude => req = req.header(k, upstream::with_oauth_beta(v.to_str().ok())),
-                    "content-encoding" if sent_plain.is_some() => {}
-                    name if forwarded(name) => req = req.header(k, v),
-                    _ => {}
                 }
-            }
-            if !signed {
-                req = upstream::authorize(req, provider, &cred);
-            }
-            if provider == Provider::Claude && !headers.contains_key("anthropic-beta") {
-                req = req.header("anthropic-beta", upstream::with_oauth_beta(None));
-            }
-            match req.body(sent_plain.clone().unwrap_or_else(|| own.body.clone())).send().await {
+                if !signed {
+                    b = b.header("authorization", format!("Bearer {}", cred.access));
+                }
+                if !headers.contains_key("anthropic-beta") {
+                    b = b.header("anthropic-beta", upstream::with_oauth_beta(None));
+                }
+                match b.body(http_body_util::Full::new(own.body.clone())) {
+                    Ok(mut req) => {
+                        *req.extensions_mut() = ext.clone();
+                        // (The client's own offer; a request from the
+                        // gateway's own address, Claude Code's SDK's.)
+                        let alpn: Vec<&str> = match ext.get::<crate::relay::ClientOffer>() {
+                            Some(o) => o.0.iter().map(String::as_str).collect(),
+                            None => vec!["http/1.1"],
+                        };
+                        s.exact.send(&id, &s.up.claude, &alpn, req).await.map_err(Sent::from)
+                    }
+                    Err(e) => Err(Sent::Other(e.to_string())),
+                }
+            } else {
+                let mut req = s.client_for(&id).request(method.clone(), &url);
+                let mut signed = false;
+                for (k, v) in headers.iter() {
+                    match k.as_str() {
+                        "authorization" | "x-api-key" if !signed => {
+                            signed = true;
+                            req = req.header("authorization", format!("Bearer {}", cred.access));
+                            // (Codex names its account right after: where it
+                            // names none, the account's goes there.)
+                            if !headers.contains_key("chatgpt-account-id")
+                                && let Some(account) = &cred.account_id
+                            {
+                                req = req.header("chatgpt-account-id", account.as_str());
+                            }
+                        }
+                        "authorization" | "x-api-key" => {}
+                        "chatgpt-account-id" => {
+                            if let Some(account) = &cred.account_id {
+                                req = req.header(k, account.as_str());
+                            }
+                        }
+                        "content-encoding" if sent_plain.is_some() => {}
+                        name if forwarded(name) => req = req.header(k, v),
+                        _ => {}
+                    }
+                }
+                if !signed {
+                    req = upstream::authorize(req, provider, &cred);
+                }
+                req.body(sent_plain.clone().unwrap_or_else(|| own.body.clone())).send().await.map(crate::relay::Answer::Reqwest).map_err(Sent::from)
+            };
+            match sent {
                 Ok(r) if sent_plain.is_none() && resend_plain(provider, r.status(), &headers) => {
                     let plain = plain(&headers, &own.body);
                     if plain.is_empty() {
@@ -1485,6 +1534,9 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                 Err(e) if network_tries < NETWORK_TRIES && (e.is_connect() || network_failed(seen)) => {
                     network_tries += 1;
                     tracing::info!("pool: the network failed a request to {} ({e}): again", provider.client());
+                    if network_failed(seen) {
+                        s.exact.clear();
+                    }
                     network_back().await;
                 }
                 Err(e) => {
@@ -1532,6 +1584,43 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
         // Passed on: how it ends is up to the answer.
         finish.outcome = None;
         return respond(r, finish);
+    }
+}
+
+/// Why a try failed: before it reached the host (`is_connect`), or
+/// perhaps after.
+#[derive(Debug)]
+enum Sent {
+    Connect(String),
+    Other(String),
+}
+
+impl Sent {
+    fn is_connect(&self) -> bool {
+        matches!(self, Sent::Connect(_))
+    }
+}
+
+impl std::fmt::Display for Sent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Sent::Connect(e) | Sent::Other(e) => f.write_str(e),
+        }
+    }
+}
+
+impl From<reqwest::Error> for Sent {
+    fn from(e: reqwest::Error) -> Sent {
+        if e.is_connect() { Sent::Connect(e.to_string()) } else { Sent::Other(e.to_string()) }
+    }
+}
+
+impl From<crate::relay::SendError> for Sent {
+    fn from(e: crate::relay::SendError) -> Sent {
+        match e {
+            crate::relay::SendError::Connect(m) => Sent::Connect(m),
+            crate::relay::SendError::Other(m) => Sent::Other(m),
+        }
     }
 }
 
@@ -1623,7 +1712,7 @@ impl Drop for Finish {
     }
 }
 
-fn respond(r: reqwest::Response, finish: Finish) -> Response {
+fn respond(r: crate::relay::Answer, finish: Finish) -> Response {
     let status = r.status();
     let mut out = HeaderMap::new();
     for (k, v) in r.headers().iter().filter(|(k, _)| returned(k.as_str())) {
@@ -1634,13 +1723,16 @@ fn respond(r: reqwest::Response, finish: Finish) -> Response {
     }
     let finish = Arc::new(Mutex::new(finish));
     finish.lock().unwrap().scan.sse = r.headers().get("content-type").and_then(|v| v.to_str().ok()).is_some_and(|c| c.starts_with("text/event-stream"));
+    // (Passed on as it came, compressed as the client asked; the pool reads
+    // a decoded copy as it goes by.)
+    let mut decode = Decode::of(r.headers().get("content-encoding").and_then(|v| v.to_str().ok()).unwrap_or(""));
     let end = finish.clone();
     let stream = r
-        .bytes_stream()
+        .into_stream()
         .map(move |chunk| {
             let mut f = finish.lock().unwrap();
             match &chunk {
-                Ok(b) => f.scan.feed(b),
+                Ok(b) => f.scan.feed(&decode.push(b)),
                 Err(_) => f.broken = true,
             }
             chunk
@@ -1654,6 +1746,49 @@ fn respond(r: reqwest::Response, finish: Finish) -> Response {
     *resp.status_mut() = status;
     *resp.headers_mut() = out;
     resp
+}
+
+/// An answer's body decoded as it streams by, for the pool's own reading
+/// (its `content-encoding`: what the client asked for; one the pool can't
+/// read is passed on all the same, its usage unread).
+enum Decode {
+    Plain,
+    Gzip(flate2::write::GzDecoder<Vec<u8>>),
+    Deflate(flate2::write::ZlibDecoder<Vec<u8>>),
+    Br(Box<brotli_decompressor::DecompressorWriter<Vec<u8>>>),
+    Zstd(Box<zstd::stream::write::Decoder<'static, Vec<u8>>>),
+    Unread,
+}
+
+impl Decode {
+    fn of(coding: &str) -> Decode {
+        match coding.trim().to_ascii_lowercase().as_str() {
+            "" | "identity" => Decode::Plain,
+            "gzip" | "x-gzip" => Decode::Gzip(flate2::write::GzDecoder::new(Vec::new())),
+            "deflate" => Decode::Deflate(flate2::write::ZlibDecoder::new(Vec::new())),
+            "br" => Decode::Br(Box::new(brotli_decompressor::DecompressorWriter::new(Vec::new(), 4096))),
+            "zstd" => zstd::stream::write::Decoder::new(Vec::new()).map(|d| Decode::Zstd(Box::new(d))).unwrap_or(Decode::Unread),
+            _ => Decode::Unread,
+        }
+    }
+
+    /// What `chunk` decodes to, as far as it goes so far.
+    fn push<'a>(&mut self, chunk: &'a [u8]) -> std::borrow::Cow<'a, [u8]> {
+        use std::io::Write;
+        fn out<W: Write>(w: &mut W, chunk: &[u8], inner: impl FnOnce(&mut W) -> &mut Vec<u8>) -> Vec<u8> {
+            let _ = w.write_all(chunk);
+            let _ = w.flush();
+            std::mem::take(inner(w))
+        }
+        match self {
+            Decode::Plain => std::borrow::Cow::Borrowed(chunk),
+            Decode::Gzip(d) => std::borrow::Cow::Owned(out(d, chunk, |d| d.get_mut())),
+            Decode::Deflate(d) => std::borrow::Cow::Owned(out(d, chunk, |d| d.get_mut())),
+            Decode::Br(d) => std::borrow::Cow::Owned(out(d.as_mut(), chunk, |d| d.get_mut())),
+            Decode::Zstd(d) => std::borrow::Cow::Owned(out(d.as_mut(), chunk, |d| d.get_mut())),
+            Decode::Unread => std::borrow::Cow::Borrowed(&[]),
+        }
+    }
 }
 
 /// Reads the usage counts out of an answer as it passes, keeping nothing
@@ -1804,6 +1939,35 @@ mod tests {
         assert_eq!(s.finish(), Usage { requests: 0, input_tokens: 101, output_tokens: 13 });
     }
 
+    /// An answer compressed as the client asked is read as it streams by,
+    /// whichever encoding, however it's cut into chunks.
+    #[test]
+    fn compressed_answers_read_as_they_pass() {
+        use std::io::Write;
+        let text = b"event: message_delta\ndata: {\"usage\":{\"output_tokens\":42}}\n\n".repeat(20);
+        let gz = {
+            let mut e = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+            e.write_all(&text).unwrap();
+            e.finish().unwrap()
+        };
+        let zs = zstd::encode_all(&text[..], 3).unwrap();
+        let br = {
+            let mut out = Vec::new();
+            let mut w = brotli::CompressorWriter::new(&mut out, 4096, 5, 22);
+            w.write_all(&text).unwrap();
+            drop(w);
+            out
+        };
+        for (coding, bytes) in [("gzip", gz), ("zstd", zs), ("br", br), ("identity", text.clone())] {
+            let mut d = Decode::of(coding);
+            let mut got = Vec::new();
+            for chunk in bytes.chunks(7) {
+                got.extend_from_slice(&d.push(chunk));
+            }
+            assert_eq!(got, text, "{coding}");
+        }
+    }
+
     /// The client's sign-in is put in its place (the account's), never
     /// passed on as it came, nor what belongs to its connection; the rest
     /// of what it sends goes on as it is (its cookies and origin too, as
@@ -1817,6 +1981,6 @@ mod tests {
         for h in ["anthropic-version", "x-stainless-lang", "session_id", "cookie", "origin", "x-organization-uuid"] {
             assert!(forwarded(h), "{h}");
         }
-        assert!(returned("set-cookie") && returned("anthropic-ratelimit-unified-5h-utilization") && !returned("content-encoding"));
+        assert!(returned("set-cookie") && returned("anthropic-ratelimit-unified-5h-utilization") && returned("content-encoding"));
     }
 }

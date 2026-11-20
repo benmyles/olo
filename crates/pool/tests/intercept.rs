@@ -343,3 +343,101 @@ async fn a_client_that_doesnt_wait_for_the_connect_answer() {
     }
     assert!(String::from_utf8_lossy(&answer).contains(r#"{"account":"theirs"}"#), "{}", String::from_utf8_lossy(&answer));
 }
+
+/// A Claude model request goes on as Claude Code sent it, byte for byte
+/// (each header's name in its own case, in its order, its value), but for
+/// the account's sign-in in the client's place (Ben, 2026-11-19: "all
+/// requests from the pool need to be exactly the same as if they came from
+/// claude code / codex"); over HTTP/1.1, kept alive for the next.
+#[tokio::test(flavor = "multi_thread")]
+async fn passes_claude_requests_on_exactly() {
+    // A host that writes down each head as it came.
+    let heads: Arc<std::sync::Mutex<Vec<String>>> = Default::default();
+    let host = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let up = host.local_addr().unwrap();
+    let kept = heads.clone();
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut s, _)) = host.accept().await else { return };
+            let kept = kept.clone();
+            tokio::spawn(async move {
+                let mut buf = Vec::new();
+                let mut chunk = [0u8; 4096];
+                loop {
+                    let Some(end) = buf.windows(4).position(|w| w == b"\r\n\r\n") else {
+                        let n = s.read(&mut chunk).await.unwrap_or(0);
+                        if n == 0 {
+                            return;
+                        }
+                        buf.extend_from_slice(&chunk[..n]);
+                        continue;
+                    };
+                    let head = String::from_utf8_lossy(&buf[..end + 4]).into_owned();
+                    let length: usize = head.lines().find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse().unwrap())).unwrap_or(0);
+                    while buf.len() < end + 4 + length {
+                        let n = s.read(&mut chunk).await.unwrap_or(0);
+                        if n == 0 {
+                            return;
+                        }
+                        buf.extend_from_slice(&chunk[..n]);
+                    }
+                    buf.drain(..end + 4 + length);
+                    kept.lock().unwrap().push(head);
+                    let answer = r#"{"usage":{"input_tokens":3,"output_tokens":4}}"#;
+                    let reply = format!("HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{answer}", answer.len());
+                    if s.write_all(reply.as_bytes()).await.is_err() {
+                        return;
+                    }
+                }
+            });
+        }
+    });
+    let mut saved = Saved::default();
+    saved.accounts.push(account("claude-a", Provider::Claude));
+    saved.credentials.insert("claude-a".into(), Credential { access: "pooled".into(), refresh: None, expires_at: Some(now() + 3600), account_id: None });
+    let shared = Shared::new(saved, None, Upstreams::fake(&format!("http://{up}")), || {});
+    let authority = Arc::new(Authority::ephemeral());
+    let s = shared.clone();
+    let proxy = intercept::serve(shared.clone(), authority.clone(), 0, Arc::new(move |p| s.serves(p)), intercept::Who::Anyone).await.unwrap();
+
+    // Claude Code: a CONNECT, its TLS, then its head as its SDK writes it.
+    let mut tcp = tokio::net::TcpStream::connect(proxy).await.unwrap();
+    tcp.write_all(b"CONNECT api.anthropic.com:443 HTTP/1.1\r\nHost: api.anthropic.com:443\r\n\r\n").await.unwrap();
+    let mut reply = [0u8; 39];
+    tcp.read_exact(&mut reply).await.unwrap();
+    assert!(reply.starts_with(b"HTTP/1.1 200"));
+    let mut roots = rustls::RootCertStore::empty();
+    use rustls::pki_types::pem::PemObject;
+    roots.add(rustls::pki_types::CertificateDer::from_pem_slice(authority.cert_pem.as_bytes()).unwrap()).unwrap();
+    let mut config = rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::aws_lc_rs::default_provider()))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    config.alpn_protocols = vec![b"http/1.1".to_vec()];
+    let mut tls = tokio_rustls::TlsConnector::from(Arc::new(config)).connect(rustls::pki_types::ServerName::try_from("api.anthropic.com").unwrap(), tcp).await.unwrap();
+    let body = json!({"model": "claude-opus-5-5", "messages": []}).to_string();
+    let head = |auth: &str| {
+        format!(
+            "POST /v1/messages?beta=true HTTP/1.1\r\nAccept: application/json\r\nAuthorization: Bearer {auth}\r\nContent-Type: application/json\r\nUser-Agent: claude-cli/2.1.329 (external, cli)\r\nX-Claude-Code-Session-Id: s-1\r\nX-Stainless-Lang: js\r\nanthropic-beta: claude-code-20250219,oauth-2025-04-20\r\nanthropic-version: 2023-06-01\r\nx-app: cli\r\nConnection: keep-alive\r\nHost: api.anthropic.com\r\nAccept-Encoding: gzip, deflate, br, zstd\r\nContent-Length: {}\r\n\r\n",
+            body.len()
+        )
+    };
+    for _ in 0..2 {
+        tls.write_all(head("theirs").as_bytes()).await.unwrap();
+        tls.write_all(body.as_bytes()).await.unwrap();
+        // (Its answer read to its end before the next.)
+        let mut got = Vec::new();
+        let mut chunk = [0u8; 4096];
+        while !String::from_utf8_lossy(&got).contains("output_tokens\":4}}") {
+            let n = tls.read(&mut chunk).await.unwrap();
+            assert!(n > 0, "the proxy closed: {}", String::from_utf8_lossy(&got));
+            got.extend_from_slice(&chunk[..n]);
+        }
+    }
+    let heads = heads.lock().unwrap().clone();
+    assert_eq!(heads.len(), 2);
+    for h in &heads {
+        assert_eq!(*h, head("pooled"), "not as the client sent it");
+    }
+}
