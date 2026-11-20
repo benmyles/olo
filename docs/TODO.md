@@ -381,25 +381,28 @@ something nobody here has is in "Blocked", with what it waits for.
      initramfs here, or the option would have to be there too), and
      that render offload to the card still works without the
      console.
-  6. **Olo's own build of NVIDIA's open kernel modules**, patched
-     (they are MIT/GPL; the firmware and the libraries aren't, and
-     all three faults are in the modules): the halt check given a
-     time limit of its own (what would most likely have kept the
-     suspend from failing); a failed suspend rolled back or put in
-     one state from which unbinding, resetting and probing again
-     works in bounded time; no wait without an end in the display
-     module's teardown; the reference that makes removal deadlock;
-     and fault injection, so each of those paths can be made to
-     happen on purpose. With Astra at max for the design, the
-     implementation and the review, as Ben said
-     (/var/tmp/claude-blueferry/nvfork/brief.md: the patch series,
-     a build it has made, a test plan). Built for each kernel and
-     driver version as Olo's three modules are, the same version as
-     NVIDIA's libraries, falling back to NVIDIA's own where a patch
-     no longer applies, Doctor saying which is loaded. Run on the
-     card only on Ben's word, at a quiet moment, a restart the way
-     back. Then, with a driver whose teardown is bounded, Doctor's
-     in-place restart can come back.
+  6. **Olo's own build of NVIDIA's open kernel modules**, patched.
+     **Designed, drafted and built in scratch with Astra at max**
+     (kernel/nvidia/: eleven patches against 615.71.09, the build
+     recipe, the tests, the design notes). The fault is reproduced
+     in the driver's own code with a made-up register, and the first
+     patch mends it; the third gives up a suspend cleanly, to be
+     tried again, when its time is spent or its memory isn't to be
+     had before anything is unloaded (which is "no suspend while
+     memory is short", done in the driver). Not solved, and Astra
+     says so plainly: bringing a card back in place after its
+     firmware failed in an unknown state (so Doctor's in-place
+     restart stays gone). **To do**: (a) Olo's own build and
+     keeping of it (kernel/nvidia/README.md, "What Olo still has to
+     build around it": fetched and checked by hash, built when an
+     update is staged, under `updates/olo` with the stock set kept,
+     signed, withdrawn whole when anything fails, shown by Doctor),
+     reviewed by Astra; (b) on Ben's word only, at a quiet moment,
+     with the stock driver one restart away: the "prevention" build
+     (patches 0001 to 0003) on the card, design/qualification.md
+     step by step, the fault made to happen on purpose with patch
+     0011's switch; (c) the write-up and the first three patches
+     sent to NVIDIA (Ben's to send).
 
 - **Elevated permissions approved by themselves are approved at once,
   with nothing started** (Ben, 2026-11-20: "when auto-approve

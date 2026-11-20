@@ -1,0 +1,13 @@
+7.2.15-300.fc45.x86_64
+[    1.432114] olo-ref-test: opens hidden; ID/UUID puts found; final KMS put survived allocator failure; remover woke at zero
+[    1.473285] olo-pm-test: suspend=-11 runtime_error=0 active=1
+[    1.473291] olo-pm-test: suspend=-16 runtime_error=0 active=1
+[    1.473292] olo-pm-test: suspend=-5 runtime_error=-5 active=1
+[    1.473293] olo-pm-test: ordinary resume with fatal latch=-22
+[    1.473293] olo-pm-test: set_active on known-active fixture=0 runtime_error=0
+[    1.473297] olo-pm-test: full suspend/resume after repair passed
+insmod: ERROR: could not insert module /ko/nvidia.ko: Numerical result out of range
+insmod: ERROR: could not insert module /ko/nvidia.ko: No such device
+[    2.151534] nvidia: `248' invalid for parameter `test_defer_gcoff_minor'
+[    2.334979] NVRM: No NVIDIA GPU found.
+Guest parameter parsing and expected no-GPU initialization exit passed

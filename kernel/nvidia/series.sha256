@@ -1,0 +1,11 @@
+17ca8a3c9266caafd9bcb22a3d973a995fce3399a2f8d2e430950b33c39339aa  patches/0001-gsp-local-halt-deadline.patch
+8bd805b6a3bc8a614a76768a63e3ac946bdd7cb574dcfb87a96facdcad236098  patches/0002-pci-reserve-remove-stack-at-probe.patch
+4ab1e7aa706613453c16e57b1fa6d0fe1e85b0deb703489855fc1665e4c58e0e  patches/0003-pm-abort-before-engine-unload.patch
+a9f7b9b858475922df97b752db2650df323567f99a3dfe9d38cdbf3c49e04019  patches/0004-pm-report-terminal-transition-errors.patch
+18f8bcc0b56074775f7a02d552b2bcbf0c9543211a8a6e92e6b762c4d4fafa84  patches/0005-gsp-bound-runtime-pm-queue-and-bus-waits.patch
+e068a17bbb81f59274f9b326a0414165a80eb301db8a59205c537046122e9f96  patches/0006-modeset-own-the-gpu-reference.patch
+e74d63b3ce1d880a41b9ab319f8549d92525ed61958b89cca1349794f0ef0674  patches/0007-pci-keep-release-only-lookup-during-drain.patch
+86cfebbd7705d3b4a84ba60aa5f414cd3dfe1e4fe78a9c02097f0782ecae47ff  patches/0008-modeset-stop-failed-evo-submissions.patch
+e1c9ad39854728e34017cae048c8ccf45bb9b474984965f89aec929500baacd0  patches/0009-modeset-guard-cursor-pio-and-console-cleanup.patch
+901dea19e41afd40e7fe5d145eabb06ba500c7c3cd60ec9b252b61342f72a78b  patches/0010-modeset-bound-gpfifo-progress.patch
+469ad9fbd37f25f4502c7978d0ef6cb493c449b6e60c7b8362eac86b70410f73  patches/0011-test-one-recoverable-gcoff-preflight.patch

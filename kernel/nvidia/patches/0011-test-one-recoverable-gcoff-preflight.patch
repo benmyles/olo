@@ -1,0 +1,128 @@
+Subject: [PATCH] test: one-shot GCOFF preflight deferral on one GPU minor
+
+Root can arm exactly one pre-unload failure. Exercise the SR cleanup,
+interrupt restoration and Linux retry path without intentionally disrupting
+firmware or stopping DMA on a physical device. Default -1, sysfs mode
+0600, consume atomically. The release tree carries generated NVOC headers;
+upstream should edit the NVOC definition and regenerate this field.
+
+diff --git a/kernel-open/common/inc/nv.h b/kernel-open/common/inc/nv.h
+index 611d3aed5bb3730eee4c9b64de02317672c15c2b..b21fd9cdf38a08dbc11c1779740f86699288975c 100644
+--- a/kernel-open/common/inc/nv.h
++++ b/kernel-open/common/inc/nv.h
+@@ -1073,6 +1073,7 @@ NV_STATUS NV_API_CALL nv_acquire_fabric_mgmt_cap (int, int*);
+ int       NV_API_CALL nv_cap_drv_init(void);
+ void      NV_API_CALL nv_cap_drv_exit(void);
+ NvBool    NV_API_CALL nv_is_gpu_accessible(nv_state_t *);
++NvBool    NV_API_CALL nv_test_defer_gcoff(nv_state_t *);
+ NvBool    NV_API_CALL nv_match_gpu_os_info(nv_state_t *, void *);
+ 
+ void      NV_API_CALL nv_get_updated_emu_seg(NvU32 *start, NvU32 *end);
+diff --git a/kernel-open/nvidia/nv.c b/kernel-open/nvidia/nv.c
+index 39799066dd1a5e5ae52230d8005b2caa85cdae15..904a402599b8ccdb1f06cc86fb8c6c49d712fc96 100644
+--- a/kernel-open/nvidia/nv.c
++++ b/kernel-open/nvidia/nv.c
+@@ -121,6 +121,47 @@ MODULE_LICENSE("Dual MIT/GPL");
+ 
+ MODULE_INFO(supported, "external");
+ MODULE_VERSION(NV_VERSION_STRING);
++MODULE_INFO(olo_patchset, "rtd3-review-1");
++
++/* One-shot, scoped to one device. The simulated failure occurs before
++ * engine unload or a firmware suspend command and takes the real unwind.
++ */
++static int nv_test_gcoff_minor = -1;
++
++static int nv_set_test_gcoff_minor(const char *value, const struct kernel_param *kp)
++{
++    int minor;
++    int ret = kstrtoint(value, 0, &minor);
++    if (ret)
++        return ret;
++    if (minor < -1 || minor > NV_MINOR_DEVICE_NUMBER_REGULAR_MAX)
++        return -ERANGE;
++    xchg(&nv_test_gcoff_minor, minor);
++    return 0;
++}
++
++static int nv_get_test_gcoff_minor(char *buf, const struct kernel_param *kp)
++{
++    return scnprintf(buf, PAGE_SIZE, "%d\n", READ_ONCE(nv_test_gcoff_minor));
++}
++
++static const struct kernel_param_ops nv_test_gcoff_ops = {
++    .set = nv_set_test_gcoff_minor,
++    .get = nv_get_test_gcoff_minor,
++};
++module_param_cb(test_defer_gcoff_minor, &nv_test_gcoff_ops, NULL, 0600);
++MODULE_PARM_DESC(test_defer_gcoff_minor, "Defer one pre-unload GCOFF entry on this minor (-1 disables)");
++
++NvBool NV_API_CALL nv_test_defer_gcoff(nv_state_t *nv)
++{
++    int minor = NV_GET_NVL_FROM_NV_STATE(nv)->minor_num;
++    if (READ_ONCE(nv_test_gcoff_minor) != minor ||
++        cmpxchg(&nv_test_gcoff_minor, minor, -1) != minor)
++        return NV_FALSE;
++    NV_DEV_PRINTF(NV_DBG_WARNINGS, nv, "Testing one GCOFF preflight deferral\n");
++    return NV_TRUE;
++}
++
+ MODULE_DESCRIPTION("NVIDIA core GPU kernel module");
+ MODULE_ALIAS_CHARDEV_MAJOR(NV_MAJOR_DEVICE_NUMBER);
+ 
+diff --git a/src/nvidia/arch/nvalloc/unix/include/nv.h b/src/nvidia/arch/nvalloc/unix/include/nv.h
+index 9007a3012a59104ecbb59000e9b0439d033858c8..f1a678a8c7f2d53db937f6d059ea9f093831d6d1 100644
+--- a/src/nvidia/arch/nvalloc/unix/include/nv.h
++++ b/src/nvidia/arch/nvalloc/unix/include/nv.h
+@@ -1071,6 +1071,7 @@ NV_STATUS NV_API_CALL nv_acquire_fabric_mgmt_cap (int, int*);
+ int       NV_API_CALL nv_cap_drv_init(void);
+ void      NV_API_CALL nv_cap_drv_exit(void);
+ NvBool    NV_API_CALL nv_is_gpu_accessible(nv_state_t *);
++NvBool    NV_API_CALL nv_test_defer_gcoff(nv_state_t *);
+ NvBool    NV_API_CALL nv_match_gpu_os_info(nv_state_t *, void *);
+ 
+ void      NV_API_CALL nv_get_updated_emu_seg(NvU32 *start, NvU32 *end);
+diff --git a/src/nvidia/arch/nvalloc/unix/src/dynamic-power.c b/src/nvidia/arch/nvalloc/unix/src/dynamic-power.c
+index c532509df1b1d76182b097e49e489fe7cd97f5a9..13f751b454d2475f15d5d89460afce0d9fa3d39d 100644
+--- a/src/nvidia/arch/nvalloc/unix/src/dynamic-power.c
++++ b/src/nvidia/arch/nvalloc/unix/src/dynamic-power.c
+@@ -2514,7 +2514,13 @@ NV_STATUS RmGcxPowerManagement(
+                 pKernelMemorySystem->bPreserveComptagBackingStoreOnSuspend = NV_TRUE;
+             }
+ 
++            KernelGsp *pTestGsp = (bIsDynamicPM && IS_GSP_CLIENT(pGpu)) ?
++                GPU_GET_KERNEL_GSP(pGpu) : NULL;
++            if (pTestGsp != NULL)
++                pTestGsp->bTestDeferGcoff = nv_test_defer_gcoff(nv);
+             status = RmPowerManagement(pGpu, NV_PM_ACTION_STANDBY);
++            if (pTestGsp != NULL)
++                pTestGsp->bTestDeferGcoff = NV_FALSE;
+             pGpu->setProperty(pGpu, PDB_PROP_GPU_GCOFF_STATE_ENTERING, NV_FALSE);
+ 
+             if (status == NV_OK)
+diff --git a/src/nvidia/generated/g_kernel_gsp_nvoc.h b/src/nvidia/generated/g_kernel_gsp_nvoc.h
+index 51b5d798eb810366fd3444c27784e5c596ca7da2..0fd50d5f3feb06fd28cfc0a426774eda1ca3e212 100644
+--- a/src/nvidia/generated/g_kernel_gsp_nvoc.h
++++ b/src/nvidia/generated/g_kernel_gsp_nvoc.h
+@@ -596,6 +596,7 @@ struct KernelGsp {
+     NvBool bInLockdown;
+     NvBool bPollingForRpcResponse;
+     NvBool bFatalError;
++    NvBool bTestDeferGcoff; /* one transition, under the GPU lock */
+     NvBool bHeartbeatTimeoutDumped;
+     NvBool bGspRmForceUnloaded;
+     NvBool bGspRmUnloaded;
+diff --git a/src/nvidia/src/kernel/gpu/gpu_suspend.c b/src/nvidia/src/kernel/gpu/gpu_suspend.c
+index 1e4a52040dbfb719b9524312829ad26c889c8bb1..93cbf5cc78856c88788cdb0edacfbeb4b1e03ff9 100644
+--- a/src/nvidia/src/kernel/gpu/gpu_suspend.c
++++ b/src/nvidia/src/kernel/gpu/gpu_suspend.c
+@@ -110,7 +110,8 @@ gpuPowerManagementEnter(OBJGPU *pGpu, NvU32 newLevel, NvU32 flags)
+         // unload with a budget already consumed by allocating the save area.
+         if (rmapiInRtd3PmPath() &&
+             pGpu->getProperty(pGpu, PDB_PROP_GPU_GCOFF_STATE_ENTERING) &&
+-            threadStateCheckTimeout(pGpu, NULL) == NV_ERR_TIMEOUT)
++            (pKernelGsp->bTestDeferGcoff ||
++             threadStateCheckTimeout(pGpu, NULL) == NV_ERR_TIMEOUT))
+         {
+             if (unloadMode == KGSP_UNLOAD_MODE_SR_SUSPEND)
+                 kgspFreeSuspendResumeData_HAL(pGpu, pKernelGsp);

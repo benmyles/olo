@@ -1,0 +1,39 @@
+Subject: [PATCH] gsp: give the RTD3 SR halt handshake a local host-clock deadline
+
+On the recorded failing transition the thread budget was already 3.049 s
+overdue. timeoutCheck consults the thread even for a numerically explicit
+timeout unless BYPASS_THREAD_STATE is set. Restrict the exception to the
+GH100 teardown HAL used by the affected GPU, the SR mode, and the RTD3
+thread. Other PM paths and the parent's remaining budget are unchanged.
+
+diff --git a/src/nvidia/src/kernel/gpu/gsp/arch/hopper/kernel_gsp_gh100.c b/src/nvidia/src/kernel/gpu/gsp/arch/hopper/kernel_gsp_gh100.c
+index 557ac8cf7b7d3c68ef44498820fa842e908b2dba..d87825f4637b3791cf6b7e86af5be111dd032378 100644
+--- a/src/nvidia/src/kernel/gpu/gsp/arch/hopper/kernel_gsp_gh100.c
++++ b/src/nvidia/src/kernel/gpu/gsp/arch/hopper/kernel_gsp_gh100.c
+@@ -32,6 +32,8 @@
+ 
+ #include "gpu/fsp/kern_fsp.h"
+ #include "gpu/gsp/kernel_gsp.h"
++#include "gpu/gpu_timeout.h"
++#include "rmapi/rmapi.h"
+ #include "gpu/pmu/kern_pmu.h"
+ #include "gpu/sec2/kernel_sec2.h"
+ #include "gpu/mem_sys/kern_mem_sys.h"
+@@ -1115,8 +1117,15 @@ kgspTeardown_GH100
+     KernelGspUnloadMode unloadMode
+ )
+ {
+-    // Wait for GSP to halt to allow ACR and GSP FMC to finish shutdown
+-    return kflcnWaitForHaltRiscv_HAL(pGpu, staticCast(pKernelGsp, KernelFalcon), GPU_TIMEOUT_DEFAULT, 0);
++    NvU32 flags = 0;
++
++    // Runtime suspend may have spent its thread budget saving state. The
++    // GSP has already been asked to suspend; allow it time to finish.
++    if (unloadMode == KGSP_UNLOAD_MODE_SR_SUSPEND && rmapiInRtd3PmPath())
++        flags = GPU_TIMEOUT_FLAGS_OSTIMER | GPU_TIMEOUT_FLAGS_BYPASS_THREAD_STATE;
++
++    return kflcnWaitForHaltRiscv_HAL(pGpu, staticCast(pKernelGsp, KernelFalcon),
++                                     GPU_TIMEOUT_DEFAULT, flags);
+ }
+ 
+ void

@@ -1,0 +1,230 @@
+Subject: [PATCH] pci: retain a release-only lookup while draining internal GPU users
+
+The non-KMS dma-buf, control-fd, P2P and UVM paths also have puts keyed
+by ID or UUID. Publish the retiring object for release only under the
+existing global and device locks. Wake on the final device put rather than
+polling PCI drvdata every 500 ms. Device stays owned by the PCI remover.
+This breaks the lookup cycle. A cooperative drain is not a deadline for
+an unrelated live fd or a DMA importer that continues to own a buffer.
+
+diff --git a/kernel-open/common/inc/nv-linux.h b/kernel-open/common/inc/nv-linux.h
+index 792facb038fef5910e127fe81894efb7453422b0..b32784821f2760bc62d46308b26f0e49d94a2442 100644
+--- a/kernel-open/common/inc/nv-linux.h
++++ b/kernel-open/common/inc/nv-linux.h
+@@ -1326,6 +1326,9 @@ typedef struct nv_linux_state_s {
+ 
+     NvU32 minor_num;
+     struct nv_linux_state_s *next;
++    struct list_head draining_entry;
++    struct completion users_gone;
++    NvBool waiting_for_users; /* protected by ldata_lock */
+ 
+     /* DRM private information */
+     struct drm_device *drm;
+diff --git a/kernel-open/common/inc/nv-proto.h b/kernel-open/common/inc/nv-proto.h
+index f5fc8836ff831d0814bf0cdcbeb3e68653a48a33..e0faa0b9520940819549849e9c0f3d1b73369b48 100644
+--- a/kernel-open/common/inc/nv-proto.h
++++ b/kernel-open/common/inc/nv-proto.h
+@@ -92,6 +92,7 @@ NV_STATUS     nv_parse_per_device_binary_option_string(nvidia_stack_t *sp,
+ void          nv_enable_cdmm_mode(nvidia_stack_t *sp);
+ NvBool        nv_is_galaxy_workstation         (void);
+ 
++void nv_linux_wait_for_users_locked(nv_linux_state_t *nvl);
+ nv_linux_state_t * find_uuid(const NvU8 *uuid);
+ void          nv_report_error(struct pci_dev *dev, NvU32 error_number, const char *format, va_list ap);
+ void          nv_shutdown_adapter(nvidia_stack_t *, nv_state_t *, nv_linux_state_t *);
+diff --git a/kernel-open/nvidia/nv-pci.c b/kernel-open/nvidia/nv-pci.c
+index b33812bb672b4d49915736b24b90e4acea0657fe..a6c82e27164f1ee9d07e07e1b5457ff4ff704b2c 100644
+--- a/kernel-open/nvidia/nv-pci.c
++++ b/kernel-open/nvidia/nv-pci.c
+@@ -2827,33 +2827,7 @@ static void nv_pci_remove_helper(struct pci_dev *pci_dev, bool block_if_gpu_in_u
+          * We can't return from this function without corrupting state, so we wait for
+          * the usage count to go to zero.
+          */
+-        while (atomic64_read(&nvl->usage_count) != 0)
+-        {
+-            /*
+-             * While waiting, release the locks so that other threads can make
+-             * forward progress.
+-             */
+-            up(&nvl->ldata_lock);
+-            UNLOCK_NV_LINUX_DEVICES();
+-
+-            os_delay(500);
+-
+-            /* Re-acquire the locks before checking again */
+-            LOCK_NV_LINUX_DEVICES();
+-            nvl = pci_get_drvdata(pci_dev);
+-            if (!nvl)
+-            {
+-                /* The device was not found, which should not happen */
+-                nv_printf(NV_DBG_ERRORS,
+-                          "NVRM: Failed removal of device %04x:%02x:%02x.%x!\n",
+-                          NV_PCI_DOMAIN_NUMBER(pci_dev), NV_PCI_BUS_NUMBER(pci_dev),
+-                          NV_PCI_SLOT_NUMBER(pci_dev), PCI_FUNC(pci_dev->devfn));
+-                WARN_ON(1);
+-                goto done;
+-            }
+-            nv = NV_STATE_PTR(nvl);
+-            down(&nvl->ldata_lock);
+-        }
++        nv_linux_wait_for_users_locked(nvl);
+ 
+         nv_printf(NV_DBG_ERRORS,
+                   "NVRM: Continuing with GPU removal for device %04x:%02x:%02x.%x\n",
+@@ -2941,11 +2915,6 @@ static void nv_pci_remove_helper(struct pci_dev *pci_dev, bool block_if_gpu_in_u
+     }
+ 
+     nv_kmem_cache_free_stack(sp);
+-    return;
+-
+-done:
+-    UNLOCK_NV_LINUX_DEVICES();
+-    nv_kmem_cache_free_stack(sp);
+ }
+ 
+ static void
+diff --git a/kernel-open/nvidia/nv.c b/kernel-open/nvidia/nv.c
+index 745fa90c6904a07c83b0412a9f3855885709356e..6f4db56fc673a8f3a530dc966c1a45f9b9f21386 100644
+--- a/kernel-open/nvidia/nv.c
++++ b/kernel-open/nvidia/nv.c
+@@ -1243,7 +1243,33 @@ static nv_linux_state_t *find_minor(NvU32 minor)
+  * Search the global list of nv devices for the one with the given gpu_id.
+  * If found, nvl is returned with nvl->ldata_lock taken.
+  */
+-static nv_linux_state_t *find_gpu_id(NvU32 gpu_id)
++static LIST_HEAD(nv_draining_devices);
++
++/* Both locks are held on entry and on return. A blocking internal PCI
++ * removal exclusively owns nvl, including while it drops the locks.
++ * Regular lookups are already unpublished. Only puts and a balancing
++ * UVM power unref may find this object through the draining list.
++ */
++void nv_linux_wait_for_users_locked(nv_linux_state_t *nvl)
++{
++    if (atomic64_read(&nvl->usage_count) == 0)
++        return;
++
++    init_completion(&nvl->users_gone);
++    nvl->waiting_for_users = NV_TRUE;
++    list_add(&nvl->draining_entry, &nv_draining_devices);
++    up(&nvl->ldata_lock);
++    UNLOCK_NV_LINUX_DEVICES();
++
++    wait_for_completion(&nvl->users_gone);
++
++    LOCK_NV_LINUX_DEVICES();
++    down(&nvl->ldata_lock);
++    list_del(&nvl->draining_entry);
++    nvl->waiting_for_users = NV_FALSE;
++}
++
++static nv_linux_state_t *find_gpu_id_for_ref(NvU32 gpu_id, NvBool release)
+ {
+     nv_linux_state_t *nvl;
+ 
+@@ -1260,16 +1286,34 @@ static nv_linux_state_t *find_gpu_id(NvU32 gpu_id)
+         nvl = nvl->next;
+     }
+ 
++    if (nvl == NULL && release)
++    {
++        nv_linux_state_t *entry;
++        list_for_each_entry(entry, &nv_draining_devices, draining_entry)
++        {
++            if (entry->nv_state.gpu_id == gpu_id)
++            {
++                down(&entry->ldata_lock);
++                nvl = entry;
++                break;
++            }
++        }
++    }
+     UNLOCK_NV_LINUX_DEVICES();
+     return nvl;
+ }
+ 
++static nv_linux_state_t *find_gpu_id(NvU32 gpu_id)
++{
++    return find_gpu_id_for_ref(gpu_id, NV_FALSE);
++}
++
+ /*
+  * Search the global list of nv devices for the one with the given UUID. Devices
+  * with missing UUID information are ignored. If found, nvl is returned with
+  * nvl->ldata_lock taken.
+  */
+-nv_linux_state_t *find_uuid(const NvU8 *uuid)
++static nv_linux_state_t *find_uuid_for_ref(const NvU8 *uuid, NvBool release)
+ {
+     nv_linux_state_t *nvl = NULL;
+     nv_state_t *nv;
+@@ -1287,11 +1331,32 @@ nv_linux_state_t *find_uuid(const NvU8 *uuid)
+         up(&nvl->ldata_lock);
+     }
+ 
++    if (release)
++    {
++        nv_linux_state_t *entry;
++        list_for_each_entry(entry, &nv_draining_devices, draining_entry)
++        {
++            down(&entry->ldata_lock);
++            dev_uuid = nv_get_cached_uuid(NV_STATE_PTR(entry));
++            if (dev_uuid && memcmp(dev_uuid, uuid, GPU_UUID_LEN) == 0)
++            {
++                nvl = entry;
++                goto out;
++            }
++            up(&entry->ldata_lock);
++        }
++    }
++
+ out:
+     UNLOCK_NV_LINUX_DEVICES();
+     return nvl;
+ }
+ 
++nv_linux_state_t *find_uuid(const NvU8 *uuid)
++{
++    return find_uuid_for_ref(uuid, NV_FALSE);
++}
++
+ /*
+  * Search the global list of nv devices. The search logic is:
+  *
+@@ -2306,6 +2371,8 @@ static void nv_close_device(nv_state_t *nv, nvidia_stack_t *sp)
+     {
+         if (!nvl->init_on_probe)
+             nv_stop_device(nv, sp);
++        if (nvl->waiting_for_users)
++            complete(&nvl->users_gone);
+     }
+ }
+ 
+@@ -5512,7 +5579,7 @@ void nvidia_dev_put(NvU32 gpu_id, nvidia_stack_t *sp, NvBool reset_aware)
+     nv_linux_state_t *nvl;
+ 
+     /* Takes nvl->ldata_lock */
+-    nvl = find_gpu_id(gpu_id);
++    nvl = find_gpu_id_for_ref(gpu_id, NV_TRUE);
+     if (!nvl)
+         return;
+ 
+@@ -5675,7 +5742,7 @@ void nvidia_dev_put_uuid(const NvU8 *uuid, nvidia_stack_t *sp)
+     /* Callers must already have called nvidia_dev_get_uuid() */
+ 
+     /* Takes nvl->ldata_lock */
+-    nvl = find_uuid(uuid);
++    nvl = find_uuid_for_ref(uuid, NV_TRUE);
+     if (!nvl)
+         return;
+ 
+@@ -5717,7 +5784,7 @@ int nvidia_dev_unblock_gc6(const NvU8 *uuid, nvidia_stack_t *sp)
+     /* Callers must already have called nvidia_dev_get_uuid() */
+ 
+     /* Takes nvl->ldata_lock */
+-    nvl = find_uuid(uuid);
++    nvl = find_uuid_for_ref(uuid, NV_TRUE);
+     if (!nvl)
+         return -ENODEV;
+ 

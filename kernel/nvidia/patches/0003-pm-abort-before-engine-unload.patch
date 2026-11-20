@@ -1,0 +1,99 @@
+Subject: [PATCH] pm: abort a GSP GCOFF entry whose preflight used the thread budget
+
+The OS_LAYER depth in the GSP path precedes engine unload. On this side of
+the boundary, return the SR allocations, restore the saved interrupt mode,
+balance the power notification, and let the caller release the FB reservation.
+This is also the recovery path for a failing SR metadata allocation. The PM
+core accepts a retry only when the device is still fully operational.
+
+diff --git a/kernel-open/nvidia/nv.c b/kernel-open/nvidia/nv.c
+index df5a5e0e5ef59fcf44e9532b6bdef4ebf8d3c435..a9562b3b87e4fd2e1ac42ad32d0e11507dc62d63 100644
+--- a/kernel-open/nvidia/nv.c
++++ b/kernel-open/nvidia/nv.c
+@@ -5255,7 +5255,8 @@ nvidia_transition_dynamic_power(
+ 
+     if (nv_kmem_cache_alloc_stack(&sp) != 0)
+     {
+-        return -ENOMEM;
++        // Suspend has made no state changes yet.
++        return enter ? -EAGAIN : -ENOMEM;
+     }
+ 
+     status = rm_transition_dynamic_power(sp, nv, enter, &bTryAgain);
+diff --git a/src/nvidia/arch/nvalloc/unix/src/dynamic-power.c b/src/nvidia/arch/nvalloc/unix/src/dynamic-power.c
+index 8bf8a3444bb0bb154a8e80a8ddae11baa5ea09bf..3894a0e4327036fc4dbb7254dca9d4e933591d45 100644
+--- a/src/nvidia/arch/nvalloc/unix/src/dynamic-power.c
++++ b/src/nvidia/arch/nvalloc/unix/src/dynamic-power.c
+@@ -2351,6 +2351,14 @@ RmPowerManagement(
+ 
+                 rmStatus = gpuEnterStandby(pGpu);
+                 gpumgrSetBcEnabledStatus(pGpu, bcState);
++                if (rmStatus != NV_OK && IS_GSP_CLIENT(pGpu) && rmapiInRtd3PmPath() &&
++                    pGpu->getProperty(pGpu, PDB_PROP_GPU_GCOFF_STATE_ENTERING) &&
++                    pGpu->powerManagementDepth == NV_PM_DEPTH_NONE)
++                {
++                    intrSetIntrEn(pIntr, nvp->pm_state.IntrEn);
++                    gpuNotifySubDeviceEvent(pGpu, NV2080_NOTIFIERS_POWER_RESUME,
++                                            NULL, 0, 0, 0);
++                }
+ 
+                 break;
+ 
+@@ -2515,6 +2523,10 @@ NV_STATUS RmGcxPowerManagement(
+                  * while doing NV_PM_ACTION_STANDBY, then reserved system memory
+                  * might not be freed.
+                  */
++                if (bIsDynamicPM && IS_GSP_CLIENT(pGpu) &&
++                    pGpu->powerManagementDepth == NV_PM_DEPTH_NONE)
++                    *bTryAgain = NV_TRUE;
++
+                 fbsrFreeReservedSysMemoryForPowerMgmt(pMemoryManager->pFbsr[FBSR_TYPE_DMA]);
+ 
+                 if (!pMemoryManager->bUseVirtualCopyOnSuspend)
+diff --git a/src/nvidia/src/kernel/gpu/gpu_suspend.c b/src/nvidia/src/kernel/gpu/gpu_suspend.c
+index 69f1011387a8271283751be495d31b413fb31ad7..94bc3665b8a9ed733bcb5cdd28bc2ea2998b1f81 100644
+--- a/src/nvidia/src/kernel/gpu/gpu_suspend.c
++++ b/src/nvidia/src/kernel/gpu/gpu_suspend.c
+@@ -38,6 +38,7 @@
+ #include "gpu/gsp/kernel_gsp.h"
+ #include "gpu/pmu/kern_pmu.h"
+ #include "core/thread_state.h"
++#include "rmapi/rmapi.h"
+ #include "vgpu/rpc.h"
+ #include "gpu/mem_sys/kern_mem_sys.h"
+ #include "gpu/timer/objtmr.h"
+@@ -105,6 +106,17 @@ gpuPowerManagementEnter(OBJGPU *pGpu, NvU32 newLevel, NvU32 flags)
+             }
+         }
+ 
++        // The engines and firmware are still running. Do not start engine
++        // unload with a budget already consumed by allocating the save area.
++        if (rmapiInRtd3PmPath() &&
++            pGpu->getProperty(pGpu, PDB_PROP_GPU_GCOFF_STATE_ENTERING) &&
++            threadStateCheckTimeout(pGpu, NULL) == NV_ERR_TIMEOUT)
++        {
++            if (unloadMode == KGSP_UNLOAD_MODE_SR_SUSPEND)
++                kgspFreeSuspendResumeData_HAL(pGpu, pKernelGsp);
++            return NV_ERR_BUSY_RETRY;
++        }
++
+         pGpu->powerManagementDepth = NV_PM_DEPTH_SR_META;
+     }
+ 
+@@ -578,6 +590,16 @@ gpuEnterStandby_IMPL(OBJGPU *pGpu)
+ 
+     suspendStatus = gpuPowerManagementEnter(pGpu, NV2080_CTRL_GPU_SET_POWER_STATE_GPU_LEVEL_3, GPU_STATE_FLAGS_PM_SUSPEND);
+ 
++    if (suspendStatus != NV_OK && IS_GSP_CLIENT(pGpu) && rmapiInRtd3PmPath() &&
++        pGpu->getProperty(pGpu, PDB_PROP_GPU_GCOFF_STATE_ENTERING) &&
++        pGpu->powerManagementDepth == NV_PM_DEPTH_OS_LAYER)
++    {
++        // No engine unload, PM transition RPC or firmware save was started.
++        pGpu->setProperty(pGpu, PDB_PROP_GPU_IN_PM_CODEPATH, NV_FALSE);
++        pGpu->powerManagementDepth = NV_PM_DEPTH_NONE;
++        return suspendStatus;
++    }
++
+     pGpu->setProperty(pGpu, PDB_PROP_GPU_IN_STANDBY, NV_TRUE);
+     pGpu->bInD3Cold = NV_TRUE;
+ 

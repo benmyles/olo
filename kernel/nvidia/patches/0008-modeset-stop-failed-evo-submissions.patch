@@ -1,0 +1,545 @@
+Subject: [PATCH] modeset: stop interlocked EVO submission on ring or notifier failure
+
+Carry a sticky failure past the void HAL method emitters. Guard individual
+data words, headers, reservation counts, wrap and kickoff. Do not invent a
+notifier completion or rebuild a dead display channel to restore the console.
+Use the owned per-open token for a host-only health query. Bound the RM
+connector retry and its individual suggested sleeps. Mode and flip callers
+must receive failure if the channel dies during their request.
+The bounds are for polling while scheduled. They do not bound RM calls,
+DMA completion, user file lifetime or acquisition of arbitrary kernel locks.
+
+diff --git a/kernel-open/common/inc/nv-modeset-interface.h b/kernel-open/common/inc/nv-modeset-interface.h
+index bbfdc27f27cc05cdc7e3ded156c37e5c508480be..7c36ed89321c162b3e392648560ca5b664bbe7ed 100644
+--- a/kernel-open/common/inc/nv-modeset-interface.h
++++ b/kernel-open/common/inc/nv-modeset-interface.h
+@@ -126,6 +126,7 @@ typedef struct {
+ /* New symbols keep both generations of the fixed-size rm_ops ABI compatible. */
+ struct nvkms_gpu_ref;
+ struct nvkms_gpu_ref *nvidia_modeset_get_gpu_ref(NvU32 gpu_id, NvBool reset_aware);
++NvBool nvidia_modeset_gpu_ref_unavailable(const struct nvkms_gpu_ref *ref);
+ void nvidia_modeset_put_gpu_ref(struct nvkms_gpu_ref *ref);
+ 
+ NV_STATUS nvidia_get_rm_ops(nvidia_modeset_rm_ops_t *rm_ops);
+diff --git a/kernel-open/nvidia-modeset/nvidia-modeset-linux.c b/kernel-open/nvidia-modeset/nvidia-modeset-linux.c
+index 85b5b52a81032376eb36b2a27e516a7d00f1dfaf..74604627ead115fa1aa74c3c15874b2e6e2e5df3 100644
+--- a/kernel-open/nvidia-modeset/nvidia-modeset-linux.c
++++ b/kernel-open/nvidia-modeset/nvidia-modeset-linux.c
+@@ -1246,6 +1246,11 @@ struct nvkms_gpu_ref *nvkms_open_gpu(NvU32 gpuId, NvBool reset_aware)
+     return nvidia_modeset_get_gpu_ref(gpuId, reset_aware);
+ }
+ 
++NvBool nvkms_gpu_ref_unavailable(const struct nvkms_gpu_ref *ref)
++{
++    return nvidia_modeset_gpu_ref_unavailable(ref);
++}
++
+ void nvkms_close_gpu(struct nvkms_gpu_ref *ref)
+ {
+     nvidia_modeset_put_gpu_ref(ref);
+diff --git a/kernel-open/nvidia-modeset/nvidia-modeset-os-interface.h b/kernel-open/nvidia-modeset/nvidia-modeset-os-interface.h
+index 2e570b55417801b381f5bef2cd6f107173b76394..641ec33740519b9bd3bf3553b373bcb68066164d 100644
+--- a/kernel-open/nvidia-modeset/nvidia-modeset-os-interface.h
++++ b/kernel-open/nvidia-modeset/nvidia-modeset-os-interface.h
+@@ -317,6 +317,7 @@ void* nvkms_get_per_open_data(int fd);
+ struct nvkms_gpu_ref;
+ struct nvkms_gpu_ref *nvkms_open_gpu(NvU32 gpuId, NvBool reset_aware);
+ void nvkms_close_gpu(struct nvkms_gpu_ref *ref);
++NvBool nvkms_gpu_ref_unavailable(const struct nvkms_gpu_ref *ref);
+ 
+ 
+ /*!
+diff --git a/kernel-open/nvidia/nv.c b/kernel-open/nvidia/nv.c
+index 6f4db56fc673a8f3a530dc966c1a45f9b9f21386..39799066dd1a5e5ae52230d8005b2caa85cdae15 100644
+--- a/kernel-open/nvidia/nv.c
++++ b/kernel-open/nvidia/nv.c
+@@ -5648,6 +5648,15 @@ free_ref:
+ }
+ NV_EXPORT_SYMBOL(nvidia_modeset_get_gpu_ref);
+ 
++/* Called with a live modeset reference. Never take RM locks or wake the GPU. */
++NvBool nvidia_modeset_gpu_ref_unavailable(const struct nvkms_gpu_ref *ref)
++{
++    nv_state_t *nv = NV_STATE_PTR(ref->nvl);
++    return READ_ONCE(nv->rtd3_restart_required) || READ_ONCE(nv->removed) ||
++           (READ_ONCE(nv->flags) & NV_FLAG_IN_SURPRISE_REMOVAL);
++}
++NV_EXPORT_SYMBOL(nvidia_modeset_gpu_ref_unavailable);
++
+ void nvidia_modeset_put_gpu_ref(struct nvkms_gpu_ref *ref)
+ {
+     nv_linux_state_t *nvl;
+diff --git a/src/nvidia-modeset/include/nvkms-dma.h b/src/nvidia-modeset/include/nvkms-dma.h
+index 2e92b6bcfe11ab802eb3a2a9f09ae20a844cdd5e..0b9a181544937ecb36d507f7b520c38ce41e5ee0 100644
+--- a/src/nvidia-modeset/include/nvkms-dma.h
++++ b/src/nvidia-modeset/include/nvkms-dma.h
+@@ -99,6 +99,9 @@ static inline void nvDmaSetEvoMethodData(
+     NVEvoChannelPtr pChannel,
+     const NvU32 data)
+ {
++    if (pChannel->pb.pDevEvo->displayChannelFailed) {
++        return;
++    }
+     *(pChannel->pb.buffer) = data;
+     pChannel->pb.buffer++;
+ }
+@@ -178,6 +181,9 @@ static inline void nvDmaSetStartEvoMethod(
+     if (p->fifo_free_count <= countPlusHeader) {
+         nvEvoMakeRoom(pChannel, countPlusHeader);
+     }
++    if (p->pDevEvo->displayChannelFailed) {
++        return;
++    }
+ 
+     nvDmaSetEvoMethodData(pChannel,
+         DRF_DEF(_UDISP, _DMA, _OPCODE,        _METHOD) |
+diff --git a/src/nvidia-modeset/include/nvkms-types.h b/src/nvidia-modeset/include/nvkms-types.h
+index d45126ee49459e1328e4223b30e8aca365f1241c..00b69e43241c1f1f7f7f5d17770878895b447f42 100644
+--- a/src/nvidia-modeset/include/nvkms-types.h
++++ b/src/nvidia-modeset/include/nvkms-types.h
+@@ -997,6 +997,8 @@ typedef struct _NVDisplaylessWorkerRec {
+ /* Device-specific EVO state (subdevice- and channel-independent) */
+ typedef struct _NVEvoDevRec {
+ 
++    /* Interlocked display channels share one failure boundary under nvkms_lock. */
++    NvBool              displayChannelFailed;
+     NvU8                gpuLogIndex;
+     NvU32               allocRefCnt; /* number of ALLOC_DEVICE calls */
+     NVListRec           devListEntry;
+diff --git a/src/nvidia-modeset/include/nvkms-utils.h b/src/nvidia-modeset/include/nvkms-utils.h
+index e45a290ce2ef0cbb094be8a123c4924ce58e918f..8fce0150bce4682a9acf681dd1ee805db8c65215 100644
+--- a/src/nvidia-modeset/include/nvkms-utils.h
++++ b/src/nvidia-modeset/include/nvkms-utils.h
+@@ -101,6 +101,20 @@ static inline NvU32 nvPackNvU32(NvU8 a, NvU8 b, NvU8 c, NvU8 d)
+     return (a << 24) | (b << 16) | (c << 8) | d;
+ }
+ 
++static inline NvBool nvDisplayUnavailable(const NVDevEvoRec *pDevEvo)
++{
++    NvU32 i;
++    if (pDevEvo->displayChannelFailed) {
++        return TRUE;
++    }
++    for (i = 0; i < ARRAY_LEN(pDevEvo->gpuRefs) && pDevEvo->gpuRefs[i]; i++) {
++        if (nvkms_gpu_ref_unavailable(pDevEvo->gpuRefs[i])) {
++            return TRUE;
++        }
++    }
++    return FALSE;
++}
++
+ /*!
+  * Check if a timeout is exceeded.
+  *
+@@ -135,6 +149,10 @@ static inline NvBool nvExceedsTimeoutUSec(
+ {
+     const NvU64 currentTime = nvkms_get_usec();
+ 
++    if (nvDisplayUnavailable(pDevEvo)) {
++        return TRUE;
++    }
++
+     if (nvIsEmulationEvo(pDevEvo) && !nvIsDfpgaEvo(pDevEvo)) {
+         timeoutPeriod *= 100;
+     }
+diff --git a/src/nvidia-modeset/os-interface/include/nvidia-modeset-os-interface.h b/src/nvidia-modeset/os-interface/include/nvidia-modeset-os-interface.h
+index 2e570b55417801b381f5bef2cd6f107173b76394..641ec33740519b9bd3bf3553b373bcb68066164d 100644
+--- a/src/nvidia-modeset/os-interface/include/nvidia-modeset-os-interface.h
++++ b/src/nvidia-modeset/os-interface/include/nvidia-modeset-os-interface.h
+@@ -317,6 +317,7 @@ void* nvkms_get_per_open_data(int fd);
+ struct nvkms_gpu_ref;
+ struct nvkms_gpu_ref *nvkms_open_gpu(NvU32 gpuId, NvBool reset_aware);
+ void nvkms_close_gpu(struct nvkms_gpu_ref *ref);
++NvBool nvkms_gpu_ref_unavailable(const struct nvkms_gpu_ref *ref);
+ 
+ 
+ /*!
+diff --git a/src/nvidia-modeset/src/nvkms-console-restore.c b/src/nvidia-modeset/src/nvkms-console-restore.c
+index 05805dd7a9d9311ae541a6e28a6b55dd59870ad7..4d707449c2cf758e810225e9d23ef92f0755c113 100644
+--- a/src/nvidia-modeset/src/nvkms-console-restore.c
++++ b/src/nvidia-modeset/src/nvkms-console-restore.c
+@@ -779,6 +779,11 @@ NvBool nvEvoRestoreConsole(NVDevEvoPtr pDevEvo, const NvBool allowMST)
+      * allocation/reallocation failure then do nothing and return
+      * early.
+      */
++    if (nvDisplayUnavailable(pDevEvo)) {
++        nvkms_free_timer(pDevEvo->consoleRestoreTimer);
++        pDevEvo->consoleRestoreTimer = NULL;
++        return FALSE;
++    }
+     if (pDevEvo->displayHandle == 0x0) {
+         goto done;
+     }
+@@ -972,7 +977,7 @@ done:
+     pDevEvo->consoleRestoreTimer = NULL;
+ 
+     /* If console restore failed then simply shut down all heads */
+-    if (!ret) {
++    if (!ret && !nvDisplayUnavailable(pDevEvo)) {
+         nvShutDownApiHeads(pDevEvo, pDevEvo->pNvKmsOpenDev,
+                            NULL /* pTestFunc, shut down all heads */,
+                            NULL /* pData */,
+diff --git a/src/nvidia-modeset/src/nvkms-dma.c b/src/nvidia-modeset/src/nvkms-dma.c
+index 75e2046c8e2647e17acc2511a995138651006b13..6f13f80e0a70cb8449bf17206d91f35df5daba7f 100644
+--- a/src/nvidia-modeset/src/nvkms-dma.c
++++ b/src/nvidia-modeset/src/nvkms-dma.c
+@@ -37,8 +37,13 @@ static void EvoCoreKickoff(NVDmaBufferEvoPtr push_buffer, NvU32 putOffset);
+ void nvDmaKickoffEvo(NVEvoChannelPtr pChannel)
+ {
+     NVDmaBufferEvoPtr p = &pChannel->pb;
+-    NvU32 putOffset = (NvU32)((char *)p->buffer - (char *)p->base);
++    NvU32 putOffset;
+ 
++    if (nvDisplayUnavailable(p->pDevEvo)) {
++        p->pDevEvo->displayChannelFailed = TRUE;
++        return;
++    }
++    putOffset = (NvU32)((char *)p->buffer - (char *)p->base);
+     if (p->put_offset == putOffset) {
+         return;
+     }
+@@ -78,6 +83,9 @@ NvBool nvEvoPollForEmptyChannel(NVEvoChannelPtr pChannel, NvU32 sd,
+     NVDmaBufferEvoPtr push_buffer = &pChannel->pb;
+ 
+     do {
++        if (nvDisplayUnavailable(push_buffer->pDevEvo)) {
++            return FALSE;
++        }
+         if (EvoCoreReadGet(push_buffer) == push_buffer->put_offset) {
+             break;
+         }
+@@ -100,6 +108,11 @@ void nvEvoMakeRoom(NVEvoChannelPtr pChannel, NvU32 count)
+     NvU64 startTime = 0;
+     const NvU64 timeout = 5000000; /* 5 seconds */
+ 
++    if (nvDisplayUnavailable(push_buffer->pDevEvo)) {
++        push_buffer->pDevEvo->displayChannelFailed = TRUE;
++        return;
++    }
++
+     putOffset = (NvU32) ((char *)push_buffer->buffer -
+                          (char *)push_buffer->base);
+ 
+@@ -111,6 +124,10 @@ void nvEvoMakeRoom(NVEvoChannelPtr pChannel, NvU32 count)
+     }
+ 
+     while (1) {
++        if (nvDisplayUnavailable(push_buffer->pDevEvo)) {
++            push_buffer->pDevEvo->displayChannelFailed = TRUE;
++            return;
++        }
+         getOffset = EvoCoreReadGet(push_buffer);
+ 
+         if (putOffset >= getOffset) {
+@@ -145,18 +162,15 @@ void nvEvoMakeRoom(NVEvoChannelPtr pChannel, NvU32 count)
+             break;
+         }
+ 
+-        /*
+-         * If we have been waiting too long, print an error message.  There
+-         * isn't much we can do as currently structured, so just reset
+-         * startTime.
+-         */
++        /* No reservation means no method header, payload, wrap or PUT. */
+         if (nvExceedsTimeoutUSec(push_buffer->pDevEvo, &startTime, timeout)) {
+             nvEvoLogDev(push_buffer->pDevEvo, EVO_LOG_ERROR,
+                 "Error while waiting for GPU progress: "
+                 "0x%08x:%d %d:%d:%d:%d",
+                 pChannel->hwclass, pChannel->instance,
+                 count, push_buffer->fifo_free_count, getOffset, putOffset);
+-            startTime = 0;
++            push_buffer->pDevEvo->displayChannelFailed = TRUE;
++            return;
+         }
+ 
+         nvkms_yield();
+@@ -185,7 +199,9 @@ void nvWriteEvoCoreNotifier(
+     NVDevEvoPtr pDevEvo = pDispEvo->pDevEvo;
+     volatile NvU32 *pNotifier = pDevEvo->core->notifierDma.cpuAddress;
+ 
+-    EvoWriteNotifier(pNotifier + offset, value);
++    if (!nvDisplayUnavailable(pDevEvo)) {
++        EvoWriteNotifier(pNotifier + offset, value);
++    }
+ }
+ 
+ static NvBool EvoCheckNotifier(const NVDispEvoRec *pDispEvo,
+@@ -195,7 +211,6 @@ static NvBool EvoCheckNotifier(const NVDispEvoRec *pDispEvo,
+ {
+     const NvU32 sd = pDispEvo->displayOwner;
+     NVDevEvoPtr pDevEvo = pDispEvo->pDevEvo;
+-    NVDmaBufferEvoPtr p = &pDevEvo->core->pb;
+     volatile NvU32 *pNotifier = pDevEvo->core->notifierDma.cpuAddress;
+     NvU64 startTime = 0;
+ 
+@@ -204,6 +219,10 @@ static NvBool EvoCheckNotifier(const NVDispEvoRec *pDispEvo,
+ 
+     // While the completion notifier is not set to done_true
+     do {
++        if (nvDisplayUnavailable(pDevEvo)) {
++            pDevEvo->displayChannelFailed = TRUE;
++            return FALSE;
++        }
+         const NvU32 val = *pNotifier;
+         const NvU32 done_mask = DRF_SHIFTMASK(done_extent_bit:done_base_bit);
+         const NvU32 done_val = done_value << done_base_bit;
+@@ -219,14 +238,12 @@ static NvBool EvoCheckNotifier(const NVDispEvoRec *pDispEvo,
+         if (nvExceedsTimeoutUSec(
+                 pDevEvo,
+                 &startTime,
+-                NV_EVO_NOTIFIER_SHORT_TIMEOUT_USEC) &&
+-            (p->put_offset == EvoCoreReadGet(p)))
++                NV_EVO_NOTIFIER_SHORT_TIMEOUT_USEC))
+         {
+-            nvEvoLogDisp(pDispEvo, EVO_LOG_WARN,
+-                         "Lost display notification (%d:0x%08x); "
+-                         "continuing.", sd, val);
+-            EvoWriteNotifier(pNotifier, done_value << done_base_bit);
+-            return TRUE;
++            nvEvoLogDisp(pDispEvo, EVO_LOG_ERROR,
++                         "Display notifier timed out (%d:0x%08x)", sd, val);
++            pDevEvo->displayChannelFailed = TRUE;
++            return FALSE;
+         }
+ 
+         nvkms_yield();
+@@ -375,6 +392,9 @@ NvBool nvEvoWaitForCRC32Notifier(const NVDevEvoPtr pDevEvo,
+     pCRC32Notifier += offset;
+ 
+     do {
++        if (nvDisplayUnavailable(pDevEvo)) {
++            return FALSE;
++        }
+         const NvU32 status = *pCRC32Notifier;
+ 
+         if ((status & done_mask) == done_val) {
+diff --git a/src/nvidia-modeset/src/nvkms-evo3.c b/src/nvidia-modeset/src/nvkms-evo3.c
+index 36a53a924c5f370f3eba309e9fdcdf280d505a6e..ad87c80dfc376d3d572d781a6483d252b99a7b74 100644
+--- a/src/nvidia-modeset/src/nvkms-evo3.c
++++ b/src/nvidia-modeset/src/nvkms-evo3.c
+@@ -1392,7 +1392,7 @@ static void EvoInitWindowMapping3(NVDevEvoPtr pDevEvo,
+         if (nvExceedsTimeoutUSec(pDevEvo, &startTime, timeout)) {
+             nvEvoLogDev(pDevEvo, EVO_LOG_ERROR,
+                         "Timed out waiting for core channel idle.");
+-            break;
++            return;
+         }
+     } while (TRUE);
+ 
+@@ -6491,6 +6491,9 @@ static NvBool GetChannelState(NVDevEvoPtr pDevEvo,
+     NVC370_CTRL_CMD_GET_CHANNEL_INFO_PARAMS info = { };
+     NvU32 ret;
+ 
++    if (nvDisplayUnavailable(pDevEvo)) {
++        return FALSE;
++    }
+     info.base.subdeviceIndex = sd;
+     info.channelClass = pChan->hwclass;
+     info.channelInstance = pChan->instance;
+@@ -6500,6 +6503,10 @@ static NvBool GetChannelState(NVDevEvoPtr pDevEvo,
+                          NVC370_CTRL_CMD_GET_CHANNEL_INFO,
+                          &info, sizeof(info));
+     if (ret != NVOS_STATUS_SUCCESS) {
++        if (ret == NVOS_STATUS_ERROR_GPU_IS_LOST || ret == NVOS_STATUS_ERROR_RESET_REQUIRED ||
++            ret == NVOS_STATUS_ERROR_GPU_NOT_FULL_POWER) {
++            pDevEvo->displayChannelFailed = TRUE;
++        }
+         nvEvoLogDev(pDevEvo, EVO_LOG_ERROR,
+                     "Failed to query display engine channel state: 0x%08x:%d:%d:0x%08x",
+                     pChan->hwclass, pChan->instance, sd, ret);
+@@ -6714,7 +6721,7 @@ static NvBool PollForChannelIdle(
+     do {
+         if (!nvEvoIsChannelMethodPendingC3(pDevEvo, pChannel, 0,
+                                          &isMethodPending)) {
+-            break;
++            return FALSE;
+         }
+ 
+         if (!isMethodPending) {
+diff --git a/src/nvidia-modeset/src/nvkms-flip.c b/src/nvidia-modeset/src/nvkms-flip.c
+index 4f1a7a7a17ee1680a376b8208571699e093fc4ac..a52640e485c1f830277f46e31742f27cdba585af 100644
+--- a/src/nvidia-modeset/src/nvkms-flip.c
++++ b/src/nvidia-modeset/src/nvkms-flip.c
+@@ -563,7 +563,7 @@ NvBool nvFlipEvo(NVDevEvoPtr pDevEvo,
+      * The NVKMS client should do modeset before initiating
+      * NVKMS_IOCTL_FLIP requests.
+      */
+-    if (pDevEvo->coreInitMethodsPending) {
++    if (pDevEvo->coreInitMethodsPending || nvDisplayUnavailable(pDevEvo)) {
+         if (reply) {
+             reply->flipResult = result;
+         }
+@@ -745,6 +745,10 @@ NvBool nvFlipEvo(NVDevEvoPtr pDevEvo,
+ done:
+     CleanupNvKmsFlipWorkArea(pDevEvo, pWorkArea);
+     nvPreallocRelease(pDevEvo, PREALLOC_TYPE_FLIP_WORK_AREA);
++    if (nvDisplayUnavailable(pDevEvo)) {
++        ret = FALSE;
++        result = NV_KMS_FLIP_RESULT_INVALID_PARAMS;
++    }
+     if (reply) {
+         reply->flipResult = result;
+     }
+diff --git a/src/nvidia-modeset/src/nvkms-hw-flip.c b/src/nvidia-modeset/src/nvkms-hw-flip.c
+index bd6588844baad659a185b67a44d62bdf6450fa96..6f9b9d92e7f6206f88bbcb150421c29de21bbaf3 100644
+--- a/src/nvidia-modeset/src/nvkms-hw-flip.c
++++ b/src/nvidia-modeset/src/nvkms-hw-flip.c
+@@ -3304,6 +3304,9 @@ void nvIdleMainLayerChannels(
+      * all busy channels.
+      */
+     while (!allChannelsIdle) {
++        if (nvDisplayUnavailable(pDevEvo)) {
++            return;
++        }
+ 
+         const NvU32 timeout = 2000000; /* 2 seconds */
+         NvBool anyChannelBusy = FALSE;
+diff --git a/src/nvidia-modeset/src/nvkms-modeset.c b/src/nvidia-modeset/src/nvkms-modeset.c
+index f51f97bcf9f66d87060ce078aa915a7c7047cdc9..ec0e47b233829a592be5451a277d32290cf7b59f 100644
+--- a/src/nvidia-modeset/src/nvkms-modeset.c
++++ b/src/nvidia-modeset/src/nvkms-modeset.c
+@@ -4232,7 +4232,7 @@ NvBool nvSetDispModeEvo(NVDevEvoPtr pDevEvo,
+ 
+     InitializeReply(pDevEvo, pRequest, pReply);
+ 
+-    if (!ValidateRequest(pDevEvo, pOpenDev, pRequest, pReply)) {
++    if (nvDisplayUnavailable(pDevEvo) || !ValidateRequest(pDevEvo, pOpenDev, pRequest, pReply)) {
+         goto done;
+     }
+ 
+@@ -4382,7 +4382,7 @@ done:
+ 
+     nvPreallocRelease(pDevEvo, PREALLOC_TYPE_MODE_SET_WORK_AREA);
+     nvPreallocRelease(pDevEvo, PREALLOC_TYPE_PROPOSED_MODESET_HW_STATE);
+-    return ret;
++    return ret && !nvDisplayUnavailable(pDevEvo);
+ }
+ 
+ /*!
+diff --git a/src/nvidia-modeset/src/nvkms-rm.c b/src/nvidia-modeset/src/nvkms-rm.c
+index 73a43abcad8cc45673cc905257ddd93c6d1a229e..c233ae57e50ee28adb381e83853e252897b60b7c 100644
+--- a/src/nvidia-modeset/src/nvkms-rm.c
++++ b/src/nvidia-modeset/src/nvkms-rm.c
+@@ -2601,6 +2601,7 @@ NVDpyIdList nvRmGetConnectedDpys(const NVDispEvoRec *pDispEvo,
+     NVDevEvoPtr pDevEvo = pDispEvo->pDevEvo;
+     NvU32 ret;
+ 
++    NvU64 startTime = nvkms_get_usec();
+     if (pDevEvo->displaylessHw) {
+         return DisplaylessRmGetConnectedDpys(pDispEvo, dpyIdList);
+     }
+@@ -2612,6 +2613,9 @@ NVDpyIdList nvRmGetConnectedDpys(const NVDispEvoRec *pDispEvo,
+          DRF_DEF(0073_CTRL_SYSTEM,_GET_CONNECT_STATE_FLAGS,_LOAD,_DEFAULT));
+ 
+     do {
++        if (nvDisplayUnavailable(pDevEvo)) {
++            return nvEmptyDpyIdList();
++        }
+         params.retryTimeMs = 0;
+         ret = nvRmApiControl(nvEvoGlobal.clientHandle,
+                              pDevEvo->displayCommonHandle,
+@@ -2628,7 +2632,13 @@ NVDpyIdList nvRmGetConnectedDpys(const NVDispEvoRec *pDispEvo,
+         }
+ 
+         if (params.retryTimeMs > 0) {
+-            nvkms_usleep(params.retryTimeMs * 1000);
++            const NvU64 elapsed = nvkms_get_usec() - startTime;
++            const NvU64 budget = 5000000;
++            if (elapsed >= budget) {
++                return nvEmptyDpyIdList();
++            }
++            const NvU64 delay = (NvU64)params.retryTimeMs * 1000;
++            nvkms_usleep(NV_MIN(delay, budget - elapsed));
+         } else {
+             nvkms_yield();
+         }
+@@ -3057,7 +3067,9 @@ RmAllocEvoChannel(NVDevEvoPtr pDevEvo,
+     buffer->pDevEvo      = pDevEvo;
+ 
+     pDevEvo->hal->InitChannel(pDevEvo, pChannel);
+-
++    if (nvDisplayUnavailable(pDevEvo)) {
++        goto fail;
++    }
+     return pChannel;
+ 
+ fail:
+@@ -3582,6 +3594,7 @@ static NvBool SyncOneEvoChannel(
+                         "Idling display engine timed out: 0x%08x:%d:%d:%d",
+                         pChan->hwclass, pChan->instance,
+                         sd, errorToken);
++            pDevEvo->displayChannelFailed = TRUE;
+             return FALSE;
+         }
+ 
+@@ -3602,12 +3615,18 @@ NvBool nvRMSyncEvoChannel(
+ 
+     if (pChannel) {
+         NvU32 sd;
++        if (nvDisplayUnavailable(pDevEvo)) {
++            return FALSE;
++        }
+ 
+         nvDmaKickoffEvo(pChannel);
+ 
+         for (sd = 0; sd < pDevEvo->numSubDevices; sd++) {
+             if (!SyncOneEvoChannel(pDevEvo, pChannel, sd, errorToken)) {
+                 ret = FALSE;
++                if (nvDisplayUnavailable(pDevEvo)) {
++                    break;
++                }
+             }
+         }
+     }
+@@ -3641,7 +3660,7 @@ NvBool nvRMIdleBaseChannel(NVDevEvoPtr pDevEvo, NvU32 head,
+                                                   pMainLayerChannel,
+                                                   0,
+                                                   &isMethodPending)) {
+-            break;
++            return FALSE;
+         }
+ 
+         if (!isMethodPending) {
+@@ -3662,6 +3681,9 @@ NvBool nvRMIdleBaseChannel(NVDevEvoPtr pDevEvo, NvU32 head,
+             .channelMask = pMainLayerChannel->channelMask,
+         };
+ 
++        if (nvDisplayUnavailable(pDevEvo)) {
++            return FALSE;
++        }
+         ret = pDevEvo->hal->ForceIdleSatelliteChannel(pDevEvo, &idleChannelState);
+ 
+         *stoppedBase = ret;
+@@ -5131,6 +5153,9 @@ NvBool nvRmSetGc6Allowed(NVDevEvoPtr pDevEvo, NvBool allowed)
+      * to ensure that future modesets are successful.
+      */
+     if (!allowed && pDevEvo->core) {
++        if (nvDisplayUnavailable(pDevEvo)) {
++            return FALSE;
++        }
+         NvU32 channelIdx;
+ 
+         pDevEvo->hal->InitChannel(pDevEvo, pDevEvo->core);
+@@ -5144,7 +5169,7 @@ NvBool nvRmSetGc6Allowed(NVDevEvoPtr pDevEvo, NvBool allowed)
+         }
+     }
+ 
+-    return TRUE;
++    return allowed || !nvDisplayUnavailable(pDevEvo);
+ }
+ 
+ typedef struct _NVRmRgLine1CallbackRec {
+diff --git a/src/nvidia-modeset/src/nvkms.c b/src/nvidia-modeset/src/nvkms.c
+index 5960ab86d31f4aff257074a7a7bfce73c8b3e654..1b39239883c843da1943b495851c35c1097f3097 100644
+--- a/src/nvidia-modeset/src/nvkms.c
++++ b/src/nvidia-modeset/src/nvkms.c
+@@ -1108,6 +1108,9 @@ static void RestoreConsole(NVDevEvoPtr pDevEvo)
+                      NVKMS_FAIL_ALLOC_CORE_CHANNEL_RESTORE_CONSOLE);
+ 
+     if (bFail || !nvEvoRestoreConsole(pDevEvo, TRUE /* allowMST */)) {
++        if (nvDisplayUnavailable(pDevEvo)) {
++            return;
++        }
+         // If that didn't work, free the core channel to trigger RM's console
+         // restore code.
+         FreeSurfaceCtxDmasForAllOpens(pDevEvo);

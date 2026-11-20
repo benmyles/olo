@@ -1,0 +1,341 @@
+Subject: [PATCH] modeset: retain the GPU reference and its close stack at open
+
+PCI remove unpublishes the ID before waiting for this referenced object.
+All three kinds of modeset opens now pair with a put on that same object.
+The old close also silently skipped the put on stack allocation failure.
+Keep the existing versioned rm_ops table its original size. Use distinct
+exported symbols so the new modeset cannot bind to an old RM provider.
+Allow partially constructed KAPI devices to unwind without a spurious put.
+
+diff --git a/kernel-open/common/inc/nv-modeset-interface.h b/kernel-open/common/inc/nv-modeset-interface.h
+index 2b96ba5a4085a8d9954eda30f0fa441c85886fe2..bbfdc27f27cc05cdc7e3ded156c37e5c508480be 100644
+--- a/kernel-open/common/inc/nv-modeset-interface.h
++++ b/kernel-open/common/inc/nv-modeset-interface.h
+@@ -123,6 +123,11 @@ typedef struct {
+ 
+ } nvidia_modeset_rm_ops_t;
+ 
++/* New symbols keep both generations of the fixed-size rm_ops ABI compatible. */
++struct nvkms_gpu_ref;
++struct nvkms_gpu_ref *nvidia_modeset_get_gpu_ref(NvU32 gpu_id, NvBool reset_aware);
++void nvidia_modeset_put_gpu_ref(struct nvkms_gpu_ref *ref);
++
+ NV_STATUS nvidia_get_rm_ops(nvidia_modeset_rm_ops_t *rm_ops);
+ 
+ #endif /* _NV_MODESET_INTERFACE_H_ */
+diff --git a/kernel-open/nvidia-modeset/nvidia-modeset-linux.c b/kernel-open/nvidia-modeset/nvidia-modeset-linux.c
+index 62986c40f5ff9779666a7acde26cfa1743cf9de4..85b5b52a81032376eb36b2a27e516a7d00f1dfaf 100644
+--- a/kernel-open/nvidia-modeset/nvidia-modeset-linux.c
++++ b/kernel-open/nvidia-modeset/nvidia-modeset-linux.c
+@@ -1241,33 +1241,14 @@ done:
+     return ret;
+ }
+ 
+-NvBool nvkms_open_gpu(NvU32 gpuId, NvBool reset_aware)
++struct nvkms_gpu_ref *nvkms_open_gpu(NvU32 gpuId, NvBool reset_aware)
+ {
+-    nvidia_modeset_stack_ptr stack = NULL;
+-    NvBool ret;
+-
+-    if (__rm_ops.alloc_stack(&stack) != 0) {
+-        return NV_FALSE;
+-    }
+-
+-    ret = __rm_ops.open_gpu(gpuId, stack, reset_aware) == 0;
+-
+-    __rm_ops.free_stack(stack);
+-
+-    return ret;
++    return nvidia_modeset_get_gpu_ref(gpuId, reset_aware);
+ }
+ 
+-void nvkms_close_gpu(NvU32 gpuId, NvBool reset_aware)
++void nvkms_close_gpu(struct nvkms_gpu_ref *ref)
+ {
+-    nvidia_modeset_stack_ptr stack = NULL;
+-
+-    if (__rm_ops.alloc_stack(&stack) != 0) {
+-        return;
+-    }
+-
+-    __rm_ops.close_gpu(gpuId, stack, reset_aware);
+-
+-    __rm_ops.free_stack(stack);
++    nvidia_modeset_put_gpu_ref(ref);
+ }
+ 
+ NvU32 nvkms_enumerate_gpus(nv_gpu_info_t *gpu_info)
+diff --git a/kernel-open/nvidia-modeset/nvidia-modeset-os-interface.h b/kernel-open/nvidia-modeset/nvidia-modeset-os-interface.h
+index dc33314bd399658cc7d0cec887b238813ba31f0a..2e570b55417801b381f5bef2cd6f107173b76394 100644
+--- a/kernel-open/nvidia-modeset/nvidia-modeset-os-interface.h
++++ b/kernel-open/nvidia-modeset/nvidia-modeset-os-interface.h
+@@ -314,8 +314,9 @@ void* nvkms_get_per_open_data(int fd);
+ /*!
+  * Raise and lower the reference count of the specified GPU.
+  */
+-NvBool nvkms_open_gpu(NvU32 gpuId, NvBool reset_aware);
+-void nvkms_close_gpu(NvU32 gpuId, NvBool reset_aware);
++struct nvkms_gpu_ref;
++struct nvkms_gpu_ref *nvkms_open_gpu(NvU32 gpuId, NvBool reset_aware);
++void nvkms_close_gpu(struct nvkms_gpu_ref *ref);
+ 
+ 
+ /*!
+diff --git a/kernel-open/nvidia/nv.c b/kernel-open/nvidia/nv.c
+index 2c08cba726e260ed44973e7b0752956c6bc5a5d4..745fa90c6904a07c83b0412a9f3855885709356e 100644
+--- a/kernel-open/nvidia/nv.c
++++ b/kernel-open/nvidia/nv.c
+@@ -32,6 +32,7 @@
+ #include "nvmisc.h"
+ #include "os-interface.h"
+ #include "nv-linux.h"
++#include "nv-modeset-interface.h"
+ #include "nv-p2p.h"
+ #include "nv-reg.h"
+ #include "nv-msi.h"
+@@ -5525,6 +5526,90 @@ void nvidia_dev_put(NvU32 gpu_id, nvidia_stack_t *sp, NvBool reset_aware)
+     up(&nvl->ldata_lock);
+ }
+ 
++/*
++ * Modeset owns the reference until close, including after PCI remove has
++ * unpublished the GPU ID. Reserve the teardown stack at open so memory
++ * pressure cannot turn a put into a leaked reference.
++ */
++struct nvkms_gpu_ref
++{
++    nv_linux_state_t *nvl;
++    nvidia_stack_t *sp;
++    NvBool reset_aware;
++};
++
++struct nvkms_gpu_ref *nvidia_modeset_get_gpu_ref(NvU32 gpu_id, NvBool reset_aware)
++{
++    struct nvkms_gpu_ref *ref;
++    nv_linux_state_t *nvl;
++    nv_state_t *nv;
++
++    ref = kzalloc(sizeof(*ref), GFP_KERNEL);
++    if (ref == NULL)
++        return NULL;
++
++    if (nv_kmem_cache_alloc_stack(&ref->sp) != 0)
++        goto free_ref;
++
++    nvl = find_gpu_id(gpu_id);
++    if (nvl == NULL)
++        goto free_stack;
++
++    nv = NV_STATE_PTR(nvl);
++    if (nv_open_device(nv, ref->sp) != 0)
++        goto unlock;
++
++    if (!reset_aware &&
++        rm_set_external_kernel_client_count(ref->sp, nv, NV_TRUE) != NV_OK)
++    {
++        nv_close_device(nv, ref->sp);
++        goto unlock;
++    }
++
++    ref->nvl = nvl;
++    ref->reset_aware = reset_aware;
++    up(&nvl->ldata_lock);
++    return ref;
++
++unlock:
++    up(&nvl->ldata_lock);
++free_stack:
++    nv_kmem_cache_free_stack(ref->sp);
++free_ref:
++    kfree(ref);
++    return NULL;
++}
++NV_EXPORT_SYMBOL(nvidia_modeset_get_gpu_ref);
++
++void nvidia_modeset_put_gpu_ref(struct nvkms_gpu_ref *ref)
++{
++    nv_linux_state_t *nvl;
++    nv_state_t *nv;
++
++    if (ref == NULL)
++        return;
++    nvl = ref->nvl;
++    nv = NV_STATE_PTR(nvl);
++    down(&nvl->ldata_lock);
++    if (!nv->removed && !ref->reset_aware)
++        WARN_ON(rm_set_external_kernel_client_count(ref->sp, nv, NV_FALSE) != NV_OK);
++
++    nv_close_device(nv, ref->sp);
++    if (nv->removed && atomic64_read(&nvl->usage_count) == 0)
++    {
++        /* Same last-owner handoff as nvidia_close_callback after eGPU removal. */
++        nv_lock_destroy_locks(ref->sp, nv);
++        NV_KFREE(nvl, sizeof(*nvl));
++    }
++    else
++    {
++        up(&nvl->ldata_lock);
++    }
++    nv_kmem_cache_free_stack(ref->sp);
++    kfree(ref);
++}
++NV_EXPORT_SYMBOL(nvidia_modeset_put_gpu_ref);
++
+ /*
+  * Like nvidia_dev_get but uses UUID instead of gpu_id. Note that this may
+  * trigger initialization and teardown of unrelated devices to look up their
+diff --git a/src/nvidia-modeset/include/nvkms-types.h b/src/nvidia-modeset/include/nvkms-types.h
+index f0e917d3bfe70e911bd75aab1fe2a51e4ededd7a..d45126ee49459e1328e4223b30e8aca365f1241c 100644
+--- a/src/nvidia-modeset/include/nvkms-types.h
++++ b/src/nvidia-modeset/include/nvkms-types.h
+@@ -1001,7 +1001,8 @@ typedef struct _NVEvoDevRec {
+     NvU32               allocRefCnt; /* number of ALLOC_DEVICE calls */
+     NVListRec           devListEntry;
+ 
+-    /* array of gpuIds opened with nvkms_open_gpu() */
++    struct nvkms_gpu_ref *gpuRefs[NV0000_CTRL_GPU_MAX_ATTACHED_GPUS];
++    /* IDs for RM control operations, paired with the references above. */
+     NvU32               openedGpuIds[NV0000_CTRL_GPU_MAX_ATTACHED_GPUS];
+ 
+     NVUnixRmHandleAllocatorRec handleAllocator;
+diff --git a/src/nvidia-modeset/kapi/include/nvkms-kapi-internal.h b/src/nvidia-modeset/kapi/include/nvkms-kapi-internal.h
+index 3be0b3841fa1f7db02cf8725e215b6c485b92697..d850c0564ded22127d29d4dd27822dd5c551cdaa 100644
+--- a/src/nvidia-modeset/kapi/include/nvkms-kapi-internal.h
++++ b/src/nvidia-modeset/kapi/include/nvkms-kapi-internal.h
+@@ -79,6 +79,7 @@ struct NvKmsKapiNisoSurface {
+ };
+ 
+ struct NvKmsKapiDevice {
++    struct nvkms_gpu_ref *gpuRef;
+ 
+     NvU32 gpuId;
+ 
+diff --git a/src/nvidia-modeset/kapi/src/nvkms-kapi.c b/src/nvidia-modeset/kapi/src/nvkms-kapi.c
+index 91b619e16ad53140be14e5be26027dbc392b08a0..086d97c0858bafc4254e650b3d30b6f81680eba9 100644
+--- a/src/nvidia-modeset/kapi/src/nvkms-kapi.c
++++ b/src/nvidia-modeset/kapi/src/nvkms-kapi.c
+@@ -612,6 +612,10 @@ done:
+ 
+ static void FreeDevice(struct NvKmsKapiDevice *device)
+ {
++    if (device == NULL) {
++        return;
++    }
++
+     /* Free NVKMS objects allocated for NvKmsKapiDevice */
+ 
+     KmsFreeDevice(device);
+@@ -622,7 +626,7 @@ static void FreeDevice(struct NvKmsKapiDevice *device)
+ 
+     /* Lower the reference count of gpu. */
+ 
+-    nvkms_close_gpu(device->gpuId, NV_TRUE /* reset_aware */);
++    nvkms_close_gpu(device->gpuRef);
+ 
+     if (device->pSema != NULL) {
+         nvkms_sema_free(device->pSema);
+@@ -935,7 +939,8 @@ static struct NvKmsKapiDevice* AllocateDevice
+ 
+     /* Raise the reference count of gpu. */
+ 
+-    if (!nvkms_open_gpu(params->gpuId, NV_TRUE /* reset_aware */)) {
++    device->gpuRef = nvkms_open_gpu(params->gpuId, NV_TRUE /* reset_aware */);
++    if (device->gpuRef == NULL) {
+         nvKmsKapiLogDebug("Failed to open GPU ID 0x%08x", params->gpuId);
+         goto failed;
+     }
+diff --git a/src/nvidia-modeset/os-interface/include/nvidia-modeset-os-interface.h b/src/nvidia-modeset/os-interface/include/nvidia-modeset-os-interface.h
+index dc33314bd399658cc7d0cec887b238813ba31f0a..2e570b55417801b381f5bef2cd6f107173b76394 100644
+--- a/src/nvidia-modeset/os-interface/include/nvidia-modeset-os-interface.h
++++ b/src/nvidia-modeset/os-interface/include/nvidia-modeset-os-interface.h
+@@ -314,8 +314,9 @@ void* nvkms_get_per_open_data(int fd);
+ /*!
+  * Raise and lower the reference count of the specified GPU.
+  */
+-NvBool nvkms_open_gpu(NvU32 gpuId, NvBool reset_aware);
+-void nvkms_close_gpu(NvU32 gpuId, NvBool reset_aware);
++struct nvkms_gpu_ref;
++struct nvkms_gpu_ref *nvkms_open_gpu(NvU32 gpuId, NvBool reset_aware);
++void nvkms_close_gpu(struct nvkms_gpu_ref *ref);
+ 
+ 
+ /*!
+diff --git a/src/nvidia-modeset/src/nvkms-rm.c b/src/nvidia-modeset/src/nvkms-rm.c
+index 7ad713bbdd2a22c3bd1b45d0f496c5fe5e8d2b56..73a43abcad8cc45673cc905257ddd93c6d1a229e 100644
+--- a/src/nvidia-modeset/src/nvkms-rm.c
++++ b/src/nvidia-modeset/src/nvkms-rm.c
+@@ -4142,7 +4142,8 @@ static void CloseDevice(NVDevEvoPtr pDevEvo)
+             break;
+         }
+ 
+-        nvkms_close_gpu(gpuId, NV_TRUE /* reset_aware */);
++        nvkms_close_gpu(pDevEvo->gpuRefs[i]);
++        pDevEvo->gpuRefs[i] = NULL;
+         pDevEvo->openedGpuIds[i] = NV0000_CTRL_GPU_INVALID_ID;
+     }
+ }
+@@ -4175,7 +4176,8 @@ static NvBool OpenTegraDevice(NVDevEvoPtr pDevEvo)
+         goto fail;
+     }
+ 
+-    if (!nvkms_open_gpu(gpu_info[0].gpu_id, NV_TRUE /* reset_aware */)) {
++    pDevEvo->gpuRefs[0] = nvkms_open_gpu(gpu_info[0].gpu_id, NV_TRUE /* reset_aware */);
++    if (pDevEvo->gpuRefs[0] == NULL) {
+         nvEvoLogDev(pDevEvo, EVO_LOG_ERROR, "Failed to open GPU");
+         goto fail;
+     }
+@@ -4250,7 +4252,8 @@ static NvBool OpenDevice(NVDevEvoPtr pDevEvo)
+             continue;
+         }
+ 
+-        if (!nvkms_open_gpu(gpuId, NV_TRUE /* reset_aware */)) {
++        pDevEvo->gpuRefs[gpuIdIndex] = nvkms_open_gpu(gpuId, NV_TRUE /* reset_aware */);
++        if (pDevEvo->gpuRefs[gpuIdIndex] == NULL) {
+             nvEvoLogDev(pDevEvo, EVO_LOG_ERROR, "Failed to open GPU");
+             goto fail;
+         }
+diff --git a/src/nvidia-modeset/src/nvkms.c b/src/nvidia-modeset/src/nvkms.c
+index 4f9b65b7de6b49e0e4f2bad4f06f520b9d04b419..5960ab86d31f4aff257074a7a7bfce73c8b3e654 100644
+--- a/src/nvidia-modeset/src/nvkms.c
++++ b/src/nvidia-modeset/src/nvkms.c
+@@ -168,7 +168,7 @@ struct NvKmsPerOpenDev {
+     NvBool                       isPrivileged;
+     NVEvoApiHandlesRec           deferredRequestFifoHandles;
+     NVEvoApiHandlesRec           swapGroupHandles;
+-    NvU32                        openedGpuId;
++    struct nvkms_gpu_ref        *gpuRef;
+ };
+ 
+ struct NvKmsPerOpenEventListEntry {
+@@ -1176,9 +1176,7 @@ void nvFreePerOpenDev(struct NvKmsPerOpen *pOpen,
+         return;
+     }
+ 
+-    if (pOpenDev->openedGpuId != NV0000_CTRL_GPU_INVALID_ID) {
+-        nvkms_close_gpu(pOpenDev->openedGpuId, NV_FALSE /* reset_aware */);
+-    }
++    nvkms_close_gpu(pOpenDev->gpuRef);
+ 
+     nvEvoDestroyApiHandles(&pOpenDev->surfaceHandles);
+ 
+@@ -1225,7 +1223,6 @@ struct NvKmsPerOpenDev *nvAllocPerOpenDev(struct NvKmsPerOpen *pOpen,
+         goto fail;
+     }
+ 
+-    pOpenDev->openedGpuId = NV0000_CTRL_GPU_INVALID_ID;
+     pOpenDev->nvKmsApiHandle =
+         nvEvoCreateApiHandle(&pOpen->ioctl.devHandles, pOpenDev);
+ 
+@@ -1274,10 +1271,10 @@ struct NvKmsPerOpenDev *nvAllocPerOpenDev(struct NvKmsPerOpen *pOpen,
+          * reference, but this one is needed to tell Resman that the GPU is in
+          * use by a non-reset-aware client.
+          */
+-        if (!nvkms_open_gpu(pDevEvo->openedGpuIds[0], NV_FALSE /* reset_aware */)) {
++        pOpenDev->gpuRef = nvkms_open_gpu(pDevEvo->openedGpuIds[0], NV_FALSE /* reset_aware */);
++        if (pOpenDev->gpuRef == NULL) {
+             goto fail;
+         }
+-        pOpenDev->openedGpuId = pDevEvo->openedGpuIds[0];
+     }
+ 
+     return pOpenDev;

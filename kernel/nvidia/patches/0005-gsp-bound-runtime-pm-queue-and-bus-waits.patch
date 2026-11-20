@@ -1,0 +1,112 @@
+Subject: [PATCH] pm: bound the suspend TX reservation, RX drain and PCI presence poll
+
+Pass one local one-second reservation to the GSP suspend command on
+the RTD3 thread. Never publish a partial reservation. A stream of other
+events must not hide the outer RX deadline; revisit it every 32 handled
+events in a PM polling context. Preserve the interrupt-driven drain.
+Use a fresh host-clock budget when waiting for PCI presence on resume,
+before the Blackwell BAR firewall and FSP secure-boot waits.
+
+diff --git a/src/nvidia/inc/kernel/gpu/gsp/message_queue.h b/src/nvidia/inc/kernel/gpu/gsp/message_queue.h
+index 68cae5ba4eeb9e73eb8b60f9784ab86a4f6079e7..a4e94c89a2f7969d7604e50204eb66443f3b8f94 100644
+--- a/src/nvidia/inc/kernel/gpu/gsp/message_queue.h
++++ b/src/nvidia/inc/kernel/gpu/gsp/message_queue.h
+@@ -38,7 +38,8 @@ typedef struct MESSAGE_QUEUE_COLLECTION MESSAGE_QUEUE_COLLECTION;
+ NV_STATUS GspMsgQueuesInit(OBJGPU *pGpu, MESSAGE_QUEUE_COLLECTION **ppMQCollection);
+ void      GspMsgQueuesCleanup(MESSAGE_QUEUE_COLLECTION **ppMQCollection);
+ NV_STATUS GspStatusQueueInit(OBJGPU *pGpu, MESSAGE_QUEUE_INFO **ppMQI);
+-NV_STATUS GspMsgQueueSendCommand(MESSAGE_QUEUE_INFO *pMQI, OBJGPU *pGpu, NvU32 nvdmType, NvU32 size);
++NV_STATUS GspMsgQueueSendCommand(MESSAGE_QUEUE_INFO *pMQI, OBJGPU *pGpu,
++                                 NvU32 nvdmType, NvU32 size, NvBool localSuspendBudget);
+ NV_STATUS GspMsgQueueReceiveStatus(MESSAGE_QUEUE_INFO *pMQI, OBJGPU *pGpu, NvU32 *pNvdmType);
+ 
+ #endif // _MESSAGE_QUEUE_H_
+diff --git a/src/nvidia/src/kernel/gpu/bif/kernel_bif.c b/src/nvidia/src/kernel/gpu/bif/kernel_bif.c
+index b5e64bf899147c8330b329e561cdb8cc03609542..5122fc387db8aa9ba8987c1418ed9068296d9ba7 100644
+--- a/src/nvidia/src/kernel/gpu/bif/kernel_bif.c
++++ b/src/nvidia/src/kernel/gpu/bif/kernel_bif.c
+@@ -28,6 +28,7 @@
+  */
+ 
+ /* ------------------------ Includes ---------------------------------------- */
++#include "rmapi/rmapi.h"
+ #include "gpu/bif/kernel_bif.h"
+ #include "gpu/bus/kern_bus.h"
+ #include "gpu/gpu.h"
+@@ -1900,7 +1901,9 @@ kbifPollDeviceOnBus_IMPL
+ {
+     RMTIMEOUT timeout;
+ 
+-    gpuSetTimeout(pGpu, GPU_TIMEOUT_DEFAULT, &timeout, 0);
++    NvU32 flags = rmapiInRtd3PmPath() ?
++        GPU_TIMEOUT_FLAGS_OSTIMER | GPU_TIMEOUT_FLAGS_BYPASS_THREAD_STATE : 0;
++    gpuSetTimeout(pGpu, GPU_TIMEOUT_DEFAULT, &timeout, flags);
+ 
+     while (osPciInitHandle(gpuGetDomain(pGpu),
+                            gpuGetBus(pGpu),
+diff --git a/src/nvidia/src/kernel/gpu/gsp/kernel_gsp.c b/src/nvidia/src/kernel/gpu/gsp/kernel_gsp.c
+index 555906f390454ddc3c6e59669492eb2abdb33245..a1d4e3f7a9f928e3f77545b0acb607611eec65b1 100644
+--- a/src/nvidia/src/kernel/gpu/gsp/kernel_gsp.c
++++ b/src/nvidia/src/kernel/gpu/gsp/kernel_gsp.c
+@@ -503,7 +503,10 @@ NV_STATUS kgspSendRpc_IMPL
+         sequence = pGmcHdr->sequence;
+     }
+ 
+-    nvStatus = GspMsgQueueSendCommand(pRpc->pMessageQueueInfo, pGpu, nvdmType, size);
++    NvBool localSuspendBudget = nvdmType == NVDM_TYPE_GMCAPI &&
++                               func == GMCAPI_CMD_GSP_SUSPEND && rmapiInRtd3PmPath();
++    nvStatus = GspMsgQueueSendCommand(pRpc->pMessageQueueInfo, pGpu, nvdmType, size,
++                                      localSuspendBudget);
+     if (nvStatus != NV_OK)
+     {
+         if (nvStatus == NV_ERR_TIMEOUT ||
+@@ -2059,12 +2062,20 @@ _kgspRpcDrainEvents
+ {
+     NV_STATUS nvStatus = NV_OK;
+     OBJRPC *pRpc = GPU_GET_RPC(pGpu);
++    NvU32 drained = 0;
++    NvBool pmPoll = rpcHandlerContext != KGSP_RPC_EVENT_HANDLER_CONTEXT_INTERRUPT &&
++                    rmapiInRtd3PmPath();
+ 
+     while (nvStatus == NV_OK)
+     {
+         nvStatus = _kgspRpcDrainOneEvent(pGpu, pRpc, expectedFunc, expectedSequence, rpcHandlerContext,
+                                          pConditionFunc, pConditionData);
+         kgspDumpGspLogs(pKernelGsp, NV_FALSE);
++
++        // Give the outer poller a chance to check its existing deadline and
++        // the mailbox even when unrelated events keep arriving.
++        if (pmPoll && ++drained == 32)
++            break;
+     }
+ 
+     // If GSP-RM has died, the GPU will need to be reset
+diff --git a/src/nvidia/src/kernel/gpu/gsp/message_queue_cpu.c b/src/nvidia/src/kernel/gpu/gsp/message_queue_cpu.c
+index 51a296f86990a0f0e6bb7cc14c8b85a488037723..6b7dc9ec5905c02d17932662adcadeaef45a8047 100644
+--- a/src/nvidia/src/kernel/gpu/gsp/message_queue_cpu.c
++++ b/src/nvidia/src/kernel/gpu/gsp/message_queue_cpu.c
+@@ -480,7 +480,8 @@ void GspMsgQueuesCleanup(MESSAGE_QUEUE_COLLECTION **ppMQCollection)
+  *  NV_ERR_BUSY_RETRY           - No space in the queue.
+  *  NV_ERR_INVALID_STATE        - Something really bad happenned.
+  */
+-NV_STATUS GspMsgQueueSendCommand(MESSAGE_QUEUE_INFO *pMQI, OBJGPU *pGpu, NvU32 nvdmType, NvU32 size)
++NV_STATUS GspMsgQueueSendCommand(MESSAGE_QUEUE_INFO *pMQI, OBJGPU *pGpu,
++                                 NvU32 nvdmType, NvU32 size, NvBool localSuspendBudget)
+ {
+     GSP_MSG_QUEUE_ELEMENT *pCQE = pMQI->pCmdQueueElement;
+     NvU8      *pSrc             = (NvU8 *)pCQE;
+@@ -555,8 +556,12 @@ NV_STATUS GspMsgQueueSendCommand(MESSAGE_QUEUE_INFO *pMQI, OBJGPU *pGpu, NvU32 n
+         if (pMQI->txBufferFull)
+             timeoutFlags |= GPU_TIMEOUT_FLAGS_BYPASS_JOURNAL_LOG;
+ 
+-        // Set a timeout of 1 sec
+-        gpuSetTimeout(pGpu, 1000000, &timeout, timeoutFlags);
++        // A PM suspend command gets one second for the whole reservation.
++        // Normal senders retain their per-element and parent-thread limits.
++        if (localSuspendBudget)
++            timeoutFlags |= GPU_TIMEOUT_FLAGS_OSTIMER | GPU_TIMEOUT_FLAGS_BYPASS_THREAD_STATE;
++        if (!localSuspendBudget || i == 0)
++            gpuSetTimeout(pGpu, 1000000, &timeout, timeoutFlags);
+ 
+         // Wait for space to put the next element.
+         while (NV_TRUE)

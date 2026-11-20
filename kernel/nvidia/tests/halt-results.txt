@@ -1,0 +1,10 @@
+tag late halt status=0x65 parent_checks=1 register_reads=1 elapsed_virtual_ms=0
+persistent busy status=0x65 parent_checks=1 register_reads=1 elapsed_virtual_ms=0
+system sleep status=0x65 parent_checks=1 register_reads=1 elapsed_virtual_ms=0
+different unload mode status=0x65 parent_checks=1 register_reads=1 elapsed_virtual_ms=0
+already halted status=0x0 parent_checks=0 register_reads=1 elapsed_virtual_ms=0
+patched late halt status=0x0 parent_checks=0 register_reads=11 elapsed_virtual_ms=10
+persistent busy status=0x65 parent_checks=0 register_reads=4002 elapsed_virtual_ms=4001
+system sleep status=0x65 parent_checks=1 register_reads=1 elapsed_virtual_ms=0
+different unload mode status=0x65 parent_checks=1 register_reads=1 elapsed_virtual_ms=0
+already halted status=0x0 parent_checks=0 register_reads=1 elapsed_virtual_ms=0

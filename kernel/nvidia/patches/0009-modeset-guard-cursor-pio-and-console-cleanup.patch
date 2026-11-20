@@ -1,0 +1,112 @@
+Subject: [PATCH] modeset: require a free cursor PIO slot and handle displayless cleanup
+
+Cursor PIO bypasses the DMA emitter. Suppress both the position write and
+the subsequent UPDATE when reservation fails. Do not request preserve-HW
+on a failed console handoff. A displayless window has no push-buffer
+owner: retain its empty-kickoff no-op without dereferencing the owner.
+
+diff --git a/src/nvidia-modeset/src/nvkms-console-restore.c b/src/nvidia-modeset/src/nvkms-console-restore.c
+index 4d707449c2cf758e810225e9d23ef92f0755c113..255076d46bbcae9451edfe7be97f2bb6380f676a 100644
+--- a/src/nvidia-modeset/src/nvkms-console-restore.c
++++ b/src/nvidia-modeset/src/nvkms-console-restore.c
+@@ -780,6 +780,7 @@ NvBool nvEvoRestoreConsole(NVDevEvoPtr pDevEvo, const NvBool allowMST)
+      * early.
+      */
+     if (nvDisplayUnavailable(pDevEvo)) {
++        pDevEvo->skipConsoleRestore = FALSE;
+         nvkms_free_timer(pDevEvo->consoleRestoreTimer);
+         pDevEvo->consoleRestoreTimer = NULL;
+         return FALSE;
+diff --git a/src/nvidia-modeset/src/nvkms-cursor3.c b/src/nvidia-modeset/src/nvkms-cursor3.c
+index 3761fd2c9a08b34007c0e89842a883c209e1f5d0..08711e1875b7285665a48227c8cdf918c6904705 100644
+--- a/src/nvidia-modeset/src/nvkms-cursor3.c
++++ b/src/nvidia-modeset/src/nvkms-cursor3.c
+@@ -31,7 +31,7 @@
+ #include <class/clcb7a.h>
+ #include <class/clcc7a.h>
+ 
+-static void WaitForFreeSpace(NVDevEvoPtr pDevEvo,
++static NvBool WaitForFreeSpace(NVDevEvoPtr pDevEvo,
+                              NVC57ADispCursorImmControlPio *pEvoCursorControl)
+ {
+     /*
+@@ -44,8 +44,11 @@ static void WaitForFreeSpace(NVDevEvoPtr pDevEvo,
+     const NvU64 timeout = 100000; /* 0.1 seconds */
+ 
+     do {
++        if (nvDisplayUnavailable(pDevEvo)) {
++            return FALSE;
++        }
+         if (pEvoCursorControl->Free != 0) {
+-            return;
++            return TRUE;
+         }
+ 
+         if (nvExceedsTimeoutUSec(pDevEvo, &startTime, timeout)) {
+@@ -58,6 +61,8 @@ static void WaitForFreeSpace(NVDevEvoPtr pDevEvo,
+ 
+     nvEvoLogDevDebug(pDevEvo, EVO_LOG_ERROR,
+                      "Timed out waiting for cursor PIO space");
++    pDevEvo->displayChannelFailed = TRUE;
++    return FALSE;
+ }
+ 
+ static void MoveCursorC5(NVDevEvoPtr pDevEvo, NvU32 head,
+@@ -66,12 +71,16 @@ static void MoveCursorC5(NVDevEvoPtr pDevEvo, NvU32 head,
+     NVC57ADispCursorImmControlPio *pEvoCursorControl =
+         pDevEvo->cursorPio[head];
+ 
+-    WaitForFreeSpace(pDevEvo, pEvoCursorControl);
++    if (!WaitForFreeSpace(pDevEvo, pEvoCursorControl)) {
++        return;
++    }
+     pEvoCursorControl->SetCursorHotSpotPointOut[0] =
+             DRF_NUM(C57A, _SET_CURSOR_HOT_SPOT_POINT_OUT, _X, x) |
+             DRF_NUM(C57A, _SET_CURSOR_HOT_SPOT_POINT_OUT, _Y, y);
+ 
+-    WaitForFreeSpace(pDevEvo, pEvoCursorControl);
++    if (!WaitForFreeSpace(pDevEvo, pEvoCursorControl)) {
++        return;
++    }
+     pEvoCursorControl->Update =
+             DRF_DEF(C57A, _UPDATE, _FLIP_LOCK_PIN, _LOCK_PIN_NONE);
+ }
+@@ -81,7 +90,9 @@ static void ReleaseElvC5(NVDevEvoPtr pDevEvo, NvU32 head)
+     NVC57ADispCursorImmControlPio *pEvoCursorControl =
+         pDevEvo->cursorPio[head];
+ 
+-    WaitForFreeSpace(pDevEvo, pEvoCursorControl);
++    if (!WaitForFreeSpace(pDevEvo, pEvoCursorControl)) {
++        return;
++    }
+     pEvoCursorControl->Update =
+             DRF_DEF(C57A, _UPDATE, _FLIP_LOCK_PIN, _LOCK_PIN_NONE) |
+             DRF_DEF(C57A, _UPDATE, _RELEASE_ELV, _TRUE);
+diff --git a/src/nvidia-modeset/src/nvkms-dma.c b/src/nvidia-modeset/src/nvkms-dma.c
+index 6f13f80e0a70cb8449bf17206d91f35df5daba7f..a61728becb34236028069169ec161f7d4e2c0109 100644
+--- a/src/nvidia-modeset/src/nvkms-dma.c
++++ b/src/nvidia-modeset/src/nvkms-dma.c
+@@ -39,6 +39,10 @@ void nvDmaKickoffEvo(NVEvoChannelPtr pChannel)
+     NVDmaBufferEvoPtr p = &pChannel->pb;
+     NvU32 putOffset;
+ 
++    /* Displayless windows have no DMA buffer. */
++    if (p->base == NULL) {
++        return;
++    }
+     if (nvDisplayUnavailable(p->pDevEvo)) {
+         p->pDevEvo->displayChannelFailed = TRUE;
+         return;
+diff --git a/src/nvidia-modeset/src/nvkms-rm.c b/src/nvidia-modeset/src/nvkms-rm.c
+index c233ae57e50ee28adb381e83853e252897b60b7c..98f7ba30a3bd101445aecf555c42f87101730d6f 100644
+--- a/src/nvidia-modeset/src/nvkms-rm.c
++++ b/src/nvidia-modeset/src/nvkms-rm.c
+@@ -3137,7 +3137,7 @@ static void RmFreeEvoChannel(NVDevEvoPtr pDevEvo, NVEvoChannelPtr pChannel)
+                            pChannel->channelMask);
+         const NvBool isWindow =
+             (pChannel->channelMask & NV_EVO_CHANNEL_MASK_WINDOW_ALL) != 0;
+-        if ((isCore || isWindow) && pDevEvo->skipConsoleRestore) {
++        if ((isCore || isWindow) && pDevEvo->skipConsoleRestore && !nvDisplayUnavailable(pDevEvo)) {
+             NV5070_CTRL_SET_RMFREE_FLAGS_PARAMS params = { };
+ 
+             params.flags = NV5070_CTRL_SET_RMFREE_FLAGS_PRESERVE_HW;

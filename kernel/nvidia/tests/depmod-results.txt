@@ -1,0 +1,10 @@
+fork /lib/modules/7.2.15-300.fc45.x86_64/updates/olo/nvidia.ko
+fork /lib/modules/7.2.15-300.fc45.x86_64/updates/olo/nvidia-modeset.ko
+fork /lib/modules/7.2.15-300.fc45.x86_64/updates/olo/nvidia-uvm.ko
+fork /lib/modules/7.2.15-300.fc45.x86_64/updates/olo/nvidia-drm.ko
+fork /lib/modules/7.2.15-300.fc45.x86_64/updates/olo/nvidia-peermem.ko
+stock /lib/modules/7.2.15-300.fc45.x86_64/extra/nvidia/nvidia.ko.xz
+stock /lib/modules/7.2.15-300.fc45.x86_64/extra/nvidia/nvidia-modeset.ko.xz
+stock /lib/modules/7.2.15-300.fc45.x86_64/extra/nvidia/nvidia-uvm.ko.xz
+stock /lib/modules/7.2.15-300.fc45.x86_64/extra/nvidia/nvidia-drm.ko.xz
+stock /lib/modules/7.2.15-300.fc45.x86_64/extra/nvidia/nvidia-peermem.ko.xz

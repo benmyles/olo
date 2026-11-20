@@ -1,0 +1,6 @@
+EVO stuck GET: bounded, 10000 subsequent headers/data/kicks suppressed
+EVO advancing GET: wrapped, wrote payload 42, published PUT 8
+cached RM failure: immediate refusal, no yield, no PUT
+notifier: real completion succeeds; stalled notifier fails without writing DONE
+GPFIFO main ring: bounded, repeated immediate/scalar/bulk methods suppressed
+GPFIFO full entry queue: bounded, no entry or doorbell publication

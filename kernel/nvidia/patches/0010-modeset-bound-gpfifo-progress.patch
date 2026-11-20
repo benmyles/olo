@@ -1,0 +1,298 @@
+Subject: [PATCH] nvidia-push: bound the secondary GPFIFO and ring reservations
+
+Head-surface and DIFR channels use nvidia-push, distinct from the EVO ring.
+Handle full GPFIFO, full main ring and persistent channel error without
+spinning or recursing. Block scalar, floating, inline and immediate data
+and doorbell publication after failure. Report loss through the importing
+NVKMS device and leave notifier data untouched when completion is unknown.
+These paths are candidates for separate regression testing on a display GPU.
+
+diff --git a/src/common/unix/nvidia-push/interface/nvidia-push-methods.h b/src/common/unix/nvidia-push/interface/nvidia-push-methods.h
+index ac0cb2f5f3e6b7536e988118a5c137154d244a07..89d7df02ab43a34181e61e12d9a8d8d22d9b9d19 100644
+--- a/src/common/unix/nvidia-push/interface/nvidia-push-methods.h
++++ b/src/common/unix/nvidia-push/interface/nvidia-push-methods.h
+@@ -39,6 +39,9 @@ extern "C" {
+ 
+ static inline void __nvPushSetMethodDataSegment(NvPushChannelSegmentPtr s, const NvU32 data)
+ {
++    if (s->stopped) {
++        return;
++    }
+     s->buffer->u = data;
+     s->buffer++;
+ }
+@@ -51,6 +54,9 @@ static inline void nvPushSetMethodData(NvPushChannelPtr p, const NvU32 data)
+ #if NV_PUSH_ALLOW_FLOAT
+ static inline void __nvPushSetMethodDataSegmentF(NvPushChannelSegmentPtr s, const float data)
+ {
++    if (s->stopped) {
++        return;
++    }
+     s->buffer->f = data;
+     s->buffer++;
+ }
+@@ -99,6 +105,9 @@ nvDmaMoveDWORDS(NvPushChannelUnion *dst, const NvU32* src, int dwords)
+ static inline void nvPushInlineData(NvPushChannelPtr p, const void *data,
+                                     size_t dwords)
+ {
++    if (p->main.stopped) {
++        return;
++    }
+     nvDmaMoveDWORDS(p->main.buffer, (const NvU32 *)data, dwords);
+     p->main.buffer += dwords;
+ }
+@@ -198,7 +207,7 @@ static inline NvBool __nvPushStartSplitsSemaphore(
+     if ((_pSegment)->freeDwords < ((_count)+1))                       \
+         __nvPushMakeRoom((_push_buffer), (_count) + 1);               \
+     __nvPushSetMethodDataSegment((_pSegment), (_header));             \
+-    (_pSegment)->freeDwords -= ((_count)+1);                          \
++    if (!_pSegment->stopped) _pSegment->freeDwords -= ((_count)+1);                          \
+ } while(0)
+ 
+ #define __nvPushStart(_push_buffer, _segment, _subch, _offset, _count, _opcode) \
+@@ -230,7 +239,7 @@ static inline NvBool __nvPushStartSplitsSemaphore(
+         DRF_NUM(C46F, _DMA, _IMMD_DATA,             _data)   |        \
+         DRF_NUM(C46F, _DMA, _METHOD_SUBCHANNEL,    _subch)   |        \
+         DRF_NUM(C46F, _DMA, _METHOD_ADDRESS,    (_offset) >> 2));     \
+-    (_push_buffer)->_segment.freeDwords--;                            \
++    if (!(_push_buffer)->_segment.stopped) (_push_buffer)->_segment.freeDwords--;                            \
+ }
+ 
+ #define nvPushImmedVal(_push_buffer, _subch, _offset, _data) \
+diff --git a/src/common/unix/nvidia-push/interface/nvidia-push-types.h b/src/common/unix/nvidia-push/interface/nvidia-push-types.h
+index 89e55c4d92a3e76807bc5b0281fc1e9c9521a8cd..91a3aeb5d0042e67a55c935016c3969a969d1242 100644
+--- a/src/common/unix/nvidia-push/interface/nvidia-push-types.h
++++ b/src/common/unix/nvidia-push/interface/nvidia-push-types.h
+@@ -120,6 +120,7 @@ typedef struct _NvPushDeviceRec {
+ 
+ typedef struct _NvPushChannelSegmentRec
+ {
++    NvBool              stopped;     // No more writes to this segment.
+     NvU32               freeDwords;  // free space (in dwords)
+     NvU32               sizeInBytes; // Push buffer size (in bytes)
+     NvU32               putOffset;   // Offset of last kickoff
+@@ -263,6 +264,8 @@ typedef struct _NvPushImports {
+         NV_PUSH_PRINTF_ATTRIBUTES(2,3);
+ #endif
+ 
++    /* Non-waking lifetime check by the owner of this device. */
++    NvBool (*deviceUnavailable)(NvPushDevicePtr pDevice);
+ } NvPushImports;
+ 
+ 
+diff --git a/src/common/unix/nvidia-push/src/nvidia-push.c b/src/common/unix/nvidia-push/src/nvidia-push.c
+index df58d210d64cd4218acab8a9831057b8da555cc6..0a7c0f7757ea9d0510c54b6ab2a804e5dd6bd635 100644
+--- a/src/common/unix/nvidia-push/src/nvidia-push.c
++++ b/src/common/unix/nvidia-push/src/nvidia-push.c
+@@ -57,6 +57,25 @@
+             DRF_NUM(C46F, _DMA, _SET_SUBDEVICE_MASK_VALUE, _mask));     \
+     } while(0)
+ 
++static void StopSubmission(NvPushChannelPtr p, NvU32 reason)
++{
++    if (!p->main.stopped) {
++        p->main.stopped = TRUE;
++        p->progressTracker.stopped = TRUE;
++        p->channelErrorOccurred = TRUE;
++        nvPushImportChannelErrorOccurred(p, reason);
++    }
++}
++
++static NvBool SubmissionStopped(NvPushChannelPtr p)
++{
++    if (!p->main.stopped && p->pDevice->pImports->deviceUnavailable &&
++        p->pDevice->pImports->deviceUnavailable(p->pDevice)) {
++        StopSubmission(p, NV_ERR_GPU_IS_LOST);
++    }
++    return p->main.stopped;
++}
++
+ /*!
+  * Check for a channel error on pChannel.
+  *
+@@ -74,6 +93,9 @@ NvBool nvPushCheckChannelError(NvPushChannelPtr pChannel)
+     unsigned short status;
+     NvNotification *pNotifier;
+ 
++    if (SubmissionStopped(pChannel)) {
++        return TRUE;
++    }
+     if (pChannel->ignoreChannelErrors) {
+         return FALSE;
+     }
+@@ -84,8 +106,7 @@ NvBool nvPushCheckChannelError(NvPushChannelPtr pChannel)
+     status = pNotifier->status;
+ 
+     if (status == 0xFFFF) {
+-        nvPushImportChannelErrorOccurred(pChannel, pNotifier->info32);
+-        pChannel->channelErrorOccurred = TRUE;
++        StopSubmission(pChannel, pNotifier->info32);
+         return TRUE;
+     }
+ 
+@@ -358,12 +379,20 @@ static NvBool nvWriteGpEntry(
+ 
+     nvAssert((nextGpPut % 2) == 0);
+ 
+-    // Wait for a free entry in the buffer
++    // No timeout reset on repeated observations of the same consumer.
++    NvU64 start = 0;
+     while (nextGpPut == ReadGpGetOffset(push_buffer)) {
+         if (nvPushCheckChannelError(push_buffer)) {
+-            nvAssert(!"A channel error occurred in nvWriteGpEntry()");
+             return FALSE;
+         }
++        NvU64 now = nvPushImportGetMilliSeconds(pDevice);
++        if (start == 0) {
++            start = now;
++        } else if (now - start >= NV_PUSH_NOTIFIER_LONG_TIMEOUT) {
++            StopSubmission(push_buffer, NV_ERR_TIMEOUT);
++            return FALSE;
++        }
++        nvPushImportYield(pDevice);
+     }
+     gpPointer[0] = gpEntry0;
+     gpPointer[1] = gpEntry1;
+@@ -387,7 +416,7 @@ static void Kickoff(NvPushChannelPtr p, NvBool progressTrackerWFI)
+ {
+     NvU32 putOffset;
+ 
+-    if (!p) {
++    if (!p || SubmissionStopped(p)) {
+         return;
+     }
+ 
+@@ -552,14 +581,17 @@ static NvBool IdleChannel(NvPushChannelPtr p, NvBool progressTrackerWFI,
+     for (baseTime = currentTime = nvPushImportGetMilliSeconds(p->pDevice);
+          TRUE; currentTime = nvPushImportGetMilliSeconds(p->pDevice)) {
+ 
++        if (SubmissionStopped(p)) {
++            return FALSE;
++        }
+         nvAssert(p->main.putOffset != 0);
+ 
+         if (nvPushReadGetOffset(p, TRUE) == p->main.putOffset) {
+             return TRUE;
+         }
+ 
+-        if (currentTime > (baseTime + timeoutMSec) &&
+-            !p->noTimeout) {
++        if ((!p->noTimeout || p->pDevice->pImports->deviceUnavailable) &&
++            currentTime - baseTime >= timeoutMSec) {
+             return FALSE;
+         }
+     }
+@@ -619,6 +651,11 @@ void __nvPushMakeRoom(NvPushChannelPtr push_buffer, NvU32 count)
+     NvU32 getOffset;
+     NvU32 putOffset;
+     NvBool fenceToEnd = FALSE;
++    NvU64 start;
++    if (SubmissionStopped(push_buffer)) {
++        return;
++    }
++    start = nvPushImportGetMilliSeconds(push_buffer->pDevice);
+ 
+     putOffset = (NvU32) ((char *)push_buffer->main.buffer -
+                          (char *)push_buffer->main.base);
+@@ -633,14 +670,14 @@ void __nvPushMakeRoom(NvPushChannelPtr push_buffer, NvU32 count)
+ 
+     while (count >= push_buffer->main.freeDwords) {
+         if (nvPushCheckChannelError(push_buffer)) {
+-            nvAssert(!"A channel error occurred in __nvPushMakeRoom()");
+-            // Unlike with non-gpfifo channels, RC recovery can't reset GET to
+-            // 0 so we need to continue as if we just started waiting for space.
+-            return __nvPushMakeRoom(push_buffer, count);
++            return;
+         }
+ 
+         getOffset = nvPushReadGetOffset(push_buffer, TRUE);
+-        nvAssert(getOffset <= push_buffer->main.sizeInBytes);
++        if (getOffset > push_buffer->main.sizeInBytes) {
++            StopSubmission(push_buffer, NV_ERR_INVALID_STATE);
++            return;
++        }
+ 
+         if (getOffset > putOffset) {
+             // We previously wrapped.  The space between PUT and GET is
+@@ -682,9 +719,13 @@ void __nvPushMakeRoom(NvPushChannelPtr push_buffer, NvU32 count)
+             }
+         }
+ 
+-        if (nvPushCheckChannelError(push_buffer)) {
+-            nvAssert(!"A channel error was recovered when waiting for room in push buffer");
+-            return __nvPushMakeRoom(push_buffer, count);
++        if (count >= push_buffer->main.freeDwords) {
++            if (nvPushImportGetMilliSeconds(push_buffer->pDevice) - start >=
++                NV_PUSH_NOTIFIER_LONG_TIMEOUT) {
++                StopSubmission(push_buffer, NV_ERR_TIMEOUT);
++                return;
++            }
++            nvPushImportYield(push_buffer->pDevice);
+         }
+     }
+ 
+@@ -806,9 +847,8 @@ void nvPushWaitForNotifier(
+             short_timeout = (newtime > short_timeout_value);
+             long_timeout = (newtime > long_timeout_value);
+ 
+-            if (p->noTimeout) {
+-                short_timeout = FALSE;
+-                long_timeout = FALSE;
++            if (p->noTimeout && !p->pDevice->pImports->deviceUnavailable) {
++                short_timeout = long_timeout = FALSE;
+             }
+ 
+             if (nvPushCheckChannelError(p)) {
+@@ -833,10 +873,8 @@ void nvPushWaitForNotifier(
+                         id, pNotify->status, getOffset, p->main.putOffset);
+                     nvAssert(!"PUT == GET, but notifier has not completed; returning!");
+ 
+-                    /* Set status to done in case it is read */
+-                    pNotify->status = NV2080_SUBDEVICE_NOTIFICATION_STATUS_DONE_SUCCESS;
+-
+-                    continue;
++                    StopSubmission(p, NV_ERR_TIMEOUT);
++                    return;
+                 }
+ 
+                 if (long_timeout) {
+@@ -846,9 +884,7 @@ void nvPushWaitForNotifier(
+                         id, pNotify->status, getOffset, p->main.putOffset);
+                     nvAssert(!"Long timeout exceeded; PUT != GET; returning!");
+ 
+-                    /* Set status to done in case it is read */
+-                    pNotify->status = NV2080_SUBDEVICE_NOTIFICATION_STATUS_DONE_SUCCESS;
+-
++                    StopSubmission(p, NV_ERR_TIMEOUT);
+                     return;
+                 }
+ 
+diff --git a/src/nvidia-modeset/src/nvkms-push.c b/src/nvidia-modeset/src/nvkms-push.c
+index 4b6094ac3961797ab844d502ca57e2bbbcc5ff4d..a25da0a5319e7a874cdfbf089dd80d7cb1583626 100644
+--- a/src/nvidia-modeset/src/nvkms-push.c
++++ b/src/nvidia-modeset/src/nvkms-push.c
+@@ -200,7 +200,15 @@ static void NvPushImportChannelErrorOccurred(
+     NvPushChannelPtr pChannel,
+     NvU32 channelErrCode)
+ {
+-    /* XXX TODO: implement me */
++    NVDevEvoPtr pDevEvo = pChannel->pDevice->hostDevice;
++    pDevEvo->displayChannelFailed = TRUE;
++    nvEvoLogDev(pDevEvo, EVO_LOG_ERROR,
++                "GPU push channel stopped (0x%08x)", channelErrCode);
++}
++
++static NvBool NvPushDeviceUnavailable(NvPushDevicePtr pDevice)
++{
++    return nvDisplayUnavailable(pDevice->hostDevice);
+ }
+ 
+ static void NvPushImportPushbufferWrapped(
+@@ -252,6 +260,7 @@ static const NvPushImports NvKmsNvPushImports = {
+ #if defined(DEBUG)
+     NvPushImportLogNvDiss,             /* logNvDiss */
+ #endif
++    NvPushDeviceUnavailable,           /* deviceUnavailable */
+ };
+ 
+ NvBool nvAllocNvPushDevice(NVDevEvoPtr pDevEvo)

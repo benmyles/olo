@@ -1,0 +1,48 @@
+Subject: [PATCH] pci: transfer the successful probe stack to remove
+
+PCI remove cannot fail. Returning early if the RM stack allocator fails
+would leave the driver's state behind after the PCI core detaches it.
+Retain the successful probe's stack through the binding instead. Null is
+a valid stack when RM does not require an architecture-specific altstack.
+
+diff --git a/kernel-open/common/inc/nv-linux.h b/kernel-open/common/inc/nv-linux.h
+index f377db1e9e6957b699dd84be53b6acf2f106ecfd..60e18bef0ac7bb34c998ec3721d4f699f1b381be 100644
+--- a/kernel-open/common/inc/nv-linux.h
++++ b/kernel-open/common/inc/nv-linux.h
+@@ -1471,6 +1471,7 @@ typedef struct nv_linux_state_s {
+ 
+     /* Per-device GPU init on probe setting, initialized from global NVreg_GpuInitOnProbe */
+     NvBool init_on_probe;
++    nvidia_stack_t *pci_remove_stack; /* transferred from successful PCI probe */
+ } nv_linux_state_t;
+ 
+ extern nv_linux_state_t *nv_linux_devices;
+diff --git a/kernel-open/nvidia/nv-pci.c b/kernel-open/nvidia/nv-pci.c
+index 48d8b7889961ed499954dfd765d9821d4d5e4f97..b33812bb672b4d49915736b24b90e4acea0657fe 100644
+--- a/kernel-open/nvidia/nv-pci.c
++++ b/kernel-open/nvidia/nv-pci.c
+@@ -2619,7 +2619,8 @@ nv_pci_probe_body
+     else
+         WRITE_ONCE(nv_non_ats_device_present, NV_TRUE);
+ 
+-    nv_kmem_cache_free_stack(sp);
++    /* PCI remove has no error return and must not need a new altstack. */
++    nvl->pci_remove_stack = sp;
+ 
+     return 0;
+ 
+@@ -2803,12 +2804,8 @@ static void nv_pci_remove_helper(struct pci_dev *pci_dev, bool block_if_gpu_in_u
+         return;
+     }
+ 
+-    if (nv_kmem_cache_alloc_stack(&sp) != 0)
+-    {
+-        up(&nvl->ldata_lock);
+-        UNLOCK_NV_LINUX_DEVICES();
+-        return;
+-    }
++    sp = nvl->pci_remove_stack;
++    nvl->pci_remove_stack = NULL;
+ 
+     nv_linux_remove_device_locked(nvl);
+ 
