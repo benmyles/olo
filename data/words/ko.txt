@@ -421,12 +421,6 @@ A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference
 A repository’s key needs to be trusted
 저장소 키를 신뢰할지 확인하세요
 
-A reset this account asked for hasn’t been answered yet. The sign-in is taken as soon as it has.
-이 계정이 요청한 재설정에 아직 응답이 없습니다. 응답이 오는 즉시 로그인을 가져옵니다.
-
-A reset this account asked for hasn’t been answered yet. This sign-in doesn’t say which account it is. Sign in again once it has.
-이 계정이 요청한 재설정에 아직 응답이 없습니다. 이 로그인으로는 어느 계정인지 알 수 없습니다. 그 후 다시 로그인하세요.
-
 A resting palm can't click (its pressure doesn't count)
 손바닥을 올려놓아도 클릭되지 않음 (압력 제외)
 
@@ -10075,9 +10069,6 @@ The account answering now
 The account couldn’t be saved ({}).
 계정을 저장할 수 없습니다({}).
 
-The account left the pool while signing in.
-로그인하는 동안 계정이 풀에서 제거되었습니다.
-
 The address search answered {}.
 주소 검색 응답: {}.
 
@@ -10134,15 +10125,6 @@ The coming days, each its sky, low and high.
 
 The computer couldn't be restarted: {}
 컴퓨터를 다시 시작할 수 없습니다: {}
-
-The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
-이 복사본이 대체한 Token Pool이 아직 요청을 마무리하고 있습니다. 잠시 후 계정을 추가하세요.
-
-The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
-이 복사본이 대체한 Token Pool이 아직 요청을 마무리하고 있습니다. 잠시 후 다시 로그인하세요.
-
-The copy of Token Pool this one replaced is still finishing its requests. The sign-in is taken as soon as it has.
-이 복사본이 대체한 Token Pool이 아직 요청을 마무리하고 있습니다. 마무리되는 즉시 로그인을 가져옵니다.
 
 The day before, at 9 AM
 하루 전 오전 9시

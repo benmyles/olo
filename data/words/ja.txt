@@ -421,12 +421,6 @@ A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference
 A repository’s key needs to be trusted
 リポジトリの鍵を信頼するか確認してください
 
-A reset this account asked for hasn’t been answered yet. The sign-in is taken as soon as it has.
-このアカウントが要求したリセットにまだ応答がありません。応答が届き次第、サインインを取り込みます。
-
-A reset this account asked for hasn’t been answered yet. This sign-in doesn’t say which account it is. Sign in again once it has.
-このアカウントが要求したリセットにまだ応答がありません。このサインインからは、どのアカウントのものか分かりません。その後、もう一度サインインしてください。
-
 A resting palm can't click (its pressure doesn't count)
 手のひらの圧力をクリックに含めない
 
@@ -10075,9 +10069,6 @@ The account answering now
 The account couldn’t be saved ({}).
 アカウントを保存できませんでした（{}）。
 
-The account left the pool while signing in.
-サインイン中にアカウントがプールから外されました。
-
 The address search answered {}.
 アドレス検索の応答：{}。
 
@@ -10134,15 +10125,6 @@ The coming days, each its sky, low and high.
 
 The computer couldn't be restarted: {}
 コンピューターを再起動できませんでした：{}
-
-The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
-置き換えられたToken Poolのコピーが、まだリクエストを処理しています。少ししてからアカウントを追加してください。
-
-The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
-置き換えられたToken Poolのコピーが、まだリクエストを処理しています。少ししてからもう一度サインインしてください。
-
-The copy of Token Pool this one replaced is still finishing its requests. The sign-in is taken as soon as it has.
-置き換えられたToken Poolのコピーが、まだリクエストを処理しています。処理が終わり次第、サインインを取り込みます。
 
 The day before, at 9 AM
 前日の午前9時

@@ -427,12 +427,6 @@ A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference
 A repository’s key needs to be trusted
 Нужно подтвердить доверие к ключу репозитория
 
-A reset this account asked for hasn’t been answered yet. The sign-in is taken as soon as it has.
-На сброс, запрошенный этой учётной записью, ещё нет ответа. Вход будет принят, как только придёт ответ.
-
-A reset this account asked for hasn’t been answered yet. This sign-in doesn’t say which account it is. Sign in again once it has.
-На сброс, запрошенный этой учётной записью, ещё нет ответа. По этому входу нельзя определить, чья это учётная запись. После этого войдите снова.
-
 A resting palm can't click (its pressure doesn't count)
 Не учитывать давление лежащей ладони
 
@@ -10150,9 +10144,6 @@ The account answering now
 The account couldn’t be saved ({}).
 Не удалось сохранить учётную запись ({}).
 
-The account left the pool while signing in.
-Учётная запись покинула пул во время входа.
-
 The address search answered {}.
 Ответ службы поиска адресов: {}.
 
@@ -10209,15 +10200,6 @@ The coming days, each its sky, low and high.
 
 The computer couldn't be restarted: {}
 Не удалось перезапустить компьютер: {}
-
-The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
-Копия Token Pool, которую заменила эта, ещё завершает свои запросы. Добавьте учётную запись через минуту.
-
-The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
-Копия Token Pool, которую заменила эта, ещё завершает свои запросы. Войдите снова через минуту.
-
-The copy of Token Pool this one replaced is still finishing its requests. The sign-in is taken as soon as it has.
-Копия Token Pool, которую заменила эта, ещё завершает свои запросы. Вход будет принят, как только она закончит.
 
 The day before, at 9 AM
 Накануне, в 9:00

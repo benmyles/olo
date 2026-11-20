@@ -463,6 +463,20 @@ async fn open(base: &str, alpn: &[&str]) -> Result<Box<dyn Io>, SendError> {
     if !tls {
         return Ok(Box::new(tcp));
     }
+    let config = tls_offer(alpn)?;
+    let name = ServerName::try_from(host.clone()).map_err(|e| SendError::Connect(e.to_string()))?;
+    let stream = tokio_rustls::TlsConnector::from(Arc::new(config)).connect(name, tcp).await.map_err(|e| SendError::Connect(format!("{host}: {e}")))?;
+    Ok(Box::new(stream))
+}
+
+/// What the pool offers a host in its TLS handshake: rustls with
+/// aws-lc-rs's suites and schemes in their own order, and `alpn` (the
+/// client's own offer). It is what Codex 0.170 itself offers when it
+/// trusts an authority of the person's (the same rustls and provider:
+/// `the_pools_offer_is_codexs_under_an_authority`); it isn't what Codex
+/// offers with only its own roots (OpenSSL's), nor either of Claude
+/// Code's two (BoringSSL's, Bun's): docs/reports/token-pool-tls.md.
+fn tls_offer(alpn: &[&str]) -> Result<rustls::ClientConfig, SendError> {
     let crypto = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
     let mut config = rustls::ClientConfig::builder_with_provider(crypto)
         .with_safe_default_protocol_versions()
@@ -470,9 +484,7 @@ async fn open(base: &str, alpn: &[&str]) -> Result<Box<dyn Io>, SendError> {
         .with_root_certificates(crate::capture::roots())
         .with_no_client_auth();
     config.alpn_protocols = alpn.iter().map(|p| p.as_bytes().to_vec()).collect();
-    let name = ServerName::try_from(host.clone()).map_err(|e| SendError::Connect(e.to_string()))?;
-    let stream = tokio_rustls::TlsConnector::from(Arc::new(config)).connect(name, tcp).await.map_err(|e| SendError::Connect(format!("{host}: {e}")))?;
-    Ok(Box::new(stream))
+    Ok(config)
 }
 
 /// A new connection to `base`'s host: TLS (offering `alpn`) for `https`,
@@ -512,13 +524,7 @@ async fn connect_now(base: &str, alpn: &[&str]) -> Result<Sender, SendError> {
         });
         return Ok(Sender::H1(sender));
     }
-    let crypto = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
-    let mut config = rustls::ClientConfig::builder_with_provider(crypto)
-        .with_safe_default_protocol_versions()
-        .map_err(|e| SendError::Connect(e.to_string()))?
-        .with_root_certificates(crate::capture::roots())
-        .with_no_client_auth();
-    config.alpn_protocols = alpn.iter().map(|p| p.as_bytes().to_vec()).collect();
+    let config = tls_offer(alpn)?;
     let name = ServerName::try_from(host.clone()).map_err(|e| SendError::Connect(e.to_string()))?;
     let stream = tokio_rustls::TlsConnector::from(Arc::new(config)).connect(name, tcp).await.map_err(|e| SendError::Connect(format!("{host}: {e}")))?;
     if stream.get_ref().1.alpn_protocol() == Some(b"h2") {
@@ -614,6 +620,59 @@ mod tests {
 #[cfg(test)]
 mod more {
     use super::*;
+
+    /// The pool's own TLS offer, read as a host reads it: the suites and
+    /// signature schemes Codex 0.170.0 offered in every capture of it
+    /// made through an authority (its rustls stack: `Capture::hellos`,
+    /// runs "print", "session", "app-server"), in the same order. A
+    /// rustls or aws-lc-rs that offers otherwise fails here: look at what
+    /// Codex's does by then (a capture's hellos) before changing it.
+    #[tokio::test]
+    async fn the_pools_offer_is_codexs_under_an_authority() {
+        const SUITES: &[&str] = &[
+            "TLS13_AES_256_GCM_SHA384",
+            "TLS13_AES_128_GCM_SHA256",
+            "TLS13_CHACHA20_POLY1305_SHA256",
+            "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
+            "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+            "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256",
+            "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+            "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+            "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
+            "TLS_EMPTY_RENEGOTIATION_INFO_SCSV",
+        ];
+        const SCHEMES: &[&str] = &[
+            "ECDSA_NISTP384_SHA384",
+            "ECDSA_NISTP256_SHA256",
+            "ECDSA_NISTP521_SHA512",
+            "ED25519",
+            "RSA_PSS_SHA512",
+            "RSA_PSS_SHA384",
+            "RSA_PSS_SHA256",
+            "RSA_PKCS1_SHA512",
+            "RSA_PKCS1_SHA384",
+            "RSA_PKCS1_SHA256",
+            "ML_DSA_44",
+            "ML_DSA_65",
+            "ML_DSA_87",
+        ];
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let at = l.local_addr().unwrap();
+        let config = tls_offer(&["h2", "http/1.1"]).unwrap();
+        tokio::spawn(async move {
+            let tcp = TcpStream::connect(at).await.unwrap();
+            // (It never gets an answer: only its offer is wanted.)
+            let _ = tokio_rustls::TlsConnector::from(Arc::new(config)).connect(ServerName::try_from("chatgpt.com").unwrap(), tcp).await;
+        });
+        let (tcp, _) = l.accept().await.unwrap();
+        let start = tokio_rustls::LazyConfigAcceptor::new(rustls::server::Acceptor::default(), tcp).await.unwrap();
+        let hello = start.client_hello();
+        let suites: Vec<String> = hello.cipher_suites().iter().map(|c| format!("{c:?}")).collect();
+        let schemes: Vec<String> = hello.signature_schemes().iter().map(|c| format!("{c:?}")).collect();
+        let alpn: Vec<String> = hello.alpn().map(|a| a.map(|p| String::from_utf8_lossy(p).into_owned()).collect()).unwrap_or_default();
+        assert_eq!((suites.iter().map(String::as_str).collect::<Vec<_>>(), schemes.iter().map(String::as_str).collect::<Vec<_>>()), (SUITES.to_vec(), SCHEMES.to_vec()));
+        assert_eq!(alpn, ["h2", "http/1.1"]);
+    }
 
     /// A request sent over HTTP/2 names its origin in its target and has
     /// no `Host`, nor any header its `Connection` named (Codex's third look:

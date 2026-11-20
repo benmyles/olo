@@ -423,12 +423,6 @@ A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference
 A repository’s key needs to be trusted
 सॉफ़्टवेयर स्रोत की कुंजी पर भरोसे की पुष्टि चाहिए
 
-A reset this account asked for hasn’t been answered yet. The sign-in is taken as soon as it has.
-इस खाते के माँगे एक रीसेट का अभी उत्तर नहीं आया है। जवाब आते ही साइन-इन ले लिया जाएगा।
-
-A reset this account asked for hasn’t been answered yet. This sign-in doesn’t say which account it is. Sign in again once it has.
-इस खाते के माँगे एक रीसेट का अभी उत्तर नहीं आया है। इस साइन-इन से पता नहीं चलता कि यह किस खाते का है। उसके बाद फिर साइन इन करें।
-
 A resting palm can't click (its pressure doesn't count)
 हथेली टिकाने पर क्लिक नहीं होगा (उसका दबाव नहीं गिना जाता)
 
@@ -10100,9 +10094,6 @@ The account answering now
 The account couldn’t be saved ({}).
 खाता सहेज नहीं सके ({})।
 
-The account left the pool while signing in.
-साइन इन करते समय खाता पूल से निकल गया।
-
 The address search answered {}.
 पते की खोज का जवाब: {}।
 
@@ -10159,15 +10150,6 @@ The coming days, each its sky, low and high.
 
 The computer couldn't be restarted: {}
 कंप्यूटर रीस्टार्ट नहीं हो सका: {}
-
-The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
-Token Pool की जिस प्रति की जगह इसने ली, वह अभी अपने अनुरोध पूरे कर रही है। थोड़ी देर में खाता जोड़ें।
-
-The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
-Token Pool की जिस प्रति की जगह इसने ली, वह अभी अपने अनुरोध पूरे कर रही है। थोड़ी देर में फिर साइन इन करें।
-
-The copy of Token Pool this one replaced is still finishing its requests. The sign-in is taken as soon as it has.
-Token Pool की जिस प्रति की जगह इसने ली, वह अभी अपने अनुरोध पूरे कर रही है। उसके पूरा होते ही साइन-इन ले लिया जाएगा।
 
 The day before, at 9 AM
 एक दिन पहले, सुबह 9 बजे

@@ -24066,9 +24066,15 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   "no_credit"|"already_redeemed", "windows_reset": n}`; the pool takes
   Codex's own requests from its app server (its TUI's quota read asks
   for Reserve, which the pool can't use). Cookies are kept per account
-  and host. Not yet the same: the TLS handshake (Claude Code's is
-  BoringSSL's, two of them; Codex's native one OpenSSL's; the pool's
-  rustls).
+  and host. The TLS handshake under them: what the pool offers a host
+  (`relay::tls_offer`: rustls with aws-lc-rs, the client's own ALPN)
+  is what Codex itself offers when it trusts an authority of the
+  person's, as it does through the pool: the same suites and signature
+  schemes in the same order, held to the captures' by a test
+  (`the_pools_offer_is_codexs_under_an_authority`). It is neither of
+  Claude Code's two (BoringSSL's, Bun's), nor Codex's with only its own
+  roots (OpenSSL's): docs/reports/token-pool-tls.md says what each
+  offers and what matching would take.
 - **Passed on exactly** (`relay.rs`): a Claude model request goes on as
   Claude Code sent it, byte for byte: each header's name in its own
   case (hyper's server writes it down, its client writes it back:

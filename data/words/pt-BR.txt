@@ -423,12 +423,6 @@ A referência tem a forma op://vault/item/field. Para obtê-la, escolha Copiar r
 A repository’s key needs to be trusted
 É preciso confiar na chave do repositório
 
-A reset this account asked for hasn’t been answered yet. The sign-in is taken as soon as it has.
-Uma redefinição pedida por esta conta ainda não foi respondida. O início de sessão será adotado assim que houver resposta.
-
-A reset this account asked for hasn’t been answered yet. This sign-in doesn’t say which account it is. Sign in again once it has.
-Uma redefinição pedida por esta conta ainda não foi respondida. Este início de sessão não diz de qual conta é. Depois, inicie a sessão de novo.
-
 A resting palm can't click (its pressure doesn't count)
 Ignorar a pressão da palma ao clicar
 
@@ -10100,9 +10094,6 @@ A conta que está respondendo
 The account couldn’t be saved ({}).
 Não foi possível salvar a conta ({}).
 
-The account left the pool while signing in.
-A conta saiu do pool durante o início de sessão.
-
 The address search answered {}.
 A busca de endereço retornou {}.
 
@@ -10159,15 +10150,6 @@ Previsão para os próximos dias, com o céu e as temperaturas mínima e máxima
 
 The computer couldn't be restarted: {}
 Não foi possível reiniciar o computador: {}
-
-The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
-A cópia do Token Pool que esta substituiu ainda está terminando suas solicitações. Adicione a conta em instantes.
-
-The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
-A cópia do Token Pool que esta substituiu ainda está terminando suas solicitações. Inicie a sessão novamente em instantes.
-
-The copy of Token Pool this one replaced is still finishing its requests. The sign-in is taken as soon as it has.
-A cópia do Token Pool que esta substituiu ainda está terminando suas solicitações. O início de sessão será adotado assim que ela terminar.
 
 The day before, at 9 AM
 No dia anterior, às 9h

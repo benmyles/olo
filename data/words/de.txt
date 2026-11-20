@@ -423,12 +423,6 @@ Ein Verweis sieht aus wie op://tresor/eintrag/feld („Geheimnis-Verweis kopiere
 A repository’s key needs to be trusted
 Dem Schlüssel eines Repositorys muss vertraut werden
 
-A reset this account asked for hasn’t been answered yet. The sign-in is taken as soon as it has.
-Eine Zurücksetzung, die dieser Account angefordert hat, ist noch nicht beantwortet. Die Anmeldung wird übernommen, sobald sie beantwortet ist.
-
-A reset this account asked for hasn’t been answered yet. This sign-in doesn’t say which account it is. Sign in again once it has.
-Eine Zurücksetzung, die dieser Account angefordert hat, ist noch nicht beantwortet. Diese Anmeldung sagt nicht, zu welchem Account sie gehört. Melden Sie sich danach erneut an.
-
 A resting palm can't click (its pressure doesn't count)
 Aufgelegte Hand klickt nicht (ihr Druck zählt nicht)
 
@@ -10100,9 +10094,6 @@ Das gerade antwortende Konto
 The account couldn’t be saved ({}).
 Das Konto konnte nicht gesichert werden ({}).
 
-The account left the pool while signing in.
-Der Account hat den Pool während der Anmeldung verlassen.
-
 The address search answered {}.
 Die Adresssuche antwortete {}.
 
@@ -10159,15 +10150,6 @@ Die kommenden Tage, jeder mit Himmel, Tiefst- und Höchstwert.
 
 The computer couldn't be restarted: {}
 Der Computer konnte nicht neu gestartet werden: {}
-
-The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
-Die ersetzte Kopie von Token Pool schließt noch ihre Anfragen ab. Fügen Sie den Account gleich hinzu.
-
-The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
-Die ersetzte Kopie von Token Pool schließt noch ihre Anfragen ab. Melden Sie sich gleich noch einmal an.
-
-The copy of Token Pool this one replaced is still finishing its requests. The sign-in is taken as soon as it has.
-Die ersetzte Kopie von Token Pool schließt noch ihre Anfragen ab. Die Anmeldung wird übernommen, sobald sie fertig ist.
 
 The day before, at 9 AM
 Am Vortag um 9 Uhr

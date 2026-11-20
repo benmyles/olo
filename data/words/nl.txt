@@ -423,12 +423,6 @@ Een verwijzing ziet eruit als op://vault/item/field. U vindt deze in Passwords v
 A repository’s key needs to be trusted
 De sleutel van een pakketbron moet worden vertrouwd
 
-A reset this account asked for hasn’t been answered yet. The sign-in is taken as soon as it has.
-Een reset die deze account heeft aangevraagd, is nog niet beantwoord. De aanmelding wordt overgenomen zodra er antwoord is.
-
-A reset this account asked for hasn’t been answered yet. This sign-in doesn’t say which account it is. Sign in again once it has.
-Een reset die deze account heeft aangevraagd, is nog niet beantwoord. Deze aanmelding zegt niet van welke account ze is. Meld u daarna opnieuw aan.
-
 A resting palm can't click (its pressure doesn't count)
 Druk van een rustende handpalm telt niet als klik
 
@@ -10100,9 +10094,6 @@ Het account dat nu antwoordt
 The account couldn’t be saved ({}).
 Account opslaan is mislukt ({}).
 
-The account left the pool while signing in.
-De account heeft de pool verlaten tijdens het inloggen.
-
 The address search answered {}.
 De adreszoekopdracht gaf {} terug.
 
@@ -10159,15 +10150,6 @@ De komende dagen met bewolking, minimum- en maximumtemperatuur.
 
 The computer couldn't be restarted: {}
 De computer herstarten is mislukt: {}
-
-The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
-De kopie van Token Pool die door deze is vervangen, rondt nog haar verzoeken af. Voeg de account over een ogenblik toe.
-
-The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
-De kopie van Token Pool die door deze is vervangen, rondt nog haar verzoeken af. Log over een ogenblik opnieuw in.
-
-The copy of Token Pool this one replaced is still finishing its requests. The sign-in is taken as soon as it has.
-De kopie van Token Pool die door deze is vervangen, rondt nog haar verzoeken af. De aanmelding wordt overgenomen zodra ze klaar is.
 
 The day before, at 9 AM
 De dag ervoor om 9.00 uur

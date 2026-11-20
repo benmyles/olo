@@ -421,12 +421,6 @@ A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference
 A repository’s key needs to be trusted
 需要确认是否信任软件源的密钥
 
-A reset this account asked for hasn’t been answered yet. The sign-in is taken as soon as it has.
-此账户请求的一次重置尚未得到答复。得到答复后即会采用此次登录。
-
-A reset this account asked for hasn’t been answered yet. This sign-in doesn’t say which account it is. Sign in again once it has.
-此账户请求的一次重置尚未得到答复。此次登录无法确定属于哪个账户。之后请重新登录。
-
 A resting palm can't click (its pressure doesn't count)
 手掌停放时不会触发点击（不计入手掌压力）
 
@@ -10075,9 +10069,6 @@ The account answering now
 The account couldn’t be saved ({}).
 无法保存账户（{}）。
 
-The account left the pool while signing in.
-登录期间该账户已离开池。
-
 The address search answered {}.
 地址搜索响应：{}。
 
@@ -10134,15 +10125,6 @@ The coming days, each its sky, low and high.
 
 The computer couldn't be restarted: {}
 无法重启电脑：{}
-
-The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
-被此副本替换的 Token Pool 仍在完成其请求。请稍后再添加账户。
-
-The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
-被此副本替换的 Token Pool 仍在完成其请求。请稍后再次登录。
-
-The copy of Token Pool this one replaced is still finishing its requests. The sign-in is taken as soon as it has.
-被此副本替换的 Token Pool 仍在完成其请求。它完成后即会采用此次登录。
 
 The day before, at 9 AM
 前一天上午 9 点

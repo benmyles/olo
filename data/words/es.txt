@@ -423,12 +423,6 @@ Una referencia es como op://bóveda/elemento/campo (Copiar referencia del secret
 A repository’s key needs to be trusted
 Hay que confiar en la clave de un repositorio
 
-A reset this account asked for hasn’t been answered yet. The sign-in is taken as soon as it has.
-Un restablecimiento que pidió esta cuenta aún no ha recibido respuesta. El inicio de sesión se tomará en cuanto tenga respuesta.
-
-A reset this account asked for hasn’t been answered yet. This sign-in doesn’t say which account it is. Sign in again once it has.
-Un restablecimiento que pidió esta cuenta aún no ha recibido respuesta. Este inicio de sesión no dice de qué cuenta es. Vuelve a iniciar sesión después.
-
 A resting palm can't click (its pressure doesn't count)
 Palma apoyada: sin clic (su presión no cuenta)
 
@@ -10100,9 +10094,6 @@ La cuenta que responde ahora
 The account couldn’t be saved ({}).
 No se pudo guardar la cuenta ({}).
 
-The account left the pool while signing in.
-La cuenta salió del grupo mientras se iniciaba sesión.
-
 The address search answered {}.
 La búsqueda de direcciones respondió {}.
 
@@ -10159,15 +10150,6 @@ Los próximos días, cada uno con su cielo, mínima y máxima.
 
 The computer couldn't be restarted: {}
 No se pudo reiniciar el ordenador: {}
-
-The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
-La copia de Token Pool a la que esta sustituyó aún está terminando sus solicitudes. Añade la cuenta en un momento.
-
-The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
-La copia de Token Pool a la que esta sustituyó aún está terminando sus solicitudes. Vuelve a iniciar sesión en un momento.
-
-The copy of Token Pool this one replaced is still finishing its requests. The sign-in is taken as soon as it has.
-La copia de Token Pool a la que esta sustituyó aún está terminando sus solicitudes. El inicio de sesión se tomará en cuanto termine.
 
 The day before, at 9 AM
 El día anterior a las 9:00

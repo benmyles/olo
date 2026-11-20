@@ -138,8 +138,6 @@ A program woken while the processors are busy runs at once, where it would wait 
 A red dot for an app with something unread in it
 A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference gives one).
 A repository’s key needs to be trusted
-A reset this account asked for hasn’t been answered yet. The sign-in is taken as soon as it has.
-A reset this account asked for hasn’t been answered yet. This sign-in doesn’t say which account it is. Sign in again once it has.
 A resting palm can't click (its pressure doesn't count)
 A rising swell
 A row of dots
@@ -3356,7 +3354,6 @@ The Theme’s Own
 The VPN couldn't be saved.
 The account answering now
 The account couldn’t be saved ({}).
-The account left the pool while signing in.
 The address search answered {}.
 The address search’s answer can’t be read: {}
 The agent is at work in a Terminal window, on its agent screen “{}” (Agent Screens shows it): it makes the account’s app in Google Cloud and signs Olo in with it. The account shows here when it’s done; you can talk to the agent in Terminal meanwhile.
@@ -3376,9 +3373,6 @@ The clock service (systemd-timedated) isn't answering.
 The code from {}, at {}.
 The coming days, each its sky, low and high.
 The computer couldn't be restarted: {}
-The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
-The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
-The copy of Token Pool this one replaced is still finishing its requests. The sign-in is taken as soon as it has.
 The day before, at 9 AM
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
 The device couldn't be disconnected.

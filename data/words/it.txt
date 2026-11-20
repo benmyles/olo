@@ -423,12 +423,6 @@ Un riferimento ha la forma op://vault/item/field. Per ottenerlo, scegli Copia ri
 A repository’s key needs to be trusted
 Occorre autorizzare la chiave del repository
 
-A reset this account asked for hasn’t been answered yet. The sign-in is taken as soon as it has.
-Un ripristino richiesto da questo account non ha ancora avuto risposta. L’accesso viene acquisito appena arriva la risposta.
-
-A reset this account asked for hasn’t been answered yet. This sign-in doesn’t say which account it is. Sign in again once it has.
-Un ripristino richiesto da questo account non ha ancora avuto risposta. Questo accesso non dice di quale account si tratta. Accedi di nuovo dopo.
-
 A resting palm can't click (its pressure doesn't count)
 Ignora la pressione del palmo durante il clic
 
@@ -10100,9 +10094,6 @@ L’account che sta rispondendo
 The account couldn’t be saved ({}).
 Impossibile salvare l’account ({}).
 
-The account left the pool while signing in.
-L'account ha lasciato il pool durante l'accesso.
-
 The address search answered {}.
 La ricerca dell’indirizzo ha restituito {}.
 
@@ -10159,15 +10150,6 @@ I prossimi giorni con condizioni del cielo, minime e massime.
 
 The computer couldn't be restarted: {}
 Impossibile riavviare il computer: {}
-
-The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
-La copia di Token Pool sostituita da questa sta ancora completando le sue richieste. Aggiungi l'account tra un momento.
-
-The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
-La copia di Token Pool sostituita da questa sta ancora completando le sue richieste. Accedi di nuovo tra un momento.
-
-The copy of Token Pool this one replaced is still finishing its requests. The sign-in is taken as soon as it has.
-La copia di Token Pool sostituita da questa sta ancora completando le sue richieste. L'accesso viene acquisito appena ha finito.
 
 The day before, at 9 AM
 Il giorno prima, alle 9:00

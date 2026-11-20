@@ -1063,3 +1063,13 @@ Learned on the second pass (2026-11-20):
   are engines; the apps are `olo-calendar-app` and
   `olo-diskbackup-app`. A lint that still fails after "building the
   app" was looking at the old binary.
+- **A change a reviewer holds again and again wants a design, not a
+  next patch.** Token Pool's sign-in rework (2026-11-20) was held at
+  each of six looks by the second investigator, each time for new
+  sequences the pool gets right today, each made possible by the last
+  fix. After the third such round, stop: park the work on a branch
+  with what each look found (`pool-sign-ins-attempt`), write the
+  cases into TODO as the design's tests, and land only what stands by
+  itself. Ask the reviewer one narrow question each round ("does this
+  do anything HEAD doesn't that loses X"): it kept the looks short and
+  the findings comparable.

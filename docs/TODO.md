@@ -161,26 +161,109 @@ something nobody here has is in "Blocked", with what it waits for.
   turn. (The proxy offering Codex HTTP/2 was its leg to the proxy, which
   ChatGPT never sees: let go.)
   **To do**:
-  - What the third look left as design work: one object for a sign-in
-    (its credential, jar, capture and connections taken together, so a
-    request in flight across a re-sign-in keeps the old ones whole);
-    trailers passed on (none of either provider's answers has them; the
-    reqwest path can't carry them). (Cookies by domain, path and expiry,
-    the recorder reading chunked framing by its sizes, and a handover
-    that settles claims before the copy starts: done.)
-  - What the fourth look (pooled sockets) left: matching Codex's TLS
-    for the socket's own connection (a ClientHello compared, direct and
-    through the pool) belongs with the TLS item below. (Its late
-    bookkeeping across a handover is done: told over the pipe, booked
-    by the copy at work.)
+  - **One object for a sign-in: tried, and parked** (2026-11-20; branch
+    `pool-sign-ins-attempt`, one commit, not merged). The third look
+    left it as design work: a sign-in's credential, cookies, capture
+    and connections taken together, so a request in flight across a
+    re-sign-in keeps the old ones whole. The attempt (an id for each
+    sign-in on its account's row, captures named for it, claims tied
+    to it, a store that takes a renewal only for the sign-in renewed)
+    fixes four things the pool does now: a request sent again after
+    signing in again goes out with the old capture's account id; a
+    renewal under way is written over the new sign-in; a capture the
+    old sign-in left is read as the new one's; a claim can cross a new
+    sign-in. Astra held it at each of six looks, each time for
+    sequences the pool gets right today, and each fix made room for
+    the next: it wants a design first (the states a row's sign-in, its
+    claim and its capture can be in, and what may follow what, in one
+    copy and across a handover), with these as its tests, not a
+    seventh patch. What the looks taught, for that design:
+    - The same credential brought in again (this computer's own,
+      imported once more) is the same sign-in: counted as a new one,
+      a renewal under way is dropped and the account keeps a refresh
+      token already used. But what it says of the account (its
+      organization) may be new, and right where the row's is wrong.
+    - A refusal that passes by itself must never cost a sign-in just
+      made in Terminal (its folder is gone by then); held instead, it
+      must be taken in the order sign-ins were read, by the account it
+      was read for, before an upgrade goes, and whatever a copy from
+      before renews meanwhile.
+    - The one upgrade from a copy that doesn't tell sign-ins apart is
+      part of the design: every file and record that copy reads or
+      writes by the row's id alone (the vault, a capture's `ID.json`)
+      while it finishes beside the new one.
+    - A claim unanswered: kept across the same account's new sign-in,
+      and across another account's and back (dropped at the first, a
+      retry asks under a new id: a reset spent twice); never asked
+      about with another account's credential; and a sign-in that
+      doesn't say whose it is can be neither.
+    - A capture with no account id (one that saw only the usage read)
+      never stands where one with an id did, in this copy or the next.
+    Also left by the third look: trailers passed on (none of either
+    provider's answers has them; the reqwest path can't carry them).
+    (Cookies by domain, path and expiry, the recorder reading chunked
+    framing by its sizes, and a handover that settles claims before
+    the copy starts: done.)
   - The one real Codex reset Ben allowed, when its account runs out
     (92% on 2026-11-19: a Codex reset starts a new week and loses what's
     left), through the pool's claim: what it does to the week's reset.
-  - TLS: Claude Code's two ClientHellos are BoringSSL's (Bun), Codex's
-    native one OpenSSL's: the pool's rustls offers otherwise (ALPN,
-    suites, extensions). Matching them means BoringSSL (`boring`) for
-    Claude Code's and OpenSSL for Codex's; weigh it, with the captured
-    offers (`Capture::hellos`) as the reference, and say.
+  - **TLS, weighed** (2026-11-20; docs/reports/token-pool-tls.md, with
+    the captured offers, `Capture::hellos`, as the reference). For
+    Codex nothing is to do: the pool's offer is the one Codex itself
+    makes when it trusts an authority, as it does through the pool
+    (the same rustls and provider; a test holds the suites and schemes
+    to the captures'), and its other one (OpenSSL's, with only its own
+    roots) would be no nearer. For Claude Code the pool is plainly not
+    the client at this layer: both of its offers are BoringSSL's
+    (Bun's). **To do** (not blocked): captures that keep the whole
+    ClientHello (extensions and their order, groups, key shares: the
+    recorder's acceptor gives only suites, schemes, ALPN and the name),
+    so "should match" becomes a diff, for the sockets' own connection
+    too (the fourth look's). **To decide (Ben)**: BoringSSL (`boring`:
+    cmake and a C++ compiler at build time, a second TLS library in
+    the program that holds the accounts) for Anthropic's hosts, a
+    profile for each of Claude Code's two stacks. The report says
+    yes, after the recording.
+
+- **Token Pool: what its handover and claims still leave to chance**
+  (2026-11-20; from Astra's reviews of the sign-in work above, checked
+  against the code: each is how the pool works today, and each wants
+  the design that work is parked for). In order of what it could cost:
+  - *An unanswered claim is a field of its account's row.* Kept apart
+    in the sealed store instead (provider, the provider's own name for
+    the account, the grant or "the provider's choice", the request id,
+    whether it was sent), it would outlive the row and a sign-in as
+    another account: a late answer settles it, a return to the same
+    account asks again by the same id, and one that can't be settled is
+    shown, with a way to let it go by hand, while serving goes on.
+  - *A renewal in flight at the instant of a handover* isn't under the
+    store's lock (it began alone), and the new copy may renew the same
+    account with the same rotating token: one of the two is refused,
+    which signs the account out. A renewal should hold the handover
+    off from before its request until it's kept (as claims do:
+    `claims_closed`).
+  - *The old copy's last renewal.* The new copy knows the old one has
+    finished by its pipe closing, and from then saves without reading
+    the file first: a renewal the old one wrote as it ended is written
+    over by the new copy's next save, with the older sign-in. A last
+    merge under the store's lock wants an order it doesn't have yet
+    (tried on the branch, 2026-11-20, and taken out: run before the
+    vault was open it wrote an empty store): the store shared until that merge is
+    done, whichever of a save, a renewal or the pipe's reader sees the
+    end first; and a save that takes in other accounts' renewals
+    without taking back the one just made (by which was renewed here,
+    not by expiry).
+  - *A re-sign-in during a claim's network round trip* is treated as
+    one just after it (the result is guarded, the spend isn't): a
+    guard shared by the send and by replacement and removal would make
+    the two take turns.
+  - *Late records* (`Late`, over the handover's pipe): one that
+    arrives before the vault is open is booked against an empty pool
+    and lost; a limit seen by the old copy is dated when
+    its answer came, not when its request went, so one sent before a
+    reset here and answered after it puts the account back at its
+    limit until the next read. Kept until the vault opens; a reset
+    epoch on what's sent, shared across the handover.
 
 - **A Language setting, and Olo in every major language** (Ben,
   2026-11-18: "we should add a language setting and also let's translate

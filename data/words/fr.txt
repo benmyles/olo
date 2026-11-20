@@ -423,12 +423,6 @@ Une référence ressemble à op://coffre/élément/champ (Copier la référence 
 A repository’s key needs to be trusted
 La clé d’un dépôt doit être approuvée
 
-A reset this account asked for hasn’t been answered yet. The sign-in is taken as soon as it has.
-Une réinitialisation demandée par ce compte n'a pas encore reçu de réponse. La connexion sera prise en compte dès qu’elle aura reçu une réponse.
-
-A reset this account asked for hasn’t been answered yet. This sign-in doesn’t say which account it is. Sign in again once it has.
-Une réinitialisation demandée par ce compte n'a pas encore reçu de réponse. Cette connexion ne dit pas de quel compte il s’agit. Reconnectez-vous ensuite.
-
 A resting palm can't click (its pressure doesn't count)
 Paume posée : pas de clic (pression ignorée)
 
@@ -10100,9 +10094,6 @@ Le compte qui répond maintenant
 The account couldn’t be saved ({}).
 Le compte n’a pas pu être enregistré ({}).
 
-The account left the pool while signing in.
-Le compte a quitté le pool pendant la connexion.
-
 The address search answered {}.
 La recherche d’adresses a répondu {}.
 
@@ -10159,15 +10150,6 @@ Les jours à venir, chacun avec son ciel, minimale et maximale.
 
 The computer couldn't be restarted: {}
 L’ordinateur n’a pas pu redémarrer : {}
-
-The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
-La copie de Token Pool que celle-ci a remplacée termine encore ses requêtes. Ajoutez le compte dans un instant.
-
-The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
-La copie de Token Pool que celle-ci a remplacée termine encore ses requêtes. Reconnectez-vous dans un instant.
-
-The copy of Token Pool this one replaced is still finishing its requests. The sign-in is taken as soon as it has.
-La copie de Token Pool que celle-ci a remplacée termine encore ses requêtes. La connexion sera prise en compte dès qu'elle aura fini.
 
 The day before, at 9 AM
 La veille à 9 h
