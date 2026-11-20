@@ -1,4 +1,12608 @@
-# Olo in this language: see crates/kit-base/src/words.rs for the format.
+# Olo 日本語版. The format: crates/kit-base/src/words.rs.
+# Every word of en.txt; those the same as in English (names, paths) as themselves.
+
+! needs a whole number
+階乗（!）には整数を指定してください
+
+%
+%
+
+% CPU
+% CPU
+
+(No title)
+（無題）
+
+(The desktop is {} now: these show when it's {}.)
+（現在のデスクトップは{}です。これらは{}のときに表示されます。）
+
+(The last try didn't go through: {}.)
+（前回の試行は失敗しました：{}）
+
+(not in force: {})
+（未適用：{}）
+
+({n} more were refused too.)
+other: （ほかにも{n}件拒否されました。）
+
+({} by their size)
+（大きさで判定：{}）
+
+*.qcow2, *.vdi, *.vmdk (large, changing while in use)
+*.qcow2, *.vdi, *.vmdk（サイズが大きく、使用中に内容が変わります）
+
+*.swp, *~, .#*
+*.swp, *~, .#*
+
++{n} more
+other: ほか{n}件
+
+/etc/hosts can't be read: {}
+/etc/hostsを読み込めません：{}
+
+0.3 seconds
+0.3秒
+
+0.5 seconds
+0.5秒
+
+1
+1
+
+1 Day Before
+1日前
+
+1 GB a screen
+1画面あたり1 GB
+
+1 Hour
+1時間
+
+1 Hour Before
+1時間前
+
+1 Minute
+1分
+
+1 Second
+1秒
+
+1 day before
+1日前
+
+1 hour
+1時間
+
+1 hour before
+1時間前
+
+1 minute
+1分
+
+1 second
+1秒
+
+1. Type your account password and choose Set Up. Olo keeps it locked so that only this key can unlock it.
+1. アカウントのパスワードを入力し、「設定する」を選びます。このキーでしか解除できないようにパスワードを保護します。
+
+1. Type your account password and the key’s PIN, and choose Set Up. Olo keeps the password locked so that only this key can unlock it; the PIN is asked for this once, not kept.
+1. アカウントのパスワードとキーのPINを入力し、「設定する」を選びます。パスワードを解除できるのはこのキーだけです。PINは今回のみ使用し、保存しません。
+
+10 Minutes
+10分
+
+10 Minutes Before
+10分前
+
+10 minutes
+10分
+
+10 minutes before
+10分前
+
+10 ms frame
+1フレーム10 ms
+
+10 seconds
+10秒
+
+12 hours
+12時間
+
+12 months
+12か月
+
+12 weeks
+12週間
+
+128 MB a screen
+1画面あたり128 MB
+
+14 days
+14日
+
+15 Minutes
+15分
+
+15 Minutes Before
+15分前
+
+15 minutes
+15分
+
+15 minutes before
+15分前
+
+1Password Accounts…
+1Passwordアカウント…
+
+1Password closed the connection. If it asked whether to allow Passwords, choose Allow, then try again.
+1Passwordが接続を閉じました。Passwordsを許可するか聞かれた場合は「許可」を選び、もう一度お試しください。
+
+1Password is open but isn’t letting other apps in. In 1Password, turn on Settings ▸ Developer ▸ Integrate with other apps, then try again.
+1Passwordが他のアプリからの接続を許可していません。1Passwordの「設定」▸「開発者」で他のアプリとの連携を有効にし、もう一度お試しください。
+
+1Password isn’t running. Open it (and turn on Settings ▸ Developer ▸ Integrate with other apps), then try again.
+1Passwordを開き、「設定」▸「開発者」で他のアプリとの連携を有効にしてから、もう一度お試しください。
+
+1Password won’t take it, so it wasn’t sent. {} Change it here and sync again.
+1Passwordが受け付けないため送信しませんでした。{} ここで変更してから再同期してください。
+
+2 GB a screen
+1画面あたり2 GB
+
+2 Hours Before
+2時間前
+
+2 Seconds
+2秒
+
+2 hours before
+2時間前
+
+2 minutes
+2分
+
+2 seconds
+2秒
+
+2. When the key’s light starts blinking, touch {}. A touch before it blinks does nothing.
+2. キーのランプが点滅したら、{}に触れてください。点滅する前のタッチは無効です。
+
+24 hours
+24時間
+
+24 months
+24か月
+
+24-hour clock
+24時間表示
+
+256 MB a screen
+1画面あたり256 MB
+
+26 weeks
+26週間
+
+3 days
+3日
+
+3 events
+3件の予定
+
+3 hours
+3時間
+
+3. When it blinks again, touch it once more.
+3. ランプが再び点滅したら、もう一度触れてください。
+
+30 Minutes
+30分
+
+30 Minutes Before
+30分前
+
+30 days
+30日
+
+30 min
+30 min
+
+30 minutes
+30分
+
+30 minutes before
+30分前
+
+30 seconds
+30秒
+
+32 letters and digits
+英数字32文字
+
+3G
+3G
+
+4 hours
+4時間
+
+4 weeks
+4週間
+
+48 hours
+48時間
+
+5 Minutes
+5分
+
+5 Minutes Before
+5分前
+
+5 Seconds
+5秒
+
+5 days
+5日
+
+5 events
+5件の予定
+
+5 minutes
+5分
+
+5 minutes before
+5分前
+
+5 seconds
+5秒
+
+5 years
+5年
+
+512 MB a screen
+1画面あたり512 MB
+
+52 weeks
+52週間
+
+6 months
+6か月
+
+60 min
+60 min
+
+7 days
+7日
+
+8 events
+8件の予定
+
+8 weeks
+8週間
+
+8+ characters
+8文字以上
+
+9
+9
+
+90 days
+90日
+
+95th percentile
+95パーセンタイル
+
+A Copr project is owner/project (as “@group/project” for a group’s).
+Coprプロジェクトは「所有者/プロジェクト」、グループの場合は「@グループ/プロジェクト」と指定します。
+
+A Disk or Folder
+ディスクまたはフォルダー
+
+A GPU's encoder takes a 4K screen in about 15 ms a frame, the processor about 110: recordings of a lot of motion keep every frame on the GPU, about nine a second on the processor.
+4K画面を録画するとき、GPUのエンコーダーは1フレームに約15 ms、CPUは約110 msかかります。動きが激しくてもGPUなら全フレームを記録できます。CPUでは毎秒約9フレームです。
+
+A WireGuard file (from the server, or wg-quick's) is kept with its keys; its DNS servers are asked alone while it's connected.
+サーバーまたはwg-quickのWireGuard設定ファイルを鍵と一緒に保存します。接続中はその設定のDNSサーバーだけを使います。
+
+A backup reads one file at a time, and leaves what it read out of memory: it never takes much of either.
+バックアップではファイルを1つずつ読み、読み終わったデータをメモリから解放します。ディスクにもメモリにも大きな負荷をかけません。
+
+A battery kept full wears faster: for a computer that's mostly plugged in.
+満充電を保つとバッテリーの劣化が早まります。普段は電源につないで使う場合の設定です。
+
+A build of Olo is running: Olo upgrades as soon as it has finished.
+Oloをビルド中です。完了すると更新を開始します。
+
+A build of Olo is still running. Olo upgrades as soon as it has finished: your windows stay open.
+Oloのビルドがまだ続いています。完了すると更新を開始します。ウィンドウは開いたままです。
+
+A classic token with the repo scope, or a fine-grained one that can read pull requests and checks. Olo keeps it in your login keyring.
+repoスコープの従来型トークンか、プルリクエストとチェックを読み取れる細分化トークンを使います。トークンはログインキーリングに保存します。
+
+A code that is surely an agent’s tab’s is put in there, and you’re told; one that isn’t sure is asked about.
+どのエージェントのタブ宛てか確認できたコードは、そのタブに入力してお知らせします。不明な場合は入力前に確認します。
+
+A copy to a stick or a card goes at the disk's own pace, {} waiting in memory at most, so its progress is true and ejecting is quick.
+USBメモリやカードへのコピーは書き込み速度に合わせて進めます。メモリに残すのは最大{}なので、進捗が正確で、取り出すときも待たずに済みます。
+
+A day
+1日
+
+A disk of its own, or a folder on one: your backups kept apart from this computer.
+このコンピューターとは別のディスクか、その中のフォルダーにバックアップを保存します。
+
+A dotted line
+点線
+
+A finger ({} so far)
+指（これまでに{}）
+
+A finger on the fingerprint sensor can stand for your password. Fingers enrolled for {}:
+指紋センサーに指を当てると、パスワードの代わりになります。{}に登録された指紋：
+
+A frame dropped in the last minute
+直近1分にフレーム落ちあり
+
+A letter goes on everything you can pick: controls, menu items, windows, Deskbar. Type one to pick it, or to letter what’s inside; Backspace goes back, Esc puts them away.
+コントロール、メニュー項目、ウィンドウ、Deskbarに文字が付きます。文字を入力すると対象を選ぶか、中の項目に文字を表示します。Backspaceで戻り、Escで非表示にします。
+
+A little room
+狭め
+
+A look at the infrared camera can stand for your password: sudo in Terminal, administrator requests, Passwords and the lock screen. Only infrared counts, so a photo on a screen can't pass it.
+赤外線カメラを見るだけで、Terminalのsudo、管理者の承認、Passwords、画面ロックの解除にパスワードの代わりとして使えます。赤外線だけで判定するので、画面に映した写真では解除できません。
+
+A lot of room
+広め
+
+A mirror failed ({}): {}
+ミラーでエラー（{}）：{}
+
+A month
+1か月
+
+A name can't have a slash, start with a dot or a dash, or end in .lock.
+名前にスラッシュは使えません。先頭のピリオドやハイフン、末尾の.lockも使えません。
+
+A name, without “/”.
+「/」を含まない名前
+
+A new build of Olo ({}) and {} are ready. Click to choose.
+新しいOloビルド（{}）と{}が利用できます。クリックして選んでください。
+
+A new build of Olo is ready ({}). Click to upgrade.
+新しいOloビルド（{}）が利用できます。クリックして更新してください。
+
+A new build of Olo is ready ({}). Install it now? Your windows stay open.
+新しいOloビルド（{}）をインストールしますか？ ウィンドウは開いたままです。
+
+A new build of Olo is ready ({}). Installing it restarts the window server: Olo's windows stay open, but {} will close.
+新しいOloビルド（{}）をインストールするとウィンドウサーバーが再起動します。Oloのウィンドウは開いたままですが、{}は閉じます。
+
+A notch scrolls as far in Chrome and other programs as in Olo’s apps.
+ホイール1目盛りでスクロールする距離を、ChromeなどでもOloのアプリと同じにします。
+
+A palm, ignored ({} so far)
+手のひらとして無視（これまでに{}）
+
+A path: /…, ~/… or a name here
+パス（/…、~/…、またはこの場所の名前）
+
+A picture of your own
+自分の画像
+
+A process needs at least one core.
+プロセスには少なくとも1つのコアが必要です。
+
+A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick (full preemption). {} is scheduling now and decides that itself: this is for the kernel's own scheduler.
+すべてのCPUが使用中でも、起床したプログラムが次のカーネルティックを待たずに実行されます（完全プリエンプション）。現在は{}が独自に判断しています。この設定はカーネル標準のスケジューラー用です。
+
+A program woken while the processors are busy runs at once, where it would wait for the kernel's next tick, up to a millisecond (full preemption).
+すべてのCPUが使用中でも、起床したプログラムがすぐに実行されます。次のカーネルティックまで最大1ミリ秒待つ必要がありません（完全プリエンプション）。
+
+A red dot for an app with something unread in it
+未読項目があるアプリに赤い点を表示
+
+A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference gives one).
+参照はop://vault/item/fieldの形式です。Passwordsの「シークレット参照をコピー」で取得できます。
+
+A repository’s key needs to be trusted
+リポジトリの鍵を信頼するか確認してください
+
+A resting palm can't click (its pressure doesn't count)
+手のひらの圧力をクリックに含めない
+
+A rising swell
+徐々に大きくなる音
+
+A row of dots
+一列の点
+
+A script of {} failed (code {}).
+{}のスクリプトが失敗しました（コード{}）。
+
+A setting comes before any [repository].
+最初の[repository]より前に設定があります。
+
+A terminal’s job busy for a minute and more is lowered too. Batch scheduling and idle I/O are put back when this is turned off; a raised nice stays until the program ends.
+Terminalで1分以上動き続けたジョブも優先度を下げます。オフにするとスケジューリングとI/O優先度は元に戻ります。上げたnice値はプログラムの終了まで維持します。
+
+A thick line
+太線
+
+A thin line
+細線
+
+A touch of a security key (a YubiKey) can stand for your password once you're signed in: sudo in Terminal, Passwords and administrator requests. Not to unlock the computer or sign in: someone who found it with the key plugged in could.
+サインイン後は、セキュリティキー（YubiKey）に触れるだけで、Terminalのsudo、Passwords、管理者の承認に使えます。キーを挿したままでも第三者に使われないよう、画面のロック解除とサインインには使えません。
+
+A touch starts at pressure
+タッチを検出する圧力
+
+A touch types nothing unless something is waiting for the key; three in a row type its one-time code where you are, for a web form Olo doesn’t know.
+通常、キーに触れても入力を待っている場合にしか反応しません。3回続けて触れると現在の入力欄にワンタイムコードを入力します。Oloが認識しないWebフォームでも使えます。
+
+A town, an address, or 47.61, -122.33
+地名、住所、または座標（47.61, -122.33）
+
+A value
+値
+
+A vault needs a name.
+保管庫に名前を付けてください。
+
+A week
+1週間
+
+AI
+AI
+
+AI features use OpenAI’s models through the Token Pool’s Codex accounts, spent in its order.
+AI機能はToken Pool内のCodexアカウントを設定順に使い、OpenAIのモデルを利用します。
+
+API Credential
+API認証情報
+
+API ID:
+API ID:
+
+API hash:
+APIハッシュ:
+
+API key
+APIキー
+
+API key:
+APIキー:
+
+About 
+アプリ情報: 
+
+About Olo Desktop
+Olo Desktopについて
+
+About…
+このアプリについて…
+
+Acceleration:
+加速:
+
+Accent
+アクセントカラー
+
+Access
+アクセス
+
+Account
+アカウント
+
+Account:
+アカウント:
+
+Accounts
+アカウント
+
+Accounts:
+アカウント:
+
+Action
+アクション
+
+Activity
+アクティビティ
+
+Activity Monitor
+アクティビティモニタ
+
+Activity Monitor doesn't change {}.
+アクティビティモニタでは{}を変更できません。
+
+Actual Size
+実際のサイズ
+
+Adapter:
+アダプター:
+
+Adaptive
+適応型
+
+Adaptive Performance
+負荷に応じて性能を調整
+
+Adaptive:
+適応型:
+
+Add
+追加
+
+Add Account
+アカウントを追加
+
+Add Column After
+右に列を挿入
+
+Add Column Before
+左に列を挿入
+
+Add Field
+フィールドを追加
+
+Add Field…
+フィールドを追加…
+
+Add Fingerprint
+指紋を追加
+
+Add Graph
+グラフを追加
+
+Add Kind
+種類を追加
+
+Add Mark
+マークを追加
+
+Add Place…
+場所を追加…
+
+Add RPM Fusion
+RPM Fusionを追加
+
+Add Repository…
+リポジトリを追加…
+
+Add Row Above
+上に行を挿入
+
+Add Row Below
+下に行を挿入
+
+Add Tab to Group
+グループにタブを追加
+
+Add Text
+テキストを追加
+
+Add Website
+Webサイトを追加
+
+Add a CalDAV Account…
+CalDAVアカウントを追加…
+
+Add a Fastmail Account…
+Fastmailアカウントを追加…
+
+Add a Folder…
+フォルダーを追加…
+
+Add a Google Account…
+Googleアカウントを追加…
+
+Add a Kind
+種類を追加
+
+Add a repository: its packages and updates come with Fedora’s. Add only ones you trust: whoever makes it can put anything on this computer.
+追加したリポジトリのパッケージと更新はFedoraのものと一緒に表示されます。提供元はこのコンピューターに任意のソフトウェアをインストールできるので、信頼できるものだけを追加してください。
+
+Add an App…
+アプリを追加…
+
+Add an account in Preferences
+環境設定でアカウントを追加
+
+Add lunch tomorrow at noon
+明日の正午に昼食の予定を追加
+
+Add the one-time code this page shows to your login {}?
+このページのワンタイムコードをログイン項目「{}」に追加しますか？
+
+Add to Collector
+コレクターに追加
+
+Add “{}” to Favorites
+「{}」をお気に入りに追加
+
+Added by a busy line
+回線混雑時の遅延増加
+
+Added turned off.
+無効の状態で追加しました。
+
+Address
+アドレス
+
+Address, port, program or state
+アドレス、ポート、プログラム、状態
+
+Address:
+アドレス:
+
+Addresses can’t be looked up: {}
+アドレスを検索できません：{}
+
+Adjust Size…
+サイズを調整…
+
+After BeOS: glossy, bright and friendly.
+BeOSを手本にした、光沢のある明るく親しみやすいデザイン。
+
+After BeOS: glossy, bright and friendly. Sky grey by day and ocean blue by night.
+BeOSを手本にした、光沢のある明るいデザイン。昼は空を思わせるグレー、夜は海のような青。
+
+After Mac OS 9: black outlines, lilac greys.
+Mac OS 9を手本にした、黒い輪郭と淡い紫がかったグレー。
+
+After Mac OS X's Aqua: shinier and bluer, with soft outlines.
+Mac OS XのAquaを手本に、青と光沢を強調した柔らかな輪郭。
+
+After a minute
+1分後
+
+After tap and drag:
+タップしてドラッグした後:
+
+After the active window
+アクティブウィンドウの次
+
+After {n} minutes
+other: {n}分後
+
+After {n} seconds
+other: {n}秒後
+
+Again
+再入力
+
+Again:
+再入力:
+
+Against Cloudflare’s speed test servers: four connections each way, eight seconds each.
+Cloudflareの速度測定サーバーに対して、送受信それぞれ4接続で8秒間測定します。
+
+Agenda
+予定一覧
+
+Agent Screen Logs
+エージェント画面のログ
+
+Agent Screen “{}” is waiting for a code
+エージェント画面「{}」がコードを待っています
+
+Agent Screens
+エージェント画面
+
+Agree
+同意する
+
+AirPlay
+AirPlay
+
+AirPlay Settings…
+AirPlay設定…
+
+AirPods
+AirPods
+
+AirPods (Call Quality)
+AirPods（通話音質）
+
+AirPods (High Quality)
+AirPods（高音質）
+
+AirPods Settings…
+AirPods設定…
+
+AirPods keep playing at music quality while you record.
+録音中もAirPodsは音楽用の音質で再生します。
+
+AirPods:
+AirPods:
+
+Align Center
+中央揃え
+
+Align Left
+左揃え
+
+Align Right
+右揃え
+
+All
+すべて
+
+All Apps
+すべてのアプリ
+
+All Chats
+すべてのチャット
+
+All Imperial
+すべてヤード・ポンド法
+
+All Items
+すべての項目
+
+All Metric
+すべてメートル法
+
+All Preferences
+すべての環境設定
+
+All accounts together
+全アカウントをまとめる
+
+All day
+終日
+
+All lines around the selected one. {}
+選択した行の前後をすべて表示します。{}
+
+All of Olo’s {} words are in {}.
+Oloの全{0}項目を{1}で利用できます。
+
+All waiting
+すべて待機中
+
+All {} connected.
+{}件すべて接続済み。
+
+Allow
+許可
+
+Allow NVIDIA Fallback on Battery
+バッテリー駆動時も必要に応じてNVIDIAを使用
+
+Allow Sleep
+スリープを許可
+
+Allow Sleep (awake until {})
+スリープを許可（{}までスリープしない）
+
+Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).
+「{}」に{}{}の使用を許可しますか？「常に許可」を選ぶと、「ファイル」▸「許可したアプリ…」で取り消すまでアクセスできます。
+
+Allowed with {}
+{}で許可済み
+
+Along the Top
+上端に横置き
+
+Also from the Deskbar: click the cup.
+Deskbarのカップをクリックしても操作できます。
+
+Also leave out:
+追加の除外項目:
+
+Also when running on battery
+バッテリー駆動時も実行
+
+Alt
+Alt
+
+Always Dark
+常にダーク
+
+Always Left
+常に左
+
+Always Light
+常にライト
+
+Always Open With
+常にこのアプリで開く
+
+Always Right
+常に右
+
+Always Where It Is
+常に現在の位置
+
+Always a palm when as large as
+必ず手のひらと判定する大きさ
+
+Always on Top
+常に最前面に表示
+
+An account can answer again.
+アカウントが再び応答できるようになりました。
+
+An administrator's password is needed.
+管理者のパスワードが必要です。
+
+An app
+アプリ
+
+An application is keeping the display awake.
+アプリがディスプレイのスリープを一時的に停止しています。
+
+An error occurred while {}: {}
+{}中にエラーが発生しました：{}
+
+An etched line
+くぼんだ線
+
+An iPhone first: Bluetooth doesn’t yet present this computer as an iPhone expects, and the iPhone would offer it its notifications but not its contacts. Olo Doctor fixes it (Present as Hands-Free); then pair.
+iPhoneとペアリングする前に、Olo Doctorで「ハンズフリー機器として通知」を選んでください。現在のBluetooth設定では、iPhoneは通知だけを共有し、連絡先は共有しません。
+
+And I/O under
+かつI/Oが次の値未満
+
+And {n} More
+other: ほか{n}件
+
+And {} more
+ほか{}件
+
+Anonymous identity:
+匿名ID:
+
+Another account
+別のアカウント
+
+Another program has the phone’s message profiles (BlueFerry’s or GNOME’s obexd). Olo Doctor removes BlueFerry.
+別のプログラム（BlueFerryまたはGNOMEのobexd）が電話のメッセージ用プロファイルを使用中です。Olo DoctorでBlueFerryを削除できます。
+
+Answer
+応答
+
+Answer 1Password’s op command
+1Passwordのopコマンドに応答する
+
+Answer questions about the forecast
+天気予報についての質問に答える
+
+Answer questions about your calendars
+カレンダーについての質問に答える
+
+Answer questions in the command palette
+コマンドパレットで質問に答える
+
+Answering now
+応答中
+
+Answering now · {}
+応答中 · {}
+
+Any of the {}
+{}のいずれか
+
+Any storms on the way?
+雷雨が近づいていますか？
+
+Any touch
+すべてのタッチ
+
+App
+アプリ
+
+App caches
+アプリのキャッシュ
+
+App password:
+アプリ用パスワード:
+
+AppImages
+AppImages
+
+Appearance
+外観
+
+Apple {} GPU
+Apple {} GPU
+
+Applications
+アプリ
+
+Applied: kept for this computer, and set again at every start.
+設定を適用しました。このコンピューターに保存し、起動のたびに適用します。
+
+Apply
+適用
+
+Apply once to let Olo follow the mode and the power supply: an administrator's password is asked, this once.
+「適用」を選ぶと、電源モードと給電状態に合わせて自動で切り替わります。今回のみ管理者のパスワードが必要です。
+
+Apply {n} Changes
+other: {n}件の変更を適用
+
+Applying asks for an administrator's password once while this window is open.
+このウィンドウを開いている間、適用時に管理者のパスワードを求めるのは一度だけです。
+
+Applying… (an administrator's password may be asked for)
+適用中…（管理者のパスワードが必要になる場合があります）
+
+Approve requests without asking, for a while
+一時的に確認なしで承認する
+
+Approving without asking: {} left (until {})
+自動承認中：残り{}（{}まで）
+
+Apps Allowed…
+許可したアプリ…
+
+Apps That Always Float
+常にフローティング表示するアプリ
+
+Apps With Their Own Workspace
+専用ワークスペースを使うアプリ
+
+Apps appear here once they have sent a notification.
+通知を送信したアプリがここに表示されます。
+
+Apps are waiting for logins.
+ログイン情報を待っているアプリがあります。
+
+Apps get the microphone's sound as it is.
+マイクの音をそのままアプリに渡します。
+
+Archive
+アーカイブ
+
+Archive All
+すべてアーカイブ
+
+Archive {} Chats
+{}件のチャットをアーカイブ
+
+Archived Chats
+アーカイブ済みのチャット
+
+Archived Conversations
+アーカイブ済みの会話
+
+Arrived out of order
+順不同で受信
+
+As BeOS R5 drew its icons: flat faces in its 8-bit colours, black outlines.
+BeOS R5風のアイコン。8ビットの色で平らな面を塗り、黒い線で縁取ります。
+
+As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines.
+Workbench風のアイコン。画面の16色で平らな面を塗り、黒い線で縁取ります。
+
+As fast as the computer goes: the processors kept quick and the firmware's power limits raised, the fans as needed. The battery runs down sooner.
+コンピューターの性能を最大限に引き出します。CPUを高速に保ち、ファームウェアの電力上限を引き上げ、必要に応じてファンを回します。バッテリーの持ちは短くなります。
+
+As in Themes ({})
+テーマに従う（{}）
+
+As it goes
+制限なし
+
+As set now
+現在の設定
+
+As the Mode
+モードに従う
+
+As the other mice
+他のマウスと同じ
+
+As wide as the widgets
+ウィジェットの幅に合わせる
+
+As {}: nice {} → {}, {} scheduling, {} I/O priority{}, so the active window’s app and Olo stay quick.
+{}として調整：nice {} → {}、スケジューリング {}、I/O優先度 {}{}。使用中のアプリとOloの応答性を保ちます。
+
+Ask
+確認する
+
+Ask Again
+毎回確認に戻す
+
+Ask Again ({} left, until {})
+毎回確認に戻す（残り{}、{}まで）
+
+Ask It
+質問する
+
+Ask Me First
+先に確認
+
+Ask about the weather…
+天気について質問…
+
+Ask about your calendars
+カレンダーについて質問
+
+Ask about your calendars here: the assistant is given the events of the ones you show, a month back and four months on. It can draft events; nothing is added until you save it.
+表示中のカレンダーについて質問できます。アシスタントには過去1か月から今後4か月までの予定を渡します。予定の下書きも作れます。保存するまでは追加されません。
+
+Ask anything about the forecast here: the assistant has all of it, hour by hour.
+天気について自由に質問してください。アシスタントは1時間ごとの詳しい予報を参照できます。
+
+Ask for Full Access at Start
+起動時にフルアクセスを要求
+
+Ask for sudo Passwords in a Window
+sudoのパスワードをウィンドウで入力
+
+Ask what to do about urgent ones
+緊急の問題は対処方法を確認
+
+Asked now:
+使用中のサーバー:
+
+Asking Passwords…
+Passwordsに問い合わせ中…
+
+Asking Telegram…
+Telegramに問い合わせ中…
+
+Asking it…
+問い合わせ中…
+
+Asking…
+問い合わせ中…
+
+Ask…
+質問…
+
+Assistant
+アシスタント
+
+Astra 6
+Astra 6
+
+At 10%
+10%になったら
+
+At 15%
+15%になったら
+
+At 20%
+20%になったら
+
+At full speed
+最高速度
+
+At least
+最小
+
+At the Bottom
+下部
+
+At the Start
+先頭
+
+At the start
+先頭
+
+At {}. Give it the code from {}?
+{}でコードを待っています。{}からのコードを渡しますか？
+
+Attach Files…
+ファイルを添付…
+
+Authenticate
+認証
+
+Authentication:
+認証:
+
+Auto
+自動
+
+Auto Approve
+自動承認
+
+Auto Approve: Yes in {} s
+自動承認：{}秒後に「はい」
+
+Auto profile · the firmware's own curve
+自動プロファイル · ファームウェアの制御曲線
+
+Auto-Tiling
+自動タイル表示
+
+Auto-Tiling Layout
+自動タイルの配置
+
+Auto-tiling layout:
+自動タイルの配置:
+
+Automatic
+自動
+
+Automatic Ear Detection: pause when you take an AirPod out
+自動耳検出：AirPodを耳から外すと一時停止
+
+Automatic wakes NVIDIA's GPU on battery too
+自動設定ではバッテリー駆動時もNVIDIAのGPUを起動
+
+Automatic: {} for AV1 and VP9 (Fedora's driver has no H.264 or HEVC: Olo Doctor installs the full one){}. {}
+自動：AV1とVP9には{}を使用（Fedora標準のドライバーはH.264とHEVCに非対応。完全版はOlo Doctorで導入できます）{}。{}
+
+Automatic: {} for every video (H.264, HEVC, VP9, AV1), 4K at 60 frames a second with a quarter of a core. {}
+自動：すべての動画（H.264、HEVC、VP9、AV1）に{}を使用。4K・60 fpsでもCPU使用量は1コアの約4分の1です。{}
+
+Automatically
+自動で
+
+Automatically,
+自動で、
+
+BBR’s model
+BBRの推定
+
+Back
+戻る
+
+Back Up Now
+今すぐバックアップ
+
+Back Up Now goes on from where it got to
+「今すぐバックアップ」で前回の続きから再開します
+
+Back Up There
+ここにバックアップ
+
+Back Up These Folders
+バックアップするフォルダー
+
+Back to Chats
+チャットに戻る
+
+Back to Conversations
+会話に戻る
+
+Back to the Days
+日別予報に戻る
+
+Back to the Forecast
+天気予報に戻る
+
+Back to the Items
+項目一覧に戻る
+
+Back up this computer
+このコンピューターをバックアップ
+
+Back up to a disk or folder from now on; the backups in Google Drive stay as they are
+今後はディスクまたはフォルダーに保存する。Google Driveにあるバックアップはそのまま残す
+
+Back up to the Drive of:
+このアカウントのDriveに保存:
+
+Back up to your Google Drive from now on; the backups in this folder stay as they are
+今後はGoogle Driveに保存する。このフォルダーにあるバックアップはそのまま残す
+
+Back up:
+バックアップ対象:
+
+Backed Up
+バックアップ日時
+
+Backed up {}
+バックアップ済み：{}
+
+Backed up: {}
+バックアップ済み：{}
+
+Background Noise
+背景ノイズ
+
+Background noise:
+背景ノイズ:
+
+Background noise: {}
+背景ノイズ：{}
+
+Background work, so the rest stays quick
+他の作業を妨げないようバックグラウンドで実行
+
+Background:
+背景:
+
+Backgrounds
+デスクトップ背景
+
+Backing up to Google Drive ({}), in the folder “{}”.
+Google Drive（{}）の「{}」フォルダーにバックアップしています。
+
+Backing up to {}. Its key is kept in Passwords.
+{}にバックアップしています。鍵はPasswordsに保存されています。
+
+Backing up to {}. Keep its key in Passwords when you can ({}).
+{}にバックアップしています。可能になったら鍵をPasswordsに保存してください（{}）。
+
+Backing up your home folder
+ホームフォルダーをバックアップ中
+
+Backing up {n} folders
+other: {n}個のフォルダーをバックアップ中
+
+Backing up {}
+{}をバックアップ中
+
+Backlight
+バックライト
+
+Backup
+バックアップ
+
+Backup didn’t finish
+バックアップ未完了
+
+Backup stopped
+バックアップ停止
+
+Backups
+バックアップ
+
+Backups Kept
+保存するバックアップ
+
+Balanced
+バランス
+
+Bandwidth:
+帯域幅:
+
+Bank Account
+銀行口座
+
+Banners
+バナー
+
+Bars
+バー
+
+Bars show:
+バーの表示内容:
+
+Basic Keypad
+標準キーパッド
+
+Basics
+基本
+
+Battery
+バッテリー
+
+Battery & Idle
+バッテリーと待機
+
+Battery Saver
+バッテリー節約
+
+Battery Saver at {}% · {} resumes on AC
+残量{}%で節約モード · 電源接続時は{}に戻る
+
+Be the SSH agent (ssh, git)
+SSHエージェントとして使う（ssh、git）
+
+Because
+理由
+
+Before import {}.{}
+インポート前 {}。{}
+
+Begin
+開始
+
+Benchmark…
+ベンチマーク…
+
+Beside the widget before it
+前のウィジェットの隣
+
+Best second {}; {} moved
+最高の1秒：{}、転送量：{}
+
+Best time for a run today?
+今日ランニングに一番よい時間は？
+
+Best time for a run tomorrow?
+明日ランニングに一番よい時間は？
+
+Bigger
+大きく
+
+Black
+黒
+
+Blue
+青
+
+Blue:
+青:
+
+Bluetooth
+Bluetooth
+
+Bluetooth couldn’t open the phone’s messages ({}).
+Bluetoothで電話のメッセージを開けませんでした（{}）。
+
+Bluetooth devices and Touch ID fingerprints belong to each computer: pair and enrol them again here.
+Bluetooth機器とTouch IDの指紋はコンピューターごとに登録します。ここでもう一度ペアリングと指紋登録を行ってください。
+
+Bluetooth devices, Wi-Fi networks and Touch ID fingerprints belong to each computer: pair, join and enrol them again here.
+Bluetooth機器、Wi-Fiネットワーク、Touch IDの指紋はコンピューターごとに登録します。ここでもう一度ペアリング、接続、指紋登録を行ってください。
+
+Bluetooth is off.
+Bluetoothはオフです。
+
+Bluetooth isn’t answering.
+Bluetoothが応答しません。
+
+Bluetooth isn’t running on this computer.
+このコンピューターではBluetoothが動作していません。
+
+Bluetooth said it would open them and no channel came
+Bluetoothは要求を受け付けましたが、通信チャネルが開きませんでした
+
+Bluetooth…
+Bluetooth…
+
+Body
+本文
+
+Bold
+太字
+
+Boost when work arrives and ease back between tasks.
+作業が始まると高速化し、合間は速度を落とします。
+
+Boosted {} dB (suggested)
+{} dB増幅（推奨）
+
+Bottom Half
+下半分
+
+Bottom Left Quarter
+左下4分の1
+
+Bottom Right Quarter
+右下4分の1
+
+Bottom Two Thirds
+下部3分の2
+
+Branch {} is checked out in {} already.
+ブランチ「{}」はすでに{}でチェックアウトされています。
+
+Bright
+明るめ
+
+Brightness
+明るさ
+
+Bring It Into Olo…
+Oloに取り込む…
+
+Brown
+茶色
+
+Bug Fixes
+不具合の修正
+
+Builds
+ビルド
+
+Builds by the hour
+時間帯別ビルド数
+
+Builds go on without the cache until it starts.
+キャッシュが起動するまではキャッシュなしでビルドします。
+
+Built incrementally
+差分ビルド
+
+Built into the keyboard
+キーボードに内蔵
+
+Built-in Keyboard
+内蔵キーボード
+
+Bulleted List
+箇条書き
+
+Busiest Now
+現在の高負荷プロセス
+
+Busy Wi-Fi
+混雑したWi-Fi
+
+Busy at least
+最低使用率
+
+Buttons
+ボタン
+
+By
+実行者
+
+By a parent leaving
+親プロセスごとの残存数
+
+By at least
+最小差
+
+By the hour for the next 5 days (the provider’s reach):
+今後5日間の1時間ごとの予報（配信元の提供範囲）:
+
+By their size alone: the palm model is off (Preferences ▸ Touchpad & Mouse ▸ Touch)
+大きさのみで判定：手のひらモデルはオフです（環境設定 ▸ タッチパッドとマウス ▸ タッチ）
+
+C
+C
+
+C#
+C#
+
+C++
+C++
+
+C, C++, Zig, Haskell, Elixir and Dart build output
+C/C++/Zig/Haskell/Elixir/Dartのビルド生成物
+
+CA certificate:
+CA 証明書:
+
+CMake
+CMake
+
+CMakeFiles, .zig-cache, .stack-work, _build, .dart_tool
+CMakeFiles, .zig-cache, .stack-work, _build, .dart_tool
+
+CPU
+CPU
+
+CPU Time
+CPU 時間
+
+CPU time
+CPU 時間
+
+CPU {} frequency
+CPU {}の周波数
+
+CSS
+CSS
+
+Caffeinated
+スリープを防止
+
+Caffeinated until {}
+{}までスリープを防止
+
+Caffeinated: staying awake
+スリープ防止中
+
+CalDAV
+CalDAV
+
+Calendar
+カレンダー
+
+Calendar shows the calendars of your accounts on other CalDAV servers (Nextcloud, iCloud with an app-specific password, a server of your own) beside Google’s and Fastmail’s, and writes what you change back to them.
+Google、Fastmailのほか、NextcloudやiCloud（アプリ用パスワードが必要）、自分のサーバーなどのCalDAVカレンダーも表示します。変更は各サーバーに保存されます。
+
+Calendar:
+カレンダー:
+
+Calendar: Fastmail didn’t take the app password for calendars (it needs access to them).
+カレンダー：Fastmailがアプリ用パスワードを受け付けませんでした。カレンダーへのアクセス権が必要です。
+
+Calendar: Next Event
+カレンダー：次の予定
+
+Calendar: The Day Ahead
+カレンダー：今日の予定
+
+Calendar: no account set up. Add one in Preferences ▸ Integrations.
+カレンダー：アカウントがありません。環境設定 ▸ 連携で追加してください。
+
+Calendar: nothing coming up {}.
+カレンダー：{}の予定はありません。
+
+Calendars
+カレンダー
+
+Calendar’s assistant is handed the events of the calendars you show. It can draft events; nothing is added until you save it.
+アシスタントは表示中のカレンダーの予定を参照します。新しい予定の下書きも作れます。保存するまでは追加されません。
+
+Call
+発信
+
+Call Quality, with Microphone
+通話音質（マイク使用）
+
+Calling…
+発信中…
+
+Calls
+通話
+
+Can't make {}: {}
+{}を作成できません：{}
+
+Can't move it: {}
+移動できません：{}
+
+Can't remove {}: {}
+{}を削除できません：{}
+
+Can't tell git where it went: {}
+移動先をGitに通知できません：{}
 
 Cancel
-Cancel
+キャンセル
+
+Cancel Echo from the Speakers
+スピーカーのエコーを除去
+
+Cancel It
+キャンセル
+
+Cancel Recording
+録音をキャンセル
+
+Cancel Sign-In
+サインインをキャンセル
+
+Cancel Trimming
+トリミングをキャンセル
+
+Cancel echo from the speakers
+スピーカーのエコーを除去
+
+Can’t come back as it was: {} and {} more.
+{}とほか{}件を元に戻せませんでした。
+
+Can’t come back as it was: {}.
+{}を元に戻せませんでした。
+
+Caps Lock is another Control key
+Caps Lockをもう1つのControlキーにする
+
+Capture Client Requests Again
+クライアントの要求を再度記録
+
+Capture debug information whenever a frame drops
+フレーム落ちが発生したら診断情報を記録する
+
+Cascade All
+すべて重ねて表示
+
+Cascade Others
+ほかを重ねて表示
+
+Case
+充電ケース
+
+Catching up…
+同期の遅れを取り戻しています…
+
+Ceiling
+雲高
+
+Ceiling {}
+雲高 {}
+
+Celsius (°C)
+Celsius (°C)
+
+Center Third
+中央3分の1
+
+Center Two Thirds
+中央3分の2
+
+Chance
+確率
+
+Chance of rain
+降水確率
+
+Change API ID…
+API IDを変更…
+
+Change Background…
+背景を変更…
+
+Changed both here and in 1Password: 1Password’s version replaces it here, and yours is kept as “{} (conflict)”
+ここでも1Passwordでも変更されています。1Passwordの内容をここに反映し、手元の内容は「{}（競合）」として残します
+
+Changed here now, and in 1Password at the next sync.
+手元の変更を保存しました。次回の同期で1Passwordにも反映します。
+
+Changes to “{}”
+「{}」の変更
+
+Change…
+変更…
+
+Changing a limit of process {}
+プロセス{}の制限を変更中
+
+Changing how process {} fares when memory runs out
+メモリ不足時のプロセス{}の扱いを変更中
+
+Changing the CPU governor
+CPUの周波数制御を変更中
+
+Changing the cores process {} may use
+プロセス{}に割り当てるコアを変更中
+
+Changing the priority of process {}
+プロセス{}の優先度を変更中
+
+Changing…
+変更中…
+
+Charging resumes below {}%.
+残量が{}%を下回ると充電を再開します。
+
+Chat
+チャット
+
+Chat Info
+チャット情報
+
+Check
+確認
+
+Check Again
+再確認
+
+Check Health
+整合性を確認
+
+Check Spelling While Typing
+入力中にスペルを確認
+
+Check for Updates
+アップデートを確認
+
+Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
+選択したバックアップを簡易検証します。必要なデータが揃っているか調べ、保存先と送信時のチェックサムを比較します。各バックアップの直後と同じように、一部を読み戻して確認し、破損があれば可能な範囲で修復します。
+
+Checking for updates…
+アップデートを確認中…
+
+Checking out {} of {} files
+ファイルをチェックアウト中：{} / {}
+
+Checking the backup
+バックアップを検証中
+
+Checking the connection…
+接続を確認中…
+
+Checking the packages…
+パッケージを確認中…
+
+Checking your password…
+パスワードを確認中…
+
+Checking…
+確認中…
+
+Choose
+選択
+
+Choose All
+すべて選択
+
+Choose Another Folder…
+別のフォルダーを選択…
+
+Choose None
+選択を解除
+
+Choose None of These {n}
+other: この{n}件の選択を解除
+
+Choose These {n}
+other: この{n}件を選択
+
+Choose a Folder…
+フォルダーを選択…
+
+Choose a backup to see how it was last checked.
+前回の検証結果を見るにはバックアップを選んでください。
+
+Choose a backup to see what it holds before importing it.
+インポート前に内容を確認するにはバックアップを選んでください。
+
+Choose a chat from the list to start messaging.
+一覧からチャットを選ぶとメッセージを送れます。
+
+Choose a network to join it.
+接続するネットワークを選んでください。
+
+Choose a setting, then play the original or its sound: switching goes on from the same place.
+設定を選び、元の音と処理後の音を聞き比べられます。切り替えても同じ位置から再生します。
+
+Choose a widget to change it, or add one.
+変更するウィジェットを選ぶか、新しく追加してください。
+
+Choose what to scan:
+スキャン対象を選択:
+
+Choose:
+選択:
+
+Choose…
+選択…
+
+Chosen by someone
+手動で選択
+
+Chosen for the whole computer and kept across restarts. It's the computer's, not this account's, so choosing asks for an administrator's password.
+設定はコンピューター全体に適用され、再起動後も有効です。変更には管理者のパスワードが必要です。
+
+Chosen outside dnf
+dnf以外から選択
+
+Chrome holds it, as it may be harmful: keep it or delete it in Chrome’s Downloads.
+危険な可能性があるため、Chromeがファイルを保留しました。Chromeのダウンロード画面で保存または削除してください。
+
+City or region
+都市または地域
+
+Classic
+クラシック
+
+Claude
+Claude
+
+Claude Code
+Claude Code
+
+Claude Code and Codex are told, as they start, to test and use desktop apps and web pages on screens of their own that you can watch and take over, never on yours, and how: Olo’s Chrome included, so they never start one on your screen.
+Claude CodeとCodexには起動時に、専用の画面でアプリやWebページを操作・テストする方法を伝えます。作業は見守ったり引き継いだりできます。OloのChromeも専用画面で開きます。
+
+Claude Code and Codex get a tool to title their tab with what they’re working on, and are asked to keep it current. They see the tool from their next start.
+Claude CodeとCodexに、作業内容をタブ名に付け、作業が変わったら更新するよう伝えます。次回の起動からこのツールを使えます。
+
+Claude Code and Codex started in a tab of a group whose tabs are in more than one repository are told the group’s name and those repositories and worktrees, theirs marked. Codex asks you once to trust Terminal’s hook (/hooks).
+タブグループが複数のリポジトリにまたがる場合、Claude CodeとCodexにグループ名とリポジトリ・ワークツリーの一覧を渡し、自分の作業場所を示します。Codexは初回のみTerminalのフックを信頼するか確認します（/hooks）。
+
+Clean Up
+整理
+
+Clean Up Microphone Sound
+マイクの音を整える
+
+Clean Up Now
+今すぐ整理
+
+Clean up the microphone's sound
+マイクの音を整える
+
+Cleaned up (made up).
+整理しました（シミュレーション）。
+
+Cleaned up: nothing to remove
+整理完了：削除対象はありません
+
+Cleaned up: {n} entries removed, {} freed
+other: 整理完了：{n}件削除、{}解放
+
+Cleaning up the microphone's sound: {} ms behind{}.
+マイクの音を処理中：遅延{} ms{}。
+
+Clear
+消去
+
+Clear All
+すべて消去
+
+Clear All Tabs
+すべてのタブを消去
+
+Clear History
+履歴を消去
+
+Clear History…
+履歴を消去…
+
+Clear Scrollback
+スクロール履歴を消去
+
+Clear copied secrets after:
+コピーした秘密情報を消去するまでの時間:
+
+Clear sky
+快晴
+
+Cleared
+消去済み
+
+Click
+クリック
+
+Click Back Up Now to make the first.
+「今すぐバックアップ」で最初のバックアップを作成します。
+
+Click a graph to see what was busy then
+グラフをクリックすると、その時点で負荷の高かった項目がわかります
+
+Click a ring to go into a folder, the middle to go back up; drag anything you don't need into the Collector.
+リングをクリックするとフォルダーが開き、中央をクリックすると戻ります。不要なものはコレクターにドラッグしてください。
+
+Click a shortcut to give it other keys.
+ショートカットをクリックしてキーを変更します。
+
+Click an event to see it here; double-click it to change it.
+予定をクリックすると詳細を表示し、ダブルクリックすると編集できます。
+
+Click and hold
+クリックしたまま保持
+
+Click pressure:
+クリック圧:
+
+Click with two fingers for a secondary click
+2本指で副ボタンのクリック
+
+Click with your thumb
+親指でクリック
+
+Clicking and Dragging
+クリックとドラッグ
+
+Clicks
+クリック
+
+Client ID:
+クライアントID:
+
+Client secret:
+クライアントシークレット:
+
+Clients
+クライアント
+
+Clock
+時計
+
+Close
+閉じる
+
+Close All
+すべて閉じる
+
+Close All from {}
+{}のウィンドウをすべて閉じる
+
+Close Group
+グループを閉じる
+
+Close Other Tabs
+他のタブを閉じる
+
+Close Others
+ほかを閉じる
+
+Close Tab
+タブを閉じる
+
+Close Window
+ウィンドウを閉じる
+
+Cloud Heights
+雲の高さ
+
+Cloud base
+雲底
+
+Cloud cover
+雲量
+
+Cloud cover about {}%
+雲量 約{}%
+
+Cloud cover {}–{}%
+雲量 {}～{}%
+
+Cloudflare (1.1.1.1)
+Cloudflare (1.1.1.1)
+
+Clouds ({} above the ground)
+雲（地上{}）
+
+Cloudy
+曇り
+
+Code
+コード
+
+Code given to Agent Screen “{}”
+エージェント画面「{}」にコードを渡しました
+
+Code:
+コード:
+
+Codex
+Codex
+
+Coding Agents
+コーディングエージェント
+
+Collection:
+コレクション:
+
+Collector
+コレクター
+
+Collector: drag files and folders here
+コレクター：ここにファイルやフォルダーをドラッグ
+
+Collector: {} — {}
+コレクター：{} — {}
+
+Color
+色
+
+Colors
+色
+
+Colors in:
+色の表示先:
+
+Colour
+色
+
+Colour:
+色:
+
+Coloured by use: green unused, red used up.
+使用量を色で表示します。緑は未使用、赤は使い切った状態です。
+
+Colours:
+色:
+
+Column View
+カラム表示
+
+Columns
+列
+
+Command Suggestions
+コマンドの候補
+
+Command key:
+Commandキー:
+
+Command or Comment
+コマンドまたはコメント
+
+Comment
+コメント
+
+Comment:
+コメント:
+
+Compiles
+コンパイル回数
+
+Compiling
+コンパイル中
+
+Compress
+圧縮
+
+Compress As…
+形式を選んで圧縮…
+
+Compress {} into a new archive beside it:
+{}を同じ場所の新しいアーカイブに圧縮:
+
+Compress {} into a new archive beside them:
+{}を同じ場所の新しいアーカイブに圧縮:
+
+Compressed Swap
+圧縮スワップ
+
+Compressed to
+圧縮後
+
+Computes with
+計算に使用
+
+Configure IPv4:
+IPv4の設定:
+
+Configure IPv6:
+IPv6の設定:
+
+Confirm
+確認
+
+Confirm:
+確認:
+
+Connect
+接続
+
+Connect Another Account…
+別のアカウントを接続…
+
+Connect GitHub for Pull Requests…
+プルリクエスト用にGitHubを接続…
+
+Connect Google Drive…
+Google Driveを接続…
+
+Connect automatically when you put them in near this computer
+このコンピューターの近くで装着したら自動接続
+
+Connect with a Token…
+トークンで接続…
+
+Connected as {}, through {}.
+{}として{}経由で接続しました。
+
+Connected to “{}”
+「{}」に接続済み
+
+Connected to “{}”: {}
+「{}」に接続済み：{}
+
+Connected {}, but its sign-in wasn’t allowed {}: Sign In Again and allow everything it asks.
+{}に接続しましたが、{}の利用が許可されていません。「再サインイン」を選び、必要な権限をすべて許可してください。
+
+Connected.
+接続しました。
+
+Connecting to Telegram…
+Telegramに接続中…
+
+Connecting to “{}”…
+「{}」に接続中…
+
+Connection
+接続
+
+Connection:
+接続:
+
+Connections
+接続
+
+Contacts
+連絡先
+
+Container images and Flatpak runtimes
+コンテナイメージとFlatpakランタイム
+
+Contents
+内容
+
+Context switches
+コンテキスト切り替え
+
+Control
+Control
+
+Conversation
+会話
+
+Conversation Awareness
+会話感知
+
+Convert to Table
+表に変換
+
+Cool
+冷却
+
+Cooler
+より低温
+
+Cooler and Quieter
+温度と騒音を抑える
+
+Coolest
+冷却優先
+
+Cooling
+冷却
+
+Copied the reference to “{}”’s {}.
+「{}」の{}への参照をコピーしました。
+
+Copied the {}.
+{}をコピーしました。
+
+Copied {}. It leaves the clipboard in {} seconds.
+{}をコピーしました。{}秒後にクリップボードから消去します。
+
+Copr project
+Coprプロジェクト
+
+Copy
+コピー
+
+Copy Code
+コードをコピー
+
+Copy Conversation
+会話をコピー
+
+Copy Here
+ここにコピー
+
+Copy Latest Code
+最新のコードをコピー
+
+Copy Link
+リンクをコピー
+
+Copy Name
+名前をコピー
+
+Copy Name and Value
+名前と値をコピー
+
+Copy One-Time Password
+ワンタイムパスワードをコピー
+
+Copy Password
+パスワードをコピー
+
+Copy Path
+パスをコピー
+
+Copy Reference
+参照をコピー
+
+Copy Text
+テキストをコピー
+
+Copy Username
+ユーザー名をコピー
+
+Copy Value
+値をコピー
+
+Copy a code no tab is waiting for
+どのタブも待っていないコードはコピーする
+
+Copy the Code That Just Came
+今届いたコードをコピー
+
+Copy to clipboard
+クリップボードにコピー
+
+Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
+1Passwordの{}にある項目をコピーしています。1PasswordがPasswordsの許可を求めたら「許可」を選んでください。必要ならロックを解除します。
+
+Core
+コア
+
+Cores
+コア
+
+Couldn't be cached
+キャッシュ不可
+
+Couldn't create a folder: {}
+フォルダーを作成できません：{}
+
+Couldn't create a link: {}
+リンクを作成できません：{}
+
+Couldn't paste: {}
+貼り付けできません：{}
+
+Couldn't rename “{}”: {}
+「{}」の名前を変更できません：{}
+
+Couldn't restart: {}
+再起動できません：{}
+
+Couldn't save the setting: {}
+設定を保存できません：{}
+
+Couldn't save what was dropped: {}
+ドロップした項目を保存できません：{}
+
+Couldn't save: {}
+保存できません：{}
+
+Couldn’t archive it. {}
+アーカイブできませんでした。{}
+
+Couldn’t ask for emoji
+絵文字の候補を取得できませんでした
+
+Couldn’t ask for your keyring to be unlocked: {}
+キーリングのロック解除を要求できません：{}
+
+Couldn’t be checked {}: {}.
+{}の検証に失敗しました：{}。
+
+Couldn’t change this vault in 1Password. {}
+1Passwordで保管庫を変更できませんでした。{}
+
+Couldn’t delete it in 1Password. {}
+1Passwordで項目を削除できませんでした。{}
+
+Couldn’t delete this vault from 1Password. {}
+1Passwordから保管庫を削除できませんでした。{}
+
+Couldn’t keep the approval: {}
+承認内容を保存できません：{}
+
+Couldn’t keep the key in the login keyring: {}
+ログインキーリングに鍵を保存できません：{}
+
+Couldn’t keep the key: {}
+鍵を保存できません：{}
+
+Couldn’t list its items. {}
+項目一覧を取得できませんでした。{}
+
+Couldn’t make this vault in 1Password, so its items weren’t sent either. {}
+1Passwordで保管庫を作成できず、中の項目も送信できませんでした。{}
+
+Couldn’t open this item: {}
+この項目を開けません：{}
+
+Couldn’t reach the login keyring: {}
+ログインキーリングに接続できません：{}
+
+Couldn’t read 1Password’s copy to compare, so yours wasn’t sent. {}
+1Password側のコピーを読み取って比較できなかったため、手元の変更は送信していません。{}
+
+Couldn’t read the key: {}
+鍵を読み込めません：{}
+
+Couldn’t remove the account: {}
+アカウントを削除できません：{}
+
+Couldn’t remove the worktree in {}: {}
+{}のワークツリーを削除できません：{}
+
+Couldn’t reset: {}
+リセットできません：{}
+
+Couldn’t restore: {}.
+復元できません：{}。
+
+Couldn’t save the settings: {}
+設定を保存できません：{}
+
+Couldn’t save your passwords: {}
+パスワードを保存できません：{}
+
+Couldn’t save “{}”: {}
+「{}」を保存できません：{}
+
+Couldn’t send it. {}
+送信できませんでした。{}
+
+Couldn’t send this account’s changes. {}
+このアカウントの変更を送信できませんでした。{}
+
+Couldn’t sign out ({}).
+サインアウトできませんでした（{}）。
+
+Couldn’t sync this account. {}
+このアカウントを同期できませんでした。{}
+
+Couldn’t take the approval back: {}
+許可を取り消せません：{}
+
+Couldn’t write the shared copy: {}
+共有コピーを書き込めません：{}
+
+Count accounts turned off or signed out
+無効またはサインアウト済みのアカウントも含める
+
+Countdown
+カウントダウン
+
+Counting what there is to back up: {}, {} so far.
+バックアップ対象を集計中：{}、ここまでで{}。
+
+Counting what to back up
+バックアップ対象を集計中
+
+Cover
+雲量
+
+Crate
+Crate
+
+Create Link
+リンクを作成
+
+Create Link Here
+ここにリンクを作成
+
+Create Partition…
+パーティションを作成…
+
+Create…
+作成…
+
+Credit Card
+クレジットカード
+
+Crop
+切り抜き
+
+Cropped to {} × {}
+{} × {}に切り抜きました
+
+Crop…
+切り抜き…
+
+Current hardware state
+現在のハードウェア状態
+
+Custom
+カスタム
+
+Custom Message…
+カスタムメッセージ…
+
+Custom {} once applied (on {} until then)
+適用後はカスタム{}（現在は{}）
+
+Customize…
+カスタマイズ…
+
+Cut
+切り取り
+
+Cut {} to {}
+{}から{}までを切り出しました
+
+Cyan
+シアン
+
+Cycles
+サイクル
+
+Czech
+チェコ語
+
+DNS
+DNS
+
+DNS servers:
+DNSサーバー:
+
+DSL
+DSL
+
+Danish
+デンマーク語
+
+Dark
+ダーク
+
+Dart
+Dart
+
+Data Provider…
+データ提供元…
+
+Database
+データベース
+
+Date
+日付
+
+Date & Time
+日付と時刻
+
+Dates, times and numbers follow this computer’s region for now (its LANG). Date & Time sets the clock’s 12 or 24 hours.
+日付、時刻、数値は現在、このコンピューターの地域設定（LANG）に従います。12時間・24時間表示は「日付と時刻」で選べます。
+
+Day
+日
+
+Days:
+曜日:
+
+Decline
+拒否
+
+Decode With
+デコード方法
+
+Decode on:
+デコードに使う機器:
+
+Decoding on {}
+{}でデコード中
+
+DeepFilterNet3
+DeepFilterNet3
+
+DeepFilterNet3 Low Delay
+DeepFilterNet3（低遅延）
+
+Default
+デフォルト
+
+Default (Preferences ▸ Power)
+デフォルト（環境設定 ▸ 電源）
+
+Default Apps
+デフォルトのアプリ
+
+Default Keys
+標準のキー設定
+
+Default Message ({})
+標準メッセージ（{}）
+
+Default mode:
+標準モード:
+
+Defaults
+初期値
+
+Degrees
+度
+
+Delay
+遅延
+
+Delay until repeat
+リピート開始までの時間
+
+Delay:
+遅延:
+
+Delete
+削除
+
+Delete All
+すべて削除
+
+Delete All…
+すべて削除…
+
+Delete Column
+列を削除
+
+Delete Event
+予定を削除
+
+Delete Item
+項目を削除
+
+Delete Mark
+マークを削除
+
+Delete Row
+行を削除
+
+Delete Signature
+署名を削除
+
+Delete Table
+表を削除
+
+Delete Vault
+保管庫を削除
+
+Delete Vault…
+保管庫を削除…
+
+Delete the unfinished backup? What it sent ({}) is freed, and the next backup reads and sends again what it had done. It can’t be undone.
+未完了のバックアップを削除しますか？ 送信済みの{}が解放され、次回はその分も読み直して再送します。削除は取り消せません。
+
+Delete the vault “{}”{}{}? This can’t be undone.
+保管庫「{}」{}{}を削除しますか？ この操作は取り消せません。
+
+Delete these {} backups, the unfinished one too? The space only they took is freed (what the unfinished one sent, {}); files other backups hold too stay in those. It can’t be undone.
+{}件のバックアップと未完了のバックアップを削除しますか？ 未完了分の{}を含め、これらだけが使用する容量を解放します。他のバックアップにもあるファイルはそちらに残ります。削除は取り消せません。
+
+Delete these {} backups? The space only they took is freed; files other backups hold too stay in those. It can’t be undone.
+{}件のバックアップを削除しますか？ これらだけが使用する容量を解放します。他のバックアップにもあるファイルはそちらに残ります。削除は取り消せません。
+
+Delete this backup? The space only it took is freed; files other backups hold too stay in those. It can’t be undone.
+このバックアップを削除しますか？ このバックアップだけが使用する容量を解放します。他のバックアップにもあるファイルはそちらに残ります。削除は取り消せません。
+
+Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
+{}（{}）を完全に削除しますか？ ゴミ箱には入らず、削除は取り消せません。
+
+Delete {} Backups…
+{}件のバックアップを削除…
+
+Delete {} Chats…
+{}件のチャットを削除…
+
+Delete {} chats? Their messages go from this account{}. This can’t be undone.
+{}件のチャットを削除しますか？ このアカウント{}からメッセージが消えます。削除は取り消せません。
+
+Delete “{}” ({}) for good? It won't go to the Trash, and this can't be undone.
+「{}」（{}）を完全に削除しますか？ ゴミ箱には入らず、削除は取り消せません。
+
+Delete “{}” for good? Its attached files can’t come back.
+「{}」を完全に削除しますか？ 添付ファイルは復元できません。
+
+Delete “{}”? Edit ▸ Undo makes it again until Passwords locks.
+「{}」を削除しますか？ Passwordsがロックされるまでは「編集」▸「元に戻す」で復元できます。
+
+Deleted in 1Password
+1Passwordで削除済み
+
+Deleted in 1Password but changed here: kept here, to be added back
+1Passwordで削除され、手元で変更されたため、手元の内容を残して再追加します
+
+Deleted the vault “{}” and its item.
+保管庫「{}」と中の1件を削除しました。
+
+Deleted the vault “{}” and its {} items.
+保管庫「{}」と中の{}件を削除しました。
+
+Deleted the vault “{}”.
+保管庫「{}」を削除しました。
+
+Delete…
+削除…
+
+Deleting a backup
+バックアップを削除中
+
+Deleting backups
+バックアップを削除中
+
+Deleting the backups’ folder in Google Drive
+Google Driveのバックアップフォルダーを削除中
+
+Deleting the unfinished backup
+未完了のバックアップを削除中
+
+Deleting {}
+{}を削除中
+
+Deleting {} of {}
+削除中：{} / {}
+
+Deleting {}: {} of {}
+{}を削除中：{} / {}
+
+Description
+説明
+
+Description removed
+説明を削除しました
+
+Description:
+説明:
+
+Deselect All Chats
+チャットの選択をすべて解除
+
+Deselect All Conversations
+会話の選択をすべて解除
+
+Deselect All Screens
+画面の選択をすべて解除
+
+DeskCalc
+DeskCalc
+
+Deskbar
+Deskbar
+
+Deskbar clock
+Deskbarの時計
+
+Deskbar shows: {}
+Deskbarの表示：{}
+
+Deskbar: a {} widget measured “{}”, which this computer hasn't; it measures {} instead.
+Deskbarの{}ウィジェットで計測していた「{}」がこのコンピューターにないため、代わりに{}を計測します。
+
+Desktop (Preferences)
+デスクトップ（環境設定）
+
+Desktop Background
+デスクトップ背景
+
+Desktop Colour
+デスクトップの色
+
+Destination
+保存先
+
+Details
+詳細
+
+Device
+デバイス
+
+Dew point
+露点
+
+Dew point spread
+気温と露点の差
+
+Dew point spread {}
+気温と露点の差 {}
+
+Dew point {}
+露点 {}
+
+Diff
+Diff
+
+Dim the display while you look away
+目を離したら画面を暗くする
+
+Disagree
+同意しない
+
+Discard
+破棄
+
+Discard Recording
+録音を破棄
+
+Discard the changes to this item?
+この項目への変更を破棄しますか？
+
+Disconnect
+切断
+
+Disconnect Google Drive
+Google Driveを切断
+
+Disconnect Google Drive ({})? DiskBackup stops backing up there, and forgets its sign-in on this computer. The backups in your Drive stay as they are: connect again to go on from them, or to restore from them.
+Google Drive（{}）を切断しますか？ DiskBackupはここへのバックアップを停止し、このコンピューターの認証情報を削除します。Driveにあるバックアップは残るので、再接続すれば続きから保存したり復元したりできます。
+
+Disconnecting from Google Drive…
+Google Driveを切断中…
+
+Disconnect…
+切断…
+
+Disk
+ディスク
+
+Disk Space
+ディスク容量
+
+Disk:
+ディスク:
+
+DiskBackup
+DiskBackup
+
+DiskBackup backs up to a Google account’s Drive through that account’s own app, which Olo makes once for each account you connect (Mail and Calendar sign in through it too). Connect yours in Preferences ▸ Integrations ▸ Google: it shows here as soon as it’s connected.
+DiskBackupはGoogleアカウントごとの専用アプリでDriveにバックアップします。このアプリは接続時に一度だけ作成し、Mailとカレンダーも利用します。環境設定 ▸ 連携 ▸ Googleで接続すると、ここにアカウントが表示されます。
+
+DiskBackup backs up to its Drive and couldn’t stop: {}
+DiskBackupはこのDriveへのバックアップを停止できませんでした：{}
+
+DiskBackup copies your files, encrypted, every hour, and keeps older copies too, so any file can be brought back as it was. Where should the backups go?
+DiskBackupは1時間ごとにファイルを暗号化して保存します。以前の版も残るので、必要な時点のファイルに戻せます。どこに保存しますか？
+
+DiskBackup couldn’t: {}
+DiskBackupで処理できませんでした：{}
+
+DiskBackup is disconnected from Google Drive on this computer: connect it again (Connect Google Drive…)
+このコンピューターではDiskBackupとGoogle Driveの接続が切れています。「Google Driveを接続…」で接続し直してください
+
+DiskBackup is setting up its backups in {}’s Google Drive…
+{}のGoogle Driveにバックアップを設定中…
+
+DiskBackup is stopping its backups to Google Drive…
+Google Driveへのバックアップを停止中…
+
+DiskBackup isn't signed in to Google Drive on this computer: set it up again (Back Up To ▸ Google Drive…)
+このコンピューターではDiskBackupがGoogle Driveにサインインしていません。「バックアップ先」▸「Google Drive…」で設定し直してください
+
+DiskBackup isn’t running
+DiskBackupは停止中
+
+DiskBackup keeps its backups in a folder “{}” in that account’s Drive, which only Olo’s app for the account sees: nothing else of your Drive. Backups there already (another computer’s) are added to, with their key from Passwords.
+バックアップはこのアカウントのDriveの「{}」フォルダーに保存します。Oloの専用アプリが参照するのはこのフォルダーだけです。別のコンピューターのバックアップがある場合は、Passwordsの鍵を使って追記します。
+
+DiskBackup: backed up at {}.
+DiskBackup：{}にバックアップしました。
+
+DiskBackup: not backed up yet.
+DiskBackup：まだバックアップがありません。
+
+DiskBackup: not backing up ({}).
+DiskBackup：バックアップしていません（{}）。
+
+DiskBackup: {}. Click to see how far it is.
+DiskBackup：{}。クリックすると進捗を表示します。
+
+DiskBackup: {}. Click to see more.
+DiskBackup：{}。クリックすると詳細を表示します。
+
+DiskBackup’s own app, from before. Bring it in for Mail and Calendar too; the backups stay put.
+DiskBackupで使っていたアプリです。Mailとカレンダーにも取り込めます。バックアップはそのまま残ります。
+
+DiskBackup…
+DiskBackup…
+
+DiskUsage
+DiskUsage
+
+Disks
+ディスク
+
+Display
+ディスプレイ
+
+Display {}: {}. Click to go to another display.
+ディスプレイ{}：{}。クリックすると別のディスプレイに移動します。
+
+Displays
+ディスプレイ
+
+Divider
+区切り線
+
+Division by zero
+0では割れません
+
+Do I need sunscreen today?
+今日は日焼け止めが必要ですか？
+
+Do Not Disturb
+通知を一時停止
+
+Do Not Disturb (for {n} more minutes)
+other: 通知を一時停止（あと{n}分）
+
+Do Not Disturb is on
+通知を一時停止中
+
+Do Not Disturb is on — {} unread
+通知を一時停止中 — 未読{}件
+
+Dockerfile
+Dockerfile
+
+Document
+ドキュメント
+
+Documentation
+ドキュメント
+
+Documents
+ドキュメント
+
+Does “{}” show this number?
+「{}」にもこの番号が表示されていますか？
+
+Domain:
+ドメイン:
+
+Don't Allow
+許可しない
+
+Done
+完了
+
+Done Editing
+編集を完了
+
+Done with the exercises
+練習を終了
+
+Don’t Trust
+信頼しない
+
+Double-press speed
+2回押す間隔
+
+Down (received)
+下り（受信）
+
+Down the Side
+側面に縦置き
+
+Download
+ダウンロード
+
+Download at most:
+ダウンロード上限:
+
+Download, Then Restart to Install
+ダウンロード後に再起動してインストール
+
+Downloading: {}
+ダウンロード中：{}
+
+Downloading…
+ダウンロード中…
+
+Drag with:
+ドラッグ方法:
+
+Draw
+描画
+
+Drawing
+描画
+
+Drawn into each frame
+各フレームで描画
+
+DriveSetup
+DriveSetup
+
+Drizzle
+霧雨
+
+Drizzle and freezing drizzle
+霧雨と着氷性の霧雨
+
+Drizzle and freezing rain
+霧雨と着氷性の雨
+
+Drizzle and ice pellets
+霧雨と凍雨
+
+Drizzle and light snow
+霧雨と小雪
+
+Drizzle and snow
+霧雨と雪
+
+Drop on lift
+指を離したらドロップ
+
+Dropped
+欠落
+
+Dry for the next {} hours
+今後{}時間は降水なし
+
+Duplicate
+複製
+
+Dutch
+オランダ語
+
+E
+東
+
+ENE
+東北東
+
+ESE
+東南東
+
+Each Network's Own
+各ネットワークの設定
+
+Each above everything else, as it started (rtkit)
+すべて起動時の最優先設定を維持（rtkit）
+
+Each account
+各アカウント
+
+Each agent screen keeps what was done on it and the frames it drew, to replay or export as a video. The oldest goes first.
+エージェント画面ごとに操作と表示内容を記録します。後で再生したり、動画として書き出したりできます。古い記録から順に削除します。
+
+Each cluster's cores change speed together; the governor decides how
+同じクラスタのコアは一緒に速度が変わります。変更の仕方は周波数ガバナーが決めます
+
+Each core ({})
+各コア（{}）
+
+Each display has workspaces of its own.
+ディスプレイごとに専用のワークスペースがあります。
+
+Each display is at its own best resolution and scale now: no rotation, mirroring, HDR or VRR, and night light off. Yours come back as you leave.
+各ディスプレイを最適な解像度と倍率に設定しました。回転、ミラーリング、HDR、VRR、夜間照明はオフです。終了すると元の設定に戻ります。
+
+Each display is drawn by the graphics it's wired to, so no frame crosses between them; the second sleeps while nothing uses it.
+各ディスプレイは直結したGPUで描画します。GPU間でフレームを転送せず、使っていないGPUは休止します。
+
+Each display’s Deskbar keeps the workspace that display shows open; each other one is its heading, with an arrow that shows its applications and puts them away again, in that Deskbar alone.
+各Deskbarには、その画面で表示中のワークスペースを展開します。ほかは見出しだけを表示し、矢印でそのDeskbar内のアプリ一覧を開閉できます。
+
+Each is judged from several signals together; a finding says how sure it is and why.
+複数の兆候を組み合わせて判断します。検出結果には確度と理由を表示します。
+
+Each is the computer's, not this account's, so switching one asks for an administrator's password. Olo Doctor suggests each, with what was measured for it.
+設定はコンピューター全体で共通です。変更には管理者のパスワードが必要です。Olo Doctorで推奨設定とその根拠となる測定値を確認できます。
+
+Each kind of input in the last minute: how many, never which keys
+直近1分の入力を種類別に集計します。押したキーの内容は記録しません
+
+Each kind opens in this app wherever you open it, in Olo and in other programs. Tracker's Open With ▸ Always Open With chooses too.
+Oloでもほかのプログラムでも、この種類のファイルは指定したアプリで開きます。Trackerの「このアプリで開く」▸「常にこのアプリで開く」からも指定できます。
+
+Each network's own
+各ネットワークの設定
+
+Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
+設定した方法はいずれも、Passwords、Terminalのsudo、管理者の承認でパスワードの代わりに使えます。顔と指紋はサインインと画面ロックの解除にも使えます。使いたい方法をそのままお使いください。
+
+Each repository gets a folder in there: olo’s worktree fix-tabs goes in {}/olo/fix-tabs.
+リポジトリごとにフォルダーを作ります。例：oloのワークツリーfix-tabsは{}/olo/fix-tabsに置きます。
+
+Each setting tried shows here.
+試した設定が順に表示されます。
+
+Each shows in the Deskbar as it changes. A click on one there opens its app: Activity Monitor, Token Pool or the app it’s from.
+値はDeskbarに随時反映されます。クリックするとアクティビティモニタ、Token Poolなどの提供元アプリが開きます。
+
+Edge
+端
+
+Edge to edge
+端から端まで
+
+Edit
+編集
+
+Edit Event…
+予定を編集…
+
+Edit Message
+メッセージを編集
+
+Edit Name
+名前を編集
+
+Edit Video…
+動画を編集…
+
+Editors’ swap and backup files
+エディターのスワップ・バックアップファイル
+
+Edit…
+編集…
+
+Either AirPod
+左右どちらのAirPodでも
+
+Eject
+取り出す
+
+Elixir
+Elixir
+
+Email Account
+メールアカウント
+
+Email Accounts
+メールアカウント
+
+Emoji
+絵文字
+
+Empty
+空
+
+Empty Trash
+ゴミ箱を空にする
+
+Empty the Collector
+コレクターを空にする
+
+Emptying the Trash
+ゴミ箱を空にしています
+
+Enable Screen Saver
+スクリーンセーバーを有効にする
+
+Enclosing Folder
+親フォルダー
+
+Encode With
+エンコード方法
+
+Encode on:
+エンコードに使う機器:
+
+Encrypt it with a passphrase
+パスフレーズで暗号化
+
+End
+終了
+
+End Test
+テストを終了
+
+Ended the test (process {}): its slots go back to the pool.
+テスト（プロセス{}）を終了し、使用していた枠をプールに戻しました。
+
+Ended the test (process {}, made up).
+テスト（プロセス{}）を終了しました（シミュレーション）。
+
+Ends a turn going on; Codex’s windows reconnect.
+進行中の応答を終了します。Codexのウィンドウは再接続します。
+
+Ends:
+終了:
+
+English (Australia)
+英語（オーストラリア）
+
+English (UK)
+英語（英国）
+
+English (US)
+英語（米国）
+
+Enhancements
+機能改善
+
+Enrolling didn't finish.
+登録が完了しませんでした。
+
+Enrolling your {}
+{}を登録中
+
+Enter Full Screen
+全画面表示
+
+Enter the password for “{}” to unlock it.
+「{}」のパスワードを入力してロックを解除してください。
+
+Entire disk
+ディスク全体
+
+Entries
+項目
+
+Erase All Backups…
+すべて消去…
+
+Erase every backup in {}? Every version of every file kept there goes (another computer’s backups there too), and the space is freed. {} It can’t be undone.
+{}にあるバックアップをすべて消去しますか？ 別のコンピューターのバックアップも含め、全ファイルのすべての版を削除し、容量を解放します。{} この操作は取り消せません。
+
+Erasing every backup
+すべてのバックアップを消去中
+
+Erasing every backup, to start fresh
+最初からやり直すため、すべてのバックアップを消去中
+
+Erasing goes on by itself once it’s back, from where it got to.
+保存先が再び利用できるようになると、続きから自動で消去します。
+
+Erlang
+Erlang
+
+Ethernet
+Ethernet
+
+Even Columns
+列の幅を揃える
+
+Even Out the Voice's Level
+声の音量を揃える
+
+Even With the Lid Closed
+ふたを閉じたときも
+
+Even out the voice's level
+声の音量を揃える
+
+Events:
+予定:
+
+Every 2 Weeks
+2週間ごと
+
+Every 2 weeks
+2週間ごと
+
+Every Counter
+すべてのカウンター
+
+Every Day
+毎日
+
+Every Month
+毎月
+
+Every Week
+毎週
+
+Every Weekday
+平日
+
+Every Year
+毎年
+
+Every backup from the last hour, then {} and {}.
+直近1時間のすべてのバックアップ、その後は{}と{}。
+
+Every backup from the last hour, then {}.
+直近1時間のすべてのバックアップ、その後は{}。
+
+Every backup from the last hour; older ones go.
+直近1時間のバックアップをすべて残し、それ以前のものは削除します。
+
+Every byte read back and checked, from {}.
+{}からすべてのデータを読み戻して確認しました。
+
+Every day
+毎日
+
+Every day at set times
+毎日決めた時刻に
+
+Every disk
+すべてのディスク
+
+Every frame on time this last minute
+直近1分はすべてのフレームが時間内に描画されました
+
+Every interface
+すべてのインターフェース
+
+Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
+キー入力と描画はウィンドウサーバーのメインループと入力スレッドが処理します。オンにすると、高速なプロセッサー{}を専用に確保します。ビルドやブラウザーなどはほかのプロセッサー上で動くので、入力や描画を待たせません。
+
+Every month
+毎月
+
+Every week
+毎週
+
+Every weekday
+平日
+
+Every year
+毎年
+
+Every {n} days
+other: {n}日ごと
+
+Every {n} months
+other: {n}か月ごと
+
+Every {n} weeks
+other: {n}週間ごと
+
+Every {n} years
+other: {n}年ごと
+
+Everything
+すべて
+
+Everything Else
+その他すべて
+
+Everything else's brightness
+その他の部分の明るさ
+
+Everything it needs looked for, in {}.
+{}で必要なデータがすべて揃っているか確認しました。
+
+Export
+エクスポート
+
+Export Flattened PDF…
+レイヤーを統合したPDFを書き出す…
+
+Export Video
+動画を書き出す
+
+Export Video…
+動画を書き出す…
+
+Export cancelled.
+書き出しをキャンセルしました。
+
+Export…
+エクスポート…
+
+Expression
+数式
+
+Extended desktop
+拡張デスクトップ
+
+Extensions
+拡張子
+
+Extensions:
+拡張子:
+
+Extra High
+非常に高い
+
+Extract All
+すべて展開
+
+Extract Here
+ここに展開
+
+Extract Selected To…
+選択した項目の展開先…
+
+Extract Selected…
+選択した項目を展開…
+
+Extract To…
+展開先…
+
+Extreme
+極端
+
+FD
+FD
+
+Fable 5.1
+Fable 5.1
+
+Face Unlock
+顔認証
+
+Face unlock is installed only in the person's own session (polkit asks there).
+顔認証は自分のセッションでインストールしてください。polkitはそのセッションで承認を求めます。
+
+Face unlock isn't installed.
+顔認証はインストールされていません。
+
+Face unlock wasn't installed: {}
+顔認証をインストールできませんでした：{}
+
+Face unlock wasn't removed: {}
+顔認証を削除できませんでした：{}
+
+Face unlock's service isn't in this build (build the whole workspace).
+このビルドには顔認証サービスがありません。ワークスペース全体をビルドしてください。
+
+Face unlock's service isn't in this build.
+このビルドには顔認証サービスがありません。
+
+Fade
+フェード
+
+Fade Colors
+色を薄くする
+
+Fahrenheit (°F)
+Fahrenheit (°F)
+
+Fan Out
+扇状に並べる
+
+Fan Out Others
+ほかを扇状に並べる
+
+Fan level {}
+ファンレベル {}
+
+Fan level {} · {}
+ファンレベル {} · {}
+
+Fans
+ファン
+
+Fast
+高速
+
+Fast when there is work, frugal when there isn't, the processors kept out of their hottest top speed. The usual choice.
+負荷があるときは速く、ないときは省電力。発熱の大きい最高クロックを避けます。通常はこちらがおすすめです。
+
+Faster
+速く
+
+Fastest
+最速
+
+Fastmail
+Fastmail
+
+Fastmail didn’t take the address and app password: {}
+Fastmailがアドレスとアプリ用パスワードを受け付けませんでした：{}
+
+Favorites
+お気に入り
+
+Favoured
+優先
+
+Fedora
+Fedora
+
+Fedora {} is out too: after this upgrade, the next.
+Fedora {}も公開されています。今回の更新後にアップグレードできます。
+
+Fedora {} is out.
+Fedora {}が公開されています。
+
+Fedora’s list of releases couldn’t be read: {}
+Fedoraのリリース一覧を読み込めません：{}
+
+Feels like
+体感温度
+
+Feels like {}
+体感 {}
+
+Feet
+フィート
+
+Fetching the forecast…
+天気予報を取得中…
+
+Fetching…
+取得中…
+
+Field
+フィールド
+
+File
+ファイル
+
+File system:
+ファイルシステム:
+
+Files
+ファイル
+
+Files with these extensions are this kind wherever Olo looks at them, and open in its app. An extension another kind had is this one's now.
+Oloはこの拡張子を持つファイルを指定の種類として認識し、対応するアプリで開きます。ほかの種類で使っていた拡張子もこちらに割り当てます。
+
+Fill It In
+入力する
+
+Find
+検索
+
+Find Again
+次を検索
+
+Find Previous
+前を検索
+
+Find Selection
+選択した文字列を検索
+
+Find a free hour this week
+今週1時間空いているところを探す
+
+Find an app
+アプリを検索
+
+Find in document
+文書内を検索
+
+Find:
+検索:
+
+Finding the server…
+サーバーを検索中…
+
+Find…
+検索…
+
+Fine-tuned on your newest commands a minute after you type them
+入力した新しいコマンドを1分後に追加学習します
+
+Finger
+指
+
+Fingerprints can only be changed from a session logged in at this computer.
+指紋の変更は、このコンピューターに直接ログインしたセッションで行ってください。
+
+Fingers moving
+移動中の指
+
+Fingers scrolling
+スクロール中の指
+
+Fingers taken for palms
+手のひらと誤認した指
+
+Finishing sending a pack: {} of {}
+パックの送信を完了中：{} / {}
+
+Finishing the backup
+バックアップを仕上げています
+
+Finishing what’s being sent, then keeping what’s done.
+送信中のデータを送り終えてから、ここまでの進捗を保存します。
+
+Finnish
+フィンランド語
+
+Firm
+強め
+
+Firmer
+さらに強め
+
+Firmware curve
+ファームウェアの制御曲線
+
+First Page
+最初のページ
+
+First, as the main window
+先頭にメインウィンドウとして配置
+
+Fish
+Fish
+
+Fit Page
+ページに合わせる
+
+Fit Page Width
+ページの幅に合わせる
+
+Fit Width
+幅に合わせる
+
+Fix
+修正
+
+Fix in Olo Doctor…
+Olo Doctorで修正…
+
+Flip Horizontal
+左右反転
+
+Flip Vertical
+上下反転
+
+Float Window
+ウィンドウをフローティング表示
+
+Float Window Group
+ウィンドウグループをフローティング表示
+
+Flurries
+にわか雪
+
+Focus
+フォーカス
+
+Focus follows the pointer
+ポインターにフォーカスを合わせる
+
+Fog
+霧
+
+Fog likely · spread {}
+霧の可能性あり · 露点との差 {}
+
+Folder
+フォルダー
+
+Folders and files, separated by commas: ~/ is your home folder, **/ anywhere, * any name.
+フォルダーやファイルをカンマで区切ります。~/はホームフォルダー、**/は任意の場所、*は任意の名前です。
+
+Folders by Name, Files by Date
+フォルダーは名前順、ファイルは日付順
+
+Follows Other Mice below. Recommended for it: {}.
+下の「その他のマウス」の設定に従います。推奨値：{}。
+
+Font
+フォント
+
+For
+対象
+
+For Every Link
+すべての接続で使用
+
+For ever
+無期限
+
+For finding out why
+原因を調べるため
+
+For the mice set to follow the others, and any you connect.
+他のマウスと同じ設定を使うものと、今後接続するマウスに適用します。
+
+For {} · process {}
+{}用 · プロセス{}
+
+For:
+対象:
+
+Force End
+強制終了
+
+Force Quit {} Processes…
+{}個のプロセスを強制終了…
+
+Force Quit…
+強制終了…
+
+Force {} processes to quit ({})? Any unsaved work in them will be lost.
+{}個のプロセス（{}）を強制終了しますか？ 保存していない作業は失われます。
+
+Force “{}” ({}) to quit? Any unsaved work in it will be lost.
+「{}」（{}）を強制終了しますか？ 保存していない作業は失われます。
+
+Forecasts from {}
+予報の提供元：{}
+
+Forever
+期限なし
+
+Forget
+登録を解除
+
+Forget My Model
+自分のモデルを削除
+
+Forget Saved Group
+保存したグループを削除
+
+Forget…
+登録を解除…
+
+Forgot {}: pair with it again to use it.
+{}の登録を解除しました。使うにはもう一度ペアリングしてください。
+
+Form
+フォーム
+
+Format:
+フォーマット:
+
+Formats
+フォーマット
+
+Format…
+初期化…
+
+Forward
+進む
+
+Forwarded from {}
+{}からの転送
+
+Forward…
+進む…
+
+Found as {}. Leave it empty for that name.
+{}として検出しました。この名前を使う場合は空欄にします。
+
+Four fingers
+4本指
+
+Free
+空き
+
+Free (open source)
+フリー（オープンソース）
+
+Freeing the space only backups past keeping took, in {}.
+期限切れのバックアップだけが使う容量を{}で解放しています。
+
+Freezing
+氷点下
+
+Freezing drizzle
+着氷性の霧雨
+
+Freezing rain
+着氷性の雨
+
+Freezing rain and heavy ice pellets
+着氷性の雨と強い凍雨
+
+Freezing rain and ice pellets
+着氷性の雨と凍雨
+
+French
+フランス語
+
+French (Canada)
+フランス語 (カナダ)
+
+Frequencies
+周波数
+
+From
+開始
+
+From the network
+ネットワークから取得
+
+From your next login, Passwords can be ssh’s agent here too.
+次回のログインから、このコンピューターではPasswordsをSSHエージェントとしても使えます。
+
+From {}
+{}から
+
+From {} to {}
+{}から{}まで
+
+From:
+開始:
+
+Full access couldn't be asked for. {}
+フルアクセスを要求できませんでした。{}
+
+Full speed
+最高速度
+
+GPU
+GPU
+
+GPU:
+GPU:
+
+GPUs are tuned only in the person's own session (polkit asks there).
+GPUの調整は自分のセッションで行ってください。polkitはそのセッションで承認を求めます。
+
+Game saves
+ゲームのセーブデータ
+
+Gaps
+間隔
+
+Generator
+生成ツール
+
+Gently, below my own work
+自分の作業を優先
+
+German
+ドイツ語
+
+Gestures
+ジェスチャー
+
+Get Full Access…
+フルアクセスを許可…
+
+Get Info
+情報を見る
+
+Getting ready
+準備中
+
+Getting the sensor ready…
+センサーを準備中…
+
+Git Worktrees
+Gitワークツリー
+
+GitHub
+GitHub
+
+GitHub answered {}
+GitHubの応答：{}
+
+GitHub answered {}.
+GitHubの応答：{}。
+
+GitHub couldn’t be reached ({}).
+GitHubに接続できませんでした（{}）。
+
+GitHub didn’t take the token: it may have expired or been revoked.
+GitHubがトークンを拒否しました。有効期限が切れたか、取り消された可能性があります。
+
+Give a new key
+新しいキーを割り当てる
+
+Give it a name.
+名前を付けてください。
+
+Glide
+滑らかに移動
+
+Glow new windows for
+新しいウィンドウを強調する時間
+
+Go
+移動
+
+Go to
+移動先
+
+Go to End
+末尾に移動
+
+Go to File or Folder…
+ファイルまたはフォルダーに移動…
+
+Go to:
+移動先:
+
+Going:
+出欠:
+
+Good. Lift, and touch again, a little differently.
+読み取れました。指を離し、少し角度を変えてもう一度触れてください。
+
+Good. Now lift it.
+読み取れました。指を離してください。
+
+Good. Now lift your hand.
+読み取れました。手を離してください。
+
+Google
+Google
+
+Google (8.8.8.8)
+Google (8.8.8.8)
+
+Google Cloud Console…
+Google Cloudコンソール…
+
+Google Drive
+Google Drive
+
+Google account’s login:
+Googleアカウントのログイン項目:
+
+Google and Fastmail accounts for Mail (Integrations) are looked in too.
+「連携」でMailに設定したGoogleとFastmailのアカウントも検索します。
+
+Google no longer takes its sign-in: sign in again.
+Googleの認証が無効になりました。もう一度サインインしてください。
+
+Got it. Touch the key once more: its light is blinking again.
+読み取れました。ランプが再び点滅しているので、もう一度キーに触れてください。
+
+Governor:
+周波数ガバナー:
+
+Go’s downloaded modules and build cache
+Goのダウンロード済みモジュールとビルドキャッシュ
+
+Gradle’s and Maven’s downloads and caches
+GradleとMavenのダウンロードとキャッシュ
+
+Graph
+グラフ
+
+Graph shows:
+グラフの表示内容:
+
+Graphics
+グラフィック
+
+Graphs
+グラフ
+
+Graphs Show
+グラフの表示内容
+
+Gray
+グレー
+
+Green
+緑
+
+Green:
+緑:
+
+Grid
+グリッド
+
+Group
+グループ
+
+Group Windows
+ウィンドウをグループ化
+
+Growing for
+増加が続く時間
+
+Guests:
+招待者:
+
+Gusts
+突風
+
+Gusts {}
+最大瞬間風速 {}
+
+H.264 (plays everywhere)
+H.264（幅広い機器で再生可能）
+
+H.264 (plays everywhere, on the processor)
+H.264（幅広い機器で再生可能、CPUを使用）
+
+H.264 (plays everywhere, on {})
+H.264（幅広い機器で再生可能、{}を使用）
+
+HDR needs a setting at the computer's start: Olo Doctor offers it (“The built-in display's HDR is off”).
+HDRには起動時の設定が必要です。Olo Doctorの「内蔵ディスプレイのHDRがオフ」で設定できます。
+
+HDR video and pictures shine up to {} cd/m²; everything else is shown this bright.
+HDR動画や画像の明るい部分は最大{} cd/m²で表示します。それ以外はこちらの明るさで表示します。
+
+HEVC (about half the size)
+HEVC（サイズは約半分）
+
+HTML
+HTML
+
+Haiku 5.5
+Haiku 5.5
+
+Halves
+2分割
+
+Hang Up
+通話を終了
+
+Hard
+ハード上限
+
+Hardware
+ハードウェア
+
+Hardware Address: {}
+ハードウェアアドレス：{}
+
+Hardware address:
+ハードウェアアドレス:
+
+Haskell
+Haskell
+
+Header & Footer…
+ヘッダーとフッター…
+
+Header Row
+見出し行
+
+Heading 1
+見出し1
+
+Heading 2
+見出し2
+
+Heading 3
+見出し3
+
+Heading 4
+見出し4
+
+Heading 5
+見出し5
+
+Heading 6
+見出し6
+
+Headless
+ヘッドレス
+
+Health
+状態
+
+Health: {}% of original capacity
+状態：初期容量の{}%
+
+Heatmap
+ヒートマップ
+
+Heavy freezing rain
+強い着氷性の雨
+
+Heavy ice pellets
+強い凍雨
+
+Heavy rain
+激しい雨
+
+Heavy sleet
+強いみぞれ
+
+Heavy snow
+大雪
+
+Hectopascals
+ヘクトパスカル
+
+Height
+高さ
+
+Held by builds
+ビルドが使用中
+
+Held by the server
+サーバー側で待機
+
+Hidden and ignored files
+隠しファイルと無視対象のファイル
+
+Hide
+隠す
+
+Hide All
+すべて隠す
+
+Hide Chat List
+チャット一覧を隠す
+
+Hide Deskbar
+Deskbarを隠す
+
+Hide List
+一覧を隠す
+
+Hide Others
+他を隠す
+
+Hide Tab When Tiled
+タイル表示時にタイトルタブを隠す
+
+High
+高
+
+High dynamic range (HDR)
+ハイダイナミックレンジ（HDR）
+
+High {}, low {}
+最高{}、最低{}
+
+Highest clock
+最高クロック
+
+History
+履歴
+
+Hits
+キャッシュヒット
+
+Hold Fn (🌐) for F1 to F12.
+Fn（🌐）を押しながらF1〜F12を使えます。
+
+Hold duration:
+長押し時間:
+
+Hold it there…
+そのまま保持してください…
+
+Hold the microphone button down while you speak, or click it to record until you click Send.
+マイクボタンを押しながら話してください。クリックで録音を始め、「送信」を押して終えることもできます。
+
+Holding at least
+最低使用量
+
+Holds
+充電容量
+
+Home
+ホーム
+
+Hosts
+ホスト
+
+Hotspot
+ホットスポット
+
+Hours:
+時間:
+
+How cloudy will it be today?
+今日はどのくらい曇りますか？
+
+How cloudy will it be tomorrow?
+明日はどのくらい曇りますか？
+
+How cold will it get tonight?
+今夜はどのくらい冷えますか？
+
+How fast it runs now
+現在の動作速度
+
+How loud this microphone is gets measured as you talk on a call, or with Try It.
+通話中に話すか「試す」を選ぶと、マイクの音量を測定します。
+
+How warm will it get today?
+今日はどのくらい暖かくなりますか？
+
+How windy will it be today?
+今日は風が強くなりますか？
+
+How windy will it be tomorrow?
+明日は風が強くなりますか？
+
+How’s the weekend looking?
+週末の天気は？
+
+Humidity
+湿度
+
+Humidity and pressure ({})
+湿度と気圧（{}）
+
+I/O Pressure
+I/O負荷
+
+ID
+ID
+
+INI
+INI
+
+IP Address: {}
+IPアドレス：{}
+
+IP address:
+IP アドレス:
+
+Ice pellets
+凍雨
+
+Icon View
+アイコン表示
+
+Icons
+アイコン
+
+Id
+Id
+
+Identify
+識別
+
+Identity
+ID
+
+Identity:
+ID:
+
+Idle
+待機
+
+Idle States
+アイドル状態
+
+Idle: the middle of {} round trips
+無負荷時：{}回の往復時間の中央値
+
+If it does, confirm here, and on the phone too.
+番号が同じなら、ここでも電話でも承認してください。
+
+If nothing shows on the touchpad, your shirt doesn't reach it: press Space to skip this.
+タッチパッドに何も表示されなければ、袖は触れていません。スペースキーでこの手順をスキップできます。
+
+Ignore
+無視
+
+Ignore Spelling
+スペルを無視する
+
+Ignore This Process
+このプロセスを無視
+
+Ignore hovering fingers and palms
+浮いている指や手のひらを無視
+
+Ignore the touchpad while the pointing stick is used
+スティック使用中はタッチパッドを無効にする
+
+Ignore the touchpad while typing
+入力中はタッチパッドを無効にする
+
+Image
+画像
+
+Immediately needs a small helper that only the administrator can install. Until it's installed, Immediately restarts or shuts down as Restart and Shut Down do.
+「直ちに」を使うには管理者が補助プログラムをインストールする必要があります。それまでは通常の再起動・システム終了と同じ手順で動作します。
+
+Import
+インポート
+
+Import WireGuard…
+WireGuard設定をインポート…
+
+Imported {}{}{}. Apps that are open take some settings when they next start.{}
+{}{}{}をインポートしました。開いているアプリでは、一部の設定は次回の起動時に反映されます。{}
+
+Import…
+インポート…
+
+In Google Cloud, signed in as the account, make its app, “Olo (its address)”:
+対象のアカウントでGoogle Cloudにログインし、専用アプリ「Olo（アカウントのアドレス）」を作成してください：
+
+In HDR on a display whose HDR is on: its lights shine brighter than the rest.
+HDR対応画面でHDRを有効にすると、映像の光の部分がほかより明るく表示されます。
+
+In Use for Internet Traffic
+インターネット通信に使用中
+
+In an agent’s tab:
+エージェントのタブ:
+
+In its own way
+カスタム
+
+In place of the blue dot of its notifications, for as long as the app says something is unread or waiting in it.
+アプリに未読または保留中の項目がある間、通知の青い点に代わって表示されます。
+
+In the Scratchpad
+スクラッチパッド内
+
+In the Tray
+トレイ内
+
+In the archive
+アーカイブ内
+
+In the command palette, type /ask and a question: the answer shows there with code to copy (its number, then Return). Space asks a follow-up.
+コマンドパレットで /ask に続けて質問を入力します。回答内のコードは番号を入力してReturnでコピーできます。スペースキーで続けて質問できます。
+
+In the emoji picker ({}), describe what you want to say and press ⌘↩ for five emoji that say it.
+絵文字選択画面（{}）で伝えたい内容を入力し、⌘↩を押すと絵文字の候補が5つ出ます。
+
+In the emoji picker, describe what you want to say and press ⌘↩ for five emoji that say it.
+絵文字選択画面で伝えたい内容を入力し、⌘↩を押すと絵文字の候補が5つ出ます。
+
+In the tray it's an icon's size; its name and value are in its tip.
+トレイではアイコン1個分の大きさです。ポインターを重ねると名前と値が表示されます。
+
+In use
+使用中
+
+In use, with the weights it began from (not fine-tuned yet), on the {}.
+{}で使用中。初期の重みを使用しています（未調整）。
+
+In use: Olo's own for a {}, made from {} touches of real hands on one; it caught {}% of palms and took {}% of fingers for palms. Train for Your Palm fits it to yours.
+{}用のOlo標準モデルを使用中です。同じ機種での{}回のタッチから学習し、手のひらの{}%を検出しました。指を手のひらと誤認した割合は{}%です。「手のひらに合わせて学習」で調整できます。
+
+In use: yours, trained {} on {} touches; on touches kept back it caught {}% of palms and took {}% of fingers for palms.
+独自モデルを使用中です。{}に{}回のタッチで学習しました。テスト用データで手のひらの{}%を検出し、指の{}%を手のひらと誤認しました。
+
+In {n} days
+other: {n}日後
+
+In {n} hours
+other: {n}時間後
+
+In {n} minutes
+other: {n}分後
+
+In {}, on a new branch of its name{}.
+{}内に、同じ名前の新規ブランチとして作成します{}。
+
+In {}, on a new branch, {}, from {}.
+{0}内に、{2}から新規ブランチ「{1}」を作成します。
+
+In {}, on a new branch, {}.
+{}内に、新規ブランチ「{}」として作成します。
+
+In {}, on its branch, {}.
+{}内で既存のブランチ「{}」を使います。
+
+In:
+場所:
+
+Inches
+インチ
+
+Inches of Mercury
+水銀柱インチ
+
+Include passwords and sign-ins, sealed with a password
+パスワードとログイン情報をパスワードで保護して含める
+
+Incoming call
+着信
+
+Incomplete expression
+式が未完成です
+
+Indent Less
+インデントを減らす
+
+Indent More
+インデントを増やす
+
+Ink Colour
+インクの色
+
+Input
+入力
+
+Input level
+入力レベル
+
+Inputs
+入力
+
+Insert
+挿入
+
+Insert Picture…
+画像を挿入…
+
+Insert Table
+表を挿入
+
+Inspect
+詳しく見る
+
+Inspect Parent
+親要素を調べる
+
+Install Now
+すぐにインストール
+
+Install When Restarting
+再起動時にインストール
+
+Install from:
+インストール元:
+
+Install just
+これだけをインストール
+
+Install the Helper…
+補助プログラムをインストール…
+
+Installed
+インストール済み
+
+Install…
+インストール…
+
+Integrated GPU (VA-API)
+内蔵GPU（VA-API）
+
+Integrations
+連携
+
+Intel GPU (VA-API)
+Intel GPU（VA-API）
+
+Interface:
+インターフェース:
+
+Interrupts
+割り込み
+
+Invalid one-time password secret
+ワンタイムパスワードの秘密鍵が無効です
+
+Invert Selection
+選択範囲を反転する
+
+Invite:
+招待先:
+
+It Matches
+一致する
+
+It backs up once the computer is connected by a cable. {}. {}.
+有線ネットワークに接続するとバックアップします。{}。{}。
+
+It backs up once the computer is plugged in. {}. {}.
+コンピューターを電源につなぐとバックアップします。{}。{}。
+
+It couldn’t be fetched: {}
+取得できませんでした：{}
+
+It couldn’t be read: {}
+読み込めませんでした：{}
+
+It didn't work.
+うまくいきませんでした。
+
+It didn’t open: {}.
+開けませんでした：{}。
+
+It downloads {}
+ダウンロード量は{}です
+
+It goes on once there’s one. {}. {}.
+接続できるようになると続行します。{}。{}。
+
+It has no [repository] in it.
+[repository]のセクションがありません。
+
+It has the active window: never lowered while it does.
+アクティブウィンドウのプロセスです。この状態では優先度を下げません。
+
+It isn't a WireGuard configuration: {}.
+WireGuardの設定ではありません：{}。
+
+It lasts until it's turned off, the link goes away or the computer restarts. Changing it asks for an administrator's password once while this window is open.
+オフにするか、接続が切れるか、再起動するまで有効です。変更にはこのウィンドウを開いている間に一度だけ管理者のパスワードが必要です。
+
+It learned from {} of your touches, but app_server didn't keep it: it's likely older than this Preferences. Upgrade Olo (the new build in Deskbar's tray), then train again.
+{}回のタッチで学習しましたが、app_serverが結果を保存できませんでした。環境設定より古いバージョンの可能性があります。DeskbarのトレイからOloを更新して再学習してください。
+
+It needs at least three palms and three fingers among the touches it learns from. Train again and do each exercise as its film shows.
+学習には手のひらと指のタッチがそれぞれ3回以上必要です。各練習の動画に合わせてもう一度行ってください。
+
+It plays at a quarter of full volume, whatever yours is set to, and not while the sound is muted.
+設定音量に関係なく最大音量の25%で鳴ります。消音中は鳴りません。
+
+It takes only what nothing else wants, the processor’s time and the disk’s: never in your way, though slower while you work.
+余っているCPU時間とディスク帯域だけを使います。作業中は遅くなりますが、操作を妨げません。
+
+It was run by {} in {}.
+{1}で{0}が実行しました。
+
+It was run by {}.
+{}が実行しました。
+
+It wasn't forgotten ({}).
+登録を解除できませんでした（{}）。
+
+It wasn't set up ({}).
+設定できませんでした（{}）。
+
+It's in use now, in place of Olo's own.
+Oloの標準モデルに代わって使用中です。
+
+Italian
+イタリア語
+
+Italic
+斜体
+
+Item
+項目
+
+Its app password isn’t in the keyring: remove it and add it again.
+アプリ用パスワードがキーリングにありません。アカウントを削除して追加し直してください。
+
+Its click is its own: a resting palm can't press.
+クリックは独立して検出するため、手のひらを置くだけでは反応しません。
+
+Its decoder, on its battery preset (Power Modes), costs less than the processor's cores; off, the processor decodes on battery.
+バッテリー用の設定（電源モード）では、このデコーダーの方がCPUより低消費電力です。オフにするとバッテリー駆動時はCPUでデコードします。
+
+Its file, {}, is removed
+ファイル「{}」を削除します
+
+Its folder becomes {}, and its branch, {}, takes the new name too.
+フォルダー名が{}に変わり、ブランチ「{}」にも新しい名前を付けます。
+
+Its folder becomes {}; its branch stays as it is.
+フォルダー名を{}に変更します。ブランチ名はそのままです。
+
+Its key is damaged.
+鍵が破損しています。
+
+Its key isn't in this login keyring: it opens only on the computer that made it.
+鍵がこのログインキーリングにありません。作成したコンピューターでのみ開けます。
+
+Its own
+標準設定
+
+Its own sensor
+内蔵センサー
+
+Its packager wrote nothing.
+パッケージ作成者の説明はありません。
+
+Its packages’ signatures aren’t checked.
+パッケージの署名は検証されません。
+
+Its password isn’t in the keyring: remove it and add it again.
+パスワードがキーリングにありません。アカウントを削除して追加し直してください。
+
+Its power limit is the computer's to set, as a laptop's is.
+ノートPCと同様、電力上限は本体が決定します。
+
+Its release packages are installed: they add its repositories and keys.
+配布元のリリースパッケージをインストールし、リポジトリと鍵を追加します。
+
+Its secret reference, as Passwords’ Copy Secret Reference gives it. Passwords asks once, while it runs, whether Weather may have it.
+Passwordsの「シークレット参照をコピー」で取得した参照を指定します。Weatherに渡してよいか、Passwordsの起動中に一度だけ確認します。
+
+Its service starts with your session: log out and in again, or ask Olo Doctor to start it.
+ログイン時にサービスが起動します。ログインし直すか、Olo Doctorで起動してください。
+
+Its sign-in isn’t in the keyring: sign in again.
+ログイン情報がキーリングにありません。再サインインしてください。
+
+Its vault is gone from 1Password
+保管庫は1Passwordから削除されました
+
+Its versions can’t be read: {}.
+バージョンを読み取れません：{}。
+
+Its work starts sooner, but it never sleeps: more power, more warmth.
+すぐに処理を開始できますが、休止しないため消費電力と発熱が増えます。
+
+Its {n} items too
+other: 中の{n}件も対象
+
+Its {n} tabs close.
+other: {n}個のタブが閉じます。
+
+It’s Different
+一致しない
+
+It’s archived in 1Password, which doesn’t let other apps read archived items.
+1Passwordでアーカイブされています。ほかのアプリからはアーカイブ済みの項目を読めません。
+
+It’s kept in Passwords as “{}”, and nowhere else.
+Passwordsに「{}」としてのみ保存されます。
+
+It’s no longer in 1Password.
+1Passwordにはもうありません。
+
+It’s the newest release: there’s nothing to upgrade to.
+すでに最新バージョンです。
+
+JSON
+JSON
+
+Japanese
+日本語
+
+Java
+Java
+
+JavaScript
+JavaScript
+
+JavaScript packages and build output
+JavaScriptのパッケージとビルド生成物
+
+Jitter:
+ジッター:
+
+Join
+参加
+
+Journal
+ジャーナル
+
+Judged
+判定済み
+
+Julia
+Julia
+
+Just This Time
+今回のみ
+
+Justify
+両端揃え
+
+Kache
+Kache
+
+Kache: Build Cache
+Kache：ビルドキャッシュ
+
+Keep HDR on for {}?
+{}のHDRを有効のままにしますか？
+
+Keep It Going
+作業を続けさせる
+
+Keep It Going says
+作業を続けるときの指示
+
+Keep It Going says:
+作業を続けるときの指示:
+
+Keep It Going, in a tab’s menu, types this to the coding agent in the tab when it has stopped: after two quiet minutes, at most once an hour. Left empty, it says “Please continue”.
+タブのメニューで「作業を続けさせる」を選ぶと、エージェントが2分間停止したときにこの指示を送ります。送信は1時間に1回までです。空欄なら「Please continue」を送ります。
+
+Keep Key in Passwords
+鍵をPasswordsに保存
+
+Keep Only on This Computer
+このコンピューターだけに保存
+
+Keep Them Off
+オフのままにする
+
+Keep a core for the window server
+ウィンドウサーバー用に1コア確保
+
+Keep briefly
+しばらく保持
+
+Keep foreground work ready between bursts. Fans start sooner.
+前面の作業がすぐに再開できる状態を保ちます。ファンが早めに回り始めます。
+
+Keep it in Passwords
+Passwordsに保存
+
+Keep its driver ready
+ドライバーを待機させる
+
+Keep palms from moving the pointer
+手のひらでポインターが動かないようにする
+
+Keep proportions
+縦横比を固定
+
+Keep scrolling after a flick
+フリック後もスクロールを続ける
+
+Keep the Desktop Responsive
+デスクトップの応答性を保つ
+
+Keep the desktop responsive
+デスクトップの応答性を保つ
+
+Keep the new resolution of {}?
+{}の新しい解像度を維持しますか？
+
+Keep typing…
+そのまま入力してください…
+
+Keep until tapped
+タップするまで保持
+
+Keep up to:
+保存上限:
+
+Keep windows' graphics memory out of swap
+ウィンドウの描画用メモリをスワップさせない
+
+Keeping it in Passwords…
+Passwordsに保存中…
+
+Keeping the key in Passwords (unlock it if it asks)…
+Passwordsに鍵を保存中（求められたらロックを解除してください）…
+
+Keeping what’s done…
+進捗を保存中…
+
+Kept
+保持
+
+Kept Core
+予約したコア
+
+Kept for this computer and set again at every start.
+このコンピューターに保存し、起動するたびに適用します。
+
+Kept in step with network time servers.
+ネットワークの時刻サーバーと同期しています。
+
+Kept on this computer.
+このコンピューターに保存されています。
+
+Kept on this computer; made in 1Password once you sync an account.
+このコンピューターに保存しました。アカウントを同期すると1Passwordにも作成します。
+
+Kernel
+カーネル
+
+Kernel:
+カーネル:
+
+Key
+キー
+
+Key Repeat
+キーリピート
+
+Key password:
+鍵のパスワード:
+
+Key {} trusted.
+鍵{}を信頼済みにしました。
+
+Keyboard
+キーボード
+
+Keyboard Hints
+キーボードヒント
+
+Keyboard Profile
+キーボードプロファイル
+
+Keyboard Shortcuts
+キーボードショートカット
+
+Keyboard: the Mac profile came along, ⌘ on the Super key (the Windows key on most PC keyboards). Preferences ▸ Keyboard picks another for this keyboard.
+Macのプロファイルを取り込みました。⌘はSuperキー（一般的なPCではWindowsキー）に割り当てています。このキーボードのプロファイルは「環境設定」▸「キーボード」で変更できます。
+
+Keyboards
+キーボード
+
+Keys
+キー
+
+Key’s PIN:
+キーのPIN:
+
+Kilometres
+キロメートル
+
+Kilometres an Hour
+時速キロメートル
+
+Kind
+種類
+
+Kind:
+種類:
+
+Knots
+ノット
+
+Knows
+学習済み
+
+Kotlin
+Kotlin
+
+LAVD
+LAVD
+
+LTE
+LTE
+
+Language
+言語
+
+Language & Region
+言語と地域
+
+Large
+大
+
+Larger
+大きく
+
+Larger Pointer
+ポインターを拡大
+
+Last
+最後
+
+Last Page
+最後のページ
+
+Last backed up whole {}
+前回の完全なバックアップ：{}
+
+Last backed up {}
+前回のバックアップ：{}
+
+Last clean-up
+前回の整理
+
+Last used
+最後の利用
+
+Last: {}, {} new or changed, {} new, took {}.
+前回：{}、新規・変更{}件、新規データ{}、所要時間{}。
+
+Lately
+最近
+
+Latency
+遅延
+
+Later: until more is waiting
+保留：次の項目が届くまで
+
+Layout:
+配置:
+
+Leaking memory
+メモリリーク
+
+Learn Spelling
+単語を登録
+
+Learned {} from {} examples in {}, but did no better on your newest commands, so it kept what it had: its first suggestion right {} of the time.
+{}に{}件の例から{}で学習しました。最近のコマンドで精度が上がらなかったため、以前のモデルを維持しました。先頭候補の正解率は{}です。
+
+Learned {} from {} examples in {}: its first suggestion is right {} of the time on your newest commands ({} before).
+{}に{}件の例から{}で学習しました。最近のコマンドに対する先頭候補の正解率は{}です（以前は{}）。
+
+Learned {} from {} examples in {}: its first suggestion is right {} of the time on your newest commands.
+{}に{}件の例から{}で学習しました。最近のコマンドに対する先頭候補の正解率は{}です。
+
+Learning
+学習
+
+Learning from your history…
+履歴から学習中…
+
+Leave Out What Can Be Downloaded or Built Again
+再ダウンロード・再ビルドできるものを除く
+
+Leave Rescue
+復旧モードを終了
+
+Leave the DNS servers empty to use the network's. DNS servers set for every link (the DNS tab) take the place of these.
+ネットワークのDNSサーバーを使うには空欄にします。「DNS」タブで全接続共通のサーバーを指定している場合はそちらを優先します。
+
+Leaving zombies
+ゾンビプロセスが残存
+
+Left
+左
+
+Left Half
+左半分
+
+Left Third
+左3分の1
+
+Left Two Thirds
+左3分の2
+
+Left out, as dnf wouldn’t take it: {}. ({})
+dnfに拒否されたため除外しました：{}（{}）
+
+Left out, as dnf wouldn’t take them: {}. ({})
+dnfに拒否されたため除外しました：{}（{}）
+
+Left to the firmware for now
+現在はファームウェアに任せる
+
+Left-handed (swap the buttons)
+左利き用（左右のボタンを入れ替える）
+
+Length
+長さ
+
+Less noise
+ノイズが少ない
+
+Let coding agents keep their tab’s title current
+エージェントがタブ名を更新できるようにする
+
+Letting go of backups past keeping
+期限切れのバックアップを削除中
+
+Level
+レベル
+
+Level evened out
+音量を均一化
+
+Level not evened out
+音量の均一化なし
+
+Light
+ライト
+
+Light fog
+薄霧
+
+Light freezing rain
+弱い着氷性の雨
+
+Light ice pellets
+弱い凍雨
+
+Light rain
+弱い雨
+
+Light rain and freezing drizzle
+小雨と着氷性の霧雨
+
+Light rain and freezing rain
+小雨と着氷性の雨
+
+Light rain and ice pellets
+小雨と凍雨
+
+Light sleet
+弱いみぞれ
+
+Light snow
+小雪
+
+Light:
+ライト:
+
+Like this
+このように
+
+Like:
+例:
+
+Limit
+上限
+
+Limit charging to {}%
+充電上限を{}%にする
+
+Limit what waits to be written to them
+書き込み待ちのデータ量を制限
+
+Line
+行
+
+Line Numbers
+行番号
+
+Line:
+行:
+
+Link
+リンク
+
+Link-Local Only
+リンクローカルのみ
+
+Link:
+リンク:
+
+Link’s rate
+リンク速度
+
+Linux's scheduler as it comes (EEVDF): fair to every program, whatever it's doing. Olo's own threads someone waits on are realtime, above every program under either scheduler, and under builds and other heavy work the desktop stays quickest with this one.
+Linux標準のスケジューラー（EEVDF）は、すべてのプログラムにCPU時間を公平に割り当てます。どちらのスケジューラーでも、ほかの処理が待っているOloのスレッドはリアルタイム優先度で動きます。ビルドなどで高負荷のときは、こちらの方がデスクトップの応答が速くなります。
+
+List View
+一覧表示
+
+Listening
+待ち受け中
+
+Live
+ライブ
+
+Load
+負荷
+
+Load average
+平均負荷
+
+Local
+ローカル
+
+Local socket
+ローカルソケット
+
+Location
+場所
+
+Lock
+ロック
+
+Lock & presence
+ロックと在席検知
+
+Lock After
+ロックまでの時間
+
+Lock Screen
+画面ロック
+
+Lock after
+ロックまでの時間
+
+Lock after idle for:
+操作がないときにロックするまで:
+
+Lock the Screen
+画面をロック
+
+Lock the screen when the display turns off
+ディスプレイが消えたら画面をロック
+
+Lock when the displays turn off
+ディスプレイが消えたらロック
+
+Lock when the screen locks
+画面のロックと同時にロック
+
+Lock when you walk away:
+離席時のロック:
+
+Log Out
+ログアウト
+
+Log Out…
+ログアウト…
+
+Login
+ログイン
+
+Long
+長い
+
+Longest window title
+最も長いウィンドウタイトル
+
+Look
+外観
+
+Look Again
+再確認
+
+Look ahead:
+先読み期間:
+
+Look for codes in:
+コードの検索先:
+
+Look:
+外観:
+
+Looking at Bluetooth…
+Bluetoothを確認中…
+
+Looking at its disk…
+ディスクを確認中…
+
+Looking at what’s there
+内容を確認中
+
+Looking at what’s there…
+内容を確認中…
+
+Looking at which processes use it…
+使用中のプロセスを確認中…
+
+Looking for a newer release…
+新しいリリースを検索中…
+
+Looking for apps…
+アプリを検索中…
+
+Looking for its calendars…
+カレンダーを検索中…
+
+Looking for network devices…
+ネットワーク機器を検索中…
+
+Looking for security keys…
+セキュリティキーを検索中…
+
+Looking for sound devices…
+オーディオ機器を検索中…
+
+Looking for the fingerprint sensor…
+指紋センサーを検索中…
+
+Looking for volumes…
+ボリュームを検索中…
+
+Looking this computer over…
+コンピューターを確認中…
+
+Looking…
+検索中…
+
+Looks like {} × {}
+{} × {}相当
+
+Loss:
+パケット損失:
+
+Lost, by its count
+サーバー側の損失数
+
+Low
+低
+
+Low Latency
+低遅延
+
+Lower background work
+バックグラウンド作業の優先度を下げる
+
+Lower this computer's sound while you speak
+話している間はコンピューターの音量を下げる
+
+Lower to nice
+変更後のnice値
+
+Lowered
+優先度を下げた数
+
+Lowers builds and other background work so the active window’s app and Olo itself stay quick, and watches for stuck processes, leaks and memory hogs. What it does is in Activity Monitor’s Supervisor section, and Deskbar’s gauge turns it on and off.
+ビルドなどの優先度を下げ、使用中のアプリとOloの応答性を保ちます。応答停止、メモリリーク、メモリの過剰使用も検出します。結果はアクティビティモニタの「Supervisor」で確認でき、Deskbarのメーターでオン・オフを切り替えられます。
+
+Lowest clock
+最低クロック
+
+Lua
+Lua
+
+Luna 6
+Luna 6
+
+MTU:
+MTU:
+
+MacBook
+MacBook
+
+Machine:
+マシン:
+
+Made here now, and in 1Password ({}) at the next sync, once you’ve reviewed it.
+手元に作成しました。内容を確認すると、次回の同期で1Password（{}）にも作成します。
+
+Made room for newer ones
+新しいもののために空きを確保
+
+Made the vault “{}”.
+保管庫「{}」を作成しました。
+
+Magenta
+マゼンタ
+
+Magic Keyboard with Touch ID and Numeric Keypad
+Magic Keyboard with Touch ID and Numeric Keypad
+
+Magic Trackpad
+Magic Trackpad
+
+Mail
+Mail
+
+Mail and Calendar sign in to Fastmail with an app password of each account’s own, with access to mail and calendars. Tick what each account is used for: Mail looks in its new mail for one-time codes, Calendar shows its calendars.
+Mailとカレンダーは、アカウントごとにメールとカレンダーへのアクセスを許可したアプリ用パスワードでFastmailに接続します。用途を選んでください。Mailは新着メールのワンタイムコードを検索し、カレンダーは予定を表示します。
+
+Mail is read only while a page waits for a code, for up to a minute.
+ページがコードを待っている間だけ、最長1分間メールを確認します。
+
+Mail is read only while a page waits for a code, for up to a minute. A phone, set up in Phone, is looked in too.
+ページがコードを待っている間だけ、最長1分間メールを確認します。「電話」に設定した端末も確認します。
+
+Mail to {} ({})
+{}宛てのメール（{}）
+
+Mail, Calendar and DiskBackup sign in to Google through an app of each account’s own, “Olo (its address)”, in its Google Cloud project: an agent makes it for you. Tick what each account is used for.
+Mail、カレンダー、DiskBackupは、Googleアカウントごとの専用アプリ「Olo（アカウントのアドレス）」で接続します。エージェントがGoogle Cloudプロジェクトに作成します。アカウントごとに用途を選んでください。
+
+Mail: Fastmail didn’t take the address and app password.
+Mail：Fastmailがアドレスとアプリ用パスワードを受け付けませんでした。
+
+Main Window
+メインウィンドウ
+
+Main and Stack
+メインとスタック
+
+Main and Stack, Main Elsewhere
+メインとスタック（メインの位置を変更）
+
+Main display: the desktop is here.
+メインディスプレイ（デスクトップ）
+
+Main window:
+メインウィンドウ:
+
+Make Main
+メインにする
+
+Make Unlimited
+制限を解除
+
+Make a Token…
+トークンを作成…
+
+Make an App Password…
+アプリ用パスワードを作成…
+
+Make an app password for Olo in Fastmail (Settings ▸ Privacy & Security ▸ Manage app passwords and access) with access to mail and calendars. It’s kept in your login keyring.
+Fastmailの「設定」▸「プライバシーとセキュリティ」▸「アプリ用パスワードとアクセスの管理」で、メールとカレンダーにアクセスできるOlo用のパスワードを作成します。ログインキーリングに保存されます。
+
+Make one at my.telegram.org ▸ API development tools (sign in there with your phone number), then copy its App api_id and api_hash here.
+電話番号でmy.telegram.orgにサインインし、「API development tools」でアプリを作成します。App api_idとapi_hashをここにコピーしてください。
+
+Make this the main display
+メインディスプレイにする
+
+Make:
+メーカー:
+
+Makefile
+Makefile
+
+Making a hotspot (below)
+アクセスポイントを作成中（下記）
+
+Making it again, empty
+空の状態で作成し直しています
+
+Making it…
+作成中…
+
+Manually
+手動
+
+Mapped
+割り当て済み
+
+Mappings
+割り当て
+
+Mark
+マーク
+
+Mark All as Read
+すべて既読にする
+
+Mark This Moment
+この時点に印を付ける
+
+Mark as Read
+既読にする
+
+Markdown
+Markdown
+
+Markdown…
+Markdown…
+
+Match
+一致
+
+Match Appearance
+外観に合わせる
+
+Match:
+一致:
+
+Max
+最大
+
+Maybe
+未定
+
+Measuring the round trip…
+往復時間を測定中…
+
+Media errors
+メディアエラー
+
+Medium
+中
+
+Membership
+所属
+
+Memory
+メモリ
+
+Memory Pressure
+メモリプレッシャー
+
+Memory free
+空きメモリ
+
+Memory stalls
+メモリ待ち
+
+Memory:
+メモリ:
+
+Message
+メッセージ
+
+Message queues
+メッセージキュー
+
+Messages
+メッセージ
+
+Messages ({})
+メッセージ（{}）
+
+Messages are coming. Contacts follow once Sync Contacts is on.
+メッセージを受信しています。「連絡先を同期」をオンにすると連絡先も届きます。
+
+Messages: each as it comes, answered in place
+メッセージ：届いたらその場で返信
+
+Meter
+メーター
+
+Metres
+メートル
+
+Metres a Second
+メートル毎秒
+
+Mice
+マウス
+
+Microphone boost:
+マイクのゲイン:
+
+Microphone:
+マイク:
+
+Middle click (three: secondary)
+中クリック（3本指は副ボタン）
+
+Miles
+マイル
+
+Miles an Hour
+マイル毎時
+
+Millimetres
+ミリメートル
+
+Mini Icon View
+小さいアイコンで表示
+
+Mirror of {}
+{}のミラー
+
+Misses
+キャッシュミス
+
+Mode
+モード
+
+Model
+モデル
+
+Model:
+モデル:
+
+Models
+モデル
+
+Moderate
+中程度
+
+Modern and flat: each thing seen straight on, in plain faces, no outlines.
+正面から見たシンプルな面を、輪郭線なしで描くフラットなデザイン。
+
+Modified
+更新日時
+
+Module settings
+モジュール設定
+
+Modules
+モジュール
+
+Monday
+月曜日
+
+Month
+月
+
+More
+その他
+
+More Menus
+その他のメニュー
+
+More noise
+ノイズが多い
+
+Mostly clear
+おおむね晴れ
+
+Mostly clear and drizzle
+おおむね晴れ、霧雨
+
+Mostly clear and flurries
+おおむね晴れ、にわか雪
+
+Mostly clear and fog
+おおむね晴れ、霧
+
+Mostly clear and freezing drizzle
+おおむね晴れ、着氷性の霧雨
+
+Mostly clear and freezing rain
+おおむね晴れ、着氷性の雨
+
+Mostly clear and heavy freezing rain
+おおむね晴れ、強い着氷性の雨
+
+Mostly clear and heavy ice pellets
+おおむね晴れ、強い凍雨
+
+Mostly clear and heavy rain
+おおむね晴れ、大雨
+
+Mostly clear and heavy snow
+おおむね晴れ、大雪
+
+Mostly clear and ice pellets
+おおむね晴れ、凍雨
+
+Mostly clear and light fog
+おおむね晴れ、薄霧
+
+Mostly clear and light freezing rain
+おおむね晴れ、弱い着氷性の雨
+
+Mostly clear and light ice pellets
+おおむね晴れ、弱い凍雨
+
+Mostly clear and light rain
+おおむね晴れ、小雨
+
+Mostly clear and light snow
+おおむね晴れ、小雪
+
+Mostly clear and rain
+おおむね晴れ、雨
+
+Mostly clear and snow
+おおむね晴れ、雪
+
+Mostly clear and thunderstorm
+おおむね晴れ、雷雨
+
+Mostly cloudy
+おおむね曇り
+
+Mostly cloudy and drizzle
+おおむね曇り、霧雨
+
+Mostly cloudy and flurries
+おおむね曇り、にわか雪
+
+Mostly cloudy and fog
+おおむね曇り、霧
+
+Mostly cloudy and freezing drizzle
+おおむね曇り、着氷性の霧雨
+
+Mostly cloudy and freezing rain
+おおむね曇り、着氷性の雨
+
+Mostly cloudy and heavy freezing rain
+おおむね曇り、強い着氷性の雨
+
+Mostly cloudy and heavy ice pellets
+おおむね曇り、強い凍雨
+
+Mostly cloudy and heavy rain
+おおむね曇り、大雨
+
+Mostly cloudy and heavy snow
+おおむね曇り、大雪
+
+Mostly cloudy and ice pellets
+おおむね曇り、凍雨
+
+Mostly cloudy and light fog
+おおむね曇り、薄霧
+
+Mostly cloudy and light freezing rain
+おおむね曇り、弱い着氷性の雨
+
+Mostly cloudy and light ice pellets
+おおむね曇り、弱い凍雨
+
+Mostly cloudy and light rain
+おおむね曇り、小雨
+
+Mostly cloudy and light snow
+おおむね曇り、小雪
+
+Mostly cloudy and rain
+おおむね曇り、雨
+
+Mostly cloudy and snow
+おおむね曇り、雪
+
+Mostly cloudy and thunderstorm
+おおむね曇り、雷雨
+
+Mount
+マウント
+
+Mounted At
+マウント先
+
+Mouse
+マウス
+
+Mouse speed
+マウスの速度
+
+Move All Windows To
+すべてのウィンドウの移動先
+
+Move All to Trash
+すべてゴミ箱に入れる
+
+Move Down
+下へ
+
+Move Group to New Window
+グループを新しいウィンドウに移動
+
+Move Group to Window
+グループを別のウィンドウに移動
+
+Move Here
+ここに移動
+
+Move Tab to New Window
+タブを新しいウィンドウに移動
+
+Move Tab to Window
+タブを別のウィンドウに移動
+
+Move Up
+上へ
+
+Move Window To
+ウィンドウの移動先
+
+Move Windows To
+ウィンドウの移動先
+
+Move Windows To…
+ウィンドウの移動先…
+
+Move all {} archived chats back to your chat list?
+アーカイブ済みのチャット{}件をすべてチャット一覧に戻しますか？
+
+Move both archived chats back to your chat list?
+アーカイブ済みのチャット2件をチャット一覧に戻しますか？
+
+Move the archived chat back to your chat list?
+アーカイブ済みのチャットをチャット一覧に戻しますか？
+
+Move the pointer
+ポインターを動かす
+
+Move the pointer on a thread of its own
+専用スレッドでポインターを動かす
+
+Move to Archive
+アーカイブに移動
+
+Move to New Window
+新しいウィンドウへ移動
+
+Move to Trash
+ゴミ箱に入れる
+
+Move to Workspace
+ワークスペースに移動
+
+Move to {}
+{}に移動
+
+Moved “{}” to the Archive.
+「{}」をアーカイブに移動しました。
+
+Moving {} to the Trash
+{}をゴミ箱に移動中
+
+Moving {} to the Trash…
+{}をゴミ箱に移動中…
+
+Music
+音楽
+
+Music Quality (AAC)
+音楽用の音質（AAC）
+
+Mute
+ミュート
+
+Mute All
+すべて消音
+
+My keys
+自分のキー設定
+
+N
+北
+
+NE
+北東
+
+NNE
+北北東
+
+NNW
+北北西
+
+NVIDIA GPU (NVDEC)
+NVIDIA GPU（NVDEC）
+
+NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor. {}
+NVIDIAのGPUでH.264、HEVC、VP9、AV1をデコードします。4K・60 fpsでもCPU負荷はわずかです。{}
+
+NW
+北西
+
+Name
+名前
+
+Name looked up in
+名前解決の所要時間
+
+Name or text
+名前またはテキスト
+
+Name:
+名前:
+
+Named, it's a heading: its name at the left, the line going on from it.
+名前を付けると見出しになります。左に名前を表示し、その右に線を引きます。
+
+Names
+名前
+
+Names:
+名前:
+
+Narrower than sRGB ({}% of it)
+sRGBより狭い（カバー率{}%）
+
+Natural scrolling (content follows your fingers)
+ナチュラルスクロール（指に合わせて内容を動かす）
+
+Needed by another package
+ほかのパッケージに必要
+
+Needs full access
+フルアクセスが必要
+
+Network
+ネットワーク
+
+Network name
+ネットワーク名
+
+Never
+しない
+
+Never Warned About
+警告しないプロセス
+
+Never fade
+フェードしない
+
+Never since the computer started
+起動後は一度もなし
+
+New
+新規
+
+New Agent Screen
+新しいエージェント画面
+
+New Conversation
+新しい会話
+
+New Event…
+新規予定…
+
+New Folder
+新しいフォルダー
+
+New Group…
+新しいグループ…
+
+New Item
+新規項目
+
+New Message
+新規メッセージ
+
+New Partition Table…
+新しいパーティションテーブル…
+
+New Screen
+新しい画面
+
+New Signature…
+新しい署名…
+
+New Tab
+新しいタブ
+
+New Tab in Group
+グループ内に新しいタブ
+
+New Terminal
+新しいターミナル
+
+New Vault…
+新しい保管庫…
+
+New Window
+新しいウィンドウ
+
+New Windows Open In
+新しいウィンドウを開く位置
+
+New Worktree…
+新しいワークツリー…
+
+New description
+新しい説明
+
+New message
+新規メッセージ
+
+New ones go in
+新しいワークツリーの保存先
+
+New ones go in:
+新しいワークツリーの保存先:
+
+New screenshot
+新しいスクリーンショット
+
+New shells can't start until it's running again.
+サービスが再開するまで、新しいシェルは起動できません。
+
+New windows go:
+新しいウィンドウの位置:
+
+Newest first
+新しい順
+
+News (blue)
+新着（青）
+
+Next
+次へ
+
+Next 3 Days
+今後3日間
+
+Next 7 Days
+今後7日間
+
+Next Action
+次の操作
+
+Next Chapter
+次のチャプター
+
+Next Chat
+次のチャット
+
+Next Day
+翌日
+
+Next File
+次のファイル
+
+Next Month
+翌月
+
+Next Page
+次のページ
+
+Next Tab
+次のタブ
+
+Next Week
+来週
+
+Next step
+次の手順
+
+Next when you click Back Up Now.
+次回は「今すぐバックアップ」をクリックすると開始します。
+
+Next {}.
+次回：{}。
+
+Nice
+Nice
+
+Night Mode
+ナイトモード
+
+Nix
+Nix
+
+No
+いいえ
+
+No Agent Screens
+エージェント画面はありません
+
+No Group
+グループなし
+
+No Groups
+グループはありません
+
+No Guesses Found
+候補が見つかりませんでした
+
+No Keypad
+キーパッドなし
+
+No Other Windows
+ほかのウィンドウはありません
+
+No Pull Request
+プルリクエストなし
+
+No Receivers Paired
+ペアリング済みの受信機はありません
+
+No Saved Groups
+保存したグループはありません
+
+No VPNs. Import a WireGuard configuration, or add one with its maker's app.
+VPNはありません。WireGuardの設定をインポートするか、提供元のアプリで追加してください。
+
+No app may have an item without asking. When one asks for an item, Approve Always allows it for good, and it’s listed here to take back.
+アプリが項目を使うには許可が必要です。要求時に「常に許可」を選ぶと、次回から確認せずに使えます。許可はここで取り消せます。
+
+No app opens these
+開けるアプリがありません
+
+No app opens these yet: add one.
+開けるアプリがありません。追加してください。
+
+No apps open this.
+この項目を開くアプリはありません。
+
+No backup has finished yet
+完了したバックアップはまだありません
+
+No backup has finished yet.
+完了したバックアップはまだありません。
+
+No banners and no sounds (errors still show).
+バナーも音も出しません。エラーは表示します。
+
+No cable
+ケーブル未接続
+
+No calendars yet
+カレンダーはまだありません
+
+No chat selected
+チャット未選択
+
+No cloud
+雲なし
+
+No connections match.
+一致する接続がありません。
+
+No conversations open.
+開いている会話はありません。
+
+No disks.
+ディスクはありません。
+
+No entries.
+項目はありません。
+
+No environment.
+環境変数はありません。
+
+No event from a year back to two years on has “{}” in its title, its place or its notes.
+1年前から2年先までの予定に、タイトル・場所・メモに「{}」を含むものはありません。
+
+No key yet.
+鍵はまだありません。
+
+No keyboards are plugged in.
+キーボードが接続されていません。
+
+No limit
+制限なし
+
+No messages with {} yet. What you write below goes as a text message from your phone.
+{}とのメッセージはまだありません。下の欄に入力すると、電話からSMSで送信します。
+
+No mouse is connected. These settings are for any you connect.
+マウスが接続されていません。この設定は次に接続するマウスに適用されます。
+
+No new notifications
+新しい通知はありません
+
+No notes.
+メモはありません。
+
+No one on Telegram is called {}.
+Telegramに「{}」というユーザーはいません。
+
+No open files.
+開いているファイルはありません。
+
+No phone or mail account is set up: a phone in Phone, a Google or Fastmail account for Mail in Integrations.
+電話またはメールのアカウントが未設定です。電話は「電話」、Mail用のGoogleやFastmailのアカウントは「連携」で設定してください。
+
+No power profiles daemon is running (power-profiles-daemon, or tuned-ppd on Fedora): Olo sets the power mode through it.
+電源プロファイルサービス（power-profiles-daemon、Fedoraではtuned-ppdも可）が停止しています。Oloはこのサービス経由で電源モードを設定します。
+
+No power profiles daemon is running, so there's no power mode to follow.
+電源プロファイルサービスが停止しているため、電源モードに連動できません。
+
+No precipitation in the next hour
+今後1時間は降水なし
+
+No precipitation this hour
+この時間帯は降水なし
+
+No process uses much of it now
+現在、大きく使用しているプロセスはありません
+
+No processes match.
+一致するプロセスはありません。
+
+No screen recordings yet. Record one with ⌘⇧6.
+画面収録はまだありません。⌘⇧6で収録できます。
+
+No space around an auto-tiled window alone
+タイルが1枚のときは余白なし
+
+No touches in the last minute
+直近1分はタッチなし
+
+No touchpad found.
+タッチパッドが見つかりません。
+
+No update matches the search.
+検索に一致する更新はありません。
+
+No widgets: add one below.
+ウィジェットがありません。下で追加してください。
+
+No {} for this account.
+このアカウントに{}はありません。
+
+No: it did no better ({}), so the weights before stay
+改善がなかったため（{}）、以前の重みを使います
+
+Noise
+ノイズ
+
+Noise Cancellation
+ノイズキャンセリング
+
+Noise Control
+ノイズコントロール
+
+Noise Model
+ノイズモデル
+
+Noise control:
+ノイズ制御:
+
+Noise model:
+ノイズモデル:
+
+Noise model: {}
+ノイズモデル：{}
+
+None
+なし
+
+None (flat)
+なし（平坦）
+
+None asked for yet: type in brush
+まだ要求がありません。brushで入力してください
+
+None connected to Olo yet.
+Oloに接続済みのものはありません。
+
+None in the last minute
+直近1分はなし
+
+None in the last second
+直近1秒はなし
+
+None just now
+現在はなし
+
+None run.
+実行履歴はありません。
+
+None yet: add one below, named by its extensions.
+まだありません。下で拡張子を指定して種類を追加してください。
+
+None, or corp.example
+なし、または corp.example
+
+None. An alert’s Ignore This Process adds one here.
+ありません。警告の「このプロセスを無視」で追加できます。
+
+None. To add an app, choose Float Window ▸ Always in the window menu of one of its windows.
+ありません。追加するにはアプリのウィンドウメニューで「ウィンドウをフローティング表示」▸「常に」を選びます。
+
+None. To give an app one, choose Always Open on Workspace in the window menu of one of its windows.
+ありません。割り当てるにはアプリのウィンドウメニューで「常に指定のワークスペースで開く」を選びます。
+
+Nonfree (NVIDIA’s drivers, Steam, …)
+非フリー（NVIDIAドライバー、Steamなど）
+
+Norwegian
+ノルウェー語
+
+Not Answered
+未回答
+
+Not Signed In
+未サインイン
+
+Not a compile
+コンパイル対象外
+
+Not a number
+数値ではありません
+
+Not all of it applied: {}.
+一部を適用できませんでした：{}。
+
+Not answered
+未回答
+
+Not applied.
+適用されていません。
+
+Not applied: an administrator's password is needed.
+適用には管理者のパスワードが必要です。
+
+Not backed up yet
+まだバックアップされていません
+
+Not boosted
+増幅なし
+
+Not boosted (suggested)
+増幅なし（推奨）
+
+Not brought over from GNOME Keyring (another password): {}.
+パスワードが異なるため、GNOMEキーリングから引き継げませんでした：{}。
+
+Not changed. {}
+変更していません。{}
+
+Not changed: an administrator's password is needed.
+変更には管理者のパスワードが必要です。
+
+Not changed: changes as an administrator are made in the person's own session.
+変更していません。管理者権限が必要な操作は自分のセッションで行ってください。
+
+Not changed: the network's helper stopped.
+ネットワークの補助プログラムが停止したため、変更できませんでした。
+
+Not checked ({}).
+未検証（{}）。
+
+Not checked yet: Validate reads it back and checks it’s whole.
+未検証です。「検証」でデータを読み戻し、破損がないか確認できます。
+
+Not connected
+接続していません
+
+Not connected: only public repositories’ pull requests show.
+未接続です。公開リポジトリのプルリクエストだけを表示します。
+
+Not connected: {}.
+未接続：{}。
+
+Not enough touches to learn from
+学習に必要なタッチ数が足りません
+
+Not found
+見つかりません
+
+Not imported: {}
+インポートできません：{}
+
+Not in a Repository
+リポジトリの外
+
+Not in a vault
+保管庫に含まれていません
+
+Not in force: {}
+未適用：{}
+
+Not in the last minute; {} since this window opened
+直近1分はなし。このウィンドウを開いてから{}回
+
+Not paired
+未ペアリング
+
+Not recognised. Try again
+認識できません。もう一度お試しください
+
+Not running under olo-session.
+olo-sessionの外で実行しています。
+
+Not running: Codex starts it with its first window.
+停止中です。Codexが最初のウィンドウを開くと起動します。
+
+Not saved: {}
+保存できません：{}
+
+Not sent: {}
+送信していません：{}
+
+Not set up
+未設定
+
+Not set up.
+未設定です。
+
+Not set up: Telegram needs an API ID to sign in with.
+未設定です。TelegramにサインインするにはAPI IDが必要です。
+
+Not set up: {}.
+未設定：{}。
+
+Not shaped: as fast as it goes.
+帯域制限なし。回線の速度をそのまま使います。
+
+Not signed in. (API ID {}.)
+未サインイン（API ID {}）。
+
+Not since this window opened
+このウィンドウを開いてからはありません
+
+Not synced: changes not applied{}
+未同期：変更を適用していません{}
+
+Not synced: {}{}
+未同期：{}{}
+
+Not tested yet.
+まだテストしていません。
+
+Not told
+未報告
+
+Not trusted: stopping…
+鍵が信頼されていないため停止中…
+
+Not working: {}.
+動作していません：{}。
+
+Notes
+メモ
+
+Notes:
+メモ:
+
+Nothing
+なし
+
+Nothing Found
+見つかりませんでした
+
+Nothing backed up yet.
+まだバックアップされていません。
+
+Nothing came from the microphone.
+マイクから音声を取得できませんでした。
+
+Nothing changed: Olo's own model is still in use.
+変更はありません。引き続きOloの標準モデルを使います。
+
+Nothing coming up
+今後の予定はありません
+
+Nothing found
+見つかりませんでした
+
+Nothing found by that name or address.
+その名前や住所に一致する場所がありません。
+
+Nothing in the history yet.
+履歴はまだありません。
+
+Nothing is backed up or sent until you resume. {}. {}.
+再開するまでバックアップも送信も行いません。{}。{}。
+
+Nothing more today
+今日の予定は以上です
+
+Nothing new
+新着なし
+
+Nothing new to learn
+新しく学習する内容はありません
+
+Nothing read yet
+まだ読み込んでいません
+
+Nothing recorded yet. Press Record and talk for a few seconds.
+まだ録音がありません。「録音」を押して数秒間話してください。
+
+Nothing to calculate
+計算する式がありません
+
+Nothing to do.
+必要な操作はありません。
+
+Nothing to show yet
+まだ表示する内容がありません
+
+Nothing to tune for its driver ({}) yet.
+このドライバー（{}）で調整できる項目はまだありません。
+
+Notification
+通知
+
+Notification Settings…
+通知設定…
+
+Notifications
+通知
+
+Notifications: Inbox
+通知：受信箱
+
+Now
+現在
+
+Now lift your hands, and rest them again as you type.
+いったん両手を上げ、入力しながらもう一度置いてください。
+
+Now point or tap with a finger above it: {} more.
+次に、手のひらより上で指を動かすかタップしてください。あと{}回です。
+
+Now point or tap with a finger of your other hand: {} more.
+次に、反対の手の指でポインターを動かすかタップしてください。あと{}回です。
+
+Now {}{}: the processors {} at up to {}%, {}.
+現在{}{}：CPUは{}、最大{}%、{}。
+
+Now:
+現在:
+
+Now: kept in Passwords as “{}”.
+現在はPasswordsに「{}」として保存されています。
+
+Now: {}
+現在：{}
+
+Now: {}, in Passwords.
+現在：{}（Passwords内）。
+
+Num Lock on when Olo starts
+Oloの起動時にNum Lockをオン
+
+Number
+番号
+
+Number of Main Windows
+メインウィンドウ数
+
+Number of main windows:
+メインウィンドウ数:
+
+Numbered List
+番号付きリスト
+
+OCaml
+OCaml
+
+OCaml Interface
+OCamlインターフェース
+
+OK
+OK
+
+OS Updates
+OSアップデート
+
+Objective-C
+Objective-C
+
+Off
+オフ
+
+Off: palms are told apart by their size alone.
+オフ：大きさだけで手のひらを判定します。
+
+Off: palms are what the touchpad says they are.
+オフ：手のひらの判定はタッチパッドに任せます。
+
+Offer a code in the browser tab waiting for it
+コードを待っているブラウザーのタブに提示する
+
+Offered
+提示済み
+
+Offline (Everything Lost)
+オフライン（全パケット損失）
+
+Offset
+オフセット
+
+Older Versions…
+以前のバージョン…
+
+Older ones go, and the space only they took is freed, once a day. Delete any yourself under Backups.
+古いバックアップを1日1回削除し、それだけが使っていた容量を解放します。「バックアップ」から個別に削除することもできます。
+
+Oldest first
+古い順
+
+Olo
+Olo
+
+Olo Desktop
+Olo Desktop
+
+Olo Desktop, version {}
+Olo Desktop バージョン{}
+
+Olo Doctor
+Olo Doctor
+
+Olo Doctor can set up the hardware power service.
+Olo Doctorでハードウェアの電源サービスを設定できます。
+
+Olo Doctor couldn't set it.
+Olo Doctorで設定できませんでした。
+
+Olo Doctor found {} things to fix: {}, and more. Click to see them.
+Olo Doctorで{}件の問題が見つかりました（{}など）。クリックすると一覧を表示します。
+
+Olo Doctor: {}. Click to see it.
+Olo Doctor：{}。クリックすると詳細を表示します。
+
+Olo Installer
+Oloインストーラー
+
+Olo doesn’t have {} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it.
+このコンピューターには{}用のアプリがありません。Google Cloud ▸ Oloのプロジェクト ▸ クライアントでIDとシークレットを確認して入力してください。エージェントに任せるには「キャンセル」の後に「Googleアカウントを追加…」を選びます。
+
+Olo keeps {}{}: their sign-ins, keys and Wi-Fi passwords, opened by your login password.
+Oloは{}{}のログイン情報、鍵、Wi-Fiパスワードを保存します。ログインパスワードでロックを解除できます。
+
+Olo saying its name
+Oloが名前を読み上げる音
+
+Olo's Choice
+Oloのおすすめ
+
+Olo's boot splash
+Oloの起動画面
+
+Olo's login screen
+Oloのログイン画面
+
+Olo's own
+Olo標準
+
+Olo's own model is still in use.
+Oloの標準モデルを引き続き使用しています。
+
+Olo's own palm model, made from {} touches of real hands (Preferences ▸ Touchpad & Mouse ▸ Touch trains one of yours)
+実際のタッチ{}回から学習したOlo標準の手のひらモデルです。自分のモデルは「環境設定」▸「タッチパッドとマウス」▸「タッチ」で作成できます
+
+Olo’s keyring isn’t running here; it starts with your session.
+Oloのキーリングが起動していません。自分のセッションへのログイン時に起動します。
+
+Olo’s language:
+Oloの言語:
+
+Olo’s phone service isn’t running.
+Oloの電話サービスは停止中です。
+
+Olo’s windows change at once. Other programs take it as they next start, in the languages they have.
+Oloのウィンドウにはすぐに反映されます。他のプログラムは対応していれば次回起動時に切り替わります。
+
+On
+オン
+
+On Battery
+バッテリー駆動時
+
+On Custom {}
+カスタム{}を使用中
+
+On This Computer
+このコンピューター
+
+On a PC keyboard, Alt is where a Mac's ⌘ is: swapped, the key beside the space bar is ⌘ (with the Mac profile) and the Windows key is Option. Each keyboard keeps its own setting, so an Apple keyboard plugged in stays as it is.
+PCのAltはMacの⌘の位置にあります。入れ替えると、Macプロファイルではスペースバーの隣が⌘、WindowsキーがOptionになります。設定はキーボードごとに保存されるため、Appleのキーボードを接続してもその設定は変わりません。
+
+On a call
+通話中
+
+On a plane of its own: moving it draws nothing
+専用の表示プレーンを使用：移動時に再描画なし
+
+On battery
+バッテリー駆動時
+
+On disk
+ディスク上
+
+On hold
+保留中
+
+On the network
+ネットワーク上
+
+On the phone, open Settings ▸ Bluetooth and keep it open there. It appears here in a moment.
+電話で「設定」▸「Bluetooth」を開いたままにしてください。まもなくここに表示されます。
+
+On your phone, open Telegram ▸ Settings ▸ Devices ▸ Link Desktop Device, and point it at this code.
+電話のTelegramで「設定」▸「デバイス」▸「デスクトップ端末をリンク」を開き、このコードを読み取ってください。
+
+On {} now: {}. Moving a setting makes it Custom {}; Power Modes says what each mode puts it on.
+現在のモードは{}：{}。設定を変えるとカスタム{}になります。モード別の設定は「電源モード」で確認できます。
+
+On “{}”: Settings ▸ Bluetooth ▸ tap ⓘ beside this computer, and turn these on. They can take a minute or two to appear there; leaving that page and opening it again shows them sooner. (If this computer is listed twice, look in both.)
+「{}」で「設定」▸「Bluetooth」を開き、このコンピューターの横のⓘをタップして有効にしてください。表示まで1～2分かかる場合があります。ページを開き直すと早く表示されます。同じコンピューターが2件ある場合は両方を確認してください。
+
+On “{}”: allow this computer to see your messages and contacts when it asks (or in Bluetooth, the gear beside this computer).
+「{}」で確認が出たら、このコンピューターにメッセージと連絡先へのアクセスを許可してください。Bluetooth設定のコンピューター名の横にある歯車でも変更できます。
+
+On: brush starts olo-complete as you next type in it.
+オン：次にbrushで入力するとolo-completeが起動します。
+
+On: packages come from it
+有効：このリポジトリからパッケージを取得します
+
+One a day for:
+1日1件の保存期間:
+
+One a month for:
+1か月1件の保存期間:
+
+One a week for:
+1週間1件の保存期間:
+
+One account connected wasn’t allowed Google Drive: sign in again there, and allow it.
+接続済みアカウントのうち1件でGoogle Driveが許可されていません。再サインインしてアクセスを許可してください。
+
+One an hour for:
+1時間1件の保存期間:
+
+One differs from the next by
+隣り合う値の差
+
+One like it again from the same app (its title and text) takes the earlier one's place while that's still showing or unread.
+同じアプリでタイトルと本文が同じなら、表示中・未読の通知を置き換えます。
+
+One of the colours things are told apart by: tags, graphs, a tab group's colour, Terminal's {}.
+タグ、グラフ、タブグループ、Terminalの{}などを区別する色です。
+
+One of {}'s quotas
+{}の利用枠の1つ
+
+One-Time Codes
+ワンタイムコード
+
+Only Zip and 7-Zip archives can have a password.
+パスワードで保護できるのはZIPと7-Zip形式だけです。
+
+Only an https:// address: one that can be listened in on could be changed on its way.
+https://のアドレスを使ってください。保護されていない通信では、取得中に内容を書き換えられるおそれがあります。
+
+Only on battery power
+バッテリー駆動時のみ
+
+Only the latest of the same notification
+同じ通知は最新のものだけを表示
+
+Only when I choose Sync Now
+「今すぐ同期」を選んだときのみ
+
+Only when I click Back Up Now
+「今すぐバックアップ」を選んだときのみ
+
+Only when connected to Ethernet
+有線LAN接続時のみ
+
+Only when the computer is idle
+コンピューターがアイドル状態のときのみ
+
+Onto:
+適用先:
+
+Open
+開く
+
+Open Bluetooth…
+Bluetoothを開く…
+
+Open Calendar
+カレンダーを開く
+
+Open Integrations…
+連携を開く…
+
+Open Link
+リンクを開く
+
+Open Log File…
+ログファイルを開く…
+
+Open Notifications
+通知を開く
+
+Open Olo Doctor
+Olo Doctorを開く
+
+Open Olo Doctor…
+Olo Doctorを開く…
+
+Open Parent
+親フォルダーを開く
+
+Open Phone
+電話を開く
+
+Open Power
+電源を開く
+
+Open Pull Request #{}
+プルリクエスト#{}を開く
+
+Open Saved Group
+保存したグループを開く
+
+Open Screenshot
+スクリーンショットを開く
+
+Open Sign-In Page
+サインインページを開く
+
+Open Telegram
+Telegramを開く
+
+Open Weather to set up its data provider
+Weatherを開いてデータ提供元を設定
+
+Open Website
+Webサイトを開く
+
+Open With
+このアプリで開く
+
+Open With Offers
+「このアプリで開く」の候補
+
+Open files
+開いているファイル
+
+Open in Google Drive
+Google Driveで開く
+
+Open in Terminal
+Terminalで開く
+
+Open in Tracker
+Trackerで開く
+
+Open kache's Log
+kacheのログを開く
+
+Open my.telegram.org
+my.telegram.orgを開く
+
+Open with {}
+{}で開く
+
+Open {} to see it.
+{}を開いて確認してください。
+
+Open {} to see them.
+{}を開いて一覧を確認してください。
+
+OpenDocument Text…
+OpenDocumentテキスト…
+
+Opening programs’ secrets…
+プログラムの秘密情報を開いています…
+
+Opening the backup in {}
+{}にあるバックアップを開いています
+
+Opening the backup…
+バックアップを開いています…
+
+Opening…
+開いています…
+
+Opens in:
+開くアプリ:
+
+Open…
+開く…
+
+Optional
+任意
+
+Opus 5.5
+Opus 5.5
+
+Or stalls over
+または待機率が次の値を超える
+
+Orange
+オレンジ
+
+Orange, then red, as it runs low
+残りが少なくなるとオレンジから赤に変化
+
+Order:
+順序:
+
+Original
+オリジナル
+
+Other
+その他
+
+Other Applications
+その他のアプリ
+
+Other Mice
+その他のマウス
+
+Other Updates
+その他の更新
+
+Other workspaces’ applications start collapsed
+ほかのワークスペースのアプリは折りたたんで表示
+
+Other…
+その他…
+
+Out of memory:
+メモリ不足時:
+
+Output
+出力
+
+Overview
+概要
+
+Overwrite the old data with zeros (slow)
+既存データをゼロで上書き（時間がかかります）
+
+PDF…
+PDF…
+
+PHP
+PHP
+
+Pacing
+フレームのタイミング
+
+Package
+パッケージ
+
+Packages
+パッケージ
+
+Page View
+ページ表示
+
+Page faults
+ページフォルト
+
+Page {} of {}
+{} / {}ページ
+
+Pair
+ペアリング
+
+Paired with {}.
+{}とペアリングしました。
+
+Pairing
+ペアリング
+
+Pairing with {} didn't work: {}.
+{}とペアリングできませんでした：{}。
+
+Pair…
+ペアリング…
+
+Palm-proof clicks, hovering fingers ignored, Mac-like scrolling
+手のひらの誤クリックや浮いた指を無視し、Macのようにスクロール
+
+Palms
+手のひら
+
+Palms and Hovering Fingers
+手のひらと浮いている指
+
+Palms caught
+検出した手のひら
+
+Palms while typing
+入力中の手のひら
+
+Panel
+パネル
+
+Panels
+パネル
+
+Paragraph
+段落
+
+Part of a package group
+パッケージグループに含まれています
+
+Part of an app's name
+アプリ名の一部
+
+Partition
+パーティション
+
+Partly cloudy
+晴れ時々曇り
+
+Partly cloudy and drizzle
+晴れ時々曇り、霧雨
+
+Partly cloudy and flurries
+晴れ時々曇り、にわか雪
+
+Partly cloudy and fog
+晴れ時々曇り、霧
+
+Partly cloudy and freezing drizzle
+晴れ時々曇り、着氷性の霧雨
+
+Partly cloudy and freezing rain
+晴れ時々曇り、着氷性の雨
+
+Partly cloudy and heavy freezing rain
+晴れ時々曇り、強い着氷性の雨
+
+Partly cloudy and heavy ice pellets
+晴れ時々曇り、強い凍雨
+
+Partly cloudy and heavy rain
+晴れ時々曇り、大雨
+
+Partly cloudy and heavy snow
+晴れ時々曇り、大雪
+
+Partly cloudy and ice pellets
+晴れ時々曇り、凍雨
+
+Partly cloudy and light fog
+晴れ時々曇り、薄霧
+
+Partly cloudy and light freezing rain
+晴れ時々曇り、弱い着氷性の雨
+
+Partly cloudy and light ice pellets
+晴れ時々曇り、弱い凍雨
+
+Partly cloudy and light rain
+晴れ時々曇り、小雨
+
+Partly cloudy and light snow
+晴れ時々曇り、小雪
+
+Partly cloudy and mostly clear
+晴れ時々曇り、晴れ間が多い見込み
+
+Partly cloudy and rain
+晴れ時々曇り、雨
+
+Partly cloudy and snow
+晴れ時々曇り、雪
+
+Partly cloudy and thunderstorm
+晴れ時々曇り、雷雨
+
+Passphrase
+パスフレーズ
+
+Passphrase:
+パスフレーズ:
+
+Password
+パスワード
+
+Password Generator
+パスワード生成
+
+Password lock
+パスワードロック
+
+Password:
+パスワード:
+
+Passwords
+Passwords
+
+Passwords and sign-ins: there's no login keyring here to keep them in, so they didn't come along.
+保存先のログインキーリングがないため、パスワードとログイン情報は取り込まれませんでした。
+
+Passwords answered something else.
+Passwordsから予期しない応答がありました。
+
+Passwords answered {}
+Passwordsの応答：{}
+
+Passwords can’t be reached ({}).
+Passwordsに接続できません（{}）。
+
+Passwords can’t be reached ({}). Is it running?
+Passwordsに接続できません（{}）。起動していますか？
+
+Passwords couldn’t give its logins: {}
+Passwordsからログイン情報を取得できません：{}
+
+Passwords didn’t keep it.
+Passwordsが項目を保存しませんでした。
+
+Passwords didn’t keep the key.
+Passwordsが鍵を保存しませんでした。
+
+Passwords for Every Screen…
+すべての画面で使うパスワード…
+
+Passwords has no login for a Google account: add the account’s login there first, or set the app up by hand.
+PasswordsにGoogleアカウントのログイン情報がありません。先にPasswordsに登録するか、アプリを手動で設定してください。
+
+Passwords has no “{}” item: give the key again in File ▸ Data Provider…
+Passwordsに「{}」がありません。「ファイル」▸「データ提供元…」でキーを入力し直してください
+
+Passwords is locked.
+Passwordsはロックされています。
+
+Passwords isn’t running.
+Passwordsは起動していません。
+
+Passwords isn’t set up yet.
+Passwordsはまだ設定されていません。
+
+Passwords isn’t set up yet: open it to set it up, then try again.
+Passwordsを開いて初期設定してから、もう一度お試しください。
+
+Passwords keeps no password for it (an item “{}”).
+Passwordsにこの項目「{}」のパスワードはありません。
+
+Passwords keeps your items on this computer, encrypted, and can keep them in step with your 1Password accounts both ways. To sync, turn on Settings ▸ Developer ▸ Integrate with other apps in 1Password, then choose the accounts.
+Passwordsは項目を暗号化してこのコンピューターに保存します。1Passwordとの双方向同期も可能です。1Passwordの「設定」▸「開発者」で他のアプリとの連携を有効にしてから、同期するアカウントを選んでください。
+
+Passwords keeps your items on this computer, encrypted, and can keep them in step with your 1Password accounts both ways. To sync, turn on Settings ▸ Developer ▸ Integrate with other apps in 1Password, then name the accounts.
+Passwordsは項目を暗号化してこのコンピューターに保存します。1Passwordとの双方向同期も可能です。1Passwordの「設定」▸「開発者」で他のアプリとの連携を有効にしてから、同期するアカウント名を指定してください。
+
+Passwords: Clipboard
+Passwords：クリップボード
+
+Passwords: Command line
+Passwords：コマンドライン
+
+Passwords: Locking
+Passwords：ロック
+
+Passwords: Syncing with 1Password
+Passwords：1Passwordとの同期
+
+Passwords’ password is used now: try again.
+Passwordsのパスワードで、もう一度お試しください。
+
+Paste
+貼り付け
+
+Paste the key
+キーを貼り付け
+
+Paste the key first.
+先にキーを貼り付けてください。
+
+Pasted Picture.{}
+貼り付けた画像.{}
+
+Pause
+一時停止
+
+Pause Backups
+バックアップを一時停止
+
+Pause Recording
+収録を一時停止
+
+Paused
+一時停止中
+
+Performance
+パフォーマンス
+
+Performance Preferences…
+パフォーマンスの環境設定…
+
+Performance Settings…
+パフォーマンス設定…
+
+Performance supervisor: off
+パフォーマンス監視：オフ
+
+Performance supervisor: on, nothing found
+パフォーマンス監視：オン、問題なし
+
+Performance supervisor: {n} findings
+other: パフォーマンス監視：{n}件の問題
+
+Performance supervisor: {n} urgent findings
+other: パフォーマンス監視：緊急の問題{n}件
+
+Permission
+権限
+
+Personalized Volume
+パーソナライズされた音量
+
+Phone
+電話
+
+Phone Settings…
+電話設定…
+
+Phone number:
+電話番号:
+
+Picture
+画像
+
+Picture Size
+画像サイズ
+
+Pictures can be saved as PNG, JPEG, WebP, BMP, TIFF or GIF.
+PNG、JPEG、WebP、BMP、TIFF、GIF形式で保存できます。
+
+Pictures, Movies and Music
+画像、動画、音楽
+
+Pin
+固定
+
+Pin as Main
+メインとして固定
+
+Pinch to zoom
+ピンチで拡大・縮小
+
+Pink
+ピンク
+
+Pipe
+パイプ
+
+Place
+場所
+
+Places
+場所
+
+Places can’t be looked up: {}
+場所を検索できません：{}
+
+Play
+再生
+
+Play Sound Through It
+この機器から音を出す
+
+Play a sound when Olo starts
+Oloの起動時に音を鳴らす
+
+Play sound through:
+音声の出力先:
+
+Playback
+再生
+
+Playback Speed
+再生速度
+
+Playing the original at {} s.
+元の音を再生中：{}秒。
+
+Playing the processed sound at {} s.
+処理後の音を再生中：{}秒。
+
+Please continue
+Please continue
+
+Plug in a security key to set it up.
+設定するセキュリティキーを接続してください。
+
+Plugged in
+電源接続時
+
+Point with a palm at the edge
+端に手のひらを置いてポインターを動かす
+
+Point with your hand resting low
+手を下側に置いてポインターを動かす
+
+Pointer
+ポインター
+
+Polish
+ポーランド語
+
+Pool
+Pool
+
+Portuguese
+ポルトガル語
+
+Portuguese (Brazil)
+ポルトガル語 (ブラジル)
+
+Power
+電源
+
+Power Button
+電源ボタン
+
+Power Mode
+電源モード
+
+Power Modes
+電源モード
+
+Power Saver
+省電力
+
+Power limit
+電力上限
+
+Power-saving profile
+省電力プロファイル
+
+Power: the GPUs' tuning is as it was here. {} Preferences ▸ Power sets it.
+電源：GPUにはこのコンピューターの設定を残しました。{} 「環境設定」▸「電源」で変更できます。
+
+Power: the backup's GPU tuning couldn't be read, so it's as it was here.
+電源：バックアップのGPU設定を読み取れなかったため、現在の設定を維持しました。
+
+Power: what each power mode puts the processors and GPUs on came along; each GPU's own clocks are this computer's.
+電源：各モードのCPU・GPU設定を取り込みました。各GPUのクロックはこのコンピューターの設定を使います。
+
+PowerShell
+PowerShell
+
+Powered on
+通電
+
+Precipitation
+降水
+
+Precipitation ({})
+降水（{}）
+
+Preemption
+プリエンプション
+
+Preferences
+環境設定
+
+Presence
+在席検知
+
+Presentation
+プレゼンテーション
+
+Press Control twice for keyboard hints
+Controlを2回押すとキーボードヒントを表示
+
+Press Esc again to quit: the touches so far are dropped. Space goes on.
+Escをもう一度押すと、ここまでのタッチを破棄して終了します。スペースキーで続行します。
+
+Press and Hold
+長押し
+
+Press and hold a stem to switch between:
+軸を長押しして切り替えるモード:
+
+Press both buttons for a middle click
+左右のボタンを同時に押して中クリック
+
+Press speed:
+押す速さ:
+
+Press {} for the next: {}.
+{}を押して次へ：{}。
+
+Press 🌐 alone to show emoji
+🌐だけを押して絵文字を表示
+
+Pressure
+圧力
+
+Previous
+前へ
+
+Previous Action
+前の操作
+
+Previous Chapter
+前のチャプター
+
+Previous Chat
+前のチャット
+
+Previous Day
+前日
+
+Previous File
+前のファイル
+
+Previous Month
+前月
+
+Previous Page
+前のページ
+
+Previous Tab
+前のタブ
+
+Previous Week
+先週
+
+Print…
+印刷…
+
+Priorities
+優先度
+
+Priorities off: background work put back
+優先度調整オフ：バックグラウンド作業を元の設定に戻しました
+
+Priority
+優先度
+
+Problems
+問題
+
+Process
+プロセス
+
+Process {} has quit
+プロセス{}は終了しました
+
+Processed
+処理済み
+
+Processed: the setting chosen below
+処理後：下で選んだ設定を適用
+
+Processes
+プロセス
+
+Processes as a Tree
+プロセスをツリー表示
+
+Processor
+プロセッサー
+
+Processor:
+プロセッサー:
+
+Profile
+プロファイル
+
+Profile:
+プロファイル:
+
+Program
+プログラム
+
+Program names, comma separated
+プログラム名をカンマで区切って入力
+
+Programs Using the Network
+ネットワークを使用中のプログラム
+
+Programs Using the {}
+{}を使用中のプログラム
+
+Programs’ Secrets
+プログラムの秘密情報
+
+Programs’ secrets are locked: {}.
+プログラムの秘密情報はロックされています：{}。
+
+Project
+プロジェクト
+
+Projects
+プロジェクト
+
+Protect it with a password
+パスワードで保護
+
+Protocol
+プロトコル
+
+Protocol Buffers
+Protocol Buffers
+
+Provider:
+提供元:
+
+Purple
+紫
+
+Put AppImages in ~/AppImages
+AppImageを~/AppImagesに配置
+
+Put Back
+元の場所に戻す
+
+Put a device in pairing mode to see it here.
+機器をペアリングモードにするとここに表示されます。
+
+Put the computer to sleep after:
+コンピューターをスリープさせるまで:
+
+Puts what you choose from a backup in place of what's here; the rest stays as it is. What you have now is saved first.
+選んだ項目だけをバックアップの内容に置き換えます。現在の内容は先に保存します。
+
+Putting {} back
+{}を元に戻しています
+
+Putting {} back…
+{}を元に戻しています…
+
+Python
+Python
+
+Python bytecode and virtual environments
+Pythonのバイトコードと仮想環境
+
+QR code: {}
+QRコード：{}
+
+Quad9 (9.9.9.9)
+Quad9 (9.9.9.9)
+
+Question
+質問
+
+Quick Look
+クイックルック
+
+Quiet Until Morning
+朝まで通知を停止
+
+Quiet for 1 Hour
+1時間通知を停止
+
+Quit
+終了
+
+Quit Now
+今すぐ終了
+
+Quit {} Processes
+{}個のプロセスを終了
+
+Quit, dropping the touches
+タッチを破棄して終了
+
+Quotas:
+利用枠:
+
+Quote
+引用
+
+R
+R
+
+RPM Fusion
+RPM Fusion
+
+Radians
+ラジアン
+
+Rain
+雨
+
+Rain and freezing rain
+雨と着氷性の雨
+
+Rain and ice pellets
+雨と凍雨
+
+Rain and snow
+雨と雪
+
+Raise Soft Limit to Hard
+ソフト上限をハード上限まで上げる
+
+Ran for
+実行時間
+
+Range
+範囲
+
+Reaches:
+範囲:
+
+React
+リアクション
+
+Read
+既読
+
+Read Quota Now
+利用枠を今すぐ取得
+
+Read every byte the backups chosen need back from where they’re kept, and check each piece, as a restore would
+選択したバックアップに必要なデータを保存先からすべて読み戻し、復元時と同じ手順で個別に検証します
+
+Read ones fade, then move to Cleared; unread ones stay.
+既読は徐々に「消去済み」へ移り、未読は残ります。
+
+Read only
+読み取り専用
+
+Reading /etc/hosts…
+/etc/hostsを読み込み中…
+
+Reading battery…
+バッテリー情報を取得中…
+
+Reading hardware…
+ハードウェア情報を取得中…
+
+Reading power modes…
+電源モードを取得中…
+
+Reading the Google accounts connected to Olo…
+Oloに接続したGoogleアカウントを読み込み中…
+
+Reading the backups…
+バックアップを読み込み中…
+
+Reading the changelog…
+変更履歴を読み込み中…
+
+Reading the clock…
+時計を読み取り中…
+
+Reading the index again
+インデックスを再読み込み中
+
+Reading the journal…
+ジャーナルを読み込み中…
+
+Reading the packages…
+パッケージを読み込み中…
+
+Reading the updates…
+更新情報を読み込み中…
+
+Reading your logins in Passwords…
+Passwordsのログイン情報を読み込み中…
+
+Reading…
+読み込み中…
+
+Reads
+読み取り
+
+Real-time priority
+リアルタイム優先度
+
+Real-time timeout
+リアルタイム実行の制限時間
+
+Received
+受信
+
+Receiver
+受信機
+
+Recent Folders
+最近使ったフォルダー
+
+Recommended
+推奨
+
+Recommended by another package
+ほかのパッケージが推奨
+
+Recommended for it
+この機器の推奨値
+
+Record
+録音
+
+Record Active Window
+アクティブウィンドウを収録
+
+Record Again
+もう一度録音
+
+Record Region…
+範囲を指定して収録…
+
+Record Screen
+画面録画
+
+Record Voice Message
+音声メッセージを録音
+
+Record a few seconds as you talk on a call, with the room as it is; then hear and see what each setting does to it. The recording stays in memory and goes when you close this.
+普段の部屋で通話するときのように数秒話してください。各設定の効果を音と表示で比較できます。録音はメモリ上だけに残り、この画面を閉じると消えます。
+
+Record from:
+録音元:
+
+Record the Computer's Sound
+コンピューターの音を収録
+
+Record the Microphone
+マイクの音を収録
+
+Recording
+記録中
+
+Recording a voice message, {}
+音声メッセージを録音中（{}）
+
+Recording a voice message, {}: Send Voice Message or Cancel Recording
+音声メッセージを録音中（{}）：「音声メッセージを送信」または「録音をキャンセル」
+
+Recording {} since {}
+{}を{}から収録中
+
+Recording {} since {} (paused)
+{}を{}から収録中（一時停止）
+
+Recording {} since {}, paused. Click to resume or stop.
+{}を{}から収録、一時停止中。クリックで再開または停止。
+
+Recording {} since {}. Click to pause or stop.
+{}を{}から収録中。クリックで一時停止または停止。
+
+Recording: {} of {} seconds. Talk as you do on a call.
+録音中：{} / {}秒。普段の通話と同じように話してください。
+
+Recordings…
+収録一覧…
+
+Record…
+録音…
+
+Red
+赤
+
+Red:
+赤:
+
+Redo
+やり直す
+
+Redo Window Arrangement
+ウィンドウの配置をやり直す
+
+Redo {}
+{}をやり直す
+
+Reference
+参照
+
+Reference:
+参照:
+
+Refining Olo's model on {} touches…
+{}回のタッチでOloのモデルを調整中…
+
+Refresh
+更新
+
+Refresh rate:
+リフレッシュレート:
+
+Refresh:
+更新:
+
+Regenerate
+再生成
+
+Reinstall Selected…
+選択した項目を再インストール…
+
+Reminder:
+リマインダー:
+
+Remote
+リモート
+
+Removable Disks
+リムーバブルディスク
+
+Remove
+削除
+
+Remove Account
+アカウントを削除
+
+Remove Graph
+グラフを削除
+
+Remove Place
+場所を削除
+
+Remove Repository
+リポジトリを削除
+
+Remove Repository…
+リポジトリを削除…
+
+Remove Tab
+タブを削除
+
+Remove Tab from Group
+タブをグループから外す
+
+Remove Worktree…
+ワークツリーを削除…
+
+Remove from Group
+グループから外す
+
+Remove from Pool…
+プールから削除…
+
+Remove it from the pool? Its sign-in here is deleted; the account itself isn’t touched.
+プールから削除しますか？ このコンピューターのログイン情報を削除します。アカウント自体は残ります。
+
+Remove the VPN “{}”? Its settings and keys go with it.
+VPN「{}」を削除しますか？ 設定と鍵も削除します。
+
+Remove the {}? It will no longer unlock anything.
+{}を削除しますか？ 以後はロック解除に使えません。
+
+Remove {} from the Collector
+{}をコレクターから外す
+
+Remove “{}” from Favorites
+「{}」をお気に入りから削除
+
+Remove…
+削除…
+
+Rename
+名前を変更
+
+Rename Group…
+グループ名を変更…
+
+Rename Place…
+場所の名前を変更…
+
+Rename Worktree…
+ワークツリー名を変更…
+
+Rename…
+名前を変更…
+
+Repeat rate
+リピート速度
+
+Repeats:
+繰り返し:
+
+Replace
+置換
+
+Replace Same
+同じ通知を置き換える
+
+Replace the one-time code of your login {} with the one this page shows?
+ログイン項目「{}」のワンタイムコードを、このページのコードに置き換えますか？
+
+Replace with
+置換後の文字列
+
+Replace with:
+置換後の文字列:
+
+Replaced by a newer one
+新しい通知で置換
+
+Replace…
+置換…
+
+Reply
+返信
+
+Reply to
+返信先
+
+Reply to {}
+{}に返信
+
+Reports
+レポート
+
+Repositories
+リポジトリ
+
+Repository
+リポジトリ
+
+Rescan
+再スキャン
+
+Reset
+リセット
+
+Reset Crop
+切り抜きをリセット
+
+Reset Display Settings
+ディスプレイ設定をリセット
+
+Reset Display Settings…
+ディスプレイ設定をリセット…
+
+Reset Pane Sizes
+ペインのサイズをリセット
+
+Reset Passwords
+Passwordsをリセット
+
+Reset Passwords…
+Passwordsをリセット…
+
+Reset Thresholds
+しきい値をリセット
+
+Reset of “{}”
+「{}」のリセット
+
+Resetting the displays' settings…
+ディスプレイ設定をリセット中…
+
+Resident memory
+常駐メモリ
+
+Resize
+サイズを変更
+
+Resize…
+サイズを変更…
+
+Resolution:
+解像度:
+
+Responsiveness
+応答性
+
+Rest of Today
+今日の残り
+
+Rest your palms
+手のひらを置いてください
+
+Restart
+再起動
+
+Restart Immediately
+直ちに再起動
+
+Restart Now
+今すぐ再起動
+
+Restart Now…
+今すぐ再起動…
+
+Restart Olo
+Oloを再起動
+
+Restart Recording
+収録をやり直す
+
+Restart and Shut Down end every program and stop the system in order, as Deskbar's menu does; Immediately doesn't wait for that. Held long, most computers' own firmware cuts the power whatever is set here (often after 4 to 10 seconds).
+「再起動」と「システム終了」はDeskbarのメニューと同様に、安全な順序でプログラムとシステムを終了します。「直ちに」は終了処理を待ちません。多くの機種では、この設定にかかわらずボタンを長押し（通常4～10秒）すると電源が切れます。
+
+Restart kache
+kacheを再起動
+
+Restart, Asking First
+確認してから再起動
+
+Restart…
+再起動…
+
+Resting: nothing new on it
+休止中：画面に変化はありません
+
+Restore
+復元
+
+Restore Files…
+ファイルを復元…
+
+Restore To…
+復元先…
+
+Restored as {}.
+{}として復元しました。
+
+Restore…
+復元…
+
+Restoring
+復元中
+
+Restoring: {} so far…
+復元中：これまでに{}…
+
+Restoring: {}, {} so far. {}
+復元中：{}、これまでに{}。{}
+
+Restoring…
+復元中…
+
+Rests
+手を置いた回数
+
+Result
+結果
+
+Resume
+再開
+
+Resume Backups
+バックアップを再開
+
+Resume Recording
+収録を再開
+
+Resuming the backup
+バックアップを再開中
+
+Revert
+元に戻す
+
+Revert to Saved
+保存済みの版に戻す
+
+Revert to Saved…
+保存済みの版に戻す…
+
+Revert to the last saved version of “{}”?
+「{}」を最後に保存した版に戻しますか？
+
+Reverting in 1 second.
+1秒後に元に戻します。
+
+Reverting in {} seconds.
+{}秒後に元に戻します。
+
+Rich Text (RTF)…
+リッチテキスト（RTF）…
+
+Right
+右
+
+Right Half
+右半分
+
+Right Third
+右3分の1
+
+Right Two Thirds
+右3分の2
+
+Right first
+先頭候補の正解率
+
+Room:
+幅:
+
+Rotate Left
+左に回転
+
+Rotate Right
+右に回転
+
+Round trip
+往復時間
+
+Round trip meanwhile
+負荷時の往復時間
+
+Router:
+ルーター:
+
+Rows
+行
+
+Ruby
+Ruby
+
+Ruler
+ルーラー
+
+Run module
+モジュールを実行
+
+Run on it with “olo-screen run”
+「olo-screen run」でこの画面に起動
+
+Running
+実行中
+
+Runs on
+実行先
+
+Russian
+ロシア語
+
+Rust
+Rust
+
+Rust build output and downloaded crates
+Rustのビルド生成物と取得済みクレート
+
+S
+南
+
+SE
+南東
+
+SQL
+SQL
+
+SSD temperature
+SSD温度
+
+SSE
+南南東
+
+SSW
+南南西
+
+SW
+南西
+
+Saturday
+土曜日
+
+Save
+保存
+
+Save As…
+名前を付けて保存…
+
+Save Group
+グループを保存
+
+Save a login for {} with the one-time code this page shows?
+{}のログイン項目にこのページのワンタイムコードを保存しますか？
+
+Save a passkey{} on {} in Passwords?
+{1}用のパスキー{0}をPasswordsに保存しますか？
+
+Save a passkey{} on {} in Passwords? It goes with your login “{}”.
+{1}用のパスキー{0}をPasswordsに保存しますか？ ログイン項目「{2}」に追加されます。
+
+Save as
+名前を付けて保存
+
+Save as GIF
+GIFとして保存
+
+Save as:
+名前を付けて保存:
+
+Save in:
+保存先:
+
+Saved the vault “{}”.
+保管庫「{}」を保存しました。
+
+Saved to /etc/hosts.
+/etc/hostsに保存しました。
+
+Saved, but it can't be reopened: {}
+保存しましたが、開き直せません：{}
+
+Saves Olo's settings and what apps keep between runs in one file, to bring back here or to another computer. What goes in:
+Oloの設定と、アプリが次回の起動用に残すデータを1つのファイルに保存します。このコンピューターでも別のコンピューターでも復元できます。保存する内容：
+
+Saving Power
+省電力
+
+Saving Power slows the processors and turns turbo off, Balanced speeds them up for work (leaning to saving on battery), Fastest keeps them quick; Top speed caps them (Balanced's 75% leaves out their hottest quarter). A GPU's Cooler and Quieter caps its clocks (Custom: its own, on Graphics), an SSD's Cooler and Coolest the power it may draw (a SATA SSD's, how deeply its link may sleep between commands), the fans' Cool, Cooler and Coolest how early they speed up (Auto: the computer's own way). On battery, a row not As the Mode holds whatever the mode.
+省電力はCPUを減速しターボを停止します。バランスは負荷に応じて加速し、バッテリー駆動時は省電力を優先します。最速は高速を維持します。速度の上限が75%なら、発熱の大きい上位25%は使いません。GPUはクロック、SSDは電力（SATAはリンクの休止状態）、ファンは加速のタイミングを調整します。GPUのカスタム値は「グラフィック」で設定し、ファンの自動設定は本体に任せます。バッテリー駆動時は「モードに従う」以外の指定が優先されます。
+
+Saving it with your settings…
+設定と一緒に保存中…
+
+Saving…
+保存中…
+
+Scala
+Scala
+
+Scan
+スキャン
+
+Scan Home
+ホームをスキャン
+
+Scan Volume
+ボリュームをスキャン
+
+Scan a Folder…
+フォルダーをスキャン…
+
+Scanning…
+スキャン中…
+
+Scanning… {}, {}
+スキャン中… {}、{}
+
+Schedule
+スケジュール
+
+Scheduled
+スケジュール済み
+
+Scheduler
+スケジューラー
+
+Scientific Keypad
+関数キーパッド
+
+Score {} of 2000
+スコア：{} / 2000
+
+Screen
+画面
+
+Screen Recordings
+画面収録
+
+Screen Saver
+スクリーンセーバー
+
+Screenshot
+スクリーンショット
+
+Scroll
+スクロール
+
+Scroll while the middle button is held
+中ボタンを押したままスクロール
+
+Scroll with:
+スクロール方法:
+
+Scrolling
+スクロール
+
+Scrolling speed
+スクロール速度
+
+Search
+検索
+
+Search domains:
+検索ドメイン:
+
+Search:
+検索:
+
+Search: name, command, user:, state:, kind:
+検索：名前、コマンド、user:、state:、kind:
+
+Search: names, CVEs, kind:, severity:, repo:
+検索：パッケージ名、CVE、kind:、severity:、repo:
+
+Search: words, program:, level:, since:
+検索：語句、program:、level:、since:
+
+Searching…
+検索中…
+
+Secondary click (three: middle)
+副ボタンのクリック（3本指は中クリック）
+
+Section
+セクション
+
+Secure Note
+セキュアノート
+
+Security
+セキュリティ
+
+Security Keys
+セキュリティキー
+
+Security Updates
+セキュリティ更新
+
+Security:
+セキュリティ:
+
+Security…
+セキュリティ…
+
+Sees this computer in
+このコンピューターの検出時間
+
+Segment size
+セグメントサイズ
+
+Select
+選択
+
+Select All
+すべて選択
+
+Select All Chats
+すべてのチャットを選択
+
+Select All Conversations
+すべての会話を選択
+
+Select All Screens
+すべての画面を選択
+
+Select None
+選択を解除
+
+Select a line to read it whole.
+行を選ぶと全文が表示されます。
+
+Select a repository to see everything about it.
+リポジトリを選ぶと詳細が表示されます。
+
+Select a transaction to see what it did to each package.
+トランザクションを選ぶと、各パッケージに行った操作を確認できます。
+
+Select an update to read about it: its versions, why it came out, what changed.
+更新を選ぶと、バージョン、リリース理由、変更内容を確認できます。
+
+Selected {} to {}
+{}から{}まで選択
+
+Send
+送信
+
+Send Code
+コードを送信
+
+Send Signal
+シグナルを送信
+
+Send Signal…
+シグナルを送信…
+
+Send Voice Message
+音声メッセージを送信
+
+Send to Back
+最背面に移動
+
+Send with BBRv3
+BBRv3で送信
+
+Sending your changes to Telegram
+変更をTelegramに送信中
+
+Sending {n} changes to Telegram…
+other: {n}件の変更をTelegramに送信中…
+
+Sending {} to process {}
+{}をプロセス{}に送信中
+
+Sends with
+送信方式
+
+Sensor:
+センサー:
+
+Sensors
+センサー
+
+Sent
+送信
+
+Sent again
+再送
+
+Sent again by the server
+サーバーによる再送
+
+Separated by spaces
+スペースで区切ります
+
+Server
+サーバー
+
+Server delivers at
+サーバーからの転送速度
+
+Server:
+サーバー:
+
+Servers of Your Own
+指定のDNSサーバー
+
+Servers of your own are asked in place of what each network hands out, on every link. Search domains are tried after a short name: nas, then nas.corp.example.
+すべての接続で、ネットワーク配布のサーバーの代わりにここで指定したサーバーを使います。短い名前はそのまま検索してから検索ドメインを補います（例：nas、次にnas.corp.example）。
+
+Server’s round trip
+サーバー側の往復時間
+
+Server’s window
+サーバーの受信ウィンドウ
+
+Service
+サービス
+
+Service Order
+サービスの順序
+
+Session:
+セッション:
+
+Set
+設定
+
+Set Background
+背景を設定
+
+Set Time Zone
+タイムゾーンを設定
+
+Set Up
+設定する
+
+Set Up Again…
+設定し直す…
+
+Set Up by Hand…
+手動で設定…
+
+Set Up…
+設定する…
+
+Set date and time automatically
+日付と時刻を自動設定
+
+Set for the whole computer by {}{}.
+{}{}がコンピューター全体に設定しました。
+
+Set up ({} looks).
+設定済み（{}回読み取り）。
+
+Setting
+設定
+
+Setting it: an administrator's password is asked…
+管理者のパスワードを確認して設定中…
+
+Setting up backups to {}…
+{}へのバックアップを設定中…
+
+Setting up the backups in {}’s Google Drive…
+{}のGoogle Driveにバックアップを設定中…
+
+Setting up your {} takes your password and two touches of the key:
+{}の設定には、パスワードの入力とキーへの2回のタッチが必要です：
+
+Setting up your {} takes your password, its PIN and two touches of the key:
+{}の設定には、パスワードとPINの入力、キーへの2回のタッチが必要です：
+
+Settings
+設定
+
+Settings:
+設定:
+
+Shaping
+通信制御
+
+Share
+共有
+
+Shared
+共有
+
+Shared with this screen: change it in your own Passwords.
+この画面と共有しています。変更するには自分のPasswordsを開いてください。
+
+Shares this computer's connection as a Wi-Fi network of its own; the adapter leaves the network it's on while it does.
+このコンピューターの接続を専用のWi-Fiネットワークとして共有します。共有中はアダプターが現在のネットワークから切断されます。
+
+Sharing
+共有
+
+Sharing this computer's connection as “{}”.
+このコンピューターの接続を「{}」として共有しています。
+
+Shell
+Shell
+
+Shift gradually, starting at From
+開始時刻から徐々に切り替える
+
+Shift over
+切り替えにかける時間
+
+Shirt touches
+袖の接触
+
+Short
+短い
+
+Short, in the middle
+中央に短く
+
+Shortcuts
+ショートカット
+
+Shorter
+短め
+
+Shortest
+最短
+
+Show
+表示
+
+Show All
+すべてを表示
+
+Show Archived
+アーカイブ済みを表示
+
+Show Archived Conversations
+アーカイブ済みの会話を表示
+
+Show Assistant
+アシスタントを表示
+
+Show Calendars
+カレンダーを表示
+
+Show Camera
+カメラを表示
+
+Show Clicks
+クリックを表示
+
+Show Deskbar
+Deskbarを表示
+
+Show DiskBackup in Deskbar
+DiskBackupをDeskbarに表示
+
+Show Display
+ディスプレイを表示
+
+Show File in Tracker
+Trackerでファイルを表示
+
+Show Hidden Files
+隠しファイルを表示する
+
+Show Notifications
+通知を表示
+
+Show Only {}
+{}のみ表示
+
+Show Places
+場所を表示
+
+Show Preview
+プレビューを表示
+
+Show Rescue Here
+復旧画面をここに表示
+
+Show Ruler
+ルーラーを表示
+
+Show Shortcuts
+ショートカットを表示
+
+Show Source
+ソースを表示
+
+Show Toolbars
+ツールバーを表示
+
+Show a window from its tab's menu (right-click its title) or its row in Deskbar: Show on AirPlay. Play a film from Viewer or Tracker: Play On.
+ウィンドウのタイトルを右クリックするかDeskbarの項目から「AirPlayで表示」を選びます。動画はViewerまたはTrackerの「再生先」で再生できます。
+
+Show banners for:
+バナーの表示時間:
+
+Show icons in the Deskbar menu
+Deskbarのメニューにアイコンを表示
+
+Show in Activity Monitor
+アクティビティモニタで表示
+
+Show in Context
+前後の行を表示
+
+Show in Tracker
+Trackerで表示
+
+Show its name
+名前を表示
+
+Show its value
+値を表示
+
+Show on AirPlay
+AirPlayで表示
+
+Show on All Workspaces
+すべてのワークスペースに表示
+
+Show or Hide All Windows
+全ウィンドウの表示・非表示
+
+Show seconds
+秒を表示
+
+Show the day of the week
+曜日を表示
+
+Show the phone’s other notifications
+電話のその他の通知を表示
+
+Show what a message says
+メッセージ本文を表示
+
+Show what's used, not what's left
+残量の代わりに使用量を表示
+
+Show:
+表示:
+
+Showing its code
+コードを表示中
+
+Showing the forecast from {}.
+{}の予報を表示しています。
+
+Shown
+表示中
+
+Shows:
+表示内容:
+
+Shut Down
+システム終了
+
+Shut Down Immediately
+直ちにシステム終了
+
+Shut Down, Asking First
+確認してからシステム終了
+
+Sign In
+サインイン
+
+Sign In Again
+再サインイン
+
+Sign In Again in Terminal…
+Terminalで再サインイン…
+
+Sign In Again…
+再サインイン…
+
+Sign In with Google
+Googleでサインイン
+
+Sign In…
+サインイン…
+
+Sign Out
+サインアウト
+
+Sign Out…
+サインアウト…
+
+Sign in to {} as “{}” with your passkey?
+パスキーを使って{}に「{}」としてサインインしますか？
+
+Sign in to {} with which passkey?
+{}にどのパスキーでサインインしますか？
+
+Sign in to “{}”
+「{}」にサインイン
+
+Sign-In Needed
+サインインが必要
+
+Signal
+シグナル
+
+Signed in as {} ({}).
+{}（{}）としてサインイン済み。
+
+Signed in as {}.
+{}としてサインイン済み。
+
+Signing in to Fastmail…
+Fastmailにサインイン中…
+
+Sign…
+署名…
+
+Site Settings
+サイトの設定
+
+Size
+サイズ
+
+Size:
+サイズ:
+
+Skip this step
+この手順をスキップ
+
+Sleet
+みぞれ
+
+Slow
+低速
+
+Slower
+遅く
+
+Slower, cooler and quieter: the processors favour saving energy and the firmware lowers its power limits. The battery lasts longest.
+速度を抑えて静かに冷却します。CPUは省電力を優先し、ファームウェアが電力上限を下げます。バッテリーが最も長持ちします。
+
+Slowest
+最遅
+
+Slowest compiles
+時間のかかったコンパイル
+
+Small
+小
+
+Small: one line. Medium and Large: all it shows, Large's sky bigger.
+小は1行表示です。中と大はすべての項目を表示し、大では空の表示が広くなります。
+
+Smaller
+小さく
+
+Smooth Pointer
+ポインターを滑らかに動かす
+
+Smooth Scrolling Graphs
+グラフを滑らかにスクロール
+
+Snapshots
+スナップショット
+
+Snooze
+スヌーズ
+
+Snooze for {}
+{}延期
+
+Snooze for:
+再通知まで:
+
+Snow
+雪
+
+Snow and freezing rain
+雪と着氷性の雨
+
+Snow and ice pellets
+雪と凍雨
+
+So the next backup goes on from there.
+次回のバックアップはそこから続けられます。
+
+Socket
+Socket
+
+Soft
+ソフト上限
+
+Software License
+ソフトウェアライセンス
+
+Sol 6.1
+Sol 6.1
+
+Some accounts connected weren’t allowed Google Drive: sign in again there, and allow it.
+接続済みの一部のアカウントでGoogle Driveが許可されていません。対象のアカウントで再サインインし、アクセスを許可してください。
+
+Some items are left out…
+一部の項目を除外しています…
+
+Some of what changed takes effect only once the computer starts again.
+一部の変更はコンピューターの再起動後に反映されます。
+
+Some room
+標準の幅
+
+Some waiting
+一部が待機中
+
+Sonnet 5.5
+Sonnet 5.5
+
+Sorry, that didn't work. Please try again.
+うまくいきませんでした。もう一度お試しください。
+
+Sort By
+並べ替え
+
+Sound
+サウンド
+
+Sound Settings…
+サウンド設定…
+
+Sound:
+サウンド:
+
+Sounds
+サウンド
+
+Source
+ソース
+
+Space Around Arranged Windows
+整列時のウィンドウの余白
+
+Space at the edges
+画面端の余白
+
+Space between windows
+ウィンドウ間の間隔
+
+Space only
+領域のみ
+
+Spanish
+スペイン語
+
+Spare
+予備
+
+Speaker amp {}
+スピーカーアンプ {}
+
+Speed
+速度
+
+Speed & Resources
+速度とリソース
+
+Speed Test
+速度測定
+
+Speed:
+速度:
+
+Spiral
+らせん
+
+Standard
+標準
+
+Standing By: {} Is in Use
+待機中：{}を使用中
+
+Start
+開始
+
+Start Olo over (Rescue stays on), log out, or restart the computer.
+復旧モードのままOloを起動し直すか、ログアウトまたはコンピューターの再起動を選べます。
+
+Start Over
+やり直し
+
+Start Over…
+やり直し…
+
+Start Test
+テストを開始
+
+Start the Agent
+エージェントを起動
+
+Start this step over
+この手順をやり直す
+
+Start typing
+入力を開始
+
+Started
+開始日時
+
+Started {n} hours ago
+other: {n}時間前に開始
+
+Started {n} minutes ago
+other: {n}分前に開始
+
+Starting Up
+起動時
+
+Starting over…
+やり直しています…
+
+Starting the agent…
+エージェントを起動中…
+
+Starting…
+起動中…
+
+Starts:
+開始:
+
+State
+状態
+
+Stats
+統計
+
+Status
+状態
+
+Status:
+状態:
+
+Stay Awake
+スリープを防止
+
+Stay awake (caffeinated)
+スリープを防止する
+
+Stay awake: no display sleep, sleep, screen saver or lock
+画面消灯、スリープ、スクリーンセーバー、ロックを一時停止
+
+Steadily (fit)
+一定の速度（推定）
+
+Steady freezing rain
+降り続く着氷性の雨
+
+Steady rain
+降り続く雨
+
+Steady sleet
+降り続くみぞれ
+
+Steady snow
+降り続く雪
+
+Step {} of {}
+手順 {} / {}
+
+Stop
+停止
+
+Stop All
+すべて停止
+
+Stop Ignoring
+無視を解除
+
+Stop Process
+プロセスを停止
+
+Stop Recording
+録画を停止
+
+Stop Scanning
+スキャンを停止
+
+Stop Screen
+画面を停止
+
+Stop Screen…
+画面を停止…
+
+Stop Sharing
+共有を停止
+
+Stop charging at {}% (and start again below {}%)
+{}%で充電を止める（{}%未満で再開）
+
+Stop syncing with {}? Its items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
+{}との同期を停止しますか？ このコンピューターから項目と未送信の変更を削除します。1Passwordの内容はそのままです。
+
+Stop syncing with {}? Their items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
+{}との同期を停止しますか？ 対象アカウントの項目と未送信の変更をこのコンピューターから削除します。1Passwordの内容はそのままです。
+
+Stopped part way, {}
+途中で停止（{}）
+
+Stopped · {}
+停止 · {}
+
+Stopped.
+停止しました。
+
+Stopped: what was restored so far is there.
+停止しました。復元済みのデータは保存先に残っています。
+
+Stopping the backup
+バックアップを停止中
+
+Store
+保存領域
+
+Stretch the remaining charge while keeping everyday work responsive.
+普段の作業の応答性を保ちながら、残りのバッテリーを長持ちさせます。
+
+Strikeout
+取り消し線
+
+Strong
+強い
+
+Stuck in a loop
+ループから抜けられない
+
+Style
+スタイル
+
+Styled Text
+書式付きテキスト
+
+StyledEdit
+StyledEdit
+
+Subpixel, BGR order
+サブピクセル（BGR順）
+
+Subpixel, RGB order
+サブピクセル（RGB順）
+
+Suggest commands from a model of your own
+自分のモデルでコマンドを提案
+
+Suggest emoji for a description
+説明に合う絵文字を提案
+
+Suggestion
+提案
+
+Suggestions
+提案
+
+Sun {}–{}
+日照 {}～{}
+
+Sunday
+日曜日
+
+SuperString, by Jon Watte
+SuperString（作者：Jon Watte）
+
+Supervisor
+Supervisor
+
+Swap
+スワップ
+
+Swap Alt and the Windows Key
+AltとWindowsキーを入れ替える
+
+Swap too
+スワップも含める
+
+Swap with Previous Main
+前のメインウィンドウと入れ替える
+
+Swedish
+スウェーデン語
+
+Swift
+Swift
+
+Swiss
+スイス
+
+Switch automatically between this computer and your iPhone
+このコンピューターとiPhoneを自動で切り替える
+
+Switch to a woken program at once
+起床したプログラムをすぐに実行
+
+Sync
+同期
+
+Sync Again
+再同期
+
+Sync Now
+今すぐ同期
+
+Syncing with 1Password…
+1Passwordと同期中…
+
+Syncing with {} makes {}. Nothing changes on either side until you apply them.
+{}との同期で{}が発生します。適用するまではどちらの内容も変わりません。
+
+System
+システム
+
+System Font
+システムフォント
+
+TCP opened in
+TCP接続時間
+
+TCP sends at the pace its path can carry, by a model of it, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).
+回線の特性を推定して、流せる速度でTCPを送信します。Linux標準の方式では途中のキューが埋まります。Oloのtcp_bbr3モジュールを使います。
+
+TCP/IP
+TCP/IP
+
+TCP’s own, idle
+TCPの測定値（無負荷時）
+
+TCP’s round trip
+TCPの往復時間
+
+TLS couldn't be set up: {}
+TLS接続を確立できません：{}
+
+TLS opened in
+TLS接続時間
+
+TOML
+TOML
+
+TSX
+TSX
+
+Table
+表
+
+Tabs
+タブ
+
+Tags:
+タグ:
+
+Take Back
+許可を取り消す
+
+Take Screenshot
+スクリーンショットを撮影
+
+Take Screenshot…
+スクリーンショットを撮影…
+
+Take calls on this computer
+このコンピューターで着信に応答する
+
+Taken
+採用した候補
+
+Tap
+タップ
+
+Tap and drag
+タップしてドラッグ
+
+Tap to click
+タップでクリック
+
+Tap {} on its own for the command palette
+{}だけを押してコマンドパレットを開く
+
+Taps
+タップ回数
+
+Task List
+タスクリスト
+
+Teal
+青緑
+
+Telegram
+Telegram
+
+Telegram (in Applications) shows your chats and messages, and tells you of new ones. Olo keeps its sign-in in your keyring.
+「アプリ」のTelegramでチャットやメッセージを表示し、新着を通知します。ログイン情報はOloのキーリングに保存します。
+
+Telegram asks to wait {} s
+Telegramから{}秒待つよう求められています
+
+Telegram asks us to wait {} seconds.
+Telegramから{}秒待つよう求められています。
+
+Telegram sent a code to Telegram on your other devices (or by text message). Type it here.
+Telegramがほかの端末のTelegramまたはSMSにコードを送りました。ここに入力してください。
+
+Tell coding agents about the repositories in their tab group
+タブグループのリポジトリをエージェントに伝える
+
+Tell coding agents to use Olo’s Agent Screens
+エージェントにOloの専用画面を使うよう伝える
+
+Tell me of:
+通知する内容:
+
+Tell me when it runs out, and when it's back
+利用枠を使い切ったときと回復時に通知
+
+Tell palms apart with a palm model
+モデルで手のひらを判定する
+
+Tell palms apart with a palm model too
+モデルも使って手のひらを判定する
+
+Temperature
+温度
+
+Temperature ({})
+温度（{}）
+
+Terminal
+Terminal
+
+Terminal Daemon…
+Terminalサービス…
+
+Terminal Preferences…
+Terminalの環境設定…
+
+Terminal shows each tab’s pull request on GitHub and whether its checks pass.
+Terminalは各タブに対応するGitHubのプルリクエストとチェック結果を表示します。
+
+Terminal's shells here belong to this screen and end with it: open the person's own Terminal for work to keep
+この画面のTerminalで開いたシェルは画面とともに終了します。作業を残すには、自分のセッションでTerminalを開いてください
+
+Terra 6.1
+Terra 6.1
+
+Test
+テスト
+
+Tested
+テスト済み
+
+Tested on the {} touches kept back from training ({} palms, {} fingers):
+学習に使わなかった{}回のタッチでテスト（手のひら{}回、指{}回）:
+
+Tested {}
+テスト日時：{}
+
+Tests
+テスト
+
+Tests holding slots
+枠を使用中のテスト
+
+Text
+テキスト
+
+Text Box
+テキストボックス
+
+Text Message
+SMS
+
+Text Size
+文字の大きさ
+
+Text messages to “{}”
+「{}」とのSMS
+
+Text:
+テキスト:
+
+That isn't a telephone number or an address.
+電話番号またはアドレスを入力してください。
+
+That isn't a value.
+無効な値です。
+
+That isn't one of the repository's worktrees.
+このリポジトリのワークツリーではありません。
+
+That isn't the backup's password.
+バックアップのパスワードが違います。
+
+That isn’t a Copr project’s name.
+Coprのプロジェクト名として無効です。
+
+That password isn't right.
+パスワードが違います。
+
+That password isn’t right.
+パスワードが違います。
+
+That password isn’t right. Try again:
+パスワードが違います。もう一度入力してください:
+
+That secret is empty in Passwords.
+Passwords内の秘密情報が空です。
+
+That's all of them. Press {} to learn your hands.
+すべてのタッチが揃いました。{}を押すと学習を開始します。
+
+That's all this step needs.
+この手順に必要なタッチが揃いました。
+
+That’s too big to be a .repo file.
+.repoファイルとしては大きすぎます。
+
+The API ID couldn’t be kept in the keyring ({}).
+API IDをキーリングに保存できませんでした（{}）。
+
+The API ID is a number.
+API IDは数値で指定します。
+
+The API hash is 32 letters and digits (0–9, a–f).
+APIハッシュは0～9とa～fの32文字です。
+
+The AirPods service isn't running.
+AirPodsサービスは停止中です。
+
+The CPU doesn't offer “{}”.
+このCPUは「{}」に対応していません。
+
+The DiskBackup service isn’t running
+DiskBackupサービスは停止中
+
+The GPU
+GPU
+
+The MTU is a number of bytes.
+MTUはバイト数で指定します。
+
+The New Build
+新しいビルド
+
+The Theme’s Own
+テーマの標準
+
+The VPN couldn't be saved.
+VPNを保存できませんでした。
+
+The account answering now
+現在応答中のアカウント
+
+The account couldn’t be saved ({}).
+アカウントを保存できませんでした（{}）。
+
+The address search answered {}.
+アドレス検索の応答：{}。
+
+The address search’s answer can’t be read: {}
+アドレス検索の応答を読めません：{}
+
+The agent is at work in a Terminal window, on its agent screen “{}” (Agent Screens shows it): it makes the account’s app in Google Cloud and signs Olo in with it. The account shows here when it’s done; you can talk to the agent in Terminal meanwhile.
+エージェントは専用画面「{}」のTerminalで作業中です。「エージェント画面」から確認できます。Google Cloudに専用アプリを作り、Oloをサインインさせます。完了するとアカウントがここに表示されます。作業中もTerminalで話しかけられます。
+
+The assistant is off in Preferences ▸ AI ▸ Calendar.
+環境設定 ▸ AI ▸ カレンダーでアシスタントがオフになっています。
+
+The backup can’t be opened: {}.
+バックアップを開けません：{}。
+
+The backup goes on by itself once it’s back, from where it got to.
+保存先が再び利用できるようになると、続きから自動でバックアップします。
+
+The backup is damaged.
+バックアップが破損しています。
+
+The backup {} didn’t finish: {}
+バックアップ{}が完了しませんでした：{}
+
+The backup's password is needed to open it.
+開くにはバックアップのパスワードが必要です。
+
+The backups can’t be listed: {}.
+バックアップ一覧を取得できません：{}。
+
+The backups have no version of it.
+バックアップにこの項目の版はありません。
+
+The backups have only the version there now.
+バックアップには現在と同じ版だけがあります。
+
+The backups take {} there
+保存先でのバックアップ使用量は{}です
+
+The bell's count in:
+ベルの件数表示の色:
+
+The change couldn’t be made: {}.
+変更できませんでした：{}。
+
+The clock service (systemd-timedated) isn't answering.
+時計サービス（systemd-timedated）が応答しません。
+
+The code from {}, at {}.
+{}から{}に届いたコード。
+
+The coming days, each its sky, low and high.
+今後数日間の空模様と最低・最高気温。
+
+The computer couldn't be restarted: {}
+コンピューターを再起動できませんでした：{}
+
+The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
+今日のヒット率、プールの使用中の枠、直近数時間のビルド数とキャッシュヒット数。
+
+The displays' settings are Olo's own again, from when you leave Rescue.
+復旧モードを終了すると、ディスプレイ設定はOloの標準に戻ります。
+
+The export failed: {}
+書き出しに失敗しました：{}
+
+The fans' profile isn't in force yet: {}
+ファンプロファイルはまだ適用されていません：{}
+
+The fingerprint couldn't be removed.
+指紋を削除できませんでした。
+
+The fingerprint sensor couldn't be used.
+指紋センサーを使用できませんでした。
+
+The fingerprint sensor isn't answering.
+指紋センサーが応答しません。
+
+The first backup reads everything; later ones read only what changed, in a fraction of the time.
+初回のバックアップはすべてのファイルを読みます。次回からは変更分だけを読むので、短時間で完了します。
+
+The first backup starts in a moment.
+まもなく最初のバックアップを開始します。
+
+The first fine-tune failed: {}
+最初の追加学習に失敗しました：{}
+
+The hand-written ones: not fine-tuned yet
+手書きの初期設定（未調整）
+
+The icons {} is drawn with, everywhere.
+{}の表示に使うアイコンを全体に適用します。
+
+The infrared camera couldn't be opened (its shutter, or another program).
+赤外線カメラを開けませんでした。シャッターが閉じていないか、ほかのプログラムが使っていないか確認してください。
+
+The journal couldn't be read: {}
+ジャーナルを読み込めませんでした：{}
+
+The kernel's own (recommended)
+カーネル標準（推奨）
+
+The key couldn’t be kept ({}).
+鍵を保存できませんでした（{}）。
+
+The key couldn’t be removed ({}).
+鍵を削除できませんでした（{}）。
+
+The key is in your login keyring.
+鍵はログインキーリングにあります。
+
+The key is kept in Passwords as “DiskBackup Key”.
+鍵はPasswordsに「DiskBackup Key」として保存されています。
+
+The key is only on this computer: keep it in Passwords, to restore anywhere else.
+鍵はこのコンピューターにしかありません。ほかのコンピューターでも復元できるよう、Passwordsに保存してください。
+
+The key is set up: from now on, a touch of it does what typing your password does.
+キーを設定しました。これからはパスワードを入力する代わりにキーに触れて認証できます。
+
+The key stopped waiting with no touch, and is blinking again: touch it once more now.
+タッチの待ち時間が過ぎ、ランプが再び点滅しています。もう一度キーに触れてください。
+
+The key stopped waiting with no touch, and is blinking again: touch {} now.
+タッチの待ち時間が過ぎ、ランプが再び点滅しています。今すぐ{}に触れてください。
+
+The key to DiskBackup's backups: without it they can't be read. DiskBackup keeps a copy in this computer's keyring; on another computer, it reads it from here.
+DiskBackupのバックアップを読み取るための鍵です。このコンピューターのキーリングにはコピーがあります。別のコンピューターではここから鍵を取得します。
+
+The key was removed: a touch of it no longer stands for your password.
+キーを削除しました。タッチによるパスワード認証はできなくなりました。
+
+The keyring couldn’t be read ({}).
+キーリングを読み込めませんでした（{}）。
+
+The last 12 hours
+過去12時間
+
+The last 24 hours
+過去24時間
+
+The last 6 hours
+過去6時間
+
+The last backup isn’t whole: {}. The next backup sends again what it can.
+前回のバックアップは不完全です：{}。次回、可能なデータを再送します。
+
+The last backup was {}
+前回のバックアップ：{}
+
+The last hour of use
+直近1時間の使用状況
+
+The last whole one was {}
+前回の正常なバックアップ：{}
+
+The list of Google accounts couldn’t be saved ({}).
+Googleアカウントの一覧を保存できませんでした（{}）。
+
+The log can't be opened: {}
+ログを開けません：{}
+
+The login keyring couldn't be read: {}
+ログインキーリングを読み込めません：{}
+
+The look of every icon, window and control, in every app, and a wallpaper to match.
+すべてのアプリのアイコン、ウィンドウ、コントロールの外観と、それに合う壁紙。
+
+The look's own
+現在の外観に従う
+
+The loss is a number, in percent.
+損失率はパーセントで指定します。
+
+The microphone can’t be recorded ({}).
+マイクの音を録音できません（{}）。
+
+The model
+モデル
+
+The model wasn't good enough to keep
+精度が不十分なためモデルは保存されませんでした
+
+The most powerful (the processor)
+最も高性能（CPU）
+
+The most powerful ({})
+最も高性能（{}）
+
+The network couldn't be asked for receivers.
+ネットワーク上の受信機を検索できませんでした。
+
+The next 12 hours
+今後12時間
+
+The next 3 hours
+今後3時間
+
+The next 6 hours
+今後6時間
+
+The next backup sends again what it can.
+次回のバックアップで可能なデータを再送します。
+
+The next hours, each its sky and temperature, with the chance of rain or the cloud.
+今後数時間の空模様と気温、降水確率または雲量。
+
+The one it started on
+起動時のもの
+
+The package service reads what’s installed and what each repository has.
+パッケージサービスがインストール済みの内容と各リポジトリのパッケージを調べます。
+
+The packages can’t be read
+パッケージを読み込めません
+
+The pad clicks at {}/{} (all contacts together); with a palm on it, Olo counts the click only if the fingers press that hard alone.
+タッチパッドは接触点の合計圧力が{}/{}に達するとクリックします。手のひらを置いているときは、指だけでその圧力に達した場合に限りクリックします。
+
+The pairing with {} couldn't be forgotten: {}.
+{}とのペアリングを解除できませんでした：{}。
+
+The password couldn’t be kept in the keyring ({}).
+パスワードをキーリングに保存できませんでした（{}）。
+
+The password of “{}” couldn’t be kept: {}
+「{}」のパスワードを保存できません：{}
+
+The passwords file is damaged: {}
+パスワードファイルが破損しています：{}
+
+The phone didn’t take it.
+電話が要求を受け付けませんでした。
+
+The phone is connected but isn’t answering (it may be asleep). It’s asked again from time to time, and at once when it wakes.
+電話は接続済みですが応答がありません。スリープ中の可能性があります。定期的に再試行し、復帰したときはすぐに確認します。
+
+The phone isn’t connected.
+電話が接続されていません。
+
+The phone service isn’t running.
+電話サービスは停止中です。
+
+The phone service wouldn’t say.
+電話サービスから情報を取得できませんでした。
+
+The phone went.
+電話との接続が切れました。
+
+The phone’s messages stopped ({}).
+電話からのメッセージ受信が止まりました（{}）。
+
+The picture on the desktop when {} is chosen. Backgrounds changes the desktop’s after, a workspace at a time.
+{}を選んだときのデスクトップ画像です。後から「デスクトップ背景」でワークスペースごとに変更できます。
+
+The place search answered {}.
+場所検索の応答：{}。
+
+The place search’s answer can’t be read: {}
+場所検索の応答を読めません：{}
+
+The place’s time zone can’t be looked up: {}
+この場所のタイムゾーンを検索できません：{}
+
+The pointer keeps moving, and none of its motion is lost, while the desktop is busy: a slow frame, or a wait in the graphics driver under load. New, and being tried: if the mouse, touchpad or keyboard misbehaves with it on, turn it off.
+デスクトップが高負荷で描画やグラフィックドライバーが遅れても、ポインターは動き続け、動きを取りこぼしません。試験中の機能です。マウス、タッチパッド、キーボードの調子が悪い場合はオフにしてください。
+
+The pool
+プール
+
+The power mode (Power Saver, Balanced or Performance) is set in Power.
+電源モード（省電力、バランス、パフォーマンス）は「電源」で選びます。
+
+The power service reported a problem applying this mode. Olo Doctor has the details.
+電源サービスでモードを適用できませんでした。詳細はOlo Doctorで確認できます。
+
+The process has quit.
+プロセスは終了しました。
+
+The processor
+CPU
+
+The processor (OpenH264)
+CPU（OpenH264）
+
+The repository has a worktree called {} already.
+このリポジトリには「{}」というワークツリーがすでにあります。
+
+The right edge
+右端
+
+The screen
+画面
+
+The server answered {}{}.
+サーバーの応答：{}{}。
+
+The server didn’t take the name and password.
+サーバーがユーザー名とパスワードを受け付けませんでした。
+
+The server’s CalDAV address, and the name and password it signs you in with. The password is kept in your login keyring.
+サーバーのCalDAVアドレスと、サインイン用の名前とパスワードを指定します。パスワードはログインキーリングに保存します。
+
+The shell has ended.
+シェルは終了しました。
+
+The sky and temperature now, and what's coming.
+現在の空模様と気温、これからの予報。
+
+The store
+保存領域
+
+The store is over its {} limit
+保存領域が上限の{}を超えています
+
+The system power profiles service is unavailable.
+システムの電源プロファイルサービスを利用できません。
+
+The system's services (updates, indexing) can still run there.
+システムのサービス（更新や索引作成など）はこのコアを使用できます。
+
+The system's services are kept off it too.
+システムのサービスもこのコアを使用しません。
+
+The test didn't finish: {}.
+テストが完了しませんでした：{}。
+
+The time zone lookup answered {}.
+タイムゾーン検索の応答：{}。
+
+The time zone lookup’s answer can’t be read: {}
+タイムゾーン検索の応答を読めません：{}
+
+The token couldn’t be kept in the keyring ({}).
+トークンをキーリングに保存できませんでした（{}）。
+
+The token couldn’t be taken out of the keyring ({}).
+トークンをキーリングから削除できませんでした（{}）。
+
+The touchpad says which touches are palms, but lets a resting palm go back to being a finger; Olo keeps it a palm until it lifts.
+タッチパッドが手のひらと判定しても、置いたままにすると指と見なすことがあります。Oloは手を離すまで手のひらとして扱います。
+
+The two passwords aren't the same.
+2つのパスワードが一致しません。
+
+The upgrade to Fedora {} is downloaded and waits for the computer to restart.
+Fedora {}へのアップグレードはダウンロード済みです。コンピューターの再起動を待っています。
+
+The user session's systemd didn't answer.
+ユーザーセッションのsystemdが応答しませんでした。
+
+The voice message couldn’t be recorded ({}).
+音声メッセージを録音できませんでした（{}）。
+
+The voice service isn't running.
+音声サービスは停止中です。
+
+The window server didn’t give its settings.
+ウィンドウサーバーから設定を取得できませんでした。
+
+The workspace each display shows stays open in every Deskbar; each other one is its heading, with an arrow that shows its applications and puts them away again.
+各画面に表示中のワークスペースは、すべてのDeskbarで展開されます。それ以外は見出しだけを表示し、矢印でアプリ一覧を開閉できます。
+
+The {} couldn't be changed.
+{}を変更できませんでした。
+
+The {} is a whole number.
+{}には整数を入力してください。
+
+The {} wasn't changed: an administrator's password is needed.
+{}を変更するには管理者のパスワードが必要です。
+
+Their new windows open there, on the display they open on. Uncheck an app to open its windows where you are again.
+これらのアプリの新しいウィンドウは、起動した画面の指定ワークスペースに開きます。チェックを外すと現在のワークスペースに開くようになります。
+
+Their windows float over the tiles, and over the window Focus shows. Uncheck an app to tile its windows again.
+これらのアプリはタイルの手前に表示され、フォーカスモードでも前面に残ります。チェックを外すと再びタイル表示になります。
+
+Theme
+テーマ
+
+Themes
+テーマ
+
+Then its client’s ID and secret here, and sign in: Google asks in your browser whether Olo may read your mail, use your calendars and keep DiskBackup’s files in your Drive.
+ここにクライアントIDとシークレットを入力してサインインします。ブラウザーで、Oloによるメールの読み取り、カレンダーの使用、DiskBackupのファイルをDriveに保存する権限を確認してください。
+
+Then the space only it took is freed, in {}.
+その後、このバックアップだけが使用していた容量を{}で解放します。
+
+Then the space only they took is freed, in {}.
+その後、これらのバックアップだけが使用していた容量を{}で解放します。
+
+There are no links to shape.
+通信を制御できる接続がありません。
+
+There are no network interfaces.
+ネットワークインターフェースがありません。
+
+There is no journal for this user to read (in /var/log/journal or /run/log/journal).
+/var/log/journalにも/run/log/journalにも、このユーザーが読めるジャーナルはありません。
+
+There is no limit “{}”.
+「{}」という制限はありません。
+
+There is nothing to share.
+共有するものがありません。
+
+There's no Ethernet adapter. A USB or Thunderbolt one shows here once it's plugged in.
+有線LANアダプターがありません。USBまたはThunderboltのアダプターを接続すると表示されます。
+
+There's no Wi-Fi adapter.
+Wi-Fiアダプターがありません。
+
+There's no fingerprint sensor, or fprintd isn't running.
+指紋センサーがないか、fprintdが動作していません。
+
+There's no infrared camera.
+赤外線カメラがありません。
+
+These apps may have these items whenever they ask. Take one back and the app is asked again the next time.
+これらのアプリは一覧の項目にいつでもアクセスできます。許可を取り消すと、次回の要求時に再び確認します。
+
+These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
+これらの機能にはBluetoothでAirPodsを検出する設定が必要です。Olo Doctorで有効にできます。
+
+ThinkPad
+ThinkPad
+
+Thinking ({})…
+考え中（{}）…
+
+Thinking:
+思考:
+
+Thinking…
+考え中…
+
+This Computer
+このコンピューター
+
+This Computer's Microphones
+このコンピューターのマイク
+
+This PDF can't be edited, so it can't be saved.
+このPDFは編集できないため保存できません。
+
+This PDF can't be edited.
+このPDFは編集できません。
+
+This PDF can't be read.
+このPDFを読み込めません。
+
+This PDF has no pages.
+このPDFにはページがありません。
+
+This PDF is protected by a password.
+このPDFはパスワードで保護されています。
+
+This Touchpad
+このタッチパッド
+
+This account has a two-step password.
+このアカウントは2段階認証のパスワードを使用しています。
+
+This backup was made by a newer Olo.
+このバックアップは新しいバージョンのOloで作成されています。
+
+This computer has no Bluetooth.
+このコンピューターにBluetoothはありません。
+
+This computer has no battery.
+このコンピューターにバッテリーはありません。
+
+This computer is “{}” to AirPlay receivers.
+AirPlay受信機にはこのコンピューターが「{}」と表示されます。
+
+This computer is “{}”.
+このコンピューターの名前は「{}」です。
+
+This computer runs Fedora {}.
+このコンピューターはFedora {}を使用しています。
+
+This computer's kernel can't load another scheduler (sched_ext: Linux 6.12 and later have it), so the kernel's own schedules.
+このカーネルは別のスケジューラーを読み込めないため、標準のものを使用します。切り替えに必要なsched_extはLinux 6.12以降で利用できます。
+
+This computer's sensor sees when someone is in front of it.
+このコンピューターのセンサーは、正面に人がいるかを検知します。
+
+This display reports no modes.
+このディスプレイから表示モードの情報を取得できません。
+
+This event
+この予定
+
+This folder was moved or deleted.
+このフォルダーは移動または削除されました。
+
+This is the recommended profile for this touchpad.
+このタッチパッドに推奨されるプロファイルです。
+
+This isn't an Olo backup.
+Oloのバックアップではありません。
+
+This isn't the session at the computer, so the computer isn't restarted.
+再起動はコンピューター本体のセッションでのみ実行できます。
+
+This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
+このカーネルはディスク別の制限に対応していません。Linux 6.2以降が必要です。
+
+This kernel has one way of preempting only: it wasn't built to be told another.
+このカーネルはプリエンプション方式が固定されており、変更できません。
+
+This keyboard has no backlight.
+このキーボードにバックライトはありません。
+
+This page shows a one-time code for {}. Add it to which login?
+このページには{}のワンタイムコードがあります。どのログイン項目に追加しますか？
+
+This step is done
+この手順は完了しました
+
+This touchpad doesn't report pressure, so it is left to libinput.
+このタッチパッドは圧力を通知しないため、処理をlibinputに任せます。
+
+This will {} and {}.
+実行内容：{}、{}。
+
+This will {}.
+実行内容：{}。
+
+Threads
+スレッド
+
+Three fingers
+3本指
+
+Three months
+3か月
+
+Three touches type a code
+3回触れてコードを入力
+
+Throttled
+速度制限中
+
+Through
+経由
+
+Thumb clicks
+親指でのクリック
+
+Thunderstorm
+雷雨
+
+Thunderstorms
+雷雨
+
+Tidied away
+整理済み
+
+Tidy away read notifications after
+既読通知を整理するまでの時間
+
+Tidying goes on by itself once it’s back, from where it got to.
+保存先が再び利用できるようになると、続きから自動で整理します。
+
+Tidying old backups
+古いバックアップを整理中
+
+Tidying: letting go of old snapshots
+整理中：古いスナップショットを削除しています
+
+Tile
+タイル表示
+
+Tile All
+すべてタイル表示
+
+Tile All Tabs
+すべてのタブをタイル表示
+
+Tile With
+並べて表示
+
+Tiling, zooming, Tile All, cascading and fanning out all leave this space.
+タイル表示、最大化、すべてのタイル表示、重ねて表示、扇状の配置でもこの余白を保ちます。
+
+Time
+時刻
+
+Time Zone
+タイムゾーン
+
+Time saved
+短縮できた時間
+
+Time tasks waited for disks
+ディスク待ち時間
+
+Time tasks waited for each, over 10 s, 1 min and 5 min
+各リソースの待ち時間（10秒、1分、5分）
+
+Time tasks waited for memory: 10 s, 1 min, 5 min
+メモリ待ち時間（10秒、1分、5分）
+
+Time zone
+タイムゾーン
+
+Time:
+時刻:
+
+Timeouts
+タイムアウト
+
+Times in {}.
+時刻のタイムゾーン：{}。
+
+Title
+タイトル
+
+Title and preview
+タイトルとプレビュー
+
+Title only
+タイトルのみ
+
+Title:
+タイトル:
+
+To allow it, you can also {}.
+{}でも許可できます。
+
+To {}
+{}へ
+
+To {}.
+{}へ。
+
+To:
+終了:
+
+Today
+今日
+
+Today and tomorrow
+今日と明日
+
+Today {}
+今日 {}
+
+Token Pool
+Token Pool
+
+Token Pool asks {} to wait until one resets.
+利用枠のいずれかが回復するまで、Token Poolは{}に待機を求めます。
+
+Token Pool isn't running: its quotas are listed once it is.
+Token Poolは停止しています。起動すると利用枠が表示されます。
+
+Token Pool · {} · {}
+Token Pool · {} · {}
+
+Token Pool: its accounts came in paused. Turn them on here once the other computer's pool no longer uses them: each sign-in renews itself, and two computers renewing one sign each other out.
+Token Pool：アカウントは一時停止状態で取り込みました。もう一方のコンピューターで使わなくなったら、こちらで有効にしてください。2台で同じログイン情報を自動更新すると、互いにサインアウトしてしまいます。
+
+Token:
+トークン:
+
+Tomorrow
+明日
+
+Took
+所要時間
+
+Tool
+ツール
+
+Tools
+ツール
+
+Top Half
+上半分
+
+Top Left Quarter
+左上4分の1
+
+Top Right Quarter
+右上4分の1
+
+Top Two Thirds
+上部3分の2
+
+Top speed
+速度の上限
+
+Touch
+タッチ
+
+Touch ID
+Touch ID
+
+Touch ID isn't used here: its sensor works only with the Mac it's paired to, whose Secure Enclave alone can read what it senses. Use the computer's own fingerprint reader, or your password.
+Touch IDセンサーはペアリング先のMacでのみ使えます。そのMacのSecure Enclaveだけがセンサーの情報を読み取れます。このコンピューターの指紋センサーかパスワードを使ってください。
+
+Touch ID, touch your security key, or enter your password
+Touch IDを使うか、セキュリティキーに触れるか、パスワードを入力してください
+
+Touch screen
+タッチスクリーン
+
+Touch the key now: its light is blinking. Touch {}.
+ランプが点滅しています。今すぐ{}に触れてください。
+
+Touch the sensor, lift, and touch again.
+センサーに指を当て、いったん離してもう一度触れてください。
+
+Touchpad
+タッチパッド
+
+Touchpad & Mouse
+タッチパッドとマウス
+
+TrackPoint
+TrackPoint
+
+Tracker
+Tracker
+
+Tracker's Open With ▸ offers these for this kind, in this order.
+Trackerの「このアプリで開く」には、この種類に対応するアプリがこの順序で表示されます。
+
+Tracking speed
+ポインターの速度
+
+Traffic goes through the first service in this list that's connected; the others stand by. Networks joined later fall in line.
+この一覧の先頭にある接続済みサービスを使います。残りは待機し、後から接続するネットワークもこの順序に従います。
+
+Traffic:
+通信:
+
+Train
+学習
+
+Train again
+再学習
+
+Train for Your Palm
+手のひらに合わせて学習
+
+Train for Your Palm…
+手のひらに合わせて学習…
+
+Trained on {} of your touches ({} palms, {} fingers). It's kept with your settings (and in backups); Preferences ▸ Touchpad & Mouse ▸ Touch shows it, and can turn it off or forget it.
+{}回のタッチ（手のひら{}回、指{}回）で学習しました。モデルは設定とバックアップに保存されます。「環境設定」▸「タッチパッドとマウス」▸「タッチ」で確認、無効化、削除ができます。
+
+Trained on {} of your touches, it did worse than Olo's untrained model on the {} kept back to test it, so it wasn't saved and nothing changed. Train again, resting your hands as you really do.
+{}回のタッチで学習しましたが、テスト用の{}回ではOlo標準のモデルより精度が低かったため、変更を保存しませんでした。普段どおりに手を置いて、もう一度学習してください。
+
+Transparency
+透明度
+
+Trash
+ゴミ箱
+
+Tree
+ツリー
+
+Trim
+トリム
+
+Trim to Selection
+選択範囲にトリミング
+
+Trim…
+トリム…
+
+Trust
+信頼する
+
+Trust this repository’s key?
+このリポジトリの鍵を信頼しますか？
+
+Trusting the key…
+鍵を信頼済みに設定中…
+
+Try Again
+再試行
+
+Try It…
+試す…
+
+Try Voice Processing
+音声処理を試す
+
+Try again now.
+もう一度お試しください。
+
+Try it
+試す
+
+Try the Phone Again
+電話に再接続
+
+Trying each setting on it: {} of {}…
+各設定をテスト中：{} / {}…
+
+Tuned for {}
+{}向けに調整済み
+
+Tuned for:
+調整対象:
+
+Tuning
+調整
+
+Turbo off
+ターボ無効
+
+Turbo on
+ターボ有効
+
+Turn Off
+オフにする
+
+Turn On
+オンにする
+
+Turn On Bluetooth
+Bluetoothをオン
+
+Turn off after
+オフにするまでの時間
+
+Turn off displays
+ディスプレイを消灯
+
+Turn off screen
+画面を消灯
+
+Turn on for a laptop usually plugged in.
+普段は電源につないで使うノートPCで有効にしてください。
+
+Turn the display off after:
+ディスプレイを消灯するまで:
+
+Turn the touchpad off while a mouse is plugged in
+マウスの接続中はタッチパッドを無効にする
+
+Turned off by the hardware switch.
+本体のスイッチでオフになっています。
+
+Turned on
+オンにしました
+
+Twelve exercises, then a try
+12種類の練習後にテストします
+
+Two fingers
+2本指
+
+Two fingers:
+2本指:
+
+Two upgrades are ready: a new build of Olo ({}{}), and {} from GitHub, made {} ({} to download). Which do you want? Your windows stay open either way.
+更新が2つあります。Oloの新しいビルド（{}{}）と、GitHubの{}（作成：{}、ダウンロード：{}）です。どちらをインストールしますか？ どちらでもウィンドウは開いたままです。
+
+Type
+種類
+
+Type a time like 13:05 or 1:05 PM.
+13:05や1:05 PMの形式で時刻を入力してください。
+
+Type here to try the settings
+ここに入力して設定を試す
+
+Type the PIN for “{}” (often 0000).
+「{}」のPINを入力してください（多くの場合は0000）。
+
+Type the code “{}” shows on its screen.
+「{}」の画面に表示されたコードを入力してください。
+
+Type the keys. Esc cancels; ⌫ removes them.
+キーを押してください。Escでキャンセル、⌫で割り当てを削除します。
+
+Type the keys…
+キーを押してください…
+
+Type the passkey shown by “{}”.
+「{}」に表示されたペアリングコードを入力してください。
+
+Type the password it’s to be opened with.
+開くときに使うパスワードを入力してください。
+
+Type this
+この文字列を入力
+
+Type with your palms down
+手のひらを置いて入力
+
+Type {} on “{}”, then press Return.
+「{1}」で{0}を入力し、Returnを押してください。
+
+Type:
+種類:
+
+TypeScript
+TypeScript
+
+Typically
+通常
+
+Typing
+文字入力
+
+Typing test:
+入力テスト:
+
+USB power management may put it to sleep, and then it loses the first movement when the hand moves again.
+USBの省電力機能で機器が休止すると、次に手を動かした際に最初の動きを取りこぼすことがあります。
+
+USB receiver
+USBレシーバー
+
+UV index
+UV指数
+
+Unarchive All
+すべてアーカイブから戻す
+
+Unarchive All…
+すべてアーカイブから戻す…
+
+Unarchive {} Chats
+{}件のチャットをアーカイブから戻す
+
+Unavailable with this computer's power driver.
+このコンピューターの電源ドライバーでは利用できません。
+
+Under the Tray
+トレイの下
+
+Underline
+下線
+
+Undo
+元に戻す
+
+Undo Transaction {}
+トランザクション{}を取り消す
+
+Undo Transaction…
+トランザクションを取り消す…
+
+Undo Window Arrangement
+ウィンドウ配置を元に戻す
+
+Undo {}
+{}を元に戻す
+
+Undo…
+元に戻す…
+
+Unexpected input
+予期しない入力です
+
+Unfinished: {} ({}) done and {} sent; the next backup goes on from there.
+未完了：{}（{}）処理済み、{}送信済み。次のバックアップはここから再開します。
+
+Unfinished: {} sent before it stopped; the next backup goes on from there.
+未完了：停止前に{}送信済み。次のバックアップはここから再開します。
+
+Unfloat
+タイル表示に戻す
+
+Ungroup
+グループを解除
+
+Units
+単位
+
+Unix socket
+Unixソケット
+
+Unix socket {}
+Unixソケット {}
+
+Unknown
+不明
+
+Unknown Senders
+不明な送信者
+
+Unknown caller
+不明な発信者
+
+Unless the app says; kept while the pointer is over it.
+アプリ指定を優先。ポインターを重ねると消えません。
+
+Unlock…
+ロック解除…
+
+Unmount
+アンマウント
+
+Unmute
+ミュート解除
+
+Unmute All
+すべてミュート解除
+
+Unread notifications put a blue dot beside their app.
+未読通知のあるアプリには青い点が付きます。
+
+Unreaped for
+回収されずに経過した時間
+
+Unsafe shutdowns
+正常に終了しなかった回数
+
+Until Turned Off
+オフにするまで
+
+Until:
+終了:
+
+Up
+上へ
+
+Up (sent)
+上り（送信）
+
+Up for
+稼働時間
+
+Update
+アップデート
+
+Update Interval
+更新間隔
+
+Update Only This…
+この項目だけ更新…
+
+Update Selected Only…
+選択した項目だけ更新…
+
+Update These {}…
+この{}件を更新…
+
+Update every:
+更新間隔:
+
+Update the power service in Olo Doctor to use these policies.
+この制御を使うには、Olo Doctorで電源サービスを更新してください。
+
+Updated
+更新済み
+
+Updated {} · {}
+更新：{} · {}
+
+Updates
+更新
+
+Updates are downloaded and wait for the computer to restart: they’re installed then.
+更新のダウンロードが完了しました。コンピューターを再起動するとインストールします。
+
+Updating…
+更新中…
+
+Upgrade Fedora
+Fedoraをアップグレード
+
+Upgrade Olo
+Oloを更新
+
+Upgrade to Fedora {}
+Fedora {}にアップグレード
+
+Upgrading downloads every package of Fedora {} now, while you work, then installs them as the computer restarts: that takes a while, and the computer can’t be used meanwhile. Your files, settings and apps stay. Update to the newest of this release first, and have a backup.
+作業中にFedora {}の全パッケージをダウンロードし、再起動時にインストールします。インストールには時間がかかり、その間はコンピューターを使えません。ファイル、設定、アプリは引き継がれます。先に現在のリリースを最新の状態にし、バックアップを取ってください。
+
+Upload
+アップロード
+
+Upload at most:
+アップロード上限:
+
+Uploading is backing up; downloading is restoring, and tidying. A limit holds at once, for a backup under way too.
+バックアップではアップロード、復元と整理ではダウンロードを使います。速度制限は実行中のバックアップにもすぐに適用されます。
+
+Uploading: {}
+アップロード中：{}
+
+Uploading…
+アップロード中…
+
+Uptime:
+稼働時間:
+
+Urgent at
+緊急とする値
+
+Use
+使用
+
+Use Battery Saver automatically
+バッテリー節約を自動で有効にする
+
+Use Credit
+クレジットを使う
+
+Use Default
+標準に戻す
+
+Use F1, F2, etc. as standard function keys
+F1、F2などを標準のファンクションキーとして使う
+
+Use Google Drive Instead…
+Google Driveに切り替える…
+
+Use Music Quality
+音楽用の音質を使う
+
+Use Passwords for ssh
+SSHにPasswordsを使う
+
+Use Saved Password
+保存したパスワードを使う
+
+Use Suggested
+推奨値を使う
+
+Use This Setting
+この設定を使う
+
+Use a Folder Instead…
+フォルダーに切り替える…
+
+Use a Phone Number
+電話番号を使う
+
+Use a QR Code
+QRコードを使う
+
+Use a Reset Credit…
+リセット用クレジットを使う…
+
+Use a key already in Passwords
+Passwordsに保存済みのキーを使う
+
+Use the Usual Order
+通常の順序に戻す
+
+Use this account
+このアカウントを使う
+
+Use:
+使用:
+
+User
+ユーザー
+
+Username or Site
+ユーザー名またはサイト
+
+Username:
+ユーザー名:
+
+Using
+使用中
+
+Using DHCP
+DHCPを使用
+
+Using the most
+使用量が多い順
+
+Using too much memory
+メモリを過剰に使用
+
+VPN
+VPN
+
+Validate Fully…
+完全に検証…
+
+Validate fully? Every byte {}{} is read back from {} and checked, as a restore would: it can take a while, at the download limit. The usual Validate compares checksums and reads only a sample back.
+完全に検証しますか？ {0}に必要なデータ{1}を{2}からすべて読み戻し、復元時と同じように確認します。ダウンロード上限に従うため時間がかかる場合があります。通常の検証ではチェックサムを比較し、一部だけを読み戻します。
+
+Validated
+検証済み
+
+Validated fully {}: all it needs ({}) read back, and whole.
+{}に完全検証済み：必要なデータ（{}）をすべて読み戻し、破損がないことを確認しました。
+
+Validated {}: everything it needs is there{}. Validate Fully reads it all back.
+{}に検証済み：必要なデータはすべて揃っています{}。すべて読み戻すには「完全に検証」を選びます。
+
+Validated: all there.
+検証済み：すべて揃っています。
+
+Validating backups
+バックアップを検証中
+
+Validating backups: reading them back
+バックアップを読み戻して検証中
+
+Validating goes on by itself once it’s back, from where it got to.
+保存先が再び利用できるようになると、続きから自動で検証します。
+
+Value
+値
+
+Value:
+値:
+
+Variable refresh rate
+可変リフレッシュレート
+
+Vault
+保管庫
+
+Vault Info…
+保管庫の情報…
+
+Vault:
+保管庫:
+
+Vaults
+保管庫
+
+Version
+バージョン
+
+Versions of {}
+{}のバージョン
+
+Very Bad Network
+非常に不安定なネットワーク
+
+Very high
+非常に高い
+
+Video Format
+動画形式
+
+Video Playback
+動画再生
+
+Video is decoded on the processor. {}
+CPUで動画をデコードします。{}
+
+View
+表示
+
+Viewer
+Viewer
+
+Virtual machines’ disk images
+仮想マシンのディスクイメージ
+
+Visibility
+視程
+
+Visibility ({})
+視程（{}）
+
+Visibility · fog
+視程・霧
+
+Voice Only
+音声のみ
+
+Voice Processing
+音声処理
+
+Voice message {}.ogg
+音声メッセージ {}.ogg
+
+Voltage
+電圧
+
+Volume
+音量
+
+Volume:
+音量:
+
+Volumes
+ボリューム
+
+W
+西
+
+WNW
+西北西
+
+WSW
+西南西
+
+Wait for the sync to finish, then remove the account.
+同期が終わってからアカウントを削除してください。
+
+Wait for the sync to finish, then reset.
+同期が終わってからリセットしてください。
+
+Waiting
+待機中
+
+Waiting for Ethernet
+有線LAN接続待ち
+
+Waiting for app_server…
+app_serverを待機中…
+
+Waiting for it…
+応答待ち…
+
+Waiting for power
+電源接続待ち
+
+Waiting for the network
+ネットワーク接続待ち
+
+Waiting for the phone… this page follows it by itself.
+電話を待っています…この画面は自動で更新されます。
+
+Waiting for the touchpad…
+タッチパッドを待機中…
+
+Waiting for you to sign in to Google in the browser…
+ブラウザーでGoogleにサインインするのを待っています…
+
+Waiting for “{}” to allow it (its switches for this computer, in its Bluetooth settings).
+「{}」の許可を待っています。端末のBluetooth設定で、このコンピューターへのアクセスを許可してください。
+
+Waiting: {}
+待機中：{}
+
+Waits less than
+待機時間の上限
+
+Wake the display when you come back
+席に戻ったらディスプレイを点灯
+
+Wallpaper
+壁紙
+
+Wants attention
+対応が必要
+
+Warmer
+暖かめ
+
+Warmth
+暖色の強さ
+
+Watch Agent Screens
+エージェント画面を見る
+
+Watch for stuck processes, leaks and memory hogs
+応答停止、メモリリーク、メモリの過剰使用を監視
+
+Watchdog
+ウォッチドッグ
+
+Weather
+Weather
+
+Weather: Next Days
+Weather：今後数日間
+
+Weather: Next Hours
+Weather：今後数時間
+
+Weather: Now
+Weather：現在
+
+Weather’s assistant is handed the whole forecast for the place you’re looking at, every layer hour by hour, to answer from.
+Weatherのアシスタントは、表示中の場所の予報をすべて参照して質問に答えます。各項目の1時間ごとのデータも含みます。
+
+Weather’s forecasts come from {}, which needs an API key (a free one takes a minute to make). Give it once and it’s kept in Passwords, or point to one already there.
+Weatherの予報は{}から取得します。APIキーが必要です（無料のキーをすぐ作成できます）。一度入力すればPasswordsに保存されます。保存済みのキーも指定できます。
+
+Web Page (HTML)…
+Webページ（HTML）…
+
+Week
+週
+
+Week Starts On
+週の開始曜日
+
+Weights
+重み
+
+What
+対象
+
+What Each Mode Sets
+モード別の設定
+
+What You Did
+操作履歴
+
+What does my week look like?
+今週の予定は？
+
+What follows them is from an older Olo: Apply to bring it up to date (an administrator's password is asked).
+設定を反映するサービスが古いバージョンです。「適用」で更新できます。管理者のパスワードが必要です。
+
+What is made from it (shades, edges, text that has to read on it) follows.
+この色に合わせて、濃淡や縁取り、上に表示する文字の色も変わります。
+
+What it can be set to isn't known yet: asking it wakes it for a moment.
+設定できる値はまだ不明です。確認すると機器が一時的に起動します。
+
+What it can be set to isn't known: {}.
+設定できる値が不明です：{}。
+
+What it can be set to isn't known: {}. It stays so until the computer restarts, which starts its driver again.
+設定できる値が不明です：{}。コンピューターを再起動してドライバーを読み込み直すまでこの状態が続きます。
+
+What it does
+機能
+
+What it draws
+消費電力
+
+What it draws from the battery; on power, it says so.
+バッテリーからの消費電力です。電源接続時はその旨を表示します。
+
+What it’s for (optional)
+用途（任意）
+
+What should I wear today?
+今日はどんな服装がいいですか？
+
+What should I wear tomorrow?
+明日はどんな服装がいいですか？
+
+What you change applies when you leave Rescue.
+変更は復旧モードの終了時に反映されます。
+
+What's made for sRGB (nearly everything) looks as it was made; wider colours are for what has them.
+ほとんどのコンテンツが使うsRGBは、本来の色で表示します。広色域はそれに対応したコンテンツで使います。
+
+What's next (or on now): when, what and where, and what comes after it.
+次の予定または進行中の予定の日時、内容、場所と、その後に続く予定。
+
+What's still to come today, in order, each in its calendar's colour; then the days after.
+今日これからの予定を時刻順に、それぞれのカレンダーの色で表示します。その後に翌日以降の予定が続きます。
+
+What's unread and what waits in apps, as cards to work through.
+未読項目とアプリ内の保留項目を、順に確認できるカードで表示します。
+
+What's waiting (red)
+待機中（赤）
+
+Whatever the model says: it adds palms, never takes these away.
+これらのタッチは常に手のひらと判定します。モデルは検出対象を追加するだけです。
+
+What’s coming up next week?
+来週はどんな予定がありますか？
+
+What’s in the Trash
+ゴミ箱の中身
+
+What’s next?
+次の予定は？
+
+What’s on this weekend?
+今週末の予定は？
+
+What’s on today?
+今日の予定は？
+
+What’s on tomorrow?
+明日の予定は？
+
+Wheel
+ホイール
+
+When
+日時
+
+When Idle
+アイドル時
+
+When Olo starts Claude Code for a task (DiskBackup’s Agent Setup), in a Terminal window you can follow, it uses this model.
+OloがDiskBackupのエージェント設定などでClaude Codeを起動するときに使うモデルです。作業はTerminalのウィンドウで確認できます。
+
+When a Frame Drops
+フレーム落ち発生時
+
+When am I free today?
+今日の空き時間は？
+
+When am I free tomorrow?
+明日の空き時間は？
+
+When does the sun rise tomorrow?
+明日の日の出は何時ですか？
+
+When held for:
+長押し時間:
+
+When pressed:
+押したとき:
+
+When to Back Up
+バックアップのタイミング
+
+When will the rain stop?
+雨はいつやみますか？
+
+When:
+日時:
+
+Where Backups Go
+バックアップの保存先
+
+Where the cores' time goes: the deeper a state, the less power and the slower to wake
+各コアが各状態で過ごした時間。深い休止状態ほど省電力ですが、復帰に時間がかかります
+
+Where:
+場所:
+
+Whether a newer release is out can’t be told: {}
+新しいバージョンの有無を確認できません：{}
+
+Which Fedora this computer runs can’t be told (/etc/os-release says nothing).
+Fedoraのバージョンが不明です（/etc/os-releaseに記載がありません）。
+
+Which day this week looks best?
+今週一番天気がよいのは何曜日ですか？
+
+Which invitations haven’t I answered?
+まだ返事をしていない招待はありますか？
+
+While Typing
+入力中
+
+While downloading
+ダウンロード中
+
+While less is free than
+空き容量が次の値を下回る間
+
+While sharing or recording the screen (errors wait too)
+画面共有・収録中（エラー通知も保留）
+
+While uploading
+アップロード中
+
+Why
+理由
+
+Why misses missed
+キャッシュミスの原因
+
+Wi-Fi
+Wi-Fi
+
+Wi-Fi networks
+Wi-Fiネットワーク
+
+Wi-Fi: there's no NetworkManager here to save the networks in.
+Wi-Fi：ネットワークを保存するためのNetworkManagerがありません。
+
+Wi-Fi: {} didn't come along ({}, set up with the other computer's certificates): join {} again here.
+Wi-Fi：{}を引き継げませんでした（{}、元のコンピューターの証明書を使用）。こちらで{}に接続し直してください。
+
+Wi-Fi: {} saved here, {}.
+Wi-Fi：{}をこのコンピューターに保存、{}。
+
+Wi-Fi: “{}” couldn't be saved here ({}).
+Wi-Fi：「{}」をこのコンピューターに保存できませんでした（{}）。
+
+Wide
+幅広
+
+Widget
+Widget
+
+Widget name
+ウィジェット名
+
+Widgets
+Widgets
+
+Width
+幅
+
+Will it rain today?
+今日は雨が降りますか？
+
+Will it rain tomorrow?
+明日は雨が降りますか？
+
+Wind
+風
+
+Wind ({})
+風（{}）
+
+Wind {}{}
+風 {}{}
+
+Wind {}{}, gusts {}
+風 {}{}、最大瞬間風速 {}
+
+Window
+ウィンドウ
+
+Window Arrangement
+ウィンドウ配置
+
+Window Size
+ウィンドウサイズ
+
+Window on a Background
+背景上のウィンドウ
+
+Window title size
+ウィンドウタイトルの大きさ
+
+Windowing Mode
+ウィンドウモード
+
+Windows
+ウィンドウ
+
+Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).
+ウィンドウのバッファーをスワップさせず、画面の描画時に読み戻しを待たずに済むようにします。Intelドライバー用のOloのライブパッチを使います。
+
+Wireless Router
+無線ルーター
+
+With AirPods:
+AirPods使用時:
+
+Withdrawn by {}
+{}が取り消しました
+
+Word Document…
+Word文書…
+
+Working out what it comes to: every package it needs, and what it replaces…
+必要なパッケージと置き換えるパッケージを確認中…
+
+Working…
+処理中…
+
+Works on a picture of the desktop.
+デスクトップの画像を使います。
+
+Workspace:
+ワークスペース:
+
+Workspaces
+ワークスペース
+
+Worst
+最悪値
+
+Wrap Lines
+行を折り返す
+
+Write Disk Image…
+ディスクイメージを書き込む…
+
+Writes
+書き込み
+
+Writing the backup’s lists…
+バックアップの一覧を書き込み中…
+
+Written
+書き込み済み
+
+XML
+XML
+
+YAML
+YAML
+
+Yellow
+黄
+
+Yes
+はい
+
+Yesterday
+昨日
+
+Yesterday {}
+昨日 {}
+
+You don't have permission to see inside this folder.
+このフォルダーの中身を見る権限がありません。
+
+You don’t have permission to read it in 1Password.
+1Passwordでこの項目を読む権限がありません。
+
+You stopped it {}. {}. {}
+{}にバックアップを停止しました。{}。{}
+
+You stopped the backup {}
+{}にバックアップを停止しました
+
+You: {}
+自分：{}
+
+Your Display
+お使いのディスプレイ
+
+Your Google Drive keeps them anywhere: sign in once, or let an agent set it up.
+Google Driveならどこからでも利用できます。一度サインインするか、エージェントに設定を任せてください。
+
+Your Kinds
+自分のファイル形式
+
+Your Own
+カスタム
+
+Your Own Kinds
+独自のファイル形式
+
+Your backups are encrypted before they leave this computer, with a key only this computer has. Keep it in Passwords too, or they can’t be read anywhere else.
+バックアップは送信前に、このコンピューターだけが持つ鍵で暗号化します。ほかのコンピューターでも読めるよう、鍵をPasswordsにも保存してください。
+
+Your backups are encrypted before they leave this computer. Their key is kept in Passwords (“DiskBackup Key”): with it, they can be restored on any computer.
+バックアップは送信前に暗号化します。鍵はPasswordsに「DiskBackup Key」として保存されており、どのコンピューターでも復元できます。
+
+Your face wasn't seen well enough: sit facing the camera, at arm's length, and try again.
+顔を十分に読み取れませんでした。腕一本分ほど離れてカメラの正面に座り、もう一度お試しください。
+
+Your face wasn’t recognised. Type your password.
+顔を認識できませんでした。パスワードを入力してください。
+
+Your home folder
+ホームフォルダー
+
+Your home folder is backed up every hour, leaving out what can be downloaded or built again. Once it’s set up, you can change any of it.
+ホームフォルダーを1時間ごとにバックアップします。再ダウンロードや再ビルドができるものは除きます。設定は後から変更できます。
+
+Your messages, your contacts and the one-time codes texted to you, on this computer: over Bluetooth, with nothing between and nothing else to install.
+電話のメッセージ、連絡先、SMSで届くワンタイムコードをこのコンピューターで使えます。Bluetoothで直接接続し、追加のインストールは不要です。
+
+Your notes, files and forwarded messages
+自分のメモ、ファイル、転送したメッセージ
+
+Your own files and folders
+自分のファイルとフォルダー
+
+Your own:
+カスタム:
+
+Your palm model couldn't be saved
+手のひらモデルを保存できませんでした
+
+Your palm model is ready: saving…
+手のひらモデルが完成しました。保存中…
+
+Your palm model is saved, and in use
+手のひらモデルを保存し、使用を開始しました
+
+Your palm model, trained {} on {} touches
+自分の手のひらモデル（{}に{}回のタッチで学習）
+
+Your palm over the left edge
+左端に手のひらを置く
+
+Your palm over the right edge
+右端に手のひらを置く
+
+Your password couldn’t be checked ({}).
+パスワードを確認できませんでした（{}）。
+
+Your settings as they were are in “{}”.
+以前の設定は「{}」に保存しました。
+
+Your shirt against the touchpad
+袖をタッチパッドに当てる
+
+Your ssh configuration (~/.ssh/config) sends ssh to another agent, {}, so it doesn’t use the keys in Passwords.
+SSH設定（~/.ssh/config）は別のエージェント「{}」を指定しています。PasswordsのSSH鍵は使われません。
+
+Your touchpad
+お使いのタッチパッド
+
+Your voice came in at {} dB; voice processing aims for {} dB.
+声の入力は{} dBでした。音声処理の目標は{} dBです。
+
+Your voice comes in at {} dB, boosted to {} dB.
+声の入力は{} dB、増幅後は{} dBです。
+
+Your voice comes in at {} dB: loud enough as it is.
+声の入力は{} dBです。そのままで十分な音量です。
+
+Your voice comes in at {} dB: loud enough without a boost.
+声の入力は{} dBです。増幅する必要はありません。
+
+Your voice comes in at {} dB: {} brings it to the {} dB aimed for.
+声の入力は{} dBです。{}で目標の{} dBに達します。
+
+Yours, as last learned
+前回学習した自分のモデル
+
+Yours: fine-tuned once since it started
+自分のモデル：起動後に1回追加学習
+
+Yours: fine-tuned {} times since it started
+自分のモデル：起動後に{}回追加学習
+
+Zig
+Zig
+
+Zoom All
+すべて最大化
+
+Zoom In
+拡大
+
+Zoom Out
+縮小
+
+Zoom on Clicks
+クリック位置を拡大
+
+Zoom to Fill
+画面いっぱいに拡大
+
+Zoom to Fit
+画面に合わせる
+
+__pycache__, .venv, .mypy_cache, .pytest_cache, .tox
+__pycache__, .venv, .mypy_cache, .pytest_cache, .tox
+
+a PIN set
+PIN設定済み
+
+a backup
+バックアップ1件
+
+a backup and the unfinished one
+バックアップ1件と未完了の1件
+
+a crate's misses together, the last 24 hours
+過去24時間のクレート別キャッシュミス
+
+a day ago
+1日前
+
+a kernel thread
+カーネルスレッド
+
+a minute ago
+1 分前
+
+a secure connection failed ({})
+安全な接続を確立できませんでした（{}）
+
+a window ({})
+ウィンドウ（{}）
+
+a {} W power limit
+電力上限 {} W
+
+about {}
+約{}
+
+about {} min left
+残り約{}分
+
+about {} s left
+残り約{}秒
+
+all day
+終日
+
+an hour ago
+1 時間前
+
+and frees {}.
+{}の空きが増えます。
+
+and needs no more disk space.
+追加のディスク容量は不要です。
+
+and takes {} more disk space.
+さらに{}のディスク容量を使用します。
+
+and the {n} items in it
+other: および中の{n}件
+
+and {} more
+ほか{}件
+
+app_server's main thread: nice {}{}, {}
+app_serverのメインスレッド：nice {}{}、{}
+
+as in 1Password's sidebar, or its UUID
+1Passwordのサイドバーの名前またはUUID
+
+as it goes
+制限なし
+
+at most {}
+最大{}
+
+at {}
+{}時点
+
+auto approving (Yes after {} s; {} answered)
+自動承認中（{}秒後に「はい」、{}件回答済み）
+
+backing up
+バックアップ中
+
+bell rang
+ベルが鳴りました
+
+brush’s grey hint after what you type, from a tiny model of your own commands on this computer. Your shell is {}: Olo Doctor makes it brush (a suggestion).
+brushは入力したコマンドの後に灰色で候補を表示します。このコンピューターで使ったコマンドから学ぶ小さなモデルを使います。現在のシェルは{}です。Olo Doctorでbrushに変更できます。
+
+brush’s grey hint after what you type, from a tiny model of your own commands on this computer: it weighs what’s typed, the folder, the commands before, the hour and the day, and learns as you go.
+brushは入力中のコマンドに続く候補を灰色で表示します。自分のコマンドを学ぶ小さなモデルが、入力内容、フォルダー、直前のコマンド、時刻、曜日を考慮し、使うほど学習します。
+
+brush’s grey hints, from a tiny model of your own commands
+自分のコマンドから学習したbrushの入力候補
+
+built most, the last 24 hours
+過去24時間のビルド回数順
+
+ceiling {}%
+上限{}%
+
+charging, full in {}
+充電中、満充電まで{}
+
+couldn't save the boost: {}
+ゲインを保存できません：{}
+
+couldn't save the setting: {}
+設定を保存できません：{}
+
+day
+日
+
+deleting
+削除中
+
+downgrade {n} packages
+other: {n}個のパッケージをダウングレード
+
+driving {}
+{}を駆動
+
+ending one gives its slots back to the pool
+終了すると使用中の枠をプールに戻します
+
+erasing
+消去中
+
+erasing every backup didn't finish: {}
+バックアップの全消去が完了しませんでした：{}
+
+every 12 hours
+12時間ごと
+
+every 15 minutes
+15分ごと
+
+every 2 hours
+2時間ごと
+
+every 30 minutes
+30分ごと
+
+every 6 hours
+6時間ごと
+
+every day
+毎日
+
+every hour
+1時間ごと
+
+every {n} minutes
+other: {n}分ごと
+
+for {}
+{}の間
+
+from {}
+{}から
+
+full size, with a numeric keypad
+テンキー付きのフルサイズ
+
+full speed
+最高速度
+
+fully charged
+満充電
+
+ghp_… or github_pat_…
+ghp_… または github_pat_…
+
+gusts {}
+最大瞬間風速 {}
+
+has notifications
+通知あり
+
+has notifications ({})
+通知あり（{}）
+
+has notifications ({}, the dot {}% full)
+通知あり（{}、点の塗りつぶし{}%）
+
+here now and in 1Password at the next sync (after you review it)
+ここでは今すぐ、1Passwordでは確認後の次回同期時
+
+hidden when tiled
+タイル表示時は非表示
+
+high
+高
+
+hour
+時間
+
+iPhone
+iPhone
+
+in a minute
+1分後
+
+in the next week
+今後1週間
+
+in the next {} days
+今後{}日間
+
+in {n} days
+other: {n}日後
+
+in {n} minutes
+other: {n}分後
+
+install {n} packages
+other: {n}個のパッケージをインストール
+
+it couldn't be ended: {}
+終了できませんでした：{}
+
+it is on a different volume from the Trash, so it can only be deleted
+ゴミ箱とは別のボリュームにあるため、完全に削除することしかできません
+
+it took too long
+時間切れ
+
+its address can’t be found (is the computer online?)
+アドレスを解決できません（ネットワークに接続していますか？）
+
+its clock as the driver has it, up to {} MHz
+ドライバー設定のクロック（最大{} MHz）
+
+its clock up to {} MHz
+最大{} MHz
+
+its disk has {}
+ディスクに{}あります
+
+its ports: {}
+ポート：{}
+
+its shells have all ended
+すべてのシェルが終了しました
+
+just now
+たった今
+
+kache is stopped
+kacheは停止中
+
+kache is stopped: builds go on uncached
+kacheは停止中：キャッシュなしでビルドを続行
+
+kache is stopped: it failed
+kacheはエラーで停止
+
+kache isn't set up as a service
+kacheはサービスとして設定されていません
+
+kache's daemon answered something unreadable ({})
+kacheサービスの応答を読めません（{}）
+
+kache's daemon didn't answer ({})
+kacheサービスが応答しませんでした（{}）
+
+kache's daemon isn't answering
+kacheサービスが応答しません
+
+kache's daemon isn't answering ({})
+kacheサービスが応答しません（{}）
+
+kache's own settings, in {}; kache takes them as it starts again.
+kacheの設定ファイルは{}です。次回起動時に反映されます。
+
+kache's own: {}
+kacheの標準値：{}
+
+kache's own: {} now
+kacheの標準値：現在{}
+
+kache's service can't be asked
+kacheサービスに問い合わせできません
+
+kache's service: {}
+kacheサービス：{}
+
+kache's settings file can't be read: {}
+kacheの設定ファイルを読めません：{}
+
+kache{} is running
+kache{}が動作中
+
+kbit/s
+kbit/s
+
+last seen recently
+最近オンライン
+
+left to the firmware for now
+現在はファームウェアに任せています
+
+level {} of 7
+レベル{} / 7
+
+libinput's default
+libinputの標準
+
+libinput's own: Olo's touch filter is off
+libinputに任せる：Oloのタッチフィルターはオフ
+
+low
+低
+
+medium
+中
+
+minimum and maximum both {}%
+最小・最大とも{}%
+
+misses, the last 24 hours
+過去24時間のキャッシュミス
+
+ms
+ms
+
+no display ports
+映像出力ポートなし
+
+no limit to its space
+容量制限なし
+
+no network: it goes on once there’s one
+ネットワークなし：接続時に再開します
+
+no wired network: it waits for one
+有線接続なし：接続を待っています
+
+node_modules, .next, .turbo, .parcel-cache, ~/.npm
+node_modules, .next, .turbo, .parcel-cache, ~/.npm
+
+not parts of it: {}; its parts are {}
+対象外：{}。対象は{}です
+
+not set up yet
+未設定
+
+not understood: {}
+認識できません：{}
+
+not yet on this kernel's series, {}
+このカーネル系列（{}）にはまだありません
+
+nothing backed up for {n} days
+other: {n}日間バックアップされていません
+
+nothing freed
+解放した容量なし
+
+nothing moved
+移動なし
+
+nothing now (its ports: {})
+現在なし（ポート：{}）
+
+nothing yet
+まだありません
+
+now
+現在
+
+of a {} limit
+上限{}のうち
+
+of a {} limit: over it
+上限{}を超過
+
+of what could be cached came from it
+キャッシュ可能な結果のうちキャッシュから取得した割合
+
+of {}
+全{}件
+
+of {} and {} more
+{}とほか{}件のうち
+
+of {} it may use
+利用可能な{}のうち
+
+of {} · {} swap used
+全{} · スワップ使用量{}
+
+offline: sent when back
+オフライン：再接続時に送信
+
+olo-complete didn't answer while learning.
+学習中にolo-completeが応答しませんでした。
+
+olo-complete didn’t start: Deskbar’s Upgrade installs it.
+olo-completeが起動しませんでした。Deskbarの「Oloを更新」でインストールできます。
+
+olo-termd is running (process {}, up {}).
+olo-termdは実行中です（プロセス{}、稼働時間{}）。
+
+on
+オン
+
+on a fast core at a high clock
+高速コアで高クロック動作
+
+on battery
+バッテリー駆動
+
+on battery: it waits for power
+バッテリー駆動中：電源接続待ち
+
+on this kernel's series, {}
+このカーネル系列（{}）に対応
+
+on {}
+{}上
+
+on {} at {}
+{}の{}
+
+one a day for ever
+毎日1件を無期限に保存
+
+one a day for {n} days
+other: {n}日間、1日1件を保存
+
+one a month for ever
+毎月1件を無期限に保存
+
+one a month for {n} months
+other: {n}か月間、1か月1件を保存
+
+one a week for ever
+毎週1件を無期限に保存
+
+one a week for {n} weeks
+other: {n}週間、1週間1件を保存
+
+one an hour for ever
+毎時1件を無期限に保存
+
+one an hour for {n} hours
+other: {n}時間、1時間1件を保存
+
+only folder and Find windows move
+フォルダーと検索のウィンドウだけ移動
+
+only terminal windows move
+Terminalのウィンドウだけ移動
+
+optional
+任意
+
+organizer
+主催者
+
+out of the archive
+アーカイブから戻す
+
+part of the screen
+画面の一部
+
+plugged in, charge limit {}%
+電源接続中、充電上限{}%
+
+plugged in, held at the {}% limit
+電源接続中、上限{}%で維持
+
+plugged in, not charging
+電源接続中、充電停止
+
+process {}
+プロセス{}
+
+pull request #{} {}{}
+プルリクエスト#{} {}{}
+
+quitting in {} s at most
+最長{}秒で終了
+
+recommended for this touchpad
+このタッチパッドの推奨設定
+
+reinstall {n} packages
+other: {n}個のパッケージを再インストール
+
+remove {n} packages
+other: {n}個のパッケージを削除
+
+restoring
+復元中
+
+sav, sv2
+sav, sv2
+
+scx_lavd, made for a computer someone is sitting at: what it judges is being waited for runs first, with builds and other long work around it. It gives a program's priority little weight, and under heavy work the window server waited for the processor three times as long as with the kernel's own. It is loaded over the kernel's own, which takes over again by itself if LAVD ever stops.
+scx_lavdは対話的な利用に向けたスケジューラーです。応答を待たれていると判断した処理を先に動かし、その合間にビルドなどを実行します。プログラムの優先度はあまり重視しません。高負荷時の測定では、ウィンドウサーバーのCPU待ち時間がカーネル標準の3倍になりました。LAVDが停止した場合はカーネル標準に自動で戻ります。
+
+signed in
+サインイン済み
+
+signed in, 1 calendar
+サインイン済み、カレンダー1個
+
+signed in, {} calendars
+サインイン済み、カレンダー{}個
+
+slots of the pool in use
+プールの使用中の枠
+
+some of it couldn't be read
+一部のデータを読み取れませんでした
+
+something else is called “{}” there now
+現在その場所には別の「{}」があります
+
+ssh, git and other programs sign in with the SSH keys in Passwords, each one allowed the first time it asks.
+sshやgitなどがPasswordsのSSH鍵で認証します。各プログラムの初回要求時に許可を確認します。
+
+sudo needs your password to run this{}:
+sudoが次の操作{}を実行するにはパスワードが必要です：
+
+taken as at least {}% busy
+使用率{}%以上とみなす
+
+tan is undefined there
+この値ではtanは定義されません
+
+target/debug, target/release, ~/.cargo/registry, ~/.rustup
+target/debug, target/release, ~/.cargo/registry, ~/.rustup
+
+that test no longer holds slots
+そのテストはすでに枠を解放しました
+
+the DiskBackup service isn’t running
+DiskBackupサービスは停止中です
+
+the account’s
+このアカウントのもの
+
+the agent didn’t start: {}
+エージェントが起動しませんでした：{}
+
+the backup isn't open
+バックアップが開いていません
+
+the backups' folder in Google Drive was made again elsewhere: following it there
+Google Driveのバックアップフォルダーが別の場所に作成し直されたため、新しい場所を使用します
+
+the built-in display
+内蔵ディスプレイ
+
+the connection failed
+接続に失敗しました
+
+the desktop stays with its display
+デスクトップは元のディスプレイに残ります
+
+the fans {}{}
+ファン {}{}
+
+the key in the keyring is damaged
+キーリングの鍵が破損しています
+
+the key isn't in this computer's keyring: set DiskBackup up again, or put its key back from Passwords
+このコンピューターのキーリングに鍵がありません。DiskBackupを設定し直すか、Passwordsから鍵を戻してください
+
+the keyring can't be read: {}
+キーリングを読み込めません：{}
+
+the keyring can't keep it: {}
+キーリングに保存できません：{}
+
+the last 24 hours
+過去24時間
+
+the last backup didn’t finish ({})
+前回のバックアップが完了しませんでした（{}）
+
+the last {n} hours
+other: 過去{n}時間
+
+the last {n} minutes
+other: 過去{n}分間
+
+the last {n} seconds
+other: 過去{n}秒間
+
+the package {}
+パッケージ「{}」
+
+the phone didn't take it: {}
+電話が受け付けませんでした：{}
+
+the power profiles daemon, through {}
+電源プロファイルサービス（{}経由）
+
+the recording failed
+収録に失敗しました
+
+the request failed
+要求に失敗しました
+
+the screen
+画面
+
+the secret at {}
+{}にある秘密情報
+
+the server answered {}
+サーバーの応答：{}
+
+the service answered {}
+サービスの応答：{}
+
+the service is busy
+サービスは使用中です
+
+the session
+セッション
+
+the system's power profiles daemon
+システムの電源プロファイルサービス
+
+the unfinished backup
+未完了のバックアップ
+
+the window server
+ウィンドウサーバー
+
+the {} didn't get going: {}
+{}が起動しませんでした：{}
+
+these {n} backups need
+other: 選択した{n}件のバックアップ
+
+this event
+この予定
+
+this site
+このサイト
+
+tidying
+整理中
+
+today at {}
+今日の{}
+
+today or tomorrow
+今日または明日
+
+tomorrow at {}
+明日の{}
+
+tomorrow.io answered {}{}
+tomorrow.ioの応答：{}{}
+
+tomorrow.io can’t be reached: {}
+tomorrow.ioに接続できません：{}
+
+tomorrow.io didn’t accept the API key. Check it in File ▸ Data Provider…
+tomorrow.ioがAPIキーを拒否しました。「ファイル」▸「データ提供元…」で確認してください
+
+tomorrow.io refused the request.
+tomorrow.ioが要求を拒否しました。
+
+tomorrow.io’s answer had no forecast in it.
+tomorrow.ioの応答に予報が含まれていませんでした。
+
+tomorrow.io’s answer was cut short: {}
+tomorrow.ioの応答が途中で切れました：{}
+
+tomorrow.io’s answer wasn’t a forecast.
+tomorrow.ioの応答が予報として読み取れませんでした。
+
+tomorrow.io’s limit for your key is reached for now{}
+tomorrow.ioのキーの利用上限に達しました{}
+
+turned off
+オフ
+
+under a minute
+1分未満
+
+under a second
+1秒未満
+
+up to {} dpi
+最大{} dpi
+
+up to {} today
+今日は最大{}
+
+update {n} packages
+other: {n}個のパッケージを更新
+
+use . for decimals
+小数点には . を使います
+
+validating
+検証中
+
+visibility down to {}
+視程は{}まで低下
+
+what holds it back
+速度を制限している要因
+
+where the scheduler puts it
+スケジューラーに任せる
+
+with the {n} files changed in it and not committed
+other: 未コミットの変更があるファイル{n}個を含む
+
+yesterday at {}
+昨日の{}
+
+you
+自分
+
+you don't have permission
+権限がありません
+
+your cloud storage
+自分のクラウドストレージ
+
+your own picture
+自分の画像
+
+{n} Background Processes Lowered
+other: バックグラウンドプロセス{n}件の優先度を下げました
+
+{n} Events Found
+other: {n}件の予定が見つかりました
+
+{n} More in Calendar…
+other: ほか{n}件をカレンダーで表示…
+
+{n} agent screens are running. Click to watch them.
+other: エージェント画面が{n}個動作中です。クリックすると様子を見られます。
+
+{n} archived items aren’t
+other: アーカイブ済みの{n}件はコピー対象外です
+
+{n} backups
+other: {n}件のバックアップ
+
+{n} backups chosen.
+other: {n}件のバックアップを選択しました。
+
+{n} days
+other: {n}日
+
+{n} days ago
+other: {n}日前
+
+{n} events
+other: {n}件の予定
+
+{n} files
+other: {n}個のファイル
+
+{n} files couldn’t be read.
+other: {n}個のファイルを読み取れませんでした。
+
+{n} films playing on AirPlay receivers. Click to pause or stop them.
+other: AirPlayで{n}本の動画を再生中です。クリックで一時停止または停止。
+
+{n} folders couldn't be read
+other: {n}個のフォルダーを読み取れませんでした
+
+{n} hours
+other: {n}時間
+
+{n} hours ago
+other: {n}時間前
+
+{n} items
+other: {n}件
+
+{n} items found
+other: {n}件見つかりました
+
+{n} items found so far
+other: これまでに{n}件見つかりました
+
+{n} items taken out.
+other: {n}件取り除きました。
+
+{n} minutes
+other: {n}分
+
+{n} minutes ago
+other: {n}分前
+
+{n} more waiting
+other: ほか{n}件待機中
+
+{n} new notifications
+other: 新着通知{n}件
+
+{n} of Fedora {} updates are waiting: install them first, in Updates.
+other: Fedora {}の更新が{n}件あります。先に「更新」でインストールしてください。
+
+{n} packs as sent, by their checksums
+other: {n}個のパックが送信時のチェックサムと一致
+
+{n} playing and shown on AirPlay receivers. Click to pause or stop them.
+other: AirPlayで{n}件再生・表示中です。クリックで一時停止または停止。
+
+{n} problems reading 1Password…
+other: 1Passwordの読み込み時に{n}件の問題…
+
+{n} programs
+other: {n}個のプログラム
+
+{n} samples
+other: {n}件のサンプル
+
+{n} screen shares. Click to stop them.
+other: {n}画面を共有中です。クリックで共有を停止。
+
+{n} screens shown on AirPlay receivers. Click to pause or stop them.
+other: AirPlayに{n}画面を表示中です。クリックで一時停止または停止。
+
+{n} seconds
+other: {n}秒
+
+{n} secrets
+other: {n}件のシークレット
+
+{n} shares, control among them. Click to stop them.
+other: 操作を許可した共有を含め{n}件の共有中です。クリックで停止。
+
+{n} slots
+other: {n}枠
+
+{n} sync changes to review
+other: 確認が必要な同期の変更{n}件
+
+{n} times
+other: {n}回
+
+{n} to come
+other: 今後{n}件
+
+{n} waiting in their apps
+other: アプリ内で{n}件待機中
+
+{n} weeks
+other: {n}週間
+
+{} (AV1 and VP9)
+{}（AV1とVP9）
+
+{} (every video)
+{}（すべての動画）
+
+{} (in use)
+{}（使用中）
+
+{} (lower wins)
+{}（小さい値を優先）
+
+{} (not connected)
+{}（未接続）
+
+{} (of the last {})
+{}（直近{}回のうち）
+
+{} (the theme’s own)
+{}（テーマの標準）
+
+{} (there now)
+{}（現在の保存先にあり）
+
+{} ({} a minute)
+{}（毎分{}）
+
+{} ({} more)
+{}（ほか{}件）
+
+{} ({} packets)
+{}（{}パケット）
+
+{} ({} to {})
+{}（{}～{}）
+
+{} A workspace starts with this; choose its own from Deskbar's tray.
+{} 新しいワークスペースはこの設定で始まります。Deskbarのトレイで個別に変更できます。
+
+{} About a microsecond each, on the {}.
+{} {}上では1回あたり約1マイクロ秒です。
+
+{} Activity Monitor can do it once you give it full access, with an administrator's password.
+{} 管理者のパスワードでフルアクセスを許可すると、アクティビティモニタから操作できます。
+
+{} Auto Approve answers Yes in {} s.
+{} 自動承認により{}秒後に「はい」と回答します。
+
+{} Choose Set Up… to try again.
+{} 「設定する…」を選んでやり直してください。
+
+{} Choose a workspace's own from Deskbar's tray.
+{} 各ワークスペースの設定はDeskbarのトレイで選べます。
+
+{} Hz, {} ms a frame
+{} Hz、1フレーム{} ms
+
+{} Replace with the version backed up {}, or keep both (the restored one named with its time)?
+{} {}にバックアップした版に置き換えますか？ 両方残す場合、復元する方の名前に時刻を付けます。
+
+{} Type your password.
+{} パスワードを入力してください。
+
+{} Wh of {} Wh new ({}%)
+{} Wh / 初期容量{} Wh（{}%）
+
+{} What’s looked in for codes, and where they go: Security ▸ Passwords.
+{} コードの検索先と入力先は「セキュリティ」▸「Passwords」で設定できます。
+
+{} a minute
+毎分{}
+
+{} a second
+毎秒{}
+
+{} ago · click a graph for another moment
+{}前 · グラフをクリックして時点を選択
+
+{} and {} are typing…
+{}と{}が入力中…
+
+{} and {} more
+{}ほか{}件
+
+{} and {} others
+{}ほか{}人
+
+{} answered {} (not a speed test server?)
+{}の応答：{}（速度測定サーバーか確認してください）
+
+{} applications are keeping the display awake.
+{}個のアプリがディスプレイのスリープを妨げています。
+
+{} at {}
+{} {}
+
+{} backups
+{}件のバックアップ
+
+{} backups and the unfinished one
+{}件のバックアップと未完了の1件
+
+{} begun in the last minute (swipes, pinches, holds)
+直近1分に開始したジェスチャー{}回（スワイプ、ピンチ、長押し）
+
+{} bytes
+{}バイト
+
+{} cd/m² at most, {} over the whole screen
+最大{} cd/m²、全画面で{} cd/m²
+
+{} cleared · kept for {} days, the last {}
+消去済み{}件 · {}日間、直近{}件まで保存
+
+{} copied: 1Password doesn’t let other apps read its archive.
+{}。1Passwordはほかのアプリがアーカイブ済みの項目を読むことを許可していません。
+
+{} couldn't be found: {}
+{}が見つかりません：{}
+
+{} couldn’t be unpacked.
+{}を展開できませんでした。
+
+{} d
+{}日
+
+{} days ago
+{}日前
+
+{} didn't answer ({})
+{}が応答しませんでした（{}）
+
+{} didn't answer a request: {}
+{}が要求に応答しませんでした：{}
+
+{} didn't say where it is.
+{}の場所を取得できませんでした。
+
+{} didn't start pairing: {}.
+{}がペアリングを開始しませんでした：{}。
+
+{} didn’t download: {}
+{}をダウンロードできませんでした：{}
+
+{} different commands, of {} run
+{1}回実行したうち、異なるコマンドは{0}個
+
+{} dpi as it comes
+標準{} dpi
+
+{} for each
+それぞれ{}
+
+{} for the next hour
+今後1時間は{}
+
+{} for the next {} hours
+今後{1}時間は{0}
+
+{} found · {} items searched · {}
+{}件見つかりました · {}件検索 · {}
+
+{} frames a second
+毎秒{}フレーム
+
+{} frames dropped in the last minute
+直近1分のフレーム落ち{}回
+
+{} free of {}
+空き{} / 全{}
+
+{} free on {}
+{1}の空き容量：{0}
+
+{} freed
+{}解放
+
+{} h
+{} h
+
+{} h ago
+{}時間前
+
+{} h {} min
+{}時間{}分
+
+{} hours ago
+{}時間前
+
+{} in all
+合計{}
+
+{} in the last minute
+直近1分に{}
+
+{} in the last minute, {} of {} in all
+直近1分に{}、累計{} / {}
+
+{} in the last minute, {} since this window opened
+直近1分に{}、このウィンドウを開いてから{}
+
+{} in the last second
+直近1秒に{}
+
+{} in the last second, at {}
+直近1秒に{}、レート{}
+
+{} in {}
+{1}、合計{0}
+
+{} in {} s
+{}（所要時間{}秒）
+
+{} in {}, by the last backup.
+前回のバックアップ：{1}、合計{0}。
+
+{} in {}.
+{1}での日時：{0}。
+
+{} is Fedora’s own: it can be turned off, not removed.
+{}はFedora標準のリポジトリです。無効にはできますが削除はできません。
+
+{} is back
+{}が再び利用できます
+
+{} is being installed ({}, {}%). Olo switches to it when it's done: your windows stay open.
+{}をインストール中です（{}、{}%）。完了するとOloが切り替わります。ウィンドウは開いたままです。
+
+{} is connected but plays no sound: {}.
+{}は接続されていますが、音が出ません：{}。
+
+{} is disconnected from Olo. Its app stays in its Google Cloud project, to connect it again with.
+{}とOloの接続を解除しました。再接続できるよう、アプリはGoogle Cloudプロジェクトに残ります。
+
+{} is grabbing input devices: a mouse it has grabbed moves through its virtual pointer, and settings made here don't reach it.
+{}が入力機器を直接制御しています。対象のマウスは仮想ポインターを経由するため、ここでの設定は反映されません。
+
+{} is protected by a password.
+{}はパスワードで保護されています。
+
+{} is ready, made {} ({} to download). Install it? Olo downloads it in the background and switches to it when it's done: your windows stay open.{}
+{}が利用できます。作成：{}、ダウンロード：{}。インストールしますか？ バックグラウンドで取得し、完了後に切り替えます。ウィンドウは開いたままです。{}
+
+{} is ready. Click to upgrade.
+{}が利用できます。クリックして更新してください。
+
+{} is there already.
+{}はすでにあります。
+
+{} is too big a picture
+画像「{}」は大きすぎます
+
+{} is undefined there
+この値では{}は定義されません
+
+{} is used up on every account
+すべてのアカウントで{}の利用枠を使い切りました
+
+{} is waiting for a login.
+{}がログイン情報を待っています。
+
+{} is waiting for a passkey.
+{}がパスキーを待っています。
+
+{} is waiting for you
+{}が応答を待っています
+
+{} isn't paired with.
+{}とはペアリングされていません。
+
+{} isn't shaped.
+{}に通信制限はありません。
+
+{} isn't there (a disk not plugged in?)
+{}が見つかりません（ディスクが外れていませんか？）
+
+{} items in it, {} unpacked
+全{}項目、展開後{}
+
+{} kept in {}{}.
+{1}に{0}を保存しました{2}。
+
+{} kept of {}
+{1}のうち{0}を保持
+
+{} kept, still shared with builds' target folders
+{}を保持（ビルドの出力先と共有中）
+
+{} knows this computer.
+{}にはこのコンピューターが登録されています。
+
+{} later: gone
+{}後に消去
+
+{} least, {} now
+最低{}、現在{}
+
+{} likely from {}
+{1}ごろから{0}の見込み
+
+{} link clipping.txt
+{} リンクの抜粋.txt
+
+{} min
+{} min
+
+{} min ago
+{}分前
+
+{} minutes ago
+{}分前
+
+{} ms, the middle of them
+中央値 {} ms
+
+{} needs full access.
+{}にはフルアクセスが必要です。
+
+{} needs signing in again
+{}に再サインインが必要です
+
+{} needs your answer
+{}が回答を待っています
+
+{} new examples, learned within a second
+{}件の新しい例を1秒以内に学習
+
+{} new to the backup · {} sent, compressed and encrypted ({}/s{})
+バックアップの新規データ{} · 圧縮・暗号化して{}送信済み（{}/秒{}）
+
+{} of Olo’s {} words are in {} so far; the rest stay in English.
+Oloの全{1}項目のうち{0}項目を{2}で利用できます。残りは英語で表示されます。
+
+{} of each frame kept for drawing: a frame starts {} after the vblank
+1フレームあたり描画用に{}確保。垂直帰線期間から{}後に描画開始
+
+{} of memory
+メモリ{}
+
+{} of the time
+時間の{}
+
+{} of them
+うち{}件
+
+{} of them belong to someone else. Activity Monitor can act on those once you give it full access, with an administrator's password.
+うち{}件は別のユーザーの所有です。管理者のパスワードでフルアクセスを許可すると、アクティビティモニタで操作できます。
+
+{} of these are there now.
+うち{}件がすでにあります。
+
+{} of what?
+{}の対象は何ですか？
+
+{} of your newest commands, kept back to test it ({} hand-written)
+テスト用に残した最近のコマンドの正答率は{}（手書きルールでは{}）
+
+{} of {}
+{} / {}
+
+{} of {} Events Found
+{1}件中{0}件の予定が見つかりました
+
+{} of {} connected.
+{1}件中{0}件接続済み。
+
+{} of {} connections
+接続 {} / {}
+
+{} of {} free
+空き {} / {}
+
+{} of {} freed
+解放済み {} / {}
+
+{} of {} pages
+{} / {}ページ
+
+{} of {} processes, {} threads · {} CPU
+プロセス {} / {}、スレッド {} · CPU {}
+
+{} of {} read back
+読み戻し {} / {}
+
+{} of {} selected
+選択 {} / {}
+
+{} of {} sent
+送信 {} / {}
+
+{} of {} slots
+使用枠 {} / {}
+
+{} on Workspace {}
+{}（ワークスペース{}）
+
+{} on this computer
+このコンピューターに{}件
+
+{} over 5 ms in the last minute, the longest {}
+直近1分に5 ms超が{}回、最長{}
+
+{} packets
+{}パケット
+
+{} people are typing…
+{}人が入力中…
+
+{} per second
+毎秒{}
+
+{} pressed in the last minute
+直近1分に{}回押下
+
+{} profile · not in force: {}
+{}プロファイル · 未適用：{}
+
+{} read back
+{}読み戻し済み
+
+{} repeats. Change only this one, or every one of them?
+{}は繰り返しの予定です。今回だけ変更しますか？ それともすべて変更しますか？
+
+{} repositories, {} on. Packages come from those that are on.
+リポジトリ{}件のうち{}件が有効です。有効なものからパッケージを取得します。
+
+{} right first
+先頭候補が正解：{}
+
+{} s
+{} s
+
+{} s ago
+{}秒前
+
+{} shared with this screen
+この画面と{}件共有中
+
+{} since the computer started{}
+起動後{}{}
+
+{} starting in about {} minutes
+約{1}分後から{0}
+
+{} steps in the last minute (a wheel's notches, a touchpad's moves)
+直近1分に{}ステップ（ホイールの目盛り・タッチパッドの移動）
+
+{} stopped answering: {}
+{}が応答しなくなりました：{}
+
+{} stopping in about {} minutes
+{}は約{}分後にやみます
+
+{} suggestions since it started
+起動後の候補{}件
+
+{} this hour
+この時間帯は{}
+
+{} to chats (archived, read, muted or pinned) still to send. Whatever isn’t sent now is kept and sent when Telegram next opens.
+チャットの変更（アーカイブ、既読、ミュート、固定）で未送信のものが{}あります。今送信しない分は、次にTelegramを開いたときに送ります。
+
+{} to deal with, {}
+要対応{}件、{}
+
+{} to nice {}
+{}をnice {}に変更
+
+{} to read
+未読{}件
+
+{} to send
+未送信{}件
+
+{} touches in the last minute, {} taken for palms{}
+直近1分に{}回のタッチ、うち{}回を手のひらと判定{}
+
+{} typically, {} at the 95th percentile, {} to {}
+通常{}、95パーセンタイル{}、範囲{}～{}
+
+{} typically, {} at the 99th percentile, the longest {} ({} reports in the last minute)
+通常{}、99パーセンタイル{}、最長{}（直近1分の報告{}件）
+
+{} until about {}
+{}は{}ごろまで
+
+{} updates selected
+{}件の更新を選択
+
+{} waiting in {}
+{}件が{}で待機中
+
+{} wants to run this with sudo{}:
+{}がsudoで次の操作{}を実行しようとしています：
+
+{} wants your attention
+{}に確認が必要です
+
+{} was added.
+{}を追加しました。
+
+{} was removed.
+{}を削除しました。
+
+{} was taken from “{}”.
+{}を「{}」から取得しました。
+
+{} was turned off.
+{}をオフにしました。
+
+{} was turned on.
+{}をオンにしました。
+
+{} whole{}, and {} a word at a time
+全体を{}件採用{}、単語単位で{}件採用
+
+{} will hold:
+{}の内容：
+
+{} words a minute · {}% right
+毎分{}語 · 正確さ{}%
+
+{} {}, {} there
+現地時刻：{1}日（{0}）{2}
+
+{} µs a report typically, the longest {} µs
+通常1回の報告に{} µs、最長{} µs
+
+{} · and {} more
+{} · ほか{}件
+
+{} · easing background work
+{} · バックグラウンドの優先度を下げています
+
+{} · limiting sustained power
+{} · 持続電力を制限しています
+
+{} · set up {}{}
+{} · 設定済み {}{}
+
+{} · {} · call quality while the microphone is used
+{} · {} · マイク使用中は通話音質
+
+{} · {} · music quality
+{} · {} · 音楽用の音質
+
+{} — {} ({}% of this folder){}{}
+{} — {}（このフォルダーの{}%）{}{}
+
+{}% chance this hour
+この時間帯の確率 {}%
+
+{}% cover
+雲量{}%
+
+{}% left (warns under {}%)
+残り{}%（{}%未満で警告）
+
+{}% of RAM
+RAMの{}%
+
+{}% of a core
+1コアの{}%
+
+{}% of palms caught, {}% of fingers taken for palms, on touches kept back
+テスト用データで手のひらの{}%を検出、指の{}%を手のひらと誤認
+
+{}% of the time
+時間の{}%
+
+{}% of the time, waking in {} µs
+滞在率{}%、復帰に{} µs
+
+{}% of their {} segments
+全{1}セグメントの{0}%
+
+{}'s quota
+{}の利用枠
+
+{}'s {} quota
+{}の{}利用枠
+
+{}, all day
+{}、終日
+
+{}, all disks
+{}、すべてのディスク
+
+{}, in place of its code
+{}（コードの代わりに表示）
+
+{}, in the folder “{}”
+{}、「{}」フォルダー内
+
+{}, in “{}”
+{}、「{}」内
+
+{}, no limit
+{}、無制限
+
+{}, on set days
+{}、指定した曜日
+
+{}, until {}
+{}、{}まで
+
+{}, {} new to the backup, {} sent so far.
+{}、バックアップの新規データ{}、これまでに{}送信。
+
+{}, {} shown in this Terminal.
+{}、このTerminalに{}件表示。
+
+{}, {}% of its life used
+{}、寿命の{}%を消費
+
+{}. Click to pause or stop.
+{}。クリックで一時停止または停止。
+
+{}. Click to put its applications away.
+{}。クリックするとアプリ一覧を折りたたみます。
+
+{}. Click to resume or stop.
+{}。クリックで再開または停止。
+
+{}. Click to stop.
+{}。クリックで停止。
+
+{}. The next backup starts afresh.
+{}。次のバックアップは最初から開始します。
+
+{}. Until then Token Pool asks {} to wait.
+{}。それまではToken Poolが{}に待機を求めます。
+
+{}: 1 application. Click to show it.
+{}：アプリ1個。クリックして表示。
+
+{}: Auto-Tiling, every window takes a tile. Click to choose a windowing mode.
+{}：自動タイル表示。各ウィンドウを別々のタイルに配置します。クリックしてモードを選択。
+
+{}: Focus, only the active window shows, zoomed. Click to choose a windowing mode.
+{}：フォーカス。アクティブウィンドウだけを最大化して表示します。クリックしてモードを選択。
+
+{}: Not Connected
+{}：未接続
+
+{}: Show Notifications
+{}：通知を表示
+
+{}: a size such as 95GiB, please
+{}：95GiBのようにサイズを指定してください
+
+{}: a whole number, please
+{}：整数を入力してください
+
+{}: it asks for its PIN at every use, so a touch can’t stand for your password
+{}：使用のたびにPINが必要なため、タッチだけでパスワードの代わりにはできません
+
+{}: it can’t keep a secret for Olo (no hmac-secret)
+{}：Olo用の秘密情報を保管できません（hmac-secret非対応）
+
+{}: left as it is here, as this computer's couldn't be saved first.
+{}：このコンピューターの現状を先に保存できなかったため、変更しませんでした。
+
+{}: left as it is here. The backup holds no key to open what it has of it (one exported without passwords and sign-ins holds none).
+{}：バックアップに復号鍵がないため、現在の設定を維持しました。パスワードとログイン情報を除いて書き出したバックアップには鍵が含まれません。
+
+{}: not here yet
+{}：このコンピューターにはまだありません
+
+{}: sign in again on this computer (each computer signs in as itself).
+{}：このコンピューターで再サインインしてください。認証はコンピューターごとに行います。
+
+{}: the login keyring didn't take it ({}). Import the backup again once it does.
+{}：ログインキーリングが受け付けませんでした（{}）。キーリングを利用できる状態で再度インポートしてください。
+
+{}: what's set below. Power Modes says what each mode puts it on.
+{}：以下の設定を使います。各モードの値は「電源モード」で確認できます。
+
+{}: windows stay where you put them. Click to choose a windowing mode.
+{}：ウィンドウは置いた場所に残ります。クリックしてモードを選択。
+
+{}: {} applications. Click to show them.
+{}：アプリ{}個。クリックして表示。
+
+{}: {} examples, {} steps, {} ms on the {}
+{}：例{}件、{}ステップ、{} ms（{}上）
+
+{}: {}. {}. {}
+{}：{}。{}。{}
+
+{}:00 {} hits, {} misses, {} built incrementally, {} not cacheable
+{}:00 ヒット{}件、ミス{}件、差分ビルド{}件、キャッシュ不可{}件
+
+{}; not allowed {} (sign in again)
+{}。{}は未許可（再サインインしてください）
+
+{}Run by {}. Echo cancellation isn't tried: a recording has no speakers' sound beside it to take out.
+{}処理：{}。録音には差し引くためのスピーカー音声がないので、エコー除去はテストしません。
+
+{}a heading {}
+{}見出し{}
+
+{}pid {} · found {} ago
+{}PID {} · {}前に検出
+
+{}{} · {} so far
+{}{} · 現在までに{}
+
+{}{}, plugged in: {}.
+{}{}、電源接続時：{}。
+
+{}–{}% performance range
+性能範囲 {}～{}%
+
+{}’s data centre
+{}のデータセンター
+
+{}″ ({} × {} mm), {} pixels per inch
+{}インチ（{} × {} mm）、{} ppi
+
+~/.cache, browsers’ caches, thumbnails
+~/.cache、ブラウザーのキャッシュ、サムネイル
+
+~/.gradle, ~/.m2/repository, a project’s .gradle
+~/.gradle、~/.m2/repository、プロジェクトの.gradle
+
+~/.local/share/Trash
+~/.local/share/Trash
+
+~/.local/share/containers, ~/.local/share/flatpak
+~/.local/share/containers, ~/.local/share/flatpak
+
+~/Videos/raw, **/*.iso
+~/Videos/raw, **/*.iso
+
+~/go/pkg/mod, ~/.cache/go-build
+~/go/pkg/mod, ~/.cache/go-build
+
+~/worktrees
+~/worktrees
+
+¼ Second
+0.25秒
+
+¼ second
+0.25秒
+
+½ Second
+0.5秒
+
+½ second
+0.5秒
+
+“[{}]” isn’t a repository’s id.
+「[{}]」は有効なリポジトリIDではありません。
+
+“{}” and {n} more are still running in them, and stop.
+other: 「{}」とほか{n}個のプログラムがまだ実行中です。閉じると終了します。
+
+“{}” and {n} other programs are still running in this window. Close it anyway?
+other: このウィンドウで「{}」とほか{n}個のプログラムが実行中です。それでも閉じますか？
+
+“{}” can't be found.
+「{}」が見つかりません。
+
+“{}” can't be imported. {}
+「{}」をインポートできません。{}
+
+“{}” can't go inside itself.
+「{}」をその中に移動することはできません。
+
+“{}” can’t be deleted: 1Password keeps it for every account.
+「{}」は各アカウントに必要なため、1Passwordから削除できません。
+
+“{}” couldn't be imported. {}
+「{}」をインポートできませんでした。{}
+
+“{}” couldn't be opened. {}
+「{}」を開けませんでした。{}
+
+“{}” couldn't be printed. {}
+「{}」を印刷できませんでした。{}
+
+“{}” couldn't be read: {}
+「{}」を読み込めません：{}
+
+“{}” couldn't be saved. {}
+「{}」を保存できませんでした。{}
+
+“{}” couldn't be shown in Tracker. {}
+「{}」をTrackerで表示できませんでした。{}
+
+“{}” couldn't be written. {}
+「{}」に書き込めませんでした。{}
+
+“{}” couldn't be written: {}
+「{}」に書き込めません：{}
+
+“{}” doesn’t say where its packages are (no baseurl, metalink or mirrorlist).
+「{}」にパッケージの場所が指定されていません（baseurl、metalink、mirrorlistのいずれもありません）。
+
+“{}” has no {}.
+「{}」に{}はありません。
+
+“{}” has nothing to refer to.
+「{}」には参照先がありません。
+
+“{}” hasn’t allowed this computer its messages yet.
+「{}」はまだ、このコンピューターにメッセージへのアクセスを許可していません。
+
+“{}” is a folder: StyledEdit opens files.
+「{}」はフォルダーです。StyledEditではファイルを開いてください。
+
+“{}” is an enterprise network.
+「{}」は企業向けネットワークです。
+
+“{}” is asking something else to pair.
+「{}」は別の機器とのペアリングを要求しています。
+
+“{}” is imported.
+「{}」をインポートしました。
+
+“{}” is out of reach or its Bluetooth is off. It’s tried again by itself.
+「{}」は通信範囲外か、Bluetoothがオフです。自動的に再接続を試みます。
+
+“{}” is out of reach. It’s tried again by itself.
+「{}」は通信範囲外です。自動的に再接続を試みます。
+
+“{}” is protected by a password.
+「{}」はパスワードで保護されています。
+
+“{}” is still running in it, and stops.
+「{}」はまだ実行中です。閉じると終了します。
+
+“{}” is still running in this tab. Close it anyway?
+このタブで「{}」が実行中です。それでも閉じますか？
+
+“{}” is still running in this window. Close it anyway?
+このウィンドウで「{}」が実行中です。それでも閉じますか？
+
+“{}” is there now.
+「{}」はすでにあります。
+
+“{}” is there now. Replace it with the version modified {}, or keep both (the restored one named with its time)?
+「{}」はすでにあります。{}に変更された版に置き換えますか？ 両方残す場合、復元する方の名前に時刻を付けます。
+
+“{}” isn't a domain.
+「{}」はドメイン名ではありません。
+
+“{}” isn't a number
+「{}」は数値ではありません
+
+“{}” isn't a picture StyledEdit can read.
+「{}」はStyledEditで読み込める画像ではありません。
+
+“{}” isn't an IP address.
+「{}」はIPアドレスではありません。
+
+“{}” isn't in the Trash any more
+「{}」はもうゴミ箱にありません
+
+“{}” isn't known
+「{}」は不明です
+
+“{}” isn't there any more
+「{}」はもうこの場所にありません
+
+“{}” isn't understood
+「{}」を認識できません
+
+“{}” isn’t a day I can read for when it ends: try Nov 20, 2026-11-20 or Friday.
+終了日「{}」を読み取れません。2026-11-20、Nov 20、Fridayなどの形式を使ってください。
+
+“{}” isn’t a day I can read for when it starts: try Nov 20, 2026-11-20 or Friday.
+開始日「{}」を読み取れません。2026-11-20、Nov 20、Fridayなどの形式を使ってください。
+
+“{}” isn’t a day I can read for when it stops repeating: leave it empty to go on for good.
+繰り返しの終了日「{}」を読み取れません。期限なしにするには空欄にしてください。
+
+“{}” isn’t a setting.
+「{}」は設定項目ではありません。
+
+“{}” isn’t a time I can read for when it ends: try 14:30 or 2:30 PM.
+終了時刻「{}」を読み取れません。14:30や2:30 PMの形式を使ってください。
+
+“{}” isn’t a time I can read for when it starts: try 14:30 or 2:30 PM.
+開始時刻「{}」を読み取れません。14:30や2:30 PMの形式を使ってください。
+
+“{}” isn’t an address I can invite: write each as name@example.org, with commas between.
+「{}」は有効な招待先ではありません。name@example.orgの形式で、複数の場合はカンマで区切ってください。
+
+“{}” isn’t in reach. Is it nearby, unlocked, with Bluetooth on?
+「{}」と通信できません。端末を近くに置き、ロックを解除してBluetoothをオンにしてください。
+
+“{}” repeats. Delete only this one, or every one of them?
+「{}」は繰り返しの予定です。今回だけ削除しますか？ それともすべて削除しますか？
+
+“{}” wants to pair with this computer.
+「{}」がこのコンピューターとのペアリングを求めています。
+
+“{}” wants you to sign in before it lets anything through. Click to open its sign-in page.
+「{}」では通信前にサインインが必要です。クリックしてサインインページを開いてください。
+
+“{}”, made {}{}. What's checked comes back:
+「{}」（作成：{}{}）。チェックした項目を復元します：
+
+↑↓ choose an app.
+↑↓でアプリを選択します。
+
+⌘ Command (the Super key)
+⌘ Command（Superキー）
