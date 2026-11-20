@@ -4622,7 +4622,7 @@ your own picture
 “{}” is a folder: StyledEdit opens files.
 “{}” is an enterprise network.
 “{}” is asking something else to pair.
-“{}” is here but isn’t taking connections. On the phone: Settings ▸ Bluetooth, turn it on there, then tap this computer.
+“{}” is connected, but its messages aren’t answering. Olo keeps trying.
 “{}” is imported.
 “{}” is out of reach or its Bluetooth is off. It’s tried again by itself.
 “{}” is out of reach. It’s tried again by itself.

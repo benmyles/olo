@@ -31,6 +31,7 @@ use crate::Result;
 
 const DEST: &str = "org.bluez";
 const DEVICE: &str = "org.bluez.Device1";
+const BREDR: &str = "org.bluez.Bearer.BREDR1";
 const MANAGER: &str = "org.bluez.ProfileManager1";
 const ADVERTS: &str = "org.bluez.LEAdvertisingManager1";
 const CHARACTERISTIC: &str = "org.bluez.GattCharacteristic1";
@@ -320,6 +321,11 @@ pub struct Phone {
     pub address: String,
     pub kind: Kind,
     pub connected: bool,
+    /// The classic link alone, which its messages come over, where
+    /// BlueZ says of each link (`org.bluez.Bearer.BREDR1`, 5.8x):
+    /// `connected` is of either, and stays true through this one's
+    /// coming and going while the low-energy link is up.
+    pub bredr_connected: Option<bool>,
     /// It offers its contacts too.
     pub contacts: bool,
     /// Its battery, in percent, when BlueZ has it.
@@ -706,6 +712,7 @@ impl Profiles {
                     address: text("Address"),
                     kind: kind_of(&text("Modalias"), &uuids),
                     connected: flag("Connected"),
+                    bredr_connected: interfaces.get(BREDR).and_then(|b| b.get("Connected")).and_then(|v| bool::try_from(v).ok()),
                     contacts: offers(pbap::PSE_UUID),
                     battery: interfaces.get("org.bluez.Battery1").and_then(|b| b.get("Percentage")).and_then(|v| u8::try_from(v).ok()),
                 })
@@ -747,9 +754,10 @@ impl Profiles {
                             music::PLAYER => (&["Status", "Track"], Change::Detail),
                             "org.bluez.MediaControl1" => (&["Player", "Connected"], Change::Detail),
                             "org.bluez.Battery1" => (&["Percentage"], Change::Detail),
-                            // (The low-energy link, which its other
-                            // notifications come over.)
-                            "org.bluez.Bearer.LE1" => (&["Connected"], Change::Link),
+                            // (Each link's own word: the low-energy
+                            // one, which its other notifications come
+                            // over, and the classic one, its messages'.)
+                            BREDR | "org.bluez.Bearer.LE1" => (&["Connected"], Change::Link),
                             _ => return None,
                         };
                         props.keys().chain(gone.iter()).any(|k| told.contains(&k.as_str())).then_some(change)

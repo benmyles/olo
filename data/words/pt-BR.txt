@@ -13967,8 +13967,8 @@ Não foi possível gravar “{}”: {}
 “{}” is asking something else to pair.
 “{}” está tentando emparelhar com outro dispositivo.
 
-“{}” is here but isn’t taking connections. On the phone: Settings ▸ Bluetooth, turn it on there, then tap this computer.
-“{}” está aqui, mas não aceita conexões. No celular: Ajustes ▸ Bluetooth, ative ali e depois toque neste computador.
+“{}” is connected, but its messages aren’t answering. Olo keeps trying.
+“{}” está conectado, mas as mensagens dele não respondem. O Olo continua tentando.
 
 “{}” is imported.
 “{}” foi importado.

@@ -14155,8 +14155,8 @@ other: В этом окне работают «{}» и ещё {n} програм
 “{}” is asking something else to pair.
 «{}» запрашивает сопряжение с другим устройством.
 
-“{}” is here but isn’t taking connections. On the phone: Settings ▸ Bluetooth, turn it on there, then tap this computer.
-«{}» рядом, но не принимает подключения. На телефоне: «Настройки ▸ Bluetooth», включите его там и нажмите на этот компьютер.
+“{}” is connected, but its messages aren’t answering. Olo keeps trying.
+«{}» подключён, но его сообщения не отвечают. Olo продолжает попытки.
 
 “{}” is imported.
 Импортировано: «{}».

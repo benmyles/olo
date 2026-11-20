@@ -16815,6 +16815,19 @@ turned on one at a time, connected), the review clean at 1×, 1.5× and
 2×. The extension was tried in a copy of Chrome in a scratch
 `XDG_DATA_HOME` on a page served from 127.0.0.1.
 
+**The classic link has a word of its own.** BlueZ's `Device1.Connected`
+is of any link: with the low-energy one up (an iPhone's notifications),
+the classic one its messages need comes and goes without `Connected`
+changing, as when the phone connects back by itself. Where BlueZ says
+of each link (`org.bluez.Bearer.BREDR1.Connected`, 5.8x:
+`Phone::bredr_connected`, None on an older one), the service counts
+that link's coming as the phone's coming and its going as its going
+(`came_or_went`, with a test), and watches both bearers for changes.
+A phone that is connected and answers no page for its messages is said
+so, plainly, and nothing is asked of the person ("… is connected, but
+its messages aren't answering. Olo keeps trying."): why a phone doesn't
+answer isn't to be known from the computer.
+
 ## The supervisor (apps/supervisor, Preferences ▸ Performance)
 
 Keeps the desktop responsive; off by default. `olo-supervisor` is one of

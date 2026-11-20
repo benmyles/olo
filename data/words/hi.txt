@@ -13967,8 +13967,8 @@ other: इस विंडो में “{}” और {n} अन्य प्�
 “{}” is asking something else to pair.
 “{}” किसी और डिवाइस से पेयर होने का अनुरोध कर रहा है।
 
-“{}” is here but isn’t taking connections. On the phone: Settings ▸ Bluetooth, turn it on there, then tap this computer.
-“{}” यहीं है, पर कनेक्शन नहीं ले रहा। फ़ोन पर: सेटिंग ▸ Bluetooth, वहीं से चालू करें, फिर इस कंप्यूटर पर टैप करें।
+“{}” is connected, but its messages aren’t answering. Olo keeps trying.
+“{}” कनेक्ट है, पर उसके संदेश जवाब नहीं दे रहे। Olo कोशिश जारी रखे हुए है।
 
 “{}” is imported.
 “{}” आयात हो गया।

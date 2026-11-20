@@ -173,47 +173,71 @@ something nobody here has is in "Blocked", with what it waits for.
 
 - **Phone: what's left of the night it wasn't found again** (Ben,
   2026-11-20; the faults on Olo's side are fixed: under Done). Left:
-  - **Seen at 11:09, after the adapter was turned off and on by hand**
-    (Ben: "my phone/bluetooth is still broken too and won't connect"):
-    the phone connected at once over low energy, the first time since
-    four ("it says it is iPhone18,1"), and still answers no classic
-    page ("br-connection-page-timeout", bluetoothd: "Host is down"),
-    which its messages need. So the computer's radio and the pairing
-    work, and the phone isn't taking classic connections: on the
-    phone, Settings ▸ Bluetooth (on there, not from Control Centre,
-    which stops accessories until the next day), and this computer's
-    row tapped. Its notifications answered "Notify acquired" again
-    just after: the acquisition kept by BlueZ across the adapter's
-    going, to look at. And the Bluetooth controller made a firmware
-    dump of its own at 11:04:55 (`btintel_pcie`, in
-    /sys/class/devcoredump): what set it off isn't in the kernel's
-    log; to watch for.
-  - **The adapter wasn't connectable** (11:12, `btmgmt info`: current
-    settings without `connectable`; BlueZ's `Adapter1.Connectable`
-    false): the computer wasn't listening for classic connections, so
-    the phone couldn't connect back, by itself or when its row is
-    tapped. Set true by hand to see (it took). Nothing in Olo sets it
-    and BlueZ's saved settings for the adapter are empty, so either
-    BlueZ leaves it off on purpose (with the kernel's connection
-    control it listens only while a paired classic device is on the
-    kernel's accept list: then is the phone on it, with only Olo's
-    own profiles to speak for it?) or something cleared it. To do, in
-    Olo: the phone service makes sure the computer can be connected
-    to by its phone (the phone on the accept list, or `Connectable`
-    set, checked when the service starts, when the adapter is powered
-    and when the phone goes away), Olo Doctor says when a paired phone
-    can't connect back, and a test with the stand-in; and whether the
-    phone's messages come back on Ben's computer now tells which it
-    was.
-  - **Why the phone answered no page**, back beside the computer, for
-    an hour and more (BlueZ's lookup of it failed "Host is down" every
-    six to sixty seconds): not known, and not to be seen from the
-    computer. To ask Ben when it next happens: does opening Settings ▸
-    Bluetooth on the phone, or tapping this computer there, bring it
-    back at once (then the phone wasn't listening for the computer,
-    and the notice should say to do that); was its Bluetooth "off
-    until tomorrow" from Control Centre. And one trace then, with each
-    asking matched to its answer.
+  - **The phone connects over low energy and answers no classic
+    page, which its messages need** (Ben: "my phone/bluetooth is still
+    broken too and won't connect"; "can't it try a disconnect and
+    reconnect or something to get it out of BLE? i didn't change
+    anything on my phone"; "on my phone it never went to disconnected
+    … it stayed connected the whole time"). What is known (the second
+    investigator's reading of the controller's trace, the kernel's and
+    BlueZ's source; its answer is /var/tmp/claude-blueferry/bthelp/answer.md):
+    Olo asks rightly (`ConnectProfile` with the phone's message
+    server, which BlueZ takes over classic whatever low energy is
+    doing), the controller takes a well-formed page (`Create
+    Connection`, accepted in 210 µs) and reports `Page Timeout` 5.12 s
+    later, before any pairing, lookup or permission: nothing came back
+    over the air. Tried by hand, none of which cured it: the adapter
+    off and on (low energy came back at once), the adapter made
+    connectable (it wasn't: that is for the phone connecting back,
+    not for paging it), the low-energy link dropped (back within a
+    second), the controller's driver reloaded with its firmware
+    (notifications over low energy opened at once; the page still
+    unanswered). Not known: whether the phone isn't listening, whether
+    the page goes to the right identity, or whether this controller
+    pages badly while it scans low energy at full duty (some program
+    has held a search all day: below). **To do, in the order that
+    tells most**: (a) the page's address beside one from an evening
+    it worked, locally (equal or not, nothing kept); (b) one attempt
+    with the search really off for the whole five seconds and low
+    energy still up (stopping it from under BlueZ doesn't hold: it is
+    back within a second, and the try made that way dropped the
+    low-energy link, "le-connection-abort-by-local"; its owner has to
+    let go: find whose it is); (c) the phone connecting back by
+    itself (this computer tapped in its Bluetooth settings): Olo now
+    notices classic coming beside low energy (done, below); (d) Intel
+    published newer firmware for this controller the day before
+    (build 108142; 102163 is loaded) and Fedora has a 7.3 kernel:
+    each tried by itself at a restart Ben plans; (e) upstream's fix
+    for low-energy links that come straight back (`f5cd268af1c6`,
+    rebased on this kernel by the investigator) and its BlueZ change
+    (a failed classic profile no longer falls back to connecting low
+    energy) are not Olo's to carry unless (b) and (d) point at them.
+    **A driver of Olo's own isn't warranted**: the page is handed to
+    Intel's signed firmware either way, and nothing found is the
+    driver's transport (Ben asked; the investigator weighed it).
+    **Done since**: the service counts the classic link's own coming
+    and going (`came_or_went`, `Phone::bredr_connected`: BlueZ's
+    `Connected` stays true through it with low energy up, so a phone
+    that connected back was noticed only at the next paced attempt),
+    and the notice says what is known, "… is connected, but its
+    messages aren't answering. Olo keeps trying.", where for a few
+    hours it told the person to turn Bluetooth on in the phone's
+    Settings: a guess, and Ben had changed nothing.
+  - **Also seen that morning, each to look at**: the adapter was not
+    connectable (`Adapter1.Connectable` false; set true by hand:
+    whether BlueZ leaves it off on purpose, listening only for
+    devices on the kernel's accept list, and whether the phone is on
+    it: Olo to make sure its phone can connect back, at the service's
+    start and when the adapter is powered, and Doctor to say when it
+    can't); notifications answering "Notify acquired" after the
+    adapter went and came (BlueZ keeping the acquisition); the
+    controller's firmware dump at 11:04:55 (a page timeout can be
+    what triggers one: the investigator's reader of its header,
+    /var/tmp/claude-blueferry/bthelp/intel-dump-header.py, says
+    which); six kernel warnings of a connection's count gone negative
+    (`hci_conn.c:649`), a host bug on this boot with no link shown to
+    the phone; and bluetoothd's "Unable to register device interface"
+    every twelve seconds for a device it finds and already has.
   - **The notice over Phone's window, as the kit's banner** (both
     looks at it, 2026-11-20; real, and how it was before): its ground
     is a warm grey that reads as dingy in light and muddy in dark, it
@@ -235,8 +259,12 @@ something nobody here has is in "Blocked", with what it waits for.
     discovering all morning, and none of Olo's programs was the one:
     Chrome scans while a passkey prompt is up, and agent screens have
     many): each device it finds or forgets is an announcement to every
-    program on BlueZ. Olo Doctor to say when a search has run for an
-    hour, and whose it is if that can be told.
+    program on BlueZ, and the one radio scans at full duty all the
+    while (what a page then gets of it isn't known: above). Olo
+    Doctor to say when a search has run for an hour, and whose it is
+    (BlueZ keeps it per program on the bus and doesn't say whose: to
+    be read from bluetoothd itself, or found by the programs on the
+    bus one by one).
 - **An application chosen again from Deskbar's menu opens another
   window, where the person is** (Ben, 2026-11-20, after asking for a
   whole new instance of Chrome and letting that go: "forget new

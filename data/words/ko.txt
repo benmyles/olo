@@ -13873,8 +13873,8 @@ Tracker에서 ‘{}’ 항목을 표시할 수 없습니다. {}
 “{}” is asking something else to pair.
 ‘{}’에서 다른 기기와 페어링을 요청하고 있습니다.
 
-“{}” is here but isn’t taking connections. On the phone: Settings ▸ Bluetooth, turn it on there, then tap this computer.
-‘{}’이(가) 근처에 있지만 연결을 받지 않습니다. 휴대전화의 설정 ▸ Bluetooth에서 켠 다음 이 컴퓨터를 탭하세요.
+“{}” is connected, but its messages aren’t answering. Olo keeps trying.
+‘{}’이(가) 연결되어 있지만 메시지가 응답하지 않습니다. Olo가 계속 시도합니다.
 
 “{}” is imported.
 ‘{}’ 항목을 가져왔습니다.

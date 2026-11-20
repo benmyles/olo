@@ -500,6 +500,23 @@ fn may_be_cut(subject: &str) -> bool {
     subject.is_empty() || subject.len() >= 125
 }
 
+/// Whether the phone came (its messages are worth asking for now) or
+/// went, between one look at it and the next. BlueZ's `Connected` is of
+/// any link: with the low-energy one up (the phone's notifications), the
+/// classic one that its messages need comes and goes without `Connected`
+/// changing, as when the phone itself connects back, so the classic
+/// bearer's own word counts too where BlueZ gives it
+/// (`Phone::bredr_connected`, `org.bluez.Bearer.BREDR1`; the second
+/// investigator's, 2026-11-20: a phone that connected back was noticed
+/// only at the next paced attempt, up to ten minutes on).
+fn came_or_went(old: Option<&link::Phone>, new: Option<&link::Phone>) -> (bool, bool) {
+    let same = old.zip(new).filter(|(old, new)| old.path == new.path);
+    let classic = same.and_then(|(old, new)| old.bredr_connected.zip(new.bredr_connected));
+    let came = (new.is_some_and(|p| p.connected) && !old.is_some_and(|p| p.connected)) || classic == Some((false, true));
+    let went = same.is_some_and(|(old, new)| old.connected && !new.connected) || classic == Some((true, false));
+    (came, went)
+}
+
 fn just_came(at: &str, now: i64) -> bool {
     when(at).is_none_or(|t| (now - t) <= JUST && (t - now) <= 60)
 }
@@ -964,7 +981,7 @@ impl Service {
             (self.others_since, self.others_at, self.others_fails, self.le_ask_at) = (None, None, 0, None);
             (self.tries, self.busy, self.hangs, self.silent) = (0, 0, 0, 0);
             (self.retry_at, self.paged_at, self.unstuck_at) = (None, None, None);
-            self.lost_at = phone.as_ref().filter(|p| !p.connected).map(|_| Instant::now());
+            self.lost_at = phone.as_ref().filter(|p| !p.bredr_connected.unwrap_or(p.connected)).map(|_| Instant::now());
             (self.unstick, self.tried_unstick, self.let_go, self.report_retries) = (false, false, false, false);
             self.state.trouble.clear();
             (self.threads, self.contacts, self.seen, self.whole) = (Vec::new(), Vec::new(), HashSet::new(), HashSet::new());
@@ -994,8 +1011,7 @@ impl Service {
                 None => {}
             }
         }
-        let came = phone.as_ref().is_some_and(|p| p.connected) && !self.phone.as_ref().is_some_and(|p| p.connected);
-        let went = self.phone.as_ref().zip(phone.as_ref()).is_some_and(|(old, new)| old.path == new.path && old.connected && !new.connected);
+        let (came, went) = came_or_went(self.phone.as_ref(), phone.as_ref());
         self.phone = phone;
         if went {
             self.lost_at = Some(Instant::now());
@@ -1480,7 +1496,7 @@ impl Service {
         self.generation += 1;
         (self.opening, self.retry_at) = (true, None);
         self.opening_until = Some(Instant::now() + OPEN_ANSWER);
-        if !phone.connected {
+        if !phone.bredr_connected.unwrap_or(phone.connected) {
             self.paged_at = Some(Instant::now());
         }
         if self.state.link != Link::Allow {
@@ -1712,15 +1728,19 @@ impl Service {
                 // "le-connection-abort-by-local", which the notice
                 // showed as it came, 2026-11-20). The log has the name.
                 // (The phone there, over low energy, and answering no
-                // classic page, which its messages need: an iPhone whose
-                // Bluetooth was turned off from Control Centre does
-                // exactly that, until the next day or until it's turned
-                // on in Settings. Said as what to do on the phone: Ben's
-                // sat so for a morning behind "br-connection-page-
-                // timeout", 2026-11-20.)
+                // classic page, which its messages need: Ben's sat so
+                // for a day behind "br-connection-page-timeout",
+                // 2026-11-20, with nothing changed on it and this
+                // computer shown as connected there. Why a phone doesn't
+                // answer isn't known from here (the page went out as it
+                // should: the second investigator read the controller's
+                // trace), so nothing is asked of the person: said as it
+                // is, and that Olo goes on trying. For a few hours this
+                // told them to turn Bluetooth on in the phone's
+                // Settings, which was a guess.)
                 let unanswered = why.contains("page-timeout") || why.contains("Host is down");
                 self.state.trouble = if connected && unanswered {
-                    olo_kit::en!("“{}” is here but isn’t taking connections. On the phone: Settings ▸ Bluetooth, turn it on there, then tap this computer.", self.state.name)
+                    olo_kit::en!("“{}” is connected, but its messages aren’t answering. Olo keeps trying.", self.state.name)
                 } else if connected {
                     olo_kit::en!("Bluetooth couldn’t open the phone’s messages ({}).", why.rsplit(": ").next().unwrap_or(&why).trim_end_matches('.'))
                 } else if self.report_retries {
@@ -2808,6 +2828,39 @@ mod tests {
     }
 
     use super::*;
+
+    /// With the low-energy link up all along, the classic link's coming
+    /// and going is the phone's coming and going for its messages; and
+    /// where BlueZ doesn't say of each link, `Connected` alone decides.
+    #[test]
+    fn the_classic_link_comes_and_goes_beside_the_low_energy_one() {
+        let phone = |connected: bool, classic: Option<bool>| link::Phone {
+            path: "/org/bluez/hci0/dev_X".into(),
+            name: "Phone".into(),
+            address: "X".into(),
+            kind: link::Kind::IPhone,
+            connected,
+            bredr_connected: classic,
+            contacts: false,
+            battery: None,
+        };
+        let (le, both, away) = (phone(true, Some(false)), phone(true, Some(true)), phone(false, Some(false)));
+        assert_eq!(came_or_went(Some(&le), Some(&both)), (true, false), "the phone connected back over classic");
+        assert_eq!(came_or_went(Some(&both), Some(&le)), (false, true), "classic went, low energy stayed");
+        assert_eq!(came_or_went(Some(&le), Some(&le)), (false, false), "nothing changed");
+        assert_eq!(came_or_went(Some(&away), Some(&le)), (true, false), "it came into reach");
+        assert_eq!(came_or_went(Some(&both), Some(&away)), (false, true));
+        assert_eq!(came_or_went(None, Some(&le)), (true, false), "found, and connected");
+        // An older BlueZ: no word of each link.
+        let (old_up, old_down) = (phone(true, None), phone(false, None));
+        assert_eq!(came_or_went(Some(&old_down), Some(&old_up)), (true, false));
+        assert_eq!(came_or_went(Some(&old_up), Some(&old_up)), (false, false));
+        assert_eq!(came_or_went(Some(&old_up), Some(&old_down)), (false, true));
+        // Another phone's object isn't this one's going.
+        let mut other = phone(false, Some(false));
+        other.path = "/org/bluez/hci0/dev_Y".into();
+        assert_eq!(came_or_went(Some(&both), Some(&other)), (false, false));
+    }
 
     #[test]
     fn when_a_message_came() {

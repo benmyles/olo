@@ -13873,8 +13873,8 @@ other: 「{}」和另外 {n} 個程式仍在此視窗中執行。仍要關閉嗎
 “{}” is asking something else to pair.
 「{}」正在要求與其他裝置配對。
 
-“{}” is here but isn’t taking connections. On the phone: Settings ▸ Bluetooth, turn it on there, then tap this computer.
-「{}」就在附近，但不接受連線。請在手機的「設定 ▸ 藍牙」中開啟藍牙，然後點一下這台電腦。
+“{}” is connected, but its messages aren’t answering. Olo keeps trying.
+「{}」已連線，但其訊息沒有回應。Olo 會繼續嘗試。
 
 “{}” is imported.
 已匯入「{}」。

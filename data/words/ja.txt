@@ -13873,8 +13873,8 @@ other: このウィンドウで「{}」とほか{n}個のプログラムが実�
 “{}” is asking something else to pair.
 「{}」は別の機器とのペアリングを要求しています。
 
-“{}” is here but isn’t taking connections. On the phone: Settings ▸ Bluetooth, turn it on there, then tap this computer.
-「{}」は近くにありますが、接続を受け付けていません。電話の「設定」▸「Bluetooth」でオンにしてから、このコンピューターをタップしてください。
+“{}” is connected, but its messages aren’t answering. Olo keeps trying.
+「{}」は接続されていますが、メッセージが応答しません。Olo は試行を続けます。
 
 “{}” is imported.
 「{}」をインポートしました。

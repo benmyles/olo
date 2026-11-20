@@ -13967,8 +13967,8 @@ other: « {} » et {n} autres programmes tournent encore dans cette fenêtre. 
 “{}” is asking something else to pair.
 « {} » demande à jumeler autre chose.
 
-“{}” is here but isn’t taking connections. On the phone: Settings ▸ Bluetooth, turn it on there, then tap this computer.
-« {} » est là mais n’accepte pas de connexions. Sur le téléphone : Réglages ▸ Bluetooth, activez-le à cet endroit, puis touchez cet ordinateur.
+“{}” is connected, but its messages aren’t answering. Olo keeps trying.
+« {} » est connecté, mais ses messages ne répondent pas. Olo continue d’essayer.
 
 “{}” is imported.
 « {} » est importé.
