@@ -65,6 +65,10 @@ const CHROME_CARDS: &[(&str, &[&str])] = &[
 /// Chromium browser, `front` its app id), text editing, then app_server's
 /// groups.
 pub fn groups(profile: &KeyboardProfile, menus: Option<&commands::Menus>, front: Option<&str>) -> Vec<Group> {
+    // (The sheet paints its own words, so they are asked for as its
+    // cards are made: a shortcut's title and its group are the
+    // protocol's, in English; an app's menus come in its language.)
+    let tr = olo_kit::words::tr;
     let mut out = Vec::new();
     if menus.is_none() && front.is_some_and(|a| olo_protocol::app_keys::CHROMIUM_APPS.contains(&a)) {
         for (title, ids) in CHROME_CARDS {
@@ -73,18 +77,21 @@ pub fn groups(profile: &KeyboardProfile, menus: Option<&commands::Menus>, front:
                 .filter_map(|id| {
                     let e = shortcuts::entry(id)?;
                     let keys = e.keys(profile);
-                    (!keys.is_empty()).then(|| (e.title.to_owned(), olo_protocol::Keys::labels(&keys, profile.platform)))
+                    (!keys.is_empty()).then(|| (tr(e.title).to_owned(), olo_protocol::Keys::labels(&keys, profile.platform)))
                 })
                 .collect();
             if !rows.is_empty() {
-                out.push(Group { title: (*title).to_owned(), rows });
+                out.push(Group { title: tr(title).to_owned(), rows });
             }
         }
     }
     if let Some(menus) = menus {
-        let app = our_app(&menus.app_id).map_or_else(|| menus.app_id.clone(), |(name, _)| name.to_owned());
+        // (Its name as the person's language has it, "Настройки: Правка":
+        // the menu's own name comes in that language.)
+        let app = our_app(&menus.app_id).map_or_else(|| menus.app_id.clone(), |(name, _)| tr(name).to_owned());
         for e in menus.entries.iter().filter(|e| e.keys.is_some()) {
-            let title = format!("{app}: {}", e.path.first().map_or("", String::as_str));
+            // (The colon as the language sets it: "環境設定：編集".)
+            let title = olo_kit::tr!("{}: {}", app, e.path.first().map_or("", String::as_str));
             let row = (e.label.trim_end_matches('…').to_owned(), e.keys.clone().unwrap_or_default());
             match out.iter_mut().find(|g: &&mut Group| g.title == title) {
                 Some(g) if !g.rows.contains(&row) => g.rows.push(row),
@@ -100,11 +107,11 @@ pub fn groups(profile: &KeyboardProfile, menus: Option<&commands::Menus>, front:
             .filter(|i| i.group == *g)
             .filter_map(|i| {
                 let keys = shortcuts::keys_for(i, profile);
-                (!keys.is_empty()).then(|| (i.title.to_owned(), olo_protocol::Keys::labels(&keys, profile.platform)))
+                (!keys.is_empty()).then(|| (tr(i.title).to_owned(), olo_protocol::Keys::labels(&keys, profile.platform)))
             })
             .collect();
         if !rows.is_empty() {
-            out.push(Group { title: (*g).to_owned(), rows });
+            out.push(Group { title: tr(g).to_owned(), rows });
         }
     }
     out
@@ -146,11 +153,11 @@ fn text_editing(platform: Platform) -> Group {
         .iter()
         .map(|(line, keys)| {
             let keys = keys.iter().filter_map(|(_, k)| k.parse::<Chord>().ok()).map(|c| c.label(platform)).collect::<Vec<_>>().join("  ");
-            ((*line).to_owned(), keys)
+            (olo_kit::words::tr(line).to_owned(), keys)
         })
-        .chain(std::iter::once(("Select as you go: with any of these".to_owned(), if platform == Platform::Mac { "⇧" } else { "Shift" }.to_owned())))
+        .chain(std::iter::once((olo_kit::words::tr("Select as you go: with any of these").to_owned(), if platform == Platform::Mac { "⇧" } else { "Shift" }.to_owned())))
         .collect();
-    Group { title: "Text".into(), rows }
+    Group { title: olo_kit::words::tr("Text").into(), rows }
 }
 
 /// The sheet's window.
@@ -193,14 +200,15 @@ impl Sheet {
         style::raised(g, style::inset(g, panel, 1.0), &p);
         let (fg, dim) = (c(p.panel_text), style::disabled_text(&p));
         let title_y = panel.top() + px(TITLE / 2.0 + 2.0);
-        style::label(g, panel.left() + px(GAP), title_y, style::Align::Left, "Keyboard Shortcuts", 15.0, style::ui_font(FontWeight::BOLD), fg);
-        style::label(g, panel.right() - px(GAP), title_y, style::Align::Right, format!("{} keys", self.profile), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), dim);
+        let tr = olo_kit::words::tr;
+        style::label(g, panel.left() + px(GAP), title_y, style::Align::Left, tr("Keyboard Shortcuts"), 15.0, style::ui_font(FontWeight::BOLD), fg);
+        style::label(g, panel.right() - px(GAP), title_y, style::Align::Right, olo_kit::tr!("{} keys", self.profile), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), dim);
         // Where to change them.
         let foot_y = panel.bottom() - px(FOOT / 2.0);
         let small = style::ui_font(FontWeight::NORMAL);
-        style::label(g, panel.left() + px(GAP), foot_y, style::Align::Left, "Change them in Preferences ▸ Keyboard ▸ Shortcuts.", style::DETAIL_SIZE, small.clone(), dim);
+        style::label(g, panel.left() + px(GAP), foot_y, style::Align::Left, tr("Change them in Preferences ▸ Keyboard ▸ Shortcuts."), style::DETAIL_SIZE, small.clone(), dim);
         let more = if self.scrolls { "Scroll for more · Esc closes" } else { "Esc closes" };
-        style::label(g, panel.right() - px(GAP), foot_y, style::Align::Right, more, style::DETAIL_SIZE, small, dim);
+        style::label(g, panel.right() - px(GAP), foot_y, style::Align::Right, tr(more), style::DETAIL_SIZE, small, dim);
     }
 
     /// The cards, from the panel's edge (so they line up with the title).

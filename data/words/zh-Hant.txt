@@ -421,8 +421,11 @@ A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference
 A repository’s key needs to be trusted
 需要確認是否信任套件來源的金鑰
 
-A reset this account asked for hasn’t been answered yet. Sign in as the same account, or remove this account and add the other.
-此帳號要求的一次重置尚未得到回覆。請以同一帳號登入，或移除此帳號並加入另一個。
+A reset this account asked for hasn’t been answered yet. The sign-in is taken as soon as it has.
+此帳號要求的一次重置尚未得到回覆。得到回覆後即會採用此次登入。
+
+A reset this account asked for hasn’t been answered yet. This sign-in doesn’t say which account it is. Sign in again once it has.
+此帳號要求的一次重置尚未得到回覆。此次登入無法確定屬於哪個帳號。之後請重新登入。
 
 A resting palm can't click (its pressure doesn't count)
 手掌停放時不會觸發點按（不計入手掌壓力）
@@ -472,6 +475,9 @@ A week
 A week before, at 9 AM
 一週前上午 9 點
 
+A word back or on
+前移或後移一個字詞
+
 AI
 AI
 
@@ -507,6 +513,9 @@ Acceleration:
 
 Accent
 強調色
+
+Accept
+接受
 
 Access
 存取
@@ -670,6 +679,9 @@ Address:
 Addresses can’t be looked up: {}
 無法查詢位址：{}
 
+Adjust Size
+調整大小
+
 Adjust Size…
 調整大小…
 
@@ -805,6 +817,9 @@ All {} connected.
 Allow
 允許
 
+Allow It on the Phone
+在手機上允許
+
 Allow NVIDIA Fallback on Battery
 使用電池時允許回退到 NVIDIA
 
@@ -813,6 +828,9 @@ Allow Sleep
 
 Allow Sleep (awake until {})
 允許睡眠（保持喚醒至 {}）
+
+Allow it on the phone
+在手機上允許
 
 Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).
 允許「{0}」使用{1}{2}嗎？選擇「始終允許」後，此應用程式每次要求時都可使用。可在「檔案 ▸ 已獲准的應用程式…」中復原。
@@ -906,6 +924,9 @@ Another Window
 
 Another account
 其他帳號
+
+Another program has the phone
+手機正由其他程式使用
 
 Another program has the phone’s message profiles (BlueFerry’s or GNOME’s obexd). Olo Doctor removes BlueFerry.
 手機的訊息服務已被其他程式佔用（BlueFerry 或 GNOME 的 obexd）。可用 Olo Doctor 移除 BlueFerry。
@@ -1021,6 +1042,9 @@ Archived Chats
 Archived Conversations
 已封存的對話
 
+Arranging
+排列
+
 Arrived out of order
 到達順序有誤
 
@@ -1035,6 +1059,12 @@ As List
 
 As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines.
 沿用 Workbench 的圖示風格，以螢幕的 16 種顏色填充色塊，配上黑色輪廓。
+
+As a board
+看板檢視
+
+As a list
+清單檢視
 
 As fast as the computer goes: the processors kept quick and the firmware's power limits raised, the fans as needed. The battery runs down sooner.
 以電腦的最高性能執行。處理器保持高速，韌體提高耗電量上限，風扇按需提速。電池耗電更快。
@@ -1159,6 +1189,9 @@ At {}. Give it the code from {}?
 Attach
 附加
 
+Attach Files
+新增附件
+
 Attach Files…
 新增附件…
 
@@ -1173,6 +1206,9 @@ Attach Link…
 
 Attach a file or a link
 附加檔案或連結
+
+Attach what's on the clipboard
+附加剪貼簿中的內容
 
 Attachments
 附件
@@ -1203,6 +1239,9 @@ Auto-Tiling Layout
 
 Auto-tiling layout:
 自動平鋪配置：
+
+Auto-tiling on or off
+開啟或關閉自動平鋪
 
 Automatic
 自動
@@ -1248,6 +1287,12 @@ Back to Chats
 
 Back to Conversations
 返回對話清單
+
+Back to its own size
+恢復自身大小
+
+Back to its own size, or hide
+恢復自身大小，或隱藏
 
 Back to the Days
 返回日期清單
@@ -1408,6 +1453,9 @@ Best time for a run tomorrow?
 Bigger
 更大
 
+Bigger text
+放大文字
+
 Black
 黑色
 
@@ -1419,6 +1467,9 @@ Blue:
 
 Bluetooth
 Bluetooth
+
+Bluetooth couldn't be turned on or off.
+無法開啟或關閉藍牙。
 
 Bluetooth couldn’t open the phone’s messages ({}).
 藍牙無法開啟手機上的資訊（{}）。
@@ -1441,6 +1492,9 @@ Bluetooth isn’t running on this computer.
 Bluetooth said it would open them and no channel came
 藍牙已同意開啟訊息服務，但未建立通道
 
+Bluetooth's hardware isn't answering
+藍牙硬體沒有回應
+
 Bluetooth…
 Bluetooth…
 
@@ -1452,6 +1506,12 @@ Body
 
 Bold
 粗體
+
+Bookmark Manager
+書籤管理員
+
+Bookmark This Tab
+將此分頁加入書籤
 
 Boost when work arrives and ease back between tasks.
 有工作時提速，工作間隙降速。
@@ -1469,6 +1529,18 @@ Bottom Right Quarter
 右下四分之一區域
 
 Bottom Two Thirds
+底部三分之二區域
+
+Bottom half
+下半部分
+
+Bottom left quarter
+左下四分之一區域
+
+Bottom right quarter
+右下四分之一區域
+
+Bottom two thirds
 底部三分之二區域
 
 Branch {} is checked out in {} already.
@@ -1524,6 +1596,9 @@ Buttons
 
 By
 執行者
+
+By App
+依應用程式
 
 By a parent leaving
 父行程結束
@@ -1630,6 +1705,9 @@ Calling…
 Calls
 通話
 
+Camera
+相機
+
 Can't make {}: {}
 無法建立 {}：{}
 
@@ -1678,11 +1756,20 @@ Capture Client Requests Again
 Capture debug information whenever a frame drops
 每次掉格時收集除錯資訊
 
+Cards
+卡片
+
 Cascade All
 層疊所有視窗
 
 Cascade Others
 層疊其他視窗
+
+Cascade all windows on the display
+層疊顯示器上的所有視窗
+
+Cascade the other windows, leaving this one
+層疊其他視窗，保留此視窗
 
 Case
 大小寫
@@ -1699,10 +1786,19 @@ Ceiling {}
 Celsius (°C)
 Celsius (°C)
 
+Center
+置中
+
 Center Third
 中間三分之一區域
 
 Center Two Thirds
+中間三分之二區域
+
+Center third
+中間三分之一區域
+
+Center two thirds
 中間三分之二區域
 
 Chance
@@ -1716,6 +1812,9 @@ Change API ID…
 
 Change Background…
 更換桌面背景…
+
+Change them in Preferences ▸ Keyboard ▸ Shortcuts.
+可在「偏好設定 ▸ 鍵盤 ▸ 快速鍵」中更改。
 
 Changed both here and in 1Password: 1Password’s version replaces it here, and yours is kept as “{} (conflict)”
 這裡和 1Password 中都已修改。將採用 1Password 的版本，並把您的版本保留為「{} (conflict)」
@@ -1767,6 +1866,9 @@ Check Health
 
 Check Spelling While Typing
 鍵入時檢查拼字
+
+Check everything
+檢查全部
 
 Check for Updates
 檢查更新
@@ -1858,8 +1960,26 @@ Chosen for the whole computer and kept across restarts. It's the computer's, not
 Chosen outside dnf
 在 dnf 之外選擇
 
+Chrome and Slack
+Chrome 和 Slack
+
 Chrome holds it, as it may be harmful: keep it or delete it in Chrome’s Downloads.
 Chrome 已暫扣此檔案，因為它可能有害。可在 Chrome 的「下載內容」中選擇保留或刪除。
+
+Chrome: Bookmarks and History
+Chrome：書籤和歷史記錄
+
+Chrome: Developer
+Chrome：開發人員
+
+Chrome: Going Places
+Chrome：導覽
+
+Chrome: Tabs and Windows
+Chrome：分頁和視窗
+
+Chrome: View
+Chrome：顯示方式
 
 City or region
 城市或地區
@@ -1914,6 +2034,9 @@ Clear All
 
 Clear All Tabs
 清除所有定位點
+
+Clear Browsing Data
+清除瀏覽資料
 
 Clear History
 清除歷史記錄
@@ -2005,6 +2128,9 @@ Close Tab
 Close Window
 關閉視窗
 
+Close the window
+關閉視窗
+
 Cloud Heights
 雲層高度
 
@@ -2037,6 +2163,12 @@ Code given to Agent Screen “{}”
 
 Code:
 代碼：
+
+Codes texted to this phone are offered in the browser tab waiting for them.
+傳到這支手機的簡訊驗證碼會顯示在等待輸入的瀏覽器分頁中。
+
+Codes texted to this phone aren’t looked for.
+不會查找傳到這支手機的簡訊驗證碼。
 
 Codex
 Codex
@@ -2083,6 +2215,9 @@ Column View
 Columns
 欄
 
+Command Palette
+指令面板
+
 Command Suggestions
 指令建議
 
@@ -2091,6 +2226,9 @@ Command 鍵：
 
 Command or Comment
 指令或註解
+
+Command palette
+指令面板
 
 Comment
 註解
@@ -2122,6 +2260,9 @@ Compressed Swap
 Compressed to
 壓縮後大小
 
+Computer
+電腦
+
 Computes with
 計算裝置
 
@@ -2133,6 +2274,12 @@ Configure IPv6:
 
 Confirm
 確認
+
+Confirm the Code
+確認配對碼
+
+Confirm the code
+確認配對碼
 
 Confirm:
 確認：
@@ -2155,6 +2302,12 @@ Connect automatically when you put them in near this computer
 Connect with a Token…
 使用權杖連線…
 
+Connect your phone
+連接您的手機
+
+Connected
+已連線
+
 Connected as {}, through {}.
 已透過 {1} 以 {0} 身分連線。
 
@@ -2167,6 +2320,9 @@ Connected to “{}”: {}
 Connected {}, but its sign-in wasn’t allowed {}: Sign In Again and allow everything it asks.
 已連線 {}，但登入時未授予{}權限。請重新登入並允許所要求的全部權限。
 
+Connected, {}%
+已連線，{}%
+
 Connected.
 已連線。
 
@@ -2175,6 +2331,9 @@ Connecting to Telegram…
 
 Connecting to “{}”…
 正在連線「{}」…
+
+Connecting…
+正在連線…
 
 Connection
 連線
@@ -2205,6 +2364,9 @@ Conversation
 
 Conversation Awareness
 對話感知
+
+Conversations
+對話
 
 Convert to Table
 轉換為表格
@@ -2328,6 +2490,9 @@ Couldn't save what was dropped: {}
 
 Couldn't save: {}
 無法儲存：{}
+
+Couldn't search for devices.
+無法搜尋裝置。
 
 Couldn’t archive it. {}
 無法封存。{}
@@ -2617,6 +2782,9 @@ Delete Vault
 Delete Vault…
 刪除保險庫…
 
+Delete a word
+刪除一個字詞
+
 Delete the event
 刪除行程
 
@@ -2634,6 +2802,9 @@ Delete these {} backups? The space only they took is freed; files other backups 
 
 Delete this backup? The space only it took is freed; files other backups hold too stay in those. It can’t be undone.
 刪除此備份嗎？將釋放僅由此備份佔用的空間，其他備份共用的檔案會保留。此操作無法復原。
+
+Delete to the line's start
+刪除至行首
 
 Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
 永久刪除 {}（{}）嗎？這些項目不會移入垃圾桶，此操作無法復原。
@@ -2728,6 +2899,9 @@ Deskbar 顯示：{}
 Deskbar: a {} widget measured “{}”, which this computer hasn't; it measures {} instead.
 Deskbar：{} 小工具原本測量「{}」，此電腦沒有這一項，已改為測量「{}」。
 
+Desktop
+桌面
+
 Desktop (Preferences)
 桌面（偏好設定）
 
@@ -2742,6 +2916,9 @@ Destination
 
 Details
 詳細資訊
+
+Developer Tools
+開發人員工具
 
 Device
 裝置
@@ -2788,6 +2965,9 @@ Disconnect Google Drive ({})? DiskBackup stops backing up there, and forgets its
 Disconnecting from Google Drive…
 正在中斷 Google Drive…
 
+Disconnecting…
+正在中斷連線…
+
 Disconnect…
 中斷連線…
 
@@ -2796,6 +2976,9 @@ Disk
 
 Disk Space
 磁碟空間
+
+Disk Usage
+Disk Usage
 
 Disk:
 磁碟：
@@ -2890,6 +3073,9 @@ Do Not Disturb is on
 Do Not Disturb is on — {} unread
 勿擾模式已開啟 — {} 條未讀
 
+Do the result's other action
+執行結果的另一項操作
+
 Dockerfile
 Dockerfile
 
@@ -2904,6 +3090,9 @@ Documents
 
 Does “{}” show this number?
 「{}」上顯示的是這個號碼嗎？
+
+Does “{}” show {}?
+「{}」上顯示的是 {} 嗎？
 
 Doing
 進行中
@@ -2956,6 +3145,9 @@ Downloading: {}
 Downloading…
 正在下載…
 
+Downloads
+下載內容
+
 Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
 按住標籤拖移視窗時，在某個位置放開，或按下該位置的字母，視窗就會移到那裡。在另一個視窗的位置放開，兩個視窗互換位置。按 Escape 可全部恢復原狀。
 
@@ -2968,11 +3160,17 @@ Dragging a Window
 Draw
 繪圖
 
+Draw tool
+繪圖工具
+
 Drawing
 繪圖
 
 Drawn into each frame
 每影格重新繪製
+
+Drive Setup
+Drive Setup
 
 DriveSetup
 DriveSetup
@@ -3094,6 +3292,12 @@ Each kind opens in this app wherever you open it, in Olo and in other programs. 
 Each network's own
 使用各網路的設定
 
+Each new window takes a tile, and the others make room.
+每個新視窗佔一塊平鋪區域，其他視窗為它讓出位置。
+
+Each new window takes half of the one you were using.
+每個新視窗佔用您剛才使用的視窗的一半。
+
 Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
 設定後，各種驗證方式可同時代替密碼，用於 Passwords、Terminal 中的 sudo 和管理員權限要求。人臉和指紋還可用於鎖屏和登入。先使用哪一種，就用哪一種驗證。
 
@@ -3105,6 +3309,9 @@ Each setting tried shows here.
 
 Each shows in the Deskbar as it changes. A click on one there opens its app: Activity Monitor, Token Pool or the app it’s from.
 各項數值會在 Deskbar 中即時顯示。點按可開啟相應的應用程式，如活動監視器或 Token Pool。
+
+Each window takes half of the room left, round in a spiral.
+每個視窗佔用剩餘空間的一半，呈螺旋排列。
 
 Edge
 EDGE
@@ -3136,6 +3343,9 @@ Editors’ swap and backup files
 Edit…
 編輯…
 
+Eighth folder
+第 8 個資料夾
+
 Either AirPod
 任意一隻 AirPod
 
@@ -3153,6 +3363,9 @@ Email Accounts
 
 Emoji
 表情符號
+
+Emoji & symbols
+表情符號與符號
 
 Empty
 空
@@ -3250,6 +3463,9 @@ Erlang
 Esc cancels
 按 Esc 取消
 
+Esc closes
+按 Esc 關閉
+
 Ethernet
 Ethernet
 
@@ -3262,6 +3478,9 @@ Even Out the Voice's Level
 Even With the Lid Closed
 合上蓋子時也啟用
 
+Even out the tiles
+均分平鋪塊
+
 Even out the voice's level
 均衡人聲音量
 
@@ -3273,6 +3492,9 @@ Every 2 Weeks
 
 Every 2 weeks
 每兩週
+
+Every Application
+所有應用程式
 
 Every Counter
 所有計數器
@@ -3334,6 +3556,15 @@ Every week
 Every weekday
 每個工作日
 
+Every window a column of its own width, in a strip that scrolls to the active one.
+每個視窗佔一欄，寬度各自獨立，排成一條可捲動到作用中視窗的長帶。
+
+Every window a column, each as wide.
+每個視窗佔一欄，寬度相同。
+
+Every window a row, each as tall.
+每個視窗佔一列，高度相同。
+
 Every year
 每年
 
@@ -3363,6 +3594,9 @@ Everything it needs looked for, in {}.
 
 Export
 匯出
+
+Export Flattened PDF
+匯出扁平化 PDF
 
 Export Flattened PDF…
 匯出扁平化 PDF…
@@ -3460,6 +3694,12 @@ Fan level {}
 Fan level {} · {}
 風扇段位 {} · {}
 
+Fan out all windows, tabs side by side
+扇形排列所有視窗，標籤並排
+
+Fan out the other windows, leaving this one
+扇形排列其他視窗，保留此視窗
+
 Fans
 風扇
 
@@ -3514,8 +3754,14 @@ Fetching the forecast…
 Fetching…
 正在取得…
 
+Fewer main windows
+減少主視窗
+
 Field
 欄位
+
+Fifth folder
+第 5 個資料夾
 
 File
 檔案
@@ -3541,11 +3787,17 @@ Find
 Find Again
 再次尋找
 
+Find Next
+尋找下一個
+
 Find Previous
 尋找上一個
 
 Find Selection
 尋找所選內容
+
+Find Your Phone
+尋找手機
 
 Find a free hour this week
 尋找本週閒置的一小時
@@ -3555,6 +3807,12 @@ Find an app
 
 Find in document
 在文稿中尋找
+
+Find the selection
+尋找所選內容
+
+Find your phone
+尋找手機
 
 Find:
 尋找：
@@ -3607,6 +3865,9 @@ Firmware curve
 First Page
 第一頁
 
+First folder
+第 1 個資料夾
+
 First, as the main window
 排在首位，作為主視窗
 
@@ -3625,6 +3886,9 @@ Fit Width
 Fix
 修復
 
+Fix and apply what's checked
+修復並套用勾選的項目
+
 Fix in Olo Doctor…
 在 Olo Doctor 中修復…
 
@@ -3633,6 +3897,12 @@ Flip Horizontal
 
 Flip Vertical
 垂直翻轉
+
+Flip the tiles left and right
+左右翻轉平鋪塊
+
+Flip the tiles top and bottom
+上下翻轉平鋪塊
 
 Float
 浮動
@@ -3652,6 +3922,9 @@ Float Window Group
 Float out of its group, or tile
 移出群組並浮動，或平鋪
 
+Float over the tiles, or tile
+浮動於平鋪之上，或平鋪
+
 Flurries
 零星小雪
 
@@ -3660,6 +3933,27 @@ Focus
 
 Focus follows the pointer
 焦點跟隨指標
+
+Focus mode on or off
+開啟或關閉專注模式
+
+Focus the next tile
+啟用下一個平鋪塊
+
+Focus the previous tile
+啟用上一個平鋪塊
+
+Focus the window above
+啟用上方視窗
+
+Focus the window below
+啟用下方視窗
+
+Focus the window to the left
+啟用左側視窗
+
+Focus the window to the right
+啟用右側視窗
 
 Fog
 霧
@@ -3766,6 +4060,9 @@ Found as {}. Leave it empty for that name.
 Four fingers
 四指
 
+Fourth folder
+第 4 個資料夾
+
 Free
 閒置
 
@@ -3817,6 +4114,9 @@ From {} to {}
 From:
 從：
 
+Full Screen
+全螢幕
+
 Full access couldn't be asked for. {}
 無法要求完全存取權限。{}
 
@@ -3831,6 +4131,9 @@ GPU:
 
 GPUs are tuned only in the person's own session (polkit asks there).
 只能在使用者自己的工作階段中調整 GPU，polkit 會在那裡要求授權。
+
+Game controller
+遊戲控制器
 
 Game saves
 游戲存檔
@@ -3900,6 +4203,9 @@ Go to
 
 Go to End
 前往末尾
+
+Go to File or Folder
+前往檔案或資料夾
 
 Go to File or Folder…
 前往檔案或資料夾…
@@ -4069,6 +4375,9 @@ Heading 6
 Headless
 無頭模式
 
+Headphones
+耳機
+
 Health
 健康狀況
 
@@ -4132,6 +4441,18 @@ Hide Tab When Tiled
 Hide or show Deskbar
 隱藏或顯示 Deskbar
 
+Hide or show the details
+隱藏或顯示詳細資訊
+
+Hide or show the sidebar
+隱藏或顯示側邊欄
+
+Hide the application
+隱藏應用程式
+
+Hide window
+隱藏視窗
+
 High
 高
 
@@ -4170,6 +4491,9 @@ Holds
 
 Home
 個人資料夾
+
+Home Page
+首頁
 
 Hosts
 主機
@@ -4429,6 +4753,9 @@ Inspect
 Inspect Parent
 檢查父行程
 
+Inspect Process
+檢查行程
+
 Install Now
 現在安裝
 
@@ -4558,6 +4885,9 @@ Its app password isn’t in the keyring: remove it and add it again.
 Its click is its own: a resting palm can't press.
 點按需要手指主動按下，放在觸控板上的手掌不會觸發。
 
+Its contacts haven’t come (Sync Contacts, on the phone)
+聯絡人尚未同步（請在手機上開啟「同步聯絡人」）
+
 Its decoder, on its battery preset (Power Modes), costs less than the processor's cores; off, the processor decodes on battery.
 使用電池預設（見「電源模式」）時，其解碼器比 CPU 核心更省電。關閉此項後，電池供電時將使用 CPU 解碼。
 
@@ -4647,6 +4977,9 @@ Java
 
 JavaScript
 JavaScript
+
+JavaScript Console
+JavaScript 控制台
 
 JavaScript packages and build output
 JavaScript 包與建置產物
@@ -4804,6 +5137,9 @@ Keyboard Profile
 Keyboard Shortcuts
 鍵盤快速鍵
 
+Keyboard shortcuts
+鍵盤快速鍵
+
 Keyboard: the Mac profile came along, ⌘ on the Super key (the Windows key on most PC keyboards). Preferences ▸ Keyboard picks another for this keyboard.
 鍵盤：已匯入 Mac 設定。⌘ 位於 Super 鍵（通常是 PC 鍵盤的 Windows 鍵）。可在「偏好設定 ▸ 鍵盤」中為這把鍵盤另選設定。
 
@@ -4936,14 +5272,23 @@ Left Third
 Left Two Thirds
 左側三分之二區域
 
+Left half
+左半部分
+
 Left out, as dnf wouldn’t take it: {}. ({})
 dnf 不接受，已略過：{}。（{}）
 
 Left out, as dnf wouldn’t take them: {}. ({})
 dnf 不接受，已略過：{}。（{}）
 
+Left third
+左側三分之一區域
+
 Left to the firmware for now
 暫由韌體控制
+
+Left two thirds
+左側三分之二區域
 
 Left-handed (swap the buttons)
 左手使用（交換左右鍵）
@@ -4953,6 +5298,9 @@ Length
 
 Less noise
 降低噪聲
+
+Less space between windows
+減小視窗間距
 
 Let coding agents keep their tab’s title current
 允許程式設計代理更新分頁標題
@@ -5098,6 +5446,9 @@ Lock after idle for:
 Lock the Screen
 鎖定螢幕
 
+Lock the screen
+鎖定螢幕
+
 Lock the screen when the display turns off
 顯示器關閉時鎖定螢幕
 
@@ -5118,6 +5469,9 @@ Log Out…
 
 Login
 登入
+
+Logs
+Logs
 
 Long
 長
@@ -5155,6 +5509,9 @@ Looking at what’s there…
 Looking at which processes use it…
 正在尋找使用它的行程…
 
+Looking for Bluetooth…
+正在尋找藍牙…
+
 Looking for a newer release…
 正在尋找新版本…
 
@@ -5167,6 +5524,9 @@ Looking for its calendars…
 Looking for network devices…
 正在尋找網路裝置…
 
+Looking for phones nearby…
+正在尋找附近的手機…
+
 Looking for security keys…
 正在尋找安全金鑰…
 
@@ -5175,6 +5535,9 @@ Looking for sound devices…
 
 Looking for the fingerprint sensor…
 正在尋找指紋感測器…
+
+Looking for the phone…
+正在尋找手機…
 
 Looking for volumes…
 正在尋找磁碟區…
@@ -5311,8 +5674,17 @@ Make an App Password…
 Make an app password for Olo in Fastmail (Settings ▸ Privacy & Security ▸ Manage app passwords and access) with access to mail and calendars. It’s kept in your login keyring.
 在 Fastmail 的「設定 ▸ 隱私權與安全 ▸ 管理應用程式密碼和存取權限」中為 Olo 建立應用程式密碼，允許存取郵件和行事曆。密碼將儲存在登入鑰匙圈中。
 
+Make it the main window
+設為主視窗
+
 Make one at my.telegram.org ▸ API development tools (sign in there with your phone number), then copy its App api_id and api_hash here.
 請用手機號登入 my.telegram.org，在「API development tools」中建立應用程式，再將 App api_id 和 api_hash 複製到這裡。
+
+Make the main windows bigger
+放大主視窗
+
+Make the main windows smaller
+縮小主視窗
 
 Make this the main display
 設為主顯示器
@@ -5358,6 +5730,12 @@ Mark as Not Done
 
 Mark as Read
 標為已讀
+
+Mark as Read or Unread
+標為已讀或未讀
+
+Mark as done, or not done
+標示為已完成或未完成
 
 Markdown
 Markdown
@@ -5503,8 +5881,14 @@ More
 More Menus
 更多選單
 
+More main windows
+增加主視窗
+
 More noise
 更多噪聲
+
+More space between windows
+增大視窗間距
 
 Mostly clear
 大部晴朗
@@ -5686,6 +6070,12 @@ Move all {} archived chats back to your chat list?
 Move both archived chats back to your chat list?
 將這兩個已封存聊天都移回聊天清單嗎？
 
+Move every tile's window back one
+所有視窗後移一個平鋪塊
+
+Move every tile's window on one
+所有視窗前移一個平鋪塊
+
 Move the archived chat back to your chat list?
 將此已封存聊天移回聊天清單嗎？
 
@@ -5694,6 +6084,18 @@ Move the pointer
 
 Move the pointer on a thread of its own
 使用獨立執行緒移動指標
+
+Move the tile's edge down
+向下移動平鋪塊邊緣
+
+Move the tile's edge left
+向左移動平鋪塊邊緣
+
+Move the tile's edge right
+向右移動平鋪塊邊緣
+
+Move the tile's edge up
+向上移動平鋪塊邊緣
 
 Move to Archive
 移至封存
@@ -5706,6 +6108,9 @@ Move to Trash
 
 Move to Workspace
 移到工作區
+
+Move to the scratchpad
+移到便箋區
 
 Move to {}
 移到 {}
@@ -5782,6 +6187,9 @@ Narrower than sRGB ({}% of it)
 Natural scrolling (content follows your fingers)
 自然捲動（內容隨手指移動）
 
+Nearby
+在附近
+
 Needed by another package
 其他套件所需
 
@@ -5824,6 +6232,9 @@ New Folder
 New Group…
 新增群組…
 
+New Incognito Window
+新增無痕視窗
+
 New Item
 新增項目
 
@@ -5832,6 +6243,9 @@ New List
 
 New List…
 新增清單…
+
+New Login
+新增登入項目
 
 New Message
 新訊息
@@ -5950,14 +6364,38 @@ Next Tab
 Next Week
 下週
 
+Next auto-tiling layout
+下一個自動平鋪配置
+
+Next column width (Scrolling)
+下一個欄寬（捲動）
+
 Next day, week or month
 下一天、下一週或下個月
 
 Next step
 下一步
 
+Next tab in the window
+視窗中的下一個分頁
+
 Next when you click Back Up Now.
 點按「立即備份」開始下次備份。
+
+Next window above the tile
+平鋪塊上方放下一個視窗
+
+Next window below the tile
+平鋪塊下方放下一個視窗
+
+Next window to the tile's left
+平鋪塊左側放下一個視窗
+
+Next window to the tile's right
+平鋪塊右側放下一個視窗
+
+Next workspace
+下一個工作區
 
 Next {}.
 下次：{}。
@@ -6097,8 +6535,14 @@ Telegram 上沒有名為 {} 的使用者。
 No open files.
 沒有開啟的檔案。
 
+No phone found yet.
+尚未找到手機。
+
 No phone or mail account is set up: a phone in Phone, a Google or Fastmail account for Mail in Integrations.
 尚未設定手機或郵件帳號。可在「電話」中設定手機，或在「服務整合」中為 Mail 新增 Google 或 Fastmail 帳號。
+
+No phone paired
+未配對手機
 
 No power profiles daemon is running (power-profiles-daemon, or tuned-ppd on Fedora): Olo sets the power mode through it.
 電源設定服務未執行（power-profiles-daemon，Fedora 也可用 tuned-ppd）。Olo 需要透過此服務設定電源模式。
@@ -6381,6 +6825,9 @@ Nothing changed: Olo's own model is still in use.
 
 Nothing coming up
 目前沒有即將開始的行程
+
+Nothing connects until it starts again. Olo Doctor restarts it (it asks for your password).
+在它重新啟動之前，任何裝置都無法連線。Olo Doctor 會重新啟動它（需要輸入您的密碼）。
 
 Nothing done yet
 還沒有已完成的事項
@@ -6700,6 +7147,9 @@ Only an https:// address: one that can be listened in on could be changed on its
 Only on battery power
 僅在電池供電時
 
+Only the active window shows, zoomed, with its dialogs over it.
+只顯示作用中視窗，並放大鋪滿，其對話框顯示在上方。
+
 Only the latest of the same notification
 相同通知僅保留最新一條
 
@@ -6732,6 +7182,9 @@ Open Integrations…
 
 Open Link
 開啟連結
+
+Open Location
+開啟位置
 
 Open Log File…
 開啟日誌檔…
@@ -6874,6 +7327,9 @@ Other…
 Out of memory:
 記憶體耗盡時：
 
+Out of reach
+不在連線範圍內
+
 Output
 輸出
 
@@ -6882,6 +7338,9 @@ Overdue
 
 Overview
 概覽
+
+Overview of every window
+所有視窗概覽
 
 Overwrite the old data with zeros (slow)
 用零覆蓋舊資料（較慢）
@@ -6913,14 +7372,29 @@ Page {} of {}
 Pair
 配對
 
+Paired
+已配對
+
+Paired with this computer; not yet sharing its messages
+已與這台電腦配對；尚未分享其訊息
+
 Paired with {}.
 已與 {} 配對。
 
 Pairing
 配對
 
+Pairing didn't work.
+配對未成功。
+
+Pairing didn’t finish. Try again, with the phone unlocked on its Bluetooth settings.
+配對未完成。請解鎖手機並開啟其藍牙設定，然後再試一次。
+
 Pairing with {} didn't work: {}.
 與 {} 配對失敗：{}。
+
+Pairing…
+正在配對…
 
 Pair…
 配對…
@@ -7198,6 +7672,9 @@ Pin
 Pin as Main
 固定為主視窗
 
+Pin it as the main window, or let it go
+固定為主視窗，或取消固定
+
 Pinch to zoom
 雙指開合縮放
 
@@ -7387,11 +7864,23 @@ Previous Tab
 Previous Week
 上週
 
+Previous auto-tiling layout
+上一個自動平鋪配置
+
 Previous day, week or month
 上一天、上一週或上個月
 
+Previous tab in the window
+視窗中的上一個分頁
+
+Previous workspace
+上一個工作區
+
 Print
 列印
+
+Printer
+印表機
 
 Print…
 列印…
@@ -7524,6 +8013,9 @@ Quiet for 1 Hour
 
 Quit
 結束
+
+Quit Chrome
+結束 Chrome
 
 Quit Now
 立即結束
@@ -7690,6 +8182,9 @@ Record the Computer's Sound
 Record the Microphone
 錄製麥克風聲音
 
+Record the screen, or stop
+錄製螢幕，或停止
+
 Recording
 正在錄製
 
@@ -7732,6 +8227,9 @@ Redo
 Redo Window Arrangement
 重做視窗排列
 
+Redo window arrangement
+重做視窗排列
+
 Redo {}
 重做{}
 
@@ -7758,6 +8256,15 @@ Regenerate
 
 Reinstall Selected…
 重新安裝所選項目…
+
+Reject
+拒絕
+
+Reload
+重新載入
+
+Reload Without the Cache
+忽略快取重新載入
 
 Remind:
 提醒：
@@ -7828,6 +8335,9 @@ Remove “{}” from Favorites
 Remove…
 移除…
 
+Removing…
+正在移除…
+
 Rename
 重新命名
 
@@ -7852,6 +8362,9 @@ Rename Worktree…
 Rename…
 重新命名…
 
+Reopen Closed Tab
+重新開啟已關閉的分頁
+
 Repeat rate
 重復速率
 
@@ -7863,6 +8376,9 @@ Replace
 
 Replace Same
 替換相同通知
+
+Replace and find again
+替換並尋找下一個
 
 Replace the one-time code of your login {} with the one this page shows?
 用此頁顯示的一次性驗證碼替換登入項目「{}」中的驗證碼嗎？
@@ -8065,6 +8581,18 @@ Right Two Thirds
 Right first
 首選建議準確率
 
+Right half
+右半部分
+
+Right third
+右側三分之一區域
+
+Right two thirds
+右側三分之二區域
+
+Roll up or down
+捲起或展開
+
 Room:
 空間：
 
@@ -8073,6 +8601,12 @@ Rotate Left
 
 Rotate Right
 向右旋轉
+
+Rotate the tiles
+旋轉平鋪塊
+
+Rotate the tiles back
+反向旋轉平鋪塊
 
 Round trip
 往返時間
@@ -8139,6 +8673,9 @@ Saturday
 
 Save
 儲存
+
+Save As
+另存新檔
 
 Save As…
 另存新檔…
@@ -8209,6 +8746,9 @@ Scan Home
 Scan Volume
 掃描磁碟區
 
+Scan a Folder
+掃描資料夾
+
 Scan a Folder…
 掃描資料夾…
 
@@ -8245,8 +8785,26 @@ Screen Saver
 Screenshot
 螢幕截圖
 
+Screenshot app
+截圖應用程式
+
+Screenshot of an area
+區域截圖
+
+Screenshot of the screen
+螢幕截圖（整個螢幕）
+
+Screenshot of the window
+視窗截圖
+
+Screenshots
+螢幕截圖
+
 Scroll
 捲動
+
+Scroll for more · Esc closes
+捲動查看更多 · 按 Esc 關閉
 
 Scroll while the middle button is held
 按住中鍵時捲動
@@ -8280,6 +8838,9 @@ Search: words, program:, level:, since:
 
 Searching…
 正在搜尋…
+
+Second folder
+第 2 個資料夾
 
 Secondary click (three: middle)
 輔助點按（三指為中鍵）
@@ -8344,6 +8905,12 @@ Select a transaction to see what it did to each package.
 Select an update to read about it: its versions, why it came out, what changed.
 選擇更新可查看版本、發布原因和更改內容。
 
+Select as you go: with any of these
+移動時選取：與以上任一按鍵組合
+
+Select tool
+選擇工具
+
 Selected {} to {}
 已選擇 {} 至 {}
 
@@ -8363,6 +8930,9 @@ Send Voice Message
 傳送語音訊息
 
 Send to Back
+置於底層
+
+Send to back
 置於底層
 
 Send with BBRv3
@@ -8482,6 +9052,9 @@ Settings
 Settings:
 設定：
 
+Seventh folder
+第 7 個資料夾
+
 Shaping
 流量控制
 
@@ -8536,6 +9109,9 @@ Show
 Show All
 顯示全部
 
+Show All Tabs
+顯示所有分頁
+
 Show Archived
 顯示已封存項目
 
@@ -8544,6 +9120,9 @@ Show Archived Conversations
 
 Show Assistant
 顯示助手
+
+Show Bookmarks Bar
+顯示書籤列
 
 Show Calendars
 顯示行事曆
@@ -8635,11 +9214,17 @@ Show on AirPlay
 Show on All Workspaces
 在所有工作區顯示
 
+Show on all workspaces
+在所有工作區顯示
+
 Show or Hide All Windows
 顯示或隱藏所有視窗
 
 Show or hide the assistant
 顯示或隱藏助理
+
+Show or hide the scratchpad
+顯示或隱藏便箋區
 
 Show or hide the source
 顯示或隱藏原始碼
@@ -8649,6 +9234,9 @@ Show seconds
 
 Show the day of the week
 顯示星期
+
+Show the desktop
+顯示桌面
 
 Show the phone’s other notifications
 顯示手機的其他通知
@@ -8740,6 +9328,9 @@ Sign…
 Site Settings
 網站設定
 
+Sixth folder
+第 6 個資料夾
+
 Size
 大小
 
@@ -8775,6 +9366,9 @@ Small: one line. Medium and Large: all it shows, Large's sky bigger.
 
 Smaller
 更小
+
+Smaller text
+縮小文字
 
 Smooth Pointer
 平滑指標
@@ -8875,6 +9469,9 @@ Spanish
 Spare
 備用空間
 
+Speaker
+揚聲器
+
 Speaker amp {}
 喇叭功放 {}
 
@@ -8913,6 +9510,12 @@ Start Over…
 
 Start Test
 開始測試
+
+Start or end of the document
+文件開頭或結尾
+
+Start or end of the line
+行首或行尾
 
 Start the Agent
 啟動代理程式
@@ -8967,6 +9570,9 @@ Stay Awake
 
 Stay awake (caffeinated)
 保持喚醒（防止睡眠）
+
+Stay awake, or not
+保持喚醒，或取消
 
 Stay awake: no display sleep, sleep, screen saver or lock
 保持喚醒：不熄屏、不睡眠、不啟動螢幕保護程式或鎖屏
@@ -9106,6 +9712,27 @@ Swap too
 Swap with Previous Main
 與上一個主視窗交換
 
+Swap with the next tile
+與下一個平鋪塊交換
+
+Swap with the previous main window
+與上一個主視窗交換
+
+Swap with the previous tile
+與上一個平鋪塊交換
+
+Swap with the tile above
+與上方平鋪塊交換
+
+Swap with the tile below
+與下方平鋪塊交換
+
+Swap with the tile to the left
+與左側平鋪塊交換
+
+Swap with the tile to the right
+與右側平鋪塊交換
+
 Swedish
 瑞典語
 
@@ -9115,17 +9742,32 @@ Swift
 Swiss
 瑞士
 
+Switch applications (Twitcher)
+切換應用程式（Twitcher）
+
+Switch applications on the workspaces showing
+切換目前顯示的工作區中的應用程式
+
 Switch automatically between this computer and your iPhone
 在本機和 iPhone 之間自動切換
 
 Switch to a woken program at once
 立即執行剛喚醒的程式
 
+Switch windows of the application
+切換應用程式的視窗
+
+Switching
+切換
+
 Sync
 同步
 
 Sync Again
 重新同步
+
+Sync Contacts
+同步聯絡人
 
 Sync Now
 立即同步
@@ -9169,11 +9811,44 @@ TOML
 TSX
 TSX
 
+Tab 1
+分頁 1
+
+Tab 2
+分頁 2
+
+Tab 3
+分頁 3
+
+Tab 4
+分頁 4
+
+Tab 5
+分頁 5
+
+Tab 6
+分頁 6
+
+Tab 7
+分頁 7
+
+Tab 8
+分頁 8
+
+Tab 9
+分頁 9
+
 Table
 表格
 
+Tablet
+平板電腦
+
 Tabs
 分頁
+
+Tabs on Agent Screens are never given a code.
+代理螢幕上的分頁永遠不會收到驗證碼。
 
 Tags:
 標籤：
@@ -9190,6 +9865,9 @@ Take Screenshot…
 Take calls on this computer
 在此電腦上接聽電話
 
+Take or give back control
+接管或交還控制
+
 Taken
 已採納
 
@@ -9199,11 +9877,14 @@ Tap
 Tap and drag
 輕點並拖曳
 
+Tap the Windows key on its own for the command palette
+單按 Windows 鍵開啟指令面板
+
 Tap to click
 輕點以點按
 
-Tap {} on its own for the command palette
-單按 {} 開啟指令面板
+Tap ⌘ (the Super key) on its own for the command palette
+單按 ⌘（Super 鍵）開啟指令面板
 
 Taps
 輕點次數
@@ -9301,8 +9982,17 @@ Text Message
 Text Size
 文字大小
 
+Text at its own size
+文字恢復原始大小
+
+Text messages
+簡訊
+
 Text messages to “{}”
 發給「{}」的簡訊
+
+Text tool
+文字工具
 
 Text:
 文字：
@@ -9354,6 +10044,9 @@ API 哈希由 32 個字元組成，只能使用 0–9 和 a–f。
 
 The AirPods service isn't running.
 AirPods 服務未執行。
+
+The Bluetooth service (bluetoothd) isn't running.
+藍牙服務（bluetoothd）未執行。
 
 The CPU doesn't offer “{}”.
 CPU 不支援「{}」。
@@ -9448,11 +10141,23 @@ The copy of Token Pool this one replaced is still finishing its requests. Add th
 The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
 被此副本取代的 Token Pool 仍在完成其要求。請稍後再次登入。
 
+The copy of Token Pool this one replaced is still finishing its requests. The sign-in is taken as soon as it has.
+被此副本取代的 Token Pool 仍在完成其要求。它完成後即會採用此次登入。
+
 The day before, at 9 AM
 前一天上午 9 點
 
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
 當天的命中率、池中已用插槽，以及最近幾小時的建置與命中次數。
+
+The device couldn't be disconnected.
+無法中斷裝置的連線。
+
+The device couldn't be removed.
+無法移除裝置。
+
+The device didn't connect.
+裝置未能連線。
 
 The displays' settings are Olo's own again, from when you leave Rescue.
 離開救援模式後，顯示器將重新使用 Olo 的原有設定。
@@ -9568,6 +10273,9 @@ The look's own
 The loss is a number, in percent.
 封包遺失率須以百分數輸入。
 
+The main window in its place; the others stack around it.
+主視窗保持原位，其他視窗堆疊在它周圍。
+
 The microphone can’t be recorded ({}).
 無法從麥克風錄音（{}）。
 
@@ -9624,6 +10332,9 @@ The password of “{}” couldn’t be kept: {}
 
 The passwords file is damaged: {}
 密碼檔案已損壞：{}
+
+The phone didn’t connect. Is it unlocked, with Bluetooth on?
+手機未能連線。它是否已解鎖並開啟了藍牙？
 
 The phone didn’t take it.
 手機未接受。
@@ -9757,6 +10468,9 @@ The voice service isn't running.
 The window server didn’t give its settings.
 視窗伺服器未提供設定。
 
+The windows in rows of about square cells.
+視窗排成多列，每格接近正方形。
+
 The workspace each display shows stays open in every Deskbar; each other one is its heading, with an arrow that shows its applications and puts them away again.
 每個 Deskbar 都會展開各顯示器目前的工作區，其他工作區只顯示標題。點按箭頭可展開或收起其中的應用程式。
 
@@ -9805,6 +10519,9 @@ There is no limit “{}”.
 There is nothing to share.
 沒有可共享的內容。
 
+There's no Bluetooth adapter.
+沒有藍牙介面卡。
+
 There's no Ethernet adapter. A USB or Thunderbolt one shows here once it's plugged in.
 沒有乙太網路轉接器。插入 USB 或雷靂轉接器後，它就會顯示在這裡。
 
@@ -9834,6 +10551,9 @@ Thinking:
 
 Thinking…
 正在思考…
+
+Third folder
+第 3 個資料夾
 
 This Computer
 這台電腦
@@ -9982,6 +10702,9 @@ Tile All Tabs
 Tile With
 與其他視窗平鋪
 
+Tile all windows on the display
+平鋪顯示器上的所有視窗
+
 Tiling, zooming, Tile All, cascading and fanning out all leave this space.
 平鋪、放大、全部平鋪、層疊和扇形排列都會保留此間距。
 
@@ -10032,6 +10755,12 @@ To Do
 
 To allow it, you can also {}.
 也可以透過{}來授權。
+
+To the next display
+移到下一個顯示器
+
+To the previous display
+移到上一個顯示器
 
 To {}
 到 {}
@@ -10117,8 +10846,20 @@ Top Right Quarter
 Top Two Thirds
 頂部三分之二區域
 
+Top half
+上半部分
+
+Top left quarter
+左上四分之一區域
+
+Top right quarter
+右上四分之一區域
+
 Top speed
 最高速度
+
+Top two thirds
+頂部三分之二區域
 
 Touch
 觸碰
@@ -10270,6 +11011,9 @@ Turn on for a laptop usually plugged in.
 Turn the display off after:
 關閉顯示器前的等待時間：
 
+Turn the tile's split
+切換平鋪塊的分割方向
+
 Turn the touchpad off while a mouse is plugged in
 連線滑鼠時停用觸控板
 
@@ -10387,6 +11131,9 @@ Undo Transaction…
 Undo Window Arrangement
 復原視窗排列
 
+Undo window arrangement
+復原視窗排列
+
 Undo {}
 復原{}
 
@@ -10461,6 +11208,9 @@ Up
 
 Up (sent)
 上行（傳送）
+
+Up a level
+往上一層
 
 Up for
 運作時間
@@ -10657,6 +11407,33 @@ Variable refresh rate
 Vault
 保險庫
 
+Vault 1
+保險庫 1
+
+Vault 2
+保險庫 2
+
+Vault 3
+保險庫 3
+
+Vault 4
+保險庫 4
+
+Vault 5
+保險庫 5
+
+Vault 6
+保險庫 6
+
+Vault 7
+保險庫 7
+
+Vault 8
+保險庫 8
+
+Vault 9
+保險庫 9
+
 Vault Info…
 保險庫資訊…
 
@@ -10689,6 +11466,9 @@ Video is decoded on the processor. {}
 
 View
 檢視
+
+View Source
+檢視原始碼
 
 Viewer
 Viewer
@@ -10758,6 +11538,9 @@ Waiting for power
 
 Waiting for the network
 正在等待網路連線
+
+Waiting for the phone to allow it
+正在等待手機允許
 
 Waiting for the phone… this page follows it by itself.
 正在等待手機…此頁會隨手機狀態自動更新。
@@ -11077,11 +11860,47 @@ Window on a Background
 Window title size
 視窗標題大小
 
+Window to the next workspace
+視窗移到下一個工作區
+
+Window to the previous workspace
+視窗移到上一個工作區
+
+Window to workspace 1
+視窗移到工作區 1
+
+Window to workspace 2
+視窗移到工作區 2
+
+Window to workspace 3
+視窗移到工作區 3
+
+Window to workspace 4
+視窗移到工作區 4
+
+Window to workspace 5
+視窗移到工作區 5
+
+Window to workspace 6
+視窗移到工作區 6
+
+Window to workspace 7
+視窗移到工作區 7
+
+Window to workspace 8
+視窗移到工作區 8
+
+Window to workspace 9
+視窗移到工作區 9
+
 Windowing Mode
 視窗模式
 
 Windows
 視窗
+
+Windows stay where you put them.
+視窗停留在您放置的位置。
 
 Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).
 視窗緩衝區不會換出，因此桌面不必等待它們換回記憶體（使用 Olo 對 Intel 驅動程式的熱修補程式）。
@@ -11109,6 +11928,33 @@ Working…
 
 Works on a picture of the desktop.
 對桌面影像生效。
+
+Workspace 1
+工作區 1
+
+Workspace 2
+工作區 2
+
+Workspace 3
+工作區 3
+
+Workspace 4
+工作區 4
+
+Workspace 5
+工作區 5
+
+Workspace 6
+工作區 6
+
+Workspace 7
+工作區 7
+
+Workspace 8
+工作區 8
+
+Workspace 9
+工作區 9
 
 Workspace:
 工作區：
@@ -11269,6 +12115,9 @@ Yours: fine-tuned once since it started
 Yours: fine-tuned {} times since it started
 您的模型：啟動後已微調 {} 次
 
+You’re asked each time a tab on an Agent Screen is the one waiting.
+每當等待驗證碼的分頁位於代理螢幕上時，都會詢問您。
+
 Zig
 Zig
 
@@ -11284,14 +12133,26 @@ Zoom In
 Zoom Out
 縮小
 
+Zoom horizontally
+水平縮放
+
 Zoom on Clicks
 放大點按位置
+
+Zoom or unzoom
+縮放或還原
+
+Zoom or unzoom all windows on the display
+縮放或還原顯示器上的所有視窗
 
 Zoom to Fill
 縮放以填滿
 
 Zoom to Fit
 縮放以適應大小
+
+Zoom vertically
+垂直縮放
 
 __pycache__, .venv, .mypy_cache, .pytest_cache, .tox
 __pycache__, .venv, .mypy_cache, .pytest_cache, .tox
@@ -12070,6 +12931,9 @@ other: 已選擇 {n} 份備份。
 {n} coming up
 other: {n} 項即將到期
 
+{n} conversations
+other: {n} 個對話
+
 {n} days
 other: {n} 天
 
@@ -12177,6 +13041,9 @@ other: {n} 項待辦
 
 {n} to-dos
 other: {n} 項待辦事項
+
+{n} unread
+other: {n} 則未讀
 
 {n} waiting in their apps
 other: 有 {n} 項等待在應用程式中處理
@@ -12474,6 +13341,9 @@ other: {n} 週
 
 {} kept, still shared with builds' target folders
 保留 {}，仍與建置目標目錄共享
+
+{} keys
+{} 按鍵
 
 {} knows this computer.
 {} 已辨識此電腦。
@@ -12879,6 +13749,9 @@ Olo 的 {1} 條文案中，已有 {0} 條譯為{2}，其餘仍以英語顯示。
 
 {}: windows stay where you put them. Click to choose a windowing mode.
 {}：視窗保留在放置的位置。點按選擇視窗模式。
+
+{}: {}
+{}：{}
 
 {}: {} applications. Click to show them.
 {}：{} 個應用程式。點按顯示。

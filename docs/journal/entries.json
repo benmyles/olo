@@ -5230,5 +5230,23 @@
   "title": "Deskbar's menus, in groups",
   "caption": "An application's and a workspace's right-click menus as the window menu is: Show and Hide, Move (workspaces, displays, an agent's screen) and Show on AirPlay with the grouping, Close last; said in the singular for one window.",
   "image": "2026-11-20/050929-deskbar-s-menus-in-groups.png"
+ },
+ {
+  "time": "2026-11-20T08:23:36",
+  "title": "The shortcuts sheet in Russian",
+  "caption": "Every shortcut's title and group were the protocol's English in every language, on the sheet, in the panel a two-part shortcut waits in, and in Preferences \u25b8 Keyboard \u25b8 Shortcuts: 207 titles, now asked for where they're painted and in twelve languages.",
+  "image": "2026-11-20/082336-the-shortcuts-sheet-in-russian.png"
+ },
+ {
+  "time": "2026-11-20T08:23:39",
+  "title": "A shortcut's second key, in Japanese",
+  "caption": "The panel's rows come from app_server as text and are looked up by what they say.",
+  "image": "2026-11-20/082339-a-shortcut-s-second-key-in-japanese.png"
+ },
+ {
+  "time": "2026-11-20T08:23:40",
+  "title": "Preferences \u25b8 Phone's first step, in Russian",
+  "caption": "The set-up's steps, a device's state and what failed were in no catalog (53 words, with Bluetooth's). Pictured with a made-up phone (OLO_PHONE_DEMO=connect): a test session lists the person's own.",
+  "image": "2026-11-20/082340-preferences-phone-s-first-step-in-russian.png"
  }
 ]

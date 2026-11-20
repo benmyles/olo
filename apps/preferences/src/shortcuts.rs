@@ -115,6 +115,7 @@ pub fn ui(ui: &mut Ui, server: &Server, st: &mut State) {
             let platform = keyboard.profile.platform;
             crate::prefs().edit_as("", "Shortcut", |s| s.keyboard = keyboard);
             st.last = keys.and_then(|k| k.single()).map(|c| (id, c));
+            let taken: Vec<&str> = taken.into_iter().map(olo_kit::words::tr).collect();
             (!taken.is_empty()).then(|| olo_kit::tr!("{} was taken from “{}”.", keys.map(|c| c.label(platform)).unwrap_or_default(), taken.join("”, “")))
         });
     }
@@ -173,8 +174,12 @@ pub fn ui(ui: &mut Ui, server: &Server, st: &mut State) {
         for i in first..last {
             let r = Bounds { origin: point(b.left(), b.top() + px(i as f32 * m::LIST_ROW)), size: size(b.size.width, px(m::LIST_ROW)) };
             match &rows[i] {
+                // (The list is painted here, so its words are asked for
+                // here: a shortcut's title and its group are the
+                // protocol's, in English, for every program that shows
+                // them.)
                 Row::Group(name) => {
-                    style::label(g, r.left() + px(6.0), r.center().y, style::Align::Left, *name, style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), text);
+                    style::label(g, r.left() + px(6.0), r.center().y, style::Align::Left, olo_kit::words::tr(name), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), text);
                 }
                 Row::Shortcut(info) => {
                     let on = recording == Some(info.id);
@@ -196,25 +201,19 @@ pub fn ui(ui: &mut Ui, server: &Server, st: &mut State) {
                         }
                         (text, keys_text(info, &s))
                     };
-                    style::label(g, r.left() + px(18.0), r.center().y, style::Align::Left, info.title, style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), fg);
+                    let title = olo_kit::words::tr(info.title);
+                    style::label(g, r.left() + px(18.0), r.center().y, style::Align::Left, title, style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), fg);
                     let right = point(r.right() - px(8.0), r.center().y);
                     if on || keys == "None" {
                         let ink = if on { fg } else { style::disabled_text(&p) };
-                        style::label(g, right.x, right.y, style::Align::Right, keys.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), ink);
+                        let keys = if on { keys.clone() } else { olo_kit::words::tr("None").to_owned() };
+                        style::label(g, right.x, right.y, style::Align::Right, keys, style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), ink);
                     } else {
                         style::key_combo_column(g, right, &keys, fg);
                     }
                     olo_kit::agent::record(
                         g,
-                        olo_kit::agent::Node {
-                            role: "ListItem",
-                            name: Some(format!("{}: {keys}", info.title).into()),
-                            bounds: r,
-                            enabled: true,
-                            clickable: true,
-                            selected: Some(on),
-                            ..Default::default()
-                        },
+                        olo_kit::agent::Node { role: "ListItem", name: Some(format!("{title}: {keys}").into()), bounds: r, enabled: true, clickable: true, selected: Some(on), ..Default::default() },
                     );
                 }
             }

@@ -5,6 +5,24 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-20
 
+### Preferences ▸ Phone's first step, in Russian
+
+*08:23* — The set-up's steps, a device's state and what failed were in no catalog (53 words, with Bluetooth's). Pictured with a made-up phone (OLO_PHONE_DEMO=connect): a test session lists the person's own.
+
+![Preferences ▸ Phone's first step, in Russian](2026-11-20/082340-preferences-phone-s-first-step-in-russian.png)
+
+### A shortcut's second key, in Japanese
+
+*08:23* — The panel's rows come from app_server as text and are looked up by what they say.
+
+![A shortcut's second key, in Japanese](2026-11-20/082339-a-shortcut-s-second-key-in-japanese.png)
+
+### The shortcuts sheet in Russian
+
+*08:23* — Every shortcut's title and group were the protocol's English in every language, on the sheet, in the panel a two-part shortcut waits in, and in Preferences ▸ Keyboard ▸ Shortcuts: 207 titles, now asked for where they're painted and in twelve languages.
+
+![The shortcuts sheet in Russian](2026-11-20/082336-the-shortcuts-sheet-in-russian.png)
+
 ### Deskbar's menus, in groups
 
 *05:09* — An application's and a workspace's right-click menus as the window menu is: Show and Hide, Move (workspaces, displays, an agent's screen) and Show on AirPlay with the grouping, Close last; said in the singular for one window.

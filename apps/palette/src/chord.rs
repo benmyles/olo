@@ -112,6 +112,13 @@ const FOOT_SAYS: &str = "Esc cancels";
 /// The room a checked row keeps at its right for its mark.
 const CHECK: f32 = 18.0;
 
+/// What app_server said of a group or a shortcut (their names are the
+/// protocol's, in English, and come over the socket as text) in the
+/// person's language.
+fn said(text: &str) -> olo_kit::SharedString {
+    olo_kit::words::lookup(text).map_or_else(|| text.to_owned().into(), Into::into)
+}
+
 fn height(options: usize) -> f32 {
     2.0 * PAD_V + HEAD + options as f32 * ROW + FOOT
 }
@@ -131,8 +138,8 @@ fn cap_width(info: &ChordInfo) -> f32 {
 fn width(info: &ChordInfo) -> f32 {
     let (plain, bold) = (style::ui_font(FontWeight::NORMAL), style::ui_font(FontWeight::BOLD));
     let w = |t: olo_kit::SharedString, size: f32, font: &olo_kit::Font| f32::from(style::text_width(t, size, font.clone()));
-    let rows = info.options.iter().map(|o| w(olo_kit::words::of(o.title.clone()), style::PLAIN_SIZE, &plain) + if o.current { CHECK } else { 0.0 }).fold(0.0, f32::max) + cap_width(info) + CAP_GAP;
-    let head = info.name.as_ref().map_or(0.0, |n| w(olo_kit::words::of(n.clone()), style::PLAIN_SIZE, &bold) + 2.0 * m::SPACING) + style::key_combo_width(&info.label);
+    let rows = info.options.iter().map(|o| w(said(&o.title), style::PLAIN_SIZE, &plain) + if o.current { CHECK } else { 0.0 }).fold(0.0, f32::max) + cap_width(info) + CAP_GAP;
+    let head = info.name.as_ref().map_or(0.0, |n| w(said(n), style::PLAIN_SIZE, &bold) + 2.0 * m::SPACING) + style::key_combo_width(&info.label);
     let foot = w(olo_kit::words::tr(FOOT_SAYS).into(), style::DETAIL_SIZE, &plain);
     let wide = rows.max(head).max(foot) + 2.0 * PAD;
     (wide.clamp(WIDTH_LEAST, WIDTH_MOST) / 2.0).ceil() * 2.0
@@ -156,7 +163,7 @@ impl View for Panel {
             let y = b.top() + px(HEAD / 2.0 - 4.0);
             let keys_w = style::key_combo_width(&first);
             if !name.is_empty() {
-                let said = olo_kit::words::of(name.clone());
+                let said = said(&name);
                 let r =
                     style::label_fit(g, b.left(), y, style::Align::Left, said.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), c(p.panel_text), b.size.width - px(keys_w + m::SPACING));
                 g.agent(olo_kit::agent::Node { role: "Heading", name: Some(said), bounds: r, enabled: true, ..Default::default() });
@@ -173,7 +180,7 @@ impl View for Panel {
         // Each second key on a cap (as the kit's key hints draw theirs),
         // the caps one column, as wide as the widest, so what they do
         // reads down one edge.
-        let options: Vec<(olo_kit::SharedString, olo_kit::SharedString, bool)> = self.info.options.iter().map(|o| (o.label.clone().into(), olo_kit::words::of(o.title.clone()), o.current)).collect();
+        let options: Vec<(olo_kit::SharedString, olo_kit::SharedString, bool)> = self.info.options.iter().map(|o| (o.label.clone().into(), said(&o.title), o.current)).collect();
         let bold = style::ui_font(FontWeight::BOLD);
         let cap_w = cap_width(&self.info);
         let list = canvas(move |g, b| {

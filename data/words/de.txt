@@ -423,8 +423,11 @@ Ein Verweis sieht aus wie op://tresor/eintrag/feld („Geheimnis-Verweis kopiere
 A repository’s key needs to be trusted
 Dem Schlüssel eines Repositorys muss vertraut werden
 
-A reset this account asked for hasn’t been answered yet. Sign in as the same account, or remove this account and add the other.
-Eine Zurücksetzung, die dieser Account angefordert hat, ist noch nicht beantwortet. Melden Sie sich mit demselben Account an, oder entfernen Sie diesen Account und fügen Sie den anderen hinzu.
+A reset this account asked for hasn’t been answered yet. The sign-in is taken as soon as it has.
+Eine Zurücksetzung, die dieser Account angefordert hat, ist noch nicht beantwortet. Die Anmeldung wird übernommen, sobald sie beantwortet ist.
+
+A reset this account asked for hasn’t been answered yet. This sign-in doesn’t say which account it is. Sign in again once it has.
+Eine Zurücksetzung, die dieser Account angefordert hat, ist noch nicht beantwortet. Diese Anmeldung sagt nicht, zu welchem Account sie gehört. Melden Sie sich danach erneut an.
 
 A resting palm can't click (its pressure doesn't count)
 Aufgelegte Hand klickt nicht (ihr Druck zählt nicht)
@@ -474,6 +477,9 @@ Eine Woche
 A week before, at 9 AM
 Eine Woche vorher um 9 Uhr
 
+A word back or on
+Ein Wort zurück oder vor
+
 AI
 KI
 
@@ -509,6 +515,9 @@ Beschleunigung:
 
 Accent
 Akzent
+
+Accept
+Annehmen
 
 Access
 Zugriff
@@ -672,6 +681,9 @@ Adresse:
 Addresses can’t be looked up: {}
 Adressen können nicht nachgeschlagen werden: {}
 
+Adjust Size
+Größe anpassen
+
 Adjust Size…
 Größe anpassen …
 
@@ -809,6 +821,9 @@ Alle {} verbunden.
 Allow
 Erlauben
 
+Allow It on the Phone
+Am Telefon erlauben
+
 Allow NVIDIA Fallback on Battery
 NVIDIA als Ausweichlösung im Akkubetrieb zulassen
 
@@ -817,6 +832,9 @@ Ruhezustand erlauben
 
 Allow Sleep (awake until {})
 Ruhezustand erlauben (wach bis {})
+
+Allow it on the phone
+Am Telefon erlauben
 
 Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).
 „{}“ erlauben, {}{} zu verwenden? „Immer“ lässt es jedes Mal zu, wenn es fragt, bis Sie es zurücknehmen (Ablage ▸ Erlaubte Apps …).
@@ -867,7 +885,7 @@ Always a palm when as large as
 Immer eine Handfläche ab einer Größe von
 
 Always float the application, or not
-Fenster des Programms immer schweben lassen, oder nicht
+Programmfenster immer schwebend oder nicht
 
 Always on Top
 Immer im Vordergrund
@@ -911,6 +929,9 @@ Anderes Fenster
 
 Another account
 Ein anderes Konto
+
+Another program has the phone
+Ein anderes Programm hat das Telefon
 
 Another program has the phone’s message profiles (BlueFerry’s or GNOME’s obexd). Olo Doctor removes BlueFerry.
 Ein anderes Programm hat die Nachrichtenprofile des Telefons (obexd von BlueFerry oder GNOME). Olo Doctor entfernt BlueFerry.
@@ -1027,6 +1048,9 @@ Archivierte Chats
 Archived Conversations
 Archivierte Unterhaltungen
 
+Arranging
+Anordnen
+
 Arrived out of order
 In falscher Reihenfolge angekommen
 
@@ -1041,6 +1065,12 @@ Als Liste
 
 As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines.
 Wie die Workbench ihre Symbole zeichnete: flache Flächen in den sechzehn Stiften eines Bildschirms, schwarze Umrisse.
+
+As a board
+Als Board
+
+As a list
+Als Liste
 
 As fast as the computer goes: the processors kept quick and the firmware's power limits raised, the fans as needed. The battery runs down sooner.
 So schnell wie möglich: Prozessoren flott, Leistungsgrenzen der Firmware angehoben, Lüfter nach Bedarf. Der Akku ist schneller leer.
@@ -1165,6 +1195,9 @@ Bei {}. Ihm den Code von {} geben?
 Attach
 Anhängen
 
+Attach Files
+Dateien anhängen
+
 Attach Files…
 Dateien anhängen …
 
@@ -1179,6 +1212,9 @@ Link anhängen…
 
 Attach a file or a link
 Datei oder Link anhängen
+
+Attach what's on the clipboard
+Inhalt der Zwischenablage anhängen
 
 Attachments
 Anhänge
@@ -1208,7 +1244,10 @@ Auto-Tiling Layout
 Kachel-Layout
 
 Auto-tiling layout:
-Layout der automatischen Kachelung:
+Kachel-Layout:
+
+Auto-tiling on or off
+Automatisches Kacheln ein oder aus
 
 Automatic
 Automatisch
@@ -1254,6 +1293,12 @@ Zurück zu den Chats
 
 Back to Conversations
 Zurück zu den Unterhaltungen
+
+Back to its own size
+Ursprüngliche Größe
+
+Back to its own size, or hide
+Ursprüngliche Größe oder ausblenden
 
 Back to the Days
 Zurück zu den Tagen
@@ -1415,6 +1460,9 @@ Beste Zeit zum Laufen morgen?
 Bigger
 Größer
 
+Bigger text
+Größerer Text
+
 Black
 Schwarz
 
@@ -1426,6 +1474,9 @@ Blau:
 
 Bluetooth
 Bluetooth
+
+Bluetooth couldn't be turned on or off.
+Bluetooth ließ sich nicht ein- oder ausschalten.
 
 Bluetooth couldn’t open the phone’s messages ({}).
 Bluetooth konnte die Nachrichten des Telefons nicht öffnen ({}).
@@ -1448,6 +1499,9 @@ Bluetooth läuft auf diesem Computer nicht.
 Bluetooth said it would open them and no channel came
 Bluetooth wollte sie öffnen, doch es kam kein Kanal
 
+Bluetooth's hardware isn't answering
+Die Bluetooth-Hardware antwortet nicht
+
 Bluetooth…
 Bluetooth …
 
@@ -1459,6 +1513,12 @@ Text
 
 Bold
 Fett
+
+Bookmark Manager
+Lesezeichen-Manager
+
+Bookmark This Tab
+Lesezeichen für diesen Tab
 
 Boost when work arrives and ease back between tasks.
 Steigert die Leistung bei Bedarf und senkt sie zwischen Aufgaben.
@@ -1476,6 +1536,18 @@ Bottom Right Quarter
 Unteres rechtes Viertel
 
 Bottom Two Thirds
+Untere zwei Drittel
+
+Bottom half
+Untere Hälfte
+
+Bottom left quarter
+Unteres linkes Viertel
+
+Bottom right quarter
+Unteres rechtes Viertel
+
+Bottom two thirds
 Untere zwei Drittel
 
 Branch {} is checked out in {} already.
@@ -1531,6 +1603,9 @@ Tasten
 
 By
 Von
+
+By App
+Nach App
 
 By a parent leaving
 Je Elternprozess ab
@@ -1637,6 +1712,9 @@ Wählt …
 Calls
 Anrufe
 
+Camera
+Kamera
+
 Can't make {}: {}
 {} kann nicht angelegt werden: {}
 
@@ -1685,11 +1763,20 @@ Client-Anfragen erneut aufzeichnen
 Capture debug information whenever a frame drops
 Bei jedem ausgelassenen Frame Debug-Informationen aufzeichnen
 
+Cards
+Karten
+
 Cascade All
 Alle überlappend anordnen
 
 Cascade Others
 Andere überlappend anordnen
+
+Cascade all windows on the display
+Alle Fenster des Bildschirms überlappend anordnen
+
+Cascade the other windows, leaving this one
+Die anderen Fenster überlappend anordnen, dieses bleibt
 
 Case
 Etui
@@ -1706,10 +1793,19 @@ Decke {}
 Celsius (°C)
 Celsius (°C)
 
+Center
+Zentrieren
+
 Center Third
 Mittleres Drittel
 
 Center Two Thirds
+Mittlere zwei Drittel
+
+Center third
+Mittleres Drittel
+
+Center two thirds
 Mittlere zwei Drittel
 
 Chance
@@ -1723,6 +1819,9 @@ API-ID ändern …
 
 Change Background…
 Hintergrund ändern …
+
+Change them in Preferences ▸ Keyboard ▸ Shortcuts.
+Ändern Sie sie in Einstellungen ▸ Tastatur ▸ Tastenkürzel.
 
 Changed both here and in 1Password: 1Password’s version replaces it here, and yours is kept as “{} (conflict)”
 Hier und in 1Password geändert: Die Version aus 1Password ersetzt sie hier, Ihre bleibt als „{} (Konflikt)“ erhalten
@@ -1774,6 +1873,9 @@ Zustand prüfen
 
 Check Spelling While Typing
 Rechtschreibung während der Eingabe prüfen
+
+Check everything
+Alles prüfen
 
 Check for Updates
 Nach Updates suchen
@@ -1867,8 +1969,26 @@ Für den ganzen Computer gewählt und über Neustarts hinweg beibehalten. Es geh
 Chosen outside dnf
 Außerhalb von dnf gewählt
 
+Chrome and Slack
+Chrome und Slack
+
 Chrome holds it, as it may be harmful: keep it or delete it in Chrome’s Downloads.
 Chrome hält die Datei zurück, da sie schädlich sein könnte: Behalte oder lösche sie in den Downloads von Chrome.
+
+Chrome: Bookmarks and History
+Chrome: Lesezeichen und Verlauf
+
+Chrome: Developer
+Chrome: Entwickler
+
+Chrome: Going Places
+Chrome: Navigation
+
+Chrome: Tabs and Windows
+Chrome: Tabs und Fenster
+
+Chrome: View
+Chrome: Darstellung
 
 City or region
 Stadt oder Region
@@ -1925,6 +2045,9 @@ Alle löschen
 Clear All Tabs
 Alle Tabs leeren
 
+Clear Browsing Data
+Browserdaten löschen
+
 Clear History
 Verlauf löschen
 
@@ -1956,7 +2079,7 @@ Click a ring to go into a folder, the middle to go back up; drag anything you do
 Klicken Sie auf einen Ring, um einen Ordner zu öffnen, auf die Mitte, um zurückzugehen; ziehen Sie Unnötiges in den Sammler.
 
 Click a shortcut to give it other keys.
-Klicken Sie auf einen Kurzbefehl, um ihm eine neue Tastenkombination zuzuweisen.
+Klicken Sie auf ein Tastenkürzel, um es zu ändern.
 
 Click an event to see it here; double-click it to change it.
 Klicken Sie auf einen Termin, um ihn hier zu sehen; doppelklicken Sie darauf, um ihn zu ändern.
@@ -2015,6 +2138,9 @@ Tab schließen
 Close Window
 Fenster schließen
 
+Close the window
+Fenster schließen
+
 Cloud Heights
 Wolkenhöhen
 
@@ -2047,6 +2173,12 @@ Code an Agenten-Bildschirm „{}“ gegeben
 
 Code:
 Code:
+
+Codes texted to this phone are offered in the browser tab waiting for them.
+Per SMS an dieses Telefon gesendete Codes werden im Browser-Tab angeboten, der auf sie wartet.
+
+Codes texted to this phone aren’t looked for.
+Nach per SMS an dieses Telefon gesendeten Codes wird nicht gesucht.
 
 Codex
 Codex
@@ -2093,6 +2225,9 @@ Spaltenansicht
 Columns
 Spalten
 
+Command Palette
+Befehlspalette
+
 Command Suggestions
 Befehlsvorschläge
 
@@ -2101,6 +2236,9 @@ Befehlstaste:
 
 Command or Comment
 Befehl oder Kommentar
+
+Command palette
+Befehlspalette
 
 Comment
 Kommentar
@@ -2132,6 +2270,9 @@ Komprimierte Auslagerung
 Compressed to
 Komprimiert auf
 
+Computer
+Computer
+
 Computes with
 Rechnet mit
 
@@ -2143,6 +2284,12 @@ IPv6 konfigurieren:
 
 Confirm
 Bestätigen
+
+Confirm the Code
+Code bestätigen
+
+Confirm the code
+Code bestätigen
 
 Confirm:
 Bestätigen:
@@ -2165,6 +2312,12 @@ Automatisch verbinden, wenn Sie sie hier einsetzen
 Connect with a Token…
 Mit einem Token verbinden …
 
+Connect your phone
+Telefon verbinden
+
+Connected
+Verbunden
+
 Connected as {}, through {}.
 Verbunden als {}, über {}.
 
@@ -2177,6 +2330,9 @@ Verbunden mit „{}“: {}
 Connected {}, but its sign-in wasn’t allowed {}: Sign In Again and allow everything it asks.
 Verbunden {}, aber seine Anmeldung wurde {} nicht erlaubt: Melden Sie sich erneut an und erlauben Sie alles, was gefragt wird.
 
+Connected, {}%
+Verbunden, {} %
+
 Connected.
 Verbunden.
 
@@ -2185,6 +2341,9 @@ Verbindung zu Telegram …
 
 Connecting to “{}”…
 Verbindung mit „{}“ …
+
+Connecting…
+Verbinden …
 
 Connection
 Verbindung
@@ -2215,6 +2374,9 @@ Unterhaltung
 
 Conversation Awareness
 Gesprächserkennung
+
+Conversations
+Unterhaltungen
 
 Convert to Table
 In Tabelle umwandeln
@@ -2338,6 +2500,9 @@ Das Abgelegte konnte nicht gesichert werden: {}
 
 Couldn't save: {}
 Sichern nicht möglich: {}
+
+Couldn't search for devices.
+Die Suche nach Geräten ist fehlgeschlagen.
 
 Couldn’t archive it. {}
 Konnte nicht archiviert werden. {}
@@ -2627,6 +2792,9 @@ Tresor löschen
 Delete Vault…
 Tresor löschen …
 
+Delete a word
+Ein Wort löschen
+
 Delete the event
 Termin löschen
 
@@ -2644,6 +2812,9 @@ Diese {} Sicherungen löschen? Der nur von ihnen belegte Platz wird freigegeben;
 
 Delete this backup? The space only it took is freed; files other backups hold too stay in those. It can’t be undone.
 Diese Sicherung löschen? Der nur von ihr belegte Platz wird freigegeben; Dateien, die auch andere Sicherungen enthalten, bleiben dort. Das kann nicht widerrufen werden.
+
+Delete to the line's start
+Bis zum Zeilenanfang löschen
 
 Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
 {} ({}) endgültig löschen? Sie kommen nicht in den Papierkorb, und das kann nicht widerrufen werden.
@@ -2738,6 +2909,9 @@ Die Deskbar zeigt: {}
 Deskbar: a {} widget measured “{}”, which this computer hasn't; it measures {} instead.
 Deskbar: Ein {}-Widget hat „{}“ gemessen, das dieser Computer nicht hat; es misst stattdessen {}.
 
+Desktop
+Schreibtisch
+
 Desktop (Preferences)
 Schreibtisch (Einstellungen)
 
@@ -2752,6 +2926,9 @@ Ziel
 
 Details
 Details
+
+Developer Tools
+Entwicklertools
 
 Device
 Gerät
@@ -2798,6 +2975,9 @@ Google Drive ({}) trennen? DiskBackup sichert dann nicht mehr dorthin und vergis
 Disconnecting from Google Drive…
 Verbindung zu Google Drive wird getrennt …
 
+Disconnecting…
+Trennen …
+
 Disconnect…
 Trennen …
 
@@ -2806,6 +2986,9 @@ Laufwerk
 
 Disk Space
 Speicherplatz
+
+Disk Usage
+Disk Usage
 
 Disk:
 Laufwerk:
@@ -2901,6 +3084,9 @@ Do Not Disturb is on
 Do Not Disturb is on — {} unread
 „Nicht stören“ ist an – {} ungelesen
 
+Do the result's other action
+Andere Aktion des Ergebnisses ausführen
+
 Dockerfile
 Dockerfile
 
@@ -2915,6 +3101,9 @@ Dokumente
 
 Does “{}” show this number?
 Zeigt „{}“ diese Zahl?
+
+Does “{}” show {}?
+Zeigt „{}“ {}?
 
 Doing
 In Arbeit
@@ -2967,6 +3156,9 @@ Download: {}
 Downloading…
 Download …
 
+Downloads
+Downloads
+
 Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
 Ziehen Sie ein Fenster an seinem Tab und lassen Sie es in einem Platz los, oder drücken Sie dessen Buchstaben: Das Fenster nimmt ihn ein. Im Platz eines anderen Fensters losgelassen, tauschen die beiden. Esc setzt alles zurück.
 
@@ -2979,11 +3171,17 @@ Fenster ziehen
 Draw
 Zeichnen
 
+Draw tool
+Zeichenwerkzeug
+
 Drawing
 Zeichnen
 
 Drawn into each frame
 In jeden Frame gezeichnet
+
+Drive Setup
+Drive Setup
 
 DriveSetup
 DriveSetup
@@ -3105,6 +3303,12 @@ Jede Art öffnet sich in dieser App, wo immer Sie sie öffnen, in Olo und in and
 Each network's own
 Die jedes Netzwerks
 
+Each new window takes a tile, and the others make room.
+Jedes neue Fenster bekommt eine Kachel, und die anderen machen Platz.
+
+Each new window takes half of the one you were using.
+Jedes neue Fenster nimmt die Hälfte des Fensters ein, das Sie gerade benutzt haben.
+
 Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
 Jedes davon, einmal eingerichtet, ersetzt Ihr Passwort, wo immer es verlangt wird (Passwords, sudo im Terminal, Administratoranfragen; Gesicht oder Fingerabdruck auch Sperr- und Anmeldebildschirm), alle zugleich: was Sie zuerst benutzen.
 
@@ -3116,6 +3320,9 @@ Jede ausprobierte Einstellung erscheint hier.
 
 Each shows in the Deskbar as it changes. A click on one there opens its app: Activity Monitor, Token Pool or the app it’s from.
 Jedes erscheint in der Deskbar, sobald es sich ändert. Ein Klick darauf öffnet sein Programm: die Aktivitätsanzeige, den Token Pool oder das Programm, von dem es kommt.
+
+Each window takes half of the room left, round in a spiral.
+Jedes Fenster nimmt die Hälfte des verbleibenden Platzes ein, reihum in einer Spirale.
 
 Edge
 Rand
@@ -3147,6 +3354,9 @@ Swap- und Backupdateien von Editoren
 Edit…
 Bearbeiten…
 
+Eighth folder
+Achter Ordner
+
 Either AirPod
 Ein beliebiger AirPod
 
@@ -3164,6 +3374,9 @@ E-Mail-Konten
 
 Emoji
 Emoji
+
+Emoji & symbols
+Emoji & Symbole
 
 Empty
 Leer
@@ -3261,6 +3474,9 @@ Erlang
 Esc cancels
 Esc bricht ab
 
+Esc closes
+Esc schließt
+
 Ethernet
 Ethernet
 
@@ -3273,6 +3489,9 @@ Stimmpegel ausgleichen
 Even With the Lid Closed
 Auch bei geschlossenem Deckel
 
+Even out the tiles
+Kacheln angleichen
+
 Even out the voice's level
 Lautstärke der Stimme ausgleichen
 
@@ -3284,6 +3503,9 @@ Alle 2 Wochen
 
 Every 2 weeks
 Alle 2 Wochen
+
+Every Application
+Alle Programme
 
 Every Counter
 Jeder Zähler
@@ -3345,6 +3567,15 @@ Wöchentlich
 Every weekday
 An Werktagen
 
+Every window a column of its own width, in a strip that scrolls to the active one.
+Jedes Fenster eine Spalte in eigener Breite, in einem Streifen, der zum aktiven Fenster scrollt.
+
+Every window a column, each as wide.
+Jedes Fenster eine Spalte, alle gleich breit.
+
+Every window a row, each as tall.
+Jedes Fenster eine Zeile, alle gleich hoch.
+
 Every year
 Jährlich
 
@@ -3378,6 +3609,9 @@ Alles Nötige gesucht, in {}.
 
 Export
 Exportieren
+
+Export Flattened PDF
+Reduziertes PDF exportieren
 
 Export Flattened PDF…
 Reduziertes PDF exportieren …
@@ -3475,6 +3709,12 @@ Lüfterstufe {}
 Fan level {} · {}
 Lüfterstufe {} · {}
 
+Fan out all windows, tabs side by side
+Alle Fenster auffächern, Tabs nebeneinander
+
+Fan out the other windows, leaving this one
+Die anderen Fenster auffächern, dieses bleibt
+
 Fans
 Lüfter
 
@@ -3529,8 +3769,14 @@ Vorhersage wird geladen …
 Fetching…
 Wird abgerufen …
 
+Fewer main windows
+Weniger Hauptfenster
+
 Field
 Feld
+
+Fifth folder
+Fünfter Ordner
 
 File
 Ablage
@@ -3556,11 +3802,17 @@ Suchen
 Find Again
 Weitersuchen
 
+Find Next
+Weitersuchen
+
 Find Previous
 Rückwärts suchen
 
 Find Selection
 Auswahl suchen
+
+Find Your Phone
+Telefon finden
 
 Find a free hour this week
 Eine freie Stunde diese Woche finden
@@ -3570,6 +3822,12 @@ App suchen
 
 Find in document
 Im Dokument suchen
+
+Find the selection
+Auswahl suchen
+
+Find your phone
+Telefon finden
 
 Find:
 Suchen:
@@ -3622,6 +3880,9 @@ Firmware-Lüfterkurve
 First Page
 Erste Seite
 
+First folder
+Erster Ordner
+
 First, as the main window
 Zuerst, als Hauptfenster
 
@@ -3640,6 +3901,9 @@ Breite anpassen
 Fix
 Beheben
 
+Fix and apply what's checked
+Markiertes beheben und anwenden
+
 Fix in Olo Doctor…
 In Olo Doctor beheben …
 
@@ -3648,6 +3912,12 @@ Horizontal spiegeln
 
 Flip Vertical
 Vertikal spiegeln
+
+Flip the tiles left and right
+Kacheln links und rechts spiegeln
+
+Flip the tiles top and bottom
+Kacheln oben und unten spiegeln
 
 Float
 Schweben
@@ -3665,7 +3935,10 @@ Float Window Group
 Fenstergruppe schweben lassen
 
 Float out of its group, or tile
-Aus seiner Gruppe schweben lassen, oder kacheln
+Aus seiner Gruppe schweben lassen oder kacheln
+
+Float over the tiles, or tile
+Über den Kacheln schweben oder kacheln
 
 Flurries
 Schneegestöber
@@ -3675,6 +3948,27 @@ Fokus
 
 Focus follows the pointer
 Fokus folgt dem Zeiger
+
+Focus mode on or off
+Fokusmodus ein oder aus
+
+Focus the next tile
+Nächste Kachel aktivieren
+
+Focus the previous tile
+Vorherige Kachel aktivieren
+
+Focus the window above
+Fenster darüber aktivieren
+
+Focus the window below
+Fenster darunter aktivieren
+
+Focus the window to the left
+Fenster links aktivieren
+
+Focus the window to the right
+Fenster rechts aktivieren
 
 Fog
 Nebel
@@ -3781,6 +4075,9 @@ Gefunden als {}. Leer lassen für diesen Namen.
 Four fingers
 Vier Finger
 
+Fourth folder
+Vierter Ordner
+
 Free
 Frei
 
@@ -3832,6 +4129,9 @@ Von {} bis {}
 From:
 Von:
 
+Full Screen
+Vollbild
+
 Full access couldn't be asked for. {}
 Vollzugriff konnte nicht angefordert werden. {}
 
@@ -3846,6 +4146,9 @@ GPU:
 
 GPUs are tuned only in the person's own session (polkit asks there).
 GPUs werden nur in der eigenen Sitzung der Person eingestellt (polkit fragt dort).
+
+Game controller
+Gamecontroller
 
 Game saves
 Spielstände
@@ -3915,6 +4218,9 @@ Gehe zu
 
 Go to End
 Zum Ende
+
+Go to File or Folder
+Gehe zu Datei oder Ordner
 
 Go to File or Folder…
 Gehe zu Datei oder Ordner …
@@ -4084,6 +4390,9 @@ Heading 6
 Headless
 Headless
 
+Headphones
+Kopfhörer
+
 Health
 Zustand
 
@@ -4147,6 +4456,18 @@ Tab beim Kacheln ausblenden
 Hide or show Deskbar
 Deskbar aus- oder einblenden
 
+Hide or show the details
+Details aus- oder einblenden
+
+Hide or show the sidebar
+Seitenleiste aus- oder einblenden
+
+Hide the application
+Programm ausblenden
+
+Hide window
+Fenster ausblenden
+
 High
 Hoch
 
@@ -4185,6 +4506,9 @@ Hält
 
 Home
 Benutzerordner
+
+Home Page
+Startseite
 
 Hosts
 Hosts
@@ -4447,6 +4771,9 @@ Untersuchen
 Inspect Parent
 Elternprozess untersuchen
 
+Inspect Process
+Prozess untersuchen
+
 Install Now
 Jetzt installieren
 
@@ -4576,6 +4903,9 @@ Sein App-Passwort ist nicht im Schlüsselbund: Entfernen Sie es und fügen Sie e
 Its click is its own: a resting palm can't press.
 Sein Klick gehört ihm: Eine aufgelegte Hand kann nicht drücken.
 
+Its contacts haven’t come (Sync Contacts, on the phone)
+Seine Kontakte sind nicht gekommen („Kontakte synchronisieren“ am Telefon)
+
 Its decoder, on its battery preset (Power Modes), costs less than the processor's cores; off, the processor decodes on battery.
 Ihr Decoder kostet mit ihrer Akku-Voreinstellung (Energiemodi) weniger als die Prozessorkerne; aus, dekodiert im Akkubetrieb der Prozessor.
 
@@ -4667,6 +4997,9 @@ Java
 
 JavaScript
 JavaScript
+
+JavaScript Console
+JavaScript-Konsole
 
 JavaScript packages and build output
 JavaScript-Pakete und Build-Ergebnisse
@@ -4824,6 +5157,9 @@ Tastaturprofil
 Keyboard Shortcuts
 Tastenkürzel
 
+Keyboard shortcuts
+Tastenkürzel
+
 Keyboard: the Mac profile came along, ⌘ on the Super key (the Windows key on most PC keyboards). Preferences ▸ Keyboard picks another for this keyboard.
 Tastatur: Das Mac-Profil wurde übernommen, ⌘ auf der Super-Taste (bei den meisten PC-Tastaturen die Windows-Taste). Einstellungen ▸ Tastatur wählt ein anderes für diese Tastatur.
 
@@ -4956,14 +5292,23 @@ Linkes Drittel
 Left Two Thirds
 Linke zwei Drittel
 
+Left half
+Linke Hälfte
+
 Left out, as dnf wouldn’t take it: {}. ({})
 Ausgelassen, da dnf es nicht annahm: {}. ({})
 
 Left out, as dnf wouldn’t take them: {}. ({})
 Ausgelassen, da dnf sie nicht annahm: {}. ({})
 
+Left third
+Linkes Drittel
+
 Left to the firmware for now
 Vorerst der Firmware überlassen
+
+Left two thirds
+Linke zwei Drittel
 
 Left-handed (swap the buttons)
 Linkshändig (Tasten tauschen)
@@ -4973,6 +5318,9 @@ Länge
 
 Less noise
 Weniger Rauschen
+
+Less space between windows
+Weniger Abstand zwischen Fenstern
 
 Let coding agents keep their tab’s title current
 Coding-Agenten den Titel ihres Tabs aktuell halten lassen
@@ -5118,6 +5466,9 @@ Sperren nach Leerlauf von:
 Lock the Screen
 Bildschirm sperren
 
+Lock the screen
+Bildschirm sperren
+
 Lock the screen when the display turns off
 Bildschirm sperren, wenn das Display ausgeht
 
@@ -5138,6 +5489,9 @@ Abmelden …
 
 Login
 Anmeldung
+
+Logs
+Logs
 
 Long
 Lang
@@ -5175,6 +5529,9 @@ Es wird nachgesehen, was da ist …
 Looking at which processes use it…
 Es wird nachgesehen, welche Prozesse es nutzen …
 
+Looking for Bluetooth…
+Bluetooth wird gesucht …
+
 Looking for a newer release…
 Neuere Version wird gesucht …
 
@@ -5187,6 +5544,9 @@ Seine Kalender werden gesucht …
 Looking for network devices…
 Netzwerkgeräte werden gesucht …
 
+Looking for phones nearby…
+Telefone in der Nähe werden gesucht …
+
 Looking for security keys…
 Sicherheitsschlüssel werden gesucht …
 
@@ -5195,6 +5555,9 @@ Audiogeräte werden gesucht …
 
 Looking for the fingerprint sensor…
 Fingerabdrucksensor wird gesucht …
+
+Looking for the phone…
+Telefon wird gesucht …
 
 Looking for volumes…
 Volumes werden gesucht …
@@ -5331,8 +5694,17 @@ App-Passwort erstellen …
 Make an app password for Olo in Fastmail (Settings ▸ Privacy & Security ▸ Manage app passwords and access) with access to mail and calendars. It’s kept in your login keyring.
 Erstellen Sie in Fastmail ein App-Passwort für Olo (Settings ▸ Privacy & Security ▸ Manage app passwords and access) mit Zugriff auf E-Mail und Kalender. Es wird in Ihrem Anmelde-Schlüsselbund aufbewahrt.
 
+Make it the main window
+Zum Hauptfenster machen
+
 Make one at my.telegram.org ▸ API development tools (sign in there with your phone number), then copy its App api_id and api_hash here.
 Erstellen Sie eine unter my.telegram.org ▸ API development tools (melden Sie sich dort mit Ihrer Telefonnummer an) und kopieren Sie deren App api_id und api_hash hierher.
+
+Make the main windows bigger
+Hauptfenster vergrößern
+
+Make the main windows smaller
+Hauptfenster verkleinern
 
 Make this the main display
 Zum Hauptbildschirm machen
@@ -5378,6 +5750,12 @@ Als offen markieren
 
 Mark as Read
 Als gelesen markieren
+
+Mark as Read or Unread
+Als gelesen oder ungelesen markieren
+
+Mark as done, or not done
+Als erledigt markieren oder nicht
 
 Markdown
 Markdown
@@ -5443,7 +5821,7 @@ Messages are coming. Contacts follow once Sync Contacts is on.
 Nachrichten kommen. Kontakte folgen, sobald „Kontakte synchronisieren“ an ist.
 
 Messages: each as it comes, answered in place
-Nachrichten: jede, sobald sie kommt, direkt beantwortet
+Nachrichten: jede sofort, hier beantwortbar
 
 Meter
 Anzeige
@@ -5523,8 +5901,14 @@ Mehr
 More Menus
 Weitere Menüs
 
+More main windows
+Mehr Hauptfenster
+
 More noise
 Mehr Rauschen
+
+More space between windows
+Mehr Abstand zwischen Fenstern
 
 Mostly clear
 Überwiegend klar
@@ -5706,6 +6090,12 @@ Alle {} archivierten Chats zurück in die Chatliste verschieben?
 Move both archived chats back to your chat list?
 Beide archivierten Chats zurück in die Chatliste verschieben?
 
+Move every tile's window back one
+Jedes Fenster eine Kachel zurück
+
+Move every tile's window on one
+Jedes Fenster eine Kachel weiter
+
 Move the archived chat back to your chat list?
 Den archivierten Chat zurück in die Chatliste verschieben?
 
@@ -5714,6 +6104,18 @@ Zeiger bewegen
 
 Move the pointer on a thread of its own
 Zeiger in einem eigenen Thread bewegen
+
+Move the tile's edge down
+Kachelrand nach unten
+
+Move the tile's edge left
+Kachelrand nach links
+
+Move the tile's edge right
+Kachelrand nach rechts
+
+Move the tile's edge up
+Kachelrand nach oben
 
 Move to Archive
 Ins Archiv bewegen
@@ -5726,6 +6128,9 @@ In den Papierkorb legen
 
 Move to Workspace
 Auf Arbeitsfläche bewegen
+
+Move to the scratchpad
+In die Ablage legen
 
 Move to {}
 Nach {} verschieben
@@ -5802,6 +6207,9 @@ Enger als sRGB ({} % davon)
 Natural scrolling (content follows your fingers)
 Natürliches Scrollen (Inhalt folgt den Fingern)
 
+Nearby
+In der Nähe
+
 Needed by another package
 Von einem anderen Paket benötigt
 
@@ -5844,6 +6252,9 @@ Neuer Ordner
 New Group…
 Neue Gruppe …
 
+New Incognito Window
+Neues Inkognitofenster
+
 New Item
 Neues Objekt
 
@@ -5852,6 +6263,9 @@ Neue Liste
 
 New List…
 Neue Liste…
+
+New Login
+Neuer Login
 
 New Message
 Neue Nachricht
@@ -5970,14 +6384,38 @@ Nächster Tab
 Next Week
 Nächste Woche
 
+Next auto-tiling layout
+Nächstes Kachel-Layout
+
+Next column width (Scrolling)
+Nächste Spaltenbreite (Scrollen)
+
 Next day, week or month
 Nächster Tag, Woche oder Monat
 
 Next step
 Nächster Schritt
 
+Next tab in the window
+Nächster Tab im Fenster
+
 Next when you click Back Up Now.
 Die nächste, wenn Sie auf „Jetzt sichern“ klicken.
+
+Next window above the tile
+Nächstes Fenster über der Kachel
+
+Next window below the tile
+Nächstes Fenster unter der Kachel
+
+Next window to the tile's left
+Nächstes Fenster links von der Kachel
+
+Next window to the tile's right
+Nächstes Fenster rechts von der Kachel
+
+Next workspace
+Nächste Arbeitsfläche
 
 Next {}.
 Nächste {}.
@@ -6117,8 +6555,14 @@ Niemand bei Telegram heißt {}.
 No open files.
 Keine offenen Dateien.
 
+No phone found yet.
+Noch kein Telefon gefunden.
+
 No phone or mail account is set up: a phone in Phone, a Google or Fastmail account for Mail in Integrations.
 Kein Telefon und kein E-Mail-Konto eingerichtet: ein Telefon unter „Telefon“, ein Google- oder Fastmail-Konto für Mail unter „Integrationen“.
+
+No phone paired
+Kein Telefon gekoppelt
 
 No power profiles daemon is running (power-profiles-daemon, or tuned-ppd on Fedora): Olo sets the power mode through it.
 Kein Energieprofil-Dienst läuft (power-profiles-daemon oder tuned-ppd unter Fedora): Olo stellt den Energiemodus darüber ein.
@@ -6220,7 +6664,7 @@ None. An alert’s Ignore This Process adds one here.
 Keine. „Diesen Prozess ignorieren“ in einem Hinweis fügt hier einen hinzu.
 
 None. To add an app, choose Float Window ▸ Always in the window menu of one of its windows.
-Keine. Um eine App hinzuzufügen, wählen Sie „Float Window ▸ Always“ im Fenstermenü eines ihrer Fenster.
+Keine. Um eine App hinzuzufügen, wählen Sie „Fenster schweben lassen ▸ Immer“ im Fenstermenü eines ihrer Fenster.
 
 None. To give an app one, choose Always Open on Workspace in the window menu of one of its windows.
 Keine. Um einer App eine zu geben, wählen Sie „Always Open on Workspace“ im Fenstermenü eines ihrer Fenster.
@@ -6401,6 +6845,9 @@ Nichts geändert: Olos eigenes Modell ist weiter in Gebrauch.
 
 Nothing coming up
 Nichts geplant
+
+Nothing connects until it starts again. Olo Doctor restarts it (it asks for your password).
+Nichts verbindet sich, bis sie neu startet. Olo Doctor startet sie neu (und fragt nach Ihrem Passwort).
 
 Nothing done yet
 Noch nichts erledigt
@@ -6720,6 +7167,9 @@ Nur eine https://-Adresse: Eine, die abgehört werden kann, könnte unterwegs ve
 Only on battery power
 Nur im Akkubetrieb
 
+Only the active window shows, zoomed, with its dialogs over it.
+Nur das aktive Fenster ist zu sehen, gezoomt, mit seinen Dialogen darüber.
+
 Only the latest of the same notification
 Nur die neueste derselben Mitteilung
 
@@ -6752,6 +7202,9 @@ Integrationen öffnen …
 
 Open Link
 Link öffnen
+
+Open Location
+Adresse öffnen
 
 Open Log File…
 Protokolldatei öffnen …
@@ -6894,6 +7347,9 @@ Andere …
 Out of memory:
 Kein Speicher mehr:
 
+Out of reach
+Außer Reichweite
+
 Output
 Ausgabe
 
@@ -6902,6 +7358,9 @@ Overdue
 
 Overview
 Übersicht
+
+Overview of every window
+Übersicht aller Fenster
 
 Overwrite the old data with zeros (slow)
 Alte Daten mit Nullen überschreiben (langsam)
@@ -6933,14 +7392,29 @@ Seite {} von {}
 Pair
 Koppeln
 
+Paired
+Gekoppelt
+
+Paired with this computer; not yet sharing its messages
+Mit diesem Computer gekoppelt; teilt seine Nachrichten noch nicht
+
 Paired with {}.
 Mit {} gekoppelt.
 
 Pairing
 Koppeln
 
+Pairing didn't work.
+Das Koppeln hat nicht geklappt.
+
+Pairing didn’t finish. Try again, with the phone unlocked on its Bluetooth settings.
+Das Koppeln wurde nicht abgeschlossen. Versuchen Sie es erneut, mit entsperrtem Telefon in dessen Bluetooth-Einstellungen.
+
 Pairing with {} didn't work: {}.
 Koppeln mit {} hat nicht geklappt: {}.
+
+Pairing…
+Koppeln …
 
 Pair…
 Koppeln …
@@ -7220,6 +7694,9 @@ Anheften
 Pin as Main
 Als Hauptfenster anheften
 
+Pin it as the main window, or let it go
+Als Hauptfenster anheften oder lösen
+
 Pinch to zoom
 Zum Zoomen zusammenziehen
 
@@ -7409,11 +7886,23 @@ Vorheriger Tab
 Previous Week
 Vorherige Woche
 
+Previous auto-tiling layout
+Vorheriges Kachel-Layout
+
 Previous day, week or month
 Vorheriger Tag, Woche oder Monat
 
+Previous tab in the window
+Vorheriger Tab im Fenster
+
+Previous workspace
+Vorherige Arbeitsfläche
+
 Print
 Drucken
+
+Printer
+Drucker
 
 Print…
 Drucken …
@@ -7546,6 +8035,9 @@ Ruhe für 1 Stunde
 
 Quit
 Beenden
+
+Quit Chrome
+Chrome beenden
 
 Quit Now
 Jetzt beenden
@@ -7712,6 +8204,9 @@ Ton des Computers aufnehmen
 Record the Microphone
 Mikrofon aufnehmen
 
+Record the screen, or stop
+Bildschirm aufnehmen oder stoppen
+
 Recording
 Aufnahme
 
@@ -7754,6 +8249,9 @@ Wiederholen
 Redo Window Arrangement
 Fensteranordnung wiederholen
 
+Redo window arrangement
+Fensteranordnung wiederholen
+
 Redo {}
 {} wiederholen
 
@@ -7780,6 +8278,15 @@ Neu erzeugen
 
 Reinstall Selected…
 Auswahl neu installieren …
+
+Reject
+Ablehnen
+
+Reload
+Neu laden
+
+Reload Without the Cache
+Ohne Cache neu laden
 
 Remind:
 Erinnern:
@@ -7850,6 +8357,9 @@ Remove “{}” from Favorites
 Remove…
 Entfernen …
 
+Removing…
+Entfernen …
+
 Rename
 Umbenennen
 
@@ -7874,6 +8384,9 @@ Worktree umbenennen …
 Rename…
 Umbenennen …
 
+Reopen Closed Tab
+Geschlossenen Tab wieder öffnen
+
 Repeat rate
 Wiederholrate
 
@@ -7885,6 +8398,9 @@ Ersetzen
 
 Replace Same
 Gleiche ersetzen
+
+Replace and find again
+Ersetzen und weitersuchen
 
 Replace the one-time code of your login {} with the one this page shows?
 Den Einmalcode Ihrer Anmeldung {} durch den ersetzen, den diese Seite zeigt?
@@ -8087,6 +8603,18 @@ Rechte zwei Drittel
 Right first
 Gleich richtig
 
+Right half
+Rechte Hälfte
+
+Right third
+Rechtes Drittel
+
+Right two thirds
+Rechte zwei Drittel
+
+Roll up or down
+Auf- oder abrollen
+
 Room:
 Raum:
 
@@ -8095,6 +8623,12 @@ Links drehen
 
 Rotate Right
 Rechts drehen
+
+Rotate the tiles
+Kacheln drehen
+
+Rotate the tiles back
+Kacheln zurückdrehen
 
 Round trip
 Paketlaufzeit
@@ -8161,6 +8695,9 @@ Samstag
 
 Save
 Sichern
+
+Save As
+Sichern unter
 
 Save As…
 Sichern unter …
@@ -8231,6 +8768,9 @@ Benutzerordner untersuchen
 Scan Volume
 Volume untersuchen
 
+Scan a Folder
+Ordner untersuchen
+
 Scan a Folder…
 Ordner untersuchen …
 
@@ -8267,8 +8807,26 @@ Bildschirmschoner
 Screenshot
 Bildschirmfoto
 
+Screenshot app
+Bildschirmfoto-App
+
+Screenshot of an area
+Bildschirmfoto eines Bereichs
+
+Screenshot of the screen
+Bildschirmfoto des Bildschirms
+
+Screenshot of the window
+Bildschirmfoto des Fensters
+
+Screenshots
+Bildschirmfotos
+
 Scroll
 Scrollen
+
+Scroll for more · Esc closes
+Scrollen für mehr · Esc schließt
 
 Scroll while the middle button is held
 Scrollen, während die mittlere Taste gedrückt ist
@@ -8302,6 +8860,9 @@ Suche: Wörter, program:, level:, since:
 
 Searching…
 Suche läuft …
+
+Second folder
+Zweiter Ordner
 
 Secondary click (three: middle)
 Sekundärklick (drei: Mittelklick)
@@ -8366,6 +8927,12 @@ Wählen Sie eine Transaktion aus, um zu sehen, was sie mit jedem Paket gemacht h
 Select an update to read about it: its versions, why it came out, what changed.
 Wählen Sie eine Aktualisierung, um darüber zu lesen: ihre Versionen, warum sie erschien, was sich geändert hat.
 
+Select as you go: with any of these
+Dabei auswählen: mit jeder dieser Tasten
+
+Select tool
+Auswahlwerkzeug
+
 Selected {} to {}
 Ausgewählt von {} bis {}
 
@@ -8385,6 +8952,9 @@ Send Voice Message
 Sprachnachricht senden
 
 Send to Back
+Nach hinten stellen
+
+Send to back
 Nach hinten stellen
 
 Send with BBRv3
@@ -8505,6 +9075,9 @@ Einstellungen
 Settings:
 Einstellungen:
 
+Seventh folder
+Siebter Ordner
+
 Shaping
 Drosselung
 
@@ -8559,6 +9132,9 @@ Zeigen
 Show All
 Alle zeigen
 
+Show All Tabs
+Alle Tabs zeigen
+
 Show Archived
 Archivierte zeigen
 
@@ -8567,6 +9143,9 @@ Archivierte Unterhaltungen zeigen
 
 Show Assistant
 Assistent zeigen
+
+Show Bookmarks Bar
+Lesezeichenleiste zeigen
 
 Show Calendars
 Kalender zeigen
@@ -8658,11 +9237,17 @@ Auf AirPlay zeigen
 Show on All Workspaces
 Auf allen Arbeitsflächen zeigen
 
+Show on all workspaces
+Auf allen Arbeitsflächen zeigen
+
 Show or Hide All Windows
 Alle Fenster ein- oder ausblenden
 
 Show or hide the assistant
 Assistent ein- oder ausblenden
+
+Show or hide the scratchpad
+Ablage ein- oder ausblenden
 
 Show or hide the source
 Quelltext ein- oder ausblenden
@@ -8672,6 +9257,9 @@ Sekunden zeigen
 
 Show the day of the week
 Wochentag zeigen
+
+Show the desktop
+Schreibtisch zeigen
 
 Show the phone’s other notifications
 Die anderen Mitteilungen des Telefons zeigen
@@ -8763,6 +9351,9 @@ Signieren …
 Site Settings
 Website-Einstellungen
 
+Sixth folder
+Sechster Ordner
+
 Size
 Größe
 
@@ -8798,6 +9389,9 @@ Klein: eine Zeile. Mittel und Groß: alles, was es zeigt, bei Groß mit größer
 
 Smaller
 Kleiner
+
+Smaller text
+Kleinerer Text
 
 Smooth Pointer
 Flüssiger Zeiger
@@ -8898,6 +9492,9 @@ Spanisch
 Spare
 Reserve
 
+Speaker
+Lautsprecher
+
 Speaker amp {}
 Lautsprecherverstärker {}
 
@@ -8936,6 +9533,12 @@ Neu beginnen …
 
 Start Test
 Test starten
+
+Start or end of the document
+Dokumentanfang oder -ende
+
+Start or end of the line
+Zeilenanfang oder -ende
 
 Start the Agent
 Agent starten
@@ -8992,6 +9595,9 @@ Wach bleiben
 
 Stay awake (caffeinated)
 Wach bleiben (Koffein)
+
+Stay awake, or not
+Wach bleiben oder nicht
 
 Stay awake: no display sleep, sleep, screen saver or lock
 Wach bleiben: kein Ruhezustand, Bildschirmschoner, Sperren
@@ -9131,6 +9737,27 @@ Auch Swap
 Swap with Previous Main
 Mit vorherigem Hauptfenster tauschen
 
+Swap with the next tile
+Mit der nächsten Kachel tauschen
+
+Swap with the previous main window
+Mit dem vorherigen Hauptfenster tauschen
+
+Swap with the previous tile
+Mit der vorherigen Kachel tauschen
+
+Swap with the tile above
+Mit der Kachel darüber tauschen
+
+Swap with the tile below
+Mit der Kachel darunter tauschen
+
+Swap with the tile to the left
+Mit der Kachel links tauschen
+
+Swap with the tile to the right
+Mit der Kachel rechts tauschen
+
 Swedish
 Schwedisch
 
@@ -9140,17 +9767,32 @@ Swift
 Swiss
 Schweizerdeutsch
 
+Switch applications (Twitcher)
+Programme wechseln (Twitcher)
+
+Switch applications on the workspaces showing
+Programme der sichtbaren Arbeitsflächen wechseln
+
 Switch automatically between this computer and your iPhone
 Automatisch zwischen diesem Computer und Ihrem iPhone wechseln
 
 Switch to a woken program at once
 Sofort zu einem geweckten Programm wechseln
 
+Switch windows of the application
+Fenster des Programms wechseln
+
+Switching
+Wechseln
+
 Sync
 Synchronisieren
 
 Sync Again
 Erneut synchronisieren
+
+Sync Contacts
+Kontakte synchronisieren
 
 Sync Now
 Jetzt synchronisieren
@@ -9194,11 +9836,44 @@ TOML
 TSX
 TSX
 
+Tab 1
+Tab 1
+
+Tab 2
+Tab 2
+
+Tab 3
+Tab 3
+
+Tab 4
+Tab 4
+
+Tab 5
+Tab 5
+
+Tab 6
+Tab 6
+
+Tab 7
+Tab 7
+
+Tab 8
+Tab 8
+
+Tab 9
+Tab 9
+
 Table
 Tabelle
 
+Tablet
+Tablet
+
 Tabs
 Tabs
+
+Tabs on Agent Screens are never given a code.
+Tabs auf Agenten-Bildschirmen erhalten nie einen Code.
 
 Tags:
 Tags:
@@ -9215,6 +9890,9 @@ Bildschirmfoto aufnehmen …
 Take calls on this computer
 Anrufe auf diesem Computer annehmen
 
+Take or give back control
+Steuerung übernehmen oder zurückgeben
+
 Taken
 Übernommen
 
@@ -9224,11 +9902,14 @@ Tippen
 Tap and drag
 Tippen und ziehen
 
+Tap the Windows key on its own for the command palette
+Befehlspalette mit der Windows-Taste allein öffnen
+
 Tap to click
 Tippen zum Klicken
 
-Tap {} on its own for the command palette
-{} allein tippen für die Befehlspalette
+Tap ⌘ (the Super key) on its own for the command palette
+Befehlspalette mit ⌘ (Super-Taste) allein öffnen
 
 Taps
 Antippen
@@ -9326,8 +10007,17 @@ SMS
 Text Size
 Textgröße
 
+Text at its own size
+Text in Originalgröße
+
+Text messages
+Textnachrichten
+
 Text messages to “{}”
 SMS an „{}“
+
+Text tool
+Textwerkzeug
 
 Text:
 Text:
@@ -9379,6 +10069,9 @@ Der API-Hash besteht aus 32 Buchstaben und Ziffern (0–9, a–f).
 
 The AirPods service isn't running.
 Der AirPods-Dienst läuft nicht.
+
+The Bluetooth service (bluetoothd) isn't running.
+Der Bluetooth-Dienst (bluetoothd) läuft nicht.
 
 The CPU doesn't offer “{}”.
 Die CPU bietet „{}“ nicht an.
@@ -9473,11 +10166,23 @@ Die ersetzte Kopie von Token Pool schließt noch ihre Anfragen ab. Fügen Sie de
 The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
 Die ersetzte Kopie von Token Pool schließt noch ihre Anfragen ab. Melden Sie sich gleich noch einmal an.
 
+The copy of Token Pool this one replaced is still finishing its requests. The sign-in is taken as soon as it has.
+Die ersetzte Kopie von Token Pool schließt noch ihre Anfragen ab. Die Anmeldung wird übernommen, sobald sie fertig ist.
+
 The day before, at 9 AM
 Am Vortag um 9 Uhr
 
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
 Die Trefferquote des Tages, die belegten Plätze des Pools und die Builds und Treffer der letzten Stunden.
+
+The device couldn't be disconnected.
+Das Gerät ließ sich nicht trennen.
+
+The device couldn't be removed.
+Das Gerät ließ sich nicht entfernen.
+
+The device didn't connect.
+Das Gerät hat sich nicht verbunden.
 
 The displays' settings are Olo's own again, from when you leave Rescue.
 Die Bildschirmeinstellungen sind wieder Olos eigene, ab dem Verlassen von Rescue.
@@ -9593,6 +10298,9 @@ Wie das Aussehen
 The loss is a number, in percent.
 Der Verlust ist eine Zahl, in Prozent.
 
+The main window in its place; the others stack around it.
+Das Hauptfenster an seinem Platz; die anderen stapeln sich darum.
+
 The microphone can’t be recorded ({}).
 Das Mikrofon kann nicht aufgenommen werden ({}).
 
@@ -9649,6 +10357,9 @@ Das Passwort von „{}“ konnte nicht gespeichert werden: {}
 
 The passwords file is damaged: {}
 Die Passwortdatei ist beschädigt: {}
+
+The phone didn’t connect. Is it unlocked, with Bluetooth on?
+Das Telefon hat sich nicht verbunden. Ist es entsperrt und Bluetooth eingeschaltet?
 
 The phone didn’t take it.
 Das Telefon hat es nicht angenommen.
@@ -9782,6 +10493,9 @@ Der Sprachdienst läuft nicht.
 The window server didn’t give its settings.
 Der Fensterserver hat seine Einstellungen nicht geliefert.
 
+The windows in rows of about square cells.
+Die Fenster in Zeilen aus etwa quadratischen Zellen.
+
 The workspace each display shows stays open in every Deskbar; each other one is its heading, with an arrow that shows its applications and puts them away again.
 Die Arbeitsfläche, die ein Bildschirm zeigt, bleibt in jeder Deskbar offen; jede andere ist ihre Überschrift, mit einem Pfeil, der ihre Programme zeigt und wieder einklappt.
 
@@ -9830,6 +10544,9 @@ Es gibt kein Limit „{}“.
 There is nothing to share.
 Es gibt nichts zu teilen.
 
+There's no Bluetooth adapter.
+Es gibt keinen Bluetooth-Adapter.
+
 There's no Ethernet adapter. A USB or Thunderbolt one shows here once it's plugged in.
 Es gibt keinen Ethernet-Adapter. Ein USB- oder Thunderbolt-Adapter erscheint hier, sobald er angeschlossen ist.
 
@@ -9859,6 +10576,9 @@ Denken:
 
 Thinking…
 Denkt nach …
+
+Third folder
+Dritter Ordner
 
 This Computer
 Dieser Computer
@@ -10007,6 +10727,9 @@ Alle Tabs kacheln
 Tile With
 Kacheln mit
 
+Tile all windows on the display
+Alle Fenster des Bildschirms kacheln
+
 Tiling, zooming, Tile All, cascading and fanning out all leave this space.
 Kacheln, Zoomen, Alle kacheln, Überlappen und Auffächern lassen diesen Abstand frei.
 
@@ -10057,6 +10780,12 @@ Offen
 
 To allow it, you can also {}.
 Um es zu erlauben, können Sie auch {}.
+
+To the next display
+Auf den nächsten Bildschirm
+
+To the previous display
+Auf den vorherigen Bildschirm
 
 To {}
 Auf {}
@@ -10142,8 +10871,20 @@ Oberes rechtes Viertel
 Top Two Thirds
 Obere zwei Drittel
 
+Top half
+Obere Hälfte
+
+Top left quarter
+Oberes linkes Viertel
+
+Top right quarter
+Oberes rechtes Viertel
+
 Top speed
 Höchsttempo
+
+Top two thirds
+Obere zwei Drittel
 
 Touch
 Berührung
@@ -10295,6 +11036,9 @@ Für überwiegend am Netz genutzte Laptops aktivieren.
 Turn the display off after:
 Bildschirm ausschalten nach:
 
+Turn the tile's split
+Teilung der Kachel drehen
+
 Turn the touchpad off while a mouse is plugged in
 Touchpad aus, wenn eine Maus angeschlossen ist
 
@@ -10412,6 +11156,9 @@ Transaktion widerrufen …
 Undo Window Arrangement
 Fensteranordnung widerrufen
 
+Undo window arrangement
+Fensteranordnung widerrufen
+
 Undo {}
 {} widerrufen
 
@@ -10486,6 +11233,9 @@ Nach oben
 
 Up (sent)
 Hoch (gesendet)
+
+Up a level
+Eine Ebene nach oben
 
 Up for
 Läuft seit
@@ -10682,6 +11432,33 @@ Variable Bildwiederholrate
 Vault
 Tresor
 
+Vault 1
+Tresor 1
+
+Vault 2
+Tresor 2
+
+Vault 3
+Tresor 3
+
+Vault 4
+Tresor 4
+
+Vault 5
+Tresor 5
+
+Vault 6
+Tresor 6
+
+Vault 7
+Tresor 7
+
+Vault 8
+Tresor 8
+
+Vault 9
+Tresor 9
+
 Vault Info…
 Tresor-Info …
 
@@ -10714,6 +11491,9 @@ Video wird auf dem Prozessor decodiert. {}
 
 View
 Darstellung
+
+View Source
+Quelltext anzeigen
 
 Viewer
 Viewer
@@ -10783,6 +11563,9 @@ Wartet auf Strom
 
 Waiting for the network
 Wartet auf das Netzwerk
+
+Waiting for the phone to allow it
+Warten, bis das Telefon es erlaubt
 
 Waiting for the phone… this page follows it by itself.
 Warten auf das Telefon … Diese Seite folgt ihm von selbst.
@@ -11102,11 +11885,47 @@ Fenster auf einem Hintergrund
 Window title size
 Größe der Fenstertitel
 
+Window to the next workspace
+Fenster auf die nächste Arbeitsfläche
+
+Window to the previous workspace
+Fenster auf die vorherige Arbeitsfläche
+
+Window to workspace 1
+Fenster auf Arbeitsfläche 1
+
+Window to workspace 2
+Fenster auf Arbeitsfläche 2
+
+Window to workspace 3
+Fenster auf Arbeitsfläche 3
+
+Window to workspace 4
+Fenster auf Arbeitsfläche 4
+
+Window to workspace 5
+Fenster auf Arbeitsfläche 5
+
+Window to workspace 6
+Fenster auf Arbeitsfläche 6
+
+Window to workspace 7
+Fenster auf Arbeitsfläche 7
+
+Window to workspace 8
+Fenster auf Arbeitsfläche 8
+
+Window to workspace 9
+Fenster auf Arbeitsfläche 9
+
 Windowing Mode
 Fenstermodus
 
 Windows
 Fenster
+
+Windows stay where you put them.
+Fenster bleiben dort, wo Sie sie ablegen.
 
 Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).
 Die Puffer der Fenster werden nie ausgelagert, sodass der Schreibtisch nicht auf ihre Rückkehr wartet (Olos Live-Patch für den Intel-Treiber).
@@ -11134,6 +11953,33 @@ Wird bearbeitet …
 
 Works on a picture of the desktop.
 Arbeitet auf einem Bild des Schreibtischs.
+
+Workspace 1
+Arbeitsfläche 1
+
+Workspace 2
+Arbeitsfläche 2
+
+Workspace 3
+Arbeitsfläche 3
+
+Workspace 4
+Arbeitsfläche 4
+
+Workspace 5
+Arbeitsfläche 5
+
+Workspace 6
+Arbeitsfläche 6
+
+Workspace 7
+Arbeitsfläche 7
+
+Workspace 8
+Arbeitsfläche 8
+
+Workspace 9
+Arbeitsfläche 9
 
 Workspace:
 Arbeitsfläche:
@@ -11294,6 +12140,9 @@ Ihres: einmal feinabgestimmt seit dem Start
 Yours: fine-tuned {} times since it started
 Ihres: {}-mal feinabgestimmt seit dem Start
 
+You’re asked each time a tab on an Agent Screen is the one waiting.
+Sie werden jedes Mal gefragt, wenn ein Tab auf einem Agenten-Bildschirm der wartende ist.
+
 Zig
 Zig
 
@@ -11309,14 +12158,26 @@ Vergrößern
 Zoom Out
 Verkleinern
 
+Zoom horizontally
+Horizontal zoomen
+
 Zoom on Clicks
 Bei Klicks zoomen
+
+Zoom or unzoom
+Zoomen oder wiederherstellen
+
+Zoom or unzoom all windows on the display
+Alle Fenster des Bildschirms zoomen oder wiederherstellen
 
 Zoom to Fill
 Füllend zoomen
 
 Zoom to Fit
 Passend zoomen
+
+Zoom vertically
+Vertikal zoomen
 
 __pycache__, .venv, .mypy_cache, .pytest_cache, .tox
 __pycache__, .venv, .mypy_cache, .pytest_cache, .tox
@@ -12122,6 +12983,10 @@ other: {n} Sicherungen gewählt.
 one: {n} demnächst fällig
 other: {n} demnächst fällig
 
+{n} conversations
+one: {n} Unterhaltung
+other: {n} Unterhaltungen
+
 {n} days
 one: {n} Tag
 other: {n} Tage
@@ -12265,6 +13130,10 @@ other: {n} offen
 {n} to-dos
 one: {n} Aufgabe
 other: {n} Aufgaben
+
+{n} unread
+one: {n} ungelesen
+other: {n} ungelesen
 
 {n} waiting in their apps
 one: {n} wartet in seiner App
@@ -12564,6 +13433,9 @@ vor {} Stunden
 
 {} kept, still shared with builds' target folders
 {} behalten, noch mit den Zielordnern von Builds geteilt
+
+{} keys
+{}-Tasten
 
 {} knows this computer.
 {} kennt diesen Computer.
@@ -12970,6 +13842,9 @@ Kontingent von {}
 {}: windows stay where you put them. Click to choose a windowing mode.
 {}: Fenster bleiben, wo Sie sie hinlegen. Klicken, um einen Fenstermodus zu wählen.
 
+{}: {}
+{}: {}
+
 {}: {} applications. Click to show them.
 {}: {} Anwendungen. Klicken, um sie zu zeigen.
 
@@ -13207,4 +14082,4 @@ other: „{}“ und {n} weitere Programme laufen noch in diesem Fenster. Trotzde
 ↑↓ wählt eine App.
 
 ⌘ Command (the Super key)
-⌘ Befehl (die Super-Taste)
+⌘ Befehl (Super-Taste)

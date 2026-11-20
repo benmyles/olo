@@ -423,8 +423,11 @@ Een verwijzing ziet eruit als op://vault/item/field. U vindt deze in Passwords v
 A repository’s key needs to be trusted
 De sleutel van een pakketbron moet worden vertrouwd
 
-A reset this account asked for hasn’t been answered yet. Sign in as the same account, or remove this account and add the other.
-Een reset die deze account heeft aangevraagd, is nog niet beantwoord. Log in met dezelfde account, of verwijder deze account en voeg de andere toe.
+A reset this account asked for hasn’t been answered yet. The sign-in is taken as soon as it has.
+Een reset die deze account heeft aangevraagd, is nog niet beantwoord. De aanmelding wordt overgenomen zodra er antwoord is.
+
+A reset this account asked for hasn’t been answered yet. This sign-in doesn’t say which account it is. Sign in again once it has.
+Een reset die deze account heeft aangevraagd, is nog niet beantwoord. Deze aanmelding zegt niet van welke account ze is. Meld u daarna opnieuw aan.
 
 A resting palm can't click (its pressure doesn't count)
 Druk van een rustende handpalm telt niet als klik
@@ -474,6 +477,9 @@ Een week
 A week before, at 9 AM
 Een week van tevoren om 9.00 uur
 
+A word back or on
+Een woord terug of verder
+
 AI
 AI
 
@@ -509,6 +515,9 @@ Versnelling:
 
 Accent
 Accentkleur
+
+Accept
+Accepteren
 
 Access
 Toegang
@@ -672,6 +681,9 @@ Adres:
 Addresses can’t be looked up: {}
 Adressen opzoeken is mislukt: {}
 
+Adjust Size
+Grootte aanpassen
+
 Adjust Size…
 Grootte aanpassen…
 
@@ -809,6 +821,9 @@ Alle {} verbonden.
 Allow
 Toestaan
 
+Allow It on the Phone
+Sta het toe op de telefoon
+
 Allow NVIDIA Fallback on Battery
 NVIDIA zo nodig ook op accuvoeding gebruiken
 
@@ -817,6 +832,9 @@ Slaapstand toestaan
 
 Allow Sleep (awake until {})
 Slaapstand toestaan (wakker tot {})
+
+Allow it on the phone
+Sta het toe op de telefoon
 
 Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).
 Mag ‘{}’ {}{} gebruiken? Met Altijd geeft u bij elk verzoek toegang, totdat u dit intrekt via Bestand ▸ Toegestane apps….
@@ -911,6 +929,9 @@ Ander venster
 
 Another account
 Een ander account
+
+Another program has the phone
+Een ander programma heeft de telefoon
 
 Another program has the phone’s message profiles (BlueFerry’s or GNOME’s obexd). Olo Doctor removes BlueFerry.
 Een ander programma beheert de berichtprofielen van de telefoon (obexd van BlueFerry of GNOME). Olo Doctor kan BlueFerry verwijderen.
@@ -1027,6 +1048,9 @@ Gearchiveerde chats
 Archived Conversations
 Gearchiveerde gesprekken
 
+Arranging
+Schikken
+
 Arrived out of order
 In verkeerde volgorde ontvangen
 
@@ -1041,6 +1065,12 @@ Als lijst
 
 As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines.
 Zoals de pictogrammen van Workbench: platte vlakken in de zestien schermkleuren met zwarte contouren.
+
+As a board
+Als bord
+
+As a list
+Als lijst
 
 As fast as the computer goes: the processors kept quick and the firmware's power limits raised, the fans as needed. The battery runs down sooner.
 De computer draait op volle snelheid. De processors blijven snel, de firmware verhoogt de vermogenslimieten en de ventilatoren springen zo nodig bij. De accu raakt eerder leeg.
@@ -1165,6 +1195,9 @@ Op {}. De code van {} doorgeven?
 Attach
 Bijvoegen
 
+Attach Files
+Bestanden bijvoegen
+
 Attach Files…
 Bestanden bijvoegen…
 
@@ -1179,6 +1212,9 @@ Link bijvoegen…
 
 Attach a file or a link
 Bestand of link bijvoegen
+
+Attach what's on the clipboard
+Inhoud van het klembord bijvoegen
 
 Attachments
 Bijlagen
@@ -1209,6 +1245,9 @@ Automatische tegelindeling
 
 Auto-tiling layout:
 Automatische tegelindeling:
+
+Auto-tiling on or off
+Automatisch tegelen aan of uit
 
 Automatic
 Automatisch
@@ -1254,6 +1293,12 @@ Terug naar chats
 
 Back to Conversations
 Terug naar gesprekken
+
+Back to its own size
+Terug naar eigen grootte
+
+Back to its own size, or hide
+Terug naar eigen grootte, of verbergen
 
 Back to the Days
 Terug naar de dagen
@@ -1415,6 +1460,9 @@ Wanneer kan ik morgen het beste gaan hardlopen?
 Bigger
 Groter
 
+Bigger text
+Grotere tekst
+
 Black
 Zwart
 
@@ -1426,6 +1474,9 @@ Blauw:
 
 Bluetooth
 Bluetooth
+
+Bluetooth couldn't be turned on or off.
+Bluetooth kon niet worden in- of uitgeschakeld.
 
 Bluetooth couldn’t open the phone’s messages ({}).
 Bluetooth kon de berichten van de telefoon niet openen ({}).
@@ -1448,6 +1499,9 @@ Bluetooth is niet actief op deze computer.
 Bluetooth said it would open them and no channel came
 Bluetooth heeft het verzoek geaccepteerd, maar er is geen kanaal geopend
 
+Bluetooth's hardware isn't answering
+De Bluetooth-hardware reageert niet
+
 Bluetooth…
 Bluetooth…
 
@@ -1459,6 +1513,12 @@ Hoofdtekst
 
 Bold
 Vet
+
+Bookmark Manager
+Bladwijzerbeheer
+
+Bookmark This Tab
+Bladwijzer voor dit tabblad
 
 Boost when work arrives and ease back between tasks.
 Versnel zodra er werk is en schakel terug tussen taken.
@@ -1476,6 +1536,18 @@ Bottom Right Quarter
 Kwart rechtsonder
 
 Bottom Two Thirds
+Onderste twee derde
+
+Bottom half
+Onderste helft
+
+Bottom left quarter
+Kwart linksonder
+
+Bottom right quarter
+Kwart rechtsonder
+
+Bottom two thirds
 Onderste twee derde
 
 Branch {} is checked out in {} already.
@@ -1531,6 +1603,9 @@ Knoppen
 
 By
 Door
+
+By App
+Op app
 
 By a parent leaving
 Per gestopt ouderproces
@@ -1637,6 +1712,9 @@ Bellen…
 Calls
 Oproepen
 
+Camera
+Camera
+
 Can't make {}: {}
 {} maken mislukt: {}
 
@@ -1685,11 +1763,20 @@ Clientverzoeken opnieuw vastleggen
 Capture debug information whenever a frame drops
 Diagnostische gegevens vastleggen bij een overgeslagen frame
 
+Cards
+Kaarten
+
 Cascade All
 Alle vensters trapsgewijs
 
 Cascade Others
 Overige vensters trapsgewijs
+
+Cascade all windows on the display
+Alle vensters op het scherm trapsgewijs schikken
+
+Cascade the other windows, leaving this one
+De andere vensters trapsgewijs schikken, dit blijft staan
 
 Case
 Oplaadcase
@@ -1706,10 +1793,19 @@ Wolkenplafond op {}
 Celsius (°C)
 Celsius (°C)
 
+Center
+Centreren
+
 Center Third
 Middelste derde
 
 Center Two Thirds
+Middelste twee derde
+
+Center third
+Middelste derde
+
+Center two thirds
 Middelste twee derde
 
 Chance
@@ -1723,6 +1819,9 @@ API-ID wijzigen…
 
 Change Background…
 Achtergrond aanpassen…
+
+Change them in Preferences ▸ Keyboard ▸ Shortcuts.
+Wijzig ze in Voorkeuren ▸ Toetsenbord ▸ Sneltoetsen.
 
 Changed both here and in 1Password: 1Password’s version replaces it here, and yours is kept as “{} (conflict)”
 Zowel hier als in 1Password gewijzigd. De versie van 1Password komt hier te staan en uw eigen versie blijft bewaard als ‘{} (conflict)’
@@ -1774,6 +1873,9 @@ Integriteit controleren
 
 Check Spelling While Typing
 Spelling controleren tijdens het typen
+
+Check everything
+Alles controleren
 
 Check for Updates
 Controleren op updates
@@ -1867,8 +1969,26 @@ De keuze geldt voor de hele computer en blijft na herstarten bewaard. Om die te 
 Chosen outside dnf
 Buiten dnf gekozen
 
+Chrome and Slack
+Chrome en Slack
+
 Chrome holds it, as it may be harmful: keep it or delete it in Chrome’s Downloads.
 Chrome houdt het bestand tegen omdat het mogelijk schadelijk is. Via Downloads in Chrome kunt u het bewaren of verwijderen.
+
+Chrome: Bookmarks and History
+Chrome: bladwijzers en geschiedenis
+
+Chrome: Developer
+Chrome: ontwikkelaars
+
+Chrome: Going Places
+Chrome: navigatie
+
+Chrome: Tabs and Windows
+Chrome: tabbladen en vensters
+
+Chrome: View
+Chrome: weergave
 
 City or region
 Stad of regio
@@ -1924,6 +2044,9 @@ Alles wissen
 
 Clear All Tabs
 Alle tabbladen wissen
+
+Clear Browsing Data
+Browsegegevens wissen
 
 Clear History
 Geschiedenis wissen
@@ -2015,6 +2138,9 @@ Tabblad sluiten
 Close Window
 Venster sluiten
 
+Close the window
+Venster sluiten
+
 Cloud Heights
 Wolkenhoogte
 
@@ -2047,6 +2173,12 @@ Code ingevuld op agentscherm ‘{}’
 
 Code:
 Code:
+
+Codes texted to this phone are offered in the browser tab waiting for them.
+Codes die per sms op deze telefoon binnenkomen, worden aangeboden in het browsertabblad dat erop wacht.
+
+Codes texted to this phone aren’t looked for.
+Naar codes die per sms op deze telefoon binnenkomen, wordt niet gezocht.
 
 Codex
 Codex
@@ -2093,6 +2225,9 @@ Kolomweergave
 Columns
 Kolommen
 
+Command Palette
+Opdrachtenpalet
+
 Command Suggestions
 Opdrachtsuggesties
 
@@ -2101,6 +2236,9 @@ Command-toets:
 
 Command or Comment
 Opdracht of opmerking
+
+Command palette
+Opdrachtenpalet
 
 Comment
 Opmerking
@@ -2132,6 +2270,9 @@ Gecomprimeerd wisselgeheugen
 Compressed to
 Gecomprimeerd tot
 
+Computer
+Computer
+
 Computes with
 Rekent met
 
@@ -2143,6 +2284,12 @@ IPv6 instellen:
 
 Confirm
 Bevestigen
+
+Confirm the Code
+Bevestig de code
+
+Confirm the code
+Bevestig de code
 
 Confirm:
 Bevestigen:
@@ -2165,6 +2312,12 @@ Verbinden bij indoen in de buurt van deze computer
 Connect with a Token…
 Met een token verbinden…
 
+Connect your phone
+Verbind uw telefoon
+
+Connected
+Verbonden
+
 Connected as {}, through {}.
 Aangemeld als {} via {}.
 
@@ -2177,6 +2330,9 @@ Verbonden met ‘{}’: {}
 Connected {}, but its sign-in wasn’t allowed {}: Sign In Again and allow everything it asks.
 {} is gekoppeld, maar heeft geen toegang tot {}. Kies Opnieuw aanmelden en geef alle gevraagde toestemmingen.
 
+Connected, {}%
+Verbonden, {}%
+
 Connected.
 Verbonden.
 
@@ -2185,6 +2341,9 @@ Verbinden met Telegram…
 
 Connecting to “{}”…
 Verbinden met ‘{}’…
+
+Connecting…
+Verbinden…
 
 Connection
 Verbinding
@@ -2215,6 +2374,9 @@ Gesprek
 
 Conversation Awareness
 Gespreksdetectie
+
+Conversations
+Gesprekken
 
 Convert to Table
 Omzetten naar tabel
@@ -2338,6 +2500,9 @@ Neergezet onderdeel opslaan mislukt: {}
 
 Couldn't save: {}
 Opslaan mislukt: {}
+
+Couldn't search for devices.
+Er kon niet naar apparaten worden gezocht.
 
 Couldn’t archive it. {}
 Archiveren is mislukt. {}
@@ -2627,6 +2792,9 @@ Kluis verwijderen
 Delete Vault…
 Kluis verwijderen…
 
+Delete a word
+Een woord wissen
+
 Delete the event
 Verwijder de activiteit
 
@@ -2644,6 +2812,9 @@ Deze {} back-ups verwijderen? Ruimte die alleen daarvoor is gebruikt komt vrij. 
 
 Delete this backup? The space only it took is freed; files other backups hold too stay in those. It can’t be undone.
 Deze back-up verwijderen? Ruimte die alleen daarvoor is gebruikt komt vrij. Bestanden die ook in andere back-ups zitten, blijven daarin bewaard. Dit kan niet ongedaan worden gemaakt.
+
+Delete to the line's start
+Wissen tot het begin van de regel
 
 Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
 {} ({}) definitief verwijderen? De onderdelen gaan niet naar de prullenbak en kunnen niet worden teruggezet.
@@ -2738,6 +2909,9 @@ Deskbar toont: {}
 Deskbar: a {} widget measured “{}”, which this computer hasn't; it measures {} instead.
 Deskbar: een widget voor {} mat ‘{}’. Deze computer heeft dat niet. De widget meet nu {}.
 
+Desktop
+Bureaublad
+
 Desktop (Preferences)
 Bureaublad (Voorkeuren)
 
@@ -2752,6 +2926,9 @@ Bestemming
 
 Details
 Details
+
+Developer Tools
+Hulpprogramma’s voor ontwikkelaars
 
 Device
 Apparaat
@@ -2798,6 +2975,9 @@ Google Drive ({}) loskoppelen? DiskBackup stopt de back-ups naar deze Drive en v
 Disconnecting from Google Drive…
 Google Drive loskoppelen…
 
+Disconnecting…
+Verbinding verbreken…
+
 Disconnect…
 Verbinding verbreken…
 
@@ -2806,6 +2986,9 @@ Schijf
 
 Disk Space
 Schijfruimte
+
+Disk Usage
+Disk Usage
 
 Disk:
 Schijf:
@@ -2901,6 +3084,9 @@ Niet storen staat aan
 Do Not Disturb is on — {} unread
 Niet storen staat aan — {} ongelezen
 
+Do the result's other action
+De andere actie van het resultaat uitvoeren
+
 Dockerfile
 Dockerfile
 
@@ -2915,6 +3101,9 @@ Documenten
 
 Does “{}” show this number?
 Staat dit nummer op ‘{}’?
+
+Does “{}” show {}?
+Toont ‘{}’ {}?
 
 Doing
 Bezig
@@ -2967,6 +3156,9 @@ Downloaden: {}
 Downloading…
 Downloaden…
 
+Downloads
+Downloads
+
 Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
 Terwijl u een venster aan zijn tab sleept, laat u het los op een plek, of drukt u op de letter ervan, om het daar te zetten. Laat het los op de plek van een ander venster om de twee te verwisselen. Escape zet alles terug.
 
@@ -2979,11 +3171,17 @@ Een venster slepen
 Draw
 Tekenen
 
+Draw tool
+Tekengereedschap
+
 Drawing
 Tekenen
 
 Drawn into each frame
 Getekend in elk frame
+
+Drive Setup
+Drive Setup
 
 DriveSetup
 DriveSetup
@@ -3105,6 +3303,12 @@ Bestanden van dit type openen overal in deze app, zowel in Olo als in andere pro
 Each network's own
 Van elk netwerk zelf
 
+Each new window takes a tile, and the others make room.
+Elk nieuw venster krijgt een tegel, en de andere maken plaats.
+
+Each new window takes half of the one you were using.
+Elk nieuw venster neemt de helft van het venster dat u gebruikte.
+
 Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
 Elke ingestelde methode vervangt uw wachtwoord voor Passwords, sudo in Terminal en beheerdersverzoeken. Met gezichtsherkenning of een vingerafdruk kunt u ook aanmelden en het scherm ontgrendelen. Gebruik de methode die u het beste uitkomt.
 
@@ -3116,6 +3320,9 @@ Elke geteste instelling verschijnt hier.
 
 Each shows in the Deskbar as it changes. A click on one there opens its app: Activity Monitor, Token Pool or the app it’s from.
 De waarden in de Deskbar worden direct bijgewerkt. Klik op een waarde om de bijbehorende app te openen, bijvoorbeeld Activiteitenweergave of Token Pool.
+
+Each window takes half of the room left, round in a spiral.
+Elk venster neemt de helft van de resterende ruimte, rond in een spiraal.
 
 Edge
 Rand
@@ -3147,6 +3354,9 @@ Wissel- en back-upbestanden van editors
 Edit…
 Bewerken…
 
+Eighth folder
+Achtste map
+
 Either AirPod
 Een van beide AirPods
 
@@ -3164,6 +3374,9 @@ E-mailaccounts
 
 Emoji
 Emoji
+
+Emoji & symbols
+Emoji en symbolen
 
 Empty
 Leeg
@@ -3261,6 +3474,9 @@ Erlang
 Esc cancels
 Esc annuleert
 
+Esc closes
+Esc sluit
+
 Ethernet
 Ethernet
 
@@ -3273,6 +3489,9 @@ Stemvolume gelijkmatig maken
 Even With the Lid Closed
 Ook met gesloten deksel
 
+Even out the tiles
+Tegels gelijk maken
+
 Even out the voice's level
 Stemvolume gelijkmatig maken
 
@@ -3284,6 +3503,9 @@ Om de 2 weken
 
 Every 2 weeks
 Om de 2 weken
+
+Every Application
+Alle programma’s
 
 Every Counter
 Alle tellers
@@ -3345,6 +3567,15 @@ Elke week
 Every weekday
 Elke werkdag
 
+Every window a column of its own width, in a strip that scrolls to the active one.
+Elk venster een kolom met een eigen breedte, in een strook die naar het actieve venster scrolt.
+
+Every window a column, each as wide.
+Elk venster een kolom, allemaal even breed.
+
+Every window a row, each as tall.
+Elk venster een rij, allemaal even hoog.
+
 Every year
 Elk jaar
 
@@ -3378,6 +3609,9 @@ In {} is nagegaan of alle benodigde gegevens aanwezig zijn.
 
 Export
 Exporteren
+
+Export Flattened PDF
+PDF met samengevoegde lagen exporteren
 
 Export Flattened PDF…
 PDF met samengevoegde lagen exporteren…
@@ -3475,6 +3709,12 @@ Ventilatorstand {}
 Fan level {} · {}
 Ventilatorstand {} · {}
 
+Fan out all windows, tabs side by side
+Alle vensters uitwaaieren, tabs naast elkaar
+
+Fan out the other windows, leaving this one
+De andere vensters uitwaaieren, dit blijft staan
+
 Fans
 Ventilatoren
 
@@ -3529,8 +3769,14 @@ Weersverwachting ophalen…
 Fetching…
 Ophalen…
 
+Fewer main windows
+Minder hoofdvensters
+
 Field
 Veld
+
+Fifth folder
+Vijfde map
 
 File
 Bestand
@@ -3556,11 +3802,17 @@ Zoeken
 Find Again
 Opnieuw zoeken
 
+Find Next
+Volgende zoeken
+
 Find Previous
 Vorige zoeken
 
 Find Selection
 Selectie zoeken
+
+Find Your Phone
+Zoek uw telefoon
 
 Find a free hour this week
 Een vrij uur zoeken deze week
@@ -3570,6 +3822,12 @@ App zoeken
 
 Find in document
 In document zoeken
+
+Find the selection
+Selectie zoeken
+
+Find your phone
+Zoek uw telefoon
 
 Find:
 Zoeken:
@@ -3622,6 +3880,9 @@ Firmwarecurve
 First Page
 Eerste pagina
 
+First folder
+Eerste map
+
 First, as the main window
 Als eerste, als hoofdvenster
 
@@ -3640,6 +3901,9 @@ Aanpassen aan breedte
 Fix
 Verhelpen
 
+Fix and apply what's checked
+Aangevinkte items herstellen en toepassen
+
 Fix in Olo Doctor…
 In Olo Doctor verhelpen…
 
@@ -3648,6 +3912,12 @@ Horizontaal spiegelen
 
 Flip Vertical
 Verticaal spiegelen
+
+Flip the tiles left and right
+Tegels links en rechts spiegelen
+
+Flip the tiles top and bottom
+Tegels boven en onder spiegelen
 
 Float
 Zweven
@@ -3667,6 +3937,9 @@ Venstergroep laten zweven
 Float out of its group, or tile
 Buiten zijn groep laten zweven, of tegelen
 
+Float over the tiles, or tile
+Boven de tegels zweven, of tegelen
+
 Flurries
 Lichte sneeuwbuien
 
@@ -3675,6 +3948,27 @@ Focus
 
 Focus follows the pointer
 Focus volgt de aanwijzer
+
+Focus mode on or off
+Focusmodus aan of uit
+
+Focus the next tile
+Volgende tegel activeren
+
+Focus the previous tile
+Vorige tegel activeren
+
+Focus the window above
+Venster erboven activeren
+
+Focus the window below
+Venster eronder activeren
+
+Focus the window to the left
+Venster links activeren
+
+Focus the window to the right
+Venster rechts activeren
 
 Fog
 Mist
@@ -3781,6 +4075,9 @@ Herkend als {}. Laat leeg om die naam te gebruiken.
 Four fingers
 Vier vingers
 
+Fourth folder
+Vierde map
+
 Free
 Vrij
 
@@ -3832,6 +4129,9 @@ Van {} tot {}
 From:
 Van:
 
+Full Screen
+Volledig scherm
+
 Full access couldn't be asked for. {}
 Volledige toegang aanvragen is mislukt. {}
 
@@ -3846,6 +4146,9 @@ GPU:
 
 GPUs are tuned only in the person's own session (polkit asks there).
 GPU’s kunt u alleen instellen vanuit uw eigen sessie. Daar vraagt polkit om toestemming.
+
+Game controller
+Gamecontroller
 
 Game saves
 Opgeslagen spellen
@@ -3915,6 +4218,9 @@ Ga naar
 
 Go to End
 Naar het einde gaan
+
+Go to File or Folder
+Naar bestand of map gaan
 
 Go to File or Folder…
 Naar bestand of map gaan…
@@ -4084,6 +4390,9 @@ Kop 6
 Headless
 Zonder beeldscherm
 
+Headphones
+Koptelefoon
+
 Health
 Gezondheid
 
@@ -4147,6 +4456,18 @@ Titelrand verbergen in tegelindeling
 Hide or show Deskbar
 Deskbar verbergen of tonen
 
+Hide or show the details
+Details verbergen of tonen
+
+Hide or show the sidebar
+Zijbalk verbergen of tonen
+
+Hide the application
+Programma verbergen
+
+Hide window
+Venster verbergen
+
 High
 Hoog
 
@@ -4185,6 +4506,9 @@ Capaciteit
 
 Home
 Persoonlijke map
+
+Home Page
+Startpagina
 
 Hosts
 Hosts
@@ -4447,6 +4771,9 @@ Inspecteren
 Inspect Parent
 Bovenliggend onderdeel inspecteren
 
+Inspect Process
+Proces inspecteren
+
 Install Now
 Nu installeren
 
@@ -4576,6 +4903,9 @@ Het appwachtwoord staat niet in de sleutelbos. Verwijder het account en voeg het
 Its click is its own: a resting palm can't press.
 Het klikken werkt onafhankelijk: een rustende handpalm kan geen klik geven.
 
+Its contacts haven’t come (Sync Contacts, on the phone)
+De contacten zijn niet gekomen (Contacten synchroniseren, op de telefoon)
+
 Its decoder, on its battery preset (Power Modes), costs less than the processor's cores; off, the processor decodes on battery.
 In de accustand (Energiemodi) verbruikt de decoder minder dan de processorkernen. Schakelt u dit uit, dan decodeert de processor op accuvoeding.
 
@@ -4667,6 +4997,9 @@ Java
 
 JavaScript
 JavaScript
+
+JavaScript Console
+JavaScript-console
 
 JavaScript packages and build output
 JavaScript-pakketten en buildbestanden
@@ -4824,6 +5157,9 @@ Toetsenbordprofiel
 Keyboard Shortcuts
 Sneltoetsen
 
+Keyboard shortcuts
+Sneltoetsen
+
 Keyboard: the Mac profile came along, ⌘ on the Super key (the Windows key on most PC keyboards). Preferences ▸ Keyboard picks another for this keyboard.
 Het Mac-profiel is overgenomen: ⌘ zit op Super (op de meeste pc-toetsenborden de Windows-toets). Kies desgewenst een ander profiel in Voorkeuren ▸ Toetsenbord.
 
@@ -4956,14 +5292,23 @@ Linker derde
 Left Two Thirds
 Linker twee derde
 
+Left half
+Linkerhelft
+
 Left out, as dnf wouldn’t take it: {}. ({})
 Overgeslagen omdat dnf het weigerde: {}. ({})
 
 Left out, as dnf wouldn’t take them: {}. ({})
 Overgeslagen omdat dnf ze weigerde: {}. ({})
 
+Left third
+Linker derde
+
 Left to the firmware for now
 Voorlopig door de firmware geregeld
+
+Left two thirds
+Linker twee derde
 
 Left-handed (swap the buttons)
 Linkshandig (knoppen omwisselen)
@@ -4973,6 +5318,9 @@ Lengte
 
 Less noise
 Minder ruis
+
+Less space between windows
+Minder ruimte tussen vensters
 
 Let coding agents keep their tab’s title current
 Programmeeragenten de titel van hun tabblad laten bijwerken
@@ -5118,6 +5466,9 @@ Vergrendelen na inactiviteit van:
 Lock the Screen
 Scherm vergrendelen
 
+Lock the screen
+Scherm vergrendelen
+
 Lock the screen when the display turns off
 Vergrendelen als het scherm uitgaat
 
@@ -5138,6 +5489,9 @@ Afmelden…
 
 Login
 Login
+
+Logs
+Logs
 
 Long
 Lang
@@ -5175,6 +5529,9 @@ Inhoud bekijken…
 Looking at which processes use it…
 Controleren welke processen dit gebruiken…
 
+Looking for Bluetooth…
+Zoeken naar Bluetooth…
+
 Looking for a newer release…
 Nieuwere versie zoeken…
 
@@ -5187,6 +5544,9 @@ Agenda’s zoeken…
 Looking for network devices…
 Netwerkapparaten zoeken…
 
+Looking for phones nearby…
+Zoeken naar telefoons in de buurt…
+
 Looking for security keys…
 Beveiligingssleutels zoeken…
 
@@ -5195,6 +5555,9 @@ Geluidsapparaten zoeken…
 
 Looking for the fingerprint sensor…
 Vingerafdruksensor zoeken…
+
+Looking for the phone…
+Zoeken naar de telefoon…
 
 Looking for volumes…
 Volumes zoeken…
@@ -5331,8 +5694,17 @@ Appwachtwoord maken…
 Make an app password for Olo in Fastmail (Settings ▸ Privacy & Security ▸ Manage app passwords and access) with access to mail and calendars. It’s kept in your login keyring.
 Maak in Fastmail onder Instellingen ▸ Privacy en beveiliging ▸ Appwachtwoorden en toegang beheren een appwachtwoord voor Olo met toegang tot e-mail en agenda’s. Het wordt in uw aanmeldsleutelbos bewaard.
 
+Make it the main window
+Tot hoofdvenster maken
+
 Make one at my.telegram.org ▸ API development tools (sign in there with your phone number), then copy its App api_id and api_hash here.
 Meld u met uw telefoonnummer aan op my.telegram.org. Maak een app onder API development tools en kopieer de App api_id en api_hash hierheen.
+
+Make the main windows bigger
+Hoofdvensters groter maken
+
+Make the main windows smaller
+Hoofdvensters kleiner maken
 
 Make this the main display
 Dit scherm als hoofdscherm instellen
@@ -5378,6 +5750,12 @@ Markeren als openstaand
 
 Mark as Read
 Als gelezen markeren
+
+Mark as Read or Unread
+Als gelezen of ongelezen markeren
+
+Mark as done, or not done
+Markeren als afgerond, of niet
 
 Markdown
 Markdown
@@ -5523,8 +5901,14 @@ Meer
 More Menus
 Meer menu’s
 
+More main windows
+Meer hoofdvensters
+
 More noise
 Meer ruis
+
+More space between windows
+Meer ruimte tussen vensters
 
 Mostly clear
 Vrijwel helder
@@ -5706,6 +6090,12 @@ Alle {} gearchiveerde chats terugzetten in de chatlijst?
 Move both archived chats back to your chat list?
 Beide gearchiveerde chats terugzetten in de chatlijst?
 
+Move every tile's window back one
+Elk venster een tegel terug
+
+Move every tile's window on one
+Elk venster een tegel verder
+
 Move the archived chat back to your chat list?
 De gearchiveerde chat terugzetten in de chatlijst?
 
@@ -5714,6 +6104,18 @@ Aanwijzer verplaatsen
 
 Move the pointer on a thread of its own
 Aanwijzer in een eigen thread verplaatsen
+
+Move the tile's edge down
+Tegelrand omlaag
+
+Move the tile's edge left
+Tegelrand naar links
+
+Move the tile's edge right
+Tegelrand naar rechts
+
+Move the tile's edge up
+Tegelrand omhoog
 
 Move to Archive
 Naar archief verplaatsen
@@ -5726,6 +6128,9 @@ Verplaatsen naar prullenbak
 
 Move to Workspace
 Naar werkblad verplaatsen
+
+Move to the scratchpad
+Naar het kladblok verplaatsen
 
 Move to {}
 Naar {} verplaatsen
@@ -5802,6 +6207,9 @@ Kleiner dan sRGB ({}% dekking)
 Natural scrolling (content follows your fingers)
 Natuurlijk scrollen (de inhoud volgt uw vingers)
 
+Nearby
+In de buurt
+
 Needed by another package
 Vereist door een ander pakket
 
@@ -5844,6 +6252,9 @@ Nieuwe map
 New Group…
 Nieuwe groep…
 
+New Incognito Window
+Nieuw incognitovenster
+
 New Item
 Nieuw onderdeel
 
@@ -5852,6 +6263,9 @@ Nieuwe lijst
 
 New List…
 Nieuwe lijst…
+
+New Login
+Nieuwe login
 
 New Message
 Nieuw bericht
@@ -5970,14 +6384,38 @@ Volgend tabblad
 Next Week
 Volgende week
 
+Next auto-tiling layout
+Volgende tegelindeling
+
+Next column width (Scrolling)
+Volgende kolombreedte (Scrollen)
+
 Next day, week or month
 Volgende dag, week of maand
 
 Next step
 Volgende stap
 
+Next tab in the window
+Volgend tabblad in het venster
+
 Next when you click Back Up Now.
 De volgende begint wanneer u op Nu back-up maken klikt.
+
+Next window above the tile
+Volgend venster boven de tegel
+
+Next window below the tile
+Volgend venster onder de tegel
+
+Next window to the tile's left
+Volgend venster links van de tegel
+
+Next window to the tile's right
+Volgend venster rechts van de tegel
+
+Next workspace
+Volgend werkblad
 
 Next {}.
 Volgende {}.
@@ -6117,8 +6555,14 @@ Niemand op Telegram heet {}.
 No open files.
 Geen geopende bestanden.
 
+No phone found yet.
+Nog geen telefoon gevonden.
+
 No phone or mail account is set up: a phone in Phone, a Google or Fastmail account for Mail in Integrations.
 Stel een telefoon in via Telefoon, of stel in Integraties een Google- of Fastmail-account voor Mail in.
+
+No phone paired
+Geen telefoon gekoppeld
 
 No power profiles daemon is running (power-profiles-daemon, or tuned-ppd on Fedora): Olo sets the power mode through it.
 De dienst voor energieprofielen is niet actief (power-profiles-daemon of op Fedora tuned-ppd). Olo gebruikt die dienst om de energiemodus in te stellen.
@@ -6401,6 +6845,9 @@ Niets gewijzigd. Het model van Olo blijft in gebruik.
 
 Nothing coming up
 Geen komende afspraken
+
+Nothing connects until it starts again. Olo Doctor restarts it (it asks for your password).
+Niets maakt verbinding tot deze opnieuw is gestart. Olo Doctor start hem opnieuw (en vraagt om uw wachtwoord).
 
 Nothing done yet
 Nog niets afgerond
@@ -6720,6 +7167,9 @@ Gebruik een https://-adres. Bij een onbeveiligde verbinding kunnen gegevens onde
 Only on battery power
 Alleen op accuvoeding
 
+Only the active window shows, zoomed, with its dialogs over it.
+Alleen het actieve venster is zichtbaar, gezoomd, met zijn dialoogvensters erboven.
+
 Only the latest of the same notification
 Alleen de laatste identieke melding bewaren
 
@@ -6752,6 +7202,9 @@ Integraties openen…
 
 Open Link
 Koppeling openen
+
+Open Location
+Locatie openen
 
 Open Log File…
 Logbestand openen…
@@ -6894,6 +7347,9 @@ Anders…
 Out of memory:
 Bij geheugentekort:
 
+Out of reach
+Buiten bereik
+
 Output
 Uitvoer
 
@@ -6902,6 +7358,9 @@ Te laat
 
 Overview
 Overzicht
+
+Overview of every window
+Overzicht van alle vensters
 
 Overwrite the old data with zeros (slow)
 Oude gegevens met nullen overschrijven (langzaam)
@@ -6933,14 +7392,29 @@ Pagina {} van {}
 Pair
 Koppelen
 
+Paired
+Gekoppeld
+
+Paired with this computer; not yet sharing its messages
+Gekoppeld met deze computer; deelt zijn berichten nog niet
+
 Paired with {}.
 Gekoppeld aan {}.
 
 Pairing
 Koppeling
 
+Pairing didn't work.
+Het koppelen is niet gelukt.
+
+Pairing didn’t finish. Try again, with the phone unlocked on its Bluetooth settings.
+Het koppelen is niet voltooid. Probeer het opnieuw, met de telefoon ontgrendeld op de Bluetooth-instellingen.
+
 Pairing with {} didn't work: {}.
 Koppelen aan {} is mislukt: {}.
+
+Pairing…
+Koppelen…
 
 Pair…
 Koppelen…
@@ -7220,6 +7694,9 @@ Vastmaken
 Pin as Main
 Vastmaken als hoofdvenster
 
+Pin it as the main window, or let it go
+Als hoofdvenster vastmaken, of loslaten
+
 Pinch to zoom
 Knijpen om te zoomen
 
@@ -7409,11 +7886,23 @@ Vorig tabblad
 Previous Week
 Vorige week
 
+Previous auto-tiling layout
+Vorige tegelindeling
+
 Previous day, week or month
 Vorige dag, week of maand
 
+Previous tab in the window
+Vorig tabblad in het venster
+
+Previous workspace
+Vorig werkblad
+
 Print
 Druk af
+
+Printer
+Printer
 
 Print…
 Afdrukken…
@@ -7546,6 +8035,9 @@ Een uur stil
 
 Quit
 Afsluiten
+
+Quit Chrome
+Chrome afsluiten
 
 Quit Now
 Nu afsluiten
@@ -7712,6 +8204,9 @@ Computergeluid opnemen
 Record the Microphone
 Microfoon opnemen
 
+Record the screen, or stop
+Scherm opnemen, of stoppen
+
 Recording
 Opname
 
@@ -7754,6 +8249,9 @@ Opnieuw uitvoeren
 Redo Window Arrangement
 Vensterindeling opnieuw toepassen
 
+Redo window arrangement
+Vensterindeling opnieuw toepassen
+
 Redo {}
 {} opnieuw uitvoeren
 
@@ -7780,6 +8278,15 @@ Opnieuw genereren
 
 Reinstall Selected…
 Selectie opnieuw installeren…
+
+Reject
+Weigeren
+
+Reload
+Opnieuw laden
+
+Reload Without the Cache
+Opnieuw laden zonder cache
 
 Remind:
 Herinneren:
@@ -7850,6 +8357,9 @@ Remove “{}” from Favorites
 Remove…
 Verwijderen…
 
+Removing…
+Verwijderen…
+
 Rename
 Hernoemen
 
@@ -7874,6 +8384,9 @@ Werkboom hernoemen…
 Rename…
 Hernoemen…
 
+Reopen Closed Tab
+Gesloten tabblad opnieuw openen
+
 Repeat rate
 Herhaalsnelheid
 
@@ -7885,6 +8398,9 @@ Vervangen
 
 Replace Same
 Identieke meldingen vervangen
+
+Replace and find again
+Vervangen en opnieuw zoeken
 
 Replace the one-time code of your login {} with the one this page shows?
 De eenmalige code van uw login {} vervangen door die op deze pagina?
@@ -8087,6 +8603,18 @@ Rechter twee derde
 Right first
 Direct goed
 
+Right half
+Rechterhelft
+
+Right third
+Rechter derde
+
+Right two thirds
+Rechter twee derde
+
+Roll up or down
+Op- of afrollen
+
 Room:
 Ruimte:
 
@@ -8095,6 +8623,12 @@ Linksom draaien
 
 Rotate Right
 Rechtsom draaien
+
+Rotate the tiles
+Tegels draaien
+
+Rotate the tiles back
+Tegels terugdraaien
 
 Round trip
 Retourtijd
@@ -8161,6 +8695,9 @@ Zaterdag
 
 Save
 Opslaan
+
+Save As
+Opslaan als
 
 Save As…
 Opslaan als…
@@ -8231,6 +8768,9 @@ Persoonlijke map scannen
 Scan Volume
 Volume scannen
 
+Scan a Folder
+Map scannen
+
 Scan a Folder…
 Map scannen…
 
@@ -8267,8 +8807,26 @@ Schermbeveiliging
 Screenshot
 Schermafdruk
 
+Screenshot app
+Schermafdruk-app
+
+Screenshot of an area
+Schermafdruk van een gebied
+
+Screenshot of the screen
+Schermafdruk van het scherm
+
+Screenshot of the window
+Schermafdruk van het venster
+
+Screenshots
+Schermafdrukken
+
 Scroll
 Scrollen
+
+Scroll for more · Esc closes
+Scrol voor meer · Esc sluit
 
 Scroll while the middle button is held
 Scrollen met de middelste muisknop ingedrukt
@@ -8302,6 +8860,9 @@ Zoeken: woorden, program:, level:, since:
 
 Searching…
 Bezig met zoeken…
+
+Second folder
+Tweede map
 
 Secondary click (three: middle)
 Secundaire klik (drie vingers: middelklik)
@@ -8366,6 +8927,12 @@ Selecteer een transactie om te zien wat er met elk pakket is gebeurd.
 Select an update to read about it: its versions, why it came out, what changed.
 Selecteer een update voor de versies, de reden voor de uitgave en de wijzigingen.
 
+Select as you go: with any of these
+Selecteren onderweg: met elk van deze
+
+Select tool
+Selectiegereedschap
+
 Selected {} to {}
 Geselecteerd van {} tot {}
 
@@ -8385,6 +8952,9 @@ Send Voice Message
 Spraakbericht verzenden
 
 Send to Back
+Naar achteren
+
+Send to back
 Naar achteren
 
 Send with BBRv3
@@ -8505,6 +9075,9 @@ Instellingen
 Settings:
 Instellingen:
 
+Seventh folder
+Zevende map
+
 Shaping
 Verkeersregeling
 
@@ -8559,6 +9132,9 @@ Tonen
 Show All
 Alles tonen
 
+Show All Tabs
+Alle tabbladen tonen
+
 Show Archived
 Gearchiveerde tonen
 
@@ -8567,6 +9143,9 @@ Gearchiveerde gesprekken tonen
 
 Show Assistant
 Assistent tonen
+
+Show Bookmarks Bar
+Bladwijzerbalk tonen
 
 Show Calendars
 Agenda’s tonen
@@ -8658,11 +9237,17 @@ Tonen op AirPlay
 Show on All Workspaces
 Op alle werkbladen tonen
 
+Show on all workspaces
+Op alle werkbladen tonen
+
 Show or Hide All Windows
 Alle vensters tonen of verbergen
 
 Show or hide the assistant
 Toon of verberg de assistent
+
+Show or hide the scratchpad
+Kladblok tonen of verbergen
 
 Show or hide the source
 Toon of verberg de bron
@@ -8672,6 +9257,9 @@ Seconden tonen
 
 Show the day of the week
 Dag van de week tonen
+
+Show the desktop
+Bureaublad tonen
 
 Show the phone’s other notifications
 Andere meldingen van de telefoon tonen
@@ -8763,6 +9351,9 @@ Ondertekenen…
 Site Settings
 Site-instellingen
 
+Sixth folder
+Zesde map
+
 Size
 Grootte
 
@@ -8798,6 +9389,9 @@ Klein: één regel. Middelgroot en groot tonen alle gegevens, bij groot met een 
 
 Smaller
 Kleiner
+
+Smaller text
+Kleinere tekst
 
 Smooth Pointer
 Vloeiende aanwijzer
@@ -8898,6 +9492,9 @@ Spaans
 Spare
 Reserve
 
+Speaker
+Luidspreker
+
 Speaker amp {}
 Luidsprekerversterker {}
 
@@ -8936,6 +9533,12 @@ Opnieuw beginnen…
 
 Start Test
 Test starten
+
+Start or end of the document
+Begin of einde van het document
+
+Start or end of the line
+Begin of einde van de regel
 
 Start the Agent
 Agent starten
@@ -8992,6 +9595,9 @@ Wakker houden
 
 Stay awake (caffeinated)
 Wakker houden (cafeïne)
+
+Stay awake, or not
+Wakker houden, of niet
 
 Stay awake: no display sleep, sleep, screen saver or lock
 Wakker houden: geen schermslaap, slaapstand, schermbeveiliging of vergrendeling
@@ -9131,6 +9737,27 @@ Ook wisselgeheugen
 Swap with Previous Main
 Met vorig hoofdvenster wisselen
 
+Swap with the next tile
+Wisselen met de volgende tegel
+
+Swap with the previous main window
+Wisselen met het vorige hoofdvenster
+
+Swap with the previous tile
+Wisselen met de vorige tegel
+
+Swap with the tile above
+Wisselen met de tegel erboven
+
+Swap with the tile below
+Wisselen met de tegel eronder
+
+Swap with the tile to the left
+Wisselen met de tegel links
+
+Swap with the tile to the right
+Wisselen met de tegel rechts
+
 Swedish
 Zweeds
 
@@ -9140,17 +9767,32 @@ Swift
 Swiss
 Zwitsers
 
+Switch applications (Twitcher)
+Wisselen tussen programma’s (Twitcher)
+
+Switch applications on the workspaces showing
+Wisselen tussen programma’s op de zichtbare werkbladen
+
 Switch automatically between this computer and your iPhone
 Automatisch wisselen tussen deze computer en uw iPhone
 
 Switch to a woken program at once
 Gewekt programma meteen laten draaien
 
+Switch windows of the application
+Wisselen tussen vensters van het programma
+
+Switching
+Wisselen
+
 Sync
 Synchroniseren
 
 Sync Again
 Opnieuw synchroniseren
+
+Sync Contacts
+Contacten synchroniseren
 
 Sync Now
 Nu synchroniseren
@@ -9194,11 +9836,44 @@ TOML
 TSX
 TSX
 
+Tab 1
+Tabblad 1
+
+Tab 2
+Tabblad 2
+
+Tab 3
+Tabblad 3
+
+Tab 4
+Tabblad 4
+
+Tab 5
+Tabblad 5
+
+Tab 6
+Tabblad 6
+
+Tab 7
+Tabblad 7
+
+Tab 8
+Tabblad 8
+
+Tab 9
+Tabblad 9
+
 Table
 Tabel
 
+Tablet
+Tablet
+
 Tabs
 Tabbladen
+
+Tabs on Agent Screens are never given a code.
+Tabbladen op agentschermen krijgen nooit een code.
 
 Tags:
 Labels:
@@ -9215,6 +9890,9 @@ Schermafdruk maken…
 Take calls on this computer
 Gesprekken op deze computer aannemen
 
+Take or give back control
+Besturing overnemen of teruggeven
+
 Taken
 Overgenomen
 
@@ -9224,11 +9902,14 @@ Tik
 Tap and drag
 Tikken en slepen
 
+Tap the Windows key on its own for the command palette
+Alleen de Windows-toets indrukken voor het opdrachtenpalet
+
 Tap to click
 Tikken om te klikken
 
-Tap {} on its own for the command palette
-Alleen {} indrukken voor het opdrachtenpalet
+Tap ⌘ (the Super key) on its own for the command palette
+Alleen ⌘ (de Super-toets) indrukken voor het opdrachtenpalet
 
 Taps
 Tikken
@@ -9326,8 +10007,17 @@ Sms
 Text Size
 Tekstgrootte
 
+Text at its own size
+Tekst op eigen grootte
+
+Text messages
+Sms-berichten
+
 Text messages to “{}”
 Sms-berichten aan ‘{}’
+
+Text tool
+Tekstgereedschap
 
 Text:
 Tekst:
@@ -9379,6 +10069,9 @@ De API-hash bestaat uit 32 tekens (0–9 en a–f).
 
 The AirPods service isn't running.
 De AirPods-dienst is niet actief.
+
+The Bluetooth service (bluetoothd) isn't running.
+De Bluetooth-service (bluetoothd) is niet actief.
 
 The CPU doesn't offer “{}”.
 De CPU ondersteunt ‘{}’ niet.
@@ -9473,11 +10166,23 @@ De kopie van Token Pool die door deze is vervangen, rondt nog haar verzoeken af.
 The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
 De kopie van Token Pool die door deze is vervangen, rondt nog haar verzoeken af. Log over een ogenblik opnieuw in.
 
+The copy of Token Pool this one replaced is still finishing its requests. The sign-in is taken as soon as it has.
+De kopie van Token Pool die door deze is vervangen, rondt nog haar verzoeken af. De aanmelding wordt overgenomen zodra ze klaar is.
+
 The day before, at 9 AM
 De dag ervoor om 9.00 uur
 
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
 Het trefferpercentage van vandaag, de bezette plaatsen in de pool en de builds en treffers van de afgelopen uren.
+
+The device couldn't be disconnected.
+De verbinding met het apparaat kon niet worden verbroken.
+
+The device couldn't be removed.
+Het apparaat kon niet worden verwijderd.
+
+The device didn't connect.
+Het apparaat heeft geen verbinding gemaakt.
 
 The displays' settings are Olo's own again, from when you leave Rescue.
 Bij het verlaten van de herstelmodus krijgen de schermen weer de standaardinstellingen van Olo.
@@ -9593,6 +10298,9 @@ Van de huidige stijl
 The loss is a number, in percent.
 Geef het verlies op als percentage.
 
+The main window in its place; the others stack around it.
+Het hoofdvenster op zijn plaats; de andere stapelen zich eromheen.
+
 The microphone can’t be recorded ({}).
 Opnemen van de microfoon is mislukt ({}).
 
@@ -9649,6 +10357,9 @@ Het wachtwoord van ‘{}’ bewaren mislukt: {}
 
 The passwords file is damaged: {}
 Het wachtwoordenbestand is beschadigd: {}
+
+The phone didn’t connect. Is it unlocked, with Bluetooth on?
+De telefoon heeft geen verbinding gemaakt. Is hij ontgrendeld en staat Bluetooth aan?
 
 The phone didn’t take it.
 De telefoon heeft het verzoek geweigerd.
@@ -9782,6 +10493,9 @@ De spraakdienst is niet actief.
 The window server didn’t give its settings.
 De vensterserver heeft geen instellingen doorgegeven.
 
+The windows in rows of about square cells.
+De vensters in rijen van ongeveer vierkante cellen.
+
 The workspace each display shows stays open in every Deskbar; each other one is its heading, with an arrow that shows its applications and puts them away again.
 De werkbladen die op een scherm te zien zijn, blijven in elke Deskbar uitgeklapt. Bij de andere ziet u alleen de naam en een pijltje waarmee u de apps toont of verbergt.
 
@@ -9830,6 +10544,9 @@ Er is geen limiet ‘{}’.
 There is nothing to share.
 Er is niets om te delen.
 
+There's no Bluetooth adapter.
+Er is geen Bluetooth-adapter.
+
 There's no Ethernet adapter. A USB or Thunderbolt one shows here once it's plugged in.
 Geen ethernetadapter. Een USB- of Thunderbolt-adapter verschijnt hier zodra u die aansluit.
 
@@ -9859,6 +10576,9 @@ Denkwerk:
 
 Thinking…
 Nadenken…
+
+Third folder
+Derde map
 
 This Computer
 Deze computer
@@ -10007,6 +10727,9 @@ Alle tabbladen tegelen
 Tile With
 Tegelen met
 
+Tile all windows on the display
+Alle vensters op het scherm tegelen
+
 Tiling, zooming, Tile All, cascading and fanning out all leave this space.
 Deze ruimte blijft vrij bij tegelen, maximaliseren, trapsgewijs rangschikken en uitwaaieren.
 
@@ -10057,6 +10780,12 @@ Te doen
 
 To allow it, you can also {}.
 U kunt ook {} om dit toe te staan.
+
+To the next display
+Naar het volgende scherm
+
+To the previous display
+Naar het vorige scherm
 
 To {}
 Naar {}
@@ -10142,8 +10871,20 @@ Kwart rechtsboven
 Top Two Thirds
 Bovenste twee derde
 
+Top half
+Bovenste helft
+
+Top left quarter
+Kwart linksboven
+
+Top right quarter
+Kwart rechtsboven
+
 Top speed
 Topsnelheid
+
+Top two thirds
+Bovenste twee derde
 
 Touch
 Aanraking
@@ -10295,6 +11036,9 @@ Schakel dit in als de laptop meestal op netvoeding werkt.
 Turn the display off after:
 Scherm uitschakelen na:
 
+Turn the tile's split
+Splitsing van de tegel draaien
+
 Turn the touchpad off while a mouse is plugged in
 Touchpad uitschakelen als een muis is aangesloten
 
@@ -10412,6 +11156,9 @@ Transactie ongedaan maken…
 Undo Window Arrangement
 Vensterindeling ongedaan maken
 
+Undo window arrangement
+Vensterindeling ongedaan maken
+
 Undo {}
 {} ongedaan maken
 
@@ -10486,6 +11233,9 @@ Omhoog
 
 Up (sent)
 Upload (verzonden)
+
+Up a level
+Eén niveau omhoog
 
 Up for
 Actief sinds
@@ -10682,6 +11432,33 @@ Variabele vernieuwingsfrequentie
 Vault
 Kluis
 
+Vault 1
+Kluis 1
+
+Vault 2
+Kluis 2
+
+Vault 3
+Kluis 3
+
+Vault 4
+Kluis 4
+
+Vault 5
+Kluis 5
+
+Vault 6
+Kluis 6
+
+Vault 7
+Kluis 7
+
+Vault 8
+Kluis 8
+
+Vault 9
+Kluis 9
+
 Vault Info…
 Kluisinformatie…
 
@@ -10714,6 +11491,9 @@ De processor decodeert de video. {}
 
 View
 Weergave
+
+View Source
+Bron weergeven
 
 Viewer
 Viewer
@@ -10783,6 +11563,9 @@ Wachten op netvoeding
 
 Waiting for the network
 Wachten op het netwerk
+
+Waiting for the phone to allow it
+Wachten tot de telefoon het toestaat
 
 Waiting for the phone… this page follows it by itself.
 Wachten op de telefoon… deze pagina wordt automatisch bijgewerkt.
@@ -11102,11 +11885,47 @@ Venster op een achtergrond
 Window title size
 Grootte van venstertitels
 
+Window to the next workspace
+Venster naar het volgende werkblad
+
+Window to the previous workspace
+Venster naar het vorige werkblad
+
+Window to workspace 1
+Venster naar werkblad 1
+
+Window to workspace 2
+Venster naar werkblad 2
+
+Window to workspace 3
+Venster naar werkblad 3
+
+Window to workspace 4
+Venster naar werkblad 4
+
+Window to workspace 5
+Venster naar werkblad 5
+
+Window to workspace 6
+Venster naar werkblad 6
+
+Window to workspace 7
+Venster naar werkblad 7
+
+Window to workspace 8
+Venster naar werkblad 8
+
+Window to workspace 9
+Venster naar werkblad 9
+
 Windowing Mode
 Venstermodus
 
 Windows
 Vensters
+
+Windows stay where you put them.
+Vensters blijven waar u ze neerzet.
 
 Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).
 Vensterbuffers blijven buiten het wisselgeheugen, zodat het bureaublad niet hoeft te wachten tot ze zijn teruggelezen. Hiervoor gebruikt Olo een livepatch voor het Intel-stuurprogramma.
@@ -11134,6 +11953,33 @@ Bezig…
 
 Works on a picture of the desktop.
 Werkt met een afbeelding van het bureaublad.
+
+Workspace 1
+Werkblad 1
+
+Workspace 2
+Werkblad 2
+
+Workspace 3
+Werkblad 3
+
+Workspace 4
+Werkblad 4
+
+Workspace 5
+Werkblad 5
+
+Workspace 6
+Werkblad 6
+
+Workspace 7
+Werkblad 7
+
+Workspace 8
+Werkblad 8
+
+Workspace 9
+Werkblad 9
 
 Workspace:
 Werkblad:
@@ -11294,6 +12140,9 @@ Uw model: één keer bijgetraind sinds de start
 Yours: fine-tuned {} times since it started
 Uw model: {} keer bijgetraind sinds de start
 
+You’re asked each time a tab on an Agent Screen is the one waiting.
+U wordt het elke keer gevraagd wanneer het wachtende tabblad op een agentscherm staat.
+
 Zig
 Zig
 
@@ -11309,14 +12158,26 @@ Inzoomen
 Zoom Out
 Uitzoomen
 
+Zoom horizontally
+Horizontaal zoomen
+
 Zoom on Clicks
 Inzoomen bij klikken
+
+Zoom or unzoom
+Zoomen of terugzetten
+
+Zoom or unzoom all windows on the display
+Alle vensters op het scherm zoomen of terugzetten
 
 Zoom to Fill
 Vergroten om te vullen
 
 Zoom to Fit
 Passend maken
+
+Zoom vertically
+Verticaal zoomen
 
 __pycache__, .venv, .mypy_cache, .pytest_cache, .tox
 __pycache__, .venv, .mypy_cache, .pytest_cache, .tox
@@ -12122,6 +12983,10 @@ other: {n} back-ups geselecteerd.
 one: {n} binnenkort
 other: {n} binnenkort
 
+{n} conversations
+one: {n} gesprek
+other: {n} gesprekken
+
 {n} days
 one: {n} dag
 other: {n} dagen
@@ -12265,6 +13130,10 @@ other: {n} openstaand
 {n} to-dos
 one: {n} taak
 other: {n} taken
+
+{n} unread
+one: {n} ongelezen
+other: {n} ongelezen
 
 {n} waiting in their apps
 one: {n} wacht in de app
@@ -12564,6 +13433,9 @@ Het quotum voor {} is bij alle accounts op
 
 {} kept, still shared with builds' target folders
 {} bewaard, nog gedeeld met de doelmappen van builds
+
+{} keys
+{}-toetsen
 
 {} knows this computer.
 {} kent deze computer.
@@ -12969,6 +13841,9 @@ quotum {1} van {0}
 
 {}: windows stay where you put them. Click to choose a windowing mode.
 {}: vensters blijven waar u ze neerzet. Klik om een venstermodus te kiezen.
+
+{}: {}
+{}: {}
 
 {}: {} applications. Click to show them.
 {}: {} apps. Klik om ze te tonen.

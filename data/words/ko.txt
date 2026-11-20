@@ -421,8 +421,11 @@ A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference
 A repository’s key needs to be trusted
 저장소 키를 신뢰할지 확인하세요
 
-A reset this account asked for hasn’t been answered yet. Sign in as the same account, or remove this account and add the other.
-이 계정이 요청한 재설정에 아직 응답이 없습니다. 같은 계정으로 로그인하거나, 이 계정을 제거하고 다른 계정을 추가하세요.
+A reset this account asked for hasn’t been answered yet. The sign-in is taken as soon as it has.
+이 계정이 요청한 재설정에 아직 응답이 없습니다. 응답이 오는 즉시 로그인을 가져옵니다.
+
+A reset this account asked for hasn’t been answered yet. This sign-in doesn’t say which account it is. Sign in again once it has.
+이 계정이 요청한 재설정에 아직 응답이 없습니다. 이 로그인으로는 어느 계정인지 알 수 없습니다. 그 후 다시 로그인하세요.
 
 A resting palm can't click (its pressure doesn't count)
 손바닥을 올려놓아도 클릭되지 않음 (압력 제외)
@@ -472,6 +475,9 @@ A week
 A week before, at 9 AM
 일주일 전 오전 9시
 
+A word back or on
+한 단어 뒤로 또는 앞으로
+
 AI
 AI
 
@@ -507,6 +513,9 @@ Acceleration:
 
 Accent
 강조색
+
+Accept
+수락
 
 Access
 접근
@@ -670,6 +679,9 @@ Address:
 Addresses can’t be looked up: {}
 주소를 조회할 수 없습니다: {}
 
+Adjust Size
+크기 조절
+
 Adjust Size…
 크기 조절…
 
@@ -805,6 +817,9 @@ All {} connected.
 Allow
 허용
 
+Allow It on the Phone
+휴대전화에서 허용
+
 Allow NVIDIA Fallback on Battery
 배터리 사용 시 NVIDIA 대체 허용
 
@@ -813,6 +828,9 @@ Allow Sleep
 
 Allow Sleep (awake until {})
 잠자기 허용 ({}까지 깨어 있음)
+
+Allow it on the phone
+휴대전화에서 허용
 
 Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).
 ‘{0}’에서 {1}{2} 사용을 허용할까요? ‘항상’을 선택하면 파일 ▸ 허용된 앱…에서 취소할 때까지 계속 허용합니다.
@@ -906,6 +924,9 @@ Another Window
 
 Another account
 다른 계정
+
+Another program has the phone
+다른 프로그램이 휴대전화를 사용 중
 
 Another program has the phone’s message profiles (BlueFerry’s or GNOME’s obexd). Olo Doctor removes BlueFerry.
 다른 프로그램(BlueFerry 또는 GNOME의 obexd)이 전화의 메시지 프로필을 사용 중입니다. Olo Doctor에서 BlueFerry를 제거할 수 있습니다.
@@ -1021,6 +1042,9 @@ Archived Chats
 Archived Conversations
 보관한 대화
 
+Arranging
+배치
+
 Arrived out of order
 순서가 바뀌어 도착
 
@@ -1035,6 +1059,12 @@ As List
 
 As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines.
 Workbench 아이콘처럼 화면의 펜 16색으로 면을 채우고 검은 테두리를 씁니다.
+
+As a board
+보드로 보기
+
+As a list
+목록으로 보기
 
 As fast as the computer goes: the processors kept quick and the firmware's power limits raised, the fans as needed. The battery runs down sooner.
 컴퓨터의 최고 속도로 작동합니다. 프로세서를 빠르게 유지하고 펌웨어 전력 한도를 높이며 필요에 따라 팬을 돌립니다. 배터리가 더 빨리 닳습니다.
@@ -1159,6 +1189,9 @@ At {}. Give it the code from {}?
 Attach
 첨부
 
+Attach Files
+파일 첨부
+
 Attach Files…
 파일 첨부…
 
@@ -1173,6 +1206,9 @@ Attach Link…
 
 Attach a file or a link
 파일 또는 링크 첨부
+
+Attach what's on the clipboard
+클립보드 내용 첨부
 
 Attachments
 첨부 항목
@@ -1203,6 +1239,9 @@ Auto-Tiling Layout
 
 Auto-tiling layout:
 자동 타일 배치:
+
+Auto-tiling on or off
+자동 타일 배치 켜기 또는 끄기
 
 Automatic
 자동
@@ -1248,6 +1287,12 @@ Back to Chats
 
 Back to Conversations
 대화로 돌아가기
+
+Back to its own size
+원래 크기로
+
+Back to its own size, or hide
+원래 크기로, 또는 가리기
 
 Back to the Days
 날짜 목록으로 돌아가기
@@ -1408,6 +1453,9 @@ Best time for a run tomorrow?
 Bigger
 더 크게
 
+Bigger text
+텍스트 크게
+
 Black
 검정
 
@@ -1419,6 +1467,9 @@ Blue:
 
 Bluetooth
 Bluetooth
+
+Bluetooth couldn't be turned on or off.
+Bluetooth를 켜거나 끌 수 없습니다.
 
 Bluetooth couldn’t open the phone’s messages ({}).
 Bluetooth에서 휴대전화의 메시지를 열 수 없습니다({}).
@@ -1441,6 +1492,9 @@ Bluetooth isn’t running on this computer.
 Bluetooth said it would open them and no channel came
 Bluetooth가 열겠다고 응답했지만 채널이 연결되지 않았습니다
 
+Bluetooth's hardware isn't answering
+Bluetooth 하드웨어가 응답하지 않습니다
+
 Bluetooth…
 Bluetooth…
 
@@ -1452,6 +1506,12 @@ Body
 
 Bold
 굵게
+
+Bookmark Manager
+북마크 관리자
+
+Bookmark This Tab
+이 탭을 북마크에 추가
 
 Boost when work arrives and ease back between tasks.
 작업이 들어오면 속도를 높이고 작업 사이에는 낮춥니다.
@@ -1469,6 +1529,18 @@ Bottom Right Quarter
 오른쪽 아래 ¼
 
 Bottom Two Thirds
+아래쪽 ⅔
+
+Bottom half
+아래 절반
+
+Bottom left quarter
+왼쪽 아래 ¼
+
+Bottom right quarter
+오른쪽 아래 ¼
+
+Bottom two thirds
 아래쪽 ⅔
 
 Branch {} is checked out in {} already.
@@ -1524,6 +1596,9 @@ Buttons
 
 By
 실행자
+
+By App
+앱별
 
 By a parent leaving
 부모 프로세스 종료로
@@ -1630,6 +1705,9 @@ Calling…
 Calls
 통화
 
+Camera
+카메라
+
 Can't make {}: {}
 {} 생성 실패: {}
 
@@ -1678,11 +1756,20 @@ Capture Client Requests Again
 Capture debug information whenever a frame drops
 프레임이 누락될 때마다 디버그 정보 수집
 
+Cards
+카드
+
 Cascade All
 모두 계단식 배치
 
 Cascade Others
 나머지 창 계단식 배치
+
+Cascade all windows on the display
+디스플레이의 모든 창 계단식 배열
+
+Cascade the other windows, leaving this one
+이 창을 빼고 나머지 창 계단식 배열
 
 Case
 대소문자
@@ -1699,10 +1786,19 @@ Ceiling {}
 Celsius (°C)
 Celsius (°C)
 
+Center
+가운데로
+
 Center Third
 가운데 ⅓
 
 Center Two Thirds
+가운데 ⅔
+
+Center third
+가운데 ⅓
+
+Center two thirds
 가운데 ⅔
 
 Chance
@@ -1716,6 +1812,9 @@ API ID 변경…
 
 Change Background…
 배경 바꾸기…
+
+Change them in Preferences ▸ Keyboard ▸ Shortcuts.
+환경설정 ▸ 키보드 ▸ 단축키에서 변경하세요.
 
 Changed both here and in 1Password: 1Password’s version replaces it here, and yours is kept as “{} (conflict)”
 여기와 1Password 양쪽에서 변경되었습니다. 이 항목은 1Password 버전으로 바꾸고 여기서 편집한 내용은 ‘{} (충돌)’로 보관합니다
@@ -1767,6 +1866,9 @@ Check Health
 
 Check Spelling While Typing
 입력할 때 맞춤법 검사
+
+Check everything
+모두 검사
 
 Check for Updates
 업데이트 검사
@@ -1858,8 +1960,26 @@ Chosen for the whole computer and kept across restarts. It's the computer's, not
 Chosen outside dnf
 dnf 외부에서 선택됨
 
+Chrome and Slack
+Chrome 및 Slack
+
 Chrome holds it, as it may be harmful: keep it or delete it in Chrome’s Downloads.
 유해할 수 있어 Chrome이 보류했습니다. Chrome의 다운로드에서 보관하거나 삭제하세요.
+
+Chrome: Bookmarks and History
+Chrome: 북마크 및 기록
+
+Chrome: Developer
+Chrome: 개발자
+
+Chrome: Going Places
+Chrome: 탐색
+
+Chrome: Tabs and Windows
+Chrome: 탭 및 창
+
+Chrome: View
+Chrome: 보기
 
 City or region
 도시 또는 지역
@@ -1914,6 +2034,9 @@ Clear All
 
 Clear All Tabs
 모든 탭 지우기
+
+Clear Browsing Data
+인터넷 사용 기록 삭제
 
 Clear History
 기록 지우기
@@ -2005,6 +2128,9 @@ Close Tab
 Close Window
 창 닫기
 
+Close the window
+창 닫기
+
 Cloud Heights
 구름 고도
 
@@ -2037,6 +2163,12 @@ Code given to Agent Screen “{}”
 
 Code:
 코드:
+
+Codes texted to this phone are offered in the browser tab waiting for them.
+이 휴대전화에 문자로 온 코드는 코드를 기다리는 브라우저 탭에 제안됩니다.
+
+Codes texted to this phone aren’t looked for.
+이 휴대전화에 문자로 온 코드는 찾지 않습니다.
 
 Codex
 Codex
@@ -2083,6 +2215,9 @@ Column View
 Columns
 열
 
+Command Palette
+명령 팔레트
+
 Command Suggestions
 명령 제안
 
@@ -2091,6 +2226,9 @@ Command key:
 
 Command or Comment
 명령 또는 주석
+
+Command palette
+명령 팔레트
 
 Comment
 주석
@@ -2122,6 +2260,9 @@ Compressed Swap
 Compressed to
 압축 후 크기
 
+Computer
+컴퓨터
+
 Computes with
 연산 장치
 
@@ -2133,6 +2274,12 @@ IPv6 구성:
 
 Confirm
 확인
+
+Confirm the Code
+코드 확인
+
+Confirm the code
+코드 확인
 
 Confirm:
 확인:
@@ -2155,6 +2302,12 @@ Connect automatically when you put them in near this computer
 Connect with a Token…
 토큰으로 연결…
 
+Connect your phone
+휴대전화 연결
+
+Connected
+연결됨
+
 Connected as {}, through {}.
 {1}을 통해 {0} 계정으로 연결했습니다.
 
@@ -2167,6 +2320,9 @@ Connected to “{}”: {}
 Connected {}, but its sign-in wasn’t allowed {}: Sign In Again and allow everything it asks.
 {0} 연결은 되었지만 로그인 시 {1} 권한이 거부되었습니다. 다시 로그인해 요청한 권한을 모두 허용하세요.
 
+Connected, {}%
+연결됨, {}%
+
 Connected.
 연결되었습니다.
 
@@ -2175,6 +2331,9 @@ Telegram에 연결 중…
 
 Connecting to “{}”…
 ‘{}’에 연결 중…
+
+Connecting…
+연결하는 중…
 
 Connection
 연결
@@ -2205,6 +2364,9 @@ Conversation
 
 Conversation Awareness
 대화 인지
+
+Conversations
+대화
 
 Convert to Table
 표로 변환
@@ -2328,6 +2490,9 @@ Couldn't save what was dropped: {}
 
 Couldn't save: {}
 저장할 수 없습니다: {}
+
+Couldn't search for devices.
+기기를 검색할 수 없습니다.
 
 Couldn’t archive it. {}
 보관할 수 없습니다. {}
@@ -2617,6 +2782,9 @@ Delete Vault
 Delete Vault…
 금고 삭제…
 
+Delete a word
+한 단어 삭제
+
 Delete the event
 이벤트 삭제
 
@@ -2634,6 +2802,9 @@ Delete these {} backups? The space only they took is freed; files other backups 
 
 Delete this backup? The space only it took is freed; files other backups hold too stay in those. It can’t be undone.
 이 백업을 삭제할까요? 이 백업에만 쓰인 공간을 비우며 다른 백업과 공유하는 파일은 유지됩니다. 되돌릴 수 없습니다.
+
+Delete to the line's start
+줄의 처음까지 삭제
 
 Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
 {0}({1}) 항목을 영구 삭제할까요? 휴지통을 거치지 않으며 되돌릴 수 없습니다.
@@ -2728,6 +2899,9 @@ Deskbar 표시: {}
 Deskbar: a {} widget measured “{}”, which this computer hasn't; it measures {} instead.
 Deskbar: {} 위젯의 ‘{}’ 측정값이 이 컴퓨터에 없어 대신 {} 값을 표시합니다.
 
+Desktop
+데스크톱
+
 Desktop (Preferences)
 데스크톱 (환경설정)
 
@@ -2742,6 +2916,9 @@ Destination
 
 Details
 자세히
+
+Developer Tools
+개발자 도구
 
 Device
 장치
@@ -2788,6 +2965,9 @@ Google Drive({}) 연결을 해제할까요? DiskBackup은 이곳으로의 백업
 Disconnecting from Google Drive…
 Google Drive 연결 해제 중…
 
+Disconnecting…
+연결을 끊는 중…
+
 Disconnect…
 연결 해제…
 
@@ -2796,6 +2976,9 @@ Disk
 
 Disk Space
 디스크 공간
+
+Disk Usage
+Disk Usage
 
 Disk:
 디스크:
@@ -2890,6 +3073,9 @@ Do Not Disturb is on
 Do Not Disturb is on — {} unread
 방해 금지 켜짐 — 읽지 않음 {}개
 
+Do the result's other action
+결과의 다른 동작 실행
+
 Dockerfile
 Dockerfile
 
@@ -2904,6 +3090,9 @@ Documents
 
 Does “{}” show this number?
 ‘{}’에 이 번호가 표시되나요?
+
+Does “{}” show {}?
+‘{}’에 {}이(가) 표시되나요?
 
 Doing
 진행 중
@@ -2956,6 +3145,9 @@ Downloading: {}
 Downloading…
 다운로드 중…
 
+Downloads
+다운로드
+
 Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
 창을 탭으로 끄는 동안 자리에 놓거나 그 자리의 글자를 누르면 창이 그곳으로 갑니다. 다른 창의 자리에 놓으면 두 창이 서로 바뀝니다. Escape를 누르면 모두 원래대로 돌아갑니다.
 
@@ -2968,11 +3160,17 @@ Dragging a Window
 Draw
 그리기
 
+Draw tool
+그리기 도구
+
 Drawing
 그리기
 
 Drawn into each frame
 프레임마다 다시 그림
+
+Drive Setup
+Drive Setup
 
 DriveSetup
 DriveSetup
@@ -3094,6 +3292,12 @@ Olo와 다른 프로그램 어디서든 이 형식의 파일을 해당 앱으로
 Each network's own
 네트워크별 설정
 
+Each new window takes a tile, and the others make room.
+새 창은 타일 하나를 차지하고, 다른 창들이 자리를 내줍니다.
+
+Each new window takes half of the one you were using.
+새 창은 사용 중이던 창의 절반을 차지합니다.
+
 Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
 설정한 인증 수단은 Passwords, Terminal의 sudo, 관리자 요청에서 모두 암호를 대신합니다. 얼굴과 지문은 잠금 해제와 로그인에도 쓸 수 있습니다. 먼저 사용한 수단으로 인증합니다.
 
@@ -3105,6 +3309,9 @@ Each setting tried shows here.
 
 Each shows in the Deskbar as it changes. A click on one there opens its app: Activity Monitor, Token Pool or the app it’s from.
 Deskbar에서 값이 바뀌는 대로 표시합니다. 위젯을 클릭하면 활성 상태 보기, Token Pool 또는 해당 위젯의 앱이 열립니다.
+
+Each window takes half of the room left, round in a spiral.
+각 창이 남은 공간의 절반을 차지하며 나선형으로 배치됩니다.
 
 Edge
 가장자리
@@ -3136,6 +3343,9 @@ Editors’ swap and backup files
 Edit…
 편집…
 
+Eighth folder
+여덟 번째 폴더
+
 Either AirPod
 어느 쪽 AirPod든
 
@@ -3153,6 +3363,9 @@ Email Accounts
 
 Emoji
 이모지
+
+Emoji & symbols
+이모지 및 기호
 
 Empty
 비었음
@@ -3250,6 +3463,9 @@ Erlang
 Esc cancels
 Esc로 취소
 
+Esc closes
+Esc로 닫기
+
 Ethernet
 Ethernet
 
@@ -3262,6 +3478,9 @@ Even Out the Voice's Level
 Even With the Lid Closed
 덮개를 닫아도 적용
 
+Even out the tiles
+타일 크기 맞추기
+
 Even out the voice's level
 음성 크기 일정하게
 
@@ -3273,6 +3492,9 @@ Every 2 Weeks
 
 Every 2 weeks
 2주마다
+
+Every Application
+모든 응용 프로그램
 
 Every Counter
 모든 카운터
@@ -3334,6 +3556,15 @@ Every week
 Every weekday
 평일마다
 
+Every window a column of its own width, in a strip that scrolls to the active one.
+창마다 고유한 너비의 열이 되어, 활성 창까지 스크롤되는 띠에 놓입니다.
+
+Every window a column, each as wide.
+창마다 열 하나, 모두 같은 너비입니다.
+
+Every window a row, each as tall.
+창마다 행 하나, 모두 같은 높이입니다.
+
 Every year
 매년
 
@@ -3363,6 +3594,9 @@ Everything it needs looked for, in {}.
 
 Export
 내보내기
+
+Export Flattened PDF
+병합된 PDF 내보내기
 
 Export Flattened PDF…
 병합된 PDF 내보내기…
@@ -3460,6 +3694,12 @@ Fan level {}
 Fan level {} · {}
 팬 단계 {} · {}
 
+Fan out all windows, tabs side by side
+모든 창을 부채꼴로 펼치고 탭을 나란히
+
+Fan out the other windows, leaving this one
+이 창을 빼고 나머지 창 부채꼴로 펼치기
+
 Fans
 팬
 
@@ -3514,8 +3754,14 @@ Fetching the forecast…
 Fetching…
 가져오는 중…
 
+Fewer main windows
+기본 창 줄이기
+
 Field
 필드
+
+Fifth folder
+다섯 번째 폴더
 
 File
 파일
@@ -3541,11 +3787,17 @@ Find
 Find Again
 다시 찾기
 
+Find Next
+다음 찾기
+
 Find Previous
 이전 찾기
 
 Find Selection
 선택 항목 찾기
+
+Find Your Phone
+휴대전화 찾기
 
 Find a free hour this week
 이번 주에 한 시간 비는 때 찾기
@@ -3555,6 +3807,12 @@ Find an app
 
 Find in document
 문서에서 찾기
+
+Find the selection
+선택 항목 찾기
+
+Find your phone
+휴대전화 찾기
 
 Find:
 찾기:
@@ -3607,6 +3865,9 @@ Firmware curve
 First Page
 첫 페이지
 
+First folder
+첫 번째 폴더
+
 First, as the main window
 맨 앞에 기본 창으로
 
@@ -3625,6 +3886,9 @@ Fit Width
 Fix
 수정
 
+Fix and apply what's checked
+선택한 항목 수정 및 적용
+
 Fix in Olo Doctor…
 Olo Doctor에서 수정…
 
@@ -3633,6 +3897,12 @@ Flip Horizontal
 
 Flip Vertical
 상하 뒤집기
+
+Flip the tiles left and right
+타일 좌우 뒤집기
+
+Flip the tiles top and bottom
+타일 상하 뒤집기
 
 Float
 플로팅
@@ -3652,6 +3922,9 @@ Float Window Group
 Float out of its group, or tile
 그룹에서 꺼내 플로팅으로 전환 또는 타일 배치
 
+Float over the tiles, or tile
+타일 위에 플로팅 또는 타일 배치
+
 Flurries
 눈발
 
@@ -3660,6 +3933,27 @@ Focus
 
 Focus follows the pointer
 포인터를 따라 창 활성화
+
+Focus mode on or off
+초점 모드 켜기 또는 끄기
+
+Focus the next tile
+다음 타일 활성화
+
+Focus the previous tile
+이전 타일 활성화
+
+Focus the window above
+위쪽 창 활성화
+
+Focus the window below
+아래쪽 창 활성화
+
+Focus the window to the left
+왼쪽 창 활성화
+
+Focus the window to the right
+오른쪽 창 활성화
 
 Fog
 안개
@@ -3766,6 +4060,9 @@ Found as {}. Leave it empty for that name.
 Four fingers
 네 손가락
 
+Fourth folder
+네 번째 폴더
+
 Free
 남은 양
 
@@ -3817,6 +4114,9 @@ From {} to {}
 From:
 시작:
 
+Full Screen
+전체 화면
+
 Full access couldn't be asked for. {}
 전체 접근 권한을 요청할 수 없습니다. {}
 
@@ -3831,6 +4131,9 @@ GPU:
 
 GPUs are tuned only in the person's own session (polkit asks there).
 GPU 조정은 사용자 본인의 세션에서만 가능합니다. 거기서 polkit이 인증을 요청합니다.
+
+Game controller
+게임 컨트롤러
 
 Game saves
 게임 저장 파일
@@ -3900,6 +4203,9 @@ Go to
 
 Go to End
 끝으로 이동
+
+Go to File or Folder
+파일 또는 폴더로 이동
 
 Go to File or Folder…
 파일 또는 폴더로 이동…
@@ -4069,6 +4375,9 @@ Heading 6
 Headless
 헤드리스
 
+Headphones
+헤드폰
+
 Health
 상태
 
@@ -4132,6 +4441,18 @@ Hide Tab When Tiled
 Hide or show Deskbar
 Deskbar 가리기 또는 표시
 
+Hide or show the details
+세부사항 가리기 또는 보기
+
+Hide or show the sidebar
+사이드바 가리기 또는 보기
+
+Hide the application
+응용 프로그램 가리기
+
+Hide window
+창 가리기
+
 High
 높음
 
@@ -4170,6 +4491,9 @@ Holds
 
 Home
 홈
+
+Home Page
+홈페이지
 
 Hosts
 호스트
@@ -4429,6 +4753,9 @@ Inspect
 Inspect Parent
 상위 항목 검사
 
+Inspect Process
+프로세스 검사
+
 Install Now
 지금 설치
 
@@ -4558,6 +4885,9 @@ Its app password isn’t in the keyring: remove it and add it again.
 Its click is its own: a resting palm can't press.
 손바닥을 올려놓아도 클릭되지 않으며 직접 눌러야 합니다.
 
+Its contacts haven’t come (Sync Contacts, on the phone)
+연락처가 아직 오지 않았습니다(휴대전화에서 연락처 동기화)
+
 Its decoder, on its battery preset (Power Modes), costs less than the processor's cores; off, the processor decodes on battery.
 전원 모드의 배터리용 설정에서는 이 디코더가 CPU보다 전력을 적게 씁니다. 끄면 배터리 사용 중 CPU로 디코딩합니다.
 
@@ -4647,6 +4977,9 @@ Java
 
 JavaScript
 JavaScript
+
+JavaScript Console
+JavaScript 콘솔
 
 JavaScript packages and build output
 JavaScript 패키지 및 빌드 결과물
@@ -4804,6 +5137,9 @@ Keyboard Profile
 Keyboard Shortcuts
 키보드 단축키
 
+Keyboard shortcuts
+키보드 단축키
+
 Keyboard: the Mac profile came along, ⌘ on the Super key (the Windows key on most PC keyboards). Preferences ▸ Keyboard picks another for this keyboard.
 키보드: Mac 프로필을 가져왔습니다. ⌘는 Super 키입니다(대부분의 PC 키보드에서는 Windows 키). 환경설정 ▸ 키보드에서 이 키보드의 프로필을 변경할 수 있습니다.
 
@@ -4936,14 +5272,23 @@ Left Third
 Left Two Thirds
 왼쪽 ⅔
 
+Left half
+왼쪽 절반
+
 Left out, as dnf wouldn’t take it: {}. ({})
 dnf가 거부해 제외했습니다: {}. ({})
 
 Left out, as dnf wouldn’t take them: {}. ({})
 dnf가 거부해 제외했습니다: {}. ({})
 
+Left third
+왼쪽 ⅓
+
 Left to the firmware for now
 지금은 펌웨어에 맡김
+
+Left two thirds
+왼쪽 ⅔
 
 Left-handed (swap the buttons)
 왼손잡이용 (버튼 바꾸기)
@@ -4953,6 +5298,9 @@ Length
 
 Less noise
 소음 줄이기
+
+Less space between windows
+창 사이 간격 좁히기
 
 Let coding agents keep their tab’s title current
 코딩 에이전트의 탭 제목 업데이트 허용
@@ -5098,6 +5446,9 @@ Lock after idle for:
 Lock the Screen
 화면 잠금
 
+Lock the screen
+화면 잠금
+
 Lock the screen when the display turns off
 디스플레이가 꺼지면 화면 잠금
 
@@ -5118,6 +5469,9 @@ Log Out…
 
 Login
 로그인
+
+Logs
+Logs
 
 Long
 길게
@@ -5155,6 +5509,9 @@ Looking at what’s there…
 Looking at which processes use it…
 사용 중인 프로세스 확인 중…
 
+Looking for Bluetooth…
+Bluetooth를 찾는 중…
+
 Looking for a newer release…
 새 릴리스 확인 중…
 
@@ -5167,6 +5524,9 @@ Looking for its calendars…
 Looking for network devices…
 네트워크 기기 찾는 중…
 
+Looking for phones nearby…
+주변 휴대전화를 찾는 중…
+
 Looking for security keys…
 보안 키 찾는 중…
 
@@ -5175,6 +5535,9 @@ Looking for sound devices…
 
 Looking for the fingerprint sensor…
 지문 센서 찾는 중…
+
+Looking for the phone…
+휴대전화를 찾는 중…
 
 Looking for volumes…
 볼륨 찾는 중…
@@ -5311,8 +5674,17 @@ Make an App Password…
 Make an app password for Olo in Fastmail (Settings ▸ Privacy & Security ▸ Manage app passwords and access) with access to mail and calendars. It’s kept in your login keyring.
 Fastmail에서 설정 ▸ 개인정보 및 보안 ▸ 앱 암호 및 접근 관리로 가서 메일과 캘린더 권한이 있는 Olo용 앱 암호를 만드세요. 로그인 키 모음에 보관합니다.
 
+Make it the main window
+기본 창으로 지정
+
 Make one at my.telegram.org ▸ API development tools (sign in there with your phone number), then copy its App api_id and api_hash here.
 my.telegram.org에서 전화번호로 로그인한 뒤 API development tools에서 앱을 만드세요. App api_id와 api_hash를 여기에 복사하세요.
+
+Make the main windows bigger
+기본 창 크게
+
+Make the main windows smaller
+기본 창 작게
 
 Make this the main display
 이 디스플레이를 주 디스플레이로 설정
@@ -5358,6 +5730,12 @@ Mark as Not Done
 
 Mark as Read
 읽음으로 표시
+
+Mark as Read or Unread
+읽음 또는 읽지 않음으로 표시
+
+Mark as done, or not done
+완료 또는 미완료로 표시
 
 Markdown
 Markdown
@@ -5503,8 +5881,14 @@ More
 More Menus
 메뉴 더 보기
 
+More main windows
+기본 창 늘리기
+
 More noise
 소음 늘리기
+
+More space between windows
+창 사이 간격 넓히기
 
 Mostly clear
 대체로 맑음
@@ -5686,6 +6070,12 @@ Move all {} archived chats back to your chat list?
 Move both archived chats back to your chat list?
 보관된 채팅 두 개를 모두 채팅 목록으로 되돌릴까요?
 
+Move every tile's window back one
+모든 창을 이전 타일로 이동
+
+Move every tile's window on one
+모든 창을 다음 타일로 이동
+
 Move the archived chat back to your chat list?
 보관된 채팅을 채팅 목록으로 되돌릴까요?
 
@@ -5694,6 +6084,18 @@ Move the pointer
 
 Move the pointer on a thread of its own
 전용 스레드에서 포인터 이동
+
+Move the tile's edge down
+타일 가장자리를 아래로
+
+Move the tile's edge left
+타일 가장자리를 왼쪽으로
+
+Move the tile's edge right
+타일 가장자리를 오른쪽으로
+
+Move the tile's edge up
+타일 가장자리를 위로
 
 Move to Archive
 보관함으로 이동
@@ -5706,6 +6108,9 @@ Move to Trash
 
 Move to Workspace
 작업 공간으로 이동
+
+Move to the scratchpad
+스크래치패드로 이동
 
 Move to {}
 {} 위치로 이동
@@ -5782,6 +6187,9 @@ sRGB보다 좁음 (sRGB의 {}%)
 Natural scrolling (content follows your fingers)
 자연스러운 스크롤 (손가락을 따라 콘텐츠 이동)
 
+Nearby
+주변
+
 Needed by another package
 다른 패키지에 필요함
 
@@ -5824,6 +6232,9 @@ New Folder
 New Group…
 새 그룹…
 
+New Incognito Window
+새 시크릿 창
+
 New Item
 새 항목
 
@@ -5832,6 +6243,9 @@ New List
 
 New List…
 새 목록…
+
+New Login
+새 로그인
 
 New Message
 새 메시지
@@ -5950,14 +6364,38 @@ Next Tab
 Next Week
 다음 주
 
+Next auto-tiling layout
+다음 자동 타일 배치
+
+Next column width (Scrolling)
+다음 열 너비(스크롤)
+
 Next day, week or month
 다음 일, 주 또는 월
 
 Next step
 다음 단계
 
+Next tab in the window
+창의 다음 탭
+
 Next when you click Back Up Now.
 ‘지금 백업’을 클릭하면 다음 백업을 시작합니다.
+
+Next window above the tile
+타일 위에 다음 창
+
+Next window below the tile
+타일 아래에 다음 창
+
+Next window to the tile's left
+타일 왼쪽에 다음 창
+
+Next window to the tile's right
+타일 오른쪽에 다음 창
+
+Next workspace
+다음 작업 공간
 
 Next {}.
 다음: {}.
@@ -6097,8 +6535,14 @@ Telegram에 {} 이름을 쓰는 사용자가 없습니다.
 No open files.
 열린 파일이 없습니다.
 
+No phone found yet.
+아직 휴대전화를 찾지 못했습니다.
+
 No phone or mail account is set up: a phone in Phone, a Google or Fastmail account for Mail in Integrations.
 휴대전화나 메일 계정이 없습니다. ‘전화’에서 휴대전화를 설정하거나 ‘연동’에서 Mail용 Google 또는 Fastmail 계정을 추가하세요.
+
+No phone paired
+페어링된 휴대전화 없음
 
 No power profiles daemon is running (power-profiles-daemon, or tuned-ppd on Fedora): Olo sets the power mode through it.
 전원 프로필 서비스(power-profiles-daemon, Fedora에서는 tuned-ppd도 가능)가 실행 중이지 않습니다. Olo는 이 서비스를 통해 전원 모드를 설정합니다.
@@ -6381,6 +6825,9 @@ Nothing changed: Olo's own model is still in use.
 
 Nothing coming up
 다가오는 일정 없음
+
+Nothing connects until it starts again. Olo Doctor restarts it (it asks for your password).
+다시 시작될 때까지 아무것도 연결되지 않습니다. Olo Doctor가 다시 시작합니다(암호를 묻습니다).
 
 Nothing done yet
 아직 완료한 일이 없습니다
@@ -6700,6 +7147,9 @@ https:// 주소만 가능합니다. 암호화되지 않은 연결은 전송 중�
 Only on battery power
 배터리 사용 중에만
 
+Only the active window shows, zoomed, with its dialogs over it.
+활성 창만 확대되어 보이고, 그 창의 대화상자가 위에 표시됩니다.
+
 Only the latest of the same notification
 같은 알림은 최신 것만 표시
 
@@ -6732,6 +7182,9 @@ Open Integrations…
 
 Open Link
 링크 열기
+
+Open Location
+위치 열기
 
 Open Log File…
 로그 파일 열기…
@@ -6874,6 +7327,9 @@ Other…
 Out of memory:
 메모리 부족 시:
 
+Out of reach
+연결 범위 밖
+
 Output
 출력
 
@@ -6882,6 +7338,9 @@ Overdue
 
 Overview
 개요
+
+Overview of every window
+모든 창 개요
 
 Overwrite the old data with zeros (slow)
 이전 데이터를 0으로 덮어쓰기 (느림)
@@ -6913,14 +7372,29 @@ Page {} of {}
 Pair
 페어링
 
+Paired
+페어링됨
+
+Paired with this computer; not yet sharing its messages
+이 컴퓨터와 페어링됨. 아직 메시지를 공유하지 않습니다
+
 Paired with {}.
 {} 기기와 페어링했습니다.
 
 Pairing
 페어링
 
+Pairing didn't work.
+페어링하지 못했습니다.
+
+Pairing didn’t finish. Try again, with the phone unlocked on its Bluetooth settings.
+페어링이 완료되지 않았습니다. 휴대전화의 잠금을 해제하고 Bluetooth 설정을 연 상태에서 다시 시도하세요.
+
 Pairing with {} didn't work: {}.
 {} 기기와 페어링하지 못했습니다: {}.
+
+Pairing…
+페어링하는 중…
 
 Pair…
 페어링…
@@ -7198,6 +7672,9 @@ Pin
 Pin as Main
 기본 창으로 고정
 
+Pin it as the main window, or let it go
+기본 창으로 고정 또는 해제
+
 Pinch to zoom
 손가락을 오므리거나 벌려 확대/축소
 
@@ -7387,11 +7864,23 @@ Previous Tab
 Previous Week
 이전 주
 
+Previous auto-tiling layout
+이전 자동 타일 배치
+
 Previous day, week or month
 이전 일, 주 또는 월
 
+Previous tab in the window
+창의 이전 탭
+
+Previous workspace
+이전 작업 공간
+
 Print
 프린트
+
+Printer
+프린터
 
 Print…
 인쇄…
@@ -7524,6 +8013,9 @@ Quiet for 1 Hour
 
 Quit
 종료
+
+Quit Chrome
+Chrome 종료
 
 Quit Now
 지금 종료
@@ -7690,6 +8182,9 @@ Record the Computer's Sound
 Record the Microphone
 마이크 녹음
 
+Record the screen, or stop
+화면 녹화 또는 중지
+
 Recording
 기록 중
 
@@ -7732,6 +8227,9 @@ Redo
 Redo Window Arrangement
 창 배치 다시 실행
 
+Redo window arrangement
+창 배치 다시 실행
+
 Redo {}
 {} 다시 실행
 
@@ -7758,6 +8256,15 @@ Regenerate
 
 Reinstall Selected…
 선택 항목 다시 설치…
+
+Reject
+거부
+
+Reload
+새로고침
+
+Reload Without the Cache
+캐시 없이 새로고침
 
 Remind:
 알림:
@@ -7828,6 +8335,9 @@ Remove “{}” from Favorites
 Remove…
 제거…
 
+Removing…
+제거하는 중…
+
 Rename
 이름 바꾸기
 
@@ -7852,6 +8362,9 @@ Rename Worktree…
 Rename…
 이름 바꾸기…
 
+Reopen Closed Tab
+닫은 탭 다시 열기
+
 Repeat rate
 반복 속도
 
@@ -7863,6 +8376,9 @@ Replace
 
 Replace Same
 같은 알림 교체
+
+Replace and find again
+바꾸고 다시 찾기
 
 Replace the one-time code of your login {} with the one this page shows?
 로그인 항목 {}의 일회용 코드를 이 페이지에 표시된 코드로 교체할까요?
@@ -8065,6 +8581,18 @@ Right Two Thirds
 Right first
 첫 제안 적중률
 
+Right half
+오른쪽 절반
+
+Right third
+오른쪽 ⅓
+
+Right two thirds
+오른쪽 ⅔
+
+Roll up or down
+말아 올리기 또는 내리기
+
 Room:
 공간:
 
@@ -8073,6 +8601,12 @@ Rotate Left
 
 Rotate Right
 우측으로 회전
+
+Rotate the tiles
+타일 회전
+
+Rotate the tiles back
+타일 반대로 회전
 
 Round trip
 왕복 시간
@@ -8139,6 +8673,9 @@ Saturday
 
 Save
 저장
+
+Save As
+다른 이름으로 저장
 
 Save As…
 다른 이름으로 저장…
@@ -8209,6 +8746,9 @@ Scan Home
 Scan Volume
 볼륨 검사
 
+Scan a Folder
+폴더 검사
+
 Scan a Folder…
 폴더 검사…
 
@@ -8245,8 +8785,26 @@ Screen Saver
 Screenshot
 스크린샷
 
+Screenshot app
+스크린샷 앱
+
+Screenshot of an area
+영역 스크린샷
+
+Screenshot of the screen
+화면 스크린샷
+
+Screenshot of the window
+창 스크린샷
+
+Screenshots
+스크린샷
+
 Scroll
 스크롤
+
+Scroll for more · Esc closes
+스크롤하여 더 보기 · Esc로 닫기
 
 Scroll while the middle button is held
 가운데 버튼을 누른 채 스크롤
@@ -8280,6 +8838,9 @@ Search: words, program:, level:, since:
 
 Searching…
 검색하는 중…
+
+Second folder
+두 번째 폴더
 
 Secondary click (three: middle)
 보조 클릭 (세 손가락은 가운데 클릭)
@@ -8344,6 +8905,12 @@ Select a transaction to see what it did to each package.
 Select an update to read about it: its versions, why it came out, what changed.
 업데이트를 선택해 버전, 배포 이유, 변경 사항을 확인하세요.
 
+Select as you go: with any of these
+이동하며 선택: 위 키와 함께
+
+Select tool
+선택 도구
+
 Selected {} to {}
 {0}부터 {1}까지 선택함
 
@@ -8363,6 +8930,9 @@ Send Voice Message
 음성 메시지 보내기
 
 Send to Back
+맨 뒤로 보내기
+
+Send to back
 맨 뒤로 보내기
 
 Send with BBRv3
@@ -8482,6 +9052,9 @@ Settings
 Settings:
 설정:
 
+Seventh folder
+일곱 번째 폴더
+
 Shaping
 트래픽 제어
 
@@ -8536,6 +9109,9 @@ Show
 Show All
 모두 표시
 
+Show All Tabs
+모든 탭 보기
+
 Show Archived
 보관된 항목 표시
 
@@ -8544,6 +9120,9 @@ Show Archived Conversations
 
 Show Assistant
 도우미 표시
+
+Show Bookmarks Bar
+북마크바 보기
 
 Show Calendars
 캘린더 표시
@@ -8635,11 +9214,17 @@ AirPlay로 표시
 Show on All Workspaces
 모든 작업 공간에 표시
 
+Show on all workspaces
+모든 작업 공간에 표시
+
 Show or Hide All Windows
 모든 창 표시 또는 가리기
 
 Show or hide the assistant
 어시스턴트 보기 또는 가리기
+
+Show or hide the scratchpad
+스크래치패드 보기 또는 가리기
 
 Show or hide the source
 소스 보기 또는 가리기
@@ -8649,6 +9234,9 @@ Show seconds
 
 Show the day of the week
 요일 표시
+
+Show the desktop
+데스크톱 보기
 
 Show the phone’s other notifications
 휴대전화의 다른 알림 표시
@@ -8740,6 +9328,9 @@ Sign…
 Site Settings
 사이트 설정
 
+Sixth folder
+여섯 번째 폴더
+
 Size
 크기
 
@@ -8775,6 +9366,9 @@ Small: one line. Medium and Large: all it shows, Large's sky bigger.
 
 Smaller
 더 작게
+
+Smaller text
+텍스트 작게
 
 Smooth Pointer
 부드러운 포인터
@@ -8875,6 +9469,9 @@ Spanish
 Spare
 예비 공간
 
+Speaker
+스피커
+
 Speaker amp {}
 스피커 앰프 {}
 
@@ -8913,6 +9510,12 @@ Start Over…
 
 Start Test
 테스트 시작
+
+Start or end of the document
+문서의 처음 또는 끝
+
+Start or end of the line
+줄의 처음 또는 끝
 
 Start the Agent
 에이전트 시작
@@ -8967,6 +9570,9 @@ Stay Awake
 
 Stay awake (caffeinated)
 깨어 있는 상태 유지
+
+Stay awake, or not
+절전 진입 방지 켜기 또는 끄기
 
 Stay awake: no display sleep, sleep, screen saver or lock
 화면 꺼짐, 잠자기, 화면 보호기 및 잠금 방지
@@ -9106,6 +9712,27 @@ Swap too
 Swap with Previous Main
 이전 기본 창과 교체
 
+Swap with the next tile
+다음 타일과 맞바꾸기
+
+Swap with the previous main window
+이전 기본 창과 맞바꾸기
+
+Swap with the previous tile
+이전 타일과 맞바꾸기
+
+Swap with the tile above
+위쪽 타일과 맞바꾸기
+
+Swap with the tile below
+아래쪽 타일과 맞바꾸기
+
+Swap with the tile to the left
+왼쪽 타일과 맞바꾸기
+
+Swap with the tile to the right
+오른쪽 타일과 맞바꾸기
+
 Swedish
 스웨덴어
 
@@ -9115,17 +9742,32 @@ Swift
 Swiss
 스위스
 
+Switch applications (Twitcher)
+응용 프로그램 전환(Twitcher)
+
+Switch applications on the workspaces showing
+표시 중인 작업 공간의 응용 프로그램 전환
+
 Switch automatically between this computer and your iPhone
 이 컴퓨터와 iPhone 간 자동 전환
 
 Switch to a woken program at once
 깨어난 프로그램을 즉시 실행
 
+Switch windows of the application
+응용 프로그램의 창 전환
+
+Switching
+전환
+
 Sync
 동기화
 
 Sync Again
 다시 동기화
+
+Sync Contacts
+연락처 동기화
 
 Sync Now
 지금 동기화
@@ -9169,11 +9811,44 @@ TOML
 TSX
 TSX
 
+Tab 1
+탭 1
+
+Tab 2
+탭 2
+
+Tab 3
+탭 3
+
+Tab 4
+탭 4
+
+Tab 5
+탭 5
+
+Tab 6
+탭 6
+
+Tab 7
+탭 7
+
+Tab 8
+탭 8
+
+Tab 9
+탭 9
+
 Table
 표
 
+Tablet
+태블릿
+
 Tabs
 탭
+
+Tabs on Agent Screens are never given a code.
+에이전트 화면의 탭에는 코드를 주지 않습니다.
 
 Tags:
 태그:
@@ -9190,6 +9865,9 @@ Take Screenshot…
 Take calls on this computer
 이 컴퓨터에서 전화 받기
 
+Take or give back control
+제어 가져오기 또는 돌려주기
+
 Taken
 채택됨
 
@@ -9199,11 +9877,14 @@ Tap
 Tap and drag
 탭하고 드래그
 
+Tap the Windows key on its own for the command palette
+Windows 키만 눌러 명령 팔레트 열기
+
 Tap to click
 탭하여 클릭
 
-Tap {} on its own for the command palette
-{} 키만 눌러 명령 팔레트 열기
+Tap ⌘ (the Super key) on its own for the command palette
+⌘(Super 키)만 눌러 명령 팔레트 열기
 
 Taps
 탭 횟수
@@ -9301,8 +9982,17 @@ Text Message
 Text Size
 텍스트 크기
 
+Text at its own size
+텍스트 원래 크기로
+
+Text messages
+문자 메시지
+
 Text messages to “{}”
 ‘{}’에게 문자 보내기
+
+Text tool
+텍스트 도구
 
 Text:
 텍스트:
@@ -9354,6 +10044,9 @@ API 해시는 숫자와 영문자로 된 32자리 값입니다(0~9, a~f).
 
 The AirPods service isn't running.
 AirPods 서비스가 실행 중이지 않습니다.
+
+The Bluetooth service (bluetoothd) isn't running.
+Bluetooth 서비스(bluetoothd)가 실행되고 있지 않습니다.
 
 The CPU doesn't offer “{}”.
 CPU가 ‘{}’ 옵션을 제공하지 않습니다.
@@ -9448,11 +10141,23 @@ The copy of Token Pool this one replaced is still finishing its requests. Add th
 The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
 이 복사본이 대체한 Token Pool이 아직 요청을 마무리하고 있습니다. 잠시 후 다시 로그인하세요.
 
+The copy of Token Pool this one replaced is still finishing its requests. The sign-in is taken as soon as it has.
+이 복사본이 대체한 Token Pool이 아직 요청을 마무리하고 있습니다. 마무리되는 즉시 로그인을 가져옵니다.
+
 The day before, at 9 AM
 하루 전 오전 9시
 
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
 오늘의 캐시 적중률, 풀의 사용 중인 슬롯, 최근 몇 시간의 빌드와 적중 횟수.
+
+The device couldn't be disconnected.
+기기의 연결을 끊을 수 없습니다.
+
+The device couldn't be removed.
+기기를 제거할 수 없습니다.
+
+The device didn't connect.
+기기가 연결되지 않았습니다.
 
 The displays' settings are Olo's own again, from when you leave Rescue.
 복구 모드에서 나가면 Olo의 기존 디스플레이 설정으로 돌아갑니다.
@@ -9568,6 +10273,9 @@ The look's own
 The loss is a number, in percent.
 손실률은 백분율로 입력하세요.
 
+The main window in its place; the others stack around it.
+기본 창은 제자리에 있고, 다른 창들은 그 주위에 쌓입니다.
+
 The microphone can’t be recorded ({}).
 마이크로 녹음할 수 없습니다({}).
 
@@ -9624,6 +10332,9 @@ The password of “{}” couldn’t be kept: {}
 
 The passwords file is damaged: {}
 암호 파일이 손상되었습니다: {}
+
+The phone didn’t connect. Is it unlocked, with Bluetooth on?
+휴대전화가 연결되지 않았습니다. 잠금이 해제되어 있고 Bluetooth가 켜져 있나요?
 
 The phone didn’t take it.
 휴대전화가 받아들이지 않았습니다.
@@ -9757,6 +10468,9 @@ The voice service isn't running.
 The window server didn’t give its settings.
 창 서버에서 설정을 받지 못했습니다.
 
+The windows in rows of about square cells.
+창을 거의 정사각형인 칸의 행으로 배치합니다.
+
 The workspace each display shows stays open in every Deskbar; each other one is its heading, with an arrow that shows its applications and puts them away again.
 각 디스플레이에 표시된 작업 공간은 모든 Deskbar에서 펼쳐집니다. 다른 작업 공간은 제목으로 표시되며 화살표를 눌러 앱 목록을 펼치거나 접을 수 있습니다.
 
@@ -9805,6 +10519,9 @@ There is no limit “{}”.
 There is nothing to share.
 공유할 항목이 없습니다.
 
+There's no Bluetooth adapter.
+Bluetooth 어댑터가 없습니다.
+
 There's no Ethernet adapter. A USB or Thunderbolt one shows here once it's plugged in.
 이더넷 어댑터가 없습니다. USB나 Thunderbolt 어댑터를 연결하면 여기에 표시됩니다.
 
@@ -9834,6 +10551,9 @@ Thinking:
 
 Thinking…
 생각 중…
+
+Third folder
+세 번째 폴더
 
 This Computer
 이 컴퓨터
@@ -9982,6 +10702,9 @@ Tile All Tabs
 Tile With
 함께 타일 배치
 
+Tile all windows on the display
+디스플레이의 모든 창 타일 배치
+
 Tiling, zooming, Tile All, cascading and fanning out all leave this space.
 타일 배치, 확대, 전체 타일 배치, 계단식 또는 부채꼴 배치 시 이 여백을 남깁니다.
 
@@ -10032,6 +10755,12 @@ To Do
 
 To allow it, you can also {}.
 {} 방법으로도 허용할 수 있습니다.
+
+To the next display
+다음 디스플레이로
+
+To the previous display
+이전 디스플레이로
 
 To {}
 {}에게
@@ -10117,8 +10846,20 @@ Top Right Quarter
 Top Two Thirds
 위쪽 ⅔
 
+Top half
+위 절반
+
+Top left quarter
+왼쪽 위 ¼
+
+Top right quarter
+오른쪽 위 ¼
+
 Top speed
 최고 속도
+
+Top two thirds
+위쪽 ⅔
 
 Touch
 터치
@@ -10270,6 +11011,9 @@ Turn on for a laptop usually plugged in.
 Turn the display off after:
 디스플레이 끄기까지:
 
+Turn the tile's split
+타일 분할 방향 바꾸기
+
 Turn the touchpad off while a mouse is plugged in
 마우스 연결 시 터치패드 끄기
 
@@ -10387,6 +11131,9 @@ Undo Transaction…
 Undo Window Arrangement
 창 배치 실행 취소
 
+Undo window arrangement
+창 배치 실행 취소
+
 Undo {}
 {} 실행 취소
 
@@ -10461,6 +11208,9 @@ Up
 
 Up (sent)
 업로드 (송신)
+
+Up a level
+한 단계 위로
 
 Up for
 가동 시간
@@ -10657,6 +11407,33 @@ Variable refresh rate
 Vault
 금고
 
+Vault 1
+금고 1
+
+Vault 2
+금고 2
+
+Vault 3
+금고 3
+
+Vault 4
+금고 4
+
+Vault 5
+금고 5
+
+Vault 6
+금고 6
+
+Vault 7
+금고 7
+
+Vault 8
+금고 8
+
+Vault 9
+금고 9
+
 Vault Info…
 금고 정보…
 
@@ -10689,6 +11466,9 @@ CPU로 동영상을 디코딩합니다. {}
 
 View
 보기
+
+View Source
+소스 보기
 
 Viewer
 Viewer
@@ -10758,6 +11538,9 @@ Waiting for power
 
 Waiting for the network
 네트워크 대기 중
+
+Waiting for the phone to allow it
+휴대전화의 허용을 기다리는 중
 
 Waiting for the phone… this page follows it by itself.
 휴대전화 대기 중… 상태가 바뀌면 이 페이지에 자동으로 반영됩니다.
@@ -11077,11 +11860,47 @@ Window on a Background
 Window title size
 창 제목 크기
 
+Window to the next workspace
+창을 다음 작업 공간으로
+
+Window to the previous workspace
+창을 이전 작업 공간으로
+
+Window to workspace 1
+창을 작업 공간 1(으)로
+
+Window to workspace 2
+창을 작업 공간 2(으)로
+
+Window to workspace 3
+창을 작업 공간 3(으)로
+
+Window to workspace 4
+창을 작업 공간 4(으)로
+
+Window to workspace 5
+창을 작업 공간 5(으)로
+
+Window to workspace 6
+창을 작업 공간 6(으)로
+
+Window to workspace 7
+창을 작업 공간 7(으)로
+
+Window to workspace 8
+창을 작업 공간 8(으)로
+
+Window to workspace 9
+창을 작업 공간 9(으)로
+
 Windowing Mode
 창 모드
 
 Windows
 창
+
+Windows stay where you put them.
+창은 놓은 자리에 그대로 있습니다.
 
 Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).
 창 버퍼를 스왑으로 내보내지 않아 다시 읽느라 데스크톱이 멈추지 않습니다(Intel 드라이버용 Olo 라이브 패치).
@@ -11109,6 +11928,33 @@ Working…
 
 Works on a picture of the desktop.
 데스크톱 그림을 대상으로 작동합니다.
+
+Workspace 1
+작업 공간 1
+
+Workspace 2
+작업 공간 2
+
+Workspace 3
+작업 공간 3
+
+Workspace 4
+작업 공간 4
+
+Workspace 5
+작업 공간 5
+
+Workspace 6
+작업 공간 6
+
+Workspace 7
+작업 공간 7
+
+Workspace 8
+작업 공간 8
+
+Workspace 9
+작업 공간 9
 
 Workspace:
 작업 공간:
@@ -11269,6 +12115,9 @@ Yours: fine-tuned once since it started
 Yours: fine-tuned {} times since it started
 내 모델: 시작 후 {}회 추가 학습
 
+You’re asked each time a tab on an Agent Screen is the one waiting.
+기다리는 탭이 에이전트 화면에 있을 때마다 물어봅니다.
+
 Zig
 Zig
 
@@ -11284,14 +12133,26 @@ Zoom In
 Zoom Out
 축소
 
+Zoom horizontally
+가로로 확대
+
 Zoom on Clicks
 클릭 위치 확대
+
+Zoom or unzoom
+확대 또는 되돌리기
+
+Zoom or unzoom all windows on the display
+디스플레이의 모든 창 확대 또는 되돌리기
 
 Zoom to Fill
 화면을 채우도록 확대
 
 Zoom to Fit
 화면에 맞춤
+
+Zoom vertically
+세로로 확대
 
 __pycache__, .venv, .mypy_cache, .pytest_cache, .tox
 __pycache__, .venv, .mypy_cache, .pytest_cache, .tox
@@ -12070,6 +12931,9 @@ other: 백업 {n}개 선택됨.
 {n} coming up
 other: 예정 {n}건
 
+{n} conversations
+other: 대화 {n}개
+
 {n} days
 other: {n}일
 
@@ -12177,6 +13041,9 @@ other: 미완료 {n}건
 
 {n} to-dos
 other: 할 일 {n}건
+
+{n} unread
+other: 읽지 않음 {n}개
 
 {n} waiting in their apps
 other: 앱에서 {n}개 대기 중
@@ -12474,6 +13341,9 @@ other: {n}주
 
 {} kept, still shared with builds' target folders
 {} 보관됨, 빌드 대상 폴더와 계속 공유 중
+
+{} keys
+{} 키
 
 {} knows this computer.
 {} 기기가 이 컴퓨터를 인식합니다.
@@ -12879,6 +13749,9 @@ RAM의 {}%
 
 {}: windows stay where you put them. Click to choose a windowing mode.
 {}: 창을 놓은 위치에 그대로 둡니다. 클릭해 창 모드를 선택하세요.
+
+{}: {}
+{}: {}
 
 {}: {} applications. Click to show them.
 {}: 앱 {}개. 클릭해 표시하세요.

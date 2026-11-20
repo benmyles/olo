@@ -69,9 +69,13 @@ fn link(proxy: olo_kit::Proxy) -> &'static Link {
     LINK.get_or_init(|| {
         let shared: Arc<Mutex<Shared>> = Default::default();
         // Tests (the layout lint): a phone connected, and no service.
-        if cfg!(test) {
+        // The same for a look headless (`OLO_PHONE_DEMO`; `=connect`:
+        // no phone set up yet, its first step), so a picture shows a
+        // made-up phone and never the person's.
+        let demo = std::env::var("OLO_PHONE_DEMO").ok();
+        if cfg!(test) || demo.is_some() {
             let mut s = shared.lock().unwrap();
-            (s.state, s.known) = (test_state(), true);
+            (s.state, s.known) = (if demo.as_deref() == Some("connect") { PhoneState::default() } else { test_state() }, true);
             s.mail = vec![
                 olo_mail::Account { provider: olo_mail::Provider::Gmail, address: "ada@example.com".into() },
                 olo_mail::Account { provider: olo_mail::Provider::Fastmail, address: "ada@example.org".into() },
@@ -186,10 +190,12 @@ fn stepper(at: usize) -> olo_kit::Element {
         // the first step at the left edge, the last ending at the right
         // one, the middle one between them, a line from each to the next.
         let font = |now: bool| style::ui_font(if now { FontWeight::BOLD } else { FontWeight::NORMAL });
-        let widths: Vec<f32> = STEPS.iter().enumerate().map(|(i, name)| 30.0 + f32::from(style::text_width(SharedString::from(*name), style::PLAIN_SIZE, font(i == at)))).collect();
+        // (Painted here, so asked for here: in the person's language.)
+        let names = STEPS.map(olo_kit::words::tr);
+        let widths: Vec<f32> = names.iter().enumerate().map(|(i, name)| 30.0 + f32::from(style::text_width(SharedString::from(*name), style::PLAIN_SIZE, font(i == at)))).collect();
         let (left, right) = (f32::from(b.left()), f32::from(b.right()));
         let starts = [left, ((left + right - widths[1]) / 2.0).round(), right - widths[2]];
-        for (i, name) in STEPS.iter().enumerate() {
+        for (i, name) in names.iter().enumerate() {
             let x = starts[i];
             let (done, now) = (i < at, i == at);
             // A disc with the step's number (a tick once done), and its
@@ -240,7 +246,9 @@ fn switches(rows: Vec<(&'static str, bool)>) -> olo_kit::Element {
             if i > 0 {
                 style::hline(g, card.left() + px(14.0), card.right(), px(top), style::shade(&p, p.panel_background, 1.2));
             }
-            style::label(g, card.left() + px(14.0), y, Align::Left, *name, style::PLAIN_SIZE + 1.0, style::ui_font(FontWeight::NORMAL), style::c(p.panel_text));
+            // (The phone's own names for its switches, as a phone in
+            // the person's language shows them.)
+            style::label(g, card.left() + px(14.0), y, Align::Left, olo_kit::words::tr(name), style::PLAIN_SIZE + 1.0, style::ui_font(FontWeight::NORMAL), style::c(p.panel_text));
             // The switch: a pill, green with its knob at the right when on.
             let pill = style::snap_centred(g, point(card.right() - px(14.0 + 21.0), y), 42.0, 24.0);
             let track = if *on { p.success } else { olo_kit::palette::mix(p.panel_text, p.panel_background, 0.7) };
@@ -502,17 +510,22 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             PhoneLink::Allow => olo_kit::tr!("Waiting for “{}” to allow it (its switches for this computer, in its Bluetooth settings).", state.name),
             PhoneLink::Away => olo_kit::tr!("“{}” is out of reach or its Bluetooth is off. It’s tried again by itself.", state.name),
             PhoneLink::Taken => state.trouble.clone(),
-            other => format!("{}: {}", state.name, other.words()),
+            other => format!("{}: {}", state.name, olo_kit::words::tr(other.words())),
         };
         ui.add(StringView::new(what).wrap(true));
         if let Some(b) = state.battery.filter(|_| connected) {
             ui.add(StatusBar::new(f32::from(b) / 100.0).label("Battery").trailing(format!("{b}%")));
         }
-        let unread = match state.unread {
-            0 => String::new(),
-            n => format!(", {n} unread"),
-        };
-        ui.add(StringView::new(format!("{} conversations{unread}{}", state.conversations, if state.contacts { "" } else { " · its contacts haven’t come (Sync Contacts, on the phone)" })).dim(true));
+        // (Each part said whole and counted as its language counts,
+        // with a dot between: "12 conversations · 3 unread".)
+        let mut parts = vec![olo_kit::words::count(u64::from(state.conversations), "{n} conversation", "{n} conversations")];
+        if state.unread > 0 {
+            parts.push(olo_kit::words::count(u64::from(state.unread), "{n} unread", "{n} unread"));
+        }
+        if !state.contacts {
+            parts.push(olo_kit::words::tr("Its contacts haven’t come (Sync Contacts, on the phone)").to_owned());
+        }
+        ui.add(StringView::new(parts.join(" · ")).dim(true));
         let mut buttons = div().flex().flex_row().flex_wrap().gap(px(m::SPACING));
         buttons = buttons.child(Button::new("Open Phone").on_click(move |_, _| spawn("olo-phone", "olo.phone")));
         if !connected {
@@ -580,7 +593,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let right = ui.collect(|ui| {
         let items = ui.collect(|ui| {
             let said = if settings.codes { "Codes texted to this phone are offered in the browser tab waiting for them." } else { "Codes texted to this phone aren’t looked for." };
-            ui.add(StringView::new(olo_kit::tr!("{} What’s looked in for codes, and where they go: Security ▸ Passwords.", said)).wrap(true));
+            ui.add(StringView::new(olo_kit::tr!("{} What’s looked in for codes, and where they go: Security ▸ Passwords.", olo_kit::words::tr(said))).wrap(true));
             ui.add(div().flex().flex_row().child(Button::new("Security…").on_click(|_, _| crate::prefs().handle_args(&["passwords".to_owned()]))));
         });
         ui.add(BBox::new("One-Time Codes").child(div().flex().flex_col().gap(px(m::SPACING)).py(px(m::SPACING * 0.5)).children(items)));

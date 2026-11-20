@@ -427,8 +427,11 @@ A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference
 A repository’s key needs to be trusted
 Нужно подтвердить доверие к ключу репозитория
 
-A reset this account asked for hasn’t been answered yet. Sign in as the same account, or remove this account and add the other.
-На сброс, запрошенный этой учётной записью, ещё нет ответа. Войдите в ту же учётную запись или удалите эту и добавьте другую.
+A reset this account asked for hasn’t been answered yet. The sign-in is taken as soon as it has.
+На сброс, запрошенный этой учётной записью, ещё нет ответа. Вход будет принят, как только придёт ответ.
+
+A reset this account asked for hasn’t been answered yet. This sign-in doesn’t say which account it is. Sign in again once it has.
+На сброс, запрошенный этой учётной записью, ещё нет ответа. По этому входу нельзя определить, чья это учётная запись. После этого войдите снова.
 
 A resting palm can't click (its pressure doesn't count)
 Не учитывать давление лежащей ладони
@@ -478,6 +481,9 @@ A week
 A week before, at 9 AM
 За неделю, в 9:00
 
+A word back or on
+На слово назад или вперёд
+
 AI
 ИИ
 
@@ -513,6 +519,9 @@ Acceleration:
 
 Accent
 Акцентный цвет
+
+Accept
+Принять
 
 Access
 Доступ
@@ -676,6 +685,9 @@ Address:
 Addresses can’t be looked up: {}
 Не удалось найти адреса: {}
 
+Adjust Size
+Изменить размер
+
 Adjust Size…
 Изменить размер…
 
@@ -817,6 +829,9 @@ All {} connected.
 Allow
 Разрешить
 
+Allow It on the Phone
+Разрешите доступ на телефоне
+
 Allow NVIDIA Fallback on Battery
 Разрешить NVIDIA при работе от батареи
 
@@ -825,6 +840,9 @@ Allow Sleep
 
 Allow Sleep (awake until {})
 Разрешить сон (не засыпать до {})
+
+Allow it on the phone
+Разрешите доступ на телефоне
 
 Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).
 Разрешить приложению «{0}» доступ к {1}{2}? Если выбрать «Всегда», доступ будет предоставляться при каждом запросе. Отозвать его можно в меню «Файл ▸ Приложения с доступом…».
@@ -921,6 +939,9 @@ Another Window
 
 Another account
 Другая учётная запись
+
+Another program has the phone
+Телефон занят другой программой
 
 Another program has the phone’s message profiles (BlueFerry’s or GNOME’s obexd). Olo Doctor removes BlueFerry.
 Профили сообщений телефона заняты другой программой (BlueFerry или obexd из GNOME). Через Olo Doctor можно удалить BlueFerry.
@@ -1039,6 +1060,9 @@ Archived Chats
 Archived Conversations
 Архивные беседы
 
+Arranging
+Расстановка
+
 Arrived out of order
 Получено не по порядку
 
@@ -1053,6 +1077,12 @@ As List
 
 As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines.
 Как у значков Workbench: плоские заливки в 16 цветах экрана и чёрные контуры.
+
+As a board
+Доской
+
+As a list
+Списком
 
 As fast as the computer goes: the processors kept quick and the firmware's power limits raised, the fans as needed. The battery runs down sooner.
 Максимальная скорость компьютера. Процессоры держат высокую частоту, прошивка повышает пределы мощности, вентиляторы ускоряются по необходимости. Батарея разряжается быстрее.
@@ -1177,6 +1207,9 @@ At {}. Give it the code from {}?
 Attach
 Прикрепить
 
+Attach Files
+Прикрепить файлы
+
 Attach Files…
 Прикрепить файлы…
 
@@ -1191,6 +1224,9 @@ Attach Link…
 
 Attach a file or a link
 Прикрепить файл или ссылку
+
+Attach what's on the clipboard
+Прикрепить содержимое буфера обмена
 
 Attachments
 Вложения
@@ -1221,6 +1257,9 @@ Auto-Tiling Layout
 
 Auto-tiling layout:
 Раскладка мозаики:
+
+Auto-tiling on or off
+Включить или выключить автомозаику
 
 Automatic
 Автоматически
@@ -1266,6 +1305,12 @@ Back to Chats
 
 Back to Conversations
 К беседам
+
+Back to its own size
+Вернуть исходный размер
+
+Back to its own size, or hide
+Вернуть исходный размер или скрыть
 
 Back to the Days
 К списку дней
@@ -1429,6 +1474,9 @@ Best time for a run tomorrow?
 Bigger
 Крупнее
 
+Bigger text
+Крупнее текст
+
 Black
 Чёрный
 
@@ -1440,6 +1488,9 @@ Blue:
 
 Bluetooth
 Bluetooth
+
+Bluetooth couldn't be turned on or off.
+Не удалось включить или выключить Bluetooth.
 
 Bluetooth couldn’t open the phone’s messages ({}).
 Не удалось открыть сообщения телефона по Bluetooth ({}).
@@ -1462,6 +1513,9 @@ Bluetooth isn’t running on this computer.
 Bluetooth said it would open them and no channel came
 Bluetooth подтвердил открытие, но канал связи так и не появился
 
+Bluetooth's hardware isn't answering
+Оборудование Bluetooth не отвечает
+
 Bluetooth…
 Bluetooth…
 
@@ -1473,6 +1527,12 @@ Body
 
 Bold
 Полужирный
+
+Bookmark Manager
+Диспетчер закладок
+
+Bookmark This Tab
+Добавить вкладку в закладки
 
 Boost when work arrives and ease back between tasks.
 Повышать частоту при появлении работы и снижать её в перерывах.
@@ -1490,6 +1550,18 @@ Bottom Right Quarter
 Нижняя правая четверть
 
 Bottom Two Thirds
+Нижние две трети
+
+Bottom half
+Нижняя половина
+
+Bottom left quarter
+Нижняя левая четверть
+
+Bottom right quarter
+Нижняя правая четверть
+
+Bottom two thirds
 Нижние две трети
 
 Branch {} is checked out in {} already.
@@ -1545,6 +1617,9 @@ Buttons
 
 By
 Кто
+
+By App
+По приложениям
 
 By a parent leaving
 После выхода родительского процесса
@@ -1651,6 +1726,9 @@ Calling…
 Calls
 Вызовы
 
+Camera
+Камера
+
 Can't make {}: {}
 Не удалось создать {}: {}
 
@@ -1699,11 +1777,20 @@ Capture Client Requests Again
 Capture debug information whenever a frame drops
 Собирать отладочные данные при каждом пропуске кадра
 
+Cards
+Карточки
+
 Cascade All
 Все окна каскадом
 
 Cascade Others
 Остальные окна каскадом
+
+Cascade all windows on the display
+Все окна на экране каскадом
+
+Cascade the other windows, leaving this one
+Остальные окна каскадом, кроме этого
 
 Case
 Регистр
@@ -1720,10 +1807,19 @@ Ceiling {}
 Celsius (°C)
 Градусы Цельсия (°C)
 
+Center
+По центру
+
 Center Third
 Средняя треть
 
 Center Two Thirds
+Средние две трети
+
+Center third
+Средняя треть
+
+Center two thirds
 Средние две трети
 
 Chance
@@ -1737,6 +1833,9 @@ Change API ID…
 
 Change Background…
 Изменить фон…
+
+Change them in Preferences ▸ Keyboard ▸ Shortcuts.
+Изменить их можно в «Настройки ▸ Клавиатура ▸ Сочетания».
 
 Changed both here and in 1Password: 1Password’s version replaces it here, and yours is kept as “{} (conflict)”
 Изменено и здесь, и в 1Password. Местная копия будет заменена версией из 1Password, а ваши правки сохранятся как «{} (conflict)»
@@ -1788,6 +1887,9 @@ Check Health
 
 Check Spelling While Typing
 Проверять орфографию при вводе
+
+Check everything
+Проверить всё
 
 Check for Updates
 Проверить обновления
@@ -1885,8 +1987,26 @@ Chosen for the whole computer and kept across restarts. It's the computer's, not
 Chosen outside dnf
 Выбрано вне dnf
 
+Chrome and Slack
+Chrome и Slack
+
 Chrome holds it, as it may be harmful: keep it or delete it in Chrome’s Downloads.
 Chrome приостановил загрузку потенциально опасного файла. Сохранить или удалить его можно в списке загрузок Chrome.
+
+Chrome: Bookmarks and History
+Chrome: закладки и история
+
+Chrome: Developer
+Chrome: разработка
+
+Chrome: Going Places
+Chrome: навигация
+
+Chrome: Tabs and Windows
+Chrome: вкладки и окна
+
+Chrome: View
+Chrome: вид
 
 City or region
 Город или регион
@@ -1944,6 +2064,9 @@ Clear All
 
 Clear All Tabs
 Удалить все позиции табуляции
+
+Clear Browsing Data
+Очистить историю
 
 Clear History
 Очистить историю
@@ -2035,6 +2158,9 @@ Close Tab
 Close Window
 Закрыть окно
 
+Close the window
+Закрыть окно
+
 Cloud Heights
 Высота облаков
 
@@ -2067,6 +2193,12 @@ Code given to Agent Screen “{}”
 
 Code:
 Код:
+
+Codes texted to this phone are offered in the browser tab waiting for them.
+Коды из SMS, пришедших на этот телефон, предлагаются во вкладке браузера, которая их ждёт.
+
+Codes texted to this phone aren’t looked for.
+Коды из SMS, пришедших на этот телефон, не отслеживаются.
 
 Codex
 Codex
@@ -2113,6 +2245,9 @@ Column View
 Columns
 Столбцы
 
+Command Palette
+Палитра команд
+
 Command Suggestions
 Подсказки команд
 
@@ -2121,6 +2256,9 @@ Command key:
 
 Command or Comment
 Команда или комментарий
+
+Command palette
+Палитра команд
 
 Comment
 Комментарий
@@ -2152,6 +2290,9 @@ Compressed Swap
 Compressed to
 После сжатия
 
+Computer
+Компьютер
+
 Computes with
 Вычисления на
 
@@ -2163,6 +2304,12 @@ Configure IPv6:
 
 Confirm
 Подтвердить
+
+Confirm the Code
+Подтвердите код
+
+Confirm the code
+Подтвердите код
 
 Confirm:
 Подтверждение:
@@ -2185,6 +2332,12 @@ Connect automatically when you put them in near this computer
 Connect with a Token…
 Подключить с помощью токена…
 
+Connect your phone
+Подключите телефон
+
+Connected
+Подключено
+
 Connected as {}, through {}.
 Подключено как {0} через {1}.
 
@@ -2197,6 +2350,9 @@ Connected to “{}”: {}
 Connected {}, but its sign-in wasn’t allowed {}: Sign In Again and allow everything it asks.
 Аккаунт {0} подключён, но при входе не получено разрешение на {1}. Войдите снова и предоставьте запрошенные права.
 
+Connected, {}%
+Подключено, {} %
+
 Connected.
 Подключено.
 
@@ -2205,6 +2361,9 @@ Connecting to Telegram…
 
 Connecting to “{}”…
 Подключение к «{}»…
+
+Connecting…
+Подключение…
 
 Connection
 Подключение
@@ -2235,6 +2394,9 @@ Conversation
 
 Conversation Awareness
 Распознавание разговора
+
+Conversations
+Беседы
 
 Convert to Table
 Преобразовать в таблицу
@@ -2358,6 +2520,9 @@ Couldn't save what was dropped: {}
 
 Couldn't save: {}
 Не удалось сохранить: {}
+
+Couldn't search for devices.
+Не удалось начать поиск устройств.
 
 Couldn’t archive it. {}
 Не удалось отправить в архив. {}
@@ -2647,6 +2812,9 @@ Delete Vault
 Delete Vault…
 Удалить сейф…
 
+Delete a word
+Удалить слово
+
 Delete the event
 Удалить событие
 
@@ -2664,6 +2832,9 @@ Delete these {} backups? The space only they took is freed; files other backups 
 
 Delete this backup? The space only it took is freed; files other backups hold too stay in those. It can’t be undone.
 Удалить эту копию? Освободится место, занятое только ею. Файлы из других копий останутся доступны. Это действие необратимо.
+
+Delete to the line's start
+Удалить до начала строки
 
 Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
 Удалить {} ({}) навсегда? Они не попадут в корзину, и восстановить их будет нельзя.
@@ -2758,6 +2929,9 @@ Deskbar shows: {}
 Deskbar: a {} widget measured “{}”, which this computer hasn't; it measures {} instead.
 Deskbar: виджет «{}» показывал «{}», но на этом компьютере такой показатель недоступен. Вместо него используется «{}».
 
+Desktop
+Рабочий стол
+
 Desktop (Preferences)
 Рабочий стол (настройки)
 
@@ -2772,6 +2946,9 @@ Destination
 
 Details
 Подробности
+
+Developer Tools
+Инструменты разработчика
 
 Device
 Устройство
@@ -2818,6 +2995,9 @@ Disconnect Google Drive ({})? DiskBackup stops backing up there, and forgets its
 Disconnecting from Google Drive…
 Отключение Google Drive…
 
+Disconnecting…
+Отключение…
+
 Disconnect…
 Отключить…
 
@@ -2826,6 +3006,9 @@ Disk
 
 Disk Space
 Место на диске
+
+Disk Usage
+Disk Usage
 
 Disk:
 Диск:
@@ -2923,6 +3106,9 @@ Do Not Disturb is on
 Do Not Disturb is on — {} unread
 Режим «Не беспокоить» включён — непрочитанных: {}
 
+Do the result's other action
+Выполнить другое действие результата
+
 Dockerfile
 Dockerfile
 
@@ -2937,6 +3123,9 @@ Documents
 
 Does “{}” show this number?
 На устройстве «{}» показано это число?
+
+Does “{}” show {}?
+На «{}» показано {}?
 
 Doing
 В работе
@@ -2989,6 +3178,9 @@ Downloading: {}
 Downloading…
 Загрузка…
 
+Downloads
+Загрузки
+
 Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
 Перетаскивая окно за заголовок, отпустите его в нужном месте или нажмите букву этого места, и окно встанет туда. Отпустите его на месте другого окна, чтобы поменять их местами. Escape возвращает всё как было.
 
@@ -3001,11 +3193,17 @@ Dragging a Window
 Draw
 Рисовать
 
+Draw tool
+Инструмент рисования
+
 Drawing
 Рисунок
 
 Drawn into each frame
 Рисуется в каждом кадре
+
+Drive Setup
+Drive Setup
 
 DriveSetup
 DriveSetup
@@ -3127,6 +3325,12 @@ Each kind opens in this app wherever you open it, in Olo and in other programs. 
 Each network's own
 Настройки каждой сети
 
+Each new window takes a tile, and the others make room.
+Каждое новое окно занимает место в мозаике, а остальные теснятся.
+
+Each new window takes half of the one you were using.
+Каждое новое окно занимает половину того, с которым вы работали.
+
 Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
 Все настроенные способы позволяют обойтись без ввода пароля в Passwords, при sudo в Terminal и при запросах администратора. Лицо и отпечаток также подходят для входа и разблокировки. Сработает тот способ, которым вы воспользуетесь первым.
 
@@ -3138,6 +3342,9 @@ Each setting tried shows here.
 
 Each shows in the Deskbar as it changes. A click on one there opens its app: Activity Monitor, Token Pool or the app it’s from.
 Значения в Deskbar обновляются по мере изменений. Нажмите на виджет, чтобы открыть его приложение: монитор активности, Token Pool или другое.
+
+Each window takes half of the room left, round in a spiral.
+Каждое окно занимает половину оставшегося места, по спирали.
 
 Edge
 Край
@@ -3169,6 +3376,9 @@ Editors’ swap and backup files
 Edit…
 Изменить…
 
+Eighth folder
+Восьмая папка
+
 Either AirPod
 Любой из наушников
 
@@ -3186,6 +3396,9 @@ Email Accounts
 
 Emoji
 Эмодзи
+
+Emoji & symbols
+Эмодзи и символы
 
 Empty
 Пусто
@@ -3283,6 +3496,9 @@ Erlang
 Esc cancels
 Esc отменяет
 
+Esc closes
+Esc закрывает
+
 Ethernet
 Ethernet
 
@@ -3295,6 +3511,9 @@ Even Out the Voice's Level
 Even With the Lid Closed
 Даже при закрытой крышке
 
+Even out the tiles
+Выровнять плитки
+
 Even out the voice's level
 Выравнивать громкость голоса
 
@@ -3306,6 +3525,9 @@ Every 2 Weeks
 
 Every 2 weeks
 Каждые две недели
+
+Every Application
+Все приложения
 
 Every Counter
 Все счётчики
@@ -3367,6 +3589,15 @@ Every week
 Every weekday
 По будням
 
+Every window a column of its own width, in a strip that scrolls to the active one.
+Каждое окно — столбец своей ширины в ленте, которая прокручивается к активному окну.
+
+Every window a column, each as wide.
+Каждое окно — столбец, все одной ширины.
+
+Every window a row, each as tall.
+Каждое окно — строка, все одной высоты.
+
 Every year
 Каждый год
 
@@ -3408,6 +3639,9 @@ Everything it needs looked for, in {}.
 
 Export
 Экспортировать
+
+Export Flattened PDF
+Экспортировать PDF без слоёв
 
 Export Flattened PDF…
 Экспортировать PDF без слоёв…
@@ -3505,6 +3739,12 @@ Fan level {}
 Fan level {} · {}
 Уровень вентилятора: {} · {}
 
+Fan out all windows, tabs side by side
+Все окна веером, вкладки рядом
+
+Fan out the other windows, leaving this one
+Остальные окна веером, кроме этого
+
 Fans
 Вентиляторы
 
@@ -3559,8 +3799,14 @@ Fetching the forecast…
 Fetching…
 Получение…
 
+Fewer main windows
+Меньше главных окон
+
 Field
 Поле
+
+Fifth folder
+Пятая папка
 
 File
 Файл
@@ -3586,11 +3832,17 @@ Find
 Find Again
 Найти снова
 
+Find Next
+Найти далее
+
 Find Previous
 Найти предыдущее
 
 Find Selection
 Найти выделенный текст
+
+Find Your Phone
+Найдите телефон
 
 Find a free hour this week
 Найти свободный час на этой неделе
@@ -3600,6 +3852,12 @@ Find an app
 
 Find in document
 Найти в документе
+
+Find the selection
+Найти выделенное
+
+Find your phone
+Найдите телефон
 
 Find:
 Найти:
@@ -3652,6 +3910,9 @@ Firmware curve
 First Page
 Первая страница
 
+First folder
+Первая папка
+
 First, as the main window
 Первым, как главное окно
 
@@ -3670,6 +3931,9 @@ Fit Width
 Fix
 Исправить
 
+Fix and apply what's checked
+Исправить и применить отмеченное
+
 Fix in Olo Doctor…
 Исправить в Olo Doctor…
 
@@ -3678,6 +3942,12 @@ Flip Horizontal
 
 Flip Vertical
 Отразить по вертикали
+
+Flip the tiles left and right
+Отразить плитки слева направо
+
+Flip the tiles top and bottom
+Отразить плитки сверху вниз
 
 Float
 Плавающее
@@ -3697,6 +3967,9 @@ Float Window Group
 Float out of its group, or tile
 Сделать плавающим вне группы или уложить
 
+Float over the tiles, or tile
+Плавающее поверх мозаики или уложить
+
 Flurries
 Кратковременный снег
 
@@ -3705,6 +3978,27 @@ Focus
 
 Focus follows the pointer
 Фокус следует за указателем
+
+Focus mode on or off
+Включить или выключить режим «Фокус»
+
+Focus the next tile
+Активировать следующую плитку
+
+Focus the previous tile
+Активировать предыдущую плитку
+
+Focus the window above
+Активировать окно сверху
+
+Focus the window below
+Активировать окно снизу
+
+Focus the window to the left
+Активировать окно слева
+
+Focus the window to the right
+Активировать окно справа
 
 Fog
 Туман
@@ -3811,6 +4105,9 @@ Found as {}. Leave it empty for that name.
 Four fingers
 Четыре пальца
 
+Fourth folder
+Четвёртая папка
+
 Free
 Свободно
 
@@ -3862,6 +4159,9 @@ From {} to {}
 From:
 От:
 
+Full Screen
+Во весь экран
+
 Full access couldn't be asked for. {}
 Не удалось запросить полный доступ. {}
 
@@ -3876,6 +4176,9 @@ GPU:
 
 GPUs are tuned only in the person's own session (polkit asks there).
 Настроить видеокарты можно только в собственном сеансе пользователя: polkit запросит разрешение именно там.
+
+Game controller
+Игровой контроллер
 
 Game saves
 Сохранения игр
@@ -3945,6 +4248,9 @@ Go to
 
 Go to End
 В конец
+
+Go to File or Folder
+Перейти к файлу или папке
 
 Go to File or Folder…
 Перейти к файлу или папке…
@@ -4114,6 +4420,9 @@ Heading 6
 Headless
 Без дисплея
 
+Headphones
+Наушники
+
 Health
 Состояние
 
@@ -4177,6 +4486,18 @@ Hide Tab When Tiled
 Hide or show Deskbar
 Скрыть или показать Deskbar
 
+Hide or show the details
+Скрыть или показать подробности
+
+Hide or show the sidebar
+Скрыть или показать боковую панель
+
+Hide the application
+Скрыть приложение
+
+Hide window
+Скрыть окно
+
 High
 Высокий
 
@@ -4215,6 +4536,9 @@ Holds
 
 Home
 Домашняя папка
+
+Home Page
+Домашняя страница
 
 Hosts
 Узлы
@@ -4483,6 +4807,9 @@ Inspect
 Inspect Parent
 Исследовать родительский процесс
 
+Inspect Process
+Исследовать процесс
+
 Install Now
 Установить сейчас
 
@@ -4612,6 +4939,9 @@ Its app password isn’t in the keyring: remove it and add it again.
 Its click is its own: a resting palm can't press.
 Для щелчка нужно нажать пальцем. Лежащая на панели ладонь не сработает.
 
+Its contacts haven’t come (Sync Contacts, on the phone)
+Контакты не получены (включите на телефоне «Синхронизация контактов»)
+
 Its decoder, on its battery preset (Power Modes), costs less than the processor's cores; off, the processor decodes on battery.
 При питании от батареи её декодер с профилем из «Режимов питания» экономичнее процессора. Если отключить, на батарее будет декодировать процессор.
 
@@ -4707,6 +5037,9 @@ Java
 
 JavaScript
 JavaScript
+
+JavaScript Console
+Консоль JavaScript
 
 JavaScript packages and build output
 Пакеты JavaScript и результаты сборки
@@ -4864,6 +5197,9 @@ Keyboard Profile
 Keyboard Shortcuts
 Сочетания клавиш
 
+Keyboard shortcuts
+Сочетания клавиш
+
 Keyboard: the Mac profile came along, ⌘ on the Super key (the Windows key on most PC keyboards). Preferences ▸ Keyboard picks another for this keyboard.
 Перенесён профиль Mac: ⌘ на клавише Super (Windows на клавиатурах ПК). Другой профиль можно выбрать в настройках клавиатуры.
 
@@ -4996,14 +5332,23 @@ Left Third
 Left Two Thirds
 Левые две трети
 
+Left half
+Левая половина
+
 Left out, as dnf wouldn’t take it: {}. ({})
 Пропущено: dnf не принял {}. ({})
 
 Left out, as dnf wouldn’t take them: {}. ({})
 Пропущено: dnf не принял {}. ({})
 
+Left third
+Левая треть
+
 Left to the firmware for now
 Пока управляет прошивка
+
+Left two thirds
+Левые две трети
 
 Left-handed (swap the buttons)
 Для левшей (поменять кнопки местами)
@@ -5013,6 +5358,9 @@ Length
 
 Less noise
 Меньше шума
+
+Less space between windows
+Меньше места между окнами
 
 Let coding agents keep their tab’s title current
 Разрешить агентам обновлять заголовки вкладок
@@ -5158,6 +5506,9 @@ Lock after idle for:
 Lock the Screen
 Заблокировать экран
 
+Lock the screen
+Заблокировать экран
+
 Lock the screen when the display turns off
 Блокировать экран при выключении дисплея
 
@@ -5178,6 +5529,9 @@ Log Out…
 
 Login
 Вход
+
+Logs
+Logs
 
 Long
 Долго
@@ -5215,6 +5569,9 @@ Looking at what’s there…
 Looking at which processes use it…
 Поиск процессов, использующих устройство…
 
+Looking for Bluetooth…
+Поиск Bluetooth…
+
 Looking for a newer release…
 Поиск нового выпуска…
 
@@ -5227,6 +5584,9 @@ Looking for its calendars…
 Looking for network devices…
 Поиск сетевых устройств…
 
+Looking for phones nearby…
+Поиск телефонов поблизости…
+
 Looking for security keys…
 Поиск ключей безопасности…
 
@@ -5235,6 +5595,9 @@ Looking for sound devices…
 
 Looking for the fingerprint sensor…
 Поиск сканера отпечатков…
+
+Looking for the phone…
+Поиск телефона…
 
 Looking for volumes…
 Поиск томов…
@@ -5371,8 +5734,17 @@ Make an App Password…
 Make an app password for Olo in Fastmail (Settings ▸ Privacy & Security ▸ Manage app passwords and access) with access to mail and calendars. It’s kept in your login keyring.
 Создайте для Olo пароль приложения Fastmail с доступом к почте и календарям в разделе «Настройки ▸ Конфиденциальность и безопасность ▸ Управление паролями приложений и доступом». Он будет храниться в связке ключей для входа.
 
+Make it the main window
+Сделать главным окном
+
 Make one at my.telegram.org ▸ API development tools (sign in there with your phone number), then copy its App api_id and api_hash here.
 Войдите по номеру телефона на my.telegram.org и откройте «API development tools». Создайте приложение и скопируйте сюда его App api_id и api_hash.
+
+Make the main windows bigger
+Увеличить главные окна
+
+Make the main windows smaller
+Уменьшить главные окна
 
 Make this the main display
 Сделать главным
@@ -5418,6 +5790,12 @@ Mark as Not Done
 
 Mark as Read
 Отметить как прочитанное
+
+Mark as Read or Unread
+Отметить как прочитанное или непрочитанное
+
+Mark as done, or not done
+Отметить как выполненную или нет
 
 Markdown
 Markdown
@@ -5563,8 +5941,14 @@ More
 More Menus
 Другие меню
 
+More main windows
+Больше главных окон
+
 More noise
 Больше шума
+
+More space between windows
+Больше места между окнами
 
 Mostly clear
 Преимущественно ясно
@@ -5746,6 +6130,12 @@ Move all {} archived chats back to your chat list?
 Move both archived chats back to your chat list?
 Вернуть оба архивных чата в список чатов?
 
+Move every tile's window back one
+Сдвинуть каждое окно на плитку назад
+
+Move every tile's window on one
+Сдвинуть каждое окно на плитку вперёд
+
 Move the archived chat back to your chat list?
 Вернуть архивный чат в список чатов?
 
@@ -5754,6 +6144,18 @@ Move the pointer
 
 Move the pointer on a thread of its own
 Двигать указатель в отдельном потоке
+
+Move the tile's edge down
+Сдвинуть край плитки вниз
+
+Move the tile's edge left
+Сдвинуть край плитки влево
+
+Move the tile's edge right
+Сдвинуть край плитки вправо
+
+Move the tile's edge up
+Сдвинуть край плитки вверх
 
 Move to Archive
 Переместить в архив
@@ -5766,6 +6168,9 @@ Move to Trash
 
 Move to Workspace
 Переместить в рабочее пространство
+
+Move to the scratchpad
+Переместить в блокнот
 
 Move to {}
 Переместить в {}
@@ -5842,6 +6247,9 @@ Narrower than sRGB ({}% of it)
 Natural scrolling (content follows your fingers)
 Прокрутка: содержимое следует за пальцами
 
+Nearby
+Поблизости
+
 Needed by another package
 Нужен другому пакету
 
@@ -5884,6 +6292,9 @@ New Folder
 New Group…
 Новая группа…
 
+New Incognito Window
+Новое окно в режиме инкогнито
+
 New Item
 Новая запись
 
@@ -5892,6 +6303,9 @@ New List
 
 New List…
 Новый список…
+
+New Login
+Новая учётная запись
 
 New Message
 Новое сообщение
@@ -6010,14 +6424,38 @@ Next Tab
 Next Week
 Следующая неделя
 
+Next auto-tiling layout
+Следующая раскладка мозаики
+
+Next column width (Scrolling)
+Следующая ширина столбца (Прокрутка)
+
 Next day, week or month
 Следующий день, неделя или месяц
 
 Next step
 Следующий шаг
 
+Next tab in the window
+Следующая вкладка окна
+
 Next when you click Back Up Now.
 Следующая копия — по нажатию «Создать копию».
+
+Next window above the tile
+Следующее окно над плиткой
+
+Next window below the tile
+Следующее окно под плиткой
+
+Next window to the tile's left
+Следующее окно слева от плитки
+
+Next window to the tile's right
+Следующее окно справа от плитки
+
+Next workspace
+Следующее рабочее пространство
 
 Next {}.
 Следующая: {}.
@@ -6157,8 +6595,14 @@ No one on Telegram is called {}.
 No open files.
 Нет открытых файлов.
 
+No phone found yet.
+Телефон пока не найден.
+
 No phone or mail account is set up: a phone in Phone, a Google or Fastmail account for Mail in Integrations.
 Не настроены телефон или почта. Подключите телефон в приложении «Телефон» либо добавьте аккаунт Google или Fastmail для Mail в разделе «Интеграции».
+
+No phone paired
+Нет телефона в паре
 
 No power profiles daemon is running (power-profiles-daemon, or tuned-ppd on Fedora): Olo sets the power mode through it.
 Не запущена служба профилей питания (power-profiles-daemon или tuned-ppd в Fedora). Olo использует её для выбора режима питания.
@@ -6362,7 +6806,7 @@ Not in the last minute; {} since this window opened
 За последнюю минуту не было; с открытия окна: {}
 
 Not paired
-Нет сопряжения
+Нет пары
 
 Not recognised. Try again
 Не распознано. Попробуйте снова
@@ -6441,6 +6885,9 @@ Nothing changed: Olo's own model is still in use.
 
 Nothing coming up
 Предстоящих событий нет
+
+Nothing connects until it starts again. Olo Doctor restarts it (it asks for your password).
+Пока оно не перезапустится, ничего не подключится. Olo Doctor перезапустит его (и спросит ваш пароль).
 
 Nothing done yet
 Пока нет выполненных задач
@@ -6760,6 +7207,9 @@ Only an https:// address: one that can be listened in on could be changed on its
 Only on battery power
 Только при питании от батареи
 
+Only the active window shows, zoomed, with its dialogs over it.
+Видно только активное окно, развёрнутое, а поверх него — его диалоги.
+
 Only the latest of the same notification
 Хранить лишь последнее из одинаковых
 
@@ -6792,6 +7242,9 @@ Open Integrations…
 
 Open Link
 Открыть ссылку
+
+Open Location
+Открыть адрес
 
 Open Log File…
 Открыть файл журнала…
@@ -6934,6 +7387,9 @@ Other…
 Out of memory:
 При нехватке памяти:
 
+Out of reach
+Вне зоны досягаемости
+
 Output
 Вывод
 
@@ -6942,6 +7398,9 @@ Overdue
 
 Overview
 Обзор
+
+Overview of every window
+Обзор всех окон
 
 Overwrite the old data with zeros (slow)
 Перезаписать старые данные нулями (медленно)
@@ -6973,14 +7432,29 @@ Page {} of {}
 Pair
 Создать пару
 
+Paired
+В паре
+
+Paired with this computer; not yet sharing its messages
+В паре с этим компьютером; сообщениями пока не делится
+
 Paired with {}.
 Создана пара с {}.
 
 Pairing
 Сопряжение
 
+Pairing didn't work.
+Не удалось создать пару.
+
+Pairing didn’t finish. Try again, with the phone unlocked on its Bluetooth settings.
+Создание пары не завершилось. Повторите попытку, разблокировав телефон и открыв настройки Bluetooth.
+
 Pairing with {} didn't work: {}.
 Не удалось создать пару с {}: {}.
+
+Pairing…
+Создание пары…
 
 Pair…
 Создать пару…
@@ -7264,6 +7738,9 @@ Pin
 Pin as Main
 Закрепить как главное
 
+Pin it as the main window, or let it go
+Закрепить как главное окно или открепить
+
 Pinch to zoom
 Масштабирование щипком
 
@@ -7453,11 +7930,23 @@ Previous Tab
 Previous Week
 Предыдущая неделя
 
+Previous auto-tiling layout
+Предыдущая раскладка мозаики
+
 Previous day, week or month
 Предыдущий день, неделя или месяц
 
+Previous tab in the window
+Предыдущая вкладка окна
+
+Previous workspace
+Предыдущее рабочее пространство
+
 Print
 Печать
+
+Printer
+Принтер
 
 Print…
 Печать…
@@ -7590,6 +8079,9 @@ Quiet for 1 Hour
 
 Quit
 Завершить
+
+Quit Chrome
+Завершить Chrome
 
 Quit Now
 Выйти сейчас
@@ -7756,6 +8248,9 @@ Record the Computer's Sound
 Record the Microphone
 Записывать микрофон
 
+Record the screen, or stop
+Записать экран или остановить
+
 Recording
 Запись
 
@@ -7798,6 +8293,9 @@ Redo
 Redo Window Arrangement
 Повторить расстановку окон
 
+Redo window arrangement
+Повторить расстановку окон
+
 Redo {}
 Повторить: {}
 
@@ -7824,6 +8322,15 @@ Regenerate
 
 Reinstall Selected…
 Переустановить выбранное…
+
+Reject
+Отклонить
+
+Reload
+Обновить
+
+Reload Without the Cache
+Обновить без кеша
 
 Remind:
 Напомнить:
@@ -7894,6 +8401,9 @@ Remove “{}” from Favorites
 Remove…
 Удалить…
 
+Removing…
+Удаление…
+
 Rename
 Переименовать
 
@@ -7918,6 +8428,9 @@ Rename Worktree…
 Rename…
 Переименовать…
 
+Reopen Closed Tab
+Открыть закрытую вкладку
+
 Repeat rate
 Частота повтора
 
@@ -7929,6 +8442,9 @@ Replace
 
 Replace Same
 Заменять одинаковые
+
+Replace and find again
+Заменить и найти далее
 
 Replace the one-time code of your login {} with the one this page shows?
 Заменить одноразовый код в логине «{}» кодом с этой страницы?
@@ -8131,6 +8647,18 @@ Right Two Thirds
 Right first
 Точность первого варианта
 
+Right half
+Правая половина
+
+Right third
+Правая треть
+
+Right two thirds
+Правые две трети
+
+Roll up or down
+Свернуть в заголовок или развернуть
+
 Room:
 Место:
 
@@ -8139,6 +8667,12 @@ Rotate Left
 
 Rotate Right
 Повернуть вправо
+
+Rotate the tiles
+Повернуть плитки
+
+Rotate the tiles back
+Повернуть плитки обратно
 
 Round trip
 Время отклика
@@ -8205,6 +8739,9 @@ Saturday
 
 Save
 Сохранить
+
+Save As
+Сохранить как
 
 Save As…
 Сохранить как…
@@ -8275,6 +8812,9 @@ Scan Home
 Scan Volume
 Сканировать том
 
+Scan a Folder
+Сканировать папку
+
 Scan a Folder…
 Сканировать папку…
 
@@ -8311,8 +8851,26 @@ Screen Saver
 Screenshot
 Снимок экрана
 
+Screenshot app
+Приложение «Снимок экрана»
+
+Screenshot of an area
+Снимок области
+
+Screenshot of the screen
+Снимок экрана целиком
+
+Screenshot of the window
+Снимок окна
+
+Screenshots
+Снимки экрана
+
 Scroll
 Прокрутка
+
+Scroll for more · Esc closes
+Прокрутите, чтобы увидеть больше · Esc закрывает
 
 Scroll while the middle button is held
 Прокручивать при зажатой средней кнопке
@@ -8346,6 +8904,9 @@ Search: words, program:, level:, since:
 
 Searching…
 Поиск…
+
+Second folder
+Вторая папка
 
 Secondary click (three: middle)
 Правая кнопка (три пальца — средняя)
@@ -8410,6 +8971,12 @@ Select a transaction to see what it did to each package.
 Select an update to read about it: its versions, why it came out, what changed.
 Выберите обновление, чтобы посмотреть версии, причину выпуска и список изменений.
 
+Select as you go: with any of these
+Выделять при перемещении: вместе с любой из этих
+
+Select tool
+Инструмент выбора
+
 Selected {} to {}
 Выбрано с {} по {}
 
@@ -8429,6 +8996,9 @@ Send Voice Message
 Отправить голосовое сообщение
 
 Send to Back
+На задний план
+
+Send to back
 На задний план
 
 Send with BBRv3
@@ -8551,6 +9121,9 @@ Settings
 Settings:
 Настройки:
 
+Seventh folder
+Седьмая папка
+
 Shaping
 Ограничение трафика
 
@@ -8605,6 +9178,9 @@ Show
 Show All
 Показать все
 
+Show All Tabs
+Показать все вкладки
+
 Show Archived
 Показать архивные
 
@@ -8613,6 +9189,9 @@ Show Archived Conversations
 
 Show Assistant
 Показать помощника
+
+Show Bookmarks Bar
+Показать панель закладок
 
 Show Calendars
 Показать календари
@@ -8704,11 +9283,17 @@ Show on AirPlay
 Show on All Workspaces
 Показать во всех пространствах
 
+Show on all workspaces
+Показать во всех пространствах
+
 Show or Hide All Windows
 Показать или скрыть все окна
 
 Show or hide the assistant
 Показать или скрыть ассистента
+
+Show or hide the scratchpad
+Показать или скрыть блокнот
 
 Show or hide the source
 Показать или скрыть исходный текст
@@ -8718,6 +9303,9 @@ Show seconds
 
 Show the day of the week
 Показывать день недели
+
+Show the desktop
+Показать рабочий стол
 
 Show the phone’s other notifications
 Показывать другие уведомления телефона
@@ -8809,6 +9397,9 @@ Sign…
 Site Settings
 Настройки сайта
 
+Sixth folder
+Шестая папка
+
 Size
 Размер
 
@@ -8844,6 +9435,9 @@ Small: one line. Medium and Large: all it shows, Large's sky bigger.
 
 Smaller
 Меньше
+
+Smaller text
+Мельче текст
 
 Smooth Pointer
 Плавный указатель
@@ -8944,6 +9538,9 @@ Spanish
 Spare
 Резерв
 
+Speaker
+Колонка
+
 Speaker amp {}
 Усилитель динамика {}
 
@@ -8982,6 +9579,12 @@ Start Over…
 
 Start Test
 Начать тест
+
+Start or end of the document
+Начало или конец документа
+
+Start or end of the line
+Начало или конец строки
 
 Start the Agent
 Запустить агента
@@ -9042,6 +9645,9 @@ Stay Awake
 
 Stay awake (caffeinated)
 Не давать компьютеру уснуть
+
+Stay awake, or not
+Не переходить в сон или отменить
 
 Stay awake: no display sleep, sleep, screen saver or lock
 Не гасить экран, не включать сон, заставку и блокировку
@@ -9181,6 +9787,27 @@ Swap too
 Swap with Previous Main
 Поменять с предыдущим главным окном
 
+Swap with the next tile
+Поменять со следующей плиткой
+
+Swap with the previous main window
+Поменять с предыдущим главным окном
+
+Swap with the previous tile
+Поменять с предыдущей плиткой
+
+Swap with the tile above
+Поменять с плиткой сверху
+
+Swap with the tile below
+Поменять с плиткой снизу
+
+Swap with the tile to the left
+Поменять с плиткой слева
+
+Swap with the tile to the right
+Поменять с плиткой справа
+
 Swedish
 Шведский
 
@@ -9190,17 +9817,32 @@ Swift
 Swiss
 Швейцарская
 
+Switch applications (Twitcher)
+Переключение приложений (Twitcher)
+
+Switch applications on the workspaces showing
+Переключение приложений в видимых рабочих пространствах
+
 Switch automatically between this computer and your iPhone
 Переключаться между компьютером и iPhone автоматически
 
 Switch to a woken program at once
 Сразу запускать пробуждённую программу
 
+Switch windows of the application
+Переключение окон приложения
+
+Switching
+Переключение
+
 Sync
 Синхронизация
 
 Sync Again
 Синхронизировать снова
+
+Sync Contacts
+Синхронизация контактов
 
 Sync Now
 Синхронизировать сейчас
@@ -9244,11 +9886,44 @@ TOML
 TSX
 TSX
 
+Tab 1
+Вкладка 1
+
+Tab 2
+Вкладка 2
+
+Tab 3
+Вкладка 3
+
+Tab 4
+Вкладка 4
+
+Tab 5
+Вкладка 5
+
+Tab 6
+Вкладка 6
+
+Tab 7
+Вкладка 7
+
+Tab 8
+Вкладка 8
+
+Tab 9
+Вкладка 9
+
 Table
 Таблица
 
+Tablet
+Планшет
+
 Tabs
 Вкладки
+
+Tabs on Agent Screens are never given a code.
+Вкладки на экранах агентов никогда не получают код.
 
 Tags:
 Метки:
@@ -9265,6 +9940,9 @@ Take Screenshot…
 Take calls on this computer
 Принимать звонки на этом компьютере
 
+Take or give back control
+Взять или вернуть управление
+
 Taken
 Принято
 
@@ -9274,11 +9952,14 @@ Tap
 Tap and drag
 Касание с перетаскиванием
 
+Tap the Windows key on its own for the command palette
+Палитра команд по нажатию одной клавиши Windows
+
 Tap to click
 Нажатие касанием
 
-Tap {} on its own for the command palette
-Палитра команд по нажатию одной {}
+Tap ⌘ (the Super key) on its own for the command palette
+Палитра команд по нажатию одной клавиши ⌘ (Super)
 
 Taps
 Касания
@@ -9376,8 +10057,17 @@ SMS
 Text Size
 Размер текста
 
+Text at its own size
+Текст исходного размера
+
+Text messages
+Текстовые сообщения
+
 Text messages to “{}”
 SMS для «{}»
+
+Text tool
+Инструмент текста
 
 Text:
 Текст:
@@ -9429,6 +10119,9 @@ The API hash is 32 letters and digits (0–9, a–f).
 
 The AirPods service isn't running.
 Служба AirPods не запущена.
+
+The Bluetooth service (bluetoothd) isn't running.
+Служба Bluetooth (bluetoothd) не запущена.
 
 The CPU doesn't offer “{}”.
 ЦП не поддерживает «{}».
@@ -9523,11 +10216,23 @@ The copy of Token Pool this one replaced is still finishing its requests. Add th
 The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
 Копия Token Pool, которую заменила эта, ещё завершает свои запросы. Войдите снова через минуту.
 
+The copy of Token Pool this one replaced is still finishing its requests. The sign-in is taken as soon as it has.
+Копия Token Pool, которую заменила эта, ещё завершает свои запросы. Вход будет принят, как только она закончит.
+
 The day before, at 9 AM
 Накануне, в 9:00
 
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
 Доля попаданий за день, занятые слоты пула, сборки и попадания за последние часы.
+
+The device couldn't be disconnected.
+Не удалось отключить устройство.
+
+The device couldn't be removed.
+Не удалось удалить устройство.
+
+The device didn't connect.
+Устройство не подключилось.
 
 The displays' settings are Olo's own again, from when you leave Rescue.
 При выходе из режима восстановления экраны вернутся к настройкам Olo.
@@ -9643,6 +10348,9 @@ The look's own
 The loss is a number, in percent.
 Укажите потери числом в процентах.
 
+The main window in its place; the others stack around it.
+Главное окно на своём месте; остальные складываются в стопку рядом.
+
 The microphone can’t be recorded ({}).
 Не удалось записать звук с микрофона ({}).
 
@@ -9699,6 +10407,9 @@ The password of “{}” couldn’t be kept: {}
 
 The passwords file is damaged: {}
 Файл паролей повреждён: {}
+
+The phone didn’t connect. Is it unlocked, with Bluetooth on?
+Телефон не подключился. Он разблокирован, Bluetooth включён?
 
 The phone didn’t take it.
 Телефон не принял данные.
@@ -9832,6 +10543,9 @@ The voice service isn't running.
 The window server didn’t give its settings.
 Оконный сервер не предоставил настройки.
 
+The windows in rows of about square cells.
+Окна в рядах из почти квадратных ячеек.
+
 The workspace each display shows stays open in every Deskbar; each other one is its heading, with an arrow that shows its applications and puts them away again.
 Текущее пространство каждого экрана раскрыто во всех панелях Deskbar. Рядом с заголовками остальных есть стрелки для открытия и скрытия списка приложений.
 
@@ -9880,6 +10594,9 @@ There is no limit “{}”.
 There is nothing to share.
 Нечем поделиться.
 
+There's no Bluetooth adapter.
+Адаптер Bluetooth не найден.
+
 There's no Ethernet adapter. A USB or Thunderbolt one shows here once it's plugged in.
 Нет адаптера Ethernet. Адаптер USB или Thunderbolt появится здесь после подключения.
 
@@ -9909,6 +10626,9 @@ Thinking:
 
 Thinking…
 Обдумывание…
+
+Third folder
+Третья папка
 
 This Computer
 Этот компьютер
@@ -10057,6 +10777,9 @@ Tile All Tabs
 Tile With
 Уложить рядом с
 
+Tile all windows on the display
+Уложить все окна на экране
+
 Tiling, zooming, Tile All, cascading and fanning out all leave this space.
 Этот отступ сохраняется при укладке окон в мозаику, увеличении, раскладке всех окон, расположении каскадом или веером.
 
@@ -10107,6 +10830,12 @@ To Do
 
 To allow it, you can also {}.
 Также можно разрешить доступ так: {}.
+
+To the next display
+На следующий экран
+
+To the previous display
+На предыдущий экран
 
 To {}
 В {}
@@ -10192,8 +10921,20 @@ Top Right Quarter
 Top Two Thirds
 Верхние две трети
 
+Top half
+Верхняя половина
+
+Top left quarter
+Верхняя левая четверть
+
+Top right quarter
+Верхняя правая четверть
+
 Top speed
 Предел скорости
+
+Top two thirds
+Верхние две трети
 
 Touch
 Касание
@@ -10345,6 +11086,9 @@ Turn on for a laptop usually plugged in.
 Turn the display off after:
 Гасить экран через:
 
+Turn the tile's split
+Повернуть разделение плитки
+
 Turn the touchpad off while a mouse is plugged in
 Отключать панель при подключении мыши
 
@@ -10462,6 +11206,9 @@ Undo Transaction…
 Undo Window Arrangement
 Отменить расстановку окон
 
+Undo window arrangement
+Отменить расстановку окон
+
 Undo {}
 Отменить: {}
 
@@ -10536,6 +11283,9 @@ Up
 
 Up (sent)
 Исходящий трафик
+
+Up a level
+На уровень выше
 
 Up for
 Время работы
@@ -10732,6 +11482,33 @@ Variable refresh rate
 Vault
 Сейф
 
+Vault 1
+Сейф 1
+
+Vault 2
+Сейф 2
+
+Vault 3
+Сейф 3
+
+Vault 4
+Сейф 4
+
+Vault 5
+Сейф 5
+
+Vault 6
+Сейф 6
+
+Vault 7
+Сейф 7
+
+Vault 8
+Сейф 8
+
+Vault 9
+Сейф 9
+
 Vault Info…
 Сведения о сейфе…
 
@@ -10764,6 +11541,9 @@ Video is decoded on the processor. {}
 
 View
 Вид
+
+View Source
+Просмотреть исходный код
 
 Viewer
 Viewer
@@ -10833,6 +11613,9 @@ Waiting for power
 
 Waiting for the network
 Ожидание сети
+
+Waiting for the phone to allow it
+Ожидание разрешения на телефоне
 
 Waiting for the phone… this page follows it by itself.
 Ожидание телефона… Страница обновится автоматически.
@@ -11152,11 +11935,47 @@ Window on a Background
 Window title size
 Размер заголовка окна
 
+Window to the next workspace
+Окно в следующее рабочее пространство
+
+Window to the previous workspace
+Окно в предыдущее рабочее пространство
+
+Window to workspace 1
+Окно в рабочее пространство 1
+
+Window to workspace 2
+Окно в рабочее пространство 2
+
+Window to workspace 3
+Окно в рабочее пространство 3
+
+Window to workspace 4
+Окно в рабочее пространство 4
+
+Window to workspace 5
+Окно в рабочее пространство 5
+
+Window to workspace 6
+Окно в рабочее пространство 6
+
+Window to workspace 7
+Окно в рабочее пространство 7
+
+Window to workspace 8
+Окно в рабочее пространство 8
+
+Window to workspace 9
+Окно в рабочее пространство 9
+
 Windowing Mode
 Режим окон
 
 Windows
 Окна
+
+Windows stay where you put them.
+Окна остаются там, где вы их оставили.
 
 Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).
 Буферы окон остаются в памяти, и рабочему столу не приходится ждать их возврата из подкачки. Это обеспечивает исправление Olo для драйвера Intel.
@@ -11184,6 +12003,33 @@ Working…
 
 Works on a picture of the desktop.
 Применяется к изображению рабочего стола.
+
+Workspace 1
+Рабочее пространство 1
+
+Workspace 2
+Рабочее пространство 2
+
+Workspace 3
+Рабочее пространство 3
+
+Workspace 4
+Рабочее пространство 4
+
+Workspace 5
+Рабочее пространство 5
+
+Workspace 6
+Рабочее пространство 6
+
+Workspace 7
+Рабочее пространство 7
+
+Workspace 8
+Рабочее пространство 8
+
+Workspace 9
+Рабочее пространство 9
 
 Workspace:
 Рабочее пространство:
@@ -11344,11 +12190,14 @@ Yours: fine-tuned once since it started
 Yours: fine-tuned {} times since it started
 Ваша модель: число дообучений с запуска — {}
 
+You’re asked each time a tab on an Agent Screen is the one waiting.
+Вас спрашивают каждый раз, когда код ждёт вкладка на экране агента.
+
 Zig
 Zig
 
 Zoom
-Масштаб
+Развернуть
 
 Zoom All
 Увеличить все окна
@@ -11359,14 +12208,26 @@ Zoom In
 Zoom Out
 Уменьшить
 
+Zoom horizontally
+Развернуть по горизонтали
+
 Zoom on Clicks
 Увеличивать при щелчке
+
+Zoom or unzoom
+Развернуть или вернуть
+
+Zoom or unzoom all windows on the display
+Развернуть все окна на экране или вернуть
 
 Zoom to Fill
 Заполнить область
 
 Zoom to Fit
 Вписать в область
+
+Zoom vertically
+Развернуть по вертикали
 
 __pycache__, .venv, .mypy_cache, .pytest_cache, .tox
 __pycache__, .venv, .mypy_cache, .pytest_cache, .tox
@@ -12226,6 +13087,12 @@ few: {n} предстоящие задачи
 many: {n} предстоящих задач
 other: Предстоящих задач: {n}
 
+{n} conversations
+one: {n} разговор
+few: {n} разговора
+many: {n} разговоров
+other: {n} разговора
+
 {n} days
 one: {n} день
 few: {n} дня
@@ -12441,6 +13308,12 @@ one: {n} задача
 few: {n} задачи
 many: {n} задач
 other: {n} задачи
+
+{n} unread
+one: {n} непрочитанное
+few: {n} непрочитанных
+many: {n} непрочитанных
+other: {n} непрочитанного
 
 {n} waiting in their apps
 one: Ожидают в приложениях: {n}
@@ -12744,6 +13617,9 @@ other: {n} недели
 
 {} kept, still shared with builds' target folders
 Сохранено {}: эти данные ещё используются в каталогах сборки
+
+{} keys
+Клавиши {}
 
 {} knows this computer.
 {} узнаёт этот компьютер.
@@ -13149,6 +14025,9 @@ other: {n} недели
 
 {}: windows stay where you put them. Click to choose a windowing mode.
 {}: окна остаются там, куда вы их поместили. Нажмите, чтобы выбрать режим окон.
+
+{}: {}
+{}: {}
 
 {}: {} applications. Click to show them.
 {}: приложений: {}. Нажмите, чтобы показать их.

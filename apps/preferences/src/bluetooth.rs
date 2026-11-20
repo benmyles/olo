@@ -93,15 +93,24 @@ fn test_status() -> Status {
     }
 }
 
+/// Made-up devices in place of this computer's: tests (the layout lint),
+/// and a look headless (`OLO_BLUETOOTH_DEMO`, or the Phone panel's
+/// `OLO_PHONE_DEMO`), so a picture shows nobody's own devices and no
+/// button reaches the real adapter.
+pub(crate) fn demo() -> bool {
+    cfg!(test) || ["OLO_BLUETOOTH_DEMO", "OLO_PHONE_DEMO"].iter().any(|v| std::env::var_os(v).is_some())
+}
+
 /// BlueZ's watcher and pairing agent (one for the app), telling the
 /// windows through `proxy` when anything changes.
 pub(crate) fn link(proxy: olo_kit::Proxy) -> &'static Link {
     static LINK: OnceLock<Link> = OnceLock::new();
     LINK.get_or_init(|| {
         let shared: Arc<Mutex<Shared>> = Default::default();
-        // Tests (the layout lint): an adapter and devices named as long
-        // as real ones, and never the real adapter (a search on it).
-        if cfg!(test) {
+        // Tests (the layout lint) and a look headless: an adapter and
+        // devices named as long as real ones, and never the real adapter
+        // (a search on it).
+        if demo() {
             shared.lock().unwrap().status = Some(Ok(test_status()));
             return Link { shared, tx: channel().0, proxy };
         }
@@ -156,7 +165,7 @@ pub(crate) fn link(proxy: olo_kit::Proxy) -> &'static Link {
                     };
                     sh.lock().unwrap().error = r.err().map(|(e, what)| {
                         tracing::warn!("bluez: {e}");
-                        what.to_owned()
+                        olo_kit::words::tr(what).to_owned()
                     });
                     proxy.send(Msg::Redraw);
                 }
@@ -180,7 +189,7 @@ pub(crate) fn act(link: &'static Link, device: String, doing: &'static str, fail
         }
         s.error = r.err().map(|e| {
             tracing::warn!("bluez: {e}");
-            failed.to_owned()
+            olo_kit::words::tr(failed).to_owned()
         });
         drop(s);
         link.proxy.send(Msg::Redraw);
@@ -230,7 +239,7 @@ impl State {
         // (Tests: the phone chosen, whose buttons are the most there
         // are. The panel went out with its last button cut off because
         // the lint only ever saw it with nothing chosen.)
-        let selected = cfg!(test).then(|| format!("/org/bluez/hci0/{TEST_PHONE}"));
+        let selected = demo().then(|| format!("/org/bluez/hci0/{TEST_PHONE}"));
         State { list: ListModel::new(false), selected, searched: false, typed, link }
     }
 }
@@ -262,7 +271,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         let _ = link.tx.send(Request::Search(adapter.path.clone()));
     }
 
-    let text = if adapter.powered { olo_kit::tr!("This computer is “{}”.", adapter.name) } else { "Off".to_owned() };
+    let text = if adapter.powered { olo_kit::tr!("This computer is “{}”.", adapter.name) } else { olo_kit::words::tr("Off").to_owned() };
     let path = adapter.path.clone();
     ui.add(
         div()
@@ -344,14 +353,20 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
         let pod = rows[cell.row].as_ref();
         match cell.column {
             0 => cell.text(g, d.name.clone()),
-            1 => cell.text(g, pod.map_or(d.kind().to_owned(), |p| p.model.split(" (").next().unwrap_or("AirPods").to_owned())),
+            // (Words the list paints itself: asked for here. A device's
+            // kind is the system's word for it, a model its maker's.)
+            1 => cell.text(g, pod.map_or(olo_kit::words::tr(d.kind()).to_owned(), |p| p.model.split(" (").next().unwrap_or("AirPods").to_owned())),
             _ => {
+                let tr = olo_kit::words::tr;
                 let text = match (doing3.get(&d.path), d.connected, d.paired) {
-                    (Some(doing), ..) => (*doing).to_owned(),
-                    (None, true, _) if pod.and_then(|p| p.lowest()).is_some() => format!("Connected, {}%", pod.and_then(|p| p.lowest()).unwrap_or(0)),
-                    (None, true, _) => d.battery.map_or("Connected".to_owned(), |b| format!("Connected, {b}%")),
-                    (None, false, true) => "Paired".to_owned(),
-                    _ => String::new(),
+                    (Some(doing), ..) => tr(doing).to_owned(),
+                    (None, true, _) if pod.and_then(|p| p.lowest()).is_some() => olo_kit::tr!("Connected, {}%", pod.and_then(|p| p.lowest()).unwrap_or(0)),
+                    (None, true, _) => d.battery.map_or(tr("Connected").to_owned(), |b| olo_kit::tr!("Connected, {}%", b)),
+                    (None, false, true) => tr("Paired").to_owned(),
+                    // (Seen, and nothing more: said, where an empty
+                    // cell among the others read as a state not known.
+                    // Astra's look, 2026-11-20.)
+                    _ => tr("Not paired").to_owned(),
                 };
                 cell.text(g, text);
             }
@@ -420,7 +435,7 @@ fn question(ui: &mut Ui, st: &mut State) {
         let sh = link.shared.lock().unwrap();
         let Some(q) = &sh.question else { return };
         let (text, typed) = match &q.ask {
-            Ask::Confirm(n) => (format!("Does “{}” show {n:06}?", q.device), false),
+            Ask::Confirm(n) => (olo_kit::tr!("Does “{}” show {}?", q.device, format!("{n:06}")), false),
             Ask::ShowPasskey(n) => (olo_kit::tr!("Type {} on “{}”, then press Return.", format!("{:06}", n), q.device), false),
             Ask::ShowPin(p) => (olo_kit::tr!("Type {} on “{}”, then press Return.", p, q.device), false),
             Ask::EnterPin => (olo_kit::tr!("Type the PIN for “{}” (often 0000).", q.device), true),

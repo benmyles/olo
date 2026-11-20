@@ -13763,6 +13763,28 @@ is a new line, `#` a comment.
 - **What an app paints itself** (`style::label`) is its own to ask
   for: `tr!("…")`. The kit doesn't translate at the paint, where a
   width measured from the English would no longer fit.
+- **Words another crate keeps in English** (a shortcut's title and its
+  group, `olo_protocol::shortcuts` and `app_keys`; a windowing mode's
+  and a layout's sentence; a Bluetooth device's kind, `olo_system`)
+  are asked for where they're shown: `words::tr(title)` for a
+  `&'static str`, `words::lookup` for one that came over a socket as
+  text (the chord panel's rows, from app_server). They are in the
+  catalogs like any word (`words gather` doesn't find them: add them
+  to `en.txt`). Until 2026-11-20 none was: Preferences ▸ Keyboard ▸
+  Shortcuts, the shortcuts sheet and the chord panel were English in
+  every language, 207 titles.
+- **A sentence put into a sentence** is asked for too
+  (`tr!("{} Choose a workspace's own from Deskbar's tray.",
+  words::tr(what))`), and a name is never put into a sentence that
+  would want it in another case: two whole sentences instead ("Tap the
+  Windows key…", "Tap ⌘ (the Super key)…").
+- **A panel that shows the computer's own devices** has a demo for
+  pictures, as the lint's fixtures: `OLO_BLUETOOTH_DEMO=1` (Preferences
+  ▸ Bluetooth), `OLO_PHONE_DEMO=1` (Phone, connected; `=connect`: its
+  first step), `OLO_KEYBOARDS_DEMO=1`, `OLO_POWER_DEMO=1`. A test
+  session shares the system's Bluetooth, so without them a picture
+  shows the person's phone by name, and a button there is the real
+  adapter's.
 - In English nothing is looked up or read: one load of a flag.
 
 The language is `Settings::language` ("de", "pt-BR"; empty: English;

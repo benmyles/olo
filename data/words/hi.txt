@@ -423,8 +423,11 @@ A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference
 A repository’s key needs to be trusted
 सॉफ़्टवेयर स्रोत की कुंजी पर भरोसे की पुष्टि चाहिए
 
-A reset this account asked for hasn’t been answered yet. Sign in as the same account, or remove this account and add the other.
-इस खाते के माँगे एक रीसेट का अभी उत्तर नहीं आया है। उसी खाते से साइन इन करें, या यह खाता हटाकर दूसरा जोड़ें।
+A reset this account asked for hasn’t been answered yet. The sign-in is taken as soon as it has.
+इस खाते के माँगे एक रीसेट का अभी उत्तर नहीं आया है। जवाब आते ही साइन-इन ले लिया जाएगा।
+
+A reset this account asked for hasn’t been answered yet. This sign-in doesn’t say which account it is. Sign in again once it has.
+इस खाते के माँगे एक रीसेट का अभी उत्तर नहीं आया है। इस साइन-इन से पता नहीं चलता कि यह किस खाते का है। उसके बाद फिर साइन इन करें।
 
 A resting palm can't click (its pressure doesn't count)
 हथेली टिकाने पर क्लिक नहीं होगा (उसका दबाव नहीं गिना जाता)
@@ -474,6 +477,9 @@ A week
 A week before, at 9 AM
 एक सप्ताह पहले, सुबह 9 बजे
 
+A word back or on
+एक शब्द पीछे या आगे
+
 AI
 AI
 
@@ -509,6 +515,9 @@ Acceleration:
 
 Accent
 प्रमुख रंग
+
+Accept
+स्वीकार करें
 
 Access
 पहुँच
@@ -672,6 +681,9 @@ Address:
 Addresses can’t be looked up: {}
 पते नहीं खोज सके: {}
 
+Adjust Size
+आकार बदलें
+
 Adjust Size…
 आकार बदलें…
 
@@ -809,6 +821,9 @@ All {} connected.
 Allow
 अनुमति दें
 
+Allow It on the Phone
+फ़ोन पर अनुमति दें
+
 Allow NVIDIA Fallback on Battery
 बैटरी पर NVIDIA का विकल्प भी रखें
 
@@ -817,6 +832,9 @@ Allow Sleep
 
 Allow Sleep (awake until {})
 स्लीप की अनुमति दें ({} तक जागता रहेगा)
+
+Allow it on the phone
+फ़ोन पर अनुमति दें
 
 Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).
 “{0}” को {1}{2} का इस्तेमाल करने दें? “हमेशा” चुनने पर उसे हर बार अनुमति मिलेगी। फ़ाइल ▸ अनुमत ऐप… में इसे वापस ले सकते हैं।
@@ -911,6 +929,9 @@ Another Window
 
 Another account
 दूसरा खाता
+
+Another program has the phone
+फ़ोन किसी और प्रोग्राम के पास है
 
 Another program has the phone’s message profiles (BlueFerry’s or GNOME’s obexd). Olo Doctor removes BlueFerry.
 फ़ोन के संदेश प्रोफ़ाइल पर दूसरे प्रोग्राम का नियंत्रण है (BlueFerry या GNOME का obexd)। Olo Doctor से BlueFerry हटा सकते हैं।
@@ -1027,6 +1048,9 @@ Archived Chats
 Archived Conversations
 संग्रहित बातचीत
 
+Arranging
+व्यवस्थित करना
+
 Arrived out of order
 क्रम से बाहर पहुँचे
 
@@ -1041,6 +1065,12 @@ As List
 
 As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines.
 Workbench के आइकन जैसे: स्क्रीन के सोलह रंग, सपाट सतहें और काली बाहरी रेखाएँ।
+
+As a board
+बोर्ड के रूप में
+
+As a list
+सूची के रूप में
 
 As fast as the computer goes: the processors kept quick and the firmware's power limits raised, the fans as needed. The battery runs down sooner.
 कंप्यूटर अपनी पूरी गति पर चलता है। प्रोसेसर तेज़ रहते हैं, फ़र्मवेयर की पावर सीमा बढ़ती है और पंखे ज़रूरत के अनुसार चलते हैं। बैटरी जल्दी खाली होगी।
@@ -1165,6 +1195,9 @@ At {}. Give it the code from {}?
 Attach
 संलग्न करें
 
+Attach Files
+फ़ाइलें संलग्न करें
+
 Attach Files…
 फ़ाइलें संलग्न करें…
 
@@ -1179,6 +1212,9 @@ Attach Link…
 
 Attach a file or a link
 फ़ाइल या लिंक संलग्न करें
+
+Attach what's on the clipboard
+क्लिपबोर्ड की सामग्री संलग्न करें
 
 Attachments
 अटैचमेंट
@@ -1209,6 +1245,9 @@ Auto-Tiling Layout
 
 Auto-tiling layout:
 टाइल व्यवस्था:
+
+Auto-tiling on or off
+ऑटो-टाइलिंग चालू या बंद
 
 Automatic
 स्वचालित
@@ -1254,6 +1293,12 @@ Back to Chats
 
 Back to Conversations
 बातचीत पर लौटें
+
+Back to its own size
+अपने आकार में वापस
+
+Back to its own size, or hide
+अपने आकार में वापस, या छिपाएँ
 
 Back to the Days
 दिनों की सूची पर लौटें
@@ -1415,6 +1460,9 @@ Best time for a run tomorrow?
 Bigger
 बड़ा
 
+Bigger text
+बड़ा टेक्स्ट
+
 Black
 काला
 
@@ -1426,6 +1474,9 @@ Blue:
 
 Bluetooth
 Bluetooth
+
+Bluetooth couldn't be turned on or off.
+Bluetooth चालू या बंद नहीं हो सका।
 
 Bluetooth couldn’t open the phone’s messages ({}).
 Bluetooth फ़ोन के संदेश नहीं खोल सका ({})।
@@ -1448,6 +1499,9 @@ Bluetooth isn’t running on this computer.
 Bluetooth said it would open them and no channel came
 Bluetooth ने खोलने की सहमति दी, लेकिन कोई चैनल नहीं खुला
 
+Bluetooth's hardware isn't answering
+Bluetooth का हार्डवेयर जवाब नहीं दे रहा
+
 Bluetooth…
 Bluetooth…
 
@@ -1459,6 +1513,12 @@ Body
 
 Bold
 बोल्ड
+
+Bookmark Manager
+बुकमार्क मैनेजर
+
+Bookmark This Tab
+इस टैब को बुकमार्क करें
 
 Boost when work arrives and ease back between tasks.
 काम मिलते ही गति बढ़ाएँ और कामों के बीच घटाएँ।
@@ -1476,6 +1536,18 @@ Bottom Right Quarter
 नीचे दायाँ चौथाई
 
 Bottom Two Thirds
+नीचे का दो तिहाई
+
+Bottom half
+निचला आधा
+
+Bottom left quarter
+नीचे बायाँ चौथाई
+
+Bottom right quarter
+नीचे दायाँ चौथाई
+
+Bottom two thirds
 नीचे का दो तिहाई
 
 Branch {} is checked out in {} already.
@@ -1531,6 +1603,9 @@ Buttons
 
 By
 किसने
+
+By App
+ऐप के अनुसार
 
 By a parent leaving
 मूल प्रक्रिया के बंद होने से
@@ -1637,6 +1712,9 @@ Calling…
 Calls
 कॉल
 
+Camera
+कैमरा
+
 Can't make {}: {}
 {} नहीं बना सके: {}
 
@@ -1685,11 +1763,20 @@ Capture Client Requests Again
 Capture debug information whenever a frame drops
 फ़्रेम छूटने पर डीबग जानकारी रिकॉर्ड करें
 
+Cards
+कार्ड
+
 Cascade All
 सभी विंडो सीढ़ीनुमा लगाएँ
 
 Cascade Others
 बाकी विंडो सीढ़ीनुमा लगाएँ
+
+Cascade all windows on the display
+डिस्प्ले की सभी विंडो कैस्केड करें
+
+Cascade the other windows, leaving this one
+बाकी विंडो कैस्केड करें, इसे छोड़कर
 
 Case
 अक्षरों का रूप
@@ -1706,10 +1793,19 @@ Ceiling {}
 Celsius (°C)
 Celsius (°C)
 
+Center
+बीच में रखें
+
 Center Third
 बीच का तिहाई
 
 Center Two Thirds
+बीच का दो तिहाई
+
+Center third
+बीच का तिहाई
+
+Center two thirds
 बीच का दो तिहाई
 
 Chance
@@ -1723,6 +1819,9 @@ API ID बदलें…
 
 Change Background…
 पृष्ठभूमि बदलें…
+
+Change them in Preferences ▸ Keyboard ▸ Shortcuts.
+इन्हें वरीयताएँ ▸ कीबोर्ड ▸ शॉर्टकट में बदलें।
 
 Changed both here and in 1Password: 1Password’s version replaces it here, and yours is kept as “{} (conflict)”
 यहाँ और 1Password दोनों में बदलाव हुआ। यहाँ 1Password का संस्करण लगेगा और आपका संस्करण “{} (conflict)” के नाम से रहेगा
@@ -1774,6 +1873,9 @@ Check Health
 
 Check Spelling While Typing
 टाइप करते समय वर्तनी जाँचें
+
+Check everything
+सब कुछ जाँचें
 
 Check for Updates
 अपडेट जाँचें
@@ -1867,8 +1969,26 @@ Chosen for the whole computer and kept across restarts. It's the computer's, not
 Chosen outside dnf
 dnf के बाहर चुना गया
 
+Chrome and Slack
+Chrome और Slack
+
 Chrome holds it, as it may be harmful: keep it or delete it in Chrome’s Downloads.
 नुकसानदेह होने की आशंका से Chrome ने इसे रोका है। Chrome के डाउनलोड में जाकर इसे रखें या मिटाएँ।
+
+Chrome: Bookmarks and History
+Chrome: बुकमार्क और इतिहास
+
+Chrome: Developer
+Chrome: डेवलपर
+
+Chrome: Going Places
+Chrome: नेविगेशन
+
+Chrome: Tabs and Windows
+Chrome: टैब और विंडो
+
+Chrome: View
+Chrome: दृश्य
 
 City or region
 शहर या क्षेत्र
@@ -1924,6 +2044,9 @@ Clear All
 
 Clear All Tabs
 सभी टैब स्टॉप हटाएँ
+
+Clear Browsing Data
+ब्राउज़िंग डेटा मिटाएँ
 
 Clear History
 इतिहास साफ़ करें
@@ -2015,6 +2138,9 @@ Close Tab
 Close Window
 विंडो बंद करें
 
+Close the window
+विंडो बंद करें
+
 Cloud Heights
 बादलों की ऊँचाई
 
@@ -2047,6 +2173,12 @@ Code given to Agent Screen “{}”
 
 Code:
 कोड:
+
+Codes texted to this phone are offered in the browser tab waiting for them.
+इस फ़ोन पर SMS से आए कोड उस ब्राउज़र टैब में पेश किए जाते हैं जो उनका इंतज़ार कर रहा है।
+
+Codes texted to this phone aren’t looked for.
+इस फ़ोन पर SMS से आए कोड नहीं खोजे जाते।
 
 Codex
 Codex
@@ -2093,6 +2225,9 @@ Column View
 Columns
 कॉलम
 
+Command Palette
+कमांड पैलेट
+
 Command Suggestions
 कमांड सुझाव
 
@@ -2101,6 +2236,9 @@ Command key:
 
 Command or Comment
 कमांड या टिप्पणी
+
+Command palette
+कमांड पैलेट
 
 Comment
 टिप्पणी
@@ -2132,6 +2270,9 @@ Compressed Swap
 Compressed to
 संपीड़न के बाद
 
+Computer
+कंप्यूटर
+
 Computes with
 गणना का साधन
 
@@ -2143,6 +2284,12 @@ IPv6 कॉन्फ़िगर करें:
 
 Confirm
 पुष्टि करें
+
+Confirm the Code
+कोड की पुष्टि करें
+
+Confirm the code
+कोड की पुष्टि करें
 
 Confirm:
 पुष्टि करें:
@@ -2165,6 +2312,12 @@ Connect automatically when you put them in near this computer
 Connect with a Token…
 टोकन से जुड़ें…
 
+Connect your phone
+अपना फ़ोन जोड़ें
+
+Connected
+जुड़ा है
+
 Connected as {}, through {}.
 {1} के ज़रिए {0} के रूप में जुड़े हैं।
 
@@ -2177,6 +2330,9 @@ Connected to “{}”: {}
 Connected {}, but its sign-in wasn’t allowed {}: Sign In Again and allow everything it asks.
 {} जुड़ा है, लेकिन लॉगिन को {} की अनुमति नहीं मिली। फिर लॉगिन करें और सभी अनुरोधित अनुमतियाँ दें।
 
+Connected, {}%
+जुड़ा है, {}%
+
 Connected.
 जुड़ गया।
 
@@ -2185,6 +2341,9 @@ Telegram से जुड़ रहे हैं…
 
 Connecting to “{}”…
 “{}” से जुड़ रहे हैं…
+
+Connecting…
+जुड़ रहा है…
 
 Connection
 कनेक्शन
@@ -2215,6 +2374,9 @@ Conversation
 
 Conversation Awareness
 बातचीत की पहचान
+
+Conversations
+बातचीत
 
 Convert to Table
 तालिका में बदलें
@@ -2338,6 +2500,9 @@ Couldn't save what was dropped: {}
 
 Couldn't save: {}
 सहेज नहीं सके: {}
+
+Couldn't search for devices.
+डिवाइस खोजे नहीं जा सके।
 
 Couldn’t archive it. {}
 संग्रहित नहीं कर सके। {}
@@ -2627,6 +2792,9 @@ Delete Vault
 Delete Vault…
 तिजोरी मिटाएँ…
 
+Delete a word
+एक शब्द मिटाएँ
+
 Delete the event
 इवेंट हटाएँ
 
@@ -2644,6 +2812,9 @@ Delete these {} backups? The space only they took is freed; files other backups 
 
 Delete this backup? The space only it took is freed; files other backups hold too stay in those. It can’t be undone.
 यह बैकअप मिटाएँ? सिर्फ़ इसकी जगह खाली होगी। दूसरे बैकअप में भी मौजूद फ़ाइलें बनी रहेंगी। इसे पलटा नहीं जा सकता।
+
+Delete to the line's start
+पंक्ति की शुरुआत तक मिटाएँ
 
 Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
 {} ({}) हमेशा के लिए मिटाएँ? ये रद्दी में नहीं जाएँगे और इन्हें वापस नहीं ला सकेंगे।
@@ -2738,6 +2909,9 @@ Deskbar पर: {}
 Deskbar: a {} widget measured “{}”, which this computer hasn't; it measures {} instead.
 Deskbar: {} विजेट “{}” मापता था, जो इस कंप्यूटर पर उपलब्ध नहीं है। अब यह {} मापता है।
 
+Desktop
+डेस्कटॉप
+
 Desktop (Preferences)
 डेस्कटॉप (वरीयताएँ)
 
@@ -2752,6 +2926,9 @@ Destination
 
 Details
 विवरण
+
+Developer Tools
+डेवलपर टूल
 
 Device
 डिवाइस
@@ -2798,6 +2975,9 @@ Google Drive ({}) से कनेक्शन हटाएँ? DiskBackup व�
 Disconnecting from Google Drive…
 Google Drive से कनेक्शन हट रहा है…
 
+Disconnecting…
+डिस्कनेक्ट हो रहा है…
+
 Disconnect…
 कनेक्शन हटाएँ…
 
@@ -2806,6 +2986,9 @@ Disk
 
 Disk Space
 डिस्क की जगह
+
+Disk Usage
+Disk Usage
 
 Disk:
 डिस्क:
@@ -2901,6 +3084,9 @@ Do Not Disturb is on
 Do Not Disturb is on — {} unread
 परेशान न करें चालू है — {} अपठित
 
+Do the result's other action
+नतीजे की दूसरी कार्रवाई करें
+
 Dockerfile
 Dockerfile
 
@@ -2915,6 +3101,9 @@ Documents
 
 Does “{}” show this number?
 क्या “{}” पर यह संख्या दिख रही है?
+
+Does “{}” show {}?
+क्या “{}” पर {} दिख रहा है?
 
 Doing
 जारी
@@ -2967,6 +3156,9 @@ Downloading: {}
 Downloading…
 डाउनलोड हो रहा है…
 
+Downloads
+डाउनलोड
+
 Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
 किसी विंडो को उसके टैब से खींचते समय, उसे किसी जगह में छोड़ें या उस जगह का अक्षर दबाएँ, और विंडो वहाँ आ जाती है। दूसरी विंडो की जगह में छोड़ने पर दोनों की अदला-बदली होती है। Escape सब कुछ वापस रख देता है।
 
@@ -2979,11 +3171,17 @@ Dragging a Window
 Draw
 चित्र बनाएँ
 
+Draw tool
+ड्रॉ टूल
+
 Drawing
 चित्रण
 
 Drawn into each frame
 हर फ़्रेम में बनाया जाता है
+
+Drive Setup
+Drive Setup
 
 DriveSetup
 DriveSetup
@@ -3105,6 +3303,12 @@ Olo या दूसरे प्रोग्राम में जहाँ �
 Each network's own
 हर नेटवर्क की अपनी सेटिंग
 
+Each new window takes a tile, and the others make room.
+हर नई विंडो को एक टाइल मिलती है, और बाकी विंडो जगह बनाती हैं।
+
+Each new window takes half of the one you were using.
+हर नई विंडो उस विंडो का आधा हिस्सा लेती है जिसे आप इस्तेमाल कर रहे थे।
+
 Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
 यहाँ सेट किए सभी तरीके Passwords, Terminal में sudo और प्रशासकीय अनुरोधों में पासवर्ड की जगह काम करते हैं। चेहरा या फ़िंगरप्रिंट लॉक और लॉगिन स्क्रीन पर भी इस्तेमाल कर सकते हैं। जो तरीका पहले इस्तेमाल करेंगे, उससे पुष्टि होगी।
 
@@ -3116,6 +3320,9 @@ Each setting tried shows here.
 
 Each shows in the Deskbar as it changes. A click on one there opens its app: Activity Monitor, Token Pool or the app it’s from.
 हर मान बदलते ही Deskbar पर दिखता है। उस पर क्लिक करने से संबंधित ऐप खुलता है, जैसे गतिविधि मॉनिटर या Token Pool।
+
+Each window takes half of the room left, round in a spiral.
+हर विंडो बची हुई जगह का आधा हिस्सा लेती है, सर्पिल में घूमते हुए।
 
 Edge
 EDGE
@@ -3147,6 +3354,9 @@ Editors’ swap and backup files
 Edit…
 संपादित करें…
 
+Eighth folder
+आठवाँ फ़ोल्डर
+
 Either AirPod
 कोई भी AirPod
 
@@ -3164,6 +3374,9 @@ Email Accounts
 
 Emoji
 इमोजी
+
+Emoji & symbols
+इमोजी और प्रतीक
 
 Empty
 खाली
@@ -3261,6 +3474,9 @@ Erlang
 Esc cancels
 Esc रद्द करता है
 
+Esc closes
+Esc बंद करता है
+
 Ethernet
 Ethernet
 
@@ -3273,6 +3489,9 @@ Even Out the Voice's Level
 Even With the Lid Closed
 ढक्कन बंद होने पर भी
 
+Even out the tiles
+टाइलें बराबर करें
+
 Even out the voice's level
 बोलने की आवाज़ एकसमान करें
 
@@ -3284,6 +3503,9 @@ Every 2 Weeks
 
 Every 2 weeks
 हर 2 हफ़्ते
+
+Every Application
+सभी ऐप्लिकेशन
 
 Every Counter
 हर काउंटर
@@ -3345,6 +3567,15 @@ Every week
 Every weekday
 हर कार्यदिवस
 
+Every window a column of its own width, in a strip that scrolls to the active one.
+हर विंडो अपनी चौड़ाई का एक कॉलम है, एक पट्टी में जो सक्रिय विंडो तक स्क्रॉल होती है।
+
+Every window a column, each as wide.
+हर विंडो एक कॉलम है, सब बराबर चौड़े।
+
+Every window a row, each as tall.
+हर विंडो एक पंक्ति है, सब बराबर ऊँची।
+
 Every year
 हर साल
 
@@ -3378,6 +3609,9 @@ Everything it needs looked for, in {}.
 
 Export
 निर्यात करें
+
+Export Flattened PDF
+परतें मिलाकर PDF निर्यात करें
 
 Export Flattened PDF…
 परतें मिलाकर PDF निर्यात करें…
@@ -3475,6 +3709,12 @@ Fan level {}
 Fan level {} · {}
 पंखे का स्तर {} · {}
 
+Fan out all windows, tabs side by side
+सभी विंडो पंखे की तरह फैलाएँ, टैब अगल-बगल
+
+Fan out the other windows, leaving this one
+बाकी विंडो पंखे की तरह फैलाएँ, इसे छोड़कर
+
 Fans
 पंखे
 
@@ -3529,8 +3769,14 @@ Fetching the forecast…
 Fetching…
 लाया जा रहा है…
 
+Fewer main windows
+कम मुख्य विंडो
+
 Field
 फ़ील्ड
+
+Fifth folder
+पाँचवाँ फ़ोल्डर
 
 File
 फ़ाइल
@@ -3556,11 +3802,17 @@ Find
 Find Again
 फिर खोजें
 
+Find Next
+अगला खोजें
+
 Find Previous
 पिछला खोजें
 
 Find Selection
 चयनित टेक्स्ट खोजें
+
+Find Your Phone
+अपना फ़ोन खोजें
 
 Find a free hour this week
 इस हफ़्ते एक खाली घंटा ढूँढ़ें
@@ -3570,6 +3822,12 @@ Find an app
 
 Find in document
 दस्तावेज़ में खोजें
+
+Find the selection
+चुने हुए को खोजें
+
+Find your phone
+अपना फ़ोन खोजें
 
 Find:
 खोजें:
@@ -3622,6 +3880,9 @@ Firmware curve
 First Page
 पहला पेज
 
+First folder
+पहला फ़ोल्डर
+
 First, as the main window
 सबसे पहले, मुख्य विंडो के रूप में
 
@@ -3640,6 +3901,9 @@ Fit Width
 Fix
 ठीक करें
 
+Fix and apply what's checked
+चुनी हुई चीज़ें ठीक करें और लागू करें
+
 Fix in Olo Doctor…
 Olo Doctor में ठीक करें…
 
@@ -3648,6 +3912,12 @@ Flip Horizontal
 
 Flip Vertical
 लंबवत पलटें
+
+Flip the tiles left and right
+टाइलें बाएँ-दाएँ पलटें
+
+Flip the tiles top and bottom
+टाइलें ऊपर-नीचे पलटें
 
 Float
 तैरती
@@ -3667,6 +3937,9 @@ Float Window Group
 Float out of its group, or tile
 समूह से बाहर तैरती रखें, या टाइल करें
 
+Float over the tiles, or tile
+टाइलों के ऊपर तैरती रखें, या टाइल करें
+
 Flurries
 हल्की बर्फ़ की फुहारें
 
@@ -3675,6 +3948,27 @@ Focus
 
 Focus follows the pointer
 पॉइंटर के साथ फ़ोकस बदलें
+
+Focus mode on or off
+फ़ोकस मोड चालू या बंद
+
+Focus the next tile
+अगली टाइल सक्रिय करें
+
+Focus the previous tile
+पिछली टाइल सक्रिय करें
+
+Focus the window above
+ऊपर की विंडो सक्रिय करें
+
+Focus the window below
+नीचे की विंडो सक्रिय करें
+
+Focus the window to the left
+बाईं ओर की विंडो सक्रिय करें
+
+Focus the window to the right
+दाईं ओर की विंडो सक्रिय करें
 
 Fog
 कोहरा
@@ -3781,6 +4075,9 @@ Found as {}. Leave it empty for that name.
 Four fingers
 चार उँगलियाँ
 
+Fourth folder
+चौथा फ़ोल्डर
+
 Free
 खाली
 
@@ -3832,6 +4129,9 @@ From {} to {}
 From:
 से:
 
+Full Screen
+पूर्ण स्क्रीन
+
 Full access couldn't be asked for. {}
 पूरी पहुँच नहीं माँग सके। {}
 
@@ -3846,6 +4146,9 @@ GPU:
 
 GPUs are tuned only in the person's own session (polkit asks there).
 GPU का समायोजन केवल उपयोगकर्ता के अपने सत्र में होता है। polkit वहीं अनुमति माँगता है।
+
+Game controller
+गेम कंट्रोलर
 
 Game saves
 गेम की सहेजी फ़ाइलें
@@ -3915,6 +4218,9 @@ Go to
 
 Go to End
 अंत पर जाएँ
+
+Go to File or Folder
+फ़ाइल या फ़ोल्डर पर जाएँ
 
 Go to File or Folder…
 फ़ाइल या फ़ोल्डर पर जाएँ…
@@ -4084,6 +4390,9 @@ Heading 6
 Headless
 बिना डिस्प्ले
 
+Headphones
+हेडफ़ोन
+
 Health
 स्थिति
 
@@ -4147,6 +4456,18 @@ Hide Tab When Tiled
 Hide or show Deskbar
 Deskbar छिपाएँ या दिखाएँ
 
+Hide or show the details
+विवरण छिपाएँ या दिखाएँ
+
+Hide or show the sidebar
+साइडबार छिपाएँ या दिखाएँ
+
+Hide the application
+ऐप्लिकेशन छिपाएँ
+
+Hide window
+विंडो छिपाएँ
+
 High
 उच्च
 
@@ -4185,6 +4506,9 @@ Holds
 
 Home
 होम
+
+Home Page
+होम पेज
 
 Hosts
 होस्ट
@@ -4447,6 +4771,9 @@ Inspect
 Inspect Parent
 मूल प्रक्रिया देखें
 
+Inspect Process
+प्रक्रिया का निरीक्षण करें
+
 Install Now
 अभी इंस्टॉल करें
 
@@ -4576,6 +4903,9 @@ Its app password isn’t in the keyring: remove it and add it again.
 Its click is its own: a resting palm can't press.
 क्लिक के लिए अलग से दबाना होगा। टिकी हुई हथेली क्लिक नहीं करेगी।
 
+Its contacts haven’t come (Sync Contacts, on the phone)
+इसके संपर्क नहीं आए (फ़ोन पर “संपर्क सिंक करें”)
+
 Its decoder, on its battery preset (Power Modes), costs less than the processor's cores; off, the processor decodes on battery.
 पावर मोड में बैटरी की सेटिंग पर इसका डिकोडर CPU से कम बिजली लेता है। इसे बंद करने पर बैटरी के दौरान CPU डिकोड करेगा।
 
@@ -4667,6 +4997,9 @@ Java
 
 JavaScript
 JavaScript
+
+JavaScript Console
+JavaScript कंसोल
 
 JavaScript packages and build output
 JavaScript पैकेज और बिल्ड का आउटपुट
@@ -4824,6 +5157,9 @@ Keyboard Profile
 Keyboard Shortcuts
 कीबोर्ड शॉर्टकट
 
+Keyboard shortcuts
+कीबोर्ड शॉर्टकट
+
 Keyboard: the Mac profile came along, ⌘ on the Super key (the Windows key on most PC keyboards). Preferences ▸ Keyboard picks another for this keyboard.
 कीबोर्ड: Mac प्रोफ़ाइल आयात हुई है। ⌘ अब Super कुंजी पर है (अधिकांश PC कीबोर्ड पर Windows कुंजी)। वरीयताएँ ▸ कीबोर्ड में इस कीबोर्ड के लिए दूसरी प्रोफ़ाइल चुन सकते हैं।
 
@@ -4956,14 +5292,23 @@ Left Third
 Left Two Thirds
 बायाँ दो तिहाई
 
+Left half
+बायाँ आधा
+
 Left out, as dnf wouldn’t take it: {}. ({})
 dnf ने स्वीकार नहीं किया, इसलिए छोड़ा: {}। ({})
 
 Left out, as dnf wouldn’t take them: {}. ({})
 dnf ने स्वीकार नहीं किया, इसलिए छोड़े: {}। ({})
 
+Left third
+बायाँ तिहाई
+
 Left to the firmware for now
 फ़िलहाल फ़र्मवेयर के हवाले
+
+Left two thirds
+बायाँ दो तिहाई
 
 Left-handed (swap the buttons)
 बाएँ हाथ के लिए (बटन बदलें)
@@ -4973,6 +5318,9 @@ Length
 
 Less noise
 कम शोर
+
+Less space between windows
+विंडो के बीच कम जगह
 
 Let coding agents keep their tab’s title current
 कोडिंग एजेंट को अपने टैब का शीर्षक बदलने दें
@@ -5118,6 +5466,9 @@ Lock after idle for:
 Lock the Screen
 स्क्रीन लॉक करें
 
+Lock the screen
+स्क्रीन लॉक करें
+
 Lock the screen when the display turns off
 डिस्प्ले बंद होने पर स्क्रीन लॉक करें
 
@@ -5138,6 +5489,9 @@ Log Out…
 
 Login
 लॉगिन
+
+Logs
+Logs
 
 Long
 लंबा
@@ -5175,6 +5529,9 @@ Looking at what’s there…
 Looking at which processes use it…
 इसे इस्तेमाल करने वाली प्रक्रियाएँ खोज रहे हैं…
 
+Looking for Bluetooth…
+Bluetooth खोजा जा रहा है…
+
 Looking for a newer release…
 नया संस्करण खोज रहे हैं…
 
@@ -5187,6 +5544,9 @@ Looking for its calendars…
 Looking for network devices…
 नेटवर्क डिवाइस खोज रहे हैं…
 
+Looking for phones nearby…
+आसपास के फ़ोन खोजे जा रहे हैं…
+
 Looking for security keys…
 सुरक्षा कुंजियाँ खोज रहे हैं…
 
@@ -5195,6 +5555,9 @@ Looking for sound devices…
 
 Looking for the fingerprint sensor…
 फ़िंगरप्रिंट सेंसर खोज रहे हैं…
+
+Looking for the phone…
+फ़ोन खोजा जा रहा है…
 
 Looking for volumes…
 वॉल्यूम खोज रहे हैं…
@@ -5331,8 +5694,17 @@ Make an App Password…
 Make an app password for Olo in Fastmail (Settings ▸ Privacy & Security ▸ Manage app passwords and access) with access to mail and calendars. It’s kept in your login keyring.
 Fastmail में सेटिंग ▸ गोपनीयता और सुरक्षा ▸ ऐप पासवर्ड और पहुँच प्रबंधित करें खोलें। Olo के लिए मेल और कैलेंडर की पहुँच वाला ऐप पासवर्ड बनाएँ। यह आपकी लॉगिन कीरिंग में रहेगा।
 
+Make it the main window
+इसे मुख्य विंडो बनाएँ
+
 Make one at my.telegram.org ▸ API development tools (sign in there with your phone number), then copy its App api_id and api_hash here.
 my.telegram.org पर फ़ोन नंबर से लॉगिन करें। API development tools में ऐप बनाएँ और यहाँ उसका App api_id और api_hash कॉपी करें।
+
+Make the main windows bigger
+मुख्य विंडो बड़ी करें
+
+Make the main windows smaller
+मुख्य विंडो छोटी करें
 
 Make this the main display
 इसे मुख्य डिस्प्ले बनाएँ
@@ -5378,6 +5750,12 @@ Mark as Not Done
 
 Mark as Read
 पढ़ा हुआ चिह्नित करें
+
+Mark as Read or Unread
+पढ़ा या अपठित चिह्नित करें
+
+Mark as done, or not done
+पूरा चिह्नित करें, या नहीं
 
 Markdown
 Markdown
@@ -5523,8 +5901,14 @@ More
 More Menus
 और मेनू
 
+More main windows
+ज़्यादा मुख्य विंडो
+
 More noise
 ज़्यादा शोर
+
+More space between windows
+विंडो के बीच ज़्यादा जगह
 
 Mostly clear
 अधिकतर साफ़
@@ -5706,6 +6090,12 @@ Move all {} archived chats back to your chat list?
 Move both archived chats back to your chat list?
 दोनों संग्रहित चैट वापस चैट सूची में लाएँ?
 
+Move every tile's window back one
+हर विंडो को एक टाइल पीछे ले जाएँ
+
+Move every tile's window on one
+हर विंडो को एक टाइल आगे ले जाएँ
+
 Move the archived chat back to your chat list?
 संग्रहित चैट वापस चैट सूची में लाएँ?
 
@@ -5714,6 +6104,18 @@ Move the pointer
 
 Move the pointer on a thread of its own
 पॉइंटर अलग थ्रेड पर चलाएँ
+
+Move the tile's edge down
+टाइल का किनारा नीचे ले जाएँ
+
+Move the tile's edge left
+टाइल का किनारा बाईं ओर ले जाएँ
+
+Move the tile's edge right
+टाइल का किनारा दाईं ओर ले जाएँ
+
+Move the tile's edge up
+टाइल का किनारा ऊपर ले जाएँ
 
 Move to Archive
 संग्रह में भेजें
@@ -5726,6 +6128,9 @@ Move to Trash
 
 Move to Workspace
 कार्यक्षेत्र में ले जाएँ
+
+Move to the scratchpad
+स्क्रैचपैड में ले जाएँ
 
 Move to {}
 {} में ले जाएँ
@@ -5802,6 +6207,9 @@ sRGB से कम (उसका {}%)
 Natural scrolling (content follows your fingers)
 स्वाभाविक स्क्रॉल (सामग्री उँगलियों के साथ चले)
 
+Nearby
+आसपास
+
 Needed by another package
 दूसरे पैकेज को इसकी ज़रूरत है
 
@@ -5844,6 +6252,9 @@ New Folder
 New Group…
 नया समूह…
 
+New Incognito Window
+नई गुप्त विंडो
+
 New Item
 नया आइटम
 
@@ -5852,6 +6263,9 @@ New List
 
 New List…
 नई सूची…
+
+New Login
+नया लॉगिन
 
 New Message
 नया संदेश
@@ -5970,14 +6384,38 @@ Next Tab
 Next Week
 अगला हफ़्ता
 
+Next auto-tiling layout
+अगली टाइल व्यवस्था
+
+Next column width (Scrolling)
+अगली कॉलम चौड़ाई (स्क्रॉलिंग)
+
 Next day, week or month
 अगला दिन, सप्ताह या महीना
 
 Next step
 अगला चरण
 
+Next tab in the window
+विंडो का अगला टैब
+
 Next when you click Back Up Now.
 अगला बैकअप “अभी बैकअप लें” पर क्लिक करने से शुरू होगा।
+
+Next window above the tile
+टाइल के ऊपर अगली विंडो
+
+Next window below the tile
+टाइल के नीचे अगली विंडो
+
+Next window to the tile's left
+टाइल के बाईं ओर अगली विंडो
+
+Next window to the tile's right
+टाइल के दाईं ओर अगली विंडो
+
+Next workspace
+अगला कार्यक्षेत्र
 
 Next {}.
 अगला: {}।
@@ -6117,8 +6555,14 @@ Telegram पर {} नाम का कोई व्यक्ति नहीं
 No open files.
 कोई फ़ाइल खुली नहीं है।
 
+No phone found yet.
+अभी तक कोई फ़ोन नहीं मिला।
+
 No phone or mail account is set up: a phone in Phone, a Google or Fastmail account for Mail in Integrations.
 न फ़ोन सेट है, न मेल खाता। “फ़ोन” में अपना फ़ोन जोड़ें या “एकीकरण” में Mail के लिए Google या Fastmail खाता जोड़ें।
+
+No phone paired
+कोई फ़ोन पेयर नहीं है
 
 No power profiles daemon is running (power-profiles-daemon, or tuned-ppd on Fedora): Olo sets the power mode through it.
 पावर प्रोफ़ाइल सेवा नहीं चल रही (power-profiles-daemon या Fedora पर tuned-ppd)। Olo इसी से पावर मोड तय करता है।
@@ -6401,6 +6845,9 @@ Nothing changed: Olo's own model is still in use.
 
 Nothing coming up
 आगे कोई कार्यक्रम नहीं
+
+Nothing connects until it starts again. Olo Doctor restarts it (it asks for your password).
+इसके फिर शुरू होने तक कुछ नहीं जुड़ेगा। Olo Doctor इसे फिर शुरू करता है (वह आपका पासवर्ड माँगेगा)।
 
 Nothing done yet
 अभी कोई कार्य पूरा नहीं हुआ
@@ -6720,6 +7167,9 @@ Only an https:// address: one that can be listened in on could be changed on its
 Only on battery power
 सिर्फ़ बैटरी पर
 
+Only the active window shows, zoomed, with its dialogs over it.
+सिर्फ़ सक्रिय विंडो दिखती है, ज़ूम की हुई, और उसके डायलॉग उसके ऊपर।
+
 Only the latest of the same notification
 एक जैसी सूचनाओं में केवल नवीनतम रखें
 
@@ -6752,6 +7202,9 @@ Open Integrations…
 
 Open Link
 लिंक खोलें
+
+Open Location
+पता खोलें
 
 Open Log File…
 लॉग फ़ाइल खोलें…
@@ -6894,6 +7347,9 @@ Other…
 Out of memory:
 मेमोरी खत्म होने पर:
 
+Out of reach
+पहुँच से बाहर
+
 Output
 आउटपुट
 
@@ -6902,6 +7358,9 @@ Overdue
 
 Overview
 अवलोकन
+
+Overview of every window
+सभी विंडो का अवलोकन
 
 Overwrite the old data with zeros (slow)
 पुराने डेटा पर शून्य लिखें (धीमा)
@@ -6933,14 +7392,29 @@ Page {} of {}
 Pair
 पेयर करें
 
+Paired
+पेयर किया हुआ
+
+Paired with this computer; not yet sharing its messages
+इस कंप्यूटर से पेयर है; अभी अपने संदेश साझा नहीं कर रहा
+
 Paired with {}.
 {} से पेयर हो गया।
 
 Pairing
 पेयरिंग
 
+Pairing didn't work.
+पेयरिंग नहीं हो सकी।
+
+Pairing didn’t finish. Try again, with the phone unlocked on its Bluetooth settings.
+पेयरिंग पूरी नहीं हुई। फ़ोन को अनलॉक करके उसकी Bluetooth सेटिंग खोलें और फिर कोशिश करें।
+
 Pairing with {} didn't work: {}.
 {} से पेयर नहीं हो सका: {}।
+
+Pairing…
+पेयर हो रहा है…
 
 Pair…
 पेयर करें…
@@ -7220,6 +7694,9 @@ Pin
 Pin as Main
 मुख्य के रूप में पिन करें
 
+Pin it as the main window, or let it go
+मुख्य विंडो के रूप में पिन करें, या छोड़ें
+
 Pinch to zoom
 दो उँगलियों से ज़ूम करें
 
@@ -7409,11 +7886,23 @@ Previous Tab
 Previous Week
 पिछला हफ़्ता
 
+Previous auto-tiling layout
+पिछली टाइल व्यवस्था
+
 Previous day, week or month
 पिछला दिन, सप्ताह या महीना
 
+Previous tab in the window
+विंडो का पिछला टैब
+
+Previous workspace
+पिछला कार्यक्षेत्र
+
 Print
 प्रिंट करें
+
+Printer
+प्रिंटर
 
 Print…
 छापें…
@@ -7546,6 +8035,9 @@ Quiet for 1 Hour
 
 Quit
 बंद करें
+
+Quit Chrome
+Chrome बंद करें
 
 Quit Now
 अभी बंद करें
@@ -7712,6 +8204,9 @@ Record the Computer's Sound
 Record the Microphone
 माइक्रोफ़ोन रिकॉर्ड करें
 
+Record the screen, or stop
+स्क्रीन रिकॉर्ड करें, या रोकें
+
 Recording
 रिकॉर्डिंग
 
@@ -7754,6 +8249,9 @@ Redo
 Redo Window Arrangement
 विंडो की व्यवस्था फिर लागू करें
 
+Redo window arrangement
+विंडो की व्यवस्था फिर लागू करें
+
 Redo {}
 {} फिर करें
 
@@ -7780,6 +8278,15 @@ Regenerate
 
 Reinstall Selected…
 चुने हुए फिर इंस्टॉल करें…
+
+Reject
+अस्वीकार करें
+
+Reload
+फिर लोड करें
+
+Reload Without the Cache
+कैश के बिना फिर लोड करें
 
 Remind:
 याद दिलाएँ:
@@ -7850,6 +8357,9 @@ Remove “{}” from Favorites
 Remove…
 हटाएँ…
 
+Removing…
+हटाया जा रहा है…
+
 Rename
 नाम बदलें
 
@@ -7874,6 +8384,9 @@ Rename Worktree…
 Rename…
 नाम बदलें…
 
+Reopen Closed Tab
+बंद टैब फिर खोलें
+
 Repeat rate
 दोहराने की दर
 
@@ -7885,6 +8398,9 @@ Replace
 
 Replace Same
 एक जैसी सूचना बदलें
+
+Replace and find again
+बदलें और फिर खोजें
 
 Replace the one-time code of your login {} with the one this page shows?
 लॉगिन {} का एकबारगी कोड इस पेज के कोड से बदलें?
@@ -8087,6 +8603,18 @@ Right Two Thirds
 Right first
 पहले सुझाव की सटीकता
 
+Right half
+दायाँ आधा
+
+Right third
+दायाँ तिहाई
+
+Right two thirds
+दायाँ दो तिहाई
+
+Roll up or down
+ऊपर समेटें या खोलें
+
 Room:
 जगह:
 
@@ -8095,6 +8623,12 @@ Rotate Left
 
 Rotate Right
 दाएँ घुमाएँ
+
+Rotate the tiles
+टाइलें घुमाएँ
+
+Rotate the tiles back
+टाइलें उलटी दिशा में घुमाएँ
 
 Round trip
 आवागमन का समय
@@ -8161,6 +8695,9 @@ Saturday
 
 Save
 सहेजें
+
+Save As
+इस नाम से सहेजें
 
 Save As…
 इस नाम से सहेजें…
@@ -8231,6 +8768,9 @@ Scan Home
 Scan Volume
 वॉल्यूम स्कैन करें
 
+Scan a Folder
+फ़ोल्डर स्कैन करें
+
 Scan a Folder…
 फ़ोल्डर स्कैन करें…
 
@@ -8267,8 +8807,26 @@ Screen Saver
 Screenshot
 स्क्रीनशॉट
 
+Screenshot app
+स्क्रीनशॉट ऐप
+
+Screenshot of an area
+किसी हिस्से का स्क्रीनशॉट
+
+Screenshot of the screen
+स्क्रीन का स्क्रीनशॉट
+
+Screenshot of the window
+विंडो का स्क्रीनशॉट
+
+Screenshots
+स्क्रीनशॉट
+
 Scroll
 स्क्रॉल
+
+Scroll for more · Esc closes
+और देखने के लिए स्क्रॉल करें · Esc बंद करता है
 
 Scroll while the middle button is held
 बीच का बटन दबाकर स्क्रॉल करें
@@ -8302,6 +8860,9 @@ Search: words, program:, level:, since:
 
 Searching…
 खोजा जा रहा है…
+
+Second folder
+दूसरा फ़ोल्डर
 
 Secondary click (three: middle)
 दूसरा क्लिक (तीन उँगलियाँ: बीच का क्लिक)
@@ -8366,6 +8927,12 @@ Select a transaction to see what it did to each package.
 Select an update to read about it: its versions, why it came out, what changed.
 संस्करण, जारी होने का कारण और बदलाव देखने के लिए अपडेट चुनें।
 
+Select as you go: with any of these
+चलते हुए चुनें: इनमें से किसी के साथ
+
+Select tool
+चयन टूल
+
 Selected {} to {}
 {} से {} तक चुना
 
@@ -8385,6 +8952,9 @@ Send Voice Message
 वॉइस संदेश भेजें
 
 Send to Back
+सबसे पीछे भेजें
+
+Send to back
 सबसे पीछे भेजें
 
 Send with BBRv3
@@ -8505,6 +9075,9 @@ Settings
 Settings:
 सेटिंग:
 
+Seventh folder
+सातवाँ फ़ोल्डर
+
 Shaping
 ट्रैफ़िक नियंत्रण
 
@@ -8559,6 +9132,9 @@ Show
 Show All
 सभी दिखाएँ
 
+Show All Tabs
+सभी टैब दिखाएँ
+
 Show Archived
 संग्रहित दिखाएँ
 
@@ -8567,6 +9143,9 @@ Show Archived Conversations
 
 Show Assistant
 सहायक दिखाएँ
+
+Show Bookmarks Bar
+बुकमार्क बार दिखाएँ
 
 Show Calendars
 कैलेंडर दिखाएँ
@@ -8658,11 +9237,17 @@ AirPlay पर दिखाएँ
 Show on All Workspaces
 सभी कार्यक्षेत्रों में दिखाएँ
 
+Show on all workspaces
+सभी कार्यक्षेत्रों में दिखाएँ
+
 Show or Hide All Windows
 सभी विंडो दिखाएँ या छिपाएँ
 
 Show or hide the assistant
 सहायक दिखाएँ या छिपाएँ
+
+Show or hide the scratchpad
+स्क्रैचपैड दिखाएँ या छिपाएँ
 
 Show or hide the source
 स्रोत दिखाएँ या छिपाएँ
@@ -8672,6 +9257,9 @@ Show seconds
 
 Show the day of the week
 हफ़्ते का दिन दिखाएँ
+
+Show the desktop
+डेस्कटॉप दिखाएँ
 
 Show the phone’s other notifications
 फ़ोन की अन्य सूचनाएँ दिखाएँ
@@ -8763,6 +9351,9 @@ Sign…
 Site Settings
 साइट सेटिंग
 
+Sixth folder
+छठा फ़ोल्डर
+
 Size
 आकार
 
@@ -8798,6 +9389,9 @@ Small: one line. Medium and Large: all it shows, Large's sky bigger.
 
 Smaller
 छोटा
+
+Smaller text
+छोटा टेक्स्ट
 
 Smooth Pointer
 सहज पॉइंटर
@@ -8898,6 +9492,9 @@ Spanish
 Spare
 आरक्षित क्षमता
 
+Speaker
+स्पीकर
+
 Speaker amp {}
 स्पीकर ऐम्प {}
 
@@ -8936,6 +9533,12 @@ Start Over…
 
 Start Test
 परीक्षण शुरू करें
+
+Start or end of the document
+दस्तावेज़ की शुरुआत या अंत
+
+Start or end of the line
+पंक्ति की शुरुआत या अंत
 
 Start the Agent
 एजेंट शुरू करें
@@ -8992,6 +9595,9 @@ Stay Awake
 
 Stay awake (caffeinated)
 जागता रखें (स्लीप रोकें)
+
+Stay awake, or not
+जागता रखें, या नहीं
 
 Stay awake: no display sleep, sleep, screen saver or lock
 जागता रखें: डिस्प्ले बंद न हो, स्लीप, स्क्रीनसेवर और लॉक न लगें
@@ -9131,6 +9737,27 @@ Swap too
 Swap with Previous Main
 पिछली मुख्य विंडो से बदलें
 
+Swap with the next tile
+अगली टाइल से अदल-बदल करें
+
+Swap with the previous main window
+पिछली मुख्य विंडो से अदल-बदल करें
+
+Swap with the previous tile
+पिछली टाइल से अदल-बदल करें
+
+Swap with the tile above
+ऊपर की टाइल से अदल-बदल करें
+
+Swap with the tile below
+नीचे की टाइल से अदल-बदल करें
+
+Swap with the tile to the left
+बाईं टाइल से अदल-बदल करें
+
+Swap with the tile to the right
+दाईं टाइल से अदल-बदल करें
+
 Swedish
 स्वीडिश
 
@@ -9140,17 +9767,32 @@ Swift
 Swiss
 स्विस
 
+Switch applications (Twitcher)
+ऐप्लिकेशन बदलें (Twitcher)
+
+Switch applications on the workspaces showing
+दिख रहे कार्यक्षेत्रों के ऐप्लिकेशन बदलें
+
 Switch automatically between this computer and your iPhone
 इस कंप्यूटर और iPhone के बीच अपने आप बदलें
 
 Switch to a woken program at once
 जागे हुए प्रोग्राम को तुरंत चलाएँ
 
+Switch windows of the application
+ऐप्लिकेशन की विंडो बदलें
+
+Switching
+बदलना
+
 Sync
 सिंक
 
 Sync Again
 फिर सिंक करें
+
+Sync Contacts
+संपर्क सिंक करें
 
 Sync Now
 अभी सिंक करें
@@ -9194,11 +9836,44 @@ TOML
 TSX
 TSX
 
+Tab 1
+टैब 1
+
+Tab 2
+टैब 2
+
+Tab 3
+टैब 3
+
+Tab 4
+टैब 4
+
+Tab 5
+टैब 5
+
+Tab 6
+टैब 6
+
+Tab 7
+टैब 7
+
+Tab 8
+टैब 8
+
+Tab 9
+टैब 9
+
 Table
 तालिका
 
+Tablet
+टैबलेट
+
 Tabs
 टैब
+
+Tabs on Agent Screens are never given a code.
+एजेंट स्क्रीन के टैब को कभी कोड नहीं दिया जाता।
 
 Tags:
 टैग:
@@ -9215,6 +9890,9 @@ Take Screenshot…
 Take calls on this computer
 इस कंप्यूटर पर कॉल लें
 
+Take or give back control
+नियंत्रण लें या लौटाएँ
+
 Taken
 स्वीकार किए गए
 
@@ -9224,11 +9902,14 @@ Tap
 Tap and drag
 टैप करके खींचें
 
+Tap the Windows key on its own for the command palette
+कमांड पैलेट के लिए सिर्फ़ Windows कुंजी दबाएँ
+
 Tap to click
 टैप से क्लिक
 
-Tap {} on its own for the command palette
-कमांड पैलेट के लिए सिर्फ़ {} दबाएँ
+Tap ⌘ (the Super key) on its own for the command palette
+कमांड पैलेट के लिए सिर्फ़ ⌘ (Super कुंजी) दबाएँ
 
 Taps
 टैप की संख्या
@@ -9326,8 +10007,17 @@ Text Message
 Text Size
 टेक्स्ट का आकार
 
+Text at its own size
+टेक्स्ट अपने आकार में
+
+Text messages
+टेक्स्ट संदेश
+
 Text messages to “{}”
 “{}” को टेक्स्ट संदेश
+
+Text tool
+टेक्स्ट टूल
 
 Text:
 टेक्स्ट:
@@ -9379,6 +10069,9 @@ API हैश में 32 अंक और अक्षर होते है�
 
 The AirPods service isn't running.
 AirPods सेवा नहीं चल रही।
+
+The Bluetooth service (bluetoothd) isn't running.
+Bluetooth सेवा (bluetoothd) नहीं चल रही है।
 
 The CPU doesn't offer “{}”.
 CPU में “{}” विकल्प नहीं है।
@@ -9473,11 +10166,23 @@ Token Pool की जिस प्रति की जगह इसने ली
 The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
 Token Pool की जिस प्रति की जगह इसने ली, वह अभी अपने अनुरोध पूरे कर रही है। थोड़ी देर में फिर साइन इन करें।
 
+The copy of Token Pool this one replaced is still finishing its requests. The sign-in is taken as soon as it has.
+Token Pool की जिस प्रति की जगह इसने ली, वह अभी अपने अनुरोध पूरे कर रही है। उसके पूरा होते ही साइन-इन ले लिया जाएगा।
+
 The day before, at 9 AM
 एक दिन पहले, सुबह 9 बजे
 
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
 आज की कैश हिट दर, पूल के इस्तेमाल में स्लॉट और पिछले घंटों के बिल्ड व हिट।
+
+The device couldn't be disconnected.
+डिवाइस डिस्कनेक्ट नहीं हो सका।
+
+The device couldn't be removed.
+डिवाइस हटाया नहीं जा सका।
+
+The device didn't connect.
+डिवाइस नहीं जुड़ा।
 
 The displays' settings are Olo's own again, from when you leave Rescue.
 बचाव मोड छोड़ने पर डिस्प्ले फिर Olo की सेटिंग इस्तेमाल करेंगे।
@@ -9593,6 +10298,9 @@ The look's own
 The loss is a number, in percent.
 हानि प्रतिशत में एक संख्या होनी चाहिए।
 
+The main window in its place; the others stack around it.
+मुख्य विंडो अपनी जगह रहती है; बाकी उसके आसपास स्टैक होती हैं।
+
 The microphone can’t be recorded ({}).
 माइक्रोफ़ोन रिकॉर्ड नहीं हो सका ({})।
 
@@ -9649,6 +10357,9 @@ The password of “{}” couldn’t be kept: {}
 
 The passwords file is damaged: {}
 पासवर्ड फ़ाइल क्षतिग्रस्त है: {}
+
+The phone didn’t connect. Is it unlocked, with Bluetooth on?
+फ़ोन नहीं जुड़ा। क्या वह अनलॉक है और उसका Bluetooth चालू है?
 
 The phone didn’t take it.
 फ़ोन ने स्वीकार नहीं किया।
@@ -9782,6 +10493,9 @@ The voice service isn't running.
 The window server didn’t give its settings.
 विंडो सर्वर ने अपनी सेटिंग नहीं दी।
 
+The windows in rows of about square cells.
+विंडो लगभग चौकोर खानों की पंक्तियों में।
+
 The workspace each display shows stays open in every Deskbar; each other one is its heading, with an arrow that shows its applications and puts them away again.
 हर डिस्प्ले पर दिख रहा कार्यक्षेत्र सभी Deskbar में खुला रहता है। बाकी के शीर्षक दिखते हैं; उनके तीर से ऐप दिखा या छिपा सकते हैं।
 
@@ -9830,6 +10544,9 @@ There is no limit “{}”.
 There is nothing to share.
 साझा करने के लिए कुछ नहीं है।
 
+There's no Bluetooth adapter.
+कोई Bluetooth अडैप्टर नहीं है।
+
 There's no Ethernet adapter. A USB or Thunderbolt one shows here once it's plugged in.
 ईथरनेट अडैप्टर नहीं है। USB या Thunderbolt अडैप्टर जोड़ते ही यहाँ दिखेगा।
 
@@ -9859,6 +10576,9 @@ Thinking:
 
 Thinking…
 सोच रहा है…
+
+Third folder
+तीसरा फ़ोल्डर
 
 This Computer
 यह कंप्यूटर
@@ -10007,6 +10727,9 @@ Tile All Tabs
 Tile With
 इसके साथ टाइल करें
 
+Tile all windows on the display
+डिस्प्ले की सभी विंडो टाइल करें
+
 Tiling, zooming, Tile All, cascading and fanning out all leave this space.
 टाइल करने, ज़ूम करने, सारी विंडो टाइल करने, सीढ़ीनुमा लगाने या फैलाने पर इतनी जगह छूटती है।
 
@@ -10057,6 +10780,12 @@ To Do
 
 To allow it, you can also {}.
 अनुमति देने के लिए {} भी कर सकते हैं।
+
+To the next display
+अगले डिस्प्ले पर
+
+To the previous display
+पिछले डिस्प्ले पर
 
 To {}
 {} को
@@ -10142,8 +10871,20 @@ Top Right Quarter
 Top Two Thirds
 ऊपर का दो तिहाई
 
+Top half
+ऊपरी आधा
+
+Top left quarter
+ऊपर बायाँ चौथाई
+
+Top right quarter
+ऊपर दायाँ चौथाई
+
 Top speed
 अधिकतम गति
+
+Top two thirds
+ऊपर का दो तिहाई
 
 Touch
 स्पर्श
@@ -10295,6 +11036,9 @@ Turn on for a laptop usually plugged in.
 Turn the display off after:
 डिस्प्ले बंद होने से पहले:
 
+Turn the tile's split
+टाइल का विभाजन घुमाएँ
+
 Turn the touchpad off while a mouse is plugged in
 माउस जुड़ा हो तो टचपैड बंद रखें
 
@@ -10412,6 +11156,9 @@ Undo Transaction…
 Undo Window Arrangement
 विंडो की व्यवस्था पूर्ववत करें
 
+Undo window arrangement
+विंडो की व्यवस्था पूर्ववत करें
+
 Undo {}
 {} पूर्ववत करें
 
@@ -10486,6 +11233,9 @@ Up
 
 Up (sent)
 अपलोड (भेजा)
+
+Up a level
+एक स्तर ऊपर
 
 Up for
 चालू हुए
@@ -10682,6 +11432,33 @@ Variable refresh rate
 Vault
 तिजोरी
 
+Vault 1
+तिजोरी 1
+
+Vault 2
+तिजोरी 2
+
+Vault 3
+तिजोरी 3
+
+Vault 4
+तिजोरी 4
+
+Vault 5
+तिजोरी 5
+
+Vault 6
+तिजोरी 6
+
+Vault 7
+तिजोरी 7
+
+Vault 8
+तिजोरी 8
+
+Vault 9
+तिजोरी 9
+
 Vault Info…
 तिजोरी की जानकारी…
 
@@ -10714,6 +11491,9 @@ Video is decoded on the processor. {}
 
 View
 दृश्य
+
+View Source
+स्रोत देखें
 
 Viewer
 Viewer
@@ -10783,6 +11563,9 @@ Waiting for power
 
 Waiting for the network
 नेटवर्क की प्रतीक्षा
+
+Waiting for the phone to allow it
+फ़ोन की अनुमति की प्रतीक्षा
 
 Waiting for the phone… this page follows it by itself.
 फ़ोन की प्रतीक्षा… उसकी स्थिति बदलने पर यह पेज अपने आप बदलेगा।
@@ -11102,11 +11885,47 @@ Window on a Background
 Window title size
 विंडो शीर्षक का आकार
 
+Window to the next workspace
+विंडो अगले कार्यक्षेत्र में
+
+Window to the previous workspace
+विंडो पिछले कार्यक्षेत्र में
+
+Window to workspace 1
+विंडो कार्यक्षेत्र 1 में
+
+Window to workspace 2
+विंडो कार्यक्षेत्र 2 में
+
+Window to workspace 3
+विंडो कार्यक्षेत्र 3 में
+
+Window to workspace 4
+विंडो कार्यक्षेत्र 4 में
+
+Window to workspace 5
+विंडो कार्यक्षेत्र 5 में
+
+Window to workspace 6
+विंडो कार्यक्षेत्र 6 में
+
+Window to workspace 7
+विंडो कार्यक्षेत्र 7 में
+
+Window to workspace 8
+विंडो कार्यक्षेत्र 8 में
+
+Window to workspace 9
+विंडो कार्यक्षेत्र 9 में
+
 Windowing Mode
 विंडो मोड
 
 Windows
 विंडो
+
+Windows stay where you put them.
+विंडो वहीं रहती हैं जहाँ आप उन्हें रखते हैं।
 
 Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).
 विंडो के बफ़र स्वैप में नहीं जाते। इससे डेस्कटॉप को उनके वापस आने का इंतज़ार नहीं करना पड़ता (Intel ड्राइवर के लिए Olo का लाइव पैच)।
@@ -11134,6 +11953,33 @@ Working…
 
 Works on a picture of the desktop.
 डेस्कटॉप की तस्वीर पर काम करता है।
+
+Workspace 1
+कार्यक्षेत्र 1
+
+Workspace 2
+कार्यक्षेत्र 2
+
+Workspace 3
+कार्यक्षेत्र 3
+
+Workspace 4
+कार्यक्षेत्र 4
+
+Workspace 5
+कार्यक्षेत्र 5
+
+Workspace 6
+कार्यक्षेत्र 6
+
+Workspace 7
+कार्यक्षेत्र 7
+
+Workspace 8
+कार्यक्षेत्र 8
+
+Workspace 9
+कार्यक्षेत्र 9
 
 Workspace:
 कार्यक्षेत्र:
@@ -11294,6 +12140,9 @@ Yours: fine-tuned once since it started
 Yours: fine-tuned {} times since it started
 आपका मॉडल: शुरू होने के बाद {} बार अतिरिक्त प्रशिक्षण
 
+You’re asked each time a tab on an Agent Screen is the one waiting.
+जब भी इंतज़ार करने वाला टैब किसी एजेंट स्क्रीन पर हो, आपसे हर बार पूछा जाता है।
+
 Zig
 Zig
 
@@ -11309,14 +12158,26 @@ Zoom In
 Zoom Out
 ज़ूम आउट करें
 
+Zoom horizontally
+क्षैतिज ज़ूम करें
+
 Zoom on Clicks
 क्लिक की जगह पर ज़ूम करें
+
+Zoom or unzoom
+ज़ूम करें या वापस लाएँ
+
+Zoom or unzoom all windows on the display
+डिस्प्ले की सभी विंडो ज़ूम करें या वापस लाएँ
 
 Zoom to Fill
 भरने तक ज़ूम करें
 
 Zoom to Fit
 फ़िट होने तक ज़ूम करें
+
+Zoom vertically
+लंबवत ज़ूम करें
 
 __pycache__, .venv, .mypy_cache, .pytest_cache, .tox
 __pycache__, .venv, .mypy_cache, .pytest_cache, .tox
@@ -12122,6 +12983,10 @@ other: {n} बैकअप चुने गए।
 one: {n} आगामी कार्य
 other: {n} आगामी कार्य
 
+{n} conversations
+one: {n} बातचीत
+other: {n} बातचीत
+
 {n} days
 one: {n} दिन
 other: {n} दिन
@@ -12265,6 +13130,10 @@ other: {n} कार्य बाकी
 {n} to-dos
 one: {n} कार्य
 other: {n} कार्य
+
+{n} unread
+one: {n} अपठित
+other: {n} अपठित
 
 {n} waiting in their apps
 one: {n} आइटम ऐप में लंबित है
@@ -12564,6 +13433,9 @@ other: {n} हफ़्ते
 
 {} kept, still shared with builds' target folders
 {} रखा गया, बिल्ड के लक्ष्य फ़ोल्डरों से अब भी साझा है
+
+{} keys
+{} कुंजियाँ
 
 {} knows this computer.
 {} इस कंप्यूटर को पहचानता है।
@@ -12969,6 +13841,9 @@ RAM का {}%
 
 {}: windows stay where you put them. Click to choose a windowing mode.
 {}: विंडो आपकी रखी जगह पर रहती हैं। विंडो मोड चुनने के लिए क्लिक करें।
+
+{}: {}
+{}: {}
 
 {}: {} applications. Click to show them.
 {}: {} ऐप। दिखाने के लिए क्लिक करें।

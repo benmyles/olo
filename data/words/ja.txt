@@ -421,8 +421,11 @@ A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference
 A repository’s key needs to be trusted
 リポジトリの鍵を信頼するか確認してください
 
-A reset this account asked for hasn’t been answered yet. Sign in as the same account, or remove this account and add the other.
-このアカウントが要求したリセットにまだ応答がありません。同じアカウントでサインインするか、このアカウントを削除してもう一方を追加してください。
+A reset this account asked for hasn’t been answered yet. The sign-in is taken as soon as it has.
+このアカウントが要求したリセットにまだ応答がありません。応答が届き次第、サインインを取り込みます。
+
+A reset this account asked for hasn’t been answered yet. This sign-in doesn’t say which account it is. Sign in again once it has.
+このアカウントが要求したリセットにまだ応答がありません。このサインインからは、どのアカウントのものか分かりません。その後、もう一度サインインしてください。
 
 A resting palm can't click (its pressure doesn't count)
 手のひらの圧力をクリックに含めない
@@ -472,6 +475,9 @@ A week
 A week before, at 9 AM
 1週間前の午前9時
 
+A word back or on
+1単語前または後へ
+
 AI
 AI
 
@@ -507,6 +513,9 @@ Acceleration:
 
 Accent
 アクセントカラー
+
+Accept
+承認
 
 Access
 アクセス
@@ -670,6 +679,9 @@ Address:
 Addresses can’t be looked up: {}
 アドレスを検索できません：{}
 
+Adjust Size
+サイズを調整
+
 Adjust Size…
 サイズを調整…
 
@@ -805,6 +817,9 @@ All {} connected.
 Allow
 許可
 
+Allow It on the Phone
+電話で許可
+
 Allow NVIDIA Fallback on Battery
 バッテリー駆動時も必要に応じてNVIDIAを使用
 
@@ -813,6 +828,9 @@ Allow Sleep
 
 Allow Sleep (awake until {})
 スリープを許可（{}までスリープしない）
+
+Allow it on the phone
+電話で許可
 
 Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).
 「{}」に{}{}の使用を許可しますか？「常に許可」を選ぶと、「ファイル」▸「許可したアプリ…」で取り消すまでアクセスできます。
@@ -863,7 +881,7 @@ Always a palm when as large as
 必ず手のひらと判定する大きさ
 
 Always float the application, or not
-アプリケーションのウィンドウを常にフローティング表示（切り替え）
+アプリのウィンドウを常にフローティング（切り替え）
 
 Always on Top
 常に最前面に表示
@@ -906,6 +924,9 @@ Another Window
 
 Another account
 別のアカウント
+
+Another program has the phone
+ほかのプログラムが電話を使用しています
 
 Another program has the phone’s message profiles (BlueFerry’s or GNOME’s obexd). Olo Doctor removes BlueFerry.
 別のプログラム（BlueFerryまたはGNOMEのobexd）が電話のメッセージ用プロファイルを使用中です。Olo DoctorでBlueFerryを削除できます。
@@ -1021,6 +1042,9 @@ Archived Chats
 Archived Conversations
 アーカイブ済みの会話
 
+Arranging
+配置
+
 Arrived out of order
 順不同で受信
 
@@ -1035,6 +1059,12 @@ As List
 
 As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines.
 Workbench風のアイコン。画面の16色で平らな面を塗り、黒い線で縁取ります。
+
+As a board
+ボード表示
+
+As a list
+リスト表示
 
 As fast as the computer goes: the processors kept quick and the firmware's power limits raised, the fans as needed. The battery runs down sooner.
 コンピューターの性能を最大限に引き出します。CPUを高速に保ち、ファームウェアの電力上限を引き上げ、必要に応じてファンを回します。バッテリーの持ちは短くなります。
@@ -1159,6 +1189,9 @@ At {}. Give it the code from {}?
 Attach
 添付
 
+Attach Files
+ファイルを添付
+
 Attach Files…
 ファイルを添付…
 
@@ -1173,6 +1206,9 @@ Attach Link…
 
 Attach a file or a link
 ファイルまたはリンクを添付
+
+Attach what's on the clipboard
+クリップボードの内容を添付
 
 Attachments
 添付項目
@@ -1203,6 +1239,9 @@ Auto-Tiling Layout
 
 Auto-tiling layout:
 自動タイルの配置:
+
+Auto-tiling on or off
+自動タイル表示のオン/オフ
 
 Automatic
 自動
@@ -1248,6 +1287,12 @@ Back to Chats
 
 Back to Conversations
 会話に戻る
+
+Back to its own size
+元のサイズに戻す
+
+Back to its own size, or hide
+元のサイズに戻す、または隠す
 
 Back to the Days
 日別予報に戻る
@@ -1408,6 +1453,9 @@ Best time for a run tomorrow?
 Bigger
 大きく
 
+Bigger text
+文字を大きく
+
 Black
 黒
 
@@ -1419,6 +1467,9 @@ Blue:
 
 Bluetooth
 Bluetooth
+
+Bluetooth couldn't be turned on or off.
+Bluetoothのオン/オフを切り替えられませんでした。
 
 Bluetooth couldn’t open the phone’s messages ({}).
 Bluetoothで電話のメッセージを開けませんでした（{}）。
@@ -1441,6 +1492,9 @@ Bluetooth isn’t running on this computer.
 Bluetooth said it would open them and no channel came
 Bluetoothは要求を受け付けましたが、通信チャネルが開きませんでした
 
+Bluetooth's hardware isn't answering
+Bluetoothのハードウェアが応答していません
+
 Bluetooth…
 Bluetooth…
 
@@ -1452,6 +1506,12 @@ Body
 
 Bold
 太字
+
+Bookmark Manager
+ブックマークマネージャ
+
+Bookmark This Tab
+このタブをブックマーク
 
 Boost when work arrives and ease back between tasks.
 作業が始まると高速化し、合間は速度を落とします。
@@ -1469,6 +1529,18 @@ Bottom Right Quarter
 右下4分の1
 
 Bottom Two Thirds
+下部3分の2
+
+Bottom half
+下半分
+
+Bottom left quarter
+左下4分の1
+
+Bottom right quarter
+右下4分の1
+
+Bottom two thirds
 下部3分の2
 
 Branch {} is checked out in {} already.
@@ -1524,6 +1596,9 @@ Buttons
 
 By
 実行者
+
+By App
+アプリ別
 
 By a parent leaving
 親プロセスごとの残存数
@@ -1630,6 +1705,9 @@ Calling…
 Calls
 通話
 
+Camera
+カメラ
+
 Can't make {}: {}
 {}を作成できません：{}
 
@@ -1678,11 +1756,20 @@ Capture Client Requests Again
 Capture debug information whenever a frame drops
 フレーム落ちが発生したら診断情報を記録する
 
+Cards
+カード
+
 Cascade All
 すべて重ねて表示
 
 Cascade Others
 ほかを重ねて表示
+
+Cascade all windows on the display
+ディスプレイのすべてのウィンドウを重ねて表示
+
+Cascade the other windows, leaving this one
+このウィンドウ以外を重ねて表示
 
 Case
 充電ケース
@@ -1699,10 +1786,19 @@ Ceiling {}
 Celsius (°C)
 Celsius (°C)
 
+Center
+中央に配置
+
 Center Third
 中央3分の1
 
 Center Two Thirds
+中央3分の2
+
+Center third
+中央3分の1
+
+Center two thirds
 中央3分の2
 
 Chance
@@ -1716,6 +1812,9 @@ API IDを変更…
 
 Change Background…
 背景を変更…
+
+Change them in Preferences ▸ Keyboard ▸ Shortcuts.
+変更は「環境設定 ▸ キーボード ▸ ショートカット」で行えます。
 
 Changed both here and in 1Password: 1Password’s version replaces it here, and yours is kept as “{} (conflict)”
 ここでも1Passwordでも変更されています。1Passwordの内容をここに反映し、手元の内容は「{}（競合）」として残します
@@ -1767,6 +1866,9 @@ Check Health
 
 Check Spelling While Typing
 入力中にスペルを確認
+
+Check everything
+すべてを確認
 
 Check for Updates
 アップデートを確認
@@ -1858,8 +1960,26 @@ Chosen for the whole computer and kept across restarts. It's the computer's, not
 Chosen outside dnf
 dnf以外から選択
 
+Chrome and Slack
+ChromeとSlack
+
 Chrome holds it, as it may be harmful: keep it or delete it in Chrome’s Downloads.
 危険な可能性があるため、Chromeがファイルを保留しました。Chromeのダウンロード画面で保存または削除してください。
+
+Chrome: Bookmarks and History
+Chrome: ブックマークと履歴
+
+Chrome: Developer
+Chrome: デベロッパー
+
+Chrome: Going Places
+Chrome: 移動
+
+Chrome: Tabs and Windows
+Chrome: タブとウィンドウ
+
+Chrome: View
+Chrome: 表示
 
 City or region
 都市または地域
@@ -1914,6 +2034,9 @@ Clear All
 
 Clear All Tabs
 すべてのタブを消去
+
+Clear Browsing Data
+閲覧履歴データを削除
 
 Clear History
 履歴を消去
@@ -2005,6 +2128,9 @@ Close Tab
 Close Window
 ウィンドウを閉じる
 
+Close the window
+ウィンドウを閉じる
+
 Cloud Heights
 雲の高さ
 
@@ -2037,6 +2163,12 @@ Code given to Agent Screen “{}”
 
 Code:
 コード:
+
+Codes texted to this phone are offered in the browser tab waiting for them.
+この電話にSMSで届いたコードは、入力を待っているブラウザのタブに表示されます。
+
+Codes texted to this phone aren’t looked for.
+この電話にSMSで届いたコードは検索されません。
 
 Codex
 Codex
@@ -2083,6 +2215,9 @@ Column View
 Columns
 列
 
+Command Palette
+コマンドパレット
+
 Command Suggestions
 コマンドの候補
 
@@ -2091,6 +2226,9 @@ Commandキー:
 
 Command or Comment
 コマンドまたはコメント
+
+Command palette
+コマンドパレット
 
 Comment
 コメント
@@ -2122,6 +2260,9 @@ Compressed Swap
 Compressed to
 圧縮後
 
+Computer
+コンピューター
+
 Computes with
 計算に使用
 
@@ -2133,6 +2274,12 @@ IPv6の設定:
 
 Confirm
 確認
+
+Confirm the Code
+コードを確認
+
+Confirm the code
+コードを確認
 
 Confirm:
 確認:
@@ -2155,6 +2302,12 @@ Connect automatically when you put them in near this computer
 Connect with a Token…
 トークンで接続…
 
+Connect your phone
+電話を接続
+
+Connected
+接続済み
+
 Connected as {}, through {}.
 {}として{}経由で接続しました。
 
@@ -2167,6 +2320,9 @@ Connected to “{}”: {}
 Connected {}, but its sign-in wasn’t allowed {}: Sign In Again and allow everything it asks.
 {}に接続しましたが、{}の利用が許可されていません。「再サインイン」を選び、必要な権限をすべて許可してください。
 
+Connected, {}%
+接続済み、{}%
+
 Connected.
 接続しました。
 
@@ -2175,6 +2331,9 @@ Telegramに接続中…
 
 Connecting to “{}”…
 「{}」に接続中…
+
+Connecting…
+接続中…
 
 Connection
 接続
@@ -2205,6 +2364,9 @@ Conversation
 
 Conversation Awareness
 会話感知
+
+Conversations
+会話
 
 Convert to Table
 表に変換
@@ -2328,6 +2490,9 @@ Couldn't save what was dropped: {}
 
 Couldn't save: {}
 保存できません：{}
+
+Couldn't search for devices.
+デバイスを検索できませんでした。
 
 Couldn’t archive it. {}
 アーカイブできませんでした。{}
@@ -2617,6 +2782,9 @@ Delete Vault
 Delete Vault…
 保管庫を削除…
 
+Delete a word
+1単語を削除
+
 Delete the event
 イベントを削除
 
@@ -2634,6 +2802,9 @@ Delete these {} backups? The space only they took is freed; files other backups 
 
 Delete this backup? The space only it took is freed; files other backups hold too stay in those. It can’t be undone.
 このバックアップを削除しますか？ このバックアップだけが使用する容量を解放します。他のバックアップにもあるファイルはそちらに残ります。削除は取り消せません。
+
+Delete to the line's start
+行の先頭まで削除
 
 Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
 {}（{}）を完全に削除しますか？ ゴミ箱には入らず、削除は取り消せません。
@@ -2728,6 +2899,9 @@ Deskbarの表示：{}
 Deskbar: a {} widget measured “{}”, which this computer hasn't; it measures {} instead.
 Deskbarの{}ウィジェットで計測していた「{}」がこのコンピューターにないため、代わりに{}を計測します。
 
+Desktop
+デスクトップ
+
 Desktop (Preferences)
 デスクトップ（環境設定）
 
@@ -2742,6 +2916,9 @@ Destination
 
 Details
 詳細
+
+Developer Tools
+デベロッパーツール
 
 Device
 デバイス
@@ -2788,6 +2965,9 @@ Google Drive（{}）を切断しますか？ DiskBackupはここへのバック�
 Disconnecting from Google Drive…
 Google Driveを切断中…
 
+Disconnecting…
+切断中…
+
 Disconnect…
 切断…
 
@@ -2796,6 +2976,9 @@ Disk
 
 Disk Space
 ディスク容量
+
+Disk Usage
+Disk Usage
 
 Disk:
 ディスク:
@@ -2890,6 +3073,9 @@ Do Not Disturb is on
 Do Not Disturb is on — {} unread
 通知を一時停止中 — 未読{}件
 
+Do the result's other action
+結果のもう一方のアクションを実行
+
 Dockerfile
 Dockerfile
 
@@ -2904,6 +3090,9 @@ Documents
 
 Does “{}” show this number?
 「{}」にもこの番号が表示されていますか？
+
+Does “{}” show {}?
+「{}」に{}と表示されていますか？
 
 Doing
 進行中
@@ -2956,6 +3145,9 @@ Downloading: {}
 Downloading…
 ダウンロード中…
 
+Downloads
+ダウンロード
+
 Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
 ウィンドウをタブでドラッグ中に、場所の上で放すか、その文字キーを押すと、ウィンドウがそこに移動します。ほかのウィンドウの場所で放すと、2つが入れ替わります。Escapeですべて元に戻ります。
 
@@ -2968,11 +3160,17 @@ Dragging a Window
 Draw
 描画
 
+Draw tool
+描画ツール
+
 Drawing
 描画
 
 Drawn into each frame
 各フレームで描画
+
+Drive Setup
+Drive Setup
 
 DriveSetup
 DriveSetup
@@ -3094,6 +3292,12 @@ Oloでもほかのプログラムでも、この種類のファイルは指定�
 Each network's own
 各ネットワークの設定
 
+Each new window takes a tile, and the others make room.
+新しいウィンドウはタイルに収まり、ほかのウィンドウが場所を空けます。
+
+Each new window takes half of the one you were using.
+新しいウィンドウは、使っていたウィンドウの半分を占めます。
+
 Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
 設定した方法はいずれも、Passwords、Terminalのsudo、管理者の承認でパスワードの代わりに使えます。顔と指紋はサインインと画面ロックの解除にも使えます。使いたい方法をそのままお使いください。
 
@@ -3105,6 +3309,9 @@ Each setting tried shows here.
 
 Each shows in the Deskbar as it changes. A click on one there opens its app: Activity Monitor, Token Pool or the app it’s from.
 値はDeskbarに随時反映されます。クリックするとアクティビティモニタ、Token Poolなどの提供元アプリが開きます。
+
+Each window takes half of the room left, round in a spiral.
+各ウィンドウが残りのスペースの半分を占め、らせん状に並びます。
 
 Edge
 端
@@ -3136,6 +3343,9 @@ Editors’ swap and backup files
 Edit…
 編集…
 
+Eighth folder
+8番目のフォルダー
+
 Either AirPod
 左右どちらのAirPodでも
 
@@ -3153,6 +3363,9 @@ Email Accounts
 
 Emoji
 絵文字
+
+Emoji & symbols
+絵文字と記号
 
 Empty
 空
@@ -3250,6 +3463,9 @@ Erlang
 Esc cancels
 Escでキャンセル
 
+Esc closes
+Escで閉じる
+
 Ethernet
 Ethernet
 
@@ -3262,6 +3478,9 @@ Even Out the Voice's Level
 Even With the Lid Closed
 ふたを閉じたときも
 
+Even out the tiles
+タイルを均等にする
+
 Even out the voice's level
 声の音量を揃える
 
@@ -3273,6 +3492,9 @@ Every 2 Weeks
 
 Every 2 weeks
 2週間ごと
+
+Every Application
+すべてのアプリケーション
 
 Every Counter
 すべてのカウンター
@@ -3334,6 +3556,15 @@ Every week
 Every weekday
 平日
 
+Every window a column of its own width, in a strip that scrolls to the active one.
+ウィンドウごとに固有の幅の列を並べた帯が、アクティブなウィンドウまでスクロールします。
+
+Every window a column, each as wide.
+ウィンドウごとに1列、すべて同じ幅です。
+
+Every window a row, each as tall.
+ウィンドウごとに1行、すべて同じ高さです。
+
 Every year
 毎年
 
@@ -3363,6 +3594,9 @@ Everything it needs looked for, in {}.
 
 Export
 エクスポート
+
+Export Flattened PDF
+レイヤーを統合したPDFを書き出す
 
 Export Flattened PDF…
 レイヤーを統合したPDFを書き出す…
@@ -3460,6 +3694,12 @@ Fan level {}
 Fan level {} · {}
 ファンレベル {} · {}
 
+Fan out all windows, tabs side by side
+すべてのウィンドウを扇状に並べ、タブを横に並べる
+
+Fan out the other windows, leaving this one
+このウィンドウ以外を扇状に並べる
+
 Fans
 ファン
 
@@ -3514,8 +3754,14 @@ Fetching the forecast…
 Fetching…
 取得中…
 
+Fewer main windows
+メインウィンドウを減らす
+
 Field
 フィールド
+
+Fifth folder
+5番目のフォルダー
 
 File
 ファイル
@@ -3541,11 +3787,17 @@ Find
 Find Again
 次を検索
 
+Find Next
+次を検索
+
 Find Previous
 前を検索
 
 Find Selection
 選択した文字列を検索
+
+Find Your Phone
+電話を探す
 
 Find a free hour this week
 今週1時間空いているところを探す
@@ -3555,6 +3807,12 @@ Find an app
 
 Find in document
 文書内を検索
+
+Find the selection
+選択部分を検索
+
+Find your phone
+電話を探す
 
 Find:
 検索:
@@ -3607,6 +3865,9 @@ Firmware curve
 First Page
 最初のページ
 
+First folder
+1番目のフォルダー
+
 First, as the main window
 先頭にメインウィンドウとして配置
 
@@ -3625,6 +3886,9 @@ Fit Width
 Fix
 修正
 
+Fix and apply what's checked
+チェックした項目を修正して適用
+
 Fix in Olo Doctor…
 Olo Doctorで修正…
 
@@ -3633,6 +3897,12 @@ Flip Horizontal
 
 Flip Vertical
 上下反転
+
+Flip the tiles left and right
+タイルを左右反転
+
+Flip the tiles top and bottom
+タイルを上下反転
 
 Float
 フローティング
@@ -3650,7 +3920,10 @@ Float Window Group
 ウィンドウグループをフローティング表示
 
 Float out of its group, or tile
-グループから出してフローティング表示（またはタイル表示）
+グループ外でフローティング、またはタイル表示
+
+Float over the tiles, or tile
+タイルの上にフローティング表示（またはタイル表示）
 
 Flurries
 にわか雪
@@ -3660,6 +3933,27 @@ Focus
 
 Focus follows the pointer
 ポインターにフォーカスを合わせる
+
+Focus mode on or off
+フォーカスモードのオン/オフ
+
+Focus the next tile
+次のタイルをアクティブにする
+
+Focus the previous tile
+前のタイルをアクティブにする
+
+Focus the window above
+上のウィンドウをアクティブにする
+
+Focus the window below
+下のウィンドウをアクティブにする
+
+Focus the window to the left
+左のウィンドウをアクティブにする
+
+Focus the window to the right
+右のウィンドウをアクティブにする
 
 Fog
 霧
@@ -3766,6 +4060,9 @@ Found as {}. Leave it empty for that name.
 Four fingers
 4本指
 
+Fourth folder
+4番目のフォルダー
+
 Free
 空き
 
@@ -3817,6 +4114,9 @@ From {} to {}
 From:
 開始:
 
+Full Screen
+フルスクリーン
+
 Full access couldn't be asked for. {}
 フルアクセスを要求できませんでした。{}
 
@@ -3831,6 +4131,9 @@ GPU:
 
 GPUs are tuned only in the person's own session (polkit asks there).
 GPUの調整は自分のセッションで行ってください。polkitはそのセッションで承認を求めます。
+
+Game controller
+ゲームコントローラ
 
 Game saves
 ゲームのセーブデータ
@@ -3900,6 +4203,9 @@ Go to
 
 Go to End
 末尾に移動
+
+Go to File or Folder
+ファイルまたはフォルダーに移動
 
 Go to File or Folder…
 ファイルまたはフォルダーに移動…
@@ -4069,6 +4375,9 @@ Heading 6
 Headless
 ヘッドレス
 
+Headphones
+ヘッドフォン
+
 Health
 状態
 
@@ -4132,6 +4441,18 @@ Hide Tab When Tiled
 Hide or show Deskbar
 Deskbarを隠す／表示
 
+Hide or show the details
+詳細を隠す/表示
+
+Hide or show the sidebar
+サイドバーを隠す/表示
+
+Hide the application
+アプリケーションを隠す
+
+Hide window
+ウィンドウを隠す
+
 High
 高
 
@@ -4170,6 +4491,9 @@ Holds
 
 Home
 ホーム
+
+Home Page
+ホームページ
 
 Hosts
 ホスト
@@ -4429,6 +4753,9 @@ Inspect
 Inspect Parent
 親要素を調べる
 
+Inspect Process
+プロセスを詳しく見る
+
 Install Now
 すぐにインストール
 
@@ -4558,6 +4885,9 @@ Its app password isn’t in the keyring: remove it and add it again.
 Its click is its own: a resting palm can't press.
 クリックは独立して検出するため、手のひらを置くだけでは反応しません。
 
+Its contacts haven’t come (Sync Contacts, on the phone)
+連絡先がまだ届いていません（電話で「連絡先を同期」をオンに）
+
 Its decoder, on its battery preset (Power Modes), costs less than the processor's cores; off, the processor decodes on battery.
 バッテリー用の設定（電源モード）では、このデコーダーの方がCPUより低消費電力です。オフにするとバッテリー駆動時はCPUでデコードします。
 
@@ -4647,6 +4977,9 @@ Java
 
 JavaScript
 JavaScript
+
+JavaScript Console
+JavaScriptコンソール
 
 JavaScript packages and build output
 JavaScriptのパッケージとビルド生成物
@@ -4804,6 +5137,9 @@ Keyboard Profile
 Keyboard Shortcuts
 キーボードショートカット
 
+Keyboard shortcuts
+キーボードショートカット
+
 Keyboard: the Mac profile came along, ⌘ on the Super key (the Windows key on most PC keyboards). Preferences ▸ Keyboard picks another for this keyboard.
 Macのプロファイルを取り込みました。⌘はSuperキー（一般的なPCではWindowsキー）に割り当てています。このキーボードのプロファイルは「環境設定」▸「キーボード」で変更できます。
 
@@ -4936,14 +5272,23 @@ Left Third
 Left Two Thirds
 左3分の2
 
+Left half
+左半分
+
 Left out, as dnf wouldn’t take it: {}. ({})
 dnfに拒否されたため除外しました：{}（{}）
 
 Left out, as dnf wouldn’t take them: {}. ({})
 dnfに拒否されたため除外しました：{}（{}）
 
+Left third
+左3分の1
+
 Left to the firmware for now
 現在はファームウェアに任せる
+
+Left two thirds
+左3分の2
 
 Left-handed (swap the buttons)
 左利き用（左右のボタンを入れ替える）
@@ -4953,6 +5298,9 @@ Length
 
 Less noise
 ノイズが少ない
+
+Less space between windows
+ウィンドウの間隔を狭める
 
 Let coding agents keep their tab’s title current
 エージェントがタブ名を更新できるようにする
@@ -5098,6 +5446,9 @@ Lock after idle for:
 Lock the Screen
 画面をロック
 
+Lock the screen
+画面をロック
+
 Lock the screen when the display turns off
 ディスプレイが消えたら画面をロック
 
@@ -5118,6 +5469,9 @@ Log Out…
 
 Login
 ログイン
+
+Logs
+Logs
 
 Long
 長い
@@ -5155,6 +5509,9 @@ Looking at what’s there…
 Looking at which processes use it…
 使用中のプロセスを確認中…
 
+Looking for Bluetooth…
+Bluetoothを探しています…
+
 Looking for a newer release…
 新しいリリースを検索中…
 
@@ -5167,6 +5524,9 @@ Looking for its calendars…
 Looking for network devices…
 ネットワーク機器を検索中…
 
+Looking for phones nearby…
+近くの電話を探しています…
+
 Looking for security keys…
 セキュリティキーを検索中…
 
@@ -5175,6 +5535,9 @@ Looking for sound devices…
 
 Looking for the fingerprint sensor…
 指紋センサーを検索中…
+
+Looking for the phone…
+電話を探しています…
 
 Looking for volumes…
 ボリュームを検索中…
@@ -5311,8 +5674,17 @@ Make an App Password…
 Make an app password for Olo in Fastmail (Settings ▸ Privacy & Security ▸ Manage app passwords and access) with access to mail and calendars. It’s kept in your login keyring.
 Fastmailの「設定」▸「プライバシーとセキュリティ」▸「アプリ用パスワードとアクセスの管理」で、メールとカレンダーにアクセスできるOlo用のパスワードを作成します。ログインキーリングに保存されます。
 
+Make it the main window
+メインウィンドウにする
+
 Make one at my.telegram.org ▸ API development tools (sign in there with your phone number), then copy its App api_id and api_hash here.
 電話番号でmy.telegram.orgにサインインし、「API development tools」でアプリを作成します。App api_idとapi_hashをここにコピーしてください。
+
+Make the main windows bigger
+メインウィンドウを大きくする
+
+Make the main windows smaller
+メインウィンドウを小さくする
 
 Make this the main display
 メインディスプレイにする
@@ -5358,6 +5730,12 @@ Mark as Not Done
 
 Mark as Read
 既読にする
+
+Mark as Read or Unread
+既読/未読にする
+
+Mark as done, or not done
+完了/未完了を切り替える
 
 Markdown
 Markdown
@@ -5503,8 +5881,14 @@ More
 More Menus
 その他のメニュー
 
+More main windows
+メインウィンドウを増やす
+
 More noise
 ノイズが多い
+
+More space between windows
+ウィンドウの間隔を広げる
 
 Mostly clear
 おおむね晴れ
@@ -5686,6 +6070,12 @@ Move all {} archived chats back to your chat list?
 Move both archived chats back to your chat list?
 アーカイブ済みのチャット2件をチャット一覧に戻しますか？
 
+Move every tile's window back one
+各ウィンドウを前のタイルへ移動
+
+Move every tile's window on one
+各ウィンドウを次のタイルへ移動
+
 Move the archived chat back to your chat list?
 アーカイブ済みのチャットをチャット一覧に戻しますか？
 
@@ -5694,6 +6084,18 @@ Move the pointer
 
 Move the pointer on a thread of its own
 専用スレッドでポインターを動かす
+
+Move the tile's edge down
+タイルの端を下へ移動
+
+Move the tile's edge left
+タイルの端を左へ移動
+
+Move the tile's edge right
+タイルの端を右へ移動
+
+Move the tile's edge up
+タイルの端を上へ移動
 
 Move to Archive
 アーカイブに移動
@@ -5706,6 +6108,9 @@ Move to Trash
 
 Move to Workspace
 ワークスペースに移動
+
+Move to the scratchpad
+スクラッチパッドへ移動
 
 Move to {}
 {}に移動
@@ -5782,6 +6187,9 @@ sRGBより狭い（カバー率{}%）
 Natural scrolling (content follows your fingers)
 ナチュラルスクロール（指に合わせて内容を動かす）
 
+Nearby
+近くにあります
+
 Needed by another package
 ほかのパッケージに必要
 
@@ -5824,6 +6232,9 @@ New Folder
 New Group…
 新しいグループ…
 
+New Incognito Window
+新しいシークレットウィンドウ
+
 New Item
 新規項目
 
@@ -5832,6 +6243,9 @@ New List
 
 New List…
 新規リスト…
+
+New Login
+新規ログイン
 
 New Message
 新規メッセージ
@@ -5950,14 +6364,38 @@ Next Tab
 Next Week
 来週
 
+Next auto-tiling layout
+次の自動タイル配置
+
+Next column width (Scrolling)
+次の列幅（スクロール）
+
 Next day, week or month
 次の日、週、または月
 
 Next step
 次の手順
 
+Next tab in the window
+ウィンドウ内の次のタブ
+
 Next when you click Back Up Now.
 次回は「今すぐバックアップ」をクリックすると開始します。
+
+Next window above the tile
+タイルの上に次のウィンドウ
+
+Next window below the tile
+タイルの下に次のウィンドウ
+
+Next window to the tile's left
+タイルの左に次のウィンドウ
+
+Next window to the tile's right
+タイルの右に次のウィンドウ
+
+Next workspace
+次のワークスペース
 
 Next {}.
 次回：{}。
@@ -6097,8 +6535,14 @@ Telegramに「{}」というユーザーはいません。
 No open files.
 開いているファイルはありません。
 
+No phone found yet.
+電話はまだ見つかっていません。
+
 No phone or mail account is set up: a phone in Phone, a Google or Fastmail account for Mail in Integrations.
 電話またはメールのアカウントが未設定です。電話は「電話」、Mail用のGoogleやFastmailのアカウントは「連携」で設定してください。
+
+No phone paired
+ペアリングされた電話がありません
 
 No power profiles daemon is running (power-profiles-daemon, or tuned-ppd on Fedora): Olo sets the power mode through it.
 電源プロファイルサービス（power-profiles-daemon、Fedoraではtuned-ppdも可）が停止しています。Oloはこのサービス経由で電源モードを設定します。
@@ -6381,6 +6825,9 @@ Nothing changed: Olo's own model is still in use.
 
 Nothing coming up
 今後の予定はありません
+
+Nothing connects until it starts again. Olo Doctor restarts it (it asks for your password).
+再起動するまで何も接続できません。Olo Doctorが再起動します（パスワードを尋ねます）。
 
 Nothing done yet
 完了したタスクはまだありません
@@ -6700,6 +7147,9 @@ https://のアドレスを使ってください。保護されていない通信
 Only on battery power
 バッテリー駆動時のみ
 
+Only the active window shows, zoomed, with its dialogs over it.
+アクティブなウィンドウだけがズームして表示され、そのダイアログが上に重なります。
+
 Only the latest of the same notification
 同じ通知は最新のものだけを表示
 
@@ -6732,6 +7182,9 @@ Open Integrations…
 
 Open Link
 リンクを開く
+
+Open Location
+場所を開く
 
 Open Log File…
 ログファイルを開く…
@@ -6874,6 +7327,9 @@ Other…
 Out of memory:
 メモリ不足時:
 
+Out of reach
+通信範囲外
+
 Output
 出力
 
@@ -6882,6 +7338,9 @@ Overdue
 
 Overview
 概要
+
+Overview of every window
+すべてのウィンドウの概要
 
 Overwrite the old data with zeros (slow)
 既存データをゼロで上書き（時間がかかります）
@@ -6913,14 +7372,29 @@ Page {} of {}
 Pair
 ペアリング
 
+Paired
+ペアリング済み
+
+Paired with this computer; not yet sharing its messages
+このコンピューターとペアリング済み。メッセージはまだ共有されていません
+
 Paired with {}.
 {}とペアリングしました。
 
 Pairing
 ペアリング
 
+Pairing didn't work.
+ペアリングできませんでした。
+
+Pairing didn’t finish. Try again, with the phone unlocked on its Bluetooth settings.
+ペアリングが完了しませんでした。電話のロックを解除してBluetooth設定を開き、もう一度お試しください。
+
 Pairing with {} didn't work: {}.
 {}とペアリングできませんでした：{}。
+
+Pairing…
+ペアリング中…
 
 Pair…
 ペアリング…
@@ -7198,6 +7672,9 @@ Pin
 Pin as Main
 メインとして固定
 
+Pin it as the main window, or let it go
+メインウィンドウとして固定、または解除
+
 Pinch to zoom
 ピンチで拡大・縮小
 
@@ -7387,11 +7864,23 @@ Previous Tab
 Previous Week
 先週
 
+Previous auto-tiling layout
+前の自動タイル配置
+
 Previous day, week or month
 前の日、週、または月
 
+Previous tab in the window
+ウィンドウ内の前のタブ
+
+Previous workspace
+前のワークスペース
+
 Print
 プリント
+
+Printer
+プリンター
 
 Print…
 印刷…
@@ -7524,6 +8013,9 @@ Quiet for 1 Hour
 
 Quit
 終了
+
+Quit Chrome
+Chromeを終了
 
 Quit Now
 今すぐ終了
@@ -7690,6 +8182,9 @@ Record the Computer's Sound
 Record the Microphone
 マイクの音を収録
 
+Record the screen, or stop
+画面録画の開始/停止
+
 Recording
 記録中
 
@@ -7732,6 +8227,9 @@ Redo
 Redo Window Arrangement
 ウィンドウの配置をやり直す
 
+Redo window arrangement
+ウィンドウの配置をやり直す
+
 Redo {}
 {}をやり直す
 
@@ -7758,6 +8256,15 @@ Regenerate
 
 Reinstall Selected…
 選択した項目を再インストール…
+
+Reject
+拒否
+
+Reload
+再読み込み
+
+Reload Without the Cache
+キャッシュを使わずに再読み込み
 
 Remind:
 通知：
@@ -7828,6 +8335,9 @@ Remove “{}” from Favorites
 Remove…
 削除…
 
+Removing…
+削除中…
+
 Rename
 名前を変更
 
@@ -7852,6 +8362,9 @@ Rename Worktree…
 Rename…
 名前を変更…
 
+Reopen Closed Tab
+閉じたタブを開く
+
 Repeat rate
 リピート速度
 
@@ -7863,6 +8376,9 @@ Replace
 
 Replace Same
 同じ通知を置き換える
+
+Replace and find again
+置換して次を検索
 
 Replace the one-time code of your login {} with the one this page shows?
 ログイン項目「{}」のワンタイムコードを、このページのコードに置き換えますか？
@@ -8065,6 +8581,18 @@ Right Two Thirds
 Right first
 先頭候補の正解率
 
+Right half
+右半分
+
+Right third
+右3分の1
+
+Right two thirds
+右3分の2
+
+Roll up or down
+巻き上げ・巻き下げ
+
 Room:
 幅:
 
@@ -8073,6 +8601,12 @@ Rotate Left
 
 Rotate Right
 右に回転
+
+Rotate the tiles
+タイルを回転
+
+Rotate the tiles back
+タイルを逆に回転
 
 Round trip
 往復時間
@@ -8139,6 +8673,9 @@ Saturday
 
 Save
 保存
+
+Save As
+名前を付けて保存
 
 Save As…
 名前を付けて保存…
@@ -8209,6 +8746,9 @@ Scan Home
 Scan Volume
 ボリュームをスキャン
 
+Scan a Folder
+フォルダーをスキャン
+
 Scan a Folder…
 フォルダーをスキャン…
 
@@ -8245,8 +8785,26 @@ Screen Saver
 Screenshot
 スクリーンショット
 
+Screenshot app
+スクリーンショットアプリ
+
+Screenshot of an area
+範囲のスクリーンショット
+
+Screenshot of the screen
+画面のスクリーンショット
+
+Screenshot of the window
+ウィンドウのスクリーンショット
+
+Screenshots
+スクリーンショット
+
 Scroll
 スクロール
+
+Scroll for more · Esc closes
+スクロールで続きを表示 · Escで閉じる
 
 Scroll while the middle button is held
 中ボタンを押したままスクロール
@@ -8280,6 +8838,9 @@ Search: words, program:, level:, since:
 
 Searching…
 検索中…
+
+Second folder
+2番目のフォルダー
 
 Secondary click (three: middle)
 副ボタンのクリック（3本指は中クリック）
@@ -8344,6 +8905,12 @@ Select a transaction to see what it did to each package.
 Select an update to read about it: its versions, why it came out, what changed.
 更新を選ぶと、バージョン、リリース理由、変更内容を確認できます。
 
+Select as you go: with any of these
+移動しながら選択：これらのいずれかと組み合わせる
+
+Select tool
+選択ツール
+
 Selected {} to {}
 {}から{}まで選択
 
@@ -8363,6 +8930,9 @@ Send Voice Message
 音声メッセージを送信
 
 Send to Back
+最背面に移動
+
+Send to back
 最背面に移動
 
 Send with BBRv3
@@ -8482,6 +9052,9 @@ Settings
 Settings:
 設定:
 
+Seventh folder
+7番目のフォルダー
+
 Shaping
 通信制御
 
@@ -8536,6 +9109,9 @@ Show
 Show All
 すべてを表示
 
+Show All Tabs
+すべてのタブを表示
+
 Show Archived
 アーカイブ済みを表示
 
@@ -8544,6 +9120,9 @@ Show Archived Conversations
 
 Show Assistant
 アシスタントを表示
+
+Show Bookmarks Bar
+ブックマークバーを表示
 
 Show Calendars
 カレンダーを表示
@@ -8635,11 +9214,17 @@ AirPlayで表示
 Show on All Workspaces
 すべてのワークスペースに表示
 
+Show on all workspaces
+すべてのワークスペースに表示
+
 Show or Hide All Windows
 全ウィンドウの表示・非表示
 
 Show or hide the assistant
 アシスタントを表示/非表示
+
+Show or hide the scratchpad
+スクラッチパッドを表示または隠す
 
 Show or hide the source
 ソースを表示/非表示
@@ -8649,6 +9234,9 @@ Show seconds
 
 Show the day of the week
 曜日を表示
+
+Show the desktop
+デスクトップを表示
 
 Show the phone’s other notifications
 電話のその他の通知を表示
@@ -8740,6 +9328,9 @@ Sign…
 Site Settings
 サイトの設定
 
+Sixth folder
+6番目のフォルダー
+
 Size
 サイズ
 
@@ -8775,6 +9366,9 @@ Small: one line. Medium and Large: all it shows, Large's sky bigger.
 
 Smaller
 小さく
+
+Smaller text
+文字を小さく
 
 Smooth Pointer
 ポインターを滑らかに動かす
@@ -8875,6 +9469,9 @@ Spanish
 Spare
 予備
 
+Speaker
+スピーカー
+
 Speaker amp {}
 スピーカーアンプ {}
 
@@ -8913,6 +9510,12 @@ Start Over…
 
 Start Test
 テストを開始
+
+Start or end of the document
+書類の先頭または末尾
+
+Start or end of the line
+行の先頭または末尾
 
 Start the Agent
 エージェントを起動
@@ -8967,6 +9570,9 @@ Stay Awake
 
 Stay awake (caffeinated)
 スリープを防止する
+
+Stay awake, or not
+スリープ防止のオン/オフ
 
 Stay awake: no display sleep, sleep, screen saver or lock
 画面消灯、スリープ、スクリーンセーバー、ロックを一時停止
@@ -9106,6 +9712,27 @@ Swap too
 Swap with Previous Main
 前のメインウィンドウと入れ替える
 
+Swap with the next tile
+次のタイルと入れ替える
+
+Swap with the previous main window
+前のメインウィンドウと入れ替える
+
+Swap with the previous tile
+前のタイルと入れ替える
+
+Swap with the tile above
+上のタイルと入れ替える
+
+Swap with the tile below
+下のタイルと入れ替える
+
+Swap with the tile to the left
+左のタイルと入れ替える
+
+Swap with the tile to the right
+右のタイルと入れ替える
+
 Swedish
 スウェーデン語
 
@@ -9115,17 +9742,32 @@ Swift
 Swiss
 スイス
 
+Switch applications (Twitcher)
+アプリケーションを切り替える（Twitcher）
+
+Switch applications on the workspaces showing
+表示中のワークスペースのアプリケーションを切り替える
+
 Switch automatically between this computer and your iPhone
 このコンピューターとiPhoneを自動で切り替える
 
 Switch to a woken program at once
 起床したプログラムをすぐに実行
 
+Switch windows of the application
+アプリケーションのウィンドウを切り替える
+
+Switching
+切り替え
+
 Sync
 同期
 
 Sync Again
 再同期
+
+Sync Contacts
+連絡先を同期
 
 Sync Now
 今すぐ同期
@@ -9169,11 +9811,44 @@ TOML
 TSX
 TSX
 
+Tab 1
+タブ1
+
+Tab 2
+タブ2
+
+Tab 3
+タブ3
+
+Tab 4
+タブ4
+
+Tab 5
+タブ5
+
+Tab 6
+タブ6
+
+Tab 7
+タブ7
+
+Tab 8
+タブ8
+
+Tab 9
+タブ9
+
 Table
 表
 
+Tablet
+タブレット
+
 Tabs
 タブ
+
+Tabs on Agent Screens are never given a code.
+エージェント画面のタブにはコードを渡しません。
 
 Tags:
 タグ:
@@ -9190,6 +9865,9 @@ Take Screenshot…
 Take calls on this computer
 このコンピューターで着信に応答する
 
+Take or give back control
+操作を引き継ぐ/返す
+
 Taken
 採用した候補
 
@@ -9199,11 +9877,14 @@ Tap
 Tap and drag
 タップしてドラッグ
 
+Tap the Windows key on its own for the command palette
+Windowsキーだけを押してコマンドパレットを開く
+
 Tap to click
 タップでクリック
 
-Tap {} on its own for the command palette
-{}だけを押してコマンドパレットを開く
+Tap ⌘ (the Super key) on its own for the command palette
+⌘（Superキー）だけを押してコマンドパレットを開く
 
 Taps
 タップ回数
@@ -9301,8 +9982,17 @@ SMS
 Text Size
 文字の大きさ
 
+Text at its own size
+文字を元のサイズに
+
+Text messages
+テキストメッセージ
+
 Text messages to “{}”
 「{}」とのSMS
+
+Text tool
+テキストツール
 
 Text:
 テキスト:
@@ -9354,6 +10044,9 @@ APIハッシュは0～9とa～fの32文字です。
 
 The AirPods service isn't running.
 AirPodsサービスは停止中です。
+
+The Bluetooth service (bluetoothd) isn't running.
+Bluetoothサービス（bluetoothd）が動いていません。
 
 The CPU doesn't offer “{}”.
 このCPUは「{}」に対応していません。
@@ -9448,11 +10141,23 @@ The copy of Token Pool this one replaced is still finishing its requests. Add th
 The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
 置き換えられたToken Poolのコピーが、まだリクエストを処理しています。少ししてからもう一度サインインしてください。
 
+The copy of Token Pool this one replaced is still finishing its requests. The sign-in is taken as soon as it has.
+置き換えられたToken Poolのコピーが、まだリクエストを処理しています。処理が終わり次第、サインインを取り込みます。
+
 The day before, at 9 AM
 前日の午前9時
 
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
 今日のヒット率、プールの使用中の枠、直近数時間のビルド数とキャッシュヒット数。
+
+The device couldn't be disconnected.
+デバイスを切断できませんでした。
+
+The device couldn't be removed.
+デバイスを削除できませんでした。
+
+The device didn't connect.
+デバイスに接続できませんでした。
 
 The displays' settings are Olo's own again, from when you leave Rescue.
 復旧モードを終了すると、ディスプレイ設定はOloの標準に戻ります。
@@ -9568,6 +10273,9 @@ The look's own
 The loss is a number, in percent.
 損失率はパーセントで指定します。
 
+The main window in its place; the others stack around it.
+メインウィンドウは定位置に、ほかのウィンドウはその周りに重なります。
+
 The microphone can’t be recorded ({}).
 マイクの音を録音できません（{}）。
 
@@ -9624,6 +10332,9 @@ The password of “{}” couldn’t be kept: {}
 
 The passwords file is damaged: {}
 パスワードファイルが破損しています：{}
+
+The phone didn’t connect. Is it unlocked, with Bluetooth on?
+電話に接続できませんでした。ロックが解除され、Bluetoothがオンになっていますか？
 
 The phone didn’t take it.
 電話が要求を受け付けませんでした。
@@ -9757,6 +10468,9 @@ The voice service isn't running.
 The window server didn’t give its settings.
 ウィンドウサーバーから設定を取得できませんでした。
 
+The windows in rows of about square cells.
+ウィンドウを、ほぼ正方形のマスの行に並べます。
+
 The workspace each display shows stays open in every Deskbar; each other one is its heading, with an arrow that shows its applications and puts them away again.
 各画面に表示中のワークスペースは、すべてのDeskbarで展開されます。それ以外は見出しだけを表示し、矢印でアプリ一覧を開閉できます。
 
@@ -9805,6 +10519,9 @@ There is no limit “{}”.
 There is nothing to share.
 共有するものがありません。
 
+There's no Bluetooth adapter.
+Bluetoothアダプタがありません。
+
 There's no Ethernet adapter. A USB or Thunderbolt one shows here once it's plugged in.
 有線LANアダプターがありません。USBまたはThunderboltのアダプターを接続すると表示されます。
 
@@ -9834,6 +10551,9 @@ Thinking:
 
 Thinking…
 考え中…
+
+Third folder
+3番目のフォルダー
 
 This Computer
 このコンピューター
@@ -9982,6 +10702,9 @@ Tile All Tabs
 Tile With
 並べて表示
 
+Tile all windows on the display
+ディスプレイのすべてのウィンドウをタイル表示
+
 Tiling, zooming, Tile All, cascading and fanning out all leave this space.
 タイル表示、最大化、すべてのタイル表示、重ねて表示、扇状の配置でもこの余白を保ちます。
 
@@ -10032,6 +10755,12 @@ To Do
 
 To allow it, you can also {}.
 {}でも許可できます。
+
+To the next display
+次のディスプレイへ
+
+To the previous display
+前のディスプレイへ
 
 To {}
 {}へ
@@ -10117,8 +10846,20 @@ Top Right Quarter
 Top Two Thirds
 上部3分の2
 
+Top half
+上半分
+
+Top left quarter
+左上4分の1
+
+Top right quarter
+右上4分の1
+
 Top speed
 速度の上限
+
+Top two thirds
+上部3分の2
 
 Touch
 タッチ
@@ -10270,6 +11011,9 @@ Turn on for a laptop usually plugged in.
 Turn the display off after:
 ディスプレイを消灯するまで:
 
+Turn the tile's split
+タイルの分割方向を切り替える
+
 Turn the touchpad off while a mouse is plugged in
 マウスの接続中はタッチパッドを無効にする
 
@@ -10387,6 +11131,9 @@ Undo Transaction…
 Undo Window Arrangement
 ウィンドウ配置を元に戻す
 
+Undo window arrangement
+ウィンドウ配置を元に戻す
+
 Undo {}
 {}を元に戻す
 
@@ -10461,6 +11208,9 @@ Up
 
 Up (sent)
 上り（送信）
+
+Up a level
+1つ上の階層へ
 
 Up for
 稼働時間
@@ -10657,6 +11407,33 @@ Variable refresh rate
 Vault
 保管庫
 
+Vault 1
+保管庫1
+
+Vault 2
+保管庫2
+
+Vault 3
+保管庫3
+
+Vault 4
+保管庫4
+
+Vault 5
+保管庫5
+
+Vault 6
+保管庫6
+
+Vault 7
+保管庫7
+
+Vault 8
+保管庫8
+
+Vault 9
+保管庫9
+
 Vault Info…
 保管庫の情報…
 
@@ -10689,6 +11466,9 @@ CPUで動画をデコードします。{}
 
 View
 表示
+
+View Source
+ソースを表示
 
 Viewer
 Viewer
@@ -10758,6 +11538,9 @@ Waiting for power
 
 Waiting for the network
 ネットワーク接続待ち
+
+Waiting for the phone to allow it
+電話での許可を待っています
 
 Waiting for the phone… this page follows it by itself.
 電話を待っています…この画面は自動で更新されます。
@@ -11077,11 +11860,47 @@ Window on a Background
 Window title size
 ウィンドウタイトルの大きさ
 
+Window to the next workspace
+ウィンドウを次のワークスペースへ
+
+Window to the previous workspace
+ウィンドウを前のワークスペースへ
+
+Window to workspace 1
+ウィンドウをワークスペース1へ
+
+Window to workspace 2
+ウィンドウをワークスペース2へ
+
+Window to workspace 3
+ウィンドウをワークスペース3へ
+
+Window to workspace 4
+ウィンドウをワークスペース4へ
+
+Window to workspace 5
+ウィンドウをワークスペース5へ
+
+Window to workspace 6
+ウィンドウをワークスペース6へ
+
+Window to workspace 7
+ウィンドウをワークスペース7へ
+
+Window to workspace 8
+ウィンドウをワークスペース8へ
+
+Window to workspace 9
+ウィンドウをワークスペース9へ
+
 Windowing Mode
 ウィンドウモード
 
 Windows
 ウィンドウ
+
+Windows stay where you put them.
+ウィンドウは置いた場所にとどまります。
 
 Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).
 ウィンドウのバッファーをスワップさせず、画面の描画時に読み戻しを待たずに済むようにします。Intelドライバー用のOloのライブパッチを使います。
@@ -11109,6 +11928,33 @@ Working…
 
 Works on a picture of the desktop.
 デスクトップの画像を使います。
+
+Workspace 1
+ワークスペース1
+
+Workspace 2
+ワークスペース2
+
+Workspace 3
+ワークスペース3
+
+Workspace 4
+ワークスペース4
+
+Workspace 5
+ワークスペース5
+
+Workspace 6
+ワークスペース6
+
+Workspace 7
+ワークスペース7
+
+Workspace 8
+ワークスペース8
+
+Workspace 9
+ワークスペース9
 
 Workspace:
 ワークスペース:
@@ -11269,6 +12115,9 @@ Yours: fine-tuned once since it started
 Yours: fine-tuned {} times since it started
 自分のモデル：起動後に{}回追加学習
 
+You’re asked each time a tab on an Agent Screen is the one waiting.
+待っているタブがエージェント画面にあるときは、毎回確認します。
+
 Zig
 Zig
 
@@ -11284,14 +12133,26 @@ Zoom In
 Zoom Out
 縮小
 
+Zoom horizontally
+横方向にズーム
+
 Zoom on Clicks
 クリック位置を拡大
+
+Zoom or unzoom
+ズームまたは解除
+
+Zoom or unzoom all windows on the display
+ディスプレイのすべてのウィンドウをズームまたは解除
 
 Zoom to Fill
 画面いっぱいに拡大
 
 Zoom to Fit
 画面に合わせる
+
+Zoom vertically
+縦方向にズーム
 
 __pycache__, .venv, .mypy_cache, .pytest_cache, .tox
 __pycache__, .venv, .mypy_cache, .pytest_cache, .tox
@@ -12070,6 +12931,9 @@ other: {n}件のバックアップを選択しました。
 {n} coming up
 other: 今後の予定 {n} 件
 
+{n} conversations
+other: {n}件の会話
+
 {n} days
 other: {n}日
 
@@ -12177,6 +13041,9 @@ other: 未完了 {n} 件
 
 {n} to-dos
 other: タスク {n} 件
+
+{n} unread
+other: 未読{n}件
 
 {n} waiting in their apps
 other: アプリ内で{n}件待機中
@@ -12474,6 +13341,9 @@ other: {n}週間
 
 {} kept, still shared with builds' target folders
 {}を保持（ビルドの出力先と共有中）
+
+{} keys
+{}のキー
 
 {} knows this computer.
 {}にはこのコンピューターが登録されています。
@@ -12879,6 +13749,9 @@ RAMの{}%
 
 {}: windows stay where you put them. Click to choose a windowing mode.
 {}：ウィンドウは置いた場所に残ります。クリックしてモードを選択。
+
+{}: {}
+{}：{}
 
 {}: {} applications. Click to show them.
 {}：アプリ{}個。クリックして表示。

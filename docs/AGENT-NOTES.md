@@ -1046,3 +1046,20 @@ Learned on the second pass (2026-11-20):
   through 650, 700 and 850 MHz with 650 requested. Its media GT
   has separate clock limits. Use PCI runtime status and DRM connector
   `enabled` for inspection of a sleeping NVIDIA GPU.
+- **A test session shares the system's Bluetooth**, as it shares the
+  runtime folder: Preferences ▸ Bluetooth and ▸ Phone, run in one,
+  list the person's own phone and devices by name, and their buttons
+  are the real adapter's. Picture them with `OLO_BLUETOOTH_DEMO=1` and
+  `OLO_PHONE_DEMO=1` (`=connect` for the first step); a picture taken
+  without is the person's, kept local and removed (2026-11-20).
+- **Retiring a word**: take it out of `data/words/en.txt` and run
+  `tools/dev/words merge LANG PAIRS` for each language (with the pairs
+  for what replaces it): a merge writes only what `en.txt` has, so the
+  old entry goes from every catalog. Words another crate keeps in
+  English (the protocol's shortcut titles) aren't found by `words
+  gather`: list them with a throwaway example in that crate, printed
+  and removed (`shortcuts::entries()`).
+- **`-p NAME` may be a library**: `olo-calendar` and `olo-diskbackup`
+  are engines; the apps are `olo-calendar-app` and
+  `olo-diskbackup-app`. A lint that still fails after "building the
+  app" was looking at the old binary.

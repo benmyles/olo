@@ -266,12 +266,46 @@ something nobody here has is in "Blocked", with what it waits for.
   around a value, found by the agent translating Korean, Fastmail's
   check boxes' names for agents and Passwords' passkey question's "for
   “name”", are whole sentences now.)
-  **Found by the words agent in Russian** (2026-11-19): three places in
-  Preferences put an English fragment into a translated sentence (the
-  Keyboard check box's Super or Windows key, apps/preferences/src/
-  keyboard.rs:500; Phone's sentence about codes from text messages,
-  phone.rs:582; Windows' windowing mode and tiling layout,
-  windows.rs:54): each to be said whole.
+  **Then** (2026-11-20): the three places the Russian agent found
+  (Keyboard's Super or Windows key, Phone's codes, Windows' mode and
+  layout) each said whole; Preferences ▸ Bluetooth and ▸ Phone, which
+  no catalog had (53 words: the set-up's steps, a device's kind and
+  state, what failed); and every shortcut's title and group (207, the
+  protocol's, never in the list), asked for where Preferences ▸
+  Keyboard ▸ Shortcuts, the shortcuts sheet and the chord panel paint
+  them, with the sheet's own words: all in twelve languages
+  (HACKING, "Words in the person's language").
+  **Found then, left**: Preferences' other panels still have words no
+  catalog holds, by a count of the literals in each file that aren't
+  in `en.txt`: the palm trainer (about 60: its exercises and what it
+  says of each touch), Google's set-up (18), Date & Time (its month
+  names: with the formats), AirPlay and AirPods (a dozen each: states,
+  check boxes), Sound, Backup, Default Apps' kinds, Face Unlock,
+  Security Keys, Power, Touchpad, Notifications; a keyboard's
+  connection from `olo_protocol::keyboards` ("USB-C, or Bluetooth when
+  paired"); the palette's own commands and answers (the app was never
+  swept: 11 uses of the words layer in 5,000 lines); app_server's own
+  words (the windowing mode's on-screen line). App names not in the
+  list stay English everywhere ("Logs", "Disk Usage", "Drive Setup"):
+  to decide with the names that are translated ("Kalender",
+  "Aktivitätsanzeige"). Bulk translation went to Codex agents when the
+  catalogs were in a crate; `tools/dev/agents` wants a crate, and
+  `data/words` isn't one: the tool to take a data folder, one agent to
+  a file.
+  **From the two looks at these pictures** (2026-11-20; real, and not
+  this change's): a form's menus each begin after their own label, so
+  five in a column begin at five places, and longer words show it
+  (Opus: one edge, after the longest label; the kit's forms to offer);
+  the shortcuts sheet's top edge runs through the tab of the window
+  behind it; the sheet's three columns are equal thirds whatever they
+  hold, so a long title is cut beside a column with room (sized to
+  what they hold); Bluetooth's Type and Status columns keep room
+  their words don't use while device names are cut; one word under
+  two things that want it differently ("None", "Wide" as a slider's
+  ends: «Широкий» agrees with one slider's noun and not the other's;
+  a word for each place); Windows' note names the window menu's
+  "Always Open on Workspace" in English, as that menu still says it
+  (the window menu is the palette's, not yet swept).
 - **A Mail app, native, every account in one place, and the assistant
   in both Mail and Calendar** (Ben, 2026-11-17: "build a beautiful olo
   native email app. use/extend the email integration support in prefs ->

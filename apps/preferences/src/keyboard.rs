@@ -509,8 +509,11 @@ pub fn profile(ui: &mut Ui, saving: Option<&Child<TextField>>) {
                 s.keyboard.profile_changed();
             }
         });
-        let super_key = if k.profile.platform == Platform::Windows { "the Windows key" } else { "⌘ (the Super key)" };
-        ui.check(olo_kit::tr!("Tap {} on its own for the command palette", super_key), k.profile.palette_on_tap, |s, v| {
+        // (Each said whole: a key's name put into a sentence stayed
+        // English in every language, and in none does it take the case
+        // the sentence wants.)
+        let tap = if k.profile.platform == Platform::Windows { "Tap the Windows key on its own for the command palette" } else { "Tap ⌘ (the Super key) on its own for the command palette" };
+        ui.check(tap, k.profile.palette_on_tap, |s, v| {
             if s.keyboard.profile.palette_on_tap != v {
                 s.keyboard.profile.palette_on_tap = v;
                 s.keyboard.profile_changed();

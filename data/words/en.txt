@@ -138,7 +138,8 @@ A program woken while the processors are busy runs at once, where it would wait 
 A red dot for an app with something unread in it
 A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference gives one).
 A repository’s key needs to be trusted
-A reset this account asked for hasn’t been answered yet. Sign in as the same account, or remove this account and add the other.
+A reset this account asked for hasn’t been answered yet. The sign-in is taken as soon as it has.
+A reset this account asked for hasn’t been answered yet. This sign-in doesn’t say which account it is. Sign in again once it has.
 A resting palm can't click (its pressure doesn't count)
 A rising swell
 A row of dots
@@ -155,6 +156,7 @@ A value
 A vault needs a name.
 A week
 A week before, at 9 AM
+A word back or on
 AI
 AI features use OpenAI’s models through the Token Pool’s Codex accounts, spent in its order.
 API Credential
@@ -167,6 +169,7 @@ About Olo Desktop
 About…
 Acceleration:
 Accent
+Accept
 Access
 Account
 Account:
@@ -221,6 +224,7 @@ Address
 Address, port, program or state
 Address:
 Addresses can’t be looked up: {}
+Adjust Size
 Adjust Size…
 After BeOS: glossy, bright and friendly.
 After BeOS: glossy, bright and friendly. Sky grey by day and ocean blue by night.
@@ -266,9 +270,11 @@ All of Olo’s {} words are in {}.
 All waiting
 All {} connected.
 Allow
+Allow It on the Phone
 Allow NVIDIA Fallback on Battery
 Allow Sleep
 Allow Sleep (awake until {})
+Allow it on the phone
 Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).
 Allowed with {}
 Along the Top
@@ -300,6 +306,7 @@ And {} more
 Anonymous identity:
 Another Window
 Another account
+Another program has the phone
 Another program has the phone’s message profiles (BlueFerry’s or GNOME’s obexd). Olo Doctor removes BlueFerry.
 Answer
 Answer 1Password’s op command
@@ -338,11 +345,14 @@ Archive All
 Archive {} Chats
 Archived Chats
 Archived Conversations
+Arranging
 Arrived out of order
 As BeOS R5 drew its icons: flat faces in its 8-bit colours, black outlines.
 As Board
 As List
 As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines.
+As a board
+As a list
 As fast as the computer goes: the processors kept quick and the firmware's power limits raised, the fans as needed. The battery runs down sooner.
 As in Themes ({})
 As it goes
@@ -384,11 +394,13 @@ At the start
 At the time it's due
 At {}. Give it the code from {}?
 Attach
+Attach Files
 Attach Files…
 Attach File…
 Attach Link
 Attach Link…
 Attach a file or a link
+Attach what's on the clipboard
 Attachments
 Authenticate
 Authentication:
@@ -399,6 +411,7 @@ Auto profile · the firmware's own curve
 Auto-Tiling
 Auto-Tiling Layout
 Auto-tiling layout:
+Auto-tiling on or off
 Automatic
 Automatic Ear Detection: pause when you take an AirPod out
 Automatic wakes NVIDIA's GPU on battery too
@@ -414,6 +427,8 @@ Back Up There
 Back Up These Folders
 Back to Chats
 Back to Conversations
+Back to its own size
+Back to its own size, or hide
 Back to the Days
 Back to the Forecast
 Back to the Items
@@ -467,10 +482,12 @@ Best second {}; {} moved
 Best time for a run today?
 Best time for a run tomorrow?
 Bigger
+Bigger text
 Black
 Blue
 Blue:
 Bluetooth
+Bluetooth couldn't be turned on or off.
 Bluetooth couldn’t open the phone’s messages ({}).
 Bluetooth devices and Touch ID fingerprints belong to each computer: pair and enrol them again here.
 Bluetooth devices, Wi-Fi networks and Touch ID fingerprints belong to each computer: pair, join and enrol them again here.
@@ -478,16 +495,23 @@ Bluetooth is off.
 Bluetooth isn’t answering.
 Bluetooth isn’t running on this computer.
 Bluetooth said it would open them and no channel came
+Bluetooth's hardware isn't answering
 Bluetooth…
 Board
 Body
 Bold
+Bookmark Manager
+Bookmark This Tab
 Boost when work arrives and ease back between tasks.
 Boosted {} dB (suggested)
 Bottom Half
 Bottom Left Quarter
 Bottom Right Quarter
 Bottom Two Thirds
+Bottom half
+Bottom left quarter
+Bottom right quarter
+Bottom two thirds
 Branch {} is checked out in {} already.
 Bright
 Brightness
@@ -506,6 +530,7 @@ Busy Wi-Fi
 Busy at least
 Buttons
 By
+By App
 By a parent leaving
 By at least
 By the hour for the next 5 days (the provider’s reach):
@@ -541,6 +566,7 @@ Call
 Call Quality, with Microphone
 Calling…
 Calls
+Camera
 Can't make {}: {}
 Can't move it: {}
 Can't remove {}: {}
@@ -557,19 +583,26 @@ Can’t come back as it was: {}.
 Caps Lock is another Control key
 Capture Client Requests Again
 Capture debug information whenever a frame drops
+Cards
 Cascade All
 Cascade Others
+Cascade all windows on the display
+Cascade the other windows, leaving this one
 Case
 Catching up…
 Ceiling
 Ceiling {}
 Celsius (°C)
+Center
 Center Third
 Center Two Thirds
+Center third
+Center two thirds
 Chance
 Chance of rain
 Change API ID…
 Change Background…
+Change them in Preferences ▸ Keyboard ▸ Shortcuts.
 Changed both here and in 1Password: 1Password’s version replaces it here, and yours is kept as “{} (conflict)”
 Changed here now, and in 1Password at the next sync.
 Changes to “{}”
@@ -587,6 +620,7 @@ Check
 Check Again
 Check Health
 Check Spelling While Typing
+Check everything
 Check for Updates
 Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
 Checking for updates…
@@ -617,7 +651,13 @@ Choose…
 Chosen by someone
 Chosen for the whole computer and kept across restarts. It's the computer's, not this account's, so choosing asks for an administrator's password.
 Chosen outside dnf
+Chrome and Slack
 Chrome holds it, as it may be harmful: keep it or delete it in Chrome’s Downloads.
+Chrome: Bookmarks and History
+Chrome: Developer
+Chrome: Going Places
+Chrome: Tabs and Windows
+Chrome: View
 City or region
 Classic
 Claude
@@ -636,6 +676,7 @@ Cleaning up the microphone's sound: {} ms behind{}.
 Clear
 Clear All
 Clear All Tabs
+Clear Browsing Data
 Clear History
 Clear History…
 Clear Scrollback
@@ -666,6 +707,7 @@ Close Other Tabs
 Close Others
 Close Tab
 Close Window
+Close the window
 Cloud Heights
 Cloud base
 Cloud cover
@@ -677,6 +719,8 @@ Cloudy
 Code
 Code given to Agent Screen “{}”
 Code:
+Codes texted to this phone are offered in the browser tab waiting for them.
+Codes texted to this phone aren’t looked for.
 Codex
 Coding Agents
 Collection:
@@ -692,9 +736,11 @@ Coloured by use: green unused, red used up.
 Colours:
 Column View
 Columns
+Command Palette
 Command Suggestions
 Command key:
 Command or Comment
+Command palette
 Comment
 Comment:
 Compiles
@@ -705,10 +751,13 @@ Compress {} into a new archive beside it:
 Compress {} into a new archive beside them:
 Compressed Swap
 Compressed to
+Computer
 Computes with
 Configure IPv4:
 Configure IPv6:
 Confirm
+Confirm the Code
+Confirm the code
 Confirm:
 Connect
 Connect Another Account…
@@ -716,13 +765,17 @@ Connect GitHub for Pull Requests…
 Connect Google Drive…
 Connect automatically when you put them in near this computer
 Connect with a Token…
+Connect your phone
+Connected
 Connected as {}, through {}.
 Connected to “{}”
 Connected to “{}”: {}
 Connected {}, but its sign-in wasn’t allowed {}: Sign In Again and allow everything it asks.
+Connected, {}%
 Connected.
 Connecting to Telegram…
 Connecting to “{}”…
+Connecting…
 Connection
 Connection:
 Connections
@@ -733,6 +786,7 @@ Context switches
 Control
 Conversation
 Conversation Awareness
+Conversations
 Convert to Table
 Cool
 Cooler
@@ -774,6 +828,7 @@ Couldn't save the change: {}
 Couldn't save the setting: {}
 Couldn't save what was dropped: {}
 Couldn't save: {}
+Couldn't search for devices.
 Couldn’t archive it. {}
 Couldn’t ask for emoji
 Couldn’t ask for your keyring to be unlocked: {}
@@ -870,12 +925,14 @@ Delete Signature
 Delete Table
 Delete Vault
 Delete Vault…
+Delete a word
 Delete the event
 Delete the unfinished backup? What it sent ({}) is freed, and the next backup reads and sends again what it had done. It can’t be undone.
 Delete the vault “{}”{}{}? This can’t be undone.
 Delete these {} backups, the unfinished one too? The space only they took is freed (what the unfinished one sent, {}); files other backups hold too stay in those. It can’t be undone.
 Delete these {} backups? The space only they took is freed; files other backups hold too stay in those. It can’t be undone.
 Delete this backup? The space only it took is freed; files other backups hold too stay in those. It can’t be undone.
+Delete to the line's start
 Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
 Delete {} Backups…
 Delete {} Chats…
@@ -907,11 +964,13 @@ Deskbar
 Deskbar clock
 Deskbar shows: {}
 Deskbar: a {} widget measured “{}”, which this computer hasn't; it measures {} instead.
+Desktop
 Desktop (Preferences)
 Desktop Background
 Desktop Colour
 Destination
 Details
+Developer Tools
 Device
 Dew point
 Dew point spread
@@ -927,9 +986,11 @@ Disconnect
 Disconnect Google Drive
 Disconnect Google Drive ({})? DiskBackup stops backing up there, and forgets its sign-in on this computer. The backups in your Drive stay as they are: connect again to go on from them, or to restore from them.
 Disconnecting from Google Drive…
+Disconnecting…
 Disconnect…
 Disk
 Disk Space
+Disk Usage
 Disk:
 DiskBackup
 DiskBackup backs up to a Google account’s Drive through that account’s own app, which Olo makes once for each account you connect (Mail and Calendar sign in through it too). Connect yours in Preferences ▸ Integrations ▸ Google: it shows here as soon as it’s connected.
@@ -961,11 +1022,13 @@ Do Not Disturb
 Do Not Disturb (for {n} more minutes)
 Do Not Disturb is on
 Do Not Disturb is on — {} unread
+Do the result's other action
 Dockerfile
 Document
 Documentation
 Documents
 Does “{}” show this number?
+Does “{}” show {}?
 Doing
 Domain:
 Don't Allow
@@ -983,12 +1046,15 @@ Download at most:
 Download, Then Restart to Install
 Downloading: {}
 Downloading…
+Downloads
 Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
 Drag with:
 Dragging a Window
 Draw
+Draw tool
 Drawing
 Drawn into each frame
+Drive Setup
 DriveSetup
 Drizzle
 Drizzle and freezing drizzle
@@ -1029,10 +1095,13 @@ Each is the computer's, not this account's, so switching one asks for an adminis
 Each kind of input in the last minute: how many, never which keys
 Each kind opens in this app wherever you open it, in Olo and in other programs. Tracker's Open With ▸ Always Open With chooses too.
 Each network's own
+Each new window takes a tile, and the others make room.
+Each new window takes half of the one you were using.
 Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
 Each repository gets a folder in there: olo’s worktree fix-tabs goes in {}/olo/fix-tabs.
 Each setting tried shows here.
 Each shows in the Deskbar as it changes. A click on one there opens its app: Activity Monitor, Token Pool or the app it’s from.
+Each window takes half of the room left, round in a spiral.
 Edge
 Edge to edge
 Edit
@@ -1043,12 +1112,14 @@ Edit Video…
 Edit the event
 Editors’ swap and backup files
 Edit…
+Eighth folder
 Either AirPod
 Eject
 Elixir
 Email Account
 Email Accounts
 Emoji
+Emoji & symbols
 Empty
 Empty Trash
 Empty the Collector
@@ -1081,14 +1152,17 @@ Erasing every backup, to start fresh
 Erasing goes on by itself once it’s back, from where it got to.
 Erlang
 Esc cancels
+Esc closes
 Ethernet
 Even Columns
 Even Out the Voice's Level
 Even With the Lid Closed
+Even out the tiles
 Even out the voice's level
 Events:
 Every 2 Weeks
 Every 2 weeks
+Every Application
 Every Counter
 Every Day
 Every Month
@@ -1109,6 +1183,9 @@ Every list's to-dos show here.
 Every month
 Every week
 Every weekday
+Every window a column of its own width, in a strip that scrolls to the active one.
+Every window a column, each as wide.
+Every window a row, each as tall.
 Every year
 Every {n} days
 Every {n} months
@@ -1119,6 +1196,7 @@ Everything Else
 Everything else's brightness
 Everything it needs looked for, in {}.
 Export
+Export Flattened PDF
 Export Flattened PDF…
 Export Video
 Export Video…
@@ -1151,6 +1229,8 @@ Fan Out
 Fan Out Others
 Fan level {}
 Fan level {} · {}
+Fan out all windows, tabs side by side
+Fan out the other windows, leaving this one
 Fans
 Fast
 Fast when there is work, frugal when there isn't, the processors kept out of their hottest top speed. The usual choice.
@@ -1169,7 +1249,9 @@ Feels like {}
 Feet
 Fetching the forecast…
 Fetching…
+Fewer main windows
 Field
+Fifth folder
 File
 File system:
 Files
@@ -1178,11 +1260,15 @@ File…
 Fill It In
 Find
 Find Again
+Find Next
 Find Previous
 Find Selection
+Find Your Phone
 Find a free hour this week
 Find an app
 Find in document
+Find the selection
+Find your phone
 Find:
 Finding the server…
 Find…
@@ -1200,24 +1286,36 @@ Firm
 Firmer
 Firmware curve
 First Page
+First folder
 First, as the main window
 Fish
 Fit Page
 Fit Page Width
 Fit Width
 Fix
+Fix and apply what's checked
 Fix in Olo Doctor…
 Flip Horizontal
 Flip Vertical
+Flip the tiles left and right
+Flip the tiles top and bottom
 Float
 Float Its Group
 Float This Window
 Float Window
 Float Window Group
 Float out of its group, or tile
+Float over the tiles, or tile
 Flurries
 Focus
 Focus follows the pointer
+Focus mode on or off
+Focus the next tile
+Focus the previous tile
+Focus the window above
+Focus the window below
+Focus the window to the left
+Focus the window to the right
 Fog
 Fog likely · spread {}
 Folder
@@ -1253,6 +1351,7 @@ Forwarded from {}
 Forward…
 Found as {}. Leave it empty for that name.
 Four fingers
+Fourth folder
 Free
 Free (open source)
 Freeing the space only backups past keeping took, in {}.
@@ -1270,11 +1369,13 @@ From your next login, Passwords can be ssh’s agent here too.
 From {}
 From {} to {}
 From:
+Full Screen
 Full access couldn't be asked for. {}
 Full speed
 GPU
 GPU:
 GPUs are tuned only in the person's own session (polkit asks there).
+Game controller
 Game saves
 Gaps
 Generator
@@ -1298,6 +1399,7 @@ Glow new windows for
 Go
 Go to
 Go to End
+Go to File or Folder
 Go to File or Folder…
 Go to:
 Going:
@@ -1354,6 +1456,7 @@ Heading 4
 Heading 5
 Heading 6
 Headless
+Headphones
 Health
 Health: {}% of original capacity
 Heatmap
@@ -1375,6 +1478,10 @@ Hide List
 Hide Others
 Hide Tab When Tiled
 Hide or show Deskbar
+Hide or show the details
+Hide or show the sidebar
+Hide the application
+Hide window
 High
 High dynamic range (HDR)
 High {}, low {}
@@ -1388,6 +1495,7 @@ Hold the microphone button down while you speak, or click it to record until you
 Holding at least
 Holds
 Home
+Home Page
 Hosts
 Hotspot
 Hours:
@@ -1474,6 +1582,7 @@ Insert Picture…
 Insert Table
 Inspect
 Inspect Parent
+Inspect Process
 Install Now
 Install When Restarting
 Install from:
@@ -1517,6 +1626,7 @@ Item
 Its Group to Another Window
 Its app password isn’t in the keyring: remove it and add it again.
 Its click is its own: a resting palm can't press.
+Its contacts haven’t come (Sync Contacts, on the phone)
 Its decoder, on its battery preset (Power Modes), costs less than the processor's cores; off, the processor decodes on battery.
 Its file, {}, is removed
 Its folder becomes {}, and its branch, {}, takes the new name too.
@@ -1547,6 +1657,7 @@ JSON
 Japanese
 Java
 JavaScript
+JavaScript Console
 JavaScript packages and build output
 Jitter:
 Join
@@ -1599,6 +1710,7 @@ Keyboard
 Keyboard Hints
 Keyboard Profile
 Keyboard Shortcuts
+Keyboard shortcuts
 Keyboard: the Mac profile came along, ⌘ on the Super key (the Windows key on most PC keyboards). Preferences ▸ Keyboard picks another for this keyboard.
 Keyboards
 Keys
@@ -1643,12 +1755,16 @@ Left
 Left Half
 Left Third
 Left Two Thirds
+Left half
 Left out, as dnf wouldn’t take it: {}. ({})
 Left out, as dnf wouldn’t take them: {}. ({})
+Left third
 Left to the firmware for now
+Left two thirds
 Left-handed (swap the buttons)
 Length
 Less noise
+Less space between windows
 Let coding agents keep their tab’s title current
 Letting go of backups past keeping
 Level
@@ -1697,6 +1813,7 @@ Lock Screen
 Lock after
 Lock after idle for:
 Lock the Screen
+Lock the screen
 Lock the screen when the display turns off
 Lock when the displays turn off
 Lock when the screen locks
@@ -1704,6 +1821,7 @@ Lock when you walk away:
 Log Out
 Log Out…
 Login
+Logs
 Long
 Longest window title
 Look
@@ -1716,13 +1834,16 @@ Looking at its disk…
 Looking at what’s there
 Looking at what’s there…
 Looking at which processes use it…
+Looking for Bluetooth…
 Looking for a newer release…
 Looking for apps…
 Looking for its calendars…
 Looking for network devices…
+Looking for phones nearby…
 Looking for security keys…
 Looking for sound devices…
 Looking for the fingerprint sensor…
+Looking for the phone…
 Looking for volumes…
 Looking this computer over…
 Looking…
@@ -1768,7 +1889,10 @@ Make Unlimited
 Make a Token…
 Make an App Password…
 Make an app password for Olo in Fastmail (Settings ▸ Privacy & Security ▸ Manage app passwords and access) with access to mail and calendars. It’s kept in your login keyring.
+Make it the main window
 Make one at my.telegram.org ▸ API development tools (sign in there with your phone number), then copy its App api_id and api_hash here.
+Make the main windows bigger
+Make the main windows smaller
 Make this the main display
 Make:
 Makefile
@@ -1784,6 +1908,8 @@ Mark This Moment
 Mark as Done
 Mark as Not Done
 Mark as Read
+Mark as Read or Unread
+Mark as done, or not done
 Markdown
 Markdown…
 Match
@@ -1832,7 +1958,9 @@ Monday
 Month
 More
 More Menus
+More main windows
 More noise
+More space between windows
 Mostly clear
 Mostly clear and drizzle
 Mostly clear and flurries
@@ -1893,13 +2021,20 @@ Move Windows To
 Move Windows To…
 Move all {} archived chats back to your chat list?
 Move both archived chats back to your chat list?
+Move every tile's window back one
+Move every tile's window on one
 Move the archived chat back to your chat list?
 Move the pointer
 Move the pointer on a thread of its own
+Move the tile's edge down
+Move the tile's edge left
+Move the tile's edge right
+Move the tile's edge up
 Move to Archive
 Move to New Window
 Move to Trash
 Move to Workspace
+Move to the scratchpad
 Move to {}
 Moved “{}” to the Archive.
 Moving {} to the Trash
@@ -1925,6 +2060,7 @@ Names
 Names:
 Narrower than sRGB ({}% of it)
 Natural scrolling (content follows your fingers)
+Nearby
 Needed by another package
 Needs full access
 Network
@@ -1939,9 +2075,11 @@ New Conversation
 New Event…
 New Folder
 New Group…
+New Incognito Window
 New Item
 New List
 New List…
+New Login
 New Message
 New Partition Table…
 New Screen
@@ -1981,9 +2119,17 @@ Next Month
 Next Page
 Next Tab
 Next Week
+Next auto-tiling layout
+Next column width (Scrolling)
 Next day, week or month
 Next step
+Next tab in the window
 Next when you click Back Up Now.
+Next window above the tile
+Next window below the tile
+Next window to the tile's left
+Next window to the tile's right
+Next workspace
 Next {}.
 Nice
 Night Mode
@@ -2030,7 +2176,9 @@ No new notifications
 No notes.
 No one on Telegram is called {}.
 No open files.
+No phone found yet.
 No phone or mail account is set up: a phone in Phone, a Google or Fastmail account for Mail in Integrations.
+No phone paired
 No power profiles daemon is running (power-profiles-daemon, or tuned-ppd on Fedora): Olo sets the power mode through it.
 No power profiles daemon is running, so there's no power mode to follow.
 No precipitation in the next hour
@@ -2125,6 +2273,7 @@ Nothing backed up yet.
 Nothing came from the microphone.
 Nothing changed: Olo's own model is still in use.
 Nothing coming up
+Nothing connects until it starts again. Olo Doctor restarts it (it asks for your password).
 Nothing done yet
 Nothing due today
 Nothing found
@@ -2231,6 +2380,7 @@ One-Time Codes
 Only Zip and 7-Zip archives can have a password.
 Only an https:// address: one that can be listened in on could be changed on its way.
 Only on battery power
+Only the active window shows, zoomed, with its dialogs over it.
 Only the latest of the same notification
 Only when I choose Sync Now
 Only when I click Back Up Now
@@ -2242,6 +2392,7 @@ Open Bluetooth…
 Open Calendar
 Open Integrations…
 Open Link
+Open Location
 Open Log File…
 Open Notifications
 Open Olo Doctor
@@ -2289,9 +2440,11 @@ Other Updates
 Other workspaces’ applications start collapsed
 Other…
 Out of memory:
+Out of reach
 Output
 Overdue
 Overview
+Overview of every window
 Overwrite the old data with zeros (slow)
 PDF…
 PHP
@@ -2302,9 +2455,14 @@ Page View
 Page faults
 Page {} of {}
 Pair
+Paired
+Paired with this computer; not yet sharing its messages
 Paired with {}.
 Pairing
+Pairing didn't work.
+Pairing didn’t finish. Try again, with the phone unlocked on its Bluetooth settings.
 Pairing with {} didn't work: {}.
+Pairing…
 Pair…
 Palm-proof clicks, hovering fingers ignored, Mac-like scrolling
 Palms
@@ -2397,6 +2555,7 @@ Pictures can be saved as PNG, JPEG, WebP, BMP, TIFF or GIF.
 Pictures, Movies and Music
 Pin
 Pin as Main
+Pin it as the main window, or let it go
 Pinch to zoom
 Pink
 Pipe
@@ -2460,8 +2619,12 @@ Previous Month
 Previous Page
 Previous Tab
 Previous Week
+Previous auto-tiling layout
 Previous day, week or month
+Previous tab in the window
+Previous workspace
 Print
+Printer
 Print…
 Priorities
 Priorities off: background work put back
@@ -2506,6 +2669,7 @@ Quick Look
 Quiet Until Morning
 Quiet for 1 Hour
 Quit
+Quit Chrome
 Quit Now
 Quit {} Processes
 Quit, dropping the touches
@@ -2561,6 +2725,7 @@ Record a few seconds as you talk on a call, with the room as it is; then hear an
 Record from:
 Record the Computer's Sound
 Record the Microphone
+Record the screen, or stop
 Recording
 Recording a voice message, {}
 Recording a voice message, {}: Send Voice Message or Cancel Recording
@@ -2575,6 +2740,7 @@ Red
 Red:
 Redo
 Redo Window Arrangement
+Redo window arrangement
 Redo {}
 Reference
 Reference:
@@ -2584,6 +2750,9 @@ Refresh rate:
 Refresh:
 Regenerate
 Reinstall Selected…
+Reject
+Reload
+Reload Without the Cache
 Remind:
 Reminder
 Reminder:
@@ -2607,6 +2776,7 @@ Remove {}
 Remove {} from the Collector
 Remove “{}” from Favorites
 Remove…
+Removing…
 Rename
 Rename Group…
 Rename List
@@ -2615,10 +2785,12 @@ Rename Place…
 Rename Section
 Rename Worktree…
 Rename…
+Reopen Closed Tab
 Repeat rate
 Repeats:
 Replace
 Replace Same
+Replace and find again
 Replace the one-time code of your login {} with the one this page shows?
 Replace with
 Replace with:
@@ -2686,9 +2858,15 @@ Right Half
 Right Third
 Right Two Thirds
 Right first
+Right half
+Right third
+Right two thirds
+Roll up or down
 Room:
 Rotate Left
 Rotate Right
+Rotate the tiles
+Rotate the tiles back
 Round trip
 Round trip meanwhile
 Router:
@@ -2711,6 +2889,7 @@ SSW
 SW
 Saturday
 Save
+Save As
 Save As…
 Save Group
 Save a login for {} with the one-time code this page shows?
@@ -2734,6 +2913,7 @@ Scala
 Scan
 Scan Home
 Scan Volume
+Scan a Folder
 Scan a Folder…
 Scanning…
 Scanning… {}, {}
@@ -2746,7 +2926,13 @@ Screen
 Screen Recordings
 Screen Saver
 Screenshot
+Screenshot app
+Screenshot of an area
+Screenshot of the screen
+Screenshot of the window
+Screenshots
 Scroll
+Scroll for more · Esc closes
 Scroll while the middle button is held
 Scroll with:
 Scrolling
@@ -2758,6 +2944,7 @@ Search: name, command, user:, state:, kind:
 Search: names, CVEs, kind:, severity:, repo:
 Search: words, program:, level:, since:
 Searching…
+Second folder
 Secondary click (three: middle)
 Section
 Section:
@@ -2779,6 +2966,8 @@ Select a line to read it whole.
 Select a repository to see everything about it.
 Select a transaction to see what it did to each package.
 Select an update to read about it: its versions, why it came out, what changed.
+Select as you go: with any of these
+Select tool
 Selected {} to {}
 Send
 Send Code
@@ -2786,6 +2975,7 @@ Send Signal
 Send Signal…
 Send Voice Message
 Send to Back
+Send to back
 Send with BBRv3
 Sending your changes to Telegram
 Sending {n} changes to Telegram…
@@ -2825,6 +3015,7 @@ Setting up your {} takes your password and two touches of the key:
 Setting up your {} takes your password, its PIN and two touches of the key:
 Settings
 Settings:
+Seventh folder
 Shaping
 Share
 Shared
@@ -2843,9 +3034,11 @@ Shorter
 Shortest
 Show
 Show All
+Show All Tabs
 Show Archived
 Show Archived Conversations
 Show Assistant
+Show Bookmarks Bar
 Show Calendars
 Show Camera
 Show Clicks
@@ -2876,11 +3069,14 @@ Show its name
 Show its value
 Show on AirPlay
 Show on All Workspaces
+Show on all workspaces
 Show or Hide All Windows
 Show or hide the assistant
+Show or hide the scratchpad
 Show or hide the source
 Show seconds
 Show the day of the week
+Show the desktop
 Show the phone’s other notifications
 Show the places a window can go
 Show what a message says
@@ -2911,6 +3107,7 @@ Signed in as {}.
 Signing in to Fastmail…
 Sign…
 Site Settings
+Sixth folder
 Size
 Size:
 Skip this step
@@ -2923,6 +3120,7 @@ Slowest compiles
 Small
 Small: one line. Medium and Large: all it shows, Large's sky bigger.
 Smaller
+Smaller text
 Smooth Pointer
 Smooth Scrolling Graphs
 Snapshots
@@ -2956,6 +3154,7 @@ Space between windows
 Space only
 Spanish
 Spare
+Speaker
 Speaker amp {}
 Speed
 Speed & Resources
@@ -2969,6 +3168,8 @@ Start Olo over (Rescue stays on), log out, or restart the computer.
 Start Over
 Start Over…
 Start Test
+Start or end of the document
+Start or end of the line
 Start the Agent
 Start this step over
 Start typing
@@ -2987,6 +3188,7 @@ Status
 Status:
 Stay Awake
 Stay awake (caffeinated)
+Stay awake, or not
 Stay awake: no display sleep, sleep, screen saver or lock
 Steadily (fit)
 Steady freezing rain
@@ -3033,13 +3235,25 @@ Swap
 Swap Alt and the Windows Key
 Swap too
 Swap with Previous Main
+Swap with the next tile
+Swap with the previous main window
+Swap with the previous tile
+Swap with the tile above
+Swap with the tile below
+Swap with the tile to the left
+Swap with the tile to the right
 Swedish
 Swift
 Swiss
+Switch applications (Twitcher)
+Switch applications on the workspaces showing
 Switch automatically between this computer and your iPhone
 Switch to a woken program at once
+Switch windows of the application
+Switching
 Sync
 Sync Again
+Sync Contacts
 Sync Now
 Syncing with 1Password…
 Syncing with {} makes {}. Nothing changes on either side until you apply them.
@@ -3054,18 +3268,31 @@ TLS couldn't be set up: {}
 TLS opened in
 TOML
 TSX
+Tab 1
+Tab 2
+Tab 3
+Tab 4
+Tab 5
+Tab 6
+Tab 7
+Tab 8
+Tab 9
 Table
+Tablet
 Tabs
+Tabs on Agent Screens are never given a code.
 Tags:
 Take Back
 Take Screenshot
 Take Screenshot…
 Take calls on this computer
+Take or give back control
 Taken
 Tap
 Tap and drag
+Tap the Windows key on its own for the command palette
 Tap to click
-Tap {} on its own for the command palette
+Tap ⌘ (the Super key) on its own for the command palette
 Taps
 Task List
 Teal
@@ -3098,7 +3325,10 @@ Text
 Text Box
 Text Message
 Text Size
+Text at its own size
+Text messages
 Text messages to “{}”
+Text tool
 Text:
 That isn't a telephone number or an address.
 That isn't a value.
@@ -3116,6 +3346,7 @@ The API ID couldn’t be kept in the keyring ({}).
 The API ID is a number.
 The API hash is 32 letters and digits (0–9, a–f).
 The AirPods service isn't running.
+The Bluetooth service (bluetoothd) isn't running.
 The CPU doesn't offer “{}”.
 The DiskBackup service isn’t running
 The GPU
@@ -3147,8 +3378,12 @@ The coming days, each its sky, low and high.
 The computer couldn't be restarted: {}
 The copy of Token Pool this one replaced is still finishing its requests. Add the account in a moment.
 The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
+The copy of Token Pool this one replaced is still finishing its requests. The sign-in is taken as soon as it has.
 The day before, at 9 AM
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
+The device couldn't be disconnected.
+The device couldn't be removed.
+The device didn't connect.
 The displays' settings are Olo's own again, from when you leave Rescue.
 The export failed: {}
 The fans' profile isn't in force yet: {}
@@ -3187,6 +3422,7 @@ The login keyring couldn't be read: {}
 The look of every icon, window and control, in every app, and a wallpaper to match.
 The look's own
 The loss is a number, in percent.
+The main window in its place; the others stack around it.
 The microphone can’t be recorded ({}).
 The model
 The model wasn't good enough to keep
@@ -3206,6 +3442,7 @@ The pairing with {} couldn't be forgotten: {}.
 The password couldn’t be kept in the keyring ({}).
 The password of “{}” couldn’t be kept: {}
 The passwords file is damaged: {}
+The phone didn’t connect. Is it unlocked, with Bluetooth on?
 The phone didn’t take it.
 The phone is connected but isn’t answering (it may be asleep). It’s asked again from time to time, and at once when it wakes.
 The phone isn’t connected.
@@ -3250,6 +3487,7 @@ The user session's systemd didn't answer.
 The voice message couldn’t be recorded ({}).
 The voice service isn't running.
 The window server didn’t give its settings.
+The windows in rows of about square cells.
 The workspace each display shows stays open in every Deskbar; each other one is its heading, with an arrow that shows its applications and puts them away again.
 The {} couldn't be changed.
 The {} is a whole number.
@@ -3266,6 +3504,7 @@ There are no network interfaces.
 There is no journal for this user to read (in /var/log/journal or /run/log/journal).
 There is no limit “{}”.
 There is nothing to share.
+There's no Bluetooth adapter.
 There's no Ethernet adapter. A USB or Thunderbolt one shows here once it's plugged in.
 There's no Wi-Fi adapter.
 There's no fingerprint sensor, or fprintd isn't running.
@@ -3276,6 +3515,7 @@ ThinkPad
 Thinking ({})…
 Thinking:
 Thinking…
+Third folder
 This Computer
 This Computer's Microphones
 This PDF can't be edited, so it can't be saved.
@@ -3325,6 +3565,7 @@ Tile
 Tile All
 Tile All Tabs
 Tile With
+Tile all windows on the display
 Tiling, zooming, Tile All, cascading and fanning out all leave this space.
 Time
 Time Zone
@@ -3342,6 +3583,8 @@ Title only
 Title:
 To Do
 To allow it, you can also {}.
+To the next display
+To the previous display
 To {}
 To {}.
 To-Do
@@ -3370,7 +3613,11 @@ Top Half
 Top Left Quarter
 Top Right Quarter
 Top Two Thirds
+Top half
+Top left quarter
+Top right quarter
 Top speed
+Top two thirds
 Touch
 Touch ID
 Touch ID isn't used here: its sensor works only with the Mac it's paired to, whose Secure Enclave alone can read what it senses. Use the computer's own fingerprint reader, or your password.
@@ -3421,6 +3668,7 @@ Turn off displays
 Turn off screen
 Turn on for a laptop usually plugged in.
 Turn the display off after:
+Turn the tile's split
 Turn the touchpad off while a mouse is plugged in
 Turned off by the hardware switch.
 Turned on
@@ -3460,6 +3708,7 @@ Undo
 Undo Transaction {}
 Undo Transaction…
 Undo Window Arrangement
+Undo window arrangement
 Undo {}
 Undo…
 Unexpected input
@@ -3485,6 +3734,7 @@ Until Turned Off
 Until:
 Up
 Up (sent)
+Up a level
 Up for
 Upcoming
 Update
@@ -3550,6 +3800,15 @@ Value
 Value:
 Variable refresh rate
 Vault
+Vault 1
+Vault 2
+Vault 3
+Vault 4
+Vault 5
+Vault 6
+Vault 7
+Vault 8
+Vault 9
 Vault Info…
 Vault:
 Vaults
@@ -3561,6 +3820,7 @@ Video Format
 Video Playback
 Video is decoded on the processor. {}
 View
+View Source
 Viewer
 Virtual machines’ disk images
 Visibility
@@ -3584,6 +3844,7 @@ Waiting for app_server…
 Waiting for it…
 Waiting for power
 Waiting for the network
+Waiting for the phone to allow it
 Waiting for the phone… this page follows it by itself.
 Waiting for the touchpad…
 Waiting for you to sign in to Google in the browser…
@@ -3690,8 +3951,20 @@ Window Arrangement
 Window Size
 Window on a Background
 Window title size
+Window to the next workspace
+Window to the previous workspace
+Window to workspace 1
+Window to workspace 2
+Window to workspace 3
+Window to workspace 4
+Window to workspace 5
+Window to workspace 6
+Window to workspace 7
+Window to workspace 8
+Window to workspace 9
 Windowing Mode
 Windows
+Windows stay where you put them.
 Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).
 Wireless Router
 With AirPods:
@@ -3701,6 +3974,15 @@ Word Document…
 Working out what it comes to: every package it needs, and what it replaces…
 Working…
 Works on a picture of the desktop.
+Workspace 1
+Workspace 2
+Workspace 3
+Workspace 4
+Workspace 5
+Workspace 6
+Workspace 7
+Workspace 8
+Workspace 9
 Workspace:
 Workspaces
 Worst
@@ -3754,14 +4036,19 @@ Your voice comes in at {} dB: {} brings it to the {} dB aimed for.
 Yours, as last learned
 Yours: fine-tuned once since it started
 Yours: fine-tuned {} times since it started
+You’re asked each time a tab on an Agent Screen is the one waiting.
 Zig
 Zoom
 Zoom All
 Zoom In
 Zoom Out
+Zoom horizontally
 Zoom on Clicks
+Zoom or unzoom
+Zoom or unzoom all windows on the display
 Zoom to Fill
 Zoom to Fit
+Zoom vertically
 __pycache__, .venv, .mypy_cache, .pytest_cache, .tox
 a PIN set
 a backup
@@ -4021,6 +4308,7 @@ your own picture
 {n} backups
 {n} backups chosen.
 {n} coming up
+{n} conversations
 {n} days
 {n} days ago
 {n} due today
@@ -4057,6 +4345,7 @@ your own picture
 {n} to come
 {n} to do
 {n} to-dos
+{n} unread
 {n} waiting in their apps
 {n} weeks
 {} (AV1 and VP9)
@@ -4156,6 +4445,7 @@ your own picture
 {} kept in {}{}.
 {} kept of {}
 {} kept, still shared with builds' target folders
+{} keys
 {} knows this computer.
 {} later: gone
 {} least, {} now
@@ -4291,6 +4581,7 @@ your own picture
 {}: the login keyring didn't take it ({}). Import the backup again once it does.
 {}: what's set below. Power Modes says what each mode puts it on.
 {}: windows stay where you put them. Click to choose a windowing mode.
+{}: {}
 {}: {} applications. Click to show them.
 {}: {} examples, {} steps, {} ms on the {}
 {}: {}. {}. {}

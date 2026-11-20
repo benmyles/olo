@@ -421,8 +421,11 @@ A reference looks like op://vault/item/field (Passwords’ Copy Secret Reference
 A repository’s key needs to be trusted
 需要确认是否信任软件源的密钥
 
-A reset this account asked for hasn’t been answered yet. Sign in as the same account, or remove this account and add the other.
-此账户请求的一次重置尚未得到答复。请以同一账户登录，或移除此账户并添加另一个。
+A reset this account asked for hasn’t been answered yet. The sign-in is taken as soon as it has.
+此账户请求的一次重置尚未得到答复。得到答复后即会采用此次登录。
+
+A reset this account asked for hasn’t been answered yet. This sign-in doesn’t say which account it is. Sign in again once it has.
+此账户请求的一次重置尚未得到答复。此次登录无法确定属于哪个账户。之后请重新登录。
 
 A resting palm can't click (its pressure doesn't count)
 手掌停放时不会触发点击（不计入手掌压力）
@@ -472,6 +475,9 @@ A week
 A week before, at 9 AM
 提前一周，上午 9 点
 
+A word back or on
+前移或后移一个词
+
 AI
 AI
 
@@ -507,6 +513,9 @@ Acceleration:
 
 Accent
 强调色
+
+Accept
+接受
 
 Access
 访问
@@ -670,6 +679,9 @@ Address:
 Addresses can’t be looked up: {}
 无法查询地址：{}
 
+Adjust Size
+调整大小
+
 Adjust Size…
 调整大小…
 
@@ -805,6 +817,9 @@ All {} connected.
 Allow
 允许
 
+Allow It on the Phone
+在手机上允许
+
 Allow NVIDIA Fallback on Battery
 使用电池时允许回退到 NVIDIA
 
@@ -813,6 +828,9 @@ Allow Sleep
 
 Allow Sleep (awake until {})
 允许睡眠（保持唤醒至 {}）
+
+Allow it on the phone
+在手机上允许
 
 Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).
 允许“{0}”使用{1}{2}吗？选择“始终允许”后，此应用每次请求时都可使用。可在“文件 ▸ 已获准的应用…”中撤销。
@@ -906,6 +924,9 @@ Another Window
 
 Another account
 其他账户
+
+Another program has the phone
+手机正被其他程序使用
 
 Another program has the phone’s message profiles (BlueFerry’s or GNOME’s obexd). Olo Doctor removes BlueFerry.
 手机的消息服务已被其他程序占用（BlueFerry 或 GNOME 的 obexd）。可用 Olo Doctor 移除 BlueFerry。
@@ -1021,6 +1042,9 @@ Archived Chats
 Archived Conversations
 已归档的对话
 
+Arranging
+排列
+
 Arrived out of order
 到达顺序有误
 
@@ -1035,6 +1059,12 @@ As List
 
 As Workbench drew its icons: flat faces in a screen's sixteen pens, black outlines.
 沿用 Workbench 的图标风格，以屏幕的 16 种颜色填充色块，配上黑色轮廓。
+
+As a board
+看板视图
+
+As a list
+列表视图
 
 As fast as the computer goes: the processors kept quick and the firmware's power limits raised, the fans as needed. The battery runs down sooner.
 以电脑的最高性能运行。处理器保持高速，固件提高功耗上限，风扇按需提速。电池耗电更快。
@@ -1159,6 +1189,9 @@ At {}. Give it the code from {}?
 Attach
 附加
 
+Attach Files
+添加附件
+
 Attach Files…
 添加附件…
 
@@ -1173,6 +1206,9 @@ Attach Link…
 
 Attach a file or a link
 附加文件或链接
+
+Attach what's on the clipboard
+附加剪贴板中的内容
 
 Attachments
 附件
@@ -1203,6 +1239,9 @@ Auto-Tiling Layout
 
 Auto-tiling layout:
 自动平铺布局：
+
+Auto-tiling on or off
+开启或关闭自动平铺
 
 Automatic
 自动
@@ -1248,6 +1287,12 @@ Back to Chats
 
 Back to Conversations
 返回对话列表
+
+Back to its own size
+恢复自身大小
+
+Back to its own size, or hide
+恢复自身大小，或隐藏
 
 Back to the Days
 返回日期列表
@@ -1408,6 +1453,9 @@ Best time for a run tomorrow?
 Bigger
 更大
 
+Bigger text
+放大文字
+
 Black
 黑色
 
@@ -1419,6 +1467,9 @@ Blue:
 
 Bluetooth
 Bluetooth
+
+Bluetooth couldn't be turned on or off.
+无法打开或关闭蓝牙。
 
 Bluetooth couldn’t open the phone’s messages ({}).
 蓝牙无法打开手机上的信息（{}）。
@@ -1441,6 +1492,9 @@ Bluetooth isn’t running on this computer.
 Bluetooth said it would open them and no channel came
 蓝牙已同意打开消息服务，但未建立通道
 
+Bluetooth's hardware isn't answering
+蓝牙硬件没有响应
+
 Bluetooth…
 Bluetooth…
 
@@ -1452,6 +1506,12 @@ Body
 
 Bold
 粗体
+
+Bookmark Manager
+书签管理器
+
+Bookmark This Tab
+为此标签页添加书签
 
 Boost when work arrives and ease back between tasks.
 有任务时提速，任务间隙降速。
@@ -1469,6 +1529,18 @@ Bottom Right Quarter
 右下四分之一区域
 
 Bottom Two Thirds
+底部三分之二区域
+
+Bottom half
+下半部分
+
+Bottom left quarter
+左下四分之一区域
+
+Bottom right quarter
+右下四分之一区域
+
+Bottom two thirds
 底部三分之二区域
 
 Branch {} is checked out in {} already.
@@ -1524,6 +1596,9 @@ Buttons
 
 By
 执行者
+
+By App
+按应用
 
 By a parent leaving
 父进程退出
@@ -1630,6 +1705,9 @@ Calling…
 Calls
 通话
 
+Camera
+相机
+
 Can't make {}: {}
 无法创建 {}：{}
 
@@ -1678,11 +1756,20 @@ Capture Client Requests Again
 Capture debug information whenever a frame drops
 每次丢帧时收集调试信息
 
+Cards
+卡片
+
 Cascade All
 层叠所有窗口
 
 Cascade Others
 层叠其他窗口
+
+Cascade all windows on the display
+层叠显示器上的所有窗口
+
+Cascade the other windows, leaving this one
+层叠其他窗口，保留此窗口
 
 Case
 大小写
@@ -1699,10 +1786,19 @@ Ceiling {}
 Celsius (°C)
 Celsius (°C)
 
+Center
+居中
+
 Center Third
 中间三分之一区域
 
 Center Two Thirds
+中间三分之二区域
+
+Center third
+中间三分之一区域
+
+Center two thirds
 中间三分之二区域
 
 Chance
@@ -1716,6 +1812,9 @@ Change API ID…
 
 Change Background…
 更换桌面背景…
+
+Change them in Preferences ▸ Keyboard ▸ Shortcuts.
+可在“偏好设置 ▸ 键盘 ▸ 快捷键”中更改。
 
 Changed both here and in 1Password: 1Password’s version replaces it here, and yours is kept as “{} (conflict)”
 此处和 1Password 中都已修改。将采用 1Password 的版本，并把您的版本保留为“{} (conflict)”
@@ -1767,6 +1866,9 @@ Check Health
 
 Check Spelling While Typing
 键入时检查拼写
+
+Check everything
+检查全部
 
 Check for Updates
 检查更新
@@ -1858,8 +1960,26 @@ Chosen for the whole computer and kept across restarts. It's the computer's, not
 Chosen outside dnf
 在 dnf 之外选择
 
+Chrome and Slack
+Chrome 和 Slack
+
 Chrome holds it, as it may be harmful: keep it or delete it in Chrome’s Downloads.
 Chrome 已暂扣此文件，因为它可能有害。可在 Chrome 的“下载内容”中选择保留或删除。
+
+Chrome: Bookmarks and History
+Chrome：书签和历史记录
+
+Chrome: Developer
+Chrome：开发者
+
+Chrome: Going Places
+Chrome：导航
+
+Chrome: Tabs and Windows
+Chrome：标签页和窗口
+
+Chrome: View
+Chrome：显示
 
 City or region
 城市或地区
@@ -1914,6 +2034,9 @@ Clear All
 
 Clear All Tabs
 清除所有制表位
+
+Clear Browsing Data
+清除浏览数据
 
 Clear History
 清除历史记录
@@ -2005,6 +2128,9 @@ Close Tab
 Close Window
 关闭窗口
 
+Close the window
+关闭窗口
+
 Cloud Heights
 云层高度
 
@@ -2037,6 +2163,12 @@ Code given to Agent Screen “{}”
 
 Code:
 代码：
+
+Codes texted to this phone are offered in the browser tab waiting for them.
+发到这部手机的短信验证码会显示在等待输入的浏览器标签页中。
+
+Codes texted to this phone aren’t looked for.
+不会查找发到这部手机的短信验证码。
 
 Codex
 Codex
@@ -2083,6 +2215,9 @@ Column View
 Columns
 列
 
+Command Palette
+命令面板
+
 Command Suggestions
 命令建议
 
@@ -2091,6 +2226,9 @@ Command key:
 
 Command or Comment
 命令或注释
+
+Command palette
+命令面板
 
 Comment
 注释
@@ -2122,6 +2260,9 @@ Compressed Swap
 Compressed to
 压缩后大小
 
+Computer
+电脑
+
 Computes with
 计算设备
 
@@ -2133,6 +2274,12 @@ Configure IPv6:
 
 Confirm
 确认
+
+Confirm the Code
+确认配对码
+
+Confirm the code
+确认配对码
 
 Confirm:
 确认：
@@ -2155,6 +2302,12 @@ Connect automatically when you put them in near this computer
 Connect with a Token…
 使用令牌连接…
 
+Connect your phone
+连接您的手机
+
+Connected
+已连接
+
 Connected as {}, through {}.
 已通过 {1} 以 {0} 身份连接。
 
@@ -2167,6 +2320,9 @@ Connected to “{}”: {}
 Connected {}, but its sign-in wasn’t allowed {}: Sign In Again and allow everything it asks.
 已连接 {}，但登录时未授予{}权限。请重新登录并允许所请求的全部权限。
 
+Connected, {}%
+已连接，{}%
+
 Connected.
 已连接。
 
@@ -2175,6 +2331,9 @@ Connecting to Telegram…
 
 Connecting to “{}”…
 正在连接“{}”…
+
+Connecting…
+正在连接…
 
 Connection
 连接
@@ -2205,6 +2364,9 @@ Conversation
 
 Conversation Awareness
 对话感知
+
+Conversations
+对话
 
 Convert to Table
 转换为表格
@@ -2328,6 +2490,9 @@ Couldn't save what was dropped: {}
 
 Couldn't save: {}
 无法保存：{}
+
+Couldn't search for devices.
+无法搜索设备。
 
 Couldn’t archive it. {}
 无法归档。{}
@@ -2617,6 +2782,9 @@ Delete Vault
 Delete Vault…
 删除保险库…
 
+Delete a word
+删除一个词
+
 Delete the event
 删除日程
 
@@ -2634,6 +2802,9 @@ Delete these {} backups? The space only they took is freed; files other backups 
 
 Delete this backup? The space only it took is freed; files other backups hold too stay in those. It can’t be undone.
 删除此备份吗？将释放仅由此备份占用的空间，其他备份共用的文件会保留。此操作无法撤销。
+
+Delete to the line's start
+删除至行首
 
 Delete {} ({}) for good? They won't go to the Trash, and this can't be undone.
 永久删除 {}（{}）吗？这些项目不会移入废纸篓，此操作无法撤销。
@@ -2728,6 +2899,9 @@ Deskbar 显示：{}
 Deskbar: a {} widget measured “{}”, which this computer hasn't; it measures {} instead.
 Deskbar：{} 小组件原本测量“{}”，此电脑没有这一项，已改为测量“{}”。
 
+Desktop
+桌面
+
 Desktop (Preferences)
 桌面（偏好设置）
 
@@ -2742,6 +2916,9 @@ Destination
 
 Details
 详细信息
+
+Developer Tools
+开发者工具
 
 Device
 设备
@@ -2788,6 +2965,9 @@ Disconnect Google Drive ({})? DiskBackup stops backing up there, and forgets its
 Disconnecting from Google Drive…
 正在断开 Google Drive…
 
+Disconnecting…
+正在断开连接…
+
 Disconnect…
 断开连接…
 
@@ -2796,6 +2976,9 @@ Disk
 
 Disk Space
 磁盘空间
+
+Disk Usage
+Disk Usage
 
 Disk:
 磁盘：
@@ -2890,6 +3073,9 @@ Do Not Disturb is on
 Do Not Disturb is on — {} unread
 勿扰模式已开启 — {} 条未读
 
+Do the result's other action
+执行结果的另一项操作
+
 Dockerfile
 Dockerfile
 
@@ -2904,6 +3090,9 @@ Documents
 
 Does “{}” show this number?
 “{}”上显示的是这个号码吗？
+
+Does “{}” show {}?
+“{}”上显示的是 {} 吗？
 
 Doing
 进行中
@@ -2956,6 +3145,9 @@ Downloading: {}
 Downloading…
 正在下载…
 
+Downloads
+下载内容
+
 Drag a window by its tab and let go in a place, or press its letter, to put it there. Let go in another window's place to swap the two. Escape puts it all back.
 按住标签拖移窗口时，在某个位置松开，或按下该位置的字母，窗口就会移到那里。在另一个窗口的位置松开，两个窗口互换位置。按 Escape 可全部恢复原状。
 
@@ -2968,11 +3160,17 @@ Dragging a Window
 Draw
 绘制
 
+Draw tool
+绘制工具
+
 Drawing
 绘图
 
 Drawn into each frame
 每帧重新绘制
+
+Drive Setup
+Drive Setup
 
 DriveSetup
 DriveSetup
@@ -3094,6 +3292,12 @@ Each kind opens in this app wherever you open it, in Olo and in other programs. 
 Each network's own
 使用各网络的设置
 
+Each new window takes a tile, and the others make room.
+每个新窗口占一块平铺区域，其他窗口为它让出位置。
+
+Each new window takes half of the one you were using.
+每个新窗口占用您刚才使用的窗口的一半。
+
 Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
 设置后，各种验证方式可同时代替密码，用于 Passwords、Terminal 中的 sudo 和管理员请求。人脸和指纹还可用于锁屏和登录。先使用哪一种，就用哪一种验证。
 
@@ -3105,6 +3309,9 @@ Each setting tried shows here.
 
 Each shows in the Deskbar as it changes. A click on one there opens its app: Activity Monitor, Token Pool or the app it’s from.
 各项数值会在 Deskbar 中实时显示。点击可打开相应的应用，如活动监视器或 Token Pool。
+
+Each window takes half of the room left, round in a spiral.
+每个窗口占用剩余空间的一半，呈螺旋排列。
 
 Edge
 EDGE
@@ -3136,6 +3343,9 @@ Editors’ swap and backup files
 Edit…
 编辑…
 
+Eighth folder
+第 8 个文件夹
+
 Either AirPod
 任意一只 AirPod
 
@@ -3153,6 +3363,9 @@ Email Accounts
 
 Emoji
 表情符号
+
+Emoji & symbols
+表情与符号
 
 Empty
 空
@@ -3250,6 +3463,9 @@ Erlang
 Esc cancels
 按 Esc 取消
 
+Esc closes
+按 Esc 关闭
+
 Ethernet
 Ethernet
 
@@ -3262,6 +3478,9 @@ Even Out the Voice's Level
 Even With the Lid Closed
 合上盖子时也启用
 
+Even out the tiles
+均分平铺块
+
 Even out the voice's level
 均衡人声音量
 
@@ -3273,6 +3492,9 @@ Every 2 Weeks
 
 Every 2 weeks
 每两周
+
+Every Application
+所有应用程序
 
 Every Counter
 所有计数器
@@ -3334,6 +3556,15 @@ Every week
 Every weekday
 每个工作日
 
+Every window a column of its own width, in a strip that scrolls to the active one.
+每个窗口占一列，宽度各自独立，排成一条可滚动到活动窗口的长带。
+
+Every window a column, each as wide.
+每个窗口占一列，宽度相同。
+
+Every window a row, each as tall.
+每个窗口占一行，高度相同。
+
 Every year
 每年
 
@@ -3363,6 +3594,9 @@ Everything it needs looked for, in {}.
 
 Export
 导出
+
+Export Flattened PDF
+导出扁平化 PDF
 
 Export Flattened PDF…
 导出扁平化 PDF…
@@ -3460,6 +3694,12 @@ Fan level {}
 Fan level {} · {}
 风扇档位 {} · {}
 
+Fan out all windows, tabs side by side
+扇形排列所有窗口，标签并排
+
+Fan out the other windows, leaving this one
+扇形排列其他窗口，保留此窗口
+
 Fans
 风扇
 
@@ -3514,8 +3754,14 @@ Fetching the forecast…
 Fetching…
 正在获取…
 
+Fewer main windows
+减少主窗口
+
 Field
 字段
+
+Fifth folder
+第 5 个文件夹
 
 File
 文件
@@ -3541,11 +3787,17 @@ Find
 Find Again
 再次查找
 
+Find Next
+查找下一个
+
 Find Previous
 查找上一个
 
 Find Selection
 查找所选内容
+
+Find Your Phone
+查找手机
 
 Find a free hour this week
 查找本周空闲的一小时
@@ -3555,6 +3807,12 @@ Find an app
 
 Find in document
 在文稿中查找
+
+Find the selection
+查找所选内容
+
+Find your phone
+查找手机
 
 Find:
 查找：
@@ -3607,6 +3865,9 @@ Firmware curve
 First Page
 第一页
 
+First folder
+第 1 个文件夹
+
 First, as the main window
 排在首位，作为主窗口
 
@@ -3625,6 +3886,9 @@ Fit Width
 Fix
 修复
 
+Fix and apply what's checked
+修复并应用勾选的项目
+
 Fix in Olo Doctor…
 在 Olo Doctor 中修复…
 
@@ -3633,6 +3897,12 @@ Flip Horizontal
 
 Flip Vertical
 垂直翻转
+
+Flip the tiles left and right
+左右翻转平铺块
+
+Flip the tiles top and bottom
+上下翻转平铺块
 
 Float
 浮动
@@ -3652,6 +3922,9 @@ Float Window Group
 Float out of its group, or tile
 移出窗口组并浮动，或平铺
 
+Float over the tiles, or tile
+浮动于平铺之上，或平铺
+
 Flurries
 零星小雪
 
@@ -3660,6 +3933,27 @@ Focus
 
 Focus follows the pointer
 焦点跟随指针
+
+Focus mode on or off
+开启或关闭专注模式
+
+Focus the next tile
+激活下一个平铺块
+
+Focus the previous tile
+激活上一个平铺块
+
+Focus the window above
+激活上方窗口
+
+Focus the window below
+激活下方窗口
+
+Focus the window to the left
+激活左侧窗口
+
+Focus the window to the right
+激活右侧窗口
 
 Fog
 雾
@@ -3766,6 +4060,9 @@ Found as {}. Leave it empty for that name.
 Four fingers
 四指
 
+Fourth folder
+第 4 个文件夹
+
 Free
 空闲
 
@@ -3817,6 +4114,9 @@ From {} to {}
 From:
 从：
 
+Full Screen
+全屏
+
 Full access couldn't be asked for. {}
 无法请求完全访问权限。{}
 
@@ -3831,6 +4131,9 @@ GPU:
 
 GPUs are tuned only in the person's own session (polkit asks there).
 只能在用户自己的会话中调节 GPU，polkit 会在那里请求授权。
+
+Game controller
+游戏手柄
 
 Game saves
 游戏存档
@@ -3900,6 +4203,9 @@ Go to
 
 Go to End
 前往末尾
+
+Go to File or Folder
+前往文件或文件夹
 
 Go to File or Folder…
 前往文件或文件夹…
@@ -4069,6 +4375,9 @@ Heading 6
 Headless
 无头模式
 
+Headphones
+耳机
+
 Health
 健康状况
 
@@ -4132,6 +4441,18 @@ Hide Tab When Tiled
 Hide or show Deskbar
 隐藏或显示 Deskbar
 
+Hide or show the details
+隐藏或显示详细信息
+
+Hide or show the sidebar
+隐藏或显示侧边栏
+
+Hide the application
+隐藏应用程序
+
+Hide window
+隐藏窗口
+
 High
 高
 
@@ -4170,6 +4491,9 @@ Holds
 
 Home
 主文件夹
+
+Home Page
+主页
 
 Hosts
 主机
@@ -4429,6 +4753,9 @@ Inspect
 Inspect Parent
 检查父进程
 
+Inspect Process
+检查进程
+
 Install Now
 现在安装
 
@@ -4558,6 +4885,9 @@ Its app password isn’t in the keyring: remove it and add it again.
 Its click is its own: a resting palm can't press.
 点击需要手指主动按下，放在触控板上的手掌不会触发。
 
+Its contacts haven’t come (Sync Contacts, on the phone)
+联系人尚未同步（请在手机上开启“同步联系人”）
+
 Its decoder, on its battery preset (Power Modes), costs less than the processor's cores; off, the processor decodes on battery.
 使用电池预设（见“电源模式”）时，其解码器比 CPU 核心更省电。关闭此项后，电池供电时将使用 CPU 解码。
 
@@ -4647,6 +4977,9 @@ Java
 
 JavaScript
 JavaScript
+
+JavaScript Console
+JavaScript 控制台
 
 JavaScript packages and build output
 JavaScript 包与构建产物
@@ -4804,6 +5137,9 @@ Keyboard Profile
 Keyboard Shortcuts
 键盘快捷键
 
+Keyboard shortcuts
+键盘快捷键
+
 Keyboard: the Mac profile came along, ⌘ on the Super key (the Windows key on most PC keyboards). Preferences ▸ Keyboard picks another for this keyboard.
 键盘：已导入 Mac 配置。⌘ 位于 Super 键（通常是 PC 键盘的 Windows 键）。可在“偏好设置 ▸ 键盘”中为这把键盘另选配置。
 
@@ -4936,14 +5272,23 @@ Left Third
 Left Two Thirds
 左侧三分之二区域
 
+Left half
+左半部分
+
 Left out, as dnf wouldn’t take it: {}. ({})
 dnf 不接受，已略过：{}。（{}）
 
 Left out, as dnf wouldn’t take them: {}. ({})
 dnf 不接受，已略过：{}。（{}）
 
+Left third
+左侧三分之一区域
+
 Left to the firmware for now
 暂由固件控制
+
+Left two thirds
+左侧三分之二区域
 
 Left-handed (swap the buttons)
 左手使用（交换左右键）
@@ -4953,6 +5298,9 @@ Length
 
 Less noise
 降低噪声
+
+Less space between windows
+减小窗口间距
 
 Let coding agents keep their tab’s title current
 允许编程智能体更新标签页标题
@@ -5098,6 +5446,9 @@ Lock after idle for:
 Lock the Screen
 锁定屏幕
 
+Lock the screen
+锁定屏幕
+
 Lock the screen when the display turns off
 显示器关闭时锁定屏幕
 
@@ -5118,6 +5469,9 @@ Log Out…
 
 Login
 登录
+
+Logs
+Logs
 
 Long
 长
@@ -5155,6 +5509,9 @@ Looking at what’s there…
 Looking at which processes use it…
 正在查找使用它的进程…
 
+Looking for Bluetooth…
+正在查找蓝牙…
+
 Looking for a newer release…
 正在查找新版本…
 
@@ -5167,6 +5524,9 @@ Looking for its calendars…
 Looking for network devices…
 正在查找网络设备…
 
+Looking for phones nearby…
+正在查找附近的手机…
+
 Looking for security keys…
 正在查找安全密钥…
 
@@ -5175,6 +5535,9 @@ Looking for sound devices…
 
 Looking for the fingerprint sensor…
 正在查找指纹传感器…
+
+Looking for the phone…
+正在查找手机…
 
 Looking for volumes…
 正在查找卷…
@@ -5311,8 +5674,17 @@ Make an App Password…
 Make an app password for Olo in Fastmail (Settings ▸ Privacy & Security ▸ Manage app passwords and access) with access to mail and calendars. It’s kept in your login keyring.
 在 Fastmail 的“设置 ▸ 隐私与安全 ▸ 管理应用密码和访问权限”中为 Olo 创建应用密码，允许访问邮件和日历。密码将保存在登录密钥环中。
 
+Make it the main window
+设为主窗口
+
 Make one at my.telegram.org ▸ API development tools (sign in there with your phone number), then copy its App api_id and api_hash here.
 请用手机号登录 my.telegram.org，在“API development tools”中创建应用，再将 App api_id 和 api_hash 复制到这里。
+
+Make the main windows bigger
+放大主窗口
+
+Make the main windows smaller
+缩小主窗口
 
 Make this the main display
 设为主显示器
@@ -5358,6 +5730,12 @@ Mark as Not Done
 
 Mark as Read
 标为已读
+
+Mark as Read or Unread
+标为已读或未读
+
+Mark as done, or not done
+标记为已完成或未完成
 
 Markdown
 Markdown
@@ -5503,8 +5881,14 @@ More
 More Menus
 更多菜单
 
+More main windows
+增加主窗口
+
 More noise
 更多噪声
+
+More space between windows
+增大窗口间距
 
 Mostly clear
 大部晴朗
@@ -5686,6 +6070,12 @@ Move all {} archived chats back to your chat list?
 Move both archived chats back to your chat list?
 将这两个已归档聊天都移回聊天列表吗？
 
+Move every tile's window back one
+所有窗口后移一个平铺块
+
+Move every tile's window on one
+所有窗口前移一个平铺块
+
 Move the archived chat back to your chat list?
 将此已归档聊天移回聊天列表吗？
 
@@ -5694,6 +6084,18 @@ Move the pointer
 
 Move the pointer on a thread of its own
 使用独立线程移动指针
+
+Move the tile's edge down
+向下移动平铺块边缘
+
+Move the tile's edge left
+向左移动平铺块边缘
+
+Move the tile's edge right
+向右移动平铺块边缘
+
+Move the tile's edge up
+向上移动平铺块边缘
 
 Move to Archive
 移至归档
@@ -5706,6 +6108,9 @@ Move to Trash
 
 Move to Workspace
 移到工作区
+
+Move to the scratchpad
+移到便笺区
 
 Move to {}
 移到 {}
@@ -5782,6 +6187,9 @@ Narrower than sRGB ({}% of it)
 Natural scrolling (content follows your fingers)
 自然滚动（内容随手指移动）
 
+Nearby
+在附近
+
 Needed by another package
 其他软件包所需
 
@@ -5824,6 +6232,9 @@ New Folder
 New Group…
 新建组…
 
+New Incognito Window
+新建无痕窗口
+
 New Item
 新建项目
 
@@ -5832,6 +6243,9 @@ New List
 
 New List…
 新建列表…
+
+New Login
+新建登录项
 
 New Message
 新消息
@@ -5950,14 +6364,38 @@ Next Tab
 Next Week
 下周
 
+Next auto-tiling layout
+下一个自动平铺布局
+
+Next column width (Scrolling)
+下一个列宽（滚动）
+
 Next day, week or month
 下一天、下一周或下个月
 
 Next step
 下一步
 
+Next tab in the window
+窗口中的下一个标签页
+
 Next when you click Back Up Now.
 点击“立即备份”开始下次备份。
+
+Next window above the tile
+平铺块上方放下一个窗口
+
+Next window below the tile
+平铺块下方放下一个窗口
+
+Next window to the tile's left
+平铺块左侧放下一个窗口
+
+Next window to the tile's right
+平铺块右侧放下一个窗口
+
+Next workspace
+下一个工作区
 
 Next {}.
 下次：{}。
@@ -6097,8 +6535,14 @@ Telegram 上没有名为 {} 的用户。
 No open files.
 没有打开的文件。
 
+No phone found yet.
+尚未找到手机。
+
 No phone or mail account is set up: a phone in Phone, a Google or Fastmail account for Mail in Integrations.
 尚未设置手机或邮件账户。可在“电话”中设置手机，或在“服务集成”中为 Mail 添加 Google 或 Fastmail 账户。
+
+No phone paired
+未配对手机
 
 No power profiles daemon is running (power-profiles-daemon, or tuned-ppd on Fedora): Olo sets the power mode through it.
 电源配置服务未运行（power-profiles-daemon，Fedora 也可用 tuned-ppd）。Olo 需要通过此服务设置电源模式。
@@ -6381,6 +6825,9 @@ Nothing changed: Olo's own model is still in use.
 
 Nothing coming up
 暂无即将开始的日程
+
+Nothing connects until it starts again. Olo Doctor restarts it (it asks for your password).
+在它重新启动之前，任何设备都无法连接。Olo Doctor 会重新启动它（需要输入您的密码）。
 
 Nothing done yet
 还没有已完成的任务
@@ -6700,6 +7147,9 @@ Only an https:// address: one that can be listened in on could be changed on its
 Only on battery power
 仅在电池供电时
 
+Only the active window shows, zoomed, with its dialogs over it.
+只显示活动窗口，并放大铺满，其对话框显示在上方。
+
 Only the latest of the same notification
 相同通知仅保留最新一条
 
@@ -6732,6 +7182,9 @@ Open Integrations…
 
 Open Link
 打开链接
+
+Open Location
+打开位置
 
 Open Log File…
 打开日志文件…
@@ -6874,6 +7327,9 @@ Other…
 Out of memory:
 内存耗尽时：
 
+Out of reach
+不在连接范围内
+
 Output
 输出
 
@@ -6882,6 +7338,9 @@ Overdue
 
 Overview
 概览
+
+Overview of every window
+所有窗口概览
 
 Overwrite the old data with zeros (slow)
 用零覆盖旧数据（较慢）
@@ -6913,14 +7372,29 @@ Page {} of {}
 Pair
 配对
 
+Paired
+已配对
+
+Paired with this computer; not yet sharing its messages
+已与这台电脑配对；尚未共享其消息
+
 Paired with {}.
 已与 {} 配对。
 
 Pairing
 配对
 
+Pairing didn't work.
+配对未成功。
+
+Pairing didn’t finish. Try again, with the phone unlocked on its Bluetooth settings.
+配对未完成。请解锁手机并打开其蓝牙设置，然后重试。
+
 Pairing with {} didn't work: {}.
 与 {} 配对失败：{}。
+
+Pairing…
+正在配对…
 
 Pair…
 配对…
@@ -7198,6 +7672,9 @@ Pin
 Pin as Main
 固定为主窗口
 
+Pin it as the main window, or let it go
+固定为主窗口，或取消固定
+
 Pinch to zoom
 双指开合缩放
 
@@ -7387,11 +7864,23 @@ Previous Tab
 Previous Week
 上周
 
+Previous auto-tiling layout
+上一个自动平铺布局
+
 Previous day, week or month
 上一天、上一周或上个月
 
+Previous tab in the window
+窗口中的上一个标签页
+
+Previous workspace
+上一个工作区
+
 Print
 打印
+
+Printer
+打印机
 
 Print…
 打印…
@@ -7524,6 +8013,9 @@ Quiet for 1 Hour
 
 Quit
 退出
+
+Quit Chrome
+退出 Chrome
 
 Quit Now
 立即退出
@@ -7690,6 +8182,9 @@ Record the Computer's Sound
 Record the Microphone
 录制麦克风声音
 
+Record the screen, or stop
+录制屏幕，或停止
+
 Recording
 正在录制
 
@@ -7732,6 +8227,9 @@ Redo
 Redo Window Arrangement
 重做窗口排列
 
+Redo window arrangement
+重做窗口排列
+
 Redo {}
 重做{}
 
@@ -7758,6 +8256,15 @@ Regenerate
 
 Reinstall Selected…
 重新安装所选项目…
+
+Reject
+拒绝
+
+Reload
+重新加载
+
+Reload Without the Cache
+忽略缓存重新加载
 
 Remind:
 提醒：
@@ -7828,6 +8335,9 @@ Remove “{}” from Favorites
 Remove…
 移除…
 
+Removing…
+正在移除…
+
 Rename
 重命名
 
@@ -7852,6 +8362,9 @@ Rename Worktree…
 Rename…
 重命名…
 
+Reopen Closed Tab
+重新打开关闭的标签页
+
 Repeat rate
 重复速率
 
@@ -7863,6 +8376,9 @@ Replace
 
 Replace Same
 替换相同通知
+
+Replace and find again
+替换并查找下一个
 
 Replace the one-time code of your login {} with the one this page shows?
 用此页显示的一次性验证码替换登录项“{}”中的验证码吗？
@@ -8065,6 +8581,18 @@ Right Two Thirds
 Right first
 首选建议准确率
 
+Right half
+右半部分
+
+Right third
+右侧三分之一区域
+
+Right two thirds
+右侧三分之二区域
+
+Roll up or down
+卷起或展开
+
 Room:
 空间：
 
@@ -8073,6 +8601,12 @@ Rotate Left
 
 Rotate Right
 向右旋转
+
+Rotate the tiles
+旋转平铺块
+
+Rotate the tiles back
+反向旋转平铺块
 
 Round trip
 往返时间
@@ -8139,6 +8673,9 @@ Saturday
 
 Save
 保存
+
+Save As
+另存为
 
 Save As…
 另存为…
@@ -8209,6 +8746,9 @@ Scan Home
 Scan Volume
 扫描卷
 
+Scan a Folder
+扫描文件夹
+
 Scan a Folder…
 扫描文件夹…
 
@@ -8245,8 +8785,26 @@ Screen Saver
 Screenshot
 截图
 
+Screenshot app
+截图应用
+
+Screenshot of an area
+区域截图
+
+Screenshot of the screen
+屏幕截图
+
+Screenshot of the window
+窗口截图
+
+Screenshots
+截图
+
 Scroll
 滚动
+
+Scroll for more · Esc closes
+滚动查看更多 · 按 Esc 关闭
 
 Scroll while the middle button is held
 按住中键时滚动
@@ -8280,6 +8838,9 @@ Search: words, program:, level:, since:
 
 Searching…
 正在搜索…
+
+Second folder
+第 2 个文件夹
 
 Secondary click (three: middle)
 辅助点击（三指为中键）
@@ -8344,6 +8905,12 @@ Select a transaction to see what it did to each package.
 Select an update to read about it: its versions, why it came out, what changed.
 选择更新可查看版本、发布原因和更改内容。
 
+Select as you go: with any of these
+移动时选择：与以上任一按键组合
+
+Select tool
+选择工具
+
 Selected {} to {}
 已选择 {} 至 {}
 
@@ -8363,6 +8930,9 @@ Send Voice Message
 发送语音消息
 
 Send to Back
+置于底层
+
+Send to back
 置于底层
 
 Send with BBRv3
@@ -8482,6 +9052,9 @@ Settings
 Settings:
 设置：
 
+Seventh folder
+第 7 个文件夹
+
 Shaping
 流量整形
 
@@ -8536,6 +9109,9 @@ Show
 Show All
 显示全部
 
+Show All Tabs
+显示所有标签页
+
 Show Archived
 显示已归档项目
 
@@ -8544,6 +9120,9 @@ Show Archived Conversations
 
 Show Assistant
 显示助手
+
+Show Bookmarks Bar
+显示书签栏
 
 Show Calendars
 显示日历
@@ -8635,11 +9214,17 @@ Show on AirPlay
 Show on All Workspaces
 在所有工作区显示
 
+Show on all workspaces
+在所有工作区显示
+
 Show or Hide All Windows
 显示或隐藏所有窗口
 
 Show or hide the assistant
 显示或隐藏助理
+
+Show or hide the scratchpad
+显示或隐藏便笺区
 
 Show or hide the source
 显示或隐藏源代码
@@ -8649,6 +9234,9 @@ Show seconds
 
 Show the day of the week
 显示星期
+
+Show the desktop
+显示桌面
 
 Show the phone’s other notifications
 显示手机的其他通知
@@ -8740,6 +9328,9 @@ Sign…
 Site Settings
 网站设置
 
+Sixth folder
+第 6 个文件夹
+
 Size
 大小
 
@@ -8775,6 +9366,9 @@ Small: one line. Medium and Large: all it shows, Large's sky bigger.
 
 Smaller
 更小
+
+Smaller text
+缩小文字
 
 Smooth Pointer
 平滑指针
@@ -8875,6 +9469,9 @@ Spanish
 Spare
 备用空间
 
+Speaker
+扬声器
+
 Speaker amp {}
 扬声器功放 {}
 
@@ -8913,6 +9510,12 @@ Start Over…
 
 Start Test
 开始测试
+
+Start or end of the document
+文档开头或末尾
+
+Start or end of the line
+行首或行尾
 
 Start the Agent
 启动智能体
@@ -8967,6 +9570,9 @@ Stay Awake
 
 Stay awake (caffeinated)
 保持唤醒（防止睡眠）
+
+Stay awake, or not
+保持唤醒，或取消
 
 Stay awake: no display sleep, sleep, screen saver or lock
 保持唤醒：不熄屏、不睡眠、不启动屏保或锁屏
@@ -9106,6 +9712,27 @@ Swap too
 Swap with Previous Main
 与上一个主窗口交换
 
+Swap with the next tile
+与下一个平铺块交换
+
+Swap with the previous main window
+与上一个主窗口交换
+
+Swap with the previous tile
+与上一个平铺块交换
+
+Swap with the tile above
+与上方平铺块交换
+
+Swap with the tile below
+与下方平铺块交换
+
+Swap with the tile to the left
+与左侧平铺块交换
+
+Swap with the tile to the right
+与右侧平铺块交换
+
 Swedish
 瑞典语
 
@@ -9115,17 +9742,32 @@ Swift
 Swiss
 瑞士
 
+Switch applications (Twitcher)
+切换应用程序（Twitcher）
+
+Switch applications on the workspaces showing
+切换当前显示的工作区中的应用程序
+
 Switch automatically between this computer and your iPhone
 在本机和 iPhone 之间自动切换
 
 Switch to a woken program at once
 立即运行刚唤醒的程序
 
+Switch windows of the application
+切换应用程序的窗口
+
+Switching
+切换
+
 Sync
 同步
 
 Sync Again
 重新同步
+
+Sync Contacts
+同步联系人
 
 Sync Now
 立即同步
@@ -9169,11 +9811,44 @@ TOML
 TSX
 TSX
 
+Tab 1
+标签页 1
+
+Tab 2
+标签页 2
+
+Tab 3
+标签页 3
+
+Tab 4
+标签页 4
+
+Tab 5
+标签页 5
+
+Tab 6
+标签页 6
+
+Tab 7
+标签页 7
+
+Tab 8
+标签页 8
+
+Tab 9
+标签页 9
+
 Table
 表格
 
+Tablet
+平板电脑
+
 Tabs
 标签页
+
+Tabs on Agent Screens are never given a code.
+智能体屏幕上的标签页永远不会收到验证码。
 
 Tags:
 标签：
@@ -9190,6 +9865,9 @@ Take Screenshot…
 Take calls on this computer
 在此电脑上接听电话
 
+Take or give back control
+接管或交还控制
+
 Taken
 已采纳
 
@@ -9199,11 +9877,14 @@ Tap
 Tap and drag
 轻点并拖移
 
+Tap the Windows key on its own for the command palette
+单按 Windows 键打开命令面板
+
 Tap to click
 轻点以点击
 
-Tap {} on its own for the command palette
-单按 {} 打开命令面板
+Tap ⌘ (the Super key) on its own for the command palette
+单按 ⌘（Super 键）打开命令面板
 
 Taps
 轻点次数
@@ -9301,8 +9982,17 @@ Text Message
 Text Size
 文字大小
 
+Text at its own size
+文字恢复原始大小
+
+Text messages
+短信
+
 Text messages to “{}”
 发给“{}”的短信
+
+Text tool
+文本工具
 
 Text:
 文本：
@@ -9354,6 +10044,9 @@ API 哈希由 32 个字符组成，只能使用 0–9 和 a–f。
 
 The AirPods service isn't running.
 AirPods 服务未运行。
+
+The Bluetooth service (bluetoothd) isn't running.
+蓝牙服务（bluetoothd）未运行。
 
 The CPU doesn't offer “{}”.
 CPU 不支持“{}”。
@@ -9448,11 +10141,23 @@ The copy of Token Pool this one replaced is still finishing its requests. Add th
 The copy of Token Pool this one replaced is still finishing its requests. Sign in again in a moment.
 被此副本替换的 Token Pool 仍在完成其请求。请稍后再次登录。
 
+The copy of Token Pool this one replaced is still finishing its requests. The sign-in is taken as soon as it has.
+被此副本替换的 Token Pool 仍在完成其请求。它完成后即会采用此次登录。
+
 The day before, at 9 AM
 前一天上午 9 点
 
 The day's hit rate, the pool's slots in use, and the last hours' builds and hits.
 当天的命中率、池中已用插槽，以及最近几小时的构建与命中次数。
+
+The device couldn't be disconnected.
+无法断开设备的连接。
+
+The device couldn't be removed.
+无法移除设备。
+
+The device didn't connect.
+设备未能连接。
 
 The displays' settings are Olo's own again, from when you leave Rescue.
 退出救援模式后，显示器将重新使用 Olo 的原有设置。
@@ -9568,6 +10273,9 @@ The look's own
 The loss is a number, in percent.
 丢包率须以百分数输入。
 
+The main window in its place; the others stack around it.
+主窗口保持原位，其他窗口堆叠在它周围。
+
 The microphone can’t be recorded ({}).
 无法从麦克风录音（{}）。
 
@@ -9624,6 +10332,9 @@ The password of “{}” couldn’t be kept: {}
 
 The passwords file is damaged: {}
 密码文件已损坏：{}
+
+The phone didn’t connect. Is it unlocked, with Bluetooth on?
+手机未能连接。它是否已解锁并开启了蓝牙？
 
 The phone didn’t take it.
 手机未接受。
@@ -9757,6 +10468,9 @@ The voice service isn't running.
 The window server didn’t give its settings.
 窗口服务器未提供设置。
 
+The windows in rows of about square cells.
+窗口排成多行，每格接近正方形。
+
 The workspace each display shows stays open in every Deskbar; each other one is its heading, with an arrow that shows its applications and puts them away again.
 每个 Deskbar 都会展开各显示器当前的工作区，其他工作区只显示标题。点击箭头可展开或收起其中的应用。
 
@@ -9805,6 +10519,9 @@ There is no limit “{}”.
 There is nothing to share.
 没有可共享的内容。
 
+There's no Bluetooth adapter.
+没有蓝牙适配器。
+
 There's no Ethernet adapter. A USB or Thunderbolt one shows here once it's plugged in.
 没有以太网适配器。插入 USB 或雷雳适配器后，它就会显示在这里。
 
@@ -9834,6 +10551,9 @@ Thinking:
 
 Thinking…
 正在思考…
+
+Third folder
+第 3 个文件夹
 
 This Computer
 这台电脑
@@ -9982,6 +10702,9 @@ Tile All Tabs
 Tile With
 与其他窗口平铺
 
+Tile all windows on the display
+平铺显示器上的所有窗口
+
 Tiling, zooming, Tile All, cascading and fanning out all leave this space.
 平铺、放大、全部平铺、层叠和扇形排列都会保留此间距。
 
@@ -10032,6 +10755,12 @@ To Do
 
 To allow it, you can also {}.
 也可以通过{}来授权。
+
+To the next display
+移到下一个显示器
+
+To the previous display
+移到上一个显示器
 
 To {}
 到 {}
@@ -10117,8 +10846,20 @@ Top Right Quarter
 Top Two Thirds
 顶部三分之二区域
 
+Top half
+上半部分
+
+Top left quarter
+左上四分之一区域
+
+Top right quarter
+右上四分之一区域
+
 Top speed
 最高速度
+
+Top two thirds
+顶部三分之二区域
 
 Touch
 触摸
@@ -10270,6 +11011,9 @@ Turn on for a laptop usually plugged in.
 Turn the display off after:
 关闭显示器前的等待时间：
 
+Turn the tile's split
+切换平铺块的分割方向
+
 Turn the touchpad off while a mouse is plugged in
 连接鼠标时停用触控板
 
@@ -10387,6 +11131,9 @@ Undo Transaction…
 Undo Window Arrangement
 撤销窗口排列
 
+Undo window arrangement
+撤销窗口排列
+
 Undo {}
 撤销{}
 
@@ -10461,6 +11208,9 @@ Up
 
 Up (sent)
 上行（发送）
+
+Up a level
+向上一级
 
 Up for
 运行时长
@@ -10657,6 +11407,33 @@ Variable refresh rate
 Vault
 保险库
 
+Vault 1
+保险库 1
+
+Vault 2
+保险库 2
+
+Vault 3
+保险库 3
+
+Vault 4
+保险库 4
+
+Vault 5
+保险库 5
+
+Vault 6
+保险库 6
+
+Vault 7
+保险库 7
+
+Vault 8
+保险库 8
+
+Vault 9
+保险库 9
+
 Vault Info…
 保险库信息…
 
@@ -10689,6 +11466,9 @@ Video is decoded on the processor. {}
 
 View
 视图
+
+View Source
+查看源代码
 
 Viewer
 Viewer
@@ -10758,6 +11538,9 @@ Waiting for power
 
 Waiting for the network
 正在等待网络连接
+
+Waiting for the phone to allow it
+正在等待手机允许
 
 Waiting for the phone… this page follows it by itself.
 正在等待手机…此页会随手机状态自动更新。
@@ -11077,11 +11860,47 @@ Window on a Background
 Window title size
 窗口标题大小
 
+Window to the next workspace
+窗口移到下一个工作区
+
+Window to the previous workspace
+窗口移到上一个工作区
+
+Window to workspace 1
+窗口移到工作区 1
+
+Window to workspace 2
+窗口移到工作区 2
+
+Window to workspace 3
+窗口移到工作区 3
+
+Window to workspace 4
+窗口移到工作区 4
+
+Window to workspace 5
+窗口移到工作区 5
+
+Window to workspace 6
+窗口移到工作区 6
+
+Window to workspace 7
+窗口移到工作区 7
+
+Window to workspace 8
+窗口移到工作区 8
+
+Window to workspace 9
+窗口移到工作区 9
+
 Windowing Mode
 窗口模式
 
 Windows
 窗口
+
+Windows stay where you put them.
+窗口停留在您放置的位置。
 
 Windows' buffers are never moved to swap, so the desktop doesn't wait for one to come back (Olo's live patch for Intel's driver).
 窗口缓冲区不会换出，因此桌面无需等待它们换回内存（使用 Olo 对 Intel 驱动的热补丁）。
@@ -11109,6 +11928,33 @@ Working…
 
 Works on a picture of the desktop.
 对桌面图像生效。
+
+Workspace 1
+工作区 1
+
+Workspace 2
+工作区 2
+
+Workspace 3
+工作区 3
+
+Workspace 4
+工作区 4
+
+Workspace 5
+工作区 5
+
+Workspace 6
+工作区 6
+
+Workspace 7
+工作区 7
+
+Workspace 8
+工作区 8
+
+Workspace 9
+工作区 9
 
 Workspace:
 工作区：
@@ -11269,6 +12115,9 @@ Yours: fine-tuned once since it started
 Yours: fine-tuned {} times since it started
 您的模型：启动后已微调 {} 次
 
+You’re asked each time a tab on an Agent Screen is the one waiting.
+每当等待验证码的标签页位于智能体屏幕上时，都会询问您。
+
 Zig
 Zig
 
@@ -11284,14 +12133,26 @@ Zoom In
 Zoom Out
 缩小
 
+Zoom horizontally
+水平缩放
+
 Zoom on Clicks
 放大点击位置
+
+Zoom or unzoom
+缩放或还原
+
+Zoom or unzoom all windows on the display
+缩放或还原显示器上的所有窗口
 
 Zoom to Fill
 缩放以填满
 
 Zoom to Fit
 缩放以适应大小
+
+Zoom vertically
+垂直缩放
 
 __pycache__, .venv, .mypy_cache, .pytest_cache, .tox
 __pycache__, .venv, .mypy_cache, .pytest_cache, .tox
@@ -12070,6 +12931,9 @@ other: 已选择 {n} 份备份。
 {n} coming up
 other: {n} 项即将到期
 
+{n} conversations
+other: {n} 个对话
+
 {n} days
 other: {n} 天
 
@@ -12177,6 +13041,9 @@ other: {n} 项待办
 
 {n} to-dos
 other: {n} 项任务
+
+{n} unread
+other: {n} 条未读
 
 {n} waiting in their apps
 other: 有 {n} 项等待在应用中处理
@@ -12474,6 +13341,9 @@ other: {n} 周
 
 {} kept, still shared with builds' target folders
 保留 {}，仍与构建目标目录共享
+
+{} keys
+{} 按键
 
 {} knows this computer.
 {} 已识别此电脑。
@@ -12879,6 +13749,9 @@ Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
 
 {}: windows stay where you put them. Click to choose a windowing mode.
 {}：窗口保留在放置的位置。点击选择窗口模式。
+
+{}: {}
+{}：{}
 
 {}: {} applications. Click to show them.
 {}：{} 个应用。点击显示。
