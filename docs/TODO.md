@@ -170,12 +170,6 @@ something nobody here has is in "Blocked", with what it waits for.
     Claude Code's and OpenSSL for Codex's; weigh it, with the captured
     offers (`Capture::hellos`) as the reference, and say.
 
-- **A list's scroll bar shows its arrows enabled when there's nothing
-  to scroll** (Codex's look at Notifications, 2026-11-19: one row in a
-  tall pane, both arrows drawn as if they'd scroll, no thumb). The
-  kit's `ScrollBar` should draw its arrows (and track) disabled when
-  the content fits, as BeOS's did.
-
 - **A Language setting, and Olo in every major language** (Ben,
   2026-11-18: "we should add a language setting and also let's translate
   all olo apps and prefs and ux to support all the major languages
@@ -269,22 +263,6 @@ something nobody here has is in "Blocked", with what it waits for.
   one-string edit: the builds it costs now and after, against a read at
   each app's start (and what in-place reload, tests and agents' screens
   need); then do it if it pays.
-
-- **olo-fakesound in a package of its own, with only its own
-  dependencies** (2026-11-19, from the same study of kache's misses,
-  which Ben passed on: "744 compiles produced only files kache already
-  held, costing 2.1 compiler-hours … 66 distinct cache keys for
-  olo-fakesound produced the exact same executable and dependency file.
-  Give olo-fakesound a small package containing its actual dependencies.
-  It currently inherits the preview package's dependency list. This is
-  the clearest first experiment because we already have a byte-for-byte
-  baseline"). `crates/preview/src/bin/fakesound.rs` is a `[[bin]]` of
-  olo-preview (`crates/preview/Cargo.toml`), so every change to what
-  olo-preview depends on builds it again, to the same bytes. A small
-  crate of its own (what fakesound.rs uses, nothing more), the lint and
-  tsession pointed at it; then the same look at the other helper
-  binaries (dnf-fake, udisks-fake in olo-system). Measure: kache's
-  misses for it before and after, over a day's work.
 
 - **kache's storage warning says what counts** (2026-11-19, from the
   same study, which Ben passed on: "Fix the dashboard's storage warning
@@ -512,6 +490,17 @@ something nobody here has is in "Blocked", with what it waits for.
   screens and what it does, a carousel of screenshots with captions.
 
 ## Done, waiting for Ben to try or confirm
+
+- **olo-fakesound in a package of its own, with only its own
+  dependencies** (2026-11-19, from a study of kache's misses: 66 of its
+  keys made one executable). Done: `crates/fakesound` (pulseaudio,
+  olo-crash, olo-sync), and `dnf-fake` likewise (`crates/dnf-fake`: it
+  was olo-system's, which it doesn't use; its test, olo-system's own
+  client of it, moved with it). The other helpers use olo-system's own
+  modules and stay. Measured at once: a change to olo-preview built
+  olo-fakesound again in 5.4 s (olo-preview compiled), now nothing
+  (0.8 s, cargo looking); a change to olo-system now builds nothing for
+  dnf-fake (0.3 s). To see: kache's misses for them over a day's work.
 
 - **Notifications' "Waiting in apps" goes to the window and tab that
   waits** (Ben, 2026-11-19: "when i click on the waiting app, e.g.

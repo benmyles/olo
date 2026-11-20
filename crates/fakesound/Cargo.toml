@@ -1,0 +1,14 @@
+[package]
+name = "olo-fakesound"
+description = "A sound server for tests: enough of the PulseAudio protocol for Olo's players, playing nothing and saying what it hears"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# (A package of its own, with only what it uses: as a binary of
+# olo-preview it was built again for every change to anything olo-preview
+# depends on, to the same bytes; 66 of kache's keys made one executable.)
+[dependencies]
+olo-crash.workspace = true
+olo-sync.workspace = true
+pulseaudio = "0.3"

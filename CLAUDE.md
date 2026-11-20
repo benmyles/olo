@@ -106,7 +106,8 @@ are universal and non-negotiable:
   build and test only the packages you change, in the dev profile
   (optimized too): `cargo build -p`, `cargo test -p`, pictures from dev
   builds (`tsession`'s default), the live lint with `--dev` (with
-  `cargo build -p app_server -p olo-preview` beside what it lints). The
+  `cargo build -p app_server -p olo-preview -p olo-fakesound` beside
+  what it lints). The
   release build of the workspace is for work that's ready: build it
   once, when you finish, so the person's session offers the upgrade
   (the pre-push hook builds it too). Measure on release builds of the

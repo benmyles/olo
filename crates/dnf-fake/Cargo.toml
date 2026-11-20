@@ -1,0 +1,24 @@
+[package]
+name = "olo-dnf-fake"
+description = "A stand-in PackageKit for tests: OS Updates' updates and repositories, on a bus of the test's own"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# (A package of its own, with only what it uses: as a binary of
+# olo-system it was built again for every change to olo-system, which it
+# doesn't use.)
+[[bin]]
+name = "dnf-fake"
+path = "src/main.rs"
+
+[dependencies]
+olo-crash.workspace = true
+zbus = { version = "5.19", default-features = false, features = ["blocking-api", "async-io"] }
+zvariant = { version = "5", features = ["gvariant"] }
+async-io = "2"
+serde.workspace = true
+
+[dev-dependencies]
+# (Its test: olo-system's own client of it, end to end.)
+olo-system.workspace = true

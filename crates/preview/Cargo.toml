@@ -56,11 +56,6 @@ quick-xml = "0.42"
 ttf-parser = "0.25"
 base64 = "0.22"
 
-# A sound server for tests (see the file).
-[[bin]]
-name = "olo-fakesound"
-path = "src/bin/fakesound.rs"
-
 [dev-dependencies]
 # Videos made for its tests (`seeks_into_a_long_picture`).
 olo-video.workspace = true

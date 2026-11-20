@@ -44,10 +44,6 @@ name = "udisks-fake"
 path = "src/bin/udisks_fake.rs"
 
 [[bin]]
-name = "dnf-fake"
-path = "src/bin/dnf_fake.rs"
-
-[[bin]]
 name = "phone-standin"
 path = "src/bin/phone_standin.rs"
 

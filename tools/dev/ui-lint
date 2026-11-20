@@ -54,8 +54,8 @@ tools/install-session.sh. See "The layout lint" in docs/HACKING.md.
 --dev runs the dev profile's builds (target/debug, optimized too) while
 you work (CLAUDE.md, "Build what you change"): build the packages you
 lint and what the lint runs beside them, `cargo build -p app_server -p
-olo-preview -p PACKAGE` (and `-p olo-system` for OS Updates' fake
-package service), not the whole workspace in release.
+olo-preview -p olo-fakesound -p PACKAGE` (and `-p olo-dnf-fake` for OS
+Updates' fake package service), not the whole workspace in release.
 """
 import hashlib, json, os, socket, subprocess, sys, threading, time
 

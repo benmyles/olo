@@ -7440,6 +7440,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "olo-dnf-fake"
+version = "0.1.0"
+dependencies = [
+ "async-io",
+ "olo-crash",
+ "olo-system",
+ "serde",
+ "zbus",
+ "zvariant",
+]
+
+[[package]]
 name = "olo-doctor"
 version = "0.1.0"
 dependencies = [
@@ -7542,6 +7554,15 @@ dependencies = [
  "tracing-subscriber",
  "tract-onnx",
  "zbus",
+]
+
+[[package]]
+name = "olo-fakesound"
+version = "0.1.0"
+dependencies = [
+ "olo-crash",
+ "olo-sync",
+ "pulseaudio",
 ]
 
 [[package]]

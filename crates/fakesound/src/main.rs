@@ -1,5 +1,6 @@
 //! A sound server for tests: speaks enough of the PulseAudio protocol for
-//! Olo's players (olo-preview's `audio`), plays nothing, and reports
+//! Olo's players (olo-preview's `audio`, the sound panel, the AirPods
+//! service), plays nothing, and reports
 //! what it hears on stderr, a line a second per stream: bytes consumed,
 //! whether it's corked, and how loud the samples were (RMS of S16LE, 0 to
 //! 32767). Samples are consumed in real time, so positions and latency
@@ -31,8 +32,8 @@
 //! can set the speaker's volume (said, and kept from then on).
 //!
 //! ```text
-//! olo-fakesound /tmp/fake.sock &
-//! PULSE_SERVER=unix:/tmp/fake.sock olo-viewer song.mp3
+//! olo-fakesound /var/tmp/me/fake.sock &
+//! PULSE_SERVER=unix:/var/tmp/me/fake.sock olo-viewer song.mp3
 //! ```
 
 use olo_sync::Mutex;
