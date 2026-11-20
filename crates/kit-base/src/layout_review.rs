@@ -270,7 +270,7 @@ impl Control {
     }
 
     fn said(&self) -> String {
-        format!("{} {:?}", self.role, self.name)
+        if self.name.is_empty() { format!("{} (no name)", self.role) } else { format!("{} \"{}\"", self.role, self.name) }
     }
 }
 
@@ -550,7 +550,7 @@ fn texts_over(p: &Parts, screen: Rect, out: &mut Vec<Finding>) {
                 Level::Error,
                 kind,
                 format!(
-                    "{:?} {said} (laid out {:.0} wide, {:.0} shows; its line {:.1}–{:.1} down, what it's in {:.1}–{:.1}): give it room, or cut it short with an ellipsis (`style::fit`)",
+                    "\"{}\" {said} (laid out {:.0} wide, {:.0} shows; its line {:.1}–{:.1} down, what it's in {:.1}–{:.1}): give it room, or cut it short with an ellipsis (`style::fit`)",
                     t.label,
                     t.rect.width(),
                     t.rect.intersect(t.clip).width(),
@@ -1360,6 +1360,19 @@ mod tests {
 
     fn text(label: &str, x: f32, width: f32) -> Text {
         Text { rect: Rect::from_min_max(pos2(x, 20.0), pos2(x + width, 52.0)), baseline: 44.0, middle: 36.0, left: x, label: label.into(), size: 26.0 }
+    }
+
+    #[test]
+    fn findings_keep_the_words_as_drawn() {
+        let name = "सहेजें";
+        let save = button(name, 20.0, "[save]");
+        assert_eq!(save.said(), "Button \"सहेजें\"");
+        assert_eq!(button("", 20.0, "[other]").said(), "Button (no name)");
+
+        let clip = Rect::from_min_max(save.rect.min, pos2(40.0, save.rect.max.y));
+        let parts = Parts { cut_texts: vec![CutText { rect: save.rect, clip, label: name.into() }], ..Parts::default() };
+        let findings = review(&parts, 400.0, 300.0, 2.0);
+        assert!(findings.iter().any(|f| f.kind == "text-cut" && f.text.starts_with("\"सहेजें\" is cut off")), "{findings:?}");
     }
 
     /// A title laid out past its room, over the buttons beside it, is
