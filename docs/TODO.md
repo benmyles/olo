@@ -144,7 +144,22 @@ something nobody here has is in "Blocked", with what it waits for.
   percentage being an amount and not a destination). Its strict log
   check failed only on slow-frame warnings it puts down to the
   machine's load (0.8 ms of CPU in a 14 ms frame): to see again on a
-  quiet machine. To do when it says done: read the whole diff, run its checks
+  quiet machine. Checked since (11:00): its crates' tests, the
+  standard drag suite and `chord-check` pass in my own runs
+  (`chord-check` looks for the apps in the tree's own `target`: in a
+  worktree built elsewhere, link that folder there for the run); both
+  reviewers saw the final pictures, and four points went back to it
+  (the inactive mini tab's colour in dark, plain tabs under 1.5×, a
+  cut title's ellipsis, the swap pad framed as the place pads are).
+  Declined, as how the pads were before or by design: the whole
+  screen's place as a bar along the top, ghosts for the windows
+  previewed, the pad growing with its title, a bold title. Opus's
+  look also listed things in Kache and Weather as they show in those
+  pictures (cards with rounded corners and shadows, Kache's value
+  columns each from its own card, Weather's rain line three points
+  tall, its sections' uneven gaps, "now" drawn in the colour of
+  "Feels like", a hyphen for a minus, the assistant's suggestions as
+  links): for those apps' own pass. To do when it says done: read the whole diff, run its checks
   (`tools/dev/snap-check`, `chord-check`, the crates' tests), picture
   every state at 1×, 1.5× and 2× in light and dark, both reviewers,
   the docs (HACKING's snapping and Zoom sections, the report), then
