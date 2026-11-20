@@ -957,6 +957,13 @@ fn hand_over(shared: &Arc<Shared>, open: &Open, proxy: &Proxy) -> bool {
     olo_kit::restore::hand_over(&mut cmd, Some(&state));
     // Launches go to the copy from now on (it listens as it starts).
     olo_kit::instance::close();
+    // No claim under way across the handover: one being made finishes
+    // first (its result saved), and none starts until this copy has
+    // retired, when none can (on the kit's upgrade thread, which waits).
+    let claims = shared.claims_closed(Duration::from_secs(120));
+    if claims.is_none() {
+        tracing::warn!("pool: a reset claim is still under way after two minutes; handing over beside it");
+    }
     // (What's waiting written first: the new copy reads the file as it
     // starts, and a request's bookkeeping waits up to `USAGE_EVERY`.)
     shared.flush();
@@ -974,6 +981,7 @@ fn hand_over(shared: &Arc<Shared>, open: &Open, proxy: &Proxy) -> bool {
     };
     tracing::info!(pid = child.id(), "pool: the new version takes every new request; finishing what this one has");
     shared.drain.retire();
+    drop(claims);
     proxy.send(Msg::CloseWindows);
     let weak = Arc::downgrade(shared);
     let kept = std::env::var_os(KEPT_ENV).is_some();

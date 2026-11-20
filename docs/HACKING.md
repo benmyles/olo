@@ -23139,7 +23139,15 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   thread of its own (`follow_predecessor`) and books each as its own
   (`book_late`), then saves it; what the old one saw before a reset the
   copy confirmed since is old (`reset_at`) and let go. A copy from
-  before reads none (they fill the pipe, then are dropped). A sign-in either renews
+  before reads none (they fill the pipe, then are dropped). **No reset
+  claim is under way across a handover**: before starting the copy the
+  old one takes every provider's claims (`Shared::claims_closed`, on the
+  kit's upgrade thread, which waits: a claim being made finishes first,
+  its result saved with the flush that follows; two minutes at most),
+  and holds them until it has retired, when none can be made there (a
+  claim asked for meanwhile finds it retired). Else a claim made as the
+  copy started was left there unclear, its intent saved but not how it
+  went, for the copy to make again (Codex's third review). A sign-in either renews
   meanwhile goes under the store's lock file (`store::lock_at`), after
   reading the file again for one the other renewed (`newer`: another
   token lasting longer), so it's renewed once; the old writes only that

@@ -641,6 +641,41 @@ async fn two_turned_away_together_claim_one_reset() {
     assert!(state.hosts.lock().unwrap().iter().all(|h| *h == host), "{:?} not {host}", state.hosts.lock().unwrap());
 }
 
+/// A handover holds every provider's claims while the new copy starts:
+/// one being made is waited for (not past the limit given), and one
+/// asked for while they're held, once the copy has retired, isn't made
+/// (Codex's third review: a claim under way across a handover could be
+/// made again by the new copy).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_handover_waits_for_a_claim_and_none_starts_across_it() {
+    let state = Arc::new(Claims { reset: Default::default(), made: Default::default(), hosts: Default::default() });
+    let fake = claims_fake(state.clone(), vec![("a", "ga")], std::time::Duration::from_millis(600), Arc::new(|_, _, _| (200, json!({"result": "reset"}))));
+    let (shared, _addr, _host) = out_of_quota(&["a"], &[("a", "ga")], fake).await;
+    let claiming = shared.clone();
+    let claim = tokio::spawn(async move { claiming.redeem("a").await });
+    tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+    // (From a thread of its own, as the kit's upgrade thread is.)
+    let s = shared.clone();
+    let (soon, later) = tokio::task::spawn_blocking(move || {
+        let soon = s.claims_closed(std::time::Duration::from_millis(50)).is_some();
+        let later = s.claims_closed(std::time::Duration::from_secs(5));
+        (soon, later)
+    })
+    .await
+    .unwrap();
+    assert!(!soon, "the gates taken while a claim was under way");
+    let held = later.expect("the gates, once the claim was made");
+    assert!(claim.await.unwrap().is_ok());
+    // Held, the copy retires: a claim asked for now isn't made.
+    shared.drain.retire();
+    let asked = shared.clone();
+    let after = tokio::spawn(async move { asked.redeem("a").await });
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    drop(held);
+    assert!(after.await.unwrap().is_err(), "a claim made by a copy that handed over");
+    assert_eq!(state.made.lock().unwrap().len(), 1);
+}
+
 /// A claim left unclear (the provider answered 503: it may have gone
 /// through): no other account's credit is claimed meanwhile (that could pay
 /// twice for one reset), and the same claim, under the same request id, is

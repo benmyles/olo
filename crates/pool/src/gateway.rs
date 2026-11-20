@@ -955,6 +955,31 @@ impl Shared {
         self.lock_for(&format!("\u{0}claims {}", provider_index(provider)))
     }
 
+    /// Every provider's claims held, once none is being made (waited for
+    /// `within` at most; not from the runtime's threads): what a handover
+    /// holds while the new copy starts and this one retires, so no claim
+    /// is under way across it (Codex's third review: one made here as the
+    /// copy started could be made again there, its intent kept but not
+    /// how it went). One waiting for the gate meanwhile then finds this
+    /// copy retired, and isn't made. None if one is still under way.
+    pub fn claims_closed(&self, within: Duration) -> Option<Vec<tokio::sync::OwnedMutexGuard<()>>> {
+        let gates: Vec<_> = [Provider::Claude, Provider::Codex].into_iter().map(|p| self.claims_gate(p)).collect();
+        if let Some(held) = gates.iter().map(|g| g.clone().try_lock_owned().ok()).collect::<Option<Vec<_>>>() {
+            return Some(held);
+        }
+        // (Waited for on a thread of its own, so the wait has its limit:
+        // one that comes later is let go there.)
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .name("pool-claims".into())
+            .spawn(move || {
+                let held: Vec<_> = gates.into_iter().map(|g| g.blocking_lock_owned()).collect();
+                let _ = tx.send(held);
+            })
+            .ok()?;
+        rx.recv_timeout(within).ok()
+    }
+
     /// Claim the credit `credit` of account `id` (None: the one that gives
     /// back most now, the narrowest and soonest to expire of those as good)
     /// for `why`. A claim left unclear is made again first, the same credit
