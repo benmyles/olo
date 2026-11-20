@@ -156,11 +156,11 @@ something nobody here has is in "Blocked", with what it waits for.
   **To do**:
   - What the third look left as design work: one object for a sign-in
     (its credential, jar, capture and connections taken together, so a
-    request in flight across a re-sign-in keeps the old ones whole);
-    cookies scoped by path and expiry as a browser's are; a handover
-    that closes claims before the new copy starts; trailers passed on;
-    the recorder parsing chunked framing rather than looking for its
-    end.
+    request in flight across a re-sign-in keeps the old ones whole); a
+    handover that closes claims before the new copy starts; trailers
+    passed on (none of either provider's answers has them; the reqwest
+    path can't carry them). (Cookies by domain, path and expiry, and the
+    recorder reading chunked framing by its sizes: done.)
   - What the fourth look (pooled sockets) left: matching Codex's TLS
     for the socket's own connection (a ClientHello compared, direct and
     through the pool) belongs with the TLS item below. (Its late

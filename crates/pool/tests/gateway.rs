@@ -934,7 +934,7 @@ async fn an_old_sign_ins_cookies_stay_its_own() {
     s.reauth("a", cred("replacement"));
     release.notify_one();
     let _ = request.await.unwrap();
-    assert_eq!(olo_token_pool::likeness::cookie(&s.jar("a"), "api.anthropic.com"), None);
+    assert_eq!(olo_token_pool::likeness::cookie(&s.jar("a"), "api.anthropic.com", "/v1/messages"), None);
 }
 
 /// The account id named escaped (its first character as `1`) is

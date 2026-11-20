@@ -23362,7 +23362,11 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   string and nowhere else, the account's as its capture has it, the
   body's length to match; the account's cookies, `likeness::Jar`, never
   the client's, and what a host sets kept for the account, not passed
-  back), over HTTP/1.1 as Claude Code speaks to Anthropic (HTTP/2 if a
+  back, as Codex's cookie store keeps and sends them, RFC 6265's rules:
+  a cookie's Domain to its subdomains, a host's own to it alone, within
+  its Path (else the request's, to its last `/`), until its Max-Age or
+  Expires, replaced by name, domain and path, the longer path first),
+  over HTTP/1.1 as Claude Code speaks to Anthropic (HTTP/2 if a
   client offered it and the host chose it), offering in its TLS what
   the client offered the proxy (`relay::ClientOffer`). The pool's
   connections follow the client's (`relay::ClientConn`): for each

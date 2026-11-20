@@ -409,11 +409,20 @@ const BODY_MOST: usize = 64 << 20;
 async fn read_body<S: AsyncRead + Unpin>(s: &mut S, mut have: Vec<u8>, length: Option<usize>, chunked: bool) -> Vec<u8> {
     let mut chunk = [0u8; 16384];
     if chunked {
-        // (Up to its last chunk, or `BODY_MOST`.)
-        while !have.windows(5).any(|w| w == b"0\r\n\r\n") && have.len() < BODY_MOST {
-            match tokio::time::timeout(Duration::from_secs(30), s.read(&mut chunk)).await {
-                Ok(Ok(n)) if n > 0 => have.extend_from_slice(&chunk[..n]),
-                _ => break,
+        // (Up to where its framing ends, or framing that isn't chunked, or
+        // `BODY_MOST`.)
+        loop {
+            match crate::likeness::chunked_end(&have) {
+                Some(Ok(end)) => {
+                    have.truncate(end);
+                    break;
+                }
+                Some(Err(())) => break,
+                None if have.len() >= BODY_MOST => break,
+                None => match tokio::time::timeout(Duration::from_secs(30), s.read(&mut chunk)).await {
+                    Ok(Ok(n)) if n > 0 => have.extend_from_slice(&chunk[..n]),
+                    _ => break,
+                },
             }
         }
         return crate::likeness::unchunk(&have);

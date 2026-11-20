@@ -57,43 +57,120 @@ const CLAUDE_RUNS: &[&str] = &["session", "wall", "print", "renewal"];
 /// use: Codex's review), and whose claim is Codex's own.
 const CODEX_RUNS: &[&str] = &["app-server", "session", "print", "renewal"];
 
-/// An account's cookies, (host, name, value): what each host set for its
-/// requests, sent back to that host alone, as its client's cookie store
-/// does (Codex's); never another account's, nor the client's own.
-pub type Jar = Arc<std::sync::Mutex<Vec<(String, String, String)>>>;
+/// An account's cookies: what each host set, sent back as its client's
+/// cookie store sends them (Codex's: RFC 6265's rules, as a browser's),
+/// never another account's, nor the client's own. Each kept with the
+/// domain it's for (its host alone, or a domain and its subdomains), the
+/// path it's for, and when it expires (Codex's third review: kept by host
+/// alone, every cookie went with every request, an expired one too).
+pub type Jar = Arc<std::sync::Mutex<Vec<Kept>>>;
 
-/// The `Cookie` a request to `host` carries from `jar`, if it has any.
-pub fn cookie(jar: &Jar, host: &str) -> Option<String> {
-    let jar = jar.lock().unwrap();
-    let theirs: Vec<String> = jar.iter().filter(|(h, _, _)| h == host).map(|(_, k, v)| format!("{k}={v}")).collect();
-    (!theirs.is_empty()).then(|| theirs.join("; "))
+/// A cookie in a [`Jar`], in the order they were first set.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Kept {
+    pub name: String,
+    pub value: String,
+    /// The host that set it (`host_only`), or the domain it was set for.
+    pub domain: String,
+    pub host_only: bool,
+    pub path: String,
+    /// When it expires (Unix seconds): never, for the pool's life.
+    pub expires: Option<i64>,
 }
 
-/// What an answer from `host` set (each `set-cookie` value), kept in `jar`
-/// for that host (a name's value replaced; one set to expire, gone).
-pub fn keep<'a>(jar: &Jar, host: &str, set: impl IntoIterator<Item = &'a str>) {
+/// Whether `host` is `domain` or one of its subdomains (RFC 6265, 5.1.3).
+fn domain_matches(host: &str, domain: &str) -> bool {
+    host == domain || host.strip_suffix(domain).is_some_and(|h| h.ends_with('.')) && host.parse::<std::net::IpAddr>().is_err()
+}
+
+/// Whether a request to `path` is within a cookie's `cookie_path` (5.1.4).
+fn path_matches(path: &str, cookie_path: &str) -> bool {
+    path == cookie_path || path.starts_with(cookie_path) && (cookie_path.ends_with('/') || path[cookie_path.len()..].starts_with('/'))
+}
+
+/// A cookie's path where it names none: the request's, up to its last `/`
+/// (5.1.4).
+fn default_path(path: &str) -> String {
+    match path.rfind('/') {
+        Some(0) | None => "/".into(),
+        Some(i) if path.starts_with('/') => path[..i].into(),
+        _ => "/".into(),
+    }
+}
+
+/// The `Cookie` a request to `host`'s `path` carries from `jar`, if any:
+/// those whose domain and path it's within and that haven't expired, the
+/// longer paths first, then the older (5.4).
+pub fn cookie(jar: &Jar, host: &str, path: &str) -> Option<String> {
+    let now = crate::model::now();
     let mut jar = jar.lock().unwrap();
-    for v in set {
+    jar.retain(|c| c.expires.is_none_or(|e| e > now));
+    let mut theirs: Vec<(usize, &Kept)> =
+        jar.iter().enumerate().filter(|(_, c)| if c.host_only { c.domain == host } else { domain_matches(host, &c.domain) }).filter(|(_, c)| path_matches(path, &c.path)).collect();
+    theirs.sort_by(|(i, a), (j, b)| b.path.len().cmp(&a.path.len()).then(i.cmp(j)));
+    (!theirs.is_empty()).then(|| theirs.iter().map(|(_, c)| format!("{}={}", c.name, c.value)).collect::<Vec<_>>().join("; "))
+}
+
+/// What an answer from `host` to a request for `path` set (each
+/// `set-cookie` value), kept in `jar` (5.3): its Domain if `host` is
+/// within it (else the cookie isn't kept), its Path or the request's, its
+/// Max-Age or else its Expires; one of the same name, domain and path
+/// replaced (keeping its place), one set to expire gone.
+pub fn keep<'a>(jar: &Jar, host: &str, path: &str, set: impl IntoIterator<Item = &'a str>) {
+    let now = crate::model::now();
+    let mut jar = jar.lock().unwrap();
+    'cookies: for v in set {
         let mut parts = v.split(';');
         let Some((name, value)) = parts.next().and_then(|nv| nv.split_once('=')).map(|(n, v)| (n.trim().to_owned(), v.trim().to_owned())) else { continue };
-        let gone = value.is_empty() || parts.any(|a| a.trim().eq_ignore_ascii_case("max-age=0"));
-        jar.retain(|(h, n, _)| !(h == host && *n == name));
-        if !gone {
-            jar.push((host.to_owned(), name, value));
+        if name.is_empty() {
+            continue;
+        }
+        let (mut domain, mut cookie_path, mut max_age, mut expires) = (None, None, None, None);
+        for a in parts {
+            let (k, v) = a.split_once('=').map_or((a.trim(), ""), |(k, v)| (k.trim(), v.trim()));
+            match k.to_ascii_lowercase().as_str() {
+                "domain" if !v.is_empty() => domain = Some(v.trim_start_matches('.').to_ascii_lowercase()),
+                "path" if v.starts_with('/') => cookie_path = Some(v.to_owned()),
+                "max-age" => max_age = v.parse::<i64>().ok(),
+                "expires" => expires = chrono::DateTime::parse_from_rfc2822(&v.replace('-', " ")).ok().map(|t| t.timestamp()),
+                _ => {}
+            }
+        }
+        let (domain, host_only) = match domain {
+            // (Only a domain the host is within, and not a bare top level.)
+            Some(d) if d.contains('.') && domain_matches(host, &d) => (d, false),
+            Some(_) => continue 'cookies,
+            None => (host.to_owned(), true),
+        };
+        let path = cookie_path.unwrap_or_else(|| default_path(path));
+        let expires = match max_age {
+            Some(n) => Some(now.saturating_add(n)),
+            None => expires,
+        };
+        let kept = Kept { name, value, domain, host_only, path, expires };
+        let gone = kept.expires.is_some_and(|e| e <= now);
+        match jar.iter().position(|c| c.name == kept.name && c.domain == kept.domain && c.path == kept.path) {
+            Some(i) if gone => {
+                jar.remove(i);
+            }
+            Some(i) => jar[i] = kept,
+            None if gone => {}
+            None => jar.push(kept),
         }
     }
 }
 
 impl Like {
-    /// The account's own values, for a request to `host`.
-    pub fn fill(&self, c: &Credential, host: &str) -> Fill {
-        let cookie = cookie(&self.jar, host);
+    /// The account's own values, for a request to `host`'s `path`.
+    pub fn fill(&self, c: &Credential, host: &str, path: &str) -> Fill {
+        let cookie = cookie(&self.jar, host, path);
         Fill { access: c.access.clone(), refresh: c.refresh.clone(), account_id: c.account_id.clone(), org: self.org.clone(), account_uuid: None, email: self.email.clone(), cookie }
     }
 
-    /// What an answer from `host` set (`set-cookie`), kept for that host.
-    pub fn remember(&self, host: &str, headers: &[(String, String)]) {
-        keep(&self.jar, host, headers.iter().filter(|(k, _)| k.eq_ignore_ascii_case("set-cookie")).map(|(_, v)| v.as_str()));
+    /// What an answer from `host` to a request for `path` set
+    /// (`set-cookie`), kept as its client keeps it.
+    pub fn remember(&self, host: &str, path: &str, headers: &[(String, String)]) {
+        keep(&self.jar, host, path, headers.iter().filter(|(k, _)| k.eq_ignore_ascii_case("set-cookie")).map(|(_, v)| v.as_str()));
     }
 
     /// The captured request `what` is made from, if this account's client
@@ -421,6 +498,44 @@ async fn http1<S: AsyncRead + AsyncWrite + Unpin>(mut s: S, b: &Built) -> Result
     Ok(Answer { status, headers, body })
 }
 
+/// Where a chunked body that starts `raw` ends, as its framing says: past
+/// its last chunk (size 0), its trailers and the blank line after them.
+/// None while more is to come; an error for framing that isn't chunked
+/// (a size that isn't hex, a chunk not ended by its CRLF). Read by its
+/// sizes, not by looking for the last chunk's bytes (Codex's third
+/// review: a chunk's own data could hold them).
+pub(crate) fn chunked_end(raw: &[u8]) -> Option<Result<usize, ()>> {
+    let mut at = 0;
+    loop {
+        let eol = raw[at..].windows(2).position(|w| w == b"\r\n")?;
+        let line = std::str::from_utf8(&raw[at..at + eol]).map_err(|_| ());
+        let size = line.and_then(|l| usize::from_str_radix(l.split(';').next().unwrap_or("").trim(), 16).map_err(|_| ()));
+        let size = match size {
+            Ok(n) => n,
+            Err(()) => return Some(Err(())),
+        };
+        at += eol + 2;
+        if size == 0 {
+            // Trailers, each a line, then a blank one.
+            loop {
+                let eol = raw[at..].windows(2).position(|w| w == b"\r\n")?;
+                at += eol + 2;
+                if eol == 0 {
+                    return Some(Ok(at));
+                }
+            }
+        }
+        let Some(end) = at.checked_add(size) else { return Some(Err(())) };
+        if raw.len() < end + 2 {
+            return None;
+        }
+        if &raw[end..end + 2] != b"\r\n" {
+            return Some(Err(()));
+        }
+        at = end + 2;
+    }
+}
+
 /// A chunked body's chunks, joined.
 pub(crate) fn unchunk(raw: &[u8]) -> Vec<u8> {
     let mut plain = Vec::new();
@@ -552,6 +667,62 @@ mod tests {
     fn nothing_sent_with_a_placeholder() {
         let s = sent(&[("Authorization", "Bearer {{access_token}}")], "");
         assert!(build(&s, &Fill { access: "tok".into(), ..Fill::default() }, None, None).is_err());
+    }
+
+    /// Cookies kept and sent as Codex's cookie store keeps and sends
+    /// them (RFC 6265): a domain's to its subdomains, a host's to it
+    /// alone; within their path; gone when they expire; replaced by name,
+    /// domain and path; the longer path first.
+    #[test]
+    fn cookies_as_a_browser_keeps_them() {
+        let jar: Jar = Default::default();
+        let later = chrono::DateTime::from_timestamp(crate::model::now() + 3600, 0).unwrap().format("%a, %d %b %Y %H:%M:%S GMT").to_string();
+        keep(
+            &jar,
+            "chatgpt.com",
+            "/backend-api/codex/responses",
+            [
+                "__cf_bm=one; path=/; expires=".to_owned() + &later + "; domain=.chatgpt.com; HttpOnly; Secure",
+                "_cfuvid=two; path=/; domain=.chatgpt.com".to_owned(),
+                "here=three".to_owned(),
+                "codex=four; Path=/backend-api/codex".to_owned(),
+                "stale=five; Max-Age=0".to_owned(),
+                "elsewhere=six; Domain=example.com".to_owned(),
+                "top=seven; Domain=com".to_owned(),
+            ]
+            .iter()
+            .map(String::as_str),
+        );
+        let got = |host: &str, path: &str| cookie(&jar, host, path).unwrap_or_default();
+        assert_eq!(got("chatgpt.com", "/backend-api/codex/responses"), "here=three; codex=four; __cf_bm=one; _cfuvid=two");
+        assert_eq!(got("chatgpt.com", "/backend-api/wham/usage"), "__cf_bm=one; _cfuvid=two");
+        assert_eq!(got("ab.chatgpt.com", "/backend-api/codex/x"), "__cf_bm=one; _cfuvid=two");
+        assert_eq!(got("notchatgpt.com", "/"), "");
+        // Replaced in its place; set to expire, gone; an expired one never sent.
+        keep(&jar, "chatgpt.com", "/", ["__cf_bm=one-again; path=/; domain=chatgpt.com", "_cfuvid=; path=/; domain=chatgpt.com; Max-Age=-1"].into_iter());
+        jar.lock().unwrap().push(Kept { name: "old".into(), value: "x".into(), domain: "chatgpt.com".into(), host_only: true, path: "/".into(), expires: Some(crate::model::now() - 1) });
+        assert_eq!(got("chatgpt.com", "/backend-api/wham/usage"), "__cf_bm=one-again");
+        assert_eq!(default_path("/backend-api/codex/responses"), "/backend-api/codex");
+        assert_eq!(default_path("/v1"), "/");
+        assert!(path_matches("/backend-api/codex/x", "/backend-api/codex") && !path_matches("/backend-api/codexes", "/backend-api/codex"));
+    }
+
+    /// A chunked body ends where its framing says: its last chunk, its
+    /// trailers, the blank line; not where a chunk's own data holds what
+    /// a last chunk looks like.
+    #[test]
+    fn a_chunked_body_ends_by_its_sizes() {
+        let tricky = b"9\r\n0\r\n\r\nabcd\r\n3\r\nxyz\r\n0\r\n\r\nNEXT";
+        assert_eq!(chunked_end(tricky), Some(Ok(tricky.len() - 4)));
+        assert_eq!(unchunk(&tricky[..tricky.len() - 4]), b"0\r\n\r\nabcdxyz");
+        let trailers = b"3;ext=1\r\nabc\r\n0\r\nx-checksum: 1\r\n\r\n";
+        assert_eq!(chunked_end(trailers), Some(Ok(trailers.len())));
+        for more in [&b"9\r\n0\r\n\r\nab"[..], b"3\r\nabc\r\n", b"3\r\nabc\r\n0\r\nx: 1\r\n", b""] {
+            assert_eq!(chunked_end(more), None, "{:?}", String::from_utf8_lossy(more));
+        }
+        for broken in [&b"zz\r\n"[..], b"3\r\nabcXY0\r\n\r\n"] {
+            assert_eq!(chunked_end(broken), Some(Err(())), "{:?}", String::from_utf8_lossy(broken));
+        }
     }
 
     #[test]

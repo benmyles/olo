@@ -1524,6 +1524,14 @@ fn returned(name: &str) -> bool {
 }
 
 /// The host a provider's requests go to, whose cookies an account keeps.
+/// A URL's path, as a cookie's is matched against: from its host on, to
+/// its query.
+fn path_of(url: &str) -> &str {
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    let path = rest.find('/').map_or("/", |i| &rest[i..]);
+    path.split(['?', '#']).next().unwrap_or("/")
+}
+
 fn host_of(provider: Provider) -> &'static str {
     match provider {
         Provider::Claude => "api.anthropic.com",
@@ -1749,7 +1757,7 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                 };
                 let mut b = hyper::Request::builder().method(method.clone()).uri(target);
                 let mut signed = false;
-                let cookie = crate::likeness::cookie(&response_jar, host_of(provider));
+                let cookie = crate::likeness::cookie(&response_jar, host_of(provider), path_of(&url));
                 for (k, v) in headers.iter() {
                     match k.as_str() {
                         "authorization" | "x-api-key" if !signed => {
@@ -1834,13 +1842,13 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                     req = upstream::authorize(req, provider, &cred);
                 }
                 // (The account's cookies, as Codex's store adds its own.)
-                if let Some(c) = crate::likeness::cookie(&response_jar, host_of(provider)) {
+                if let Some(c) = crate::likeness::cookie(&response_jar, host_of(provider), path_of(&url)) {
                     req = req.header("cookie", c);
                 }
                 req.body(sent_plain.clone().unwrap_or_else(|| own.body.clone())).send().await.map(crate::relay::Answer::Reqwest).map_err(Sent::from)
             };
             if let Ok(r) = &sent {
-                crate::likeness::keep(&response_jar, host_of(provider), r.headers().get_all("set-cookie").iter().filter_map(|v| v.to_str().ok()));
+                crate::likeness::keep(&response_jar, host_of(provider), path_of(&url), r.headers().get_all("set-cookie").iter().filter_map(|v| v.to_str().ok()));
             }
             match sent {
                 Ok(r) if sent_plain.is_none() && resend_plain(provider, r.status(), &headers) => {
@@ -2030,7 +2038,7 @@ pub async fn serve_socket(s: Arc<Shared>, path: String, query: Option<String>, h
             };
             match crate::relay::upgrade(&base, &offer, req).await {
                 Ok(r) => {
-                    crate::likeness::keep(&jar, host_of(provider), r.headers().get_all("set-cookie").iter().filter_map(|v| v.to_str().ok()));
+                    crate::likeness::keep(&jar, host_of(provider), target.split('?').next().unwrap_or(&target), r.headers().get_all("set-cookie").iter().filter_map(|v| v.to_str().ok()));
                     if r.status() == StatusCode::UNAUTHORIZED && !refreshed {
                         refreshed = true;
                         match s.fresh(&id, provider, Some(&cred), 0).await {
@@ -2125,7 +2133,7 @@ pub async fn serve_socket(s: Arc<Shared>, path: String, query: Option<String>, h
 /// (after its sign-in where Codex named none), its cookies where Codex's
 /// were (or at the end).
 fn socket_request(headers: &HeaderMap, target: &str, cred: &Credential, jar: &crate::likeness::Jar, ext: &axum::http::Extensions) -> Result<hyper::Request<http_body_util::Full<Bytes>>, String> {
-    let cookie = crate::likeness::cookie(jar, host_of(Provider::Codex));
+    let cookie = crate::likeness::cookie(jar, host_of(Provider::Codex), target.split('?').next().unwrap_or(target));
     let mut b = hyper::Request::builder().method(Method::GET).uri(target);
     let mut signed = false;
     for (k, v) in headers.iter() {

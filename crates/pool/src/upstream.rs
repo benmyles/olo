@@ -118,13 +118,13 @@ impl std::fmt::Display for Failure {
 async fn as_client(like: Option<&Like>, what: What, up: &Upstreams, c: &Credential, target: Option<&str>, body: Option<Vec<u8>>, doing: &str) -> Option<Result<likeness::Answer, Failure>> {
     let like = like?;
     let sent = like.request(what)?;
-    let built = match likeness::build(&sent, &like.fill(c, &sent.host), target, body.as_deref()) {
+    let built = match likeness::build(&sent, &like.fill(c, &sent.host, target.map_or(sent.path(), |t| t.split('?').next().unwrap_or(t))), target, body.as_deref()) {
         Ok(b) => b,
         Err(e) => return Some(Err(Failure::Other(format!("{doing}: {e}")))),
     };
     let answer = likeness::send(&built, up).await.map_err(|e| Failure::Other(format!("{doing}: {e}")));
     if let Ok(a) = &answer {
-        like.remember(&sent.host, &a.headers);
+        like.remember(&sent.host, target.map_or(sent.path(), |t| t.split('?').next().unwrap_or(t)), &a.headers);
     }
     Some(answer)
 }
@@ -511,9 +511,9 @@ pub async fn redeem(client: &Client, up: &Upstreams, p: Provider, c: &Credential
             Provider::Codex => likeness::with_fields(&sent.body, &[("redeem_request_id", json!(request))]),
         }
         .map_err(|e| Failure::Other(format!("{DOING}: {e}")))?;
-        let built = likeness::build(&sent, &l.fill(c, &sent.host), None, Some(&body)).map_err(|e| Failure::Other(format!("{DOING}: {e}")))?;
+        let built = likeness::build(&sent, &l.fill(c, &sent.host, sent.path()), None, Some(&body)).map_err(|e| Failure::Other(format!("{DOING}: {e}")))?;
         let answer = likeness::send(&built, up).await.map_err(|e| Failure::Other(format!("{DOING}: {e}")))?;
-        l.remember(&sent.host, &answer.headers);
+        l.remember(&sent.host, sent.path(), &answer.headers);
         return claimed(p, &ok_json(DOING, answer)?);
     }
     let (url, body) = match p {
