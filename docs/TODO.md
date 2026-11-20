@@ -117,22 +117,41 @@ something nobody here has is in "Blocked", with what it waits for.
   app of one window comes forward), which joins the application's
   group there as every new window does. A row in the list of what's
   running still only goes to it.
-  **To do, first**: the other half of the rule. A program whose
-  windows are all on an agent's screen (the person moved them there:
-  `olo-screen take`; the program is then a client of that screen's
-  compositor through `olo-wlproxy`) opens its next window there, in
-  that group, whoever asked. Where the person asked (Deskbar's menu,
-  the palette, a link opened on their display: the launch carries an
-  activation token of the person's compositor, `activation_token`),
-  the new window belongs on the person's active display and
-  workspace, on its own, not in a group on a screen they aren't
-  looking at: to find where `olo-wlproxy` decides which compositor a
-  client's new window is made on, and have it go by who asked. To
-  test with two headless sessions and a kit app moved between them,
-  then with Chrome as Chrome is tested here (scratch HOME and
-  profile). And "New Instance" in the row's menu for what ⌘-click
-  does (a second process of Olo's own apps), since nothing says it's
-  there; not for Chrome, which keeps one process to a profile folder.
+  **To do, first: the other half of the rule, which is the proxy's**
+  (Ben: "just build this all … and then keep going never stop
+  again"). What reading `crates/wlproxy` showed: a program is on one
+  compositor at a time. `olo-screen take` and `give` move the whole
+  program (`control.rs`: `move PID PATH`; its state replayed on the
+  other app_server, one upstream connection to a program), so with
+  Ben's Chrome taken to an agent's screen, every window it opens is
+  there, whoever asked, and no single window of it can be on Ben's
+  display while another stays on the screen. Nor can a second Chrome
+  serve (one process to a profile folder, and Ben wants the same
+  profiles). So the rule needs **one program on two compositors at
+  once**: the proxy keeping an upstream connection to each app_server
+  a program has windows on, each surface (with its popups and
+  subsurfaces) made on the one chosen for it, and a new toplevel
+  going to the person's when the launch that asked for it carried a
+  token of the person's compositor (`activation_token`; else where the
+  program's windows are, as now). What that takes, to design before
+  it's built: the globals a program binds once (compositor, shm and
+  its pools and buffers, the shell, decorations, viewporter,
+  fractional scale, the text-input and data devices) bound on each
+  upstream with ids of their own; the outputs of both shown to the
+  program; **two seats** (a pointer and keyboard can be in one
+  surface at a time, and the person and an agent each have theirs:
+  whether Chrome and GTK take a second `wl_seat` is the first thing
+  to find out, with a made-up program and then a real one); serials
+  per upstream; `take` and `give` then moving windows, not programs
+  (the program's other windows staying where they are); a restart of
+  either app_server replayed for its windows alone; and Deskbar and
+  agents each seeing the windows on their own compositor. Until then
+  a program on an agent's screen opens its windows there, and the
+  honest stopgap is to say so where the person asks (Deskbar, for an
+  application whose program is on a screen: "… is on the agent screen
+  NAME: its windows open there", with Bring It Here). And "New
+  Instance" in the row's menu for what ⌘-click does (a second process
+  of Olo's own apps), since nothing says it's there; not for Chrome.
 
 - **Back and Forward in Passwords, and in every app** (Ben,
   2026-11-20: "navigate forward and back should work in passwords app
