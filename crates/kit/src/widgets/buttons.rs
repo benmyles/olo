@@ -451,7 +451,8 @@ fn paint_button(g: &mut Painter, r: Bounds<Pixels>, s: ControlState, label: &str
 /// a band of its fill sweeping across every 1.6 s (drawn again each frame
 /// only then: a known fraction is drawn again only as it moves). The
 /// label centred over it, in the control's text colour, and over what's
-/// filled in white or black, whichever reads better on the fill.
+/// filled in white or black, whichever reads better over all of the fill
+/// (its top and its darker bottom).
 fn paint_working(g: &mut Painter, r: Bounds<Pixels>, label: &str, done: Option<f32>, font_size: f32) {
     let p = theme::palette();
     let filled = match done {
@@ -476,7 +477,7 @@ fn paint_working(g: &mut Painter, r: Bounds<Pixels>, label: &str, done: Option<f
             swept
         }
     };
-    let on_fill = if olo_theme::contrast(olo_theme::WHITE, p.status_bar) >= olo_theme::contrast(olo_theme::BLACK, p.status_bar) { olo_theme::WHITE } else { olo_theme::BLACK };
+    let on_fill = ink_over_fill(p.status_bar);
     let c = r.center();
     let font = style::ui_font(FontWeight::NORMAL);
     let rest = [Bounds::from_corners(r.origin, point(filled.left(), r.bottom())), Bounds::from_corners(point(filled.right(), r.top()), r.bottom_right())];
@@ -490,6 +491,17 @@ fn paint_working(g: &mut Painter, r: Bounds<Pixels>, label: &str, done: Option<f
             style::label(g, c.x, c.y, style::Align::Center, label.to_string(), font_size, font.clone(), style::c(on_fill));
         });
     }
+}
+
+/// White or black, whichever reads better over all of a working
+/// button's fill of `fill`: it darkens to 0.8 of itself at the bottom
+/// (`level_bar`). (Judged by its top alone, Platinum's purple took black,
+/// 3:1 lower down: the study of its theme, 2026-11-19.)
+fn ink_over_fill(fill: olo_theme::Rgba) -> olo_theme::Rgba {
+    let c8 = |v: u8| (f32::from(v) * 0.8).round() as u8;
+    let lower: olo_theme::Rgba = [c8(fill[0]), c8(fill[1]), c8(fill[2]), fill[3]];
+    let worst = |ink| olo_theme::contrast(ink, fill).min(olo_theme::contrast(ink, lower));
+    if worst(olo_theme::WHITE) >= worst(olo_theme::BLACK) { olo_theme::WHITE } else { olo_theme::BLACK }
 }
 
 /// BeOS marks the control with the keyboard by underlining its label in
@@ -818,5 +830,17 @@ impl IntoElement for RadioButton {
             c = c.on_click(move |_, cx| f(&(), cx));
         }
         c.into_element()
+    }
+}
+
+#[cfg(test)]
+mod ink_tests {
+    /// A working button's label over its fill reads in the ink that's
+    /// better over all of it, the darker bottom too: white on a purple
+    /// as Platinum's, black on a bright blue.
+    #[test]
+    fn the_ink_over_a_fill() {
+        assert_eq!(super::ink_over_fill([91, 91, 204, 255]), olo_theme::WHITE);
+        assert_eq!(super::ink_over_fill([90, 170, 255, 255]), olo_theme::BLACK);
     }
 }

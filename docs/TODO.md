@@ -45,11 +45,13 @@ something nobody here has is in "Blocked", with what it waits for.
   ten more themes (Solarized, Gruvbox, Nord, Rosé Pine, Everforest,
   Kanagawa, Tomorrow, Zenburn, Cobalt2, Oceanic Next); AmigaOS and
   Aqua, each a theme with an icon set of its own (28 in all); each
-  theme's wallpaper chosen by eye from the whole pack. **Left**: the
-  study itself, theme by theme (Classic, then BeOS, then Platinum,
-  then the rest): every app, Terminal, light and dark, at 1×, 1.5× and
-  2× and zoomed in, and whatever it finds put right
-  (`tools/dev/scheme-shots` pictures every theme).
+  theme's wallpaper chosen by eye from the whole pack. **The study, so
+  far** (2026-11-19): Classic, BeOS and Platinum, each in the kit's
+  gallery, Tracker, Terminal, Preferences ▸ Themes, StyledEdit and
+  Calendar, light, dark and night, at 1×, 1.5× and 2×: consistent;
+  one defect, a working button's label over Platinum's purple fill in
+  black at 3:1 (now the ink better over all of the fill). **Left**:
+  the rest of the themes so, and more apps in each.
 
 ## Not started (highest priority first)
 
@@ -248,7 +250,14 @@ something nobody here has is in "Blocked", with what it waits for.
   code, `words gather`): most of Calendar's (its menus, the event window's
   labels and menus, its dates and times, `words.rs`: "Wednesday,
   November 18, 2026, 2 PM – 3:30 PM" in German too; Codex, 2026-11-19,
-  on the preview pane, whose own words are in).
+  on the preview pane, whose own words are in). The dates aren't Calendar's alone
+  (2026-11-19, the agent translating Japanese: Weather's "現地時刻：
+  19日（Thu）15:00"): every day and month name comes from English
+  tables formatted into the text (`timeline::WEEKDAYS` on the kit's
+  time axes and Weather's lines and widget, `month::WEEKDAYS` and
+  `MONTHS` in the month widget and Calendar, `clock::DAYS`), most of
+  them in no catalog; to do with the formats, once for all: the names,
+  long and short, and a date's order, by language.
 - **Translations as resources, not compiled in: measure it**
   (2026-11-19, from another agent's study of kache's misses, which Ben
   passed on: "packaging catalogs as separately updatable resources is
