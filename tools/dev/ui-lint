@@ -31,9 +31,12 @@ size in pixels as it's turned, and its scale), read from their session
 nothing is run there); nothing without a session.
 
 Every app at once, each in a headless session of its own (a copy of the
-made-up home, its own sound server), --jobs at a time (three quarters of
-the processors by default), all at idle priority (the person's desktop
-first); the look and scale are changed and the app
+made-up home, its own sound server), --jobs at a time (a quarter of the
+processors by default, four at the most: each session draws on the GPU
+the person's desktop draws on, and a dozen at once on a loaded machine
+had its jobs time out and the GPU reset under them, 2026-11-20), each
+begun only once the machine has room (`wait_for_room`), all at idle
+priority (the person's desktop first); the look and scale are changed and the app
 asked again until it has drawn them, never waited for longer.
 
 Results are kept (~/.cache/olo-dev/ui-lint.json, one for each app and
@@ -659,6 +662,30 @@ def lint_one(spec, slot, master, screen, scales, show_review, work, all_themes=F
         subprocess.run(["rm", "-rf", home, os.path.join(BASE, name)])
 
 
+SAID_WAITING = threading.Event()
+
+
+def wait_for_room(what):
+    """Waits to begin a session until the machine has room for it: while
+    its processors are short (the kernel's own count, /proc/pressure/cpu:
+    for a quarter of the last ten seconds something waited for one), up to
+    a quarter of an hour, then goes on. Idle priority keeps a session's
+    processor time behind everyone's, but not its drawing: the GPU is
+    shared with the person's desktop, and what waits there is theirs."""
+    began = time.time()
+    while time.time() - began < 900:
+        try:
+            avg10 = float(open("/proc/pressure/cpu").readline().split("avg10=")[1].split()[0])
+        except (OSError, IndexError, ValueError):
+            return
+        if avg10 < 25.0:
+            return
+        if not SAID_WAITING.is_set():
+            SAID_WAITING.set()
+            print(f"ui-lint: waiting for the machine to have room before {what} (processors short {avg10:.0f}% of the last 10 s)", file=sys.stderr, flush=True)
+        time.sleep(5)
+
+
 def main():
     a = sys.argv[1:]
     show_review = "--review" in a
@@ -686,7 +713,7 @@ def main():
             if run not in runs:
                 runs.append(run)
     where = lambda run: f" on {run[0]} at {run[1][0]:g}×" if len(runs) > 1 else ""
-    jobs = int(a[a.index("--jobs") + 1]) if "--jobs" in a else max(2, (os.cpu_count() or 4) * 3 // 4)
+    jobs = int(a[a.index("--jobs") + 1]) if "--jobs" in a else max(2, min(4, (os.cpu_count() or 4) // 4))
     # Background work beside the person's desktop: the lint and every
     # session it starts at idle priority (they inherit it), so they take
     # only the processor time nothing else wants. Run by the pre-push
@@ -747,9 +774,13 @@ def main():
     for run in runs:
         if shots_of(run):
             os.makedirs(shots_of(run), exist_ok=True)
+    def lint_one_when_room(spec, *rest):
+        wait_for_room(spec[0])
+        return lint_one(spec, *rest)
+
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=min(jobs, len(todo))) as pool:
-            futures = {pool.submit(lint_one, spec, slot, master, run[0], list(run[1]), show_review, work, all_themes, tiles, shots_of(run), where(run)): (spec, run)
+            futures = {pool.submit(lint_one_when_room, spec, slot, master, run[0], list(run[1]), show_review, work, all_themes, tiles, shots_of(run), where(run)): (spec, run)
                        for slot, (spec, run) in enumerate(todo)}
             for done in concurrent.futures.as_completed(futures):
                 spec, run = futures[done]

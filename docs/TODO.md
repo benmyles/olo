@@ -83,7 +83,39 @@ something nobody here has is in "Blocked", with what it waits for.
   as the machine has room for, not a fixed number, and waits while
   the person's desktop is short of GPU or processor (PSI, and
   app_server's own late frames); the hook says what it's waiting
-  for. Also: three test desktops from earlier runs were still up,
+  for. **Ben, as it was being looked at: "why are they so impactful?
+  those headless sessions and agent screens should be super
+  efficient … i don't want you to just limit concurrency i want it
+  to work more efficiently."** So the cause is to be found and
+  removed, not only kept away from. Measured at rest just after (the
+  kernel's count for each GPU client, `drm-cycles` in
+  /proc/PID/fdinfo, six seconds): the whole GPU about 10% busy with
+  84 clients; the person's compositor 2.4%, ten agent screens'
+  compositors 1.9% together (most 0.1% each, two of them 0.3% and
+  0.9%), Terminal 2.9%, Chrome 1.4%, eleven Deskbars 1.3%. So at
+  rest they are light on the GPU, and steady load doesn't explain a
+  stall of seconds. (Not light on the processor: agent screens'
+  compositors stood at 1 to 8% of a core each with nobody at them:
+  to look at by itself.) Before each of the day's fifteen resets the
+  first job to time out was now a compositor's, now Deskbar's, the
+  person's compositor's, Terminal's: the whole GPU stalls, whoever
+  is drawing. Not yet known which it is: what a lint desktop does in
+  a burst (a 5120 × 3200 output drawn at three scales and read back
+  as pictures, a dozen beginning at once: buffers of 64 MB each on a
+  GPU that shares the machine's memory), the driver's own timing out
+  of jobs while the processors are at a load of 60 (its completions
+  handled late), or a fault of the driver's (its dump of the stalled
+  job is root's to read: /sys/class/devcoredump). To do, in this
+  order: one lint desktop alone, measured the same way (its share of
+  the GPU, its buffers, its processor time: what it should cost
+  against what it does); then two, four, eight, at night or with Ben
+  away, watching for the first late job; the dump read (ask Ben to
+  `sudo cat` it to a file); and what it shows fixed where it is
+  (smaller outputs for the lint where the picture doesn't need the
+  size, pictures read back without stalling, sessions that draw
+  nothing they aren't asked for). The lint was meanwhile made to run
+  four desktops at once at the most and to wait for room
+  (`wait_for_room`): a guard, not the fix. Also: three test desktops from earlier runs were still up,
   one two and a half days old (`/var/tmp/olo-live-lint-*`,
   `/var/tmp/olo-takeover.*`: ended by hand): the lint and the checks
   end what they start however they end (`tsession start --owner`),
