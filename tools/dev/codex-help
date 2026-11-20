@@ -80,6 +80,12 @@ Write your answer as Markdown: the cause (file:line), the evidence (what
 you ran and what it printed), how sure you are and what would settle it
 if you aren't, what you ruled out, and the fix you'd make as a diff (not
 applied). If you didn't find it, say so plainly, and what you learned.
+Your last message is your answer: it is saved as $dir/answer.md, in
+place of any file of that name you wrote (a long write-up there, then a
+short last message, lost the write-up twice). So make your last message
+the whole answer, every finding in full, not a summary of it; put what
+is too long for it (a diff, a long log) in other files in $dir and name
+them in it.
 
 The brief:
 

@@ -69,7 +69,9 @@ looking at, with a reproduction and a patch that checked out.
    with rules in front of your brief: no changes to the working tree,
    no commits, the person's session left alone, headless tests under a
    `codex-` name, scratch in the brief's folder. It writes
-   `answer.md` (its findings) and `log.txt` (what it did) there.
+   `answer.md` (its findings: its last message, which replaces any file
+   of that name, so a brief never asks it to write `answer.md` itself)
+   and `log.txt` (what it did) there.
    One at a time, and not while the tree is mid-push if it will build.
 
 3. **Check what comes back.** Its answer is a lead, in the same
