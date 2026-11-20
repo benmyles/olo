@@ -279,7 +279,8 @@ impl Drain {
 
     /// Requests under way, and whether a tunnel is.
     pub fn under_way(&self) -> (usize, bool) {
-        let since = self.clock.elapsed().as_millis() as u64 - self.tunnel_byte.load(Ordering::Relaxed).min(self.clock.elapsed().as_millis() as u64);
+        let crossed = self.tunnel_byte.load(Ordering::Relaxed);
+        let since = (self.clock.elapsed().as_millis() as u64).saturating_sub(crossed);
         let tunnel = self.tunnels.load(Ordering::SeqCst) > 0 && since < TUNNEL_IDLE.as_millis() as u64;
         (self.requests.load(Ordering::SeqCst), tunnel)
     }
@@ -304,6 +305,12 @@ impl Drain {
     /// One ended; true if it was the last while draining.
     pub fn request_ended(&self) -> bool {
         self.requests.fetch_sub(1, Ordering::SeqCst) == 1 && self.draining()
+    }
+
+    /// Count an upgraded connection even when its relay is cancelled.
+    pub(crate) fn tunnel(&self) -> Tunnel<'_> {
+        self.tunnel_opened();
+        Tunnel(self)
     }
 
     pub fn tunnel_opened(&self) {
@@ -413,6 +420,14 @@ fn handed_over(port: u16) -> Option<RawFd> {
         }
     }
     found
+}
+
+pub(crate) struct Tunnel<'a>(&'a Drain);
+
+impl Drop for Tunnel<'_> {
+    fn drop(&mut self) {
+        self.0.tunnel_closed();
+    }
 }
 
 /// A request under way, until dropped (its answer sent, or the client

@@ -675,7 +675,7 @@ async fn exchange(tls: &mut tokio_rustls::client::TlsStream<tokio::net::TcpStrea
         got.extend_from_slice(&chunk[..n]);
     }
     let text = String::from_utf8_lossy(&got).into_owned();
-    text[..text.find("\r\n\r\n").unwrap()].to_owned()
+    text[..text.find("\r\n\r\n").unwrap() + 2].to_owned()
 }
 
 /// The pool's connections follow the client's (Codex's review: every
@@ -1000,4 +1000,204 @@ async fn codex_sockets_are_the_pools() {
     assert!(c.windows.iter().any(|w| (w.used - 42.0).abs() < 0.01), "{:?}", c.windows);
     assert!(p.open.is_empty() && p.in_flight.values().all(|&n| n == 0));
     assert!(p.served.iter().any(|s| s.account_id == "b-runs-out" && s.request.outcome == olo_token_pool::model::Outcome::RateLimited));
+}
+
+/// One Codex account ("test") pooled through the proxy, its ChatGPT a
+/// host the test speaks for itself: the handshake answered 101, then
+/// whatever the test writes, frame by frame, and reads.
+async fn one_socket() -> (Arc<Shared>, tokio_rustls::client::TlsStream<tokio::net::TcpStream>, tokio::net::TcpStream) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let shared = one_account(listener.local_addr().unwrap()).await;
+    let (proxy, authority) = proxy_for(&shared).await;
+    let key = "dGhlIHNhbXBsZSBub25jZQ==";
+    let host = async {
+        let (mut tcp, _) = listener.accept().await.unwrap();
+        let mut head = Vec::new();
+        while !head.ends_with(b"\r\n\r\n") {
+            head.push(tcp.read_u8().await.unwrap());
+        }
+        let accept = tungstenite::handshake::derive_accept_key(key.as_bytes());
+        tcp.write_all(format!("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n").as_bytes()).await.unwrap();
+        tcp
+    };
+    let ((answer, client), host) = tokio::join!(codex_socket(proxy, &authority, key), host);
+    assert!(answer.starts_with("HTTP/1.1 101"), "{answer}");
+    (shared, client, host)
+}
+
+/// The pool with one Codex account, its provider at `up`.
+async fn one_account(up: SocketAddr) -> Arc<Shared> {
+    let mut saved = Saved::default();
+    saved.accounts.push(account("test", Provider::Codex));
+    saved.credentials.insert("test".into(), Credential { access: "pooled".into(), refresh: Some("renewal".into()), expires_at: Some(now() + 3600), account_id: Some("acct-test".into()) });
+    Shared::new(saved, None, Upstreams::fake(&format!("http://{up}")), || {})
+}
+
+async fn proxy_for(shared: &Arc<Shared>) -> (SocketAddr, Arc<Authority>) {
+    let authority = Arc::new(Authority::ephemeral());
+    let s = shared.clone();
+    let proxy = intercept::serve(shared.clone(), authority.clone(), 0, Arc::new(move |p| s.serves(p)), intercept::Who::Anyone).await.unwrap();
+    (proxy, authority)
+}
+
+fn event(v: Value) -> Vec<u8> {
+    server_frame(0x1, v.to_string().as_bytes())
+}
+
+/// The host's end shows the socket closed (or not, within `within`).
+async fn host_closed(host: &mut tokio::net::TcpStream, within: std::time::Duration) -> bool {
+    let mut b = [0u8; 64];
+    loop {
+        match tokio::time::timeout(within, host.read(&mut b)).await {
+            Ok(Ok(0) | Err(_)) => return true,
+            Ok(Ok(_)) => continue,
+            Err(_) => return false,
+        }
+    }
+}
+
+/// A refusal read in one piece with what came before it (Codex's fourth
+/// review: the frames before it were dropped with it): what came before
+/// reaches Codex, the refusal doesn't, and the socket is closed both
+/// ways, ChatGPT's end too, not left open.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_refusal_read_with_what_came_before() {
+    for apart in [true, false] {
+        let (shared, mut client, mut host) = one_socket().await;
+        let before = event(json!({"type": "response.created", "response": {"model": "gpt-5"}}));
+        let refusal = event(json!({"type": "error", "status": 429, "error": {"type": "usage_limit_reached", "resets_at": now() + 100}}));
+        if apart {
+            host.write_all(&before).await.unwrap();
+            let (_, got, _) = heard(&mut client, "response.created").await;
+            assert_eq!(got, before);
+            host.write_all(&refusal).await.unwrap();
+            let (said, got, closed) = heard(&mut client, "never").await;
+            assert!(closed && got.is_empty(), "{said:?}");
+        } else {
+            host.write_all(&[&before[..], &refusal[..]].concat()).await.unwrap();
+            let (said, got, closed) = heard(&mut client, "never").await;
+            assert!(closed, "{said:?}");
+            assert_eq!(got, before, "what came before the refusal, all of it, and nothing else");
+        }
+        assert!(host_closed(&mut host, std::time::Duration::from_secs(2)).await, "ChatGPT's end left open");
+        assert!(shared.snapshot().account("test").unwrap().cooldown_until.is_some_and(|t| t > now() + 50));
+    }
+}
+
+/// A turn under way but quiet (a long think before anything is said)
+/// keeps a handover waiting past the ten seconds a quiet tunnel counts
+/// for (Codex's fourth review: the retiring copy saw nothing busy and
+/// went, cutting the turn); and a turn that ends incomplete is counted
+/// with its usage, as not passed (it was counted with none, passed).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_quiet_turn_holds_a_handover_and_an_incomplete_one_counts() {
+    let (shared, mut client, mut host) = one_socket().await;
+    let asked = client_frame(0x1, br#"{"type":"response.create","model":"gpt-5"}"#);
+    client.write_all(&asked).await.unwrap();
+    let mut got = vec![0u8; asked.len()];
+    host.read_exact(&mut got).await.unwrap();
+    assert_eq!(got, asked);
+    let created = event(json!({"type": "response.created", "response": {"model": "gpt-5"}}));
+    host.write_all(&created).await.unwrap();
+    heard(&mut client, "response.created").await;
+    shared.drain.retire();
+    tokio::time::sleep(std::time::Duration::from_millis(10_300)).await;
+    assert!(shared.drain.busy(), "a quiet turn let the handover go: {:?}", shared.drain.under_way());
+    let end = event(json!({"type": "response.incomplete", "response": {"incomplete_details": {"reason": "max_output_tokens"}, "usage": {"input_tokens": 11, "output_tokens": 4}}}));
+    host.write_all(&end).await.unwrap();
+    heard(&mut client, "response.incomplete").await;
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let p = shared.snapshot();
+    let r = &p.served.back().unwrap().request;
+    assert_eq!((r.usage.input_tokens, r.usage.output_tokens), (11, 4));
+    assert_eq!(r.outcome, olo_token_pool::model::Outcome::Failed);
+    // (The turn over, it holds the handover no more: the socket still
+    // does, as a tunnel, while anything crosses it.)
+    assert_eq!(shared.drain.under_way().0, 0, "the turn over, it still holds the handover");
+}
+
+/// An open socket's next turn is the pool's to give again: with Codex
+/// paused in the pool (or the account out, taken away, reset), it isn't
+/// passed on and the socket closes, so Codex asks again (Codex's fourth
+/// review: a paused pool's open socket passed the next turn on).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_paused_pool_takes_no_next_turn() {
+    let (shared, mut client, mut host) = one_socket().await;
+    shared.set_paused(Provider::Codex, true);
+    client.write_all(&client_frame(0x1, br#"{"type":"response.create","model":"gpt-5"}"#)).await.unwrap();
+    assert!(host_closed(&mut host, std::time::Duration::from_secs(2)).await, "the turn went on");
+    let (_, _, closed) = heard(&mut client, "never").await;
+    assert!(closed);
+}
+
+/// Only the account's quota closes a socket: a burst's 429 (another kind
+/// of error, its retry advice with it) goes to Codex as it came, and the
+/// account isn't marked out for it; a meter of another name (a model's
+/// own) is kept as its own, not taken for the account's.
+#[tokio::test(flavor = "multi_thread")]
+async fn only_the_accounts_quota_closes_a_socket() {
+    let (shared, mut client, mut host) = one_socket().await;
+    let meter =
+        event(json!({"type": "codex.rate_limits", "metered_limit_name": "codex_other_model", "rate_limits": {"primary": {"used_percent": 100, "window_minutes": 300, "reset_at": now() + 600}}}));
+    let burst = event(json!({"type": "error", "status": 429, "error": {"type": "rate_limit_exceeded", "message": "Slow down"}, "headers": {"retry-after": "17"}}));
+    host.write_all(&[&meter[..], &burst[..]].concat()).await.unwrap();
+    let (said, got, closed) = heard(&mut client, "rate_limit_exceeded").await;
+    assert!(!closed, "{said:?}");
+    assert_eq!(got, [&meter[..], &burst[..]].concat(), "not as it came");
+    let p = shared.snapshot();
+    let a = p.account("test").unwrap();
+    assert_eq!(a.cooldown_until, None, "marked out for a burst");
+    assert!(olo_token_pool::schedule::blocked_until(a, "gpt-5", now()).is_none(), "another meter taken for the account's: {:?}", a.windows);
+}
+
+/// A refusal at the handshake keeps the reset its body says (it was a
+/// minute, the body unread), and a renewal that can't be had isn't told
+/// to Codex as the pool out of quota (Codex gives up on that for good):
+/// a 502, which Codex tries again.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_handshake_refusal_keeps_its_reset_and_an_outage_isnt_quota() {
+    let reset = now() + 7200;
+    let app = Router::new().route(
+        "/backend-api/codex/responses",
+        get(move || async move { (axum::http::StatusCode::TOO_MANY_REQUESTS, axum::Json(json!({"error": {"type": "usage_limit_reached", "resets_at": reset}}))) }),
+    );
+    let shared = one_account(serve(app).await).await;
+    let (proxy, authority) = proxy_for(&shared).await;
+    let (answer, _client) = codex_socket(proxy, &authority, "dGhlIHNhbXBsZSBub25jZQ==").await;
+    assert!(answer.starts_with("HTTP/1.1 429"), "{answer}");
+    let until = shared.snapshot().account("test").unwrap().cooldown_until.unwrap();
+    assert!((until - reset).abs() <= 1, "kept {} s, not the {} s it said", until - now(), reset - now());
+
+    let app =
+        Router::new().route("/backend-api/codex/responses", get(|| async { axum::http::StatusCode::UNAUTHORIZED })).route("/oauth", post(|| async { axum::http::StatusCode::SERVICE_UNAVAILABLE }));
+    let shared = one_account(serve(app).await).await;
+    let (proxy, authority) = proxy_for(&shared).await;
+    let (answer, _client) = codex_socket(proxy, &authority, "dGhlIHNhbXBsZSBub25jZQ==").await;
+    assert!(answer.starts_with("HTTP/1.1 502"), "{answer}");
+    let p = shared.snapshot();
+    assert_eq!(p.account("test").unwrap().cooldown_until, None);
+}
+
+/// Codex done sending (its half closed): what ChatGPT still says reaches
+/// it, a frame ChatGPT broke off at its end too, before the socket ends.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_half_closed_socket_hears_the_rest() {
+    let (_shared, mut client, mut host) = one_socket().await;
+    client.shutdown().await.unwrap();
+    let mut b = [0u8; 1];
+    assert_eq!(host.read(&mut b).await.unwrap(), 0);
+    let whole = server_frame(0x1, b"done");
+    let broken = server_frame(0x1, b"unfinished");
+    host.write_all(&[&whole[..], &broken[..5]].concat()).await.unwrap();
+    host.shutdown().await.unwrap();
+    let mut got = Vec::new();
+    let mut chunk = [0u8; 256];
+    loop {
+        let n = tokio::time::timeout(std::time::Duration::from_secs(5), client.read(&mut chunk)).await.expect("silent").unwrap_or(0);
+        if n == 0 {
+            break;
+        }
+        got.extend_from_slice(&chunk[..n]);
+    }
+    assert_eq!(got, [&whole[..], &broken[..5]].concat());
 }

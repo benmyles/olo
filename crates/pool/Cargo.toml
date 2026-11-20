@@ -17,7 +17,7 @@ tracing.workspace = true
 tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "macros"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "query", "json"] }
 zstd = "0.14"
-flate2 = "1"
+flate2 = { version = "1", features = ["zlib-rs"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream", "http2"] }
 futures-util = "0.3"
 bytes = "1"

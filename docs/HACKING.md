@@ -23381,19 +23381,48 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   `permessage-deflate` inflated for the pool's own reading with the
   server's context kept from message to message; one it can't read goes
   on unread): each turn counted from `response.created` to its end with
-  its usage, the account's meters taken from `codex.rate_limits` as from
-  an answer's `x-codex-*` headers. An account that runs out inside a
-  socket (an `error` event with status 429, which Codex takes as final)
-  is marked until its `resets_at`, and the socket closed with that
-  unsaid: Codex takes a socket that broke as a stream to ask again for
-  (its first retry unshown), and the pool gives that another account.
-  Codex keeps a socket for a turn and continues on it
-  (`previous_response_id`), so a socket stays on one account; a
+  its usage (an incomplete or failed turn's too, counted as not passed),
+  the account's meters taken from `codex.rate_limits` as from an
+  answer's `x-codex-*` headers, a meter of another name (a model's own,
+  `metered_limit_name`) kept as its own. An account that runs out inside a
+  socket (an `error` event with status 429 and `usage_limit_reached`, of
+  the account's own limit, which Codex takes as final) is marked until
+  its `resets_at`, and the socket closed both ways with that unsaid
+  (what came before it in the same read still goes): Codex takes a
+  socket that broke as a stream to ask again for (its first retry
+  unshown), and the pool gives that another account. Once anything of
+  the turn has reached Codex, the refusal goes to it as it came instead
+  (asked again, the turn would be said twice). Another 429 (a burst's
+  `rate_limit_exceeded`, its retry advice with it) goes to Codex as it
+  came and marks nothing. A refusal at the handshake is read for its
+  `resets_at` (a small JSON body, a second at most; anything else goes
+  back whole); a renewal the sign-in service can't give is a 502, which
+  Codex tries again, not the pool "out of quota", which it never does.
+  Each new turn on an open socket (its first data frame,
+  `socket::ClientFrames`) is the pool's to give again: with Codex paused
+  in the pool, the account out, signed in again or reset since the
+  handshake, or the pool handing over, it isn't passed on and the socket
+  closes, so Codex asks again. A turn holds a handover from its first
+  frame to its end, however quiet (a socket alone counts only while
+  something crosses it, ten seconds); the handshake's hold passes to the
+  socket as it switches. A clean end of one side lets the other finish
+  (Codex done sending still hears the rest, a frame the server broke
+  off included), a Close five seconds for its answer; a reset or a
+  failed write ends both. Codex keeps a socket for a turn and continues
+  on it (`previous_response_id`), so a socket stays on one account; a
   continuation another account doesn't know is answered "previous
-  response not found", which Codex asks again in full. Checked against
-  ChatGPT itself: a prewarm turn (`generate: false`), its six messages
-  compressed with the server's context, each read, all 2,020 bytes
-  passed on as they came.
+  response not found", which Codex asks again in full. The reader
+  passes a ping or a Close at once with the frames before it (a server
+  waiting for its pong mid-message waited for ever), reads a message
+  that ends one DEFLATE stream and goes on with another (RFC 7692; the
+  window kept across it), bounds what it holds and inflates as it goes,
+  and stops reading (all still passed on) at anything not a server's
+  (a masked frame, reserved bits, text that isn't UTF-8). Reading a
+  turn of 303 messages: 50 µs (59 before Codex's fourth review's fixes;
+  1.75 billion instructions for 2,000 turns, from 2.34). Checked
+  against ChatGPT itself: a prewarm turn (`generate: false`), its six
+  messages compressed with the server's context, each read, all 2,020
+  bytes passed on as they came.
 - **Reset credits** (some subscriptions get a few, to reset their quota
   early): read with each sync (Claude's `cedar_ember` grants in the
   usage report, `?cedar_ember=1&skip_spend=1`, each read whole: its kind

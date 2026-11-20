@@ -161,6 +161,14 @@ something nobody here has is in "Blocked", with what it waits for.
     that closes claims before the new copy starts; trailers passed on;
     the recorder parsing chunked framing rather than looking for its
     end.
+  - What the fourth look (pooled sockets) left: a turn that finishes in
+    the retired copy after a handover is counted in its memory only, as
+    is a refusal it learns then (its save is the new copy's to make):
+    send late completions and cooldowns to the copy now at work, with a
+    turn's id against counting it twice and the account's reset
+    revision against stale ones. Matching Codex's TLS for the socket's
+    own connection (a ClientHello compared, direct and through the
+    pool) belongs with the TLS item below.
   - The one real Codex reset Ben allowed, when its account runs out
     (92% on 2026-11-19: a Codex reset starts a new week and loses what's
     left), through the pool's claim: what it does to the week's reset.

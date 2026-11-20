@@ -783,8 +783,8 @@ impl Shared {
     }
 
     /// The sign-in for `id`, refreshed first if it's (nearly) expired or
-    /// `force`d (the provider refused it).
-    async fn fresh(&self, id: &str, provider: Provider, force: bool, within: i64) -> Result<Credential, Failure> {
+    /// when the provider refused the credential that is still current.
+    async fn fresh(&self, id: &str, provider: Provider, refused: Option<&Credential>, within: i64) -> Result<Credential, Failure> {
         let lock = self.lock_for(id);
         let _held = lock.lock().await;
         // Another copy of the pool at work beside this one (an upgrade
@@ -796,7 +796,7 @@ impl Shared {
         let current = self.pool.lock().unwrap().saved.credentials.get(id).cloned().ok_or_else(|| Failure::Refused("No sign-in".into()))?;
         let due = current.expires_at.is_some_and(|e| e - now() < within);
         // (Refused, but the other copy renewed it since: that one, then.)
-        if (!force || renewed_there) && !due {
+        if (renewed_there || refused.is_none_or(|rejected| current.access != rejected.access)) && !due {
             return Ok(current);
         }
         match upstream::refresh(&self.client_for(id), &self.up, provider, &current, self.like(id).as_ref()).await {
@@ -823,7 +823,7 @@ impl Shared {
                 Err(Failure::Refused(why))
             }
             // Not refused: the old one may still do.
-            Err(e) if !force && current.expires_at.is_none_or(|t| t > now()) => {
+            Err(e) if refused.is_none() && current.expires_at.is_none_or(|t| t > now()) => {
                 tracing::warn!("pool: {e}");
                 Ok(current)
             }
@@ -834,7 +834,7 @@ impl Shared {
     /// Account `id`'s sign-in, renewed first if it's due within ten minutes
     /// (as a quota read does).
     pub async fn renewed(&self, id: &str, provider: Provider) -> Result<Credential, Failure> {
-        self.fresh(id, provider, false, 600).await
+        self.fresh(id, provider, None, 600).await
     }
 
     /// The store's lock (`store::lock_at`), waited for with the store itself
@@ -1020,7 +1020,7 @@ impl Shared {
         }
         // (Kept before the provider is asked, or not asked.)
         self.save_checked().await.map_err(Claimed::NotNow)?;
-        let cred = self.fresh(id, provider, false, 60).await.map_err(|e| Claimed::NotNow(e.to_string()))?;
+        let cred = self.fresh(id, provider, None, 60).await.map_err(|e| Claimed::NotNow(e.to_string()))?;
         // (Handed over while it waited: the copy now at work makes it, from
         // the intent kept, if it's still wanted.)
         if self.drain.retired() {
@@ -1196,10 +1196,10 @@ impl Shared {
         };
         for (id, provider) in accounts {
             let revision = self.pool.lock().unwrap().reset_revision(&id);
-            let Ok(cred) = self.fresh(&id, provider, false, 600).await else { continue };
+            let Ok(cred) = self.fresh(&id, provider, None, 600).await else { continue };
             let like = self.like(&id);
             let report = match upstream::usage(&self.client_for(&id), &self.up, provider, &cred, like.as_ref()).await {
-                Err(Failure::Refused(_)) => match self.fresh(&id, provider, true, 0).await {
+                Err(Failure::Refused(_)) => match self.fresh(&id, provider, Some(&cred), 0).await {
                     Ok(c) => upstream::usage(&self.client_for(&id), &self.up, provider, &c, like.as_ref()).await,
                     Err(e) => Err(e),
                 },
@@ -1223,7 +1223,7 @@ impl Shared {
             let credits = match &report {
                 Ok(_) if credits_due => {
                     self.credits_due.lock().unwrap().insert(id.clone(), now() + CREDITS_EVERY);
-                    self.fresh(&id, provider, false, 60).await.ok()
+                    self.fresh(&id, provider, None, 60).await.ok()
                 }
                 _ => None,
             };
@@ -1536,7 +1536,10 @@ fn unavailable(provider: Provider, status: StatusCode, message: &str, retry: Opt
             let kind = if status == StatusCode::TOO_MANY_REQUESTS { "rate_limit_error" } else { "overloaded_error" };
             json!({"type": "error", "error": {"type": kind, "message": message}})
         }
-        Provider::Codex => json!({"error": {"type": "usage_limit_reached", "message": message}}),
+        Provider::Codex => {
+            let kind = if status == StatusCode::TOO_MANY_REQUESTS { "usage_limit_reached" } else { "server_error" };
+            json!({"error": {"type": kind, "message": message}})
+        }
     };
     let mut r = (status, axum::Json(body)).into_response();
     if let Some(at) = retry
@@ -1696,7 +1699,7 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
             shared: Some(s.clone()),
         };
         let seen = olo_net::generation();
-        let mut cred = match s.fresh(&id, provider, false, 60).await {
+        let mut cred = match s.fresh(&id, provider, None, 60).await {
             Ok(c) => c,
             // (The network, not the account: the same one again, once
             // there's a network.)
@@ -1841,7 +1844,7 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
                 }
                 Ok(r) if r.status() == StatusCode::UNAUTHORIZED && !refreshed => {
                     refreshed = true;
-                    match s.fresh(&id, provider, true, 0).await {
+                    match s.fresh(&id, provider, Some(&cred), 0).await {
                         Ok(c) => cred = c,
                         Err(_) => break None,
                     }
@@ -1934,8 +1937,7 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
 /// that broke and asks again, which the pool gives another account.
 pub async fn serve_socket(s: Arc<Shared>, path: String, query: Option<String>, headers: HeaderMap, ext: axum::http::Extensions, on: hyper::upgrade::OnUpgrade) -> Response {
     let provider = Provider::Codex;
-    // (Its model comes with each turn; Codex's quotas are its plan's.)
-    let family = String::new();
+    let family = headers.get("x-codex-routing-hint").and_then(|h| h.to_str().ok()).and_then(|hint| hint.split(';').find_map(|p| p.trim().strip_prefix("model="))).map(model_family).unwrap_or_default();
     let client = client_of(&headers);
     let target = match &query {
         Some(q) => format!("{path}?{q}"),
@@ -1946,6 +1948,7 @@ pub async fn serve_socket(s: Arc<Shared>, path: String, query: Option<String>, h
     let offer: Vec<&str> = offer.iter().map(String::as_str).collect();
     let mut tried: HashMap<String, u64> = HashMap::new();
     let mut network_tries = 0;
+    let mut refresh_failed = false;
     loop {
         let chosen = {
             let mut p = s.pool.lock().unwrap();
@@ -1966,12 +1969,15 @@ pub async fn serve_socket(s: Arc<Shared>, path: String, query: Option<String>, h
                 }
             }
         };
-        let (id, name, revision) = match chosen {
+        let (id, name, mut revision) = match chosen {
             Ok(c) => c,
             Err((any, retry)) => {
                 if any && let Some(id) = s.redeem_for(provider, &family, &tried).await {
                     tried.remove(&id);
                     continue;
+                }
+                if refresh_failed {
+                    return unavailable(provider, StatusCode::BAD_GATEWAY, "The sign-in service could not renew an account.", None);
                 }
                 return if any {
                     let msg = format!("Every {} account in the pool is out of quota for now.", provider.client());
@@ -1983,14 +1989,15 @@ pub async fn serve_socket(s: Arc<Shared>, path: String, query: Option<String>, h
             }
         };
         let seen = olo_net::generation();
-        let mut cred = match s.fresh(&id, provider, false, 60).await {
+        let mut cred = match s.fresh(&id, provider, None, 60).await {
             Ok(c) => c,
             Err(Failure::Other(_)) if network_tries < NETWORK_TRIES && network_failed(seen) => {
                 network_tries += 1;
                 network_back().await;
                 continue;
             }
-            Err(_) => {
+            Err(e) => {
+                refresh_failed |= matches!(e, Failure::Other(_));
                 tried.insert(id, revision);
                 continue;
             }
@@ -1998,6 +2005,7 @@ pub async fn serve_socket(s: Arc<Shared>, path: String, query: Option<String>, h
         let jar = s.jar(&id);
         let mut refreshed = false;
         let answer = loop {
+            revision = s.pool.lock().unwrap().reset_revision(&id);
             let req = match socket_request(&headers, &target, &cred, &jar, &ext) {
                 Ok(r) => r,
                 Err(e) => return (StatusCode::BAD_REQUEST, e).into_response(),
@@ -2007,12 +2015,15 @@ pub async fn serve_socket(s: Arc<Shared>, path: String, query: Option<String>, h
                     crate::likeness::keep(&jar, host_of(provider), r.headers().get_all("set-cookie").iter().filter_map(|v| v.to_str().ok()));
                     if r.status() == StatusCode::UNAUTHORIZED && !refreshed {
                         refreshed = true;
-                        match s.fresh(&id, provider, true, 0).await {
+                        match s.fresh(&id, provider, Some(&cred), 0).await {
                             Ok(c) => {
                                 cred = c;
                                 continue;
                             }
-                            Err(_) => break None,
+                            Err(e) => {
+                                refresh_failed |= matches!(e, Failure::Other(_));
+                                break None;
+                            }
                         }
                     }
                     break Some(r);
@@ -2032,22 +2043,42 @@ pub async fn serve_socket(s: Arc<Shared>, path: String, query: Option<String>, h
         };
         let status = r.status();
         let (windows, rejection) = upstream::header_windows(r.headers(), provider, &family, status.as_u16(), now());
+        if status == StatusCode::TOO_MANY_REQUESTS {
+            let reset = match handshake_quota(passed_back(r)).await {
+                Ok(reset) => reset,
+                Err(response) => return response,
+            };
+            {
+                let mut p = s.pool.lock().unwrap();
+                if p.reset_revision(&id) == revision
+                    && let Some(a) = p.account_mut(&id)
+                {
+                    a.merge_windows(windows);
+                    let until = reset.or_else(|| rejection.map(|r| r.until));
+                    a.cooldown_until = a.cooldown_until.max(until);
+                }
+            }
+            s.noted();
+            tried.insert(id, revision);
+            continue;
+        }
         {
             let mut p = s.pool.lock().unwrap();
             let current = p.reset_revision(&id) == revision;
+            let same_signin = p.saved.credentials.get(&id).is_some_and(|current| current.access == cred.access);
+            if status == StatusCode::UNAUTHORIZED && !same_signin {
+                continue;
+            }
             if let Some(a) = p.account_mut(&id) {
-                if current {
+                if current && same_signin {
                     a.merge_windows(windows);
                 }
-                if status == StatusCode::UNAUTHORIZED {
+                if status == StatusCode::UNAUTHORIZED && same_signin {
                     a.signed_out = Some("Its provider refused the sign-in.".into());
-                }
-                if current && let Some(rej) = &rejection {
-                    a.cooldown_until = Some(rej.until);
                 }
             }
         }
-        if status == StatusCode::UNAUTHORIZED || rejection.is_some() {
+        if status == StatusCode::UNAUTHORIZED {
             s.noted();
             tried.insert(id, revision);
             continue;
@@ -2065,7 +2096,8 @@ pub async fn serve_socket(s: Arc<Shared>, path: String, query: Option<String>, h
         }
         // (Each name in its case, the status line's reason.)
         *out.extensions_mut() = std::mem::take(r.extensions_mut());
-        tokio::spawn(relay_socket(s.clone(), Turns { id, name, client, revision }, on, host, extensions));
+        let switching = crate::drain::Underway::new(&s);
+        tokio::spawn(relay_socket(s.clone(), Turns { id, name, client, revision, jar, family }, on, host, extensions, switching));
         return out;
     }
 }
@@ -2107,7 +2139,9 @@ fn socket_request(headers: &HeaderMap, target: &str, cred: &Credential, jar: &cr
     }
     if !signed {
         b = b.header("authorization", format!("Bearer {}", cred.access));
-        if let Some(account) = &cred.account_id {
+        if !headers.contains_key("chatgpt-account-id")
+            && let Some(account) = &cred.account_id
+        {
             b = b.header("chatgpt-account-id", account.as_str());
         }
     }
@@ -2137,6 +2171,39 @@ fn passed_back(mut r: hyper::Response<hyper::body::Incoming>) -> Response {
     out
 }
 
+/// Inspect a small, plain JSON refusal. When it is a different error or
+/// inspection runs out of time or space, preserve its complete body.
+async fn handshake_quota(response: Response) -> Result<Option<i64>, Response> {
+    const MAX: usize = 64 << 10;
+    let headers = response.headers();
+    if headers.contains_key("content-encoding") || headers.get("x-codex-active-limit").is_some_and(|h| h != "codex") || headers.contains_key("x-codex-rate-limit-reached-type") {
+        return Err(response);
+    }
+    let (parts, body) = response.into_parts();
+    let mut stream = body.into_data_stream();
+    let mut prefix = bytes::BytesMut::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
+    loop {
+        let tail = match tokio::time::timeout_at(deadline, stream.next()).await {
+            Ok(None) => break,
+            Ok(Some(Ok(piece))) if piece.len() <= MAX - prefix.len() => {
+                prefix.extend_from_slice(&piece);
+                continue;
+            }
+            Ok(item) => item,
+            Err(_) => None,
+        };
+        let body = futures_util::stream::iter(std::iter::once(Ok(prefix.freeze())).chain(tail)).chain(stream);
+        return Err(Response::from_parts(parts, Body::from_stream(body)));
+    }
+    if let Ok(v) = serde_json::from_slice::<Value>(&prefix)
+        && v["error"]["type"] == "usage_limit_reached"
+    {
+        return Ok(v["error"]["resets_at"].as_i64().filter(|&reset| reset > now()));
+    }
+    Err(Response::from_parts(parts, Body::from(prefix.freeze())))
+}
+
 /// Whose a socket's turns are counted as: the account (and the reset it
 /// was chosen at), the client.
 struct Turns {
@@ -2144,6 +2211,8 @@ struct Turns {
     name: String,
     client: String,
     revision: u64,
+    jar: crate::likeness::Jar,
+    family: String,
 }
 
 /// What a message the server sent on a socket says, to the pool.
@@ -2173,8 +2242,24 @@ fn said(m: &str) -> Said {
         Some("response.created") => Said::Began(v["response"]["model"].as_str().unwrap_or_default().to_owned()),
         Some("response.completed" | "response.done" | "response.incomplete") => Said::Ended(200, v),
         Some("response.failed") => Said::Ended(500, v),
-        Some("error") if v["status"].as_u64() == Some(429) || v["status_code"].as_u64() == Some(429) => Said::Out(v),
-        Some("error") => Said::Ended(v["status"].as_u64().and_then(|n| u16::try_from(n).ok()).unwrap_or(500), v),
+        Some("error") => {
+            let status = v["status"].as_u64().or_else(|| v["status_code"].as_u64()).and_then(|n| u16::try_from(n).ok()).unwrap_or(500);
+            let scoped = [&v["headers"], &v["error"]["headers"]].iter().any(|h| {
+                h.as_object()
+                    .into_iter()
+                    .flatten()
+                    .any(|(k, v)| k.eq_ignore_ascii_case("x-codex-rate-limit-reached-type") || k.eq_ignore_ascii_case("x-codex-active-limit") && v.as_str() != Some("codex"))
+            });
+            if status == 429
+                && !scoped
+                && v["error"]["type"] == "usage_limit_reached"
+                && !matches!(v["error"]["code"].as_str(), Some("websocket_connection_limit_reached" | "previous_response_not_found"))
+            {
+                Said::Out(v)
+            } else {
+                Said::Ended(status, v)
+            }
+        }
         Some("codex.rate_limits") => Said::Limits(v),
         _ => Said::Other,
     }
@@ -2183,84 +2268,154 @@ fn said(m: &str) -> Said {
 /// Pass a switched socket on both ways, as it came, counting its turns
 /// (`Said`), until either side closes it, or the account runs out inside
 /// it: then marked, and the socket closed with that unsaid.
-async fn relay_socket(s: Arc<Shared>, turns: Turns, on: hyper::upgrade::OnUpgrade, host: hyper::upgrade::OnUpgrade, extensions: Option<String>) {
+async fn relay_socket(s: Arc<Shared>, turns: Turns, on: hyper::upgrade::OnUpgrade, host: hyper::upgrade::OnUpgrade, extensions: Option<String>, switching: crate::drain::Underway) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    async fn write<W: tokio::io::AsyncWrite + Unpin>(writer: &mut W, bytes: &[u8]) -> bool {
+        matches!(tokio::time::timeout(Duration::from_secs(15 * 60), writer.write_all(bytes)).await, Ok(Ok(())))
+    }
     let (theirs, ours) = match tokio::join!(on, host) {
         (Ok(a), Ok(b)) => (hyper_util::rt::TokioIo::new(a), hyper_util::rt::TokioIo::new(b)),
-        (a, b) => {
-            tracing::debug!("pool: a Codex socket didn’t switch: {:?} {:?}", a.err(), b.err());
-            return;
-        }
+        _ => return,
     };
-    s.drain.tunnel_opened();
+    let drain = &s.drain;
+    let _tunnel = drain.tunnel();
+    drop(switching);
     let (mut from_client, mut to_client) = tokio::io::split(theirs);
     let (mut from_host, mut to_host) = tokio::io::split(ours);
-    let drain = &s.drain;
+    // A clean TCP FIN permits a final reply in the other direction. A
+    // reset, a failed write, or a deliberate cutoff ends both directions.
+    // Codex serializes response streams on a socket. Keep a drain request
+    // from the first data frame, including the wait for response.created.
+    let active = Mutex::new(None);
+    let allow = || {
+        let mut active = active.lock().unwrap();
+        if active.is_some() {
+            return true; // The current turn can still be interrupted.
+        }
+        let guard = crate::drain::Underway::new(&s);
+        let current = {
+            let p = s.pool.lock().unwrap();
+            p.reset_revision(&turns.id) == turns.revision && p.account(&turns.id).is_some_and(|a| schedule::eligible(a, Provider::Codex, &turns.family, now(), true))
+        };
+        if !current || drain.draining() || s.paused(Provider::Codex) || !s.jars.lock().unwrap().get(&turns.id).is_some_and(|jar| Arc::ptr_eq(jar, &turns.jar)) {
+            return false;
+        }
+        *active = Some(guard);
+        true
+    };
+    enum End {
+        Stop,
+        Close,
+        Fin,
+    }
     let up = async {
+        let mut frames = crate::socket::ClientFrames::default();
         let mut buf = vec![0u8; 16 << 10];
         loop {
             match from_client.read(&mut buf).await {
-                Ok(0) | Err(_) => break,
+                Ok(0) => return if matches!(tokio::time::timeout(Duration::from_secs(5), to_host.shutdown()).await, Ok(Ok(()))) { End::Fin } else { End::Stop },
+                Err(_) => return End::Stop,
                 Ok(n) => {
-                    drain.tunnel_crossed();
-                    if to_host.write_all(&buf[..n]).await.is_err() {
-                        break;
+                    let (pass, close) = frames.before_data(&buf[..n], allow);
+                    if !write(&mut to_host, &buf[..pass]).await {
+                        return End::Stop;
+                    }
+                    if pass != 0 {
+                        drain.tunnel_crossed();
+                    }
+                    if close {
+                        return End::Close;
+                    }
+                    if pass < n {
+                        return End::Stop;
                     }
                 }
             }
         }
-        let _ = to_host.shutdown().await;
     };
     let down = async {
         let mut reader = crate::socket::Reader::new(extensions.as_deref());
         let mut turn: Option<Finish> = None;
+        let mut exposed_output = false;
         let mut buf = vec![0u8; 16 << 10];
-        loop {
+        let clean_eof = loop {
             let n = match from_host.read(&mut buf).await {
-                Ok(0) | Err(_) => break,
+                Ok(0) => break End::Fin,
+                Err(_) => break End::Stop,
                 Ok(n) => n,
             };
             drain.tunnel_crossed();
-            let passed = reader.push(&buf[..n]);
-            let mut out = false;
-            for m in &passed.messages {
+            let mut finishing = Vec::new();
+            let (bytes, stop) = reader.read_while(&buf[..n], |m| {
                 match said(m) {
-                    Said::Began(model) => turn = Some(s.begin_turn(&turns, &model)),
+                    Said::Began(model) => {
+                        active.lock().unwrap().get_or_insert_with(|| crate::drain::Underway::new(&s));
+                        turn = Some(s.begin_turn(&turns, &model));
+                    }
                     Said::Ended(status, v) => {
+                        finishing.extend(active.lock().unwrap().take());
+                        exposed_output = false;
                         if let Some(mut f) = turn.take() {
                             f.status = status;
                             f.scan.event(&v);
                             f.ended = true;
+                            if v["type"] == "response.incomplete" {
+                                f.outcome = Some(if v["response"]["incomplete_details"]["reason"] == "interrupted" { Outcome::Cancelled } else { Outcome::Failed });
+                            }
                         }
                     }
                     Said::Out(v) => {
                         s.socket_out(&turns, &v);
+                        finishing.extend(active.lock().unwrap().take());
                         if let Some(mut f) = turn.take() {
                             f.status = 429;
+                            f.ended = exposed_output;
                             f.outcome = Some(Outcome::RateLimited);
                         }
-                        out = true;
+                        // Once a result or tool item has gone to the client,
+                        // preserve the actual terminal error as well.
+                        return exposed_output;
                     }
                     Said::Limits(v) => s.socket_limits(&turns, &v),
-                    Said::Other => {}
+                    Said::Other => exposed_output = true,
+                }
+                true
+            });
+            if reader.blind() {
+                finishing.extend(active.lock().unwrap().take());
+                if let Some(mut f) = turn.take() {
+                    f.broken = true;
                 }
             }
-            if out {
-                tracing::info!("pool: {} ran out inside a Codex socket: closed, for Codex to ask again", turns.name);
-                break;
+            if !write(&mut to_client, &bytes).await || stop {
+                break End::Stop;
             }
-            if to_client.write_all(&passed.bytes).await.is_err() {
-                break;
+            if reader.closed {
+                break End::Close;
             }
-        }
-        let _ = to_client.shutdown().await;
-        // (A turn the socket broke off: counted as such.)
+        };
         if let Some(mut f) = turn.take() {
             f.broken = true;
         }
+        if !write(&mut to_client, &reader.finish()).await {
+            return End::Stop;
+        }
+        if !matches!(clean_eof, End::Close) {
+            let _ = tokio::time::timeout(Duration::from_secs(5), to_client.shutdown()).await;
+        }
+        clean_eof
     };
-    tokio::join!(up, down);
-    s.drain.tunnel_closed();
+    tokio::pin!(up, down);
+    let (half_closed, other) = tokio::select! {
+        half_closed = &mut up => (half_closed, futures_util::future::Either::Left(down)),
+        half_closed = &mut down => (half_closed, futures_util::future::Either::Right(up)),
+    };
+    let grace = match half_closed {
+        End::Stop => return,
+        End::Close => Duration::from_secs(5),
+        End::Fin => Duration::from_secs(15 * 60),
+    };
+    let _ = tokio::time::timeout(grace, other).await;
 }
 
 impl Shared {
@@ -2321,7 +2476,7 @@ impl Shared {
                 }
             }
         }
-        let (windows, _) = upstream::header_windows(&headers, Provider::Codex, "", 200, now());
+        let (mut windows, _) = upstream::header_windows(&headers, Provider::Codex, "", 200, now());
         if windows.is_empty() {
             return;
         }
@@ -2331,6 +2486,18 @@ impl Shared {
                 return;
             }
             if let Some(a) = p.account_mut(&turns.id) {
+                let limit = event["metered_limit_name"].as_str().or_else(|| event["limit_name"].as_str());
+                if let Some(limit) = limit.filter(|name| !name.eq_ignore_ascii_case("codex")) {
+                    let scope = limit.to_ascii_lowercase().replace('-', "_");
+                    windows.retain_mut(|w| {
+                        let name = format!("{scope}/{}", w.name);
+                        let Some(known) = a.windows.iter().find(|known| known.name == name) else { return false };
+                        w.name = name;
+                        w.models.clone_from(&known.models);
+                        w.label.clone_from(&known.label);
+                        true
+                    });
+                }
                 a.merge_windows(windows);
             }
         }
@@ -2366,7 +2533,7 @@ impl Shared {
             }
             if let Some(a) = p.account_mut(&turns.id) {
                 a.merge_windows(windows);
-                a.cooldown_until = Some(until);
+                a.cooldown_until = a.cooldown_until.max(Some(until));
             }
         }
         self.noted();
@@ -2530,7 +2697,7 @@ struct Finish {
 impl Drop for Finish {
     fn drop(&mut self) {
         let Some(s) = self.shared.take() else { return };
-        let passed = self.outcome.is_none();
+        let passed = self.ended || self.outcome.is_none();
         let outcome = self.outcome.unwrap_or(match self.status {
             _ if self.broken => Outcome::Failed,
             _ if !self.ended => Outcome::Cancelled,
@@ -2771,7 +2938,7 @@ impl Scan {
         let u = match v["type"].as_str() {
             Some("message_start") => &v["message"]["usage"],
             Some("message_delta") => &v["usage"],
-            Some("response.completed") | Some("response.done") => &v["response"]["usage"],
+            Some("response.completed" | "response.done" | "response.incomplete" | "response.failed") => &v["response"]["usage"],
             _ => &v["usage"],
         };
         let n = |k: &str| u[k].as_u64();

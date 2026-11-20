@@ -577,7 +577,7 @@ fn header_num(h: &axum::http::HeaderMap, name: &str) -> Option<f64> {
 pub fn retry_after(h: &axum::http::HeaderMap, now: i64) -> Option<i64> {
     let v = h.get("retry-after")?.to_str().ok()?.trim();
     if let Ok(s) = v.parse::<i64>() {
-        return Some(now + s.max(0));
+        return now.checked_add(s.max(0));
     }
     chrono::DateTime::parse_from_rfc2822(v).ok().map(|t| t.timestamp())
 }
@@ -609,9 +609,10 @@ pub fn header_windows(h: &axum::http::HeaderMap, p: Provider, family: &str, stat
         Provider::Codex => {
             for kind in ["primary", "secondary"] {
                 if let Some(used) = header_num(h, &format!("x-codex-{kind}-used-percent")) {
-                    let resets_at =
-                        header_num(h, &format!("x-codex-{kind}-reset-at")).map(|v| v as i64).or_else(|| header_num(h, &format!("x-codex-{kind}-reset-after-seconds")).map(|v| now + v as i64));
-                    let minutes = header_num(h, &format!("x-codex-{kind}-window-minutes")).map(|m| m as i64 * 60);
+                    let resets_at = header_num(h, &format!("x-codex-{kind}-reset-at"))
+                        .map(|v| v as i64)
+                        .or_else(|| header_num(h, &format!("x-codex-{kind}-reset-after-seconds")).and_then(|v| now.checked_add(v as i64)));
+                    let minutes = header_num(h, &format!("x-codex-{kind}-window-minutes")).and_then(|m| (m as i64).checked_mul(60));
                     // Without the length, keep the name the usage report gave.
                     let label = if minutes.is_some() { codex_label(kind, minutes) } else { String::new() };
                     out.push(Window { name: format!("{kind}_window"), label, used, resets_at, models: vec![] });

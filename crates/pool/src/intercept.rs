@@ -194,6 +194,7 @@ async fn connection(mut client: TcpStream, peer: SocketAddr, shared: Arc<Shared>
         .keep_alive(true)
         .timer(hyper_util::rt::TokioTimer::new())
         .header_read_timeout(Duration::from_secs(30))
+        .auto_date_header(false)
         .preserve_header_case(true)
         .serve_connection(hyper_util::rt::TokioIo::new(stream), service)
         .with_upgrades();
@@ -315,11 +316,11 @@ async fn request(shared: Arc<Shared>, host: &str, req: hyper::Request<hyper::bod
         match pooled(host, &path).filter(|(p, _)| shared.routes(*p)) {
             // Codex's Responses over a WebSocket: the pool's, as it came
             // (under way until its 101 has gone; after, a tunnel).
-            Some((Provider::Codex, _)) if parts.method == Method::GET => {
+            Some((Provider::Codex, ref rest)) if rest == "responses" && parts.method == Method::GET && parts.headers.get(UPGRADE).is_some_and(|v| v.as_bytes().eq_ignore_ascii_case(b"websocket")) => {
                 let underway = crate::drain::Underway::new(&shared);
                 let answer = crate::gateway::serve_socket(shared, path, query, parts.headers, parts.extensions, on).await;
-                drop(underway);
-                return answer;
+                let (parts, body) = answer.into_parts();
+                return Response::from_parts(parts, Body::new(crate::drain::Counted { inner: body, underway }));
             }
             Some(_) => return (StatusCode::UPGRADE_REQUIRED, "The pool answers this over HTTPS.").into_response(),
             None => return upgrade_through(&shared, host, &path, query.as_deref(), parts.method, parts.headers, on).await,

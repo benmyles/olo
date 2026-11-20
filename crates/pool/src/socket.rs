@@ -8,6 +8,8 @@
 //! it. A socket it can't read (a frame it doesn't know, a message past
 //! `MESSAGE_MOST`) goes on as it comes, read no further.
 
+use std::collections::VecDeque;
+
 use flate2::{Decompress, FlushDecompress, Status};
 
 /// The most of one message read (a turn's last event holds its whole
@@ -27,10 +29,11 @@ pub struct Reader {
     /// The server's compression context (`permessage-deflate`), and
     /// whether it starts afresh for each message
     /// (`server_no_context_takeover`).
-    inflate: Option<Decompress>,
+    inflate: Option<Inflater>,
     afresh: bool,
     /// Read no further: everything passed on as it comes.
     blind: bool,
+    pub(crate) closed: bool,
 }
 
 /// What `Reader::push` gives: the bytes to pass on now (whole frames, as
@@ -50,9 +53,10 @@ impl Reader {
             held: Vec::new(),
             at: 0,
             message: None,
-            inflate: deflate.map(|_| Decompress::new(false)),
+            inflate: deflate.map(|_| Inflater { decoder: Decompress::new(false), history: VecDeque::new() }),
             afresh: deflate.is_some_and(|d| d.split(';').any(|p| p.trim().eq_ignore_ascii_case("server_no_context_takeover"))),
-            blind: false,
+            closed: false,
+            blind: extensions.is_some_and(|e| e.split(',').any(|item| !item.split(';').next().unwrap_or_default().trim().eq_ignore_ascii_case("permessage-deflate"))),
         }
     }
 
@@ -64,64 +68,88 @@ impl Reader {
     /// `bytes` came from the server: what to pass on now, and the
     /// messages that completes.
     pub fn push(&mut self, bytes: &[u8]) -> Passed {
+        let mut messages = Vec::new();
+        let (bytes, _) = self.read_while(bytes, |text| {
+            messages.push(text.to_owned());
+            true
+        });
+        Passed { bytes, messages }
+    }
+
+    /// Return the original bytes up to the first complete text message
+    /// rejected by the observer. Do not inspect anything after it.
+    pub(crate) fn read_while(&mut self, bytes: &[u8], mut accept: impl FnMut(&str) -> bool) -> (Vec<u8>, bool) {
         if self.blind {
-            return Passed { bytes: bytes.to_vec(), messages: Vec::new() };
+            return (bytes.to_vec(), false);
         }
         self.held.extend_from_slice(bytes);
-        let mut messages = Vec::new();
+        // First byte still held for the message, relative to this return.
+        let mut message_start = 0;
         // (Whole frames up to here go now: nothing of a message held.)
         let mut pass = 0;
         loop {
             let head = match frame_head(&self.held[self.at..]) {
                 Head::More => break,
-                Head::Unreadable => return self.give_up(messages),
+                Head::Unreadable => return self.give_up(),
                 Head::Frame { fin, rsv1, opcode, header, len, mask } => (fin, rsv1, opcode, header, len, mask),
             };
             let (fin, rsv1, opcode, header, len, mask) = head;
-            let Some(end) = self.at.checked_add(header).and_then(|h| h.checked_add(len)) else { return self.give_up(messages) };
+            let Some(end) = self.at.checked_add(header).and_then(|h| h.checked_add(len)) else { return self.give_up() };
+            if len > MESSAGE_MOST || end - pass > MESSAGE_MOST + 14 {
+                return self.give_up();
+            }
             if end > self.held.len() {
-                if len > MESSAGE_MOST {
-                    return self.give_up(messages);
-                }
                 break;
             }
-            let mut payload = self.held[self.at + header..end].to_vec();
-            if let Some(key) = mask {
-                for (i, b) in payload.iter_mut().enumerate() {
-                    *b ^= key[i % 4];
-                }
+            if mask.is_some() || (rsv1 && (self.inflate.is_none() || !matches!(opcode, 1 | 2))) {
+                return self.give_up();
             }
+            let payload = self.held[self.at + header..end].to_vec();
             match opcode {
                 // A message begins (text, binary).
                 0x1 | 0x2 => {
                     if self.message.is_some() {
-                        return self.give_up(messages);
+                        return self.give_up();
                     }
+                    message_start = self.at;
                     self.message = Some((opcode == 0x1, rsv1, payload));
                 }
                 // More of it.
                 0x0 => match self.message.as_mut() {
                     Some((_, _, so_far)) if so_far.len() + payload.len() <= MESSAGE_MOST => so_far.extend_from_slice(&payload),
-                    _ => return self.give_up(messages),
+                    _ => return self.give_up(),
                 },
                 // Close, ping, pong: whole frames of their own.
-                0x8..=0xA => {}
-                _ => return self.give_up(messages),
+                0x8..=0xA if fin && len <= 125 => {
+                    // Deliver a ping/close in order, including any fragments
+                    // before it. A client only sees a data message at FIN.
+                    self.closed |= opcode == 8;
+                    pass = end;
+                    message_start = end;
+                }
+                _ => return self.give_up(),
             }
             self.at = end;
             if fin && opcode <= 0x2 {
-                let Some((text, compressed, payload)) = self.message.take() else { return self.give_up(messages) };
+                let Some((text, compressed, payload)) = self.message.take() else { return self.give_up() };
                 let data = if compressed {
                     let afresh = self.afresh;
-                    match self.inflate.as_mut().and_then(|d| inflate(d, afresh, &payload)) {
+                    match self.inflate.as_mut().and_then(|d| d.message(afresh, &payload)) {
                         Some(d) => d,
-                        None => return self.give_up(messages),
+                        None => return self.give_up(),
                     }
                 } else {
                     payload
                 };
                 if text {
-                    messages.push(String::from_utf8_lossy(&data).into_owned());
+                    let Ok(text) = std::str::from_utf8(&data) else { return self.give_up() };
+                    if !accept(text) {
+                        let mut prefix = std::mem::take(&mut self.held);
+                        prefix.truncate(message_start);
+                        self.at = 0;
+                        self.blind = true;
+                        return (prefix, true);
+                    }
                 }
             }
             if self.message.is_none() {
@@ -130,15 +158,19 @@ impl Reader {
         }
         let bytes: Vec<u8> = self.held.drain(..pass).collect();
         self.at -= pass;
-        Passed { bytes, messages }
+        (bytes, false)
     }
 
-    /// Stop reading: all that's held goes, with the messages read so far.
-    fn give_up(&mut self, messages: Vec<String>) -> Passed {
+    /// Bytes still held when the transport ends inside a frame or message.
+    pub(crate) fn finish(&mut self) -> Vec<u8> {
+        self.give_up().0
+    }
+
+    fn give_up(&mut self) -> (Vec<u8>, bool) {
         self.blind = true;
         self.message = None;
         self.at = 0;
-        Passed { bytes: std::mem::take(&mut self.held), messages }
+        (std::mem::take(&mut self.held), false)
     }
 }
 
@@ -154,6 +186,9 @@ fn frame_head(b: &[u8]) -> Head {
     if b.len() < 2 {
         return Head::More;
     }
+    if b[0] & 0x30 != 0 {
+        return Head::Unreadable;
+    }
     let (fin, rsv1, opcode) = (b[0] & 0x80 != 0, b[0] & 0x40 != 0, b[0] & 0x0f);
     let masked = b[1] & 0x80 != 0;
     let (len, mut header) = match b[1] & 0x7f {
@@ -167,6 +202,9 @@ fn frame_head(b: &[u8]) -> Head {
         },
         n => (u64::from(n), 2),
     };
+    if matches!(b[1] & 0x7f, 126) && len < 126 || matches!(b[1] & 0x7f, 127) && !(65536..=i64::MAX as u64).contains(&len) {
+        return Head::Unreadable;
+    }
     let Ok(len) = usize::try_from(len) else { return Head::Unreadable };
     let mask = if masked {
         let Some(k) = b.get(header..header + 4) else { return Head::More };
@@ -178,34 +216,94 @@ fn frame_head(b: &[u8]) -> Head {
     Head::Frame { fin, rsv1, opcode, header, len, mask }
 }
 
-/// One message's payload as `permessage-deflate` compressed it, inflated
-/// (its sync-flush tail put back), the context kept for the next unless
-/// `afresh`.
-fn inflate(d: &mut Decompress, afresh: bool, payload: &[u8]) -> Option<Vec<u8>> {
-    if afresh {
-        d.reset(false);
+/// Recognize the start of a client data message and an entire close
+/// frame without copying or decompressing its application payload.
+#[derive(Default)]
+pub(crate) struct ClientFrames {
+    header: [u8; 14],
+    used: usize,
+    remaining: usize,
+    closing: bool,
+}
+
+impl ClientFrames {
+    /// Number of bytes to relay, and whether a close frame finished.
+    pub(crate) fn before_data(&mut self, input: &[u8], mut allow: impl FnMut() -> bool) -> (usize, bool) {
+        let mut at = 0;
+        while at < input.len() {
+            if self.remaining != 0 {
+                let n = self.remaining.min(input.len() - at);
+                self.remaining -= n;
+                at += n;
+            } else {
+                if self.used == 0 && matches!(input[at] & 15, 1 | 2) && !allow() {
+                    return (at, false);
+                }
+                self.header[self.used] = input[at];
+                self.used += 1;
+                at += 1;
+                match frame_head(&self.header[..self.used]) {
+                    Head::More => continue,
+                    Head::Unreadable => return (at - 1, false),
+                    Head::Frame { opcode, len, .. } => {
+                        self.remaining = len;
+                        self.used = 0;
+                        self.closing = opcode == 8;
+                    }
+                }
+            }
+            if self.remaining == 0 && self.closing {
+                return (at, true);
+            }
+        }
+        (at, false)
     }
-    let mut input = payload.to_vec();
-    input.extend_from_slice(&[0x00, 0x00, 0xff, 0xff]);
-    let mut out: Vec<u8> = Vec::with_capacity(payload.len().saturating_mul(4).max(4096));
-    let mut at = 0;
-    loop {
-        if out.capacity() - out.len() < 4096 {
-            out.reserve(out.capacity().max(4096));
+}
+
+/// RFC 7692 permits more blocks after a byte-aligned final block. Keep
+/// the history needed to resume raw DEFLATE at that boundary.
+struct Inflater {
+    decoder: Decompress,
+    history: VecDeque<u8>,
+}
+
+impl Inflater {
+    fn message(&mut self, afresh: bool, payload: &[u8]) -> Option<Vec<u8>> {
+        const WINDOW: usize = 32768;
+        if afresh {
+            self.decoder.reset(false);
+            self.history.clear();
         }
-        let (before_in, before_out) = (d.total_in(), d.total_out());
-        let status = d.decompress_vec(&input[at..], &mut out, FlushDecompress::Sync).ok()?;
-        at += usize::try_from(d.total_in() - before_in).ok()?;
-        if status == Status::StreamEnd {
-            // (A last block: what follows starts a stream of its own.)
-            d.reset(false);
-            return Some(out);
-        }
-        if at >= input.len() && out.len() < out.capacity() {
-            return Some(out);
-        }
-        if (d.total_in(), d.total_out()) == (before_in, before_out) || out.len() > MESSAGE_MOST {
-            return None;
+        let mut input = payload.to_vec();
+        input.extend_from_slice(&[0, 0, 0xff, 0xff]);
+        let mut out = Vec::new();
+        let mut at = 0;
+        let mut block = [0; 8192];
+        loop {
+            let (before_in, before_out) = (self.decoder.total_in(), self.decoder.total_out());
+            let status = self.decoder.decompress(&input[at..], &mut block, FlushDecompress::Sync).ok()?;
+            let used = usize::try_from(self.decoder.total_in() - before_in).ok()?;
+            let wrote = usize::try_from(self.decoder.total_out() - before_out).ok()?;
+            if wrote > MESSAGE_MOST - out.len() {
+                return None;
+            }
+            out.extend_from_slice(&block[..wrote]);
+            let discard = (self.history.len() + wrote).saturating_sub(WINDOW);
+            self.history.drain(..discard);
+            self.history.extend(&block[..wrote]);
+            at += used;
+            if status == Status::StreamEnd {
+                self.decoder.reset(false);
+                if !self.history.is_empty() {
+                    self.decoder.set_dictionary(self.history.make_contiguous()).ok()?;
+                }
+            }
+            if at == input.len() && (wrote < block.len() || status == Status::StreamEnd) {
+                return Some(out);
+            }
+            if used == 0 && wrote == 0 {
+                return None;
+            }
         }
     }
 }
@@ -241,6 +339,54 @@ mod tests {
         assert!(out.ends_with(&[0x00, 0x00, 0xff, 0xff]));
         out.truncate(out.len() - 4);
         out
+    }
+
+    /// A ping between a message's frames goes on at once, with the frames
+    /// before it (Codex's fourth review: it was held with the message, and
+    /// a server waiting for its pong before the message's end waited for
+    /// ever); the message is still read whole.
+    #[test]
+    fn a_ping_inside_a_message_goes_at_once() {
+        let mut r = Reader::new(None);
+        let (first, ping, last) = (frame(false, false, 0x1, b"one, "), frame(true, false, 0x9, b"p"), frame(true, false, 0x0, b"two"));
+        let a = r.push(&first);
+        let b = r.push(&ping);
+        let c = r.push(&last);
+        assert!(a.bytes.is_empty());
+        assert_eq!(b.bytes, [&first[..], &ping[..]].concat());
+        assert_eq!((c.bytes, c.messages), (last, vec!["one, two".to_owned()]));
+        assert!(!r.blind());
+    }
+
+    /// A compressed message may end a DEFLATE stream and go on with
+    /// another (RFC 7692 allows it; one taking the context over may refer
+    /// to what came before): read whole, and the next message too (it
+    /// was cut at the first's end, and the next unreadable).
+    #[test]
+    fn a_message_of_two_streams_read_whole() {
+        let mut first = Vec::with_capacity(64);
+        Compress::new(Compression::fast(), false).compress_vec(b"Hello", &mut first, FlushCompress::Finish).unwrap();
+        let mut second = Compress::new(Compression::fast(), false);
+        let mut wire_payload = first.clone();
+        wire_payload.extend(deflated(&mut second, " world"));
+        let mut r = Reader::new(Some("permessage-deflate"));
+        let p = r.push(&frame(true, true, 0x1, &wire_payload));
+        assert_eq!(p.messages, ["Hello world"]);
+
+        // A stream ended, the next message's referring back past it.
+        let plain = "the model reports its response";
+        let mut ended = Vec::with_capacity(128);
+        Compress::new(Compression::default(), false).compress_vec(plain.as_bytes(), &mut ended, FlushCompress::Finish).unwrap();
+        // (An empty stored block after it, as RFC 7692 has a sender add,
+        // less the four bytes taken off every message: its first byte.)
+        ended.push(0);
+        let mut r = Reader::new(Some("permessage-deflate"));
+        assert_eq!(r.push(&frame(true, true, 0x1, &ended)).messages, [plain]);
+        let mut next = Compress::new(Compression::default(), false);
+        next.set_dictionary(plain.as_bytes()).unwrap();
+        let again = deflated(&mut next, plain);
+        assert_eq!(r.push(&frame(true, true, 0x1, &again)).messages, [plain]);
+        assert!(!r.blind());
     }
 
     /// What's passed on is what came, byte for byte, however it's split;
