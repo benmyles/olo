@@ -155,7 +155,32 @@ something nobody here has is in "Blocked", with what it waits for.
   Deskbar and its other programs draw with nobody looking; one
   compositor's cost at rest against nothing; and the GPU's frequency
   under Olo's power modes (whether "low latency" should raise its
-  floor: `freq0/min_freq`, `power_profile`). The lint was meanwhile made to run
+  floor: `freq0/min_freq`, `power_profile`). **Measured since
+  (11:26 to 11:32)**: the person's compositor's own warnings ("slow
+  frame: finishing it took 4 to 10 ms": waiting for the GPU to end a
+  frame of half a millisecond's work) by the minute: 10:58 to 11:03
+  (101, the push's lint), 11:08 (1), 11:13 to 11:16 (21), none
+  between and none after. 11:13 to 11:16 had no lint: a release
+  build at the lowest priority, and the Codex agent's headless
+  desktops (its last pictures and `snap-check`). Fifteen busy loops
+  at the lowest priority for 20 s, nothing drawing: no slow frame,
+  with the GPU's floor at 1600 MHz and again at 700 (it rose to 2450
+  by itself). So neither processor load alone nor the GPU's clock is
+  it: it is **other desktops drawing on the same GPU** that makes the
+  person's frames wait. Yet a headless compositor already asks for
+  the GPU's low priority and the person's for high
+  (`headless.rs`, `udev.rs`: EGL's context priority), and Olo's
+  programs on an agent's screen for Vulkan's lowest
+  (`gpu_low_priority`): so either the driver doesn't honour them
+  (`xe`: whether Mesa passes them on and the firmware scheduler
+  acts on them is to be read from the GPU's own list of contexts,
+  /sys/kernel/debug/dri/*/gt0/uc/guc_info, with sudo), or what a
+  test desktop draws can't be interrupted in time (a 5120 × 3200
+  output redrawn whole: one long job; the scheduler's preemption
+  timeout is 640 ms and its timeslice 1 ms). The floor was left at
+  1600 MHz by hand (it resets at a restart). A second investigator
+  (codex-help, max) has the dump and the day's kernel lines:
+  /var/tmp/claude-blueferry/gpuhelp/answer.md. The lint was meanwhile made to run
   four desktops at once at the most and to wait for room
   (`wait_for_room`): a guard, not the fix. Also: three test desktops from earlier runs were still up,
   one two and a half days old (`/var/tmp/olo-live-lint-*`,
