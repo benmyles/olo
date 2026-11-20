@@ -8,11 +8,9 @@
 //! sign-in in place of the client's. Everything else on those hosts goes
 //! through untouched (the client's own sign-in, every header and byte,
 //! a WebSocket too), and every other host is a tunnel the pool never
-//! looks into. A model request asking for a WebSocket (Codex's Responses
-//! over one) is told 426 Upgrade Required, which Codex takes as "use
-//! HTTPS" for the rest of its session: the pool serves an answer at a
-//! time, each from the account best placed for it, and a socket kept for
-//! a whole session would tie it to one.
+//! looks into. Codex's Responses over a WebSocket are the pool's too, as
+//! Codex sends them (`gateway::serve_socket`): a socket on the account
+//! best placed for it, given up for another when it runs out.
 
 use std::{
     net::SocketAddr,
@@ -311,13 +309,21 @@ async fn request(shared: Arc<Shared>, host: &str, req: hyper::Request<hyper::bod
     let path = parts.uri.path().to_owned();
     let query = parts.uri.query().map(str::to_owned);
     if upgrading(&parts.headers) {
-        if pooled(host, &path).is_some_and(|(p, _)| shared.routes(p)) {
-            return (StatusCode::UPGRADE_REQUIRED, "The pool answers this over HTTPS.").into_response();
-        }
         let Some(on) = parts.extensions.remove::<hyper::upgrade::OnUpgrade>() else {
             return (StatusCode::BAD_REQUEST, "This connection can’t switch protocols.").into_response();
         };
-        return upgrade_through(&shared, host, &path, query.as_deref(), parts.method, parts.headers, on).await;
+        match pooled(host, &path).filter(|(p, _)| shared.routes(*p)) {
+            // Codex's Responses over a WebSocket: the pool's, as it came
+            // (under way until its 101 has gone; after, a tunnel).
+            Some((Provider::Codex, _)) if parts.method == Method::GET => {
+                let underway = crate::drain::Underway::new(&shared);
+                let answer = crate::gateway::serve_socket(shared, path, query, parts.headers, parts.extensions, on).await;
+                drop(underway);
+                return answer;
+            }
+            Some(_) => return (StatusCode::UPGRADE_REQUIRED, "The pool answers this over HTTPS.").into_response(),
+            None => return upgrade_through(&shared, host, &path, query.as_deref(), parts.method, parts.headers, on).await,
+        }
     }
     // Under way until its answer has gone (an upgrade waits for it).
     let underway = crate::drain::Underway::new(&shared);

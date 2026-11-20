@@ -1917,6 +1917,462 @@ pub async fn serve(s: Arc<Shared>, provider: Provider, rest: String, query: Opti
     }
 }
 
+/// A Codex socket: its Responses over a WebSocket, as Codex 0.170 asks
+/// for them first (Ben, 2026-11-19: "all requests from the pool need to be
+/// exactly the same as if they came from claude code / codex"; answered
+/// 426, Codex spoke HTTP for the rest of its session, which no Codex left
+/// to itself does). The handshake goes on as Codex sent it, the account's
+/// own in place of Codex's (its sign-in, its ChatGPT account, its
+/// cookies), on a connection of its own offering what Codex offered; one
+/// refused there (a 429, a sign-in refused) gives way to the next account
+/// before Codex hears a thing. Switched, the socket is passed on both ways
+/// as it came, the server's side read as it passes (`socket::Reader`):
+/// each turn counted from its `response.created` to its end, with its
+/// usage; an account that runs out inside the socket (an `error` event
+/// with status 429, which Codex takes as final) is marked so, and the
+/// socket closed instead of that being said: Codex takes it as a stream
+/// that broke and asks again, which the pool gives another account.
+pub async fn serve_socket(s: Arc<Shared>, path: String, query: Option<String>, headers: HeaderMap, ext: axum::http::Extensions, on: hyper::upgrade::OnUpgrade) -> Response {
+    let provider = Provider::Codex;
+    // (Its model comes with each turn; Codex's quotas are its plan's.)
+    let family = String::new();
+    let client = client_of(&headers);
+    let target = match &query {
+        Some(q) => format!("{path}?{q}"),
+        None => path,
+    };
+    let base = s.upstream_origin(host_of(provider));
+    let offer: Vec<String> = ext.get::<crate::relay::ClientOffer>().map(|o| o.0.clone()).unwrap_or_default();
+    let offer: Vec<&str> = offer.iter().map(String::as_str).collect();
+    let mut tried: HashMap<String, u64> = HashMap::new();
+    let mut network_tries = 0;
+    loop {
+        let chosen = {
+            let mut p = s.pool.lock().unwrap();
+            let sticky = p.sticky.get(&(provider, family.clone())).cloned();
+            match p.pick(provider, &family, sticky.as_deref(), &tried, &[]).map(|a| (a.id.clone(), a.name.clone())) {
+                Some((id, name)) => {
+                    p.sticky.insert((provider, family.clone()), id.clone());
+                    let revision = p.reset_revision(&id);
+                    Ok((id, name, revision))
+                }
+                None => {
+                    if !p.loaded {
+                        let msg = format!("The pool’s accounts aren’t open yet: {}", p.error.clone().unwrap_or_default());
+                        return unavailable(provider, StatusCode::SERVICE_UNAVAILABLE, &msg, None);
+                    }
+                    let any = p.saved.accounts.iter().any(|a| a.provider == provider && a.enabled && a.signed_out.is_none());
+                    Err((any, schedule::next_available(&p.saved.accounts, provider, &family, now())))
+                }
+            }
+        };
+        let (id, name, revision) = match chosen {
+            Ok(c) => c,
+            Err((any, retry)) => {
+                if any && let Some(id) = s.redeem_for(provider, &family, &tried).await {
+                    tried.remove(&id);
+                    continue;
+                }
+                return if any {
+                    let msg = format!("Every {} account in the pool is out of quota for now.", provider.client());
+                    unavailable(provider, StatusCode::TOO_MANY_REQUESTS, &msg, retry)
+                } else {
+                    let msg = format!("There are no {} accounts in the pool to use (open Token Pool to add one).", provider.client());
+                    unavailable(provider, StatusCode::SERVICE_UNAVAILABLE, &msg, None)
+                };
+            }
+        };
+        let seen = olo_net::generation();
+        let mut cred = match s.fresh(&id, provider, false, 60).await {
+            Ok(c) => c,
+            Err(Failure::Other(_)) if network_tries < NETWORK_TRIES && network_failed(seen) => {
+                network_tries += 1;
+                network_back().await;
+                continue;
+            }
+            Err(_) => {
+                tried.insert(id, revision);
+                continue;
+            }
+        };
+        let jar = s.jar(&id);
+        let mut refreshed = false;
+        let answer = loop {
+            let req = match socket_request(&headers, &target, &cred, &jar, &ext) {
+                Ok(r) => r,
+                Err(e) => return (StatusCode::BAD_REQUEST, e).into_response(),
+            };
+            match crate::relay::upgrade(&base, &offer, req).await {
+                Ok(r) => {
+                    crate::likeness::keep(&jar, host_of(provider), r.headers().get_all("set-cookie").iter().filter_map(|v| v.to_str().ok()));
+                    if r.status() == StatusCode::UNAUTHORIZED && !refreshed {
+                        refreshed = true;
+                        match s.fresh(&id, provider, true, 0).await {
+                            Ok(c) => {
+                                cred = c;
+                                continue;
+                            }
+                            Err(_) => break None,
+                        }
+                    }
+                    break Some(r);
+                }
+                // (Never reached the host: again, once there's a network.)
+                Err(e @ crate::relay::SendError::Connect(_)) if network_tries < NETWORK_TRIES => {
+                    network_tries += 1;
+                    tracing::info!("pool: a Codex socket couldn’t open ({e}): again");
+                    network_back().await;
+                }
+                Err(e) => return unavailable(provider, StatusCode::BAD_GATEWAY, &format!("The pool couldn’t reach {}: {e}", provider.client()), None),
+            }
+        };
+        let Some(mut r) = answer else {
+            tried.insert(id, revision);
+            continue;
+        };
+        let status = r.status();
+        let (windows, rejection) = upstream::header_windows(r.headers(), provider, &family, status.as_u16(), now());
+        {
+            let mut p = s.pool.lock().unwrap();
+            let current = p.reset_revision(&id) == revision;
+            if let Some(a) = p.account_mut(&id) {
+                if current {
+                    a.merge_windows(windows);
+                }
+                if status == StatusCode::UNAUTHORIZED {
+                    a.signed_out = Some("Its provider refused the sign-in.".into());
+                }
+                if current && let Some(rej) = &rejection {
+                    a.cooldown_until = Some(rej.until);
+                }
+            }
+        }
+        if status == StatusCode::UNAUTHORIZED || rejection.is_some() {
+            s.noted();
+            tried.insert(id, revision);
+            continue;
+        }
+        // Not switched: its answer, as it came.
+        if status != StatusCode::SWITCHING_PROTOCOLS {
+            return passed_back(r);
+        }
+        let extensions = r.headers().get("sec-websocket-extensions").and_then(|v| v.to_str().ok()).map(str::to_owned);
+        let host = hyper::upgrade::on(&mut r);
+        let mut out = Response::new(Body::empty());
+        *out.status_mut() = status;
+        for (k, v) in r.headers().iter().filter(|(k, _)| k.as_str() != "set-cookie") {
+            out.headers_mut().append(k.clone(), v.clone());
+        }
+        // (Each name in its case, the status line's reason.)
+        *out.extensions_mut() = std::mem::take(r.extensions_mut());
+        tokio::spawn(relay_socket(s.clone(), Turns { id, name, client, revision }, on, host, extensions));
+        return out;
+    }
+}
+
+/// Codex's handshake as it sent it, in its order, the account's own in
+/// place of Codex's: its sign-in where Codex's was, its ChatGPT account
+/// (after its sign-in where Codex named none), its cookies where Codex's
+/// were (or at the end).
+fn socket_request(headers: &HeaderMap, target: &str, cred: &Credential, jar: &crate::likeness::Jar, ext: &axum::http::Extensions) -> Result<hyper::Request<http_body_util::Full<Bytes>>, String> {
+    let cookie = crate::likeness::cookie(jar, host_of(Provider::Codex));
+    let mut b = hyper::Request::builder().method(Method::GET).uri(target);
+    let mut signed = false;
+    for (k, v) in headers.iter() {
+        match k.as_str() {
+            "authorization" | "x-api-key" if !signed => {
+                signed = true;
+                b = b.header("authorization", format!("Bearer {}", cred.access));
+                if !headers.contains_key("chatgpt-account-id")
+                    && let Some(account) = &cred.account_id
+                {
+                    b = b.header("chatgpt-account-id", account.as_str());
+                }
+            }
+            "authorization" | "x-api-key" => {}
+            "chatgpt-account-id" => {
+                if let Some(account) = &cred.account_id {
+                    b = b.header(k, account.as_str());
+                }
+            }
+            "cookie" => {
+                if let Some(c) = &cookie {
+                    b = b.header(k, c.as_str());
+                }
+            }
+            "proxy-connection" | "proxy-authorization" => {}
+            name if name.starts_with("x-olo-pool-") => {}
+            _ => b = b.header(k, v),
+        }
+    }
+    if !signed {
+        b = b.header("authorization", format!("Bearer {}", cred.access));
+        if let Some(account) = &cred.account_id {
+            b = b.header("chatgpt-account-id", account.as_str());
+        }
+    }
+    if !headers.contains_key("cookie")
+        && let Some(c) = &cookie
+    {
+        b = b.header("cookie", c.as_str());
+    }
+    let mut req = b.body(http_body_util::Full::new(Bytes::new())).map_err(|e| e.to_string())?;
+    *req.extensions_mut() = ext.clone();
+    Ok(req)
+}
+
+/// An answer that didn't switch protocols, passed back as it came (each
+/// name in its case, its reason, its length unless chunked), but for the
+/// cookies set for the account.
+fn passed_back(mut r: hyper::Response<hyper::body::Incoming>) -> Response {
+    let ext = std::mem::take(r.extensions_mut());
+    let (status, headers) = (r.status(), r.headers().clone());
+    let chunked = headers.contains_key("transfer-encoding");
+    let mut out = Response::new(Body::from_stream(crate::relay::Answer::Exact(r, None).into_stream()));
+    *out.status_mut() = status;
+    *out.extensions_mut() = ext;
+    for (k, v) in headers.iter().filter(|(k, _)| returned(k.as_str()) && !(chunked && k.as_str() == "content-length")) {
+        out.headers_mut().append(k.clone(), v.clone());
+    }
+    out
+}
+
+/// Whose a socket's turns are counted as: the account (and the reset it
+/// was chosen at), the client.
+struct Turns {
+    id: String,
+    name: String,
+    client: String,
+    revision: u64,
+}
+
+/// What a message the server sent on a socket says, to the pool.
+enum Said {
+    /// A turn began (its model).
+    Began(String),
+    /// A turn ended: its status (200, or the error's), the event (its usage).
+    Ended(u16, Value),
+    /// The account ran out (an `error` event with status 429).
+    Out(Value),
+    /// The account's meters (`codex.rate_limits`, as ChatGPT says them on
+    /// a socket where it would say them in an answer's headers).
+    Limits(Value),
+    /// Nothing the pool counts.
+    Other,
+}
+
+/// What `m` (a text message from the server) says (read only where it can
+/// say something: a turn's delta is passed over unparsed).
+fn said(m: &str) -> Said {
+    let kinds = ["response.created", "response.completed", "response.done", "response.failed", "response.incomplete", "\"error\"", "codex.rate_limits"];
+    if !kinds.iter().any(|k| m.contains(k)) {
+        return Said::Other;
+    }
+    let Ok(v) = serde_json::from_str::<Value>(m) else { return Said::Other };
+    match v["type"].as_str() {
+        Some("response.created") => Said::Began(v["response"]["model"].as_str().unwrap_or_default().to_owned()),
+        Some("response.completed" | "response.done" | "response.incomplete") => Said::Ended(200, v),
+        Some("response.failed") => Said::Ended(500, v),
+        Some("error") if v["status"].as_u64() == Some(429) || v["status_code"].as_u64() == Some(429) => Said::Out(v),
+        Some("error") => Said::Ended(v["status"].as_u64().and_then(|n| u16::try_from(n).ok()).unwrap_or(500), v),
+        Some("codex.rate_limits") => Said::Limits(v),
+        _ => Said::Other,
+    }
+}
+
+/// Pass a switched socket on both ways, as it came, counting its turns
+/// (`Said`), until either side closes it, or the account runs out inside
+/// it: then marked, and the socket closed with that unsaid.
+async fn relay_socket(s: Arc<Shared>, turns: Turns, on: hyper::upgrade::OnUpgrade, host: hyper::upgrade::OnUpgrade, extensions: Option<String>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let (theirs, ours) = match tokio::join!(on, host) {
+        (Ok(a), Ok(b)) => (hyper_util::rt::TokioIo::new(a), hyper_util::rt::TokioIo::new(b)),
+        (a, b) => {
+            tracing::debug!("pool: a Codex socket didn’t switch: {:?} {:?}", a.err(), b.err());
+            return;
+        }
+    };
+    s.drain.tunnel_opened();
+    let (mut from_client, mut to_client) = tokio::io::split(theirs);
+    let (mut from_host, mut to_host) = tokio::io::split(ours);
+    let drain = &s.drain;
+    let up = async {
+        let mut buf = vec![0u8; 16 << 10];
+        loop {
+            match from_client.read(&mut buf).await {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    drain.tunnel_crossed();
+                    if to_host.write_all(&buf[..n]).await.is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+        let _ = to_host.shutdown().await;
+    };
+    let down = async {
+        let mut reader = crate::socket::Reader::new(extensions.as_deref());
+        let mut turn: Option<Finish> = None;
+        let mut buf = vec![0u8; 16 << 10];
+        loop {
+            let n = match from_host.read(&mut buf).await {
+                Ok(0) | Err(_) => break,
+                Ok(n) => n,
+            };
+            drain.tunnel_crossed();
+            let passed = reader.push(&buf[..n]);
+            let mut out = false;
+            for m in &passed.messages {
+                match said(m) {
+                    Said::Began(model) => turn = Some(s.begin_turn(&turns, &model)),
+                    Said::Ended(status, v) => {
+                        if let Some(mut f) = turn.take() {
+                            f.status = status;
+                            f.scan.event(&v);
+                            f.ended = true;
+                        }
+                    }
+                    Said::Out(v) => {
+                        s.socket_out(&turns, &v);
+                        if let Some(mut f) = turn.take() {
+                            f.status = 429;
+                            f.outcome = Some(Outcome::RateLimited);
+                        }
+                        out = true;
+                    }
+                    Said::Limits(v) => s.socket_limits(&turns, &v),
+                    Said::Other => {}
+                }
+            }
+            if out {
+                tracing::info!("pool: {} ran out inside a Codex socket: closed, for Codex to ask again", turns.name);
+                break;
+            }
+            if to_client.write_all(&passed.bytes).await.is_err() {
+                break;
+            }
+        }
+        let _ = to_client.shutdown().await;
+        // (A turn the socket broke off: counted as such.)
+        if let Some(mut f) = turn.take() {
+            f.broken = true;
+        }
+    };
+    tokio::join!(up, down);
+    s.drain.tunnel_closed();
+}
+
+impl Shared {
+    /// A turn begins on a socket for `turns`' account: open, and counted
+    /// as busy, until it ends (its `Finish` dropped).
+    fn begin_turn(self: &Arc<Self>, turns: &Turns, model: &str) -> Finish {
+        let open = {
+            let mut p = self.pool.lock().unwrap();
+            *p.in_flight.entry(turns.id.clone()).or_default() += 1;
+            p.next_open += 1;
+            let open = p.next_open;
+            p.open.push(Open {
+                id: open,
+                account: turns.name.clone(),
+                account_id: turns.id.clone(),
+                provider: Provider::Codex,
+                model: model.to_owned(),
+                client: turns.client.clone(),
+                started: now_ms(),
+            });
+            open
+        };
+        self.noted();
+        let mut scan = Scan::new();
+        scan.sse = true;
+        Finish {
+            id: turns.id.clone(),
+            name: turns.name.clone(),
+            open,
+            provider: Provider::Codex,
+            model: model.to_owned(),
+            client: turns.client.clone(),
+            started: std::time::Instant::now(),
+            status: 0,
+            outcome: None,
+            ended: false,
+            length: None,
+            passed: 0,
+            broken: false,
+            scan,
+            decode: Decode::Plain,
+            shared: Some(self.clone()),
+        }
+    }
+
+    /// `turns`' account's meters as a socket says them (`event`, a
+    /// `codex.rate_limits`), read as the same meters in an answer's
+    /// headers are, unless it's been reset since it was chosen.
+    fn socket_limits(&self, turns: &Turns, event: &Value) {
+        let mut headers = HeaderMap::new();
+        for kind in ["primary", "secondary"] {
+            let w = &event["rate_limits"][kind];
+            for (field, name) in [("used_percent", "used-percent"), ("window_minutes", "window-minutes"), ("reset_at", "reset-at"), ("reset_after_seconds", "reset-after-seconds")] {
+                if let Some(n) = w[field].as_f64()
+                    && let (Ok(k), Ok(v)) = (HeaderName::from_bytes(format!("x-codex-{kind}-{name}").as_bytes()), HeaderValue::from_str(&n.to_string()))
+                {
+                    headers.insert(k, v);
+                }
+            }
+        }
+        let (windows, _) = upstream::header_windows(&headers, Provider::Codex, "", 200, now());
+        if windows.is_empty() {
+            return;
+        }
+        {
+            let mut p = self.pool.lock().unwrap();
+            if p.reset_revision(&turns.id) != turns.revision {
+                return;
+            }
+            if let Some(a) = p.account_mut(&turns.id) {
+                a.merge_windows(windows);
+            }
+        }
+        self.noted();
+    }
+
+    /// `turns`' account ran out inside a socket (`event`, the 429 Codex
+    /// would have been told): its meters from the headers the event
+    /// carries, and a wait until its limit resets (as the event says, else
+    /// a minute), unless it's been reset since it was chosen.
+    fn socket_out(&self, turns: &Turns, event: &Value) {
+        let mut headers = HeaderMap::new();
+        for named in [&event["headers"], &event["error"]["headers"]] {
+            for (k, v) in named.as_object().into_iter().flatten() {
+                let v = match v {
+                    Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                };
+                if let (Ok(k), Ok(v)) = (HeaderName::from_bytes(k.as_bytes()), HeaderValue::from_str(&v)) {
+                    headers.append(k, v);
+                }
+            }
+        }
+        let t = now();
+        let (windows, rejection) = upstream::header_windows(&headers, Provider::Codex, "", 429, t);
+        // (When its limit resets, as the event says; else as its headers
+        // say, else a minute.)
+        let until = event["error"]["resets_at"].as_i64().filter(|&r| r > t).or_else(|| rejection.map(|r| r.until)).unwrap_or(t + 60);
+        {
+            let mut p = self.pool.lock().unwrap();
+            if p.reset_revision(&turns.id) != turns.revision {
+                return;
+            }
+            if let Some(a) = p.account_mut(&turns.id) {
+                a.merge_windows(windows);
+                a.cooldown_until = Some(until);
+            }
+        }
+        self.noted();
+    }
+}
+
 /// Where `metadata.user_id`'s string is in a JSON request body (its
 /// quotes with it), if it has one.
 fn user_id_span(body: &[u8]) -> Option<std::ops::Range<usize>> {

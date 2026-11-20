@@ -21,7 +21,7 @@ use olo_token_pool::{
     store::Saved,
     upstream::Upstreams,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 /// What the fake saw: (path, its sign-in, every header).
@@ -243,6 +243,8 @@ async fn switches_protocols_where_it_passes_through_not_where_it_pools() {
     let mut saved = Saved::default();
     saved.accounts.push(account("codex-a", Provider::Codex));
     saved.credentials.insert("codex-a".into(), Credential { access: "pooled-codex".into(), refresh: None, expires_at: Some(now() + 3600), account_id: Some("acct-1".into()) });
+    saved.accounts.push(account("claude-a", Provider::Claude));
+    saved.credentials.insert("claude-a".into(), Credential { access: "pooled".into(), refresh: None, expires_at: Some(now() + 3600), account_id: None });
     let shared = Shared::new(saved, None, Upstreams::fake(&format!("http://{up}")), || {});
     let authority = Arc::new(Authority::ephemeral());
     let s = shared.clone();
@@ -254,10 +256,10 @@ async fn switches_protocols_where_it_passes_through_not_where_it_pools() {
         .build()
         .unwrap();
 
-    // Codex's Responses WebSocket: 426, so it uses HTTPS (and the pool
-    // never sends it on, nor counts it).
+    // A Claude model request asking to switch: 426 (Claude Code never
+    // asks; the pool answers it over HTTPS), never sent on, nor counted.
     let r = client
-        .get("https://chatgpt.com/backend-api/codex/responses")
+        .get("https://api.anthropic.com/v1/messages")
         .header("connection", "Upgrade")
         .header("upgrade", "websocket")
         .header("sec-websocket-version", "13")
@@ -266,7 +268,7 @@ async fn switches_protocols_where_it_passes_through_not_where_it_pools() {
         .await
         .unwrap();
     assert_eq!(r.status(), 426);
-    assert!(seen.lock().unwrap().iter().all(|(p, _, _)| p != "/backend-api/codex/responses"));
+    assert!(seen.lock().unwrap().iter().all(|(p, _, _)| p != "/v1/messages"));
     assert!(shared.pool.lock().unwrap().open.is_empty());
 
     // Anywhere else: through, and then byte for byte.
@@ -725,4 +727,277 @@ async fn connections_follow_the_clients() {
     assert_eq!(shared.exact().idle(), 1);
     exchange(&mut two, "GET", "/api/oauth/profile", "two").await;
     assert_eq!(heads.lock().unwrap().last().unwrap().0, conn(2));
+}
+
+/// A ChatGPT that speaks Codex's Responses over a WebSocket: each
+/// handshake written down (its head as it came), then each turn answered
+/// as ChatGPT does (`response.created`, a delta, `response.completed` with
+/// its usage). The sign-in `runs-out` runs out inside its socket (a 429
+/// event, as ChatGPT sends one); `refused` is refused at its handshake.
+async fn chatgpt_sockets() -> (SocketAddr, Arc<std::sync::Mutex<Vec<String>>>) {
+    let heads: Arc<std::sync::Mutex<Vec<String>>> = Default::default();
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let at = l.local_addr().unwrap();
+    let kept = heads.clone();
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut s, _)) = l.accept().await else { return };
+            let kept = kept.clone();
+            tokio::spawn(async move {
+                let mut buf = Vec::new();
+                let mut chunk = [0u8; 4096];
+                let end = loop {
+                    if let Some(e) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                        break e + 4;
+                    }
+                    let n = s.read(&mut chunk).await.unwrap_or(0);
+                    if n == 0 {
+                        return;
+                    }
+                    buf.extend_from_slice(&chunk[..n]);
+                };
+                let head = String::from_utf8_lossy(&buf[..end]).into_owned();
+                kept.lock().unwrap().push(head.clone());
+                let field = |name: &str| head.lines().find_map(|l| l.split_once(':').filter(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.trim().to_owned())).unwrap_or_default();
+                let token = field("authorization");
+                if token == "Bearer refused" {
+                    let body = r#"{"error":{"type":"usage_limit_reached","message":"The usage limit has been reached"}}"#;
+                    let reply = format!(
+                        "HTTP/1.1 429 Too Many Requests\r\ncontent-type: application/json\r\nx-codex-primary-used-percent: 100\r\nx-codex-primary-reset-after-seconds: 3600\r\ncontent-length: {}\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = s.write_all(reply.as_bytes()).await;
+                    return;
+                }
+                let accept = tungstenite::handshake::derive_accept_key(field("sec-websocket-key").as_bytes());
+                let reply = format!("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\nX-Codex-Turn-State: sticky-1\r\n\r\n");
+                s.write_all(reply.as_bytes()).await.unwrap();
+                let mut rest = buf[end..].to_vec();
+                loop {
+                    // A client's frame: masked, whole in what's come.
+                    while rest.len() < 2 || rest.len() < frame_len(&rest) {
+                        let n = s.read(&mut chunk).await.unwrap_or(0);
+                        if n == 0 {
+                            return;
+                        }
+                        rest.extend_from_slice(&chunk[..n]);
+                    }
+                    let len = frame_len(&rest);
+                    let (opcode, payload) = unmask(&rest[..len]);
+                    rest.drain(..len);
+                    if opcode == 0x8 {
+                        let _ = s.write_all(&server_frame(0x8, &payload)).await;
+                        return;
+                    }
+                    let asked: Value = serde_json::from_slice(&payload).unwrap();
+                    let model = asked["model"].as_str().unwrap_or("gpt-5").to_owned();
+                    let mut said = server_frame(0x1, json!({"type": "codex.rate_limits", "plan_type": "pro", "rate_limits": {"allowed": true, "limit_reached": false, "primary": {"used_percent": 42.0, "window_minutes": 300, "reset_after_seconds": 3600, "reset_at": now() + 3600}, "secondary": null}}).to_string().as_bytes());
+                    said.extend(server_frame(0x1, json!({"type": "response.created", "response": {"model": model}}).to_string().as_bytes()));
+                    if token == "Bearer runs-out" {
+                        said.extend(server_frame(0x1, json!({"type": "error", "status": 429, "error": {"type": "usage_limit_reached", "resets_at": now() + 7200}, "headers": {"x-codex-primary-used-percent": "100.0", "x-codex-primary-window-minutes": 300}}).to_string().as_bytes()));
+                    } else {
+                        said.extend(server_frame(0x1, br#"{"type":"response.output_text.delta","delta":"hi"}"#));
+                        said.extend(server_frame(0x1, json!({"type": "response.completed", "response": {"usage": {"input_tokens": 11, "output_tokens": 4}}}).to_string().as_bytes()));
+                    }
+                    if s.write_all(&said).await.is_err() {
+                        return;
+                    }
+                }
+            });
+        }
+    });
+    (at, heads)
+}
+
+/// How long the frame at the start of `b` is, all told (a bound larger
+/// than `b` while its head hasn't all come).
+fn frame_len(b: &[u8]) -> usize {
+    if b.len() < 2 {
+        return usize::MAX;
+    }
+    let mask = if b[1] & 0x80 != 0 { 4 } else { 0 };
+    match b[1] & 0x7f {
+        126 if b.len() >= 4 => 4 + mask + u16::from_be_bytes([b[2], b[3]]) as usize,
+        126 => usize::MAX,
+        127 if b.len() >= 10 => 10 + mask + u64::from_be_bytes(b[2..10].try_into().unwrap()) as usize,
+        127 => usize::MAX,
+        n => 2 + mask + n as usize,
+    }
+}
+
+/// A frame's opcode and its payload, unmasked.
+fn unmask(f: &[u8]) -> (u8, Vec<u8>) {
+    let (len7, mut at) = (f[1] & 0x7f, 2);
+    at += match len7 {
+        126 => 2,
+        127 => 8,
+        _ => 0,
+    };
+    let key = [f[at], f[at + 1], f[at + 2], f[at + 3]];
+    at += 4;
+    (f[0] & 0x0f, f[at..].iter().enumerate().map(|(i, b)| b ^ key[i % 4]).collect())
+}
+
+/// A server's frame, whole, unmasked.
+fn server_frame(opcode: u8, payload: &[u8]) -> Vec<u8> {
+    let mut f = vec![0x80 | opcode];
+    if payload.len() < 126 {
+        f.push(payload.len() as u8);
+    } else {
+        f.push(126);
+        f.extend_from_slice(&(payload.len() as u16).to_be_bytes());
+    }
+    f.extend_from_slice(payload);
+    f
+}
+
+/// A client's frame, masked as a client masks it.
+fn client_frame(opcode: u8, payload: &[u8]) -> Vec<u8> {
+    let key = [0x37u8, 0xfa, 0x21, 0x3d];
+    let mut f = vec![0x80 | opcode];
+    if payload.len() < 126 {
+        f.push(0x80 | payload.len() as u8);
+    } else {
+        f.push(0x80 | 126);
+        f.extend_from_slice(&(payload.len() as u16).to_be_bytes());
+    }
+    f.extend_from_slice(&key);
+    f.extend(payload.iter().enumerate().map(|(i, b)| b ^ key[i % 4]));
+    f
+}
+
+/// Codex's socket through the proxy: its CONNECT, its TLS (no ALPN, as
+/// Codex's socket offers none), its handshake as Codex writes it; the
+/// answer's head, and the stream.
+async fn codex_socket(proxy: SocketAddr, authority: &Authority, key: &str) -> (String, tokio_rustls::client::TlsStream<tokio::net::TcpStream>) {
+    let mut tcp = tokio::net::TcpStream::connect(proxy).await.unwrap();
+    tcp.write_all(b"CONNECT chatgpt.com:443 HTTP/1.1\r\nHost: chatgpt.com:443\r\n\r\n").await.unwrap();
+    let mut reply = [0u8; 39];
+    tcp.read_exact(&mut reply).await.unwrap();
+    let mut roots = rustls::RootCertStore::empty();
+    use rustls::pki_types::pem::PemObject;
+    roots.add(rustls::pki_types::CertificateDer::from_pem_slice(authority.cert_pem.as_bytes()).unwrap()).unwrap();
+    let config = rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::aws_lc_rs::default_provider()))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    let mut tls = tokio_rustls::TlsConnector::from(Arc::new(config)).connect(rustls::pki_types::ServerName::try_from("chatgpt.com").unwrap(), tcp).await.unwrap();
+    let head = format!(
+        "GET /backend-api/codex/responses HTTP/1.1\r\nHost: chatgpt.com\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: {key}\r\ncookie: client=own\r\nchatgpt-account-id: theirs-acct\r\nauthorization: Bearer theirs\r\nuser-agent: codex-tui/0.170.0\r\noriginator: codex-tui\r\nx-codex-turn-metadata: {{\"turn\":1}}\r\nopenai-beta: responses_websockets=2026-02-06\r\n\r\n"
+    );
+    tls.write_all(head.as_bytes()).await.unwrap();
+    let mut got = Vec::new();
+    let mut b = [0u8; 1];
+    while !got.ends_with(b"\r\n\r\n") {
+        assert_eq!(tls.read(&mut b).await.unwrap(), 1, "closed before its answer: {}", String::from_utf8_lossy(&got));
+        got.push(b[0]);
+    }
+    (String::from_utf8(got).unwrap(), tls)
+}
+
+/// Read what the server says on `tls` until `until` comes (or the socket
+/// closes): each message, and the bytes as they came.
+async fn heard(tls: &mut tokio_rustls::client::TlsStream<tokio::net::TcpStream>, until: &str) -> (Vec<String>, Vec<u8>, bool) {
+    let mut reader = olo_token_pool::socket::Reader::new(None);
+    let (mut messages, mut bytes) = (Vec::new(), Vec::new());
+    let mut chunk = [0u8; 4096];
+    loop {
+        let n = tokio::time::timeout(std::time::Duration::from_secs(5), tls.read(&mut chunk)).await.expect("silent").unwrap_or(0);
+        if n == 0 {
+            return (messages, bytes, true);
+        }
+        bytes.extend_from_slice(&chunk[..n]);
+        let p = reader.push(&chunk[..n]);
+        messages.extend(p.messages);
+        if messages.iter().any(|m| m.contains(until)) {
+            return (messages, bytes, false);
+        }
+    }
+}
+
+/// Codex's Responses over its WebSocket are the pool's (Ben, 2026-11-19:
+/// "all requests from the pool need to be exactly the same as if they came
+/// from claude code / codex"; it was answered 426 and Codex spoke HTTP):
+/// the handshake goes on as Codex wrote it but for the account's own (its
+/// sign-in, ChatGPT account and cookies), its answer comes back as it came
+/// (Codex's key accepted, each name in its case), the socket passes both
+/// ways byte for byte, and each turn is counted with its usage. An account
+/// refused at the handshake gives way to the next before Codex hears of
+/// it; one that runs out inside its socket is marked, and the socket
+/// closed with that unsaid, so Codex asks again, on another account.
+#[tokio::test(flavor = "multi_thread")]
+async fn codex_sockets_are_the_pools() {
+    let (up, heads) = chatgpt_sockets().await;
+    let mut saved = Saved::default();
+    for (id, token) in [("a-refused", "refused"), ("b-runs-out", "runs-out"), ("c", "pooled-c")] {
+        let mut a = account(id, Provider::Codex);
+        a.created = match id {
+            "a-refused" => 1,
+            "b-runs-out" => 2,
+            _ => 3,
+        };
+        saved.accounts.push(a);
+        saved.credentials.insert(id.into(), Credential { access: token.into(), refresh: None, expires_at: Some(now() + 3600), account_id: Some(format!("acct-{id}")) });
+    }
+    let shared = Shared::new(saved, None, Upstreams::fake(&format!("http://{up}")), || {});
+    let authority = Arc::new(Authority::ephemeral());
+    let s = shared.clone();
+    let proxy = intercept::serve(shared.clone(), authority.clone(), 0, Arc::new(move |p| s.serves(p)), intercept::Who::Anyone).await.unwrap();
+    let key = "dGhlIHNhbXBsZSBub25jZQ==";
+    let order = |heads: &[String]| heads.iter().map(|h| h.lines().find(|l| l.starts_with("authorization")).unwrap().to_owned()).collect::<Vec<_>>();
+
+    // The first refused at its handshake, the next taken: one 101.
+    let (answer, mut tls) = codex_socket(proxy, &authority, key).await;
+    assert!(answer.starts_with("HTTP/1.1 101 Switching Protocols\r\n"), "{answer}");
+    assert!(answer.contains(&format!("\r\nSec-WebSocket-Accept: {}\r\n", tungstenite::handshake::derive_accept_key(key.as_bytes()))), "{answer}");
+    assert!(answer.contains("\r\nX-Codex-Turn-State: sticky-1\r\n"), "{answer}");
+    {
+        let heads = heads.lock().unwrap();
+        assert_eq!(order(&heads), ["authorization: Bearer refused", "authorization: Bearer runs-out"]);
+        // As Codex wrote it, the account's own in Codex's places.
+        let sent = &heads[1];
+        let names: Vec<&str> = sent.lines().skip(1).filter_map(|l| l.split_once(':').map(|(k, _)| k)).collect();
+        assert_eq!(
+            names,
+            ["Host", "Connection", "Upgrade", "Sec-WebSocket-Version", "Sec-WebSocket-Key", "chatgpt-account-id", "authorization", "user-agent", "originator", "x-codex-turn-metadata", "openai-beta"]
+        );
+        assert!(sent.contains("\r\nchatgpt-account-id: acct-b-runs-out\r\n") && !sent.contains("theirs") && !sent.contains("client=own"), "{sent}");
+        assert!(sent.contains(&format!("\r\nSec-WebSocket-Key: {key}\r\n")));
+    }
+    // It runs out inside: the socket closes, that never said.
+    tls.write_all(&client_frame(0x1, br#"{"type":"response.create","model":"gpt-5"}"#)).await.unwrap();
+    let (said, _, closed) = heard(&mut tls, "response.completed").await;
+    assert!(closed, "the socket stayed open: {said:?}");
+    assert!(said.iter().all(|m| !m.contains("usage_limit_reached")), "{said:?}");
+    let p = shared.snapshot();
+    assert!(p.account("b-runs-out").unwrap().cooldown_until.is_some_and(|t| t > now() + 3600), "not marked out");
+    assert!(p.account("a-refused").unwrap().cooldown_until.is_some_and(|t| t > now()), "not marked out at its handshake");
+    assert!(p.open.is_empty() && p.in_flight.values().all(|&n| n == 0));
+
+    // Codex asks again: the next account, the turn served, counted.
+    let (answer, mut tls) = codex_socket(proxy, &authority, key).await;
+    assert!(answer.starts_with("HTTP/1.1 101"), "{answer}");
+    assert_eq!(order(&heads.lock().unwrap())[2..], ["authorization: Bearer pooled-c"]);
+    tls.write_all(&client_frame(0x1, br#"{"type":"response.create","model":"gpt-5"}"#)).await.unwrap();
+    let (said, bytes, closed) = heard(&mut tls, "response.completed").await;
+    assert!(!closed);
+    assert_eq!(said.len(), 4);
+    let limits = said[0].clone();
+    let mut wire = server_frame(0x1, limits.as_bytes());
+    wire.extend(server_frame(0x1, json!({"type": "response.created", "response": {"model": "gpt-5"}}).to_string().as_bytes()));
+    wire.extend(server_frame(0x1, br#"{"type":"response.output_text.delta","delta":"hi"}"#));
+    wire.extend(server_frame(0x1, json!({"type": "response.completed", "response": {"usage": {"input_tokens": 11, "output_tokens": 4}}}).to_string().as_bytes()));
+    assert_eq!(bytes, wire, "not as it came");
+    tls.write_all(&client_frame(0x8, &[0x03, 0xe8])).await.unwrap();
+    let (_, _, closed) = heard(&mut tls, "never").await;
+    assert!(closed);
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let p = shared.snapshot();
+    let c = p.account("c").unwrap();
+    assert_eq!((c.total.requests, c.total.input_tokens, c.total.output_tokens), (1, 11, 4));
+    // (Its meters, as the socket said them.)
+    assert!(c.windows.iter().any(|w| (w.used - 42.0).abs() < 0.01), "{:?}", c.windows);
+    assert!(p.open.is_empty() && p.in_flight.values().all(|&n| n == 0));
+    assert!(p.served.iter().any(|s| s.account_id == "b-runs-out" && s.request.outcome == olo_token_pool::model::Outcome::RateLimited));
 }

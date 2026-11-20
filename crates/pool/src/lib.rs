@@ -20,5 +20,6 @@ pub mod peer;
 pub mod relay;
 pub mod running;
 pub mod schedule;
+pub mod socket;
 pub mod store;
 pub mod upstream;

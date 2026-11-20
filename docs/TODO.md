@@ -144,7 +144,15 @@ something nobody here has is in "Blocked", with what it waits for.
   spelling, each sign-in's own connections for what passes through, an
   old sign-in's cookies kept apart, empty and HEAD answers, usage only
   from what decoded whole, deadlines on the client's head and a cap on
-  its body, saves never without the shared lock.
+  its body, saves never without the shared lock. Then Codex's
+  WebSockets the pool's (they were answered 426, and Codex spoke HTTP for
+  the rest of its session): the handshake as Codex sent it on the
+  account chosen, the socket passed on as it came, each turn counted
+  from its events (compressed as ChatGPT agreed), the meters from its
+  `codex.rate_limits`, an account out inside a socket given up for
+  another by Codex's own retry; checked against ChatGPT with a prewarm
+  turn. (The proxy offering Codex HTTP/2 was its leg to the proxy, which
+  ChatGPT never sees: let go.)
   **To do**:
   - What the third look left as design work: one object for a sign-in
     (its credential, jar, capture and connections taken together, so a
@@ -156,9 +164,6 @@ something nobody here has is in "Blocked", with what it waits for.
   - The one real Codex reset Ben allowed, when its account runs out
     (92% on 2026-11-19: a Codex reset starts a new week and loses what's
     left), through the pool's claim: what it does to the week's reset.
-  - Codex's WebSockets passed through on the account chosen (no 426),
-    its turns counted from their frames; Codex offered HTTP/2 by the
-    proxy as it offers it to ChatGPT.
   - TLS: Claude Code's two ClientHellos are BoringSSL's (Bun), Codex's
     native one OpenSSL's: the pool's rustls offers otherwise (ALPN,
     suites, extensions). Matching them means BoringSSL (`boring`) for

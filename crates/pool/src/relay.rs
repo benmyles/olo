@@ -415,6 +415,66 @@ impl Exact {
     }
 }
 
+/// A connection's stream, plain (a test's) or TLS.
+trait Io: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send {}
+impl<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send> Io for T {}
+
+/// Send `req`, which switches protocols (a WebSocket's handshake), to
+/// `base`'s host on a connection of its own, offering `alpn` less `h2`
+/// (HTTP/2 has no 101): the answer, its connection the socket's once it
+/// says 101 (`hyper::upgrade::on`). Within `CONNECT_WITHIN` to connect,
+/// a minute for the answer.
+pub async fn upgrade(base: &str, alpn: &[&str], req: hyper::Request<Full<Bytes>>) -> Result<hyper::Response<hyper::body::Incoming>, SendError> {
+    let alpn: Vec<&str> = alpn.iter().copied().filter(|p| *p != "h2").collect();
+    let io: Box<dyn Io> = match tokio::time::timeout(CONNECT_WITHIN, open(base, &alpn)).await {
+        Ok(r) => r?,
+        Err(_) => return Err(SendError::Connect(format!("{base}: no connection"))),
+    };
+    let mut b = http1::Builder::new();
+    b.preserve_header_case(true);
+    let (mut sender, conn) = b.handshake(hyper_util::rt::TokioIo::new(io)).await.map_err(|e| SendError::Connect(e.to_string()))?;
+    tokio::spawn(async move {
+        let _ = conn.with_upgrades().await;
+    });
+    match tokio::time::timeout(Duration::from_secs(60), sender.send_request(req)).await {
+        Ok(Ok(r)) => Ok(r),
+        Ok(Err(e)) => Err(SendError::Other(e.to_string())),
+        Err(_) => Err(SendError::Other("no answer came".into())),
+    }
+}
+
+/// A stream to `base`'s host: TLS offering `alpn` for `https`, plain for a
+/// test's `http`.
+async fn open(base: &str, alpn: &[&str]) -> Result<Box<dyn Io>, SendError> {
+    let (tls, rest) = if let Some(r) = base.strip_prefix("https://") {
+        (true, r)
+    } else if let Some(r) = base.strip_prefix("http://") {
+        (false, r)
+    } else {
+        return Err(SendError::Connect(format!("not an address: {base}")));
+    };
+    let authority = rest.split('/').next().unwrap_or(rest);
+    let (host, port) = match authority.rsplit_once(':') {
+        Some((h, p)) => (h.to_owned(), p.parse::<u16>().map_err(|_| SendError::Connect(format!("not a port: {p}")))?),
+        None => (authority.to_owned(), if tls { 443 } else { 80 }),
+    };
+    let tcp = TcpStream::connect((host.as_str(), port)).await.map_err(|e| SendError::Connect(format!("{host}: {e}")))?;
+    let _ = tcp.set_nodelay(true);
+    if !tls {
+        return Ok(Box::new(tcp));
+    }
+    let crypto = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+    let mut config = rustls::ClientConfig::builder_with_provider(crypto)
+        .with_safe_default_protocol_versions()
+        .map_err(|e| SendError::Connect(e.to_string()))?
+        .with_root_certificates(crate::capture::roots())
+        .with_no_client_auth();
+    config.alpn_protocols = alpn.iter().map(|p| p.as_bytes().to_vec()).collect();
+    let name = ServerName::try_from(host.clone()).map_err(|e| SendError::Connect(e.to_string()))?;
+    let stream = tokio_rustls::TlsConnector::from(Arc::new(config)).connect(name, tcp).await.map_err(|e| SendError::Connect(format!("{host}: {e}")))?;
+    Ok(Box::new(stream))
+}
+
 /// A new connection to `base`'s host: TLS (offering `alpn`) for `https`,
 /// plain for a test's `http`; HTTP/2 if the host chose it, else HTTP/1.1.
 /// All of it within `CONNECT_WITHIN`.

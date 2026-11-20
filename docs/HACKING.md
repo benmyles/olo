@@ -22906,11 +22906,12 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   inode in `/proc/net/tcp`, the process holding it; `peer::program`),
   and one that isn't Claude Code or Codex (a script one of them runs,
   which inherits the setting but needn't trust the certificate) is
-  tunnelled, as without the pool. A model request asking for a WebSocket
-  (Codex's Responses) gets 426, Codex's sign to use HTTPS for the rest of
-  its session at once (other answers make it retry five times first):
-  the pool serves an answer at a time from the account best placed for
-  it. A provider with no usable account is tunnelled, so its client runs
+  tunnelled, as without the pool. Codex's Responses over a WebSocket
+  (Codex 0.170 asks for one first) are the pool's too
+  (`gateway::serve_socket`, below); it was answered 426, Codex's sign to
+  use HTTPS for the rest of its session, which Codex left to itself never
+  does. A Claude model request asking for one still gets 426 (Claude
+  Code never asks). A provider with no usable account is tunnelled, so its client runs
   on its own sign-in. A request body compressed (Codex's zstd on
   ChatGPT's backend) is sent on as it came and read decompressed for its
   model (`gateway::plain`). The client's own account's headers
@@ -23275,7 +23276,7 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   for Reserve, which the pool can't use). Cookies are kept per account
   and host. Not yet the same: the TLS handshake (Claude Code's is
   BoringSSL's, two of them; Codex's native one OpenSSL's; the pool's
-  rustls), and Codex's WebSockets (below).
+  rustls).
 - **Passed on exactly** (`relay.rs`): a Claude model request goes on as
   Claude Code sent it, byte for byte: each header's name in its own
   case (hyper's server writes it down, its client writes it back:
@@ -23315,8 +23316,32 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   the `Host` is the host's. What isn't kept: a header's spacing, and a
   header repeated with another between (hyper groups a name's values);
   no client sends either. Codex's go on in their order, the account's
-  own in place, HTTP/2 as Codex would get it (reqwest, per account);
-  its WebSockets are still answered 426 (Codex then speaks HTTP).
+  own in place, HTTP/2 as Codex would get it (reqwest, per account).
+  Codex's sockets (its Responses over a WebSocket, `serve_socket`): the
+  account chosen at the handshake, which goes on as Codex sent it but for
+  the account's own (its sign-in, its ChatGPT account, its cookies), on a
+  connection of its own offering what Codex offered (no `h2`: HTTP/2 has
+  no 101); one refused there (a 429, a sign-in refused) gives way to the
+  next before Codex hears a thing, and the 101 comes back as it came
+  (Codex's key accepted, each name in its case). Switched, the socket is
+  passed on both ways as it came, the server's side read as it passes
+  (`socket::Reader`: each message whole before it goes on, a moment, its
+  `permessage-deflate` inflated for the pool's own reading with the
+  server's context kept from message to message; one it can't read goes
+  on unread): each turn counted from `response.created` to its end with
+  its usage, the account's meters taken from `codex.rate_limits` as from
+  an answer's `x-codex-*` headers. An account that runs out inside a
+  socket (an `error` event with status 429, which Codex takes as final)
+  is marked until its `resets_at`, and the socket closed with that
+  unsaid: Codex takes a socket that broke as a stream to ask again for
+  (its first retry unshown), and the pool gives that another account.
+  Codex keeps a socket for a turn and continues on it
+  (`previous_response_id`), so a socket stays on one account; a
+  continuation another account doesn't know is answered "previous
+  response not found", which Codex asks again in full. Checked against
+  ChatGPT itself: a prewarm turn (`generate: false`), its six messages
+  compressed with the server's context, each read, all 2,020 bytes
+  passed on as they came.
 - **Reset credits** (some subscriptions get a few, to reset their quota
   early): read with each sync (Claude's `cedar_ember` grants in the
   usage report, `?cedar_ember=1&skip_spend=1`, each read whole: its kind
