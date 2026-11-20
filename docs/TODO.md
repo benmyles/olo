@@ -266,6 +266,12 @@ something nobody here has is in "Blocked", with what it waits for.
   around a value, found by the agent translating Korean, Fastmail's
   check boxes' names for agents and Passwords' passkey question's "for
   “name”", are whole sentences now.)
+  **Found by the words agent in Russian** (2026-11-19): three places in
+  Preferences put an English fragment into a translated sentence (the
+  Keyboard check box's Super or Windows key, apps/preferences/src/
+  keyboard.rs:500; Phone's sentence about codes from text messages,
+  phone.rs:582; Windows' windowing mode and tiling layout,
+  windows.rs:54): each to be said whole.
 - **Translations as resources, not compiled in: measure it**
   (2026-11-19, from another agent's study of kache's misses, which Ben
   passed on: "packaging catalogs as separately updatable resources is
