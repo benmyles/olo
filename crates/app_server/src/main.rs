@@ -19,6 +19,10 @@ static GLOBAL: profiling::tracy_client::ProfiledAllocator<std::alloc::System> = 
 #[allow(clippy::uninlined_format_args)]
 fn main() {
     olo_crash::install();
+    // The capability the person's compositor is started with (the GPU's
+    // high priority: `olo_system::caps`) is its own: nothing it starts
+    // has it.
+    olo_system::caps::hand_on_nothing();
     // Started in Olo Rescue (the session's, after app_server kept
     // failing): taken out of the environment, before any thread is, so
     // what it starts (and itself, restarting) doesn't.

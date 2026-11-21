@@ -707,6 +707,18 @@ fn set<T: Clone + 'static>(ui: &Ui, f: impl Fn(&mut PerformanceSettings, T) + 's
     })
 }
 
+/// Whether this session has a background group to keep
+/// (`olo_system::session_groups`: Olo's login made it), found once: it
+/// can't change while the session lasts. (`OLO_BACKGROUND_DEMO`: as if
+/// it had, for a picture.)
+fn divided() -> bool {
+    static DIVIDED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *DIVIDED.get_or_init(|| {
+        use olo_system::session_groups as groups;
+        std::env::var_os("OLO_BACKGROUND_DEMO").is_some() || groups::own().is_some_and(|own| groups::find(std::path::Path::new(groups::MOUNT), &own).is_some())
+    })
+}
+
 fn check(ui: &mut Ui, label: &str, on: bool, f: impl Fn(&mut PerformanceSettings, bool) + 'static) {
     let c = CheckBox::new(olo_kit::words::of_text(label), on).enabled(ui.enabled()).on_toggle(set(ui, f));
     ui.add(c);
@@ -807,6 +819,37 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
                             ui.add(div().flex().flex_row().gap(px(m::SPACING * 2.0)).child(div().flex_1().child(Slider::new("perf-nice", nice, 1.0..=19.0).label("Lower to nice").value_text(format!("{nice:.0}")).step(1.0).enabled(enabled).on_change(on))).child(div().flex_1()));
                             background.update(ui.cx, |f, cx| f.set_enabled(enabled, cx));
                             ui.add(TextControl::new(ui.cx, background).label("Background:"));
+                            // Compilers and linkers in the session's
+                            // background group, kept to the memory that
+                            // is to be had for nothing
+                            // (`olo_system::background`): by the person's
+                            // own choice, and only in a session Olo's
+                            // login divided (said, where it isn't).
+                            let divided = divided();
+                            ui.enabled_if(divided, |ui| {
+                                let spare = CheckBox::new(olo_kit::words::of_text("Give compilers and linkers only spare memory"), s.background_memory && divided).enabled(ui.enabled()).on_toggle(set(ui, |s, v| s.background_memory = v));
+                                ui.add(spare);
+                            });
+                            if divided {
+                                ui.note("Those in the Background list use only spare memory. When memory runs short, they give it up first and slow down.");
+                            } else {
+                                // The way out, which stays to be read and
+                                // pressed whatever the group above is: a
+                                // line and Olo Doctor beside it, as the
+                                // tab's first row has Power.
+                                ui.add(
+                                    div()
+                                        .mt(px(m::TIGHT - m::STACK))
+                                        .flex()
+                                        .flex_row()
+                                        .items_center()
+                                        .gap(px(m::SPACING))
+                                        .child(div().flex_1().min_w_0().child(StringView::new("Unavailable in this session. Olo Doctor sets this up; then log out and back in.").dim(true).wrap(true)))
+                                        .child(Button::new("Open Olo Doctor").on_click(|_, _| {
+                                            let _ = olo_xdg::open::spawn_app(&["olo-doctor".into()], "olo.doctor");
+                                        })),
+                                );
+                            }
                         });
                     });
                 });

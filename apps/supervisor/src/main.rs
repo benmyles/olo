@@ -22,6 +22,7 @@
 
 mod detect;
 mod ecwatch;
+mod group;
 mod power_budget;
 mod priority;
 mod sample;
@@ -86,6 +87,8 @@ struct Supervisor {
     clock: Instant,
     followed: HashMap<i32, Followed>,
     lowered: HashMap<i32, Lowered>,
+    /// The session's background group (`PerformanceSettings::background_memory`).
+    group: group::Group,
     power_budget: power_budget::Budget,
     /// Olo's own programs found above their tier and raised (or that
     /// couldn't be, noted once).
@@ -148,6 +151,9 @@ impl Supervisor {
 
     /// Put back what was lowered and forget it all (turned off).
     fn stand_down(&mut self) {
+        for text in self.group.off() {
+            self.note(text);
+        }
         self.power_budget.apply(&[]);
         let units = self.lowered_units();
         let lowered: Vec<Lowered> = self.lowered.drain().map(|(_, l)| l).collect();
@@ -184,6 +190,12 @@ impl Supervisor {
         if !settings.enabled {
             if self.running {
                 self.stand_down();
+            }
+            // (Told once, also where it starts turned off: what a
+            // supervisor before it left in the background group is
+            // cleared.)
+            for text in self.group.off() {
+                self.note(text);
             }
             return;
         }
@@ -419,6 +431,19 @@ impl Supervisor {
 
         if self.power_budget.needed() {
             self.power_budget.apply(&self.lowered_units());
+        }
+
+        // The background group: compilers and linkers handed to the
+        // thread that puts them in it and has it kept (`group`: nothing
+        // of it waits here).
+        let said = if settings.priorities && settings.background_memory {
+            let background: HashSet<&str> = settings.background.iter().map(String::as_str).collect();
+            self.group.look(&procs, &|name| background.contains(name), &favoured, settings.background_reserve)
+        } else {
+            self.group.off()
+        };
+        for text in said {
+            self.note(text);
         }
 
         // The watchdog.
@@ -713,6 +738,15 @@ fn status(json: bool) -> std::process::ExitCode {
 fn main() -> std::process::ExitCode {
     olo_crash::install();
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // The background group's guard (`olo_system::background::guard`):
+    // this program again, started by the keeper, with nothing to do but
+    // wait for the supervisor's end and lift the allowance if it left one.
+    if let [flag, bg, lock] = args.as_slice()
+        && flag == "--background-guard"
+    {
+        olo_system::background::guard(std::path::Path::new(bg), std::path::Path::new(lock));
+        return std::process::ExitCode::SUCCESS;
+    }
     let has = |a: &str| args.iter().any(|x| x == a);
     if has("-h") || has("--help") {
         println!("{USAGE}");
@@ -753,6 +787,7 @@ fn main() -> std::process::ExitCode {
             clock: Instant::now(),
             followed: HashMap::new(),
             lowered: HashMap::new(),
+            group: group::Group::new(),
             power_budget: power_budget::Budget::new(),
             raised: HashMap::new(),
             raise_again: HashMap::new(),

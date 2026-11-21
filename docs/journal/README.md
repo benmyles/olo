@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-20
 
+### Preferences ▸ Performance: the choice where the session isn't divided
+
+*21:35* — In a session that Olo's login didn't set up for it the choice is greyed, and a line that stays readable says what to do, with Olo Doctor a press away.
+
+![Preferences ▸ Performance: the choice where the session isn't divided](2026-11-20/213544-preferences-performance-the-choice-where-the-ses.png)
+
+### Preferences ▸ Performance: Give compilers and linkers only spare memory
+
+*21:35* — A new choice under Lower background work: compilers and linkers go in a group of their own inside the login session, kept to the memory nothing else needs (they give theirs up first when it runs short). Off as it comes; there to turn on in a session Olo's login divided.
+
+![Preferences ▸ Performance: Give compilers and linkers only spare memory](2026-11-20/213543-preferences-performance-give-compilers-and-linke.png)
+
 ### Preferences ▸ Performance: what depends on Lower background work sits under it
 
 *20:25* — The note about a terminal's job is right under its check box; the slider and the Background list are set in under the check box's label and greyed together with it off.

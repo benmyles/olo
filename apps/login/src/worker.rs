@@ -121,18 +121,71 @@ pub fn run(setup: Setup) -> i32 {
         Some(trampoline) if setup.test.is_none() && trampoline.is_file() => std::iter::once(trampoline.display().to_string()).chain(std::iter::once("--exec".to_owned())).chain(command).collect(),
         _ => command,
     };
+    // The person's session divided into the desktop and background work
+    // (`olo_system::session_groups`), before anything of it runs. Whatever
+    // this says, the login goes on: without the groups it is the session
+    // it always was.
+    let said = |what: String| {
+        // (Written without `eprintln!`, which ends the program where its
+        // output can't be written: nothing here may end a login.)
+        let _ = std::io::Write::write_all(&mut std::io::stderr(), format!("olo-login: {what}\n").as_bytes());
+    };
+    let undone = |r: Result<(), String>| r.map_or_else(|left| format!("; and not all of it could be undone: {left}"), |()| " (undone)".into());
+    let me = std::process::id();
+    let mut groups = (setup.test.is_none() && olo_session(setup.class, &command))
+        .then(|| {
+            let session = vars.iter().find(|(k, _)| k == "XDG_SESSION_ID").map(|(_, v)| v.as_str()).unwrap_or_default();
+            let own = olo_system::session_groups::own().ok_or("no group of its own to read")?;
+            olo_system::session_groups::prepare(std::path::Path::new(olo_system::session_groups::MOUNT), &own, session, me, account.uid, account.gid)
+        })
+        .and_then(|made: Result<_, String>| made.map_err(|why| said(format!("the session isn't divided into the desktop and background work: {why}"))).ok());
+    // A gate the session's first process waits at until the worker has
+    // put it in the desktop's group (and knows that it is there).
+    let mut gate = [-1i32; 2];
+    // SAFETY: our array of two.
+    if groups.is_some() && unsafe { libc::pipe2(gate.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
+        let why = std::io::Error::last_os_error();
+        if let Some(made) = groups.take() {
+            said(format!("the session isn't divided into the desktop and background work: no gate for its first process ({why}){}", undone(olo_system::session_groups::abandon(made, me, None))));
+        }
+    }
     // SAFETY: one thread (the worker never starts another), so the child
     // may do anything before it execs.
     let pid = unsafe { libc::fork() };
     if pid < 0 {
+        if let Some(made) = groups.take() {
+            unsafe {
+                libc::close(gate[0]);
+                libc::close(gate[1]);
+            }
+            if let Err(why) = olo_system::session_groups::abandon(made, me, None) {
+                said(format!("couldn't undo session groups after fork failed: {why}"));
+            }
+        }
         say(&FromWorker::Failed { reason: "fork failed".into() });
         return 1;
     }
     if pid == 0 {
-        let why = become_and_exec(&setup, &account, &tty, &command, &vars);
+        let why = become_and_exec(&setup, &account, &tty, &command, &vars, groups.is_some().then_some(gate));
         eprintln!("olo-login: the session couldn't start: {why}");
         // SAFETY: the child's own end, without the parent's destructors.
         unsafe { libc::_exit(127) };
+    }
+    // The session's first process into the desktop's group while it waits
+    // at the gate; where that fails the division is taken apart again (a
+    // session running where the worker is would be one group that looks
+    // like two), and either way it is let go.
+    if let Some(made) = groups.take() {
+        // SAFETY: our descriptors.
+        unsafe { libc::close(gate[0]) };
+        let failure = olo_system::session_groups::place(&made, pid as u32)
+            .err()
+            .map(|why| format!("the session isn't divided into the desktop and background work: {why}{}", undone(olo_system::session_groups::abandon(made, me, Some(pid as u32)))));
+        // Both placement and any rollback are finished. Release the child before logging.
+        unsafe { libc::close(gate[1]) };
+        if let Some(why) = failure {
+            said(why);
+        }
     }
     say(&FromWorker::Started { pid });
     let mut status = 0;
@@ -142,6 +195,16 @@ pub fn run(setup: Setup) -> i32 {
     // (Dropping the transaction closes the session and its credentials.)
     drop(p);
     0
+}
+
+/// Whether what a worker is about to start is a person's Olo session
+/// (not the greeter's, nor another desktop chosen at the login screen):
+/// the one kind of session that is divided into the desktop and
+/// background work and handed the compositor's capability. `command` as
+/// it is run: through the system's `olo-session --exec` or not.
+fn olo_session(class: &str, command: &[String]) -> bool {
+    let program = if command.get(1).is_some_and(|a| a == "--exec") { command.get(2) } else { command.first() };
+    class == "user" && program.and_then(|p| p.rsplit('/').next()) == Some("olo-session")
 }
 
 /// A stream into the journal (systemd's stdout socket, its header said:
@@ -178,7 +241,19 @@ fn account(user: &str) -> Option<Account> {
 /// In the child: a session of its own on the seat's terminal, the
 /// person's groups and ids, their home, then the desktop's command with
 /// `vars` only. Returns only if something failed (why).
-fn become_and_exec(setup: &Setup, account: &Account, tty: &str, command: &[String], vars: &[(String, String)]) -> String {
+fn become_and_exec(setup: &Setup, account: &Account, tty: &str, command: &[String], vars: &[(String, String)], gate: Option<[i32; 2]>) -> String {
+    // Held at the gate until the worker has put this process in the
+    // session's desktop group (or is gone, or gave up: the gate closes
+    // either way).
+    if let Some([wait, let_go]) = gate {
+        // SAFETY: the two ends of the worker's pipe, ours since the fork.
+        unsafe {
+            libc::close(let_go);
+            let mut byte = 0u8;
+            while libc::read(wait, (&raw mut byte).cast(), 1) < 0 && std::io::Error::last_os_error().raw_os_error() == Some(libc::EINTR) {}
+            libc::close(wait);
+        }
+    }
     let argv: Vec<CString> = command.iter().filter_map(|a| CString::new(a.as_str()).ok()).collect();
     if argv.is_empty() {
         return "no command".into();
@@ -210,6 +285,8 @@ fn become_and_exec(setup: &Setup, account: &Account, tty: &str, command: &[Strin
                 libc::dup2(out, 2);
                 libc::close(out);
             }
+            // The desktop entry and upgrades may point into the person's home.
+            // Drop root credentials normally before executing that command.
             let name = CString::new(setup.user.as_str()).unwrap_or_default();
             if libc::initgroups(name.as_ptr(), account.gid) != 0 || libc::setgid(account.gid) != 0 || libc::setuid(account.uid) != 0 {
                 return format!("becoming {}: {}", setup.user, std::io::Error::last_os_error());

@@ -4201,6 +4201,9 @@ GitHub n’a pas accepté le jeton : il a peut-être expiré ou été révoqu�
 Give a new key
 Donner une nouvelle clé
 
+Give compilers and linkers only spare memory
+Ne donner aux compilateurs et éditeurs de liens que la mémoire libre
+
 Give it a name.
 Donnez-lui un nom.
 
@@ -10700,6 +10703,9 @@ Cela va {} et {}.
 This will {}.
 Cela va {}.
 
+Those in the Background list use only spare memory. When memory runs short, they give it up first and slow down.
+Ceux de la liste Fond n’utilisent que la mémoire libre. Quand la mémoire vient à manquer, ils la cèdent en premier et ralentissent.
+
 Threads
 Fils
 
@@ -11164,6 +11170,9 @@ Tout désarchiver…
 
 Unarchive {} Chats
 Désarchiver {} discussions
+
+Unavailable in this session. Olo Doctor sets this up; then log out and back in.
+Indisponible dans cette session. Olo Doctor le met en place ; déconnectez-vous ensuite, puis reconnectez-vous.
 
 Unavailable with this computer's power driver.
 Indisponible avec le pilote d’alimentation de cet ordinateur.

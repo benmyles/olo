@@ -4201,6 +4201,9 @@ GitHub heeft het token geweigerd. Mogelijk is het verlopen of ingetrokken.
 Give a new key
 Nieuwe toets toewijzen
 
+Give compilers and linkers only spare memory
+Compilers en linkers alleen vrij geheugen geven
+
 Give it a name.
 Geef het een naam.
 
@@ -10700,6 +10703,9 @@ Dit zal {} en {}.
 This will {}.
 Dit zal {}.
 
+Those in the Background list use only spare memory. When memory runs short, they give it up first and slow down.
+Die in de lijst Achtergrond gebruiken alleen vrij geheugen. Raakt het geheugen op, dan geven zij het als eerste af en worden ze trager.
+
 Threads
 Threads
 
@@ -11164,6 +11170,9 @@ Alles uit het archief halen…
 
 Unarchive {} Chats
 {} chats uit het archief halen
+
+Unavailable in this session. Olo Doctor sets this up; then log out and back in.
+Niet beschikbaar in deze sessie. Olo Doctor stelt het in; log daarna uit en weer in.
 
 Unavailable with this computer's power driver.
 Niet beschikbaar met het energiestuurprogramma van deze computer.

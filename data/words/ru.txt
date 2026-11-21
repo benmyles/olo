@@ -4231,6 +4231,9 @@ GitHub отклонил токен. Возможно, истёк срок дей
 Give a new key
 Указать новый ключ
 
+Give compilers and linkers only spare memory
+Давать компиляторам и компоновщикам только свободную память
+
 Give it a name.
 Введите название.
 
@@ -10750,6 +10753,9 @@ This will {} and {}.
 This will {}.
 Предстоит {}.
 
+Those in the Background list use only spare memory. When memory runs short, they give it up first and slow down.
+Те, что есть в списке «Фон», используют только свободную память. Когда памяти не хватает, они первыми отдают её и работают медленнее.
+
 Threads
 Потоки
 
@@ -11214,6 +11220,9 @@ Unarchive All…
 
 Unarchive {} Chats
 Вернуть чаты из архива ({})
+
+Unavailable in this session. Olo Doctor sets this up; then log out and back in.
+Недоступно в этом сеансе. Olo Doctor это настроит; затем выйдите из системы и войдите снова.
 
 Unavailable with this computer's power driver.
 Драйвер питания этого компьютера не поддерживает эту функцию.

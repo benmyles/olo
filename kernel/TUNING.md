@@ -22,9 +22,10 @@ comes, because each gives something up or gains nothing: the
 multi-generational LRU's thrash protection (the one most often
 recommended: it ended a program that fitted in memory in 3 runs of 9),
 dm-crypt without its work queues, split-lock mitigation off, and the
-room kept free for allocations. And one thing is measured, was built
-once and is held on its review: **background work kept to the memory
-that is to be had for nothing** (its own section below).
+room kept free for allocations. And one thing isn't a kernel setting
+at all but a way of using the kernel's groups, built after three
+reviews and left for the person to turn on: **background work kept to
+the memory that is to be had for nothing** (its own section below).
 
 Everything here can be measured again: `tools/dev/kernel-check` (it
 needs `cargo build --release -p olo-system --example kbench`). The
@@ -429,12 +430,16 @@ cache faster than a program takes memory. Left at 10.
   a gain for programs with heaps of gigabytes at the cost of memory
   for everything else; Fedora's "on request" lets those programs ask.
 
-## Measured, built once, and held: background work kept to the memory that is to be had for nothing
+## Background work kept to the memory that is to be had for nothing
 
-**Not in Olo yet.** The measurements below stand as measurements. The
-first build of it (the branch `background-group`, not on the main
-line) was reviewed by Astra at max on 2026-11-20 and held; what it
-found, and what is to be built instead, are at this section's end.
+Preferences ▸ Performance, "Give compilers and linkers only spare
+memory": off as it comes, the person's to turn on, and there to turn
+on only in a session Olo's login divided (docs/HACKING.md, "The
+session divided" under the login screen and "The background group"
+under the supervisor). How it came to be this is the order of this
+section: the measurements of the rule, a first build that was held on
+its review, and what was built instead, measured again with Olo's own
+keeper as the one that keeps.
 
 Ben, 2026-11-20, when the swap setting below was withdrawn: "how can
 we optimize what gets swapper better? … so then the work that gets
@@ -517,8 +522,8 @@ is the build:
   memory takes memory too (zram's own isn't the group's). Keeping it
   would mean stopping the build, or forbidding the swap, which is
   the setting below.
-What these runs don't say (the review's, each to be put right in
-`kernel-check` before anything is offered): there are two guests a
+What these runs don't say (the second review's; the harness was put
+right for the runs further down): there are two guests a
 case. What keeps the allowance in the guest is a shell loop writing
 the file, which waits while the kernel takes the group's pages back;
 systemd writes the same file without waiting, and then a group that is
@@ -532,7 +537,7 @@ say what the reserve should be on 64 GB, nor what the rule does over a
 day of the person's own work (of 229 minutes recorded here that day,
 what was to be had by the rule was under the reserve in two).
 
-### The first build, and why it is held
+### The first build, and why it was held
 
 On the branch: `olo_system::background` and the supervisor's `group`.
 A slice of the person's own systemd manager (`olobackground.slice`),
@@ -613,49 +618,93 @@ the 99th percentile today and by 1.1 ms either other way (worst 23, 9
 and 6 ms). The desktop is no better off for it, and by the tail a
 little worse.
 
-### What is to be built
+### What was built instead, and measured again
 
-The design the first review signed off (2026-11-20:
-/var/tmp/claude-blueferry/groups/answer.md and design-review.patch),
-with what the second found:
+The design the first review signed off, with what the second found
+(`olo_system::session_groups`, `olo_system::background`, the
+supervisor's `group`; the third review, of this build, is in the
+commit):
 
-- **The groups inside the login session's own scope**, made by Olo's
-  login as root before the desktop starts: `leader/` (root's: the
-  login's own worker, which the person must not be able to move),
-  `olo/` (empty) and in it `desk/` (the desktop: everything, as it
-  comes) and `bg/`. The scope delegated at its making; the person
-  given only what moving between the two leaves needs
-  (`cgroup.procs` of `olo`, `desk`, `bg`) and the allowance's file;
-  anything unexpected and the login goes on as today. There a
-  process keeps its session, systemd-oomd isn't watching (it watches
-  the manager's slices), a move is one write, the allowance's file
-  is Olo's alone, the desktop's own waiting on memory is one group's
-  figure (`desk/memory.pressure`), and idle on the processors is
-  idle against the desktop. It needs the installed login brought up
-  to date (root) and takes effect at the next login.
+- **The groups are inside the login session's own scope**, made by
+  Olo's login as root before the desktop starts: `leader/` (the
+  login's own worker, out of the person's reach), `olo/` and in it
+  `desk/` (everything, as it comes) and `bg/`. The scope is
+  delegated by a drop-in Doctor writes; the person is given what
+  moving between the two leaves takes and `bg`'s allowance, no more;
+  anything unexpected and the login goes on as it always has. There
+  a process keeps its session, systemd-oomd isn't watching, a move
+  is one write, the allowance's file is nobody else's, the desktop's
+  own waiting on memory is one group's figure, and idle on the
+  processors is idle against the desktop.
 - **Who goes in**: compilers and linkers by their own name, never
-  what starts them (a driver, a cache, a shell), so nothing anyone
-  waits on at a window is ever in it; what they start themselves is
-  born there. Found by the supervisor and moved by one write, each
-  checked before and after; what a compiler held until then stays
-  where it was (seconds of a minute's life). A command to start a
-  job in the group on purpose (`clone3` into the group, or placing
-  itself before it starts the program) for what Olo launches itself.
-- **One keeper**: a lock for the one that keeps (a second supervisor
-  neither keeps nor lifts), every look reads the file back, an end
-  by any road lifts it (a guard that outlives the supervisor), off
-  means the allowance gone, the weight back and both read back; all
-  of it off the realtime thread.
-- **The rule**: the floor without memory files; the cache's credit
-  between nothing and all of it by whether the desktop's group waits
-  on memory; rises paced.
-- **In stages on the person's computer, each on their word**: the
-  rule only noted (what it would set, written beside the memory
-  record), then the group without an allowance (so the desktop's
-  waiting can be told from the builds'), then the allowance; with
-  real builds matched off and on, and what a person feels measured
-  (a key to its frame against 8.3 ms, sound, the editor's waits),
-  not only a file walked.
+  what starts them, so nothing anyone waits on at a window is ever in
+  it; what they start themselves is born there.
+- **One keeper**, with a lock, the allowance read back at every
+  look, a guard that lifts it if the supervisor ends by any road, off
+  read back, and none of it on the supervisor's realtime thread.
+- **The rule again**: the floor without memory files; and the unused
+  cache counted only while the desktop's group isn't seen to wait on
+  memory (`desk/memory.pressure`: a look in which it waited over 1%
+  of the time halves the credit, a look without gives a fortieth
+  back).
+
+`tools/dev/kernel-check session-groups`: the login's steps as root
+against the kernel in a guest, then as the person in `desk`: 37
+checks (made only where the scope is delegated and the worker alone
+in it, undone whole otherwise; the person can move their own between
+`desk` and `bg` and set `bg`'s allowance, and can't touch the worker,
+the scope, `desk`'s allowance, `bg`'s idle weight, or make a group;
+taken apart whole where the session's first process can't be placed).
+
+`tools/dev/kernel-check groups`, put right as the reviews asked (work
+counted is work that succeeded; a run that doesn't finish, a probe
+that ends badly or a figure missing fails it; the desktop's probes
+run to the end), with **Olo's own keeper as the one that keeps**
+(`kbench keep`, the supervisor's code, run in the desktop's group,
+the background's idle on the processors as the login makes it). Two
+guests each, the two scenarios run side by side on the same computer
+(noisier than the tables above, and compared only with each other).
+
+Where memory is truly short (1 GB):
+
+| | the desktop's program in use: a round through its file, 99 in 100 within | worst | the system's files | the build got done |
+| --- | ---: | ---: | ---: | --- |
+| one group for all, as a login session is today | 96, 94 ms | 182, 207 ms | 64, 55 ms | 41, 41 compiles; 304, 338 rounds of files |
+| **Olo's own keeper** | **7, 3 ms** | 38, 27 ms | 7, 7 ms | 40, 39 compiles; 171, 191 rounds |
+
+(An earlier pair, before the keeper's last changes: 90 and 92 ms as
+one group, 6 and 16 with the keeper; the rule kept by a shell loop,
+as in the tables further up, 18 and 16.)
+
+Where memory is all cache (3 GB, half of it a file read once), the
+desktop's program waits under a tenth of a millisecond either way and
+the build loses nothing: 42 and 43 compiles and 336 and 429 rounds of
+files as one group, 40 and 43 and 335 and 421 with the keeper.
+
+What these still don't say: the guest's compilers start in the
+group, where on a computer they are found and moved up to two
+seconds into their lives; a desktop program outside `desk` (a browser
+in a scope of the person's manager) or one waiting on a compiler
+isn't in the figure the credit reads; and nothing here is a person's
+own day.
+
+Costs, on release builds: a keeper's look 13.7 µs (four a second
+while a build runs, none while the group is empty: it sleeps on the
+group's own events); the supervisor's filter of its process table at
+each of its looks 19.2 µs among 750 processes (nothing with the
+choice off).
+
+**Still to do**: a command that starts a job in the group on purpose
+(`clone3` into the group); `tsession`'s desktops and agents' screens
+in a third leaf of lower weight; the rule only noted, beside the
+memory record, before it is trusted with a day's work. And **on the
+person's computer, in stages, each on their word**: Doctor's two
+fixes (the login brought up to date, the drop-in) and a new login;
+then the choice on with the memory record running, matched real
+builds off and on, and what a person feels measured (a key to its
+frame against 8.3 ms, sound, the editor's waits), not only a file
+walked; a way back is the choice off (the allowance lifted and read
+back, everything moved back).
 
 ## Tried and withdrawn
 

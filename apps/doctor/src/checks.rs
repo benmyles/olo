@@ -703,6 +703,7 @@ pub fn scan(roots: &Roots) -> Report {
     util_clamp(roots, &mut r);
     kept_core(roots, &mut r);
     session_weight(roots, &mut r);
+    session_groups(roots, &mut r);
     let gpus = pci_devices(&roots.fs);
     idle_gpu(roots, &gpus, &mut r);
     gpu_stuck(roots, &gpus, &mut r);
@@ -2778,6 +2779,43 @@ fn session_weight(roots: &Roots, r: &mut Report) {
             ours as f64 / theirs as f64 * 100.0
         ),
         fix: Some(Fix { label: "Give the Desktop Its Share".into(), root: true, steps }),
+    });
+}
+
+/// The login session divided into the desktop and background work
+/// (`olo_system::session_groups`): Olo's login makes the two groups in a
+/// session's scope only where systemd has delegated the scope, which a
+/// drop-in for every login session says. The fix writes it; it is in
+/// force for sessions started after it (and Olo's login must be this
+/// version's, which its own finding sees to).
+fn session_groups(roots: &Roots, r: &mut Report) {
+    use olo_system::session_groups::{DELEGATE_CONF, DELEGATE_CONF_TEXT};
+    let Some(scope) = roots.scope.as_deref() else { return };
+    // Divided: the two groups are there and the session's programs are
+    // in the desktop's (the groups alone, with the session running
+    // elsewhere in the scope, is a division that didn't take).
+    let olo = roots.fs.join(format!("sys/fs/cgroup/user.slice/user-{}.slice/{scope}/olo", roots.uid));
+    let divided = olo.join("bg/memory.high").exists() && read(&olo.join("desk/cgroup.procs")).is_some_and(|list| !list.trim().is_empty());
+    if divided {
+        r.fine.push(Fine {
+            title: "The desktop and background work are kept apart".into(),
+            detail: "This session is divided in two: compilers and linkers can be given only the processors and the memory the desktop isn't using (Preferences ▸ Performance, Give compilers and linkers only spare memory).".into(),
+        });
+        return;
+    }
+    if std::fs::read_to_string(roots.fs.join(DELEGATE_CONF)).is_ok_and(|text| text == DELEGATE_CONF_TEXT) {
+        r.fine.push(Fine {
+            title: "The session delegation setting is installed".into(),
+            detail: "This login has no usable desktop and background groups. The login worker records why it skipped setup.".into(),
+        });
+        return;
+    }
+    r.findings.push(Finding {
+        id: "session-groups".into(),
+        severity: Severity::Advice,
+        title: "Builds can't be kept apart from the desktop".into(),
+        detail: "Olo's login screen can divide your session in two, the desktop and background work, so that compilers and linkers run when the desktop leaves the processors idle and are the first to give up memory when it runs short (Preferences ▸ Performance, Give compilers and linkers only spare memory). systemd leaves such a division alone only where a setting for login sessions says so. This writes that setting. It applies to sessions started afterwards: log out and in again, or restart.".into(),
+        fix: Some(Fix { label: "Let Olo Divide Sessions".into(), root: true, steps: vec![Step::WriteFile { path: PathBuf::from("/").join(DELEGATE_CONF), content: DELEGATE_CONF_TEXT.into(), mode: 0o644 }] }),
     });
 }
 
@@ -4907,6 +4945,46 @@ mod tests {
             kernels_bbr: None,
         };
         (fs, roots)
+    }
+
+    /// The session's division: a finding with the drop-in to write where
+    /// it isn't written; fine, and said to be for the next login, once
+    /// it is; fine in a session that is divided.
+    #[test]
+    fn a_session_is_divided_once_the_drop_in_is_there_and_it_is_started_again() {
+        use olo_system::session_groups::{DELEGATE_CONF, DELEGATE_CONF_TEXT};
+        let (fs, roots) = machine("session-groups");
+        let mut r = Report::default();
+        session_groups(&roots, &mut r);
+        let f = r.findings.iter().find(|f| f.id == "session-groups").unwrap();
+        let fix = f.fix.as_ref().unwrap();
+        assert!(
+            fix.root
+                && matches!(fix.steps.as_slice(), [Step::WriteFile { path, content, mode: 0o644 }] if path == Path::new("/etc/systemd/system/session-.scope.d/50-olo-groups.conf") && content == DELEGATE_CONF_TEXT)
+        );
+        assert!(DELEGATE_CONF_TEXT.contains("[Scope]\nDelegate=cpu memory\n"));
+        // Written: nothing to fix, and said to be for sessions started after.
+        std::fs::create_dir_all(fs.join(DELEGATE_CONF).parent().unwrap()).unwrap();
+        std::fs::write(fs.join(DELEGATE_CONF), DELEGATE_CONF_TEXT).unwrap();
+        let mut r = Report::default();
+        session_groups(&roots, &mut r);
+        assert!(r.findings.is_empty());
+        assert!(r.fine.iter().any(|f| f.title == "The session delegation setting is installed"));
+        // A session Olo's login divided.
+        let bg = fs.join(format!("sys/fs/cgroup/user.slice/user-{}.slice/session-2.scope/olo/bg", roots.uid));
+        std::fs::create_dir_all(&bg).unwrap();
+        std::fs::write(bg.join("memory.high"), "max\n").unwrap();
+        // (The groups there but the session's programs not in the
+        // desktop's: not divided.)
+        let mut r = Report::default();
+        session_groups(&roots, &mut r);
+        assert!(!r.fine.iter().any(|f| f.title == "The desktop and background work are kept apart"));
+        std::fs::create_dir_all(bg.with_file_name("desk")).unwrap();
+        std::fs::write(bg.with_file_name("desk").join("cgroup.procs"), "3872\n3918\n").unwrap();
+        let mut r = Report::default();
+        session_groups(&roots, &mut r);
+        assert!(r.findings.is_empty());
+        assert!(r.fine.iter().any(|f| f.title == "The desktop and background work are kept apart"));
     }
 
     /// Olo's guard for the embedded controller's events is suggested where

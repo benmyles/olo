@@ -4201,6 +4201,9 @@ GitHub ने टोकन स्वीकार नहीं किया। �
 Give a new key
 नई कुंजी दें
 
+Give compilers and linkers only spare memory
+कंपाइलर और लिंकर को केवल खाली मेमोरी दें
+
 Give it a name.
 इसे नाम दें।
 
@@ -10700,6 +10703,9 @@ This will {} and {}.
 This will {}.
 इससे {} होगा।
 
+Those in the Background list use only spare memory. When memory runs short, they give it up first and slow down.
+पृष्ठभूमि सूची वाले केवल खाली मेमोरी इस्तेमाल करते हैं। मेमोरी कम पड़ने पर वे सबसे पहले उसे छोड़ते हैं और धीमे हो जाते हैं।
+
 Threads
 थ्रेड
 
@@ -11164,6 +11170,9 @@ Unarchive All…
 
 Unarchive {} Chats
 {} चैट संग्रह से निकालें
+
+Unavailable in this session. Olo Doctor sets this up; then log out and back in.
+इस सत्र में उपलब्ध नहीं। Olo Doctor इसे सेट अप करता है; फिर लॉग आउट करके दोबारा लॉग इन करें।
 
 Unavailable with this computer's power driver.
 इस कंप्यूटर के पावर ड्राइवर पर उपलब्ध नहीं है।

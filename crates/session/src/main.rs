@@ -2,6 +2,7 @@
 
 fn main() {
     olo_crash::install();
+    olo_system::caps::hand_on_nothing();
     // (First, as in every program: in the trampoline below too, which the
     // exec replaces, so its handlers go with it.)
     // `olo-session --exec PROGRAM ARGS…`: Olo's login screen starts the

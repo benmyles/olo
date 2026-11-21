@@ -4186,6 +4186,9 @@ GitHubがトークンを拒否しました。有効期限が切れたか、取�
 Give a new key
 新しいキーを割り当てる
 
+Give compilers and linkers only spare memory
+コンパイラとリンカには空きメモリだけを使わせる
+
 Give it a name.
 名前を付けてください。
 
@@ -10675,6 +10678,9 @@ This will {} and {}.
 This will {}.
 実行内容：{}。
 
+Those in the Background list use only spare memory. When memory runs short, they give it up first and slow down.
+「背景」リストにあるものは、空きメモリだけを使います。メモリが不足すると、まずそのメモリを手放し、動作が遅くなります。
+
 Threads
 スレッド
 
@@ -11139,6 +11145,9 @@ Unarchive All…
 
 Unarchive {} Chats
 {}件のチャットをアーカイブから戻す
+
+Unavailable in this session. Olo Doctor sets this up; then log out and back in.
+このセッションでは利用できません。Olo Doctor で設定してから、ログアウトしてログインし直してください。
 
 Unavailable with this computer's power driver.
 このコンピューターの電源ドライバーでは利用できません。

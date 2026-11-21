@@ -1329,6 +1329,36 @@ Learned on the second pass (2026-11-20):
   face camera for a few seconds: one `sudo sh -c '…'` or one script
   run as root, not a `sudo` a line.
 
+### Control groups, a guest's tools, and asking SELinux
+
+- **What SELinux lets a domain do can be asked without installing
+  anything**: the system's Python has setools
+  (`/usr/bin/python3 -c "import setools; p = setools.SELinuxPolicy();
+  …TERuleQuery(p, ruletype=['allow'], source='xdm_t',
+  target='cgroup_t', tclass=['dir'])"`). The login's worker is
+  `xdm_t`: it may make and remove cgroup directories, write and chown
+  their files, and use the capabilities the session's division and
+  the hand-over need (asked 2026-11-20).
+- **systemd marks what it delegates**: `user.delegate=1` on the
+  cgroup's directory (readable by anyone; `trusted.delegate` too, for
+  root). A login session's scope has none unless a drop-in says
+  `Delegate=`.
+- **A cgroup's file takes a write as the whole value; a test's plain
+  file doesn't**: open with truncate (as a shell's `>` does), or a
+  short value written over a long one leaves its tail ("max" over
+  eleven digits read back as neither).
+- **`tools/dev/kvm-guest` has bash and a short list of programs**
+  (`ALWAYS`): no `sh`, `tr`, `stat` or `rmdir` unless named
+  (`guest(…, bins=("stat", "rmdir"))`); and `kernel-check`'s `guest()`
+  reads the last field of a row as JSON, so a bare number comes back a
+  number.
+- **A guest's kernel answers what a made-up tree of files can't**:
+  who may move which process where, what a write to
+  `cgroup.subtree_control` refuses, what survives a change of user.
+  `kernel-check session-groups` is the pattern: the product's own
+  functions run as root by `kbench`, then the same as an ordinary
+  user, each answer compared with what it should be.
+
 ### What a review signed off is what gets built
 
 The background group's design was reviewed (2026-11-20) and the

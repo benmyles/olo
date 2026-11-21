@@ -5114,6 +5114,48 @@ nothing switches without those.
   `olo-login-greeter` (in without a question), running `olo-session
   --tty-udev --greeter`; it comes back when it ends and when the person
   logs out.
+* **The session divided** (the worker, for a person's Olo session
+  only: not the greeter's, nor another desktop chosen at the login
+  screen; for what the supervisor does with it, and not able to keep
+  anyone out: whatever fails, the login goes on as it always has and
+  says why in the journal).
+  `olo_system::session_groups::prepare`, after PAM has opened the
+  session and before the session's first process is made: the worker's
+  own group must be this session's scope (`session-N.scope`, PAM's
+  `XDG_SESSION_ID`), marked delegated by systemd (`user.delegate`: a
+  drop-in for login scopes that Olo Doctor writes, `Delegate=cpu
+  memory`), with the worker alone in it and nothing made in it. Then
+  `leader/` (the worker moves there: root's, out of the person's
+  reach), `olo/` with `desk/` and `bg/` in it, memory and the
+  processors handed down, `bg` idle on the processors, and the person
+  given exactly: the three `cgroup.procs` that moving a process
+  between `desk` and `bg` takes, and `bg/memory.high`. Each step is
+  noted as it is done, so a step that fails takes apart exactly what
+  was made and says whether that worked. The session's first process
+  waits at a gate (a pipe) while the worker puts it in `desk`
+  (`place`) and reads that it is there, so everything the session
+  starts is born there; where that fails the division is taken apart
+  again (`abandon`: a session running beside the worker would be one
+  group that looks like two) and the session starts as it always
+  has. Inside the scope a process is still of its session to logind,
+  systemd-oomd isn't watching, and `bg` is idle against the desktop
+  itself. (What the person is given is the account's, not one
+  session's: logged in a second time they can move what is in the
+  first's two groups. Nobody else's processes can come in or go out.)
+  `olo_system::caps` is the steps by which one capability would go
+  from the login to one program and no further (kept through the
+  change of user, narrowed to it, handed on, and taken out of what
+  that program starts), and **the login doesn't use it**. It was built
+  to hand the person's compositor `CAP_SYS_NICE`, which Intel's
+  drivers ask for the GPU's high priority ("The GPU has priorities
+  too"), and taken out on review: the programs it would be handed to
+  are the person's own files, so it would be the account's, not the
+  compositor's; and a process that holds it can't be read by the
+  person's other programs (the supervisor's look at its environment
+  among them). Whether an account is to have it is the computer's
+  owner's to say (TODO).
+  Tried against the kernel in a guest, as root and then as the
+  person: `tools/dev/kernel-check session-groups`.
 * `olo-session --greeter`: app_server and `olo-greeter` alone, no
   upgrades watched; the greeter quitting ends it.
 * `olo-greeter` (apps/greeter): a layer surface on every display, the
@@ -15026,6 +15068,14 @@ What it looks for:
   `/etc/systemd/system/session-.scope.d/50-olo-weight.conf` (every
   session's scope at the manager's weight, CPU and I/O) and this
   session's cgroup's `cpu.weight` and `io.weight` now.
+- **Builds can't be kept apart from the desktop** (advice, where the
+  drop-in that has systemd leave a login session's scope to what Olo's
+  login makes in it isn't written): Let Olo Divide Sessions writes
+  `/etc/systemd/system/session-.scope.d/50-olo-groups.conf`
+  (`Delegate=cpu memory`), in force for sessions started after it.
+  Fine, and said to be for the next login, once it is written; fine in
+  a session that is divided and whose programs are in its desktop
+  group.
 - **The system's services can run on the window server's core**
   (advice, with the kept core on and systemd's drop-in missing or for
   another core): Keep Them Off writes it and moves what runs now
@@ -17332,6 +17382,76 @@ the folder's change time, `Owners`; each file in one read) and:
   off, batch and the I/O priority are put back (a raised nice stays until
   its process ends: the account may not lower one, `RLIMIT_NICE` 0); a new supervisor (an upgrade) takes over what the
   last one lowered from its published state, or puts it back if off.
+- **The background group** (`group.rs`; `olo_system::background`,
+  `olo_system::session_groups`; "Give compilers and linkers only spare
+  memory", off as it comes; kernel/TUNING.md has the measurements and
+  the three reviews that shaped it). Linux has no link between a
+  process's priority and what is taken from memory first: it chooses by
+  control group. Olo's login divides a login session in two before the
+  desktop starts (`desk`, and `bg` beside it: "The session divided",
+  under the login screen), and here:
+  - **Who goes in `bg`**: compilers and linkers by their own name
+    (`olo_protocol::performance::COMPILERS`, of the names the person
+    has in the Background list). Never what starts them: cargo, make,
+    a cache's server, a shell start programs someone is waiting for (a
+    window, a server an editor asks, a helper asking for a password),
+    and what a process starts is born in its group. Found at the
+    supervisor's look and moved by one write, the process checked to
+    be the one seen before and after (`background::move_to`); only out
+    of the desktop's own group. What a compiler held until then stays
+    charged where it was (up to two seconds of its life).
+  - **The allowance** (`background::allowance`, `memory.high` of `bg`,
+    which is the person's file by the login's doing): what the group
+    holds plus what is to be had for nothing, less a reserve
+    (`background_reserve`, 12% of memory). To be had for nothing: what
+    is free, and a credit (`Credit`) of the cache the kernel has down as
+    unused that is neither the group's own nor mapped by a program.
+    The credit is all of it while the desktop's own group isn't seen
+    to wait on memory (`desk/memory.pressure`), halves between two
+    readings in which it waited more than 1% of the time (each reading
+    against the time since the one before, kept while the group is
+    empty), comes back at a tenth of it a second, and is nothing where
+    the desktop's waiting can't be read: the kernel's "unused" is a
+    guess, and the desktop's waiting is the fact. Never under what the
+    group's programs themselves hold
+    (its cache is its files' less its memory files': tmpfs can only go
+    to swap), unless little is to be had at all.
+  - **One keeper** (`background::Keeper`): a lock for the session
+    (`$XDG_RUNTIME_DIR/olo-background-session-N.scope.lock`), so a
+    second supervisor reaching the same session neither keeps nor
+    lifts; a thread at the background's own priority, asleep on the
+    group's `cgroup.events` while it is empty and looking four times a
+    second while it isn't; the allowance read back at every look
+    (nobody else's figure stays); lifted when the group empties, when a
+    figure can't be read (said once), and when stopped (read back). A
+    guard (`olo-supervisor --background-guard`, a process waiting on a
+    pipe the supervisor holds the other end of) lifts it and moves what
+    is in the group back if the supervisor ends by any other road; a
+    guard that can't be started, and there is no keeping. Nobody
+    keeping, nothing stays in `bg`: stopped, ended or killed, what was
+    there goes back among the desktop's.
+  - **Nothing of it on the supervisor's realtime thread** but a filter
+    of the process table it already has and a list sent over a
+    channel: a worker thread starts and stops the keeper, reads where
+    a process is and moves it, and tries a refused move again after 2,
+    8 and 32 seconds, then says so once.
+  - **Off**: the allowance lifted and read back and everything still
+    in `bg` moved back to `desk` (off the idle processors), by the
+    keeper under its lock, and what came of it noted (how many were
+    left, or that the list couldn't be read). A supervisor that starts
+    with the choice off, or turned off altogether, clears what one
+    before it left the same way, if nobody keeps. While another
+    supervisor keeps the group, this one puts nothing in it and asks
+    again at every look. A compiler the active window's app started
+    is left where it is while that window is in front, as the
+    priorities leave it. In a session that isn't divided there is
+    nothing to do, and Preferences says what it takes.
+  Tests: the rule, the credit, the keeper on groups of plain files (one
+  keeper, read-back, lift), the move, the choosing, the worker thread
+  with a made-up compiler; against the kernel itself in a guest:
+  `tools/dev/kernel-check session-groups` (the login's steps as root,
+  then what the person may and may not do: 30 checks) and `groups` /
+  `groups-cold` with the case `olo` (this keeper as the one that keeps).
 - **Watchdog** (`detect.rs`), each from several signals, with a
   confidence and its evidence: stuck in a loop (busy at least `spin_cpu`
   of a core in every sixth of `spin_minutes`, waiting on almost nothing,

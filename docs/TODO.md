@@ -143,10 +143,21 @@ something nobody here has is in "Blocked", with what it waits for.
      kernel: 1 where 2 was asked; with the capability, 2). Beside six
      ordinary programs drawing, an ordinary probe's draws waited 49 ms
      at the 99th percentile (56 at the worst), a high one's 22 (24).
-     **To do**: Olo's login (root) hands the session the capability,
-     olo-session passes it to the person's app_server alone, nothing
-     else inherits it; Doctor says when the desktop doesn't have it
-     and installs the login that gives it.
+     **Built and taken out again on Astra's review (2026-11-20)**:
+     the login handing the session the capability, `olo-session`
+     passing it to the person's app_server alone
+     (`olo_system::caps`, its steps tried in a guest and kept). The
+     programs it is handed to are the person's own files
+     (`~/.local/bin`), so it is the account that gets it, whatever
+     the session does with it after; and a process holding it can't
+     be read by the person's other programs (the supervisor reads
+     each program's environment to know its session). **Ben's to
+     say**: whether their account is to have CAP_SYS_NICE for this
+     (then: a file root writes that the login looks for, Doctor
+     offering it in those words, and the supervisor's reading done
+     another way); or a compositor installed where only root can
+     write it; or asking Intel's drivers' people for a way that needs
+     no capability.
   3. **The kernel's own worker threads run at the ordinary priority
      in the path of every frame and every key.** A frame the
      (realtime) compositor hands to the GPU is passed on by a kernel
@@ -299,52 +310,54 @@ something nobody here has is in "Blocked", with what it waits for.
     setting's and a patch's. Disks: `io.weight` does nothing here
     (no I/O cost model, no BFQ on the NVMe queue), so the idle I/O
     class per thread stays.
-  **Where it stands (2026-11-20, evening): measured, built once the
-  wrong way, held.** The rule was measured further (what is to be
-  had for nothing is free memory and cache that is neither the
-  group's own nor mapped: kernel/TUNING.md has both tables). Then I
-  built it as a slice of the person's systemd manager instead of
-  inside the login session (no root, no new login: the shorter
-  road, against the first review), and Astra's review of that build
-  said to hold it: TUNING.md, "The first build, and why it is held"
-  (a fresh slice under Fedora's kill policy; a cache server taken
-  with its job; whole jobs taking windows and helpers with them out
-  of the login session; requests counted as moves; an allowance with
-  other writers and no owner; waits passed on to what the desktop
-  waits for; "unused cache" being the kernel's guess; and, measured
-  here, the manager's group competing with the desktop's on the
-  processors as an equal). The build is kept on the local branch
-  `background-group` (one commit, not pushed, nothing of it on the
-  main line): its rule, its keeper, its choosing and their tests are
-  the starting point. Nothing of it is in Preferences.
-  **To build, in this order** (TUNING.md, "What is to be built"):
-  1. `kernel-check groups`: successes counted, a run that didn't
-     finish fails, the desktop's probes to the end of the pressure,
-     and what keeps the allowance in the guest is Olo's own keeper
-     (a command of the supervisor's), not a shell loop.
-  2. The rule again: the floor without memory files (tmpfs), the
-     cache's credit by the desktop group's own pressure figures,
-     rises paced; measured with 1.
-  3. Olo's login (root; the code that must never keep anyone out:
-     every step checked, anything unexpected and the login goes on
-     as today, tried in a guest from start to finish): `leader/`,
-     `olo/desk`, `olo/bg` in the session's scope, the scope
-     delegated at its making, the person given the two leaves'
-     `cgroup.procs` and the allowance's file and no more. Doctor's
-     finding and fix for the installed login and the drop-in.
-  4. The supervisor: compilers and linkers by their own name moved
-     by one write, checked before and after, tried again when
-     refused; one keeper (a lock), the file read back at every look,
-     a guard that lifts when the supervisor ends by any road, off
-     read back; none of it on the realtime thread; nothing held for
-     a window in front (nothing with a window is ever in it).
-  5. A command that starts a job in the group on purpose; `tsession`
-     and agents' screens (a third leaf, of lower weight, not idle).
-  6. Astra at max on the build; then Ben's computer in stages, each
-     on their word (the rule only noted; the group with no
-     allowance; the allowance), with matched real builds and what a
-     person feels measured (a key to its frame, sound), the memory
-     record running, and a way back written down.
+  **Where it stands (2026-11-20, night): built the reviewed way, off
+  as it comes.** A first build in the person's systemd manager was
+  held on Astra's review (kernel/TUNING.md, "The first build, and why
+  it was held"; kept on the local branch `background-group`). What is
+  in now: Olo's login divides the session (`leader/`, `olo/desk`,
+  `olo/bg` in the session's scope: `olo_system::session_groups`,
+  tried against the kernel in a guest, 30 checks), the supervisor
+  puts compilers and linkers in `bg` and one keeper holds it to its
+  allowance (`olo_system::background`: a lock, read back at every
+  look, a guard, the cache's credit by the desktop group's own
+  waiting), Preferences has the choice ("Give compilers and linkers
+  only spare memory", there only in a divided session), Doctor writes
+  the drop-in that lets the login divide. Measured in guests with
+  Olo's own keeper: a desktop program in use waited 6 and 16 ms at
+  the 99th percentile where 90 and 92 as one group.
+  **For Ben, to have it**: Olo Doctor's two fixes ("Olo's login
+  screen runs an older version", "Builds can't be kept apart from
+  the desktop"), then a restart or a new login; then the choice in
+  Preferences ▸ Performance, which is theirs to turn on.
+  **Left**:
+  - On Ben's computer after that login, each on their word: that
+    the session is divided (Doctor says so), external apps still
+    start in their own scopes, logging out leaves nothing behind;
+    then the choice on with the memory record running, matched real
+    builds off and on, and what a person feels measured (a key to
+    its frame, sound), not only a file walked.
+  - A command that starts a job in the group on purpose (`clone3`
+    into the group), for what Olo launches itself.
+  - `tsession`'s desktops and agents' screens in a third leaf, of
+    lower weight, not idle.
+  - The rule only noted (what it would set, beside the memory
+    record) for a day before the choice is trusted with one.
+  - Activity Monitor showing the group and its allowance.
+
+- **Power: each mode's settings can be changed, beside the modes**
+  (Ben, 2026-11-20: "at some point recently we simplified the power
+  settings into just 3 choices: battery saver, adaptive and ll. i'd
+  still like to be able to customize these -- can you make it so that
+  it's 2 columns and the second column has the customization options
+  specific for each mode, so changing modes changes those options.
+  and so if i change the options for one of the modes then it
+  persists for that mode but says customized or something with a
+  revert button to revert back to defaults. let me customize all the
+  things that the mode does."). Two columns in Preferences ▸ Power:
+  the modes on the left, on the right everything the chosen mode
+  does, each a control; a change is kept for that mode alone, the
+  mode then says it is customized and offers Revert (to what the
+  mode comes as). Everything a mode sets, none left out.
 
 - **The NVIDIA card can never again be left stuck and unrecoverable**
   (Ben, 2026-11-20: "can you also put an astra 6.2 max agent on

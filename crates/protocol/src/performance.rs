@@ -69,6 +69,43 @@ impl Default for Thresholds {
     }
 }
 
+/// The background work that goes in the session's background group
+/// (`PerformanceSettings::background_memory`), of the names the person
+/// has down as background work: compilers and linkers, by their own
+/// name. Never what starts them (cargo, make, ninja, a shell), a cache's
+/// server or a language server: those start programs someone is waiting
+/// for (a window, a server an editor asks) or are waited on themselves,
+/// and what a process starts is born in its group. What a compiler
+/// starts (a driver's passes, its linker) is background work too; a
+/// program that runs what it built is not here for that (rustdoc runs
+/// a crate's examples as tests: a person's own code would be born in
+/// the group).
+pub const COMPILERS: &[&str] = &[
+    "rustc",
+    "clippy-driver",
+    "cc1",
+    "cc1plus",
+    "cc1obj",
+    "lto1",
+    "lto-wrapper",
+    "collect2",
+    "cc",
+    "c++",
+    "gcc",
+    "g++",
+    "clang",
+    "clang++",
+    "ld",
+    "ld.lld",
+    "ld.bfd",
+    "ld.gold",
+    "lld",
+    "rust-lld",
+    "mold",
+    "wasm-ld",
+    "as",
+];
+
 /// Work that's background by its name: builds and compilers, indexers,
 /// package managers.
 pub const BACKGROUND: &[&str] = &[
@@ -134,6 +171,19 @@ pub struct PerformanceSettings {
     /// Names that are background work (`BACKGROUND`, as the person
     /// changed it).
     pub background: Vec<String>,
+    /// Compilers and linkers get only the memory that is to be had for
+    /// nothing: the supervisor puts them (`COMPILERS`, of `background`)
+    /// in the session's background group, whose allowance follows what
+    /// is free and what cache nobody is using, so that what a build
+    /// needs comes out of its own cache and memory first
+    /// (`olo_system::background`). With `priorities`, and only in a
+    /// session Olo's login divided (`olo_system::session_groups`). Off
+    /// as it comes.
+    pub background_memory: bool,
+    /// The share of the computer's memory, in percent, that the
+    /// background group leaves for everyone else (free, or cache nobody
+    /// is using).
+    pub background_reserve: f32,
     /// Watch for stuck processes, leaks, memory and zombies.
     pub watchdog: bool,
     /// Ask about an urgent finding (an alert, with Stop Process).
@@ -150,6 +200,8 @@ impl Default for PerformanceSettings {
             priorities: true,
             background_nice: 10,
             background: BACKGROUND.iter().map(|s| (*s).to_owned()).collect(),
+            background_memory: false,
+            background_reserve: 12.0,
             watchdog: true,
             alerts: true,
             thresholds: Thresholds::default(),

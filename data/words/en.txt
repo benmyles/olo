@@ -1393,6 +1393,7 @@ GitHub answered {}.
 GitHub couldn’t be reached ({}).
 GitHub didn’t take the token: it may have expired or been revoked.
 Give a new key
+Give compilers and linkers only spare memory
 Give it a name.
 Glide
 Glow new windows for
@@ -3556,6 +3557,7 @@ This step is done
 This touchpad doesn't report pressure, so it is left to libinput.
 This will {} and {}.
 This will {}.
+Those in the Background list use only spare memory. When memory runs short, they give it up first and slow down.
 Threads
 Three fingers
 Three months
@@ -3711,6 +3713,7 @@ UV index
 Unarchive All
 Unarchive All…
 Unarchive {} Chats
+Unavailable in this session. Olo Doctor sets this up; then log out and back in.
 Unavailable with this computer's power driver.
 Under the Tray
 Underline

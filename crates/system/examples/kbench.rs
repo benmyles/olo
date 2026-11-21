@@ -484,10 +484,149 @@ fn main() {
         Some("fill") => fill(rest),
         Some("splitlock") => splitlock(rest),
         Some("pressure") => pressure(rest),
+        Some("session-groups") => session_groups(rest),
+        Some("keep") => keep(rest),
+        Some("session-check") => session_check(rest),
+        Some("caps") => {
+            println!("check|{}|{}", rest.first().map_or("a program started", String::as_str), if olo_system::caps::held(olo_system::caps::SYS_NICE) { "has the capability" } else { "has none" })
+        }
         _ => {
             eprintln!("kbench io|wake|relay|spin|chat|hog|touch|writer|fill|splitlock … (see the top of crates/system/examples/kbench.rs)");
             std::process::exit(2);
         }
     }
     let _ = std::io::stdout().flush();
+}
+
+/// `kbench session-groups MOUNT OWN SESSION UID GID [--mark]`: what
+/// Olo's login does with a login session's scope, run as root in a guest
+/// by a process that is alone in a scope made by hand
+/// (`olo_system::session_groups::prepare`), then the session's first
+/// process as the login starts it: into the desktop's group, the one
+/// capability kept through the change of user, and `session-check` as
+/// that user. `--mark` marks the scope delegated first, as systemd does.
+fn session_groups(args: &[String]) {
+    use olo_system::{caps, session_groups as groups};
+    let [mount, own, session, uid, gid, ..] = args else { return eprintln!("kbench session-groups MOUNT OWN SESSION UID GID [--mark]") };
+    let (uid, gid): (u32, u32) = (uid.parse().unwrap_or(1000), gid.parse().unwrap_or(1000));
+    let scope = std::path::Path::new(mount).join(own.trim_start_matches('/'));
+    if args.iter().any(|a| a == "--mark") {
+        let path = std::ffi::CString::new(scope.to_str().unwrap_or_default()).unwrap_or_default();
+        // SAFETY: our strings.
+        if unsafe { libc::setxattr(path.as_ptr(), c"user.delegate".as_ptr(), b"1".as_ptr().cast(), 1, 0) } != 0 {
+            return println!("check|the scope marked delegated|failed: {}", std::io::Error::last_os_error());
+        }
+    }
+    let made = match groups::prepare(std::path::Path::new(mount), own, session, std::process::id(), uid, gid) {
+        Ok(made) => made,
+        Err(why) => return println!("check|prepare|refused: {why}"),
+    };
+    println!("check|prepare|made; the worker is in {}", groups::own().unwrap_or_default());
+    let me = std::env::current_exe().unwrap_or_default();
+    let argv: Vec<std::ffi::CString> =
+        [me.to_str().unwrap_or_default(), "session-check", made.desk.to_str().unwrap_or_default(), made.bg.to_str().unwrap_or_default(), &std::process::id().to_string()]
+            .iter()
+            .map(|a| std::ffi::CString::new(*a).unwrap_or_default())
+            .collect();
+    let mut ptrs: Vec<*const libc::c_char> = argv.iter().map(|a| a.as_ptr()).collect();
+    ptrs.push(std::ptr::null());
+    // SAFETY: one thread; the two do what the login's worker and its child
+    // do, in their order: the child waits at a gate until the worker has
+    // put it in the desktop's group.
+    unsafe {
+        let mut gate = [-1i32; 2];
+        if libc::pipe2(gate.as_mut_ptr(), libc::O_CLOEXEC) != 0 {
+            return println!("check|a gate|failed: {}", std::io::Error::last_os_error());
+        }
+        let pid = libc::fork();
+        if pid == 0 {
+            libc::close(gate[1]);
+            let mut byte = 0u8;
+            while libc::read(gate[0], (&raw mut byte).cast(), 1) < 0 && std::io::Error::last_os_error().raw_os_error() == Some(libc::EINTR) {}
+            libc::close(gate[0]);
+            caps::keep();
+            if libc::setgroups(0, std::ptr::null()) != 0 || libc::setgid(gid) != 0 || libc::setuid(uid) != 0 {
+                println!("check|becoming the person|failed: {}", std::io::Error::last_os_error());
+                libc::_exit(1);
+            }
+            if caps::narrow(caps::SYS_NICE) {
+                caps::hand_on(caps::SYS_NICE);
+            }
+            println!("check|root taken back|{}", if libc::setuid(0) == 0 { "yes" } else { "no" });
+            libc::execv(ptrs[0], ptrs.as_ptr());
+            libc::_exit(127);
+        }
+        libc::close(gate[0]);
+        // (`--misplace`: as if the child couldn't be put there, to see the
+        // division taken apart with both back where they were.)
+        let placed = if args.iter().any(|a| a == "--misplace") { Err("as asked".to_owned()) } else { groups::place(&made, pid as u32) };
+        match placed {
+            Ok(()) => println!("check|the session's first process placed|done"),
+            Err(why) => {
+                println!("check|the division abandoned|{why}: {}", groups::abandon(made, std::process::id(), Some(pid as u32)).map_or_else(|left| format!("left behind: {left}"), |()| "undone".into()))
+            }
+        }
+        libc::close(gate[1]);
+        let mut status = 0;
+        libc::waitpid(pid, &mut status, 0);
+    }
+}
+
+/// `kbench session-check DESK BG WORKER`: as the person, in the
+/// session's desktop group, with what the login handed on: what they can
+/// do with the groups and what they can't, and who has the capability.
+fn session_check(args: &[String]) {
+    use olo_system::{caps, session_groups as groups};
+    use std::{io::Write as _, path::Path};
+    let [desk, bg, worker, ..] = args else { return };
+    let (desk, bg) = (Path::new(desk), Path::new(bg));
+    let write = |file: std::path::PathBuf, value: &str| std::fs::OpenOptions::new().write(true).open(&file).and_then(|mut f| f.write_all(value.as_bytes()));
+    let said = |what: &str, r: std::io::Result<()>| println!("check|{what}|{}", r.map_or_else(|e| format!("refused: {e}"), |()| "done".into()));
+    let me = std::process::id().to_string();
+    let own = || groups::own().unwrap_or_default();
+    // SAFETY: plain system calls.
+    println!("check|who|uid {} in {}", unsafe { libc::getuid() }, own());
+    println!("check|the session's first process|{}", if caps::held(caps::SYS_NICE) { "has the capability" } else { "has none" });
+    println!("check|found from desk|{}", groups::find(Path::new("/cg"), &own()).map_or("nothing".into(), |g| format!("{} and {}", g.desk.display(), g.bg.display())));
+    said("itself to bg", write(bg.join("cgroup.procs"), &me));
+    println!("check|then in|{}", own());
+    said("itself back to desk", write(desk.join("cgroup.procs"), &me));
+    println!("check|and in|{}", own());
+    said("bg's allowance set", write(bg.join("memory.high"), "1073741824"));
+    println!("check|bg's allowance reads|{}", std::fs::read_to_string(bg.join("memory.high")).unwrap_or_default().trim());
+    said("bg's allowance lifted", write(bg.join("memory.high"), "max"));
+    println!("check|bg idle on the processors|{}", std::fs::read_to_string(bg.join("cpu.idle")).unwrap_or_default().trim());
+    said("the login's worker to bg", write(bg.join("cgroup.procs"), worker));
+    said("itself to the worker's group", write(desk.join("../../leader/cgroup.procs"), &me));
+    said("itself to the scope's own group", write(desk.join("../../cgroup.procs"), &me));
+    said("desk's own allowance set", write(desk.join("memory.high"), "1073741824"));
+    said("bg taken off idle", write(bg.join("cpu.idle"), "0"));
+    said("a group made in olo", std::fs::create_dir(desk.join("../more")));
+    // SAFETY: a plain system call.
+    println!("check|its nice raised to -5|{}", if unsafe { libc::setpriority(libc::PRIO_PROCESS, 0, -5) } == 0 { "done" } else { "refused" });
+    // What it starts: with the capability only where it hands it on.
+    let me = std::env::current_exe().unwrap_or_default();
+    caps::hand_on_nothing();
+    let _ = std::process::Command::new(&me).args(["caps", "a program it starts"]).status();
+    caps::hand_on(caps::SYS_NICE);
+    let _ = std::process::Command::new(&me).args(["caps", "the one it hands it to"]).status();
+    caps::hand_on_nothing();
+    let _ = std::process::Command::new(&me).args(["caps", "one started after"]).status();
+}
+
+/// `kbench keep DESK BG --reserve PERCENT`: Olo's own keeper of a
+/// background group's allowance (`olo_system::background::Keeper`, as
+/// the supervisor runs it) on the two groups given, until it is killed:
+/// what a guest's measurements are of. What it says goes to stderr.
+fn keep(args: &[String]) {
+    let [desk, bg, ..] = args else { return eprintln!("kbench keep DESK BG --reserve PERCENT") };
+    let (notes, said) = std::sync::mpsc::channel();
+    let groups = olo_system::session_groups::Groups { desk: desk.into(), bg: bg.into() };
+    let _keeper = match olo_system::background::Keeper::start(groups, num(args, "--reserve", 12.0), std::path::Path::new("/tmp/olo-keeper.lock"), None, notes) {
+        Ok(keeper) => keeper,
+        Err(why) => return eprintln!("{why}"),
+    };
+    for note in said {
+        eprintln!("{note}");
+    }
 }

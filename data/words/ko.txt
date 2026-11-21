@@ -4186,6 +4186,9 @@ GitHub가 토큰을 거부했습니다. 만료되었거나 폐기되었을 수 �
 Give a new key
 새 키 지정
 
+Give compilers and linkers only spare memory
+컴파일러와 링커에 여유 메모리만 주기
+
 Give it a name.
 이름을 입력하세요.
 
@@ -10675,6 +10678,9 @@ This will {} and {}.
 This will {}.
 {} 작업을 수행합니다.
 
+Those in the Background list use only spare memory. When memory runs short, they give it up first and slow down.
+배경 목록에 있는 것은 여유 메모리만 사용합니다. 메모리가 부족해지면 가장 먼저 메모리를 내놓고 느려집니다.
+
 Threads
 스레드
 
@@ -11139,6 +11145,9 @@ Unarchive All…
 
 Unarchive {} Chats
 채팅 {}개 보관 해제
+
+Unavailable in this session. Olo Doctor sets this up; then log out and back in.
+이 세션에서는 사용할 수 없습니다. Olo Doctor에서 설정한 다음 로그아웃했다가 다시 로그인하세요.
 
 Unavailable with this computer's power driver.
 이 컴퓨터의 전원 드라이버에서 지원하지 않습니다.

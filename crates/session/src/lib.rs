@@ -140,6 +140,7 @@ fn run_file(name: String) -> PathBuf {
 }
 
 pub fn run() {
+    olo_system::caps::hand_on_nothing();
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
     exe();

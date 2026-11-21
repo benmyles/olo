@@ -73,6 +73,14 @@ settings were chosen.
       uses (3 GB, half of it a file read once), where little is ever
       free: the rule by free memory alone against one that counts
       the unused cache as free too.
+  tools/dev/kernel-check session-groups
+      what Olo's login does with a login session's scope, as root,
+      against the kernel itself: divided into the desktop's group and
+      the background's (`olo_system::session_groups`), refused where
+      the scope isn't delegated or isn't the worker's alone, and what
+      the person can then do (move their own between the two, set the
+      background's allowance) and can't (anything else); and the one
+      capability handed on to the program meant to have it.
   tools/dev/kernel-check left-alone
       what was measured and left as the kernel comes: dm-crypt without
       its work queues (a ramdisk, and a disk), and the room kept free
@@ -97,9 +105,10 @@ KBENCH = os.path.join(ROOT, "target/release/examples/kbench")
 GUEST = ["/usr/bin/python3", os.path.join(ROOT, "tools/dev/kvm-guest")]
 
 
-def guest(script, args=(), bins=(), modules=(), disks=(), mem=2048, append="", timeout=600):
+def guest(script, args=(), bins=(), modules=(), disks=(), mem=2048, append="", timeout=600, strict=False):
     """Runs `script` (the guest's shell) and gives its lines of
-    "name|…|{json}" as (name, …, dict)."""
+    "name|…|{json}" as (name, …, dict). `strict`: a guest that ended
+    badly is no measurement, whatever rows it gave before that."""
     with tempfile.TemporaryDirectory(prefix="olo-kernel-check-", dir="/var/tmp") as work:
         path = os.path.join(work, "script")
         with open(path, "w") as f:
@@ -122,7 +131,7 @@ def guest(script, args=(), bins=(), modules=(), disks=(), mem=2048, append="", t
         except ValueError:
             if len(fields) > 1:
                 rows.append(tuple(fields))
-    if out.returncode != 0 and not rows:
+    if out.returncode != 0 and (strict or not rows):
         sys.exit(f"kernel-check: the guest ended {out.returncode}\n{out.stdout[-2000:]}{out.stderr[-2000:]}")
     return rows
 
@@ -407,27 +416,40 @@ if [ "$1" = high ] || [ "$1" = cold ] || [ "$1" = unmapped ]; then
       sleep 0.25
     done ) & CTL=$!
 fi
-within() { g=$1; shift; ( echo $BASHPID > $g/cgroup.procs; exec "$@" ); }
+# olo: what keeps the allowance is Olo's own keeper (`olo_system::background::Keeper`, as the supervisor runs it):
+# the rule above with the cache's credit by what the desktop's group is seen to wait, read back at every look.
+within() { g=$1; shift; ( echo $BASHPID > $g/cgroup.procs && exec "$@" ); }
+# The keeper runs where the supervisor does (in the desktop's group), and the background's group is idle on the
+# processors against the desktop's, as Olo's login makes it.
+if [ "$1" = olo ]; then
+  echo 1 > "$B/cpu.idle" || exit 1
+  (echo 0 > "$D/cgroup.procs" && exec /bin/kbench keep "$D" "$B" --reserve "$2") 2> /tmp/keeper & CTL=$!
+fi
 stat() { awk -v k="$2" '$1==k {print $2}' $1/memory.stat; }
 # The cache nobody uses: a file read once, by the system.
 [ "${4:-0}" -gt 0 ] && within $S dd if=/d/cold of=/dev/null bs=1M 2>/dev/null
 # The desktop: a program with 200 MB of its own that sits idle, and one in use (150 MB of a file mapped, 100 MB of its own, read ten times a second).
-within $D /bin/kbench hog --mb 200 --hold 150 --random 2048 --then-walk > /tmp/idle & I=$!
-within $D /bin/kbench touch /d/file --mb 150 --secs 165 > /tmp/t & T=$!
-within $D /bin/kbench touch --own --mb 100 --secs 165 > /tmp/o & O=$!
+P=${5:-165}
+within $D /bin/kbench hog --mb 200 --hold $(( P - 15 )) --random 2048 --then-walk > /tmp/idle & I=$!
+within $D /bin/kbench touch /d/file --mb 150 --secs $P > /tmp/t & T=$!
+within $D /bin/kbench touch --own --mb 100 --secs $P > /tmp/o & O=$!
 # The system's services: 60 MB of a file and 40 MB of their own in use.
-within $S /bin/kbench touch /d/sys --mb 60 --secs 165 > /tmp/st & ST=$!
-within $S /bin/kbench touch --own --mb 40 --secs 165 > /tmp/so & SO=$!
+within $S /bin/kbench touch /d/sys --mb 60 --secs $P > /tmp/st & ST=$!
+within $S /bin/kbench touch --own --mb 40 --secs $P > /tmp/so & SO=$!
 sleep 8
 # A build in the background for a minute: files written and read back (more than memory holds) and compilers that take 350 MB for a second.
 t0=$(date +%s); n=0
-( c=0; while [ $(( $(date +%s) - t0 )) -lt 60 ]; do within $B /bin/kbench hog --mb 350 --hold 1 --random 2048 > /dev/null 2>&1; c=$(( c + 1 )); echo $c > /tmp/compiles; done ) & C=$!
+# (Counted: what succeeded. A compile or a round that failed is counted apart.)
+( c=0; f=0; while [ $(( $(date +%s) - t0 )) -lt 60 ]; do if within $B /bin/kbench hog --mb 350 --hold 1 --random 2048 > /dev/null 2>&1; then c=$(( c + 1 )); else f=$(( f + 1 )); fi; echo "$c $f" > /tmp/compiles; done ) & C=$!
+i=0; bad=0
 while [ $(( $(date +%s) - t0 )) -lt 60 ]; do
-  within $B /bin/kbench fill /d/f$(( n % 6 )) --mb 200 > /dev/null; within $B dd if=/d/f$(( n % 6 )) of=/dev/null bs=1M 2>/dev/null
-  n=$(( n + 1 ))
+  if within $B /bin/kbench fill /d/f$(( i % 6 )) --mb 200 > /dev/null && within $B dd if=/d/f$(( i % 6 )) of=/dev/null bs=1M 2>/dev/null; then n=$(( n + 1 )); else bad=$(( bad + 1 )); fi
+  i=$(( i + 1 ))
 done
 wait $C
-echo "built|{\"compiles\":$(cat /tmp/compiles 2>/dev/null || echo 0),\"file_rounds\":$n}"
+set -- $(cat /tmp/compiles 2>/dev/null || echo "0 0") "$@"
+echo "built|{\"compiles\":$1,\"compiles_failed\":$2,\"file_rounds\":$n,\"file_rounds_failed\":$bad}"
+shift 2
 row() { # name group
   echo "$1|{\"swap_mb\":$(( $(cat $2/memory.swap.current) / 1048576 )),\"now_mb\":$(( $(cat $2/memory.current) / 1048576 )),\"anon_mb\":$(( $(stat $2 anon) / 1048576 )),\"file_mb\":$(( $(stat $2 file) / 1048576 )),\"pswpout\":$(stat $2 pswpout),\"pswpin\":$(stat $2 pswpin),\"low_events\":$(awk '$1=="low" {print $2}' $2/memory.events)}"
 }
@@ -436,12 +458,16 @@ row "build-desk" $D; [ $D != $B ] && row "build-bg" $B; row "build-system" $S
 within $B /bin/kbench hog --mb $3 --rate 12 --hold 25 --random 2048 > /tmp/h 2>/dev/null; hs=$?
 echo "hog|{\"ended\":$hs}"
 row "out-desk" $D; [ $D != $B ] && row "out-bg" $B; row "out-system" $S
-wait $I; echo "idle|$(sed -n 2p /tmp/idle)"
-wait $T; echo "files|$(cat /tmp/t)"
-wait $O; echo "own|$(cat /tmp/o)"
-wait $ST; echo "sysfiles|$(cat /tmp/st)"
-wait $SO; echo "sysown|$(cat /tmp/so)"
-[ -n "$CTL" ] && { kill $CTL; echo "high|{\"events\":\"$(tr '\n' ' ' < $B/memory.events)\"}"; }
+# (A probe that ended badly is no measurement: the run isn't done.)
+gone=""
+wait $I || gone="$gone idle"; echo "idle|$(sed -n 2p /tmp/idle)"
+wait $T || gone="$gone files"; echo "files|$(cat /tmp/t)"
+wait $O || gone="$gone own"; echo "own|$(cat /tmp/o)"
+wait $ST || gone="$gone sysfiles"; echo "sysfiles|$(cat /tmp/st)"
+wait $SO || gone="$gone sysown"; echo "sysown|$(cat /tmp/so)"
+[ -n "$CTL" ] && { kill -0 "$CTL" || exit 1; kill "$CTL" || exit 1; echo "high|{\"events\":\"$(tr '\n' ' ' < $B/memory.events)\"}"; }
+[ -s /tmp/keeper ] && echo "keeper|{\"said\":\"$(tr '\n\"' ' .' < /tmp/keeper)\"}"
+[ -z "$gone" ] && echo "done|{}" || echo "undone|{\"probes\":\"$gone\"}"
 echo "oom|{\"kills\":$(awk '/^oom_kill / {print $2}' /proc/vmstat)}"
 echo "left|{\"free_mb\":$(awk '/^MemFree/ {print int($2/1024)}' /proc/meminfo),\"unused_cache_mb\":$(awk '/^Inactive\(file\)/ {print int($2/1024)}' /proc/meminfo)}"
 """
@@ -459,11 +485,12 @@ def groups(reps):
         ("the desktop's group protected for all it holds (memory.low 500 MB)", "low", 500),
         ("the background's group kept to what is free or cache nobody uses, less 12% of memory", "cold", 12),
         ("the same, counting only cache that no program has mapped", "unmapped", 12),
+        ("Olo's own keeper (that rule, the cache counting only while the desktop's group isn't seen to wait)", "olo", 12),
     ]
     only = os.environ.get("OLO_GROUPS_CASES")   # "0,1": some of them, by their place
     if only:
         cases = [cases[int(i)] for i in only.split(",")]
-    groups_run(cases, reps, mem=1024, last=600, cold=0, disk="4G")
+    groups_run(cases, reps, mem=1024, last=600, cold=0, disk="4G", probes=165)
 
 
 def groups_cold(reps):
@@ -476,23 +503,145 @@ def groups_cold(reps):
         ("the background's group kept to what is free, less 12% of memory", "high", 12),
         ("the background's group kept to what is free or unused cache, less 12% of memory", "cold", 12),
         ("the same, counting only cache that no program has mapped", "unmapped", 12),
+        ("Olo's own keeper (that rule, the cache counting only while the desktop's group isn't seen to wait)", "olo", 12),
     ]
     only = os.environ.get("OLO_GROUPS_CASES")
     if only:
         cases = [cases[int(i)] for i in only.split(",")]
-    groups_run(cases, reps, mem=3072, last=2200, cold=1500, disk="6G")
+    # (The desktop's probes to the end of the last program's taking: a
+    # minute's build, 2.2 GB at 12 MB a second, and its hold.)
+    groups_run(cases, reps, mem=3072, last=2200, cold=1500, disk="6G", probes=300)
 
 
-def groups_run(cases, reps, mem, last, cold, disk):
+def groups_run(cases, reps, mem, last, cold, disk, probes):
     for what, layout, p in cases:
         print(f"  {what}:")
         for _ in range(reps):
-            rows = {r[0]: r[-1] for r in guest(GROUPS, args=[layout, str(p), str(last), str(cold)], bins=["/usr/sbin/mkfs.ext4", "dd", "/usr/sbin/mkswap", "/usr/sbin/swapon", "sync", "kill", "tr"], modules=["zram"], disks=[disk], mem=mem, timeout=420)}
+            rows = {r[0]: r[-1] for r in guest(GROUPS, args=[layout, str(p), str(last), str(cold), str(probes)], bins=["/usr/sbin/mkfs.ext4", "dd", "/usr/sbin/mkswap", "/usr/sbin/swapon", "sync", "kill", "tr"], modules=["zram"], disks=[disk], mem=mem, timeout=probes + 300, strict=True)}
+            # A run that didn't get to its end says nothing: not a row of
+            # the table.
+            # (The idle program ended by the kernel is a result, said as
+            # one below; any other probe gone, or a figure missing, isn't.)
+            required = {
+                "built": ("compiles", "compiles_failed", "file_rounds", "file_rounds_failed"), "hog": ("ended",),
+                "idle": ("brought_back", "ms"), "files": ("ms_p99", "ms_max"), "own": ("ms_p99", "ms_max"),
+                "sysfiles": ("ms_p99", "ms_max"), "sysown": ("ms_p99", "ms_max"), "oom": ("kills",),
+                "left": ("free_mb", "unused_cache_mb"), "done": (),
+            }
+            for row, keys in required.items():
+                data = rows.get(row)
+                if not isinstance(data, dict) or any(not isinstance(data.get(key), (int, float)) for key in keys):
+                    sys.exit(f"kernel-check: incomplete {row} in {what}: {data!r}")
+            errors = [key for key in ("compiles_failed", "file_rounds_failed") if rows["built"][key]]
+            if rows["hog"]["ended"] or errors or rows["oom"]["kills"] or not all(rows["built"][key] > 0 for key in ("compiles", "file_rounds")):
+                sys.exit(f"kernel-check: work failed in {what}: built={rows['built']}, hog={rows['hog']}, oom={rows['oom']}")
+            if layout == "olo" and ("high" not in rows or "keeper" in rows):
+                sys.exit(f"kernel-check: keeper did not finish cleanly in {what}: {rows.get('keeper')}")
             g = lambda row, key: rows.get(row, {}).get(key, "?") if isinstance(rows.get(row), dict) else "?"
             idle = f"its idle program brought back {g('idle', 'brought_back')} pages in {g('idle', 'ms')} ms" if isinstance(rows.get("idle"), dict) else "ITS IDLE PROGRAM WAS ENDED"
             print(f"    in use, its files: 99 in 100 rounds within {g('files', 'ms_p99')} ms, the worst {g('files', 'ms_max')}; its own memory: {g('own', 'ms_p99')} ms, the worst {g('own', 'ms_max')}; "
-                  f"the system's files {g('sysfiles', 'ms_p99')} ms | {idle} | the build: {g('built', 'compiles')} compiles, {g('built', 'file_rounds')} rounds of files | ended by the kernel: {g('oom', 'kills')}" + (f" | left: {g('left', 'free_mb')} MB free, {g('left', 'unused_cache_mb')} MB of cache unused" if cold else ""), flush=True)
+                  f"the system's files {g('sysfiles', 'ms_p99')} ms | {idle} | the build: {g('built', 'compiles')} compiles, {g('built', 'file_rounds')} rounds of files | ended by the kernel: {g('oom', 'kills')}" + (f" | left: {g('left', 'free_mb')} MB free, {g('left', 'unused_cache_mb')} MB of cache unused" if cold else "") + (f" | the keeper said: {g('keeper', 'said')}" if "keeper" in rows else ""), flush=True)
     print()
+
+
+SESSION_GROUPS = r"""
+mkdir -p /cg; mount -t cgroup2 none /cg || { echo "check|cgroup2|failed"; exit 1; }
+U=/user.slice/user-1000.slice
+echo "+memory +cpu +pids" > /cg/cgroup.subtree_control
+mkdir -p /cg$U; echo "+memory +cpu +pids" > /cg/user.slice/cgroup.subtree_control; echo "+memory +cpu +pids" > /cg$U/cgroup.subtree_control
+grep -q '^olo:' /etc/passwd 2>/dev/null || echo 'olo:x:1000:1000::/:/bin/sh' >> /etc/passwd
+# A scope systemd didn't hand over: refused, nothing made.
+mkdir /cg$U/session-6.scope
+echo "case|not delegated"
+bash -c "echo \$\$ > /cg$U/session-6.scope/cgroup.procs; exec /bin/kbench session-groups /cg $U/session-6.scope 6 1000 1000"
+echo "check|left in it|$(ls -d /cg$U/session-6.scope/*/ 2>/dev/null | wc -l) groups"
+# A scope with someone else in it: refused, nothing made.
+mkdir /cg$U/session-8.scope
+sleep 300 & echo $! > /cg$U/session-8.scope/cgroup.procs
+echo "case|not alone"
+bash -c "echo \$\$ > /cg$U/session-8.scope/cgroup.procs; exec /bin/kbench session-groups /cg $U/session-8.scope 8 1000 1000 --mark"
+echo "check|left in it|$(ls -d /cg$U/session-8.scope/*/ 2>/dev/null | wc -l) groups"
+# The session's first process can't be put in its group: the division is taken apart, both back in the scope's own group.
+mkdir /cg$U/session-9.scope
+echo "case|not placed"
+bash -c "echo \$\$ > /cg$U/session-9.scope/cgroup.procs; exec /bin/kbench session-groups /cg $U/session-9.scope 9 1000 1000 --mark --misplace"
+echo "check|left in it|$(ls -d /cg$U/session-9.scope/*/ 2>/dev/null | wc -l) groups, handing down [$(cat /cg$U/session-9.scope/cgroup.subtree_control)]"
+# As a login finds it.
+mkdir /cg$U/session-7.scope
+echo "case|a login's scope"
+bash -c "echo \$\$ > /cg$U/session-7.scope/cgroup.procs; exec /bin/kbench session-groups /cg $U/session-7.scope 7 1000 1000 --mark"
+echo "check|controllers handed down|$(cat /cg$U/session-7.scope/cgroup.subtree_control) / $(cat /cg$U/session-7.scope/olo/cgroup.subtree_control)"
+echo "check|whose|$(stat -c '%u' /cg$U/session-7.scope/olo /cg$U/session-7.scope/olo/bg /cg$U/session-7.scope/olo/cgroup.procs /cg$U/session-7.scope/olo/bg/cgroup.procs /cg$U/session-7.scope/olo/bg/memory.high /cg$U/session-7.scope/olo/bg/cpu.idle /cg$U/session-7.scope/cgroup.procs /cg$U/session-7.scope/leader/cgroup.procs | awk '{printf "%s ", $1}')"
+# The session over: everything in it gone, the groups can be removed (as systemd does a scope's).
+echo "check|removed after|$(rmdir /cg$U/session-7.scope/olo/bg /cg$U/session-7.scope/olo/desk /cg$U/session-7.scope/olo /cg$U/session-7.scope/leader /cg$U/session-7.scope 2>&1 && echo yes)"
+"""
+
+
+def session_groups():
+    """What Olo's login does with a login session's scope, in a guest, as
+    root, at each step the kernel's own answer."""
+    rows = guest(SESSION_GROUPS, bins=("rmdir", "stat"), mem=1024, timeout=120)
+    want = {
+        ("not delegated", "prepare"): "refused: the session's scope isn't delegated",
+        ("not delegated", "left in it"): "0 groups",
+        ("not alone", "prepare"): "refused: the scope holds more than the login's worker",
+        ("not alone", "left in it"): "0 groups",
+        ("not placed", "prepare"): "made; the worker is in /user.slice/user-1000.slice/session-9.scope/leader",
+        ("not placed", "the division abandoned"): "as asked: undone",
+        ("not placed", "root taken back"): "no",
+        ("not placed", "who"): "uid 1000 in /user.slice/user-1000.slice/session-9.scope",
+        ("not placed", "found from desk"): "nothing",
+        ("not placed", "left in it"): "0 groups, handing down []",
+        ("a login's scope", "prepare"): "made; the worker is in /user.slice/user-1000.slice/session-7.scope/leader",
+        ("a login's scope", "the session's first process placed"): "done",
+        ("a login's scope", "root taken back"): "no",
+        ("a login's scope", "who"): "uid 1000 in /user.slice/user-1000.slice/session-7.scope/olo/desk",
+        ("a login's scope", "the session's first process"): "has the capability",
+        ("a login's scope", "found from desk"): "/cg/user.slice/user-1000.slice/session-7.scope/olo/desk and /cg/user.slice/user-1000.slice/session-7.scope/olo/bg",
+        ("a login's scope", "itself to bg"): "done",
+        ("a login's scope", "then in"): "/user.slice/user-1000.slice/session-7.scope/olo/bg",
+        ("a login's scope", "itself back to desk"): "done",
+        ("a login's scope", "and in"): "/user.slice/user-1000.slice/session-7.scope/olo/desk",
+        ("a login's scope", "bg's allowance set"): "done",
+        ("a login's scope", "bg's allowance reads"): "1073741824",
+        ("a login's scope", "bg's allowance lifted"): "done",
+        ("a login's scope", "bg idle on the processors"): "1",
+        ("a login's scope", "the login's worker to bg"): "refused",
+        ("a login's scope", "itself to the worker's group"): "refused",
+        ("a login's scope", "itself to the scope's own group"): "refused",
+        ("a login's scope", "desk's own allowance set"): "refused",
+        ("a login's scope", "bg taken off idle"): "refused",
+        ("a login's scope", "a group made in olo"): "refused",
+        ("a login's scope", "its nice raised to -5"): "done",
+        ("a login's scope", "a program it starts"): "has none",
+        ("a login's scope", "the one it hands it to"): "has the capability",
+        ("a login's scope", "one started after"): "has none",
+        ("a login's scope", "controllers handed down"): "cpu memory / cpu memory",
+        ("a login's scope", "whose"): "0 0 1000 1000 1000 0 0 0",
+        ("a login's scope", "removed after"): "yes",
+    }
+    case, got, wrong = "", {}, 0
+    for row in rows:
+        if row[0] == "case":
+            case = row[1]
+            print(f"\n{case}:")
+        elif row[0] == "check":
+            # (A bare number comes back from `guest` as one.)
+            said = str(row[2])
+            got[(case, row[1])] = said
+            expected = want.get((case, row[1]))
+            if expected is None and case == "not placed":
+                continue
+            ok = expected is not None and said.startswith(expected)
+            wrong += 0 if ok else 1
+            print(f"  {'ok ' if ok else 'NOT'}  {row[1]}: {said}" + ("" if ok else f"   (wanted: {expected})"))
+    for key in want:
+        if key not in got:
+            wrong += 1
+            print(f"  NOT   {key[0]}: {key[1]}: never said (wanted: {want[key]})")
+    print(f"\n{len(want) - wrong if wrong <= len(want) else 0} of {len(want)} as they should be" if wrong else f"\nAll {len(want)} as they should be.")
+    if wrong:
+        sys.exit(1)
 
 
 def slow_disks():
@@ -577,7 +726,7 @@ def main():
     reps = int(args[args.index("--reps") + 1]) if "--reps" in args else (3 if ttl is None else 20)
     which = [a for a in args if not a.startswith("--") and not a.isdigit()] or ["preemption", "turns", "slow-disks", "swap", "thrashing", "left-alone"]
     for name in which:
-        run = {"preemption": lambda: preemption(reps), "thrashing": lambda: thrashing(reps, ttl), "turns": lambda: turns(reps), "groups": lambda: groups(reps), "groups-cold": lambda: groups_cold(reps), "slow-disks": slow_disks, "swap": lambda: swap(2 if "--reps" not in args else reps), "left-alone": left_alone}.get(name)
+        run = {"preemption": lambda: preemption(reps), "thrashing": lambda: thrashing(reps, ttl), "turns": lambda: turns(reps), "session-groups": session_groups, "groups": lambda: groups(reps), "groups-cold": lambda: groups_cold(reps), "slow-disks": slow_disks, "swap": lambda: swap(2 if "--reps" not in args else reps), "left-alone": left_alone}.get(name)
         if run is None:
             sys.exit(f"kernel-check: {name}? preemption, turns, thrashing, slow-disks, swap, groups or left-alone")
         run()

@@ -39,6 +39,9 @@ serde_json.workspace = true
 # NVIDIA's library (NVML), loaded at run time: gpu_tuning.
 nvml-wrapper = "0.13"
 
+[dev-dependencies]
+tempfile = "3"
+
 [[bin]]
 name = "udisks-fake"
 path = "src/bin/udisks_fake.rs"

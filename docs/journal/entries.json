@@ -5308,5 +5308,17 @@
   "title": "Preferences \u25b8 Performance: what depends on Lower background work sits under it",
   "caption": "The note about a terminal's job is right under its check box; the slider and the Background list are set in under the check box's label and greyed together with it off.",
   "image": "2026-11-20/202544-preferences-performance-what-depends-on-lower-ba.png"
+ },
+ {
+  "time": "2026-11-20T21:35:43",
+  "title": "Preferences \u25b8 Performance: Give compilers and linkers only spare memory",
+  "caption": "A new choice under Lower background work: compilers and linkers go in a group of their own inside the login session, kept to the memory nothing else needs (they give theirs up first when it runs short). Off as it comes; there to turn on in a session Olo's login divided.",
+  "image": "2026-11-20/213543-preferences-performance-give-compilers-and-linke.png"
+ },
+ {
+  "time": "2026-11-20T21:35:44",
+  "title": "Preferences \u25b8 Performance: the choice where the session isn't divided",
+  "caption": "In a session that Olo's login didn't set up for it the choice is greyed, and a line that stays readable says what to do, with Olo Doctor a press away.",
+  "image": "2026-11-20/213544-preferences-performance-the-choice-where-the-ses.png"
  }
 ]

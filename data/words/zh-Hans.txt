@@ -4186,6 +4186,9 @@ GitHub 拒绝了令牌。令牌可能已过期或被撤销。
 Give a new key
 提供新密钥
 
+Give compilers and linkers only spare memory
+编译器和链接器只使用空闲内存
+
 Give it a name.
 请为其命名。
 
@@ -10675,6 +10678,9 @@ This will {} and {}.
 This will {}.
 这将{}。
 
+Those in the Background list use only spare memory. When memory runs short, they give it up first and slow down.
+“背景”列表中的这些程序只使用空闲内存。内存不足时，它们会最先让出内存，并且变慢。
+
 Threads
 线程
 
@@ -11139,6 +11145,9 @@ Unarchive All…
 
 Unarchive {} Chats
 取消归档 {} 个聊天
+
+Unavailable in this session. Olo Doctor sets this up; then log out and back in.
+此会话中不可用。请用 Olo Doctor 完成设置，然后注销并重新登录。
 
 Unavailable with this computer's power driver.
 本机的电源驱动不支持此项。

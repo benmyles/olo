@@ -4201,6 +4201,9 @@ GitHub ha rifiutato il token. Potrebbe essere scaduto o revocato.
 Give a new key
 Assegna un nuovo tasto
 
+Give compilers and linkers only spare memory
+Dai a compilatori e linker solo la memoria libera
+
 Give it a name.
 Assegna un nome.
 
@@ -10700,6 +10703,9 @@ L’operazione consente di {} e {}.
 This will {}.
 L’operazione consente di {}.
 
+Those in the Background list use only spare memory. When memory runs short, they give it up first and slow down.
+Quelli dell’elenco Sfondo usano solo la memoria libera. Quando la memoria scarseggia, la cedono per primi e rallentano.
+
 Threads
 Thread
 
@@ -11164,6 +11170,9 @@ Estrai tutte dall’archivio…
 
 Unarchive {} Chats
 Estrai {} chat dall’archivio
+
+Unavailable in this session. Olo Doctor sets this up; then log out and back in.
+Non disponibile in questa sessione. Olo Doctor lo configura; poi esci e accedi di nuovo.
 
 Unavailable with this computer's power driver.
 Non disponibile con il driver di alimentazione di questo computer.

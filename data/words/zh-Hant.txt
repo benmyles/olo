@@ -4186,6 +4186,9 @@ GitHub 拒絕了權杖。權杖可能已過期或被復原。
 Give a new key
 提供新金鑰
 
+Give compilers and linkers only spare memory
+編譯器和連結器只使用閒置記憶體
+
 Give it a name.
 請為其命名。
 
@@ -10675,6 +10678,9 @@ This will {} and {}.
 This will {}.
 這將{}。
 
+Those in the Background list use only spare memory. When memory runs short, they give it up first and slow down.
+「背景」列表中的這些程式只使用閒置記憶體。記憶體不足時，它們會最先讓出記憶體，並且變慢。
+
 Threads
 執行緒
 
@@ -11139,6 +11145,9 @@ Unarchive All…
 
 Unarchive {} Chats
 取消封存 {} 個聊天
+
+Unavailable in this session. Olo Doctor sets this up; then log out and back in.
+此工作階段無法使用。請用 Olo Doctor 完成設定，然後登出並重新登入。
 
 Unavailable with this computer's power driver.
 本機的電源驅動程式不支援此項。
