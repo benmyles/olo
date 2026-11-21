@@ -57,7 +57,7 @@ import subprocess
 import sys
 import tempfile
 
-ALWAYS = ["bash", "cat", "ls", "sleep", "mkdir", "mount", "grep", "sed", "awk", "head", "tail", "sort", "wc", "date", "dmesg", "sysctl", "insmod", "rmmod", "lsmod", "ip", "tc", "ss", "ethtool", "taskset", "ping"]
+ALWAYS = ["bash", "cat", "ls", "sleep", "mkdir", "mount", "grep", "sed", "awk", "head", "tail", "sort", "wc", "date", "dmesg", "sysctl", "insmod", "rmmod", "lsmod", "ip", "tc", "ss", "ethtool", "taskset", "ping", "stty"]
 
 INIT = r"""#!/bin/bash
 export PATH=/bin HOME=/ TERM=dumb
@@ -72,11 +72,23 @@ while read -r m; do
   insmod $m || echo "kvm-guest: $m didn't load" >&2
 done < /modules/order
 cd /
-bash /script "$@" > /dev/ttyS1
+# What the script says goes out of the second serial port, sixteen characters at a time as the port
+# takes them, and a port throws away what is still to be sent when its last holder lets go without
+# waiting, which a program being ended by a signal does: a script that printed its row and then
+# stopped what it had started got the row back cut at its 128th character, its own end 0 (one run in
+# three, 2026-11-21; shown at will by the second investigator, and a guest switched off with the port
+# still held lost characters too). So this holds the port open itself until the end, whoever else
+# does, and before it lets go waits for the port to have sent everything: a setting made "once what
+# is on its way has gone out" is that wait, and the setting is the one the port has.
+exec 3> /dev/ttyS1
+bash /script "$@" >&3
 status=$?
+sent() { stty -F "$1" "$(stty -F "$1" -g)"; }
+sent /dev/ttyS1 || echo "kvm-guest: what the script said may not all have been sent" > /dev/console
+exec 3>&-
 echo "kvm-guest: the script ended $status" > /dev/console
-# (Said whole before the kernel says it's powering off on the same line.)
-sleep 0.2
+# (The console's line too, before the kernel says it's powering off on it.)
+sent /dev/ttyS0
 echo 1 > /proc/sys/kernel/sysrq
 echo o > /proc/sysrq-trigger
 sleep 30

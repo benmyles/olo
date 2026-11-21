@@ -870,6 +870,33 @@ frames a second with nobody at it):
   the first job, and the second runs without them (its pictures'
   paths were empty: "no picture /NAME.png").
 
+### A guest's last line, cut
+
+Learned from one failed check (2026-11-21), with the second
+investigator, who made it happen at will:
+
+- **A serial port throws away what it hasn't sent yet when its last
+  holder lets go without waiting, and a program ended by a signal
+  doesn't wait.** A guest's script printed its only row and then
+  stopped the programs it had started, one of which had the port as
+  its output: the row came back 128 characters of 172 (eight loads of
+  the port's sixteen), the script's own end 0, the tool's too. It
+  showed in one run of three and not in any of twelve tries to force
+  it with long lines and a busy computer. A guest switched off with
+  the port still held loses characters as well.
+- **`tools/dev/kvm-guest` now holds the port open itself and waits
+  for it to have sent everything before the guest ends** (`stty -F
+  PORT "$(stty -F PORT -g)"`: a setting is applied once the output
+  has gone out, and this one changes nothing). A first guard (end
+  what the script left, look until nothing is left, close last) was
+  shown wrong by the investigator in a quarter of an hour: a program
+  whose memory is gone hasn't let go of its files yet.
+- **A row that isn't whole is a string, not a failure of the tool**:
+  `kernel-check` said "didn't finish cleanly" with the cut row in the
+  message, which is how it was seen at all. Read the message to its
+  end before deciding what it says (mine was cut again by my own
+  `cut -c1-300`).
+
 ### What a program holds: measured in turn, and a first run apart
 
 Learned measuring the allocator (2026-11-21):
