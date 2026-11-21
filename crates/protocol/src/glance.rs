@@ -171,6 +171,19 @@ pub const PROVIDERS: &[Provider] = &[
             options: &[Opt { id: "span", label: "Hours:", values: &[("6", "The last 6 hours"), ("12", "The last 12 hours")] }],
         }],
     },
+    Provider {
+        app: "rex",
+        name: "Rex",
+        program: "olo-rex-glance",
+        arg: "--glance",
+        icon: "rex",
+        kinds: &[Kind {
+            id: "agents",
+            menu: "Rex: Agents & Sessions",
+            about: "Live blocked, error, and working coding agents and open sessions across Rex.",
+            options: &[Opt { id: "count", label: "Rows:", values: &[("4", "4 items"), ("6", "6 items"), ("2", "2 items")] }],
+        }],
+    },
 ];
 
 /// App `app`'s provider.

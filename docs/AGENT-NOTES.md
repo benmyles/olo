@@ -1818,3 +1818,24 @@ found what the first had said, and more. A shorter road than the
 design reviewed is a new design: it gets its own review before it is
 built, or it isn't built. And `tools/dev/ui-lint` has no `--help`:
 an argument it doesn't know starts the lint (read its first lines).
+
+### Testing Olo Rex and Rex rev-19 servers
+
+- **Rex rev-19 `data_ref_id` is `"terminal"`, not `"output"`.** Both
+  `session.bootstrap`'s `data_tickets` request and `data.connect` must
+  pass `data_ref_id: "terminal"` with subprotocol `rex.data.terminal.v1`;
+  passing `"output"` connects silently with zero bytes delivered.
+- **Scratch Rex server flags:** start an isolated scratch Rex server with
+  `XDG_DATA_HOME=… XDG_STATE_HOME=… XDG_CONFIG_HOME=… rex server run --listen unix:///var/tmp/…/rex.sock`
+  (the flag is `--listen`, not `--socket` or `--data-dir`), and point
+  `olo-rex` / `olo-rex-glance` at it with `REX_SERVER_SOCKET=/var/tmp/…/rex.sock`.
+  For offline UI/tiling QA without touching any Rex server, pass `OLO_REX_DEMO=1`.
+- **Serialize per-host terminal writes FIFO:** never spawn one tokio task
+  per keystroke for `terminal.write` / `client.key` — rapid typing races
+  and transposes characters. Route writes through a per-host unbounded
+  FIFO channel (`HostRuntime::input_tx`).
+- **Kit `MenuField::width(w)` is total width (`label_w + popup_w`),** not
+  just the popup button width — pass `.width(div_x + POPUP_W)`.
+- **`vendor/ghostty-vt` static library:** rebuilt via
+  `tools/build-ghostty-vt.sh` (Zig 0.15+, `ghostty` commit
+  `6d244209978e599277904ff3ced7b8a2ebcc528d`, MIT), tracked in Git LFS.

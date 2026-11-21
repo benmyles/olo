@@ -399,6 +399,14 @@ pub fn open_in_terminal(dir: &Path) {
     }
 }
 
+/// A new Rex workspace session in `dir`.
+pub fn open_in_rex(dir: &Path) {
+    let rex = olo_xdg::find_program("olo-rex").map_or_else(|| "olo-rex".into(), PathBuf::into_os_string);
+    if let Err(e) = opener::spawn(&[rex, "--dir".into(), dir.as_os_str().to_owned()]) {
+        tracing::warn!("rex in {}: {e}", dir.display());
+    }
+}
+
 pub fn open_in_viewer(path: &Path) {
     let viewer = olo_xdg::find_program("olo-viewer").map_or_else(|| "olo-viewer".into(), PathBuf::into_os_string);
     if let Err(e) = opener::spawn(&[viewer, path.as_os_str().to_owned()]) {

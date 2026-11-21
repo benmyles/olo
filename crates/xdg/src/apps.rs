@@ -5,6 +5,7 @@
 pub const OUR_APPS: &[(&str, &str, &str)] = &[
     ("olo-tracker", "Tracker", "tracker"),
     ("olo-terminal", "Terminal", "terminal"),
+    ("olo-rex", "Rex", "rex"),
     ("olo-chrome", "Google Chrome", "google-chrome"),
     ("olo-styled-edit", "StyledEdit", "styled-edit"),
     ("olo-passwords", "Passwords", "passwords"),
@@ -53,7 +54,7 @@ pub fn window_app_id(given: String) -> String {
 
 /// Our applications that open another window when asked while running
 /// (`--new-window`, handed to the running copy): Tracker's New Window.
-pub const NEW_WINDOW: &[&str] = &["olo-tracker", "olo-terminal", "olo-styled-edit"];
+pub const NEW_WINDOW: &[&str] = &["olo-tracker", "olo-terminal", "olo-rex", "olo-styled-edit"];
 
 /// The app id our program `bin` runs as ("olo-styled-edit" is
 /// "olo.styled-edit"), for `instance`.

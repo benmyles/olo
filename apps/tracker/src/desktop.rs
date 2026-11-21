@@ -507,6 +507,7 @@ impl Desktop {
             "undo" => to_hub(ToHub::UndoRedo(false, Some(self.id))),
             "redo" => to_hub(ToHub::UndoRedo(true, Some(self.id))),
             "terminal" => fs::open_in_terminal(&desktop_dir()),
+            "rex" => fs::open_in_rex(&desktop_dir()),
             // From the desktop: a window on Home.
             "new" => to_hub(ToHub::NewWindow(fs::home(), None)),
             "backgrounds" => {
@@ -552,6 +553,7 @@ impl Desktop {
                 .item("New Window", "new")
                 .item("New Folder", "new-folder")
                 .item("Open in Terminal", "terminal")
+                .item("Open in Rex", "rex")
                 .separator()
                 .item("Clean Up", "clean-up")
                 .enabled(!self.places.icons.is_empty())

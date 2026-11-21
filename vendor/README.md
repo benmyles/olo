@@ -164,6 +164,13 @@ Owned here outright (path dependencies), not tracking a release.
   VUI is read; `src/lib.rs`: `stream_colour`, for an SPS NAL unit) keeps
   it, for Olo's HDR video (`olo_images::hevc`). Its tests, benches and
   examples are left out. Drop it if upstream reads the VUI.
+- **ghostty-vt/** (MIT; Ghostty `6d244209978e599277904ff3ced7b8a2ebcc528d`):
+  prebuilt static C ABI library (`lib/x86_64-linux-gnu/libghostty-vt.a`,
+  tracked in Git LFS) and headers (`include/ghostty/vt/...`) used by
+  `crates/rex-vt` (`olo-rex-vt`) for `apps/rex` (`olo-rex`). Gives
+  lossless `GHOSTSNP` binary snapshot decoding, Kitty graphics, reflow,
+  selection, search, and OSC 133/7501 parity with the Rex server. Rebuild
+  from Ghostty source with `tools/build-ghostty-vt.sh`.
 
 # From GPUI
 

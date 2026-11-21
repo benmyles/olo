@@ -42,6 +42,7 @@ const fn k(
 
 const TRACKER: Option<&str> = Some("olo.tracker");
 const TERMINAL: Option<&str> = Some("olo.terminal");
+const REX: Option<&str> = Some("olo.rex");
 const STYLED_EDIT: Option<&str> = Some("olo.styled-edit");
 const VIEWER: Option<&str> = Some("olo.viewer");
 const PASSWORDS: Option<&str> = Some("olo.passwords");
@@ -68,6 +69,7 @@ const CHROME: Option<&str> = Some("google-chrome");
 pub const APPS: &[(&str, &str)] = &[
     ("olo.tracker", "Tracker"),
     ("olo.terminal", "Terminal"),
+    ("olo.rex", "Rex"),
     ("olo.styled-edit", "StyledEdit"),
     ("olo.viewer", "Viewer"),
     ("olo.passwords", "Passwords"),
@@ -216,6 +218,24 @@ pub const APP_KEYS: &[AppKey] = &[
     k("terminal.tab-7", TERMINAL, "tab:6", "Tab 7", &["Cmd+7"], &["Ctrl+Shift+7"], &["Alt+7"]),
     k("terminal.tab-8", TERMINAL, "tab:7", "Tab 8", &["Cmd+8"], &["Ctrl+Shift+8"], &["Alt+8"]),
     k("terminal.tab-9", TERMINAL, "tab:8", "Tab 9", &["Cmd+9"], &["Ctrl+Shift+9"], &["Alt+9"]),
+    // Rex: terminal multiplexer shortcuts (Ctrl+Shift on Windows, like Terminal).
+    k("rex.command-palette", REX, "app.command_palette", "Command Palette", &["Shift+Cmd+P"], &["Ctrl+Shift+P"], &["Alt+Shift+P"]),
+    k("rex.go-to-anything", REX, "app.go_to_anything", "Go to Anything", &["Cmd+P"], &["Ctrl+Shift+O"], &["Alt+P"]),
+    k("rex.view-activity", REX, "app.view_activity", "View Activity", &["Cmd+Period"], &["Ctrl+Shift+Period"], &["Alt+Period"]),
+    k("rex.sidebar", REX, "app.toggle_sidebar", "Toggle Sidebar", &["Alt+Cmd+S"], &["Ctrl+Shift+B"], &["Alt+S"]),
+    k("rex.settings", REX, "app.settings", "Settings", &["Cmd+Comma"], &["Ctrl+Shift+Comma"], &["Alt+Comma"]),
+    k("rex.new-window", REX, "app.new_window", "New Window", &["Cmd+N"], &["Ctrl+Shift+N"], &["Alt+N"]),
+    k("rex.new-tab", REX, "window.new", "New Tab", &["Cmd+T"], &["Ctrl+Shift+T"], &["Alt+T"]),
+    k("rex.close-pane", REX, "pane.close", "Close Pane", &["Shift+Cmd+W"], &["Ctrl+Shift+W"], &["Alt+Shift+W"]),
+    k("rex.split-right", REX, "pane.split_right", "Split Right", &["Cmd+D"], &["Ctrl+Shift+D"], &["Alt+D"]),
+    k("rex.split-down", REX, "pane.split_down", "Split Down", &["Shift+Cmd+D"], &["Ctrl+Shift+E"], &["Alt+Shift+D"]),
+    k("rex.zoom-pane", REX, "pane.zoom_toggle", "Zoom Pane", &["Shift+Cmd+Return"], &["Ctrl+Shift+Return"], &["Alt+Shift+Return"]),
+    k("rex.copy", REX, "terminal.copy", "Copy", &["Cmd+C"], &["Ctrl+Shift+C"], &["Alt+C"]),
+    k("rex.paste", REX, "terminal.paste", "Paste", &["Cmd+V"], &["Ctrl+Shift+V"], &["Alt+V"]),
+    k("rex.find", REX, "terminal.find", "Find", &["Cmd+F"], &["Ctrl+Shift+F"], &["Alt+F"]),
+    k("rex.copy-mode", REX, "terminal.copy_mode", "Copy Mode", &["Shift+Cmd+C"], &["Ctrl+Shift+M"], &["Alt+Shift+C"]),
+    k("rex.clear", REX, "terminal.clear_scrollback", "Clear Scrollback", &["Cmd+K"], &["Ctrl+Shift+K"], &["Alt+K"]),
+    k("rex.quit", REX, "quit", "Quit Rex", &["Cmd+Q"], &["Ctrl+Shift+Q"], &["Alt+Q"]),
     // StyledEdit: TextEdit's on a Mac, WordPad's on Windows, StyledEdit's
     // on BeOS.
     k("styled-edit.replace", STYLED_EDIT, "replace", "Replace", &["Alt+Cmd+F"], &["Ctrl+H"], &["Alt+R"]),

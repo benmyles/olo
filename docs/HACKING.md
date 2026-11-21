@@ -26388,3 +26388,53 @@ two frames, 0.7 ms each). Opening: the day read in 0.20 s on a worker
 (30,000 events; 0.45 s before the events were read typed and the
 daemon asked without its hours). Reviewed at 1×, 1.5× and 2×, light and
 dark, each section.
+
+## Rex (apps/rex, crates/rex, crates/rex-vt)
+
+Native Olo desktop client (`olo-rex`, `app_id: "olo.rex"`) for local and
+remote Rex workspaces (Rex API rev 19), alongside Terminal.
+
+- **`crates/rex-vt` (`olo-rex-vt`)** wraps the vendored MIT static
+  `libghostty-vt.a` (`vendor/ghostty-vt`, rebuilt with
+  `tools/build-ghostty-vt.sh`): lossless `GHOSTSNP` snapshot decoding,
+  incremental `RenderState` dirty-row extraction, Kitty graphics,
+  selection, search, OSC 133/7501, and Ghostty/`.itermcolors` theme
+  importers.
+- **`crates/rex` (`olo-rex-client` + `olo-rex-glance`)** speaks Rex API
+  rev 19 (`rex.control.v1`, `rex.data.terminal.v1`, `rex.data.bytes.v1`,
+  `rex.data.tcp.v1`) over local Unix sockets, HTTP/HTTPS/Tailscale, and
+  native in-process Rust SSH (`russh` + `ssh2-config` + Olo Passwords
+  `SSH_AUTH_SOCK` + native askpass sheets + `direct-streamlocal@openssh.com`
+  / `rex __internal dial-stdio` + `-L` port forwarding). `olo-rex-glance`
+  is a separate kit-free Deskbar Glance provider binary linking only
+  `libc`/`libm`/`libgcc_s`.
+- **`apps/rex` (`olo-rex`)** isolates terminal screens in `PanesView`
+  so streaming output redraws only the terminal canvas at vsync, while
+  serializing keystrokes per host through a strict FIFO writer task.
+  Includes adaptive `SidePane` (Sessions & live Activity feed), all 4
+  toolbar layouts, recursive splits (auto-stacking horizontally on
+  vertical thirds `< 540 pt`), floating/minimized layers, Copy Mode,
+  Command Palette, Go to Anything, `rex.ui` custom prompts, Path
+  Browser, Quick Look with ETag caching, drag-and-drop uploads, QR
+  pairing, zero-trust per-host Olo Desktop Bridge (`xdg-open`, `op`,
+  `olo-screen` with automatic remote `localhost` `-L` forwarding),
+  Tracker `"Open in Rex"`, global Command Palette session search, and
+  in-place upgrade state restoration.
+
+**Testing.** `OLO_REX_DEMO=1` starts an isolated demo workspace (no real
+Rex socket touched; used by `tools/dev/ui-lint --tiles`). Point at a
+scratch Rex server (`rex server run --listen unix:///var/tmp/.../rex.sock`)
+via `REX_SERVER_SOCKET`. `cargo test -p olo-rex-vt -p olo-rex-client -p olo-rex`
+runs VT round-trips, inline APC nonce verification, and live scratch
+`rex server run` bootstrap + `GHOSTSNP` -> `RenderState` E2E tests.
+
+**Cost.** Measured on release builds in a headless 120 Hz GPU session at
+2× against a live Rex rev-19 server:
+- Idle (5 s): **0.0% of a core, 0 wakeups/s, 0 frames/s** (`perf stat --no-scale` over 3 s idle: 0 context switches, 0.07 ms task-clock, 3,652 instructions).
+- Live typing keystroke-to-draw latency (`app_server timings`): **~1.54 ms median** `to_draw_us` (1.28–1.80 ms) end-to-end through the Rex server vs the 8.33 ms 120 Hz budget.
+- Sustained colored streaming (100 lines/s over 2 s): **7.5% of a core**, **mean 873 µs** per frame (ui 613 µs, tessellate 0 µs, submit 260 µs; slowest 1.94 ms).
+- Resident memory: **62.2 MiB RSS** (`olo-rex`). Reviewed at 1×, 1.5×,
+  and 2×, Light and Dark, across all 6 tiling layouts (`ui-lint --tiles`:
+  0 errors; `tsession review`: 0 findings across Workspace, Settings,
+  Hosts, and Diagnostics).
+

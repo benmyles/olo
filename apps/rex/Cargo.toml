@@ -1,0 +1,39 @@
+[package]
+name = "olo-rex"
+description = "Olo Rex: native Olo desktop client for Rex (local and remote workspaces, splits, floating layers, Ghostty VT, SSH, port forwarding, Tailscale, and Olo desktop bridge)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "olo-rex"
+path = "src/main.rs"
+
+[dependencies]
+olo-crash.workspace = true
+olo-keychain.workspace = true
+olo-kit.workspace = true
+olo-kit-base.workspace = true
+olo-net.workspace = true
+olo-protocol.workspace = true
+olo-rex-client.workspace = true
+olo-rex-vt.workspace = true
+olo-sync.workspace = true
+olo-theme.workspace = true
+olo-xdg.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "io-util", "macros", "process"] }
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
+qrcode = { version = "0.14", default-features = false }
+regex = "1"
+smallvec = "1.6"
+uuid = { version = "1", features = ["v4"] }
+jiff = "0.2"
+libc = "0.2"
+git2 = { version = "0.20", default-features = false, features = ["vendored-libgit2"] }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
+zeroize = "1"

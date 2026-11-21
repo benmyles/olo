@@ -429,9 +429,10 @@ impl FolderWin {
             let file = one && self.selected_entries().first().is_some_and(|e| !e.is_dir);
             menu = menu.item("Older Versions…", "older-versions").enabled(file);
         }
-        // A folder opens in Terminal itself.
+        // A folder opens in Terminal or Rex itself.
         if self.selected_entries().iter().all(|e| e.is_dir) {
             menu = menu.item("Open in Terminal", "terminal-selected");
+            menu = menu.item("Open in Rex", "rex-selected");
         }
         if let Some(open_with) = open_with_menu(&self.selected_entries()) {
             menu = menu.submenu(open_with);
@@ -475,6 +476,7 @@ impl FolderWin {
             .item("Get Info", "info")
             .key("i")
             .item("Open in Terminal", "terminal")
+            .item("Open in Rex", "rex")
             .item("Open Parent", "parent")
             .key("up")
             .enabled(self.path.parent().is_some())
@@ -507,6 +509,7 @@ impl FolderWin {
             .item("Get Info", "info")
             .key("i")
             .item("Open in Terminal", "terminal")
+            .item("Open in Rex", "rex")
             .item("Quick Look", "quick-look")
             .key("y")
             .enabled(has_sel)
@@ -1428,6 +1431,7 @@ impl FolderWin {
                 Err(e) => self.error(olo_kit::tr!("Couldn't create a folder: {}", e), cx),
             },
             "terminal" => fs::open_in_terminal(&dir),
+            "rex" => fs::open_in_rex(&dir),
             "back" => self.go(-1, cx),
             "forward" => self.go(1, cx),
             // File ▸ New Window (⌘N): another window on this folder, as
@@ -1442,6 +1446,11 @@ impl FolderWin {
             "terminal-selected" => {
                 for e in entries.iter().filter(|e| e.is_dir) {
                     fs::open_in_terminal(&e.path);
+                }
+            }
+            "rex-selected" => {
+                for e in entries.iter().filter(|e| e.is_dir) {
+                    fs::open_in_rex(&e.path);
                 }
             }
             "older-versions" => {

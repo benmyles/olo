@@ -369,7 +369,34 @@ pub fn context() -> (Option<WindowInfo>, Vec<Item>) {
         item.icon = icon.or(Some("application".into()));
         items.push(item);
     }
+    items.extend(rex_session_items());
     (front, items)
+}
+
+/// Live local and remote Rex sessions indexed by `olo-rex` into XDG state.
+fn rex_session_items() -> Vec<Item> {
+    #[derive(serde::Deserialize)]
+    struct Entry {
+        host_key: String,
+        host_label: String,
+        session_id: String,
+        label: String,
+        #[serde(default)]
+        cwd: String,
+    }
+    let path = olo_xdg::state_dir().join("rex/palette-index.json");
+    let Ok(bytes) = std::fs::read(&path) else { return Vec::new() };
+    let Ok(entries) = serde_json::from_slice::<Vec<Entry>>(&bytes) else { return Vec::new() };
+    entries
+        .into_iter()
+        .map(|e| {
+            let sub = if e.cwd.is_empty() { format!("Rex · {}", e.host_label) } else { format!("Rex · {} · {}", e.host_label, e.cwd) };
+            Item::new(Kind::Command, e.label.clone(), Action::Spawn(vec!["olo-rex".into(), "--session".into(), e.host_key.clone(), e.session_id.clone()]))
+                .subtitle(sub)
+                .icon("rex")
+                .keywords(format!("rex session workspace terminal {} {} {}", e.host_label, e.host_key, e.cwd))
+        })
+        .collect()
 }
 
 fn shortcut_icon(group: &str) -> &'static str {

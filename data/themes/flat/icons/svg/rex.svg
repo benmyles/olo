@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<!-- Rex (Flat: matched height with Olo yellow window tab, yellow >_ prompt matching Terminal, crisp dark rim, 3-pane split layout). -->
+<style>.o{paint-order:stroke;stroke:none}</style>
+<!-- Olo yellow window tab (32 px and up), sized so tab + body match Terminal's height. -->
+<path class="from32" d="M9 16V11.5Q9 9 11.5 9H27.5Q30 9 30 11.5V16Z" fill="#ffcb12"/>
+<!-- Main slate body with crisp rim visible on both light and dark panels. -->
+<rect class="from48" x="6" y="15" width="52" height="43" rx="6" fill="#233046" stroke="#6b83a8" stroke-width="2"/>
+<rect class="upto32" x="6" y="15" width="52" height="43" rx="6" fill="#2c3e5c" stroke="#8aa3c7" stroke-width="2.5"/>
+<!-- Detailed 3-pane split layout for 48 px and up. -->
+<g class="from48">
+<rect x="11" y="20" width="22" height="33" rx="3" fill="#182235" stroke="#ffcb12" stroke-width="2"/>
+<path fill="none" stroke="#ffd84d" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" d="M15.5 31L21 36.5L15.5 42"/>
+<line x1="23.5" y1="42" x2="29" y2="42" stroke="#ffd84d" stroke-width="3.2" stroke-linecap="round"/>
+<rect x="37" y="20" width="16" height="14.5" rx="3" fill="#182235" stroke="#4f9bff" stroke-width="2"/>
+<line x1="41" y1="25.5" x2="49" y2="25.5" stroke="#60a5fa" stroke-width="2.2" stroke-linecap="round"/>
+<line x1="41" y1="29.5" x2="46.5" y2="29.5" stroke="#60a5fa" stroke-width="2.2" stroke-linecap="round"/>
+<rect x="37" y="38.5" width="16" height="14.5" rx="3" fill="#182235" stroke="#3ddc56" stroke-width="2"/>
+<line x1="41" y1="44" x2="49" y2="44" stroke="#4ce868" stroke-width="2.2" stroke-linecap="round"/>
+<line x1="41" y1="48" x2="46.5" y2="48" stroke="#4ce868" stroke-width="2.2" stroke-linecap="round"/>
+</g>
+<!-- Simplified bold 3-pane split for small sizes (16..32 px): yellow >_ left pane + blue top-right + green bottom-right. -->
+<g class="upto32">
+<rect x="10" y="20" width="24" height="33" rx="3" fill="#161f32" stroke="#ffcb12" stroke-width="3"/>
+<path fill="none" stroke="#ffd84d" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" d="M15 30.5L20.5 36.5L15 42.5"/>
+<line x1="23" y1="42.5" x2="29" y2="42.5" stroke="#ffd84d" stroke-width="3.4" stroke-linecap="round"/>
+<rect x="39" y="20" width="15" height="14" rx="3" fill="#4f9bff"/>
+<rect x="39" y="39" width="15" height="14" rx="3" fill="#3ddc56"/>
+</g>
+</svg>

@@ -110,6 +110,7 @@ def apps(home):
         ("Passwords", ["olo-passwords"], {"OLO_PASSWORDS_KEYFILE": os.path.join(home, ".pw-key")}, False),
         ("StyledEdit", ["olo-styled-edit", os.path.join(home, "README.md")], {}, False),
         ("Telegram", ["olo-telegram"], {"OLO_TELEGRAM_DEMO": "4", "OLO_TELEGRAM_CACHE": tg + "/cache", "OLO_TELEGRAM_SECRETS": tg + "/secrets"}, False),
+        ("Rex", ["olo-rex"], {"OLO_REX_DEMO": "1", "REX_SERVER_SOCKET": os.path.join(home, ".rex-demo.sock")}, False),
         ("Terminal", ["olo-terminal"], {}, False),
         ("Tracker", ["olo-tracker", home], {}, False),
         ("Viewer", ["olo-viewer", os.path.join(home, "Pictures/holiday.png")], {}, False),

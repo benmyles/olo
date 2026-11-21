@@ -1,0 +1,15 @@
+[package]
+name = "olo-rex-vt"
+description = "Safe Rust wrapper around Ghostty's libghostty-vt for Olo Rex (GHOSTSNP incremental snapshots, VT emulation, render state, search, selection, Kitty graphics)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+image = { version = "0.25", default-features = false, features = ["png"] }
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[build-dependencies]
+bindgen = "0.72"
