@@ -266,10 +266,12 @@ something nobody here has is in "Blocked", with what it waits for.
     make, ninja…) is moved once, and every compiler it starts is
     born in the group; a test desktop puts itself there as it starts
     (`tsession`); an agent's screen is a third group, to be weighed.
-  - *The supervisor's own fault found in review*: a process lowered
-    and then brought to the front stays lowered until the supervisor
-    is turned off (it skips what is already lowered): to be put
-    back as it is favoured.
+  - ~~The supervisor's own fault found in review~~: a process
+    lowered and then brought to the front is put back now (it stayed
+    lowered until the supervisor was turned off). Its nice stays
+    where it went: the account may not lower one (`RLIMIT_NICE` 0); a
+    line in Doctor's limits file would let the supervisor put that
+    back too, to be weighed.
   - *Processors*: the group idle against the desktop's (`cpu.idle`),
     measured on this computer with two scopes of the user manager
     before it is relied on; it does nothing for the kernel's own
@@ -317,11 +319,15 @@ something nobody here has is in "Blocked", with what it waits for.
   1. ~~The trigger~~ (the swap setting is gone; memory policy is
      never tried on the person's computer: AGENT-NOTES).
   2. ~~Doctor never unloads a driver whose card doesn't answer~~;
-     still: a fix waiting behind another says so, and one that has
-     run for minutes says how long and at what (the window said
-     "Fixing…" under a finding whose fix was only queued); what a
-     fix stops it starts again however it ends (the follower stayed
-     stopped); a card whose only advice is to restart could have
+     ~~a fix waiting behind another says so, and one that has run
+     for minutes says how long, at what, and that it may never
+     end~~ (HACKING, "A fix under way says how it goes"); still: the
+     fixes go one at a time, so one that never returns holds the
+     rest (the helper to run each on a thread of its own, with what
+     may not run side by side kept apart); an activity mark before
+     the status (Opus's look); the buttons under the list stay live
+     while a fix runs; what a fix stops it starts again however it
+     ends (the follower stayed stopped); a card whose only advice is to restart could have
      Restart… on it (Opus's look: a new form of card); the orange
      Problem tag's white letters are weak at 1× (Astra's look: the
      tag's, every card's); "Fix 5 Problems" counts recommendations.

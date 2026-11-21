@@ -20,7 +20,7 @@
 //! session's: the look at login and the Wi-Fi healer's news
 //! (notify.rs).
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, time::Duration};
 
 use crate::{
     checks::{self, Finding, Fix, Report, Severity},
@@ -68,6 +68,8 @@ enum Msg {
     Helper(Option<FromHelper>),
     /// What a fix left to do as this user is done (`checks::after_fix`).
     Followed,
+    /// A fix has been at it a while: how long is said again (`status`).
+    Tick,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -117,6 +119,11 @@ struct Doctor {
     /// How each fix running goes, as the helper last said (a package
     /// download's progress): finding id → its words.
     progress: BTreeMap<String, String>,
+    /// When each fix under way began its work (its first word, or its
+    /// start as this user), for how long it has been at it; and whether
+    /// the window is being told again as that grows (`tick`).
+    began: BTreeMap<String, std::time::Instant>,
+    ticking: bool,
     next_run: u64,
     scroll: ScrollHandle,
     /// What's checked to be fixed or applied together (`chosen`: the
@@ -179,6 +186,46 @@ fn words(s: Option<Severity>) -> (&'static str, &'static str) {
     if s == Some(Severity::Suggestion) { ("Applying…", "Applied.") } else { ("Fixing…", "Fixed.") }
 }
 
+/// From when a fix says how long it has been at it, and from when that
+/// it may never end.
+const SAY_HOW_LONG: Duration = Duration::from_secs(15);
+const SAY_STILL: Duration = Duration::from_secs(180);
+
+/// What a fix under way says of itself, beside its buttons: what it is
+/// doing (`said`, as it last told; `doing` before it told anything),
+/// that it waits where another fix as the administrator is ahead of it
+/// (they go one at a time), and, once that is worth saying, how long it
+/// has been at it. (A fix that called into a driver never came back,
+/// and the window said "Fixing…" for hours under a finding whose own
+/// fix was only waiting behind it: 2026-11-20.)
+fn status(doing: &'static str, said: Option<&str>, waiting: bool, at_it: Option<Duration>) -> String {
+    let Some(said) = said else {
+        return if waiting { olo_kit::words::tr("Waiting for another fix to finish…").to_owned() } else { olo_kit::words::tr(doing).to_owned() };
+    };
+    match at_it.filter(|t| *t >= SAY_HOW_LONG) {
+        None => said.to_owned(),
+        Some(t) => olo_kit::tr!("{} ({})", said, how_long(t)),
+    }
+}
+
+/// What a fix run as the administrator says once it has been at it so
+/// long that it may never end, on a line of its own under the
+/// finding's words (those call into the system, and go one at a
+/// time): None before then, and of a fix run as this user.
+fn still(at_it: Option<Duration>, root: bool) -> Option<String> {
+    let t = at_it.filter(|t| root && *t >= SAY_STILL)?;
+    Some(olo_kit::tr!("Still going after {}. Other fixes wait until it's done; if it never finishes, restarting the computer stops it.", how_long(t)))
+}
+
+/// "20 s", "55 s" (to five seconds), then "1 min", "12 min" (a count
+/// that moved every few seconds would move the words' wrap with it).
+fn how_long(t: Duration) -> String {
+    match t.as_secs() {
+        s if s < 60 => olo_kit::tr!("{} s", s / 5 * 5),
+        s => olo_kit::tr!("{} min", s / 60),
+    }
+}
+
 impl Doctor {
     fn scan(&mut self, cx: &mut Cx<Self>) {
         if self.scanning {
@@ -233,13 +280,20 @@ impl Doctor {
                 continue;
             }
             self.outcomes.insert(id.clone(), Outcome::Fixing);
+            // (As this user it begins at once; as the administrator, when
+            // the helper comes to it and says its first word: `heard`.)
+            if !fix.root || crate::demo::on() {
+                self.began.insert(id.clone(), std::time::Instant::now());
+            }
             // On a worker: what's done as the person first (`prepare`:
             // the start-up screen drawn, a suggestion's state kept), then
             // the steps here, or handed to the root helper.
             let (to, id, steps, root, demo) = (cx.messenger(), id.clone(), fix.steps.clone(), fix.root, crate::demo::on());
             std::thread::spawn(move || {
                 if demo {
-                    let results = crate::demo::fix(&id);
+                    let results = crate::demo::fix(&id, &mut |text| {
+                        to.send(Msg::Progress(id.clone(), text));
+                    });
                     to.send(Msg::Ran(id, helper::Ran { results, ..Default::default() }));
                 } else if let Err(e) = crate::checks::prepare(&id) {
                     to.send(Msg::Ran(id, helper::Ran { results: vec![Err(e)], ..Default::default() }));
@@ -253,7 +307,21 @@ impl Doctor {
                 }
             });
         }
+        self.tick(cx);
         cx.invalidate();
+    }
+
+    /// While a fix is under way the window is told again every five
+    /// seconds, for how long it has been at it (`status`); not once
+    /// none is.
+    fn tick(&mut self, cx: &mut Cx<Self>) {
+        if !self.ticking && self.outcomes.values().any(|o| *o == Outcome::Fixing) {
+            self.ticking = true;
+            // (As often as what is said changes: by five seconds in a
+            // fix's first minute, by the minute after.)
+            let young = self.began.is_empty() || self.began.values().any(|t| t.elapsed() < Duration::from_secs(60));
+            cx.after(Duration::from_secs(if young { 5 } else { 20 }), Msg::Tick);
+        }
     }
 
     /// Root steps for finding `id`, once prepared: to the helper (started
@@ -394,12 +462,14 @@ impl Doctor {
             }
             Some(FromHelper::Progress { id, text }) => {
                 if let Some(finding) = self.running.get(&id) {
+                    self.began.entry(finding.clone()).or_insert_with(std::time::Instant::now);
                     self.progress.insert(finding.clone(), text);
                 }
             }
             Some(FromHelper::Done { id, results, undo, kept }) => {
                 if let Some(finding) = self.running.remove(&id) {
                     self.progress.remove(&finding);
+                    self.began.remove(&finding);
                     self.finished(finding, helper::Ran { results, undo, kept }, cx);
                 }
             }
@@ -408,6 +478,8 @@ impl Doctor {
                 let why = if self.helper_ready { "The administrator's helper quit." } else { "The administrator's password wasn't given." };
                 let left: Vec<String> = self.queued.drain(..).map(|(_, id, _)| id).chain(std::mem::take(&mut self.running).into_values()).collect();
                 for id in left {
+                    self.progress.remove(&id);
+                    self.began.remove(&id);
                     self.outcomes.insert(id, Outcome::Failed(why.into()));
                 }
                 self.helper = None;
@@ -438,7 +510,13 @@ impl Doctor {
             "Waiting for the administrator's password…".to_owned()
         } else if self.busy() {
             let suggestion = self.outcomes.iter().filter(|(_, o)| **o == Outcome::Fixing).all(|(id, _)| r.find(id).is_some_and(|f| f.severity == Severity::Suggestion));
-            words(suggestion.then_some(Severity::Suggestion)).0.to_owned()
+            let doing = words(suggestion.then_some(Severity::Suggestion)).0;
+            // (With how long the longest of them has been at it, as its
+            // card says: the card may be out of sight.)
+            match self.began.values().map(|t| t.elapsed()).max().filter(|t| *t >= SAY_HOW_LONG) {
+                Some(t) => olo_kit::tr!("{} ({})", olo_kit::words::tr(doing), how_long(t)),
+                None => doing.to_owned(),
+            }
         } else if self.scanning {
             "Looking again…".to_owned()
         } else {
@@ -453,6 +531,18 @@ impl Doctor {
         (title, detail)
     }
 
+    /// How the fix of finding `id` under way says it goes: beside its
+    /// buttons (`status`), and on a line of its own once it may never
+    /// end (`still`).
+    fn status_of(&self, id: &str, doing: &'static str) -> (String, Option<String>) {
+        // (Waiting: it has told nothing yet, and another fix as the
+        // administrator has.)
+        let waiting = self.running.values().any(|other| other != id && self.progress.contains_key(other)) || self.queued.iter().any(|(_, queued, _)| queued == id) && !self.running.is_empty();
+        let root = self.report.as_ref().and_then(|r| r.action(id)).is_some_and(|fix| fix.root);
+        let at_it = self.began.get(id).map(|t| t.elapsed());
+        (status(doing, self.progress.get(id).map(String::as_str), waiting, at_it), still(at_it, root))
+    }
+
     /// A finding's card: its kind's tag and its title, what it is, and
     /// its buttons (Ignore, its fix) under it, with how its fix goes.
     /// `inline`: its Ignore and its fix at the right of its title, not
@@ -462,9 +552,18 @@ impl Doctor {
         let p = theme::palette();
         let outcome = self.outcomes.get(&f.id);
         let (doing, done) = words(Some(f.severity));
+        // (What a fix under way says is read, not set aside: darker than
+        // the dimmed buttons beside it. Both reviewers' looks.)
+        let going = {
+            let (_, paper) = style::card_paper(&p);
+            style::c(olo_theme::mix(paper, p.document_text, 0.72))
+        };
+        let (said, still) = if outcome == Some(&Outcome::Fixing) { self.status_of(&f.id, doing) } else { (String::new(), None) };
+        let still = still.map(|text| StringView::new(text).wrap(true).color(going));
         let status = match outcome {
-            // (What it's doing now, while it says: a download.)
-            Some(Outcome::Fixing) => Some(StringView::new(self.progress.get(&f.id).cloned().unwrap_or_else(|| doing.to_owned())).wrap(true).color(ink.dim)),
+            // (What it's doing now, while it says: a download; that it
+            // waits behind another; how long it has been at it.)
+            Some(Outcome::Fixing) => Some(StringView::new(said).wrap(true).color(going)),
             Some(Outcome::Fixed) => Some(StringView::new(done).color(style::c(p.hue_text(olo_theme::Hue::Green)))),
             Some(Outcome::Failed(e)) => Some(StringView::new(e.clone()).wrap(true).color(style::c(p.failure))),
             None => None,
@@ -525,9 +624,12 @@ impl Doctor {
             // (The title's first line on the buttons' middle, as a row of
             // controls reads.)
             let top = top.items_center().child(buttons.flex_shrink_0());
-            return card(Some(f.title.clone())).gap(px(m::TIGHT)).child(top).child(detail).children(status).into_element();
+            return card(Some(f.title.clone())).gap(px(m::TIGHT)).child(top).child(detail).children(status).children(still).into_element();
         }
-        card(Some(f.title.clone())).gap(px(m::TIGHT)).child(top).child(detail).child(div().pt(px(m::TIGHT)).child(buttons))
+        // (That a fix may never end is said on a line of its own, the
+        // card's whole width, over the row of buttons: beside them it
+        // wrapped to three short lines and pushed them off their row.)
+        card(Some(f.title.clone())).gap(px(m::TIGHT)).child(top).child(detail).children(still).child(div().pt(px(m::TIGHT)).child(buttons))
     }
 }
 
@@ -595,7 +697,16 @@ impl View for Doctor {
             }
             Msg::Ran(id, ran) => {
                 self.progress.remove(&id);
+                self.began.remove(&id);
                 self.finished(id, ran, cx)
+            }
+            Msg::Tick => {
+                self.ticking = false;
+                self.tick(cx);
+                // (Only where a fix has been at it long enough to say so.)
+                if self.began.values().any(|t| t.elapsed() >= SAY_HOW_LONG) {
+                    cx.invalidate();
+                }
             }
             Msg::Progress(id, text) => {
                 if self.outcomes.get(&id) == Some(&Outcome::Fixing) {
@@ -893,6 +1004,8 @@ pub fn run() {
                 queued: Vec::new(),
                 running: BTreeMap::new(),
                 progress: BTreeMap::new(),
+                began: BTreeMap::new(),
+                ticking: false,
                 next_run: 0,
                 scroll: ScrollHandle::new(),
                 chosen: saved.chosen,
@@ -973,7 +1086,7 @@ fn fix_from_the_command_line(ids: &[String]) -> i32 {
     for (n, (id, title, fix, _)) in chosen.iter().enumerate() {
         println!("{title}: {}", fix.label);
         let ran = if crate::demo::on() {
-            helper::Ran { results: crate::demo::fix(id), ..Default::default() }
+            helper::Ran { results: crate::demo::fix(id, &mut |_| {}), ..Default::default() }
         } else if let Err(e) = crate::checks::prepare(id) {
             helper::Ran { results: vec![Err(e)], ..Default::default() }
         } else if !fix.root || root {
@@ -1065,6 +1178,30 @@ fn ignore_from_the_command_line(on: bool, ids: &[String]) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A fix under way says what it is doing; that it waits where
+    /// another is ahead of it; after a while how long it has been at
+    /// it; and, as the administrator, at last that it may never end.
+    #[test]
+    fn a_fix_under_way_says_how_it_goes() {
+        let secs = Duration::from_secs;
+        // Nothing told yet: its own word, or that it waits.
+        assert_eq!(status("Fixing…", None, false, None), "Fixing…");
+        assert_eq!(status("Fixing…", None, true, None), "Waiting for another fix to finish…");
+        // What it told, alone until it has been a while.
+        assert_eq!(status("Fixing…", Some("Writing /etc/olo/x"), false, Some(secs(3))), "Writing /etc/olo/x");
+        assert_eq!(status("Fixing…", Some("Writing /etc/olo/x"), true, Some(secs(14))), "Writing /etc/olo/x");
+        assert_eq!(status("Fixing…", Some("Installing kernel"), false, Some(secs(43))), "Installing kernel (40 s)");
+        assert_eq!(status("Fixing…", Some("Installing kernel"), false, Some(secs(60 * 14 + 7))), "Installing kernel (14 min)");
+        // That it may never end: of one as the administrator, after
+        // three minutes, and not of one as this user (a download).
+        assert_eq!(still(Some(secs(179)), true), None);
+        assert_eq!(still(Some(secs(400)), false), None);
+        assert_eq!(still(None, true), None);
+        let long = still(Some(secs(60 * 14 + 7)), true).unwrap();
+        assert!(long.starts_with("Still going after 14 min. Other fixes wait") && long.ends_with("restarting the computer stops it."), "{long}");
+        assert_eq!([how_long(secs(17)), how_long(secs(59)), how_long(secs(60)), how_long(secs(125)), how_long(secs(3600))], ["15 s", "55 s", "1 min", "2 min", "60 min"]);
+    }
 
     fn finding(id: &str, severity: Severity) -> Finding {
         Finding { id: id.into(), severity, title: id.into(), detail: String::new(), fix: Some(Fix { label: "Fix".into(), root: false, steps: vec![] }) }

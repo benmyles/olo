@@ -350,6 +350,21 @@ impl Supervisor {
         // Priorities: background work lowered, as it starts.
         let units_before = self.lowered_units();
         self.lowered.retain(|pid, _| alive.contains(pid));
+        // What was lowered and is now the active window's (or of its
+        // app's tree) is put back: the person is at it. Left as it was,
+        // a program lowered as a terminal's busy job stayed lowered in
+        // front of them until the supervisor was turned off (found in
+        // review, 2026-11-20). Its scheduling class and I/O priority
+        // come back; its nice can't without privilege
+        // (`priority::restore`), and it is lowered again once it is
+        // no longer in front, if it still counts as background.
+        let fronted: Vec<i32> = self.lowered.keys().copied().filter(|pid| favoured.contains(pid)).collect();
+        for pid in fronted {
+            priority::restore(pid);
+            if let Some(l) = self.lowered.remove(&pid) {
+                self.note(format!("Put {} ({}) back: it's the active window's now", l.name, pid));
+            }
+        }
         self.units_put_back(&units_before);
         if settings.priorities {
             let background: HashSet<&str> = settings.background.iter().map(String::as_str).collect();

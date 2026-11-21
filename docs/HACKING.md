@@ -14736,6 +14736,27 @@ ignored list"), and fixes or applies each with a button: each finding's
 own, or one for all that's checked (one password for everything that
 needs root).
 
+**A fix under way says how it goes** (`app.rs`: `status`, `still`).
+Beside its card's buttons: what it is doing, as its steps say; "Waiting
+for another fix to finish…" where another fix as the administrator is
+ahead of it (the helper does them one at a time); and how long it has
+been at it once that is 15 seconds ("Installing kernel (40 s)", by
+five seconds, then by the minute: a count that moved every few seconds
+would move the words' wrap). The header says the same of the longest
+("Fixing… (3 min)"), for a card out of sight. And a fix run as the
+administrator that has been at it three minutes says, on a line of
+its own under the finding's words, that it is still going, that other
+fixes wait until it's done, and that if it never finishes restarting
+the computer stops it. Those are the fixes that call into the system,
+and one of them never came back (2026-11-20, a driver's unload: "A
+graphics card that stopped answering"): the window said "Fixing…" for
+hours, under a finding whose own fix was only waiting behind it. Told
+again by a timer only while a fix is under way (five seconds, then
+twenty). `OLO_DOCTOR_DEMO=slow` makes the demo's fixes take four
+minutes and say what they do, to look at it. What is not done: the
+fixes still go one at a time, so one that never returns holds the
+rest (TODO).
+
 Every finding has a kind (`Severity`, its tag's word `label()`):
 **Critical** (something the person relies on doesn't work or is at risk
 now: the last backup not whole, no driver for the built-in sound),
@@ -17161,9 +17182,15 @@ the folder's change time, `Owners`; each file in one read) and:
   desktop's weight ("Realtime threads and the kept core", Groups'
   weights); Activity Monitor says when a unit was lowered. Never the active window's app
   and what it started (followed from app_server's `WindowsChanged`), and
-  never Olo's own programs (by name, or beside the supervisor). Turned
+  never Olo's own programs (by name, or beside the supervisor). One
+  lowered and then brought to the front (a program started from a
+  terminal and busy for its first minute, whose window the person
+  then turns to) is put back as it becomes the active window's, and
+  lowered again once it no longer is, if it still counts as
+  background: it used to stay lowered until the supervisor was turned
+  off (found in review, 2026-11-20). Put back, or turned
   off, batch and the I/O priority are put back (a raised nice stays until
-  its process ends); a new supervisor (an upgrade) takes over what the
+  its process ends: the account may not lower one, `RLIMIT_NICE` 0); a new supervisor (an upgrade) takes over what the
   last one lowered from its published state, or puts it back if off.
 - **Watchdog** (`detect.rs`), each from several signals, with a
   confidence and its evidence: stuck in a loop (busy at least `spin_cpu`

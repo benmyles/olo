@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-20
 
+### Olo Doctor: a fix under way says how it goes
+
+*16:24* — Beside a card's buttons, what its fix is doing and for how long; in the header too; and after three minutes, for a fix run as the administrator, a line of its own: still going, other fixes wait, and what stops it if it never ends. It said only "Fixing…", for hours once.
+
+![Olo Doctor: a fix under way says how it goes](2026-11-20/162445-olo-doctor-a-fix-under-way-says-how-it-goes.png)
+
 ### Olo Doctor: NVIDIA's driver stuck, and the console that causes it
 
 *15:53* — Two findings new to Doctor (shown in its demo report): NVIDIA's graphics driver stuck shutting down, said as what it is with what it costs until the restart and no fix that could hang; and, recommended, the text console NVIDIA's driver keeps on a card nothing is connected to, with Turn Off the Console. The first points to the second where both are there. Words after both reviewers' looks.

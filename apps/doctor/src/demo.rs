@@ -146,8 +146,20 @@ pub fn report() -> Report {
     r
 }
 
-/// What a fix does here: nothing, after a moment.
-pub fn fix(id: &str) -> Vec<Result<(), String>> {
+/// `OLO_DOCTOR_DEMO=slow`: a fix here says what it is doing and takes
+/// four minutes over it, so a fix that has been at it a while (and one
+/// that may never end) can be looked at.
+pub fn slow() -> bool {
+    std::env::var("OLO_DOCTOR_DEMO").as_deref() == Ok("slow")
+}
+
+/// What a fix does here: nothing, after a moment (`said`: its word of
+/// what it is doing, where it is `slow`).
+pub fn fix(id: &str, said: &mut dyn FnMut(String)) -> Vec<Result<(), String>> {
+    if slow() {
+        said("Writing what it changes".into());
+        std::thread::sleep(Duration::from_secs(240));
+    }
     std::thread::sleep(Duration::from_millis(900));
     if id == "video:intel" {
         return vec![Err("RPM Fusion's repository couldn't be reached: no network.".into())];
