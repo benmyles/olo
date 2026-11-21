@@ -847,6 +847,21 @@ something nobody here has is in "Blocked", with what it waits for.
   an agent's tab through `agent_context::tab_of` is looked at for
   the same.
 
+- **Tracker's columns resized by hand, one width for them all** (Ben,
+  2026-11-21: "in tracker columns mode the column widths need to be
+  resizable (let's keep it simple so it resizes the width of all
+  columns so there is just one column width used for them all and
+  persist it as a saved setting that applies to all tracker windows in
+  column mode)"). A drag on the line between two columns changes every
+  column's width at once (the pointer says so over the line, the line
+  follows it frame by frame, within a least and a most); the width is
+  one of Tracker's saved settings and every window in columns mode
+  uses it, those already open as it changes; a double click on the
+  line gives the width Tracker comes with. To look at: how the kit
+  splits two panes today (the same handle and pointer), the narrow
+  tiling layouts (what a quarter shows at the saved width), and the
+  window's state across a reload.
+
 - **An application chosen again from Deskbar's menu opens another
   window, where the person is** (Ben, 2026-11-20, after asking for a
   whole new instance of Chrome and letting that go: "forget new
