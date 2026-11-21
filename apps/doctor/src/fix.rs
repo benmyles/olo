@@ -283,7 +283,8 @@ impl Step {
     /// What it does, for a report ("Writing /etc/udev/rules.d/…").
     pub fn describe(&self) -> String {
         match self {
-            Step::SetCompositorGrant { uid, enabled } => format!("{} compositor scheduling permission for UID {uid}", if *enabled { "Granting" } else { "Removing" }),
+            Step::SetCompositorGrant { uid, enabled: true } => format!("Giving account {uid}'s window server the permission to set priorities, from its next login"),
+            Step::SetCompositorGrant { uid, enabled: false } => format!("Taking the permission to set priorities back from account {uid}'s window server, from its next login"),
             Step::WriteFile { path, .. } => format!("Writing {}", path.display()),
             Step::CopyFile { to, .. } => format!("Installing {}", to.display()),
             Step::NetworkManagerReload => "Reloading NetworkManager's settings".into(),

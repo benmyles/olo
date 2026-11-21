@@ -12,6 +12,12 @@ use std::{
 
 pub const CHOICE_DIR: &str = "etc/olo/compositor-first.d";
 
+/// The switch for the whole computer that came before the choice for each
+/// account (2026-11-20, for a day): any account's Olo login was handed the
+/// capability where this file was. Nothing of Olo's reads it now; a login
+/// screen from that day still would, so Doctor offers to remove it.
+pub const OLD_SWITCH: &str = "etc/olo/compositor-first";
+
 fn trusted(file: &File, owner: u32, directory: bool) -> io::Result<()> {
     let meta = file.metadata()?;
     if (if directory { meta.is_dir() } else { meta.is_file() }) && meta.uid() == owner && meta.mode() & 0o022 == 0 {

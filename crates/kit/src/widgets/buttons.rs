@@ -541,13 +541,23 @@ pub struct CheckBox {
     enabled: bool,
     mark_only: bool,
     height: f32,
+    tip: Option<SharedString>,
     on_toggle: Option<Rc<dyn Fn(&bool, &mut WindowCx)>>,
 }
 
 impl CheckBox {
     pub fn new(label: impl Into<SharedString>, checked: bool) -> CheckBox {
         let label = crate::words::of(label);
-        CheckBox { id: label.clone(), label, checked, mixed: false, enabled: true, mark_only: false, height: m::MARK_ROW, on_toggle: None }
+        CheckBox { id: label.clone(), label, checked, mixed: false, enabled: true, mark_only: false, height: m::MARK_ROW, tip: None, on_toggle: None }
+    }
+
+    /// A tip saying `text`, once the pointer has rested on it: for a mark
+    /// that isn't enabled, why not (Doctor's fix that is never done with
+    /// the others keeps its mark, greyed, and says so here). It shows
+    /// whether the mark is enabled or not.
+    pub fn tip(mut self, text: impl Into<SharedString>) -> Self {
+        self.tip = Some(text.into());
+        self
     }
 
     /// Only its mark, beside what it chooses that names it already (an
@@ -647,7 +657,13 @@ impl IntoElement for CheckBox {
             let next = mixed || !checked;
             c = c.on_click(move |_, cx| f(&next, cx));
         }
-        c.into_element()
+        match self.tip {
+            Some(text) if self.enabled => c.tip(text).into_element(),
+            // (What isn't enabled hears nothing of the pointer, its coming
+            // and going neither: its tip is its place's, around it.)
+            Some(text) => crate::tip::on(div().flex_shrink_0().child(c.into_element()), format!("tip-{}", self.id), text),
+            None => c.into_element(),
+        }
     }
 }
 

@@ -5326,5 +5326,11 @@
   "title": "Preferences \u25b8 Power: each mode can be changed",
   "caption": "Beside the modes, a box for the one in use with everything it sets: a preset and a top speed (100% down to 50%) for the processors and each graphics card, graphics kept ready, fans, the drive, and what the session does. A changed mode says Customized, here and beside its name, and Restore Defaults puts it back.",
   "image": "2026-11-20/220641-preferences-power-each-mode-can-be-changed.png"
+ },
+ {
+  "time": "2026-11-21T00:39:45",
+  "title": "Olo Doctor: the desktop first on the GPU, an account's own choice",
+  "caption": "Intel's driver puts the window server's drawing ahead of other programs' only where it may set priorities. Doctor offers that for the account, in a card of two paragraphs (what it is for; the permission it takes), with a button of its own: its mark is greyed and says in a tip that it is never fixed with the others. Once given, Doctor's line says what the driver itself answers the window server.",
+  "image": "2026-11-21/003945-olo-doctor-the-desktop-first-on-the-gpu-an-accou.png"
  }
 ]

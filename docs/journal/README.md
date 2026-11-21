@@ -3,6 +3,14 @@
 Olo's visual evolution, newest first. Added with `tools/journal.py`
 (images are stored with Git LFS; run `git lfs pull` after cloning).
 
+## 2026-11-21
+
+### Olo Doctor: the desktop first on the GPU, an account's own choice
+
+*00:39* — Intel's driver puts the window server's drawing ahead of other programs' only where it may set priorities. Doctor offers that for the account, in a card of two paragraphs (what it is for; the permission it takes), with a button of its own: its mark is greyed and says in a tip that it is never fixed with the others. Once given, Doctor's line says what the driver itself answers the window server.
+
+![Olo Doctor: the desktop first on the GPU, an account's own choice](2026-11-21/003945-olo-doctor-the-desktop-first-on-the-gpu-an-accou.png)
+
 ## 2026-11-20
 
 ### Preferences ▸ Power: each mode can be changed

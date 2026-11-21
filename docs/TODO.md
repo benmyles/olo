@@ -151,14 +151,22 @@ something nobody here has is in "Blocked", with what it waits for.
      (the administrator's grant for that account), the
      session passes it to the person's app_server alone
      (`olo_system::caps`; HACKING, "The desktop first on the GPU").
-     **To check on the computer after the first login with it**: the
-     compositor's context really is the GPU's high one
-     (a successful high-priority request for its queue) and draws
-     wait less beside others drawing; what can no longer look into
-     the compositor (Activity Monitor's figures for it, crash
-     reports, Doctor's older-version check) and what each should do
-     instead; whether the compositor should give it up once its
-     context is made.
+     **Checked since** (2026-11-21, Linux 7.3.4): the driver's own
+     word is asked for and shown (app_server asks xe as it takes a
+     GPU up, logs it, tells it with the GPU list; Doctor says "The
+     desktop comes first on the GPU" only on it), and for a probe it
+     is as the capability says: an ordinary process is answered 1 and
+     Mesa asks 1 for it, one given the capability is answered 2, asks
+     2 and is given it (`gpu-priority-check asked`, which now shows
+     the driver's answer). The compositor keeps the capability
+     (queues are made later too). The file for everyone that came
+     first is offered for removal.
+     **Still to check on the computer**: the person's own compositor's
+     line in the log and in Doctor after its next start with this
+     build; that its draws wait less beside others drawing (a measure
+     on the compositor itself, not a probe); the hand-over across a
+     compositor restart, an upgrade and a display plugged in; the
+     login's four programs at mixed versions.
   3. **The kernel's own worker threads run at the ordinary priority
      in the path of every frame and every key.** A frame the
      (realtime) compositor hands to the GPU is passed on by a kernel
@@ -1331,7 +1339,24 @@ something nobody here has is in "Blocked", with what it waits for.
   before it, so its title starts 18 points right of its paragraph (the
   badges stand in one column down the list: kept so, or an empty box
   drawn dim); (c) lines run to 95–100 characters, more than reads
-  well: about 75 if the window is ever narrower.
+  well: about 75 if the window is ever narrower (said again of the
+  first card with two paragraphs, 2026-11-21: cap the words at about
+  420 points and leave the buttons at the card's edge); (d) from the
+  same looks: a path in a card in the fixed-width face, and what is
+  reference rather than reason (how a thing is undone) in the quiet
+  colour, which wants spans within a `StringView`.
+
+- **The kit, from the looks at Doctor's greyed mark and its tip**
+  (2026-11-21, both reviewers, neither this change's): (a) a tip
+  reads as part of the text under it: its edge falls on the text's
+  column, its words are the body's size, it has a faint border and no
+  shadow, and in the dark look its fill is murky on a card: a frame in
+  the window edge's colour, words a point smaller, placed off the
+  pointer rather than at the widget's left edge, a lighter fill by
+  night; (b) a mark that isn't enabled is the enabled one faded, which
+  on white paper (a card, a list) at 1× nearly goes, and by night
+  reads as filled: its own look on paper (a frame in the disabled
+  colour, a flat well).
 
 ## Done, waiting for Ben to try or confirm
 

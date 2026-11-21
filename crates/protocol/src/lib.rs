@@ -2451,6 +2451,13 @@ pub struct GpuInfo {
     pub rendering: bool,
     /// The display connectors wired to it.
     pub connectors: Vec<String>,
+    /// The highest priority its driver gives this compositor's work on it
+    /// (Intel's xe: 0 low, 1 normal, 2 high), the driver's own answer to
+    /// app_server as it took the GPU up
+    /// (`olo_system::gpus::xe_highest_priority`); None where the driver
+    /// has no such answer, or an older app_server tells.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queue_priority: Option<u8>,
 }
 
 /// Where a display's settings are kept: "make model serial" from its EDID

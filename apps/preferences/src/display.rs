@@ -86,6 +86,7 @@ fn ask_gpus(st: &State, proxy: olo_kit::Proxy, hold: Option<olo_kit::FirstShowHo
             boot,
             rendering: boot,
             connectors: connectors.iter().map(|c| c.to_string()).collect(),
+            queue_priority: None,
         };
         *st.gpus.lock().unwrap() = Some(vec![
             gpu("0000:00:02.0", "Intel Graphics", "xe", true, &["eDP-1", "DP-1", "DP-2", "DP-3", "HDMI-A-1"]),

@@ -1845,6 +1845,12 @@ pub trait Backend {
     fn render_node(&self) -> Option<std::path::PathBuf> {
         None
     }
+    /// The highest priority each GPU's driver gives this compositor's work,
+    /// by the GPU's card node, where the driver said (a session's only:
+    /// `udev.rs`, `device_added`).
+    fn queue_priorities(&self) -> Vec<(std::path::PathBuf, u8)> {
+        Vec::new()
+    }
     fn reset_buffers(&mut self, output: &Output);
     /// What `outputs` (all, for None) show may have changed: a display
     /// resting after frames with nothing new (`render::IDLE_FRAMES`)

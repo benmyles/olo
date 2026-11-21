@@ -2899,7 +2899,10 @@ it.
   Export Video… and Kache's Clean Up Now use it),
   `CheckBox` (`mixed`, `on_toggle`; `mark_only`: only its mark, beside
   a title that names it already, its label still its name for agents:
-  an item checked to be acted on with others, `chosen`), `RadioButton`
+  an item checked to be acted on with others, `chosen`; `tip`: what it
+  says when the pointer rests on it, enabled or not, for a greyed mark
+  why it is: what isn't enabled hears nothing of the pointer, so its
+  tip is its place's), `RadioButton`
   (`on_select`),
   `PaneSwitch` (BeOS's Installer's "More Options": a latch,
   `style::latch`, and beside it what it opens; `on_toggle` gets whether
@@ -5142,25 +5145,50 @@ nothing switches without those.
   itself. (What the person is given is the account's, not one
   session's: logged in a second time they can move what is in the
   first's two groups. Nobody else's processes can come in or go out.)
-  **The desktop first on the GPU, where the computer's owner chose so**
-  (`olo_system::caps`). A root-owned marker at
-  `/etc/olo/compositor-first.d/UID` authorizes the selected account's
-  Olo seat login. Login checks each directory and the marker. Doctor
-  offers the grant through its individual action or `--fix compositor-first`.
-  Removing the marker takes effect at the next fresh login. An existing
-  holder keeps its credentials through a session upgrade.
-  The account controls its session and compositor executables. Verify the
-  login worker, system trampoline, personal session and compositor are
-  compatible before enabling the grant or rolling back.
-  The session and compositor keep only bit 23 permitted and effective.
-  A fork copies its calling thread's sets. A fresh ordinary program
-  starts with empty inheritable, permitted, effective and ambient sets.
-  The session prepares bit 23 for its seat compositor and its own upgrade.
-  The display's published session PID identifies the session leader and
-  its direct compositor. A monitor can still read basic counters.
-  `tools/dev/kernel-check session-groups` exercises the kernel handoff.
-  The first physical login also needs a driver-level check of the
-  granted queue priority.
+  **The desktop first on the GPU, where the computer's owner chose so
+  for the account** (`olo_system::caps`). Intel's drivers give a
+  program's work the GPU's high priority only where the program may set
+  priorities (CAP_SYS_NICE; "The GPU has priorities too"). Olo's login
+  hands a person's Olo session on the seat that capability where root
+  has made `/etc/olo/compositor-first.d/UID` for the account: an empty
+  file, found from the root through directories opened without
+  following links, each of them root's and nobody else's to write
+  (`caps::chosen`). Doctor's fix makes it the same way (`set_choice`)
+  and is never part of a batch: its own button ("Put the Desktop
+  First"), or `olo-doctor --fix compositor-first`; Doctor undoes it as
+  it undoes any fix. The session keeps the capability permitted and
+  effective and no more (`caps::rest`), and raises it for one exec at a
+  time (`caps::for_exec`): its compositor's on the seat, and its own at
+  an upgrade. The compositor keeps it the same way (a GPU added later
+  has queues made too). Nothing else the session starts has any of it,
+  and a step that can't be read back ends that program before it starts
+  anything. What holds it can't be looked into by the account's other
+  programs (its `/proc/PID/fd`, `exe`, `maps`, `io`): the supervisor
+  and Doctor know the display's session by its published process and
+  its compositor as that one's child on the seat, and Activity Monitor
+  says what it couldn't read. Taking the file away is for the next
+  login: a session running keeps what it was given.
+  **What the driver gives is asked of the driver.** Holding the
+  capability isn't yet having the priority (the kernel's security
+  module can refuse what it allows, and EGL says High whatever
+  happens), so app_server asks xe as it takes each GPU up
+  (`olo_system::gpus::xe_highest_priority`: the driver's config query,
+  which is the test it makes whenever a queue is made; two system calls
+  on the device it already holds, on the thread that makes the
+  contexts), says the answer in its log, and tells it with the GPU
+  list (`Request::Gpus`, `GpuInfo::queue_priority`). Doctor's line
+  goes by that: "The desktop comes first on the GPU" only on the
+  driver's word; the capability held and the driver saying no is a
+  finding of its own. `tools/dev/gpu-priority-check asked`, as root,
+  shows each program's asking and the driver's answer as queues are
+  made. (The list itself cost app_server's loop 2.7 ms a time, a
+  megabyte and a half of PCI names read for each GPU: names are kept
+  once looked up, 64 µs, and looked up off the loop when a GPU is taken
+  up.) The file for every account that came a day before
+  (`/etc/olo/compositor-first`, `caps::OLD_SWITCH`) is read by nothing
+  of Olo's now but a login screen of that day: Doctor offers to remove
+  it. `tools/dev/kernel-check session-groups` tries the hand-over
+  against the kernel in a guest.
 * `olo-session --greeter`: app_server and `olo-greeter` alone, no
   upgrades watched; the greeter quitting ends it.
 * `olo-greeter` (apps/greeter): a layer surface on every display, the
@@ -14960,7 +14988,12 @@ title, what it is, and under it Ignore (a quiet link) and its fix (the
 button), with how the fix goes or why it failed (Try Again) at the left;
 at its top left, before the tag, a check box (`CheckBox::mark_only`,
 named by its title, id `choose-ID`; a finding with no fix keeps its
-room, so the tags line up).
+room, so the tags line up; a fix that is never done with the others,
+`Fix::batchable`, has its mark greyed, with a tip saying so: the room
+left empty read as a mark that hadn't drawn). A finding's words may be
+paragraphs (a blank line between them in `detail`): the card sets them
+`metrics::TIGHT` apart, half a line, so the room over the buttons stays
+the largest in the card.
 Then three latches (`PaneSwitch`), each over a card of lines: Fixed (this
 time; open), As It Should Be (folded while anything is found: it's the
 long part; open when nothing is; what's applied can be undone from its

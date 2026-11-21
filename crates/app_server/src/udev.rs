@@ -804,6 +804,10 @@ impl Backend for UdevData {
         self.primary_gpu.dev_path_with_type(NodeType::Render).or_else(|| self.primary_gpu.dev_path())
     }
 
+    fn queue_priorities(&self) -> Vec<(std::path::PathBuf, u8)> {
+        self.backends.iter().filter_map(|(node, backend)| Some((node.dev_path()?, backend.queue_priority?))).collect()
+    }
+
     fn keyboards(&self) -> Vec<String> {
         // (KEY_A: a keyboard to type on; not a security key typing its
         // codes.)
@@ -1895,6 +1899,10 @@ struct BackendData {
     drm_output_manager: DrmOutputManager<GbmAllocator<DrmDeviceFd>, GbmFramebufferExporter<DrmDeviceFd>, Option<OutputPresentationFeedback>, DrmDeviceFd>,
     drm_scanner: DrmScanner,
     render_node: Option<DrmNode>,
+    /// The highest priority the GPU's driver gives this compositor's work
+    /// on it, as the driver said when the device was taken up
+    /// (`olo_system::gpus::xe_highest_priority`; None: not Intel's xe).
+    queue_priority: Option<u8>,
     registration_token: RegistrationToken,
     /// Night light by colour matrix, per screen.
     ctm: std::cell::RefCell<HashMap<crtc::Handle, Ctm>>,
@@ -2011,6 +2019,23 @@ impl AnvilState<UdevData> {
 
         let fd = DrmDeviceFd::new(DeviceFd::from(fd));
 
+        // What Intel's driver gives this compositor's work on the GPU, in
+        // the driver's own words, asked here on the thread that makes its
+        // contexts as the device is taken up (two system calls, once a
+        // device; nothing opened): the high priority only where this
+        // process may set priorities (`olo_system::caps`, the login's
+        // grant). EGL says High either way (HACKING, "The GPU has
+        // priorities too"), so this is what Doctor and the log go by.
+        let queue_priority = olo_system::gpus::xe_highest_priority(std::os::fd::AsFd::as_fd(&fd));
+        // (And the GPUs' names looked up away from this loop, for the first
+        // `Request::Gpus`: a megabyte and a half of the PCI database for
+        // each new device, kept after: `olo_system::gpus::pci_name`.)
+        let _ = std::thread::Builder::new().name("gpu-names".into()).spawn(|| drop(olo_system::gpus::list()));
+        if let Some(highest) = queue_priority {
+            let first = highest >= olo_system::gpus::XE_HIGH;
+            info!(device = ?node, highest, "Intel's driver: the highest GPU priority this compositor's work may have (0 low, 1 normal, 2 high){}", if first { ": the desktop comes first on this GPU" } else { "" });
+        }
+
         // `display.keep_modes` (or `OLO_KEEP_MODES=1`): the displays' modes kept as the last
         // app_server left them, no modeset at a restart (Olo's Smithay,
         // `keep_current_modes`); else every connector switched off and
@@ -2106,6 +2131,7 @@ impl AnvilState<UdevData> {
                 covered: Vec::new(),
                 looking_again: None,
                 render_node,
+                queue_priority,
                 surfaces: HashMap::new(),
                 leasing_global: DrmLeaseState::new::<AnvilState<UdevData>>(&self.display_handle, &node)
                     .inspect_err(|err| {

@@ -303,6 +303,12 @@ pub struct Roots {
     pub scope: Option<String>,
     /// PID published for the current Wayland display.
     pub session_pid: Option<i32>,
+    /// Whether the GPU's driver gives this display's window server the high
+    /// priority for its drawing: the driver's own answer to the window
+    /// server, as it tells it (`GpuInfo::queue_priority` of the GPU it
+    /// draws with). None where that isn't known: a driver with no such
+    /// answer, a window server from before it asked, no answer at all.
+    pub gpu_first: Option<bool>,
     /// What systemd says about a system unit.
     pub units: Box<dyn Fn(&str) -> Result<UnitState, String> + Send + Sync>,
     /// AirPods are paired here (the AirPods service's state).
@@ -447,6 +453,7 @@ impl Roots {
             uid,
             scope,
             session_pid: olo_xdg::session::display_session_pid(),
+            gpu_first: gpu_first(),
             units: Box::new(crate::fix::unit_state),
             airpods,
             phone,
@@ -2830,13 +2837,50 @@ fn session_groups(roots: &Roots, r: &mut Report) {
     });
 }
 
+/// What this display's window server says its GPU's driver gives it
+/// ([`Roots::gpu_first`]): one request to it, answered from what it
+/// kept when it took the GPU up.
+fn gpu_first() -> Option<bool> {
+    let mut server = olo_protocol::Client::connect().ok()?;
+    match server.request(&olo_protocol::Request::Gpus) {
+        Ok(olo_protocol::Reply::Gpus { gpus }) => gpus.iter().find(|g| g.rendering).and_then(|g| g.queue_priority).map(|highest| highest >= olo_system::gpus::XE_HIGH),
+        _ => None,
+    }
+}
+
+/// The offer of the desktop first on the GPU ([`compositor_first`]) to
+/// account `uid`, whose session holds the permission already from an
+/// earlier login or doesn't. Its fix is the one a batch never takes
+/// ([`Fix::batchable`]).
+pub(crate) fn desktop_first_offer(uid: u32, running_with_it: bool) -> Finding {
+    let now = if running_with_it { " This session has it from an earlier login and keeps it until you log out: without this, the next one starts without it." } else { "" };
+    Finding {
+        id: "compositor-first".into(),
+        severity: Severity::Suggestion,
+        title: "The desktop can come first on the GPU".into(),
+        // (What it is for; then the permission, said by itself and of the
+        // window server by name, and when it starts: both reviewers'
+        // looks, 2026-11-21, found the permission buried in the middle of
+        // one paragraph and an "it" to work out. How it is undone isn't
+        // here: Doctor lists what it changed with a button to put it
+        // back, as for every fix.)
+        detail: format!(
+            "Olo's window server waits its turn among the programs that draw with the Intel GPU. Moved to the front, its drawing goes ahead of theirs.\n\nFrom your next login, only this account's window server gets the permission Intel's driver asks for. That permission lets the window server change the scheduling priority of any process on this computer. Olo\u{a0}Doctor can take it back.{now}"
+        ),
+        fix: Some(Fix { label: "Put the Desktop First".into(), root: true, steps: vec![Step::SetCompositorGrant { uid, enabled: true }] }),
+    }
+}
+
 /// The desktop first on the GPU (`olo_system::caps`): Intel's drivers
 /// give a program's work the GPU's high priority only where the program
-/// has CAP_SYS_NICE, and Olo's login hands a person's Olo session that
-/// capability (for its compositor alone) only where the computer's
-/// owner chose so: a file only root makes. Offered here, saying what
-/// the choice gives and to whom; fine once the session's compositor
-/// holds it. Only where an Intel driver is there to ask for it.
+/// may set priorities (CAP_SYS_NICE), and Olo's login hands a person's
+/// Olo session that capability (for its compositor alone) only where
+/// the computer's owner chose so for that account: a file only root
+/// makes. Offered here, saying what the choice gives and to whom, and
+/// never as part of a batch; fine once the display's own compositor
+/// holds it, with what the driver itself answers the compositor
+/// (`Roots::gpu_first`: holding the capability isn't yet being given
+/// the priority). Only where an Intel driver is there to ask for it.
 fn compositor_first(roots: &Roots, procs: &[Proc], r: &mut Report) {
     use olo_system::caps::SYS_NICE;
     if roots.scope.is_none() || !["xe", "i915"].iter().any(|driver| roots.fs.join("sys/module").join(driver).exists()) {
@@ -2844,6 +2888,9 @@ fn compositor_first(roots: &Roots, procs: &[Proc], r: &mut Report) {
     }
     let owner = if cfg!(test) { roots.uid } else { 0 };
     let chosen = olo_system::caps::chosen(&roots.fs, owner, roots.uid);
+    // The display's own compositor: the one its session started on the
+    // seat (another desktop of the same account, an agent's screen, has
+    // one too, in the same login session).
     let held = roots.session_pid.and_then(|session| {
         procs.iter().filter(|p| p.name == "olo-app-server" && p.scope == roots.scope).find_map(|p| {
             let dir = roots.fs.join(format!("proc/{}", p.pid));
@@ -2859,31 +2906,56 @@ fn compositor_first(roots: &Roots, procs: &[Proc], r: &mut Report) {
             Some(effective & (1 << SYS_NICE) != 0)
         })
     });
-    match (chosen, held) {
-        (true, Some(true)) => r.fine.push(Fine {
-            title: "The window server holds GPU scheduling permission".into(),
-            detail: "This account has a login grant. The driver determines the priority of each GPU queue.".into(),
+    // The switch for everyone from the day before the choice was each
+    // account's: nothing reads it now but a login screen of that day.
+    let old = PathBuf::from("/").join(olo_system::caps::OLD_SWITCH);
+    if roots.fs.join(olo_system::caps::OLD_SWITCH).exists() {
+        r.findings.push(Finding {
+            id: "compositor-first-old".into(),
+            severity: Severity::Advice,
+            title: "An older switch still lets every account set priorities".into(),
+            detail: format!("{} gave every account's Olo session the permission to set scheduling priorities, with the login screen of 2026-11-20. Olo's login screen goes by a file for each account now and doesn't read this one; a login screen of that day still installed would. Removing it changes nothing for a session that is running.", old.display()),
+            fix: Some(Fix { label: "Remove the Older Switch".into(), root: true, steps: vec![Step::RemoveFile { path: old }] }),
+        });
+    }
+    match (chosen, held, roots.gpu_first) {
+        (true, Some(true), Some(true)) => r.fine.push(Fine {
+            title: "The desktop comes first on the GPU".into(),
+            detail: "Intel's driver gives the window server's drawing its high priority (the driver's own answer to it): this account was given the permission to set priorities at login, and the window server alone holds it.".into(),
         }),
-        (true, observed) => r.findings.push(Finding {
-            id: "compositor-grant-status".into(), severity: Severity::Advice,
-            title: "GPU scheduling permission is configured for this account".into(),
-            detail: if observed == Some(false) {
-                "The running window server lacks the permission. A new Olo login reads the grant. If this login already used it, check the installed login, session and window server versions and the login journal."
-            } else {
-                "Doctor could not identify and read this display’s seat compositor."
-            }.into(),
+        (true, Some(true), Some(false)) => r.findings.push(Finding {
+            id: "compositor-first-refused".into(),
+            severity: Severity::Advice,
+            title: "The window server may set priorities, yet the GPU doesn't put it first".into(),
+            detail: "This account was given the permission at login and the window server holds it, but Intel's driver answers that its drawing gets the ordinary priority. The kernel's security policy can refuse what the permission allows, and says so in the journal (journalctl -b -g sys_nice). Nothing here mends that.".into(),
             fix: None,
         }),
-        (false, Some(true)) => r.fine.push(Fine {
-            title: "The running window server still holds scheduling permission".into(),
-            detail: "This account has no grant for a fresh Olo login. A previous login or another administrator-controlled source can account for its current permission.".into(),
+        (true, Some(true), None) => r.fine.push(Fine {
+            title: "The window server may set priorities".into(),
+            detail: "This account was given the permission at login, for the GPU's high priority, and the window server alone holds it. Whether the driver gives it that priority isn't known here: this driver doesn't say, or the window server is one from before it asked.".into(),
         }),
-        (false, _) => r.findings.push(Finding {
-            id: "compositor-first".into(), severity: Severity::Suggestion,
-            title: "Allow this account to request high GPU priority".into(),
-            detail: format!("Intel's graphics driver puts a program's drawing ahead of other programs' only if that program may set scheduling priorities, and Olo's login screen can give your session that for its window server. At the next Olo login, account UID {} can use CAP_SYS_NICE. Its session and window server are writable by the account. This permits changing scheduling priorities, including realtime scheduling, for other processes on the computer. Removing /{}/{} withdraws the grant for future logins.", roots.uid, olo_system::caps::CHOICE_DIR, roots.uid),
-            fix: Some(Fix { label: "Allow Scheduling for This Account".into(), root: true, steps: vec![Step::SetCompositorGrant { uid: roots.uid, enabled: true }] }),
+        (true, Some(false), _) => r.findings.push(Finding {
+            id: "compositor-grant-status".into(),
+            severity: Severity::Advice,
+            title: "The desktop comes first on the GPU from the next login".into(),
+            detail: "This account has the permission to set priorities, and this session was started without it. Log out and in again through Olo's login screen. If it is the same after that, the login screen is an older one (Doctor says so above) or says why in the journal (journalctl -t olo-login).".into(),
+            fix: None,
         }),
+        (true, None, _) => r.findings.push(Finding {
+            id: "compositor-grant-status".into(),
+            severity: Severity::Advice,
+            title: "The desktop is set to come first on the GPU".into(),
+            detail: "This account has the permission to set priorities for its next logins. Whether this display's window server holds it now couldn't be told: it wasn't found among this session's programs.".into(),
+            fix: None,
+        }),
+        (false, Some(true), first) => {
+            r.fine.push(Fine {
+                title: "The window server still holds the permission to set priorities".into(),
+                detail: format!("From an earlier login, until you log out.{}", if first == Some(true) { " Intel's driver gives its drawing the high priority meanwhile (the driver's own answer to it)." } else { "" }),
+            });
+            r.findings.push(desktop_first_offer(roots.uid, true));
+        }
+        (false, _, _) => r.findings.push(desktop_first_offer(roots.uid, false)),
     }
 }
 
@@ -4999,6 +5071,7 @@ mod tests {
             uid,
             scope: Some("session-2.scope".into()),
             session_pid: Some(949),
+            gpu_first: None,
             units,
             airpods: true,
             phone: false,
@@ -5017,36 +5090,89 @@ mod tests {
     }
 
     /// The desktop first on the GPU: offered where an Intel driver is
-    /// there and the owner hasn't chosen; then fine for the next login;
-    /// then fine where the session's compositor holds the capability.
+    /// there and the owner hasn't chosen for this account, never in a
+    /// batch; then said to be for the next login; then fine where the
+    /// display's own compositor holds the capability, by what the
+    /// driver answers it; and offered again, beside the fine line, where
+    /// a session still holds what its account no longer has.
     #[test]
     fn the_desktop_first_on_the_gpu_is_the_owners_choice() {
-        let (fs, roots) = machine("compositor-first");
+        let (fs, mut roots) = machine("compositor-first");
         let server = Proc { pid: 950, uid: roots.uid, name: "olo-app-server".into(), exe: None, scope: roots.scope.clone() };
-        let look = || {
+        let look = |roots: &Roots| {
             let mut r = Report::default();
-            compositor_first(&roots, std::slice::from_ref(&server), &mut r);
+            compositor_first(roots, std::slice::from_ref(&server), &mut r);
             r
         };
-        assert!(look().findings.is_empty());
+        let ids = |r: &Report| r.findings.iter().map(|f| f.id.clone()).collect::<Vec<_>>();
+        let titles = |r: &Report| r.fine.iter().map(|f| f.title.clone()).collect::<Vec<_>>();
+        assert!(look(&roots).findings.is_empty());
         std::fs::create_dir_all(fs.join("sys/module/xe")).unwrap();
-        let r = look();
-        let fix = r.findings.iter().find(|f| f.id == "compositor-first").unwrap().fix.as_ref().unwrap();
+        let r = look(&roots);
+        assert_eq!(ids(&r), ["compositor-first"]);
+        let offer = &r.findings[0];
+        let fix = offer.fix.as_ref().unwrap();
         assert!(fix.root && !fix.batchable());
         assert_eq!(fix.steps, [Step::SetCompositorGrant { uid: roots.uid, enabled: true }]);
+        assert!(offer.detail.contains("only this account's window server") && !offer.detail.contains("earlier login"), "{}", offer.detail);
+
+        // Chosen for this account; its compositor not found, then found
+        // without the capability (a session from before the choice).
         // (Root's folder, there on a computer Olo was installed on.)
         std::fs::create_dir_all(fs.join("etc/olo")).unwrap();
         std::fs::set_permissions(fs.join("etc/olo"), std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
         std::fs::set_permissions(fs.join("etc"), std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
         olo_system::caps::set_choice(&roots.fs, roots.uid, roots.uid, true).unwrap();
-        assert!(look().findings.iter().any(|f| f.id == "compositor-grant-status"));
+        let r = look(&roots);
+        assert_eq!(ids(&r), ["compositor-grant-status"]);
+        assert!(r.findings[0].title.contains("is set to come first") && r.findings[0].fix.is_none());
         let dir = fs.join("proc/950");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("cmdline"), b"olo-app-server\0--tty-udev\0").unwrap();
-        std::fs::write(dir.join("status"), format!("PPid:\t949\nUid:\t{}\nCapEff:\t0000000000800000\n", roots.uid)).unwrap();
-        assert!(look().fine.iter().any(|f| f.title.contains("holds GPU")));
+        let status = |held: bool| std::fs::write(dir.join("status"), format!("PPid:\t949\nUid:\t{}\nCapEff:\t{:016x}\n", roots.uid, if held { 1u64 << 23 } else { 0 })).unwrap();
+        status(false);
+        let r = look(&roots);
+        assert_eq!(ids(&r), ["compositor-grant-status"]);
+        assert!(r.findings[0].title.contains("from the next login"));
+
+        // Held: fine, and what the line says is the driver's own word.
+        status(true);
+        let r = look(&roots);
+        assert!(r.findings.is_empty());
+        assert_eq!(titles(&r), ["The window server may set priorities"]);
+        roots.gpu_first = Some(true);
+        let r = look(&roots);
+        assert!(r.findings.is_empty());
+        assert_eq!(titles(&r), ["The desktop comes first on the GPU"]);
+        roots.gpu_first = Some(false);
+        let r = look(&roots);
+        assert_eq!(ids(&r), ["compositor-first-refused"]);
+        assert!(r.fine.is_empty() && r.findings[0].fix.is_none());
+
+        // Another desktop's compositor in the same login (an agent's
+        // screen: not this display's session's child) isn't taken for it.
+        std::fs::write(dir.join("status"), format!("PPid:\t777\nUid:\t{}\nCapEff:\t{:016x}\n", roots.uid, 1u64 << 23)).unwrap();
+        assert!(look(&roots).findings[0].title.contains("is set to come first"));
+        status(true);
+
+        // The choice taken back with the session still running: fine for
+        // now, and offered for the logins to come.
+        roots.gpu_first = Some(true);
         olo_system::caps::set_choice(&roots.fs, roots.uid, roots.uid, false).unwrap();
-        assert!(look().fine.iter().any(|f| f.title.contains("still holds")));
+        let r = look(&roots);
+        assert_eq!(titles(&r), ["The window server still holds the permission to set priorities"]);
+        assert!(r.fine[0].detail.contains("high priority meanwhile"));
+        assert_eq!(ids(&r), ["compositor-first"]);
+        assert!(r.findings[0].detail.contains("earlier login") && !r.findings[0].fix.as_ref().unwrap().batchable());
+
+        // The switch for everyone, from the day before: offered for
+        // removal (which may go with a batch: it only takes away).
+        std::fs::write(fs.join(olo_system::caps::OLD_SWITCH), "").unwrap();
+        let r = look(&roots);
+        assert_eq!(ids(&r), ["compositor-first-old", "compositor-first"]);
+        let fix = r.findings[0].fix.as_ref().unwrap();
+        assert!(fix.root && fix.batchable());
+        assert_eq!(fix.steps, [Step::RemoveFile { path: PathBuf::from("/").join(olo_system::caps::OLD_SWITCH) }]);
     }
 
     /// The session's division: a finding with the drop-in to write where
@@ -5882,6 +6008,7 @@ mod tests {
             uid: 1000,
             scope: None,
             session_pid: None,
+            gpu_first: None,
             units: Box::new(|_| Err("none".into())),
             airpods: false,
             phone: false,
@@ -5971,6 +6098,7 @@ mod tests {
             uid: 1000,
             scope: None,
             session_pid: None,
+            gpu_first: None,
             units: Box::new(|_| Err("none".into())),
             airpods: false,
             phone: false,
@@ -7566,6 +7694,7 @@ mod tests {
                 uid: 1000,
                 scope: None,
                 session_pid: None,
+                gpu_first: None,
                 units: Box::new(|_| Err("none".into())),
                 airpods: false,
                 phone: false,

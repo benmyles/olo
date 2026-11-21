@@ -739,10 +739,12 @@ impl<B: Backend + 'static> AnvilState<B> {
             Request::Keyboards => Reply::Keyboards { names: self.backend_data.keyboards() },
             Request::Gpus => {
                 let now = self.backend_data.render_node();
+                let priorities = self.backend_data.queue_priorities();
                 let gpus = olo_system::gpus::list()
                     .into_iter()
                     .map(|g| olo_protocol::GpuInfo {
                         rendering: now.is_some() && (g.render == now || g.card == now),
+                        queue_priority: priorities.iter().find(|(card, _)| Some(card) == g.card.as_ref()).map(|(_, highest)| *highest),
                         pci: g.pci,
                         name: g.name,
                         driver: g.driver,

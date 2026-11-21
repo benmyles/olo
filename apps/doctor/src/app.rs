@@ -582,7 +582,18 @@ impl Doctor {
                     .on_toggle(cx.listener(move |d: &mut Doctor, on: &bool, cx| d.check(&id, *on, cx)))
                     .into_element()
             }
-            _ => div().w(px(m::MARK_SIZE)).flex_shrink_0(),
+            // A fix that is never done with the others (`Fix::batchable`):
+            // its mark is there, not to be checked, and says why. (Left
+            // empty, the place read as a mark that had failed to draw:
+            // Opus's look, 2026-11-21.)
+            Some(_) => CheckBox::new(f.title.clone(), false)
+                .id(format!("choose-{}", f.id))
+                .mark_only()
+                .height(style::line_row(style::PLAIN_SIZE))
+                .enabled(false)
+                .tip("Not fixed with the others: it has its own button.")
+                .into_element(),
+            None => div().w(px(m::MARK_SIZE)).flex_shrink_0(),
         };
         let top = div()
             .flex()
@@ -619,7 +630,10 @@ impl Doctor {
                     .on_click(cx.listener(move |d: &mut Doctor, _: &ClickEvent, cx| d.fix(std::slice::from_ref(&id), cx))),
             );
         }
-        let detail = StringView::new(f.detail.clone()).wrap(true).color(ink.text);
+        // (Its paragraphs, a blank line between them in the text, set
+        // half a line apart: a whole empty line was as much as the room
+        // over the buttons, and the card fell into equal blocks.)
+        let detail = div().flex().flex_col().gap(px(m::TIGHT)).children(f.detail.split("\n\n").map(|paragraph| StringView::new(paragraph.to_owned()).wrap(true).color(ink.text)));
         if inline {
             // (The title's first line on the buttons' middle, as a row of
             // controls reads.)

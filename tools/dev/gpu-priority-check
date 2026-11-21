@@ -9,8 +9,12 @@ busy (HACKING, "The GPU has priorities too").
         drawing at the ordinary priority for S (2, at most 2.5) seconds
   sudo gpu-priority-check asked [SECONDS]
         which programs ask Intel's driver for which queue priority (0
-        low, 1 normal, 2 high) over SECONDS (30): start a program
-        meanwhile to see what it asks (bpftrace; read only)
+        low, 1 normal, 2 high) over SECONDS (30), and what the driver
+        answers each (0 given; -1 refused, not permitted): start a
+        program meanwhile to see what it asks (bpftrace; read only).
+        A program that may not have the high priority is seen asking
+        for the ordinary one: Mesa asks the driver first what it may
+        have (app_server asks the same and says it in its log)
   gpu-priority-check probe|load low|medium|high SECONDS [DELAY]
         one of the parts, by itself
 
@@ -24,6 +28,10 @@ nothing else heavy on the GPU: a low job that was already waiting
 counts its wait from before.
 """
 import ctypes as C, os, signal, sys, time
+
+# Mesa's EGL alone: libglvnd otherwise loads every vendor's library to ask
+# which has the display, NVIDIA's too, which wakes its card.
+os.environ.setdefault("__EGL_VENDOR_LIBRARY_FILENAMES", "/usr/share/glvnd/egl_vendor.d/50_mesa.json")
 
 EGL = C.CDLL("libEGL.so.1"); GL = C.CDLL("libGLESv2.so.2"); GBM = C.CDLL("libgbm.so.1")
 P = C.c_void_p
@@ -180,8 +188,11 @@ def may_ask_high():
 
 def asked(seconds):
     import subprocess
-    prog = 'kprobe:exec_queue_set_priority /arg3 == 0 && arg2 <= 3/ { @asked[comm, arg2] = count(); } interval:s:%d { exit(); }' % seconds
-    print(f"which programs ask the driver for which queue priority, for {seconds} s (0 low, 1 normal, 2 high):", flush=True)
+    # (At the function's return, by its own arguments' names: its
+    # signature changed between 7.2 and 7.3, and a count at its entry
+    # said what was asked, never what was given.)
+    prog = 'fexit:xe:exec_queue_set_priority { @asked[comm, pid, args.value, (int64)retval] = count(); } interval:s:%d { exit(); }' % seconds
+    print(f"for {seconds} s: [program, its process, the queue priority it asked (0 low, 1 normal, 2 high), the driver's answer (0 given, -1 refused)]: times", flush=True)
     sys.exit(subprocess.run(["bpftrace", "-e", prog]).returncode)
 
 

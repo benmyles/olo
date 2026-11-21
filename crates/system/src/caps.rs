@@ -15,7 +15,7 @@
 pub const SYS_NICE: u32 = 23;
 
 mod choice;
-pub use choice::{CHOICE_DIR, chosen, set_choice};
+pub use choice::{CHOICE_DIR, OLD_SWITCH, chosen, set_choice};
 
 /// Whether process `pid` may use `cap` now, as anyone can read it (its
 /// status: a process that holds a capability can't otherwise be looked

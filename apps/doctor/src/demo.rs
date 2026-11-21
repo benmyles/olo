@@ -74,6 +74,9 @@ pub fn report() -> Report {
             "Fedora's own Intel video driver leaves out the patented formats, so videos in them are decoded by the processors: hotter, and slower to start. RPM Fusion's full driver decodes them on the graphics chip.",
             Some(("Install the Full Driver", true)),
         ),
+        // (The one fix no batch takes: no mark to check, a button of its
+        // own.)
+        crate::checks::desktop_first_offer(1000, false),
         finding(
             "tool:just",
             Severity::Suggestion,
