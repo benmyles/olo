@@ -443,12 +443,24 @@ something nobody here has is in "Blocked", with what it waits for.
      memory is short", done in the driver). Not solved, and Astra
      says so plainly: bringing a card back in place after its
      firmware failed in an unknown state (so Doctor's in-place
-     restart stays gone). **To do**: (a) Olo's own build and
-     keeping of it (kernel/nvidia/README.md, "What Olo still has to
-     build around it": fetched and checked by hash, built when an
-     update is staged, under `updates/olo` with the stock set kept,
-     signed, withdrawn whole when anything fails, shown by Doctor),
-     reviewed by Astra; (b) on Ben's word only, at a quiet moment,
+     restart stays gone). **The builder, `olo-nvidia`** (apps/nvidia,
+     written by a Codex agent, 2026-11-20): fetches by hash, patches
+     at exact lines, compiles with no privilege (five modules in
+     70 s), checks its set against the stock one, says which is
+     chosen and loaded. **Held, on Astra's review** (three critical:
+     an index published with other drivers missing; the version rule
+     kept only when a check ran; any other depmod undoing it): it
+     refuses a real root, its units are installed by nothing
+     (kernel/nvidia/README.md, "The builder"). **To do**: (a) the way
+     a set becomes the one loaded, designed again with Astra (asked,
+     2026-11-20: chosen at the moment of loading by a `modprobe.d`
+     line that falls back to stock, or exchanged in place in one
+     step at shutdown; no index written by Olo either way), built,
+     reviewed again, and tried in an enforcing Fedora guest (every
+     interruption, an update of the distribution's, a withdrawal);
+     then Doctor's part (which is loaded, by build ID; the opt-in),
+     its fix run off the UI thread with progress; (b) on Ben's word
+     only, at a quiet moment,
      with the stock driver one restart away: the "prevention" build
      (patches 0001 to 0003) on the card, design/qualification.md
      step by step, the fault made to happen on purpose with patch

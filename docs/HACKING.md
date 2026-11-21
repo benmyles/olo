@@ -15109,6 +15109,24 @@ What it looks for:
   since this start, fine, "from the next start"; kept from before
   this start and still on, said ("isn't in force": another option
   says otherwise, or the driver is loaded from the start-up image).
+- **Olo's own build of NVIDIA's modules** (`olo-nvidia`, apps/nvidia;
+  the patches, the designs and what was shown of them are in
+  kernel/nvidia, its README first): **a prototype, held.** It fetches
+  NVIDIA's source by hash, applies the prevention patches at their
+  exact lines, compiles as a user with no privilege, and checks what
+  it built against the stock set; `status --json` says, for each
+  kernel, which set is chosen and which is loaded, by build ID. It
+  refuses to change a real root or to run as root: Astra's review
+  found that the way it made its set the chosen one (a folder under
+  `updates/` and an index from depmod) could publish an index with
+  other drivers missing, kept the version rule only when its check
+  ran, and could be undone by any other depmod. That part is being
+  designed again (README, "The builder"). Its tests run under a
+  made-up root (`OLO_NVIDIA_ROOT`, as the program itself takes it);
+  those that compare with NVIDIA's source take checkouts from
+  `OLO_NVIDIA_BASELINE` and `OLO_NVIDIA_PATCHED` and are skipped
+  without them. Nothing of it touches the running driver, and nothing
+  is installed or loaded on the person's card without their word.
 - **A graphics card that stopped answering** (`gpu_stuck`: its
   `power/runtime_status` "error", the kernel's word for power
   management that failed, its driver not answering after: NVIDIA's

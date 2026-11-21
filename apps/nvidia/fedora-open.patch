@@ -1,0 +1,22 @@
+--- a/kernel-open/nvidia/os-interface.c	2026-09-04 23:33:41.000000000 +0100
++++ b/kernel-open/nvidia/os-interface.c	2026-09-14 08:52:04.168771929 +0100
+@@ -1985,16 +1985,16 @@ NV_STATUS NV_API_CALL os_allocate_tempor
+ {
+     struct file *file = ERR_PTR(-EOPNOTSUPP);
+ #if NV_FILESYSTEM_ACCESS_AVAILABLE
+-    const char *default_path = "/tmp";
++    const char *default_path = "/var/tmp";
+     const int flags = O_TMPFILE | O_LARGEFILE | O_RDWR;
+     const char *path = NVreg_TemporaryFilePath;
+ 
+     if (!path)
+     {
+ #if defined(mk_vma_flags)
+-        file = shmem_file_setup("nvidia-tmp", 0, mk_vma_flags(VMA_NORESERVE_BIT));
++        file = shmem_kernel_file_setup("nvidia-tmp", 0, mk_vma_flags(VMA_NORESERVE_BIT));
+ #else
+-        file = shmem_file_setup("nvidia-tmp", 0, VM_NORESERVE);
++        file = shmem_kernel_file_setup("nvidia-tmp", 0, VM_NORESERVE);
+ #endif
+         if (!IS_ERR(file))
+         {

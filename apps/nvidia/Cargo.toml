@@ -1,0 +1,28 @@
+[package]
+name = "olo-nvidia"
+description = "Olo's patched set of NVIDIA's open kernel modules: built for a kernel, installed for its next start, and withdrawn whenever it would no longer match (a root tool and service)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "olo-nvidia"
+path = "src/main.rs"
+
+[dependencies]
+olo-crash.workspace = true
+olo-kmod.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+libc = "0.2"
+sha2 = "0.11"
+hex = "0.4"
+object = { version = "0.40", default-features = false, features = ["read_core", "elf", "std"] }
+liblzma = { version = "0.4", features = ["static"] }
+zstd = "0.14"
+flate2 = "1"
+tar = "0.4"
+tempfile = "3"
+ureq = { version = "3", default-features = false, features = ["rustls-no-provider", "platform-verifier"] }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }

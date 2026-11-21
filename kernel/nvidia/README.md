@@ -86,18 +86,74 @@ On this computer there is one card, the person's. Nothing of this is
 installed or loaded there without their word, at a quiet moment, with
 the stock driver one restart away.
 
-## What Olo still has to build around it
+## The builder: `olo-nvidia` (apps/nvidia), a prototype that is held
 
-`design/packaging-design.md`: the source fetched and checked by hash
-before a system update (the tag's signature couldn't be checked
-against a known key); built when a kernel or driver update is staged,
-not at the first start after it (too late for the boot that loads the
-driver); all five modules as one set under `updates/olo`, the stock
-ones kept in `extra/nvidia` (tried with depmod: Olo's chosen with the
-override there, stock again without); signed where Secure Boot is on;
-the initramfs looked at; withdrawn whole if a patch no longer applies,
-the build fails, or the driver's version moved; and Doctor showing
-which is loaded, by build id.
+**It changes nothing on a real computer.** `build`, `withdraw`,
+`check` and `watch` refuse a real root and refuse to run as root
+(`main.rs`); only `status` reads the real system. Its two unit files
+are not installed by anything. It was written by a Codex agent to
+`design/packaging-design.md` on 2026-11-20, then reviewed by Astra at
+its highest effort, which said to hold it; what follows is what holds
+and what doesn't.
 
-The scripts here are as they were run in scratch, to be made Olo's own
-(a service of the kind of `apps/bbr3`'s) when that is built.
+**What it does, and what was shown of it** (16 tests under a made-up
+root, `OLO_NVIDIA_ROOT`; `cargo test -p olo-nvidia`):
+
+- NVIDIA's source for the one supported version, fetched once and
+  checked by hash every time it is used (the archive's bytes, then the
+  commit it names); the three prevention patches and Fedora's one
+  change applied at their exact lines, every byte of context checked
+  (`patches.rs`: a hunk that would apply "somewhere near" is refused).
+- The compile handed to a user with no privilege (`build.rs`: a mount
+  and a user namespace of its own, no groups, `no_new_privs`, an empty
+  environment, every descriptor closed): all five modules in 70 s here
+  (`real_build.rs`, an ignored test: it needs a checkout of NVIDIA's
+  source, `OLO_NVIDIA_BASELINE`).
+- What was built read back as modules (`modules.rs`: name, version,
+  vermagic, build ID, hash) and held to the stock set's version and
+  vermagic; the copy that is checked is the copy that is installed.
+- What it refuses on: Secure Boot, a kernel that enforces module
+  signatures or is locked down, NVIDIA's modules in the start-up image
+  (`boot.rs` reads dracut's rules and the images themselves, every
+  archive in them), another driver version, missing kernel headers.
+- `status --json` for Olo Doctor: for each kernel, the stock version,
+  Olo's, which set the index chooses, and what is loaded now, module
+  by module, by build ID ("stock", "olo", "mixed", "going",
+  "unknown").
+
+**What the review found** (2026-11-20; three it called critical):
+
+1. **A whole index can be published with modules missing.** depmod
+   skips a folder it can't read and still ends well; the program
+   looked only at its five names and put the index in place: in the
+   review's check a storage driver was gone from `modules.dep`. (Its
+   guard, applied: the old and the new index compared whole, text and
+   binary, and any word from depmod an error.)
+2. **The version rule held only when `check` ran.** Between the
+   distribution updating its driver and the next check, the next load
+   could be Olo's older set beside newer libraries; akmods loads the
+   modules itself at start, before either of Olo's units.
+3. **Another depmod undoes it.** Anything that runs depmod meanwhile
+   (a kernel's installation, akmods) can publish an index made from
+   an older look at the tree, pointing at a set that is gone: a module
+   that then can't be found, with `check` saying all is well.
+
+And: a withdrawal that reported success with an inconsistent stock
+set; a start-up image's module missed where its name was padded; a
+boot entry with no version not followed; the labels of the index
+files it wrote; units that could hold up the start.
+
+**So the way a set becomes the one loaded is to be replaced**, not
+mended: no set under `updates/`, no index written by Olo. Two designs
+are with Astra (2026-11-20): Olo's modules chosen at the moment of
+loading (a `modprobe.d` line that hands each of the five names to
+`olo-nvidia load`, which loads Olo's module only if everything still
+agrees, and the stock one otherwise); or Olo's five exchanged with the
+stock five in place, in one step at shutdown, so that any update of
+the distribution's simply writes over them. Until one is chosen,
+built, reviewed again and tried in a guest, the hold stays.
+
+Running `make` and (for now) `depmod` is the kernel's own toolchain,
+not a wrapped app: a module is built by the kernel's build system or
+not at all (as `olo_kmod`'s are), and the index's format is kmod's.
+The index part goes with the redesign.

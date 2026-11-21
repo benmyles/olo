@@ -1,5 +1,14 @@
 # Olo build and boot integration
 
+> **Superseded in part (2026-11-20, later the same day).** The builder
+> written to this design (`apps/nvidia`) was reviewed and held: putting
+> the set under `updates/olo` and publishing an index from depmod can
+> lose other drivers from the index, keeps the version rule only when
+> a check runs, and is undone by any other depmod. How a set becomes
+> the one loaded is being designed again (../README.md, "The
+> builder"); the rest of this note (the pinned source, building when an
+> update is staged, signing, the start-up image) stands.
+
 Use an opt-in versioned source package from Olo's signed release or a content-addressed cache populated ahead of the kernel installation. The full upstream tree is needed for changes under src/nvidia and src/nvidia-modeset. The Fedora kmod source archive supplies kernel-open and two prelinked cores. Reuse the exact open-flavor distro prep hunk. The other two hunks in set_driver_defaults.patch target the closed flavor. Do not apply them to public open source by analogy.
 
 The recipe pins tag object d2a24f90e843359450ab313a286f43a88d95c6ce, commit 61dcc93722ecb418bb5f2e00923f05b4b8051dd1, tree 9199a9f620b76343c35c207354ffcb3d1570053d, SHA-256 29c36a0a46b91fd17f96f977e046f303317cd6eedb5cbbefdcf0c95cfe7a0f38 for the uncompressed git archive, and the SHA-256 of every patch. GitHub reported unknown_key for the release tag's SSH signature at the time of this check. The recipe verifies content identity. A production packager must authenticate the upstream signing key independently or distribute a separately reviewed, Olo-signed source manifest. The RPM-installed source RPM here has valid payload/header digests and no independent OpenPGP signature, so use the signed containing RPM/repository as its distribution trust root.

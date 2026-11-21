@@ -126,6 +126,12 @@ Ways in that keep the person's session out of it:
 | `auth::tests::live_wrong_password` | as is: `password-auth` here is pam_unix alone (no face, reader or faillock); and against a PAM service of its own (debug build) | pass both: denied; one authentication failure in the journal for the real one |
 | `fingerprint::tests::live_start_and_stop` | the real reader, with the person's OK and a finger enrolled (`FPRINT_USER`, else theirs); or fake-readers on a private bus (`OLO_FPRINT_BUS`, debug build) | pass on both: the ThinkPad's Synaptics reader (press): Ready, no match when stopped, released, claimed again |
 
+## olo-nvidia
+
+| Test | How | 2026-11-20 |
+| --- | --- | --- |
+| `real_build::prevention_builds_for_this_kernel` | `OLO_NVIDIA_BASELINE` a git checkout of NVIDIA's open-gpu-kernel-modules at the pinned commit (`kernel/nvidia/prepare-and-build.sh` makes one); as an ordinary user; compiles on every core for a minute or two, installs nothing | pass: five modules in 70 s, version and vermagic as the stock set's (2026-11-20) |
+
 ## Not tests
 
 Documentation examples fenced `ignore` (olo-kit-base's, Smithay's,

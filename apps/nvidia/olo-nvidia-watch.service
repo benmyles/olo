@@ -1,0 +1,16 @@
+[Unit]
+Description=Follow changes to the distribution's NVIDIA modules
+After=local-fs.target akmods.service
+
+[Service]
+ExecStart=/usr/local/libexec/olo/olo-nvidia watch
+Restart=on-failure
+RestartSec=10
+Nice=19
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateDevices=yes
+
+[Install]
+WantedBy=multi-user.target

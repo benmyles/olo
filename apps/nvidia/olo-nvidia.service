@@ -1,0 +1,16 @@
+[Unit]
+Description=Check Olo's NVIDIA modules for the next start
+After=local-fs.target akmods.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/olo/olo-nvidia check
+TimeoutStartSec=infinity
+Nice=19
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateDevices=yes
+
+[Install]
+WantedBy=multi-user.target
