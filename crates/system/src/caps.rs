@@ -24,6 +24,42 @@
 /// `CAP_SYS_NICE`.
 pub const SYS_NICE: u32 = 23;
 
+/// Where the computer's owner says that a person's Olo session is to
+/// have the capability (from the root of the filesystem). It is theirs
+/// to say, not Olo's: the programs it is handed to are the person's own
+/// files, so it is the account that gets it, and what it allows
+/// (any priority, realtime among them, and the scheduling of any
+/// program on the computer) is the owner's to give. Olo Doctor offers
+/// it in those words and writes this; without it the login hands on
+/// nothing.
+pub const CHOICE: &str = "etc/olo/compositor-first";
+
+/// What that file says (only its being there counts).
+pub const CHOICE_TEXT: &str = "# Olo: this computer's owner chose that a person's Olo session gets CAP_SYS_NICE at login, for its compositor\n# (the graphics driver gives the GPU's high priority only with it). Olo Doctor wrote this; remove it to take the choice back.\n";
+
+/// Whether the owner made that choice, under `root`: the file is there,
+/// a plain file (not a link to one) that is `owner`'s (root's) and that
+/// nobody else may write, in a directory the same. Anything else is no
+/// choice.
+pub fn chosen(root: &std::path::Path, owner: u32) -> bool {
+    use std::os::unix::fs::MetadataExt as _;
+    let file = root.join(CHOICE);
+    let theirs = |m: std::fs::Metadata| m.uid() == owner && m.mode() & 0o022 == 0;
+    std::fs::symlink_metadata(&file).is_ok_and(|m| m.is_file() && theirs(m)) && file.parent().and_then(|dir| std::fs::symlink_metadata(dir).ok()).is_some_and(|m| m.is_dir() && theirs(m))
+}
+
+/// Whether process `pid` may use `cap` now, as anyone can read it (its
+/// status: a process that holds a capability can't otherwise be looked
+/// into by one that doesn't).
+pub fn held_by(pid: u32, cap: u32) -> bool {
+    std::fs::read_to_string(format!("/proc/{pid}/status")).ok().is_some_and(|status| effective_in(&status, cap))
+}
+
+/// [`held_by`], from a process's status as read.
+pub fn effective_in(status: &str, cap: u32) -> bool {
+    status.lines().find_map(|l| l.strip_prefix("CapEff:")).and_then(|hex| u64::from_str_radix(hex.trim(), 16).ok()).is_some_and(|held| held & (1 << cap) != 0)
+}
+
 /// `_LINUX_CAPABILITY_VERSION_3`: two words of each set.
 const VERSION: u32 = 0x2008_0522;
 
@@ -107,5 +143,40 @@ mod tests {
         hand_on_nothing();
         assert!(!held(SYS_NICE));
         assert!(sets().is_some());
+        assert!(!held_by(std::process::id(), SYS_NICE));
+        assert!(effective_in("Name:\tx\nCapEff:\t0000000000800000\n", SYS_NICE) && !effective_in("CapEff:\t0000000000000000\n", SYS_NICE) && !effective_in("", SYS_NICE));
+    }
+
+    /// The owner's choice is a plain file of theirs that nobody else may
+    /// write, in a directory the same: anything else is no choice.
+    #[test]
+    fn the_choice_is_the_owners_file_and_nothing_else() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let root = std::path::PathBuf::from(format!("/var/tmp/olo-caps-choice-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        // SAFETY: getuid has no preconditions.
+        let me = unsafe { libc::getuid() };
+        assert!(!chosen(&root, me));
+        let file = root.join(CHOICE);
+        let dir = file.parent().unwrap();
+        std::fs::create_dir_all(dir).unwrap();
+        let mode = |p: &std::path::Path, m: u32| std::fs::set_permissions(p, std::fs::Permissions::from_mode(m)).unwrap();
+        mode(dir, 0o755);
+        std::fs::write(&file, CHOICE_TEXT).unwrap();
+        mode(&file, 0o644);
+        assert!(chosen(&root, me));
+        // Someone else's; writable by others; in a directory others may
+        // write; a link to a file.
+        assert!(!chosen(&root, me + 1));
+        mode(&file, 0o664);
+        assert!(!chosen(&root, me));
+        mode(&file, 0o644);
+        mode(dir, 0o777);
+        assert!(!chosen(&root, me));
+        mode(dir, 0o755);
+        std::fs::rename(&file, dir.join("real")).unwrap();
+        std::os::unix::fs::symlink(dir.join("real"), &file).unwrap();
+        assert!(!chosen(&root, me));
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }

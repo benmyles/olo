@@ -287,9 +287,22 @@ fn become_and_exec(setup: &Setup, account: &Account, tty: &str, command: &[Strin
             }
             // The desktop entry and upgrades may point into the person's home.
             // Drop root credentials normally before executing that command.
+            // One capability goes with it where the computer's owner said
+            // so (`olo_system::caps::chosen`: a file only root makes, which
+            // Olo Doctor offers) and what starts is a person's Olo session,
+            // which keeps it for its compositor: kept through the change
+            // of user, narrowed to that one, handed on. Where a step
+            // fails the session has none, as without the choice.
+            let hand = olo_session(setup.class, command) && olo_system::caps::chosen(std::path::Path::new("/"), 0);
+            if hand {
+                olo_system::caps::keep();
+            }
             let name = CString::new(setup.user.as_str()).unwrap_or_default();
             if libc::initgroups(name.as_ptr(), account.gid) != 0 || libc::setgid(account.gid) != 0 || libc::setuid(account.uid) != 0 {
                 return format!("becoming {}: {}", setup.user, std::io::Error::last_os_error());
+            }
+            if hand && olo_system::caps::narrow(olo_system::caps::SYS_NICE) {
+                olo_system::caps::hand_on(olo_system::caps::SYS_NICE);
             }
             // (No way back.)
             if libc::setuid(0) == 0 {

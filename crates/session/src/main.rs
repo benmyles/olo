@@ -2,7 +2,6 @@
 
 fn main() {
     olo_crash::install();
-    olo_system::caps::hand_on_nothing();
     // (First, as in every program: in the trampoline below too, which the
     // exec replaces, so its handlers go with it.)
     // `olo-session --exec PROGRAM ARGS…`: Olo's login screen starts the
@@ -13,6 +12,11 @@ fn main() {
     // home (`~/.local/bin`, which the login screen's domain may not run).
     let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
     if args.get(1).is_some_and(|a| a == "--exec") && args.len() > 2 {
+        // (What the login handed on goes through to a person's Olo
+        // session and to nothing else this might be asked to start.)
+        if std::path::Path::new(&args[2]).file_name().is_none_or(|name| name != "olo-session") {
+            olo_system::caps::hand_on_nothing();
+        }
         use std::os::unix::process::CommandExt as _;
         let e = std::process::Command::new(&args[2]).args(&args[3..]).exec();
         eprintln!("olo-session: {}: {e}", args[2].to_string_lossy());

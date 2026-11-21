@@ -1359,6 +1359,15 @@ Learned on the second pass (2026-11-20):
   functions run as root by `kbench`, then the same as an ordinary
   user, each answer compared with what it should be.
 
+### A process that holds a capability can't be looked into
+
+Where the person's compositor and `olo-session` hold `CAP_SYS_NICE`
+(the owner's choice: HACKING, "The desktop first on the GPU"), a
+program of the same person's without it may not read their
+`/proc/PID/environ`, `exe`, `fd`, `maps` or `io`, nor trace them:
+`tools/dev/cost`, `strace`, `perf` on the compositor want `sudo`.
+`status`, `cmdline`, `cgroup` and `stat` are still anyone's to read.
+
 ### What a review signed off is what gets built
 
 The background group's design was reviewed (2026-11-20) and the

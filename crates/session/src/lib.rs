@@ -139,7 +139,19 @@ fn run_file(name: String) -> PathBuf {
     olo_xdg::legacy::runtime_file(&runtime_dir(), &name)
 }
 
+/// Whether Olo's login handed this session the capability its
+/// compositor draws at the GPU's high priority with (`olo_system::caps`:
+/// only where the computer's owner chose so).
+static FOR_THE_COMPOSITOR: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 pub fn run() {
+    // What the login handed on is for the person's compositor alone:
+    // noted, and from here nothing this starts has it but that
+    // (`spawn`), and this program itself when it starts again
+    // (`exec_self`).
+    if olo_system::caps::held(olo_system::caps::SYS_NICE) {
+        FOR_THE_COMPOSITOR.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
     olo_system::caps::hand_on_nothing();
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
@@ -1219,7 +1231,13 @@ impl Session {
         // them back too.
         cmd.args(self.start_args());
         olo_xdg::upgrade_env(&mut cmd);
+        // (The compositor's capability goes with it into its new self,
+        // which takes it out of what it starts again.)
+        let handed = FOR_THE_COMPOSITOR.load(std::sync::atomic::Ordering::Relaxed) && olo_system::caps::hand_on(olo_system::caps::SYS_NICE);
         let e = cmd.env(RESUME_ENV, state).exec();
+        if handed {
+            olo_system::caps::hand_on_nothing();
+        }
         log(format!("re-exec failed ({e}); carrying on"));
         for &fd in &fds {
             set_cloexec(fd, true);
@@ -1400,13 +1418,19 @@ fn spawn(argv: &[String], env: &[(&str, String)]) -> Option<i32> {
     for (k, v) in env {
         cmd.env(k, v);
     }
+    // The person's compositor alone starts with the capability the login
+    // handed on (a plain system call, in the child).
+    let high = argv[0] == "olo-app-server" && FOR_THE_COMPOSITOR.load(std::sync::atomic::Ordering::Relaxed);
     // SAFETY: async-signal-safe calls only, between fork and exec.
     unsafe {
-        cmd.pre_exec(|| {
+        cmd.pre_exec(move || {
             // Children start with no signals blocked (we block ours).
             let mut set: libc::sigset_t = std::mem::zeroed();
             libc::sigemptyset(&mut set);
             libc::sigprocmask(libc::SIG_SETMASK, &set, std::ptr::null_mut());
+            if high {
+                olo_system::caps::hand_on(olo_system::caps::SYS_NICE);
+            }
             Ok(())
         });
     }

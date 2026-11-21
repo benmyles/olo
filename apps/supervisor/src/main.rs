@@ -836,10 +836,22 @@ fn main() -> std::process::ExitCode {
 
 /// Whether `pid` runs in this supervisor's session (its WAYLAND_DISPLAY),
 /// as read from its environment; a process whose environment can't be
-/// read (gone, or not ours) isn't.
+/// read (gone, or not ours) isn't. But one that can't be read because
+/// it holds the capability the login hands a person's session
+/// (`olo_system::caps`: the person's compositor and `olo-session`, which
+/// a program without it may not look into) is this session's if it is in
+/// this supervisor's login session: a test desktop's never hold it.
 fn same_session(pid: i32) -> bool {
     let Some(mine) = std::env::var_os("WAYLAND_DISPLAY") else { return true };
-    let Ok(env) = std::fs::read(format!("/proc/{pid}/environ")) else { return false };
+    let env = match std::fs::read(format!("/proc/{pid}/environ")) {
+        Ok(env) => env,
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            let scope = |group: Option<String>| group.and_then(|g| g.split('/').find(|part| part.starts_with("session-") && part.ends_with(".scope")).map(str::to_owned));
+            let (its, ours) = (scope(olo_system::session_groups::of(pid as u32)), scope(olo_system::session_groups::own()));
+            return its.is_some() && its == ours && olo_system::caps::held_by(pid as u32, olo_system::caps::SYS_NICE);
+        }
+        Err(_) => return false,
+    };
     let key = b"WAYLAND_DISPLAY=";
     env.split(|&b| b == 0).any(|e| e.strip_prefix(key).is_some_and(|v| v == mine.as_encoded_bytes()))
 }

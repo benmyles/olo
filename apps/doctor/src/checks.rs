@@ -704,6 +704,7 @@ pub fn scan(roots: &Roots) -> Report {
     kept_core(roots, &mut r);
     session_weight(roots, &mut r);
     session_groups(roots, &mut r);
+    compositor_first(roots, &procs, &mut r);
     let gpus = pci_devices(&roots.fs);
     idle_gpu(roots, &gpus, &mut r);
     gpu_stuck(roots, &gpus, &mut r);
@@ -2817,6 +2818,43 @@ fn session_groups(roots: &Roots, r: &mut Report) {
         detail: "Olo's login screen can divide your session in two, the desktop and background work, so that compilers and linkers run when the desktop leaves the processors idle and are the first to give up memory when it runs short (Preferences ▸ Performance, Give compilers and linkers only spare memory). systemd leaves such a division alone only where a setting for login sessions says so. This writes that setting. It applies to sessions started afterwards: log out and in again, or restart.".into(),
         fix: Some(Fix { label: "Let Olo Divide Sessions".into(), root: true, steps: vec![Step::WriteFile { path: PathBuf::from("/").join(DELEGATE_CONF), content: DELEGATE_CONF_TEXT.into(), mode: 0o644 }] }),
     });
+}
+
+/// The desktop first on the GPU (`olo_system::caps`): Intel's drivers
+/// give a program's work the GPU's high priority only where the program
+/// has CAP_SYS_NICE, and Olo's login hands a person's Olo session that
+/// capability (for its compositor alone) only where the computer's
+/// owner chose so: a file only root makes. Offered here, saying what
+/// the choice gives and to whom; fine once the session's compositor
+/// holds it. Only where an Intel driver is there to ask for it.
+fn compositor_first(roots: &Roots, procs: &[Proc], r: &mut Report) {
+    use olo_system::caps::{CHOICE, CHOICE_TEXT, SYS_NICE};
+    if roots.scope.is_none() || !["xe", "i915"].iter().any(|driver| roots.fs.join("sys/module").join(driver).exists()) {
+        return;
+    }
+    // (Root's file; a test's made-up computer is the tester's.)
+    let chosen = olo_system::caps::chosen(&roots.fs, if cfg!(test) { roots.uid } else { 0 });
+    let held = procs
+        .iter()
+        .find(|p| p.uid == roots.uid && p.name == "olo-app-server" && p.scope == roots.scope)
+        .is_some_and(|server| read(&roots.fs.join(format!("proc/{}/status", server.pid))).is_some_and(|status| olo_system::caps::effective_in(&status, SYS_NICE)));
+    match (chosen, held) {
+        (true, true) => r.fine.push(Fine {
+            title: "The desktop's drawing may come first on the graphics processor".into(),
+            detail: "By your choice, Olo's login screen gave this session's window server what Intel's graphics driver asks before it puts a program's drawing ahead of others'.".into(),
+        }),
+        (true, false) => r.fine.push(Fine {
+            title: "The desktop will be first on the graphics processor from the next login".into(),
+            detail: "The choice is made; this session was started before it, or by a login screen older than this version (Olo Doctor offers that too). Log out and in again, or restart.".into(),
+        }),
+        (false, _) => r.findings.push(Finding {
+            id: "compositor-first".into(),
+            severity: Severity::Advice,
+            title: "The desktop isn't first on the graphics processor".into(),
+            detail: "Intel's graphics driver puts a program's drawing ahead of other programs' only if that program is allowed to set scheduling priorities (the capability CAP_SYS_NICE). Without it the window server waits its turn behind every other program that is drawing: measured beside six of them, 49 ms at the worst one time in a hundred, against 22 with it. Olo's login screen can give your session that permission, and the session passes it to the window server alone. It is your account that gets it, though: the programs it is handed to are your own files, so anything running as you could arrange to have it at the next login, and with it set any priority, realtime included, for any program on this computer. On a computer that is yours alone that is little more than you can do already; where other people have accounts, think first. This records the choice in a file only an administrator can write, and removing the file takes it back. It applies from the next login.".into(),
+            fix: Some(Fix { label: "Put the Desktop First".into(), root: true, steps: vec![Step::WriteFile { path: PathBuf::from("/").join(CHOICE), content: CHOICE_TEXT.into(), mode: 0o644 }] }),
+        }),
+    }
 }
 
 /// The kept core (`olo_system::cores`, `Settings::keep_core`, on by
@@ -4945,6 +4983,40 @@ mod tests {
             kernels_bbr: None,
         };
         (fs, roots)
+    }
+
+    /// The desktop first on the GPU: offered where an Intel driver is
+    /// there and the owner hasn't chosen; then fine for the next login;
+    /// then fine where the session's compositor holds the capability.
+    #[test]
+    fn the_desktop_first_on_the_gpu_is_the_owners_choice() {
+        use olo_system::caps::{CHOICE, CHOICE_TEXT};
+        use std::os::unix::fs::PermissionsExt as _;
+        let (fs, roots) = machine("compositor-first");
+        let server = Proc { pid: 950, uid: roots.uid, name: "olo-app-server".into(), exe: None, scope: roots.scope.clone() };
+        let look = || {
+            let mut r = Report::default();
+            compositor_first(&roots, std::slice::from_ref(&server), &mut r);
+            r
+        };
+        // No Intel driver: nothing to say.
+        assert!(look().findings.is_empty() && look().fine.is_empty());
+        std::fs::create_dir_all(fs.join("sys/module/xe")).unwrap();
+        let r = look();
+        let fix = r.findings.iter().find(|f| f.id == "compositor-first").unwrap().fix.as_ref().unwrap();
+        assert!(fix.root && matches!(fix.steps.as_slice(), [Step::WriteFile { path, content, mode: 0o644 }] if path == Path::new("/etc/olo/compositor-first") && content == CHOICE_TEXT));
+        // Chosen: for the next login, until the compositor holds it.
+        let file = fs.join(CHOICE);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::set_permissions(file.parent().unwrap(), std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(&file, CHOICE_TEXT).unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let r = look();
+        assert!(r.findings.is_empty() && r.fine.iter().any(|f| f.title.contains("from the next login")));
+        std::fs::create_dir_all(fs.join("proc/950")).unwrap();
+        std::fs::write(fs.join("proc/950/status"), "Name:\tolo-app-server\nCapEff:\t0000000000800000\n").unwrap();
+        let r = look();
+        assert!(r.findings.is_empty() && r.fine.iter().any(|f| f.title.starts_with("The desktop's drawing may come first")));
     }
 
     /// The session's division: a finding with the drop-in to write where

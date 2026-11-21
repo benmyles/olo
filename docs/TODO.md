@@ -144,21 +144,21 @@ something nobody here has is in "Blocked", with what it waits for.
      kernel: 1 where 2 was asked; with the capability, 2). Beside six
      ordinary programs drawing, an ordinary probe's draws waited 49 ms
      at the 99th percentile (56 at the worst), a high one's 22 (24).
-     **Built and taken out again on Astra's review (2026-11-20)**:
-     the login handing the session the capability, `olo-session`
-     passing it to the person's app_server alone
-     (`olo_system::caps`, its steps tried in a guest and kept). The
-     programs it is handed to are the person's own files
-     (`~/.local/bin`), so it is the account that gets it, whatever
-     the session does with it after; and a process holding it can't
-     be read by the person's other programs (the supervisor reads
-     each program's environment to know its session). **Ben's to
-     say**: whether their account is to have CAP_SYS_NICE for this
-     (then: a file root writes that the login looks for, Doctor
-     offering it in those words, and the supervisor's reading done
-     another way); or a compositor installed where only root can
-     write it; or asking Intel's drivers' people for a way that needs
-     no capability.
+     **Done, as the owner's choice** (Ben, 2026-11-20, told what
+     it gives and why Astra's review had it taken out: "yes add the
+     CAP_SYS_NICE thing"): Olo's login hands a person's Olo session
+     the capability where `/etc/olo/compositor-first` is there
+     (root's file; Olo Doctor's "Put the Desktop First"), the
+     session passes it to the person's app_server alone
+     (`olo_system::caps`; HACKING, "The desktop first on the GPU").
+     **To check on the computer after the first login with it**: the
+     compositor's context really is the GPU's high one
+     (`tools/dev/gpu-priority-check asked`: 2 where 1) and draws
+     wait less beside others drawing; what can no longer look into
+     the compositor (Activity Monitor's figures for it, crash
+     reports, Doctor's older-version check) and what each should do
+     instead; whether the compositor should give it up once its
+     context is made.
   3. **The kernel's own worker threads run at the ordinary priority
      in the path of every frame and every key.** A frame the
      (realtime) compositor hands to the GPU is passed on by a kernel
