@@ -952,11 +952,13 @@ Learned on the second pass (2026-11-20):
   Its clean-up takes one lock for the whole computer, which every
   Cargo command through its shim holds for as long as it runs: while
   another project's `cargo watch` commands run (from login to
-  logout) kache cleans nothing, here or anywhere. Until its fork has a
-  sound way round that (TODO; FORK.md), idle incremental graphs are
-  reclaimed by hand: `tools/dev/prune-graphs` (dry unless `--really`;
-  only on a build folder nobody else may `cargo clean`; Astra's review
-  of it is asked for and not yet in: TODO).
+  logout) kache cleans nothing, here or anywhere, and there is no safe
+  way round that lock yet (TODO; FORK.md). `tools/dev/prune-graphs`
+  reclaims idle incremental graphs at a moment when no Cargo command
+  runs (it takes that same lock: with the watchers up it skips); its
+  first form went by Cargo's and the units' own locks instead, ran
+  once on this repository, and was shown wrong by review before it
+  ran again (its own text says how).
 - **A lock that looks wider than it need be: have the narrowing broken
   before it is installed.** kache's whole-computer lock looked like
   caution to spare (each unit has a lock of its own, Cargo has its
@@ -967,7 +969,16 @@ Learned on the second pass (2026-11-20):
   replaced the folder (2026-11-21). What the tests held still was what
   broke it: a folder replaced under held locks, a command starting
   after the check. The brief that got those was "try to break it,
-  with a concrete sequence of events", and the diff.
+  with a concrete sequence of events", and the diff. A third time the
+  same day, with a tool of Olo's own that did the same by hand
+  (`prune-graphs`, through folder descriptors this time): an
+  interrupted `cargo clean` leaves the unit's folder with a new lock
+  and graph in it, and the descriptor reached those. Three arguments
+  I believed, three counterexamples: where a deletion races other
+  programs' deletions, the lock those programs take is the only
+  exclusion there is, however wide. (And the reviewer's service
+  refused the third brief once for its wording, "I want it broken":
+  ask for a correctness review, with the interleavings to check.)
 - **The history was rewritten on 2026-11-07**: commit ids from before
   then are dead (a map of old to new is in `~/backups`). Never bring the
   old history back.

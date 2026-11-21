@@ -1283,27 +1283,34 @@ something nobody here has is in "Blocked", with what it waits for.
   Cargo command holds for as long as it runs: with another project's
   `cargo watch` commands running from login to logout, nothing is
   cleaned but around a restart. **Done**: units unused for three days
-  go where thirty were kept; a hand sweep of idle incremental graphs
-  for a build folder (`tools/dev/prune-graphs`: 1,230 graphs, 131 GB
-  of 158, Cargo's locks held a third of a second); an ended Codex
-  agent's builds removed after a day; holder records from before a
-  restart dropped. **Tried in the fork and taken out, each on Astra's
-  reproduction with real Cargo**: clean-up going ahead when every
-  holder works in another workspace (a `cargo test` lost its test
-  binary between building and running it; a configured target
-  directory, `cargo -C`, an alias, a symlink all point where the
-  inference doesn't look); the graph sweep sharing the lock (`cargo
-  clean` shares it too and replaces the folder under held locks: a
-  later build's graph deleted under that build's own lock). **Left**:
-  - The sound version in the fork (FORK.md says what it needs: leases
-    that name the output roots a command will use, kept outside the
-    trees clean-up renames; the graph sweep working through
-    descriptors and letting Cargo's locks go between units), designed
-    and reviewed with Astra before a line of it is written.
-  - `tools/dev/prune-graphs` reviewed by Astra as the reviews of the
-    fork were (it was run once on its design alone, on the conditions
-    those reviews gave), and then run by itself: after a push's build,
-    for this repository's `target/debug`.
+  go where thirty were kept; an ended Codex agent's builds removed
+  after a day; holder records from before a restart dropped;
+  `tools/dev/prune-graphs`, which reclaims idle incremental graphs
+  under kache's own lock at a moment when it is free (1,230 graphs,
+  131 GB of 158, were taken once by its first form). **Tried and
+  taken out, each on Astra's reproduction with real Cargo**: in the
+  fork, clean-up going ahead when every holder works in another
+  workspace (a `cargo test` lost its test binary between building and
+  running it; a configured target directory, `cargo -C`, an alias, a
+  symlink all point where the inference doesn't look), and the graph
+  sweep sharing the lock (`cargo clean` shares it too and replaces
+  the folder under held locks: a later build's graph deleted under
+  that build's own lock); here, the first form of `prune-graphs`,
+  which went by Cargo's and the units' locks through folder
+  descriptors (an interrupted `cargo clean` leaves the unit's folder
+  with a new lock and graph in it). **Left**:
+  - What makes it happen by itself on this computer: the commands
+    that hold the lock all day are `cargo watch`, which only starts
+    other Cargo commands (each of which takes the lock for itself). A
+    setting of the owner's in the fork that names such a command as
+    holding no lock of its own ("this one only supervises"), off as
+    it comes, reviewed by Astra as the rest was before it is
+    installed; then kache's own clean-up finds its quiet minutes.
+  - The sound general version in the fork (FORK.md says what it
+    needs: leases that name the output roots a command will use, kept
+    outside the trees clean-up renames; the graph sweep letting
+    Cargo's locks go between units), designed and reviewed with Astra
+    before a line of it is written.
   - Build folders kache doesn't know: a Codex agent's (its sandbox?),
     and one its registry forgot, which no later pass finds again
     though Git lists the worktree.
