@@ -35,7 +35,15 @@ const AGAIN: Duration = Duration::from_secs(6 * 3600);
 /// Serve Deskbar's To-Do widgets until it asks for none.
 pub fn serve() -> std::process::ExitCode {
     let root = store::root();
-    olo_kit::glance::serve("todo", vec![root.clone(), olo_kit::config_dir()], move |asked| {
+    // (The folder of lists and each list's, a to-do being a file in its
+    // list's: as the app and its reminders follow them. The clock's
+    // settings are the desktop's, which every provider follows.)
+    let lists = root.clone();
+    let follow = move || {
+        let folders: Vec<std::path::PathBuf> = std::fs::read_dir(&lists).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+        std::iter::once(lists.clone()).chain(folders).collect()
+    };
+    olo_kit::glance::serve_following("todo", follow, move |asked| {
         let zone = TimeZone::system();
         let now = crate::now(&zone);
         let book = Book::load(&root);

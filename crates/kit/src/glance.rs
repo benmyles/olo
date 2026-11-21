@@ -711,50 +711,80 @@ pub fn paint_tray(g: &mut Painter, r: Bounds<Pixels>, glance: &Glance) {
 /// Run as app `app`'s provider (`olo_protocol::glance`: no window; Deskbar
 /// starts it), until Deskbar asks for nothing or its folder goes: each
 /// widget asked for made with `make` (all at once: they share what's
-/// fetched) and written where Deskbar reads it, only when it changed;
-/// then asleep until the requests change, a path in `watched` does (the
-/// app's settings, its cache), or the time `make` gave comes. One a
-/// folder at a time (a lock): a second ends at once.
+/// fetched) and written where Deskbar reads it, only when what it shows
+/// changed; then asleep until the requests change, a path in `watched`
+/// does (the app's settings, its cache: the files themselves, not their
+/// folders, which change for everyone's reasons), or the time `make`
+/// gave comes. One a folder at a time (a lock): a second ends at once.
 ///
 /// `make` returns each widget's timeline by its id, and when to make them
 /// again (None: when something changes).
 pub fn serve(
     app: &str,
     watched: Vec<std::path::PathBuf>,
+    make: impl FnMut(&[olo_protocol::glance::Request]) -> (Vec<(u32, olo_protocol::glance::Timeline)>, Option<std::time::Duration>),
+) -> std::process::ExitCode {
+    serve_following(app, move || watched.clone(), make)
+}
+
+/// [`serve`] for an app whose paths come and go (a store that is a
+/// folder of folders: a watch of a folder tells of its items, not of
+/// theirs): `follow` says which to follow, asked before each making, so
+/// what is made is of paths already followed.
+pub fn serve_following(
+    app: &str,
+    follow: impl FnMut() -> Vec<std::path::PathBuf>,
+    make: impl FnMut(&[olo_protocol::glance::Request]) -> (Vec<(u32, olo_protocol::glance::Timeline)>, Option<std::time::Duration>),
+) -> std::process::ExitCode {
+    // (A glance's words are the person's, in Olo's language: chosen as it
+    // starts and again when the settings change, since a glance's process
+    // isn't an app that follows them.)
+    let settings = std::env::var_os("OLO_APP_SERVER_SETTINGS").map(std::path::PathBuf::from).unwrap_or_else(|| crate::config_dir().join("app_server.json"));
+    serve_in(&olo_protocol::glance::dir(), &settings, app, follow, make)
+}
+
+/// [`serve_following`], in the folder `dir`, with the desktop's settings
+/// in the file `settings`.
+///
+/// What wakes it is its own business only: its requests' file (which
+/// goes when the folder does) and the paths it follows. Never the
+/// folder: every provider writes its widgets there, and a provider
+/// woken by a write there (its own too) made its widgets again for
+/// each, wrote any that said when they were made, and woke the others:
+/// two of them kept each other at it twelve times a second for as long
+/// as Deskbar ran (2026-11-21: Calendar's read every event and asked
+/// the keyring each time, a third of a processor).
+fn serve_in(
+    dir: &std::path::Path,
+    settings: &std::path::Path,
+    app: &str,
+    mut follow: impl FnMut() -> Vec<std::path::PathBuf>,
     mut make: impl FnMut(&[olo_protocol::glance::Request]) -> (Vec<(u32, olo_protocol::glance::Timeline)>, Option<std::time::Duration>),
 ) -> std::process::ExitCode {
     use std::{collections::HashMap, os::fd::AsRawFd as _, sync::mpsc, time::Duration};
 
     use olo_protocol::glance::{self as g, Requests};
-    let dir = g::dir();
-    if std::fs::create_dir_all(&dir).is_err() {
+    if std::fs::create_dir_all(dir).is_err() {
         return std::process::ExitCode::FAILURE;
     }
-    let Ok(lock) = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(g::lock_path(&dir, app)) else { return std::process::ExitCode::FAILURE };
+    let Ok(lock) = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(g::lock_path(dir, app)) else { return std::process::ExitCode::FAILURE };
     // SAFETY: flock on a file this holds open.
     if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
         return std::process::ExitCode::SUCCESS;
     }
-    let _ = std::fs::write(g::lock_path(&dir, app), std::process::id().to_string());
+    let _ = std::fs::write(g::lock_path(dir, app), std::process::id().to_string());
     let (tx, rx) = mpsc::channel::<()>();
-    let requests = g::requests_path(&dir, app);
+    let requests = g::requests_path(dir, app);
     let tx = std::sync::Mutex::new(tx);
-    // (Its own writes in the folder aren't news: the requests, the folder
-    // going, and the app's own paths are.)
-    let (asked_path, folder) = (requests.clone(), dir.clone());
-    // (A glance's words are the person's, in Olo's language: chosen as it
-    // starts and again when the settings change, since a glance's process
-    // isn't an app that follows them; the settings' folder is watched.)
-    let settings = std::env::var_os("OLO_APP_SERVER_SETTINGS").map(std::path::PathBuf::from).unwrap_or_else(|| crate::config_dir().join("app_server.json"));
     let changed_at = |p: &std::path::Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
     let mut chosen_for: Option<Option<std::time::SystemTime>> = None;
-    let watched: Vec<std::path::PathBuf> = watched.into_iter().chain(settings.parent().map(std::path::Path::to_path_buf)).collect();
-    let _watch = olo_kit_base::watch::watch(std::iter::once(dir.clone()).chain(watched), move |changed| {
-        if changed.iter().any(|p| *p == asked_path || *p == folder || !p.starts_with(&folder)) {
-            let _ = tx.lock().unwrap_or_else(|e| e.into_inner()).send(());
-        }
+    let always = [requests.clone(), settings.to_path_buf()];
+    let watch = olo_kit_base::watch::watch(always.iter().cloned().chain(follow()), move |_| {
+        let _ = tx.lock().unwrap_or_else(|e| e.into_inner()).send(());
     });
-    let mut written: HashMap<u32, g::Timeline> = HashMap::new();
+    // What each widget's file says now (what it shows: when it was made
+    // is no news to anyone).
+    let mut written: HashMap<u32, Vec<g::Entry>> = HashMap::new();
     loop {
         if !dir.is_dir() {
             break;
@@ -763,15 +793,24 @@ pub fn serve(
         if asked.widgets.is_empty() {
             break;
         }
-        let now = changed_at(&settings);
+        let now = changed_at(settings);
         if chosen_for != Some(now) {
             crate::words::choose();
             chosen_for = Some(now);
         }
+        // (What it follows, as it is now: only what differs from before
+        // is looked at. Before the making, so that what changes after it
+        // read is told.)
+        if let Some(w) = &watch {
+            w.set(always.iter().cloned().chain(follow()));
+        }
         let (made, again) = make(&asked.widgets);
         for (id, timeline) in made {
-            if written.get(&id) != Some(&timeline) && g::write_json(&g::content_path(&dir, id), &timeline).is_ok() {
-                written.insert(id, timeline);
+            let path = g::content_path(dir, id);
+            // (Written again too if its file has gone: a Deskbar that
+            // cleared the folder reads what is there.)
+            if (written.get(&id) != Some(&timeline.entries) || !path.exists()) && g::write_json(&path, &timeline).is_ok() {
+                written.insert(id, timeline.entries);
             }
         }
         written.retain(|id, _| asked.widgets.iter().any(|r| r.widget == *id));
@@ -834,5 +873,98 @@ mod tests {
         assert_eq!(warmth(&p, 0.0), p.hue(Hue::Blue));
         assert_eq!(warmth(&p, 1.0), p.hue(Hue::Orange));
         assert_eq!(warmth(&p, 2.0), p.hue(Hue::Orange), "past the end: the end's");
+    }
+
+    /// A provider makes its widgets when it is asked and when a path of
+    /// its own changes, and writes one only when what it shows changed:
+    /// not for anything else written in the folder (its own widgets,
+    /// another provider's widgets and requests), nor for a file beside
+    /// one it follows; and it ends when it is asked for nothing.
+    #[test]
+    fn a_provider_wakes_for_its_own_business_only() {
+        use std::{
+            os::unix::fs::MetadataExt as _,
+            sync::{
+                Arc,
+                atomic::{AtomicUsize, Ordering},
+            },
+            time::{Duration, Instant},
+        };
+
+        use olo_protocol::glance::{self as g, Entry, Request, Requests, Timeline};
+        let root = std::path::PathBuf::from(format!("/var/tmp/olo-glance-serve-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let dir = root.join("glance");
+        std::fs::create_dir_all(&dir).unwrap();
+        let (own, settings) = (root.join("own.json"), root.join("app_server.json"));
+        std::fs::write(&own, "1").unwrap();
+        std::fs::write(&settings, "{}").unwrap();
+        let ask = |widgets: Vec<u32>| {
+            let widgets = widgets.into_iter().map(|widget| Request { widget, kind: "k".into(), options: Default::default(), size: Default::default() }).collect();
+            g::write_json(&g::requests_path(&dir, "test"), &Requests { widgets }).unwrap();
+        };
+        ask(vec![7]);
+        let made = Arc::new(AtomicUsize::new(0));
+        let served = {
+            let (dir, settings, own, made) = (dir.clone(), settings.clone(), own.clone(), made.clone());
+            std::thread::spawn(move || {
+                serve_in(
+                    &dir,
+                    &settings,
+                    "test",
+                    move || vec![own.clone()],
+                    move |asked| {
+                        // (When it was made is another time at each making;
+                        // what it shows is the same.)
+                        let n = made.fetch_add(1, Ordering::SeqCst) as i64;
+                        let entries = vec![Entry { from: 0, glance: Glance { value: "44°".into(), ..Glance::default() } }];
+                        (asked.iter().map(|r| (r.widget, Timeline { made: n, entries: entries.clone() })).collect(), None)
+                    },
+                )
+            })
+        };
+        let until = |what: &dyn Fn() -> bool| {
+            let t = Instant::now();
+            while !what() && t.elapsed() < Duration::from_secs(5) {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            what()
+        };
+        let made_now = || made.load(Ordering::SeqCst);
+        let file = g::content_path(&dir, 7);
+        let written = || std::fs::metadata(&file).map(|m| m.ino()).ok();
+        assert!(until(&|| made_now() == 1 && written().is_some()), "asked: made and written");
+        let first = written();
+        // Written in the folder, and beside a file it follows: none of
+        // its business.
+        for n in 0..20 {
+            g::write_json(&g::content_path(&dir, 8), &Timeline { made: n, ..Default::default() }).unwrap();
+            g::write_json(&g::requests_path(&dir, "other"), &Requests::default()).unwrap();
+            std::fs::write(root.join("someone-elses.json"), n.to_string()).unwrap();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        std::thread::sleep(Duration::from_millis(400));
+        assert_eq!(made_now(), 1, "woken for what isn't its business");
+        // A path of its own changes: made again, once; what it shows is
+        // the same, so its file is the one it was.
+        std::fs::write(&own, "2").unwrap();
+        assert!(until(&|| made_now() == 2));
+        std::thread::sleep(Duration::from_millis(300));
+        assert_eq!((made_now(), written()), (2, first), "made once more, and nothing written: it shows the same");
+        // The desktop's settings change (its language may have).
+        std::fs::write(&settings, "{ }").unwrap();
+        assert!(until(&|| made_now() == 3));
+        // Its file gone (a Deskbar that cleared the folder): there again
+        // at the next making.
+        std::fs::remove_file(&file).unwrap();
+        std::fs::write(&own, "3").unwrap();
+        assert!(until(&|| made_now() == 4 && written().is_some()));
+        // Asked for another widget: made for it.
+        ask(vec![7, 9]);
+        assert!(until(&|| g::content_path(&dir, 9).exists()));
+        // Asked for nothing: it ends.
+        ask(vec![]);
+        assert!(until(&|| served.is_finished()), "asked for nothing, and still there");
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

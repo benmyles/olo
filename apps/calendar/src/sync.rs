@@ -36,6 +36,28 @@ pub fn store_dir() -> Option<PathBuf> {
     (!demo()).then(|| olo_xdg::cache_dir().join("calendar"))
 }
 
+/// Where what's kept changes: the folder of accounts and each account's
+/// (a calendar is a file in its account's: a watch of the first tells of
+/// accounts coming and going, not of their calendars).
+pub fn kept_folders() -> Vec<PathBuf> {
+    let Some(dir) = store_dir() else { return Vec::new() };
+    let accounts: Vec<PathBuf> = std::fs::read_dir(&dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+    std::iter::once(dir).chain(accounts).collect()
+}
+
+/// The accounts set up and every calendar kept of theirs, read: for
+/// whoever only shows them (Deskbar's widgets). Nothing is asked of the
+/// keyring (what signs an account in is for asking its server), and
+/// nothing is written (an account removed: its calendars are passed
+/// over, and forgotten by who keeps them in step). Not for the demo,
+/// whose calendars are on its server. Blocking (files).
+pub fn kept() -> (Vec<Account>, Vec<Cal>) {
+    let accounts = account::accounts();
+    let mut kept = store_dir().map(|d| Kept::load_all(&d)).unwrap_or_default();
+    kept.retain(|k| accounts.iter().any(|a| a.id() == k.account));
+    (accounts, kept.into_iter().map(Cal::read).collect())
+}
+
 /// The accounts set up with what signs each in, and every calendar kept,
 /// read. Blocking (files, the keyring).
 pub fn load(today: Date) -> (Vec<Source>, Vec<Cal>) {

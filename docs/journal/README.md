@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-21
 
+### Terminal: a title without its spinner
+
+*07:32* — A coding agent turns a spinner in its tab's title ten times a second; every frame was a change to the tab, the window's tab, Deskbar and whatever lists windows. The spinner is left out of the title now (here the agent's own words, steady), and the tab's own mark, the blue arc on its icon, says it is working.
+
+![Terminal: a title without its spinner](2026-11-21/073253-terminal-a-title-without-its-spinner.png)
+
 ### Olo Doctor: drawing waits for large pieces of graphics memory
 
 *06:25* — The card Olo Doctor will offer once the module has been tried on a real computer (here in its made-up report): what was measured, and what the fix does, in two paragraphs.

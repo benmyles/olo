@@ -1,0 +1,239 @@
+#!/usr/bin/env python3
+"""A desktop at rest stays at rest when one thing in it keeps changing.
+
+  rest-check [--seconds N] [--keep]
+
+A headless desktop of its own ("restcheck": Deskbar with the Inbox and
+Calendar's The Day Ahead, the demo's calendars; HOME a folder of its own
+under /var/tmp), and two things that change ten times a second, each
+measured for N seconds (10):
+
+  a title    a tab whose program turns a braille spinner in its title,
+             as coding agents do. The window's title must stand still
+             and the screen draw a few frames a second at the most (the
+             cursor's blink): every frame of the spinner was a change
+             to the tab, the window's tab, Deskbar and whatever lists
+             windows (50 frames a second, 2026-11-21).
+  what waits the notification service's state written in its place,
+             a card's words changing (what waits in Terminal names its
+             tab). The Inbox's provider makes its widget again, as it
+             should; Calendar's must not wake for it, nor write its
+             widget: every provider woke for every write in the
+             widgets' folder, and Calendar's read every event and asked
+             the keyring each time (a third of a processor on the
+             person's desktop).
+
+Prints each case's figures (frames, each program's share of a processor
+and wake-ups, files replaced) and exits 1 if one is over its mark.
+Programs come from target/debug; TSESSION_PROFILE=release for the
+release builds (what the person runs: the figures to put in a commit).
+"""
+
+import collections
+import ctypes
+import json
+import os
+import re
+import select
+import shutil
+import socket
+import struct
+import subprocess
+import sys
+import time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+TS = ["/usr/bin/python3", os.path.join(ROOT, "tools/dev/tsession")]
+NAME = "restcheck"
+SCRATCH = f"/var/tmp/olo-rest-check-{os.getpid()}"
+RUNTIME = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+TITLE = "Fix the login redirect | olo"
+
+args = sys.argv[1:]
+seconds = float(args[args.index("--seconds") + 1]) if "--seconds" in args else 10.0
+keep = "--keep" in args
+# (Nothing of the person's session: a test desktop is its own.)
+ENV = {k: v for k, v in os.environ.items() if k not in ("WAYLAND_DISPLAY", "OLO_SOCKET", "OLO_SESSION", "OLO_SESSION_PID")}
+ENV["OLO_CALENDAR_DEMO"] = "1"
+
+
+def ts(*a, check=True):
+    return subprocess.run([*TS, *a], env=ENV, capture_output=True, text=True, check=check, timeout=180).stdout
+
+
+def until(what, most=30.0):
+    end = time.monotonic() + most
+    while time.monotonic() < end:
+        if what():
+            return True
+        time.sleep(0.2)
+    return False
+
+
+class Desktop:
+    def __init__(self):
+        ts("stop", NAME, check=False)
+        shutil.rmtree(SCRATCH, ignore_errors=True)
+        os.makedirs(f"{SCRATCH}/home")
+        ts("start", NAME, "1600x1000", "--session", "--shell", "--home", f"{SCRATCH}/home")
+        env = {}
+        for line in ts("env", NAME).splitlines():
+            if "=" in line:
+                k, v = line.replace("export ", "").split("=", 1)
+                env[k] = v.strip().strip("'\"")
+        self.display, self.socket = env["WAYLAND_DISPLAY"], env["OLO_SOCKET"]
+        self.widgets = f"{RUNTIME}/olo-glance/{self.display}"
+        self.state = f"{RUNTIME}/olo-state/notifications-{self.display}.json"
+        settings = self.ipc({"type": "get_settings"}).get("settings", {})
+        settings["deskbar"] = {
+            "widgets": [
+                {"id": 12, "measure": {"kind": "app", "app": "notifications", "glance": "inbox"}, "place": "top", "size": "medium"},
+                {"id": 13, "measure": {"kind": "app", "app": "calendar", "glance": "day"}, "place": "top", "size": "medium"},
+            ]
+        }
+        self.ipc({"type": "set_settings", "settings": settings})
+        if not until(lambda: all(os.path.exists(f"{self.widgets}/{n}.json") for n in (12, 13))):
+            sys.exit("rest-check: Deskbar's widgets never came (is everything built?)")
+
+    def ipc(self, request):
+        s = socket.socket(socket.AF_UNIX)
+        s.settimeout(10)
+        s.connect(self.socket)
+        s.sendall((json.dumps(request) + "\n").encode())
+        line = s.makefile().readline()
+        s.close()
+        return json.loads(line) if line else {}
+
+    def title(self):
+        return next((w.get("title") for w in self.ipc({"type": "list_windows"}).get("windows", []) if w.get("app_id") == "olo.terminal"), None)
+
+    def programs(self):
+        """Each of the desktop's programs: its name, processor time and wake-ups so far."""
+        out = {}
+        mine = (f"WAYLAND_DISPLAY={self.display}".encode(), f"OLO_GLANCE_DIR={self.widgets}".encode())
+        for pid in filter(str.isdigit, os.listdir("/proc")):
+            try:
+                with open(f"/proc/{pid}/environ", "rb") as f:
+                    if not any(m in f.read().split(b"\0") for m in mine):
+                        continue
+                with open(f"/proc/{pid}/cmdline", "rb") as f:
+                    cmd = f.read().split(b"\0")
+                name = os.path.basename(cmd[0].decode()) + (" " + cmd[1].decode() if len(cmd) > 1 and cmd[1].startswith(b"--") else "")
+                with open(f"/proc/{pid}/stat") as f:
+                    st = f.read()
+                fields = st[st.rindex(")") + 2 :].split()
+                wakes = 0
+                for tid in os.listdir(f"/proc/{pid}/task"):
+                    with open(f"/proc/{pid}/task/{tid}/status") as f:
+                        wakes += int(re.search(r"^voluntary_ctxt_switches:\s+(\d+)", f.read(), re.M).group(1))
+                out[pid] = (name, int(fields[11]) + int(fields[12]), wakes)
+            except (OSError, ValueError, AttributeError):
+                continue
+        return out
+
+    def measure(self):
+        """What the desktop does in `seconds`: frames, title changes, programs, files replaced."""
+        libc = ctypes.CDLL("libc.so.6", use_errno=True)
+        fd = libc.inotify_init1(os.O_NONBLOCK)
+        folders = {}
+        for folder in (self.widgets, os.path.dirname(self.state)):
+            if os.path.isdir(folder):
+                folders[libc.inotify_add_watch(fd, folder.encode(), 0x80)] = folder  # IN_MOVED_TO
+        self.ipc({"type": "timings", "quiet": True})
+        before, began = self.programs(), time.monotonic()
+        replaced, titles, last = collections.Counter(), 0, self.title()
+        while time.monotonic() - began < seconds:
+            if select.select([fd], [], [], 0.05)[0]:
+                buf, i = os.read(fd, 1 << 18), 0
+                while i < len(buf):
+                    wd, _, _, n = struct.unpack_from("iIII", buf, i)
+                    name = buf[i + 16 : i + 16 + n].split(b"\0", 1)[0].decode(errors="replace")
+                    i += 16 + n
+                    # (The state folder is every desktop's: this one's files only.)
+                    if folders[wd] == self.widgets or self.display in name:
+                        replaced[name] += 1
+            now = self.title()
+            titles += now != last
+            last = now
+        took = time.monotonic() - began
+        after = self.programs()
+        os.close(fd)
+        frames = sum(o["frames"] for o in self.ipc({"type": "timings", "quiet": True}).get("timings", {}).get("outputs", []))
+        hz = os.sysconf("SC_CLK_TCK")
+        programs = {}
+        for pid, (name, cpu, wakes) in after.items():
+            if pid in before:
+                share, woke = programs.get(name, (0.0, 0.0))
+                programs[name] = (share + (cpu - before[pid][1]) / hz / took * 100, woke + (wakes - before[pid][2]) / took)
+        return {"frames": frames / took, "titles": titles / took, "title": last, "programs": programs, "replaced": {k: v / took for k, v in replaced.items()}}
+
+    def stop(self):
+        if not keep:
+            ts("stop", NAME, check=False)
+            shutil.rmtree(SCRATCH, ignore_errors=True)
+
+
+def say(case, m):
+    print(f"{case}: the screen drew {m['frames']:.1f} frames a second; the window's title changed {m['titles']:.1f} times a second ({m['title']!r})")
+    for name, (share, woke) in sorted(m["programs"].items(), key=lambda p: -p[1][0]):
+        if share >= 0.05 or woke >= 2:
+            print(f"    {share:5.2f}% of a processor, {woke:6.1f} wake-ups a second: {name}")
+    print("    files replaced a second:", {k: round(v, 1) for k, v in m["replaced"].items()} or "none")
+
+
+def main():
+    d = Desktop()
+    wrong = []
+    try:
+        # A spinner in a tab's title.
+        spin = f"{SCRATCH}/spin.sh"
+        with open(spin, "w") as f:
+            f.write("#!/bin/bash\nwhile :; do for f in %s; do printf '\\033]0;%%s %s\\007' \"$f\"; sleep 0.1; done; done\n" % (" ".join(FRAMES), TITLE))
+        os.chmod(spin, 0o755)
+        subprocess.run([*TS, "run", NAME, "olo-terminal", "-w", f"{SCRATCH}/home", "-e", "bash", "--norc", "--noprofile", spin], env=ENV, capture_output=True, timeout=60)
+        if not until(lambda: d.title() is not None):
+            sys.exit("rest-check: Terminal never came")
+        time.sleep(4)
+        m = d.measure()
+        say("a spinner in a tab's title", m)
+        if m["title"] != TITLE:
+            wrong.append(f"the window's title is {m['title']!r}, not {TITLE!r}: what turns in it wasn't left out")
+        if m["titles"] > 0:
+            wrong.append(f"the window's title changed {m['titles']:.1f} times a second")
+        if m["frames"] > 5:
+            wrong.append(f"the screen drew {m['frames']:.1f} frames a second for a spinner in a title (5 at the most: the cursor blinks)")
+        # What waits in an app, its words changing.
+        os.makedirs(os.path.dirname(d.state), exist_ok=True)
+        code = (
+            "import json, os, time\nn = 0\nwhile True:\n    n += 1\n"
+            "    card = {'id': 7, 'app': 'Terminal', 'icons': ['olo-terminal'], 'title': 'Codex is waiting for you', 'detail': 'olo \\u2014 step %d' % n, 'attention': True, 'time': 1795000000}\n"
+            f"    open({d.state!r} + '.new', 'w').write(json.dumps({{'unread': 0, 'quiet': False, 'apps': [], 'cards': [card], 'fade_minutes': None}}))\n"
+            f"    os.rename({d.state!r} + '.new', {d.state!r})\n    time.sleep(0.1)\n"
+        )
+        writer = subprocess.Popen(["/usr/bin/python3", "-c", code])
+        try:
+            time.sleep(3)
+            m = d.measure()
+        finally:
+            writer.kill()
+            writer.wait()
+            for path in (d.state, d.state + ".new"):
+                if os.path.exists(path):
+                    os.remove(path)
+        say("what waits in an app changing", m)
+        share, woke = m["programs"].get("olo-calendar --glance", (0.0, 0.0))
+        if woke > 2:
+            wrong.append(f"Calendar's provider woke {woke:.1f} times a second for the Inbox's changes")
+        if m["replaced"].get("13.json", 0) > 0:
+            wrong.append(f"Calendar's widget was written {m['replaced']['13.json']:.1f} times a second with nothing of its own changed")
+        if m["replaced"].get("12.json", 0) < 5:
+            wrong.append("the Inbox's widget wasn't made again as its state changed (the check itself is off)")
+    finally:
+        d.stop()
+    for w in wrong:
+        print("rest-check: " + w)
+    sys.exit(1 if wrong else 0)
+
+
+main()

@@ -44,7 +44,9 @@ const SLOTS: usize = 6;
 /// Serve Deskbar's Weather widgets until it asks for none.
 pub fn serve() -> std::process::ExitCode {
     let demo = crate::demo();
-    let watched = vec![olo_kit::config_dir(), provider::cache_dir()];
+    // (Its own settings; the desktop's, for units and the clock, every
+    // provider follows: `olo_kit::glance::serve`.)
+    let watched = vec![crate::settings_path(), provider::cache_dir()];
     let mut st = State::default();
     olo_kit::glance::serve("weather", watched, move |asked| make(asked, demo, &mut st))
 }

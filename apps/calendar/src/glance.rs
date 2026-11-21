@@ -17,11 +17,14 @@
 //!
 //! Of the calendars shown in Calendar, an invitation declined left out.
 //! Read from what's kept on this computer (the reminders service keeps
-//! that in step with the servers): nothing is asked of a server here.
+//! that in step with the servers): nothing is asked of a server here, so
+//! nothing of the keyring either.
 //! Each a timeline, an entry wherever what it says changes (an event
 //! starting or ending, midnight) for the next day, so it goes on with
 //! nothing run; made again when the accounts, Calendar's settings or
-//! what's kept change, and every few hours as the day ahead moves on.
+//! what's kept change (those files and folders themselves: the
+//! settings' folder changes for every program's reasons), and every few
+//! hours as the day ahead moves on.
 
 use std::{sync::Arc, time::Duration};
 
@@ -49,38 +52,46 @@ const AGAIN: Duration = Duration::from_secs(6 * 3600);
 /// Serve Deskbar's Calendar widgets until it asks for none.
 pub fn serve() -> std::process::ExitCode {
     let demo = sync::demo();
-    // (Calendar's settings and the clock's are in the settings' folder.)
-    let mut watched = olo_calendar::account::watched();
-    watched.push(olo_kit::config_dir());
-    watched.extend(sync::store_dir());
+    // (The clock's settings are the desktop's, which every provider
+    // follows: `olo_kit::glance::serve`.)
+    let follow = || {
+        let mut paths = olo_calendar::account::watched();
+        paths.push(crate::settings_path());
+        paths.extend(sync::kept_folders());
+        paths
+    };
     // (The demo's calendars are nowhere but on its server: read once.)
     let mut held: Option<Book> = None;
-    olo_kit::glance::serve("calendar", watched, move |asked| (make(asked, demo, &mut held), Some(AGAIN)))
+    olo_kit::glance::serve_following("calendar", follow, move |asked| (make(asked, demo, &mut held), Some(AGAIN)))
 }
 
 fn make(asked: &[Request], demo: bool, held: &mut Option<Book>) -> Vec<(u32, Timeline)> {
     let zone = TimeZone::system();
     let now = crate::now(&zone);
-    let (sources, kept) = sync::load(now.date());
-    let order: Vec<String> = sources.iter().map(|s| s.account.id()).collect();
-    let book = if demo {
-        held.get_or_insert_with(|| {
-            let mut book = Book::default();
-            for source in &sources {
-                if let (Some(cals), _) = sync::sync(source, Vec::new()) {
-                    book = book.with(&source.account.id(), cals, &order);
+    let (accounts, book) = if demo {
+        let (sources, _) = sync::load(now.date());
+        let order: Vec<String> = sources.iter().map(|s| s.account.id()).collect();
+        let book = held
+            .get_or_insert_with(|| {
+                let mut book = Book::default();
+                for source in &sources {
+                    if let (Some(cals), _) = sync::sync(source, Vec::new()) {
+                        book = book.with(&source.account.id(), cals, &order);
+                    }
                 }
-            }
-            book
-        })
-        .clone()
+                book
+            })
+            .clone();
+        (sources.into_iter().map(|s| s.account).collect::<Vec<_>>(), book)
     } else {
-        Book::new(kept.into_iter().map(Arc::new).collect(), &order)
+        let (accounts, kept) = sync::kept();
+        let order: Vec<String> = accounts.iter().map(|a| a.id()).collect();
+        (accounts, Book::new(kept.into_iter().map(Arc::new).collect(), &order))
     };
     let settings: Settings = if demo { Settings::default() } else { olo_kit::store::load(&crate::settings_path()).unwrap_or_default() };
-    let me: Vec<String> = sources.iter().map(|s| s.account.address.clone()).collect();
+    let me: Vec<String> = accounts.iter().map(|a| a.address.clone()).collect();
     let h24 = olo_kit::settings::current().is_some_and(|s| s.clock.twenty_four_hour);
-    let with = With { book: &book, choices: &settings.choices, me: &me, zone: &zone, h24, set_up: !sources.is_empty() };
+    let with = With { book: &book, choices: &settings.choices, me: &me, zone: &zone, h24, set_up: !accounts.is_empty() };
     asked.iter().map(|r| (r.widget, timeline(r, &with, &now))).collect()
 }
 

@@ -817,6 +817,59 @@ Learned measuring catalogs as data (2026-11-20):
   that counts none ends 1, and the job is reported failed with every
   number in its output right. Read the output before believing either.
 
+### A desktop that isn't at rest: who keeps it busy
+
+Learned on the person's desktop (2026-11-21: three displays drawing 59
+frames a second with nobody at it):
+
+- **Three read-only looks find it**, none needing root. The
+  compositor's own count: `{"type":"timings","quiet":true}` twice,
+  seconds apart, on `$OLO_SOCKET` (each display's frames; quiet, so
+  its heartbeat isn't started). Every thread of every program of the
+  person's, sampled twice ten seconds apart from `/proc/PID/task/TID/
+  {stat,status}`: processor time and voluntary context switches (who
+  is busy, and who wakes 60 or 120 times a second: who draws every
+  frame). And which files change: an inotify count (`IN_MOVED_TO`,
+  `IN_CLOSE_WRITE`) of `$XDG_RUNTIME_DIR/olo-state`,
+  `$XDG_RUNTIME_DIR/olo-glance/DISPLAY` and `~/.config/olo` for a few
+  seconds names the writers by their files. A file written twenty
+  times a second by one program and read by another is a link of a
+  chain: follow it both ways.
+- **`perf` on the person's programs needs root** (they hold a
+  capability: "A process that holds a capability can't be looked
+  into", below; without root, "Failure to open any events"), and
+  `perf report` as root refuses a recording a failed try left behind
+  under your name ("not owned by current user or root"): record into
+  files that aren't there yet, and pass `-f` to report. Its DWARF
+  call chains of Olo's release programs often stop at the leaf: read
+  the leaf's callers in the source.
+- **The figures to compare are release builds'**: keep the release
+  programs as they are before the change (`cp --reflink=always
+  target/release/* /var/tmp/YOURS/before/release/`: only the
+  programs, free), build the changed packages with
+  `CARGO_TARGET_DIR=/var/tmp/YOURS/after cargo build --release -p …`
+  over a second copy of them (the unchanged programs a session needs
+  are then there too), and run the same tool twice with
+  `CARGO_TARGET_DIR=… TSESSION_PROFILE=release` (tsession takes its
+  programs from there). `tools/dev/rest-check` is built that way.
+- **A stand-in for a coding agent**: Terminal knows one by its
+  program's name and what its screen says, and only as what a tab's
+  shell runs (the tab's own program isn't looked at). A script named
+  `codex`, started by typing its name at the tab's shell, printing
+  "• Working (41s • esc to interrupt)" on the alternate screen: the
+  tab shows its working mark. Started with `-e`, it never did.
+- **The notification service may play a sound**: in a test, write its
+  state file in its place (`$XDG_RUNTIME_DIR/olo-state/
+  notifications-DISPLAY.json`, `NotificationState` as JSON, renamed
+  into place) and remove it after. A test desktop has no notification
+  service of its own (`olo-notifications` refuses outside a real
+  session without `--bus`).
+- **Two reviewers started together**: set what they share on lines of
+  their own, then `( codex-look … ) & ( opus-look … ) & wait`. With
+  `S=… && ABOUT=… && ( … ) & ( … ) & wait` the assignments are part of
+  the first job, and the second runs without them (its pictures'
+  paths were empty: "no picture /NAME.png").
+
 ### Reading a day's logs
 
 Learned on the second pass (2026-11-20):

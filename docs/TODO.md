@@ -278,7 +278,40 @@ something nobody here has is in "Blocked", with what it waits for.
     lightly: another rule (every size above a page) with another
     trade, to be qualified by itself if anyone runs them;
   - whether Olo's own programs make more GPU buffers than they
-    need (`memory-holds` counts each program's);
+    need (`memory-holds` counts each program's). **Counted**
+    (2026-11-21, 40 s of the person's desktop): app_server 177 a
+    second (the display's page table for each flip, the driver's);
+    kernel workers 177 a second (a display state buffer for each
+    commit, the driver's too); and six "Open Link" choosers nobody
+    answered, each making a 4 MB buffer every 8 s for its live
+    thumbnails: the kit's atlas never gives a removed picture's place
+    back, so replaced pictures use a texture up and a new one is made
+    (each two 2 MB tries: the holds measured on "a kit's drawing
+    thread"). To do, in this order: the atlas gives a tile's place
+    back; a chooser's thumbnails are made again only when their
+    window changed and the chooser shows; choosers nobody answers
+    don't pile up (six since midnight, from links another program
+    opened by itself; each took the keyboard as it came, and a
+    letter typed then chooses a window);
+  - **the desktop at rest wasn't** (2026-11-21, the person's: three
+    displays drawing 59 frames a second, app_server a quarter of a
+    processor, Calendar's widget a third, with nobody at it). Found
+    and fixed: two agents' animated titles, and what each change set
+    off (HACKING, "A change is news only to who shows it";
+    `tools/dev/rest-check`). Left of it: the background group's
+    keeper spends up to nine tenths of a processor for seconds
+    inside its write of the group's allowance (the kernel reclaims
+    in the writer until the group is under it), cannot look again
+    meanwhile, and so swapped 0.8 GiB of compilers' own memory under
+    a floor that was no longer theirs (to do: the write made without
+    waiting, Linux 6.16's O_NONBLOCK, the group's own programs
+    reclaiming as they ask for more); a shell's output that changes
+    nothing to see (a title alone) still wakes its window's threads
+    (0.1% of a processor for a spinner: small); programs on other
+    desktops (agent screens, test sessions) wake for writes in the
+    runtime folder's `olo-state` while their own file there isn't
+    yet (a watch of a path that isn't follows its folder: 56 wake-ups
+    a second each during the storm, none at rest);
   - from the looks: a "Check for Updates" button in the box's "not
     checked yet" state; Olo Doctor's cards with nothing to press
     start their label where a mark would be (a gap at their left)
@@ -1457,6 +1490,27 @@ something nobody here has is in "Blocked", with what it waits for.
   on white paper (a card, a list) at 1× nearly goes, and by night
   reads as filled: its own look on paper (a frame in the disabled
   colour, a flat well).
+
+- **Terminal's tabs, from the reviewers' looks at them** (2026-11-21,
+  of the pictures taken for the titles' change; all of it as it was
+  before that change). Astra: the chosen tab's slanted outline runs a
+  device pixel below the line along the strip's foot (`strip::folder`
+  ends a pixel past its bounds, which the tab view allows for and the
+  strip doesn't: a pixel fault, to fix first); at 1× the working mark's
+  open side runs into the icon's bright edge. Opus: the working mark
+  reads as a letter in a still picture (a three-quarter arc with no
+  track: a full ring at a third of its strength with a shorter arc on
+  it would read as busy at any moment), is stroked over the icon and
+  past its box (a round badge inside the icon's corner, in the tab's
+  own fill, outlined as the icons are) and is soft at 1× and 1.5×;
+  nothing says an agent is working once its window is behind another
+  or on another workspace (a still mark on Deskbar's Terminal row,
+  drawn when the state changes, not ten times a second); a tab's ×
+  sits 13 pt from its title where its icon sits 9, and a tab behind
+  keeps the ×'s room empty (the × on every tab in the lesser ink, or
+  tabs behind narrower); a window with one tab says its title twice
+  in the same weight, the window's tab and the strip's. (Its " | olo"
+  is the agent's own title, not Terminal's.)
 
 ## Done, waiting for Ben to try or confirm
 

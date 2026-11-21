@@ -1032,9 +1032,16 @@ running: a forecast moves on hour by hour with nothing run.
   `olo_kit::glance::serve(app, watched, make)`. Deskbar writes what it
   wants of you (`Requests`: each widget's id, kind, options and size);
   `make` returns each one's timeline and when to make them again; the
-  kit writes each where Deskbar reads it, only when it changed, and
-  sleeps until the requests change, a path in `watched` does (your
-  settings, your cache), or that time comes. It ends when Deskbar wants
+  kit writes each where Deskbar reads it, only when what it shows
+  changed, and sleeps until the requests change, a path in `watched`
+  does, or that time comes. Follow the files that are yours (your
+  settings' file, your cache's), never a folder everyone writes in
+  (the settings' folder, the runtime folder): you would be woken, and
+  make everything again, for each of their writes. The desktop's own
+  settings (the language, the clock) the kit follows for you. Where
+  your paths come and go (a store that is a folder of folders), say
+  which to follow before each making: `serve_following(app, follow,
+  make)`. It ends when Deskbar wants
   nothing of you. Deskbar starts it while it's wanted (afresh as it
   starts, so an upgrade's is the new program; again if it ends, once a
   minute at most).
@@ -1044,7 +1051,7 @@ running: a forecast moves on hour by hour with nothing run.
 ```rust
 // main.rs: no window when Deskbar starts you for its widgets.
 if args.first().is_some_and(|a| a == "--glance") {
-    return olo_kit::glance::serve("weather", vec![olo_kit::config_dir()], |asked| {
+    return olo_kit::glance::serve("weather", vec![settings_path(), cache_dir()], |asked| {
         let made = asked.iter().map(|r| (r.widget, timeline(r))).collect();
         (made, Some(Duration::from_secs(30 * 60)))
     });

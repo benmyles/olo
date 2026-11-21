@@ -197,8 +197,10 @@ impl Glances {
         let ids: Vec<u32> = self.asked.values().flat_map(|r| r.widgets.iter().map(|w| w.widget)).collect();
         for id in ids {
             let read: Option<Timeline> = std::fs::read(g::content_path(&self.dir, id)).ok().and_then(|b| serde_json::from_slice(&b).ok());
+            // (Another when what it shows is: when it was made is no
+            // reason to lay the bars out again.)
             if let Some(t) = read
-                && self.timelines.get(&id) != Some(&t)
+                && self.timelines.get(&id).map(|had| &had.entries) != Some(&t.entries)
             {
                 self.timelines.insert(id, t);
                 changed = true;

@@ -513,6 +513,32 @@ How Olo keeps it (do the same):
   commit, a scroller that moved or a drawing that asked to be drawn
   again in time; a window that doesn't show gets no frame callbacks.
   Don't invalidate on a timer to look for changes.
+* **A change is news only to who shows it.** One thing that keeps
+  changing must not keep the rest of the desktop changing with it. On
+  the person's desktop (2026-11-21) two agents' tab titles, a spinner
+  turning ten times a second in each, kept three displays drawing 59
+  frames a second (a quarter of a processor in app_server), Deskbar
+  writing two state files and the notification service a third twenty
+  times a second, the Inbox widget's provider writing its widget
+  twelve times a second, and Calendar's provider reading every event
+  and asking the keyring as often (a third of a processor): each
+  passed on what it was handed. Three rules came of it:
+  what turns is drawn where it is and passed on to nobody (Terminal's
+  titles, "Titles" below: the spinner is left out, the tab's own mark
+  turns); a program follows the files that are its own business,
+  never a folder others write in (the runtime folder, the settings'
+  folder, the widgets' folder: `glance::serve`, `olo_kit::watch` a
+  file itself); and a file is written again when what it says
+  changed, not when it was made again (a widget's `made` stamp had
+  every making written). `tools/dev/rest-check` holds a desktop to it:
+  a spinner in a tab's title, then what waits in an app changing ten
+  times a second, and the desktop must stay at rest but for who shows
+  it (frames, wake-ups, files written; it fails on the build from
+  before with 49.5 frames a second and Calendar's provider woken 61
+  times a second). To find the next one on a running desktop:
+  `tools/dev/cost` on what is busy, and which files change (an
+  inotify count of the runtime folder's `olo-state`, of
+  `olo-glance/DISPLAY` and of the settings' folder says who writes).
 * **Animation at the display's pace.** A step of an animation
   (`cx.on_next_frame`, and a drawing that moves every frame,
   `paint_again_within(0.0)`) runs as a frame starts, when the
@@ -1909,7 +1935,9 @@ is a window's whole.)
 An app's widget in Deskbar is drawn by the kit too (`olo_kit::glance`:
 a headline, a note, slots across or spans down, from what the app
 gives, `olo_protocol::glance`), and served by it (`glance::serve`: the
-provider's loop). See Deskbar, "An app's widgets", and the Olo Book.
+provider's loop; `glance::serve_following` where the paths it follows
+come and go, a store that is a folder of folders). See Deskbar, "An
+app's widgets", and the Olo Book.
 
 ### Text cut short (`olo_kit::cut`)
 
@@ -18297,8 +18325,9 @@ Move to New Window and Move to Window ▸ (Terminal's other windows,
 named by one of their shells: `tab-to:SHELL:TARGET`; the window it
 left closes with its last tab). The window's
 title is "group — tab" for the tab showing, set the moment a program
-retitles its tab (`retitle`: Claude Code's status glyph in it), not at
-the next frame. A tab in a git repository is in that repository's group
+retitles its tab, not at the next frame (`Terminal::title_changed`;
+"Titles" below has what of a program's title is shown, and how
+often). A tab in a git repository is in that repository's group
 on its own (repos.rs `auto_group`): the group beside it, else one made
 for it in the colour that repository's group has in another window;
 never one elsewhere in the window (a tab doesn't jump on `cd`), nor
@@ -18558,6 +18587,26 @@ one line, at most 60 characters) ahead of the program's own title until
 the agent leaves the tab or sets an empty one; it is saved with the
 window, and after a restart kept only if the tab's agent is seen again
 within 5 s.
+
+**Titles** (`src/titles.rs`): a program's own title (OSC 0 and 2) is
+shown without what turns in it, and a window shows its tabs' titles
+five times a second at the most. Coding agents turn a braille spinner
+in their titles, ten frames a second, and a title is shown by more
+than its tab: the window's tab, Deskbar, Twitcher, whatever lists
+windows, and what waits in Terminal (`say_waiting`: its place is the
+tab's title). One such title had a 60 Hz screen draw 49.5 frames a
+second (app_server 4.0% of a processor, Terminal 1.1%, Deskbar 0.7%;
+after: 1.0 frame, the cursor's blink, and 0.8%, 0.1%, 0.2%; release
+builds, `tools/dev/rest-check`). `titles::steady` leaves out braille
+patterns (U+2800 to U+28FF: the dots spinners are made of), a word of
+them or at a word's ends; a title that is nothing else is someone's
+words and stays. A tab says what its program is doing with its own
+mark, drawn in the tab and nowhere else (ui.rs: an agent working,
+asking, done). A title's next frame being the same title, nothing is
+set or drawn for it; any other change shows at once, and those that
+come within `titles::EVERY` (200 ms) of it together when that time is
+up (`Terminal::title_changed`), so a program that retitles without end
+costs the desktop five changes a second however many it prints.
 
 **Keep It Going** (Ben, 2026-11-06; `Tab::keep_going`, `KeepGoing`): on a
 tab with a coding agent, its menu (and Tabs ▸ Keep It Going, which
@@ -22638,10 +22687,14 @@ app only to make what's next.
   the meters). Weather gives Now, Next Hours and Next Days; Kache, Build
   Cache; Calendar, Next Event and The Day Ahead (`apps/calendar/src/
   glance.rs`, `olo-calendar --glance`: from what's kept on this
-  computer, nothing asked of a server; an entry wherever what it says
-  changes, an event starting or ending and midnight, for a day ahead;
-  made again as the accounts, Calendar's settings or what's kept
-  change, and every six hours; a declined invitation left out. Next
+  computer, nothing asked of a server nor of the keyring
+  (`sync::kept`: what signs an account in is for asking its server);
+  an entry wherever what it says changes, an event starting or ending
+  and midnight, for a day ahead; made again as the accounts' files,
+  Calendar's settings' file or what's kept change (`sync::
+  kept_folders`: the folder of accounts and each account's, a
+  calendar being a file in its account's), and every six hours; a
+  declined invitation left out. Next
   Event: "2 PM Design review / Today · Room 2", "Now … until 3:30 PM"
   while it's on, and what's after it time first, "Then 3 PM ·
   Interview", as a Deskbar is narrow and what's cut is the end. The
@@ -22674,13 +22727,25 @@ app only to make what's next.
   program; ended by itself, it's started again a minute after it last
   started at the soonest. The provider (`olo_kit::glance::serve`)
   holds the lock, makes every widget asked for, writes each one's
-  timeline (`ID.json`, whole: a rename) only when it changed, and
-  sleeps until the requests or one of the app's paths change or the
-  time it asked for comes; none asked for, it ends. Deskbar follows
-  the folder (one inotify watch; its own writes in it aren't news to
-  the provider), reads a widget's file as it changes, and switches each
-  to its entry for the time as its clock's minute comes
-  (`Glances::turned`: the layer drawn again only if one turned).
+  timeline (`ID.json`, whole: a rename) only when what it shows
+  changed (its entries: when it was made is news to nobody; and
+  again if its file has gone), and sleeps until its requests' file,
+  the desktop's settings' file or one of the app's own paths changes,
+  or the time it asked for comes; none asked for, it ends. It follows
+  those files themselves, never the widgets' folder nor the settings'
+  folder: every provider writes in the first and every program in the
+  second, and a provider woken by either made its widgets again for
+  each write, its own too (2026-11-21: the Inbox's and Calendar's
+  kept each other at it twelve times a second, "A change is news only
+  to who shows it" above). An app whose paths come and go says which
+  to follow before each making (`serve_following`: Calendar's
+  accounts' folders, To Do's lists'; before it, neither widget heard
+  of a calendar or a to-do changed, a watch of a folder telling of
+  its items and not of theirs). Deskbar follows the folder (one
+  inotify watch), reads a widget's file as it changes, takes it for
+  another only when its entries are, and switches each to its entry
+  for the time as its clock's minute comes (`Glances::turned`: the
+  layer drawn again only if one turned).
 * **Drawing** (`olo_kit::glance`, the same in a preview or an app's
   window): in a row of its own, as tall as what it shows
   (`glance::height`: small, one line, its icon, value and title;
@@ -24177,7 +24242,9 @@ shows every layout).
   `STALE`); a to-do done or gone meanwhile takes its notification with
   it. At rest: 0 wakeups.
 - **Deskbar widgets** (`glance.rs`, `olo-todo --glance`; the `todo`
-  provider in `olo_protocol::glance::PROVIDERS`): Due Today ("3 due
+  provider in `olo_protocol::glance::PROVIDERS`; it follows the folder
+  of lists and each list's, as the window and the reminders do): Due
+  Today ("3 due
   today", "1 overdue" under it; a line a to-do, a ring in its list's
   colour, `Line.ring`, red where it's overdue, its time or its day
   before it) and Coming Up (the next days'), 3, 5 or 8 lines; a click

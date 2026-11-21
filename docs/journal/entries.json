@@ -5350,5 +5350,11 @@
   "title": "Olo Doctor: drawing waits for large pieces of graphics memory",
   "caption": "The card Olo Doctor will offer once the module has been tried on a real computer (here in its made-up report): what was measured, and what the fix does, in two paragraphs.",
   "image": "2026-11-21/062508-olo-doctor-drawing-waits-for-large-pieces-of-gra.png"
+ },
+ {
+  "time": "2026-11-21T07:32:53",
+  "title": "Terminal: a title without its spinner",
+  "caption": "A coding agent turns a spinner in its tab's title ten times a second; every frame was a change to the tab, the window's tab, Deskbar and whatever lists windows. The spinner is left out of the title now (here the agent's own words, steady), and the tab's own mark, the blue arc on its icon, says it is working.",
+  "image": "2026-11-21/073253-terminal-a-title-without-its-spinner.png"
  }
 ]

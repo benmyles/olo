@@ -27,6 +27,7 @@ mod session;
 mod sudo;
 mod sudo_wire;
 mod title_service;
+mod titles;
 mod ui;
 mod undo;
 mod view;
@@ -483,8 +484,13 @@ impl Tab {
         shared.foreground().filter(|&p| Some(p) != shared.shell()).and_then(agent::which).is_some()
     }
 
+    /// (The program's own without what turns in it: titles.rs.)
     fn current_title(&self) -> String {
-        self.agent_title.clone().or_else(|| self.session.title.clone().filter(|s| !s.trim().is_empty())).or_else(|| self.session.foreground()).unwrap_or_else(|| "Terminal".into())
+        self.agent_title
+            .clone()
+            .or_else(|| self.session.title.as_deref().map(titles::steady).filter(|s| !s.trim().is_empty()))
+            .or_else(|| self.session.foreground())
+            .unwrap_or_else(|| "Terminal".into())
     }
 
     /// Tell the program whether it has the keyboard, if it asked to know.
@@ -514,6 +520,10 @@ pub(crate) struct TermWin {
     /// Size to snap the window to once real font metrics are known.
     snap_to: Option<(usize, usize)>,
     shown_title: String,
+    /// When a program's title was last shown here, and whether one that
+    /// came sooner after it than `titles::EVERY` waits to be.
+    titled: Option<Instant>,
+    title_due: bool,
     focused: bool,
     /// Its tabs' groups (`Tab::group`): each one's tabs side by side,
     /// in the order they first come (`tidy`).
@@ -547,6 +557,8 @@ impl TermWin {
             dragging: None,
             snap_to,
             shown_title: String::new(),
+            titled: None,
+            title_due: false,
             focused: true,
             groups,
             tiled: false,
@@ -3171,13 +3183,13 @@ impl Terminal {
             // output in.)
             TermEvent::Printed => self.retitle_soon(cx),
             TermEvent::Title(title) => {
-                tab.session.title = title;
-                // At once, not at its next frame: a window not shown (behind
-                // another in its tab group, covered) is only let draw once a
-                // second, and its tab (an agent's status in the title) would
-                // lag that much.
-                retitle(cx, win, t);
-                cx.redraw(win);
+                // (A spinner's next frame is the title it was: nothing to
+                // show, here or anywhere that lists the window.)
+                let title = title.map(|t| titles::steady(&t));
+                if tab.session.title != title {
+                    tab.session.title = title;
+                    self.title_changed(cx, win);
+                }
             }
             TermEvent::Bell => {
                 if showing {
@@ -3412,6 +3424,30 @@ impl Terminal {
     /// the windows kept).
     pub(crate) fn typed(&mut self, cx: &mut Cx) {
         self.retitle_soon(cx);
+    }
+
+    /// A program in a tab of `win` set another title: shown at once (not
+    /// at its next frame: a window not shown, behind another in its tab
+    /// group or covered, is only let draw once a second, and its tab
+    /// would lag that much), unless the window showed one less than
+    /// `titles::EVERY` ago: then once, when that time is up, whatever
+    /// came meanwhile.
+    fn title_changed(&mut self, cx: &mut Cx, win: WindowId) {
+        let Some(Win::Term(t)) = self.windows.get_mut(&win) else { return };
+        let wait = t.titled.map(|at| titles::EVERY.saturating_sub(at.elapsed())).unwrap_or_default();
+        if wait.is_zero() {
+            t.titled = Some(Instant::now());
+            retitle(cx, win, t);
+            cx.redraw(win);
+        } else if !std::mem::replace(&mut t.title_due, true) {
+            cx.later(wait, move |app, cx| {
+                let Some(Win::Term(t)) = app.windows.get_mut(&win) else { return };
+                t.title_due = false;
+                t.titled = Some(Instant::now());
+                retitle(cx, win, t);
+                cx.redraw(win);
+            });
+        }
     }
 
     /// The tabs' titles looked at again soon: once for a burst of output
