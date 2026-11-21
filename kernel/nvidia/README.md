@@ -144,16 +144,59 @@ boot entry with no version not followed; the labels of the index
 files it wrote; units that could hold up the start.
 
 **So the way a set becomes the one loaded is to be replaced**, not
-mended: no set under `updates/`, no index written by Olo. Two designs
-are with Astra (2026-11-20): Olo's modules chosen at the moment of
-loading (a `modprobe.d` line that hands each of the five names to
-`olo-nvidia load`, which loads Olo's module only if everything still
-agrees, and the stock one otherwise); or Olo's five exchanged with the
-stock five in place, in one step at shutdown, so that any update of
-the distribution's simply writes over them. Until one is chosen,
-built, reviewed again and tried in a guest, the hold stays.
+mended: no set under `updates/`, no index written by Olo on the
+running system. Three designs were weighed with Astra (2026-11-20,
+its answer kept in `design/fedora-boot-selection.md`):
 
-Running `make` and (for now) `depmod` is the kernel's own toolchain,
-not a wrapped app: a module is built by the kernel's build system or
-not at all (as `olo_kmod`'s are), and the index's format is kmod's.
-The index part goes with the redesign.
+- *Chosen at the moment of loading* (a `modprobe.d` line that hands
+  each of the five names to a loader of Olo's, which falls back to
+  the stock module): **no.** Tried with kmod and the real module
+  files: whether the line is used at all depends on which soft
+  dependency of `nvidia` wins (NVIDIA's own, with a comma in it that
+  kmod can't resolve, hides the distribution's today; mend either and
+  the stock core is loaded without asking), and once Olo's core is in,
+  a later refusal loads a stock module beside it with no way back.
+- *Exchanged in place* (Olo's five put where the stock five are, in
+  one step at shutdown): **no.** RPM writes a package's files one at
+  a time, and a transaction that fails part way leaves new files
+  under an old package's name; a set is opened file by file, so an
+  exchange between two opens gives one of each; and a set that fails
+  to load is still there at the next start.
+- *A deployment chosen at start*: **the one Astra would sign off for
+  building and trying in a guest.** Fedora can start its ordinary
+  root with another `/usr`: a sealed, read-only Btrfs subvolume
+  holding the whole of it (kernel modules with Olo's set where the
+  stock one is, in a package of its own; the indexes, made by the
+  distribution's depmod there; NVIDIA's libraries and firmware; the
+  RPM database), chosen by a boot entry of Olo's with the kernel and
+  start-up images kept with it, admitted by a check before the real
+  root is entered, tried once and counted, with the ordinary Fedora
+  entry the default throughout and a sealed stock copy to come back
+  to. Fedora's own loaders then find one provider of each module,
+  and nothing of Olo's runs when a module is loaded.
+
+**What that costs, which is the person's to weigh**: a prevention
+start runs on a `/usr` that can't be written, so system updates and
+installs are done from an ordinary start, and each update of the
+kernel, the driver or its libraries needs a new deployment made and
+admitted; gigabytes kept on the root and on `/boot`; an enforcing
+Fedora guest (GRUB, LUKS, Btrfs) to try every failure in first, then
+spare hardware. It is weeks of work for a fault seen twice
+(2026-11-07, 2026-11-20).
+
+**What needs none of it** (not offered yet: its cost is the
+battery's, also the person's to weigh): NVIDIA's own option
+`NVreg_DynamicPowerManagement=0`, read as the driver loads, never
+lets the card be powered down while the computer runs, so the
+suspend that failed is not attempted between sleeps of the whole
+computer (the card woke, and so slept, about 150 times a day here).
+The card then draws its idle power all day. And the patches sent to
+NVIDIA, which is where the mend belongs.
+
+Until one is chosen, built, reviewed again and tried, the hold stays.
+
+Running `make` and `depmod` is the kernel's own toolchain, not a
+wrapped app: a module is built by the kernel's build system or not at
+all (as `olo_kmod`'s are), and the indexes' format is kmod's (in the
+deployment, depmod runs inside the staged copy, never on the running
+system).

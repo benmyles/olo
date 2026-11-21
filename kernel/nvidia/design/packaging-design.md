@@ -1,5 +1,7 @@
 # Olo build and boot integration
 
+The proposed Fedora deployment and its qualification gates are in [Selecting the NVIDIA prevention build](fedora-boot-selection.md).
+
 > **Superseded in part (2026-11-20, later the same day).** The builder
 > written to this design (`apps/nvidia`) was reviewed and held: putting
 > the set under `updates/olo` and publishing an index from depmod can
