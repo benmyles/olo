@@ -16,6 +16,10 @@ olo-codex-agents skill says how to use them).
   agents peek NAME [LINES]           the last LINES (60) of its screen
   agents log NAME                    its whole transcript
   agents say NAME TEXT...            a message to it: an answer, steering
+  agents question NAME [N]           the question it has put to you while it works on
+                                     (Codex queues it: "Queued follow-up inputs"): shown;
+                                     with N, its Nth choice taken (then `say` what else
+                                     it should know)
   agents approve NAME [y|p|no]       answer its approval prompt: yes this once (y),
                                      yes and don't ask again for commands that
                                      start the same (p), or no (then `say` why)
@@ -49,6 +53,11 @@ MODEL = "gpt-6.2-astra"
 EFFORT = "xhigh"
 # What the TUI shows (codex-cli 0.170, inline: --no-alt-screen).
 ASKING = ("Press enter to confirm or esc to cancel", "Would you like to")
+# A question put to the lead while it goes on working (codex-cli 0.170:
+# "Queued follow-up inputs", "? 1 question", "shift+← to answer"). Its
+# state stays "working", so `watch` looks for it by itself: one sat
+# unseen for six minutes the first time (2026-11-20).
+QUESTION = re.compile(r"^\s*\? \d+ questions?\s*$", re.M)
 WORKING = re.compile(r"Working \(\d|esc to interrupt")
 # Lines that change while nothing else does: the timer, the status line.
 VOLATILE = re.compile(r"Working \(|esc to interrupt|Context \d+% left|weekly \d+% left|^\s*[←?].*shortcuts|f2 to view")
@@ -122,6 +131,12 @@ def state(name):
     if WORKING.search(tail):
         return "working"
     return "idle"
+
+
+def queued_question(name):
+    """Whether it has a question queued for the lead."""
+    tail = "\n".join((screen(name) or "").splitlines()[-30:])
+    return "Queued follow-up inputs" in tail and bool(QUESTION.search(tail))
 
 
 def progress(name):
@@ -298,6 +313,12 @@ def watch(stuck_min):
                     alerts.append((n, said, screen(n, 40)))
             if st != "idle":
                 idle_since.pop(n, None)
+            # (A question queued while it works: said once, until it's
+            # looked at, `agents question`.)
+            if st in ("working", "idle") and queued_question(n) and not m.get("question_told"):
+                m["question_told"] = True
+                save_meta(n, m)
+                alerts.append((n, f"has a question for you (tools/dev/agents question {n})", screen(n, 14)))
             if st == "working":
                 p = progress(n)
                 t, was = last.get(n, (time.time(), p))
@@ -356,6 +377,35 @@ def say(name, text):
     print(f"agents: said to {name}")
 
 
+def question(name, choice):
+    """Its queued question, shown; with a choice, answered."""
+    refuse_nested()
+    if not queued_question(name):
+        sys.exit(f"agents: {name} has no question queued")
+    target = f"={name}:0.0"
+    tmux("send-keys", "-t", target, "S-Left", check=True)
+    time.sleep(1.2)
+    lines = (screen(name) or "").splitlines()
+    at = max((i for i, l in enumerate(lines) if "Queued follow-up inputs" in l), default=max(0, len(lines) - 16))
+    print("\n".join(l for l in lines[at:] if l.strip()))
+    if choice is None:
+        # (Back to its prompt, the question left queued.)
+        tmux("send-keys", "-t", target, "S-Right", check=True)
+        print(f"agents: answer with `agents question {name} N`")
+        return
+    for _ in range(max(0, choice - 1)):
+        tmux("send-keys", "-t", target, "Down", check=True)
+        time.sleep(0.15)
+    tmux("send-keys", "-t", target, "C-m", check=True)
+    time.sleep(0.5)
+    m = meta(name)
+    if m:
+        m.pop("question_told", None)
+        save_meta(name, m)
+    seen(name)
+    print(f"agents: took choice {choice} for {name}")
+
+
 def approve(name, how):
     refuse_nested()
     if state(name) != "asking":
@@ -409,6 +459,8 @@ def main():
         log(rest[0])
     elif cmd == "say" and len(rest) >= 2:
         say(rest[0], " ".join(rest[1:]))
+    elif cmd == "question" and rest:
+        question(rest[0], int(rest[1]) if len(rest) > 1 and rest[1].isdigit() else None)
     elif cmd == "approve" and rest:
         approve(rest[0], rest[1] if len(rest) > 1 else "y")
     elif cmd == "stop" and rest:

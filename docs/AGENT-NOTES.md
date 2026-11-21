@@ -1216,6 +1216,17 @@ Learned on the second pass (2026-11-20):
   weren't shown, and a spin in a root service that had been there for days. Nothing
   reviewed so is pushed before its findings are
   dealt with.
+- **A Codex agent can ask while it works on**: "Queued follow-up
+  inputs", "? 1 question" at the foot of its screen, and neither
+  `agents list` nor (until 2026-11-20) `agents watch` said so: one sat
+  six minutes. `tools/dev/agents question NAME [N]` now; `watch`
+  returns for it. And its status line's "weekly N% left" is the
+  account's allowance: at 0% it may stop mid-task.
+- **A new crate for an agent needs its Cargo.toml first** (`agents
+  start` refuses a folder that isn't a crate): a stub that builds,
+  then start it. Its dependencies change Cargo.lock in the shared
+  tree, which the push hook counts as dirty: push before it starts,
+  or once its work is in.
 - **A kit program loads one Vulkan driver** (the GPU's the computer
   started on, handed to the loader: HACKING, "One Vulkan driver,
   handed to the loader"). To have the loader ask every driver again,

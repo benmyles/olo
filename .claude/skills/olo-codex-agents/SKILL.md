@@ -68,6 +68,7 @@ tools/dev/agents list                        # each: crate, state, since when
 tools/dev/agents peek NAME [LINES]           # its screen
 tools/dev/agents say NAME "…"                # answer, steer
 tools/dev/agents approve NAME y|p|no         # an approval it asks you for
+tools/dev/agents question NAME [N]           # a question it queued while working: shown; N takes its Nth choice
 tools/dev/agents stop NAME                   # end it; its folder stays
 tools/dev/agents forget NAME                 # remove its folder
 tools/dev/agents attach NAME                 # what the person runs to watch it
@@ -89,6 +90,12 @@ tools/dev/agents attach NAME                 # what the person runs to watch it
   from then on) or `no` (then `say` what to do instead). Never approve a
   push, a commit, anything on the person's session, deletion outside its
   crate, sudo, or what its rules forbid.
+- **Questions.** Codex can put a question to you and go on working
+  meanwhile ("Queued follow-up inputs", "? 1 question" at the foot of
+  its screen): `watch` returns for it; `agents question NAME` shows it
+  with its choices, `agents question NAME N` takes one, and `say` adds
+  whatever the choice doesn't cover. Answer soon: it works on, on a
+  guess, until you do.
 - **Steer** with `say`: a correction, an answer, "stop and report". It
   reads it at its next step.
 - **Stay out of its crate** while it works; your own work goes on
@@ -130,7 +137,9 @@ When it says DONE:
   `WAYLAND_DISPLAY` and `OLO_SOCKET` unset (nothing it runs can reach
   the person's screen). `tools/dev/agents`, `codex-help` and
   `codex-look` refuse to run with `OLO_SUBAGENT` set.
-- What the watcher reads: "Working (…esc to interrupt)" while it works;
+- What the watcher reads: "Queued follow-up inputs" with "? N question"
+  for a question put while it works (its state stays working);
+  "Working (…esc to interrupt)" while it works;
   "Would you like to …" and "Press enter to confirm or esc to cancel"
   when it asks; neither, after "Worked for …", when its turn is over.
 - Text typed into it arrives as a paste: an Enter in the same burst is a
