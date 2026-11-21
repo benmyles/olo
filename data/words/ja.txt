@@ -436,7 +436,7 @@ A script of {} failed (code {}).
 A setting comes before any [repository].
 最初の[repository]より前に設定があります。
 
-A terminal’s job busy for a minute and more is lowered too. Batch scheduling and idle I/O are put back when this is turned off; a raised nice stays until the program ends.
+A terminal job that stays busy for a minute or more is lowered too. Turning this off puts back batch scheduling and idle I/O; the nice value stays until the program ends.
 Terminalで1分以上動き続けたジョブも優先度を下げます。オフにするとスケジューリングとI/O優先度は元に戻ります。上げたnice値はプログラムの終了まで維持します。
 
 A thick line
@@ -801,6 +801,9 @@ All lines around the selected one. {}
 
 All of Olo’s {} words are in {}.
 Oloの全{0}項目を{1}で利用できます。
+
+All these settings are for the whole computer, so changing one asks for an administrator's password.
+これらの設定はすべてコンピューター全体のものなので、変更には管理者のパスワードが必要です。
 
 All waiting
 すべて待機中
@@ -1872,6 +1875,9 @@ Check for Updates
 
 Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
 選択したバックアップを簡易検証します。必要なデータが揃っているか調べ、保存先と送信時のチェックサムを比較します。各バックアップの直後と同じように、一部を読み戻して確認し、破損があれば可能な範囲で修復します。
+
+Checked
+確認済み
 
 Checking for updates…
 アップデートを確認中…
@@ -4408,6 +4414,9 @@ Held by builds
 Held by the server
 サーバー側で待機
 
+Here
+ここ
+
 Hidden and ignored files
 隠しファイルと無視対象のファイル
 
@@ -4776,6 +4785,9 @@ Integrated GPU (VA-API)
 
 Integrations
 連携
+
+Intel
+Intel
 
 Intel GPU (VA-API)
 Intel GPU（VA-API）
@@ -5755,6 +5767,9 @@ Match:
 Max
 最大
 
+May wait
+待機可能
+
 Maybe
 未定
 
@@ -6295,6 +6310,9 @@ New Windows Open In
 New Worktree…
 新しいワークツリー…
 
+New connections
+新しい接続
+
 New description
 新しい説明
 
@@ -6372,6 +6390,9 @@ Next column width (Scrolling)
 
 Next day, week or month
 次の日、週、または月
+
+Next start
+次回起動時
 
 Next step
 次の手順
@@ -7080,6 +7101,9 @@ On disk
 
 On hold
 保留中
+
+On it now
+現在使用中
 
 On the day, at 9 AM
 当日の午前9時
@@ -9343,6 +9367,9 @@ Size:
 Skip this step
 この手順をスキップ
 
+Sleep
+スリープ
+
 Sleet
 みぞれ
 
@@ -9597,6 +9624,9 @@ Steady snow
 
 Step {} of {}
 手順 {} / {}
+
+Still going after {}. Other fixes wait until it's done; if it never finishes, restarting the computer stops it.
+{}経過しても続いています。ほかの修正は完了を待っています。終わらない場合は、コンピュータを再起動すると止まります。
 
 Stop
 停止
@@ -10324,6 +10354,9 @@ The password of “{}” couldn’t be kept: {}
 The passwords file is damaged: {}
 パスワードファイルが破損しています：{}
 
+The patch
+パッチ
+
 The phone didn’t connect. Is it unlocked, with Bluetooth on?
 電話に接続できませんでした。ロックが解除され、Bluetoothがオンになっていますか？
 
@@ -10477,6 +10510,9 @@ The {} wasn't changed: an administrator's password is needed.
 Their new windows open there, on the display they open on. Uncheck an app to open its windows where you are again.
 これらのアプリの新しいウィンドウは、起動した画面の指定ワークスペースに開きます。チェックを外すと現在のワークスペースに開くようになります。
 
+Their round trip
+往復時間
+
 Their windows float over the tiles, and over the window Focus shows. Uncheck an app to tile its windows again.
 これらのアプリはタイルの手前に表示され、フォーカスモードでも前面に残ります。チェックを外すと再びタイル表示になります。
 
@@ -10530,9 +10566,6 @@ These apps may have these items whenever they ask. Take one back and the app is 
 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 これらの機能にはBluetoothでAirPodsを検出する設定が必要です。Olo Doctorで有効にできます。
-
-All these settings are for the whole computer, so changing one asks for an administrator's password.
-これらの設定はすべてコンピューター全体のものなので、変更には管理者のパスワードが必要です。
 
 ThinkPad
 ThinkPad
@@ -11524,6 +11557,9 @@ Waiting
 Waiting for Ethernet
 有線LAN接続待ち
 
+Waiting for another fix to finish…
+ほかの修正の完了を待っています…
+
 Waiting for app_server…
 app_serverを待機中…
 
@@ -11550,6 +11586,9 @@ Waiting for you to sign in to Google in the browser…
 
 Waiting for “{}” to allow it (its switches for this computer, in its Bluetooth settings).
 「{}」の許可を待っています。端末のBluetooth設定で、このコンピューターへのアクセスを許可してください。
+
+Waiting now
+現在待機中
 
 Waiting: {}
 待機中：{}
@@ -11734,12 +11773,6 @@ When am I free tomorrow?
 When does the sun rise tomorrow?
 明日の日の出は何時ですか？
 
-With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
-オンにすると、ビジーなプログラムは{}ではなく0.7 msで待機中のプログラムに譲ります（base slice）。現在は{}がスケジューリングしており、それ自身が決めています。
-
-With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
-オンにすると、ビジーなプログラムは{}ではなく0.7 msで待機中のプログラムに譲るため、負荷が高くてもウィンドウや入力が遅れません（base slice）。
-
 When held for:
 長押し時間:
 
@@ -11916,6 +11949,12 @@ AirPods使用時:
 
 With Another Window
 ほかのウィンドウと並べる
+
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
+オンにすると、ビジーなプログラムは{}ではなく0.7 msで待機中のプログラムに譲ります（base slice）。現在は{}がスケジューリングしており、それ自身が決めています。
+
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
+オンにすると、ビジーなプログラムは{}ではなく0.7 msで待機中のプログラムに譲るため、負荷が高くてもウィンドウや入力が遅れません（base slice）。
 
 Withdrawn by {}
 {}が取り消しました
@@ -12261,6 +12300,12 @@ ceiling {}%
 
 charging, full in {}
 充電中、満充電まで{}
+
+compile going on
+件のコンパイルを実行中
+
+compiles going on
+件のコンパイルを実行中
 
 couldn't save the boost: {}
 ゲインを保存できません：{}
@@ -13824,6 +13869,9 @@ RAMの{}%
 
 ~/worktrees
 ~/worktrees
+
+·
+·
 
 ¼ Second
 0.25秒

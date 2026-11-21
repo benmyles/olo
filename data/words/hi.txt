@@ -438,7 +438,7 @@ A script of {} failed (code {}).
 A setting comes before any [repository].
 पहले [repository] खंड से पहले एक सेटिंग लिखी है।
 
-A terminal’s job busy for a minute and more is lowered too. Batch scheduling and idle I/O are put back when this is turned off; a raised nice stays until the program ends.
+A terminal job that stays busy for a minute or more is lowered too. Turning this off puts back batch scheduling and idle I/O; the nice value stays until the program ends.
 टर्मिनल में एक मिनट या अधिक समय से व्यस्त काम की प्राथमिकता भी घटती है। इसे बंद करने पर बैच शेड्यूलिंग और निष्क्रिय I/O सामान्य हो जाते हैं। बढ़ा हुआ nice मान प्रोग्राम बंद होने तक रहता है।
 
 A thick line
@@ -805,6 +805,9 @@ All lines around the selected one. {}
 
 All of Olo’s {} words are in {}.
 Olo के सभी {0} संदेश {1} में उपलब्ध हैं।
+
+All these settings are for the whole computer, so changing one asks for an administrator's password.
+ये सभी सेटिंग पूरे कंप्यूटर की हैं, इसलिए किसी को बदलने पर व्यवस्थापक का पासवर्ड पूछा जाता है।
 
 All waiting
 सभी प्रतीक्षा में
@@ -1879,6 +1882,9 @@ Check for Updates
 
 Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
 चुने हुए बैकअप की जल्दी जाँच करें। ज़रूरी डेटा मौजूद है या नहीं देखें, भेजे गए डेटा से चेकसम मिलाएँ और कुछ नमूने वापस पढ़ें, जैसे हर बैकअप के बाद होता है। जहाँ संभव हो, क्षतिग्रस्त डेटा ठीक किया जाएगा।
+
+Checked
+जाँचा गया
 
 Checking for updates…
 अपडेट जाँचे जा रहे हैं…
@@ -4423,6 +4429,9 @@ Held by builds
 Held by the server
 सर्वर की सीमा से रुका
 
+Here
+यहाँ
+
 Hidden and ignored files
 छिपी और अनदेखी फ़ाइलें
 
@@ -4794,6 +4803,9 @@ Integrated GPU (VA-API)
 
 Integrations
 एकीकरण
+
+Intel
+Intel
 
 Intel GPU (VA-API)
 Intel GPU (VA-API)
@@ -5775,6 +5787,9 @@ Match:
 Max
 अधिकतम
 
+May wait
+प्रतीक्षा कर सकता है
+
 Maybe
 शायद
 
@@ -6315,6 +6330,9 @@ New Windows Open In
 New Worktree…
 नई वर्कट्री…
 
+New connections
+नए कनेक्शन
+
 New description
 नया विवरण
 
@@ -6392,6 +6410,9 @@ Next column width (Scrolling)
 
 Next day, week or month
 अगला दिन, सप्ताह या महीना
+
+Next start
+अगली शुरुआत
 
 Next step
 अगला चरण
@@ -7100,6 +7121,9 @@ On disk
 
 On hold
 होल्ड पर
+
+On it now
+अभी इस पर
 
 On the day, at 9 AM
 उसी दिन सुबह 9 बजे
@@ -9366,6 +9390,9 @@ Size:
 Skip this step
 यह चरण छोड़ें
 
+Sleep
+स्लीप
+
 Sleet
 बर्फ़-मिश्रित बारिश
 
@@ -9622,6 +9649,9 @@ Steady snow
 
 Step {} of {}
 चरण {} / {}
+
+Still going after {}. Other fixes wait until it's done; if it never finishes, restarting the computer stops it.
+{} के बाद भी जारी है। बाकी सुधार इसके पूरा होने तक रुके हैं। अगर यह कभी पूरा न हो, तो कंप्यूटर रीस्टार्ट करने पर रुक जाएगा।
 
 Stop
 रोकें
@@ -10349,6 +10379,9 @@ The password of “{}” couldn’t be kept: {}
 The passwords file is damaged: {}
 पासवर्ड फ़ाइल क्षतिग्रस्त है: {}
 
+The patch
+पैच
+
 The phone didn’t connect. Is it unlocked, with Bluetooth on?
 फ़ोन नहीं जुड़ा। क्या वह अनलॉक है और उसका Bluetooth चालू है?
 
@@ -10502,6 +10535,9 @@ The {} wasn't changed: an administrator's password is needed.
 Their new windows open there, on the display they open on. Uncheck an app to open its windows where you are again.
 इन ऐप की नई विंडो अपने डिस्प्ले के उसी कार्यक्षेत्र में खुलेंगी। वर्तमान कार्यक्षेत्र में फिर खोलने के लिए ऐप का चयन हटाएँ।
 
+Their round trip
+उनका आने-जाने का समय
+
 Their windows float over the tiles, and over the window Focus shows. Uncheck an app to tile its windows again.
 इनकी विंडो टाइलों और फ़ोकस की विंडो के ऊपर तैरती हैं। फिर टाइल करने के लिए ऐप का चयन हटाएँ।
 
@@ -10555,9 +10591,6 @@ These apps may have these items whenever they ask. Take one back and the app is 
 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 इन सुविधाओं के लिए Bluetooth का AirPods को सुनना ज़रूरी है। Olo Doctor इसे चालू कर सकता है।
-
-All these settings are for the whole computer, so changing one asks for an administrator's password.
-ये सभी सेटिंग पूरे कंप्यूटर की हैं, इसलिए किसी को बदलने पर व्यवस्थापक का पासवर्ड पूछा जाता है।
 
 ThinkPad
 ThinkPad
@@ -11549,6 +11582,9 @@ Waiting
 Waiting for Ethernet
 ईथरनेट की प्रतीक्षा
 
+Waiting for another fix to finish…
+दूसरे सुधार के पूरा होने की प्रतीक्षा…
+
 Waiting for app_server…
 app_server की प्रतीक्षा…
 
@@ -11575,6 +11611,9 @@ Waiting for you to sign in to Google in the browser…
 
 Waiting for “{}” to allow it (its switches for this computer, in its Bluetooth settings).
 “{}” की अनुमति की प्रतीक्षा। उसकी Bluetooth सेटिंग में इस कंप्यूटर के लिए विकल्प देखें।
+
+Waiting now
+अभी प्रतीक्षा में
 
 Waiting: {}
 प्रतीक्षा में: {}
@@ -11759,12 +11798,6 @@ When am I free tomorrow?
 When does the sun rise tomorrow?
 कल सूरज कब निकलेगा?
 
-With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
-इसे चालू करने पर, व्यस्त प्रोग्राम {} के बजाय 0.7 ms बाद प्रतीक्षा कर रहे प्रोग्राम को जगह देता है (base slice)। अभी {} शेड्यूल कर रहा है और यह खुद तय करता है।
-
-With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
-इसे चालू करने पर, व्यस्त प्रोग्राम {} के बजाय 0.7 ms बाद प्रतीक्षा कर रहे प्रोग्राम को जगह देता है, ताकि भारी लोड में भी विंडो और टाइपिंग साथ चलें (base slice)।
-
 When held for:
 इतनी देर दबाने पर:
 
@@ -11941,6 +11974,12 @@ AirPods के साथ:
 
 With Another Window
 दूसरी विंडो के साथ
+
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
+इसे चालू करने पर, व्यस्त प्रोग्राम {} के बजाय 0.7 ms बाद प्रतीक्षा कर रहे प्रोग्राम को जगह देता है (base slice)। अभी {} शेड्यूल कर रहा है और यह खुद तय करता है।
+
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
+इसे चालू करने पर, व्यस्त प्रोग्राम {} के बजाय 0.7 ms बाद प्रतीक्षा कर रहे प्रोग्राम को जगह देता है, ताकि भारी लोड में भी विंडो और टाइपिंग साथ चलें (base slice)।
 
 Withdrawn by {}
 {} ने वापस लिया
@@ -12287,6 +12326,12 @@ ceiling {}%
 
 charging, full in {}
 चार्ज हो रहा है, {} में पूरा होगा
+
+compile going on
+कंपाइल जारी है
+
+compiles going on
+कंपाइल जारी हैं
 
 couldn't save the boost: {}
 आवाज़ का बूस्ट सहेज नहीं सके: {}
@@ -13916,6 +13961,9 @@ RAM का {}%
 
 ~/worktrees
 ~/worktrees
+
+·
+·
 
 ¼ Second
 चौथाई सेकंड

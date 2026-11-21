@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-20
 
+### Preferences ▸ Performance: what depends on Lower background work sits under it
+
+*20:25* — The note about a terminal's job is right under its check box; the slider and the Background list are set in under the check box's label and greyed together with it off.
+
+![Preferences ▸ Performance: what depends on Lower background work sits under it](2026-11-20/202544-preferences-performance-what-depends-on-lower-ba.png)
+
+### Kit: a control that can't be used is dimmed once
+
+*20:25* — Before (left) and after: a disabled check box, button and menu field were dimmed twice (their own grey, then the element layer's fade) and came out fainter than a disabled field beside them; now each is drawn as when enabled and faded once, and the disabled text colour is that same half, so all are one grey. A disabled slider's filled part is the track's grey; a field whose text is wider than it ends in an ellipsis at a whole word while it isn't edited; the example's buttons sit on one middle.
+
+![Kit: a control that can't be used is dimmed once](2026-11-20/202542-kit-a-control-that-can-t-be-used-is-dimmed-once.png)
+
 ### Olo Doctor: NVIDIA's unseen console, said plainly
 
 *17:57* — The card that offers to turn off the console NVIDIA's driver keeps on a card with no screen: what it is and what turning it off does, in words read once (both reviewers: 'giving that console back' and 'the fix has it take no console' read like the code), without the option file's path, and saying when it takes effect. It claims no more than before: one of the steps where the driver can get stuck.

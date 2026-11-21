@@ -442,7 +442,7 @@ A script of {} failed (code {}).
 A setting comes before any [repository].
 Параметр указан до первого раздела [repository].
 
-A terminal’s job busy for a minute and more is lowered too. Batch scheduling and idle I/O are put back when this is turned off; a raised nice stays until the program ends.
+A terminal job that stays busy for a minute or more is lowered too. Turning this off puts back batch scheduling and idle I/O; the nice value stays until the program ends.
 Приоритет задачи терминала тоже снижается, если она занята минуту или дольше. При отключении этой настройки планирование и приоритет ввода-вывода восстанавливаются. Повышенное значение nice сохраняется до выхода из программы.
 
 A thick line
@@ -813,6 +813,9 @@ All lines around the selected one. {}
 
 All of Olo’s {} words are in {}.
 Все строки Olo ({0}) доступны на языке «{1}».
+
+All these settings are for the whole computer, so changing one asks for an administrator's password.
+Все эти настройки относятся ко всему компьютеру, поэтому для их изменения запрашивается пароль администратора.
 
 All waiting
 Все ожидают
@@ -1893,6 +1896,9 @@ Check for Updates
 
 Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
 Быстрая проверка выбранных копий: все ли данные на месте, совпадают ли контрольные суммы с исходными, читаются ли отдельные образцы. Та же проверка выполняется после каждого копирования. При возможности повреждения исправляются.
+
+Checked
+Проверено
 
 Checking for updates…
 Поиск обновлений…
@@ -4453,6 +4459,9 @@ Held by builds
 Held by the server
 Ограничено сервером
 
+Here
+Здесь
+
 Hidden and ignored files
 Скрытые и игнорируемые файлы
 
@@ -4830,6 +4839,9 @@ Integrated GPU (VA-API)
 
 Integrations
 Интеграции
+
+Intel
+Intel
 
 Intel GPU (VA-API)
 Intel GPU (VA-API)
@@ -5815,6 +5827,9 @@ Match:
 Max
 Макс
 
+May wait
+Может ждать
+
 Maybe
 Возможно
 
@@ -6355,6 +6370,9 @@ New Windows Open In
 New Worktree…
 Новое рабочее дерево…
 
+New connections
+Новые соединения
+
 New description
 Новое описание
 
@@ -6432,6 +6450,9 @@ Next column width (Scrolling)
 
 Next day, week or month
 Следующий день, неделя или месяц
+
+Next start
+Следующий запуск
 
 Next step
 Следующий шаг
@@ -7140,6 +7161,9 @@ On disk
 
 On hold
 Ожидание
+
+On it now
+Сейчас используют
 
 On the day, at 9 AM
 В день выполнения, в 9:00
@@ -9412,6 +9436,9 @@ Size:
 Skip this step
 Пропустить этот шаг
 
+Sleep
+Сон
+
 Sleet
 Мокрый снег
 
@@ -9672,6 +9699,9 @@ Steady snow
 
 Step {} of {}
 Шаг {} из {}
+
+Still going after {}. Other fixes wait until it's done; if it never finishes, restarting the computer stops it.
+Всё ещё выполняется спустя {}. Остальные исправления ждут его завершения; если оно так и не завершится, его остановит перезагрузка компьютера.
 
 Stop
 Остановить
@@ -10399,6 +10429,9 @@ The password of “{}” couldn’t be kept: {}
 The passwords file is damaged: {}
 Файл паролей повреждён: {}
 
+The patch
+Патч
+
 The phone didn’t connect. Is it unlocked, with Bluetooth on?
 Телефон не подключился. Он разблокирован, Bluetooth включён?
 
@@ -10552,6 +10585,9 @@ The {} wasn't changed: an administrator's password is needed.
 Their new windows open there, on the display they open on. Uncheck an app to open its windows where you are again.
 Новые окна этих приложений открываются в назначенном пространстве на своём экране. Снимите отметку, чтобы окна снова открывались там, где вы работаете.
 
+Their round trip
+Их время туда и обратно
+
 Their windows float over the tiles, and over the window Focus shows. Uncheck an app to tile its windows again.
 Окна этих приложений располагаются поверх мозаики и окна в режиме фокуса. Снимите отметку, чтобы снова укладывать окна приложения в мозаику.
 
@@ -10605,9 +10641,6 @@ These apps may have these items whenever they ask. Take one back and the app is 
 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 Для этих функций Bluetooth должен прослушивать сигналы AirPods. Это можно включить в Olo Doctor.
-
-All these settings are for the whole computer, so changing one asks for an administrator's password.
-Все эти настройки относятся ко всему компьютеру, поэтому для их изменения запрашивается пароль администратора.
 
 ThinkPad
 ThinkPad
@@ -11599,6 +11632,9 @@ Waiting
 Waiting for Ethernet
 Ожидание Ethernet
 
+Waiting for another fix to finish…
+Ожидание завершения другого исправления…
+
 Waiting for app_server…
 Ожидание app_server…
 
@@ -11625,6 +11661,9 @@ Waiting for you to sign in to Google in the browser…
 
 Waiting for “{}” to allow it (its switches for this computer, in its Bluetooth settings).
 Ожидание разрешения от «{}». Проверьте переключатели для этого компьютера в настройках Bluetooth устройства.
+
+Waiting now
+Сейчас ожидает
 
 Waiting: {}
 Ожидание: {}
@@ -11809,12 +11848,6 @@ When am I free tomorrow?
 When does the sun rise tomorrow?
 Во сколько завтра восход?
 
-With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
-Если включено, занятая программа уступает ожидающей через 0,7 мс вместо {} (base slice). Сейчас планирует {} и решает это сам.
-
-With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
-Если включено, занятая программа уступает ожидающей через 0,7 мс вместо {}, так что окна и ввод не отстают и под нагрузкой (base slice).
-
 When held for:
 При удержании:
 
@@ -11991,6 +12024,12 @@ With AirPods:
 
 With Another Window
 С другим окном
+
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
+Если включено, занятая программа уступает ожидающей через 0,7 мс вместо {} (base slice). Сейчас планирует {} и решает это сам.
+
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
+Если включено, занятая программа уступает ожидающей через 0,7 мс вместо {}, так что окна и ввод не отстают и под нагрузкой (base slice).
 
 Withdrawn by {}
 Отозвано приложением {}
@@ -12339,6 +12378,12 @@ ceiling {}%
 
 charging, full in {}
 заряжается, до полной зарядки {}
+
+compile going on
+компиляция выполняется
+
+compiles going on
+компиляций выполняется
 
 couldn't save the boost: {}
 не удалось сохранить усиление: {}
@@ -14100,6 +14145,9 @@ other: {n} недели
 
 ~/worktrees
 ~/worktrees
+
+·
+·
 
 ¼ Second
 ¼ секунды

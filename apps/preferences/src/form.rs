@@ -254,12 +254,24 @@ impl<'a, 'b, 'c> Ui<'a, 'b, 'c> {
         self.add(StringView::new(text).dim(!enabled));
     }
 
+    /// What `build` adds, set in under a check box by as much as its
+    /// label is: what depends on that check box (a slider, a field,
+    /// another check box that only means something with it on).
+    pub fn indented(&mut self, build: impl FnOnce(&mut Self)) {
+        let items = self.collect(build);
+        self.add(div().pl(px(m::MARK_SIZE + m::MARK_GAP)).flex().flex_col().gap(px(m::STACK)).children(items));
+    }
+
     /// A note under a control: dim, wrapped, closer to the control it's
-    /// about (`TIGHT`) than to what follows (`STACK`).
+    /// about (`TIGHT`) than to what follows (`STACK`). Where its control
+    /// can't be used it is as grey as the control's own words (it stood
+    /// out under a greyed check box as the darkest thing in the group: a
+    /// reviewer's eye, 2026-11-20).
     pub fn note(&mut self, text: impl Into<SharedString>) {
         // (The first in its box has no control to be close to.)
         let pull = if self.items.is_empty() { 0.0 } else { m::TIGHT - m::STACK };
-        self.add(div().mt(px(pull)).child(StringView::new(text).dim(true).wrap(true)));
+        let words = if self.enabled { StringView::new(text).dim(true) } else { StringView::new(text).color(olo_kit::style::disabled_text(&olo_kit::theme::palette())) };
+        self.add(div().mt(px(pull)).child(words.wrap(true)));
     }
 
     pub fn check(&mut self, label: impl Into<SharedString>, on: bool, set: impl Fn(&mut Settings, bool) + 'static) {

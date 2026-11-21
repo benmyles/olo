@@ -436,7 +436,7 @@ A script of {} failed (code {}).
 A setting comes before any [repository].
 [repository] 구역 앞에 설정이 있습니다.
 
-A terminal’s job busy for a minute and more is lowered too. Batch scheduling and idle I/O are put back when this is turned off; a raised nice stays until the program ends.
+A terminal job that stays busy for a minute or more is lowered too. Turning this off puts back batch scheduling and idle I/O; the nice value stays until the program ends.
 터미널에서 1분 이상 바쁘게 실행된 작업의 우선순위도 낮춥니다. 이 옵션을 끄면 배치 스케줄링과 유휴 I/O는 원래대로 돌아갑니다. 높아진 nice 값은 프로그램이 끝날 때까지 유지됩니다.
 
 A thick line
@@ -801,6 +801,9 @@ All lines around the selected one. {}
 
 All of Olo’s {} words are in {}.
 Olo 문구 {0}개 모두 {1}(으)로 제공됩니다.
+
+All these settings are for the whole computer, so changing one asks for an administrator's password.
+이 설정은 모두 컴퓨터 전체에 적용되므로 변경하려면 관리자 암호가 필요합니다.
 
 All waiting
 모두 대기 중
@@ -1872,6 +1875,9 @@ Check for Updates
 
 Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
 선택한 백업의 무결성을 빠르게 검사합니다. 필요한 데이터가 모두 있는지 확인하고 저장소의 체크섬을 전송 당시 값과 비교한 뒤, 매번 백업 후에 하듯 일부를 다시 읽습니다. 손상된 부분은 가능한 만큼 복구합니다.
+
+Checked
+확인됨
 
 Checking for updates…
 업데이트 확인 중…
@@ -4408,6 +4414,9 @@ Held by builds
 Held by the server
 서버가 점유
 
+Here
+여기
+
 Hidden and ignored files
 숨김 및 무시된 파일
 
@@ -4776,6 +4785,9 @@ Integrated GPU (VA-API)
 
 Integrations
 연동
+
+Intel
+Intel
 
 Intel GPU (VA-API)
 Intel GPU (VA-API)
@@ -5755,6 +5767,9 @@ Match:
 Max
 최대
 
+May wait
+대기 가능
+
 Maybe
 미정
 
@@ -6295,6 +6310,9 @@ New Windows Open In
 New Worktree…
 새 작업 트리…
 
+New connections
+새 연결
+
 New description
 새 설명
 
@@ -6372,6 +6390,9 @@ Next column width (Scrolling)
 
 Next day, week or month
 다음 일, 주 또는 월
+
+Next start
+다음 시작
 
 Next step
 다음 단계
@@ -7080,6 +7101,9 @@ On disk
 
 On hold
 보류
+
+On it now
+지금 사용 중
 
 On the day, at 9 AM
 마감 당일 오전 9시
@@ -9343,6 +9367,9 @@ Size:
 Skip this step
 이 단계 건너뛰기
 
+Sleep
+잠자기
+
 Sleet
 진눈깨비
 
@@ -9597,6 +9624,9 @@ Steady snow
 
 Step {} of {}
 {1}단계 중 {0}단계
+
+Still going after {}. Other fixes wait until it's done; if it never finishes, restarting the computer stops it.
+{}이 지나도 계속 진행 중입니다. 다른 수정은 이 작업이 끝날 때까지 기다립니다. 끝나지 않으면 컴퓨터를 재시동하면 멈춥니다.
 
 Stop
 중지
@@ -10324,6 +10354,9 @@ The password of “{}” couldn’t be kept: {}
 The passwords file is damaged: {}
 암호 파일이 손상되었습니다: {}
 
+The patch
+패치
+
 The phone didn’t connect. Is it unlocked, with Bluetooth on?
 휴대전화가 연결되지 않았습니다. 잠금이 해제되어 있고 Bluetooth가 켜져 있나요?
 
@@ -10477,6 +10510,9 @@ The {} wasn't changed: an administrator's password is needed.
 Their new windows open there, on the display they open on. Uncheck an app to open its windows where you are again.
 새 창은 창이 열리는 디스플레이의 지정한 작업 공간에 표시됩니다. 선택을 해제하면 현재 작업 공간에 다시 열립니다.
 
+Their round trip
+왕복 시간
+
 Their windows float over the tiles, and over the window Focus shows. Uncheck an app to tile its windows again.
 해당 앱의 창은 타일 창과 집중 모드의 창 위에 떠 있습니다. 선택을 해제하면 다시 타일로 배치합니다.
 
@@ -10530,9 +10566,6 @@ These apps may have these items whenever they ask. Take one back and the app is 
 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 이 기능에는 Bluetooth의 AirPods 감지가 필요합니다. Olo Doctor에서 켤 수 있습니다.
-
-All these settings are for the whole computer, so changing one asks for an administrator's password.
-이 설정은 모두 컴퓨터 전체에 적용되므로 변경하려면 관리자 암호가 필요합니다.
 
 ThinkPad
 ThinkPad
@@ -11524,6 +11557,9 @@ Waiting
 Waiting for Ethernet
 이더넷 연결 대기 중
 
+Waiting for another fix to finish…
+다른 수정이 끝나기를 기다리는 중…
+
 Waiting for app_server…
 app_server 대기 중…
 
@@ -11550,6 +11586,9 @@ Waiting for you to sign in to Google in the browser…
 
 Waiting for “{}” to allow it (its switches for this computer, in its Bluetooth settings).
 ‘{}’의 허용 대기 중(Bluetooth 설정에서 이 컴퓨터의 옵션을 켜세요).
+
+Waiting now
+지금 대기 중
 
 Waiting: {}
 대기 중: {}
@@ -11734,12 +11773,6 @@ When am I free tomorrow?
 When does the sun rise tomorrow?
 내일 해는 언제 뜨나요?
 
-With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
-켜면 바쁜 프로그램이 {} 대신 0.7ms 후에 대기 중인 프로그램에 양보합니다(base slice). 지금은 {}이(가) 스케줄링하며 이를 직접 결정합니다.
-
-With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
-켜면 바쁜 프로그램이 {} 대신 0.7ms 후에 대기 중인 프로그램에 양보하므로 부하가 걸려도 윈도우와 입력이 밀리지 않습니다(base slice).
-
 When held for:
 길게 누르는 시간:
 
@@ -11916,6 +11949,12 @@ AirPods 사용 시:
 
 With Another Window
 다른 창과 함께
+
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
+켜면 바쁜 프로그램이 {} 대신 0.7ms 후에 대기 중인 프로그램에 양보합니다(base slice). 지금은 {}이(가) 스케줄링하며 이를 직접 결정합니다.
+
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
+켜면 바쁜 프로그램이 {} 대신 0.7ms 후에 대기 중인 프로그램에 양보하므로 부하가 걸려도 윈도우와 입력이 밀리지 않습니다(base slice).
 
 Withdrawn by {}
 {}에서 철회함
@@ -12261,6 +12300,12 @@ ceiling {}%
 
 charging, full in {}
 충전 중, {} 후 완충
+
+compile going on
+개 컴파일 진행 중
+
+compiles going on
+개 컴파일 진행 중
 
 couldn't save the boost: {}
 증폭 설정을 저장할 수 없음: {}
@@ -13824,6 +13869,9 @@ RAM의 {}%
 
 ~/worktrees
 ~/worktrees
+
+·
+·
 
 ¼ Second
 0.25초

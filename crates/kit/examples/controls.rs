@@ -3,7 +3,7 @@
 
 use olo_kit::{
     Child, Cx, Element, InteractiveElement as _, Menu, MenuBar, MouseButton, ParentElement as _, Styled as _, View, WindowOptions, div, menu, metrics as m, px,
-    widgets::{BBox, Button, CheckBox, LinkButton, MenuField, RadioButton, StringView, TextControl, TextField, TextFieldEvent, heading, separator, text_field},
+    widgets::{BBox, Button, CheckBox, LinkButton, MenuField, RadioButton, Slider, StringView, TextControl, TextField, TextFieldEvent, heading, separator, text_field},
 };
 
 struct Controls {
@@ -12,6 +12,7 @@ struct Controls {
     radio: usize,
     clicks: u32,
     speed: usize,
+    level: f32,
     name: Child<TextField>,
     hinted: Child<TextField>,
     off: Child<TextField>,
@@ -26,6 +27,7 @@ enum Msg {
     Sound(bool),
     Radio(usize),
     Speed(usize),
+    Level(f32),
     Click,
 }
 
@@ -38,6 +40,7 @@ impl View for Controls {
             Msg::Sound(on) => self.sound = on,
             Msg::Radio(i) => self.radio = i,
             Msg::Speed(i) => self.speed = i,
+            Msg::Level(v) => self.level = v,
             Msg::Click => self.clicks += 1,
         }
         cx.invalidate();
@@ -113,6 +116,7 @@ impl Controls {
                 div()
                     .mt(px(6.0))
                     .flex()
+                    .items_center()
                     .gap(px(m::SPACING))
                     .child(Button::new("Count").on_click(cx.msg(Msg::Click)))
                     .child(Button::new("Small").small())
@@ -120,7 +124,7 @@ impl Controls {
                     .child(Button::new("Disabled").enabled(false))
                     .child(Button::new("OK").default(true).on_click(cx.msg(Msg::Click))),
             )
-            .child(div().flex().gap(px(m::SPACING)).child(StringView::new(format!("Clicked {} times.{}", self.clicks, self.said))).child(LinkButton::new("Reset")))
+            .child(div().flex().items_center().gap(px(m::SPACING)).child(StringView::new(format!("Clicked {} times.{}", self.clicks, self.said))).child(LinkButton::new("Reset")))
             .child(
                 div()
                     .flex()
@@ -130,6 +134,15 @@ impl Controls {
                     .child(MenuField::new("speed", vec!["Slow".into(), "Medium".into(), "Fast".into()], self.speed).label("Speed:").on_change(cx.msg_with(|i: &usize| Msg::Speed(*i)))),
             )
             .child(div().flex().gap(px(m::SPACING)).child(TextControl::new(cx, &self.off).label("Off:").width(160.0)).child(MenuField::new("none", vec!["Nothing to choose".into()], 0).enabled(false)))
+            // A slider, and one that can't be moved: its filled part the
+            // track's own grey, all of it faded once as the rest is.
+            .child(
+                div()
+                    .flex()
+                    .gap(px(m::SPACING))
+                    .child(Slider::new("level", self.level, 0.0..=10.0).label("Level").value_text(format!("{:.0}", self.level)).step(1.0).width(160.0).on_change(cx.msg_with(|v: &f32| Msg::Level(*v))))
+                    .child(Slider::new("level-off", 6.0, 0.0..=10.0).label("Off").value_text("6").width(160.0).enabled(false)),
+            )
             .child(div().w(px(300.0)).h(px(54.0)).child(&self.notes))
             .child(div().w(px(300.0)).child(StringView::new("A paragraph of text that is long enough to wrap onto a second line in the three hundred points it is given here.").wrap(true)))
             .child(div().w(px(160.0)).child(StringView::new("A long line cut short to fit the box it is in").cut(true)))
@@ -138,7 +151,7 @@ impl Controls {
 
 fn main() {
     olo_kit::run("olo.controls", |_| {
-        olo_kit::open_window(WindowOptions::new("Controls", 540.0, 640.0), |cx| {
+        olo_kit::open_window(WindowOptions::new("Controls", 540.0, 700.0), |cx| {
             let name = text_field(cx, |f| f.name("Name").with_text("Olo"));
             cx.subscribe(&name, |c: &mut Controls, e: &TextFieldEvent, cx| {
                 c.said = match e {
@@ -148,7 +161,8 @@ fn main() {
                 };
                 cx.invalidate();
             });
-            let off = text_field(cx, |f| f.name("Off").with_text("Can't be typed in"));
+            // (Longer than its field: not being edited, it ends in "…".)
+            let off = text_field(cx, |f| f.name("Off").with_text("Nothing here can be typed in or changed"));
             off.update(cx, |f, cx| f.set_enabled(false, cx));
             Controls {
                 wrap: true,
@@ -156,6 +170,7 @@ fn main() {
                 radio: 0,
                 clicks: 0,
                 speed: 1,
+                level: 4.0,
                 name,
                 hinted: text_field(cx, |f| f.name("Search").hint("Search")),
                 off,

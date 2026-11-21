@@ -93,11 +93,14 @@ pub fn selection_over(p: &Palette, active: bool) -> Hsla {
 }
 
 /// Text that can't be used now (a disabled control's label): quieter
-/// than [`secondary_text`], as BeOS's was; a little brighter by night,
-/// where 55% of the way to the panel all but disappeared.
+/// than [`secondary_text`], as BeOS's was. As far towards the panel as
+/// a disabled control is faded (`DISABLED_OPACITY`), so that words
+/// drawn in this colour (a slider's label, a field's) and the words of
+/// a control that is faded whole (a check box's, a button's) are one
+/// grey side by side: they were a shade apart in the light look, and
+/// before that twice as far (a reviewer's eye, 2026-11-20).
 pub fn disabled_text(p: &Palette) -> Hsla {
-    let dark = p.mode == olo_theme::ThemeMode::Dark;
-    c(olo_theme::mix(p.panel_text, p.panel_background, if dark { 0.45 } else { 0.55 }))
+    c(olo_theme::mix(p.panel_text, p.panel_background, 1.0 - olo_interface::DISABLED_OPACITY))
 }
 
 /// Secondary text (`StringView::dim`: a note under a setting, a file's

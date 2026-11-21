@@ -132,67 +132,74 @@ impl IntoElement for Slider {
             if let Some(t) = &value_text {
                 style::label(g, b.right(), b.top() + px(m::LABEL_ROW / 2.0), style::Align::Right, t.clone(), style::PLAIN_SIZE, font.clone(), ink);
             }
-            // The bar.
-            let s = g.scale_factor();
-            let bar_top = px(((f32::from(track.center().y) - BAR_H / 2.0) * s).round() / s);
-            let bar = Bounds::from_corners(point(b.left(), bar_top), point(b.right(), bar_top + px(BAR_H)));
-            // A value outside the range (the setting's range grew elsewhere)
-            // is drawn at the end it's past, never off the track.
-            let t = if hi > lo { ((value - lo) / (hi - lo)).clamp(0.0, 1.0) } else { 0.0 };
-            let thumb_x = style::snap_coord(g, track.left() + track.size.width * t);
-            let color = bar_fill.unwrap_or(style::c(p.control_highlight));
-            let color = if enabled { color } else { color.opacity(0.4) };
-            let in_bar = style::inset(g, bar, 1.0);
-            style::fill_rect(g, in_bar, style::shade(&p, p.panel_background, 1.08));
-            let filled = Bounds::from_corners(in_bar.origin, point(thumb_x, in_bar.bottom()));
-            let lower = {
-                let c = olo_interface::Rgba::from(color);
-                let k = 0.85;
-                Hsla::from(olo_interface::Rgba { r: c.r * k, g: c.g * k, b: c.b * k, a: 1.0 })
-            };
-            if filled.size.width > px(0.0) {
-                style::vgradient(g, filled, color, if enabled { lower } else { color });
-            }
-            style::bevel(g, bar, style::shade(&p, p.panel_background, 1.45), style::c(p.shine));
-            // The thumb, a soft shadow lifting it off the bar.
-            let thumb = style::snap_centred(g, point(thumb_x + px(0.5), track.center().y), THUMB_W, THUMB_H);
-            let base = p.control_background;
-            // (Held: dragged, wherever the pointer has wandered.)
-            let pressed = *g.node_state::<bool>();
-            // In a dark look the thumb is a lighter block, its face the
-            // control's colour a third of the way to the text's: a dark face
-            // as the buttons' barely stood off the empty track beside it
-            // (under 3:1; macOS's is light: the study of every theme). Its
-            // grip and lower edge darker than it, so it's raised still.
-            let dark = p.mode == olo_theme::ThemeMode::Dark;
-            // (At least 3:1 on the panel, however dark its control colour
-            // and dim its text: Ayu's mix alone was too dark, Codex's look.)
-            let face = |k: f32, at_least: f32| olo_theme::readable(olo_theme::mix(base, p.panel_text, k), p.panel_background, at_least);
-            let (tt, tb) = match (dark, pressed) {
-                (true, false) => (style::c(face(0.38, 3.0)), style::c(face(0.28, 2.6))),
-                (true, true) => (style::c(face(0.28, 2.6)), style::c(face(0.22, 2.3))),
-                (false, true) => (style::shade(&p, base, 1.15), style::shade(&p, base, 1.08)),
-                (false, false) => (style::tint(base, 0.8), style::shade(&p, base, 1.06)),
-            };
-            // Its top and left lighter than its face, its bottom, right and
-            // grip darker: raised (the dark look's own shine is darker than
-            // this face, and made it look sunk).
-            let (high, low, grip) = if dark {
-                let mid = face(0.28, 2.6);
-                (style::c(olo_theme::mix(face(0.38, 3.0), olo_theme::WHITE, 0.3)), style::c(olo_theme::mix(mid, olo_theme::BLACK, 0.3)), style::c(olo_theme::mix(mid, olo_theme::BLACK, 0.45)))
-            } else {
-                (style::c(p.shine), style::shade(&p, base, 1.2), style::shade(&p, base, 1.35))
-            };
-            let line = style::hairline(g);
-            g.paint_quad(fill(Bounds { origin: point(thumb.left() + line, thumb.top() + line), size: thumb.size }, style::c(p.drop_shadow)).corner_radii(px(1.0)));
-            let in_thumb = style::inset(g, thumb, 1.0);
-            style::vgradient(g, in_thumb, tt, tb);
-            style::frame_rect(g, thumb, style::shade(&p, p.panel_background, 1.6));
-            style::bevel(g, in_thumb, high, low);
-            // The grip line.
-            let gx = px((f32::from(thumb.center().x) * s).floor() / s);
-            style::vline_left_of(g, gx, thumb.top() + px(4.0), thumb.bottom() - px(4.0), grip);
-            style::vline(g, gx, thumb.top() + px(4.0), thumb.bottom() - px(4.0), high);
+            g.with_element_opacity((!enabled).then_some(olo_interface::DISABLED_OPACITY), |g| {
+                // The bar.
+                let s = g.scale_factor();
+                let bar_top = px(((f32::from(track.center().y) - BAR_H / 2.0) * s).round() / s);
+                let bar = Bounds::from_corners(point(b.left(), bar_top), point(b.right(), bar_top + px(BAR_H)));
+                // A value outside the range (the setting's range grew elsewhere)
+                // is drawn at the end it's past, never off the track.
+                let t = if hi > lo { ((value - lo) / (hi - lo)).clamp(0.0, 1.0) } else { 0.0 };
+                let thumb_x = style::snap_coord(g, track.left() + track.size.width * t);
+                let color = bar_fill.unwrap_or(style::c(p.control_highlight));
+                // (Not to be used: its filled part in the track's own grey, so
+                // only where the thumb stands says its value, and all of it
+                // faded as every control that can't be used is. It kept a
+                // tint of its colour and a thumb at full strength, and looked
+                // live beside a greyed field: a reviewer's eye, 2026-11-20.)
+                let color = if enabled { color } else { style::shade(&p, p.panel_background, 1.25) };
+                let in_bar = style::inset(g, bar, 1.0);
+                style::fill_rect(g, in_bar, style::shade(&p, p.panel_background, 1.08));
+                let filled = Bounds::from_corners(in_bar.origin, point(thumb_x, in_bar.bottom()));
+                let lower = {
+                    let c = olo_interface::Rgba::from(color);
+                    let k = 0.85;
+                    Hsla::from(olo_interface::Rgba { r: c.r * k, g: c.g * k, b: c.b * k, a: 1.0 })
+                };
+                if filled.size.width > px(0.0) {
+                    style::vgradient(g, filled, color, if enabled { lower } else { color });
+                }
+                style::bevel(g, bar, style::shade(&p, p.panel_background, 1.45), style::c(p.shine));
+                // The thumb, a soft shadow lifting it off the bar.
+                let thumb = style::snap_centred(g, point(thumb_x + px(0.5), track.center().y), THUMB_W, THUMB_H);
+                let base = p.control_background;
+                // (Held: dragged, wherever the pointer has wandered.)
+                let pressed = *g.node_state::<bool>();
+                // In a dark look the thumb is a lighter block, its face the
+                // control's colour a third of the way to the text's: a dark face
+                // as the buttons' barely stood off the empty track beside it
+                // (under 3:1; macOS's is light: the study of every theme). Its
+                // grip and lower edge darker than it, so it's raised still.
+                let dark = p.mode == olo_theme::ThemeMode::Dark;
+                // (At least 3:1 on the panel, however dark its control colour
+                // and dim its text: Ayu's mix alone was too dark, Codex's look.)
+                let face = |k: f32, at_least: f32| olo_theme::readable(olo_theme::mix(base, p.panel_text, k), p.panel_background, at_least);
+                let (tt, tb) = match (dark, pressed) {
+                    (true, false) => (style::c(face(0.38, 3.0)), style::c(face(0.28, 2.6))),
+                    (true, true) => (style::c(face(0.28, 2.6)), style::c(face(0.22, 2.3))),
+                    (false, true) => (style::shade(&p, base, 1.15), style::shade(&p, base, 1.08)),
+                    (false, false) => (style::tint(base, 0.8), style::shade(&p, base, 1.06)),
+                };
+                // Its top and left lighter than its face, its bottom, right and
+                // grip darker: raised (the dark look's own shine is darker than
+                // this face, and made it look sunk).
+                let (high, low, grip) = if dark {
+                    let mid = face(0.28, 2.6);
+                    (style::c(olo_theme::mix(face(0.38, 3.0), olo_theme::WHITE, 0.3)), style::c(olo_theme::mix(mid, olo_theme::BLACK, 0.3)), style::c(olo_theme::mix(mid, olo_theme::BLACK, 0.45)))
+                } else {
+                    (style::c(p.shine), style::shade(&p, base, 1.2), style::shade(&p, base, 1.35))
+                };
+                let line = style::hairline(g);
+                g.paint_quad(fill(Bounds { origin: point(thumb.left() + line, thumb.top() + line), size: thumb.size }, style::c(p.drop_shadow)).corner_radii(px(1.0)));
+                let in_thumb = style::inset(g, thumb, 1.0);
+                style::vgradient(g, in_thumb, tt, tb);
+                style::frame_rect(g, thumb, style::shade(&p, p.panel_background, 1.6));
+                style::bevel(g, in_thumb, high, low);
+                // The grip line.
+                let gx = px((f32::from(thumb.center().x) * s).floor() / s);
+                style::vline_left_of(g, gx, thumb.top() + px(4.0), thumb.bottom() - px(4.0), grip);
+                style::vline(g, gx, thumb.top() + px(4.0), thumb.bottom() - px(4.0), high);
+            });
             if let Some((min, max)) = &limits {
                 let y = b.bottom() - px(m::LABEL_ROW / 2.0 - 1.0);
                 style::label(g, b.left(), y, style::Align::Left, min.clone(), style::SMALL_SIZE, font.clone(), ink);

@@ -438,7 +438,7 @@ Een script van {} is mislukt (code {}).
 A setting comes before any [repository].
 Er staat een instelling vóór de eerste sectie [repository].
 
-A terminal’s job busy for a minute and more is lowered too. Batch scheduling and idle I/O are put back when this is turned off; a raised nice stays until the program ends.
+A terminal job that stays busy for a minute or more is lowered too. Turning this off puts back batch scheduling and idle I/O; the nice value stays until the program ends.
 Ook een terminaltaak die minstens een minuut onafgebroken draait, krijgt een lagere prioriteit. Bij uitschakelen worden de oorspronkelijke planning en I/O-prioriteit hersteld. Een verhoogde nice-waarde blijft gelden tot het programma stopt.
 
 A thick line
@@ -805,6 +805,9 @@ Alle regels rond de geselecteerde regel. {}
 
 All of Olo’s {} words are in {}.
 Alle {} teksten van Olo zijn vertaald naar {}.
+
+All these settings are for the whole computer, so changing one asks for an administrator's password.
+Al deze instellingen gelden voor de hele computer, dus het wijzigen ervan vraagt om het wachtwoord van een beheerder.
 
 All waiting
 Allemaal in afwachting
@@ -1879,6 +1882,9 @@ Controleren op updates
 
 Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
 Controleer snel of de gekozen back-ups intact zijn. Olo kijkt of alle gegevens aanwezig zijn, vergelijkt controlesommen met die van de verzonden gegevens en leest enkele steekproeven terug, net als na elke back-up. Schade wordt waar mogelijk hersteld.
+
+Checked
+Gecontroleerd
 
 Checking for updates…
 Updates zoeken…
@@ -4423,6 +4429,9 @@ Bezet door builds
 Held by the server
 Opgehouden door de server
 
+Here
+Hier
+
 Hidden and ignored files
 Verborgen en genegeerde bestanden
 
@@ -4794,6 +4803,9 @@ Geïntegreerde GPU (VA-API)
 
 Integrations
 Integraties
+
+Intel
+Intel
 
 Intel GPU (VA-API)
 Intel-GPU (VA-API)
@@ -5775,6 +5787,9 @@ Overeenkomst:
 Max
 Maximaal
 
+May wait
+Mag wachten
+
 Maybe
 Misschien
 
@@ -6315,6 +6330,9 @@ Nieuwe vensters openen in
 New Worktree…
 Nieuwe werkboom…
 
+New connections
+Nieuwe verbindingen
+
 New description
 Nieuwe beschrijving
 
@@ -6392,6 +6410,9 @@ Volgende kolombreedte (Scrollen)
 
 Next day, week or month
 Volgende dag, week of maand
+
+Next start
+Volgende start
 
 Next step
 Volgende stap
@@ -7100,6 +7121,9 @@ Op schijf
 
 On hold
 In de wacht
+
+On it now
+Gebruiken het nu
 
 On the day, at 9 AM
 Op de dag zelf om 9.00 uur
@@ -9366,6 +9390,9 @@ Grootte:
 Skip this step
 Deze stap overslaan
 
+Sleep
+Sluimeren
+
 Sleet
 Natte sneeuw
 
@@ -9622,6 +9649,9 @@ Aanhoudende sneeuw
 
 Step {} of {}
 Stap {} van {}
+
+Still going after {}. Other fixes wait until it's done; if it never finishes, restarting the computer stops it.
+Nog bezig na {}. Andere herstelacties wachten tot deze klaar is; als ze nooit klaar is, stopt ze wanneer u de computer herstart.
 
 Stop
 Stoppen
@@ -10349,6 +10379,9 @@ Het wachtwoord van ‘{}’ bewaren mislukt: {}
 The passwords file is damaged: {}
 Het wachtwoordenbestand is beschadigd: {}
 
+The patch
+De patch
+
 The phone didn’t connect. Is it unlocked, with Bluetooth on?
 De telefoon heeft geen verbinding gemaakt. Is hij ontgrendeld en staat Bluetooth aan?
 
@@ -10502,6 +10535,9 @@ Om {} te wijzigen is een beheerderswachtwoord nodig.
 Their new windows open there, on the display they open on. Uncheck an app to open its windows where you are again.
 Nieuwe vensters van deze apps openen op dat werkblad, op het scherm waar ze worden geopend. Deselecteer een app om de vensters weer op het huidige werkblad te openen.
 
+Their round trip
+Hun retourtijd
+
 Their windows float over the tiles, and over the window Focus shows. Uncheck an app to tile its windows again.
 De vensters van deze apps zweven boven tegels en boven het venster in de focusmodus. Deselecteer een app om de vensters weer te tegelen.
 
@@ -10555,9 +10591,6 @@ Deze apps krijgen de vermelde onderdelen wanneer ze erom vragen. Trek een toeste
 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 Voor deze opties moet Bluetooth naar AirPods luisteren. Olo Doctor kan dat inschakelen.
-
-All these settings are for the whole computer, so changing one asks for an administrator's password.
-Al deze instellingen gelden voor de hele computer, dus het wijzigen ervan vraagt om het wachtwoord van een beheerder.
 
 ThinkPad
 ThinkPad
@@ -11549,6 +11582,9 @@ In afwachting
 Waiting for Ethernet
 Wachten op ethernet
 
+Waiting for another fix to finish…
+Wacht tot een andere herstelactie klaar is…
+
 Waiting for app_server…
 Wachten op app_server…
 
@@ -11575,6 +11611,9 @@ Wachten tot u zich in de browser aanmeldt bij Google…
 
 Waiting for “{}” to allow it (its switches for this computer, in its Bluetooth settings).
 Wachten op toestemming van ‘{}’. Zet de opties voor deze computer aan in de Bluetooth-instellingen van het apparaat.
+
+Waiting now
+Wacht nu
 
 Waiting: {}
 Wachten: {}
@@ -11759,12 +11798,6 @@ Wanneer heb ik morgen tijd vrij?
 When does the sun rise tomorrow?
 Hoe laat komt de zon morgen op?
 
-With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
-Staat dit aan, dan maakt een bezig programma na 0,7 ms in plaats van {} plaats voor een wachtend programma (base slice). {} plant nu en bepaalt dat zelf.
-
-With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
-Staat dit aan, dan maakt een bezig programma na 0,7 ms in plaats van {} plaats voor een wachtend programma, zodat vensters en typen ook onder belasting bijblijven (base slice).
-
 When held for:
 Bij ingedrukt houden gedurende:
 
@@ -11941,6 +11974,12 @@ Met AirPods:
 
 With Another Window
 Met een ander venster
+
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
+Staat dit aan, dan maakt een bezig programma na 0,7 ms in plaats van {} plaats voor een wachtend programma (base slice). {} plant nu en bepaalt dat zelf.
+
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
+Staat dit aan, dan maakt een bezig programma na 0,7 ms in plaats van {} plaats voor een wachtend programma, zodat vensters en typen ook onder belasting bijblijven (base slice).
 
 Withdrawn by {}
 Ingetrokken door {}
@@ -12287,6 +12326,12 @@ bovengrens {}%
 
 charging, full in {}
 bezig met opladen, vol over {}
+
+compile going on
+compilatie bezig
+
+compiles going on
+compilaties bezig
 
 couldn't save the boost: {}
 versterking opslaan mislukt: {}
@@ -13916,6 +13961,9 @@ datacentrum van {}
 
 ~/worktrees
 ~/worktrees
+
+·
+·
 
 ¼ Second
 ¼ seconde

@@ -438,7 +438,7 @@ Ein Skript von {} ist fehlgeschlagen (Code {}).
 A setting comes before any [repository].
 Eine Einstellung steht vor jedem [Repository].
 
-A terminal’s job busy for a minute and more is lowered too. Batch scheduling and idle I/O are put back when this is turned off; a raised nice stays until the program ends.
+A terminal job that stays busy for a minute or more is lowered too. Turning this off puts back batch scheduling and idle I/O; the nice value stays until the program ends.
 Auch ein Terminal-Job, der eine Minute und länger beschäftigt ist, wird zurückgestuft. Batch-Scheduling und Leerlauf-I/O werden beim Ausschalten zurückgesetzt; ein erhöhter Nice-Wert bleibt, bis das Programm endet.
 
 A thick line
@@ -805,6 +805,9 @@ Alle Zeilen um die ausgewählte. {}
 
 All of Olo’s {} words are in {}.
 Alle {} Wörter von Olo gibt es auf {}.
+
+All these settings are for the whole computer, so changing one asks for an administrator's password.
+Alle diese Einstellungen gelten für den ganzen Computer; daher fragt das Ändern nach einem Administratorpasswort.
 
 All waiting
 Alle warten
@@ -1879,6 +1882,9 @@ Nach Updates suchen
 
 Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
 Schnell prüfen, ob die gewählten Backups vollständig sind: Alles Nötige ist vorhanden, die Prüfsummen des Speichers werden mit dem Gesendeten verglichen, und einige Stichproben werden zurückgelesen (wie nach jedem Backup). Beschädigtes wird repariert, so weit es geht.
+
+Checked
+Geprüft
 
 Checking for updates…
 Suche nach Aktualisierungen …
@@ -4423,6 +4429,9 @@ Von Builds gehalten
 Held by the server
 Vom Server gebremst
 
+Here
+Hier
+
 Hidden and ignored files
 Versteckte und ignorierte Dateien
 
@@ -4794,6 +4803,9 @@ Integrierte GPU (VA-API)
 
 Integrations
 Integrationen
+
+Intel
+Intel
 
 Intel GPU (VA-API)
 Intel GPU (VA-API)
@@ -5775,6 +5787,9 @@ Treffer:
 Max
 Max
 
+May wait
+Darf warten
+
 Maybe
 Vielleicht
 
@@ -6315,6 +6330,9 @@ Neue Fenster öffnen in
 New Worktree…
 Neuer Worktree …
 
+New connections
+Neue Verbindungen
+
 New description
 Neue Beschreibung
 
@@ -6392,6 +6410,9 @@ Nächste Spaltenbreite (Scrollen)
 
 Next day, week or month
 Nächster Tag, Woche oder Monat
+
+Next start
+Nächster Start
 
 Next step
 Nächster Schritt
@@ -7100,6 +7121,9 @@ Auf der Festplatte
 
 On hold
 Gehalten
+
+On it now
+Jetzt darauf
 
 On the day, at 9 AM
 Am Fälligkeitstag um 9 Uhr
@@ -9366,6 +9390,9 @@ Größe:
 Skip this step
 Diesen Schritt überspringen
 
+Sleep
+Ruhezustand
+
 Sleet
 Schneeregen
 
@@ -9622,6 +9649,9 @@ Anhaltender Schneefall
 
 Step {} of {}
 Schritt {} von {}
+
+Still going after {}. Other fixes wait until it's done; if it never finishes, restarting the computer stops it.
+Läuft noch nach {}. Andere Behebungen warten, bis sie fertig ist; endet sie nie, beendet ein Neustart des Computers sie.
 
 Stop
 Stoppen
@@ -10349,6 +10379,9 @@ Das Passwort von „{}“ konnte nicht gespeichert werden: {}
 The passwords file is damaged: {}
 Die Passwortdatei ist beschädigt: {}
 
+The patch
+Der Patch
+
 The phone didn’t connect. Is it unlocked, with Bluetooth on?
 Das Telefon hat sich nicht verbunden. Ist es entsperrt und Bluetooth eingeschaltet?
 
@@ -10502,6 +10535,9 @@ The {} wasn't changed: an administrator's password is needed.
 Their new windows open there, on the display they open on. Uncheck an app to open its windows where you are again.
 Ihre neuen Fenster öffnen sich dort, auf dem Bildschirm, auf dem sie aufgehen. Deaktivieren Sie eine App, damit ihre Fenster wieder dort aufgehen, wo Sie sind.
 
+Their round trip
+Ihre Umlaufzeit
+
 Their windows float over the tiles, and over the window Focus shows. Uncheck an app to tile its windows again.
 Ihre Fenster schweben über den Kacheln und über dem Fenster, das „Fokus“ zeigt. Deaktivieren Sie eine App, um ihre Fenster wieder zu kacheln.
 
@@ -10555,9 +10591,6 @@ Diese Apps dürfen diese Einträge haben, wann immer sie fragen. Nehmen Sie eine
 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 Diese brauchen Bluetooth, um auf die AirPods zu hören: Olo Doctor kann das einschalten.
-
-All these settings are for the whole computer, so changing one asks for an administrator's password.
-Alle diese Einstellungen gelten für den ganzen Computer; daher fragt das Ändern nach einem Administratorpasswort.
 
 ThinkPad
 ThinkPad
@@ -11549,6 +11582,9 @@ Wartet
 Waiting for Ethernet
 Wartet auf Ethernet
 
+Waiting for another fix to finish…
+Wartet auf das Ende einer anderen Behebung …
+
 Waiting for app_server…
 Warten auf app_server …
 
@@ -11575,6 +11611,9 @@ Warten, bis Sie sich im Browser bei Google anmelden …
 
 Waiting for “{}” to allow it (its switches for this computer, in its Bluetooth settings).
 Warten, bis „{}“ es erlaubt (seine Schalter für diesen Computer in seinen Bluetooth-Einstellungen).
+
+Waiting now
+Wartet gerade
 
 Waiting: {}
 Wartet: {}
@@ -11759,12 +11798,6 @@ Wann habe ich morgen Zeit?
 When does the sun rise tomorrow?
 Wann geht morgen die Sonne auf?
 
-With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
-Ist dies an, macht ein beschäftigtes Programm einem wartenden nach 0,7 ms statt nach {} Platz (base slice). Derzeit plant {} und entscheidet das selbst.
-
-With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
-Ist dies an, macht ein beschäftigtes Programm einem wartenden nach 0,7 ms statt nach {} Platz, sodass Fenster und Eingaben auch unter Last mithalten (base slice).
-
 When held for:
 Wenn gehalten für:
 
@@ -11941,6 +11974,12 @@ Mit AirPods:
 
 With Another Window
 Mit einem anderen Fenster
+
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
+Ist dies an, macht ein beschäftigtes Programm einem wartenden nach 0,7 ms statt nach {} Platz (base slice). Derzeit plant {} und entscheidet das selbst.
+
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
+Ist dies an, macht ein beschäftigtes Programm einem wartenden nach 0,7 ms statt nach {} Platz, sodass Fenster und Eingaben auch unter Last mithalten (base slice).
 
 Withdrawn by {}
 Zurückgezogen von {}
@@ -12287,6 +12326,12 @@ Obergrenze {} %
 
 charging, full in {}
 lädt, voll in {}
+
+compile going on
+laufende Kompilierung
+
+compiles going on
+laufende Kompilierungen
 
 couldn't save the boost: {}
 die Anhebung konnte nicht gesichert werden: {}
@@ -13916,6 +13961,9 @@ Rechenzentrum von {}
 
 ~/worktrees
 ~/worktrees
+
+·
+·
 
 ¼ Second
 ¼ Sekunde

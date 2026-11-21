@@ -2759,8 +2759,12 @@ it.
   GTK's `gtk-cursor-blink-timeout`). Text wider than the field
   scrolls sideways while it's edited, keeping the caret in view
   (`scroll_x`, as BeOS's text views). Unfocused, the field shows its
-  start, and the whole text is in a tip on hover (`cut::note`; never a
-  password's).
+  start cut short with "…" at its last whole word (`whole_words`: it
+  was cut at the field's edge with nothing to say so, and a list of
+  names read as ending there), and the whole text is in a tip on hover
+  (`cut::note`; never a password's). A label that is cut ends by the
+  letter (`style::fit`): most are names, where each letter kept tells
+  one from another.
   `TextFieldEvent::Changed` and `Typed`. No frame: callers draw the
   well (`TextControl` does). `set_colors` colours parts of its text from
   the text (a search's filters), `selection`/`set_selection`,
@@ -3207,6 +3211,21 @@ it.
   frame's line along their top; a cell drawn by hand (an icon and two
   lines) says its text to agents with `cell.say(text)`.
   `crates/kit/examples/list.rs` shows one.
+- **A control that can't be used is dimmed once.** `Control`'s
+  `.disabled(true)` has the element layer fade the whole of it
+  (`DISABLED_OPACITY`, a half), so `control.rs` hands the widget's
+  painter the state of an enabled control at rest and no widget picks
+  a disabled colour of its own as well: a check box's label, a
+  button's and a menu field's were dimmed twice, fainter than a
+  disabled field's words beside them. What is drawn outside a
+  `Control` (a slider's label and value, a field's text, a form's
+  note) uses `style::disabled_text`, the panel's text as far towards
+  the panel as the fade (`1 − DISABLED_OPACITY`), so the two are one
+  grey side by side (measured in pictures: one pixel colour). A
+  disabled slider's filled part is the track's own grey, not the
+  accent (nothing to suggest it can be moved), and its bar and thumb
+  fade as a control's do. `crates/kit/examples/controls.rs` shows
+  each beside its live one.
 - `style::label_fit` (a label cut short with "…" to a width, measured
   as shaped), `style::label_spaced` and `text_width_spaced` (letters
   spaced out, CSS's letter-spacing, kerning kept: small bold capitals
@@ -6574,7 +6593,11 @@ lint at a time).
   panel's controls top to bottom, each bound to its part of the settings
   (`ui.check(label, value, |s, v| s.x = v)`, `slider`, `menu`, `choose`,
   `radio`, `text` with a text field kept by id, `bbox`, `row`,
-  `enabled_if`, `note`); what a panel keeps of
+  `enabled_if`, `indented`, `note`); what depends on a check box goes
+  under it in `enabled_if(on, |ui| ui.indented(..))`: set in by a
+  check box's mark and its gap, so it starts where the label does,
+  and greyed together with it off, notes too (the check box's own
+  note comes first, at its edge, and stays live); what a panel keeps of
   its own goes in `panel::State` and is changed through `ui.on_view`.
   A tall panel is two columns, side by side and each as wide as the
   other (`ui.columns(left, right)`, or `ui.collect` each side and

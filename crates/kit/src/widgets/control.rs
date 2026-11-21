@@ -151,7 +151,21 @@ impl IntoElement for Control {
     fn into_element(self) -> Element {
         let paint = self.paint;
         let tip_key = self.id.clone();
-        let mut element = control_canvas(move |g, bounds, state| paint(g, bounds, state)).id(self.id).w(self.width).h(self.height).flex_shrink_0().disabled(!self.enabled);
+        // One that can't be used is drawn as it is when it can, and faded
+        // (the element's doing, `DISABLED_OPACITY`): dimmed once. Told it
+        // was disabled, every control also chose the disabled text's
+        // colour for its words and its mark, and those were dimmed twice
+        // (a disabled check box's label at 1.6 to 1 on the panel, fainter
+        // than the disabled label of the slider beside it, which dims
+        // itself: both reviewers, 2026-11-20). One that draws its own
+        // look for it (`unfaded`) is told, and isn't faded.
+        let as_enabled = !self.enabled && !self.unfaded;
+        let mut element = control_canvas(move |g, bounds, state| paint(g, bounds, if as_enabled { ControlState { enabled: true, hovered: false, pressed: false, focused: false } } else { state }))
+            .id(self.id)
+            .w(self.width)
+            .h(self.height)
+            .flex_shrink_0()
+            .disabled(!self.enabled);
         if self.unfaded {
             element = element.unfaded();
         }

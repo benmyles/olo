@@ -143,7 +143,7 @@ A rising swell
 A row of dots
 A script of {} failed (code {}).
 A setting comes before any [repository].
-A terminal’s job busy for a minute and more is lowered too. Batch scheduling and idle I/O are put back when this is turned off; a raised nice stays until the program ends.
+A terminal job that stays busy for a minute or more is lowered too. Turning this off puts back batch scheduling and idle I/O; the nice value stays until the program ends.
 A thick line
 A thin line
 A touch of a security key (a YubiKey) can stand for your password once you're signed in: sudo in Terminal, Passwords and administrator requests. Not to unlock the computer or sign in: someone who found it with the key plugged in could.
@@ -265,6 +265,7 @@ All accounts together
 All day
 All lines around the selected one. {}
 All of Olo’s {} words are in {}.
+All these settings are for the whole computer, so changing one asks for an administrator's password.
 All waiting
 All {} connected.
 Allow
@@ -622,6 +623,7 @@ Check Spelling While Typing
 Check everything
 Check for Updates
 Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
+Checked
 Checking for updates…
 Checking out {} of {} files
 Checking the backup
@@ -1467,6 +1469,7 @@ Hectopascals
 Height
 Held by builds
 Held by the server
+Here
 Hidden and ignored files
 Hide
 Hide All
@@ -1590,6 +1593,7 @@ Installed
 Install…
 Integrated GPU (VA-API)
 Integrations
+Intel
 Intel GPU (VA-API)
 Interface:
 Interrupts
@@ -1916,6 +1920,7 @@ Match
 Match Appearance
 Match:
 Max
+May wait
 Maybe
 Measuring the round trip…
 Media errors
@@ -2096,6 +2101,7 @@ New Vault…
 New Window
 New Windows Open In
 New Worktree…
+New connections
 New description
 New event
 New message
@@ -2122,6 +2128,7 @@ Next Week
 Next auto-tiling layout
 Next column width (Scrolling)
 Next day, week or month
+Next start
 Next step
 Next tab in the window
 Next when you click Back Up Now.
@@ -2358,6 +2365,7 @@ On a plane of its own: moving it draws nothing
 On battery
 On disk
 On hold
+On it now
 On the day, at 9 AM
 On the network
 On the phone, open Settings ▸ Bluetooth and keep it open there. It appears here in a moment.
@@ -3112,6 +3120,7 @@ Sixth folder
 Size
 Size:
 Skip this step
+Sleep
 Sleet
 Slow
 Slower
@@ -3197,6 +3206,7 @@ Steady rain
 Steady sleet
 Steady snow
 Step {} of {}
+Still going after {}. Other fixes wait until it's done; if it never finishes, restarting the computer stops it.
 Stop
 Stop All
 Stop Ignoring
@@ -3439,6 +3449,7 @@ The pairing with {} couldn't be forgotten: {}.
 The password couldn’t be kept in the keyring ({}).
 The password of “{}” couldn’t be kept: {}
 The passwords file is damaged: {}
+The patch
 The phone didn’t connect. Is it unlocked, with Bluetooth on?
 The phone didn’t take it.
 The phone is connected but isn’t answering (it may be asleep). It’s asked again from time to time, and at once when it wakes.
@@ -3490,6 +3501,7 @@ The {} couldn't be changed.
 The {} is a whole number.
 The {} wasn't changed: an administrator's password is needed.
 Their new windows open there, on the display they open on. Uncheck an app to open its windows where you are again.
+Their round trip
 Their windows float over the tiles, and over the window Focus shows. Uncheck an app to tile its windows again.
 Theme
 Themes
@@ -3508,7 +3520,6 @@ There's no fingerprint sensor, or fprintd isn't running.
 There's no infrared camera.
 These apps may have these items whenever they ask. Take one back and the app is asked again the next time.
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
-All these settings are for the whole computer, so changing one asks for an administrator's password.
 ThinkPad
 Thinking ({})…
 Thinking:
@@ -3839,6 +3850,7 @@ Wait for the sync to finish, then remove the account.
 Wait for the sync to finish, then reset.
 Waiting
 Waiting for Ethernet
+Waiting for another fix to finish…
 Waiting for app_server…
 Waiting for it…
 Waiting for power
@@ -3848,6 +3860,7 @@ Waiting for the phone… this page follows it by itself.
 Waiting for the touchpad…
 Waiting for you to sign in to Google in the browser…
 Waiting for “{}” to allow it (its switches for this computer, in its Bluetooth settings).
+Waiting now
 Waiting: {}
 Waits less than
 Wake the display when you come back
@@ -3909,8 +3922,6 @@ When a Frame Drops
 When am I free today?
 When am I free tomorrow?
 When does the sun rise tomorrow?
-With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
-With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
 When held for:
 When pressed:
 When to Back Up
@@ -3970,6 +3981,8 @@ Windows' buffers stay out of swap, so the desktop never waits for one (Olo's liv
 Wireless Router
 With AirPods:
 With Another Window
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
 Withdrawn by {}
 Word Document…
 Working out what it comes to: every package it needs, and what it replaces…
@@ -4085,6 +4098,8 @@ brush’s grey hints, from a tiny model of your own commands
 built most, the last 24 hours
 ceiling {}%
 charging, full in {}
+compile going on
+compiles going on
 couldn't save the boost: {}
 couldn't save the setting: {}
 day
@@ -4606,6 +4621,7 @@ your own picture
 ~/Videos/raw, **/*.iso
 ~/go/pkg/mod, ~/.cache/go-build
 ~/worktrees
+·
 ¼ Second
 ¼ second
 ½ Second

@@ -1116,6 +1116,7 @@ impl TextField {
         let color = if field.enabled { field.color.unwrap_or(style::c(palette.document_text)) } else { style::disabled_text(&palette) };
         let text: SharedString = field.shown().into();
         let run = TextRun { len: text.len(), font: field.face(), color, background_color: None, underline: None, strikethrough: None, size: None };
+        let plain = run.clone();
         // Coloured parts (not while composing, or a password's).
         let spans = match (&field.colors, field.marked.is_none() && !field.password && field.enabled) {
             (Some(f), true) => f(&text, &palette),
@@ -1188,6 +1189,16 @@ impl TextField {
         let (caret, caret_on) = (field.to_shown(field.caret()), field.caret_on && field.enabled);
         let (hint, marked, right) = (field.hint.clone(), field.marked.clone(), field.align == Align::Right);
         let tip = over && !focused && !field.password;
+        // Wider than the field and not being edited: cut short with "…",
+        // as a label is (`style::fit`), and whole in the tip; edited, it
+        // scrolls and all of it is to be had. It was cut at the field's
+        // edge with nothing to say so, mid-word ("…cmake, go, jav" read
+        // as the list's end: both reviewers, four times, 2026-11-20). (In
+        // the one colour: a field's coloured parts are for editing.)
+        let cut = (tip && field.marked.is_none()).then(|| {
+            let shown = whole_words(&text, style::fit(g, text.clone(), size_px, &field.face(), bounds.size.width));
+            g.text_system().shape_line(shown.clone(), px(size_px), &[TextRun { len: shown.len(), ..plain.clone() }], None)
+        });
         // (A line longer than the field scrolls across it: what the field
         // cuts is scrolled out of sight, not cut off.)
         crate::review::scroll_area(g, bounds);
@@ -1199,7 +1210,7 @@ impl TextField {
                 // The kit's selection: the highlight, see-through.
                 style::fill_rect(g, sel, style::selection_behind(&palette, focused));
             }
-            let _ = line.paint(point(left, top), height, g);
+            let _ = cut.as_ref().unwrap_or(&line).paint(point(left, top), height, g);
             crate::review::text(g, drawn, baseline, &text, size_px);
             if text.is_empty() && !hint.is_empty() && marked.is_none() {
                 let ink = style::disabled_text(&palette);
@@ -1332,6 +1343,23 @@ impl TextField {
     }
 }
 
+/// `cut` (`text` cut short with "…" where it would run past its field)
+/// cut a little shorter where it ends inside a word, back to the last
+/// whole one: a list of names ended "…, cmake, g…", a letter of the next
+/// name and no more. As it is where no word began lately (a path, one
+/// long word), or nothing would be left.
+fn whole_words(text: &str, cut: SharedString) -> SharedString {
+    let Some(kept) = cut.strip_suffix('…') else { return cut };
+    let inside = kept.chars().next_back().is_some_and(char::is_alphanumeric) && text.get(kept.len()..).and_then(|rest| rest.chars().next()).is_some_and(char::is_alphanumeric);
+    if !inside {
+        return cut;
+    }
+    match kept.char_indices().rev().take(16).find(|(_, c)| c.is_whitespace()) {
+        Some((at, _)) if !kept[..at].trim_end_matches([',', ';', ':', ' ']).is_empty() => format!("{}…", kept[..at].trim_end_matches([',', ';', ':', ' '])).into(),
+        _ => cut,
+    }
+}
+
 /// Where each line of a wrapped paragraph starts (bytes in it).
 fn row_starts(p: &WrappedLine) -> Vec<usize> {
     let layout = &p.unwrapped_layout;
@@ -1342,4 +1370,58 @@ fn row_starts(p: &WrappedLine) -> Vec<usize> {
 /// owns.
 pub fn text_field<V: View>(cx: &mut Cx<V>, build: impl FnOnce(TextField) -> TextField) -> Child<TextField> {
     cx.new_view(|_| build(TextField::new()))
+}
+
+#[cfg(test)]
+mod whole_words_tests {
+    use super::whole_words;
+
+    #[test]
+    fn a_cut_inside_a_word_goes_back_to_the_last_whole_one() {
+        let names = "rustc, cargo, cc1, cmake, go, javac, gradle";
+        // Cut inside "go" and inside "javac": back to the name before.
+        assert_eq!(whole_words(names, "rustc, cargo, cc1, cmake, g…".into()).as_ref(), "rustc, cargo, cc1, cmake…");
+        assert_eq!(whole_words(names, "rustc, cargo, cc1, cmake, go, jav…".into()).as_ref(), "rustc, cargo, cc1, cmake, go…");
+        // Cut between names already (the kit's cut drops the comma): as it is.
+        assert_eq!(whole_words(names, "rustc, cargo, cc1, cmake, go…".into()).as_ref(), "rustc, cargo, cc1, cmake, go…");
+        // One long word, or a path: nowhere to go back to.
+        assert_eq!(whole_words("/home/someone/a-very-long-name", "/home/someone/a-very-lo…".into()).as_ref(), "/home/someone/a-very-lo…");
+        assert_eq!(whole_words("incomprehensibilities", "incompreh…".into()).as_ref(), "incompreh…");
+        // Not cut at all: as it is.
+        assert_eq!(whole_words("Olo", "Olo".into()).as_ref(), "Olo");
+        // A sentence: at a word's end, its comma gone with it.
+        assert_eq!(whole_words("Several words, then more of them", "Several words, then mo…".into()).as_ref(), "Several words, then…");
+    }
+
+    /// What the cut adds to a paint of a field that isn't being edited
+    /// and whose text runs past it (`cargo test --release -p olo-kit
+    /// what_the_cut_costs -- --ignored --nocapture`).
+    #[test]
+    #[ignore = "a timing, to read"]
+    fn what_the_cut_costs() {
+        use crate::style;
+        use olo_interface::{Hsla, SharedString, TextRun, px};
+        let ts = olo_interface::thread_text_system();
+        let text: SharedString = "rustc, cargo, cc1, cc1plus, cc, c++, gcc, g++, clang, clang++, ld, ld.lld, lld, mold, ld.bfd, ld.gold, as, make, ninja, cmake, go, javac, gradle, npm, bun".into();
+        let font = style::ui_font(olo_interface::FontWeight::NORMAL);
+        let run = |len| TextRun { len, font: font.clone(), color: Hsla::default(), background_color: None, underline: None, strikethrough: None, size: None };
+        let once = || {
+            let shown = whole_words(&text, style::fit_with(&ts, text.clone(), style::PLAIN_SIZE, &font, px(620.0)));
+            ts.shape_line(shown.clone(), px(style::PLAIN_SIZE), &[run(shown.len())], None).width
+        };
+        let whole = || ts.shape_line(text.clone(), px(style::PLAIN_SIZE), &[run(text.len())], None).width;
+        assert!(once() < px(620.0) && whole() > px(620.0));
+        let n = 20_000;
+        let t = std::time::Instant::now();
+        for _ in 0..n {
+            std::hint::black_box(whole());
+        }
+        let plain = t.elapsed();
+        let t = std::time::Instant::now();
+        for _ in 0..n {
+            std::hint::black_box(once());
+        }
+        let cut = t.elapsed();
+        println!("the line as it was painted: {:.2} µs; the cut besides: {:.2} µs", plain.as_secs_f64() * 1e6 / f64::from(n), cut.as_secs_f64() * 1e6 / f64::from(n));
+    }
 }

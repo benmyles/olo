@@ -436,7 +436,7 @@ A script of {} failed (code {}).
 A setting comes before any [repository].
 有一項設定出現在第一個 [repository] 區段之前。
 
-A terminal’s job busy for a minute and more is lowered too. Batch scheduling and idle I/O are put back when this is turned off; a raised nice stays until the program ends.
+A terminal job that stays busy for a minute or more is lowered too. Turning this off puts back batch scheduling and idle I/O; the nice value stays until the program ends.
 終端中連續繁忙一分鐘以上的工作也會降低優先順序。關閉此項後，批次處理排程和閒置 I/O 會恢復原狀；已調高的 nice 值會保留到程式結束。
 
 A thick line
@@ -801,6 +801,9 @@ All lines around the selected one. {}
 
 All of Olo’s {} words are in {}.
 Olo 的 {0} 條文案均已譯為{1}。
+
+All these settings are for the whole computer, so changing one asks for an administrator's password.
+這些設定全都作用於整部電腦，因此更改時需要管理員密碼。
 
 All waiting
 全部等待中
@@ -1872,6 +1875,9 @@ Check for Updates
 
 Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
 快速檢查所選備份是否完整：確認資料齊全、核對儲存中的總和檢查碼與傳送時是否一致，再抽樣讀回檢查，步驟與每次備份完成後的檢查相同。發現損壞時會盡量修復。
+
+Checked
+已檢查
 
 Checking for updates…
 正在檢查更新…
@@ -4408,6 +4414,9 @@ Held by builds
 Held by the server
 受伺服器限制
 
+Here
+本機
+
 Hidden and ignored files
 隱藏及已忽略的檔案
 
@@ -4776,6 +4785,9 @@ Integrated GPU (VA-API)
 
 Integrations
 服務整合
+
+Intel
+Intel
 
 Intel GPU (VA-API)
 Intel GPU (VA-API)
@@ -5755,6 +5767,9 @@ Match:
 Max
 最大值
 
+May wait
+可等待
+
 Maybe
 可能
 
@@ -6295,6 +6310,9 @@ New Windows Open In
 New Worktree…
 新增工作樹…
 
+New connections
+新連線
+
 New description
 新說明
 
@@ -6372,6 +6390,9 @@ Next column width (Scrolling)
 
 Next day, week or month
 下一天、下一週或下個月
+
+Next start
+下次啟動
 
 Next step
 下一步
@@ -7080,6 +7101,9 @@ On disk
 
 On hold
 等待
+
+On it now
+目前使用
 
 On the day, at 9 AM
 當天上午 9 點
@@ -9343,6 +9367,9 @@ Size:
 Skip this step
 跳過此步驟
 
+Sleep
+睡眠
+
 Sleet
 雨夾雪
 
@@ -9597,6 +9624,9 @@ Steady snow
 
 Step {} of {}
 第 {} 步，共 {} 步
+
+Still going after {}. Other fixes wait until it's done; if it never finishes, restarting the computer stops it.
+已過 {} 仍在進行。其他修復會等待它完成；如果一直無法完成，重新啟動電腦即可停止。
 
 Stop
 停止
@@ -10324,6 +10354,9 @@ The password of “{}” couldn’t be kept: {}
 The passwords file is damaged: {}
 密碼檔案已損壞：{}
 
+The patch
+修補程式
+
 The phone didn’t connect. Is it unlocked, with Bluetooth on?
 手機未能連線。它是否已解鎖並開啟了藍牙？
 
@@ -10477,6 +10510,9 @@ The {} wasn't changed: an administrator's password is needed.
 Their new windows open there, on the display they open on. Uncheck an app to open its windows where you are again.
 這些應用程式的新視窗會出現在對應顯示器的指定工作區。取消勾選後，新視窗會重新在目前工作區開啟。
 
+Their round trip
+往返時間
+
 Their windows float over the tiles, and over the window Focus shows. Uncheck an app to tile its windows again.
 這些應用程式的視窗會浮在平鋪視窗及專注模式的視窗之上。取消勾選即可恢復平鋪。
 
@@ -10530,9 +10566,6 @@ These apps may have these items whenever they ask. Take one back and the app is 
 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 這些功能需要藍牙監聽 AirPods。可用 Olo Doctor 開啟。
-
-All these settings are for the whole computer, so changing one asks for an administrator's password.
-這些設定全都作用於整部電腦，因此更改時需要管理員密碼。
 
 ThinkPad
 ThinkPad
@@ -11524,6 +11557,9 @@ Waiting
 Waiting for Ethernet
 正在等待乙太網路連線
 
+Waiting for another fix to finish…
+正在等待另一項修復完成…
+
 Waiting for app_server…
 正在等待 app_server…
 
@@ -11550,6 +11586,9 @@ Waiting for you to sign in to Google in the browser…
 
 Waiting for “{}” to allow it (its switches for this computer, in its Bluetooth settings).
 正在等待「{}」授權。請檢查其藍牙設定中此電腦對應的開關。
+
+Waiting now
+正在等待
 
 Waiting: {}
 正在等待：{}
@@ -11734,12 +11773,6 @@ When am I free tomorrow?
 When does the sun rise tomorrow?
 明天幾點日出？
 
-With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
-開啟後，忙碌的程式會在 0.7 毫秒（而非 {}）後讓位給等待中的程式（base slice）。目前由 {} 排程，並由它自行決定。
-
-With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
-開啟後，忙碌的程式會在 0.7 毫秒（而非 {}）後讓位給等待中的程式，負載高時視窗和輸入也不會卡頓（base slice）。
-
 When held for:
 長按時間長度：
 
@@ -11916,6 +11949,12 @@ With AirPods:
 
 With Another Window
 與其他視窗並排
+
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {} (base slice). {} is scheduling now and decides that itself.
+開啟後，忙碌的程式會在 0.7 毫秒（而非 {}）後讓位給等待中的程式（base slice）。目前由 {} 排程，並由它自行決定。
+
+With this on, a busy program gives way to a waiting one after 0.7 ms instead of {}, so windows and typing keep up under load (base slice).
+開啟後，忙碌的程式會在 0.7 毫秒（而非 {}）後讓位給等待中的程式，負載高時視窗和輸入也不會卡頓（base slice）。
 
 Withdrawn by {}
 已由 {} 撤回
@@ -12261,6 +12300,12 @@ ceiling {}%
 
 charging, full in {}
 正在充電，{} 後充滿
+
+compile going on
+個編譯正在進行
+
+compiles going on
+個編譯正在進行
 
 couldn't save the boost: {}
 無法儲存增益：{}
@@ -13824,6 +13869,9 @@ Olo 的 {1} 條文案中，已有 {0} 條譯為{2}，其餘仍以英語顯示。
 
 ~/worktrees
 ~/worktrees
+
+·
+·
 
 ¼ Second
 0.25 秒

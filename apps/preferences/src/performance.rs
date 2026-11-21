@@ -791,13 +791,24 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
             if tab == 0 {
                 ui.bbox("Priorities", |ui| {
                     check(ui, "Lower background work", s.priorities, |s, v| s.priorities = v);
-                    let nice = s.background_nice as f32;
-                    let on = set(ui, |s, v: f32| s.background_nice = v as i32);
-                    let enabled = ui.enabled();
-                    ui.add(div().flex().flex_row().gap(px(m::SPACING * 2.0)).child(div().flex_1().child(Slider::new("perf-nice", nice, 1.0..=19.0).label("Lower to nice").value_text(format!("{nice:.0}")).step(1.0).enabled(enabled).on_change(on))).child(div().flex_1()));
-                    background.update(ui.cx, |f, cx| f.set_enabled(enabled, cx));
-                    ui.add(TextControl::new(ui.cx, background).label("Background:"));
-                    ui.note("A terminal’s job busy for a minute and more is lowered too. Batch scheduling and idle I/O are put back when this is turned off; a raised nice stays until the program ends.");
+                    // (Its own note, right under it: "this" is the check
+                    // box above, and what depends on it comes after.)
+                    ui.note("A terminal job that stays busy for a minute or more is lowered too. Turning this off puts back batch scheduling and idle I/O; the nice value stays until the program ends.");
+                    // What depends on it, set in under it and greyed with
+                    // it off, all of it: at the check box's own edge
+                    // they read as settings of their own, and live with
+                    // it off as ones that still did something (both
+                    // reviewers, 2026-11-20).
+                    ui.enabled_if(s.priorities, |ui| {
+                        ui.indented(|ui| {
+                            let nice = s.background_nice as f32;
+                            let on = set(ui, |s, v: f32| s.background_nice = v as i32);
+                            let enabled = ui.enabled();
+                            ui.add(div().flex().flex_row().gap(px(m::SPACING * 2.0)).child(div().flex_1().child(Slider::new("perf-nice", nice, 1.0..=19.0).label("Lower to nice").value_text(format!("{nice:.0}")).step(1.0).enabled(enabled).on_change(on))).child(div().flex_1()));
+                            background.update(ui.cx, |f, cx| f.set_enabled(enabled, cx));
+                            ui.add(TextControl::new(ui.cx, background).label("Background:"));
+                        });
+                    });
                 });
                 ui.bbox("Never Warned About", |ui| {
                     if s.ignored.is_empty() {
