@@ -97,7 +97,7 @@ The brief:
 
 RULES
     cat "$brief"
-} | codex exec -m gpt-6.2-astra -c 'model_reasoning_effort="max"' --approve-for-me -C "$repo" --add-dir "$dir" --color never -o "$dir/answer.md" - > "$dir/log.txt" 2>&1
+} | codex exec -m gpt-6.2-astra -c 'model_reasoning_effort="xhigh"' --approve-for-me -C "$repo" --add-dir "$dir" --color never -o "$dir/answer.md" - > "$dir/log.txt" 2>&1
 rc=$?
 echo "codex-help: ended with $rc; the answer is $dir/answer.md, what it did $dir/log.txt"
 # A run that ended badly or without an answer: why, in the log's own

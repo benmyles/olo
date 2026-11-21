@@ -1,6 +1,6 @@
 ---
 name: olo-debug-help
-description: Get a second investigator on a bug or a hard problem in Olo - start a headless Codex (gpt-6.2-astra at its highest reasoning effort, approving its own steps) with a written brief, let it dig in parallel while you go on, then check what it found. Use it freely, two brains are better than one - whenever you're unsure why something goes wrong (a hang, a crash, a wrong pixel, a flaky test, a tool that misbehaves), when a problem is complex (several programs, protocols or threads between cause and symptom), when your first theories didn't hold, or when a bug only happens on the person's real session. For finding causes and checking reasoning, not for doing the work itself.
+description: Get a second investigator on a bug or a hard problem in Olo - start a headless Codex (gpt-6.2-astra at xhigh reasoning effort, approving its own steps) with a written brief, let it dig in parallel while you go on, then check what it found. Use it freely, two brains are better than one - whenever you're unsure why something goes wrong (a hang, a crash, a wrong pixel, a flaky test, a tool that misbehaves), when a problem is complex (several programs, protocols or threads between cause and symptom), when your first theories didn't hold, or when a bug only happens on the person's real session. For finding causes and checking reasoning, not for doing the work itself.
 ---
 
 # A second investigator: Codex, for a cause you can't find
@@ -65,7 +65,8 @@ looking at, with a reproduction and a patch that checked out.
 
    Run it with `run_in_background` and take its completion notice; it
    can take an hour. It runs `codex exec -m gpt-6.2-astra -c
-   model_reasoning_effort="max" --approve-for-me` in the repository,
+   model_reasoning_effort="xhigh" --approve-for-me` in the repository
+   (xhigh, not max: Ben, 2026-11-20),
    with rules in front of your brief: no changes to the working tree,
    no commits, the person's session left alone, headless tests under a
    `codex-` name, scratch in the brief's folder. It writes

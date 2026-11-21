@@ -190,7 +190,7 @@ are universal and non-negotiable:
     to redo some), then commit it yourself (2026-11-19).
   - A second investigator for debugging and root-causing, with the
     `olo-debug-help` skill (`tools/dev/codex-help BRIEF.md`: a headless
-    Codex at its highest effort, approving its own steps), started as
+    Codex at xhigh, approving its own steps), started as
     soon as a bug's cause isn't plain (below), while you keep working
     on your own line: two brains are better than one. It looks and
     reports; you check what it found and do the work.
@@ -198,6 +198,12 @@ are universal and non-negotiable:
     (above); and, the one Claude among them, `tools/dev/opus-look`, Opus
     5.5's design review of the same pictures (the Claude CLI headless,
     reading pictures and nothing else).
+- **Astra 6.2 at xhigh, never max.** Wherever Astra reasons for Olo (a
+  subagent, the second investigator, a review of a design or a build),
+  its effort is xhigh (Ben, 2026-11-20: "whenever you use astra 6.2 it
+  should be on xhigh not max"; where his earlier words here say "astra
+  6.2 max", read xhigh). The picture look stays at medium: it only
+  looks.
 - **A bug you can't see at once gets a second investigator at once.**
   If a quick first look (the logs, the code on its path: minutes, not
   an hour) hasn't shown you the cause, start the `olo-debug-help`

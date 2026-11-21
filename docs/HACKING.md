@@ -20718,8 +20718,9 @@ with auto approve -- actually add a skill for doing that in this repo")
 is for a cause that won't be found: a written brief (the symptom, the
 evidence, what was tried and ruled out, the code on the path, how far
 it reproduces) goes to `tools/dev/codex-help BRIEF.md`, which runs
-`codex exec -m gpt-6.2-astra -c model_reasoning_effort="max"
---approve-for-me` in the repository with the rules in front (the
+`codex exec -m gpt-6.2-astra -c model_reasoning_effort="xhigh"
+--approve-for-me` (xhigh since 2026-11-20, Ben: "whenever you use astra
+6.2 it should be on xhigh not max") in the repository with the rules in front (the
 working tree unchanged, no commits, the person's session left alone,
 headless tests under a `codex-` name, scratch in the brief's folder,
 no helper of its own), in the background, and writes `answer.md` and

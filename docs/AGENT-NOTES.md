@@ -1283,7 +1283,8 @@ Learned on the second pass (2026-11-20):
   state. `grep -rn` the names of the thing (the loader's variables,
   the driver's name) across `crates/` and `apps/` before proposing
   a mechanism, and say "not traced" until it is.
-- **A review at max effort before anything that touches a driver, a
+- **A review by Astra (at xhigh, as all its work for Olo is now)
+  before anything that touches a driver, a
   kernel interface or memory is relied on** (Ben, 2026-11-20: "very
   important so that there are no mistakes"): `tools/dev/codex-help`
   with a brief that names the commits, asks for the kernel's source
