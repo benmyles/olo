@@ -255,7 +255,7 @@ impl Panel {
             // codes go.
             Panel::Phone => (820, 464),
             // Power follows its two forms and their disclosures.
-            Panel::Power => (540, 200),
+            Panel::Power => (900, 200),
             Panel::ScreenSaver => (500, 400),
             // Passwords' settings, security keys beside them.
             Panel::Security => (880, 440),

@@ -997,8 +997,14 @@ other: 应用 {n} 项更改
 Applying asks for an administrator's password once while this window is open.
 在此窗口打开期间，只在首次应用时询问管理员密码。
 
+Applying…
+正在应用…
+
 Applying… (an administrator's password may be asked for)
 正在应用…（可能需要管理员密码）
+
+Apply…
+应用…
 
 Approve requests without asking, for a while
 暂时自动批准请求
@@ -2638,6 +2644,9 @@ Custom Message…
 Custom {} once applied (on {} until then)
 应用后使用自定义{0}（当前为{1}）
 
+Customized.
+已自定义。
+
 Customize…
 自定义…
 
@@ -2730,6 +2739,9 @@ Default mode:
 
 Defaults
 默认值
+
+Defaults for this mode.
+模式默认值。
 
 Degrees
 度
@@ -2940,6 +2952,9 @@ Dew point {}
 
 Diff
 Diff
+
+Dim the built-in display when idle
+空闲时调暗内建显示器
 
 Dim the display while you look away
 移开视线时调暗显示器
@@ -3174,6 +3189,12 @@ Drawn into each frame
 
 Drive Setup
 Drive Setup
+
+Drive {}:
+驱动器 {}：
+
+Drive:
+驱动器：
 
 DriveSetup
 DriveSetup
@@ -3703,6 +3724,9 @@ Fan out the other windows, leaving this one
 Fans
 风扇
 
+Fans:
+风扇：
+
 Fast
 快
 
@@ -3723,6 +3747,9 @@ Fastmail 拒绝了此地址和应用密码：{}
 
 Favorites
 收藏
+
+Favour the front app as you type and click
+每次按键和点按后优先处理前台应用
 
 Favoured
 优先
@@ -5053,8 +5080,11 @@ Keep a core for the window server
 Keep briefly
 短暂保留
 
-Keep foreground work ready between bursts. Fans start sooner.
+Keep foreground work ready between tasks. Fans start sooner.
 让前台任务在间歇后也能立即响应。风扇会更早提速。
+
+Keep graphics ready between tasks
+任务之间保持图形处理器就绪
 
 Keep it in Passwords
 存入 Passwords
@@ -5373,6 +5403,9 @@ Limit
 
 Limit charging to {}%
 将充电上限设为 {}%
+
+Limit the built-in display to 60 Hz
+将内建显示器限制为 60 Hz
 
 Limit what waits to be written to them
 限制等待写入的数据量
@@ -6703,6 +6736,9 @@ Not all of it applied: {}.
 Not answered
 未应答
 
+Not applied yet.
+尚未应用。
+
 Not applied.
 未应用。
 
@@ -7951,6 +7987,9 @@ Processor Turns
 Processor:
 处理器：
 
+Processors:
+处理器：
+
 Profile
 配置
 
@@ -8532,6 +8571,9 @@ Resting: nothing new on it
 
 Restore
 恢复
+
+Restore Defaults
+恢复默认值
 
 Restore Files…
 恢复文件…
@@ -9685,6 +9727,9 @@ Stopping the backup
 Store
 存储区
 
+Stretch the charge and keep everyday work responsive.
+延长电量使用时间，同时保持日常工作流畅。
+
 Stretch the remaining charge while keeping everyday work responsive.
 延长剩余电量的使用时间，同时保持日常操作流畅。
 
@@ -9786,6 +9831,9 @@ Switch applications on the workspaces showing
 
 Switch automatically between this computer and your iPhone
 在本机和 iPhone 之间自动切换
+
+Switch to Battery Saver:
+切换到省电模式：
 
 Switch to a woken program at once
 立即运行刚唤醒的程序
@@ -10569,6 +10617,9 @@ These apps may have these items whenever they ask. Take one back and the app is 
 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 这些功能需要蓝牙监听 AirPods。可用 Olo Doctor 开启。
+
+These take effect at once:
+立即生效：
 
 ThinkPad
 ThinkPad
@@ -12922,6 +12973,9 @@ under a minute
 under a second
 不到一秒
 
+up to
+最高
+
 up to {} dpi
 最高 {} dpi
 
@@ -13293,6 +13347,9 @@ other: {n} 周
 
 {} freed
 已释放 {}
+
+{} graphics:
+{} 图形：
 
 {} h
 {} h
@@ -13677,6 +13734,9 @@ Olo 的 {1} 条文案中，已有 {0} 条译为{2}，其余仍以英语显示。
 
 {} · {} · music quality
 {} · {} · 音乐音质
+
+{} — Customized
+{} — 已自定义
 
 {} — {} ({}% of this folder){}{}
 {} — {}（占此文件夹的 {}%）{}{}

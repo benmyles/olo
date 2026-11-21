@@ -1003,8 +1003,14 @@ other: {n} wijzigingen toepassen
 Applying asks for an administrator's password once while this window is open.
 Zolang dit venster geopend is, vraagt toepassen slechts eenmaal om een beheerderswachtwoord.
 
+Applying…
+Toepassen…
+
 Applying… (an administrator's password may be asked for)
 Toepassen… (mogelijk is een beheerderswachtwoord nodig)
+
+Apply…
+Toepassen…
 
 Approve requests without asking, for a while
 Verzoeken tijdelijk zonder bevestiging goedkeuren
@@ -2648,6 +2654,9 @@ Eigen bericht…
 Custom {} once applied (on {} until then)
 Na toepassen: aangepast {} (tot dan {})
 
+Customized.
+Aangepast.
+
 Customize…
 Aanpassen…
 
@@ -2740,6 +2749,9 @@ Standaardmodus:
 
 Defaults
 Standaardinstellingen
+
+Defaults for this mode.
+Standaard van de modus.
 
 Degrees
 Graden
@@ -2950,6 +2962,9 @@ Dauwpunt: {}
 
 Diff
 Diff
+
+Dim the built-in display when idle
+Ingebouwd scherm dimmen bij inactiviteit
 
 Dim the display while you look away
 Scherm dimmen als u wegkijkt
@@ -3185,6 +3200,12 @@ Getekend in elk frame
 
 Drive Setup
 Drive Setup
+
+Drive {}:
+Schijf {}:
+
+Drive:
+Schijf:
 
 DriveSetup
 DriveSetup
@@ -3718,6 +3739,9 @@ De andere vensters uitwaaieren, dit blijft staan
 Fans
 Ventilatoren
 
+Fans:
+Ventilatoren:
+
 Fast
 Snel
 
@@ -3738,6 +3762,9 @@ Fastmail heeft het adres en het appwachtwoord geweigerd: {}
 
 Favorites
 Favorieten
+
+Favour the front app as you type and click
+De app vooraan voorrang geven na elke toets en klik
 
 Favoured
 Met voorrang
@@ -5073,8 +5100,11 @@ Een kern vrijhouden voor de vensterserver
 Keep briefly
 Kort vasthouden
 
-Keep foreground work ready between bursts. Fans start sooner.
+Keep foreground work ready between tasks. Fans start sooner.
 Houd taken op de voorgrond tussen pieken door paraat. De ventilatoren gaan eerder aan.
+
+Keep graphics ready between tasks
+Graphics gereed houden tussen taken
 
 Keep it in Passwords
 In Passwords bewaren
@@ -5393,6 +5423,9 @@ Limiet
 
 Limit charging to {}%
 Opladen beperken tot {}%
+
+Limit the built-in display to 60 Hz
+Ingebouwd scherm tot 60 Hz beperken
 
 Limit what waits to be written to them
 Wachtende schrijfgegevens beperken
@@ -6723,6 +6756,9 @@ Niet alles is toegepast: {}.
 Not answered
 Niet beantwoord
 
+Not applied yet.
+Nog niet toegepast.
+
 Not applied.
 Niet toegepast.
 
@@ -7973,6 +8009,9 @@ Processorbeurten
 Processor:
 Processor:
 
+Processors:
+Processors:
+
 Profile
 Profiel
 
@@ -8554,6 +8593,9 @@ In rust: niets nieuws te tonen
 
 Restore
 Herstellen
+
+Restore Defaults
+Standaard herstellen
 
 Restore Files…
 Bestanden herstellen…
@@ -9710,6 +9752,9 @@ Back-up stoppen
 Store
 Opslag
 
+Stretch the charge and keep everyday work responsive.
+De lading rekken en dagelijks werk vlot houden.
+
 Stretch the remaining charge while keeping everyday work responsive.
 Langer werken op de resterende acculading, terwijl dagelijkse taken vlot blijven reageren.
 
@@ -9811,6 +9856,9 @@ Wisselen tussen programma’s op de zichtbare werkbladen
 
 Switch automatically between this computer and your iPhone
 Automatisch wisselen tussen deze computer en uw iPhone
+
+Switch to Battery Saver:
+Overschakelen op Accubesparing:
 
 Switch to a woken program at once
 Gewekt programma meteen laten draaien
@@ -10594,6 +10642,9 @@ Deze apps krijgen de vermelde onderdelen wanneer ze erom vragen. Trek een toeste
 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 Voor deze opties moet Bluetooth naar AirPods luisteren. Olo Doctor kan dat inschakelen.
+
+These take effect at once:
+Werkt meteen:
 
 ThinkPad
 ThinkPad
@@ -12964,6 +13015,9 @@ minder dan een minuut
 under a second
 minder dan een seconde
 
+up to
+tot
+
 up to {} dpi
 tot {} dpi
 
@@ -13386,6 +13440,9 @@ standaard {} dpi
 {} freed
 {} vrijgemaakt
 
+{} graphics:
+{}-graphics:
+
 {} h
 {} h
 
@@ -13769,6 +13826,9 @@ doorgaans {} µs per meting, langste {} µs
 
 {} · {} · music quality
 {} · {} · muziekkwaliteit
+
+{} — Customized
+{} — Aangepast
 
 {} — {} ({}% of this folder){}{}
 {} — {} ({}% van deze map){}{}

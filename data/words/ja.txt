@@ -997,8 +997,14 @@ other: {n}件の変更を適用
 Applying asks for an administrator's password once while this window is open.
 このウィンドウを開いている間、適用時に管理者のパスワードを求めるのは一度だけです。
 
+Applying…
+適用中…
+
 Applying… (an administrator's password may be asked for)
 適用中…（管理者のパスワードが必要になる場合があります）
+
+Apply…
+適用…
 
 Approve requests without asking, for a while
 一時的に確認なしで承認する
@@ -2638,6 +2644,9 @@ Custom Message…
 Custom {} once applied (on {} until then)
 適用後はカスタム{}（現在は{}）
 
+Customized.
+カスタマイズ済み。
+
 Customize…
 カスタマイズ…
 
@@ -2730,6 +2739,9 @@ Default mode:
 
 Defaults
 初期値
+
+Defaults for this mode.
+モードの既定値。
 
 Degrees
 度
@@ -2940,6 +2952,9 @@ Dew point {}
 
 Diff
 Diff
+
+Dim the built-in display when idle
+アイドル時に内蔵ディスプレイを暗くする
 
 Dim the display while you look away
 目を離したら画面を暗くする
@@ -3174,6 +3189,12 @@ Drawn into each frame
 
 Drive Setup
 Drive Setup
+
+Drive {}:
+ドライブ {}:
+
+Drive:
+ドライブ:
 
 DriveSetup
 DriveSetup
@@ -3703,6 +3724,9 @@ Fan out the other windows, leaving this one
 Fans
 ファン
 
+Fans:
+ファン:
+
 Fast
 高速
 
@@ -3723,6 +3747,9 @@ Fastmailがアドレスとアプリ用パスワードを受け付けませんで
 
 Favorites
 お気に入り
+
+Favour the front app as you type and click
+キー入力やクリックのたびに前面のアプリを優先する
 
 Favoured
 優先
@@ -5053,8 +5080,11 @@ Keep a core for the window server
 Keep briefly
 しばらく保持
 
-Keep foreground work ready between bursts. Fans start sooner.
+Keep foreground work ready between tasks. Fans start sooner.
 前面の作業がすぐに再開できる状態を保ちます。ファンが早めに回り始めます。
+
+Keep graphics ready between tasks
+タスクの合間もグラフィックスを待機させる
 
 Keep it in Passwords
 Passwordsに保存
@@ -5373,6 +5403,9 @@ Limit
 
 Limit charging to {}%
 充電上限を{}%にする
+
+Limit the built-in display to 60 Hz
+内蔵ディスプレイを 60 Hz に抑える
 
 Limit what waits to be written to them
 書き込み待ちのデータ量を制限
@@ -6703,6 +6736,9 @@ Not all of it applied: {}.
 Not answered
 未回答
 
+Not applied yet.
+まだ適用されていません。
+
 Not applied.
 適用されていません。
 
@@ -7951,6 +7987,9 @@ Processor Turns
 Processor:
 プロセッサー:
 
+Processors:
+プロセッサ:
+
 Profile
 プロファイル
 
@@ -8532,6 +8571,9 @@ Resting: nothing new on it
 
 Restore
 復元
+
+Restore Defaults
+既定値に戻す
 
 Restore Files…
 ファイルを復元…
@@ -9685,6 +9727,9 @@ Stopping the backup
 Store
 保存領域
 
+Stretch the charge and keep everyday work responsive.
+ふだんの作業の軽快さを保ちながら充電を長持ちさせます。
+
 Stretch the remaining charge while keeping everyday work responsive.
 普段の作業の応答性を保ちながら、残りのバッテリーを長持ちさせます。
 
@@ -9786,6 +9831,9 @@ Switch applications on the workspaces showing
 
 Switch automatically between this computer and your iPhone
 このコンピューターとiPhoneを自動で切り替える
+
+Switch to Battery Saver:
+バッテリー節約に切り替え:
 
 Switch to a woken program at once
 起床したプログラムをすぐに実行
@@ -10569,6 +10617,9 @@ These apps may have these items whenever they ask. Take one back and the app is 
 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 これらの機能にはBluetoothでAirPodsを検出する設定が必要です。Olo Doctorで有効にできます。
+
+These take effect at once:
+すぐに反映:
 
 ThinkPad
 ThinkPad
@@ -12922,6 +12973,9 @@ under a minute
 under a second
 1秒未満
 
+up to
+最大
+
 up to {} dpi
 最大{} dpi
 
@@ -13293,6 +13347,9 @@ other: {n}週間
 
 {} freed
 {}解放
+
+{} graphics:
+{} グラフィックス:
 
 {} h
 {} h
@@ -13677,6 +13734,9 @@ Oloの全{1}項目のうち{0}項目を{2}で利用できます。残りは英�
 
 {} · {} · music quality
 {} · {} · 音楽用の音質
+
+{} — Customized
+{} — カスタマイズ済み
 
 {} — {} ({}% of this folder){}{}
 {} — {}（このフォルダーの{}%）{}{}

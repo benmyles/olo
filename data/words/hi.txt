@@ -1003,8 +1003,14 @@ other: {n} बदलाव लागू करें
 Applying asks for an administrator's password once while this window is open.
 यह विंडो खुली रहने तक लागू करने के लिए प्रशासक का पासवर्ड सिर्फ़ एक बार पूछा जाएगा।
 
+Applying…
+लागू हो रहा है…
+
 Applying… (an administrator's password may be asked for)
 लागू हो रहा है… (प्रशासक का पासवर्ड माँगा जा सकता है)
+
+Apply…
+लागू करें…
 
 Approve requests without asking, for a while
 कुछ समय के लिए बिना पूछे अनुरोध मंज़ूर करें
@@ -2648,6 +2654,9 @@ Custom Message…
 Custom {} once applied (on {} until then)
 लागू होने पर कस्टम {0} (तब तक {1})
 
+Customized.
+अनुकूलित।
+
 Customize…
 अपने अनुसार बदलें…
 
@@ -2740,6 +2749,9 @@ Default mode:
 
 Defaults
 डिफ़ॉल्ट
+
+Defaults for this mode.
+मोड के डिफ़ॉल्ट।
 
 Degrees
 डिग्री
@@ -2950,6 +2962,9 @@ Dew point {}
 
 Diff
 Diff
+
+Dim the built-in display when idle
+निष्क्रिय होने पर बिल्ट-इन डिस्प्ले मंद करें
 
 Dim the display while you look away
 नज़र हटाने पर डिस्प्ले मंद करें
@@ -3185,6 +3200,12 @@ Drawn into each frame
 
 Drive Setup
 Drive Setup
+
+Drive {}:
+ड्राइव {}:
+
+Drive:
+ड्राइव:
 
 DriveSetup
 DriveSetup
@@ -3718,6 +3739,9 @@ Fan out the other windows, leaving this one
 Fans
 पंखे
 
+Fans:
+पंखे:
+
 Fast
 तेज़
 
@@ -3738,6 +3762,9 @@ Fastmail ने पता और ऐप पासवर्ड स्वीका
 
 Favorites
 पसंदीदा
+
+Favour the front app as you type and click
+हर कुंजी और क्लिक के बाद सामने के ऐप को प्राथमिकता दें
 
 Favoured
 प्राथमिकता मिली
@@ -5073,8 +5100,11 @@ Keep a core for the window server
 Keep briefly
 कुछ देर रखें
 
-Keep foreground work ready between bursts. Fans start sooner.
+Keep foreground work ready between tasks. Fans start sooner.
 बीच के विरामों में भी सामने का काम तैयार रखें। पंखे जल्दी चलेंगे।
+
+Keep graphics ready between tasks
+कामों के बीच ग्राफ़िक्स तैयार रखें
 
 Keep it in Passwords
 Passwords में रखें
@@ -5393,6 +5423,9 @@ Limit
 
 Limit charging to {}%
 चार्जिंग {}% तक सीमित करें
+
+Limit the built-in display to 60 Hz
+बिल्ट-इन डिस्प्ले को 60 Hz पर रखें
 
 Limit what waits to be written to them
 लिखने की प्रतीक्षा में डेटा सीमित रखें
@@ -6723,6 +6756,9 @@ Not all of it applied: {}.
 Not answered
 जवाब नहीं मिला
 
+Not applied yet.
+अभी लागू नहीं।
+
 Not applied.
 लागू नहीं हुआ।
 
@@ -7973,6 +8009,9 @@ Processor Turns
 Processor:
 प्रोसेसर:
 
+Processors:
+प्रोसेसर:
+
 Profile
 प्रोफ़ाइल
 
@@ -8554,6 +8593,9 @@ Resting: nothing new on it
 
 Restore
 बहाल करें
+
+Restore Defaults
+डिफ़ॉल्ट बहाल करें
 
 Restore Files…
 फ़ाइलें बहाल करें…
@@ -9710,6 +9752,9 @@ Stopping the backup
 Store
 भंडार
 
+Stretch the charge and keep everyday work responsive.
+चार्ज को लंबा चलाएँ और रोज़ का काम फुर्तीला रखें।
+
 Stretch the remaining charge while keeping everyday work responsive.
 रोज़मर्रा के काम फुर्तीले रखते हुए बाकी चार्ज ज़्यादा देर चलाएँ।
 
@@ -9811,6 +9856,9 @@ Switch applications on the workspaces showing
 
 Switch automatically between this computer and your iPhone
 इस कंप्यूटर और iPhone के बीच अपने आप बदलें
+
+Switch to Battery Saver:
+बैटरी बचत पर जाएँ:
 
 Switch to a woken program at once
 जागे हुए प्रोग्राम को तुरंत चलाएँ
@@ -10594,6 +10642,9 @@ These apps may have these items whenever they ask. Take one back and the app is 
 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 इन सुविधाओं के लिए Bluetooth का AirPods को सुनना ज़रूरी है। Olo Doctor इसे चालू कर सकता है।
+
+These take effect at once:
+तुरंत लागू होता है:
 
 ThinkPad
 ThinkPad
@@ -12964,6 +13015,9 @@ under a minute
 under a second
 एक सेकंड से कम
 
+up to
+अधिकतम
+
 up to {} dpi
 अधिकतम {} dpi
 
@@ -13386,6 +13440,9 @@ other: {n} हफ़्ते
 {} freed
 {} खाली हुआ
 
+{} graphics:
+{} ग्राफ़िक्स:
+
 {} h
 {} h
 
@@ -13769,6 +13826,9 @@ Olo के {1} संदेशों में से {0} अभी {2} मे�
 
 {} · {} · music quality
 {} · {} · संगीत की गुणवत्ता
+
+{} — Customized
+{} — अनुकूलित
 
 {} — {} ({}% of this folder){}{}
 {} — {} (इस फ़ोल्डर का {}%){}{}

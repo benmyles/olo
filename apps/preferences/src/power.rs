@@ -7,7 +7,7 @@ use crate::{
 };
 use olo_kit::{
     Cx, ParentElement as _, SharedString, Styled as _, WindowCx, div, metrics as m, px,
-    widgets::{CheckBox, PaneSwitch, RadioButton, StringView, TabView},
+    widgets::{BBox, Button, CheckBox, MenuField, PaneSwitch, RadioButton, StringView, TabView},
 };
 use olo_protocol::{
     PowerStatus, Settings,
@@ -44,7 +44,36 @@ struct Facts {
     charge_writable: bool,
     hardware: Vec<(String, String)>,
     issue: Option<String>,
+    /// What each mode is set to do, as the computer keeps it (root's
+    /// file), and what there is here for a mode to set: the GPUs (their
+    /// PCI address, maker, whether NVIDIA's), the drives (serial, model)
+    /// and whether the fans can be set.
+    plan: gpu_tuning::Plan,
+    gpus: Vec<(String, String, bool)>,
+    drives: Vec<(String, String)>,
+    fans: bool,
 }
+
+/// How a change to what the modes do is going (it is root's to keep:
+/// asked for on a thread of its own, an administrator's password first).
+#[derive(Debug, Clone, PartialEq, Default)]
+enum Applying {
+    #[default]
+    No,
+    Now,
+    Done,
+    Failed(String),
+}
+
+/// The top speeds a mode can hold the processors and a GPU to, in
+/// percent of their fastest (Ben: "100% default but i can tune it down in
+/// 10% increments to a min of 50%").
+const TOPS: [u8; 6] = [100, 90, 80, 70, 60, 50];
+/// A mode's column: how wide a preset's menu is, the "up to" between it
+/// and its top speed, and the top speed's menu.
+const PRESET: f32 = 130.0;
+const UP_TO: f32 = 48.0;
+const TOP: f32 = 80.0;
 
 fn demo() -> bool {
     cfg!(test) || std::env::var_os("OLO_POWER_DEMO").is_some()
@@ -63,6 +92,9 @@ impl Facts {
                     ("Graphics".into(), "Intel driving the built-in display, NVIDIA asleep".into()),
                     ("Cooling".into(), "Fans at level 3 of 7".into()),
                 ],
+                gpus: vec![("0000:00:02.0".into(), "Intel".into(), false), ("0000:01:00.0".into(), "NVIDIA".into(), true)],
+                drives: vec![("S7HDNJ0X123456".into(), "Samsung SSD 990 PRO 2TB".into())],
+                fans: true,
                 ..Self::default()
             };
         }
@@ -142,6 +174,10 @@ impl Facts {
             _ => cooling,
         };
         f.hardware.push(("Cooling".into(), cooling));
+        f.plan = gpu_tuning::Tuning::load().plan;
+        f.gpus = olo_system::gpus::list().into_iter().filter(|g| matches!(g.driver.as_str(), "xe" | "nvidia")).map(|g| (g.pci.clone(), g.maker().to_owned(), g.vendor == 0x10de)).collect();
+        f.drives = olo_system::nvme_power::drives().into_iter().map(|d| (d.serial, d.model)).collect();
+        f.fans = fans::look(&fans::Places::here()).is_some_and(|f| f.installed);
         f
     }
 }
@@ -162,6 +198,10 @@ pub struct State {
     expanded: Arc<std::sync::atomic::AtomicBool>,
     watch: Option<olo_kit::watch::Watch>,
     observed: Option<(Option<Mode>, Option<u32>, bool)>,
+    /// What the modes do as changed here and not yet applied (None: as
+    /// the computer keeps it).
+    edited: Option<gpu_tuning::Plan>,
+    applying: Arc<Mutex<Applying>>,
 }
 
 impl State {
@@ -185,7 +225,7 @@ impl State {
             }
         });
         let _ = refresh.try_send(());
-        Self { tab: 0, details: false, more_idle: false, facts, refresh, expanded, watch: None, observed: None }
+        Self { tab: 0, details: false, more_idle: false, facts, refresh, expanded, watch: None, observed: None, edited: None, applying: Arc::default() }
     }
     pub fn set_details(&mut self, open: bool) {
         self.details = open;
@@ -270,6 +310,12 @@ pub fn minutes_menu(ui: &mut Ui, id: &str, label: &str, divider: f32, choices: &
 
 pub fn ui(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut State) {
     let facts = st.facts.lock().unwrap().clone();
+    // (Applied, and read again: what was edited is what the computer
+    // keeps now.)
+    if *st.applying.lock().unwrap() == Applying::Done && facts.as_ref().is_some_and(|f| Some(&f.plan) == st.edited.as_ref()) {
+        st.edited = None;
+        *st.applying.lock().unwrap() = Applying::No;
+    }
     if let Some(p) = power {
         let key = (p.policy.modes.as_ref().map(|m| m.active), p.policy.percent, p.policy.on_battery);
         if st.observed.replace(key) != Some(key) {
@@ -296,20 +342,252 @@ pub fn ui(ui: &mut Ui, power: Option<&PowerStatus>, server: &Server, st: &mut St
     );
 }
 
+/// A change to what the modes do, from a control: what is shown,
+/// changed by `set`, and kept as edited unless that is what the computer
+/// keeps already.
+fn plan_change(ui: &Ui, shown: &gpu_tuning::Plan, kept: &gpu_tuning::Plan, set: Box<dyn Fn(&mut gpu_tuning::Plan, usize)>) -> Box<dyn Fn(&usize, &mut WindowCx)> {
+    let (shown, kept) = (shown.clone(), kept.clone());
+    Box::new(ui.on_view(move |v, i: &usize, cx| {
+        if let crate::panel::State::Power(st) = &mut v.state {
+            let mut p = st.edited.clone().unwrap_or_else(|| shown.clone());
+            set(&mut p, *i);
+            st.edited = (p != kept).then_some(p);
+            *st.applying.lock().unwrap() = Applying::No;
+        }
+        cx.notify();
+    }))
+}
+
+/// What the mode in use does, each thing a control: beside the modes,
+/// following the one chosen (Ben, 2026-11-20: "2 columns and the second
+/// column has the customization options specific for each mode, so
+/// changing modes changes those options … let me customize all the
+/// things that the mode does"). A change is that mode's alone and is
+/// kept; the box then says it is customized and offers the way back.
+/// What the session itself does (the display, the app in front) is
+/// changed at once; what root does for the mode (the processors, the
+/// GPUs, the fans, the drives) is changed here and set with Apply,
+/// which asks for an administrator's password once for all of it.
+fn mode_box(ui: &mut Ui, mode: Mode, on_battery: bool, facts: &Facts, st: &State) {
+    use gpu_tuning::{Plan, Preset, When};
+    use olo_kit::IntoElement as _;
+    use olo_system::{cpu_tuning::CpuPreset, nvme_power::NvmePreset};
+    let kept = facts.plan.clone();
+    let plan = st.edited.clone().unwrap_or_else(|| kept.clone());
+    let applying = st.applying.lock().unwrap().clone();
+    let enabled = applying != Applying::Now;
+    // A row: its label at the box's left, its menus ending at the box's
+    // right, each row's as wide together as every other's (so they start
+    // on one line too).
+    let row = |ui: &mut Ui, label: SharedString, fields: Vec<olo_kit::Element>| {
+        ui.add(div().flex().flex_row().items_center().child(StringView::new(label)).child(div().flex_1().min_w(px(m::SPACING))).children(fields));
+    };
+    let field = |ui: &Ui, id: String, names: Vec<SharedString>, at: usize, width: f32, set: Box<dyn Fn(&mut Plan, usize)>| {
+        MenuField::new(id, names, at).width(width).enabled(enabled).on_change(plan_change(ui, &plan, &kept, set)).into_element()
+    };
+    // A preset and, beside it, how fast at the most: "Balanced up to 100%".
+    let up_to = || div().w(px(UP_TO)).flex().justify_center().child(StringView::new("up to")).into_element();
+    // (Where a row has no top speed: the room of one, so its menu starts
+    // where the presets do.)
+    let beside = || div().w(px(UP_TO + TOP)).into_element();
+    let tops = || TOPS.iter().map(|t| SharedString::from(format!("{t}%"))).collect::<Vec<_>>();
+    let top_at = |pct: u8| TOPS.iter().position(|t| *t <= pct).unwrap_or(0);
+    let items = ui.collect(|ui| {
+        let cpu = plan.mode_cpu(mode);
+        let fields = vec![
+            field(
+                ui,
+                "power-mode-cpu".into(),
+                CpuPreset::ALL.iter().map(|p| olo_kit::words::tr(p.name()).into()).collect(),
+                CpuPreset::ALL.iter().position(|p| *p == cpu).unwrap_or(0),
+                PRESET,
+                Box::new(move |p, i| p.set_mode(mode, "cpu", (CpuPreset::ALL[i] != gpu_tuning::cpu_for_mode(mode)).then(|| CpuPreset::ALL[i].id().into()))),
+            ),
+            up_to(),
+            field(ui, "power-mode-cpu-top".into(), tops(), top_at(plan.mode_cpu_top(mode)), TOP, Box::new(move |p, i| p.set_mode(mode, "cpu-top", (TOPS[i] != 100).then(|| TOPS[i].to_string())))),
+        ];
+        row(ui, olo_kit::words::tr("Processors:").into(), fields);
+        const PRESETS: [Preset; 3] = [Preset::Cooler, Preset::Balanced, Preset::Fastest];
+        for (pci, maker, nvidia) in &facts.gpus {
+            let (now, nvidia) = (plan.mode_gpu(mode, pci, *nvidia, on_battery), *nvidia);
+            let (key, top_key) = (pci.clone(), format!("{pci}:top"));
+            let fields = vec![
+                field(
+                    ui,
+                    format!("power-mode-gpu-{pci}"),
+                    PRESETS.iter().map(|p| olo_kit::words::tr(p.name()).into()).collect(),
+                    PRESETS.iter().position(|p| *p == now).unwrap_or(1),
+                    PRESET,
+                    Box::new(move |p, i| p.set_mode(mode, &key, (PRESETS[i] != Plan::gpu_as_it_comes(mode, nvidia, on_battery)).then(|| PRESETS[i].id().into()))),
+                ),
+                up_to(),
+                field(
+                    ui,
+                    format!("power-mode-gpu-top-{pci}"),
+                    tops(),
+                    top_at(plan.mode_gpu_top(mode, pci)),
+                    TOP,
+                    Box::new(move |p, i| p.set_mode(mode, &top_key, (TOPS[i] != 100).then(|| TOPS[i].to_string()))),
+                ),
+            ];
+            row(ui, olo_kit::tr!("{} graphics:", maker).into(), fields);
+        }
+        if !facts.gpus.is_empty() {
+            let ready = plan.mode_gpu_ready(mode);
+            let on = plan_change(ui, &plan, &kept, Box::new(move |p, _| p.set_mode(mode, "gpu-ready", (!ready != (mode == Mode::Performance)).then(|| if ready { "off" } else { "on" }.into()))));
+            ui.add(CheckBox::new(olo_kit::words::of_text("Keep graphics ready between tasks"), ready).id("power-mode-gpu-ready").enabled(enabled).on_toggle(move |_, cx| on(&0, cx)));
+        }
+        // Cooling and storage, a little apart from the chips.
+        if facts.fans || !facts.drives.is_empty() {
+            ui.space(2.0);
+        }
+        if facts.fans {
+            use fans::Profile;
+            let now = plan.mode_fans(mode);
+            let fields = vec![
+                field(
+                    ui,
+                    "power-mode-fans".into(),
+                    Profile::ALL.iter().map(|p| olo_kit::words::tr(p.label()).into()).collect(),
+                    Profile::ALL.iter().position(|p| *p == now).unwrap_or(0),
+                    PRESET,
+                    Box::new(move |p, i| p.set_mode(mode, "fans", (Profile::ALL[i] != gpu_tuning::fans_for_mode(mode)).then(|| Profile::ALL[i].word().into()))),
+                ),
+                beside(),
+            ];
+            row(ui, olo_kit::words::tr("Fans:").into(), fields);
+        }
+        for (n, (serial, _model)) in facts.drives.iter().enumerate() {
+            let now = plan.nvme(When::Mode(mode), serial).unwrap_or_default();
+            let key = serial.clone();
+            let fields = vec![
+                field(
+                    ui,
+                    format!("power-mode-drive-{serial}"),
+                    NvmePreset::ALL.iter().map(|p| olo_kit::words::tr(p.name()).into()).collect(),
+                    NvmePreset::ALL.iter().position(|p| *p == now).unwrap_or(0),
+                    PRESET,
+                    Box::new(move |p, i| p.set_nvme(When::Mode(mode), &key, Some(NvmePreset::ALL[i]))),
+                ),
+                beside(),
+            ];
+            // (Its model is long, and set the whole column's width: the
+            // drives by number where there is more than one.)
+            row(ui, if facts.drives.len() == 1 { olo_kit::words::tr("Drive:").into() } else { olo_kit::tr!("Drive {}:", n + 1).into() }, fields);
+        }
+        // What the session itself does in the mode: changed at once, so
+        // set apart from what Apply sets, and said to be.
+        ui.space(2.0);
+        let power = ui.s.power.clone();
+        let at_once = ui.collect(|ui| {
+            // (A label for live controls, in the labels' colour, and as
+            // close to them as they are to each other.)
+            ui.add(StringView::new("These take effect at once:").height(m::LABEL_ROW));
+            ui.check("Limit the built-in display to 60 Hz", power.limits_refresh(mode), move |s, v| s.power.choose(mode, |c| c.limit_refresh = Some(v)));
+            ui.check("Dim the built-in display when idle", power.dims_at_rest(mode), move |s, v| s.power.choose(mode, |c| c.dim_at_rest = Some(v)));
+            ui.check("Favour the front app as you type and click", power.boosts_after_input(mode), move |s, v| s.power.choose(mode, |c| c.boost_after_input = Some(v)));
+        });
+        ui.add(div().flex().flex_col().gap(px(m::TIGHT)).children(at_once));
+        ui.add(olo_kit::widgets::separator());
+        // How it stands, and the way back.
+        let customized = plan.customized(mode) || ui.s.power.modes.contains_key(mode.id());
+        let waiting = st.edited.is_some();
+        let says: SharedString = match &applying {
+            Applying::Now => olo_kit::words::tr("Applying…").into(),
+            Applying::Failed(why) => why.clone().into(),
+            _ if waiting => olo_kit::words::tr("Not applied yet.").into(),
+            _ if customized => olo_kit::words::tr("Customized.").into(),
+            _ => olo_kit::words::tr("Defaults for this mode.").into(),
+        };
+        let revert = {
+            let (shown, kept) = (plan.clone(), kept.clone());
+            ui.on_view(move |v, _: &(), cx| {
+                if let crate::panel::State::Power(st) = &mut v.state {
+                    let mut p = st.edited.clone().unwrap_or_else(|| shown.clone());
+                    p.revert(mode);
+                    st.edited = (p != kept).then_some(p);
+                    *st.applying.lock().unwrap() = Applying::No;
+                }
+                crate::prefs().edit_as("", olo_kit::words::tr("Restore Defaults"), |s| {
+                    s.power.modes.remove(mode.id());
+                });
+                cx.notify();
+            })
+        };
+        let apply = {
+            let (state, refresh, proxy, edited) = (st.applying.clone(), st.refresh.clone(), olo_kit::proxy(), st.edited.clone());
+            move |_: &olo_kit::ClickEvent, _: &mut WindowCx| {
+                let Some(plan) = edited.clone() else { return };
+                *state.lock().unwrap() = Applying::Now;
+                let (state, refresh, proxy) = (state.clone(), refresh.clone(), proxy.clone());
+                // (Root's to keep: asked for off the window's thread; the
+                // administrator's password is polkit's to ask.)
+                std::thread::spawn(move || {
+                    let mut tuning = gpu_tuning::Tuning::load();
+                    tuning.plan = plan;
+                    *state.lock().unwrap() = match crate::backup::restore_tuning(&tuning) {
+                        Ok(_) => Applying::Done,
+                        Err(why) => Applying::Failed(why),
+                    };
+                    let _ = refresh.try_send(());
+                    proxy.send(Msg::Redraw);
+                });
+            }
+        };
+        ui.add(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap(px(m::SPACING))
+                .child(div().flex_1().min_w_0().child(StringView::new(says).dim(true).wrap(true)))
+                .child(Button::new("Restore Defaults").enabled(enabled && (customized || waiting)).on_click(move |_, cx| revert(&(), cx)))
+                .child(Button::new("Apply…").enabled(enabled && waiting).on_click(apply)),
+        );
+    });
+    // (Named as the mode is, which is what ties it to the choice beside it.)
+    ui.add(BBox::new(olo_kit::words::of_text(mode.label())).children(items));
+}
+
 fn modes_ui(ui: &mut Ui, power: Option<&PowerStatus>, facts: Option<&Facts>, server: &Server, st: &State) {
     let example = Modes { active: Mode::Balanced, available: Mode::ALL.to_vec(), degraded: None, drivers: vec![] };
     let modes = power.and_then(|p| p.policy.modes.as_ref()).or_else(|| demo().then_some(&example));
+    // The modes on the left; on the right what the one in use does.
+    let on_battery = power.is_some_and(|p| p.policy.on_battery);
+    let right = match (modes, facts) {
+        (Some(modes), Some(facts)) => ui.collect(|ui| mode_box(ui, modes.active, on_battery, facts, st)),
+        _ => Vec::new(),
+    };
+    let left = ui.collect(|ui| modes_left(ui, power, facts, modes, server, st));
+    if right.is_empty() {
+        for item in left {
+            ui.add(item);
+        }
+    } else {
+        ui.add_columns(left, right);
+    }
+}
+
+fn modes_left(ui: &mut Ui, power: Option<&PowerStatus>, facts: Option<&Facts>, modes: Option<&Modes>, server: &Server, st: &State) {
     let choices = ui.collect(|ui| {
         for mode in Mode::ALL {
             let enabled = modes.is_some_and(|m| m.available.contains(&mode));
             let server = server.clone();
             let description = if !enabled && modes.is_some() { "Unavailable with this computer's power driver." } else { mode.about() };
             ui.add(
-                RadioButton::new(mode.label(), modes.is_some_and(|m| m.active == mode))
-                    .id(format!("power-{}", mode.id()))
-                    .enabled(enabled)
-                    .on_select(move |_, _| server.set_mode(mode))
-                    .description(description),
+                // (A mode the person changed says so, whichever is in use.)
+                RadioButton::new(
+                    if facts.is_some_and(|f| st.edited.as_ref().unwrap_or(&f.plan).customized(mode)) || ui.s.power.modes.contains_key(mode.id()) {
+                        SharedString::from(olo_kit::tr!("{} — Customized", olo_kit::words::tr(mode.label())))
+                    } else {
+                        olo_kit::words::of_text(mode.label())
+                    },
+                    modes.is_some_and(|m| m.active == mode),
+                )
+                .id(format!("power-{}", mode.id()))
+                .enabled(enabled)
+                .on_select(move |_, _| server.set_mode(mode))
+                .description(description),
             );
         }
         if modes.is_none() {
@@ -328,7 +606,7 @@ fn modes_ui(ui: &mut Ui, power: Option<&PowerStatus>, facts: Option<&Facts>, ser
             "automatic-saver",
             &[(0, "Off"), (10, "At 10%"), (15, "At 15%"), (20, "At 20%")],
             &ui.s.power.saver_percent,
-            |f| f.label("Use Battery Saver automatically").divider(divider_for(&["Use Battery Saver automatically"])),
+            |f| f.label("Switch to Battery Saver:").divider(divider_for(&["Switch to Battery Saver:"])),
             |s, v| s.power.saver_percent = v,
         );
         if let Some(p) = power

@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-20
 
+### Preferences ▸ Power: each mode can be changed
+
+*22:06* — Beside the modes, a box for the one in use with everything it sets: a preset and a top speed (100% down to 50%) for the processors and each graphics card, graphics kept ready, fans, the drive, and what the session does. A changed mode says Customized, here and beside its name, and Restore Defaults puts it back.
+
+![Preferences ▸ Power: each mode can be changed](2026-11-20/220641-preferences-power-each-mode-can-be-changed.png)
+
 ### Preferences ▸ Performance: the choice where the session isn't divided
 
 *21:35* — In a session that Olo's login didn't set up for it the choice is greyed, and a line that stays readable says what to do, with Olo Doctor a press away.

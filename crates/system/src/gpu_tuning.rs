@@ -86,8 +86,9 @@ pub fn laptop_mapping(conf: &str) -> Option<String> {
 /// drives' power states, and set again after a resume. 4: SATA SSDs'
 /// link power (`sata_power`), kept per drive. 5: a change of supply
 /// counts once it has held two seconds, and a supply that keeps changing
-/// is planned for as the battery (`Supply`, gpu_tune.rs).
-pub const FOLLOWER_VERSION: u32 = 6;
+/// is planned for as the battery (`Supply`, gpu_tune.rs). 7: xe's
+/// patience with a job that hasn't started at its most (`xe_patience`).
+pub const FOLLOWER_VERSION: u32 = 7;
 
 /// What the follower last did, written by it after each change to
 /// `/run/olo-gpu-follow.json` (readable by all): which version it is,
@@ -266,6 +267,125 @@ pub fn cpu_for_mode(mode: crate::power_profile::Mode) -> crate::cpu_tuning::CpuP
         Mode::PowerSaver => CpuPreset::Saving,
         Mode::Balanced => CpuPreset::Balanced,
         Mode::Performance => CpuPreset::Fastest,
+    }
+}
+
+/// The lowest a top speed can be chosen, in percent (Ben, 2026-11-20:
+/// "100% default but i can tune it down in 10% increments to a min of
+/// 50%").
+pub const LEAST_TOP: u8 = 50;
+
+/// `tune` with its highest clock held to `top` percent of the card's own
+/// highest (100: as the preset has it; a preset's own lower ceiling
+/// stays). A ceiling only (Ben: "the min clock speed should stay
+/// whatever it is by default, don't also pin the min at the max"): the
+/// lowest clock is never raised to meet it, and where a preset's lowest
+/// would sit above the new ceiling it is left to the driver.
+pub fn with_top(mut tune: GpuTune, caps: &Caps, top: u8) -> GpuTune {
+    if top >= 100 {
+        return tune;
+    }
+    let share = |mhz: u32| (u64::from(mhz) * u64::from(top) / 100) as u32;
+    match caps {
+        Caps::Xe(x) => {
+            let ceiling = round50(share(x.highest)).max(x.lowest);
+            tune.max_mhz = Some(tune.max_mhz.map_or(ceiling, |m| m.min(ceiling)));
+            if tune.min_mhz.is_some_and(|m| m > ceiling) {
+                tune.min_mhz = None;
+            }
+        }
+        Caps::Nvidia(n) if n.max_gpu_mhz > 0 => {
+            let ceiling = round15(share(n.max_gpu_mhz)).max(n.min_gpu_mhz);
+            tune.max_gpu_mhz = Some(tune.max_gpu_mhz.map_or(ceiling, |m| m.min(ceiling)));
+        }
+        _ => {}
+    }
+    tune
+}
+
+/// The fans' profile a power mode comes with.
+pub fn fans_for_mode(mode: crate::power_profile::Mode) -> crate::fans::Profile {
+    use crate::{fans::Profile, power_profile::Mode};
+    match mode {
+        Mode::PowerSaver => Profile::Auto,
+        Mode::Balanced => Profile::Cool,
+        Mode::Performance => Profile::Cooler,
+    }
+}
+
+/// What a power mode does to the processors, the GPUs and the fans,
+/// each as the mode comes unless the person chose otherwise for that
+/// mode (Preferences ▸ Power, the mode's own column; Ben, 2026-11-20:
+/// "let me customize all the things that the mode does"). The choices
+/// are `chosen`'s "MODE/…" entries; one equal to what the mode does
+/// anyway isn't kept, so a mode that was never changed follows Olo's
+/// own as that changes. This is what the follower reads.
+impl Plan {
+    fn explicit(&self, mode: crate::power_profile::Mode, what: &str) -> Option<&str> {
+        self.chosen.get(&format!("{}/{what}", mode.id())).map(String::as_str)
+    }
+
+    /// `mode`'s `what` chosen as `value`, or back to as the mode comes
+    /// (None).
+    pub fn set_mode(&mut self, mode: crate::power_profile::Mode, what: &str, value: Option<String>) {
+        let key = format!("{}/{what}", mode.id());
+        match value {
+            Some(value) => self.chosen.insert(key, value),
+            None => self.chosen.remove(&key),
+        };
+    }
+
+    /// Whether anything of `mode` was chosen.
+    pub fn customized(&self, mode: crate::power_profile::Mode) -> bool {
+        let prefix = format!("{}/", mode.id());
+        self.chosen.keys().any(|k| k.starts_with(&prefix))
+    }
+
+    /// `mode` as it comes again, all of it.
+    pub fn revert(&mut self, mode: crate::power_profile::Mode) {
+        let prefix = format!("{}/", mode.id());
+        self.chosen.retain(|k, _| !k.starts_with(&prefix));
+    }
+
+    /// The processors' preset in `mode`.
+    pub fn mode_cpu(&self, mode: crate::power_profile::Mode) -> crate::cpu_tuning::CpuPreset {
+        self.explicit(mode, "cpu").and_then(crate::cpu_tuning::CpuPreset::parse).unwrap_or_else(|| cpu_for_mode(mode))
+    }
+
+    /// The processors' top speed in `mode`, in percent of their fastest
+    /// (as the modes come: all of it; never under `LEAST_TOP`). A
+    /// ceiling only: their lowest speed stays the driver's.
+    pub fn mode_cpu_top(&self, mode: crate::power_profile::Mode) -> u8 {
+        self.explicit(mode, "cpu-top").and_then(|pct| pct.parse::<u8>().ok()).map_or(100, |pct| pct.clamp(LEAST_TOP, 100))
+    }
+
+    /// GPU `pci`'s top clock in `mode`, in percent of its highest (as the
+    /// modes come: what its preset says; never under `LEAST_TOP`). A
+    /// ceiling only ([`with_top`]).
+    pub fn mode_gpu_top(&self, mode: crate::power_profile::Mode, pci: &str) -> u8 {
+        self.explicit(mode, &format!("{pci}:top")).and_then(|pct| pct.parse::<u8>().ok()).map_or(100, |pct| pct.clamp(LEAST_TOP, 100))
+    }
+
+    /// What GPU `pci` comes on in `mode`: the mode's own, an NVIDIA card
+    /// cooler on the battery in the middle mode.
+    pub fn gpu_as_it_comes(mode: crate::power_profile::Mode, nvidia: bool, on_battery: bool) -> Preset {
+        if on_battery && nvidia && mode == crate::power_profile::Mode::Balanced { Preset::Cooler } else { for_mode(mode) }
+    }
+
+    /// GPU `pci`'s preset in `mode`.
+    pub fn mode_gpu(&self, mode: crate::power_profile::Mode, pci: &str, nvidia: bool, on_battery: bool) -> Preset {
+        self.explicit(mode, pci).and_then(Preset::parse).unwrap_or_else(|| Self::gpu_as_it_comes(mode, nvidia, on_battery))
+    }
+
+    /// Whether `mode` keeps the GPUs ready across short gaps in the work
+    /// (as the modes come: the fastest one does).
+    pub fn mode_gpu_ready(&self, mode: crate::power_profile::Mode) -> bool {
+        self.explicit(mode, "gpu-ready").map_or(mode == crate::power_profile::Mode::Performance, |v| v == "on")
+    }
+
+    /// The fans' profile in `mode`.
+    pub fn mode_fans(&self, mode: crate::power_profile::Mode) -> crate::fans::Profile {
+        self.explicit(mode, "fans").and_then(crate::fans::Profile::parse).unwrap_or_else(|| fans_for_mode(mode))
     }
 }
 
@@ -806,6 +926,36 @@ fn apply_xe(device: &Path, tune: &GpuTune, driver: Option<&DriverLimits>) -> App
             out.push(write(&gt.join("power_profile"), if tune.power_saving == Some(true) { "power_saving" } else { "base" }));
         }
     }
+    out.extend(xe_patience(device));
+    out
+}
+
+/// xe's patience with a job that hasn't started, at its most: each
+/// engine class's `job_timeout_ms` up to its `job_timeout_max` (10 s
+/// where the driver comes with 5), for queues made from then on. xe
+/// resets the whole GPU when a job has waited that long to start, and
+/// the firmware gives a queue of its lowest priority nothing while an
+/// ordinary one has work: a program that asks for a low queue could
+/// bring every program's drawing down with a wait of five seconds
+/// (Olo's own did, fifteen times in a day, until nothing of Olo's asked
+/// for one: HACKING, "The GPU has priorities too"). Never lowered: a
+/// driver or a person that set more keeps it.
+fn xe_patience(device: &Path) -> Applied {
+    let mut out = Vec::new();
+    let mut engines: Vec<PathBuf> = std::fs::read_dir(device.join("tile0"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .flat_map(|gt| std::fs::read_dir(gt.path().join("engines")).into_iter().flatten().flatten().map(|e| e.path()).collect::<Vec<_>>())
+        .collect();
+    engines.sort();
+    for engine in engines {
+        if let (Some(now), Some(most)) = (num(engine.join("job_timeout_ms")), num(engine.join("job_timeout_max")))
+            && now < most
+        {
+            out.push(write(&engine.join("job_timeout_ms"), &most.to_string()));
+        }
+    }
     out
 }
 
@@ -873,6 +1023,81 @@ pub fn with_driver_limits(mut new: Tuning, kept: &Tuning) -> Tuning {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A mode is as it comes until something of it is chosen; a choice is
+    /// that mode's alone, shows as customized, and is gone on revert.
+    #[test]
+    fn a_modes_own_choices() {
+        use crate::{cpu_tuning::CpuPreset, fans::Profile, power_profile::Mode};
+        let mut plan = Plan::default();
+        let (intel, nvidia) = ("0000:00:02.0", "0000:01:00.0");
+        for mode in Mode::ALL {
+            assert!(!plan.customized(mode));
+            assert_eq!((plan.mode_cpu(mode), plan.mode_cpu_top(mode), plan.mode_fans(mode)), (cpu_for_mode(mode), 100, fans_for_mode(mode)));
+            assert_eq!(plan.mode_gpu(mode, intel, false, true), for_mode(mode));
+            assert_eq!(plan.mode_gpu_ready(mode), mode == Mode::Performance);
+        }
+        // (An NVIDIA card comes cooler on the battery in the middle mode.)
+        assert_eq!((plan.mode_gpu(Mode::Balanced, nvidia, true, true), plan.mode_gpu(Mode::Balanced, nvidia, true, false)), (Preset::Cooler, Preset::Balanced));
+        plan.set_mode(Mode::Balanced, "cpu", Some(CpuPreset::Fastest.id().into()));
+        plan.set_mode(Mode::Balanced, "cpu-top", Some("70".into()));
+        plan.set_mode(Mode::Balanced, nvidia, Some(Preset::Fastest.id().into()));
+        plan.set_mode(Mode::Balanced, "gpu-ready", Some("on".into()));
+        plan.set_mode(Mode::Balanced, "fans", Some(Profile::Coolest.word().into()));
+        assert!(plan.customized(Mode::Balanced) && !plan.customized(Mode::PowerSaver) && !plan.customized(Mode::Performance));
+        assert_eq!((plan.mode_cpu(Mode::Balanced), plan.mode_cpu_top(Mode::Balanced), plan.mode_fans(Mode::Balanced)), (CpuPreset::Fastest, 70, Profile::Coolest));
+        assert_eq!(
+            (plan.mode_gpu(Mode::Balanced, nvidia, true, true), plan.mode_gpu(Mode::Balanced, intel, false, true), plan.mode_gpu_ready(Mode::Balanced)),
+            (Preset::Fastest, Preset::Balanced, true)
+        );
+        // The others as they were; a top speed out of range is held in it.
+        assert_eq!((plan.mode_cpu(Mode::PowerSaver), plan.mode_cpu(Mode::Performance)), (CpuPreset::Saving, CpuPreset::Fastest));
+        plan.set_mode(Mode::PowerSaver, "cpu-top", Some("3".into()));
+        assert_eq!(plan.mode_cpu_top(Mode::PowerSaver), LEAST_TOP);
+        // A card's top clock: a ceiling of its own for the mode, the
+        // lowest clock never raised to it.
+        assert_eq!(plan.mode_gpu_top(Mode::Performance, intel), 100);
+        plan.set_mode(Mode::Performance, &format!("{intel}:top"), Some("70".into()));
+        assert_eq!((plan.mode_gpu_top(Mode::Performance, intel), plan.mode_gpu_top(Mode::Performance, nvidia), plan.mode_gpu_top(Mode::Balanced, intel)), (70, 100, 100));
+        let xe = Caps::Xe(XeCaps { lowest: 100, efficient: 700, highest: 2450, min_now: 700, max_now: 2450, profiles: true, power_saving_now: false });
+        let fastest = preset(intel, Preset::Fastest, &xe);
+        assert_eq!(with_top(fastest.clone(), &xe, 100), fastest);
+        let held = with_top(fastest.clone(), &xe, 70);
+        assert_eq!((held.max_mhz, held.min_mhz), (Some(1700), None));
+        // (A preset's own lower ceiling stays; a lowest clock chosen
+        // above the new ceiling goes back to the driver's.)
+        let cooler = preset(intel, Preset::Cooler, &xe);
+        assert_eq!(with_top(cooler.clone(), &xe, 90).max_mhz, cooler.max_mhz);
+        assert_eq!(with_top(GpuTune { min_mhz: Some(2000), ..fastest.clone() }, &xe, 50).min_mhz, None);
+        let nv = Caps::Nvidia(NvidiaCaps { power: None, min_gpu_mhz: 210, max_gpu_mhz: 3000, persistent_now: None });
+        assert_eq!(with_top(preset(nvidia, Preset::Balanced, &nv), &nv, 50).max_gpu_mhz, Some(1500));
+        plan.revert(Mode::Balanced);
+        assert!(!plan.customized(Mode::Balanced) && plan.customized(Mode::PowerSaver));
+        assert_eq!((plan.mode_cpu(Mode::Balanced), plan.mode_fans(Mode::Balanced)), (CpuPreset::Balanced, Profile::Cool));
+    }
+
+    /// Each engine class's patience raised to the most the driver has,
+    /// never lowered, and nothing written where there is nothing to raise.
+    #[test]
+    fn xe_waits_as_long_as_it_can_for_a_job_to_start() {
+        let dir = PathBuf::from(format!("/var/tmp/olo-gpu-tuning-patience-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        for (engine, now, most) in [("gt0/engines/rcs", "5000", "10000"), ("gt0/engines/ccs", "10000", "10000"), ("gt1/engines/vcs", "5000", "10000"), ("gt1/engines/odd", "5000", "")] {
+            let at = dir.join("tile0").join(engine);
+            std::fs::create_dir_all(&at).unwrap();
+            std::fs::write(at.join("job_timeout_ms"), now).unwrap();
+            if !most.is_empty() {
+                std::fs::write(at.join("job_timeout_max"), most).unwrap();
+            }
+        }
+        let done = xe_patience(&dir);
+        assert_eq!(done.len(), 2, "{done:?}");
+        assert!(done.iter().all(Result::is_ok));
+        let read = |engine: &str| std::fs::read_to_string(dir.join("tile0").join(engine).join("job_timeout_ms")).unwrap();
+        assert_eq!((read("gt0/engines/rcs"), read("gt0/engines/ccs"), read("gt1/engines/vcs"), read("gt1/engines/odd")), ("10000".into(), "10000".into(), "10000".into(), "5000".into()));
+        assert!(xe_patience(&dir).is_empty());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     fn xe() -> Caps {
         Caps::Xe(XeCaps { lowest: 100, efficient: 700, highest: 2450, min_now: 700, max_now: 2450, profiles: true, power_saving_now: false })

@@ -97,10 +97,11 @@ something nobody here has is in "Blocked", with what it waits for.
      (guarded: two seconds, never near the five). **Left**: (a)
      agents' screens started before the upgrade keep their low
      queues until they start again: do they start again at an
-     upgrade? if not, make them; (b) the root follower sets the
+     upgrade? if not, make them; (b) ~~the root follower sets the
      driver's patience to its most (`job_timeout_ms`, 10 s, for
-     queues made after) for other programs' low queues (Chrome's?
-     `gpu-priority-check asked` says who asks what); (c) ~~the live
+     queues made after) for other programs' low queues~~ done
+     (`gpu_tuning::xe_patience`, follower 7; Chrome's own asking is
+     still to be looked at: `gpu-priority-check asked`); (c) ~~the live
      lint and `tsession` desktops drawn in software, off the GPU
      altogether~~ done: a test session and its programs draw on the
      processors and hold no GPU device open (the whole live lint in
@@ -343,21 +344,6 @@ something nobody here has is in "Blocked", with what it waits for.
   - The rule only noted (what it would set, beside the memory
     record) for a day before the choice is trusted with one.
   - Activity Monitor showing the group and its allowance.
-
-- **Power: each mode's settings can be changed, beside the modes**
-  (Ben, 2026-11-20: "at some point recently we simplified the power
-  settings into just 3 choices: battery saver, adaptive and ll. i'd
-  still like to be able to customize these -- can you make it so that
-  it's 2 columns and the second column has the customization options
-  specific for each mode, so changing modes changes those options.
-  and so if i change the options for one of the modes then it
-  persists for that mode but says customized or something with a
-  revert button to revert back to defaults. let me customize all the
-  things that the mode does."). Two columns in Preferences ▸ Power:
-  the modes on the left, on the right everything the chosen mode
-  does, each a control; a change is kept for that mode alone, the
-  mode then says it is customized and offers Revert (to what the
-  mode comes as). Everything a mode sets, none left out.
 
 - **The NVIDIA card can never again be left stuck and unrecoverable**
   (Ben, 2026-11-20: "can you also put an astra 6.2 max agent on
@@ -1319,6 +1305,41 @@ something nobody here has is in "Blocked", with what it waits for.
   well: about 75 if the window is ever narrower.
 
 ## Done, waiting for Ben to try or confirm
+
+- **Power: each mode's settings can be changed, beside the modes**
+  (Ben, 2026-11-20: "at some point recently we simplified the power
+  settings into just 3 choices: battery saver, adaptive and ll. i'd
+  still like to be able to customize these -- can you make it so that
+  it's 2 columns and the second column has the customization options
+  specific for each mode, so changing modes changes those options.
+  and so if i change the options for one of the modes then it
+  persists for that mode but says customized or something with a
+  revert button to revert back to defaults. let me customize all the
+  things that the mode does."). Two columns in Preferences ▸ Power:
+  the modes on the left, on the right everything the chosen mode
+  does, each a control; a change is kept for that mode alone, the
+  mode then says it is customized and offers Revert (to what the
+  mode comes as). Everything a mode sets, none left out.
+  Then, the same evening: "the ability to adjust the max clock speed
+  for the cpus and each gpu in terms of % e.g. 100% default but i can
+  tune it down in 10% increments to a min of 50%. the min clock speed
+  should stay whatever it is by default, don't also pin the min at the
+  max". **Done** (HACKING, "Each mode can be changed"): the box beside
+  the modes, a preset and "up to N%" for the processors and each
+  graphics card, graphics kept ready, fans, drives, and what the
+  session does (the display, the front app); Customized beside a
+  changed mode's name and in its box, Restore Defaults; root's part
+  set with Apply… (an administrator's password, once). To try on the
+  computer itself: the follower must be this version's (Doctor offers
+  it), and a top speed's effect on the real cards is to be looked at
+  (`olo-gpu-tune show`). Left: Performance's first line still
+  names the modes as they were (Power Saver, Balanced, Performance);
+  a GPU's own knobs (the old Custom preset) have no place in the box
+  yet; the battery's own choices (an NVIDIA card cooler on battery in
+  the middle mode is still Olo's, not shown). From the reviewers'
+  last look: "— Customized" quieter than the mode's name (a radio
+  button's label in two colours: the kit's), the box's title on the
+  first mode's line, the footer saying which thing was changed.
 
 - **Phone: not found again after a night apart, and Try Again did
   nothing** (Ben, 2026-11-20). Three faults of the service's, found

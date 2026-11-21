@@ -1003,8 +1003,14 @@ other: Applica {n} modifiche
 Applying asks for an administrator's password once while this window is open.
 Per applicare le modifiche serve la password di amministratore una sola volta finché la finestra resta aperta.
 
+Applying…
+Applicazione…
+
 Applying… (an administrator's password may be asked for)
 Applicazione in corso… (potrebbe servire la password di amministratore)
+
+Apply…
+Applica…
 
 Approve requests without asking, for a while
 Approva le richieste senza conferma per un po’
@@ -2648,6 +2654,9 @@ Messaggio personalizzato…
 Custom {} once applied (on {} until then)
 Dopo l’applicazione: personalizzato {} (fino ad allora {})
 
+Customized.
+Personalizzato.
+
 Customize…
 Personalizza…
 
@@ -2740,6 +2749,9 @@ Modalità predefinita:
 
 Defaults
 Predefiniti
+
+Defaults for this mode.
+Valori della modalità.
 
 Degrees
 Gradi
@@ -2950,6 +2962,9 @@ Punto di rugiada: {}
 
 Diff
 Diff
+
+Dim the built-in display when idle
+Attenua lo schermo integrato a riposo
 
 Dim the display while you look away
 Riduci la luminosità quando distogli lo sguardo
@@ -3185,6 +3200,12 @@ Disegnato in ogni fotogramma
 
 Drive Setup
 Drive Setup
+
+Drive {}:
+Unità {}:
+
+Drive:
+Unità:
 
 DriveSetup
 DriveSetup
@@ -3718,6 +3739,9 @@ Disponi a ventaglio le altre finestre, lasciando questa
 Fans
 Ventole
 
+Fans:
+Ventole:
+
 Fast
 Veloce
 
@@ -3738,6 +3762,9 @@ Fastmail ha rifiutato l’indirizzo e la password per l’app: {}
 
 Favorites
 Preferiti
+
+Favour the front app as you type and click
+Favorisci l’app in primo piano dopo ogni tasto e clic
 
 Favoured
 Prioritario
@@ -5073,8 +5100,11 @@ Riserva un core al server delle finestre
 Keep briefly
 Mantieni per poco
 
-Keep foreground work ready between bursts. Fans start sooner.
+Keep foreground work ready between tasks. Fans start sooner.
 Mantieni pronte le attività in primo piano tra un picco e l’altro. Le ventole si attivano prima.
+
+Keep graphics ready between tasks
+Tieni pronta la grafica tra le attività
 
 Keep it in Passwords
 Salva in Passwords
@@ -5393,6 +5423,9 @@ Limite
 
 Limit charging to {}%
 Limita la carica al {}%
+
+Limit the built-in display to 60 Hz
+Limita lo schermo integrato a 60 Hz
 
 Limit what waits to be written to them
 Limita i dati in attesa di scrittura
@@ -6723,6 +6756,9 @@ Alcune modifiche non sono state applicate: {}.
 Not answered
 Senza risposta
 
+Not applied yet.
+Non ancora applicato.
+
 Not applied.
 Non applicato.
 
@@ -7973,6 +8009,9 @@ Turni del processore
 Processor:
 Processore:
 
+Processors:
+Processori:
+
 Profile
 Profilo
 
@@ -8554,6 +8593,9 @@ A riposo: nessun nuovo contenuto
 
 Restore
 Ripristina
+
+Restore Defaults
+Ripristina valori
 
 Restore Files…
 Ripristina file…
@@ -9710,6 +9752,9 @@ Interruzione del backup
 Store
 Archivio
 
+Stretch the charge and keep everyday work responsive.
+Fai durare la carica mantenendo reattivo il lavoro di ogni giorno.
+
 Stretch the remaining charge while keeping everyday work responsive.
 Prolunga la carica residua mantenendo reattive le attività quotidiane.
 
@@ -9811,6 +9856,9 @@ Cambia applicazione negli spazi di lavoro visibili
 
 Switch automatically between this computer and your iPhone
 Passa automaticamente da questo computer all’iPhone
+
+Switch to Battery Saver:
+Passa a Risparmio batteria:
 
 Switch to a woken program at once
 Esegui subito un programma appena risvegliato
@@ -10594,6 +10642,9 @@ Queste app possono accedere agli elementi elencati ogni volta che li richiedono.
 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 Queste funzioni richiedono che Bluetooth cerchi gli AirPods. Puoi attivare la ricerca con Olo Doctor.
+
+These take effect at once:
+Ha effetto subito:
 
 ThinkPad
 ThinkPad
@@ -12964,6 +13015,9 @@ meno di un minuto
 under a second
 meno di un secondo
 
+up to
+fino a
+
 up to {} dpi
 fino a {} dpi
 
@@ -13386,6 +13440,9 @@ Download di {} non riuscito: {}
 {} freed
 {} liberati
 
+{} graphics:
+Grafica {}:
+
 {} h
 {} h
 
@@ -13769,6 +13826,9 @@ in genere {} µs per rilevamento, massimo {} µs
 
 {} · {} · music quality
 {} · {} · qualità musica
+
+{} — Customized
+{} — Personalizzato
 
 {} — {} ({}% of this folder){}{}
 {} — {} ({}% di questa cartella){}{}

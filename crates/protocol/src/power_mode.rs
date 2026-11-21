@@ -36,9 +36,9 @@ impl Mode {
     /// What it does, in a sentence.
     pub fn about(self) -> &'static str {
         match self {
-            Mode::PowerSaver => "Stretch the remaining charge while keeping everyday work responsive.",
+            Mode::PowerSaver => "Stretch the charge and keep everyday work responsive.",
             Mode::Balanced => "Boost when work arrives and ease back between tasks.",
-            Mode::Performance => "Keep foreground work ready between bursts. Fans start sooner.",
+            Mode::Performance => "Keep foreground work ready between tasks. Fans start sooner.",
         }
     }
 }

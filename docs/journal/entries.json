@@ -5320,5 +5320,11 @@
   "title": "Preferences \u25b8 Performance: the choice where the session isn't divided",
   "caption": "In a session that Olo's login didn't set up for it the choice is greyed, and a line that stays readable says what to do, with Olo Doctor a press away.",
   "image": "2026-11-20/213544-preferences-performance-the-choice-where-the-ses.png"
+ },
+ {
+  "time": "2026-11-20T22:06:41",
+  "title": "Preferences \u25b8 Power: each mode can be changed",
+  "caption": "Beside the modes, a box for the one in use with everything it sets: a preset and a top speed (100% down to 50%) for the processors and each graphics card, graphics kept ready, fans, the drive, and what the session does. A changed mode says Customized, here and beside its name, and Restore Defaults puts it back.",
+  "image": "2026-11-20/220641-preferences-power-each-mode-can-be-changed.png"
  }
 ]

@@ -1003,8 +1003,14 @@ other: Aplicar {n} cambios
 Applying asks for an administrator's password once while this window is open.
 Al aplicar se pide una vez la contraseña de un administrador mientras esta ventana esté abierta.
 
+Applying…
+Aplicando…
+
 Applying… (an administrator's password may be asked for)
 Aplicando… (puede pedirse la contraseña de un administrador)
+
+Apply…
+Aplicar…
 
 Approve requests without asking, for a while
 Aprobar solicitudes sin preguntar, durante un rato
@@ -2648,6 +2654,9 @@ Mensaje propio…
 Custom {} once applied (on {} until then)
 Personalizado {} una vez aplicado ({} hasta entonces)
 
+Customized.
+Personalizado.
+
 Customize…
 Personalizar…
 
@@ -2740,6 +2749,9 @@ Modo predeterminado:
 
 Defaults
 Valores predeterminados
+
+Defaults for this mode.
+Valores del modo.
 
 Degrees
 Grados
@@ -2950,6 +2962,9 @@ Punto de rocío {}
 
 Diff
 Diff
+
+Dim the built-in display when idle
+Atenuar la pantalla integrada en reposo
 
 Dim the display while you look away
 Atenuar la pantalla mientras miras a otro lado
@@ -3185,6 +3200,12 @@ Dibujado en cada fotograma
 
 Drive Setup
 Drive Setup
+
+Drive {}:
+Unidad {}:
+
+Drive:
+Unidad:
 
 DriveSetup
 DriveSetup
@@ -3718,6 +3739,9 @@ Las demás ventanas en abanico, dejando esta
 Fans
 Ventiladores
 
+Fans:
+Ventiladores:
+
 Fast
 Rápido
 
@@ -3738,6 +3762,9 @@ Fastmail no aceptó la dirección y la contraseña de app: {}
 
 Favorites
 Favoritos
+
+Favour the front app as you type and click
+Favorecer la app en primer plano tras cada tecla y clic
 
 Favoured
 Favorecido
@@ -5073,8 +5100,11 @@ Reservar un núcleo para el servidor de ventanas
 Keep briefly
 Guardar poco tiempo
 
-Keep foreground work ready between bursts. Fans start sooner.
+Keep foreground work ready between tasks. Fans start sooner.
 Mantiene listas las tareas en primer plano. Los ventiladores arrancan antes.
+
+Keep graphics ready between tasks
+Mantener los gráficos listos entre tareas
 
 Keep it in Passwords
 Guardarla en Passwords
@@ -5393,6 +5423,9 @@ Límite
 
 Limit charging to {}%
 Limitar la carga al {} %
+
+Limit the built-in display to 60 Hz
+Limitar la pantalla integrada a 60 Hz
 
 Limit what waits to be written to them
 Limitar lo que espera a escribirse en ellos
@@ -6723,6 +6756,9 @@ No se aplicó todo: {}.
 Not answered
 Sin responder
 
+Not applied yet.
+Aún sin aplicar.
+
 Not applied.
 No se aplicó.
 
@@ -7973,6 +8009,9 @@ Turnos del procesador
 Processor:
 Procesador:
 
+Processors:
+Procesadores:
+
 Profile
 Perfil
 
@@ -8554,6 +8593,9 @@ En reposo: nada nuevo
 
 Restore
 Restaurar
+
+Restore Defaults
+Restaurar valores
 
 Restore Files…
 Restaurar archivos…
@@ -9710,6 +9752,9 @@ Deteniendo la copia
 Store
 Almacén
 
+Stretch the charge and keep everyday work responsive.
+Alargar la carga y mantener ágil el trabajo diario.
+
 Stretch the remaining charge while keeping everyday work responsive.
 Prolonga la autonomía y mantiene la fluidez en las tareas cotidianas.
 
@@ -9811,6 +9856,9 @@ Cambiar entre aplicaciones de los espacios de trabajo visibles
 
 Switch automatically between this computer and your iPhone
 Cambiar automáticamente entre este ordenador y tu iPhone
+
+Switch to Battery Saver:
+Cambiar a Ahorro de batería:
 
 Switch to a woken program at once
 Cambiar al instante a un programa despertado
@@ -10594,6 +10642,9 @@ Estas apps pueden tener estos elementos siempre que los pidan. Retira una y se l
 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 Necesitan Bluetooth para escuchar a los AirPods: Olo Doctor puede activarlo.
+
+These take effect at once:
+Se aplica al momento:
 
 ThinkPad
 ThinkPad
@@ -12964,6 +13015,9 @@ menos de un minuto
 under a second
 menos de un segundo
 
+up to
+hasta
+
 up to {} dpi
 hasta {} ppp
 
@@ -13386,6 +13440,9 @@ hace {} días
 {} freed
 {} liberados
 
+{} graphics:
+Gráficos {}:
+
 {} h
 {} h
 
@@ -13769,6 +13826,9 @@ Se activó {}.
 
 {} · {} · music quality
 {} · {} · calidad de música
+
+{} — Customized
+{} — Personalizado
 
 {} — {} ({}% of this folder){}{}
 {} — {} ({} % de esta carpeta){}{}

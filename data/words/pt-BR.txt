@@ -1003,8 +1003,14 @@ other: Aplicar {n} alterações
 Applying asks for an administrator's password once while this window is open.
 Ao aplicar, a senha de administrador é pedida uma vez enquanto esta janela estiver aberta.
 
+Applying…
+Aplicando…
+
 Applying… (an administrator's password may be asked for)
 Aplicando… (pode ser preciso informar a senha de administrador)
+
+Apply…
+Aplicar…
 
 Approve requests without asking, for a while
 Aprovar pedidos sem perguntar por um tempo
@@ -2648,6 +2654,9 @@ Mensagem personalizada…
 Custom {} once applied (on {} until then)
 Personalizado: {} após aplicar (até lá, {})
 
+Customized.
+Personalizado.
+
 Customize…
 Personalizar…
 
@@ -2740,6 +2749,9 @@ Modo padrão:
 
 Defaults
 Padrões
+
+Defaults for this mode.
+Padrões do modo.
 
 Degrees
 Graus
@@ -2950,6 +2962,9 @@ Ponto de orvalho: {}
 
 Diff
 Diff
+
+Dim the built-in display when idle
+Escurecer a tela integrada em repouso
 
 Dim the display while you look away
 Escurecer a tela quando você desviar o olhar
@@ -3185,6 +3200,12 @@ Desenhado em cada quadro
 
 Drive Setup
 Drive Setup
+
+Drive {}:
+Unidade {}:
+
+Drive:
+Unidade:
 
 DriveSetup
 DriveSetup
@@ -3718,6 +3739,9 @@ As outras janelas em leque, menos esta
 Fans
 Ventoinhas
 
+Fans:
+Ventoinhas:
+
 Fast
 Rápido
 
@@ -3738,6 +3762,9 @@ O Fastmail recusou o endereço e a senha de app: {}
 
 Favorites
 Favoritos
+
+Favour the front app as you type and click
+Favorecer o app em primeiro plano após cada tecla e clique
 
 Favoured
 Preferencial
@@ -5073,8 +5100,11 @@ Reservar um núcleo para o servidor de janelas
 Keep briefly
 Manter por um instante
 
-Keep foreground work ready between bursts. Fans start sooner.
+Keep foreground work ready between tasks. Fans start sooner.
 Manter as tarefas em primeiro plano prontas entre picos de atividade. As ventoinhas ligam mais cedo.
+
+Keep graphics ready between tasks
+Manter os gráficos prontos entre tarefas
 
 Keep it in Passwords
 Guardar no Passwords
@@ -5393,6 +5423,9 @@ Limite
 
 Limit charging to {}%
 Limitar carga a {}%
+
+Limit the built-in display to 60 Hz
+Limitar a tela integrada a 60 Hz
 
 Limit what waits to be written to them
 Limitar os dados que aguardam gravação
@@ -6723,6 +6756,9 @@ Algumas alterações não foram aplicadas: {}.
 Not answered
 Sem resposta
 
+Not applied yet.
+Ainda não aplicado.
+
 Not applied.
 Não aplicado.
 
@@ -7973,6 +8009,9 @@ Turnos do processador
 Processor:
 Processador:
 
+Processors:
+Processadores:
+
 Profile
 Perfil
 
@@ -8554,6 +8593,9 @@ Em repouso: nada novo para exibir
 
 Restore
 Restaurar
+
+Restore Defaults
+Restaurar padrões
 
 Restore Files…
 Restaurar arquivos…
@@ -9710,6 +9752,9 @@ Interrompendo o backup
 Store
 Armazenamento
 
+Stretch the charge and keep everyday work responsive.
+Estender a carga mantendo ágil o trabalho do dia a dia.
+
 Stretch the remaining charge while keeping everyday work responsive.
 Fazer a carga restante durar mais, mantendo as tarefas do dia a dia rápidas.
 
@@ -9811,6 +9856,9 @@ Alternar aplicativos dos espaços de trabalho visíveis
 
 Switch automatically between this computer and your iPhone
 Alternar automaticamente entre este computador e o iPhone
+
+Switch to Battery Saver:
+Mudar para Economia de bateria:
 
 Switch to a woken program at once
 Executar de imediato um programa que desperta
@@ -10594,6 +10642,9 @@ Estes apps têm acesso aos itens listados sempre que pedem. Revogue uma autoriza
 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 O Bluetooth precisa procurar os AirPods para usar estes recursos. O Olo Doctor pode ativar essa opção.
+
+These take effect at once:
+Vale na hora:
 
 ThinkPad
 ThinkPad
@@ -12964,6 +13015,9 @@ menos de um minuto
 under a second
 menos de um segundo
 
+up to
+até
+
 up to {} dpi
 até {} dpi
 
@@ -13386,6 +13440,9 @@ Falha ao baixar {}: {}
 {} freed
 {} liberados
 
+{} graphics:
+Gráficos {}:
+
 {} h
 {} h
 
@@ -13769,6 +13826,9 @@ normalmente {} µs por leitura, máximo de {} µs
 
 {} · {} · music quality
 {} · {} · qualidade de música
+
+{} — Customized
+{} — Personalizado
 
 {} — {} ({}% of this folder){}{}
 {} — {} ({}% desta pasta){}{}

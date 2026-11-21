@@ -997,8 +997,14 @@ other: 변경 사항 {n}개 적용
 Applying asks for an administrator's password once while this window is open.
 이 창이 열려 있는 동안에는 처음 적용할 때만 관리자 암호를 묻습니다.
 
+Applying…
+적용 중…
+
 Applying… (an administrator's password may be asked for)
 적용 중… (관리자 암호를 물을 수 있습니다)
+
+Apply…
+적용…
 
 Approve requests without asking, for a while
 일정 시간 요청을 묻지 않고 승인
@@ -2638,6 +2644,9 @@ Custom Message…
 Custom {} once applied (on {} until then)
 적용 후 사용자 설정 {0} (그전까지 {1})
 
+Customized.
+사용자 지정됨.
+
 Customize…
 사용자화…
 
@@ -2730,6 +2739,9 @@ Default mode:
 
 Defaults
 기본값
+
+Defaults for this mode.
+모드 기본값.
 
 Degrees
 도
@@ -2940,6 +2952,9 @@ Dew point {}
 
 Diff
 Diff
+
+Dim the built-in display when idle
+유휴 시 내장 디스플레이 어둡게
 
 Dim the display while you look away
 시선을 돌리면 화면 어둡게
@@ -3174,6 +3189,12 @@ Drawn into each frame
 
 Drive Setup
 Drive Setup
+
+Drive {}:
+드라이브 {}:
+
+Drive:
+드라이브:
 
 DriveSetup
 DriveSetup
@@ -3703,6 +3724,9 @@ Fan out the other windows, leaving this one
 Fans
 팬
 
+Fans:
+팬:
+
 Fast
 빠르게
 
@@ -3723,6 +3747,9 @@ Fastmail이 주소와 앱 암호를 받아들이지 않았습니다: {}
 
 Favorites
 즐겨찾기
+
+Favour the front app as you type and click
+키 입력과 클릭 뒤에 앞쪽 앱 우선
 
 Favoured
 우선
@@ -5053,8 +5080,11 @@ Keep a core for the window server
 Keep briefly
 잠시 보관
 
-Keep foreground work ready between bursts. Fans start sooner.
+Keep foreground work ready between tasks. Fans start sooner.
 작업 사이에도 포그라운드가 바로 반응하도록 유지합니다. 팬이 더 일찍 돕니다.
+
+Keep graphics ready between tasks
+작업 사이에도 그래픽 대기 유지
 
 Keep it in Passwords
 Passwords에 보관
@@ -5373,6 +5403,9 @@ Limit
 
 Limit charging to {}%
 충전 수준을 {}%로 제한
+
+Limit the built-in display to 60 Hz
+내장 디스플레이를 60 Hz로 제한
 
 Limit what waits to be written to them
 쓰기 대기 데이터 제한
@@ -6703,6 +6736,9 @@ Not all of it applied: {}.
 Not answered
 응답 없음
 
+Not applied yet.
+아직 적용되지 않음.
+
 Not applied.
 적용하지 않았습니다.
 
@@ -7951,6 +7987,9 @@ Processor Turns
 Processor:
 프로세서:
 
+Processors:
+프로세서:
+
 Profile
 프로필
 
@@ -8532,6 +8571,9 @@ Resting: nothing new on it
 
 Restore
 복원
+
+Restore Defaults
+기본값 복원
 
 Restore Files…
 파일 복원…
@@ -9685,6 +9727,9 @@ Stopping the backup
 Store
 저장소
 
+Stretch the charge and keep everyday work responsive.
+일상 작업의 반응성을 지키면서 충전을 오래 씁니다.
+
 Stretch the remaining charge while keeping everyday work responsive.
 일상 작업의 응답성을 유지하면서 남은 배터리를 더 오래 씁니다.
 
@@ -9786,6 +9831,9 @@ Switch applications on the workspaces showing
 
 Switch automatically between this computer and your iPhone
 이 컴퓨터와 iPhone 간 자동 전환
+
+Switch to Battery Saver:
+배터리 절약으로 전환:
 
 Switch to a woken program at once
 깨어난 프로그램을 즉시 실행
@@ -10569,6 +10617,9 @@ These apps may have these items whenever they ask. Take one back and the app is 
 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 이 기능에는 Bluetooth의 AirPods 감지가 필요합니다. Olo Doctor에서 켤 수 있습니다.
+
+These take effect at once:
+즉시 적용:
 
 ThinkPad
 ThinkPad
@@ -12922,6 +12973,9 @@ under a minute
 under a second
 1초 미만
 
+up to
+최대
+
 up to {} dpi
 최대 {}dpi
 
@@ -13293,6 +13347,9 @@ other: {n}주
 
 {} freed
 {} 확보
+
+{} graphics:
+{} 그래픽:
 
 {} h
 {} h
@@ -13677,6 +13734,9 @@ Olo 문구 {1}개 중 {0}개가 {2}(으)로 제공됩니다. 나머지는 영어
 
 {} · {} · music quality
 {} · {} · 음악 음질
+
+{} — Customized
+{} — 사용자 지정됨
 
 {} — {} ({}% of this folder){}{}
 {} — {} (이 폴더의 {}%){}{}

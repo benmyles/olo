@@ -11272,6 +11272,35 @@ mode and selection errors. Modes unavailable on the machine are disabled.
 | Adaptive Performance (`balanced`) | Low native floor, full turbo, balanced chassis profile. Performance-biased EPP on AC and energy-biased EPP on battery. | Driver-managed range and demand-based discrete graphics. The ThinkPad's Cool curve anticipates heat. |
 | Low Latency (`performance`) | Full turbo and performance EPP with a low floor. Intel HWP dynamic boost covers I/O wakeups. Registered foreground window threads get a temporary utilization hint for the interaction and 200 ms afterwards. | Full operating range. Where supported, the GPU runtime-PM delay spans at least 250 ms during this mode. The ThinkPad's Cooler curve starts earlier. |
 
+**Each mode can be changed** (Ben, 2026-11-20: "2 columns and the second
+column has the customization options specific for each mode … if i change
+the options for one of the modes then it persists for that mode but says
+customized or something with a revert button … let me customize all the
+things that the mode does"). Beside the modes is a box named for the one
+in use (`power.rs`, `mode_box`), with everything it sets as a control,
+and what is chosen there is that mode's alone:
+- What root's follower does for a mode is the plan's "MODE/…" entries
+  (`gpu_tuning::Plan`, in `/etc/olo/gpus.json`): the processors' preset
+  and each GPU's (`mode_cpu`, `mode_gpu`), each one's top speed in
+  percent of its fastest, 100 down to 50 in tens (`mode_cpu_top`,
+  `mode_gpu_top`: a ceiling only, `with_top`; the lowest clock stays the
+  driver's and is never raised to meet it), whether the GPUs are kept
+  ready between tasks (`mode_gpu_ready`), the fans' profile
+  (`mode_fans`) and each NVMe drive's power. A choice equal to what the
+  mode does anyway isn't kept, so a mode never touched follows Olo's own
+  as that changes. Changed in the box, they wait ("Not applied yet.")
+  until Apply… hands the whole plan to `olo-gpu-tune set` through polkit,
+  once, off the window's thread; the follower then follows it.
+- What the session does for a mode is `PowerSettings::modes`
+  (`ModeChoices`): the built-in display limited to 60 Hz, dimmed when
+  idle, the front app favoured after input. These take effect at once
+  (app_server's `apply_mode_choices`, also when the mode changes), and
+  say so in the box.
+- The box's last line says how the mode stands (defaults, customized,
+  not applied yet) and Restore Defaults clears both kinds for that mode;
+  a customized mode says so beside its name in the list, whichever is in
+  use.
+
 Battery Saver temporarily selects the nearest offered refresh at or below
 60 Hz at the current resolution. A lower refresh already in use takes
 precedence. Display settings made while in Saver become the preferred mode

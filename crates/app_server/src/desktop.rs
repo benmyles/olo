@@ -2346,6 +2346,7 @@ impl<B: Backend + 'static> AnvilState<B> {
     /// set), from what's live now: only what changed is done again.
     pub fn apply_settings(&mut self, mut settings: Settings) {
         keep_brightness(&mut settings, &self.settings);
+        let mode_choices_changed = settings.power.modes != self.settings.power.modes;
         if settings.power.saver_percent != self.settings.power.saver_percent
             && let Some(tx) = &self.power.policy_tx
         {
@@ -2394,6 +2395,9 @@ impl<B: Backend + 'static> AnvilState<B> {
         // go back in too.
         let regrouped: Vec<String> = self.settings.tiling.ungrouped_apps.iter().filter(|a| !settings.tiling.ungrouped_apps.contains(a)).cloned().collect();
         self.settings = settings;
+        if mode_choices_changed {
+            self.apply_mode_choices();
+        }
         if !regrouped.is_empty() {
             self.regroup_apps(&regrouped);
         }

@@ -1015,8 +1015,14 @@ other: Применить {n} изменения
 Applying asks for an administrator's password once while this window is open.
 Пока окно открыто, для применения изменений пароль администратора потребуется только один раз.
 
+Applying…
+Применяется…
+
 Applying… (an administrator's password may be asked for)
 Применение… (может потребоваться пароль администратора)
+
+Apply…
+Применить…
 
 Approve requests without asking, for a while
 Временно одобрять запросы без подтверждения
@@ -2668,6 +2674,9 @@ Custom Message…
 Custom {} once applied (on {} until then)
 После применения — свой режим {0} (пока {1})
 
+Customized.
+Настроено.
+
 Customize…
 Настроить…
 
@@ -2760,6 +2769,9 @@ Default mode:
 
 Defaults
 По умолчанию
+
+Defaults for this mode.
+Настройки режима по умолчанию.
 
 Degrees
 Градусы
@@ -2970,6 +2982,9 @@ Dew point {}
 
 Diff
 Diff
+
+Dim the built-in display when idle
+Затемнять встроенный экран в простое
 
 Dim the display while you look away
 Затемнять экран, когда вы отворачиваетесь
@@ -3207,6 +3222,12 @@ Drawn into each frame
 
 Drive Setup
 Drive Setup
+
+Drive {}:
+Диск {}:
+
+Drive:
+Диск:
 
 DriveSetup
 DriveSetup
@@ -3748,6 +3769,9 @@ Fan out the other windows, leaving this one
 Fans
 Вентиляторы
 
+Fans:
+Вентиляторы:
+
 Fast
 Быстро
 
@@ -3768,6 +3792,9 @@ Fastmail отклонил адрес и пароль приложения: {}
 
 Favorites
 Избранное
+
+Favour the front app as you type and click
+Отдавать приоритет приложению на переднем плане после каждого нажатия и щелчка
 
 Favoured
 С повышенным приоритетом
@@ -5113,8 +5140,11 @@ Keep a core for the window server
 Keep briefly
 Хранить недолго
 
-Keep foreground work ready between bursts. Fans start sooner.
+Keep foreground work ready between tasks. Fans start sooner.
 Сохранять готовность к коротким всплескам нагрузки в активном окне. Вентиляторы включаются раньше.
+
+Keep graphics ready between tasks
+Держать графику наготове между задачами
 
 Keep it in Passwords
 Сохранить в Passwords
@@ -5433,6 +5463,9 @@ Limit
 
 Limit charging to {}%
 Заряжать до {}%
+
+Limit the built-in display to 60 Hz
+Ограничить встроенный экран 60 Гц
 
 Limit what waits to be written to them
 Ограничивать объём данных в очереди на запись
@@ -6763,6 +6796,9 @@ Not all of it applied: {}.
 Not answered
 Без ответа
 
+Not applied yet.
+Ещё не применено.
+
 Not applied.
 Не применено.
 
@@ -8017,6 +8053,9 @@ Processor Turns
 Processor:
 Процессор:
 
+Processors:
+Процессоры:
+
 Profile
 Профиль
 
@@ -8598,6 +8637,9 @@ Resting: nothing new on it
 
 Restore
 Восстановить
+
+Restore Defaults
+Восстановить по умолчанию
 
 Restore Files…
 Восстановить файлы…
@@ -9760,6 +9802,9 @@ Stopping the backup
 Store
 Хранилище
 
+Stretch the charge and keep everyday work responsive.
+Растянуть заряд, сохраняя отзывчивость повседневной работы.
+
 Stretch the remaining charge while keeping everyday work responsive.
 Продлить работу от батареи, сохранив отзывчивость в обычных задачах.
 
@@ -9861,6 +9906,9 @@ Switch applications on the workspaces showing
 
 Switch automatically between this computer and your iPhone
 Переключаться между компьютером и iPhone автоматически
+
+Switch to Battery Saver:
+Переходить на экономию заряда:
 
 Switch to a woken program at once
 Сразу запускать пробуждённую программу
@@ -10644,6 +10692,9 @@ These apps may have these items whenever they ask. Take one back and the app is 
 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 Для этих функций Bluetooth должен прослушивать сигналы AirPods. Это можно включить в Olo Doctor.
+
+These take effect at once:
+Действует сразу:
 
 ThinkPad
 ThinkPad
@@ -13048,6 +13099,9 @@ under a minute
 under a second
 меньше секунды
 
+up to
+до
+
 up to {} dpi
 до {} dpi
 
@@ -13570,6 +13624,9 @@ other: {n} недели
 {} freed
 Освобождено {}
 
+{} graphics:
+Графика {}:
+
 {} h
 {} h
 
@@ -13953,6 +14010,9 @@ other: {n} недели
 
 {} · {} · music quality
 {} · {} · качество музыки
+
+{} — Customized
+{} — настроено
 
 {} — {} ({}% of this folder){}{}
 {} — {} ({}% этой папки){}{}

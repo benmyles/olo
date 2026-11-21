@@ -1003,8 +1003,14 @@ other: {n} Änderungen anwenden
 Applying asks for an administrator's password once while this window is open.
 Das Anwenden fragt einmal nach einem Administratorpasswort, solange dieses Fenster offen ist.
 
+Applying…
+Wird angewendet …
+
 Applying… (an administrator's password may be asked for)
 Wird angewendet … (das Passwort eines Administrators kann abgefragt werden)
+
+Apply…
+Anwenden …
 
 Approve requests without asking, for a while
 Anfragen eine Zeit lang ohne Nachfrage genehmigen
@@ -2648,6 +2654,9 @@ Eigene Nachricht …
 Custom {} once applied (on {} until then)
 Eigene {}, sobald angewendet (bis dahin {})
 
+Customized.
+Angepasst.
+
 Customize…
 Anpassen …
 
@@ -2740,6 +2749,9 @@ Standardmodus:
 
 Defaults
 Standard
+
+Defaults for this mode.
+Standard des Modus.
 
 Degrees
 Grad
@@ -2950,6 +2962,9 @@ Taupunkt {}
 
 Diff
 Diff
+
+Dim the built-in display when idle
+Eingebautes Display im Leerlauf abdunkeln
 
 Dim the display while you look away
 Bildschirm abdunkeln, während Sie wegsehen
@@ -3185,6 +3200,12 @@ In jeden Frame gezeichnet
 
 Drive Setup
 Drive Setup
+
+Drive {}:
+Laufwerk {}:
+
+Drive:
+Laufwerk:
 
 DriveSetup
 DriveSetup
@@ -3718,6 +3739,9 @@ Die anderen Fenster auffächern, dieses bleibt
 Fans
 Lüfter
 
+Fans:
+Lüfter:
+
 Fast
 Schnell
 
@@ -3738,6 +3762,9 @@ Fastmail hat die Adresse und das App-Passwort nicht angenommen: {}
 
 Favorites
 Favoriten
+
+Favour the front app as you type and click
+App im Vordergrund nach jeder Taste und jedem Klick bevorzugen
 
 Favoured
 Bevorzugt
@@ -5073,8 +5100,11 @@ Einen Kern für den Fensterserver freihalten
 Keep briefly
 Kurz behalten
 
-Keep foreground work ready between bursts. Fans start sooner.
+Keep foreground work ready between tasks. Fans start sooner.
 Hält Vordergrundaufgaben zwischen Lastspitzen bereit. Die Lüfter starten früher.
+
+Keep graphics ready between tasks
+Grafik zwischen Aufgaben bereithalten
 
 Keep it in Passwords
 In Passwords aufbewahren
@@ -5393,6 +5423,9 @@ Limit
 
 Limit charging to {}%
 Ladung auf {} % begrenzen
+
+Limit the built-in display to 60 Hz
+Eingebautes Display auf 60 Hz begrenzen
 
 Limit what waits to be written to them
 Begrenzen, was darauf wartet, geschrieben zu werden
@@ -6723,6 +6756,9 @@ Nicht alles angewendet: {}.
 Not answered
 Nicht beantwortet
 
+Not applied yet.
+Noch nicht angewendet.
+
 Not applied.
 Nicht angewendet.
 
@@ -7973,6 +8009,9 @@ Zeitscheiben
 Processor:
 Prozessor:
 
+Processors:
+Prozessoren:
+
 Profile
 Profil
 
@@ -8554,6 +8593,9 @@ Ruhend: nichts Neues darauf
 
 Restore
 Wiederherstellen
+
+Restore Defaults
+Standard wiederherstellen
 
 Restore Files…
 Dateien wiederherstellen …
@@ -9710,6 +9752,9 @@ Sicherung wird angehalten
 Store
 Speicher
 
+Stretch the charge and keep everyday work responsive.
+Die Ladung strecken und alltägliche Arbeit flüssig halten.
+
 Stretch the remaining charge while keeping everyday work responsive.
 Verlängert die Akkulaufzeit, während alltägliche Aufgaben flüssig bleiben.
 
@@ -9811,6 +9856,9 @@ Programme der sichtbaren Arbeitsflächen wechseln
 
 Switch automatically between this computer and your iPhone
 Automatisch zwischen diesem Computer und Ihrem iPhone wechseln
+
+Switch to Battery Saver:
+Zum Akkusparmodus wechseln:
 
 Switch to a woken program at once
 Sofort zu einem geweckten Programm wechseln
@@ -10594,6 +10642,9 @@ Diese Apps dürfen diese Einträge haben, wann immer sie fragen. Nehmen Sie eine
 
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
 Diese brauchen Bluetooth, um auf die AirPods zu hören: Olo Doctor kann das einschalten.
+
+These take effect at once:
+Wirkt sofort:
 
 ThinkPad
 ThinkPad
@@ -12964,6 +13015,9 @@ unter einer Minute
 under a second
 unter einer Sekunde
 
+up to
+bis
+
 up to {} dpi
 bis {} dpi
 
@@ -13386,6 +13440,9 @@ vor {} Tagen
 {} freed
 {} freigegeben
 
+{} graphics:
+{}-Grafik:
+
 {} h
 {} h
 
@@ -13769,6 +13826,9 @@ vor {} s
 
 {} · {} · music quality
 {} · {} · Musikqualität
+
+{} — Customized
+{} – angepasst
 
 {} — {} ({}% of this folder){}{}
 {} — {} ({} % dieses Ordners){}{}

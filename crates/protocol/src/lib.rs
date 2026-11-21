@@ -2296,9 +2296,78 @@ pub struct PowerSettings {
     /// display while the person in front of it looks away, back as they
     /// look again (or touch anything).
     pub dim_when_looking_away: bool,
+    /// What a power mode does in the session itself, where the person
+    /// changed it (Preferences ▸ Power), by the mode's id. A mode that
+    /// isn't here, or a choice left None, is as the mode comes.
+    pub modes: BTreeMap<String, ModeChoices>,
+}
+
+/// A power mode's doings in the session that can be chosen: each None
+/// as the mode comes ([`PowerSettings::limits_refresh`] and the rest).
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct ModeChoices {
+    /// The built-in display kept to 60 Hz.
+    pub limit_refresh: Option<bool>,
+    /// The built-in display dimmed after half a minute at rest.
+    pub dim_at_rest: Option<bool>,
+    /// The app in front favoured for a moment after each key and click.
+    pub boost_after_input: Option<bool>,
+}
+
+impl ModeChoices {
+    /// As the mode comes, all of it.
+    pub fn is_default(&self) -> bool {
+        *self == ModeChoices::default()
+    }
 }
 
 impl PowerSettings {
+    fn choices(&self, mode: power_mode::Mode) -> ModeChoices {
+        self.modes.get(mode.id()).copied().unwrap_or_default()
+    }
+
+    /// Whether `mode` keeps the built-in display to 60 Hz (as it comes:
+    /// Battery Saver does).
+    pub fn limits_refresh(&self, mode: power_mode::Mode) -> bool {
+        self.choices(mode).limit_refresh.unwrap_or(mode == power_mode::Mode::PowerSaver)
+    }
+
+    /// Whether `mode` dims the built-in display at rest (as it comes:
+    /// Battery Saver does).
+    pub fn dims_at_rest(&self, mode: power_mode::Mode) -> bool {
+        self.choices(mode).dim_at_rest.unwrap_or(mode == power_mode::Mode::PowerSaver)
+    }
+
+    /// Whether `mode` favours the app in front after each key and click
+    /// (as it comes: Low Latency does).
+    pub fn boosts_after_input(&self, mode: power_mode::Mode) -> bool {
+        self.choices(mode).boost_after_input.unwrap_or(mode == power_mode::Mode::Performance)
+    }
+
+    /// `mode`'s choices changed by `change`; one set to what the mode
+    /// does anyway is no choice (so "as it comes" stays as it comes when
+    /// the mode's own changes), and a mode with none isn't kept.
+    pub fn choose(&mut self, mode: power_mode::Mode, change: impl FnOnce(&mut ModeChoices)) {
+        let mut c = self.choices(mode);
+        change(&mut c);
+        use power_mode::Mode;
+        if c.limit_refresh == Some(mode == Mode::PowerSaver) {
+            c.limit_refresh = None;
+        }
+        if c.dim_at_rest == Some(mode == Mode::PowerSaver) {
+            c.dim_at_rest = None;
+        }
+        if c.boost_after_input == Some(mode == Mode::Performance) {
+            c.boost_after_input = None;
+        }
+        if c.is_default() {
+            self.modes.remove(mode.id());
+        } else {
+            self.modes.insert(mode.id().to_owned(), c);
+        }
+    }
+
     /// (Turn displays off, suspend), in minutes of inactivity.
     pub fn idle_minutes(&self, battery: bool) -> (u32, u32) {
         if battery {
@@ -2337,6 +2406,7 @@ impl Default for PowerSettings {
             lock_when_away_seconds: 0,
             wake_on_return: false,
             dim_when_looking_away: false,
+            modes: BTreeMap::new(),
         }
     }
 }
@@ -3330,6 +3400,55 @@ mod tests {
         assert_eq!(display_label(0), "D0");
     }
     use super::*;
+
+    /// What asking a mode's choice costs: the compositor asks at each key
+    /// and click (`cargo test --release -p olo-protocol
+    /// what_a_modes_choice_costs -- --ignored --nocapture`).
+    #[test]
+    #[ignore = "a timing, to read"]
+    fn what_a_modes_choice_costs() {
+        use power_mode::Mode;
+        let mut p = PowerSettings::default();
+        for (label, customized) in [("no mode changed", false), ("every mode changed", true)] {
+            if customized {
+                for mode in Mode::ALL {
+                    p.choose(mode, |c| {
+                        *c = ModeChoices { limit_refresh: Some(mode != Mode::PowerSaver), dim_at_rest: Some(mode != Mode::PowerSaver), boost_after_input: Some(mode != Mode::Performance) }
+                    });
+                }
+            }
+            let n = 2_000_000u32;
+            let t = std::time::Instant::now();
+            let mut on = 0u32;
+            for i in 0..n {
+                on += u32::from(std::hint::black_box(&p).boosts_after_input(Mode::ALL[(i % 3) as usize]));
+            }
+            println!("{label}: {:.1} ns ({on})", t.elapsed().as_secs_f64() * 1e9 / f64::from(n));
+        }
+    }
+
+    /// A mode does in the session what it comes doing until the person
+    /// chooses otherwise for that mode; a choice of what it does anyway
+    /// is no choice, and a mode with none isn't kept.
+    #[test]
+    fn a_power_modes_own_choices() {
+        use power_mode::Mode;
+        let mut p = PowerSettings::default();
+        for mode in Mode::ALL {
+            assert_eq!((p.limits_refresh(mode), p.dims_at_rest(mode), p.boosts_after_input(mode)), (mode == Mode::PowerSaver, mode == Mode::PowerSaver, mode == Mode::Performance));
+        }
+        p.choose(Mode::Balanced, |c| c.dim_at_rest = Some(true));
+        p.choose(Mode::PowerSaver, |c| c.limit_refresh = Some(false));
+        assert!(p.dims_at_rest(Mode::Balanced) && !p.limits_refresh(Mode::PowerSaver) && p.dims_at_rest(Mode::PowerSaver) && !p.dims_at_rest(Mode::Performance));
+        assert_eq!(p.modes.len(), 2);
+        // Back to what the mode does anyway: nothing kept.
+        p.choose(Mode::Balanced, |c| c.dim_at_rest = Some(false));
+        p.choose(Mode::Performance, |c| c.boost_after_input = Some(true));
+        assert_eq!(p.modes.keys().collect::<Vec<_>>(), ["power-saver"]);
+        // Settings from before have none, and read as the modes come.
+        let old: PowerSettings = serde_json::from_str(r#"{"saver_percent":10}"#).unwrap();
+        assert!(old.modes.is_empty() && old.limits_refresh(Mode::PowerSaver));
+    }
 
     /// A touch screen's touches are taken unless its display says
     /// otherwise; off is kept, merged like the rest.

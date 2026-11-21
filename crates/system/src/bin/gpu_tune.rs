@@ -143,8 +143,10 @@ fn ceiling(mode: power_profile::Mode) -> u8 {
 /// Only write a GPU when its effective request changed. Keep pending
 /// requests for sleeping GPUs in the follower until a real client uses one.
 fn follow_gpus(mode: power_profile::Mode, battery: bool, state: &mut gpu_tuning::Followed, pending_only: bool) -> Vec<(String, gpu_tuning::Applied)> {
-    use gpu_tuning::{Caps, Preset};
+    use gpu_tuning::Caps;
     let mut out = Vec::new();
+    // (What the person chose for this mode, where they did.)
+    let plan = Tuning::load().plan;
     for g in gpus::list() {
         if !matches!(g.driver.as_str(), "xe" | "nvidia") || (pending_only && !state.deferred.contains(&g.pci)) {
             continue;
@@ -157,9 +159,9 @@ fn follow_gpus(mode: power_profile::Mode, battery: bool, state: &mut gpu_tuning:
             state.deferred.retain(|id| id != &g.pci);
             continue;
         }
-        let preset = if battery && mode == power_profile::Mode::Balanced && g.vendor == 0x10de { Preset::Cooler } else { gpu_tuning::for_mode(mode) };
+        let preset = plan.mode_gpu(mode, &g.pci, g.vendor == 0x10de, battery);
         let previous = state.autosuspend_ms.get(&g.pci).copied();
-        match gpu_tuning::runtime_tail(&g.sysfs, mode == power_profile::Mode::Performance, previous) {
+        match gpu_tuning::runtime_tail(&g.sysfs, plan.mode_gpu_ready(mode), previous) {
             Ok(Some(ms)) => {
                 state.autosuspend_ms.insert(g.pci.clone(), ms);
             }
@@ -185,7 +187,7 @@ fn follow_gpus(mode: power_profile::Mode, battery: bool, state: &mut gpu_tuning:
             out.push((g.name, vec![Err(why.unwrap_or_else(|| "driver capabilities unavailable".into()))]));
             continue;
         };
-        let tune = gpu_tuning::preset(&g.pci, preset, &caps);
+        let tune = gpu_tuning::with_top(gpu_tuning::preset(&g.pci, preset, &caps), &caps, plan.mode_gpu_top(mode, &g.pci));
         // The kernel's RPe follows operating conditions. Reasserting the
         // same range at every supply event overrides its autonomous policy.
         if !state.gpus.contains(&tune) {
@@ -207,22 +209,20 @@ fn follow_gpus(mode: power_profile::Mode, battery: bool, state: &mut gpu_tuning:
 
 fn follow_now(mode: power_profile::Mode, on_battery: bool, state: &mut gpu_tuning::Followed) -> Vec<(String, gpu_tuning::Applied)> {
     let mut out = follow_gpus(mode, on_battery, state, false);
-    let cpu = gpu_tuning::cpu_for_mode(mode);
-    let top = ceiling(mode);
+    let plan = Tuning::load().plan;
+    let cpu = plan.mode_cpu(mode);
+    // (The person's top speed for the mode, and under it while the
+    // computer runs hot.)
+    let top = ceiling(mode).min(plan.mode_cpu_top(mode));
     out.push((format!("processors ({})", cpu.name()), cpu_tuning::apply(cpu, top, on_battery)));
-    use olo_system::fans::{Places, Profile};
+    use olo_system::fans::Places;
     let places = Places::here();
     if let Some(f) = olo_system::fans::look(&places)
         && f.installed
     {
-        let profile = match mode {
-            power_profile::Mode::PowerSaver => Profile::Auto,
-            power_profile::Mode::Balanced => Profile::Cool,
-            power_profile::Mode::Performance => Profile::Cooler,
-        };
-        out.push(("fans".into(), vec![follow_fans(profile, &places)]));
+        out.push(("fans".into(), vec![follow_fans(plan.mode_fans(mode), &places)]));
     }
-    let (done, drives, limited, sata_found) = follow_drives(&Tuning::load().plan, mode, on_battery, state);
+    let (done, drives, limited, sata_found) = follow_drives(&plan, mode, on_battery, state);
     out.extend(done);
     state.version = gpu_tuning::FOLLOWER_VERSION;
     state.mode = mode.id().into();
@@ -570,7 +570,7 @@ mod tests {
     /// Cooler already.
     #[test]
     fn the_fans_follow_the_plan() {
-        use olo_system::fans::{Places, Profile};
+        use olo_system::fans::Places;
         let root = std::path::PathBuf::from(format!("/var/tmp/olo-gpu-tune-fans-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let places = Places::under(&root);

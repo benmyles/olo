@@ -330,7 +330,9 @@ Apply
 Apply once to let Olo follow the mode and the power supply: an administrator's password is asked, this once.
 Apply {n} Changes
 Applying asks for an administrator's password once while this window is open.
+Applying…
 Applying… (an administrator's password may be asked for)
+Apply…
 Approve requests without asking, for a while
 Approving without asking: {} left (until {})
 Apps Allowed…
@@ -877,6 +879,7 @@ Current hardware state
 Custom
 Custom Message…
 Custom {} once applied (on {} until then)
+Customized.
 Customize…
 Cut
 Cut {} to {}
@@ -908,6 +911,7 @@ Default Apps
 Default Message ({})
 Default mode:
 Defaults
+Defaults for this mode.
 Degrees
 Delay
 Delay until repeat
@@ -978,6 +982,7 @@ Dew point spread
 Dew point spread {}
 Dew point {}
 Diff
+Dim the built-in display when idle
 Dim the display while you look away
 Disagree
 Discard
@@ -1056,6 +1061,8 @@ Draw tool
 Drawing
 Drawn into each frame
 Drive Setup
+Drive {}:
+Drive:
 DriveSetup
 Drizzle
 Drizzle and freezing drizzle
@@ -1232,6 +1239,7 @@ Fan level {} · {}
 Fan out all windows, tabs side by side
 Fan out the other windows, leaving this one
 Fans
+Fans:
 Fast
 Fast when there is work, frugal when there isn't, the processors kept out of their hottest top speed. The usual choice.
 Faster
@@ -1239,6 +1247,7 @@ Fastest
 Fastmail
 Fastmail didn’t take the address and app password: {}
 Favorites
+Favour the front app as you type and click
 Favoured
 Fedora
 Fedora {} is out too: after this upgrade, the next.
@@ -1682,7 +1691,8 @@ Keep Them Off
 Keep a busy program's turn short
 Keep a core for the window server
 Keep briefly
-Keep foreground work ready between bursts. Fans start sooner.
+Keep foreground work ready between tasks. Fans start sooner.
+Keep graphics ready between tasks
 Keep it in Passwords
 Keep its driver ready
 Keep palms from moving the pointer
@@ -1789,6 +1799,7 @@ Like this
 Like:
 Limit
 Limit charging to {}%
+Limit the built-in display to 60 Hz
 Limit what waits to be written to them
 Line
 Line Numbers
@@ -2232,6 +2243,7 @@ Not a due: keep the words in its title
 Not a number
 Not all of it applied: {}.
 Not answered
+Not applied yet.
 Not applied.
 Not applied: an administrator's password is needed.
 Not backed up yet
@@ -2648,6 +2660,7 @@ Processes as a Tree
 Processor
 Processor Turns
 Processor:
+Processors:
 Profile
 Profile:
 Program
@@ -2842,6 +2855,7 @@ Restart, Asking First
 Restart…
 Resting: nothing new on it
 Restore
+Restore Defaults
 Restore Files…
 Restore To…
 Restored as {}.
@@ -3226,6 +3240,7 @@ Stopped.
 Stopped: what was restored so far is there.
 Stopping the backup
 Store
+Stretch the charge and keep everyday work responsive.
 Stretch the remaining charge while keeping everyday work responsive.
 Strikeout
 Strong
@@ -3260,6 +3275,7 @@ Swiss
 Switch applications (Twitcher)
 Switch applications on the workspaces showing
 Switch automatically between this computer and your iPhone
+Switch to Battery Saver:
 Switch to a woken program at once
 Switch windows of the application
 Switching
@@ -3521,6 +3537,7 @@ There's no fingerprint sensor, or fprintd isn't running.
 There's no infrared camera.
 These apps may have these items whenever they ask. Take one back and the app is asked again the next time.
 These need Bluetooth to listen for the AirPods: Olo Doctor can turn that on.
+These take effect at once:
 ThinkPad
 Thinking ({})…
 Thinking:
@@ -4305,6 +4322,7 @@ tomorrow.io’s limit for your key is reached for now{}
 turned off
 under a minute
 under a second
+up to
 up to {} dpi
 up to {} today
 update {n} packages
@@ -4429,6 +4447,7 @@ your own picture
 {} free of {}
 {} free on {}
 {} freed
+{} graphics:
 {} h
 {} h ago
 {} h {} min
@@ -4557,6 +4576,7 @@ your own picture
 {} · {}
 {} · {} · call quality while the microphone is used
 {} · {} · music quality
+{} — Customized
 {} — {} ({}% of this folder){}{}
 {}% chance this hour
 {}% cover

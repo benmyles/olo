@@ -957,7 +957,7 @@ fn contents(src: &Path, manifest: &Manifest, passphrase: Option<&str>, keyring: 
 
 /// [`import_only`] of everything (the tests'; the panel and `--import`
 /// choose).
-fn restore_tuning(tuning: &olo_system::gpu_tuning::Tuning) -> Result<String, String> {
+pub(crate) fn restore_tuning(tuning: &olo_system::gpu_tuning::Tuning) -> Result<String, String> {
     use std::{
         io::{BufRead, BufReader, Write},
         process::{Command, Stdio},
