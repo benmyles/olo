@@ -870,6 +870,20 @@ frames a second with nobody at it):
   the first job, and the second runs without them (its pictures'
   paths were empty: "no picture /NAME.png").
 
+### A stand-in shaped like the real thing
+
+- **The check's Codex ran outside every tab; the real one's server is
+  a child of the first Codex window** (2026-11-21). The headless check
+  of agents' tab titles passed all along while titles went to the
+  wrong window on the person's desktop: its stand-in was "a
+  daemon of its own", and Codex's daemon isn't one. Before writing a
+  stand-in, look at the real program's place in the process list
+  (`ps -eo pid,ppid,comm,args`): who started it, what it is called,
+  whose child it is.
+- **A check that never failed proves nothing until it has**: the new
+  case was run against the build from before the fix, and failed
+  there, before it was trusted to pass.
+
 ### A guest's last line, cut
 
 Learned from one failed check (2026-11-21), with the second

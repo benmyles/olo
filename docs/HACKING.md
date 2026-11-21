@@ -18630,9 +18630,19 @@ takes them out. An agent sees it from its next start. The service finds
 the tab from the process that asked (the socket's holder: agents'
 processes, `claude`, `codex`, `node`, looked in first; every process
 of the user's otherwise, about 25 to 45 ms more; only for `tools/call`): it and its ancestors, as the hook does (Claude Code
-is under the tab's shell; Codex's daemon by the folder the agent passes
-as `cwd`, else its own, the tab running the same agent first,
-`agent_context::own_agent`), and hands the title to that tab's Terminal
+is under the tab's shell; Codex by the folder the agent passes as
+`cwd`, the tab running the same agent first). Who asks is an
+`agent_context::Asker`: its family as far as it says which tab, and
+*nothing from a server all an agent's sessions share on*. Codex's app
+server (`codex app-server`, codex-cli 0.170) is one daemon for every
+Codex window, a child of whichever window came first: every Codex
+session's tool calls and hooks come from it, so by its family they
+were all in that first window's tab, and one session's title was set
+on another's tab, in another window, whatever folder it gave (Ben,
+2026-11-21: "terminal app is mixing up tab names"). Such an asker is
+found by the folder alone, and one that gives none is told to
+(`agent::serves_every_session`), never guessed at. The service hands
+the title to that tab's Terminal
 on the tab's display (`olo-terminal --set-tab-title SHELL TITLE`
 through the single-instance socket, `instance::forward_on`, which
 Terminal listens on: without `instance::listen`, no title and no
@@ -18655,10 +18665,14 @@ Terminal moved it to HTTP still has the stdio server, and starts it
 again only through /mcp) and gives an HTTP server up after five tries
 (`mce`, about 15 s of the server away); the hook is the installed
 binary, so what it says reaches sessions already running from the next
-prompt. `tools/dev/agent-title-check` drives it both
-ways in a headless session: as Codex (a bare environment, outside the
-tab, by folder) and as Claude Code (from the tab's shell, across the
-server's file replaced and SIGURG). The tab shows it (`Tab::agent_title`,
+prompt. `tools/dev/agent-title-check` drives it every
+way in a headless session: as Codex from outside every tab (a bare
+environment, by folder); as Codex's server really is (a stand-in named
+and started as it, from the shell of a *second* window, for a session
+in the first's folder: the title on the first's tab, and asked for a
+folder when it gives none; against the build from before, both fail);
+and as Claude Code (from the tab's shell, across the server's file
+replaced and SIGURG). The tab shows it (`Tab::agent_title`,
 one line, at most 60 characters) ahead of the program's own title until
 the agent leaves the tab or sets an empty one; it is saved with the
 window, and after a restart kept only if the tab's agent is seen again

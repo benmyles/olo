@@ -10,8 +10,14 @@ settings on, its tab in that HOME, and the tab title service
 from a copy of the build. Then sets the tab's title over HTTP the way
 each agent does:
 
-  Codex:        from outside the tab's processes (as Codex's daemon), the
-                tab found by the folder it gives.
+  Codex:        from outside the tab's processes (a daemon of its own),
+                the tab found by the folder it gives; and as Codex's app
+                server is (codex-cli 0.170): one server for every
+                session, a child of whichever Codex window came first,
+                so under *another* tab's shell. The title must land on
+                the tab in the folder given, not on the tab the server
+                was started in (where it landed, 2026-11-21), and with
+                no folder given it is asked for, not guessed.
   Claude Code:  from under the tab's shell (the tab found from the
                 process that connected, and its ancestors), across an
                 upgrade (the copy replaced and SIGURG sent, as
@@ -55,6 +61,22 @@ def wait_title(want, within=5.0):
         time.sleep(0.2)
     return False
 
+
+# Codex's app server, stood in for: named and started as it is (`codex
+# app-server …`), from the shell of the tab it is typed in. Sets `title`
+# for a session in `cwd` (none: no folder given); the tool's answer in OUT.
+SERVER = r'''#!/usr/bin/python3
+import http.client, json, sys
+port, out, title = int(sys.argv[2]), sys.argv[3], sys.argv[4]
+cwd = sys.argv[5] if len(sys.argv) > 5 else None
+def ask(i, method, params=None):
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=20)
+    c.request("POST", "/mcp", json.dumps({"jsonrpc": "2.0", "id": i, "method": method, "params": params or {}}), {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"})
+    return json.loads(c.getresponse().read())
+ask(1, "initialize", {"protocolVersion": "2025-06-18"})
+r = ask(2, "tools/call", {"name": "set_tab_title", "arguments": {"title": title, **({"cwd": cwd} if cwd else {})}})
+open(out, "w").write(json.dumps(r))
+'''
 
 # A client of the service, as an agent is: each request on a connection of
 # its own. `title` sets that title (cwd: the folder given); prints the
@@ -114,6 +136,52 @@ def main():
         subprocess.run(["bash", "-c", f"( cd {HOME} && exec {sys.executable} {client} {PORT} 'Review PR 412' > {out} 2>&1 & )"])
         check(wait_title("Review PR 412", 8), "the tab titled for an agent outside it")
         print("     ", open(out).read().strip() if os.path.exists(out) else "")
+
+        print("Codex's own server (one for every session, started under another tab's shell):")
+        other = os.path.join(SCRATCH, "other")
+        os.makedirs(other, exist_ok=True)
+        server = os.path.join(other, "codex")
+        open(server, "w").write(SERVER)
+        os.chmod(server, 0o755)
+        first = {w["id"] for w in ipc({"type": "list_windows"}).get("windows", [])}
+        # A second window, in another folder: where the server is started.
+        ts("run", N, BIN, "-w", other)
+        second = None
+        for _ in range(40):
+            time.sleep(0.25)
+            new = [w["id"] for w in ipc({"type": "list_windows"}).get("windows", []) if w["id"] not in first]
+            if new and any(t.get("cwd") == other for t in json.load(open(snap_path))["tabs"]):
+                second = new[0]
+                break
+        check(second is not None, "a second window, in another folder, is in the agents' snapshot")
+        title_of = lambda wid: next((w["title"] for w in ipc({"type": "list_windows"}).get("windows", []) if w["id"] == wid), "")
+        answer = os.path.join(SCRATCH, "server.json")
+        # (Typed in the second window, which is in front: the server is its shell's child. For the first
+        # window's session: the folder given is the first's.)
+        ts("type", N, f"{server} app-server {PORT} {answer} 'Port the importer' {HOME}")
+        ts("key", N, "28")
+        ok = wait_title("Port the importer", 8)
+        check(ok and any("Port the importer" in title_of(w) for w in first) and "Port the importer" not in title_of(second), "the title is on the tab in the folder given, not on the tab the server was started in")
+        # And with no folder given: asked for, and no tab titled.
+        if os.path.exists(answer):
+            os.remove(answer)
+        ts("type", N, f"{server} app-server {PORT} {answer} 'Nobody said where'")
+        ts("key", N, "28")
+        said = ""
+        for _ in range(40):
+            time.sleep(0.25)
+            if os.path.exists(answer) and os.path.getsize(answer):
+                said = open(answer).read()
+                break
+        check("which folder" in said and not wait_title("Nobody said where", 1.5), "with no folder given, the tool asks for it and titles no tab")
+        # (The second window closed: the cases below type into the first.)
+        ts("type", N, "exit")
+        ts("key", N, "28")
+        for _ in range(40):
+            time.sleep(0.25)
+            if second not in {w["id"] for w in ipc({"type": "list_windows"}).get("windows", [])}:
+                break
+        check(second not in {w["id"] for w in ipc({"type": "list_windows"}).get("windows", [])}, "the second window is closed again")
 
         print("Claude Code (under the tab's shell):")
         ts("type", N, f"{sys.executable} {client} {PORT} 'Fix login redirect'")

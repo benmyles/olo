@@ -30,7 +30,7 @@ use std::{
 use serde_json::{Value, json};
 use toml_edit::{DocumentMut, Item};
 
-use crate::agent_context::{self, TabInfo};
+use crate::agent_context::{self, Asker, TabInfo};
 
 /// What the server is run with.
 pub const MCP_FLAG: &str = "--mcp";
@@ -68,19 +68,24 @@ fn tool() -> Value {
     })
 }
 
-/// The tab of the agent that is `lineage` (it and its ancestors): under
-/// its shell (Claude Code), else in `cwd` (Codex: what the agent gives,
-/// else `own`, the folder it's in).
-fn find_tab(lineage: &[i32], cwd: Option<&Path>, own: Option<&Path>) -> Option<TabInfo> {
+/// The tab of the agent that asks: under its shell (Claude Code), else
+/// in `cwd` (Codex: the folder the agent gives; else the one the asker
+/// is in, where that is its own).
+fn find_tab(asker: &Asker, cwd: Option<&Path>) -> Option<TabInfo> {
     let snapshot = agent_context::read_all()?;
-    agent_context::tab_of(&snapshot, lineage, cwd.or(own), agent_context::own_agent(lineage)).cloned()
+    agent_context::tab_of(&snapshot, &asker.lineage, cwd.or(asker.own.as_deref()), asker.agent).cloned()
 }
 
-/// Set the title of the tab of the agent that is `lineage` (`cwd` the
-/// folder it says it's in, `own` the one it is): what to tell it, or
-/// why not.
-pub fn set_for(lineage: &[i32], title: &str, cwd: Option<&Path>, own: Option<&Path>) -> Result<String, String> {
-    let tab = find_tab(lineage, cwd, own).ok_or("This session isn't in an Olo Terminal tab (or Terminal's setting for it is off).")?;
+/// Set the title of the tab of the agent that asks (`cwd`: the folder it
+/// says it's in): what to tell it, or why not.
+pub fn set_for(asker: &Asker, title: &str, cwd: Option<&Path>) -> Result<String, String> {
+    // (Through a server all its sessions share, and no folder given:
+    // nothing says which tab. Asked for, not guessed: the guess was the
+    // tab of the window that started the server.)
+    if asker.shared && cwd.is_none() {
+        return Err("Say which folder you are working in (cwd): this agent's requests come through a server all its sessions share, so only the folder says which tab is yours.".into());
+    }
+    let tab = find_tab(asker, cwd).ok_or("This session isn't in an Olo Terminal tab (or Terminal's setting for it is off).")?;
     hand_over(&tab, title)?;
     Ok(if title.is_empty() { "The tab's title is its own again.".into() } else { format!("The tab is titled \u{201c}{title}\u{201d}.") })
 }
@@ -96,7 +101,7 @@ pub fn set_for(lineage: &[i32], title: &str, cwd: Option<&Path>, own: Option<&Pa
 pub fn from_shell(words: &[String]) -> std::process::ExitCode {
     let title = tidy(&words.join(" "));
     let own = std::env::current_dir().ok();
-    match set_for(&agent_context::ancestors(), &title, own.as_deref(), own.as_deref()) {
+    match set_for(&agent_context::asker(std::process::id() as i32), &title, own.as_deref()) {
         Ok(said) => {
             println!("{said}");
             std::process::ExitCode::SUCCESS
@@ -171,9 +176,10 @@ pub fn answer(msg: &Value, set: &mut Set) -> Option<Value> {
 /// is kept the same from version to version. Its life is noted in
 /// `log_path()`: when it started, for whom, and how it ended.
 pub fn serve() -> std::process::ExitCode {
-    let lineage = agent_context::ancestors();
-    let own = std::env::current_dir().ok();
-    let mut set = |title: &str, cwd: Option<&Path>| set_for(&lineage, title, cwd, own.as_deref());
+    // (A server started by the agent it serves: under its tab's shell, or,
+    // started by Codex's shared server, to be found by the folder given.)
+    let asker = agent_context::asker(std::process::id() as i32);
+    let mut set = |title: &str, cwd: Option<&Path>| set_for(&asker, title, cwd);
     note_life();
     let mut out = std::io::stdout().lock();
     let mut why = "";

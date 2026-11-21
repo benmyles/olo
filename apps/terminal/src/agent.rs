@@ -80,6 +80,23 @@ fn identify(comm: &str, exe: &str, args: &[String]) -> Option<Agent> {
     None
 }
 
+/// Whether process `pid` is an agent's server for all its sessions:
+/// Codex's app server, one daemon that runs every Codex session's tools
+/// and hooks, started by whichever window came first and so a child of
+/// that one. What asks through it is not, for that, in the tab its
+/// family leads to (`agent_context::Asker`).
+pub fn serves_every_session(pid: i32) -> bool {
+    let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) else { return false };
+    let args: Vec<String> = cmdline.split(|&b| b == 0).filter(|a| !a.is_empty()).map(|a| String::from_utf8_lossy(a).into_owned()).collect();
+    let exe = std::fs::read_link(format!("/proc/{pid}/exe")).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
+    shared_server(comm.trim(), &exe, &args)
+}
+
+fn shared_server(comm: &str, exe: &str, args: &[String]) -> bool {
+    identify(comm, exe, args) == Some(Agent::Codex) && args.iter().skip(1).take(3).any(|a| a == "app-server")
+}
+
 /// What the agent is doing, from the bottom of its screen (where its
 /// prompt, dialogs and status line are).
 pub fn classify(screen: &str) -> State {
@@ -347,6 +364,15 @@ mod tests {
         assert_eq!(identify("codex", "/usr/local/bin/codex", &args(&["codex"])), Some(Agent::Codex));
         assert_eq!(identify("node", "/usr/bin/node", &args(&["node", "/usr/local/bin/codex", "--full-auto"])), Some(Agent::Codex));
         assert_eq!(identify("vim", "/usr/bin/vim", &args(&["vim", "claude.md"])), None);
+        // Codex's server for every session (as `ps` has it, codex-cli
+        // 0.170), and what isn't one: a window's own Codex, a run of
+        // `codex exec`, Claude Code.
+        let packaged = "/home/u/.codex/packages/app-server-daemon/0.170.0/codex";
+        assert!(shared_server("codex", packaged, &args(&[packaged, "app-server", "--listen", "unix://", "--analytics-default-enabled"])));
+        assert!(shared_server("codex", packaged, &args(&[packaged, "app-server", "daemon", "pid-update-loop"])));
+        assert!(!shared_server("codex", "/usr/local/bin/codex", &args(&["codex", "--full-auto"])));
+        assert!(!shared_server("codex", "/usr/local/bin/codex", &args(&["codex", "exec", "-m", "x", "look at app-server"])));
+        assert!(!shared_server("claude", "/home/u/.local/share/claude/versions/2.1.311", &args(&["claude", "app-server"])));
     }
 
     #[test]

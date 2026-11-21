@@ -827,25 +827,21 @@ something nobody here has is in "Blocked", with what it waits for.
     be read from bluetoothd itself, or found by the programs on the
     bus one by one).
 - **A title an agent sets lands on another window's tab** (Ben,
-  2026-11-21: "terminal app is mixing up tab names"; a bug, for
-  later). Seen: a Codex in one Terminal window called `set_tab_title`
-  and was told its tab was titled; the title showed on a tab of
-  another window, in another project's group, where another Codex
-  runs, and its own tab kept the program's own title. The lead, from
-  the code, not yet reproduced: Codex's tool calls come from its
-  daemon, which is under no tab's shell, so the tab is found by the
-  folder the agent gives and, where it gives none, by the folder the
-  *caller* is in (`agent_title::set_for`: `cwd.or(own)`), which for a
-  daemon shared by every Codex session is the folder of whichever
-  session started it. To do: reproduce it headless (two Codex
-  stand-ins in two folders behind one daemon;
-  `tools/dev/agent-title-check` has the pieces); a caller under no
-  tab's shell that gives no folder is refused and told to give one,
-  never guessed at; two agents in one folder are told apart (by the
-  session the request names, if Codex's says it) or the title is
-  refused rather than put on the wrong tab; and whatever else finds
-  an agent's tab through `agent_context::tab_of` is looked at for
-  the same.
+  2026-11-21: "terminal app is mixing up tab names"). **Done**, the
+  cause: Codex's tool calls and hooks come from its app server, one
+  daemon for every Codex window and a child of whichever came first,
+  and the tab was found by the asker's process family before the
+  folder it gave: every Codex session was taken to be in that first
+  window's tab. An asker that comes through such a server is now found
+  by the folder alone, and asked for one when it gives none
+  (`agent_context::Asker`; HACKING, the tab titles). Shown headless
+  both ways: `tools/dev/agent-title-check` fails on the build from
+  before and passes now. **Left**: two sessions of the same agent in
+  one folder still can't be told apart by the folder (the first tab
+  running that agent is taken): the hook, which runs once at a
+  session's start, could hand the agent a word for its tab to give
+  back with each title, if Codex's hook is run where the session is;
+  and the same for what the hook tells an agent about its tab's group.
 
 - **Tracker's columns resized by hand, one width for them all** (Ben,
   2026-11-21: "in tracker columns mode the column widths need to be

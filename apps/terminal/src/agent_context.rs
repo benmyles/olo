@@ -200,11 +200,47 @@ pub fn set_hooks(on: bool, exe: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// This process's ancestors, its parent first.
-pub fn ancestors() -> Vec<i32> {
-    let mut all = lineage(std::process::id() as i32);
-    all.remove(0);
-    all
+/// Who asks about a tab (the title tool's caller, a hook): what says
+/// which tab is theirs.
+///
+/// A process under a tab's shell is in that tab (Claude Code, and
+/// whatever it starts). One that reaches us through a server all an
+/// agent's sessions share is not, for that, in the tab its family leads
+/// to: Codex's app server is a child of whichever Codex window was
+/// opened first, and every Codex session's tool calls and hooks come
+/// from it, so by its family they were all in that first window's tab,
+/// and one session's title was set on another's tab, in another
+/// window (Ben, 2026-11-21: "terminal app is mixing up tab names").
+/// For such an asker only the folder it gives says where it is.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Asker {
+    /// Its family as far as it says which tab: it and its ancestors, it
+    /// first, and nothing from a shared server on.
+    pub lineage: Vec<i32>,
+    /// The agent it runs under (its nearest ancestor that is one), as a
+    /// tab names it.
+    pub agent: Option<&'static str>,
+    /// The folder it is in: its own only (not a shared server's, which
+    /// is some other session's).
+    pub own: Option<PathBuf>,
+    /// Whether it asks through a server all its agent's sessions share.
+    pub shared: bool,
+}
+
+/// Who process `pid` is, as an asker.
+pub fn asker(pid: i32) -> Asker {
+    let family = lineage(pid);
+    let agent = own_agent(&family);
+    let lineage = before_shared(&family, &crate::agent::serves_every_session);
+    let shared = lineage.len() < family.len();
+    let own = (!shared).then(|| std::fs::read_link(format!("/proc/{pid}/cwd")).ok()).flatten();
+    Asker { lineage, agent, own, shared }
+}
+
+/// `family` up to, and without, the first of it that is a shared server.
+fn before_shared(family: &[i32], shared: &dyn Fn(i32) -> bool) -> Vec<i32> {
+    let end = family.iter().position(|&p| shared(p)).unwrap_or(family.len());
+    family[..end].to_vec()
 }
 
 /// `pid` and its ancestors, it first (a process that asked the tab title
@@ -306,8 +342,10 @@ pub fn run() -> std::process::ExitCode {
     let cwd = v["cwd"].as_str().map(PathBuf::from);
     let event = v["hook_event_name"].as_str().unwrap_or("SessionStart");
     let session = v["session_id"].as_str().unwrap_or("");
-    let ancestors = ancestors();
-    let agent = own_agent(&ancestors);
+    // (This hook is the asker: under its tab's shell, or started by a
+    // server all its agent's sessions share, where only the session's
+    // folder says which tab.)
+    let Asker { lineage: ancestors, agent, .. } = asker(std::process::id() as i32);
     let read = read_all;
     // A tab just opened may not be in it yet (it's kept every two
     // seconds): a moment's grace, at the start only, where the tab is
@@ -425,6 +463,29 @@ mod tests {
         assert_eq!(at(None), Some(21));
         // Under a folder of the tab's: the nearby Codex tab.
         assert_eq!(tab_of(&s, &[], Some(Path::new("/src/olo/crates")), Some("Codex")).and_then(|t| t.shell), Some(22));
+    }
+
+    /// What asks through a server all an agent's sessions share isn't,
+    /// for that, in the tab its family leads to: Codex's app server is a
+    /// child of the first Codex window, and a second session's title
+    /// was set on the first's tab.
+    #[test]
+    fn a_shared_servers_family_says_nothing_of_the_tab() {
+        // A hook (40) started by the server (30), itself a child of the
+        // first window's Codex (21), under that tab's shell (20).
+        let family = [40, 30, 21, 20, 2];
+        assert_eq!(before_shared(&family, &|p| p == 30), vec![40]);
+        // The server itself asking (the title tool's request).
+        assert_eq!(before_shared(&family[1..], &|p| p == 30), Vec::<i32>::new());
+        // No such server in the family: all of it (Claude Code, under its tab's shell).
+        assert_eq!(before_shared(&family, &|_| false), family.to_vec());
+        // So two Codex tabs in two folders, the server born in the first:
+        // by what is left of the family nothing; by the folder given, its own.
+        let s = Snapshot { tabs: vec![tab(20, Some("api"), "/src/api", Some("Codex")), tab(50, Some("jato"), "/src/jato", Some("Codex"))], ..Default::default() };
+        let lineage = before_shared(&family[1..], &|p| p == 30);
+        assert_eq!(tab_of(&s, &family[1..], Some(Path::new("/src/jato")), Some("Codex")).and_then(|t| t.shell), Some(20), "as it was: the first window's tab, whatever the folder");
+        assert_eq!(tab_of(&s, &lineage, Some(Path::new("/src/jato")), Some("Codex")).and_then(|t| t.shell), Some(50));
+        assert!(tab_of(&s, &lineage, None, Some("Codex")).is_none(), "and with no folder given, none: asked for, not guessed");
     }
 
     #[test]

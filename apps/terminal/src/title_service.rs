@@ -396,10 +396,8 @@ fn answer_connection(mut stream: TcpStream) -> std::io::Result<()> {
                 // SAFETY: getuid can't fail.
                 let uid = unsafe { libc::getuid() };
                 let inode = peer(&stream).filter(|&(u, _)| u == uid).map(|(_, inode)| inode).ok_or("Only this user's programs may set a tab's title.")?;
-                let pid = holder(inode, uid);
-                let lineage = pid.map(agent_context::lineage).unwrap_or_default();
-                let own = pid.and_then(|p| std::fs::read_link(format!("/proc/{p}/cwd")).ok());
-                agent_title::set_for(&lineage, title, cwd, own.as_deref())
+                let asker = holder(inode, uid).map(agent_context::asker).unwrap_or_default();
+                agent_title::set_for(&asker, title, cwd)
             };
             respond(&req, &mut set)
         }
