@@ -2,7 +2,11 @@
 //! window (to compare with a build from before a change:
 //! `tools/dev/kit-compare`).
 //! Still, at time 60, unless CHARTS_LIVE is set: then time runs and the
-//! graphs scroll (for `tools/dev/cost`).
+//! graphs scroll (for `tools/dev/cost`). With CHARTS_SAME set its body
+//! runs twenty times a second and draws what it drew: nothing new to
+//! show, so no frame (a drawing made again the same is known for the
+//! same, paths and shadows and all: `OLO_FRAME_PHASES=1` counts its
+//! frames; there were twenty a second before the stage compared them).
 
 use std::{collections::VecDeque, rc::Rc, time::Instant};
 
@@ -20,6 +24,9 @@ use olo_kit::{
 struct Charts {
     started: Instant,
     live: bool,
+    /// CHARTS_SAME, and whether its timer has been started.
+    same: bool,
+    ticking: bool,
     picked: Option<usize>,
     said: String,
 }
@@ -28,6 +35,8 @@ struct Charts {
 enum Msg {
     Said(String),
     Picked(usize),
+    /// CHARTS_SAME: the body runs again, to draw the same.
+    Again,
 }
 
 /// Samples every half second from 0 to `until`.
@@ -49,11 +58,16 @@ impl View for Charts {
                 self.picked = Some(i);
                 self.said = format!("Picked cell {i}.");
             }
+            Msg::Again => cx.after(std::time::Duration::from_millis(50), Msg::Again),
         }
         cx.invalidate();
     }
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
+        if self.same && !self.ticking {
+            self.ticking = true;
+            cx.after(std::time::Duration::from_millis(50), Msg::Again);
+        }
         let p = olo_kit::theme::palette();
         let hue = |h: Hue| style::c(p.hue(h));
         let (blue, red, green) = (hue(Hue::Blue), hue(Hue::Red), hue(Hue::Green));
@@ -151,6 +165,8 @@ fn main() {
         olo_kit::open_window(WindowOptions::new("Charts", 660.0, 560.0), |_| Charts {
             started: Instant::now(),
             live: std::env::var_os("CHARTS_LIVE").is_some(),
+            same: std::env::var_os("CHARTS_SAME").is_some(),
+            ticking: false,
             picked: Some(3),
             said: "Nothing yet.".into(),
         });

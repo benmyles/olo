@@ -95,9 +95,13 @@ something nobody here has is in "Blocked", with what it waits for.
      headless compositor and a kit program on an agent's screen both
      ask 1, normal); `tools/dev/gpu-priority-check` measures it again
      (guarded: two seconds, never near the five). **Left**: (a)
-     agents' screens started before the upgrade keep their low
+     ~~agents' screens started before the upgrade keep their low
      queues until they start again: do they start again at an
-     upgrade? if not, make them; (b) ~~the root follower sets the
+     upgrade?~~ they do (seen 2026-11-20: a screen started at 23:04
+     had its compositor started again at 23:26:36, five seconds
+     after the person's, at that night's upgrade: its session is an
+     `olo-session --headless` and re-executes as the person's does);
+     (b) ~~the root follower sets the
      driver's patience to its most (`job_timeout_ms`, 10 s, for
      queues made after) for other programs' low queues~~ done
      (`gpu_tuning::xe_patience`, follower 7; Chrome's own asking is
@@ -113,14 +117,14 @@ something nobody here has is in "Blocked", with what it waits for.
      screen drawing (its Deskbar's widgets and clock, the keep-warm
      frame, statuses that changed without showing): 1.9% of a core
      and 90 wakes a second a screen to 0.1% and 8 (HACKING, "An
-     agent's screen sits still"). **Left of it**: (d1) a view that
-     draws the same again still presents a frame: a canvas with no
-     `paint_key` is painted anew at every `body`, and the stage
-     can't tell that a drawing with paths, sectors or shadows is the
-     same (`Scene::changed_since` compares only quads, lines and
-     glyphs, and only for a big item): compare them all, for any
-     size, so that the same picture is never a frame, measured
-     (`tools/dev/bench`); (d2) while an agent acts, the recorder
+     agent's screen sits still"). **Left of it**: (d1) ~~a view that
+     draws the same again still presents a frame~~ done
+     (2026-11-21): the stage compares a drawing made again with the
+     one it replaces whatever its size and whatever is in it, and
+     the same is no damage (the charts example drawing the same
+     twenty times a second: 200 frames in ten seconds to none, 8.6%
+     of a processor to 0.9%; HACKING, "Only what shows, only what
+     changed"); (d2) while an agent acts, the recorder
      takes the whole picture up to eight times a second through a
      file in the runtime folder (5 MB each at 1440 × 900, read back
      from the GPU): what changed only, from app_server's damage;

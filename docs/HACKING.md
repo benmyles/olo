@@ -510,9 +510,26 @@ How Olo keeps it (do the same):
   the status line, not the window between them. Where a drawing was
   made again in the same place (a text area painted again for a key),
   the stage compares it with the one it replaces thing by thing
-  (`Scene::changed_since`, for drawings of a sixteenth of the window
-  or more) and damages only what differs; a frame then takes from each
-  drawing only what falls in a rectangle (`stage::assemble`). A line of
+  (`Scene::changed_since`) and damages only what differs, where the
+  drawing is a sixteenth of the window or more (a smaller one that
+  differs is drawn again whole); a frame then takes from each
+  drawing only what falls in a rectangle (`stage::assemble`).
+  **The same picture is never a frame**: a drawing of any size made
+  again the same as the one it replaces (a view whose body ran and
+  painted what it had: a canvas with no `paint_key`, a clock between
+  two seconds, a chart whose figures didn't move) is no damage, so
+  nothing is drawn or presented for it. Every kind of thing is
+  compared for that, paths, ring slices, pictures' triangles, shadows
+  and videos' frames whole (any of those not as it was: the stage
+  can't say where, and draws the drawing again). Until 2026-11-21 a
+  drawing with a path or a shadow in it was never compared, nor any
+  small one: the kit's charts example with its body run twenty times
+  a second, drawing the same, presented 200 frames in ten seconds and
+  used 8.6% of a processor; none and 0.9% now (`CHARTS_SAME=1`,
+  counted with `OLO_FRAME_PHASES=1`; the comparison itself is 98
+  instructions more for a drawing of 1,500 pieces, `scene_bench`).
+  Still give a canvas a `paint_key` where you can: that spares the
+  painting too. A line of
   glyphs painted again whole from what it kept (`paint_glyph_run`, as
   every plain line of text, the editor's and Terminal's rows are) says
   how it was made (`scene::RunMade`: which finding of its glyphs, where,

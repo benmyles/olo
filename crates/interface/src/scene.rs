@@ -107,11 +107,22 @@ impl Scene {
     /// at either end of that kind's list, where it was and where it is
     /// (what each shows: its bounds in its clip). Into `out`, in the
     /// coordinates they were painted in; false (and `out` as it was) when
-    /// it can't tell, holding things it doesn't compare (paths, sectors,
-    /// pictures' triangles, videos, shadows).
+    /// it can't tell where: among the things it only compares whole
+    /// (paths, sectors, pictures' triangles, videos, shadows) something
+    /// isn't as it was. Where those are all the same, as in a drawing made
+    /// again of what it already showed (a view whose body ran and painted
+    /// the same chart, the same shadowed card), the rest is compared and
+    /// `out` is left as it was for a drawing that is the same throughout:
+    /// nothing to show, so no frame. (It used to say it couldn't tell
+    /// whenever there was a path or a shadow at all, and every such
+    /// drawing made again was a frame.)
     pub(crate) fn changed_since(&self, was: &Scene, out: &mut Vec<Bounds<ScaledPixels>>) -> bool {
-        let compared = |s: &Scene| s.paths.is_empty() && s.sectors.is_empty() && s.image_triangles.is_empty() && s.surfaces.is_empty() && s.shadows.is_empty();
-        if !compared(self) || !compared(was) {
+        if self.shadows != was.shadows
+            || self.sectors != was.sectors
+            || self.image_triangles != was.image_triangles
+            || !same_paths(&self.paths, &was.paths)
+            || !same_surfaces(&self.surfaces, &was.surfaces)
+        {
             return false;
         }
         // (`same`: whether two stretches as long as each other are; the
@@ -1499,7 +1510,7 @@ impl From<Segment> for Primitive {
 /// two angles, antialiased by each pixel's distance to its edges. A disc
 /// is one from radius 0 all the way round, a circle's outline a thin
 /// ring.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[repr(C)]
 pub(crate) struct Sector {
     pub order: DrawOrder,
@@ -1523,7 +1534,7 @@ impl From<Sector> for Primitive {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[repr(C)]
 pub(crate) struct Shadow {
     pub order: DrawOrder,
@@ -1705,6 +1716,36 @@ unsafe impl Packed for Segment {}
 /// were a quarter of its work). Two the same to the byte are the same;
 /// two that differ only in a zero's sign are taken for different, which
 /// draws a few pixels again.
+/// Olo: whether two drawings' paths are the same to draw: where they are,
+/// their fill, their triangles, and what they were built from (the same
+/// one, or one built the same: its curves, how it is stroked or filled).
+fn same_paths(a: &[Path<ScaledPixels>], b: &[Path<ScaledPixels>]) -> bool {
+    fn same_outline(a: &Option<Arc<crate::outline::PathOutline>>, b: &Option<Arc<crate::outline::PathOutline>>) -> bool {
+        match (a, b) {
+            (None, None) => true,
+            (Some(a), Some(b)) => Arc::ptr_eq(a, b) || (a.stroke == b.stroke && a.fill_rule == b.fill_rule && a.unmade == b.unmade && a.path.iter().eq(b.path.iter())),
+            _ => false,
+        }
+    }
+    a.len() == b.len()
+        && a.iter()
+            .zip(b)
+            .all(|(a, b)| a.order == b.order && a.bounds == b.bounds && a.content_mask == b.content_mask && a.color == b.color && a.vertices == b.vertices && same_outline(&a.outline, &b.outline))
+}
+
+/// Olo: whether two drawings show the same videos' pictures in the same
+/// places: the very same decoded frame, not one that looks like it.
+fn same_surfaces(a: &[PaintSurface], b: &[PaintSurface]) -> bool {
+    a.len() == b.len()
+        && a.iter().zip(b).all(|(a, b)| {
+            #[cfg(target_os = "macos")]
+            let picture = a.image_buffer == b.image_buffer;
+            #[cfg(not(target_os = "macos"))]
+            let picture = Arc::ptr_eq(&a.frame, &b.frame);
+            picture && a.order == b.order && a.bounds == b.bounds && a.content_mask == b.content_mask
+        })
+}
+
 fn same_sprites<T: Packed>(a: &[T], b: &[T]) -> bool {
     fn bytes<T: Packed>(s: &[T]) -> &[u8] {
         // SAFETY: `T` has no padding (`Packed`), so all of its bytes are
@@ -1744,7 +1785,7 @@ impl From<PolychromeSprite> for Primitive {
 /// Olo: a triangle of an image (`Window::paint_image_triangles`): each
 /// corner a point in the window and where in the image (0–1) it shows,
 /// the image tinted. A picture bent in perspective, a lens's disc.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[repr(C)]
 pub(crate) struct ImageTriangle {
     pub order: DrawOrder,
@@ -1889,7 +1930,7 @@ impl From<Path<ScaledPixels>> for Primitive {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 #[repr(C)]
 pub(crate) struct PathVertex<P: Clone + Debug + Default + PartialEq> {
     pub(crate) xy_position: Point<P>,
@@ -2600,19 +2641,97 @@ mod tests {
         let around = out.iter().copied().reduce(|a, b| a.union(&b)).unwrap();
         assert!(around.contains(&point(ScaledPixels(57.0), ScaledPixels(61.0))) && around.contains(&point(ScaledPixels(73.0), ScaledPixels(75.0))), "{out:?}");
         assert!(out.iter().all(|r| r.origin.y.0 >= 59.0 && r.origin.y.0 + r.size.height.0 <= 77.0), "only row 3: {out:?}");
-        // With a shadow: it can't tell (and says nothing).
-        let mut shadowed = paint(72.0, 99);
-        shadowed.insert_primitive(Shadow {
+        // With a shadow that the last one hadn't: it can't tell where
+        // (and says nothing).
+        let shadow = |blur: f32| Shadow {
             order: 0,
-            blur_radius: ScaledPixels(4.0),
+            blur_radius: ScaledPixels(blur),
             bounds: mask(10.0, 10.0, 50.0, 20.0).bounds,
             corner_radii: Corners::default(),
             content_mask: mask(-1e4, -1e4, 2e4, 2e4),
             color: Hsla::default(),
-        });
+        };
+        let with = |caret: f32, last: u32, blur: f32| {
+            let mut kept = paint(caret, last);
+            kept.insert_primitive(shadow(blur));
+            kept
+        };
         out.clear();
-        assert!(!shadowed.changed_since(&was, &mut out));
+        assert!(!with(72.0, 99, 4.0).changed_since(&was, &mut out));
         assert!(out.is_empty());
+        // The same shadow in both: the rest is compared as ever. The
+        // same drawing made again is the same (nothing to show), and one
+        // with a glyph typed differs only there.
+        let was = with(64.0, 7, 4.0);
+        assert!(with(64.0, 7, 4.0).changed_since(&was, &mut out));
+        assert!(out.is_empty(), "{out:?}");
+        assert!(with(72.0, 99, 4.0).changed_since(&was, &mut out));
+        assert!(!out.is_empty() && out.iter().all(|r| r.origin.y.0 >= 59.0 && r.origin.y.0 + r.size.height.0 <= 77.0), "only row 3: {out:?}");
+        // The shadow itself changed: it can't tell where.
+        out.clear();
+        assert!(!with(64.0, 7, 5.0).changed_since(&was, &mut out));
+        assert!(out.is_empty());
+    }
+
+    /// The things compared only whole: a drawing with a ring's slice, a
+    /// path and a picture's triangle made again the same is the same; any
+    /// one of them changed, and it can't tell where.
+    #[test]
+    fn a_drawing_with_paths_made_again_the_same_is_the_same() {
+        let sector = |sweep: f32| Sector {
+            order: 0,
+            pad: 0,
+            bounds: mask(0.0, 0.0, 40.0, 40.0).bounds,
+            content_mask: mask(-1e4, -1e4, 2e4, 2e4),
+            color: Hsla::default(),
+            center: point(ScaledPixels(20.0), ScaledPixels(20.0)),
+            inner: ScaledPixels(8.0),
+            outer: ScaledPixels(18.0),
+            start: 0.0,
+            sweep,
+        };
+        let path = |to: f32| {
+            let mut p = Path::new(point(crate::px(0.0), crate::px(0.0)));
+            p.line_to(point(crate::px(to), crate::px(0.0)));
+            p.line_to(point(crate::px(to), crate::px(30.0)));
+            // (Clipped to nothing it would be left out of the drawing.)
+            let mut p = p.scale(1.0);
+            p.content_mask = mask(-1e4, -1e4, 2e4, 2e4);
+            p
+        };
+        let paint = |sweep: f32, to: f32| {
+            let mut kept = Scene::recording();
+            kept.insert_primitive(quad(0.0, 0.0, 400.0, 300.0));
+            kept.insert_primitive(sector(sweep));
+            kept.insert_primitive(path(to));
+            assert_eq!((kept.sectors.len(), kept.paths.len()), (1, 1));
+            kept
+        };
+        let was = paint(1.0, 50.0);
+        let mut out = Vec::new();
+        assert!(paint(1.0, 50.0).changed_since(&was, &mut out));
+        assert!(out.is_empty(), "{out:?}");
+        assert!(!paint(1.5, 50.0).changed_since(&was, &mut out), "the slice went further round");
+        assert!(!paint(1.0, 60.0).changed_since(&was, &mut out), "the path reaches further");
+        assert!(out.is_empty());
+        // One built the same from its curves, a path of its own.
+        let outlined = |x: f32| {
+            let mut b = crate::PathBuilder::fill();
+            b.move_to(point(crate::px(0.0), crate::px(0.0)));
+            b.line_to(point(crate::px(x), crate::px(0.0)));
+            b.line_to(point(crate::px(x), crate::px(20.0)));
+            b.close();
+            let mut built = b.build().unwrap().scale(1.0);
+            built.content_mask = mask(-1e4, -1e4, 2e4, 2e4);
+            let mut kept = Scene::recording();
+            kept.insert_primitive(built);
+            assert_eq!(kept.paths.len(), 1);
+            kept
+        };
+        let was = outlined(40.0);
+        assert!(outlined(40.0).changed_since(&was, &mut out));
+        assert!(out.is_empty());
+        assert!(!outlined(41.0).changed_since(&was, &mut out));
     }
 
     /// A line painted again whole (`insert_kept_run`, what it reaches

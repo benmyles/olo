@@ -1349,8 +1349,9 @@ fn damage(before: &Commit, now: &Commit, scrollers: &FxHashMap<u64, Scroller>, i
             into.push(r);
         }
     };
-    // A drawing worth comparing thing by thing with the one it replaces
-    // (smaller ones are drawn again whole: cheaper than looking).
+    // A drawing big enough that, where it differs from the one it
+    // replaces, only what differs is drawn again (a smaller one that
+    // differs is drawn again whole: fewer pieces).
     let big = |item: &Item| {
         let shown = item.shown();
         shown.size.width.0 * shown.size.height.0 * 16.0 >= whole.size.width.0 * whole.size.height.0
@@ -1359,6 +1360,9 @@ fn damage(before: &Commit, now: &Commit, scrollers: &FxHashMap<u64, Scroller>, i
     // didn't change; the rest did, where it was and where it is.
     let mut j = 0;
     let mut differ = Vec::new();
+    // (Where in `a` each drawing is last: made the first time a drawing
+    // made again is met, and not for a commit that has none.)
+    let mut last_at: Option<FxHashMap<*const Recording, usize>> = None;
     for (i, item) in a.iter().enumerate() {
         match b[j..].iter().position(|other| other.same_place(item)) {
             Some(at) => {
@@ -1366,18 +1370,22 @@ fn damage(before: &Commit, now: &Commit, scrollers: &FxHashMap<u64, Scroller>, i
                 j += at + 1;
             }
             None => {
-                // Painted again where it was (a text area typed in: a
-                // line and the caret changed, not all of it), and not
-                // what a later one is: only where the two differ.
+                // Painted again where it was, and not what a later one
+                // is: compared with what it replaces. The same throughout
+                // (a view whose body ran and painted what it had: a clock
+                // between two seconds, a chart whose figures didn't move)
+                // is nothing new to show, whatever its size: it was a
+                // frame every time, drawn and presented for nothing. One
+                // that differs is drawn again only where it does if it
+                // is big (a text area typed in: a line and the caret).
                 if let Some(next) = b.get(j)
                     && next.by == item.by
                     && next.clip == item.clip
                     && next.layer == item.layer
-                    && big(item)
-                    && !a[i + 1..].iter().any(|later| later.same_place(next))
+                    && last_at.get_or_insert_with(|| a.iter().enumerate().map(|(at, x)| (Arc::as_ptr(&x.list), at)).collect()).get(&Arc::as_ptr(&next.list)).is_none_or(|at| *at <= i)
                 {
                     differ.clear();
-                    if next.list.scene.changed_since(&item.list.scene, &mut differ) {
+                    if next.list.scene.changed_since(&item.list.scene, &mut differ) && (differ.is_empty() || big(item)) {
                         differ.iter().for_each(|r| add(place(item, *r)));
                         j += 1;
                         continue;
@@ -1394,5 +1402,82 @@ fn damage(before: &Commit, now: &Commit, scrollers: &FxHashMap<u64, Scroller>, i
         let all = into.iter().copied().reduce(|a, b| a.union(&b)).unwrap_or_default();
         into.clear();
         into.push(all);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{ContentMask, Quad, Shadow};
+
+    fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<ScaledPixels> {
+        Bounds { origin: point(ScaledPixels(x), ScaledPixels(y)), size: size(ScaledPixels(w), ScaledPixels(h)) }
+    }
+
+    /// A small drawing: a card's face and its shadow, the face `shade`.
+    fn card(at: Bounds<ScaledPixels>, shade: f32) -> Arc<Recording> {
+        let everywhere = ContentMask { bounds: rect(-1e4, -1e4, 2e4, 2e4) };
+        let mut scene = Scene::recording();
+        scene.insert_primitive(Shadow { order: 0, blur_radius: ScaledPixels(4.0), bounds: at, corner_radii: Default::default(), content_mask: everywhere.clone(), color: Default::default() });
+        scene.insert_primitive(Quad { bounds: at, content_mask: everywhere, background: crate::hsla(0.0, 0.0, shade, 1.0).into(), ..Default::default() });
+        Arc::new(Recording { scene, bounds: at })
+    }
+
+    fn item(list: &Arc<Recording>) -> Item {
+        Item { list: list.clone(), by: point(ScaledPixels(0.0), ScaledPixels(0.0)), clip: EVERYTHING, layer: 0 }
+    }
+
+    fn commit(items: Vec<Item>) -> Commit {
+        Commit {
+            size: size(px(800.0), px(600.0)),
+            scale: 1.0,
+            items,
+            layers: Vec::new(),
+            wheel: Vec::new(),
+            motion: Arc::new(Vec::new()),
+            all_motion: false,
+            work: Duration::ZERO,
+            everything: false,
+            animating: false,
+            externals: Vec::new(),
+            noted: Vec::new(),
+            answered: 0,
+        }
+    }
+
+    fn damaged(before: &Commit, now: &Commit) -> Vec<Bounds<ScaledPixels>> {
+        let mut into = Vec::new();
+        damage(before, now, &FxHashMap::default(), &mut into);
+        into
+    }
+
+    /// A view whose body ran and painted what it had (a small one: a
+    /// label, a card with its shadow) leaves nothing to show, so no
+    /// frame is drawn or presented for it; one that changed is drawn
+    /// again where it is; and a drawing that only stands where another
+    /// went isn't taken for that one made again.
+    #[test]
+    fn the_same_drawing_made_again_is_no_damage() {
+        let (place, other) = (rect(20.0, 20.0, 60.0, 30.0), rect(200.0, 20.0, 60.0, 30.0));
+        let (kept, was) = (card(other, 0.5), card(place, 0.5));
+        let before = commit(vec![item(&kept), item(&was)]);
+        // Made again the same, beside one that was kept.
+        let again = card(place, 0.5);
+        assert!(!Arc::ptr_eq(&again, &was));
+        assert_eq!(damaged(&before, &commit(vec![item(&kept), item(&again)])), []);
+        // Made again another shade: all of it (it is small).
+        let changed = card(place, 0.7);
+        let all = damaged(&before, &commit(vec![item(&kept), item(&changed)]));
+        assert!(!all.is_empty() && all.iter().all(|r| *r == place), "{all:?}");
+        // Gone, with the one kept after it now in its turn: where it was,
+        // though the kept one draws the same thing elsewhere.
+        let before = commit(vec![item(&was), item(&kept)]);
+        assert_eq!(damaged(&before, &commit(vec![item(&kept)])), [place]);
+        // Two the same in one place, the first gone: the second isn't
+        // the first made again (it is there in both), so the place is
+        // drawn again.
+        let twin = card(place, 0.5);
+        let before = commit(vec![item(&was), item(&twin)]);
+        assert_eq!(damaged(&before, &commit(vec![item(&twin)])), [place]);
     }
 }
