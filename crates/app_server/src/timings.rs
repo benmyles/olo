@@ -32,7 +32,7 @@ const LATE: Duration = Duration::from_millis(100);
 /// memory and disks, also the share in which everything did): said with
 /// input that came late, so the log says whether app_server was slow or
 /// the computer was (a build at full tilt, memory being swapped).
-fn pressure() -> String {
+pub(crate) fn pressure() -> String {
     let read = |what: &str| std::fs::read_to_string(format!("/proc/pressure/{what}")).ok().map(|t| pressure_of(&t));
     let said: Vec<String> = [("memory", "memory"), ("io", "disks"), ("cpu", "processors")]
         .into_iter()
@@ -233,6 +233,8 @@ impl Timings {
             latest_beat_us: self.latest_beat.as_micros() as u64,
             slowest: self.slowest.take().map(|(what, t)| (what, t.as_micros() as u64)),
             phases: std::mem::take(&mut self.phases).into_values().collect(),
+            // (What the person felt is the state's to tell: `ipc`.)
+            felt: Vec::new(),
         };
         self.beats = 0;
         self.latest_beat = Duration::ZERO;

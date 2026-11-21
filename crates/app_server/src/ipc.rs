@@ -965,7 +965,25 @@ impl<B: Backend + 'static> AnvilState<B> {
                 self.ipc.recording = Some(crate::screenshot::Recording::start(PathBuf::from(path), frames, output));
                 Reply::Ok
             }
-            Request::Timings { quiet } => Reply::Timings { timings: self.take_timings(quiet) },
+            Request::Timings { quiet } => {
+                let mut timings = self.take_timings(quiet);
+                let us = |d: std::time::Duration| d.as_micros() as u64;
+                timings.felt = self
+                    .felt
+                    .kept()
+                    .map(|t| olo_protocol::FeltTaken {
+                        what: match t.what {
+                            crate::felt::What::Key => "key".into(),
+                            crate::felt::What::Click => "click".into(),
+                        },
+                        app: t.app.clone(),
+                        to_here_us: t.to_here.map(us),
+                        to_draw_us: us(t.to_draw),
+                        to_show_us: us(t.to_show),
+                    })
+                    .collect();
+                Reply::Timings { timings }
+            }
             Request::HoldLoop { ms } => {
                 if std::env::var_os("OLO_TEST_SEAT").is_none() {
                     Reply::Error { message: "only a test app_server (OLO_TEST_SEAT) holds its loop".into() }

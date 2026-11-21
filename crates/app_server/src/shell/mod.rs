@@ -234,6 +234,13 @@ impl<BackendData: Backend> CompositorHandler for AnvilState<BackendData> {
 
 impl<BackendData: Backend + 'static> AnvilState<BackendData> {
     fn commit_inner(&mut self, surface: &WlSurface) {
+        // (A key or a click followed to the display: this may be its
+        // program's answer. One comparison when none is followed.)
+        if self.felt.awaits_drawing()
+            && let Some(client) = surface.client()
+        {
+            self.felt.drew(&client.id(), std::time::Instant::now());
+        }
         on_commit_buffer_handler::<Self>(surface);
         self.backend_data.early_import(surface);
         self.wake_for(surface);

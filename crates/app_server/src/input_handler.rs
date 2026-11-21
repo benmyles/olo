@@ -743,9 +743,13 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             .map(|inhibitor| inhibitor.is_active())
             .unwrap_or(false);
 
+        // (A key that changes nothing by itself isn't followed to the
+        // display: `felt`.)
+        let mut alone = false;
         let action = keyboard
             .input(self, keycode, state, serial, time, |_, modifiers, handle| {
                 let keysym = handle.modified_sym();
+                alone = keysym.is_modifier_key();
 
                 debug!(
                     ?state,
@@ -784,7 +788,36 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             .unwrap_or(KeyAction::None);
 
         self.suppressed_keys = suppressed_keys;
+        // Handed to the program with the keyboard: followed to the display.
+        if state == KeyState::Pressed
+            && matches!(action, KeyAction::None)
+            && !alone
+            && let Some(surface) = keyboard.current_focus().and_then(|focus| focus.wl_surface().map(std::borrow::Cow::into_owned))
+        {
+            self.follow_to_display(crate::felt::What::Key, &surface, time);
+        }
         action
+    }
+
+    /// A key or a button press handed to `surface`'s program is followed
+    /// to the display (`felt`): `time` is the device's stamp on it.
+    fn follow_to_display(&mut self, what: crate::felt::What, surface: &crate::focus::WlSurface, time: InputTime) {
+        let now = std::time::Instant::now();
+        if !self.felt.would_follow(now) {
+            return;
+        }
+        let Some(client) = surface.client() else { return };
+        let now_us = smithay::utils::Clock::<smithay::utils::Monotonic>::new().now().as_micros();
+        let to_here = crate::felt::since_stamp(time.micros(), now_us);
+        let app = || {
+            let mut root = surface.clone();
+            while let Some(parent) = smithay::wayland::compositor::get_parent(&root) {
+                root = parent;
+            }
+            self.window_for_surface(&root).map(|w| w.app_id()).filter(|id| !id.is_empty()).unwrap_or_else(|| "a program".to_owned())
+        };
+        let app = app();
+        self.felt.pressed(what, client.id(), || app, to_here, now);
     }
 
     fn on_pointer_button<B: InputBackend>(&mut self, evt: B::PointerButtonEvent) {
@@ -820,6 +853,12 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let pointer = self.pointer.clone();
         pointer.button(self, &ButtonEvent { button, state: state.try_into().unwrap(), serial, time });
         pointer.frame(self);
+        // Handed to the program under the pointer: followed to the display.
+        if state == wl_pointer::ButtonState::Pressed
+            && let Some(surface) = pointer.current_focus().and_then(|focus| focus.wl_surface().map(std::borrow::Cow::into_owned))
+        {
+            self.follow_to_display(crate::felt::What::Click, &surface, time);
+        }
     }
 
     fn on_gesture_swipe_begin<B: InputBackend>(&mut self, evt: B::GestureSwipeBeginEvent) {
@@ -1840,6 +1879,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 let state = if pressed { smithay::backend::input::ButtonState::Pressed } else { smithay::backend::input::ButtonState::Released };
                 pointer.button(self, &ButtonEvent { button, state, serial, time });
                 pointer.frame(self);
+                // (An agent's click is followed to the display as a
+                // person's is: `pointer_button`.)
+                if pressed && let Some(surface) = pointer.current_focus().and_then(|focus| focus.wl_surface().map(std::borrow::Cow::into_owned)) {
+                    self.follow_to_display(crate::felt::What::Click, &surface, time);
+                }
             }
             // (A synthetic power key: a headless session's, for tests,
             // which never restarts the computer; the session's is dropped.)

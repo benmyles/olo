@@ -985,6 +985,10 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) -> bool {
             if damaged {
                 let mut feedback = take_presentation_feedback(output, &state.space, &states);
                 feedback.presented(frame_target, Refresh::fixed(frame), 0, wp_presentation_feedback::Kind::empty());
+                // (A key or a click followed to the display: a screen with
+                // no display shows a frame as it is drawn.)
+                crate::state::felt_framed(&mut state.felt, &state.space, output);
+                crate::state::felt_shown(&mut state.felt, output);
             }
             let t = std::time::Instant::now();
             state.post_repaint(output, None, &states);

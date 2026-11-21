@@ -977,6 +977,29 @@ pub struct Timings {
     /// CPU goes.
     #[serde(default)]
     pub phases: Vec<PhaseTimings>,
+    /// The last keys and clicks followed to the display, oldest first
+    /// (kept always, not only while someone watches): what the person
+    /// felt, and where each one's time went.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub felt: Vec<FeltTaken>,
+}
+
+/// A key or a click from the device to the screen ([`Timings::felt`];
+/// app_server's `felt`). Microseconds.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct FeltTaken {
+    /// "key" or "click".
+    pub what: String,
+    /// The program's app id.
+    pub app: String,
+    /// From the device's stamp to app_server handing it to the program
+    /// (None: the event carried no stamp of the device's).
+    #[serde(default)]
+    pub to_here_us: Option<u64>,
+    /// Until the program next handed in a drawing.
+    pub to_draw_us: u64,
+    /// Until the frame with that drawing was on the display.
+    pub to_show_us: u64,
 }
 
 /// One part of app_server's loop ([`Timings::phases`]).

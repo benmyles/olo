@@ -2744,6 +2744,9 @@ impl AnvilState<UdevData> {
 
         let seq = metadata.as_ref().map(|metadata| metadata.sequence).unwrap_or(0);
 
+        // (A key or a click followed to the display: here it is.)
+        crate::state::felt_shown(&mut self.felt, &output);
+
         let (clock, flags) = if let Some(tp) = tp {
             (tp.into(), wp_presentation_feedback::Kind::Vsync | wp_presentation_feedback::Kind::HwClock | wp_presentation_feedback::Kind::HwCompletion)
         } else {
@@ -3106,6 +3109,11 @@ impl AnvilState<UdevData> {
         );
         let took = start.elapsed();
         self.timings.frame(&output.name(), took);
+        // (A key or a click followed to the display: its program's
+        // drawing went into this frame, if it shows here.)
+        if matches!(&result, Ok((true, ..))) {
+            crate::state::felt_framed(&mut self.felt, &self.space, &output);
+        }
         if let Some(checks) = &self.backend_data.dmabuf_checks {
             checks.frame_done();
         }

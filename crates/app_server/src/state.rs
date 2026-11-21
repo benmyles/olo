@@ -379,6 +379,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub ipc: crate::ipc::IpcState,
     /// Frame times and event-loop lateness, while watched (`timings`).
     pub timings: crate::timings::Timings,
+    /// A key or a click followed to the display (`felt`).
+    pub felt: crate::felt::Felt<smithay::reexports::wayland_server::backend::ClientId>,
     pub last_window_infos: Vec<olo_protocol::WindowInfo>,
     /// Remembered window places (see `layout`).
     pub layout: Vec<crate::layout::Placement>,
@@ -1407,6 +1409,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             },
             ipc: Default::default(),
             timings: Default::default(),
+            felt: Default::default(),
             last_window_infos: Vec::new(),
             layout: crate::layout::load(),
             veil: None,
@@ -1796,6 +1799,35 @@ pub struct SurfaceDmabufFeedback {
 }
 
 #[profiling::function]
+/// A frame of `output` was drawn: if the program whose drawing is
+/// followed to the display (`felt`) shows there (a window of its, or a
+/// layer of its: Deskbar's, a menu's), its drawing is in that frame.
+pub fn felt_framed(felt: &mut crate::felt::Felt<smithay::reexports::wayland_server::backend::ClientId>, space: &Space<WindowElement>, output: &Output) {
+    if !felt.awaits_frame() {
+        return;
+    }
+    let Some(client) = felt.followed().cloned() else { return };
+    let its = |surface: &WlSurface| surface.client().is_some_and(|c| c.id() == client);
+    let there = space.elements().any(|w| w.wl_surface().is_some_and(|s| its(&s)) && space.outputs_for_element(w).contains(output))
+        || smithay::desktop::layer_map_for_output(output).layers().any(|l| its(l.wl_surface()));
+    if there {
+        felt.framed(&output.name());
+    }
+}
+
+/// `output`'s frame is on the display: a key or a click followed to it
+/// is complete, and said in the log if it was late (`felt::LATE`), with
+/// what the computer was short of.
+pub fn felt_shown(felt: &mut crate::felt::Felt<smithay::reexports::wayland_server::backend::ClientId>, output: &Output) {
+    if !felt.awaits_show() {
+        return;
+    }
+    if let Some((taken, Some(more))) = felt.shown(&output.name(), std::time::Instant::now()) {
+        let others = if more > 0 { format!(" ({more} more as late since the last said)") } else { String::new() };
+        info!("{}{others}; {}", taken.said(), crate::timings::pressure());
+    }
+}
+
 pub fn take_presentation_feedback(output: &Output, space: &Space<WindowElement>, render_element_states: &RenderElementStates) -> OutputPresentationFeedback {
     let mut output_presentation_feedback = OutputPresentationFeedback::new(output);
 

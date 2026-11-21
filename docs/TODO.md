@@ -244,10 +244,10 @@ something nobody here has is in "Blocked", with what it waits for.
   tools ends with the tool however that ends, and Olo Doctor lists
   those over an hour old with a fix that ends them (three had been
   left, one for two and a half days; HACKING, "Whose a test desktop
-  is"). Still: a measure of its own
-  in app_server for what the person feels (a key or a click to the
-  window's next frame, and to the screen), said in the log with who
-  was late, so the next time it is known at once.
+  is"); and app_server follows a key or a click to the display and
+  says a late one in its log with who was late (the program, the
+  compositor, the way there: HACKING, "What the person feels"), so the
+  next time it is known at once.
 
 - **Background work is swapped first, and gives way on the processors
   and the disks as one group** (Ben, 2026-11-20, of swap: "how can we

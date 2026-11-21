@@ -326,7 +326,28 @@ message):
   clicks aren't judged: libinput sends a tap's click as the finger
   lifts, stamped when it touched, so every tap longer than 100 ms read
   as late (Ben's log, 2026-11-13: 18 of them, nothing else late). It
-  costs no more than the clock reading it already made. To see what a thread is
+  costs no more than the clock reading it already made.
+* **What the person feels** (app_server's `felt`): a key or a click is
+  followed from the device to the display, one at a time, in three
+  parts: *to reach it* (the device's stamp to app_server handing the
+  event to the program: the kernel, the input thread, the loop), *until
+  it drew* (the program's next commit: its own work, and whatever kept
+  it from a processor), *to the display* (app_server's frame with that
+  drawing in it, and the wait for the display to show it). One that
+  took 100 ms or more in all is said in the log, at most every five
+  seconds, with its parts and what the computer was short of: "a key in
+  olo.styled-edit took 451 ms to show: 0 ms to reach it, 450 ms until
+  it drew, 0 ms to the display; waited for over the last 10 s: memory
+  4% (everything 3%), processors 33%" (a program held still for 300 ms
+  in a test desktop). So "typing lags" has a figure and names who was
+  late, the program or the compositor or neither, the moment it
+  happens. The last 128 are in `Request::Timings` (`felt`), whoever
+  asks. The middle part is a guess where a program draws for another
+  reason first: a drawing more than a second after the press isn't
+  taken for its answer, and a modifier pressed alone isn't followed. A
+  made-up press (an agent's, `tsession type`) is followed as a
+  person's is. It costs a commit 0.4 ns while nothing is followed, and
+  a followed press 51 ns (release). To see what a thread is
   doing while it's held, sample `/proc/PID/task/TID/wchan` and `syscall`
   (readable by the same user): 2026-11-12, under a build, app_server's
   main thread waited up to 142 ms in the GPU driver
