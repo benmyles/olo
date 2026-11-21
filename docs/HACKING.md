@@ -5467,6 +5467,21 @@ rasterizers round coverage differently), so pictures, the layout
 review and the lints are as good; judge colour and spacing from
 them as before, and a hairline's exact grey on the GPU.
 
+Kept so by more than the variables (the same review): `tsession`
+refuses to start a software session without Mesa's EGL vendor file,
+gives its programs an empty folder for the loader's implicit layers
+(one of those can load another maker's library whatever driver is
+chosen), and passes the settings through `sudo` where it is run as
+root (they were dropped there: a software session started on the
+GPU); the renderer takes only an adapter that is the processor's in
+such a session (`inspect_adapter`: a loader settings file can
+override the driver chosen); and in one, NVIDIA's library, its video
+encoder and decoder and VA-API aren't started at all
+(`OLO_HEADLESS_RENDERER=software` says so to `gpu_tuning::nvml`,
+`olo_video`'s `nvidia_card::usable`, `olo_vaapi`). app_server's own
+test that converts colours on the GPU opens a real render node: it
+is run on purpose now (docs/IGNORED-TESTS.md).
+
 `TSESSION_GPU=1 tsession start …` puts a session on the GPU (the
 render node, dmabuf feedback announced, GL clients such as Chrome
 with hardware GL as on the desktop): for what measures drawing itself
@@ -5478,7 +5493,9 @@ the most.
 
 **And a unit test has no compositor.** The interface kit connects to
 one only for a program that runs an app (`olo_interface::run`, which
-says so first: `display::runs_an_app`). Anything else that asks for
+says so first, `display::runs_an_app`, and takes its display through
+`app_display`, which is where a display made without a compositor is
+caught, whichever thread made it). Anything else that asks for
 the display (a test measuring text, a service laying something out)
 gets it without, whatever `WAYLAND_DISPLAY` the shell it was started
 from has (an agent's has the person's). Until 2026-11-20 every `cargo
@@ -14600,28 +14617,66 @@ always did), loaded, and handed to the loader with
 `VK_LUNARG_direct_driver_loading`, exclusively: the loader then loads
 no other. What the driver has is asked of the driver (the loader
 can't say before the instance exists, and asking the loader is what
-loads every driver). It steps aside, and the loader does as it always
-did, wherever that isn't plainly right: a loader variable that
-chooses drivers is set (`VK_LOADER_DRIVERS_SELECT` and the like: a
-test session's lavapipe, a person's own choice, which an exclusive
-list would override), the person asked for NVIDIA
-(`__NV_PRIME_RENDER_OFFLOAD`), `OLO_VULKAN_DRIVERS=all`, a device
-forced by its id, no one GPU the computer started on, a kernel driver
-not in the table, no manifest for it, a library that won't load; and
-`Context::init` goes the ordinary way if the instance made so can't
-be made or has no device it can use (an instance with no usable
-device is destroyed now, not left behind). The ordinary way still
-leaves NVIDIA's out beside another GPU (`nvidia_aside`, the older
-filter, moved into the renderer), and now knows NVIDIA's card from
-the PCI bus, whatever became of its DRM card. The log says which way
-was gone ("Vulkan: libvulkan_intel.so alone, handed to the loader
-directly").
+loads every driver). The library is asked for the loader's interface
+first, as the loader would ask (version 7, which handing a driver over
+needs), and the manifests are read as the loader reads them (JSON,
+`ICD.library_path`, the library's bits, every candidate kept until one
+loads).
+
+Where it steps aside (`find` says None), the loader does as it always
+did: the person or the compositor chose a device or drivers
+themselves (a loader variable, as a test session's lavapipe; PRIME
+offload, `__NV_PRIME_RENDER_OFFLOAD=1`; Mesa's device selection; a
+render node named for the session, `ANVIL_DRM_DEVICE`,
+`OLO_RENDER_NODE`); a device forced by its id; the program runs with
+privilege or in a Flatpak, or the loader has a settings file (the
+loader's to decide then); a loader from before it took drivers
+(`loader_takes_drivers`: 1.3.240; an older one loads every driver
+while refusing); no one GPU the computer started on; a kernel driver
+not in the table; no manifest for it; a library that won't load or
+doesn't speak the interface. Where it was tried and came to nothing
+(the instance can't be made, or has no device that will do: one with
+none is destroyed now, and so is one whose device can't be made), on
+a computer with a card of NVIDIA's beside the GPU it started on
+(`needs_scoped_retry`), Mesa's software driver is handed over the
+same way (`software`: slow, and it draws), since the loader's own
+search there is what loads NVIDIA's driver; on any other computer,
+the loader's own search, as before. **No variable is set in the
+running program any more** (the older filter set and took back
+`VK_LOADER_DRIVERS_DISABLE` around the context's making: whatever
+else read the environment or started a child meanwhile saw it).
+`OLO_VULKAN_SOFTWARE=1` has one program drawn by Mesa's software
+driver, to tell a fault of the GPU's driver from one of Olo's. The
+log says which way was gone ("Vulkan: libvulkan_intel.so alone,
+handed to the loader directly").
+
+What it is on trust for, and what it doesn't do (Astra's review,
+2026-11-20, /var/tmp/claude-blueferry/review2/answer.md): it was
+tried on Intel's driver and on lavapipe; RADV and the rest of Mesa's
+speak the same interface by their source, untried here. The GPU the
+computer started on is not always the one the compositor draws with
+(a mux, an external GPU, a render node chosen for the session):
+where one of those is said in the environment it steps aside, and
+the compositor's own answer (`Request::Gpus`) is what it should go
+by (TODO). And Mesa's Intel driver itself opens every DRM render
+node there is to see whose it is, NVIDIA's among them, before it
+looks at the vendor (the loader's way did the same): whether that
+wakes a sleeping card isn't known, and the mend is Mesa's (a patch
+is drafted: TODO).
+
+Chrome, which Olo starts with NVIDIA's drivers left out
+(`olo_kit_base::gpu::asleep_env`: the loader's variable and glvnd's,
+given to the child as it is started), now knows NVIDIA's card from
+the PCI bus too, beside a GPU the computer started on that has a
+render node, and sets each of the two unless the person set that one
+themselves.
 
 Measured (2026-11-20, release builds, a test session on the GPU, ten
 starts each, the two builds in turn, a load of 18; the build before
 with NVIDIA's driver left out, as it was on a healthy computer):
-DeskCalc's window is shown 23 ms after it starts where it took 55
-(the least 20 where 47), StyledEdit's 30 where 58; a program has 3 MB
+DeskCalc's window is listed by app_server 23 ms after it starts where
+it took 55 (the least 20 where 47), StyledEdit's 30 where 58 (to the
+window's being there, not to its first picture on the screen); a program has 3 MB
 less of its own written to (10 and 13 MB where 13 and 16) and 28 MB
 less resident, lavapipe and LLVM no longer mapped beside the driver
 in use (shared between programs, so each one's share is as it was);
@@ -15026,17 +15081,28 @@ What it looks for:
   `data/udev/72-olo-idle-gpu.rules` (runtime power management for such
   cards, at every start) and sets it now. On the ThinkPad P1 Gen 9 the
   RTX PRO 2000 went from D0 to D3cold.
-- **NVIDIA's console on a card with no display** (`nvidia_console`:
-  `nvidia_drm`'s `fbdev` reads Y, as it comes, and the card has no
-  connector at all: a laptop's second card, there to compute). The
-  console shows nothing there, and giving it up as the module
-  unloads is where the driver can wait for ever on a card that
-  stopped answering (below). Recommended, Take No Console:
+- **NVIDIA's console on cards with no display** (`nvidia_console`:
+  `nvidia_drm`'s `fbdev` reads Y, as it comes, on a laptop's second
+  card, there to compute). The console shows nothing there, and
+  giving it up as the module unloads is one place the driver can wait
+  for ever on a card that stopped answering (below; not the only
+  one, and nothing to do with why a card stops answering: the words
+  claim no more). Recommended, Turn Off the Console:
   `/etc/modprobe.d/olo-nvidia-console.conf` (`options nvidia_drm
-  fbdev=0`), read as the module loads, so from the next start; fine,
-  "from the next start", once the file is there. Never offered for a
-  card with a connector: there the console is the text before the
-  desktop.
+  fbdev=0`: the module's option, so for every card of NVIDIA's at
+  once), read as the module loads, so from the next start. Offered
+  only on what is known for certain: the module loaded and running
+  with modesetting (one on its way out has taken its cards' DRM
+  devices away already, and nothing can be told of them: it was
+  first offered in exactly that state, from a card whose connectors
+  could no longer be read); every display device of NVIDIA's its
+  driver's, not the one the computer started on, with a DRM card of
+  its own and no connector on it (one that can't be read isn't
+  known); another display device the computer did start on. Then
+  the running module's own word decides: off, fine; the option kept
+  since this start, fine, "from the next start"; kept from before
+  this start and still on, said ("isn't in force": another option
+  says otherwise, or the driver is loaded from the start-up image).
 - **A graphics card that stopped answering** (`gpu_stuck`: its
   `power/runtime_status` "error", the kernel's word for power
   management that failed, its driver not answering after: NVIDIA's

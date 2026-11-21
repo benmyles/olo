@@ -44,7 +44,7 @@ pub fn report() -> Report {
         ),
         // (A finding with no fix and the most words of any: how a card
         // holds four sentences.)
-        finding("gpu:stuck:0000:01:00.0", Severity::Problem, crate::checks::STUCK_TITLE, &format!("{}{}", crate::checks::stuck_detail("nvidia_drm"), crate::checks::STUCK_AGAIN), None),
+        finding("gpu:stuck:0000:01:00.0", Severity::Problem, crate::checks::STUCK_TITLE, &crate::checks::stuck_detail("nvidia_drm"), None),
         finding(
             "remapper:keyd",
             Severity::Problem,

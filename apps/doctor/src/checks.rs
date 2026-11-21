@@ -2977,59 +2977,98 @@ pub(crate) fn stuck_detail(module: &str) -> String {
         "The kernel began shutting down NVIDIA's graphics driver ({module}) and hasn't finished. Until the computer restarts, the card can't be used, a processor may stay busy with it, and putting the computer to sleep may fail or hang. Save your work, then restart."
     )
 }
-/// Added to it where the finding that keeps it from happening again is
-/// in the same report (`nvidia_console`: its fix's name).
-pub(crate) const STUCK_AGAIN: &str = " To keep it from happening again, use Turn Off the Console below.";
 
 /// The option that keeps NVIDIA's display module from taking a console:
 /// read as the module loads, so in force from the next start.
 const NVIDIA_CONSOLE_PATH: &str = "etc/modprobe.d/olo-nvidia-console.conf";
 const NVIDIA_CONSOLE: &str = "# Olo Doctor: NVIDIA's display module takes no framebuffer console on a card that has no display.\n# (Giving that console up as the module unloads is where it can wait for ever on a card that\n# stopped answering; nothing shows on a card with no display anyway.)\noptions nvidia_drm fbdev=0\n";
 
-/// NVIDIA's display module holding a framebuffer console on a card that
-/// has no display (`nvidia_drm`'s `fbdev`, on as it comes): a laptop's
+/// NVIDIA's display module holding a framebuffer console on cards that
+/// have no display (`nvidia_drm`'s `fbdev`, on as it comes): a laptop's
 /// second card, wired to no screen and no port, there to compute. The
-/// console shows nothing there, and giving it up is what the module
-/// does as it unloads, by programming the card's display engine and
-/// waiting for it with no time limit: on a card that had stopped
-/// answering that wait never ended, the unload stuck in the kernel
-/// until the computer restarted (2026-11-20; `gpu_stuck`). Without the
-/// console the module has nothing to give up. Offered only where the
-/// card has no connector at all: on one that drives a screen the
-/// console is the text shown before the desktop, and stays.
-/// What is said of it: its title, its words and its fix's name (the
-/// demo's too).
-pub(crate) const CONSOLE_KEPT: (&str, &str, &str) = (
-    "NVIDIA's driver keeps a console no one can see",
-    "NVIDIA's driver holds a text console on its graphics card, though nothing is connected to the card to show it. If the card ever stops answering, the driver can get stuck giving that console back, until the computer restarts. The fix turns the console off from the next start (an option in /etc/modprobe.d); the card works as before.",
-    "Turn Off the Console",
-);
-
+/// console shows nothing there, and giving it up is one of the things
+/// the module does as it unloads, by programming the card's display
+/// engine and waiting for it with no time limit: on a card that had
+/// stopped answering that wait never ended (2026-11-20; `gpu_stuck`).
+/// Without the console that step isn't taken. (Not the only one that
+/// can wait, and nothing to do with why the card stopped answering:
+/// the finding says what it is, no more.)
+///
+/// Offered only on what is known for certain, since the option is the
+/// module's, for every card of NVIDIA's at once: the module loaded and
+/// running with modesetting (one on its way out has already taken its
+/// cards' DRM devices away: nothing can be told of them); every display
+/// device of NVIDIA's its driver's, not the one the computer started
+/// on, and with a DRM card of its own that has no connector at all
+/// (read: one that can't be read isn't known, and nothing is offered);
+/// and another display device the computer did start on. Then what the
+/// running module says decides the rest: no console (N), fine; the
+/// option kept since this start, fine, from the next; kept from before
+/// this start and still not in force, said, with where to look.
 fn nvidia_console(roots: &Roots, pcis: &[Pci], r: &mut Report) {
-    if read(&roots.fs.join("sys/module/nvidia_drm/parameters/fbdev")).as_deref().map(str::trim) != Some("Y") {
+    let module = roots.fs.join("sys/module/nvidia_drm");
+    let says = |name: &str| read(&module.join(name)).map(|s| s.trim().to_owned());
+    if says("initstate").as_deref() != Some("live") || says("parameters/modeset").as_deref() != Some("Y") {
         return;
     }
-    if std::fs::read_to_string(roots.fs.join(NVIDIA_CONSOLE_PATH)).is_ok_and(|kept| kept == NVIDIA_CONSOLE) {
-        r.fine.push(Fine {
-            title: "NVIDIA's display driver takes no console from the next start".into(),
-            detail: "The option is kept (olo-nvidia-console.conf); the module read its options before, and reads them again as the computer starts.".into(),
-        });
+    let file = roots.fs.join(NVIDIA_CONSOLE_PATH);
+    let kept = std::fs::read_to_string(&file).is_ok_and(|kept| kept == NVIDIA_CONSOLE);
+    match says("parameters/fbdev").as_deref() {
+        Some("N") => {
+            if kept {
+                r.fine.push(Fine { title: "NVIDIA's driver takes no console".into(), detail: "The running driver says so (fbdev is off), and the option is kept (olo-nvidia-console.conf).".into() });
+            }
+            return;
+        }
+        Some("Y") => {}
+        _ => return,
+    }
+    if kept {
+        // (Written since the computer started: the running module read
+        // its options before. From before this start and not in force:
+        // something else decides.)
+        let started = read(&roots.fs.join("proc/stat")).and_then(|t| t.lines().find_map(|l| l.strip_prefix("btime ")?.trim().parse::<u64>().ok()));
+        let written = std::fs::metadata(&file).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs());
+        if started.zip(written).is_none_or(|(started, written)| written >= started) {
+            r.fine.push(Fine {
+                title: "NVIDIA's driver takes no console from the next start".into(),
+                detail: "The option is kept (olo-nvidia-console.conf); the driver read its options before it was, and reads them again as the computer starts.".into(),
+            });
+        } else {
+            r.findings.push(Finding {
+                id: "gpu:console:kept".into(),
+                severity: Severity::Advice,
+                title: "NVIDIA's console option isn't in force".into(),
+                detail: "The option that turns the console off is kept (olo-nvidia-console.conf) and the computer has started since, yet the running driver still has its console. Another setting says otherwise (the kernel's command line, another file in /etc/modprobe.d), or the driver is loaded from the start-up image, which was made before the option was there.".into(),
+                fix: None,
+            });
+        }
         return;
     }
-    // Its DRM cards' connectors ("card1-DP-3" in "card1"): none, on a
-    // card that drives no display.
-    let connectors = |p: &Pci| {
-        std::fs::read_dir(p.dir.join("drm")).into_iter().flatten().flatten().filter(|c| c.file_name().to_string_lossy().starts_with("card")).any(|card| {
-            let name = card.file_name().to_string_lossy().into_owned();
-            std::fs::read_dir(card.path()).into_iter().flatten().flatten().any(|e| e.file_name().to_string_lossy().starts_with(&format!("{name}-")))
-        })
-    };
-    let Some(card) = pcis.iter().find(|p| p.display() && p.vendor == 0x10de && p.driver.as_deref() == Some("nvidia") && !p.boot_vga && !connectors(p)) else { return };
-    // (Stuck that way now: its finding says what keeps it from
-    // happening again.)
-    if let Some(stuck) = r.findings.iter_mut().find(|f| f.id.starts_with("gpu:stuck:") && f.title == STUCK_TITLE) {
-        stuck.detail.push_str(STUCK_AGAIN);
+    // A DRM card of its own with no connector ("card1-DP-3" in "card1"):
+    // Err where that can't be read, Ok(false) with no card or with a
+    // connector.
+    fn no_connectors(p: &Pci) -> std::io::Result<bool> {
+        let mut card = false;
+        for entry in std::fs::read_dir(p.dir.join("drm"))? {
+            let entry = entry?;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !name.strip_prefix("card").is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())) {
+                continue;
+            }
+            card = true;
+            for inside in std::fs::read_dir(entry.path())? {
+                if inside?.file_name().to_string_lossy().starts_with(&format!("{name}-")) {
+                    return Ok(false);
+                }
+            }
+        }
+        Ok(card)
     }
+    let nvidias: Vec<&Pci> = pcis.iter().filter(|p| p.display() && p.vendor == 0x10de).collect();
+    let started_on_another = pcis.iter().any(|p| p.display() && p.vendor != 0x10de && p.boot_vga);
+    let all_without_display = nvidias.iter().all(|p| !p.boot_vga && p.driver.as_deref() == Some("nvidia") && no_connectors(p).unwrap_or(false));
+    let Some(card) = nvidias.first().filter(|_| started_on_another && all_without_display) else { return };
     r.findings.push(Finding {
         id: format!("gpu:console:{}", card.address),
         severity: Severity::Advice,
@@ -3038,6 +3077,14 @@ fn nvidia_console(roots: &Roots, pcis: &[Pci], r: &mut Report) {
         fix: Some(Fix { label: CONSOLE_KEPT.2.into(), root: true, steps: vec![Step::WriteFile { path: PathBuf::from("/").join(NVIDIA_CONSOLE_PATH), content: NVIDIA_CONSOLE.into(), mode: 0o644 }] }),
     });
 }
+
+/// What is said of it: its title, its words and its fix's name (the
+/// demo's too).
+pub(crate) const CONSOLE_KEPT: (&str, &str, &str) = (
+    "NVIDIA's driver keeps a console no one can see",
+    "NVIDIA's driver holds a text console on its graphics card, though nothing is connected to the card to show it. Giving that console back is one place the driver can get stuck when it is shut down. The fix has it take no console on any NVIDIA card from the next start (an option in /etc/modprobe.d); drawing and computing on the card don't need one.",
+    "Turn Off the Console",
+);
 
 /// A graphics card no driver has, when one tried (nouveau loaded and
 /// gone): a card newer than the kernel's driver knows.
@@ -7208,51 +7255,85 @@ mod tests {
             std::fs::write(path, c).unwrap();
         };
         let pci = "sys/bus/pci/devices";
-        w(&format!("{pci}/0000:00:02.0/class"), "0x030000\n");
-        w(&format!("{pci}/0000:00:02.0/vendor"), "0x8086\n");
-        w(&format!("{pci}/0000:00:02.0/boot_vga"), "1\n");
-        w(&format!("{pci}/0000:01:00.0/class"), "0x030000\n");
-        w(&format!("{pci}/0000:01:00.0/vendor"), "0x10de\n");
-        w(&format!("{pci}/0000:01:00.0/boot_vga"), "0\n");
-        w(&format!("{pci}/0000:01:00.0/power/control"), "auto\n");
-        std::fs::create_dir_all(fs.join("sys/bus/pci/drivers/nvidia")).unwrap();
-        std::os::unix::fs::symlink(fs.join("sys/bus/pci/drivers/nvidia"), fs.join(format!("{pci}/0000:01:00.0/driver"))).unwrap();
-        std::fs::create_dir_all(fs.join(format!("{pci}/0000:01:00.0/drm/card1"))).unwrap();
-        std::fs::create_dir_all(fs.join(format!("{pci}/0000:01:00.0/drm/renderD129"))).unwrap();
+        let card = |address: &str, vendor: &str, boot: &str, driver: &str, drm: &str| {
+            w(&format!("{pci}/{address}/class"), "0x030000\n");
+            w(&format!("{pci}/{address}/vendor"), &format!("{vendor}\n"));
+            w(&format!("{pci}/{address}/boot_vga"), &format!("{boot}\n"));
+            std::fs::create_dir_all(fs.join("sys/bus/pci/drivers").join(driver)).unwrap();
+            let link = fs.join(format!("{pci}/{address}/driver"));
+            let _ = std::fs::remove_file(&link);
+            std::os::unix::fs::symlink(fs.join("sys/bus/pci/drivers").join(driver), link).unwrap();
+            std::fs::create_dir_all(fs.join(format!("{pci}/{address}/drm/{drm}"))).unwrap();
+        };
+        card("0000:00:02.0", "0x8086", "1", "xe", "card0");
+        card("0000:01:00.0", "0x10de", "0", "nvidia", "card1");
         let id = "gpu:console:0000:01:00.0";
-        // The module isn't loaded, or takes no console: nothing to say.
+        // The module isn't loaded: nothing to say.
         assert!(scan(&roots).find(id).is_none());
+        // Loaded, running, with modesetting, and no console: nothing.
+        w("sys/module/nvidia_drm/initstate", "live\n");
+        w("sys/module/nvidia_drm/parameters/modeset", "Y\n");
         w("sys/module/nvidia_drm/parameters/fbdev", "N\n");
         assert!(scan(&roots).find(id).is_none());
-        // It takes one, on a card with no connector: offered.
+        // It takes one, on a card with no connector, beside the card
+        // the computer started on: offered.
         w("sys/module/nvidia_drm/parameters/fbdev", "Y\n");
         let f = scan(&roots).find(id).cloned().expect("the console");
         assert_eq!((f.severity, f.title.as_str()), (Severity::Advice, CONSOLE_KEPT.0));
+        assert!(!f.detail.contains("as before") && !f.detail.contains("again"), "no more is claimed than is so: {}", f.detail);
         let fix = f.fix.expect("a fix");
         assert_eq!((fix.label.as_str(), fix.root), ("Turn Off the Console", true));
         assert_eq!(fix.steps, vec![Step::WriteFile { path: "/etc/modprobe.d/olo-nvidia-console.conf".into(), content: NVIDIA_CONSOLE.into(), mode: 0o644 }]);
         assert!(NVIDIA_CONSOLE.lines().any(|l| l == "options nvidia_drm fbdev=0"));
-        // Its driver stuck unloading in the same report: that finding
-        // says what keeps it from happening again; alone, it doesn't.
+        // Not on what isn't known for certain. The module on its way
+        // out (its cards' DRM devices go first: as on 2026-11-20):
         w("sys/module/nvidia_drm/initstate", "going\n");
+        std::fs::remove_dir_all(fs.join(format!("{pci}/0000:01:00.0/drm"))).unwrap();
         let r = scan(&roots);
-        assert!(r.find(id).is_some());
-        assert!(r.find("gpu:stuck:0000:01:00.0").is_some_and(|f| f.detail.ends_with(STUCK_AGAIN)), "{:?}", r.find("gpu:stuck:0000:01:00.0").map(|f| &f.detail));
-        w("sys/module/nvidia_drm/parameters/fbdev", "N\n");
-        assert!(scan(&roots).find("gpu:stuck:0000:01:00.0").is_some_and(|f| f.detail.ends_with("then restart.")));
-        w("sys/module/nvidia_drm/parameters/fbdev", "Y\n");
+        assert!(r.find(id).is_none(), "offered from a card whose DRM device is gone");
+        assert!(r.find("gpu:stuck:0000:01:00.0").is_some_and(|f| f.detail.ends_with("then restart.")));
+        // Running, but its DRM device can't be read:
         w("sys/module/nvidia_drm/initstate", "live\n");
+        assert!(scan(&roots).find(id).is_none());
+        std::fs::create_dir_all(fs.join(format!("{pci}/0000:01:00.0/drm/card1"))).unwrap();
+        assert!(scan(&roots).find(id).is_some());
+        // Without modesetting:
+        w("sys/module/nvidia_drm/parameters/modeset", "N\n");
+        assert!(scan(&roots).find(id).is_none());
+        w("sys/module/nvidia_drm/parameters/modeset", "Y\n");
         // A card with a port: its console is the text before the
-        // desktop, and nothing is offered.
+        // desktop.
         std::fs::create_dir_all(fs.join(format!("{pci}/0000:01:00.0/drm/card1/card1-DP-3"))).unwrap();
         assert!(scan(&roots).find(id).is_none());
         std::fs::remove_dir_all(fs.join(format!("{pci}/0000:01:00.0/drm/card1/card1-DP-3"))).unwrap();
-        // The option kept: fine, from the next start (the running
-        // module still says Y).
+        // A second card of NVIDIA's that has one: the option is for
+        // both, so neither.
+        card("0000:02:00.0", "0x10de", "0", "nvidia", "card2");
+        std::fs::create_dir_all(fs.join(format!("{pci}/0000:02:00.0/drm/card2/card2-HDMI-A-1"))).unwrap();
+        assert!(scan(&roots).find(id).is_none());
+        std::fs::remove_dir_all(fs.join(format!("{pci}/0000:02:00.0"))).unwrap();
+        // The computer started on NVIDIA's own card: its console is the
+        // person's.
+        w(&format!("{pci}/0000:00:02.0/boot_vga"), "0\n");
+        assert!(scan(&roots).find(id).is_none());
+        w(&format!("{pci}/0000:00:02.0/boot_vga"), "1\n");
+        assert!(scan(&roots).find(id).is_some());
+        // The option kept since this start: fine, from the next (the
+        // running module still says Y).
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        w("proc/stat", &format!("cpu  1 2 3\nbtime {}\n", now - 3600));
         w("etc/modprobe.d/olo-nvidia-console.conf", NVIDIA_CONSOLE);
         let r = scan(&roots);
-        assert!(r.find(id).is_none());
-        assert!(r.fine.iter().any(|f| f.title == "NVIDIA's display driver takes no console from the next start"));
+        assert!(r.find(id).is_none() && r.find("gpu:console:kept").is_none());
+        assert!(r.fine.iter().any(|f| f.title == "NVIDIA's driver takes no console from the next start"));
+        // Kept from before this start, and still not in force: said.
+        w("proc/stat", &format!("cpu  1 2 3\nbtime {}\n", now + 3600));
+        let r = scan(&roots);
+        assert!(r.find("gpu:console:kept").is_some_and(|f| f.fix.is_none() && f.severity == Severity::Advice));
+        // In force.
+        w("sys/module/nvidia_drm/parameters/fbdev", "N\n");
+        let r = scan(&roots);
+        assert!(r.find("gpu:console:kept").is_none() && r.fine.iter().any(|f| f.title == "NVIDIA's driver takes no console"));
         let _ = std::fs::remove_dir_all(&fs);
     }
 

@@ -33,6 +33,7 @@ Ways in that keep the person's session out of it:
 
 | Test | How | 2026-11-08 |
 |---|---|---|
+| `color::tests::the_gpu_converts_as_the_cpu_does` | as is, on purpose: it opens the GPU's render node and draws on it (it ran with every `cargo test -p app_server` until 2026-11-20) | not run since it was set aside |
 | `color::tests::gpu_cost` | as is | pass: 0.596 ms plain, 0.735 P3, 1.543 HDR (HACKING: 0.618, 0.705, 1.53) |
 | `headless::gpu_timing::gpu_upload_timing` | as is | pass: a full frame's commands 0.708 ms median |
 | `rescue::tests::rescue_cost` | as is | pass: 1.47 ns a key, 0.32 ns the check (HACKING: 1.4, 0.32) |

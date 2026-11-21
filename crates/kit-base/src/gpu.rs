@@ -12,47 +12,61 @@
 
 use std::path::Path;
 
-/// Variables that say the person chose the drivers, or NVIDIA: left
-/// alone then.
-const CHOSEN: [&str; 6] = ["VK_LOADER_DRIVERS_DISABLE", "VK_LOADER_DRIVERS_SELECT", "VK_DRIVER_FILES", "VK_ICD_FILENAMES", "__EGL_VENDOR_LIBRARY_FILENAMES", "__NV_PRIME_RENDER_OFFLOAD"];
-
-/// Mesa's EGL vendor (glvnd's), the one left when NVIDIA's is set aside.
-const MESA_EGL: [&str; 2] = ["/usr/share/glvnd/egl_vendor.d/50_mesa.json", "/etc/glvnd/egl_vendor.d/50_mesa.json"];
-
-/// The DRM cards' drivers ("xe", "nvidia").
-fn drivers(drm: &Path) -> Vec<String> {
-    std::fs::read_dir(drm)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter(|e| {
-            let n = e.file_name();
-            let n = n.to_string_lossy();
-            n.starts_with("card") && !n.contains('-')
-        })
-        .filter_map(|e| std::fs::read_link(e.path().join("device/driver")).ok())
-        .filter_map(|d| d.file_name().map(|n| n.to_string_lossy().into_owned()))
-        .collect()
-}
-
-/// Whether an NVIDIA GPU (NVIDIA's driver) sits beside another GPU.
+/// Is a separate proprietary NVIDIA ICD unnecessary on this seat? Only infer
+/// this for the unambiguous non-NVIDIA PCI boot GPU with a render node.
 pub fn nvidia_beside_another() -> bool {
-    beside(&drivers(Path::new("/sys/class/drm")))
+    beside(Path::new("/sys"))
 }
 
-fn beside(drivers: &[String]) -> bool {
-    drivers.iter().any(|d| d == "nvidia") && drivers.iter().any(|d| d != "nvidia")
+fn beside(sys: &Path) -> bool {
+    let Some(pci) = std::fs::read_dir(sys.join("bus/pci/devices")).ok() else { return false };
+    let mut nvidia = false;
+    let mut preferred = false;
+    for entry in pci {
+        let Ok(entry) = entry else { return false };
+        let path = entry.path();
+        let read = |name| std::fs::read_to_string(path.join(name)).unwrap_or_default();
+        if !read("class").trim().starts_with("0x03") {
+            continue;
+        }
+        let vendor = read("vendor");
+        if vendor.trim() == "0x10de" {
+            if read("boot_vga").trim() == "1" {
+                return false;
+            }
+            nvidia = true;
+        } else if !vendor.trim().is_empty() && read("boot_vga").trim() == "1" {
+            if preferred {
+                return false;
+            }
+            preferred = std::fs::read_dir(path.join("drm")).into_iter().flatten().flatten().any(|entry| {
+                let name = entry.file_name();
+                name.to_string_lossy().strip_prefix("renderD").is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+            });
+        }
+    }
+    preferred && nvidia
 }
 
 /// The variables to start a program with so it leaves NVIDIA's GPU asleep
 /// (none if there's no such GPU, or the person chose otherwise).
 pub fn asleep_env() -> Vec<(&'static str, String)> {
-    if CHOSEN.iter().any(|v| std::env::var_os(v).is_some()) || !nvidia_beside_another() {
+    let set = |name: &str| std::env::var_os(name).is_some_and(|v| !v.is_empty());
+    if !nvidia_beside_another()
+        || std::env::var_os("__NV_PRIME_RENDER_OFFLOAD").is_some_and(|v| v == "1")
+        || ["DRI_PRIME", "MESA_VK_DEVICE_SELECT", "VK_LOADER_DEVICE_SELECT", "ANVIL_DRM_DEVICE", "OLO_RENDER_NODE"].iter().any(|k| set(k))
+    {
         return Vec::new();
     }
-    let mut env = vec![("VK_LOADER_DRIVERS_DISABLE", "*nvidia*".to_owned())];
-    if let Some(mesa) = MESA_EGL.iter().find(|p| Path::new(p).exists()) {
-        env.push(("__EGL_VENDOR_LIBRARY_FILENAMES", (*mesa).to_owned()));
+    let mut env = Vec::new();
+    if !["VK_DRIVER_FILES", "VK_ICD_FILENAMES", "VK_ADD_DRIVER_FILES", "VK_LOADER_DRIVERS_SELECT", "VK_LOADER_DRIVERS_DISABLE"].iter().any(|k| set(k)) {
+        env.push(("VK_LOADER_DRIVERS_DISABLE", "*nvidia*".to_owned()));
+    }
+    if !set("__EGL_VENDOR_LIBRARY_FILENAMES") && !set("__EGL_VENDOR_LIBRARY_DIRS") {
+        let paths = ["/etc/glvnd/egl_vendor.d/50_mesa.json", "/usr/share/glvnd/egl_vendor.d/50_mesa.json"];
+        if let Some(mesa) = paths.iter().find(|p| Path::new(p).is_file()) {
+            env.push(("__EGL_VENDOR_LIBRARY_FILENAMES", (*mesa).to_owned()));
+        }
     }
     env
 }
@@ -61,10 +75,20 @@ pub fn asleep_env() -> Vec<(&'static str, String)> {
 mod tests {
     #[test]
     fn beside_another() {
-        let d = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        assert!(super::beside(&d(&["xe", "nvidia"])));
-        assert!(!super::beside(&d(&["nvidia"])));
-        assert!(!super::beside(&d(&["xe"])));
-        assert!(!super::beside(&d(&["amdgpu", "i915"])));
+        let tmp = std::env::temp_dir().join(format!("olo-chrome-gpus-{}", std::process::id()));
+        let pci = tmp.join("bus/pci/devices");
+        let other = pci.join("0000:00:02.0");
+        let nvidia = pci.join("0000:01:00.0");
+        std::fs::create_dir_all(other.join("drm/renderD128")).unwrap();
+        std::fs::create_dir_all(&nvidia).unwrap();
+        for (p, vendor, boot) in [(&nvidia, "0x10de", "0"), (&other, "0x8086", "1")] {
+            std::fs::write(p.join("vendor"), vendor).unwrap();
+            std::fs::write(p.join("class"), "0x030000").unwrap();
+            std::fs::write(p.join("boot_vga"), boot).unwrap();
+        }
+        assert!(super::beside(&tmp));
+        std::fs::write(nvidia.join("boot_vga"), "1").unwrap();
+        assert!(!super::beside(&tmp));
+        std::fs::remove_dir_all(tmp).unwrap();
     }
 }

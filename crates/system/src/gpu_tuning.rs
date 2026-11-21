@@ -576,6 +576,9 @@ fn xe_caps(device: &Path) -> Option<XeCaps> {
 /// kept: the driver may answer later (loaded, or back from an error),
 /// and Preferences, open for days, asked it once and never again.
 pub(crate) fn nvml() -> Result<&'static nvml_wrapper::Nvml, String> {
+    if std::env::var_os("OLO_HEADLESS_RENDERER").is_some_and(|v| v == "software") {
+        return Err("GPU telemetry is disabled on a software test desktop".into());
+    }
     static NVML: std::sync::OnceLock<nvml_wrapper::Nvml> = std::sync::OnceLock::new();
     if let Some(n) = NVML.get() {
         return Ok(n);

@@ -381,15 +381,36 @@ something nobody here has is in "Blocked", with what it waits for.
      (`-EAGAIN`, tried again later) and can keep its save buffer from
      one suspend to the next so a suspend allocates nothing: part of
      the patched driver, below.
-  5. ~~No console on a card with no display~~: Doctor finds a card
-     of NVIDIA's with no connector whose display module took a
-     console (`nvidia_drm`'s `fbdev`), and offers the option that
-     leaves it (Take No Console: `/etc/modprobe.d`, from the next
-     start). To check on the card once it is back: that the module's
-     parameter reads N after a restart (its modules aren't in the
-     initramfs here, or the option would have to be there too), and
-     that render offload to the card still works without the
-     console.
+  5. ~~No console on cards with no display~~: Doctor offers the
+     option that leaves it (Turn Off the Console: `nvidia_drm
+     fbdev=0`, from the next start), on certain evidence only (the
+     review found it offered from a card whose connectors could no
+     longer be read, and for two cards where one had a display). It
+     isn't offered in the state the computer is in now (the module
+     on its way out): after the restart it will be. To check on the
+     card then: that the parameter reads N after the next restart;
+     that render offload still works. Still, from the review: the
+     helper looks again just before it writes (a fix waiting in the
+     queue can outlive what it was offered on).
+  5b. **The renderer's driver, and tests off the GPU: what Astra's
+     second review left** (/var/tmp/claude-blueferry/review2/
+     answer.md; what it found wrong is fixed: HACKING, "One Vulkan
+     driver, handed to the loader" and "Test desktops draw in
+     software"). To do: the renderer goes by the GPU the compositor
+     says it draws with (`Request::Gpus`, or the dmabuf feedback's
+     main device), not by the one the computer started on, and
+     checks that it can present there before settling; Mesa's Intel
+     driver opens every render node before it looks whose it is
+     (the patch for Mesa is drafted,
+     review2/mesa-anv-foreign-pci.diff: to send, Ben's to decide;
+     and whether that open wakes NVIDIA's card, traced with the
+     rest once it is back); NVIDIA's own Vulkan driver handed over
+     the same way, on a computer that draws with it; a test's whole
+     process tree given a private view of /dev and of the drivers'
+     manifests, which is what would make "a test can't open the
+     card" certain; the start measured a third way (the loader's
+     own search with only Intel's manifest), to tell what handing
+     over saves from what a shorter list saves.
   6. **Olo's own build of NVIDIA's open kernel modules**, patched.
      **Designed, drafted and built in scratch with Astra at max**
      (kernel/nvidia/: eleven patches against 615.71.09, the build

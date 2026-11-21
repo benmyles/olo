@@ -465,7 +465,7 @@ pub fn run(app_id: &str, build: impl FnOnce(&mut AppCx)) {
     if SHARED.set(state).is_err() {
         panic!("a program runs once");
     }
-    let display = display();
+    let display = crate::display::app_display();
     let handle = looper.handle();
     display.set_events(Some(Messenger::new(handle, |_looper, event: DisplayEvent| match event {
         DisplayEvent::CompositorLost => {

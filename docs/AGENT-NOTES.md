@@ -1229,13 +1229,19 @@ Learned on the second pass (2026-11-20):
   or once its work is in.
 - **A kit program loads one Vulkan driver** (the GPU's the computer
   started on, handed to the loader: HACKING, "One Vulkan driver,
-  handed to the loader"). To have the loader ask every driver again,
-  as before 2026-11-20 (to tell a fault of this from a driver's):
-  `OLO_VULKAN_DRIVERS=all`, or any of the loader's own variables
-  (`VK_LOADER_DRIVERS_SELECT=…`, which is how a test session gets
-  lavapipe). Which it did is in the program's log ("Vulkan: … alone,
-  handed to the loader directly"), and in what it has mapped (`grep
-  vulkan_ /proc/PID/maps`: one library, not a dozen).
+  handed to the loader"). To have the loader choose as it would by
+  itself (to tell a fault of this from a driver's): any of the
+  loader's own variables (`VK_LOADER_DRIVERS_SELECT='*'`; that is how
+  a test session gets lavapipe). `OLO_VULKAN_SOFTWARE=1` draws one
+  program with Mesa's software driver. Which it did is in the
+  program's log with `RUST_LOG=info` ("Vulkan: … alone, handed to the
+  loader directly"), and in what it has mapped (`grep vulkan_
+  /proc/PID/maps`: one library, not a dozen).
+- **An "open" that fails still happened**: Mesa's Intel driver opens
+  every DRM render node to see whose it is. Looking at a program's
+  open files afterwards doesn't show it; `strace -e openat` on a
+  made-up node does (Astra's review found it so). Before claiming a
+  program never touches a device, trace the opens.
 - **Measuring a program's start**: /var/tmp/claude-blueferry/vk/starts.py
   was the way (two builds in turn in one `TSESSION_GPU=1` session:
   time to the window in app_server's list, memory from

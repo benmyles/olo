@@ -228,3 +228,9 @@ default-features = false
 level = "allow"
 priority = 0
 check-cfg = ["cfg(gles)"]
+
+[target.'cfg(target_os = "linux")'.dependencies.libc]
+version = "0.2"
+
+[target.'cfg(target_os = "linux")'.dependencies.serde_json]
+version = "1"

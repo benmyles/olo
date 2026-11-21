@@ -109,6 +109,12 @@ unsafe fn inspect_adapter(
         .get_physical_device_properties2(phd, &mut properties2_khr);
 
     let properties = properties2_khr.properties;
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("OLO_HEADLESS_RENDERER").is_some_and(|value| value == "software")
+        && properties.device_type != vk::PhysicalDeviceType::CPU
+    {
+        return None;
+    }
     let name = ffi::CStr::from_ptr(properties.device_name.as_ptr());
     log::info!("Adapter: {:?}", name);
 
@@ -123,10 +129,14 @@ unsafe fn inspect_adapter(
         return None;
     }
 
-    let supported_extension_properties = instance
-        .core
-        .enumerate_device_extension_properties(phd)
-        .unwrap();
+    let supported_extension_properties =
+        match instance.core.enumerate_device_extension_properties(phd) {
+            Ok(properties) => properties,
+            Err(error) => {
+                log::warn!("Device extension enumeration failed: {error:?}");
+                return None;
+            }
+        };
     let supported_extensions = supported_extension_properties
         .iter()
         .map(|ext_prop| ffi::CStr::from_ptr(ext_prop.extension_name.as_ptr()))
@@ -322,8 +332,15 @@ impl super::Context {
     /// or where that came to nothing. A device forced by its id may be
     /// any driver's.)
     pub unsafe fn init(desc: crate::ContextDesc) -> Result<Self, NotSupportedError> {
+        // (Olo: only of a loader that takes a driver handed to it; one
+        // from before would load every driver while refusing.)
         #[cfg(target_os = "linux")]
-        if desc.device_id == 0 {
+        let takes_drivers = ash::Entry::load()
+            .ok()
+            .and_then(|entry| entry.try_enumerate_instance_version().ok().flatten())
+            .is_some_and(super::direct::loader_takes_drivers);
+        #[cfg(target_os = "linux")]
+        if desc.device_id == 0 && takes_drivers {
             if let Some(drivers) = super::direct::find() {
                 let names = drivers.names.join(", ");
                 match Self::init_with(desc.clone(), Some(&drivers)) {
@@ -332,20 +349,23 @@ impl super::Context {
                         return Ok(context);
                     }
                     Err(err) => {
-                        log::warn!(
-                            "Vulkan: with {names} alone: {err:?}; every driver asked instead"
-                        )
+                        log::warn!("Vulkan: with {names} alone: {err:?}; retrying driver selection")
                     }
                 }
             }
         }
-        // (Olo: the ordinary way, with NVIDIA's driver left out beside
-        // another GPU, `direct::nvidia_aside`; not where a device was
-        // asked for by its id, which may be NVIDIA's.)
         #[cfg(target_os = "linux")]
-        let _aside = (desc.device_id == 0)
-            .then(super::direct::nvidia_aside)
-            .flatten();
+        if desc.device_id == 0 && takes_drivers && super::direct::needs_scoped_retry() {
+            // (Olo: never widened to every driver installed on a computer
+            // with a card of NVIDIA's beside the one it started on: that
+            // search is what loads NVIDIA's. Mesa's software driver,
+            // handed over the same way. Where the person chose drivers
+            // themselves it is the loader's way, below.)
+            log::warn!("Vulkan: trying Mesa's software driver, handed to the loader directly");
+            let software =
+                super::direct::software().ok_or(NotSupportedError::NoSupportedDeviceFound)?;
+            return Self::init_with(desc, Some(&software));
+        }
         Self::init_with(desc, None)
     }
 
@@ -661,10 +681,16 @@ impl super::Context {
                     .push_next(&mut khr_ray_query);
             }
 
-            instance
+            match instance
                 .core
                 .create_device(physical_device, &device_create_info, None)
-                .map_err(super::PlatformError::Init)?
+            {
+                Ok(device) => device,
+                Err(error) => {
+                    instance.core.destroy_instance(None);
+                    return Err(super::PlatformError::Init(error).into());
+                }
+            }
         };
 
         let device = super::Device {
@@ -851,10 +877,17 @@ impl super::Context {
         };
         let timeline_semaphore_create_info =
             vk::SemaphoreCreateInfo::default().push_next(&mut timeline_info);
-        let timeline_semaphore = device
+        let timeline_semaphore = match device
             .core
             .create_semaphore(&timeline_semaphore_create_info, None)
-            .unwrap();
+        {
+            Ok(semaphore) => semaphore,
+            Err(error) => {
+                device.core.destroy_device(None);
+                instance.core.destroy_instance(None);
+                return Err(super::PlatformError::Init(error).into());
+            }
+        };
 
         let mut naga_flags = spv::WriterFlags::FORCE_POINT_SIZE;
         let shader_debug_path = if desc.validation || desc.capture {

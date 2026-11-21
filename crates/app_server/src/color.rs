@@ -457,6 +457,7 @@ mod tests {
     /// compared with the CPU's (`gles::color::convert`): sRGB into P3,
     /// and HDR's two passes. Skipped without a render node.
     #[test]
+    #[ignore = "requires an explicitly selected hardware test GPU"]
     fn the_gpu_converts_as_the_cpu_does() {
         use smithay::backend::{
             allocator::{Fourcc, gbm::GbmDevice},

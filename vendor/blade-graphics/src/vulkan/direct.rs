@@ -5,41 +5,61 @@
 //! libraries, and NVIDIA's where its driver is installed, which wakes
 //! its card to answer (2.3 s a start on a laptop whose card slept, and
 //! the card kept awake for a GPU the program never draws with). Olo
-//! first kept NVIDIA's out with the loader's own variable
-//! (`nvidia_aside`, 2026-11-04), which told a card of NVIDIA's by its
-//! DRM card: on 2026-11-20, with that card's display module stuck
-//! unloading and its DRM card gone, every program loaded NVIDIA's
-//! driver again, for a card that no longer answered (a window 684 ms
-//! after its program started where it takes 55, and a program crashed
-//! in NVIDIA's library as it exited).
+//! first kept NVIDIA's out with the loader's own variable, set in the
+//! program's environment while the context was made (2026-11-04). That
+//! told a card of NVIDIA's by its DRM card: on 2026-11-20, with that
+//! card's display module stuck unloading and its DRM card gone, every
+//! program loaded NVIDIA's driver again, for a card that no longer
+//! answered (a window 684 ms after its program started where it takes
+//! 55, and a program crashed in NVIDIA's library as it exited). And a
+//! variable set and taken back in a running program is seen by
+//! whatever else reads the environment or starts a child meanwhile.
 //!
 //! So a program is given the one driver of the GPU it draws on: the one
-//! the computer started on, which is the one the first suitable device
-//! was always taken from (where that driver is one of Mesa's:
-//! `libraries_of`). Nothing of that depends on what else is installed
-//! or what state it is in. The library is found from the loader's own
-//! manifests, loaded here, and handed to the loader with
-//! `VK_LUNARG_direct_driver_loading`, exclusively: the loader then
-//! loads no other. What the driver has is asked of the driver (the
+//! the computer started on, where that driver is one of Mesa's
+//! (`libraries_of`). The library is found from the loader's own
+//! manifests (read as the loader reads them: `library_path`), loaded
+//! here, asked for the loader's interface as the loader would
+//! (version 7, which handing a driver over needs), and handed to the
+//! loader with `VK_LUNARG_direct_driver_loading`, exclusively: the
+//! loader then loads no other, whatever else is installed and whatever
+//! state it is in. What the driver has is asked of the driver (the
 //! loader can't say it before the instance exists, and asking the
 //! loader is what loads every driver).
 //!
 //! Measured (release builds, a test desktop on the GPU, ten starts each
 //! in turn against the loader's way with NVIDIA's left out): a window
-//! is shown 23 and 30 ms after its program starts where it took 55 and
+//! is listed 23 and 30 ms after its program starts where it took 55 and
 //! 58, and a program has 3 MB less of its own written to (the loader's
 //! way leaves lavapipe and LLVM mapped beside the driver in use).
 //!
-//! It steps aside, and the loader does as it always did (NVIDIA's left
-//! out still, `nvidia_aside`), wherever that isn't plainly right: a
-//! loader variable that chooses drivers is set (a test's lavapipe, a
-//! person's own choice: the exclusive list would override it), the
-//! person asked for NVIDIA (`__NV_PRIME_RENDER_OFFLOAD`),
-//! `OLO_VULKAN_DRIVERS=all`, no one GPU the computer started on, a
-//! kernel driver not known here, no manifest for it, a library that
-//! won't load or hasn't the entry; and `Context::init` goes the
-//! ordinary way again if the instance made so can't be made or has no
-//! device it can use.
+//! What it doesn't do: Mesa's Intel driver itself opens every DRM
+//! render node there is to see whose it is, NVIDIA's among them, before
+//! it looks at the vendor (anv_physical_device_try_create: the loader's
+//! way did the same). Whether that open wakes a sleeping card isn't
+//! known.
+//!
+//! Where it steps aside (`find` says None), the loader does as it
+//! always did: the person or the compositor chose a device or drivers
+//! themselves (`CHOSEN`, `__NV_PRIME_RENDER_OFFLOAD`: a test's
+//! lavapipe, PRIME offload, a render node named for the session); the
+//! program runs with privilege, or in a Flatpak, or the loader has a
+//! settings file (it is the loader's to decide then); a loader too old
+//! to take a driver this way (`loader_takes_drivers`: an old one would
+//! load every driver while refusing); no one GPU the computer started
+//! on; a kernel driver not in the table (NVIDIA's own among them,
+//! untried on a computer that draws with it); no manifest for it; a
+//! library that won't load or doesn't speak the interface.
+//! (`OLO_VULKAN_SOFTWARE=1` has one program drawn by Mesa's software
+//! driver, handed over the same way: to tell a fault of the GPU's
+//! driver from one of Olo's.)
+//!
+//! And where it was tried and the instance couldn't be made or has no
+//! device that will do: on a computer with a card of NVIDIA's beside
+//! the GPU it started on (`needs_scoped_retry`), Mesa's software driver
+//! is handed over the same way (`software`: slow, and it draws), since
+//! the loader's own search there is what loads NVIDIA's driver; on any
+//! other, the loader's own search, as before.
 
 use ash::vk;
 use std::{
@@ -56,8 +76,22 @@ const CHOSEN: &[&str] = &[
     "VK_ADD_DRIVER_FILES",
     "VK_LOADER_DRIVERS_SELECT",
     "VK_LOADER_DRIVERS_DISABLE",
-    "__NV_PRIME_RENDER_OFFLOAD",
+    "DRI_PRIME",
+    "MESA_VK_DEVICE_SELECT",
+    "MESA_VK_DEVICE_SELECT_FORCE_DEFAULT_DEVICE",
+    "VK_LOADER_DEVICE_SELECT",
+    "VK_LOADER_DISABLE_SELECT",
+    "NODEVICE_SELECT",
+    "ANVIL_DRM_DEVICE",
+    "OLO_RENDER_NODE",
 ];
+
+fn device_chosen() -> bool {
+    CHOSEN
+        .iter()
+        .any(|name| std::env::var_os(name).is_some_and(|v| !v.is_empty()))
+        || std::env::var_os("__NV_PRIME_RENDER_OFFLOAD").is_some_and(|v| v == "1")
+}
 
 type GetInstanceProcAddr =
     unsafe extern "system" fn(vk::Instance, *const ffi::c_char) -> vk::PFN_vkVoidFunction;
@@ -92,41 +126,11 @@ impl Drivers {
     }
 }
 
-/// While the loader finds its drivers the ordinary way (where one
-/// couldn't be handed over, `find`): NVIDIA's left out, on a computer
-/// that has another GPU to draw with. Loaded to list its devices,
-/// NVIDIA's driver wakes its card from its sleep and waits for it:
-/// every program's start took 2.3 s longer on a laptop whose card slept
-/// (a ThinkPad P1 Gen 9, 2026-11-04), and kept it awake for a GPU the
-/// program never draws with. The loader's variable for it
-/// (`VK_LOADER_DRIVERS_DISABLE`) is set until what is returned is
-/// dropped, so nothing the program starts inherits it; not where the
-/// person chose drivers or asked for NVIDIA themselves (`CHOSEN`).
-///
-/// That there is a card of NVIDIA's is read from the PCI bus, not from
-/// its DRM card: its display module gone (unloaded, or stuck unloading
-/// with its card dead, 2026-11-20), the card and its Vulkan driver are
-/// still there, and every program loaded it.
-pub(super) fn nvidia_aside() -> Option<impl Drop> {
-    const DISABLE: &str = "VK_LOADER_DRIVERS_DISABLE";
-    if CHOSEN.iter().any(|name| std::env::var_os(name).is_some())
-        || !nvidia_beside_another(Path::new("/sys"))
-    {
-        return None;
-    }
-    struct Restore;
-    impl Drop for Restore {
-        fn drop(&mut self) {
-            // SAFETY: as below.
-            unsafe { std::env::remove_var(DISABLE) };
-        }
-    }
-    // SAFETY: set for the moment the loader reads it, then removed, as
-    // the program starts. Another thread may read the environment
-    // meanwhile: glibc keeps an environment array it replaces, so such a
-    // reader sees the variable or not (one only Vulkan's loader reads).
-    unsafe { std::env::set_var(DISABLE, "*nvidia*") };
-    Some(Restore)
+/// On a hybrid with a non-NVIDIA boot renderer, ordinary enumeration can
+/// enter the proprietary driver. Use a software candidate on the retry.
+pub(super) fn needs_scoped_retry() -> bool {
+    let sys = Path::new("/sys");
+    !device_chosen() && boot_driver(sys).as_deref() != Some("nvidia") && nvidia_beside_another(sys)
 }
 
 /// Whether there is a card of NVIDIA's under `sys` (a `/sys`; a PCI
@@ -157,14 +161,26 @@ pub(super) fn nvidia_beside_another(sys: &Path) -> bool {
     nvidia && another
 }
 
+/// Whether the Vulkan loader here takes a driver handed to it: its
+/// version (what `vkEnumerateInstanceVersion` says is the loader's own)
+/// from 1.3.240, a few releases after the extension came. One from
+/// before looks for every driver installed as an instance is made, and
+/// only then says it doesn't know the extension: trying would be what
+/// loads them all.
+pub(super) fn loader_takes_drivers(loader_version: u32) -> bool {
+    loader_version >= vk::make_api_version(0, 1, 3, 240)
+}
+
 /// The drivers of the GPU the computer started on, if this is the way
 /// to go here (the module's words).
 pub(super) fn find() -> Option<Drivers> {
-    let set = |name: &str| std::env::var_os(name).is_some_and(|v| !v.is_empty());
-    if CHOSEN.iter().any(|name| set(name))
-        || std::env::var("OLO_VULKAN_DRIVERS").as_deref() == Ok("all")
-    {
+    if device_chosen() {
         return None;
+    }
+    // (Asked for by the person, to tell a fault of the GPU's driver from
+    // one of Olo's: this program drawn by Mesa's software driver.)
+    if std::env::var_os("OLO_VULKAN_SOFTWARE").is_some_and(|v| v == "1") {
+        return software();
     }
     let driver = boot_driver(Path::new("/sys"))?;
     let wanted = libraries_of(&driver);
@@ -172,13 +188,38 @@ pub(super) fn find() -> Option<Drivers> {
         log::info!("Vulkan: no driver known here for the kernel's {driver}: every driver asked");
         return None;
     }
-    let found = installed(wanted, &manifest_dirs());
+    for_libraries(wanted, &driver)
+}
+
+pub(super) fn software() -> Option<Drivers> {
+    for_libraries(&["libvulkan_lvp.so"], "lavapipe")
+}
+
+fn for_libraries(wanted: &[&str], driver: &str) -> Option<Drivers> {
+    if unsafe { libc::getauxval(libc::AT_SECURE) != 0 || libc::geteuid() == 0 }
+        || Path::new("/.flatpak-info").exists()
+    {
+        return None;
+    }
+    let dirs = manifest_dirs();
+    if dirs.iter().filter_map(|d| d.parent()).any(|vulkan| {
+        vulkan
+            .join("loader_settings.d/vk_loader_settings.json")
+            .exists()
+    }) {
+        return None;
+    }
+    let found = installed(wanted, &dirs);
     let mut drivers = Drivers {
         infos: Vec::new(),
         extensions: Vec::new(),
         names: Vec::new(),
     };
     for path in found {
+        let name = path.file_name()?.to_str()?;
+        if drivers.names.iter().any(|loaded| loaded == name) {
+            continue;
+        }
         // SAFETY: a Vulkan driver the loader would load itself.
         let Ok(library) = (unsafe { libloading::Library::new(&path) }) else {
             continue;
@@ -189,6 +230,20 @@ pub(super) fn find() -> Option<Drivers> {
                 Ok(entry) => *entry,
                 Err(_) => continue,
             };
+        type Negotiate = unsafe extern "system" fn(*mut u32) -> vk::Result;
+        let Some(negotiate) = (unsafe {
+            entry(
+                vk::Instance::null(),
+                c"vk_icdNegotiateLoaderICDInterfaceVersion".as_ptr(),
+            )
+        }) else {
+            continue;
+        };
+        let negotiate: Negotiate = unsafe { std::mem::transmute(negotiate) };
+        let mut version = 7;
+        if unsafe { negotiate(&mut version) } != vk::Result::SUCCESS || version < 7 {
+            continue;
+        }
         // (Loaded for good: the struct's words.)
         std::mem::forget(library);
         // SAFETY: the entry asked for a global function by name.
@@ -223,20 +278,27 @@ unsafe fn extensions_of(entry: GetInstanceProcAddr) -> Vec<ffi::CString> {
         return Vec::new();
     };
     let enumerate: EnumerateInstanceExtensions = std::mem::transmute(function);
-    let mut count = 0;
-    if enumerate(std::ptr::null(), &mut count, std::ptr::null_mut()) != vk::Result::SUCCESS {
-        return Vec::new();
+    for _ in 0..3 {
+        let mut count = 0;
+        if enumerate(std::ptr::null(), &mut count, std::ptr::null_mut()) != vk::Result::SUCCESS
+            || count > 16_384
+        {
+            break;
+        }
+        let mut properties = vec![vk::ExtensionProperties::default(); count as usize];
+        match enumerate(std::ptr::null(), &mut count, properties.as_mut_ptr()) {
+            vk::Result::INCOMPLETE => continue,
+            vk::Result::SUCCESS if count as usize <= properties.len() => {
+                return properties[..count as usize]
+                    .iter()
+                    .map(|p| p.extension_name_as_c_str().map(|s| s.to_owned()))
+                    .collect::<Result<Vec<_>, _>>()
+                    .unwrap_or_default();
+            }
+            _ => break,
+        }
     }
-    let mut properties = vec![vk::ExtensionProperties::default(); count as usize];
-    let result = enumerate(std::ptr::null(), &mut count, properties.as_mut_ptr());
-    if result != vk::Result::SUCCESS && result != vk::Result::INCOMPLETE {
-        return Vec::new();
-    }
-    properties.truncate(count as usize);
-    properties
-        .iter()
-        .map(|p| ffi::CStr::from_ptr(p.extension_name.as_ptr()).to_owned())
-        .collect()
+    Vec::new()
 }
 
 /// The kernel driver of the GPU the computer started on, under `sys` (a
@@ -283,13 +345,17 @@ pub(super) fn libraries_of(kernel_driver: &str) -> &'static [&'static str] {
     match kernel_driver {
         "xe" => &["libvulkan_intel.so"],
         "i915" => &["libvulkan_intel.so", "libvulkan_intel_hasvk.so"],
-        "amdgpu" | "radeon" => &["libvulkan_radeon.so"],
+        // (RADV is amdgpu's: the older `radeon` kernel driver has no
+        // Vulkan driver.)
+        "amdgpu" => &["libvulkan_radeon.so"],
         "nouveau" => &["libvulkan_nouveau.so"],
         "asahi" => &["libvulkan_asahi.so"],
-        "virtio-pci" | "virtio_gpu" => &["libvulkan_virtio.so"],
-        "msm" | "msm_dpu" => &["libvulkan_freedreno.so"],
+        // (The drivers that render, not the display-only ones that go
+        // with them: vc4, msm_dpu.)
+        "virtio_gpu" => &["libvulkan_virtio.so"],
+        "msm" => &["libvulkan_freedreno.so"],
         "panfrost" | "panthor" => &["libvulkan_panfrost.so"],
-        "v3d" | "vc4" => &["libvulkan_broadcom.so"],
+        "v3d" => &["libvulkan_broadcom.so"],
         "powervr" => &["libvulkan_powervr_mesa.so"],
         _ => &[],
     }
@@ -320,7 +386,10 @@ fn manifest_dirs() -> Vec<PathBuf> {
         Some(list) => dirs.extend(std::env::split_paths(&list)),
         None => dirs.extend(["/usr/local/share".into(), "/usr/share".into()]),
     }
-    dirs.into_iter().map(|d| d.join("vulkan/icd.d")).collect()
+    dirs.into_iter()
+        .filter(|d| d.is_absolute())
+        .map(|d| d.join("vulkan/icd.d"))
+        .collect()
 }
 
 /// Of the drivers the manifests in `dirs` name, those whose library's
@@ -358,9 +427,9 @@ pub(super) fn installed(wanted: &[&str], dirs: &[PathBuf]) -> Vec<PathBuf> {
     }
     let mut found = Vec::new();
     for name in wanted {
-        if let Some(path) = named
+        for path in named
             .iter()
-            .find(|p| p.file_name().is_some_and(|n| n == *name))
+            .filter(|p| p.file_name().is_some_and(|n| n == *name))
         {
             if !found.contains(path) {
                 found.push(path.clone());
@@ -373,29 +442,26 @@ pub(super) fn installed(wanted: &[&str], dirs: &[PathBuf]) -> Vec<PathBuf> {
 /// A manifest's `library_path` (its text is JSON; this reads the one
 /// string, with its escapes).
 pub(super) fn library_path(manifest: &str) -> Option<String> {
-    let rest = &manifest[manifest.find("\"library_path\"")? + "\"library_path\"".len()..];
-    let rest = rest
-        .trim_start()
-        .strip_prefix(':')?
-        .trim_start()
-        .strip_prefix('"')?;
-    let mut out = String::new();
-    let mut chars = rest.chars();
-    loop {
-        match chars.next()? {
-            '"' => return Some(out),
-            '\\' => match chars.next()? {
-                'n' => out.push('\n'),
-                't' => out.push('\t'),
-                'u' => {
-                    let code: String = chars.by_ref().take(4).collect();
-                    out.push(char::from_u32(u32::from_str_radix(&code, 16).ok()?)?);
-                }
-                other => out.push(other),
-            },
-            c => out.push(c),
+    let manifest: serde_json::Value = serde_json::from_str(manifest).ok()?;
+    match manifest.get("file_format_version")?.as_str()? {
+        "1.0.0" | "1.0.1" => {}
+        _ => return None,
+    }
+    let icd = manifest.get("ICD")?;
+    let api = icd.get("api_version")?.as_str()?;
+    if api.split('.').next()? != "1"
+        || icd.get("is_portability_driver").and_then(|v| v.as_bool()) == Some(true)
+    {
+        return None;
+    }
+    if let Some(arch) = icd.get("library_arch") {
+        let bits = arch.as_str()?.parse::<u32>().ok()?;
+        if bits != usize::BITS {
+            return None;
         }
     }
+    let path = icd.get("library_path")?.as_str()?;
+    (!path.is_empty() && !path.as_bytes().contains(&0)).then(|| path.to_owned())
 }
 
 #[cfg(test)]
@@ -450,6 +516,14 @@ mod tests {
         assert_eq!(boot_driver(&sys), None);
     }
 
+    #[test]
+    fn a_loader_that_takes_a_driver_handed_to_it() {
+        assert!(!loader_takes_drivers(vk::make_api_version(0, 1, 2, 198)));
+        assert!(!loader_takes_drivers(vk::make_api_version(0, 1, 3, 239)));
+        assert!(loader_takes_drivers(vk::make_api_version(0, 1, 3, 240)));
+        assert!(loader_takes_drivers(vk::make_api_version(0, 1, 4, 350)));
+    }
+
     /// NVIDIA's card is known by the PCI bus: with its DRM card gone
     /// (its display module unloaded, or stuck unloading) it is still
     /// beside the GPU that draws.
@@ -494,11 +568,11 @@ mod tests {
             Some("/usr/lib64/libvulkan_intel.so")
         );
         assert_eq!(
-            library_path("{\"ICD\":{\"library_path\":\"libGLX_nvidia.so.0\"}}").as_deref(),
+            library_path(r#"{"file_format_version":"1.0.0","ICD":{"api_version":"1.4.0","library_path":"libGLX_nvidia.so.0"}}"#).as_deref(),
             Some("libGLX_nvidia.so.0")
         );
         assert_eq!(
-            library_path(r#"{"ICD": {"library_path" : "C:\\drivers\\a\/b\u0041.dll"}}"#).as_deref(),
+            library_path(r#"{"file_format_version":"1.0.1","ICD": {"api_version":"1.4.0","library_path" : "C:\\drivers\\a\/b\u0041.dll"}}"#).as_deref(),
             Some("C:\\drivers\\a/bA.dll")
         );
         assert_eq!(library_path("{\"ICD\": {}}"), None);
@@ -521,7 +595,7 @@ mod tests {
             fs::write(
                 dir.join(name),
                 format!(
-                    "{{\"ICD\": {{\"library_path\": \"{library}\", \"api_version\": \"1.4.0\"}}}}"
+                    "{{\"file_format_version\":\"1.0.1\",\"ICD\": {{\"library_path\": \"{library}\", \"api_version\": \"1.4.0\"}}}}"
                 ),
             )
             .unwrap()
@@ -581,7 +655,10 @@ mod tests {
         );
         assert_eq!(
             installed(libraries_of("xe"), &dirs),
-            [PathBuf::from("/opt/mesa/lib64/libvulkan_intel.so")]
+            [
+                PathBuf::from("/opt/mesa/lib64/libvulkan_intel.so"),
+                PathBuf::from("/usr/lib64/libvulkan_intel.so")
+            ]
         );
     }
 }

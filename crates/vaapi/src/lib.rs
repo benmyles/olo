@@ -191,6 +191,9 @@ struct Display {
 
 impl Display {
     fn open(node: &Path) -> Result<Display, String> {
+        if std::env::var_os("OLO_HEADLESS_RENDERER").is_some_and(|v| v == "software") {
+            return Err("This session uses software video codecs".into());
+        }
         let api = Api::open()?;
         let file = std::fs::OpenOptions::new().read(true).write(true).open(node).map_err(|e| format!("{}: {e}", node.display()))?;
         // SAFETY: a DRM node's descriptor, open while the display is.

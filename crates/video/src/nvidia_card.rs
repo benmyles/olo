@@ -13,6 +13,9 @@ use std::path::Path;
 /// its driver, one that stopped answering, or its driver on its way
 /// out. One asleep is fine: using it is what wakes it.
 pub(crate) fn usable() -> Result<(), String> {
+    if std::env::var_os("OLO_HEADLESS_RENDERER").is_some_and(|v| v == "software") {
+        return Err("This session uses software video codecs".into());
+    }
     usable_in(Path::new("/sys"))
 }
 

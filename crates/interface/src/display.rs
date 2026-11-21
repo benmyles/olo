@@ -183,12 +183,14 @@ static RUNS: AtomicBool = AtomicBool::new(false);
 /// left as a program that shows nothing.
 pub(crate) fn runs_an_app() {
     RUNS.store(true, Ordering::Release);
-    if let Some(display) = DISPLAY.get()
-        && display.headless
-        && wants_wayland()
-    {
+}
+
+pub(crate) fn app_display() -> &'static Display {
+    let display = display();
+    if display.headless && wants_wayland() {
         panic!("the display was asked for before the program's run(), so it has no compositor: call run() first (olo_interface::display)");
     }
+    display
 }
 
 /// Whether the environment names a compositor to connect to (and

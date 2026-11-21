@@ -128,8 +128,14 @@ def private_bus(d):
         time.sleep(0.1)
     sys.exit(f"tsession: busd didn't start; see {d}/busd.log")
 
-def as_owner(cmd, **kw):
+GRAPHICS_ENV = ("OLO_HEADLESS_RENDERER", "LIBGL_ALWAYS_SOFTWARE", "GALLIUM_DRIVER", "LP_NUM_THREADS",
+                "VK_LOADER_DRIVERS_SELECT", "VK_DRIVER_FILES", "__EGL_VENDOR_LIBRARY_FILENAMES",
+                "VK_IMPLICIT_LAYER_PATH")
+
+def as_owner(cmd, *, child_env=None):
     if os.getuid() == 0 and OWNER.pw_uid != 0:
+        if child_env is not None:
+            cmd = ["/usr/bin/env", *(f"{k}={child_env[k]}" for k in GRAPHICS_ENV if k in child_env), *cmd]
         cmd = ["sudo", "-u", OWNER.pw_name, "--preserve-env=WAYLAND_DISPLAY,OLO_SOCKET,XDG_RUNTIME_DIR,XDG_CONFIG_HOME,XDG_STATE_HOME,XDG_CACHE_HOME,RUST_LOG,OLO_THEME,OLO_DATA,OLO_SESSION,OLO_SESSION_PID,HOME,PATH,PULSE_SERVER,OLO_PAM_CONFDIR,OLO_PAM_SERVICE,OLO_PASSWORDS_KEYFILE,OLO_WLPROXY_DEBUG,OLO_UDISKS_BUS,DBUS_SESSION_BUS_ADDRESS"] + cmd
     return cmd
 
@@ -199,7 +205,7 @@ def mesa_egl_vendor():
                 lib = json.load(open(os.path.join(folder, n)))["ICD"]["library_path"]
             except (OSError, ValueError, KeyError):
                 continue
-            if "mesa" in lib.lower():
+            if isinstance(lib, str) and re.fullmatch(r"libEGL_mesa\.so(?:\.\d+)*", os.path.basename(lib)):
                 return os.path.join(folder, n)
     return None
 
@@ -243,8 +249,14 @@ def start(name, args):
     # card for a test and, with the card not answering, crashed the
     # program that loaded it (2026-11-20).
     mesa = mesa_egl_vendor()
-    if graphics and mesa:
+    if graphics:
+        if not mesa:
+            sys.exit("tsession: the Mesa EGL vendor manifest is required for software rendering")
         graphics["__EGL_VENDOR_LIBRARY_FILENAMES"] = mesa
+        # Implicit layers can load another vendor even when its ICD is excluded.
+        layers = os.path.join(d, "software-implicit-layers")
+        os.makedirs(layers, exist_ok=True)
+        graphics["VK_IMPLICIT_LAYER_PATH"] = layers
     env.update(graphics)
     # A lock-order cycle (olo-sync, debug builds) is reported with the
     # stacks of both orders only when backtraces are captured.
@@ -289,7 +301,7 @@ def start(name, args):
         exe = ["env", f"HOME={os.path.abspath(home)}"] + exe
     if os.environ.get("OLO_UPGRADE_FROM"):
         exe = ["env", "OLO_UPGRADE_FROM=" + os.environ["OLO_UPGRADE_FROM"]] + exe
-    p = subprocess.Popen(as_owner(exe), env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    p = subprocess.Popen(as_owner(exe, child_env=env), env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
     # (Many sessions starting at once take a while: up to 30 s.)
     for _ in range(300):
         time.sleep(0.1)
@@ -554,7 +566,7 @@ def run(name, cmd):
     base = os.path.basename(exe)
     log = open(os.path.join(sdir(name), base + ".log"), "w")
     argv = (["env"] + assigns if assigns else []) + [exe] + cmd[1:]
-    p = subprocess.Popen(as_owner(argv), env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    p = subprocess.Popen(as_owner(argv, child_env=env), env=env, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
     open(os.path.join(sdir(name), f"{base}.{p.pid}.pid"), "w").write(str(p.pid))
     print(f"started {base} pid {p.pid}")
 
