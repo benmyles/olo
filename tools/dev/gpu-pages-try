@@ -1,0 +1,402 @@
+#!/usr/bin/python3
+"""olo_gpu_pages tried on this computer, by turns off and on, and taken
+out again: the one measurement a guest can't make (it has no GPU).
+
+  tools/dev/gpu-pages-try                       what it would do, and whether it could here
+  sudo tools/dev/gpu-pages-try --on-this-computer [--pairs N] [--phase SECONDS]
+
+**It loads a kernel module into the running kernel of the computer it
+is run on**, with its owner's word and never without (CLAUDE.md, "Leave
+the person's session alone"; docs/AGENT-NOTES.md, memory policy). It
+won't unless all of this holds: `--on-this-computer` is given; it is
+root; the kernel's build is one the module was checked on
+(kernel/gpu-pages/QUALIFIED), with its live patches as they were then;
+a PCI device is bound to xe; the module isn't in already; nothing else
+is at work on the module (olo-gpu-pages and this take one lock).
+
+What it does (the third review of the module, with Astra, set most of
+it: a first form of this went on after a warning, called a trial with
+no tracing a success, and could leave the module in and on):
+
+1. Builds the module from this repository for the running kernel, in a
+   folder of its own under /var/tmp.
+2. A phase with nothing loaded: who is held making room for graphics
+   memory (`tools/dev/memory-holds`'s own tracing, read-only), for
+   SECONDS (90). The kernel's log is followed from here to the end
+   (/dev/kmsg, record by record): anything in it that isn't right (a
+   warning, a bug, an error or a reset of the graphics driver's, a
+   live patch changing, any record of error level), or a record lost,
+   ends the trial there. So does tracing that didn't attach whole.
+3. Loads the module switched off, under a name of this trial's own, and
+   reads back that it is this trial's, off, for the device, and checked
+   itself.
+4. N (3) pairs of phases, off then on and on then off by turns, each
+   SECONDS long and traced the same way. **On is only while this holds
+   the module's trial switch open** (/dev/olo_gpu_pages_trial_switch):
+   whatever ends this, a kill it can't catch too, closes that and the
+   kernel is as it comes again. Each phase: the holds, the module's
+   `changed` and `missed`, the kernel's own compacting and reclaiming
+   threads' work, free memory's pieces of 2 MB and over, the
+   compositor's lines of a slow frame or late input.
+5. Always: the switch closed, the module unloaded if it is this
+   trial's (never another's), and read back gone; with signals held off
+   meanwhile, so a second Ctrl-C can't cut it short.
+
+It ends 0 only if every phase saw GPU buffers filled, every phase with
+it on changed tries, and a phase with it off saw something held 4 ms
+for graphics memory: otherwise it says nothing either way, and says so.
+
+What runs meanwhile is the comparison's other half and not this tool's:
+the same work in every phase (a build looping, windows drawing), by
+whoever runs the trial. Its figures are of the kernel's side; what the
+person sees (frames, input, the GPU's work done) is measured beside it,
+and once more with no tracing, before anything is decided
+(kernel/TUNING.md). What it prints names the person's programs: it
+stays on this computer.
+"""
+import argparse
+import contextlib
+import fcntl
+import select
+import shutil
+import uuid
+import importlib.machinery
+import importlib.util
+import os
+import re
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+
+sys.dont_write_bytecode = True
+ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+SRC = os.path.join(ROOT, "kernel", "gpu-pages")
+PARAMETERS = "/sys/module/olo_gpu_pages/parameters"
+# What the kernel says when something isn't right (its log, since the trial began).
+WRONG = re.compile(r"WARNING:|BUG:|Oops|general protection|\*ERROR\*|GT\d+: reset|hung task|soft lockup|Call Trace", re.I)
+
+
+def tool(name):
+    """Another of tools/dev's, as a module (they have no .py to their names)."""
+    loader = importlib.machinery.SourceFileLoader(name.replace("-", "_"), os.path.join(ROOT, "tools/dev", name))
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+    loader.exec_module(module)
+    return module
+
+
+def read(path):
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return None
+
+
+def device():
+    """The PCI device xe has: the one the computer started on where it has several."""
+    folder = "/sys/bus/pci/drivers/xe"
+    names = sorted(n for n in (os.listdir(folder) if os.path.isdir(folder) else []) if re.fullmatch(r"[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f]", n))
+    return next((n for n in names if read(os.path.join(folder, n, "boot_vga")) == "1"), names[0] if names else None)
+
+
+def checked(check):
+    """Whether this kernel's build is on the list, which it is, and the live patch that was checked beside it."""
+    release = os.uname().release
+    ids = (check.build_id("/sys/kernel/notes"), check.build_id("/sys/module/ttm/notes/.note.gnu.build-id"))
+    for line in open(os.path.join(SRC, "QUALIFIED")):
+        words = line.split()
+        if words[:3] == [release, *ids] and not line.startswith("#"):
+            return True, release, ids, (words[3] if len(words) > 3 else None)
+    return False, release, ids, None
+
+
+class KernelLog:
+    def __init__(self):
+        self.fd = os.open("/dev/kmsg", os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+        os.lseek(self.fd, 0, os.SEEK_END)
+        self.last = None
+        self.active_lease = None
+
+    def drain(self):
+        messages = []
+        while True:
+            try:
+                raw = os.read(self.fd, 65536)
+            except BlockingIOError:
+                return messages
+            if not raw:
+                raise RuntimeError("the kernel's log closed")
+            header, message = raw.decode(errors="replace").split(";", 1)
+            priority, sequence = map(int, header.split(",")[:2])
+            if self.last is not None and sequence != self.last + 1:
+                raise RuntimeError("the kernel's log lost records: it can't be said that nothing went wrong")
+            self.last = sequence
+            text = message.splitlines()[0]
+            if text.startswith("livepatch:") or WRONG.search(text) or (priority & 7) <= 4 or (
+                re.search(r"\b(?:xe|drm)\b", text, re.I)
+                and re.search(r"\b(?:wedged|GPU hang|hangcheck)\b", text, re.I)
+            ):
+                raise RuntimeError("the kernel said: " + text)
+            messages.append(text)
+
+    def trace(self, program, seconds):
+        # Kernel messages wake this wait even if the tracer hangs or its pipes fill.
+        with tempfile.TemporaryFile(dir="/var/tmp") as out, tempfile.TemporaryFile(dir="/var/tmp") as err:
+            with subprocess.Popen(["bpftrace", "-e", program], stdout=out, stderr=err) as tracer:
+                try:
+                    with os.fdopen(os.pidfd_open(tracer.pid), "rb", buffering=0) as process:
+                        watch = select.poll()
+                        watch.register(self.fd, select.POLLIN | select.POLLERR)
+                        watch.register(process, select.POLLIN)
+                        deadline = time.monotonic() + seconds + 90
+                        while tracer.poll() is None:
+                            left = deadline - time.monotonic()
+                            if left <= 0:
+                                raise RuntimeError("the tracing didn't end in its time")
+                            watch.poll(max(1, int(1000 * left)))
+                            self.drain()
+                finally:
+                    if self.active_lease is not None:
+                        self.active_lease.close()
+                    if tracer.poll() is None:
+                        tracer.kill()
+                    tracer.wait()
+                out.seek(0)
+                err.seek(0)
+                stdout, stderr = (f.read().decode(errors="replace") for f in (out, err))
+                # (Every probe the program has, or it measured something else.)
+                probes = len(re.findall(r"(?m)^(?:fentry|fexit|kprobe|kretprobe|tracepoint|interval|END)\b", program))
+                if tracer.returncode or not re.search(r"Attached %d probes\b" % probes, stdout + stderr):
+                    raise RuntimeError("the tracing didn't run whole, with all %d of its probes attached: %s" % (probes, stderr[-500:]))
+                return stdout
+
+
+def counters():
+    """What is read before and after a phase."""
+    stat = {}
+    for line in (read("/proc/vmstat") or "").splitlines():
+        name, _, value = line.partition(" ")
+        stat[name] = int(value)
+    threads = 0
+    for pid in os.listdir("/proc"):
+        if pid.isdigit():
+            text = read("/proc/%s/stat" % pid) or ""
+            comm = text[text.find("(") + 1:text.rfind(")")]
+            if comm.startswith(("kcompactd", "kswapd", "khugepaged")):
+                fields = text[text.rfind(")") + 2:].split()
+                threads += int(fields[11]) + int(fields[12])
+    pieces = 0
+    for line in (read("/proc/buddyinfo") or "").splitlines():
+        counts = line.split()[4:]
+        pieces += sum(int(n) << (order - 9) for order, n in enumerate(counts) if order >= 9)
+    number = lambda name: int(read(os.path.join(PARAMETERS, name)) or 0) if os.path.isdir(PARAMETERS) else 0
+    return {"changed": number("changed"), "missed": number("missed"), "threads_ticks": threads, "pieces": pieces,
+            "compact_stall": stat.get("compact_stall", 0), "daemon_wake": stat.get("compact_daemon_wake", 0)}
+
+
+def journal_since(when):
+    """The compositor's own lines of a frame or input that was late, since `when` (counted, not shown)."""
+    # (All of the journal since then, the lines picked out here: asked to
+    # pick them out itself, journalctl ends 1 when there are none, as it
+    # does when it can't read the journal, and a phase in which nothing
+    # was late ended the trial.)
+    late = re.compile(r"slow frame|came .* late|took .* to show", re.I)
+    out = subprocess.run(["journalctl", "--no-pager", "-q", "--since", "@%.6f" % when],
+                         capture_output=True, text=True, timeout=10, check=True).stdout
+    return sum(1 for line in out.splitlines()
+               if ("app_server" in line or "olo-app-server" in line) and late.search(line))
+
+
+def phase(holds, seconds, label, log):
+    """One phase: traced for `seconds`; what was held for graphics memory, and the counters' change."""
+    before, began = counters(), time.time()
+    maps, _ = holds.parse(log.trace(holds.program(seconds, False, True), seconds))
+    after = counters()
+    graphics = {"n": 0, "us": 0, "most": 0, "long": 0}
+    by_thread = {}
+    for (comm, kind, why, big), count in maps.get("n", {}).items():
+        if why != "1":
+            continue
+        key = (comm, kind, why, big)
+        row = by_thread.setdefault(comm, {"n": 0, "us": 0, "most": 0, "long": 0})
+        for into in (graphics, row):
+            into["n"] += count
+            into["us"] += maps.get("us", {}).get(key, 0)
+            into["most"] = max(into["most"], maps.get("most", {}).get(key, 0))
+            into["long"] += maps.get("long", {}).get(key, 0)
+    fills = sum(maps.get("pool_n", {}).values())
+    fill_most = max(maps.get("pool_most", {}).values(), default=0)
+    log.drain()
+    return {
+        "label": label, "seconds": seconds, "graphics": graphics, "by_thread": by_thread, "fills": fills, "fill_most": fill_most,
+        "changed": after["changed"] - before["changed"], "missed": after["missed"] - before["missed"],
+        "threads_ms": (after["threads_ticks"] - before["threads_ticks"]) * 1000 // os.sysconf("SC_CLK_TCK"),
+        "pieces": before["pieces"], "stalls": after["compact_stall"] - before["compact_stall"], "woken": after["daemon_wake"] - before["daemon_wake"],
+        "late": journal_since(began),
+    }
+
+
+def say(p):
+    g = p["graphics"]
+    print("  %-22s held for graphics memory %4d times, %8.1f ms in all, longest %6.1f ms, %3d of 4 ms and over; %6d buffers filled (longest %.1f ms); changed %d, missed %d; the kernel's own threads %d ms, woken %d times; %d pieces of 2 MB free before; whole computer's compactions %d; the compositor's late lines %d" % (
+        p["label"], g["n"], g["us"] / 1e3, g["most"] / 1e3, g["long"], p["fills"], p["fill_most"] / 1e3, p["changed"], p["missed"], p["threads_ms"], p["woken"], p["pieces"], p["stalls"], p["late"]), flush=True)
+    for comm, r in sorted(p["by_thread"].items(), key=lambda kv: -kv[1]["us"])[:6]:
+        print("      %-16s %4d times %8.1f ms  longest %6.1f ms  4 ms and over: %d" % (comm, r["n"], r["us"] / 1e3, r["most"] / 1e3, r["long"]), flush=True)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--on-this-computer", action="store_true")
+    parser.add_argument("--pairs", type=int, default=3)
+    parser.add_argument("--phase", type=int, default=90)
+    args = parser.parse_args()
+    pairs, seconds = args.pairs, args.phase
+    if min(pairs, seconds) <= 0:
+        parser.error("pairs and phase must be positive")
+    check = tool("gpu-pages-check")
+    listed, release, ids, reviewed = checked(check)
+    bdf = device()
+    try:
+        check.patch_stack(reviewed)
+        as_checked = True
+    except (OSError, RuntimeError):
+        as_checked = False
+    could = {
+        "this kernel's build is one the module was checked on (%s)" % release: listed,
+        "its live patches are as they were when it was checked": listed and as_checked,
+        "a PCI device is bound to xe (%s)" % (bdf or "none"): bool(bdf),
+        "the module isn't in already": not os.path.isdir("/sys/module/olo_gpu_pages"),
+        "bpftrace is here": subprocess.run(["sh", "-c", "command -v bpftrace"], capture_output=True).returncode == 0,
+    }
+    go = args.on_this_computer
+    if not go or os.geteuid() != 0 or not all(could.values()):
+        print("gpu-pages-try would load Olo's kernel module into this computer's running kernel, try it by turns off and on for %d s a phase (%d pairs after one phase with nothing loaded: about %d minutes), and take it out again." % (seconds, pairs, (2 * pairs + 1) * (seconds + 8) // 60 + 1))
+        for what, so in could.items():
+            print("  %s %s" % ("ok " if so else "NOT", what))
+        if go and os.geteuid() != 0:
+            print("  NOT root (sudo)")
+        if not go:
+            print("With its owner's word: sudo tools/dev/gpu-pages-try --on-this-computer")
+        return 0 if not go else 1
+    holds = tool("memory-holds")
+    work = tempfile.mkdtemp(prefix="olo-gpu-pages-try-", dir="/var/tmp")
+    phases, why = [], None
+    token = uuid.uuid4().hex
+    tag = os.path.join(PARAMETERS, "trial_id")
+    switch = os.path.join(PARAMETERS, "on")
+    log = None
+    lock = None
+
+    def out():
+        if log is not None and log.active_lease is not None:
+            log.active_lease.close()
+        if not os.path.isdir("/sys/module/olo_gpu_pages"):
+            return
+        instance = read(tag)
+        if instance is None:
+            raise RuntimeError("a module is in the kernel whose trial's name can't be read: look at /sys/module/olo_gpu_pages before anything else")
+        if instance != token:
+            return
+        # (The switch closed is the module off, whatever closed it.)
+        if read(switch) != "N":
+            raise RuntimeError("this trial's module is still switched on")
+        subprocess.run(["rmmod", "olo_gpu_pages"], check=True, timeout=10)
+        if os.path.isdir("/sys/module/olo_gpu_pages"):
+            raise RuntimeError("the module is still in the kernel after rmmod")
+        print("the module is off and unloaded", flush=True)
+
+    def interrupted(signum, frame):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, interrupted)
+    try:
+        lock = open("/run/olo-gpu-pages.lifecycle.lock", "a")
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if os.path.isdir("/sys/module/olo_gpu_pages"):
+            raise RuntimeError("the module is in the kernel already")
+        patches = check.patch_stack(reviewed)
+        for name in ("Kbuild", "olo_gpu_pages.c"):
+            with open(os.path.join(SRC, name)) as f, open(os.path.join(work, name), "w") as g:
+                g.write(f.read())
+        built = subprocess.run(["make", "-C", "/lib/modules/%s/build" % release, "M=" + work, "modules"], capture_output=True, text=True)
+        ko = os.path.join(work, "olo_gpu_pages.ko")
+        if built.returncode != 0 or not os.path.isfile(ko):
+            print("the module didn't build: %s" % (built.stderr.strip().splitlines() or ["?"])[-1][:200])
+            return 1
+        log = KernelLog()
+        print("the trial: %s, device %s; a phase is %d s" % (release, bdf, seconds), flush=True)
+        phases.append(phase(holds, seconds, "nothing loaded", log))
+        say(phases[-1])
+        if checked(check) != (True, release, ids, reviewed) or device() != bdf or check.patch_stack(reviewed) != patches:
+            raise RuntimeError("the kernel's build, its live patches or the device changed since the trial began")
+        log.drain()
+        # (insmod is waited for with signals held off, so a stop that is
+        # pending finds what it loaded: which is off.)
+        blocked = {signal.SIGINT, signal.SIGTERM}
+        was = signal.pthread_sigmask(signal.SIG_BLOCK, blocked)
+        try:
+            subprocess.run(["insmod", ko, "bdf=" + bdf, "on=0", "trial_id=" + token], check=True)
+        finally:
+            signal.pthread_sigmask(signal.SIG_SETMASK, was)
+        said = log.drain()
+        if (read(tag) != token or read(switch) != "N" or read(os.path.join(PARAMETERS, "bdf")) != bdf
+                or not any("olo_gpu_pages: checked on " + bdf in line and "switched off" in line for line in said)):
+            raise RuntimeError("the module didn't load switched off for the device, as this trial's, having checked itself")
+        for pair in range(pairs):
+            for on in ((False, True) if pair % 2 == 0 else (True, False)):
+                log.drain()
+                if read(tag) != token or read(switch) != "N" or check.patch_stack(reviewed) != patches or device() != bdf:
+                    raise RuntimeError("the module in the kernel isn't this trial's, off, as it was left; or the kernel changed")
+                was = signal.pthread_sigmask(signal.SIG_BLOCK, blocked)
+                try:
+                    if on:
+                        log.active_lease = open("/dev/olo_gpu_pages_trial_switch", "wb", buffering=0)
+                finally:
+                    signal.pthread_sigmask(signal.SIG_SETMASK, was)
+                with log.active_lease if on else contextlib.nullcontext():
+                    if read(tag) != token or read(switch) != ("Y" if on else "N"):
+                        raise RuntimeError("the switch didn't read back as the phase set it")
+                    p = phase(holds, seconds, "pair %d, %s" % (pair + 1, "on" if on else "off"), log)
+                log.active_lease = None
+                p["on"] = on
+                phases.append(p)
+                say(p)
+        if not all(p["fills"] for p in phases) or any(not p["changed"] for p in phases if p.get("on")):
+            raise RuntimeError("it says nothing either way: a phase saw no GPU buffer filled, or a phase with it on changed no try")
+        if not any(p["graphics"]["long"] for p in phases if p.get("on") is False):
+            raise RuntimeError("it says nothing either way: with it off, nothing was held 4 ms for graphics memory (what it is for didn't happen: more load beside it, or longer phases)")
+        return 0
+    except (KeyboardInterrupt, OSError, RuntimeError, subprocess.SubprocessError) as e:
+        why = str(e) or "stopped"
+        return 1
+    finally:
+        # (A second Ctrl-C can't cut short the switching off, the unloading
+        # and the reading back.)
+        was = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT, signal.SIGTERM})
+        try:
+            out()
+            if log is not None:
+                try:
+                    log.drain()
+                finally:
+                    os.close(log.fd)
+        finally:
+            if lock is not None:
+                lock.close()
+            shutil.rmtree(work)
+            signal.pthread_sigmask(signal.SIG_SETMASK, was)
+        if why:
+            print("called off: %s" % why, flush=True)
+        ons, offs = [p for p in phases if p.get("on") is True], [p for p in phases if p.get("on") is False]
+        if ons and offs:
+            total = lambda ps, key: sum(p["graphics"][key] for p in ps)
+            most = lambda ps: max(p["graphics"]["most"] for p in ps) / 1e3
+            print("in all, off: held %d times, %.1f ms, longest %.1f ms, %d of 4 ms and over, in %d s; on: held %d times, %.1f ms, longest %.1f ms, %d of 4 ms and over, in %d s (%d tries changed)" % (
+                total(offs, "n"), total(offs, "us") / 1e3, most(offs), total(offs, "long"), sum(p["seconds"] for p in offs),
+                total(ons, "n"), total(ons, "us") / 1e3, most(ons), total(ons, "long"), sum(p["seconds"] for p in ons), sum(p["changed"] for p in ons)))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

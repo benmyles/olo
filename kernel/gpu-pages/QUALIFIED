@@ -1,0 +1,30 @@
+# The kernel builds olo_gpu_pages may be loaded into: each one looked at
+# and tried, as kernel/README.md says ("gpu-pages"): on that exact build,
+# ttm_pool_alloc_page() is one function called from one place, with its
+# arguments where the module reads them (pool in %rdi, gfp in %esi, order
+# in %edx), a pool's flags where the kernel's headers say; and
+# tools/dev/gpu-pages-check passed in guests running that build. The
+# module's own check as it loads is of what the function does, not of
+# where a build keeps its arguments: a build not listed here is left as
+# it comes.
+#
+# A line a build: the kernel's release, its build ID (/sys/kernel/notes)
+# and the build ID of its ttm module (/sys/module/ttm/notes), then the
+# build ID of Olo's live patch olo_gpu_memory as it was in the kernel
+# beside it when it was checked: the module is loaded with no live
+# patch in the kernel, or with exactly that one and no other.
+#
+# `tools/dev/gpu-pages-check --qualify` says a build's words, and that
+# they are *pending a person's review*: its reading of the machine code
+# is a help and not a proof (a review found shapes it passes that the
+# probe would misread). Before a line is added, someone reads, in that
+# build: the caller's setting up of the three arguments and the callee's
+# use of them at the probe's site; the function's range, its aliases and
+# clones; every relocation against it, in code and in data; the pool's
+# layout (`dev`, `alloc_flags`, its size); and the allocation's falling
+# back on refusal, in the fill and in the restore. Who, when and what
+# they read goes in the commit that adds the line.
+#
+# 7.3.4-300.fc45: read by hand in three reviews with Astra, 2026-11-21
+# (kernel/TUNING.md, "Graphics memory in 2 MB pieces").
+7.3.4-300.fc45.x86_64 7f111d5ff77cd8b0de0b41422fe4d4f7d375f54d e0fdead3891ad14b87586bbe3bef4fe33c1d65cc 5cb978ba9f9e8d27330f5f94950eed9fcb90efb7

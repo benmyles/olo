@@ -33,9 +33,13 @@ On that kernel it then checks, and says for each:
                  where that kernel's ttm_backup_bytes_avail is gone or
                  of another shape), loads with the graphics memory
                  manager, takes the function over, and comes out again.
-  the services   olo-bbr3's and olo-gpu-memory's own build for a kernel
-                 that isn't the running one (their ignored tests, with
-                 OLO_NEXT_KERNEL).
+  the services   olo-bbr3's, olo-gpu-memory's and olo-gpu-pages' own
+                 build for a kernel that isn't the running one (their
+                 ignored tests, with OLO_NEXT_KERNEL). olo_gpu_pages
+                 is loaded only into a kernel build on its list
+                 (kernel/gpu-pages/QUALIFIED): building is not that.
+                 `tools/dev/gpu-pages-check --qualify` on the new
+                 kernel once it runs.
 
 Exit status 1 if any failed. A series BBRv3 passes on is added to
 kernel/bbr3/CHECKED by hand, with the run's date in the commit.
@@ -232,13 +236,16 @@ def patch(release, tree):
 def services(release, tree):
     headers = os.path.join(tree, "usr/src/kernels", release)
     out = run(
-        ["cargo", "test", "-p", "olo-bbr3", "-p", "olo-gpu-memory", "--", "--ignored", "builds_for_the_kernel_an_update_brings"],
+        ["cargo", "test", "-p", "olo-bbr3", "-p", "olo-gpu-memory", "-p", "olo-gpu-pages", "--", "--ignored", "builds_for_the_kernel_an_update_brings"],
         cwd=ROOT,
         env={**os.environ, "OLO_NEXT_KERNEL": f"{release}={headers}"},
     )
     passed = out.stdout.count("builds_for_the_kernel_an_update_brings ... ok")
-    good = out.returncode == 0 and passed == 2
-    print(f"  {'ok ' if good else 'NOT'} olo-bbr3 and olo-gpu-memory build for it themselves ({passed} of 2)")
+    good = out.returncode == 0 and passed == 3
+    print(f"  {'ok ' if good else 'NOT'} olo-bbr3, olo-gpu-memory and olo-gpu-pages build for it themselves ({passed} of 3)")
+    # (olo_gpu_pages is then loaded only into a build on its list, which
+    # a kernel not yet run can't be on: `tools/dev/gpu-pages-check
+    # --qualify` once it runs, before anyone is offered it there.)
     if not good:
         print((out.stdout + out.stderr)[-1200:])
     return good

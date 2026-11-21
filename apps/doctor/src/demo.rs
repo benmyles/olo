@@ -77,6 +77,14 @@ pub fn report() -> Report {
         // (The one fix no batch takes: no mark to check, a button of its
         // own.)
         crate::checks::desktop_first_offer(1000, false),
+        // (Two paragraphs: the trouble, then what the fix does. With
+        // `OLO_DOCTOR_DEMO=pieces-out`, the card for the module out of
+        // this kernel in its place: where Preferences' button leads.)
+        if std::env::var("OLO_DOCTOR_DEMO").is_ok_and(|v| v == "pieces-out") {
+            crate::checks::large_pieces_kept_out("this kernel's pool isn't the one this was written for (as it comes, the 2 MB try's flags are 0x392cc2 and the 1 MB try's 0x392cc2)")
+        } else {
+            crate::checks::large_pieces_offer(Vec::new())
+        },
         finding(
             "tool:just",
             Severity::Suggestion,

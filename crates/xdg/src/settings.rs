@@ -223,7 +223,7 @@ pub const PREFERENCE_SETTINGS: &[Setting] = &[
     Setting { panel: "performance", tab: "Kernel", group: "Processor Turns", name: "Keep a busy program's turn short", role: "CheckBox" },
     Setting { panel: "performance", tab: "Kernel", group: "Removable Disks", name: "Limit what waits to be written to them", role: "CheckBox" },
     Setting { panel: "performance", tab: "Kernel", group: "Network", name: "Send with BBRv3", role: "CheckBox" },
-    Setting { panel: "performance", tab: "Kernel", group: "Graphics", name: "Keep windows' graphics memory out of swap", role: "CheckBox" },
+    Setting { panel: "performance", tab: "Kernel", group: "Window Buffers", name: "Keep windows' graphics memory out of swap", role: "CheckBox" },
     Setting { panel: "phone", tab: "", group: "iPhone", name: "Open Phone", role: "Button" },
     Setting { panel: "phone", tab: "", group: "iPhone", name: "Bluetooth…", role: "Button" },
     Setting { panel: "phone", tab: "", group: "Notifications", name: "Messages: each as it comes, answered in place", role: "RadioButton" },

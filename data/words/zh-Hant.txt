@@ -5230,6 +5230,9 @@ Language & Region
 Large
 大
 
+Large pieces
+大塊
+
 Larger
 更大
 
@@ -6265,6 +6268,9 @@ Never fade
 Never since the computer started
 開機以來從未發生
 
+Never wait for large pieces of graphics memory
+永不等待大塊顯示記憶體
+
 New
 新增
 
@@ -7083,6 +7089,9 @@ Olo 啟動畫面
 
 Olo's login screen
 Olo 登入界面
+
+Olo's module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
+Olo 的模組在載入時會檢查核心，這次它沒有進入此核心。Olo Doctor 會說明原因。
 
 Olo's own
 Olo 內建
@@ -10357,6 +10366,9 @@ The model
 The model wasn't good enough to keep
 模型表現不佳，未保留
 
+The module
+模組
+
 The most powerful (the processor)
 最強（CPU）
 
@@ -10710,6 +10722,9 @@ This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 
 This kernel has one way of preempting only: it wasn't built to be told another.
 此核心在建置時只啟用了一種搶佔方式，無法切換。
+
+This kernel's build hasn't been checked yet: Olo's module stays out until an Olo update checks it.
+此核心版本尚未檢查：Olo 更新檢查它之前，Olo 的模組不會載入。
 
 This keyboard has no backlight.
 此鍵盤沒有背光。
@@ -11836,6 +11851,9 @@ When does the sun rise tomorrow?
 When held for:
 長按時間長度：
 
+When no large piece is free, Intel's driver takes smaller ones and windows keep drawing (Olo's module, olo_gpu_pages).
+沒有空閒的大塊時，Intel 驅動程式改用較小的區塊，視窗照常繪製（Olo 的模組 olo_gpu_pages）。
+
 When pressed:
 按下時：
 
@@ -11946,6 +11964,9 @@ Window
 
 Window Arrangement
 視窗排列
+
+Window Buffers
+視窗緩衝區
 
 Window Size
 視窗大小
@@ -12475,6 +12496,12 @@ in the next week
 in the next {} days
 未來 {} 天內
 
+in the running kernel
+已在執行中的核心裡
+
+in the running kernel, switched off
+已在執行中的核心裡，已關閉
+
 in {n} days
 other: {n} 天後
 
@@ -12613,6 +12640,9 @@ no wired network: it waits for one
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
+not in the running kernel
+不在執行中的核心裡
+
 not parts of it: {}; its parts are {}
 以下不是其組成部分：{}；其組成部分為 {}
 
@@ -12621,6 +12651,9 @@ not set up yet
 
 not understood: {}
 無法辨識：{}
+
+not yet on this kernel's build, {}
+目前核心版本 {} 尚未檢查
 
 not yet on this kernel's series, {}
 尚不適用於目前核心系列 {}
@@ -12687,6 +12720,9 @@ on battery
 
 on battery: it waits for power
 電池供電中：等待接通電源
+
+on this kernel's build, {}
+適用於目前核心版本 {}
 
 on this kernel's series, {}
 適用於目前核心系列 {}
@@ -13263,6 +13299,9 @@ other: {n} 週
 
 {} applications are keeping the display awake.
 有 {} 個應用程式正在讓顯示器保持開啟。
+
+{} asked for, none waited for
+請求 {} 個，皆未等待
 
 {} at {}
 {} {}

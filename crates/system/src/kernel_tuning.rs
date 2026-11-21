@@ -23,8 +23,8 @@
 //!   ejecting is quick.
 //!
 //! Beside them, Olo's own pieces in the kernel, shown in the same place:
-//! [`Bbr3`] (TCP's congestion control, a module) and [`GraphicsMemory`]
-//! (a live patch).
+//! [`Bbr3`] (TCP's congestion control, a module), [`GraphicsMemory`] (a
+//! live patch) and [`GraphicsPages`] (a module with a probe).
 //!
 //! `OLO_KERNEL_ROOT=DIR` puts all of it under DIR (tests: a made-up
 //! computer in a scratch folder, which Doctor's steps then write to as
@@ -40,10 +40,11 @@ pub enum Setting {
     SlowDisks,
     Bbr3,
     GraphicsMemory,
+    GraphicsPages,
 }
 
 impl Setting {
-    pub const ALL: [Setting; 5] = [Setting::Preemption, Setting::ShortTurns, Setting::SlowDisks, Setting::Bbr3, Setting::GraphicsMemory];
+    pub const ALL: [Setting; 6] = [Setting::Preemption, Setting::ShortTurns, Setting::SlowDisks, Setting::Bbr3, Setting::GraphicsMemory, Setting::GraphicsPages];
 
     /// As the command line says it.
     pub fn word(self) -> &'static str {
@@ -53,6 +54,7 @@ impl Setting {
             Setting::SlowDisks => "slow-disks",
             Setting::Bbr3 => "bbr3",
             Setting::GraphicsMemory => "graphics-memory",
+            Setting::GraphicsPages => "graphics-pages",
         }
     }
 
@@ -592,6 +594,99 @@ pub fn graphics_memory(places: &Places) -> Option<GraphicsMemory> {
     Some(GraphicsMemory { patched, kept, said })
 }
 
+/// The kernel builds Olo's module `olo_gpu_pages` was checked on, and
+/// is loaded into (kernel/gpu-pages/QUALIFIED: `olo_kmod::builds`).
+pub const GRAPHICS_PAGES_QUALIFIED: &str = include_str!("../../../kernel/gpu-pages/QUALIFIED");
+
+/// Whether the module is offered where it isn't in already (Olo
+/// Doctor's suggestion, the Kernel tab's switch). Not yet: what it
+/// does in the kernel was shown in guests and reviewed twice with
+/// Astra (2026-11-21), and both reviews left one thing to be measured
+/// before it is anyone's to switch on: what it does to frames and to
+/// the GPU's work on a real computer with Intel's graphics, by turns
+/// on and off, with its owner's word (`tools/dev/gpu-pages-try`;
+/// kernel/TUNING.md, "Graphics memory in 2 MB pieces", says what was
+/// measured and what is still owed). A made-up computer always has it
+/// (`OLO_KERNEL_ROOT`: tests, pictures); a real one never before then,
+/// whatever the environment says (a switch there was, and the third
+/// review had it out: an offer held back is held back for everyone).
+pub const GRAPHICS_PAGES_OFFERED: bool = false;
+
+/// Whether the module is offered to a reader of `places`.
+pub fn graphics_pages_offered(places: &Places) -> bool {
+    GRAPHICS_PAGES_OFFERED || places.stand_in
+}
+
+/// No program held for a 2 MB piece of graphics memory (Olo's module
+/// `olo_gpu_pages`, for Intel's xe driver; apps/gpu-pages;
+/// kernel/TUNING.md, "Graphics memory in 2 MB pieces").
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct GraphicsPages {
+    /// The module is in the running kernel, switched on or not (a
+    /// trial's between its phases is in, and off).
+    pub loaded: bool,
+    /// It may be chosen here (`graphics_pages_offered`): what is shown
+    /// of it is not what may be done with it.
+    pub offered: bool,
+    /// The module is in the running kernel and switched on.
+    pub in_force: bool,
+    /// The service that sees to it at every start is there and chosen.
+    pub kept: bool,
+    /// The running kernel's build is one the module was checked on: it
+    /// is loaded into no other.
+    pub checked: bool,
+    /// The tries for a 2 MB piece it has had made without waiting since
+    /// it loaded (the module's own count).
+    pub changed: Option<u64>,
+    /// How the service's last start went: "in force", "not checked"
+    /// (this kernel's build), "not needed", or "failed: " and why.
+    pub said: Option<String>,
+    /// The running kernel, as it names itself ("7.3.4-300.fc45.x86_64").
+    pub kernel: String,
+}
+
+impl GraphicsPages {
+    pub fn on(&self) -> bool {
+        self.in_force && self.kept
+    }
+
+    /// Why the module is out of this kernel though its service tried, in
+    /// its own words where it said (a kernel whose pool isn't the one it
+    /// was written for), else the service's.
+    pub fn kept_out(&self) -> Option<&str> {
+        let why = self.said.as_deref().filter(|_| !self.in_force)?.strip_prefix("failed: ")?;
+        // (What the fix mends, a build that lacked the kernel's headers
+        // or make, isn't the module's doing.)
+        if why.contains("headers aren't installed") || why.contains("make couldn't be run") {
+            return None;
+        }
+        Some(why.split_once("its own words: ").map_or(why, |(_, words)| words).trim())
+    }
+}
+
+/// None where there is nothing for it to change (no xe driver), and
+/// where it isn't offered and nothing of it is here.
+pub fn graphics_pages(places: &Places) -> Option<GraphicsPages> {
+    graphics_pages_where(places, graphics_pages_offered(places))
+}
+
+/// [`graphics_pages`], offered or not.
+pub fn graphics_pages_where(places: &Places, offered: bool) -> Option<GraphicsPages> {
+    let parameters = places.at("/sys/module/olo_gpu_pages/parameters");
+    let in_force = read(&parameters.join("on")).as_deref() == Some("Y");
+    let kept = places.at("/etc/systemd/system/olo-gpu-pages.service").is_file() && std::fs::symlink_metadata(places.at("/etc/systemd/system/multi-user.target.wants/olo-gpu-pages.service")).is_ok();
+    let loaded = parameters.is_dir();
+    let here = loaded || places.at("/etc/systemd/system/olo-gpu-pages.service").is_file();
+    if !here && !(offered && places.at("/sys/module/xe").is_dir()) {
+        return None;
+    }
+    let release = read(&places.at("/proc/sys/kernel/osrelease")).unwrap_or_default();
+    let checked = olo_kmod::builds::running(&places.at("/"), "ttm").is_some_and(|b| olo_kmod::builds::listed(GRAPHICS_PAGES_QUALIFIED, &release, &b));
+    let changed = read(&parameters.join("changed")).and_then(|c| c.parse().ok());
+    let said = read(&places.at("/run/olo-gpu-pages/status")).filter(|s| !s.is_empty());
+    Some(GraphicsPages { loaded, offered, in_force, kept, checked, changed, said, kernel: release })
+}
+
 /// All of it, as it is now.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct State {
@@ -600,10 +695,11 @@ pub struct State {
     pub slow_disks: SlowDisks,
     pub bbr3: Option<Bbr3>,
     pub graphics_memory: Option<GraphicsMemory>,
+    pub graphics_pages: Option<GraphicsPages>,
 }
 
 pub fn look(places: &Places) -> State {
-    State { preemption: preemption(places), turns: turns(places), slow_disks: slow_disks(places), bbr3: bbr3(places), graphics_memory: graphics_memory(places) }
+    State { preemption: preemption(places), turns: turns(places), slow_disks: slow_disks(places), bbr3: bbr3(places), graphics_memory: graphics_memory(places), graphics_pages: graphics_pages(places) }
 }
 
 /// [`look`] for a reader that looks every couple of seconds: everything
@@ -613,12 +709,41 @@ pub fn look(places: &Places) -> State {
 /// fifth time.
 pub fn look_again(places: &Places, before: &State) -> State {
     let on_it = before.bbr3.as_ref().map(|b| b.on_it.clone());
-    State { preemption: preemption(places), turns: turns(places), slow_disks: slow_disks(places), bbr3: bbr3_with(places, on_it), graphics_memory: graphics_memory(places) }
+    State {
+        preemption: preemption(places),
+        turns: turns(places),
+        slow_disks: slow_disks(places),
+        bbr3: bbr3_with(places, on_it),
+        graphics_memory: graphics_memory(places),
+        graphics_pages: graphics_pages(places),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What reading the module's state costs here, on this computer's
+    /// own kernel (`cargo test --release -p olo-system --lib
+    /// what_a_look_at_graphics_pages_costs -- --ignored --nocapture`):
+    /// the Kernel tab reads it every two seconds while it is shown.
+    #[test]
+    #[ignore = "a measurement"]
+    fn what_a_look_at_graphics_pages_costs() {
+        let places = Places::here();
+        const TIMES: u32 = 2_000;
+        let started = std::time::Instant::now();
+        let mut there = 0u32;
+        for _ in 0..TIMES {
+            there += std::hint::black_box(graphics_pages_where(&places, true)).is_some() as u32;
+        }
+        println!("a look at the module's state: {:.1} µs ({there} of {TIMES} found something to say)", started.elapsed().as_secs_f64() * 1e6 / f64::from(TIMES));
+        let started = std::time::Instant::now();
+        for _ in 0..TIMES {
+            std::hint::black_box(graphics_memory(&places));
+        }
+        println!("a look at the live patch's, beside it: {:.1} µs", started.elapsed().as_secs_f64() * 1e6 / f64::from(TIMES));
+    }
 
     fn tree(name: &str) -> (PathBuf, Places) {
         let root = PathBuf::from(format!("/var/tmp/olo-kernel-tuning-{name}-{}", std::process::id()));
@@ -767,7 +892,7 @@ mod tests {
     #[test]
     fn olos_pieces_are_read_from_the_kernel_and_their_services() {
         let (root, places) = tree("pieces");
-        assert_eq!((bbr3(&places), graphics_memory(&places)), (None, None));
+        assert_eq!((bbr3(&places), graphics_memory(&places), graphics_pages_where(&places, true)), (None, None, None));
         put(&places, "proc/sys/net/ipv4/tcp_congestion_control", "cubic\n");
         let b = bbr3(&places).unwrap();
         assert_eq!((b.control.as_str(), b.loaded, b.on(), &b.on_it), ("cubic", false, false, &None));
@@ -808,6 +933,44 @@ mod tests {
         put(&places, "etc/systemd/system/olo-gpu-memory.service", "[Unit]\n");
         put(&places, "etc/systemd/system/multi-user.target.wants/olo-gpu-memory.service", "");
         assert!(graphics_memory(&places).unwrap().on());
+        // The module: not offered and nothing of it here, nothing to say;
+        // offered, nothing in the kernel yet; in and switched on, but not
+        // kept; kept; switched off by hand; and whether this kernel's
+        // build is one it was checked on.
+        assert_eq!(graphics_pages_where(&places, false), None);
+        let fresh = graphics_pages_where(&places, true).unwrap();
+        assert_eq!(fresh, GraphicsPages { offered: true, kernel: fresh.kernel.clone(), ..Default::default() });
+        put(&places, "sys/module/olo_gpu_pages/parameters/on", "Y\n");
+        put(&places, "sys/module/olo_gpu_pages/parameters/changed", "5120\n");
+        put(&places, "run/olo-gpu-pages/status", "in force\n");
+        let g = graphics_pages_where(&places, false).expect("in: said, offered or not");
+        assert_eq!((g.in_force, g.kept, g.on(), g.changed, g.said.as_deref(), g.checked), (true, false, false, Some(5120), Some("in force"), false));
+        put(&places, "etc/systemd/system/olo-gpu-pages.service", "[Unit]\n");
+        put(&places, "etc/systemd/system/multi-user.target.wants/olo-gpu-pages.service", "");
+        assert!(graphics_pages_where(&places, false).unwrap().on());
+        put(&places, "sys/module/olo_gpu_pages/parameters/on", "N\n");
+        assert!(!graphics_pages_where(&places, false).unwrap().on());
+        // (The first build on the list, as the kernel shows its own and its module's.)
+        let (line, write) = (GRAPHICS_PAGES_QUALIFIED.lines().find(|l| !l.starts_with('#') && !l.trim().is_empty()).unwrap(), |path: &str, bytes: Vec<u8>| {
+            std::fs::create_dir_all(places.at(path).parent().unwrap()).unwrap();
+            std::fs::write(places.at(path), bytes).unwrap();
+        });
+        let words: Vec<&str> = line.split_whitespace().collect();
+        write("sys/kernel/notes", olo_kmod::builds::notes_for_tests(words[1]));
+        write("sys/module/ttm/notes/.note.gnu.build-id", olo_kmod::builds::notes_for_tests(words[2]));
+        assert!(!graphics_pages_where(&places, false).unwrap().checked, "another release");
+        put(&places, "proc/sys/kernel/osrelease", &format!("{}\n", words[0]));
+        assert!(graphics_pages_where(&places, false).unwrap().checked);
+        // Kept out, in the module's own words; what the fix mends isn't that.
+        let mut g = GraphicsPages { said: Some("failed: the kernel didn't take the module: Operation not supported (os error 95); its own words: this kernel's pool isn't the one this was written for (as it comes, the 2 MB try's flags are 0x392cc2 and the 1 MB try's 0x392cc2)".into()), ..Default::default() };
+        assert_eq!(g.kept_out(), Some("this kernel's pool isn't the one this was written for (as it comes, the 2 MB try's flags are 0x392cc2 and the 1 MB try's 0x392cc2)"));
+        g.said = Some("failed: this kernel's headers aren't installed (the kernel-devel package for 7.3.4-300.fc45.x86_64)".into());
+        assert_eq!(g.kept_out(), None);
+        g.said = Some("failed: the kernel refused the module (Key was rejected by service): with Secure Boot it loads only signed ones".into());
+        assert_eq!(g.kept_out(), Some("the kernel refused the module (Key was rejected by service): with Secure Boot it loads only signed ones"));
+        g.in_force = true;
+        assert_eq!(g.kept_out(), None);
+        assert_eq!(Setting::parse("graphics-pages"), Some(Setting::GraphicsPages));
         assert_eq!(Setting::parse("slow-disks"), Some(Setting::SlowDisks));
         assert!(Setting::ALL.iter().all(|s| Setting::parse(s.word()) == Some(*s)));
         let _ = std::fs::remove_dir_all(root);

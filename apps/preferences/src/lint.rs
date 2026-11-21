@@ -405,6 +405,12 @@ fn ui_lint_settings_index() {
                 if group == "Mail" && name == "Remove" {
                     continue;
                 }
+                // (The Kernel tab's Drawing box is there only where its
+                // module is, until the module is offered: the palette
+                // would lead to a tab without it.)
+                if group == "Drawing" && panel.arg() == "performance" && !olo_system::kernel_tuning::GRAPHICS_PAGES_OFFERED {
+                    continue;
+                }
                 let name = if group == "One-Time Codes" && name.starts_with("Text messages to ") {
                     "Text Messages".to_owned()
                 } else if group == "One-Time Codes" && name.starts_with("Mail to ") {

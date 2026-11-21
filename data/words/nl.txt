@@ -5250,6 +5250,9 @@ Taal en regio
 Large
 Groot
 
+Large pieces
+Grote stukken
+
 Larger
 Groter
 
@@ -6285,6 +6288,9 @@ Nooit vervagen
 Never since the computer started
 Geen enkele keer sinds het opstarten
 
+Never wait for large pieces of graphics memory
+Nooit wachten op grote stukken grafisch geheugen
+
 New
 Nieuw
 
@@ -7103,6 +7109,9 @@ Opstartscherm van Olo
 
 Olo's login screen
 Aanmeldscherm van Olo
+
+Olo's module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
+Olo’s module controleert de kernel bij het laden en is buiten deze gebleven. Olo Doctor zegt waarom.
 
 Olo's own
 Van Olo
@@ -10382,6 +10391,9 @@ Het model
 The model wasn't good enough to keep
 Het model was niet nauwkeurig genoeg om te bewaren
 
+The module
+De module
+
 The most powerful (the processor)
 De krachtigste (de processor)
 
@@ -10735,6 +10747,9 @@ Deze kernel kan geen limiet per schijf instellen. Dat kan vanaf Linux 6.2.
 
 This kernel has one way of preempting only: it wasn't built to be told another.
 Deze kernel is gebouwd met één vaste preëmptiemodus.
+
+This kernel's build hasn't been checked yet: Olo's module stays out until an Olo update checks it.
+Deze kernelbuild is nog niet gecontroleerd: Olo’s module blijft erbuiten tot een update van Olo hem controleert.
 
 This keyboard has no backlight.
 Dit toetsenbord heeft geen achtergrondverlichting.
@@ -11861,6 +11876,9 @@ Hoe laat komt de zon morgen op?
 When held for:
 Bij ingedrukt houden gedurende:
 
+When no large piece is free, Intel's driver takes smaller ones and windows keep drawing (Olo's module, olo_gpu_pages).
+Zonder vrij groot stuk neemt Intels stuurprogramma kleinere en blijven vensters tekenen (Olo’s module, olo_gpu_pages).
+
 When pressed:
 Bij indrukken:
 
@@ -11971,6 +11989,9 @@ Venster
 
 Window Arrangement
 Vensterindeling
+
+Window Buffers
+Vensterbuffers
 
 Window Size
 Venstergrootte
@@ -12503,6 +12524,12 @@ in de komende week
 in the next {} days
 in de komende {} dagen
 
+in the running kernel
+in de draaiende kernel
+
+in the running kernel, switched off
+in de draaiende kernel, uitgeschakeld
+
 in {n} days
 one: over {n} dag
 other: over {n} dagen
@@ -12644,6 +12671,9 @@ geen bekabeld netwerk: wacht op verbinding
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
+not in the running kernel
+niet in de draaiende kernel
+
 not parts of it: {}; its parts are {}
 horen er niet bij: {}. De onderdelen zijn {}
 
@@ -12652,6 +12682,9 @@ nog niet ingesteld
 
 not understood: {}
 niet herkend: {}
+
+not yet on this kernel's build, {}
+nog niet op deze kernelbuild, {}
 
 not yet on this kernel's series, {}
 nog niet voor deze kernelserie, {}
@@ -12719,6 +12752,9 @@ op accu
 
 on battery: it waits for power
 op accuvoeding: wacht op netvoeding
+
+on this kernel's build, {}
+op deze kernelbuild, {}
 
 on this kernel's series, {}
 voor deze kernelserie, {}
@@ -13355,6 +13391,9 @@ other: {n} weken
 
 {} applications are keeping the display awake.
 {} apps houden het scherm wakker.
+
+{} asked for, none waited for
+{} gevraagd, zonder wachten
 
 {} at {}
 {} om {}

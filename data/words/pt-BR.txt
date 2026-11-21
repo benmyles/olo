@@ -5250,6 +5250,9 @@ Idioma e região
 Large
 Grande
 
+Large pieces
+Blocos grandes
+
 Larger
 Maior
 
@@ -6285,6 +6288,9 @@ Nunca esmaecer
 Never since the computer started
 Nenhuma vez desde a inicialização
 
+Never wait for large pieces of graphics memory
+Nunca esperar por blocos grandes de memória gráfica
+
 New
 Novo
 
@@ -7103,6 +7109,9 @@ Tela de inicialização do Olo
 
 Olo's login screen
 Tela de login do Olo
+
+Olo's module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
+O módulo do Olo verifica o kernel ao ser carregado e ficou de fora deste. O Olo Doctor diz por quê.
 
 Olo's own
 Do Olo
@@ -10382,6 +10391,9 @@ O modelo
 The model wasn't good enough to keep
 O modelo foi descartado por falta de precisão
 
+The module
+O módulo
+
 The most powerful (the processor)
 O mais potente (processador)
 
@@ -10735,6 +10747,9 @@ Este kernel não permite definir um limite por disco. Esse recurso exige Linux 6
 
 This kernel has one way of preempting only: it wasn't built to be told another.
 Este kernel foi compilado com um único modo de preempção.
+
+This kernel's build hasn't been checked yet: Olo's module stays out until an Olo update checks it.
+Esta compilação do kernel ainda não foi verificada: o módulo do Olo fica de fora até que uma atualização do Olo a verifique.
 
 This keyboard has no backlight.
 Este teclado não tem iluminação.
@@ -11861,6 +11876,9 @@ A que horas o sol nasce amanhã?
 When held for:
 Ao manter pressionado por:
 
+When no large piece is free, Intel's driver takes smaller ones and windows keep drawing (Olo's module, olo_gpu_pages).
+Quando não há um bloco grande livre, o driver da Intel pega blocos menores e as janelas continuam desenhando (módulo do Olo, olo_gpu_pages).
+
 When pressed:
 Ao pressionar:
 
@@ -11971,6 +11989,9 @@ Janela
 
 Window Arrangement
 Organização das janelas
+
+Window Buffers
+Buffers das janelas
 
 Window Size
 Tamanho da janela
@@ -12503,6 +12524,12 @@ na próxima semana
 in the next {} days
 nos próximos {} dias
 
+in the running kernel
+no kernel em execução
+
+in the running kernel, switched off
+no kernel em execução, desligado
+
 in {n} days
 one: daqui a {n} dia
 other: daqui a {n} dias
@@ -12644,6 +12671,9 @@ sem rede com fio: aguardando conexão
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
+not in the running kernel
+fora do kernel em execução
+
 not parts of it: {}; its parts are {}
 não fazem parte: {}. As partes são {}
 
@@ -12652,6 +12682,9 @@ ainda não configurado
 
 not understood: {}
 não reconhecido: {}
+
+not yet on this kernel's build, {}
+ainda não nesta compilação, {}
 
 not yet on this kernel's series, {}
 ainda indisponível para a série deste kernel, {}
@@ -12719,6 +12752,9 @@ na bateria
 
 on battery: it waits for power
 na bateria: aguardando alimentação
+
+on this kernel's build, {}
+nesta compilação do kernel, {}
 
 on this kernel's series, {}
 na série deste kernel, {}
@@ -13355,6 +13391,9 @@ há {} · clique em um gráfico para ver outro momento
 
 {} applications are keeping the display awake.
 {} aplicativos estão mantendo a tela ligada.
+
+{} asked for, none waited for
+{} pedidos, sem espera
 
 {} at {}
 {} às {}

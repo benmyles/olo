@@ -1,0 +1,32 @@
+# olo-gpu-pages: no program is held for a 2 MB piece of graphics memory
+# (apps/gpu-pages). Intel's graphics driver (xe) has the kernel put 2 MB
+# pieces of memory together for every buffer, on the thread that made
+# the buffer, and that thread draws: windows stop for up to half a
+# second while memory is in small pieces. At each start this builds
+# Olo's module (kernel/gpu-pages, olo_gpu_pages) for the running kernel
+# where it hasn't yet, and loads it: a large piece that is free is
+# taken, the kernel's own threads make more, and no program waits.
+# Installed by Olo Doctor ("Never Wait for Large Pieces").
+# To go back:
+#   sudo systemctl disable --now olo-gpu-pages.service
+[Unit]
+Description=Olo: no program waits for a large piece of graphics memory (a module for the running kernel)
+After=local-fs.target systemd-modules-load.service systemd-udev-trigger.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/libexec/olo/olo-gpu-pages
+ExecStop=/usr/local/libexec/olo/olo-gpu-pages --remove
+StateDirectory=olo-gpu-pages
+# (How it went, for Olo Doctor: there while it's in, and after a failure.)
+RuntimeDirectory=olo-gpu-pages
+RuntimeDirectoryPreserve=yes
+# (A new kernel's first start builds the module for it: a few seconds.)
+TimeoutStartSec=300
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateNetwork=yes
+
+[Install]
+WantedBy=multi-user.target

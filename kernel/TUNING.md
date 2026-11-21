@@ -799,32 +799,229 @@ that day's first trace already had Chrome held compacting for 2 MB
 pieces 37 times in 20 s. It has run 7.3.4 since that evening, and what
 follows is of 7.3.
 
-| thread, 157 s with a linker looping beside the usual load | compacting | longest | reclaiming | longest |
-|---|---|---|---|---|
-| Chrome's main threads | 389 times, 563 ms | 12.7 ms | 158 times, 84 ms | 26.4 ms |
-| kit apps' drawing threads ("display") | 76 times, 231 ms | 24.9 ms | 28 times, 2 ms | 0.2 ms |
-| the compositor's loop | 34 times, 63 ms | 8.5 ms | 12 times, 11 ms | 3.4 ms |
-| kit apps' window threads | 6 times, 10 ms | 2.8 ms | once | 0.2 ms |
+Ten minutes of the usual load, a build among it (each hold attributed
+to `ttm_pool_alloc_page` being on the thread's stack):
 
-every one of them from `xe_ttm_tt_populate`, and none of those
-programs asked for a huge page. Under the usual load alone (188 s):
-Chrome 27 and 23 times (23.1 and 17.9 ms the longest), the compositor
-once (5.3 ms). A frame at 120 Hz is 8.3 ms.
+| thread | held | in all | longest | of 4 ms and over |
+|---|---|---|---|---|
+| Chrome's main threads (its GPU process) | 591 times | 4.2 s | 327 ms | 119 |
+| one of Chrome's pool threads | 144 times | 1.6 s | 502 ms | 31 |
+| kit apps' drawing threads ("display") | 37 times | 1.0 s | 390 ms | 13 |
+| a kit app's window thread | 64 times | 0.6 s | 458 ms | 5 |
+| the compositor's loop | 11 times | 13 ms | 7.3 ms | 1 |
+
+every one from `xe_ttm_tt_populate`, and none of those programs asked
+for a huge page. A frame at 120 Hz is 8.3 ms. (The same ten minutes had
+a video encoder's threads and a virtual machine's held far longer for
+huge pages they did ask for: theirs to wait for, above.) With a linker
+looping beside it for 157 s the compositor's loop was held 34 times,
+8.5 ms the longest.
 
 Nothing the kernel offers turns it off (`/sys/module/xe/parameters`,
 `/sys/module/ttm/parameters`: nothing for it; `defrag` is for a
-program's own pages). What it should do for a desktop is what it does
-for every other size: take a 2 MB piece that is free, wake the
-kernel's own threads to make more, and go on with smaller pieces. A
-piece of Olo's own in the kernel for that is being designed (docs/TODO.md,
-"Nothing may hold the desktop up"); this section will say what was
-built and what it measured.
+program's own pages).
+
+### What was built: `olo_gpu_pages`
+
+With Astra from the design on, as Ben said of anything in the kernel:
+a design review, then four reviews of what was built and of what was
+built around it; all in guests on this kernel, each with must-fix
+findings made to happen there, all of them taken. The last ends: "yes
+to one owner-authorized trial" on this one build; "the public offer
+stays on hold".
+
+**What it does.** For one PCI device, bound to xe, the pool's 2 MB try
+is made without `__GFP_DIRECT_RECLAIM` (and `__GFP_KSWAPD_RECLAIM`
+kept): a 2 MB piece that is free is taken, the kernel's own threads may
+be woken to make more, and otherwise the pool goes on with smaller
+pieces, as it does by itself when a size is refused. Every other size,
+single pages and every other device's pool are as the kernel has them.
+Background reclaim stays because it is what makes the next large piece:
+in the fragmented guest, with it 28 wakes of the compactor and 9 large
+pieces got; with both kinds of reclaim off, none of either.
+
+**How.** A probe at `ttm_pool_alloc_page()`'s entry (a kprobe on the
+function's ftrace site) that changes its gfp argument, the kernel's own
+function then running. Not a live patch of the function, which would
+carry a copy of its body, its private struct and its accounting, to be
+kept true to every kernel build. The first review preferred the live
+patch and the second, asked to break the choice, did not hold to it
+("D1 is not a must-fix. Exact-build qualification is.").
+
+**What the reviews changed**, each shown in a guest before it was
+taken:
+
+- *Only the pool's hard try, for one driver.* The first draft took
+  direct reclaim off every size above a page for every driver.
+- *A probe can be in and change nothing* (probes disarmed for the
+  whole kernel: `insmod` succeeds, the flags are the kernel's own). So
+  the module checks itself as it loads, watching the page allocator's
+  tracepoint for what reaches it, and doesn't load unless the change
+  arrived.
+- *It must not touch anything real before it knows the kernel.* The
+  first build registered its probe switched on and then checked: in a
+  7.2.15 guest it refused to load twelve times, and 5,539 of another
+  task's 100,000 buffers had their try changed meanwhile. Now, until
+  the check has passed, the probe compares the pool's address with the
+  module's own test pool before it reads anything, and changes only
+  that pool's try, on the loading task (0 of 100,000).
+- *The check must go the way real buffers will.* The first build's
+  check had a way round the test of the driver's name: a module with
+  that test broken passed its check, announced success, and changed
+  nothing. Now the test pool's owner is the device itself, so the check
+  passes only through the same test. The device and its driver's module
+  are held while the module is loaded, and the probe compares pointers
+  (the name was read from a driver that could be going).
+- *Where a build keeps the function's arguments is not something a
+  module can check as it loads* (a build that passed them elsewhere
+  would have the probe read a pool that isn't one before any check
+  could refuse). So the module is loaded only into kernel builds on a
+  list, `kernel/gpu-pages/QUALIFIED`: the kernel's build ID, its ttm
+  module's, and the build of Olo's live patch that was in the kernel
+  beside it (a live patch changes the kernel under the same notes: the
+  module loads with none, or with exactly that one). A new kernel is
+  not on it: the module stays out, said as such, until it has been
+  qualified and an Olo with its line installed.
+- *No tool certifies a build.* `tools/dev/gpu-pages-check --qualify`
+  runs the guests on the very build (its IDs read inside each) and
+  reads what it can of the function (its shape from the kernel's type
+  information; its machine code taking the order, the flags and the
+  pool from the registers the probe reads; the branches to it). The
+  third review fed that reading shapes the probe would misread (two
+  argument registers exchanged, an address taken and never read, a
+  clone of the function, a jump into its middle) and it passed all
+  four; it also crashed at its last step, having never been run through
+  its own entry point. So it says a build's words and that they are
+  pending a person's review, which the list's own header sets out
+  (caller and callee at the probe's site, the function's range and
+  clones, every relocation in code and data, the pool's layout, the
+  falling back on refusal), and who read what goes in the commit that
+  adds a line.
+- *Kernels before 7.3 are another policy.* Their pool waits at 1 MB too
+  (`0x392cc2` at both sizes in a 7.2.15 guest): the module refuses them
+  rather than leave a blocking try one size down.
+- The check tool's own assertions were weaker than they read (it
+  passed with rows deleted from its input): they now check each trial's
+  exit, each size's row, the page totals and the fallback.
+- *The service switched on a module it never loaded.* With a module in
+  the kernel already (a trial's, switched off), on a build that wasn't
+  listed and with no device, `olo-gpu-pages` wrote its switch on. It
+  now gives each load a name of its own, loads it switched off,
+  switches on only what carries that name, for the device, in a kernel
+  still as it was checked, built for that very build; and removes
+  only its own, switched off first. It and the trial take one lock.
+- *The trial tool could leave its module in and on.* Its first form
+  went on to load after a warning in the phase before, called a run
+  whose tracing never attached a success, removed whatever module was
+  there, and after a kill left the module changing tries for good.
+  Now: the kernel's log is followed record by record from the first
+  phase (a record lost ends it); tracing must attach whole; the load
+  carries the trial's name and only that is removed; and a trial's
+  load is on only while the trial holds a switch of the module's open
+  (/dev/olo_gpu_pages_trial_switch), so whatever ends the trial puts
+  the kernel's own behaviour back. The tool itself is run in guests
+  (`gpu-pages-check --trial-tool`): to its end (344 tries changed, no
+  holds in a guest, so it says it says nothing either way); and
+  stopped while its module is on by a kernel warning (off 2 ms later,
+  out of the kernel), a SIGTERM (7 ms) and a SIGKILL (2 ms, still in
+  as the trial's own, out with `rmmod`).
+- *Held back means held back for everyone.* A switch in the
+  environment had Olo Doctor offer it on a real computer, and a module
+  put in by hand made the Kernel tab's switch pressable. Now nothing
+  switches it on while it isn't offered, whatever is in the kernel;
+  what is shown (in the kernel, switched off) is not what may be done.
+- *The fourth review, of how the third's were taken*: the module's
+  code unchanged by it and the service's branches the same; two faults
+  left in the trial tool. A kernel warning that doesn't call itself
+  one (the graphics driver's own "VM worker error", at warning level)
+  didn't stop it: the module was still on a quarter of a second later,
+  and the run ended saying nothing of it (any record at warning level
+  or worse now ends the trial). And a phase in which no frame was late
+  ended a healthy trial (`journalctl -g` ends 1 where nothing
+  matches, as it does where it can't read: the lines are now picked
+  out here). Its own test gained what it didn't exercise, in the same
+  guest: tracing that fails, tracing with a probe missing, a warning
+  with nothing loaded yet (each must stop it before it loads
+  anything), and another's load getting in first (left as it was);
+  and it runs the real journalctl. The qualifier now holds the live
+  patches to the rule the service and the trial do.
+- *What the list's fourth word is, and isn't.* The same source,
+  kernel and compiler gave Olo's live patch another build ID when it
+  was built in another folder (the folder's name is in its debugging
+  data): the ID listed is of the one `olo-gpu-memory` builds in
+  /var/lib/olo-gpu-memory/RELEASE. Whether another computer's comes
+  out the same there is not known. Before it is offered beyond this
+  computer: that shown, or each computer's build qualified by itself.
+
+**In guests** (`tools/dev/gpu-pages-check`; a guest has no GPU, so a
+module of ours fills a pool with xe's flags, owned by QEMU's host
+bridge bound to a stand-in driver named xe): in memory with one page
+kept of every free 2 MB piece, 64 buffers of 2 MB:
+
+| | as the kernel has it | with the module |
+|---|---|---|
+| the thread went compacting | 113 times | never |
+| the thread went reclaiming | 56 times | never |
+| tries for 2 MB given | 12 of 64 | 8 of 64 |
+| the kernel's compactor woken | 0 times | 32 times |
+| every buffer filled | yes | yes |
+
+Beside Olo's live patch in the same module of the kernel, either
+loaded first; `on` written 0 puts the kernel's own behaviour back
+without unloading; unloaded during 100,000 fills, the rest ran with the
+kernel's flags; a suspend and resume of the guest's devices changed
+nothing. A fill of one page costs 80 ns without the module and 95 to
+98 with it loaded (the reviewer's guest, one processor of the host's
+kept to it; 82 and 96 to 107 here): 15 ns, the probe.
+
+**What it gives up, and is not yet known.** With 384 buffers held at
+once in memory fragmented with movable pages (the reviewer's guests,
+one pair): 181 pieces of 2 MB got where the kernel's own way got 271,
+100,942 single pages where it took 50,062, and the longest whole fill
+98.6 ms against 68.1 (why isn't known: that run recorded no reclaim
+for single pages at all, and the fixture times whole fills). Fewer
+large pieces may be more page-table work for the GPU, which no guest
+has. Its count, `changed`, is of tries made without waiting allowed,
+whether or not they would have waited: it is not waits spared. No
+guest can say what any of it is worth against a window that stops for
+half a second.
+
+**So it is built, checked and not offered.** `olo-gpu-pages` installs
+and loads it; Olo Doctor and Preferences ▸ Performance ▸ Kernel say
+what there is where it is in or installed; neither offers it, and
+nothing switches it on (`kernel_tuning::GRAPHICS_PAGES_OFFERED`).
+
+*The trial*, on a computer with Intel's graphics and with its owner's
+word: `sudo tools/dev/gpu-pages-try --on-this-computer` (the one build
+on the list, its live patches as checked, nothing else at work on the
+module). It ends 0 only if its phases with the module off reproduced a
+hold of 4 ms and its phases on changed tries; anything else says
+nothing either way. Its figures go here.
+
+*And before it is offered*, by the third review's word, more than that
+trial: the same matched runs repeated, with what the person sees
+measured beside them (frames and input to the display, their tails;
+the GPU's work done; the kernel's own threads' work), once more with
+no tracing at all (the tracer costs a cheap call 350 to 600 ns); the
+service unloading before the driver is removed, and choosing again
+after the device is replaced (the module holds the driver's module,
+which blocks `modprobe -r xe` and nothing else; a new device at the
+same address is another object, and the old load would cover nothing);
+a real xe suspend, resume and reset with it in; and in guests the
+cases not yet covered (pools that use coherent DMA memory, another
+size named, a fill that fails part way, a restore).
+
+For the driver's people, to carry in the kernel itself: a pool flag
+selected by xe, three lines (docs/reports/ttm-pool-holds.md, a draft
+for Ben to send).
 
 Seen beside it, and not yet weighed: xe makes a new display page table
 for every page flip (`intel_plane_pin_fb` → `__xe_pin_fb_vma_dpt` →
-`xe_bo_create_pin_map`: 180 a second on the compositor's loop here, of
+`xe_bo_create_pin_map`: 180 a second on the compositor's loop here,
 3 µs each in the middle and 6.5 ms at worst in 45 s with no one held
-making room), where i915 kept one for each framebuffer.
+making room; small, 64 KB for a 32 MB framebuffer, a size the pool
+doesn't wait for), where i915 kept one for each framebuffer. In the
+same draft.
 
 ## Tried and withdrawn
 

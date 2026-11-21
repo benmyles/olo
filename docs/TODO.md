@@ -230,24 +230,61 @@ something nobody here has is in "Blocked", with what it waits for.
   is the one that waits; deferring them is a trade, and isn't
   offered. **But the threads that draw were held for 2 MB pieces
   too, having asked for none: the GPU driver's memory pool asks on
-  their behalf** (`sudo tools/dev/memory-holds`, new: Chrome's GPU
-  process up to 26 ms, a kit app's drawing thread 25 ms, the
-  compositor's loop 8.5 ms, with a linker looping beside the usual
-  load; Linux 7.3 has the pool try hard for them, and 7.2 waited
-  more lightly at every size; TUNING.md, "Graphics memory in 2 MB
-  pieces"). **Now**: a piece of Olo's own in the kernel that has the
-  pool never wait for a large piece (take a free one, wake the
-  kernel's own threads, go on with smaller ones), designed, built
-  and reviewed with Astra as Ben said of anything in the kernel; in
-  a guest first, with a module that fills a pool in memory left in
-  small pieces; then Olo Doctor's offer and its place in the Kernel
-  tab (the sixth box of six), and on Ben's computer only by their
-  pressing it. With it: the write-up of it for the driver's people
-  (Ben's to send); xe's page table made anew for every page flip
-  (180 a second on the compositor's loop) weighed; and whether Olo's
-  own programs make more GPU buffers than they need (a kit app's
-  drawing thread and the compositor each had pages got for buffers
-  all the time: `memory-holds` counts them). Not it: the
+  their behalf** (`sudo tools/dev/memory-holds`, new; ten minutes of
+  the usual load: Chrome's GPU process held 591 times, the longest
+  327 ms, a kit app's drawing thread 390 ms, a window's thread
+  458 ms, the compositor's loop 7 ms; Linux 7.3 has the pool try
+  hard for them; TUNING.md, "Graphics memory in 2 MB pieces").
+  **Built** (2026-11-21, with Astra from the design on, as Ben said
+  of anything in the kernel: a design review and four reviews of
+  what was built, every must-fix taken; the last says yes to one
+  trial on this build with its owner's word, and the offer stays
+  held): `olo_gpu_pages`,
+  a module whose probe has the pool's 2 MB try made without waiting
+  for one device on xe; it checks itself as it loads before it
+  touches anything real, and is loaded only into a kernel it was
+  checked in (`kernel/gpu-pages/QUALIFIED`); its service names its
+  load and touches no other; Olo Doctor's card and the Kernel tab's
+  sixth box (Drawing) say what is so. **Not offered, and nothing
+  switches it on** (`GRAPHICS_PAGES_OFFERED`): in guests it ends the
+  holds, and no guest can say what it does to frames. **Waiting on
+  Ben's word**: the trial on this computer, `sudo
+  tools/dev/gpu-pages-try --on-this-computer` (twelve minutes, with a
+  build looping and windows drawing beside it the same in every
+  phase: on only while the tool holds the module's switch open, so
+  whatever ends it puts the kernel back; itself tried in guests,
+  stopped three ways). Then, before it is offered (TUNING.md has the
+  review's list): the same runs repeated with frames, input and the
+  GPU's work measured beside them and once with no tracing; the
+  service around the driver's removal and the device's replacement;
+  a real suspend, resume and reset; the guests' cases not yet
+  covered. Still to do around it:
+  - the write-up for the driver's people is drafted
+    (docs/reports/ttm-pool-holds.md: a pool flag selected by xe,
+    three lines; and xe's display page table made anew for every
+    page flip, 180 a second on the compositor's loop), Ben's to
+    send;
+  - **every new kernel is out until a person has read it**
+    (HACKING, "To qualify a kernel"). To do: the reading made
+    quicker without being made less (the next kernel's ttm module
+    read from its package before it is installed, as
+    `tools/dev/kernel-next` fetches it; the guests run on it), so an
+    Olo update can carry its line as the kernel arrives; and whether
+    the live patch's build is the same on every computer with the
+    same kernel and compiler (the list's fourth word assumes it: if
+    not, what is listed is that it was built from this Olo's source,
+    another way);
+  - kernels 6.19 to 7.2 wait at every size down to two pages, more
+    lightly: another rule (every size above a page) with another
+    trade, to be qualified by itself if anyone runs them;
+  - whether Olo's own programs make more GPU buffers than they
+    need (`memory-holds` counts each program's);
+  - from the looks: a "Check for Updates" button in the box's "not
+    checked yet" state; Olo Doctor's cards with nothing to press
+    start their label where a mark would be (a gap at their left)
+    and are still called Recommended ("Olo Doctor's report, from
+    the reviewers' looks at it", below).
+  Not it: the
   GPU's clock (it stands at 700 of 2450 MHz because the GPU is idle
   half the time; a floor of 1600 changed nothing and it rose to
   2450 by itself under load), processor load alone on the
@@ -1404,6 +1441,11 @@ something nobody here has is in "Blocked", with what it waits for.
   reference rather than reason (how a thing is undone) in the quiet
   colour, which wants spans within a `StringView`.
 
+  And of 2026-11-21 (the card for graphics memory): a card with
+  nothing to press starts its label where a mark would be, leaving a
+  gap at its left that reads as a control that failed to draw (start
+  it at the text's left edge); and such a card is still "Recommended"
+  with nothing to do (a quieter word, or leave it).
 - **The kit, from the looks at Doctor's greyed mark and its tip**
   (2026-11-21, both reviewers, neither this change's): (a) a tip
   reads as part of the text under it: its edge falls on the text's

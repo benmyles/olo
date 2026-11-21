@@ -5230,6 +5230,9 @@ Language & Region
 Large
 大
 
+Large pieces
+大きな領域
+
 Larger
 大きく
 
@@ -6265,6 +6268,9 @@ Never fade
 Never since the computer started
 起動後は一度もなし
 
+Never wait for large pieces of graphics memory
+描画用メモリの大きな領域を待たない
+
 New
 新規
 
@@ -7083,6 +7089,9 @@ Oloの起動画面
 
 Olo's login screen
 Oloのログイン画面
+
+Olo's module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
+Oloのモジュールは読み込み時にカーネルを確認し、このカーネルには入りませんでした。理由はOlo Doctorでわかります。
 
 Olo's own
 Olo標準
@@ -10357,6 +10366,9 @@ The model
 The model wasn't good enough to keep
 精度が不十分なためモデルは保存されませんでした
 
+The module
+モジュール
+
 The most powerful (the processor)
 最も高性能（CPU）
 
@@ -10710,6 +10722,9 @@ This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 
 This kernel has one way of preempting only: it wasn't built to be told another.
 このカーネルはプリエンプション方式が固定されており、変更できません。
+
+This kernel's build hasn't been checked yet: Olo's module stays out until an Olo update checks it.
+このカーネルのビルドは未確認です。Oloのアップデートで確認されるまで、Oloのモジュールは読み込まれません。
 
 This keyboard has no backlight.
 このキーボードにバックライトはありません。
@@ -11836,6 +11851,9 @@ When does the sun rise tomorrow?
 When held for:
 長押し時間:
 
+When no large piece is free, Intel's driver takes smaller ones and windows keep drawing (Olo's module, olo_gpu_pages).
+大きな空き領域がないときは、Intelドライバーが小さな領域を使うので、ウィンドウの描画は止まりません（Oloのolo_gpu_pagesモジュール）。
+
 When pressed:
 押したとき:
 
@@ -11946,6 +11964,9 @@ Window
 
 Window Arrangement
 ウィンドウ配置
+
+Window Buffers
+ウィンドウのバッファー
 
 Window Size
 ウィンドウサイズ
@@ -12475,6 +12496,12 @@ in the next week
 in the next {} days
 今後{}日間
 
+in the running kernel
+実行中のカーネルにあり
+
+in the running kernel, switched off
+実行中のカーネルにあり（オフ）
+
 in {n} days
 other: {n}日後
 
@@ -12613,6 +12640,9 @@ no wired network: it waits for one
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
+not in the running kernel
+実行中のカーネルになし
+
 not parts of it: {}; its parts are {}
 対象外：{}。対象は{}です
 
@@ -12621,6 +12651,9 @@ not set up yet
 
 not understood: {}
 認識できません：{}
+
+not yet on this kernel's build, {}
+このビルド（{}）は未確認
 
 not yet on this kernel's series, {}
 このカーネル系列（{}）にはまだありません
@@ -12687,6 +12720,9 @@ on battery
 
 on battery: it waits for power
 バッテリー駆動中：電源接続待ち
+
+on this kernel's build, {}
+このカーネルのビルド（{}）
 
 on this kernel's series, {}
 このカーネル系列（{}）に対応
@@ -13263,6 +13299,9 @@ other: {n}週間
 
 {} applications are keeping the display awake.
 {}個のアプリがディスプレイのスリープを妨げています。
+
+{} asked for, none waited for
+{} 件を要求、待ちなし
 
 {} at {}
 {} {}

@@ -5250,6 +5250,9 @@ Language & Region
 Large
 बड़ा
 
+Large pieces
+बड़े टुकड़े
+
 Larger
 और बड़ा
 
@@ -6285,6 +6288,9 @@ Never fade
 Never since the computer started
 कंप्यूटर शुरू होने के बाद एक बार भी नहीं
 
+Never wait for large pieces of graphics memory
+ग्राफ़िक्स मेमोरी के बड़े टुकड़ों का इंतज़ार कभी न करें
+
 New
 नया
 
@@ -7103,6 +7109,9 @@ Olo की बूट स्क्रीन
 
 Olo's login screen
 Olo की लॉगिन स्क्रीन
+
+Olo's module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
+Olo का मॉड्यूल लोड होते समय कर्नेल को जाँचता है, और वह इस कर्नेल से बाहर रहा। कारण Olo Doctor बताता है।
 
 Olo's own
 Olo का अपना
@@ -10382,6 +10391,9 @@ The model
 The model wasn't good enough to keep
 मॉडल का नतीजा अच्छा नहीं था, इसलिए उसे नहीं रखा गया
 
+The module
+मॉड्यूल
+
 The most powerful (the processor)
 सबसे शक्तिशाली (प्रोसेसर)
 
@@ -10735,6 +10747,9 @@ This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 
 This kernel has one way of preempting only: it wasn't built to be told another.
 यह कर्नेल सिर्फ़ एक प्रीएम्प्शन विधि के साथ बना है। इसे बदला नहीं जा सकता।
+
+This kernel's build hasn't been checked yet: Olo's module stays out until an Olo update checks it.
+इस कर्नेल बिल्ड की जाँच अभी नहीं हुई है: जब तक Olo का कोई अपडेट इसे जाँच न ले, Olo का मॉड्यूल बाहर रहता है।
 
 This keyboard has no backlight.
 इस कीबोर्ड में बैकलाइट नहीं है।
@@ -11861,6 +11876,9 @@ When does the sun rise tomorrow?
 When held for:
 इतनी देर दबाने पर:
 
+When no large piece is free, Intel's driver takes smaller ones and windows keep drawing (Olo's module, olo_gpu_pages).
+जब कोई बड़ा टुकड़ा खाली नहीं होता, तो Intel का ड्राइवर छोटे टुकड़े ले लेता है और विंडो बनती रहती हैं (Olo का मॉड्यूल, olo_gpu_pages)।
+
 When pressed:
 दबाने पर:
 
@@ -11971,6 +11989,9 @@ Window
 
 Window Arrangement
 विंडो व्यवस्था
+
+Window Buffers
+विंडो के बफ़र
 
 Window Size
 विंडो का आकार
@@ -12503,6 +12524,12 @@ in the next week
 in the next {} days
 अगले {} दिनों में
 
+in the running kernel
+चल रहे कर्नेल में
+
+in the running kernel, switched off
+चल रहे कर्नेल में, बंद
+
 in {n} days
 one: {n} दिन में
 other: {n} दिनों में
@@ -12644,6 +12671,9 @@ no wired network: it waits for one
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
+not in the running kernel
+चल रहे कर्नेल में नहीं
+
 not parts of it: {}; its parts are {}
 इसके भाग नहीं हैं: {}। इसके भाग हैं {}
 
@@ -12652,6 +12682,9 @@ not set up yet
 
 not understood: {}
 समझ नहीं आया: {}
+
+not yet on this kernel's build, {}
+इस कर्नेल बिल्ड ({}) पर अभी नहीं
 
 not yet on this kernel's series, {}
 इस कर्नेल श्रृंखला ({}) के लिए अभी नहीं है
@@ -12719,6 +12752,9 @@ on battery
 
 on battery: it waits for power
 बैटरी पर: बिजली जुड़ने की प्रतीक्षा
+
+on this kernel's build, {}
+इस कर्नेल बिल्ड ({}) पर
 
 on this kernel's series, {}
 इस कर्नेल श्रृंखला ({}) पर
@@ -13355,6 +13391,9 @@ other: {n} हफ़्ते
 
 {} applications are keeping the display awake.
 {} ऐप डिस्प्ले को जागता रख रहे हैं।
+
+{} asked for, none waited for
+{} माँगे गए, किसी का इंतज़ार नहीं
 
 {} at {}
 {} को {}

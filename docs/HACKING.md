@@ -10573,6 +10573,165 @@ Doctor's unit steps now fail where the unit stands failed after its
 start (`systemd::failed`), where before any start that systemd took
 was called done.
 
+## No program held for large pieces of graphics memory (kernel/gpu-pages, apps/gpu-pages, crates/kmod; Olo Doctor; tools/dev/memory-holds, gpu-pages-check, gpu-pages-try)
+
+Ben, 2026-11-20: "something is really broken my desktop is lagging";
+and of whatever it took: "if you need to write a new kernel module as
+part of olo or anything to fix bugs or make it work properly that's
+also on the table if it can't be done through standard linux
+mechanisms. if you do that, work with astra 6.2 max on the design and
+implementation and review".
+
+**What was found** (`sudo tools/dev/memory-holds`; kernel/TUNING.md,
+"Graphics memory in 2 MB pieces", has the figures and the account).
+The GPU drivers' memory pool (TTM, under Intel's xe) fills every buffer
+with the largest pieces of memory it can get, and since Linux 7.3 tries
+hard for the size xe names, 2 MB: where none is free it compacts
+memory and reclaims on the thread that made the buffer. Those threads
+draw. With memory in small pieces and a build running, kit apps'
+drawing threads and Chrome's GPU process were held a third to half of
+a second at a time, app_server's loop up to 8 ms, with tens of
+gigabytes to be had. No setting of the kernel's turns it off.
+
+**The module** (`kernel/gpu-pages/olo_gpu_pages.c`): a kprobe at
+`ttm_pool_alloc_page()`'s entry that takes `__GFP_DIRECT_RECLAIM` off
+its gfp argument for that one try (the pool's own "beneficial" size,
+2 MB, from the page allocator, for one PCI device bound to xe, named
+as it loads: `bdf=`), the kernel's own function then running: a free
+2 MB piece is taken, the kernel's threads are woken to make more, and
+the pool goes on with smaller pieces as it does whenever a size is
+refused. Nothing of the kernel's is replaced or copied.
+`/sys/module/olo_gpu_pages/parameters`: `on` (root's to write), `bdf`,
+whose load it is (`service_id`, `trial_id`), and for anyone `changed`
+(tries made with no waiting allowed, whether or not they would have
+waited: not waits spared) and `missed`.
+
+**How it is kept from being wrong**, each way from a review with Astra
+that broke the one before in a guest (five reviews: the design, and
+four of what was built):
+
+1. *It checks itself as it loads, before it touches anything real.*
+   Until the check has passed its probe looks only at a pool of the
+   module's own, owned by the device (so the check goes the way real
+   buffers will), comparing the pool's address before reading anything
+   of it. That pool is filled twice while the page allocator's
+   tracepoint is watched: as the kernel has it the 2 MB try must be the
+   hard one and the 1 MB try must not reclaim; with the change the 2 MB
+   try must differ by the one flag. Otherwise it says why in the
+   kernel's log and its load fails. (A probe registers and does nothing
+   where probes are disarmed for the whole kernel; kernels before 7.3
+   wait at other sizes too.)
+2. *It is loaded only into a kernel it was checked in*
+   (`kernel/gpu-pages/QUALIFIED`, a line a build: release, the
+   kernel's build ID, its ttm module's, and the build of Olo's live
+   patch `olo_gpu_memory` that was beside it; `olo_kmod::builds` reads
+   the IDs from `/sys/kernel/notes` and the modules' notes). Where a
+   build keeps the function's arguments is nothing a module can check
+   as it loads; and a live patch changes the kernel under the same
+   notes, so the module loads with none in the kernel or with exactly
+   that one, settled. **A new kernel is not on the list**: the module
+   stays out of it, which Olo Doctor and the Kernel tab say, until an
+   Olo with its line is installed.
+3. *No tool says a build is good.* `tools/dev/gpu-pages-check
+   --qualify` runs the guests on the very build and reads what it can
+   of the function's machine code; a review showed that reading passes
+   shapes the probe would misread. It prints the build's words and
+   "pending a person's review" (exit 2) or "listed". **To qualify a
+   kernel**: run it; run `--qualify`; then read, in that build, what
+   the list's header sets out (the caller's setting up of the three
+   arguments and the callee's use at the probe's site, the function's
+   range and clones, every relocation against it in code and data, the
+   pool's layout, the falling back on refusal), with Astra; add the
+   line, and say in the commit who read what.
+4. *One loader at a time, each with its own.* The service gives each
+   load a name (`service_id`), loads it switched off, and switches on
+   only what carries that name, for the device, in a kernel still as
+   checked; it removes only its own, switched off first. A trial's
+   load carries the trial's (`trial_id`) and is on only while the trial
+   holds `/dev/olo_gpu_pages_trial_switch` open: writing `on` does
+   nothing for it, and whatever ends the trial, a kill too, puts the
+   kernel's own behaviour back. Both take `/run/olo-gpu-pages.lifecycle.lock`.
+   (The service had switched on a module it never loaded, on a build
+   not listed; the trial's first form could leave its module in and
+   on.)
+5. *It is not offered until it has been tried on a real computer, and
+   nothing switches it on before* (`kernel_tuning::GRAPHICS_PAGES_OFFERED`,
+   false; a made-up computer, `OLO_KERNEL_ROOT`, always has it, for
+   tests and pictures; no switch in the environment does it on a real
+   one). The guests show what it does in the kernel and can't show
+   what it does to frames. `sudo tools/dev/gpu-pages-try
+   --on-this-computer`, with the computer's owner's word and never
+   without, runs matched phases off and on by turns and takes the
+   module out again whatever happens; TUNING.md has what else is owed
+   before the offer.
+
+**The service** (`apps/gpu-pages`, `olo-gpu-pages.service`; as
+olo-gpu-memory's): at each start, where a device is on xe and the
+kernel is as it was checked, it builds the module for that very build
+where it hasn't (`olo_kmod`; a kernel of the same name rebuilt isn't
+given the last one's), loads it as 4 has it for the device (the one
+the computer started on where xe has several), and says how it went in
+`/run/olo-gpu-pages/status`: "in force", "not needed" (no xe), "not
+checked" (this kernel's build, or its live patches), or "failed: "
+with why, which for a kernel the module stayed out of is the module's
+own words from the kernel's log. A module in the kernel that isn't its
+load is left alone, and that is a failure said. `olo-gpu-pages
+--status` says what there is as JSON, to anyone (in the kernel, ours,
+in force, for which device, the builds, whether this one and its live
+patches are as checked, the counts); `--remove` takes its own out.
+
+**Olo Doctor** (`graphics_pages` in checks.rs; `olo-doctor --kernel
+graphics-pages on|off`, which refuses `on` while it isn't offered):
+where the module is in, "No program waits for large pieces of graphics
+memory", with its count for what it is; in by hand without its
+service, that it goes at the next start; chosen and out of this
+kernel, why (a build not checked yet; Secure Boot; the module's own
+words), with nothing to press, since there is no other way to it. The
+offer itself ("Drawing waits for large pieces of graphics memory",
+Never Wait for Large Pieces) only once it is offered;
+`OLO_DOCTOR_DEMO=1`'s report has the card, and
+`OLO_DOCTOR_DEMO=pieces-out` the card for the module out of this
+kernel, where Preferences' button leads.
+
+**Preferences ▸ Performance ▸ Kernel**: the sixth box, Drawing, under
+Window Buffers (the box that was "Graphics": each named for what it
+keeps, since both are of Intel's graphics memory). Shown where the
+module is in the kernel or its service installed (and, once offered,
+wherever xe is). Its switch, its paragraph and its rows keep their
+places in every state. The rows say what is so, each by itself: the
+module in the running kernel, in it and switched off (a trial between
+its phases), or not in it; whether this kernel's build was checked;
+whether it is kept at every start. Out of the kernel, the paragraph
+says why in place of what it does (and Open Olo Doctor where Doctor
+has the module's own words). The switch shows the person's choice,
+which they can always take back; it can't be pressed on where that
+would do nothing or isn't offered yet, whatever is in the kernel.
+
+**Checking it** (`tools/dev/gpu-pages-check`; no GPU in a guest, so
+`kernel/gpu-pages/check` has a PCI driver named "xe" for QEMU's host
+bridge, a pool with xe's flags filled while the kernel's tracepoints
+are watched, and a fixture that keeps one page of every free 2 MB
+piece): the module builds with no warning; loads beside Olo's live
+patch in the same module; changes xe's 2 MB try by the one flag and
+nothing else's; `on` 0 and unloading put the kernel's own behaviour
+back; with probes disarmed it refuses; and in memory left in small
+pieces 64 buffers are filled with the thread never compacting or
+reclaiming for a large piece, where the kernel's own way did 113 and
+56 times. A kernel warning in a guest ends it. `--trial-tool` runs
+`gpu-pages-try` itself in four guests, with the real bpftrace and
+journalctl: to its end, then in the same guest what must stop it
+before it loads anything (tracing that fails or lacks a probe, a
+warning in the phase with nothing loaded) and another's load that got
+in first (left as it was); and stopped three ways while its module is
+on (a warning of the driver's own that doesn't call itself one, a
+SIGTERM, a SIGKILL): off within milliseconds each time, and out of
+the kernel but after the kill, where it stays in, off, the trial's
+own. Run all of it
+(`--qualify --trial-tool`) after any change to the module, the
+service's loading or the trial tool, and through the tool's own
+command: a part of it tried by hand had hidden that the whole
+couldn't finish.
+
 ## BBRv3 for TCP (kernel/bbr3, apps/bbr3, crates/kmod; Olo Doctor; tools/dev/bbr3-check, kvm-guest)
 
 How fast TCP sends is its congestion control's to decide. Linux's
@@ -10761,7 +10920,11 @@ pieces in the kernel: `Bbr3` (the congestion control, the module, and the connec
 of all TCP's, their round trips' middle, the share of their segments
 sent again, from `olo_system::netdiag::flows`, one walk of the kernel's
 table of connections, `sock_diag` with each one's `tcp_info` and
-congestion control) and `GraphicsMemory` (the live patch).
+congestion control), `GraphicsMemory` (the live patch) and
+`GraphicsPages` (the module: in force, kept, whether this kernel's
+build is one it was checked on, its count, what its service said;
+None where it isn't offered and nothing of it is here: "No program
+held for large pieces of graphics memory").
 `OLO_KERNEL_ROOT=DIR` reads a made-up computer under DIR (its
 connections from `proc/net/olo-flows`: lines of "control state rtt_us
 sent sent_again").
@@ -10776,7 +10939,7 @@ isn't so already.
 | preemption | `Step::AddKernelArgument` `preempt=full`; where the kernel isn't locked down, `full` written to `/sys/kernel/debug/sched/preempt` and noted | `Step::RemoveKernelArgument` `preempt` (new: an argument taken out wherever one is put); the running kernel back on what it was built with |
 | slow-disks | `/etc/udev/rules.d/61-olo-slow-disks.rules` (data/udev); each removable disk here without a limit given `strict_limit` 1 and `max_bytes` 16777216 (which reads back a little under: the kernel keeps a share of its whole limit) | the rule removed; each back to `strict_limit` 0, `max_ratio` 100 |
 | short-turns | `/etc/olo/short-turns.conf` (two lines in tmpfiles' form: the scheduler's file, and Olo's note of it) and `olo-short-turns.service`, enabled, which has systemd's own tool apply them once debugfs is mounted (among /etc/tmpfiles.d's they could run before it is; tried as a service under SELinux: it may write there); where the kernel isn't locked down, 700000 written and noted now | the unit disabled and removed with its lines; the running kernel back on what it comes with for its processors |
-| bbr3, graphics-memory | Olo Doctor's own fix for each (its service installed, enabled, started) | its service stopped (which takes its work out of the running kernel) and disabled |
+| bbr3, graphics-memory, graphics-pages | Olo Doctor's own fix for each (its service installed, enabled, started) | its service stopped (which takes its work out of the running kernel) and disabled |
 
 The kernel-argument steps carry the file system's root, so a test's tree
 is written like the real one. `olo-doctor --kernel` prints what there is
@@ -10837,24 +11000,28 @@ is offered its limit.
 `olo-preferences kernel`, or `performance --tab Kernel`): a box for
 each, the kernel's own settings on the left (Preemption, Processor
 Turns, Removable Disks) and Olo's pieces in it on the right (Network,
-Graphics): four on one side were taller than the smallest screen, and
-no other split of the five keeps what belongs together. Each has a
-check box (`kernel-preemption`, `kernel-short-turns`,
-`kernel-slow-disks`, `kernel-bbr3`, `kernel-graphics-memory`), what
+Window Buffers, and Drawing where its module is: three a side, 717
+points on the smallest screen's 760): four on one side were taller
+than the smallest screen, and no other split keeps what belongs
+together. Each has a check box (`kernel-preemption`,
+`kernel-short-turns`, `kernel-slow-disks`, `kernel-bbr3`,
+`kernel-graphics-memory`, `kernel-graphics-pages`), what
 it does in a sentence that ends with the kernel's own name for it,
 and its figures as facts, every box's values in one line
 (`Facts::label_width`: one width for the tab's labels) and its rows
 as far apart as the paragraph's lines (`Facts::row_height`, whose
 height isn't rounded), so boxes side by side with as many lines and
-rows between them end on one line: Processor Turns and Graphics do.
-The columns stand as far apart as boxes stand over one another, their
-titles' room included (twice `STACK`; at `SPACING` the two read as
-one wall of boxes). The note that says whose the settings are is
-under the right column's last box, as far under it as a box would be
-(not `Ui::note`, which sets a note close under its control), so its
-first line is level with the title of the box beside it; a switch's
-result takes its place, and the room under it is left empty (both
-reviewers: don't fill it). A sentence with the setting's own figures
+rows between them end on one line: Processor Turns and Window Buffers
+do. The columns stand as far apart as boxes stand over one another,
+their titles' room included (twice `STACK`; at `SPACING` the two read
+as one wall of boxes), and each column's last box takes what height
+its column has to spare (`Ui::growing_bbox`), so both end on one line.
+The note that says whose the settings are is under both columns,
+across the tab, as far under them as boxes are from each other (not
+`Ui::note`, which sets a note close under its control): with three
+boxes a side neither column is the shorter one it used to stand
+under; a switch's result takes its place. A sentence with the
+setting's own figures
 in it says "With this on," so it reads right while the box is
 unchecked. The facts: what the kernel is on now and at the next
 start; what may wait for a removable disk, what waits now, and the
@@ -10867,8 +11034,9 @@ every start. A switch runs `olo-doctor --kernel` on a thread
 dimmed; refused or failed, as it was, with why in red). The figures are
 read every two seconds while the tab is shown, by a thread that sleeps
 (parked, not polling) on any other tab and ends with the panel. A
-setting the kernel hasn't says so in place of its switch; the Graphics
-box is there only where Intel's xe driver is.
+setting the kernel hasn't says so in place of its switch; the Window
+Buffers box is there only where Intel's xe driver is, and Drawing as
+"No program held for large pieces of graphics memory" says.
 
 ## Every frame on time (app_server frames.rs; Activity Monitor ▸ Displays)
 

@@ -3215,7 +3215,7 @@ Draw tool
 Инструмент рисования
 
 Drawing
-Рисунок
+Рисование
 
 Drawn into each frame
 Рисуется в каждом кадре
@@ -5290,6 +5290,9 @@ Language & Region
 Large
 Большой
 
+Large pieces
+Большие блоки
+
 Larger
 Больше
 
@@ -6325,6 +6328,9 @@ Never fade
 Never since the computer started
 Ни разу после включения
 
+Never wait for large pieces of graphics memory
+Никогда не ждать больших блоков видеопамяти
+
 New
 Создать
 
@@ -7143,6 +7149,9 @@ Olo's boot splash
 
 Olo's login screen
 Экран входа в Olo
+
+Olo's module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
+Модуль Olo проверяет ядро при загрузке и в это ядро не вошёл. Olo Doctor объясняет почему.
 
 Olo's own
 Встроенный в Olo
@@ -10432,6 +10441,9 @@ The model
 The model wasn't good enough to keep
 Результаты модели недостаточно хороши; она не сохранена
 
+The module
+Модуль
+
 The most powerful (the processor)
 Самое мощное устройство (ЦП)
 
@@ -10785,6 +10797,9 @@ This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 
 This kernel has one way of preempting only: it wasn't built to be told another.
 Это ядро собрано с одним режимом вытеснения, переключить его нельзя.
+
+This kernel's build hasn't been checked yet: Olo's module stays out until an Olo update checks it.
+Эта сборка ядра ещё не проверена: модуль Olo не загружается, пока обновление Olo её не проверит.
 
 This keyboard has no backlight.
 У этой клавиатуры нет подсветки.
@@ -11911,6 +11926,9 @@ When does the sun rise tomorrow?
 When held for:
 При удержании:
 
+When no large piece is free, Intel's driver takes smaller ones and windows keep drawing (Olo's module, olo_gpu_pages).
+Если свободного большого блока нет, драйвер Intel берёт блоки поменьше, и окна продолжают рисоваться (модуль Olo, olo_gpu_pages).
+
 When pressed:
 При нажатии:
 
@@ -12021,6 +12039,9 @@ Window
 
 Window Arrangement
 Расстановка окон
+
+Window Buffers
+Буферы окон
 
 Window Size
 Размер окна
@@ -12559,6 +12580,12 @@ in the next week
 in the next {} days
 в ближайшие {} дн.
 
+in the running kernel
+в работающем ядре
+
+in the running kernel, switched off
+в работающем ядре, выключен
+
 in {n} days
 one: через {n} день
 few: через {n} дня
@@ -12706,6 +12733,9 @@ no wired network: it waits for one
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
+not in the running kernel
+нет в работающем ядре
+
 not parts of it: {}; its parts are {}
 не входят в состав: {}; состав: {}
 
@@ -12714,6 +12744,9 @@ not set up yet
 
 not understood: {}
 не удалось распознать: {}
+
+not yet on this kernel's build, {}
+ещё нет на этой сборке ({})
 
 not yet on this kernel's series, {}
 пока нет для этой серии ядер ({})
@@ -12783,6 +12816,9 @@ on battery
 
 on battery: it waits for power
 питание от батареи: ожидание сети питания
+
+on this kernel's build, {}
+на этой сборке ядра ({})
 
 on this kernel's series, {}
 для этой серии ядер ({})
@@ -13539,6 +13575,9 @@ other: {n} недели
 
 {} applications are keeping the display awake.
 Приложения не дают экрану погаснуть: {}.
+
+{} asked for, none waited for
+запрошено {}, не ждали
 
 {} at {}
 {} в {}

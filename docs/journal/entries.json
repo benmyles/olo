@@ -5338,5 +5338,17 @@
   "title": "Olo Doctor: test desktops still running",
   "caption": "A test desktop (a whole headless desktop Olo's development tools start to try something) left running for over an hour is a finding now, with which and for how long, and a fix that ends everything of theirs. A tool's own desktops end with the tool; three had been left for up to two and a half days.",
   "image": "2026-11-21/020053-olo-doctor-test-desktops-still-running.png"
+ },
+ {
+  "time": "2026-11-21T06:25:06",
+  "title": "Performance \u25b8 Kernel: a sixth box, Drawing",
+  "caption": "Olo's module that keeps a program from being held while the graphics driver looks for a 2 MB piece of memory has its box (shown here on a made-up computer with it in force); the box that was Graphics is Window Buffers; each column's last box takes its column's spare height, and the note about whose the settings are runs under both. The module is built and checked, and not offered yet.",
+  "image": "2026-11-21/062506-performance-kernel-a-sixth-box-drawing.png"
+ },
+ {
+  "time": "2026-11-21T06:25:08",
+  "title": "Olo Doctor: drawing waits for large pieces of graphics memory",
+  "caption": "The card Olo Doctor will offer once the module has been tried on a real computer (here in its made-up report): what was measured, and what the fix does, in two paragraphs.",
+  "image": "2026-11-21/062508-olo-doctor-drawing-waits-for-large-pieces-of-gra.png"
  }
 ]

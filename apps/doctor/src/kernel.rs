@@ -12,8 +12,8 @@
 //!
 //! `olo-doctor --kernel` says what there is, to anyone, in JSON;
 //! `olo-doctor --kernel SETTING on|off` (preemption, short-turns,
-//! slow-disks, bbr3, graphics-memory) is how Preferences, a person at a
-//! terminal and an agent all set one.
+//! slow-disks, bbr3, graphics-memory, graphics-pages) is how
+//! Preferences, a person at a terminal and an agent all set one.
 
 use std::path::Path;
 
@@ -131,7 +131,7 @@ pub fn steps(setting: Setting, on: bool, places: &Places) -> Vec<Step> {
                 }
             }
         }
-        Setting::Bbr3 | Setting::GraphicsMemory => {}
+        Setting::Bbr3 | Setting::GraphicsMemory | Setting::GraphicsPages => {}
     }
     steps
 }
@@ -145,6 +145,7 @@ fn piece_steps(setting: Setting, on: bool, places: &Places) -> Result<Vec<Step>,
     let (service, program, name, unit) = match setting {
         Setting::Bbr3 => (checks::BBR3_SERVICE, checks::BBR3_PROGRAM, "BBRv3", checks::BBR3_UNIT),
         Setting::GraphicsMemory => (checks::GPU_MEMORY_SERVICE, checks::GPU_MEMORY_PROGRAM, "the graphics-memory patch", checks::GPU_MEMORY_UNIT),
+        Setting::GraphicsPages => (checks::GPU_PAGES_SERVICE, checks::GPU_PAGES_PROGRAM, "the graphics-pages module", checks::GPU_PAGES_UNIT),
         _ => return Ok(Vec::new()),
     };
     let wanted = places.at("/etc/systemd/system/multi-user.target.wants").join(service);
@@ -155,6 +156,7 @@ fn piece_steps(setting: Setting, on: bool, places: &Places) -> Result<Vec<Step>,
         let write = |path: &str, content: &str| Step::WriteFile { path: places.at(path), content: content.into(), mode: 0o644 };
         let now = match setting {
             Setting::Bbr3 => tuning::bbr3(places).is_some_and(|b| b.on()),
+            Setting::GraphicsPages => tuning::graphics_pages(places).is_some_and(|g| g.on()),
             _ => tuning::graphics_memory(places).is_some_and(|g| g.on()),
         };
         return Ok(match (on, now, setting) {
@@ -166,12 +168,21 @@ fn piece_steps(setting: Setting, on: bool, places: &Places) -> Result<Vec<Step>,
                     write("/run/olo-bbr3/status", "bbr3\n"),
                 ]
             }
+            (true, false, Setting::GraphicsPages) => vec![
+                write(&format!("/etc/systemd/system/{service}"), unit),
+                Step::WriteFile { path: wanted, content: String::new(), mode: 0o644 },
+                write("/sys/module/olo_gpu_pages/parameters/on", "Y\n"),
+                write("/run/olo-gpu-pages/status", "in force\n"),
+            ],
             (true, false, _) => vec![
                 write(&format!("/etc/systemd/system/{service}"), unit),
                 Step::WriteFile { path: wanted, content: String::new(), mode: 0o644 },
                 write("/sys/kernel/livepatch/olo_gpu_memory/enabled", "1\n"),
             ],
             (false, _, Setting::Bbr3) if std::fs::symlink_metadata(&wanted).is_ok() => vec![Step::RemoveFile { path: wanted }, write("/proc/sys/net/ipv4/tcp_congestion_control", "cubic\n")],
+            (false, _, Setting::GraphicsPages) if std::fs::symlink_metadata(&wanted).is_ok() => {
+                vec![Step::RemoveFile { path: wanted }, Step::RemoveFile { path: places.at("/sys/module/olo_gpu_pages/parameters/on") }]
+            }
             (false, _, _) if std::fs::symlink_metadata(&wanted).is_ok() => vec![Step::RemoveFile { path: wanted }, write("/sys/kernel/livepatch/olo_gpu_memory/enabled", "0\n")],
             _ => Vec::new(),
         });
@@ -183,6 +194,7 @@ fn piece_steps(setting: Setting, on: bool, places: &Places) -> Result<Vec<Step>,
         }
         return Ok(match setting {
             Setting::Bbr3 => checks::bbr3_steps(roots),
+            Setting::GraphicsPages => checks::graphics_pages_steps(roots),
             _ => checks::graphics_memory_steps(roots),
         });
     }
@@ -198,7 +210,7 @@ fn piece_steps(setting: Setting, on: bool, places: &Places) -> Result<Vec<Step>,
 }
 
 /// What a setting can't be set for here, if it can't.
-fn cannot(setting: Setting, places: &Places) -> Option<&'static str> {
+fn cannot(setting: Setting, on: bool, places: &Places) -> Option<&'static str> {
     match setting {
         Setting::Preemption if tuning::preemption(places).is_none() => Some("This kernel has one way of preempting only (it wasn't built to be told another)."),
         Setting::ShortTurns if tuning::turns(places).is_none() => {
@@ -206,6 +218,13 @@ fn cannot(setting: Setting, places: &Places) -> Option<&'static str> {
         }
         Setting::SlowDisks if !tuning::slow_disks(places).can => Some("This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can)."),
         Setting::Bbr3 if tuning::bbr3(places).is_none() => Some("This computer has no TCP to set."),
+        // (Not to be switched on by anyone until it is offered, whatever
+        // is in the kernel meanwhile: a trial's load made its switch
+        // look pressable. Switching off stays possible.)
+        Setting::GraphicsPages if on && !tuning::graphics_pages_offered(places) => {
+            Some("Olo's module for this isn't offered yet: what it does to frames on a real computer is still to be measured (kernel/TUNING.md, \"Graphics memory in 2 MB pieces\").")
+        }
+        Setting::GraphicsPages if on && tuning::graphics_pages_where(places, true).is_none() => Some("This computer's graphics aren't on Intel's xe driver, which is the one this is for."),
         _ => None,
     }
 }
@@ -214,11 +233,11 @@ fn cannot(setting: Setting, places: &Places) -> Option<&'static str> {
 /// line. As root where it needs to be (the helper, through pkexec: the
 /// password is asked once), and not at all where nothing is to change.
 pub fn apply(setting: Setting, on: bool, places: &Places, progress: &mut dyn FnMut(String)) -> Result<String, String> {
-    if let Some(why) = cannot(setting, places) {
+    if let Some(why) = cannot(setting, on, places) {
         return Err(why.into());
     }
     let steps = match setting {
-        Setting::Bbr3 | Setting::GraphicsMemory => piece_steps(setting, on, places)?,
+        Setting::Bbr3 | Setting::GraphicsMemory | Setting::GraphicsPages => piece_steps(setting, on, places)?,
         _ => steps(setting, on, places),
     };
     // (Read before the steps: what the start argument can't change now.)
@@ -228,6 +247,12 @@ pub fn apply(setting: Setting, on: bool, places: &Places, progress: &mut dyn FnM
         // (A test's tree is the person's to write.)
         let results = if places.stand_in() { helper::run_steps_with(&steps, progress) } else { helper::run_as_root(&steps, progress)? };
         if let Some(e) = results.into_iter().find_map(Result::err) {
+            // (The module stays out of a kernel it isn't sure of, and its
+            // service then ends failed: why is the service's to say, not
+            // systemd's.)
+            if let (Setting::GraphicsPages, true, Some(why)) = (setting, on, tuning::graphics_pages(places).and_then(|g| g.said).and_then(|s| s.strip_prefix("failed: ").map(str::to_owned))) {
+                return Err(format!("Olo's module isn't in the kernel: {why}."));
+            }
             return Err(e);
         }
     }
@@ -257,6 +282,17 @@ pub fn apply(setting: Setting, on: bool, places: &Places, progress: &mut dyn FnM
         (Setting::Bbr3, false) => format!("TCP sends as before ({}).", tuning::bbr3(places).map(|b| b.control).unwrap_or_default()),
         (Setting::GraphicsMemory, true) => "Windows' graphics memory stays out of swap, now and from every start.".to_owned(),
         (Setting::GraphicsMemory, false) => "The graphics-memory patch is out of the running kernel, and stays out.".to_owned(),
+        // (Its service says how it went: a kernel the module isn't sure
+        // of keeps it out, and its own words say why.)
+        (Setting::GraphicsPages, true) => match tuning::graphics_pages(places) {
+            Some(g) if g.in_force => "No program waits for a large piece of graphics memory, now and from every start.".to_owned(),
+            Some(tuning::GraphicsPages { said: Some(said), .. }) if said.starts_with("failed: ") => return Err(format!("Olo's module isn't in the kernel: {}.", &said["failed: ".len()..])),
+            _ => return Err("Olo's module isn't in the kernel, and its service hasn't said why.".into()),
+        },
+        (Setting::GraphicsPages, false) if places.at("/sys/module/olo_gpu_pages/parameters/on").exists() => {
+            return Err("Olo's service for it is off, and a module that isn't the service's is still in the kernel (a trial's, or one put in by hand): that one is its loader's to take out.".into());
+        }
+        (Setting::GraphicsPages, false) => "The graphics-pages module is out of the running kernel, and stays out.".to_owned(),
     })
 }
 
@@ -286,6 +322,10 @@ pub fn status(places: &Places) -> serde_json::Value {
             })),
         })),
         "graphics-memory": s.graphics_memory.map(|g| json!({ "on": g.on(), "patched": g.patched, "kept_at_start": g.kept, "said": g.said })),
+        "graphics-pages": s.graphics_pages.map(|g| json!({
+            "on": g.on(), "in_kernel": g.loaded, "in_force": g.in_force, "kept_at_start": g.kept, "offered": g.offered, "checked_on_this_build": g.checked,
+            "large_pieces_asked_for_without_waiting": g.changed, "said": g.said,
+        })),
     })
 }
 
@@ -490,8 +530,11 @@ mod tests {
         let (root, places) = tree("pieces");
         put(&places, "proc/sys/net/ipv4/tcp_congestion_control", "cubic\n");
         put(&places, "sys/module/xe/refcnt", "1\n");
-        for (setting, is_on) in [(Setting::Bbr3, (|p: &Places| tuning::bbr3(p).unwrap().on()) as fn(&Places) -> bool), (Setting::GraphicsMemory, |p: &Places| tuning::graphics_memory(p).unwrap().on())]
-        {
+        for (setting, is_on) in [
+            (Setting::Bbr3, (|p: &Places| tuning::bbr3(p).unwrap().on()) as fn(&Places) -> bool),
+            (Setting::GraphicsMemory, |p: &Places| tuning::graphics_memory(p).unwrap().on()),
+            (Setting::GraphicsPages, |p: &Places| tuning::graphics_pages(p).unwrap().on()),
+        ] {
             assert!(!is_on(&places));
             apply(setting, true, &places, &mut |_| {}).unwrap();
             assert!(is_on(&places), "{}", setting.word());
@@ -512,7 +555,8 @@ mod tests {
         assert_eq!(s["preemption"]["on"], false);
         assert_eq!(s["slow-disks"]["limit_bytes"], 16777216u64);
         assert_eq!(s["bbr3"]["control"], "cubic");
-        assert!(s["graphics-memory"].is_null(), "no xe here: nothing to say");
+        assert!(s["graphics-memory"].is_null() && s["graphics-pages"].is_null(), "no xe here: nothing to say");
+        assert!(apply(Setting::GraphicsPages, true, &places, &mut |_| {}).unwrap_err().contains("aren't on Intel's xe driver"));
         // Every setting's name is one the JSON has.
         for setting in Setting::ALL {
             assert!(s.get(setting.word()).is_some(), "{}", setting.word());

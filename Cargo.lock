@@ -7466,6 +7466,7 @@ dependencies = [
  "olo-fido",
  "olo-kit",
  "olo-kit-base",
+ "olo-kmod",
  "olo-net",
  "olo-protocol",
  "olo-sync",
@@ -7639,6 +7640,15 @@ dependencies = [
 name = "olo-gpu-memory"
 version = "0.1.0"
 dependencies = [
+ "olo-crash",
+ "olo-kmod",
+]
+
+[[package]]
+name = "olo-gpu-pages"
+version = "0.1.0"
+dependencies = [
+ "libc",
  "olo-crash",
  "olo-kmod",
 ]
@@ -8623,6 +8633,7 @@ dependencies = [
  "nvml-wrapper",
  "olo-color",
  "olo-crash",
+ "olo-kmod",
  "olo-protocol",
  "olo-sync",
  "olo-xdg",

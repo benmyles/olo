@@ -177,6 +177,16 @@ fn made_up_kernel() -> tuning::State {
             checked: false,
         }),
         graphics_memory: Some(tuning::GraphicsMemory { patched: true, kept: true, said: None }),
+        graphics_pages: Some(tuning::GraphicsPages {
+            loaded: true,
+            offered: true,
+            in_force: true,
+            kept: true,
+            checked: true,
+            changed: Some(20_481),
+            said: Some("in force".into()),
+            kernel: "7.3.4-300.fc45.x86_64".into(),
+        }),
     }
 }
 
@@ -334,6 +344,11 @@ struct KernelBox {
     label: &'static str,
     /// None: it can't be set here (`about` says why).
     on: Option<bool>,
+    /// Its switch is there and can't be pressed: what it would turn on
+    /// can't be, here (`about` says why).
+    locked: bool,
+    /// Olo Doctor has more to say of it: a button that opens it.
+    doctor: bool,
     about: String,
     facts: Vec<(&'static str, String)>,
 }
@@ -346,6 +361,9 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             setting: Setting::Preemption,
             label: "Switch to a woken program at once",
             on: Some(p.on()),
+
+            locked: false,
+            doctor: false,
             // (A scheduler loaded over the kernel's asks for its switches
             // itself: the setting changes nothing while it schedules.)
             about: match scheduled_by {
@@ -359,6 +377,9 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             setting: Setting::Preemption,
             label: "",
             on: None,
+
+            locked: false,
+            doctor: false,
             about: olo_kit::words::tr("This kernel has one way of preempting only: it wasn't built to be told another.").into(),
             facts: Vec::new(),
         },
@@ -370,6 +391,9 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             setting: Setting::ShortTurns,
             label: "Keep a busy program's turn short",
             on: Some(t.on()),
+
+            locked: false,
+            doctor: false,
             // (As preemption: a scheduler loaded over the kernel's has
             // turns of its own.)
             about: match scheduled_by {
@@ -389,6 +413,9 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             setting: Setting::SlowDisks,
             label: "Limit what waits to be written to them",
             on: Some(d.on()),
+
+            locked: false,
+            doctor: false,
             about: olo_kit::words::tr("A copy to a stick or a card goes at the disk's own pace, so its progress is true and ejecting is quick.").into(),
             facts: vec![
                 ("May wait", if d.kept { olo_kit::tr!("{} for each", size(tuning::SLOW_DISK_BYTES)) } else { format!("up to {}", size(d.may_wait)) }),
@@ -412,6 +439,9 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             setting: Setting::SlowDisks,
             label: "",
             on: None,
+
+            locked: false,
+            doctor: false,
             about: olo_kit::words::tr("This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).").into(),
             facts: Vec::new(),
         }
@@ -423,6 +453,9 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             setting: Setting::Bbr3,
             label: "Send with BBRv3",
             on: Some(b.on()),
+
+            locked: false,
+            doctor: false,
             about: olo_kit::words::tr("TCP sends at the pace its path can carry, where Linux's own fills the queues along the way (Olo's module, tcp_bbr3).").into(),
             facts: vec![
                 ("New connections", b.control.clone()),
@@ -453,16 +486,83 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
         });
     }
     if let Some(g) = &s.graphics_memory {
+        // (Named for what it keeps safe, as the box under it is: both
+        // are of Intel's graphics memory, and "Graphics" over "Graphics
+        // Memory" told no one which did what. Both reviewers' looks,
+        // 2026-11-21.)
         boxes.push(KernelBox {
-            title: "Graphics",
+            title: "Window Buffers",
             setting: Setting::GraphicsMemory,
             label: "Keep windows' graphics memory out of swap",
             on: Some(g.on()),
+
+            locked: false,
+            doctor: false,
             about: olo_kit::words::tr("Windows' buffers stay out of swap, so the desktop never waits for one (Olo's live patch of Intel's driver).").into(),
             facts: vec![
-                ("The patch", if g.patched { "in the running kernel" } else { "not in the running kernel" }.to_owned()),
+                ("The patch", olo_kit::words::tr(if g.patched { "in the running kernel" } else { "not in the running kernel" }).to_owned()),
                 ("At every start", olo_kit::words::tr(if g.kept { "yes" } else { "no" }).to_owned()),
             ],
+        });
+    }
+    if let Some(g) = &s.graphics_pages {
+        let kernel = g.kernel.split('-').next().unwrap_or_default().to_owned();
+        // (Where the module isn't in the kernel and can't be, the box
+        // keeps its switch, its rows and its shape, and its paragraph
+        // says why in place of what it does: a new kernel whose build
+        // it wasn't checked on yet; a kernel whose pool it found, as it
+        // loaded, not to be the one it was written for, of which Olo
+        // Doctor has the module's own words. Both looks, twice.)
+        let (unchecked, kept_out) = (!g.in_force && !g.checked, !g.in_force && g.checked && g.kept_out().is_some());
+        let about: String = if unchecked {
+            olo_kit::words::tr("This kernel's build hasn't been checked yet: Olo's module stays out until an Olo update checks it.").into()
+        } else if kept_out {
+            olo_kit::words::tr("Olo's module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.").into()
+        } else {
+            olo_kit::words::tr("When no large piece is free, Intel's driver takes smaller ones and windows keep drawing (Olo's module, olo_gpu_pages).").into()
+        };
+        // (In the kernel and switched off is neither in force nor out of
+        // it: a trial between its phases, a load switched off by hand.
+        // The third review with Astra.)
+        let mut facts = vec![(
+            "The module",
+            olo_kit::words::tr(if g.in_force {
+                "in the running kernel"
+            } else if g.loaded {
+                "in the running kernel, switched off"
+            } else {
+                "not in the running kernel"
+            })
+            .to_owned(),
+        )];
+        match g.changed.filter(|_| g.in_force) {
+            // (What it counts, since the module loaded: large pieces asked
+            // for with no waiting allowed, given or refused, and whether
+            // or not one would have been waited for: "asked for, none
+            // waited for" and no more. In the kernel, it was checked: no
+            // row need say so.)
+            Some(n) => facts.push(("Large pieces", olo_kit::tr!("{} asked for, none waited for", count(n)))),
+            None if g.in_force => {}
+            // (Checked on this build, and out of it all the same: the
+            // row would belie the paragraph over it. Opus's look.)
+            None if kept_out => {}
+            None if g.checked => facts.push(("Checked", olo_kit::tr!("on this kernel's build, {}", kernel))),
+            None => facts.push(("Checked", olo_kit::tr!("not yet on this kernel's build, {}", kernel))),
+        }
+        facts.push(("At every start", olo_kit::words::tr(if g.kept { "yes" } else { "no" }).to_owned()));
+        boxes.push(KernelBox {
+            title: "Drawing",
+            setting: Setting::GraphicsPages,
+            label: "Never wait for large pieces of graphics memory",
+            // (In the kernel: on now and from every start. Out of it: the
+            // person's choice, its service, which they can take back.
+            // What isn't offered yet, or can't work here, can't be
+            // chosen: not even while a trial has it in the kernel.)
+            on: Some(if g.in_force { g.on() } else { g.kept }),
+            locked: !g.kept && (!g.offered || unchecked || kept_out),
+            doctor: kept_out,
+            about,
+            facts,
         });
     }
     boxes
@@ -481,15 +581,19 @@ fn kernel_tab(ui: &mut Ui, shared: &Arc<Mutex<Kernel>>, scheduled_by: Option<&st
     let (dim, text) = (style::secondary_text(&p), style::c(p.panel_text));
     let busy = k.applying.is_some();
     // (`labels`: how far every box's values stand from its labels' left.)
-    let one = |ui: &mut Ui, b: KernelBox, labels: f32| {
-        ui.bbox(b.title, |ui| {
+    // (`last`: its column's last box, which takes what height its column
+    // has to spare, so both columns end on one line over the note below
+    // them. Opus's look.)
+    let one = |ui: &mut Ui, b: KernelBox, labels: f32, last: bool| {
+        let build = |ui: &mut Ui| {
             let Some(on) = b.on else { return ui.note(b.about) };
             let shown = match k.applying {
                 Some((s, to)) if s == b.setting => to,
                 _ => on,
             };
             let (shared, proxy, setting) = (shared.clone(), olo_kit::proxy(), b.setting);
-            ui.add(CheckBox::new(b.label, shown).id(format!("kernel-{}", setting.word())).enabled(!busy).on_toggle(move |on, _| set_kernel(shared.clone(), proxy.clone(), setting, *on)));
+            let enabled = !busy && !b.locked;
+            ui.add(CheckBox::new(b.label, shown).id(format!("kernel-{}", setting.word())).enabled(enabled).on_toggle(move |on, _| set_kernel(shared.clone(), proxy.clone(), setting, *on)));
             // (Under the label, past the mark.)
             let rows: Vec<(SharedString, SharedString)> = b.facts.into_iter().map(|(l, v)| (SharedString::from(l), SharedString::from(v))).collect();
             ui.add(
@@ -505,40 +609,51 @@ fn kernel_tab(ui: &mut Ui, shared: &Arc<Mutex<Kernel>>, scheduled_by: Option<&st
                     // (Its rows as far apart as the paragraph's lines: two
                     // boxes side by side with as many lines and rows
                     // between them are then as tall as each other.)
-                    .child(Facts::new(rows).colors(dim, text).label_width(labels).row_height(style::PLAIN_SIZE * style::LINE_HEIGHT)),
+                    .child(Facts::new(rows).colors(dim, text).label_width(labels).row_height(style::PLAIN_SIZE * style::LINE_HEIGHT))
+                    // (Under what says Olo Doctor knows more, the way
+                    // there: as wide as its words, at the paragraph's
+                    // left; as far over the box's edge as a row of
+                    // text's own room leaves its letters.)
+                    .children(b.doctor.then(|| {
+                        div().flex().flex_row().pb(px(m::TIGHT)).child(Button::new("Open Olo Doctor").on_click(|_, _| {
+                            let _ = olo_xdg::open::spawn_app(&["olo-doctor".into()], "olo.doctor");
+                        }))
+                    })),
             );
-        });
+        };
+        let title = b.title;
+        if last { ui.growing_bbox(title, build) } else { ui.bbox(title, build) }
     };
     // The kernel's settings on the left, Olo's own pieces in it on the
-    // right, with whose they all are under those (the shorter column),
-    // until a switch has something to say in its place.
-    let (settings, pieces): (Vec<KernelBox>, Vec<KernelBox>) = kernel_boxes(&state, scheduled_by).into_iter().partition(|b| !matches!(b.setting, Setting::Bbr3 | Setting::GraphicsMemory));
+    // right; whose they all are under both, until a switch has something
+    // to say in its place.
+    let (settings, pieces): (Vec<KernelBox>, Vec<KernelBox>) =
+        kernel_boxes(&state, scheduled_by).into_iter().partition(|b| !matches!(b.setting, Setting::Bbr3 | Setting::GraphicsMemory | Setting::GraphicsPages));
     // (One width for every box's labels, the tab's widest as it's shown,
     // each a literal looked up: the values in one line down each
     // column, and the two columns' alike.)
     let shown: Vec<SharedString> = settings.iter().chain(&pieces).flat_map(|b| b.facts.iter().map(|(l, _)| olo_kit::words::of(SharedString::from(*l)))).collect();
     let labels = olo_kit::widgets::dashboard::facts_label_width(shown.iter().map(|l| l.as_ref()));
-    let left = ui.collect(|ui| settings.into_iter().for_each(|b| one(ui, b, labels)));
-    let right = ui.collect(|ui| {
-        pieces.into_iter().for_each(|b| one(ui, b, labels));
-        // (Not `Ui::note`, which sets a note close under the control it
-        // is about: this one is under a box, as far from it as boxes are
-        // from each other, so its first line is level with the title of
-        // the box beside it in the other column. Four points nearer it
-        // read as a miss: Opus's look.)
-        let said = |text: SharedString| StringView::new(text).dim(true).wrap(true);
-        match (&k.applying, &k.said) {
-            (Some(_), _) => ui.add(said(olo_kit::words::tr("Setting it: an administrator's password is asked…").into())),
-            (None, Some(Err(why))) => ui.add(StringView::new(olo_kit::tr!("Not changed. {}", why)).wrap(true).color(style::c(p.failure))),
-            (None, Some(Ok(text))) => ui.add(said(text.clone().into())),
-            _ => ui.add(said(olo_kit::words::tr("All these settings are for the whole computer, so changing one asks for an administrator's password.").into())),
-        }
-    });
+    let (settings_last, pieces_last) = (settings.len().saturating_sub(1), pieces.len().saturating_sub(1));
+    let left = ui.collect(|ui| settings.into_iter().enumerate().for_each(|(i, b)| one(ui, b, labels, i == settings_last)));
+    let right = ui.collect(|ui| pieces.into_iter().enumerate().for_each(|(i, b)| one(ui, b, labels, i == pieces_last)));
     // (The columns as far apart as boxes stand over one another, their
     // titles' room included: at `SPACING` the two read as one wall of
     // boxes. Opus's look.)
     let column = |items: Vec<olo_kit::Element>| div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).children(items);
-    ui.add(div().flex().flex_row().gap(px(2.0 * m::STACK)).child(column(left)).child(column(right)));
+    // (The line under both columns, across them: with three boxes a
+    // side neither is the shorter one it used to stand under, and under
+    // the longer it made the window as tall as the smallest screen. Not
+    // `Ui::note`, which sets a note close under the control it is about:
+    // this is as far under the boxes as they are from each other.)
+    let said = |text: SharedString| olo_kit::IntoElement::into_any_element(StringView::new(text).dim(true).wrap(true));
+    let line = match (&k.applying, &k.said) {
+        (Some(_), _) => said(olo_kit::words::tr("Setting it: an administrator's password is asked…").into()),
+        (None, Some(Err(why))) => olo_kit::IntoElement::into_any_element(StringView::new(olo_kit::tr!("Not changed. {}", why)).wrap(true).color(style::c(p.failure))),
+        (None, Some(Ok(text))) => said(text.clone().into()),
+        _ => said(olo_kit::words::tr("All these settings are for the whole computer, so changing one asks for an administrator's password.").into()),
+    };
+    ui.add(div().flex().flex_col().gap(px(m::SPACING)).child(div().flex().flex_row().gap(px(2.0 * m::STACK)).child(column(left)).child(column(right))).child(line));
 }
 
 /// Put `choice` in force: Olo Doctor does it (`olo-doctor --scheduler`:

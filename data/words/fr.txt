@@ -5250,6 +5250,9 @@ Langue et région
 Large
 Grand
 
+Large pieces
+Grands blocs
+
 Larger
 Plus grand
 
@@ -6285,6 +6288,9 @@ Ne jamais estomper
 Never since the computer started
 Jamais depuis le démarrage de l’ordinateur
 
+Never wait for large pieces of graphics memory
+Ne jamais attendre de grands blocs de mémoire graphique
+
 New
 Nouveau
 
@@ -7103,6 +7109,9 @@ Olo's boot splash
 
 Olo's login screen
 Écran de connexion d’Olo
+
+Olo's module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
+Le module d’Olo vérifie le noyau à son chargement, et il est resté à l’écart de celui-ci. Olo Doctor dit pourquoi.
 
 Olo's own
 Celui d’Olo
@@ -10382,6 +10391,9 @@ Le modèle
 The model wasn't good enough to keep
 Le modèle n’était pas assez bon pour être gardé
 
+The module
+Le module
+
 The most powerful (the processor)
 Le plus puissant (le processeur)
 
@@ -10735,6 +10747,9 @@ Ce noyau ne peut pas tenir un disque à une limite propre (Linux 6.2 et suivants
 
 This kernel has one way of preempting only: it wasn't built to be told another.
 Ce noyau n’a qu’une façon de préempter : il n’a pas été compilé pour en recevoir une autre.
+
+This kernel's build hasn't been checked yet: Olo's module stays out until an Olo update checks it.
+Cette version du noyau n’a pas encore été vérifiée : le module d’Olo reste à l’écart jusqu’à ce qu’une mise à jour d’Olo la vérifie.
 
 This keyboard has no backlight.
 Ce clavier n’a pas de rétroéclairage.
@@ -11861,6 +11876,9 @@ When does the sun rise tomorrow?
 When held for:
 Maintenu pendant :
 
+When no large piece is free, Intel's driver takes smaller ones and windows keep drawing (Olo's module, olo_gpu_pages).
+Quand aucun grand bloc n’est libre, le pilote Intel en prend de plus petits et les fenêtres continuent de se dessiner (module d’Olo, olo_gpu_pages).
+
 When pressed:
 À l’appui :
 
@@ -11971,6 +11989,9 @@ Fenêtre
 
 Window Arrangement
 Disposition des fenêtres
+
+Window Buffers
+Tampons des fenêtres
 
 Window Size
 Taille de la fenêtre
@@ -12503,6 +12524,12 @@ dans la semaine qui vient
 in the next {} days
 dans les {} prochains jours
 
+in the running kernel
+dans le noyau en cours
+
+in the running kernel, switched off
+dans le noyau en cours, désactivé
+
 in {n} days
 one: dans {n} jour
 other: dans {n} jours
@@ -12644,6 +12671,9 @@ pas de réseau filaire : il en attend un
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
+not in the running kernel
+pas dans le noyau en cours
+
 not parts of it: {}; its parts are {}
 n’en font pas partie : {} ; ses parties sont {}
 
@@ -12652,6 +12682,9 @@ pas encore configuré
 
 not understood: {}
 non compris : {}
+
+not yet on this kernel's build, {}
+pas encore sur cette version, {}
 
 not yet on this kernel's series, {}
 pas encore dans la série de ce noyau, {}
@@ -12719,6 +12752,9 @@ sur batterie
 
 on battery: it waits for power
 sur batterie : il attend le courant
+
+on this kernel's build, {}
+sur cette version du noyau, {}
 
 on this kernel's series, {}
 dans la série de ce noyau, {}
@@ -13355,6 +13391,9 @@ il y a {} · cliquez sur un graphique pour un autre moment
 
 {} applications are keeping the display awake.
 {} applications gardent l’écran allumé.
+
+{} asked for, none waited for
+{} demandés, sans attente
 
 {} at {}
 {} à {}

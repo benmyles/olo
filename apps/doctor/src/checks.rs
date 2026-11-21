@@ -829,6 +829,7 @@ pub fn scan(roots: &Roots) -> Report {
     nvidia_console(roots, &gpus, &mut r);
     gpu_driver(roots, &gpus, &mut r);
     graphics_swap(roots, &gpus, &mut r);
+    graphics_pages(roots, &gpus, &mut r);
     memory_kept(roots, &procs, &mut r);
     open_files(roots, &procs, &mut r);
     inotify(roots, &procs, &mut r);
@@ -3476,34 +3477,65 @@ fn swap_off_steps(roots: &Roots, areas: &[(String, u64)]) -> Vec<Step> {
 /// builds this one), with what the kernel's build needs installed first
 /// where it's missing).
 pub(crate) fn graphics_memory_steps(roots: &Roots) -> Vec<Step> {
+    let can_build = can_build_modules(&roots.fs);
+    service_steps(roots, &GPU_MEMORY, can_build, graphics_memory_patched(&roots.fs))
+}
+
+/// One of Olo's kernel pieces' services: its program beside ours, where
+/// root's copy and its unit go, the unit's text and name.
+struct PieceService {
+    program: &'static str,
+    program_path: &'static str,
+    unit_path: &'static str,
+    unit: &'static str,
+    service: &'static str,
+}
+
+const GPU_MEMORY: PieceService =
+    PieceService { program: GPU_MEMORY_PROGRAM, program_path: GPU_MEMORY_PROGRAM_PATH, unit_path: GPU_MEMORY_UNIT_PATH, unit: GPU_MEMORY_UNIT, service: GPU_MEMORY_SERVICE };
+const GPU_PAGES: PieceService = PieceService { program: GPU_PAGES_PROGRAM, program_path: GPU_PAGES_PROGRAM_PATH, unit_path: GPU_PAGES_UNIT_PATH, unit: GPU_PAGES_UNIT, service: GPU_PAGES_SERVICE };
+const BBR3: PieceService = PieceService { program: BBR3_PROGRAM, program_path: BBR3_PROGRAM_PATH, unit_path: BBR3_UNIT_PATH, unit: BBR3_UNIT, service: BBR3_SERVICE };
+
+/// What building a module for the running kernel needs is here: its
+/// headers, make and the compiler.
+fn can_build_modules(fs: &Path) -> bool {
+    let release = read(&fs.join("proc/sys/kernel/osrelease")).map(|r| r.trim().to_owned()).unwrap_or_default();
+    fs.join("lib/modules").join(&release).join("build/Makefile").is_file() && fs.join("usr/bin/make").is_file() && fs.join("usr/bin/gcc").is_file()
+}
+
+/// The steps that put one of those services in place from the program
+/// beside ours: only what isn't so already (its program and unit where
+/// they're missing or not this build's, enabled, and started: again if
+/// either changed, if what it builds with had to be installed, if its
+/// work isn't `in_kernel`, or if it isn't running), with what the
+/// kernel's build needs installed first where it can't build yet.
+fn service_steps(roots: &Roots, piece: &PieceService, can_build: bool, in_kernel: bool) -> Vec<Step> {
     let fs = &roots.fs;
     let mut steps = Vec::new();
-    let release = read(&fs.join("proc/sys/kernel/osrelease")).map(|r| r.trim().to_owned()).unwrap_or_default();
-    let can_build = fs.join("lib/modules").join(&release).join("build/Makefile").is_file() && fs.join("usr/bin/make").is_file() && fs.join("usr/bin/gcc").is_file();
     if !can_build {
         steps.push(Step::InstallPackages { names: KERNEL_BUILD_PACKAGES.iter().map(|n| (*n).to_owned()).collect() });
     }
-    let (from, program, unit) = (roots.bin.join(GPU_MEMORY_PROGRAM), PathBuf::from("/").join(GPU_MEMORY_PROGRAM_PATH), PathBuf::from("/").join(GPU_MEMORY_UNIT_PATH));
+    let (from, program, unit) = (roots.bin.join(piece.program), PathBuf::from("/").join(piece.program_path), PathBuf::from("/").join(piece.unit_path));
     let mut changed = false;
-    if !same_contents(&from, &fs.join(GPU_MEMORY_PROGRAM_PATH)) {
+    if !same_contents(&from, &fs.join(piece.program_path)) {
         steps.push(Step::CopyFile { from, to: program.clone(), mode: 0o755 });
         // (Its label as the folder's own says: a program systemd may run.)
         steps.push(Step::SelinuxLabels { rules: Vec::new(), restore: vec![program] });
         changed = true;
     }
-    if std::fs::read_to_string(fs.join(GPU_MEMORY_UNIT_PATH)).ok().as_deref() != Some(GPU_MEMORY_UNIT) {
-        steps.push(Step::WriteFile { path: unit, content: GPU_MEMORY_UNIT.into(), mode: 0o644 });
+    if std::fs::read_to_string(fs.join(piece.unit_path)).ok().as_deref() != Some(piece.unit) {
+        steps.push(Step::WriteFile { path: unit, content: piece.unit.into(), mode: 0o644 });
         changed = true;
     }
     if changed {
-        steps.push(Step::Unit { name: GPU_MEMORY_SERVICE.into(), action: UnitAction::Reload });
+        steps.push(Step::Unit { name: piece.service.into(), action: UnitAction::Reload });
     }
-    let state = (roots.units)(GPU_MEMORY_SERVICE).ok();
+    let state = (roots.units)(piece.service).ok();
     if changed || !state.as_ref().is_some_and(|s| s.enabled) {
-        steps.push(Step::Unit { name: GPU_MEMORY_SERVICE.into(), action: UnitAction::Enable });
+        steps.push(Step::Unit { name: piece.service.into(), action: UnitAction::Enable });
     }
-    if changed || !can_build || !graphics_memory_patched(fs) || !state.as_ref().is_some_and(|s| s.active) {
-        steps.push(Step::Unit { name: GPU_MEMORY_SERVICE.into(), action: UnitAction::Restart });
+    if changed || !can_build || !in_kernel || !state.as_ref().is_some_and(|s| s.active) {
+        steps.push(Step::Unit { name: piece.service.into(), action: UnitAction::Restart });
     }
     steps
 }
@@ -3612,6 +3644,162 @@ fn graphics_swap(roots: &Roots, pcis: &[Pci], r: &mut Report) {
     });
 }
 
+/// Olo's module that has no program held for a 2 MB piece of graphics
+/// memory (kernel/gpu-pages, `olo_gpu_pages`): the service that builds
+/// it for the running kernel and loads it at each start
+/// (apps/gpu-pages), its program beside ours and where root's copy and
+/// its unit go, where the kernel shows the module's switch once it's
+/// in, and where the service says how it went.
+pub const GPU_PAGES_UNIT: &str = include_str!("../../../data/systemd/olo-gpu-pages.service");
+pub const GPU_PAGES_SERVICE: &str = "olo-gpu-pages.service";
+pub const GPU_PAGES_PROGRAM: &str = "olo-gpu-pages";
+const GPU_PAGES_PROGRAM_PATH: &str = "usr/local/libexec/olo/olo-gpu-pages";
+const GPU_PAGES_UNIT_PATH: &str = "etc/systemd/system/olo-gpu-pages.service";
+const GPU_PAGES_PARAMETERS: &str = "sys/module/olo_gpu_pages/parameters";
+
+/// The steps that put the module's service in place, from the
+/// `olo-gpu-pages` beside ours (`service_steps`).
+pub(crate) fn graphics_pages_steps(roots: &Roots) -> Vec<Step> {
+    let in_force = read(&roots.fs.join(GPU_PAGES_PARAMETERS).join("on")).as_deref() == Some("Y");
+    service_steps(roots, &GPU_PAGES, can_build_modules(&roots.fs), in_force)
+}
+
+/// Programs held while the graphics driver looks for large pieces of
+/// memory. The GPU drivers' memory pool (TTM) fills every buffer with
+/// the largest pieces it can get, and for the size Intel's xe driver
+/// names as worth having, 2 MB, Linux 7.3 has it try hard: where none
+/// is free it compacts memory and reclaims on the thread that made the
+/// buffer, and that thread draws. Ben's computer, 2026-11-21, ten
+/// minutes with a build running and free memory in small pieces: kit
+/// apps' drawing threads held 37 times (the longest 390 ms), a window's
+/// thread 64 times (458 ms), Chrome's GPU process 591 times (327 ms),
+/// app_server's loop 11 times (7 ms): `sudo tools/dev/memory-holds`;
+/// kernel/TUNING.md, "Graphics memory in 2 MB pieces".
+///
+/// The fix is Olo's module (`graphics_pages_steps`): that one try is
+/// made without waiting. It is loaded only into a kernel build it was
+/// checked on (kernel/gpu-pages/QUALIFIED), and is offered only once
+/// what it does to frames on a real computer has been measured
+/// (`kernel_tuning::GRAPHICS_PAGES_OFFERED`): until then this says what
+/// there is where the module is in or its service installed, and
+/// nothing otherwise. Where the kernel can't take it (Secure Boot loads
+/// only signed modules; a build it wasn't checked on, as a new kernel
+/// is until an Olo that has checked it) or the module stays out of a
+/// kernel whose pool isn't the one it was written for, that is said
+/// and nothing is offered: there is no other way to it.
+fn graphics_pages(roots: &Roots, pcis: &[Pci], r: &mut Report) {
+    // (Offered to no one until it is offered to everyone: a switch in the
+    // environment had Olo Doctor offer it on a real computer, the third
+    // review found. Its own tests say so to `graphics_pages_where`.)
+    let offered = olo_system::kernel_tuning::GRAPHICS_PAGES_OFFERED;
+    graphics_pages_where(roots, pcis, r, offered);
+}
+
+fn graphics_pages_where(roots: &Roots, pcis: &[Pci], r: &mut Report, offered: bool) {
+    if !pcis.iter().any(|p| p.display() && p.driver.as_deref() == Some("xe")) {
+        return;
+    }
+    let fs = &roots.fs;
+    let Some(now) = olo_system::kernel_tuning::graphics_pages_where(&crate::kernel::places(fs), offered) else { return };
+    // (Without the service's program beside ours, an Olo from before it
+    // or a build tree's, there's nothing to install it from.)
+    let ours = roots.bin.join(GPU_PAGES_PROGRAM).is_file();
+    let steps = if ours { graphics_pages_steps(roots) } else { Vec::new() };
+    let kept = fs.join(GPU_PAGES_UNIT_PATH).is_file() && (roots.units)(GPU_PAGES_SERVICE).is_ok_and(|s| s.enabled);
+    if now.in_force && (kept || !offered) && (steps.is_empty() || !offered) {
+        r.fine.push(Fine {
+            title: "No program waits for large pieces of graphics memory".into(),
+            detail: format!(
+                "Olo's kernel module (olo_gpu_pages) is in: Intel's graphics driver (xe) takes a 2\u{a0}MB piece of memory that is free and smaller ones when none is, and nothing that draws is held for one{}{}.",
+                match now.changed {
+                    // (Its count is of large pieces asked for with no waiting
+                    // allowed: not of waits there would have been.)
+                    Some(n) if n > 0 => format!(" ({} large pieces asked for since it loaded, none waited for)", thousands(n)),
+                    _ => String::new(),
+                },
+                if kept { "" } else { "; it was put in by hand, and is out again at the next start" }
+            ),
+        });
+        return;
+    }
+    if now.in_force {
+        r.findings.push(Finding {
+            id: "graphics-pages:service".into(),
+            severity: Severity::Advice,
+            title: "Programs are kept from waiting for large pieces of graphics memory only until the next start".into(),
+            detail: format!(
+                "Olo's kernel module (olo_gpu_pages) is in the running kernel, but the service that builds it for each kernel and loads it at every start isn't installed, or isn't this build's. {}",
+                if ours { "The fix puts it in place." } else { "This Olo has no olo-gpu-pages beside it to install it from." }
+            ),
+            fix: ours.then(|| Fix { label: "Keep It at Every Start".into(), root: true, steps }),
+        });
+        return;
+    }
+    let trouble = LARGE_PIECES_TROUBLE;
+    let secure_boot = read_bytes(&fs.join(SECURE_BOOT_VAR)).is_some_and(|b| b.last() == Some(&1));
+    let (detail, fix) = if !now.checked {
+        // (Not on the list: a new kernel, until an Olo that has checked
+        // its module on it. Said only where the module was chosen: where
+        // it never was, there is nothing to tell.)
+        if !kept {
+            return;
+        }
+        (
+            format!(
+                "{trouble}\n\nOlo's kernel module, which has the driver take a large piece that is free and smaller ones when none is, is loaded only into a kernel it was checked on, and this one ({}) isn't yet: an update of Olo brings the check, and the module is in again from the start after.",
+                read(&fs.join("proc/sys/kernel/osrelease")).unwrap_or_default()
+            ),
+            None,
+        )
+    } else if secure_boot {
+        (
+            format!(
+                "{trouble}\n\nOlo's kernel module would have the driver take a large piece that is free and smaller ones when none is, but with Secure Boot this kernel loads only signed modules."
+            ),
+            None,
+        )
+    } else if let Some(why) = now.kept_out() {
+        return r.findings.push(large_pieces_kept_out(why));
+    } else if !offered {
+        // (Installed, not in, nothing wrong said: its service hasn't run
+        // yet, or was stopped. Not ours to offer yet.)
+        return;
+    } else if !ours {
+        (format!("{trouble}\n\nThis Olo has no olo-gpu-pages beside it to install Olo's kernel module from."), None)
+    } else {
+        return r.findings.push(large_pieces_offer(steps));
+    };
+    r.findings.push(Finding { id: "graphics-pages".into(), severity: Severity::Advice, title: LARGE_PIECES_TITLE.into(), detail, fix });
+}
+
+const LARGE_PIECES_TITLE: &str = "Drawing waits for large pieces of graphics memory";
+const LARGE_PIECES_TROUBLE: &str = "With memory in small pieces (a build running, a computer on for days), a window can stop drawing for up to half a second, with memory to spare. Intel's graphics driver (xe) wants each buffer's memory in 2\u{a0}MB pieces, and where none is free the kernel puts one together on the thread that asked.";
+
+/// The module chosen and out of this kernel all the same (its card, as
+/// `OLO_DOCTOR_DEMO=pieces-out` shows it too): a kernel whose pool
+/// isn't the one the module was written for, or where its change
+/// didn't arrive; it checks what reaches the kernel's memory allocator
+/// as it loads, and stays out. `why`: its service's words, the
+/// module's own among them. Nothing to press: there is no other way.
+pub(crate) fn large_pieces_kept_out(why: &str) -> Finding {
+    // (Why in a line of its own, plain words first: the module's own are
+    // for whoever looks into it. Both looks.)
+    let detail = format!(
+        "{LARGE_PIECES_TROUBLE}\n\nOlo's kernel module, which has the driver take smaller pieces meanwhile, checks the kernel as it loads, and it stayed out of this one.\n\nIn its words: {why}."
+    );
+    Finding { id: "graphics-pages".into(), severity: Severity::Advice, title: LARGE_PIECES_TITLE.into(), detail, fix: None }
+}
+
+/// The offer of Olo's module (its card, as the demo report shows it
+/// too): the trouble, and in a paragraph of its own what the fix does.
+pub(crate) fn large_pieces_offer(steps: Vec<Step>) -> Finding {
+    let detail = format!(
+        "{LARGE_PIECES_TROUBLE}\n\nThe fix loads Olo's kernel module, olo_gpu_pages, with no restart: the driver takes smaller pieces while the kernel gathers large ones. The module stays out of a kernel it hasn't been checked on{}. To turn it off: Preferences ▸ Performance ▸ Kernel.",
+        if steps.iter().any(|s| matches!(s, Step::InstallPackages { .. })) { "; what building it needs (the kernel's headers, the compiler, make) is installed first" } else { "" }
+    );
+    Finding { id: "graphics-pages".into(), severity: Severity::Advice, title: LARGE_PIECES_TITLE.into(), detail, fix: Some(Fix { label: "Never Wait for Large Pieces".into(), root: true, steps }) }
+}
+
 /// BBRv3 for TCP (kernel/bbr3, `tcp_bbr3`: the congestion control
 /// "bbr3"): the service that builds Olo's module for the running kernel,
 /// loads it and makes it what new connections use, at each start
@@ -3645,37 +3833,8 @@ fn bbr3_in_use(roots: &Roots) -> bool {
 /// where it's missing; nothing to build where the kernel's own "bbr" is
 /// BBRv3, which the service then chooses).
 pub(crate) fn bbr3_steps(roots: &Roots) -> Vec<Step> {
-    let fs = &roots.fs;
-    let mut steps = Vec::new();
-    let release = read(&fs.join("proc/sys/kernel/osrelease")).unwrap_or_default();
-    let can_build =
-        roots.kernels_bbr.is_some_and(|v| v >= 3) || (fs.join("lib/modules").join(&release).join("build/Makefile").is_file() && fs.join("usr/bin/make").is_file() && fs.join("usr/bin/gcc").is_file());
-    if !can_build {
-        steps.push(Step::InstallPackages { names: KERNEL_BUILD_PACKAGES.iter().map(|n| (*n).to_owned()).collect() });
-    }
-    let (from, program, unit) = (roots.bin.join(BBR3_PROGRAM), PathBuf::from("/").join(BBR3_PROGRAM_PATH), PathBuf::from("/").join(BBR3_UNIT_PATH));
-    let mut changed = false;
-    if !same_contents(&from, &fs.join(BBR3_PROGRAM_PATH)) {
-        steps.push(Step::CopyFile { from, to: program.clone(), mode: 0o755 });
-        // (Its label as the folder's own says: a program systemd may run.)
-        steps.push(Step::SelinuxLabels { rules: Vec::new(), restore: vec![program] });
-        changed = true;
-    }
-    if std::fs::read_to_string(fs.join(BBR3_UNIT_PATH)).ok().as_deref() != Some(BBR3_UNIT) {
-        steps.push(Step::WriteFile { path: unit, content: BBR3_UNIT.into(), mode: 0o644 });
-        changed = true;
-    }
-    if changed {
-        steps.push(Step::Unit { name: BBR3_SERVICE.into(), action: UnitAction::Reload });
-    }
-    let state = (roots.units)(BBR3_SERVICE).ok();
-    if changed || !state.as_ref().is_some_and(|s| s.enabled) {
-        steps.push(Step::Unit { name: BBR3_SERVICE.into(), action: UnitAction::Enable });
-    }
-    if changed || !can_build || !bbr3_in_use(roots) || !state.as_ref().is_some_and(|s| s.active) {
-        steps.push(Step::Unit { name: BBR3_SERVICE.into(), action: UnitAction::Restart });
-    }
-    steps
+    let can_build = roots.kernels_bbr.is_some_and(|v| v >= 3) || can_build_modules(&roots.fs);
+    service_steps(roots, &BBR3, can_build, bbr3_in_use(roots))
 }
 
 /// Olo's guard against a flood of the embedded controller's events
@@ -7423,6 +7582,152 @@ mod tests {
         std::fs::create_dir_all(fs.join(SECURE_BOOT_VAR).parent().unwrap()).unwrap();
         std::fs::write(fs.join(SECURE_BOOT_VAR), [6u8, 0, 0, 0, 1]).unwrap();
         assert!(scan(&roots).find("tcp-bbr3").is_none());
+    }
+
+    /// Intel's xe driver, on a kernel build Olo's module was checked on:
+    /// nothing said while it isn't offered and nothing of it is here;
+    /// offered, its service installed (what building it needs first,
+    /// where it's missing); fine once it's in and kept, with what it has
+    /// spared; kept at each start where it was only loaded by hand (said,
+    /// not offered, until it is offered); and nothing offered where the
+    /// kernel can't take it, the build isn't one it was checked on, or
+    /// the module stays out, each with why. Nothing of another driver.
+    #[test]
+    fn xe_and_large_pieces_of_graphics_memory() {
+        let (fs, roots) = machine("graphics-pages");
+        let w = |p: &str, c: &str| {
+            let path = fs.join(p);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, c).unwrap();
+        };
+        w("sys/bus/pci/devices/0000:00:02.0/class", "0x030000\n");
+        w("sys/bus/pci/devices/0000:00:02.0/vendor", "0x8086\n");
+        w("sys/module/xe/refcnt", "1\n");
+        let driver = |name: &str| {
+            let link = fs.join("sys/bus/pci/devices/0000:00:02.0/driver");
+            let _ = std::fs::remove_file(&link);
+            std::fs::create_dir_all(fs.join("sys/bus/pci/drivers").join(name)).unwrap();
+            std::os::unix::fs::symlink(fs.join("sys/bus/pci/drivers").join(name), link).unwrap();
+        };
+        // (The first build on the list, as the kernel shows its own and its module's.)
+        let listed: Vec<&str> = olo_system::kernel_tuning::GRAPHICS_PAGES_QUALIFIED.lines().find(|l| !l.starts_with('#') && !l.trim().is_empty()).unwrap().split_whitespace().collect();
+        let (release, build) = (listed[0], |path: &str, id: &str| {
+            std::fs::create_dir_all(fs.join(path).parent().unwrap()).unwrap();
+            std::fs::write(fs.join(path), olo_kmod::builds::notes_for_tests(id)).unwrap();
+        });
+        build("sys/kernel/notes", listed[1]);
+        build("sys/module/ttm/notes/.note.gnu.build-id", listed[2]);
+        w("proc/sys/kernel/osrelease", &format!("{release}\n"));
+        std::fs::write(roots.bin.join("olo-gpu-pages"), "the service").unwrap();
+        let look = |roots: &Roots, offered: bool| {
+            let mut r = Report::default();
+            graphics_pages_where(roots, &pci_devices(&roots.fs), &mut r, offered);
+            r
+        };
+        let about = |r: &Report| r.find("graphics-pages").is_some() || r.find("graphics-pages:service").is_some() || r.fine.iter().any(|f| f.title.contains("large pieces of graphics memory"));
+        // Another driver's: nothing. xe's, not offered, nothing of it here: nothing (and so a whole scan today).
+        driver("i915");
+        assert!(!about(&look(&roots, true)));
+        driver("xe");
+        assert!(!about(&look(&roots, false)) && !about(&scan(&roots)));
+        let said = |roots: &Roots| look(roots, true).find("graphics-pages").map(|f| f.fix.as_ref().unwrap().steps.iter().map(Step::describe).collect::<Vec<_>>());
+        let install = [
+            "Installing /usr/local/libexec/olo/olo-gpu-pages",
+            "Labelling /usr/local/libexec/olo/olo-gpu-pages for SELinux",
+            "Writing /etc/systemd/system/olo-gpu-pages.service",
+            "Reloading systemd for olo-gpu-pages.service",
+            "Enabling olo-gpu-pages.service",
+            "Restarting olo-gpu-pages.service",
+        ];
+        // Offered. Nothing to build with: installed first.
+        let f = look(&roots, true).find("graphics-pages").unwrap().clone();
+        assert_eq!((f.severity, f.fix.as_ref().unwrap().label.as_str()), (Severity::Advice, "Never Wait for Large Pieces"));
+        assert_eq!(f.title, "Drawing waits for large pieces of graphics memory");
+        assert!(
+            f.detail.contains("\n\nThe fix loads Olo's kernel module, olo_gpu_pages, with no restart: the driver takes smaller pieces")
+                && f.detail.contains("the compiler, make) is installed first. To turn it off: Preferences"),
+            "{}",
+            f.detail
+        );
+        assert_eq!(said(&roots).unwrap(), [&["Installing kernel-devel-matched, gcc, make"][..], &install[..]].concat());
+        // The kernel's headers, make and the compiler there: the service alone.
+        w(&format!("lib/modules/{release}/build/Makefile"), "");
+        w("usr/bin/make", "");
+        w("usr/bin/gcc", "");
+        assert_eq!(said(&roots).unwrap(), install);
+        assert!(look(&roots, true).find("graphics-pages").unwrap().detail.ends_with("stays out of a kernel it hasn't been checked on. To turn it off: Preferences ▸ Performance ▸ Kernel."));
+        // A build it wasn't checked on, and never chosen: nothing to tell, offered or not.
+        build("sys/module/ttm/notes/.note.gnu.build-id", listed[1]);
+        assert!(!about(&look(&roots, true)));
+        build("sys/module/ttm/notes/.note.gnu.build-id", listed[2]);
+        // In by hand (a trial), not offered: said, and that it goes at the next start; nothing to press.
+        w("sys/module/olo_gpu_pages/parameters/on", "Y\n");
+        w("sys/module/olo_gpu_pages/parameters/changed", "20481\n");
+        let r = look(&roots, false);
+        assert!(r.find("graphics-pages").is_none() && r.find("graphics-pages:service").is_none());
+        assert!(r.fine[0].detail.ends_with("(20,481 large pieces asked for since it loaded, none waited for); it was put in by hand, and is out again at the next start."), "{}", r.fine[0].detail);
+        // Offered: kept at every start by the fix.
+        let f = look(&roots, true).find("graphics-pages:service").unwrap().clone();
+        assert_eq!((f.severity, f.fix.as_ref().unwrap().label.as_str()), (Severity::Advice, "Keep It at Every Start"));
+        // Its service this build's, enabled and run: fine, either way.
+        w("usr/local/libexec/olo/olo-gpu-pages", "the service");
+        w("etc/systemd/system/olo-gpu-pages.service", GPU_PAGES_UNIT);
+        w("etc/systemd/system/multi-user.target.wants/olo-gpu-pages.service", "");
+        let kept = |name: &str| -> Result<UnitState, String> { if name == GPU_PAGES_SERVICE { Ok(UnitState { loaded: true, active: true, enabled: true, path: None }) } else { Err("none".into()) } };
+        let roots = Roots { units: Box::new(kept), ..roots };
+        for offered in [true, false] {
+            let r = look(&roots, offered);
+            assert!(r.find("graphics-pages").is_none() && r.find("graphics-pages:service").is_none());
+            let fine = r.fine.iter().find(|f| f.title == "No program waits for large pieces of graphics memory").expect("fine");
+            assert!(
+                fine.detail.starts_with("Olo's kernel module (olo_gpu_pages) is in") && fine.detail.ends_with("(20,481 large pieces asked for since it loaded, none waited for)."),
+                "{}",
+                fine.detail
+            );
+        }
+        // An older build's program there: brought up to date.
+        w("usr/local/libexec/olo/olo-gpu-pages", "an older service");
+        let f = look(&roots, true).find("graphics-pages:service").unwrap().clone();
+        assert_eq!(f.fix.unwrap().steps.iter().map(Step::describe).collect::<Vec<_>>(), [install[0], install[1], install[3], install[4], install[5]]);
+        w("usr/local/libexec/olo/olo-gpu-pages", "the service");
+        // Switched off by hand: offered again (its service started again switches it on).
+        w("sys/module/olo_gpu_pages/parameters/on", "N\n");
+        assert_eq!(said(&roots).unwrap(), ["Restarting olo-gpu-pages.service"]);
+        std::fs::remove_dir_all(fs.join("sys/module/olo_gpu_pages")).unwrap();
+        // A new kernel it wasn't checked on yet, the module chosen before: said, nothing offered, offered or not.
+        w("proc/sys/kernel/osrelease", "7.3.9-300.fc45.x86_64\n");
+        w("run/olo-gpu-pages/status", "not checked\n");
+        for offered in [true, false] {
+            let f = look(&roots, offered).find("graphics-pages").unwrap().clone();
+            assert!(f.fix.is_none() && f.detail.contains("and this one (7.3.9-300.fc45.x86_64) isn't yet: an update of Olo brings the check"), "{}", f.detail);
+        }
+        w("proc/sys/kernel/osrelease", &format!("{release}\n"));
+        // Secure Boot: the kernel takes no unsigned module, and there is no other way: said, nothing offered.
+        w("sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c", "\u{6}\0\0\0\u{1}");
+        let f = look(&roots, true).find("graphics-pages").unwrap().clone();
+        assert!(f.fix.is_none() && f.detail.ends_with("with Secure Boot this kernel loads only signed modules."), "{}", f.detail);
+        std::fs::remove_file(fs.join("sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c")).unwrap();
+        // The module stayed out of this kernel (its own check): why, in its words, nothing offered.
+        w(
+            "run/olo-gpu-pages/status",
+            "failed: the kernel didn't take the module: Operation not supported (os error 95); its own words: this kernel's pool isn't the one this was written for (as it comes, the 2 MB try's flags are 0x392cc2 and the 1 MB try's 0x392cc2)\n",
+        );
+        let f = look(&roots, false).find("graphics-pages").unwrap().clone();
+        assert!(
+            f.fix.is_none()
+                && f.detail.ends_with("checks the kernel as it loads, and it stayed out of this one.\n\nIn its words: this kernel's pool isn't the one this was written for (as it comes, the 2 MB try's flags are 0x392cc2 and the 1 MB try's 0x392cc2)."),
+            "{}",
+            f.detail
+        );
+        // It couldn't be built for want of the kernel's headers: the fix installs them (once it's offered).
+        w("run/olo-gpu-pages/status", &format!("failed: this kernel's headers aren't installed (the kernel-devel package for {release})\n"));
+        assert_eq!(look(&roots, true).find("graphics-pages").unwrap().fix.as_ref().unwrap().label, "Never Wait for Large Pieces");
+        assert!(!about(&look(&roots, false)));
+        // An Olo with no service program beside it: said, nothing offered.
+        std::fs::remove_file(roots.bin.join("olo-gpu-pages")).unwrap();
+        let f = look(&roots, true).find("graphics-pages").unwrap().clone();
+        assert!(f.fix.is_none() && f.detail.ends_with("no olo-gpu-pages beside it to install Olo's kernel module from."), "{}", f.detail);
+        let _ = std::fs::remove_dir_all(fs);
     }
 
     /// Intel's xe driver with swap on, where Olo's kernel patch can go in:

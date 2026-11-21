@@ -43,6 +43,32 @@ settings' side.
   memory out of swap (TTM's `ttm_backup_bytes_avail` answers "none").
   Built and loaded at each start by `olo-gpu-memory` (apps/gpu-memory).
   docs/HACKING.md, "Windows' buffers stay in memory".
+- `gpu-pages/`: `olo_gpu_pages`, a module with a probe that has no
+  program held for a 2 MB piece of graphics memory: the GPU memory
+  pool's one hard try (TTM's `ttm_pool_alloc_page`, for the size xe
+  names, since Linux 7.3) is made without direct reclaim, for the one
+  PCI device it is told, bound to xe. Nothing of the kernel's is
+  replaced: the probe changes the function's gfp argument. It checks
+  itself as it loads, on a pool of its own with that device as owner
+  and before it touches anything real, and stays out of a kernel whose
+  pool isn't the one it was written for. It is loaded only into a
+  kernel it was checked in, [gpu-pages/QUALIFIED](gpu-pages/QUALIFIED)
+  (the kernel's build, its ttm module's, the live patch beside it):
+  where a build keeps the function's arguments is not something a
+  module can check as it loads, and no tool can either, so a person
+  reads each build (that file says what) after `tools/dev/gpu-pages-check
+  --qualify` has run the guests on it. **A new kernel is not on the
+  list**: the module stays out of it (Olo Doctor and Preferences say
+  so) until an Olo with its line is installed. Built and loaded at
+  each start by `olo-gpu-pages` (apps/gpu-pages), which names its load
+  and switches and removes only its own. **Not offered yet, and
+  nothing switches it on** (`kernel_tuning::GRAPHICS_PAGES_OFFERED`):
+  what it does to frames on a real computer is still to be measured,
+  with its owner's word (`tools/dev/gpu-pages-try`, itself tried in
+  guests: `gpu-pages-check --trial-tool`). [TUNING.md](TUNING.md),
+  "Graphics memory in 2 MB pieces"; docs/HACKING.md, "No program held
+  for large pieces of graphics memory"; `check/` has the guests'
+  fixtures.
 - `bbr3/`: `tcp_bbr3`, Google's BBRv3 congestion control for TCP as a
   module for the kernel as it comes (the congestion control `bbr3`).
   Built, loaded and made the system's at each start by `olo-bbr3`

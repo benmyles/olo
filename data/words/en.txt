@@ -1741,6 +1741,7 @@ LTE
 Language
 Language & Region
 Large
+Large pieces
 Larger
 Larger Pointer
 Last
@@ -2086,6 +2087,7 @@ Never
 Never Warned About
 Never fade
 Never since the computer started
+Never wait for large pieces of graphics memory
 New
 New Agent Screen
 New Conversation
@@ -2359,6 +2361,7 @@ Olo saying its name
 Olo's Choice
 Olo's boot splash
 Olo's login screen
+Olo's module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
 Olo's own
 Olo's own model is still in use.
 Olo's own palm model, made from {} touches of real hands (Preferences ▸ Touchpad & Mouse ▸ Touch trains one of yours)
@@ -3450,6 +3453,7 @@ The main window in its place; the others stack around it.
 The microphone can’t be recorded ({}).
 The model
 The model wasn't good enough to keep
+The module
 The most powerful (the processor)
 The most powerful ({})
 The network couldn't be asked for receivers.
@@ -3568,6 +3572,7 @@ This isn't an Olo backup.
 This isn't the session at the computer, so the computer isn't restarted.
 This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 This kernel has one way of preempting only: it wasn't built to be told another.
+This kernel's build hasn't been checked yet: Olo's module stays out until an Olo update checks it.
 This keyboard has no backlight.
 This page shows a one-time code for {}. Add it to which login?
 This step is done
@@ -3943,6 +3948,7 @@ When am I free today?
 When am I free tomorrow?
 When does the sun rise tomorrow?
 When held for:
+When no large piece is free, Intel's driver takes smaller ones and windows keep drawing (Olo's module, olo_gpu_pages).
 When pressed:
 When to Back Up
 When will the rain stop?
@@ -3980,6 +3986,7 @@ Wind {}{}
 Wind {}{}, gusts {}
 Window
 Window Arrangement
+Window Buffers
 Window Size
 Window on a Background
 Window title size
@@ -4156,6 +4163,8 @@ iPhone
 in a minute
 in the next week
 in the next {} days
+in the running kernel
+in the running kernel, switched off
 in {n} days
 in {n} minutes
 in {}
@@ -4202,9 +4211,11 @@ no limit to its space
 no network: it goes on once there’s one
 no wired network: it waits for one
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
+not in the running kernel
 not parts of it: {}; its parts are {}
 not set up yet
 not understood: {}
+not yet on this kernel's build, {}
 not yet on this kernel's series, {}
 nothing backed up for {n} days
 nothing freed
@@ -4227,6 +4238,7 @@ on
 on a fast core at a high clock
 on battery
 on battery: it waits for power
+on this kernel's build, {}
 on this kernel's series, {}
 on {}
 on {} at {}
@@ -4419,6 +4431,7 @@ your own picture
 {} and {} others
 {} answered {} (not a speed test server?)
 {} applications are keeping the display awake.
+{} asked for, none waited for
 {} at {}
 {} backups
 {} backups and the unfinished one

@@ -5250,6 +5250,9 @@ Idioma y región
 Large
 Grande
 
+Large pieces
+Bloques grandes
+
 Larger
 Más grande
 
@@ -6285,6 +6288,9 @@ No desvanecer nunca
 Never since the computer started
 Nunca desde que se inició el ordenador
 
+Never wait for large pieces of graphics memory
+No esperar nunca por bloques grandes de memoria gráfica
+
 New
 Nuevo
 
@@ -7103,6 +7109,9 @@ Pantalla de arranque de Olo
 
 Olo's login screen
 Pantalla de inicio de sesión de Olo
+
+Olo's module checks the kernel as it loads, and it stayed out of this one. Olo Doctor says why.
+El módulo de Olo comprueba el núcleo al cargarse, y se quedó fuera de este. Olo Doctor dice por qué.
 
 Olo's own
 El de Olo
@@ -10382,6 +10391,9 @@ El modelo
 The model wasn't good enough to keep
 El modelo no era lo bastante bueno para guardarlo
 
+The module
+El módulo
+
 The most powerful (the processor)
 La más potente (el procesador)
 
@@ -10735,6 +10747,9 @@ Este núcleo no puede sujetar un disco a un límite propio (Linux 6.2 y posterio
 
 This kernel has one way of preempting only: it wasn't built to be told another.
 Este núcleo solo tiene una forma de expropiación: no se compiló para que se le diga otra.
+
+This kernel's build hasn't been checked yet: Olo's module stays out until an Olo update checks it.
+Esta compilación del núcleo aún no se ha comprobado: el módulo de Olo se queda fuera hasta que una actualización de Olo la compruebe.
 
 This keyboard has no backlight.
 Este teclado no tiene retroiluminación.
@@ -11861,6 +11876,9 @@ When does the sun rise tomorrow?
 When held for:
 Al mantener durante:
 
+When no large piece is free, Intel's driver takes smaller ones and windows keep drawing (Olo's module, olo_gpu_pages).
+Cuando no hay ningún bloque grande libre, el controlador de Intel toma otros más pequeños y las ventanas siguen dibujándose (módulo de Olo, olo_gpu_pages).
+
 When pressed:
 Al pulsar:
 
@@ -11971,6 +11989,9 @@ Ventana
 
 Window Arrangement
 Disposición de ventanas
+
+Window Buffers
+Búferes de las ventanas
 
 Window Size
 Tamaño de ventana
@@ -12503,6 +12524,12 @@ en la próxima semana
 in the next {} days
 en los próximos {} días
 
+in the running kernel
+en el núcleo en ejecución
+
+in the running kernel, switched off
+en el núcleo en ejecución, desactivado
+
 in {n} days
 one: dentro de {n} día
 other: dentro de {n} días
@@ -12644,6 +12671,9 @@ sin red por cable: espera a que haya una
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 
+not in the running kernel
+no está en el núcleo en ejecución
+
 not parts of it: {}; its parts are {}
 no son partes suyas: {}; sus partes son {}
 
@@ -12652,6 +12682,9 @@ aún sin configurar
 
 not understood: {}
 no se entendió: {}
+
+not yet on this kernel's build, {}
+aún no en esta versión, {}
 
 not yet on this kernel's series, {}
 aún no en la serie de este núcleo, {}
@@ -12719,6 +12752,9 @@ con batería
 
 on battery: it waits for power
 con batería: espera a la corriente
+
+on this kernel's build, {}
+en esta versión del núcleo, {}
 
 on this kernel's series, {}
 en la serie de este núcleo, {}
@@ -13355,6 +13391,9 @@ hace {} · haz clic en un gráfico para otro momento
 
 {} applications are keeping the display awake.
 {} aplicaciones mantienen la pantalla despierta.
+
+{} asked for, none waited for
+{} pedidos, sin espera
 
 {} at {}
 {} a las {}

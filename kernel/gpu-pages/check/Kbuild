@@ -1,0 +1,2 @@
+obj-m := olo_gpu_pages_trial.o olo_gpu_pages_fragment.o
+obj-m += olo_gpu_pages_xe.o

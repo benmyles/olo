@@ -1,0 +1,716 @@
+#!/usr/bin/python3
+"""olo_gpu_pages (kernel/gpu-pages), checked in KVM guests that run this
+computer's own kernel (tools/dev/kvm-guest: nothing of the running system
+is touched, no root):
+
+  tools/dev/gpu-pages-check            all of it
+  tools/dev/gpu-pages-check --qualify  and this kernel's build looked at: its words for kernel/gpu-pages/QUALIFIED
+  tools/dev/gpu-pages-check --trial-tool   and tools/dev/gpu-pages-try itself, run in guests and stopped three ways
+  tools/dev/gpu-pages-check --only-trial-tool   that alone
+  tools/dev/gpu-pages-check --cost     and how long a one-page fill takes without the probe, with it, and with it in force
+
+A guest has no GPU. The module's work is on the GPU drivers' memory pool
+(TTM), which a module can fill by itself: kernel/gpu-pages/check has a
+PCI driver named "xe" for QEMU's host bridge (so the guest has a device
+really bound to a driver of that name, as the module asks of the device
+it is told), a pool with xe's flags owned by that device or by a made-up
+one of another driver's, filled while the kernel's own tracepoints are
+watched on that thread, and a fixture that leaves free memory in small
+pieces for certain (one page kept of every 2 MB piece it could get).
+A kernel warning in a guest ends it (panic_on_warn).
+
+- **It builds** for this kernel, with no warning, and the fixtures.
+- **It takes**: it loads, having checked itself (its log line says the
+  2 MB try's flags with it and as the kernel has them), beside Olo's
+  other piece in the same module of the kernel (olo_gpu_memory, a live
+  patch) where that is built.
+- **Only xe's 2 MB try**: with it in, a pool of a driver named "xe" asks
+  for 2 MB without waiting allowed and for single pages as before; a
+  pool of a driver of another name is as the kernel has it; `on` written
+  0 puts xe's back, 1 takes it off again; unloaded, as the kernel has
+  it. `changed` counts.
+- **Disarmed, it refuses**: with the kernel's probes switched off for
+  everything (/sys/kernel/debug/kprobes/enabled), a probe registers and
+  does nothing; the module sees what reached the page allocator and
+  doesn't load.
+- **In memory left in small pieces**, 64 buffers of 2 MB filled: as the
+  kernel has it the thread compacts and reclaims for them (the
+  fixture's own check: if it doesn't, the trial shows nothing); with
+  the module, never, and every buffer is still filled.
+
+`--qualify` then looks at the running kernel's own build, which is what
+the module's check of itself can't: it reads the function's arguments
+where a build keeps them. Every guest must have run this very build
+(the kernel's build ID and its ttm module's, read inside each guest),
+the first of them with the kernel's live patches as they are here
+(Olo's own as it is in this kernel, or none: the guests in memory left
+in small pieces run with none). From
+the kernel's type information (/sys/kernel/btf: libbpf) and the
+installed ttm module's machine code (objdump) it then says what it can
+read: the function's shape; that it starts at its trace site and takes
+the order from %edx, the flags from %esi and the pool from %rdi before
+it writes any of them, reading the pool's own flags where the type
+information has them; the direct branches to it. **That reading is a
+help and not a proof**: a review fed it shapes the probe would misread
+(two argument registers exchanged, an address taken and never read, a
+clone of the function, a jump into its middle) and it passed them. So
+it never says a build is good to list. It prints the build's words
+(release, the kernel's build ID, its ttm module's, the live patch's)
+and whether kernel/gpu-pages/QUALIFIED has them: listed, or *pending a
+person's review* (exit status 2), which that file's own words set out.
+
+`--trial-tool` runs the tool that tries the module on a real computer,
+`tools/dev/gpu-pages-try`, as it is, in four guests (this Python and
+bpftrace and journalctl carried in; only the build of a module that is
+built already stood in for), with GPU
+buffers being filled beside it all the while: run to its end (it must
+say that it says nothing either way, a guest having no holds to show,
+and leave nothing loaded; then, in the same guest, what must stop it
+before it loads anything: tracing that fails, tracing with a probe
+missing, a kernel warning in the phase with nothing loaded; and
+another's load getting in first, which it must leave as it found it);
+a kernel warning while its module is on (a plain one of the graphics
+driver's own, with no word that names it a warning); a SIGTERM then; a
+SIGKILL then. Each time the module must be off within
+moments (how long is said) and, but for the kill, out of the kernel;
+after the kill it is still in, off, the trial's own, and comes out
+with `rmmod`. A review found the tool's first form going on after a
+warning, calling a run with no tracing a success, and leaving its
+module in and on: this is that review's test, kept.
+
+What it does to what a person sees can only be measured on a computer
+with the GPU, with its owner's word (`tools/dev/gpu-pages-try`;
+kernel/TUNING.md, "Graphics memory in 2 MB pieces").
+"""
+import base64
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+SRC = os.path.join(ROOT, "kernel", "gpu-pages")
+GUEST = ["/usr/bin/python3", os.path.join(ROOT, "tools/dev/kvm-guest")]
+DIRECT = 0x400  # __GFP_DIRECT_RECLAIM
+
+# The fixtures' two tracepoint callbacks no header can check from a module: as this kernel declares them, or no trial.
+SHAPES = [
+    ("trace/events/compaction.h", r"TRACE_EVENT\(mm_compaction_try_to_compact_pages,\s*TP_PROTO\(\s*int order,\s*gfp_t gfp_mask,\s*int prio\)"),
+    ("trace/events/vmscan.h", r"DEFINE_EVENT\(mm_vmscan_direct_reclaim_begin_template, mm_vmscan_direct_reclaim_begin,\s*TP_PROTO\(gfp_t gfp_flags, int order, struct mem_cgroup \*memcg\)"),
+]
+
+PRELUDE = r"""
+said() { dmesg -c | grep -E 'olo_gpu_pages' | sed -E 's/^\[[^]]*\] //'; }
+trial() { insmod /ko/olo_gpu_pages_trial.ko "$@" 2>&1; echo "trial|$?"; said | sed 's/^/log|/'; rmmod olo_gpu_pages_trial 2>/dev/null; }
+for id in kernel ttm; do
+    case $id in
+        kernel) note=/sys/kernel/notes ;;
+        ttm) note=/sys/module/ttm/notes/.note.gnu.build-id ;;
+    esac
+    encoded=$(base64 -w0 "$note") || exit 6
+    echo "$id-notes|$encoded"
+done
+B=0000:00:00.0
+insmod /ko/olo_gpu_pages_xe.ko || exit 5
+[ -e /sys/bus/pci/drivers/xe/$B ] || { B=$(ls /sys/bus/pci/drivers/xe | grep -m1 :); }
+[ -n "$B" ] || exit 5
+P=/sys/module/olo_gpu_pages/parameters
+dmesg -c > /dev/null
+"""
+
+TAKES = PRELUDE + r"""
+mount -t debugfs none /sys/kernel/debug 2>/dev/null
+if [ -e /ko/olo_gpu_memory.ko ]; then
+    insmod /ko/olo_gpu_memory.ko; echo "swap-patch|$?"
+    echo "patch-notes|$(base64 -w0 /sys/module/olo_gpu_memory/notes/.note.gnu.build-id)"
+    for ((i=0; i<50; i++)); do [ "$(cat /sys/kernel/livepatch/olo_gpu_memory/transition 2>/dev/null)" = 0 ] && break; sleep 0.1; done
+    [[ $(cat /sys/kernel/livepatch/olo_gpu_memory/transition) = 0 ]] || exit 6
+fi
+echo "as-it-comes|"; trial bdf=$B driver=xe pages=1793 fills=1 keep=1
+insmod /ko/olo_gpu_pages.ko bdf=$B 2>&1; echo "insmod|$?"; said | sed 's/^/loaded|/'
+echo "probe|$(grep -c ttm_pool_alloc_page /sys/kernel/debug/kprobes/list 2>/dev/null)"
+[ -e /ko/olo_gpu_memory.ko ] && echo "swap-patch-still|$(cat /sys/kernel/livepatch/olo_gpu_memory/enabled)"
+stack=$(ls -A /sys/kernel/livepatch) || exit 6
+[ -z "$stack" ] && echo "no-patch|yes"
+echo "xe|"; trial bdf=$B driver=xe pages=1793 fills=1 keep=1
+echo "changed|$(cat $P/changed)"
+echo "other|"; trial driver=amdgpu pages=1793 fills=1 keep=1
+echo "changed-after-other|$(cat $P/changed)"
+echo 0 > $P/on; echo "off|"; trial bdf=$B driver=xe pages=1793 fills=1 keep=1
+echo 1 > $P/on; echo "on-again|"; trial bdf=$B driver=xe pages=1793 fills=1 keep=1
+echo "missed|$(cat $P/missed)"
+rmmod olo_gpu_pages; echo "rmmod|$?"
+echo "unloaded|"; trial bdf=$B driver=xe pages=1793 fills=1 keep=1
+echo 0 > /sys/kernel/debug/kprobes/enabled
+insmod /ko/olo_gpu_pages.ko bdf=$B 2>&1; echo "disarmed-insmod|$?"; said | sed 's/^/disarmed|/'
+echo 1 > /sys/kernel/debug/kprobes/enabled
+insmod /ko/olo_gpu_pages.ko bdf=$B 2>&1; echo "armed-insmod|$?"; said > /dev/null
+if [ "$1" = cost ]; then
+    for round in 1 2 3; do
+        echo 0 > $P/on; echo "cost-off|"; trial bdf=$B driver=xe observe=0 pages=1 fills=100000 keep=1
+        echo 1 > $P/on; echo "cost-on|"; trial bdf=$B driver=xe observe=0 pages=1 fills=100000 keep=1
+    done
+    rmmod olo_gpu_pages
+    for round in 1 2 3; do echo "cost-without|"; trial bdf=$B driver=xe observe=0 pages=1 fills=100000 keep=1; done
+fi
+echo "alive|$(cat /proc/sys/kernel/osrelease)"
+"""
+
+# $1: "with" loads the module first (as at a start), anything else doesn't.
+PIECES = PRELUDE + r"""
+if [ "$1" = with ]; then insmod /ko/olo_gpu_pages.ko bdf=$B 2>&1; echo "insmod|$?"; said > /dev/null; fi
+insmod /ko/olo_gpu_pages_fragment.ko || exit 7; said | sed 's/^/fragment|/'
+buddy=$(cat /proc/buddyinfo) || exit 7
+echo "buddy|${buddy//$'\n'/; }"
+echo "free-2mb|$(awk '{for (i=14; i<=NF; i++) n += $i * 2^(i-14)} END {print n + 0}' <<<"$buddy")"
+stat() { awk -v k="$1" '$1 == k {print $2}' /proc/vmstat; }
+W0=$(stat compact_daemon_wake)
+echo "pieces|"; trial bdf=$B driver=xe pages=512 fills=64 keep=64
+echo "daemon-woken|$(( $(stat compact_daemon_wake) - W0 ))"
+[ "$1" = with ] && echo "changed|$(cat $P/changed)"
+echo "alive|$(cat /proc/sys/kernel/osrelease)"
+"""
+
+
+def guest(script, arg, kos, mem=2048):
+    with tempfile.TemporaryDirectory(prefix="olo-gpu-pages-", dir="/var/tmp") as work:
+        path = os.path.join(work, "script")
+        with open(path, "w") as f:
+            f.write(script)
+        cmd = GUEST + ["--quiet", "--bin", "base64", "--module", "ttm", "--cpus", "2", "--mem", str(mem), "--timeout", "240", "--append", "panic_on_warn=1 oops=panic"]
+        for ko in kos:
+            cmd += ["--ko", ko]
+        out = subprocess.run(cmd + [path, arg], capture_output=True, text=True)
+    return out.returncode, out.stdout, out.stderr
+
+
+def sections(text):
+    """The guest's lines by the step they came under: {step: {"": value, "log": [...], "trial": code}}."""
+    steps, now = {}, None
+    for line in text.splitlines():
+        if "|" not in line:
+            continue
+        key, value = line.split("|", 1)
+        if key in ("log", "trial") and now:
+            if key == "log":
+                steps[now]["log"].append(value)
+            else:
+                steps[now]["trial"] = value
+        else:
+            now = key
+            steps.setdefault(key, {"": value, "log": [], "trial": None})
+            steps[key][""] = value
+    return steps
+
+
+def sizes(step):
+    """A trial's sizes as it logged them: {order: {asked, waiting, refused, pieces, compacted, reclaimed, flags}}."""
+    found = {}
+    for line in step["log"]:
+        m = re.search(r"order=(\d+) asked=(\d+) waiting=(\d+) refused=(\d+) pieces=(\d+) compacted=(\d+) reclaimed=(\d+) flags=(0x[0-9a-f]+)", line)
+        if m:
+            found[int(m.group(1))] = dict(zip(("asked", "waiting", "refused", "pieces", "compacted", "reclaimed"), map(int, m.groups()[1:7])), flags=int(m.group(8), 16))
+    return found
+
+
+def timing(step):
+    m = next((re.search(r"middle_ns=(\d+) p99_ns=(\d+) longest_ns=(\d+)", line) for line in step["log"] if "middle_ns" in line), None)
+    return tuple(int(x) for x in m.groups()) if m else None
+
+
+# $1: "quiet" (the tool run to its end), or what stops it while its module is on: "warn", "term", "kill".
+TRIAL_TOOL = r"""
+# (tracefs at its own place and debugfs away: through debugfs the tracing
+# library has the kernel mount tracefs' old place there at first use, and
+# the kernel says so in a warning, which the trial rightly stops for.)
+umount /sys/kernel/debug || exit 5
+mount -t tracefs tracefs /sys/kernel/tracing || exit 5
+mkdir -p /var/tmp /run
+[ -e /dev/fd ] || ln -s /proc/self/fd /dev/fd
+[ -e /bin/sh ] || ln -s bash /bin/sh
+if [ -e /ko/olo_gpu_memory.ko ]; then
+    insmod /ko/olo_gpu_memory.ko || exit 6
+    for ((i=0; i<50; i++)); do [ "$(cat /sys/kernel/livepatch/olo_gpu_memory/transition 2>/dev/null)" = 0 ] && break; sleep 0.1; done
+fi
+insmod /ko/olo_gpu_pages_xe.ko || exit 5
+B=$(ls /sys/bus/pci/drivers/xe | grep -m1 :)
+P=/sys/module/olo_gpu_pages/parameters
+# GPU buffers filled all the while, as programs drawing would have them.
+( for ((i=0; i<3000; i++)); do insmod /ko/olo_gpu_pages_trial.ko bdf=$B pages=512 fills=8 keep=1 2>/dev/null; rmmod olo_gpu_pages_trial 2>/dev/null; sleep 0.025; done ) &
+load=$!
+on() { [ "$(cat $P/on 2>/dev/null)" = Y ]; }
+PYTHONHOME=/usr /bin/python3 -B /repo/tools/dev/gpu-pages-try --on-this-computer --phase 2 --pairs 1 > /run/trial.out 2>&1 &
+trial=$!
+if [ "$1" != quiet ]; then
+    for ((i=0; i<6000; i++)); do on && break; kill -0 $trial 2>/dev/null || break; sleep 0.01; done
+    on && echo "was-on|yes" || echo "was-on|no"
+    before=$(cat "$P/trial_id" 2>/dev/null)
+    echo "trial-before|$before"
+    t0=$(date +%s%N)
+    case $1 in
+        warn) echo '<4>xe: VM worker error: -5' > /dev/kmsg ;;
+        term) kill -TERM $trial ;;
+        kill) kill -KILL $trial ;;
+    esac
+    for ((i=0; i<2000; i++)); do on || break; sleep 0.001; done
+    echo "off-after-ms|$(( ($(date +%s%N) - t0) / 1000000 ))"
+fi
+wait $trial; echo "exit|$?"
+kill $load 2>/dev/null; wait $load 2>/dev/null
+echo "present|$([ -d /sys/module/olo_gpu_pages ] && echo yes || echo no)"
+echo "on|$(cat $P/on 2>/dev/null)"
+echo "trials|$(cat $P/trial_id 2>/dev/null)"
+if [ "$1" = kill ] && [ -n "$before" ] && [ "$(cat "$P/trial_id" 2>/dev/null)" = "$before" ]; then rmmod olo_gpu_pages; echo "rmmod|$?"; echo "present-after|$([ -d /sys/module/olo_gpu_pages ] && echo yes || echo no)"; fi
+if [ "$1" = quiet ]; then
+    # The same guest, nothing loaded again: what must stop the trial before
+    # it loads anything, with stand-ins for bpftrace and insmod this once.
+    mkdir -p /testbin
+    cat > /testbin/insmod <<'LOAD'
+#!/bin/bash
+echo attempt >> /run/inserts
+exec /bin/insmod "$@"
+LOAD
+    cat > /testbin/bpftrace <<'TRACE'
+#!/bin/bash
+case $CASE in
+    noattach) exit 1 ;;
+    partial) echo 'Attached 11 probes'; echo '@pool_n[fixture]: 9'; exit 0 ;;
+    baseline) echo '<4>WARNING: trial baseline' >/dev/kmsg ;;
+    foreign) /bin/insmod /ko/olo_gpu_pages.ko "bdf=$B" on=0 trial_id=foreign || exit 1 ;;
+esac
+echo 'Attached 12 probes'
+echo '@pool_n[fixture]: 9'
+TRACE
+    chmod +x /testbin/insmod /testbin/bpftrace
+    export PATH=/testbin:/bin B CASE
+    for CASE in noattach partial baseline foreign; do
+        : > /run/inserts
+        PYTHONHOME=/usr /bin/python3 -B /repo/tools/dev/gpu-pages-try --on-this-computer --phase 1 --pairs 1 > /run/negative.out 2>&1
+        rc=$?
+        attempts=$(wc -l < /run/inserts)
+        [[ $rc = 1 ]] || { cat /run/negative.out; exit 9; }
+        case $CASE in
+            noattach|partial)
+                [[ $attempts = 0 && ! -d "$P" ]] && grep -q "the tracing didn't run whole" /run/negative.out || exit 9 ;;
+            baseline)
+                [[ $attempts = 0 && ! -d "$P" ]] && grep -q 'the kernel said: WARNING: trial baseline' /run/negative.out || exit 9 ;;
+            foreign)
+                [[ $attempts = 1 && $(cat "$P/trial_id") = foreign && $(cat "$P/on") = N ]] || exit 9
+                /bin/rmmod olo_gpu_pages || exit 9 ;;
+        esac
+        echo "negative|$CASE"
+    done
+fi
+sed 's/^/said|/' /run/trial.out
+echo "alive|$(cat /proc/sys/kernel/osrelease)"
+"""
+
+
+def trial_tool(kos, release, say):
+    """tools/dev/gpu-pages-try as it is, in guests: run to its end, and stopped three ways while its module is on."""
+    import sysconfig
+    import zipfile
+    stdlib = sysconfig.get_path("stdlib")
+    zipped = next(p for p in sys.path if p.endswith(".zip"))
+    left_out = {"site-packages", "test", "tests", "idlelib", "tkinter", "ensurepip", "__pycache__", "lib-dynload"}
+    with tempfile.TemporaryDirectory(prefix="olo-gpu-pages-trial-", dir="/var/tmp") as work:
+        # This Python for the guest: its library in the zip it looks for first, its compiled parts where they are.
+        library = os.path.join(work, "stdlib.zip")
+        with zipfile.ZipFile(library, "w", compression=zipfile.ZIP_STORED) as z:
+            for folder, _, names in os.walk(stdlib):
+                rel = os.path.relpath(folder, stdlib)
+                if left_out & set(rel.split(os.sep)):
+                    continue
+                for name in names:
+                    if name.endswith(".py"):
+                        z.write(os.path.join(folder, name), os.path.normpath(os.path.join(rel, name)))
+        # (The module is built here once: the tool's `make` in the guest hands it over. The tool
+        # itself, bpftrace and journalctl are the real ones.)
+        files = {"/bin/make": '#!/bin/bash\nfor a in "$@"; do case "$a" in M=*) cp /ko/olo_gpu_pages.ko "${a#M=}/olo_gpu_pages.ko" || exit 1;; esac; done\n'}
+        carried = [(library, zipped)]
+        for dest, text in files.items():
+            path = os.path.join(work, os.path.basename(dest))
+            with open(path, "w") as f:
+                f.write(text)
+            os.chmod(path, 0o755)
+            carried.append((path, dest))
+        carried += [(os.path.join(ROOT, f), "/repo/" + f) for f in ("tools/dev/gpu-pages-try", "tools/dev/gpu-pages-check", "tools/dev/memory-holds",
+                                                                   "kernel/gpu-pages/Kbuild", "kernel/gpu-pages/olo_gpu_pages.c", "kernel/gpu-pages/QUALIFIED")]
+        dynload = os.path.join(stdlib, "lib-dynload")
+        carried += [(os.path.join(dynload, n), os.path.join(dynload, n)) for n in os.listdir(dynload) if n.endswith(".so")]
+        script = os.path.join(work, "script")
+        with open(script, "w") as f:
+            f.write(TRIAL_TOOL)
+        base = GUEST + ["--quiet", "--timeout", "200", "--cpus", "2", "--mem", "1536", "--module", "ttm", "--append", "panic_on_warn=1 oops=panic"]
+        for program in ("/usr/bin/python3", "bpftrace", "journalctl", "ln", "cp", "chmod", "umount"):
+            base += ["--bin", program]
+        for source, dest in carried:
+            base += ["--file", "%s:%s" % (source, dest)]
+        for ko in kos:
+            if os.path.basename(ko) != "olo_gpu_pages_fragment.ko":
+                base += ["--ko", ko]
+        for how in ("quiet", "warn", "term", "kill"):
+            out = subprocess.run(base + [script, how], capture_output=True, text=True)
+            got = {}
+            for line in out.stdout.splitlines():
+                key, _, value = line.partition("|")
+                got.setdefault(key, []).append(value)
+            first = lambda key: (got.get(key) or [""])[0]
+            said = "\n".join(got.get("said", []))
+            if not say(out.returncode == 0 and first("alive") == release, "the trial tool's guest (%s) ran to its end%s" % (how, "" if out.returncode == 0 else ": %d %s" % (out.returncode, (out.stderr or said)[-400:]))):
+                continue
+            out_of_kernel = first("present") == "no" and "the module is off and unloaded" in said
+            if how == "quiet":
+                say(got.get("negative") == ["noattach", "partial", "baseline", "foreign"],
+                    "tracing that fails or lacks a probe, and a warning with nothing loaded, each stop it before it loads anything; another's load that got in first is left as it was, named and switched off")
+                changed = [int(n) for n in re.findall(r"pair 1, on .*?; changed (\d+),", said)]
+                say(first("exit") == "1" and out_of_kernel and "it says nothing either way: with it off, nothing was held 4 ms" in said and changed and changed[0] > 0,
+                    "run to its end with no holds to show, it says it says nothing either way (exit 1), having changed %s tries in its phase on; and its module is out" % (changed[0] if changed else "no"))
+                if "it says nothing either way" not in said:
+                    print("      " + "\n      ".join(said.splitlines()[-6:]))
+                continue
+            took = int(first("off-after-ms") or -1)
+            was_on = first("was-on") == "yes"
+            if how == "warn":
+                say(was_on and first("exit") == "1" and out_of_kernel and "the kernel said: xe: VM worker error: -5" in said and 0 <= took < 1000,
+                    "a kernel warning while its module is on: off %d ms later, out of the kernel, called off with the kernel's words (exit 1)" % took)
+            elif how == "term":
+                say(was_on and first("exit") == "1" and out_of_kernel and "called off: stopped" in said and 0 <= took < 1000,
+                    "a SIGTERM while its module is on: off %d ms later, out of the kernel (exit 1)" % took)
+            else:
+                say(was_on and first("exit") == "137" and first("present") == "yes" and first("on") == "N" and re.fullmatch(r"[0-9a-f]{32}", first("trials")) and first("trials") == first("trial-before") and 0 <= took < 1000
+                    and first("rmmod") == "0" and first("present-after") == "no",
+                    "a SIGKILL while its module is on: off %d ms later with no one to switch it (its switch closed with the process), still in as the trial's own, and out with rmmod" % took)
+
+
+def build_id(path):
+    """The GNU build ID in a file of ELF notes, as hex."""
+    try:
+        with open(path, "rb") as note:
+            return note_id(note.read())
+    except OSError:
+        return None
+
+
+def note_id(raw):
+    """The one GNU build ID in ELF notes, as hex: None for notes that aren't whole, that have none, an empty one, or two."""
+    import struct
+    at, result = 0, None
+    while at < len(raw):
+        if len(raw) - at < 12:
+            return None
+        name, desc, kind = struct.unpack_from("<III", raw, at)
+        owner = at + 12
+        value = owner + ((name + 3) & ~3)
+        at = value + ((desc + 3) & ~3)
+        if at > len(raw):
+            return None
+        if kind == 3 and raw[owner:owner + name] == b"GNU\0":
+            if result is not None or not desc:
+                return None
+            result = raw[value:value + desc].hex()
+    return result
+
+
+def guest_build(steps, keys=("kernel", "ttm")):
+    """The builds a guest said it ran: the kernel's and its ttm module's (or `keys`')."""
+    return tuple(note_id(base64.b64decode(steps.get(key + "-notes", {}).get("", ""), validate=True)) for key in keys)
+
+
+def ko_build_id(ko):
+    """A module file's own build ID."""
+    with tempfile.TemporaryDirectory(prefix="olo-gpu-pages-note-", dir="/var/tmp") as work:
+        notes = os.path.join(work, "notes")
+        if subprocess.run(["objcopy", "--dump-section", ".note.gnu.build-id=" + notes, ko, os.path.join(work, "copy")], capture_output=True).returncode != 0:
+            return None
+        return build_id(notes)
+
+
+def patch_stack(reviewed):
+    """The kernel's live patches, which must be as they were when the build was checked: none, or Olo's own
+    olo_gpu_memory alone, settled, patching the one function of TTM's it patches, and the very build the list
+    names (`reviewed`). Anything else is a kernel the module wasn't checked in."""
+    from pathlib import Path
+    def read(path):
+        return Path(path).read_text().strip()
+    base = "/sys/kernel/livepatch"
+    names = tuple(sorted(os.listdir(base)))
+    if names == ():
+        return names
+    if names == ("olo_gpu_memory",) and reviewed:
+        patch = os.path.join(base, names[0])
+        if (read(os.path.join(patch, "transition")) == "0" and read(os.path.join(patch, "enabled")) == "1"
+                and read(os.path.join(patch, "ttm/patched")) == "1"
+                and os.path.isdir(os.path.join(patch, "ttm/ttm_backup_bytes_avail,1"))
+                and build_id("/sys/module/olo_gpu_memory/notes/.note.gnu.build-id") == reviewed):
+            return names
+    raise RuntimeError("the kernel's live patches aren't as they were when this build was checked (%s): not a kernel to try it in" % (", ".join(names) or "none"))
+
+
+def types():
+    """From the kernel's type information: the function's shape in words, and where `struct ttm_pool` keeps
+    `alloc_flags` (bytes from its start)."""
+    import ctypes as c
+    lib = c.CDLL("libbpf.so.1", use_errno=True)
+    P, S, U = c.c_void_p, c.c_char_p, c.c_uint32
+    def f(name, restype, *argtypes):
+        fn = getattr(lib, name)
+        fn.restype, fn.argtypes = restype, list(argtypes)
+        return fn
+    raw, split = f("btf__parse_raw", P, S), f("btf__parse_raw_split", P, S, P)
+    by_id, name_at, find, err = f("btf__type_by_id", P, P, U), f("btf__name_by_offset", S, P, U), f("btf__find_by_name_kind", c.c_int, P, S, U), f("libbpf_get_error", c.c_long, P)
+    base = raw(b"/sys/kernel/btf/vmlinux")
+    btf = split(b"/sys/kernel/btf/ttm", base) if base and not err(base) else None
+    if not btf or err(btf):
+        return None, None
+    head = lambda i: (U * 3).from_address(by_id(btf, i))
+    def typ(i):
+        name, info, t = head(i)
+        kind = info >> 24 & 31
+        if kind == 2:   # a pointer
+            return typ(t) + " *"
+        if kind in (8, 10, 11):   # a typedef, const, volatile: what it is of
+            return typ(t)
+        return {4: "struct "}.get(kind, "") + name_at(btf, name).decode()
+    fn = find(btf, b"ttm_pool_alloc_page", 12)
+    if fn < 0:
+        return None, None
+    proto = head(fn)[2]
+    _, info, ret = head(proto)
+    params = (U * (2 * (info & 0xFFFF))).from_address(by_id(btf, proto) + 12)
+    shape = "%s(%s)" % (typ(ret), ", ".join(typ(t) for t in params[1::2]))
+    pool = find(btf, b"ttm_pool", 4)
+    offset = None
+    if pool >= 0:
+        _, info, _ = head(pool)
+        members = (U * (3 * (info & 0xFFFF))).from_address(by_id(btf, pool) + 12)
+        for i in range(info & 0xFFFF):
+            if name_at(btf, members[3 * i]) == b"alloc_flags":
+                offset = (members[3 * i + 2] & 0xFFFFFF) // 8
+    return shape, offset
+
+
+def inspect_code(release, offset):
+    """What the installed ttm module's machine code says of the function: [(good, what)]."""
+    import lzma
+    found = []
+    with tempfile.TemporaryDirectory(prefix="olo-gpu-pages-ttm-", dir="/var/tmp") as work:
+        ko = os.path.join(work, "ttm.ko")
+        folder = "/lib/modules/%s/kernel/drivers/gpu/drm/ttm" % release
+        plain = os.path.join(folder, "ttm.ko")
+        with open(ko, "wb") as f:
+            f.write(open(plain, "rb").read() if os.path.exists(plain) else lzma.open(plain + ".xz").read())
+        notes = os.path.join(work, "notes")
+        subprocess.run(["objcopy", "--dump-section", ".note.gnu.build-id=" + notes, ko], check=True, capture_output=True)
+        installed = build_id(notes)
+        if not installed or installed != build_id("/sys/module/ttm/notes/.note.gnu.build-id"):
+            return [(False, "the ttm module on disk isn't the one loaded (another build ID, or none to read)")]
+        listing = subprocess.run(["objdump", "-dr", "--no-show-raw-insn", ko], check=True, capture_output=True, text=True).stdout
+    m = re.search(r"^[0-9a-f]+ <ttm_pool_alloc_page>:\n((?:.*\n)+?)\n", listing, re.M)
+    if not m:
+        return [(False, "the module has no function ttm_pool_alloc_page of its own (inlined, or renamed)")]
+    lines = m.group(1).splitlines()
+    first = [l.split("\t", 1)[1].strip() for l in lines if re.match(r"\s*[0-9a-f]+:\t", l)][:24]
+    starts = (first[0].startswith("call") and "__fentry__" in lines[1]) or (first[0] == "endbr64" and first[1].startswith("call") and "__fentry__" in "".join(lines[1:4]))
+    found.append((starts, "it starts at its trace site (%s)" % first[0]))
+    # Each argument's register is read before it is written; the pool's flags are read where the type information has them.
+    for register, names, what in (("%edx", ("%edx", "%rdx", "%dx", "%dl"), "the order is"), ("%esi", ("%esi", "%rsi", "%si", "%sil"), "the flags are"), ("%rdi", ("%rdi", "%edi", "%di", "%dil"), "the pool is")):
+        uses = [i for i in first[1:] if any(re.search(re.escape(n) + r"\b", i) for n in names)]
+        use = uses[0] if uses else ""
+        operands = use.split(None, 1)[1] if " " in use else ""
+        source = operands.rsplit(",", 1)[0] if "," in operands else operands
+        read_first = bool(use) and any(n in source for n in names) and not use.startswith(("pop", "xor"))
+        found.append((read_first, "%s taken from %s before anything is written there (%s)" % (what, register, use or "never used")))
+    at = "0x%x(%%rdi)" % offset if offset is not None else None
+    found.append((at is not None and any(at in i for i in first), "the pool's own flags are read at %s, where the type information has `alloc_flags`" % at))
+    calls = re.findall(r"^\s*([0-9a-f]+):\t(call|jmp|j[a-z]+)\s+[0-9a-f]+ <ttm_pool_alloc_page>$", listing, re.M)
+    holders = []
+    for address, _ in calls:
+        before = listing[:listing.index("\n%8s:\t" % address)]
+        holders.append(re.findall(r"^[0-9a-f]+ <([^>]+)>:$", before, re.M)[-1])
+    by_address = len(re.findall(r"R_X86_64_\w+\s+ttm_pool_alloc_page(?:[+-]0x[0-9a-f]+)?$", listing, re.M))
+    found.append((len(calls) == 1 and calls[0][1] == "call" and holders == ["__ttm_pool_alloc"] and by_address == 0,
+                  "the direct branches to its entry: one call, from __ttm_pool_alloc (%s; %d relocations naming it in the code)" % (", ".join("%s in %s" % (k, h) for (_, k), h in zip(calls, holders)) or "no call found", by_address)))
+    return found
+
+
+def main():
+    args = sys.argv[1:]
+    if any(a in ("-h", "--help") for a in args):
+        print(__doc__)
+        return 0
+    cost = "--cost" in args
+    release = os.uname().release
+    build = "/lib/modules/%s/build" % release
+    ids = (build_id("/sys/kernel/notes"), build_id("/sys/module/ttm/notes/.note.gnu.build-id"))
+    qualifying = "--qualify" in args
+    ok = True
+
+    def say(good, what):
+        nonlocal ok
+        print("  %s %s" % ("ok " if good else "NOT", what))
+        ok &= bool(good)
+        return good
+
+    work = tempfile.mkdtemp(prefix="olo-gpu-pages-build-", dir="/var/tmp")
+    try:
+        kos = []
+        for folder, names in ((SRC, ["olo_gpu_pages"]), (os.path.join(SRC, "check"), ["olo_gpu_pages_trial", "olo_gpu_pages_fragment", "olo_gpu_pages_xe"]), (os.path.join(ROOT, "kernel", "gpu-memory"), ["olo_gpu_memory"])):
+            into = os.path.join(work, os.path.basename(folder))
+            os.makedirs(into)
+            for name in os.listdir(folder):
+                if name == "Kbuild" or name.endswith((".c", ".h")):
+                    with open(os.path.join(folder, name)) as f, open(os.path.join(into, name), "w") as g:
+                        g.write(f.read())
+            r = subprocess.run(["make", "-C", build, "M=" + into, "modules"], capture_output=True, text=True)
+            built = [os.path.join(into, n + ".ko") for n in names]
+            good = r.returncode == 0 and all(os.path.isfile(k) for k in built) and "warning" not in (r.stdout + r.stderr).lower().replace("skipping btf generation", "")
+            if not say(good, "%s builds for %s with no warning" % (", ".join(names), release) + ("" if good else ": " + ((r.stderr.strip().splitlines() or ["?"])[-1][:200]))):
+                return 1
+            kos += built
+        # (Olo's live patch as it is in this kernel, where it is loaded
+        # and its file is the one loaded: what is checked beside the
+        # module is then what the list's fourth word names.)
+        installed, patch = "/lib/modules/%s/extra/olo/olo_gpu_memory.ko" % release, None
+        loaded_patch = build_id("/sys/module/olo_gpu_memory/notes/.note.gnu.build-id")
+        mirror = qualifying or "--trial-tool" in args or "--only-trial-tool" in args
+        if mirror:
+            try:
+                stack = patch_stack(loaded_patch)
+            except (OSError, RuntimeError) as error:
+                say(False, str(error))
+                return 1
+        installed_matches = loaded_patch and os.path.isfile(installed) and ko_build_id(installed) == loaded_patch
+        if installed_matches and (not mirror or stack):
+            kos = [installed if os.path.basename(k) == "olo_gpu_memory.ko" else k for k in kos]
+            patch = loaded_patch
+            print("      the guests run Olo's live patch as it is in this kernel (build %s…)" % patch[:12])
+        elif mirror:
+            if stack:
+                say(False, "Olo's live patch is in this kernel and its file isn't there, or is another build: the guests can't run the one that is in")
+                return 1
+            kos = [k for k in kos if os.path.basename(k) != "olo_gpu_memory.ko"]
+        for header, shape in SHAPES:
+            text = open(os.path.join(build, "include", header)).read()
+            if not say(re.search(shape, text), "this kernel declares the tracepoint the fixture watches as the fixture has it (%s)" % header):
+                return 1
+
+        if "--only-trial-tool" in args:
+            trial_tool(kos, release, say)
+            print("passed" if ok else "FAILED")
+            return 0 if ok else 1
+        code, out, err = guest(TAKES, "cost" if cost else "", kos)
+        s = sections(out)
+        if not say(code == 0 and s.get("alive", {}).get("") == release, "the first guest ran to its end" + ("" if code == 0 else ": %d %s" % (code, err[-300:]))):
+            return 1
+        if qualifying and not say(all(ids) and guest_build(s) == ids, "the first guest ran this very build of the kernel and of its ttm module"):
+            return 1
+        if qualifying and patch and not say(guest_build(s, ("patch",)) == (patch,), "and Olo's live patch as it is in this kernel"):
+            return 1
+        first = lambda step, order: sizes(s[step]).get(order, {})
+        if not mirror or patch:
+            say(s.get("swap-patch", {}).get("") == "0" and s.get("swap-patch-still", {}).get("") == "1",
+                "Olo's live patch in the same module is in before it and still in beside it")
+        else:
+            say(s.get("no-patch", {}).get("") == "yes", "the first guest ran with no live patch, as this kernel has none")
+        for step in ("as-it-comes", "xe", "other", "off", "on-again", "unloaded"):
+            say(s.get(step, {}).get("trial") == "0", "the trial \"%s\" ran to its end" % step)
+        stock = first("as-it-comes", 9)
+        say(stock.get("asked") and stock["waiting"] == stock["asked"] and all(first("as-it-comes", o).get("asked", 0) > 0 and first("as-it-comes", o)["waiting"] == 0 for o in (8, 10)),
+            "as the kernel has it, a pool like xe's may wait for 2 MB pieces, and asked for 1 MB and 4 MB ones without waiting (flags %#x)" % stock.get("flags", 0))
+        loaded = " ".join(s["insmod"]["log"] if s["insmod"]["log"] else [l.split("|", 1)[1] for l in out.splitlines() if l.startswith("loaded|")])
+        say(s["insmod"][""] == "0" and "checked on " in loaded and "switched on" in loaded, "it loads, having checked itself: %s" % (loaded[loaded.find("checked on "):] or "(nothing said)"))
+        say(s["probe"][""] == "1", "its probe is at the pool's function")
+        xe = first("xe", 9)
+        say(xe.get("asked") and xe["waiting"] == 0 and xe["flags"] == stock["flags"] & ~DIRECT and first("xe", 0).get("asked", 0) > 0
+            and first("xe", 0).get("waiting") == first("xe", 0)["asked"]
+            and all(first("xe", o).get("asked", 0) > 0 and first("xe", o).get("flags") == first("as-it-comes", o).get("flags") for o in (0, 8, 10)) and s["xe"]["trial"] == "0",
+            "with it, xe's 2 MB try can't wait and differs by that one flag (%#x); single pages as before" % xe.get("flags", 0))
+        say(int(s["changed"][""]) == xe.get("asked") and s["changed-after-other"][""] == s["changed"][""], "`changed` counts xe's (%s) and no one else's" % s["changed"][""])
+        other = first("other", 9)
+        say(other.get("asked") and other["waiting"] == other["asked"] and other["flags"] == stock["flags"], "a pool of a driver of another name is as the kernel has it")
+        off, again = first("off", 9), first("on-again", 9)
+        say(off.get("waiting") == off.get("asked") and off.get("flags") == stock["flags"] and again.get("asked", 0) > 0 and again["waiting"] == 0 and again["flags"] == xe["flags"], "`on` written 0 puts xe's back, and 1 takes it off again")
+        gone = first("unloaded", 9)
+        say(s["rmmod"][""] == "0" and gone.get("waiting") == gone.get("asked") and gone.get("flags") == stock["flags"], "unloaded, the kernel is as it comes")
+        refused = " ".join(l.split("|", 1)[1] for l in out.splitlines() if l.startswith("disarmed|"))
+        say(s["disarmed-insmod"][""] != "0" and ("the probe is in, but" in refused or "its check of itself" in refused) and s["armed-insmod"][""] == "0",
+            "with the kernel's probes switched off it sees its change didn't arrive and doesn't load; switched on again, it does")
+        say(s["missed"][""] == "0", "the kernel counted no call missed by the probe (%s)" % s["missed"][""])
+        if cost:
+            middle = lambda name: sorted(timing({"log": l})[0] for l in [[x] for x in s[name]["log"] if "middle_ns" in x])
+            # (Each `cost-*` step ran three times: the guest's lines under one name are all three.)
+            without, off_, on_ = middle("cost-without"), middle("cost-off"), middle("cost-on")
+            say(len(without) == len(off_) == len(on_) == 3, "all nine timings were made")
+            print("      a single page got from the pool, the middle of 100,000 each, three times: without it %s ns; with it and `on` 0 %s ns; in force %s ns" % (
+                "/".join(map(str, without)), "/".join(map(str, off_)), "/".join(map(str, on_))))
+
+        results = {}
+        for which in ("without", "with"):
+            code, out, err = guest(PIECES, which, kos)
+            s = sections(out)
+            if not say(code == 0 and s.get("alive", {}).get("") == release and s.get("pieces", {}).get("trial") == "0"
+                       and (which != "with" or s.get("insmod", {}).get("") == "0"),
+                       "in memory left in small pieces, 64 buffers of 2 MB are all filled %s it" % which + ("" if code == 0 else ": %d %s" % (code, err[-300:]))):
+                continue
+            if qualifying and not say(all(ids) and guest_build(s) == ids, "the guest %s it ran this very build of the kernel and of its ttm module" % which):
+                continue
+            results[which] = (sizes(s["pieces"]), timing(s["pieces"]), s)
+        if len(results) == 2:
+            (stock, stock_took, s0), (ours, ours_took, s1) = results["without"], results["with"]
+            a, b = stock.get(9, {}), ours.get(9, {})
+            free = tuple(int(s["free-2mb"][""]) for s in (s0, s1))
+            if not say(free == (0, 0), "free 2 MB equivalents after fragmenting: stock %d, enabled %d (both must be zero)" % free):
+                print("      stock: " + s0["buddy"][""])
+                print("      enabled: " + s1["buddy"][""])
+            for label, rows in (("as the kernel has it", stock), ("with it", ours)):
+                high = rows.get(9, {})
+                pages = sum(v["pieces"] << order for order, v in rows.items())
+                say(high.get("asked") == 64 and high.get("refused", 0) > 0 and pages == 64 * 512,
+                    "%s: all 64 tries for 2 MB were made, some refused and gone on with smaller pieces, and every page is accounted for" % label)
+            say(a.get("compacted", 0) > 0 and a.get("reclaimed", 0) > 0, "as the kernel has it the thread went compacting %d times and reclaiming %d times for them (%d of %d tries given)" % (
+                a.get("compacted", 0), a.get("reclaimed", 0), a.get("asked", 0) - a.get("refused", 0), a.get("asked", 0)))
+            waited = sum(v["compacted"] + v["reclaimed"] for order, v in ours.items() if order)
+            say(b.get("asked") and b["waiting"] == 0 and waited == 0, "with it, never, for any size above a page (%d of %d tries for 2 MB given; the kernel's own compactor woken %s times, %s without it)" % (
+                b.get("asked", 0) - b.get("refused", 0), b.get("asked", 0), s1["daemon-woken"][""], s0["daemon-woken"][""]))
+            say(int(s1["changed"][""]) == b.get("asked"), "`changed` is the tries it changed (%s)" % s1["changed"][""])
+            pieces = lambda sz: ", ".join("%d of %d KB" % (v["pieces"], 4 << o) for o, v in sorted(sz.items(), reverse=True) if v["pieces"])
+            print("      the buffers were made of: without it %s; with it %s" % (pieces(stock), pieces(ours)))
+            print("      a fill took (the middle, 99 in 100, the longest): without it %.2f, %.2f, %.2f ms; with it %.2f, %.2f, %.2f ms" % tuple(x / 1e6 for x in stock_took + ours_took))
+        if "--trial-tool" in args:
+            trial_tool(kos, release, say)
+        if "--qualify" in args:
+            print("  this kernel's build:")
+            guests = ok
+            shape, offset = types()
+            say(shape == "struct page *(struct ttm_pool *, unsigned int, unsigned int)", "the function is `struct page *ttm_pool_alloc_page(struct ttm_pool *, gfp_t, unsigned int)` (%s)" % (shape or "no type information for it"))
+            for good, what in inspect_code(release, offset):
+                say(good, what)
+            latest = (build_id("/sys/kernel/notes"), build_id("/sys/module/ttm/notes/.note.gnu.build-id"))
+            say(all(ids) and latest == ids, "the kernel and its ttm module were the same builds from start to end")
+            try:
+                say(patch_stack(patch) == stack, "the kernel's live patches were the same from start to end")
+            except (OSError, RuntimeError) as error:
+                say(False, str(error))
+            words = [release, *ids] + ([patch] if patch else [])
+            with open(os.path.join(SRC, "QUALIFIED")) as source:
+                rows = [line.split() for line in source if line.split()[:3] == words[:3]]
+                listed = (len(rows) == 1 and len(rows[0]) in (3, 4)
+                          and (patch is None or rows[0][3:] == [patch]))
+            print("  (Its reading of the machine code is a help and not a proof: kernel/gpu-pages/QUALIFIED says what a person reads in a build before its line is added.)")
+            if ok and listed:
+                print("  listed in kernel/gpu-pages/QUALIFIED as checked, with the live patches as they are here:\n%s" % " ".join(rows[0]))
+            elif ok:
+                print("  PENDING A PERSON'S REVIEW, not listed:\n%s" % " ".join(words))
+                return 2
+            elif guests:
+                print("  not a build to list: read ttm_pool_alloc_page in this kernel before anything more")
+    finally:
+        subprocess.run(["rm", "-rf", work])
+    print("passed" if ok else "FAILED")
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

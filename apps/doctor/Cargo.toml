@@ -40,3 +40,6 @@ flate2 = "1"
 tar = "0.4"
 # worktrunk's config, one key set (suggest.rs).
 toml_edit = "0.25"
+
+[dev-dependencies]
+olo-kmod.workspace = true

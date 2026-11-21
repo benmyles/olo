@@ -959,6 +959,43 @@ Learned on the second pass (2026-11-20):
   first form went by Cargo's and the units' own locks instead, ran
   once on this repository, and was shown wrong by review before it
   ran again (its own text says how).
+- **Something of Olo's that changes the kernel's behaviour: three
+  lessons from `olo_gpu_pages`' reviews** (2026-11-21; each was a
+  failure made to happen in a guest, not an opinion). (1) *Nothing
+  real before the self-check has passed*: a probe registered live and
+  then checked had changed 5,539 of another task's allocations on a
+  kernel it went on to refuse. Register closed (the handler compares
+  an address with the module's own test object before it reads
+  anything), check, then publish. (2) *The check goes through the
+  same test as the real thing*: a check with its own way round the
+  selector passed with the selector broken. (3) *What a module can't
+  check as it loads is checked before it is loaded*: where a build
+  keeps a private function's arguments is a property of the build, so
+  the service loads it only into builds on a list, each looked at
+  (type information, machine code, callers) by a person, a tool
+  helping. And a green
+  check proves little until its assertions have been attacked: the
+  reviewer deleted rows from the tool's input and it still passed.
+  Three more, from the third review: (4) *run a tool through its own
+  command before saying it works*: `--qualify`'s last step called a
+  number (the guest's exit status had taken the function's name), and
+  only its parts had been tried by hand; (5) *a tool that loads
+  something must be unable to leave it working*: the trial's module is
+  on only while the trial holds a descriptor of the module's open, so
+  a kill it can't catch switches it off (the kernel closes what a dead
+  process held; nothing in the tool's own cleanup is needed for it),
+  and the tool is itself run in guests and killed there; (6) *who
+  loaded it owns it*: a service that finds its module in the kernel
+  must know it is its own load (a name given at load and kept) before
+  it switches, counts or removes it; "a module of that name is in" is
+  not that. And from the fourth: (7) *a test that makes its own
+  warning tests its own word for one*: the trial tool's test wrote
+  "WARNING:" into the kernel's log and the tool stopped; a real
+  warning of the driver's, at warning level without the word, went
+  by. Test with what the kernel really says (its sources have the
+  strings), and by the level, not the wording. (8) *`journalctl -g`
+  ends 1 when nothing matches*, exactly as when it can't read the
+  journal: ask for the lines and pick them out yourself.
 - **A lock taken with `flock` is let go, not only closed**
   (`olo_system::background`, 2026-11-21). It belongs to the open file,
   and every child is born with a copy of every open file until it
@@ -970,6 +1007,26 @@ Learned on the second pass (2026-11-20):
   dropped 20,000 times) failed at once, and passes with `LOCK_UN`
   before the close. Whoever comes after a holder that died asks more
   than once, for the same reason.
+- **An edit script over several files: assert everything, then write
+  everything.** A Python edit that writes file A, then fails an
+  assertion on file B, leaves half a change (three times in one
+  evening, 2026-11-21; once the build still passed and hid it). Read
+  all the files, make every replacement in memory with its count
+  asserted, and only then write; and assert against the text as
+  rustfmt left it (it reflows what was written a minute before).
+- **A word has one translation, whatever it means where it's shown**
+  (the catalogs are keyed by the English: "Drawing" is a PDF
+  annotation, a frame's drawing time and a box's title). Before
+  reusing a short word as a title, read its translations
+  (`tools/dev/words pairs LANG`); a wrong sense in one language is a
+  reason for another English word, or for a translation that serves
+  every use.
+- **A row's value that doesn't fit ends in an ellipsis, and no review
+  finds it**: `tsession review` and the lints say nothing of a
+  `Facts` value cut short. After translating, picture the window in
+  every language (`OLO_LANGUAGE=fr …`, one sheet of crops) and read
+  the rows; a paragraph that wraps to one more line is fine, a cut
+  row is not. Six of twelve languages cut one row here.
 - **A push builds the release workspace only for what the lint looks
   at.** The pre-push hook builds it (and so offers the person the
   upgrade) when `apps/`, the kits or `vendor/` changed; a push of

@@ -87,6 +87,132 @@ impl Places {
     }
 }
 
+/// A kernel build known by more than its name: its build ID, and one of
+/// its modules'. A module of Olo's that reads what a function's
+/// arguments are where one build keeps them (kernel/gpu-pages) is loaded
+/// only into builds it was checked on, listed in a file of its own: a
+/// line a build, "RELEASE KERNEL-BUILD-ID MODULE-BUILD-ID", `#` for
+/// comments.
+pub mod builds {
+    use std::path::Path;
+
+    /// The GNU build ID in a file of ELF notes, as hex: what the kernel
+    /// shows of itself (/sys/kernel/notes) and of each module
+    /// (/sys/module/NAME/notes/.note.gnu.build-id).
+    pub fn build_id(notes: &[u8]) -> Option<String> {
+        fn field(notes: &[u8], n: usize) -> Option<(&[u8], &[u8])> {
+            let padded = n.checked_next_multiple_of(4)?;
+            Some((notes.get(..n)?, notes.get(padded..)?))
+        }
+        let mut rest = notes;
+        let mut id = None;
+        while !rest.is_empty() {
+            let word = |bytes: &[u8]| u32::from_le_bytes(bytes.try_into().expect("four bytes"));
+            let header = rest.get(..12)?;
+            let (owner, tail) = field(&rest[12..], word(&header[..4]) as usize)?;
+            let (value, tail) = field(tail, word(&header[4..8]) as usize)?;
+            if word(&header[8..]) == 3 && owner == b"GNU\0" {
+                if id.is_some() || value.is_empty() {
+                    return None;
+                }
+                id = Some(value.iter().map(|b| format!("{b:02x}")).collect());
+            }
+            rest = tail;
+        }
+        id
+    }
+
+    /// The running kernel's build ID and its module `module`'s, where
+    /// both say (anyone may read them). `root`: "/", or a test's tree.
+    pub fn running(root: &Path, module: &str) -> Option<(String, String)> {
+        let id = |path: &Path| std::fs::read(path).ok().and_then(|notes| build_id(&notes));
+        Some((id(&root.join("sys/kernel/notes"))?, id(&root.join("sys/module").join(module).join("notes/.note.gnu.build-id"))?))
+    }
+
+    /// `list`'s line for this very build of the kernel `release`: the
+    /// words after the three that name the build (what was checked
+    /// beside it: a live patch's build ID). None: not listed.
+    pub fn entry<'a>(list: &'a str, release: &str, builds: &(String, String)) -> Option<Vec<&'a str>> {
+        list.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')).find_map(|l| {
+            let mut words = l.split_whitespace();
+            ((words.next(), words.next(), words.next()) == (Some(release), Some(builds.0.as_str()), Some(builds.1.as_str()))).then(|| words.collect())
+        })
+    }
+
+    /// `list` has this very build of the kernel `release`.
+    pub fn listed(list: &str, release: &str, builds: &(String, String)) -> bool {
+        entry(list, release, builds).is_some()
+    }
+
+    /// A file of ELF notes as the kernel shows them, for tests: another
+    /// note first, then the GNU build ID `build` (hex).
+    pub fn notes_for_tests(build: &str) -> Vec<u8> {
+        let id: Vec<u8> = (0..build.len() / 2).filter_map(|i| u8::from_str_radix(&build[2 * i..2 * i + 2], 16).ok()).collect();
+        let mut out = Vec::new();
+        for (owner, kind, value) in [(&b"Linux\0"[..], 0x101u32, &[1u8, 2, 3, 4, 5][..]), (&b"GNU\0"[..], 3, &id[..])] {
+            for n in [owner.len() as u32, value.len() as u32, kind] {
+                out.extend(n.to_le_bytes());
+            }
+            for part in [owner, value] {
+                out.extend(part);
+                out.resize(out.len().next_multiple_of(4), 0);
+            }
+        }
+        out
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        /// A build ID is read out of the kernel's notes wherever it
+        /// stands among them, none where there is none; and a list has a
+        /// build only by all three of its words.
+        #[test]
+        fn a_build_is_known_by_its_ids_and_listed_by_all_three_words() {
+            const KERNEL: &str = "7f111d5ff77cd8b0de0b41422fe4d4f7d375f54d";
+            const TTM: &str = "e0fdead3891ad14b87586bbe3bef4fe33c1d65cc";
+            assert_eq!(build_id(&notes_for_tests(KERNEL)).as_deref(), Some(KERNEL));
+            assert_eq!(build_id(&notes_for_tests(KERNEL)[..20]), None);
+            assert_eq!(build_id(b""), None);
+            // Notes that aren't whole, or that say more than one thing of
+            // the build, name no build (the third review's cases): bytes
+            // left over, a length past the end, two build IDs, an empty
+            // one.
+            let whole = notes_for_tests(KERNEL);
+            assert_eq!(build_id(&[&whole[..], &[1, 2, 3][..]].concat()), None);
+            let mut long = whole.clone();
+            let at = long.len() - 20 - 4 - 12 + 4;
+            long[at..at + 4].copy_from_slice(&40u32.to_le_bytes());
+            assert_eq!(build_id(&long), None, "a build ID said to be twice as long as what is there");
+            let gnu = &whole[whole.len() - 36..];
+            assert_eq!(build_id(gnu).as_deref(), Some(KERNEL));
+            assert_eq!(build_id(&[gnu, gnu].concat()), None);
+            assert_eq!(build_id(&notes_for_tests("")), None);
+            let root = std::path::PathBuf::from(format!("/var/tmp/olo-kmod-builds-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&root);
+            assert_eq!(running(&root, "ttm"), None);
+            std::fs::create_dir_all(root.join("sys/kernel")).unwrap();
+            std::fs::create_dir_all(root.join("sys/module/ttm/notes")).unwrap();
+            std::fs::write(root.join("sys/kernel/notes"), notes_for_tests(KERNEL)).unwrap();
+            assert_eq!(running(&root, "ttm"), None, "the module doesn't say");
+            std::fs::write(root.join("sys/module/ttm/notes/.note.gnu.build-id"), notes_for_tests(TTM)).unwrap();
+            let builds = running(&root, "ttm").unwrap();
+            assert_eq!(builds, (KERNEL.to_owned(), TTM.to_owned()));
+            let (k, next) = ("7.3.4-300.fc45.x86_64", "7.3.5-300.fc45.x86_64");
+            let list = format!("# {k} {KERNEL} {TTM}\n\n  {next} {KERNEL} {TTM}  \n{k} {KERNEL}\n");
+            assert!(listed(&list, next, &builds) && !listed(&list, k, &builds) && !listed("", k, &builds));
+            assert!(!listed(&list, next, &(KERNEL.to_owned(), KERNEL.to_owned())));
+            // What else was checked with a build: the words after its three.
+            assert_eq!(entry(&list, next, &builds), Some(Vec::new()));
+            let list = format!("{k} {KERNEL} {TTM} 5cb978 more\n");
+            assert_eq!(entry(&list, k, &builds), Some(vec!["5cb978", "more"]));
+            assert_eq!(entry(&list, next, &builds), None);
+            let _ = std::fs::remove_dir_all(root);
+        }
+    }
+}
+
 pub fn read(path: &Path) -> Option<String> {
     std::fs::read_to_string(path).ok()
 }
@@ -97,6 +223,11 @@ pub trait Kernel {
     /// Build the module whose source is in `dir` against `headers`.
     fn build(&mut self, headers: &Path, dir: &Path) -> Result<(), String>;
     fn load(&mut self, module: &Path) -> Result<(), String>;
+    /// [`Kernel::load`] with the module's parameters ("name=value …").
+    /// A kernel that takes none (a test's) takes a module without any.
+    fn load_with(&mut self, module: &Path, parameters: &str) -> Result<(), String> {
+        if parameters.is_empty() { self.load(module) } else { Err(format!("this kernel takes no parameters ({parameters})")) }
+    }
     /// Unload the module named; false if it's in use still (or the
     /// kernel says no), true if it's out, or wasn't in.
     fn unload(&mut self, name: &str) -> Result<bool, String>;
@@ -127,11 +258,16 @@ impl Kernel for Running {
     }
 
     fn load(&mut self, module: &Path) -> Result<(), String> {
+        self.load_with(module, "")
+    }
+
+    fn load_with(&mut self, module: &Path, parameters: &str) -> Result<(), String> {
         use std::os::fd::AsRawFd as _;
         let file = std::fs::File::open(module).map_err(|e| format!("{}: {e}", module.display()))?;
-        // SAFETY: finit_module(2) with an open file and an empty,
-        // NUL-terminated parameter string.
-        let r = unsafe { libc::syscall(libc::SYS_finit_module, file.as_raw_fd(), c"".as_ptr(), 0) };
+        let parameters = std::ffi::CString::new(parameters).map_err(|e| e.to_string())?;
+        // SAFETY: finit_module(2) with an open file and a NUL-terminated
+        // parameter string.
+        let r = unsafe { libc::syscall(libc::SYS_finit_module, file.as_raw_fd(), parameters.as_ptr(), 0) };
         if r == 0 {
             return Ok(());
         }
