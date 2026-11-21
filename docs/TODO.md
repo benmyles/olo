@@ -284,15 +284,20 @@ something nobody here has is in "Blocked", with what it waits for.
     kernel workers 177 a second (a display state buffer for each
     commit, the driver's too); and six "Open Link" choosers nobody
     answered, each making a 4 MB buffer every 8 s for its live
-    thumbnails: the kit's atlas never gives a removed picture's place
-    back, so replaced pictures use a texture up and a new one is made
-    (each two 2 MB tries: the holds measured on "a kit's drawing
-    thread"). To do, in this order: the atlas gives a tile's place
-    back; a chooser's thumbnails are made again only when their
-    window changed and the chooser shows; choosers nobody answers
-    don't pile up (six since midnight, from links another program
-    opened by itself; each took the keyboard as it came, and a
-    letter typed then chooses a window);
+    thumbnails: the kit's atlas never gave a removed picture's place
+    back, so replaced pictures used a texture up and a new one was
+    made (each two 2 MB tries: the holds measured on "a kit's drawing
+    thread"). **Done**: the atlas gives a tile's place back (26
+    textures for 200 pictures replaced, now 1). To do, in this
+    order: a chooser's thumbnails are made again only when their
+    window changed and the chooser shows (its worker looks 25 times
+    a second, and each window is read whole once a second, 59 MB for
+    a large one); choosers nobody answers don't pile up (six since
+    midnight, from links another program opened by itself; each took
+    the keyboard as it came, and a letter typed then chooses a
+    window); a picture too large for a shared texture has one of its
+    own, made anew for each that replaces it (a preview paged
+    through: at the person's pace, so left);
   - **the desktop at rest wasn't** (2026-11-21, the person's: three
     displays drawing 59 frames a second, app_server a quarter of a
     processor, Calendar's widget a third, with nobody at it). Found

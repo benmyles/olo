@@ -22,6 +22,9 @@ struct BladeAtlasState {
     tiles_by_key: FxHashMap<AtlasKey, AtlasTile>,
     initializations: Vec<AtlasTextureId>,
     uploads: Vec<PendingUpload>,
+    /// Textures made so far (each a buffer of the GPU's: 4 MB for one of
+    /// pictures): for tests, and to say what a change here costs.
+    textures_made: u64,
 }
 
 #[cfg(gles)]
@@ -44,6 +47,7 @@ impl BladeAtlas {
             tiles_by_key: Default::default(),
             initializations: Vec::new(),
             uploads: Vec::new(),
+            textures_made: 0,
         }))
     }
 
@@ -94,9 +98,10 @@ impl PlatformAtlas for BladeAtlas {
     fn remove(&self, key: &AtlasKey) {
         let mut lock = self.0.lock();
 
-        let Some(id) = lock.tiles_by_key.remove(key).map(|tile| tile.texture_id) else {
+        let Some(tile) = lock.tiles_by_key.remove(key) else {
             return;
         };
+        let id = tile.texture_id;
 
         let Some(texture_slot) = lock.storage[id.kind].textures.get_mut(id.index as usize) else {
             return;
@@ -117,7 +122,26 @@ impl PlatformAtlas for BladeAtlas {
                 lock.storage[id.kind].free_list.push(texture.id.index as usize);
                 texture.destroy(&lock.gpu);
             } else {
+                // Olo: its place is the next picture's. Upstream left a
+                // tile's place taken until its whole texture went, so
+                // pictures replaced one for another (a window's live
+                // thumbnail, a preview) used a texture up and had a new
+                // one made: one of the GPU's buffers, 4 MB, for every
+                // eighth thumbnail, which the driver makes of 2 MB
+                // pieces it waits for (six choosers left open made one
+                // every 8 s each, 2026-11-21; kernel/TUNING.md, "Graphics
+                // memory in 2 MB pieces"). The allocator gives a place
+                // back with the others of its bucket: a picture's is its
+                // own or shared with the one beside it, so two live
+                // pictures go round in two rows of one texture. (A scene
+                // holds the pictures it shows, `Scene::images`: a tile
+                // goes only when nothing drawn shows it, and what is
+                // copied into its place after is copied in order.)
+                texture.allocator.deallocate(tile.tile_id.into());
                 *texture_slot = Some(texture);
+                // (Nothing still to copy into it either: made and let go
+                // before a frame, its pixels are nobody's.)
+                lock.uploads.retain(|u| !(u.id == id && u.bounds == tile.bounds));
             }
         }
     }
@@ -188,6 +212,7 @@ impl BladeAtlasState {
         };
 
         self.initializations.push(atlas_texture.id);
+        self.textures_made += 1;
 
         if let Some(ix) = index {
             texture_list.textures[ix] = Some(atlas_texture);
@@ -376,6 +401,81 @@ mod tests {
             assert_eq!(state.uploads[0].id, tile.texture_id);
             assert_eq!(state.uploads[0].bounds.size, small);
         }
+        frame(&atlas);
+        gpu.destroy_command_encoder(&mut encoder);
+    }
+
+    /// Pictures replaced one for another (two live thumbnails, each made
+    /// again a hundred times; then one picture alone) go round in the
+    /// texture they began in: none is made for them, and what was to be
+    /// copied into a tile let go before its frame isn't. Needs a GPU
+    /// (skipped without one).
+    #[test]
+    fn pictures_replaced_keep_their_texture() {
+        let Ok(gpu) = (unsafe { gpu::Context::init(gpu::ContextDesc { presentation: false, ..Default::default() }) }) else {
+            eprintln!("no GPU here: nothing to try");
+            return;
+        };
+        let gpu = Arc::new(gpu);
+        let atlas = BladeAtlas::new(&gpu);
+        let key = |n| AtlasKey::Image(RenderImageParams { image_id: ImageId(n), frame_index: 0, deep: false });
+        // (A thumbnail as a chooser shows one at 2.5x: 160 by 100 points.)
+        let size = Size { width: DevicePixels(400), height: DevicePixels(250) };
+        let bytes = vec![128u8; 400 * 250 * 4];
+        let mut encoder = gpu.create_command_encoder(gpu::CommandEncoderDesc { name: "test", buffer_count: 1 });
+        let mut frame = |atlas: &BladeAtlas| {
+            encoder.start();
+            atlas.before_frame(&mut encoder);
+            let sync = gpu.submit(&mut encoder);
+            let _ = gpu.wait_for(&sync, 2000);
+            atlas.after_frame(&sync);
+        };
+        let put = |n: usize| atlas.get_or_insert_with(&key(n), &mut || Ok(Some((size, Cow::Borrowed(&bytes[..]))))).unwrap().unwrap();
+        // An icon that stays, as a window has: the texture is never empty.
+        let small = Size { width: DevicePixels(32), height: DevicePixels(32) };
+        atlas.get_or_insert_with(&key(1_000_000), &mut || Ok(Some((small, Cow::Borrowed(&bytes[..32 * 32 * 4]))))).unwrap();
+        let (mut a, mut b) = (0, 1);
+        put(a);
+        put(b);
+        frame(&atlas);
+        let began = std::time::Instant::now();
+        for round in 1..=100 {
+            // Each made again, the one before it let go once the new one
+            // is shown (as a view's picture is replaced).
+            let (na, nb) = (2 * round, 2 * round + 1);
+            put(na);
+            atlas.remove(&key(a));
+            put(nb);
+            atlas.remove(&key(b));
+            (a, b) = (na, nb);
+            if round % 3 == 0 {
+                frame(&atlas);
+            }
+        }
+        let took = began.elapsed();
+        frame(&atlas);
+        {
+            let state = atlas.0.lock();
+            eprintln!("200 pictures replaced: {} textures made in all, {:.1} µs a picture", state.textures_made, took.as_secs_f64() * 1e6 / 200.0);
+            assert_eq!(state.textures_made, 1, "a texture made for pictures that replaced others");
+            assert_eq!(state.tiles_by_key.len(), 3, "two pictures and the icon");
+        }
+        // Made and let go before a frame: nothing of it is copied.
+        let t = put(5_000);
+        atlas.remove(&key(5_000));
+        {
+            let state = atlas.0.lock();
+            assert!(!state.uploads.iter().any(|u| u.id == t.texture_id && u.bounds == t.bounds), "a tile let go is still to be copied into");
+        }
+        // One picture alone, replaced by the next before it is let go.
+        let mut last = put(6_000);
+        for n in 6_001..6_050 {
+            let next = put(n);
+            atlas.remove(&key(n - 1));
+            assert_eq!(next.texture_id, last.texture_id);
+            last = next;
+        }
+        assert_eq!(atlas.0.lock().textures_made, 1);
         frame(&atlas);
         gpu.destroy_command_encoder(&mut encoder);
     }

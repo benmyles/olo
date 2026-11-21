@@ -4090,9 +4090,19 @@ it.
   (a captured frame). A `TextControl` whose field is disabled
   (`TextField::set_enabled(false)`) is drawn faded, label and well, and
   takes no click. `paragraph` says its text to agents.
-- Pictures (`RenderImage`s) stay in the GPU's atlas until dropped
-  (`cx.drop_image(image, None)`): drop one replaced (a thumbnail that
-  refreshes) and those a view keeps when it goes (`cx.on_release`).
+- A picture (`RenderImage`) is in the GPU's atlas while anything shows
+  or keeps it, and leaves it when the last of it is dropped (its
+  `Drop`: a frame and a kept drawing hold the pictures they show; no
+  `drop_image` to remember). Its place is then the next picture's
+  (`BladeAtlas::remove` gives the tile back to the texture's
+  allocator): pictures replaced one for another (a live thumbnail, a
+  preview) go round in the texture they began in. Before, a tile's
+  place stayed taken until its whole texture went, so every eighth
+  thumbnail replaced had a new texture made, 4 MB of the GPU's memory
+  that the driver makes of 2 MB pieces it may wait for (kernel/
+  TUNING.md): 26 textures for 200 pictures replaced, now 1, and a
+  picture replaced in 93 µs where it took 292 (the atlas's test, which
+  needs a GPU).
 - A closed window lets go of its callbacks (and the views they hold) as
   it drops, not once the platform's tidying task runs: a view that
   answers something as it's released (a portal dialog cancelled) does
