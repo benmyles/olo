@@ -7,8 +7,9 @@
 //! draws with. So the programs Olo starts are given an environment
 //! without NVIDIA's drivers when another GPU is there to draw with,
 //! unless the person chose drivers or asked for NVIDIA themselves (PRIME
-//! offload). Olo's own apps do the same as they make their context
-//! (olo-interface's `blade_context::asleep_aside`). Read from sysfs only.
+//! offload). Olo's own apps are handed the one Vulkan driver of the GPU
+//! they draw on (blade's `direct`), and a headless app_server Mesa's EGL
+//! library alone (`mesa_egl_alone`). Read from sysfs only.
 
 use std::path::Path;
 
@@ -48,27 +49,93 @@ fn beside(sys: &Path) -> bool {
     preferred && nvidia
 }
 
+fn set(name: &str) -> bool {
+    std::env::var_os(name).is_some_and(|v| !v.is_empty())
+}
+
+/// The person, or whoever started this, said which GPU to draw on.
+fn gpu_chosen() -> bool {
+    std::env::var_os("__NV_PRIME_RENDER_OFFLOAD").is_some_and(|v| v == "1")
+        || ["DRI_PRIME", "MESA_VK_DEVICE_SELECT", "VK_LOADER_DEVICE_SELECT", "ANVIL_DRM_DEVICE", "OLO_RENDER_NODE"].iter().any(|k| set(k))
+}
+
+/// glvnd's file of Mesa's EGL library, where it is and the makers'
+/// libraries haven't been chosen already.
+fn mesa_egl_vendor() -> Option<String> {
+    if set("__EGL_VENDOR_LIBRARY_FILENAMES") || set("__EGL_VENDOR_LIBRARY_DIRS") {
+        return None;
+    }
+    let paths = ["/etc/glvnd/egl_vendor.d/50_mesa.json", "/usr/share/glvnd/egl_vendor.d/50_mesa.json"];
+    paths.iter().find(|p| Path::new(p).is_file()).map(|p| (*p).to_owned())
+}
+
 /// The variables to start a program with so it leaves NVIDIA's GPU asleep
 /// (none if there's no such GPU, or the person chose otherwise).
 pub fn asleep_env() -> Vec<(&'static str, String)> {
-    let set = |name: &str| std::env::var_os(name).is_some_and(|v| !v.is_empty());
-    if !nvidia_beside_another()
-        || std::env::var_os("__NV_PRIME_RENDER_OFFLOAD").is_some_and(|v| v == "1")
-        || ["DRI_PRIME", "MESA_VK_DEVICE_SELECT", "VK_LOADER_DEVICE_SELECT", "ANVIL_DRM_DEVICE", "OLO_RENDER_NODE"].iter().any(|k| set(k))
-    {
+    if !nvidia_beside_another() || gpu_chosen() {
         return Vec::new();
     }
     let mut env = Vec::new();
     if !["VK_DRIVER_FILES", "VK_ICD_FILENAMES", "VK_ADD_DRIVER_FILES", "VK_LOADER_DRIVERS_SELECT", "VK_LOADER_DRIVERS_DISABLE"].iter().any(|k| set(k)) {
         env.push(("VK_LOADER_DRIVERS_DISABLE", "*nvidia*".to_owned()));
     }
-    if !set("__EGL_VENDOR_LIBRARY_FILENAMES") && !set("__EGL_VENDOR_LIBRARY_DIRS") {
-        let paths = ["/etc/glvnd/egl_vendor.d/50_mesa.json", "/usr/share/glvnd/egl_vendor.d/50_mesa.json"];
-        if let Some(mesa) = paths.iter().find(|p| Path::new(p).is_file()) {
-            env.push(("__EGL_VENDOR_LIBRARY_FILENAMES", (*mesa).to_owned()));
-        }
+    if let Some(mesa) = mesa_egl_vendor() {
+        env.push(("__EGL_VENDOR_LIBRARY_FILENAMES", mesa));
     }
     env
+}
+
+/// For a compositor's own process: glvnd's file of Mesa's EGL library,
+/// to be the only maker's it loads, where NVIDIA's card only sits
+/// beside the GPU everything is drawn on; None otherwise, and where the
+/// person chose. glvnd asks each maker's library in turn for a display,
+/// NVIDIA's first: without this every app_server, the person's and each
+/// agent's screen's, loaded NVIDIA's whole EGL stack as it started
+/// (nine libraries, in each of twelve app_servers, 2026-11-20), which
+/// is NVIDIA's code run against its card at every start of a screen.
+///
+/// `drives_displays`: the compositor puts pictures on displays itself
+/// (not a headless one, which only draws). Then NVIDIA's library stays
+/// wherever a display could be the card's: only a card whose DRM device
+/// is there and has no connector at all is known to drive none (a card
+/// whose driver hasn't made its device yet may still bring some).
+pub fn mesa_egl_alone(drives_displays: bool) -> Option<String> {
+    if !nvidia_beside_another() || gpu_chosen() || (drives_displays && !nvidia_drives_nothing(Path::new("/sys"))) {
+        return None;
+    }
+    mesa_egl_vendor()
+}
+
+/// Every graphics card of NVIDIA's has its DRM device, and none has a
+/// connector.
+fn nvidia_drives_nothing(sys: &Path) -> bool {
+    let Ok(pci) = std::fs::read_dir(sys.join("bus/pci/devices")) else { return false };
+    let mut cards = 0;
+    for entry in pci.flatten() {
+        let path = entry.path();
+        let read = |name| std::fs::read_to_string(path.join(name)).unwrap_or_default();
+        if !read("class").trim().starts_with("0x03") || read("vendor").trim() != "0x10de" {
+            continue;
+        }
+        let Ok(drm) = std::fs::read_dir(path.join("drm")) else { return false };
+        let mut device = false;
+        for card in drm.flatten() {
+            let name = card.file_name().to_string_lossy().into_owned();
+            if !name.starts_with("card") {
+                continue;
+            }
+            device = true;
+            let Ok(inside) = std::fs::read_dir(card.path()) else { return false };
+            if inside.flatten().any(|e| e.file_name().to_string_lossy().starts_with(&format!("{name}-"))) {
+                return false;
+            }
+        }
+        if !device {
+            return false;
+        }
+        cards += 1;
+    }
+    cards > 0
 }
 
 #[cfg(test)]
@@ -87,6 +154,15 @@ mod tests {
             std::fs::write(p.join("boot_vga"), boot).unwrap();
         }
         assert!(super::beside(&tmp));
+        // A card that drives no display: its DRM device there, with no
+        // connector. Not known of one whose device isn't there (yet),
+        // nor true of one with a connector, plugged or not.
+        assert!(!super::nvidia_drives_nothing(&tmp));
+        std::fs::create_dir_all(nvidia.join("drm/card1")).unwrap();
+        std::fs::create_dir_all(nvidia.join("drm/renderD129")).unwrap();
+        assert!(super::nvidia_drives_nothing(&tmp));
+        std::fs::create_dir_all(nvidia.join("drm/card1/card1-HDMI-A-1")).unwrap();
+        assert!(!super::nvidia_drives_nothing(&tmp));
         std::fs::write(nvidia.join("boot_vga"), "1").unwrap();
         assert!(!super::beside(&tmp));
         std::fs::remove_dir_all(tmp).unwrap();

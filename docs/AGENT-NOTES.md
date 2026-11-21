@@ -627,6 +627,19 @@ Doctor check, try its fix and look again: the finding must be gone.
 
 ## Measuring
 
+- **Which programs have a maker's libraries loaded: `/proc/PID/maps`.**
+  The last field of each line is the file mapped; whether a program
+  holds a device open is in `/proc/PID/fd` (the links). Read so
+  (names only, 2026-11-20): every app_server, the person's and each
+  agent's screen's, had NVIDIA's nine EGL libraries loaded (glvnd
+  loads every maker's library to ask it for a display), every Deskbar
+  had NVIDIA's NVML and held one of the card's nodes open, and the
+  person's Chrome processes had the EGL ones. Nothing in Olo's code
+  names those libraries: look at what is loaded, not at what the code
+  asks for. (And so a rule of "run nothing that loads NVIDIA's
+  libraries" was broken by every scratch agent's screen started that
+  day, unknowingly: a headless app_server no longer loads them,
+  `app_server::egl_vendor`.)
 - **What an idle screen costs, and what makes it draw.** Start a
   scratch agent's screen from the release build
   (`env -u OLO_SCREEN target/release/olo-screen start NAME`; its

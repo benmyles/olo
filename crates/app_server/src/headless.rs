@@ -298,13 +298,45 @@ impl Backend for HeadlessData {
     }
 }
 
+/// The GPU a headless app_server draws on, as its render node: the one
+/// named (`OLO_RENDER_NODE`); else the GPU the computer started on,
+/// which is the one the person's desktop draws on (programs move
+/// between an agent's screen and theirs with their buffers); else the
+/// first there is. It was the first by number whatever it was: on a
+/// computer whose second card's driver happened to come up first, every
+/// agent's screen would have drawn on that card and kept it awake.
 pub(crate) fn render_node() -> Option<std::path::PathBuf> {
     if let Ok(p) = std::env::var("OLO_RENDER_NODE") {
         return Some(p.into());
     }
+    if let Some(node) = boot_gpu_node(std::path::Path::new("/sys")) {
+        return Some(node);
+    }
     let mut nodes: Vec<_> = std::fs::read_dir("/dev/dri").ok()?.flatten().map(|e| e.path()).filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("renderD"))).collect();
     nodes.sort();
     nodes.into_iter().next()
+}
+
+/// The render node of the graphics card the computer started on (the
+/// PCI bus's `boot_vga`), if there is exactly one such card with one.
+fn boot_gpu_node(sys: &std::path::Path) -> Option<std::path::PathBuf> {
+    let mut found = None;
+    for entry in std::fs::read_dir(sys.join("bus/pci/devices")).ok()?.flatten() {
+        let path = entry.path();
+        let read = |name| std::fs::read_to_string(path.join(name)).unwrap_or_default();
+        if !read("class").trim().starts_with("0x03") || read("boot_vga").trim() != "1" {
+            continue;
+        }
+        let node = std::fs::read_dir(path.join("drm"))
+            .ok()?
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .find(|n| n.strip_prefix("renderD").is_some_and(|d| !d.is_empty() && d.bytes().all(|b| b.is_ascii_digit())))?;
+        if found.replace(std::path::Path::new("/dev/dri").join(node)).is_some() {
+            return None;
+        }
+    }
+    found
 }
 
 /// "2560x1600,1920x1080" → one size per screen; nothing usable → one 2560×1600.
@@ -970,6 +1002,37 @@ fn render_frame(state: &mut AnvilState<HeadlessData>, index: usize) -> bool {
     };
     state.timings.frame(&name, start.elapsed());
     new
+}
+
+#[cfg(test)]
+mod render_node_tests {
+    /// A headless app_server draws on the card the computer started
+    /// on, whichever card's driver took the lower number.
+    #[test]
+    fn the_boot_gpus_node_whatever_its_number() {
+        let tmp = std::env::temp_dir().join(format!("olo-headless-node-{}", std::process::id()));
+        let pci = tmp.join("bus/pci/devices");
+        let (first, second, other) = (pci.join("0000:00:02.0"), pci.join("0000:01:00.0"), pci.join("0000:00:1f.3"));
+        for (dir, class, boot, node) in [(&first, "0x030000", "1", Some("renderD129")), (&second, "0x030200", "0", Some("renderD128")), (&other, "0x040380", "", None)] {
+            std::fs::create_dir_all(dir).unwrap();
+            std::fs::write(dir.join("class"), class).unwrap();
+            std::fs::write(dir.join("boot_vga"), boot).unwrap();
+            if let Some(node) = node {
+                std::fs::create_dir_all(dir.join("drm").join(node)).unwrap();
+                std::fs::create_dir_all(dir.join("drm/card0")).unwrap();
+            }
+        }
+        assert_eq!(super::boot_gpu_node(&tmp), Some("/dev/dri/renderD129".into()));
+        // Two cards that both say so: not known.
+        std::fs::write(second.join("boot_vga"), "1").unwrap();
+        assert_eq!(super::boot_gpu_node(&tmp), None);
+        // The one it started on with no render node (its driver not
+        // loaded): not known either.
+        std::fs::write(second.join("boot_vga"), "0").unwrap();
+        std::fs::remove_dir_all(first.join("drm")).unwrap();
+        assert_eq!(super::boot_gpu_node(&tmp), None);
+        std::fs::remove_dir_all(tmp).unwrap();
+    }
 }
 
 #[cfg(test)]

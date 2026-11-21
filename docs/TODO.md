@@ -365,6 +365,26 @@ something nobody here has is in "Blocked", with what it waits for.
      Deskbars, one for each agent's screen, each asking every twenty
      seconds while it is awake: does that keep it from sleeping, or
      wake it?), the follower. Then whatever of Olo's it is, stopped.
+     **Found by reading what each program has loaded** (2026-11-20,
+     `/proc/PID/maps`, the card's driver stuck that day): every
+     app_server had NVIDIA's nine EGL libraries (glvnd asks every
+     maker's library for a display), every Deskbar NVIDIA's NVML with
+     one of the card's nodes held open, the person's Chrome processes
+     the EGL ones. **Done of it**: a headless app_server loads Mesa's
+     EGL library alone and draws on the GPU the computer started on
+     (HACKING, "The discrete GPU stays asleep"); the Deskbar of an
+     agent's screen shows no widgets, so asks no GPU. **Left of it**:
+     the person's own app_server still loads NVIDIA's EGL library
+     where the card has a connector (this laptop's HDMI port is the
+     card's): start with Mesa's alone and restart in place, with
+     NVIDIA's, when a display is plugged into the card, tried with a
+     display on that port; a Deskbar already running on an agent's
+     screen keeps NVML until it starts again (the panels' letting go
+     of it, below); programs the person starts (GTK's, a game) load
+     NVIDIA's EGL library as glvnd has it, which only a setting for
+     the whole session would change, and that would take NVIDIA's
+     card from a program put on it by its variables: Ben's to decide,
+     after the trace above says what wakes the card.
      **Done meanwhile**: a kit program is handed the one driver of
      the GPU it draws on, whatever state NVIDIA's is in (HACKING,
      "One Vulkan driver, handed to the loader"; a start is 30 ms
@@ -451,16 +471,31 @@ something nobody here has is in "Blocked", with what it waits for.
      an index published with other drivers missing; the version rule
      kept only when a check ran; any other depmod undoing it): it
      refuses a real root, its units are installed by nothing
-     (kernel/nvidia/README.md, "The builder"). **To do**: (a) the way
-     a set becomes the one loaded, designed again with Astra (asked,
-     2026-11-20: chosen at the moment of loading by a `modprobe.d`
-     line that falls back to stock, or exchanged in place in one
-     step at shutdown; no index written by Olo either way), built,
-     reviewed again, and tried in an enforcing Fedora guest (every
-     interruption, an update of the distribution's, a withdrawal);
-     then Doctor's part (which is loaded, by build ID; the opt-in),
-     its fix run off the UI thread with progress; (b) on Ben's word
-     only, at a quiet moment,
+     (kernel/nvidia/README.md, "The builder"). **The way a set
+     becomes the one loaded, designed again with Astra** (2026-11-20,
+     kernel/nvidia/design/fedora-boot-selection.md): choosing at the
+     moment of loading and exchanging in place both ruled out by
+     trying them (kmod's soft dependencies decide whether the hook
+     runs; RPM's failed transactions and a set opened file by file);
+     what Astra would sign off is **a deployment chosen at start**: a
+     sealed read-only `/usr` subvolume with Olo's set in a package of
+     its own, a boot entry of Olo's with its kernel and images,
+     admitted before the real root is entered, tried once, stock the
+     default and a sealed stock copy to return to. **Ben's to
+     decide before it is built** (weeks, an enforcing Fedora guest,
+     then spare hardware; and a prevention start runs on a `/usr`
+     that can't be written, so updates are done from an ordinary
+     start): that; or, needing no driver of Olo's, NVIDIA's own
+     option that never powers the card down while the computer runs
+     (`NVreg_DynamicPowerManagement=0`: the failing suspend not
+     attempted about 150 times a day; the card's idle power drawn all
+     day), offered by Doctor with its cost said; or the fault left to
+     NVIDIA with the report and patches. **To do then**: (a) the one
+     chosen, built, reviewed again by Astra, and tried in the guest
+     (every interruption, an update of the distribution's, a
+     withdrawal); Doctor's part (which is loaded, by build ID; the
+     opt-in), its fix run off the UI thread with progress; (b) on
+     Ben's word only, at a quiet moment,
      with the stock driver one restart away: the "prevention" build
      (patches 0001 to 0003) on the card, design/qualification.md
      step by step, the fault made to happen on purpose with patch

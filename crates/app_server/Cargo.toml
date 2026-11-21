@@ -15,6 +15,10 @@ path = "src/main.rs"
 olo-crash.workspace = true
 olo-sync.workspace = true
 olo-system.workspace = true
+# Which GPU's drivers a program is given (`gpu`: `egl_vendor`), and, in
+# tests, the kit's measures, which the boot splash's field keeps
+# (plymouth.rs).
+olo-kit-base.workspace = true
 olo-color.workspace = true
 # HDR wallpapers' half floats.
 half = "2"
@@ -74,8 +78,6 @@ debug = []
 profile-with-tracy-mem = []
 
 [dev-dependencies]
-# The kit's measures, which the boot splash's field keeps (plymouth.rs).
-olo-kit-base.workspace = true
 # DRM modes made in tests (`keep_current_modes`' timings).
 drm-ffi = "0.9"
 # Runs touchpad.lua against scripted frames (touch_filter's tests).

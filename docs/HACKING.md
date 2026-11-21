@@ -11150,13 +11150,35 @@ first window), Chrome's GPU process the same, and each app_server start
   into it (`left_asleep`: its connectors' status, as sysfs keeps it,
   read without asking the GPU), and opens it when a udev change says a
   display is.
-- Olo's apps make their Vulkan context without NVIDIA's driver
-  (`blade_context::asleep_aside`: `VK_LOADER_DRIVERS_DISABLE=*nvidia*`
-  for the moment the loader looks, put back at once so nothing the app
-  starts inherits it); they draw on the GPU the displays use, and a
-  window on NVIDIA's HDMI display is imported there.
+- Olo's apps are handed the one Vulkan driver of the GPU they draw on,
+  so the loader never loads NVIDIA's ("One Vulkan driver, handed to
+  the loader"); they draw on the GPU the displays use, and a window on
+  NVIDIA's HDMI display is imported there.
 - Programs Olo starts get `olo_kit_base::gpu::asleep_env()` (Vulkan's
   loader and glvnd's EGL without NVIDIA's): `olo-chrome` does.
+- **A headless app_server loads Mesa's EGL library alone**
+  (`app_server::egl_vendor`, `olo_kit_base::gpu::mesa_egl_alone`).
+  glvnd asks every maker's library in turn for a display, NVIDIA's
+  first: each agent's screen's app_server, and the person's, had
+  NVIDIA's nine EGL libraries loaded (found 2026-11-20 by reading
+  `/proc/PID/maps`: twelve app_servers, the card's driver stuck in the
+  kernel that day). Where NVIDIA's card only sits beside the GPU the
+  computer started on, app_server gives glvnd Mesa's vendor file
+  first thing in `main` (glvnd reads only the environment; set before
+  any thread, marked as its own so an in-place restart decides again,
+  and taken out of what it starts, `realtime::start_off_kept`: a
+  program put on NVIDIA's card on purpose needs NVIDIA's library). A
+  headless one always does, and draws on the GPU the computer started
+  on whatever its node's number (`headless::render_node`); the
+  person's own does only where NVIDIA's card has its DRM device and
+  no connector at all, since a display plugged into the card later
+  needs NVIDIA's library and the choice can't be changed once made
+  (on a laptop whose HDMI port is the card's, it loads it as before).
+  An agent's screen's app_server: no library of NVIDIA's (9 before),
+  6.7 MB less of its own memory (70.8 → 64.1 MB), 11 ms sooner to its
+  EGL display (30 → 19 ms); whether loading the library ever woke a
+  sleeping card isn't known (it didn't when `left_asleep` was
+  measured), so this isn't claimed to save a wake.
 - Activity asks NVIDIA's library only while the GPU is awake, Doctor
   and `olo_system::gpus` read sysfs attributes only (never a PCI
   device's `config`, which wakes it), and no local model (voice,

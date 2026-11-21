@@ -147,10 +147,12 @@ pub fn home_self() {
 
 /// `cmd`'s program begins where the person's programs run, not on the
 /// kept core: the thread starting it (the loop) is homed there, and the
-/// kernel copies a thread's affinity to what it starts. Every program
-/// app_server starts goes through this.
+/// kernel copies a thread's affinity to what it starts. And without
+/// what app_server set in its own environment for itself
+/// (`egl_vendor`). Every program app_server starts goes through this.
 pub fn start_off_kept(cmd: &mut std::process::Command) {
     olo_system::cores::start_off(cmd, &kept::for_programs());
+    crate::egl_vendor::not_inherited(cmd);
 }
 
 /// `Settings::keep_core` as it is (at start, and as it changes): the

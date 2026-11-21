@@ -27,6 +27,10 @@ fn main() {
         unsafe { std::env::remove_var(olo_protocol::rescue::START_ENV) };
         app_server::rescue::start_in_rescue();
     }
+    // NVIDIA's EGL library kept out of this program where its card only
+    // sits beside the GPU everything is drawn on (`egl_vendor`).
+    // SAFETY: no other thread yet.
+    let egl_vendor = unsafe { app_server::egl_vendor::choose(::std::env::args().nth(1).as_deref() == Some("--headless")) };
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
     // The boot splash made (no compositor: nothing below runs).
@@ -36,6 +40,9 @@ fn main() {
     }
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
     tracing_subscriber::fmt().compact().with_env_filter(env_filter).init();
+    if let Some(vendor) = &egl_vendor {
+        tracing::info!(vendor, "EGL: Mesa's library alone (NVIDIA's card only sits by)");
+    }
 
     // Every input event and every frame go through this thread: above
     // everything else (olo_protocol::performance::tier). Only the

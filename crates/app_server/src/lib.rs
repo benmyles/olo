@@ -36,6 +36,7 @@ pub mod apple_keys;
 pub mod approve;
 pub mod desktop;
 pub mod dmabuf_check;
+pub mod egl_vendor;
 pub mod frames;
 pub mod handover;
 pub mod identify;
