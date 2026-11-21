@@ -17390,7 +17390,21 @@ the folder's change time, `Owners`; each file in one read) and:
   build in a tab never inherits it (measured, a byte through four
   processes' pipes as the echo goes, beside eight nice-0 burners on the
   same cores: p99 2.1 ms and worst 31.7 ms at nice 0, p99 0.75 ms and
-  worst 2.8 ms at −5); in the person's own session only
+  worst 2.8 ms at −5); Terminal's own three on that path at −5 as
+  well (its writer to termd and its reader from it, `termd writer` and
+  `termd reader`, and each shell's `shell output`, which reads what
+  the shell prints into the screen before any of it is drawn): left at
+  0 until 2026-11-21, they waited 113, 117 and 70 µs a run beside two
+  burners a processor, with 27 of 495 twentieths of a second holding
+  over a millisecond of waiting among the three, and 42, 35 and 15 µs
+  with 3 at −5 (two runs each of 25 s, a key every 80 ms, release
+  builds, four processors); a raise rtkit refuses is asked for again
+  (`priority::raise_self_patiently`: rtkit gives 25 raises in 20 s for
+  all of an account's programs, a session coming back starts more
+  threads than that at once, and one refused stayed at 0 for as long
+  as it lived: a helper thread asks again every seven seconds for a
+  minute, and ends when nothing is left to ask for); in the person's
+  own session only
   (on an agent's screen, `OLO_SCREEN`, and in a headless app_server they
   stay at their nice and leave cores to the scheduler: three agent
   screens' compositors at app_server's own −10, on fast cores at full

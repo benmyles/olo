@@ -433,6 +433,9 @@ fn spawn_feeder(
     std::thread::Builder::new()
         .name("shell output".into())
         .spawn(move || {
+            // (What the shell prints is read into the screen here before
+            // any of it is drawn: on every key's way back.)
+            crate::client::echo_path();
             let mut feeder = io::Feeder::default();
             let code = loop {
                 let chunk = match feeder.deadline() {

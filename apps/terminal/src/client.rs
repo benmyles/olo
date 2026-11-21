@@ -137,11 +137,23 @@ pub fn connect() -> io::Result<(Link, Vec<wire::ShellInfo>)> {
     }));
     {
         let link = link.clone();
-        std::thread::Builder::new().name("termd writer".into()).spawn(move || link.write_loop(rx)).expect("writer thread");
+        std::thread::Builder::new()
+            .name("termd writer".into())
+            .spawn(move || {
+                echo_path();
+                link.write_loop(rx)
+            })
+            .expect("writer thread");
     }
     {
         let link = link.clone();
-        std::thread::Builder::new().name("termd reader".into()).spawn(move || link.read_loop(reader)).expect("reader thread");
+        std::thread::Builder::new()
+            .name("termd reader".into())
+            .spawn(move || {
+                echo_path();
+                link.read_loop(reader)
+            })
+            .expect("reader thread");
     }
     Ok((link, shells))
 }
@@ -418,4 +430,14 @@ pub fn stop(known: Option<i32>) -> Result<(), String> {
         std::thread::sleep(Duration::from_millis(50));
     }
     Ok(())
+}
+
+/// A thread of Terminal's that every key and its echo pass through (the
+/// writer to the daemon and the reader from it, here; each shell's
+/// output, session.rs): at the shell's tier, as the daemon's own are
+/// (termd.rs, `echo_path`, where the measure is), and asked for again
+/// if rtkit says no. They were left at nice 0, behind whatever else the
+/// desktop's programs were doing.
+pub(crate) fn echo_path() {
+    olo_system::priority::raise_self_patiently(olo_protocol::performance::SHELL_NICE);
 }

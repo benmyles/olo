@@ -1526,9 +1526,13 @@ fn say_pid(lock: &mut File) {
 /// is put back at nice 0 before it runs (pty.rs). Measured, a byte
 /// through four processes' pipes as the echo goes, with eight nice-0
 /// burners on the same eight cores: at nice 0 p99 2.1 ms, worst 31.7 ms;
-/// at −5 p99 0.75 ms, worst 2.8 ms (2026-11-15).
+/// at −5 p99 0.75 ms, worst 2.8 ms (2026-11-15). Asked for again if
+/// rtkit says no (`raise_self_patiently`: a session coming back starts
+/// more of these at once than rtkit gives in a burst). Terminal's own
+/// three on the path (its reader and writer of this daemon, and each
+/// shell's output) are at the same tier (client.rs, `echo_path`).
 fn echo_path() {
-    let _ = olo_system::priority::raise_self(olo_protocol::performance::SHELL_NICE);
+    olo_system::priority::raise_self_patiently(olo_protocol::performance::SHELL_NICE);
 }
 
 /// Become a daemon: the parent waits for the child to say it's listening

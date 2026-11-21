@@ -77,6 +77,83 @@ pub fn raise_self(nice: i32) -> std::result::Result<i32, String> {
     raise_thread(std::process::id(), tid, nice)
 }
 
+/// [`raise_self`] for a thread that has its own work to get on with and
+/// can't ask again itself: where rtkit says no, a helper thread of this
+/// program asks for it again, every few seconds for a minute, until it
+/// is raised or gone. rtkit gives so many raises in a burst and no more
+/// (25 in 20 s for all of an account's programs, as it comes: "Device or
+/// resource busy" after that), and a session coming back starts more
+/// threads than that at once: Terminal's daemon two for every shell,
+/// Terminal three more. One refused stayed at nice 0 for as long as it
+/// lived (five of olo-termd's, seen 2026-11-20). The helper sleeps
+/// between rounds and ends when nothing is left to ask for.
+pub fn raise_self_patiently(nice: i32) {
+    if raise_self(nice).is_ok() || not_the_persons().is_some() {
+        return;
+    }
+    // SAFETY: gettid has no preconditions.
+    let tid = unsafe { libc::gettid() } as u32;
+    let mut waiting = WAITING.lock().unwrap_or_else(|e| e.into_inner());
+    waiting.list.push(Asked { tid, nice, rounds: 0 });
+    if !waiting.helper {
+        waiting.helper = std::thread::Builder::new().name("raise-again".into()).spawn(ask_again).is_ok();
+    }
+}
+
+/// A thread rtkit refused, to be asked for again.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Asked {
+    tid: u32,
+    nice: i32,
+    rounds: u32,
+}
+
+struct Waiting {
+    list: Vec<Asked>,
+    /// The helper is running (it clears this, under the lock, as it ends).
+    helper: bool,
+}
+
+static WAITING: std::sync::Mutex<Waiting> = std::sync::Mutex::new(Waiting { list: Vec::new(), helper: false });
+/// Between rounds, and how many: a little over rtkit's burst three times.
+const AGAIN_EVERY: std::time::Duration = std::time::Duration::from_secs(7);
+const ROUNDS: u32 = 9;
+
+fn ask_again() {
+    let pid = std::process::id();
+    loop {
+        std::thread::sleep(AGAIN_EVERY);
+        let mut waiting = WAITING.lock().unwrap_or_else(|e| e.into_inner());
+        let list = std::mem::take(&mut waiting.list);
+        waiting.list = round(list, |tid| std::path::Path::new(&format!("/proc/{pid}/task/{tid}")).exists(), |tid, nice| raise_thread(pid, tid, nice).is_ok());
+        if waiting.list.is_empty() {
+            waiting.helper = false;
+            return;
+        }
+    }
+}
+
+/// One round of asking again: who is still to be asked for after it. A
+/// thread that is gone (`there`) is dropped, as is one asked for
+/// [`ROUNDS`] times; once rtkit says no (`raise`) the burst is spent and
+/// the rest wait for the next round unasked.
+fn round(list: Vec<Asked>, there: impl Fn(u32) -> bool, mut raise: impl FnMut(u32, i32) -> bool) -> Vec<Asked> {
+    let mut spent = false;
+    list.into_iter()
+        .filter(|a| there(a.tid))
+        .filter_map(|mut a| {
+            if !spent {
+                if raise(a.tid, a.nice) {
+                    return None;
+                }
+                spent = true;
+                a.rounds += 1;
+            }
+            (a.rounds < ROUNDS).then_some(a)
+        })
+        .collect()
+}
+
 /// Thread `tid` of `pid` to `nice`, if it is above that.
 pub fn raise_thread(pid: u32, tid: u32, nice: i32) -> std::result::Result<i32, String> {
     let nice = nice.max(min_nice().unwrap_or(-15));
@@ -167,6 +244,67 @@ pub fn raise_process(pid: u32, nice: i32) -> (usize, Option<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Asking again: the raised and the gone leave the list, a refusal
+    /// ends the round (the burst is spent: nobody after it is asked, nor
+    /// counted a round), and one refused nine rounds is given up.
+    #[test]
+    fn a_refused_raise_is_asked_for_again_until_it_is_given() {
+        let asked = |tid| Asked { tid, nice: -5, rounds: 0 };
+        let list = vec![asked(1), asked(2), asked(3), asked(4)];
+        // 1 is raised, 2 is gone, 3 is refused: 4 isn't asked.
+        let mut tried = Vec::new();
+        let left = round(
+            list,
+            |tid| tid != 2,
+            |tid, nice| {
+                tried.push((tid, nice));
+                tid == 1
+            },
+        );
+        assert_eq!(tried, [(1, -5), (3, -5)]);
+        assert_eq!(left, [Asked { tid: 3, nice: -5, rounds: 1 }, asked(4)]);
+        // The next round both are given.
+        assert!(round(left, |_| true, |_, _| true).is_empty());
+        // Refused every time: given up after the last round.
+        let mut one = vec![asked(7)];
+        for n in 1..ROUNDS {
+            one = round(one, |_| true, |_, _| false);
+            assert_eq!(one, [Asked { tid: 7, nice: -5, rounds: n }]);
+        }
+        assert!(round(one, |_| true, |_, _| false).is_empty());
+    }
+
+    /// The helper itself, with rtkit: a thread put on the list as one
+    /// refused is raised at the next round, and the helper ends
+    /// (`cargo test -p olo-system the_helper_raises -- --ignored`; it
+    /// waits a round, seven seconds).
+    #[test]
+    #[ignore = "asks rtkit to raise a thread of this test"]
+    fn the_helper_raises_a_thread_left_waiting() {
+        let (tell, told) = std::sync::mpsc::channel();
+        let (stop, stopped) = std::sync::mpsc::channel::<()>();
+        let worker = std::thread::spawn(move || {
+            // SAFETY: gettid has no preconditions.
+            tell.send(unsafe { libc::gettid() } as u32).unwrap();
+            let _ = stopped.recv();
+        });
+        let tid = told.recv().unwrap();
+        assert_eq!(nice_of(tid), Some(nice_of(std::process::id()).unwrap()));
+        {
+            let mut waiting = WAITING.lock().unwrap();
+            waiting.list.push(Asked { tid, nice: -1, rounds: 0 });
+            assert!(!waiting.helper);
+            waiting.helper = std::thread::Builder::new().name("raise-again".into()).spawn(ask_again).is_ok();
+        }
+        std::thread::sleep(AGAIN_EVERY + std::time::Duration::from_secs(2));
+        assert_eq!(nice_of(tid), Some(-1), "rtkit didn't raise it (is rtkit running?)");
+        let waiting = WAITING.lock().unwrap();
+        assert!(waiting.list.is_empty() && !waiting.helper, "the helper is still there with nothing to ask for");
+        drop(waiting);
+        drop(stop);
+        worker.join().unwrap();
+    }
 
     #[test]
     fn reads_its_own_nice() {

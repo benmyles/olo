@@ -187,9 +187,14 @@ something nobody here has is in "Blocked", with what it waits for.
      programs, the kernel's workers waited over a millisecond six
      times less often, Terminal's threads seven times (their worst
      29 ms to 4), the compositor's hand-overs 14.5 ms to 5.7 at the
-     worst (kernel/TUNING.md). **To do**: Terminal's own threads
-     into the tier (`termd reader`, `termd writer`, `shell output`
-     at nice 0; olo-termd's that rtkit refused); what is still left
+     worst (kernel/TUNING.md). **Done too** (2026-11-21): Terminal's
+     own three threads on the path at the shell's tier (`termd
+     writer`, `termd reader`, each `shell output`: their waits a run
+     a third of what they were beside two burners a processor, and a
+     tenth as many twentieths of a second with over a millisecond of
+     waiting; HACKING has the figures), and a raise rtkit refuses
+     asked for again (`raise_self_patiently`), so none stays at 0.
+     **To do**: what is still left
      of those waits after it, and whether that wants a latency-first
      scheduler again (Olo's own threads are realtime now) or a
      kernel patch (the workers that pass GPU jobs and pty bytes on
