@@ -17532,7 +17532,11 @@ the folder's change time, `Owners`; each file in one read) and:
   under the login screen), and here:
   - **Who goes in `bg`**: compilers and linkers by their own name
     (`olo_protocol::performance::COMPILERS`, of the names the person
-    has in the Background list). Never what starts them: cargo, make,
+    has in the Background list; every one of them is in that list as
+    it comes, which a test keeps so: Rust's own linker, gcc's link
+    driver and mold as a driver starts it, `ld.mold`, were in the
+    first and not the second until 2026-11-21, and so were never moved
+    by name). Never what starts them: cargo, make,
     a cache's server, a shell start programs someone is waiting for (a
     window, a server an editor asks, a helper asking for a password),
     and what a process starts is born in its group. Found at the

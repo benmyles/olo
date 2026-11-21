@@ -102,12 +102,17 @@ pub const COMPILERS: &[&str] = &[
     "lld",
     "rust-lld",
     "mold",
+    // (mold as a compiler's driver starts it, `cc -fuse-ld=mold`: the
+    // name it runs under is the link's it was found by.)
+    "ld.mold",
     "wasm-ld",
     "as",
 ];
 
-/// Work that's background by its name: builds and compilers, indexers,
-/// package managers.
+/// Work that's background by its name: builds and compilers (every one
+/// of `COMPILERS`: a name left out here is never put in the group by
+/// its name, as Rust's own linker and gcc's link driver weren't until
+/// 2026-11-21), indexers, package managers.
 pub const BACKGROUND: &[&str] = &[
     "rustc",
     "cargo",
@@ -122,9 +127,16 @@ pub const BACKGROUND: &[&str] = &[
     "ld",
     "ld.lld",
     "lld",
+    "rust-lld",
     "mold",
+    "ld.mold",
     "ld.bfd",
     "ld.gold",
+    "wasm-ld",
+    "collect2",
+    "cc1obj",
+    "lto1",
+    "lto-wrapper",
     "as",
     "make",
     "ninja",
@@ -503,5 +515,16 @@ mod tests {
         let mut s = PerformanceSettings::default();
         s.ignored.push("my-sim".into());
         assert!(s.ignores("my-sim", "") && s.ignores("python3", "python3 my-sim --fast") && !s.ignores("other", "other"));
+    }
+
+    /// A compiler or linker goes in the background group by its name
+    /// only where that name is background work too.
+    #[test]
+    fn every_compiler_is_background_work_as_it_comes() {
+        let missing: Vec<_> = COMPILERS.iter().filter(|c| !BACKGROUND.contains(c)).collect();
+        assert!(missing.is_empty(), "{missing:?}");
+        let s = PerformanceSettings::default();
+        // (mold run by a compiler's driver, and Rust's own linker.)
+        assert!(["ld.mold", "rust-lld", "collect2"].iter().all(|n| COMPILERS.contains(n) && s.background.iter().any(|b| b == n)));
     }
 }
