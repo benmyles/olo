@@ -506,6 +506,106 @@ fn on_a_screen(fs: &Path, pid: i32) -> bool {
     std::fs::read(fs.join("proc").join(pid.to_string()).join("environ")).is_ok_and(|e| e.split(|b| *b == 0).any(|v| v.starts_with(b"OLO_SCREEN=")))
 }
 
+/// The test desktop a process is of (`tools/dev/tsession`: a headless
+/// desktop of Olo's own development, known by `OLO_TEST_DESKTOP` in the
+/// environment of everything in it), by the name it was started under.
+fn test_desktop_of(fs: &Path, pid: i32) -> Option<String> {
+    let environ = std::fs::read(fs.join("proc").join(pid.to_string()).join("environ")).ok()?;
+    environ.split(|b| *b == 0).find_map(|v| v.strip_prefix(b"OLO_TEST_DESKTOP=")).map(|name| String::from_utf8_lossy(name).into_owned())
+}
+
+/// How long ago a process started, in seconds (its start in the kernel's
+/// ticks since the computer started, and the time since then).
+fn running_for(fs: &Path, pid: i32) -> Option<f64> {
+    let stat = read(&fs.join("proc").join(pid.to_string()).join("stat"))?;
+    let started: f64 = stat[stat.rfind(')')? + 1..].split_whitespace().nth(19)?.parse().ok()?;
+    let up: f64 = read(&fs.join("proc/uptime"))?.split_whitespace().next()?.parse().ok()?;
+    // SAFETY: sysconf has no preconditions.
+    let ticks = unsafe { libc::sysconf(libc::_SC_CLK_TCK) }.max(1) as f64;
+    Some((up - started / ticks).max(0.0))
+}
+
+/// How long a test desktop may run before it is taken for one left
+/// behind: a check or a set of pictures is minutes.
+const TEST_DESKTOP_OLD: f64 = 3600.0;
+
+/// Test desktops left running: each is a whole headless desktop (a
+/// compositor, a bus, the programs under test) that draws and holds
+/// memory for nobody once whoever started it has gone without stopping
+/// it. A tool of Olo's ends its own however it ends (`tsession start`,
+/// its owner); one an agent or a person started from a shell stays until
+/// stopped, and three found on 2026-11-20 had run up to two and a half
+/// days beside a desktop that was lagging. Those over an hour old are
+/// listed, with a fix that ends them. Said only where there are some:
+/// most computers never run one.
+fn test_desktops(roots: &Roots, procs: &[Proc], r: &mut Report) {
+    let mine = |p: &&Proc| p.uid == roots.uid;
+    // (By their compositors and sessions: a handful of environments read
+    // a scan, not every program's.)
+    let mut old: Vec<(String, f64)> = Vec::new();
+    for p in procs.iter().filter(mine).filter(|p| matches!(p.name.as_str(), "olo-app-server" | "olo-session")) {
+        let (Some(name), Some(age)) = (test_desktop_of(&roots.fs, p.pid), running_for(&roots.fs, p.pid)) else { continue };
+        if age < TEST_DESKTOP_OLD {
+            continue;
+        }
+        match old.iter_mut().find(|(n, _)| *n == name) {
+            Some((_, longest)) => *longest = longest.max(age),
+            None => old.push((name, age)),
+        }
+    }
+    if old.is_empty() {
+        return;
+    }
+    old.sort_by(|a, b| b.1.total_cmp(&a.1));
+    let for_how_long = |age: f64| {
+        if age >= 2.0 * 86400.0 {
+            format!("{:.0} days", age / 86400.0)
+        } else if age >= 5400.0 {
+            format!("{:.0} hours", age / 3600.0)
+        } else {
+            "over an hour".to_owned()
+        }
+    };
+    // "“lint-3” has run for 2 days, “shots” for 5 hours": the first four,
+    // and how many more.
+    const NAMED: usize = 4;
+    let mut each: Vec<String> = old
+        .iter()
+        .take(NAMED)
+        .enumerate()
+        .map(|(i, (name, age))| if i == 0 { format!("“{name}” has run for {}", for_how_long(*age)) } else { format!("“{name}” for {}", for_how_long(*age)) })
+        .collect();
+    if old.len() > NAMED {
+        each.push(format!("and {} more for over an hour", old.len() - NAMED));
+    }
+    // Everything of theirs, the programs started in them too.
+    let steps: Vec<Step> = procs
+        .iter()
+        .filter(mine)
+        .filter(|p| test_desktop_of(&roots.fs, p.pid).is_some_and(|name| old.iter().any(|(n, _)| *n == name)))
+        .map(|p| Step::Signal { pid: p.pid, signal: libc::SIGTERM })
+        .collect();
+    r.findings.push(test_desktops_finding(old.len(), &each.join(", "), steps));
+}
+
+/// The finding of test desktops still running ([`test_desktops`]; the
+/// made-up report shows one): what they are first, then which and for
+/// how long (both reviewers, 2026-11-21: it opened with bare names like a
+/// line of a log, and named the tool in brackets).
+pub(crate) fn test_desktops_finding(count: usize, each: &str, steps: Vec<Step>) -> Finding {
+    let one = count == 1;
+    let (each_is, they, them) = if one { ("It is", "It still draws and holds", "it") } else { ("Each is", "They still draw and hold", "them") };
+    Finding {
+        id: "test-desktops".into(),
+        severity: Severity::Advice,
+        title: if one { "A test desktop is still running".into() } else { format!("{count} test desktops are still running") },
+        detail: format!(
+            "{each_is} a whole desktop of its own, started by Olo's development tools to try something and never stopped. {they} memory with no one watching: {each}. Ending {them} leaves your own desktop as it is."
+        ),
+        fix: Some(Fix { label: if one { "End It".into() } else { "End Them".into() }, root: false, steps }),
+    }
+}
+
 /// A process's login session, from its cgroup.
 fn scope_of(cgroup: &str) -> Option<String> {
     cgroup.lines().find_map(|l| l.rsplit('/').find(|part| part.starts_with("session-") && part.ends_with(".scope")).map(str::to_owned))
@@ -705,6 +805,7 @@ pub fn scan(roots: &Roots) -> Report {
     remappers(roots, &procs, &input_names, &mut r);
     foreign(roots, &procs, &mut r);
     gnome_services(roots, &procs, &mut r);
+    test_desktops(roots, &procs, &mut r);
     let rule_current = input_rule(roots, &mut r);
     autosuspend(roots, rule_current, &mut r);
     display_rule(roots, &mut r);
@@ -5173,6 +5274,62 @@ mod tests {
         let fix = r.findings[0].fix.as_ref().unwrap();
         assert!(fix.root && fix.batchable());
         assert_eq!(fix.steps, [Step::RemoveFile { path: PathBuf::from("/").join(olo_system::caps::OLD_SWITCH) }]);
+    }
+
+    /// Test desktops: none said where there are none or only young ones;
+    /// those over an hour old listed, the oldest first, with everything of
+    /// theirs ended by the fix, and nothing of an agent's screen or the
+    /// person's own.
+    #[test]
+    fn test_desktops_left_running_are_listed_and_ended() {
+        let (fs, roots) = machine("test-desktops");
+        // SAFETY: sysconf has no preconditions.
+        let ticks = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as u64;
+        std::fs::write(fs.join("proc/uptime"), "400000.00 1.00\n").unwrap();
+        let process = |pid: i32, name: &str, started_secs: u64, env: &str| {
+            let dir = fs.join(format!("proc/{pid}"));
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("stat"), format!("{pid} ({name}) S{} {}\n", " 0".repeat(18), started_secs * ticks)).unwrap();
+            std::fs::write(dir.join("environ"), env.replace(' ', "\0")).unwrap();
+            Proc { pid, uid: roots.uid, name: name.into(), exe: None, scope: roots.scope.clone() }
+        };
+        let mut procs = Vec::new();
+        // The person's own, an agent's screen, and a test desktop ten minutes old.
+        procs.push(process(2000, "olo-app-server", 100, "HOME=/home/me"));
+        procs.push(process(2001, "olo-app-server", 100, "HOME=/home/me OLO_SCREEN=agent"));
+        procs.push(process(2002, "olo-app-server", 400_000 - 600, "OLO_TEST_DESKTOP=young"));
+        let look = |procs: &[Proc]| {
+            let mut r = Report::default();
+            test_desktops(&roots, procs, &mut r);
+            r
+        };
+        assert!(look(&procs).findings.is_empty() && look(&procs).fine.is_empty());
+        // One three hours old with a program in it, one three days old
+        // (a session and its compositor).
+        procs.push(process(2003, "olo-app-server", 400_000 - 3 * 3600, "OLO_TEST_DESKTOP=shots"));
+        procs.push(process(2004, "olo-tracker", 400_000 - 3 * 3600 + 5, "OLO_TEST_DESKTOP=shots WAYLAND_DISPLAY=wayland-9"));
+        procs.push(process(2005, "olo-session", 400_000 - 3 * 86400, "OLO_TEST_DESKTOP=lint-3"));
+        procs.push(process(2006, "olo-app-server", 400_000 - 3 * 86400 + 1, "OLO_TEST_DESKTOP=lint-3"));
+        let r = look(&procs);
+        let f = r.find("test-desktops").unwrap();
+        assert_eq!(f.title, "2 test desktops are still running");
+        assert!(f.detail.ends_with("no one watching: “lint-3” has run for 3 days, “shots” for 3 hours. Ending them leaves your own desktop as it is."), "{}", f.detail);
+        let fix = f.fix.as_ref().unwrap();
+        assert!(!fix.root && fix.label == "End Them");
+        let mut ended: Vec<i32> = fix
+            .steps
+            .iter()
+            .map(|s| {
+                if let Step::Signal { pid, signal } = s {
+                    assert_eq!(*signal, libc::SIGTERM);
+                    *pid
+                } else {
+                    panic!("{s:?}")
+                }
+            })
+            .collect();
+        ended.sort();
+        assert_eq!(ended, [2003, 2004, 2005, 2006]);
     }
 
     /// The session's division: a finding with the drop-in to write where

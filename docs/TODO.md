@@ -240,10 +240,11 @@ something nobody here has is in "Blocked", with what it waits for.
   Claude Code. **Done too**: an agent's screen draws thirty times a
   second at the most (one drew 115 for a browser nobody watched);
   the lint runs four desktops at once at the most and waits for
-  room (a guard). Still: test desktops left behind by earlier runs
-  (three, one two and a half days old, ended by hand): the lint and
-  the checks end what they start however they end, and Olo Doctor
-  lists test desktops older than an hour; and a measure of its own
+  room (a guard); a test desktop started by one of the repository's
+  tools ends with the tool however that ends, and Olo Doctor lists
+  those over an hour old with a fix that ends them (three had been
+  left, one for two and a half days; HACKING, "Whose a test desktop
+  is"). Still: a measure of its own
   in app_server for what the person feels (a key or a click to the
   window's next frame, and to the screen), said in the log with who
   was late, so the next time it is known at once.

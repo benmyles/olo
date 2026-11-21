@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-21
 
+### Olo Doctor: test desktops still running
+
+*02:00* — A test desktop (a whole headless desktop Olo's development tools start to try something) left running for over an hour is a finding now, with which and for how long, and a fix that ends everything of theirs. A tool's own desktops end with the tool; three had been left for up to two and a half days.
+
+![Olo Doctor: test desktops still running](2026-11-21/020053-olo-doctor-test-desktops-still-running.png)
+
 ### Olo Doctor: the desktop first on the GPU, an account's own choice
 
 *00:39* — Intel's driver puts the window server's drawing ahead of other programs' only where it may set priorities. Doctor offers that for the account, in a card of two paragraphs (what it is for; the permission it takes), with a button of its own: its mark is greyed and says in a tip that it is never fixed with the others. Once given, Doctor's line says what the driver itself answers the window server.

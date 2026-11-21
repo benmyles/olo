@@ -105,6 +105,7 @@ pub fn report() -> Report {
             "Olo's chime plays as you log in. It can play as the computer starts instead, as a Mac's does: from its own speakers while the start-up screen shows, at the volume they were last set to (none while they're muted). It plays the chime chosen in Preferences ▸ Sound, and none if anyone on this computer turned the start-up sound off.",
             Some(("Play It as the Computer Starts", true)),
         ),
+        crate::checks::test_desktops_finding(2, "“lint-3” has run for 2 days, “shots” for 5 hours", Vec::new()),
         finding(
             "gnome:services",
             Severity::Advice,

@@ -12,7 +12,11 @@
                                                --scale: the screens' scale, 2 by default;
                                                --owner: the session ends with process PID,
                                                its folder removed, however PID ends: a
-                                               tool's sessions don't outlive it, killed)
+                                               tool's sessions don't outlive it, killed.
+                                               Started by a tool of this repository
+                                               (tools/…), it is that tool's without being
+                                               told; `--owner none` (or TSESSION_OWNER=none)
+                                               for one a tool means to leave up)
   tsession reload NAME                         restart app_server in place (session only)
   tsession run NAME [VAR=VAL...] CMD [ARGS...] start a client in it (log: DIR/<cmd>.log);
                                                VAR=VAL set after sudo (e.g. HOME=/tmp/fixture)
@@ -38,7 +42,9 @@
                                                --all: Deskbar and other layer surfaces too
   tsession ipc NAME JSON                       raw IPC request
   tsession env NAME                            print env to source
-  tsession stop NAME | list
+  tsession stop NAME | list                    list: each session, its display, how long
+                                               it has run, or that it has ended (its
+                                               folder left: `stop` removes what's left)
   TSESSION_GPU=1 tsession start …              the session and its programs draw on the GPU
                                                (they draw in software, off the person's GPU,
                                                otherwise: for what measures drawing itself)
@@ -210,7 +216,39 @@ def mesa_egl_vendor():
     return None
 
 
+def owner_of(args, parent=None):
+    """Whose life a session being started shares, a PID or None: the one
+    named (`--owner`, else $TSESSION_OWNER; `none`: nobody's), else the
+    tool of this repository that asked for it. A tool's desktops ended
+    with it only if it got to its own stopping of them: one killed at a
+    time limit, or one that crashed, left them drawing for days (three,
+    one of two and a half days, 2026-11-20). One started from a shell,
+    by a person or an agent, is nobody's: it stays until stopped."""
+    named = next((args[i + 1] for i, a in enumerate(args[:-1]) if a == "--owner"), None) or os.environ.get("TSESSION_OWNER")
+    if named:
+        return None if named == "none" else named
+    parent = os.getppid() if parent is None else parent
+    try:
+        argv = open(f"/proc/{parent}/cmdline", "rb").read().split(b"\0")
+        cwd = os.readlink(f"/proc/{parent}/cwd")
+    except OSError:
+        return None
+    tools = os.path.join(ROOT, "tools") + os.sep
+    me = os.path.abspath(__file__)
+    for a in argv[:4]:
+        # (Its program, as its interpreter was given it: a file under
+        # tools/. Not this one: a shell's `tsession start` is the shell's.)
+        path = os.path.normpath(os.path.join(cwd, a.decode(errors="replace")))
+        if path.startswith(tools) and path != me and os.path.isfile(path):
+            return str(parent)
+    return None
+
+
 def start(name, args):
+    # What it and everything started for it is known by, its bus too (Olo
+    # Doctor lists test desktops left running, and its fix ends all of
+    # one: `OLO_TEST_DESKTOP` in their environment).
+    os.environ["OLO_TEST_DESKTOP"] = name
     size = next((a for a in args if re.fullmatch(r"\d+x\d+(,\d+x\d+)*", a)), "2560x1600")
     theme = "dark" if "--dark" in args else "light"
     scale = float(args[args.index("--scale") + 1]) if "--scale" in args else 2.0
@@ -318,7 +356,7 @@ def start(name, args):
         if m and i and ready:
             e = {"WAYLAND_DISPLAY": m.group(1), "OLO_SOCKET": i.group(1), "XDG_RUNTIME_DIR": RUNTIME,
                  "XDG_CONFIG_HOME": os.path.join(d, "config"), "DBUS_SESSION_BUS_ADDRESS": env["DBUS_SESSION_BUS_ADDRESS"],
-                 "OLO_PHONE_DIR": env["OLO_PHONE_DIR"], "pid": p.pid}
+                 "OLO_PHONE_DIR": env["OLO_PHONE_DIR"], "OLO_TEST_DESKTOP": name, "pid": p.pid}
             if home:
                 e["HOME"] = os.path.abspath(home)
             e.update(own)
@@ -332,7 +370,7 @@ def start(name, args):
                 e["OLO_SESSION_PID"] = open(pidfile).read().strip()
             e["sockets"] = [ident(os.path.join(RUNTIME, e["WAYLAND_DISPLAY"])), ident(e["OLO_SOCKET"])]
             json.dump(e, open(os.path.join(d, "env.json"), "w"))
-            owner = next((args[i + 1] for i, a in enumerate(args[:-1]) if a == "--owner"), None)
+            owner = owner_of(args)
             if owner:
                 subprocess.Popen([sys.executable, os.path.abspath(__file__), "_watch", name, owner], stdin=subprocess.DEVNULL,
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
@@ -511,6 +549,25 @@ def stop(name):
     if e:
         forget_display(e["WAYLAND_DISPLAY"])
 
+def running_for(e):
+    """How long a session's compositor has run ("running 3h12m"), or
+    "ended" where the process its record names is gone or is another's
+    (its folder was left: the computer restarted, it was killed)."""
+    try:
+        pid = int(e["pid"])
+        stat = open(f"/proc/{pid}/stat").read()
+        environ = open(f"/proc/{pid}/environ", "rb").read().split(b"\0")
+    except (OSError, ValueError, KeyError, TypeError):
+        return "ended"
+    # (Records from before sessions were marked: by its display's socket.)
+    marked = any(v.startswith(b"OLO_TEST_DESKTOP=") for v in environ)
+    if not marked and not os.path.exists(os.path.join(RUNTIME, str(e.get("WAYLAND_DISPLAY", "")))):
+        return "ended"
+    started = int(stat[stat.rfind(")") + 2:].split()[19]) / os.sysconf("SC_CLK_TCK")
+    up = float(open("/proc/uptime").read().split()[0]) - started
+    return f"running {int(up // 3600)}h{int(up % 3600 // 60):02d}m" if up >= 3600 else f"running {int(up // 60)}m{int(up % 60):02d}s"
+
+
 def watch(name, owner):
     """`start --owner`: waits for the session or `owner` to end; if the
     owner goes first, stops the session and removes its folder."""
@@ -684,7 +741,11 @@ def main():
         return
     if cmd == "list":
         for d in sorted(glob.glob(os.path.join(BASE, "*", "env.json")) + [e for b in OLD_BASES for e in glob.glob(os.path.join(b, "*", "env.json"))]):
-            print(os.path.basename(os.path.dirname(d)), json.load(open(d))["WAYLAND_DISPLAY"])
+            try:
+                e = json.load(open(d))
+            except (OSError, ValueError):
+                continue
+            print(os.path.basename(os.path.dirname(d)), e.get("WAYLAND_DISPLAY", "?"), running_for(e))
         return
     name, a = sys.argv[2], sys.argv[3:]
     if cmd == "start":

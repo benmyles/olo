@@ -44,6 +44,10 @@ NAME = "key-repeat"
 DIR = f"/var/tmp/olo-dev/{NAME}"
 TS = ["/usr/bin/python3", os.path.join(ROOT, "tools/dev/tsession")]
 HOLD = int(sys.argv[sys.argv.index("--hold") + 1]) if "--hold" in sys.argv else 600
+# (A session this tool starts ends with it unless it is to be kept:
+# `tsession start`.)
+if "--keep" in sys.argv:
+    os.environ["TSESSION_OWNER"] = "none"
 KEY_1, KEY_2 = 2, 3  # evdev codes
 
 

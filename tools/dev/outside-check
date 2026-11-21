@@ -100,6 +100,9 @@ def main():
     ap.add_argument("--scale", default="1.5")
     ap.add_argument("--only", default="gtk,electron,chrome,qt")
     ap.add_argument("--keep", action="store_true", help="leave the session running (stop it with tsession stop outside)")
+    # (A session this tool starts ends with it unless told: `tsession start`.)
+    if "--keep" in sys.argv:
+        os.environ["TSESSION_OWNER"] = "none"
     a = ap.parse_args()
     want = set(a.only.split(","))
     os.makedirs(HOME, exist_ok=True)

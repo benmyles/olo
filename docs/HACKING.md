@@ -5447,8 +5447,25 @@ $T scale mine 1                # every screen to 1× (then 1.5, then 2: check al
 $T hz mine 120                 # every screen at 120 Hz (60 to start)
 $T stop mine
 $T start mine --owner PID      # ends (stopped, folder removed) when process PID does
+$T list                        # each session: its display, "running 3h12m" or "ended"
 $T tidy                        # what ended sessions left in the runtime dir
 ```
+
+**Whose a test desktop is.** One started by a tool of this repository
+(a program under `tools/`: the lint, the checks, the bench) is that
+tool's without being told, and ends with it however it ends: stopped
+by its own tidying, killed at a time limit, crashed (`owner_of`: the
+caller's program is a file under `tools/`; a watcher holds both by
+pidfd). A tool that means to leave one up says `--owner none` (or
+sets `TSESSION_OWNER=none`: `outside-check --keep`). One started from
+a shell, by a person or an agent, is nobody's and stays until it is
+stopped: stop yours. Everything of a test desktop carries
+`OLO_TEST_DESKTOP=NAME` in its environment (its compositor, its bus,
+what `run` starts), which is how Olo Doctor knows them: those over an
+hour old are a finding ("2 test desktops are still running", with
+which and for how long), and its fix ends everything of theirs. Three
+had been left before this, one for two and a half days, beside a
+desktop that was lagging (2026-11-20).
 
 `stop` ends everything of a session: its process group, its bus, what
 `run` started, and anything carrying its environment (its display and
