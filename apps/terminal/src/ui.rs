@@ -843,7 +843,86 @@ fn auto_approve_box(screen: Bounds<Pixels>, shell: u64, left: u32) -> Element {
     )
 }
 
-/// A tab's icon: Terminal's, with a badge at its corner: a turning arc
+/// `a` with `t` of `b` in it.
+fn blend(a: Hsla, b: Hsla, t: f32) -> Hsla {
+    let (a, b) = (Rgba::from(a), Rgba::from(b));
+    let l = |x: f32, y: f32| x + (y - x) * t;
+    Rgba { r: l(a.r, b.r), g: l(a.g, b.g), b: l(a.b, b.b), a: l(a.a, b.a) }.into()
+}
+
+/// The mark of an agent at work, centred near `centre`: a ring, faint all
+/// the way round, with a strong head and a tail fading behind it, turned
+/// to `turn` (radians, clockwise). Busy at whatever moment it is seen,
+/// and which way it goes, in a still picture too: a three-quarter arc
+/// read as a letter there, and a strong third with no tail as a cap
+/// sitting on top (the reviewers' looks, 2026-11-21).
+///
+/// Drawn as the icons are: whole device pixels, each one colour, no
+/// smoothed edge (a smoothed ring 7.5 pixels across was a blur beside a
+/// drawn icon at 1×, and soft at 1.5×). Its width is even and its centre
+/// on a pixel's corner, its stroke a quarter of its width: at 1× eight
+/// across with a hole of four, the same shape at every scale. The faint ring is the strong colour in
+/// the rim's (`rim`: what the tab is filled with), more of it in dark,
+/// where less of it was lost in the tab.
+fn working_ring(g: &mut Painter, centre: Point<Pixels>, turn: f32, rim: Hsla, strong: Hsla, dark: bool) {
+    use std::f32::consts::{PI, TAU};
+    let s = g.scale_factor();
+    let outer = ((3.75 * s).round() * 2.0).max(8.0);
+    let stroke = (outer / 4.0).round();
+    let (cx, cy) = ((f32::from(centre.x) * s).round(), (f32::from(centre.y) * s).round());
+    let (r1, r0) = (outer / 2.0, outer / 2.0 - stroke);
+    // The faint ring: the accent in the rim's colour, less of it in dark
+    // (a strong ring there shaded like a raised knob lit from above, and
+    // outweighed the title of a tab behind). The head: the accent, in
+    // dark lightened and as blue as it was (near white, it ran into the
+    // icon's bezel). The tail's two steps: the larger drop right behind
+    // the head, so the leading edge is crisp and the trailing one fades.
+    let faint = blend(rim, strong, if dark { 0.33 } else { 0.38 });
+    let head = if dark { Hsla { l: strong.l.max(0.76), ..strong } } else { strong };
+    let shades = [head, blend(faint, head, if dark { 0.6 } else { 0.72 }), blend(faint, head, if dark { 0.3 } else { 0.36 }), faint];
+    // Which shade a pixel has, by how far behind the head it is.
+    let shade = |x: f32, y: f32| -> Option<usize> {
+        let d = x * x + y * y;
+        if d > r1 * r1 || d < r0 * r0 {
+            return None;
+        }
+        // (A sixth of a turn of head, then two steps of tail of a ninth
+        // each: at 1× six pixels and four and four of the ring's 36.
+        // Shorter, the tail was a pixel or two and the head read as "a
+        // quarter done".)
+        let behind = (turn - y.atan2(x)).rem_euclid(TAU);
+        Some(if behind < PI / 3.0 {
+            0
+        } else if behind < PI / 3.0 + TAU / 9.0 {
+            1
+        } else if behind < PI / 3.0 + 2.0 * TAU / 9.0 {
+            2
+        } else {
+            3
+        })
+    };
+    let n = outer as i32;
+    for row in 0..n {
+        let y = row as f32 - r1 + 0.5;
+        // (A row's pixels of one shade side by side are one piece.)
+        let mut run: Option<(i32, usize)> = None;
+        for col in 0..=n {
+            let here = if col < n { shade(col as f32 - r1 + 0.5, y) } else { None };
+            if let Some((from, of)) = run
+                && here != Some(of)
+            {
+                let piece = Bounds { origin: point(px((cx - r1 + from as f32) / s), px((cy - r1 + row as f32) / s)), size: size(px((col - from) as f32 / s), px(1.0 / s)) };
+                g.paint_quad(fill(piece, shades[of]));
+                run = None;
+            }
+            if run.is_none() {
+                run = here.map(|of| (col, of));
+            }
+        }
+    }
+}
+
+/// A tab's icon: Terminal's, with a badge at its corner: a turning ring
 /// while an agent works, an orange "!" when it needs an answer, a green
 /// dot when it's done and no one has looked, a blue dot for an unseen
 /// bell; and at its bottom corner, while Keep It Going is on, a blue
@@ -853,13 +932,17 @@ pub fn tab_icon(rang: bool, agent: Option<State>, attention: bool, keep_going: b
     Rc::new(move |g: &mut Painter, r: Bounds<Pixels>| {
         icons::paint(g, r, "terminal");
         let p = theme::palette();
+        // (Each mark is set off from the icon by a rim of what the tab is
+        // filled with: the content's colour on the chosen tab, the
+        // panel's shade behind.)
+        let rim = widgets::strip::drawn_over().unwrap_or_else(|| style::c(p.panel_background));
         let disc_at = |g: &mut Painter, c: Point<Pixels>, radius: f32, color: Hsla| {
             let b = Bounds { origin: point(c.x - px(radius), c.y - px(radius)), size: size(px(2.0 * radius), px(2.0 * radius)) };
             g.paint_quad(fill(b, color).corner_radii(px(radius)));
         };
         if auto_approve {
             let c = point(r.left() + px(1.5), r.bottom() - px(3.5));
-            disc_at(g, c, 5.5, style::c(p.panel_background));
+            disc_at(g, c, 5.5, rim);
             disc_at(g, c, 4.5, style::c(p.success));
             let mut path = PathBuilder::stroke(px(1.25));
             path.move_to(point(c.x - px(2.0), c.y));
@@ -873,7 +956,7 @@ pub fn tab_icon(rang: bool, agent: Option<State>, attention: bool, keep_going: b
             // A disc in the accent colour with a "go on" triangle, as the
             // question's is orange with a "!".
             let c = point(r.right() - px(1.5), r.bottom() - px(3.5));
-            disc_at(g, c, 5.5, style::c(p.panel_background));
+            disc_at(g, c, 5.5, rim);
             let accent = p.keyboard_navigation;
             disc_at(g, c, 4.5, style::c(accent));
             let mut path = PathBuilder::fill();
@@ -886,22 +969,15 @@ pub fn tab_icon(rang: bool, agent: Option<State>, attention: bool, keep_going: b
             }
         }
         let at = point(r.right() - px(1.5), r.top() + px(3.5));
-        let back = style::c(p.panel_background);
+        let back = rim;
         match agent {
             Some(State::Working) => {
                 disc_at(g, at, 5.0, back);
-                // A quarter turn every … : by the clock, so each time it's
-                // drawn shows where it is now; and drawn again ten times
-                // a second while it turns (it alone: what it's drawn in).
+                // By the clock, so each time it's drawn shows where it is
+                // now; and drawn again ten times a second while it turns
+                // (it alone: what it's drawn in).
                 let turn = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f32() % 1000.0) * 5.0;
-                let pts: Vec<(Point<Pixels>, Point<Pixels>)> = (0..16)
-                    .map(|k| {
-                        let a = |k: i32| turn + k as f32 * (1.5 * std::f32::consts::PI / 16.0);
-                        let p = |a: f32| point(at.x + px(3.0 * a.cos()), at.y + px(3.0 * a.sin()));
-                        (p(a(k)), p(a(k + 1)))
-                    })
-                    .collect();
-                g.paint_segments(&pts, px(1.5), true, style::c(p.keyboard_navigation));
+                working_ring(g, at, turn, back, style::c(p.keyboard_navigation), p.mode == olo_theme::ThemeMode::Dark);
                 g.paint_again_within(0.1);
             }
             Some(State::Blocked) => {

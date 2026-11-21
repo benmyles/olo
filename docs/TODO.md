@@ -1511,7 +1511,16 @@ something nobody here has is in "Blocked", with what it waits for.
   track: a full ring at a third of its strength with a shorter arc on
   it would read as busy at any moment), is stroked over the icon and
   past its box (a round badge inside the icon's corner, in the tab's
-  own fill, outlined as the icons are) and is soft at 1× and 1.5×;
+  own fill, outlined as the icons are) and is soft at 1× and 1.5×
+  (**done**, in five rounds of their looks: a ring on whole device
+  pixels, faint all round with a strong head and a fading tail, its
+  rim, and the other marks', the tab's own fill; **left** of it: the
+  marks still overhang the icon's 16-point box toward the title, 4
+  points, where a badge inside the box would leave the title's gap
+  the same on every tab; Terminal's icon itself is soft at 1× and
+  1.5× beside the pixel-drawn mark (drawn for those sizes, not
+  scaled); in light at 1× the tail's second step is nearly the faint
+  ring's shade);
   nothing says an agent is working once its window is behind another
   or on another workspace (a still mark on Deskbar's Terminal row,
   drawn when the state changes, not ten times a second); a tab's ×

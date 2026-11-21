@@ -43,6 +43,27 @@ use crate::{style, theme};
 /// Paints a mark into its rectangle (a tab's icon, its badge).
 pub type PaintFn = Rc<dyn Fn(&mut Painter, Bounds<Pixels>)>;
 
+thread_local! {
+    static OVER: std::cell::Cell<Option<Hsla>> = const { std::cell::Cell::new(None) };
+}
+
+/// What a tab's icon or badge is being drawn over, while the strip has
+/// its painter paint it: the tab's own fill (the content's on the chosen
+/// tab, a shade off the panel behind, lighter under the pointer). For a
+/// painter that sets a mark off from the icon under it with a rim of
+/// that colour: a rim in the panel's own showed as a disc on the chosen
+/// tab. None when it isn't the strip that calls the painter.
+pub fn drawn_over() -> Option<Hsla> {
+    OVER.with(std::cell::Cell::get)
+}
+
+/// `paint` called with [`drawn_over`] saying `fill`.
+fn over(fill: Hsla, paint: impl FnOnce()) {
+    let before = OVER.with(|o| o.replace(Some(fill)));
+    paint();
+    OVER.with(|o| o.set(before));
+}
+
 /// One tab in a [`TabStrip`].
 #[derive(Clone, Default)]
 pub struct StripTab {
@@ -732,14 +753,14 @@ fn tab_face(g: &mut Painter, tab: &StripTab, selected: bool, (pointed, on_close)
     }
     if let Some(paint) = badge.filter(|_| !pointed) {
         let b = style::snap_centred(g, close.center(), STRIP_BADGE, STRIP_BADGE);
-        paint(g, b);
+        over(back, || paint(g, b));
     }
     // Its icon and title, faded if it's left out of something.
     g.with_element_opacity(tab.faded.as_ref().map(|_| STRIP_FADED), |g| {
         let mut left = face;
         if let Some(paint) = tab.icon.as_ref().filter(|_| icon) {
             let b = style::snap(g, Bounds { origin: point(left, cy - px(8.0)), size: size(px(16.0), px(16.0)) });
-            paint(g, b);
+            over(back, || paint(g, b));
             left = b.right() + px(8.0);
         }
         // (No room for even a few letters: none, rather than "…" alone.)

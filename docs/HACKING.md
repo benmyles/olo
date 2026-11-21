@@ -3459,7 +3459,9 @@ it.
   pointer, their outline softer. Each tab is a 1-pixel outline, a
   bevel inside it (lit along its left and top, shaded down its right,
   a device pixel each at 1×, `scale.round()` at others) and its fill,
-  every edge on device pixels (`folder`, `side_folder`), and ends
+  every edge on device pixels (`folder`, `side_folder`; a tab's icon
+  or badge painter can ask what it is drawn over,
+  `strip::drawn_over()`: the tab's own fill, for a mark's rim), and ends
   where the strip does: its outline meets the line along the foot on
   the line's own last row (it ran a pixel past it, a tick under each
   lower corner and a row of a tab behind's colour under the line, at
@@ -18466,8 +18468,22 @@ would. A question ("Do you want to…", "❯ 1. Yes", "esc to cancel") means
 *needs your answer*; "esc to interrupt" means *working*; anything else is
 *waiting for you*. A reading has to hold for three looks before it
 counts as idle or gone, so the gap between steps isn't the turn ending.
-The tab's icon wears the state (a turning arc, an orange "!", a green dot
-once a finished turn hasn't been seen), the tab's accessible name and
+The tab's icon wears the state (a turning ring, an orange "!", a green dot
+once a finished turn hasn't been seen: `ui::tab_icon`), each set off
+from the icon by a rim of what the tab is filled with
+(`widgets::strip::drawn_over`). The ring (`ui::working_ring`) is faint
+all the way round with a strong head and a tail fading behind it, so a
+still picture says both that it is busy and which way it turns (a
+three-quarter arc read as a letter there; a strong third with no tail
+as a cap sitting on top), and it is drawn as the icons are, on whole
+device pixels, each one colour: an even width centred on a pixel's
+corner, its stroke a quarter of that (8 pixels across with a hole of 4
+at 1×, 12 at 1.5×, 16 at 2×); the head a sixth of a turn, the tail two
+steps of a ninth each, the larger drop right behind the head; in dark
+the faint ring a third of the accent in the tab's fill and the head
+the accent lightened (the head is always the shade furthest from the
+tab's fill); drawn again ten times a second while the agent works, it
+alone. The tab's accessible name and
 the Tabs menu say it ("Claude Code: needs your answer"), and when an
 agent the person isn't looking at starts asking, or finishes, Terminal
 posts a notification (important for a question) whose Show brings that

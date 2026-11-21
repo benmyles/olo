@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-21
 
+### Terminal: an agent at work, as a ring on its tab's icon
+
+*09:45* — The mark of a coding agent at work was a three-quarter arc that read as a letter in a still picture. Now a ring drawn on whole pixels as the icons are: faint all the way round, with a strong head and a tail fading behind it, set off from the icon by a rim of the tab's own fill (here on the front tab, enlarged). Five rounds of the two reviewers' looks.
+
+![Terminal: an agent at work, as a ring on its tab's icon](2026-11-21/094543-terminal-an-agent-at-work-as-a-ring-on-its-tab-s.png)
+
 ### Tabs end with their strip, to the pixel
 
 *08:01* — Where two folder tabs meet, enlarged: before (left) each tab ran a device pixel past the strip, a tick under every lower corner and a row of the tab behind's colour under the line along the foot; after (right) the outlines end on the line. Found by a reviewer's look at other pictures.
