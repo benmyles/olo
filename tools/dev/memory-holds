@@ -1,0 +1,232 @@
+#!/usr/bin/python3
+"""Who is held while the kernel makes room for memory, and for what.
+
+  sudo tools/dev/memory-holds [SECONDS] [--paths] [--all]
+  tools/dev/memory-holds --self-test     its reading of a trace, checked
+
+A program that asks for memory where none is free in the shape it asked
+for makes room itself, then and there: it compacts memory (moves other
+programs' pages together) and reclaims (drops cache, swaps). For single
+pages that means the computer is short. For 2 MB in one piece it only
+means free memory is in small pieces, as it is on a computer that has
+run for a day; and what asks for 2 MB pieces isn't always the program:
+
+* the GPU drivers' memory pool (TTM, under Intel's xe and others) asks
+  for every buffer it fills, on the thread of whoever made the buffer:
+  a compositor's loop, an app's drawing thread, a browser's GPU process
+  (kernel/TUNING.md, "Graphics memory in 2 MB pieces");
+* a program that asked for huge pages itself (`madvise`: linkers, some
+  allocators), at its page faults (`vma_alloc_anon_folio_pmd`);
+* anything else, by the kernel's path to it (`--paths`).
+
+For SECONDS (60), read-only (it changes nothing), each thread held by
+name and by which of those asked: how often, how long in all, the
+longest, and how many of 4 ms and over (half a frame at 120 Hz).
+Linkers and compilers are left out unless `--all` (they hold only
+themselves). Then how often each program had a GPU buffer's pages got
+(`ttm_pool_alloc`), how long that took and the longest: what a thread
+that draws waited inside the driver for memory.
+
+What it prints is the names of the person's programs: it stays on this
+computer.
+
+Needs root and bpftrace (`dnf install bpftrace`), and a kernel with
+type information for its modules (`/sys/kernel/btf/ttm`: Fedora's has).
+"""
+
+import os
+import re
+import subprocess
+import sys
+
+# Thread names of work that holds only itself (their own huge pages).
+BUILDS = ("ld.mold", "mold", "rust-lld", "ld.lld", "lld", "ld", "rustc", "cc1", "cc1plus")
+
+PROGRAM = r"""
+fentry:vmlinux:vma_alloc_anon_folio_pmd { @thp[tid] = 1; }
+fexit:vmlinux:vma_alloc_anon_folio_pmd { delete(@thp[tid]); }
+TTM
+fentry:vmlinux:try_to_compact_pages { @cs[tid] = nsecs; @co[tid] = args.order; PATHS_COMPACT }
+fexit:vmlinux:try_to_compact_pages /@cs[tid]/
+{
+  $us = (uint64)(nsecs - @cs[tid]) / 1000;
+  $why = WHY;
+  $big = @co[tid] >= 9 ? 1 : 0;
+  @n[comm, 0, $why, $big] = count();
+  @us[comm, 0, $why, $big] = sum($us);
+  @most[comm, 0, $why, $big] = max($us);
+  if ($us >= 4000) { @long[comm, 0, $why, $big] = count(); }
+  delete(@cs[tid]); delete(@co[tid]);
+}
+tracepoint:vmscan:mm_vmscan_direct_reclaim_begin { @rs[tid] = nsecs; @ro[tid] = args.order; PATHS_RECLAIM }
+tracepoint:vmscan:mm_vmscan_direct_reclaim_end /@rs[tid]/
+{
+  $us = (uint64)(nsecs - @rs[tid]) / 1000;
+  $why = WHY;
+  $big = @ro[tid] >= 9 ? 1 : 0;
+  @n[comm, 1, $why, $big] = count();
+  @us[comm, 1, $why, $big] = sum($us);
+  @most[comm, 1, $why, $big] = max($us);
+  if ($us >= 4000) { @long[comm, 1, $why, $big] = count(); }
+  delete(@rs[tid]); delete(@ro[tid]);
+}
+interval:s:SECONDS { exit(); }
+END { clear(@thp); clear(@cs); clear(@co); clear(@rs); clear(@ro); CLEAR }
+"""
+
+TTM = r"""
+fentry:ttm:ttm_pool_alloc_page { @ttm[tid] = 1; }
+fexit:ttm:ttm_pool_alloc_page { delete(@ttm[tid]); }
+fentry:ttm:ttm_pool_alloc { @ps[tid] = nsecs; }
+fexit:ttm:ttm_pool_alloc /@ps[tid]/
+{
+  $us = (uint64)(nsecs - @ps[tid]) / 1000;
+  @pool_n[comm] = count();
+  @pool_us[comm] = sum($us);
+  @pool_most[comm] = max($us);
+  if ($us >= 4000) { @pool_long[comm] = count(); }
+  delete(@ps[tid]);
+}
+"""
+
+WHY = {1: "graphics memory", 2: "its own huge pages", 0: "something else"}
+
+
+def program(seconds, paths, ttm):
+    p = PROGRAM.replace("SECONDS", str(seconds))
+    p = p.replace("TTM", TTM if ttm else "")
+    p = p.replace("WHY", "@ttm[tid] ? 1 : (@thp[tid] ? 2 : 0)" if ttm else "@thp[tid] ? 2 : 0")
+    p = p.replace("CLEAR", "clear(@ttm); clear(@ps);" if ttm else "")
+    other = "!@thp[tid]" + (" && !@ttm[tid]" if ttm else "")
+    p = p.replace("PATHS_COMPACT", f"if ({other}) {{ @path[comm, 0, args.order, kstack(10)] = count(); }}" if paths else "")
+    p = p.replace("PATHS_RECLAIM", f"if ({other}) {{ @path[comm, 1, args.order, kstack(10)] = count(); }}" if paths else "")
+    return p
+
+
+def parse(text):
+    """bpftrace's maps as it prints them at the end: {name: {key tuple: number}}, and the paths. (A thread's
+    name may hold spaces and commas: the keys after it never do.)"""
+    maps, paths = {}, []
+    for m in re.finditer(r"^@(\w+)\[([^\]\n]*)\]: (\d+)$", text, re.M):
+        name, key = m.group(1), m.group(2)
+        parts = tuple(k.strip() for k in key.rsplit(",", 3)) if name in ("n", "us", "most", "long") else (key.strip(),)
+        maps.setdefault(name, {})[parts] = int(m.group(3))
+    for m in re.finditer(r"^@path\[(.+?), (\d), (\d+), \n((?:\s+.*\n)+?)\]: (\d+)$", text, re.M):
+        frames = [f.strip().split("+")[0] for f in m.group(4).strip().splitlines()]
+        # (Not this tool's own way in, nor the allocator's: who asked.)
+        frames = [f for f in frames if not f.startswith(("bpf_prog_", "bpf_trampoline_", "try_to_compact_pages", "try_to_free_pages", "__alloc_pages_direct_", "__alloc_pages_slowpath", "__alloc_frozen_pages", "__alloc_pages_noprof", "alloc_pages_mpol", "alloc_pages_noprof", "alloc_frozen_pages"))]
+        paths.append((int(m.group(5)), m.group(1), int(m.group(2)), int(m.group(3)), frames))
+    return maps, paths
+
+
+def report(maps, paths, seconds, everything, out=print):
+    n, us, most, long_ = (maps.get(k, {}) for k in ("n", "us", "most", "long"))
+    rows = {}
+    for (comm, kind, why, big), count in n.items():
+        if not everything and comm in BUILDS:
+            continue
+        row = rows.setdefault((comm, int(why), int(big)), {"n": 0, "us": 0, "most": 0, "long": 0})
+        key = (comm, kind, why, big)
+        row["n"] += count
+        row["us"] += us.get(key, 0)
+        row["most"] = max(row["most"], most.get(key, 0))
+        row["long"] += long_.get(key, 0)
+    out(f"held making room for memory, {seconds} s" + ("" if everything else " (linkers and compilers left out: --all)") + ":")
+    if not rows:
+        out("  no one")
+    for (comm, why, big), r in sorted(rows.items(), key=lambda kv: -kv[1]["us"]):
+        what = WHY[why] + (", 2 MB pieces" if big else ", smaller")
+        out(f"  {comm:16} {r['n']:6,} times  {r['us'] / 1e3:9.1f} ms in all  longest {r['most'] / 1e3:6.1f} ms  4 ms and over: {r['long']:4}   for {what}")
+    pool_n, pool_us, pool_most, pool_long = (maps.get(k, {}) for k in ("pool_n", "pool_us", "pool_most", "pool_long"))
+    if pool_n:
+        out("a GPU buffer's pages got (how long the driver held the thread for them):")
+        for (comm,), count in sorted(pool_n.items(), key=lambda kv: -pool_us.get(kv[0], 0))[:20]:
+            out(f"  {comm:16} {count:7,} times ({count / seconds:6.1f} a second)  {pool_us.get((comm,), 0) / 1e3:9.1f} ms in all  longest {pool_most.get((comm,), 0) / 1e3:6.1f} ms  4 ms and over: {pool_long.get((comm,), 0):4}")
+    if paths:
+        out("something else, by the kernel's path to it:")
+        for count, comm, kind, order, frames in sorted(paths, key=lambda p: -p[0])[:12]:
+            out(f"  {count:5} {comm:16} {'reclaim' if kind else 'compact'} for {4 << order} KB: {' < '.join(frames[:8])}")
+
+
+SAMPLE = """Attached 13 probes
+@n[olo-app-server, 0, 1, 1]: 34
+@us[olo-app-server, 0, 1, 1]: 62700
+@most[olo-app-server, 0, 1, 1]: 8500
+@long[olo-app-server, 0, 1, 1]: 3
+@n[olo-app-server, 1, 1, 1]: 12
+@us[olo-app-server, 1, 1, 1]: 10800
+@most[olo-app-server, 1, 1, 1]: 3400
+@n[w>Notes, Tuesday, 0, 1, 1]: 1
+@us[w>Notes, Tuesday, 0, 1, 1]: 1700
+@most[w>Notes, Tuesday, 0, 1, 1]: 1700
+@n[ld.mold, 0, 2, 1]: 3046
+@us[ld.mold, 0, 2, 1]: 8675400
+@most[ld.mold, 0, 2, 1]: 149900
+@n[kworker/u80:3, 1, 0, 0]: 2
+@us[kworker/u80:3, 1, 0, 0]: 900
+@most[kworker/u80:3, 1, 0, 0]: 700
+@path[kworker/u80:3, 1, 2, 
+        try_to_free_pages+5
+        __alloc_pages_slowpath.constprop.0+700
+        __alloc_frozen_pages_noprof+1200
+        new_slab+90
+        ___slab_alloc+400
+]: 2
+@pool_n[olo-app-server]: 33781
+@pool_us[olo-app-server]: 912000
+@pool_most[olo-app-server]: 9100
+@pool_long[olo-app-server]: 4
+"""
+
+
+def self_test():
+    maps, paths = parse(SAMPLE)
+    lines = []
+    report(maps, paths, 60, False, lines.append)
+    text = "\n".join(lines)
+    assert "olo-app-server       46 times       73.5 ms in all  longest    8.5 ms  4 ms and over:    3   for graphics memory, 2 MB pieces" in text, text
+    assert "w>Notes, Tuesday" in text and "ld.mold" not in text, text
+    assert "kworker/u80:3         2 times        0.9 ms in all  longest    0.7 ms  4 ms and over:    0   for something else, smaller" in text, text
+    assert "olo-app-server    33,781 times ( 563.0 a second)      912.0 ms in all  longest    9.1 ms  4 ms and over:    4" in text, text
+    assert "2 kworker/u80:3    reclaim for 16 KB: new_slab < ___slab_alloc" in text, text
+    lines.clear()
+    report(maps, paths, 60, True, lines.append)
+    assert any(line.startswith("  ld.mold") and "for its own huge pages, 2 MB pieces" in line and "8675.4 ms" in line for line in lines), lines
+    for ttm in (True, False):
+        for paths_on in (True, False):
+            p = program(45, paths_on, ttm)
+            assert "interval:s:45" in p and ("ttm_pool_alloc_page" in p) == ttm and ("@path" in p) == paths_on, p
+            assert not re.search(r"\b(TTM|WHY|CLEAR|SECONDS|PATHS_COMPACT|PATHS_RECLAIM)\b", p), p
+    print("memory-holds: its reading of a trace and its programs are as expected")
+
+
+def main():
+    args = sys.argv[1:]
+    if any(a in ("-h", "--help") for a in args):
+        print(__doc__)
+        return
+    if "--self-test" in args:
+        self_test()
+        return
+    seconds = next((int(a) for a in args if a.isdigit()), 60)
+    paths, everything = "--paths" in args, "--all" in args
+    if os.geteuid() != 0:
+        sys.exit("memory-holds: needs root (it traces the kernel): sudo tools/dev/memory-holds")
+    ttm = os.path.exists("/sys/kernel/btf/ttm")
+    if not ttm:
+        print("(no GPU memory pool in this kernel, or no type information for it: graphics memory isn't told apart)")
+    try:
+        done = subprocess.run(["bpftrace", "-e", program(seconds, paths, ttm)], capture_output=True, text=True, timeout=seconds + 60)
+    except FileNotFoundError:
+        sys.exit("memory-holds: no bpftrace (dnf install bpftrace)")
+    except subprocess.TimeoutExpired:
+        sys.exit(f"memory-holds: bpftrace didn't end {seconds + 60} s after it was started")
+    maps, found = parse(done.stdout)
+    if done.returncode != 0 or "Attached" not in done.stdout + done.stderr:
+        errors = [line for line in done.stderr.splitlines() if "ERROR" in line or "error" in line]
+        sys.exit("memory-holds: bpftrace failed:\n" + "\n".join(errors[-8:] or done.stderr.splitlines()[-8:]))
+    report(maps, found, seconds, everything)
+
+
+if __name__ == "__main__":
+    main()

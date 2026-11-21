@@ -959,6 +959,16 @@ Learned on the second pass (2026-11-20):
   first form went by Cargo's and the units' own locks instead, ran
   once on this repository, and was shown wrong by review before it
   ran again (its own text says how).
+- **A push builds the release workspace only for what the lint looks
+  at.** The pre-push hook builds it (and so offers the person the
+  upgrade) when `apps/`, the kits or `vendor/` changed; a push of
+  app_server, the protocol or a library alone lands in a second and
+  builds nothing (the measure of a key to its frame, 2026-11-21: pushed,
+  and nothing was offered until the workspace was built by hand). After
+  such a push: `cargo build --release --workspace`, in the background.
+  With builds given only spare processors (the session's background
+  group, when the person has that on) it can take half an hour beside
+  other agents' work: that is the setting doing what it is for.
 - **A lock that looks wider than it need be: have the narrowing broken
   before it is installed.** kache's whole-computer lock looked like
   caution to spare (each unit has a lock of its own, Cargo has its
@@ -1300,11 +1310,47 @@ Learned on the second pass (2026-11-20):
   How to tell where a thread that never sleeps is: `/proc/PID/stack`
   is empty for it; `perf record -g -p PID` for a few seconds as root
   names the functions.
-- **What holds programs "making room" is mostly huge pages**: trace
-  `vmscan:mm_vmscan_direct_reclaim_begin` and
-  `compaction:mm_compaction_try_to_compact_pages` by `args->order`
-  and `comm` before blaming memory being short (order 9 is a 2 MB
-  page asked for with `madvise`: the linker, Chrome).
+- **What holds programs "making room" is mostly 2 MB pieces, and
+  not always ones the program asked for**: `sudo
+  tools/dev/memory-holds` before blaming memory being short. A linker
+  asks for huge pages itself (`madvise`; mold for its allocator's
+  arena and its output) and waits for them at its page faults; a
+  thread that *draws* never asked, and is held just the same, because
+  the GPU driver's memory pool asks for 2 MB pieces on its behalf
+  (TTM under xe: kernel/TUNING.md, "Graphics memory in 2 MB pieces").
+  The first trace of this (2026-11-20) counted by program only and
+  the write-up took Chrome for a program asking for huge pages; the
+  kernel's stack at the hold (`kstack` as a map key) said whose
+  request it was a day later. Count by path, not only by name.
+- **A thread's name is what a trace calls `comm`**: a kit app's
+  drawing thread is "display" in every app, a window's thread
+  "w>" and its title (the person's: it stays on this computer), and
+  only a process's first thread has the program's name. The threads
+  named "display" that were held 76 times in one trace were Olo's own
+  apps, read at first as some other program's.
+- **Memory "pressure" here is mostly not shortage**
+  (`/proc/pressure/memory`, the "waited for … memory N%" in
+  app_server's lines): it counts linkers compacting for their own
+  huge pages and the background group's compilers reclaiming under
+  their allowance. `pgsteal_direct` in `/proc/vmstat` counts the
+  group's reclaim too (3 million of its limit's events had "stolen"
+  1.5 TB in four hours with nothing short); `allocstall_*` and
+  `compact_stall` are the whole computer's.
+- **One process without huge pages, the computer unchanged**:
+  `prctl(PR_SET_THP_DISABLE, 1)` before it starts is not enough for
+  mold (it calls `prctl(PR_SET_THP_DISABLE, 0)` itself, and
+  `madvise(MADV_HUGEPAGE)` on its own mappings whatever its
+  allocator's options say). A seccomp filter that answers 0 to those
+  two calls without making them is (`SECCOMP_RET_ERRNO` with errno 0;
+  give the other way the same filter with both let through, so both
+  pay for one). `/proc/PID/status`'s `THP_enabled` and
+  `smaps_rollup`'s `AnonHugePages` say whether it took.
+- **bpftrace 0.26 here**: a `kprobe` and `kretprobe` pair on a
+  module's function recorded nothing on the way out (no error; two
+  probes fewer "attached" than written); `fentry:ttm:NAME` and
+  `fexit:ttm:NAME` work (the module has type information:
+  `/sys/kernel/btf/ttm`). Without root it won't even list probes: a
+  script's first run is as root, so keep to forms already run.
 - **Run tests without the person's display in the environment**
   (`env -u WAYLAND_DISPLAY -u OLO_SOCKET cargo test …`), as the commit
   is made. A unit test can no longer connect to their compositor (the

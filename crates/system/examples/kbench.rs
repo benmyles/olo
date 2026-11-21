@@ -33,6 +33,20 @@
 //!       again (a program that sat idle, used again), how long that
 //!       took in milliseconds and how many pages had to be brought
 //!       back (major faults: from swap).
+//!   kbench fragment --mb N [--hold SECS]
+//!       free memory left in single pages: N megabytes taken and written
+//!       to, then every other page of them given back, the rest held. A
+//!       2 MB page can then only be had by moving the held ones together
+//!       (compaction), as on a computer that has run for days.
+//!   kbench huge --mb N [--secs N] [--threads N]
+//!       a program that asks for 2 MB pages (`MADV_HUGEPAGE`), as a
+//!       linker's and a browser's allocators do: N megabytes mapped,
+//!       each 2 MB of it first touched and timed (where the kernel
+//!       makes room there and then, the program waits here), then
+//!       every page written, then given back; over and over. Megabytes
+//!       a second, how long a 2 MB took to get (the middle, 99 in 100,
+//!       the worst), in milliseconds, and how much of the last pass
+//!       came as huge pages.
 //!   kbench touch PATH|--own --mb N [--secs N]
 //!       a program's working set: N megabytes of PATH mapped (its code
 //!       and files), or of memory of its own (--own: what it has made),
@@ -347,6 +361,101 @@ fn hog(args: &[String]) {
     drop(held);
 }
 
+fn fragment(args: &[String]) {
+    let (mb, hold) = (num(args, "--mb", 500usize), num(args, "--hold", 3600.0f64));
+    let len = mb << 20;
+    // SAFETY: memory of our own, private.
+    let map = unsafe { libc::mmap(std::ptr::null_mut(), len, libc::PROT_READ | libc::PROT_WRITE, libc::MAP_PRIVATE | libc::MAP_ANONYMOUS, -1, 0) };
+    assert!(map != libc::MAP_FAILED, "{}", std::io::Error::last_os_error());
+    // (Never huge pages itself: its pages are to be single ones.)
+    // SAFETY: the mapping just made.
+    unsafe { libc::madvise(map, len, libc::MADV_NOHUGEPAGE) };
+    let bytes = map.cast::<u8>();
+    let mut x = 7u64;
+    for page in 0..len / 4096 {
+        // SAFETY: within the mapping.
+        unsafe { bytes.add(page * 4096).write(next(&mut x) as u8) };
+    }
+    // Every other page back to the kernel: what is free is single pages
+    // between the ones kept.
+    for page in (0..len / 4096).step_by(2) {
+        // SAFETY: a whole page within the mapping.
+        unsafe { libc::madvise(bytes.add(page * 4096).cast(), 4096, libc::MADV_DONTNEED) };
+    }
+    println!("{{\"what\":\"fragment\",\"mb\":{mb},\"held_mb\":{}}}", mb / 2);
+    std::thread::sleep(Duration::from_secs_f64(hold));
+}
+
+fn huge(args: &[String]) {
+    let (mb, secs, threads) = (num(args, "--mb", 128usize), num(args, "--secs", 20.0f64), num(args, "--threads", 1usize).max(1));
+    const HUGE: usize = 2 << 20;
+    let len = (mb << 20) / HUGE * HUGE;
+    let t0 = Instant::now();
+    let workers: Vec<_> = (0..threads)
+        .map(|_| {
+            std::thread::spawn(move || {
+                let (mut took, mut passes, mut as_huge) = (Vec::new(), 0u64, 0.0f64);
+                while t0.elapsed().as_secs_f64() < secs {
+                    // SAFETY: memory of our own, private; room for a 2 MB boundary inside.
+                    let map = unsafe { libc::mmap(std::ptr::null_mut(), len + HUGE, libc::PROT_READ | libc::PROT_WRITE, libc::MAP_PRIVATE | libc::MAP_ANONYMOUS, -1, 0) };
+                    assert!(map != libc::MAP_FAILED, "{}", std::io::Error::last_os_error());
+                    let start = (map as usize).div_ceil(HUGE) * HUGE;
+                    let bytes = start as *mut u8;
+                    // SAFETY: the aligned part of the mapping.
+                    unsafe { libc::madvise(bytes.cast(), len, libc::MADV_HUGEPAGE) };
+                    for region in 0..len / HUGE {
+                        let r0 = Instant::now();
+                        // SAFETY: within the mapping. (The first touch of a
+                        // 2 MB: where it is given, whole or as a single page.)
+                        unsafe { bytes.add(region * HUGE).write(1) };
+                        took.push(r0.elapsed().as_secs_f64() * 1e3);
+                        for page in 1..HUGE / 4096 {
+                            // SAFETY: within the mapping.
+                            unsafe { bytes.add(region * HUGE + page * 4096).write(1) };
+                        }
+                    }
+                    as_huge = huge_share(start, len);
+                    // SAFETY: the mapping made above, whole.
+                    unsafe { libc::munmap(map, len + HUGE) };
+                    passes += 1;
+                }
+                (took, passes, as_huge)
+            })
+        })
+        .collect();
+    let (mut took, mut passes, mut as_huge) = (Vec::new(), 0u64, 0.0f64);
+    for w in workers {
+        let (t, p, h) = w.join().expect("a worker");
+        took.extend(t);
+        passes += p;
+        as_huge += h / threads as f64;
+    }
+    let (p50, p99, _, max) = spread(&mut took);
+    println!(
+        "{{\"what\":\"huge\",\"mb\":{mb},\"threads\":{threads},\"mb_a_sec\":{:.0},\"ms_p50\":{p50:.3},\"ms_p99\":{p99:.2},\"ms_max\":{max:.1},\"as_huge\":{as_huge:.2}}}",
+        (passes as usize * (len >> 20)) as f64 / t0.elapsed().as_secs_f64()
+    );
+}
+
+/// How much of the mapping at `start` (`len` bytes) is held as huge
+/// pages now (its `AnonHugePages` in smaps), of 1.
+fn huge_share(start: usize, len: usize) -> f64 {
+    let Ok(smaps) = std::fs::read_to_string("/proc/self/smaps") else { return 0.0 };
+    let mut inside = false;
+    let mut kb = 0usize;
+    for line in smaps.lines() {
+        if let Some((range, _)) = line.split_once(' ')
+            && let Some((a, b)) = range.split_once('-')
+            && let (Ok(a), Ok(b)) = (usize::from_str_radix(a, 16), usize::from_str_radix(b, 16))
+        {
+            inside = a < start + len && b > start;
+        } else if inside && let Some(v) = line.strip_prefix("AnonHugePages:") {
+            kb += v.trim().trim_end_matches("kB").trim().parse::<usize>().unwrap_or(0);
+        }
+    }
+    (kb * 1024) as f64 / len as f64
+}
+
 fn touch(args: &[String]) {
     let path = &args[0];
     let (mb, secs) = (num(args, "--mb", 200usize), num(args, "--secs", 20.0f64));
@@ -479,6 +588,8 @@ fn main() {
         Some("spin") => spin(rest),
         Some("chat") => chat(rest),
         Some("hog") => hog(rest),
+        Some("fragment") => fragment(rest),
+        Some("huge") => huge(rest),
         Some("touch") => touch(rest),
         Some("writer") => writer(rest),
         Some("fill") => fill(rest),

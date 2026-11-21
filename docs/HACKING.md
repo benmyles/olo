@@ -353,7 +353,21 @@ message):
   main thread waited up to 142 ms in the GPU driver
   (`drm_exec_lock_contended`: waiting for a buffer's lock, held by
   something else using the GPU; by what, and why, "Windows' buffers
-  stay in memory": `sudo tools/dev/gpu-holds` names the holder). With
+  stay in memory": `sudo tools/dev/gpu-holds` names the holder). And
+  what holds a thread while the kernel *makes room for memory* is
+  `sudo tools/dev/memory-holds [SECONDS] [--paths] [--all]`'s to say:
+  each thread held compacting or reclaiming, by name and by what
+  asked (graphics memory: the GPU drivers' pool on the thread's
+  behalf; huge pages the program asked for itself; anything else, by
+  the kernel's path with `--paths`), how often, how long, the longest
+  and how many of 4 ms and over; then how often and how long each
+  program had a GPU buffer's pages got. It found that the threads
+  that draw (the compositor's loop, a kit app's "display" thread,
+  Chrome's GPU process) were held up to 25 ms for 2 MB pieces of
+  graphics memory none of them asked for (kernel/TUNING.md, "Graphics
+  memory in 2 MB pieces"), which `gpu-holds` can't see (it watches
+  locks). Read-only; `--self-test` checks its reading without root.
+  With
   libinput on its own thread
   (Preferences ▸ Performance ▸ Scheduler ▸ Pointer) the pointer keeps moving meanwhile ("The pointer
   on a thread of its own").
@@ -10721,7 +10735,15 @@ day of looking at why the desktop lagged under agents' builds,
 
 What isn't among them, having been one for an hour: **Swap used last**
 ("Swappiness and the size of swap", above; kernel/TUNING.md, "Tried
-and withdrawn").
+and withdrawn"). Nor **huge pages made behind the program that asks**
+(`transparent_hugepage/defrag`: defer), which was measured both ways
+in the guest (`tools/dev/kernel-check huge-pages`, with `kbench
+fragment` and `kbench huge`) and on the computer itself with nothing
+of it changed (a real link over and over, as it is and with huge
+pages off for that one process): the linker that asks is a seventh
+quicker for its huge pages and waits for them itself, and what runs
+beside it waits a few milliseconds more at the worst. A trade
+(TUNING.md, "Huge pages when asked for").
 
 **Read** (`olo_system::kernel_tuning`; anyone, no root):
 `look(&Places::here())` gives a `State` of `Preemption` (what the

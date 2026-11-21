@@ -36,6 +36,19 @@ settings were chosen.
       MS and at 0. How many times each was ended, and every run's worst
       round. Each run is a guest for three minutes: 20 is over two
       hours.
+  tools/dev/kernel-check huge-pages [--reps N]
+      how a program gets 2 MB pages it asks for where free memory is in
+      single pages (`transparent_hugepage/defrag`): as Fedora has it
+      (madvise: the program waits while the kernel moves pages together
+      for it) against deferred (defer: it gets single pages at once and
+      the kernel's own threads make the 2 MB ones behind it). 2 GB, half
+      of it left in single pages, and the same with a file's cache in
+      what was free besides; a program asking for 2 MB pages on two
+      threads, beside one that uses 150 MB ten times a second and a
+      thread that wakes every millisecond. What the asker waits for a
+      2 MB, how much it gets done and how much came huge; what the
+      kernel's own threads worked; what the other two wait. N (3)
+      guests each way, in turn.
   tools/dev/kernel-check slow-disks
       600 MB copied to a disk that takes 10 MB a second, with and
       without the limit: what's still in memory when the copy ends, and
@@ -228,6 +241,59 @@ echo "hog|{\"ended\":$hs,\"secs\":$(echo "$(date +%s.%N) $t0" | awk '{printf "%.
 wait $T; echo "files|$(cat /tmp/t)"
 wait $O; echo "own|$(cat /tmp/o)"
 """
+
+
+# $1: transparent_hugepage/defrag. $2: "free" (what is free is in single
+# pages) or "cached" (and a file's cache has taken them besides).
+HUGE_PAGES = r"""
+echo madvise > /sys/kernel/mm/transparent_hugepage/enabled
+echo $1 > /sys/kernel/mm/transparent_hugepage/defrag
+echo "set|{\"defrag\":\"$(sed -E 's/.*\[(.*)\].*/\1/' /sys/kernel/mm/transparent_hugepage/defrag)\"}"
+/bin/kbench fragment --mb 1500 --hold 600 > /tmp/frag & F=$!
+sleep 6
+if [ "$2" = cached ]; then
+    mkfs.ext4 -q -F /dev/vda; mkdir -p /d; mount /dev/vda /d
+    dd if=/dev/urandom of=/d/file bs=4k count=280000 2>/dev/null; sync
+fi
+stat() { awk -v k="$1" '$1 == k {print $2}' /proc/vmstat; }
+ticks() { cat /proc/[0-9]*/stat 2>/dev/null | awk '$2 ~ /^\((kcompactd|khugepaged|kswapd)/ {t += $14 + $15} END {print t + 0}'; }
+echo "before|{\"free_mb\":$(awk '/^MemFree/ {print int($2 / 1024)}' /proc/meminfo),\"cached_mb\":$(awk '/^Cached/ {print int($2 / 1024)}' /proc/meminfo),\"free_2mb\":$(awk '$4 == "Normal" || $4 == "DMA32" {n += $14 + 2 * $15} END {print n + 0}' /proc/buddyinfo)}"
+S0=$(stat compact_stall); A0=$(stat thp_fault_alloc); B0=$(stat thp_fault_fallback); D0=$(stat pgmigrate_success); R0=$(stat allocstall_movable); C0=$(stat thp_collapse_alloc); K0=$(ticks)
+/bin/kbench touch --own --mb 150 --secs 24 > /tmp/t & T=$!
+/bin/kbench wake --secs 24 > /tmp/w & W=$!
+sleep 2
+echo "huge|$(/bin/kbench huge --mb 256 --threads 2 --secs 20)"
+wait $T; wait $W
+echo "own|$(cat /tmp/t)"
+echo "wake|$(cat /tmp/w)"
+echo "kernel|{\"stalls\":$(( $(stat compact_stall) - S0 )),\"reclaims\":$(( $(stat allocstall_movable) - R0 )),\"huge\":$(( $(stat thp_fault_alloc) - A0 )),\"fell_back\":$(( $(stat thp_fault_fallback) - B0 )),\"collapsed\":$(( $(stat thp_collapse_alloc) - C0 )),\"moved\":$(( $(stat pgmigrate_success) - D0 )),\"threads_ms\":$(( ($(ticks) - K0) * 10 ))}"
+kill $F
+"""
+
+
+def huge_pages(reps):
+    print("2 MB pages asked for where free memory is in single pages: 2 GB, 750 MB held in every other page of 1,500 (\"free\"),")
+    print("and with a 1.1 GB file's cache in what was left besides (\"cached\": as a computer is that has run for days).")
+    print("A program asks for 2 MB pages on two threads (256 MB each, over and over), beside one using 150 MB ten times a second and a thread waking every millisecond\n")
+    modes, cases = ("madvise", "defer"), ("free", "cached")
+    runs = {(case, mode): [] for case in cases for mode in modes}
+    for i in range(reps):
+        for case in cases:
+            for mode in modes:
+                rows = {r[0]: r[-1] for r in guest(HUGE_PAGES, args=[mode, case], bins=["/usr/sbin/mkfs.ext4", "dd"], disks=["2G"], mem=2048, timeout=300, strict=True)}
+                assert rows["set"]["defrag"] == mode, rows["set"]
+                runs[case, mode].append(rows)
+                h, own, wake, k, b = rows["huge"], rows["own"], rows["wake"], rows["kernel"], rows["before"]
+                print(f"  run {i + 1}, {case:6} {mode:8}: {b['free_mb']:,} MB free ({b['free_2mb']} whole 2 MB), {b['cached_mb']:,} MB of files;")
+                print(f"  {'':24}a 2 MB took {h['ms_p50']:.3f} ms (99 in 100 within {h['ms_p99']:.2f}, worst {h['ms_max']:.1f}); {h['mb_a_sec']:,.0f} MB a second, {100 * h['as_huge']:.0f}% of the last pass huge;")
+                print(f"  {'':24}made to wait {k['stalls']:,} times to compact and {k['reclaims']:,} to reclaim; {k['huge']:,} given whole, {k['fell_back']:,} as single pages, {k['collapsed']:,} made whole after; {k['moved']:,} pages moved; the kernel's threads worked {k['threads_ms']:,} ms;")
+                print(f"  {'':24}the one using 150 MB: a round 99 in 100 within {own['ms_p99']:.1f} ms, worst {own['ms_max']:.1f}; the waker late by {wake['us_p99']:.0f} µs 99 in 100, worst {wake['us_max']:,.0f}")
+    print()
+    mid = lambda xs: sorted(xs)[len(xs) // 2]
+    for (case, mode), rs in runs.items():
+        print(f"  {case:6} {mode:8} (the middle of {len(rs)}): a 2 MB within {mid([r['huge']['ms_p99'] for r in rs]):.2f} ms 99 in 100, worst {mid([r['huge']['ms_max'] for r in rs]):.1f}; {mid([r['huge']['mb_a_sec'] for r in rs]):,.0f} MB a second;"
+              f" made to wait {mid([r['kernel']['stalls'] for r in rs]):,} times; the kernel's threads {mid([r['kernel']['threads_ms'] for r in rs]):,} ms;"
+              f" the other's round worst {mid([r['own']['ms_max'] for r in rs]):.1f} ms; the waker's worst {mid([r['wake']['us_max'] for r in rs]):,.0f} µs")
 
 
 def thrashing(reps, ttl_only=None):
@@ -740,9 +806,9 @@ def main():
     reps = int(args[args.index("--reps") + 1]) if "--reps" in args else (3 if ttl is None else 20)
     which = [a for a in args if not a.startswith("--") and not a.isdigit()] or ["preemption", "turns", "slow-disks", "swap", "thrashing", "left-alone"]
     for name in which:
-        run = {"preemption": lambda: preemption(reps), "thrashing": lambda: thrashing(reps, ttl), "turns": lambda: turns(reps), "session-groups": session_groups, "groups": lambda: groups(reps), "groups-cold": lambda: groups_cold(reps), "slow-disks": slow_disks, "swap": lambda: swap(2 if "--reps" not in args else reps), "left-alone": left_alone}.get(name)
+        run = {"preemption": lambda: preemption(reps), "thrashing": lambda: thrashing(reps, ttl), "turns": lambda: turns(reps), "huge-pages": lambda: huge_pages(reps), "session-groups": session_groups, "groups": lambda: groups(reps), "groups-cold": lambda: groups_cold(reps), "slow-disks": slow_disks, "swap": lambda: swap(2 if "--reps" not in args else reps), "left-alone": left_alone}.get(name)
         if run is None:
-            sys.exit(f"kernel-check: {name}? preemption, turns, thrashing, slow-disks, swap, groups or left-alone")
+            sys.exit(f"kernel-check: {name}? preemption, turns, thrashing, slow-disks, swap, groups, huge-pages or left-alone")
         run()
 
 

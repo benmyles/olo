@@ -223,13 +223,31 @@ something nobody here has is in "Blocked", with what it waits for.
   20 s trace was asking for 2 MB pages (the linker 1,267 times, with
   3,595 compactions taking 8.8 s between them, one 311 ms; Chrome
   37 compactions): Fedora has such programs reclaim and compact for
-  themselves (`transparent_hugepage/defrag`: madvise). To make a
-  third setting of it, measured both ways under a link (deferred:
-  the kernel's own threads do it in the background and nobody
-  waits), in the guest first and on Ben's computer only on their
-  word (AGENT-NOTES: memory policy), with a place for it in the
-  Kernel tab, which has room for a sixth box on the smallest screen
-  and not a seventh. Not it: the
+  themselves (`transparent_hugepage/defrag`: madvise). Measured
+  both ways (2026-11-21, in the guest and with a real link on this
+  computer, nothing of it changed; kernel/TUNING.md, "Huge pages when
+  asked for"): the linker that asks is a seventh quicker for them and
+  is the one that waits; deferring them is a trade, and isn't
+  offered. **But the threads that draw were held for 2 MB pieces
+  too, having asked for none: the GPU driver's memory pool asks on
+  their behalf** (`sudo tools/dev/memory-holds`, new: Chrome's GPU
+  process up to 26 ms, a kit app's drawing thread 25 ms, the
+  compositor's loop 8.5 ms, with a linker looping beside the usual
+  load; Linux 7.3 has the pool try hard for them, and 7.2 waited
+  more lightly at every size; TUNING.md, "Graphics memory in 2 MB
+  pieces"). **Now**: a piece of Olo's own in the kernel that has the
+  pool never wait for a large piece (take a free one, wake the
+  kernel's own threads, go on with smaller ones), designed, built
+  and reviewed with Astra as Ben said of anything in the kernel; in
+  a guest first, with a module that fills a pool in memory left in
+  small pieces; then Olo Doctor's offer and its place in the Kernel
+  tab (the sixth box of six), and on Ben's computer only by their
+  pressing it. With it: the write-up of it for the driver's people
+  (Ben's to send); xe's page table made anew for every page flip
+  (180 a second on the compositor's loop) weighed; and whether Olo's
+  own programs make more GPU buffers than they need (a kit app's
+  drawing thread and the compositor each had pages got for buffers
+  all the time: `memory-holds` counts them). Not it: the
   GPU's clock (it stands at 700 of 2450 MHz because the GPU is idle
   half the time; a floor of 1600 changed nothing and it rose to
   2450 by itself under load), processor load alone on the
@@ -352,14 +370,27 @@ something nobody here has is in "Blocked", with what it waits for.
   session is divided as built (`leader/` holding the login's worker,
   43 processes in `olo/desk`, `olo/bg` idle with no allowance, the
   four files Ben's, everything else root's), logind has the session
-  active with its leader, and Ben turned the choice on.
+  active with its leader, and Ben turned the choice on. **Seen under
+  a real load that night** (a release build of the workspace beside
+  other agents' builds: fifteen compilers in `bg`, a load of 30 to 40,
+  the processors waited for 45% of the time): `bg` waited for memory
+  23% of five minutes and 10% of one, the desktop's group 0.07% and
+  0.04%; `bg` held 7 to 9.5 GB under an allowance that moved between
+  9.5 and 17 GB as free memory went from 1 to 4 GB; its limit had been
+  reached 3.07 million times since the start with nothing ended or
+  refused (`memory.events`: max 0, oom 0); 6 GB was in swap. The
+  release build took over half an hour, which is the setting doing
+  what it is for.
   **Left**:
-  - On Ben's computer: compilers seen in `bg` and its allowance set
-    during a real build; external apps still
+  - On Ben's computer: external apps still
     start in their own scopes, logging out leaves nothing behind;
-    then the choice on with the memory record running, matched real
-    builds off and on, and what a person feels measured (a key to
-    its frame, sound), not only a file walked.
+    matched real builds with the choice off and on, and what a person
+    feels beside them (app_server's own measure of a key to its frame
+    now says it: its log, `Request::Timings`), not only a file walked.
+  - Compilers' memory from before they were moved stays charged to the
+    desktop's group (rustc and clippy held 15 GB resident where `bg`
+    was charged 7): weigh starting builds in the group (the launcher
+    command below) against moving them a moment after they start.
   - A command that starts a job in the group on purpose (`clone3`
     into the group), for what Olo launches itself.
   - `tsession`'s desktops and agents' screens in a third leaf, of

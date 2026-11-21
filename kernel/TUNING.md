@@ -410,6 +410,73 @@ the worst 21 to 58 ms either way (the first time, when the cache was
 first dropped). No difference to be had here: the kernel drops clean
 cache faster than a program takes memory. Left at 10.
 
+### Huge pages when asked for: made by the one who asks (`transparent_hugepage/defrag`)
+
+Fedora gives a 2 MB page to a program that asks for them (`enabled`:
+madvise), and where none is free the asking program makes one itself,
+at its page fault: it compacts memory and reclaims, and waits meanwhile
+(`defrag`: madvise). `defer` gives it single pages at once and wakes
+the kernel's own threads to make 2 MB pages for later.
+
+It came up on the day of looking at why the desktop lagged
+(2026-11-20): in a trace of 20 s every program held "making room" was
+asking for 2 MB pages, a linker 1,267 times. Of 4.6 GB free on that
+computer, 132 MB was in pieces of 2 MB and over, and programs had
+compacted memory themselves 281,399 times in four hours and found
+nothing in two of three (`/proc/vmstat`: `compact_stall`,
+`compact_fail`). Who asks: linkers (mold for its allocator's arena and
+for its output, 1.6 GB of address space for a program of 257 MB; it
+switches huge pages on again where they were off for it). Not rustc.
+
+In the guest (`tools/dev/kernel-check huge-pages`: 2 GB, half of
+1.5 GB left in single pages, "free"; and the same with a 1.1 GB file's
+cache in what was free besides, "cached", as a computer is that has
+run for days; a program asking for 2 MB pages on two threads beside
+one using 150 MB ten times a second and a thread waking every
+millisecond; the middle of three guests each way):
+
+| | as it comes (madvise) | defer |
+|---|---|---|
+| free: MB a second | 20,993 | 15,824 |
+| free: made to wait | 105 times | never |
+| free: a 2 MB page, at worst | 21.9 ms | 4.7 ms |
+| free: the kernel's own threads worked | 0 ms | 160 ms |
+| cached: MB a second | 21,092 | 20,068 |
+| cached: made to wait | 176 times | never |
+| cached: a 2 MB page, at worst | 5.0 ms | 5.0 ms |
+| cached: the kernel's own threads worked | 60 ms | 170 ms |
+
+The two beside it waited the same either way (a round through 150 MB
+0.1 to 0.2 ms at worst, the waker 2.1 to 2.4 ms).
+
+On the computer itself, with nothing of it changed: the compositor's
+dev build linked by mold over and over, by turns as it is and with
+huge pages off for that one process (`PR_SET_THP_DISABLE` before it
+starts, and a seccomp filter that has mold's own
+`madvise(MADV_HUGEPAGE)` and `prctl(PR_SET_THP_DISABLE, 0)` answer 0
+and do nothing), twenty each way:
+
+- a link took 0.36 s in the middle with huge pages, 0.41 to 0.42 s
+  without; the longest 0.99 s with, 0.57 s without;
+- forty links as they are were held compacting 3,046 times, 8.7 s
+  between their threads (the longest 150 ms), and reclaiming 784 times,
+  2.4 s; 18,082 huge pages were given them and 443 refused;
+- beside the link looped for 25 s (three rounds each): a thread waking
+  every millisecond was late by 995 µs 99 times in 100 with links as
+  they are, 830 µs with huge pages off for them, 599 µs with none; at
+  worst 10.4, 4.5 and 2.2 ms. A program going through 300 MB of its
+  own ten times a second wasn't held either way (0.3 ms at worst).
+
+So what the linker waits, it gets back (it is a seventh quicker with
+them), and what others wait beside it is a few milliseconds at the
+tail for a thread of ordinary priority. `defer` gives up that seventh
+for it: a trade, and not offered. Left as it comes.
+
+What that day's lag had of this was not this setting's at all. The
+threads that draw were held for 2 MB pieces too, without ever having
+asked: the GPU driver's memory pool asks on their behalf, and `defrag`
+doesn't govern it. "Graphics memory in 2 MB pieces", below.
+
 ### Not measured, and why
 
 - **The size of swap**: Olo Doctor suggests it already (as large as
@@ -426,9 +493,10 @@ cache faster than a program takes memory. Left at 10.
   processor's own power management doesn't exist in a guest, and trying
   it on the person's computer needs root. Olo's power modes are
   Preferences ▸ Power's.
-- **Huge pages always, or deferred** (`transparent_hugepage/defrag`):
-  a gain for programs with heaps of gigabytes at the cost of memory
-  for everything else; Fedora's "on request" lets those programs ask.
+- **Huge pages for everything** (`transparent_hugepage/enabled`:
+  always): a gain for programs with heaps of gigabytes at the cost of
+  memory for everything else; Fedora's "on request" lets those
+  programs ask. (How a request is met was measured: above.)
 
 ## Background work kept to the memory that is to be had for nothing
 
@@ -705,6 +773,58 @@ builds off and on, and what a person feels measured (a key to its
 frame against 8.3 ms, sound, the editor's waits), not only a file
 walked; a way back is the choice off (the allowance lifted and read
 back, everything moved back).
+
+## Graphics memory in 2 MB pieces
+
+Found 2026-11-21 with `sudo tools/dev/memory-holds` (who is held while
+the kernel makes room, by thread, by what asked and from where in the
+kernel), on the computer Olo is written on: Linux 7.3.4, Intel graphics
+on the xe driver, memory in small pieces as above.
+
+The GPU drivers' memory pool (TTM, `drivers/gpu/drm/ttm/ttm_pool.c`)
+fills each buffer with the largest pieces it can get. Since Linux 6.19
+a driver can tell it which size is worth having, and since 7.2 xe says
+2 MB. Linux 7.3 made the pool wait for nothing but that size and
+single pages ("drm/ttm: Issue direct reclaim at beneficial_order",
+a56a73ec85c8), and then try *hard* for it ("drm/ttm/pool: Try harder
+for beneficial orders", dd8dde5745ea: `__GFP_RETRY_MAYFAIL` in place of
+`__GFP_NORETRY`, in its own words "at the cost of longer allocation
+setup time. That tradeoff is acceptable for beneficial-order
+allocations: higher-order backing pages can improve TLB hit rates").
+Trying hard is compacting and reclaiming, on the thread that made the
+buffer. Before 7.3 the pool made one light try, waiting, at every size
+from the driver's down to two pages: the day the desktop was found
+lagging under builds (2026-11-20) this computer still ran 7.2.15, and
+that day's first trace already had Chrome held compacting for 2 MB
+pieces 37 times in 20 s. It has run 7.3.4 since that evening, and what
+follows is of 7.3.
+
+| thread, 157 s with a linker looping beside the usual load | compacting | longest | reclaiming | longest |
+|---|---|---|---|---|
+| Chrome's main threads | 389 times, 563 ms | 12.7 ms | 158 times, 84 ms | 26.4 ms |
+| kit apps' drawing threads ("display") | 76 times, 231 ms | 24.9 ms | 28 times, 2 ms | 0.2 ms |
+| the compositor's loop | 34 times, 63 ms | 8.5 ms | 12 times, 11 ms | 3.4 ms |
+| kit apps' window threads | 6 times, 10 ms | 2.8 ms | once | 0.2 ms |
+
+every one of them from `xe_ttm_tt_populate`, and none of those
+programs asked for a huge page. Under the usual load alone (188 s):
+Chrome 27 and 23 times (23.1 and 17.9 ms the longest), the compositor
+once (5.3 ms). A frame at 120 Hz is 8.3 ms.
+
+Nothing the kernel offers turns it off (`/sys/module/xe/parameters`,
+`/sys/module/ttm/parameters`: nothing for it; `defrag` is for a
+program's own pages). What it should do for a desktop is what it does
+for every other size: take a 2 MB piece that is free, wake the
+kernel's own threads to make more, and go on with smaller pieces. A
+piece of Olo's own in the kernel for that is being designed (docs/TODO.md,
+"Nothing may hold the desktop up"); this section will say what was
+built and what it measured.
+
+Seen beside it, and not yet weighed: xe makes a new display page table
+for every page flip (`intel_plane_pin_fb` → `__xe_pin_fb_vma_dpt` →
+`xe_bo_create_pin_map`: 180 a second on the compositor's loop here, of
+3 µs each in the middle and 6.5 ms at worst in 45 s with no one held
+making room), where i915 kept one for each framebuffer.
 
 ## Tried and withdrawn
 
