@@ -1216,6 +1216,18 @@ something nobody here has is in "Blocked", with what it waits for.
   (`control-edges`); (g) "Workspace 1" in bold is the loudest text on
   the bar.
 
+- **Olo Doctor's report, from the reviewers' looks at it** (Opus's, of
+  the two reworded NVIDIA cards, 2026-11-20; their words and the menu
+  path's wrapping are done): (a) apostrophes are straight (isn't,
+  NVIDIA's) beside curly quotes (“Archive”), in every card and across
+  Olo: the typographic ones, where words are shown (the words layer,
+  or the catalogs), never in a path, a command or what is typed;
+  (b) a card with no fix has its badge where the others have a box
+  before it, so its title starts 18 points right of its paragraph (the
+  badges stand in one column down the list: kept so, or an empty box
+  drawn dim); (c) lines run to 95–100 characters, more than reads
+  well: about 75 if the window is ever narrower.
+
 ## Done, waiting for Ben to try or confirm
 
 - **Phone: not found again after a night apart, and Try Again did

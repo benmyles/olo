@@ -28,6 +28,8 @@ impl LineWrapper {
         let mut last_candidate_width = px(0.);
         let mut last_wrap_ix = 0;
         let mut prev_c = '\0';
+        // Olo: the last character that wasn't a space (`breaks_between`).
+        let mut word_c = '\0';
         let mut index = 0;
         let mut candidates = fragments.iter().flat_map(move |fragment| fragment.wrap_boundary_candidates()).peekable();
         iter::from_fn(move || {
@@ -47,7 +49,7 @@ impl LineWrapper {
                         }
 
                         if Self::is_word_char(c) {
-                            if prev_c == ' ' && c != ' ' && first_non_whitespace_ix.is_some() {
+                            if prev_c == ' ' && c != ' ' && first_non_whitespace_ix.is_some() && Self::breaks_between(word_c, c) {
                                 last_candidate_ix = ix;
                                 last_candidate_width = width;
                             }
@@ -64,6 +66,9 @@ impl LineWrapper {
                         }
 
                         new_prev_c = c;
+                        if c != ' ' {
+                            word_c = c;
+                        }
 
                         self.width_for_char(c)
                     }
@@ -144,6 +149,17 @@ impl LineWrapper {
     /// no-break space (and the narrow and figure ones) joins what's either
     /// side of it, as it's meant to: "3.0 MB" stays on one line (counted
     /// as white space, a line broke there and began with it).
+    /// Olo: whether a line may break at the space between `before` (the
+    /// last character before it) and `after` (the first after it). Not
+    /// beside the arrow of a path through menus: "Preferences ▸
+    /// Keyboard" breaks before "Preferences" or after "Keyboard", and a
+    /// line neither ends with the arrow nor begins with it (Olo Doctor's
+    /// card began one with "▸ Keyboard).", at 1× and 2× and not at
+    /// 1.5×, 2026-11-20).
+    pub(crate) fn breaks_between(before: char, after: char) -> bool {
+        before != '▸' && after != '▸'
+    }
+
     pub(crate) fn is_word_char(c: char) -> bool {
         (!c.is_whitespace() || matches!(c, '\u{00A0}' | '\u{2007}' | '\u{202F}'))
             && !matches!(c,
@@ -273,5 +289,14 @@ mod tests {
         for c in [' ', '\t', '\u{2003}', '世'] {
             assert!(!LineWrapper::is_word_char(c), "{c:?} doesn't break");
         }
+    }
+
+    #[test]
+    fn a_menu_paths_arrow_stays_with_both_its_neighbours() {
+        // "Preferences ▸ Keyboard": neither space is a place to break.
+        assert!(!LineWrapper::breaks_between('s', '▸'));
+        assert!(!LineWrapper::breaks_between('▸', 'K'));
+        assert!(LineWrapper::breaks_between('s', 'K'));
+        assert!(LineWrapper::breaks_between(')', 'a'));
     }
 }

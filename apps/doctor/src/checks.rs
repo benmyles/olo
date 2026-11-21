@@ -2974,7 +2974,7 @@ const STUCK_FOR: std::time::Duration = if cfg!(test) { std::time::Duration::ZERO
 pub(crate) const STUCK_TITLE: &str = "NVIDIA's graphics driver is stuck";
 pub(crate) fn stuck_detail(module: &str) -> String {
     format!(
-        "The kernel began shutting down NVIDIA's graphics driver ({module}) and hasn't finished. Until the computer restarts, the card can't be used, a processor may stay busy with it, and putting the computer to sleep may fail or hang. Save your work, then restart."
+        "Linux began shutting down NVIDIA's graphics driver and hasn't finished. Until the computer restarts, the graphics card can't be used, one of the processors may stay busy with it, and putting the computer to sleep may fail or hang. Save your work, then restart. (The part that is stuck is called {module}.)"
     )
 }
 
@@ -3082,7 +3082,7 @@ fn nvidia_console(roots: &Roots, pcis: &[Pci], r: &mut Report) {
 /// demo's too).
 pub(crate) const CONSOLE_KEPT: (&str, &str, &str) = (
     "NVIDIA's driver keeps a console no one can see",
-    "NVIDIA's driver holds a text console on its graphics card, though nothing is connected to the card to show it. Giving that console back is one place the driver can get stuck when it is shut down. The fix has it take no console on any NVIDIA card from the next start (an option in /etc/modprobe.d); drawing and computing on the card don't need one.",
+    "NVIDIA's driver keeps a text console on its graphics card, though no screen is connected to the card to show it. Handing that console back is one of the steps where the driver can get stuck when it is shut down. This turns the console off on every NVIDIA card; drawing and computing on a card don't need it. It takes effect the next time the computer starts.",
     "Turn Off the Console",
 );
 
@@ -7233,7 +7233,7 @@ mod tests {
         w("sys/module/nvidia_drm/initstate", "going\n");
         let f = scan(&roots).find(id).cloned().unwrap();
         assert_eq!(f.title, STUCK_TITLE);
-        assert!(f.fix.is_none() && f.detail.contains("(nvidia_drm)") && f.detail.contains("may fail or hang") && f.detail.ends_with("Save your work, then restart."), "{}", f.detail);
+        assert!(f.fix.is_none() && f.detail.contains("may fail or hang") && f.detail.contains("Save your work, then restart.") && f.detail.ends_with("is called nvidia_drm.)"), "{}", f.detail);
         w(&format!("{card}/power/runtime_status"), "active\n");
         assert_eq!(scan(&roots).find(id).map(|f| f.title.clone()).as_deref(), Some(STUCK_TITLE));
         // Answering, and nothing unloading: nothing to say.
@@ -7291,7 +7291,7 @@ mod tests {
         std::fs::remove_dir_all(fs.join(format!("{pci}/0000:01:00.0/drm"))).unwrap();
         let r = scan(&roots);
         assert!(r.find(id).is_none(), "offered from a card whose DRM device is gone");
-        assert!(r.find("gpu:stuck:0000:01:00.0").is_some_and(|f| f.detail.ends_with("then restart.")));
+        assert!(r.find("gpu:stuck:0000:01:00.0").is_some_and(|f| f.detail.contains("then restart.")));
         // Running, but its DRM device can't be read:
         w("sys/module/nvidia_drm/initstate", "live\n");
         assert!(scan(&roots).find(id).is_none());

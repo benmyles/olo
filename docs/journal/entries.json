@@ -5284,5 +5284,17 @@
   "title": "An agent's screen sits still: its Deskbar without the live widgets, its clock without seconds",
   "caption": "On a screen nobody sits at, Deskbar shows none of the person's live widgets and its clock has no seconds: they were all that changed on an idle agent's screen, and kept its Deskbar, its app_server and its recorder at work without end (1.9% of a core and 90 wakes a second a screen; 0.1% and 8 now, with the keep-warm frame off there, the recorder looking only at what was drawn, and a status that holds only what the bar draws). On every Deskbar: the tray's well has a point more room above and below its icons (a count's pill came to a pixel of its bevel), the fold button's chevrons end where the time does, and Wi-Fi's tip no longer gives the signal's figure, which is in its menu (it drew the bar again at every waver).",
   "image": "2026-11-20/173905-an-agent-s-screen-sits-still-its-deskbar-without.png"
+ },
+ {
+  "time": "2026-11-20T17:57:36",
+  "title": "Olo Doctor: a driver stuck shutting down, in plainer words",
+  "caption": "Both reviewers, of the card that says NVIDIA's driver is stuck: 'the kernel', a module's name in the middle of the sentence and 'a processor' made its reader guess. It says Linux, the graphics card, one of the processors, and names the part that is stuck last, in a sentence of its own. And a path through menus (Preferences \u25b8 Keyboard, in the card under it) no longer breaks beside its arrow, anywhere in Olo.",
+  "image": "2026-11-20/175736-olo-doctor-a-driver-stuck-shutting-down-in-plain.png"
+ },
+ {
+  "time": "2026-11-20T17:57:38",
+  "title": "Olo Doctor: NVIDIA's unseen console, said plainly",
+  "caption": "The card that offers to turn off the console NVIDIA's driver keeps on a card with no screen: what it is and what turning it off does, in words read once (both reviewers: 'giving that console back' and 'the fix has it take no console' read like the code), without the option file's path, and saying when it takes effect. It claims no more than before: one of the steps where the driver can get stuck.",
+  "image": "2026-11-20/175738-olo-doctor-nvidia-s-unseen-console-said-plainly.png"
  }
 ]

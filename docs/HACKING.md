@@ -3903,6 +3903,11 @@ it.
   than pushing that word down a row, as typesetters and CSS wrap
   ("…with Ann at" fits when "at" does); leading spaces still count. The
   multi-line field keeps its caret at the edge among hanging spaces.
+- **A path through menus stays whole**: no line breaks beside its
+  arrow ("Preferences ▸ Keyboard" goes down a line together:
+  `LineWrapper::breaks_between`, in both wrapping paths), so a line
+  never ends with ▸ nor begins with it, in any language and in text
+  put together as it is shown, without no-break spaces in the words.
 - **A paragraph's last line is never one word alone** where the word
   before can come down to it (`WrappedLine::keep_last_words_together`:
   both fit the last line, and the line they leave stays the longer, so

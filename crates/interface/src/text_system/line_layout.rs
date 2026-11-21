@@ -148,6 +148,9 @@ impl LineLayout {
         let mut last_boundary = WrapBoundary { run_ix: 0, glyph_ix: 0 };
         let mut last_boundary_x = px(0.);
         let mut prev_ch = '\0';
+        // Olo: the last character that wasn't a space
+        // (`LineWrapper::breaks_between`).
+        let mut word_ch = '\0';
         let mut glyphs = self
             .runs
             .iter()
@@ -168,7 +171,7 @@ impl LineLayout {
             // Here is very similar to `LineWrapper::wrap_line` to determine text wrapping,
             // but there are some differences, so we have to duplicate the code here.
             if LineWrapper::is_word_char(ch) {
-                if prev_ch == ' ' && ch != ' ' && first_non_whitespace_ix.is_some() {
+                if prev_ch == ' ' && ch != ' ' && first_non_whitespace_ix.is_some() && LineWrapper::breaks_between(word_ch, ch) {
                     last_candidate_ix = Some(boundary);
                     last_candidate_x = x;
                 }
@@ -207,6 +210,9 @@ impl LineLayout {
                 boundaries.push(last_boundary);
             }
             prev_ch = ch;
+            if ch != ' ' {
+                word_ch = ch;
+            }
         }
 
         boundaries
