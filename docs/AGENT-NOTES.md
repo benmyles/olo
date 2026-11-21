@@ -1007,40 +1007,49 @@ Learned on the second pass (2026-11-20):
 - **kache is Olo's fork**: `~/src/kache`, branch `olo`, installed to
   `~/.cargo/bin` (dynamic admission, a cap for tests). Its config,
   restart and rollback notes are in `/var/tmp/claude-kache`.
-- **jato was tried in kache's place and isn't ready for Olo yet**
-  (Ben, 2026-11-21: "please start using jato instead of kache", then
-  "if you find jato is slower or worse than kache then go back to
-  kache and tell the astra 6.2 max agent working on jato what it needs
-  to improve/fix"). jato (`~/src/jato`, the person's own build cache;
-  `jato build …` in `cargo build …`'s place, or
-  `RUSTC_WRAPPER="$(command -v jato)"` for a tool that starts cargo)
-  0.8.0 cached nothing here: all 251 compiler calls were bypassed as
-  `unknown_arguments`, because its parser has no case for `-Z`, and
-  every unit of Olo carries one (`-Z embed-metadata=no`, which nightly
-  cargo passes by itself on every library, and `-Zthreads=8` from
-  `.cargo/config.toml`). On a stable toolchain it stores and hits. So
-  Olo's builds stay on kache (plain `cargo`) until jato takes those.
-  Its agent was told (`codex queue --thread SESSION --message "…"`
-  queues a message for a running Codex session; the session's id is
-  the person's to give), with the commands and counts in a report in
-  scratch, and asked to write when it is fixed. To try again:
-  `JATO_LOG=debug jato build -p olo-protocol` into a scratch
-  `CARGO_TARGET_DIR` and count its decisions (`unknown_arguments` gone;
-  `jato stats` before and after), a clean rebuild into the same folder
-  for the hits, then the workspace's release build timed against
-  kache's. Known before it starts: its budget is each run's own
-  (`JATO_MAX_SIZE`, 1 GiB unless said; the smallest run's evicts for
-  all in the shared `~/.cache/jato`), far too little for Olo; and it
-  keys absolute paths, so a second target folder reuses nothing of
-  the first's without its worktree mode, whose outputs aren't in
-  `target/debug` and `target/release` where Olo's tools and the
-  running desktop look. While kache is still wired into the person's
-  shell and cargo config (its shims first on PATH, among them `cargo`,
-  `cc` and `rustdoc`; `CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER`;
-  `build.rustc-wrapper`), `jato …` takes the wrapper's place all the
-  same (the variable wins); to measure jato alone, take the shims off
-  PATH, unset the runner, and set `HOST_CC=cc HOST_CXX=c++
-  RUSTDOC=rustdoc` for the command.
+- **jato was tried in kache's place, twice, and Olo stays on kache
+  for now** (Ben, 2026-11-21: "please start using jato instead of
+  kache", then "if you find jato is slower or worse than kache then go
+  back to kache and tell the astra 6.2 max agent working on jato what
+  it needs to improve/fix"). jato is the person's own build cache
+  (`~/src/jato`; `jato build …` in `cargo build …`'s place, or
+  `RUSTC_WRAPPER="$(command -v jato)"` for a tool that starts cargo).
+  - 0.8.0 cached nothing here: all 251 compiler calls were bypassed as
+    `unknown_arguments` (its parser had no case for `-Z`, and every
+    unit of Olo carries one: `-Z embed-metadata=no`, which nightly
+    cargo passes by itself on every library, and `-Zthreads=8` from
+    `.cargo/config.toml`).
+  - 0.9.0 takes those and caches, and was timed on `olo-system` (dev,
+    232 crates, scratch target folders, a busy computer): no cache 149
+    s; jato's first build 202 s; jato with the folder emptied and
+    built again at the same path 127 s, then 97 s (123 units hit, 127
+    missed, each time); kache 35 s into a folder it had never seen and
+    2.0 s rebuilt. What never hits: whatever is linked through mold
+    (every build script and proc-macro crate, a fifth of the units),
+    whatever takes a proc macro, crates with assembly, and everything
+    above those (`JATO_LOG=debug` says why, a line a unit; `jato stats
+    --json` before and after says how many).
+  - Its agent has both reports (`tools/dev/codex-say SESSION now
+    FILE`, the olo-codex-message skill: `codex queue` alone left the
+    first one waiting eighty minutes behind the turn the agent was
+    in), and answers in a file in scratch. To try a newer one: the
+    same three builds (`rm -rf` the scratch `CARGO_TARGET_DIR` between
+    them), kache's two beside them, in one script so that they share
+    the computer's load, then the workspace's release build.
+  - Known besides: `jato limit SIZE` (0.9) sets one budget for
+    everyone who uses the store, where before each run evicted to its
+    own `JATO_MAX_SIZE` (1 GiB unless said); it keys absolute paths,
+    so a second target folder reuses nothing of the first's without
+    its worktree mode (`jato worktree build … --artifact-dir`, not
+    tried: Olo's tools and the running desktop look in `target/debug`
+    and `target/release`). While kache is still wired into the
+    person's shell and cargo config (its shims first on PATH, among
+    them `cargo`, `cc` and `rustdoc`;
+    `CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER`;
+    `build.rustc-wrapper`), `jato …` takes the wrapper's place all the
+    same (the variable wins); to measure jato alone, take the shims
+    off PATH, unset the runner, and set `HOST_CC=cc HOST_CXX=c++
+    RUSTDOC=rustdoc` for the command.
 - **Old builds go by themselves, on kache's terms** (Ben, 2026-11-21:
   "can you make it so old builds we no longer need will get cleaned up
   automatically"). Its daemon removes a whole build folder no build

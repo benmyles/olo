@@ -1,0 +1,262 @@
+#!/usr/bin/python3
+"""A message for a Codex session that is running on this computer (the
+person's own, in another terminal): handed to it now, or left for when
+its turn ends; and whether it arrived.
+
+  codex-say SESSION look              what the session is doing, and what waits in its queue
+  codex-say SESSION now [FILE]        the message (FILE, or what is piped in) into the turn it is
+                                      working on, at its next step; a new turn if it is at rest
+  codex-say SESSION later [FILE]      queued: taken when the turn it is working on ends
+  codex-say SESSION drop ID…          queued messages taken out again
+  codex-say SESSION arrived WORDS…    how often WORDS stand in the session's record (0: not there)
+
+SESSION is the session's id (a UUID, which the person gives: `/status`
+in its window shows it). Only for a session the person asked you to
+write to: the others are their other work. What is sent goes to that
+agent's provider like anything it reads, so nothing private goes in it.
+The .claude/skills/olo-codex-message skill says how to word one, how
+the agent can answer, and what was learned.
+
+How (codex-cli 0.170): every `codex` window on the computer is a
+client of one app server, the daemon the first of them started, which
+runs the sessions. Its control socket
+(~/.codex/app-server-control/app-server-control.sock) speaks WebSocket,
+with JSON-RPC inside: `initialize` (with `capabilities.experimentalApi`
+for the queue's methods), then `thread/read` for the session's state,
+`thread/turns/list` for the turn in progress, `turn/steer` to hand that
+turn more input (what typing into a working window does), `turn/start`
+when it is at rest, and `thread/queue/…` for what waits.
+(`codex app-server proxy` is that socket's bytes on stdio: WebSocket
+too, not lines of JSON. `codex app-server generate-json-schema --out
+DIR --experimental` writes the whole protocol down.) `later` is
+`codex queue`, which is the documented way and waits for the turn to
+end, however long that is (80 minutes behind one turn, 2026-11-21).
+
+Nothing of the session's own content is printed: ids, states and sizes.
+"""
+
+import base64
+import glob
+import json
+import os
+import re
+import socket
+import struct
+import subprocess
+import sys
+import time
+import uuid
+
+SOCKET = os.path.expanduser("~/.codex/app-server-control/app-server-control.sock")
+
+
+class Server:
+    """The app server, asked one thing at a time."""
+
+    def __init__(self):
+        self.s = socket.socket(socket.AF_UNIX)
+        self.s.settimeout(20)
+        try:
+            self.s.connect(SOCKET)
+        except OSError as e:
+            sys.exit(f"codex-say: no Codex app server to talk to ({SOCKET}: {e}); is a `codex` window open?")
+        key = base64.b64encode(os.urandom(16)).decode()
+        self.s.sendall(f"GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n".encode())
+        head = b""
+        while b"\r\n\r\n" not in head:
+            chunk = self.s.recv(4096)
+            if not chunk:
+                break
+            head += chunk
+        status = head.split(b"\r\n", 1)[0].decode(errors="replace")
+        if " 101 " not in status:
+            sys.exit(f"codex-say: the app server's socket didn't take a WebSocket ({status!r}): another codex-cli than 0.170? read `codex app-server --help`")
+        self.rest = head.split(b"\r\n\r\n", 1)[1]
+        self.n = 0
+        r = self.ask("initialize", {"clientInfo": {"name": "olo-codex-say", "title": "A note from another agent", "version": "1"}, "capabilities": {"experimentalApi": True}})
+        if "result" not in r:
+            sys.exit(f"codex-say: the app server refused us: {r.get('error')}")
+        self.send({"method": "initialized"})
+
+    def send(self, obj):
+        data = json.dumps(obj).encode()
+        mask, n = os.urandom(4), len(data)
+        size = bytes([0x80 | n]) if n < 126 else bytes([0x80 | 126]) + struct.pack(">H", n) if n < 65536 else bytes([0x80 | 127]) + struct.pack(">Q", n)
+        self.s.sendall(bytes([0x81]) + size + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(data)))
+
+    def need(self, k):
+        while len(self.rest) < k:
+            chunk = self.s.recv(1 << 16)
+            if not chunk:
+                raise EOFError
+            self.rest += chunk
+        out, self.rest = self.rest[:k], self.rest[k:]
+        return out
+
+    def frame(self):
+        b0, b1 = self.need(2)
+        n = b1 & 0x7F
+        if n == 126:
+            n = struct.unpack(">H", self.need(2))[0]
+        elif n == 127:
+            n = struct.unpack(">Q", self.need(8))[0]
+        mask = self.need(4) if b1 & 0x80 else None
+        data = self.need(n)
+        if mask:
+            data = bytes(b ^ mask[i % 4] for i, b in enumerate(data))
+        return b0 & 0x0F, bool(b0 & 0x80), data
+
+    def ask(self, method, params, most=30.0):
+        """The answer to one request (what the server says of its own accord meanwhile is passed over)."""
+        self.n += 1
+        self.send({"id": self.n, "method": method, "params": params})
+        end, parts = time.monotonic() + most, b""
+        while time.monotonic() < end:
+            try:
+                op, fin, data = self.frame()
+            except (socket.timeout, EOFError):
+                break
+            if op == 9:  # a ping, answered
+                self.s.sendall(bytes([0x8A, 0x80]) + os.urandom(4))
+                continue
+            if op == 8:
+                break
+            parts += data
+            if not fin:
+                continue
+            text, parts = parts, b""
+            try:
+                msg = json.loads(text)
+            except ValueError:
+                continue
+            if msg.get("id") == self.n and ("result" in msg or "error" in msg):
+                return msg
+        return {"error": {"message": f"no answer to {method} in {most:.0f} s"}}
+
+    def close(self):
+        try:
+            self.s.sendall(bytes([0x88, 0x80]) + os.urandom(4))
+        except OSError:
+            pass
+        self.s.close()
+
+
+def record(session):
+    """The session's record on disk (Codex's own file of it)."""
+    found = sorted(glob.glob(os.path.expanduser(f"~/.codex/sessions/*/*/*/rollout-*{session}*.jsonl")))
+    return found[-1] if found else None
+
+
+def times_in_record(session, words):
+    path = record(session)
+    if not path:
+        return None
+    # (As the record has it: JSON, so a quote or a new line in WORDS is written with a backslash there.)
+    needle = json.dumps(words)[1:-1]
+    with open(path, errors="replace") as f:
+        return sum(needle in line for line in f)
+
+
+def message(args):
+    text = open(args[0]).read() if args else sys.stdin.read()
+    text = text.strip()
+    if not text:
+        sys.exit("codex-say: no message (a FILE, or text piped in)")
+    return text
+
+
+def main():
+    args = sys.argv[1:]
+    if len(args) < 2 or args[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0 if args[:1] in (["-h"], ["--help"]) else 2
+    session, what, rest = args[0], args[1], args[2:]
+    if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", session):
+        sys.exit("codex-say: SESSION is the session's id (a UUID), as the person gave it")
+    if what == "arrived":
+        if not rest:
+            sys.exit("codex-say: arrived WORDS… (a few words of the message, exactly)")
+        n = times_in_record(session, " ".join(rest))
+        print("the session has no record on this computer" if n is None else f"in the session's record {n} time(s)")
+        return 0 if n else 1
+    if what == "later":
+        text = message(rest)
+        # (Nothing of the person's display for it: it only writes Codex's queue.)
+        env = {k: v for k, v in os.environ.items() if k not in ("WAYLAND_DISPLAY", "OLO_SOCKET")}
+        out = subprocess.run(["codex", "queue", "--thread", session, "--message", text], capture_output=True, text=True, env=env, timeout=120)
+        print((out.stdout + out.stderr).strip().splitlines()[-1] if (out.stdout + out.stderr).strip() else f"codex queue ended {out.returncode}")
+        print("(taken when the turn it is working on ends; `codex-say SESSION look` shows it waiting, `now` doesn't wait)")
+        return out.returncode
+    if what not in ("look", "now", "drop"):
+        sys.exit(f"codex-say: {what}? look, now, later, drop or arrived")
+    server = Server()
+    try:
+        r = server.ask("thread/read", {"threadId": session, "includeTurns": False})
+        thread = r.get("result", {}).get("thread")
+        if not thread:
+            why = (r.get("error") or {}).get("message", "")
+            if "not loaded" in why:
+                sys.exit("codex-say: no window has that session open (or there is no such session): nothing to hand it to now; `later` queues a message for when it is opened again")
+            sys.exit(f"codex-say: the app server wouldn't say how that session stands: {r.get('error')}")
+        state = thread.get("status", {}).get("type")
+
+        def running():
+            """The turn the session is working on (its id), or why it wasn't found."""
+            turns = server.ask("thread/turns/list", {"threadId": session, "limit": 4, "sortDirection": "desc", "itemsView": "notLoaded"})
+            ids = [t["id"] for t in turns.get("result", {}).get("data", []) if t.get("status") == "inProgress"]
+            return (ids[0], None) if ids else (None, turns.get("error") or "none in progress among its last four")
+
+        if what == "look":
+            q = server.ask("thread/queue/list", {"threadId": session})
+            waiting = q.get("result", {}).get("data")
+            print(f"the session is {'working on a turn' if state == 'active' else 'at rest' if state == 'idle' else state} ({thread.get('model')}); takes input from here: {thread.get('canAcceptDirectInput')}")
+            if state == "active":
+                turn, why = running()
+                print(f"  its turn in progress: {'found (`now` would hand it the message)' if turn else f'not found ({why})'}")
+            if waiting is None:
+                print(f"its queue can't be read: {q.get('error')}")
+            for item in waiting or []:
+                size = sum(len(part.get("text", "")) for part in item.get("input", []))
+                print(f"  waiting: {item['id']} ({size} characters)")
+            if waiting == []:
+                print("  nothing waits in its queue")
+            return 0
+        if what == "drop":
+            code = 0
+            for sid in rest:
+                r = server.ask("thread/queue/delete", {"threadId": session, "queuedSubmissionId": sid})
+                print(f"{sid}: {'taken out' if 'result' in r else r.get('error')}")
+                code |= "result" not in r
+            return code
+        # now
+        text = message(rest)
+        if state == "notLoaded":
+            sys.exit("codex-say: no window has that session open: nothing to hand it to now (`later` queues it for when it is opened again)")
+        entry = [{"type": "text", "text": text, "text_elements": []}]
+        if state == "active":
+            turn, why = running()
+            if not turn:
+                sys.exit(f"codex-say: the session is working, but its turn wasn't found ({why}): try again, or `later`")
+            r = server.ask("turn/steer", {"threadId": session, "expectedTurnId": turn, "input": entry, "clientUserMessageId": str(uuid.uuid4())})
+            how = "handed to the turn it is working on"
+        else:
+            r = server.ask("turn/start", {"threadId": session, "input": entry, "clientUserMessageId": str(uuid.uuid4())})
+            how = "started as a new turn (it was at rest)"
+        if "result" not in r:
+            sys.exit(f"codex-say: not taken: {r.get('error')}")
+        print(how)
+    finally:
+        server.close()
+    # Whether it is in the session's record (its first words), a few seconds on.
+    words = " ".join(text.split("\n", 1)[0].split()[:8])
+    for _ in range(15):
+        if times_in_record(session, words):
+            print("and it is in the session's record")
+            return 0
+        time.sleep(1)
+    print("not yet in the session's record after 15 s: `codex-say SESSION arrived WORDS…` looks again")
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
