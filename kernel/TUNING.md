@@ -427,6 +427,62 @@ cache faster than a program takes memory. Left at 10.
   a gain for programs with heaps of gigabytes at the cost of memory
   for everything else; Fedora's "on request" lets those programs ask.
 
+## Measured, to be built: background work kept to what is free
+
+Ben, 2026-11-20, when the swap setting below was withdrawn: "how can
+we optimize what gets swapper better? … so then the work that gets
+background priority, like rustc etc would be more likely to get
+swapped than interactive apps that will really impact me". Linux has
+no link between a process's priority and reclaim; it has control
+groups. Two ways were measured, in a guest with too little memory for
+what runs in it (`tools/dev/kernel-check groups`: 1 GB; a desktop
+with a 200 MB program that sits idle and one in use, 150 MB of a file
+mapped and 100 MB of its own read ten times a second; the system's
+services in use; a build for a minute whose compilers take 350 MB
+each for a second and whose files are written and read back):
+
+| | the desktop's program in use: a round through its file, 99 in 100 within | worst | through its own memory | worst | the system's files | the build got done | ended by the kernel |
+| --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
+| one group for all, as a login session is today (three guests) | 105, 110, 116 ms | 225, 209, 353 ms | 4.7, 4.6, 5.8 ms | 40, 48, 44 ms | 71, 75, 78 ms | 42 compiles, 250 rounds of files | nothing |
+| **the background's group kept to what is free** (three) | **27, 38, 36 ms** | 63, 101, 130 ms | 2.1, 3.3, 2.8 ms | 6, 7, 10 ms | 21, 27, 34 ms | 38 or 39 compiles, 140 rounds of files | nothing |
+| the desktop's group protected for all it holds (`memory.low`; one) | 4 ms | 243 ms | 20 ms | 223 ms | 31 ms | | **the desktop's idle program** |
+| the same, for half of it (one) | 142 ms | 659 ms | 54 ms | 349 ms | 141 ms | | nothing |
+
+- **Protection (`memory.low`) is not the way.** It is the kernel's
+  own answer to the question, and with the desktop protected for all
+  it held the kernel ended a program with all of swap free: the
+  desktop's own idle one. Protected for half, it changed nothing for
+  the better. (And Fedora's uresourced already writes the ancestors'
+  protection, `MemoryLow=0` on the users' slices at every change of
+  who is at the computer: Olo's would be a second writer.) Nothing of
+  Olo's may make an allocation fail that succeeds today.
+- **Keeping the background to what is free works, for what is in
+  use.** Its group's `memory.high` set, four times a second while it
+  has anything in it, to what it holds plus what is free less a
+  reserve (12% of memory here), never under what its programs
+  themselves hold unless little is to be had at all. Past it the
+  kernel has the group's own programs wait and takes the group's own
+  cache and memory first, and the reclaim of everyone, which is what
+  takes the files out from under a program in use, seldom runs. The
+  desktop's program in use waited a third as long at the 99th
+  percentile and a fifth as long at the worst; the system's services
+  likewise. The build pays: a tenth fewer compiles, and little over
+  half the files through (its cache is what is held down). Nothing is
+  ended and nothing refused: `memory.high` only slows who is over it.
+- **A program that sits idle is swapped all the same** (its 200 MB
+  brought back in 100 to 190 ms when next used, either way): what
+  isn't touched for minutes is the coldest memory there is, and when
+  the build's own memory doesn't fit, swapping it into compressed
+  memory takes memory too (zram's own isn't the group's). Keeping it
+  would mean stopping the build, or forbidding the swap, which is
+  the setting below.
+
+What it would take in Olo is in docs/TODO.md ("Background work is
+swapped first"): the group itself (inside the login session's scope,
+made at login; or the user manager's, with what that changes for the
+processors), the supervisor's hand on its `memory.high`, and what may
+never be put there.
+
 ## Tried and withdrawn
 
 ### Swap used last (a setting for an hour, 2026-11-20)

@@ -240,16 +240,19 @@ something nobody here has is in "Blocked", with what it waits for.
     swapped out whole either way: 51,210 pages brought back). So
     nothing protects the desktop's memory from the kernel; nothing of
     Olo's may make an allocation fail that succeeds today.
-  - *Instead the background group keeps to what is left*: the
-    supervisor sets the group's `memory.high` to what it holds plus
-    what is to be had beyond a reserve, so as memory fills the
-    background's own cache is dropped and its own programs are
-    swapped, by the kernel, at once, in their own time; the kernel's
-    reclaim of everything (which is what swaps an idle window) seldom
-    has to run, and memory is kept free for a driver's allocation.
-    `memory.high` only slows who is over it; it ends nothing and
-    fails nothing. To be measured in the same guest scenario before
-    any of it is built in.
+  - *Instead the background group keeps to what is free*: its
+    `memory.high` set by the supervisor, as memory fills, to what it
+    holds plus what is free less a reserve. **Measured in the guest**
+    (`kernel-check groups`, three guests each; kernel/TUNING.md,
+    "Measured, to be built"): a desktop program in use waited a third
+    as long at the 99th percentile (27 to 38 ms where 105 to 116)
+    and a fifth as long at the worst; the system's services
+    likewise; the build got a tenth fewer compiles done and little
+    over half its files through; nothing ended, nothing refused. A
+    program that sits idle for minutes is swapped all the same (its
+    memory is the coldest there is, and swapping the build's own into
+    compressed memory takes memory too): keeping it would mean
+    stopping the build.
   - *Where the groups live*: inside the login session's scope
     (outside it a process loses its session, and under the user
     manager systemd-oomd watches and would end builds), made by Olo's

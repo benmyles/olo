@@ -58,6 +58,16 @@ settings were chosen.
       withdrawn: kernel/TUNING.md, "Tried and withdrawn". The scenario
       stays, for what is tried next: it measures programs, not a
       driver whose allocation may be refused.)
+  tools/dev/kernel-check groups [N]
+      background work in a control group of its own (what is to be
+      built: docs/TODO.md, "Background work is swapped first"): a
+      desktop's programs, one idle and one in use, the system's
+      services, and a build beside them that takes more than there
+      is; in one group as today, with the background's group kept to
+      what is free (`memory.high`, set as memory fills), and with the
+      desktop's group protected (`memory.low`: which had the kernel
+      end a program). What the programs in use wait, what the build
+      gets done. N (2) guests each.
   tools/dev/kernel-check left-alone
       what was measured and left as the kernel comes: dm-crypt without
       its work queues (a ramdisk, and a disk), and the room kept free
@@ -334,6 +344,108 @@ echo "fill|$(/bin/kbench fill /fast/big --mb 1500)"
 """
 
 
+# $1: one (everything in one group, as a login session is today) | split | low (the desktop's group protected,
+# `memory.low`, by $2 MB at its ancestors) | high (the background's group kept to what is free less a reserve of
+# $2 percent of memory, its `memory.high` set four times a second), $3: megabytes the last program takes.
+GROUPS = r"""
+mkfs.ext4 -q -F /dev/vda; mkdir -p /d; mount /dev/vda /d
+dd if=/dev/urandom of=/d/file bs=1M count=320 2>/dev/null; dd if=/dev/urandom of=/d/sys bs=1M count=80 2>/dev/null; sync; echo 3 > /proc/sys/vm/drop_caches
+echo $(( $(awk '/MemTotal/ {print $2}' /proc/meminfo) * 1024 )) > /sys/block/zram0/disksize
+mkswap /dev/zram0 > /dev/null; swapon -p 100 /dev/zram0
+echo y > /sys/kernel/mm/lru_gen/enabled; echo 1 > /proc/sys/vm/swappiness
+mkdir -p /cg; mount -t cgroup2 -o memory_recursiveprot none /cg || { echo "fail|no cgroup2"; exit 1; }
+echo "+memory +cpu" > /cg/cgroup.subtree_control
+mkdir /cg/system /cg/user; echo "+memory +cpu" > /cg/user/cgroup.subtree_control
+mkdir /cg/user/session
+case $1 in
+  one) D=/cg/user/session; B=/cg/user/session ;;
+  *) echo "+memory +cpu" > /cg/user/session/cgroup.subtree_control; mkdir /cg/user/session/desk /cg/user/session/bg; D=/cg/user/session/desk; B=/cg/user/session/bg ;;
+esac
+if [ "$1" = low ]; then
+  for g in /cg/user /cg/user/session; do echo $(( $2 * 1048576 )) > $g/memory.low; done
+  echo max > $D/memory.low
+fi
+S=/cg/system
+# high: the background group never takes the last free memory. Four times a second its allowance is set to what it
+# holds plus what is free beyond a reserve ($2 percent of memory): past that it lives within what it has (its own
+# cache recycled). Its cache is given up for anyone else who needs the reserve; its own programs are swapped only
+# when little is to be had at all (less than twice the reserve).
+if [ "$1" = high ]; then
+  total=$(awk '/MemTotal/ {print $2*1024}' /proc/meminfo); reserve=$(( total * $2 / 100 ))
+  ( while :; do
+      set -- $(awk '/^MemFree/ {f=$2*1024} /^MemAvailable/ {a=$2*1024} END {print f, a}' /proc/meminfo); free=$1; avail=$2
+      cur=$(cat $B/memory.current); file=$(awk '$1=="file" {print $2}' $B/memory.stat)
+      h=$(( cur + free - reserve ))
+      floor=$(( cur - file ))
+      [ $avail -lt $(( 2 * reserve )) ] && floor=$(( floor - (2 * reserve - avail) ))
+      [ $h -lt $floor ] && h=$floor
+      [ $h -lt 16777216 ] && h=16777216
+      echo $h > $B/memory.high 2>/dev/null
+      sleep 0.25
+    done ) & CTL=$!
+fi
+within() { g=$1; shift; ( echo $BASHPID > $g/cgroup.procs; exec "$@" ); }
+stat() { awk -v k="$2" '$1==k {print $2}' $1/memory.stat; }
+# The desktop: a program with 200 MB of its own that sits idle, and one in use (150 MB of a file mapped, 100 MB of its own, read ten times a second).
+within $D /bin/kbench hog --mb 200 --hold 150 --random 2048 --then-walk > /tmp/idle & I=$!
+within $D /bin/kbench touch /d/file --mb 150 --secs 165 > /tmp/t & T=$!
+within $D /bin/kbench touch --own --mb 100 --secs 165 > /tmp/o & O=$!
+# The system's services: 60 MB of a file and 40 MB of their own in use.
+within $S /bin/kbench touch /d/sys --mb 60 --secs 165 > /tmp/st & ST=$!
+within $S /bin/kbench touch --own --mb 40 --secs 165 > /tmp/so & SO=$!
+sleep 8
+# A build in the background for a minute: files written and read back (more than memory holds) and compilers that take 350 MB for a second.
+t0=$(date +%s); n=0
+( c=0; while [ $(( $(date +%s) - t0 )) -lt 60 ]; do within $B /bin/kbench hog --mb 350 --hold 1 --random 2048 > /dev/null 2>&1; c=$(( c + 1 )); echo $c > /tmp/compiles; done ) & C=$!
+while [ $(( $(date +%s) - t0 )) -lt 60 ]; do
+  within $B /bin/kbench fill /d/f$(( n % 6 )) --mb 200 > /dev/null; within $B dd if=/d/f$(( n % 6 )) of=/dev/null bs=1M 2>/dev/null
+  n=$(( n + 1 ))
+done
+wait $C
+echo "built|{\"compiles\":$(cat /tmp/compiles 2>/dev/null || echo 0),\"file_rounds\":$n}"
+row() { # name group
+  echo "$1|{\"swap_mb\":$(( $(cat $2/memory.swap.current) / 1048576 )),\"now_mb\":$(( $(cat $2/memory.current) / 1048576 )),\"anon_mb\":$(( $(stat $2 anon) / 1048576 )),\"file_mb\":$(( $(stat $2 file) / 1048576 )),\"pswpout\":$(stat $2 pswpout),\"pswpin\":$(stat $2 pswpin),\"low_events\":$(awk '$1=="low" {print $2}' $2/memory.events)}"
+}
+row "build-desk" $D; [ $D != $B ] && row "build-bg" $B; row "build-system" $S
+# Memory running out: a background program takes more than there is left (it fits only with swap), slowly, and holds it.
+within $B /bin/kbench hog --mb $3 --rate 12 --hold 25 --random 2048 > /tmp/h 2>/dev/null; hs=$?
+echo "hog|{\"ended\":$hs}"
+row "out-desk" $D; [ $D != $B ] && row "out-bg" $B; row "out-system" $S
+wait $I; echo "idle|$(sed -n 2p /tmp/idle)"
+wait $T; echo "files|$(cat /tmp/t)"
+wait $O; echo "own|$(cat /tmp/o)"
+wait $ST; echo "sysfiles|$(cat /tmp/st)"
+wait $SO; echo "sysown|$(cat /tmp/so)"
+[ -n "$CTL" ] && { kill $CTL; echo "high|{\"events\":\"$(tr '\n' ' ' < $B/memory.events)\"}"; }
+echo "oom|{\"kills\":$(awk '/^oom_kill / {print $2}' /proc/vmstat)}"
+"""
+
+
+def groups(reps):
+    print("Background work in a control group of its own: 1 GB of memory, swap in compressed memory as large, the")
+    print("multi-generational LRU, vm.swappiness 1. The desktop: a program with 200 MB that sits idle, and one in use")
+    print("(150 MB of a file mapped, 100 MB of its own, read ten times a second); the system's services, in use (60 and")
+    print("40 MB); and a build for a minute (compilers that take 350 MB for a second, files written and read back),")
+    print("then a program that takes 600 MB. What the desktop's programs in use wait, and what the build gets done.\n")
+    cases = [
+        ("one group for all, as a login session is today", "one", 0),
+        ("the background's group kept to what is free, less 12% of memory (memory.high)", "high", 12),
+        ("the desktop's group protected for all it holds (memory.low 500 MB)", "low", 500),
+    ]
+    only = os.environ.get("OLO_GROUPS_CASES")   # "0,1": some of them, by their place
+    if only:
+        cases = [cases[int(i)] for i in only.split(",")]
+    for what, layout, p in cases:
+        print(f"  {what}:")
+        for _ in range(reps):
+            rows = {r[0]: r[-1] for r in guest(GROUPS, args=[layout, str(p), "600"], bins=["/usr/sbin/mkfs.ext4", "dd", "/usr/sbin/mkswap", "/usr/sbin/swapon", "sync", "kill", "tr"], modules=["zram"], disks=["4G"], mem=1024, timeout=420)}
+            g = lambda row, key: rows.get(row, {}).get(key, "?") if isinstance(rows.get(row), dict) else "?"
+            idle = f"its idle program brought back {g('idle', 'brought_back')} pages in {g('idle', 'ms')} ms" if isinstance(rows.get("idle"), dict) else "ITS IDLE PROGRAM WAS ENDED"
+            print(f"    in use, its files: 99 in 100 rounds within {g('files', 'ms_p99')} ms, the worst {g('files', 'ms_max')}; its own memory: {g('own', 'ms_p99')} ms, the worst {g('own', 'ms_max')}; "
+                  f"the system's files {g('sysfiles', 'ms_p99')} ms | {idle} | the build: {g('built', 'compiles')} compiles, {g('built', 'file_rounds')} rounds of files | ended by the kernel: {g('oom', 'kills')}", flush=True)
+    print()
+
+
 def slow_disks():
     print("A removable disk's writes: 600 MB copied to a disk that takes 10 MB a second (2 GB of memory)\n")
     for mode, what in [("none", "as the kernel comes"), ("limit", "16 MB may wait")]:
@@ -416,9 +528,9 @@ def main():
     reps = int(args[args.index("--reps") + 1]) if "--reps" in args else (3 if ttl is None else 20)
     which = [a for a in args if not a.startswith("--") and not a.isdigit()] or ["preemption", "turns", "slow-disks", "swap", "thrashing", "left-alone"]
     for name in which:
-        run = {"preemption": lambda: preemption(reps), "thrashing": lambda: thrashing(reps, ttl), "turns": lambda: turns(reps), "slow-disks": slow_disks, "swap": lambda: swap(2 if "--reps" not in args else reps), "left-alone": left_alone}.get(name)
+        run = {"preemption": lambda: preemption(reps), "thrashing": lambda: thrashing(reps, ttl), "turns": lambda: turns(reps), "groups": lambda: groups(reps), "slow-disks": slow_disks, "swap": lambda: swap(2 if "--reps" not in args else reps), "left-alone": left_alone}.get(name)
         if run is None:
-            sys.exit(f"kernel-check: {name}? preemption, turns, thrashing, slow-disks, swap or left-alone")
+            sys.exit(f"kernel-check: {name}? preemption, turns, thrashing, slow-disks, swap, groups or left-alone")
         run()
 
 
