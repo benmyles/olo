@@ -149,10 +149,12 @@ pub fn run() {
     // noted, and from here nothing this starts has it but that
     // (`spawn`), and this program itself when it starts again
     // (`exec_self`).
-    if olo_system::caps::held(olo_system::caps::SYS_NICE) {
-        FOR_THE_COMPOSITOR.store(true, std::sync::atomic::Ordering::Relaxed);
+    let cap = olo_system::caps::held(olo_system::caps::SYS_NICE).then_some(olo_system::caps::SYS_NICE);
+    if let Err(e) = olo_system::caps::rest(cap) {
+        eprintln!("olo-session: cannot verify startup credentials: {e}");
+        std::process::exit(1);
     }
-    olo_system::caps::hand_on_nothing();
+    FOR_THE_COMPOSITOR.store(cap.is_some(), std::sync::atomic::Ordering::Relaxed);
     // A session or install from before the rename (Tabula) carries on.
     olo_xdg::legacy::adopt();
     exe();
@@ -693,7 +695,7 @@ impl Session {
             set_cloexec(fd, false);
         }
         self.server.argv = argv.clone();
-        self.server.pid = spawn(&argv, &env).unwrap_or(0);
+        self.server.pid = spawn_child(&argv, &env, self.real && FOR_THE_COMPOSITOR.load(std::sync::atomic::Ordering::Relaxed)).unwrap_or(0);
         for &fd in &fds {
             set_cloexec(fd, true);
         }
@@ -1233,10 +1235,17 @@ impl Session {
         olo_xdg::upgrade_env(&mut cmd);
         // (The compositor's capability goes with it into its new self,
         // which takes it out of what it starts again.)
-        let handed = FOR_THE_COMPOSITOR.load(std::sync::atomic::Ordering::Relaxed) && olo_system::caps::hand_on(olo_system::caps::SYS_NICE);
-        let e = cmd.env(RESUME_ENV, state).exec();
-        if handed {
-            olo_system::caps::hand_on_nothing();
+        let cap = FOR_THE_COMPOSITOR.load(std::sync::atomic::Ordering::Relaxed).then_some(olo_system::caps::SYS_NICE);
+        cmd.env(RESUME_ENV, state);
+        let e = match cap.map(olo_system::caps::for_exec).transpose() {
+            Ok(_) => cmd.exec(),
+            Err(e) => e,
+        };
+        if cap.is_some()
+            && let Err(e) = olo_system::caps::rest(cap)
+        {
+            log(format!("cannot restore credentials after failed upgrade: {e}"));
+            std::process::exit(1);
         }
         log(format!("re-exec failed ({e}); carrying on"));
         for &fd in &fds {
@@ -1404,6 +1413,10 @@ fn describe(status: i32) -> String {
 /// Start `argv[0]` (preferring the binary next to ours, so a development
 /// build runs its own components).
 fn spawn(argv: &[String], env: &[(&str, String)]) -> Option<i32> {
+    spawn_child(argv, env, false)
+}
+
+fn spawn_child(argv: &[String], env: &[(&str, String)], compositor: bool) -> Option<i32> {
     // xdg-desktop-portal on an agent screen's bus (own_bus::services).
     let portal_env = argv[0].ends_with("/xdg-desktop-portal").then(|| (own_bus::PORTAL_FRONTEND_ENV.0, own_bus::PORTAL_FRONTEND_ENV.1.to_owned()));
     let env: Vec<(&str, String)> = env.iter().cloned().chain(portal_env).collect();
@@ -1420,17 +1433,21 @@ fn spawn(argv: &[String], env: &[(&str, String)]) -> Option<i32> {
     }
     // The person's compositor alone starts with the capability the login
     // handed on (a plain system call, in the child).
-    let high = argv[0] == "olo-app-server" && FOR_THE_COMPOSITOR.load(std::sync::atomic::Ordering::Relaxed);
     // SAFETY: async-signal-safe calls only, between fork and exec.
     unsafe {
         cmd.pre_exec(move || {
+            if compositor {
+                if olo_system::caps::for_exec(olo_system::caps::SYS_NICE).is_err() {
+                    // The compositor can draw at normal priority if the grant fails.
+                    olo_system::caps::rest(None)?;
+                }
+            } else if FOR_THE_COMPOSITOR.load(std::sync::atomic::Ordering::Relaxed) {
+                olo_system::caps::rest(None)?;
+            }
             // Children start with no signals blocked (we block ours).
             let mut set: libc::sigset_t = std::mem::zeroed();
             libc::sigemptyset(&mut set);
             libc::sigprocmask(libc::SIG_SETMASK, &set, std::ptr::null_mut());
-            if high {
-                olo_system::caps::hand_on(olo_system::caps::SYS_NICE);
-            }
             Ok(())
         });
     }

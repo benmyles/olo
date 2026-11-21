@@ -14,8 +14,16 @@ fn main() {
     if args.get(1).is_some_and(|a| a == "--exec") && args.len() > 2 {
         // (What the login handed on goes through to a person's Olo
         // session and to nothing else this might be asked to start.)
-        if std::path::Path::new(&args[2]).file_name().is_none_or(|name| name != "olo-session") {
-            olo_system::caps::hand_on_nothing();
+        use olo_system::caps;
+        let is_session = std::path::Path::new(&args[2]).file_name().is_some_and(|name| name == "olo-session");
+        let forward = is_session && caps::ambient(caps::SYS_NICE);
+        let result = if forward { caps::for_exec(caps::SYS_NICE) } else { caps::rest(None) };
+        if let Err(e) = result {
+            if let Err(drop_error) = caps::rest(None) {
+                eprintln!("olo-session: cannot verify trampoline credentials: {drop_error}");
+                std::process::exit(127);
+            }
+            eprintln!("olo-session: starting without compositor scheduling permission: {e}");
         }
         use std::os::unix::process::CommandExt as _;
         let e = std::process::Command::new(&args[2]).args(&args[3..]).exec();

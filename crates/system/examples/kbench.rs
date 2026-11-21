@@ -544,13 +544,18 @@ fn session_groups(args: &[String]) {
             let mut byte = 0u8;
             while libc::read(gate[0], (&raw mut byte).cast(), 1) < 0 && std::io::Error::last_os_error().raw_os_error() == Some(libc::EINTR) {}
             libc::close(gate[0]);
-            caps::keep();
+            // (As the login's worker does it: with the owner's choice for
+            // this account, `--chosen`, the one capability kept through
+            // the change of user and handed on; without, everything
+            // dropped and read back.)
+            let keep = args.iter().any(|a| a == "--chosen").then(caps::keep_for_login);
             if libc::setgroups(0, std::ptr::null()) != 0 || libc::setgid(gid) != 0 || libc::setuid(uid) != 0 {
                 println!("check|becoming the person|failed: {}", std::io::Error::last_os_error());
                 libc::_exit(1);
             }
-            if caps::narrow(caps::SYS_NICE) {
-                caps::hand_on(caps::SYS_NICE);
+            let grant = keep.map(|r| r.and_then(|()| caps::for_exec(caps::SYS_NICE)));
+            if !matches!(grant, Some(Ok(()))) {
+                println!("check|nothing handed on|{}", caps::rest(None).map_or_else(|e| format!("NOT VERIFIED: {e}"), |()| "all dropped, read back".into()));
             }
             println!("check|root taken back|{}", if libc::setuid(0) == 0 { "yes" } else { "no" });
             libc::execv(ptrs[0], ptrs.as_ptr());
@@ -586,7 +591,18 @@ fn session_check(args: &[String]) {
     let own = || groups::own().unwrap_or_default();
     // SAFETY: plain system calls.
     println!("check|who|uid {} in {}", unsafe { libc::getuid() }, own());
+    let sets = || {
+        let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
+        ["CapInh", "CapPrm", "CapEff", "CapAmb"]
+            .map(|k| status.lines().find_map(|l| l.strip_prefix(k)).map_or(String::new(), |v| v.trim_start_matches(':').trim().trim_start_matches('0').to_owned()))
+            .join("/")
+    };
     println!("check|the session's first process|{}", if caps::held(caps::SYS_NICE) { "has the capability" } else { "has none" });
+    println!("check|its four sets as it starts|{}", sets());
+    // (As `olo-session` keeps it: usable, and neither inheritable nor
+    // handed on.)
+    let cap = caps::held(caps::SYS_NICE).then_some(caps::SYS_NICE);
+    println!("check|kept at rest|{} {}", caps::rest(cap).map_or_else(|e| format!("NOT VERIFIED: {e}"), |()| "read back".into()), sets());
     println!("check|found from desk|{}", groups::find(Path::new("/cg"), &own()).map_or("nothing".into(), |g| format!("{} and {}", g.desk.display(), g.bg.display())));
     said("itself to bg", write(bg.join("cgroup.procs"), &me));
     println!("check|then in|{}", own());
@@ -606,11 +622,15 @@ fn session_check(args: &[String]) {
     println!("check|its nice raised to -5|{}", if unsafe { libc::setpriority(libc::PRIO_PROCESS, 0, -5) } == 0 { "done" } else { "refused" });
     // What it starts: with the capability only where it hands it on.
     let me = std::env::current_exe().unwrap_or_default();
-    caps::hand_on_nothing();
+    use std::os::unix::process::CommandExt as _;
     let _ = std::process::Command::new(&me).args(["caps", "a program it starts"]).status();
-    caps::hand_on(caps::SYS_NICE);
-    let _ = std::process::Command::new(&me).args(["caps", "the one it hands it to"]).status();
-    caps::hand_on_nothing();
+    if let Some(cap) = cap {
+        let mut one = std::process::Command::new(&me);
+        one.args(["caps", "the one it hands it to"]);
+        // SAFETY: plain system calls in the child, as `olo-session` makes them.
+        unsafe { one.pre_exec(move || caps::for_exec(cap)) };
+        let _ = one.status();
+    }
     let _ = std::process::Command::new(&me).args(["caps", "one started after"]).status();
 }
 

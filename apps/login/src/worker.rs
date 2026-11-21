@@ -112,6 +112,9 @@ pub fn run(setup: Setup) -> i32 {
     if setup.test.is_none() {
         vars.push(("XDG_VTNR".into(), setup.vt.to_string()));
     }
+    // Classify the selected desktop entry before adding our own wrapper.
+    let personal_olo = olo_session(setup.class, &command);
+    let seat_entry = personal_olo && env.iter().any(|(k, v)| k == "XDG_SESSION_DESKTOP" && v == "olo") && command.iter().skip(1).all(|a| matches!(a.as_str(), "--tty-udev" | "--no-shell"));
     vars.extend(env);
     // Through the system's olo-session beside us (`--exec`): SELinux moves
     // the session into the person's domain as it starts a system program,
@@ -132,7 +135,7 @@ pub fn run(setup: Setup) -> i32 {
     };
     let undone = |r: Result<(), String>| r.map_or_else(|left| format!("; and not all of it could be undone: {left}"), |()| " (undone)".into());
     let me = std::process::id();
-    let mut groups = (setup.test.is_none() && olo_session(setup.class, &command))
+    let mut groups = (setup.test.is_none() && personal_olo)
         .then(|| {
             let session = vars.iter().find(|(k, _)| k == "XDG_SESSION_ID").map(|(_, v)| v.as_str()).unwrap_or_default();
             let own = olo_system::session_groups::own().ok_or("no group of its own to read")?;
@@ -166,7 +169,7 @@ pub fn run(setup: Setup) -> i32 {
         return 1;
     }
     if pid == 0 {
-        let why = become_and_exec(&setup, &account, &tty, &command, &vars, groups.is_some().then_some(gate));
+        let why = become_and_exec(&setup, &account, &tty, &command, &vars, seat_entry, groups.is_some().then_some(gate));
         eprintln!("olo-login: the session couldn't start: {why}");
         // SAFETY: the child's own end, without the parent's destructors.
         unsafe { libc::_exit(127) };
@@ -200,11 +203,9 @@ pub fn run(setup: Setup) -> i32 {
 /// Whether what a worker is about to start is a person's Olo session
 /// (not the greeter's, nor another desktop chosen at the login screen):
 /// the one kind of session that is divided into the desktop and
-/// background work and handed the compositor's capability. `command` as
-/// it is run: through the system's `olo-session --exec` or not.
+/// background work. This is the original selected command, before wrapping.
 fn olo_session(class: &str, command: &[String]) -> bool {
-    let program = if command.get(1).is_some_and(|a| a == "--exec") { command.get(2) } else { command.first() };
-    class == "user" && program.and_then(|p| p.rsplit('/').next()) == Some("olo-session")
+    class == "user" && command.first().and_then(|p| p.rsplit('/').next()) == Some("olo-session")
 }
 
 /// A stream into the journal (systemd's stdout socket, its header said:
@@ -241,7 +242,7 @@ fn account(user: &str) -> Option<Account> {
 /// In the child: a session of its own on the seat's terminal, the
 /// person's groups and ids, their home, then the desktop's command with
 /// `vars` only. Returns only if something failed (why).
-fn become_and_exec(setup: &Setup, account: &Account, tty: &str, command: &[String], vars: &[(String, String)], gate: Option<[i32; 2]>) -> String {
+fn become_and_exec(setup: &Setup, account: &Account, tty: &str, command: &[String], vars: &[(String, String)], seat_entry: bool, gate: Option<[i32; 2]>) -> String {
     // Held at the gate until the worker has put this process in the
     // session's desktop group (or is gone, or gave up: the gate closes
     // either way).
@@ -254,7 +255,7 @@ fn become_and_exec(setup: &Setup, account: &Account, tty: &str, command: &[Strin
             libc::close(wait);
         }
     }
-    let argv: Vec<CString> = command.iter().filter_map(|a| CString::new(a.as_str()).ok()).collect();
+    let Ok(argv) = command.iter().map(|a| CString::new(a.as_str())).collect::<Result<Vec<_>, _>>() else { return "invalid session command".into() };
     if argv.is_empty() {
         return "no command".into();
     }
@@ -293,16 +294,21 @@ fn become_and_exec(setup: &Setup, account: &Account, tty: &str, command: &[Strin
             // which keeps it for its compositor: kept through the change
             // of user, narrowed to that one, handed on. Where a step
             // fails the session has none, as without the choice.
-            let hand = olo_session(setup.class, command) && olo_system::caps::chosen(std::path::Path::new("/"), 0);
-            if hand {
-                olo_system::caps::keep();
-            }
+            use olo_system::caps;
+            let chosen = seat_entry && account.uid != 0 && caps::chosen(std::path::Path::new("/"), 0, account.uid);
+            let keep = chosen.then(caps::keep_for_login);
             let name = CString::new(setup.user.as_str()).unwrap_or_default();
             if libc::initgroups(name.as_ptr(), account.gid) != 0 || libc::setgid(account.gid) != 0 || libc::setuid(account.uid) != 0 {
                 return format!("becoming {}: {}", setup.user, std::io::Error::last_os_error());
             }
-            if hand && olo_system::caps::narrow(olo_system::caps::SYS_NICE) {
-                olo_system::caps::hand_on(olo_system::caps::SYS_NICE);
+            let grant = keep.map(|r| r.and_then(|()| caps::for_exec(caps::SYS_NICE)));
+            if !matches!(grant, Some(Ok(()))) {
+                if let Err(e) = caps::rest(None) {
+                    return format!("could not verify that all login capabilities were dropped: {e}");
+                }
+                if let Some(Err(e)) = grant {
+                    let _ = writeln!(std::io::stderr(), "olo-login: starting without compositor scheduling permission: {e}");
+                }
             }
             // (No way back.)
             if libc::setuid(0) == 0 {

@@ -379,7 +379,7 @@ impl Doctor {
     /// The findings that can be checked (those with a fix, not being
     /// fixed now).
     fn choosable(&self) -> impl Iterator<Item = &Finding> {
-        self.report.iter().flat_map(|r| r.findings.iter()).filter(|f| f.fix.is_some() && self.outcomes.get(&f.id) != Some(&Outcome::Fixing))
+        self.report.iter().flat_map(|r| r.findings.iter()).filter(|f| f.fix.as_ref().is_some_and(|fix| fix.batchable()) && self.outcomes.get(&f.id) != Some(&Outcome::Fixing))
     }
 
     /// How many of each kind are checked, of how many: the button's
@@ -388,7 +388,7 @@ impl Doctor {
         let n = |kind: &Kind| self.choosable().filter(|f| kind_of(f) == kind && self.chosen.is(&f.id, kind)).count();
         // (Of all there are, those being fixed too: the button keeps its
         // width while they run.)
-        let of = |kind: &Kind| self.report.iter().flat_map(|r| r.findings.iter()).filter(|f| f.fix.is_some() && kind_of(f) == kind).count();
+        let of = |kind: &Kind| self.report.iter().flat_map(|r| r.findings.iter()).filter(|f| f.fix.as_ref().is_some_and(|fix| fix.batchable()) && kind_of(f) == kind).count();
         [(&NEEDED, n(&NEEDED), of(&NEEDED)), (&SUGGESTED, n(&SUGGESTED), of(&SUGGESTED))]
     }
 
@@ -572,7 +572,7 @@ impl Doctor {
         // named by its title for agents; a finding with nothing to do
         // keeps the room, so the tags line up.
         let choose = match &f.fix {
-            Some(_) => {
+            Some(fix) if fix.batchable() => {
                 let id = f.id.clone();
                 CheckBox::new(f.title.clone(), self.chosen.is(&f.id, kind_of(f)))
                     .id(format!("choose-{}", f.id))
@@ -582,7 +582,7 @@ impl Doctor {
                     .on_toggle(cx.listener(move |d: &mut Doctor, on: &bool, cx| d.check(&id, *on, cx)))
                     .into_element()
             }
-            None => div().w(px(m::MARK_SIZE)).flex_shrink_0(),
+            _ => div().w(px(m::MARK_SIZE)).flex_shrink_0(),
         };
         let top = div()
             .flex()
@@ -1067,8 +1067,12 @@ fn fix_from_the_command_line(ids: &[String]) -> i32 {
         Some(Severity::Suggestion) => suggestions,
         Some(_) => all,
     };
-    let chosen: Vec<Item> =
-        fixable.iter().copied().filter(|(id, _, _, s)| in_all(*s) || ids.iter().any(|i| i == id)).chain(ignored.iter().copied().filter(|(id, ..)| ids.iter().any(|i| i == id))).collect();
+    let chosen: Vec<Item> = fixable
+        .iter()
+        .copied()
+        .filter(|(id, _, fix, s)| (fix.batchable() && in_all(*s)) || ids.iter().any(|i| i == id))
+        .chain(ignored.iter().copied().filter(|(id, ..)| ids.iter().any(|i| i == id)))
+        .collect();
     // One asked for that isn't there (mistyped, an option it doesn't
     // take): nothing is done.
     let unknown: Vec<&String> = ids.iter().filter(|i| *i != "all" && *i != "suggestions" && !chosen.iter().any(|(c, ..)| c == i)).collect();

@@ -22,7 +22,11 @@ fn main() {
     // The capability the person's compositor is started with (the GPU's
     // high priority: `olo_system::caps`) is its own: nothing it starts
     // has it.
-    olo_system::caps::hand_on_nothing();
+    let cap = olo_system::caps::held(olo_system::caps::SYS_NICE).then_some(olo_system::caps::SYS_NICE);
+    if let Err(e) = olo_system::caps::rest(cap) {
+        eprintln!("olo-app-server: cannot verify startup credentials: {e}");
+        std::process::exit(1);
+    }
     // Started in Olo Rescue (the session's, after app_server kept
     // failing): taken out of the environment, before any thread is, so
     // what it starts (and itself, restarting) doesn't.

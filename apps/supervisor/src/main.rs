@@ -297,8 +297,8 @@ impl Supervisor {
                 continue;
             }
             let Some(before) = olo_system::priority::nice_of(p.pid as u32).filter(|n| *n > nice) else { continue };
-            if !same_session(p.pid) {
-                self.raise_again.insert(p.pid, f64::INFINITY);
+            if let decision @ (None | Some(false)) = same_session(p) {
+                self.raise_again.insert(p.pid, if decision.is_none() { t + 60.0 } else { f64::INFINITY });
                 continue;
             }
             // (Raised before and found above its tier again: lowered.)
@@ -328,7 +328,7 @@ impl Supervisor {
         // limit on realtime time was set), asked for again, once.
         self.realtime.retain(|(pid, _), _| alive.contains(pid));
         for p in &procs {
-            if olo_protocol::performance::tier(&p.name) != Some(olo_protocol::performance::AUDIO_NICE) || p.state == 'Z' || !same_session(p.pid) {
+            if olo_protocol::performance::tier(&p.name) != Some(olo_protocol::performance::AUDIO_NICE) || p.state == 'Z' || same_session(p) != Some(true) {
                 continue;
             }
             let Ok(tasks) = std::fs::read_dir(format!("/proc/{}/task", p.pid)) else { continue };
@@ -834,24 +834,16 @@ fn main() -> std::process::ExitCode {
     std::process::ExitCode::SUCCESS
 }
 
-/// Whether `pid` runs in this supervisor's session (its WAYLAND_DISPLAY),
-/// as read from its environment; a process whose environment can't be
-/// read (gone, or not ours) isn't. But one that can't be read because
-/// it holds the capability the login hands a person's session
-/// (`olo_system::caps`: the person's compositor and `olo-session`, which
-/// a program without it may not look into) is this session's if it is in
-/// this supervisor's login session: a test desktop's never hold it.
-fn same_session(pid: i32) -> bool {
-    let Some(mine) = std::env::var_os("WAYLAND_DISPLAY") else { return true };
-    let env = match std::fs::read(format!("/proc/{pid}/environ")) {
-        Ok(env) => env,
-        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
-            let scope = |group: Option<String>| group.and_then(|g| g.split('/').find(|part| part.starts_with("session-") && part.ends_with(".scope")).map(str::to_owned));
-            let (its, ours) = (scope(olo_system::session_groups::of(pid as u32)), scope(olo_system::session_groups::own()));
-            return its.is_some() && its == ours && olo_system::caps::held_by(pid as u32, olo_system::caps::SYS_NICE);
-        }
-        Err(_) => return false,
-    };
-    let key = b"WAYLAND_DISPLAY=";
-    env.split(|&b| b == 0).any(|e| e.strip_prefix(key).is_some_and(|v| v == mine.as_encoded_bytes()))
+/// The display's session and its direct compositor have known identities.
+/// Ordinary processes identify their display through their environment.
+/// An inaccessible or disappearing process may be checked again.
+fn same_session(p: &sample::Proc) -> Option<bool> {
+    let mine = std::env::var_os("WAYLAND_DISPLAY")?;
+    if matches!(p.name.as_str(), "olo-session" | "olo-app-server")
+        && let Some(session) = olo_xdg::session::display_session_pid()
+    {
+        return Some(if p.name == "olo-session" { p.pid == session } else { p.ppid == session });
+    }
+    let env = std::fs::read(format!("/proc/{}/environ", p.pid)).ok()?;
+    Some(env.split(|&b| b == 0).any(|e| e.strip_prefix(b"WAYLAND_DISPLAY=").is_some_and(|v| v == mine.as_encoded_bytes())))
 }

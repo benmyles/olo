@@ -299,11 +299,18 @@ pub fn read_details(pid: i32) -> Result<Details, String> {
     d.threads.sort_by_key(|t| t.tid);
     if let Ok(rd) = std::fs::read_dir(dir.join("fd")) {
         let socks = sockets();
+        let mut denied = false;
         let mut files: Vec<OpenFile> = rd
             .flatten()
             .filter_map(|e| {
                 let fd: i32 = e.file_name().to_str()?.parse().ok()?;
-                let target = link(e.path())?;
+                let target = match std::fs::read_link(e.path()) {
+                    Ok(path) => path.to_string_lossy().into_owned(),
+                    Err(e) => {
+                        denied |= e.kind() == std::io::ErrorKind::PermissionDenied;
+                        return None;
+                    }
+                };
                 let flags =
                     read(dir.join("fdinfo").join(fd.to_string())).and_then(|t| t.lines().find_map(|l| l.strip_prefix("flags:")).and_then(|v| u32::from_str_radix(v.trim(), 8).ok())).unwrap_or(0);
                 let mode = match flags & 3 {
@@ -316,7 +323,9 @@ pub fn read_details(pid: i32) -> Result<Details, String> {
             })
             .collect();
         files.sort_by_key(|f| f.fd);
-        d.files = Some(files);
+        if !denied || !files.is_empty() {
+            d.files = Some(files);
+        }
     }
     d.regions = read(dir.join("maps")).filter(|m| !m.is_empty() || d.exe.is_some()).map(|m| regions(&m));
     d.environment = std::fs::read(dir.join("environ")).ok().map(|b| {

@@ -72,6 +72,21 @@ pub fn own_display() -> Option<String> {
     display_of(std::env::var("OLO_SOCKET").ok().as_deref(), std::env::var("WAYLAND_DISPLAY").ok().as_deref())
 }
 
+/// The running olo-session for this display. The session writes its file after
+/// binding the display and keeps the same PID across an in-place upgrade.
+pub fn display_session_pid() -> Option<i32> {
+    let display = own_display().or_else(real_display)?;
+    if std::path::Path::new(&display).file_name()?.to_str()? != display.as_str() {
+        return None;
+    }
+    let pid: i32 = std::fs::read_to_string(crate::runtime_dir().join(format!("olo-session-{display}.pid"))).ok()?.trim().parse().ok()?;
+    if pid <= 1 {
+        return None;
+    }
+    let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).ok()?;
+    (comm.trim_end() == "olo-session").then_some(pid)
+}
+
 fn display_of(socket: Option<&str>, wayland: Option<&str>) -> Option<String> {
     let name = |p: &str| std::path::Path::new(p).file_name().and_then(|n| n.to_str()).map(str::to_owned);
     let from_socket = socket.and_then(name).and_then(|n| Some(n.strip_prefix("olo-")?.strip_suffix(".sock")?.to_owned()));

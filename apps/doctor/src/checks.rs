@@ -177,6 +177,13 @@ pub struct Fix {
     pub steps: Vec<Step>,
 }
 
+impl Fix {
+    /// A capability grant requires its own button or its explicit CLI name.
+    pub fn batchable(&self) -> bool {
+        !self.steps.iter().any(|step| matches!(step, Step::SetCompositorGrant { .. }))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Finding {
     /// Stable across scans ("remapper:keyd", "autosuspend:3-1.3").
@@ -232,12 +239,12 @@ impl Report {
     /// with): each finding with a fix but the suggestions (checked by
     /// the person, or `--fix suggestions`).
     pub fn fixable(&self) -> impl Iterator<Item = &Finding> {
-        self.findings.iter().filter(|f| f.fix.is_some() && f.severity != Severity::Suggestion)
+        self.findings.iter().filter(|f| f.fix.as_ref().is_some_and(Fix::batchable) && f.severity != Severity::Suggestion)
     }
 
     /// The suggestions that can be applied with a button.
     pub fn applicable(&self) -> impl Iterator<Item = &Finding> {
-        self.findings.iter().filter(|f| f.fix.is_some() && f.severity == Severity::Suggestion)
+        self.findings.iter().filter(|f| f.fix.as_ref().is_some_and(Fix::batchable) && f.severity == Severity::Suggestion)
     }
 
     /// `other`'s findings, what's fine and what can be undone added to
@@ -294,6 +301,8 @@ pub struct Roots {
     /// This login session ("session-2.scope"): another's processes are
     /// left alone.
     pub scope: Option<String>,
+    /// PID published for the current Wayland display.
+    pub session_pid: Option<i32>,
     /// What systemd says about a system unit.
     pub units: Box<dyn Fn(&str) -> Result<UnitState, String> + Send + Sync>,
     /// AirPods are paired here (the AirPods service's state).
@@ -437,6 +446,7 @@ impl Roots {
             bin,
             uid,
             scope,
+            session_pid: olo_xdg::session::display_session_pid(),
             units: Box::new(crate::fix::unit_state),
             airpods,
             phone,
@@ -2807,7 +2817,7 @@ fn session_groups(roots: &Roots, r: &mut Report) {
     if std::fs::read_to_string(roots.fs.join(DELEGATE_CONF)).is_ok_and(|text| text == DELEGATE_CONF_TEXT) {
         r.fine.push(Fine {
             title: "The session delegation setting is installed".into(),
-            detail: "This login has no usable desktop and background groups. The login worker records why it skipped setup.".into(),
+            detail: "This session isn't divided into the desktop and background work, though: it was started before the setting, or the login screen skipped it. Log out and in again through Olo's login screen; if it still isn't, the login screen says why in the journal (journalctl -t olo-login).".into(),
         });
         return;
     }
@@ -2828,31 +2838,51 @@ fn session_groups(roots: &Roots, r: &mut Report) {
 /// the choice gives and to whom; fine once the session's compositor
 /// holds it. Only where an Intel driver is there to ask for it.
 fn compositor_first(roots: &Roots, procs: &[Proc], r: &mut Report) {
-    use olo_system::caps::{CHOICE, CHOICE_TEXT, SYS_NICE};
+    use olo_system::caps::SYS_NICE;
     if roots.scope.is_none() || !["xe", "i915"].iter().any(|driver| roots.fs.join("sys/module").join(driver).exists()) {
         return;
     }
-    // (Root's file; a test's made-up computer is the tester's.)
-    let chosen = olo_system::caps::chosen(&roots.fs, if cfg!(test) { roots.uid } else { 0 });
-    let held = procs
-        .iter()
-        .find(|p| p.uid == roots.uid && p.name == "olo-app-server" && p.scope == roots.scope)
-        .is_some_and(|server| read(&roots.fs.join(format!("proc/{}/status", server.pid))).is_some_and(|status| olo_system::caps::effective_in(&status, SYS_NICE)));
+    let owner = if cfg!(test) { roots.uid } else { 0 };
+    let chosen = olo_system::caps::chosen(&roots.fs, owner, roots.uid);
+    let held = roots.session_pid.and_then(|session| {
+        procs.iter().filter(|p| p.name == "olo-app-server" && p.scope == roots.scope).find_map(|p| {
+            let dir = roots.fs.join(format!("proc/{}", p.pid));
+            let status = read(&dir.join("status"))?;
+            let field = |key: &str| status.lines().find_map(|l| l.strip_prefix(key)).map(str::trim);
+            let uid: u32 = field("Uid:")?.split_whitespace().next()?.parse().ok()?;
+            let parent: i32 = field("PPid:")?.parse().ok()?;
+            let cmd = std::fs::read(dir.join("cmdline")).ok()?;
+            if uid != roots.uid || parent != session || cmd.split(|b| *b == 0).nth(1) != Some(b"--tty-udev".as_slice()) {
+                return None;
+            }
+            let effective = u64::from_str_radix(field("CapEff:")?, 16).ok()?;
+            Some(effective & (1 << SYS_NICE) != 0)
+        })
+    });
     match (chosen, held) {
-        (true, true) => r.fine.push(Fine {
-            title: "The desktop's drawing may come first on the graphics processor".into(),
-            detail: "By your choice, Olo's login screen gave this session's window server what Intel's graphics driver asks before it puts a program's drawing ahead of others'.".into(),
+        (true, Some(true)) => r.fine.push(Fine {
+            title: "The window server holds GPU scheduling permission".into(),
+            detail: "This account has a login grant. The driver determines the priority of each GPU queue.".into(),
         }),
-        (true, false) => r.fine.push(Fine {
-            title: "The desktop will be first on the graphics processor from the next login".into(),
-            detail: "The choice is made; this session was started before it, or by a login screen older than this version (Olo Doctor offers that too). Log out and in again, or restart.".into(),
+        (true, observed) => r.findings.push(Finding {
+            id: "compositor-grant-status".into(), severity: Severity::Advice,
+            title: "GPU scheduling permission is configured for this account".into(),
+            detail: if observed == Some(false) {
+                "The running window server lacks the permission. A new Olo login reads the grant. If this login already used it, check the installed login, session and window server versions and the login journal."
+            } else {
+                "Doctor could not identify and read this display’s seat compositor."
+            }.into(),
+            fix: None,
+        }),
+        (false, Some(true)) => r.fine.push(Fine {
+            title: "The running window server still holds scheduling permission".into(),
+            detail: "This account has no grant for a fresh Olo login. A previous login or another administrator-controlled source can account for its current permission.".into(),
         }),
         (false, _) => r.findings.push(Finding {
-            id: "compositor-first".into(),
-            severity: Severity::Advice,
-            title: "The desktop isn't first on the graphics processor".into(),
-            detail: "Intel's graphics driver puts a program's drawing ahead of other programs' only if that program is allowed to set scheduling priorities (the capability CAP_SYS_NICE). Without it the window server waits its turn behind every other program that is drawing: measured beside six of them, 49 ms at the worst one time in a hundred, against 22 with it. Olo's login screen can give your session that permission, and the session passes it to the window server alone. It is your account that gets it, though: the programs it is handed to are your own files, so anything running as you could arrange to have it at the next login, and with it set any priority, realtime included, for any program on this computer. On a computer that is yours alone that is little more than you can do already; where other people have accounts, think first. This records the choice in a file only an administrator can write, and removing the file takes it back. It applies from the next login.".into(),
-            fix: Some(Fix { label: "Put the Desktop First".into(), root: true, steps: vec![Step::WriteFile { path: PathBuf::from("/").join(CHOICE), content: CHOICE_TEXT.into(), mode: 0o644 }] }),
+            id: "compositor-first".into(), severity: Severity::Suggestion,
+            title: "Allow this account to request high GPU priority".into(),
+            detail: format!("Intel's graphics driver puts a program's drawing ahead of other programs' only if that program may set scheduling priorities, and Olo's login screen can give your session that for its window server. At the next Olo login, account UID {} can use CAP_SYS_NICE. Its session and window server are writable by the account. This permits changing scheduling priorities, including realtime scheduling, for other processes on the computer. Removing /{}/{} withdraws the grant for future logins.", roots.uid, olo_system::caps::CHOICE_DIR, roots.uid),
+            fix: Some(Fix { label: "Allow Scheduling for This Account".into(), root: true, steps: vec![Step::SetCompositorGrant { uid: roots.uid, enabled: true }] }),
         }),
     }
 }
@@ -4968,6 +4998,7 @@ mod tests {
             bin,
             uid,
             scope: Some("session-2.scope".into()),
+            session_pid: Some(949),
             units,
             airpods: true,
             phone: false,
@@ -4990,8 +5021,6 @@ mod tests {
     /// then fine where the session's compositor holds the capability.
     #[test]
     fn the_desktop_first_on_the_gpu_is_the_owners_choice() {
-        use olo_system::caps::{CHOICE, CHOICE_TEXT};
-        use std::os::unix::fs::PermissionsExt as _;
         let (fs, roots) = machine("compositor-first");
         let server = Proc { pid: 950, uid: roots.uid, name: "olo-app-server".into(), exe: None, scope: roots.scope.clone() };
         let look = || {
@@ -4999,24 +5028,25 @@ mod tests {
             compositor_first(&roots, std::slice::from_ref(&server), &mut r);
             r
         };
-        // No Intel driver: nothing to say.
-        assert!(look().findings.is_empty() && look().fine.is_empty());
+        assert!(look().findings.is_empty());
         std::fs::create_dir_all(fs.join("sys/module/xe")).unwrap();
         let r = look();
         let fix = r.findings.iter().find(|f| f.id == "compositor-first").unwrap().fix.as_ref().unwrap();
-        assert!(fix.root && matches!(fix.steps.as_slice(), [Step::WriteFile { path, content, mode: 0o644 }] if path == Path::new("/etc/olo/compositor-first") && content == CHOICE_TEXT));
-        // Chosen: for the next login, until the compositor holds it.
-        let file = fs.join(CHOICE);
-        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
-        std::fs::set_permissions(file.parent().unwrap(), std::fs::Permissions::from_mode(0o755)).unwrap();
-        std::fs::write(&file, CHOICE_TEXT).unwrap();
-        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
-        let r = look();
-        assert!(r.findings.is_empty() && r.fine.iter().any(|f| f.title.contains("from the next login")));
-        std::fs::create_dir_all(fs.join("proc/950")).unwrap();
-        std::fs::write(fs.join("proc/950/status"), "Name:\tolo-app-server\nCapEff:\t0000000000800000\n").unwrap();
-        let r = look();
-        assert!(r.findings.is_empty() && r.fine.iter().any(|f| f.title.starts_with("The desktop's drawing may come first")));
+        assert!(fix.root && !fix.batchable());
+        assert_eq!(fix.steps, [Step::SetCompositorGrant { uid: roots.uid, enabled: true }]);
+        // (Root's folder, there on a computer Olo was installed on.)
+        std::fs::create_dir_all(fs.join("etc/olo")).unwrap();
+        std::fs::set_permissions(fs.join("etc/olo"), std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        std::fs::set_permissions(fs.join("etc"), std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        olo_system::caps::set_choice(&roots.fs, roots.uid, roots.uid, true).unwrap();
+        assert!(look().findings.iter().any(|f| f.id == "compositor-grant-status"));
+        let dir = fs.join("proc/950");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("cmdline"), b"olo-app-server\0--tty-udev\0").unwrap();
+        std::fs::write(dir.join("status"), format!("PPid:\t949\nUid:\t{}\nCapEff:\t0000000000800000\n", roots.uid)).unwrap();
+        assert!(look().fine.iter().any(|f| f.title.contains("holds GPU")));
+        olo_system::caps::set_choice(&roots.fs, roots.uid, roots.uid, false).unwrap();
+        assert!(look().fine.iter().any(|f| f.title.contains("still holds")));
     }
 
     /// The session's division: a finding with the drop-in to write where
@@ -5851,6 +5881,7 @@ mod tests {
             bin: fs.join("home/me/.local/bin"),
             uid: 1000,
             scope: None,
+            session_pid: None,
             units: Box::new(|_| Err("none".into())),
             airpods: false,
             phone: false,
@@ -5939,6 +5970,7 @@ mod tests {
             bin: fs.join("home/me/.local/bin"),
             uid: 1000,
             scope: None,
+            session_pid: None,
             units: Box::new(|_| Err("none".into())),
             airpods: false,
             phone: false,
@@ -6344,6 +6376,7 @@ mod tests {
                 "voice-realtime",
                 "airpods-listening",
                 "uclamp",
+                "session-groups",
                 "stale",
                 "login",
                 "tmp:memory",
@@ -6617,6 +6650,7 @@ mod tests {
         w(HEAL_UNIT_PATH, HEAL_UNIT);
         w(BRCMFMAC_CONF_PATH, BRCMFMAC_CONF);
         w(UTIL_CLAMP_PATH, "1024\n");
+        w(olo_system::session_groups::DELEGATE_CONF, olo_system::session_groups::DELEGATE_CONF_TEXT);
         roots.units = Box::new(|name: &str| {
             Ok(if matches!(name, "rtkit-daemon.service" | "olo-wifi-heal.service") { UnitState { loaded: true, active: true, enabled: true, path: None } } else { UnitState::default() })
         });
@@ -6638,6 +6672,7 @@ mod tests {
                 "Voice processing's sound is realtime",
                 "Bluetooth listens for the AirPods",
                 "Frames run on the fast cores",
+                "The session delegation setting is installed",
                 "Every Olo program runs the installed version",
                 "Olo is on the login screen",
                 "Temporary files are kept on disk",
@@ -7530,6 +7565,7 @@ mod tests {
                 bin: PathBuf::new(),
                 uid: 1000,
                 scope: None,
+                session_pid: None,
                 units: Box::new(|_| Err("none".into())),
                 airpods: false,
                 phone: false,

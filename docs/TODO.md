@@ -147,13 +147,13 @@ something nobody here has is in "Blocked", with what it waits for.
      **Done, as the owner's choice** (Ben, 2026-11-20, told what
      it gives and why Astra's review had it taken out: "yes add the
      CAP_SYS_NICE thing"): Olo's login hands a person's Olo session
-     the capability where `/etc/olo/compositor-first` is there
-     (root's file; Olo Doctor's "Put the Desktop First"), the
+     the capability where `/etc/olo/compositor-first.d/UID` is there
+     (the administrator's grant for that account), the
      session passes it to the person's app_server alone
      (`olo_system::caps`; HACKING, "The desktop first on the GPU").
      **To check on the computer after the first login with it**: the
      compositor's context really is the GPU's high one
-     (`tools/dev/gpu-priority-check asked`: 2 where 1) and draws
+     (a successful high-priority request for its queue) and draws
      wait less beside others drawing; what can no longer look into
      the compositor (Activity Monitor's figures for it, crash
      reports, Doctor's older-version check) and what each should do
@@ -330,9 +330,14 @@ something nobody here has is in "Blocked", with what it waits for.
   screen runs an older version", "Builds can't be kept apart from
   the desktop"), then a restart or a new login; then the choice in
   Preferences ▸ Performance, which is theirs to turn on.
+  **On Ben's computer, 2026-11-21, the first login with it**: the
+  session is divided as built (`leader/` holding the login's worker,
+  43 processes in `olo/desk`, `olo/bg` idle with no allowance, the
+  four files Ben's, everything else root's), logind has the session
+  active with its leader, and Ben turned the choice on.
   **Left**:
-  - On Ben's computer after that login, each on their word: that
-    the session is divided (Doctor says so), external apps still
+  - On Ben's computer: compilers seen in `bg` and its allowance set
+    during a real build; external apps still
     start in their own scopes, logging out leaves nothing behind;
     then the choice on with the memory record running, matched real
     builds off and on, and what a person feels measured (a key to

@@ -25,6 +25,11 @@ pub enum UnitAction {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Step {
+    /// Change the root-owned scheduling grant for exactly this authenticated account.
+    SetCompositorGrant {
+        uid: u32,
+        enabled: bool,
+    },
     /// Write a whole file (through a sibling, then renamed into place).
     WriteFile {
         path: PathBuf,
@@ -278,6 +283,7 @@ impl Step {
     /// What it does, for a report ("Writing /etc/udev/rules.d/…").
     pub fn describe(&self) -> String {
         match self {
+            Step::SetCompositorGrant { uid, enabled } => format!("{} compositor scheduling permission for UID {uid}", if *enabled { "Granting" } else { "Removing" }),
             Step::WriteFile { path, .. } => format!("Writing {}", path.display()),
             Step::CopyFile { to, .. } => format!("Installing {}", to.display()),
             Step::NetworkManagerReload => "Reloading NetworkManager's settings".into(),
@@ -402,6 +408,7 @@ impl Step {
     pub fn run(&self) -> Result<(), String> {
         let failed = |e: std::io::Error| format!("{}: {e}", self.describe());
         match self {
+            Step::SetCompositorGrant { uid, enabled } => olo_system::caps::set_choice(Path::new("/"), 0, *uid, *enabled).map_err(failed),
             Step::WriteFile { path, content, mode } => write_file(path, content, *mode).map_err(failed),
             Step::CopyFile { from, to, mode } => std::fs::read(from).and_then(|bytes| write_bytes(to, &bytes, *mode)).map_err(failed),
             Step::NetworkManagerReload => olo_system::network::reload().map_err(|e| format!("{}: {e}", self.describe())),
@@ -609,6 +616,10 @@ impl Step {
     pub fn inverse(&self) -> Inverse {
         let cant = |what: &str| Inverse::note(what);
         match self {
+            Step::SetCompositorGrant { uid, enabled } => {
+                let was = olo_system::caps::chosen(Path::new("/"), 0, *uid);
+                if was == *enabled { Inverse::default() } else { Inverse::restore(vec![Step::SetCompositorGrant { uid: *uid, enabled: was }]) }
+            }
             Step::WriteFile { path, content, .. } => match put_back(path) {
                 // (As it is already: nothing changes, nothing to undo.)
                 Some(back) if matches!(back.as_slice(), [Step::WriteFile { content: now, .. }] if now == content) => Inverse::default(),

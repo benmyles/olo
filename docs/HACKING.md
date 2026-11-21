@@ -5143,27 +5143,24 @@ nothing switches without those.
   session's: logged in a second time they can move what is in the
   first's two groups. Nobody else's processes can come in or go out.)
   **The desktop first on the GPU, where the computer's owner chose so**
-  (`olo_system::caps`). Intel's drivers give a program's work the
-  GPU's high priority only where the program has `CAP_SYS_NICE` (Mesa
-  asks for the ordinary one otherwise and says nothing: "The GPU has
-  priorities too"). Where `/etc/olo/compositor-first` is there
-  (`caps::chosen`: a plain file of root's that nobody else may write,
-  which Olo Doctor offers, saying what it gives), the worker's child
-  keeps its capabilities through the change of user, gives up all but
-  that one and hands it on to a person's Olo session; `olo-session`
-  takes it out of what it starts at once and hands it on again only to
-  the person's `olo-app-server` (and to itself, when it starts again
-  for an upgrade), which hands it to nothing. Without the file, nothing
-  is handed on. It is the owner's choice and not Olo's because it is
-  the account that gets it: the programs it is handed to are the
-  person's own files. And a process that holds it can't be looked into
-  by the person's programs that don't (its `/proc` entries but
-  `status`, `cmdline` and `cgroup`): the supervisor knows such a
-  process as its session's by its login session and the capability
-  (`same_session`); `strace`, `tools/dev/cost` and the like on the
-  compositor then want root.
-  Tried against the kernel in a guest, as root and then as the
-  person: `tools/dev/kernel-check session-groups`.
+  (`olo_system::caps`). A root-owned marker at
+  `/etc/olo/compositor-first.d/UID` authorizes the selected account's
+  Olo seat login. Login checks each directory and the marker. Doctor
+  offers the grant through its individual action or `--fix compositor-first`.
+  Removing the marker takes effect at the next fresh login. An existing
+  holder keeps its credentials through a session upgrade.
+  The account controls its session and compositor executables. Verify the
+  login worker, system trampoline, personal session and compositor are
+  compatible before enabling the grant or rolling back.
+  The session and compositor keep only bit 23 permitted and effective.
+  A fork copies its calling thread's sets. A fresh ordinary program
+  starts with empty inheritable, permitted, effective and ambient sets.
+  The session prepares bit 23 for its seat compositor and its own upgrade.
+  The display's published session PID identifies the session leader and
+  its direct compositor. A monitor can still read basic counters.
+  `tools/dev/kernel-check session-groups` exercises the kernel handoff.
+  The first physical login also needs a driver-level check of the
+  granted queue priority.
 * `olo-session --greeter`: app_server and `olo-greeter` alone, no
   upgrades watched; the greeter quitting ends it.
 * `olo-greeter` (apps/greeter): a layer surface on every display, the
@@ -15113,12 +15110,10 @@ What it looks for:
   Fine, and said to be for the next login, once it is written; fine in
   a session that is divided and whose programs are in its desktop
   group.
-- **The desktop isn't first on the graphics processor** (advice, where
-  an Intel driver is loaded and the owner's choice isn't made): Put the
-  Desktop First writes `/etc/olo/compositor-first`, saying what it
-  gives and to whom; in force from the next login. Fine, for the next
-  login, once it is there; fine where the session's compositor holds
-  the capability.
+- **Allow this account to request high GPU priority** is an individual
+  administrator action on Intel systems. Doctor reports the configured
+  UID and the running seat compositor's credentials separately. The
+  graphics driver determines the actual queue priority.
 - **The system's services can run on the window server's core**
   (advice, with the kept core on and systemd's drop-in missing or for
   another core): Keep Them Off writes it and moves what runs now

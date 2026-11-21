@@ -566,10 +566,14 @@ mkdir /cg$U/session-9.scope
 echo "case|not placed"
 bash -c "echo \$\$ > /cg$U/session-9.scope/cgroup.procs; exec /bin/kbench session-groups /cg $U/session-9.scope 9 1000 1000 --mark --misplace"
 echo "check|left in it|$(ls -d /cg$U/session-9.scope/*/ 2>/dev/null | wc -l) groups, handing down [$(cat /cg$U/session-9.scope/cgroup.subtree_control)]"
-# As a login finds it.
+# As a login finds it, the owner not having chosen the capability for this account: everything dropped, verified.
+mkdir /cg$U/session-5.scope
+echo "case|a login without the choice"
+bash -c "echo \$\$ > /cg$U/session-5.scope/cgroup.procs; exec /bin/kbench session-groups /cg $U/session-5.scope 5 1000 1000 --mark"
+# As a login finds it, with the choice.
 mkdir /cg$U/session-7.scope
 echo "case|a login's scope"
-bash -c "echo \$\$ > /cg$U/session-7.scope/cgroup.procs; exec /bin/kbench session-groups /cg $U/session-7.scope 7 1000 1000 --mark"
+bash -c "echo \$\$ > /cg$U/session-7.scope/cgroup.procs; exec /bin/kbench session-groups /cg $U/session-7.scope 7 1000 1000 --mark --chosen"
 echo "check|controllers handed down|$(cat /cg$U/session-7.scope/cgroup.subtree_control) / $(cat /cg$U/session-7.scope/olo/cgroup.subtree_control)"
 echo "check|whose|$(stat -c '%u' /cg$U/session-7.scope/olo /cg$U/session-7.scope/olo/bg /cg$U/session-7.scope/olo/cgroup.procs /cg$U/session-7.scope/olo/bg/cgroup.procs /cg$U/session-7.scope/olo/bg/memory.high /cg$U/session-7.scope/olo/bg/cpu.idle /cg$U/session-7.scope/cgroup.procs /cg$U/session-7.scope/leader/cgroup.procs | awk '{printf "%s ", $1}')"
 # The session over: everything in it gone, the groups can be removed (as systemd does a scope's).
@@ -596,7 +600,17 @@ def session_groups():
         ("a login's scope", "the session's first process placed"): "done",
         ("a login's scope", "root taken back"): "no",
         ("a login's scope", "who"): "uid 1000 in /user.slice/user-1000.slice/session-7.scope/olo/desk",
+        ("a login without the choice", "prepare"): "made; the worker is in /user.slice/user-1000.slice/session-5.scope/leader",
+        ("a login without the choice", "nothing handed on"): "all dropped, read back",
+        ("a login without the choice", "root taken back"): "no",
+        ("a login without the choice", "the session's first process"): "has none",
+        ("a login without the choice", "its four sets as it starts"): "///",
+        ("a login without the choice", "kept at rest"): "read back ///",
+        ("a login without the choice", "a program it starts"): "has none",
+        ("a login without the choice", "one started after"): "has none",
         ("a login's scope", "the session's first process"): "has the capability",
+        ("a login's scope", "its four sets as it starts"): "800000/800000/800000/800000",
+        ("a login's scope", "kept at rest"): "read back /800000/800000/",
         ("a login's scope", "found from desk"): "/cg/user.slice/user-1000.slice/session-7.scope/olo/desk and /cg/user.slice/user-1000.slice/session-7.scope/olo/bg",
         ("a login's scope", "itself to bg"): "done",
         ("a login's scope", "then in"): "/user.slice/user-1000.slice/session-7.scope/olo/bg",
@@ -630,7 +644,7 @@ def session_groups():
             said = str(row[2])
             got[(case, row[1])] = said
             expected = want.get((case, row[1]))
-            if expected is None and case == "not placed":
+            if expected is None and case in ("not placed", "a login without the choice"):
                 continue
             ok = expected is not None and said.startswith(expected)
             wrong += 0 if ok else 1

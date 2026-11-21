@@ -4,49 +4,18 @@
 //! kernel for the ordinary one otherwise, and says nothing): so the
 //! person's own compositor, and nothing else, is to have it.
 //!
-//! Capabilities don't survive a change of user or a program's start
-//! unless each step says so:
-//! - the login's worker, root, about to become the person: [`keep`]
-//!   before the change of user, [`narrow`] after it (that one alone, of
-//!   all root had), [`hand_on`] so the program it starts has it;
-//! - `olo-session`, started with it: [`held`], then [`hand_on_nothing`]
-//!   so nothing it starts has it, and [`hand_on`] again in the one child
-//!   that is the person's compositor (and before it starts itself again
-//!   for an upgrade);
-//! - `olo-app-server`: [`hand_on_nothing`] first thing, so what it
-//!   starts has nothing.
-//!
-//! Every call here is a plain system call (safe between `fork` and
-//! `exec`), and a failure leaves the process with less, never more: a
-//! program started by an account that isn't root keeps only what was
-//! handed on, whatever its parent still held.
+//! The login checks the administrator's per-account marker and sets exactly
+//! one bit on the change to the selected UID. The session and compositor
+//! drop the inheritable and ambient sets before starting work. A fork still
+//! copies the calling thread's credentials until they are dropped or the
+//! child executes an ordinary file. The session prepares its current thread
+//! for an exec only for its seat compositor or its own replacement.
 
 /// `CAP_SYS_NICE`.
 pub const SYS_NICE: u32 = 23;
 
-/// Where the computer's owner says that a person's Olo session is to
-/// have the capability (from the root of the filesystem). It is theirs
-/// to say, not Olo's: the programs it is handed to are the person's own
-/// files, so it is the account that gets it, and what it allows
-/// (any priority, realtime among them, and the scheduling of any
-/// program on the computer) is the owner's to give. Olo Doctor offers
-/// it in those words and writes this; without it the login hands on
-/// nothing.
-pub const CHOICE: &str = "etc/olo/compositor-first";
-
-/// What that file says (only its being there counts).
-pub const CHOICE_TEXT: &str = "# Olo: this computer's owner chose that a person's Olo session gets CAP_SYS_NICE at login, for its compositor\n# (the graphics driver gives the GPU's high priority only with it). Olo Doctor wrote this; remove it to take the choice back.\n";
-
-/// Whether the owner made that choice, under `root`: the file is there,
-/// a plain file (not a link to one) that is `owner`'s (root's) and that
-/// nobody else may write, in a directory the same. Anything else is no
-/// choice.
-pub fn chosen(root: &std::path::Path, owner: u32) -> bool {
-    use std::os::unix::fs::MetadataExt as _;
-    let file = root.join(CHOICE);
-    let theirs = |m: std::fs::Metadata| m.uid() == owner && m.mode() & 0o022 == 0;
-    std::fs::symlink_metadata(&file).is_ok_and(|m| m.is_file() && theirs(m)) && file.parent().and_then(|dir| std::fs::symlink_metadata(dir).ok()).is_some_and(|m| m.is_dir() && theirs(m))
-}
+mod choice;
+pub use choice::{CHOICE_DIR, chosen, set_choice};
 
 /// Whether process `pid` may use `cap` now, as anyone can read it (its
 /// status: a process that holds a capability can't otherwise be looked
@@ -70,7 +39,7 @@ struct Header {
 }
 
 #[repr(C)]
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, PartialEq)]
 struct Data {
     effective: u32,
     permitted: u32,
@@ -92,27 +61,53 @@ pub fn held(cap: u32) -> bool {
 /// What this process holds stays through a change of user (cleared by
 /// the kernel at the next program's start).
 pub fn keep() {
-    // SAFETY: a plain system call.
-    unsafe { libc::prctl(libc::PR_SET_KEEPCAPS, 1, 0, 0, 0) };
+    let _ = keep_for_login();
 }
 
-/// Everything this process holds given up but `cap`, which it may use
-/// and hand on. False (and nothing held at all, if that can be had)
-/// where the kernel refused.
-pub fn narrow(cap: u32) -> bool {
+pub fn keep_for_login() -> std::io::Result<()> {
+    if unsafe { libc::prctl(libc::PR_SET_KEEPCAPS, 1 as libc::c_ulong, 0 as libc::c_ulong, 0 as libc::c_ulong, 0 as libc::c_ulong) } == 0 { Ok(()) } else { Err(std::io::Error::last_os_error()) }
+}
+
+fn set_exact(cap: Option<u32>, forward: bool) -> std::io::Result<()> {
     let mut data = [Data::default(); 2];
-    let bit = 1 << (cap % 32);
-    data[(cap / 32) as usize] = Data { effective: bit, permitted: bit, inheritable: bit };
+    if let Some(cap) = cap {
+        let bit = 1 << (cap % 32);
+        data[(cap / 32) as usize] = Data { effective: bit, permitted: bit, inheritable: if forward { bit } else { 0 } };
+    }
     let mut header = Header { version: VERSION, pid: 0 };
-    // SAFETY: the kernel's structures, read by it.
+    // SAFETY: the two words use the kernel's v3 layout. Dropping I also drops A.
     if unsafe { libc::syscall(libc::SYS_capset, &mut header as *mut Header, data.as_ptr()) } == 0 {
+        return Ok(());
+    }
+    let error = std::io::Error::last_os_error();
+    // Some sandboxes deny even a no-op capset. Continue only when capget
+    // independently confirms the requested sets.
+    if sets() == Some(data) { Ok(()) } else { Err(error) }
+}
+
+/// Keep the exact effective and permitted bit requested, with nothing inheritable or ambient.
+pub fn rest(cap: Option<u32>) -> std::io::Result<()> {
+    set_exact(cap, false)
+}
+
+pub fn narrow(cap: u32) -> bool {
+    if set_exact(Some(cap), true).is_ok() {
         return true;
     }
-    let none = [Data::default(); 2];
-    let mut header = Header { version: VERSION, pid: 0 };
-    // SAFETY: as above.
-    unsafe { libc::syscall(libc::SYS_capset, &mut header as *mut Header, none.as_ptr()) };
+    let _ = rest(None);
     false
+}
+
+/// Prepare the current thread for the one intended exec. The caller must
+/// restore its resting state on every error, including a returned exec.
+pub fn for_exec(cap: u32) -> std::io::Result<()> {
+    set_exact(Some(cap), true)?;
+    if hand_on(cap) { Ok(()) } else { Err(std::io::Error::last_os_error()) }
+}
+
+/// The ambient bit this thread actually received for an ordinary exec.
+pub fn ambient(cap: u32) -> bool {
+    unsafe { libc::prctl(libc::PR_CAP_AMBIENT, libc::PR_CAP_AMBIENT_IS_SET as libc::c_ulong, libc::c_ulong::from(cap), 0, 0) == 1 }
 }
 
 /// The next program this process starts (itself, by `exec`) has `cap`.
@@ -121,7 +116,7 @@ pub fn hand_on(cap: u32) -> bool {
     unsafe { libc::prctl(libc::PR_CAP_AMBIENT, libc::PR_CAP_AMBIENT_RAISE as libc::c_ulong, libc::c_ulong::from(cap), 0, 0) == 0 }
 }
 
-/// Nothing this process starts has any capability of its.
+/// Clear only ambient capabilities. Inheritable, permitted and effective are preserved.
 pub fn hand_on_nothing() {
     // SAFETY: a plain system call.
     unsafe { libc::prctl(libc::PR_CAP_AMBIENT, libc::PR_CAP_AMBIENT_CLEAR_ALL as libc::c_ulong, 0, 0, 0) };
@@ -152,31 +147,32 @@ mod tests {
     #[test]
     fn the_choice_is_the_owners_file_and_nothing_else() {
         use std::os::unix::fs::PermissionsExt as _;
-        let root = std::path::PathBuf::from(format!("/var/tmp/olo-caps-choice-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let scratch = tempfile::Builder::new().prefix("olo-caps-choice-").tempdir_in("/var/tmp").unwrap();
+        let root = scratch.path();
         // SAFETY: getuid has no preconditions.
         let me = unsafe { libc::getuid() };
-        assert!(!chosen(&root, me));
-        let file = root.join(CHOICE);
+        assert!(!chosen(root, me, 1000));
+        let file = root.join(CHOICE_DIR).join("1000");
         let dir = file.parent().unwrap();
         std::fs::create_dir_all(dir).unwrap();
         let mode = |p: &std::path::Path, m: u32| std::fs::set_permissions(p, std::fs::Permissions::from_mode(m)).unwrap();
         mode(dir, 0o755);
-        std::fs::write(&file, CHOICE_TEXT).unwrap();
+        set_choice(root, me, 1000, true).unwrap();
+        assert!(!chosen(root, me, 1001));
         mode(&file, 0o644);
-        assert!(chosen(&root, me));
+        assert!(chosen(root, me, 1000));
         // Someone else's; writable by others; in a directory others may
         // write; a link to a file.
-        assert!(!chosen(&root, me + 1));
+        assert!(!chosen(root, me + 1, 1000));
         mode(&file, 0o664);
-        assert!(!chosen(&root, me));
+        assert!(!chosen(root, me, 1000));
         mode(&file, 0o644);
         mode(dir, 0o777);
-        assert!(!chosen(&root, me));
+        assert!(!chosen(root, me, 1000));
         mode(dir, 0o755);
         std::fs::rename(&file, dir.join("real")).unwrap();
         std::os::unix::fs::symlink(dir.join("real"), &file).unwrap();
-        assert!(!chosen(&root, me));
-        std::fs::remove_dir_all(&root).unwrap();
+        assert!(!chosen(root, me, 1000));
+        assert!(set_choice(root, me, 1000, true).is_err());
     }
 }
