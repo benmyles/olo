@@ -1,0 +1,172 @@
+#!/usr/bin/python3
+"""Reclaim kache's incremental compiler state ("managed graphs") that nothing
+has used for a while, from one profile of a build folder: what kache's own
+sweep does when it gets its lock, done by hand because on a computer where a
+Cargo command always runs somewhere (another project's `cargo watch`, from
+login to logout) it never does (docs/AGENT-NOTES.md, "Old builds"; kache's
+FORK.md). 161 GB had piled up under target/debug in sixteen days.
+
+  prune-graphs [PROFILE_DIR] [--days N] [--really]
+        PROFILE_DIR: target/debug of this repository unless given; N: 3.
+        Without --really it only says what it would do.
+
+How it stays out of a build's way (each point is one a review of two
+attempts to loosen kache's own lock found a real failure for):
+
+- Cargo's three locks of the profile are held, without waiting, while graphs
+  are detached: no build of the profile runs, and one that starts waits (a
+  third of a second for 1,230 graphs).
+- Each unit is opened as a folder once and everything in it is done through
+  that descriptor, never by its path again: its lock taken (a compiler holds
+  it for all of its run, and an import into another worktree takes it on its
+  donor), its age judged under the lock (its folder's time and its state's
+  `last_used_secs`, as kache judges it), its donor marker removed, its
+  `rustc` folder renamed out into a folder kache never reads, its state
+  removed. A build folder removed and made again meanwhile (`cargo clean`
+  takes no lock) is another folder: nothing here reaches it. The unit's
+  folder and lock file stay, as kache keeps them.
+- What was detached is deleted afterwards, outside every lock.
+- A unit whose state can't be read, or isn't the layout this knows (kache's
+  `v2`, state schema 1), is left alone. A newer kache with another layout
+  finds nothing to do here.
+
+Never run it on a build folder you aren't the only one to `cargo clean`.
+"""
+import fcntl, json, os, re, shutil, stat, sys, time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+CARGO_LOCKS = (".cargo-lock", ".cargo-build-lock", ".cargo-artifact-lock")
+HEX = re.compile(r"^[0-9a-f]{64}$")
+DIR = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+
+
+def kind(name, dir_fd):
+    """'dir', 'file', 'other' or None (not there), not following a link."""
+    try:
+        mode = os.stat(name, dir_fd=dir_fd, follow_symlinks=False).st_mode
+    except OSError:
+        return None
+    return "dir" if stat.S_ISDIR(mode) else "file" if stat.S_ISREG(mode) else "other"
+
+
+def last_used(unit_fd, name):
+    """When the unit was last used, as kache judges it; None if its state can't be trusted."""
+    last = os.fstat(unit_fd).st_mtime
+    state = kind("state.json", unit_fd)
+    if state is None:
+        return last
+    if state != "file":
+        return None
+    try:
+        fd = os.open("state.json", os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=unit_fd)
+        with os.fdopen(fd) as f:
+            text = f.read(64 * 1024 + 1)
+        if len(text) > 64 * 1024:
+            return None
+        s = json.loads(text)
+        if s.get("schema") != 1 or s.get("unit_key") != name:
+            return None
+        return max(last, float(s["last_used_secs"]))
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def sweep(profile, days, really, now=None, out=print):
+    now = time.time() if now is None else now
+    units_root = os.path.join(profile, "incremental.kache-auto", "v2")
+    counts = {"detached": 0, "recent": 0, "no graph": 0, "busy": 0, "state unreadable": 0, "not a unit": 0}
+    try:
+        root_fd = os.open(units_root, DIR)
+    except OSError:
+        out(f"no managed graphs under {profile}")
+        return counts
+    held, aside, aside_fd = [], None, None
+    try:
+        if really:
+            for name in CARGO_LOCKS:
+                f = open(os.path.join(profile, name), "a+")
+                try:
+                    fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except OSError:
+                    f.close()
+                    out(f"a build holds {name} in {profile}: not now")
+                    return counts
+                held.append(f)
+            aside = os.path.join(profile, "incremental.kache-auto", f".detached-{os.getpid()}-{int(now)}")
+            os.mkdir(aside)
+            aside_fd = os.open(aside, DIR)
+        started = time.monotonic()
+        for name in sorted(os.listdir(root_fd)):
+            if not HEX.match(name):
+                counts["not a unit"] += 1
+                continue
+            try:
+                unit_fd = os.open(name, DIR, dir_fd=root_fd)
+            except OSError:
+                counts["not a unit"] += 1
+                continue
+            lock_fd = None
+            try:
+                if kind("unit.lock", unit_fd) != "file":
+                    counts["not a unit"] += 1
+                    continue
+                if kind("rustc", unit_fd) != "dir":
+                    counts["no graph"] += 1
+                    continue
+                lock_fd = os.open("unit.lock", os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=unit_fd)
+                try:
+                    fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except OSError:
+                    counts["busy"] += 1
+                    continue
+                # Under the lock: still a graph there, and old.
+                if kind("rustc", unit_fd) != "dir":
+                    counts["no graph"] += 1
+                    continue
+                last = last_used(unit_fd, name)
+                if last is None:
+                    counts["state unreadable"] += 1
+                    continue
+                if now - last < days * 86400:
+                    counts["recent"] += 1
+                    continue
+                if really:
+                    if kind("worktree-seed-v1", unit_fd) is not None:
+                        os.unlink("worktree-seed-v1", dir_fd=unit_fd)
+                    os.rename("rustc", name, src_dir_fd=unit_fd, dst_dir_fd=aside_fd)
+                    if kind("state.json", unit_fd) is not None:
+                        os.unlink("state.json", dir_fd=unit_fd)
+                counts["detached"] += 1
+            finally:
+                if lock_fd is not None:
+                    os.close(lock_fd)   # (closing it lets the lock go)
+                os.close(unit_fd)
+        locked_for = time.monotonic() - started
+    finally:
+        for f in held:
+            f.close()
+        os.close(root_fd)
+        if aside_fd is not None:
+            os.close(aside_fd)
+    if really:
+        t = time.monotonic()
+        shutil.rmtree(aside)
+        out(f"detached {counts} under Cargo's locks for {locked_for:.1f} s; deleted in {time.monotonic() - t:.0f} s")
+    else:
+        out(f"would detach {counts} (--really does it)")
+    return counts
+
+
+def main():
+    a = sys.argv[1:]
+    if "-h" in a or "--help" in a:
+        print(__doc__)
+        return
+    days = float(a[a.index("--days") + 1]) if "--days" in a else 3.0
+    rest = [x for i, x in enumerate(a) if x not in ("--really", "--days") and (i == 0 or a[i - 1] != "--days")]
+    profile = rest[0] if rest else os.path.join(ROOT, "target", "debug")
+    sweep(profile, days, "--really" in a)
+
+
+if __name__ == "__main__":
+    main()
