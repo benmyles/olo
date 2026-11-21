@@ -1,11 +1,17 @@
 //! The frames a screen drew, kept beside its history of actions
 //! (`history`): `olo-screen record NAME` runs with each screen (in its
-//! process group, so it ends with it), looks at the screen eight times a
-//! second for a few seconds after each action and once a second
-//! otherwise, and keeps only what changed: the 64-pixel tiles that differ
-//! from the frame before, zstd-compressed, with a whole frame every 30 s
-//! (a keyframe, to start playing from). Frames go in segments of five
-//! minutes, `frames-START.olof` in the history's folder, the oldest
+//! process group, so it ends with it), looks at the screen when it has
+//! drawn something new (its app_server says so, `EventKind::Painted`:
+//! at most eight times a second for a few seconds after each action and
+//! once a second otherwise), and keeps only what changed: the 64-pixel
+//! tiles that differ from the frame before, zstd-compressed, with a
+//! whole frame where the last one is 30 s old (a keyframe, to start
+//! playing from). A screen that draws nothing is not looked at, and
+//! nothing is written for it: it used to be asked for its whole picture
+//! every second whatever it did, and written whole every 30 s (eleven
+//! idle screens: eleven pictures a second read back from the GPU the
+//! person's desktop draws on, and compared). Frames go in segments of
+//! five minutes, `frames-START.olof` in the history's folder, the oldest
 //! dropped past the limits in Preferences ▸ AI (`history::limits`).
 //!
 //! A segment is `MAGIC`, then records: a little-endian u32 length and
@@ -16,6 +22,7 @@
 use std::{
     io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
+    sync::{Arc, Condvar, Mutex},
     time::{Duration, Instant},
 };
 
@@ -23,9 +30,15 @@ use crate::{history, screens};
 
 const MAGIC: &[u8; 8] = b"OLOFRM1\n";
 const TILE: usize = 64;
-/// How often the screen is looked at, after an action and otherwise.
+/// How often the screen is looked at at the most, after an action and
+/// otherwise (and how often it is looked at whatever it drew, where its
+/// app_server doesn't say when it draws: one from before it did).
 const BUSY: Duration = Duration::from_millis(125);
 const IDLE: Duration = Duration::from_secs(1);
+/// With nothing drawn, how often the recorder still wakes: to see that
+/// its screen is there and whether an upgrade asks it to become its new
+/// version (the session stops, 90 s on, a program still the old one).
+const WAKE: Duration = Duration::from_secs(30);
 /// How long after an action it is looked at often.
 const BUSY_FOR: Duration = Duration::from_secs(5);
 const KEY_EVERY: Duration = Duration::from_secs(30);
@@ -380,6 +393,43 @@ fn asked(signals: &std::fs::File) -> bool {
     unsafe { libc::poll(&mut fd, 1, 0) > 0 && fd.revents & libc::POLLIN != 0 }
 }
 
+/// What the screen's app_server has said since it was last looked at.
+#[derive(Default)]
+struct Said {
+    /// It drew something new.
+    painted: bool,
+    /// It is gone (its events ended).
+    gone: bool,
+}
+
+/// Has `said` told whenever screen `screen` draws something new, by a
+/// thread that reads its app_server's events; false where that
+/// app_server can't be asked or doesn't say (the screen is then looked
+/// at by the clock, as it always was).
+fn follow_paints(screen: &screens::Screen, said: &Arc<(Mutex<Said>, Condvar)>) -> bool {
+    use olo_protocol::{Client, Event, EventKind, Reply, Request};
+    let Ok(mut client) = Client::connect_to(&screen.olo_socket) else { return false };
+    if !matches!(client.request(&Request::SubscribeTo { events: vec![EventKind::Painted] }), Ok(Reply::Ok)) {
+        return false;
+    }
+    let said = said.clone();
+    let tell = move |f: &dyn Fn(&mut Said)| {
+        f(&mut said.0.lock().unwrap_or_else(|e| e.into_inner()));
+        said.1.notify_all();
+    };
+    std::thread::Builder::new()
+        .name("screen-events".into())
+        .spawn(move || {
+            while let Ok(reply) = client.read() {
+                if let Reply::Event { event: Event::Painted { .. } } = reply {
+                    tell(&|s| s.painted = true);
+                }
+            }
+            tell(&|s| s.gone = true);
+        })
+        .is_ok()
+}
+
 /// Record screen `name` until it is gone. One recorder a screen: a
 /// second (two agents acting at once on a screen that had none) finds
 /// the first's lock and leaves.
@@ -408,8 +458,12 @@ pub fn run(name: &str) -> Result<(), String> {
     // a running screen's recorder again: five screens' frames weren't
     // kept from an upgrade on. Ben, 2026-11-18.)
     let mut upgrade = olo_kit::restore::upgrade_signal();
+    // What it has drawn since the last look (the first look is due at
+    // once: what the screen shows as recording begins).
+    let said = Arc::new((Mutex::new(Said { painted: true, gone: false }), Condvar::new()));
+    let tells = follow_paints(&screen, &said);
+    let mut looked: Option<Instant> = None;
     loop {
-        let began = Instant::now();
         if !screen.alive() {
             break;
         }
@@ -419,6 +473,30 @@ pub fn run(name: &str) -> Result<(), String> {
             // (Asked once: not tried again at every frame.)
             upgrade = None;
         }
+        if tells {
+            // Until it draws something new; and now and then all the
+            // same, for the two things looked at above.
+            let mut s = said.0.lock().unwrap_or_else(|e| e.into_inner());
+            if !s.painted && !s.gone {
+                s = said.1.wait_timeout(s, WAKE).unwrap_or_else(|e| e.into_inner()).0;
+            }
+            if s.gone {
+                break;
+            }
+            if !std::mem::take(&mut s.painted) {
+                continue;
+            }
+        }
+        // Often for a while after an action, seldom otherwise: never
+        // sooner after the last look than that. (What it draws
+        // meanwhile is told again, and looked at then: the last thing
+        // drawn is always kept.)
+        let acted = std::fs::metadata(&actions).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok());
+        let period = if acted.is_some_and(|a| a < BUSY_FOR) { BUSY } else { IDLE };
+        if let Some(last) = looked {
+            std::thread::sleep(period.saturating_sub(last.elapsed()));
+        }
+        looked = Some(Instant::now());
         match screen.picture(&picture, None, true, olo_protocol::ImageFormat::Rgba).and_then(|()| std::fs::read(&picture).map_err(|e| e.to_string())) {
             Ok(bytes) => {
                 failures = 0;
@@ -433,12 +511,11 @@ pub fn run(name: &str) -> Result<(), String> {
                 if failures > 20 {
                     return Err(e);
                 }
+                // (What it drew is still to be kept: looked at again,
+                // no sooner than the next look is due.)
+                said.0.lock().unwrap_or_else(|e| e.into_inner()).painted = true;
             }
         }
-        // Often for a while after an action, seldom otherwise.
-        let acted = std::fs::metadata(&actions).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok());
-        let period = if acted.is_some_and(|a| a < BUSY_FOR) { BUSY } else { IDLE };
-        std::thread::sleep(period.saturating_sub(began.elapsed()));
     }
     let _ = std::fs::remove_file(&picture);
     Ok(())

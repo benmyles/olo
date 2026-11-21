@@ -35,8 +35,36 @@ pub struct Battery {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Wifi {
     pub ssid: Option<String>,
-    pub signal: u32,
+    /// How strong its signal is, as the glyph shows it: one to three
+    /// arcs (`wifi_bars`). The figure itself is in the link's menu, read
+    /// as it opens: it wavers by a few points every few seconds, and
+    /// kept here it had every bar drawn again each time (8 times in
+    /// 90 s, 2026-11-20).
+    pub bars: u8,
 }
+
+/// How many of the Wi-Fi glyph's three arcs a signal of `strength`
+/// (0–100) lights: a third each. One that was showing `was` keeps it
+/// until the signal is clearly past the mark (`WIFI_HOLD` points), so a
+/// signal wavering at a mark doesn't flicker the glyph, nor draw the
+/// bar again each time.
+pub fn wifi_bars(strength: u32, was: Option<u8>) -> u8 {
+    let level = |two: u32, three: u32| {
+        if strength >= three {
+            3
+        } else if strength >= two {
+            2
+        } else {
+            1
+        }
+    };
+    match was {
+        // (The least it can be said to be, and the most.)
+        Some(was) => was.clamp(level(34 + WIFI_HOLD, 67 + WIFI_HOLD), level(34 - WIFI_HOLD, 67 - WIFI_HOLD)),
+        None => level(34, 67),
+    }
+}
+const WIFI_HOLD: u32 = 4;
 
 /// A wired link connected.
 #[derive(Debug, Clone, PartialEq)]
@@ -160,12 +188,29 @@ pub fn backup() -> Option<Backup> {
     Some(Backup { busy, off, trouble, last_ok: st.last_ok })
 }
 
-#[derive(Debug, Clone, Default, PartialEq)]
+/// The supervisor (Preferences ▸ Performance) as its tray item shows
+/// it: only what the glyph and the tip say. What it found and how many
+/// processes it lowered are read when its menu opens (`supervisor_menu`).
+/// Everything else it writes (which processes it lowered, as builds
+/// start and end theirs; its log; the memory's figures; a finding's
+/// evidence) changes every few seconds, and a status that changed is
+/// every bar drawn again: each Deskbar drew itself anew for figures it
+/// doesn't show, 39 times in 90 s while something was building
+/// (2026-11-20: on an agent's screen sitting still that, and the Wi-Fi's
+/// signal, were all that still drew).
+#[derive(Debug, Clone, PartialEq)]
 pub struct Supervisor {
     /// Turned on (its settings: at once, before it has answered).
     pub on: bool,
-    /// What it published.
-    pub state: olo_protocol::performance::SupervisorState,
+    /// How many things it has found, and how many of them are urgent.
+    pub findings: usize,
+    pub urgent: usize,
+}
+
+impl Supervisor {
+    pub fn shown(on: bool, state: &olo_protocol::performance::SupervisorState) -> Supervisor {
+        Supervisor { on, findings: state.findings.len(), urgent: state.urgent() }
+    }
 }
 
 /// What olo-session offers to upgrade (see its upgrade.rs).
@@ -324,14 +369,58 @@ pub fn links() -> olo_system::network::Links {
     links_cell().lock().unwrap().clone()
 }
 
-/// Apply `update` to the current status and send it if it changed.
+/// Apply `update` to the current status and send it if it changed
+/// (which parts did is logged at debug level, by name: a status sent is
+/// the bar drawn again, so what changes often is worth knowing).
 fn publish<F: Fn(Status)>(shared: &Shared<F>, update: impl FnOnce(&mut Status)) {
     let mut g = shared.lock().unwrap();
     let (current, last, send) = &mut *g;
     update(current);
     if last.as_ref() != Some(current) {
+        if let Some(last) = last.as_ref()
+            && tracing::enabled!(tracing::Level::DEBUG)
+        {
+            tracing::debug!(changed = ?current.differs(last), "status");
+        }
         send(current.clone());
         *last = Some(current.clone());
+    }
+}
+
+impl Status {
+    /// The names of the parts that differ from `other`'s.
+    fn differs(&self, other: &Status) -> Vec<&'static str> {
+        macro_rules! parts {
+            ($($part:ident),* $(,)?) => {{
+                // (Every part: one added to `Status` and not here doesn't compile.)
+                let Status { $($part: _),* } = self;
+                [$((stringify!($part), self.$part != other.$part)),*].into_iter().filter(|(_, differs)| *differs).map(|(name, _)| name).collect()
+            }};
+        }
+        parts!(
+            battery,
+            wifi,
+            wired,
+            primary,
+            portal,
+            volume,
+            sound,
+            upgrade,
+            upgrade_waiting,
+            upgrade_offer,
+            notifications,
+            agent_screens,
+            sharing,
+            recording,
+            airplay,
+            airplay_paired,
+            supervisor,
+            airpods,
+            phone,
+            voice,
+            doctor,
+            backup,
+        )
     }
 }
 
@@ -363,12 +452,16 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
     });
     let on_links = shared.clone();
     if let Err(e) = olo_system::network::watch_links(move |l| {
-        let wifi = l.wifi.as_ref().map(|w| Wifi { ssid: w.ssid.clone(), signal: w.strength });
+        let wifi = l.wifi.as_ref().map(|w| (w.ssid.clone(), w.strength));
         let wired = l.wired.as_ref().map(|d| Wired { speed: d.speed });
         let (primary, portal) = (l.primary, l.portal.clone());
         *links_cell().lock().unwrap() = l;
         publish(&on_links, |s| {
-            s.wifi = wifi;
+            s.wifi = wifi.map(|(ssid, strength)| {
+                // (Of the same network: another's starts afresh.)
+                let was = s.wifi.as_ref().filter(|w| w.ssid == ssid).map(|w| w.bars);
+                Wifi { bars: wifi_bars(strength, was), ssid }
+            });
             s.wired = wired;
             s.primary = primary;
             s.portal = portal;
@@ -413,7 +506,7 @@ pub fn spawn(send: impl Fn(Status) + Send + 'static) {
             let receivers = (all || changed.contains(&paired)).then(olo_protocol::airplay::paired);
             let backed_up = (all || changed.contains(&backup_state) || changed.contains(&backup_settings)).then(backup);
             let supervisor =
-                (installed && (all || changed.contains(&perf) || changed.contains(&supervising))).then(|| Supervisor { on: PerformanceSettings::load().enabled, state: SupervisorState::load() });
+                (installed && (all || changed.contains(&perf) || changed.contains(&supervising))).then(|| Supervisor::shown(PerformanceSettings::load().enabled, &SupervisorState::load()));
             publish(&shared, |s| {
                 if let Some(r) = recorded {
                     s.recording = r;
@@ -725,15 +818,12 @@ pub fn draw_battery(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, percent: u3
     }
 }
 
-pub fn draw_wifi(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, signal: Option<u32>) {
+/// Wi-Fi: a dot and three arcs, as many lit as the signal is strong
+/// (`wifi_bars`); all dim while it isn't connected (`bars` None).
+pub fn draw_wifi(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, bars: Option<u8>) {
     let origin = (f32::from(r.center().x), f32::from(r.bottom()) - 2.5);
-    let bars = match signal {
-        None => 0,
-        Some(s) if s >= 67 => 3,
-        Some(s) if s >= 34 => 2,
-        Some(_) => 1,
-    };
-    disc(g, origin, 1.4, if signal.is_some() { ink(p) } else { dim(p) });
+    let (joined, bars) = (bars.is_some(), bars.unwrap_or(0));
+    disc(g, origin, 1.4, if joined { ink(p) } else { dim(p) });
     // A quarter turn each, centred on straight up.
     let pi = std::f32::consts::PI;
     for i in 1..=3 {
@@ -1207,6 +1297,65 @@ pub fn draw_phone(g: &mut Painter, r: Bounds<Pixels>, p: &Palette, phone: &olo_p
 mod tests {
     use super::*;
     use olo_protocol::ClockSettings;
+
+    /// What the supervisor writes every few seconds and the bar doesn't
+    /// show leaves the status as it was (nothing is drawn again for
+    /// it); what the bar shows changes it.
+    #[test]
+    fn only_what_the_bar_shows_of_the_supervisor_changes_the_status() {
+        use olo_protocol::performance::{Finding, FindingKind, Lowered, SupervisorState};
+        let finding = |confidence: f32, evidence: &str| Finding {
+            pid: 42,
+            name: "busy".into(),
+            command: "busy --forever".into(),
+            kind: FindingKind::Spin,
+            confidence,
+            urgent: false,
+            summary: format!("At {evidence} of a processor"),
+            evidence: vec![evidence.into()],
+            since: 1_795_000_000,
+        };
+        let one = SupervisorState { running: true, pid: 7, findings: vec![finding(0.5, "92%")], memory_available: 41.0, memory_stall: 0.2, ..Default::default() };
+        // Another look: surer of its finding, another program in front,
+        // the memory's figures moved, a build's process lowered.
+        let mut next = SupervisorState { findings: vec![finding(0.7, "97%")], favoured: Some((9, "olo-terminal".into())), memory_available: 40.2, memory_stall: 1.5, ..one.clone() };
+        next.lowered.push(Lowered { pid: 77, name: "rustc".into(), why: "a build".into(), nice_before: 0, nice: 10, policy: "batch".into(), io: "idle".into(), unit: None });
+        assert_ne!(one, next);
+        assert_eq!(Supervisor::shown(true, &one), Supervisor::shown(true, &next));
+        // What the bar shows: on or off, a finding more, one urgent.
+        assert_ne!(Supervisor::shown(false, &one), Supervisor::shown(true, &one));
+        let mut urgent = one.clone();
+        urgent.findings[0].urgent = true;
+        assert_ne!(Supervisor::shown(true, &urgent), Supervisor::shown(true, &one));
+        let mut more = one.clone();
+        more.findings.push(finding(0.5, "92%"));
+        assert_ne!(Supervisor::shown(true, &more), Supervisor::shown(true, &one));
+    }
+
+    /// The Wi-Fi glyph's arcs: a third of the signal each, and one
+    /// showing stays until the signal is clearly past a mark.
+    #[test]
+    fn a_wavering_signal_keeps_its_arcs() {
+        assert_eq!([0, 33, 34, 66, 67, 100].map(|s| wifi_bars(s, None)), [1, 1, 2, 2, 3, 3]);
+        // At the mark between two and three (67): wavering a few points
+        // either way changes nothing; clearly past it does.
+        for was in [2, 3] {
+            for s in 64..=70 {
+                assert_eq!(wifi_bars(s, Some(was)), was, "{s} from {was}");
+            }
+        }
+        assert_eq!((wifi_bars(71, Some(2)), wifi_bars(62, Some(3))), (3, 2));
+        // Far from where it was, it goes straight there.
+        assert_eq!((wifi_bars(10, Some(3)), wifi_bars(95, Some(1))), (1, 3));
+        // And every signal settles where a fresh look would put it, or
+        // within the hold of it.
+        for s in 0..=100u32 {
+            for was in 1..=3 {
+                let b = wifi_bars(s, Some(was));
+                assert!(b == wifi_bars(s.saturating_sub(WIFI_HOLD), None) || b == wifi_bars((s + WIFI_HOLD).min(100), None) || b == wifi_bars(s, None), "{s} from {was}: {b}");
+            }
+        }
+    }
 
     #[test]
     fn formats() {

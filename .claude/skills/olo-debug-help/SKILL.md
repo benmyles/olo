@@ -70,8 +70,17 @@ looking at, with a reproduction and a patch that checked out.
    no commits, the person's session left alone, headless tests under a
    `codex-` name, scratch in the brief's folder. It writes
    `answer.md` (its findings: its last message, which replaces any file
-   of that name, so a brief never asks it to write `answer.md` itself)
-   and `log.txt` (what it did) there.
+   of that name, so a brief never asks it to write `answer.md` itself),
+   `log.txt` (what it did) and `notes.md` (each finding as it makes
+   it) there. A run can end before its answer: the tool then says why
+   (the log's last error) and the notes hold what it had found. Its
+   service stops a run whose work reads like an attack on a system: a
+   review asked to "attack" a root tool, to try "hostile" input,
+   "escapes" and fuzzing was cut off nine minutes in (2026-11-20). Say
+   what such work is in plain words (a reliability review of our own
+   installer: what state each failure leaves), ask for reading and
+   small deterministic checks, not tracing or fuzzing, and point a
+   second run at the first's log and notes so nothing is done twice.
    One at a time, and not while the tree is mid-push if it will build.
 
 3. **Check what comes back.** Its answer is a lead, in the same

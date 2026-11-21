@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-20
 
+### An agent's screen sits still: its Deskbar without the live widgets, its clock without seconds
+
+*17:39* — On a screen nobody sits at, Deskbar shows none of the person's live widgets and its clock has no seconds: they were all that changed on an idle agent's screen, and kept its Deskbar, its app_server and its recorder at work without end (1.9% of a core and 90 wakes a second a screen; 0.1% and 8 now, with the keep-warm frame off there, the recorder looking only at what was drawn, and a status that holds only what the bar draws). On every Deskbar: the tray's well has a point more room above and below its icons (a count's pill came to a pixel of its bevel), the fold button's chevrons end where the time does, and Wi-Fi's tip no longer gives the signal's figure, which is in its menu (it drew the bar again at every waver).
+
+![An agent's screen sits still: its Deskbar without the live widgets, its clock without seconds](2026-11-20/173905-an-agent-s-screen-sits-still-its-deskbar-without.png)
+
 ### Olo Doctor: a fix under way says how it goes
 
 *16:24* — Beside a card's buttons, what its fix is doing and for how long; in the header too; and after three minutes, for a fix run as the administrator, a line of its own: still going, other fixes wait, and what stops it if it never ends. It said only "Fixing…", for hours once.

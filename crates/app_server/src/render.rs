@@ -476,6 +476,18 @@ thread_local! {
     });
 }
 
+/// Whether the frames' memory is kept warm now (`keep_warm`): for
+/// `WARM_FOR` after a frame last drew something, and never on a screen
+/// nobody sits at (an agent's: `power::unattended`). What it buys is
+/// the first frame after a pause 10–30 ms sooner, which nobody there
+/// sees; what it cost there was a look a second, and a frame drawn, on
+/// every agent's screen for two minutes after anything on it drew
+/// (2026-11-20: an agent's screen sitting still woke its app_server 8
+/// times a second for it, 2 without).
+fn warm_now(unattended: bool, drawn_ago: std::time::Duration) -> bool {
+    !unattended && drawn_ago <= WARM_FOR
+}
+
 /// A pixel of nothing in the screen's top left corner, changed every
 /// second while the desktop is in use, so a frame is drawn: the GPU
 /// driver keeps memory for a frame's commands only while frames use it,
@@ -493,7 +505,7 @@ fn keep_warm(output: &Output, fullscreen: bool) -> Option<smithay::backend::rend
     WARM.with(|w| {
         let mut w = w.borrow_mut();
         let now = std::time::Instant::now();
-        if now - w.bumped >= WARM_EVERY && now - w.drawn <= WARM_FOR {
+        if now - w.bumped >= WARM_EVERY && warm_now(crate::power::unattended(), now - w.drawn) {
             w.commit.increment();
             w.bumped = now;
         }
@@ -584,7 +596,8 @@ const OFF: u8 = 3;
 pub const IDLE_FRAMES: u32 = 3;
 /// How long a resting display waits before it looks anyway (unless
 /// woken): while the desktop is in use, until `keep_warm`'s pixel is due
-/// (a second at most); then `IDLE_SAFETY`, a safety net for something
+/// (a second at most; not on an agent's screen, `warm_now`); then
+/// `IDLE_SAFETY`, a safety net for something
 /// that changed without waking it (none found: a headless shell session
 /// used for minutes, windows opened, tiled, dragged, typed in, menus,
 /// tips, the overview, the switcher, a volume key, 2026-11-07; the debug
@@ -595,7 +608,7 @@ pub fn rest_for() -> std::time::Duration {
     WARM.with(|w| {
         let w = w.borrow();
         let now = std::time::Instant::now();
-        if now - w.drawn <= WARM_FOR {
+        if warm_now(crate::power::unattended(), now - w.drawn) {
             // (A hair after it's due, so the look changes it.)
             (w.bumped + WARM_EVERY).saturating_duration_since(now).max(std::time::Duration::from_millis(20)) + std::time::Duration::from_millis(2)
         } else {
@@ -1285,4 +1298,20 @@ fn presel_element(output: &str, area: Rectangle<i32, Physical>) -> smithay::back
         *last_color = color;
     }
     smithay::backend::renderer::element::solid::SolidColorRenderElement::new(id.clone(), area, *commit, color, Kind::Unspecified)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The frames' memory is kept warm for a while after something drew,
+    /// and never on a screen nobody sits at.
+    #[test]
+    fn nothing_is_kept_warm_on_a_screen_nobody_sits_at() {
+        let (just, long) = (std::time::Duration::from_secs(1), WARM_FOR + std::time::Duration::from_secs(1));
+        assert!(warm_now(false, just));
+        assert!(!warm_now(false, long));
+        assert!(!warm_now(true, just));
+        assert!(!warm_now(true, long));
+    }
 }

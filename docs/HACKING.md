@@ -192,7 +192,12 @@ like pixel alignment is.
    keep-warm pixel is due, once a second, and then only every 10 s, a
    safety net (it was every 100 ms whatever; a bare headless session
    idle 10 wakeups a second, 0.2% of a core, now 2 while warm and 1
-   after, 0.0%; with Deskbar 15 → 5). At once when woken
+   after, 0.0%; with Deskbar 15 → 5). Nothing is kept warm on a screen
+   nobody sits at (an agent's, `OLO_SCREEN`; `render::warm_now`): the
+   pixel buys the first frame after a pause 10–30 ms sooner, which
+   nobody there sees, and cost a look and a frame a second on every
+   agent's screen for two minutes after anything on it drew. At once
+   when woken
    (`Backend::wake`, paced a quarter of a frame after its last look):
    a commit wakes the displays its window is on (every display for a
    popup, a layer or the pointer; none for a window showing nowhere),
@@ -7045,7 +7050,8 @@ lint at a time).
   two and hands it out again, so app_server keeps that warm and stays
   within it: a transparent pixel in each screen's corner shows for a
   frame every second while the desktop is in use (`render::keep_warm`,
-  not while idle for two minutes, and only for a frame, so a
+  not while idle for two minutes, never on an agent's screen, and only
+  for a frame, so a
   full-screen window still goes straight to the display; smithay counts
   an element's place from the top of the stack, so its coming and going
   damages what's under it whole: a headless screen's watchers compare
@@ -20158,12 +20164,22 @@ when an upgrade replaces its file it becomes the new version between
 two frames, the same process, and starts a segment of its own; and a
 running screen found with none, at an agent's next action on it, is
 given one, `screens::ensure_recorder`), takes the screen's picture (as the
-viewer does, RGBA) eight times a second for five seconds after each
-action (the history's file changing) and once a second otherwise, and
-keeps the 64-pixel tiles that changed since the frame before,
-zstd-compressed, with a whole keyframe every 30 s, in five-minute
-segments (`frames-START.olof`; the format is in the module's comment),
-the oldest dropped past 512 MB. Each picture comes through a file in the
+viewer does, RGBA) when the screen has drawn something new (its
+app_server says so, `EventKind::Painted`, to a thread of the recorder's:
+at most eight times a second for five seconds after each action, the
+history's file changing, and once a second otherwise; what is drawn
+between two looks is told again, so the last thing drawn is always
+kept), and keeps the 64-pixel tiles that changed since the frame
+before, zstd-compressed, with a whole keyframe where the last is 30 s
+old, in five-minute segments (`frames-START.olof`; the format is in the
+module's comment), the oldest dropped past 512 MB. A screen that draws
+nothing isn't looked at and nothing is written for it: the recorder
+sleeps on its app_server's word (it took every screen's whole picture
+every second whatever it showed, read back from the GPU and compared,
+5.2 MB a second a screen; **an agent's screen sitting still** was 1.9%
+of a core between its app_server, Deskbar and recorder, 90 wakes a
+second, and is 0.1% and 8, measured on release builds, 2026-11-20:
+see "An agent's screen sits still" under Deskbar's widgets). Each picture comes through a file in the
 runtime folder (`screens::recorder_frame`, 5 MB at 1440 × 900, in
 memory): the recorder removes it as it ends, `stop` does for one ended
 with its screen's process group, and `start` and `stop` sweep those of
@@ -21859,7 +21875,29 @@ ProcessController put their bars in its tray.
   `nvenc_cost_by_codec`); it never wakes a sleeping card. A worker (`deskbar-widgets`) reads each widget when
   it's due and sends them together (`Msg::Meters`); with no widgets
   there is no thread, and with the displays asleep or the screen locked
-  nothing is read (`Live::pause`). What a widget draws is made once a
+  nothing is read (`Live::pause`). **An agent's screen sits still**:
+  the Deskbar of a screen nobody sits at (`OLO_SCREEN`,
+  `on_an_agents_screen`) shows none of the person's widgets and its
+  clock has no seconds (`widgets_here`, `settings_msg`). They were all
+  that ever changed on an idle agent's screen, and kept the whole of it
+  at work: its Deskbar woke 38 times a second, its app_server 47 times
+  to draw what Deskbar drew, and its recorder kept every change, ten
+  screens a fifth of a processor and gigabytes of recorded meters a day
+  (Ben, 2026-11-20: "they also should be more efficient beyond that
+  too"). And **a status holds only what the bar draws**
+  (`status::Status`, `publish`): a status that differs is every bar
+  drawn again, on every screen, so what a tray item's glyph and tip
+  don't show isn't kept there but read when its menu opens (a small
+  file, or what the watcher last heard). DiskBackup's progress, the
+  supervisor's state (`Supervisor::shown`: on or off and how many it
+  found; which processes it lowered changes with every build's) and the
+  Wi-Fi's signal (`Wifi::bars`, the arcs its glyph lights, held until
+  the signal is clearly past a mark, `wifi_bars`; the figure is in the
+  link's menu) each drew every bar again every few seconds for
+  something it didn't show (the last two 47 times in 90 s). Which parts
+  of a status changed is logged at debug level
+  (`RUST_LOG=olo_deskbar=debug`: "status changed=[…]", and "told" for
+  each message), the way to find the next one. What a widget draws is made once a
   reading (`Shown`: each series' levels over its history, rates against
   the highest in it, its value in words), not each frame.
 * **Drawing**: tray widgets take the tray's first slots (a graph, bars,

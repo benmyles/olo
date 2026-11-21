@@ -125,9 +125,19 @@ const TRAY_FOOT: f32 = 4.0;
 /// How far a press on an application moves before it's a drag (a link
 /// to the program, dragged out).
 const DRAG_START: f32 = 6.0;
+/// Between the tray's well and its first and last rows of icons, over
+/// what each icon's place gives it: a count's pill, which stands a
+/// little proud of its glyph's corner, came to a device pixel of the
+/// well's bevel, and a lit icon's plate touched it (both reviewers,
+/// 2026-11-20).
+const WELL_PAD: f32 = 1.0;
+/// The tray's well with `rows` rows of icons: how tall.
+fn well_height(rows: usize) -> f32 {
+    rows as f32 * TRAY_PITCH + 2.0 * WELL_PAD
+}
 /// The tray's height with `rows` rows of icons.
 fn tray_height(rows: usize) -> f32 {
-    CLOCK_H + rows as f32 * TRAY_PITCH + TRAY_FOOT
+    CLOCK_H + well_height(rows) + TRAY_FOOT
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -2036,7 +2046,34 @@ fn add_keys(menu: &mut Menu, profile: &KeyboardProfile) {
     }
 }
 
+/// Whether this is the Deskbar of an agent's screen (`OLO_SCREEN`): a
+/// desktop nobody sits at.
+fn on_an_agents_screen() -> bool {
+    static AGENTS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *AGENTS.get_or_init(|| std::env::var_os("OLO_SCREEN").is_some_and(|s| !s.is_empty()))
+}
+
+/// The live widgets this Deskbar shows of those the person set: none on
+/// an agent's screen, and its clock without seconds. Widgets measure
+/// every second and move as they do, and a clock with seconds is a new
+/// picture every second: on a screen nobody sits at, that was all that
+/// ever changed on it, and it kept the whole screen at work without
+/// end. Measured on ten agents' screens sitting still (2026-11-20):
+/// each Deskbar woke 38 times a second, each screen's app_server 47
+/// times to draw what it drew, and each screen's recorder read a whole
+/// picture a second to keep what changed, together a fifth of a
+/// processor and gigabytes of recordings of meters a day. The
+/// person's own Deskbar has theirs; an agent reads what it needs
+/// through its tools.
+fn widgets_here(widgets: Vec<olo_protocol::deskbar::Widget>) -> Vec<olo_protocol::deskbar::Widget> {
+    if on_an_agents_screen() { Vec::new() } else { widgets }
+}
+
 fn settings_msg(settings: olo_protocol::Settings) -> Msg {
+    let mut settings = settings;
+    if on_an_agents_screen() {
+        settings.clock.show_seconds = false;
+    }
     Msg::Settings(Settings {
         clock: settings.clock,
         menu_icons: settings.appearance.menu_icons,
@@ -2045,7 +2082,7 @@ fn settings_msg(settings: olo_protocol::Settings) -> Msg {
         unread_dots: settings.deskbar.unread_dots,
         folded: settings.deskbar.folded,
         others_collapsed: settings.deskbar.others_collapsed,
-        widgets: settings.deskbar.widgets,
+        widgets: widgets_here(settings.deskbar.widgets),
     })
 }
 
@@ -2375,16 +2412,15 @@ fn airpods_items(mut m: Menu, pods: &olo_protocol::airpods::AirPods) -> Menu {
 
 /// The supervisor's tray menu: on or off, what it found (each to its
 /// process in Activity Monitor), and the way to all of it.
-fn supervisor_menu(sup: &status::Supervisor) -> Menu {
+fn supervisor_menu(on: bool, st: &olo_protocol::performance::SupervisorState) -> Menu {
     const SHOWN: usize = 6;
-    let mut m = Menu::new("Supervisor").item("Keep the Desktop Responsive", "perf:toggle").checked(sup.on).separator();
-    let st = &sup.state;
-    if !sup.on {
+    let mut m = Menu::new("Supervisor").item("Keep the Desktop Responsive", "perf:toggle").checked(on).separator();
+    if !on {
         m = m.item("Off", "").enabled(false);
     } else if st.findings.is_empty() {
         m = m.item("Nothing Found", "").enabled(false);
     }
-    if sup.on {
+    if on {
         for f in st.findings.iter().take(SHOWN) {
             m = m.item(format!("{}: {} ({}){}", f.kind.title(), f.name, f.pid, if f.urgent { ", Urgent" } else { "" }), format!("run:olo-activity --inspect {}", f.pid));
         }
@@ -3015,7 +3051,11 @@ impl Deskbar {
         // away to the right (the windows take its room): quiet until the
         // pointer is on it.
         {
-            let fold = rect(WIDTH - FOLD_W - 2.0, 2.0, FOLD_W, TILE_H - 4.0);
+            // (In from the edge so that its mark's points end where the
+            // time and the workspace's mark do, a device pixel past them
+            // at the most, as a point reads level with a straight edge;
+            // they ended three points past.)
+            let fold = rect(WIDTH - FOLD_W - TRAY_INSET - 1.0, 2.0, FOLD_W, TILE_H - 4.0);
             let hot = pointer.hot("fold");
             d.paint(move |g| {
                 let p = theme::palette();
@@ -3084,7 +3124,7 @@ impl Deskbar {
         let tray = rect(0.0, TILE_H, WIDTH, tray_height(rows));
         let clock_row = rect(0.0, TILE_H + (CLOCK_H - CLOCK_ROW) / 2.0, WIDTH, CLOCK_ROW);
         let (date, time) = status::clock_text(&self.clock);
-        let well = rect(TRAY_INSET, TILE_H + CLOCK_H, well_w, rows as f32 * TRAY_PITCH);
+        let well = rect(TRAY_INSET, TILE_H + CLOCK_H, well_w, well_height(rows));
         // (The icons on a grid of their own, their plates near touching.)
         d.paint(move |g| olo_kit::review::own_grid(g, well));
         {
@@ -3134,7 +3174,7 @@ impl Deskbar {
                 let in_row = (items - row * per_row).min(per_row);
                 let left = TRAY_INSET + ((well_w - in_row as f32 * TRAY_PITCH) / 2.0).floor();
                 let inset = (TRAY_PITCH - ICON) / 2.0;
-                rect(left + col as f32 * TRAY_PITCH + inset, TILE_H + CLOCK_H + row as f32 * TRAY_PITCH + inset, ICON, ICON)
+                rect(left + col as f32 * TRAY_PITCH + inset, TILE_H + CLOCK_H + WELL_PAD + row as f32 * TRAY_PITCH + inset, ICON, ICON)
             })
             .collect();
         let mut slot = slots.into_iter();
@@ -3442,7 +3482,7 @@ impl Deskbar {
         // The supervisor: a click opens its menu (on or off, what it
         // found, Activity Monitor).
         if let Some(sup) = st.supervisor.clone() {
-            let (n, urgent) = (sup.state.findings.len(), sup.state.urgent());
+            let (n, urgent) = (sup.findings, sup.urgent);
             let tip_text = match (sup.on, n, urgent) {
                 (false, ..) => olo_kit::words::tr("Performance supervisor: off").to_owned(),
                 (true, 0, _) => olo_kit::words::tr("Performance supervisor: on, nothing found").to_owned(),
@@ -3455,7 +3495,10 @@ impl Deskbar {
             d.hits.push(h.on_any_button(move |e, cx| match button(e) {
                 MouseButton::Left | MouseButton::Right => {
                     let mm = m.clone();
-                    open_menu(cx, &v, "tray:supervisor", r, supervisor_menu(&sup), move |cmd, cx| run(&mm, cmd, cx));
+                    // (What it found and lowered, read as it opens: a
+                    // small file.)
+                    let menu = supervisor_menu(on, &olo_protocol::performance::SupervisorState::load());
+                    open_menu(cx, &v, "tray:supervisor", r, menu, move |cmd, cx| run(&mm, cmd, cx));
                 }
                 _ => {}
             }));
@@ -3522,12 +3565,14 @@ impl Deskbar {
         }
         if let Some(w) = st.wifi.clone() {
             let by = standing_by(Kind::Wifi);
+            // (How strong, to the point, is in its menu, read as it
+            // opens: here it would draw the bar again at every waver.)
             let tip_text = match &w.ssid {
-                Some(s) => format!("{s} ({}%){}", w.signal, if by { ", standing by: Ethernet is in use" } else { "" }),
+                Some(s) => format!("{s}{}", if by { ", standing by: Ethernet is in use" } else { "" }),
                 None => olo_kit::words::tr("Not connected").into(),
             };
-            let signal = w.ssid.as_ref().map(|_| w.signal);
-            let (r, h) = tray_item(&mut d, "wifi", tip_text, Box::new(move |g, r| g.with_element_opacity(faint(by), |g| status::draw_wifi(g, r, &theme::palette(), signal))));
+            let bars = w.ssid.as_ref().map(|_| w.bars);
+            let (r, h) = tray_item(&mut d, "wifi", tip_text, Box::new(move |g, r| g.with_element_opacity(faint(by), |g| status::draw_wifi(g, r, &theme::palette(), bars))));
             d.hits.push(link_hit(h, r, Kind::Wifi, &model, view));
         }
         if let Some(vol) = st.volume {

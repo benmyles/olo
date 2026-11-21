@@ -627,6 +627,29 @@ Doctor check, try its fix and look again: the finding must be gone.
 
 ## Measuring
 
+- **What an idle screen costs, and what makes it draw.** Start a
+  scratch agent's screen from the release build
+  (`env -u OLO_SCREEN target/release/olo-screen start NAME`; its
+  programs are that folder's), let it settle 40 s, then over a minute
+  take each program's processor time and wakes from /proc: `utime +
+  stime` of every `/proc/PID/task/*/stat`, and `voluntary_ctxt_switches`
+  of every `task/*/status` (by thread, with `task/*/comm`, it says
+  which thread wakes; a window's looper's thread is named after the
+  window's title: print "a window's looper", not the name). Its
+  programs are the ones whose `/proc/PID/environ` holds
+  `OLO_SCREEN=NAME`. What it draws: subscribe to its app_server's
+  `painted` events (`{"type":"subscribe_to","events":["painted"]}` on
+  the `olo_socket` that `start` printed) and count them. What made
+  Deskbar draw: start the screen with
+  `RUST_LOG=warn,olo_deskbar=debug` (the environment reaches its
+  programs) and read `$XDG_RUNTIME_DIR/olo-screens/logs/NAME.log`:
+  "told what=…" for each message, "status changed=[…]" for which parts
+  of its status differed. `strace -p` works on one's own programs here
+  (`ptrace_scope` 0), and showed app_server's frame timer and who
+  connects to it. That is how an idle agent's screen went from 1.9% of
+  a core to 0.1% (2026-11-20): each guess before the log was wrong
+  (the supervisor's file changed once a minute when nothing built, and
+  39 times in 90 s when something did).
 - **Count instructions unscaled: `perf stat --no-scale`.** This
   machine's cores are of two kinds (`cpu_core`: CPUs 0–3, `cpu_atom`:
   4–15), each counting on its own, and a thread is counted only on the
@@ -903,6 +926,18 @@ Learned on the second pass (2026-11-20):
   the 6 PM it is in Amsterdam.
 
 ## Working with the repository
+
+- **A shell script isn't edited while it runs.** bash reads a script
+  as it goes, by its place in the file: `tools/dev/codex-help`,
+  rewritten while a helper it had started was still at work, read on
+  from the same place in the new text when the helper ended and
+  stopped with a syntax error "at line 96" in lines that were sound
+  (2026-11-20; the helper's answer was already written, by luck, and
+  the exit code said 2). Before changing a tool under `tools/dev`,
+  see that nothing is running it (a background task of this session,
+  `tools/dev/agents list`); or write the new text to a file beside it
+  and rename that over it, which leaves the running shell its old
+  file.
 
 - **Claude's usage report answers 429 to a token read too often.** A
   handful of reads of `/api/oauth/usage` for one account within a few

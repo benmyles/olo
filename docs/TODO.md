@@ -105,10 +105,30 @@ something nobody here has is in "Blocked", with what it waits for.
      altogether~~ done: a test session and its programs draw on the
      processors and hold no GPU device open (the whole live lint in
      32 s on dev builds so; HACKING, "Test desktops draw in
-     software"), and a unit test never connects to a compositor; (d) an agent's screen's recorder asks for a whole picture
+     software"), and a unit test never connects to a compositor; (d) ~~an agent's screen's recorder asks for a whole picture
      every second with nothing happening: from what changed instead
      (the viewer's `Painted`); a screen composited only when
-     something looks; (e) the kit recovering from a lost device in
+     something looks~~ done, and with it what kept an idle agent's
+     screen drawing (its Deskbar's widgets and clock, the keep-warm
+     frame, statuses that changed without showing): 1.9% of a core
+     and 90 wakes a second a screen to 0.1% and 8 (HACKING, "An
+     agent's screen sits still"). **Left of it**: (d1) a view that
+     draws the same again still presents a frame: a canvas with no
+     `paint_key` is painted anew at every `body`, and the stage
+     can't tell that a drawing with paths, sectors or shadows is the
+     same (`Scene::changed_since` compares only quads, lines and
+     glyphs, and only for a big item): compare them all, for any
+     size, so that the same picture is never a frame, measured
+     (`tools/dev/bench`); (d2) while an agent acts, the recorder
+     takes the whole picture up to eight times a second through a
+     file in the runtime folder (5 MB each at 1440 × 900, read back
+     from the GPU): what changed only, from app_server's damage;
+     (d3) an idle agent's screen holds 228 MB in nine programs
+     (app_server 95, of it 71 its own; Tracker 37, Deskbar 31, the
+     portal 26, notifications 25: measured 2026-11-20), ten screens
+     2.3 GB on a computer that ran short: what app_server's 71 MB is
+     (the wallpaper kept whole?), and the notification service and
+     the portal started when first needed there; (e) the kit recovering from a lost device in
      place, not by starting again (blade's device made anew, the
      window's swapchain and caches rebuilt); (f) the driver's
      behaviour written up for its people (a low queue's wait is not
@@ -357,8 +377,9 @@ something nobody here has is in "Blocked", with what it waits for.
      of NVIDIA's library then (held for the program's life, the
      card's device open with it: one owner that can stop and close,
      off the UI thread; the follower's own, which holds its clock
-     setting, apart); a Deskbar on an agent's screen that nobody
-     watches samples nothing; tests with stand-in libraries that
+     setting, apart); ~~a Deskbar on an agent's screen that nobody
+     watches samples nothing~~ (done: it shows no widgets at all);
+     tests with stand-in libraries that
      count loads, starts and opens (a `None` passes today whether or
      not NVIDIA's library was tried). And of the same review, other
      fixes that call into drivers: Doctor's and the healer's
@@ -1164,6 +1185,24 @@ something nobody here has is in "Blocked", with what it waits for.
   for it, e.g. a carousel type thing with captions"): every app and every
   Preferences panel in one big grid, each opening a walkthrough of its
   screens and what it does, a carousel of screenshots with captions.
+
+- **Deskbar's tray, from the reviewers' looks at it** (Astra's and
+  Opus's, of the bar on an agent's screen, 2026-11-20; the well's room
+  and the fold button's place are done): (a) a count's pill on the
+  agent screens' monitor covers the monitor (two digits wide, its
+  centre near the glyph's): on the glyph's top right corner, and the
+  monitor still read under it at 1×; in dark its numerals are dark on a
+  mid blue, muddy at 1×; (b) the bell, solid, is the heaviest mark in
+  the tray beside outlines; (c) at 1× and 1.5× Olo Doctor's bag loses
+  its cross and handle, and the battery's bolt is a few yellow pixels;
+  (d) Wi-Fi standing by (faint) and the cup and key off (dim) look the
+  same, in dark exactly; (e) in a row the glyphs aren't optically on
+  one line (the bell a point and a half high, the cup as much low);
+  (f) a live widget in the tray is said to agents by its drawing's
+  place (x 34) and the buttons round it by their plates (x 31): the
+  layout review calls it a near miss with a tray widget over a button
+  (`control-edges`); (g) "Workspace 1" in bold is the loudest text on
+  the bar.
 
 ## Done, waiting for Ben to try or confirm
 
