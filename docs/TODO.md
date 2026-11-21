@@ -805,6 +805,27 @@ something nobody here has is in "Blocked", with what it waits for.
     (BlueZ keeps it per program on the bus and doesn't say whose: to
     be read from bluetoothd itself, or found by the programs on the
     bus one by one).
+- **A title an agent sets lands on another window's tab** (Ben,
+  2026-11-21: "terminal app is mixing up tab names"; a bug, for
+  later). Seen: a Codex in one Terminal window called `set_tab_title`
+  and was told its tab was titled; the title showed on a tab of
+  another window, in another project's group, where another Codex
+  runs, and its own tab kept the program's own title. The lead, from
+  the code, not yet reproduced: Codex's tool calls come from its
+  daemon, which is under no tab's shell, so the tab is found by the
+  folder the agent gives and, where it gives none, by the folder the
+  *caller* is in (`agent_title::set_for`: `cwd.or(own)`), which for a
+  daemon shared by every Codex session is the folder of whichever
+  session started it. To do: reproduce it headless (two Codex
+  stand-ins in two folders behind one daemon;
+  `tools/dev/agent-title-check` has the pieces); a caller under no
+  tab's shell that gives no folder is refused and told to give one,
+  never guessed at; two agents in one folder are told apart (by the
+  session the request names, if Codex's says it) or the title is
+  refused rather than put on the wrong tab; and whatever else finds
+  an agent's tab through `agent_context::tab_of` is looked at for
+  the same.
+
 - **An application chosen again from Deskbar's menu opens another
   window, where the person is** (Ben, 2026-11-20, after asking for a
   whole new instance of Chrome and letting that go: "forget new
