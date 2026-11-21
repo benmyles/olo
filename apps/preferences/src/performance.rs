@@ -715,7 +715,10 @@ fn divided() -> bool {
     static DIVIDED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *DIVIDED.get_or_init(|| {
         use olo_system::session_groups as groups;
-        std::env::var_os("OLO_BACKGROUND_DEMO").is_some() || groups::own().is_some_and(|own| groups::find(std::path::Path::new(groups::MOUNT), &own).is_some())
+        // (Not asked in a test: the lint's windows are the same whatever
+        // session they are drawn in. Its index of settings came out
+        // different the first time it ran in a divided session.)
+        std::env::var_os("OLO_BACKGROUND_DEMO").is_some() || (!cfg!(test) && groups::own().is_some_and(|own| groups::find(std::path::Path::new(groups::MOUNT), &own).is_some()))
     })
 }
 

@@ -80,6 +80,15 @@ fn demo() -> bool {
 }
 
 impl Facts {
+    /// What each mode is set to do as the computer keeps it, and what
+    /// there is here for a mode to set (the GPUs, the drives, the fans).
+    fn read_what_modes_set(&mut self) {
+        self.plan = gpu_tuning::Tuning::load().plan;
+        self.gpus = olo_system::gpus::list().into_iter().filter(|g| matches!(g.driver.as_str(), "xe" | "nvidia")).map(|g| (g.pci.clone(), g.maker().to_owned(), g.vendor == 0x10de)).collect();
+        self.drives = olo_system::nvme_power::drives().into_iter().map(|d| (d.serial, d.model)).collect();
+        self.fans = fans::look(&fans::Places::here()).is_some_and(|f| f.installed);
+    }
+
     fn read(details: bool) -> Self {
         if demo() {
             return Self {
@@ -114,6 +123,11 @@ impl Facts {
         } else {
             f.issue = Some("Olo Doctor can set up the hardware power service.".into());
         }
+        // What a mode can be set to do here, whether or not the hardware's
+        // state is asked for (read only with that pane open, the mode's
+        // box showed the processors alone, as the mode comes: Ben,
+        // 2026-11-21, "why no intel or nvidia").
+        f.read_what_modes_set();
         if !details {
             return f;
         }
@@ -174,10 +188,6 @@ impl Facts {
             _ => cooling,
         };
         f.hardware.push(("Cooling".into(), cooling));
-        f.plan = gpu_tuning::Tuning::load().plan;
-        f.gpus = olo_system::gpus::list().into_iter().filter(|g| matches!(g.driver.as_str(), "xe" | "nvidia")).map(|g| (g.pci.clone(), g.maker().to_owned(), g.vendor == 0x10de)).collect();
-        f.drives = olo_system::nvme_power::drives().into_iter().map(|d| (d.serial, d.model)).collect();
-        f.fans = fans::look(&fans::Places::here()).is_some_and(|f| f.installed);
         f
     }
 }
@@ -795,6 +805,18 @@ fn presence_box(ui: &mut Ui, sensor: Option<bool>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// On this computer: what a mode can be set to do is read without the
+    /// hardware pane open (`cargo test -p olo-preferences
+    /// reads_what_modes_set -- --ignored --nocapture`).
+    #[test]
+    #[ignore = "reads this computer's own hardware"]
+    fn reads_what_modes_set_here() {
+        let mut f = Facts::default();
+        f.read_what_modes_set();
+        println!("graphics: {:?}; drives: {}; fans: {}; chosen for modes: {:?}", f.gpus.iter().map(|g| &g.1).collect::<Vec<_>>(), f.drives.len(), f.fans, f.plan.chosen.keys().collect::<Vec<_>>());
+        assert!(!f.gpus.is_empty());
+    }
 
     fn b(percent: u32, state: Charge) -> Battery {
         Battery { percent, state, time_to_empty: None, time_to_full: None, cycle_count: None, health: None, charge_limit: None, power_watts: None }
