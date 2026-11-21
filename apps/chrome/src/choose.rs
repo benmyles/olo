@@ -236,6 +236,9 @@ struct Chooser {
     /// The pictures' size in device pixels, and the worker making them.
     pixels: (u32, u32),
     live: Option<Live>,
+    /// Whether its window was the active one when last drawn: its
+    /// pictures are live only while it is.
+    looking: bool,
 }
 
 impl Chooser {
@@ -252,7 +255,7 @@ impl Chooser {
                 to_ui.send(Thumb { id, image });
             }
         });
-        Chooser { link, windows, pictures: HashMap::new(), selected: 0, answer, pixels, live: Some(live) }
+        Chooser { link, windows, pictures: HashMap::new(), selected: 0, answer, pixels, live: Some(live), looking: true }
     }
 
     /// Answered: the window goes (and with it the program, which then acts
@@ -299,6 +302,15 @@ impl View for Chooser {
                 for w in &self.windows {
                     live.set_size(&w.id.to_string(), now);
                 }
+            }
+        }
+        // (Behind other windows, nobody is choosing: nothing is asked of
+        // the windows it shows until it is looked at again.)
+        let looking = cx.is_window_active();
+        if looking != self.looking {
+            self.looking = looking;
+            if let Some(live) = &self.live {
+                live.set_live(looking);
             }
         }
         let items: Vec<Thumbnail> = self

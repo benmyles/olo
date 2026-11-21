@@ -288,14 +288,19 @@ something nobody here has is in "Blocked", with what it waits for.
     back, so replaced pictures used a texture up and a new one was
     made (each two 2 MB tries: the holds measured on "a kit's drawing
     thread"). **Done**: the atlas gives a tile's place back (26
-    textures for 200 pictures replaced, now 1). To do, in this
-    order: a chooser's thumbnails are made again only when their
-    window changed and the chooser shows (its worker looks 25 times
-    a second, and each window is read whole once a second, 59 MB for
-    a large one); choosers nobody answers don't pile up (six since
-    midnight, from links another program opened by itself; each took
-    the keyboard as it came, and a letter typed then chooses a
-    window); a picture too large for a shared texture has one of its
+    textures for 200 pictures replaced, now 1); a picker's
+    thumbnails are live only while its window is the active one,
+    and their worker sleeps between pictures (it looked 25 times a
+    second, and each window was read whole once a second, 59 MB for
+    a large one, whether or not anyone saw it). To do: choosers
+    nobody answers don't pile up (six since midnight, from links
+    another program opened by itself; each took the keyboard as it
+    came, and a letter typed then chooses a window: Ben's to say
+    what a chooser nobody answers should do); a picker that shows
+    but isn't active (beside the window one works in) keeps still
+    pictures, where "shows" would be the better rule once a window
+    is told whether it is covered; a picture too large for a shared
+    texture has one of its
     own, made anew for each that replaces it (a preview paged
     through: at the person's pace, so left);
   - **the desktop at rest wasn't** (2026-11-21, the person's: three

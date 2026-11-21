@@ -172,6 +172,9 @@ pub struct Picker {
     /// The worker making them (`olo_capture::thumbnails`): stopped as
     /// the picker goes.
     live: Option<Live>,
+    /// Whether its window was the active one when last drawn: its
+    /// pictures are live only while it is.
+    looking: bool,
     scroll: ScrollHandle,
 }
 
@@ -202,6 +205,7 @@ pub fn open(ask: Ask, mut screens: Vec<Item>, mut windows: Vec<Item>) -> WindowH
             pictures: HashMap::new(),
             column,
             live: None,
+            looking: true,
             scroll: ScrollHandle::new(),
         };
         // Each picture as it comes.
@@ -293,6 +297,15 @@ impl View for Picker {
                 for w in &self.windows {
                     live.set_size(&w.key, now.1);
                 }
+            }
+        }
+        // (Behind other windows, nobody is choosing: nothing is asked of
+        // the screens and windows it shows until it is looked at again.)
+        let looking = cx.is_window_active();
+        if looking != self.looking {
+            self.looking = looking;
+            if let Some(live) = &self.live {
+                live.set_live(looking);
             }
         }
         let headed = both(&self.screens, &self.windows);

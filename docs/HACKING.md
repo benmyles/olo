@@ -4089,7 +4089,14 @@ it.
   on a worker, a picture when one changed and its item's time has come,
   shrunk to its size in device pixels; `set_size` when the scale
   changes; stopped when dropped), which Share Screen's picker and Open
-  in Which Window? use. `Cell::icon_text(g, icon, fallback,
+  in Which Window? use. Tell it whether anyone looks (`set_live(cx.
+  is_window_active())` as the view draws): a picker behind other
+  windows asks for nothing and keeps the pictures it has, and the
+  worker sleeps until app_server answers, a picture's time comes or
+  it is told something (two changing windows, release: 24.7 wake-ups
+  a second before, looked at or not; 4.0 now while looked at, none
+  while not, and no window read; `cargo run -p olo-capture --example
+  live` measures it in a test desktop). `Cell::icon_text(g, icon, fallback,
   text)`: a list cell's 16-point icon and name, which names its row.
   `image_view::from_bgra` makes a picture of pixels in the kit's own order
   (a captured frame). A `TextControl` whose field is disabled
@@ -21500,7 +21507,9 @@ not Slack's or another app's, not DevTools or a picture in picture,
 the one in front first) asks first, in a dialog that is olo-chrome's
 only window: "Open the Link in Which Window?", the windows as live
 thumbnails (`olo_capture::thumbnails`, a picture a second when one
-changed) titled by their page (" - Google Chrome" left off), each with
+changed, while the dialog is the active window: behind others it
+keeps the pictures it has and asks for none) titled by their page
+(" - Google Chrome" left off), each with
 its letter, A, B, …, as a key cap on its picture (`style::key_cap`,
 keyboard hints' and Twitcher's look). Its letter (wherever the keyboard
 is) or a click on it opens the link there; Return, in the one chosen
