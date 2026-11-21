@@ -19,6 +19,10 @@ static GLOBAL: profiling::tracy_client::ProfiledAllocator<std::alloc::System> = 
 #[allow(clippy::uninlined_format_args)]
 fn main() {
     olo_crash::install();
+    // What a thread needed for a moment (the wallpaper's decoding: 35 MiB
+    // to show 5) goes back to the system when it is freed, on every
+    // screen this serves.
+    olo_crash::give_memory_back();
     // The capability the person's compositor is started with (the GPU's
     // high priority: `olo_system::caps`) is its own: nothing it starts
     // has it.

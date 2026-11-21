@@ -870,6 +870,33 @@ frames a second with nobody at it):
   the first job, and the second runs without them (its pictures'
   paths were empty: "no picture /NAME.png").
 
+### What a program holds: measured in turn, and a first run apart
+
+Learned measuring the allocator (2026-11-21):
+
+- **A before and an after an hour apart measured the GPU's shader
+  cache.** Deskbar held 27 MiB of its own in the first two runs of a
+  GPU test desktop and 11 in every run after, whatever was set: the
+  first runs compiled its shaders (Mesa, in the program, in its
+  threads' arenas) and the later ones read them from
+  `~/.cache/mesa_shader_cache`. The allocator's setting was credited
+  with 16 MiB it never saved, until the two were run in turn. With
+  `MESA_SHADER_CACHE_DIR=` an empty folder every run is a first one.
+- **In turn, or it isn't a comparison**: A, B, A, B, each for the same
+  time after start (a session's memory at 8 s and at 25 s differ).
+- **A switch tried through the environment reaches what you think it
+  reaches only if you look**: `tr '\0' '\n' < /proc/PID/environ` of
+  each program measured.
+- **Whose memory**: `/proc/PID/smaps_rollup` for the sums (Pss,
+  Private_Dirty), `smaps` for where: `[heap]` is the main thread's,
+  an anonymous mapping starting on a 64 MiB boundary is another
+  thread's arena (followed by the rest of its 64 MiB, unreadable and
+  unused), a large one elsewhere a block mapped by itself.
+- **The bench's `cpu_ms` is the app's; the compositor's own cost over
+  a run** is its process's time at the end (`bench --keep`, then
+  `/proc/PID/stat` of the session's app_server, then `tsession stop
+  bench`).
+
 ### Reading a day's logs
 
 Learned on the second pass (2026-11-20):

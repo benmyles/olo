@@ -150,6 +150,62 @@ pub fn raise_open_files() -> Option<(u64, u64)> {
     Some((was, most))
 }
 
+/// A block of this size or more is mapped by itself and unmapped the
+/// moment it is freed, whichever thread asked (where the C library
+/// starts: `give_memory_back` holds it there).
+const MAPPED: libc::c_int = 128 << 10;
+/// What may stay free at the end of a thread's share of the heap before
+/// it goes back to the system (where the C library starts, too).
+const KEPT_FREE: libc::c_int = 128 << 10;
+
+/// Memory this program has finished with goes back to the system: the C
+/// library's allocator held to the two thresholds it starts with.
+/// Whether it took them (false where the C library isn't glibc, or with
+/// `OLO_MALLOC_AS_IT_COMES` set: to measure one against the other). For
+/// a program to call as it starts, after [`install`]: the compositor
+/// does.
+///
+/// Left alone, glibc raises both as a program runs. Once a block of up
+/// to 32 MiB has been mapped and freed, blocks up to that size are no
+/// longer mapped by themselves but cut from the asking thread's arena;
+/// and from then on an arena's free end is given back only once it is
+/// twice that large, which an arena of 64 MiB never is. `malloc_trim`
+/// doesn't take it either: of a thread's arena it returns the holes,
+/// never the end. So a thread that needed much for a moment keeps it for
+/// the life of the program, written to and unused. The compositor's
+/// wallpaper thread decodes a picture of 35 MiB to show 5: its arena
+/// stood at 37 MiB, 36.8 of it dirty, on every screen, an agent's too
+/// (2026-11-21).
+///
+/// Measured in turn (release builds; a test desktop of 1440 x 900 at 1x
+/// drawing on the GPU, at rest): the compositor's own memory 54.1 MiB to
+/// 22.6, twice each.
+/// Over a run of the speed benchmark its time on the processors was 3.6 s
+/// as the allocator comes and 3.2 and 3.4 s so held: three fifths more
+/// page faults, which cost less than they save.
+///
+/// Not for every program, yet. The kit's apps were tried with the same
+/// (through `GLIBC_TUNABLES`, without a rebuild). At rest they held the
+/// same either way, but for what a first run's compiling of shaders
+/// leaves, which no threshold gives back (it is in use). And StyledEdit
+/// scrolling and typing took a fifth more of a processor, Viewer
+/// resizing a sixth: what a frame frees went back to the system and was
+/// faulted in again with every frame. With the thresholds higher (32
+/// MiB mapped, 4 or 16 kept free) that cost went, and with it the gain
+/// after a first run. docs/TODO.md has what to try there.
+pub fn give_memory_back() -> bool {
+    if std::env::var_os("OLO_MALLOC_AS_IT_COMES").is_some() {
+        return false;
+    }
+    #[cfg(target_env = "gnu")]
+    // SAFETY: two settings of the C library's allocator, plain numbers.
+    unsafe {
+        libc::mallopt(libc::M_MMAP_THRESHOLD, MAPPED) == 1 && libc::mallopt(libc::M_TRIM_THRESHOLD, KEPT_FREE) == 1
+    }
+    #[cfg(not(target_env = "gnu"))]
+    false
+}
+
 static OPEN_FILES: OnceLock<Option<(u64, u64)>> = OnceLock::new();
 
 /// What `install` found and made of this program's limit on open files

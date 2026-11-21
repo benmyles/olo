@@ -291,7 +291,36 @@ What it means in numbers, on release builds:
   within 8.3 ms (rule 9), drawn by the GPU, and no more CPU than that
   takes.
 * **Over time**: memory, threads and file descriptors don't grow
-  (`tools/dev/perf-fuzz` checks).
+  (`tools/dev/perf-fuzz` checks). And what a thread needed for a
+  moment goes back to the system, which the C library doesn't see to
+  by itself: glibc's allocator raises its own thresholds once a block
+  of up to 32 MiB has been mapped and freed (blocks up to that size
+  are from then on cut from the asking thread's arena, whose free end
+  is given back only at twice that size: never, for an arena of 64
+  MiB), and `malloc_trim` returns a thread arena's holes but not its
+  end. The compositor's wallpaper thread decodes a picture of 35 MiB
+  to show 5, and kept 37 MiB so on every screen, an agent's too.
+  app_server holds the allocator to the thresholds it starts with
+  (`olo_crash::give_memory_back`, in its `main`): 54.1 MiB of its own
+  to 22.6 on a test desktop at rest, and its time on the processors
+  over a run of the bench no more (3.6 s as the allocator comes; 3.2
+  and 3.4 held: three fifths more page faults, which cost less than
+  they save). The kit's apps don't, yet: so held, StyledEdit scrolling
+  and typing took a fifth more of a processor and Viewer resizing a
+  sixth (what a frame frees went back and was faulted in again with
+  every frame), and at rest they held what they hold anyway
+  (docs/TODO.md, the performance item, d3). To see what a program
+  holds and where: `/proc/PID/smaps` (a build tree's programs hold no
+  capability, so it reads), where a thread's arena is an anonymous
+  mapping that starts on a 64 MiB boundary;
+  `GLIBC_TUNABLES=glibc.malloc.mmap_threshold=N:glibc.malloc.trim_threshold=N`
+  in front of `tsession start` tries a setting on every program of a
+  test desktop without a rebuild, and `OLO_MALLOC_AS_IT_COMES=1`
+  leaves the compositor's as it comes. A first run after the GPU's
+  shader cache was emptied holds 8 to 16 MiB more in Deskbar and in
+  Tracker than a later one (compiled by Mesa, in use: no threshold
+  gives it back); `MESA_SHADER_CACHE_DIR=` an empty folder makes every
+  run a first, so that like is compared with like.
 
 How to measure (before and after, the same case, numbers in the commit
 message):
@@ -7294,8 +7323,11 @@ lint at a time).
   as a display would take it, rather than piling frames up. Scaling is in 8 bits with
   the crop applied as it scales (`fast_image_resize`), one full-size copy
   at a time, and the memory it took goes back to the system afterwards
-  (`malloc_trim`), so switching themes doesn't leave app_server hundreds
-  of megabytes bigger.
+  (`malloc_trim` for the holes, and `olo_crash::give_memory_back` for
+  the end of the thread's share of the heap, which that leaves: 37 MiB
+  stayed after the first picture; "Fast and light", Over time), so
+  switching themes doesn't leave app_server hundreds of megabytes
+  bigger.
 * Display (`display.rs`): a map of the screens; drag one and `snap` puts
   it edge to edge with the nearest other (sharing at least 64 px, lined
   up with edges or centres when close), and every screen's position is

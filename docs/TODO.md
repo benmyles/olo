@@ -131,9 +131,30 @@ something nobody here has is in "Blocked", with what it waits for.
      (d3) an idle agent's screen holds 228 MB in nine programs
      (app_server 95, of it 71 its own; Tracker 37, Deskbar 31, the
      portal 26, notifications 25: measured 2026-11-20), ten screens
-     2.3 GB on a computer that ran short: what app_server's 71 MB is
-     (the wallpaper kept whole?), and the notification service and
-     the portal started when first needed there; (e) the kit recovering from a lost device in
+     2.3 GB on a computer that ran short. What app_server's was:
+     **done** (2026-11-21). 37 MiB of it was the wallpaper thread's
+     share of the heap, free and never given back (the C library
+     raises its own thresholds once a large block has been freed, and
+     `malloc_trim` leaves a thread's arena its end): the compositor
+     holds the allocator to the thresholds it starts with
+     (`olo_crash::give_memory_back`), 54.1 MiB of its own to 22.6 on a
+     test desktop, at no cost in its time on the processors (HACKING,
+     "Fast and light", Over time). **Left**: the same for the kit's
+     apps cost a fifth more processor time in scrolling and typing
+     (what a frame frees goes back and is faulted in again with every
+     frame) and gained nothing at rest, so not yet: the thresholds
+     tight while a window rests and loose while it draws (the kit
+     knows which), or a frame's large blocks kept from frame to frame
+     so that tight costs nothing, measured on an app that has shown
+     pictures (Viewer after a photo, Tracker after a folder of them);
+     the wallpaper's second copy in the compositor (its strips are on
+     the GPU and in memory too, for a renderer that might ask again:
+     5 MiB a screen at 1440 × 900, 59 at 5120 × 2880); what a first
+     run's compiling of shaders leaves in Deskbar and Tracker (8 to
+     16 MiB more than a later run's, Mesa's and in use: a cache
+     warmed at install, or compiled out of the process); and the
+     notification service and the portal started when first needed
+     there; (e) the kit recovering from a lost device in
      place, not by starting again (blade's device made anew, the
      window's swapchain and caches rebuilt); (f) the driver's
      behaviour written up for its people (a low queue's wait is not
