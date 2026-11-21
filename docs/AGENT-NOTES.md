@@ -959,6 +959,17 @@ Learned on the second pass (2026-11-20):
   first form went by Cargo's and the units' own locks instead, ran
   once on this repository, and was shown wrong by review before it
   ran again (its own text says how).
+- **A lock taken with `flock` is let go, not only closed**
+  (`olo_system::background`, 2026-11-21). It belongs to the open file,
+  and every child is born with a copy of every open file until it
+  becomes its program: close yours while another thread is starting a
+  program, and the lock stays with that child for a moment; the next
+  to ask is told another holds it. A test of the keeper failed once
+  under load (other tests starting programs beside it); a test of
+  just that (four threads starting /usr/bin/true, the lock taken and
+  dropped 20,000 times) failed at once, and passes with `LOCK_UN`
+  before the close. Whoever comes after a holder that died asks more
+  than once, for the same reason.
 - **A push builds the release workspace only for what the lint looks
   at.** The pre-push hook builds it (and so offers the person the
   upgrade) when `apps/`, the kits or `vendor/` changed; a push of

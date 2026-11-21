@@ -17595,7 +17595,16 @@ the folder's change time, `Owners`; each file in one read) and:
     is in the group back if the supervisor ends by any other road; a
     guard that can't be started, and there is no keeping. Nobody
     keeping, nothing stays in `bg`: stopped, ended or killed, what was
-    there goes back among the desktop's.
+    there goes back among the desktop's. The lock is *let go* when its
+    holder is done (`LOCK_UN`), not only closed: it belongs to the open
+    file, and a child of the supervisor being born at that moment has a
+    copy of every open file until it becomes its program, so a lock
+    that was only closed stayed with it and the next to ask was told
+    another keeps (the keeper's test, under load; then a test of just
+    that, which failed at once: four threads starting programs, the
+    lock taken and dropped 20,000 times). For the same reason the
+    guard, who comes after a keeper that died, asks for the lock over
+    a second before it takes it that another keeps.
   - **Nothing of it on the supervisor's realtime thread** but a filter
     of the process table it already has and a list sent over a
     channel: a worker thread starts and stops the keeper, reads where

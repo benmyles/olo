@@ -291,16 +291,50 @@ pub struct Keeper {
     groups: Groups,
     /// Held while this keeps (the kernel lets go of it when the process
     /// ends, however it ends).
-    _lock: fs::File,
+    _lock: Locked,
 }
 
-fn lock(path: &Path) -> Result<fs::File, String> {
+/// The lock, held: let go when this goes. *Let go*, not only closed. A
+/// lock of this kind belongs to the open file, and every child of this
+/// process is born with a copy of every open file, this one too, until
+/// it becomes its program (which closes it): a lock that was only
+/// closed stays with any child being born at that moment, and whoever
+/// asks next is told another keeps. Seen 2026-11-21, in the keeper's
+/// own test under load (other tests starting programs beside it), and
+/// then at once in a test of just that.
+struct Locked(fs::File);
+
+impl Drop for Locked {
+    fn drop(&mut self) {
+        // SAFETY: a plain system call on our descriptor.
+        unsafe { libc::flock(self.0.as_raw_fd(), libc::LOCK_UN) };
+    }
+}
+
+fn lock(path: &Path) -> Result<Locked, String> {
     let file = fs::OpenOptions::new().create(true).truncate(false).write(true).open(path).map_err(|e| format!("{}: {e}", path.display()))?;
     // SAFETY: a plain system call on our descriptor.
     if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
         return Err("another supervisor keeps this session's background group".into());
     }
-    Ok(file)
+    Ok(Locked(file))
+}
+
+/// The lock, for one who comes after a holder that didn't let go in
+/// good order (a guard, after its keeper's process was ended): asked
+/// for `tries` times, `pause` apart. That process may have left a child
+/// still being born with its copy of the lock, for a moment; a keeper
+/// that took over holds it for good.
+fn lock_once_free(path: &Path, tries: u32, pause: Duration) -> Option<Locked> {
+    for n in 0..tries {
+        if let Ok(held) = lock(path) {
+            return Some(held);
+        }
+        if n + 1 < tries {
+            std::thread::sleep(pause);
+        }
+    }
+    None
 }
 
 impl Keeper {
@@ -585,7 +619,9 @@ pub fn guard(bg: &Path, lock_file: &Path) {
     // desktop's, off the idle processors. Until both read back so, for a
     // few seconds: a process born in the group meanwhile, a write the
     // kernel refused for a moment.)
-    if let Ok(_held) = lock(lock_file) {
+    // (Asked for over a second: what the keeper's process left being
+    // born with a copy of the lock is not a keeper.)
+    if let Some(_held) = lock_once_free(lock_file, 20, Duration::from_millis(50)) {
         let desk = bg.with_file_name("desk");
         for _ in 0..20 {
             let _ = allow(bg, None);
@@ -795,6 +831,58 @@ mod tests {
             std::hint::black_box(allowed(dir.path()) != Some(Some(want)));
         }
         println!("a keeper's look: {:.1} µs", t.elapsed().as_secs_f64() * 1e6 / f64::from(n));
+    }
+
+    /// A lock let go is free at once, though a child of this process is
+    /// still on its way to being another program with a copy of it. Every
+    /// child is born with a copy of every descriptor, the lock's among
+    /// them, until it becomes its program (which closes it); a lock only
+    /// closed, not let go, is still held by such a child for that
+    /// moment. The keeper's own test met it, 2026-11-21, with other
+    /// tests starting programs beside it under load: started again
+    /// straight after a start that failed, it was told another kept.
+    #[test]
+    fn a_lock_let_go_is_free_though_a_child_is_still_being_born_with_its_copy() {
+        let dir = tempfile::Builder::new().prefix("olo-background-lock-").tempdir_in("/var/tmp").unwrap();
+        let lock_file = dir.path().join("lock");
+        let done = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        // Programs started all the while, from other threads.
+        let starters: Vec<_> = (0..4)
+            .map(|_| {
+                let done = done.clone();
+                std::thread::spawn(move || {
+                    while !done.load(std::sync::atomic::Ordering::Relaxed) {
+                        if let Ok(mut child) = std::process::Command::new("/usr/bin/true").spawn() {
+                            let _ = child.wait();
+                        }
+                    }
+                })
+            })
+            .collect();
+        let mut still_held = 0;
+        for _ in 0..20_000 {
+            let held = lock(&lock_file).unwrap();
+            drop(held);
+            still_held += lock(&lock_file).is_err() as u32;
+        }
+        done.store(true, std::sync::atomic::Ordering::Relaxed);
+        for t in starters {
+            t.join().unwrap();
+        }
+        assert_eq!(still_held, 0, "of 20,000");
+        // One who comes after a holder that ended badly asks more than
+        // once: free a moment later, it is theirs; held for good, not.
+        let held = lock(&lock_file).unwrap();
+        let later = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(60));
+            drop(held);
+        });
+        assert!(lock_once_free(&lock_file, 20, Duration::from_millis(20)).is_some());
+        later.join().unwrap();
+        let _held = lock(&lock_file).unwrap();
+        let began = Instant::now();
+        assert!(lock_once_free(&lock_file, 3, Duration::from_millis(10)).is_none());
+        assert!(began.elapsed() >= Duration::from_millis(20) && began.elapsed() < Duration::from_millis(500), "asked three times, 10 ms apart");
     }
 
     /// The lock says who keeps; and what a keeper that was killed left
