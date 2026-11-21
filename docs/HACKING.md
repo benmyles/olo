@@ -6659,7 +6659,13 @@ person's, and neither when none of them has a window the lint opens.
 The build reads the working tree, so the push stops at once, saying
 why, when that isn't what's pushed: changes not committed, or another
 commit checked out (edits begun after a commit once failed the push of
-that commit, which built). A finding stops it
+that commit, which built). Then, when what keeps a desktop at rest is
+among what's pushed (the kits, Terminal, Deskbar, the widgets'
+providers), `tools/dev/rest-check` on those release builds: a spinner
+in a tab's title and what waits in an app changing, each ten times a
+second, and the desktop must stay at rest but for who shows it ("A
+change is news only to who shows it", under Fast and light; 45 s). A
+finding stops it
 (`OLO_SKIP_UI_LINT=1` to push regardless, saying why). Each says how
 long its parts took. With everything built, the commit's lint takes
 8 s and a push 4 s: what's waited for beyond that is compiling. The

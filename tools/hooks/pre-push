@@ -5,9 +5,12 @@
 # headless session, every window and tab reviewed at 1, 1.5 and 2×, light
 # and dark), then each of its windows that tiles tiled into every layout
 # (CLAUDE.md, "Every tiling layout") on the smallest screen and on each of
-# the person's, on release builds made first. A finding stops the push,
-# as does a working tree that isn't what's pushed (the build reads the
-# tree). OLO_SKIP_UI_LINT=1 skips the lint.
+# the person's, on release builds made first; and, when what keeps a
+# desktop at rest is among it (the kits, Terminal, Deskbar, the widgets'
+# providers), tools/dev/rest-check: a desktop with one thing in it that
+# keeps changing must stay at rest but for who shows it. A finding stops
+# the push, as does a working tree that isn't what's pushed (the build
+# reads the tree). OLO_SKIP_UI_LINT=1 skips the lint and the check.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 # What's pushed, one "LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA" a line
@@ -77,6 +80,17 @@ person=$(/usr/bin/python3 tools/dev/ui-lint --person-screens 2> /dev/null || tru
 if ! env -u WAYLAND_DISPLAY -u OLO_SOCKET /usr/bin/python3 tools/dev/ui-lint --tiles --screens "$screens" "${picked[@]}" >&2; then
     echo "pre-push: the live layout lint, tiled, found the above; fix it (or OLO_SKIP_UI_LINT=1, saying why)." >&2
     exit 1
+fi
+# At rest: a spinner in a tab's title, and what waits in an app changing,
+# on the release builds just made (2026-11-21: each had kept three
+# displays drawing and five programs busy, with nobody at the computer).
+if echo "$changed" | grep -qE '^(crates/(kit|interface|kit-base)/|apps/(terminal|deskbar|calendar|notifications|todo|weather)/|tools/dev/rest-check$)'; then
+    rest=$SECONDS
+    if ! env -u WAYLAND_DISPLAY -u OLO_SOCKET TSESSION_PROFILE=release /usr/bin/python3 tools/dev/rest-check >&2; then
+        echo "pre-push: the desktop didn't stay at rest (above); fix it (or OLO_SKIP_UI_LINT=1, saying why)." >&2
+        exit 1
+    fi
+    echo "pre-push: the rest check took $((SECONDS - rest)) s" >&2
 fi
 # (Changed while it built and looked: what it checked may not be what's
 # pushed. 2026-11-15: edits begun mid-push were half in its build.)
