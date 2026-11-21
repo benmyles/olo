@@ -329,14 +329,27 @@ something nobody here has is in "Blocked", with what it waits for.
     processor, Calendar's widget a third, with nobody at it). Found
     and fixed: two agents' animated titles, and what each change set
     off (HACKING, "A change is news only to who shows it";
-    `tools/dev/rest-check`). Left of it: the background group's
-    keeper spends up to nine tenths of a processor for seconds
-    inside its write of the group's allowance (the kernel reclaims
-    in the writer until the group is under it), cannot look again
-    meanwhile, and so swapped 0.8 GiB of compilers' own memory under
-    a floor that was no longer theirs (to do: the write made without
-    waiting, Linux 6.16's O_NONBLOCK, the group's own programs
-    reclaiming as they ask for more); a shell's output that changes
+    `tools/dev/rest-check`). And the background group's keeper,
+    which spent up to nine tenths of a processor for seconds inside
+    its write of the group's allowance, looked at nothing meanwhile
+    and so swapped 0.8 GiB of compilers' own memory under a floor
+    four seconds old: **done**, in six forms and six reviews with
+    Astra (kernel/TUNING.md, "The keeper's own write": a look never
+    asks the kernel for memory nor waits for a process, a second
+    thread takes back, the group's own stays out of swap by the
+    kernel's own refusal while there is memory to spare,
+    `memory.swap.max`, and is meant to go first when there isn't,
+    which it mostly does; checked in guests on this kernel, and on a
+    6.14, where nothing is kept). **For the person**: Olo Doctor
+    will say the login screen runs an older version (the login hands
+    the keeper `memory.reclaim` and `memory.swap.max` now); until its
+    update and a new login this session is kept by the allowance
+    alone, and only while memory is short. **To do**: the
+    measurements on a quiet computer; the band and the paces tried on
+    real bursts; and Doctor and Preferences saying which of the two a
+    session has, and a kernel too old for any (TUNING.md has the
+    list).
+    Left besides: a shell's output that changes
     nothing to see (a title alone) still wakes its window's threads
     (0.1% of a processor for a spinner: small); programs on other
     desktops (agent screens, test sessions) wake for writes in the

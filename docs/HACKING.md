@@ -17838,8 +17838,11 @@ the folder's change time, `Owners`; each file in one read) and:
     the desktop's waiting can't be read: the kernel's "unused" is a
     guess, and the desktop's waiting is the fact. Never under what the
     group's programs themselves hold
-    (its cache is its files' less its memory files': tmpfs can only go
-    to swap), unless little is to be had at all.
+    at the deciding look, unless little is available. Droppable file
+    cache is no more than is on the group's two file lists, nor than
+    its files less its memory files. What the rule forbids is kept by
+    the kernel, not by the keeper being quick: the group's swap
+    ceiling (below).
   - **One keeper** (`background::Keeper`): a lock for the session
     (`$XDG_RUNTIME_DIR/olo-background-session-N.scope.lock`), so a
     second supervisor reaching the same session neither keeps nor
@@ -17847,11 +17850,49 @@ the folder's change time, `Owners`; each file in one read) and:
     group's `cgroup.events` while it is empty and looking four times a
     second while it isn't; the allowance read back at every look
     (nobody else's figure stays); lifted when the group empties, when a
-    figure can't be read (said once), and when stopped (read back). A
+    figure can't be read (said once), and when stopped (read back).
+    A look never waits, not for memory to come back and not for a
+    process: the allowance is written without waiting (O_NONBLOCK,
+    Linux 6.16; on a kernel before it nothing is kept, and said why),
+    and what the group then holds over it is taken back by a second
+    thread, the taker (`memory.reclaim`: its droppable cache first,
+    then its programs' own), for the look that decided it and no
+    other. And what the rule forbids, the kernel refuses while there
+    is memory to spare: at every look, before the allowance, the
+    group's swap ceiling (`memory.swap.max`) is closed if the look
+    leaves its programs what they hold; so whoever takes memory back
+    (the group's own programs as they ask for more, the taker, a part
+    asked for a moment too late) swaps nothing of theirs, and a
+    program that outgrows its allowance is slowed until a look gives
+    it more. When the computer is short the background's is meant to
+    go first: the ceiling is open (not a figure) at a look that puts
+    the allowance under what the programs hold or comes within half a
+    gigabyte of it (the band), looks come every 50 ms from far enough
+    off that the band isn't crossed between two (`near`: within 3 GiB
+    of the line), and what of the desktop's own went to swap lately
+    (`Lately`: its group's swap seen to grow, a fall paying back, half
+    as much every five seconds) counts as needing its room back first
+    (a ceiling kept closed had the kernel meet a desktop's sudden
+    need out of the desktop's own memory). Open, which the kernel
+    takes first is its own choice: the allowance and the taker's
+    asking lean it towards the background's, and in the guests it
+    mostly was the background's that went. The price is
+    within the band, where a build that outgrows its allowance has
+    its own swapped with memory to spare. The login hands the keeper
+    `bg/memory.reclaim` and `bg/memory.swap.max` for it; a session
+    without them is kept by the allowance alone, only while memory is
+    short, and says so. kernel/TUNING.md, "The keeper's own write",
+    has the six forms this took, the reviews that faulted the first
+    five, and how far each sentence here goes.
+    A
     guard (`olo-supervisor --background-guard`, a process waiting on a
-    pipe the supervisor holds the other end of) lifts it and moves what
-    is in the group back if the supervisor ends by any other road; a
-    guard that can't be started, and there is no keeping. Nobody
+    pipe the supervisor holds the other end of) lifts both and moves
+    what is in the group back if the supervisor ends by any other
+    road; a guard that can't be started, and there is no keeping; one
+    that ends while the keeper keeps is replaced on a thread of its
+    own (starting a program can wait on the kernel), the group
+    without allowance and ceiling until the new one says it is there.
+    Nobody
     keeping, nothing stays in `bg`: stopped, ended or killed, what was
     there goes back among the desktop's. The lock is *let go* when its
     holder is done (`LOCK_UN`), not only closed: it belongs to the open
@@ -17883,8 +17924,17 @@ the folder's change time, `Owners`; each file in one read) and:
   keeper, read-back, lift), the move, the choosing, the worker thread
   with a made-up compiler; against the kernel itself in a guest:
   `tools/dev/kernel-check session-groups` (the login's steps as root,
-  then what the person may and may not do: 30 checks) and `groups` /
-  `groups-cold` with the case `olo` (this keeper as the one that keeps).
+  then what the person may and may not do: 51 checks), `keeper` (a
+  group asleep, a file locked in memory, a session from before the
+  login's hand-over, a program growing with memory to spare, a
+  desktop that suddenly needs more than there is (four ways), swap
+  on a slow disk: 37 checks; on a kernel before 6.16,
+  that nothing is kept) and
+  `groups` /
+  `groups-cold` with the case `olo` (this keeper as the one that
+  keeps). `OLO_KBENCH=` names another build of the keeper, to
+  measure two in turn; `OLO_GUEST_KERNEL=` another kernel for the
+  guests (one from before 6.16: its packages unpacked in scratch).
 - **Watchdog** (`detect.rs`), each from several signals, with a
   confidence and its evidence: stuck in a loop (busy at least `spin_cpu`
   of a core in every sixth of `spin_minutes`, waiting on almost nothing,

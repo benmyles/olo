@@ -15,9 +15,15 @@
 //! ```
 //!
 //! The person gets only what moving a process between `desk` and `bg`
-//! takes (their `cgroup.procs`, and `olo`'s, the two's common ancestor)
-//! and `bg`'s allowance of memory (`memory.high`); the directories and
-//! everything else stay root's. (That is the account's, not one
+//! takes (their `cgroup.procs`, and `olo`'s, the two's common ancestor),
+//! `bg`'s allowance of memory (`memory.high`) and, where the kernel has
+//! them, having `bg`'s memory taken back (`memory.reclaim`: how the
+//! keeper takes back what the group holds over its allowance,
+//! `background`) and how much of it may be in swap (`memory.swap.max`:
+//! how the kernel itself keeps the group's own memory out of swap where
+//! the keeper's rule says so); it is their own background work's
+//! memory, which the allowance already let them have taken back and
+//! swapped; the directories and everything else stay root's. (That is the account's, not one
 //! session's: the same person logged in a second time can move what is
 //! in the first's two groups. Nobody else's processes can come in or
 //! go out: the scope's own list stays root's.) Inside the scope a
@@ -202,6 +208,15 @@ fn build(made: &mut Made, me: u32, uid: u32, gid: u32, controllers: &[&str]) -> 
     // list, which stays root's.
     for file in [olo.join("cgroup.procs"), desk.join("cgroup.procs"), bg.join("cgroup.procs"), bg.join("memory.high")] {
         std::os::unix::fs::chown(&file, Some(uid), Some(gid)).map_err(|e| format!("{}: {e}", file.display()))?;
+    }
+    // And, for its keeper, the background's memory taken back and how
+    // much of it may be in swap. Not a reason to make nothing: a kernel
+    // without a file, or the hand-over refused, leaves the keeper the
+    // allowance alone.
+    for file in [bg.join("memory.reclaim"), bg.join("memory.swap.max")] {
+        if file.exists() {
+            let _ = std::os::unix::fs::chown(&file, Some(uid), Some(gid));
+        }
     }
     Ok(())
 }

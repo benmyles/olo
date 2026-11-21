@@ -33,6 +33,15 @@
 //!       again (a program that sat idle, used again), how long that
 //!       took in milliseconds and how many pages had to be brought
 //!       back (major faults: from swap).
+//!   kbench hold [--file MB] [--own MB] [--pin] [--busy] [PATH]
+//!       a program asleep that holds memory: MB of a file (PATH,
+//!       /d/held unless said) written, mapped and read, locked in
+//!       memory with --pin; and MB of its own, written to. Says "ready"
+//!       once it holds them, then sleeps until it is killed. What a
+//!       keeper must take back by itself: nothing here asks for more.
+//!       With `--busy` it doesn't sleep but reads a byte of every 4 KiB
+//!       of its own, round after round, 20 ms asleep between two (what
+//!       went to swap is brought back into use).
 //!   kbench fragment --mb N [--hold SECS]
 //!       free memory left in single pages: N megabytes taken and written
 //!       to, then every other page of them given back, the rest held. A
@@ -597,6 +606,7 @@ fn main() {
         Some("pressure") => pressure(rest),
         Some("session-groups") => session_groups(rest),
         Some("keep") => keep(rest),
+        Some("hold") => hold(rest),
         Some("session-check") => session_check(rest),
         Some("caps") => {
             println!("check|{}|{}", rest.first().map_or("a program started", String::as_str), if olo_system::caps::held(olo_system::caps::SYS_NICE) { "has the capability" } else { "has none" })
@@ -722,6 +732,11 @@ fn session_check(args: &[String]) {
     said("bg's allowance set", write(bg.join("memory.high"), "1073741824"));
     println!("check|bg's allowance reads|{}", std::fs::read_to_string(bg.join("memory.high")).unwrap_or_default().trim());
     said("bg's allowance lifted", write(bg.join("memory.high"), "max"));
+    // (Nothing asked for: whether each is the person's to write.)
+    said("bg's memory taken back", write(bg.join("memory.reclaim"), "0"));
+    said("desk's memory taken back", write(desk.join("memory.reclaim"), "0"));
+    said("bg's swap ceiling set", write(bg.join("memory.swap.max"), "max"));
+    said("desk's swap ceiling set", write(desk.join("memory.swap.max"), "max"));
     println!("check|bg idle on the processors|{}", std::fs::read_to_string(bg.join("cpu.idle")).unwrap_or_default().trim());
     said("the login's worker to bg", write(bg.join("cgroup.procs"), worker));
     said("itself to the worker's group", write(desk.join("../../leader/cgroup.procs"), &me));
@@ -745,19 +760,117 @@ fn session_check(args: &[String]) {
     let _ = std::process::Command::new(&me).args(["caps", "one started after"]).status();
 }
 
-/// `kbench keep DESK BG --reserve PERCENT`: Olo's own keeper of a
-/// background group's allowance (`olo_system::background::Keeper`, as
-/// the supervisor runs it) on the two groups given, until it is killed:
-/// what a guest's measurements are of. What it says goes to stderr.
+/// `kbench keep DESK BG --reserve PERCENT [--report FILE]`: Olo's own
+/// keeper of a background group's allowance
+/// (`olo_system::background::Keeper`, as the supervisor runs it) on the
+/// two groups given, until it is killed: what a guest's measurements are
+/// of. What it says goes to stderr; with --report, the longest one of
+/// its looks has taken so far, in milliseconds, is kept in FILE (written
+/// four times a second: the keeper is killed, not stopped).
 fn keep(args: &[String]) {
-    let [desk, bg, ..] = args else { return eprintln!("kbench keep DESK BG --reserve PERCENT") };
+    let [desk, bg, ..] = args else { return eprintln!("kbench keep DESK BG --reserve PERCENT [--report FILE]") };
     let (notes, said) = std::sync::mpsc::channel();
     let groups = olo_system::session_groups::Groups { desk: desk.into(), bg: bg.into() };
-    let _keeper = match olo_system::background::Keeper::start(groups, num(args, "--reserve", 12.0), std::path::Path::new("/tmp/olo-keeper.lock"), None, notes) {
+    let keeper = match olo_system::background::Keeper::start(groups, num(args, "--reserve", 12.0), std::path::Path::new("/tmp/olo-keeper.lock"), None, notes) {
         Ok(keeper) => keeper,
         Err(why) => return eprintln!("{why}"),
     };
-    for note in said {
-        eprintln!("{note}");
+    let Some(report) = opt(args, "--report").map(std::path::PathBuf::from) else {
+        for note in said {
+            eprintln!("{note}");
+        }
+        return;
+    };
+    let report_dir = report.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or_else(|| std::path::Path::new("."));
+    loop {
+        match said.recv_timeout(std::time::Duration::from_millis(250)) {
+            Ok(note) => eprintln!("{note}"),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+        let updated = (|| -> std::io::Result<()> {
+            use std::io::Write as _;
+            let mut temp = tempfile::NamedTempFile::new_in(report_dir)?;
+            writeln!(temp, "{}", keeper.longest_look().as_millis())?;
+            temp.persist(&report)?;
+            Ok(())
+        })();
+        if let Err(error) = updated {
+            eprintln!("keeper report: {error}");
+            break;
+        }
+    }
+}
+
+/// `kbench hold [--file MB] [--own MB] [--pin] [--busy] [PATH]`: memory
+/// held by a program asleep (see the top); `--busy`, by one that reads
+/// through all of its own again and again, a fiftieth of a second
+/// asleep between two rounds (memory in use, as a build's is, brought
+/// back as often as it is taken; how many rounds a second that makes
+/// is the computer's doing, and which program's memory the kernel
+/// then takes first is still its choice).
+fn hold(args: &[String]) {
+    use std::io::Write as _;
+    let (file_mb, own_mb): (usize, usize) = (num(args, "--file", 0), num(args, "--own", 0));
+    let pin = args.iter().any(|a| a == "--pin");
+    let path = args.iter().rev().find(|a| a.starts_with('/')).cloned().unwrap_or_else(|| "/d/held".into());
+    let fail = |what: &str| -> ! {
+        eprintln!("kbench hold: {what}: {}", std::io::Error::last_os_error());
+        std::process::exit(1)
+    };
+    if file_mb > 0 {
+        let mut f = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(true).open(&path).unwrap_or_else(|_| fail("the file"));
+        let chunk = vec![0u8; 1 << 20];
+        for _ in 0..file_mb {
+            f.write_all(&chunk).unwrap_or_else(|_| fail("writing the file"));
+        }
+        f.sync_all().unwrap_or_else(|_| fail("the file to disk"));
+        use std::os::fd::AsRawFd as _;
+        // SAFETY: a mapping of our file, read below within its length, kept for the program's life.
+        let map = unsafe { libc::mmap(std::ptr::null_mut(), file_mb << 20, libc::PROT_READ, libc::MAP_SHARED, f.as_raw_fd(), 0) };
+        if map == libc::MAP_FAILED {
+            fail("mapping the file");
+        }
+        for at in (0..file_mb << 20).step_by(4096) {
+            // SAFETY: within the mapping.
+            std::hint::black_box(unsafe { std::ptr::read_volatile((map as *const u8).add(at)) });
+        }
+        if pin {
+            let unlimited = libc::rlimit { rlim_cur: libc::RLIM_INFINITY, rlim_max: libc::RLIM_INFINITY };
+            // SAFETY: plain system calls on our mapping.
+            if unsafe { libc::setrlimit(libc::RLIMIT_MEMLOCK, &unlimited) } != 0 || unsafe { libc::mlock(map, file_mb << 20) } != 0 {
+                fail("locking the file in memory");
+            }
+        }
+    }
+    let mut own_at = std::ptr::null_mut();
+    if own_mb > 0 {
+        // SAFETY: memory of our own, written below within its length, kept for the program's life.
+        let own = unsafe { libc::mmap(std::ptr::null_mut(), own_mb << 20, libc::PROT_READ | libc::PROT_WRITE, libc::MAP_PRIVATE | libc::MAP_ANONYMOUS, -1, 0) };
+        if own == libc::MAP_FAILED {
+            fail("memory of its own");
+        }
+        own_at = own;
+        // (In single pages: what goes to swap is counted by the page.)
+        // SAFETY: advice about our own mapping.
+        unsafe { libc::madvise(own, own_mb << 20, libc::MADV_NOHUGEPAGE) };
+        for at in (0..own_mb << 20).step_by(4096) {
+            // SAFETY: within the mapping.
+            unsafe { std::ptr::write_volatile((own as *mut u8).add(at), 197) };
+        }
+    }
+    println!("ready");
+    let _ = std::io::stdout().flush();
+    let busy = args.iter().any(|a| a == "--busy") && own_mb > 0;
+    loop {
+        if busy {
+            for at in (0..own_mb << 20).step_by(4096) {
+                // SAFETY: within the mapping.
+                std::hint::black_box(unsafe { std::ptr::read_volatile((own_at as *const u8).add(at)) });
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        } else {
+            std::thread::sleep(std::time::Duration::from_secs(3600));
+        }
     }
 }

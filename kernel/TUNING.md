@@ -774,6 +774,317 @@ frame against 8.3 ms, sound, the editor's waits), not only a file
 walked; a way back is the choice off (the allowance lifted and read
 back, everything moved back).
 
+### The keeper's own write, seen on the desktop, and what replaced it (2026-11-21)
+
+With the choice on, on the person's computer (62 GiB, a build
+running; read-only: the keeper's thread from /proc twice a second,
+the group's own files). The group held 8.6 to 9.3 GiB, 1.3 of it
+files' cache; 0.6 to 0.9 GiB were free, 30 available. The desktop's
+group was seen to wait, the credit went, and in one look the
+allowance fell from 11.56 to 7.84 GiB: the rule's floor, what the
+group's programs held at that look. For the next four and a half
+seconds the keeper's thread ran at 86 to 92% of a processor, in the
+kernel, and made no look; the group's cache went from 0.87 to 0.08
+GiB in the first second; then its programs' own went from 7.84 to
+7.03 GiB, to swap, with 30 GiB available. (Over a build: 46 and 59%
+of a processor in two samples of ten seconds.)
+
+Why: a write of `memory.high` under what the group holds takes pages
+back in the writer until the group is under it
+(`memory_high_write`); the compilers asked for more all the while;
+and the figure taken back toward was the floor of a look by then
+four seconds old. The second review's "the write itself took 48 ms
+in the writer and swapped 80 MiB" (a 1 GiB guest) was this, small.
+
+What the kernel has for it, each tried in a guest of this kernel
+(7.3.4): `memory.high` opened with O_NONBLOCK sets the value and
+returns (Linux 6.16: 55 µs, a group of 508 MB over an allowance of
+100 still holding 508); `memory.reclaim` takes back a stated amount
+in the writer's time, with `swappiness=0` (6.11) files' cache only
+(200 MB asked for: 11 ms, files from 300 to 100 MB, the programs'
+own untouched). And what it doesn't: a take-back, once asked for,
+can't be called off (it sits in the kernel behind the disk's queue:
+one of 64 MB took 42 s behind swap on a disk of 4 MB a second, one
+of 4 MB over 20), and what it has handed to the disk is written
+whatever happens after (12 MB more in the three seconds after the
+allowance had risen, there). And `memory.swap.max`: how much of a
+group may be in swap, kept by the kernel whoever takes the memory
+back (a group of 160 MB that grew by 80 under an allowance of 176:
+with its ceiling closed nothing was swapped, and the 80 MB took 1.3
+s to get, held back by the kernel; open, 0.17 s and 65 MB of the
+group's own in swap).
+
+Built six times, the first five each faulted by a review (Astra, as
+Ben asked of this design; every fault made to happen, in a guest or
+against the code itself):
+
+1. *The allowance without waiting, and what is over it taken back
+   by the keeper in parts.* Faulted by: file pages locked in memory
+   counted as cache to drop, so the part for the programs' own never
+   came (and, in the rule itself, a floor under what the group could
+   come down to: with 96 MB locked a program's next 16 MB sent 103
+   MB of the group's own to swap); a session whose login hadn't
+   handed over `memory.reclaim` gave nothing back for a group asleep;
+   one take-back of 64 MB held the keeper 42 s; on Linux 6.11 to
+   6.15 the take-back asked again for what the waiting write had
+   taken.
+2. *The take-backs on a second thread.* Faulted by: that thread
+   acting for a decision that no longer stood. An allowance of 32 MB
+   written after `Keeper::stop` had said "lifted", and 225 MB of a
+   program by then in the desktop's group swapped; 4 MB of the
+   programs' own swapped after the allowance had risen, and again
+   because the group had grown between the keeper's two readings,
+   with memory to spare; a thread that couldn't be started, and
+   nothing said.
+3. *The reviewer's own patch for all of that*: every ask numbered by
+   the decision it was for, the group read again before each part,
+   waiting writes kept for kernels before 6.16 and for sessions
+   without `memory.reclaim`. Faulted, by the same reviewer, on Linux
+   7.3 and on a 6.14 really booted: a program in the group that grew
+   80 MiB under the allowance of the look before had 65 MiB of its
+   own swapped by the kernel, in its own time, with twice the reserve
+   available and no call of the keeper's in it (the allowance does
+   that by itself, between two looks); a part asked for entered the
+   kernel after the desktop had let go (4 MiB swapped; on 6.14 an
+   allowance by then obsolete was written, and swap went from 57 to
+   180 MB); on 6.14 a partial rise wasn't written for five seconds
+   (the taker was inside its write); a look waited two seconds on a
+   guard started in another's place; two looks that decided the same
+   figure counted as one decision; and a part of the cache that was
+   only waiting to be tried again let the programs' own be asked for.
+4. *A swap ceiling* (`memory.swap.max`) set at every look, closed
+   unless the look put the allowance under what the programs hold and
+   then open by that much; no waiting write left, so nothing kept on
+   a kernel before 6.16; a guard that ended replaced without the look
+   waiting to hear from the new one. Faulted (the fourth review; its
+   run was ended by its provider's filter, its notes kept): **a
+   desktop that suddenly took 110 MB more than was free had 121 MB of
+   its own swapped, and the background 4**, where with nobody keeping
+   it was 61 and 75: under a closed ceiling the kernel can only take
+   the desktop's, and what is available afterwards looks ample again,
+   so the rule never saw the need. And: what a part still being taken
+   had moved to swap was counted twice in the next ceiling (4 MiB too
+   many let through); starting the guard's replacement still ran on
+   the keeper's thread (a look of two seconds while the new program's
+   start was held); a ceiling that couldn't be read was taken for
+   none.
+5. *The ceiling open when the computer is short*: open (not a
+   figure) at every look that puts the allowance under what the
+   programs hold or comes within half a gigabyte of it; looks every
+   50 ms within one reserve of the line; what of the desktop's own
+   went to swap lately counted as needing its room back; nothing
+   written by waiting (so nothing kept before 6.16); the guard
+   replaced on a thread of its own. The fifth review: "ship with the
+   changes listed", with its patch for them. **What went to swap
+   lately was counted by its rises alone**: swap going up and down by
+   64 MiB four times a second around a gigabyte of old stood at 909
+   MiB after half a minute, and took the allowance of its example
+   from 1024 MiB to 208; a rise across an hour nobody looked counted
+   as just gone. **At looks 50 ms apart a cache slow to give out
+   starved the rest**: 80 ms to hear "no more" of the cache, every
+   look beginning again at the cache, and the programs' own never
+   asked for (three tries at the one, none at the other, in 2.5 s).
+   **A session kept by its allowance alone had a growing build's own
+   swapped with memory to spare** (65 MiB of 80; none where
+   everything was handed over, none with no allowance at all). A
+   guard's replacement still being started when the keeper was
+   stopped stayed a zombie under the supervisor; a clearing that
+   couldn't read the ceiling back came out as "cleared". The guest
+   for the sudden need couldn't have a closed ceiling at all (640 MB
+   is all within the band), and its check passed with nothing swapped
+   on either side. And a table of sentences that said more than the
+   code did ("never", "goes first", "by any road").
+6. *As it is* (`olo_system::background`): that patch whole, and two
+   things on what it called the weak point, the time to the next
+   look. The sooner looks begin far enough off that, by the
+   arithmetic, a need of ten gigabytes a second doesn't reach the
+   band between two looks: within the band's half gigabyte and
+   another 2.5 GiB of the line (on 8 GB under 4.9 GB available, where
+   it was 2.9; on 64 GB under 18.4, where it was 23). And the cache's
+   credit falls by the time the desktop was seen to wait, not by the
+   look (at the sooner pace it went five times as fast as it was
+   measured at: five such looks left an allowance of 512 MiB in the
+   review's 8 GiB example, 928 now). A sixth review held both to the
+   code: "ship with changes; keep `near` and the elapsed-time
+   credit". The arithmetic is right for its rate and for looks on
+   time, and promises nothing past that (a look 5 ms late, at that
+   rate, finds 51 MiB less than the line); the same stall counts for
+   less when looks are sooner (3 ms in a quarter of a second leaves
+   half the credit at the ordinary pace, 0.89 of it at the sooner
+   one); a guest of 6 GB showed the keeper go from one pace to the
+   other (21 waits of 250 ms, then 235 of 50); the guests' checks
+   said more than they showed (events counted in samples, not by a
+   clock; "went first" from two totals; a ceiling taken for closed
+   from the allowance alone), and so did three sentences. Its patch
+   for those is in.
+
+What it does, and how far each goes (the fifth and sixth reviews
+held every sentence to the code):
+
+- **What the rule forbids, the kernel refuses, while there is more
+  than the band to spare.** The group's swap ceiling is closed at
+  every look that leaves its programs what they hold with twice the
+  reserve and half a gigabyte available: whoever then takes memory
+  back (the group's own programs under their allowance, the taker, a
+  part asked for a moment too late) takes cache, or is slowed, and
+  the group is charged no more swap. (What was already handed to the
+  disk is still written.)
+- **When the computer is short, the background's is meant to go
+  first, and mostly does.** The ceiling is open (not a figure) at a
+  look that puts the allowance under what the programs hold or comes
+  within the band; looks come every 50 ms before the line can be
+  reached; and what of the desktop's went to swap lately (its
+  group's swap seen to grow, a fall paying back, half as much every
+  five seconds) counts as needing its room back. Open, the kernel
+  takes from whom it will: an allowance under what the programs hold
+  and the taker's asking lean it towards the background's, no more.
+  What came of it is below (how much of each group's was in swap
+  before and after; not who took it).
+- **The band's price**: within it a build that grows past its
+  allowance has its own swapped though memory is to spare (49 MiB of
+  80 in the fifth review's guest: an allowance of 176 MiB, never
+  less than 552 MiB available, the line at 347).
+- **A look never asks the kernel for memory back, nor waits for a
+  process.** (It has no bound on the clock all the same: the
+  scheduler and the kernel's own counting can hold it; 25 ms once in
+  these guests, on a busy host.) The allowance is only ever written
+  without waiting, so on a kernel before 6.16 nothing is kept, and
+  said why. A guard that ended is replaced on a thread of its own,
+  the group without allowance and ceiling until the new one says it
+  is there.
+- **A session whose login didn't hand over `memory.reclaim` and
+  `memory.swap.max`** is kept by the allowance alone, and only while
+  less than the line is available; it says so once, with what is
+  missing and what may bring it (the login's update and a new login).
+- **What a look costs**: a fifth of a millisecond of the keeper's
+  thread on a real group (the sixth review's guest: 16 looks in four
+  seconds, 3.2 ms; 79 looks, 13.5 ms), so 0.08% of a processor at
+  the ordinary pace and 0.34% at the sooner one, while anything is
+  in the group, and nothing while nothing is. (The in-tree timing,
+  18 µs, is the reading and the rule alone.)
+
+The desktop suddenly needing more than there is (the fourth review's
+guest: 242 MB of the background's own, 118 MB of the desktop's
+asleep; the desktop takes what is free and 110 MB more), and what is
+in swap five seconds on:
+
+| in 640 MB | the desktop's | the background's |
+| --- | ---: | ---: |
+| nobody keeping | 61 MB | 75 MB |
+| kept by the allowance alone | 63 | 76 |
+| the fourth form: the ceiling closed | 121 | 4 |
+| a ceiling reckoned at each look, looks at 250 ms | 111, 95 | 49, 53 |
+| open when short, looks at 50 ms near the line | 47, 0, 0 | 96, 171, 175 |
+| the fifth form (open within half a gigabyte of the line too): six runs here, three of the fifth review's | 0, 40, 0, 0, 0, 0; 0, 49, 0 | 158, 99, 164, 163, 138, 144 |
+| the fifth review's patch on it: its four runs | 0, 0, 35, 51 | 99 with the 51 |
+
+As it is, the same need four ways (`kernel-check keeper`; how much
+more of each group's was in swap five seconds after the desktop had
+what it asked for; all the runs there were, this form's):
+
+| | runs | the desktop's | the background's |
+| --- | ---: | --- | --- |
+| 640 MB, the ceiling open from the start (all of it is within the band) | 12 | none in 11; 37 MB in one | 163 to 211 MB; 99 with the 37 |
+| 1792 MB, the ceiling closed when the need begins | 6 | none | 221 to 227 MB |
+| the same, the background's memory in use | 3 | none | 227 to 228 MB |
+| 6 GB, the ceiling closed and the keeper at its ordinary pace | 2 | none | 220, 223 MB |
+
+Mostly, not always: where the ceiling is open the kernel takes from
+whom it will, and the keeper's part is a race (in the run that lost
+37 MB the desktop had its 180 MB in 135 ms; the background's swap
+was seen to grow 44 ms in, the desktop's 97 ms in). Where it was
+closed when the need began, it was seen open 0.1 to 0.7 s into a
+burst of 1.3 GB that took 1.3 to 2.9 s, and 5 to 9 s into one of
+5.5 GB that took 10 to 13 (the keeper going from four looks a second
+to twenty on the way), each time before any of the desktop's went.
+
+`tools/dev/kernel-check keeper` holds it to all that in guests: a
+group asleep holding a mapped file and memory of its own, memory of
+its own only, a file locked in memory, in a session whose login
+handed everything over (three seconds after the desktop took what
+there was: the cache given back, the group at its allowance, its
+own in swap, the ceiling open while the allowance is under what its
+programs hold; the locked file stays and its own goes) and in one
+from before (the keeper saying, whole and nothing else, that it
+keeps by the allowance alone; the group holding what it held); a
+program growing 80 MB under its allowance with memory to spare (3
+GB, 1.8 of it a file the desktop has mapped: the ceiling closed,
+nothing swapped, where 65 MB were); the desktop's sudden need four
+ways (above: that the background's swap grew over the burst and by
+no less than the desktop's, each event by the guest's clock, the
+keeper's looks counted before the need and through it; the 6 GB one
+only on a computer with 16 GB to spare, and said when it isn't run);
+swap on a disk of 4 MB a second (the allowance rose 54 ms after the
+desktop let go, no look took over a millisecond, nothing more of the
+group's own went to swap after the rise). 37 checks.
+`session-groups` (51 now): the person may set `bg`'s swap ceiling
+and have its memory taken back, and is refused `desk`'s. On a 6.14
+really booted (Fedora 42's first kernel, its packages unpacked in
+scratch: `OLO_GUEST_KERNEL`) the keeper doesn't keep and says why,
+nothing of it stands, and the login's 51 are as they should be. The
+fourth review's own experiments again, against the fifth form: a
+guard killed while its replacement's start is held two seconds (the
+keeper's longest look 0 ms, where it was 1,985; the group without
+allowance and ceiling meanwhile); the keeper and its guard both
+killed (the allowance and a closed ceiling left standing until a
+supervisor's next start clears them, `clear_if_unkept`: lifted,
+nothing left in the group). No guest shows a need of ten gigabytes a
+second, nor a computer of 8 or 64 GB: the band's half gigabyte, the
+five seconds and the two paces are reckoned, not tuned.
+
+The build scenario where memory is truly short (`groups`, the case
+`olo`: 1 GB) again, the keeper as pushed and as changed **in turn**
+(`OLO_KBENCH`), on a host busy with other builds throughout. Two
+sittings: the fifth form beside two runs of the keeper as pushed,
+then this one beside two more. One run each of the changed, then
+stopped (Ben, 2026-11-21: "let's skip the rest of the before/after
+measurement runs it's a little excessive"): two runs that agree, and
+nothing of a tail. Where memory is all cache (`groups-cold`) neither
+was measured; the third form's figures there, within the noise of
+its parent's, are the last.
+
+| | the keeper as pushed, four runs | the fifth form | as it is |
+| --- | --- | --- | --- |
+| the desktop's program in use: a round through its file, 99 in 100 within | 2.4, 9.9, 3.3, 4.6 ms | 0.24 ms | 0.43 ms |
+| its worst round | 46, 64, 99, 55 ms | 64 ms | 87 ms |
+| a round through its own memory, 99 in 100 within | 2.4, 1.8, 8.0, 2.4 ms | 0.16 ms | 0.24 ms |
+| the system's files, 99 in 100 within | 3.8, 4.8, 1.7, 10.3 ms | 0.11 ms | 0.21 ms |
+| the idle program's 200 MB brought back in | 140, 157, 221, 143 ms | 132 ms | 121 ms |
+| the build got done: compiles | 36, 36, 30, 37 | 34 | 33 |
+| and rounds of files | 158, 126, 99, 120 | 36 | 31 |
+| the keeper's own time on the processors | 3.3, 3.8, 4.5, 3.6 s | 2.9 s | 2.5 s |
+
+The desktop's programs in use waited a tenth as long at the 99th
+percentile, the system's services less still; their worst rounds
+are as they were. The build compiled as much and got a quarter of
+its rounds of files through. Which of the changes did which isn't
+measured. In 1 GB twice the reserve and the band are three quarters
+of the computer, so the ceiling is open and the looks are the
+sooner ones nearly throughout: the band's price where it is
+dearest. On a computer of 64 GB the band is a thirtieth of the
+line; nothing was measured there.
+
+What they don't say: the keeper's time is its whole process's over
+the whole scenario (the taker's too, and the minute after the build);
+three runs say nothing of a tail; the guests' compilers start in the
+group; and why the build's rounds of files differ isn't settled (the
+third review counted the build's own programs entering the kernel's
+take-back 322 times a round with the keeper as pushed and 383 with
+the third form, the compiler's own share the same in both: more work
+a round, not attributed further). **To do**: the same on a quiet
+computer, with each group's own processor time and waiting, the
+build's files brought back from disk a round, and the desktop's disk
+while the background's memory is being written out; what would
+settle the band and the two paces: by how much what is available
+falls between two looks in real bursts on a computer of 8 GB and of
+64, with the most of the desktop's in swap and how long it took to
+come back (the fifth review's words; the keeper could keep the
+steepest fall it saw); what Doctor and Preferences say on a kernel
+before 6.16 and in a session from before the hand-over (the keeper's
+note is in the log only); a keeper and its guard both killed with no
+supervisor to start again (the allowance and the ceiling then stand
+until the session ends).
+
 ## Graphics memory in 2 MB pieces
 
 Found 2026-11-21 with `sudo tools/dev/memory-holds` (who is held while

@@ -177,6 +177,7 @@ fn work(groups: &Groups, desk: &str, lock: &std::path::Path, guard: Option<&std:
     // A move asked for: how often it was refused, and when it is next tried.
     let mut waiting: HashMap<Seen, (u32, Instant)> = HashMap::new();
     let mut last_put: Option<Instant> = None;
+    let mut last_clear = None;
     loop {
         let msg = match waiting.values().map(|(_, at)| *at).min() {
             Some(at) => match from.recv_timeout(at.saturating_duration_since(Instant::now())) {
@@ -197,6 +198,9 @@ fn work(groups: &Groups, desk: &str, lock: &std::path::Path, guard: Option<&std:
                     // (Lifted, read back and cleared by the keeper itself,
                     // under its lock.)
                     let ended = keeper.stop();
+                    // (Not lifted, or something still in it: looked at
+                    // again, as what a killed supervisor left is.)
+                    busy.store(!ended.lifted || ended.left != Some(0), Ordering::Relaxed);
                     kept.store(false, Ordering::Relaxed);
                     let _ = notes.send(if ended.lifted {
                         format!("Turned off: the background group has no allowance of memory any more; {}", left(ended.left))
@@ -208,7 +212,21 @@ fn work(groups: &Groups, desk: &str, lock: &std::path::Path, guard: Option<&std:
                     // too: cleared if nobody keeps it now, looked at
                     // again while another does.)
                     let cleared = background::clear_if_unkept(groups, lock);
-                    busy.store(cleared == background::Cleared::Busy, Ordering::Relaxed);
+                    use background::Cleared;
+                    // (Looked at again until nothing is left to do there:
+                    // an allowance or a ceiling that didn't read back as
+                    // lifted, and programs still in it, as well as
+                    // another's keeping. It came back as "cleared" once,
+                    // and was never tried again: the fifth review.)
+                    busy.store(!matches!(cleared, Cleared::Nothing | Cleared::Done { left: Some(0), .. }), Ordering::Relaxed);
+                    // (Each outcome said once while it stays the same.)
+                    if last_clear == Some(cleared) {
+                        continue;
+                    }
+                    last_clear = Some(cleared);
+                    if let Cleared::Unconfirmed { left: still } = cleared {
+                        let _ = notes.send(format!("Off, but the background group's allowance of memory or its swap ceiling didn't read back as lifted (looked at again); {}", left(still)));
+                    }
                     if let background::Cleared::Done { lifted, left: still } = cleared {
                         let _ = notes.send(format!(
                             "Off: the background group {}; {}",
@@ -219,6 +237,7 @@ fn work(groups: &Groups, desk: &str, lock: &std::path::Path, guard: Option<&std:
                 }
             }
             Some(Msg::Look { reserve, new }) => {
+                last_clear = None;
                 match &keeper {
                     Some((k, kept)) if *kept != reserve => {
                         k.set_reserve(reserve);
@@ -328,6 +347,8 @@ mod tests {
         }
         std::fs::write(bg.join("cgroup.events"), "populated 1\n").unwrap();
         std::fs::write(bg.join("memory.high"), "max\n").unwrap();
+        std::fs::write(bg.join("memory.swap.max"), "max").unwrap();
+        std::fs::write(bg.join("memory.reclaim"), "").unwrap();
         std::fs::write(bg.join("memory.current"), "1073741824\n").unwrap();
         std::fs::write(bg.join("memory.stat"), "file 0\nshmem 0\ninactive_file 0\n").unwrap();
         std::fs::write(desk.join("memory.pressure"), "some avg10=0.00 avg60=0.00 avg300=0.00 total=0\n").unwrap();

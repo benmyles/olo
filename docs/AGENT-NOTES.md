@@ -938,6 +938,101 @@ Learned measuring the allocator (2026-11-21):
   `/proc/PID/stat` of the session's app_server, then `tsession stop
   bench`).
 
+### A second thread that does kernel work for a first
+
+Learned from two reviews of the background group's keeper
+(2026-11-21), each of which broke the form before it in a guest:
+
+- **What the kernel was asked can't be called off, and takes the
+  asker's time**: a write of `memory.high` under what a group holds,
+  a write of `memory.reclaim`, anything that ends in the disk's
+  queue. Whoever must stay responsive doesn't make such a call; and
+  whoever makes it for them acts for a decision that may no longer
+  stand by the time the call starts. Give every ask the decision it
+  is for (a number that changes with each decision), read the state
+  again right before each call, and at the end wait for that thread
+  before saying it is over (the reviewer paused the thread just
+  before its write, stopped the keeper, and resumed it: the "lifted"
+  the keeper had reported was no longer true). The check and the
+  syscall are separate. A newer look can run between them. A process
+  allocating against an installed high can also swap without a taker
+  request. Exercise both paths with the allowance read from the kernel.
+- **What must never happen is the kernel's to refuse, not the
+  program's to be quick about**: three forms tried to keep "the
+  background's own memory isn't swapped unless the rule says so" by
+  deciding often and checking before each call. Each check is one
+  moment and the call another; and the kernel does the forbidden
+  thing by itself between two looks (a program growing under its
+  allowance). A swap ceiling set at every look holds whoever acts and
+  whenever. Look first for the limit the kernel already enforces.
+- **And a limit the kernel enforces, it enforces against everyone**:
+  the ceiling that kept the background's own out of swap kept it out
+  of the kernel's reach when the desktop suddenly needed more than
+  there was, and the kernel took the desktop's (121 MB to 4). A hard
+  limit is right only where nobody else can come to need what it
+  withholds: closed with memory to spare, open before the line.
+- **What looks ample after the fact was paid for**: `MemAvailable`
+  was back over the line once the kernel had swapped the desktop
+  out, so a rule that read only that saw no shortage. Count what the
+  shortage cost (the desktop's own memory in swap) as still missing.
+- **The reviewer's own patch gets reviewed too**: the third form was
+  the second review's tested patch, taken whole, and the third review
+  (the same reviewer, asked to fault it once more) held it.
+- **A balance isn't a flow**: "what went to swap lately" was counted
+  from a balance by adding up its rises. A balance that goes up and
+  down adds up to anything (909 MiB "gone" around a gigabyte that
+  hadn't moved). From a balance, count the net; and say that what
+  came and went between two readings isn't seen.
+- **What is tuned by the look changes when looks come sooner**: the
+  cache's credit halved at each look that saw the desktop wait, and
+  the retry of a part waited "until the next look". Both were tuned
+  at four looks a second; at twenty the credit went five times as
+  fast and one stage never got its turn. Whatever depends on how
+  much time went by takes the time, not the count.
+- **A check that passes when nothing happened shows nothing**: "the
+  background's swap is no less than the desktop's" held at nothing
+  and nothing; and the guest it ran in couldn't reach the state it
+  was named for (640 MB is all within the band: the ceiling never
+  closed there). Ask of each check what it would say if the thing
+  under test did nothing at all, and of each scenario whether it can
+  get where its name says.
+- **Words reviewed like code**: the fifth and sixth reviews held the
+  comments' "never", "always" and "first" against what the code
+  does, and half didn't stand ("attempts", "is meant to", "mostly").
+  A sentence about a property is a claim to test like any other.
+- **Two readings of a figure are two figures**: a decision made on
+  one and applied to the other invents a difference (the group grew
+  between them, and that growth was taken for memory to swap).
+  Carry what the decision allowed, not only what it decided.
+- **A check that passes with the thing absent proves nothing**: the
+  slow-swap check passed with no swap at all (its wait fell through
+  on a timeout). A check says what it saw happen (swap started, the
+  disk wrote) before it judges what followed.
+- **`kill $!` after `f() { ( … exec "$@" ); }; f … &` kills the
+  shell that called `f`, not the program**: start what is to be
+  killed as `( … exec … ) &` itself. (The check's "desktop lets go"
+  let go of nothing.)
+- **The reviewer's provider can end a run** (its content filter did,
+  on a brief that asked to "break" kernel code): ask for the answer
+  to be written as it goes, keep its notes, and word a brief as the
+  reliability review it is.
+- **Two builds measured one after the other measure the hour too**:
+  the first series (all of one, then all of the other, the review's
+  guests beside the second) showed a worst round six times longer
+  that the builds in turn (`OLO_KBENCH`, pair by pair) didn't.
+- **`kernel-check groups 2` is three runs**: a bare number was never
+  its `--reps` (its usage said `[N]`; it says `--reps N` now).
+- **A kernel from before a feature, really booted**: a Fedora
+  release's first kernel stays in its archive
+  (`archives.fedoraproject.org/pub/archive/fedora/linux/releases/42/Everything/x86_64/os/Packages/k/`:
+  `kernel-core` and `kernel-modules-core` are enough for a guest
+  with a disk and zram); `rpm2cpio | cpio -idm` into a scratch
+  root, `depmod -b ROOT RELEASE`, then
+  `OLO_GUEST_KERNEL=ROOT/lib/modules/RELEASE tools/dev/kernel-check …`.
+  The archive can crawl (one package came at 6 KB a second and the
+  next at once): `curl -C -` to go on with what came, and `rpm -K
+  --nosignature` says whether it is whole.
+
 ### Reading a day's logs
 
 Learned on the second pass (2026-11-20):

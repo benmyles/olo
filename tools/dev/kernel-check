@@ -66,12 +66,12 @@ settings were chosen.
       swap used then, is anything ended. Each as Olo had it (the
       multi-generational LRU with vm.swappiness 1), with swappiness 0
       there (it never swaps), and with the kernel's older reclaim and
-      swappiness 0, the room kept free as it comes and widened. N (2)
+      swappiness 0, the room kept free as it comes and widened. N (3)
       guests each. (That last was a setting for an hour and was
       withdrawn: kernel/TUNING.md, "Tried and withdrawn". The scenario
       stays, for what is tried next: it measures programs, not a
       driver whose allocation may be refused.)
-  tools/dev/kernel-check groups [N]
+  tools/dev/kernel-check groups [--reps N]
       background work in a control group of its own (what is to be
       built: docs/TODO.md, "Background work is swapped first"): a
       desktop's programs, one idle and one in use, the system's
@@ -79,13 +79,39 @@ settings were chosen.
       is; in one group as today, with the background's group kept to
       what is free (`memory.high`, set as memory fills), and with the
       desktop's group protected (`memory.low`: which had the kernel
-      end a program). What the programs in use wait, what the build
-      gets done. N (2) guests each.
-  tools/dev/kernel-check groups-cold [N]
+      end a program), and with Olo's own keeper as the one that keeps.
+      What the programs in use wait, what the build gets done. N (3)
+      guests each. (OLO_GROUPS_CASES=0,5: some of the cases, by their
+      place; OLO_GROUPS_KEEPER=before-login: Olo's keeper as in a
+      session whose login didn't hand it `memory.reclaim`.)
+  tools/dev/kernel-check groups-cold [--reps N]
       the same on a computer whose memory is mostly cache nobody
       uses (3 GB, half of it a file read once), where little is ever
       free: the rule by free memory alone against one that counts
       the unused cache as free too.
+  tools/dev/kernel-check keeper
+      what Olo's keeper of the background group does for a group that
+      is asleep (nothing in it asks for memory, so nothing of it gives
+      any up by itself) when the desktop takes what there is: files it
+      has mapped and memory of its own; memory of its own only; a file
+      locked in memory (not cache to give up: its own goes); each in a
+      session whose login handed the keeper `memory.reclaim` and
+      `memory.swap.max` and in one from before (kept by the allowance
+      alone, written without waiting, and only while memory is short:
+      a group asleep needn't come down). A program that grows under
+      its allowance with memory to spare (none of its own to swap). A
+      desktop that suddenly takes more than there is, four ways (the
+      swap ceiling open from the start; closed when the need begins,
+      the background asleep and at work; from the keeper's ordinary
+      pace, in a guest of 6 GB, which is run only where 16 GB are to
+      spare and said when it isn't): how much of each group's went to
+      swap, each event by the guest's clock, the keeper's looks
+      counted. And with swap on a disk that takes 4 MB a second: a
+      look must stay short, so that the allowance rises as soon as
+      the desktop lets go. On a kernel before 6.16
+      (`OLO_GUEST_KERNEL`): that nothing is kept, and said why. Pass
+      or fail, with the figures. (Found by reviews, 2026-11-21: each
+      of these went wrong in one form or another of that keeper.)
   tools/dev/kernel-check session-groups
       what Olo's login does with a login session's scope, as root,
       against the kernel itself: divided into the desktop's group and
@@ -104,6 +130,12 @@ settings were chosen.
 
 Needs qemu-system-x86_64 with /dev/kvm, and kbench
 (`cargo build --release -p olo-system --example kbench`).
+
+In the environment: OLO_KBENCH=FILE, another build of kbench (a file
+of that name, wherever), so that two can be measured in turn;
+OLO_GUEST_KERNEL=DIR, another kernel's `lib/modules/RELEASE` with its
+vmlinuz in it, for the guests to run in place of this computer's (the
+keeper and the login's groups on a kernel from before 6.16, say).
 """
 
 import json
@@ -114,8 +146,16 @@ import sys
 import tempfile
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-KBENCH = os.path.join(ROOT, "target/release/examples/kbench")
+# (OLO_KBENCH: another build of it, to measure one keeper against another in turn. A file named kbench,
+# in whatever folder: the guest has it by its name.)
+KBENCH = os.environ.get("OLO_KBENCH") or os.path.join(ROOT, "target/release/examples/kbench")
 GUEST = ["/usr/bin/python3", os.path.join(ROOT, "tools/dev/kvm-guest")]
+# (OLO_GUEST_KERNEL: another kernel's lib/modules/RELEASE, its vmlinuz in it (as tools/dev/kernel-next
+# --keep leaves one, or its packages unpacked by hand and indexed with depmod -b): the guests run that
+# kernel and not this computer's. The checks ask of it what they ask of this one.)
+KERNEL = os.environ.get("OLO_GUEST_KERNEL")
+if KERNEL:
+    GUEST += ["--kernel", os.path.join(KERNEL, "vmlinuz"), "--modules-dir", KERNEL]
 
 
 def guest(script, args=(), bins=(), modules=(), disks=(), mem=2048, append="", timeout=600, strict=False):
@@ -487,9 +527,17 @@ fi
 within() { g=$1; shift; ( echo $BASHPID > $g/cgroup.procs && exec "$@" ); }
 # The keeper runs where the supervisor does (in the desktop's group), and the background's group is idle on the
 # processors against the desktop's, as Olo's login makes it.
+KEPT=$1
 if [ "$1" = olo ]; then
   echo 1 > "$B/cpu.idle" || exit 1
-  (echo 0 > "$D/cgroup.procs" && exec /bin/kbench keep "$D" "$B" --reserve "$2") 2> /tmp/keeper & CTL=$!
+  # (As in a session whose login didn't hand the keeper the group's memory.reclaim: the keeper is the person, the
+  # allowance theirs to write, the taking back root's.)
+  if [ "${6:-}" = before-login ]; then
+    chown 1000 "$B/memory.high" || exit 1
+    (echo 0 > "$D/cgroup.procs" && exec setpriv --reuid 1000 --regid 1000 --clear-groups /bin/kbench keep "$D" "$B" --reserve "$2") 2> /tmp/keeper & CTL=$!
+  else
+    (echo 0 > "$D/cgroup.procs" && exec /bin/kbench keep "$D" "$B" --reserve "$2") 2> /tmp/keeper & CTL=$!
+  fi
 fi
 stat() { awk -v k="$2" '$1==k {print $2}' $1/memory.stat; }
 # The cache nobody uses: a file read once, by the system.
@@ -531,12 +579,402 @@ wait $T || gone="$gone files"; echo "files|$(cat /tmp/t)"
 wait $O || gone="$gone own"; echo "own|$(cat /tmp/o)"
 wait $ST || gone="$gone sysfiles"; echo "sysfiles|$(cat /tmp/st)"
 wait $SO || gone="$gone sysown"; echo "sysown|$(cat /tmp/so)"
+# (What the keeper itself cost: its process's time on the processors, in milliseconds.)
+[ "$KEPT" = olo ] && echo "keeper-cost|{\"ms\":$(awk '{print ($14 + $15) * 10}' /proc/$CTL/stat)}"
 [ -n "$CTL" ] && { kill -0 "$CTL" || exit 1; kill "$CTL" || exit 1; echo "high|{\"events\":\"$(tr '\n' ' ' < $B/memory.events)\"}"; }
 [ -s /tmp/keeper ] && echo "keeper|{\"said\":\"$(tr '\n\"' ' .' < /tmp/keeper)\"}"
 [ -z "$gone" ] && echo "done|{}" || echo "undone|{\"probes\":\"$gone\"}"
 echo "oom|{\"kills\":$(awk '/^oom_kill / {print $2}' /proc/vmstat)}"
 echo "left|{\"free_mb\":$(awk '/^MemFree/ {print int($2/1024)}' /proc/meminfo),\"unused_cache_mb\":$(awk '/^Inactive\(file\)/ {print int($2/1024)}' /proc/meminfo)}"
 """
+
+
+KEEPER = r"""
+mkdir -p /cg /d
+mount -t cgroup2 none /cg
+echo '+memory +cpu' > /cg/cgroup.subtree_control
+mkdir /cg/desk /cg/bg
+echo 1 > /cg/bg/cpu.idle
+ready() { for ((i=0;i<150;i++)); do [ -s "$1" ] && return; sleep 0.1; done; echo "undone|{\"waiting\":\"$1\"}"; exit 2; }
+stat() { awk -v k="$1" '$1==k {print $2}' /cg/bg/memory.stat; }
+row() { echo "$1|{\"high\":\"$(cat /cg/bg/memory.high)\",\"ceiling\":\"$(cat /cg/bg/memory.swap.max)\",\"held\":$(cat /cg/bg/memory.current),\"swap\":$(cat /cg/bg/memory.swap.current),\"own\":$(stat anon),\"file\":$(stat file),\"locked\":$(stat unevictable)}"; }
+if [ "$1" = slow ]; then
+  # Swap on a disk that takes 4 MB a second (the guest's second disk), nothing compressed on the way.
+  echo N > /sys/module/zswap/parameters/enabled 2>/dev/null
+  mkswap /dev/vda > /dev/null && swapon /dev/vda || exit 1
+  echo 1 > /proc/sys/vm/swappiness
+  (echo $BASHPID > /cg/bg/cgroup.procs && exec /bin/kbench hold --own 256) > /tmp/bg & H=$!
+  ready /tmp/bg
+  (echo $BASHPID > /cg/desk/cgroup.procs && exec /bin/kbench keep /cg/desk /cg/bg --reserve 45 --report /tmp/looks) > /dev/null 2> /tmp/keeper & K=$!
+  sleep 0.5
+  free=$(awk '/^MemFree:/ {print int($2/1024)}' /proc/meminfo)
+  (echo $BASHPID > /cg/desk/cgroup.procs && exec /bin/kbench hold --own $((free - 170))) > /tmp/desk & D=$!
+  ready /tmp/desk
+  # The keeper is sending the group's own to swap, slowly: then the desktop lets go.
+  for ((i=0;i<400;i++)); do [ "$(cat /cg/bg/memory.swap.current)" -gt 8388608 ] && break; sleep 0.05; done
+  [ "$(cat /cg/bg/memory.swap.current)" -gt 8388608 ] || { echo 'undone|{"waiting":"swap to start"}'; exit 2; }
+  h=$(cat /cg/bg/memory.high)
+  [ "$h" != max ] && [ "$h" -lt "$(cat /cg/bg/memory.current)" ] || exit 2
+  row swapping
+  kill $D; wait $D 2>/dev/null
+  t0=$(date +%s%3N); rose=-1
+  for ((i=0;i<300;i++)); do
+    h=$(cat /cg/bg/memory.high); if [ "$h" = max ] || [ "$h" -gt 268435456 ]; then rose=$(( $(date +%s%3N) - t0 )); break; fi
+    sleep 0.05
+  done
+  [ "$rose" -ge 0 ] || { echo 'undone|{"waiting":"allowance to rise"}'; exit 2; }
+  row after
+  sectors=$(awk '{print $7}' /sys/block/vda/stat)
+  sleep 3
+  echo "disk-tail|{\"bytes\":$(( ($(awk '{print $7}' /sys/block/vda/stat) - sectors) * 512 ))}"
+  row settled
+  echo "rose|{\"ms\":$rose}"
+else
+  mkfs.ext4 -q -F /dev/vda && mount /dev/vda /d || exit 1
+  echo $((1<<30)) > /sys/block/zram0/disksize && mkswap /dev/zram0 > /dev/null && swapon /dev/zram0 || exit 1
+  echo 1 > /proc/sys/vm/swappiness
+  # What the login hands the person: the allowance always, the taking back in a session of a login that knows to.
+  chown 1000 /cg/bg/memory.high
+  [ "$2" = handed ] && { chown 1000 /cg/bg/memory.reclaim /cg/bg/memory.swap.max || exit 1; }
+  case "$1" in mixed) f=192; a=160; pin= ;; own) f=0; a=256; pin= ;; locked) f=320; a=192; pin=--pin ;; esac
+  (echo $BASHPID > /cg/bg/cgroup.procs && exec /bin/kbench hold --file $f --own $a $pin) > /tmp/bg & H=$!
+  ready /tmp/bg
+  row before
+  (echo $BASHPID > /cg/desk/cgroup.procs && exec setpriv --reuid 1000 --regid 1000 --clear-groups /bin/kbench keep /cg/desk /cg/bg --reserve 45 --report /tmp/looks) > /dev/null 2> /tmp/keeper & K=$!
+  sleep 0.5
+  free=$(awk '/^MemFree:/ {print int($2/1024)}' /proc/meminfo)
+  (echo $BASHPID > /cg/desk/cgroup.procs && exec /bin/kbench hold --own $((free - 170))) > /tmp/desk & D=$!
+  ready /tmp/desk
+  sleep 3
+  row after
+fi
+echo "looks|{\"longest_ms\":$(cat /tmp/looks 2>/dev/null || echo -1)}"
+[ -s /tmp/keeper ] && echo "keeper|{\"said\":\"$(tr '\n\"' ' .' < /tmp/keeper)\"}"
+kill $K $H $D 2>/dev/null
+echo "done|{}"
+"""
+
+
+PROTECTED_GROWTH = r"""
+set -eu
+mkdir /cg /d
+mount -t cgroup2 none /cg
+echo '+memory +cpu' > /cg/cgroup.subtree_control
+mkdir /cg/desk /cg/bg
+echo 1 > /cg/bg/cpu.idle
+mkfs.ext4 -q -F /dev/vda
+mount /dev/vda /d
+echo $((1<<30)) > /sys/block/zram0/disksize
+mkswap /dev/zram0 > /dev/null
+swapon /dev/zram0
+echo 1 > /proc/sys/vm/swappiness
+
+ready() {
+    for ((i=0; i<300; i++)); do [ -s "$1" ] && return; sleep .05; done
+    echo "timed out waiting for $1" >&2
+    exit 2
+}
+available() { awk '/^MemAvailable:/ {print $2}' /proc/meminfo; }
+(echo 0 > /cg/bg/cgroup.procs && exec kbench hold --own 160) > /tmp/initial & initial=$!
+ready /tmp/initial
+# (Memory to spare: 1.8 GB of a file the desktop has mapped, which the kernel could drop and the keeper
+# counts as in use, so the allowance stays at what the group's programs hold.)
+(echo 0 > /cg/desk/cgroup.procs && exec kbench hold --file 1800 /d/mapped) > /tmp/mapped & mapped=$!
+ready /tmp/mapped
+free=$(awk '/^MemFree:/ {print int($2/1024)}' /proc/meminfo)
+(echo 0 > /cg/desk/cgroup.procs && exec kbench hold --own $((free-120))) > /tmp/resident & resident=$!
+ready /tmp/resident
+
+(echo 0 > /cg/desk/cgroup.procs && exec kbench keep /cg/desk /cg/bg --reserve 18 --report /tmp/look) 2> /tmp/keeper & keeper=$!
+ready /tmp/look
+for ((i=0; i<100; i++)); do
+    high=$(cat /cg/bg/memory.high)
+    [ "$high" != max ] && [ "$high" -lt $((200<<20)) ] && break
+    sleep .05
+done
+[ "$high" != max ] && [ "$high" -lt $((200<<20)) ] || exit 2
+# (Twice the reserve, and the half gigabyte under which the keeper leaves the ceiling open.)
+cutoff=$(awk '/^MemTotal:/ {print int($2*0.36) + 524288}' /proc/meminfo)
+before=$(available)
+(for ((i=0; i<1000; i++)); do
+    available
+    [ -e /tmp/grew ] && exit 0
+    sleep .005
+done; exit 2) > /tmp/available & sampler=$!
+ready /tmp/available
+swap_before=$(cat /cg/bg/memory.swap.current)
+(echo 0 > /cg/bg/cgroup.procs && exec kbench hold --own 80) > /tmp/growth & growth=$!
+ready /tmp/growth
+echo 1 > /tmp/grew
+wait "$sampler"
+minimum=$(awk 'NR==1 || $1<m {m=$1} END {print m}' /tmp/available)
+after=$(available)
+swap_after=$(cat /cg/bg/memory.swap.current)
+[ "$minimum" -gt "$cutoff" ] && [ "$before" -gt "$cutoff" ] && [ "$after" -gt "$cutoff" ] && [ "$swap_before" -eq 0 ] || exit 2
+[ ! -s /tmp/keeper ] || { cat /tmp/keeper >&2; exit 2; }
+echo "growth|{\"high\":$high,\"ceiling\":\"$(cat /cg/bg/memory.swap.max)\",\"cutoff_kib\":$cutoff,\"minimum_kib\":$minimum,\"available_before_kib\":$before,\"available_after_kib\":$after,\"swap_bytes\":$swap_after}"
+kill "$keeper" "$growth" "$resident" "$mapped" "$initial"
+"""
+
+
+SUDDEN = r"""
+mkdir -p /cg
+mount -t cgroup2 none /cg
+echo '+memory +cpu' > /cg/cgroup.subtree_control
+mkdir /cg/desk /cg/bg
+echo 1 > /cg/bg/cpu.idle
+echo N > /sys/module/zswap/parameters/enabled 2>/dev/null
+echo $((768<<20)) > /sys/block/zram0/disksize && mkswap /dev/zram0 > /dev/null && swapon /dev/zram0 || exit 1
+echo 60 > /proc/sys/vm/swappiness
+# (Up to $2 fiftieths of a second, 250 if not said: a burst of gigabytes takes more than five seconds on a
+# host busy with other work, and gave up there once. $3: the process that is to write it; gone without
+# having, there is nothing to wait for.)
+ready() {
+    for ((i=0;i<${2:-250};i++)); do
+        [ -s "$1" ] && return
+        [ -n "$3" ] && ! kill -0 "$3" 2>/dev/null && ! [ -s "$1" ] && { echo "undone|{\"ended\":\"$1\"}"; exit 2; }
+        sleep 0.02
+    done
+    echo "undone|{\"waiting\":\"$1\"}"; exit 2
+}
+# (The clock, in milliseconds.)
+now() { echo $(( ${EPOCHREALTIME/[.,]/} / 1000 )); }
+chown 1000 /cg/bg/memory.high /cg/bg/memory.reclaim /cg/bg/memory.swap.max || exit 1
+# ($2: --busy, the background's memory in use, as a build's is; none, asleep.)
+(echo $BASHPID > /cg/bg/cgroup.procs && exec /bin/kbench hold --own 242 $2) > /tmp/bg & B=$!
+ready /tmp/bg
+(echo $BASHPID > /cg/desk/cgroup.procs && exec /bin/kbench hold --own 118) > /tmp/desk & D=$!
+ready /tmp/desk
+(echo $BASHPID > /cg/desk/cgroup.procs && exec setpriv --reuid 1000 --regid 1000 --clear-groups /bin/kbench keep /cg/desk /cg/bg --reserve 12 --report /tmp/looks) > /dev/null 2> /tmp/keeper & K=$!
+ready /tmp/looks
+# (The keeper's looks, counted by its thread's switches of its own accord: each wait is usually one; a look
+# that blocks on something adds others.)
+looks() { for t in /proc/$K/task/*; do read -r c < $t/comm; [ "$c" = "background keep" ] && awk '/^voluntary_ctxt_switches/ {print $2}' $t/status && return; done; echo -1; }
+# (The keeper's first looks: the ceiling as they leave it, which is the case being run, $1. And its pace
+# at rest, over two seconds.)
+sleep 0.5
+# (That it keeps at all: an allowance set. An open ceiling alone is also what the kernel starts with.)
+finite_high() { read -r high < /cg/bg/memory.high && [[ "$high" =~ ^[0-9]+$ ]]; }
+for ((i=0;i<250;i++)); do finite_high && break; sleep 0.02; done
+finite_high || { echo 'undone|{"waiting":"the keeper to set an allowance"}'; exit 2; }
+# (The background's program at work or asleep, by its time on the processors over the rest: a bench
+# program from before `--busy` takes the word and sleeps.)
+ticks() { read -r _ _ _ _ _ _ _ _ _ _ _ _ _ ut st _ < /proc/$B/stat; echo $((ut + st)); }
+rest_looks=$(looks); rest_at=$(now); rest_ticks=$(ticks)
+sleep 2
+busy_ticks=$(( $(ticks) - rest_ticks ))
+read -r initial < /cg/bg/memory.swap.max || exit 2
+[ "$initial" = "$1" ] || { echo "undone|{\"ceiling\":\"$initial\",\"wanted\":\"$1\"}"; exit 2; }
+# Sampled until the burst is five seconds over, each event by the clock: when the ceiling was first seen
+# open, when each group's swap was first seen grown, the most of the desktop's seen in swap. (What rose and
+# fell again between two samples isn't seen; a sample is as far from the last as the guest gets to it.)
+(
+    read -r bg_before < /cg/bg/memory.swap.current || exit 2
+    read -r desk_before < /cg/desk/memory.swap.current || exit 2
+    open_at=0; bg_at=0; desk_at=0; peak_desk=$desk_before; samples=0
+    echo ready > /tmp/sampling
+    for ((i=0;i<12000;i++)); do
+        read -r ceiling < /cg/bg/memory.swap.max || exit 2
+        read -r bg < /cg/bg/memory.swap.current || exit 2
+        read -r desk < /cg/desk/memory.swap.current || exit 2
+        at=$(( ${EPOCHREALTIME/[.,]/} / 1000 )); samples=$((samples + 1))
+        if [ "$ceiling" = max ] && [ "$open_at" = 0 ]; then open_at=$at; fi
+        if [ "$bg" -gt "$bg_before" ] && [ "$bg_at" = 0 ]; then bg_at=$at; fi
+        if [ "$desk" -gt "$desk_before" ] && [ "$desk_at" = 0 ]; then desk_at=$at; fi
+        if [ "$desk" -gt "$peak_desk" ]; then peak_desk=$desk; fi
+        if [ -e /tmp/burst-ended ]; then
+            echo "trace|{\"bg_before\":$bg_before,\"desk_before\":$desk_before,\"open_at\":$open_at,\"bg_at\":$bg_at,\"desk_at\":$desk_at,\"peak_desk\":$peak_desk,\"samples\":$samples,\"initial\":\"$initial\"}"
+            exit 0
+        fi
+        sleep .01
+    done
+    exit 2
+) > /tmp/trace & sampler=$!
+ready /tmp/sampling
+# The desktop takes what is free and 110 MB more, at once: more than there is to be had without swap.
+free=$(awk '/^MemFree:/ {print int($2/1024)}' /proc/meminfo)
+began=$(now); began_looks=$(looks)
+(echo $BASHPID > /cg/desk/cgroup.procs && exec /bin/kbench hold --own $((free + 110))) > /tmp/burst & U=$!
+ready /tmp/burst 4500 $U
+had=$(now); had_looks=$(looks)
+sleep 5
+echo done > /tmp/burst-ended
+wait "$sampler" || { echo 'undone|{"waiting":"the sampler"}'; exit 2; }
+for pid in "$B" "$D" "$U" "$K"; do
+    kill -0 "$pid" 2>/dev/null || { echo "undone|{\"exited_pid\":$pid}"; exit 2; }
+done
+cat /tmp/trace
+echo "sudden|{\"free\":$free,\"busy_ticks\":$busy_ticks,\"rest_at\":$rest_at,\"rest_looks\":$rest_looks,\"began\":$began,\"began_looks\":$began_looks,\"had\":$had,\"had_looks\":$had_looks,\"desk\":$(cat /cg/desk/memory.swap.current),\"bg\":$(cat /cg/bg/memory.swap.current),\"high\":\"$(cat /cg/bg/memory.high)\",\"ceiling\":\"$(cat /cg/bg/memory.swap.max)\"}"
+echo "looks|{\"longest_ms\":$(cat /tmp/looks 2>/dev/null || echo -1)}"
+[ -s /tmp/keeper ] && echo "keeper|{\"said\":\"$(tr '\n\"' ' .' < /tmp/keeper)\"}"
+kill $K $B $D $U 2>/dev/null
+echo "done|{}"
+"""
+
+
+NOT_KEPT = r"""
+mkdir -p /cg
+mount -t cgroup2 none /cg
+echo '+memory +cpu' > /cg/cgroup.subtree_control
+mkdir /cg/desk /cg/bg
+(echo $BASHPID > /cg/bg/cgroup.procs && exec /bin/kbench hold --own 64) > /tmp/bg & H=$!
+for ((i=0;i<150;i++)); do [ -s /tmp/bg ] && break; sleep 0.1; done
+(echo $BASHPID > /cg/desk/cgroup.procs && exec /bin/kbench keep /cg/desk /cg/bg --reserve 45) > /dev/null 2> /tmp/keeper & K=$!
+ended=no
+for ((i=0;i<50;i++)); do kill -0 $K 2>/dev/null || { ended=yes; break; }; sleep 0.1; done
+echo "kept|{\"ended\":\"$ended\",\"high\":\"$(cat /cg/bg/memory.high)\",\"ceiling\":\"$(cat /cg/bg/memory.swap.max)\",\"said\":\"$(tr '\n\"' ' .' < /tmp/keeper)\"}"
+kill $K $H 2>/dev/null
+echo "done|{}"
+"""
+
+
+# What the keeper says, once, in a session whose login didn't hand it the rest (background.rs).
+LEGACY_NOTICE = ("The background group is kept by its allowance alone, and only while memory is short: "
+                 "to keep it in full its keeper must be able to write both memory.reclaim and memory.swap.max, "
+                 "and in this session it can't (the login hands them over; a login from before it did may be why: "
+                 "Olo Doctor brings the login screen up to date, then log in again)")
+
+
+def keeper():
+    MB = 1 << 20
+    # A kernel that sets an allowance only by waiting for the memory to come back (before Linux 6.16): the
+    # keeper never waits, so there it doesn't keep, and says why. That is all there is to check on one.
+    release = os.path.basename(KERNEL.rstrip("/")) if KERNEL else os.uname().release
+    if tuple(int(n) for n in release.split("-")[0].split(".")[:2]) < (6, 16):
+        rows = {r[0]: r[-1] for r in guest(NOT_KEPT, bins=["kill", "tr"], mem=1024, timeout=60, strict=True)}
+        k = rows.get("kept")
+        if "done" not in rows or not isinstance(k, dict):
+            sys.exit(f"kernel-check: the keeper's guest didn't finish cleanly (a kernel before 6.16): {rows}")
+        print(f"Olo's keeper of the background group on Linux {release}, which sets an allowance only by waiting:")
+        print(f"    it said: {k['said'].strip()}")
+        ok = [k["ended"] == "yes" and "only by waiting" in k["said"], k["high"] == "max" and k["ceiling"] == "max"]
+        print(f"  {'ok ' if ok[0] else 'NOT'}  the keeper doesn't keep there, and says why")
+        print(f"  {'ok ' if ok[1] else 'NOT'}  nothing of it stands: no allowance, no swap ceiling\n")
+        if not all(ok):
+            sys.exit("kernel-check: the keeper: wrong on a kernel before 6.16")
+        return
+    print("Olo's keeper of the background group and a group that is asleep: 1 GB of memory, the desktop taking what")
+    print("is free, the keeper's reserve 45% (so that little is to be had and the allowance goes under what the")
+    print("group's programs hold: its cache goes, then its own, to swap). Three seconds after the desktop grew.\n")
+    wrong = 0
+
+    def said(ok, what):
+        nonlocal wrong
+        wrong += not ok
+        print(f"  {'ok ' if ok else 'NOT'}  {what}")
+
+    for holds, name in (("mixed", "192 MB of a file mapped and 160 MB of its own"), ("own", "256 MB of its own"), ("locked", "320 MB of a file locked in memory and 192 MB of its own")):
+        for login, whose in (("handed", "a session whose login handed over memory.reclaim and memory.swap.max"), ("before", "a session from before (both root's: kept by the allowance alone)")):
+            # (A locked file in a session from before: nothing the allowance alone would show.)
+            if holds == "locked" and login == "before":
+                continue
+            rows = {r[0]: r[-1] for r in guest(KEEPER, args=[holds, login], bins=["/usr/sbin/mkfs.ext4", "/usr/sbin/mkswap", "/usr/sbin/swapon", "setpriv", "chown", "kill", "tr"], modules=["zram"], disks=["2G"], mem=1024, timeout=120, strict=True)}
+            # What the keeper said: nothing where it keeps whole; in a session from before, that it keeps by
+            # the allowance alone, once, and nothing else.
+            spoke = rows.pop("keeper", {}).get("said", "") if isinstance(rows.get("keeper", {}), dict) else "?"
+            if "done" not in rows or not all(isinstance(rows.get(k), dict) for k in ("before", "after", "looks")) or (spoke and login == "handed"):
+                sys.exit(f"kernel-check: the keeper's guest didn't finish cleanly ({holds}, {login}): {rows} {spoke!r}")
+            b, a = rows["before"], rows["after"]
+            high = "none" if a["high"] == "max" else f"{int(a['high']) / MB:.0f} MB"
+            print(f"{name}; {whose}:")
+            print(f"    before: holds {b['held'] / MB:.0f} MB (files {b['file'] / MB:.0f}, of them locked {b['locked'] / MB:.0f}; its own {b['own'] / MB:.0f}); after: {a['held'] / MB:.0f} MB (files {a['file'] / MB:.0f}, its own {a['own'] / MB:.0f}), {a['swap'] / MB:.0f} MB in swap, allowance {high}; the keeper's longest look {rows['looks']['longest_ms']} ms")
+            allowed = None if a["high"] == "max" else int(a["high"])
+            said(allowed is not None and allowed < b["held"] - 32 * MB, "the allowance is under what the group held (the desktop took what there was)")
+            if login == "before":
+                # (Nothing of a group asleep is promised there: the kernel takes it as the whole computer runs short.)
+                said(spoke.strip() == LEGACY_NOTICE, "the keeper said it keeps by the allowance alone, and nothing else")
+            elif holds == "locked":
+                said(a["file"] >= 300 * MB, "the locked file stays (it can't be given up)")
+                said(a["own"] <= 48 * MB and a["swap"] >= 140 * MB, "its own memory went to swap all the same")
+            else:
+                said(a["file"] <= 16 * MB, "its files' cache is given back")
+                said(allowed is not None and a["held"] <= allowed + 32 * MB and a["swap"] >= 32 * MB, "the group is down to its allowance, its own memory in swap (little is to be had: the background's goes first)")
+            if login == "handed" and allowed is not None:
+                # Open while the allowance is under what its programs hold; closed once they are down to it
+                # (a step either side of the line: the group is read a moment after the keeper's look).
+                # (What its programs hold, as the keeper counts it: all but the cache it can drop, so a
+                # file locked in memory with it.)
+                theirs = a["held"] - max(0, a["file"] - a["locked"])
+                if theirs > allowed + 16 * MB:
+                    said(a["ceiling"] == "max", "the swap ceiling is open (the allowance is under what its programs hold: whoever takes memory may take the background's)")
+                else:
+                    # (An allowance over what its programs hold doesn't say the ceiling is closed: within the
+                    # band it is open all the same. That it closes with memory to spare is the growing
+                    # program's case below, which measures the room.)
+                    said(a["ceiling"] in ("0", "max"), "the swap ceiling is the keeper's: closed or open, no figure")
+            said(0 <= rows["looks"]["longest_ms"] <= 1000, "no look of the keeper's took a second")
+    growth = guest(PROTECTED_GROWTH, bins=["/usr/sbin/mkfs.ext4", "/usr/sbin/mkswap", "/usr/sbin/swapon", "kill"], modules=["zram"], disks=["3G"], mem=3072, timeout=120, strict=True)
+    rows = {r[0]: r[-1] for r in growth}
+    if not isinstance(rows.get("growth"), dict):
+        sys.exit(f"kernel-check: the keeper's guest didn't finish cleanly (a program growing): {rows}")
+    g = rows["growth"]
+    print("160 MB of its own in the group, and a program in it that takes 80 MB more, with memory to spare (3 GB, 1.8 of it a file the desktop has mapped):")
+    print(f"    the allowance {g['high'] / MB:.0f} MB; available never under {g['minimum_kib'] / 1024:.0f} MB (twice the reserve and half a gigabyte: {g['cutoff_kib'] / 1024:.0f}); in swap after: {g['swap_bytes'] / MB:.1f} MB")
+    said(g["ceiling"] == "0", "the swap ceiling is closed (memory to spare: the programs keep what they hold)")
+    said(g["swap_bytes"] == 0, "none of its own went to swap for growing past its allowance (65 MB did, in the growing program's own time)")
+    # A sudden need, four ways: with the swap ceiling open from the start (in 640 MB all memory is within
+    # the band over twice the reserve), with it closed when the need begins (1792 MB: the keeper has to see
+    # the need coming and open it), that with a background whose program keeps reading its own memory, as a
+    # build's does (what the kernel took of it is brought back), and from the ordinary pace (6 GB:
+    # in the smaller ones everything is within the sooner looks' range; here the keeper looks four times a
+    # second when the need begins, and has to come to twenty and then open the ceiling). How much of each
+    # went to swap over the burst, and when each was first seen to: sampled by the clock, not only read at
+    # the end; and the keeper's looks counted, before the need and through it.
+    spare = int(next(l for l in open("/proc/meminfo") if l.startswith("MemAvailable:")).split()[1]) >> 20
+    not_run = []
+    for size, initial, use, how in (
+        (640, "max", "", "the swap ceiling open from the start (all of it within the band)"),
+        (1792, "0", "", "the swap ceiling closed when the need begins"),
+        (1792, "0", "--busy", "the ceiling closed and the background's memory in use, as a build's is"),
+        (6144, "0", "", "the ceiling closed and the keeper at its ordinary pace when the need begins"),
+    ):
+        # (A guest of 6 GB that fills them isn't put on a computer with less than 16 to spare: this check is
+        # not to be the shortage it is about. Said, and said again at the end: a case not run isn't one passed.)
+        if size > 2048 and spare < 16:
+            not_run.append(f"the sudden need in {size} MB ({how})")
+            print(f"NOT RUN: {not_run[-1]}: this computer has {spare} GB to spare, and a guest that size wants 16\n")
+            continue
+        rows = {r[0]: r[-1] for r in guest(SUDDEN, args=[initial, use], bins=["/usr/sbin/mkswap", "/usr/sbin/swapon", "setpriv", "chown", "kill", "tr"], modules=["zram"], mem=size, timeout=300, strict=True)}
+        if "done" not in rows or "keeper" in rows or not all(isinstance(rows.get(k), dict) for k in ("sudden", "looks", "trace")):
+            sys.exit(f"kernel-check: the keeper's guest didn't finish cleanly (a sudden need, {size} MB {use}): {rows}")
+        u, t = rows["sudden"], rows["trace"]
+        amount = lambda n: f"{n / MB:.0f} MB" if n >= 10 * MB else f"{n / MB:.1f} MB" if n >= MB // 10 else f"{n // 1024} KiB"
+        when = lambda at: "not seen" if not at else "before it began" if at < u["began"] else f"{at - u['began']} ms in"
+        pace = lambda a, b, n: n * 1000 / max(u[b] - u[a], 1)
+        at_rest, through = pace("rest_at", "began", u["began_looks"] - u["rest_looks"]), pace("began", "had", u["had_looks"] - u["began_looks"])
+        if not t["open_at"]:
+            sys.exit(f"kernel-check: no sample saw the ceiling open ({size} MB {use})")
+        bg_went, desk_went = u["bg"] - t["bg_before"], u["desk"] - t["desk_before"]
+        print(f"242 MB of the background's own, 118 MB of the desktop's asleep, {size} MB of memory, {how}; the desktop takes what is free and 110 MB more, at once ({u['had'] - u['began']} ms):")
+        print(f"    five seconds after it had them, more in swap than before: {amount(desk_went)} of the desktop's (the most seen: {amount(t['peak_desk'] - t['desk_before'])}), {amount(bg_went)} of the background's")
+        print(f"    seen by {t['samples']} samples: the ceiling open {when(t['open_at'])}, the background's swap first grown {when(t['bg_at'])}, the desktop's {when(t['desk_at'])}")
+        print(f"    the keeper's looks, by its thread's switches: about {at_rest:.0f} a second before the need, {through:.0f} through it; its longest look {rows['looks']['longest_ms']} ms")
+        # (What this holds it to: that the background gave, and no less than the desktop. Not which went
+        # first, nor that none of the desktop's went: when the computer is short the kernel chooses, and the
+        # keeper's part is best effort. With nobody keeping 61 MB of the desktop's went and 75 of the
+        # background's; under a ceiling kept closed, 121 and 4.)
+        said(bg_went > 0 and bg_went >= desk_went, "over the burst the background's swap grew, and by no less than the desktop's")
+        said(0 <= rows["looks"]["longest_ms"] < 1000, "no reported look of the keeper's took a second")
+        if size > 2048:
+            said(2 <= at_rest <= 6 and through >= 8, "by those switches, the keeper looked at its ordinary pace before the need and sooner through it")
+        if use:
+            said(u["busy_ticks"] > 0, f"the background's program was at work before the need ({u['busy_ticks']} hundredths of a second of processor in two seconds)")
+    rows = {r[0]: r[-1] for r in guest(KEEPER, args=["slow"], bins=["/usr/sbin/mkswap", "/usr/sbin/swapon", "kill", "tr"], disks=["512M,throttling.bps-write=4194304"], mem=1024, timeout=180, strict=True)}
+    if "done" not in rows or "keeper" in rows or not all(isinstance(rows.get(k), dict) for k in ("swapping", "after", "rose", "looks", "settled", "disk-tail")):
+        sys.exit(f"kernel-check: the keeper's guest didn't finish cleanly (slow swap): {rows}")
+    w, a = rows["swapping"], rows["after"]
+    print("256 MB of its own, swap on a disk that takes 4 MB a second; the desktop takes what is free, then lets go:")
+    print(f"    while the keeper was sending it to swap: {w['swap'] / MB:.0f} MB there; the allowance rose {rows['rose']['ms']} ms after the desktop let go; in swap in the end {a['swap'] / MB:.0f} MB; the keeper's longest look {rows['looks']['longest_ms']} ms")
+    print(f"    three seconds after the rise: {rows['settled']['swap'] / MB:.0f} MiB in swap; {rows['disk-tail']['bytes'] / MB:.1f} MiB written to the private swap disk since the rise")
+    said(w["swap"] > 8 * MB and int(w["high"]) < w["held"], "the group was over its allowance and going to swap on the slow disk when the desktop let go (or nothing here was checked)")
+    said(0 <= rows["rose"]["ms"] <= 3000, "the allowance rose within three seconds of the desktop letting go (it took ten and more)")
+    said(rows["settled"]["swap"] <= a["swap"] + MB, "nothing more of its own went to swap once the allowance had risen")
+    said(0 <= rows["looks"]["longest_ms"] <= 1000, "no look of the keeper's took a second (one took 42 s)")
+    print()
+    for what in not_run:
+        print(f"NOT RUN (too little memory to spare on this computer; run it again when there is): {what}")
+    if wrong:
+        sys.exit(f"kernel-check: the keeper: {wrong} wrong")
 
 
 def groups(reps):
@@ -583,7 +1021,7 @@ def groups_run(cases, reps, mem, last, cold, disk, probes):
     for what, layout, p in cases:
         print(f"  {what}:")
         for _ in range(reps):
-            rows = {r[0]: r[-1] for r in guest(GROUPS, args=[layout, str(p), str(last), str(cold), str(probes)], bins=["/usr/sbin/mkfs.ext4", "dd", "/usr/sbin/mkswap", "/usr/sbin/swapon", "sync", "kill", "tr"], modules=["zram"], disks=[disk], mem=mem, timeout=probes + 300, strict=True)}
+            rows = {r[0]: r[-1] for r in guest(GROUPS, args=[layout, str(p), str(last), str(cold), str(probes), os.environ.get("OLO_GROUPS_KEEPER", "")], bins=["/usr/sbin/mkfs.ext4", "dd", "/usr/sbin/mkswap", "/usr/sbin/swapon", "sync", "kill", "tr", "setpriv", "chown"], modules=["zram"], disks=[disk], mem=mem, timeout=probes + 300, strict=True)}
             # A run that didn't get to its end says nothing: not a row of
             # the table.
             # (The idle program ended by the kernel is a result, said as
@@ -601,12 +1039,17 @@ def groups_run(cases, reps, mem, last, cold, disk, probes):
             errors = [key for key in ("compiles_failed", "file_rounds_failed") if rows["built"][key]]
             if rows["hog"]["ended"] or errors or rows["oom"]["kills"] or not all(rows["built"][key] > 0 for key in ("compiles", "file_rounds")):
                 sys.exit(f"kernel-check: work failed in {what}: built={rows['built']}, hog={rows['hog']}, oom={rows['oom']}")
-            if layout == "olo" and ("high" not in rows or "keeper" in rows):
+            # What the keeper said: nothing; in a session from before the login's hand-over
+            # (OLO_GROUPS_KEEPER=before-login), that it keeps by the allowance alone, once.
+            spoke = rows.get("keeper", {}).get("said", "") if isinstance(rows.get("keeper", {}), dict) else "?"
+            expected = LEGACY_NOTICE if os.environ.get("OLO_GROUPS_KEEPER") == "before-login" else ""
+            if layout == "olo" and ("high" not in rows or spoke.strip() != expected):
                 sys.exit(f"kernel-check: keeper did not finish cleanly in {what}: {rows.get('keeper')}")
             g = lambda row, key: rows.get(row, {}).get(key, "?") if isinstance(rows.get(row), dict) else "?"
             idle = f"its idle program brought back {g('idle', 'brought_back')} pages in {g('idle', 'ms')} ms" if isinstance(rows.get("idle"), dict) else "ITS IDLE PROGRAM WAS ENDED"
             print(f"    in use, its files: 99 in 100 rounds within {g('files', 'ms_p99')} ms, the worst {g('files', 'ms_max')}; its own memory: {g('own', 'ms_p99')} ms, the worst {g('own', 'ms_max')}; "
-                  f"the system's files {g('sysfiles', 'ms_p99')} ms | {idle} | the build: {g('built', 'compiles')} compiles, {g('built', 'file_rounds')} rounds of files | ended by the kernel: {g('oom', 'kills')}" + (f" | left: {g('left', 'free_mb')} MB free, {g('left', 'unused_cache_mb')} MB of cache unused" if cold else "") + (f" | the keeper said: {g('keeper', 'said')}" if "keeper" in rows else ""), flush=True)
+                  f"the system's files {g('sysfiles', 'ms_p99')} ms | {idle} | the build: {g('built', 'compiles')} compiles, {g('built', 'file_rounds')} rounds of files | ended by the kernel: {g('oom', 'kills')}" + (f" | left: {g('left', 'free_mb')} MB free, {g('left', 'unused_cache_mb')} MB of cache unused" if cold else "") + (f" | the keeper said: {g('keeper', 'said')}" if "keeper" in rows else "")
+                  + (f" | the keeper's own time on the processors: {g('keeper-cost', 'ms')} ms; the background's memory in swap after the build: {g('build-bg', 'swap_mb')} MB, its programs' own {g('build-bg', 'anon_mb')} MB" if layout == "olo" else ""), flush=True)
     print()
 
 
@@ -650,7 +1093,7 @@ echo "check|removed after|$(rmdir /cg$U/session-7.scope/olo/bg /cg$U/session-7.s
 def session_groups():
     """What Olo's login does with a login session's scope, in a guest, as
     root, at each step the kernel's own answer."""
-    rows = guest(SESSION_GROUPS, bins=("rmdir", "stat"), mem=1024, timeout=120)
+    rows = guest(SESSION_GROUPS, bins=("rmdir", "stat"), mem=1024, timeout=120, strict=True)
     want = {
         ("not delegated", "prepare"): "refused: the session's scope isn't delegated",
         ("not delegated", "left in it"): "0 groups",
@@ -685,6 +1128,10 @@ def session_groups():
         ("a login's scope", "bg's allowance set"): "done",
         ("a login's scope", "bg's allowance reads"): "1073741824",
         ("a login's scope", "bg's allowance lifted"): "done",
+        ("a login's scope", "bg's memory taken back"): "done",
+        ("a login's scope", "desk's memory taken back"): "refused",
+        ("a login's scope", "bg's swap ceiling set"): "done",
+        ("a login's scope", "desk's swap ceiling set"): "refused",
         ("a login's scope", "bg idle on the processors"): "1",
         ("a login's scope", "the login's worker to bg"): "refused",
         ("a login's scope", "itself to the worker's group"): "refused",
@@ -806,9 +1253,9 @@ def main():
     reps = int(args[args.index("--reps") + 1]) if "--reps" in args else (3 if ttl is None else 20)
     which = [a for a in args if not a.startswith("--") and not a.isdigit()] or ["preemption", "turns", "slow-disks", "swap", "thrashing", "left-alone"]
     for name in which:
-        run = {"preemption": lambda: preemption(reps), "thrashing": lambda: thrashing(reps, ttl), "turns": lambda: turns(reps), "huge-pages": lambda: huge_pages(reps), "session-groups": session_groups, "groups": lambda: groups(reps), "groups-cold": lambda: groups_cold(reps), "slow-disks": slow_disks, "swap": lambda: swap(2 if "--reps" not in args else reps), "left-alone": left_alone}.get(name)
+        run = {"preemption": lambda: preemption(reps), "thrashing": lambda: thrashing(reps, ttl), "turns": lambda: turns(reps), "huge-pages": lambda: huge_pages(reps), "session-groups": session_groups, "keeper": keeper, "groups": lambda: groups(reps), "groups-cold": lambda: groups_cold(reps), "slow-disks": slow_disks, "swap": lambda: swap(2 if "--reps" not in args else reps), "left-alone": left_alone}.get(name)
         if run is None:
-            sys.exit(f"kernel-check: {name}? preemption, turns, thrashing, slow-disks, swap, groups, huge-pages or left-alone")
+            sys.exit(f"kernel-check: {name}? preemption, turns, thrashing, slow-disks, swap, groups, groups-cold, keeper, session-groups, huge-pages or left-alone")
         run()
 
 
