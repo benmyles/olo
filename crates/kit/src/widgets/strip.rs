@@ -1222,12 +1222,16 @@ fn inset(pts: &[(f32, f32)], ds: &[f32]) -> Vec<(f32, f32)> {
 /// A folder tab over `r` (its top to the strip's bottom), open along its
 /// bottom: its outline, the bevel's light along its left and top and
 /// shadow down its right, then its fill. BeOS's slanted, or Platinum's
-/// rounded at the top.
+/// rounded at the top. It ends where `r` does, on a device pixel: it
+/// ended a pixel past it, which the tab view allowed for and the strip
+/// didn't, so a strip's tabs' outlines ran a pixel below the line along
+/// its foot (a tick at each lower corner, at every scale; found by a
+/// reviewer's look, 2026-11-21).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn folder(g: &mut Painter, r: Bounds<Pixels>, fill_c: Hsla, light: Hsla, shadow: Hsla, outline: Hsla, sh: Shape) {
     let (hair, bev) = lines(g);
     let s = g.scale_factor();
-    let (l, t, rr, b) = (dev(g, r.left()), dev(g, r.top()), dev(g, r.right()), dev(g, r.bottom()) + 1.0);
+    let (l, t, rr, b) = (dev(g, r.left()), dev(g, r.top()), dev(g, r.right()), dev(g, r.bottom()));
     if !sh.rounded {
         let k = (sh.slant * s).round();
         let outer = [(l, b), (l + k, t), (rr - k, t), (rr, b)];

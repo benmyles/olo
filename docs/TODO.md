@@ -1498,10 +1498,9 @@ something nobody here has is in "Blocked", with what it waits for.
 
 - **Terminal's tabs, from the reviewers' looks at them** (2026-11-21,
   of the pictures taken for the titles' change; all of it as it was
-  before that change). Astra: the chosen tab's slanted outline runs a
-  device pixel below the line along the strip's foot (`strip::folder`
-  ends a pixel past its bounds, which the tab view allows for and the
-  strip doesn't: a pixel fault, to fix first); at 1× the working mark's
+  before that change). Astra: the chosen tab's slanted outline ran a
+  device pixel below the line along the strip's foot (**done**:
+  `strip::folder` ends with its bounds); at 1× the working mark's
   open side runs into the icon's bright edge. Opus: the working mark
   reads as a letter in a still picture (a three-quarter arc with no
   track: a full ring at a third of its strength with a shorter arc on
@@ -1514,8 +1513,11 @@ something nobody here has is in "Blocked", with what it waits for.
   sits 13 pt from its title where its icon sits 9, and a tab behind
   keeps the ×'s room empty (the × on every tab in the lesser ink, or
   tabs behind narrower); a window with one tab says its title twice
-  in the same weight, the window's tab and the strip's. (Its " | olo"
-  is the agent's own title, not Terminal's.)
+  in the same weight, the window's tab and the strip's; in Classic a
+  tab behind's slanted side is an outline and a shadow line beside
+  it, which run together into a soft band three pixels wide at 1× and
+  1.25× (one line there, or the shadow a step off the fill). (Its
+  " | olo" is the agent's own title, not Terminal's.)
 
 ## Done, waiting for Ben to try or confirm
 

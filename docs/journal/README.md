@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-21
 
+### Tabs end with their strip, to the pixel
+
+*08:01* — Where two folder tabs meet, enlarged: before (left) each tab ran a device pixel past the strip, a tick under every lower corner and a row of the tab behind's colour under the line along the foot; after (right) the outlines end on the line. Found by a reviewer's look at other pictures.
+
+![Tabs end with their strip, to the pixel](2026-11-21/080120-tabs-end-with-their-strip-to-the-pixel.png)
+
 ### Terminal: a title without its spinner
 
 *07:32* — A coding agent turns a spinner in its tab's title ten times a second; every frame was a change to the tab, the window's tab, Deskbar and whatever lists windows. The spinner is left out of the title now (here the agent's own words, steady), and the tab's own mark, the blue arc on its icon, says it is working.

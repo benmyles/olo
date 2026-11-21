@@ -3459,7 +3459,12 @@ it.
   pointer, their outline softer. Each tab is a 1-pixel outline, a
   bevel inside it (lit along its left and top, shaded down its right,
   a device pixel each at 1×, `scale.round()` at others) and its fill,
-  every edge on device pixels (`folder`, `side_folder`). The × shows on
+  every edge on device pixels (`folder`, `side_folder`), and ends
+  where the strip does: its outline meets the line along the foot on
+  the line's own last row (it ran a pixel past it, a tick under each
+  lower corner and a row of a tab behind's colour under the line, at
+  every scale: 143 to 290 stray pixels in the two rows under a
+  two-tab strip, none now). The × shows on
   the chosen tab and the one under the pointer (red under it; a badge
   in its place otherwise). Each tab is as wide as its title needs in
   bold (between `TAB_MIN` 140 and `TAB_MAX` 250, or `max_tab_width`),

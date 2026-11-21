@@ -199,8 +199,8 @@ fn paint_face(g: &mut Painter, outer: Bounds<Pixels>, tabs: &[SharedString], sel
     // (The panel's edge: its outline's row, on a device pixel.)
     let y0 = strip::dev(g, outer.top() + px(TAB_HEIGHT));
     let (l, rr, b) = (strip::dev(g, outer.left()), strip::dev(g, outer.right()), strip::dev(g, outer.bottom()));
-    // (A tab's foot, so a folder, a device pixel past it, ends at `y`.)
-    let foot = |r: &Bounds<Pixels>, y: f32| Bounds::from_corners(r.origin, point(r.right(), at(y - 1.0)));
+    // (A tab's foot: a folder over it ends at `y`.)
+    let foot = |r: &Bounds<Pixels>, y: f32| Bounds::from_corners(r.origin, point(r.right(), at(y)));
     for (_, r) in rects.iter().enumerate().filter(|&(i, _)| i != selected) {
         strip::folder(g, foot(r, y0 + hair), f.behind, f.light, f.shadow, f.soft, sh);
     }
