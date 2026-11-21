@@ -22,7 +22,9 @@ comes, because each gives something up or gains nothing: the
 multi-generational LRU's thrash protection (the one most often
 recommended: it ended a program that fitted in memory in 3 runs of 9),
 dm-crypt without its work queues, split-lock mitigation off, and the
-room kept free for allocations.
+room kept free for allocations. And one thing is measured, was built
+once and is held on its review: **background work kept to the memory
+that is to be had for nothing** (its own section below).
 
 Everything here can be measured again: `tools/dev/kernel-check` (it
 needs `cargo build --release -p olo-system --example kbench`). The
@@ -427,26 +429,49 @@ cache faster than a program takes memory. Left at 10.
   a gain for programs with heaps of gigabytes at the cost of memory
   for everything else; Fedora's "on request" lets those programs ask.
 
-## Measured, to be built: background work kept to what is free
+## Measured, built once, and held: background work kept to the memory that is to be had for nothing
+
+**Not in Olo yet.** The measurements below stand as measurements. The
+first build of it (the branch `background-group`, not on the main
+line) was reviewed by Astra at max on 2026-11-20 and held; what it
+found, and what is to be built instead, are at this section's end.
 
 Ben, 2026-11-20, when the swap setting below was withdrawn: "how can
 we optimize what gets swapper better? … so then the work that gets
 background priority, like rustc etc would be more likely to get
 swapped than interactive apps that will really impact me". Linux has
 no link between a process's priority and reclaim; it has control
-groups. Two ways were measured, in a guest with too little memory for
-what runs in it (`tools/dev/kernel-check groups`: 1 GB; a desktop
-with a 200 MB program that sits idle and one in use, 150 MB of a file
-mapped and 100 MB of its own read ten times a second; the system's
-services in use; a build for a minute whose compilers take 350 MB
-each for a second and whose files are written and read back):
+groups. Ways of using them were measured in guests
+(`tools/dev/kernel-check groups` and `groups-cold`), two guests each
+unless said:
 
-| | the desktop's program in use: a round through its file, 99 in 100 within | worst | through its own memory | worst | the system's files | the build got done | ended by the kernel |
-| --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
-| one group for all, as a login session is today (three guests) | 105, 110, 116 ms | 225, 209, 353 ms | 4.7, 4.6, 5.8 ms | 40, 48, 44 ms | 71, 75, 78 ms | 42 compiles, 250 rounds of files | nothing |
-| **the background's group kept to what is free** (three) | **27, 38, 36 ms** | 63, 101, 130 ms | 2.1, 3.3, 2.8 ms | 6, 7, 10 ms | 21, 27, 34 ms | 38 or 39 compiles, 140 rounds of files | nothing |
-| the desktop's group protected for all it holds (`memory.low`; one) | 4 ms | 243 ms | 20 ms | 223 ms | 31 ms | | **the desktop's idle program** |
-| the same, for half of it (one) | 142 ms | 659 ms | 54 ms | 349 ms | 141 ms | | nothing |
+**Where memory is truly short** (1 GB; a desktop with a 200 MB program
+that sits idle and one in use, 150 MB of a file mapped and 100 MB of
+its own read ten times a second; the system's services in use; a build
+for a minute whose compilers take 350 MB each for a second and whose
+files are written and read back):
+
+| | the desktop's program in use: a round through its file, 99 in 100 within | worst | the system's files | the build got done | ended by the kernel |
+| --- | ---: | ---: | ---: | --- | --- |
+| one group for all, as a login session is today | 72, 71 ms (105, 110, 116 that morning) | 363, 223 ms | 40, 39 ms | 42, 43 compiles; 323, 363 rounds of files | nothing |
+| the background's group kept to what is free | 25, 21 ms (27, 38, 36) | 158, 126 ms | 23, 24 ms | 36, 39; 162, 172 | nothing |
+| …to what is free or cache the kernel has down as unused | 35, 49 ms | 104, 122 ms | 40, 50 ms | 39, 36; 159, 130 | nothing |
+| **…or unused cache that no program has mapped** | **12, 23 ms** | 75, 83 ms | 18, 20 ms | 39, 39; 166, 179 | nothing |
+| the desktop's group protected for all it holds (`memory.low`; one) | 4 ms | 243 ms | 31 ms | | **the desktop's idle program** |
+| the same, for half of it (one) | 142 ms | 659 ms | 141 ms | | nothing |
+
+**Where there is memory to spare, all of it in use as cache**, as a
+computer's is after a day (3 GB, 1.5 GB of it a file read once; the
+same desktop and build): the desktop's program waits under a
+millisecond at the 99th percentile whatever the rule, and what differs
+is the build:
+
+| | the build's rounds of files | its compiles | of the unused cache, left unused at the end |
+| --- | ---: | ---: | ---: |
+| one group for all | 370, 355 | 42, 42 | 0.5 GB |
+| the background's group kept to what is free | 193, 173 | 39, 39 | 1.3 GB |
+| …to what is free or cache the kernel has down as unused | 265, 337 | 39, 41 | 0.4 GB |
+| **…or unused cache that no program has mapped** | 216, 275 | 37, 40 | 0.4 GB |
 
 - **Protection (`memory.low`) is not the way.** It is the kernel's
   own answer to the question, and with the desktop protected for all
@@ -456,32 +481,181 @@ each for a second and whose files are written and read back):
   protection, `MemoryLow=0` on the users' slices at every change of
   who is at the computer: Olo's would be a second writer.) Nothing of
   Olo's may make an allocation fail that succeeds today.
-- **Keeping the background to what is free works, for what is in
-  use.** Its group's `memory.high` set, four times a second while it
-  has anything in it, to what it holds plus what is free less a
-  reserve (12% of memory here), never under what its programs
-  themselves hold unless little is to be had at all. Past it the
-  kernel has the group's own programs wait and takes the group's own
-  cache and memory first, and the reclaim of everyone, which is what
-  takes the files out from under a program in use, seldom runs. The
-  desktop's program in use waited a third as long at the 99th
-  percentile and a fifth as long at the worst; the system's services
-  likewise. The build pays: a tenth fewer compiles, and little over
-  half the files through (its cache is what is held down). Nothing is
-  ended and nothing refused: `memory.high` only slows who is over it.
+- **Keeping the background to what is to be had for nothing works,
+  for what is in use.** Its group's `memory.high` set, four times a
+  second while it has anything in it, to what it holds plus what is
+  to be had for nothing less a reserve (12% of memory), never under
+  what its programs themselves hold unless little is to be had at
+  all. Past it the kernel has the group's own programs wait and takes
+  the group's own cache and memory first, and the reclaim of
+  everyone, which is what takes the files out from under a program in
+  use, seldom runs. Where memory is short the desktop's program in
+  use waited a third as long or less at the 99th percentile; the
+  system's services half as long. The build pays: about a tenth fewer
+  compiles, and half its files through. Nothing is ended and nothing
+  refused: `memory.high` only slows who is over it.
+- **What is to be had for nothing is more than what is free.** A
+  computer that has run for a day keeps little free on purpose and
+  holds most of its memory as cache (the person's: 0.6 to 8 GB free
+  of 64 through an afternoon, 28 GB of cache, 15 GB of it what the
+  kernel has down as not lately used, 2.6 GB mapped by programs). By
+  free memory alone the background would have no cache at all there
+  most of the time, and the second guest shows what that costs with
+  nothing gained: half the build's files, 1.3 GB of unused cache left
+  unused. Counting all the cache the kernel has down as unused
+  (`Inactive(file)`, less the group's own) gave the build its files
+  and took back half of what the rule had won where memory is short:
+  a file a program has mapped and reads sits on that list between
+  touches. Less what programs have mapped (`Mapped`), the short case
+  is as good as by free memory alone and the build keeps most of its
+  files. That is the rule (the branch's
+  `olo_system::background::allowance`).
 - **A program that sits idle is swapped all the same** (its 200 MB
-  brought back in 100 to 190 ms when next used, either way): what
-  isn't touched for minutes is the coldest memory there is, and when
-  the build's own memory doesn't fit, swapping it into compressed
+  brought back in 100 to 160 ms when next used, under every rule):
+  what isn't touched for minutes is the coldest memory there is, and
+  when the build's own memory doesn't fit, swapping it into compressed
   memory takes memory too (zram's own isn't the group's). Keeping it
   would mean stopping the build, or forbidding the swap, which is
   the setting below.
+What these runs don't say (the review's, each to be put right in
+`kernel-check` before anything is offered): there are two guests a
+case. What keeps the allowance in the guest is a shell loop writing
+the file, which waits while the kernel takes the group's pages back;
+systemd writes the same file without waiting, and then a group that is
+asleep stays over its allowance, so who writes changes what was
+measured. The guest's jobs are in their group before they start; on a
+computer they are found and moved, and what they held until then stays
+charged where they were. In the second table the desktop's probes end
+(165 s) before the build's last allocation is whole. The build's
+counts are of rounds begun: one that failed counts. And a guest can't
+say what the reserve should be on 64 GB, nor what the rule does over a
+day of the person's own work (of 229 minutes recorded here that day,
+what was to be had by the rule was under the reserve in two).
 
-What it would take in Olo is in docs/TODO.md ("Background work is
-swapped first"): the group itself (inside the login session's scope,
-made at login; or the user manager's, with what that changes for the
-processors), the supervisor's hand on its `memory.high`, and what may
-never be put there.
+### The first build, and why it is held
+
+On the branch: `olo_system::background` and the supervisor's `group`.
+A slice of the person's own systemd manager (`olobackground.slice`),
+a job (the topmost process named in the Background list, with all it
+started) handed to systemd by kernel handle as a scope in it, the
+allowance written to the slice's `memory.high` four times a second by
+a thread of the supervisor's, a check box in Preferences. It needed
+no privilege and no change to login, and it passed its own live
+tests. The review (the answer, its probes and their output:
+/var/tmp/claude-blueferry/review5) found these, most of them shown
+by running the build's own code or a guest, the rest read from
+systemd's and the kernel's source:
+
+1. **A new slice comes up under Fedora's `kill` policy.** What a
+   transient unit is given at its making (`ManagedOOMMemoryPressure=
+   auto`) loses to Fedora's drop-in for every slice
+   (`slice.d/10-oomd-per-slice-defaults.conf`); only a property set
+   on the unit afterwards (`SetUnitProperties`: a drop-in of its own)
+   wins. The build set it afterwards only on a slice it found
+   already there, so the test that looked passed and every fresh
+   slice was on systemd-oomd's list at 80% for 20 seconds (`oomctl
+   dump` showed four of the live test's, which also never removed
+   them: removed since, with the others the tests left).
+2. **A build's cache server went with its job**, and stayed: the
+   names never to be taken (`UNGROUPED`) were checked at a job's top
+   and not among what it had started, and what was taken was noted
+   as taken before systemd had moved anything, so the taking-out
+   never saw it.
+3. **A whole job is more than background work.** `cargo`, `go`,
+   `npm`, `bun`, `flatpak` start programs someone is waiting for (a
+   window, a server an editor asks, a helper that asks for a
+   password), and all of it is born in the group, on idle processors
+   and an allowance. And out of the login session's scope a process
+   is no longer of that session to logind (`sd_pid_get_session`
+   answers "no data"): what asks by process (`loginctl`, a lock of
+   the session, polkit's choice of who to ask) answers differently.
+4. **A request is not a move.** A refusal, a process born between the
+   look and the move, a job partly moved: none was seen or tried
+   again; the count noted was of handles sent. And systemd moves by
+   process number in the end, whatever it was handed.
+5. **The allowance has other writers and no owner.** A second
+   supervisor (a test session reaches the same manager) lifts or
+   sets it; systemd writes its own value back at a reload; the
+   keeper wrote only when its figure changed, so a foreign value
+   stayed (shown: it survived the keeper's own end); a killed
+   supervisor leaves the last allowance for good; turning it off
+   said "lifted" without reading it back, and left the idle
+   processor weight on what was still running.
+6. **The allowance can slow what the desktop waits for.** A program
+   waiting on a lock held by one kept to 16 MiB waited 120 ms where
+   52 (measured in a guest); the write itself took 48 ms in the
+   writer and swapped 80 MiB. The keeper is a thread of its own, but
+   its making, its end and the moves ran on the supervisor's
+   realtime thread, with waits of up to seconds.
+7. **"Cache to be had for nothing" is the kernel's guess, and wrong
+   both ways.** Under the multi-generational LRU a file a program
+   read sixty-four times in a row was all "inactive"; and a group's
+   `file` counts memory files (tmpfs, shared memory) that can only
+   go to swap, so a job working in /tmp had no floor (3 GiB of it:
+   an allowance of 16 MiB). The answer wanted is a credit that falls
+   when the desktop is seen to wait on memory (its own group's
+   pressure figures), not a sum of counters.
+8. **A window of the group's in front lifted the allowance for
+   every build**, and stayed on idle processors itself.
+
+And one the review of the design had already said, which the build
+left for the shorter road: **in the person's manager the group
+competes for the processors as the manager, not as background work.**
+The manager's group and the login session's are siblings of the same
+weight; "idle" on a slice is idle among the manager's own slices
+only, and nice orders nothing across groups. Measured on the
+person's computer with sixteen hogs of the test's own (one run each):
+a program in the login session working flat out got 4547 rounds a
+second with the hogs beside it in the session at nice 10 and batch
+(as today), 4804 with them in a scope of the manager's, 4646 in the
+idle slice; woken a thousand times a second it was late by 0.6 ms at
+the 99th percentile today and by 1.1 ms either other way (worst 23, 9
+and 6 ms). The desktop is no better off for it, and by the tail a
+little worse.
+
+### What is to be built
+
+The design the first review signed off (2026-11-20:
+/var/tmp/claude-blueferry/groups/answer.md and design-review.patch),
+with what the second found:
+
+- **The groups inside the login session's own scope**, made by Olo's
+  login as root before the desktop starts: `leader/` (root's: the
+  login's own worker, which the person must not be able to move),
+  `olo/` (empty) and in it `desk/` (the desktop: everything, as it
+  comes) and `bg/`. The scope delegated at its making; the person
+  given only what moving between the two leaves needs
+  (`cgroup.procs` of `olo`, `desk`, `bg`) and the allowance's file;
+  anything unexpected and the login goes on as today. There a
+  process keeps its session, systemd-oomd isn't watching (it watches
+  the manager's slices), a move is one write, the allowance's file
+  is Olo's alone, the desktop's own waiting on memory is one group's
+  figure (`desk/memory.pressure`), and idle on the processors is
+  idle against the desktop. It needs the installed login brought up
+  to date (root) and takes effect at the next login.
+- **Who goes in**: compilers and linkers by their own name, never
+  what starts them (a driver, a cache, a shell), so nothing anyone
+  waits on at a window is ever in it; what they start themselves is
+  born there. Found by the supervisor and moved by one write, each
+  checked before and after; what a compiler held until then stays
+  where it was (seconds of a minute's life). A command to start a
+  job in the group on purpose (`clone3` into the group, or placing
+  itself before it starts the program) for what Olo launches itself.
+- **One keeper**: a lock for the one that keeps (a second supervisor
+  neither keeps nor lifts), every look reads the file back, an end
+  by any road lifts it (a guard that outlives the supervisor), off
+  means the allowance gone, the weight back and both read back; all
+  of it off the realtime thread.
+- **The rule**: the floor without memory files; the cache's credit
+  between nothing and all of it by whether the desktop's group waits
+  on memory; rises paced.
+- **In stages on the person's computer, each on their word**: the
+  rule only noted (what it would set, written beside the memory
+  record), then the group without an allowance (so the desktop's
+  waiting can be told from the builds'), then the allowance; with
+  real builds matched off and on, and what a person feels measured
+  (a key to its frame against 8.3 ms, sound, the editor's waits),
+  not only a file walked.
 
 ## Tried and withdrawn
 

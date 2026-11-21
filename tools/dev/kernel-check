@@ -68,6 +68,11 @@ settings were chosen.
       desktop's group protected (`memory.low`: which had the kernel
       end a program). What the programs in use wait, what the build
       gets done. N (2) guests each.
+  tools/dev/kernel-check groups-cold [N]
+      the same on a computer whose memory is mostly cache nobody
+      uses (3 GB, half of it a file read once), where little is ever
+      free: the rule by free memory alone against one that counts
+      the unused cache as free too.
   tools/dev/kernel-check left-alone
       what was measured and left as the kernel comes: dm-crypt without
       its work queues (a ramdisk, and a disk), and the room kept free
@@ -346,10 +351,16 @@ echo "fill|$(/bin/kbench fill /fast/big --mb 1500)"
 
 # $1: one (everything in one group, as a login session is today) | split | low (the desktop's group protected,
 # `memory.low`, by $2 MB at its ancestors) | high (the background's group kept to what is free less a reserve of
-# $2 percent of memory, its `memory.high` set four times a second), $3: megabytes the last program takes.
+# $2 percent of memory, its `memory.high` set four times a second) | cold (the same, counting as free the files'
+# cache nobody is using: the system's inactive file pages but the group's own) | unmapped (as cold, less what
+# programs have mapped), $3: megabytes the last program
+# takes, $4: megabytes of a file read once before anything starts (cache that sits there unused, as most of a
+# long-running computer's memory is).
 GROUPS = r"""
 mkfs.ext4 -q -F /dev/vda; mkdir -p /d; mount /dev/vda /d
-dd if=/dev/urandom of=/d/file bs=1M count=320 2>/dev/null; dd if=/dev/urandom of=/d/sys bs=1M count=80 2>/dev/null; sync; echo 3 > /proc/sys/vm/drop_caches
+dd if=/dev/urandom of=/d/file bs=1M count=320 2>/dev/null; dd if=/dev/urandom of=/d/sys bs=1M count=80 2>/dev/null
+[ "${4:-0}" -gt 0 ] && dd if=/dev/urandom of=/d/cold bs=1M count=$4 2>/dev/null
+sync; echo 3 > /proc/sys/vm/drop_caches
 echo $(( $(awk '/MemTotal/ {print $2}' /proc/meminfo) * 1024 )) > /sys/block/zram0/disksize
 mkswap /dev/zram0 > /dev/null; swapon -p 100 /dev/zram0
 echo y > /sys/kernel/mm/lru_gen/enabled; echo 1 > /proc/sys/vm/swappiness
@@ -370,11 +381,23 @@ S=/cg/system
 # holds plus what is free beyond a reserve ($2 percent of memory): past that it lives within what it has (its own
 # cache recycled). Its cache is given up for anyone else who needs the reserve; its own programs are swapped only
 # when little is to be had at all (less than twice the reserve).
-if [ "$1" = high ]; then
+# cold: what is free, for this, is also the files' cache that nobody is using (the kernel's inactive file pages)
+# other than the group's own: a computer that has run for a day has little free and much of that.
+if [ "$1" = high ] || [ "$1" = cold ] || [ "$1" = unmapped ]; then
+  rule=$1
   total=$(awk '/MemTotal/ {print $2*1024}' /proc/meminfo); reserve=$(( total * $2 / 100 ))
   ( while :; do
-      set -- $(awk '/^MemFree/ {f=$2*1024} /^MemAvailable/ {a=$2*1024} END {print f, a}' /proc/meminfo); free=$1; avail=$2
+      set -- $(awk '/^MemFree/ {f=$2*1024} /^MemAvailable/ {a=$2*1024} /^Inactive\(file\)/ {i=$2*1024} END {print f, a, i}' /proc/meminfo); free=$1; avail=$2; unused=$3
       cur=$(cat $B/memory.current); file=$(awk '$1=="file" {print $2}' $B/memory.stat)
+      if [ $rule = cold ]; then
+        own=$(awk '$1=="inactive_file" {print $2}' $B/memory.stat); [ $unused -gt $own ] && free=$(( free + unused - own ))
+      fi
+      # unmapped: of that cache, only what no program has mapped (a file a program has mapped is in use, or soon
+      # will be again, wherever the kernel has it listed).
+      if [ $rule = unmapped ]; then
+        own=$(awk '$1=="inactive_file" {print $2}' $B/memory.stat); mapped=$(awk '/^Mapped/ {print $2*1024}' /proc/meminfo)
+        [ $unused -gt $(( own + mapped )) ] && free=$(( free + unused - own - mapped ))
+      fi
       h=$(( cur + free - reserve ))
       floor=$(( cur - file ))
       [ $avail -lt $(( 2 * reserve )) ] && floor=$(( floor - (2 * reserve - avail) ))
@@ -386,6 +409,8 @@ if [ "$1" = high ]; then
 fi
 within() { g=$1; shift; ( echo $BASHPID > $g/cgroup.procs; exec "$@" ); }
 stat() { awk -v k="$2" '$1==k {print $2}' $1/memory.stat; }
+# The cache nobody uses: a file read once, by the system.
+[ "${4:-0}" -gt 0 ] && within $S dd if=/d/cold of=/dev/null bs=1M 2>/dev/null
 # The desktop: a program with 200 MB of its own that sits idle, and one in use (150 MB of a file mapped, 100 MB of its own, read ten times a second).
 within $D /bin/kbench hog --mb 200 --hold 150 --random 2048 --then-walk > /tmp/idle & I=$!
 within $D /bin/kbench touch /d/file --mb 150 --secs 165 > /tmp/t & T=$!
@@ -418,6 +443,7 @@ wait $ST; echo "sysfiles|$(cat /tmp/st)"
 wait $SO; echo "sysown|$(cat /tmp/so)"
 [ -n "$CTL" ] && { kill $CTL; echo "high|{\"events\":\"$(tr '\n' ' ' < $B/memory.events)\"}"; }
 echo "oom|{\"kills\":$(awk '/^oom_kill / {print $2}' /proc/vmstat)}"
+echo "left|{\"free_mb\":$(awk '/^MemFree/ {print int($2/1024)}' /proc/meminfo),\"unused_cache_mb\":$(awk '/^Inactive\(file\)/ {print int($2/1024)}' /proc/meminfo)}"
 """
 
 
@@ -431,18 +457,41 @@ def groups(reps):
         ("one group for all, as a login session is today", "one", 0),
         ("the background's group kept to what is free, less 12% of memory (memory.high)", "high", 12),
         ("the desktop's group protected for all it holds (memory.low 500 MB)", "low", 500),
+        ("the background's group kept to what is free or cache nobody uses, less 12% of memory", "cold", 12),
+        ("the same, counting only cache that no program has mapped", "unmapped", 12),
     ]
     only = os.environ.get("OLO_GROUPS_CASES")   # "0,1": some of them, by their place
     if only:
         cases = [cases[int(i)] for i in only.split(",")]
+    groups_run(cases, reps, mem=1024, last=600, cold=0, disk="4G")
+
+
+def groups_cold(reps):
+    print("The same with memory to spare that is all in use as cache, as a computer's is after a day: 3 GB of memory,")
+    print("of which 1.5 GB holds a file read once (cache nobody uses). The same desktop, services and build; then a")
+    print("program that takes 2.2 GB. Free memory alone says little here (the kernel keeps little free on purpose):")
+    print("the second rule counts the unused cache as free too.\n")
+    cases = [
+        ("one group for all, as a login session is today", "one", 0),
+        ("the background's group kept to what is free, less 12% of memory", "high", 12),
+        ("the background's group kept to what is free or unused cache, less 12% of memory", "cold", 12),
+        ("the same, counting only cache that no program has mapped", "unmapped", 12),
+    ]
+    only = os.environ.get("OLO_GROUPS_CASES")
+    if only:
+        cases = [cases[int(i)] for i in only.split(",")]
+    groups_run(cases, reps, mem=3072, last=2200, cold=1500, disk="6G")
+
+
+def groups_run(cases, reps, mem, last, cold, disk):
     for what, layout, p in cases:
         print(f"  {what}:")
         for _ in range(reps):
-            rows = {r[0]: r[-1] for r in guest(GROUPS, args=[layout, str(p), "600"], bins=["/usr/sbin/mkfs.ext4", "dd", "/usr/sbin/mkswap", "/usr/sbin/swapon", "sync", "kill", "tr"], modules=["zram"], disks=["4G"], mem=1024, timeout=420)}
+            rows = {r[0]: r[-1] for r in guest(GROUPS, args=[layout, str(p), str(last), str(cold)], bins=["/usr/sbin/mkfs.ext4", "dd", "/usr/sbin/mkswap", "/usr/sbin/swapon", "sync", "kill", "tr"], modules=["zram"], disks=[disk], mem=mem, timeout=420)}
             g = lambda row, key: rows.get(row, {}).get(key, "?") if isinstance(rows.get(row), dict) else "?"
             idle = f"its idle program brought back {g('idle', 'brought_back')} pages in {g('idle', 'ms')} ms" if isinstance(rows.get("idle"), dict) else "ITS IDLE PROGRAM WAS ENDED"
             print(f"    in use, its files: 99 in 100 rounds within {g('files', 'ms_p99')} ms, the worst {g('files', 'ms_max')}; its own memory: {g('own', 'ms_p99')} ms, the worst {g('own', 'ms_max')}; "
-                  f"the system's files {g('sysfiles', 'ms_p99')} ms | {idle} | the build: {g('built', 'compiles')} compiles, {g('built', 'file_rounds')} rounds of files | ended by the kernel: {g('oom', 'kills')}", flush=True)
+                  f"the system's files {g('sysfiles', 'ms_p99')} ms | {idle} | the build: {g('built', 'compiles')} compiles, {g('built', 'file_rounds')} rounds of files | ended by the kernel: {g('oom', 'kills')}" + (f" | left: {g('left', 'free_mb')} MB free, {g('left', 'unused_cache_mb')} MB of cache unused" if cold else ""), flush=True)
     print()
 
 
@@ -528,7 +577,7 @@ def main():
     reps = int(args[args.index("--reps") + 1]) if "--reps" in args else (3 if ttl is None else 20)
     which = [a for a in args if not a.startswith("--") and not a.isdigit()] or ["preemption", "turns", "slow-disks", "swap", "thrashing", "left-alone"]
     for name in which:
-        run = {"preemption": lambda: preemption(reps), "thrashing": lambda: thrashing(reps, ttl), "turns": lambda: turns(reps), "groups": lambda: groups(reps), "slow-disks": slow_disks, "swap": lambda: swap(2 if "--reps" not in args else reps), "left-alone": left_alone}.get(name)
+        run = {"preemption": lambda: preemption(reps), "thrashing": lambda: thrashing(reps, ttl), "turns": lambda: turns(reps), "groups": lambda: groups(reps), "groups-cold": lambda: groups_cold(reps), "slow-disks": slow_disks, "swap": lambda: swap(2 if "--reps" not in args else reps), "left-alone": left_alone}.get(name)
         if run is None:
             sys.exit(f"kernel-check: {name}? preemption, turns, thrashing, slow-disks, swap, groups or left-alone")
         run()

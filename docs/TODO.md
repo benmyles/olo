@@ -299,10 +299,52 @@ something nobody here has is in "Blocked", with what it waits for.
     setting's and a patch's. Disks: `io.weight` does nothing here
     (no I/O cost model, no BFQ on the NVMe queue), so the idle I/O
     class per thread stays.
-  Then: built (login, session, supervisor, `tsession`, Doctor's
-  drop-in and finding), reviewed by Astra at max, and on Ben's
-  computer only on their word, at a quiet moment, with the memory
-  record running.
+  **Where it stands (2026-11-20, evening): measured, built once the
+  wrong way, held.** The rule was measured further (what is to be
+  had for nothing is free memory and cache that is neither the
+  group's own nor mapped: kernel/TUNING.md has both tables). Then I
+  built it as a slice of the person's systemd manager instead of
+  inside the login session (no root, no new login: the shorter
+  road, against the first review), and Astra's review of that build
+  said to hold it: TUNING.md, "The first build, and why it is held"
+  (a fresh slice under Fedora's kill policy; a cache server taken
+  with its job; whole jobs taking windows and helpers with them out
+  of the login session; requests counted as moves; an allowance with
+  other writers and no owner; waits passed on to what the desktop
+  waits for; "unused cache" being the kernel's guess; and, measured
+  here, the manager's group competing with the desktop's on the
+  processors as an equal). The build is kept on the local branch
+  `background-group` (one commit, not pushed, nothing of it on the
+  main line): its rule, its keeper, its choosing and their tests are
+  the starting point. Nothing of it is in Preferences.
+  **To build, in this order** (TUNING.md, "What is to be built"):
+  1. `kernel-check groups`: successes counted, a run that didn't
+     finish fails, the desktop's probes to the end of the pressure,
+     and what keeps the allowance in the guest is Olo's own keeper
+     (a command of the supervisor's), not a shell loop.
+  2. The rule again: the floor without memory files (tmpfs), the
+     cache's credit by the desktop group's own pressure figures,
+     rises paced; measured with 1.
+  3. Olo's login (root; the code that must never keep anyone out:
+     every step checked, anything unexpected and the login goes on
+     as today, tried in a guest from start to finish): `leader/`,
+     `olo/desk`, `olo/bg` in the session's scope, the scope
+     delegated at its making, the person given the two leaves'
+     `cgroup.procs` and the allowance's file and no more. Doctor's
+     finding and fix for the installed login and the drop-in.
+  4. The supervisor: compilers and linkers by their own name moved
+     by one write, checked before and after, tried again when
+     refused; one keeper (a lock), the file read back at every look,
+     a guard that lifts when the supervisor ends by any road, off
+     read back; none of it on the realtime thread; nothing held for
+     a window in front (nothing with a window is ever in it).
+  5. A command that starts a job in the group on purpose; `tsession`
+     and agents' screens (a third leaf, of lower weight, not idle).
+  6. Astra at max on the build; then Ben's computer in stages, each
+     on their word (the rule only noted; the group with no
+     allowance; the allowance), with matched real builds and what a
+     person feels measured (a key to its frame, sound), the memory
+     record running, and a way back written down.
 
 - **The NVIDIA card can never again be left stuck and unrecoverable**
   (Ben, 2026-11-20: "can you also put an astra 6.2 max agent on

@@ -938,6 +938,35 @@ Learned on the second pass (2026-11-20):
   demo's Call with New York) lands at that zone's time here: 9 AM, not
   the 6 PM it is in Amsterdam.
 
+### systemd's user manager: what a transient unit keeps, and what a test leaves there
+
+- **A property given at a unit's making loses to Fedora's drop-ins.**
+  What `StartTransientUnit` is handed is the unit's own file; a
+  drop-in for every unit of its kind comes after it and wins
+  (`/usr/lib/systemd/user/slice.d/10-oomd-per-slice-defaults.conf`:
+  `ManagedOOMMemoryPressure=kill`, 80% for 20 s, on every slice of a
+  person's). Only a property set on the unit afterwards
+  (`SetUnitProperties`, a drop-in of the unit's own) wins over that.
+  Read the value in force (`systemctl --user show UNIT -p NAME`, and
+  `oomctl dump` for what systemd-oomd watches) on a unit made fresh
+  under a new name: one that was already there had been through the
+  other road, and passed (2026-11-20).
+- **An empty transient slice stays.** It is "active" with nothing in
+  it until it is stopped: a test that makes one stops it at its end
+  (`StopUnit`, or `systemctl --user stop`). Nine of my tests' and
+  trials' stayed in the person's manager, eight of them on
+  systemd-oomd's list (removed, 2026-11-20).
+- **A group in the person's manager competes for the processors as
+  the manager.** The manager's group and the login session's scope
+  are siblings of the same weight: `CPUWeight=idle` on a slice there
+  is idle among the manager's own slices only, and nice orders
+  nothing across groups. Background work moved there gets more of
+  the processors against the desktop than at nice 10 beside it
+  (kernel/TUNING.md, "The first build, and why it is held").
+- systemd-oomd here watches `system.slice` and each slice of the
+  person's manager for pressure (80%, 20 s); not the manager's own
+  group, nor the login session's scope. Swap: nothing watched.
+
 ## Working with the repository
 
 - **A shell script isn't edited while it runs.** bash reads a script
@@ -1299,3 +1328,14 @@ Learned on the second pass (2026-11-20):
   until auto-approval starts nothing first (TODO) each one runs the
   face camera for a few seconds: one `sudo sh -c '…'` or one script
   run as root, not a `sudo` a line.
+
+### What a review signed off is what gets built
+
+The background group's design was reviewed (2026-11-20) and the
+answer was to build it inside the login session, made by Olo's
+login. I built it in the person's systemd manager instead, because
+that needed no root and no new login, and the review of the build
+found what the first had said, and more. A shorter road than the
+design reviewed is a new design: it gets its own review before it is
+built, or it isn't built. And `tools/dev/ui-lint` has no `--help`:
+an argument it doesn't know starts the lint (read its first lines).
