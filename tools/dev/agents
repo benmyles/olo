@@ -24,13 +24,18 @@ olo-codex-agents skill says how to use them).
                                      yes and don't ask again for commands that
                                      start the same (p), or no (then `say` why)
   agents stop NAME                   end it (its folder, /var/tmp/olo-agents/NAME,
-                                     with its report, stays until `forget`)
+                                     with its report, stays until `forget`; its
+                                     builds a day more: below)
   agents forget NAME                 remove a stopped one's folder
   agents attach NAME                 how the person can watch it live (read-only)
 
 Each agent's folder holds brief.md (the rules, then the task), report.md
 (what it says it did, when done), meta.json, and target/ (its own
-CARGO_TARGET_DIR, so its builds never wait on another's).
+CARGO_TARGET_DIR, so its builds never wait on another's). An agent that
+has ended keeps its builds for a day after the last one: then `list`,
+`watch` and `start` remove target/ (16 GB of one sat for nobody,
+2026-11-21; kache doesn't know these folders, so nothing else would).
+The rest of the folder stays until `forget`.
 
 An agent can't start agents: OLO_SUBAGENT is set in its environment, which
 this script, codex-help and codex-look refuse, and Codex's own multi-agent
@@ -263,6 +268,63 @@ def start(name, crate, brief):
     print(f"agents: keep `tools/dev/agents watch` running in the background to hear from it")
 
 
+# How long an ended agent's builds are kept after the last of them.
+BUILDS_KEPT = 24 * 3600
+
+
+def last_build(target):
+    """When anything was last built in `target`: the newest of its profile
+    folders' own times and their build folders' (a build makes or renames
+    something in one of them), None if it holds none."""
+    times = []
+    try:
+        profiles = [e.path for e in os.scandir(target) if e.is_dir(follow_symlinks=False)]
+    except OSError:
+        return None
+    for d in profiles:
+        for sub in ("", "build", "deps", "examples", "incremental"):
+            try:
+                times.append(os.lstat(os.path.join(d, sub)).st_mtime)
+            except OSError:
+                pass
+    return max(times) if times else None
+
+
+def sweep_builds(now=None, home=None, is_live=None):
+    """Remove target/ from every ended agent's folder whose last build is
+    over a day old; what was removed, as (name, bytes). Never an agent's
+    own doing (it has no business in another's folder)."""
+    if os.environ.get("OLO_SUBAGENT"):
+        return []
+    now = time.time() if now is None else now
+    home = HOME if home is None else home
+    is_live = live if is_live is None else is_live
+    gone = []
+    try:
+        agents = sorted(os.listdir(home))
+    except OSError:
+        return gone
+    for n in agents:
+        target = os.path.join(home, n, "target")
+        # (A folder of ours: with its record, and a target/ that is a real
+        # folder, not a link to somewhere else.)
+        if not os.path.isfile(os.path.join(home, n, "meta.json")) or os.path.islink(target) or not os.path.isdir(target):
+            continue
+        built = last_build(target)
+        if is_live(n) or (built is not None and now - built < BUILDS_KEPT):
+            continue
+        size = sum(os.lstat(os.path.join(d, f)).st_blocks * 512 for d, _, fs in os.walk(target) for f in fs)
+        shutil.rmtree(target, ignore_errors=True)
+        if not os.path.exists(target):
+            gone.append((n, size))
+    return gone
+
+
+def say_swept(gone):
+    for n, size in gone:
+        print(f"agents: {n} ended over a day ago: its builds removed ({size / 2**30:.1f} GB; its report and the rest stay until `agents forget {n}`)", file=sys.stderr)
+
+
 def ago(t):
     s = int(time.time() - t)
     return f"{s // 3600}h{s % 3600 // 60:02d}m" if s >= 3600 else f"{s // 60}m{s % 60:02d}s"
@@ -447,6 +509,8 @@ def main():
         print(__doc__)
         return
     cmd, rest = a[0], a[1:]
+    if cmd in ("start", "list", "watch"):
+        say_swept(sweep_builds())
     if cmd == "start" and len(rest) == 3:
         start(*rest)
     elif cmd == "list":

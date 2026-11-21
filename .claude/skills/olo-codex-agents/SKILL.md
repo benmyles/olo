@@ -69,7 +69,7 @@ tools/dev/agents peek NAME [LINES]           # its screen
 tools/dev/agents say NAME "…"                # answer, steer
 tools/dev/agents approve NAME y|p|no         # an approval it asks you for
 tools/dev/agents question NAME [N]           # a question it queued while working: shown; N takes its Nth choice
-tools/dev/agents stop NAME                   # end it; its folder stays
+tools/dev/agents stop NAME                   # end it; its folder stays (its builds for a day)
 tools/dev/agents forget NAME                 # remove its folder
 tools/dev/agents attach NAME                 # what the person runs to watch it
 ```

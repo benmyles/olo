@@ -927,6 +927,28 @@ Learned on the second pass (2026-11-20):
 - **kache is Olo's fork**: `~/src/kache`, branch `olo`, installed to
   `~/.cargo/bin` (dynamic admission, a cap for tests). Its config,
   restart and rollback notes are in `/var/tmp/claude-kache`.
+- **Old builds go by themselves, on kache's terms** (Ben, 2026-11-21:
+  "can you make it so old builds we no longer need will get cleaned up
+  automatically"). Its daemon removes a whole build folder no build
+  has used for a day and, from those that stay, the units no build has
+  used for three (`auto_clean_unused_units_days` in
+  `~/.config/kache/config.toml`; kache's own default is 30). Under 30
+  the incremental compiler state it keeps for each unit
+  (`target/debug/incremental.kache-auto`) had reached 161 GB in
+  sixteen days, 135 of it not used for three: a unit's name takes in
+  every argument to rustc, so each change to a crate's dependencies
+  leaves its state, and all its dependents', unused for good. It
+  cleans at most hourly, and only in a minute when no cargo command
+  runs anywhere on the computer (three passes between the 18th and the
+  21st): `kache clean -n` says what the next pass takes, and nothing
+  forces one. What it doesn't know it never cleans: a Codex agent's
+  `target/` (`tools/dev/agents` removes it a day after the agent's
+  last build) and a build folder its registry forgot (`kache clean
+  DIR -n` finds those: two worktrees' were 70 GB, the older idle for
+  eight days). Never delete under a `target/` by hand while builds
+  run: its units are locked one by one. `/var/tmp` is aged by the
+  system at thirty days (`tmp.conf`), so scratch left there goes too,
+  late: remove your own when you're done all the same.
 - **The history was rewritten on 2026-11-07**: commit ids from before
   then are dead (a map of old to new is in `~/backups`). Never bring the
   old history back.

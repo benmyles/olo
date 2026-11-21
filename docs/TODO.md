@@ -1266,6 +1266,30 @@ something nobody here has is in "Blocked", with what it waits for.
   no-break spaces inside it where the sentence is made, in every
   language, not left to translators.
 
+- **kache: what its clean-up still leaves** (2026-11-21, from Ben's
+  "check whether there are old debug builds or anything that can be
+  cleaned up" and "make it so old builds we no longer need will get
+  cleaned up automatically"; AGENT-NOTES has what was found and set).
+  In Olo's fork (`~/src/kache`, branch `olo`; another line of work has
+  a worktree of it), each with a test:
+  - Incremental state with a window of its own, short by default
+    (three days): it is worth nothing once its unit's name is dead,
+    and today it shares the thirty days of built units.
+  - Pruning it without the lock of the whole computer: each unit has
+    its own lock, held by a compiler for all of its run, and
+    `prune_stale` still waits for a moment when no cargo command runs
+    anywhere (`target_use::try_exclusive`), which on a computer with
+    agents at work comes days apart.
+  - A record of a command holding that lock, written before records
+    kept the process's start (`PID-NANOS`), is believed for as long as
+    any process has its number: ten from before a restart, the oldest
+    sixteen days old, were named as builds "running ~373.7 h" (removed
+    by hand). One older than the computer's start is gone.
+  - Build folders it doesn't know: a Codex agent's (its sandbox? the
+    agents tool removes those itself now), and one its registry
+    forgot, which no later pass finds again though Git lists the
+    worktree.
+
 - **Last, once everything above that isn't blocked is done: the website,
   the README and the docs refreshed, and a new GitHub release** (Ben,
   2026-11-17: "when all the other todos that aren't blocked are
