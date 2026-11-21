@@ -570,7 +570,7 @@ mod tests {
     /// Cooler already.
     #[test]
     fn the_fans_follow_the_plan() {
-        use olo_system::fans::Places;
+        use olo_system::fans::{Places, Profile};
         let root = std::path::PathBuf::from(format!("/var/tmp/olo-gpu-tune-fans-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let places = Places::under(&root);
