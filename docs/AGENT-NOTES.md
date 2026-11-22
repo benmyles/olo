@@ -870,6 +870,27 @@ frames a second with nobody at it):
   the first job, and the second runs without them (its pictures'
   paths were empty: "no picture /NAME.png").
 
+### What the layout review does and doesn't say (Tracker's columns, 2026-11-21)
+
+- **A fill drawn over a line is not a finding**: a row's highlight a
+  point too wide covered half of the line beside it at 2× and all 60
+  runs of the review passed. Seams (a device pixel apart) it finds;
+  overlaps of paint it doesn't. Read the pixels across an edge
+  (`Image.getpixel` along a row of a `tsession shot`), at every scale.
+- **A thing to click thinner than a point is "collapsed"**, and one
+  that overlaps another thing to click by two points is an overlap: a
+  splitter's place in the agents' tree is a point wide and between
+  its neighbours, whatever its grip is to the pointer.
+- **A width taken from the frame before lags a resize by a frame, and
+  nothing asks for the next one**: lay out by `cx.viewport_size()`,
+  which is the window as it is now, not by a scroll view's `bounds()`.
+- **`style::shade` darkens in the dark looks too**: a line "darker
+  than the ground" sinks into a dark ground. A line that is to show in
+  every look goes part of the way from the ground to the text's
+  colour (`olo_theme::mix`).
+- **`tools/dev/kernel-check` and other tools with no argument run
+  their default case**: ask with `--help`, or read the file's head.
+
 ### A stand-in shaped like the real thing
 
 - **The check's Codex ran outside every tab; the real one's server is

@@ -2024,11 +2024,38 @@ impl Default for PasswordsSecurity {
 }
 
 /// Tracker's settings (Preferences ▸ Tracker).
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct TrackerSettings {
     /// How a folder window shows its folder when it opens.
     pub default_view: FolderView,
+    /// How wide a column is in the columns view, in points: one width
+    /// for every column of every window (the line between two columns
+    /// is dragged; a double click on it gives
+    /// [`TrackerSettings::COLUMN_WIDTH`] back). As saved; what Tracker
+    /// uses is [`TrackerSettings::column`], within its least and most.
+    pub column_width: u16,
+}
+
+impl TrackerSettings {
+    /// The column width Tracker comes with, and the least and the most a
+    /// column may be (a name and its icon still read at the least; two
+    /// columns still fit a window on the smallest screen at the most).
+    pub const COLUMN_WIDTH: u16 = 220;
+    pub const COLUMN_WIDTH_LEAST: u16 = 140;
+    pub const COLUMN_WIDTH_MOST: u16 = 520;
+
+    /// The columns' width as Tracker uses it: what is saved, within the
+    /// least and the most (a settings file may say anything).
+    pub fn column(&self) -> u16 {
+        self.column_width.clamp(Self::COLUMN_WIDTH_LEAST, Self::COLUMN_WIDTH_MOST)
+    }
+}
+
+impl Default for TrackerSettings {
+    fn default() -> Self {
+        TrackerSettings { default_view: FolderView::default(), column_width: Self::COLUMN_WIDTH }
+    }
 }
 
 /// How video is played (the Viewer's and Quick Look's player).
@@ -3355,6 +3382,27 @@ impl Client {
 
 #[cfg(test)]
 mod tests {
+
+    /// Tracker's columns: a settings file from before the width was
+    /// saved has the width Tracker comes with; one that says anything
+    /// is held to the least and the most where it is used, and kept as
+    /// it was written.
+    #[test]
+    fn trackers_column_width_is_saved_and_held_within_its_range() {
+        let before: Settings = serde_json::from_str(r#"{"tracker":{"default_view":"List"}}"#).unwrap();
+        assert_eq!(before.tracker.default_view, FolderView::List);
+        assert_eq!((before.tracker.column_width, before.tracker.column()), (TrackerSettings::COLUMN_WIDTH, 220));
+        let none: Settings = serde_json::from_str("{}").unwrap();
+        assert_eq!(none.tracker, TrackerSettings::default());
+        let mut s = Settings::default();
+        s.tracker.column_width = 312;
+        let back: Settings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(back.tracker.column(), 312);
+        for (saved, used) in [(0, 140), (139, 140), (140, 140), (520, 520), (521, 520), (u16::MAX, 520)] {
+            s.tracker.column_width = saved;
+            assert_eq!(s.tracker.column(), used, "{saved}");
+        }
+    }
 
     #[test]
     fn settings_before_profiles_become_one() {

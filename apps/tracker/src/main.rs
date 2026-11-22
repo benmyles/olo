@@ -1040,7 +1040,14 @@ impl Hub {
         };
         let Ok(msg) = message.downcast::<ToHub>() else { return };
         match *msg {
-            ToHub::Settings(s) => self.default_view = s.default_view,
+            ToHub::Settings(s) => {
+                self.default_view = s.default_view;
+                // (The columns' width: every window in columns draws
+                // again at it.)
+                if columns::follow_settings(&s) {
+                    self.refresh();
+                }
+            }
             ToHub::Thumb | ToHub::Refresh => self.refresh(),
             ToHub::JobSlow(id) => {
                 if self.jobs.iter().any(|(j, _)| j.id == id) && self.status.as_ref().is_none_or(|w| !w.is_open()) {
@@ -1234,12 +1241,14 @@ fn main() {
         });
         let desktop = args.iter().any(|a| a == "--desktop");
         let file_manager = desktop || args.iter().any(|a| a == FILE_MANAGER_ARG);
+        // Folders opened at startup can't wait for the watcher's first
+        // read: how they show, and how wide their columns are.
+        let settings = olo_kit_base::settings::current().map(|s| s.tracker).unwrap_or_default();
+        columns::follow_settings(&settings);
         let mut hub = Hub {
             windows: Vec::new(),
             next: 0,
-            // Folders opened at startup can't wait for the watcher's first
-            // read.
-            default_view: olo_kit_base::settings::current().map(|s| s.tracker.default_view).unwrap_or_default(),
+            default_view: settings.default_view,
             jobs: Vec::new(),
             next_job: 1,
             history: undo::History::default(),

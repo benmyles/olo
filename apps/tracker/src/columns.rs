@@ -3,7 +3,11 @@
 //! preview of a selected file at the end. Browsing happens in place; the
 //! keyboard moves through the hierarchy (←/→ between columns).
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::atomic::{AtomicBool, AtomicU32, Ordering},
+};
 
 use olo_kit::{
     Bounds, Cx, DropAccept, DropOffer, Element, FontWeight, InteractiveElement as _, IntoElement as _, KeyDownEvent, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Painter,
@@ -13,17 +17,74 @@ use olo_kit::{
     widgets::{SCROLL_BAR, ScrollBar, ScrollView},
 };
 use olo_kit_base::list::{ListState, SelectionBand};
+use olo_protocol::TrackerSettings;
 use olo_theme::mix;
 
 use crate::{
+    ToHub,
     folder::{FolderMsg, FolderWin, mods, plain_extra},
     fs::{self, Entry, Kind},
-    items,
+    items, to_hub,
 };
 
-/// Width of each column, and of the preview after the last one.
-pub const COLUMN_WIDTH: f32 = 220.0;
+/// Width of the preview after the last column.
 const PREVIEW_WIDTH: f32 = 260.0;
+
+/// How wide a column is, in points: one width for every column of every
+/// window, the person's to set (Ben, 2026-11-21: "let's keep it simple
+/// so it resizes the width of all columns so there is just one column
+/// width used for them all and persist it as a saved setting that
+/// applies to all tracker windows in column mode"). The line between
+/// two columns is dragged, and a double click on it gives back the
+/// width Tracker comes with; saved as `tracker.column_width`. Kept here
+/// for all the windows of this Tracker: from the settings as they are
+/// read and as they change, and from the line while it is dragged (the
+/// settings are told once, when it is let go: a frame of a drag isn't
+/// news for every program that follows them).
+static COLUMN_WIDTH: AtomicU32 = AtomicU32::new(TrackerSettings::COLUMN_WIDTH as u32);
+/// A line is being dragged in one of this Tracker's windows: what the
+/// settings say meanwhile (the echo of an earlier save) doesn't move it.
+static SIZING: AtomicBool = AtomicBool::new(false);
+/// How wide the line between two columns is to the pointer (the kit's
+/// own grip, as a side pane's edge has).
+const LINE_GRIP: f32 = olo_kit::widgets::side_pane::GRIP;
+/// The lines' ids among a window's elements (apart from the rows').
+const LINE_ID: usize = 1 << 24;
+/// What always shows beside a column in its window, however wide the
+/// columns are set: its own line, with room to take hold of it, and the
+/// next column as far as its names begin (its icons whole, their inset
+/// on both sides), which says more than a scroll bar does that a folder
+/// opened there. No further: four points more showed the first stroke of
+/// every name, cut by the window's edge (both design reviews).
+const BESIDE: f32 = m::CELL_INSET + items::MINI + m::MARK_GAP;
+
+/// The line at a column's right edge, in points at `scale`: one of the
+/// kit's lines (a point drawn on whole device pixels: one at 1.5×, two
+/// at 2×).
+fn line_width(scale: f32) -> f32 {
+    style::line_pixels(scale) / scale
+}
+
+/// The columns' width now.
+pub fn column_width() -> f32 {
+    COLUMN_WIDTH.load(Ordering::Relaxed) as f32
+}
+
+/// The settings' word on the columns' width (as they are read, and each
+/// time they change): whether there is anything to draw again.
+pub fn follow_settings(s: &TrackerSettings) -> bool {
+    let w = u32::from(s.column());
+    !SIZING.load(Ordering::Relaxed) && COLUMN_WIDTH.swap(w, Ordering::Relaxed) != w
+}
+
+/// The width that dragging the line after column `k` (the first is 0)
+/// by `by` points comes to, from `from`: every column is as wide as
+/// every other, so the line moves `k + 1` times as far as each column
+/// grows, and the line stays under the pointer. In whole points, within
+/// the least and the most a column may be.
+fn dragged_width(from: f32, by: f32, k: usize) -> u16 {
+    (from + by / (k + 1) as f32).round().clamp(f32::from(TrackerSettings::COLUMN_WIDTH_LEAST), f32::from(TrackerSettings::COLUMN_WIDTH_MOST)) as u16
+}
 /// The preview's image (or icon) box.
 const PREVIEW_IMAGE: f32 = 200.0;
 const PREVIEW_ICON: f32 = 96.0;
@@ -45,6 +106,17 @@ pub struct Cols {
     /// across, what was selected, and where it reaches now (in the
     /// window).
     band: Option<(usize, Pixels, SelectionBand, Point<Pixels>)>,
+    /// The line between two columns, held: the column it comes after,
+    /// where the pointer took hold of it (across the window), and how
+    /// wide a column then was here and for all (`column_width`).
+    sizing: Option<(usize, Pixels, f32, f32)>,
+    /// A column's width in this window, as it is laid out
+    /// (`FolderWin::fit_columns`; 0 before the first time).
+    width: f32,
+    /// The line the pointer is over (the column it comes after): drawn
+    /// stronger, as the one held is, so that what can be taken hold of
+    /// shows.
+    hot: Option<usize>,
 }
 
 impl Cols {
@@ -52,6 +124,141 @@ impl Cols {
     pub fn end_press(&mut self) {
         self.press = None;
         self.band = None;
+    }
+}
+
+impl FolderWin {
+    /// A column's width in this window, set as its columns are laid
+    /// out: the one for all; no wider than the window less `BESIDE` (in
+    /// a narrow tile a column at its most filled the window from frame
+    /// to frame: no line to take hold of, and what a folder opened out
+    /// of sight); and a whole number of device pixels, so that every
+    /// column's edge and the line on it are on one (a width set by hand
+    /// is any number of points: 221 of them are 331 and a half pixels
+    /// at 1.5×). By the window's width as it is now: by what the columns
+    /// were given the frame before, a window just tiled into a third
+    /// kept a column wider than itself.
+    fn fit_columns(&mut self, cx: &mut Cx<Self>) {
+        let (w, shows, scale) = (column_width(), f32::from(cx.viewport_size().width), cx.scale_factor());
+        let w = if shows > 0.0 { w.min((shows - BESIDE).max(f32::from(TrackerSettings::COLUMN_WIDTH_LEAST))) } else { w };
+        self.cols.width = (w * scale).round() / scale;
+    }
+
+    /// A column's width in this window (`fit_columns`).
+    pub fn col_w(&self) -> f32 {
+        if self.cols.width > 0.0 { self.cols.width } else { column_width() }
+    }
+
+    /// The line after column `k` taken hold of; twice: the width Tracker
+    /// comes with.
+    fn line_press(&mut self, k: usize, e: &MouseDownEvent, cx: &mut Cx<Self>) {
+        cx.stop_propagation();
+        if e.click_count >= 2 {
+            self.cols.sizing = None;
+            SIZING.store(false, Ordering::Relaxed);
+            if self.set_column_width(TrackerSettings::COLUMN_WIDTH, cx) {
+                olo_kit::settings::update(|s| s.tracker.column_width = TrackerSettings::COLUMN_WIDTH);
+            }
+        } else {
+            self.cols.sizing = Some((k, e.position.x, self.col_w(), column_width()));
+            SIZING.store(true, Ordering::Relaxed);
+        }
+    }
+
+    /// The pointer moved with a line held: every column, in every
+    /// window, as wide as that makes them.
+    fn line_move(&mut self, e: &MouseMoveEvent, cx: &mut Cx<Self>) {
+        let Some((k, from, here, _)) = self.cols.sizing else { return };
+        if e.pressed_button != Some(MouseButton::Left) {
+            // (Let go where this window didn't see it.)
+            return self.line_release();
+        }
+        self.set_column_width(dragged_width(here, f32::from(e.position.x - from), k), cx);
+    }
+
+    /// Whether the line after column `k` is the one under the pointer or
+    /// the one held.
+    fn line_is_hot(&self, k: usize) -> bool {
+        self.cols.hot == Some(k) || self.cols.sizing.is_some_and(|(held, ..)| held == k)
+    }
+
+    /// The pointer over the line after column `k`, or gone from it.
+    fn line_hover(&mut self, k: usize, over: bool, cx: &mut Cx<Self>) {
+        let hot = if over { Some(k) } else { self.cols.hot.filter(|&h| h != k) };
+        if hot != self.cols.hot {
+            self.cols.hot = hot;
+            cx.invalidate();
+        }
+    }
+
+    /// The line let go: the settings are told, if it was moved.
+    fn line_release(&mut self) {
+        if let Some((.., before)) = self.cols.sizing.take() {
+            SIZING.store(false, Ordering::Relaxed);
+            let w = column_width();
+            if w != before {
+                olo_kit::settings::update(move |s| s.tracker.column_width = w as u16);
+            }
+        }
+    }
+
+    /// Every column `points` wide from now on, in this window and the
+    /// others (which draw again): whether that is a change.
+    fn set_column_width(&mut self, points: u16, cx: &mut Cx<Self>) -> bool {
+        let changed = COLUMN_WIDTH.swap(u32::from(points), Ordering::Relaxed) != u32::from(points);
+        if changed {
+            cx.invalidate();
+            to_hub(ToHub::Refresh);
+        }
+        changed
+    }
+
+    /// The line after column `k`, for the pointer to take hold of: over
+    /// the line at the column's right edge, a grip wide. Agents
+    /// read it as a Splitter whose value is the width (and set the
+    /// width through the settings, `tracker.column_width`).
+    fn column_line(&self, k: usize, w: f32, cx: &mut Cx<Self>) -> Element {
+        let mut line = olo_kit::canvas(|g, b| {
+            // (To agents the line is the line itself, between the rows
+            // of one column and the next: the grip reaches over both,
+            // which the layout review rightly calls an overlap of
+            // things to click.)
+            // (A point wide there, ending at the column's edge, whatever
+            // the scale: a line of one device pixel at 1.5× is two
+            // thirds of a point, which the review takes for something
+            // that collapsed.)
+            let line = Bounds { origin: point(b.left() + px(LINE_GRIP / 2.0) + style::hairline(g) / 2.0 - px(1.0), b.top()), size: size(px(1.0), b.size.height) };
+            olo_kit::agent::record(
+                g,
+                olo_kit::agent::Node {
+                    role: "Splitter",
+                    name: Some("Column width".into()),
+                    value: Some(format!("{:.0}", column_width()).into()),
+                    bounds: line,
+                    enabled: true,
+                    clickable: true,
+                    ..Default::default()
+                },
+            );
+        })
+        .size_full()
+        // (The pointer of a column's edge, as over the kit list's.)
+        .cursor(olo_kit::CursorStyle::ResizeColumn)
+        .id(LINE_ID + k)
+        .on_hover(cx.listener(move |f: &mut FolderWin, over: &bool, cx| f.line_hover(k, *over, cx)))
+        .on_mouse_down(MouseButton::Left, cx.listener(move |f: &mut FolderWin, e: &MouseDownEvent, cx| f.line_press(k, e, cx)));
+        if k == 0 {
+            // (One line follows the pointer for them all, past its own
+            // few points and past the window's edge.)
+            line = line.on_drag_move(cx.listener(|f: &mut FolderWin, e: &MouseMoveEvent, cx| f.line_move(e, cx))).on_window_mouse_up(cx.listener(|f: &mut FolderWin, e: &MouseUpEvent, _| {
+                if e.button == MouseButton::Left {
+                    f.line_release();
+                }
+            }));
+        }
+        // (The line is the last of the column: the grip is centred on
+        // it.)
+        div().absolute().left(px((k + 1) as f32 * w - line_width(cx.scale_factor()) / 2.0 - LINE_GRIP / 2.0)).top_0().bottom_0().w(px(LINE_GRIP)).child(line).into_any_element()
     }
 }
 
@@ -328,7 +535,8 @@ impl FolderWin {
         let Some(e) = entries.get(i) else { return 0 };
         let (selected, active) = (list.selected.contains(&i), self.active == k);
         let editing = active && self.editing.as_ref().is_some_and(|r| r.path == e.path);
-        style::key((crate::folder::row_key(e), selected, selected && active, self.dropping == Some((k, Some(i))), editing))
+        // (And the width: a row is drawn across its column.)
+        style::key((crate::folder::row_key(e), selected, selected && active, self.dropping == Some((k, Some(i))), editing, self.col_w().to_bits()))
     }
 
     fn column_press(&mut self, k: usize, e: &MouseDownEvent, cx: &mut Cx<Self>) {
@@ -526,7 +734,9 @@ impl FolderWin {
         let n = 1 + self.panes.len();
         self.active = self.active.min(n - 1);
         let preview = self.previewed();
-        let total = n as f32 * COLUMN_WIDTH + preview.as_ref().map_or(0.0, |_| PREVIEW_WIDTH);
+        self.fit_columns(cx);
+        let w = self.col_w();
+        let total = n as f32 * w + preview.as_ref().map_or(0.0, |_| PREVIEW_WIDTH);
         let width = f32::from(self.cols.scroll.bounds().size.width);
         // Selections made in code (Show in Tracker, a new item, columns
         // put back after a reload): into view, with some of what's
@@ -545,8 +755,8 @@ impl FolderWin {
             if width > 0.0 {
                 self.col_focus = Some(focus);
                 let mut x = -f32::from(self.cols.scroll.offset().x);
-                let right = ((self.active + 2).min(n) as f32 * COLUMN_WIDTH).max(if self.active + 1 >= n { total } else { 0.0 });
-                let left = self.active as f32 * COLUMN_WIDTH;
+                let right = ((self.active + 2).min(n) as f32 * w).max(if self.active + 1 >= n { total } else { 0.0 });
+                let left = self.active as f32 * w;
                 if right - x > width {
                     x = right - width;
                 }
@@ -561,10 +771,13 @@ impl FolderWin {
             }
         }
         let p = theme::palette();
-        let mut row = div().flex().flex_row().h_full().w(px(total));
+        let mut row = div().relative().flex().flex_row().h_full().w(px(total));
         for k in 0..n {
             row = row.child(self.column_element(k, cx));
         }
+        // The lines between the columns, to take hold of (over the
+        // columns and what comes after them).
+        let lines: Vec<Element> = (0..n).map(|k| self.column_line(k, w, cx)).collect();
         // Past the last column: outlined while what's dragged there would
         // go into its folder.
         let outlined = self.dropping == Some((n, None));
@@ -602,7 +815,7 @@ impl FolderWin {
             .size_full()
             .flex()
             .flex_col()
-            .child(div().flex_1().min_h_0().relative().bg(style::c(p.document_background)).overflow_x_scroll().track_scroll(&self.cols.scroll).child(row.child(rest)))
+            .child(div().flex_1().min_h_0().relative().bg(style::c(p.document_background)).overflow_x_scroll().track_scroll(&self.cols.scroll).child(row.child(rest).children(lines)))
             .child(div().w_full().h(px(SCROLL_BAR)).relative().child(ScrollBar::horizontal(&self.cols.scroll)))
             .into_any_element()
     }
@@ -611,6 +824,9 @@ impl FolderWin {
         let (_, entries, _) = self.column(k);
         let rows = entries.len();
         let handle = self.col_scroll(k);
+        let w = self.col_w();
+        // (What a column shows ends where its line begins.)
+        let shown = w - line_width(cx.scale_factor());
         let height = rows as f32 * m::LIST_ROW + 2.0 * m::TIGHT;
         let editing_here = self.editing.as_ref().filter(|_| k == self.active).and_then(|r| self.column(k).1.iter().position(|e| e.path == r.path));
         // Editing a name, over its row in the active column (in the
@@ -618,7 +834,7 @@ impl FolderWin {
         let field_el = match (editing_here, &self.editing) {
             (Some(row), Some(r)) => {
                 let e = self.column(k).1[row].clone();
-                let cell = Bounds { origin: point(px(m::CELL_INSET - m::TIGHT), px(m::TIGHT + row as f32 * m::LIST_ROW)), size: size(px(COLUMN_WIDTH - 2.0 - m::CELL_INSET), px(m::LIST_ROW)) };
+                let cell = Bounds { origin: point(px(m::CELL_INSET - m::TIGHT), px(m::TIGHT + row as f32 * m::LIST_ROW)), size: size(px(shown - m::CELL_INSET), px(m::LIST_ROW)) };
                 let l = items::layout_item(cell, e.label(), items::Look::Mini, true, e.is_link);
                 Some(r.element(cx, &l, Point::default()))
             }
@@ -650,16 +866,33 @@ impl FolderWin {
         .key_by::<FolderWin>(move |f| style::key((bits(f.column_outline(k)), bits(f.column_band_rect(k)))))
         .absolute()
         .inset_0();
-        let sep = olo_kit::canvas(|g, b| {
+        let sep = olo_kit::view_canvas::<FolderWin>(move |f, g, b| {
             let p = theme::palette();
-            // Etched on the right edge: the light line right against
-            // the dark one (a point over left a device pixel between
-            // them at 1.5×, where a line is two thirds of a point).
-            let x = b.right() - px(2.0);
-            style::vline(g, x, b.top(), b.bottom(), style::shade(&p, p.document_background, 1.15));
-            let lit = style::snap_coord(g, x) + style::hairline(g);
-            style::vline(g, lit, b.top(), b.bottom(), style::c(p.shine));
+            // One line, the last of the column, which the rows of this
+            // column and of the next both meet. (It was an etched pair,
+            // a dark line and a light one, begun two points in from the
+            // edge. On a list's ground the pair's other half doesn't
+            // show, the light one in the light look and the dark one
+            // in the dark: so a row selected beside it stopped a line's
+            // width short of the line one saw, on one side or the
+            // other; and at 1.5× and 1.75×, where a line is one device
+            // pixel, a pixel of ground was left before the next
+            // column, the layout review's seam. Both found while the
+            // columns were given a width set by hand, which makes the
+            // line something to take hold of: it is a little darker
+            // for that. An etched rule is for a panel's ground,
+            // `style::Rule::Etched`.)
+            // (A quarter of the way from the ground to the text's
+            // colour: a grey that shows on a light ground and on a dark
+            // one. Darkened, as the pair's dark half was, it sank into
+            // a dark ground.)
+            // (Under the pointer, and held: half way, so that what can
+            // be taken hold of shows, and what is held.)
+            let towards_text = if f.line_is_hot(k) { 0.5 } else { 0.25 };
+            let x = style::snap_coord(g, b.right()) - style::hairline(g);
+            style::vline(g, x, b.top(), b.bottom(), style::c(mix(p.document_background, p.document_text, towards_text)));
         })
+        .key_by::<FolderWin>(move |f| f.line_is_hot(k) as u64)
         .absolute()
         .inset_0();
         let mut inner = div()
@@ -677,19 +910,11 @@ impl FolderWin {
                 .on_window_mouse_up(cx.listener(|f: &mut FolderWin, e: &MouseUpEvent, cx| f.column_release(e, cx)));
         }
         div()
-            .w(px(COLUMN_WIDTH))
+            .w(px(w))
             .h_full()
             .relative()
             .child(sep)
-            .child(
-                div()
-                    .absolute()
-                    .top_0()
-                    .bottom_0()
-                    .left_0()
-                    .w(px(COLUMN_WIDTH - 2.0))
-                    .child(ScrollView::new(&handle).border(false).auto_hide(true).child(inner.child(rows_el).child(over).children(field_el))),
-            )
+            .child(div().absolute().top_0().bottom_0().left_0().w(px(shown)).child(ScrollView::new(&handle).border(false).auto_hide(true).child(inner.child(rows_el).child(over).children(field_el))))
             .into_any_element()
     }
 }
@@ -739,5 +964,50 @@ fn draw_preview(g: &mut Painter, e: &Entry, rect: Bounds<Pixels>) {
         let at = style::label(g, area.center().x + px(m::TIGHT), cy, Align::Left, v.clone(), style::SMALL_SIZE, plain.clone(), style::c(p.document_text));
         olo_kit::agent::record(g, olo_kit::agent::Node::label(v, at));
         y += px(m::LABEL_ROW);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The line stays under the pointer: every column is as wide as
+    /// every other, so the line after the third moves three times as far
+    /// as each column grows. Whole points, and never past the least and
+    /// the most.
+    #[test]
+    fn a_dragged_line_sizes_every_column() {
+        // The first column's line: point for point.
+        assert_eq!(dragged_width(220.0, 30.0, 0), 250);
+        assert_eq!(dragged_width(220.0, -30.0, 0), 190);
+        // The third's: a third of the way each.
+        assert_eq!(dragged_width(220.0, 90.0, 2), 250);
+        assert_eq!(dragged_width(220.0, 91.0, 2), 250);
+        assert_eq!(dragged_width(220.0, 92.0, 2), 251);
+        // Held within what a column may be.
+        assert_eq!(dragged_width(220.0, -500.0, 0), TrackerSettings::COLUMN_WIDTH_LEAST);
+        assert_eq!(dragged_width(220.0, 5000.0, 3), TrackerSettings::COLUMN_WIDTH_MOST);
+        // From a width the window had narrowed (a tile narrower than the
+        // saved width): the drag starts from what was on screen.
+        assert_eq!(dragged_width(180.0, 10.0, 0), 190);
+    }
+
+    /// The settings' width is every window's, but not while a line is
+    /// held here (the echo of an earlier save would pull it back).
+    #[test]
+    fn the_settings_set_the_width_unless_a_line_is_held() {
+        let saved = |w| TrackerSettings { column_width: w, ..Default::default() };
+        assert!(follow_settings(&saved(300)));
+        assert_eq!(column_width(), 300.0);
+        assert!(!follow_settings(&saved(300)), "the same again is nothing to draw");
+        // Out of range, as a file might say: held to the range.
+        assert!(follow_settings(&saved(9)));
+        assert_eq!(column_width(), f32::from(TrackerSettings::COLUMN_WIDTH_LEAST));
+        SIZING.store(true, Ordering::Relaxed);
+        assert!(!follow_settings(&saved(400)));
+        assert_eq!(column_width(), f32::from(TrackerSettings::COLUMN_WIDTH_LEAST));
+        SIZING.store(false, Ordering::Relaxed);
+        assert!(follow_settings(&saved(TrackerSettings::COLUMN_WIDTH)));
+        assert_eq!(column_width(), 220.0);
     }
 }

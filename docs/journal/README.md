@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-21
 
+### Tracker: columns resized by hand
+
+*16:56* — The line between two columns is dragged and every column of every window follows; one width, saved (220 points to start, a double click gives it back). The line is now one line that the rows on both sides meet at every scale, drawn stronger under the pointer.
+
+![Tracker: columns resized by hand](2026-11-21/165624-tracker-columns-resized-by-hand.png)
+
 ### Terminal: an agent at work, as a ring on its tab's icon
 
 *09:45* — The mark of a coding agent at work was a three-quarter arc that read as a letter in a still picture. Now a ring drawn on whole pixels as the icons are: faint all the way round, with a strong head and a tail fading behind it, set off from the icon by a rim of the tab's own fill (here on the front tab, enlarged). Five rounds of the two reviewers' looks.

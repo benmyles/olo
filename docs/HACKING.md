@@ -20555,6 +20555,36 @@ deferred so the Tracker can update the window back):
   `ListModel` follows the window's selection); the column view's
   columns side by side, scrolled across, with a preview of a selected
   file (thumbs.rs: pictures made small on a thread of their own).
+  **The columns are one width, the person's to set** (columns.rs; Ben,
+  2026-11-21: "it resizes the width of all columns so there is just
+  one column width used for them all and persist it as a saved setting
+  that applies to all tracker windows in column mode"): the line
+  between two columns is dragged (a grip the kit's width,
+  `side_pane::GRIP`, the column-resize pointer; the line drawn
+  stronger under the pointer and while held), and every column of
+  every window follows frame by frame (`dragged_width`: the line after
+  column *k* moves *k* + 1 times as far as each column grows, so it
+  stays under the pointer); a double click gives 220 points back. The
+  width is `tracker.column_width` in the settings
+  (`TrackerSettings::column`: held to 140 to 520), written once, when
+  the line is let go, and followed by every Tracker window as the
+  settings change (`columns::follow_settings`); agents read each line
+  as a Splitter "Column width" whose value is the width, and set it
+  through the settings. In a window, a column is never wider than the
+  window less the start of the next column (`BESIDE`: its line always
+  shows, with the next column's icons, which say a folder opened
+  there), by the window's width as it is at render time
+  (`fit_columns`, `cx.viewport_size()`: by the scroll view's bounds of
+  the frame before, a window just tiled narrow kept the wider column),
+  and a whole number of device pixels (a width of 221 points is 331
+  and a half at 1.5×). The line is one line (a quarter of the way from
+  the document's ground to its text, so it shows in every look), the
+  last of its column, which the rows on both sides meet at every
+  scale: it was an etched pair whose second half doesn't show on a
+  list's ground (a selected row stopped short of the line one saw)
+  and which left a device pixel of ground before the next column at
+  1.5× and 1.75× (the layout review's seam; `style::Rule::Etched` is
+  for a panel's ground).
   Editing a name is a `TextField` over the label (items.rs `Rename`);
   Return or a click elsewhere renames, Escape doesn't. In the list view
   it's over the Name cell (`ColumnListView::over_cell`), no wider than

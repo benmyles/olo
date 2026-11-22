@@ -5368,5 +5368,11 @@
   "title": "Terminal: an agent at work, as a ring on its tab's icon",
   "caption": "The mark of a coding agent at work was a three-quarter arc that read as a letter in a still picture. Now a ring drawn on whole pixels as the icons are: faint all the way round, with a strong head and a tail fading behind it, set off from the icon by a rim of the tab's own fill (here on the front tab, enlarged). Five rounds of the two reviewers' looks.",
   "image": "2026-11-21/094543-terminal-an-agent-at-work-as-a-ring-on-its-tab-s.png"
+ },
+ {
+  "time": "2026-11-21T16:56:24",
+  "title": "Tracker: columns resized by hand",
+  "caption": "The line between two columns is dragged and every column of every window follows; one width, saved (220 points to start, a double click gives it back). The line is now one line that the rows on both sides meet at every scale, drawn stronger under the pointer.",
+  "image": "2026-11-21/165624-tracker-columns-resized-by-hand.png"
  }
 ]
