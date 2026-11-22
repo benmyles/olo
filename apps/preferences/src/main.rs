@@ -43,6 +43,7 @@ mod panel;
 mod performance;
 mod phone;
 mod power;
+mod rex;
 mod screensaver;
 mod security;
 mod security_keys;
@@ -264,8 +265,11 @@ impl Prefs {
         // As tall as what it shows needs (its size at least), and no
         // taller than the screen, where it scrolls (`fits_content`).
         let (w, h) = panel.size();
+        // Rex also has a one-column form. Give it that width on a narrow
+        // screen, with room for the window’s edges.
+        let width = if panel == Panel::Rex { olo_kit::displays().iter().map(|d| (f32::from(d.size.width) - 2.0 * m::WINDOW_INSET).max(1.0)).fold(w as f32, f32::min) } else { w as f32 };
         let opened = self.settings.clone().unwrap_or_default();
-        let options = WindowOptions { fixed: true, ..WindowOptions::new(panel.title(), w as f32, h as f32).fits_content() };
+        let options = WindowOptions { fixed: true, ..WindowOptions::new(panel.title(), width, h as f32).fits_content() };
         let window = olo_kit::open_window(options, move |cx| PanelView::new(panel, opened, cx));
         self.windows.push(Shown::Panel(panel, window));
     }
@@ -363,7 +367,8 @@ impl Prefs {
         self.windows.retain(Shown::is_open);
         let open: Vec<&str> = self.windows.iter().map(|w| w.panel().map_or("", Panel::arg)).collect();
         let power = views.iter().find_map(|v| serde_json::from_str::<power::Saved>(v).ok());
-        serde_json::to_string(&(open, power)).ok()
+        let rex = views.iter().find_map(|v| serde_json::from_str::<rex::Selection>(v).ok());
+        serde_json::to_string(&(open, power, rex)).ok()
     }
 }
 
@@ -381,6 +386,7 @@ pub enum PanelMsg {
     /// What it shows changed (the settings, what a worker found).
     Redraw,
     RestorePower(power::Saved),
+    RestoreRex(rex::Selection),
     /// The settings as app_server first said them: what Revert goes
     /// back to.
     Opened(Box<Settings>),
@@ -419,7 +425,11 @@ impl View for PanelView {
     type Message = PanelMsg;
 
     fn save_state(&mut self, _: &mut Cx<Self>) -> Option<String> {
-        if let panel::State::Power(st) = &self.state { serde_json::to_string(&st.saved()).ok() } else { None }
+        match &self.state {
+            panel::State::Power(st) => serde_json::to_string(&st.saved()).ok(),
+            panel::State::Rex(st) => serde_json::to_string(&st.selected).ok(),
+            _ => None,
+        }
     }
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
@@ -436,6 +446,11 @@ impl View for PanelView {
             PanelMsg::RestorePower(saved) => {
                 if let panel::State::Power(st) = &mut self.state {
                     st.restore(saved);
+                }
+            }
+            PanelMsg::RestoreRex(selected) => {
+                if let panel::State::Rex(st) = &mut self.state {
+                    st.selected = selected;
                 }
             }
             PanelMsg::Opened(s) => self.opened = *s,
@@ -689,12 +704,17 @@ fn main() {
         let server = server::Server::start(proxy);
         let _ = PREFS.set(Mutex::new(Prefs { settings: None, outputs: Vec::new(), outputs_in: false, holds: Vec::new(), power: None, server, windows: Vec::new(), history: Default::default() }));
         let restored = olo_kit::restored_state()
-            .and_then(|s| serde_json::from_str::<(Vec<String>, Option<power::Saved>)>(&s).ok().or_else(|| serde_json::from_str::<Vec<String>>(&s).ok().map(|open| (open, None))))
-            .filter(|(open, _)| !open.is_empty());
+            .and_then(|s| {
+                serde_json::from_str::<(Vec<String>, Option<power::Saved>, Option<rex::Selection>)>(&s)
+                    .ok()
+                    .or_else(|| serde_json::from_str::<(Vec<String>, Option<power::Saved>)>(&s).ok().map(|(open, saved)| (open, saved, None)))
+                    .or_else(|| serde_json::from_str::<Vec<String>>(&s).ok().map(|open| (open, None, None)))
+            })
+            .filter(|(open, _, _)| !open.is_empty());
         {
             let mut p = prefs();
             match restored {
-                Some((open, saved)) => {
+                Some((open, saved, rex)) => {
                     for name in open {
                         if name.is_empty() {
                             p.open_launcher();
@@ -704,6 +724,11 @@ fn main() {
                                 && let (Some(w), Some(saved)) = (p.window_of(Panel::Power), saved)
                             {
                                 w.messenger().send(PanelMsg::RestorePower(saved));
+                            }
+                            if name == "rex"
+                                && let (Some(w), Some(selected)) = (p.window_of(Panel::Rex), rex.clone())
+                            {
+                                w.messenger().send(PanelMsg::RestoreRex(selected));
                             }
                         }
                     }

@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-21
 
+### Preferences: Rex
+
+*19:27* — A panel for the Rex app in place of its own Settings window: which changes of an agent become notifications, the hosts it knows, and what the sessions of each may do on this computer (nothing until ticked).
+
+![Preferences: Rex](2026-11-21/192710-preferences-rex.png)
+
+### Rex: where a closed terminal was
+
+*19:27* — A session with no terminals, a host with none, a host or the server gone: each says so by name where the terminal would be, with the one thing to do; before, a closed terminal left a dead picture of another session there. The status bar at the bottom is always there (the window's host and session at rest, a passing word when there is one); Rex's own notification cards are gone.
+
+![Rex: where a closed terminal was](2026-11-21/192708-rex-where-a-closed-terminal-was.png)
+
 ### Tracker: columns resized by hand
 
 *16:56* — The line between two columns is dragged and every column of every window follows; one width, saved (220 points to start, a double click gives it back). The line is now one line that the rows on both sides meet at every scale, drawn stronger under the pointer.

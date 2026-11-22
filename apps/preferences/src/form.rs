@@ -382,6 +382,11 @@ impl<'a, 'b, 'c> Ui<'a, 'b, 'c> {
         self.add(b);
     }
 
+    /// Drop the previous record’s field views and their typing histories.
+    pub fn clear_fields(&mut self) {
+        *self.fields = Fields::default();
+    }
+
     /// The text field `id` (made the first time), showing `value` unless
     /// it has the keyboard; typing in it sets what `set` says. (The
     /// field is the panel's: what's handed back shows it, `element`.)
@@ -418,6 +423,20 @@ impl<'a, 'b, 'c> Ui<'a, 'b, 'c> {
             f.set_enabled(enabled, cx);
         });
         field.downgrade()
+    }
+
+    /// Connect once when making a field whose edits also change what its
+    /// panel shows (an address hint starts after the first edit).
+    pub fn on_first_field_edit(&mut self, id: &str, edit: impl FnOnce(&mut PanelView) + 'static) {
+        let first = std::cell::Cell::new(Some(edit));
+        self.cx.subscribe(&self.fields.fields[id], move |view, e: &TextFieldEvent, cx| {
+            if matches!(e, TextFieldEvent::Changed)
+                && let Some(edit) = first.take()
+            {
+                edit(view);
+                cx.notify();
+            }
+        });
     }
 
     /// A text control for the field `id` made by [`Ui::field`], for a

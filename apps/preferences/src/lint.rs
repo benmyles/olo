@@ -274,6 +274,54 @@ fn ui_lint_command_suggestions() {
     assert_clean("Terminal's command suggestions", &found);
 }
 
+/// A remote Rex host has fields and grants below the list. Check the
+/// tallest state, with both the missing address note and the trust caution.
+#[test]
+fn ui_lint_rex_host() {
+    use olo_protocol::{RexGrants, RexHost};
+
+    let mut lint = Lint::new();
+    let mut settings = Settings::default();
+    for i in 1..=4 {
+        settings.rex.hosts.push(RexHost {
+            id: format!("host-{i}"),
+            label: format!("Host {i}"),
+            endpoint: "bad address".into(),
+            grants: RexGrants { passwords: true, ..Default::default() },
+            ..Default::default()
+        });
+    }
+    crate::set_for_tests(Prefs { settings: Some(settings.clone()), ..fresh_prefs() });
+    let (w, h) = Panel::Rex.size();
+    for width in [w, 680] {
+        let options = WindowOptions::new("Rex", width as f32, h as f32).fits_content();
+        let view = |selection: crate::rex::Selection| {
+            let settings = settings.clone();
+            move |cx: &mut olo_kit::Cx<PanelView>| {
+                let mut view = PanelView::new(Panel::Rex, settings.clone(), cx);
+                if let crate::panel::State::Rex(st) = &mut view.state {
+                    st.selected = selection.clone();
+                }
+                view
+            }
+        };
+        let remote = crate::rex::Selection::Host("host-4".into());
+        let found = lint.window(&options, view(remote.clone()));
+        assert_clean(&format!("Rex’s remote hosts at {width} points"), &found);
+        // Selecting a host never moves the fields, grants or footer,
+        // even when both the address hint and trust caution appear.
+        let mut positions = |selection| {
+            let trees = lint.trees(&options, view(selection));
+            let nodes = &trees[0].1;
+            ["Name", "Address", "Connect when Rex starts", "Open links on this computer", "Defaults", "Revert"].map(|name| {
+                let n = nodes.iter().find(|n| n.name.as_deref() == Some(name)).unwrap();
+                (n.x, n.y, n.width, n.height)
+            })
+        };
+        assert_eq!(positions(crate::rex::Selection::Local), positions(remote));
+    }
+}
+
 /// Train for Your Palm, full screen: each step in each of its states (a
 /// touch judged, the longest miss, done, Esc pressed once; the summary's
 /// outcomes) on the screen it's laid out for and on a MacBook's at 2×.

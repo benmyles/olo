@@ -9,7 +9,7 @@ use olo_protocol::Settings;
 
 use crate::{
     PanelView, about, ai, airplay, airpods, appearance, backup, bluetooth, datetime, default_apps, deskbar, display, form::Ui, integrations, keyboard, network, notifications, performance, phone,
-    power, prefs, screensaver, security, sound, terminal, themes, touchpad, tracker, windows, workspaces,
+    power, prefs, rex, screensaver, security, sound, terminal, themes, touchpad, tracker, windows, workspaces,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,6 +39,7 @@ pub enum Panel {
     Performance,
     Phone,
     Power,
+    Rex,
     ScreenSaver,
     Security,
     Sound,
@@ -71,6 +72,7 @@ impl Panel {
         Panel::Performance,
         Panel::Phone,
         Panel::Power,
+        Panel::Rex,
         Panel::ScreenSaver,
         Panel::Security,
         Panel::Sound,
@@ -135,6 +137,7 @@ impl Panel {
             Panel::Performance => "performance",
             Panel::Phone => "phone",
             Panel::Power => "power",
+            Panel::Rex => "rex",
             Panel::ScreenSaver => "screensaver",
             Panel::Security => "security",
             Panel::Sound => "sound",
@@ -169,6 +172,7 @@ impl Panel {
             Panel::Performance => "Performance",
             Panel::Phone => "Phone",
             Panel::Power => "Power",
+            Panel::Rex => "Rex",
             Panel::ScreenSaver => "Screen Saver",
             Panel::Security => "Security",
             Panel::Sound => "Sound",
@@ -205,6 +209,7 @@ impl Panel {
             Panel::Performance => "performance",
             Panel::Phone => "phone",
             Panel::Power => "power",
+            Panel::Rex => "rex",
             Panel::ScreenSaver => "screensaver",
             Panel::Security => "security",
             Panel::Sound => "sound",
@@ -256,6 +261,9 @@ impl Panel {
             Panel::Phone => (820, 464),
             // Power follows its two forms and their disclosures.
             Panel::Power => (900, 200),
+            // The measured two-column form, including both inline messages.
+            // The stacked layout grows to fit on a narrower display.
+            Panel::Rex => (816, 584),
             Panel::ScreenSaver => (500, 400),
             // Passwords' settings, security keys beside them.
             Panel::Security => (880, 440),
@@ -361,6 +369,7 @@ impl Panel {
                 settings.mouse_speed = from.mouse_speed;
                 settings.focus_follows_mouse = from.focus_follows_mouse;
             }
+            Panel::Rex => settings.rex = from.rex.clone(),
             Panel::Tracker => settings.tracker = from.tracker.clone(),
             Panel::Terminal => settings.terminal = from.terminal.clone(),
             Panel::Workspaces => settings.workspace_count = from.workspace_count,
@@ -419,6 +428,7 @@ pub enum State {
     AirPlay(Box<airplay::State>),
     Touchpad(touchpad::State),
     Power(power::State),
+    Rex(rex::State),
     ScreenSaver(screensaver::State),
     About(about::State),
     Integrations(Box<integrations::State>),
@@ -446,6 +456,7 @@ impl State {
             Panel::AirPods => State::AirPods(Box::new(airpods::State::new(cx))),
             Panel::AirPlay => State::AirPlay(Box::new(airplay::State::new(cx))),
             Panel::Touchpad => State::Touchpad(touchpad::State::new(cx)),
+            Panel::Rex => State::Rex(rex::State::default()),
             Panel::Power => State::Power(power::State::new(cx)),
             Panel::ScreenSaver => State::ScreenSaver(screensaver::State::new(cx)),
             Panel::About => State::About(about::State::new(cx)),
@@ -514,6 +525,7 @@ pub fn render(v: &mut PanelView, cx: &mut Cx<PanelView>) -> Element {
             (Panel::AirPods, State::AirPods(st)) => airpods::ui(&mut ui, st),
             (Panel::AirPlay, State::AirPlay(st)) => airplay::ui(&mut ui, st),
             (Panel::Touchpad, State::Touchpad(st)) => touchpad::ui(&mut ui, st),
+            (Panel::Rex, State::Rex(st)) => rex::ui(&mut ui, st),
             (Panel::Tracker, _) => tracker::ui(&mut ui),
             (Panel::Terminal, _) => terminal::ui(&mut ui),
             (Panel::Windows, _) => windows::ui(&mut ui, &outputs),
