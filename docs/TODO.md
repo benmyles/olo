@@ -935,14 +935,16 @@ something nobody here has is in "Blocked", with what it waits for.
     copying the frame's glyphs, 19%: "Fast and light", the comparison
     in place; every row's cells taken from the engine again at each
     scroll, over half of what was left: Rex, "Rows the engine made
-    again"): 300 lines into a pane were 842 M instructions and are
-    320 M. Of the 1.05 M a frame that are left: comparing bytes 11%
-    and copying 8% (whose, not yet looked at: a profile with callers,
-    `perf record --user-callchains -g`), the renderer's glyphs 5 to
-    8%, painting the pane 5%, hashing row ids 4% (the frame's and the
-    pane's maps by `RowId` use the standard hasher: two words want a
-    cheaper one). Saying the panes' elements again is 2%: a pane's
-    head a view of its own isn't worth its machinery.
+    again"; and the standard hasher for rows' ids, 4%): 300 lines into
+    a pane were 842 M instructions and are 297 M, a frame of the
+    stream about half a millisecond of its 8.3. Of the 0.98 M
+    instructions a frame that are left: comparing bytes 11% and
+    copying 8 to 13% (whose isn't known: this machine gives no call
+    graph for a release build, AGENT-NOTES, "Who calls it"; a build
+    with frame pointers would say), the renderer's glyphs 5 to 8%,
+    painting the pane 5%. Saying the panes' elements again is 2%: a
+    pane's head a view of its own isn't worth its machinery. Not
+    worth more until something else points there.
   - *A mark joined later* (the terminal engine; found 2026-11-22
     testing the above). A combining mark, a variation selector or a
     joiner that arrives in a write of its own (an accent typed after

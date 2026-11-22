@@ -681,6 +681,24 @@ Doctor check, try its fix and look again: the finding must be gone.
   a core to 0.1% (2026-11-20): each guess before the log was wrong
   (the supervisor's file changed once a minute when nothing built, and
   39 times in 90 s when something did).
+- **Who calls it: this machine gives no call graph for a release
+  build** (2026-11-22). `perf record --call-graph lbr` can't open its
+  events here; `--user-callchains --call-graph dwarf,8192` records,
+  and unwinds almost nothing of a release build (line tables only,
+  no frame pointers); gdb with a breakpoint on `memcpy` and `bcmp`
+  that prints a backtrace gets about one call a second, the first
+  second's and no more. What works without a call graph: the flat
+  profile (`perf record -e instructions:u -c 200000 -p PID`, `perf
+  report --sort symbol`) names the Rust functions; for a libc
+  function's callers, build the one program with
+  `RUSTFLAGS="-C force-frame-pointers=yes"` into a target directory
+  of your own under /var/tmp (a release build of every crate: a
+  quarter of an hour) and record with `--call-graph fp`.
+- **A derived `Hash` of an array is a length and then bytes**: a
+  two-word id went through the hasher's byte path, and a hasher
+  written for words spent more there than the standard one saved.
+  Write the key's `Hash` to hand its words over (`write_u64`), and
+  look at the profile after, not only at the total.
 - **Count instructions unscaled: `perf stat --no-scale`.** This
   machine's cores are of two kinds (`cpu_core`: CPUs 0–3, `cpu_atom`:
   4–15), each counting on its own, and a thread is counted only on the

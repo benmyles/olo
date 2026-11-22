@@ -17,7 +17,6 @@
 
 use std::{
     cell::{Cell as StdCell, RefCell},
-    collections::HashMap,
     sync::Arc,
 };
 
@@ -159,7 +158,7 @@ struct RowCache {
     key: Option<RowKey>,
     owner: u64,
     revision: u64,
-    by_id: HashMap<RowId, CachedRow>,
+    by_id: olo_rex_vt::RowMap<CachedRow>,
     order: Vec<Option<RowId>>,
     ascii: Vec<(FontStyleKey, FontId, Box<[Option<Option<GlyphId>>; 95]>)>,
 }

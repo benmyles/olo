@@ -23,8 +23,55 @@ pub enum DirtyState {
 }
 
 /// Stable opaque identity of a terminal row across frames.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct RowId(pub [u64; 2]);
+
+/// Olo: its two words, each handed over whole (as an array it was a
+/// length and then sixteen bytes, which a hasher takes a byte at a
+/// time or by copying: a row's id is hashed some hundreds of times a
+/// frame).
+impl std::hash::Hash for RowId {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write_u64(self.0[0]);
+        state.write_u64(self.0[1]);
+    }
+}
+
+/// Olo: a map keyed by rows' ids. An id is two words of the engine's
+/// own making (a page's serial and a row's place in it), looked up for
+/// every row of every pane at every frame: they are mixed, not hashed
+/// against an adversary there isn't (the standard hasher was 4% of a
+/// streaming frame).
+pub type RowMap<V> = std::collections::HashMap<RowId, V, std::hash::BuildHasherDefault<RowIdHasher>>;
+
+/// Olo: [`RowMap`]'s hasher: each word folded in with a rotation and a
+/// multiplication (the rustc-hash crate's, as of its 1.x). For keys
+/// that hand it words (`RowId` does): bytes are taken eight at a time,
+/// a short last one padded with zeros.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RowIdHasher(u64);
+
+impl std::hash::Hasher for RowIdHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write_u64(&mut self, word: u64) {
+        self.0 = (self.0.rotate_left(5) ^ word).wrapping_mul(0x517c_c1b7_2722_0a95);
+    }
+
+    fn write_usize(&mut self, word: usize) {
+        self.write_u64(word as u64);
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        for chunk in bytes.chunks(8) {
+            let mut word = [0u8; 8];
+            word[..chunk.len()].copy_from_slice(chunk);
+            self.write_u64(u64::from_le_bytes(word));
+        }
+    }
+}
 
 /// Cursor shape requested by the terminal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -857,6 +904,39 @@ impl Drop for RenderState {
 mod tests {
     use super::*;
     use crate::GhosttyTerminal;
+
+    /// Rows' ids as the engine makes them (a page's serial, a row's
+    /// place in it) land apart in a map of them: a screen and its
+    /// history's worth, in a table of twice as many places, no more of
+    /// them sharing one than thrown there at random.
+    #[test]
+    fn rows_ids_land_apart() {
+        use std::hash::{BuildHasher, BuildHasherDefault};
+        let hasher = BuildHasherDefault::<RowIdHasher>::default();
+        let ids: Vec<RowId> = (0..8u64).flat_map(|serial| (0..512u64).map(move |y| RowId([serial, y + 1]))).collect();
+        let places = (ids.len() * 2).next_power_of_two() as u64;
+        // (A table takes a hash's low bits for where an entry goes, and
+        // its top seven to tell entries there apart.)
+        let mut taken = std::collections::HashSet::new();
+        let (mut low, mut top) = (std::collections::HashMap::new(), std::collections::HashSet::new());
+        for id in &ids {
+            let hash = hasher.hash_one(id);
+            assert!(taken.insert(hash), "two ids with one hash");
+            *low.entry(hash & (places - 1)).or_insert(0usize) += 1;
+            top.insert(hash >> 57);
+        }
+        // (Thrown at random, 4,096 ids into 8,192 places take 3,223 of them.)
+        assert!(low.len() > 3200 && top.len() > 120, "{} places and {} marks for {} ids", low.len(), top.len(), ids.len());
+        let peak = low.values().copied().max().unwrap();
+        // (And no place with many: a hasher that put a page's rows in one
+        // place took as many places as this asks, all but that page's.)
+        assert!(peak <= 4, "{peak} rows in one place");
+        let mut map: RowMap<u32> = RowMap::default();
+        for (n, id) in ids.iter().enumerate() {
+            map.insert(*id, n as u32);
+        }
+        assert!(ids.iter().enumerate().all(|(n, id)| map.get(id) == Some(&(n as u32))));
+    }
 
     /// The engine's manifest says where a packed cell's style id is, and
     /// it is where it says: for every cell of a screen of text in many

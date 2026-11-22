@@ -27000,9 +27000,16 @@ for repeated SSH, HTTP/TLS, transfer, forwarding and connection-loss checks.
   styles it was 288 M: the check is 32 M, most of it reading again
   the first cell of each style; asking the engine for each cell's
   style id instead of reading it from the word, as the engine's
-  manifest says where, was 60 M.) What is left of a frame: comparing
-  bytes 11%, copying 8%, the renderer's glyphs 5 to 8%, painting the
-  pane 5%, hashing row ids 4%. With the input mode read when output pauses (2026-11-22):
+  manifest says where, was 60 M.) A row's id is looked up some
+  hundreds of times a frame, in the frame's rows and the pane's kept
+  glyph rows, and the standard hasher, keyed against an adversary
+  these ids don't have, was 4% of a frame: the maps mix an id's two
+  words instead (`olo_rex_vt::RowMap`, `RowIdHasher`, and `RowId`'s
+  own `Hash`, its two words handed over whole: derived, an array is a
+  length and sixteen bytes): 319 M to 297 M (−7%), into one of three
+  353 M to 326 M (−8%). What is left of a frame (0.98 M
+  instructions): comparing bytes 11%, copying 8 to 13%, the
+  renderer's glyphs 5 to 8%, painting the pane 5%. With the input mode read when output pauses (2026-11-22):
   the same stream 786 to 838 M before and 813 to 838 M after, at rest
   0 frames and 0% both, a key to its picture 3.2 to 3.9 ms before and
   3.6 ms after.

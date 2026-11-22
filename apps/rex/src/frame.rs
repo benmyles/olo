@@ -22,7 +22,7 @@ pub struct Frame {
     pub owner: u64,
     pub revision: u64,
     pub order: Vec<RowId>,
-    pub rows: HashMap<RowId, FrameRow>,
+    pub rows: olo_rex_vt::RowMap<FrameRow>,
     pub header: Option<(RenderColors, CursorInfo)>,
     pub placements: Vec<ImagePlacement>,
     generation: Option<u64>,

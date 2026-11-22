@@ -27,7 +27,9 @@ pub mod ffi {
 pub use color::{Rgb, TerminalTheme, default_palette, generate_extended_palette, parse_color, parse_ghostty_theme, parse_itermcolors, parse_palette_entry};
 pub use error::VtError;
 pub use input::{KeyMods, MouseAction, MouseButton, MouseEncoder, MouseGeometry, encode_focus, encode_paste, paste_is_safe};
-pub use render::{CellStyle, CellWide, CursorInfo, CursorStyle, DirtyState, ImageLayer, ImagePlacement, RenderCell, RenderColors, RenderRow, RenderState, RowId, RowRaw, UnderlineStyle};
+pub use render::{
+    CellStyle, CellWide, CursorInfo, CursorStyle, DirtyState, ImageLayer, ImagePlacement, RenderCell, RenderColors, RenderRow, RenderState, RowId, RowIdHasher, RowMap, RowRaw, UnderlineStyle,
+};
 pub use search::{SearchStatus, TerminalSearch, ViewportMatch};
 pub use snapshot::{MAX_SNAPSHOT_BYTES, SnapshotDecoder, SnapshotFramer, SnapshotProgress, StreamingSnapshotResult, try_decode_snapshot_prefix};
 pub use terminal::{DecodedKittyImage, FormatKind, GhosttyTerminal, ScreenKind, ScrollbarState, TerminalMemoryUsage, VtEngine};
