@@ -931,19 +931,50 @@ something nobody here has is in "Blocked", with what it waits for.
   kit's").
   **Left, in this order**:
   - *What a streaming pane costs* (profiled 2026-11-22; HACKING, Rex,
-    "Cost"): of a frame's instructions while a pane streams, 37% is
-    taking every row's cells from the terminal engine again, because a
+    "Cost"): of a frame's instructions while a pane streams, over half
+    is now taking every row's cells from the terminal engine again
+    (`RenderState::extract_current_row_cells` 21%, the engine's
+    `row_cells_get` 13%, the cells pushed 11%, compared 8%), because a
     scroll marks the whole screen dirty, only for the comparison after
     to find all but the new line the same (the rows have ids that
     survive a scroll: take the cells of rows that are new, or that the
     engine says changed, if its row flags can be trusted under a full
-    redraw: read the engine's own renderer for what they mean then);
-    19% is the kit comparing the frame's glyphs with the last frame's
-    and copying the kept ones (`Scene::changed_since`: every app with
-    much text pays it, Terminal too; runs kept whole from the last
-    frame are known to be the same without comparing). Saying the
-    panes' elements again is 2%: a pane's head a view of its own isn't
-    worth its machinery.
+    redraw: read the engine's own renderer for what they mean then).
+    (The kit's share, comparing the frame's glyphs with the last
+    frame's and copying the kept ones, was 19% and is done: HACKING,
+    "Fast and light", the comparison in place.) Saying the panes'
+    elements again is 2%: a pane's head a view of its own isn't worth
+    its machinery.
+  - *The damage path at the edge of a float* (the kit; found by
+    Astra's three reviews of the comparison in place, 2026-11-22, with
+    reproductions through the painter, the stage and a frame's
+    assembly; all of them in the code before that change too). Bounds
+    are a corner and a size in f32, and what is skipped or cut by them
+    is decided on `corner + size`: far from where a drawing began
+    (millions of device pixels), or at fractions that aren't halves
+    and quarters, a join or a cut can end a pixel short of what shows,
+    and that column isn't drawn again in a frame of parts. Seen: a
+    fold of `union`s (three glyphs at -6,000,000, 2 and -12,000,000:
+    ends at 8, shows to 8.625); `intersect` (a quad from -16,777,216
+    to 2 cut from -16,777,215: ends at 1); the stage moving a joined
+    rectangle by its corner (`stage::damage`'s `place`: ends at 4, the
+    quad at 5); damage and assembly adding an item's and a layer's
+    offsets in different orders (+9,000,000 and -9,000,000: damage
+    says [0, 1), the frame draws to 1.75); a path's bounds from
+    `push_triangle`'s unions, and scaled corner and size apart
+    (`Path::scale`: a right edge of 3.5 at 2.5× cached as 8, drawn to
+    8.75); a line of glyphs whose corner is 33,554,432 away (the
+    glyph's bearing lost taking it from the corner: drawn a pixel
+    off). The cure Astra names: keep the four edges (a least and a
+    most don't round) through grouping, the tests of what is over
+    what, and clipping, and make a corner and a size only where one is
+    needed; never pad (a pad is a frame for nothing: HACKING, "Fast
+    and light"). And one at ordinary coordinates, first: **a turned or
+    moved SVG's reach is where it would be unturned** (`Scene`'s
+    recording takes a sprite's bounds; its matrix moves it): a frame
+    of parts asking for where it shows passes it over (an 8-pixel SVG
+    moved from 0 to 32: extent and damage [0, 8), drawn at [32, 40),
+    a frame for [32, 40) holds no glyph).
   - *The sidebar's rows* are still drawn by Rex (the kit's `Sidebar`
     has no heading with a light and an action, nor a mark on a row's
     icon): either the kit's grows them or the rows stay Rex's.

@@ -488,6 +488,15 @@ in a test.
 
 Learned making To-Do (2026-11-19 and 20):
 
+- **A window listed the moment it appears has a placeholder's frame**
+  (a few points across, until the app's first size arrives). A script
+  that took `list_windows`' frame as soon as there was a window, and
+  pictured that rectangle before and after, compared 20 × 62 pixels of
+  background, and "0 of 18 with stale pixels" passed twice before a
+  picture was opened (2026-11-22). Read the frame after the window has
+  settled (again before each picture: a scale change moves it), refuse
+  a picture smaller than the window should be, and open one of the
+  pictures a comparison passed before believing it.
 - **A session's screen is in device pixels.** `tsession start NAME
   1280x800` at the default 2× is a screen of 640 × 400 points, on which
   every window is in its narrowest layout (Calendar and Weather showed
@@ -998,6 +1007,72 @@ one: every test typed text. What was learned:
   `sleep 3; echo $?` after an interrupt goes on to the echo there (130)
   where bash would stop the line. Read the control's result knowing
   which shell ran it.
+
+### A faster way of something exact: held to the old way, in the tests (2026-11-22)
+
+- **Keep the old way under `#[cfg(test)]` and assert both say the
+  same**, of the cases you can think of and of hundreds generated. The
+  kit's scene comparison was first made faster by reasoning ("lines
+  alike in place differ where their kept glyphs do; others have
+  changed whole"): my tests passed, the stale-pixel pictures passed,
+  and Astra's review found six ways it reported a change where the
+  glyphs in place were the same to the byte (so a frame for nothing),
+  two where it reported a whole line for a glyph, and one where it
+  reported less than changed. Done again as the same comparison,
+  walked in place without the copies (`Scene::glyphs_changed_since`
+  against `glyphs_changed_by_copies`), there is nothing to argue: the
+  tests say whether the two agree.
+- **An oracle that asks "is each thing somewhere in the other"** is
+  blind to order and to count: two glyphs one over the other, drawn
+  the other way round, passed it with nothing reported. Compare what
+  is left outside the reported part as a sequence
+  (`scene::tests::same_outside`), and test the oracle itself with a
+  case it must refuse.
+- **A cached bound is a second way of computing something**: a line's
+  reach was the union of its glyphs taken at the line's corner, then
+  moved, while the glyphs were each moved; in floats the two differ
+  far from the corner. Whatever takes the bound at its word needs the
+  producer to make it exact (or not to make it): say where it is
+  exact, and test either side of that line through the real producer,
+  not a helper that computes it the right way round (the test helper
+  did, and hid it).
+- **A fixture's glyphs with alpha 0 and tiles of one size** test the
+  records, not what shows: fine for a comparison of records, but say
+  so, and give the cases that turn on colour real colours.
+- **Bounds joined with `union` can end short of what they join, and
+  padding them is not the cure**: a union keeps a corner and a size,
+  the size a difference of floats that rounds, half the time down
+  (whole numbers under 2^24 never round, which is every window; a
+  drawing's own coordinates can be millions, and a fraction like
+  -511.1 rounds anywhere). I padded the size a step of the float where
+  it fell short (`join`), put it wherever bounds are kept and taken at
+  their word, and the third review found two frames for nothing at
+  ordinary coordinates: an edge at exactly 8 padded to 8.00003 touches
+  a quad that starts at 8 (another draw order, so "changed"), and is a
+  column of damage past a clip that starts at 8. Whether an edge
+  touches or crosses is decided on the exact edge: keep the four edges
+  (a least and a most don't round) and make a corner and a size only
+  where something needs them. Taken out again; TODO, "The damage path
+  at the edge of a float".
+- **A fold of unions depends on its order** for the same reason: two
+  ways of walking the same glyphs (each side's joined, then the two
+  together; or one after another) came to rectangles a pixel apart
+  once rounded out. A faster way must join in the old way's order to
+  give its bits, or prove the numbers exact where it doesn't.
+- **Give a fixture the same finding only where the real thing would
+  have it**: two lines of different glyphs under one `found` id were
+  passed as "made the same way" and the comparison under test never
+  ran. Assert in the test that the shortcut didn't take it.
+- **Check a test has teeth**: take the guard out, run it, see it
+  fail, put it back. The 600 generated drawings passed without the
+  guard they were written for; the reviewer's one case, by name,
+  failed as it should.
+- **A reviewer reads the working tree as it is when it gets there**:
+  the second review ran while I went on editing and reviewed both
+  the diff it was given and what the file had become (it said so, by
+  hash). Fine here, but don't edit what is under review unless you
+  mean it to see the edit: a third look was given a tree that stood
+  still.
 
 ### A test looks only at what it started (2026-11-22)
 

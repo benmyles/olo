@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{AtlasTextureId, AtlasTile, Background, Bounds, ContentMask, Corners, Edges, Hsla, Pixels, Point, Radians, ScaledPixels, Size, bounds_tree::BoundsTree, point, size};
 use std::{
-    borrow::Cow,
     fmt::Debug,
     iter::Peekable,
     ops::{Add, Range, Sub},
@@ -156,16 +155,85 @@ impl Scene {
         kind(&was.quads, &self.quads, equal, |q| q.bounds.intersect(&q.content_mask.bounds), out);
         kind(&was.underlines, &self.underlines, equal, |u| u.bounds.intersect(&u.content_mask.bounds), out);
         kind(&was.segments, &self.segments, same_sprites, |g| g.bounds.intersect(&g.content_mask.bounds), out);
+        self.glyphs_changed_since(was, out);
+        kind(&was.polychrome_sprites, &self.polychrome_sprites, equal, |p| p.bounds.intersect(&p.content_mask.bounds), out);
+        // (A picture let go and another in its tile: not the same.)
+        if was.images.len() != self.images.len() || was.images.iter().zip(&self.images).any(|(a, b)| !std::sync::Arc::ptr_eq(a, b)) {
+            out.truncate(len);
+            return false;
+        }
+        true
+    }
+
+    /// The glyphs' part of [`Scene::changed_since`]: line by line first,
+    /// as their runs were made (a page of text is a thousand and more
+    /// glyphs, its lines made again from what was kept of each, but for
+    /// the line that changed): what's the same at either end passed
+    /// over, the rest glyph by glyph, by their bytes as they are in
+    /// place.
+    ///
+    /// None is written out to be compared. A line put in whole
+    /// (`kept`) holds its glyphs from the line's own corner, and each is
+    /// put in place as it is looked at; what changed is bounded by the
+    /// first and the last glyph that differ, and for a line all of whose
+    /// glyphs lie between them it is the line's reach, which is exactly
+    /// what they show (a line of one texture, at whole device pixels:
+    /// `Placed::shows_onto`), with no glyph of it read.
+    /// So a screen of a terminal's text scrolled a line (each line where
+    /// the next one was) costs a look at its first glyph and its last,
+    /// and its lines' reaches. (Every line between the ends was copied
+    /// out of its kept run and put in place, twice a screen of glyphs
+    /// written and then gone through at every line printed: a fifth of
+    /// what printing a line cost.) What counts as the same, and what is
+    /// said to have changed, are what the copies gave: the tests hold
+    /// the two ways to each other.
+    fn glyphs_changed_since(&self, was: &Scene, out: &mut Vec<Bounds<ScaledPixels>>) {
+        let (ra, rb) = (&was.mono_runs, &self.mono_runs);
+        let same_run = |x: &SpriteRun, y: &SpriteRun| {
+            x.order == y.order
+                && x.texture == y.texture
+                && x.range.len() == y.range.len()
+                && x.reach == y.reach
+                && (x.made.is_some() && x.made == y.made
+                    // (Two lines put in whole, put the same way, their kept
+                    // glyphs the same: the same in place. Else in place,
+                    // glyph by glyph.)
+                    || x.kept_as(y)
+                    || x.placed(was).zip(y.placed(self)).all(|(g, h)| same_sprites(slice::from_ref(&g), slice::from_ref(&h))))
+        };
+        let mut first = 0;
+        while first < ra.len() && first < rb.len() && same_run(&ra[first], &rb[first]) {
+            first += 1;
+        }
+        let (mut end_a, mut end_b) = (ra.len(), rb.len());
+        while end_a > first && end_b > first && same_run(&ra[end_a - 1], &rb[end_b - 1]) {
+            end_a -= 1;
+            end_b -= 1;
+        }
+        // The runs between, each side's as one line of glyphs in place:
+        // those the same at its start and at its end passed over.
+        let (a, b) = (Placed { scene: was, runs: &ra[first..end_a] }, Placed { scene: self, runs: &rb[first..end_b] });
+        let same = |(g, h): &(MonochromeSprite, MonochromeSprite)| same_sprites(slice::from_ref(g), slice::from_ref(h));
+        let (len_a, len_b) = (a.len(), b.len());
+        let start = a.forward().zip(b.forward()).take_while(same).count();
+        let end = a.backward().zip(b.backward()).take(len_a.min(len_b) - start).take_while(same).count();
         // (One turned or moved by its matrix shows anywhere in its clip.)
         let mono = |m: &MonochromeSprite| if m.transformation == TransformationMatrix::unit() { m.bounds.intersect(&m.content_mask.bounds) } else { m.content_mask.bounds };
-        // Glyphs line by line first, as their runs were made (a page of
-        // text is a thousand and more glyphs, its lines made again from
-        // what was kept of each, but for the line that changed): what's
-        // the same at either end passed over, the rest glyph by glyph,
-        // by their bytes.
+        // (What was, then what is, in one go: as the copies were gone through.)
+        let mut around = None;
+        a.shows_onto(start..len_a - end, mono, &mut around);
+        b.shows_onto(start..len_b - end, mono, &mut around);
+        out.extend(around);
+    }
+
+    /// The glyphs' part of [`Scene::changed_since`] as it was done before
+    /// [`Scene::glyphs_changed_since`]: every run between the ends
+    /// written out, in place, and the copies gone through. Kept for the
+    /// tests, which hold the two to each other.
+    #[cfg(test)]
+    fn glyphs_changed_by_copies(&self, was: &Scene, out: &mut Vec<Bounds<ScaledPixels>>) {
         let (ra, rb) = (&was.mono_runs, &self.mono_runs);
-        // (Runs' glyphs as held: those in `mono_staging` (each run's
-        // there after the last's) as they are; a kept run's put in place.)
+        use std::borrow::Cow;
         fn glyphs<'a>(s: &'a Scene, runs: &[SpriteRun]) -> Cow<'a, [MonochromeSprite]> {
             match (runs.first(), runs.last()) {
                 (Some(first), Some(last)) if runs.iter().all(|r| r.kept.is_none()) => Cow::Borrowed(&s.staged()[first.range.start as usize..last.range.end as usize]),
@@ -194,14 +262,20 @@ impl Scene {
             end_a -= 1;
             end_b -= 1;
         }
-        kind(&glyphs(was, &ra[first..end_a]), &glyphs(self, &rb[first..end_b]), same_sprites, mono, out);
-        kind(&was.polychrome_sprites, &self.polychrome_sprites, equal, |p| p.bounds.intersect(&p.content_mask.bounds), out);
-        // (A picture let go and another in its tile: not the same.)
-        if was.images.len() != self.images.len() || was.images.iter().zip(&self.images).any(|(a, b)| !std::sync::Arc::ptr_eq(a, b)) {
-            out.truncate(len);
-            return false;
+        let (a, b) = (glyphs(was, &ra[first..end_a]), glyphs(self, &rb[first..end_b]));
+        let same = |i: usize, j: usize| same_sprites(&a[i..i + 1], &b[j..j + 1]);
+        let n = a.len().min(b.len());
+        let mut start = 0;
+        while start < n && same(start, start) {
+            start += 1;
         }
-        true
+        let (mut ea, mut eb) = (a.len(), b.len());
+        while ea > start && eb > start && same(ea - 1, eb - 1) {
+            ea -= 1;
+            eb -= 1;
+        }
+        let mono = |m: &MonochromeSprite| if m.transformation == TransformationMatrix::unit() { m.bounds.intersect(&m.content_mask.bounds) } else { m.content_mask.bounds };
+        out.extend(a[start..ea].iter().chain(&b[start..eb]).map(mono).filter(|r| !r.is_empty()).reduce(|r, s| r.union(&s)));
     }
 
     /// Room for what `last` held, in a scene about to record the same
@@ -1045,7 +1119,43 @@ impl SpriteRun {
         Placing { order: self.order, ..self.made.map_or_else(Placing::default, |m| m.placing()) }
     }
 
-    /// Its glyphs, as the recording holds them (`scene`'s), onto `into`.
+    /// Its glyphs as the recording holds them (`scene`'s), in place, one
+    /// at a time and from either end: none written out (a kept run's are
+    /// each put in place as they're asked for).
+    fn placed<'a>(&'a self, scene: &'a Scene) -> impl DoubleEndedIterator<Item = MonochromeSprite> + ExactSizeIterator + 'a {
+        let placing = self.placing();
+        (self.range.start as usize..self.range.end as usize).map(move |i| match &self.kept {
+            None => scene.staged()[i].clone(),
+            Some(kept) => placing.place(&kept[i]),
+        })
+    }
+
+    /// Whether this and `other` are lines put in whole, the same way
+    /// (where, in what clip, how see-through), of kept glyphs that are
+    /// the same: then they are the same in place (a glyph in place is
+    /// its kept glyph and the placing, nothing else), and no glyph of
+    /// either need be put in place to see it. Not the other way about:
+    /// lines put differently, or of other kept glyphs, can still come to
+    /// the same in place, and are compared there.
+    fn kept_as(&self, other: &SpriteRun) -> bool {
+        let (Some(a), Some(b), Some(ma), Some(mb)) = (&self.kept, &other.kept, self.made, other.made) else { return false };
+        let (a, b) = (&a[self.range.start as usize..self.range.end as usize], &b[other.range.start as usize..other.range.end as usize]);
+        self.order == other.order && (ma.at, ma.clip, ma.opacity) == (mb.at, mb.clip, mb.opacity) && (std::ptr::eq(a, b) || same_sprites(a, b))
+    }
+
+    /// What all its glyphs show together, if that is known without
+    /// reading them: a line put in whole of one texture, whose reach is
+    /// its glyphs' own, each within the line's clip (`insert_kept_run`:
+    /// a line of several textures is a run for each, and each has the
+    /// whole line's reach, more than its own glyphs').
+    fn shows_whole(&self) -> Option<Bounds<ScaledPixels>> {
+        let kept = self.kept.as_ref()?;
+        (self.made.is_some_and(|m| m.part == 0) && self.range.start == 0 && self.range.end as usize == kept.len() && !self.reach.is_empty()).then_some(self.reach)
+    }
+
+    /// Its glyphs, as the recording holds them (`scene`'s), onto `into`
+    /// (the tests': what compares drawings walks them in place, `placed`).
+    #[cfg(test)]
     fn glyphs_onto(&self, scene: &Scene, into: &mut Vec<MonochromeSprite>) {
         let range = self.range.start as usize..self.range.end as usize;
         match &self.kept {
@@ -1056,6 +1166,69 @@ impl SpriteRun {
             }
         }
     }
+}
+
+/// Olo: runs of glyphs as one line of glyphs in place, none written
+/// out (`Scene::glyphs_changed_since`).
+struct Placed<'a> {
+    scene: &'a Scene,
+    runs: &'a [SpriteRun],
+}
+
+impl<'a> Placed<'a> {
+    fn len(&self) -> usize {
+        self.runs.iter().map(|r| r.range.len()).sum()
+    }
+
+    fn forward(&self) -> impl Iterator<Item = MonochromeSprite> + 'a {
+        let scene = self.scene;
+        self.runs.iter().flat_map(move |r| r.placed(scene))
+    }
+
+    fn backward(&self) -> impl Iterator<Item = MonochromeSprite> + 'a {
+        let scene = self.scene;
+        self.runs.iter().rev().flat_map(move |r| r.placed(scene).rev())
+    }
+
+    /// Adds to `all` what the glyphs `range` (counted along the whole
+    /// line of them) show, each as `shows` says, one after another as
+    /// they come (a union of bounds is sums in floats, and comes to the
+    /// same in any order only where they are exact: so in the order the
+    /// glyphs written out were gone through, and to the same bits). A
+    /// run all in the range whose reach is what its glyphs show
+    /// ([`SpriteRun::shows_whole`]) is added by its reach, its glyphs
+    /// unread, where that is the same thing: `all` so far and the reach
+    /// of whole numbers that add exactly ([`adds_exactly`]), as on a
+    /// screen they are. Else glyph by glyph.
+    fn shows_onto(&self, range: Range<usize>, shows: impl Fn(&MonochromeSprite) -> Bounds<ScaledPixels>, all: &mut Option<Bounds<ScaledPixels>>) {
+        fn add(all: &mut Option<Bounds<ScaledPixels>>, r: Bounds<ScaledPixels>) {
+            if !r.is_empty() {
+                *all = Some(all.map_or(r, |a| a.union(&r)));
+            }
+        }
+        let mut at = 0;
+        for run in self.runs {
+            let (from, to) = (at, at + run.range.len());
+            at = to;
+            let (lo, hi) = (range.start.max(from), range.end.min(to));
+            if lo >= hi {
+                continue;
+            }
+            match run.shows_whole().filter(|whole| (lo, hi) == (from, to) && adds_exactly(whole) && all.as_ref().is_none_or(adds_exactly)) {
+                Some(whole) => add(all, whole),
+                None => run.placed(self.scene).skip(lo - from).take(hi - lo).for_each(|g| add(all, shows(&g))),
+            }
+        }
+    }
+}
+
+/// Olo: whether unions of bounds like `b` are exact, and so come to the
+/// same in whatever order they are taken: its corner and size whole
+/// numbers, small enough that their sums and differences are whole
+/// numbers an f32 holds (every one to 2^24; these are at most 2^21
+/// each). Bounds in whole device pixels on any screen are.
+fn adds_exactly(b: &Bounds<ScaledPixels>) -> bool {
+    [b.origin.x.0, b.origin.y.0, b.size.width.0, b.size.height.0].into_iter().all(|v| v.abs() <= 2_097_152.0 && v.fract() == 0.0)
 }
 
 /// Olo: where a kept run's glyphs go (`RunMade`): moved to its whole
@@ -2843,6 +3016,521 @@ mod tests {
         out.clear();
         assert!(page(&|row| row as u64 + 1, &changed).changed_since(&was, &mut out));
         assert!(out.is_empty(), "{out:?}");
+    }
+
+    /// Whether what two drawings show outside `out` (what is said to
+    /// have changed) is the same: their glyphs in place, in the order
+    /// they are drawn, each as often as it is, but for those that show
+    /// nothing outside it (a glyph wholly inside what changed may be
+    /// anything, and one that shows nothing too). What a comparison that
+    /// can be trusted leaves true.
+    fn same_outside(was: &Scene, now: &Scene, out: &[Bounds<ScaledPixels>]) -> bool {
+        let outside = |s: &Scene| {
+            let mut all = Vec::new();
+            for run in &s.mono_runs {
+                run.glyphs_onto(s, &mut all);
+            }
+            all.retain(|g| {
+                // (One turned or moved by its matrix shows anywhere in its clip.)
+                let shows = if g.transformation == TransformationMatrix::unit() { g.bounds.intersect(&g.content_mask.bounds) } else { g.content_mask.bounds };
+                !(shows.is_empty() || out.iter().any(|r| shows.is_contained_within(r)))
+            });
+            all
+        };
+        let (a, b) = (outside(was), outside(now));
+        a.len() == b.len() && same_sprites(&a, &b)
+    }
+
+    /// A screen of lines put in whole, with the lines `text` gives (each
+    /// its length and what tells its glyphs from another line's), the
+    /// first of them at the top: `from` is how far it has scrolled.
+    fn screen(from: u32, rows: u32, text: &dyn Fn(u32) -> (u32, u32), whole: bool) -> Scene {
+        let mut kept = Scene::recording();
+        for row in 0..rows {
+            let (length, id) = text(from + row);
+            let mut line: Vec<_> = (0..length).map(|i| sprite(i as f32 * 8.0, 0, id * 1000 + i)).collect();
+            for glyph in &mut line {
+                glyph.bounds.origin.y = ScaledPixels(row as f32 * 20.0);
+            }
+            match whole {
+                // (A line found once keeps its finding as it scrolls.)
+                true => put_kept(&mut kept, line, made(u64::from(from + row) + 1)),
+                false => kept.insert_sprites(line),
+            }
+        }
+        kept
+    }
+
+    /// A screen of text scrolled a line (each line where the next was,
+    /// a new one at the foot), its lines put in whole, is compared line
+    /// with line as they are kept: what changed holds every glyph that
+    /// went or came, as the same screen compared glyph by glyph says,
+    /// and no more than the lines themselves reach.
+    #[test]
+    fn a_screen_scrolled_is_compared_line_with_line() {
+        // Lines of many lengths, as a program prints them.
+        let ragged = |n: u32| (10 + n * 7 % 30, n);
+        let (was, now) = (screen(0, 24, &ragged, true), screen(1, 24, &ragged, true));
+        let mut out = Vec::new();
+        assert!(now.changed_since(&was, &mut out));
+        assert!(same_outside(&was, &now, &out));
+        // One piece, the lines' own reach: 39 glyphs at the widest, 24 rows.
+        assert_eq!(out, vec![mask(0.0, 0.0, 39.0 * 8.0, 23.0 * 20.0 + 8.0).bounds]);
+        // The same screens glyph by glyph (no line put in whole) say the
+        // same of what changed, by reading every glyph.
+        let (was_each, now_each) = (screen(0, 24, &ragged, false), screen(1, 24, &ragged, false));
+        let mut each = Vec::new();
+        assert!(now_each.changed_since(&was_each, &mut each));
+        assert!(same_outside(&was_each, &now_each, &each));
+        assert_eq!(out, each);
+        // Not scrolled: nothing, either way.
+        out.clear();
+        assert!(screen(0, 24, &ragged, true).changed_since(&was, &mut out));
+        assert!(out.is_empty(), "{out:?}");
+        // As a terminal puts its lines: each line's glyphs from the
+        // line's own corner, the line put at its row (so a line that
+        // scrolls is the same kept glyphs, put a row higher).
+        let rows = |from: u32| {
+            let mut kept = Scene::recording();
+            for row in 0..24u32 {
+                let (length, id) = ragged(from + row);
+                let line: Vec<_> = (0..length).map(|i| sprite(i as f32 * 8.0, 0, id * 1000 + i)).collect();
+                let at = RunMade { at: [0f32.to_bits(), (row as f32 * 20.0).to_bits()], ..made(u64::from(from + row) + 1) };
+                put_kept(&mut kept, line, at);
+            }
+            kept
+        };
+        let (was, now) = (rows(0), rows(1));
+        out.clear();
+        assert!(now.changed_since(&was, &mut out));
+        assert!(same_outside(&was, &now, &out));
+        assert_eq!(out, each);
+        out.clear();
+        assert!(rows(0).changed_since(&was, &mut out));
+        assert!(out.is_empty(), "{out:?}");
+    }
+
+    /// What the glyphs' comparison says of two drawings, the way it is
+    /// done and the way it was (every run between the ends written out
+    /// and gone through): the same, which is what makes the first right.
+    fn both_ways(was: &Scene, now: &Scene) -> Vec<Bounds<ScaledPixels>> {
+        let (mut out, mut by_copies) = (Vec::new(), Vec::new());
+        now.glyphs_changed_since(was, &mut out);
+        now.glyphs_changed_by_copies(was, &mut by_copies);
+        assert_eq!(out, by_copies, "walking the glyphs in place and writing them out disagree");
+        out
+    }
+
+    /// A line put in whole as the painter puts one (`paint_glyph_run`):
+    /// its glyphs (where each is, in the window; its texture; its tile;
+    /// how see-through) kept from the line's corner `base`, what they
+    /// reach taken there and then moved, and the line put at `base`,
+    /// `opacity` over it all.
+    fn put_line(s: &mut Scene, found: u64, base: (f32, f32), opacity: f32, glyphs: &[(f32, u32, u32, f32)]) {
+        let at = RunMade { at: [base.0.to_bits(), base.1.to_bits()], opacity: opacity.to_bits(), ..made(found) };
+        let mut line: Vec<_> = glyphs
+            .iter()
+            .map(|&(x, texture, id, alpha)| {
+                let mut g = sprite(x - base.0, texture, id);
+                g.color = crate::hsla(0.0, 0.5, 0.5, alpha);
+                g.content_mask = ContentMask::default();
+                g
+            })
+            .collect();
+        let mut reach = line.iter().map(|g| g.bounds).reduce(|a, b| a.union(&b)).unwrap();
+        reach.origin = reach.origin + at.placing().at;
+        line.sort_by_key(|g| texture_key(&g.tile));
+        let mut parts: Vec<((u8, u32), u32)> = Vec::new();
+        for (i, g) in line.iter().enumerate() {
+            match parts.last_mut() {
+                Some((t, end)) if *t == texture_key(&g.tile) => *end = i as u32 + 1,
+                _ => parts.push((texture_key(&g.tile), i as u32 + 1)),
+            }
+        }
+        s.insert_kept_run(&line.into(), &parts, reach, at);
+    }
+
+    /// Lines of one length that differ in a few glyphs (a count going
+    /// up, the rest of each line the same): what changed runs from the
+    /// first glyph that differs to the last, as it did.
+    #[test]
+    fn lines_alike_in_place_differ_from_the_first_glyph_to_the_last() {
+        // Each line 40 glyphs: the fifth is the line's own, the rest the
+        // same in every line.
+        let page = |from: u32| {
+            let mut kept = Scene::recording();
+            for row in 0..10u32 {
+                let mut line: Vec<_> = (0..40).map(|i| sprite(i as f32 * 8.0, 0, if i == 4 { 5000 + from + row } else { i })).collect();
+                for glyph in &mut line {
+                    glyph.bounds.origin.y = ScaledPixels(row as f32 * 20.0);
+                }
+                put_kept(&mut kept, line, made(u64::from(from + row) + 1));
+            }
+            kept
+        };
+        let (was, now) = (page(0), page(1));
+        let out = both_ways(&was, &now);
+        assert!(same_outside(&was, &now, &out));
+        assert_eq!(out, vec![mask(0.0, 0.0, 320.0, 9.0 * 20.0 + 8.0).bounds]);
+        // One line of them changed: its fifth glyph, and no more.
+        let one = |changed: bool| {
+            let mut kept = Scene::recording();
+            for row in 0..10u32 {
+                let mut line: Vec<_> = (0..40).map(|i| sprite(i as f32 * 8.0, 0, if changed && (row, i) == (6, 4) { 9999 } else { row * 100 + i })).collect();
+                for glyph in &mut line {
+                    glyph.bounds.origin.y = ScaledPixels(row as f32 * 20.0);
+                }
+                put_kept(&mut kept, line, made(if changed && row == 6 { 77 } else { u64::from(row) + 1 }));
+            }
+            kept
+        };
+        assert_eq!(both_ways(&one(false), &one(true)), vec![mask(32.0, 120.0, 8.0, 8.0).bounds]);
+    }
+
+    /// Drawings that come to the same glyphs in place by another way
+    /// are the same, and nothing is to be shown (a frame for nothing
+    /// otherwise): a line's corner moved and its glyphs moved back; how
+    /// see-through, in the glyph or over the line; a colour that the
+    /// line's opacity brings to the same; the sign of a zero; the same
+    /// glyphs in lines cut elsewhere. And a line with a glyph more, or
+    /// one glyph of a second texture changed, has changed there, not
+    /// along its whole length. (Astra's review of the first way this
+    /// was done, 2026-11-22: each of these it got wrong.)
+    #[test]
+    fn the_same_in_place_by_another_way_is_the_same() {
+        // (Each drawing's lines found anew, as lines of other glyphs
+        // are: none is passed as made the same way, all are compared.)
+        let found = std::cell::Cell::new(0u64);
+        let anew = || {
+            found.set(found.get() + 1);
+            found.get()
+        };
+        let one = |base: f32, opacity: f32, alpha: f32| {
+            let mut s = Scene::recording();
+            put_line(&mut s, anew(), (base, 0.0), opacity, &[(15.0, 0, 7, alpha)]);
+            s
+        };
+        let same = |was: Scene, now: Scene| {
+            assert!(was.mono_runs.iter().zip(&now.mono_runs).all(|(a, b)| a.made != b.made));
+            assert!(both_ways(&was, &now).is_empty());
+        };
+        // Its corner a pixel on, its glyph a pixel back.
+        same(one(10.0, 1.0, 1.0), one(11.0, 1.0, 1.0));
+        // Half see-through in the glyph, or over the line.
+        same(one(10.0, 1.0, 0.5), one(10.0, 0.5, 1.0));
+        // Nothing of it shows: whatever its own.
+        same(one(10.0, 0.0, 0.5), one(10.0, 0.0, 1.0));
+        // Two that the line's opacity rounds to one.
+        same(one(10.0, 0.75, f32::from_bits(0x3f40_0002)), one(10.0, 0.75, f32::from_bits(0x3f40_0003)));
+        // A corner at nothing, and at nothing less.
+        let zero = |base: f32| {
+            let mut s = Scene::recording();
+            put_line(&mut s, anew(), (base, 0.0), 1.0, &[(15.0, 0, 7, 1.0)]);
+            s
+        };
+        same(zero(0.0), zero(-0.0));
+        // Three glyphs as two lines, cut after the second and after the first.
+        let cut = |after: usize| {
+            let glyphs = [(0.0, 0, 1, 1.0), (8.0, 0, 2, 1.0), (16.0, 0, 3, 1.0)];
+            let mut s = Scene::recording();
+            put_line(&mut s, anew(), (0.0, 0.0), 1.0, &glyphs[..after]);
+            put_line(&mut s, anew(), (0.0, 0.0), 1.0, &glyphs[after..]);
+            s
+        };
+        same(cut(2), cut(1));
+        // A glyph more at a line's end: that glyph.
+        let line = |n: usize| {
+            let glyphs = [(0.0, 0, 1, 1.0), (8.0, 0, 2, 1.0), (16.0, 0, 3, 1.0)];
+            let mut s = Scene::recording();
+            put_line(&mut s, n as u64, (0.0, 0.0), 1.0, &glyphs[..n]);
+            s
+        };
+        assert_eq!(both_ways(&line(2), &line(3)), vec![mask(16.0, 0.0, 8.0, 8.0).bounds]);
+        // A line of two textures, the one glyph of its second another:
+        // that glyph, not the line.
+        let two = |id: u32| {
+            let mut s = Scene::recording();
+            put_line(&mut s, u64::from(id), (0.0, 0.0), 1.0, &[(0.0, 0, 1, 1.0), (8.0, 0, 2, 1.0), (128.0, 1, id, 1.0)]);
+            s
+        };
+        assert_eq!(both_ways(&two(5), &two(6)), vec![mask(128.0, 0.0, 8.0, 8.0).bounds]);
+    }
+
+    /// Many drawings of lines, each a little other than the last in one
+    /// of the ways drawings change (a line's glyph, its length, where
+    /// it is, a line more or less, lines of two textures, lines put in
+    /// whole and glyph by glyph): the comparison in place says of each
+    /// pair what the comparison by copies says.
+    #[test]
+    fn in_place_and_by_copies_say_the_same_of_many_drawings() {
+        // (A small generator of its own: the same drawings every run.)
+        let mut seed = 0x2545_f491_4f6c_dd1du64;
+        let mut next = move |n: u32| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed >> 33) as u32 % n
+        };
+        // A drawing: its lines (row, how many glyphs, what tells them
+        // from another's, whether put in whole, whether of two textures,
+        // and for one put glyph by glyph what is odd about it: nothing;
+        // cut by its clip at a part of a pixel; a glyph of it millions
+        // of pixels wide, cut likewise; one turned). The odd ones are
+        // where sums of bounds round, and a union taken in another order
+        // comes to other bits: the two ways must still agree to the bit.
+        type Line = (u32, u32, u32, bool, bool, u32);
+        let draw = |lines: &[Line]| {
+            let mut s = Scene::recording();
+            for (n, &(row, length, id, whole, two, odd)) in lines.iter().enumerate() {
+                let y = row as f32 * 20.0;
+                let glyphs: Vec<(f32, u32, u32, f32)> = (0..length).map(|i| (i as f32 * 8.0, u32::from(two && i % 5 == 4), id * 1000 + i, 1.0)).collect();
+                if whole {
+                    // (Some begin left of the rest: what changed grows
+                    // that way too.)
+                    let left = -((id % 4) as f32) * 24.0;
+                    let glyphs: Vec<_> = glyphs.iter().map(|&(x, texture, tile, alpha)| (x + left, texture, tile, alpha)).collect();
+                    put_line(&mut s, u64::from(id) * 100 + n as u64, (left, y), 1.0, &glyphs);
+                } else {
+                    s.insert_sprites(glyphs.iter().enumerate().map(|(i, &(x, texture, tile, _))| {
+                        let mut g = sprite(x, texture, tile);
+                        g.bounds.origin.y = ScaledPixels(y);
+                        g.color = crate::hsla(0.0, 0.5, 0.5, 1.0);
+                        match odd {
+                            1 => g.content_mask = mask(2.0, y, 6.000005 + (id % 3) as f32 * 8.3, 8.0),
+                            2 if i == 0 => {
+                                let far = if id % 2 == 0 { 12_000_000.0 } else { 6_000_000.0 };
+                                g.bounds = Bounds { origin: point(ScaledPixels(-far), ScaledPixels(y)), size: size(ScaledPixels(far + 16.0), ScaledPixels(8.0)) };
+                                g.content_mask = mask(-2e7, y, 2e7 + 8.625, 8.0);
+                            }
+                            3 if i == 0 => {
+                                g.transformation = TransformationMatrix::unit().translate(point(ScaledPixels(32.0), ScaledPixels(0.0)));
+                                g.content_mask = mask(0.0, y, 64.5, 8.0);
+                            }
+                            _ => {}
+                        }
+                        g
+                    }));
+                }
+            }
+            s
+        };
+        let far = |lines: &[Line]| lines.iter().any(|l| !l.3 && l.5 == 2);
+        let mut lines: Vec<Line> = (0..16).map(|row| (row, 6 + row * 5 % 23, row, true, row % 7 == 3, 0)).collect();
+        let (mut changed, mut odd) = (0, 0);
+        for step in 0..1200 {
+            let was = (draw(&lines), lines.clone());
+            match next(9) {
+                // A line's text another.
+                0 => {
+                    let i = next(lines.len() as u32) as usize;
+                    lines[i].2 = 500 + step;
+                }
+                // Longer or shorter.
+                1 => {
+                    let i = next(lines.len() as u32) as usize;
+                    lines[i].1 = 1 + next(40);
+                }
+                // Scrolled a line: each where the next was, a new one at the foot.
+                2 => {
+                    let rows: Vec<u32> = lines.iter().map(|l| l.0).collect();
+                    lines.remove(0);
+                    lines.push((0, 3 + next(36), 700 + step, true, next(5) == 0, 0));
+                    for (line, row) in lines.iter_mut().zip(rows) {
+                        line.0 = row;
+                    }
+                }
+                // A line more, or one less.
+                3 if lines.len() < 30 => lines.push((lines.len() as u32, 1 + next(30), 900 + step, next(3) > 0, false, next(4))),
+                4 if lines.len() > 2 => {
+                    let i = next(lines.len() as u32) as usize;
+                    lines.remove(i);
+                }
+                // Put in whole, or glyph by glyph; of two textures, or one.
+                5 => {
+                    let i = next(lines.len() as u32) as usize;
+                    lines[i].3 = !lines[i].3;
+                }
+                6 => {
+                    let i = next(lines.len() as u32) as usize;
+                    lines[i].4 = !lines[i].4;
+                }
+                // Odd another way (a line put glyph by glyph).
+                7 => {
+                    let i = next(lines.len() as u32) as usize;
+                    lines[i].5 = next(4);
+                }
+                // As it was.
+                _ => {}
+            }
+            let now = draw(&lines);
+            let out = both_ways(&was.0, &now);
+            // (Bounds millions of pixels wide round as they are joined:
+            // what is said of those is held to the old way's, above, not
+            // to where each glyph is to the bit.)
+            if !far(&was.1) && !far(&lines) {
+                assert!(same_outside(&was.0, &now, &out), "step {step}");
+            }
+            changed += usize::from(!out.is_empty());
+            odd += usize::from(lines.iter().any(|l| !l.3 && l.5 > 0));
+        }
+        assert!(changed > 400 && odd > 400, "{changed} of 1200 steps changed something, {odd} with a line odd in some way");
+    }
+
+    /// What changed is joined glyph by glyph in the order the glyphs
+    /// written out were gone through, to the same bits, where joining
+    /// rounds: a glyph cut by its clip at 8.000005, then a line put in
+    /// whole with glyphs at -24 and at -56, and then the line alone.
+    /// Joined one by one the right edge comes to 8; with the line's
+    /// reach taken in one go, to 8.000008, a pixel more once rounded out
+    /// (Astra's second review, 2026-11-22). A line is taken by its reach
+    /// only where what is joined so far and the reach are whole numbers
+    /// that add exactly; here it is read glyph by glyph.
+    #[test]
+    fn what_changed_is_joined_as_it_was_where_joining_rounds() {
+        let draw = |tiles: u32, cut: Option<f32>| {
+            let mut s = Scene::recording();
+            if let Some(width) = cut {
+                let mut glyph = sprite(2.0, 0, tiles);
+                glyph.content_mask = mask(2.0, 0.0, width, 8.0);
+                s.insert_sprites([glyph]);
+            }
+            put_line(&mut s, u64::from(tiles), (-56.0, 0.0), 1.0, &[(-24.0, 0, tiles + 1, 1.0), (-56.0, 0, tiles + 2, 1.0)]);
+            s
+        };
+        let (was, now) = (draw(10, Some(6.000005)), draw(20, None));
+        // (The line is one put in whole, of one texture, all of it changed.)
+        assert!(was.mono_runs[1].shows_whole().is_some() && now.mono_runs[0].shows_whole().is_some());
+        let out = both_ways(&was, &now);
+        assert_eq!(out.len(), 1);
+        assert_eq!((out[0].origin.x.0, out[0].origin.x.0 + out[0].size.width.0), (-56.0, 8.0));
+        // After a glyph of whole numbers the line is taken by its reach,
+        // and comes to the same as its glyphs.
+        assert_eq!(both_ways(&draw(10, Some(6.0)), &draw(20, None)), vec![mask(-56.0, 0.0, 64.0, 8.0).bounds]);
+    }
+
+    /// What holds the comparison to its word sees the order glyphs are
+    /// drawn in, and how many of each: two glyphs one over the other,
+    /// drawn the other way round, are not the same with nothing said to
+    /// have changed, nor is a glyph drawn twice where it was drawn once.
+    #[test]
+    fn what_checks_the_comparison_sees_order_and_count() {
+        let pair = |reversed: bool, twice: bool| {
+            let mut red = sprite(0.0, 0, 1);
+            red.color = crate::hsla(0.0, 1.0, 0.5, 1.0);
+            let blue = MonochromeSprite { color: crate::hsla(2.0 / 3.0, 1.0, 0.5, 1.0), ..red.clone() };
+            let mut glyphs = vec![red, blue.clone()];
+            if reversed {
+                glyphs.reverse();
+            }
+            if twice {
+                glyphs.push(blue);
+            }
+            let mut s = Scene::recording();
+            s.insert_sprites(glyphs);
+            s
+        };
+        let whole = [mask(0.0, 0.0, 8.0, 8.0).bounds];
+        assert!(same_outside(&pair(false, false), &pair(false, false), &[]));
+        assert!(!same_outside(&pair(false, false), &pair(true, false), &[]));
+        assert!(!same_outside(&pair(false, false), &pair(false, true), &[]));
+        assert!(same_outside(&pair(false, false), &pair(true, true), &whole));
+        // And the comparison says so of each.
+        assert_eq!(both_ways(&pair(false, false), &pair(true, false)), whole);
+        assert_eq!(both_ways(&pair(false, false), &pair(false, true)), whole);
+    }
+
+    /// A line is put in whole only where what it reaches is exactly
+    /// what its glyphs show: the reach is taken from the line's corner
+    /// and moved, the glyphs are each moved, and far enough from the
+    /// corner the two no longer come to the same (Astra's review,
+    /// 2026-11-22: two glyphs at 0 and 64, their line's corner half a
+    /// billion pixels off, reached 64 pixels and showed 72; a frame
+    /// drawing the last 8 passed the line over). Such a line is put
+    /// glyph by glyph, and a line on a screen whole, as ever.
+    #[test]
+    fn a_line_is_put_whole_only_where_its_reach_is_its_glyphs() {
+        use crate::painter::{Gfx, Notes};
+        use crate::{AtlasKey, FontId, GlyphId, GlyphRun, NoopTextSystem, Painter, PlatformAtlas, SvgRenderer, TextSystem, WindowTextSystem, px};
+        use std::borrow::Cow;
+        /// (No glyph is drawn into it: the one painted is found already.)
+        struct NoAtlas;
+        impl PlatformAtlas for NoAtlas {
+            fn get_or_insert_with<'a>(&self, _: &AtlasKey, _: &mut dyn FnMut() -> anyhow::Result<Option<(Size<DevicePixels>, Cow<'a, [u8]>)>>) -> anyhow::Result<Option<AtlasTile>> {
+                unreachable!("the glyph painted is one found already")
+            }
+            fn remove(&self, _: &AtlasKey) {}
+        }
+        let mut gfx = Gfx {
+            scale_factor: 1.0,
+            rem_size: px(16.0),
+            text_rendering: Default::default(),
+            text_system: Arc::new(WindowTextSystem::new(Arc::new(TextSystem::new(Arc::new(NoopTextSystem::new()))))),
+            sprite_atlas: Arc::new(NoAtlas),
+            svg_renderer: SvgRenderer::new(Arc::new(())),
+            glyph_memo: Default::default(),
+            outlines: Default::default(),
+            text_style: Default::default(),
+            ext: None,
+        };
+        // One glyph, 8 by 8, found.
+        let tile = sprite(0.0, 0, 7).tile;
+        gfx.glyph_memo.insert((0, 7, 12f32.to_bits(), 0, 0), Some((tile.bounds, tile)));
+        // Two of it at 0 and 64, in a line whose corner is at `corner`.
+        let mut paint = |corner: f32, alpha: f32| {
+            let mut s = Scene::recording();
+            s.insert_primitive(quad(0.0, 0.0, 800.0, 600.0));
+            let (mut notes, mut state) = (Notes::default(), None);
+            let mut p = Painter::new(&mut gfx, &mut s, &mut notes, &mut state, Bounds::default(), 1.0, vec![]);
+            p.paint_glyph_run(&mut GlyphRun::default(), point(px(corner), px(16.0)), 0, |emit| {
+                for x in [0.0, 64.0] {
+                    emit(point(px(x - corner), px(0.0)), FontId(0), GlyphId(7), px(12.0), crate::hsla(0.0, 1.0, 0.5, alpha));
+                }
+            });
+            s.seal();
+            s
+        };
+        let both = mask(0.0, 16.0, 72.0, 8.0).bounds;
+        let second = mask(64.0, 16.0, 8.0, 8.0).bounds;
+        // What shows of a frame drawing only the second glyph's place (a
+        // line put in whole is drawn whole, in the frame's clip).
+        let drawn = |s: &Scene| {
+            let mut frame = Scene::default();
+            frame.append(s, Point::default(), &second);
+            frame.finish();
+            frame.drawn_glyphs().iter().map(|g| g.bounds.intersect(&g.content_mask.bounds)).filter(|shows| !shows.is_empty()).collect::<Vec<_>>()
+        };
+        for (corner, whole) in [(512.0, true), (4_194_304.0, true), (4_194_305.0, false), ((1u32 << 29) as f32, false)] {
+            let (was, now) = (paint(corner, 1.0), paint(corner, 0.25));
+            assert_eq!(now.mono_runs.len(), 1, "corner at {corner}");
+            let run = &now.mono_runs[0];
+            assert_eq!(run.kept.is_some(), whole, "corner at {corner}");
+            // What it reaches is what its glyphs show, however it was put.
+            let shown = run.placed(&now).map(|g| g.bounds.intersect(&g.content_mask.bounds)).reduce(|a, b| a.union(&b));
+            assert_eq!(shown, Some(both), "corner at {corner}");
+            assert_eq!(run.reach, both, "corner at {corner}");
+            // Its glyphs a quarter as strong: both changed, and are said to have.
+            let mut out = Vec::new();
+            assert!(now.changed_since(&was, &mut out));
+            assert_eq!(out, vec![both], "corner at {corner}");
+            assert_eq!(both_ways(&was, &now), vec![both], "corner at {corner}");
+            assert_eq!(drawn(&now), vec![second], "corner at {corner}");
+        }
+    }
+
+    /// A line put in whole where a line glyph by glyph was (a drawing
+    /// that began to keep its lines, or stopped): compared in place, as
+    /// before, and right.
+    #[test]
+    fn a_line_kept_and_one_not_are_compared_in_place() {
+        let ragged = |n: u32| (10 + n * 7 % 30, n);
+        let (was, now) = (screen(0, 12, &ragged, false), screen(0, 12, &ragged, true));
+        let mut out = Vec::new();
+        // The same glyphs in the same places, however they were put in.
+        assert!(now.changed_since(&was, &mut out));
+        assert!(out.is_empty(), "{out:?}");
+        let scrolled = screen(1, 12, &ragged, true);
+        assert!(scrolled.changed_since(&was, &mut out));
+        assert!(same_outside(&was, &scrolled, &out));
     }
 
     /// A frame drawing a part of a page of text takes the glyphs it

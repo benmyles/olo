@@ -628,7 +628,56 @@ How Olo keeps it (do the same):
   lines away from its rectangles whole (each run's reach): a screen of
   text is a thousand and more glyphs, two copies of them read from
   memory at each line printed (an agent's spinner in Terminal: 85 M of
-  the display thread's 180 M instructions, before). Such a line's
+  the display thread's 180 M instructions, before). Where lines differ
+  (a terminal printing a line: every line of the screen is where the
+  next one was), the glyphs between the lines that are the same are
+  compared **in place and none is written out**
+  (`Scene::glyphs_changed_since`: `SpriteRun::placed` puts each kept
+  glyph in place as it is looked at, from the front until one differs
+  and from the back until one does), and a line all of which lies
+  between those two is taken by its reach, its glyphs unread
+  (`SpriteRun::shows_whole`, a line of one texture): a screen scrolled
+  a line costs its first glyph, its last and its lines' reaches. Before
+  2026-11-22 every line between was copied out and put in place, on
+  both sides, at every line printed: 18.5% of a streaming pane's
+  instructions (Rex, "Cost"). What counts as the same and what is said
+  to have changed are exactly what the copies gave: the old way is kept
+  for the tests (`glyphs_changed_by_copies`), which hold the two to
+  each other over hundreds of generated drawings, and **a faster
+  comparison that reasons about how lines were made instead (alike in
+  place, pair by pair) is wrong both ways**: the same glyphs come about
+  by other makings (a line's corner moved and its glyphs moved back,
+  opacity in the glyph or over the line, lines cut elsewhere) and it
+  presents a frame for nothing; Astra's review held it (2026-11-22). A
+  line's reach is taken at its word here and by a frame, so **a line is
+  put in whole only where its reach is exactly what its glyphs show**:
+  the reach is taken from the line's corner and moved, the glyphs are
+  each moved, and the two are the same while the sums are of whole
+  numbers an f32 adds exactly (`painter::adds_exactly`: each at most
+  2^22; every glyph on a screen is, its sprite at whole device pixels);
+  a line past that goes in glyph by glyph (found by the same review: a
+  line whose corner was half a billion pixels off reached 64 pixels
+  where its glyphs showed 72). What changed is joined **in the order
+  the copies were gone through** (what was, then what is, glyph after
+  glyph: `Placed::shows_onto`), because a union of bounds is sums of
+  floats and comes to other bits in another order (a corner and a
+  size, the size a difference that rounds): a line is taken by its
+  reach only where what is joined so far and the reach are whole
+  numbers that add exactly (`scene::adds_exactly`), as on a screen
+  they are, and read glyph by glyph otherwise (the second review: a
+  glyph cut at 8.000005 and then a line taken by its reach came to
+  8.000008, a pixel column more once rounded out, where glyph by glyph
+  it comes to 8). The same rounding is why **bounds joined or cut far
+  from where they began can end a pixel short** (three glyphs at
+  -6,000,000, at 2 and at -12,000,000 joined to bounds that end at 8
+  where the middle one shows to 8.625): the old comparison had that
+  and this one keeps it, bit for bit. Padding the join so it never
+  falls short was tried and taken out again (the third review: a pad
+  of one step of the float past an edge at 8 is a column of damage
+  where there was none, and a frame for a picture that didn't change):
+  the cure is edges kept as edges all the way, which is TODO's ("The
+  damage path at the edge of a float"). No window reaches such
+  coordinates; a drawing's own can. Such a line's
   glyphs aren't copied into the drawing either: the drawing shares the
   line's own (`Scene::insert_kept_run`, an `Arc` a line, each glyph
   from the line's whole device pixel), and they are put in place, moved,
@@ -26927,8 +26976,17 @@ for repeated SSH, HTTP/TLS, transfer, forwarding and connection-loss checks.
   `guess_now`, `GUESS_AFTER`), and the window told if it changed: 300
   lines into one pane 925 M instructions before and 838 M after
   (−9%), into one of three 817 M and 772 M (−5.5%); at rest nothing,
-  as before. The two large ones are TODO's ("What a streaming pane
-  costs"). With the input mode read when output pauses (2026-11-22):
+  as before. The kit's 19% is gone (2026-11-22; "Fast and light", the
+  comparison in place): the same 300 lines into one pane 842 M
+  instructions before and 700 M after (−17%), into one of three 779 M
+  and 642 M (−17.5%), `Scene::changed_since` and its copies 18.5% of
+  the profile before and under 1.2% after; at rest nothing, a key to
+  its picture a median 2.4 to 2.9 ms before and 2.3 to 2.9 ms after
+  (the same, at that load), and no pixel stale, in Rex or in Terminal
+  (39 bursts printed at 1×, 1.5× and 2×, each pictured, drawn again
+  from nothing and pictured again: the same; with the comparison made
+  to report too little on purpose, the same check finds it). The engine's rows are now over half of
+  what is left, and TODO's ("What a streaming pane costs"). With the input mode read when output pauses (2026-11-22):
   the same stream 786 to 838 M before and 813 to 838 M after, at rest
   0 frames and 0% both, a key to its picture 3.2 to 3.9 ms before and
   3.6 ms after.

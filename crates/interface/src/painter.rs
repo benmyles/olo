@@ -162,6 +162,16 @@ fn subpixel_variant(origin: Point<ScaledPixels>) -> Point<u8> {
     Point { x: within(origin.x.0, SUBPIXEL_VARIANTS_X), y: within(origin.y.0, SUBPIXEL_VARIANTS_Y) }
 }
 
+/// Olo: whether sums of numbers like `v` are exact: whole numbers of
+/// device pixels, small enough that a line's glyph from its corner, the
+/// corner and the glyph's size added in any order come to the same (an
+/// f32 holds every whole number to 2^24; each of these is at most 2^22).
+/// Every glyph on a screen is: its sprite lies at whole device pixels
+/// (`Painter::glyph_sprite`).
+fn adds_exactly(v: f32) -> bool {
+    v.abs() <= 4_194_304.0 && v.fract() == 0.0
+}
+
 /// Where a glyph goes in device pixels, to the nearest 64th (the grain
 /// [`Painter::paint_glyph_run`] keys on). A place in points adds up a
 /// node's offsets from all that holds it, so at 1.25× a glyph meant to
@@ -798,8 +808,11 @@ impl<'a> Painter<'a> {
                     sprites.push(MonochromeSprite { order: 0, coverage: 0, bounds: rel, content_mask: ContentMask::default(), color, tile, transformation: TransformationMatrix::unit() });
                 }
             }
-            // (Not known when a glyph shows nothing: each is looked at.)
-            run.reach = match sprites.iter().any(|g| g.bounds.is_empty()) {
+            // (Not known when a glyph shows nothing: each is looked at.
+            // Nor when one lies too far from the line's corner to add
+            // exactly, below.)
+            let exact = |g: &MonochromeSprite| [g.bounds.origin.x.0, g.bounds.origin.y.0, g.bounds.size.width.0, g.bounds.size.height.0].into_iter().all(adds_exactly);
+            run.reach = match sprites.iter().any(|g| g.bounds.is_empty() || !exact(g)) {
                 true => Bounds::default(),
                 false => sprites.iter().map(|g| g.bounds).reduce(|a, b| a.union(&b)).unwrap_or_default(),
             };
@@ -825,9 +838,18 @@ impl<'a> Painter<'a> {
         let at = |rel: &Bounds<ScaledPixels>| Bounds { origin: Point { x: ScaledPixels(rel.origin.x.0 + base.x), y: ScaledPixels(rel.origin.y.0 + base.y) }, size: rel.size };
         // All of it within its clip (a line on a screen, nearly always):
         // whole, shared, what it reaches and its textures as they were
-        // found.
+        // found. What it reaches is taken from the line's corner and
+        // then moved, where its glyphs are each moved and then reach as
+        // far as they do: the same thing while the sums are exact
+        // (`adds_exactly`), and only then is the line put in whole, since
+        // its reach is taken at its word for what its glyphs show (a
+        // frame passes over a line whose reach it doesn't touch; a
+        // drawing compared with the last takes a line that changed by
+        // its reach). A line a glyph of which lies half a billion pixels
+        // from its corner reached 64 pixels where its glyphs reached 72
+        // (Astra's review, 2026-11-22).
         let reach = at(&run.reach);
-        if self.scene.is_recording() && !run.reach.is_empty() && reach.is_contained_within(&content_mask.bounds) {
+        if self.scene.is_recording() && !run.reach.is_empty() && adds_exactly(base.x) && adds_exactly(base.y) && reach.is_contained_within(&content_mask.bounds) {
             let c = &content_mask.bounds;
             let made = crate::scene::RunMade {
                 found: run.found,
@@ -843,7 +865,8 @@ impl<'a> Painter<'a> {
     }
 
     /// A glyph at `origin` (its baseline): where its sprite goes, in
-    /// device pixels, and its tile (looked up once a frame a glyph).
+    /// device pixels (whole ones), and its tile (looked up once a frame
+    /// a glyph).
     fn glyph_sprite(&mut self, origin: Point<Pixels>, font_id: FontId, glyph_id: GlyphId, font_size: Pixels) -> Option<(Bounds<ScaledPixels>, AtlasTile)> {
         let scale_factor = self.scale_factor();
         let glyph_origin = glyph_at(origin, scale_factor);
