@@ -870,6 +870,22 @@ frames a second with nobody at it):
   the first job, and the second runs without them (its pictures'
   paths were empty: "no picture /NAME.png").
 
+### A soak counts threads and descriptors, not only memory (2026-11-21)
+
+- **What a program holds after load is three numbers**: resident
+  memory, open descriptors (`/proc/PID/fd`) and threads
+  (`/proc/PID/task`), each before, at the peak and at rest after. A
+  build that gave its memory back (62 MB where 238) held 278 threads
+  and 177 sockets after 200 tabs: memory alone said it was better.
+  Name what stays (`comm` of each task, `readlink` of each descriptor)
+  before guessing whose it is: the names said "notify-events" and
+  "zbus", which was the kit's notifier, not the app under test.
+- **A test desktop has no notification service**, so every notice an
+  app posts there fails: which is exactly the case that leaked, and
+  the case a real desktop is in while the service starts again in an
+  upgrade. A program's behaviour with a service away is worth a run of
+  its own.
+
 ### Codex's hooks and our agents (2026-11-21)
 
 - **A new or changed hook in `~/.codex/hooks.json` stops an

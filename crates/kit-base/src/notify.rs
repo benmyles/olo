@@ -379,10 +379,36 @@ fn run(from: mpsc::Receiver<Ask>, proxy: Events, app: String, entry: String) {
         };
         if let Err(e) = r {
             tracing::info!("notifications: {e}");
-            // Reconnect next time (the service or the bus went).
-            conn = None;
+            // A connection that is gone is let go of whole, and another
+            // made at the next ask: closed, so that its listener's
+            // thread ends and its socket goes with it. (Only dropped,
+            // it stayed for good, the listener holding it; and it was
+            // dropped at every error, the bus's "nobody answers to that
+            // name" among them: with no notification service on the
+            // bus, as while it starts again in an upgrade, every notice
+            // left a socket and two threads behind. 195 of each after
+            // 200 notices, in a test desktop, 2026-11-21.) An error the
+            // bus itself answered with is not a lost connection: the
+            // same one asks again.
+            if lost(&e)
+                && let Some(old) = conn.take()
+            {
+                let _ = old.close();
+            }
         }
     }
+    // The notifier is gone (the last of its clones dropped): its
+    // connection with it, and the listener's thread.
+    if let Some(conn) = conn {
+        let _ = conn.close();
+    }
+}
+
+/// Whether `error` says the connection itself is gone (the bus went, the
+/// socket broke), as against an answer that came over it (no such
+/// service, a call refused): only the first wants another connection.
+fn lost(error: &zbus::Error) -> bool {
+    matches!(error, zbus::Error::InputOutput(_))
 }
 
 /// The session bus, listening for what happens to ours.
@@ -390,9 +416,19 @@ fn connect(ids: &Arc<Mutex<Ids>>, proxy: &Events) -> Option<zbus::blocking::Conn
     let conn = zbus::blocking::Connection::session().map_err(|e| tracing::info!("no session bus for notifications: {e}")).ok()?;
     let rule = zbus::MatchRule::builder().msg_type(zbus::message::Type::Signal).interface(NAME).ok()?.path(PATH).ok()?.build();
     let signals = zbus::blocking::MessageIterator::for_match_rule(rule, &conn, Some(64)).ok()?;
+    listen(signals, ids, proxy)?;
+    Some(conn)
+}
+
+/// A thread that tells the app what happens to its notifications, as
+/// `signals` brings it; it ends when they do (the connection closed:
+/// the first error is the last thing read, where skipping errors would
+/// have had it spin on a closed connection).
+fn listen(signals: zbus::blocking::MessageIterator, ids: &Arc<Mutex<Ids>>, proxy: &Events) -> Option<std::thread::JoinHandle<()>> {
     let (ids, proxy) = (ids.clone(), proxy.clone());
-    let _ = std::thread::Builder::new().name("notify-events".into()).spawn(move || {
-        for msg in signals.flatten() {
+    let spawned = std::thread::Builder::new().name("notify-events".into()).spawn(move || {
+        for msg in signals {
+            let Ok(msg) = msg else { break };
             let header = msg.header();
             let mut ids = ids.lock().unwrap();
             match header.member().map(|m| m.as_str()) {
@@ -432,12 +468,48 @@ fn connect(ids: &Arc<Mutex<Ids>>, proxy: &Events) -> Option<zbus::blocking::Conn
             }
         }
     });
-    Some(conn)
+    spawned.ok()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Only a broken connection wants another: an answer from the bus
+    /// (nobody has that name, the call refused) came over a working one.
+    #[test]
+    fn an_answer_from_the_bus_is_not_a_lost_connection() {
+        assert!(lost(&zbus::Error::InputOutput(Arc::new(std::io::Error::from(std::io::ErrorKind::BrokenPipe)))));
+        assert!(!lost(&zbus::Error::FDO(Box::new(zbus::fdo::Error::ServiceUnknown("org.freedesktop.Notifications".into())))));
+        assert!(!lost(&zbus::Error::Failure("refused".into())));
+        assert!(!lost(&zbus::Error::InvalidReply));
+    }
+
+    /// The listener's thread ends when its connection is closed, and the
+    /// connection's own thread and socket with it: a notifier that
+    /// makes another connection leaves nothing of the old one. (Two ends
+    /// of a socket pair speaking D-Bus to each other: no bus needed.)
+    #[test]
+    fn a_closed_connection_takes_its_listener_with_it() {
+        use zbus::blocking::connection::Builder;
+        let (a, b) = std::os::unix::net::UnixStream::pair().unwrap();
+        let guid = zbus::Guid::generate();
+        let server = std::thread::spawn(move || Builder::async_io_unix_stream(a).server(guid).unwrap().p2p().build().unwrap());
+        let client = Builder::async_io_unix_stream(b).p2p().build().unwrap();
+        let _server = server.join().unwrap();
+        let rule = zbus::MatchRule::builder().msg_type(zbus::message::Type::Signal).interface(NAME).unwrap().path(PATH).unwrap().build();
+        let signals = zbus::blocking::MessageIterator::for_match_rule(rule, &client, Some(64)).unwrap();
+        let ids = Arc::new(Mutex::new(Ids::default()));
+        let events: Events = Arc::new(|_| {});
+        let listener = listen(signals, &ids, &events).unwrap();
+        assert!(!listener.is_finished());
+        client.close().unwrap();
+        let end = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !listener.is_finished() && std::time::Instant::now() < end {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(listener.is_finished(), "the listener outlived its connection");
+    }
 
     #[test]
     fn notify_arguments() {
