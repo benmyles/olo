@@ -17,6 +17,7 @@ mod links;
 mod overlays;
 mod panels;
 mod settings;
+mod setup;
 mod shared;
 mod tailscale;
 mod terminal_pane;

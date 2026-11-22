@@ -14,10 +14,12 @@
 //!   `direct-streamlocal@openssh.com` + `rex __internal dial-stdio` fallback).
 //! - Bidirectional `-L` (`dial`) and `-R` (`listen`) port-forwarding tunnels.
 
+pub mod accounts;
 pub mod control;
 pub mod data;
 pub mod error;
 pub mod model;
+pub mod provision;
 pub mod ssh;
 pub mod transport;
 pub mod tunnel;
@@ -26,7 +28,8 @@ pub use control::{ControlClient, RpcResult};
 pub use data::{BytesDataStream, DataWelcome, DemuxItem, InlineApcDemuxer, TerminalDataStream, TerminalStreamFrame};
 pub use error::{ApiError, DataRejectReason, RexError};
 pub use model::*;
-pub use ssh::{AgentStatus, SshAskpass, SshSessionPool, SshTarget, inspect_ssh_agent};
+pub use provision::ServerMode;
+pub use ssh::{AgentKey, AgentStatus, SshAskpass, SshSessionPool, SshTarget, inspect_ssh_agent};
 pub use transport::{RexEndpoint, RexStream, discover_or_start_local_socket, find_rex_binary, local_socket_candidates};
 pub use tunnel::{LocalForwardHandle, open_bytes_stream, relay_reverse_to_tcp, relay_stream_with_bytes_ws, start_local_forward};
 

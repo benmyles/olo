@@ -270,6 +270,11 @@ fn broadcast_msg(msg: WinMsg) {
     }
 }
 
+/// The host being set up stands otherwise: Add Host shows it.
+pub fn setup_changed() {
+    broadcast_to_role(WinRole::AddHost, || WinMsg::SetupChanged);
+}
+
 fn broadcast_to_role(role: WinRole, make: impl Fn() -> WinMsg) {
     let handles: Vec<WindowHandle<RexWindow>> = wins().map.values().filter(|s| s.role == role).map(|s| s.handle.clone()).collect();
     for h in handles {
@@ -413,7 +418,7 @@ pub fn open_or_raise_panel(role: WinRole) {
             o
         }
         WinRole::Askpass => WindowOptions::alert("SSH Authentication", 460.0, 120.0),
-        WinRole::AddHost => WindowOptions::alert("Add Host", 420.0, 120.0),
+        WinRole::AddHost => WindowOptions::alert("Add Host", panels::ADD_HOST_WIDTH, 120.0),
         WinRole::Forward => WindowOptions::alert("Forward Port", widgets::ALERT_WIDTH, 120.0),
         WinRole::Rename => {
             let tab = app().renaming.as_ref().is_some_and(|r| r.window_id.is_some());
@@ -489,6 +494,15 @@ pub enum WinMsg {
     ForwardDone(bool),
     /// The Add Host window: Add and Connect (true), or Cancel.
     AddHostDone(bool),
+    /// How Rex runs on the host being added, and whether to set it up.
+    AddHostMode(usize),
+    AddHostSetUp(bool),
+    /// The host being set up stands otherwise (`setup::current`).
+    SetupChanged,
+    /// A busy bar's block moves on.
+    SetupTick,
+    SetupDo(panels::SetupDo),
+    SetupKey(usize),
     HostsForwardFrom(String),
     AskpassConfirm(bool),
     AskpassSubmit,
@@ -540,6 +554,14 @@ pub struct RexWindow {
     pub fwd_host: Option<String>,
     /// The Hosts window's list: its state, its rows as last said (the
     /// list draws from them), and the host chosen in it (its key).
+    /// Add Host: how Rex runs on the host, and whether to set it up.
+    add_mode: olo_rex_client::ServerMode,
+    add_set_up: bool,
+    /// While the host being set up is waited for (looked at, root
+    /// signed in): the timer that moves its busy bar, and where the bar
+    /// is. None, and nothing drawn, at any other time.
+    setup_tick: Option<olo_kit::TimerId>,
+    setup_phase: f32,
     pub hosts_list: widgets::ListModel,
     pub hosts_rows: Rc<Vec<panels::HostRow>>,
     pub hosts_chosen: Option<String>,
@@ -682,6 +704,10 @@ impl RexWindow {
             host_addr_field: None,
             fwd_port_field: None,
             fwd_host: None,
+            add_mode: Default::default(),
+            add_set_up: true,
+            setup_tick: None,
+            setup_phase: 0.0,
             hosts_list: widgets::ListModel::new(false),
             hosts_rows: Rc::default(),
             hosts_chosen: None,
@@ -713,6 +739,19 @@ impl RexWindow {
             WinRole::AddHost => {
                 // (Each with the name agents know it by. The address
                 // first: it is what a host must have, and what is typed.)
+                // (A made-up host at a stage of being set up, for the
+                // window's pictures and its lint; in the demo only.)
+                if std::env::var("OLO_REX_DEMO").ok().as_deref() == Some("1")
+                    && let Ok(stage) = std::env::var("OLO_REX_DEMO_SETUP")
+                {
+                    // (`@FILE`: the stage named in that file, read each
+                    // time the window opens: one run pictures them all.)
+                    let stage = stage.strip_prefix('@').map_or(stage.clone(), |file| std::fs::read_to_string(file).unwrap_or_default().trim().to_owned());
+                    // (Told as a real one is: a stage that waits moves its bar.)
+                    if crate::setup::show_demo(&stage) {
+                        cx.send(WinMsg::SetupChanged);
+                    }
+                }
                 let af = widgets::text_field(cx, |f| f.name("Address").hint("ssh://you@host or host.ts.net"));
                 let lf = widgets::text_field(cx, |f| f.name("Name"));
                 af.focus(cx);
@@ -800,6 +839,10 @@ impl RexWindow {
             host_addr_field,
             fwd_port_field,
             fwd_host: None,
+            add_mode: Default::default(),
+            add_set_up: true,
+            setup_tick: None,
+            setup_phase: 0.0,
             hosts_list,
             hosts_rows: Rc::default(),
             hosts_chosen: None,
@@ -1114,15 +1157,31 @@ impl RexWindow {
     /// The Add Host window's host, given: added (to Preferences ▸ Rex's
     /// hosts, as every host is) and connected to; it goes by the host in
     /// its address where it was given no name. Nothing without an address.
+    /// What the address typed into Add Host is.
+    fn add_host_address(&self, cx: &olo_kit::Cx<Self>) -> crate::setup::Address {
+        crate::setup::address(self.host_addr_field.as_ref().map(|f| f.read(cx).text().to_owned()).unwrap_or_default().as_str())
+    }
+
+    /// Adds the host typed: one reached over SSH is set up first, if
+    /// that is wanted (the window stays, and shows how it goes), and
+    /// added at the address its kind of server is reached at.
     fn submit_add_host(&mut self, cx: &mut olo_kit::Cx<Self>) {
+        use crate::setup::Address;
         let typed = |f: &Option<Child<TextField>>| f.as_ref().map(|f| f.read(cx).text().trim().to_owned()).unwrap_or_default();
         let (name, address) = (typed(&self.host_label_field), typed(&self.host_addr_field));
-        if address.is_empty() {
-            return;
-        }
-        let id = format!("host-{}", uuid::Uuid::new_v4().simple());
+        let name = if name.is_empty() { crate::hub::host_name_from(&address) } else { name };
         let hub = app().hub.clone();
-        hub.add_and_connect_host(id, if name.is_empty() { crate::hub::host_name_from(&address) } else { name }, address, true);
+        let endpoint = match crate::setup::address(&address) {
+            Address::Empty | Address::Unfit(_) => return,
+            Address::Other => address,
+            Address::Ssh(target) if self.add_set_up => {
+                crate::setup::begin(&hub, name, target, self.add_mode);
+                cx.invalidate();
+                return;
+            }
+            Address::Ssh(target) => olo_rex_client::provision::address(self.add_mode, &target),
+        };
+        hub.add_and_connect_host(format!("host-{}", uuid::Uuid::new_v4().simple()), name, endpoint, true);
         cx.request_close();
     }
 
@@ -2861,10 +2920,30 @@ impl RexWindow {
                     .on_key_down(cx.listener(|_, e: &KeyDownEvent, cx| {
                         if e.keystroke.key == "escape" {
                             cx.stop_propagation();
-                            cx.send(WinMsg::AddHostDone(false));
+                            // (A step being carried out isn't left by a key.)
+                            match crate::setup::current().map(|s| s.stage) {
+                                Some(crate::setup::Stage::Working { .. }) => {}
+                                Some(_) => cx.send(WinMsg::SetupDo(panels::SetupDo::Back)),
+                                None => cx.send(WinMsg::AddHostDone(false)),
+                            }
                         }
                     }))
-                    .child(panels::render_add_host_panel(cx, name, address, cx.msg_with(|add: &bool| WinMsg::AddHostDone(*add))))
+                    .child(match crate::setup::current() {
+                        Some(setup) => {
+                            panels::render_setup_panel(&setup, self.setup_phase, cx.msg_with(|what: &panels::SetupDo| WinMsg::SetupDo(*what)), cx.msg_with(|i: &usize| WinMsg::SetupKey(*i)))
+                        }
+                        None => panels::render_add_host_panel(
+                            cx,
+                            name,
+                            address,
+                            &self.add_host_address(cx),
+                            self.add_mode,
+                            self.add_set_up,
+                            cx.msg_with(|i: &usize| WinMsg::AddHostMode(*i)),
+                            cx.msg_with(|on: &bool| WinMsg::AddHostSetUp(*on)),
+                            cx.msg_with(|add: &bool| WinMsg::AddHostDone(*add)),
+                        ),
+                    })
             }
             WinRole::Access => {
                 let step = {
@@ -3218,6 +3297,54 @@ impl View for RexWindow {
             WinMsg::ForwardDone(false) => cx.request_close(),
             WinMsg::AddHostDone(true) => self.submit_add_host(cx),
             WinMsg::AddHostDone(false) => cx.request_close(),
+            WinMsg::AddHostMode(i) => {
+                self.add_mode = olo_rex_client::ServerMode::ALL.get(i).copied().unwrap_or_default();
+                cx.invalidate();
+            }
+            WinMsg::AddHostSetUp(on) => {
+                self.add_set_up = on;
+                cx.invalidate();
+            }
+            WinMsg::SetupChanged => {
+                let stage = crate::setup::current().map(|s| s.stage);
+                // A busy bar moves while the host is waited for, and
+                // only then: a timer begun with the wait and ended with
+                // it (ten times a second: a block's step along its bar).
+                let waited_for = matches!(stage, Some(crate::setup::Stage::Looking | crate::setup::Stage::Root { .. }));
+                match (waited_for, self.setup_tick) {
+                    (true, None) => {
+                        self.setup_phase = 0.0;
+                        self.setup_tick = Some(cx.every(std::time::Duration::from_millis(100), || WinMsg::SetupTick));
+                    }
+                    (false, Some(timer)) => {
+                        cx.cancel(timer);
+                        self.setup_tick = None;
+                    }
+                    _ => {}
+                }
+                // (Set up and added: the window has done what it was for.)
+                if stage == Some(crate::setup::Stage::Done) {
+                    crate::setup::back();
+                    cx.request_close();
+                } else {
+                    cx.invalidate();
+                }
+            }
+            WinMsg::SetupTick => {
+                // (A turn there and back in two seconds.)
+                self.setup_phase += 0.05;
+                cx.invalidate();
+            }
+            WinMsg::SetupDo(what) => {
+                let hub = app().hub.clone();
+                match what {
+                    panels::SetupDo::Back => crate::setup::back(),
+                    panels::SetupDo::Go => crate::setup::go(&hub),
+                    panels::SetupDo::Again => crate::setup::again(&hub),
+                    panels::SetupDo::Stop => crate::setup::stop(),
+                }
+            }
+            WinMsg::SetupKey(i) => crate::setup::choose_key(i),
             WinMsg::HostsForwardFrom(key) => {
                 self.fwd_host = Some(key);
                 cx.invalidate();
@@ -3384,6 +3511,9 @@ impl View for RexWindow {
 
 impl Drop for RexWindow {
     fn drop(&mut self) {
+        if self.role == WinRole::AddHost {
+            crate::setup::back();
+        }
         self.cancel_preview();
         app().attention.hide(self.id);
         wins().map.remove(&self.id);

@@ -13,6 +13,7 @@ pub struct StringView {
     text: SharedString,
     dim: bool,
     bold: bool,
+    mono: bool,
     color: Option<Hsla>,
     height: f32,
     wrap: bool,
@@ -24,7 +25,7 @@ pub struct StringView {
 
 impl StringView {
     pub fn new(text: impl Into<SharedString>) -> StringView {
-        StringView { text: crate::words::of(text), dim: false, bold: false, color: None, height: m::CONTROL_HEIGHT, wrap: false, cut: false, size: style::PLAIN_SIZE, beside: None }
+        StringView { text: crate::words::of(text), dim: false, bold: false, mono: false, color: None, height: m::CONTROL_HEIGHT, wrap: false, cut: false, size: style::PLAIN_SIZE, beside: None }
     }
 
     /// On the baseline of a line of `size` points centred in the same
@@ -85,6 +86,15 @@ impl StringView {
         self
     }
 
+    /// In the fixed-width font: what is typed or run as it stands (a
+    /// command, a path, a key's fingerprint), told from the words about
+    /// it. Give it `style::MONO_SIZE` beside plain text, or the size of
+    /// the small text it is among.
+    pub fn mono(mut self, on: bool) -> Self {
+        self.mono = on;
+        self
+    }
+
     /// A colour of its own (from the palette: an error in `failure`).
     pub fn color(mut self, color: Hsla) -> Self {
         self.color = Some(color);
@@ -95,6 +105,7 @@ impl StringView {
 impl IntoElement for StringView {
     fn into_element(self) -> Element {
         let weight = if self.bold { FontWeight::BOLD } else { FontWeight::NORMAL };
+        let (mono, font) = (self.mono, if self.mono { style::mono_font(weight) } else { style::ui_font(weight) });
         if self.wrap {
             let p = theme::palette();
             let ink = self.color.unwrap_or_else(|| if self.dim { style::secondary_text(&p) } else { style::c(p.panel_text) });
@@ -103,20 +114,23 @@ impl IntoElement for StringView {
             if self.size != style::PLAIN_SIZE {
                 d = d.text_size(px(self.size));
             }
+            if mono {
+                d = d.font_family(style::MONO_FONT);
+            }
             return d.child(self.text);
         }
         let size = self.size;
         if self.cut {
             let (text, dim, color, beside) = (self.text, self.dim, self.color, self.beside);
-            let key = style::key((&text, dim, style::ink_key(color), size.to_bits(), self.bold, beside.map(f32::to_bits)));
+            let key = style::key((&text, dim, style::ink_key(color), size.to_bits(), self.bold, mono, beside.map(f32::to_bits)));
             return canvas(move |g, b| {
                 let p = theme::palette();
                 let ink = color.unwrap_or_else(|| if dim { style::secondary_text(&p) } else { style::c(p.panel_text) });
                 // (On the line of what it's beside, cut or not: a cut
                 // status beside a title sat half a point off it.)
                 let r = match beside {
-                    Some(of) => style::label_on_baseline_fit(g, b.left(), style::baseline_at(g, b.center().y, of), style::Align::Left, text.clone(), size, style::ui_font(weight), ink, b.size.width),
-                    None => style::label_fit(g, b.left(), b.center().y, style::Align::Left, text.clone(), size, style::ui_font(weight), ink, b.size.width),
+                    Some(of) => style::label_on_baseline_fit(g, b.left(), style::baseline_at(g, b.center().y, of), style::Align::Left, text.clone(), size, font.clone(), ink, b.size.width),
+                    None => style::label_fit(g, b.left(), b.center().y, style::Align::Left, text.clone(), size, font.clone(), ink, b.size.width),
                 };
                 g.agent(agent::Node::label(text.clone(), r));
             })
@@ -125,15 +139,15 @@ impl IntoElement for StringView {
             .min_w_0()
             .h(px(self.height));
         }
-        let w = f32::from(style::text_width(self.text.clone(), size, style::ui_font(weight))).ceil();
+        let w = f32::from(style::text_width(self.text.clone(), size, font.clone())).ceil();
         let (text, dim, color, height, beside) = (self.text, self.dim, self.color, self.height, self.beside);
-        let key = style::key((&text, dim, style::ink_key(color), size.to_bits(), self.bold, beside.map(f32::to_bits)));
+        let key = style::key((&text, dim, style::ink_key(color), size.to_bits(), self.bold, mono, beside.map(f32::to_bits)));
         canvas(move |g, b| {
             let p = theme::palette();
             let ink = color.unwrap_or_else(|| if dim { style::secondary_text(&p) } else { style::c(p.panel_text) });
             let r = match beside {
-                Some(of) => style::label_on_baseline(g, b.left(), style::baseline_at(g, b.center().y, of), style::Align::Left, text.clone(), size, style::ui_font(weight), ink),
-                None => style::label(g, b.left(), b.center().y, style::Align::Left, text.clone(), size, style::ui_font(weight), ink),
+                Some(of) => style::label_on_baseline(g, b.left(), style::baseline_at(g, b.center().y, of), style::Align::Left, text.clone(), size, font.clone(), ink),
+                None => style::label(g, b.left(), b.center().y, style::Align::Left, text.clone(), size, font.clone(), ink),
             };
             g.agent(agent::Node::label(text.clone(), r));
         })

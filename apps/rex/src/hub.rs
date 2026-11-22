@@ -1438,6 +1438,36 @@ impl RexHub {
         (self.notify)(HubNotice::StateChanged);
     }
 
+    /// Runs `work` on the hub's own threads (never the window's).
+    pub fn spawn(&self, work: impl std::future::Future<Output = ()> + Send + 'static) -> tokio::task::AbortHandle {
+        self.rt.spawn(work).abort_handle()
+    }
+
+    /// `target`, signed in to with the agent Rex is set to use.
+    pub fn with_agent(&self, mut target: olo_rex_client::SshTarget) -> olo_rex_client::SshTarget {
+        target.agent_socket = self.state.lock().unwrap_or_else(|e| e.into_inner()).settings.ssh_agent_socket.clone().map(std::path::PathBuf::from);
+        target
+    }
+
+    /// What runs commands on `target`'s host over SSH, as its account
+    /// and as root (`root_key`: offered that key of the agent's alone):
+    /// for setting a host up and looking after it.
+    pub fn over_ssh(&self, target: olo_rex_client::SshTarget, root_key: Option<String>) -> olo_rex_client::provision::OverSsh {
+        olo_rex_client::provision::OverSsh { pool: self.inner.ssh_pool.clone(), target, root_key, askpass: self.inner.askpass.clone() }
+    }
+
+    /// Lets the SSH connection to `target` go (root's, when its work is
+    /// done; an account's, to be made anew).
+    pub async fn forget_ssh(&self, target: &olo_rex_client::SshTarget) {
+        self.inner.ssh_pool.invalidate(target).await;
+    }
+
+    /// The keys the agent holds now, to choose among.
+    pub async fn agent_keys(&self) -> Vec<olo_rex_client::AgentKey> {
+        let agent = self.state.lock().unwrap_or_else(|e| e.into_inner()).settings.ssh_agent_socket.clone().map(std::path::PathBuf::from);
+        olo_rex_client::inspect_ssh_agent(agent.as_deref()).await.keys
+    }
+
     fn with_control<F, Fut>(&self, host_key: &str, f: F) -> Option<tokio::task::AbortHandle>
     where
         F: FnOnce(ControlClient, RexEndpoint, Arc<RexHubInner>) -> Fut + Send + 'static,

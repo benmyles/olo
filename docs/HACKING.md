@@ -3278,7 +3278,18 @@ it.
   `level_bar` (the bar alone). The trailing note is drawn whole and the
   label cut short ("…", its whole in a tip) to the room it leaves, so a
   label that changes as work goes on never runs into the note nor
-  widens the bar's box.
+  widens the bar's box. **Work whose end isn't known**
+  (`StatusBar::busy(phase)`, `busy_bar`, `busy_span`): a block a
+  quarter of the bar long that goes along it and back, where it is at
+  `phase` of its run. The app moves it while it waits, by a timer of
+  its own (`cx.every`, a tenth of a second a step; cancelled when the
+  wait ends), so nothing is drawn between its steps and nothing at all
+  once the wait is over: Rex's Add Host, a host being looked at, is 10
+  frames a second and 3.2% of a processor while it waits (two thirds
+  of that the test session's software renderer; release build,
+  `tools/dev/cost`), and 0 frames, 0.0% before and after. In the place
+  the filled bar takes once the work's steps are counted, so waiting
+  and working are one layout. Agents read its value as "busy".
 - `copy::secret(text, clear_after)`: a password or one-time code on
   the clipboard, marked for clipboard managers to leave alone
   (`x-kde-passwordManagerHint`), and taken off after `clear_after` if
@@ -3511,6 +3522,14 @@ it.
   one frame a pointer position (Weather: 0.4–0.9 ms a flush). Agents
   read each plot as a Figure: each track's first value, lowest and
   highest and when.
+- `StringView::mono(true)`: the fixed-width font, for what is typed or
+  run as it stands (a command, a path, a key's fingerprint, what
+  another machine said), told from the words about it; with
+  `style::SMALL_SIZE` among small text. What is *read* as it stands
+  and not typed goes in a well tinted like the panel (Rex's
+  `panels::well`: the panel's ground shaded, a field's bevel), never a
+  field's white, which says "type here" (Opus's look at Rex's Add
+  Host: wells of the field's white read as editable).
 - `StringView::wrap(true)` (a paragraph, as tall as it wraps to),
   `StringView::cut(true)` (one line as wide as it's given, not as its
   text, cut short with "…" and its whole in a tip and to agents: a path
@@ -26848,6 +26867,82 @@ else its folder's name; at home, where "~" names nothing, its program
 ("bash"); told apart by their place where they still say the same. In
 a pane without the keyboard the title, the marks (`GlyphButton::quiet`)
 and a port's link are quieter.
+
+**A host set up from Add Host** (2026-11-22; Ben: "add a feature to our
+rex client that can provision the remote host for me … let me choose
+the desired mode (personal/shared/login) and whether to automatically
+configure it if needed"). Rex runs on a Linux host three ways (Rex's
+own "server modes"): *personal*, your own server as your account (`rex
+server install`: a systemd user unit and lingering, no root); *shared*,
+one server as the `rex` account for the `rex` group (`rex.service`,
+`/run/rex/server.sock`); *login*, a login server as root that gives
+each account its own (`rex-login-server.service`, who may use which
+account in `/etc/rex/accounts.jsonc`). The shared and login servers
+come with Rex's package, installed as root by Rex's own installer.
+Everything here follows Rex's own instructions (its units' comments,
+`rex server install --help`, its installer, its documentation's Server
+Modes, Shared Server, Login Server and Remote Access).
+- **What a host needs, and the doing of it, is the client crate's**
+  (`olo_rex_client::provision`): the host answers one read-only script
+  about itself (`PROBE`, `Facts`: its system, where `rex` is and of
+  what channel, the package, systemd, each unit, the account's own
+  server and lingering, the accounts file), `plan(mode, &facts)` gives
+  the steps (`Step`: who runs it, a short title, what it is for, the
+  command; none if the host is as it should be; or why it can't be done
+  from here), and `set_up` carries them out through a `Runner` (over
+  SSH: `OverSsh`, `SshSessionPool::exec`, what a command writes coming
+  line by line), stoppable between steps and never in one, then looks
+  at the host again. A service that won't start is asked why in its
+  own log (`journalctl`), which is what is said. The accounts file is
+  an administrator's, with comments and an order that matters: it is
+  changed in place, a member put in or taken out, and everything else
+  left (`olo_rex_client::accounts`, a small reader of JSON with
+  comments that keeps where things are).
+- **The address is an account's, never root's**
+  (`setup::address`): `ssh://you@host`, said under the field if it
+  isn't. Root is asked for only to set a server up
+  (`SshTarget::as_root`: keys alone, no password ever asked for), is
+  signed in *before* anything is changed, and its connection is
+  dropped when the work ends however it ends. Root is offered the
+  agent's keys in turn; if the host takes none, the person chooses
+  which to offer (`AgentKey`, by its fingerprint: a server lets a
+  client try only a few keys, so with many in the agent the right one
+  may never be reached) or is told what to do if the agent has none.
+- **The window stays one window** (`apps/rex/src/setup.rs`, `Stage`;
+  `panels::render_setup_panel`): the form (Address, Name, Server, "Set
+  Rex up there if it needs it"; the button is "Add…" where the host is
+  looked at first); *looking* and *signing in as root*, a busy bar and
+  "nothing is changed yet"; *what it needs*, the steps numbered under
+  who runs them ("As root, over SSH", "As alice, over SSH"), each its
+  title, what it is for, and what is run exactly as it is run in a
+  tinted well (a long command broken as one writes it out, after `|`
+  and `&&` and with a `\`: `command_lines`; the accounts step shows
+  the entries it adds), a step that ends sessions saying so in the
+  warning's colour and on the button ("Stop Server and Set Up");
+  *working*, the same layout with the step's title, "2 of 5" and the
+  last line it wrote; and what needs the person as an alert with its
+  icon (a key to choose; what didn't go: a short "Couldn’t …", how the
+  host stands, "Try Again carries on from step 4", and what the host
+  said in a well). A host that needs nothing is added at once and the
+  window closes. One host is set up at a time; the work is the hub's
+  threads', never the window's.
+- **Tried** against a made-up host for every path (the client crate's
+  tests: plans from each state to each mode, the steps in order, a
+  stop between steps, a failure, root refused, the accounts file kept)
+  and against a real one end to end, headless (a test server put back
+  to "package installed, nothing set up", then Add Host driven: the
+  unknown host's key asked about, three steps shown, root signed in
+  with the agent's key, the login server up, the account listed and
+  its own server kept, the host connected with its session showing;
+  then again, nothing to do, added in half a second): 15 checks.
+  `crates/rex/tests/host.rs` is the client's own real-host test, run
+  only when a host is given (`OLO_REX_TEST_HOST`). For pictures and
+  the lint, `OLO_REX_DEMO_SETUP=STAGE` (or `@FILE` naming it) opens
+  Add Host on a made-up host in that stage.
+- **Left** (TODO): the server looked after from Rex (its services, its
+  accounts, its version); a key chosen for the account's own
+  connection; a way to open Passwords from the alert that says it has
+  no key.
 
 **Names and places** (2026-11-22; the hub had the calls and nothing
 offered them). A session and a tab are renamed in a small window

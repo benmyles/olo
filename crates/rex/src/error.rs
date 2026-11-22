@@ -57,6 +57,10 @@ pub enum RexError {
     Json(#[from] serde_json::Error),
     #[error("ssh error: {0}")]
     Ssh(String),
+    /// The host let nobody in with what was offered (`user@host:port`):
+    /// no key of the agent's, no key file, no password asked for.
+    #[error("ssh error: SSH authentication failed for {0}")]
+    SshRefused(String),
     #[error("tls error: {0}")]
     Tls(String),
     #[error("protocol error: {0}")]

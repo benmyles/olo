@@ -992,6 +992,119 @@ something nobody here has is in "Blocked", with what it waits for.
     sprite turned or moved by its matrix reaches its clip,
     `Primitive::reach`. Nothing of Olo's turns one: `paint_svg` has no
     caller.)
+  - *A host set up from Add Host, and looked after from Rex* (Ben,
+    2026-11-22: "add a feature to our rex client that can provision the
+    remote host for me like when i go add host have it let me choose
+    the desired mode (personal/shared/login) and whether to
+    automatically configure it if needed. it should require a
+    ssh://<non root user>@<ip> for the standard connection and if login
+    mode is chosen and it needs to be setup then ask for confirmation
+    and try root@ and see if it works from the ssh agent and if not ask
+    the user to choose an ssh key from olo passwords and provide a
+    helpful message"; and: "also build in rex server management to our
+    rex client so that i can manage the users, services etc. of the
+    running rex server (if i have a root@ key)"). **Add Host's part is
+    done** (HACKING, Rex, "A host set up from Add Host"), and the
+    person's test server is set up as a login server by it. **Left**:
+    the server's window (its mode and services: start, stop, restart,
+    its log; its accounts, or the rex group's members; its version and
+    updating it), on the same `provision` and `accounts`. From the
+    design reviews, not done: a key chosen for the *account's* own
+    connection as one is for root (the kept connection offers the
+    agent's keys in turn; a host's chosen key would be kept with the
+    host); an "Open Passwords" button on the alert that says it has no
+    key (the kit has no way yet for one app to open another's window:
+    one for the kit); the host's package installed by the two commands
+    the installer runs, shown as such, in place of the installer
+    itself (it is Rex's own, and knows five package managers: kept).
+    For the kit, seen there: an alert's stripe is hardly told from the
+    panel in the dark looks; an empty status bar in the dark looks is a
+    flat block without an edge; text is cut at its end only (a path
+    wants its middle cut: `StringView::cut`).
+  - *A segmented control, the kit's* (Ben, 2026-11-22, of Rex's
+    Sessions and Activity, with a picture of what there is and one of
+    what is wanted: "this sessions/activity segmented control looks
+    weird. i think something more like this would be much nicer …
+    please update it and also the kit so that any app that wants a
+    segmented control component like this will use it (this shouldn't
+    replace tabs, the tabs are good now this is different -- a
+    segmented control -- vs a tab bar) maybe a new BSegmentedControl
+    or something. and make sure we use it consistently in all
+    appropriate places across all olo apps and update the design
+    pattern docs etc"). What is wanted: one frame with rounded corners
+    holding the segments side by side, a line between them; each an
+    icon and its name; the chosen one filled and its name bold, the
+    others plain; a count on a segment as a round badge after its name
+    (Activity's waiting agents). Now two small buttons side by side,
+    the chosen one held down (`Button::pushed`). To do: the widget in
+    `crates/kit` (keyboard, agents' roles, every look and scale), Rex's
+    sidebar on it, every other app's pair or row of held-down buttons
+    that chooses one view of several found and moved to it (Phone's
+    Messages and Contacts, and whatever a sweep finds), HACKING's
+    patterns saying when it is a segmented control and when tabs.
+  - *Passwords' SSH agent in a remote terminal* (Ben, 2026-11-22: "i'm
+    not sure if we already added support for a remote rex terminal to
+    be able to use the olo passwords ssh agent so that e.g. github and
+    other ssh using stuff just magically works on the remote session
+    through the ssh key i already have in olo passwords locally, but if
+    not please add that too (and it should -- like all the olo
+    passwords integration -- go through the same permissions thing as
+    we do if something uses it locally, i.e. the prompt to get
+    permission by default but if auto-approve is on from the key in the
+    deskbar tray then auto approve it)"). Not there yet (looked,
+    2026-11-22): old settings carry an `allow_ssh_agent` for a host that
+    nothing acts on, and the bridge to a remote session has `op`, links
+    and screens (`apps/rex/src/bridge.rs`, its `allow_passwords_op`),
+    not the agent. To build: a socket on the host for the session's
+    terminals (`SSH_AUTH_SOCK` there), carried back over the Rex
+    connection to this computer and answered by Passwords as a request
+    of that host's session (who asks, said in the prompt: the host and
+    the session, not "Rex"), allowed as a local terminal session is and
+    by the tray's auto-approve; a host's permission for it beside the
+    others in Preferences ▸ Rex, off until given.
+  - *Files from a host, and folders kept in step* (Ben, 2026-11-22:
+    "thinking about what we'll need to use rex to build olo (as an
+    example), once it's built we'd want an easy way to e.g.
+    download/sync the release artifacts locally. do you have ideas on
+    how we could add this in a way that feels very intuitive and
+    rex+olo native? i'd want a way to do it in the rex client myself …
+    and also of course the coding agents should be able to do it
+    themselves too with instructions in the skill or wherever they
+    belong. and i wonder if we could go even further with the concept
+    of maybe having specific dirs (optionally recursive) auto synced
+    (with the ability to do it one way -- either way -- or 2-way) and
+    obv. that would also be configurable/manageable by the coding
+    agents and in the ux. it should all be really intuitive and
+    ergonomic both for agents and humans. figure out the most intuitive
+    way to do this -- also ask gemini 4 neon via agy it tends to have
+    some good ideas on this kind of thing -- and add this feature").
+    What another agent told Ben, which they passed on: the client
+    crate already carries a file down in pieces
+    (`terminal_download_begin`, `BytesDataStream`, over the one
+    connection), so what is missing is the client's side: written to
+    disk as it comes, not gathered in memory as Quick Look's is, with
+    progress as an upload has; ways in (Quick Look, the path browser, a
+    pane's menu; or asked for from the host, behind a permission of
+    its own in Preferences ▸ Rex); and care with what can be run (the
+    answer says nothing of a file's mode, and what came from a host
+    isn't run without the person's say). To do, in this order: ask
+    Gemini (`agy`) for ideas, with nothing private in the asking; set
+    the design down (what a person does: drag out of a pane or a
+    listing? a Downloads place? a folder "kept in step" shown where,
+    with what marks; what an agent does: the `rex` command and the
+    bridge's, said in the skill); then one file, a folder, and folders
+    kept in step one way, the other, and both.
+    And as little sent as can be (Ben, the same day: "when syncing
+    files/folders it would be very important to do it as optimally as
+    possible, minimizing data transfer where possible via compression,
+    file deltas, whatever is possible (really we should get it as close
+    to mathematically optimal as possible for the syncs)"): what is
+    already on the other side isn't sent again (pieces known by their
+    content, so a file moved, renamed or changed in part costs its
+    changed pieces; a file the other side has under another name,
+    nothing), what is sent is compressed, and what a sync cost is
+    measured against what the change was (bytes on the wire for a
+    build's artifacts changed by one file, by one byte, by nothing).
   - *The sidebar's rows* are still drawn by Rex (the kit's `Sidebar`
     has no heading with a light and an action, nor a mark on a row's
     icon): either the kit's grows them or the rows stay Rex's.
@@ -1088,6 +1201,25 @@ something nobody here has is in "Blocked", with what it waits for.
   that serves them first); and a switch under Preferences ▸
   Performance saying what it does. Nothing that starves the rest: a
   limit on what the raised threads may take.
+- **An SSH key in Passwords shows, has and syncs all that 1Password
+  does** (Ben, 2026-11-22, with a picture of each: "look at all the stuff
+  1password shows for an ssh key and then look at what olo passwords
+  synced and shows … olo passwords should show/have/sync all the same
+  stuff as 1p for ssh keys"). After the Rex work. 1Password's SSH Key
+  item has the public key, its fingerprint, the private key, the key's
+  type, the item's other fields, and files attached to it (a key's two
+  files, each with its size), with when it was last edited; in the
+  list, the fingerprint is under the name. Olo Passwords shows the
+  private key, the other fields and the dates. To find out first: what
+  of this the sync brings and drops (the item's sections and fields as
+  1Password stores them: read the item's own JSON in a test vault, not
+  a person's), and what is derived (the public key, the fingerprint and
+  the type all follow from the private key, `ssh-key` reads them: so
+  they can be shown for a key made here too, and checked against what
+  was synced). Then: the fields shown as 1Password orders them, each
+  copied with a click; the fingerprint in the list's second line;
+  attached files listed, saved and added, synced both ways; a key made
+  or imported here written so that 1Password shows the same.
 - **Tracker's columns resized by hand, one width for them all** (Ben,
   2026-11-21: "in tracker columns mode the column widths need to be
   resizable (let's keep it simple so it resizes the width of all

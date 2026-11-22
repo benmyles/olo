@@ -53,9 +53,24 @@ pub struct SshTarget {
     pub socket_path: Option<String>,
     /// Optional explicit SSH agent socket path overriding `SSH_AUTH_SOCK`.
     pub agent_socket: Option<PathBuf>,
+    /// Sign in with this key of the agent's alone (its SHA-256
+    /// fingerprint, as [`AgentKey::fingerprint`] has it): the person chose
+    /// it. A server lets a client try only so many keys (OpenSSH: six),
+    /// so with many keys in the agent the right one may never be offered.
+    pub only_key: Option<String>,
+    /// Sign in with keys or not at all: no password or other question is
+    /// put to the person (root, tried to set a host up).
+    pub keys_only: bool,
 }
 
 impl SshTarget {
+    /// The same host as root, signed in with keys alone (`key`: only that
+    /// one of the agent's): for setting the host up, never for a
+    /// connection that is kept.
+    pub fn as_root(&self, key: Option<String>) -> SshTarget {
+        SshTarget { user: Some("root".to_owned()), socket_path: None, only_key: key, keys_only: true, ..self.clone() }
+    }
+
     pub fn parse(raw: &str) -> Result<Self, RexError> {
         let s = raw.trim().strip_prefix("ssh://").unwrap_or(raw.trim());
         if s.is_empty() {
@@ -92,7 +107,7 @@ impl SshTarget {
         }
         let host = host.to_owned();
         let socket_path = socket_path.filter(|s| s != "/");
-        Ok(Self { host, user, port, socket_path, agent_socket: None })
+        Ok(Self { host, user, port, socket_path, agent_socket: None, only_key: None, keys_only: false })
     }
 
     pub fn display(&self) -> String {
@@ -139,7 +154,36 @@ pub struct AgentStatus {
     pub reachable: bool,
     pub key_count: usize,
     pub key_comments: Vec<String>,
+    /// Its keys, as a person would choose among them.
+    pub keys: Vec<AgentKey>,
     pub error: Option<String>,
+}
+
+/// A key the agent holds: its name there (a key's comment; in Olo
+/// Passwords, the item's), its kind, and its fingerprint.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentKey {
+    pub name: String,
+    /// "ED25519", "RSA", "ECDSA".
+    pub kind: String,
+    /// `SHA256:…`, as `ssh-keygen -l` and a server's log show it.
+    pub fingerprint: String,
+}
+
+impl AgentKey {
+    fn of(identity: &AgentIdentity) -> AgentKey {
+        let (name, key) = match identity {
+            AgentIdentity::PublicKey { key, comment } => (comment.clone(), key.clone()),
+            AgentIdentity::Certificate { certificate, comment } => (comment.clone(), russh::keys::PublicKey::from(certificate.public_key().clone())),
+        };
+        let kind = match key.algorithm().as_str() {
+            a if a.contains("ed25519") => "ED25519".to_owned(),
+            a if a.contains("rsa") => "RSA".to_owned(),
+            a if a.contains("ecdsa") => "ECDSA".to_owned(),
+            other => other.to_owned(),
+        };
+        AgentKey { name, kind, fingerprint: key.fingerprint(russh::keys::HashAlg::Sha256).to_string() }
+    }
 }
 
 /// Resolve the preferred SSH agent socket path: explicit override → `SSH_AUTH_SOCK`
@@ -181,7 +225,7 @@ pub async fn inspect_ssh_agent(override_path: Option<&Path>) -> AgentStatus {
                             AgentIdentity::Certificate { comment, .. } => comment.clone(),
                         })
                         .collect::<Vec<_>>();
-                    AgentStatus { socket_path: Some(sock.clone()), reachable: true, key_count: ids.len(), key_comments: comments, error: None }
+                    AgentStatus { socket_path: Some(sock.clone()), reachable: true, key_count: ids.len(), key_comments: comments, keys: ids.iter().map(AgentKey::of).collect(), error: None }
                 }
                 Err(e) => AgentStatus { socket_path: Some(sock.clone()), reachable: true, error: Some(format!("agent list failed: {e}")), ..Default::default() },
             },
@@ -325,6 +369,47 @@ impl SshSessionPool {
     pub async fn open_rex_channel(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Result<Pin<Box<dyn AsyncReadWrite + Send>>, RexError> {
         let handle = self.get_or_connect(target, askpass).await?;
         tokio::time::timeout(Duration::from_secs(10), Self::channel(&handle, target)).await.map_err(|_| RexError::Timeout)?
+    }
+
+    /// Runs `command` on the host, in a shell there, and waits for it:
+    /// what it writes (both its outputs, as they come) goes to `said`
+    /// line by line and comes back whole with its exit status. For
+    /// setting a host up and looking after it ([`crate::provision`]).
+    pub async fn exec(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, command: &str, said: &mut (dyn FnMut(&str) + Send)) -> Result<crate::provision::Ran, RexError> {
+        use russh::ChannelMsg;
+        let handle = self.get_or_connect(target, askpass).await?;
+        let mut channel = handle.channel_open_session().await.map_err(|e| RexError::Ssh(format!("open ssh session channel: {e}")))?;
+        channel.exec(true, command).await.map_err(|e| RexError::Ssh(format!("exec on {} failed: {e}", target.display())))?;
+        let mut ran = crate::provision::Ran::default();
+        // (Each of its two outputs is cut into lines by itself: a line
+        // half written on one isn't finished by the other.)
+        fn take(pending: &mut Vec<u8>, bytes: &[u8], ran: &mut crate::provision::Ran, said: &mut (dyn FnMut(&str) + Send)) {
+            pending.extend_from_slice(bytes);
+            while let Some(end) = pending.iter().position(|b| *b == b'\n') {
+                let line: Vec<u8> = pending.drain(..=end).collect();
+                let line = String::from_utf8_lossy(&line[..line.len() - 1]).trim_end_matches('\r').to_owned();
+                said(&line);
+                ran.output.push_str(&line);
+                ran.output.push('\n');
+            }
+        }
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        loop {
+            match channel.wait().await {
+                Some(ChannelMsg::Data { data }) => take(&mut out, &data, &mut ran, said),
+                Some(ChannelMsg::ExtendedData { data, .. }) => take(&mut err, &data, &mut ran, said),
+                Some(ChannelMsg::ExitStatus { exit_status }) => ran.status = Some(exit_status),
+                Some(ChannelMsg::Close) | None => break,
+                _ => {}
+            }
+        }
+        // (A last line with no end.)
+        for pending in [&mut out, &mut err] {
+            if !pending.is_empty() {
+                take(pending, b"\n", &mut ran, said);
+            }
+        }
+        Ok(ran)
     }
 
     async fn channel(handle: &Handle<SshClientHandler>, target: &SshTarget) -> Result<Pin<Box<dyn AsyncReadWrite + Send>>, RexError> {
@@ -590,6 +675,11 @@ async fn authenticate(mut session: Handle<SshClientHandler>, target: &SshTarget,
     {
         let rsa_hash = session.best_supported_rsa_hash().await.ok().flatten().flatten();
         for ident in identities {
+            // (The key the person chose, and no other: each one tried
+            // counts against what the server allows.)
+            if target.only_key.as_ref().is_some_and(|only| *only != AgentKey::of(&ident).fingerprint) {
+                continue;
+            }
             let ok = match ident {
                 AgentIdentity::PublicKey { key, .. } => {
                     let hash = if key.algorithm().is_rsa() { rsa_hash } else { None };
@@ -609,7 +699,7 @@ async fn authenticate(mut session: Handle<SshClientHandler>, target: &SshTarget,
     // 2. Try local identity files (with optional askpass passphrase prompt).
     let rsa_hash = session.best_supported_rsa_hash().await.ok().flatten().flatten();
     for key_path in &resolved.identity_files {
-        if !key_path.is_file() {
+        if !key_path.is_file() || target.only_key.is_some() {
             continue;
         }
         let key = match load_secret_key(key_path, None) {
@@ -638,7 +728,7 @@ async fn authenticate(mut session: Handle<SshClientHandler>, target: &SshTarget,
     }
 
     // 3. Try keyboard-interactive (2FA / PAM) or password via native Olo askpass.
-    if let Some(ask) = askpass.as_ref() {
+    if let Some(ask) = askpass.as_ref().filter(|_| !target.keys_only) {
         let methods = match session.authenticate_none(&resolved.user).await.map_err(|e| RexError::Ssh(e.to_string()))? {
             AuthResult::Success => return Ok(session),
             AuthResult::Failure { remaining_methods, .. } => remaining_methods,
@@ -682,7 +772,7 @@ async fn authenticate(mut session: Handle<SshClientHandler>, target: &SshTarget,
         }
     }
 
-    Err(RexError::Ssh(format!("SSH authentication failed for {}@{}:{}", resolved.user, resolved.hostname, resolved.port)))
+    Err(RexError::SshRefused(format!("{}@{}:{}", resolved.user, resolved.hostname, resolved.port)))
 }
 
 fn cancelled() -> RexError {

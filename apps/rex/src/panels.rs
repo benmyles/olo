@@ -470,30 +470,306 @@ pub fn render_hosts_panel(
         )
 }
 
-/// The Add Host window: a host's address, and a name for it if it is to
-/// have one (else it goes by the host in its address, which its empty
-/// field shows); Cancel and Add. Where its permissions are is said
-/// under the fields.
-pub fn render_add_host_panel(cx: &WindowCx, name_field: &Child<TextField>, address_field: &Child<TextField>, on_done: impl Fn(&bool, &mut WindowCx) + 'static) -> Element {
-    let can_add = !address_field.read(cx).text().trim().is_empty();
+/// Add Host's width: room for an address, and for a command a host is
+/// asked to run, on a line.
+pub const ADD_HOST_WIDTH: f32 = 480.0;
+
+/// The size of what a host is asked to run, and of what it says.
+const COMMAND_SIZE: f32 = style::SMALL_SIZE;
+/// A well's room round what it holds.
+const WELL_INSET: f32 = 8.0;
+
+/// The Add Host window: a host's address and the name it goes by; for a
+/// host reached over SSH, how Rex runs there and whether to set it up;
+/// Cancel and Add. (`kind`: what the address typed is.)
+#[allow(clippy::too_many_arguments)]
+pub fn render_add_host_panel(
+    cx: &WindowCx,
+    name_field: &Child<TextField>,
+    address_field: &Child<TextField>,
+    kind: &crate::setup::Address,
+    mode: olo_rex_client::ServerMode,
+    set_up: bool,
+    on_mode: impl Fn(&usize, &mut WindowCx) + 'static,
+    on_set_up: impl Fn(&bool, &mut WindowCx) + 'static,
+    on_done: impl Fn(&bool, &mut WindowCx) + 'static,
+) -> Element {
+    use crate::setup::Address;
+    let p = theme::palette();
+    let can_add = matches!(kind, Address::Ssh(_) | Address::Other);
+    // (How Rex runs there is said of a host reached over SSH; any other
+    // address is of a server that runs already.)
+    let over_ssh = !matches!(kind, Address::Other);
     let on_done = std::rc::Rc::new(on_done);
     let (cancel, add) = (on_done.clone(), on_done);
-    let divider = divider_for(&["Address:", "Name:"]);
+    let divider = divider_for(&["Address:", "Name:", "Server:"]);
+    let width = ADD_HOST_WIDTH - 2.0 * m::WINDOW_INSET;
+    let under = |text: StringView| div().pl(px(divider)).child(text.size(style::SMALL_SIZE).wrap(true));
+    let modes: Vec<SharedString> = olo_rex_client::ServerMode::ALL.iter().map(|m| olo_kit::words::tr(m.name()).into()).collect();
+    let chosen = olo_rex_client::ServerMode::ALL.iter().position(|m| *m == mode).unwrap_or(0);
+    let says = if over_ssh { mode.says() } else { "Only a host reached over SSH (ssh://you@host) is set up from here." };
+    // (More follows Add where the host is looked at first: "Add…".)
+    let add_label = if over_ssh && set_up { "Add…" } else { "Add" };
     div()
         .flex()
         .flex_col()
         .gap(px(m::SPACING))
         .p(px(m::WINDOW_INSET))
         .w_full()
-        .child(TextControl::new(cx, address_field).label("Address:").divider(divider))
+        .child(div().flex().flex_col().gap(px(m::TIGHT)).w_full().child(TextControl::new(cx, address_field).label("Address:").divider(divider)).children(match kind {
+            Address::Unfit(why) => Some(under(StringView::new(*why).color(style::c(p.failure)))),
+            _ => None,
+        }))
         .child(TextControl::new(cx, name_field).label("Name:").divider(divider))
-        .child(div().pl(px(divider)).child(StringView::new("Set this host’s permissions in Preferences ▸ Rex.").size(style::SMALL_SIZE).dim(true).wrap(true)))
+        // (What the menu's choice means, close under it: its own.)
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(m::TIGHT))
+                .w_full()
+                .child(MenuField::new("add-host-server", modes, chosen).label("Server:").divider(divider).width(width).enabled(over_ssh).on_change(on_mode))
+                .child(under(StringView::new(says).dim(true))),
+        )
+        .child(div().pl(px(divider)).child(CheckBox::new("Set Rex up there if it needs it", set_up && over_ssh).id("add-host-set-up").enabled(over_ssh).on_toggle(on_set_up)))
         .child(
             olo_kit::widgets::button_row()
                 .pt(px(m::TIGHT))
                 .child(Button::new("Cancel").on_click(move |_, cx| cancel(&false, cx)))
-                .child(Button::new("Add").default(true).enabled(can_add).on_click(move |_, cx| add(&true, cx))),
+                .child(Button::new(add_label).id("add-host-add").default(true).enabled(can_add).on_click(move |_, cx| add(&true, cx))),
         )
+}
+
+/// What a person may do about a host being set up.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SetupDo {
+    /// Back to the form (nothing more is done there).
+    Back,
+    /// Carry the steps out (or try root again, with the key chosen).
+    Go,
+    /// Look at the host again.
+    Again,
+    /// Stop after the step it is at.
+    Stop,
+}
+
+/// A key as the menu of them has it: its name, its kind, and enough of
+/// its fingerprint to tell it by.
+fn key_called(key: &olo_rex_client::AgentKey) -> SharedString {
+    let print = key.fingerprint.strip_prefix("SHA256:").unwrap_or(&key.fingerprint);
+    let short =
+        if print.chars().count() > 16 { format!("{}…{}", print.chars().take(8).collect::<String>(), print.chars().skip(print.chars().count() - 6).collect::<String>()) } else { print.to_owned() };
+    let name = if key.name.trim().is_empty() { olo_kit::words::tr("A key with no name").to_string() } else { key.name.clone() };
+    format!("{name}  ·  {}  ·  {short}", key.kind).into()
+}
+
+/// A command as it is set on lines no longer than `most` characters,
+/// the way one is written out by hand: broken after `|` and `&&`, a
+/// part still too long broken at a space with a `\` to say it goes on,
+/// and every line after the first set in. (Left to wrap, a command's
+/// last words came back to the margin and read as another command.)
+pub fn command_lines(command: &str, most: usize) -> Vec<String> {
+    const IN: &str = "  ";
+    let mut parts: Vec<String> = Vec::new();
+    let mut rest = command.trim();
+    while let Some((at, op)) = [" | ", " && "].iter().filter_map(|op| rest.find(op).map(|at| (at, *op))).min() {
+        parts.push(format!("{}{}", &rest[..at], op.trim_end()));
+        rest = rest[at + op.len()..].trim_start();
+    }
+    parts.push(rest.to_owned());
+    let mut lines: Vec<String> = Vec::new();
+    for part in parts {
+        let mut line = String::new();
+        for word in part.split(' ') {
+            let lead = if lines.is_empty() { 0 } else { IN.len() };
+            // (Room kept for the mark that says a line goes on.)
+            if !line.is_empty() && lead + line.chars().count() + 1 + word.chars().count() + 2 > most {
+                lines.push(format!("{}{line} \\", if lines.is_empty() { "" } else { IN }));
+                line.clear();
+            }
+            if !line.is_empty() {
+                line.push(' ');
+            }
+            line.push_str(word);
+        }
+        lines.push(format!("{}{line}", if lines.is_empty() { "" } else { IN }));
+    }
+    lines
+}
+
+/// A sunken well, as a field's, round `inner`: what is read as it
+/// stands and not typed (a command to be run, what a host said).
+fn well(inner: Element) -> Element {
+    let back = canvas(|g, b| {
+        let p = theme::palette();
+        // (The panel's own ground, a little shaded: not a field's
+        // white, which says "type here".)
+        style::fill_rect(g, b, style::shade(&p, p.panel_background, 1.06));
+        style::sunken(g, b, &p, false);
+    })
+    .paint_key(0)
+    .absolute()
+    .inset_0();
+    div().relative().w_full().child(back).child(div().relative().w_full().px(px(WELL_INSET)).py(px(5.0)).child(inner))
+}
+
+/// `lines`, each on a line of its own, in the fixed-width font.
+fn mono_lines(lines: Vec<String>) -> Element {
+    div().flex().flex_col().w_full().children(lines.into_iter().map(|line| StringView::new(line).mono(true).size(COMMAND_SIZE).wrap(true)))
+}
+
+/// How many characters of a command fit a well `width` points wide.
+fn command_room(width: f32) -> usize {
+    let ten = f32::from(style::text_width("0000000000", COMMAND_SIZE, style::mono_font(olo_kit::FontWeight::NORMAL)));
+    (((width - 2.0 * WELL_INSET - 2.0) / (ten / 10.0)).floor() as usize).max(20)
+}
+
+/// The Add Host window while a host is set up: looked at, what it needs
+/// put to the person, root signed in, the steps carried out with what
+/// they write, or why it didn't go. Waiting and working have one
+/// layout (a heading, a bar with what is being done over it, a line
+/// under it, the buttons), so that going from one to the next changes
+/// the words and the bar and nothing else; what needs the person (a key
+/// to choose, something that didn't go) is an alert, its icon beside it.
+/// (`phase`: where a busy bar's block is.)
+pub fn render_setup_panel(setup: &crate::setup::Setup, phase: f32, on_do: impl Fn(&SetupDo, &mut WindowCx) + 'static, on_key: impl Fn(&usize, &mut WindowCx) + 'static) -> Element {
+    use crate::setup::Stage;
+    use olo_kit::widgets::{AlertFrame, StatusBar, alert_title};
+    let p = theme::palette();
+    let on_do = std::rc::Rc::new(on_do);
+    let button = |label: &'static str, what: SetupDo| {
+        let on_do = on_do.clone();
+        Button::new(label).on_click(move |_, cx| on_do(&what, cx))
+    };
+    let width = ADD_HOST_WIDTH - 2.0 * m::WINDOW_INSET;
+    let head = |text: String| StringView::new(text).bold(true).wrap(true);
+    let body = |text: String| StringView::new(text).wrap(true);
+    let small = |text: String| StringView::new(text).size(style::SMALL_SIZE).dim(true).wrap(true);
+    let account = setup.target.user.clone().unwrap_or_default();
+    let col = || div().flex().flex_col().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).w_full();
+    let buttons = || olo_kit::widgets::button_row().pt(px(m::TIGHT));
+    let gap = |h: f32| div().h(px(h)).flex_shrink_0();
+    // Waiting, and working: a heading, the bar with its words, a line.
+    let waiting = |heading: String, bar: StatusBar, under: StringView, foot: Element| {
+        col().child(head(heading)).child(bar).child(under.size(style::SMALL_SIZE).dim(true).cut(true).height(m::LABEL_ROW)).child(foot)
+    };
+    match &setup.stage {
+        Stage::Looking => waiting(
+            olo_kit::tr!("Looking at {}…", setup.host()).into(),
+            StatusBar::busy(phase).label("Asking how Rex is set up there"),
+            StringView::new(olo_kit::tr!("Nothing on {} is changed yet.", setup.host())),
+            buttons().child(button("Cancel", SetupDo::Back)),
+        ),
+        Stage::Root { .. } => waiting(
+            olo_kit::tr!("Signing in as {}…", setup.root()).into(),
+            StatusBar::busy(phase).label("Waiting for a key from Olo Passwords"),
+            StringView::new(olo_kit::tr!("Setting up needs root. Nothing on {} is changed yet.", setup.host())),
+            buttons().child(button("Cancel", SetupDo::Back)),
+        ),
+        Stage::Working { steps, at, said, stopping } => {
+            let title = steps.get(*at).map(|s| olo_kit::words::of(s.title.clone()).to_string()).unwrap_or_default();
+            // (A sliver for the step under way: the bar is never dead.)
+            let bar = StatusBar::new((*at as f32 + 0.15) / steps.len().max(1) as f32).label(title).trailing(olo_kit::tr!("{} of {}", at + 1, steps.len()));
+            let under = if *stopping { StringView::new("Stopping after this step…") } else { StringView::new(if said.is_empty() { " ".to_owned() } else { said.clone() }).mono(true) };
+            waiting(olo_kit::tr!("Setting up {}…", setup.host()).into(), bar, under, buttons().child(button("Stop After This Step", SetupDo::Stop).enabled(!*stopping)))
+        }
+        Stage::Confirm { steps, ends_sessions } => {
+            let heading = match setup.mode {
+                olo_rex_client::ServerMode::Personal => olo_kit::tr!("Set up your own Rex server on {}", setup.host()),
+                olo_rex_client::ServerMode::Shared => olo_kit::tr!("Set up {} as a shared Rex server", setup.host()),
+                olo_rex_client::ServerMode::Login => olo_kit::tr!("Set up {} as a Rex login server", setup.host()),
+            };
+            // Each step: its number, then its title, what it is for, and
+            // what is run, as it is run, in a well; grouped by who runs
+            // them (root's first, as they are carried out), each group
+            // under its heading, set apart from the one before.
+            let number = f32::from(style::text_width(format!("{}.", steps.len()), style::PLAIN_SIZE, style::ui_font(olo_kit::FontWeight::NORMAL))).ceil() + m::TIGHT;
+            let room = command_room(width - number);
+            let mut list = div().flex().flex_col().w_full();
+            for (n, step) in steps.iter().enumerate() {
+                if n == 0 || steps[n - 1].root != step.root {
+                    let (who, how) = if step.root {
+                        (
+                            olo_kit::words::tr("As root, over SSH").to_string(),
+                            olo_kit::tr!("Rex signs in as {} with an SSH key from Olo Passwords, and changes nothing until that works.", setup.root()).to_string(),
+                        )
+                    } else {
+                        (olo_kit::tr!("As {}, over SSH", account).to_string(), olo_kit::tr!("Rex signs in as {}@{}, as it will to connect.", account, setup.host()).to_string())
+                    };
+                    // (A rule under each group's heading, as a preference
+                    // panel's sections have: the window's title is over
+                    // both groups, and no closer to the first than they
+                    // are to each other.)
+                    list = list
+                        .children((n > 0).then(|| gap(m::SECTION)))
+                        .child(StringView::new(who).bold(true).height(m::LABEL_ROW))
+                        .child(gap(2.0))
+                        .child(olo_kit::widgets::separator())
+                        .child(gap(4.0))
+                        .child(small(how))
+                        .child(gap(m::SPACING));
+                } else {
+                    list = list.child(gap(m::SPACING + 2.0));
+                }
+                let shown = match step.adds_to() {
+                    Some(_) => step.shown().lines().map(str::to_owned).collect(),
+                    None => command_lines(&step.shown(), room),
+                };
+                let mut said = div().flex_1().min_w_0().flex().flex_col().gap(px(m::TIGHT - 2.0)).child(body(olo_kit::words::of(step.title.clone()).to_string()));
+                if !step.what.is_empty() {
+                    said = said.child(small(olo_kit::words::of(step.what.clone()).to_string()));
+                }
+                // (What to be afraid of, in the warning's colour and no
+                // other words in it, before what is run.)
+                if let Some(warning) = step.warning() {
+                    said = said.child(StringView::new(warning).size(style::SMALL_SIZE).color(style::c(p.warning)).wrap(true));
+                }
+                said = said.child(well(mono_lines(shown)));
+                list = list.child(div().flex().flex_row().items_start().w_full().child(div().w(px(number)).flex_shrink_0().child(body(format!("{}.", n + 1)))).child(said));
+            }
+            let go = if *ends_sessions { "Stop Server and Set Up" } else { "Set Up" };
+            col().child(head(heading.into())).child(list.pt(px(m::SPACING))).child(buttons().child(button("Back", SetupDo::Back)).child(button(go, SetupDo::Go).default(true)))
+        }
+        // What needs the person: an alert.
+        Stage::RootKey { keys, .. } if keys.is_empty() => AlertFrame::new("key")
+            .child(alert_title("Olo Passwords has no SSH keys to offer"))
+            .child(gap(m::TIGHT))
+            .child(body(olo_kit::tr!("Unlock it, or add the key root uses on {}.", setup.host()).into()))
+            .child(gap(m::SPACING))
+            .child(buttons().child(button("Back", SetupDo::Back)).child(button("Try Again", SetupDo::Go).default(true)))
+            .into_element(),
+        Stage::RootKey { keys, chosen, .. } => AlertFrame::new("key")
+            .child(alert_title(olo_kit::tr!("{} didn’t accept your keys for root", setup.host())))
+            .child(gap(m::TIGHT))
+            .child(body(olo_kit::words::tr("Choose a key that root accepts there. If none works, add your public key to /root/.ssh/authorized_keys on that machine, then try again.").into()))
+            .child(gap(m::SPACING))
+            // (As wide as the words over it: the alert's column.)
+            .child(
+                MenuField::new("setup-root-key", keys.iter().map(key_called).collect(), *chosen)
+                    .label("Key:")
+                    .width(ADD_HOST_WIDTH - olo_kit::widgets::ALERT_TEXT_X - m::WINDOW_INSET)
+                    .on_change(on_key),
+            )
+            .child(gap(m::SPACING))
+            .child(buttons().child(button("Back", SetupDo::Back)).child(button("Try Again", SetupDo::Go).default(true)))
+            .into_element(),
+        Stage::Failed { what, why, said, icon } => {
+            let mut frame = AlertFrame::new(*icon).child(alert_title(what.clone()));
+            if !why.is_empty() {
+                frame = frame.child(gap(m::TIGHT)).child(body(why.clone()));
+            }
+            if !said.is_empty() {
+                // (What the host said, as it said it: told from Rex's own words.)
+                frame = frame
+                    .child(gap(m::SPACING))
+                    .child(small(olo_kit::tr!("{} said:", setup.host()).into()))
+                    .child(gap(m::TIGHT - 2.0))
+                    .child(well(StringView::new(said.clone()).mono(true).size(COMMAND_SIZE).wrap(true).into_element()));
+            }
+            frame.child(gap(m::SPACING)).child(buttons().child(button("Back", SetupDo::Back)).child(button("Try Again", SetupDo::Again).default(true))).into_element()
+        }
+        Stage::Done => col(),
+    }
 }
 
 /// The Forward Port window: a port of another host, and which host, to
@@ -1055,5 +1331,41 @@ mod tests {
         // On, but the server hasn't said where yet: nothing to scan.
         assert_eq!(Step::of(Some(&state("running"))), Step::Off);
         assert_eq!(Step::Off.code(), None);
+    }
+}
+
+#[cfg(test)]
+mod command_tests {
+    use super::command_lines;
+
+    /// A command is set on lines as one is written out by hand: broken
+    /// after a pipe or an `&&`, a long part at a space with a backslash,
+    /// what follows the first line set in; a short one is left alone.
+    #[test]
+    fn a_command_is_broken_where_one_would_break_it() {
+        assert_eq!(command_lines("rm -f /usr/local/bin/rex", 60), ["rm -f /usr/local/bin/rex"]);
+        assert_eq!(
+            command_lines("curl -fsSL https://pkgs.superlogical.com/rex/install.sh | sh -s -- --channel snapshot", 60),
+            ["curl -fsSL https://pkgs.superlogical.com/rex/install.sh |", "  sh -s -- --channel snapshot"]
+        );
+        assert_eq!(
+            command_lines("systemctl disable --now rex-login-server.socket rex-login-server.service && rm -rf /run/rex", 60),
+            ["systemctl disable --now rex-login-server.socket \\", "  rex-login-server.service &&", "  rm -rf /run/rex"]
+        );
+        // No line is longer than the room, where there is a space to break at; put back together it is the command.
+        for most in [30, 44, 60, 90] {
+            for command in [
+                "curl -fsSL https://pkgs.superlogical.com/rex/install.sh | sh -s -- --channel snapshot",
+                "systemctl disable --now rex-login-server.socket rex-login-server.service && rm -rf /run/rex",
+                "usermod --append --groups rex alice",
+                "a | b && c | d",
+            ] {
+                let lines = command_lines(command, most);
+                assert!(lines.iter().all(|l| l.chars().count() <= most || !l.trim().trim_end_matches(" \\").contains(' ')), "{most}: {lines:?}");
+                let joined = lines.iter().map(|l| l.trim().trim_end_matches('\\').trim_end()).collect::<Vec<_>>().join(" ");
+                assert_eq!(joined, command, "{most}");
+                assert!(lines.iter().skip(1).all(|l| l.starts_with("  ")) && !lines[0].starts_with(' '));
+            }
+        }
     }
 }

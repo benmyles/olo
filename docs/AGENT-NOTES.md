@@ -1214,6 +1214,54 @@ take `flex_grow` the ratio with no basis: with a basis of the ratio
 times a thousand points and equal growth, they are right only in a
 row a thousand points wide.
 
+### Setting a host up for Rex, and trying it (2026-11-22)
+
+- **Rex's own instructions are in four places**, and they agree: the
+  comments of its units (`rpm -ql rex`, then read
+  `/usr/lib/systemd/system/rex*.service`: the login server's says how
+  it is started, what its accounts file is, and why the shared server
+  and it can't both run), `/etc/rex/accounts.jsonc`'s own page of
+  comments, `rex server install --help` and `rex login-server --help`,
+  and its documentation (`https://www.superlogical.com/rex/docs/`,
+  pages `linux/installation`, `linux/server-modes`,
+  `linux/login-server`, `linux/shared-server`, `linux/remote-access`,
+  `linux/upgrading`; they are public and fetch with curl). Its
+  installer is `https://pkgs.superlogical.com/rex/install.sh`
+  (`--dry-run` prints what it would do; `--channel`, `--user`,
+  `--tarball`).
+- **The installer takes its own default channel** when a copy
+  installed alone recorded none: a host on the snapshot channel was
+  given the preview's package (an older build of another version).
+  Ask for the channel the host's `rex version` names
+  (`provision::Facts::channel`); switching back is the installer again
+  with `--channel`.
+- **One copy of Rex on a machine**: the bare one in `/usr/local/bin`
+  comes first on the PATH and is the one every `rex` command and
+  personal server runs, whichever is upgraded. Install the package,
+  stop the server the bare copy started, remove the copy.
+- **Over SSH a person reaches their own server** in every mode but
+  the shared one (`rex __internal dial-stdio` as that account): the
+  login server is for callers known another way (Tailscale), and on a
+  machine with logind an account's server under it is the same
+  personal server. So "login mode" for a person who connects over SSH
+  is: the package, the account listed (`peer:UID`), the login server
+  enabled, and the account's own server kept (`rex server install`).
+- **A popup menu isn't a window of its own to a test**: `list_windows`
+  has the window it belongs to, and the app's tree has its items with
+  no place to click. Open it with a click and choose with the keys
+  (`tsession key NAME 108` down, `28` Return).
+- **`{"type":"close","id":N}`** on a session's app_server closes a
+  window by its id (a stage of a dialog that offers no way out).
+- **Two runs of a picture script with one session name stop each
+  other**: a run sent to the background by a timeout was still going
+  when the next began, and its `finally` stopped the session under the
+  other ("Rex's window didn't come"). Wait for the first, or name the
+  sessions apart.
+- **Keep a test host tidy as you go**: each run that makes a session
+  there ends it (`rex ls`, `rex kill ID`), and the check that puts the
+  host back to "not set up" does it by the same commands a person
+  would run, not by restoring files it didn't write.
+
 ### A real remote host for Rex (2026-11-21)
 
 Ben gave a server "just for rex", reached over SSH with a key the
