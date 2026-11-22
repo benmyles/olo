@@ -58,6 +58,10 @@ pub enum WinRole {
     Askpass,
     /// A new name for a session or a tab ([`Renaming`]).
     Rename,
+    /// A host to add: its address, and a name.
+    AddHost,
+    /// A port of another host to forward here.
+    Forward,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -394,7 +398,7 @@ pub fn open_or_raise_panel(role: WinRole) {
     let id = next_win_id();
     let opts = match role {
         WinRole::Hosts => {
-            let mut o = WindowOptions { fixed: true, ..WindowOptions::new("Hosts", 580.0, 120.0).dialog() };
+            let mut o = WindowOptions { fixed: true, ..WindowOptions::new("Hosts and Ports", 580.0, 120.0).dialog() };
             o.restore_key = Some("rex-hosts".into());
             o
         }
@@ -409,6 +413,8 @@ pub fn open_or_raise_panel(role: WinRole) {
             o
         }
         WinRole::Askpass => WindowOptions::alert("SSH Authentication", 460.0, 120.0),
+        WinRole::AddHost => WindowOptions::alert("Add Host", 420.0, 120.0),
+        WinRole::Forward => WindowOptions::alert("Forward Port", widgets::ALERT_WIDTH, 120.0),
         WinRole::Rename => {
             let tab = app().renaming.as_ref().is_some_and(|r| r.window_id.is_some());
             WindowOptions::alert(if tab { "Rename Tab" } else { "Rename Session" }, widgets::ALERT_WIDTH, 120.0)
@@ -475,8 +481,14 @@ pub enum WinMsg {
     SelectHost(String),
     FindStep(bool),
     FindClose,
-    HostsAdd,
-    HostsManualForward,
+    /// The Hosts window's list chose another host; its ports' list,
+    /// another port.
+    HostsChosen,
+    PortsChosen,
+    /// The Forward Port window: Forward (true), or Cancel.
+    ForwardDone(bool),
+    /// The Add Host window: Add and Connect (true), or Cancel.
+    AddHostDone(bool),
     HostsForwardFrom(String),
     AskpassConfirm(bool),
     AskpassSubmit,
@@ -526,6 +538,15 @@ pub struct RexWindow {
     pub fwd_port_field: Option<Child<TextField>>,
     /// The host a port typed in the Hosts window is forwarded from (its key).
     pub fwd_host: Option<String>,
+    /// The Hosts window's list: its state, its rows as last said (the
+    /// list draws from them), and the host chosen in it (its key).
+    pub hosts_list: widgets::ListModel,
+    pub hosts_rows: Rc<Vec<panels::HostRow>>,
+    pub hosts_chosen: Option<String>,
+    /// And its list of ports, the same way (the one chosen by what it is).
+    pub ports_list: widgets::ListModel,
+    pub ports_rows: Rc<Vec<panels::PortRow>>,
+    pub ports_chosen: Option<panels::PortKind>,
     pub askpass_field: Option<Child<TextField>>,
     pub preedit: Option<String>,
     pub window_active: bool,
@@ -661,6 +682,12 @@ impl RexWindow {
             host_addr_field: None,
             fwd_port_field: None,
             fwd_host: None,
+            hosts_list: widgets::ListModel::new(false),
+            hosts_rows: Rc::default(),
+            hosts_chosen: None,
+            ports_list: widgets::ListModel::new(false),
+            ports_rows: Rc::default(),
+            ports_chosen: None,
             askpass_field: None,
             preedit: None,
             window_active: cx.is_window_active(),
@@ -673,23 +700,41 @@ impl RexWindow {
     fn new_panel(id: WinId, role: WinRole, cx: &mut olo_kit::Cx<Self>) -> Self {
         let focus = FocusHandle::new();
         let (host_label_field, host_addr_field, fwd_port_field, askpass_field) = match role {
-            WinRole::Hosts => {
-                // (Each with the name agents know it by: they read as
-                // three TextInputs with none, not to be told apart.)
-                let lf = widgets::text_field(cx, |f| f.name("Label").hint("Label (e.g. prod)"));
-                let af = widgets::text_field(cx, |f| f.name("Address").hint("ssh://user@host or host.ts.net"));
-                let pf = widgets::text_field(cx, |f| f.name("Port").hint("Port"));
-                cx.subscribe(&af, |_, e: &TextFieldEvent, cx| {
-                    if matches!(e, TextFieldEvent::Changed) {
+            WinRole::Forward => {
+                let pf = widgets::text_field(cx, |f| f.name("Port").hint("8080"));
+                pf.focus(cx);
+                cx.subscribe(&pf, |w: &mut Self, e: &TextFieldEvent, cx| match e {
+                    TextFieldEvent::Entered => w.submit_forward(cx),
+                    TextFieldEvent::Changed => cx.invalidate(),
+                    _ => {}
+                });
+                (None, None, Some(pf), None)
+            }
+            WinRole::AddHost => {
+                // (Each with the name agents know it by. The address
+                // first: it is what a host must have, and what is typed.)
+                let af = widgets::text_field(cx, |f| f.name("Address").hint("ssh://you@host or host.ts.net"));
+                let lf = widgets::text_field(cx, |f| f.name("Name"));
+                af.focus(cx);
+                cx.subscribe(&af, |w: &mut Self, e: &TextFieldEvent, cx| match e {
+                    TextFieldEvent::Entered => w.submit_add_host(cx),
+                    TextFieldEvent::Changed => {
+                        // (The name it will go by with none given, shown
+                        // in the empty Name field as the address is typed.)
+                        let address = w.host_addr_field.as_ref().map(|f| f.read(cx).text().to_owned()).unwrap_or_default();
+                        if let Some(name) = &w.host_label_field {
+                            name.update(cx, |f, cx| f.set_hint(crate::hub::host_name_from(&address), cx));
+                        }
                         cx.invalidate();
                     }
+                    _ => {}
                 });
-                cx.subscribe(&pf, |_, e: &TextFieldEvent, cx| {
-                    if matches!(e, TextFieldEvent::Changed) {
-                        cx.invalidate();
+                cx.subscribe(&lf, |w: &mut Self, e: &TextFieldEvent, cx| {
+                    if matches!(e, TextFieldEvent::Entered) {
+                        w.submit_add_host(cx);
                     }
                 });
-                (Some(lf), Some(af), Some(pf), None)
+                (Some(lf), Some(af), None, None)
             }
             WinRole::Rename => {
                 let (was, hint) = app().renaming.as_ref().map(|r| (r.was.clone(), r.hint())).unwrap_or_default();
@@ -720,6 +765,12 @@ impl RexWindow {
                 (None, None, None, None)
             }
         };
+        // (Hosts and Ports: the keyboard in its hosts' list from the
+        // start, for the arrows and a name typed.)
+        let hosts_list = widgets::ListModel::new(false);
+        if role == WinRole::Hosts {
+            hosts_list.focus(cx);
+        }
 
         Self {
             id,
@@ -749,6 +800,12 @@ impl RexWindow {
             host_addr_field,
             fwd_port_field,
             fwd_host: None,
+            hosts_list,
+            hosts_rows: Rc::default(),
+            hosts_chosen: None,
+            ports_list: widgets::ListModel::new(false),
+            ports_rows: Rc::default(),
+            ports_chosen: None,
             askpass_field,
             preedit: None,
             window_active: cx.is_window_active(),
@@ -1026,6 +1083,49 @@ impl RexWindow {
     /// renamed (as typed, less the space round it; nothing typed takes
     /// its name away), and how it went is said in the window it was
     /// asked from.
+    /// The hosts a port can be forwarded from (key, name): those other
+    /// than this computer (a port of it is here already) that have a
+    /// session to forward through.
+    fn forward_hosts(&self) -> Vec<(String, String)> {
+        let hub = app().hub.clone();
+        let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+        st.host_order.iter().filter_map(|k| st.hosts.get(k)).filter(|h| !h.is_local && !h.session_summaries.is_empty()).map(|h| (h.key.clone(), h.label.clone())).collect()
+    }
+
+    /// The Forward Port window's port, given: forwarded here from the
+    /// host chosen (the first, with none chosen), through a session of
+    /// it. Forwarded, not opened: a port typed may be a database's
+    /// ("Forward and Open" is for one a program in a pane is seen to
+    /// listen on). How it went is said in the workspace it was asked
+    /// from, and its row in Hosts says where it is here.
+    fn submit_forward(&mut self, cx: &mut olo_kit::Cx<Self>) {
+        let port = self.fwd_port_field.as_ref().and_then(|f| f.read(cx).text().trim().parse::<u16>().ok()).filter(|p| *p > 0);
+        let from = self.forward_hosts();
+        let key = self.fwd_host.clone().filter(|k| from.iter().any(|(key, _)| key == k)).or_else(|| from.first().map(|(k, _)| k.clone()));
+        let (Some(port), Some(key)) = (port, key) else { return };
+        let hub = app().hub.clone();
+        let session = hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(&key).and_then(|h| h.session_summaries.first().map(|s| s.session_id.clone()));
+        if let Some(session) = session {
+            hub.add_local_forward(&key, &session, "127.0.0.1".to_owned(), port, 0, false, Feedback::start(self.id));
+        }
+        cx.request_close();
+    }
+
+    /// The Add Host window's host, given: added (to Preferences ▸ Rex's
+    /// hosts, as every host is) and connected to; it goes by the host in
+    /// its address where it was given no name. Nothing without an address.
+    fn submit_add_host(&mut self, cx: &mut olo_kit::Cx<Self>) {
+        let typed = |f: &Option<Child<TextField>>| f.as_ref().map(|f| f.read(cx).text().trim().to_owned()).unwrap_or_default();
+        let (name, address) = (typed(&self.host_label_field), typed(&self.host_addr_field));
+        if address.is_empty() {
+            return;
+        }
+        let id = format!("host-{}", uuid::Uuid::new_v4().simple());
+        let hub = app().hub.clone();
+        hub.add_and_connect_host(id, if name.is_empty() { crate::hub::host_name_from(&address) } else { name }, address, true);
+        cx.request_close();
+    }
+
     /// Asks for a session's new name.
     fn rename_session(&self, host_key: &str, session_id: &str) {
         let label = {
@@ -1132,6 +1232,8 @@ impl RexWindow {
             }
             "app.settings" => olo_kit::app_menu::open_settings("rex"),
             "app.hosts" => open_or_raise_panel(WinRole::Hosts),
+            "app.add_host" => open_or_raise_panel(WinRole::AddHost),
+            "app.forward_port" => open_or_raise_panel(WinRole::Forward),
             "app.pair_device" => open_or_raise_panel(WinRole::Access),
             "app.diagnostics" => open_or_raise_panel(WinRole::Diagnostics),
             "app.new_window" => open_workspace_window(None),
@@ -1841,7 +1943,8 @@ impl RexWindow {
                 .item("Rename Session…", "session.rename")
                 .enabled(session.is_some())
                 .separator()
-                .item("Hosts…", "app.hosts")
+                .item("Hosts and Ports…", "app.hosts")
+                .item("Add Host…", "app.add_host")
                 .item("Remote Access…", "app.pair_device")
                 .item("Diagnostics…", "app.diagnostics")
                 .separator()
@@ -2600,7 +2703,7 @@ impl RexWindow {
             .flex_row()
             .items_center()
             .child(footer_bg)
-            .child(Button::new("Add Host…").small().on_click(cx.msg_with(|_: &olo_kit::ClickEvent| WinMsg::Command("app.hosts".into()))));
+            .child(Button::new("Add Host…").small().on_click(cx.msg_with(|_: &olo_kit::ClickEvent| WinMsg::Command("app.add_host".into()))));
 
         div()
             .relative()
@@ -2648,25 +2751,54 @@ impl RexWindow {
         let hub = app().hub.clone();
         match self.role {
             WinRole::Hosts => {
-                let (Some(lf), Some(af), Some(pf)) = (&self.host_label_field, &self.host_addr_field, &self.fwd_port_field) else {
-                    return div();
-                };
                 let hub_r = hub.clone();
                 let hub_d = hub.clone();
                 let window = self.id;
                 let hub_f = hub.clone();
                 let hub_s = hub.clone();
-                let from = self.fwd_host.clone();
                 let askpass = app().askpass.clone();
+                // The hosts as they stand now, for the list to draw
+                // from; the one chosen kept by its key, so it stays
+                // chosen as others come and go (the first, to begin with).
+                self.hosts_rows = Rc::new(panels::host_rows(&hub, &|endpoint| askpass.waits_for_agent(endpoint)));
+                let chosen = self.hosts_chosen.as_ref().and_then(|key| self.hosts_rows.iter().position(|h| &h.key == key)).or((!self.hosts_rows.is_empty()).then_some(0));
+                self.hosts_chosen = chosen.map(|i| self.hosts_rows[i].key.clone());
+                if self.hosts_list.state().single() != chosen
+                    && let Some(i) = chosen
+                {
+                    self.hosts_list.state_mut().select(i);
+                }
+                // The ports likewise: the one chosen kept by what it is.
+                self.ports_rows = Rc::new(panels::port_rows(&hub));
+                let port = self.ports_chosen.as_ref().and_then(|kind| self.ports_rows.iter().position(|p| &p.kind == kind));
+                if port.is_none() {
+                    self.ports_chosen = None;
+                }
+                if self.ports_list.state().single() != port {
+                    match port {
+                        Some(i) => self.ports_list.state_mut().select(i),
+                        None => self.ports_list.state_mut().selected.clear(),
+                    }
+                }
+                // (A port is forwarded from a host other than this
+                // computer, through a session of it.)
+                let can_forward = {
+                    let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                    st.hosts.values().any(|h| !h.is_local && !h.session_summaries.is_empty())
+                };
+                let (hosts, ports) = (self.hosts_rows.clone(), self.ports_rows.clone());
+                let (hosts_list, ports_list) = (self.hosts_list.clone(), self.ports_list.clone());
                 let panel = panels::render_hosts_panel(
                     cx,
-                    &hub,
-                    &|endpoint| askpass.waits_for_agent(endpoint),
-                    lf,
-                    af,
-                    pf,
-                    from.as_deref(),
-                    cx.msg_with(|_: &()| WinMsg::HostsAdd),
+                    &hosts_list,
+                    &hosts,
+                    chosen,
+                    &ports_list,
+                    &ports,
+                    port,
+                    can_forward,
+                    cx.msg_with(|_: &()| WinMsg::HostsChosen),
+                    cx.msg_with(|_: &()| WinMsg::Command("app.add_host".into())),
                     cx.msg_with(move |hk: &String| {
                         hub_r.connect_host(hk);
                         WinMsg::Redraw
@@ -2675,23 +2807,64 @@ impl RexWindow {
                         hub_d.remove_host(hk);
                         WinMsg::Redraw
                     }),
-                    cx.msg_with(move |(hk, sid, port, forward): &(String, String, u16, bool)| {
-                        if *forward {
-                            hub_f.add_local_forward(hk, sid, "127.0.0.1".to_owned(), *port, 0, true, Feedback::start(window));
-                        } else {
-                            hub_f.open_local_port(*port, Feedback::start(window));
-                        }
-                        WinMsg::Redraw
-                    }),
+                    cx.msg_with(|_: &()| WinMsg::PortsChosen),
+                    cx.msg_with(|_: &()| WinMsg::Command("app.forward_port".into())),
                     cx.msg_with(move |fid: &String| {
                         hub_s.remove_forward(fid);
                         WinMsg::Redraw
                     }),
-                    cx.msg_with(|_: &()| WinMsg::HostsManualForward),
-                    cx.msg_with(|key: &String| WinMsg::HostsForwardFrom(key.clone())),
-                    cx.msg_with(|_: &()| WinMsg::CloseWindow),
+                    cx.msg_with(move |kind: &panels::PortKind| {
+                        match kind {
+                            panels::PortKind::Listening { port, here: true, .. } => hub_f.open_local_port(*port, Feedback::start(window)),
+                            panels::PortKind::Listening { host_key, session_id, port, here: false } => {
+                                hub_f.add_local_forward(host_key, session_id, "127.0.0.1".to_owned(), *port, 0, true, Feedback::start(window))
+                            }
+                            panels::PortKind::Forwarded { local_port, .. } => hub_f.open_local_port(*local_port, Feedback::start(window)),
+                        }
+                        WinMsg::Redraw
+                    }),
                 );
                 div().w_full().flex().flex_col().child(panel).children(self.feedback_line(cx).map(|el| div().px(px(m::WINDOW_INSET)).pb(px(m::SPACING)).child(el)))
+            }
+            WinRole::Forward => {
+                let from = self.forward_hosts();
+                let chosen = self.fwd_host.as_ref().and_then(|key| from.iter().position(|(k, _)| k == key)).unwrap_or(0);
+                let Some(pf) = &self.fwd_port_field else {
+                    return div();
+                };
+                let typed = pf.read(cx).text().trim().parse::<u16>().is_ok_and(|p| p > 0);
+                let keys: Vec<String> = from.iter().map(|(k, _)| k.clone()).collect();
+                div()
+                    .w_full()
+                    .on_key_down(cx.listener(|_, e: &KeyDownEvent, cx| {
+                        if e.keystroke.key == "escape" {
+                            cx.stop_propagation();
+                            cx.send(WinMsg::ForwardDone(false));
+                        }
+                    }))
+                    .child(panels::render_forward_panel(
+                        cx,
+                        pf,
+                        from.iter().map(|(_, name)| name.clone().into()).collect(),
+                        chosen,
+                        typed && !from.is_empty(),
+                        cx.msg_with(move |i: &usize| WinMsg::HostsForwardFrom(keys.get(*i).cloned().unwrap_or_default())),
+                        cx.msg_with(|forward: &bool| WinMsg::ForwardDone(*forward)),
+                    ))
+            }
+            WinRole::AddHost => {
+                let (Some(name), Some(address)) = (&self.host_label_field, &self.host_addr_field) else {
+                    return div();
+                };
+                div()
+                    .w_full()
+                    .on_key_down(cx.listener(|_, e: &KeyDownEvent, cx| {
+                        if e.keystroke.key == "escape" {
+                            cx.stop_propagation();
+                            cx.send(WinMsg::AddHostDone(false));
+                        }
+                    }))
+                    .child(panels::render_add_host_panel(cx, name, address, cx.msg_with(|add: &bool| WinMsg::AddHostDone(*add))))
             }
             WinRole::Access => {
                 let step = {
@@ -3031,50 +3204,23 @@ impl View for RexWindow {
                 self.focus.focus(cx);
                 cx.invalidate();
             }
-            WinMsg::HostsAdd => {
-                let label = self.host_label_field.as_ref().map(|f| f.read(cx).text().trim().to_owned()).unwrap_or_default();
-                let addr = self.host_addr_field.as_ref().map(|f| f.read(cx).text().trim().to_owned()).unwrap_or_default();
-                if !addr.is_empty() {
-                    let lbl = if label.is_empty() { addr.clone() } else { label };
-                    let id = format!("host-{}", uuid::Uuid::new_v4().simple());
-                    let hub = app().hub.clone();
-                    hub.add_and_connect_host(id, lbl, addr, true);
-                    if let Some(f) = &self.host_label_field {
-                        f.update(cx, |f, cx| f.set_text(String::new(), cx));
-                    }
-                    if let Some(f) = &self.host_addr_field {
-                        f.update(cx, |f, cx| f.set_text(String::new(), cx));
-                    }
-                    cx.invalidate();
-                }
+            WinMsg::HostsChosen => {
+                let row = self.hosts_list.state().single();
+                self.hosts_chosen = row.and_then(|i| self.hosts_rows.get(i)).map(|h| h.key.clone());
+                cx.invalidate();
             }
+            WinMsg::PortsChosen => {
+                let row = self.ports_list.state().single();
+                self.ports_chosen = row.and_then(|i| self.ports_rows.get(i)).map(|p| p.kind.clone());
+                cx.invalidate();
+            }
+            WinMsg::ForwardDone(true) => self.submit_forward(cx),
+            WinMsg::ForwardDone(false) => cx.request_close(),
+            WinMsg::AddHostDone(true) => self.submit_add_host(cx),
+            WinMsg::AddHostDone(false) => cx.request_close(),
             WinMsg::HostsForwardFrom(key) => {
                 self.fwd_host = Some(key);
                 cx.invalidate();
-            }
-            WinMsg::HostsManualForward => {
-                let port_s = self.fwd_port_field.as_ref().map(|f| f.read(cx).text().trim().to_owned()).unwrap_or_default();
-                if let Ok(port) = port_s.parse::<u16>()
-                    && port > 0
-                {
-                    let hub = app().hub.clone();
-                    // From the host chosen (the first of the others, with none chosen),
-                    // through a session of it.
-                    let target = {
-                        let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
-                        let key = self.fwd_host.clone().or_else(|| st.host_order.iter().find(|k| st.hosts.get(*k).is_some_and(|h| !h.is_local)).cloned());
-                        key.and_then(|key| st.hosts.get(&key)).and_then(|h| h.session_summaries.first().map(|s| (h.key.clone(), s.session_id.clone())))
-                    };
-                    // (Forwarded, not opened: a port typed here may be a
-                    // database's. "Forward and Open" is for one a program
-                    // in a pane is seen to listen on.)
-                    if let Some((hk, sid)) = target {
-                        hub.add_local_forward(&hk, &sid, "127.0.0.1".to_owned(), port, 0, false, Feedback::start(self.id));
-                    }
-                    if let Some(f) = &self.fwd_port_field {
-                        f.update(cx, |f, cx| f.set_text(String::new(), cx));
-                    }
-                }
             }
             WinMsg::AskpassConfirm(ok) => {
                 let is_secret = matches!(app().askpass.current_request(), Some(AskpassRequest::Secret { .. }));

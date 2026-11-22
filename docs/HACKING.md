@@ -26753,6 +26753,34 @@ divider under the pointer in a split of any size, neither pane under
 Width" or "Pane Height", its value the first pane's share. The
 sidebar's divider is `side_divider_within` its row.
 
+**Hosts and Ports** (panels.rs `render_hosts_panel`; 2026-11-22, both
+reviewers' design: it was a row of buttons for each host and each
+port, and two forms set in the window). Two column lists, one over the
+other, each under its heading and with its buttons under it, all six
+one width. *Hosts*: name, address (without `ssh://`; "Local" for this
+computer's own server), status: a light and a state in a word
+(`host_state`: Connected, Connecting…, Waiting for your key agent…,
+Disconnected, Failed); Add…, Remove (not this computer) and Connect (a
+host that isn't connected: there is no way to disconnect one yet). What
+went wrong with the chosen host is said whole in a line under the
+buttons, after its red light, in a line whose room is always kept.
+*Ports*: those forwarded here first ("5432 → 49152", Forwarded,
+Reconnecting…, Failed), then those programs in the panes listen on
+(Listening); Forward…, Stop (Remove for one that failed) and Open (a
+port here is opened; another host's is forwarded first; a forwarded
+one is opened where it is here). The two Status columns begin at one
+place (`STATUS_AT`). The lists are `ColumnListView`s drawing from rows
+the window keeps (`hosts_rows`, `ports_rows`: `host_rows`,
+`port_rows`), the chosen host kept by its key and the chosen port by
+what it is, so they stay chosen as others come and go. *Add Host* and
+*Forward Port* are small windows of their own (`WinRole::AddHost`,
+`Forward`): an address and a name (given none, a host goes by the
+first part of the host in its address, which the empty Name field
+shows: `hub::host_name_from`); a port and the host it is of. A host
+added is one of Preferences ▸ Rex's hosts, as every host is.
+`OLO_REX_DEMO_HOSTS=states` gives the demo hosts and forwards in every
+state, for pictures.
+
 **What a pane and a tab are called** (2026-11-22). A pane's head, and
 its name to agents, is `hub::pane_title` (`BlockRuntime::said`): the
 title its program gave it, if it gave one (the pane's title starts as

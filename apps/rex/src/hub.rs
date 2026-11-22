@@ -459,6 +459,28 @@ enum HostInputOp {
     Key { session_id: String, block_id: String, event: RexKeyEvent },
 }
 
+/// The name a host goes by when it is given none: the host in its
+/// address, by its first part ("ssh://you@build.example:2222" is
+/// "build"), not the address whole; a numeric address is itself.
+pub fn host_name_from(address: &str) -> String {
+    let rest = address.trim();
+    let rest = rest.split_once("://").map_or(rest, |(_, r)| r);
+    let rest = rest.rsplit_once('@').map_or(rest, |(_, r)| r);
+    let rest = rest.split(['/', '?']).next().unwrap_or(rest);
+    // (A port after the host; an IPv6 address in brackets keeps its colons.)
+    let host = match rest.strip_prefix('[').and_then(|r| r.split_once(']')) {
+        Some((v6, _)) => v6,
+        None => rest.rsplit_once(':').filter(|(_, port)| !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit())).map_or(rest, |(host, _)| host),
+    };
+    if host.is_empty() {
+        return address.trim().to_owned();
+    }
+    // (A name's first part is the name people say, "build" of
+    // "build.example"; a number is itself, whole.)
+    let numeric = host.contains(':') || host.bytes().all(|b| b.is_ascii_digit() || b == b'.');
+    if numeric { host.to_owned() } else { host.split('.').next().unwrap_or(host).to_owned() }
+}
+
 /// The demo's word of the program running in one of its panes.
 fn demo_process(name: &str) -> TerminalProcessSnapshot {
     let foreground = olo_rex_client::ProcessInfo { pid: 4210, name: name.to_owned(), ..Default::default() };
@@ -1169,37 +1191,48 @@ impl RexHub {
         shell.data_connected = true;
         shell.terminal.vt_write(b"api-prod: service ready\r\n");
         st.blocks.insert(BlockKey { host_key: "dev-box".into(), session_id: remote.session_id.clone(), block_id: "remote-shell".into() }, Arc::new(Mutex::new(shell)));
-        st.hosts.insert(
-            "dev-box".to_owned(),
-            HostRuntime {
-                key: "dev-box".to_owned(),
-                label: "dev-box.ts.net".to_owned(),
-                endpoint_raw: "ssh://you@dev-box.example".to_owned(),
-                endpoint: None,
-                is_local: false,
-                conn_state: HostConnState::Connected,
-                connection_lost: None,
-                client_id: None,
-                reconnect_token: None,
-                retry: None,
-                server_status: None,
-                server_version: None,
-                tailscale: None,
-                tailscale_seq: 0,
-                synced_hosts: Vec::new(),
-                session_summaries: vec![SessionSummary { session_id: remote.session_id.clone(), label: remote.label.clone() }],
-                sessions: HashMap::from([(remote.session_id.clone(), remote)]),
-                pending_focus: HashMap::new(),
-                keymap_bindings: Vec::new(),
-                keymap_modes: Vec::new(),
-                keymap_diagnostics: Vec::new(),
-                control: None,
-                input_tx: None,
-                bridge_server: None,
-                bridge_remote_port: None,
-            },
-        );
+        let demo_host = |key: &str, label: &str, endpoint: &str, conn_state: HostConnState, sessions: Vec<SessionView>| HostRuntime {
+            key: key.to_owned(),
+            label: label.to_owned(),
+            endpoint_raw: endpoint.to_owned(),
+            endpoint: None,
+            is_local: false,
+            conn_state,
+            connection_lost: None,
+            client_id: None,
+            reconnect_token: None,
+            retry: None,
+            server_status: None,
+            server_version: None,
+            tailscale: None,
+            tailscale_seq: 0,
+            synced_hosts: Vec::new(),
+            session_summaries: sessions.iter().map(|s| SessionSummary { session_id: s.session_id.clone(), label: s.label.clone() }).collect(),
+            sessions: sessions.into_iter().map(|s| (s.session_id.clone(), s)).collect(),
+            pending_focus: HashMap::new(),
+            keymap_bindings: Vec::new(),
+            keymap_modes: Vec::new(),
+            keymap_diagnostics: Vec::new(),
+            control: None,
+            input_tx: None,
+            bridge_server: None,
+            bridge_remote_port: None,
+        };
+        st.hosts.insert("dev-box".to_owned(), demo_host("dev-box", "dev-box", "ssh://you@dev-box.example", HostConnState::Connected, vec![remote]));
         st.host_order.push("dev-box".to_owned());
+        // (`OLO_REX_DEMO_HOSTS=states`: hosts in the other states too,
+        // for the Hosts window's pictures: connecting, disconnected, and
+        // one that failed with a reason long enough to be cut.)
+        if std::env::var("OLO_REX_DEMO_HOSTS").ok().as_deref() == Some("states") {
+            for (key, label, endpoint, state) in [
+                ("build", "build", "ssh://you@build.example", HostConnState::Connecting),
+                ("nas", "nas", "nas.ts.net", HostConnState::Disconnected),
+                ("staging", "staging", "ssh://deploy@staging.example:2222", HostConnState::Error("Permission denied: the host rejected all the keys your agent offered.".to_owned())),
+            ] {
+                st.hosts.insert(key.to_owned(), demo_host(key, label, endpoint, state, Vec::new()));
+                st.host_order.push(key.to_owned());
+            }
+        }
     }
 
     pub fn connect_host(&self, host_key: &str) {
@@ -3368,6 +3401,19 @@ mod tests {
         block.set_find_query(Some("replacement")).unwrap();
         block.search.run().unwrap();
         assert_eq!(block.search.total_matches(), 1);
+    }
+
+    #[test]
+    fn a_host_given_no_name_goes_by_the_host_in_its_address() {
+        assert_eq!(host_name_from("ssh://you@build.example"), "build");
+        assert_eq!(host_name_from("ssh://deploy@staging.example:2222/"), "staging");
+        assert_eq!(host_name_from("nas.ts.net"), "nas");
+        assert_eq!(host_name_from("localhost"), "localhost");
+        assert_eq!(host_name_from("you@10.0.0.7:22"), "10.0.0.7");
+        assert_eq!(host_name_from("ssh://[fd7a::1]:22"), "fd7a::1");
+        // Nothing to take a host from: the address as typed.
+        assert_eq!(host_name_from("  "), "");
+        assert_eq!(host_name_from("ssh://"), "ssh://");
     }
 
     #[test]

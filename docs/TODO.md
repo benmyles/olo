@@ -960,14 +960,16 @@ something nobody here has is in "Blocked", with what it waits for.
     (Renaming a session or a tab and moving a tab are done, and a
     password asked for is seen: HACKING, Rex, "Names and places",
     "A password asked for".)
-  - *The Hosts window, again* (both reviews, 2026-11-21): a list of
-    hosts (light, name, address, sessions) with Add…, Remove and
-    Reconnect under it acting on the one selected, in place of buttons
-    on every row; Add Host as a dialog (the sidebar's Add Host… too);
-    the forwarded ports a window or a tab of their own, each row with
-    its light, its reason and Stop; a host named by an address shown as
-    one. Diagnostics in two groups (the server; this app), saying which
-    host it describes.
+  - *Hosts and Ports, what is left* (the window is redone: HACKING,
+    Rex, "Hosts and Ports"): a host can't be disconnected (the hub has
+    no call for it: Connect is all the window offers); a host's row
+    opened (a double click) could start a session there; Diagnostics
+    in two groups (the server; this app), saying which host it
+    describes. From the reviews, the kit's or the desktop's: a list's
+    scroll arrows look live when every row fits; in the dark looks a
+    list's well hardly stands out from the window and the list with
+    the keyboard isn't told from the other; a small window opens with
+    its tab over its parent's menu bar or its list's headings.
   - *The layout lint on a busy machine* (tools/dev/ui-lint): it waits
     up to a quarter of an hour for room before *each* app's session,
     so with the machine kept busy by other work a push's lint has no
@@ -990,7 +992,10 @@ something nobody here has is in "Blocked", with what it waits for.
     (`session_event.client_connected`, and `client_disconnected`) is a
     client beginning and stopping to follow a session (every `rex`
     command is one while it runs): known now, and nothing to show for
-    it yet (who else is in a session would be the use).
+    it yet (who else is in a session would be the use). Seen once in a
+    dozen runs there and not explained: the far host's session didn't
+    appear after its key was trusted, nor for the rest of the run (the
+    check prints what the app says if it comes again).
   - *From the design reviews, not yet done*: "Starting…" with a busy
     mark (the kit has none small: one for the kit); a disconnected
     host's last-known sessions kept, dimmed; the disconnected mark on

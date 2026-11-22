@@ -262,13 +262,14 @@ pub fn action_catalog() -> Vec<ActionSpec> {
         ActionSpec { id: "app.toggle_sidebar", title: "Toggle Sidebar", category: "View", keywords: &["hosts", "sessions", "drawer"], args_schema: None },
         ActionSpec { id: "app.settings", title: "Rex Settings…", category: "General", keywords: &["preferences", "hosts", "permissions", "notifications"], args_schema: None },
         ActionSpec { id: "app.diagnostics", title: "Rex Diagnostics…", category: "Diagnostics", keywords: &["debug", "server", "status", "version"], args_schema: None },
-        ActionSpec { id: "app.hosts", title: "Hosts & Port Forwards…", category: "Network", keywords: &["ssh", "remote", "tailscale", "tunnels", "ports"], args_schema: None },
+        ActionSpec { id: "app.hosts", title: "Hosts and Ports…", category: "Network", keywords: &["ssh", "remote", "tailscale", "tunnels", "ports"], args_schema: None },
         ActionSpec { id: "app.pair_device", title: "Remote Access…", category: "Network", keywords: &["pair", "device", "phone", "qr", "tailscale"], args_schema: None },
         ActionSpec { id: "app.new_window", title: "New Window", category: "Window", keywords: &["window", "open"], args_schema: None },
         ActionSpec { id: "app.close_window", title: "Close Window", category: "Window", keywords: &["window", "close"], args_schema: None },
         ActionSpec { id: "app.quit", title: "Quit Rex", category: "General", keywords: &["exit", "quit"], args_schema: None },
         ActionSpec { id: "app.reload_config", title: "Reload Server Configuration", category: "General", keywords: &["lua", "config", "reload"], args_schema: None },
         // ---- Sessions ----
+        ActionSpec { id: "app.add_host", title: "Add Host…", category: "App", keywords: &["remote", "ssh", "server", "connect"], args_schema: None },
         ActionSpec { id: "session.new", title: "New Session", category: "Session", keywords: &["create", "workspace", "session"], args_schema: None },
         ActionSpec { id: "session.close", title: "Close Session", category: "Session", keywords: &["kill", "delete"], args_schema: None },
         // ---- Windows / Tabs ----
