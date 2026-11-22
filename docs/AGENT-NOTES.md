@@ -557,9 +557,12 @@ Learned making To-Do (2026-11-19 and 20):
   one over it (two siblings' shared edge isn't one pixel row at every
   scale: draw the line from the pane both are in, `view::foot_line`).
 - **Reviewers' pictures: absolute paths, one command each.**
-  `codex-look` and `opus-look` run from the pictures' folder; started
-  together in one shell line with `&`, one ran from the repository.
-  Run each as its own background command.
+  `agy-look` and `opus-look` are given the pictures' whole paths (each
+  works on copies in a folder of its own); started together in one
+  shell line with `&`, one ran from the repository's other checkout
+  (`cd X && A & B`: the `cd` is part of the first job only, and B ran
+  the main checkout's old script, 2026-11-22). Run each as its own
+  background command.
 - **A bare `TextField` shows nothing until it has a size.** One line:
   a container of a set height with the field in it `absolute().
   inset_0()`. Several lines: `.scrolled_by(&handle)`, in a `ScrollView`
@@ -925,7 +928,7 @@ frames a second with nobody at it):
   service of its own (`olo-notifications` refuses outside a real
   session without `--bus`).
 - **Two reviewers started together**: set what they share on lines of
-  their own, then `( codex-look … ) & ( opus-look … ) & wait`. With
+  their own, then `( agy-look … ) & ( opus-look … ) & wait`. With
   `S=… && ABOUT=… && ( … ) & ( … ) & wait` the assignments are part of
   the first job, and the second runs without them (its pictures'
   paths were empty: "no picture /NAME.png").
@@ -1326,9 +1329,9 @@ lint failed: timed out". Read and plan during a push; build after it.
   continue"): two subagents sat there doing nothing until looked at
   (`agents list` said "idle" from the first second). The person's
   hooks are for their own sessions and theirs to trust: our Codex
-  (`tools/dev/agents`, `codex-help`, `codex-look`) runs with
-  `--disable hooks`. An agent idle within a minute of its start: `agents
-  peek` it before anything else.
+  agents ran with `--disable hooks` (the helpers are agy now, with
+  none of the person's hooks or settings). An agent idle within a
+  minute of its start: `agents peek` it before anything else.
 - **`agents forget NAME` removes everything in its folder**, what the
   agent gathered too (notes, captures), not only its builds: copy what
   the next agent will want before forgetting one.
@@ -1546,7 +1549,7 @@ Learned on the second pass (2026-11-20):
   program's, not Olo's. Don't test this by running Olo's programs and
   reading the status after: something else wakes it meanwhile.
 - **A test that stashes or checks out to compare can't be run while a
-  reviewer reads the tree** (`codex-help`): compare by copying the one
+  reviewer reads the tree** (`agy-help`): compare by copying the one
   file aside and putting it back, or wait.
 
 ## Ben's computer
@@ -1601,9 +1604,8 @@ Learned on the second pass (2026-11-20):
   in its environment (`tsession run NAME WAYLAND_DEBUG=1 …`) puts every
   request and event in the session's `olo-chrome.log`.
 - **A second investigator for a cause you can't find**: the
-  `olo-debug-help` skill (`tools/dev/codex-help BRIEF.md`, a headless
-  Codex in the background; its log's first lines say the model, the
-  effort and the sandbox it got).
+  `olo-debug-help` skill (`tools/dev/agy-help BRIEF.md`: an agy in a
+  tmux session, read with `tools/dev/agents peek help-FOLDER`).
 - **Notifications in a test session**: `tsession start NAME --session`
   has no notification service; run `olo-notifications --bus
   "$DBUS_SESSION_BUS_ADDRESS"` in it (`tsession run`). They show at the
@@ -1690,7 +1692,7 @@ Learned on the second pass (2026-11-20):
   cleans at most hourly, and only in a minute when no cargo command
   runs anywhere on the computer (three passes between the 18th and the
   21st): `kache clean -n` says what the next pass takes, and nothing
-  forces one. What it doesn't know it never cleans: a Codex agent's
+  forces one. What it doesn't know it never cleans: a subagent's
   `target/` (`tools/dev/agents` removes it a day after the agent's
   last build) and a build folder its registry forgot (`kache clean
   DIR -n` finds those: two worktrees' were 70 GB, the older idle for
@@ -1849,8 +1851,9 @@ Learned on the second pass (2026-11-20):
 ## Working with the repository
 
 - **A shell script isn't edited while it runs.** bash reads a script
-  as it goes, by its place in the file: `tools/dev/codex-help`,
-  rewritten while a helper it had started was still at work, read on
+  as it goes, by its place in the file: the helper's script (then
+  `tools/dev/codex-help`), rewritten while a helper it had started was
+  still at work, read on
   from the same place in the new text when the helper ended and
   stopped with a syntax error "at line 96" in lines that were sound
   (2026-11-20; the helper's answer was already written, by luck, and
@@ -1897,16 +1900,48 @@ Learned on the second pass (2026-11-20):
   (`std::env::var_os("CARGO_MANIFEST_DIR")`), never with `env!`. A build
   script that fails on a path that exists: read the `env-dep` lines of
   its `target/*/build/PKG/*/out/build_script_build.d`.
-- **Codex subagents** (`tools/dev/agents`, the `olo-codex-agents`
-  skill, which has the details). What codex-cli 0.170 does that its help
-  doesn't say: `--approve-for-me` brings the workspace-write sandbox and
-  refuses `-s` beside it ("cannot be used with"); with `-c`, `--enable`
-  or `--disable` it runs without the shared background server (a
-  warning, harmless, but `codex queue` can't reach it: steer through
-  tmux); text typed into its TUI quickly is a paste, an Enter in the
-  same burst a new line in it (send Enter apart); its sandbox writes
-  `/tmp` and `/var/tmp` as well as the repository; the posthog MCP
-  warning at its start is the person's unlogged server, harmless.
+- **Every helper is an agent in tmux** (`tools/dev/agents`, the
+  `olo-agents` skill, which has the details; Gemini 4 Neon at high in
+  `agy`, and Opus 5.5 in `claude` for the design review, since
+  2026-11-22: Codex and Astra before). What agy 1.5.14 does that its
+  help doesn't say:
+  - With no `--mode` it starts in `auto`, which judges for itself what
+    is safe and runs a command outside its sandbox when the sandbox
+    refuses it: `rm` and a `sudo -n true` went through unasked. Our
+    agents run in `accept-edits`, with lists.
+  - `--settings FILE` is for that run only and lies over the person's
+    `~/.gemini/antigravity-cli/settings.json`: `trustedWorkspaces`
+    (without the folder there, agy asks "Do you trust the contents of
+    this project?" at its start and waits), `permissions.allow` and
+    `permissions.deny`, lists of `command(PREFIX)` (also
+    `read_file(/abs/path)`, `write_file(/abs/path)`, `mcp(*)`). A
+    compound command (a pipe, `&&`) goes ahead when each part is
+    allowed; output sent to a file with `>` asks whatever the command;
+    a denied one fails at once, unasked.
+  - Its question's third choice, "… (Persist to settings.json)", writes
+    the rule into the person's settings: the tool refuses to take it.
+    (A trial of mine took it once, for `ls`; put back the same hour.)
+  - `agy --print` answers only at its end, and nothing shows whether it
+    is thinking or waiting: a look at three pictures sat silent for
+    eight minutes. Never used (CLAUDE.md, "Every helper in a tmux
+    session").
+  - While it works, a message typed to it is queued ("alt+m to send
+    immediately"); its last line then reads "Press up to edit queued
+    messages", not "esc to cancel", and only its spinner says it is
+    working. `agents say NAME --now` sends alt+m.
+  - Its banner prints the account it is signed in to: `agents` leaves
+    the banner's lines out of everything it prints. Don't
+    `tmux capture-pane` an agent's session by hand into a file that is
+    kept or sent.
+  - At xhigh, a look with nothing to measure with went round three
+    pictures for ten minutes without writing a word; at high, with a
+    brief that says to judge by eye and write, minutes.
+  And the Claude CLI (2.1.330), for Opus's review: `--tools` and
+  `--add-dir` take every word that follows them, so the prompt goes
+  after an option that takes none (it was taken for a folder to add,
+  and the session sat at "Is this a directory you created or one you
+  trust?"); `--restricted` keeps its file tools to the folder it
+  starts in, and leaves out the person's settings and hooks.
 - **Commit and push regularly**: push to origin after commits (LFS
   through the proxy may need a second try: find why if it fails twice).
   Push from a worktree of its own (`git worktree add --detach
@@ -2198,23 +2233,21 @@ Learned on the second pass (2026-11-20):
   state. `grep -rn` the names of the thing (the loader's variables,
   the driver's name) across `crates/` and `apps/` before proposing
   a mechanism, and say "not traced" until it is.
-- **A review by Astra (at xhigh, as all its work for Olo is now)
-  before anything that touches a driver, a
-  kernel interface or memory is relied on** (Ben, 2026-11-20: "very
-  important so that there are no mistakes"): `tools/dev/codex-help`
-  with a brief that names the commits, asks for the kernel's source
-  behind each claim, and asks plainly whether each is safe to run.
-  It found a hold that woke what it was to protect, a finding that
-  said "stuck" at one glance, three claims in commit messages that
-  weren't shown, and a spin in a root service that had been there for days. Nothing
-  reviewed so is pushed before its findings are
-  dealt with.
-- **A Codex agent can ask while it works on**: "Queued follow-up
-  inputs", "? 1 question" at the foot of its screen, and neither
-  `agents list` nor (until 2026-11-20) `agents watch` said so: one sat
-  six minutes. `tools/dev/agents question NAME [N]` now; `watch`
-  returns for it. And its status line's "weekly N% left" is the
-  account's allowance: at 0% it may stop mid-task.
+- **A second review before anything that touches a driver, a kernel
+  interface or memory is relied on** (Ben, 2026-11-20: "very important
+  so that there are no mistakes"; the reviewer was Astra then, Gemini 4
+  Neon now): `tools/dev/agy-help` with a brief that names the commits,
+  asks for the kernel's source behind each claim, and asks plainly
+  whether each is safe to run. The first such review found a hold that
+  woke what it was to protect, a finding that said "stuck" at one
+  glance, three claims in commit messages that weren't shown, and a
+  spin in a root service that had been there for days. Nothing
+  reviewed so is pushed before its findings are dealt with.
+- **An agent's question shows as `asking`** in `agents list`, and
+  `watch` returns for it at once: `agents approve NAME y|p|no` for
+  leave to run something, `agents answer NAME N` for another question's
+  Nth choice, `agents keys NAME down enter` where the choices have no
+  numbers.
 - **A new crate for an agent needs its Cargo.toml first** (`agents
   start` refuses a folder that isn't a crate): a stub that builds,
   then start it. Its dependencies change Cargo.lock in the shared

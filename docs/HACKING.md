@@ -21385,79 +21385,157 @@ tested on few computers. **When a kind of hardware gets a new home in
 Olo (a new section here, a new place per-machine data lives), say so in
 that skill**: it is the map a stranger's agent follows.
 
-**The `olo-debug-help` skill** (`.claude/skills/olo-debug-help/SKILL.md`,
-the repository's own, for whoever works on Olo; Ben, 2026-11-18: "if
-you need help root-causing a bug like this you can launch in a subshell
-a codex instance running gpt-6.2-astra on max effort in headless mode
-with auto approve -- actually add a skill for doing that in this repo")
-is for a cause that won't be found: a written brief (the symptom, the
-evidence, what was tried and ruled out, the code on the path, how far
-it reproduces) goes to `tools/dev/codex-help BRIEF.md`, which runs
-`codex exec -m gpt-6.2-astra -c model_reasoning_effort="xhigh"
---approve-for-me` (xhigh since 2026-11-20, Ben: "whenever you use astra
-6.2 it should be on xhigh not max") in the repository with the rules in front (the
-working tree unchanged, no commits, the person's session left alone,
-headless tests under a `codex-` name, scratch in the brief's folder,
-no helper of its own), in the background, and writes `answer.md` and
-`log.txt` beside the brief. What it says is a lead: checked, then
-fixed by whoever asked. It is one of the Codex helpers CLAUDE.md's
-"Subagents" allows. `.claude/` is ignored but for `.claude/skills/`.
+**Help with Olo's development, each helper in a tmux session**
+(`tools/dev/agents`; the `olo-agents` and `olo-debug-help` skills in
+`.claude/skills/`, the repository's own, for whoever works on Olo;
+`.claude/` is ignored but for `.claude/skills/`). Three kinds of help
+CLAUDE.md's "Subagents" allows, all Gemini 4 Neon at high in the
+Antigravity CLI (`agy`) but the design review, which is Opus 5.5 in the
+Claude CLI. Until 2026-11-22 they were Codex (gpt-6.2-astra), the looks
+and the investigator as headless runs; Ben then: "stop using
+codex/astra for olo qa/dev tasks and everywhere we use codex/astra at
+the moment for olo dev/qa replace it with antigravity (`agy`) and
+gemini 4 neon on xhigh … i don't mean getting rid of astra support in
+olo itself" (and the same day: "switch the reasoning level to high for
+both of them"), run "via tmux … so that you will get notified when it
+needs you and be able to steer it and approve things", with "the auto
+approval stuff [configured] to auto approve all the most common
+commands it might need to run", and, when a headless look had sat
+silent for eight minutes, "always do it through tmux never a script
+that just goes silent … for all the subagents/reviewers etc".
 
-**A second look at every change's pictures** (`tools/dev/codex-look`;
-Ben, 2026-11-18, after a status line set right under its paragraph
-reached him on every Integrations tab: "provide all screenshots of
-changes to a codex agent … using astra 6.2 on medium for a second
-review / set of eyes to identify anything you missed"): `codex-look
---about "WHAT CHANGED" PICTURE.png…` hands the pictures to `codex exec
--m gpt-6.2-astra -c model_reasoning_effort="medium" -s read-only` with
-a designer's brief (spacing, alignment, text cut or crowded, what's out
-of keeping), prints what it finds and keeps it as `codex-look.md`
-beside the first picture. It takes a minute or two. Its first look,
-at the Fastmail tab and Calendar's notes, found four things: one fixed
-(CalDAV's empty list worded as Google's), three judged and kept (a
-scrolled view's partial lines at its edges, as the kit's other views
-have them; Integrations' one height for every tab; a refused
-connection's wording, seen only against a made-up server). What it
-says is checked against the picture, as the debug helper's is.
+So every helper is its program's own interactive screen in a session
+of one tmux server (`tmux -L olo-agents`), its pane kept when the
+program ends; both programs draw inline, so a session's screen and
+history are its transcript (`tmux capture-pane`). `tools/dev/agents`
+starts them and is how they are worked with: `list` (each one's state:
+working, asking, idle, exited), `peek NAME` and `log NAME` (its screen,
+its whole transcript, less the banner that names the account the
+program is signed in to), `say NAME TEXT` (pasted into its field, then
+sent), `approve NAME y|p|no` and `answer NAME N` (what it asks),
+`keys NAME …` (for choices without numbers; `esc` stops its step),
+`stop`, `forget`, and `watch`, which runs in the background whenever
+any agent does: it prints a line a minute for each (its state, the last
+line of its screen) and returns the moment one asks something,
+finishes a turn (said once for one that has written its result, which
+`list` shows as `done` from then on), exits, or has shown nothing new
+for 15 minutes. A message said to an agent that is working is queued by
+agy for the end of its step; `say NAME --now` has it delivered at once.
+The states are read from what each program shows (agy: "esc to cancel"
+at the start of its last line while it works, "↑/↓ Navigate" under a
+question's numbered choices; Claude Code: "esc to interrupt" in its
+last line, "Esc to cancel" under a question); a new version of either
+that words these differently is fixed there, in `ASKING` and `WORKING`.
 
-**And a designer's review of them** (`tools/dev/opus-look`; Ben,
-2026-11-19, of To-Do's first pictures: "omg so much is ugly make sure
-you get visual design reviews from opus 5.5 and astra 6.2"): `opus-look
---about "WHAT IT IS, WHAT CHANGED" PICTURE.png…` hands the same
-pictures to Claude Opus 5.5 (`claude -p --model claude-opus-5-5
---effort high`, the Read tool alone, run from the pictures' folder so
-nothing of the project is loaded and nothing can be changed) with a
-product designer's brief: composition, hierarchy, rhythm, colour, what
-looks amateur or unfinished or out of keeping with the desktop, and
-what to do about each, the most important first. It keeps its review as
-`opus-look.md` beside the first picture. It can only look, so give it
-whole windows and enlarged crops. Every change's pictures go to both
-before a commit, and something new goes to both early, before it's
-built out: codex-look is for what's wrong by a pixel, opus-look for
-whether the design is any good.
+So that no helper waits on a lead who is in the middle of something,
+the lead starts **a minder** with them: one subagent of the Agent tool
+(general-purpose, Fable 5.2 at medium), whose standing instructions are
+`.claude/skills/olo-agents/minder.md` (it waits on `agents watch --for
+9` in the foreground; Ben, 2026-11-22: "launch a fable
+5.2 medium subagent whose only job is to launch and manage the tmux
+sessions for these tmux subagents so that they get their responses
+quickly"; a question had waited 66 seconds). It starts the agents it is
+given, waits on `agents watch`, says yes or no at once to what its
+written lists cover, and hands back what they don't, with each result's
+path. It does none of the work; it is the one use of the Agent tool.
 
-**Codex subagents** (`tools/dev/agents`, the `olo-codex-agents` skill;
-Ben, 2026-11-19: "you now have permission to utilize subagents for
-narrow, targeted work items that can be parallelized. they must be able
-to work in this same worktree without clobbering each other, ideally
-with their work scoped to a single crate that only one agent is working
-in at any given time … use codex via a subprocess to do the work with
-astra 6.2 on xhigh … in interactive mode via e.g. tmux … where you can
-monitor its output and get notified when it needs you … the codex
-subagents themselves should NOT be allowed to launch more subagents …
-review their work carefully, especially any visual design … up to 5 at
-once"; and "the codex agents should run on auto approve for most things
-only the super risky stuff should come to you"): `agents start NAME
-CRATE BRIEF.md` starts an interactive Codex (gpt-6.2-astra, xhigh,
-`--approve-for-me`, its multi-agent features off) in a tmux session of
-its own (`tmux -L olo-agents`) on one crate no other agent is in, with
-its rules in front of the task (that crate only, no git that changes
-anything, no new dependencies, no agents, nothing on the person's
-screen, `report.md` and DONE when finished); `agents watch`, in the
-background, returns as soon as one needs its lead (an approval its
-reviewer won't pass, a finished turn, an exit, 15 minutes with nothing
-new); `peek`, `say`, `approve`, `stop`. Each builds in its own target
-folder. Its work is reviewed, pictured and committed by its lead.
+What an agy agent may do without asking is given to its run alone
+(`agy --settings FILE`, session-only: the person's own agy settings
+are neither read for it nor written, and the tool never takes the
+choice in agy's question that would save a rule there). It runs in
+agy's accept-edits mode: its file edits go ahead; a command goes ahead
+when it starts as one of `ALLOW` does (`tools/dev/agents allowed`
+prints them: reading and searching, `cargo build/check/test/clippy/fmt
+-p`, git's reading commands, Olo's own test tools; a pipe or `&&` of
+several when each does), is refused without asking when it starts as
+one of `DENY` does (any git that changes something, `sudo`, another
+agent, `pkill`, `systemctl`), and otherwise stops and asks its lead.
+No wrapper that runs another command is allowed (`env`, `xargs`,
+`timeout`, `sh -c`: one of those allowed is everything allowed), nor
+`rm`, `cp`, `mv`, `kill` (a rule matches a command by its whole
+words, so `rm` can't be allowed for one folder alone: the minder
+answers those). Into its own scratch folder an agent may send a
+command's output (`write_file(FOLDER)`, `settings`' `own`); elsewhere,
+output sent to a file with `>` asks whatever the command, so an agent's
+rules tell it to pipe and to make files with its file tools. The rules each
+kind of agent is given (`RULES`, `HELP_RULES`, `LOOK_RULES`,
+`OPUS_RULES` in the tool) were made plainer from what the first agents
+of each kind said was unclear, which every trial brief asked them for:
+where the repository is, that AGENTS.md is written for the lead and the
+agent's own rules win where they differ, that a look judges by eye and
+writes within minutes. agy's `auto` mode, which it starts in when no mode
+is named, is never used: it judges for itself what is safe and runs a
+command outside its sandbox when the sandbox refuses it (a `sudo -n
+true` went through unasked when tried). Every agent has `OLO_SUBAGENT`
+set (the tool and its front doors refuse to run under it: an agent
+starts no agents) and `WAYLAND_DISPLAY`, `DISPLAY` and `OLO_SOCKET`
+unset (nothing it runs reaches the person's screen).
+
+**Subagents** (`agents start NAME CRATE BRIEF.md`; Ben, 2026-11-19:
+"you now have permission to utilize subagents for narrow, targeted work
+items that can be parallelized. they must be able to work in this same
+worktree without clobbering each other, ideally with their work scoped
+to a single crate that only one agent is working in at any given time …
+in interactive mode via e.g. tmux … where you can monitor its output
+and get notified when it needs you … the … subagents themselves should
+NOT be allowed to launch more subagents … review their work carefully,
+especially any visual design … up to 5 at once"): an agy in the
+repository on one crate no other agent is in, with its rules in front
+of the task (that crate only, no git that changes anything, no new
+dependencies, no agents, nothing on the person's screen, no process
+looked up by its name, `report.md` and DONE when finished). Each builds
+in its own target folder (removed a day after the agent's last build).
+Its work is reviewed, pictured and committed by its lead.
+
+**The second investigator** (`tools/dev/agy-help BRIEF.md`, which is
+`agents investigate`; Ben, 2026-11-18: "if you need help root-causing a
+bug like this you can launch … a … instance … with auto approve --
+actually add a skill for doing that in this repo") is for a cause that
+won't be found: a written brief (the symptom, the evidence, what was
+tried and ruled out, the code on the path, how far it reproduces) goes
+to an agy in the repository named `help-FOLDER`, with the rules in
+front (the working tree unchanged, no commits, the person's session
+left alone, headless tests under an `agy-` name, scratch in the brief's
+folder, no helper of its own). It keeps `notes.md` as it goes and
+writes `answer.md` beside the brief. `agy-help` waits as `watch` does
+for that one agent: it returns 0 when the answer is written, 3 when
+the helper needs its lead (answer it, then run the same command again:
+it finds the helper it started and goes on waiting). What it says is a
+lead: checked, then fixed by whoever asked.
+
+**A second look at every change's pictures** (`tools/dev/agy-look`,
+which is `agents look`; Ben, 2026-11-18, after a status line set right
+under its paragraph reached them on every Integrations tab: "provide
+all screenshots of changes to a … agent … for a second review / set of
+eyes to identify anything you missed"): `agy-look --about "WHAT
+CHANGED" PICTURE.png…` copies the pictures into a folder of the look's
+own, where an agy named `look-FOLDER` works (no command allowed
+unasked, nothing of the project loaded) with a designer's brief
+(spacing, alignment, text cut or crowded, what's out of keeping); its
+review is kept as `agy-look.md` beside the first picture (its
+transcript as `agy-look.log`) and printed, and its session ended.
+Three pictures took it about six minutes at xhigh. What it says is
+checked against the picture, as the investigator's is.
+
+**And a designer's review of them** (`tools/dev/opus-look`, which is
+`agents look --by opus`; Ben, 2026-11-19, of To-Do's first pictures:
+"omg so much is ugly make sure you get visual design reviews from opus
+5.5 and astra 6.2"): `opus-look --about "WHAT IT IS, WHAT CHANGED"
+PICTURE.png…` hands copies of the same pictures to Claude Opus 5.5 in
+a session named `opus-FOLDER` (`claude --model claude-opus-5-5
+--effort high --restricted --strict-mcp-config --tools Read,Write
+--permission-mode acceptEdits`: no tool that runs anything, the file
+tools kept to the look's folder, none of the person's settings, hooks
+or MCP servers) with a product designer's brief: composition,
+hierarchy, rhythm, colour, what looks amateur or unfinished or out of
+keeping with the desktop, and what to do about each, the most important
+first. It keeps its review as `opus-look.md` beside the first picture.
+It can only look, so give it whole windows and enlarged crops. Every
+change's pictures go to both before a commit, and something new goes to
+both early, before it's built out: agy-look is for what's wrong by a
+pixel, opus-look for whether the design is any good. Run both in the
+background at once; each returns when its review is written, or when
+it needs its lead.
 
 While the person controls a screen (Take Control), the viewer writes
 `NAME.control` (its pid) in the screens' folder, and `olo-screen`

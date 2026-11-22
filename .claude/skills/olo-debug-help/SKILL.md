@@ -1,21 +1,27 @@
 ---
 name: olo-debug-help
-description: Get a second investigator on a bug or a hard problem in Olo - start a headless Codex (gpt-6.2-astra at xhigh reasoning effort, approving its own steps) with a written brief, let it dig in parallel while you go on, then check what it found. Use it freely, two brains are better than one - whenever you're unsure why something goes wrong (a hang, a crash, a wrong pixel, a flaky test, a tool that misbehaves), when a problem is complex (several programs, protocols or threads between cause and symptom), when your first theories didn't hold, or when a bug only happens on the person's real session. For finding causes and checking reasoning, not for doing the work itself.
+description: Get a second investigator on a bug or a hard problem in Olo - start an Antigravity CLI (agy, Gemini 4 Neon at high) in a tmux session with a written brief, let it dig in parallel while you go on (reading its screen, answering what it asks leave for, steering it), then check what it found. Use it freely, two brains are better than one - whenever you're unsure why something goes wrong (a hang, a crash, a wrong pixel, a flaky test, a tool that misbehaves), when a problem is complex (several programs, protocols or threads between cause and symptom), when your first theories didn't hold, or when a bug only happens on the person's real session. For finding causes and checking reasoning, not for doing the work itself.
 ---
 
-# A second investigator: Codex, for a cause you can't find
+# A second investigator, for a cause you can't find
 
 Olo's rule is that every problem is root-caused, never worked around.
 Two brains are better than one (Ben, 2026-11-18): whenever you're
 unsure of a cause, or the problem is a complex one, put a second
 investigator on it and keep working on your own line meanwhile. Don't
 wait until you've circled for hours, and never settle for a guess. It
-is one of the Codex helpers CLAUDE.md's "Subagents" allows (the others:
-Codex subagents for narrow work items, `tools/dev/agents` and the
-`olo-codex-agents` skill; and `codex-look` for pictures): the helper
-investigates and reports; the work stays yours.
+is one of the helpers CLAUDE.md's "Subagents" allows (the others:
+subagents for narrow work items, `tools/dev/agents` and the
+`olo-agents` skill; and `agy-look` and `opus-look` for pictures), all
+Gemini 4 Neon in the Antigravity CLI but Opus's design review (Ben,
+2026-11-22: "stop using codex/astra for olo qa/dev tasks and … replace
+it with antigravity (`agy`) and gemini 4 neon on xhigh", at high since
+the same day), each in a
+tmux session where it can be read and answered ("always do it through
+tmux never a script that just goes silent"). The helper investigates
+and reports; the work stays yours.
 
-The first time it was used, it found in an hour what a day's reading
+The first time one was used, it found in an hour what a day's reading
 hadn't: a pointer that vanished in Chrome was the Wayland proxy
 dropping cursor shapes after a restart, a program nobody had been
 looking at, with a reproduction and a patch that checked out.
@@ -26,7 +32,8 @@ looking at, with a reproduction and a patch that checked out.
   logs, the code on the path: minutes, not an hour) hasn't shown it.
   Start it then, before forming your own theories, not once you're
   stuck (2026-11-19: "if you're stuck or having trouble ask astra 6.2
-  for help", and CLAUDE.md, "A bug you can't see at once").
+  for help", Gemini 4 Neon now; and CLAUDE.md, "A bug you can't see at
+  once").
 - The problem is complex: several programs, protocols or threads lie
   between the cause and what's seen; or your first theories didn't hold.
 - It happens only on the person's real session (their hardware, their
@@ -54,35 +61,49 @@ looking at, with a reproduction and a patch that checked out.
    - how to reproduce as far as you got (the `tsession` commands, test
      pages, scratch files it may use);
    - what you'd like back: the cause, or a way to catch it.
-   Nothing private goes in it: not the person's name, email, accounts
-   or files (the brief leaves this computer).
+   Nothing private goes in it: not the person's name, email, accounts,
+   hosts or files, nor what their windows show (the brief leaves this
+   computer). And say in it that a test's processes are only the PIDs
+   its launcher gave it: the person's own apps have the same names.
 
 2. **Start it in the background** and go on with other work:
 
    ```sh
-   tools/dev/codex-help /var/tmp/YOURS/brief.md
+   tools/dev/agy-help /var/tmp/YOURS/brief.md
    ```
 
-   Run it with `run_in_background` and take its completion notice; it
-   can take an hour. It runs `codex exec -m gpt-6.2-astra -c
-   model_reasoning_effort="xhigh" --approve-for-me` in the repository
-   (xhigh, not max: Ben, 2026-11-20),
-   with rules in front of your brief: no changes to the working tree,
-   no commits, the person's session left alone, headless tests under a
-   `codex-` name, scratch in the brief's folder. It writes
-   `answer.md` (its findings: its last message, which replaces any file
-   of that name, so a brief never asks it to write `answer.md` itself),
-   `log.txt` (what it did) and `notes.md` (each finding as it makes
-   it) there. A run can end before its answer: the tool then says why
-   (the log's last error) and the notes hold what it had found. Its
-   service stops a run whose work reads like an attack on a system: a
-   review asked to "attack" a root tool, to try "hostile" input,
-   "escapes" and fuzzing was cut off nine minutes in (2026-11-20). Say
-   what such work is in plain words (a reliability review of our own
-   installer: what state each failure leaves), ask for reading and
-   small deterministic checks, not tracing or fuzzing, and point a
-   second run at the first's log and notes so nothing is done twice.
-   One at a time, and not while the tree is mid-push if it will build.
+   Run it with `run_in_background`. It starts the helper, an `agy` in a
+   tmux session named `help-YOURS` (Gemini 4 Neon at high, in the
+   repository), with rules in front of your brief: no changes to the
+   working tree, no commits, the person's session left alone, headless
+   tests under an `agy-` name, scratch in the brief's folder, no
+   process looked up by its name. Then it waits, printing a line a
+   minute of what the helper is doing, and returns:
+   - with 0 when the helper has written `answer.md` (its findings) in
+     the brief's folder and its turn is over; `notes.md` beside it
+     holds each finding as it was made, and is all there is if the run
+     ended early;
+   - with 3 as soon as the helper needs you: it asks leave for a
+     command that isn't routine (`tools/dev/agents approve help-YOURS
+     y|p|no`), has a question, or has shown nothing new for 15 minutes.
+     Deal with it, then run the same `agy-help` command again: it finds
+     the helper it started and goes on waiting.
+
+   It can take an hour. Meanwhile read its screen whenever you like
+   (`tools/dev/agents peek help-YOURS`), and tell it what you learn on
+   your own line (`tools/dev/agents say help-YOURS "…"`): a theory
+   ruled out, a new log line. Reading, searching, building and testing
+   it does without asking; what its rules forbid is refused outright
+   (the `olo-agents` skill, "Running them", has the whole of it). When
+   you've read the answer, ask what's unclear (`say`: it is still
+   there), then `tools/dev/agents stop help-YOURS` and `forget`.
+
+   Its service may stop a run whose work reads like an attack on a
+   system. Say what such work is in plain words (a reliability review
+   of our own installer: what state each failure leaves), ask for
+   reading and small deterministic checks, not tracing or fuzzing, and
+   point a second run at the first's notes so nothing is done twice.
+   Not while the tree is mid-push if it will build.
 
 3. **Check what comes back.** Its answer is a lead, in the same
    confident voice whether it's right or not. Read the code it points
@@ -96,7 +117,8 @@ looking at, with a reproduction and a patch that checked out.
 
 ## If it doesn't start
 
-`codex` must be on PATH and signed in (`codex login status`). The
-script refuses a folder in `/tmp`, and says so. If the model or the
-effort is refused, read `codex exec --help` and `~/.codex/config.toml`
-before changing the script: fix the script, don't work round it.
+`agy` must be on PATH and signed in (run `agy` once yourself to see).
+The tool refuses a folder in `/tmp`, and says so. If the helper's
+session ends at once, `tools/dev/agents peek help-YOURS` shows what its
+program said (the pane is kept); if the model's name is refused, `agy
+models` lists them: fix `tools/dev/agents`, don't work round it.

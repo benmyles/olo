@@ -89,21 +89,24 @@ are universal and non-negotiable:
   (2026-11-18: "you should be visually reviewing everything you do").
   Check the picture shows what you meant to show (the right tab, the
   window in front) before judging it.
-- **Two more pairs of eyes on every picture: Astra 6.2's and Opus
+- **Two more pairs of eyes on every picture: Gemini 4 Neon's and Opus
   5.5's.** Give all the pictures of a change to both for a design
   review before it's committed (Ben, 2026-11-19, of a new app's first
   pictures: "omg so much is ugly make sure you get visual design reviews
-  from opus 5.5 and astra 6.2"):
-  `tools/dev/codex-look --about "WHAT CHANGED" PICTURE.png…`
-  (gpt-6.2-astra at medium effort, looking only: what's wrong by a
+  from opus 5.5 and astra 6.2"; 2026-11-22, Gemini 4 Neon in Astra's
+  place: below):
+  `tools/dev/agy-look --about "WHAT CHANGED" PICTURE.png…`
+  (Gemini 4 Neon at high, in the Antigravity CLI: what's wrong by a
   pixel) and `tools/dev/opus-look --about "WHAT IT IS, WHAT CHANGED"
-  PICTURE.png…` (Claude Opus 5.5, looking only: the design itself, what
-  looks amateur or unfinished). Whole windows and enlarged crops, each
-  state, look and scale. Something new (an app, a window, a widget)
-  goes to both early, before it's built out, and again when it's
-  done. Check each thing they find against the picture yourself, fix
-  what's real, and say in the commit what each found and what you did
-  about it.
+  PICTURE.png…` (Claude Opus 5.5: the design itself, what looks amateur
+  or unfinished). Each looks in a tmux session of its own: run both in
+  the background, read what each is doing as it goes (`tools/dev/agents
+  peek`), and take each one's end: its review written, or a question
+  for you. Whole windows and enlarged crops, each state, look and
+  scale. Something new (an app, a window, a widget) goes to both early,
+  before it's built out, and again when it's done. Check each thing
+  they find against the picture yourself, fix what's real, and say in
+  the commit what each found and what you did about it.
 - **Leave the person's session alone.** Never reload, upgrade or install
   into it unless asked. To get work ready, run
   `cargo build --release --workspace`. The running session watches
@@ -169,41 +172,86 @@ are universal and non-negotiable:
   work, and what's there is kept current (corrected or removed when it
   stops being true). Never store memories in an agent's own memory
   outside the repository.
-- **Subagents: Codex, narrow, watched, reviewed.** Do the work yourself,
-  in this session, but for three kinds of help, all Codex but the design
-  review (never a Claude fork, nor the Agent tool):
-  - Narrow, targeted work items that can go on in parallel: Codex
-    subagents (gpt-6.2-astra at xhigh), each interactive in a tmux
-    session of its own, started, watched and steered with
-    `tools/dev/agents` (the `olo-codex-agents` skill). Up to five at
-    once, all in this working tree, each in one crate that no other
-    agent, nor you, is changing meanwhile, so none clobbers another.
-    Each gets a clear brief: the task, its crate, what done is, how to
-    test it. They never start agents themselves (the tooling refuses,
-    and their brief says so). While any runs, keep `tools/dev/agents
-    watch` going in the background, started again after each time it
-    returns, and look at `agents list` now and then: answer approvals
-    and questions promptly, steer what drifts, unstick what stalls. When
-    one finishes, review its work as your own before anything is
-    committed: read the whole diff, run its tests, picture every visual
-    change and judge it closely (Codex is weak at visual design: expect
-    to redo some), then commit it yourself (2026-11-19).
+- **Subagents: Antigravity, in tmux, narrow, watched, reviewed.** Do
+  the work yourself, in this session, but for three kinds of help, all
+  Gemini 4 Neon in the Antigravity CLI (`agy`) but the design review
+  (never Codex nor Astra: Ben, 2026-11-22, "stop using codex/astra for
+  olo qa/dev tasks and everywhere we use codex/astra at the moment for
+  olo dev/qa replace it with antigravity (`agy`) and gemini 4 neon on
+  xhigh", at high since the same day; never a Claude fork, and the
+  Agent tool only for the minder, below). That is for the
+  help Olo's development gets: Olo's own support for Codex and Astra
+  (Terminal, Rex, the pool, Preferences) is the product's and stays.
+  - Narrow, targeted work items that can go on in parallel: subagents,
+    each an interactive `agy` in a tmux session of its own, started,
+    watched and steered with `tools/dev/agents` (the `olo-agents`
+    skill). Up to five at once, all in this working tree, each in one
+    crate that no other agent, nor you, is changing meanwhile, so none
+    clobbers another. Each gets a clear brief: the task, its crate,
+    what done is, how to test it. They never start agents themselves
+    (the tooling refuses, and their brief says so). When one finishes,
+    review its work as your own before anything is committed: read the
+    whole diff, run its tests, picture every visual change and judge it
+    closely (expect to redo some of what a subagent designs), then
+    commit it yourself (2026-11-19).
   - A second investigator for debugging and root-causing, with the
-    `olo-debug-help` skill (`tools/dev/codex-help BRIEF.md`: a headless
-    Codex at xhigh, approving its own steps), started as
+    `olo-debug-help` skill (`tools/dev/agy-help BRIEF.md`: an `agy` in
+    a tmux session, asking leave for what isn't routine), started as
     soon as a bug's cause isn't plain (below), while you keep working
     on your own line: two brains are better than one. It looks and
     reports; you check what it found and do the work.
-  - `tools/dev/codex-look`, the second look at every change's pictures
+  - `tools/dev/agy-look`, the second look at every change's pictures
     (above); and, the one Claude among them, `tools/dev/opus-look`, Opus
-    5.5's design review of the same pictures (the Claude CLI headless,
-    reading pictures and nothing else).
-- **Astra 6.2 at xhigh, never max.** Wherever Astra reasons for Olo (a
-  subagent, the second investigator, a review of a design or a build),
-  its effort is xhigh (Ben, 2026-11-20: "whenever you use astra 6.2 it
-  should be on xhigh not max"; where his earlier words here say "astra
-  6.2 max", read xhigh). The picture look stays at medium: it only
-  looks.
+    5.5's design review of the same pictures (the Claude CLI in a tmux
+    session, with the tools to read and write files in a folder of the
+    pictures' copies and no other).
+- **Every helper in a tmux session, never a script that goes silent.**
+  A subagent, the investigator and both reviewers each run their
+  program's own interactive screen in a tmux session
+  (`tools/dev/agents`; `agy-help`, `agy-look` and `opus-look` are its
+  front doors), so what each is doing can be read at any moment
+  (`agents peek NAME`), it can be told more (`agents say`), and what it
+  asks leave for reaches you (`agents approve`). Never `agy --print`,
+  `claude -p` or any other run that answers only at its end (Ben,
+  2026-11-22: "always do it through tmux never a script that just goes
+  silent … for all the subagents/reviewers etc … you can add tooling to
+  launch and work with them efficiently but they should use tmux"; a
+  headless look had sat eight minutes with nothing to show whether it
+  was thinking or stuck). While any runs, something of yours waits on
+  it in the background: `tools/dev/agents watch`, or the front door
+  that started it; each returns the moment an agent asks, finishes or
+  stalls, and prints a line a minute meanwhile. Start it again after
+  each answer, and look at `agents list` now and then: answer
+  questions promptly, steer what drifts, unstick what stalls. What is
+  routine goes ahead without you (reading, searching, building,
+  testing: `tools/dev/agents allowed`, given to that run alone, the
+  person's own agy settings never touched); what an agent's rules
+  forbid is refused outright; only the rest comes to you. Never
+  approve a push, a commit, anything on the person's session, deletion
+  outside its scope, or sudo.
+- **A minder answers the helpers, so none waits on you.** Whenever a
+  helper runs for more than a moment, start the minder with it: one
+  subagent of the Agent tool (general-purpose, model `fable`, effort
+  medium), told to read `.claude/skills/olo-agents/minder.md` and
+  given the commands to start and the agents to mind (Ben, 2026-11-22,
+  when a helper's question had waited 66 seconds on a busy lead: "i
+  think you're not getting the approval requests or not responding to
+  them quick enough … launch a fable 5.2 medium subagent whose only
+  job is to launch and manage the tmux sessions for these tmux
+  subagents so that they get their responses quickly"). It starts the
+  tmux agents, waits on `tools/dev/agents watch`, says yes or no at
+  once to what its written lists cover, and hands back to you what
+  they don't, every question about the work itself, and each result's
+  path. It does none of the work and starts nothing else. It is the
+  one use of the Agent tool here; its report is checked like any
+  helper's (read the results yourself), and what it says went wrong
+  with the tooling is fixed in the tooling.
+- **Gemini 4 Neon and Opus 5.5 at high.** Wherever Gemini reasons for
+  Olo (a subagent, the second investigator, the look at pictures), it
+  is Gemini 4 Neon with its effort at high (`gemini-4-neon-high`), and
+  Opus 5.5's design review runs at high too (Ben, 2026-11-22, after
+  first asking for xhigh: "let's also switch the reasoning level to
+  high for both of them").
 - **A bug you can't see at once gets a second investigator at once.**
   If a quick first look (the logs, the code on its path: minutes, not
   an hour) hasn't shown you the cause, start the `olo-debug-help`
@@ -214,7 +262,7 @@ are universal and non-negotiable:
   test, a hang, a race, anything spanning programs or only on the
   person's session: always. It found in an hour what a day of reading
   hadn't (2026-11-18); "if you're stuck or having trouble ask astra
-  6.2 for help" (2026-11-19).
+  6.2 for help" (2026-11-19; the helper is Gemini 4 Neon now).
 - **Root-cause every problem; never work around it.** Whenever something
   goes wrong (a hang, a crash, a slow step, a flaky test, a tool that
   misbehaves), find why it happened and fix that, so it can't happen

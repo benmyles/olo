@@ -70,7 +70,7 @@ RUNTIME = f"/run/user/{os.getuid()}"
 # Which builds it runs: release (the pre-push hook's, and what's ready),
 # or with --dev the dev profile's (target/debug), as it's being worked on.
 PROFILE = "debug" if "--dev" in sys.argv[1:] else "release"
-# Where the builds are: CARGO_TARGET_DIR's, as tsession takes it (a Codex
+# Where the builds are: CARGO_TARGET_DIR's, as tsession takes it (a
 # subagent builds in a folder of its own, tools/dev/agents), else the
 # repository's.
 TARGET = os.environ.get("CARGO_TARGET_DIR", os.path.join(ROOT, "target"))

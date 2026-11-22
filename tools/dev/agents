@@ -1,45 +1,92 @@
 #!/usr/bin/python3
-"""Codex subagents: narrow, parallel work items, each an interactive Codex
-(gpt-6.2-astra, its reasoning at xhigh) in a tmux session of its own,
-working in this same working tree, scoped to one crate no other agent is
-in, watched and steered from here (CLAUDE.md, "Subagents"; the
-olo-codex-agents skill says how to use them).
+"""Every agent that helps with Olo, each in a tmux session of its own:
+narrow, parallel work items, second investigators and the looks at a
+change's pictures. Each is an interactive Antigravity CLI (`agy`: Gemini
+4 Neon, its reasoning at high), but the design review, which is Opus
+5.5 in the Claude CLI (at high too); all are read, answered and steered from here
+(CLAUDE.md, "Subagents"; the olo-agents and olo-debug-help skills say
+how to use them). Ben, 2026-11-22: "stop using codex/astra for olo
+qa/dev tasks and … replace it with antigravity (`agy`) and gemini 4
+neon on xhigh" (high, since the same day), run "via tmux … so that you will get notified when it
+needs you and be able to steer it and approve things", with "the auto
+approval stuff [configured] to auto approve all the most common
+commands it might need to run"; and of every helper, the reviewers
+too: "always do it through tmux never a script that just goes silent".
 
-  agents start NAME CRATE BRIEF.md   start one on CRATE (a folder, apps/updates)
+  agents start NAME CRATE BRIEF.md   start a worker on CRATE (a folder, apps/updates)
                                      with the task in BRIEF.md; at most 5 at once
-  agents list                        each one: its crate, what it's doing, since when
-  agents watch [--stuck MIN]         return once one needs you: an approval asked,
+  agents investigate BRIEF.md [DIR]  start a second investigator on the bug in
+                                     BRIEF.md (tools/dev/agy-help is this), its
+                                     answer written to DIR (the brief's folder),
+                                     and wait as `watch` does, for it alone; run
+                                     again, it goes on waiting for the same one
+  agents look [--by opus] [--about TEXT] PICTURE…
+                                     have a change's pictures looked at: by Gemini
+                                     for what's wrong by a pixel (tools/dev/agy-look
+                                     is this), or by Opus 5.5 for the design itself
+                                     (--by opus: tools/dev/opus-look). The review is
+                                     written beside the first picture and printed,
+                                     waited for as `investigate` waits
+  agents list                        each one: what it's on, its state (working, asking,
+                                     idle: a question or waiting, done: its result
+                                     written, exited, gone), when it was started
+  agents watch [--stuck MIN] [--for MIN]
+                                     return once one needs you: an approval asked,
                                      a turn finished (DONE, a question), gone, or
                                      nothing new for MIN minutes (15) while working.
                                      Run it in the background and re-run it after
-                                     each answer: it's how you hear from them.
+                                     each answer: it's how you hear from them. It
+                                     prints a line a minute for each meanwhile
+                                     (what it is doing), to read as it goes. With
+                                     --for, it returns after that long at most (for
+                                     a minder, who waits on it in the foreground).
   agents peek NAME [LINES]           the last LINES (60) of its screen
   agents log NAME                    its whole transcript
-  agents say NAME TEXT...            a message to it: an answer, steering
-  agents question NAME [N]           the question it has put to you while it works on
-                                     (Codex queues it: "Queued follow-up inputs"): shown;
-                                     with N, its Nth choice taken (then `say` what else
-                                     it should know)
-  agents approve NAME [y|p|no]       answer its approval prompt: yes this once (y),
-                                     yes and don't ask again for commands that
-                                     start the same (p), or no (then `say` why)
+  agents say NAME [--now] TEXT...    a message to it: an answer, steering. While it
+                                     works it is queued for the end of its step;
+                                     --now delivers it at once (stops a long think)
+  agents approve NAME [y|p|no]       answer what it asks leave for: yes this once (y),
+                                     yes and don't ask again in this conversation for
+                                     commands that start the same (p), or no (then
+                                     `say` why)
+  agents answer NAME N               take the Nth choice of any other question it
+                                     shows with choices
+  agents keys NAME KEY…              press keys in it (up, down, enter, esc, tab, a
+                                     digit, a letter): for a question whose choices
+                                     have no numbers, or esc to stop what it's doing
   agents stop NAME                   end it (its folder, /var/tmp/olo-agents/NAME,
                                      with its report, stays until `forget`; its
                                      builds a day more: below)
   agents forget NAME                 remove a stopped one's folder
   agents attach NAME                 how the person can watch it live (read-only)
+  agents allowed                     what an agent runs without asking, and what
+                                     it is refused outright
 
-Each agent's folder holds brief.md (the rules, then the task), report.md
-(what it says it did, when done), meta.json, and target/ (its own
-CARGO_TARGET_DIR, so its builds never wait on another's). An agent that
-has ended keeps its builds for a day after the last one: then `list`,
-`watch` and `start` remove target/ (16 GB of one sat for nobody,
+A worker's folder holds brief.md (the rules, then the task), report.md
+(what it says it did, when done), meta.json, settings.json (what it may
+run without asking: below) and target/ (its own CARGO_TARGET_DIR, so its
+builds never wait on another's). An investigator's answer.md and
+notes.md go in its DIR, yours, with its builds in DIR/target. An agent
+that has ended keeps its builds for a day after the last one: then
+`list`, `watch` and `start` remove target/ (16 GB of one sat for nobody,
 2026-11-21; kache doesn't know these folders, so nothing else would).
 The rest of the folder stays until `forget`.
 
-An agent can't start agents: OLO_SUBAGENT is set in its environment, which
-this script, codex-help and codex-look refuse, and Codex's own multi-agent
-features are off.
+What needs you, and what doesn't. An agent runs in agy's accept-edits
+mode: its edits to files go ahead, and so does every command that
+starts as one of ALLOW does (reading, searching, building, testing,
+git's reading commands, Olo's own test tools); a command line of
+several (a pipe, `&&`) goes ahead when each of them does. What starts
+as one of DENY does is refused without asking (anything that changes
+git, sudo, another agent). Everything else stops and asks, and `watch`
+tells you: `approve` it, or say no. The lists are given to that one
+run (`agy --settings`): the person's own agy settings are never read
+for it nor written (the tool never takes the choice that would save a
+rule there).
+
+An agent can't start agents: OLO_SUBAGENT is set in its environment,
+which this script, agy-help, agy-look and opus-look refuse, and agy,
+codex and claude are in DENY.
 """
 import hashlib
 import json
@@ -54,22 +101,85 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 HOME = "/var/tmp/olo-agents"
 SOCKET = "olo-agents"
 MOST = 5
-MODEL = "gpt-6.2-astra"
-EFFORT = "xhigh"
-# What the TUI shows (codex-cli 0.170, inline: --no-alt-screen).
-ASKING = ("Press enter to confirm or esc to cancel", "Would you like to")
-# A question put to the lead while it goes on working (codex-cli 0.170:
-# "Queued follow-up inputs", "? 1 question", "shift+← to answer"). Its
-# state stays "working", so `watch` looks for it by itself: one sat
-# unseen for six minutes the first time (2026-11-20).
-QUESTION = re.compile(r"^\s*\? \d+ questions?\s*$", re.M)
-WORKING = re.compile(r"Working \(\d|esc to interrupt")
-# Lines that change while nothing else does: the timer, the status line.
-VOLATILE = re.compile(r"Working \(|esc to interrupt|Context \d+% left|weekly \d+% left|^\s*[←?].*shortcuts|f2 to view")
+# The model's name carries its effort (`agy models`): high, wherever
+# Gemini reasons for Olo (CLAUDE.md; Ben, 2026-11-22, of Gemini and
+# Opus: "switch the reasoning level to high for both of them". At xhigh
+# a look at three pictures was still turning them over after ten
+# minutes).
+MODEL = "gemini-4-neon-high"
+# The one Claude among them: Opus 5.5, for the design review of a
+# change's pictures (`look --by opus`, tools/dev/opus-look).
+OPUS = "claude-opus-5-5"
+# What each program's TUI shows (agy 1.5.14, Claude Code 2.1.330; both
+# drawn inline, so the pane's history is the transcript). A question
+# with choices (leave to run something among them) has this under it:
+ASKING = {"agy": "↑/↓ Navigate", "claude": "Esc to cancel"}
+# and while it works, its last line holds this (agy's question has it
+# too: the question is looked for first):
+WORKING = {"agy": "esc to cancel", "claude": "esc to interrupt"}
+# Lines that change while nothing else does: the spinner (agy's, in
+# braille), how long it has thought, a tip, the last line.
+VOLATILE = re.compile(r"^\s*[\u2800-\u28ff]|Thought for |^\s*└ Tip:|esc to cancel|\? for shortcuts|shift\+tab to cycle|esc to interrupt|\(\d+m? ?\d*s · |ctrl\+g to edit")
+# agy's spinner: a braille figure at the start of the line it is on.
+SPINNER = re.compile(r"^\s*[\u2800-\u28ff]\s")
+# Its banner (drawn with these blocks) names the account the program is
+# signed in to, or its plan: the person's, and no business of a
+# transcript's.
+BANNER = re.compile(r"[▀▄▐▛▜▝]")
+# A rule drawn across the screen: above a question, around the field.
+RULE = "─"
+# Choices never taken from here: one that would write a rule into the
+# person's own settings, or change the mode the agent was started in.
+SAVES = ("settings.json", "always allow access", "auto mode")
+
+# What goes ahead without asking: commands that start so. Reading and
+# searching; building and testing with cargo; git's reading commands;
+# Olo's own test tools. (No wrappers that run any other command, `env`,
+# `xargs`, `timeout`, `sh -c`: one of those allowed is everything
+# allowed. No `rm`, `cp`, `mv`, `kill`: an agent's own files are made
+# with its file tool, and those four come to you, or to the minder.)
+READING = ["ls", "cat", "head", "tail", "wc", "grep", "rg", "find", "sort", "uniq", "cut", "tr", "diff", "cmp", "stat", "file", "du", "df", "which", "command -v",
+        "echo", "printf", "pwd", "date", "true", "test", "basename", "dirname", "realpath", "readlink", "nl", "tac", "column", "jq", "xxd", "od", "sha256sum",
+        "sed -n", "awk", "id", "uname", "nproc", "free", "uptime", "cd", "mkdir", "touch", "sleep"]
+CARGO = ["cargo build", "cargo check", "cargo test", "cargo clippy", "cargo fmt -p", "cargo ui-lint", "cargo metadata", "cargo tree", "cargo doc", "cargo bench",
+         "cargo run", "cargo --version", "cargo -V", "rustc --version", "rustc -V", "rustc --print", "rustup show"]
+GIT = ["git status", "git diff", "git log", "git show", "git blame", "git ls-files", "git grep", "git rev-parse", "git merge-base", "git describe", "git cat-file",
+       "git branch --show-current", "git worktree list"]
+TOOLS = ["tsession", "ui-lint", "cost", "bench", "scroll-check", "words", "layout-check", "damage-check", "rest-check"]
+# Refused without asking: what an agent's rules forbid outright, so it
+# hears no at once and no approval waits on you that you'd never give.
+DENY = ["git push", "git commit", "git add", "git stash", "git checkout", "git switch", "git reset", "git restore", "git rebase", "git merge", "git clean", "git rm",
+        "git mv", "git tag", "git cherry-pick", "git revert", "git am", "git apply", "sudo", "su", "agy", "codex", "claude", "tools/dev/agents",
+        "tools/dev/agy-help", "tools/dev/agy-look", "tools/dev/opus-look", "tools/install-session.sh", "cargo install", "cargo publish", "pkill", "killall",
+        "systemctl", "loginctl", "reboot", "shutdown", "poweroff"]
+
+
+def allow():
+    """Every prefix that goes ahead: Olo's tools as they are run, from
+    the repository or by their whole path, with python or without."""
+    out = READING + CARGO + GIT
+    for t in TOOLS:
+        for path in (f"tools/dev/{t}", f"./tools/dev/{t}", f"{ROOT}/tools/dev/{t}"):
+            out += [path, f"/usr/bin/python3 {path}"]
+    return out
+
+
+def settings(folders, commands=True, own=()):
+    """An agent's settings, for its run alone: its folders trusted (agy
+    asks at its start otherwise, and waits), what it may run (nothing
+    without asking, for one that only looks at pictures). In the
+    folders that are its `own` (its folder here, an investigator's
+    scratch) a command's output may be sent to a file unasked. (Not
+    `rm` there: a rule matches a command by its whole words, so
+    `command(rm FOLDER/)` allows nothing; a file removed there asks,
+    and the minder says yes in seconds.)"""
+    yes = [f"command({c})" for c in allow()] if commands else []
+    yes += [f"write_file({d})" for d in own] if commands else []
+    return {"trustedWorkspaces": folders, "permissions": {"allow": yes, "deny": [f"command({c})" for c in DENY]}}
 
 
 # The server's options, read whenever it starts (it ends with its last
-# session): each pane kept once Codex ends, to read; long histories.
+# session): each pane kept once agy ends, to read; long histories.
 CONF = "set-option -g remain-on-exit on\nset-option -g history-limit 200000\n"
 
 
@@ -109,12 +219,20 @@ def names():
 
 
 def screen(name, lines=None):
-    """Its screen as text (the last `lines` of its history, if given)."""
+    """Its screen as text (the last `lines` of its history, if given),
+    less its banner."""
     args = ["capture-pane", "-p", "-J", "-t", f"={name}:0.0"]
     if lines:
         args[1:1] = ["-S", f"-{lines}"]
     r = tmux(*args)
-    return r.stdout.rstrip() if r.returncode == 0 else None
+    if r.returncode:
+        return None
+    return "\n".join(l for l in r.stdout.splitlines() if not BANNER.search(l)).rstrip()
+
+
+def cli(name):
+    """Which program it is: agy, or claude."""
+    return (meta(name) or {}).get("cli", "agy")
 
 
 def state(name):
@@ -129,19 +247,30 @@ def state(name):
         return "gone"
     if r.stdout.strip() == "1":
         return "exited"
-    s = screen(name) or ""
-    tail = "\n".join(s.splitlines()[-30:])
-    if any(a in tail for a in ASKING):
+    lines = [l for l in (screen(name) or "").splitlines() if l.strip()]
+    if any(ASKING[cli(name)] in l for l in lines[-14:]):
         return "asking"
-    if WORKING.search(tail):
+    if lines and WORKING[cli(name)] in lines[-1]:
+        return "working"
+    # (agy with a message queued for it: its last line is about the
+    # queue, "Press up to edit queued messages", and its spinner still
+    # turns above the field. Read as idle, a look that was thinking was
+    # reported finished, 2026-11-22.)
+    if cli(name) == "agy" and any(SPINNER.match(l) for l in lines[-8:]):
         return "working"
     return "idle"
 
 
-def queued_question(name):
-    """Whether it has a question queued for the lead."""
-    tail = "\n".join((screen(name) or "").splitlines()[-30:])
-    return "Queued follow-up inputs" in tail and bool(QUESTION.search(tail))
+def asked(name):
+    """What it asks, as it shows it, and its choices as (key, words)."""
+    lines = [l for l in (screen(name) or "").splitlines() if l.strip()]
+    end = max((i for i, l in enumerate(lines) if ASKING[cli(name)] in l), default=None)
+    if end is None:
+        return [], []
+    # (The question: from the rule drawn above it, a line of ─.)
+    start = max((i for i, l in enumerate(lines[:end]) if set(l.strip()) == {RULE}), default=max(0, end - 12)) + 1
+    choices = [(m.group(1), m.group(2).strip()) for m in (re.match(r"^\s*[>❯]?\s*(\d)\.\s+(.*)$", l) for l in lines[start:end]) if m]
+    return lines[start:end], choices
 
 
 def progress(name):
@@ -169,10 +298,34 @@ def refuse_nested():
         sys.exit("agents: you are a subagent; you can't start or steer agents. Do your task, or stop and ask the lead.")
 
 
+# What every agent is told of how it is run.
+APPROVALS = """Asking leave
+- Reading, searching, building and testing go ahead without anyone's
+  leave: ls, cat, head, tail, grep, find, sed -n, wc, cargo
+  build/check/test/clippy/fmt -p, git status/diff/log/show,
+  tools/dev/tsession and the like, alone or piped together.
+  Anything else stops until the lead answers, which can take minutes:
+  so keep to those where you can. Don't wrap a command in `timeout`,
+  `env`, `sh -c` or `xargs`. Make and change files with your file
+  tools, not with the shell (`>`, `cat <<`, `sed -i`, `cp`, `mv`), and
+  pipe a command's output to tail or grep rather than into a file.
+- Your scratch folder is yours: output sent to a file there goes
+  ahead, and leave to `rm` a file there (give its whole path) is given
+  within seconds. You needn't tidy it: the lead removes the folder
+  when your work is in.
+- No network (curl, wget, ssh, a download) unless your task asks for
+  it by name.
+- What your rules forbid is refused outright: don't look for another
+  way to it."""
+
 RULES = """You are a subagent working on Olo (a BeOS-inspired Wayland desktop
-written in Rust; the repository is your working directory) for another
-agent, the lead, who reads your screen, answers your questions, and will
-review and commit your work. Your task follows these rules.
+written in Rust) for another agent, the lead, who reads your screen,
+answers your questions, and will review and commit your work. Your task
+follows these rules.
+
+The repository is {root}. Paths in these rules and in your task are
+from there, and commands are run there: if your shell is somewhere
+else, begin with `cd {root} && `.
 
 Scope
 - Change files under {crate}/ only (and any other file the task names).
@@ -180,33 +333,52 @@ Scope
   the same time: never edit, format, move or delete anything outside your
   scope. Format your crate only: `cargo fmt -p {package}`, never a bare
   `cargo fmt`.
-- No git command that changes anything: no add, commit, stash, checkout,
-  switch, reset, restore, rebase, merge, clean or push (git status, diff,
-  log and show are fine).
+- No git but to read: git status, diff, log, show, blame, grep and
+  ls-files are fine. No add, commit, checkout, switch, reset, restore,
+  rebase, merge, clean or push, and no `git stash` of any kind (`git
+  stash list` too: it is refused with the rest).
 - No new dependencies (no edits to a Cargo.toml's dependencies, no
   Cargo.lock change) unless the task says so; if you need one, ask.
-- You are a subagent: don't start agents of any kind (no codex, claude,
-  tools/dev/agents, tools/dev/codex-help, tools/dev/codex-look, nor any
-  multi-agent or delegation tool).
+- You are a subagent: don't start agents of any kind (no agy, codex,
+  claude, tools/dev/agents, tools/dev/agy-help, tools/dev/agy-look,
+  tools/dev/opus-look, nor any subagent, multi-agent or delegation tool
+  of your own).
 
 Building and testing
-- Your builds go in your own target folder (CARGO_TARGET_DIR is set for
-  you: leave it). Debug builds; run the tests of what you change
+- Your builds go in a target folder of your own (CARGO_TARGET_DIR is
+  set for you: leave it). Debug builds; run the tests of what you change
   (`cargo test -p {package}`) and keep them passing; add tests for what
   you add, as the code around it does.
 - Leave the person's desktop alone: never run a GUI program from your
   shell (it would open on their screen), never reload, upgrade or install
   anything into their session, never play sound. To see a window, use a
   headless session of your own (tools/dev/tsession, run with
-  /usr/bin/python3, named "codex-{name}" or starting so), and stop it
+  /usr/bin/python3, named "agy-{name}" or starting so), and stop it
   when you're done.
-- Scratch files go in {dir} (never /tmp: it is RAM). Kill only
-  processes you started, by their PID.
+- Your scratch folder is {dir}: scratch files go there (never /tmp: it
+  is RAM), and your report. Kill only
+  processes you started, by their PID; never look a process up by its
+  name to signal, trace or inspect it (the person's own programs have
+  the same names).
+- Nothing of the person's (their name, email, accounts, files, what
+  their windows show) goes to any outside service.
+
+{approvals}
 
 How to work
-- Read CLAUDE.md (the repository's rules: they apply to you) and the
-  parts of docs/HACKING.md about what you touch, and follow the code's
-  conventions: its comments' voice, docs and tests changed with the code.
+- The repository's rules are AGENTS.md (the same file as CLAUDE.md;
+  your program has most likely given it to you already: don't read it
+  twice). They are written for the lead. What they say of how Olo is
+  made applies to you: the kit, the palette and metrics, nothing that
+  blocks the UI or polls, everything native, tests headless. What they
+  say of the lead's own work does not, and where they and these rules
+  differ, these rules win: you don't commit or push, build the release
+  workspace, start reviewers or helpers (agy-look, opus-look, agy-help),
+  write docs/AGENT-NOTES.md or the journal, or remove your scratch
+  folder. Say in your report what the lead should do of those.
+- Read the parts of docs/HACKING.md about what you touch, and follow
+  the code's conventions: its comments' voice, docs and tests changed
+  with the code.
 - Look and feel is the lead's to judge: build what the task asks with the
   kit's widgets, the palette (theme::palette), the spacing (metrics) and
   text (style); don't invent a new look. Say in your report what anything
@@ -214,7 +386,8 @@ How to work
 - If something is unclear, blocked, or would take you outside your scope,
   stop and ask: write your question as your reply and wait for the
   answer. Don't guess at what the lead wants.
-- When you're done: write {dir}/report.md (what you changed, file by
+- When you're done: write {dir}/report.md with your file tool (what
+  you changed, file by
   file; why; how you tested it, the commands and what they printed;
   anything left undone or doubtful; what the lead should look at
   closely), then reply DONE and wait.
@@ -222,6 +395,199 @@ How to work
 The task:
 
 """
+
+HELP_RULES = """You are helping another coding agent, the lead, find the root cause of
+a bug in Olo (a BeOS-inspired Wayland desktop written in Rust), or
+answer a question about its code. Its brief follows these rules. Find
+the cause, with evidence. The lead reads your screen and can answer,
+but is busy on its own line of the same thing: decide and go on
+wherever you can.
+
+The repository is {root}. Paths in these rules and in the brief are
+from there, and commands are run there: your shell may begin in your
+scratch folder, so begin with `cd {root} && `.
+
+Rules. (The repository's own are AGENTS.md, the same file as CLAUDE.md,
+which your program has most likely given you already; they are written
+for the lead, and where they and these differ, these win: you don't
+commit, build the release workspace, or start reviewers or helpers.
+docs/HACKING.md explains each part of Olo: read what it says of what
+you look into.)
+- Don't change the working tree: no edits to its files, no commits, no
+  pushes, no git stash or checkout. The lead is working in it now. To
+  try a change, say what to change in your answer; if you must build
+  one, do it in a git worktree under {dir} (ask leave for `git worktree
+  add`), CARGO_TARGET_DIR is set to a folder under {dir} for you (never
+  /tmp: it is RAM).
+- Leave the person's session alone: never reload, upgrade or install
+  into it, never open a window on their display, never move their
+  pointer or type. Test in a headless session of your own
+  (tools/dev/tsession, run with /usr/bin/python3; a name beginning
+  "agy-"), and stop it when you're done. Never run a GUI program from
+  your shell. Never play sound. Reading the person's session is fine
+  (its logs: target/release/olo-logs --print …; read-only IPC; /proc).
+  Don't attach to its running programs: no perf record, breakpoints,
+  ptrace, gdb, strace or bpftrace on their processes (a stopped or
+  slowed window server is the person's desktop stopped). Reproduce in
+  your own session and trace that.
+- Your scratch folder is {dir}: scratch files go there, with your
+  notes and your answer. Kill only processes you started, by PID;
+  never look a process up by its name to signal, trace or inspect it
+  (no pkill, pgrep -f, killall: the person's own programs have the same
+  names). A test's processes are only the PIDs its launcher gave it.
+- Nothing of the person's (their name, email, accounts, files, what
+  their windows show) goes to any outside service.
+- You are the helper: don't start another (tools/dev/agy-help, the
+  olo-debug-help skill), nor any other agent or subagent of your own.
+- Measure, don't guess: a cause is found when you can make the bug
+  happen and stop happening, or can show the faulty step in the code
+  with the values that reach it. Say which of the two you have.
+
+{approvals}
+
+Keep notes as you go, in {dir}/notes.md: each thing you find, as you
+find it, in a line or two with its file:line and what showed it. A run
+can end before its answer (your service stopping it, a limit, a crash),
+and then the notes are all that is left of the work.
+
+When you're done, write {dir}/answer.md, as Markdown: the cause
+(file:line), the evidence (what you ran and what it printed), how sure
+you are and what would settle it if you aren't, what you ruled out,
+and, if there is something to fix, the fix you'd make as a diff (not
+applied). Every finding in full, not
+a summary; what is too long for it (a long log) in other files in
+{dir}, named in it. If you didn't find it, say so plainly, and what you
+learned. Then reply DONE and wait: the lead may ask more.
+
+The brief:
+
+"""
+
+
+LOOK_RULES = """You are a second pair of eyes on screenshots of a change to Olo, a
+BeOS-inspired desktop whose every window is meant to be pixel-perfect.
+The agent that made the change, the lead, has looked already; find what
+it missed. Open each picture below (view the image files themselves,
+every one of them) and judge them as a meticulous visual designer would:
+- spacing: text or controls set right against what's above or beside
+  them, gaps that differ where they should match, a box's content not
+  inset evenly;
+- alignment: edges, baselines and columns that should line up and
+  don't, by even a pixel;
+- text: cut short, wrapped badly (a word alone on a line), overlapping,
+  too faint to read, words or capitals out of keeping;
+- consistency: a control, colour or weight that doesn't match the same
+  thing elsewhere in the window, or BeOS's way of doing it;
+- anything else that looks unfinished or wrong.
+Only look: run no commands, read no file but this brief and these
+pictures, start no agent or subagent of any kind. For each problem say
+which picture, where in it, what's wrong, and what it should be. If you
+find nothing, say so plainly; don't invent.
+
+How to look. You have nothing that measures, so don't try to work out
+exact pixel positions by reasoning about them: judge by eye, as a
+careful person would with the picture in front of them, and say
+"about". Go through each picture once, closely, then write: a few
+minutes for the whole review is right. Don't go round the same picture
+again to prove or disprove what you first thought; what you aren't sure
+of, write as a thing for the lead to check ("check whether the well's
+right edge meets the button's"), not as a finding, and go on.
+
+Write the whole review, findings only, the most important first, as
+Markdown to {out} with your file tool (that one file, nothing else),
+then reply DONE and wait: the lead may ask more.
+
+The pictures:
+{pictures}
+"""
+
+
+OPUS_RULES = """You are reviewing the visual design of screenshots from Olo, a
+BeOS-inspired desktop (yellow window tabs, bevelled buttons, sunken
+wells, a blue-grey panel, its own isometric icons) whose every window is
+meant to be beautiful and pixel-perfect. Read each picture below with
+the Read tool, every one of them, then judge them as a senior product
+designer would, and bluntly: the agent that made this, the lead, has
+looked already and thinks it's fine.
+
+- Composition: what the eye lands on first, how the parts sit together,
+  proportions and margins.
+- Hierarchy and type: sizes, weights, what's loud that should be quiet.
+- Spacing and rhythm: anything cramped, floating, or uneven where it
+  should match.
+- Alignment: edges, baselines, columns.
+- Colour: roles, contrast, light against dark looks.
+- Icons and marks, controls, each state shown.
+- What looks amateur, unfinished, or out of keeping with the desktop
+  (it should belong there, not look like a web page), and what's missing
+  that would make it feel finished.
+
+Only look: read nothing but these pictures, and start no agent or
+subagent of any kind. Report a list, the most important first: for
+each, which picture and where, what's wrong, and exactly what to do
+instead (sizes in points, what moves where, which colour role, what to
+remove). Then, briefly, what already works and should be kept. If a
+picture is fine, say so plainly; don't invent.
+
+Write the whole review as Markdown to {out} with the Write tool (that
+one file, nothing else), then reply DONE and wait: the lead may ask
+more.
+
+The pictures:
+{pictures}
+"""
+
+
+def session(name, cwd, env, program):
+    """A tmux session of its own for one agent's program, nothing of
+    the person's screen in its reach. (One tmux server for them all,
+    its options from CONF.)"""
+    env = ["env", "-u", "WAYLAND_DISPLAY", "-u", "DISPLAY", "-u", "OLO_SOCKET", "-u", "CLAUDECODE", "-u", "CLAUDE_CODE_ENTRYPOINT", f"OLO_SUBAGENT={name}", *env]
+    tmux("new-session", "-d", "-s", name, "-x", "200", "-y", "60", "-c", cwd, *env, *program, check=True)
+
+
+def launch_opus(name, cwd, brief):
+    """Opus 5.5, for a design review: the Claude CLI in a session here,
+    able to read and write files in `cwd` and to do nothing else.
+    (--restricted: no tool that runs anything, the file tools kept to
+    that folder, and none of the person's settings, hooks or MCP
+    servers; so nothing it does needs leave. The brief is its first
+    message, after an option that takes no value: `--tools` and
+    `--add-dir` take as many as follow them, and took the brief for a
+    folder's name, 2026-11-22.)"""
+    session(name, cwd, [], ["claude", "--model", OPUS, "--effort", "high", "--restricted", "--strict-mcp-config", "--tools", "Read,Write",
+                            "--permission-mode", "acceptEdits", "--disable-slash-commands", brief])
+
+
+def launch(name, d, cwd, others, target=None, commands=True):
+    """An agy of its own in a tmux session, working in `cwd` (and
+    reading `d`, its folder here, and `others`): started on its brief,
+    with what it may run, and nothing of the person's screen in reach."""
+    folders = list(dict.fromkeys([cwd, d, *others]))
+    json.dump(settings(folders, commands, own=[d, *others]), open(os.path.join(d, "settings.json"), "w"), indent=1)
+    env = [f"CARGO_TARGET_DIR={target}"] if target else []
+    # (accept-edits: its edits go ahead, its commands by ALLOW and DENY,
+    # the rest asks. Not agy's `auto` mode, which decides for itself what
+    # is safe and runs it outside its sandbox when the sandbox refuses:
+    # a `sudo -n true` went through unasked, tried 2026-11-22. The
+    # settings are this run's alone, the person's neither read for the
+    # lists nor written.)
+    add = [a for x in folders[1:] for a in ("--add-dir", x)]
+    agy = ["agy", "--model", MODEL, "--mode", "accept-edits", "--settings", os.path.join(d, "settings.json"), *add,
+           "-i", f"Read {d}/brief.md (the rules, then your task) and do what it says."]
+    session(name, cwd, env, agy)
+
+
+def room(name, program="agy"):
+    """Refuse a name in use, or a sixth agent; those running."""
+    if not shutil.which(program):
+        sys.exit(f"agents: no {program} on PATH ({'the Antigravity CLI' if program == 'agy' else 'the Claude CLI'}, signed in)")
+    running = [n for n in names() if live(n)]
+    if name in running:
+        sys.exit(f"agents: {name} is running")
+    if len(running) >= MOST:
+        sys.exit(f"agents: {MOST} are running ({', '.join(running)}): stop one first")
+    return running
 
 
 def start(name, crate, brief):
@@ -235,14 +601,9 @@ def start(name, crate, brief):
     task = open(brief).read().strip()
     if not task:
         sys.exit("agents: the brief is empty")
-    running = [n for n in names() if live(n)]
-    if name in running:
-        sys.exit(f"agents: {name} is running")
-    if len(running) >= MOST:
-        sys.exit(f"agents: {MOST} are running ({', '.join(running)}): stop one first")
-    for n in running:
-        other = meta(n)["crate"]
-        if other == crate or other.startswith(crate + "/") or crate.startswith(other + "/"):
+    for n in room(name):
+        other = meta(n).get("crate")
+        if other and (other == crate or other.startswith(crate + "/") or crate.startswith(other + "/")):
             sys.exit(f"agents: {n} is working in {other}: one agent to a crate")
     package = next((l.split('"')[1] for l in open(os.path.join(crate_dir, "Cargo.toml")) if l.startswith("name")), crate)
     d = folder(name)
@@ -250,27 +611,44 @@ def start(name, crate, brief):
         shutil.rmtree(d)
     os.makedirs(os.path.join(d, "target"))
     open(os.path.join(d, "task.md"), "w").write(task + "\n")
-    open(os.path.join(d, "brief.md"), "w").write(RULES.format(crate=crate, package=package, name=name, dir=d) + task + "\n")
-    save_meta(name, {"crate": crate, "package": package, "started": time.time(), "seen": "", "seen_state": ""})
-    # (One tmux server for them all, its options from CONF.)
-    env = ["env", "-u", "WAYLAND_DISPLAY", "-u", "DISPLAY", "-u", "OLO_SOCKET", f"OLO_SUBAGENT={name}", f"CARGO_TARGET_DIR={d}/target"]
-    # (Approvals reviewed by Codex's own reviewer, `--approve-for-me`:
-    # what's routine goes ahead, only what it won't pass comes to the
-    # lead, Ben, 2026-11-19: "the codex agents should run on auto approve
-    # for most things only the super risky stuff should come to you".)
-    # (It brings the workspace-write sandbox with it: with `-s` too, Codex
-    # refuses to start.)
-    # (None of the person's Codex hooks: they are for their own sessions
-    # (a hook of theirs added on 2026-11-21 names each Codex session in
-    # their Rex server), and a new or changed one has an interactive
-    # Codex stop at its start to ask whether to trust it: two agents sat
-    # there until looked at. Trusting a hook is the person's to do.)
-    codex = ["codex", "-m", MODEL, "-c", f'model_reasoning_effort="{EFFORT}"', "--approve-for-me",
-             "--disable", "multi_agent", "--disable", "multi_agent_v2", "--disable", "hooks", "--no-alt-screen", "-C", ROOT, "--add-dir", d,
-             f"Read {d}/brief.md (the rules, then your task) and do what it says."]
-    tmux("new-session", "-d", "-s", name, "-x", "200", "-y", "60", "-c", ROOT, *env, *codex, check=True)
+    open(os.path.join(d, "brief.md"), "w").write(RULES.format(root=ROOT, crate=crate, package=package, name=name, dir=d, approvals=APPROVALS) + task + "\n")
+    save_meta(name, {"crate": crate, "package": package, "started": time.time(), "seen": "", "seen_state": "", "done": os.path.join(d, "report.md")})
+    launch(name, d, ROOT, [], os.path.join(d, "target"))
     print(f"agents: {name} started on {crate} ({package}); its folder is {d}")
-    print(f"agents: keep `tools/dev/agents watch` running in the background to hear from it")
+    print(f"agents: now wait on `tools/dev/agents watch` to hear from it (a lead: in the background; a minder: `watch --for 9`)")
+
+
+def investigate(brief, where):
+    """Start a second investigator on `brief` (or find the one started
+    on it), then wait until it needs the lead or has answered."""
+    refuse_nested()
+    brief = os.path.abspath(brief)
+    if not os.path.isfile(brief) or not open(brief).read().strip():
+        sys.exit("usage: tools/dev/agy-help BRIEF.md [DIR]   (the brief: a file that says what's wrong and what's known)")
+    work = os.path.abspath(where or os.path.dirname(brief))
+    if work == "/tmp" or work.startswith("/tmp/"):
+        sys.exit(f"agents: {work} is in RAM (/tmp); use a folder under /var/tmp")
+    if not os.path.isdir(work):
+        sys.exit(f"agents: no folder {work}")
+    # (Its name: the folder's, so the same brief finds the same helper.)
+    name = ("help-" + re.sub(r"[^a-z0-9]+", "-", os.path.basename(work).lower()).strip("-"))[:31].rstrip("-")
+    m = meta(name)
+    if not (m and m.get("work") == work and live(name)):
+        room(name)
+        d = folder(name)
+        if os.path.exists(d):
+            shutil.rmtree(d)
+        os.makedirs(d)
+        for old in ("answer.md",):
+            if os.path.exists(os.path.join(work, old)):
+                os.replace(os.path.join(work, old), os.path.join(work, old + ".before"))
+        open(os.path.join(d, "brief.md"), "w").write(HELP_RULES.format(root=ROOT, dir=work, approvals=APPROVALS) + open(brief).read().strip() + "\n")
+        save_meta(name, {"work": work, "started": time.time(), "seen": "", "seen_state": "", "done": os.path.join(work, "answer.md")})
+        launch(name, d, ROOT, [work], os.path.join(work, "target"))
+        print(f"agents: {name} started on {brief}; its answer will be {work}/answer.md, its notes {work}/notes.md", flush=True)
+    else:
+        print(f"agents: {name} is on it already; waiting for it", flush=True)
+    sys.exit(watch(15, only=name))
 
 
 # How long an ended agent's builds are kept after the last of them.
@@ -330,9 +708,93 @@ def say_swept(gone):
         print(f"agents: {n} ended over a day ago: its builds removed ({size / 2**30:.1f} GB; its report and the rest stay until `agents forget {n}`)", file=sys.stderr)
 
 
+def look(args):
+    """Start a look at pictures (or find the one started on them), wait
+    until it needs the lead or has written its review, and print it.
+    Gemini's look at what's wrong by a pixel, or with `--by opus` Opus
+    5.5's review of the design itself."""
+    refuse_nested()
+    by, about = "gemini", ""
+    while len(args) >= 2 and args[0] in ("--by", "--about"):
+        if args[0] == "--by":
+            by = args[1]
+        else:
+            about = args[1]
+        args = args[2:]
+    if by not in ("gemini", "opus"):
+        sys.exit("agents: look --by gemini, or --by opus")
+    front = "agy-look" if by == "gemini" else "opus-look"
+    if not args or args[0].startswith("--"):
+        sys.exit(f'usage: tools/dev/{front} [--about "WHAT IT IS, WHAT CHANGED"] PICTURE.png…')
+    pictures = []
+    for a in args:
+        full = os.path.abspath(a)
+        if full.startswith("/tmp/"):
+            sys.exit(f"agents: {a} is in RAM (/tmp); keep pictures under /var/tmp")
+        if not os.path.isfile(full) or not os.path.getsize(full):
+            sys.exit(f"agents: no picture {a}")
+        pictures.append(full)
+    work = os.path.dirname(pictures[0])
+    out = os.path.join(work, front + ".md")
+    name = (("look-" if by == "gemini" else "opus-") + re.sub(r"[^a-z0-9]+", "-", os.path.basename(work).lower()).strip("-"))[:31].rstrip("-")
+    m = meta(name)
+    if m and live(name) and (m.get("pictures"), m.get("about")) != (pictures, about):
+        sys.exit(f"agents: {name} is looking at other pictures there: wait for it, or `tools/dev/agents stop {name}`")
+    d = folder(name)
+    review = os.path.join(d, "review.md")
+    if not (m and live(name)):
+        room(name, "agy" if by == "gemini" else "claude")
+        if os.path.exists(d):
+            shutil.rmtree(d)
+        os.makedirs(d)
+        if os.path.exists(out):
+            os.remove(out)
+        # (It works in its folder here, on copies of the pictures: one
+        # folder to read whatever folders they came from, nothing of the
+        # project loaded, nothing of yours in its reach but them.)
+        copies = []
+        for i, pic in enumerate(pictures):
+            base = os.path.basename(pic)
+            if [os.path.basename(x) for x in pictures].count(base) > 1:
+                base = f"{i + 1:02d}-{base}"
+            subprocess.run(["cp", "--reflink=auto", pic, os.path.join(d, base)], check=True)
+            copies.append(os.path.join(d, base))
+        said = {"out": review, "pictures": "\n".join(copies)}
+        record = {"work": work, "pictures": pictures, "about": about, "started": time.time(), "seen": "", "seen_state": "", "done": review}
+        if by == "gemini":
+            brief = LOOK_RULES.format(**said) + (f"\nWhat changed: {about}\n" if about else "")
+            open(os.path.join(d, "brief.md"), "w").write(brief)
+            save_meta(name, {**record, "cli": "agy"})
+            launch(name, d, d, [], commands=False)
+        else:
+            brief = OPUS_RULES.format(**said) + (f"\nWhat it is, and what changed: {about}\n" if about else "")
+            open(os.path.join(d, "brief.md"), "w").write(brief)
+            save_meta(name, {**record, "cli": "claude"})
+            launch_opus(name, d, brief)
+        print(f"agents: {name} is looking at {len(pictures)} picture{'s' if len(pictures) != 1 else ''}; its review will be {out}", flush=True)
+    else:
+        print(f"agents: {name} is on them already; waiting for it", flush=True)
+    rc = watch(15, only=name)
+    if rc == 0:
+        # (Done: its review beside the first picture and printed, what
+        # it did kept beside that, and the session ended with its
+        # folder, so it doesn't count among those running.)
+        shutil.copyfile(review, out)
+        open(out[:-3] + ".log", "w").write((screen(name, 200000) or "") + "\n")
+        print(open(out).read().rstrip())
+        tmux("kill-session", "-t", f"={name}")
+        shutil.rmtree(d, ignore_errors=True)
+    sys.exit(rc)
+
+
 def ago(t):
     s = int(time.time() - t)
     return f"{s // 3600}h{s % 3600 // 60:02d}m" if s >= 3600 else f"{s // 60}m{s % 60:02d}s"
+
+
+def done_file(n):
+    m = meta(n) or {}
+    return m.get("done") or os.path.join(folder(n), "report.md")
 
 
 def list_():
@@ -343,49 +805,61 @@ def list_():
     for n in rows:
         m = meta(n)
         st = state(n)
-        done = " report.md" if os.path.exists(os.path.join(folder(n), "report.md")) else ""
-        print(f"{n:16} {st:8} {m['crate']:28} for {ago(m['started'])}{done}")
+        # (Its turn over and its result written: done. Idle without it:
+        # a question, or waiting to be told more.)
+        st = "done" if st == "idle" and os.path.exists(done_file(n)) else st
+        on = m.get("crate") or (f"pictures ({m.get('work', '?')})" if m.get("pictures") else f"a bug ({m.get('work', '?')})")
+        done = f" {os.path.basename(done_file(n))}" if os.path.exists(done_file(n)) else ""
+        print(f"{n:16} {st:8} {on:28} started {ago(m['started'])} ago{done}")
 
 
-def watch(stuck_min):
-    """Return once an agent needs you; print who and why."""
+def shown(text, most=3000):
+    return "\n".join(l for l in (text or "").splitlines() if l.strip())[-most:]
+
+
+def watch(stuck_min, only=None, at_most=None):
+    """Return once an agent needs you; print who and why. With `only`,
+    that one alone, and how to go on; 0 if it has answered. With
+    `at_most`, after that many minutes if nothing has."""
     last = {}
-    # (When each was first seen idle: between two steps the TUI can show
-    # neither its working line nor a prompt for a moment, and that isn't
-    # a turn ended. Idle 15 seconds on end, it is.)
     idle_since = {}
+    began = told = time.time()
     while True:
         alerts = []
-        rows = [n for n in names()]
+        if at_most and time.time() - began >= at_most * 60:
+            print(f"agents: nothing has needed you in {at_most} minutes; run it again to go on waiting")
+            return 0
+        rows = [n for n in names() if only in (None, n)]
         if not any(state(n) in ("working", "asking", "idle") for n in rows):
             print("agents: none running")
-            return
+            return 1 if only else 0
         for n in rows:
             st = state(n)
             m = meta(n) or {}
             if st == "asking":
-                alerts.append((n, "asks for approval", screen(n)))
+                alerts.append((n, f"asks you (tools/dev/agents approve {n} y|p|no, or `answer {n} N`)", "\n".join(asked(n)[0])))
             elif st == "exited" and m.get("seen_state") != "exited":
                 alerts.append((n, "has exited", screen(n, 40)))
             elif st == "idle":
-                # (Just started, it shows no work for a moment before its
-                # first prompt goes in.)
+                # (A moment to start; and a turn that's really over, not
+                # the gap between two steps.)
                 if time.time() - m.get("started", 0) < 30:
                     continue
                 if time.time() - idle_since.setdefault(n, time.time()) < 15:
                     continue
                 p = progress(n)
-                if p != m.get("seen"):
-                    said = "is DONE" if os.path.exists(os.path.join(folder(n), "report.md")) else "finished a turn (a question, or waiting)"
+                finished = os.path.exists(done_file(n))
+                # (One waited for alone that has its result is done,
+                # whether or not it was looked at meanwhile.)
+                if p != m.get("seen") or (only and finished):
+                    said = f"is DONE ({done_file(n)})" if finished else "finished a turn (a question, or waiting)"
                     alerts.append((n, said, screen(n, 40)))
+                    if finished:
+                        # (Said once: a watcher of several isn't called
+                        # back by the same finished one at every wait.)
+                        seen(n)
             if st != "idle":
                 idle_since.pop(n, None)
-            # (A question queued while it works: said once, until it's
-            # looked at, `agents question`.)
-            if st in ("working", "idle") and queued_question(n) and not m.get("question_told"):
-                m["question_told"] = True
-                save_meta(n, m)
-                alerts.append((n, f"has a question for you (tools/dev/agents question {n})", screen(n, 14)))
             if st == "working":
                 p = progress(n)
                 t, was = last.get(n, (time.time(), p))
@@ -395,12 +869,34 @@ def watch(stuck_min):
                 if time.time() - t >= stuck_min * 60:
                     alerts.append((n, f"has shown nothing new for {stuck_min} minutes while working", screen(n, 30)))
         if alerts:
+            # (One waited for alone, and done: what it wrote is what its
+            # front door prints, not its screen besides.)
+            finished = bool(only) and os.path.exists(done_file(only)) and state(only) == "idle"
             for n, why, text in alerts:
                 print(f"=== {n} {why}")
-                print("\n".join(l for l in (text or "").splitlines() if l.strip())[-3000:])
-                print()
-            return
+                if not finished:
+                    print(shown(text))
+                    print()
+            if only:
+                if finished:
+                    return 0
+                print(f"agents: answer it (approve, answer, say), then run this again to go on waiting for {only}")
+                return 3
+            return 0
+        if time.time() - told >= 60:
+            told = time.time()
+            for n in rows:
+                if live(n):
+                    print(f"… {n}: {state(n)}, {ago((meta(n) or {}).get('started', told))} since its start: {latest(n)}", flush=True)
         time.sleep(5)
+
+
+def latest(name):
+    """The last line of what it has said or is doing: above its field."""
+    lines = [l for l in (screen(name) or "").splitlines() if l.strip()]
+    rules = [i for i, l in enumerate(lines) if set(l.strip()) == {RULE}]
+    said = [l for l in (lines[:rules[-2]] if len(rules) >= 2 else lines) if not re.match(r"\s*└ Tip:", l)]
+    return said[-1].strip()[:160] if said else ""
 
 
 def peek(name, lines):
@@ -420,74 +916,101 @@ def log(name):
     seen(name)
 
 
-def say(name, text):
+def field(name):
+    """What its field holds: the lines between the last two rules."""
+    lines = [l for l in (screen(name) or "").splitlines() if l.strip()]
+    rules = [i for i, l in enumerate(lines) if set(l.strip()) == {RULE}]
+    if len(rules) < 2:
+        return ""
+    held = " ".join(l.strip() for l in lines[rules[-2] + 1:rules[-1]])
+    held = held[1:].strip() if held[:1] in (">", "\u276f") else held
+    # (Empty, it shows its mode's hint there.)
+    return "" if "shift+tab to cycle" in held else held
+
+
+def say(name, text, now=False):
+    """A message to it. While it works, its program queues the message
+    for the end of the step it is on; `now` has it delivered at once
+    (agy: alt+m), which is what stops a long think."""
     refuse_nested()
-    if not live(name):
+    st = state(name)
+    if st in ("gone", "exited"):
         sys.exit(f"agents: {name} isn't running")
-    # (Typed fast, the words come as a paste, and an Enter in the same
-    # burst is a new line in it: Enter goes on its own, a moment after.
-    # A long message comes as several pastes, still arriving half a
-    # second on, and the Enter was lost among them: its words sat in the
-    # agent's field unsent, the agent idle (2026-11-20). So the wait is
-    # longer for a longer one, and while the field still holds a paste,
-    # Enter is sent again.)
-    tmux("send-keys", "-t", f"={name}:0.0", "-l", text, check=True)
+    if st == "asking":
+        sys.exit(f"agents: {name} is asking you something: answer that first (agents approve {name} y|p|no, agents answer {name} N)")
+    # (As one paste, so a new line in it is a new line and not a send;
+    # then Enter by itself, a moment later.)
+    target = f"={name}:0.0"
+    r = subprocess.run(["tmux", "-L", SOCKET, "load-buffer", "-b", "olo-say", "-"], input=text, text=True, capture_output=True)
+    if r.returncode:
+        sys.exit(f"agents: tmux load-buffer: {r.stderr.strip()}")
+    tmux("paste-buffer", "-p", "-d", "-b", "olo-say", "-t", target, check=True)
     time.sleep(0.5 + len(text) / 1500)
     for _ in range(4):
-        tmux("send-keys", "-t", f"={name}:0.0", "C-m", check=True)
+        tmux("send-keys", "-t", target, "C-m", check=True)
         time.sleep(1.5)
-        if "[Pasted Content" not in "\n".join(screen(name, 12).splitlines()[-8:]):
+        if not field(name):
             break
     else:
         sys.exit(f"agents: said to {name}, but its field still holds the words: look (agents peek {name})")
+    queued = "to send immediately" in "\n".join((screen(name) or "").splitlines()[-12:])
+    if queued and now:
+        tmux("send-keys", "-t", target, "M-m", check=True)
+        time.sleep(1.0)
     seen(name)
-    print(f"agents: said to {name}")
+    print(f"agents: said to {name}" + ("" if not queued else " (delivered at once)" if now else f": queued until the step it is on ends (`agents say {name} --now …` delivers at once)"))
 
 
-def question(name, choice):
-    """Its queued question, shown; with a choice, answered."""
-    refuse_nested()
-    if not queued_question(name):
-        sys.exit(f"agents: {name} has no question queued")
-    target = f"={name}:0.0"
-    tmux("send-keys", "-t", target, "S-Left", check=True)
-    time.sleep(1.2)
-    lines = (screen(name) or "").splitlines()
-    at = max((i for i, l in enumerate(lines) if "Queued follow-up inputs" in l), default=max(0, len(lines) - 16))
-    print("\n".join(l for l in lines[at:] if l.strip()))
-    if choice is None:
-        # (Back to its prompt, the question left queued.)
-        tmux("send-keys", "-t", target, "S-Right", check=True)
-        print(f"agents: answer with `agents question {name} N`")
-        return
-    for _ in range(max(0, choice - 1)):
-        tmux("send-keys", "-t", target, "Down", check=True)
-        time.sleep(0.15)
-    tmux("send-keys", "-t", target, "C-m", check=True)
-    time.sleep(0.5)
-    m = meta(name)
-    if m:
-        m.pop("question_told", None)
-        save_meta(name, m)
-    seen(name)
-    print(f"agents: took choice {choice} for {name}")
-
-
-def approve(name, how):
+def answer(name, how):
+    """Answer what it asks: y, p, no, or the number of a choice."""
     refuse_nested()
     if state(name) != "asking":
         sys.exit(f"agents: {name} isn't asking for anything ({state(name)})")
-    s = screen(name) or ""
-    lines = s.splitlines()
-    start_at = max((i for i, l in enumerate(lines) if "Would you like to" in l), default=max(0, len(lines) - 12))
-    print("\n".join(l for l in lines[start_at:] if l.strip()))
-    key = {"y": "y", "yes": "y", "p": "p", "no": "Escape", "n": "Escape"}.get(how)
-    if not key:
-        sys.exit("agents: approve with y, p or no")
-    tmux("send-keys", "-t", f"={name}:0.0", key, check=True)
+    text, choices = asked(name)
+    print("\n".join(text))
+    if how.isdigit():
+        pick = next((c for c in choices if c[0] == how), None)
+    else:
+        kind = {"y": "y", "yes": "y", "p": "p", "no": "n", "n": "n"}.get(how)
+        if not kind:
+            sys.exit("agents: approve with y, p or no; or `answer NAME N` for the Nth choice")
+        # (agy 1.5.14: "Yes, run command"; "Yes, and always allow in this
+        # conversation for commands that start with '…'"; the same
+        # "(Persist to settings.json)"; "No, cancel".)
+        want = {"y": lambda w: w.startswith("Yes") and "always" not in w and "auto mode" not in w,
+                "p": lambda w: w.startswith("Yes") and "in this conversation" in w,
+                "n": lambda w: w.startswith("No")}[kind]
+        pick = next((c for c in choices if want(c[1])), None)
+    if not pick:
+        sys.exit(f"agents: no such choice in what {name} asks: look (agents peek {name}), and answer with `agents answer {name} N`, or where its choices have no numbers move to one and confirm it (`agents keys {name} down enter`)")
+    if any(x in pick[1] for x in SAVES):
+        sys.exit("agents: that choice changes the person's own settings or the agent's mode: not from here (y allows this once)")
+    tmux("send-keys", "-t", f"={name}:0.0", pick[0], check=True)
     time.sleep(0.5)
     seen(name)
-    print(f"agents: answered {how} to {name}")
+    print(f"agents: answered {name}: {pick[1]}")
+
+
+KEYS = {"up": "Up", "down": "Down", "left": "Left", "right": "Right", "enter": "C-m", "esc": "Escape", "escape": "Escape", "tab": "Tab", "space": "Space"}
+
+
+def keys(name, which):
+    """Press keys in it, one after another: for a question whose choices
+    have no numbers (move to one and confirm), or to cancel what it's
+    doing (esc)."""
+    refuse_nested()
+    if not live(name):
+        sys.exit(f"agents: {name} isn't running")
+    send = [KEYS.get(k.lower()) or (k if re.fullmatch(r"[0-9a-z]", k) else None) for k in which]
+    if None in send:
+        sys.exit(f"agents: keys are {', '.join(KEYS)}, a digit or a letter")
+    for k in send:
+        tmux("send-keys", "-t", f"={name}:0.0", k, check=True)
+        time.sleep(0.3)
+    time.sleep(0.5)
+    print("\n".join(l for l in (screen(name, 16) or "").splitlines() if l.strip()))
+    print(f"--- {name}: {state(name)}")
+    seen(name)
 
 
 def stop(name):
@@ -497,7 +1020,7 @@ def stop(name):
     if m:
         m["seen_state"] = "exited"
         save_meta(name, m)
-    print(f"agents: {name} stopped; its folder {folder(name)} stays (report.md, its transcript: `agents log` before stopping)")
+    print(f"agents: {name} stopped; its folder {folder(name)} stays (its report or answer, its brief: `agents log` before stopping for its transcript)")
 
 
 def forget(name):
@@ -508,36 +1031,54 @@ def forget(name):
     print(f"agents: {name}'s folder removed")
 
 
+def allowed():
+    print("Goes ahead without asking (a command that starts so; several piped or joined, when each does):")
+    print("  " + "\n  ".join(allow()))
+    print("Refused without asking:")
+    print("  " + "\n  ".join(DENY))
+    print("Anything else asks the lead.")
+
+
 def main():
     a = sys.argv[1:]
     if not a or a[0] in ("-h", "--help", "help"):
         print(__doc__)
         return
     cmd, rest = a[0], a[1:]
-    if cmd in ("start", "list", "watch"):
+    if cmd in ("start", "list", "watch", "investigate", "look"):
         say_swept(sweep_builds())
     if cmd == "start" and len(rest) == 3:
         start(*rest)
+    elif cmd == "investigate" and len(rest) in (1, 2):
+        investigate(rest[0], rest[1] if len(rest) > 1 else None)
+    elif cmd == "look":
+        look(rest)
     elif cmd == "list":
         list_()
     elif cmd == "watch":
-        watch(int(rest[rest.index("--stuck") + 1]) if "--stuck" in rest else 15)
+        watch(int(rest[rest.index("--stuck") + 1]) if "--stuck" in rest else 15, at_most=int(rest[rest.index("--for") + 1]) if "--for" in rest else None)
     elif cmd == "peek" and rest:
         peek(rest[0], int(rest[1]) if len(rest) > 1 else 60)
     elif cmd == "log" and rest:
         log(rest[0])
+    elif cmd == "say" and len(rest) >= 3 and rest[1] == "--now":
+        say(rest[0], " ".join(rest[2:]), now=True)
     elif cmd == "say" and len(rest) >= 2:
         say(rest[0], " ".join(rest[1:]))
-    elif cmd == "question" and rest:
-        question(rest[0], int(rest[1]) if len(rest) > 1 and rest[1].isdigit() else None)
     elif cmd == "approve" and rest:
-        approve(rest[0], rest[1] if len(rest) > 1 else "y")
+        answer(rest[0], rest[1] if len(rest) > 1 else "y")
+    elif cmd == "answer" and len(rest) == 2 and rest[1].isdigit():
+        answer(rest[0], rest[1])
+    elif cmd == "keys" and len(rest) >= 2:
+        keys(rest[0], rest[1:])
     elif cmd == "stop" and rest:
         stop(rest[0])
     elif cmd == "forget" and rest:
         forget(rest[0])
     elif cmd == "attach" and rest:
         print(f"tmux -L {SOCKET} attach -r -t {rest[0]}")
+    elif cmd == "allowed":
+        allowed()
     else:
         print(__doc__)
         sys.exit(2)

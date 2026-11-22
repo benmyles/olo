@@ -1,0 +1,28 @@
+#!/bin/bash
+# A second investigator for a bug that won't give up its cause: Gemini 4
+# Neon (its reasoning at high) in the Antigravity CLI, given a written
+# brief, working beside you, answering in a file.
+#
+#   tools/dev/agy-help BRIEF.md [DIR]
+#
+# BRIEF.md: what's wrong and everything known (the olo-debug-help skill,
+# .claude/skills/olo-debug-help/SKILL.md, says what a good one holds).
+# DIR (the brief's folder by default; somewhere of yours under /var/tmp):
+# the helper's scratch, where `answer.md` (its findings) and `notes.md`
+# (what it found on the way) are written, its builds in DIR/target.
+#
+# The helper is an agy in a tmux session, as every agent here is
+# (`tools/dev/agents investigate`: this is that), named help-FOLDER: it
+# can be read as it works (`tools/dev/agents peek help-FOLDER`), told
+# more (`agents say`), and asks leave for what isn't routine (`agents
+# approve`). Run this in the background: it prints a line a minute of
+# what the helper is doing, and returns when the answer is written (0),
+# or as soon as the helper needs you (3: answer it, then run this again
+# with the same brief to go on waiting). It can take an hour. When
+# you've read the answer, `tools/dev/agents stop help-FOLDER` (and
+# `forget`).
+#
+# The helper looks and tries things; it doesn't change the working
+# tree, commit, push or touch the person's session (its rules go in
+# front of every brief). What it says is a lead to check, not a fact.
+exec /usr/bin/python3 "$(dirname "$0")/agents" investigate "$@"

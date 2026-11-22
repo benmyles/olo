@@ -1,6 +1,6 @@
 ---
 name: olo-codex-message
-description: Send a message to a Codex agent that is running on this computer (one of the person's own Codex sessions, in another terminal window or tab) - hand it to the turn it is working on right now, or queue it for when that turn ends - and check that it arrived, with tools/dev/codex-say. Use when the person asks you to tell, ask or report something to a Codex agent of theirs (they give its session id), for example findings about a tool it is building. Not for the Codex subagents you start yourself (olo-codex-agents, tools/dev/agents say) nor for another Claude session (the SendMessage tool).
+description: Send a message to a Codex agent that is running on this computer (one of the person's own Codex sessions, in another terminal window or tab) - hand it to the turn it is working on right now, or queue it for when that turn ends - and check that it arrived, with tools/dev/codex-say. Use when the person asks you to tell, ask or report something to a Codex agent of theirs (they give its session id), for example findings about a tool it is building. Not for the helpers you start yourself (the olo-agents skill, tools/dev/agents say: those are Antigravity's now, not Codex) nor for another Claude session (the SendMessage tool).
 ---
 
 # A message for a Codex agent of the person's

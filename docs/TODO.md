@@ -1021,6 +1021,23 @@ something nobody here has is in "Blocked", with what it waits for.
     panel in the dark looks; an empty status bar in the dark looks is a
     flat block without an edge; text is cut at its end only (a path
     wants its middle cut: `StringView::cut`).
+    **And a fourth look, after it was in** (2026-11-22, three of its
+    pictures given to the new reviewers as their first trial; both
+    said these, each checked against the pictures before it is acted
+    on): the default button's ring stands about 3 px past the right
+    edge the wells, rules and the key menu share (the ring's outside
+    should be on that edge); the buttons' row is nearer the window's
+    bottom than the content is to its top and sides, the key alert's
+    most; Back and Set Up are as near the last step's well as the
+    steps are to each other, so they read as part of step 5 (more
+    room, or a rule); the two alerts differ in the room over the
+    title, between title and body, and where the icon's top sits
+    (the stop sign 4 or 5 px lower than the key: its own artwork's
+    margin?); the confirm window's title is no larger than its group
+    headings, and step titles look larger than the headings they are
+    under (Opus: title 14 pt bold, headings 12 bold, step titles 12
+    regular). To check: the key's fingerprint cut with three dots or
+    an ellipsis; "rex" and "Rex" side by side in step 1.
   - *A segmented control, the kit's* (Ben, 2026-11-22, of Rex's
     Sessions and Activity, with a picture of what there is and one of
     what is wanted: "this sessions/activity segmented control looks
@@ -1739,11 +1756,12 @@ something nobody here has is in "Blocked", with what it waits for.
   for you in parallel just be very specific to it what you want for each
   one"): the design, the UX and how the pieces fit are mine; each piece
   (the engine's IMAP/SMTP and its store, threads and search, the
-  composer, the views, the assistant, the widget…) goes to a Codex
-  instance (gpt-6.2-astra, xhigh) with a precise spec of what it builds,
+  composer, the views, the assistant, the widget…) goes to a subagent
+  (Gemini 4 Neon in `agy` since 2026-11-22, where Ben's words then
+  say Codex) with a precise spec of what it builds,
   how it looks and behaves, and how it's tested, working in parallel in
   this working tree, a crate each (`tools/dev/agents`, the
-  `olo-codex-agents` skill: CLAUDE.md, "Subagents"); I review, fit
+  `olo-agents` skill: CLAUDE.md, "Subagents"); I review, fit
   together and judge every picture.
 
 - **Mail in Deskbar: widgets of its own** (Ben, 2026-11-17: "both the
