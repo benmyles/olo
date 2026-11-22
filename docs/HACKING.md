@@ -26744,6 +26744,12 @@ divider under the pointer in a split of any size, neither pane under
 Width" or "Pane Height", its value the first pane's share. The
 sidebar's divider is `side_divider_within` its row.
 
+*For agents*: every text field has a name (`TextField::name`: Label,
+Address and Port in Hosts, Find, Filter, an SSH question's Answer;
+they read as nameless TextInputs, not to be told apart); a session's
+row says what an agent is doing there as its value; each split is a
+Splitter; a pane is a Terminal named by its title.
+
 *The status bar at rest* says what nothing else in the window does:
 the focused pane's folder (from `~` on this computer:
 `folder_said`, `hub::local_home`; a far host's name first) and its

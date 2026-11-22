@@ -521,7 +521,7 @@ impl RexWindow {
         let focus = FocusHandle::new();
         focus.focus(cx);
 
-        let overlay_field = widgets::text_field(cx, |f| f.hint("Type to filter…"));
+        let overlay_field = widgets::text_field(cx, |f| f.name("Filter").hint("Type to filter…"));
         cx.subscribe(&overlay_field, |w: &mut Self, e: &TextFieldEvent, cx| match e {
             TextFieldEvent::Changed => {
                 let txt = w.overlay_field.as_ref().map(|f| f.read(cx).text().to_owned()).unwrap_or_default();
@@ -546,7 +546,7 @@ impl RexWindow {
             TextFieldEvent::Typed(_) => {}
         });
 
-        let find_field = widgets::text_field(cx, |f| f.hint("Find in terminal…"));
+        let find_field = widgets::text_field(cx, |f| f.name("Find").hint("Find in terminal…"));
         cx.subscribe(&find_field, |w: &mut Self, e: &TextFieldEvent, cx| match e {
             TextFieldEvent::Changed => w.run_find_query(cx),
             TextFieldEvent::Entered => w.step_find(false, cx),
@@ -596,9 +596,11 @@ impl RexWindow {
         let focus = FocusHandle::new();
         let (host_label_field, host_addr_field, fwd_port_field, askpass_field) = match role {
             WinRole::Hosts => {
-                let lf = widgets::text_field(cx, |f| f.hint("Label (e.g. prod)"));
-                let af = widgets::text_field(cx, |f| f.hint("ssh://user@host or host.ts.net"));
-                let pf = widgets::text_field(cx, |f| f.hint("Port"));
+                // (Each with the name agents know it by: they read as
+                // three TextInputs with none, not to be told apart.)
+                let lf = widgets::text_field(cx, |f| f.name("Label").hint("Label (e.g. prod)"));
+                let af = widgets::text_field(cx, |f| f.name("Address").hint("ssh://user@host or host.ts.net"));
+                let pf = widgets::text_field(cx, |f| f.name("Port").hint("Port"));
                 cx.subscribe(&af, |_, e: &TextFieldEvent, cx| {
                     if matches!(e, TextFieldEvent::Changed) {
                         cx.invalidate();
@@ -613,7 +615,7 @@ impl RexWindow {
             }
             WinRole::Askpass => {
                 let is_secret = app().askpass.current_request().is_some_and(|r| matches!(r, AskpassRequest::Secret { echo: false, .. }));
-                let f = widgets::text_field(cx, |f| f.password(is_secret).hint("Enter secret…"));
+                let f = widgets::text_field(cx, |f| f.name("Answer").password(is_secret).hint("Enter secret…"));
                 f.focus(cx);
                 cx.subscribe(&f, |w: &mut Self, e: &TextFieldEvent, cx| {
                     if matches!(e, TextFieldEvent::Entered) {

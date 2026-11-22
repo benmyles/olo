@@ -1056,6 +1056,12 @@ brief: keep it in a file of your scratch folder and read it from there.
   do but wait for the person; never type into Passwords. Every call has
   a `timeout`, and a test says "the agent didn't sign" rather than
   failing a step later.
+- **A window's text fields are `TextInput` in the tree**, each by the
+  name its app gave it (`TextField::name`): Rex's had none (three
+  nameless fields in Hosts, 2026-11-22), and a script that looked for
+  "TextField" found nothing. Print the roles a window has before
+  writing a check against it (`{"tree":true}` on the app's socket
+  answers with a list, a tree for each of its windows).
 - **A program left running there is started apart from the SSH call**
   (`setsid -f sh -c '…' </dev/null >/dev/null 2>&1`): started with `&`
   alone, ssh waits on it and the call never returns. And ended by a

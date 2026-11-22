@@ -982,12 +982,18 @@ something nobody here has is in "Blocked", with what it waits for.
     on (the server's `allow_tailnet_members`: read what the server
     enforces before wording it), and the devices paired, with a way to
     remove one, if the server's API has them.
-  - *The client, found against a real host (2026-11-21)*: a click on
-    a session's row the moment it appears, and typing straight after,
-    are to be checked again there (a first run typed into the wrong
-    pane; later runs, with the same timing, didn't). The server sends
-    an event Rex doesn't know (`session_event.client_connected`, logged
-    at debug): read what it is for.
+  - *The client, found against a real host*: checked again there on
+    2026-11-22 with the build of that day, twice, all as it should be
+    (an unknown host's key asked about; its session shown 4 to 5 s
+    after the app starts; a click on the session's row the moment it
+    appears and typing straight after, run there; a port there
+    forwarded through the Hosts window and fetched; 2000 lines
+    streamed, the app answering in 2 ms; the server there stopped and
+    started, its new session shown by itself in 3.5 s; 73 keys typed
+    in 3.1 to 3.7 s run there 0.5 to 0.9 s after the last, at 224 ms a
+    round trip). Left: the server sends an event Rex doesn't know
+    (`session_event.client_connected`, logged at debug): read what it
+    is for.
   - *From the design reviews, not yet done*: "Starting…" with a busy
     mark (the kit has none small: one for the kit); a disconnected
     host's last-known sessions kept, dimmed; the disconnected mark on
