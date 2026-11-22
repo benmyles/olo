@@ -84,6 +84,10 @@ pub enum HostConnState {
     Error(String),
 }
 
+/// How long after a pane's screen changes the guess at what an agent is
+/// doing there is made again ([`BlockRuntime::guess_later`]).
+const GUESS_AFTER: Duration = Duration::from_millis(150);
+
 /// Live terminal + metadata runtime for one Rex block.
 pub struct BlockRuntime {
     pub creator_name: String,
@@ -109,6 +113,10 @@ pub struct BlockRuntime {
     process_seq: u64,
     ports_seq: u64,
     pub agent_activity: AgentActivity,
+    /// The screen changed since the guess at what an agent is doing
+    /// there was last made, and someone is to make it
+    /// ([`BlockRuntime::guess_later`]).
+    guess_wanted: bool,
     pub keep_going: Option<KeepGoingState>,
     pub unread: bool,
     pub unread_cleared_at: Option<Instant>,
@@ -210,6 +218,7 @@ impl BlockRuntime {
             process_seq: 0,
             ports_seq: 0,
             agent_activity: AgentActivity::Idle,
+            guess_wanted: false,
             keep_going: None,
             unread: false,
             unread_cleared_at: None,
@@ -354,6 +363,26 @@ impl BlockRuntime {
             }
         }
         self.recompute_activity();
+    }
+
+    /// The screen changed: what an agent is doing there, guessed from
+    /// the screen's last rows where the server has no word of it, is to
+    /// be looked at again. True when nobody is yet to: the caller then
+    /// has it done a moment later ([`BlockRuntime::guess_now`], after
+    /// [`GUESS_AFTER`]), once for however many chunks come meanwhile,
+    /// the last of them included. (It was done with every chunk: twelve
+    /// rows read as text and searched, a hundred times a second while a
+    /// pane streamed, 3% of what the streaming cost, under the lock the
+    /// window draws the pane by.)
+    pub fn guess_later(&mut self) -> bool {
+        !std::mem::replace(&mut self.guess_wanted, true)
+    }
+
+    /// Looks again at what an agent is doing; whether that changed.
+    pub fn guess_now(&mut self) -> bool {
+        self.guess_wanted = false;
+        let was = self.agent_activity;
+        self.recompute_activity() != was
     }
 
     pub fn recompute_activity(&mut self) -> AgentActivity {
@@ -2466,9 +2495,10 @@ impl RexHubInner {
                 let items = apc.push(&live);
                 let mut notices = Vec::new();
                 let restored = terminal.is_some();
-                let applied = {
+                let (applied, guess) = {
                     let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
                     let result = terminal.map_or(Ok(()), |t| g.restore_terminal(t));
+                    let mut guess = false;
                     if result.is_ok() {
                         for item in items {
                             match item {
@@ -2478,10 +2508,24 @@ impl RexHubInner {
                         }
                         g.input_ready = true;
                         g.received_bytes += (snapshot_size + live.len()) as u64;
-                        g.recompute_activity();
+                        guess = g.guess_later();
                     }
-                    result
+                    (result, guess)
                 };
+                if guess {
+                    // What an agent is doing there, looked at once the
+                    // chunks have come, not with each; the window is
+                    // told if it changed (the sidebar and the pane's
+                    // head show it).
+                    let (br, notify) = (br.clone(), inner.notify.clone());
+                    tokio::spawn(async move {
+                        tokio::time::sleep(GUESS_AFTER).await;
+                        let changed = br.lock().unwrap_or_else(|e| e.into_inner()).guess_now();
+                        if changed {
+                            notify(HubNotice::StateChanged);
+                        }
+                    });
+                }
                 if let Err(e) = applied {
                     tracing::warn!("Could not restore the terminal for {}: {e}", bk.block_id);
                     stream.close_clean().await;
@@ -3174,6 +3218,26 @@ mod tests {
         block.set_find_query(Some("replacement")).unwrap();
         block.search.run().unwrap();
         assert_eq!(block.search.total_matches(), 1);
+    }
+
+    #[test]
+    fn the_guess_at_an_agent_is_made_once_for_many_chunks() {
+        let mut b = BlockRuntime::new(40, 12, &themes::from_olo_terminal(&olo_theme::Palette::light().terminal));
+        // The first chunk has it asked for; those that come before it
+        // is made don't ask again.
+        assert!(b.guess_later());
+        assert!(!b.guess_later());
+        assert!(!b.guess_later());
+        // Made (a shell's screen: nothing an agent's, nothing changed),
+        // the next chunk asks again.
+        assert!(!b.guess_now());
+        assert!(b.guess_later());
+        // A screen that asks to be answered, in its last rows (where the
+        // guess looks): the guess changes, and says so.
+        b.terminal.vt_write(b"\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\nClaude Code\r\nDo you want to proceed? [y/n]");
+        assert!(b.guess_now());
+        assert_eq!(b.agent_activity, AgentActivity::Blocked);
+        assert!(!b.guess_now());
     }
 
     #[test]

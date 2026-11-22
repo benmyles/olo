@@ -930,14 +930,20 @@ something nobody here has is in "Blocked", with what it waits for.
   menu bar", "Remote Access", "The main window's controls are the
   kit's").
   **Left, in this order**:
-  - *A pane's head, with every frame of output.* The panes' view is
-    said again for each frame a pane draws (as Terminal's is), and in
-    Rex the heads (title, marks, links), the scroll bars and the
-    splits' grips are in it: 300 lines of output into one of three
-    panes cost 818 M instructions with the marks on every pane, 780 M
-    before (+5%; HACKING, Rex, "Cost"). A head a view of its own, said
-    again when its title or state changes; or the screens a view of
-    theirs, drawn again alone.
+  - *What a streaming pane costs* (profiled 2026-11-22; HACKING, Rex,
+    "Cost"): of a frame's instructions while a pane streams, 37% is
+    taking every row's cells from the terminal engine again, because a
+    scroll marks the whole screen dirty, only for the comparison after
+    to find all but the new line the same (the rows have ids that
+    survive a scroll: take the cells of rows that are new, or that the
+    engine says changed, if its row flags can be trusted under a full
+    redraw: read the engine's own renderer for what they mean then);
+    19% is the kit comparing the frame's glyphs with the last frame's
+    and copying the kept ones (`Scene::changed_since`: every app with
+    much text pays it, Terminal too; runs kept whole from the last
+    frame are known to be the same without comparing). Saying the
+    panes' elements again is 2%: a pane's head a view of its own isn't
+    worth its machinery.
   - *What a pane's head says* (Opus's review, 2026-11-22): one form,
     `program — folder` (home as `~`) unless a program gave its own
     title; the program running now, not the last command; never the

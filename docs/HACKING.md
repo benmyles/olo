@@ -26818,6 +26818,25 @@ for repeated SSH, HTTP/TLS, transfer, forwarding and connection-loss checks.
   output: TODO, "A pane's head, with every frame of output"); a key to
   its picture, median 3.3 to 4.0 ms before and 1.4 to 3.1 ms after
   (the same, at that load).
+- Where a streaming frame's instructions go (2026-11-22; `perf record
+  -e instructions:u` on the release build, one of three 63 × 40 panes
+  streaming 100 lines a second): taking the rows' cells from the
+  terminal engine 37% (a scroll marks the whole screen dirty, so every
+  row is taken again and then found the same by comparing:
+  `RenderState::extract_rows`, `Frame::capture`), the kit's comparing
+  of the frame's glyphs with the last frame's and copying the kept
+  ones 19% (`Scene::changed_since`), allocating and copying 8%, the
+  guess at what an agent is doing 3%, and saying the panes' elements
+  again about 2% (so a pane's head as a view of its own would save a
+  hundredth: not done). The guess was made with every chunk of output
+  (the screen's last twelve rows read as text and searched, under the
+  lock the window draws by); it is made once, 150 ms after a chunk,
+  for however many come meanwhile (`BlockRuntime::guess_later`,
+  `guess_now`, `GUESS_AFTER`), and the window told if it changed: 300
+  lines into one pane 925 M instructions before and 838 M after
+  (−9%), into one of three 817 M and 772 M (−5.5%); at rest nothing,
+  as before. The two large ones are TODO's ("What a streaming pane
+  costs").
 - Resident memory: **62.2 MiB RSS** (`olo-rex`). Reviewed at 1×, 1.5×,
   and 2×, Light and Dark, across all 6 tiling layouts (`ui-lint --tiles`:
   0 errors; `tsession review`: 0 findings across Workspace, Settings,
