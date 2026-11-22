@@ -870,6 +870,26 @@ frames a second with nobody at it):
   the first job, and the second runs without them (its pictures'
   paths were empty: "no picture /NAME.png").
 
+### Codex's hooks and our agents (2026-11-21)
+
+- **A new or changed hook in `~/.codex/hooks.json` stops an
+  interactive Codex at its start** ("Hooks need review … Trust all and
+  continue"): two subagents sat there doing nothing until looked at
+  (`agents list` said "idle" from the first second). The person's
+  hooks are for their own sessions and theirs to trust: our Codex
+  (`tools/dev/agents`, `codex-help`, `codex-look`) runs with
+  `--disable hooks`. An agent idle within a minute of its start: `agents
+  peek` it before anything else.
+- **`agents forget NAME` removes everything in its folder**, what the
+  agent gathered too (notes, captures), not only its builds: copy what
+  the next agent will want before forgetting one.
+- **The person's other servers**: a tool of theirs that this desktop
+  has a client for (their terminal-session server) runs on this
+  computer with their work in it. Agents get a scratch one (an
+  explicit socket, a home of its own, or a bwrap box as
+  `crates/rex/tests/live.rs` has it), and pictures that go to outside
+  reviewers hold no shell prompt (it has this computer's names).
+
 ### What the layout review does and doesn't say (Tracker's columns, 2026-11-21)
 
 - **A fill drawn over a line is not a finding**: a row's highlight a

@@ -70,7 +70,7 @@ PROMPT
     if [ -n "$about" ]; then
         printf '\nWhat changed: %s\n' "$about"
     fi
-} | codex exec -m gpt-6.2-astra -c 'model_reasoning_effort="medium"' -s read-only --skip-git-repo-check --color never "${images[@]}" -o "$out" - > "${out%.md}.log" 2>&1
+} | codex exec -m gpt-6.2-astra -c 'model_reasoning_effort="medium"' -s read-only --disable hooks --skip-git-repo-check --color never "${images[@]}" -o "$out" - > "${out%.md}.log" 2>&1
 rc=$?
 if [ -s "$out" ]; then
     cat "$out"

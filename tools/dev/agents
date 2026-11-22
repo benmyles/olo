@@ -260,8 +260,13 @@ def start(name, crate, brief):
     # for most things only the super risky stuff should come to you".)
     # (It brings the workspace-write sandbox with it: with `-s` too, Codex
     # refuses to start.)
+    # (None of the person's Codex hooks: they are for their own sessions
+    # (a hook of theirs added on 2026-11-21 names each Codex session in
+    # their Rex server), and a new or changed one has an interactive
+    # Codex stop at its start to ask whether to trust it: two agents sat
+    # there until looked at. Trusting a hook is the person's to do.)
     codex = ["codex", "-m", MODEL, "-c", f'model_reasoning_effort="{EFFORT}"', "--approve-for-me",
-             "--disable", "multi_agent", "--disable", "multi_agent_v2", "--no-alt-screen", "-C", ROOT, "--add-dir", d,
+             "--disable", "multi_agent", "--disable", "multi_agent_v2", "--disable", "hooks", "--no-alt-screen", "-C", ROOT, "--add-dir", d,
              f"Read {d}/brief.md (the rules, then your task) and do what it says."]
     tmux("new-session", "-d", "-s", name, "-x", "200", "-y", "60", "-c", ROOT, *env, *codex, check=True)
     print(f"agents: {name} started on {crate} ({package}); its folder is {d}")
