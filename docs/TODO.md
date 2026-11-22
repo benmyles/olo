@@ -944,11 +944,6 @@ something nobody here has is in "Blocked", with what it waits for.
     frame are known to be the same without comparing). Saying the
     panes' elements again is 2%: a pane's head a view of its own isn't
     worth its machinery.
-  - *What a pane's head says* (Opus's review, 2026-11-22): one form,
-    `program — folder` (home as `~`) unless a program gave its own
-    title; the program running now, not the last command; never the
-    tab's name again. A session whose panes are all "shell" can't be
-    told apart by their heads.
   - *The sidebar's rows* are still drawn by Rex (the kit's `Sidebar`
     has no heading with a light and an action, nor a mark on a row's
     icon): either the kit's grows them or the rows stay Rex's.
@@ -991,9 +986,11 @@ something nobody here has is in "Blocked", with what it waits for.
     streamed, the app answering in 2 ms; the server there stopped and
     started, its new session shown by itself in 3.5 s; 73 keys typed
     in 3.1 to 3.7 s run there 0.5 to 0.9 s after the last, at 224 ms a
-    round trip). Left: the server sends an event Rex doesn't know
-    (`session_event.client_connected`, logged at debug): read what it
-    is for.
+    round trip). The event Rex didn't know
+    (`session_event.client_connected`, and `client_disconnected`) is a
+    client beginning and stopping to follow a session (every `rex`
+    command is one while it runs): known now, and nothing to show for
+    it yet (who else is in a session would be the use).
   - *From the design reviews, not yet done*: "Starting…" with a busy
     mark (the kit has none small: one for the kit); a disconnected
     host's last-known sessions kept, dimmed; the disconnected mark on
@@ -1016,7 +1013,10 @@ something nobody here has is in "Blocked", with what it waits for.
     button that is off; an empty field's hint begins where the caret
     is drawn, so the caret stands on its first letter; a tab whose
     menu is open isn't shown as the one the menu is for (both, of
-    Rex's Rename window and its tabs' menu, 2026-11-22).
+    Rex's Rename window and its tabs' menu, 2026-11-22); a name cut
+    short is cut at its end, where a folder's last part is what tells
+    it ("bash — ~/src/olo/crates/re…": the middle, as Tracker's names);
+    a lone "~" is slight as a whole folder's name.
 - **Tracker's columns resized by hand, one width for them all** (Ben,
   2026-11-21: "in tracker columns mode the column widths need to be
   resizable (let's keep it simple so it resizes the width of all

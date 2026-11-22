@@ -4103,11 +4103,15 @@ it.
   alone in the secondary text colour, as a tab's × and a tab strip's +
   are (the same marks: one look for + and × in Olo); under the pointer
   a push button's face. `name` is what agents read and its tip; give
-  each of several that do the same to different things its own `id`.
+  each of several that do the same to different things its own `id`;
+  `.quiet(true)` draws the mark fainter at rest, on something that
+  isn't the one in use (a pane without the keyboard).
   The marks are `style`'s, each on whole device pixels at every scale:
   `plus_mark(g, center, across, thick, color)`, `close_mark(g, center,
   across, color)`, `split_mark(g, center, down, color)` (a pane and
-  the line a split would draw, its halves equal), and `dot(g, center,
+  the line a split would draw, its halves equal; every edge counted in
+  device pixels from its corner and no part drawn twice, so a
+  see-through colour is even), and `dot(g, center,
   across, color)` (a status light, a mark on an icon's corner). Rex's
   panes and hosts (2026-11-22: it drew four buttons of its own at
   fractions of a point; framed at rest, three in each pane's head
@@ -26743,6 +26747,20 @@ divider under the pointer in a split of any size, neither pane under
 15%; a double click halves it. Agents read each as a Splitter, "Pane
 Width" or "Pane Height", its value the first pane's share. The
 sidebar's divider is `side_divider_within` its row.
+
+**What a pane and a tab are called** (2026-11-22). A pane's head, and
+its name to agents, is `hub::pane_title` (`BlockRuntime::said`): the
+title its program gave it, if it gave one (the pane's title starts as
+the server's label for it, "shell": a title unlike that is a
+program's); else the program running in it now and its folder, "bash —
+~/src/olo" (the folder from `~` by the pane's own home: the server's
+word of it, or this computer's for its own server). Every head said
+"shell". A tab that was given no name goes by its first pane
+(`hub::tab_title`, then `tab_names`): that pane's program's title;
+else its folder's name; at home, where "~" names nothing, its program
+("bash"); told apart by their place where they still say the same. In
+a pane without the keyboard the title, the marks (`GlyphButton::quiet`)
+and a port's link are quieter.
 
 **Names and places** (2026-11-22; the hub had the calls and nothing
 offered them). A session and a tab are renamed in a small window

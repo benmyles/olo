@@ -103,6 +103,9 @@ pub struct BlockRuntime {
     pub other_size_owner: bool,
     pub copy_mode: Option<CopyMode>,
     pub title: String,
+    /// The name the server has for the pane itself ("shell"), which its
+    /// title starts as; a title unlike it is one a program gave.
+    pub label: String,
     pub pwd: String,
     pub program_statuses: Vec<ProgramStatusRecord>,
     // Events can arrive while the initial program_status request is in flight.
@@ -211,6 +214,7 @@ impl BlockRuntime {
             other_size_owner: false,
             copy_mode: None,
             title: String::new(),
+            label: String::new(),
             pwd: String::new(),
             program_statuses: Vec::new(),
             pending_status: Some(Vec::new()),
@@ -368,6 +372,16 @@ impl BlockRuntime {
         self.recompute_activity();
     }
 
+    /// What the pane is called (its head, its name to agents): see
+    /// [`pane_title`]. `local_home`: this computer's home, for a pane of
+    /// its own server (a far one's is the server's word, if it gave it).
+    pub fn said(&self, local_home: Option<&str>) -> String {
+        let process = self.process.as_ref();
+        let program = process.and_then(|p| p.foreground.as_ref().or(p.child.as_ref())).map(|p| p.name.as_str());
+        let home = process.and_then(|p| p.home.as_deref()).or(local_home);
+        pane_title(&self.title, &self.label, program, &folder_said(&self.pwd, home))
+    }
+
     /// The screen changed: what an agent is doing there, guessed from
     /// the screen's last rows where the server has no word of it, is to
     /// be looked at again. True when nobody is yet looking: the caller
@@ -443,6 +457,58 @@ enum HostInputOp {
     Focus { session_id: String, switch: bool, target: Arc<FocusTarget> },
     Write { session_id: String, block_id: String, text: String },
     Key { session_id: String, block_id: String, event: RexKeyEvent },
+}
+
+/// The demo's word of the program running in one of its panes.
+fn demo_process(name: &str) -> TerminalProcessSnapshot {
+    let foreground = olo_rex_client::ProcessInfo { pid: 4210, name: name.to_owned(), ..Default::default() };
+    TerminalProcessSnapshot { foreground: Some(foreground), home: Some("/home/you".to_owned()), ..Default::default() }
+}
+
+/// What an unnamed tab goes by, from its first pane: the title that
+/// pane's program gave it, if it gave one; else nothing where its
+/// folder's name will do (`tab_names` takes the folder then), and the
+/// program running in it where the folder is home or unknown ("~" names
+/// nothing). So a tab says "olo" or "bash", not the server's "shell"
+/// for every one (Opus's review, 2026-11-22).
+pub fn tab_title(title: &str, label: &str, program: Option<&str>, pwd: &str, home: Option<&str>) -> String {
+    let (title, label) = (title.trim(), label.trim());
+    if !title.is_empty() && title != label {
+        return title.to_owned();
+    }
+    let at_home = home.is_some_and(|h| pwd.trim_end_matches('/') == h.trim_end_matches('/'));
+    if !pwd.is_empty() && !at_home {
+        return String::new();
+    }
+    program.map(str::trim).filter(|p| !p.is_empty()).unwrap_or(label).to_owned()
+}
+
+/// What a pane is called: the title its program gave it, if it gave
+/// one (`title`, where it isn't the pane's own `label` still); else
+/// the program running in it now and its folder, "bash — ~/src/olo"
+/// (the program alone where no folder is known; the label, or "Shell",
+/// where no program is). One form for every pane, so three shells in a
+/// session aren't three heads that say "shell" (Opus's review,
+/// 2026-11-22).
+pub fn pane_title(title: &str, label: &str, program: Option<&str>, folder: &str) -> String {
+    let (title, label) = (title.trim(), label.trim());
+    if !title.is_empty() && title != label {
+        return title.to_owned();
+    }
+    let what = program.map(str::trim).filter(|p| !p.is_empty()).or(Some(label).filter(|l| !l.is_empty())).map(str::to_owned).unwrap_or_else(|| olo_kit::words::tr("Shell").into());
+    if folder.is_empty() { what } else { format!("{what} — {folder}") }
+}
+
+/// A folder as it is said: under `home`, from `~`.
+pub fn folder_said(folder: &str, home: Option<&str>) -> String {
+    match home.map(|h| h.trim_end_matches('/')).filter(|h| !h.is_empty()) {
+        Some(home) if folder == home => "~".into(),
+        Some(home) => match folder.strip_prefix(home).filter(|rest| rest.starts_with('/')) {
+            Some(rest) => format!("~{rest}"),
+            None => folder.to_owned(),
+        },
+        None => folder.to_owned(),
+    }
 }
 
 /// Whether a program at a terminal in this input mode is asking for
@@ -530,22 +596,23 @@ pub fn tab_names(tabs: &[(Option<&str>, &str, &str)]) -> Vec<String> {
 /// [`tab_names`] for a session as the hub holds it: each tab's first
 /// pane with a title, and that pane's folder.
 pub fn session_tab_names(st: &HubState, host_key: &str, sess: &olo_rex_client::SessionView) -> Vec<String> {
+    let local = if st.hosts.get(host_key).is_some_and(|h| h.is_local) { local_home() } else { None };
     let known: Vec<(Option<String>, String, String)> = sess
         .windows
         .iter()
         .map(|w| {
+            // Its first pane that is known: what that one goes by.
             let (mut title, mut pwd) = (String::new(), String::new());
             for b in w.all_blocks() {
                 let bk = BlockKey { host_key: host_key.to_owned(), session_id: sess.session_id.clone(), block_id: b.block_id.clone() };
                 if let Some(br) = st.blocks.get(&bk) {
                     let g = br.lock().unwrap_or_else(|e| e.into_inner());
-                    if title.is_empty() && !g.title.is_empty() {
-                        title = g.title.clone();
-                        pwd = g.pwd.clone();
-                    }
-                    if pwd.is_empty() {
-                        pwd = g.pwd.clone();
-                    }
+                    let process = g.process.as_ref();
+                    let program = process.and_then(|p| p.foreground.as_ref().or(p.child.as_ref())).map(|p| p.name.as_str());
+                    let home = process.and_then(|p| p.home.as_deref()).or(local.as_deref());
+                    title = tab_title(&g.title, &g.label, program, &g.pwd, home);
+                    pwd = g.pwd.clone();
+                    break;
                 }
             }
             (tab_label(w).map(str::to_owned), title, pwd)
@@ -1004,7 +1071,9 @@ impl RexHub {
 
         // Populate realistic, crisp terminal contents via libghostty-vt sized cleanly for splits.
         let mut br_build = BlockRuntime::new(72, 34, &theme);
-        br_build.title = "cargo test — olo-rex".to_owned();
+        // (No title of its own: back at its prompt, it says its shell
+        // and folder, as a real pane does.)
+        br_build.process = Some(demo_process("zsh"));
         br_build.pwd = "/home/you/olo/rex".to_owned();
         br_build.data_connected = true;
         br_build.terminal.vt_write(
@@ -1047,7 +1116,9 @@ impl RexHub {
         st.blocks.insert(BlockKey { host_key: "local".into(), session_id: "demo-main".into(), block_id: "demo-agent".into() }, Arc::new(Mutex::new(br_agent)));
 
         let mut br_shell = BlockRuntime::new(56, 14, &theme);
-        br_shell.title = "zsh — ~/olo/rex".to_owned();
+        // (A server running: the program its head names, the port it
+        // listens on, no prompt after it.)
+        br_shell.process = Some(demo_process("node"));
         br_shell.pwd = "/home/you/olo/rex".to_owned();
         br_shell.data_connected = true;
         br_shell.ports.ports.push(olo_rex_client::PortEntry {
@@ -1059,11 +1130,10 @@ impl RexHub {
         });
         br_shell.terminal.vt_write(
             concat!(
-                "\x1b[1;36myou@olo\x1b[0m \x1b[1;34m~/olo/rex\x1b[0m % git status -sb\r\n",
-                "\x1b[32m## rex-client...origin/main\x1b[0m\r\n",
-                " \x1b[32mA\x1b[0m  apps/rex/src/terminal_pane.rs\r\n",
-                " \x1b[32mA\x1b[0m  crates/rex-vt/src/snapshot.rs\r\n",
-                " \x1b[33mM\x1b[0m  crates/protocol/src/glance.rs\r\n",
+                "\x1b[1;36myou@olo\x1b[0m \x1b[1;34m~/olo/rex\x1b[0m % npm run dev\r\n\r\n",
+                "\x1b[2m> rex-site@0.1.0 dev\x1b[0m\r\n",
+                "\x1b[2m> node server.js\x1b[0m\r\n\r\n",
+                "\x1b[32mready\x1b[0m in 412 ms\r\n",
                 "Listening: \x1b[4;34mhttp://localhost:3000\x1b[0m\r\n"
             )
             .as_bytes(),
@@ -2436,6 +2506,7 @@ impl RexHubInner {
                     if !b.label.is_empty() && g.title.is_empty() {
                         g.title = b.label.clone();
                     }
+                    g.label.clone_from(&b.label);
                     if !g.data_connected && is_terminal {
                         let ticket = pre_tickets.iter().find(|t| t.session_id == session_id && t.block_id == b.block_id).map(|t| t.ticket.clone());
                         to_attach.push((bk, existing.clone(), ticket));
@@ -2444,6 +2515,7 @@ impl RexHubInner {
                     let mut br = BlockRuntime::new(120, 32, &theme);
                     br.creator_name = b.creator_name.clone();
                     br.title = b.label.clone();
+                    br.label = b.label.clone();
                     let arc = Arc::new(Mutex::new(br));
                     st.blocks.insert(bk.clone(), arc.clone());
                     if is_terminal {
@@ -3296,6 +3368,44 @@ mod tests {
         block.set_find_query(Some("replacement")).unwrap();
         block.search.run().unwrap();
         assert_eq!(block.search.total_matches(), 1);
+    }
+
+    #[test]
+    fn an_unnamed_tab_goes_by_its_folder_or_at_home_by_its_program() {
+        // A title its program gave.
+        assert_eq!(tab_title("vim README.md", "shell", Some("vim"), "/home/you/src", Some("/home/you")), "vim README.md");
+        // None: nothing, where the folder's name will do (`tab_names`
+        // takes that)…
+        assert_eq!(tab_title("shell", "shell", Some("bash"), "/home/you/src/olo", Some("/home/you")), "");
+        assert_eq!(tab_names(&[(None, "", "/home/you/src/olo")]), ["olo"]);
+        // …and the program where the folder is home, or isn't known.
+        assert_eq!(tab_title("shell", "shell", Some("bash"), "/home/you/", Some("/home/you")), "bash");
+        assert_eq!(tab_title("", "", Some("zsh"), "", None), "zsh");
+        // No program known either: the pane's own label.
+        assert_eq!(tab_title("shell", "shell", None, "", None), "shell");
+        // Three shells at home are told apart by their place.
+        assert_eq!(tab_names(&[(None, "bash", "/home/you"), (None, "bash", "/home/you"), (None, "bash", "/home/you")]), ["bash", "bash 2", "bash 3"]);
+    }
+
+    #[test]
+    fn a_pane_is_called_by_its_programs_title_or_its_program_and_folder() {
+        // A title the program gave: that.
+        assert_eq!(pane_title("vim README.md", "shell", Some("vim"), "~/src/olo"), "vim README.md");
+        // None (the title is the pane's own label still, or empty): the
+        // program running now, and where.
+        assert_eq!(pane_title("shell", "shell", Some("bash"), "~/src/olo"), "bash — ~/src/olo");
+        assert_eq!(pane_title("", "", Some("cargo"), "/srv/www"), "cargo — /srv/www");
+        // No folder known: the program; no program: the label, or Shell.
+        assert_eq!(pane_title("shell", "shell", Some("zsh"), ""), "zsh");
+        assert_eq!(pane_title("shell", "shell", None, "~"), "shell — ~");
+        assert_eq!(pane_title("", "", None, ""), "Shell");
+        // Under home, from the tilde; another's home that begins as ours
+        // does is not ours; a far host's folders as they are.
+        assert_eq!(folder_said("/home/you", Some("/home/you")), "~");
+        assert_eq!(folder_said("/home/you/src/olo", Some("/home/you/")), "~/src/olo");
+        assert_eq!(folder_said("/home/young/src", Some("/home/you")), "/home/young/src");
+        assert_eq!(folder_said("/srv/www", None), "/srv/www");
+        assert_eq!(folder_said("", Some("/home/you")), "");
     }
 
     #[test]

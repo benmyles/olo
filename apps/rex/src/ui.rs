@@ -784,7 +784,8 @@ impl RexWindow {
             // (This computer's home is known, and said as a shell says
             // it; a pane on another host says which first.)
             let home = if local { crate::hub::local_home() } else { None };
-            let folder = folder_said(&g.pwd, home.as_deref());
+            let home = g.process.as_ref().and_then(|p| p.home.clone()).or(home);
+            let folder = crate::hub::folder_said(&g.pwd, home.as_deref());
             let size = olo_kit::tr!("{} × {}", columns, rows).to_string();
             return [far.as_str(), folder.as_str(), size.as_str()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ");
         }
@@ -3687,7 +3688,7 @@ fn render_single_pane(
         let g = br.lock().unwrap_or_else(|e| e.into_inner());
         (
             g.creator_name.clone(),
-            g.title.clone(),
+            g.said(if is_local { crate::hub::local_home() } else { None }.as_deref()),
             g.pwd.clone(),
             g.agent_activity,
             g.ports.ports.iter().map(|p| p.port).collect::<Vec<u16>>(),
@@ -3730,15 +3731,8 @@ fn render_single_pane(
     let show_header = (has_splits && settings.pane_header_behavior == BarBehavior::Always) || zoomed;
     let header_h = crate::settings::PANE_HEADER;
     let header_el: Option<Element> = if show_header {
-        let mut label_parts = Vec::new();
-        if !title.is_empty() {
-            label_parts.push(title);
-        } else if !pwd.is_empty() {
-            label_parts.push(pwd.clone());
-        } else {
-            label_parts.push("Shell".to_owned());
-        }
-        let header_title = label_parts.join(" — ");
+        // (What the pane is called: `hub::pane_title`.)
+        let header_title = title.clone();
         let git_pill = git_info.and_then(|gi| {
             let b = gi.branch?;
             Some(if gi.dirty_count > 0 { format!("{b} *{}", gi.dirty_count) } else { b })
@@ -3839,7 +3833,13 @@ fn render_single_pane(
                 // buttons, small actions beside what they act on. They
                 // were bevelled wells drawn here, which read as fields
                 // to type in.)
-                bar = bar.child(widgets::LinkButton::new(pp).id(format!("rex-ports-{}", bk.block_id)).on_click(move |_, _| open_or_raise_panel(WinRole::Hosts)));
+                // (Quieter in a pane without the keyboard, as its title and
+                // marks are: the link's blue was the loudest thing there.)
+                bar = bar.child(
+                    div()
+                        .opacity(if focused { 1.0 } else { 0.7 })
+                        .child(widgets::LinkButton::new(pp).id(format!("rex-ports-{}", bk.block_id)).on_click(move |_, _| open_or_raise_panel(WinRole::Hosts))),
+                );
             }
             if let Some(zp) = zoom_pill {
                 let z = bk_zoom.clone();
@@ -3850,15 +3850,15 @@ fn render_single_pane(
         }
         if show_split_btns {
             bar = bar
-                .child(GlyphButton::new("Split Right", Glyph::SplitRight).id(format!("rex-split-right-{}", bk.block_id)).on_click(move |_, _| {
+                .child(GlyphButton::new("Split Right", Glyph::SplitRight).id(format!("rex-split-right-{}", bk.block_id)).quiet(!focused).on_click(move |_, _| {
                     app().hub.split_pane(&bk_split_r.host_key, &bk_split_r.session_id, &bk_split_r.block_id, "right", None);
                 }))
-                .child(GlyphButton::new("Split Down", Glyph::SplitDown).id(format!("rex-split-down-{}", bk.block_id)).on_click(move |_, _| {
+                .child(GlyphButton::new("Split Down", Glyph::SplitDown).id(format!("rex-split-down-{}", bk.block_id)).quiet(!focused).on_click(move |_, _| {
                     app().hub.split_pane(&bk_split_d.host_key, &bk_split_d.session_id, &bk_split_d.block_id, "down", None);
                 }));
         }
         if show_close_btn {
-            bar = bar.child(GlyphButton::new("Close Pane", Glyph::Close).id(format!("rex-close-pane-{}", bk.block_id)).on_click(move |_, _| {
+            bar = bar.child(GlyphButton::new("Close Pane", Glyph::Close).id(format!("rex-close-pane-{}", bk.block_id)).quiet(!focused).on_click(move |_, _| {
                 app().hub.close_block(&bk_close.host_key, &bk_close.session_id, &bk_close.block_id);
             }));
         }
@@ -3870,6 +3870,7 @@ fn render_single_pane(
     let visual = cx.window_state::<PaneVisuals>().0.entry(bk.clone()).or_default().clone();
 
     let br_paint = br.clone();
+    let said_paint = title.clone();
     let bk_paint = bk.clone();
     let vis_paint = visual.clone();
     let theme_paint = active_theme.clone();
@@ -3934,15 +3935,7 @@ fn render_single_pane(
             &vis_paint,
         );
 
-        g.agent(agent::Node {
-            role: "Terminal",
-            name: Some(if br_ref.title.is_empty() { "Rex Terminal".into() } else { br_ref.title.clone().into() }),
-            bounds: rect,
-            focused,
-            enabled: true,
-            clickable: false,
-            ..Default::default()
-        });
+        g.agent(agent::Node { role: "Terminal", name: Some(said_paint.clone().into()), bounds: rect, focused, enabled: true, clickable: false, ..Default::default() });
     })
     .size_full()
     .cursor(CursorStyle::IBeam)
@@ -4160,18 +4153,6 @@ fn sidebar_row(label: String, badge: Option<String>, act: AgentActivity, selecte
         on_click(&(), cx);
         cx.stop_propagation();
     })
-}
-
-/// A folder as the status bar says it: under `home`, from `~`.
-fn folder_said(folder: &str, home: Option<&str>) -> String {
-    match home.map(|h| h.trim_end_matches('/')).filter(|h| !h.is_empty()) {
-        Some(home) if folder == home => "~".into(),
-        Some(home) => match folder.strip_prefix(home).filter(|rest| rest.starts_with('/')) {
-            Some(rest) => format!("~{rest}"),
-            None => folder.to_owned(),
-        },
-        None => folder.to_owned(),
-    }
 }
 
 /// A split's divider being dragged: where the pointer took it, and the
@@ -4425,17 +4406,6 @@ mod workspace_tests {
         // field says.
         assert!(tab.takes("") && tab.takes("logs"));
         assert_eq!(tab.hint(), "shell 3");
-    }
-
-    #[test]
-    fn a_folder_under_home_is_said_from_the_tilde() {
-        assert_eq!(folder_said("/home/you", Some("/home/you")), "~");
-        assert_eq!(folder_said("/home/you/src/olo", Some("/home/you/")), "~/src/olo");
-        // Another's home that begins as ours does is not ours.
-        assert_eq!(folder_said("/home/young/src", Some("/home/you")), "/home/young/src");
-        // A far host's folders, whose home isn't known, as they are.
-        assert_eq!(folder_said("/srv/www", None), "/srv/www");
-        assert_eq!(folder_said("", Some("/home/you")), "");
     }
 
     #[test]

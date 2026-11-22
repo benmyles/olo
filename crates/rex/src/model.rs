@@ -896,20 +896,77 @@ pub struct ControlEventEnvelope {
 #[derive(Debug, Clone)]
 pub enum ControlEvent {
     SessionCreated(SessionSummary),
-    SessionDestroyed { session_id: String },
-    SessionMoved { session_id: String, before_session_id: Option<String> },
-    SessionViewChanged { session_id: String, revision: u64 },
-    SessionLabelChanged { session_id: String, label: String },
-    ActiveWindowChanged { session_id: String, window_id: Option<String> },
-    WindowCreated { session_id: String, window_id: String },
-    WindowClosed { session_id: String, window_id: String },
-    WindowLabelChanged { session_id: String, window_id: String, label: String },
-    BlockCreated { session_id: String, block_id: String },
-    BlockClosed { session_id: String, block_id: String },
-    BlockOwnerChanged { session_id: String, block_id: String, owner: Option<String> },
-    BlockEvent { session_id: String, block_id: String, creator_name: String, name: String, payload: Value },
-    HostsChanged { hash: String },
-    KeymapChanged { generation: u64, hash: String },
+    SessionDestroyed {
+        session_id: String,
+    },
+    SessionMoved {
+        session_id: String,
+        before_session_id: Option<String>,
+    },
+    SessionViewChanged {
+        session_id: String,
+        revision: u64,
+    },
+    SessionLabelChanged {
+        session_id: String,
+        label: String,
+    },
+    ActiveWindowChanged {
+        session_id: String,
+        window_id: Option<String>,
+    },
+    WindowCreated {
+        session_id: String,
+        window_id: String,
+    },
+    WindowClosed {
+        session_id: String,
+        window_id: String,
+    },
+    WindowLabelChanged {
+        session_id: String,
+        window_id: String,
+        label: String,
+    },
+    BlockCreated {
+        session_id: String,
+        block_id: String,
+    },
+    BlockClosed {
+        session_id: String,
+        block_id: String,
+    },
+    BlockOwnerChanged {
+        session_id: String,
+        block_id: String,
+        owner: Option<String>,
+    },
+    BlockEvent {
+        session_id: String,
+        block_id: String,
+        creator_name: String,
+        name: String,
+        payload: Value,
+    },
+    /// A client began, or stopped, following this session (another
+    /// window of the app, the `rex` command: every CLI call is one, for
+    /// as long as it runs). Rev 19 sends them to whoever follows the
+    /// session; nothing here shows them yet (who else is in a session).
+    SessionClientConnected {
+        session_id: String,
+        client_id: String,
+    },
+    SessionClientDisconnected {
+        session_id: String,
+        client_id: String,
+    },
+    HostsChanged {
+        hash: String,
+    },
+    KeymapChanged {
+        generation: u64,
+        hash: String,
+    },
     TailscaleStatusChanged(TailscaleStatus),
     ClientPromptRequested(ClientPromptRequested),
     ClientPromptEnded(ClientPromptEnded),
@@ -917,9 +974,21 @@ pub enum ControlEvent {
     ClientCallRequested(ClientCallRequested),
     ClientJoined(ConnectedClient),
     ClientChanged(ConnectedClient),
-    ClientLeft { client_id: String },
-    EventDropped { event_type: String, session_id: Option<String>, block_id: Option<String>, creator_name: Option<String>, block_event_name: Option<String>, size: u64 },
-    Unknown { kind: String, payload: Value },
+    ClientLeft {
+        client_id: String,
+    },
+    EventDropped {
+        event_type: String,
+        session_id: Option<String>,
+        block_id: Option<String>,
+        creator_name: Option<String>,
+        block_event_name: Option<String>,
+        size: u64,
+    },
+    Unknown {
+        kind: String,
+        payload: Value,
+    },
 }
 
 impl ControlEvent {
@@ -979,6 +1048,8 @@ impl ControlEvent {
             "block_owner_changed" => {
                 Self::BlockOwnerChanged { session_id, block_id: payload.get("block_id").and_then(Value::as_str)?.to_owned(), owner: payload.get("owner").and_then(Value::as_str).map(str::to_owned) }
             }
+            "client_connected" => Self::SessionClientConnected { session_id, client_id: payload.get("client_id").and_then(Value::as_str)?.to_owned() },
+            "client_disconnected" => Self::SessionClientDisconnected { session_id, client_id: payload.get("client_id").and_then(Value::as_str)?.to_owned() },
             "block_event" => {
                 let block_id = payload.get("block_id").and_then(Value::as_str)?.to_owned();
                 let creator_name = payload.get("creator_name").or_else(|| payload.get("creator")).and_then(Value::as_str)?.to_owned();

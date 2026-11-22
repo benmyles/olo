@@ -1403,17 +1403,21 @@ pub fn split_mark(g: &mut Painter, center: Point<Pixels>, down: bool, color: Hsl
     let (w, h) = ((11.0 * s).round(), (9.0 * s).round());
     let (w, h) = if down { (w, even(h)) } else { (even(w), h) };
     let b = snap_centred(g, center, w / s, h / s);
-    let t = px(line / s);
-    fill_rect(g, Bounds::from_corners(b.origin, point(b.right(), b.top() + t)), color);
-    fill_rect(g, Bounds::from_corners(point(b.left(), b.bottom() - t), b.bottom_right()), color);
-    fill_rect(g, Bounds::from_corners(b.origin, point(b.left() + t, b.bottom())), color);
-    fill_rect(g, Bounds::from_corners(point(b.right() - t, b.top()), b.bottom_right()), color);
+    // Every edge from whole device pixels, counted from the box's
+    // corner (worked out in points, an edge could land a hair short of
+    // its pixel and draw fainter than the one opposite: Astra's look at
+    // 1.5×), and no part drawn twice (a see-through colour would show
+    // its corners darker).
+    let (x0, y0) = ((f32::from(b.left()) * s).round(), (f32::from(b.top()) * s).round());
+    let mut bar = |x: f32, y: f32, across: f32, down: f32| fill_rect(g, Bounds { origin: point(px((x0 + x) / s), px((y0 + y) / s)), size: size(px(across / s), px(down / s)) }, color);
+    bar(0.0, 0.0, w, line);
+    bar(0.0, h - line, w, line);
+    bar(0.0, line, line, h - 2.0 * line);
+    bar(w - line, line, line, h - 2.0 * line);
     if down {
-        let y = b.top() + px((h - line) / 2.0 / s);
-        fill_rect(g, Bounds::from_corners(point(b.left(), y), point(b.right(), y + t)), color);
+        bar(line, (h - line) / 2.0, w - 2.0 * line, line);
     } else {
-        let x = b.left() + px((w - line) / 2.0 / s);
-        fill_rect(g, Bounds::from_corners(point(x, b.top()), point(x + t, b.bottom())), color);
+        bar((w - line) / 2.0, line, line, h - 2.0 * line);
     }
 }
 

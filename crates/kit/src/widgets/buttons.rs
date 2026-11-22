@@ -236,6 +236,7 @@ pub struct GlyphButton {
     name: SharedString,
     glyph: Glyph,
     enabled: bool,
+    quiet: bool,
     on_click: Option<Handler>,
 }
 
@@ -244,7 +245,16 @@ impl GlyphButton {
     /// and its tip.
     pub fn new(name: impl Into<SharedString>, glyph: Glyph) -> GlyphButton {
         let name = crate::words::of(name);
-        GlyphButton { id: name.clone(), name, glyph, enabled: true, on_click: None }
+        GlyphButton { id: name.clone(), name, glyph, enabled: true, quiet: false, on_click: None }
+    }
+
+    /// Its mark fainter at rest: on something that isn't the one in use
+    /// (a pane without the keyboard, whose title is quieter too: thin
+    /// lines in the same colour as dimmed words read louder than the
+    /// words). Under the pointer it is as any.
+    pub fn quiet(mut self, on: bool) -> Self {
+        self.quiet = on;
+        self
     }
 
     /// Its own id, where several in a window do the same to different
@@ -267,7 +277,7 @@ impl GlyphButton {
 
 impl IntoElement for GlyphButton {
     fn into_element(self) -> Element {
-        let glyph = self.glyph;
+        let (glyph, quiet) = (self.glyph, self.quiet);
         let mut c = control(self.id.clone(), GLYPH_BUTTON.0, GLYPH_BUTTON.1, move |g, r, s| {
             let p = theme::palette();
             let over = s.enabled && (s.hovered || s.pressed);
@@ -277,6 +287,7 @@ impl IntoElement for GlyphButton {
             let ink = match (s.enabled, over) {
                 (false, _) => style::disabled_text(&p),
                 (true, true) => style::c(p.control_text),
+                (true, false) if quiet => style::secondary_text(&p).opacity(0.7),
                 (true, false) => style::secondary_text(&p),
             };
             let off = if s.pressed { style::hairline(g) } else { px(0.0) };
@@ -288,7 +299,7 @@ impl IntoElement for GlyphButton {
                 Glyph::SplitDown => style::split_mark(g, center, true, ink),
             }
         })
-        .look((&self.name, glyph))
+        .look((&self.name, glyph, quiet))
         .enabled(self.enabled)
         .agent("Button", self.name.clone(), None);
         if let Some(f) = self.on_click {

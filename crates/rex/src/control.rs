@@ -1059,6 +1059,12 @@ mod tests {
         assert!(matches!(ControlEvent::parse("future",v.clone()),ControlEvent::Unknown{kind,payload} if kind=="future" && payload==v));
         let nested = json!({"session_id":"s","event":{"type":"new_kind","payload":v},"extra":true});
         assert!(matches!(ControlEvent::parse("session_event",nested.clone()),ControlEvent::Unknown{kind,payload} if kind=="session_event.new_kind" && payload==nested));
+        // (What rev 19 sends when a client begins and stops following a
+        // session, as `rex events -s` shows them: known, not "unknown".)
+        let joined = json!({"session_id":"s","event":{"type":"client_connected","payload":{"client_id":"client:1","principal":{"kind":"peer","transport":"unix","uid":1000},"connected_at":"2026-11-22T03:21:52-08:00"}}});
+        assert!(matches!(ControlEvent::parse("session_event", joined), ControlEvent::SessionClientConnected { session_id, client_id } if session_id == "s" && client_id == "client:1"));
+        let left = json!({"session_id":"s","event":{"type":"client_disconnected","payload":{"client_id":"client:1"}}});
+        assert!(matches!(ControlEvent::parse("session_event", left), ControlEvent::SessionClientDisconnected { session_id, client_id } if session_id == "s" && client_id == "client:1"));
         let status = json!({"state":"starting","allow_tailnet_members":false,"https":{"state":"pending"}});
         for state in ["starting", "needs_login", "disabled"] {
             let mut value = status.clone();

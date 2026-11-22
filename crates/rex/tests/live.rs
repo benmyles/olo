@@ -353,7 +353,8 @@ async fn workspace_layout_and_ownership() -> Result {
             ControlEvent::BlockCreated { .. } => "block created",
             ControlEvent::BlockClosed { .. } => "block closed",
             ControlEvent::BlockOwnerChanged { .. } => "owner",
-            ControlEvent::Unknown { kind, payload } if kind == "session_event.client_connected" && payload["session_id"] == s => "new session event",
+            // (A client beginning to follow the session: this test's own.)
+            ControlEvent::SessionClientConnected { session_id, .. } if session_id == s => "client connected",
             _ => continue,
         };
         kinds.insert(name);
@@ -372,7 +373,7 @@ async fn workspace_layout_and_ownership() -> Result {
             "block created",
             "block closed",
             "owner",
-            "new session event"
+            "client connected"
         ])
     );
     Ok(())
