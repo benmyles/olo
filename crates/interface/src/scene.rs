@@ -854,6 +854,18 @@ impl Scene {
                 };
             }
             match &run.kept {
+                // (A sprite turned or moved by its matrix, which is put
+                // in on its own, `insert_primitive`: taken by its clip,
+                // where it can show, not by its bounds.)
+                None if range.len() == 1 && recorded.staged()[range.start].transformation != TransformationMatrix::unit() => {
+                    let mut x = recorded.staged()[range.start].clone();
+                    if whole {
+                        place!(x);
+                        self.mono_staging.push(x);
+                    } else if take!(x, x.content_mask.bounds) {
+                        self.mono_staging.push(x);
+                    }
+                }
                 None => glyphs!(recorded.staged()[range].iter().cloned()),
                 Some(kept) => {
                     // (A kept run's, put in place here: what a frame
@@ -1332,10 +1344,17 @@ impl Primitive {
     /// What drawing it can touch: its bounds, and a shadow's blur past
     /// them ([`Shadow::reach`]). A frame drawing only a part of the
     /// window goes by it, so a shadow falling past what casts it is
-    /// drawn again with what it falls on.
+    /// drawn again with what it falls on. A sprite turned or moved by
+    /// its matrix shows anywhere in its clip, not where its bounds are
+    /// (the renderer puts it where the matrix says): its clip. (By its
+    /// bounds, an 8-pixel SVG moved 32 pixels along was said to reach
+    /// [0, 8), drawn at [32, 40), and left out of a frame drawing only
+    /// [32, 40): Astra's review, 2026-11-22. Nothing of Olo's turns a
+    /// sprite yet; what does will be drawn.)
     pub fn reach(&self) -> Bounds<ScaledPixels> {
         match self {
             Primitive::Shadow(shadow) => shadow.reach(),
+            Primitive::MonochromeSprite(sprite) if sprite.transformation != TransformationMatrix::unit() => sprite.content_mask.bounds,
             _ => *self.bounds(),
         }
     }
@@ -3406,6 +3425,55 @@ mod tests {
         // After a glyph of whole numbers the line is taken by its reach,
         // and comes to the same as its glyphs.
         assert_eq!(both_ways(&draw(10, Some(6.0)), &draw(20, None)), vec![mask(-56.0, 0.0, 64.0, 8.0).bounds]);
+    }
+
+    /// A sprite turned or moved by its matrix shows anywhere in its
+    /// clip: that is what its drawing reaches, what a frame drawing a
+    /// part there takes it by (the drawing copied or shared), and what
+    /// has changed when it has. One that isn't turned goes by its
+    /// bounds, as ever.
+    #[test]
+    fn a_turned_sprite_reaches_its_clip() {
+        let clip = mask(0.0, 0.0, 64.0, 8.0);
+        // An 8-pixel sprite at 0, moved `along` by its matrix (none: as it is).
+        let record = |along: Option<f32>| {
+            let mut g = sprite(0.0, 0, 7);
+            g.content_mask = clip.clone();
+            if let Some(along) = along {
+                g.transformation = TransformationMatrix::unit().translate(point(ScaledPixels(along), ScaledPixels(0.0)));
+            }
+            let mut s = Scene::recording();
+            s.insert_primitive(g);
+            s
+        };
+        let moved = record(Some(32.0));
+        assert_eq!(moved.extent, Some(clip.bounds));
+        assert_eq!(moved.mono_runs[0].reach, clip.bounds);
+        let still = record(None);
+        assert_eq!(still.extent, Some(mask(0.0, 0.0, 8.0, 8.0).bounds));
+        // A frame drawing only where the moved one shows, [32, 40).
+        let there = mask(32.0, 0.0, 8.0, 8.0).bounds;
+        let drawn = |s: &Scene| {
+            let mut frame = Scene::default();
+            frame.append(s, Point::default(), &there);
+            frame.finish();
+            frame.drawn_glyphs().iter().map(|g| g.content_mask.bounds).collect::<Vec<_>>()
+        };
+        assert_eq!(drawn(&moved), vec![there]);
+        assert_eq!(drawn(&still), vec![]);
+        let seal = |mut s: Scene| {
+            s.seal();
+            s
+        };
+        assert_eq!(drawn(&seal(record(Some(32.0)))), vec![there]);
+        assert_eq!(drawn(&seal(record(None))).iter().filter(|shows| !shows.is_empty()).count(), 0);
+        // Moved further: all its clip has changed. Not moved: nothing.
+        let mut out = Vec::new();
+        assert!(record(Some(40.0)).changed_since(&moved, &mut out));
+        assert_eq!(out, vec![clip.bounds]);
+        out.clear();
+        assert!(record(Some(32.0)).changed_since(&moved, &mut out));
+        assert!(out.is_empty(), "{out:?}");
     }
 
     /// What holds the comparison to its word sees the order glyphs are

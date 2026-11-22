@@ -988,12 +988,10 @@ something nobody here has is in "Blocked", with what it waits for.
     most don't round) through grouping, the tests of what is over
     what, and clipping, and make a corner and a size only where one is
     needed; never pad (a pad is a frame for nothing: HACKING, "Fast
-    and light"). And one at ordinary coordinates, first: **a turned or
-    moved SVG's reach is where it would be unturned** (`Scene`'s
-    recording takes a sprite's bounds; its matrix moves it): a frame
-    of parts asking for where it shows passes it over (an 8-pixel SVG
-    moved from 0 to 32: extent and damage [0, 8), drawn at [32, 40),
-    a frame for [32, 40) holds no glyph).
+    and light"). (The one of them at ordinary coordinates is done: a
+    sprite turned or moved by its matrix reaches its clip,
+    `Primitive::reach`. Nothing of Olo's turns one: `paint_svg` has no
+    caller.)
   - *The sidebar's rows* are still drawn by Rex (the kit's `Sidebar`
     has no heading with a light and an action, nor a mark on a row's
     icon): either the kit's grows them or the rows stay Rex's.

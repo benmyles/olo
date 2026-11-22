@@ -677,7 +677,12 @@ How Olo keeps it (do the same):
   where there was none, and a frame for a picture that didn't change):
   the cure is edges kept as edges all the way, which is TODO's ("The
   damage path at the edge of a float"). No window reaches such
-  coordinates; a drawing's own can. Such a line's
+  coordinates; a drawing's own can. **A sprite turned or moved by its
+  matrix reaches its clip**, not its bounds (`Primitive::reach`: the
+  renderer puts it where the matrix says, anywhere in its clip): by
+  its bounds, one moved 32 pixels along was left out of a frame
+  drawing only where it showed (the third review; nothing of Olo's
+  turns a sprite yet). Such a line's
   glyphs aren't copied into the drawing either: the drawing shares the
   line's own (`Scene::insert_kept_run`, an `Arc` a line, each glyph
   from the line's whole device pixel), and they are put in place, moved,
