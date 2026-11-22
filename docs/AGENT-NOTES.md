@@ -2230,6 +2230,51 @@ an argument it doesn't know starts the lint (read its first lines).
   FIFO channel (`HostRuntime::input_tx`).
 - **Kit `MenuField::width(w)` is total width (`label_w + popup_w`),** not
   just the popup button width — pass `.width(div_x + POPUP_W)`.
+- **The terminal engine's source is not in the repository, and its
+  header's guides aren't in the header**: for what a flag means, read
+  the source at the pinned commit (`tools/build-ghostty-vt.sh` names
+  it; `https://raw.githubusercontent.com/ghostty-org/ghostty/COMMIT/
+  src/terminal/render.zig`, `c/render.zig`, `Terminal.zig`,
+  `page.zig`). Learned there (2026-11-22): the render state's
+  `update` does a full redraw whenever the viewport's pin changed
+  (every line printed at the foot of a full screen), rebuilding every
+  row and marking every one dirty; the copy of the packed row it
+  keeps has its dirty bit cleared (`RowBuilder.row`), so under a full
+  redraw nothing says which rows the terminal touched; a row's id is
+  its page's serial and its index there, never reused;
+  `ROW_DATA_CELLS_RAW` lends a row's packed cells in one call.
+- **A packed cell names its style by an id, and ids are reused**:
+  the page's style set counts references, and once the last cell
+  with a style is erased its id is free for the next style. "The same
+  words, so the same row" kept a red X where a green one had been
+  written (Astra's review, 2026-11-22; I had reasoned "an id a cell
+  still uses can't change", which is true and beside the point: the
+  cell was rewritten between two looks). Anything kept beside a
+  packed value (styles, graphemes, hyperlinks) needs its own check.
+- **One of a kind speaks for the rest only where all show the same
+  parts**: checking "the first cell with this style id" was held by
+  the second review, because a cell that is only a background in its
+  word shows that background and not its style's, while a letter with
+  the same id shows the style's. Ask of a representative what it
+  hides.
+- **Read a manifest as what it is**: I searched the engine's JSON for
+  `"style_id":{` and then for `"lsb":`, and a field with no `lsb`
+  took the next field's. `serde_json`, the path, the schema's number,
+  and none when anything isn't as expected (there is a fallback: use
+  it).
+- **Ask the engine two ways and compare**: the terminal's own text of
+  a row (`viewport_row_text`) against what the render state gives
+  (`extract_rows`). They disagreed after a combining mark written on
+  its own, which is how the engine's missing "row is dirty" was found
+  (TODO, "A mark joined later"): my test's expectation failed in the
+  frame that takes every row too, so it wasn't my change.
+- **A generated test may never make the case you wrote it for**: the
+  6,000 generated writes passed with each guard taken out, because
+  "a second mark on a letter that already has one, with a capture
+  between" needs three particular writes in a row. Name the cases the
+  guards are for, assert in each that it did what it means to (the
+  grapheme is now three codepoints; the colour is the new one), and
+  only then let the generator look for what you didn't think of.
 - **`vendor/ghostty-vt` static library:** rebuilt via
   `tools/build-ghostty-vt.sh` (Zig 0.15+, `ghostty` commit
   `6d244209978e599277904ff3ced7b8a2ebcc528d`, MIT), tracked in Git LFS.

@@ -26985,11 +26985,72 @@ for repeated SSH, HTTP/TLS, transfer, forwarding and connection-loss checks.
   (the same, at that load), and no pixel stale, in Rex or in Terminal
   (39 bursts printed at 1×, 1.5× and 2×, each pictured, drawn again
   from nothing and pictured again: the same; with the comparison made
-  to report too little on purpose, the same check finds it). The engine's rows are now over half of
-  what is left, and TODO's ("What a streaming pane costs"). With the input mode read when output pauses (2026-11-22):
+  to report too little on purpose, the same check finds it). The
+  engine's rows were then over half of what was left, and are passed
+  over now (2026-11-22; "Rows the engine made again", below): the same
+  300 lines of coloured text into one pane 700 M instructions before
+  and 320 M after (−54%), into one of three 641 M and 353 M (−45%):
+  a frame of the stream 2.31 M instructions before and 1.05 M after.
+  In time, at a load average of 30 to 50 where it was measured, a
+  frame of the stream 0.72 to 0.97 ms before and 0.46 to 0.53 ms
+  after in one pass and 0.58 to 0.63 and 0.54 to 0.69 in another
+  (the load's, not the build's: instructions are the measure there);
+  at rest nothing; a key to its picture a median 2.1 to 2.9 ms before
+  and 2.1 to 3.3 ms after (the same). (Without the check of a row's
+  styles it was 288 M: the check is 32 M, most of it reading again
+  the first cell of each style; asking the engine for each cell's
+  style id instead of reading it from the word, as the engine's
+  manifest says where, was 60 M.) What is left of a frame: comparing
+  bytes 11%, copying 8%, the renderer's glyphs 5 to 8%, painting the
+  pane 5%, hashing row ids 4%. With the input mode read when output pauses (2026-11-22):
   the same stream 786 to 838 M before and 813 to 838 M after, at rest
   0 frames and 0% both, a key to its picture 3.2 to 3.9 ms before and
   3.6 ms after.
+- **Rows the engine made again** (`RenderState::extract_rows_known`,
+  `Frame::capture`). A line printed at the foot of a full screen
+  moves the engine's viewport, and it then makes every row again and
+  marks every one dirty (its render state's `update`: a full redraw
+  whenever the viewport's pin changed; the copy of each row it keeps
+  has its dirty bit cleared, so it says of none that it is as it
+  was). Rex took every row's cells (calls into the engine a cell:
+  2,520 cells for a 63 × 40 pane) and compared them with what it had,
+  to find 63 new. Rows keep their ids across a scroll, and one call
+  lends a row's packed cells (`ROW_DATA_CELLS_RAW`, a word a column):
+  a row the frame holds whose packed row word and packed cells are
+  what they were when its cells were last taken (`RenderRow::raw`,
+  `RowRaw`) is passed over, its cells, its revision and so its glyph
+  run kept. **Three things a row shows aren't in its words**: a
+  grapheme's further codepoints (kept beside the cell: a second
+  combining mark changes no word), so a row with a grapheme in it is
+  always taken (`GHOSTTY_ROW_DATA_GRAPHEME`); **its styles**, which a
+  cell names by an id in its page, and an id is given to another
+  style once no cell has it (a red X rubbed out and a green one
+  written where it was, between two frames, is the same word:
+  Astra's review found it, and the pane kept the red one), so a row
+  with styles (`GHOSTTY_ROW_DATA_STYLED`, never clear where a cell
+  has one) has the first cell of each style id read again and
+  compared with the kept cell (`RenderState::styles_as_kept`: an id
+  names one style at a time, and a cell of text shows all of its
+  style, so the rest that have the id are as that one is; a cell that
+  is only a background carried in its word shows that and not its
+  style's, so a row where such a cell is the first of a style is
+  taken: a snapshot can hold one, and the second review made it; a
+  cell's id is read from its word where the engine's manifest,
+  `ghostty_type_json`, says it is, `style_id_bits`, read as JSON with
+  its schema checked, and asked of the engine cell by cell if the
+  manifest doesn't say as expected); and its colours, which are resolved through the palette and
+  the defaults, so rows are passed over only while the frame's
+  colours are the last frame's (and never after a capture that
+  failed). The test holds a frame that passes rows over to one that
+  takes every row the engine marks dirty, as before
+  (`Frame::every_row`, the tests'), each on a
+  terminal of its own written the same bytes: named cases, then 6,000
+  generated writes (`rows_passed_over_are_the_rows_taken_again`);
+  each condition, taken out, fails it (the grapheme's, the styles'
+  whole and for a row's second style, the colours', the cells'
+  words), as the background-only cell's does its own test
+  (`a_background_in_a_cells_word_doesnt_speak_for_its_style`, on a
+  snapshot kept beside it).
 - Resident memory: **62.2 MiB RSS** (`olo-rex`). Reviewed at 1×, 1.5×,
   and 2×, Light and Dark, across all 6 tiling layouts (`ui-lint --tiles`:
   0 errors; `tsession review`: 0 findings across Workspace, Settings,

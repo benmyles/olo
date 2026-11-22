@@ -209,3 +209,33 @@ fn cursor_outside_viewport_and_optional_colors() {
     let rows = r.extract_rows(&r.colors().palette, false).unwrap();
     assert!(rows[0].cells.iter().all(|cell| cell.bg.is_none()));
 }
+
+/// A mark that joins a letter in a write of its own changes what the
+/// row shows, and the engine doesn't say so: its print path for a
+/// zero-width character (grapheme clustering off, as it is unless a
+/// program asks) appends to the cell before without marking the row
+/// dirty (`Terminal.zig`, `print`, "Attach zero-width characters": no
+/// `cursorMarkDirty()` before `appendGrapheme`, where the clustering
+/// path has one). The render state keeps the row as it was until
+/// something else changes it: an accent typed after its letter shows
+/// one key late. One line in the engine and the library built again
+/// (TODO, "A mark joined later"); until then this fails.
+#[test]
+#[ignore = "the engine doesn't mark a row dirty when a zero-width character joins a cell: TODO, \"A mark joined later\""]
+fn a_mark_joined_later_is_seen() {
+    let mut t = GhosttyTerminal::new(20, 4).unwrap();
+    let mut r = RenderState::new().unwrap();
+    let mut look = |t: &mut GhosttyTerminal, bytes: &[u8]| {
+        t.vt_write(bytes);
+        r.begin_update(t).unwrap();
+        r.end_update().unwrap();
+        let rows = r.extract_rows(&r.colors().palette, false).unwrap();
+        r.clean().unwrap();
+        rows[0].cells[0].grapheme.clone()
+    };
+    assert_eq!(look(&mut t, "e\u{301}".as_bytes()), "e\u{301}");
+    // (The terminal has it: its own text of the row is the three.)
+    let seen = look(&mut t, "\u{302}".as_bytes());
+    assert_eq!(t.viewport_row_text(0), "e\u{301}\u{302}");
+    assert_eq!(seen, "e\u{301}\u{302}");
+}

@@ -9,6 +9,7 @@ license.workspace = true
 olo-sync.workspace = true
 image = { version = "0.25", default-features = false, features = ["png"] }
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 

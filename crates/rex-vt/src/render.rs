@@ -156,6 +156,22 @@ pub struct RenderRow {
     pub wrap_continuation: bool,
     pub selection: Option<(u16, u16)>,
     pub cells: Vec<RenderCell>,
+    /// The row as the engine packs it, for knowing it again
+    /// ([`RenderState::extract_rows_known`]); empty where `cells` is.
+    pub raw: RowRaw,
+}
+
+/// Olo: a row as the engine packs it: the row's own word and a word a
+/// cell. A row with the same id whose words are all the same as at the
+/// last update shows the same, if no cell of it is a grapheme (whose
+/// further codepoints are kept beside the cell, not in its word), the
+/// styles its cells name are the same styles, and the colours it is
+/// resolved by are the same: what a caller keeps of a row, with its
+/// cells, to have it passed over, its cells not taken again.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RowRaw {
+    pub row: u64,
+    pub cells: Vec<u64>,
 }
 
 /// Image layer relative to backgrounds and text.
@@ -390,6 +406,32 @@ impl RenderState {
     /// `cells` on clean rows (still returning row metadata so callers can map
     /// `RowId` -> `viewport_y` effortlessly!).
     pub fn extract_rows(&mut self, palette: &[Rgb; 256], only_dirty: bool) -> Result<Vec<RenderRow>, VtError> {
+        self.extract_rows_known(palette, only_dirty, None::<fn(&RowId) -> Option<(&'static RowRaw, &'static [RenderCell])>>)
+    }
+
+    /// Olo: [`RenderState::extract_rows`], passing over the rows the
+    /// caller already has: `known` gives what it kept of a row
+    /// ([`RenderRow::raw`]), and a row whose packed words are all the
+    /// same comes back with no `cells` (and no `raw`), as a clean row
+    /// does under `only_dirty`.
+    ///
+    /// For a scroll. The engine redraws everything when its viewport
+    /// moves (a line printed at the foot of a full screen), and marks
+    /// every row dirty: it says of none that it is as it was. But the
+    /// rows keep their ids, and each is one read of its packed cells
+    /// (`ROW_DATA_CELLS_RAW`) and a comparison away from being known
+    /// the same, where taking its cells is calls a cell: a 63 × 40 pane
+    /// printing a line took 2,520 cells to find 63 new.
+    ///
+    /// The packed words don't hold everything. A grapheme's further
+    /// codepoints are beside the cell (a second combining mark changes
+    /// no word), so a row with a grapheme in it is always taken. A
+    /// cell's style is named by an id that another style can come to
+    /// have, so a row with styles has each of them read and compared
+    /// with the kept cells' (`styles_as_kept`: `known` gives those
+    /// too). And colours are resolved through the palette and the
+    /// defaults, so pass `known` only while those are as they were.
+    pub fn extract_rows_known<'a>(&mut self, palette: &[Rgb; 256], only_dirty: bool, known: Option<impl Fn(&RowId) -> Option<(&'a RowRaw, &'a [RenderCell])>>) -> Result<Vec<RenderRow>, VtError> {
         let global_dirty = self.dirty();
         let (cols, rows) = self.size();
         let (ov_above, ov_below) = self.overscan_captured();
@@ -434,9 +476,33 @@ impl RenderState {
                 DirtyState::Clean => false,
             };
 
-            let cells = if only_dirty && !effective_dirty { Vec::new() } else { self.extract_current_row_cells(cols as usize, palette)? };
+            let id = RowId(row_id.bits);
+            let (cells, raw) = if only_dirty && !effective_dirty {
+                (Vec::new(), RowRaw::default())
+            } else {
+                let mut view = ffi::GhosttyCellsView { ptr: ptr::null(), len: 0 };
+                let (mut grapheme, mut styled) = (false, false);
+                // SAFETY: The iterator is on a valid row: CELLS_RAW lends its packed cells until the next update, and the packed row has a bool for each of its flags.
+                let packed: &[u64] = unsafe {
+                    check(ffi::ghostty_render_state_row_get(self.row_iter, ffi::GHOSTTY_RENDER_STATE_ROW_DATA_CELLS_RAW, ptr::from_mut(&mut view).cast::<c_void>()))?;
+                    check(ffi::ghostty_row_get(raw_row, ffi::GHOSTTY_ROW_DATA_GRAPHEME, ptr::from_mut(&mut grapheme).cast::<c_void>()))?;
+                    check(ffi::ghostty_row_get(raw_row, ffi::GHOSTTY_ROW_DATA_STYLED, ptr::from_mut(&mut styled).cast::<c_void>()))?;
+                    if view.ptr.is_null() { &[] } else { std::slice::from_raw_parts(view.ptr, view.len) }
+                };
+                let same = match known.as_ref().and_then(|known| known(&id)) {
+                    // (The row's flag for styles is never clear where a cell has one.)
+                    Some((kept, cells)) if !grapheme && kept.row == raw_row && kept.cells == packed && cells.len() == packed.len() => !styled || self.styles_as_kept(packed, cells, palette)?,
+                    _ => false,
+                };
+                if same {
+                    (Vec::new(), RowRaw::default())
+                } else {
+                    let raw = RowRaw { row: raw_row, cells: packed.to_vec() };
+                    (self.extract_current_row_cells(cols as usize, palette)?, raw)
+                }
+            };
 
-            out.push(RenderRow { id: RowId(row_id.bits), viewport_y, dirty: effective_dirty, wrap, wrap_continuation: wrap_cont, selection, cells });
+            out.push(RenderRow { id, viewport_y, dirty: effective_dirty, wrap, wrap_continuation: wrap_cont, selection, cells, raw });
         }
         Ok(out)
     }
@@ -463,79 +529,138 @@ impl RenderState {
                 cells.push(RenderCell { grapheme: String::new(), ..*previous });
                 continue;
             }
-            let mut content_tag = ffi::GHOSTTY_CELL_CONTENT_CODEPOINT;
-            let mut wide_raw = ffi::GHOSTTY_CELL_WIDE_NARROW;
-            let mut codepoint = 0u32;
-            let mut has_styling = false;
-            let mut hyperlink = false;
-            // SAFETY: The packed cell getters write the content and width enums, uint32_t scalar and two bool flags.
-            unsafe {
-                check(ffi::ghostty_cell_get(raw_cell, ffi::GHOSTTY_CELL_DATA_CONTENT_TAG, ptr::from_mut(&mut content_tag).cast::<c_void>()))?;
-                check(ffi::ghostty_cell_get(raw_cell, ffi::GHOSTTY_CELL_DATA_WIDE, ptr::from_mut(&mut wide_raw).cast::<c_void>()))?;
-                check(ffi::ghostty_cell_get(raw_cell, ffi::GHOSTTY_CELL_DATA_CODEPOINT, ptr::from_mut(&mut codepoint).cast::<c_void>()))?;
-                check(ffi::ghostty_cell_get(raw_cell, ffi::GHOSTTY_CELL_DATA_HAS_STYLING, ptr::from_mut(&mut has_styling).cast::<c_void>()))?;
-                check(ffi::ghostty_cell_get(raw_cell, ffi::GHOSTTY_CELL_DATA_HAS_HYPERLINK, ptr::from_mut(&mut hyperlink).cast::<c_void>()))?;
-            }
+            let (cell, tag) = self.cell_here(raw_cell, palette)?;
+            previous_scalar = (tag != ffi::GHOSTTY_CELL_CONTENT_CODEPOINT_GRAPHEME).then_some(raw_cell);
+            cells.push(cell);
+        }
 
-            let wide = match wide_raw {
-                ffi::GHOSTTY_CELL_WIDE_WIDE => CellWide::Wide,
-                ffi::GHOSTTY_CELL_WIDE_SPACER_TAIL => CellWide::SpacerTail,
-                ffi::GHOSTTY_CELL_WIDE_SPACER_HEAD => CellWide::SpacerHead,
-                _ => CellWide::Narrow,
-            };
+        Ok(cells)
+    }
 
-            previous_scalar = (content_tag != ffi::GHOSTTY_CELL_CONTENT_CODEPOINT_GRAPHEME).then_some(raw_cell);
-            let grapheme = if content_tag == ffi::GHOSTTY_CELL_CONTENT_CODEPOINT_GRAPHEME { self.read_grapheme_utf8()? } else { String::new() };
+    /// Olo: the cell the row's cell iterator is on (`raw_cell`, its
+    /// packed word), as Rex draws it, and what its content is (text, a
+    /// grapheme whose further codepoints are beside it, or only a
+    /// background carried in the word).
+    fn cell_here(&mut self, raw_cell: ffi::GhosttyCell, palette: &[Rgb; 256]) -> Result<(RenderCell, ffi::GhosttyCellContentTag), VtError> {
+        let mut content_tag = ffi::GHOSTTY_CELL_CONTENT_CODEPOINT;
+        let mut wide_raw = ffi::GHOSTTY_CELL_WIDE_NARROW;
+        let mut codepoint = 0u32;
+        let mut has_styling = false;
+        let mut hyperlink = false;
+        // SAFETY: The packed cell getters write the content and width enums, uint32_t scalar and two bool flags.
+        unsafe {
+            check(ffi::ghostty_cell_get(raw_cell, ffi::GHOSTTY_CELL_DATA_CONTENT_TAG, ptr::from_mut(&mut content_tag).cast::<c_void>()))?;
+            check(ffi::ghostty_cell_get(raw_cell, ffi::GHOSTTY_CELL_DATA_WIDE, ptr::from_mut(&mut wide_raw).cast::<c_void>()))?;
+            check(ffi::ghostty_cell_get(raw_cell, ffi::GHOSTTY_CELL_DATA_CODEPOINT, ptr::from_mut(&mut codepoint).cast::<c_void>()))?;
+            check(ffi::ghostty_cell_get(raw_cell, ffi::GHOSTTY_CELL_DATA_HAS_STYLING, ptr::from_mut(&mut has_styling).cast::<c_void>()))?;
+            check(ffi::ghostty_cell_get(raw_cell, ffi::GHOSTTY_CELL_DATA_HAS_HYPERLINK, ptr::from_mut(&mut hyperlink).cast::<c_void>()))?;
+        }
 
-            let mut bg_raw = ffi::GhosttyColorRgb::default();
+        let wide = match wide_raw {
+            ffi::GHOSTTY_CELL_WIDE_WIDE => CellWide::Wide,
+            ffi::GHOSTTY_CELL_WIDE_SPACER_TAIL => CellWide::SpacerTail,
+            ffi::GHOSTTY_CELL_WIDE_SPACER_HEAD => CellWide::SpacerHead,
+            _ => CellWide::Narrow,
+        };
+
+        let grapheme = if content_tag == ffi::GHOSTTY_CELL_CONTENT_CODEPOINT_GRAPHEME { self.read_grapheme_utf8()? } else { String::new() };
+
+        let mut bg_raw = ffi::GhosttyColorRgb::default();
+        // SAFETY: The iterator is on a valid cell and the color output is a GhosttyColorRgb.
+        let bg = match unsafe { ffi::ghostty_render_state_row_cells_get(self.row_cells, ffi::GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR, ptr::from_mut(&mut bg_raw).cast::<c_void>()) } {
+            ffi::GHOSTTY_SUCCESS => Some(Rgb::from_ffi(bg_raw)),
+            ffi::GHOSTTY_NO_VALUE => None,
+            code => return Err(VtError::from_ffi(code)),
+        };
+
+        let (fg, style) = if has_styling {
+            let mut fg_raw = ffi::GhosttyColorRgb::default();
             // SAFETY: The iterator is on a valid cell and the color output is a GhosttyColorRgb.
-            let bg = match unsafe { ffi::ghostty_render_state_row_cells_get(self.row_cells, ffi::GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR, ptr::from_mut(&mut bg_raw).cast::<c_void>()) } {
-                ffi::GHOSTTY_SUCCESS => Some(Rgb::from_ffi(bg_raw)),
+            let fg = match unsafe { ffi::ghostty_render_state_row_cells_get(self.row_cells, ffi::GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR, ptr::from_mut(&mut fg_raw).cast::<c_void>()) } {
+                ffi::GHOSTTY_SUCCESS => Some(Rgb::from_ffi(fg_raw)),
                 ffi::GHOSTTY_NO_VALUE => None,
                 code => return Err(VtError::from_ffi(code)),
             };
 
-            let (fg, style) = if has_styling {
-                let mut fg_raw = ffi::GhosttyColorRgb::default();
-                // SAFETY: The iterator is on a valid cell and the color output is a GhosttyColorRgb.
-                let fg = match unsafe { ffi::ghostty_render_state_row_cells_get(self.row_cells, ffi::GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR, ptr::from_mut(&mut fg_raw).cast::<c_void>()) } {
-                    ffi::GHOSTTY_SUCCESS => Some(Rgb::from_ffi(fg_raw)),
-                    ffi::GHOSTTY_NO_VALUE => None,
-                    code => return Err(VtError::from_ffi(code)),
-                };
+            let mut st = ffi::GhosttyStyle::default();
+            // SAFETY: STYLE writes a fixed-layout GhosttyStyle from this cell's page.
+            unsafe {
+                check(ffi::ghostty_render_state_row_cells_get(self.row_cells, ffi::GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE, ptr::from_mut(&mut st).cast::<c_void>()))?;
+            }
 
-                let mut st = ffi::GhosttyStyle::default();
-                // SAFETY: STYLE writes a fixed-layout GhosttyStyle from this cell's page.
-                unsafe {
-                    check(ffi::ghostty_render_state_row_cells_get(self.row_cells, ffi::GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_STYLE, ptr::from_mut(&mut st).cast::<c_void>()))?;
-                }
-
-                let underline_color = resolve_style_color(st.underline_color, palette);
-                // SAFETY: The palette tag selects the one-byte palette union member (a valid 256-entry index).
-                let fg_palette_index = if st.fg_color.tag as u32 == ffi::GHOSTTY_STYLE_COLOR_PALETTE { Some(unsafe { st.fg_color.value.palette }) } else { None };
-                let flags = st.flags;
-                let style = CellStyle {
-                    bold: (flags & (1 << 0)) != 0,
-                    italic: (flags & (1 << 1)) != 0,
-                    faint: (flags & (1 << 2)) != 0,
-                    blink: (flags & (1 << 3)) != 0,
-                    inverse: (flags & (1 << 4)) != 0,
-                    invisible: (flags & (1 << 5)) != 0,
-                    strikethrough: (flags & (1 << 6)) != 0,
-                    overline: (flags & (1 << 7)) != 0,
-                    underline: UnderlineStyle::from_flags(flags),
-                    underline_color,
-                    fg_palette_index,
-                };
-                (fg, style)
-            } else {
-                (None, CellStyle::default())
+            let underline_color = resolve_style_color(st.underline_color, palette);
+            // SAFETY: The palette tag selects the one-byte palette union member (a valid 256-entry index).
+            let fg_palette_index = if st.fg_color.tag as u32 == ffi::GHOSTTY_STYLE_COLOR_PALETTE { Some(unsafe { st.fg_color.value.palette }) } else { None };
+            let flags = st.flags;
+            let style = CellStyle {
+                bold: (flags & (1 << 0)) != 0,
+                italic: (flags & (1 << 1)) != 0,
+                faint: (flags & (1 << 2)) != 0,
+                blink: (flags & (1 << 3)) != 0,
+                inverse: (flags & (1 << 4)) != 0,
+                invisible: (flags & (1 << 5)) != 0,
+                strikethrough: (flags & (1 << 6)) != 0,
+                overline: (flags & (1 << 7)) != 0,
+                underline: UnderlineStyle::from_flags(flags),
+                underline_color,
+                fg_palette_index,
             };
+            (fg, style)
+        } else {
+            (None, CellStyle::default())
+        };
 
-            cells.push(RenderCell { codepoint, grapheme, wide, fg, bg, style, hyperlink });
+        Ok((RenderCell { codepoint, grapheme, wide, fg, bg, style, hyperlink }, content_tag))
+    }
+
+    /// Olo: whether the styles of the current row's cells are what its
+    /// cells as last taken (`kept`) have, the packed cells (`packed`)
+    /// being what they were. A cell's word names its style by an id in
+    /// its page, and an id is given to another style once no cell has
+    /// it: a red X erased and a green X written where it was, between
+    /// two looks, is the same word (Astra's review, 2026-11-22). So of
+    /// each style id in the row, the first cell that has it is read
+    /// again and compared with the kept one: an id names one style at a
+    /// time, and a cell of text shows all of its style (its colours,
+    /// its ground, its marks), so the rest that have the id are as that
+    /// one is. (A row of more styles than a few is taken whole instead,
+    /// and one where the first cell of a style isn't text.)
+    fn styles_as_kept(&mut self, packed: &[u64], kept: &[RenderCell], palette: &[Rgb; 256]) -> Result<bool, VtError> {
+        // SAFETY: The row is current and the slot holds our live reusable cell iterator.
+        check(unsafe { ffi::ghostty_render_state_row_get(self.row_iter, ffi::GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, ptr::from_mut(&mut self.row_cells).cast::<c_void>()) })?;
+        let mut seen = [0u16; 12];
+        let (mut count, mut last) = (0, 0u16);
+        let bits = style_id_bits();
+        for (x, &cell) in packed.iter().enumerate() {
+            let id = match bits {
+                Some((lsb, mask)) => {
+                    let id = ((cell >> lsb) & mask) as u16;
+                    debug_assert_eq!(Ok(id), style_id_asked(cell), "the engine's manifest and its getter disagree on a cell's style id");
+                    id
+                }
+                None => style_id_asked(cell)?,
+            };
+            // (None of its own; or the run's, or one seen before.)
+            if id == 0 || id == last || seen[..count].contains(&id) {
+                continue;
+            }
+            if count == seen.len() {
+                return Ok(false);
+            }
+            (seen[count], count, last) = (id, count + 1, id);
+            // SAFETY: `x` is a column of the current row, whose cells the iterator holds.
+            check(unsafe { ffi::ghostty_render_state_row_cells_select(self.row_cells, x as u16) })?;
+            let (now, tag) = self.cell_here(cell, palette)?;
+            // (A cell that is only a background carried in its word shows
+            // that and not its style's: it can't speak for the style's
+            // background, which a letter with the same id shows. A
+            // snapshot can hold such a cell with a style; Astra's second
+            // review made one, and a B behind it kept its old ground.)
+            if matches!(tag, ffi::GHOSTTY_CELL_CONTENT_BG_COLOR_PALETTE | ffi::GHOSTTY_CELL_CONTENT_BG_COLOR_RGB) || now != kept[x] {
+                return Ok(false);
+            }
         }
-
-        Ok(cells)
+        Ok(true)
     }
 
     fn read_grapheme_utf8(&mut self) -> Result<String, VtError> {
@@ -655,6 +780,49 @@ impl RenderState {
     }
 }
 
+/// Olo: a packed cell's style id, asked of the engine (a call a cell).
+fn style_id_asked(cell: ffi::GhosttyCell) -> Result<u16, VtError> {
+    let mut id = 0u16;
+    // SAFETY: STYLE_ID writes a uint16_t read from the packed cell.
+    check(unsafe { ffi::ghostty_cell_get(cell, ffi::GHOSTTY_CELL_DATA_STYLE_ID, ptr::from_mut(&mut id).cast::<c_void>()) })?;
+    Ok(id)
+}
+
+/// Olo: where a packed cell's style id is in its word (its lowest bit,
+/// and a mask of its width), as the engine says of itself: the layout
+/// of a packed cell isn't part of its ABI, and `ghostty_type_json` is
+/// how a caller is told to learn it. Read once. None if the manifest
+/// doesn't say it as expected: the id is then asked of the engine,
+/// cell by cell (`style_id_asked`: 2,520 calls a frame for a 63 × 40
+/// pane of coloured text, a sixth of the frame).
+fn style_id_bits() -> Option<(u32, u64)> {
+    static BITS: std::sync::OnceLock<Option<(u32, u64)>> = std::sync::OnceLock::new();
+    *BITS.get_or_init(|| {
+        // SAFETY: The manifest is a static NUL-terminated string owned by the library.
+        let json = unsafe { std::ffi::CStr::from_ptr(ffi::ghostty_type_json()) }.to_str().ok()?;
+        style_id_bits_in(json)
+    })
+}
+
+/// (The manifest: `{"schema":1,…,"types":{"GhosttyCell":{"kind":
+/// "packed","underlying":"u64","bits":{…,"style_id":{"lsb":26,
+/// "width":16,…}}}}}`. Read as JSON, the cell's own field and no
+/// other; a schema this wasn't written for, or a field not as
+/// expected, is not guessed at.)
+fn style_id_bits_in(json: &str) -> Option<(u32, u64)> {
+    let manifest: serde_json::Value = serde_json::from_str(json).ok()?;
+    if manifest.get("schema")?.as_u64()? != 1 {
+        return None;
+    }
+    let cell = manifest.get("types")?.get("GhosttyCell")?;
+    if cell.get("kind")?.as_str()? != "packed" || cell.get("underlying")?.as_str()? != "u64" {
+        return None;
+    }
+    let field = cell.get("bits")?.get("style_id")?;
+    let (lsb, width) = (field.get("lsb")?.as_u64()?, field.get("width")?.as_u64()?);
+    (width == 16 && lsb <= 48).then_some((lsb as u32, 0xffff))
+}
+
 fn resolve_style_color(c: ffi::GhosttyStyleColor, palette: &[Rgb; 256]) -> Option<Rgb> {
     match c.tag as u32 {
         // SAFETY: The palette tag selects the one-byte palette union member (a valid 256-entry index).
@@ -682,5 +850,65 @@ impl Drop for RenderState {
                 ffi::ghostty_render_state_free(self.raw);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::GhosttyTerminal;
+
+    /// The engine's manifest says where a packed cell's style id is, and
+    /// it is where it says: for every cell of a screen of text in many
+    /// styles, the bits read there are what the engine's own getter
+    /// gives. (What `styles_as_kept` walks a row by; a layout the
+    /// manifest doesn't give as expected is asked for cell by cell.)
+    #[test]
+    fn a_cells_style_id_is_where_the_manifest_says() {
+        let (lsb, mask) = style_id_bits().expect("the manifest gives the packed cell's style id");
+        let with = |cell: &str| format!(r#"{{"schema":1,"types":{{"GhosttyCell":{cell}, "GhosttyX":{{"kind":"packed","underlying":"u64","bits":{{"style_id":{{"lsb":3,"width":16}}}}}}}}}}"#);
+        assert_eq!(
+            style_id_bits_in(&with(
+                r#"{"kind":"packed","underlying":"u64","bits":{"content_tag":{"lsb":0,"width":2},"style_id":{"lsb":26,"width":16,"type":"GhosttyStyleId"},"wide":{"lsb":42,"width":2}}}"#
+            )),
+            Some((26, 0xffff))
+        );
+        // Not said, or not as expected: none (the engine is asked), and
+        // never another field's or another type's (Astra's second
+        // review: a search through the text took `wide`'s 42 for a
+        // missing `lsb`, and the next type's 3 for a missing field).
+        assert_eq!(style_id_bits_in(&with(r#"{"kind":"packed","underlying":"u64","bits":{"style_id":{"width":16},"wide":{"lsb":42,"width":2}}}"#)), None);
+        assert_eq!(style_id_bits_in(&with(r#"{"kind":"packed","underlying":"u64","bits":{"wide":{"lsb":42,"width":2}}}"#)), None);
+        assert_eq!(style_id_bits_in(&with(r#"{"kind":"packed","underlying":"u64","bits":{"style_id":{"lsb":26,"width":12}}}"#)), None);
+        assert_eq!(style_id_bits_in(&with(r#"{"kind":"packed","underlying":"u32","bits":{"style_id":{"lsb":10,"width":16}}}"#)), None);
+        assert_eq!(style_id_bits_in(&with(r#"{"kind":"struct","bits":{"style_id":{"lsb":26,"width":16}}}"#)), None);
+        // A schema this wasn't written for.
+        assert_eq!(style_id_bits_in(&with(r#"{"kind":"packed","underlying":"u64","bits":{"style_id":{"lsb":26,"width":16}}}"#).replace(r#""schema":1"#, r#""schema":2"#)), None);
+        assert_eq!(style_id_bits_in("{}"), None);
+        assert_eq!(style_id_bits_in("not json"), None);
+        let mut t = GhosttyTerminal::new(40, 12).unwrap();
+        for row in 0..12u32 {
+            let line = (0..8).map(|i| format!("\x1b[{};{}mab\x1b[0m.", [1, 3, 4, 7][((row + i) % 4) as usize], 31 + (row * 3 + i) % 7)).collect::<String>();
+            t.vt_write(format!("\x1b[{};1H{line}", row + 1).as_bytes());
+        }
+        let mut state = RenderState::new().unwrap();
+        state.update(&t).unwrap();
+        // SAFETY: The handle slot holds our reusable iterator over the state just updated.
+        check(unsafe { ffi::ghostty_render_state_get(state.raw, ffi::GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR, ptr::from_mut(&mut state.row_iter).cast::<c_void>()) }).unwrap();
+        let (mut cells, mut styled, mut ids) = (0, 0, std::collections::BTreeSet::new());
+        // SAFETY: The iterator is on a row of that state; CELLS_RAW lends its packed cells until the next update.
+        while unsafe { ffi::ghostty_render_state_row_iterator_next(state.row_iter) } {
+            let mut view = ffi::GhosttyCellsView { ptr: ptr::null(), len: 0 };
+            check(unsafe { ffi::ghostty_render_state_row_get(state.row_iter, ffi::GHOSTTY_RENDER_STATE_ROW_DATA_CELLS_RAW, ptr::from_mut(&mut view).cast::<c_void>()) }).unwrap();
+            for &cell in unsafe { std::slice::from_raw_parts(view.ptr, view.len) } {
+                let id = ((cell >> lsb) & mask) as u16;
+                assert_eq!(Ok(id), style_id_asked(cell));
+                cells += 1;
+                styled += usize::from(id != 0);
+                ids.insert(id);
+            }
+        }
+        assert_eq!(cells, 40 * 12);
+        assert!(styled >= 12 * 16 && ids.len() > 8, "{styled} cells with a style, {} styles", ids.len());
     }
 }

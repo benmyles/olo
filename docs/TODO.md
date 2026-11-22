@@ -931,20 +931,37 @@ something nobody here has is in "Blocked", with what it waits for.
   kit's").
   **Left, in this order**:
   - *What a streaming pane costs* (profiled 2026-11-22; HACKING, Rex,
-    "Cost"): of a frame's instructions while a pane streams, over half
-    is now taking every row's cells from the terminal engine again
-    (`RenderState::extract_current_row_cells` 21%, the engine's
-    `row_cells_get` 13%, the cells pushed 11%, compared 8%), because a
-    scroll marks the whole screen dirty, only for the comparison after
-    to find all but the new line the same (the rows have ids that
-    survive a scroll: take the cells of rows that are new, or that the
-    engine says changed, if its row flags can be trusted under a full
-    redraw: read the engine's own renderer for what they mean then).
-    (The kit's share, comparing the frame's glyphs with the last
-    frame's and copying the kept ones, was 19% and is done: HACKING,
-    "Fast and light", the comparison in place.) Saying the panes'
-    elements again is 2%: a pane's head a view of its own isn't worth
-    its machinery.
+    "Cost"): the two large shares are done (the kit comparing and
+    copying the frame's glyphs, 19%: "Fast and light", the comparison
+    in place; every row's cells taken from the engine again at each
+    scroll, over half of what was left: Rex, "Rows the engine made
+    again"): 300 lines into a pane were 842 M instructions and are
+    320 M. Of the 1.05 M a frame that are left: comparing bytes 11%
+    and copying 8% (whose, not yet looked at: a profile with callers,
+    `perf record --user-callchains -g`), the renderer's glyphs 5 to
+    8%, painting the pane 5%, hashing row ids 4% (the frame's and the
+    pane's maps by `RowId` use the standard hasher: two words want a
+    cheaper one). Saying the panes' elements again is 2%: a pane's
+    head a view of its own isn't worth its machinery.
+  - *A mark joined later* (the terminal engine; found 2026-11-22
+    testing the above). A combining mark, a variation selector or a
+    joiner that arrives in a write of its own (an accent typed after
+    its letter and echoed by the shell; a read from the pty that ends
+    between a letter and its mark) is put with the cell before it, and
+    the engine doesn't mark the row dirty: its `print`, where a
+    zero-width character is attached with grapheme clustering off
+    (`Terminal.zig`, "Attach zero-width characters": `appendGrapheme`
+    with no `cursorMarkDirty()` before it, where the clustering path
+    has one). The render state then says nothing changed and keeps the
+    row as it was until something else changes it: the mark shows one
+    key late, in Rex and in whatever else draws from the render state.
+    The cure is that one line in the engine and the library built
+    again (`tools/build-ghostty-vt.sh`, which wants to apply a patch
+    kept in the repository), and the library is a Git LFS object:
+    **blocked on the LFS budget** (the item on it), and it is
+    upstream's bug to hear of too (the person's to report). The test
+    that fails until then: `crates/rex-vt/tests/boundaries.rs`,
+    `a_mark_joined_later_is_seen` (ignored, with why).
   - *The damage path at the edge of a float* (the kit; found by
     Astra's three reviews of the comparison in place, 2026-11-22, with
     reproductions through the painter, the stage and a frame's
