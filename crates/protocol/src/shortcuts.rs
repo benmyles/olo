@@ -2064,7 +2064,10 @@ mod tests {
         assert_eq!(ids.len(), entries().count());
         // Taking an app's keys for app_server's.
         let mut p = KeyboardProfile::default();
-        assert_eq!(assign(&mut p, "lock", "Cmd+C".parse().ok()), ["Copy", "Copy", "Copy Username"]);
+        // (Every app's Copy, Terminal's and Rex's own, and Passwords' Copy
+        // Username. Rex's came with the app and this list wasn't brought
+        // along: the test failed from that merge on.)
+        assert_eq!(assign(&mut p, "lock", "Cmd+C".parse().ok()), ["Copy", "Copy", "Copy", "Copy Username"]);
         assert!(crate::app_keys::by_id("app.copy").is_some());
         assert!(entry("app.copy").unwrap().keys(&p).is_empty());
         // An app's own clash with each other, not with another app's

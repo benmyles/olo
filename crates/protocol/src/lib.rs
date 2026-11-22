@@ -1835,6 +1835,7 @@ pub struct Settings {
     pub shortcuts: Option<ShortcutSettings>,
     pub tiling: TilingSettings,
     pub tracker: TrackerSettings,
+    pub rex: RexSettings,
     /// Screen recordings (Screenshot ▸ Record).
     pub screen_recording: ScreenRecordingSettings,
     /// Video played (Viewer ▸ View ▸ Decode With).
@@ -2020,6 +2021,97 @@ pub struct PasswordsSecurity {
 impl Default for PasswordsSecurity {
     fn default() -> Self {
         PasswordsSecurity { auto_sync: true, lock_minutes: 10, lock_with_screen: true, clear_seconds: 90, op_cli: true, ssh_agent: true }
+    }
+}
+
+/// Rex's settings (Preferences ▸ Rex): what Rex tells the person
+/// about, the hosts it knows besides this computer, and what the
+/// sessions of each may do on this computer. Rex follows them live.
+///
+/// How a Rex window looks (its text size, its colours, where its tabs
+/// are) is not here: those are the window's own quick choices, in Rex's
+/// Settings menu and Rex's own file, as Terminal's are. Nor is the
+/// state of this computer's Rex server (reachable over Tailscale or
+/// not): that is the server's, shown and changed in Rex.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct RexSettings {
+    /// Tell the person (an Olo notification) when an agent in a pane
+    /// that isn't in front is waiting for them.
+    pub notify_blocked: bool,
+    /// … when one has finished.
+    pub notify_done: bool,
+    /// … when one has failed.
+    pub notify_failed: bool,
+    /// What the sessions of this computer's own Rex server may do here.
+    pub local: RexGrants,
+    /// The hosts Rex knows besides this computer, in the order shown.
+    pub hosts: Vec<RexHost>,
+}
+
+impl Default for RexSettings {
+    fn default() -> Self {
+        RexSettings { notify_blocked: true, notify_done: true, notify_failed: true, local: RexGrants::all(), hosts: Vec::new() }
+    }
+}
+
+impl RexSettings {
+    /// What the sessions of host `id` may do here ("" or "local": this
+    /// computer's own server). A host Rex doesn't know may do nothing.
+    pub fn grants(&self, id: &str) -> RexGrants {
+        if id.is_empty() || id == "local" {
+            return self.local;
+        }
+        self.hosts.iter().find(|h| h.id == id).map(|h| h.grants).unwrap_or_default()
+    }
+}
+
+/// A host Rex connects to (Preferences ▸ Rex).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct RexHost {
+    /// Its own, for good: what its grants and its place are kept by
+    /// (a label and an address can both change).
+    pub id: String,
+    /// The name the person gave it.
+    pub label: String,
+    /// Where it is: `ssh://user@host`, `https://host`, a Tailscale name.
+    pub endpoint: String,
+    /// Connected as Rex starts (else when the person asks).
+    pub connect_at_start: bool,
+    pub grants: RexGrants,
+}
+
+/// What the sessions of a host may do on this computer: each is asked
+/// by a program on that host (through Olo's bridge there), and done
+/// here only if granted. Nothing is granted to a host until the person
+/// grants it; this computer's own sessions have all of it.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct RexGrants {
+    /// Open links here (in the person's browser).
+    pub open_links: bool,
+    /// Reach servers listening on that host's own loopback from here (a
+    /// local port forwarded to it when a link to it is opened).
+    pub forward_ports: bool,
+    /// Start and drive Agent Screens here.
+    pub agent_screens: bool,
+    /// Ask Passwords for an item (`op`), each time with the person's
+    /// leave as Passwords asks it.
+    pub passwords: bool,
+    /// Read and set this computer's clipboard.
+    pub clipboard: bool,
+}
+
+impl RexGrants {
+    /// Everything: what this computer's own sessions have.
+    pub const fn all() -> Self {
+        RexGrants { open_links: true, forward_ports: true, agent_screens: true, passwords: true, clipboard: true }
+    }
+
+    /// Whether anything is granted.
+    pub fn any(&self) -> bool {
+        self.open_links || self.forward_ports || self.agent_screens || self.passwords || self.clipboard
     }
 }
 
@@ -3102,6 +3194,7 @@ impl Default for Settings {
             shortcuts: None,
             tiling: TilingSettings::default(),
             tracker: TrackerSettings::default(),
+            rex: RexSettings::default(),
             screen_recording: ScreenRecordingSettings::default(),
             video: VideoSettings::default(),
             startup_sound: true,
@@ -3402,6 +3495,33 @@ mod tests {
             s.tracker.column_width = saved;
             assert_eq!(s.tracker.column(), used, "{saved}");
         }
+    }
+
+    /// Rex's part: a settings file from before it has the defaults (the
+    /// three notices on, this computer's own sessions granted
+    /// everything, no host known); a host not known, or known and
+    /// granted nothing, may do nothing; and it is kept as written.
+    #[test]
+    fn rex_grants_nothing_until_the_person_does() {
+        let none: Settings = serde_json::from_str("{}").unwrap();
+        assert_eq!(none.rex, RexSettings::default());
+        assert!(none.rex.notify_blocked && none.rex.notify_done && none.rex.notify_failed);
+        assert_eq!(none.rex.grants("local"), RexGrants::all());
+        assert_eq!(none.rex.grants(""), RexGrants::all());
+        assert!(!none.rex.grants("somewhere").any());
+        let mut s = Settings::default();
+        s.rex.hosts.push(RexHost { id: "h1".into(), label: "Build box".into(), endpoint: "ssh://build".into(), connect_at_start: true, grants: RexGrants { open_links: true, ..Default::default() } });
+        s.rex.hosts.push(RexHost { id: "h2".into(), label: "Elsewhere".into(), endpoint: "https://elsewhere.example".into(), ..Default::default() });
+        s.rex.notify_done = false;
+        let back: Settings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert_eq!(back.rex, s.rex);
+        assert!(back.rex.grants("h1").open_links && !back.rex.grants("h1").clipboard);
+        assert!(!back.rex.grants("h2").any());
+        // A file that names only some of it keeps the rest at its defaults.
+        let part: Settings = serde_json::from_str(r#"{"rex":{"notify_failed":false,"hosts":[{"id":"x","endpoint":"ssh://x"}]}}"#).unwrap();
+        assert!(part.rex.notify_blocked && !part.rex.notify_failed);
+        assert_eq!(part.rex.hosts[0].label, "");
+        assert!(!part.rex.hosts[0].grants.any() && !part.rex.hosts[0].connect_at_start);
     }
 
     #[test]
