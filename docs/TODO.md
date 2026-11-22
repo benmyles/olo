@@ -1018,11 +1018,6 @@ something nobody here has is in "Blocked", with what it waits for.
     list's well hardly stands out from the window and the list with
     the keyboard isn't told from the other; a small window opens with
     its tab over its parent's menu bar or its list's headings.
-  - *The layout lint on a busy machine* (tools/dev/ui-lint): it waits
-    up to a quarter of an hour for room before *each* app's session,
-    so with the machine kept busy by other work a push's lint has no
-    bound short of hours (2442 s, then a session timed out, 2026-11-21):
-    one allowance of waiting for the whole run.
   - *Remote Access, what it can't say yet*: who may connect once it is
     on (the server's `allow_tailnet_members`: read what the server
     enforces before wording it), and the devices paired, with a way to

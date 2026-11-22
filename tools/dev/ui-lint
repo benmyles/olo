@@ -35,8 +35,9 @@ made-up home, its own sound server), --jobs at a time (a quarter of the
 processors by default, four at the most: each session draws on the GPU
 the person's desktop draws on, and a dozen at once on a loaded machine
 had its jobs time out and the GPU reset under them, 2026-11-20), each
-begun only once the machine has room (`wait_for_room`), all at idle
-priority (the person's desktop first); the look and scale are changed and the app
+begun only once the machine has room (`wait_for_room`: a quarter of an
+hour of waiting at most for the whole run, then on regardless), all at
+idle priority (the person's desktop first); the look and scale are changed and the app
 asked again until it has drawn them, never waited for longer.
 
 Results are kept (~/.cache/olo-dev/ui-lint.json, one for each app and
@@ -663,28 +664,51 @@ def lint_one(spec, slot, master, screen, scales, show_review, work, all_themes=F
         subprocess.run(["rm", "-rf", home, os.path.join(BASE, name)])
 
 
-SAID_WAITING = threading.Event()
+# One allowance of waiting for room for the whole run, a quarter of an
+# hour, taken by whichever sessions wait (one at a time: the next looks
+# when the one before it goes on).
+ROOM = threading.Lock()
+ROOM_WAITED = [0.0]
+ROOM_ALLOWED = 900.0
 
 
-def wait_for_room(what):
+def processors_short():
+    """How short the machine's processors are: the kernel's own count
+    (/proc/pressure/cpu), the share of the last ten seconds in which
+    something waited for one, in percent; none where it doesn't say."""
+    try:
+        return float(open("/proc/pressure/cpu").readline().split("avg10=")[1].split()[0])
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+def wait_for_room(what, short=processors_short, sleep=time.sleep):
     """Waits to begin a session until the machine has room for it: while
-    its processors are short (the kernel's own count, /proc/pressure/cpu:
-    for a quarter of the last ten seconds something waited for one), up to
-    a quarter of an hour, then goes on. Idle priority keeps a session's
-    processor time behind everyone's, but not its drawing: the GPU is
-    shared with the person's desktop, and what waits there is theirs."""
-    began = time.time()
-    while time.time() - began < 900:
-        try:
-            avg10 = float(open("/proc/pressure/cpu").readline().split("avg10=")[1].split()[0])
-        except (OSError, IndexError, ValueError):
-            return
-        if avg10 < 25.0:
-            return
-        if not SAID_WAITING.is_set():
-            SAID_WAITING.set()
-            print(f"ui-lint: waiting for the machine to have room before {what} (processors short {avg10:.0f}% of the last 10 s)", file=sys.stderr, flush=True)
-        time.sleep(5)
+    its processors are short (for a quarter of the last ten seconds
+    something waited for one), then goes on. Idle priority keeps a
+    session's processor time behind everyone's, but not its drawing: the
+    GPU is shared with the person's desktop, and what waits there is
+    theirs.
+
+    The whole run waits a quarter of an hour at most, all its sessions
+    together, and then goes on at whatever pace the machine gives it. It
+    was a quarter of an hour before *each* session: with the machine kept
+    busy all day by other work (a load of 30 to 80, 2026-11-21 and 22), a
+    push's lint of a dozen apps had no bound short of hours (2442 s, then
+    a session timed out)."""
+    with ROOM:
+        said = False
+        while ROOM_WAITED[0] < ROOM_ALLOWED:
+            avg10 = short()
+            if avg10 is None or avg10 < 25.0:
+                return
+            if not said and ROOM_WAITED[0] == 0.0:
+                print(f"ui-lint: waiting for the machine to have room before {what} (processors short {avg10:.0f}% of the last 10 s)", file=sys.stderr, flush=True)
+            said = True
+            sleep(5)
+            ROOM_WAITED[0] += 5
+            if ROOM_WAITED[0] >= ROOM_ALLOWED:
+                print(f"ui-lint: waited {ROOM_ALLOWED / 60:.0f} minutes in all for room; going on without (the sessions are at idle priority)", file=sys.stderr, flush=True)
 
 
 def main():

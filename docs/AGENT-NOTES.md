@@ -336,6 +336,15 @@ Each note: what to do, then why (what happened), then how to apply it.
   window server were ready with no processor to run on
   (`/proc/PID/schedstat`'s second number, `kept_waiting`). Do the same
   for any wait on something that runs at low priority.
+- **A wait repeated for each of many things has no bound: give the
+  whole run one allowance.** The same lint waited up to a quarter of
+  an hour for the machine to have room before *each* app's session;
+  with the machine busy all day (a load of 30 to 80) a push's lint of
+  a dozen apps could take hours (2442 s once, then a session timed
+  out). It is a quarter of an hour for the run now, all its sessions
+  together (`wait_for_room`, `ROOM_ALLOWED`), then on at whatever pace
+  the machine gives. A deadline belongs to the job the person is
+  waiting for, not to each of its steps.
 - **Two files written one after the other can have the same time.** A
   file's time comes from the kernel's coarse clock, a tick (1 ms) wide:
   a test that writes two files and expects the second to be newer fails
