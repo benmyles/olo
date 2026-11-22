@@ -35,7 +35,7 @@ use crate::{
     hub::{BlockKey, HostConnState, HubNotice, RexHub},
     keymap::{self, KeyMatch, KeymapEngine},
     links::{self, LinkTarget},
-    overlays::{self, ActiveOverlay, JumpItem, JumpTarget, PathBrowserMode, QuickLookContent},
+    overlays::{self, ActiveOverlay, JumpTarget, PathBrowserMode, QuickLookContent},
     panels::{self, AskpassReply, AskpassRequest, OloAskpass},
     settings::{BarBehavior, SchemeChoice, Settings, SidebarMode, ToolbarLayout},
     terminal_pane::{self, Metrics, PanePaintArgs, PaneVisualState},
@@ -130,9 +130,12 @@ pub fn follow_desktop_settings(rex: &olo_protocol::RexSettings) {
 
 pub fn init_app(settings: Settings, _initial_cwd: Option<String>, _restored: Vec<SavedWorkspaceState>) {
     let active_theme = themes::resolve_theme(&settings, &theme::palette());
-    let askpass = OloAskpass::new(|| {
-        open_or_raise_panel(WinRole::Askpass);
-    });
+    let askpass = OloAskpass::new(
+        || {
+            open_or_raise_panel(WinRole::Askpass);
+        },
+        || broadcast_msg(WinMsg::Redraw),
+    );
     let hub = RexHub::start(settings.clone(), active_theme, Some(askpass.clone()), move |notice| handle_hub_notice(notice));
     let keymap = KeymapEngine::new(&[], &[], &[]);
     let _ = APP.set(Mutex::new(RexApp { hub, askpass, keymap, ssh_agent: Default::default(), attention: Attention::new(), broadcast_windows: HashSet::new() }));
@@ -321,12 +324,6 @@ pub fn open_settings_from_cli() {
 
 pub fn open_panel_from_cli(role: WinRole) {
     open_or_raise_panel(role);
-}
-
-pub fn run_workspace_command_from_cli(cmd: &str) {
-    if let Some(w) = workspace() {
-        w.messenger().send(WinMsg::Command(cmd.to_owned()));
-    }
 }
 
 pub fn open_workspace_window(restored: Option<SavedWorkspaceState>) {
@@ -530,14 +527,6 @@ impl RexWindow {
                 let txt = w.overlay_field.as_ref().map(|f| f.read(cx).text().to_owned()).unwrap_or_default();
                 if let Some(ov) = &mut w.overlay {
                     match ov {
-                        ActiveOverlay::CommandPalette { query, selected } => {
-                            *query = txt;
-                            *selected = 0;
-                        }
-                        ActiveOverlay::GoToAnything { query, selected, .. } => {
-                            *query = txt;
-                            *selected = 0;
-                        }
                         ActiveOverlay::RexPrompt { query, selected_idx, .. } => {
                             *query = txt;
                             *selected_idx = 0;
@@ -719,70 +708,6 @@ impl RexWindow {
         Some(BlockKey { host_key: hk, session_id: sess.session_id, block_id: bid })
     }
 
-    fn open_command_palette(&mut self, cx: &mut olo_kit::Cx<Self>) {
-        self.overlay = Some(ActiveOverlay::CommandPalette { query: String::new(), selected: 0 });
-        if let Some(f) = &self.overlay_field {
-            f.update(cx, |f, cx| f.set_text(String::new(), cx));
-            f.focus(cx);
-        }
-        cx.invalidate();
-    }
-
-    fn open_go_to_anything(&mut self, cx: &mut olo_kit::Cx<Self>) {
-        let items = {
-            let hub = app().hub.clone();
-            let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
-            let mut out = Vec::new();
-            for hk in &st.host_order {
-                let Some(h) = st.hosts.get(hk) else { continue };
-                out.push(JumpItem { title: h.label.clone(), subtitle: h.endpoint_raw.clone(), badge: Some("Host".to_owned()), activity: None, target: JumpTarget::Host(h.key.clone()) });
-                for sess in h.sessions.values() {
-                    out.push(JumpItem {
-                        title: if sess.label.is_empty() { sess.session_id.clone() } else { sess.label.clone() },
-                        subtitle: h.label.clone(),
-                        badge: Some("Session".to_owned()),
-                        activity: None,
-                        target: JumpTarget::Session { host_key: h.key.clone(), session_id: sess.session_id.clone() },
-                    });
-                    for w in &sess.windows {
-                        for b in w.all_blocks() {
-                            let bk = BlockKey { host_key: h.key.clone(), session_id: sess.session_id.clone(), block_id: b.block_id.clone() };
-                            let (title, pwd, act) = st
-                                .blocks
-                                .get(&bk)
-                                .map(|br| {
-                                    let g = br.lock().unwrap_or_else(|e| e.into_inner());
-                                    (g.title.clone(), g.pwd.clone(), g.agent_activity)
-                                })
-                                .unwrap_or_else(|| (b.label.clone(), String::new(), AgentActivity::Idle));
-                            let shown = if !title.is_empty() {
-                                title
-                            } else if !w.label.is_empty() {
-                                w.label.clone()
-                            } else {
-                                "Shell".to_owned()
-                            };
-                            out.push(JumpItem {
-                                title: shown,
-                                subtitle: if pwd.is_empty() { format!("{} / {}", h.label, sess.label) } else { pwd },
-                                badge: Some(h.label.clone()),
-                                activity: Some(act),
-                                target: JumpTarget::Pane(bk),
-                            });
-                        }
-                    }
-                }
-            }
-            out
-        };
-        self.overlay = Some(ActiveOverlay::GoToAnything { query: String::new(), selected: 0, items });
-        if let Some(f) = &self.overlay_field {
-            f.update(cx, |f, cx| f.set_text(String::new(), cx));
-            f.focus(cx);
-        }
-        cx.invalidate();
-    }
-
     fn open_path_browser(&mut self, mode: PathBrowserMode, cx: &mut olo_kit::Cx<Self>) {
         let Some(bk) = self.focused_block_key() else { return };
         let hub = app().hub.clone();
@@ -831,29 +756,6 @@ impl RexWindow {
     fn confirm_overlay(&mut self, cx: &mut olo_kit::Cx<Self>) {
         let ov = self.overlay.take();
         match ov {
-            Some(ActiveOverlay::CommandPalette { query, selected }) => {
-                let cat = keymap::action_catalog();
-                let filtered = overlays::filter_actions(&cat, &query);
-                if let Some(act) = filtered.get(selected) {
-                    let id = act.id.to_owned();
-                    self.focus.focus(cx);
-                    self.execute_action(&id, None, cx);
-                    return;
-                }
-            }
-            Some(ActiveOverlay::GoToAnything { query, selected, items }) => {
-                let mut scored: Vec<(i32, &JumpItem)> = items
-                    .iter()
-                    .filter_map(|it| {
-                        let hay = format!("{} {} {}", it.title, it.subtitle, it.badge.as_deref().unwrap_or(""));
-                        overlays::fuzzy_score(&hay, &query).map(|s| (s, it))
-                    })
-                    .collect();
-                scored.sort_by(|a, b| b.0.cmp(&a.0));
-                if let Some((_, item)) = scored.get(selected) {
-                    self.jump_to(item.target.clone(), cx);
-                }
-            }
             Some(ActiveOverlay::RexPrompt { host_key, req, query, selected_idx, checked_ids }) => {
                 let val = if req.prompt.kind == "pick" {
                     if req.prompt.multiple {
@@ -908,18 +810,6 @@ impl RexWindow {
 
     fn pick_overlay_index(&mut self, index: usize, cx: &mut olo_kit::Cx<Self>) {
         match &mut self.overlay {
-            Some(ActiveOverlay::CommandPalette { selected, .. }) => {
-                *selected = index;
-                self.confirm_overlay(cx);
-            }
-            Some(ActiveOverlay::GoToAnything { items, .. }) => {
-                if let Some(item) = items.get(index).cloned() {
-                    self.overlay = None;
-                    self.jump_to(item.target, cx);
-                    self.focus.focus(cx);
-                    cx.invalidate();
-                }
-            }
             Some(ActiveOverlay::RexPrompt { host_key, req, .. }) => {
                 let hk = host_key.clone();
                 let cid = req.call_id.clone();
@@ -1025,8 +915,6 @@ impl RexWindow {
     pub fn execute_action(&mut self, action: &str, args: Option<Value>, cx: &mut olo_kit::Cx<Self>) {
         let hub = app().hub.clone();
         match action {
-            "app.command_palette" => self.open_command_palette(cx),
-            "app.go_to_anything" => self.open_go_to_anything(cx),
             "app.view_activity" => {
                 {
                     let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -1467,9 +1355,7 @@ impl RexWindow {
                 "up" => {
                     if let Some(ov) = &mut self.overlay {
                         match ov {
-                            ActiveOverlay::CommandPalette { selected, .. } | ActiveOverlay::GoToAnything { selected, .. } | ActiveOverlay::PathBrowser { selected, .. } => {
-                                *selected = selected.saturating_sub(1)
-                            }
+                            ActiveOverlay::PathBrowser { selected, .. } => *selected = selected.saturating_sub(1),
                             ActiveOverlay::RexPrompt { selected_idx, .. } => *selected_idx = selected_idx.saturating_sub(1),
                             ActiveOverlay::QuickLook { content: QuickLookContent::Text { scroll, .. }, .. } => {
                                 *scroll = scroll.saturating_sub(3);
@@ -1484,7 +1370,7 @@ impl RexWindow {
                 "down" => {
                     if let Some(ov) = &mut self.overlay {
                         match ov {
-                            ActiveOverlay::CommandPalette { selected, .. } | ActiveOverlay::GoToAnything { selected, .. } | ActiveOverlay::PathBrowser { selected, .. } => *selected += 1,
+                            ActiveOverlay::PathBrowser { selected, .. } => *selected += 1,
                             ActiveOverlay::RexPrompt { selected_idx, .. } => *selected_idx += 1,
                             ActiveOverlay::QuickLook { content: QuickLookContent::Text { scroll, lines }, .. } => {
                                 *scroll = (*scroll + 3).min(lines.len().saturating_sub(1));
@@ -1736,8 +1622,8 @@ impl RexWindow {
         if let Some(s) = &session {
             let active = s.active_window().or_else(|| s.windows.first()).map(|w| w.window_id.clone());
             tabs = tabs.separator();
-            for (i, w) in s.windows.iter().enumerate() {
-                let name = if w.label.is_empty() { olo_kit::tr!("Tab {}", i + 1) } else { w.label.clone() };
+            let names = crate::hub::session_tab_names(&hub.state.lock().unwrap_or_else(|e| e.into_inner()), &self.active_host, s);
+            for (i, (w, name)) in s.windows.iter().zip(names).enumerate() {
                 tabs = tabs.item(name, format!("window.select_{}", i + 1)).checked(Some(&w.window_id) == active.as_ref());
             }
         }
@@ -1804,9 +1690,6 @@ impl RexWindow {
                 .checked(sidebar_mode == SidebarMode::Sessions)
                 .item("Activity", "app.view_activity")
                 .checked(sidebar_mode == SidebarMode::Activity)
-                .separator()
-                .item("Go to Anything…", "app.go_to_anything")
-                .item("Command Palette…", "app.command_palette")
                 .separator()
                 .item("Quick Look", "files.quick_look")
                 .enabled(pane)
@@ -1997,20 +1880,17 @@ impl RexWindow {
         let mut active_tab_idx = 0usize;
         if let Some((ref hk, ref sess)) = sess_info {
             let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+            let names = crate::hub::session_tab_names(&st, hk, sess);
             for (idx, w) in sess.windows.iter().enumerate() {
                 if sess.active_window_id.as_deref() == Some(w.window_id.as_str()) {
                     active_tab_idx = idx;
                 }
                 let mut tab_act = AgentActivity::Idle;
                 let mut tab_unread: Option<Option<Instant>> = None;
-                let mut fallback_title = String::new();
                 for b in w.all_blocks() {
                     let bk = BlockKey { host_key: hk.clone(), session_id: sess.session_id.clone(), block_id: b.block_id.clone() };
                     if let Some(br) = st.blocks.get(&bk) {
                         let g = br.lock().unwrap_or_else(|e| e.into_inner());
-                        if fallback_title.is_empty() && !g.title.is_empty() {
-                            fallback_title = g.title.clone();
-                        }
                         if g.unread {
                             tab_unread = Some(None);
                         } else if let Some(cleared) = g.unread_cleared_at
@@ -2021,13 +1901,7 @@ impl RexWindow {
                         tab_act = higher_activity(tab_act, g.agent_activity);
                     }
                 }
-                let label = if !w.label.is_empty() {
-                    w.label.clone()
-                } else if !fallback_title.is_empty() {
-                    fallback_title
-                } else {
-                    format!("Tab {}", idx + 1)
-                };
+                let label = names.get(idx).cloned().unwrap_or_default();
                 let act = tab_act;
                 let icon_fn: Option<olo_kit::widgets::strip::PaintFn> = Some(Rc::new(move |g: &mut Painter, b: Bounds<Pixels>| {
                     paint_activity_icon(g, b, act);
@@ -2114,6 +1988,12 @@ impl RexWindow {
                 Some(HostConnState::Connected) if self.active_session.is_some() => (olo_kit::words::tr("Opening session…").into(), None, false),
                 // (A name the person gave is quoted, a host's as a session's.)
                 Some(HostConnState::Connected) => (olo_kit::tr!("“{}” has no sessions.", name), Some(("New Session", "session.new")), false),
+                // (Its key agent asked to sign, and silent: said, with the
+                // likeliest reason. It read "Connecting…" for as long as
+                // Passwords stayed locked.)
+                Some(HostConnState::Connecting) if host.is_some_and(|h| app().askpass.waits_for_agent(&h.endpoint_raw)) => {
+                    (olo_kit::tr!("Waiting for your key agent to sign in to “{}”. If your keys are in Passwords, it may be locked.", name), None, false)
+                }
                 Some(HostConnState::Connecting) => (olo_kit::tr!("Connecting to “{}”…", name), None, false),
                 _ => (olo_kit::tr!("“{}” is disconnected.", name), Some(("Reconnect", "host.reconnect")), true),
             };
@@ -2255,18 +2135,18 @@ impl RexWindow {
             root = root.child(overlays::render_which_key_hud(&prefix, &hints));
         }
 
-        // Active modal overlay (Command Palette / Go to Anything / rex.ui Prompt / Path Browser / Quick Look).
+        // What is open over the workspace: a question a program on a host
+        // asks (rex.ui), the folders of a pane's host, Quick Look. (Rex's own
+        // Command Palette and Go to Anything were two more: its commands
+        // and its sessions, tabs and panes are found in Olo's palette, as
+        // every app's.)
         if let Some(ov) = &self.overlay
             && let Some(of) = &self.overlay_field
         {
-            let catalog = keymap::action_catalog();
-            let shortcut_map: HashMap<String, String> = catalog.iter().filter_map(|a| Some((a.id.to_owned(), olo_kit_base::keys::known(a.id, true)?.keys?.1.to_string()))).collect();
             let overlay_el = overlays::render_active_overlay(
                 cx,
                 ov,
                 of,
-                &catalog,
-                &|id| shortcut_map.get(id).cloned(),
                 cx.msg_with(|_: &()| WinMsg::DismissOverlay),
                 cx.msg_with(|i: &usize| WinMsg::RunOverlayIndex(*i)),
                 cx.msg_with(|id: &String| WinMsg::TogglePromptCheck(id.clone())),
@@ -2304,13 +2184,7 @@ impl RexWindow {
                                         unread_count += 1;
                                     }
                                     if g.agent_activity != AgentActivity::Idle || st.settings.activity_include_idle {
-                                        let label = if !g.title.is_empty() {
-                                            g.title.clone()
-                                        } else if !w.label.is_empty() {
-                                            w.label.clone()
-                                        } else {
-                                            "Shell".to_owned()
-                                        };
+                                        let label = if !g.title.is_empty() { g.title.clone() } else { crate::hub::tab_label(w).map_or_else(|| olo_kit::words::tr("Shell").into(), str::to_owned) };
                                         let detail = g.program_statuses.first().and_then(|r| r.msg.clone().or_else(|| r.title.clone())).unwrap_or_else(|| g.pwd.clone());
                                         activity_rows.push((bk, h.label.clone(), label, detail, g.agent_activity));
                                     }
@@ -2557,9 +2431,11 @@ impl RexWindow {
                 let hub_f = hub.clone();
                 let hub_s = hub.clone();
                 let from = self.fwd_host.clone();
+                let askpass = app().askpass.clone();
                 let panel = panels::render_hosts_panel(
                     cx,
                     &hub,
+                    &|endpoint| askpass.waits_for_agent(endpoint),
                     lf,
                     af,
                     pf,
@@ -3632,6 +3508,7 @@ fn render_single_pane(
     let ch_scroll = metrics.cell.1;
 
     let bk_rclick = bk.clone();
+    let br_menu = br.clone();
     let metrics_drag = metrics.clone();
     let br_drag = br.clone();
     let vis_drag = visual.clone();
@@ -3745,22 +3622,36 @@ fn render_single_pane(
         pane_m2.send(());
     })
     .on_mouse_down(MouseButton::Right, move |e: &MouseDownEvent, cx| {
-        let menu = Menu::new("")
+        // The menu bar's commands for this pane, by the names and with
+        // the checks and keys they have there: the clipboard; its text;
+        // the pane itself; closing it, alone and last.
+        let (selected, copying, keep_going, agent) = {
+            let g = br_menu.lock().unwrap_or_else(|e| e.into_inner());
+            (g.terminal.has_selection(), g.copy_mode.is_some(), g.keep_going.is_some(), !g.program_statuses.is_empty())
+        };
+        let mut menu = Menu::new("")
             .item("Copy", "terminal.copy")
+            .enabled(selected)
             .item("Paste", "terminal.paste")
+            .separator()
+            .item("Find…", "terminal.find")
+            .item("Copy Mode", "terminal.copy_mode")
+            .checked(copying)
+            .item("Quick Look", "files.quick_look")
+            .enabled(selected)
+            .item("Clear Scrollback", "terminal.clear_scrollback")
             .separator()
             .item("Split Right", "pane.split_right")
             .item("Split Down", "pane.split_down")
-            .item("Zoom / Unzoom Pane", "pane.zoom_toggle")
-            .separator()
-            .item("Enter Copy Mode", "terminal.copy_mode")
-            .item("Find in Terminal…", "terminal.find")
-            .item("Quick Look Selection…", "files.quick_look")
-            .separator()
-            .item("Toggle Keep It Going", "agent.keep_going_toggle")
-            .separator()
-            .item("Clear Scrollback", "terminal.clear_scrollback")
-            .item("Close Pane", "pane.close");
+            .item("Zoom Pane", "pane.zoom_toggle")
+            .checked(zoomed)
+            .enabled(zoomed || has_splits);
+        // (For a pane an agent runs in, or where it is already on.)
+        if agent || keep_going {
+            menu = menu.item("Keep It Going", "agent.keep_going_toggle").checked(keep_going);
+        }
+        menu = menu.separator().item("Close Pane", "pane.close");
+        menu::resolve(std::slice::from_mut(&mut menu), true);
         let hub = app().hub.clone();
         hub.focus_block(&bk_rclick.host_key, &bk_rclick.session_id, &bk_rclick.block_id);
         let target = bk_rclick.clone();
@@ -3795,8 +3686,8 @@ fn render_single_pane(
                 .items_center()
                 .justify_between()
                 .gap(px(m::SPACING))
-                .child(StringView::new("Password input detected — fill securely from Olo Passwords").bold(true).cut(true))
-                .child(Button::new("Fill (⌥⌘\\)").small().on_click(move |_, _| {
+                .child(StringView::new("The program in this pane is asking for a password.").cut(true))
+                .child(Button::new("Paste Password…").small().on_click(move |_, _| {
                     if let Some(slot) = wins().map.get(&win_id) {
                         slot.handle.messenger().send(WinMsg::Command("olo.passwords.fill".into()));
                     }

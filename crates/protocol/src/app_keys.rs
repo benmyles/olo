@@ -274,7 +274,6 @@ pub const APP_KEYS: &[AppKey] = &[
     k("rex.zoom-pane", REX, "pane.zoom_toggle", "Zoom Pane", &["Shift+Cmd+Return"], &["Ctrl+Shift+Return"], &["Alt+Shift+Return"]),
     k("rex.sidebar", REX, "app.toggle_sidebar", "Show Sidebar", &["Alt+Cmd+S"], &["Ctrl+Shift+B"], &["Alt+S"]),
     k("rex.copy-mode", REX, "terminal.copy_mode", "Copy Mode", &["Alt+Cmd+C"], &["Ctrl+Shift+M"], &["Alt+M"]),
-    k("rex.go-to-anything", REX, "app.go_to_anything", "Go to Anything", &["Cmd+P"], &["Ctrl+Shift+O"], &["Alt+P"]),
     k("rex.next-waiting", REX, "agent.jump_next_blocked", "Next Waiting Agent", &["Cmd+J"], &["Ctrl+Shift+J"], &["Alt+J"]),
     // With no key until the person gives them one (Preferences ▸
     // Keyboard): the rest of what its menus hold.

@@ -904,12 +904,19 @@ something nobody here has is in "Blocked", with what it waits for.
   held, carried over once), a Settings menu as Terminal's, the menu bar
   on Terminal's model, Remote Access in one window, its keys Olo's
   (the profile's, through the menu bar; the person's Rex configuration
-  a layer of its own) (HACKING, "Whose settings are whose", "Keys",
-  "The menu bar", "Remote Access"). **Left, in this order**:
-  - *Olo's palette in place of the two private pickers.*
+  a layer of its own), its commands, sessions and panes found in Olo's
+  palette (its own two pickers gone) (HACKING, "Whose settings are
+  whose", "Keys", "One palette", "The menu bar", "Remote Access").
+  **Left, in this order**:
   - *Kit widgets for the hand-made ones*: the Sessions/Activity switch,
     the + beside a host, split and close in pane headers, the
-    scrollback's bar, the split dividers (named for agents).
+    scrollback's bar, the split dividers (named for agents). With them,
+    from the review of the workspace (2026-11-22): a session's icon in
+    the sidebar is the tabs' 16-point one shrunk to 12 (blurred at 1×:
+    nothing is resampled); the + beside a host is a bevelled button and
+    the + after the tabs a bare glyph; the status bar at rest repeats
+    the sidebar's selection (the pane's folder and size are what it
+    could say).
   - *Words through the words layer; the agents' tree* (a terminal's
     text, the splitters); the demo's prompts without a person's name.
   - *What claims to exist and doesn't* (found while taking the
@@ -927,17 +934,21 @@ something nobody here has is in "Blocked", with what it waits for.
     its light, its reason and Stop; a host named by an address shown as
     one. Diagnostics in two groups (the server; this app), saying which
     host it describes.
+  - *The layout lint on a busy machine* (tools/dev/ui-lint): it waits
+    up to a quarter of an hour for room before *each* app's session,
+    so with the machine kept busy by other work a push's lint has no
+    bound short of hours (2442 s, then a session timed out, 2026-11-21):
+    one allowance of waiting for the whole run.
   - *Remote Access, what it can't say yet*: who may connect once it is
     on (the server's `allow_tailnet_members`: read what the server
     enforces before wording it), and the devices paired, with a way to
     remove one, if the server's API has them.
-  - *The client, found against a real host (2026-11-21)*: a key agent
-    that takes the connection and doesn't sign (Passwords locked, or
-    asking) leaves the host "connecting" with no word and no end: a
-    deadline, and words that say whose answer is awaited. A click on a
-    session's row the moment it appears, and typing straight after, are
-    to be checked again there (a first run typed into the wrong pane;
-    later runs, with the same timing, didn't).
+  - *The client, found against a real host (2026-11-21)*: a click on
+    a session's row the moment it appears, and typing straight after,
+    are to be checked again there (a first run typed into the wrong
+    pane; later runs, with the same timing, didn't). The server sends
+    an event Rex doesn't know (`session_event.client_connected`, logged
+    at debug): read what it is for.
   - *From the design reviews, not yet done*: "Starting…" with a busy
     mark (the kit has none small: one for the kit); a disconnected
     host's last-known sessions kept, dimmed; the disconnected mark on
@@ -945,7 +956,7 @@ something nobody here has is in "Blocked", with what it waits for.
     app's: a default button's ring reaches past the edge its face is
     aligned to; a menu's shortcuts are aligned by their key, so their
     right ends are ragged, a period or a bracket sits close against ⌘,
-    and Return is drawn small and low; an open menu's left edge is a
+    ⌥ and ⌘ run together at 1×, and Return is drawn small and low; an open menu's left edge is a
     device pixel or two left of its title's at 2×; "Notifications
     Settings…" for "Notification Settings…"; a fixed-size window's tab
     has a zoom box.

@@ -258,8 +258,6 @@ pub fn to_rex_key_event(e: &KeyDownEvent, cmd: bool) -> RexKeyEvent {
 pub fn action_catalog() -> Vec<ActionSpec> {
     vec![
         // ---- Application & Palettes ----
-        ActionSpec { id: "app.command_palette", title: "Command Palette…", category: "General", keywords: &["commands", "actions", "search"], args_schema: None },
-        ActionSpec { id: "app.go_to_anything", title: "Go to Anything…", category: "Navigation", keywords: &["quick", "switch", "jump", "fuzzy"], args_schema: None },
         ActionSpec { id: "app.view_activity", title: "View Activity", category: "Activity", keywords: &["agents", "blocked", "working", "status"], args_schema: None },
         ActionSpec { id: "app.toggle_sidebar", title: "Toggle Sidebar", category: "View", keywords: &["hosts", "sessions", "drawer"], args_schema: None },
         ActionSpec { id: "app.settings", title: "Rex Settings…", category: "General", keywords: &["preferences", "hosts", "permissions", "notifications"], args_schema: None },

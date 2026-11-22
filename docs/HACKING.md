@@ -26490,8 +26490,8 @@ remote Rex workspaces (Rex API rev 19), alongside Terminal.
   Includes adaptive `SidePane` (Sessions & live Activity feed), tabs
   along the top or down the side, recursive splits (auto-stacking
   horizontally on vertical thirds `< 540 pt`), floating/minimized
-  layers, Copy Mode, Command Palette, Go to Anything, `rex.ui` custom
-  prompts, Path Browser, Quick Look with ETag caching, drag-and-drop
+  layers, Copy Mode, `rex.ui` custom prompts, Path Browser, Quick Look
+  with ETag caching, drag-and-drop
   uploads, Remote Access (this computer's server over Tailscale, a
   device paired by a code), the per-host Olo Desktop Bridge (`xdg-open`,
   `op`, `olo-screen` with automatic remote `localhost` `-L` forwarding;
@@ -26569,6 +26569,42 @@ headless by pressing them through app_server's real key path,
 that nothing carried out are gone from it; what a host's program may
 ask of this computer (`bridge_catalog`) is declared to the server and
 is in no palette.
+
+**One palette.** Rex's commands and its sessions are found where
+every app's are, in Olo's command palette: the commands through its
+menu bar (the kit tells the palette a window's menus), the sessions of
+every host and the panes of those it shows through the index Rex
+keeps in its state folder (`hub::write_palette_index`: written when it
+differs from what was last written, never otherwise; apps/palette's
+Rex source reads it; a session chosen is shown with `olo-rex
+--session`, a pane gone to with `--focus-block`). It came with a
+Command Palette and a Go to Anything of its own, drawn over the
+workspace, that listed the same two things.
+
+**A tab's name** is one it was given (`hub::tab_label`). The server
+names a tab it wasn't told a name for "Window" and the end of its id
+("Window 65bb795d"), and the strip, the Tabs menu, Activity and the
+palette showed that; they show what the tab's program calls itself, or
+its folder's name, or which tab it is, and tabs that would say the
+same are told apart (`hub::tab_names`: by their folders where those
+differ, "shell · rex", else by their place, "shell 2"). **A pane's
+context menu** is the menu bar's commands for that pane, by the names
+and with the keys and checks they have there (`menu::resolve` gives
+them the profile's keys): the clipboard; its text; the pane; closing
+it, alone and last. Keep It Going is there for a pane an agent runs
+in.
+
+**Questions an SSH connection asks** (panels.rs `OloAskpass`, the
+client's `SshAskpass`) are asked one at a time, each answered for
+itself: two hosts connecting at once both ask about their keys, and
+with one slot and no turn the answer given to the question shown went
+to whichever of the two woke first: "Trust" said of one host's key
+could trust the other's, never shown. **A key agent that is slow to
+sign** (Passwords locked, or asking the person) is said: after three
+seconds the client tells the app (`SshAskpass::waiting_for_agent`; the
+connection's deadline waits meanwhile, as it does while a question is
+read), and the workspace and the Hosts window say the host waits for
+the key agent, where they said "Connecting…" for as long as it took.
 
 **Typing to a far host.** What is typed goes to a host one request at
 a time, each answered before the next, so that its order is the order

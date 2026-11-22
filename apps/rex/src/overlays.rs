@@ -16,17 +16,10 @@ use olo_kit::{
 };
 use olo_rex_client::{ClientPromptRequested, DirEntry};
 
-use crate::{
-    agent::AgentActivity,
-    hub::BlockKey,
-    keymap::{ActionSpec, SequenceHint},
-    terminal_pane::rgba_to_render_image,
-};
+use crate::{hub::BlockKey, keymap::SequenceHint, terminal_pane::rgba_to_render_image};
 
 /// Active modal/floating overlay open inside a Rex workspace window.
 pub enum ActiveOverlay {
-    CommandPalette { query: String, selected: usize },
-    GoToAnything { query: String, selected: usize, items: Vec<JumpItem> },
     RexPrompt { host_key: String, req: ClientPromptRequested, query: String, selected_idx: usize, checked_ids: HashSet<String> },
     PathBrowser { mode: PathBrowserMode, block: BlockKey, dir: String, query: String, entries: Vec<DirEntry>, selected: usize },
     QuickLook { path: String, content: QuickLookContent },
@@ -70,16 +63,6 @@ impl QuickLookContent {
         }
         Self::Binary { size: bytes.len(), content_type }
     }
-}
-
-/// Entry shown in Go to Anything (`⌘P`).
-#[derive(Debug, Clone)]
-pub struct JumpItem {
-    pub title: String,
-    pub subtitle: String,
-    pub badge: Option<String>,
-    pub activity: Option<AgentActivity>,
-    pub target: JumpTarget,
 }
 
 #[derive(Debug, Clone)]
@@ -151,19 +134,6 @@ pub fn fuzzy_score(haystack: &str, needle: &str) -> Option<i32> {
 }
 
 /// Filter and rank the action catalog for Command Palette (`⇧⌘P`).
-pub fn filter_actions<'a>(catalog: &'a [ActionSpec], query: &str) -> Vec<&'a ActionSpec> {
-    let mut scored: Vec<(i32, &ActionSpec)> = catalog
-        .iter()
-        .filter_map(|a| {
-            let joined = format!("{} {} {} {}", a.title, a.category, a.id, a.keywords.join(" "));
-            fuzzy_score(&joined, query).map(|s| (s, a))
-        })
-        .collect();
-    scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.title.cmp(b.1.title)));
-    scored.into_iter().map(|(_, a)| a).collect()
-}
-
-/// Paint a crisp Olo beveled overlay card backdrop.
 pub fn overlay_card_back(label: &'static str) -> Element {
     canvas(move |g, b| {
         let p = theme::palette();
@@ -183,8 +153,6 @@ pub fn render_active_overlay(
     cx: &WindowCx,
     overlay: &ActiveOverlay,
     field: &Child<TextField>,
-    catalog: &[ActionSpec],
-    shortcuts: &dyn Fn(&str) -> Option<String>,
     on_dismiss: impl Fn(&(), &mut WindowCx) + 'static,
     on_pick_index: impl Fn(&usize, &mut WindowCx) + 'static,
     on_toggle_check: impl Fn(&String, &mut WindowCx) + 'static,
@@ -212,70 +180,6 @@ pub fn render_active_overlay(
         });
 
     let card: Element = match overlay {
-        ActiveOverlay::CommandPalette { query, selected } => {
-            let filtered = filter_actions(catalog, query);
-            let shown_len = filtered.len().min(12);
-            let mut list = div().flex().flex_col().gap(px(2.0)).w_full();
-            for (idx, act) in filtered.iter().take(shown_len).enumerate() {
-                let is_sel = idx == *selected;
-                let title = act.title.to_owned();
-                let cat = act.category.to_owned();
-                let sc = shortcuts(act.id);
-                let pick = on_pick_index.clone();
-                list = list.child(palette_row(title, cat, sc, None, is_sel, move |cx| pick(&idx, cx)));
-            }
-            if filtered.is_empty() {
-                list = list.child(div().py(px(m::SECTION)).flex().justify_center().child(StringView::new("No matching commands").dim(true)));
-            }
-            modal_shell(
-                "Command Palette",
-                540.0,
-                div().flex().flex_col().gap(px(m::SPACING)).w_full().child(TextControl::new(cx, field)).child(list).child(
-                    div()
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .justify_between()
-                        .pt(px(m::TIGHT))
-                        .child(div().flex().flex_row().gap(px(m::SECTION)).child(KeyHint::new("↑↓", "Select")).child(KeyHint::new("↩", "Run")).child(KeyHint::new("Esc", "Close")))
-                        .child(StringView::new(format!("{} actions", filtered.len())).dim(true)),
-                ),
-            )
-        }
-        ActiveOverlay::GoToAnything { query, selected, items } => {
-            let mut scored: Vec<(i32, usize, &JumpItem)> = items
-                .iter()
-                .enumerate()
-                .filter_map(|(i, it)| {
-                    let hay = format!("{} {} {}", it.title, it.subtitle, it.badge.as_deref().unwrap_or(""));
-                    fuzzy_score(&hay, query).map(|s| (s, i, it))
-                })
-                .collect();
-            scored.sort_by(|a, b| b.0.cmp(&a.0));
-            let mut list = div().flex().flex_col().gap(px(2.0)).w_full();
-            for (rank, (_, orig_idx, item)) in scored.iter().take(12).enumerate() {
-                let is_sel = rank == *selected;
-                let pick = on_pick_index.clone();
-                let idx_copy = *orig_idx;
-                let dot = item.activity.map(activity_dot_color);
-                list = list.child(palette_row(item.title.clone(), item.subtitle.clone(), item.badge.clone(), dot, is_sel, move |cx| pick(&idx_copy, cx)));
-            }
-            if scored.is_empty() {
-                list = list.child(div().py(px(m::SECTION)).flex().justify_center().child(StringView::new("No matching sessions, tabs, or panes").dim(true)));
-            }
-            modal_shell(
-                "Go to Anything",
-                560.0,
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(m::SPACING))
-                    .w_full()
-                    .child(TextControl::new(cx, field))
-                    .child(list)
-                    .child(div().flex().flex_row().gap(px(m::SECTION)).pt(px(m::TIGHT)).child(KeyHint::new("↑↓", "Move")).child(KeyHint::new("↩", "Jump")).child(KeyHint::new("Esc", "Close"))),
-            )
-        }
         ActiveOverlay::RexPrompt { req, query, selected_idx, checked_ids, .. } => {
             let prompt = &req.prompt;
             let confirm_lbl = prompt.confirm.as_deref().unwrap_or("Confirm").to_owned();
@@ -471,58 +375,6 @@ fn modal_shell(label: &'static str, max_w: f32, content: Element) -> Element {
     div().relative().w(px(max_w)).max_w_full().p(px(m::WINDOW_INSET)).on_mouse_down(MouseButton::Left, |_, cx| cx.stop_propagation()).child(overlay_card_back(label)).child(content)
 }
 
-fn palette_row(title: String, subtitle: String, shortcut: Option<String>, dot: Option<[u8; 4]>, selected: bool, on_click: impl Fn(&mut WindowCx) + 'static) -> Element {
-    let key = style::key((&title, &subtitle, &shortcut, dot, selected));
-    let t_paint = title.clone();
-    let s_paint = subtitle.clone();
-    let sc_paint = shortcut.clone();
-    canvas(move |g, b| {
-        let p = theme::palette();
-        if selected {
-            style::fill_rect(g, b, style::c(p.list_selected_background));
-        }
-        let ink = style::c(if selected { p.list_selected_item_text } else { p.panel_text });
-        let quiet = if selected { ink.opacity(0.8) } else { style::secondary_text(&p) };
-        let mut left = b.left() + px(m::SPACING);
-        if let Some(dc) = dot {
-            let r = style::snap_centred(g, point(left + px(4.0), b.center().y), 7.0, 7.0);
-            style::fill_rect(g, r, style::c(dc));
-            left = left + px(14.0);
-        }
-        let mut right = b.right() - px(m::SPACING);
-        if let Some(sc) = &sc_paint {
-            let sc_r = style::label(g, right, b.center().y, style::Align::Right, sc.clone(), style::SMALL_SIZE, style::mono_font(FontWeight::NORMAL), quiet);
-            right = sc_r.left() - px(m::SPACING);
-        }
-        let sub_r = if !s_paint.is_empty() {
-            let sr = style::label(g, right, b.center().y, style::Align::Right, s_paint.clone(), style::SMALL_SIZE, style::ui_font(FontWeight::NORMAL), quiet);
-            sr.left() - px(m::SPACING)
-        } else {
-            right
-        };
-        style::label_fit(
-            g,
-            left,
-            b.center().y,
-            style::Align::Left,
-            t_paint.clone(),
-            style::PLAIN_SIZE,
-            style::ui_font(if selected { FontWeight::BOLD } else { FontWeight::NORMAL }),
-            ink,
-            (sub_r - left).max(px(40.0)),
-        );
-        g.agent(agent::Node { role: "ListItem", name: Some(t_paint.clone().into()), bounds: b, selected: Some(selected), enabled: true, clickable: true, ..Default::default() });
-    })
-    .paint_key(key)
-    .w_full()
-    .h(px(26.0))
-    .cursor(CursorStyle::PointingHand)
-    .on_mouse_down(MouseButton::Left, move |_, cx| {
-        on_click(cx);
-        cx.stop_propagation();
-    })
-}
-
 fn prompt_item_row(title: String, subtitle: String, detail: Option<String>, icon_name: &'static str, selected: bool, on_click: impl Fn(&mut WindowCx) + 'static) -> Element {
     let key = style::key((&title, &subtitle, &detail, icon_name, selected));
     let t_paint = title.clone();
@@ -611,14 +463,4 @@ pub fn render_mode_pill(text: String) -> Element {
         .h(px(22.0))
         .w(px(190.0)),
     )
-}
-
-pub fn activity_dot_color(act: AgentActivity) -> [u8; 4] {
-    match act {
-        AgentActivity::Blocked => [230, 145, 24, 255],
-        AgentActivity::Error => [216, 56, 56, 255],
-        AgentActivity::Working => [52, 132, 240, 255],
-        AgentActivity::Done => [56, 170, 92, 255],
-        AgentActivity::Idle => [140, 140, 148, 160],
-    }
 }

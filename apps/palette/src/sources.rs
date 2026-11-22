@@ -373,8 +373,16 @@ pub fn context() -> (Option<WindowInfo>, Vec<Item>) {
     (front, items)
 }
 
-/// Live local and remote Rex sessions indexed by `olo-rex` into XDG state.
+/// Rex's sessions, here and on other hosts, and the panes of those it
+/// shows, as `olo-rex` keeps them written in its state folder: chosen,
+/// a session is shown in Rex and a pane is gone to.
 fn rex_session_items() -> Vec<Item> {
+    let path = olo_xdg::state_dir().join("rex/palette-index.json");
+    std::fs::read(&path).map(|bytes| rex_items(&bytes)).unwrap_or_default()
+}
+
+/// [`rex_session_items`], of the index's bytes.
+fn rex_items(bytes: &[u8]) -> Vec<Item> {
     #[derive(serde::Deserialize)]
     struct Entry {
         host_key: String,
@@ -383,18 +391,35 @@ fn rex_session_items() -> Vec<Item> {
         label: String,
         #[serde(default)]
         cwd: String,
+        /// A pane of the session (none: the session itself), with the
+        /// session's and its tab's names.
+        #[serde(default)]
+        block_id: Option<String>,
+        #[serde(default)]
+        session: String,
+        #[serde(default)]
+        tab: String,
     }
-    let path = olo_xdg::state_dir().join("rex/palette-index.json");
-    let Ok(bytes) = std::fs::read(&path) else { return Vec::new() };
-    let Ok(entries) = serde_json::from_slice::<Vec<Entry>>(&bytes) else { return Vec::new() };
+    let Ok(entries) = serde_json::from_slice::<Vec<Entry>>(bytes) else { return Vec::new() };
     entries
         .into_iter()
         .map(|e| {
-            let sub = if e.cwd.is_empty() { format!("Rex · {}", e.host_label) } else { format!("Rex · {} · {}", e.host_label, e.cwd) };
-            Item::new(Kind::Command, e.label.clone(), Action::Spawn(vec!["olo-rex".into(), "--session".into(), e.host_key.clone(), e.session_id.clone()]))
-                .subtitle(sub)
+            let mut places = vec!["Rex".to_owned(), e.host_label.clone()];
+            let action = match &e.block_id {
+                Some(block) => {
+                    places.extend([e.session.clone(), e.tab.clone()].into_iter().filter(|s| !s.is_empty() && *s != e.label));
+                    Action::Spawn(vec!["olo-rex".into(), "--focus-block".into(), e.host_key.clone(), e.session_id.clone(), block.clone()])
+                }
+                None => Action::Spawn(vec!["olo-rex".into(), "--session".into(), e.host_key.clone(), e.session_id.clone()]),
+            };
+            if !e.cwd.is_empty() {
+                places.push(e.cwd.clone());
+            }
+            let kind = if e.block_id.is_some() { "pane" } else { "session workspace" };
+            Item::new(Kind::Command, e.label.clone(), action)
+                .subtitle(places.join(" · "))
                 .icon("rex")
-                .keywords(format!("rex session workspace terminal {} {} {}", e.host_label, e.host_key, e.cwd))
+                .keywords(format!("rex {kind} terminal {} {} {} {} {}", e.host_label, e.host_key, e.session, e.tab, e.cwd))
         })
         .collect()
 }
@@ -1152,6 +1177,26 @@ pub fn workers(proxy: Proxy) -> Workers {
 
 #[cfg(test)]
 mod tests {
+    /// Rex's index: a session is shown, a pane of it gone to, and each
+    /// says where it is (the host, and for a pane its session and tab);
+    /// an index written before panes were in it still reads.
+    #[test]
+    fn rexs_sessions_and_panes() {
+        let items = super::rex_items(
+            br#"[{"host_key":"local","host_label":"This computer","session_id":"s1","label":"main","cwd":"/work"},
+                 {"host_key":"local","host_label":"This computer","session_id":"s1","label":"cargo test","cwd":"/work/olo","block_id":"b7","session":"main","tab":"build"},
+                 {"host_key":"h2","host_label":"Build box","session_id":"s9","label":"deploy"}]"#,
+        );
+        assert_eq!(items.len(), 3);
+        assert_eq!((items[0].title.as_str(), items[0].subtitle.as_str()), ("main", "Rex · This computer · /work"));
+        assert!(matches!(&items[0].action, super::Action::Spawn(a) if a == &["olo-rex", "--session", "local", "s1"]));
+        assert_eq!((items[1].title.as_str(), items[1].subtitle.as_str()), ("cargo test", "Rex · This computer · main · build · /work/olo"));
+        assert!(matches!(&items[1].action, super::Action::Spawn(a) if a == &["olo-rex", "--focus-block", "local", "s1", "b7"]));
+        assert!(items[1].keywords.contains("pane") && items[1].keywords.contains("build"));
+        assert_eq!(items[2].subtitle, "Rex · Build box");
+        assert!(super::rex_items(b"not json").is_empty());
+    }
+
     use super::*;
 
     /// Calendar's events as results: the title; when (today, tomorrow, a

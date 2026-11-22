@@ -121,7 +121,16 @@ pub trait SshAskpass: Send + Sync + std::fmt::Debug {
 
     /// Ask for a passphrase or password (`echo = false` for secrets).
     fn prompt_secret(&self, title: &str, prompt: &str, echo: bool) -> Option<Zeroizing<String>>;
+
+    /// The key agent was asked to sign for `host` and has not answered
+    /// for a moment (`waiting`: it may be locked, or asking the person),
+    /// or has now. Called on the connection's task: note it and return.
+    fn waiting_for_agent(&self, _host: &str, _waiting: bool) {}
 }
+
+/// How long the key agent has to sign before the app is told it is
+/// being waited for.
+const AGENT_SLOW: Duration = Duration::from_secs(3);
 
 /// Live status of an SSH agent socket (Olo Passwords or custom agent).
 #[derive(Debug, Clone, Default)]
@@ -201,6 +210,35 @@ impl Prompts {
         let (title, message) = (title.to_owned(), message.to_owned());
         self.ask(move |ui| ui.prompt_secret(&title, &message, echo)).await.map_err(|e| RexError::Ssh(e.to_string()))?.ok_or_else(cancelled)
     }
+}
+
+/// An answer from the key agent, the app told while it is slow to come
+/// (and that it has come, or that the asking was given up). The
+/// connection's deadline waits meanwhile, as it does while the person
+/// reads a question: an agent that is locked answers when it is
+/// unlocked, and the host's own patience bounds the wait.
+async fn signed<T>(prompts: Option<&Prompts>, host: &str, sign: impl Future<Output = T>) -> T {
+    struct Told<'a>(Option<&'a Prompts>, &'a str);
+    impl Drop for Told<'_> {
+        fn drop(&mut self) {
+            if let Some(p) = self.0 {
+                p.ui.waiting_for_agent(self.1, false);
+                p.waiting.send_replace(false);
+            }
+        }
+    }
+    tokio::pin!(sign);
+    tokio::select! {
+        biased;
+        answer = &mut sign => return answer,
+        _ = tokio::time::sleep(AGENT_SLOW) => {}
+    }
+    let _told = Told(prompts, host);
+    if let Some(p) = prompts {
+        p.ui.waiting_for_agent(host, true);
+        p.waiting.send_replace(true);
+    }
+    sign.await
 }
 
 // Network deadlines pause while the person is reading a sheet. The caller
@@ -555,11 +593,11 @@ async fn authenticate(mut session: Handle<SshClientHandler>, target: &SshTarget,
             let ok = match ident {
                 AgentIdentity::PublicKey { key, .. } => {
                     let hash = if key.algorithm().is_rsa() { rsa_hash } else { None };
-                    session.authenticate_publickey_with(&resolved.user, key, hash, &mut agent).await.map(|r| r.success()).unwrap_or(false)
+                    signed(askpass.as_ref(), &resolved.hostname, session.authenticate_publickey_with(&resolved.user, key, hash, &mut agent)).await.map(|r| r.success()).unwrap_or(false)
                 }
                 AgentIdentity::Certificate { certificate, .. } => {
                     let hash = if certificate.algorithm().is_rsa() { rsa_hash } else { None };
-                    session.authenticate_certificate_with(&resolved.user, certificate, hash, &mut agent).await.map(|r| r.success()).unwrap_or(false)
+                    signed(askpass.as_ref(), &resolved.hostname, session.authenticate_certificate_with(&resolved.user, certificate, hash, &mut agent)).await.map(|r| r.success()).unwrap_or(false)
                 }
             };
             if ok {
@@ -653,4 +691,52 @@ fn cancelled() -> RexError {
 
 fn shell_escape(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+#[cfg(test)]
+mod agent_wait_tests {
+    use super::*;
+
+    #[derive(Debug, Default)]
+    struct Told(std::sync::Mutex<Vec<(String, bool)>>);
+    impl SshAskpass for Told {
+        fn confirm_host_key(&self, _: &str, _: u16, _: &str, _: &str, _: bool) -> bool {
+            false
+        }
+        fn prompt_secret(&self, _: &str, _: &str, _: bool) -> Option<Zeroizing<String>> {
+            None
+        }
+        fn waiting_for_agent(&self, host: &str, waiting: bool) {
+            self.0.lock().unwrap().push((host.to_owned(), waiting));
+        }
+    }
+
+    /// An agent that signs at once is never spoken of; one that is slow
+    /// is said to be waited for, and then not; and a wait given up (the
+    /// connection dropped) is taken back too. The connection's deadline
+    /// stands still meanwhile.
+    #[tokio::test]
+    async fn a_slow_agent_is_said_to_be_waited_for() {
+        let told = Arc::new(Told::default());
+        let (waiting, paused) = tokio::sync::watch::channel(false);
+        let prompts = Prompts { ui: told.clone(), waiting };
+        assert_eq!(signed(Some(&prompts), "build.example", async { 7 }).await, 7);
+        assert!(told.0.lock().unwrap().is_empty());
+        let slow = signed(Some(&prompts), "build.example", async {
+            tokio::time::sleep(AGENT_SLOW + Duration::from_millis(300)).await;
+            8
+        });
+        tokio::pin!(slow);
+        tokio::select! { _ = &mut slow => panic!("answered before it could have"), _ = tokio::time::sleep(AGENT_SLOW + Duration::from_millis(100)) => {} }
+        assert_eq!(*told.0.lock().unwrap(), [("build.example".to_owned(), true)]);
+        assert!(*paused.borrow(), "the deadline waits with it");
+        assert_eq!(slow.await, 8);
+        assert_eq!(told.0.lock().unwrap().last(), Some(&("build.example".to_owned(), false)));
+        assert!(!*paused.borrow());
+        // Given up while waited for: taken back.
+        told.0.lock().unwrap().clear();
+        let never = signed(Some(&prompts), "gone.example", std::future::pending::<()>());
+        let _ = tokio::time::timeout(AGENT_SLOW + Duration::from_millis(200), never).await;
+        assert_eq!(*told.0.lock().unwrap(), [("gone.example".to_owned(), true), ("gone.example".to_owned(), false)]);
+    }
 }

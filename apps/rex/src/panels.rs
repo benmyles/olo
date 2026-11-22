@@ -68,6 +68,7 @@ fn paint_dot(g: &mut olo_kit::Painter, center: Point<Pixels>, radius: f32, color
 pub fn render_hosts_panel(
     cx: &WindowCx,
     hub: &Arc<RexHub>,
+    waits_for_agent: &dyn Fn(&str) -> bool,
     host_label_field: &Child<TextField>,
     host_addr_field: &Child<TextField>,
     fwd_port_field: &Child<TextField>,
@@ -141,6 +142,7 @@ pub fn render_hosts_panel(
         };
         let detail = match &conn {
             HostConnState::Connected => ep,
+            HostConnState::Connecting if waits_for_agent(&ep) => olo_kit::tr!("{}  •  Waiting for your key agent to sign…", ep),
             HostConnState::Connecting => format!("{ep}  •  Connecting…"),
             HostConnState::Disconnected => format!("{ep}  •  Disconnected"),
             HostConnState::Reconnecting { attempt, .. } => format!("{ep}  •  Reconnecting (#{attempt})…"),
@@ -595,9 +597,15 @@ pub enum AskpassReply {
 }
 
 pub struct OloAskpass {
+    /// One question at a time: whoever asks holds this until answered.
+    turn: Mutex<()>,
     pending: Mutex<Option<(AskpassRequest, Option<AskpassReply>)>>,
     cv: Condvar,
     on_request: Arc<dyn Fn() + Send + Sync>,
+    /// The hosts whose connection waits for the key agent to sign
+    /// (`waiting_for_agent`), and what to do when that changes.
+    agent_waits: Mutex<Vec<String>>,
+    on_change: Arc<dyn Fn() + Send + Sync>,
 }
 
 impl std::fmt::Debug for OloAskpass {
@@ -607,8 +615,16 @@ impl std::fmt::Debug for OloAskpass {
 }
 
 impl OloAskpass {
-    pub fn new(on_request: impl Fn() + Send + Sync + 'static) -> Arc<Self> {
-        Arc::new(Self { pending: Mutex::new(None), cv: Condvar::new(), on_request: Arc::new(on_request) })
+    /// `on_request`: a question waits to be shown. `on_change`: which
+    /// hosts wait for the key agent changed.
+    pub fn new(on_request: impl Fn() + Send + Sync + 'static, on_change: impl Fn() + Send + Sync + 'static) -> Arc<Self> {
+        Arc::new(Self { turn: Mutex::new(()), pending: Mutex::new(None), cv: Condvar::new(), on_request: Arc::new(on_request), agent_waits: Mutex::new(Vec::new()), on_change: Arc::new(on_change) })
+    }
+
+    /// Whether the connection to `host` (a name or an address, as its
+    /// endpoint has it) is waiting for the key agent to sign.
+    pub fn waits_for_agent(&self, endpoint: &str) -> bool {
+        self.agent_waits.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|host| endpoint.contains(host.as_str()))
     }
 
     pub fn current_request(&self) -> Option<AskpassRequest> {
@@ -623,7 +639,14 @@ impl OloAskpass {
         }
     }
 
+    /// One question, and its own answer. Two hosts connecting at once
+    /// each ask about their key: the second waits for the first to be
+    /// answered. (There was one slot and no turn: the second question
+    /// replaced the first, and the answer to it went to whichever of
+    /// the two woke first, so "Trust" said of one host's key could
+    /// trust the other's, which the person never saw.)
     fn ask(&self, req: AskpassRequest) -> AskpassReply {
+        let _turn = self.turn.lock().unwrap_or_else(|e| e.into_inner());
         let mut g = self.pending.lock().unwrap_or_else(|e| e.into_inner());
         *g = Some((req, None));
         drop(g);
@@ -654,6 +677,17 @@ impl SshAskpass for OloAskpass {
             _ => None,
         }
     }
+
+    fn waiting_for_agent(&self, host: &str, waiting: bool) {
+        {
+            let mut waits = self.agent_waits.lock().unwrap_or_else(|e| e.into_inner());
+            waits.retain(|h| h != host);
+            if waiting {
+                waits.push(host.to_owned());
+            }
+        }
+        (self.on_change)();
+    }
 }
 
 #[cfg(test)]
@@ -667,6 +701,39 @@ mod tests {
     use olo_rex_client::{TailscaleHttps, TailscaleStatus};
 
     use super::Step;
+
+    /// Two hosts ask about their keys at once: each question is shown
+    /// in turn and gets the answer given to it, never the other's.
+    #[test]
+    fn each_question_gets_its_own_answer() {
+        use super::{AskpassReply, AskpassRequest, OloAskpass};
+        use olo_rex_client::SshAskpass as _;
+        let ui = OloAskpass::new(|| {}, || {});
+        let ask = |host: &'static str| {
+            let ui = ui.clone();
+            std::thread::spawn(move || ui.confirm_host_key(host, 22, "SHA256:fixture", "ssh-ed25519", false))
+        };
+        let (a, b) = (ask("trusted.example"), ask("refused.example"));
+        let mut answered = Vec::new();
+        for _ in 0..2 {
+            // Wait for a question to be shown, then answer by what it asks.
+            let host = loop {
+                match ui.current_request() {
+                    Some(AskpassRequest::ConfirmHostKey { host, .. }) if !answered.contains(&host) => break host,
+                    _ => std::thread::sleep(std::time::Duration::from_millis(5)),
+                }
+            };
+            ui.answer(AskpassReply::Confirm(host == "trusted.example"));
+            answered.push(host);
+        }
+        assert!(a.join().unwrap(), "the host the person trusted");
+        assert!(!b.join().unwrap(), "the host the person refused is not trusted by the other's answer");
+        // The key agent's waits, by host.
+        ui.waiting_for_agent("build.example", true);
+        assert!(ui.waits_for_agent("ssh://dev@build.example") && !ui.waits_for_agent("ssh://dev@other.example"));
+        ui.waiting_for_agent("build.example", false);
+        assert!(!ui.waits_for_agent("ssh://dev@build.example"));
+    }
 
     /// What the Remote Access window offers at each state of the
     /// server's Tailscale: nothing to scan while it is off, starting or

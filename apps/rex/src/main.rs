@@ -36,8 +36,6 @@ struct CliArgs {
     open_hosts: bool,
     open_diagnostics: bool,
     open_qr: bool,
-    open_palette: bool,
-    open_goto: bool,
     dir: Option<String>,
     session: Option<(String, String)>,
     focus_host: Option<String>,
@@ -45,19 +43,7 @@ struct CliArgs {
 }
 
 fn parse_args(args: &[String]) -> CliArgs {
-    let mut out = CliArgs {
-        new_window: false,
-        open_settings: false,
-        open_hosts: false,
-        open_diagnostics: false,
-        open_qr: false,
-        open_palette: false,
-        open_goto: false,
-        dir: None,
-        session: None,
-        focus_host: None,
-        focus_block: None,
-    };
+    let mut out = CliArgs { new_window: false, open_settings: false, open_hosts: false, open_diagnostics: false, open_qr: false, dir: None, session: None, focus_host: None, focus_block: None };
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -66,8 +52,6 @@ fn parse_args(args: &[String]) -> CliArgs {
             "--hosts" => out.open_hosts = true,
             "--diagnostics" => out.open_diagnostics = true,
             "--qr" => out.open_qr = true,
-            "--palette" => out.open_palette = true,
-            "--goto" => out.open_goto = true,
             "--dir" | "-d" => {
                 if let Some(v) = args.get(i + 1) {
                     out.dir = Some(v.clone());
@@ -158,10 +142,6 @@ fn main() {
                     ui::open_panel_from_cli(ui::WinRole::Diagnostics);
                 } else if req.open_qr {
                     ui::open_panel_from_cli(ui::WinRole::Access);
-                } else if req.open_palette {
-                    ui::run_workspace_command_from_cli("app.command_palette");
-                } else if req.open_goto {
-                    ui::run_workspace_command_from_cli("app.go_to_anything");
                 } else if req.new_window {
                     ui::open_workspace_window(None);
                 } else if let Some(dir) = req.dir {
@@ -204,12 +184,6 @@ fn main() {
         }
         if cli.open_qr {
             ui::open_panel_from_cli(ui::WinRole::Access);
-        }
-        if cli.open_palette {
-            ui::run_workspace_command_from_cli("app.command_palette");
-        }
-        if cli.open_goto {
-            ui::run_workspace_command_from_cli("app.go_to_anything");
         }
     });
 }

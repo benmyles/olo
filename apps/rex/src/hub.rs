@@ -406,6 +406,93 @@ enum HostInputOp {
     Key { session_id: String, block_id: String, event: RexKeyEvent },
 }
 
+/// A tab's name, if it was given one. The server names a tab it wasn't
+/// told a name for "Window" and the end of its id ("Window 65bb795d"):
+/// no name to show a person, who sees its program's title, or which
+/// tab it is, in its place.
+pub fn tab_label(w: &olo_rex_client::WindowView) -> Option<&str> {
+    let label = w.label.trim();
+    let placeholder = label.strip_prefix("Window ").is_some_and(|id| id.len() == 8 && w.window_id.ends_with(id));
+    (!label.is_empty() && !placeholder).then_some(label)
+}
+
+/// Names for a session's tabs that tell each from the others, from what
+/// is known of each: the name it was given ([`tab_label`]), what its
+/// program calls itself, and its folder. A tab with a name has it. One
+/// without goes by its program's title, or its folder's name, or which
+/// tab it is; and where two of those are the same, by the title with
+/// the folder's name after it ("shell · rex"), or failing that with its
+/// place among them ("shell 2").
+pub fn tab_names(tabs: &[(Option<&str>, &str, &str)]) -> Vec<String> {
+    let folder = |pwd: &str| pwd.trim_end_matches('/').rsplit('/').next().unwrap_or_default().to_owned();
+    let mut names: Vec<String> = tabs
+        .iter()
+        .enumerate()
+        .map(|(i, (given, title, pwd))| match given {
+            Some(name) => (*name).to_owned(),
+            None if !title.trim().is_empty() => title.trim().to_owned(),
+            None if !folder(pwd).is_empty() => folder(pwd),
+            None => olo_kit::tr!("Tab {}", i + 1),
+        })
+        .collect();
+    // By their folders, where those tell them apart (two shells in one
+    // folder gain nothing by its name).
+    let apart = |i: usize| (0..tabs.len()).any(|j| j != i && names[j] == names[i] && folder(tabs[j].2) != folder(tabs[i].2));
+    let with_folder: Vec<Option<String>> = (0..tabs.len())
+        .map(|i| {
+            let dir = folder(tabs[i].2);
+            (tabs[i].0.is_none() && apart(i) && !dir.is_empty() && dir != names[i]).then(|| format!("{} · {dir}", names[i]))
+        })
+        .collect();
+    for (name, better) in names.iter_mut().zip(with_folder) {
+        if let Some(better) = better {
+            *name = better;
+        }
+    }
+    // And by their place, where they still say the same.
+    for i in 0..names.len() {
+        if tabs[i].0.is_none() {
+            let before = names[..i].iter().filter(|n| **n == names[i]).count();
+            if before > 0 {
+                let mut k = before + 1;
+                while names.contains(&format!("{} {k}", names[i])) {
+                    k += 1;
+                }
+                names[i] = format!("{} {k}", names[i]);
+            }
+        }
+    }
+    names
+}
+
+/// [`tab_names`] for a session as the hub holds it: each tab's first
+/// pane with a title, and that pane's folder.
+pub fn session_tab_names(st: &HubState, host_key: &str, sess: &olo_rex_client::SessionView) -> Vec<String> {
+    let known: Vec<(Option<String>, String, String)> = sess
+        .windows
+        .iter()
+        .map(|w| {
+            let (mut title, mut pwd) = (String::new(), String::new());
+            for b in w.all_blocks() {
+                let bk = BlockKey { host_key: host_key.to_owned(), session_id: sess.session_id.clone(), block_id: b.block_id.clone() };
+                if let Some(br) = st.blocks.get(&bk) {
+                    let g = br.lock().unwrap_or_else(|e| e.into_inner());
+                    if title.is_empty() && !g.title.is_empty() {
+                        title = g.title.clone();
+                        pwd = g.pwd.clone();
+                    }
+                    if pwd.is_empty() {
+                        pwd = g.pwd.clone();
+                    }
+                }
+            }
+            (tab_label(w).map(str::to_owned), title, pwd)
+        })
+        .collect();
+    let tabs: Vec<(Option<&str>, &str, &str)> = known.iter().map(|(given, title, pwd)| (given.as_deref(), title.as_str(), pwd.as_str())).collect();
+    tab_names(&tabs)
+}
+
 /// The next of what waits to be written to a host: the first, and with
 /// it, where that is text for a terminal, the text that follows for the
 /// same terminal (as far as the next thing that isn't: a key event, a
@@ -2831,19 +2918,15 @@ impl RexHubInner {
         crate::ui::request_action(host_key, session_id, block_id, action, args)
     }
 
-    /// Atomically persist live Rex session summaries so Olo's global Command Palette
-    /// (`olo-palette`) can search and jump directly into local & remote Rex sessions.
+    /// What Olo's command palette finds of Rex (apps/palette, its Rex
+    /// source): each host's sessions, and the panes of the sessions
+    /// shown, by their tab, title and folder. Written (in one piece)
+    /// when it differs from what was last written, and never otherwise.
+    /// Rex's own Go to Anything listed these in a window of its own;
+    /// Olo's palette is where a person looks for a thing.
     fn write_palette_index(&self) {
         if std::env::var("OLO_REX_DEMO").ok().as_deref() == Some("1") {
             return;
-        }
-        #[derive(serde::Serialize)]
-        struct PaletteEntry {
-            host_key: String,
-            host_label: String,
-            session_id: String,
-            label: String,
-            cwd: String,
         }
         let entries: Vec<PaletteEntry> = {
             let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -2851,37 +2934,83 @@ impl RexHubInner {
             for hk in &st.host_order {
                 let Some(h) = st.hosts.get(hk) else { continue };
                 for s in &h.session_summaries {
-                    let cwd = h
-                        .sessions
-                        .get(&s.session_id)
+                    let view = h.sessions.get(&s.session_id);
+                    let pane = |block_id: &str| {
+                        let bk = BlockKey { host_key: hk.clone(), session_id: s.session_id.clone(), block_id: block_id.to_owned() };
+                        st.blocks.get(&bk).map(|b| {
+                            let g = b.lock().unwrap_or_else(|e| e.into_inner());
+                            (g.title.clone(), g.pwd.clone())
+                        })
+                    };
+                    let cwd = view
                         .and_then(|v| v.active_window().or_else(|| v.windows.first()))
                         .and_then(|w| w.focused_block_id.as_deref().or_else(|| w.all_blocks().next().map(|b| b.block_id.as_str())))
-                        .and_then(|bid| {
-                            let bk = BlockKey { host_key: hk.clone(), session_id: s.session_id.clone(), block_id: bid.to_owned() };
-                            st.blocks.get(&bk).map(|b| b.lock().unwrap_or_else(|e| e.into_inner()).pwd.clone())
-                        })
+                        .and_then(&pane)
+                        .map(|(_, pwd)| pwd)
                         .unwrap_or_default();
+                    let session = if s.label.is_empty() { s.session_id.clone() } else { s.label.clone() };
                     out.push(PaletteEntry {
                         host_key: hk.clone(),
                         host_label: h.label.clone(),
                         session_id: s.session_id.clone(),
-                        label: if s.label.is_empty() { s.session_id.clone() } else { s.label.clone() },
+                        label: session.clone(),
                         cwd,
+                        block_id: None,
+                        session: String::new(),
+                        tab: String::new(),
                     });
+                    let tabs = view.map(|v| session_tab_names(&st, hk, v)).unwrap_or_default();
+                    for (i, w) in view.map(|v| v.windows.as_slice()).unwrap_or_default().iter().enumerate() {
+                        let tab = tabs.get(i).cloned().unwrap_or_default();
+                        for b in w.all_blocks() {
+                            let Some((title, pwd)) = pane(&b.block_id) else { continue };
+                            out.push(PaletteEntry {
+                                host_key: hk.clone(),
+                                host_label: h.label.clone(),
+                                session_id: s.session_id.clone(),
+                                label: if title.is_empty() { tab.clone() } else { title },
+                                cwd: pwd,
+                                block_id: Some(b.block_id.clone()),
+                                session: session.clone(),
+                                tab: tab.clone(),
+                            });
+                        }
+                    }
                 }
             }
             out
         };
+        let Ok(bytes) = serde_json::to_vec(&entries) else { return };
+        static WRITTEN: Mutex<Vec<u8>> = Mutex::new(Vec::new());
+        let mut written = WRITTEN.lock().unwrap_or_else(|e| e.into_inner());
+        if *written == bytes {
+            return;
+        }
         let dir = olo_xdg::state_dir().join("rex");
         let _ = std::fs::create_dir_all(&dir);
         let target = dir.join("palette-index.json");
         let tmp = dir.join(format!("palette-index.json.tmp.{}", std::process::id()));
-        if let Ok(bytes) = serde_json::to_vec(&entries)
-            && std::fs::write(&tmp, bytes).is_ok()
-        {
-            let _ = std::fs::rename(&tmp, &target);
+        if std::fs::write(&tmp, &bytes).is_ok() && std::fs::rename(&tmp, &target).is_ok() {
+            *written = bytes;
         }
     }
+}
+
+/// One thing of Rex's that Olo's palette finds: a session, or (with
+/// `block_id`) a pane of one.
+#[derive(serde::Serialize)]
+struct PaletteEntry {
+    host_key: String,
+    host_label: String,
+    session_id: String,
+    label: String,
+    cwd: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    block_id: Option<String>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    session: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    tab: String,
 }
 
 pub fn shell_quote(s: &str) -> String {
@@ -2898,6 +3027,35 @@ pub fn shell_quote(s: &str) -> String {
 mod tests {
     use super::*;
     use olo_rex_vt::try_decode_snapshot_prefix;
+
+    /// Tabs are told apart: by the name given, the program's title, the
+    /// folder; two that say the same, by their folders; two in the same
+    /// folder, by their place.
+    #[test]
+    fn tabs_are_told_apart() {
+        let names = |tabs: &[(Option<&str>, &str, &str)]| tab_names(tabs);
+        assert_eq!(names(&[(Some("build"), "cargo", "/w/olo"), (None, "vim", "/w/olo"), (None, "", "/w/rex/"), (None, "", "")]), ["build", "vim", "rex", "Tab 4"]);
+        assert_eq!(names(&[(None, "shell", "/w/olo"), (None, "shell", "/w/rex")]), ["shell · olo", "shell · rex"]);
+        assert_eq!(names(&[(None, "shell", "/w/olo"), (None, "shell", "/w/olo"), (None, "shell", "")]), ["shell · olo", "shell · olo 2", "shell"]);
+        assert_eq!(names(&[(None, "shell", "/w/olo"), (None, "shell", "/w/olo")]), ["shell", "shell 2"], "one folder tells nothing apart");
+        assert_eq!(names(&[(None, "shell", ""), (None, "shell", ""), (None, "shell", "")]), ["shell", "shell 2", "shell 3"]);
+        // A name the person gave is left alone, twice too.
+        assert_eq!(names(&[(Some("a"), "x", ""), (Some("a"), "y", "")]), ["a", "a"]);
+        // A folder that is the title already isn't said twice.
+        assert_eq!(names(&[(None, "", "/w/olo"), (None, "", "/w/olo")]), ["olo", "olo 2"]);
+    }
+
+    /// A tab the person named has that name; one the server named by
+    /// its id has none.
+    #[test]
+    fn a_tabs_name_is_one_it_was_given() {
+        let tab = |label: &str| olo_rex_client::WindowView { window_id: "window:01a201ce-027a-7b3e-b0f9-261f65bb795d".into(), label: label.into(), ..Default::default() };
+        assert_eq!(tab_label(&tab("build")), Some("build"));
+        assert_eq!(tab_label(&tab("Window 65bb795d")), None);
+        assert_eq!(tab_label(&tab("")), None);
+        assert_eq!(tab_label(&tab("Window 12345678")), Some("Window 12345678"), "a name of that shape that isn't its id's end is a name");
+        assert_eq!(tab_label(&tab("Window shopping")), Some("Window shopping"));
+    }
 
     /// What was typed while a request was on its way goes together, in
     /// order; a key event, another pane's text and a change of focus
