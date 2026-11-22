@@ -26469,15 +26469,87 @@ remote Rex workspaces (Rex API rev 19), alongside Terminal.
 - **`apps/rex` (`olo-rex`)** isolates terminal screens in `PanesView`
   so streaming output redraws only the terminal canvas at vsync, while
   serializing keystrokes per host through a strict FIFO writer task.
-  Includes adaptive `SidePane` (Sessions & live Activity feed), all 4
-  toolbar layouts, recursive splits (auto-stacking horizontally on
-  vertical thirds `< 540 pt`), floating/minimized layers, Copy Mode,
-  Command Palette, Go to Anything, `rex.ui` custom prompts, Path
-  Browser, Quick Look with ETag caching, drag-and-drop uploads, QR
-  pairing, zero-trust per-host Olo Desktop Bridge (`xdg-open`, `op`,
-  `olo-screen` with automatic remote `localhost` `-L` forwarding),
-  Tracker `"Open in Rex"`, global Command Palette session search, and
-  in-place upgrade state restoration.
+  Includes adaptive `SidePane` (Sessions & live Activity feed), tabs
+  along the top or down the side, recursive splits (auto-stacking
+  horizontally on vertical thirds `< 540 pt`), floating/minimized
+  layers, Copy Mode, Command Palette, Go to Anything, `rex.ui` custom
+  prompts, Path Browser, Quick Look with ETag caching, drag-and-drop
+  uploads, Remote Access (this computer's server over Tailscale, a
+  device paired by a code), the per-host Olo Desktop Bridge (`xdg-open`,
+  `op`, `olo-screen` with automatic remote `localhost` `-L` forwarding;
+  what a host may use is Preferences ▸ Rex), Tracker `"Open in Rex"`,
+  global Command Palette session search, and in-place upgrade state
+  restoration.
+
+**Whose settings are whose** (2026-11-21; Ben: "making the ux more olo
+native"). Rex has no settings window. It came with one of eight
+sections over some sixty settings, two thirds of which nothing read or
+which decided chrome that is the desktop's (densities, paddings, fades,
+a highlight colour, cursor trails and blinking, a second set of
+palettes and an importer of theme files), and with "Auto Approve" and
+"Developer Mode", which set a flag nothing acted on. Now:
+- *Which hosts there are, what each may do on this computer, which
+  changes of an agent become notifications*: the desktop's
+  (`settings.rex`, Preferences ▸ Rex), followed live
+  (apps/rex/src/shared.rs: `apply` makes the app's copy say what the
+  desktop's says and tells what changed; the hub shows a host added
+  there, lets go of one removed, renames, reconnects one whose address
+  changed). A host added or removed in Rex itself is written there
+  too: one list, two places to edit it. Permissions and notices are
+  never kept in Rex's own file: with the desktop's settings unread, a
+  remote host may do nothing here.
+- *What Rex's file held of these before* (rex.json as the merged app
+  wrote it) is carried into the desktop's settings once
+  (`shared::adopt`): hosts by their ids, each with the permissions it
+  had and none it didn't, never over what the desktop already says. It
+  is kept aside in the file (`before_preferences`) until that has
+  happened, whatever is saved meanwhile; and while the write is on its
+  way the desktop's settings aren't followed (`shared::settled`: they
+  would say the carried hosts are gone, and Rex would drop connections
+  it had just made), five seconds at most.
+- *A window's quick choices* are Rex's own file (settings.rs) and its
+  menus, as Terminal's: Settings ▸ Text Size, Colors (Match Appearance,
+  Always Light, Always Dark; for each mode the look's own colours,
+  followed as Preferences ▸ Themes changes, or any of Olo's themes',
+  which stays: the same lists as Terminal's menu), Tabs (Along the Top,
+  Down the Side); View ▸ Show Sidebar, Show Pane Headers, Sessions or
+  Activity, Include Idle Panes in Activity.
+- *The cursor is steady*, as Terminal's: where a program asked for a
+  blinking one the window drew twice a second for as long as nothing
+  happened (measured: 2.0 frames a second at rest, now 0).
+
+**The menu bar** is Terminal's model: Rex (the kit's `app_items` with
+its two Preferences panels; what is made new; Hosts…, Remote Access…,
+Diagnostics…; Close Tab, Close Window, Quit), Edit, View (its last
+group the pane's folder: Quick Look, Browse Folders…, Go to Folder…,
+and Open in Tracker for a pane of this computer), Pane, Agents,
+Settings. Every toggle
+shows its check (the sidebar, pane headers, the sidebar's list, Zoom
+Pane, Type in All Panes, Copy Mode, Keep It Going) and every item is
+enabled only when it can act (Copy with a selection:
+`GhosttyTerminal::has_selection`, which asks without reading the text
+out; the pane items with a pane; Focus with more than one). An item
+that went round states one couldn't see is the states by name (the
+tabs' place), and one that said "Export" and copied says Copy. Making
+the menus is cheap enough to do at every key that may be an item's
+(the kit's `MenuBar::of`): the Colors lists were 228 µs of it, every
+theme's whole palette copied to read one field, in Terminal too, and
+are 5 µs (`olo_theme::looks::terminals` reads the kept palettes).
+
+**Remote Access** (panels.rs `render_access_panel`, `Step`) is one
+window for reaching this computer's sessions from elsewhere: the
+checkbox that turns the server's Tailscale on, how it stands under it
+(or what just went wrong), and one group that keeps its place and size
+at every step: nothing to scan yet (a code's three corner marks,
+faintly, where it will be); the sign-in (its page opened here, or its
+code scanned); the address to pair with, as a code and to copy. The
+line under the checkbox answers what the checkbox asks, with a light
+of the sidebar's colours before it (grey: only this computer; amber:
+waiting for the sign-in; green: the other devices can). It was
+a section of the Settings window and a window with a code alone that
+said to go and find the other. The code's cells are whole device
+pixels at every scale (`qr_code`), so at 1× it may fill less of its
+well.
 
 **What the person is told, and where** (2026-11-21, the day the app
 was merged; Ben: "it has its own app notifications that show seperate
@@ -26529,7 +26601,10 @@ the engine's heap a pane, 128 MiB of snapshot, 64 MiB a picture, 4096
 cells an axis).
 
 **Testing.** `OLO_REX_DEMO=1` starts an isolated demo workspace (no real
-Rex socket touched; used by `tools/dev/ui-lint --tiles`). Point at a
+Rex socket touched; used by `tools/dev/ui-lint --tiles`; with
+`OLO_REX_DEMO_TAILSCALE=sign-in` or `on`, its server's Tailscale is to
+be signed in to or on, for the Remote Access window's pictures; its
+prompts and paths name nobody). Point at a
 scratch Rex server (`rex server run --listen unix:///var/tmp/.../rex.sock`)
 via `REX_SERVER_SOCKET`. `cargo test -p olo-rex-vt -p olo-rex-client -p olo-rex`
 runs VT round-trips, inline APC nonce verification, and live scratch
@@ -26544,6 +26619,9 @@ for repeated SSH, HTTP/TLS, transfer, forwarding and connection-loss checks.
 **Cost.** Measured on release builds in a headless 120 Hz GPU session at
 2× against a live Rex rev-19 server:
 - Idle (5 s): **0.0% of a core, 0 wakeups/s, 0 frames/s** (`perf stat --no-scale` over 3 s idle: 0 context switches, 0.07 ms task-clock, 3,652 instructions).
+  The same with a program in the pane that asks for a blinking cursor
+  (`printf '\033[1 q'`): it was 2.0 frames a second, 0.2% of a core,
+  for as long as nothing happened; the cursor is steady now.
 - Live typing keystroke-to-draw latency (`app_server timings`): **~1.54 ms median** `to_draw_us` (1.28–1.80 ms) end-to-end through the Rex server vs the 8.33 ms 120 Hz budget.
 - Sustained colored streaming (100 lines/s over 2 s): **7.5% of a core**, **mean 873 µs** per frame (ui 613 µs, tessellate 0 µs, submit 260 µs; slowest 1.94 ms).
 - Resident memory: **62.2 MiB RSS** (`olo-rex`). Reviewed at 1×, 1.5×,

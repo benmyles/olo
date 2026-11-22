@@ -26,7 +26,7 @@ use olo_sync::Mutex;
 use serde_json::{Value, json};
 
 use crate::{
-    agent::{AgentActivity, AutoApproveState, KeepGoingState, detect_agent_from_screen},
+    agent::{AgentActivity, KeepGoingState, detect_agent_from_screen},
     attention::Target,
     bridge::{self, BridgeServerHandle},
     copy_mode::CopyMode,
@@ -110,7 +110,6 @@ pub struct BlockRuntime {
     ports_seq: u64,
     pub agent_activity: AgentActivity,
     pub keep_going: Option<KeepGoingState>,
-    pub auto_approve: Option<AutoApproveState>,
     pub unread: bool,
     pub unread_cleared_at: Option<Instant>,
     pub muted: bool,
@@ -212,7 +211,6 @@ impl BlockRuntime {
             ports_seq: 0,
             agent_activity: AgentActivity::Idle,
             keep_going: None,
-            auto_approve: None,
             unread: false,
             unread_cleared_at: None,
             muted: false,
@@ -614,7 +612,8 @@ impl RexHub {
             "local".to_owned(),
             HostRuntime {
                 key: "local".to_owned(),
-                label: if home_is_local { "Local".to_owned() } else { home_addr.clone() },
+                // (As Preferences ▸ Rex names it.)
+                label: if home_is_local { olo_kit::words::tr("This computer").into() } else { home_addr.clone() },
                 endpoint_raw: home_addr,
                 endpoint: None,
                 is_local: home_is_local,
@@ -794,6 +793,14 @@ impl RexHub {
         if let Some(local) = st.hosts.get_mut("local") {
             local.endpoint_raw = "unix:///run/user/1000/rex/server.sock".to_owned();
             local.conn_state = HostConnState::Connected;
+            // (How reaching the demo's server from elsewhere stands, for the
+            // Remote Access window's pictures: off, to be signed in, or on.)
+            let state = |state: &str| olo_rex_client::TailscaleStatus { state: state.into(), ..Default::default() };
+            local.tailscale = Some(match std::env::var("OLO_REX_DEMO_TAILSCALE").ok().as_deref() {
+                Some("sign-in") => olo_rex_client::TailscaleStatus { auth_url: Some("https://login.example/a/1f2e3d4c5b6a".into()), ..state("needs_login") },
+                Some("on") => olo_rex_client::TailscaleStatus { dns_name: Some("studio.example-tailnet.ts.net.".into()), ..state("running") },
+                _ => state("disabled"),
+            });
             local.server_version = Some(ServerVersion {
                 version: "0.1.0-snapshot.2506".to_owned(),
                 commit: "a4f8c21".to_owned(),
@@ -822,11 +829,11 @@ impl RexHub {
         // Populate realistic, crisp terminal contents via libghostty-vt sized cleanly for splits.
         let mut br_build = BlockRuntime::new(72, 34, &theme);
         br_build.title = "cargo test — olo-rex".to_owned();
-        br_build.pwd = "/home/ben/olo/rex-client".to_owned();
+        br_build.pwd = "/home/you/olo/rex-client".to_owned();
         br_build.data_connected = true;
         br_build.terminal.vt_write(
             concat!(
-                "\x1b[1;36mben@olo\x1b[0m \x1b[1;34m~/olo/rex\x1b[0m \x1b[33m(rex-client)\x1b[0m % cargo test -p olo-rex\r\n",
+                "\x1b[1;36myou@olo\x1b[0m \x1b[1;34m~/olo/rex\x1b[0m \x1b[33m(rex-client)\x1b[0m % cargo test -p olo-rex\r\n",
                 "\x1b[1;32m   Compiling\x1b[0m olo-rex-vt v0.1.0\r\n",
                 "\x1b[1;32m   Compiling\x1b[0m olo-rex-client v0.1.0\r\n",
                 "\x1b[1;32m    Finished\x1b[0m `test` profile [optimized] in 1.42s\r\n",
@@ -840,7 +847,7 @@ impl RexHub {
                 "test protocol::live_bootstrap_ghostsnp ... \x1b[32mok\x1b[0m\r\n",
                 "test ssh::parse_ssh_tailscale_targets ... \x1b[32mok\x1b[0m\r\n",
                 "test result: \x1b[1;32mok\x1b[0m. 2 passed; 0 failed\r\n\r\n",
-                "\x1b[1;36mben@olo\x1b[0m \x1b[1;34m~/olo/rex\x1b[0m % "
+                "\x1b[1;36myou@olo\x1b[0m \x1b[1;34m~/olo/rex\x1b[0m % "
             )
             .as_bytes(),
         );
@@ -848,7 +855,7 @@ impl RexHub {
 
         let mut br_agent = BlockRuntime::new(56, 18, &theme);
         br_agent.title = "claude — Refactor VT renderer".to_owned();
-        br_agent.pwd = "/home/ben/olo/rex-client".to_owned();
+        br_agent.pwd = "/home/you/olo/rex-client".to_owned();
         br_agent.agent_activity = AgentActivity::Working;
         br_agent.data_connected = true;
         br_agent.terminal.vt_write(
@@ -865,7 +872,7 @@ impl RexHub {
 
         let mut br_shell = BlockRuntime::new(56, 14, &theme);
         br_shell.title = "zsh — ~/olo/rex-client".to_owned();
-        br_shell.pwd = "/home/ben/olo/rex-client".to_owned();
+        br_shell.pwd = "/home/you/olo/rex-client".to_owned();
         br_shell.data_connected = true;
         br_shell.ports.ports.push(olo_rex_client::PortEntry {
             port: 3000,
@@ -876,7 +883,7 @@ impl RexHub {
         });
         br_shell.terminal.vt_write(
             concat!(
-                "\x1b[1;36mben@olo\x1b[0m \x1b[1;34m~/olo/rex\x1b[0m % git status -sb\r\n",
+                "\x1b[1;36myou@olo\x1b[0m \x1b[1;34m~/olo/rex\x1b[0m % git status -sb\r\n",
                 "\x1b[32m## rex-client...origin/main\x1b[0m\r\n",
                 " \x1b[32mA\x1b[0m  apps/rex/src/terminal_pane.rs\r\n",
                 " \x1b[32mA\x1b[0m  crates/rex-vt/src/snapshot.rs\r\n",
@@ -889,7 +896,7 @@ impl RexHub {
 
         let mut br_logs = BlockRuntime::new(110, 32, &theme);
         br_logs.title = "rex server logs".to_owned();
-        br_logs.pwd = "/home/ben".to_owned();
+        br_logs.pwd = "/home/you".to_owned();
         br_logs.data_connected = true;
         br_logs.terminal.vt_write(b"\x1b[2m2026-11-21T14:00:01Z\x1b[0m \x1b[32mINFO\x1b[0m rex_server: listening on unix:///run/user/1000/rex/server.sock (rev 19)\r\n");
         st.blocks.insert(BlockKey { host_key: "local".into(), session_id: "demo-main".into(), block_id: "demo-logs".into() }, Arc::new(Mutex::new(br_logs)));
@@ -921,7 +928,7 @@ impl RexHub {
             HostRuntime {
                 key: "dev-box".to_owned(),
                 label: "dev-box.ts.net".to_owned(),
-                endpoint_raw: "ssh://ben@dev-box.ts.net".to_owned(),
+                endpoint_raw: "ssh://you@dev-box.example".to_owned(),
                 endpoint: None,
                 is_local: false,
                 conn_state: HostConnState::Connected,
@@ -970,7 +977,54 @@ impl RexHub {
         });
     }
 
+    /// The desktop's settings for Rex, as first read or as changed
+    /// (`shared::apply`): hosts that are new there are shown (and
+    /// connected, if they are to be as Rex starts), those gone are let go
+    /// of, a name follows, an address that changed is a host connected
+    /// afresh; permissions and notices are simply read where they are
+    /// used.
+    pub fn follow_shared(&self, rex: &olo_protocol::RexSettings) {
+        if !crate::shared::settled(rex) {
+            return;
+        }
+        let changes = {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            // (What Rex's own file held from before, if this start
+            // couldn't read the desktop's settings to carry it over.)
+            let pending = st.settings.before_preferences.is_some();
+            let rex = crate::shared::adopt(&mut st.settings, rex.clone());
+            let changes = crate::shared::apply(&rex, &mut st.settings);
+            if changes.any || pending {
+                st.settings.save();
+            }
+            for host in &changes.renamed {
+                if let Some(h) = st.hosts.get_mut(&host.id) {
+                    h.label.clone_from(&host.label);
+                }
+            }
+            changes
+        };
+        if !changes.any {
+            return;
+        }
+        for id in changes.removed.iter().chain(changes.moved.iter().map(|h| &h.id)) {
+            self.remove_host_as(id, false, false);
+        }
+        for host in changes.added.iter().chain(&changes.moved) {
+            self.add_host_as(host.id.clone(), host.label.clone(), host.endpoint.clone(), false, false, host.auto_connect);
+        }
+        (self.notify)(HubNotice::StateChanged);
+    }
+
+    /// A host the person adds in Rex itself: shown, connected, and told
+    /// to the desktop's settings (where Preferences ▸ Rex lists it).
     pub fn add_and_connect_host(&self, id: String, label: String, endpoint: String, save_remote: bool) {
+        self.add_host_as(id, label, endpoint, save_remote, true, true);
+    }
+
+    /// `tell_desktop`: written to the desktop's settings too (not when it
+    /// came from there). `connect`: connected now.
+    fn add_host_as(&self, id: String, label: String, endpoint: String, save_remote: bool, tell_desktop: bool, connect: bool) {
         {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             if !st.hosts.contains_key(&id) {
@@ -1012,16 +1066,32 @@ impl RexHub {
             }
         }
         (self.notify)(HubNotice::StateChanged);
+        if tell_desktop {
+            let host = olo_protocol::RexHost { id: id.clone(), label: label.clone(), endpoint: endpoint.clone(), connect_at_start: true, grants: Default::default() };
+            olo_kit::settings::update(move |s| {
+                if !s.rex.hosts.iter().any(|h| h.id == host.id) {
+                    s.rex.hosts.push(host);
+                }
+            });
+        }
         if save_remote {
             let rec = HostRecord { id: Some(id.clone()), label, endpoints: vec![endpoint], ..Default::default() };
             self.with_control("local", move |ctrl, _, _| async move {
                 let _ = ctrl.hosts_put(&rec).await;
             });
         }
-        self.connect_host(&id);
+        if connect {
+            self.connect_host(&id);
+        }
     }
 
+    /// A host the person removes in Rex itself: let go of here, in the
+    /// desktop's settings and in the server's own list.
     pub fn remove_host(&self, host_key: &str) {
+        self.remove_host_as(host_key, true, true);
+    }
+
+    fn remove_host_as(&self, host_key: &str, tell_server: bool, tell_desktop: bool) {
         if host_key == "local" {
             return;
         }
@@ -1042,10 +1112,16 @@ impl RexHub {
             st.settings.saved_hosts.retain(|h| h.id != key);
             st.settings.save();
         }
-        let id_copy = key.clone();
-        self.with_control("local", move |ctrl, _, _| async move {
-            let _ = ctrl.hosts_remove(&id_copy).await;
-        });
+        if tell_desktop {
+            let id = key.clone();
+            olo_kit::settings::update(move |s| s.rex.hosts.retain(|h| h.id != id));
+        }
+        if tell_server {
+            let id_copy = key.clone();
+            self.with_control("local", move |ctrl, _, _| async move {
+                let _ = ctrl.hosts_remove(&id_copy).await;
+            });
+        }
         (self.notify)(HubNotice::StateChanged);
     }
 
@@ -1586,6 +1662,15 @@ impl RexHub {
                 br.lock().unwrap_or_else(|e| e.into_inner()).upload_progress = None;
             }
             (inner.notify)(HubNotice::StateChanged);
+        });
+    }
+
+    /// A port of this computer, opened in the browser: it needs no forward.
+    pub fn open_local_port(&self, port: u16, feedback: Feedback) {
+        self.rt.spawn(async move {
+            if let Err(e) = bridge::open_url_with_autoforward(&format!("http://127.0.0.1:{port}"), false, None).await {
+                feedback.problem("Couldn’t open the page.", e);
+            }
         });
     }
 
@@ -2490,7 +2575,7 @@ impl RexHubInner {
                 let bk = BlockKey { host_key: host_key.to_owned(), session_id: session_id.clone(), block_id: block_id.clone() };
                 let (br_opt, rules) = {
                     let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                    (st.blocks.get(&bk).cloned(), st.settings.notifications.clone())
+                    (st.blocks.get(&bk).cloned(), st.settings.notices)
                 };
                 if let Some(br) = br_opt {
                     let mut activity_note = None;
@@ -2518,22 +2603,25 @@ impl RexHubInner {
                                     let previous = AgentActivity::from_records(&g.program_statuses).map(|(_, r)| r.clone());
                                     g.status_event(seq, change);
                                     let now = g.recompute_activity();
+                                    // Whether the person is told (the desktop's settings say),
+                                    // and whether the pane is marked unread: one that waits or
+                                    // failed is, one that finished isn't.
                                     let rule = match now {
-                                        AgentActivity::Blocked => Some((&rules.blocked, "Agent blocked", olo_kit::notify::NoteKind::Important)),
-                                        AgentActivity::Error => Some((&rules.error, "Agent failed", olo_kit::notify::NoteKind::Error)),
-                                        AgentActivity::Done => Some((&rules.done, "Agent finished", olo_kit::notify::NoteKind::Information)),
+                                        AgentActivity::Blocked => Some((rules.blocked, true, "Agent blocked", olo_kit::notify::NoteKind::Important)),
+                                        AgentActivity::Error => Some((rules.failed, true, "Agent failed", olo_kit::notify::NoteKind::Error)),
+                                        AgentActivity::Done => Some((rules.done, false, "Agent finished", olo_kit::notify::NoteKind::Information)),
                                         _ => None,
                                     };
                                     if !g.muted
-                                        && let Some((rule, title, kind)) = rule
+                                        && let Some((tell, unread, title, kind)) = rule
                                         && let Some((_, record)) = AgentActivity::from_records(&g.program_statuses)
                                         && previous.as_ref() != Some(record)
                                     {
-                                        if rule.desktop_notification {
+                                        if tell {
                                             let body = record.msg.clone().or_else(|| record.title.clone()).unwrap_or_else(|| g.title.clone());
                                             activity_note = Some((title, body, kind));
                                         }
-                                        g.unread |= rule.badge;
+                                        g.unread |= unread;
                                     }
                                     if let Some(kg) = &mut g.keep_going
                                         && let Some(nudge) = kg.observe(now)
@@ -2845,7 +2933,7 @@ mod tests {
     }
     #[test]
     fn find_stays_bound_to_the_restored_terminal() {
-        let mut block = BlockRuntime::new(60, 12, &themes::builtin_themes()[0].1);
+        let mut block = BlockRuntime::new(60, 12, &themes::from_olo_terminal(&olo_theme::Palette::light().terminal));
         block.terminal.vt_write(b"needle on the old screen");
         block.set_find_query(Some("needle")).unwrap();
         block.search.run().unwrap();
@@ -2864,7 +2952,7 @@ mod tests {
 
     #[test]
     fn status_reports_update_one_record_and_removals_reveal_the_next() {
-        let mut b = BlockRuntime::new(40, 12, &themes::builtin_themes()[0].1);
+        let mut b = BlockRuntime::new(40, 12, &themes::from_olo_terminal(&olo_theme::Palette::light().terminal));
         let change = |v| StatusUpdate::parse("program_status_changed", &v).unwrap();
         b.status_event(3, change(json!({"id":"","record":{"state":"working"},"reason":"report"})));
         b.status_event(4, change(json!({"id":"job","record":{"state":"blocked"},"reason":"report"})));

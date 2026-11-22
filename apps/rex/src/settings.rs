@@ -1,34 +1,42 @@
-//! Complete persisted settings for Olo Rex (`~/.config/olo/rex.json`),
-//! covering full Rex macOS parity plus Olo desktop integration policies.
+//! What Rex keeps of its own (`~/.config/olo/rex.json`): a window's
+//! quick choices (its Settings and View menus: where the tabs are, pane
+//! headers, the sidebar, the colours, the text's size) and its copy of
+//! the hosts.
+//!
+//! Which hosts there are, what each may do on this computer and which
+//! changes of an agent become notifications are the desktop's settings
+//! (Preferences ▸ Rex), followed live (`shared`); the keys are
+//! Preferences ▸ Keyboard. (As the app came, this file held some sixty
+//! settings and a window of eight sections to change them; two thirds of
+//! them had nothing behind them, or decided chrome that is the
+//! desktop's to decide: densities, paddings, fades, a highlight colour,
+//! cursor trails.)
 
 use std::{collections::HashMap, path::PathBuf};
 
 use olo_rex_client::KeymapLayer;
-use olo_rex_vt::{CursorStyle, Rgb, TerminalTheme};
 use serde::{Deserialize, Serialize};
 
+/// Where a session's tabs are: along the top, or down the side (as
+/// Terminal's). (There were four; below and on the right are read as
+/// these two.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum ToolbarLayout {
     #[default]
+    #[serde(alias = "Below")]
     Above,
-    Below,
-    LeftSidebar,
-    RightSidebar,
+    #[serde(alias = "LeftSidebar", alias = "RightSidebar")]
+    Side,
 }
 
+/// Whether split panes have their headers. (A third choice, "on hover",
+/// was never built: it hid them.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum BarBehavior {
     #[default]
     Always,
-    Hover,
+    #[serde(alias = "Hover")]
     Hidden,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum Density {
-    #[default]
-    Comfortable,
-    Compact,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -39,13 +47,6 @@ pub enum SidebarMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum ActivityGroupBy {
-    #[default]
-    Priority,
-    Session,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum SchemeChoice {
     #[default]
     Auto,
@@ -53,149 +54,43 @@ pub enum SchemeChoice {
     Dark,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum TabColorMode {
-    #[default]
-    Theme,
-    Adaptive,
-    Status,
+/// Which changes of an agent, in a pane that isn't in front, become a
+/// notification: the desktop's (Preferences ▸ Rex), never kept here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Notices {
+    pub blocked: bool,
+    pub done: bool,
+    pub failed: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum HighlightStyle {
-    #[default]
-    Fade,
-    Move,
-    Instant,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum AnimationStyle {
-    #[default]
-    Snappy,
-    Natural,
-    Off,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum CursorShapeSetting {
-    #[default]
-    Block,
-    Bar,
-    Underline,
-    BlockHollow,
-}
-
-impl CursorShapeSetting {
-    pub fn to_vt(self) -> CursorStyle {
-        match self {
-            Self::Block => CursorStyle::Block,
-            Self::Bar => CursorStyle::Bar,
-            Self::Underline => CursorStyle::Underline,
-            Self::BlockHollow => CursorStyle::BlockHollow,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum CursorTrail {
-    #[default]
-    Off,
-    Warp,
-    Comet,
-    Blaze,
-    Sweep,
-    Tapered,
-    Rainbow,
-    Frozen,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum OptionAsAlt {
-    #[default]
-    Both,
-    Left,
-    Right,
-    Off,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum CustomSchemePolicy {
-    #[default]
-    Ask,
-    Always,
-    Never,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StatusNotificationRule {
-    pub tab_indicator: bool,
-    pub desktop_notification: bool,
-    pub badge: bool,
-    pub sound: bool,
-    pub volume: f32,
-}
-
-impl StatusNotificationRule {
-    pub fn working() -> Self {
-        Self { tab_indicator: true, desktop_notification: false, badge: false, sound: false, volume: 0.7 }
-    }
-    pub fn blocked() -> Self {
-        Self { tab_indicator: true, desktop_notification: true, badge: true, sound: true, volume: 0.85 }
-    }
-    pub fn error() -> Self {
-        Self { tab_indicator: true, desktop_notification: true, badge: true, sound: true, volume: 0.85 }
-    }
-    pub fn done() -> Self {
-        Self { tab_indicator: true, desktop_notification: true, badge: false, sound: false, volume: 0.65 }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NotificationMatrix {
-    pub working: StatusNotificationRule,
-    pub blocked: StatusNotificationRule,
-    pub error: StatusNotificationRule,
-    pub done: StatusNotificationRule,
-}
-
-impl Default for NotificationMatrix {
+impl Default for Notices {
     fn default() -> Self {
-        Self { working: StatusNotificationRule::working(), blocked: StatusNotificationRule::blocked(), error: StatusNotificationRule::error(), done: StatusNotificationRule::done() }
+        Self { blocked: true, done: true, failed: true }
     }
 }
 
-/// Zero-trust per-host Olo desktop integration policy.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// What a host's sessions may do on this computer: the desktop's
+/// (Preferences ▸ Rex), never kept here; with none known, nothing.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HostBridgePolicy {
     pub allow_open_url: bool,
     pub allow_localhost_autoforward: bool,
     pub allow_agent_screens: bool,
     pub allow_passwords_op: bool,
-    pub allow_ssh_agent: bool,
     pub allow_remote_control: bool,
-    pub allow_token_pool: bool,
 }
 
 impl HostBridgePolicy {
     pub fn local_default() -> Self {
-        Self { allow_open_url: true, allow_localhost_autoforward: true, allow_agent_screens: true, allow_passwords_op: true, allow_ssh_agent: true, allow_remote_control: true, allow_token_pool: true }
+        Self { allow_open_url: true, allow_localhost_autoforward: true, allow_agent_screens: true, allow_passwords_op: true, allow_remote_control: true }
     }
 
     pub fn remote_default() -> Self {
-        Self {
-            allow_open_url: false,
-            allow_localhost_autoforward: false,
-            allow_agent_screens: false,
-            allow_passwords_op: false,
-            allow_ssh_agent: false,
-            allow_remote_control: false,
-            allow_token_pool: false,
-        }
+        Self::default()
     }
 
     pub fn any_enabled(&self) -> bool {
-        self.allow_open_url || self.allow_localhost_autoforward || self.allow_agent_screens || self.allow_passwords_op || self.allow_ssh_agent || self.allow_remote_control || self.allow_token_pool
+        self.allow_open_url || self.allow_localhost_autoforward || self.allow_agent_screens || self.allow_passwords_op || self.allow_remote_control
     }
 }
 
@@ -212,88 +107,55 @@ pub struct SavedHost {
     pub ssh_agent_socket: Option<String>,
 }
 
+/// The size the terminals' text comes at, in points.
+pub const TEXT_SIZE: f32 = 10.5;
+/// The least and the most the Settings menu takes it to.
+pub const TEXT_SIZES: (f32, f32) = (8.0, 32.0);
+/// A split pane's header, in points.
+pub const PANE_HEADER: f32 = 22.0;
+/// Around a terminal's text, in points (across, down).
+pub const PADDING: (f32, f32) = (olo_kit_base::metrics::WINDOW_INSET, 6.0);
+/// The least contrast a terminal's text is drawn with against what is
+/// behind it.
+pub const MINIMUM_CONTRAST: f32 = 4.5;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
-    // ---- Layout & Chrome ----
+    // ---- A window's quick choices (the Settings and View menus) ----
     pub toolbar_layout: ToolbarLayout,
-    pub toolbar_behavior: BarBehavior,
-    pub preserve_window_width: bool,
-    pub tabs_fill_space: bool,
-    pub tab_icon_count: u8,
-    pub tab_color_mode: TabColorMode,
     pub pane_header_behavior: BarBehavior,
-    pub density: Density,
-    pub padding_x: f32,
-    pub padding_y: f32,
-    pub program_colors_padding: bool,
-    pub program_colors_pane_header: bool,
-    pub active_pane_highlight: bool,
-    pub active_pane_highlight_color: Option<Rgb>,
-    pub active_pane_highlight_opacity: f32,
-    pub active_pane_highlight_style: HighlightStyle,
-    pub fade_inactive_panes: bool,
-    pub fade_inactive_windows: bool,
-    pub focus_follows_mouse: bool,
-    pub animation_style: AnimationStyle,
-    pub autobalance_splits: bool,
     pub sidebar_width: f32,
     pub sidebar_collapsed: bool,
     pub sidebar_mode: SidebarMode,
-    pub activity_group_by: ActivityGroupBy,
     pub activity_include_idle: bool,
-
-    // ---- Theme & Colors ----
     pub scheme_choice: SchemeChoice,
+    /// The colours for light and for dark, by their id among Olo's
+    /// (`olo_theme::looks::terminal`); none: the look's own, followed.
     pub light_theme_id: Option<String>,
     pub dark_theme_id: Option<String>,
-    pub custom_themes: Vec<TerminalTheme>,
-    pub extended_palette: bool,
-    pub minimum_contrast: f32,
-    pub force_theme_palette: bool,
-    pub tint_with_theme: bool,
-    pub selection_fg: Option<Rgb>,
-    pub selection_bg: Option<Rgb>,
-    pub rounded_corners: bool,
-
-    // ---- Typography ----
-    pub font_family: Option<String>,
     pub font_size: f32,
-    pub line_height: f32,
-    pub char_spacing: f32,
-    pub ligatures: bool,
-    pub bold_is_bright: bool,
-    pub fallback_fonts: Vec<String>,
-
-    // ---- Cursor ----
-    pub cursor_shape: CursorShapeSetting,
-    pub force_cursor_style: bool,
-    pub cursor_blink: bool,
-    pub cursor_blink_interval_ms: u64,
-    pub cursor_trail: CursorTrail,
-
-    // ---- Behavior ----
-    pub copy_on_selection: bool,
-    pub shine_on_copy: bool,
-    pub smooth_resizing: bool,
-    pub anchor_bottom: bool,
-    pub prefer_generated_titles: bool,
-    pub startup_command: String,
-    pub option_as_alt: OptionAsAlt,
-    pub custom_scheme_policy: CustomSchemePolicy,
-    pub trusted_links: Vec<String>,
-    pub sudo_window: bool,
+    /// What Keep It Going types to an agent that has stopped.
     pub keep_going_message: String,
 
-    // ---- Notifications ----
-    pub notifications: NotificationMatrix,
-
-    // ---- Hosts, SSH & Olo Bridge ----
+    // ---- Hosts ----
     pub home_server_address: String,
+    /// Rex's copy of the desktop's hosts (`shared::apply`), so that it
+    /// knows them at once as it starts.
     pub saved_hosts: Vec<SavedHost>,
     pub ssh_agent_socket: Option<String>,
+    /// The desktop's (`shared::apply`); not kept: with the desktop's
+    /// settings unread, a remote host may do nothing here.
+    #[serde(skip)]
     pub host_policies: HashMap<String, HostBridgePolicy>,
-    pub developer_mode: bool,
+    #[serde(skip)]
+    pub notices: Notices,
+    /// What this file held of hosts' permissions and of notices before
+    /// they became the desktop's, kept until it has been carried there
+    /// (`shared::adopt`, once), whatever is saved meanwhile.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub before_preferences: Option<crate::shared::Old>,
+    pub carried_to_preferences: bool,
 
     // ---- Keymap Overrides ----
     pub keymap_overrides: Vec<KeymapLayer>,
@@ -303,77 +165,23 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             toolbar_layout: ToolbarLayout::Above,
-            toolbar_behavior: BarBehavior::Always,
-            preserve_window_width: false,
-            tabs_fill_space: false,
-            tab_icon_count: 3,
-            tab_color_mode: TabColorMode::Theme,
             pane_header_behavior: BarBehavior::Always,
-            density: Density::Comfortable,
-            padding_x: olo_kit_base::metrics::WINDOW_INSET,
-            padding_y: 6.0,
-            program_colors_padding: true,
-            program_colors_pane_header: false,
-            active_pane_highlight: true,
-            active_pane_highlight_color: None,
-            active_pane_highlight_opacity: 0.9,
-            active_pane_highlight_style: HighlightStyle::Fade,
-            fade_inactive_panes: false,
-            fade_inactive_windows: false,
-            focus_follows_mouse: false,
-            animation_style: AnimationStyle::Snappy,
-            autobalance_splits: true,
             sidebar_width: 192.0,
             sidebar_collapsed: false,
             sidebar_mode: SidebarMode::Sessions,
-            activity_group_by: ActivityGroupBy::Priority,
             activity_include_idle: false,
-
             scheme_choice: SchemeChoice::Auto,
             light_theme_id: None,
             dark_theme_id: None,
-            custom_themes: Vec::new(),
-            extended_palette: false,
-            minimum_contrast: 4.5,
-            force_theme_palette: false,
-            tint_with_theme: false,
-            selection_fg: None,
-            selection_bg: None,
-            rounded_corners: true,
-
-            font_family: None,
-            font_size: 10.5,
-            line_height: 1.0,
-            char_spacing: 0.0,
-            ligatures: true,
-            bold_is_bright: false,
-            fallback_fonts: Vec::new(),
-
-            cursor_shape: CursorShapeSetting::Block,
-            force_cursor_style: false,
-            cursor_blink: true,
-            cursor_blink_interval_ms: 530,
-            cursor_trail: CursorTrail::Off,
-
-            copy_on_selection: false,
-            shine_on_copy: true,
-            smooth_resizing: true,
-            anchor_bottom: true,
-            prefer_generated_titles: true,
-            startup_command: String::new(),
-            option_as_alt: OptionAsAlt::Both,
-            custom_scheme_policy: CustomSchemePolicy::Ask,
-            trusted_links: Vec::new(),
-            sudo_window: true,
+            font_size: TEXT_SIZE,
             keep_going_message: "Please keep going until everything is complete and verified.".to_owned(),
-
-            notifications: NotificationMatrix::default(),
-
             home_server_address: "local".to_owned(),
             saved_hosts: Vec::new(),
             ssh_agent_socket: None,
             host_policies: HashMap::new(),
-            developer_mode: false,
+            notices: Notices::default(),
+            before_preferences: None,
+            carried_to_preferences: false,
             keymap_overrides: Vec::new(),
         }
     }
@@ -384,25 +192,32 @@ pub fn settings_path() -> PathBuf {
 }
 
 impl Settings {
-    /// Reset preferences without forgetting connections or changing the trust granted to them.
-    pub fn preference_defaults(&self) -> Self {
-        Self {
-            saved_hosts: self.saved_hosts.clone(),
-            home_server_address: self.home_server_address.clone(),
-            ssh_agent_socket: self.ssh_agent_socket.clone(),
-            host_policies: self.host_policies.clone(),
-            trusted_links: self.trusted_links.clone(),
-            custom_scheme_policy: self.custom_scheme_policy,
-            ..Self::default()
-        }
+    pub fn load() -> Self {
+        let text = std::fs::read_to_string(settings_path()).ok();
+        Self::read(text.as_deref())
     }
 
-    pub fn load() -> Self {
-        std::fs::read_to_string(settings_path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+    /// From the file's text: and, until it has been carried into the
+    /// desktop's settings, what the file held of permissions and
+    /// notices as the app wrote them before (read from the same text).
+    pub fn read(text: Option<&str>) -> Self {
+        let mut settings: Self = text.and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default();
+        if !settings.carried_to_preferences && settings.before_preferences.is_none() {
+            settings.before_preferences = Some(text.and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default());
+        }
+        settings
     }
 
     pub fn save(&self) {
         olo_kit::store::save(settings_path(), self);
+    }
+
+    /// The three parts that follow the desktop's settings (`shared`), to
+    /// tell whether following changed any of them.
+    pub fn clone_followed(&self) -> (Vec<SavedHost>, Vec<(String, HostBridgePolicy)>, Notices) {
+        let mut policies: Vec<(String, HostBridgePolicy)> = self.host_policies.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        policies.sort_by(|a, b| a.0.cmp(&b.0));
+        (self.saved_hosts.clone(), policies, self.notices)
     }
 
     pub fn policy_for_host(&self, host_key: &str, is_local: bool) -> HostBridgePolicy {
@@ -411,36 +226,38 @@ impl Settings {
         }
         if is_local { HostBridgePolicy::local_default() } else { HostBridgePolicy::remote_default() }
     }
-
-    pub fn pane_header_height(&self) -> f32 {
-        match self.density {
-            Density::Comfortable => 22.0,
-            Density::Compact => 20.0,
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// A file the app wrote before: the choices that stay are read (the
+    /// placements that went, as the two that stayed), what went is passed
+    /// over, and the permissions and notices it held are kept aside until
+    /// they are carried over, through a save and a load.
     #[test]
-    fn defaults_preserve_connections_and_trust() {
-        let settings: Settings = serde_json::from_value(serde_json::json!({
-            "saved_hosts": [{"id":"example","label":"Example","endpoint":"unix:///example","ssh_agent_socket":"/example-agent"}],
-            "home_server_address":"unix:///example",
-            "ssh_agent_socket":"/example-agent",
-            "host_policies":{"local":HostBridgePolicy::remote_default(),"example":HostBridgePolicy::local_default()},
-            "custom_scheme_policy":"Never","trusted_links":["example.invalid"],"font_size":21.0
-        }))
-        .unwrap();
-        let defaults = settings.preference_defaults();
-        assert_eq!(defaults.font_size, Settings::default().font_size);
-        assert_eq!(defaults.saved_hosts, settings.saved_hosts);
-        assert_eq!(defaults.home_server_address, settings.home_server_address);
-        assert_eq!(defaults.ssh_agent_socket, settings.ssh_agent_socket);
-        assert_eq!(defaults.host_policies, settings.host_policies);
-        assert_eq!(defaults.custom_scheme_policy, settings.custom_scheme_policy);
-        assert_eq!(defaults.trusted_links, settings.trusted_links);
+    fn an_older_file_is_read_and_what_it_held_is_kept_until_carried() {
+        let text = r#"{"toolbar_layout":"RightSidebar","pane_header_behavior":"Hover","density":"Compact","cursor_trail":"Comet","font_size":13.0,
+            "saved_hosts":[{"id":"h1","label":"Build box","endpoint":"ssh://dev@build.example","auto_connect":true}],
+            "host_policies":{"h1":{"allow_open_url":true,"allow_localhost_autoforward":false,"allow_agent_screens":false,"allow_passwords_op":false,"allow_ssh_agent":true,"allow_remote_control":false,"allow_token_pool":true}},
+            "notifications":{"done":{"tab_indicator":true,"desktop_notification":false,"badge":false,"sound":false,"volume":0.65}}}"#;
+        let s = Settings::read(Some(text));
+        assert_eq!((s.toolbar_layout, s.pane_header_behavior, s.font_size), (ToolbarLayout::Side, BarBehavior::Hidden, 13.0));
+        assert!(s.host_policies.is_empty(), "permissions are never read from here");
+        let old = s.before_preferences.clone().expect("kept aside");
+        assert!(old.host_policies["h1"].allow_open_url && !old.notifications.done.desktop_notification && old.notifications.blocked.desktop_notification);
+        // Saved and loaded again before it could be carried over: still there.
+        let again = Settings::read(Some(&serde_json::to_string(&s).unwrap()));
+        assert_eq!(again.before_preferences, Some(old));
+        // Carried: gone from the file, and not looked for again.
+        let mut done = again;
+        done.before_preferences = None;
+        done.carried_to_preferences = true;
+        let text = serde_json::to_string(&done).unwrap();
+        assert!(!text.contains("before_preferences") && !text.contains("host_policies") && !text.contains("notifications"));
+        assert!(Settings::read(Some(&text)).before_preferences.is_none());
+        // No file at all: nothing to carry, but the hosts of the desktop's are still merged in once.
+        assert_eq!(Settings::read(None).before_preferences, Some(crate::shared::Old::default()));
     }
 }

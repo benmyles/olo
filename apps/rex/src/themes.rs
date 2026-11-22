@@ -1,6 +1,11 @@
-//! Terminal themes for Olo Rex: Olo's native look palettes, popular classic
-//! palettes, Ghostty & `.itermcolors` user imports, WCAG contrast legibility,
-//! and Rex `com.superlogical.terminal.set_theme` serialization.
+//! The terminals' colours: Olo's, as Terminal's Colors menu has them
+//! (the look's own for light and for dark, followed as Preferences ▸
+//! Themes changes; or any theme's, chosen in the Settings menu, which
+//! stays), held to a legible contrast, and said to the Rex server
+//! (`com.superlogical.terminal.set_theme`) so programs in a pane can
+//! ask what they are. (Rex came with eight more palettes of its own and
+//! an importer of others' theme files: the desktop's themes are where a
+//! palette is added.)
 
 use olo_kit::{Hsla, style};
 use olo_rex_vt::{Rgb, TerminalTheme, default_palette};
@@ -35,73 +40,21 @@ pub fn from_olo_terminal(t: &olo_theme::Terminal) -> TerminalTheme {
     }
 }
 
-/// Built-in theme catalog entry `(id, theme)`.
-pub fn builtin_themes() -> Vec<(String, TerminalTheme)> {
-    let mut out: Vec<(String, TerminalTheme)> = Vec::new();
-    for mode in [ThemeMode::Dark, ThemeMode::Light] {
-        for t in looks::terminals(looks::DEFAULT, mode) {
-            let id = t.id.clone();
-            if !out.iter().any(|(existing, _)| existing == &id) {
-                out.push((id, from_olo_terminal(&t)));
-            }
-        }
-    }
-    out.push(("night-owl".into(), night_owl()));
-    out.push(("tokyo-night".into(), tokyo_night()));
-    out.push(("catppuccin-mocha".into(), catppuccin_mocha()));
-    out.push(("catppuccin-latte".into(), catppuccin_latte()));
-    out.push(("dracula".into(), dracula()));
-    out.push(("nord".into(), nord()));
-    out.push(("solarized-dark".into(), solarized_dark()));
-    out.push(("solarized-light".into(), solarized_light()));
-    out
-}
-
-/// Resolve the active [`TerminalTheme`] for the current Olo desktop look and user settings.
+/// The colours to draw with now, for Olo's look and the person's choices.
 pub fn resolve_theme(settings: &Settings, look: &Palette) -> TerminalTheme {
-    let want_dark = match settings.scheme_choice {
-        SchemeChoice::Auto => look.mode == ThemeMode::Dark,
-        SchemeChoice::Light => false,
-        SchemeChoice::Dark => true,
+    let mode = match settings.scheme_choice {
+        SchemeChoice::Auto => look.mode,
+        SchemeChoice::Light => ThemeMode::Light,
+        SchemeChoice::Dark => ThemeMode::Dark,
     };
-    let chosen_id = if want_dark { settings.dark_theme_id.as_deref() } else { settings.light_theme_id.as_deref() };
-
-    let mut theme = if let Some(id) = chosen_id {
-        if let Some(custom) = settings.custom_themes.iter().find(|t| t.name == id) {
-            custom.clone()
-        } else if let Some((_, builtin)) = builtin_themes().into_iter().find(|(bid, _)| bid == id) {
-            builtin
-        } else {
-            default_for_mode(look, want_dark)
-        }
-    } else {
-        default_for_mode(look, want_dark)
-    };
-
-    // Ensure ANSI yellow/amber (slot 3) always reaches WCAG AA 4.5:1 contrast on light backgrounds.
+    let chosen = if mode == ThemeMode::Dark { settings.dark_theme_id.as_deref() } else { settings.light_theme_id.as_deref() };
+    // (One chosen that is no longer among Olo's: the look's own.)
+    let mut theme = chosen.and_then(looks::terminal).map_or_else(|| from_olo_terminal(look.terminal_in(mode)), |t| from_olo_terminal(&t));
+    // ANSI yellow (slot 3) is held to 4.5:1 on a light ground.
     if theme.is_light() && theme.palette.len() > 3 {
         theme.palette[3] = legible(theme.palette[3], theme.background, 4.5);
     }
-    if settings.extended_palette && !theme.extended_palette {
-        theme = theme.with_generated_extended_palette(true);
-    }
-    if let Some(bg) = settings.selection_bg {
-        theme.selection_bg = Some(bg);
-    }
-    if let Some(fg) = settings.selection_fg {
-        theme.selection_fg = Some(fg);
-    }
     theme
-}
-
-fn default_for_mode(look: &Palette, want_dark: bool) -> TerminalTheme {
-    let look_is_dark = look.mode == ThemeMode::Dark;
-    if want_dark == look_is_dark {
-        from_olo_terminal(&look.terminal)
-    } else {
-        let fallback_id = if want_dark { "beos-dark" } else { "beos-light" };
-        looks::terminal(fallback_id).map(|t| from_olo_terminal(&t)).unwrap_or_else(|| from_olo_terminal(&look.terminal))
-    }
 }
 
 /// Build the arguments for `com.superlogical.terminal.set_theme`.
@@ -159,137 +112,25 @@ fn luminance(c: Rgb) -> f32 {
     0.2126 * l[c.r as usize] + 0.7152 * l[c.g as usize] + 0.0722 * l[c.b as usize]
 }
 
-fn hex(v: u32) -> Rgb {
-    Rgb::new(((v >> 16) & 0xff) as u8, ((v >> 8) & 0xff) as u8, (v & 0xff) as u8)
-}
-
-fn make_theme(name: &str, fg: u32, bg: u32, cur: u32, sel: u32, ansi: [u32; 16]) -> TerminalTheme {
-    let mut pal = default_palette();
-    for (i, c) in ansi.iter().enumerate() {
-        pal[i] = hex(*c);
-    }
-    TerminalTheme {
-        name: name.to_owned(),
-        foreground: hex(fg),
-        background: hex(bg),
-        cursor: Some(hex(cur)),
-        cursor_text: None,
-        selection_bg: Some(hex(sel)),
-        selection_fg: None,
-        palette: pal.to_vec(),
-        extended_palette: false,
-    }
-}
-
-fn night_owl() -> TerminalTheme {
-    make_theme(
-        "Night Owl",
-        0xd6deeb,
-        0x011627,
-        0x80a4c2,
-        0x1d3b53,
-        [0x011627, 0xef5350, 0x22da6e, 0xaddb67, 0x82aaff, 0xc792ea, 0x21c7a8, 0xffffff, 0x575656, 0xef5350, 0x22da6e, 0xffeb95, 0x82aaff, 0xc792ea, 0x7fdbca, 0xffffff],
-    )
-}
-
-fn tokyo_night() -> TerminalTheme {
-    make_theme(
-        "Tokyo Night",
-        0xc0caf5,
-        0x1a1b26,
-        0xc0caf5,
-        0x33467c,
-        [0x15161e, 0xf7768e, 0x9ece6a, 0xe0af68, 0x7aa2f7, 0xbb9af7, 0x7dcfff, 0xa9b1d6, 0x414868, 0xf7768e, 0x9ece6a, 0xe0af68, 0x7aa2f7, 0xbb9af7, 0x7dcfff, 0xc0caf5],
-    )
-}
-
-fn catppuccin_mocha() -> TerminalTheme {
-    make_theme(
-        "Catppuccin Mocha",
-        0xcdd6f4,
-        0x1e1e2e,
-        0xf5e0dc,
-        0x585b70,
-        [0x45475a, 0xf38ba8, 0xa6e3a1, 0xf9e2af, 0x89b4fa, 0xf5c2e7, 0x94e2d5, 0xbac2de, 0x585b70, 0xf38ba8, 0xa6e3a1, 0xf9e2af, 0x89b4fa, 0xf5c2e7, 0x94e2d5, 0xa6adc8],
-    )
-}
-
-fn catppuccin_latte() -> TerminalTheme {
-    make_theme(
-        "Catppuccin Latte",
-        0x4c4f69,
-        0xeff1f5,
-        0xdc8a78,
-        0xacb0be,
-        [0x5c5f77, 0xd20f39, 0x40a02b, 0xdf8e1d, 0x1e66f5, 0xea76cb, 0x179299, 0xacb0be, 0x6c6f85, 0xd20f39, 0x40a02b, 0xdf8e1d, 0x1e66f5, 0xea76cb, 0x179299, 0xbcc0cc],
-    )
-}
-
-fn dracula() -> TerminalTheme {
-    make_theme(
-        "Dracula",
-        0xf8f8f2,
-        0x282a36,
-        0xf8f8f2,
-        0x44475a,
-        [0x21222c, 0xff5555, 0x50fa7b, 0xf1fa8c, 0xbd93f9, 0xff79c6, 0x8be9fd, 0xf8f8f2, 0x6272a4, 0xff6e6e, 0x69ff94, 0xffffa5, 0xd6acff, 0xff92df, 0xa4ffff, 0xffffff],
-    )
-}
-
-fn nord() -> TerminalTheme {
-    make_theme(
-        "Nord",
-        0xd8dee9,
-        0x2e3440,
-        0xd8dee9,
-        0x4c566a,
-        [0x3b4252, 0xbf616a, 0xa3be8c, 0xebcb8b, 0x81a1c1, 0xb48ead, 0x88c0d0, 0xe5e9f0, 0x4c566a, 0xbf616a, 0xa3be8c, 0xebcb8b, 0x81a1c1, 0xb48ead, 0x8fbcbb, 0xeceff4],
-    )
-}
-
-fn solarized_dark() -> TerminalTheme {
-    make_theme(
-        "Solarized Dark",
-        0x839496,
-        0x002b36,
-        0x93a1a1,
-        0x073642,
-        [0x073642, 0xdc322f, 0x859900, 0xb58900, 0x268bd2, 0xd33682, 0x2aa198, 0xeee8d5, 0x002b36, 0xcb4b16, 0x586e75, 0x657b83, 0x839496, 0x6c71c4, 0x93a1a1, 0xfdf6e3],
-    )
-}
-
-fn solarized_light() -> TerminalTheme {
-    make_theme(
-        "Solarized Light",
-        0x657b83,
-        0xfdf6e3,
-        0x586e75,
-        0xeee8d5,
-        [0x073642, 0xdc322f, 0x859900, 0xb58900, 0x268bd2, 0xd33682, 0x2aa198, 0xeee8d5, 0x002b36, 0xcb4b16, 0x586e75, 0x657b83, 0x839496, 0x6c71c4, 0x93a1a1, 0xfdf6e3],
-    )
-}
-
-pub fn read_theme(path: &std::path::Path) -> Result<TerminalTheme, String> {
-    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-    let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Custom Theme");
-    read_theme_from(file, name, path.extension().is_some_and(|e| e.eq_ignore_ascii_case("itermcolors")))
-}
-fn read_theme_from(reader: impl std::io::Read, name: &str, iterm: bool) -> Result<TerminalTheme, String> {
-    use std::io::Read;
-    let mut bytes = Vec::new();
-    reader.take(olo_rex_vt::color::MAX_THEME_BYTES as u64 + 1).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
-    if bytes.len() > olo_rex_vt::color::MAX_THEME_BYTES {
-        return Err("Theme files can be up to 1 MiB.".into());
-    }
-    let text = std::str::from_utf8(&bytes).map_err(|e| e.to_string())?;
-    if iterm { olo_rex_vt::parse_itermcolors(name, text) } else { olo_rex_vt::parse_ghostty_theme(name, text) }
-}
 #[cfg(test)]
-mod import_tests {
+mod tests {
     use super::*;
+
+    /// The look's own colours by default, for the mode chosen; one of
+    /// Olo's by its id where chosen; the look's own again for an id
+    /// that is no theme's (a palette Rex once had of its own).
     #[test]
-    fn import_stops_reading_after_the_limit() {
-        assert!(read_theme_from(std::io::repeat(b' '), "test", false).is_err());
-        assert!(read_theme_from(&b"background = #123456"[..], "test", false).is_ok());
+    fn colours_are_olos() {
+        let look = Palette::light();
+        let mut s = Settings::default();
+        assert_eq!(resolve_theme(&s, &look).background, from_olo_terminal(look.terminal_in(ThemeMode::Light)).background);
+        s.scheme_choice = SchemeChoice::Dark;
+        assert_eq!(resolve_theme(&s, &look).background, from_olo_terminal(look.terminal_in(ThemeMode::Dark)).background);
+        assert!(!resolve_theme(&s, &look).is_light());
+        let other = looks::terminals(looks::DEFAULT, ThemeMode::Dark).into_iter().last().expect("Olo has themes");
+        s.dark_theme_id = Some(other.id.clone());
+        assert_eq!(resolve_theme(&s, &look).background, from_olo_terminal(&other).background);
+        s.dark_theme_id = Some("tokyo-night".into());
+        assert_eq!(resolve_theme(&s, &look).background, from_olo_terminal(look.terminal_in(ThemeMode::Dark)).background);
     }
 }

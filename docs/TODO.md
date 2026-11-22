@@ -867,19 +867,12 @@ something nobody here has is in "Blocked", with what it waits for.
   terminal engine's wrapper audited and bounded, the three bugs and
   the freezes found beside them (Defaults hanging Settings, panes not
   following the selection, Find after a restore, a notifier per
-  notice), notices through Olo's service, Preferences ▸ Rex. **Left,
-  in this order**:
-  - *The app follows Preferences ▸ Rex and loses its own Settings
-    window* (`settings.rex`: once, what rex.json holds of hosts, grants
-    and notices is carried over); a Settings menu for a window's quick
-    choices as Terminal has (Text Size, Colors, Tabs, Show Pane
-    Headers); every setting nothing reads, deleted. The server's own
-    state (Tailscale, pairing, reload) into the Hosts window under This
-    computer.
-  - *The menu bar on Terminal's model* (Rex, Edit, View, Pane, Agents,
-    Settings; `app_items`, the kit's history, names that say what they
-    do, each item enabled only when it can act); the 28 catalogued
-    commands nothing dispatches made to work or removed.
+  notice), notices through Olo's service, Preferences ▸ Rex; the app
+  follows Preferences ▸ Rex and has no settings window (what its file
+  held, carried over once), a Settings menu as Terminal's, the menu bar
+  on Terminal's model, Remote Access in one window (HACKING, "Whose
+  settings are whose", "The menu bar", "Remote Access"). **Left, in
+  this order**:
   - *Shortcuts through `app_keys` only* (the private 69 and their
     recorder go; ⇧⌘W, Ctrl+Shift+Left/Right and Meta+D given back to
     Olo); the server's own keymap as a separate layer inside a pane.
@@ -889,23 +882,32 @@ something nobody here has is in "Blocked", with what it waits for.
     scrollback's bar, the split dividers (named for agents).
   - *Words through the words layer; the agents' tree* (a terminal's
     text, the splitters); the demo's prompts without a person's name.
-  - *From the design reviews, not yet done*: the Tailscale group's
-    state line (closer to its checkbox, quieter), its QR beside the
-    button and one window height; "Starting…" with a busy mark (the kit
-    has none small: one for the kit); the forwards window (a dot and a
-    reason that names the session; labels above fields in both boxes);
-    a disconnected host's last-known sessions kept, dimmed; the
-    disconnected mark on the big icon ringed; wording where "Local" is
-    used as a name ("This computer's Rex server isn't connected.").
-  - *The client*: ProxyJump (refused today, with ProxyCommand named);
-    the band between SSH's and the WebSocket's own keepalives and the
-    probe (30 s × 3 and 120 s × 3 while nobody types).
-  - *Preferences ▸ Rex*: icons in the hosts' list; a busy mark and
-    "connected" beside each host.
-  - *The kit*: a disabled `TextField` says `enabled: true` in the
-    agents' tree (its checkbox neighbour says it right); `cut` after a
-    full stop reads as four dots.
-
+  - *What claims to exist and doesn't* (found while taking the
+    Settings window apart): renaming a session or a tab and moving a
+    tab (the hub has the calls, nothing offers them); Auto Approve
+    (removed: it set a flag and approved nothing; Terminal's is the one
+    to share); Keep It Going's message (Terminal has a window for its
+    own: one message for both); the catalogued commands nothing
+    dispatches (with the shortcuts, above).
+  - *The Hosts window, again* (both reviews, 2026-11-21): a list of
+    hosts (light, name, address, sessions) with Add…, Remove and
+    Reconnect under it acting on the one selected, in place of buttons
+    on every row; Add Host as a dialog (the sidebar's Add Host… too);
+    the forwarded ports a window or a tab of their own, each row with
+    its light, its reason and Stop; a host named by an address shown as
+    one. Diagnostics in two groups (the server; this app), saying which
+    host it describes.
+  - *Remote Access, what it can't say yet*: who may connect once it is
+    on (the server's `allow_tailnet_members`: read what the server
+    enforces before wording it), and the devices paired, with a way to
+    remove one, if the server's API has them.
+  - *From the design reviews, not yet done*: "Starting…" with a busy
+    mark (the kit has none small: one for the kit); a disconnected
+    host's last-known sessions kept, dimmed; the disconnected mark on
+    the big icon ringed. For the kit, seen in Rex's windows and every
+    app's: a default button's ring reaches past the edge its face is
+    aligned to; a menu's shortcuts are aligned by their key, so their
+    right ends are ragged; a fixed-size window's tab has a zoom box.
 - **Tracker's columns resized by hand, one width for them all** (Ben,
   2026-11-21: "in tracker columns mode the column widths need to be
   resizable (let's keep it simple so it resizes the width of all

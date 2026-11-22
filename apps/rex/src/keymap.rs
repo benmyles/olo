@@ -11,8 +11,6 @@ use olo_kit::{KeyDownEvent, Keystroke};
 use olo_rex_client::{KeyEvent as RexKeyEvent, KeymapAction, KeymapBinding, KeymapDiagnostic, KeymapLayer, KeymapMode};
 use serde_json::{Value, json};
 
-use crate::settings::OptionAsAlt;
-
 /// Metadata for a single client-registerable Rex action.
 #[derive(Debug, Clone)]
 pub struct ActionSpec {
@@ -58,11 +56,9 @@ impl KeyChord {
         Some(Self { ctrl, alt, shift, meta, key })
     }
 
-    pub fn from_keystroke(ks: &Keystroke, opt_as_alt: OptionAsAlt) -> Self {
-        let alt = match opt_as_alt {
-            OptionAsAlt::Off => false,
-            OptionAsAlt::Both | OptionAsAlt::Left | OptionAsAlt::Right => ks.modifiers.alt,
-        };
+    pub fn from_keystroke(ks: &Keystroke) -> Self {
+        // (Alt is the terminal's Meta, both keys, as in Olo's Terminal.)
+        let alt = ks.modifiers.alt;
         Self { ctrl: ks.modifiers.control, alt, shift: ks.modifiers.shift, meta: ks.modifiers.platform, key: normalize_key_name(&ks.key) }
     }
 
@@ -103,28 +99,6 @@ impl KeyChord {
         };
         s.push_str(&pretty);
         s
-    }
-
-    pub fn format_wire(&self) -> String {
-        let mut parts = Vec::new();
-        if self.ctrl {
-            parts.push("ctrl");
-        }
-        if self.alt {
-            parts.push("alt");
-        }
-        if self.shift {
-            parts.push("shift");
-        }
-        if self.meta {
-            parts.push("meta");
-        }
-        let mut out = parts.join("+");
-        if !out.is_empty() {
-            out.push('+');
-        }
-        out.push_str(&self.key);
-        out
     }
 }
 
@@ -193,7 +167,7 @@ fn normalize_key_name(raw: &str) -> String {
 }
 
 /// Convert an Olo [`KeyDownEvent`] into a Rex rev-19 [`RexKeyEvent`].
-pub fn to_rex_key_event(e: &KeyDownEvent, opt_as_alt: OptionAsAlt) -> RexKeyEvent {
+pub fn to_rex_key_event(e: &KeyDownEvent) -> RexKeyEvent {
     let ks = &e.keystroke;
     let key = match ks.key.as_str() {
         "up" => "arrow_up".to_owned(),
@@ -223,10 +197,7 @@ pub fn to_rex_key_event(e: &KeyDownEvent, opt_as_alt: OptionAsAlt) -> RexKeyEven
             }
         }
     };
-    let alt = match opt_as_alt {
-        OptionAsAlt::Off => false,
-        _ => ks.modifiers.alt,
-    };
+    let alt = ks.modifiers.alt;
     let mut mods_parts = Vec::new();
     if ks.modifiers.control {
         mods_parts.push("ctrl");
@@ -279,7 +250,14 @@ pub fn action_catalog() -> Vec<ActionSpec> {
             args_schema: None,
         },
         ActionSpec { id: "app.toggle_sidebar", title: "Toggle Sidebar", category: "View", keywords: &["hosts", "sessions", "drawer"], default_shortcut: Some("alt+meta+s"), args_schema: None },
-        ActionSpec { id: "app.settings", title: "Settings…", category: "General", keywords: &["preferences", "config", "themes", "fonts"], default_shortcut: Some("meta+comma"), args_schema: None },
+        ActionSpec {
+            id: "app.settings",
+            title: "Rex Settings…",
+            category: "General",
+            keywords: &["preferences", "hosts", "permissions", "notifications"],
+            default_shortcut: Some("meta+comma"),
+            args_schema: None,
+        },
         ActionSpec {
             id: "app.diagnostics",
             title: "Rex Diagnostics…",
@@ -296,17 +274,7 @@ pub fn action_catalog() -> Vec<ActionSpec> {
             default_shortcut: Some("meta+shift+h"),
             args_schema: None,
         },
-        ActionSpec { id: "app.pair_device", title: "Pair Device with QR Code…", category: "Network", keywords: &["mobile", "ios", "qr", "tailscale"], default_shortcut: None, args_schema: None },
-        ActionSpec { id: "app.reveal_toolbar", title: "Reveal Toolbar", category: "View", keywords: &["tabs", "hover", "toolbar"], default_shortcut: Some("alt+meta+t"), args_schema: None },
-        ActionSpec {
-            id: "app.cycle_toolbar_layout",
-            title: "Cycle Toolbar Layout",
-            category: "View",
-            keywords: &["above", "below", "left", "right", "sidebar"],
-            default_shortcut: None,
-            args_schema: None,
-        },
-        ActionSpec { id: "app.toggle_pane_headers", title: "Cycle Pane Headers", category: "View", keywords: &["always", "hover", "hidden"], default_shortcut: None, args_schema: None },
+        ActionSpec { id: "app.pair_device", title: "Remote Access…", category: "Network", keywords: &["pair", "device", "phone", "qr", "tailscale"], default_shortcut: None, args_schema: None },
         ActionSpec { id: "app.new_window", title: "New Window", category: "Window", keywords: &["window", "open"], default_shortcut: Some("meta+n"), args_schema: None },
         ActionSpec { id: "app.close_window", title: "Close Window", category: "Window", keywords: &["window", "close"], default_shortcut: Some("meta+shift+w"), args_schema: None },
         ActionSpec { id: "app.quit", title: "Quit Rex", category: "General", keywords: &["exit", "quit"], default_shortcut: Some("meta+q"), args_schema: None },
@@ -318,7 +286,6 @@ pub fn action_catalog() -> Vec<ActionSpec> {
             default_shortcut: Some("meta+shift+r"),
             args_schema: None,
         },
-        ActionSpec { id: "app.toggle_developer_mode", title: "Toggle Developer Mode", category: "Diagnostics", keywords: &["dev", "inspector", "debug"], default_shortcut: None, args_schema: None },
         // ---- Sessions ----
         ActionSpec { id: "session.new", title: "New Session", category: "Session", keywords: &["create", "workspace", "session"], default_shortcut: Some("alt+meta+n"), args_schema: None },
         ActionSpec { id: "session.rename", title: "Rename Session…", category: "Session", keywords: &["label", "title"], default_shortcut: None, args_schema: None },
@@ -440,14 +407,6 @@ pub fn action_catalog() -> Vec<ActionSpec> {
         },
         // ---- Coding Agents & Automation ----
         ActionSpec { id: "agent.keep_going_toggle", title: "Toggle Keep It Going", category: "Agents", keywords: &["nudge", "continue", "autonomous"], default_shortcut: None, args_schema: None },
-        ActionSpec {
-            id: "agent.auto_approve_toggle",
-            title: "Toggle Auto Approve (30s Countdown)",
-            category: "Agents",
-            keywords: &["yes", "confirm", "yolo"],
-            default_shortcut: None,
-            args_schema: None,
-        },
         ActionSpec {
             id: "agent.jump_next_blocked",
             title: "Jump to Next Blocked Agent",
@@ -736,18 +695,14 @@ impl KeymapEngine {
         self.bindings_by_mode.get("")?.iter().find(|b| b.action == action_id).map(|b| b.sequence.format_human())
     }
 
-    pub fn all_bindings(&self) -> Vec<&ResolvedBinding> {
-        self.bindings_by_mode.get("").map(|v| v.iter().collect()).unwrap_or_default()
-    }
-
-    pub fn handle_key(&mut self, ks: &Keystroke, opt_as_alt: OptionAsAlt) -> KeyMatch {
+    pub fn handle_key(&mut self, ks: &Keystroke) -> KeyMatch {
         if let Some(since) = self.pending_since
             && since.elapsed() > Duration::from_secs(2)
         {
             self.clear_pending();
         }
 
-        let chord = KeyChord::from_keystroke(ks, opt_as_alt);
+        let chord = KeyChord::from_keystroke(ks);
 
         if chord.key == "escape" && !chord.ctrl && !chord.alt && !chord.meta {
             if !self.pending_prefix.is_empty() {
@@ -851,20 +806,5 @@ impl KeymapEngine {
         }
         hints.sort_by(|a, b| a.next_key.cmp(&b.next_key));
         hints
-    }
-}
-
-/// Build a single-binding override layer for the user's "Change Shortcut…" recorder.
-pub fn make_override_layer(action_id: &str, keys: &str) -> KeymapLayer {
-    KeymapLayer {
-        name: format!("olo-user-{action_id}"),
-        bindings: vec![KeymapBinding {
-            keys: keys.split('>').map(|s| s.trim().to_owned()).filter(|s| !s.is_empty()).collect(),
-            action: action_id.to_owned(),
-            args: None,
-            source: Some("Olo Rex Settings".to_owned()),
-            mode: None,
-        }],
-        removals: Vec::new(),
     }
 }

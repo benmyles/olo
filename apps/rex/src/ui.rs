@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::{
-    agent::{AgentActivity, AutoApproveState, KeepGoingState},
+    agent::{AgentActivity, KeepGoingState},
     attention::{Attention, Target},
     bridge,
     copy_mode::{CopyMode, CopyModeAction},
@@ -36,8 +36,8 @@ use crate::{
     keymap::{self, KeyMatch, KeymapEngine},
     links::{self, LinkTarget},
     overlays::{self, ActiveOverlay, JumpItem, JumpTarget, PathBrowserMode, QuickLookContent},
-    panels::{self, AskpassReply, AskpassRequest, OloAskpass, SettingsPanelState},
-    settings::{BarBehavior, Settings, SidebarMode, ToolbarLayout},
+    panels::{self, AskpassReply, AskpassRequest, OloAskpass},
+    settings::{BarBehavior, SchemeChoice, Settings, SidebarMode, ToolbarLayout},
     terminal_pane::{self, Metrics, PanePaintArgs, PaneVisualState},
     themes::{self, hsla},
 };
@@ -50,9 +50,10 @@ pub struct WinId(pub u64);
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum WinRole {
     Workspace,
-    Settings,
     Hosts,
-    QrPairing,
+    /// Remote Access: this computer's server over Tailscale, and a
+    /// device paired with it.
+    Access,
     Diagnostics,
     Askpass,
 }
@@ -77,7 +78,8 @@ pub struct RexApp {
     pub hub: Arc<RexHub>,
     pub askpass: Arc<OloAskpass>,
     pub keymap: KeymapEngine,
-    pub settings_state: SettingsPanelState,
+    /// How the SSH agent stands (asked once as Rex starts), for Diagnostics.
+    pub ssh_agent: olo_rex_client::AgentStatus,
     attention: Attention,
     broadcast_windows: HashSet<(String, String, String)>,
 }
@@ -119,6 +121,13 @@ fn wins() -> olo_sync::MutexGuard<'static, WinRegistry> {
     WINS.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// The desktop's settings for Rex changed (the settings' own thread).
+pub fn follow_desktop_settings(rex: &olo_protocol::RexSettings) {
+    // (The app's lock let go before the hub's is taken.)
+    let Some(hub) = APP.get().map(|m| m.lock().unwrap_or_else(|e| e.into_inner()).hub.clone()) else { return };
+    hub.follow_shared(rex);
+}
+
 pub fn init_app(settings: Settings, _initial_cwd: Option<String>, _restored: Vec<SavedWorkspaceState>) {
     let active_theme = themes::resolve_theme(&settings, &theme::palette());
     let askpass = OloAskpass::new(|| {
@@ -126,15 +135,15 @@ pub fn init_app(settings: Settings, _initial_cwd: Option<String>, _restored: Vec
     });
     let hub = RexHub::start(settings.clone(), active_theme, Some(askpass.clone()), move |notice| handle_hub_notice(notice));
     let keymap = KeymapEngine::new(&settings.keymap_overrides, &[], &[], &[]);
-    let _ = APP.set(Mutex::new(RexApp { hub, askpass, keymap, settings_state: SettingsPanelState::default(), attention: Attention::new(), broadcast_windows: HashSet::new() }));
+    let _ = APP.set(Mutex::new(RexApp { hub, askpass, keymap, ssh_agent: Default::default(), attention: Attention::new(), broadcast_windows: HashSet::new() }));
 
-    // Probe SSH agent status once asynchronously so Settings → Server shows it immediately.
+    // How the SSH agent stands, asked once and off this thread, for Diagnostics.
     let agent_override = settings.ssh_agent_socket.map(PathBuf::from);
     let _ = std::thread::Builder::new().name("rex-ssh-probe".into()).spawn(move || {
         if let Ok(rt) = tokio::runtime::Builder::new_current_thread().enable_all().build() {
             let status = rt.block_on(olo_rex_client::inspect_ssh_agent(agent_override.as_deref()));
             if let Some(m) = APP.get() {
-                m.lock().unwrap_or_else(|e| e.into_inner()).settings_state.ssh_agent_status = status;
+                m.lock().unwrap_or_else(|e| e.into_inner()).ssh_agent = status;
                 broadcast_msg(WinMsg::Redraw);
             }
         }
@@ -306,8 +315,9 @@ impl Feedback {
     }
 }
 
+/// `--settings`: Rex's settings are the desktop's, Preferences ▸ Rex.
 pub fn open_settings_from_cli() {
-    open_or_raise_panel(WinRole::Settings);
+    olo_kit::app_menu::open_settings("rex");
 }
 
 pub fn open_panel_from_cli(role: WinRole) {
@@ -338,29 +348,18 @@ pub fn open_or_raise_panel(role: WinRole) {
     }
     let id = next_win_id();
     let opts = match role {
-        WinRole::Settings => {
-            let snap = {
-                let a = app();
-                let s = a.hub.state.lock().unwrap_or_else(|e| e.into_inner()).settings.clone();
-                s
-            };
-            app().settings_state.opened_snapshot = Some(snap);
-            let mut o = WindowOptions { fixed: true, ..WindowOptions::new("Rex Settings", panels::settings_window_min_width(), 120.0).dialog() };
-            o.restore_key = Some("rex-settings".into());
-            o
-        }
         WinRole::Hosts => {
-            let mut o = WindowOptions { fixed: true, ..WindowOptions::new("Hosts & Port Forwards", 580.0, 120.0).dialog() };
+            let mut o = WindowOptions { fixed: true, ..WindowOptions::new("Hosts", 580.0, 120.0).dialog() };
             o.restore_key = Some("rex-hosts".into());
             o
         }
-        WinRole::QrPairing => {
-            let mut o = WindowOptions { fixed: true, ..WindowOptions::new("Pair Device with QR Code", 340.0, 120.0).dialog() };
-            o.restore_key = Some("rex-qr".into());
+        WinRole::Access => {
+            let mut o = WindowOptions { fixed: true, ..WindowOptions::new("Remote Access", 520.0, 120.0).dialog() };
+            o.restore_key = Some("rex-access".into());
             o
         }
         WinRole::Diagnostics => {
-            let mut o = WindowOptions { fixed: true, ..WindowOptions::new("Rex Diagnostics", 448.0, 120.0).dialog() };
+            let mut o = WindowOptions { fixed: true, ..WindowOptions::new("Diagnostics", 448.0, 120.0).dialog() };
             o.restore_key = Some("rex-diagnostics".into());
             o
         }
@@ -412,13 +411,9 @@ pub enum WinMsg {
     SelectHost(String),
     FindStep(bool),
     FindClose,
-    SettingsTab(usize),
-    SettingsDefaults,
-    SettingsRevert,
-    SelectBridgeHost(String),
-    RecordShortcut(Option<String>),
     HostsAdd,
     HostsManualForward,
+    HostsForwardFrom(String),
     AskpassConfirm(bool),
     AskpassSubmit,
     SidebarMoved,
@@ -452,13 +447,17 @@ pub struct RexWindow {
     pub host_label_field: Option<Child<TextField>>,
     pub host_addr_field: Option<Child<TextField>>,
     pub fwd_port_field: Option<Child<TextField>>,
+    /// The host a port typed in the Hosts window is forwarded from (its key).
+    pub fwd_host: Option<String>,
     pub askpass_field: Option<Child<TextField>>,
     pub preedit: Option<String>,
-    pub toolbar_revealed_until: Option<Instant>,
     pub window_active: bool,
     pub dropping: bool,
     pub unread_marked: bool,
-    pub last_theme_mode: Option<olo_theme::ThemeMode>,
+    /// The look the terminals' colours were last made for: its mode and
+    /// its own terminal colours' id (another theme in the same mode is
+    /// another look).
+    pub last_look: Option<(olo_theme::ThemeMode, String)>,
 }
 
 fn selected_block(session: &olo_rex_client::SessionView) -> Option<&str> {
@@ -503,7 +502,7 @@ impl RexWindow {
                 div()
                     .flex()
                     .flex_col()
-                    .gap(px(if self.role == WinRole::Settings { m::SPACING } else { m::TIGHT }))
+                    .gap(px(m::TIGHT))
                     .w_full()
                     .child(StringView::new(title.clone()).color(style::c(theme::palette().failure)).wrap(true))
                     .children(detail.as_ref().map(|view| div().w_full().h(px(widgets::TextView::line_height() + 2.0 * widgets::TextView::MARGINS.1 + frame)).child(view))),
@@ -591,13 +590,13 @@ impl RexWindow {
             host_label_field: None,
             host_addr_field: None,
             fwd_port_field: None,
+            fwd_host: None,
             askpass_field: None,
             preedit: None,
-            toolbar_revealed_until: None,
             window_active: cx.is_window_active(),
             dropping: false,
             unread_marked: false,
-            last_theme_mode: None,
+            last_look: None,
         }
     }
 
@@ -663,13 +662,13 @@ impl RexWindow {
             host_label_field,
             host_addr_field,
             fwd_port_field,
+            fwd_host: None,
             askpass_field,
             preedit: None,
-            toolbar_revealed_until: None,
             window_active: cx.is_window_active(),
             dropping: false,
             unread_marked: false,
-            last_theme_mode: None,
+            last_look: None,
         }
     }
 
@@ -1034,6 +1033,32 @@ impl RexWindow {
                 self.side_pane.show_pane();
                 cx.invalidate();
             }
+            "app.view_sessions" => {
+                {
+                    let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                    st.settings.sidebar_mode = SidebarMode::Sessions;
+                    st.settings.sidebar_collapsed = false;
+                    st.settings.save();
+                }
+                self.side_pane.show_pane();
+                cx.invalidate();
+            }
+            // Where the tabs are, said outright (it was one command that
+            // went round the four).
+            "tabs.top" | "tabs.side" => {
+                let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                st.settings.toolbar_layout = if action == "tabs.side" { ToolbarLayout::Side } else { ToolbarLayout::Above };
+                st.settings.save();
+                cx.invalidate();
+            }
+            // Pane headers shown or not (the third state, "on hover", had
+            // nothing behind it: it was the same as hidden).
+            "panes.headers" => {
+                let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                st.settings.pane_header_behavior = if st.settings.pane_header_behavior == BarBehavior::Always { BarBehavior::Hidden } else { BarBehavior::Always };
+                st.settings.save();
+                cx.invalidate();
+            }
             "app.toggle_sidebar" => {
                 self.side_pane.toggle();
                 let collapsed = self.side_pane.collapsed();
@@ -1042,45 +1067,14 @@ impl RexWindow {
                 st.settings.save();
                 cx.invalidate();
             }
-            "app.settings" => open_or_raise_panel(WinRole::Settings),
+            "app.settings" => olo_kit::app_menu::open_settings("rex"),
             "app.hosts" => open_or_raise_panel(WinRole::Hosts),
-            "app.pair_device" => open_or_raise_panel(WinRole::QrPairing),
+            "app.pair_device" => open_or_raise_panel(WinRole::Access),
             "app.diagnostics" => open_or_raise_panel(WinRole::Diagnostics),
             "app.new_window" => open_workspace_window(None),
             "app.close_window" => cx.request_close(),
             "app.quit" => olo_kit::quit(),
             "app.reload_config" => hub.reload_server_config(&self.active_host, Feedback::start(self.id)),
-            "app.reveal_toolbar" => {
-                self.toolbar_revealed_until = Some(Instant::now() + Duration::from_secs(4));
-                cx.invalidate();
-            }
-            "app.cycle_toolbar_layout" => {
-                let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
-                st.settings.toolbar_layout = match st.settings.toolbar_layout {
-                    ToolbarLayout::Above => ToolbarLayout::Below,
-                    ToolbarLayout::Below => ToolbarLayout::LeftSidebar,
-                    ToolbarLayout::LeftSidebar => ToolbarLayout::RightSidebar,
-                    ToolbarLayout::RightSidebar => ToolbarLayout::Above,
-                };
-                st.settings.save();
-                cx.invalidate();
-            }
-            "app.toggle_pane_headers" => {
-                let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
-                st.settings.pane_header_behavior = match st.settings.pane_header_behavior {
-                    BarBehavior::Always => BarBehavior::Hover,
-                    BarBehavior::Hover => BarBehavior::Hidden,
-                    BarBehavior::Hidden => BarBehavior::Always,
-                };
-                st.settings.save();
-                cx.invalidate();
-            }
-            "app.toggle_developer_mode" => {
-                let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
-                st.settings.developer_mode = !st.settings.developer_mode;
-                st.settings.save();
-                cx.invalidate();
-            }
             "host.reconnect" => hub.connect_host(&self.active_host),
             "session.new" => hub.create_session(&self.active_host, None, None, Feedback::start(self.id)),
             "session.close" => {
@@ -1185,9 +1179,6 @@ impl RexWindow {
                     };
                     if let Some(txt) = sel.filter(|s| !s.is_empty()) {
                         olo_kit::clipboard::write(olo_kit::ClipboardItem::new_string(txt));
-                        if let Some(vis) = cx.window_state::<PaneVisuals>().0.get(&bk) {
-                            vis.trigger_copy_shine();
-                        }
                         cx.invalidate();
                     }
                 }
@@ -1295,14 +1286,47 @@ impl RexWindow {
                     let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
                     let mut s = st.settings.clone();
                     match action {
-                        "terminal.font_increase" => s.font_size = (s.font_size + 1.0).min(32.0),
-                        "terminal.font_decrease" => s.font_size = (s.font_size - 1.0).max(8.0),
-                        _ => s.font_size = 12.0,
+                        "terminal.font_increase" => s.font_size = (s.font_size + 1.0).min(crate::settings::TEXT_SIZES.1),
+                        "terminal.font_decrease" => s.font_size = (s.font_size - 1.0).max(crate::settings::TEXT_SIZES.0),
+                        // (The size Rex comes with: Default went to 12, and Rex comes with 10.5.)
+                        _ => s.font_size = crate::settings::TEXT_SIZE,
                     }
                     let th = themes::resolve_theme(&s, &theme::palette());
                     (s, th)
                 };
                 hub.update_settings(new_settings, new_theme);
+                cx.invalidate();
+            }
+            // The colours, as Terminal's Colors menu: the look's mode
+            // followed or one mode always; and for each mode the look's
+            // own colours (followed) or one of Olo's, which stays.
+            c if c.starts_with("scheme.") || c.starts_with("colors.") => {
+                let (new_settings, new_theme) = {
+                    let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut s = st.settings.clone();
+                    match c {
+                        "scheme.auto" => s.scheme_choice = SchemeChoice::Auto,
+                        "scheme.light" => s.scheme_choice = SchemeChoice::Light,
+                        "scheme.dark" => s.scheme_choice = SchemeChoice::Dark,
+                        _ => {
+                            let Some((slot, id)) = c.strip_prefix("colors.").and_then(|c| c.split_once(':')) else { return };
+                            if !id.is_empty() && olo_theme::looks::terminal(id).is_none() {
+                                return;
+                            }
+                            let id = Some(id.to_owned()).filter(|id| !id.is_empty());
+                            if slot == "dark" { s.dark_theme_id = id } else { s.light_theme_id = id }
+                        }
+                    }
+                    let th = themes::resolve_theme(&s, &theme::palette());
+                    (s, th)
+                };
+                hub.update_settings(new_settings, new_theme);
+                cx.invalidate();
+            }
+            "activity.include_idle" => {
+                let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                st.settings.activity_include_idle = !st.settings.activity_include_idle;
+                st.settings.save();
                 cx.invalidate();
             }
             "terminal.export_text" | "terminal.export_html" => {
@@ -1356,19 +1380,6 @@ impl RexWindow {
                     cx.invalidate();
                 }
             }
-            "agent.auto_approve_toggle" => {
-                if let Some(bk) = self.focused_block_key()
-                    && let Some(br) = hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).cloned()
-                {
-                    let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
-                    if g.auto_approve.is_some() {
-                        g.auto_approve = None;
-                    } else {
-                        g.auto_approve = Some(AutoApproveState::enabled());
-                    }
-                    cx.invalidate();
-                }
-            }
             "agent.jump_next_blocked" => {
                 let found = {
                     let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -1410,44 +1421,6 @@ impl RexWindow {
                 app().keymap.exit_all_modes();
                 cx.invalidate();
             }
-            "import-theme" => {
-                let start_dir = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"));
-                let feedback = Feedback::start(self.id);
-                let panel = olo_kit::file_panel::FilePanel::open(start_dir)
-                    .filters(vec![olo_kit::file_panel::Filter::new("Terminal Themes (*.itermcolors, Ghostty)").glob("*.itermcolors").glob("*.theme").glob("*")], 0);
-                olo_kit::file_panel::show("Import Terminal Theme", panel, move |ans| {
-                    let olo_kit::file_panel::PanelResult::Chosen(path) = ans.result else {
-                        return;
-                    };
-                    std::thread::spawn(move || {
-                        let parsed = themes::read_theme(&path);
-                        match parsed {
-                            Ok(t) => {
-                                let name = t.name.clone();
-                                let hub = app().hub.clone();
-                                let (new_s, new_t) = {
-                                    let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
-                                    let mut s = st.settings.clone();
-                                    s.custom_themes.retain(|c| c.name != name);
-                                    s.custom_themes.push(t);
-                                    if theme::palette().mode == olo_theme::ThemeMode::Dark {
-                                        s.dark_theme_id = Some(name.clone());
-                                    } else {
-                                        s.light_theme_id = Some(name.clone());
-                                    }
-                                    let th = themes::resolve_theme(&s, &theme::palette());
-                                    (s, th)
-                                };
-                                hub.update_settings(new_s, new_t);
-                                feedback.say(&format!("Imported “{name}”."));
-                            }
-                            Err(e) => {
-                                feedback.problem("Couldn’t import the theme.", e);
-                            }
-                        }
-                    });
-                });
-            }
             "olo.install_remote_shim" => {
                 if let Some(bk) = self.focused_block_key() {
                     hub.install_remote_shim_in_pane(&bk);
@@ -1475,34 +1448,6 @@ impl RexWindow {
 
     fn handle_terminal_key(&mut self, e: &KeyDownEvent, cx: &mut olo_kit::Cx<Self>) {
         // Shortcut recorder inside Settings → Keybindings.
-        if self.role == WinRole::Settings {
-            let recording = app().settings_state.recording_shortcut_for.clone();
-            if let Some(action_id) = recording {
-                if e.keystroke.key == "escape" {
-                    app().settings_state.recording_shortcut_for = None;
-                } else {
-                    let opt = app().hub.state.lock().unwrap_or_else(|e| e.into_inner()).settings.option_as_alt;
-                    let chord = keymap::KeyChord::from_keystroke(&e.keystroke, opt);
-                    let wire = chord.format_wire();
-                    let layer = keymap::make_override_layer(&action_id, &wire);
-                    let hub = app().hub.clone();
-                    let (new_s, new_t) = {
-                        let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
-                        let mut s = st.settings.clone();
-                        s.keymap_overrides.retain(|l| l.name != layer.name);
-                        s.keymap_overrides.push(layer);
-                        let t = themes::resolve_theme(&s, &theme::palette());
-                        (s, t)
-                    };
-                    hub.update_settings(new_s, new_t);
-                    app().settings_state.recording_shortcut_for = None;
-                }
-                cx.invalidate();
-                cx.stop_propagation();
-                return;
-            }
-        }
-
         if self.role != WinRole::Workspace {
             return;
         }
@@ -1580,9 +1525,6 @@ impl RexWindow {
                 if let Some(act) = cm_action {
                     if let CopyModeAction::Yank(txt) = act {
                         olo_kit::clipboard::write(olo_kit::ClipboardItem::new_string(txt));
-                        if let Some(vis) = cx.window_state::<PaneVisuals>().0.get(&bk) {
-                            vis.trigger_copy_shine();
-                        }
                     }
                     cx.invalidate();
                     cx.stop_propagation();
@@ -1592,8 +1534,7 @@ impl RexWindow {
         }
 
         // Match against Rex keymap engine (supports sequences, Which-Key, key modes).
-        let opt_alt = app().hub.state.lock().unwrap_or_else(|e| e.into_inner()).settings.option_as_alt;
-        let km_match = app().keymap.handle_key(&e.keystroke, opt_alt);
+        let km_match = app().keymap.handle_key(&e.keystroke);
         match km_match {
             KeyMatch::Execute { action, args } => {
                 self.execute_action(&action, args, cx);
@@ -1610,19 +1551,16 @@ impl RexWindow {
 
         // Forward terminal keystrokes directly to Rex server (broadcasting to all panes in window if enabled).
         let Some(bk) = self.focused_block_key() else { return };
-        if let Some(vis) = cx.window_state::<PaneVisuals>().0.get(&bk) {
-            vis.reset_blink();
-        }
         let targets = self.input_target_blocks(&bk);
         let hub = app().hub.clone();
 
-        if let Some(bytes) = encode_terminal_special_key(&e.keystroke, opt_alt) {
+        if let Some(bytes) = encode_terminal_special_key(&e.keystroke) {
             for t in targets {
                 hub.send_input(&t, bytes.clone());
             }
             cx.stop_propagation();
         } else if e.keystroke.modifiers.control || e.keystroke.modifiers.alt || e.keystroke.modifiers.platform {
-            let rex_ev = keymap::to_rex_key_event(e, opt_alt);
+            let rex_ev = keymap::to_rex_key_event(e);
             for t in targets {
                 hub.send_rex_key(&t, rex_ev.clone());
             }
@@ -1655,87 +1593,184 @@ impl RexWindow {
         vec![focused.clone()]
     }
 
+    /// The menu bar, on Terminal's model (apps/terminal): the app's own
+    /// menu first (its panels in Preferences, what is made new, what
+    /// closes), Edit, View, Pane, Agents, and a Settings menu for this
+    /// window's quick choices. Every toggle shows its check and every
+    /// item is enabled only when it can act. (It was Rex, File, Edit,
+    /// View, Pane, Tools as the app came: items that cycled through
+    /// states one couldn't see, "Toggle …" with no check, "Export" that
+    /// copied, and Copy enabled with nothing selected.)
     fn build_menu_bar(&mut self) -> Vec<Menu> {
+        let hub = app().hub.clone();
         let broadcast_on = self.active_window_key().is_some_and(|key| app().broadcast_windows.contains(&key));
-        let (dev_mode, sidebar_shown) = (app().hub.state.lock().unwrap_or_else(|e| e.into_inner()).settings.developer_mode, self.side_pane.showing());
+        let sidebar_shown = self.side_pane.showing();
+        let (sidebar_mode, layout, headers, text_size, include_idle, scheme, light, dark) = {
+            let s = &hub.state.lock().unwrap_or_else(|e| e.into_inner()).settings;
+            (s.sidebar_mode, s.toolbar_layout, s.pane_header_behavior, s.font_size, s.activity_include_idle, s.scheme_choice, s.light_theme_id.clone(), s.dark_theme_id.clone())
+        };
+        // For each mode: the look's own colours (whatever Preferences ▸
+        // Themes has, followed as it changes), or one chosen here, which
+        // stays: any theme's. (Terminal's Colors menu, the same.)
+        let look = theme::palette();
+        let pick = |title: &str, mode: olo_theme::ThemeMode| {
+            let chosen = if mode == olo_theme::ThemeMode::Dark { dark.as_deref() } else { light.as_deref() }.filter(|id| olo_theme::looks::terminal(id).is_some());
+            let slot = if mode == olo_theme::ThemeMode::Dark { "dark" } else { "light" };
+            let menu = Menu::new(title.to_owned()).item(olo_kit::tr!("As in Themes ({})", look.terminal_in(mode).name), format!("colors.{slot}:")).checked(chosen.is_none()).separator();
+            olo_theme::looks::terminals(&look.theme, mode).iter().fold(menu, |m, t| m.item(&t.name, format!("colors.{slot}:{}", t.id)).checked(chosen == Some(t.id.as_str())))
+        };
+        let colors = Menu::new("Colors")
+            .item("Match Appearance", "scheme.auto")
+            .checked(scheme == SchemeChoice::Auto)
+            .item("Always Light", "scheme.light")
+            .checked(scheme == SchemeChoice::Light)
+            .item("Always Dark", "scheme.dark")
+            .checked(scheme == SchemeChoice::Dark)
+            .separator()
+            .submenu(pick("Light Colors", olo_theme::ThemeMode::Light))
+            .submenu(pick("Dark Colors", olo_theme::ThemeMode::Dark));
+        // The pane the keyboard is in, and what of it the menus say.
+        let focused = self.focused_block_key();
+        let pane = focused.is_some();
+        let block = focused.as_ref().and_then(|key| hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(key).cloned());
+        let (keep_going, selected, copying) = block.as_ref().map_or((false, false, false), |block| {
+            let g = block.lock().unwrap_or_else(|e| e.into_inner());
+            (g.keep_going.is_some(), g.terminal.has_selection(), g.copy_mode.is_some())
+        });
+        let window = self.resolve_active_session().and_then(|(_, s)| s.active_window().or_else(|| s.windows.first()).map(|w| (w.zoomed_block_id.is_some(), w.all_blocks().count())));
+        let (zoomed, panes) = window.unwrap_or((false, 0));
+        let tab = window.is_some();
+        // A pane of this computer's own server: its folder is one Tracker
+        // can open, and it needs no bridge installed.
+        let here = self.active_host == "local";
 
         vec![
             Menu::new("Rex")
-                .app_items(&[])
-                .item("Command Palette…", "app.command_palette")
-                .item("Settings…", "app.settings")
+                .app_items(&["rex", "notifications"])
+                .item("New Window", "app.new_window")
+                .item("New Session", "session.new")
+                .item("New Tab", "window.new")
                 .separator()
-                .item("Hosts & Port Forwards…", "app.hosts")
-                .item("Pair Device with QR Code…", "app.pair_device")
+                .item("Hosts…", "app.hosts")
+                .item("Remote Access…", "app.pair_device")
+                .item("Diagnostics…", "app.diagnostics")
+                .separator()
                 .item("Reload Server Configuration", "app.reload_config")
                 .separator()
-                .item("Rex Diagnostics…", "app.diagnostics")
-                .item("Developer Mode", "app.toggle_developer_mode")
-                .checked(dev_mode)
-                .close_quit(),
-            Menu::new("File")
-                .item("New Tab", "window.new")
-                .item("New Session", "session.new")
-                .item("New Window", "app.new_window")
-                .item("New Floating Terminal", "layer.new_floating")
-                .separator()
-                .item("Path Browser…", "files.path_browser")
-                .item("Go to Directory…", "files.go_to_dir")
-                .item("Quick Look Selection…", "files.quick_look")
-                .item("Open Folder in Tracker", "files.open_in_tracker")
-                .separator()
-                .item("Export Screen as Plain Text", "terminal.export_text")
-                .item("Export Screen as HTML", "terminal.export_html")
-                .separator()
-                .item("Close Pane", "pane.close")
-                .item("Close Tab", "window.close"),
+                .item("Close Tab", "window.close")
+                .enabled(tab)
+                .item("Close Window", "close")
+                .item("Quit", "quit"),
             Menu::new("Edit")
                 .item("Copy", "terminal.copy")
+                .enabled(selected)
                 .item("Paste", "terminal.paste")
+                .enabled(pane)
+                .item("Paste a Password…", "olo.passwords.fill")
+                .enabled(pane)
+                .separator()
                 .item("Select All", "terminal.select_all")
-                .item("Select Last Command Output", "terminal.select_output")
+                .enabled(pane)
+                .item("Select Last Output", "terminal.select_output")
+                .enabled(pane)
                 .separator()
                 .item("Find…", "terminal.find")
-                .item("Find Next", "terminal.find_next")
+                .enabled(pane)
+                .item("Find Again", "terminal.find_next")
+                .enabled(pane)
                 .item("Find Previous", "terminal.find_previous")
+                .enabled(pane)
                 .separator()
                 .item("Copy Mode", "terminal.copy_mode")
+                .checked(copying)
+                .enabled(pane)
+                .item("Copy Screen as Text", "terminal.export_text")
+                .enabled(pane)
+                .item("Copy Screen as HTML", "terminal.export_html")
+                .enabled(pane)
+                .separator()
                 .item("Clear Scrollback", "terminal.clear_scrollback")
-                .item("Reset Terminal", "terminal.reset"),
+                .enabled(pane)
+                .item("Reset Terminal", "terminal.reset")
+                .enabled(pane),
             Menu::new("View")
+                .item("Show Sidebar", "app.toggle_sidebar")
+                .checked(sidebar_shown)
+                .item("Show Pane Headers", "panes.headers")
+                .checked(headers == BarBehavior::Always)
+                .item("Show Idle Panes in Activity", "activity.include_idle")
+                .checked(include_idle)
+                .separator()
+                .item("Sessions", "app.view_sessions")
+                .checked(sidebar_mode == SidebarMode::Sessions)
+                .item("Activity", "app.view_activity")
+                .checked(sidebar_mode == SidebarMode::Activity)
+                .separator()
                 .item("Go to Anything…", "app.go_to_anything")
-                .item("View Activity", "app.view_activity")
-                .item(if sidebar_shown { "Hide Sidebar" } else { "Show Sidebar" }, "app.toggle_sidebar")
+                .item("Command Palette…", "app.command_palette")
                 .separator()
-                .item("Cycle Toolbar Layout", "app.cycle_toolbar_layout")
-                .item("Cycle Pane Headers", "app.toggle_pane_headers")
-                .item("Reveal Toolbar", "app.reveal_toolbar")
-                .separator()
-                .item("Increase Font Size", "terminal.font_increase")
-                .item("Decrease Font Size", "terminal.font_decrease")
-                .item("Reset Font Size", "terminal.font_reset"),
+                .item("Quick Look", "files.quick_look")
+                .enabled(pane)
+                .item("Browse Folders…", "files.path_browser")
+                .enabled(pane)
+                .item("Go to Folder…", "files.go_to_dir")
+                .enabled(pane)
+                .item(olo_kit_base::tracker::LABEL, "files.open_in_tracker")
+                .enabled(pane && here),
             Menu::new("Pane")
                 .item("Split Right", "pane.split_right")
+                .enabled(pane)
                 .item("Split Down", "pane.split_down")
-                .item("Split Best Fit", "pane.split_best_fit")
+                .enabled(pane)
+                .item("Split to Fit", "pane.split_best_fit")
+                .enabled(pane)
+                .item("New Floating Terminal", "layer.new_floating")
+                .enabled(tab)
                 .separator()
-                .item("Focus Left", "pane.focus_left")
-                .item("Focus Right", "pane.focus_right")
-                .item("Focus Up", "pane.focus_up")
-                .item("Focus Down", "pane.focus_down")
+                .submenu(
+                    Menu::new("Focus")
+                        .item("Left", "pane.focus_left")
+                        .enabled(panes > 1)
+                        .item("Right", "pane.focus_right")
+                        .enabled(panes > 1)
+                        .item("Up", "pane.focus_up")
+                        .enabled(panes > 1)
+                        .item("Down", "pane.focus_down")
+                        .enabled(panes > 1),
+                )
+                .item("Zoom Pane", "pane.zoom_toggle")
+                .checked(zoomed)
+                .enabled(zoomed || panes > 1)
+                .item("Type in All Panes", "pane.broadcast_toggle")
+                .checked(broadcast_on)
+                .enabled(panes > 1 || broadcast_on)
                 .separator()
-                .item("Zoom / Unzoom Pane", "pane.zoom_toggle")
-                .item("Broadcast Input to Window", "pane.broadcast_toggle")
-                .checked(broadcast_on),
-            Menu::new("Tools")
-                .item("Jump to Next Blocked Agent", "agent.jump_next_blocked")
-                .item("Toggle Keep It Going", "agent.keep_going_toggle")
-                .item("Toggle Auto Approve (30s)", "agent.auto_approve_toggle")
-                .item("Mark All Read", "agent.mark_all_read")
+                .item("Close Pane", "pane.close")
+                .enabled(pane),
+            Menu::new("Agents")
+                .item("Next Waiting Agent", "agent.jump_next_blocked")
+                .item("Mark All as Read", "agent.mark_all_read")
                 .separator()
-                .item("Fill Password from Olo Passwords", "olo.passwords.fill")
-                .item("Install Remote Olo Bridge Shims", "olo.install_remote_shim")
-                .item("Install Rex & Olo Agent Skill", "olo.install_remote_skill"),
+                .item("Keep It Going", "agent.keep_going_toggle")
+                .checked(keep_going)
+                .enabled(pane)
+                .separator()
+                .item("Install Olo’s Bridge on This Host", "olo.install_remote_shim")
+                .enabled(pane && !here)
+                .item("Install Rex Skill for Agents", "olo.install_remote_skill")
+                .enabled(pane),
+            Menu::new("Settings")
+                .submenu(
+                    Menu::new("Text Size")
+                        .item("Bigger", "terminal.font_increase")
+                        .enabled(text_size < crate::settings::TEXT_SIZES.1)
+                        .item("Smaller", "terminal.font_decrease")
+                        .enabled(text_size > crate::settings::TEXT_SIZES.0)
+                        .item("Default", "terminal.font_reset")
+                        .enabled(text_size != crate::settings::TEXT_SIZE),
+                )
+                .submenu(colors)
+                .submenu(Menu::new("Tabs").item("Along the Top", "tabs.top").checked(layout == ToolbarLayout::Above).item("Down the Side", "tabs.side").checked(layout == ToolbarLayout::Side)),
         ]
     }
 
@@ -1757,8 +1792,8 @@ impl RexWindow {
 
         // Auto-sync terminal color theme whenever Olo's desktop look flips Light <-> Dark!
         let look = theme::palette();
-        if self.last_theme_mode != Some(look.mode) {
-            self.last_theme_mode = Some(look.mode);
+        if !self.last_look.as_ref().is_some_and(|(mode, id)| *mode == look.mode && *id == look.terminal.id) {
+            self.last_look = Some((look.mode, look.terminal.id.clone()));
             let new_theme = {
                 let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
                 themes::resolve_theme(&st.settings, &look)
@@ -1856,12 +1891,6 @@ impl RexWindow {
         let side_w = side_layout.width();
 
         // Build TabStrip from active session's windows.
-        let show_toolbar = match settings.toolbar_behavior {
-            BarBehavior::Always => true,
-            BarBehavior::Hidden => self.toolbar_revealed_until.is_some_and(|t| t > Instant::now()),
-            BarBehavior::Hover => self.toolbar_revealed_until.is_some_and(|t| t > Instant::now()),
-        };
-
         let mut strip_tabs = Vec::new();
         let mut active_tab_idx = 0usize;
         if let Some((ref hk, ref sess)) = sess_info {
@@ -1897,14 +1926,10 @@ impl RexWindow {
                 } else {
                     format!("Tab {}", idx + 1)
                 };
-                let icon_fn: Option<olo_kit::widgets::strip::PaintFn> = if settings.tab_icon_count > 0 {
-                    let act = tab_act;
-                    Some(Rc::new(move |g: &mut Painter, b: Bounds<Pixels>| {
-                        paint_activity_icon(g, b, act);
-                    }))
-                } else {
-                    None
-                };
+                let act = tab_act;
+                let icon_fn: Option<olo_kit::widgets::strip::PaintFn> = Some(Rc::new(move |g: &mut Painter, b: Bounds<Pixels>| {
+                    paint_activity_icon(g, b, act);
+                }));
                 strip_tabs.push(StripTab {
                     label: label.into(),
                     icon: icon_fn,
@@ -1927,9 +1952,8 @@ impl RexWindow {
         let (tab_content_bg, tab_content_fg) =
             if active_shows_header { (style::c(look.panel_background), style::c(look.panel_text)) } else { (hsla(active_theme.background), hsla(active_theme.foreground)) };
 
-        let is_side_strip = matches!(settings.toolbar_layout, ToolbarLayout::LeftSidebar | ToolbarLayout::RightSidebar);
-        let strip_el: Option<Element> = if show_toolbar
-            && !strip_tabs.is_empty()
+        let is_side_strip = settings.toolbar_layout == ToolbarLayout::Side;
+        let strip_el: Option<Element> = if !strip_tabs.is_empty()
             && let Some((hk, sess)) = &sess_info
         {
             let hub = hub.clone();
@@ -1954,7 +1978,7 @@ impl RexWindow {
             }));
             if is_side_strip {
                 strip = strip.side();
-            } else if !settings.tabs_fill_space {
+            } else {
                 strip = strip.max_tab_width(220.0);
             }
             Some(if is_side_strip { div().w(px(196.0)).h_full().flex_shrink_0().child(strip) } else { div().w_full().h(px(widgets::STRIP_HEIGHT)).flex_shrink_0().child(strip) })
@@ -1979,7 +2003,7 @@ impl RexWindow {
         } else {
             let state = hub.state.lock().unwrap_or_else(|e| e.into_inner());
             let host = state.hosts.get(&self.active_host);
-            let name = host.map_or("Local", |h| h.label.as_str());
+            let name = host.map_or("This computer", |h| h.label.as_str());
             let (message, action, offline) = match host.map(|h| &h.conn_state) {
                 Some(HostConnState::Connected) if let Some((_, sess)) = &sess_info => {
                     let label = if sess.label.is_empty() { &sess.session_id } else { &sess.label };
@@ -2040,7 +2064,7 @@ impl RexWindow {
             None
         };
 
-        // Compose workspace center according to ToolbarLayout (Above / Below / LeftSidebar / RightSidebar).
+        // The tabs along the top of the panes, or down their side.
         let mut center = div().flex_1().min_w_0().min_h_0().flex();
         center = match settings.toolbar_layout {
             ToolbarLayout::Above => {
@@ -2053,18 +2077,7 @@ impl RexWindow {
                 }
                 c.child(panes_el)
             }
-            ToolbarLayout::Below => {
-                let mut c = center.flex_col();
-                if let Some(fb) = find_el {
-                    c = c.child(fb);
-                }
-                c = c.child(panes_el);
-                if let Some(s) = strip_el {
-                    c = c.child(s);
-                }
-                c
-            }
-            ToolbarLayout::LeftSidebar => {
+            ToolbarLayout::Side => {
                 let mut inner = div().flex_1().min_w_0().min_h_0().flex().flex_col();
                 if let Some(fb) = find_el {
                     inner = inner.child(fb);
@@ -2075,18 +2088,6 @@ impl RexWindow {
                     c = c.child(s);
                 }
                 c.child(inner)
-            }
-            ToolbarLayout::RightSidebar => {
-                let mut inner = div().flex_1().min_w_0().min_h_0().flex().flex_col();
-                if let Some(fb) = find_el {
-                    inner = inner.child(fb);
-                }
-                inner = inner.child(panes_el);
-                let mut c = center.flex_row().child(inner);
-                if let Some(s) = strip_el {
-                    c = c.child(s);
-                }
-                c
             }
         };
 
@@ -2444,72 +2445,6 @@ impl RexWindow {
     fn render_secondary_panel(&mut self, cx: &mut olo_kit::Cx<Self>) -> Element {
         let hub = app().hub.clone();
         match self.role {
-            WinRole::Settings => {
-                let settings = hub.state.lock().unwrap_or_else(|e| e.into_inner()).settings.clone();
-                let sstate = app().settings_state.clone();
-                let url = if sstate.tab == 7 {
-                    hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get("local").and_then(|h| h.tailscale.as_ref()).and_then(crate::tailscale::login_link).map(str::to_owned)
-                } else {
-                    None
-                };
-                let qr = self.qr_for(url, cx);
-                let hub_m = hub.clone();
-                let mutate: panels::SettingsMutator = Arc::new(move |f| {
-                    let (new_s, new_t) = {
-                        let st = hub_m.state.lock().unwrap_or_else(|e| e.into_inner());
-                        let mut s = st.settings.clone();
-                        f(&mut s);
-                        let t = themes::resolve_theme(&s, &theme::palette());
-                        (s, t)
-                    };
-                    hub_m.update_settings(new_s, new_t);
-                });
-                let window = self.id;
-                let hub_ts = hub.clone();
-                let hub_rel = hub.clone();
-                let on_tab = cx.msg_with(|i: &usize| WinMsg::SettingsTab(*i));
-                let on_bridge_host = cx.msg_with(|h: &String| WinMsg::SelectBridgeHost(h.clone()));
-                let on_record = cx.msg_with(|act: &Option<String>| WinMsg::RecordShortcut(act.clone()));
-                let on_reload = cx.msg_with(move |_: &()| {
-                    hub_rel.reload_server_config("local", Feedback::start(window));
-                    WinMsg::Redraw
-                });
-                let on_import = cx.msg_with(|_: &()| WinMsg::Command("import-theme".into()));
-                let on_shim = cx.msg_with(|_: &()| WinMsg::Command("olo.install_remote_shim".into()));
-                let on_skill = cx.msg_with(|_: &()| WinMsg::Command("olo.install_remote_skill".into()));
-                let on_ts = cx.msg_with(move |action: &crate::tailscale::Action| {
-                    hub_ts.change_tailscale("local", action.clone(), Feedback::start(window));
-                    WinMsg::Redraw
-                });
-                let on_defaults = cx.msg_with(|_: &()| WinMsg::SettingsDefaults);
-                let on_revert = cx.msg_with(|_: &()| WinMsg::SettingsRevert);
-                let on_close = cx.msg_with(|_: &()| WinMsg::CloseWindow);
-                let feedback = self.feedback_line(cx);
-                let a = app();
-                let el = panels::render_settings_panel(
-                    cx,
-                    &settings,
-                    &sstate,
-                    &hub,
-                    &a.keymap,
-                    feedback,
-                    qr,
-                    on_tab,
-                    mutate,
-                    on_bridge_host,
-                    on_record,
-                    on_reload,
-                    on_import,
-                    on_shim,
-                    on_skill,
-                    on_ts,
-                    on_defaults,
-                    on_revert,
-                    on_close,
-                );
-                drop(a);
-                div().w_full().track_focus(&self.focus).on_key_down(cx.listener(|w, e: &KeyDownEvent, cx| w.handle_terminal_key(e, cx))).child(el)
-            }
             WinRole::Hosts => {
                 let (Some(lf), Some(af), Some(pf)) = (&self.host_label_field, &self.host_addr_field, &self.fwd_port_field) else {
                     return div();
@@ -2519,12 +2454,14 @@ impl RexWindow {
                 let window = self.id;
                 let hub_f = hub.clone();
                 let hub_s = hub.clone();
+                let from = self.fwd_host.clone();
                 let panel = panels::render_hosts_panel(
                     cx,
                     &hub,
                     lf,
                     af,
                     pf,
+                    from.as_deref(),
                     cx.msg_with(|_: &()| WinMsg::HostsAdd),
                     cx.msg_with(move |hk: &String| {
                         hub_r.connect_host(hk);
@@ -2534,8 +2471,12 @@ impl RexWindow {
                         hub_d.remove_host(hk);
                         WinMsg::Redraw
                     }),
-                    cx.msg_with(move |(hk, sid, port, open): &(String, String, u16, bool)| {
-                        hub_f.add_local_forward(hk, sid, "127.0.0.1".to_owned(), *port, 0, *open, Feedback::start(window));
+                    cx.msg_with(move |(hk, sid, port, forward): &(String, String, u16, bool)| {
+                        if *forward {
+                            hub_f.add_local_forward(hk, sid, "127.0.0.1".to_owned(), *port, 0, true, Feedback::start(window));
+                        } else {
+                            hub_f.open_local_port(*port, Feedback::start(window));
+                        }
                         WinMsg::Redraw
                     }),
                     cx.msg_with(move |fid: &String| {
@@ -2543,23 +2484,36 @@ impl RexWindow {
                         WinMsg::Redraw
                     }),
                     cx.msg_with(|_: &()| WinMsg::HostsManualForward),
+                    cx.msg_with(|key: &String| WinMsg::HostsForwardFrom(key.clone())),
                     cx.msg_with(|_: &()| WinMsg::CloseWindow),
                 );
                 div().w_full().flex().flex_col().child(panel).children(self.feedback_line(cx).map(|el| div().px(px(m::WINDOW_INSET)).pb(px(m::SPACING)).child(el)))
             }
-            WinRole::QrPairing => {
-                let url = {
+            WinRole::Access => {
+                let step = {
                     let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
-                    st.hosts
-                        .get("local")
-                        .and_then(|h| h.tailscale.as_ref())
-                        .and_then(|ts| ts.https.as_ref().and_then(|h| h.url.clone()).or_else(|| ts.dns_name.as_ref().map(|d| format!("https://{d}"))))
+                    let local = st.hosts.get("local").filter(|h| h.conn_state == HostConnState::Connected);
+                    panels::Step::of(local.and_then(|h| h.tailscale.as_ref()))
                 };
-                let qr = self.qr_for(url.clone(), cx);
-                panels::render_qr_pairing_panel(url, qr, cx.msg_with(|u: &String| WinMsg::SetClipboard(u.clone())), cx.msg_with(|_: &()| WinMsg::CloseWindow))
+                let code = self.qr_for(step.code().map(str::to_owned), cx);
+                let window = self.id;
+                let hub_ts = hub.clone();
+                let feedback = self.feedback_line(cx);
+                panels::render_access_panel(
+                    &hub,
+                    feedback,
+                    code,
+                    cx.msg_with(move |action: &crate::tailscale::Action| {
+                        hub_ts.change_tailscale("local", action.clone(), Feedback::start(window));
+                        WinMsg::Redraw
+                    }),
+                    cx.msg_with(|u: &String| WinMsg::SetClipboard(u.clone())),
+                    cx.msg_with(|_: &()| WinMsg::CloseWindow),
+                )
             }
             WinRole::Diagnostics => panels::render_diagnostics_panel(
                 &hub,
+                &app().ssh_agent.clone(),
                 cx.msg_with(|v: &String| WinMsg::SetClipboard(v.clone())),
                 cx.msg_with(|d: &String| WinMsg::SetClipboard(d.clone())),
                 cx.msg_with(|_: &()| WinMsg::CloseWindow),
@@ -2637,7 +2591,7 @@ impl View for RexWindow {
             WinMsg::Problem(serial, title, detail) => {
                 if self.feedback_serial == serial {
                     self.cancel_preview();
-                    let panel = self.role == WinRole::Settings;
+                    let panel = self.role == WinRole::Access;
                     let view = detail.map(|s| widgets::text_view(cx, |v| v.panel_well(panel).with_text(s, None).auto_hide(true)));
                     self.problem = Some((title, view));
                     cx.invalidate();
@@ -2838,37 +2792,6 @@ impl View for RexWindow {
                 self.focus.focus(cx);
                 cx.invalidate();
             }
-            WinMsg::SettingsTab(t) => {
-                self.clear_feedback();
-                app().settings_state.tab = t;
-                cx.invalidate();
-            }
-            WinMsg::SettingsDefaults => {
-                let hub = app().hub.clone();
-                let def = hub.state.lock().unwrap_or_else(|e| e.into_inner()).settings.preference_defaults();
-                let new_t = themes::resolve_theme(&def, &theme::palette());
-                hub.update_settings(def, new_t);
-                cx.invalidate();
-            }
-            WinMsg::SettingsRevert => {
-                let (hub, snap) = {
-                    let a = app();
-                    (a.hub.clone(), a.settings_state.opened_snapshot.clone())
-                };
-                if let Some(orig) = snap {
-                    let new_t = themes::resolve_theme(&orig, &theme::palette());
-                    hub.update_settings(orig, new_t);
-                    cx.invalidate();
-                }
-            }
-            WinMsg::SelectBridgeHost(h) => {
-                app().settings_state.selected_bridge_host = h;
-                cx.invalidate();
-            }
-            WinMsg::RecordShortcut(act) => {
-                app().settings_state.recording_shortcut_for = act;
-                cx.invalidate();
-            }
             WinMsg::HostsAdd => {
                 let label = self.host_label_field.as_ref().map(|f| f.read(cx).text().trim().to_owned()).unwrap_or_default();
                 let addr = self.host_addr_field.as_ref().map(|f| f.read(cx).text().trim().to_owned()).unwrap_or_default();
@@ -2886,15 +2809,22 @@ impl View for RexWindow {
                     cx.invalidate();
                 }
             }
+            WinMsg::HostsForwardFrom(key) => {
+                self.fwd_host = Some(key);
+                cx.invalidate();
+            }
             WinMsg::HostsManualForward => {
                 let port_s = self.fwd_port_field.as_ref().map(|f| f.read(cx).text().trim().to_owned()).unwrap_or_default();
                 if let Ok(port) = port_s.parse::<u16>()
                     && port > 0
                 {
                     let hub = app().hub.clone();
+                    // From the host chosen (the first of the others, with none chosen),
+                    // through a session of it.
                     let target = {
                         let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
-                        st.hosts.values().find_map(|h| h.session_summaries.first().map(|s| (h.key.clone(), s.session_id.clone())))
+                        let key = self.fwd_host.clone().or_else(|| st.host_order.iter().find(|k| st.hosts.get(*k).is_some_and(|h| !h.is_local)).cloned());
+                        key.and_then(|key| st.hosts.get(&key)).and_then(|h| h.session_summaries.first().map(|s| (h.key.clone(), s.session_id.clone())))
                     };
                     if let Some((hk, sid)) = target {
                         hub.add_local_forward(&hk, &sid, "127.0.0.1".to_owned(), port, 0, true, Feedback::start(self.id));
@@ -3101,7 +3031,7 @@ impl View for PanesView {
         let Some(win_view) = sess.active_window().or_else(|| sess.windows.first()).cloned() else { return div() };
 
         let metrics = Metrics::from_settings(scale, &settings);
-        let pad = (settings.padding_x, settings.padding_y);
+        let pad = crate::settings::PADDING;
         let win_id = self.win_id;
 
         // Render tiled layer (or zoomed block) + any normal/minimized floating layers!
@@ -3419,18 +3349,9 @@ fn render_single_pane(
         return div().size_full().child(StringView::new("Attaching terminal stream…").dim(true));
     };
 
-    let (creator_name, title, pwd, activity, ports_list, upload_prog, password_prompt, auto_approve_rem) = {
+    let (creator_name, title, pwd, activity, ports_list, upload_prog, password_prompt) = {
         let g = br.lock().unwrap_or_else(|e| e.into_inner());
-        (
-            g.creator_name.clone(),
-            g.title.clone(),
-            g.pwd.clone(),
-            g.agent_activity,
-            g.ports.ports.iter().map(|p| p.port).collect::<Vec<u16>>(),
-            g.upload_progress.clone(),
-            g.password_prompt,
-            g.auto_approve.as_ref().and_then(|a| a.remaining_secs()),
-        )
+        (g.creator_name.clone(), g.title.clone(), g.pwd.clone(), g.agent_activity, g.ports.ports.iter().map(|p| p.port).collect::<Vec<u16>>(), g.upload_progress.clone(), g.password_prompt)
     };
 
     // Native onboarding walkthrough card for `com.superlogical.onboarding` blocks!
@@ -3464,7 +3385,7 @@ fn render_single_pane(
     let git_info = hub.git_info_for(&bk, &pwd);
 
     let show_header = (has_splits && settings.pane_header_behavior == BarBehavior::Always) || zoomed;
-    let header_h = settings.pane_header_height();
+    let header_h = crate::settings::PANE_HEADER;
     let header_el: Option<Element> = if show_header {
         let mut label_parts = Vec::new();
         if !title.is_empty() {
@@ -3499,8 +3420,7 @@ fn render_single_pane(
             + if show_extras && ports_pill.is_some() { 48.0 + m::TIGHT } else { 0.0 }
             + if show_extras && zoom_pill.is_some() { 54.0 + m::TIGHT } else { 0.0 };
 
-        let custom_accent = settings.active_pane_highlight_color.map(hsla);
-        let show_hl = focused && settings.active_pane_highlight;
+        let show_hl = focused;
         let bk_click = bk.clone();
         let bk_split_r = bk.clone();
         let bk_split_d = bk.clone();
@@ -3520,7 +3440,7 @@ fn render_single_pane(
             if show_hl {
                 // Place a high-contrast amber/yellow focus bar along the bottom edge of the focused pane header:
                 // rich ochre in Light mode (>= 4.5:1 on pale panel) and Olo yellow in Dark mode.
-                let bar_color = custom_accent.unwrap_or_else(|| if p.mode == olo_theme::ThemeMode::Light { style::c([168, 102, 0, 255]) } else { style::c(p.tab_focused) });
+                let bar_color = if p.mode == olo_theme::ThemeMode::Light { style::c([168, 102, 0, 255]) } else { style::c(p.tab_focused) };
                 let bar_h = if p.mode == olo_theme::ThemeMode::Light { 2.5 } else { 2.0 };
                 g.paint_quad(olo_kit::fill(Bounds::new(point(b.left(), b.bottom() - px(bar_h)), size(b.size.width, px(bar_h))), bar_color));
             }
@@ -3594,7 +3514,6 @@ fn render_single_pane(
     let br_paint = br.clone();
     let bk_paint = bk.clone();
     let vis_paint = visual.clone();
-    let settings_paint = settings.clone();
     let theme_paint = active_theme.clone();
     let metrics_paint = metrics.clone();
 
@@ -3615,7 +3534,6 @@ fn render_single_pane(
     let pane_m1 = cx.messenger();
     let pane_m2 = cx.messenger();
     let pane_m3 = cx.messenger();
-    let pane_m4 = cx.messenger();
 
     let hub_paint = hub.clone();
     let screen_canvas = canvas(move |g, rect| {
@@ -3646,7 +3564,6 @@ fn render_single_pane(
                 term: &mut br_ref.terminal,
                 frame: &br_ref.frame,
                 theme: &theme_paint,
-                settings: &settings_paint,
                 metrics: &metrics_paint,
                 focused,
                 window_active: true,
@@ -3654,7 +3571,6 @@ fn render_single_pane(
                 search_matches: &search_matches,
                 hover_link: None,
                 preedit: None,
-                reduce_motion: false,
             },
             &vis_paint,
         );
@@ -3737,7 +3653,6 @@ fn render_single_pane(
             .item("Quick Look Selection…", "files.quick_look")
             .separator()
             .item("Toggle Keep It Going", "agent.keep_going_toggle")
-            .item("Toggle Auto Approve (30s)", "agent.auto_approve_toggle")
             .separator()
             .item("Clear Scrollback", "terminal.clear_scrollback")
             .item("Close Pane", "pane.close");
@@ -3787,15 +3702,6 @@ fn render_single_pane(
 
     if let Some((fname, frac)) = upload_prog {
         pane_col = pane_col.child(div().w_full().px(px(m::SPACING)).py(px(4.0)).child(StatusBar::new(frac).label(format!("Uploading {fname}…"))));
-    }
-
-    if let Some(rem) = auto_approve_rem {
-        let br_stop = br.clone();
-        let rect = visual.bounds.get();
-        pane_col = pane_col.child(overlays::render_auto_approve_pill(rect, rem, move |_, _| {
-            br_stop.lock().unwrap_or_else(|e| e.into_inner()).auto_approve = None;
-            pane_m4.send(());
-        }));
     }
 
     pane_col
@@ -4076,12 +3982,9 @@ fn activity_sort_rank(a: AgentActivity) -> u8 {
 
 /// Encode special keys (Enter, Backspace, Tab, Esc, Arrows, Ctrl+letter, Alt+letter, F1-F12)
 /// into standard VT escape sequences for direct responsive PTY transmission.
-fn encode_terminal_special_key(ks: &olo_kit::Keystroke, opt_as_alt: crate::settings::OptionAsAlt) -> Option<Vec<u8>> {
+fn encode_terminal_special_key(ks: &olo_kit::Keystroke) -> Option<Vec<u8>> {
     let ctrl = ks.modifiers.control;
-    let alt = match opt_as_alt {
-        crate::settings::OptionAsAlt::Off => false,
-        _ => ks.modifiers.alt,
-    };
+    let alt = ks.modifiers.alt;
     let shift = ks.modifiers.shift;
     let meta = ks.modifiers.platform;
     if meta {

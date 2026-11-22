@@ -50,7 +50,7 @@ pub fn state_line(status: Option<&TailscaleStatus>, connected: bool) -> String {
     }
     let Some(s) = status else { return olo_kit::words::tr("Tailscale status is unavailable.").into() };
     match s.state.as_str() {
-        "disabled" | "stopped" => olo_kit::words::tr("Tailscale is off.").into(),
+        "disabled" | "stopped" => olo_kit::words::tr("Only this computer can reach these sessions.").into(),
         "starting" => olo_kit::words::tr("Starting Tailscale…").into(),
         "needs_login" => olo_kit::words::tr("Sign in to connect this server to Tailscale.").into(),
         "running" | "connected" => s

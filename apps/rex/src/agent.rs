@@ -6,7 +6,6 @@ use std::time::{Duration, Instant};
 use olo_rex_client::{ProgramPriority, ProgramStatusRecord};
 
 /// Delay before Auto Approve sends confirmation to a blocked agent prompt.
-pub const AUTO_APPROVE_DELAY: Duration = Duration::from_secs(30);
 
 /// High-level agent state shown on tab icons, pane headers, Activity sidebar,
 /// and Deskbar notifications.
@@ -112,42 +111,5 @@ impl KeepGoingState {
             }
             _ => None,
         }
-    }
-}
-
-/// Per-pane Auto Approve state: only enabled after explicit human confirmation,
-/// showing a 30-second countdown with a Stop button whenever the agent blocks
-/// on a permission prompt.
-#[derive(Debug, Clone)]
-pub struct AutoApproveState {
-    pub countdown_started: Option<Instant>,
-}
-
-impl AutoApproveState {
-    pub fn enabled() -> Self {
-        Self { countdown_started: None }
-    }
-
-    /// Remaining whole seconds if a countdown is active.
-    pub fn remaining_secs(&self) -> Option<u32> {
-        let start = self.countdown_started?;
-        let elapsed = start.elapsed();
-        if elapsed >= AUTO_APPROVE_DELAY { Some(0) } else { Some((AUTO_APPROVE_DELAY - elapsed).as_secs() as u32 + 1) }
-    }
-
-    /// Tick with current activity; returns `true` once the 30 s countdown expires
-    /// and the approval keystroke (`\r`) should be sent.
-    #[allow(dead_code)]
-    pub fn tick(&mut self, activity: AgentActivity) -> bool {
-        if activity == AgentActivity::Blocked {
-            let start = *self.countdown_started.get_or_insert_with(Instant::now);
-            if start.elapsed() >= AUTO_APPROVE_DELAY {
-                self.countdown_started = None;
-                return true;
-            }
-        } else {
-            self.countdown_started = None;
-        }
-        false
     }
 }

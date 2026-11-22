@@ -5,8 +5,6 @@ use std::sync::OnceLock;
 
 use regex::Regex;
 
-use crate::settings::{CustomSchemePolicy, Settings};
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LinkTarget {
     Url(String),
@@ -59,33 +57,6 @@ pub fn link_at(line: &str, row: u32, col: u16, osc8_uri: Option<String>) -> Opti
         }
     }
     None
-}
-
-/// Whether `url` uses a standard safe web scheme (`http`, `https`, `mailto`).
-#[allow(dead_code)]
-pub fn is_standard_scheme(url: &str) -> bool {
-    let lower = url.to_ascii_lowercase();
-    lower.starts_with("http://") || lower.starts_with("https://") || lower.starts_with("mailto:")
-}
-
-/// Extract scheme prefix (e.g. `vscode`, `obsidian`, `http`) from `url`.
-#[allow(dead_code)]
-pub fn url_scheme(url: &str) -> Option<String> {
-    url.split_once("://").map(|(s, _)| s.to_ascii_lowercase())
-}
-
-/// Check if a custom URL scheme should open immediately, ask, or be blocked.
-#[allow(dead_code)]
-pub fn custom_scheme_decision(settings: &Settings, url: &str) -> CustomSchemePolicy {
-    if is_standard_scheme(url) {
-        return CustomSchemePolicy::Always;
-    }
-    if let Some(scheme) = url_scheme(url)
-        && settings.trusted_links.iter().any(|t| t.eq_ignore_ascii_case(&scheme) || url.starts_with(t))
-    {
-        return CustomSchemePolicy::Always;
-    }
-    settings.custom_scheme_policy
 }
 
 /// Parse `http://localhost:<port>...` or `http://127.0.0.1:<port>...` to extract `(host, port)`

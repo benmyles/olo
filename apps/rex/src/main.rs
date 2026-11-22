@@ -17,6 +17,7 @@ mod links;
 mod overlays;
 mod panels;
 mod settings;
+mod shared;
 mod tailscale;
 mod terminal_pane;
 mod themes;
@@ -122,7 +123,17 @@ fn main() {
         if workspaces.is_empty() { None } else { serde_json::to_string(&SavedAppState { workspaces }).ok() }
     });
 
-    let settings = Settings::load();
+    let mut settings = Settings::load();
+    // The hosts, what each may do here and the notices are the desktop's
+    // (Preferences ▸ Rex): read before anything is connected. The first
+    // time, what Rex's own file held of them is carried over; the
+    // settings are told on a thread of their own, and this start goes by
+    // the same merged values meanwhile.
+    if let Some(desktop) = olo_kit_base::settings::current() {
+        let rex = shared::adopt(&mut settings, desktop.rex);
+        shared::apply(&rex, &mut settings);
+        settings.save();
+    }
 
     olo_kit::run(APP_ID, move |app_cx| {
         instance::listen(APP_ID, olo_kit::proxy());
@@ -146,7 +157,7 @@ fn main() {
                 } else if req.open_diagnostics {
                     ui::open_panel_from_cli(ui::WinRole::Diagnostics);
                 } else if req.open_qr {
-                    ui::open_panel_from_cli(ui::WinRole::QrPairing);
+                    ui::open_panel_from_cli(ui::WinRole::Access);
                 } else if req.open_palette {
                     ui::run_workspace_command_from_cli("app.command_palette");
                 } else if req.open_goto {
@@ -162,6 +173,10 @@ fn main() {
         });
 
         ui::init_app(settings.clone(), cli.dir.clone(), restored_workspaces.clone());
+        // And followed from then on: a host added or removed in
+        // Preferences appears or goes at once, a permission withdrawn
+        // stops the next request.
+        olo_kit_base::settings::watch(|s| ui::follow_desktop_settings(&s.rex));
 
         if !restored_workspaces.is_empty() {
             for ws in restored_workspaces {
@@ -188,7 +203,7 @@ fn main() {
             ui::open_panel_from_cli(ui::WinRole::Diagnostics);
         }
         if cli.open_qr {
-            ui::open_panel_from_cli(ui::WinRole::QrPairing);
+            ui::open_panel_from_cli(ui::WinRole::Access);
         }
         if cli.open_palette {
             ui::run_workspace_command_from_cli("app.command_palette");

@@ -694,11 +694,11 @@ fn other(mode: ThemeMode) -> ThemeMode {
     }
 }
 
-/// The palette for theme `theme` (an id; unknown ones are the default) in
-/// `mode`, as the theme comes. Made once and kept.
-pub fn palette(theme: &str, mode: ThemeMode) -> Palette {
+/// Every theme's palette, light then dark, in [`THEMES`]' order, as the
+/// themes come. Made once and kept.
+fn made() -> &'static [[Palette; 2]] {
     static MADE: OnceLock<Vec<[Palette; 2]>> = OnceLock::new();
-    let made = MADE.get_or_init(|| {
+    MADE.get_or_init(|| {
         THEMES
             .iter()
             .map(|t| {
@@ -707,10 +707,20 @@ pub fn palette(theme: &str, mode: ThemeMode) -> Palette {
                 [light, dark]
             })
             .collect()
-    });
+    })
+}
+
+/// [`palette`], where it is kept.
+fn kept(theme: &str, mode: ThemeMode) -> &'static Palette {
     let t = resolve(theme);
     let at = THEMES.iter().position(|x| x.id == t.id).unwrap_or(0);
-    made[at][if mode == ThemeMode::Dark { 1 } else { 0 }].clone()
+    &made()[at][if mode == ThemeMode::Dark { 1 } else { 0 }]
+}
+
+/// The palette for theme `theme` (an id; unknown ones are the default) in
+/// `mode`, as the theme comes. Made once and kept.
+pub fn palette(theme: &str, mode: ThemeMode) -> Palette {
+    kept(theme, mode).clone()
 }
 
 /// The palette for theme `theme` in `mode` with what the person changed
@@ -970,13 +980,18 @@ pub fn build(s: &Seeds, mode: ThemeMode, terminal: Terminal) -> Palette {
 /// The terminal colours Terminal offers in `mode` while theme `theme` is
 /// on: the theme's own, then every other theme's (one that several
 /// share, Catppuccin's Latte, once).
+///
+/// Read from the kept palettes, their terminals alone copied: a menu is
+/// made of this at every key that may be an item's (Terminal's Colors,
+/// Rex's), and it copied every theme's whole palette to read one field
+/// of each (228 µs for both modes' lists and two [`terminal`]s; 5 µs so).
 pub fn terminals(theme: &str, mode: ThemeMode) -> Vec<Terminal> {
-    let t = resolve(theme);
-    let mut all = vec![palette(t.id, mode).terminal];
-    for other in THEMES {
-        let terminal = palette(other.id, mode).terminal;
+    let m = if mode == ThemeMode::Dark { 1 } else { 0 };
+    let mut all = vec![kept(theme, mode).terminal.clone()];
+    for other in made() {
+        let terminal = &other[m].terminal;
         if !all.iter().any(|t| t.id == terminal.id) {
-            all.push(terminal);
+            all.push(terminal.clone());
         }
     }
     all
@@ -985,11 +1000,34 @@ pub fn terminals(theme: &str, mode: ThemeMode) -> Vec<Terminal> {
 /// The terminal colours `id` names (a theme's own in a mode:
 /// `classic-light`, `beos-dark`, `dracula-dark`; `catppuccin-latte`).
 pub fn terminal(id: &str) -> Option<Terminal> {
-    THEMES.iter().flat_map(|t| [ThemeMode::Light, ThemeMode::Dark].map(|m| palette(t.id, m).terminal)).find(|t| t.id == id)
+    made().iter().flatten().map(|p| &p.terminal).find(|t| t.id == id).cloned()
 }
 
 #[cfg(test)]
 mod tests {
+    /// The terminals offered and found by id are the themes' own, in the
+    /// themes' order, as when each was read from a copy of its whole
+    /// palette.
+    #[test]
+    fn the_terminals_offered_are_the_themes_own() {
+        for mode in [ThemeMode::Light, ThemeMode::Dark] {
+            for theme in THEMES {
+                let mut was = vec![palette(theme.id, mode).terminal];
+                for other in THEMES {
+                    let terminal = palette(other.id, mode).terminal;
+                    if !was.iter().any(|t| t.id == terminal.id) {
+                        was.push(terminal);
+                    }
+                }
+                assert_eq!(terminals(theme.id, mode), was, "{} {mode:?}", theme.id);
+                let own = palette(theme.id, mode).terminal;
+                assert_eq!(terminal(&own.id).map(|t| t.id), Some(own.id));
+            }
+        }
+        assert_eq!(terminals("no-such-theme", ThemeMode::Light), terminals(DEFAULT, ThemeMode::Light));
+        assert!(terminal("no-such-terminal").is_none());
+    }
+
     use super::*;
     use crate::{Hue, contrast};
 

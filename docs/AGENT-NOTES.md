@@ -900,6 +900,50 @@ frames a second with nobody at it):
   in three hours. Stop an agent that is done; keep the last tenth for
   the looks a commit needs.
 
+### Taking a settings window apart (Rex, 2026-11-21)
+
+What was learned making Rex keep its settings as Olo's apps do:
+
+- **Ask of each setting who reads it, then of each reader whether it
+  acts.** A table of fields against their uses (grep, one row a field)
+  found two thirds of sixty with no reader. It didn't find the ones
+  whose only readers were their own switch and its check mark (Developer
+  Mode), nor a toggle whose state nothing ever advanced (Auto Approve:
+  its `tick` was marked `#[allow(dead_code)]`). `grep -n
+  "allow(dead_code)"` over an app is a list of what claims to exist.
+- **A test that calls `olo_kit::settings::update` writes somebody's
+  settings.** The settings' socket is found by `OLO_SOCKET` alone, so
+  under `env -u OLO_SOCKET` nothing happens; run from a shell of a
+  session (the person's Terminal, as they might), the same test would
+  write that session's settings. What tells the desktop is a parameter
+  of the thing tested (`shared::adopt_telling`), and the test tells
+  nobody.
+- **A test session's config is its own folder**
+  (`/var/tmp/olo-dev/NAME/config`, its `XDG_CONFIG_HOME`), not
+  `--home`'s `.config`: a file an app is to find at start goes there.
+- **What a menu is made of is made at every key that may be an item's**
+  (`MenuBar::of`). Time what it calls: a list that looked free
+  (`looks::terminals`) copied every theme's whole palette, 228 µs a
+  time, in Terminal for months.
+- **A before and an after measured an hour apart measure the hour.**
+  The same build's frame took 0.5 ms and then 0.9 ms, the machine's
+  load average having gone from a few to 36 (other work of the
+  person's). Run the two in turn, twice (before, after, before, after),
+  and say the load beside the numbers.
+- **A worktree for the next piece while the tree is in a push.** The
+  hook's release build and lint take a quarter of an hour during which
+  the tree must not change: `git worktree add /var/tmp/…/NAME -b BRANCH
+  HEAD`, work there (its own `target/`, kache behind it; tsession's
+  programs come from the worktree's `tools/dev/tsession`), and bring it
+  back as a commit when the push has ended. Two things a fresh worktree
+  lacks: the programs a reloadable test session starts (`tsession start
+  --session` printed nothing and no window came: `TSESSION_SESSION_EXE`
+  at the main tree's `target/debug/olo-session`, or build it there);
+  and the journal's cache of re-encoded pictures
+  (`docs/journal/.cache`, ignored by git), without which the first
+  `journal.py add` re-encodes all nine hundred (two and a half
+  minutes): `cp -r --reflink=always` it from the main tree first.
+
 ### A soak counts threads and descriptors, not only memory (2026-11-21)
 
 - **What a program holds after load is three numbers**: resident

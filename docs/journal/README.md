@@ -5,6 +5,18 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-21
 
+### Rex: the menu bar, on Terminal's model
+
+*21:02* — Rex, Edit, View, Pane, Agents, Settings: every toggle with its check, every item enabled only when it can act, the names saying what they do. The app's own Settings window (eight sections, sixty settings, most with nothing behind them) is gone: hosts, permissions and notices are Preferences ▸ Rex, a window's quick choices its menus.
+
+![Rex: the menu bar, on Terminal's model](2026-11-21/210241-rex-the-menu-bar-on-terminal-s-model.png)
+
+### Rex: Remote Access
+
+*21:00* — One window for reaching this computer's sessions from elsewhere: the checkbox that turns the server's Tailscale on, how it stands (with a light), and a group that keeps its place at every step: nothing to scan yet, the sign-in, the address to pair with. It was a section of the app's own Settings window and a window with a code alone.
+
+![Rex: Remote Access](2026-11-21/210007-rex-remote-access.png)
+
 ### Preferences: Rex
 
 *19:27* — A panel for the Rex app in place of its own Settings window: which changes of an agent become notifications, the hosts it knows, and what the sessions of each may do on this computer (nothing until ticked).

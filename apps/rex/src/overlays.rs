@@ -10,7 +10,7 @@
 use std::{collections::HashSet, sync::Arc};
 
 use olo_kit::{
-    Bounds, Child, CursorStyle, Element, FontWeight, InteractiveElement as _, MouseButton, ParentElement as _, Pixels, RenderImage, SharedString, Styled as _, WindowCx, agent, canvas, div, icons,
+    Bounds, Child, CursorStyle, Element, FontWeight, InteractiveElement as _, MouseButton, ParentElement as _, RenderImage, SharedString, Styled as _, WindowCx, agent, canvas, div, icons,
     metrics as m, point, px, size, style, theme,
     widgets::{Button, KeyHint, StringView, TextControl, TextField},
 };
@@ -610,39 +610,6 @@ pub fn render_mode_pill(text: String) -> Element {
         .px(px(10.0))
         .h(px(22.0))
         .w(px(190.0)),
-    )
-}
-
-/// Auto-Approve 30-second countdown pill anchored bottom-right over a blocked pane.
-pub fn render_auto_approve_pill(screen: Bounds<Pixels>, remaining_secs: u32, on_stop: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
-    let text: SharedString = format!("Auto Approve: Yes in {remaining_secs} s").into();
-    let name = text.clone();
-    let back = canvas(move |g, b| {
-        let p = theme::palette();
-        olo_kit::widgets::banner::banner_back(g, b, None, &p);
-        g.agent(agent::Node { role: "Status", name: Some(name.clone()), bounds: b, enabled: true, ..Default::default() });
-    })
-    .paint_key(style::key(&text))
-    .absolute()
-    .inset_0();
-    div().absolute().left(screen.left()).top(screen.top()).w(screen.size.width).h(screen.size.height).child(
-        div()
-            .absolute()
-            .right(px(m::SPACING))
-            .bottom(px(m::SPACING))
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(m::SPACING))
-            .pl(px(m::SPACING))
-            .pr(px(m::TIGHT))
-            .py(px(m::TIGHT))
-            .child(back)
-            .child(StringView::new(text))
-            .child(Button::new("Stop").small().on_click(move |_, cx| {
-                on_stop(&(), cx);
-                cx.stop_propagation();
-            })),
     )
 }
 

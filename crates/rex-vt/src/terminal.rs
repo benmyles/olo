@@ -539,6 +539,17 @@ impl GhosttyTerminal {
         Ok(true)
     }
 
+    /// Whether anything is selected, asked without reading it out (a
+    /// menu's Copy is enabled by it at every key that might be its
+    /// shortcut: the text itself can be all of the scrollback).
+    pub fn has_selection(&self) -> bool {
+        let _access = self.lock();
+        let mut sel = ffi::GhosttySelection::default();
+        // SAFETY: The output is a GhosttySelection of this locked terminal, read and dropped here.
+        let res = unsafe { ffi::ghostty_terminal_get(self.raw(), ffi::GHOSTTY_TERMINAL_DATA_SELECTION, ptr::from_mut(&mut sel).cast::<c_void>()) };
+        res != ffi::GHOSTTY_NO_VALUE && check(res).is_ok()
+    }
+
     /// Extract the currently selected text (unwrapped and trimmed like Ghostty).
     pub fn selection_text(&self) -> Result<Option<String>, VtError> {
         let _access = self.lock();

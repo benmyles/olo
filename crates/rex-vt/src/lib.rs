@@ -70,6 +70,7 @@ mod tests {
         // Selection
         assert!(term.select_word_at_viewport(11, 0).expect("select word"));
         assert_eq!(term.selection_text().expect("sel text").as_deref(), Some("Rex!"));
+        assert!(term.has_selection());
         term.clear_selection().expect("clear sel");
 
         // Snapshot encode + streaming prefix decode with trailing live VT bytes

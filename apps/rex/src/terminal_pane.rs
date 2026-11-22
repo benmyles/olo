@@ -19,16 +19,15 @@ use std::{
     cell::{Cell as StdCell, RefCell},
     collections::HashMap,
     sync::Arc,
-    time::{Duration, Instant},
 };
 
-use olo_kit::{Bounds, ContentMask, Font, FontId, FontStyle, FontWeight, GlyphId, GlyphRun, Hsla, Painter, PathBuilder, Pixels, Point, RenderImage, Rgba, TextRun, point, px, size, style};
+use olo_kit::{Bounds, ContentMask, Font, FontId, FontStyle, FontWeight, GlyphId, GlyphRun, Hsla, Painter, PathBuilder, Pixels, Point, RenderImage, TextRun, point, px, size, style};
 use olo_rex_vt::{CellWide, CursorInfo, CursorStyle as VtCursorStyle, GhosttyTerminal, ImageLayer, ImagePlacement, RenderRow, Rgb, RowId, TerminalTheme, UnderlineStyle, ViewportMatch};
 
 use crate::{
     copy_mode::CopyMode,
     links::DetectedLink,
-    settings::{CursorTrail, Settings},
+    settings::{self, Settings},
     themes::{self, hsla},
 };
 
@@ -48,7 +47,8 @@ pub struct Metrics {
 
 impl Metrics {
     pub fn from_settings(scale: f32, settings: &Settings) -> Self {
-        Self::new(scale, settings.font_family.clone(), settings.font_size.clamp(7.0, 48.0), settings.line_height.clamp(0.85, 2.2), settings.char_spacing.clamp(-2.0, 8.0))
+        // (Olo's fixed-width face, its own line height and spacing: the size is the one choice.)
+        Self::new(scale, None, settings.font_size.clamp(settings::TEXT_SIZES.0, settings::TEXT_SIZES.1), 1.0, 0.0)
     }
 
     pub fn new(scale: f32, font_family: Option<String>, size: f32, line_height: f32, char_spacing: f32) -> Self {
@@ -97,15 +97,6 @@ fn resolve_mono_font(family: Option<&str>, weight: FontWeight, italic: bool) -> 
     f
 }
 
-/// Cursor trail animation state (zero CPU / zero frames when `CursorTrail::Off` or settled).
-#[derive(Default)]
-struct TrailState {
-    prev_pos: Option<(f32, f32)>,
-    from_pos: Option<(f32, f32)>,
-    to_pos: Option<(f32, f32)>,
-    started: Option<Instant>,
-}
-
 /// Sub-row elastic scrollback state.
 #[derive(Default)]
 struct SmoothScroll {
@@ -150,20 +141,9 @@ pub struct PaneVisualState {
     pub shift: StdCell<f32>,
     pub drag_anchor: StdCell<Option<(u16, u16)>>,
     smooth: RefCell<SmoothScroll>,
-    trail: RefCell<TrailState>,
-    shine_started: StdCell<Option<Instant>>,
-    blink_epoch: StdCell<Option<Instant>>,
 }
 
 impl PaneVisualState {
-    pub fn trigger_copy_shine(&self) {
-        self.shine_started.set(Some(Instant::now()));
-    }
-
-    pub fn reset_blink(&self) {
-        self.blink_epoch.set(Some(Instant::now()));
-    }
-
     pub fn scroll_smooth(&self, delta_px: f32, ch: f32, term: &mut GhosttyTerminal) {
         let sb = term.scrollbar();
         let history = sb.history_rows();
@@ -247,7 +227,6 @@ pub struct PanePaintArgs<'a> {
     pub term: &'a mut GhosttyTerminal,
     pub frame: &'a crate::frame::Frame,
     pub theme: &'a TerminalTheme,
-    pub settings: &'a Settings,
     pub metrics: &'a Metrics,
     pub focused: bool,
     pub window_active: bool,
@@ -255,17 +234,16 @@ pub struct PanePaintArgs<'a> {
     pub search_matches: &'a [ViewportMatch],
     pub hover_link: Option<&'a DetectedLink>,
     pub preedit: Option<&'a str>,
-    pub reduce_motion: bool,
 }
 
 /// Paint one terminal pane into `rect` and return cursor bounds (in window pixels) for IME positioning.
 pub fn paint_pane(g: &mut Painter, rect: Bounds<Pixels>, args: PanePaintArgs<'_>, visual: &PaneVisualState) -> Option<Bounds<Pixels>> {
-    let PanePaintArgs { term, frame, theme, settings, metrics: m, focused, window_active, copy_mode, search_matches, hover_link, preedit, reduce_motion } = args;
+    let PanePaintArgs { term, frame, theme, metrics: m, focused, window_active, copy_mode, search_matches, hover_link, preedit } = args;
 
     visual.bounds.set(rect);
     olo_kit::review::own_grid(g, rect);
 
-    let pad = (settings.padding_x, settings.padding_y);
+    let pad = settings::PADDING;
     let (cw, ch) = m.cell;
     let line_px = (1.0 / m.scale).max(0.5);
 
@@ -275,17 +253,12 @@ pub fn paint_pane(g: &mut Painter, rect: Bounds<Pixels>, args: PanePaintArgs<'_>
     };
     let rows = frame.order.len();
 
-    let default_bg = if settings.force_theme_palette { theme.background } else { colors.background };
-    let default_fg = if settings.force_theme_palette { theme.foreground } else { colors.foreground };
+    // What the program in the pane says its colours are, the padding
+    // around the text included (the palette's own where it says none).
+    let default_bg = colors.background;
+    let default_fg = colors.foreground;
     let bg_hsla = hsla(default_bg);
-    let pad_bg = if settings.program_colors_padding { bg_hsla } else { hsla(theme.background) };
-
-    // Paint background & padding.
-    g.paint_quad(olo_kit::fill(rect, pad_bg));
-    if settings.program_colors_padding && pad_bg != bg_hsla {
-        let inner = Bounds::new(point(rect.left() + px(pad.0), rect.top() + px(pad.1)), size((rect.size.width - px(2.0 * pad.0)).max(px(0.0)), (rect.size.height - px(2.0 * pad.1)).max(px(0.0))));
-        g.paint_quad(olo_kit::fill(inner, bg_hsla));
-    }
+    g.paint_quad(olo_kit::fill(rect, bg_hsla));
 
     // Sub-row elastic scrollback offset.
     let sb = term.scrollbar();
@@ -307,14 +280,14 @@ pub fn paint_pane(g: &mut Painter, rect: Bounds<Pixels>, args: PanePaintArgs<'_>
     let origin = (f32::from(rect.left()) + pad.0, f32::from(rect.top()) + pad.1 + slide);
 
     // Selection colors.
-    let selection_bg = settings.selection_bg.or(theme.selection_bg).unwrap_or(Rgb::new(56, 114, 212));
-    let selection_fg = settings.selection_fg.or(theme.selection_fg);
+    let selection_bg = theme.selection_bg.unwrap_or(Rgb::new(56, 114, 212));
+    let selection_fg = theme.selection_fg;
     let mut ansi16 = [Rgb::new(0, 0, 0); 16];
     for i in 0..16 {
-        ansi16[i] = if settings.force_theme_palette { theme.palette.get(i).copied().unwrap_or(colors.palette[i]) } else { colors.palette[i] };
+        ansi16[i] = colors.palette[i];
     }
 
-    let key = RowKey { metrics: m.clone(), default_fg, default_bg, selection_bg, selection_fg, min_contrast: settings.minimum_contrast, bold_is_bright: settings.bold_is_bright, palette_ansi: ansi16 };
+    let key = RowKey { metrics: m.clone(), default_fg, default_bg, selection_bg, selection_fg, min_contrast: settings::MINIMUM_CONTRAST, bold_is_bright: false, palette_ansi: ansi16 };
 
     // Update RowCache only for rows that changed (or full dirty / key change).
     {
@@ -333,7 +306,7 @@ pub fn paint_pane(g: &mut Painter, rect: Bounds<Pixels>, args: PanePaintArgs<'_>
                 let (stamp, r) = (source.revision, &source.row);
                 cache.order.push(Some(*id));
                 if !cache.by_id.get(id).is_some_and(|cached| cached.revision == stamp) {
-                    let mut built = build_cached_row(g, &mut cache.ascii, r, m, default_fg, default_bg, selection_bg, selection_fg, &ansi16, settings.minimum_contrast, settings.bold_is_bright);
+                    let mut built = build_cached_row(g, &mut cache.ascii, r, m, default_fg, default_bg, selection_bg, selection_fg, &ansi16, settings::MINIMUM_CONTRAST, false);
                     built.revision = stamp;
                     cache.by_id.insert(*id, built);
                 }
@@ -419,25 +392,6 @@ pub fn paint_pane(g: &mut Painter, rect: Bounds<Pixels>, args: PanePaintArgs<'_>
             g.paint_quad(olo_kit::fill(Bounds::new(point(px(x), px(y)), size(px(w), px((2.0 * line_px).max(1.0)))), cursor_color));
         }
 
-        // 6. Shine Animation on Copy (240 ms subtle sweep; 0 cost otherwise).
-        if settings.shine_on_copy
-            && !reduce_motion
-            && let Some(t0) = visual.shine_started.get()
-        {
-            let elapsed = t0.elapsed().as_secs_f32();
-            if elapsed < 0.24 {
-                let progress = elapsed / 0.24;
-                let alpha = (1.0 - progress) * 0.22;
-                let sheen = Hsla::from(Rgba { r: 1.0, g: 1.0, b: 1.0, a: alpha });
-                let sweep_w = f32::from(rect.size.width) * 0.35;
-                let sx = f32::from(rect.left()) - sweep_w + progress * (f32::from(rect.size.width) + sweep_w * 2.0);
-                g.paint_quad(olo_kit::fill(Bounds::new(point(px(sx), rect.top()), size(px(sweep_w), rect.size.height)), sheen));
-                g.paint_again_within(0.0);
-            } else {
-                visual.shine_started.set(None);
-            }
-        }
-
         // 7. IME Preedit composition text at cursor.
         let mut preedit_advance = 0.0f32;
         if let Some(text) = preedit.filter(|t| !t.is_empty())
@@ -463,14 +417,7 @@ pub fn paint_pane(g: &mut Painter, rect: Bounds<Pixels>, args: PanePaintArgs<'_>
             let cm_color = style::c([255, 196, 46, 220]);
             g.paint_quad(olo_kit::fill(Bounds::new(point(px(x), px(y)), size(px(cw), px(ch))), cm_color));
         } else {
-            paint_cursor(g, &cursor, origin, (cw, ch), preedit_advance, cursor_color, line_px, focused && window_active, settings, visual, reduce_motion);
-        }
-
-        // 9. Inactive pane dimming (gentle translucent veil when Fade Inactive Panes is on).
-        let dim_pane = (!focused && settings.fade_inactive_panes) || (!window_active && settings.fade_inactive_windows);
-        if dim_pane {
-            let veil = Hsla::from(Rgba { r: Rgba::from(bg_hsla).r, g: Rgba::from(bg_hsla).g, b: Rgba::from(bg_hsla).b, a: 0.24 });
-            g.paint_quad(olo_kit::fill(rect, veil));
+            paint_cursor(g, &cursor, origin, (cw, ch), preedit_advance, cursor_color, line_px, focused && window_active);
         }
     });
 
@@ -479,19 +426,7 @@ pub fn paint_pane(g: &mut Painter, rect: Bounds<Pixels>, args: PanePaintArgs<'_>
 }
 
 #[allow(clippy::too_many_arguments)]
-fn paint_cursor(
-    g: &mut Painter,
-    cursor: &CursorInfo,
-    origin: (f32, f32),
-    (cw, ch): (f32, f32),
-    preedit_advance: f32,
-    cursor_color: Hsla,
-    line_px: f32,
-    focused: bool,
-    settings: &Settings,
-    visual: &PaneVisualState,
-    reduce_motion: bool,
-) {
+fn paint_cursor(g: &mut Painter, cursor: &CursorInfo, origin: (f32, f32), (cw, ch): (f32, f32), preedit_advance: f32, cursor_color: Hsla, line_px: f32, focused: bool) {
     if !cursor.visible {
         return;
     }
@@ -502,74 +437,16 @@ fn paint_cursor(
     let y = origin.1 + row as f32 * ch;
     let w = if cursor.wide_tail { cw * 2.0 } else { cw };
 
-    // Optional GPU Cursor Trail (only runs while animating a jump; 0 cost at rest).
-    if settings.cursor_trail != CursorTrail::Off && !reduce_motion && focused {
-        let mut tr = visual.trail.borrow_mut();
-        if let Some(prev) = tr.prev_pos {
-            let dist = ((x - prev.0).hypot(y - prev.1)).abs();
-            if dist > cw * 1.1 {
-                tr.from_pos = Some(prev);
-                tr.to_pos = Some((x, y));
-                tr.started = Some(Instant::now());
-            }
-        }
-        tr.prev_pos = Some((x, y));
-        if let (Some(from), Some(to), Some(t0)) = (tr.from_pos, tr.to_pos, tr.started) {
-            let dur = 0.14f32;
-            let t = (t0.elapsed().as_secs_f32() / dur).clamp(0.0, 1.0);
-            if t < 1.0 {
-                let tail_x = from.0 + (to.0 - from.0) * (t * t);
-                let tail_y = from.1 + (to.1 - from.1) * (t * t);
-                let trail_color = match settings.cursor_trail {
-                    CursorTrail::Blaze => style::c([255, 118, 42, ((1.0 - t) * 165.0) as u8]),
-                    CursorTrail::Frozen => style::c([96, 200, 255, ((1.0 - t) * 165.0) as u8]),
-                    CursorTrail::Rainbow => {
-                        let hue = (t0.elapsed().as_millis() as f32 * 0.002) % 1.0;
-                        Hsla { h: hue, s: 0.85, l: 0.62, a: (1.0 - t) * 0.58 }
-                    }
-                    _ => cursor_color.opacity((1.0 - t) * 0.48),
-                };
-                let pts = vec![(tail_x, tail_y), (to.0 + w, to.1), (to.0 + w, to.1 + ch), (tail_x, tail_y + ch)];
-                let mut pb = PathBuilder::fill();
-                for (i, (px_, py_)) in pts.into_iter().enumerate() {
-                    let pt = point(px(px_), px(py_));
-                    if i == 0 { pb.move_to(pt) } else { pb.line_to(pt) }
-                }
-                pb.close();
-                if let Ok(path) = pb.build() {
-                    g.paint_path(path, trail_color);
-                }
-                g.paint_again_within(0.0);
-            } else {
-                tr.from_pos = None;
-                tr.started = None;
-            }
-        }
-    }
-
-    // Blinking (only when focused, blinking enabled, and interval > 0).
-    let should_blink = focused && settings.cursor_blink && (cursor.blinking || settings.force_cursor_style);
-    if should_blink && settings.cursor_blink_interval_ms >= 100 {
-        let epoch = visual.blink_epoch.get().unwrap_or_else(|| {
-            let now = Instant::now();
-            visual.blink_epoch.set(Some(now));
-            now
-        });
-        let interval = Duration::from_millis(settings.cursor_blink_interval_ms);
-        let phase = (epoch.elapsed().as_millis() / interval.as_millis().max(1)) % 2;
-        let rem_ms = interval.as_millis() - (epoch.elapsed().as_millis() % interval.as_millis().max(1));
-        g.paint_again_within(rem_ms as f64 / 1000.0);
-        if phase == 1 {
-            return;
-        }
-    }
+    // (Steady, as Terminal's: a blinking cursor is two frames a second
+    // for as long as nothing happens. It blinked where the program asked,
+    // and could leave a trail.)
 
     // Hide cursor in unfocused panes so split layouts never show tofu-like hollow rectangles.
     if !focused {
         return;
     }
 
-    let shape = if settings.force_cursor_style { settings.cursor_shape.to_vt() } else { cursor.style };
+    let shape = cursor.style;
 
     let r = Bounds::new(point(px(x), px(y)), size(px(w), px(ch)));
     if shape == VtCursorStyle::BlockHollow {
