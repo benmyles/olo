@@ -268,3 +268,28 @@ fn solarized_light() -> TerminalTheme {
         [0x073642, 0xdc322f, 0x859900, 0xb58900, 0x268bd2, 0xd33682, 0x2aa198, 0xeee8d5, 0x002b36, 0xcb4b16, 0x586e75, 0x657b83, 0x839496, 0x6c71c4, 0x93a1a1, 0xfdf6e3],
     )
 }
+
+pub fn read_theme(path: &std::path::Path) -> Result<TerminalTheme, String> {
+    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Custom Theme");
+    read_theme_from(file, name, path.extension().is_some_and(|e| e.eq_ignore_ascii_case("itermcolors")))
+}
+fn read_theme_from(reader: impl std::io::Read, name: &str, iterm: bool) -> Result<TerminalTheme, String> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    reader.take(olo_rex_vt::color::MAX_THEME_BYTES as u64 + 1).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+    if bytes.len() > olo_rex_vt::color::MAX_THEME_BYTES {
+        return Err("Theme files can be up to 1 MiB.".into());
+    }
+    let text = std::str::from_utf8(&bytes).map_err(|e| e.to_string())?;
+    if iterm { olo_rex_vt::parse_itermcolors(name, text) } else { olo_rex_vt::parse_ghostty_theme(name, text) }
+}
+#[cfg(test)]
+mod import_tests {
+    use super::*;
+    #[test]
+    fn import_stops_reading_after_the_limit() {
+        assert!(read_theme_from(std::io::repeat(b' '), "test", false).is_err());
+        assert!(read_theme_from(&b"background = #123456"[..], "test", false).is_ok());
+    }
+}

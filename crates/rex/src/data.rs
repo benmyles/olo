@@ -93,7 +93,7 @@ where
         .body(())
         .map_err(|e| RexError::Protocol(format!("request build failed: {e}")))?;
 
-    let (ws, _resp) = tokio_tungstenite::client_async(req, stream).await?;
+    let (ws, _resp) = tokio::time::timeout(std::time::Duration::from_secs(5), tokio_tungstenite::client_async(req, stream)).await.map_err(|_| RexError::Timeout)??;
     Ok(ws)
 }
 
@@ -101,6 +101,10 @@ async fn perform_data_handshake<S>(ws: &mut WebSocketStream<S>, handshake_bytes:
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
+    tokio::time::timeout(std::time::Duration::from_secs(5), exchange_data_hello(ws, handshake_bytes)).await.map_err(|_| RexError::Timeout)?
+}
+
+async fn exchange_data_hello<S: AsyncRead + AsyncWrite + Unpin>(ws: &mut WebSocketStream<S>, handshake_bytes: &[u8]) -> Result<DataWelcome, RexError> {
     ws.send(Message::Binary(handshake_bytes.to_vec().into())).await?;
     while let Some(msg) = ws.next().await {
         match msg? {
@@ -161,7 +165,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> TerminalDataStream<S> {
                     return Ok(TerminalStreamFrame::Bytes(b.to_vec()));
                 }
                 Message::Ping(p) => {
-                    let _ = self.ws.send(Message::Pong(p)).await;
+                    self.ws.send(Message::Pong(p)).await?;
                 }
                 Message::Pong(_) => {}
                 Message::Close(cf) => {
@@ -338,6 +342,7 @@ fn parse_inline_apc(json_bytes: &[u8]) -> Option<InlineApc> {
 /// Bidirectional raw byte stream (`rex.data.bytes.v1`) with 0-byte binary frame
 /// half-close EOF semantics, used for uploads, downloads, and tunnels.
 pub struct BytesDataStream<S> {
+    read_finished: bool,
     ws: WebSocketStream<S>,
     pub welcome: DataWelcome,
 }
@@ -347,14 +352,19 @@ impl<S: AsyncRead + AsyncWrite + Unpin> BytesDataStream<S> {
         let mut ws = upgrade_data_ws(stream, host_header, DATA_BYTES_SUBPROTOCOL).await?;
         let hello = encode_hello(ticket)?;
         let welcome = perform_data_handshake(&mut ws, &hello).await?;
-        Ok(Self { ws, welcome })
+        Ok(Self { ws, welcome, read_finished: false })
+    }
+
+    async fn send_chunk(&mut self, data: Vec<u8>) -> Result<(), RexError> {
+        tokio::time::timeout(std::time::Duration::from_secs(30), self.ws.send(Message::Binary(data.into()))).await.map_err(|_| RexError::Timeout)??;
+        Ok(())
     }
 
     /// Write raw bytes in chunks up to 64 KiB.
     pub async fn write_all(&mut self, data: &[u8]) -> Result<(), RexError> {
         for chunk in data.chunks(65_536) {
             if !chunk.is_empty() {
-                self.ws.send(Message::Binary(chunk.to_vec().into())).await?;
+                self.send_chunk(chunk.to_vec()).await?;
             }
         }
         Ok(())
@@ -362,33 +372,95 @@ impl<S: AsyncRead + AsyncWrite + Unpin> BytesDataStream<S> {
 
     /// Signal half-close EOF on the write direction (0-byte binary frame).
     pub async fn finish_write(&mut self) -> Result<(), RexError> {
-        self.ws.send(Message::Binary(Vec::new().into())).await?;
-        Ok(())
+        self.send_chunk(Vec::new()).await
     }
 
     /// Read next raw byte chunk. Returns `Ok(None)` on 0-byte EOF or clean close.
     pub async fn read_chunk(&mut self) -> Result<Option<Vec<u8>>, RexError> {
+        tokio::time::timeout(std::time::Duration::from_secs(30), self.read_one_chunk()).await.map_err(|_| RexError::Timeout)?
+    }
+
+    async fn read_one_chunk(&mut self) -> Result<Option<Vec<u8>>, RexError> {
+        if self.read_finished {
+            return Ok(None);
+        }
         while let Some(msg) = self.ws.next().await {
             match msg? {
                 Message::Binary(b) => {
                     if b.is_empty() {
+                        self.read_finished = true;
                         return Ok(None);
                     }
                     return Ok(Some(b.to_vec()));
                 }
                 Message::Ping(p) => {
-                    let _ = self.ws.send(Message::Pong(p)).await;
+                    self.ws.send(Message::Pong(p)).await?;
                 }
                 Message::Pong(_) => {}
-                Message::Close(_) => return Ok(None),
+                Message::Close(Some(frame)) if frame.code == tungstenite::protocol::frame::coding::CloseCode::Normal => {
+                    self.read_finished = true;
+                    return Ok(None);
+                }
+                Message::Close(frame) => {
+                    return Err(RexError::Closed(frame.map(|f| format!("{} {}", f.code, f.reason)).unwrap_or_else(|| "byte stream closed without a status".into())));
+                }
                 _ => {}
             }
         }
-        Ok(None)
+        Err(RexError::Closed("eof before the end of the byte stream".into()))
     }
 
     /// Split into independent sink/stream halves for full-duplex tunnel relaying.
     pub fn into_inner(self) -> WebSocketStream<S> {
         self.ws
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tungstenite::protocol::{CloseFrame, Role, frame::coding::CloseCode};
+
+    #[tokio::test]
+    async fn full_tunnel_close_after_half_close_releases_idle_writer() {
+        let (client, peer) = tokio::io::duplex(1024);
+        let ws = WebSocketStream::from_raw_socket(client, Role::Client, None).await;
+        let bytes = BytesDataStream { ws, welcome: DataWelcome { reconnect_token: [0; 16], resume_ttl_ms: 0, channel_nonce: 1 }, read_finished: false };
+        let (socket, mut local) = tokio::io::duplex(256);
+        let relay = tokio::spawn(crate::relay_stream_with_bytes_ws(socket, bytes));
+        let mut server = WebSocketStream::from_raw_socket(peer, Role::Server, None).await;
+        server.send(Message::Binary(Vec::new().into())).await.unwrap();
+        let mut byte = [0];
+        assert_eq!(tokio::io::AsyncReadExt::read(&mut local, &mut byte).await.unwrap(), 0);
+        server.close(Some(CloseFrame { code: CloseCode::Away, reason: "stopping".into() })).await.unwrap();
+        let result = tokio::time::timeout(std::time::Duration::from_secs(2), relay).await.unwrap().unwrap();
+        assert!(matches!(result, Err(RexError::Closed(_))));
+    }
+
+    #[tokio::test]
+    async fn stalled_transfer_times_out_in_both_directions() {
+        async fn stream() -> (BytesDataStream<tokio::io::DuplexStream>, tokio::io::DuplexStream) {
+            let (client, peer) = tokio::io::duplex(256);
+            let ws = WebSocketStream::from_raw_socket(client, Role::Client, None).await;
+            (BytesDataStream { ws, welcome: DataWelcome { reconnect_token: [0; 16], resume_ttl_ms: 0, channel_nonce: 1 }, read_finished: false }, peer)
+        }
+        let (mut reader, _read_peer) = stream().await;
+        let (mut writer, _write_peer) = stream().await;
+        let data = vec![0; 65536];
+        let (read, write) = tokio::time::timeout(std::time::Duration::from_secs(35), async { tokio::join!(reader.read_chunk(), writer.write_all(&data)) }).await.unwrap();
+        assert!(matches!(read, Err(RexError::Timeout)));
+        assert!(matches!(write, Err(RexError::Timeout)));
+    }
+
+    #[tokio::test]
+    async fn interrupted_byte_stream_is_an_error_after_partial_data() {
+        let (local, peer) = tokio::io::duplex(1024);
+        let ws = WebSocketStream::from_raw_socket(local, Role::Client, None).await;
+        let mut server = WebSocketStream::from_raw_socket(peer, Role::Server, None).await;
+        let mut bytes = BytesDataStream { ws, welcome: DataWelcome { reconnect_token: [0; 16], resume_ttl_ms: 0, channel_nonce: 1 }, read_finished: false };
+        server.send(Message::Binary(b"first".to_vec().into())).await.unwrap();
+        server.close(Some(CloseFrame { code: CloseCode::Away, reason: "data provider canceled".into() })).await.unwrap();
+        assert_eq!(bytes.read_chunk().await.unwrap().unwrap(), b"first");
+        assert!(matches!(bytes.read_chunk().await, Err(RexError::Closed(s)) if s.contains("data provider canceled")));
     }
 }

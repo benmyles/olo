@@ -4,22 +4,26 @@
 //! polling!) and publishes the `"agents"` Deskbar Glance widget showing live
 //! blocked/working agents and active sessions.
 
+#[path = "glance/watch.rs"]
+mod watch;
+
 use std::{
-    collections::{BTreeMap, HashMap},
-    path::PathBuf,
+    collections::HashMap,
+    io::{self, Write},
+    os::fd::AsRawFd,
+    path::Path,
     process::ExitCode,
-    sync::Arc,
-    time::Duration,
 };
 
-use olo_protocol::glance::{Body, Entry, Glance, Line, Request, Requests, Timeline, content_path, requests_path};
+use olo_protocol::glance::{self, Body, Entry, Glance, Line, Request, Requests, Timeline, content_path, requests_path};
 use olo_rex_client::{
+    RexError,
     control::ControlClient,
     model::{ClientIdentity, ControlEvent, ProgramPriority, ProgramStatusRecord, SessionSummary, SessionView},
-    ssh::SshSessionPool,
-    transport::RexEndpoint,
+    transport::{discover_or_start_local_socket, local_socket_candidates},
 };
 use olo_theme::Hue;
+use tokio::sync::mpsc;
 
 #[derive(Default)]
 struct LiveSummary {
@@ -144,163 +148,161 @@ impl LiveSummary {
     }
 }
 
-fn glance_dir() -> PathBuf {
-    olo_xdg::state_dir().join("glance")
+fn read_requests(path: &Path) -> io::Result<Vec<Request>> {
+    match std::fs::read(path) {
+        Ok(bytes) => Ok(serde_json::from_slice::<Requests>(&bytes)?.widgets),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(e) => Err(e),
+    }
 }
 
-fn read_requests() -> Vec<Request> {
-    let dir = glance_dir();
-    let p = requests_path(&dir, "rex");
-    let Ok(bytes) = std::fs::read(&p) else { return Vec::new() };
-    serde_json::from_slice::<Requests>(&bytes).map(|r| r.widgets).unwrap_or_default()
-}
-
-fn write_timelines(summary: &LiveSummary, reqs: &[Request]) {
-    let dir = glance_dir();
+fn write_timelines(dir: &Path, summary: &LiveSummary, reqs: &[Request]) -> io::Result<()> {
     let now = jiff::Timestamp::now().as_second();
     for req in reqs {
-        let g = summary.build_glance(req);
-        let tl = Timeline { entries: vec![Entry { from: now - now.rem_euclid(60), glance: g }], made: now };
-        let path: PathBuf = content_path(&dir, req.widget);
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+        let entry = Entry { from: now, glance: summary.build_glance(req) };
+        glance::write_json(&content_path(dir, req.widget), &Timeline { entries: vec![entry], made: now })?;
+    }
+    Ok(())
+}
+
+impl LiveSummary {
+    async fn refresh_view(&mut self, ctrl: &ControlClient, sid: &str) -> Result<(), RexError> {
+        let view = ctrl.session_view(sid).await?.payload;
+        self.statuses.retain(|(s, b), _| s != sid || view.find_block(b).is_some());
+        for b in view.windows.iter().flat_map(|w| w.all_blocks()).filter(|b| b.creator_name == "com.superlogical.terminal") {
+            let key = (sid.to_owned(), b.block_id.clone());
+            if !self.statuses.contains_key(&key)
+                && let Ok(records) = ctrl.terminal_program_status(sid, &b.block_id).await
+            {
+                self.statuses.insert(key, records.payload);
+            }
         }
-        if let Ok(json) = serde_json::to_vec(&tl) {
-            let tmp = path.with_extension("json.tmp");
-            if std::fs::write(&tmp, json).is_ok() {
-                let _ = std::fs::rename(&tmp, &path);
+        if let Some(s) = self.sessions.iter_mut().find(|s| s.session_id == sid) {
+            s.label.clone_from(&view.label);
+        }
+        self.views.insert(sid.to_owned(), view);
+        Ok(())
+    }
+
+    async fn bootstrap(&mut self, ctrl: &ControlClient) -> Result<u64, RexError> {
+        let boot = ctrl.session_bootstrap("all", None, Some(&[]), &[]).await?;
+        *self = Self { connected: true, sessions: boot.payload.attach_all.sessions, ..Default::default() };
+        for s in self.sessions.clone() {
+            // A session may have closed between bootstrap and its view; the
+            // corresponding event is already queued on this connection.
+            let _ = self.refresh_view(ctrl, &s.session_id).await;
+        }
+        Ok(boot.seq)
+    }
+
+    async fn apply(&mut self, ctrl: &ControlClient, event: ControlEvent) -> bool {
+        match event {
+            ControlEvent::SessionCreated(s) => {
+                if !self.sessions.iter().any(|existing| existing.session_id == s.session_id) {
+                    self.sessions.push(s.clone());
+                }
+                let _ = self.refresh_view(ctrl, &s.session_id).await;
+            }
+            ControlEvent::SessionDestroyed { session_id } => {
+                self.sessions.retain(|s| s.session_id != session_id);
+                self.views.remove(&session_id);
+                self.statuses.retain(|(sid, _), _| sid != &session_id);
+            }
+            ControlEvent::SessionMoved { session_id, before_session_id } => {
+                let Some(i) = self.sessions.iter().position(|s| s.session_id == session_id) else { return false };
+                let s = self.sessions.remove(i);
+                let before = self.sessions.iter().position(|s| Some(&s.session_id) == before_session_id.as_ref()).unwrap_or(self.sessions.len());
+                self.sessions.insert(before, s);
+            }
+            ControlEvent::SessionViewChanged { session_id, revision } => {
+                if self.views.get(&session_id).is_some_and(|v| v.revision >= revision) {
+                    return false;
+                }
+                return self.refresh_view(ctrl, &session_id).await.is_ok();
+            }
+            ControlEvent::BlockEvent { session_id, block_id, name, .. } if name == "program_status_changed" || name == "program_status_removed" => {
+                let Ok(records) = ctrl.terminal_program_status(&session_id, &block_id).await else { return false };
+                self.statuses.insert((session_id, block_id), records.payload);
+            }
+            _ => return false,
+        }
+        true
+    }
+}
+
+async fn local_connection() -> Result<(ControlClient, mpsc::UnboundedReceiver<olo_rex_client::ControlEventEnvelope>), RexError> {
+    let path = discover_or_start_local_socket(false).await?;
+    let stream = tokio::net::UnixStream::connect(path).await?;
+    let identity = ClientIdentity { kind: Some("other".into()), platform: Some("linux".into()), name: Some("olo-rex-glance".into()), ..Default::default() };
+    ControlClient::connect_unix(stream, identity).await
+}
+
+async fn serve() -> io::Result<()> {
+    let dir = glance::dir();
+    let request_path = requests_path(&dir, "rex");
+    let mut requests_watch = watch::Paths::new(std::slice::from_ref(&request_path))?;
+    let mut reqs = read_requests(&request_path)?;
+    if reqs.is_empty() {
+        return Ok(());
+    }
+    let mut lock = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(glance::lock_path(&dir, "rex"))?;
+    // SAFETY: Deskbar and other providers use this advisory ownership lock.
+    if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        return Ok(());
+    }
+    lock.set_len(0)?;
+    write!(lock, "{}", std::process::id())?;
+    loop {
+        // Arm before connecting so a socket appearing during discovery is seen.
+        let sockets = watch::Paths::new(&local_socket_candidates())?;
+        let mut summary = LiveSummary::default();
+        if let Ok((ctrl, mut events)) = local_connection().await
+            && let Ok(mut seq) = summary.bootstrap(&ctrl).await
+        {
+            drop(sockets);
+            write_timelines(&dir, &summary, &reqs)?;
+            loop {
+                tokio::select! {
+                    ev = events.recv() => {
+                        let Some(ev) = ev else { break };
+                        if ev.seq <= seq { continue; }
+                        if matches!(ev.event, ControlEvent::EventDropped { .. }) {
+                            let Ok(watermark) = summary.bootstrap(&ctrl).await else { break };
+                            seq = watermark;
+                        } else if !summary.apply(&ctrl, ev.event).await {
+                            continue;
+                        }
+                        write_timelines(&dir, &summary, &reqs)?;
+                    }
+                    changed = requests_watch.changed() => {
+                        changed?;
+                        requests_watch = watch::Paths::new(std::slice::from_ref(&request_path))?;
+                        reqs = read_requests(&request_path)?;
+                        if reqs.is_empty() { ctrl.close(); return Ok(()); }
+                        write_timelines(&dir, &summary, &reqs)?;
+                    }
+                }
+            }
+            continue;
+        }
+        write_timelines(&dir, &LiveSummary::default(), &reqs)?;
+        tokio::select! {
+            changed = sockets.changed() => changed?,
+            changed = requests_watch.changed() => {
+                changed?;
+                requests_watch = watch::Paths::new(std::slice::from_ref(&request_path))?;
+                reqs = read_requests(&request_path)?;
+                if reqs.is_empty() { return Ok(()); }
             }
         }
     }
 }
 
 fn main() -> ExitCode {
-    let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
-        Ok(r) => r,
-        Err(_) => return ExitCode::FAILURE,
-    };
-    rt.block_on(async move {
-        let mut summary = LiveSummary::default();
-        let reqs = read_requests();
-        if reqs.is_empty() {
-            return ExitCode::SUCCESS;
-        }
-        write_timelines(&summary, &reqs);
-
-        let pool = Arc::new(SshSessionPool::default());
-        let endpoint = RexEndpoint::Local { autostart: false };
-        let mut backoff = Duration::from_secs(2);
-
-        loop {
-            let reqs = read_requests();
-            if reqs.is_empty() {
-                return ExitCode::SUCCESS;
-            }
-            let _ = &pool;
-            match endpoint.connect_stream().await {
-                Ok((stream, host_hdr)) => {
-                    backoff = Duration::from_secs(2);
-                    let id = ClientIdentity {
-                        kind: Some("other".into()),
-                        platform: Some("linux".into()),
-                        name: Some("olo-rex-glance".into()),
-                        version: Some(env!("CARGO_PKG_VERSION").into()),
-                        label: None,
-                    };
-                    if let Ok((ctrl, mut ev_rx)) = ControlClient::connect(stream, &host_hdr, id, None).await {
-                        summary.connected = true;
-                        if let Ok(boot) = ctrl.session_bootstrap("all", None, Some(&[]), &[]).await {
-                            summary.sessions = boot.payload.attach_all.sessions;
-                            for s in &summary.sessions {
-                                if let Ok(v) = ctrl.session_view(&s.session_id).await {
-                                    for w in &v.payload.windows {
-                                        for b in w.all_blocks() {
-                                            if b.creator_name == "com.superlogical.terminal"
-                                                && let Ok(st) = ctrl.terminal_program_status(&s.session_id, &b.block_id).await
-                                            {
-                                                summary.statuses.insert((s.session_id.clone(), b.block_id.clone()), st.payload);
-                                            }
-                                        }
-                                    }
-                                    summary.views.insert(s.session_id.clone(), v.payload);
-                                }
-                            }
-                        }
-                        write_timelines(&summary, &reqs);
-
-                        let mut req_poll = tokio::time::interval(Duration::from_secs(15));
-                        req_poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-                        req_poll.tick().await;
-
-                        loop {
-                            tokio::select! {
-                                _ = req_poll.tick() => {
-                                    let r = read_requests();
-                                    if r.is_empty() {
-                                        ctrl.close();
-                                        return ExitCode::SUCCESS;
-                                    }
-                                }
-                                ev = ev_rx.recv() => {
-                                    let Some(env) = ev else { break };
-                                    let mut changed = false;
-                                    match env.event {
-                                        ControlEvent::SessionCreated(s) => {
-                                            summary.sessions.push(s.clone());
-                                            if let Ok(v) = ctrl.session_view(&s.session_id).await {
-                                                summary.views.insert(s.session_id, v.payload);
-                                            }
-                                            changed = true;
-                                        }
-                                        ControlEvent::SessionDestroyed { session_id } => {
-                                            summary.sessions.retain(|s| s.session_id != session_id);
-                                            summary.views.remove(&session_id);
-                                            summary.statuses.retain(|(sid, _), _| sid != &session_id);
-                                            changed = true;
-                                        }
-                                        ControlEvent::SessionViewChanged { session_id, revision } => {
-                                            let cur = summary.views.get(&session_id).map_or(0, |v| v.revision);
-                                            if revision > cur
-                                                && let Ok(v) = ctrl.session_view(&session_id).await
-                                            {
-                                                summary.views.insert(session_id, v.payload);
-                                                changed = true;
-                                            }
-                                        }
-                                        ControlEvent::BlockEvent { session_id, block_id, name, .. }
-                                            if name == "program_status_changed" || name == "program_status_removed" =>
-                                        {
-                                            if let Ok(st) = ctrl.terminal_program_status(&session_id, &block_id).await {
-                                                summary.statuses.insert((session_id, block_id), st.payload);
-                                                changed = true;
-                                            }
-                                        }
-                                        _ => {}
-                                    }
-                                    if changed {
-                                        let r = read_requests();
-                                        if r.is_empty() {
-                                            ctrl.close();
-                                            return ExitCode::SUCCESS;
-                                        }
-                                        write_timelines(&summary, &r);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                Err(_) => {}
-            }
-            summary.connected = false;
-            let r = read_requests();
-            if r.is_empty() {
-                return ExitCode::SUCCESS;
-            }
-            write_timelines(&summary, &r);
-            let _ = BTreeMap::<String, String>::new();
-            tokio::time::sleep(backoff).await;
-            backoff = (backoff * 2).min(Duration::from_secs(30));
-        }
-    })
+    let result = tokio::runtime::Builder::new_current_thread().enable_all().build().and_then(|rt| rt.block_on(serve()));
+    if let Err(e) = result {
+        eprintln!("olo-rex-glance: {e}");
+        return ExitCode::FAILURE;
+    }
+    ExitCode::SUCCESS
 }

@@ -870,6 +870,36 @@ frames a second with nobody at it):
   the first job, and the second runs without them (its pictures'
   paths were empty: "no picture /NAME.png").
 
+### An app written in one go, taken apart by several (Rex, 2026-11-21)
+
+- **A client written from a protocol's documents is a guess until it
+  has talked to the server**: the first button pressed failed on a
+  reply wrapped in one more object than the type expected, and with it
+  split, resize, move, ownership and version were all wrong on the
+  wire. Before anything else of such a client: every call made against
+  a scratch server, the raw frame kept beside the type.
+- **One crate an agent, and a list that travels**: each agent kept a
+  list of what it found in another's crate (file, line, what the
+  server really sends), passed on through the lead; the client's agent
+  found the app clearing its activity marks, the engine's agent found
+  Find dying after a restore. The lead's part is the passing on, the
+  decisions (keys are never replayed into a terminal), and saying no
+  to scope.
+- **The audit that changes nothing is worth its run**: a read-only
+  agent asked only "where is this not an Olo app" found two freezes by
+  using the demo (Defaults hanging the Settings window on its own
+  lock; the panes not following the selection), which no fixer had
+  been looking for.
+- **The lead's own soak finds what the agents' tests don't**: every
+  agent's suite passed while each tab closed left two threads behind
+  (the kit's, not theirs). Run the finished whole under load yourself.
+- **Pictures for outside eyes: no shell prompt** (it carries this
+  computer's names). `PS1='$ '` in a scratch shell; a crop otherwise.
+- **The weekly Codex allowance is one pool for subagents, the helper
+  and the picture look**: four agents at xhigh took a third of a week
+  in three hours. Stop an agent that is done; keep the last tenth for
+  the looks a commit needs.
+
 ### A soak counts threads and descriptors, not only memory (2026-11-21)
 
 - **What a program holds after load is three numbers**: resident

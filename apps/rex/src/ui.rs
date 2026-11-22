@@ -13,8 +13,7 @@ use std::{
 
 use olo_kit::{
     Bounds, Child, CursorStyle, DragAction, DropAccept, DropOffer, Dropped, Element, FocusHandle, FontWeight, InteractiveElement as _, IntoElement as _, KeyDownEvent, MouseButton, MouseDownEvent,
-    MouseMoveEvent, Painter, ParentElement as _, PathBuilder, Pixels, Point, ScrollWheelEvent, SharedString, Styled as _, TextInput, View, WindowCx, WindowHandle, WindowOptions, agent, canvas, div,
-    icons,
+    MouseMoveEvent, Painter, ParentElement as _, PathBuilder, Pixels, Point, ScrollWheelEvent, Styled as _, TextInput, View, WindowCx, WindowHandle, WindowOptions, agent, canvas, div, icons,
     menu::{self, Menu, MenuBar},
     metrics as m, point, px, size, style, theme,
     widgets::{
@@ -30,12 +29,13 @@ use serde_json::{Value, json};
 
 use crate::{
     agent::{AgentActivity, AutoApproveState, KeepGoingState},
+    attention::{Attention, Target},
     bridge,
     copy_mode::{CopyMode, CopyModeAction},
     hub::{BlockKey, HostConnState, HubNotice, RexHub},
     keymap::{self, KeyMatch, KeymapEngine},
     links::{self, LinkTarget},
-    overlays::{self, ActiveOverlay, JumpItem, JumpTarget, PathBrowserMode, QuickLookContent, ToastItem},
+    overlays::{self, ActiveOverlay, JumpItem, JumpTarget, PathBrowserMode, QuickLookContent},
     panels::{self, AskpassReply, AskpassRequest, OloAskpass, SettingsPanelState},
     settings::{BarBehavior, Settings, SidebarMode, ToolbarLayout},
     terminal_pane::{self, Metrics, PanePaintArgs, PaneVisualState},
@@ -61,6 +61,8 @@ pub enum WinRole {
 pub struct SavedWorkspaceState {
     pub active_host: String,
     pub active_session: Option<String>,
+    #[serde(default)]
+    pub session_index: usize,
     pub sidebar_collapsed: bool,
     pub sidebar_width: f32,
 }
@@ -76,12 +78,26 @@ pub struct RexApp {
     pub askpass: Arc<OloAskpass>,
     pub keymap: KeymapEngine,
     pub settings_state: SettingsPanelState,
-    pub toasts: Vec<ToastItem>,
-    next_toast_id: u64,
-    pub broadcast_windows: HashSet<String>,
+    attention: Attention,
+    broadcast_windows: HashSet<(String, String, String)>,
+}
+
+#[derive(Default)]
+struct WorkspaceSelection {
+    host: String,
+    session: Option<String>,
+    block: Option<String>,
+    active: bool,
+}
+
+impl WorkspaceSelection {
+    fn matches(&self, host: &str, session: Option<&str>, block: Option<&str>) -> bool {
+        self.host == host && session.is_none_or(|s| self.session.as_deref() == Some(s)) && block.is_none_or(|b| self.block.as_deref() == Some(b))
+    }
 }
 
 struct WinSlot {
+    selection: WorkspaceSelection,
     role: WinRole,
     handle: WindowHandle<RexWindow>,
 }
@@ -110,7 +126,7 @@ pub fn init_app(settings: Settings, _initial_cwd: Option<String>, _restored: Vec
     });
     let hub = RexHub::start(settings.clone(), active_theme, Some(askpass.clone()), move |notice| handle_hub_notice(notice));
     let keymap = KeymapEngine::new(&settings.keymap_overrides, &[], &[], &[]);
-    let _ = APP.set(Mutex::new(RexApp { hub, askpass, keymap, settings_state: SettingsPanelState::default(), toasts: Vec::new(), next_toast_id: 1, broadcast_windows: HashSet::new() }));
+    let _ = APP.set(Mutex::new(RexApp { hub, askpass, keymap, settings_state: SettingsPanelState::default(), attention: Attention::new(), broadcast_windows: HashSet::new() }));
 
     // Probe SSH agent status once asynchronously so Settings → Server shows it immediately.
     let agent_override = settings.ssh_agent_socket.map(PathBuf::from);
@@ -127,16 +143,17 @@ pub fn init_app(settings: Settings, _initial_cwd: Option<String>, _restored: Vec
 
 fn handle_hub_notice(notice: HubNotice) {
     match notice {
-        HubNotice::BlockOutput(_) => {
-            // Only redraw the terminal screens child view (`Panes`) at the next vsync frame!
-            broadcast_msg(WinMsg::Screens);
+        HubNotice::BlockOutput(key) => {
+            for slot in wins().map.values().filter(|w| w.selection.matches(&key.host_key, Some(&key.session_id), None)) {
+                slot.handle.messenger().send(WinMsg::Screens);
+            }
         }
         HubNotice::StateChanged => {
             // Rebuild keymap if server bindings updated.
             if let Some(m) = APP.get() {
-                let mut a = m.lock().unwrap_or_else(|e| e.into_inner());
+                let hub = m.lock().unwrap_or_else(|e| e.into_inner()).hub.clone();
                 let (overrides, bindings, modes, diags) = {
-                    let st = a.hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                    let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
                     let local = st.hosts.get("local");
                     (
                         st.settings.keymap_overrides.clone(),
@@ -145,43 +162,39 @@ fn handle_hub_notice(notice: HubNotice) {
                         local.map(|h| h.keymap_diagnostics.clone()).unwrap_or_default(),
                     )
                 };
-                a.keymap.rebuild(&overrides, &bindings, &modes, &diags);
-            }
-            broadcast_msg(WinMsg::Redraw);
-        }
-        HubNotice::PromptRequested { host_key, req } => {
-            broadcast_to_role(WinRole::Workspace, move || WinMsg::ShowPrompt { host_key: host_key.clone(), req: req.clone() });
-        }
-        HubNotice::PromptEnded { call_id, .. } => {
-            broadcast_to_role(WinRole::Workspace, move || WinMsg::EndPrompt { call_id: call_id.clone() });
-        }
-        HubNotice::PerformRequested { action, args, .. } => {
-            broadcast_to_role(WinRole::Workspace, move || WinMsg::PerformAction { action: action.clone(), args: args.clone() });
-        }
-        HubNotice::Toast { title, body, host_key, session_id, block_id } => {
-            let target = match (host_key, session_id, block_id) {
-                (Some(h), Some(s), Some(b)) => Some(BlockKey { host_key: h, session_id: s, block_id: b }),
-                _ => None,
-            };
-            if let Some(m) = APP.get() {
                 let mut a = m.lock().unwrap_or_else(|e| e.into_inner());
-                let id = a.next_toast_id;
-                a.next_toast_id += 1;
-                a.toasts.push(ToastItem { id, title, body, target, created: Instant::now() });
-                if a.toasts.len() > 3 {
-                    a.toasts.remove(0);
+                a.keymap.rebuild(&overrides, &bindings, &modes, &diags);
+                if a.attention.has_notes() {
+                    let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                    a.attention.prune(|target| match target {
+                        Target::Host(h) => st.hosts.contains_key(h),
+                        Target::Pane(p) => st.blocks.contains_key(p),
+                        Target::Session { host_key, session_id } => st.hosts.get(host_key).is_some_and(|h| h.session_summaries.iter().any(|row| &row.session_id == session_id)),
+                    });
                 }
             }
             broadcast_msg(WinMsg::Redraw);
         }
-        HubNotice::QuickLookReady { path, bytes, content_type } => {
-            broadcast_to_role(WinRole::Workspace, move || WinMsg::QuickLookReady { path: path.clone(), bytes: bytes.clone(), content_type: content_type.clone() });
+        HubNotice::PromptRequested { host_key, req } => {
+            if let Some(w) = selected_workspace(&host_key, None, None) {
+                w.messenger().send(WinMsg::ShowPrompt { host_key, req });
+            } else if let Some(a) = APP.get() {
+                let hub = a.lock().unwrap_or_else(|e| e.into_inner()).hub.clone();
+                hub.respond_prompt(&host_key, &req.call_id, true, None);
+            }
         }
-        HubNotice::DirListingReady { listing, .. } => {
-            broadcast_to_role(WinRole::Workspace, move || WinMsg::DirListingReady { listing: listing.clone() });
+        HubNotice::PromptEnded { host_key, call_id } => {
+            broadcast_to_role(WinRole::Workspace, move || WinMsg::EndPrompt { host_key: host_key.clone(), call_id: call_id.clone() });
+        }
+        HubNotice::Attention { target, title, body, kind } => {
+            if let Some(a) = APP.get() {
+                a.lock().unwrap_or_else(|e| e.into_inner()).attention.show(target, title, body, kind);
+            }
         }
         HubNotice::SetClipboard(text) => {
-            broadcast_to_role(WinRole::Workspace, move || WinMsg::SetClipboard(text.clone()));
+            if let Some(w) = workspace() {
+                w.messenger().send(WinMsg::SetClipboard(text));
+            }
         }
     }
 }
@@ -200,12 +213,97 @@ fn broadcast_to_role(role: WinRole, make: impl Fn() -> WinMsg) {
     }
 }
 
+fn selected_workspace(host: &str, session: Option<&str>, block: Option<&str>) -> Option<WindowHandle<RexWindow>> {
+    wins().map.iter().filter(|(_, w)| w.role == WinRole::Workspace && w.selection.matches(host, session, block)).min_by_key(|(id, w)| (!w.selection.active, **id)).map(|(_, w)| w.handle.clone())
+}
+
+pub fn request_action(host: &str, session: Option<String>, block: Option<String>, action: String, args: Option<Value>) -> bool {
+    let Some(w) = selected_workspace(host, session.as_deref(), block.as_deref()) else { return false };
+    w.messenger().send(WinMsg::PerformAction { host: host.to_owned(), session, block, action, args });
+    true
+}
+
+fn workspace() -> Option<WindowHandle<RexWindow>> {
+    wins().map.iter().filter(|(_, s)| s.role == WinRole::Workspace).min_by_key(|(id, w)| (!w.selection.active, **id)).map(|(_, s)| s.handle.clone())
+}
+
+pub fn notification_event(event: olo_kit::notify::NoteEvent) {
+    let target = app().attention.event(event);
+    if let Some((target, token)) = target {
+        show_target(target, token);
+    }
+}
+
+pub fn show_target(target: Target, token: Option<String>) {
+    if workspace().is_none() {
+        open_workspace_window(None);
+    }
+    if let Some(w) = workspace() {
+        w.messenger().send(WinMsg::ShowTarget(target, token));
+    }
+}
+
 pub fn focus_block_from_cli(host_key: String, session_id: String, block_id: String) {
-    broadcast_to_role(WinRole::Workspace, move || WinMsg::FocusBlock(BlockKey { host_key: host_key.clone(), session_id: session_id.clone(), block_id: block_id.clone() }));
+    show_target(Target::Pane(BlockKey { host_key, session_id, block_id }), None);
 }
 
 pub fn focus_session_from_cli(host_key: String, session_id: String) {
-    broadcast_to_role(WinRole::Workspace, move || WinMsg::SelectSession(host_key.clone(), session_id.clone()));
+    if let Some(w) = workspace() {
+        w.messenger().send(WinMsg::SelectSession(host_key, session_id));
+        w.messenger().send(WinMsg::Raise);
+    }
+}
+
+pub fn create_session_from_cli(dir: String) {
+    if workspace().is_none() {
+        open_workspace_window(None);
+    }
+    if let Some(w) = workspace() {
+        w.messenger().send(WinMsg::CreateSession("local".into(), Some(dir)));
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct Feedback {
+    window: WinId,
+    serial: u64,
+}
+
+impl Feedback {
+    fn start(window: WinId) -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let out = Self { window, serial: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed) };
+        out.send(WinMsg::StartFeedback(out.serial));
+        out
+    }
+
+    fn send(self, msg: WinMsg) {
+        if let Some(slot) = wins().map.get(&self.window) {
+            slot.handle.messenger().send(msg);
+        }
+    }
+
+    pub fn problem(self, title: &str, detail: impl std::fmt::Display) {
+        let detail = detail.to_string();
+        let detail = detail.split_whitespace().collect::<Vec<_>>().join(" ");
+        self.failed((title.to_owned(), Some(detail)));
+    }
+
+    pub fn failed(self, (title, detail): (String, Option<String>)) {
+        self.send(WinMsg::Problem(self.serial, title, detail));
+    }
+
+    pub fn created(self, host: String, sid: String) {
+        self.send(WinMsg::Created(self.serial, host, sid));
+    }
+
+    pub fn preview(self, path: String, preview: QuickLookContent) {
+        self.send(WinMsg::QuickLookReady(self.serial, path, preview));
+    }
+
+    pub fn say(self, text: &str) {
+        self.send(WinMsg::Confirmation(self.serial, text.to_owned()));
+    }
 }
 
 pub fn open_settings_from_cli() {
@@ -217,8 +315,9 @@ pub fn open_panel_from_cli(role: WinRole) {
 }
 
 pub fn run_workspace_command_from_cli(cmd: &str) {
-    let c = cmd.to_owned();
-    broadcast_to_role(WinRole::Workspace, move || WinMsg::Command(c.clone()));
+    if let Some(w) = workspace() {
+        w.messenger().send(WinMsg::Command(cmd.to_owned()));
+    }
 }
 
 pub fn open_workspace_window(restored: Option<SavedWorkspaceState>) {
@@ -228,7 +327,7 @@ pub fn open_workspace_window(restored: Option<SavedWorkspaceState>) {
     opts.keep_size = Some("rex-main".into());
     opts.restore_key = Some(format!("rex-ws-{}", id.0));
     let handle = olo_kit::open_window(opts, move |cx| RexWindow::new_workspace(id, restored, cx));
-    wins().map.insert(id, WinSlot { role: WinRole::Workspace, handle });
+    wins().map.insert(id, WinSlot { role: WinRole::Workspace, handle, selection: Default::default() });
 }
 
 pub fn open_or_raise_panel(role: WinRole) {
@@ -272,7 +371,7 @@ pub fn open_or_raise_panel(role: WinRole) {
         }
     };
     let handle = olo_kit::open_window(opts, move |cx| RexWindow::new_panel(id, role, cx));
-    wins().map.insert(id, WinSlot { role, handle });
+    wins().map.insert(id, WinSlot { role, handle, selection: Default::default() });
 }
 
 fn next_win_id() -> WinId {
@@ -285,22 +384,32 @@ fn next_win_id() -> WinId {
 pub enum WinMsg {
     Redraw,
     Screens,
+    ShowTarget(Target, Option<String>),
+    CreateSession(String, Option<String>),
+    Created(u64, String, String),
+    StartFeedback(u64),
+    Problem(u64, String, Option<String>),
+    Confirmation(u64, String),
     Raise,
     ShowPrompt { host_key: String, req: olo_rex_client::ClientPromptRequested },
-    EndPrompt { call_id: String },
-    PerformAction { action: String, args: Option<Value> },
-    QuickLookReady { path: String, bytes: Vec<u8>, content_type: Option<String> },
-    DirListingReady { listing: olo_rex_client::DirListing },
+    EndPrompt { host_key: String, call_id: String },
+    PerformAction { host: String, session: Option<String>, block: Option<String>, action: String, args: Option<Value> },
+    QuickLookReady(u64, String, QuickLookContent),
+    QrReady(String, Option<Arc<qrcode::QrCode>>),
+    OpenPreview(BlockKey, String),
+    DirListingReady { key: BlockKey, listing: olo_rex_client::DirListing },
     SetClipboard(String),
-    PasteText(String),
+    PasteText(BlockKey, olo_rex_client::ControlClient, String),
+    PaneCommand(BlockKey, String),
     FocusBlock(BlockKey),
     Command(String),
     RunOverlayIndex(usize),
     TogglePromptCheck(String),
     ConfirmOverlay,
     DismissOverlay,
-    SelectTab(usize),
+    TabChanged,
     SelectSession(String, String),
+    SelectHost(String),
     FindStep(bool),
     FindClose,
     SettingsTab(usize),
@@ -323,7 +432,18 @@ pub struct RexWindow {
     pub focus: FocusHandle,
     pub active_host: String,
     pub active_session: Option<String>,
+    session_index: usize,
+    pending_focus: Option<BlockKey>,
+    created_session: Option<(String, String)>,
+    qr_url: Option<String>,
+    qr: Option<Arc<qrcode::QrCode>>,
+    preview_job: Option<tokio::task::AbortHandle>,
+    feedback_serial: u64,
+    problem: Option<(String, Option<Child<widgets::TextView>>)>,
+    notice: olo_kit::due::Notice,
+    due: olo_kit::due::Due,
     pub side_pane: SidePane,
+    sidebar_scroll: olo_kit::ScrollHandle,
     pub panes_view: Option<Child<PanesView>>,
     pub overlay: Option<ActiveOverlay>,
     pub overlay_field: Option<Child<TextField>>,
@@ -339,11 +459,59 @@ pub struct RexWindow {
     pub dropping: bool,
     pub unread_marked: bool,
     pub last_theme_mode: Option<olo_theme::ThemeMode>,
-    pub visual_states: HashMap<BlockKey, Rc<PaneVisualState>>,
-    pub pane_rects: HashMap<BlockKey, Bounds<Pixels>>,
 }
 
+fn selected_block(session: &olo_rex_client::SessionView) -> Option<&str> {
+    let win = session.active_window().or_else(|| session.windows.first())?;
+    win.focused_block_id.as_deref().filter(|id| win.all_blocks().any(|b| b.block_id == *id)).or_else(|| win.all_blocks().next().map(|b| b.block_id.as_str()))
+}
+
+fn connection_age(age: Duration) -> String {
+    let minutes = age.as_secs() / 60;
+    match minutes {
+        0 => olo_kit::words::tr("Connection lost just now.").into(),
+        1..60 => olo_kit::words::count(minutes, "Connection lost 1 minute ago.", "Connection lost {n} minutes ago."),
+        60..1440 => olo_kit::words::count(minutes / 60, "Connection lost 1 hour ago.", "Connection lost {n} hours ago."),
+        _ => olo_kit::words::count(minutes / 1440, "Connection lost 1 day ago.", "Connection lost {n} days ago."),
+    }
+}
+
+fn selected_session_index(rows: &[olo_rex_client::SessionSummary], selected: Option<&str>, previous: usize) -> Option<usize> {
+    if rows.is_empty() {
+        return None;
+    }
+    Some(selected.map_or(0, |id| rows.iter().position(|r| r.session_id == id).unwrap_or_else(|| previous.saturating_sub(1).min(rows.len() - 1))))
+}
+
+#[derive(Default)]
+struct PaneVisuals(HashMap<BlockKey, Rc<PaneVisualState>>);
+
 impl RexWindow {
+    fn clear_feedback(&mut self) {
+        self.created_session = None;
+        self.feedback_serial = 0;
+        self.problem = None;
+        self.notice.clear();
+    }
+
+    fn feedback_line(&mut self, cx: &mut olo_kit::Cx<Self>) -> Option<Element> {
+        self.due.at(self.notice.until(), cx, |_, cx| cx.invalidate());
+        if let Some((title, detail)) = &self.problem {
+            let scale = cx.scale_factor();
+            let frame = 4.0 * style::line_pixels(scale) / scale;
+            return Some(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(if self.role == WinRole::Settings { m::SPACING } else { m::TIGHT }))
+                    .w_full()
+                    .child(StringView::new(title.clone()).color(style::c(theme::palette().failure)).wrap(true))
+                    .children(detail.as_ref().map(|view| div().w_full().h(px(widgets::TextView::line_height() + 2.0 * widgets::TextView::MARGINS.1 + frame)).child(view))),
+            );
+        }
+        self.notice.text().map(|s| div().child(StringView::new(s.clone()).size(style::SMALL_SIZE).height(m::LABEL_ROW)))
+    }
+
     fn new_workspace(id: WinId, restored: Option<SavedWorkspaceState>, cx: &mut olo_kit::Cx<Self>) -> Self {
         let (side_w, side_col) = {
             let hub = app().hub.clone();
@@ -395,15 +563,26 @@ impl RexWindow {
             TextFieldEvent::Typed(_) => {}
         });
 
-        let panes_view = cx.new_view(|_| PanesView { win_id: id });
+        let panes_view = cx.new_view(|_| PanesView { win_id: id, session: None });
 
         Self {
             id,
             role: WinRole::Workspace,
             focus,
             active_host: restored.as_ref().map(|r| r.active_host.clone()).unwrap_or_else(|| "local".to_owned()),
+            session_index: restored.as_ref().map_or(0, |r| r.session_index),
             active_session: restored.and_then(|r| r.active_session),
             side_pane,
+            pending_focus: None,
+            sidebar_scroll: olo_kit::ScrollHandle::new(),
+            created_session: None,
+            qr_url: None,
+            qr: None,
+            preview_job: None,
+            feedback_serial: 0,
+            problem: None,
+            notice: Default::default(),
+            due: Default::default(),
             panes_view: Some(panes_view),
             overlay: None,
             overlay_field: Some(overlay_field),
@@ -415,12 +594,10 @@ impl RexWindow {
             askpass_field: None,
             preedit: None,
             toolbar_revealed_until: None,
-            window_active: true,
+            window_active: cx.is_window_active(),
             dropping: false,
             unread_marked: false,
             last_theme_mode: None,
-            visual_states: HashMap::new(),
-            pane_rects: HashMap::new(),
         }
     }
 
@@ -466,7 +643,18 @@ impl RexWindow {
             focus,
             active_host: "local".to_owned(),
             active_session: None,
+            session_index: 0,
             side_pane: SidePane::new(220.0, 168.0),
+            pending_focus: None,
+            sidebar_scroll: olo_kit::ScrollHandle::new(),
+            created_session: None,
+            qr_url: None,
+            qr: None,
+            preview_job: None,
+            feedback_serial: 0,
+            problem: None,
+            notice: Default::default(),
+            due: Default::default(),
             panes_view: None,
             overlay: None,
             overlay_field: None,
@@ -478,12 +666,24 @@ impl RexWindow {
             askpass_field,
             preedit: None,
             toolbar_revealed_until: None,
-            window_active: true,
+            window_active: cx.is_window_active(),
             dropping: false,
             unread_marked: false,
             last_theme_mode: None,
-            visual_states: HashMap::new(),
-            pane_rects: HashMap::new(),
+        }
+    }
+
+    /// Where this window is, for its status bar at rest: its host, and
+    /// its session if it shows one ("Local · main").
+    fn where_it_is(&self) -> String {
+        let hub = app().hub.clone();
+        let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(host) = st.hosts.get(&self.active_host) else { return String::new() };
+        let session =
+            self.active_session.as_deref().and_then(|id| host.session_summaries.iter().find(|s| s.session_id == id)).map(|s| if s.label.is_empty() { s.session_id.as_str() } else { s.label.as_str() });
+        match session {
+            Some(session) => olo_kit::tr!("{} · {}", host.label, session).to_string(),
+            None => host.label.clone(),
         }
     }
 
@@ -491,22 +691,28 @@ impl RexWindow {
         let hub = app().hub.clone();
         let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
         let host = st.hosts.get(&self.active_host).or_else(|| st.hosts.get("local"))?;
-        if let Some(sid) = &self.active_session
-            && let Some(view) = host.sessions.get(sid)
-        {
-            return Some((host.key.clone(), view.clone()));
+        self.active_host.clone_from(&host.key);
+        // Keep a restored selection until bootstrap has supplied the host's list.
+        if host.conn_state != HostConnState::Connected {
+            return None;
         }
-        let first_id = host.session_summaries.first().map(|s| s.session_id.clone()).or_else(|| host.sessions.keys().next().cloned())?;
-        let view = host.sessions.get(&first_id)?.clone();
-        self.active_host = host.key.clone();
-        self.active_session = Some(first_id);
-        Some((host.key.clone(), view))
+        let index = selected_session_index(&host.session_summaries, self.active_session.as_deref(), self.session_index);
+        let Some(index) = index else {
+            self.active_session = None;
+            self.session_index = 0;
+            return None;
+        };
+        self.session_index = index;
+        let sid = &host.session_summaries[index].session_id;
+        if self.active_session.as_ref() != Some(sid) {
+            self.active_session = Some(sid.clone());
+        }
+        Some((host.key.clone(), host.sessions.get(sid)?.clone()))
     }
 
     fn focused_block_key(&mut self) -> Option<BlockKey> {
         let (hk, sess) = self.resolve_active_session()?;
-        let win = sess.active_window().or_else(|| sess.windows.first())?;
-        let bid = win.focused_block_id.clone().or_else(|| win.all_blocks().next().map(|b| b.block_id.clone()))?;
+        let bid = selected_block(&sess)?.to_owned();
         Some(BlockKey { host_key: hk, session_id: sess.session_id, block_id: bid })
     }
 
@@ -581,7 +787,11 @@ impl RexWindow {
             let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
             st.blocks.get(&bk).map(|br| br.lock().unwrap_or_else(|e| e.into_inner()).pwd.clone()).filter(|p| !p.is_empty()).unwrap_or_else(|| ".".to_owned())
         };
-        hub.request_dir_listing(&bk, dir.clone(), mode == PathBrowserMode::InsertPath);
+        let to = cx.messenger();
+        let key = bk.clone();
+        hub.request_dir_listing(&bk, dir.clone(), mode == PathBrowserMode::InsertPath, move |listing| {
+            to.send(WinMsg::DirListingReady { key, listing });
+        });
         self.overlay = Some(ActiveOverlay::PathBrowser { mode, block: bk, dir, query: String::new(), entries: Vec::new(), selected: 0 });
         if let Some(f) = &self.overlay_field {
             f.update(cx, |f, cx| f.set_text(String::new(), cx));
@@ -590,7 +800,24 @@ impl RexWindow {
         cx.invalidate();
     }
 
+    fn cancel_preview(&mut self) {
+        if let Some(job) = self.preview_job.take() {
+            job.abort();
+        }
+        if matches!(self.overlay, Some(ActiveOverlay::QuickLook { .. })) {
+            self.overlay = None;
+            self.clear_feedback();
+        }
+    }
+
+    fn open_preview(&mut self, bk: BlockKey, path: String) {
+        self.cancel_preview();
+        self.overlay = Some(ActiveOverlay::QuickLook { path: path.clone(), content: QuickLookContent::Loading });
+        self.preview_job = app().hub.quick_look_path(&bk, path, Feedback::start(self.id));
+    }
+
     fn dismiss_overlay(&mut self, cx: &mut olo_kit::Cx<Self>) {
+        self.cancel_preview();
         if let Some(ActiveOverlay::RexPrompt { host_key, req, .. }) = self.overlay.take() {
             app().hub.respond_prompt(&host_key, &req.call_id, true, None);
         }
@@ -737,12 +964,14 @@ impl RexWindow {
             JumpTarget::Window { host_key, session_id, window_id } => {
                 self.active_host = host_key.clone();
                 self.active_session = Some(session_id.clone());
-                app().hub.select_window(&host_key, &session_id, &window_id);
+                let hub = app().hub.clone();
+                hub.select_window(&host_key, &session_id, &window_id);
             }
             JumpTarget::Pane(bk) => {
                 self.active_host = bk.host_key.clone();
                 self.active_session = Some(bk.session_id.clone());
-                app().hub.focus_block(&bk.host_key, &bk.session_id, &bk.block_id);
+                let hub = app().hub.clone();
+                hub.focus_block(&bk.host_key, &bk.session_id, &bk.block_id);
             }
             JumpTarget::Directory(dir) => {
                 if let Some(bk) = self.focused_block_key() {
@@ -757,14 +986,7 @@ impl RexWindow {
         let q = self.find_field.as_ref().map(|f| f.read(cx).text().to_owned()).unwrap_or_default();
         if let Some(bk) = self.focused_block_key() {
             let hub = app().hub.clone();
-            if let Some(br) = hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).cloned() {
-                let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
-                let _ = g.search.set_needle(if q.is_empty() { None } else { Some(q.as_str()) });
-                let _ = g.search.run();
-                if g.search.total_matches() > 0 {
-                    let _ = g.search.select_next();
-                }
-            }
+            hub.find(&bk, (!q.is_empty()).then_some(q.as_str()));
         }
         cx.invalidate();
     }
@@ -774,6 +996,9 @@ impl RexWindow {
             let hub = app().hub.clone();
             if let Some(br) = hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).cloned() {
                 let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
+                if g.finding {
+                    return;
+                }
                 if back {
                     let _ = g.search.select_prev();
                 } else {
@@ -824,7 +1049,7 @@ impl RexWindow {
             "app.new_window" => open_workspace_window(None),
             "app.close_window" => cx.request_close(),
             "app.quit" => olo_kit::quit(),
-            "app.reload_config" => hub.reload_server_config(&self.active_host),
+            "app.reload_config" => hub.reload_server_config(&self.active_host, Feedback::start(self.id)),
             "app.reveal_toolbar" => {
                 self.toolbar_revealed_until = Some(Instant::now() + Duration::from_secs(4));
                 cx.invalidate();
@@ -856,17 +1081,18 @@ impl RexWindow {
                 st.settings.save();
                 cx.invalidate();
             }
-            "session.new" => hub.create_session(&self.active_host, None, None),
+            "host.reconnect" => hub.connect_host(&self.active_host),
+            "session.new" => hub.create_session(&self.active_host, None, None, Feedback::start(self.id)),
             "session.close" => {
                 if let Some((hk, sess)) = self.resolve_active_session() {
-                    hub.close_session(&hk, &sess.session_id);
+                    hub.close_session(&hk, &sess.session_id, Feedback::start(self.id));
                 }
             }
             "window.new" => {
                 if let Some((hk, sess)) = self.resolve_active_session() {
                     hub.create_window(&hk, &sess.session_id, None);
                 } else {
-                    hub.create_session(&self.active_host, None, None);
+                    hub.create_session(&self.active_host, None, None, Feedback::start(self.id));
                 }
             }
             "window.close" => {
@@ -900,7 +1126,7 @@ impl RexWindow {
                         "pane.split_right" => "right",
                         "pane.split_down" => "down",
                         _ => {
-                            let rect = self.pane_rects.get(&bk).copied();
+                            let rect = cx.window_state::<PaneVisuals>().0.get(&bk).map(|v| v.bounds.get());
                             if rect.is_some_and(|r| r.size.width >= r.size.height) { "right" } else { "down" }
                         }
                     };
@@ -938,12 +1164,10 @@ impl RexWindow {
                 }
             }
             "pane.broadcast_toggle" => {
-                if let Some((_, sess)) = self.resolve_active_session()
-                    && let Some(w) = sess.active_window()
-                {
+                if let Some(key) = self.active_window_key() {
                     let mut a = app();
-                    if !a.broadcast_windows.remove(&w.window_id) {
-                        a.broadcast_windows.insert(w.window_id.clone());
+                    if !a.broadcast_windows.remove(&key) {
+                        a.broadcast_windows.insert(key);
                     }
                 }
                 cx.invalidate();
@@ -961,7 +1185,7 @@ impl RexWindow {
                     };
                     if let Some(txt) = sel.filter(|s| !s.is_empty()) {
                         olo_kit::clipboard::write(olo_kit::ClipboardItem::new_string(txt));
-                        if let Some(vis) = self.visual_states.get(&bk) {
+                        if let Some(vis) = cx.window_state::<PaneVisuals>().0.get(&bk) {
                             vis.trigger_copy_shine();
                         }
                         cx.invalidate();
@@ -969,10 +1193,12 @@ impl RexWindow {
                 }
             }
             "terminal.paste" => {
+                let Some(bk) = self.focused_block_key() else { return };
+                let Some(connection) = hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(&bk.host_key).and_then(|h| h.control.clone()) else { return };
                 let to = cx.messenger();
                 olo_kit::clipboard::paste_item(move |item| {
                     if let Some(text) = item.and_then(|i| i.text()).filter(|s| !s.is_empty()) {
-                        to.send(WinMsg::PasteText(text));
+                        to.send(WinMsg::PasteText(bk, connection, text));
                     }
                 });
             }
@@ -1101,8 +1327,7 @@ impl RexWindow {
                         })
                     };
                     if let Some(p) = selected_path {
-                        self.overlay = Some(ActiveOverlay::QuickLook { path: p.clone(), content: QuickLookContent::Loading });
-                        hub.quick_look_path(&bk, p);
+                        self.open_preview(bk, p);
                         cx.invalidate();
                     } else {
                         self.open_path_browser(PathBrowserMode::InsertPath, cx);
@@ -1187,52 +1412,40 @@ impl RexWindow {
             }
             "import-theme" => {
                 let start_dir = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"));
+                let feedback = Feedback::start(self.id);
                 let panel = olo_kit::file_panel::FilePanel::open(start_dir)
                     .filters(vec![olo_kit::file_panel::Filter::new("Terminal Themes (*.itermcolors, Ghostty)").glob("*.itermcolors").glob("*.theme").glob("*")], 0);
                 olo_kit::file_panel::show("Import Terminal Theme", panel, move |ans| {
                     let olo_kit::file_panel::PanelResult::Chosen(path) = ans.result else {
                         return;
                     };
-                    let Ok(raw) = std::fs::read_to_string(&path) else {
-                        handle_hub_notice(HubNotice::Toast {
-                            title: "Theme import failed".into(),
-                            body: format!("Could not read {}", path.display()),
-                            host_key: None,
-                            session_id: None,
-                            block_id: None,
-                        });
-                        return;
-                    };
-                    let fallback_name = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Custom Theme".to_owned());
-                    let parsed = if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("itermcolors")) {
-                        olo_rex_vt::parse_itermcolors(&fallback_name, &raw)
-                    } else {
-                        olo_rex_vt::parse_ghostty_theme(&fallback_name, &raw)
-                    };
-                    match parsed {
-                        Ok(t) => {
-                            let name = t.name.clone();
-                            let hub = app().hub.clone();
-                            let (new_s, new_t) = {
-                                let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
-                                let mut s = st.settings.clone();
-                                s.custom_themes.retain(|c| c.name != name);
-                                s.custom_themes.push(t);
-                                if theme::palette().mode == olo_theme::ThemeMode::Dark {
-                                    s.dark_theme_id = Some(name.clone());
-                                } else {
-                                    s.light_theme_id = Some(name.clone());
-                                }
-                                let th = themes::resolve_theme(&s, &theme::palette());
-                                (s, th)
-                            };
-                            hub.update_settings(new_s, new_t);
-                            handle_hub_notice(HubNotice::Toast { title: "Theme imported".into(), body: format!("Applied “{name}”"), host_key: None, session_id: None, block_id: None });
+                    std::thread::spawn(move || {
+                        let parsed = themes::read_theme(&path);
+                        match parsed {
+                            Ok(t) => {
+                                let name = t.name.clone();
+                                let hub = app().hub.clone();
+                                let (new_s, new_t) = {
+                                    let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                                    let mut s = st.settings.clone();
+                                    s.custom_themes.retain(|c| c.name != name);
+                                    s.custom_themes.push(t);
+                                    if theme::palette().mode == olo_theme::ThemeMode::Dark {
+                                        s.dark_theme_id = Some(name.clone());
+                                    } else {
+                                        s.light_theme_id = Some(name.clone());
+                                    }
+                                    let th = themes::resolve_theme(&s, &theme::palette());
+                                    (s, th)
+                                };
+                                hub.update_settings(new_s, new_t);
+                                feedback.say(&format!("Imported “{name}”."));
+                            }
+                            Err(e) => {
+                                feedback.problem("Couldn’t import the theme.", e);
+                            }
                         }
-                        Err(e) => {
-                            handle_hub_notice(HubNotice::Toast { title: "Invalid theme file".into(), body: e.to_string(), host_key: None, session_id: None, block_id: None });
-                        }
-                    }
+                    });
                 });
             }
             "olo.install_remote_shim" => {
@@ -1367,7 +1580,7 @@ impl RexWindow {
                 if let Some(act) = cm_action {
                     if let CopyModeAction::Yank(txt) = act {
                         olo_kit::clipboard::write(olo_kit::ClipboardItem::new_string(txt));
-                        if let Some(vis) = self.visual_states.get(&bk) {
+                        if let Some(vis) = cx.window_state::<PaneVisuals>().0.get(&bk) {
                             vis.trigger_copy_shine();
                         }
                     }
@@ -1397,7 +1610,7 @@ impl RexWindow {
 
         // Forward terminal keystrokes directly to Rex server (broadcasting to all panes in window if enabled).
         let Some(bk) = self.focused_block_key() else { return };
-        if let Some(vis) = self.visual_states.get(&bk) {
+        if let Some(vis) = cx.window_state::<PaneVisuals>().0.get(&bk) {
             vis.reset_blink();
         }
         let targets = self.input_target_blocks(&bk);
@@ -1423,8 +1636,14 @@ impl RexWindow {
         }
     }
 
+    fn active_window_key(&mut self) -> Option<(String, String, String)> {
+        let (host, session) = self.resolve_active_session()?;
+        let id = session.active_window().or_else(|| session.windows.first())?.window_id.clone();
+        Some((host, session.session_id, id))
+    }
+
     fn input_target_blocks(&mut self, focused: &BlockKey) -> Vec<BlockKey> {
-        let is_broadcast = self.resolve_active_session().and_then(|(_, s)| s.active_window().map(|w| w.window_id.clone())).is_some_and(|wid| app().broadcast_windows.contains(&wid));
+        let is_broadcast = self.active_window_key().is_some_and(|key| app().broadcast_windows.contains(&key));
         if !is_broadcast {
             return vec![focused.clone()];
         }
@@ -1437,7 +1656,7 @@ impl RexWindow {
     }
 
     fn build_menu_bar(&mut self) -> Vec<Menu> {
-        let broadcast_on = self.resolve_active_session().and_then(|(_, s)| s.active_window().map(|w| w.window_id.clone())).is_some_and(|wid| app().broadcast_windows.contains(&wid));
+        let broadcast_on = self.active_window_key().is_some_and(|key| app().broadcast_windows.contains(&key));
         let (dev_mode, sidebar_shown) = (app().hub.state.lock().unwrap_or_else(|e| e.into_inner()).settings.developer_mode, self.side_pane.showing());
 
         vec![
@@ -1526,16 +1745,6 @@ impl RexWindow {
         let surface = cx.surface_id();
         let hub = app().hub.clone();
 
-        // Sync Deskbar + window tab unread badge!
-        let has_unread = {
-            let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
-            st.blocks.values().any(|b| b.lock().unwrap_or_else(|e| e.into_inner()).unread)
-        };
-        if has_unread != self.unread_marked {
-            self.unread_marked = has_unread;
-            olo_kit::unread::mark(cx, has_unread, false);
-        }
-
         // Provide structured context to Olo's `/ask` palette!
         if !olo_kit::agent::has_about(cx) {
             olo_kit::agent::about_from(cx, move |_| {
@@ -1560,7 +1769,7 @@ impl RexWindow {
                 st.blocks.values().cloned().collect()
             };
             for br in blocks {
-                let _ = br.lock().unwrap_or_else(|e| e.into_inner()).terminal.apply_theme(&new_theme);
+                let _ = br.lock().unwrap_or_else(|e| e.into_inner()).apply_theme(&new_theme);
             }
             if let Some(pv) = &self.panes_view {
                 pv.update(cx, |_, cx| cx.invalidate());
@@ -1569,7 +1778,72 @@ impl RexWindow {
 
         let settings = hub.state.lock().unwrap_or_else(|e| e.into_inner()).settings.clone();
         let active_theme = hub.state.lock().unwrap_or_else(|e| e.into_inner()).active_theme.clone();
+        if let Some((hk, sid)) = &self.created_session {
+            let ready = hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(hk).is_some_and(|h| h.sessions.contains_key(sid));
+            if ready {
+                let (hk, sid) = self.created_session.take().unwrap();
+                self.active_host = hk;
+                self.active_session = Some(sid);
+                self.focus.focus(cx);
+                if self.side_pane.alone() {
+                    self.side_pane.show_rest();
+                }
+            }
+        }
+        if let Some(bk) = &self.pending_focus {
+            let ready = {
+                let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                st.hosts.get(&bk.host_key).and_then(|h| h.sessions.get(&bk.session_id)).is_some_and(|s| s.find_block(&bk.block_id).is_some())
+            };
+            if ready {
+                let bk = self.pending_focus.take().unwrap();
+                self.jump_to(JumpTarget::Pane(bk), cx);
+            }
+        }
+        let previous = self.active_session.clone();
         let sess_info = self.resolve_active_session();
+        if let Some(slot) = wins().map.get_mut(&self.id) {
+            let focused = sess_info.as_ref().and_then(|(_, s)| selected_block(s));
+            slot.selection.host.clone_from(&self.active_host);
+            slot.selection.session.clone_from(&self.active_session);
+            slot.selection.block = focused.map(str::to_owned);
+            slot.selection.active = self.window_active;
+        }
+        if previous.is_some() && previous != self.active_session {
+            self.clear_feedback();
+            self.find_open = false;
+            self.focus.focus(cx);
+        }
+
+        if self.window_active {
+            let content_visible = !matches!(self.side_pane.panes(f32::from(viewport.width), 460.0), SidePanes::Pane) && self.overlay.is_none();
+            let pane = if content_visible { self.focused_block_key() } else { None };
+            if let Some(key) = &pane {
+                let block = hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(key).cloned();
+                if let Some(block) = block {
+                    let mut b = block.lock().unwrap_or_else(|e| e.into_inner());
+                    if b.unread {
+                        b.unread = false;
+                        b.unread_cleared_at = Some(Instant::now());
+                    }
+                }
+            }
+            let front = match pane {
+                Some(p) => Target::Pane(p),
+                None if content_visible && let Some((host, session)) = &sess_info => Target::Session { host_key: host.clone(), session_id: session.session_id.clone() },
+                None => Target::Host(self.active_host.clone()),
+            };
+            app().attention.showing(self.id, front);
+        }
+        // Sync Deskbar + window tab unread badge!
+        let has_unread = {
+            let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.blocks.values().any(|b| b.lock().unwrap_or_else(|e| e.into_inner()).unread)
+        };
+        if has_unread != self.unread_marked {
+            self.unread_marked = has_unread;
+            olo_kit::unread::mark(cx, has_unread, false);
+        }
 
         let menu_bar = MenuBar::of(self, cx, |v, _| v.build_menu_bar());
 
@@ -1654,12 +1928,29 @@ impl RexWindow {
             if active_shows_header { (style::c(look.panel_background), style::c(look.panel_text)) } else { (hsla(active_theme.background), hsla(active_theme.foreground)) };
 
         let is_side_strip = matches!(settings.toolbar_layout, ToolbarLayout::LeftSidebar | ToolbarLayout::RightSidebar);
-        let strip_el: Option<Element> = if show_toolbar && !strip_tabs.is_empty() {
-            let mut strip = TabStrip::new("rex-tabs", strip_tabs, active_tab_idx).content(tab_content_bg, tab_content_fg).in_window(surface).on_action(cx.msg_with(|act: &StripAction| match *act {
-                StripAction::Select(i) => WinMsg::SelectTab(i),
-                StripAction::New => WinMsg::Command("window.new".into()),
-                StripAction::Close(i) => WinMsg::Command(format!("close-tab:{i}")),
-                _ => WinMsg::Redraw,
+        let strip_el: Option<Element> = if show_toolbar
+            && !strip_tabs.is_empty()
+            && let Some((hk, sess)) = &sess_info
+        {
+            let hub = hub.clone();
+            let (hk, sid) = (hk.clone(), sess.session_id.clone());
+            let ids: Vec<_> = sess.windows.iter().map(|w| w.window_id.clone()).collect();
+            let mut strip = TabStrip::new("rex-tabs", strip_tabs, active_tab_idx).content(tab_content_bg, tab_content_fg).in_window(surface).on_action(cx.msg_with(move |act: &StripAction| {
+                match act {
+                    StripAction::Select(i) => {
+                        if let Some(id) = ids.get(*i) {
+                            hub.select_window(&hk, &sid, id);
+                        }
+                    }
+                    StripAction::Close(i) => {
+                        if let Some(id) = ids.get(*i) {
+                            hub.close_window(&hk, &sid, id);
+                        }
+                    }
+                    StripAction::New => hub.create_window(&hk, &sid, None),
+                    _ => return WinMsg::Redraw,
+                }
+                WinMsg::TabChanged
             }));
             if is_side_strip {
                 strip = strip.side();
@@ -1672,7 +1963,61 @@ impl RexWindow {
         };
 
         // Main terminal panes view (isolated `PanesView` child so 120 Hz output doesn't rebuild menus/sidebar!).
-        let panes_el = self.panes_view.as_ref().map(|p| div().flex_1().min_w_0().min_h_0().size_full().child(p)).unwrap_or_else(|| div().flex_1());
+        let panes_el = if let Some((hk, sess)) = &sess_info
+            && let Some(w) = sess.active_window().or_else(|| sess.windows.first())
+            && w.all_blocks().next().is_some()
+            && let Some(child) = &self.panes_view
+        {
+            let current = child.read(cx).session.as_ref();
+            if !current.is_some_and(|(h, s)| h == hk && s == &sess.session_id) {
+                child.update(cx, |pv, cx| {
+                    pv.session = Some((hk.clone(), sess.session_id.clone()));
+                    cx.invalidate();
+                });
+            }
+            div().flex_1().min_w_0().min_h_0().size_full().child(child)
+        } else {
+            let state = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+            let host = state.hosts.get(&self.active_host);
+            let name = host.map_or("Local", |h| h.label.as_str());
+            let (message, action, offline) = match host.map(|h| &h.conn_state) {
+                Some(HostConnState::Connected) if let Some((_, sess)) = &sess_info => {
+                    let label = if sess.label.is_empty() { &sess.session_id } else { &sess.label };
+                    (olo_kit::tr!("“{}” has no terminals.", label), Some(("New Terminal", "window.new")), false)
+                }
+                Some(HostConnState::Connected) if self.active_session.is_some() => (olo_kit::words::tr("Opening session…").into(), None, false),
+                // (A name the person gave is quoted, a host's as a session's.)
+                Some(HostConnState::Connected) => (olo_kit::tr!("“{}” has no sessions.", name), Some(("New Session", "session.new")), false),
+                Some(HostConnState::Connecting) => (olo_kit::tr!("Connecting to “{}”…", name), None, false),
+                _ => (olo_kit::tr!("“{}” is disconnected.", name), Some(("Reconnect", "host.reconnect")), true),
+            };
+            let lost = host.and_then(|h| h.connection_lost);
+            drop(state);
+            let icon = canvas(move |g, b| {
+                icons::paint(g, b, "terminal");
+                if offline {
+                    let p = theme::palette();
+                    let center = point(b.right() - px(m::TIGHT), b.bottom() - px(m::TIGHT));
+                    paint_circle(g, center, m::TIGHT, style::c(p.panel_background));
+                    paint_circle(g, center, m::TIGHT - f32::from(style::hairline(g)), style::disabled_text(&p));
+                }
+            })
+            .w(px(48.0))
+            .h(px(48.0))
+            .paint_key(style::key(offline));
+            let mut group = div().w_full().h(olo_kit::relative(0.90)).flex().flex_col().items_center().justify_center().gap(px(m::SPACING)).px(px(m::SPACING)).child(icon);
+            // (The two lines are one thing: closer to each other than to
+            // the icon above and the button below.)
+            let mut lines = div().flex().flex_col().items_center().gap(px(m::TIGHT / 2.0)).child(StringView::new(message).height(m::LABEL_ROW));
+            if offline && let Some(at) = lost {
+                lines = lines.child(StringView::new(olo_kit::ago::ago(at, connection_age)).dim(true).height(m::LABEL_ROW));
+            }
+            group = group.child(lines);
+            if let Some((label, cmd)) = action {
+                group = group.child(Button::new(label).default(true).on_click(cx.msg(WinMsg::Command(cmd.into()))));
+            }
+            div().flex_1().min_w_0().min_h_0().child(group)
+        };
 
         // Optional Find Bar above panes.
         let focused_bk_for_find = if self.find_open { self.focused_block_key() } else { None };
@@ -1680,16 +2025,16 @@ impl RexWindow {
             && let Some(ff) = &self.find_field
         {
             let query = ff.read(cx).text().to_owned();
-            let (total, sel) = focused_bk_for_find
+            let (total, sel, finding) = focused_bk_for_find
                 .and_then(|bk| {
                     let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
                     st.blocks.get(&bk).map(|br| {
                         let g = br.lock().unwrap_or_else(|e| e.into_inner());
-                        (g.search.total_matches(), g.search.selected_index())
+                        (g.search.total_matches(), g.search.selected_index(), g.finding)
                     })
                 })
-                .unwrap_or((0, None));
-            let said = find_said(&query, total, sel, None);
+                .unwrap_or((0, None, false));
+            let said = if finding { "Searching…".into() } else { find_said(&query, total, sel, None) };
             Some(find_bar(cx, ff, said, total > 0, cx.msg_with(|back: &bool| WinMsg::FindStep(*back)), cx.msg_with(|_: &()| WinMsg::FindClose)))
         } else {
             None
@@ -1763,6 +2108,28 @@ impl RexWindow {
         let mut root =
             div().relative().size_full().flex().flex_col().track_focus(&self.focus).on_key_down(cx.listener(|w, e: &KeyDownEvent, cx| w.handle_terminal_key(e, cx))).child(menu_bar).child(body_row);
 
+        // The status bar is always there, as Tracker's is: where the
+        // window is (its host, its session) while there is nothing to
+        // say, a passing word or a problem when there is. (It came and
+        // went with each word: the panes above it lost and regained a
+        // row each time, which to a program in a terminal is the window
+        // resized twice. The second design review.)
+        let line = match self.feedback_line(cx) {
+            Some(line) => line,
+            None => div().child(StringView::new(self.where_it_is()).size(style::SMALL_SIZE).height(m::LABEL_ROW).dim(true).cut(true)).into_any_element(),
+        };
+        root = root.child(
+            div().w_full().flex_shrink_0().flex().flex_col().child(widgets::separator()).child(
+                div()
+                    .relative()
+                    .w_full()
+                    .min_h(px(m::LABEL_ROW))
+                    .px(px(m::SPACING))
+                    .child(canvas(|g, b| style::fill_rect(g, b, style::c(theme::palette().panel_background))).paint_key(1).absolute().inset_0())
+                    .child(line),
+            ),
+        );
+
         // Place `side_divider` directly on the outer window from `BAR_HEIGHT` to bottom (exact `apps/phone` pattern).
         if !self.side_pane.alone() {
             root = root.child(side_divider(&self.side_pane, side_w, menu_h, total_h, "Rex Sidebar", cx.msg_with(|_: &()| WinMsg::SidebarMoved)));
@@ -1783,26 +2150,6 @@ impl RexWindow {
         // Which-Key Sequence Hints HUD when waiting on a multi-chord prefix.
         if let Some((prefix, hints)) = app().keymap.pending_hints() {
             root = root.child(overlays::render_which_key_hud(&prefix, &hints));
-        }
-
-        // Floating in-app notification toast (auto-expires after 6 s).
-        let latest_toast = {
-            let mut a = app();
-            a.toasts.retain(|t| t.created.elapsed() < Duration::from_secs(6));
-            a.toasts.last().cloned()
-        };
-        if let Some(toast) = latest_toast {
-            let target = toast.target.clone();
-            let toast_id = toast.id;
-            root = root.child(overlays::render_toast(
-                &toast,
-                settings.notifications.anchor,
-                cx.msg_with(move |_: &()| if let Some(bk) = &target { WinMsg::FocusBlock(bk.clone()) } else { WinMsg::Redraw }),
-                cx.msg_with(move |_: &()| {
-                    app().toasts.retain(|t| t.id != toast_id);
-                    WinMsg::Redraw
-                }),
-            ));
         }
 
         // Active modal overlay (Command Palette / Go to Anything / rex.ui Prompt / Path Browser / Quick Look).
@@ -1880,12 +2227,6 @@ impl RexWindow {
         let back = canvas(|g, b| {
             let p = theme::palette();
             style::fill_rect(g, b, style::c(p.panel_background));
-            let (shadow, light) = bevel_colors(&p);
-            let scale = g.scale_factor();
-            let dpx = 1.0 / scale;
-            let xr = (f32::from(b.right()) * scale).round() / scale;
-            g.paint_quad(olo_kit::fill(Bounds::new(point(px(xr - 2.0 * dpx), b.top()), size(px(dpx), b.size.height)), shadow));
-            g.paint_quad(olo_kit::fill(Bounds::new(point(px(xr - dpx), b.top()), size(px(dpx), b.size.height)), light));
         })
         .paint_key(2)
         .absolute()
@@ -1942,63 +2283,90 @@ impl RexWindow {
             .child(header_bg)
             .child(div().w_full().flex().flex_row().items_end().child(seg_sessions).child(seg_activity));
 
-        let mut list = div().flex_1().min_h_0().w_full().px(px(m::SPACING)).py(px(m::SPACING)).flex().flex_col().gap(px(2.0));
-
+        let mut list = div().flex_shrink_0().w_full().p(px(m::SPACING)).flex().flex_col().gap(px(m::SPACING));
         if mode == SidebarMode::Sessions {
-            for (h_idx, (hk, hlabel, conn, sessions)) in hosts_snap.into_iter().enumerate() {
-                let conn_dot: [u8; 4] = match conn {
-                    HostConnState::Connected => [56, 174, 92, 255],
-                    HostConnState::Connecting | HostConnState::Reconnecting { .. } => [232, 168, 36, 255],
-                    HostConnState::Disconnected | HostConnState::Error(_) => [210, 64, 64, 255],
+            for (hk, hlabel, conn, sessions) in hosts_snap {
+                let connected = conn == HostConnState::Connected;
+                let tip = match &conn {
+                    HostConnState::Connected => olo_kit::words::tr("Connected").into(),
+                    HostConnState::Connecting => olo_kit::words::tr("Connecting…").into(),
+                    HostConnState::Disconnected => olo_kit::words::tr("Disconnected").into(),
+                    HostConnState::Error(why) | HostConnState::Reconnecting { last_error: why, .. } => olo_kit::tr!("Disconnected: {}", why),
                 };
+                let selected = self.active_host == hk && !sessions.iter().any(|(s, ..)| self.active_session.as_ref() == Some(s));
+                let key = style::key((&hlabel, &tip, connected, selected));
+                let state_words = tip.clone();
+                let tip_key = format!("rex-host-{hk}");
+                olo_kit::tip::retext(cx, tip_key.clone(), tip.clone());
                 let hk_new = hk.clone();
-                let hub_new = hub.clone();
-                let top_pad = if h_idx == 0 { 0.0 } else { 12.0 };
-                list = list.child(
-                    div()
-                        .w_full()
-                        .pt(px(top_pad))
-                        .pb(px(2.0))
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .justify_between()
-                        .gap(px(m::TIGHT))
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .flex()
-                                .flex_row()
-                                .items_center()
-                                .gap(px(6.0))
-                                .child(
-                                    canvas(move |g, b| {
-                                        paint_circle(g, b.center(), 3.5, style::c(conn_dot));
-                                    })
-                                    .paint_key(style::key(conn_dot))
-                                    .w(px(10.0))
-                                    .h(px(10.0)),
-                                )
-                                .child(StringView::new(hlabel).bold(true).cut(true)),
-                        )
-                        .child(compact_icon_button(
-                            "New Session",
-                            IconGlyph::Plus,
-                            cx.msg_with(move |_: &()| {
-                                hub_new.create_session(&hk_new, None, None);
-                                WinMsg::Redraw
-                            }),
-                        )),
-                );
-
+                let window = self.id;
+                let pick = cx.msg(WinMsg::SelectHost(hk.clone()));
+                let row_label = canvas(move |g, b| {
+                    let p = theme::palette();
+                    let dot = if connected { style::c(p.success) } else { style::disabled_text(&p) };
+                    let y = style::baseline_at(g, b.center().y, style::PLAIN_SIZE) - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
+                    paint_circle(g, point(b.left() + px(m::TIGHT), y), 3.5, dot);
+                    // (Selected, a disconnected host's name is a selected
+                    // name: dimmed on the selection it read as something
+                    // that can't be chosen, and choosing it is the way
+                    // to Reconnect. Its grey dot says the rest.)
+                    let ink = if selected {
+                        style::c(p.list_selected_item_text)
+                    } else if connected {
+                        style::c(p.panel_text)
+                    } else {
+                        style::secondary_text(&p)
+                    };
+                    let left = b.left() + px(m::WINDOW_INSET);
+                    style::label_fit(g, left, b.center().y, style::Align::Left, hlabel.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::BOLD), ink, b.right() - left);
+                    g.agent(agent::Node {
+                        role: "Button",
+                        name: Some(hlabel.clone().into()),
+                        value: Some(state_words.clone().into()),
+                        selected: Some(selected),
+                        enabled: true,
+                        clickable: true,
+                        bounds: b,
+                        ..Default::default()
+                    });
+                })
+                .paint_key(key)
+                .h_full()
+                .flex_1()
+                .min_w_0()
+                .cursor(CursorStyle::PointingHand)
+                .on_mouse_down(MouseButton::Left, move |_, cx| {
+                    pick(&(), cx);
+                    cx.stop_propagation();
+                });
+                let mut row = div().w_full().h(px(m::LABEL_ROW + m::TIGHT)).flex_shrink_0().flex().flex_row().items_center().gap(px(m::TIGHT));
+                if selected {
+                    row = row.bg(style::c(theme::palette().list_selected_background));
+                }
+                row = row.child(row_label).child(compact_icon_button("New Session", IconGlyph::Plus, connected, cx.msg(WinMsg::CreateSession(hk_new, None))));
+                let mut group = div().w_full().flex_shrink_0().flex().flex_col().child(olo_kit::tip::on(row, tip_key, tip));
                 for (sid, slabel, sact, unread) in sessions {
                     let is_active = self.active_host == hk && self.active_session.as_deref() == Some(sid.as_str());
                     let hk_sel = hk.clone();
                     let sid_sel = sid.clone();
                     let badge = if unread > 0 { Some(format!("{unread}")) } else { None };
-                    list = list.child(sidebar_row(slabel, badge, sact, is_active, cx.msg_with(move |_: &()| WinMsg::SelectSession(hk_sel.clone(), sid_sel.clone()))));
+                    let hk_end = hk.clone();
+                    let hub_end = hub.clone();
+                    group = group.child(sidebar_row(slabel, badge, sact, is_active, cx.msg_with(move |_: &()| WinMsg::SelectSession(hk_sel.clone(), sid_sel.clone()))).on_mouse_down(
+                        MouseButton::Right,
+                        move |e, cx| {
+                            let hub = hub_end.clone();
+                            let (hk, sid) = (hk_end.clone(), sid.clone());
+                            menu::context_menu(cx, Menu::new("").item("End Session", "session.close"), e.position, move |cmd, _| {
+                                if cmd == "session.close" {
+                                    hub.close_session(&hk, &sid, Feedback::start(window));
+                                }
+                            });
+                            cx.stop_propagation();
+                        },
+                    ));
                 }
+                list = list.child(group);
             }
         } else {
             if activity_rows.is_empty() {
@@ -2031,7 +2399,46 @@ impl RexWindow {
             .child(footer_bg)
             .child(Button::new("Add Host…").small().on_click(cx.msg_with(|_: &olo_kit::ClickEvent| WinMsg::Command("app.hosts".into()))));
 
-        div().relative().w(px(width)).h_full().flex_shrink_0().flex().flex_col().child(back).child(header).child(list).child(footer)
+        div()
+            .relative()
+            .w(px(width))
+            .h_full()
+            .flex_shrink_0()
+            .flex()
+            .flex_col()
+            .child(back)
+            .child(header)
+            .child(div().flex_1().min_h_0().child(widgets::ScrollView::new(&self.sidebar_scroll).border(false).auto_hide(true).background(theme::palette().panel_background).child(list)))
+            .child(footer)
+            .child(
+                canvas(|g, b| {
+                    let p = theme::palette();
+                    style::vline_left_of(g, b.right(), b.top(), b.bottom(), style::shade(&p, p.panel_background, 1.3));
+                })
+                .paint_key(1)
+                .absolute()
+                .right(px(0.))
+                .top(px(0.))
+                .h_full()
+                .w(px(2.)),
+            )
+    }
+
+    fn qr_for(&mut self, url: Option<String>, cx: &mut olo_kit::Cx<Self>) -> Option<Arc<qrcode::QrCode>> {
+        if self.qr_url != url {
+            self.qr = None;
+            self.qr_url = url.clone();
+            if let Some(url) = url {
+                cx.work(
+                    move || {
+                        let code = qrcode::QrCode::new(url.as_bytes()).ok().map(Arc::new);
+                        (url, code)
+                    },
+                    |(url, code)| WinMsg::QrReady(url, code),
+                );
+            }
+        }
+        self.qr.clone()
     }
 
     fn render_secondary_panel(&mut self, cx: &mut olo_kit::Cx<Self>) -> Element {
@@ -2040,6 +2447,12 @@ impl RexWindow {
             WinRole::Settings => {
                 let settings = hub.state.lock().unwrap_or_else(|e| e.into_inner()).settings.clone();
                 let sstate = app().settings_state.clone();
+                let url = if sstate.tab == 7 {
+                    hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get("local").and_then(|h| h.tailscale.as_ref()).and_then(crate::tailscale::login_link).map(str::to_owned)
+                } else {
+                    None
+                };
+                let qr = self.qr_for(url, cx);
                 let hub_m = hub.clone();
                 let mutate: panels::SettingsMutator = Arc::new(move |f| {
                     let (new_s, new_t) = {
@@ -2051,25 +2464,27 @@ impl RexWindow {
                     };
                     hub_m.update_settings(new_s, new_t);
                 });
+                let window = self.id;
                 let hub_ts = hub.clone();
                 let hub_rel = hub.clone();
                 let on_tab = cx.msg_with(|i: &usize| WinMsg::SettingsTab(*i));
                 let on_bridge_host = cx.msg_with(|h: &String| WinMsg::SelectBridgeHost(h.clone()));
                 let on_record = cx.msg_with(|act: &Option<String>| WinMsg::RecordShortcut(act.clone()));
                 let on_reload = cx.msg_with(move |_: &()| {
-                    hub_rel.reload_server_config("local");
+                    hub_rel.reload_server_config("local", Feedback::start(window));
                     WinMsg::Redraw
                 });
                 let on_import = cx.msg_with(|_: &()| WinMsg::Command("import-theme".into()));
                 let on_shim = cx.msg_with(|_: &()| WinMsg::Command("olo.install_remote_shim".into()));
                 let on_skill = cx.msg_with(|_: &()| WinMsg::Command("olo.install_remote_skill".into()));
-                let on_ts = cx.msg_with(move |on: &bool| {
-                    hub_ts.toggle_tailscale("local", *on);
+                let on_ts = cx.msg_with(move |action: &crate::tailscale::Action| {
+                    hub_ts.change_tailscale("local", action.clone(), Feedback::start(window));
                     WinMsg::Redraw
                 });
                 let on_defaults = cx.msg_with(|_: &()| WinMsg::SettingsDefaults);
                 let on_revert = cx.msg_with(|_: &()| WinMsg::SettingsRevert);
                 let on_close = cx.msg_with(|_: &()| WinMsg::CloseWindow);
+                let feedback = self.feedback_line(cx);
                 let a = app();
                 let el = panels::render_settings_panel(
                     cx,
@@ -2077,6 +2492,8 @@ impl RexWindow {
                     &sstate,
                     &hub,
                     &a.keymap,
+                    feedback,
+                    qr,
                     on_tab,
                     mutate,
                     on_bridge_host,
@@ -2099,9 +2516,10 @@ impl RexWindow {
                 };
                 let hub_r = hub.clone();
                 let hub_d = hub.clone();
+                let window = self.id;
                 let hub_f = hub.clone();
                 let hub_s = hub.clone();
-                panels::render_hosts_panel(
+                let panel = panels::render_hosts_panel(
                     cx,
                     &hub,
                     lf,
@@ -2117,7 +2535,7 @@ impl RexWindow {
                         WinMsg::Redraw
                     }),
                     cx.msg_with(move |(hk, sid, port, open): &(String, String, u16, bool)| {
-                        hub_f.add_local_forward(hk, sid, "127.0.0.1".to_owned(), *port, 0, *open);
+                        hub_f.add_local_forward(hk, sid, "127.0.0.1".to_owned(), *port, 0, *open, Feedback::start(window));
                         WinMsg::Redraw
                     }),
                     cx.msg_with(move |fid: &String| {
@@ -2126,7 +2544,8 @@ impl RexWindow {
                     }),
                     cx.msg_with(|_: &()| WinMsg::HostsManualForward),
                     cx.msg_with(|_: &()| WinMsg::CloseWindow),
-                )
+                );
+                div().w_full().flex().flex_col().child(panel).children(self.feedback_line(cx).map(|el| div().px(px(m::WINDOW_INSET)).pb(px(m::SPACING)).child(el)))
             }
             WinRole::QrPairing => {
                 let url = {
@@ -2136,7 +2555,8 @@ impl RexWindow {
                         .and_then(|h| h.tailscale.as_ref())
                         .and_then(|ts| ts.https.as_ref().and_then(|h| h.url.clone()).or_else(|| ts.dns_name.as_ref().map(|d| format!("https://{d}"))))
                 };
-                panels::render_qr_pairing_panel(url, cx.msg_with(|u: &String| WinMsg::SetClipboard(u.clone())), cx.msg_with(|_: &()| WinMsg::CloseWindow))
+                let qr = self.qr_for(url.clone(), cx);
+                panels::render_qr_pairing_panel(url, qr, cx.msg_with(|u: &String| WinMsg::SetClipboard(u.clone())), cx.msg_with(|_: &()| WinMsg::CloseWindow))
             }
             WinRole::Diagnostics => panels::render_diagnostics_panel(
                 &hub,
@@ -2203,7 +2623,70 @@ impl View for RexWindow {
 
     fn message(&mut self, msg: WinMsg, cx: &mut olo_kit::Cx<Self>) {
         match msg {
+            WinMsg::QrReady(url, qr) => {
+                if self.qr_url.as_ref() == Some(&url) {
+                    self.qr = qr;
+                    cx.invalidate();
+                }
+            }
+            WinMsg::StartFeedback(serial) => {
+                self.clear_feedback();
+                self.feedback_serial = serial;
+                cx.invalidate();
+            }
+            WinMsg::Problem(serial, title, detail) => {
+                if self.feedback_serial == serial {
+                    self.cancel_preview();
+                    let panel = self.role == WinRole::Settings;
+                    let view = detail.map(|s| widgets::text_view(cx, |v| v.panel_well(panel).with_text(s, None).auto_hide(true)));
+                    self.problem = Some((title, view));
+                    cx.invalidate();
+                }
+            }
+            WinMsg::Confirmation(serial, title) => {
+                if self.feedback_serial == serial {
+                    self.notice.say(title, Duration::from_secs(4));
+                    cx.invalidate();
+                }
+            }
+            WinMsg::ShowTarget(target, token) => {
+                self.pending_focus = None;
+                self.overlay = None;
+                self.find_open = false;
+                self.focus.focus(cx);
+                match target {
+                    Target::Host(hk) => self.jump_to(JumpTarget::Host(hk), cx),
+                    Target::Session { host_key, session_id } => self.jump_to(JumpTarget::Session { host_key, session_id }, cx),
+                    Target::Pane(bk) => {
+                        self.active_host = bk.host_key.clone();
+                        self.active_session = Some(bk.session_id.clone());
+                        self.pending_focus = Some(bk);
+                    }
+                }
+                if self.side_pane.alone() {
+                    self.side_pane.show_rest();
+                }
+                if let Some(token) = token {
+                    cx.activate_window_with_token(&token);
+                } else {
+                    cx.activate_window();
+                }
+                cx.invalidate();
+            }
+            WinMsg::Created(serial, hk, sid) => {
+                if self.feedback_serial == serial {
+                    self.created_session = Some((hk, sid));
+                    cx.invalidate();
+                }
+            }
+            WinMsg::CreateSession(hk, dir) => app().hub.create_session(&hk, None, dir, Feedback::start(self.id)),
             WinMsg::Redraw => {
+                let visuals = &mut cx.window_state::<PaneVisuals>().0;
+                if !visuals.is_empty() {
+                    let hub = app().hub.clone();
+                    let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                    visuals.retain(|k, _| st.blocks.contains_key(k));
+                }
                 if let Some(p) = &self.panes_view {
                     p.update(cx, |_, cx| cx.invalidate());
                 }
@@ -2221,6 +2704,11 @@ impl View for RexWindow {
                 cx.invalidate();
             }
             WinMsg::ShowPrompt { host_key, req } => {
+                if self.active_host != host_key {
+                    let hub = app().hub.clone();
+                    hub.respond_prompt(&host_key, &req.call_id, true, None);
+                    return;
+                }
                 let mut checked = HashSet::new();
                 if let Some(items) = &req.prompt.items {
                     for it in items {
@@ -2237,22 +2725,38 @@ impl View for RexWindow {
                 }
                 cx.invalidate();
             }
-            WinMsg::EndPrompt { call_id } => {
-                if matches!(&self.overlay, Some(ActiveOverlay::RexPrompt { req, .. }) if req.call_id == call_id) {
+            WinMsg::EndPrompt { host_key, call_id } => {
+                if matches!(&self.overlay, Some(ActiveOverlay::RexPrompt { host_key: source, req, .. }) if source == &host_key && req.call_id == call_id) {
                     self.overlay = None;
                     self.focus.focus(cx);
                     cx.invalidate();
                 }
             }
-            WinMsg::PerformAction { action, args } => {
-                self.execute_action(&action, args, cx);
+            WinMsg::PerformAction { host, session, block, action, args } => {
+                let focused = self.focused_block_key();
+                if host == self.active_host
+                    && session.as_ref().is_none_or(|s| Some(s) == self.active_session.as_ref())
+                    && block.as_ref().is_none_or(|b| focused.as_ref().is_some_and(|f| &f.block_id == b))
+                {
+                    self.execute_action(&action, args, cx);
+                }
             }
-            WinMsg::QuickLookReady { path, bytes, content_type } => {
-                self.overlay = Some(ActiveOverlay::QuickLook { path: path.clone(), content: QuickLookContent::from_bytes(&path, bytes, content_type) });
+            WinMsg::OpenPreview(bk, path) => {
+                self.open_preview(bk, path);
                 cx.invalidate();
             }
-            WinMsg::DirListingReady { listing } => {
-                if let Some(ActiveOverlay::PathBrowser { dir, entries, selected, .. }) = &mut self.overlay {
+            WinMsg::QuickLookReady(serial, path, content) => {
+                if serial != self.feedback_serial {
+                    return;
+                }
+                self.preview_job = None;
+                self.overlay = Some(ActiveOverlay::QuickLook { path, content });
+                cx.invalidate();
+            }
+            WinMsg::DirListingReady { key, listing } => {
+                if let Some(ActiveOverlay::PathBrowser { block, dir, entries, selected, .. }) = &mut self.overlay
+                    && *block == key
+                {
                     *dir = listing.path;
                     *entries = listing.entries;
                     *selected = 0;
@@ -2262,30 +2766,24 @@ impl View for RexWindow {
             WinMsg::SetClipboard(txt) => {
                 olo_kit::clipboard::write(olo_kit::ClipboardItem::new_string(txt));
             }
-            WinMsg::PasteText(txt) => {
-                if let Some(bk) = self.focused_block_key() {
+            WinMsg::PasteText(bk, connection, txt) => {
+                if self.focused_block_key().as_ref() == Some(&bk) {
                     let hub = app().hub.clone();
-                    let bracketed = hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).is_some_and(|br| br.lock().unwrap_or_else(|e| e.into_inner()).terminal.bracketed_paste_mode());
+                    let bracketed = hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).is_some_and(|b| b.lock().unwrap_or_else(|e| e.into_inner()).terminal.bracketed_paste_mode());
                     let encoded = encode_paste(&txt, bracketed).unwrap_or_else(|_| txt.into_bytes());
-                    hub.send_input(&bk, encoded);
+                    hub.write_input(&bk, encoded, Some(&connection));
                 }
             }
             WinMsg::FocusBlock(bk) => {
                 self.jump_to(JumpTarget::Pane(bk), cx);
                 cx.activate_window();
             }
-            WinMsg::Command(cmd) => {
-                if let Some(rest) = cmd.strip_prefix("close-tab:") {
-                    if let Ok(idx) = rest.parse::<usize>()
-                        && let Some((hk, sess)) = self.resolve_active_session()
-                        && let Some(w) = sess.windows.get(idx)
-                    {
-                        app().hub.close_window(&hk, &sess.session_id, &w.window_id);
-                    }
-                } else {
+            WinMsg::PaneCommand(key, cmd) => {
+                if self.focused_block_key().as_ref() == Some(&key) {
                     self.execute_action(&cmd, None, cx);
                 }
             }
+            WinMsg::Command(cmd) => self.execute_action(&cmd, None, cx),
             WinMsg::RunOverlayIndex(i) => self.pick_overlay_index(i, cx),
             WinMsg::TogglePromptCheck(id) => {
                 if let Some(ActiveOverlay::RexPrompt { checked_ids, .. }) = &mut self.overlay {
@@ -2297,14 +2795,31 @@ impl View for RexWindow {
             }
             WinMsg::ConfirmOverlay => self.confirm_overlay(cx),
             WinMsg::DismissOverlay => self.dismiss_overlay(cx),
-            WinMsg::SelectTab(i) => {
-                if let Some((hk, sess)) = self.resolve_active_session()
-                    && let Some(w) = sess.windows.get(i)
-                {
-                    app().hub.select_window(&hk, &sess.session_id, &w.window_id);
+            WinMsg::TabChanged => {
+                self.dismiss_overlay(cx);
+                self.find_open = false;
+                self.clear_feedback();
+                self.pending_focus = None;
+                self.focus.focus(cx);
+                cx.invalidate();
+            }
+            WinMsg::SelectHost(hk) => {
+                self.dismiss_overlay(cx);
+                self.find_open = false;
+                self.clear_feedback();
+                self.pending_focus = None;
+                self.jump_to(JumpTarget::Host(hk), cx);
+                self.focus.focus(cx);
+                if self.side_pane.alone() {
+                    self.side_pane.show_rest();
                 }
             }
             WinMsg::SelectSession(hk, sid) => {
+                self.dismiss_overlay(cx);
+                self.clear_feedback();
+                self.pending_focus = None;
+                self.focus.focus(cx);
+                self.find_open = false;
                 self.active_host = hk;
                 self.active_session = Some(sid);
                 if self.side_pane.alone() {
@@ -2318,26 +2833,31 @@ impl View for RexWindow {
                 if let Some(bk) = self.focused_block_key()
                     && let Some(br) = app().hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).cloned()
                 {
-                    let _ = br.lock().unwrap_or_else(|e| e.into_inner()).search.set_needle(None);
+                    let _ = br.lock().unwrap_or_else(|e| e.into_inner()).set_find_query(None);
                 }
                 self.focus.focus(cx);
                 cx.invalidate();
             }
             WinMsg::SettingsTab(t) => {
+                self.clear_feedback();
                 app().settings_state.tab = t;
                 cx.invalidate();
             }
             WinMsg::SettingsDefaults => {
-                let def = Settings::default();
+                let hub = app().hub.clone();
+                let def = hub.state.lock().unwrap_or_else(|e| e.into_inner()).settings.preference_defaults();
                 let new_t = themes::resolve_theme(&def, &theme::palette());
-                app().hub.clone().update_settings(def, new_t);
+                hub.update_settings(def, new_t);
                 cx.invalidate();
             }
             WinMsg::SettingsRevert => {
-                let snap = app().settings_state.opened_snapshot.clone();
+                let (hub, snap) = {
+                    let a = app();
+                    (a.hub.clone(), a.settings_state.opened_snapshot.clone())
+                };
                 if let Some(orig) = snap {
                     let new_t = themes::resolve_theme(&orig, &theme::palette());
-                    app().hub.clone().update_settings(orig, new_t);
+                    hub.update_settings(orig, new_t);
                     cx.invalidate();
                 }
             }
@@ -2355,7 +2875,8 @@ impl View for RexWindow {
                 if !addr.is_empty() {
                     let lbl = if label.is_empty() { addr.clone() } else { label };
                     let id = format!("host-{}", uuid::Uuid::new_v4().simple());
-                    app().hub.add_and_connect_host(id, lbl, addr, true);
+                    let hub = app().hub.clone();
+                    hub.add_and_connect_host(id, lbl, addr, true);
                     if let Some(f) = &self.host_label_field {
                         f.update(cx, |f, cx| f.set_text(String::new(), cx));
                     }
@@ -2376,7 +2897,7 @@ impl View for RexWindow {
                         st.hosts.values().find_map(|h| h.session_summaries.first().map(|s| (h.key.clone(), s.session_id.clone())))
                     };
                     if let Some((hk, sid)) = target {
-                        hub.add_local_forward(&hk, &sid, "127.0.0.1".to_owned(), port, 0, true);
+                        hub.add_local_forward(&hk, &sid, "127.0.0.1".to_owned(), port, 0, true, Feedback::start(self.id));
                     }
                     if let Some(f) = &self.fwd_port_field {
                         f.update(cx, |f, cx| f.set_text(String::new(), cx));
@@ -2420,6 +2941,9 @@ impl View for RexWindow {
 
     fn window_activated(&mut self, active: bool, cx: &mut olo_kit::Cx<Self>) {
         self.window_active = active;
+        if !active {
+            app().attention.hide(self.id);
+        }
         cx.invalidate();
     }
 
@@ -2447,7 +2971,7 @@ impl View for RexWindow {
         self.dropping = false;
         if let Some(bk) = self.focused_block_key() {
             if d.mime == "text/uri-list" {
-                app().hub.upload_files(&bk, d.paths());
+                app().hub.upload_files(&bk, d.paths(), Feedback::start(self.id));
             } else {
                 let text = String::from_utf8_lossy(&d.data).into_owned();
                 if !text.is_empty() && paste_is_safe(&text) {
@@ -2465,6 +2989,7 @@ impl View for RexWindow {
         let saved = SavedWorkspaceState {
             active_host: self.active_host.clone(),
             active_session: self.active_session.clone(),
+            session_index: self.session_index,
             sidebar_collapsed: self.side_pane.collapsed(),
             sidebar_width: self.side_pane.width(),
         };
@@ -2478,6 +3003,8 @@ impl View for RexWindow {
 
 impl Drop for RexWindow {
     fn drop(&mut self) {
+        self.cancel_preview();
+        app().attention.hide(self.id);
         wins().map.remove(&self.id);
     }
 }
@@ -2551,6 +3078,7 @@ impl TextInput for RexWindow {
 /// Output arriving on `rex.data.terminal.v1` invalidates ONLY this child view at vsync!
 pub struct PanesView {
     win_id: WinId,
+    session: Option<(String, String)>,
 }
 
 impl View for PanesView {
@@ -2563,32 +3091,14 @@ impl View for PanesView {
     fn body(&mut self, cx: &mut olo_kit::Cx<Self>) -> Element {
         let hub = app().hub.clone();
         let scale = cx.scale_factor();
-        let (settings, active_theme, sess_opt) = {
+        let Some((hk, sid)) = &self.session else { return div() };
+        let (settings, active_theme, host_key, host_label, is_local, sess) = {
             let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
-            let first_host = st.hosts.get("local").or_else(|| st.hosts.values().next());
-            let sess = first_host.and_then(|h| {
-                let s = h.session_summaries.first().and_then(|sum| h.sessions.get(&sum.session_id)).or_else(|| h.sessions.values().next())?;
-                Some((h.key.clone(), h.label.clone(), h.is_local, h.conn_state.clone(), s.clone()))
-            });
-            (st.settings.clone(), st.active_theme.clone(), sess)
+            let Some(h) = st.hosts.get(hk) else { return div() };
+            let Some(sess) = h.sessions.get(sid) else { return div() };
+            (st.settings.clone(), st.active_theme.clone(), hk.clone(), h.label.clone(), h.is_local, sess.clone())
         };
-
-        let Some((host_key, host_label, is_local, conn_state, sess)) = sess_opt else {
-            let status_msg = match hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get("local").map(|h| h.conn_state.clone()) {
-                Some(HostConnState::Connecting) => "Connecting to Rex server…",
-                Some(HostConnState::Reconnecting { .. }) => "Reconnecting to Rex server…",
-                Some(HostConnState::Error(e)) => {
-                    return empty_workspace_banner(format!("Could not connect to Rex server: {e}"), self.win_id);
-                }
-                _ => "Starting Rex workspace…",
-            };
-            return empty_workspace_banner(status_msg.to_owned(), self.win_id);
-        };
-
-        let _ = conn_state;
-        let Some(win_view) = sess.active_window().or_else(|| sess.windows.first()).cloned() else {
-            return empty_workspace_banner("No tabs in this session — press ⌘T to open a terminal.".to_owned(), self.win_id);
-        };
+        let Some(win_view) = sess.active_window().or_else(|| sess.windows.first()).cloned() else { return div() };
 
         let metrics = Metrics::from_settings(scale, &settings);
         let pad = (settings.padding_x, settings.padding_y);
@@ -3014,7 +3524,8 @@ fn render_single_pane(
                 let bar_h = if p.mode == olo_theme::ThemeMode::Light { 2.5 } else { 2.0 };
                 g.paint_quad(olo_kit::fill(Bounds::new(point(b.left(), b.bottom() - px(bar_h)), size(b.size.width, px(bar_h))), bar_color));
             }
-            let icon_b = style::snap_centred(g, point(b.left() + px(16.0), b.center().y), 12.0, 12.0);
+            let text_middle = style::baseline_at(g, b.center().y, style::PLAIN_SIZE) - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
+            let icon_b = style::snap_centred(g, point(b.left() + px(16.0), text_middle), 12.0, 12.0);
             paint_activity_icon(g, icon_b, activity);
             let title_max_w = (f32::from(b.size.width) - 28.0 - right_controls_w - 6.0).max(24.0);
             let title_ink = if focused { style::c(p.panel_text) } else { style::secondary_text(&p) };
@@ -3037,7 +3548,8 @@ fn render_single_pane(
             .pl(px(24.0))
             .pr(px(m::WINDOW_INSET))
             .on_mouse_down(MouseButton::Left, move |_, _| {
-                app().hub.focus_block(&bk_click.host_key, &bk_click.session_id, &bk_click.block_id);
+                let hub = app().hub.clone();
+                hub.focus_block(&bk_click.host_key, &bk_click.session_id, &bk_click.block_id);
             })
             .child(head_bg);
 
@@ -3060,15 +3572,15 @@ fn render_single_pane(
         }
         if show_split_btns {
             bar = bar
-                .child(compact_icon_button("Split Right", IconGlyph::SplitRight, move |_, _| {
+                .child(compact_icon_button("Split Right", IconGlyph::SplitRight, true, move |_, _| {
                     app().hub.split_pane(&bk_split_r.host_key, &bk_split_r.session_id, &bk_split_r.block_id, "right", None);
                 }))
-                .child(compact_icon_button("Split Down", IconGlyph::SplitDown, move |_, _| {
+                .child(compact_icon_button("Split Down", IconGlyph::SplitDown, true, move |_, _| {
                     app().hub.split_pane(&bk_split_d.host_key, &bk_split_d.session_id, &bk_split_d.block_id, "down", None);
                 }));
         }
         if show_close_btn {
-            bar = bar.child(compact_icon_button("Close Pane", IconGlyph::Close, move |_, _| {
+            bar = bar.child(compact_icon_button("Close Pane", IconGlyph::Close, true, move |_, _| {
                 app().hub.close_block(&bk_close.host_key, &bk_close.session_id, &bk_close.block_id);
             }));
         }
@@ -3077,9 +3589,7 @@ fn render_single_pane(
         None
     };
 
-    // Per-pane `PaneVisualState` stored keyed in `cx` so RowCache survives across frames!
-    let vis_key = SharedString::from(format!("rex-pane-vis-{}-{}-{}", bk.host_key, bk.session_id, bk.block_id));
-    let visual: Rc<PaneVisualState> = cx.keyed_state(vis_key, |_| PaneVisualState::default());
+    let visual = cx.window_state::<PaneVisuals>().0.entry(bk.clone()).or_default().clone();
 
     let br_paint = br.clone();
     let bk_paint = bk.clone();
@@ -3107,26 +3617,34 @@ fn render_single_pane(
     let pane_m3 = cx.messenger();
     let pane_m4 = cx.messenger();
 
+    let hub_paint = hub.clone();
     let screen_canvas = canvas(move |g, rect| {
         // Auto-resize terminal grid cleanly when layout bounds change!
         let (want_cols, want_rows) = metrics_paint.grid_size(f32::from(rect.size.width), f32::from(rect.size.height), pad);
         let (cw_px, ch_px) = metrics_paint.device_cell();
-        let cur_sz = br_paint.lock().unwrap_or_else(|e| e.into_inner()).terminal.size();
-        if cur_sz != (want_cols, want_rows) && want_cols >= 2 && want_rows >= 1 {
+        let resize = {
+            let g = br_paint.lock().unwrap_or_else(|e| e.into_inner());
+            !g.other_size_owner && g.geometry != Some((want_cols, want_rows, cw_px, ch_px))
+        };
+        if resize {
             app().hub.resize_block(&bk_paint, want_cols, want_rows, cw_px, ch_px);
         }
 
         let mut guard = br_paint.lock().unwrap_or_else(|e| e.into_inner());
-        let search_matches = guard.search.viewport_matches(&guard.terminal);
+        let search_matches = if guard.finding { Vec::new() } else { guard.search.viewport_matches(&guard.terminal) };
         let copy_mode = guard.copy_mode.clone();
 
         let br_ref = &mut *guard;
+        let missing = br_ref.frame.capture(&mut br_ref.render_state, &br_ref.terminal).unwrap_or_default();
+        if !missing.is_empty() {
+            hub_paint.prepare_images(br_paint.clone(), bk_paint.clone(), br_ref.frame.owner, missing);
+        }
         let _ime_rect = terminal_pane::paint_pane(
             g,
             rect,
             PanePaintArgs {
                 term: &mut br_ref.terminal,
-                render_state: &mut br_ref.render_state,
+                frame: &br_ref.frame,
                 theme: &theme_paint,
                 settings: &settings_paint,
                 metrics: &metrics_paint,
@@ -3154,7 +3672,8 @@ fn render_single_pane(
     .size_full()
     .cursor(CursorStyle::IBeam)
     .on_mouse_down(MouseButton::Left, move |e: &MouseDownEvent, cx| {
-        app().hub.focus_block(&bk_mouse.host_key, &bk_mouse.session_id, &bk_mouse.block_id);
+        let hub = app().hub.clone();
+        hub.focus_block(&bk_mouse.host_key, &bk_mouse.session_id, &bk_mouse.block_id);
         let rect = vis_mouse.bounds.get();
         let (col, row) = metrics_mouse.cell_at(rect, pad, e.position, vis_mouse.shift.get());
 
@@ -3168,8 +3687,12 @@ fn render_single_pane(
             };
             if let Some(t) = target {
                 match t {
-                    LinkTarget::Url(u) => app().hub.open_link_from_pane(&bk_mouse, u),
-                    LinkTarget::FilePath { path, .. } => app().hub.quick_look_path(&bk_mouse, path),
+                    LinkTarget::Url(u) => app().hub.open_link_from_pane(&bk_mouse, u, Feedback::start(win_id)),
+                    LinkTarget::FilePath { path, .. } => {
+                        if let Some(slot) = wins().map.get(&win_id) {
+                            slot.handle.messenger().send(WinMsg::OpenPreview(bk_mouse.clone(), path));
+                        }
+                    }
                 }
                 cx.stop_propagation();
                 return;
@@ -3218,11 +3741,13 @@ fn render_single_pane(
             .separator()
             .item("Clear Scrollback", "terminal.clear_scrollback")
             .item("Close Pane", "pane.close");
-        let _ = bk_rclick;
+        let hub = app().hub.clone();
+        hub.focus_block(&bk_rclick.host_key, &bk_rclick.session_id, &bk_rclick.block_id);
+        let target = bk_rclick.clone();
         let w = win_id;
         menu::context_menu(cx, menu, e.position, move |cmd: &str, _| {
             if let Some(slot) = wins().map.get(&w) {
-                slot.handle.messenger().send(WinMsg::Command(cmd.to_owned()));
+                slot.handle.messenger().send(WinMsg::PaneCommand(target.clone(), cmd.to_owned()));
             }
         });
         cx.stop_propagation();
@@ -3276,21 +3801,6 @@ fn render_single_pane(
     pane_col
 }
 
-fn empty_workspace_banner(msg: String, win_id: WinId) -> Element {
-    div().size_full().flex().flex_col().items_center().justify_center().gap(px(m::SPACING)).p(px(m::WINDOW_INSET)).child(StringView::new(msg).bold(true)).child(
-        div()
-            .flex()
-            .flex_row()
-            .gap(px(m::SPACING))
-            .child(Button::new("New Session").default(true).on_click(move |_, _| {
-                if let Some(slot) = wins().map.get(&win_id) {
-                    slot.handle.messenger().send(WinMsg::Command("session.new".into()));
-                }
-            }))
-            .child(Button::new("Hosts & Settings…").on_click(|_, _| open_or_raise_panel(WinRole::Hosts))),
-    )
-}
-
 fn sidebar_row(label: String, badge: Option<String>, act: AgentActivity, selected: bool, on_click: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
     let key = style::key((&label, &badge, act as u8, selected));
     let l_paint = label.clone();
@@ -3302,7 +3812,8 @@ fn sidebar_row(label: String, badge: Option<String>, act: AgentActivity, selecte
         }
         let ink = style::c(if selected { p.list_selected_item_text } else { p.panel_text });
         // Indent sessions 15 pt under host header so icon left aligns to exact pixel with host title (x=27).
-        let icon_b = style::snap_centred(g, point(b.left() + px(21.0), b.center().y), 12.0, 12.0);
+        let text_middle = style::baseline_at(g, b.center().y, style::PLAIN_SIZE) - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
+        let icon_b = style::snap_centred(g, point(b.left() + px(22.0), text_middle), 12.0, 12.0);
         paint_activity_icon(g, icon_b, act);
         let mut right = b.right() - px(8.0);
         if let Some(bg) = &b_paint {
@@ -3324,7 +3835,7 @@ fn sidebar_row(label: String, badge: Option<String>, act: AgentActivity, selecte
     })
     .paint_key(key)
     .w_full()
-    .h(px(22.0))
+    .h(px(m::LABEL_ROW + m::TIGHT))
     .cursor(CursorStyle::PointingHand)
     .on_mouse_down(MouseButton::Left, move |_, cx| {
         on_click(&(), cx);
@@ -3385,13 +3896,13 @@ enum IconGlyph {
     Close,
 }
 
-fn compact_icon_button(aria_name: &'static str, glyph: IconGlyph, on_click: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
-    let key = style::key((aria_name, glyph as u8));
-    canvas(move |g, b| {
+fn compact_icon_button(aria_name: &'static str, glyph: IconGlyph, enabled: bool, on_click: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
+    let key = style::key((aria_name, glyph as u8, enabled));
+    let button = canvas(move |g, b| {
         let p = theme::palette();
         style::fill_rect(g, b, style::c(p.control_background));
         style::raised(g, b, &p);
-        let ink = style::c(p.control_text);
+        let ink = if enabled { style::c(p.control_text) } else { style::disabled_text(&p) };
         let cx = f32::from(b.center().x);
         let cy = f32::from(b.center().y);
         match glyph {
@@ -3425,14 +3936,16 @@ fn compact_icon_button(aria_name: &'static str, glyph: IconGlyph, on_click: impl
                 }
             }
         }
-        g.agent(agent::Node { role: "Button", name: Some(aria_name.into()), bounds: b, enabled: true, clickable: true, ..Default::default() });
+        g.agent(agent::Node { role: "Button", name: Some(aria_name.into()), bounds: b, enabled, clickable: enabled, ..Default::default() });
     })
     .paint_key(key)
     .w(px(18.0))
     .h(px(16.0))
-    .flex_shrink_0()
-    .cursor(CursorStyle::PointingHand)
-    .on_mouse_down(MouseButton::Left, move |_, cx| {
+    .flex_shrink_0();
+    if !enabled {
+        return button;
+    }
+    button.cursor(CursorStyle::PointingHand).on_mouse_down(MouseButton::Left, move |_, cx| {
         on_click(&(), cx);
         cx.stop_propagation();
     })
@@ -3635,4 +4148,34 @@ fn encode_terminal_special_key(ks: &olo_kit::Keystroke, opt_as_alt: crate::setti
         return Some(out);
     }
     None
+}
+
+#[cfg(test)]
+mod workspace_tests {
+    use super::*;
+    #[test]
+    fn lost_connection_age_advances_at_word_boundaries() {
+        assert_eq!(connection_age(Duration::from_secs(59)), "Connection lost just now.");
+        assert_eq!(connection_age(Duration::from_secs(60)), "Connection lost 1 minute ago.");
+        assert_eq!(connection_age(Duration::from_secs(120)), "Connection lost 2 minutes ago.");
+        assert_eq!(connection_age(Duration::from_secs(3600)), "Connection lost 1 hour ago.");
+    }
+    #[test]
+    fn server_requests_match_the_workspace_host_session_and_pane() {
+        let view = WorkspaceSelection { host: "dev-box".into(), session: Some("api".into()), block: Some("shell".into()), active: true };
+        assert!(view.matches("dev-box", Some("api"), Some("shell")));
+        assert!(view.matches("dev-box", None, None));
+        assert!(!view.matches("local", Some("api"), Some("shell")));
+        assert!(!view.matches("dev-box", Some("main"), None));
+        assert!(!view.matches("dev-box", Some("api"), Some("log")));
+    }
+
+    #[test]
+    fn a_destroyed_selection_uses_its_neighbor_and_an_empty_host_has_none() {
+        let rows = ["first", "second", "fourth"].map(|id| olo_rex_client::SessionSummary { session_id: id.into(), label: id.into() });
+        assert_eq!(selected_session_index(&rows, Some("third"), 2), Some(1));
+        assert_eq!(selected_session_index(&rows, Some("gone"), 0), Some(0));
+        assert_eq!(selected_session_index(&rows, Some("fourth"), 3), Some(2));
+        assert_eq!(selected_session_index(&[], Some("gone"), 0), None);
+    }
 }

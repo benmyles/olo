@@ -15,7 +15,8 @@
 use std::{
     collections::HashMap,
     fs::File,
-    io::BufReader,
+    io::{self, BufReader},
+    net::Ipv6Addr,
     path::{Path, PathBuf},
     pin::Pin,
     sync::Arc,
@@ -23,7 +24,8 @@ use std::{
 };
 
 use russh::{
-    client::{self, Handle, KeyboardInteractiveAuthResponse},
+    MethodKind,
+    client::{self, AuthResult, Handle, KeyboardInteractiveAuthResponse},
     keys::{
         PublicKeyOrCertificate,
         agent::{AgentIdentity, client::AgentClient},
@@ -32,7 +34,10 @@ use russh::{
     },
 };
 use ssh2_config::{ParseRule, SshConfig};
-use tokio::sync::Mutex;
+use tokio::{
+    io::{AsyncRead, AsyncReadExt, ReadBuf},
+    sync::Mutex,
+};
 use zeroize::Zeroizing;
 
 use crate::{error::RexError, transport::AsyncReadWrite};
@@ -64,20 +69,29 @@ impl SshTarget {
             Some((u, hp)) => (Some(u.to_owned()), hp),
             None => (None, authority),
         };
-        let (host, port) = if let Some(stripped) = host_port.strip_prefix('[') {
-            let (h, rest) = stripped.split_once(']').ok_or_else(|| RexError::InvalidEndpoint(format!("unclosed bracket in {raw}")))?;
-            let p = rest.strip_prefix(':').map(|ps| ps.parse::<u16>()).transpose().map_err(|_| RexError::InvalidEndpoint(format!("invalid ssh port in {raw}")))?;
-            (h.to_owned(), p)
-        } else if let Some((h, ps)) = host_port.rsplit_once(':')
-            && let Ok(p) = ps.parse::<u16>()
-        {
-            (h.to_owned(), Some(p))
-        } else {
-            (host_port.to_owned(), None)
-        };
-        if host.is_empty() {
-            return Err(RexError::InvalidEndpoint(format!("missing ssh host in {raw}")));
+        let invalid = || RexError::InvalidEndpoint(format!("invalid SSH authority in {raw}"));
+        if authority.chars().any(|c| c.is_whitespace() || c.is_control()) || user.as_deref() == Some("") {
+            return Err(invalid());
         }
+        let (host, port) = if let Some(bracketed) = host_port.strip_prefix('[') {
+            let (host, suffix) = bracketed.split_once(']').ok_or_else(invalid)?;
+            host.parse::<Ipv6Addr>().map_err(|_| invalid())?;
+            let port = if suffix.is_empty() { None } else { Some(suffix.strip_prefix(':').ok_or_else(invalid)?) };
+            (host, port)
+        } else if host_port.parse::<Ipv6Addr>().is_ok() {
+            (host_port, None)
+        } else {
+            host_port.split_once(':').map_or((host_port, None), |(host, port)| (host, Some(port)))
+        };
+        if host.is_empty() || host.contains(['[', ']']) || host.starts_with('-') {
+            return Err(invalid());
+        }
+        let port = port.map(|p| p.parse::<u16>()).transpose().map_err(|_| invalid())?;
+        if port == Some(0) {
+            return Err(invalid());
+        }
+        let host = host.to_owned();
+        let socket_path = socket_path.filter(|s| s != "/");
         Ok(Self { host, user, port, socket_path, agent_socket: None })
     }
 
@@ -87,7 +101,7 @@ impl SshTarget {
             s.push_str(u);
             s.push('@');
         }
-        s.push_str(&self.host);
+        s.push_str(&crate::transport::authority_host(&self.host));
         if let Some(p) = self.port {
             s.push(':');
             s.push_str(&p.to_string());
@@ -102,7 +116,7 @@ impl SshTarget {
 /// Interactive authentication & host-key verification prompt callback implemented
 /// by the Olo UI (native sheets) or headless test stubs.
 pub trait SshAskpass: Send + Sync + std::fmt::Debug {
-    /// Ask whether to trust an unknown or changed SSH host key.
+    /// Ask whether to trust an unknown SSH host key. A known key that changes is refused.
     fn confirm_host_key(&self, host: &str, port: u16, fingerprint: &str, key_type: &str, changed: bool) -> bool;
 
     /// Ask for a passphrase or password (`echo = false` for secrets).
@@ -147,28 +161,71 @@ pub async fn inspect_ssh_agent(override_path: Option<&Path>) -> AgentStatus {
     let Some(sock) = resolve_agent_socket(override_path) else {
         return AgentStatus { error: Some("No SSH agent socket found".to_owned()), ..Default::default() };
     };
-    match AgentClient::connect_uds(&sock).await {
-        Ok(mut client) => match client.request_identities().await {
-            Ok(ids) => {
-                let comments = ids
-                    .iter()
-                    .map(|id| match id {
-                        AgentIdentity::PublicKey { comment, .. } => comment.clone(),
-                        AgentIdentity::Certificate { comment, .. } => comment.clone(),
-                    })
-                    .collect::<Vec<_>>();
-                AgentStatus { socket_path: Some(sock), reachable: true, key_count: ids.len(), key_comments: comments, error: None }
-            }
-            Err(e) => AgentStatus { socket_path: Some(sock), reachable: true, error: Some(format!("agent list failed: {e}")), ..Default::default() },
-        },
-        Err(e) => AgentStatus { socket_path: Some(sock), reachable: false, error: Some(format!("connect failed: {e}")), ..Default::default() },
+    let query = async {
+        match AgentClient::connect_uds(&sock).await {
+            Ok(mut client) => match client.request_identities().await {
+                Ok(ids) => {
+                    let comments = ids
+                        .iter()
+                        .map(|id| match id {
+                            AgentIdentity::PublicKey { comment, .. } => comment.clone(),
+                            AgentIdentity::Certificate { comment, .. } => comment.clone(),
+                        })
+                        .collect::<Vec<_>>();
+                    AgentStatus { socket_path: Some(sock.clone()), reachable: true, key_count: ids.len(), key_comments: comments, error: None }
+                }
+                Err(e) => AgentStatus { socket_path: Some(sock.clone()), reachable: true, error: Some(format!("agent list failed: {e}")), ..Default::default() },
+            },
+            Err(e) => AgentStatus { socket_path: Some(sock.clone()), reachable: false, error: Some(format!("connect failed: {e}")), ..Default::default() },
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(5), query).await.unwrap_or_else(|_| AgentStatus { socket_path: Some(sock), error: Some("SSH agent timed out".into()), ..Default::default() })
+}
+
+#[derive(Clone)]
+struct Prompts {
+    ui: Arc<dyn SshAskpass>,
+    waiting: tokio::sync::watch::Sender<bool>,
+}
+
+impl Prompts {
+    async fn ask<T: Send + 'static>(&self, prompt: impl FnOnce(&dyn SshAskpass) -> T + Send + 'static) -> Result<T, tokio::task::JoinError> {
+        let ui = self.ui.clone();
+        self.waiting.send_replace(true);
+        let result = tokio::task::spawn_blocking(move || prompt(ui.as_ref())).await;
+        self.waiting.send_replace(false);
+        result
+    }
+
+    async fn secret(&self, title: &str, message: &str, echo: bool) -> Result<Zeroizing<String>, RexError> {
+        let (title, message) = (title.to_owned(), message.to_owned());
+        self.ask(move |ui| ui.prompt_secret(&title, &message, echo)).await.map_err(|e| RexError::Ssh(e.to_string()))?.ok_or_else(cancelled)
+    }
+}
+
+// Network deadlines pause while the person is reading a sheet. The caller
+// keeps the watch sender alive throughout the handshake, even without a UI.
+async fn network_timeout<T>(limit: Duration, waiting: &mut tokio::sync::watch::Receiver<bool>, operation: impl Future<Output = Result<T, RexError>>) -> Result<T, RexError> {
+    tokio::pin!(operation);
+    let mut remaining = limit;
+    loop {
+        let paused = *waiting.borrow_and_update();
+        let start = tokio::time::Instant::now();
+        tokio::select! {
+            result = &mut operation => return result,
+            _ = tokio::time::sleep(remaining), if !paused => return Err(RexError::Timeout),
+            _ = waiting.changed() => {}
+        }
+        if !paused {
+            remaining = remaining.saturating_sub(start.elapsed());
+        }
     }
 }
 
 struct SshClientHandler {
     host: String,
     port: u16,
-    askpass: Option<Arc<dyn SshAskpass>>,
+    askpass: Option<Prompts>,
 }
 
 impl client::Handler for SshClientHandler {
@@ -186,9 +243,10 @@ impl client::Handler for SshClientHandler {
                 let fp = pubkey.fingerprint(russh::keys::HashAlg::Sha256).to_string();
                 let kt = pubkey.algorithm().to_string();
                 if let Some(ask) = &self.askpass {
-                    let ok = ask.confirm_host_key(&self.host, self.port, &fp, &kt, false);
+                    let (host, port) = (self.host.clone(), self.port);
+                    let ok = ask.ask(move |ui| ui.confirm_host_key(&host, port, &fp, &kt, false)).await.map_err(io::Error::other)?;
                     if ok {
-                        let _ = learn_known_hosts(&self.host, self.port, &pubkey);
+                        learn_known_hosts(&self.host, self.port, &pubkey)?;
                     }
                     Ok(ok)
                 } else {
@@ -196,20 +254,7 @@ impl client::Handler for SshClientHandler {
                     Ok(false)
                 }
             }
-            Err(russh::keys::Error::KeyChanged { .. }) => {
-                let fp = pubkey.fingerprint(russh::keys::HashAlg::Sha256).to_string();
-                let kt = pubkey.algorithm().to_string();
-                if let Some(ask) = &self.askpass {
-                    Ok(ask.confirm_host_key(&self.host, self.port, &fp, &kt, true))
-                } else {
-                    tracing::error!("SSH host key CHANGED for {}:{} ({fp})", self.host, self.port);
-                    Ok(false)
-                }
-            }
-            Err(e) => {
-                tracing::warn!("known_hosts check error for {}:{}: {e}", self.host, self.port);
-                Ok(false)
-            }
+            Err(error) => Err(error.into()),
         }
     }
 }
@@ -218,8 +263,10 @@ impl client::Handler for SshClientHandler {
 /// and every `/api/data` stream for a remote host to share one SSH connection.
 #[derive(Default)]
 pub struct SshSessionPool {
-    sessions: Mutex<HashMap<SshTarget, Arc<Mutex<Handle<SshClientHandler>>>>>,
+    sessions: Mutex<HashMap<SshTarget, SessionSlot>>,
 }
+
+type SessionSlot = Arc<Mutex<Option<Arc<Handle<SshClientHandler>>>>>;
 
 impl std::fmt::Debug for SshSessionPool {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -239,10 +286,12 @@ impl SshSessionPool {
     /// exec channel (which automatically discovers or starts the remote Rex server).
     pub async fn open_rex_channel(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Result<Pin<Box<dyn AsyncReadWrite + Send>>, RexError> {
         let handle = self.get_or_connect(target, askpass).await?;
-        let guard = handle.lock().await;
+        tokio::time::timeout(Duration::from_secs(10), Self::channel(&handle, target)).await.map_err(|_| RexError::Timeout)?
+    }
 
+    async fn channel(handle: &Handle<SshClientHandler>, target: &SshTarget) -> Result<Pin<Box<dyn AsyncReadWrite + Send>>, RexError> {
         if let Some(sock) = &target.socket_path {
-            match guard.channel_open_direct_streamlocal(sock.clone()).await {
+            match handle.channel_open_direct_streamlocal(sock.clone()).await {
                 Ok(ch) => return Ok(Box::pin(ch.into_stream())),
                 Err(e) => {
                     tracing::debug!("direct-streamlocal {sock} failed ({e}), falling back to dial-stdio");
@@ -252,25 +301,68 @@ impl SshSessionPool {
 
         // Standard Rex SSH transport: `rex __internal dial-stdio` (auto-discovers
         // remote Rex Unix socket and autostart if needed).
-        let channel = guard.channel_open_session().await.map_err(|e| RexError::Ssh(format!("open ssh session channel: {e}")))?;
+        let channel = handle.channel_open_session().await.map_err(|e| RexError::Ssh(format!("open ssh session channel: {e}")))?;
         let cmd = if let Some(sock) = &target.socket_path { format!("rex -S unix://{} __internal dial-stdio", shell_escape(sock)) } else { "rex __internal dial-stdio".to_owned() };
         channel.exec(true, cmd).await.map_err(|e| RexError::Ssh(format!("exec `{}` failed: {e}", target.display())))?;
-        Ok(Box::pin(channel.into_stream()))
+        let writer = channel.make_writer();
+        let reader = ExecOutput::Starting(Some(channel));
+        Ok(Box::pin(tokio::io::join(reader, writer)))
     }
 
-    async fn get_or_connect(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Result<Arc<Mutex<Handle<SshClientHandler>>>, RexError> {
-        let existing = self.sessions.lock().await.get(target).cloned();
-        if let Some(existing) = existing {
-            if !existing.lock().await.is_closed() {
-                return Ok(existing);
-            }
-            self.sessions.lock().await.remove(target);
+    async fn get_or_connect(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Result<Arc<Handle<SshClientHandler>>, RexError> {
+        let slot = self.sessions.lock().await.entry(target.clone()).or_default().clone();
+        let mut session = slot.lock().await;
+        if let Some(handle) = session.as_ref().filter(|h| !h.is_closed()) {
+            return Ok(handle.clone());
         }
+        let handle = Arc::new(connect_and_authenticate(target, askpass).await?);
+        *session = Some(handle.clone());
+        Ok(handle)
+    }
+}
 
-        let handle = connect_and_authenticate(target, askpass).await?;
-        let shared = Arc::new(Mutex::new(handle));
-        self.sessions.lock().await.insert(target.clone(), shared.clone());
-        Ok(shared)
+// Before the first HTTP byte, a shell's exit status explains why dial-stdio
+// didn't start. Once it replies, use russh's ordinary streaming reader.
+enum ExecOutput {
+    Starting(Option<russh::Channel<client::Msg>>),
+    Open(tokio::io::Chain<io::Cursor<bytes::Bytes>, russh::ChannelStream<client::Msg>>),
+}
+impl AsyncRead for ExecOutput {
+    fn poll_read(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>, buf: &mut ReadBuf<'_>) -> std::task::Poll<io::Result<()>> {
+        use russh::ChannelMsg;
+        use std::task::{Poll, ready};
+        loop {
+            match self.as_mut().get_mut() {
+                Self::Open(stream) => return Pin::new(stream).poll_read(cx, buf),
+                Self::Starting(channel) => {
+                    let ch = channel.as_mut().expect("channel present until first response");
+                    let message = ready!(std::pin::pin!(ch.wait()).poll(cx));
+                    match message {
+                        Some(ChannelMsg::Data { data }) => {
+                            let stream = channel.take().unwrap().into_stream();
+                            *self = Self::Open(io::Cursor::new(data).chain(stream));
+                        }
+                        Some(ChannelMsg::ExitStatus { exit_status: 127 }) => {
+                            return Poll::Ready(Err(io::Error::other("remote rex command not found; install Rex on the remote host and add it to PATH")));
+                        }
+                        Some(ChannelMsg::ExitStatus { exit_status }) => return Poll::Ready(Err(io::Error::other(format!("remote rex dial-stdio exited with status {exit_status}")))),
+                        Some(ChannelMsg::Failure) => return Poll::Ready(Err(io::Error::other("remote SSH server refused dial-stdio"))),
+                        Some(ChannelMsg::Close) | None => return Poll::Ready(Err(io::Error::other("remote SSH channel closed before dial-stdio replied"))),
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl Drop for ExecOutput {
+    fn drop(&mut self) {
+        if let Self::Starting(ch) = self
+            && let Some(ch) = ch.take()
+        {
+            drop(ch.into_stream()); // ChannelStream sends SSH_MSG_CHANNEL_CLOSE on drop.
+        }
     }
 }
 
@@ -280,10 +372,12 @@ struct ResolvedSshConfig {
     user: String,
     identity_files: Vec<PathBuf>,
     keepalive_secs: u64,
+    keepalive_max: usize,
+    connect_timeout: Duration,
     proxy_command: Option<String>,
 }
 
-fn resolve_ssh_config(target: &SshTarget) -> ResolvedSshConfig {
+fn resolve_ssh_config(target: &SshTarget) -> Result<ResolvedSshConfig, RexError> {
     let default_user = std::env::var("USER").unwrap_or_else(|_| "root".to_owned());
     let mut cfg = ResolvedSshConfig {
         hostname: target.host.clone(),
@@ -291,6 +385,8 @@ fn resolve_ssh_config(target: &SshTarget) -> ResolvedSshConfig {
         user: target.user.clone().unwrap_or(default_user),
         identity_files: Vec::new(),
         keepalive_secs: 30,
+        keepalive_max: 3,
+        connect_timeout: Duration::from_secs(10),
         proxy_command: None,
     };
 
@@ -299,41 +395,44 @@ fn resolve_ssh_config(target: &SshTarget) -> ResolvedSshConfig {
         let cfg_path = ssh_dir.join("config");
         if let Ok(file) = File::open(&cfg_path) {
             let mut reader = BufReader::new(file);
-            if let Ok(parsed) = SshConfig::default().parse(&mut reader, ParseRule::ALLOW_UNKNOWN_FIELDS) {
-                let params = parsed.query(&target.host);
-                if let Some(hn) = params.host_name {
-                    cfg.hostname = hn;
+            let parsed =
+                SshConfig::default().parse(&mut reader, ParseRule::ALLOW_UNKNOWN_FIELDS | ParseRule::ALLOW_UNSUPPORTED_FIELDS).map_err(|e| RexError::Ssh(format!("reading SSH config: {e}")))?;
+            let params = parsed.query(&target.host);
+            if let Some(limit) = params.connect_timeout.filter(|t| !t.is_zero()) {
+                cfg.connect_timeout = limit;
+            }
+            if let Some(hn) = params.host_name {
+                cfg.hostname = hn;
+            }
+            if target.port.is_none()
+                && let Some(p) = params.port
+            {
+                cfg.port = p;
+            }
+            if target.user.is_none()
+                && let Some(u) = params.user
+            {
+                cfg.user = u;
+            }
+            if let Some(files) = params.identity_file {
+                for f in files {
+                    cfg.identity_files.push(expand_tilde(&f, &home));
                 }
-                if target.port.is_none()
-                    && let Some(p) = params.port
-                {
-                    cfg.port = p;
+            }
+            if let Some(ka) = params.server_alive_interval {
+                cfg.keepalive_secs = ka.as_secs();
+            }
+            if let Some(value) = params.unsupported_fields.get("serveralivecountmax").and_then(|v| v.first()) {
+                cfg.keepalive_max = value.parse().map_err(|_| RexError::Ssh("invalid ServerAliveCountMax".into()))?;
+            }
+            if let Some(parts) = params.unsupported_fields.get("proxycommand") {
+                let command = parts.join(" ");
+                if !command.is_empty() && !command.eq_ignore_ascii_case("none") {
+                    cfg.proxy_command = Some(command);
                 }
-                if target.user.is_none()
-                    && let Some(u) = params.user
-                {
-                    cfg.user = u;
-                }
-                if let Some(files) = params.identity_file {
-                    for f in files {
-                        cfg.identity_files.push(expand_tilde(&f, &home));
-                    }
-                }
-                if let Some(ka) = params.server_alive_interval {
-                    cfg.keepalive_secs = ka.as_secs().max(10);
-                }
-                if let Some(pc_parts) = params
-                    .unsupported_fields
-                    .get("proxycommand")
-                    .or_else(|| params.ignored_fields.get("proxycommand"))
-                    .or_else(|| params.unsupported_fields.get("ProxyCommand"))
-                    .or_else(|| params.ignored_fields.get("ProxyCommand"))
-                {
-                    let pc = pc_parts.join(" ");
-                    if !pc.is_empty() && !pc.eq_ignore_ascii_case("none") {
-                        cfg.proxy_command = Some(pc);
-                    }
-                }
+            }
+            if cfg.proxy_command.is_none() && params.proxy_jump.is_some_and(|jumps| !jumps.is_empty() && jumps != ["none"]) {
+                return Err(RexError::Ssh("ProxyJump is unsupported. Configure a ProxyCommand for this host.".into()));
             }
         }
         for name in ["id_ed25519", "id_ecdsa", "id_rsa"] {
@@ -343,7 +442,7 @@ fn resolve_ssh_config(target: &SshTarget) -> ResolvedSshConfig {
             }
         }
     }
-    cfg
+    Ok(cfg)
 }
 
 fn expand_tilde(path: &Path, home: &str) -> PathBuf {
@@ -382,32 +481,70 @@ impl tokio::io::AsyncWrite for ChildStdioStream {
 }
 
 async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Result<Handle<SshClientHandler>, RexError> {
-    let resolved = resolve_ssh_config(target);
+    let resolved = resolve_ssh_config(target)?;
     let mut config = client::Config::default();
-    config.keepalive_interval = Some(Duration::from_secs(resolved.keepalive_secs));
-    config.keepalive_max = 3;
+    config.keepalive_interval = (resolved.keepalive_secs > 0).then(|| Duration::from_secs(resolved.keepalive_secs));
+    config.keepalive_max = resolved.keepalive_max;
     let config = Arc::new(config);
 
+    let (waiting_tx, mut waiting) = tokio::sync::watch::channel(false);
+    let askpass = askpass.map(|ui| Prompts { ui, waiting: waiting_tx.clone() });
     let handler = SshClientHandler { host: resolved.hostname.clone(), port: resolved.port, askpass: askpass.clone() };
-    let mut session = if let Some(pc) = &resolved.proxy_command {
-        let expanded = pc.replace("%h", &resolved.hostname).replace("%p", &resolved.port.to_string()).replace("%r", &resolved.user).replace("%%", "%");
-        let mut child = tokio::process::Command::new("/bin/sh")
-            .arg("-c")
-            .arg(&expanded)
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|e| RexError::Ssh(format!("ProxyCommand `{expanded}` failed: {e}")))?;
-        let stdin = child.stdin.take().ok_or_else(|| RexError::Ssh("ProxyCommand missing stdin".into()))?;
-        let stdout = child.stdout.take().ok_or_else(|| RexError::Ssh("ProxyCommand missing stdout".into()))?;
-        let stream = ChildStdioStream { _child: child, stdout, stdin };
-        client::connect_stream(config, stream, handler).await.map_err(|e| RexError::Ssh(format!("SSH connect via ProxyCommand failed: {e}")))?
-    } else {
-        client::connect(config, (resolved.hostname.as_str(), resolved.port), handler).await.map_err(|e| RexError::Ssh(format!("SSH connect {}:{} failed: {e}", resolved.hostname, resolved.port)))?
+    let connection = async {
+        if let Some(pc) = &resolved.proxy_command {
+            let expanded = expand_proxy(pc, &resolved)?;
+            let mut child = tokio::process::Command::new("/bin/sh")
+                .arg("-c")
+                .arg(&expanded)
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .kill_on_drop(true)
+                .spawn()
+                .map_err(|e| RexError::Ssh(format!("ProxyCommand `{expanded}` failed: {e}")))?;
+            let stdin = child.stdin.take().ok_or_else(|| RexError::Ssh("ProxyCommand missing stdin".into()))?;
+            let stdout = child.stdout.take().ok_or_else(|| RexError::Ssh("ProxyCommand missing stdout".into()))?;
+            let stream = ChildStdioStream { _child: child, stdout, stdin };
+            client::connect_stream(config, stream, handler).await.map_err(|e| RexError::Ssh(format!("SSH connect via ProxyCommand failed: {e}")))
+        } else {
+            client::connect(config, (resolved.hostname.as_str(), resolved.port), handler).await.map_err(|e| RexError::Ssh(format!("SSH connect {}:{} failed: {e}", resolved.hostname, resolved.port)))
+        }
     };
 
+    let session = network_timeout(resolved.connect_timeout, &mut waiting, connection).await?;
+    network_timeout(Duration::from_secs(120), &mut waiting, authenticate(session, target, &resolved, askpass)).await
+}
+
+fn expand_proxy(command: &str, resolved: &ResolvedSshConfig) -> Result<String, RexError> {
+    let mut expanded = String::new();
+    let mut chars = command.chars();
+    while let Some(c) = chars.next() {
+        if c != '%' {
+            expanded.push(c);
+            continue;
+        }
+        let value = match chars.next() {
+            Some('%') => {
+                expanded.push('%');
+                continue;
+            }
+            Some('p') => {
+                expanded.push_str(&resolved.port.to_string());
+                continue;
+            }
+            Some('h') => &resolved.hostname,
+            Some('r') => &resolved.user,
+            _ => return Err(RexError::Ssh("Unsupported ProxyCommand substitution".into())),
+        };
+        if value.starts_with('-') || !value.bytes().all(|c| c.is_ascii_alphanumeric() || b".-_@:+%".contains(&c)) {
+            return Err(RexError::Ssh("Invalid name for ProxyCommand substitution".into()));
+        }
+        expanded.push_str(value);
+    }
+    Ok(expanded)
+}
+
+async fn authenticate(mut session: Handle<SshClientHandler>, target: &SshTarget, resolved: &ResolvedSshConfig, askpass: Option<Prompts>) -> Result<Handle<SshClientHandler>, RexError> {
     // 1. Try SSH Agent (`SSH_AUTH_SOCK` / Olo Passwords).
     if let Some(agent_sock) = resolve_agent_socket(target.agent_socket.as_deref())
         && let Ok(mut agent) = AgentClient::connect_uds(&agent_sock).await
@@ -439,13 +576,18 @@ async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn Ss
         }
         let key = match load_secret_key(key_path, None) {
             Ok(k) => Some(k),
-            Err(_) => {
-                if let Some(ask) = askpass.as_deref() {
+            Err(russh::keys::Error::KeyIsEncrypted) => {
+                if let Some(ask) = askpass.as_ref() {
                     let prompt = format!("Enter passphrase for SSH key {}:", key_path.display());
-                    ask.prompt_secret("SSH Key Passphrase", &prompt, false).and_then(|pw| load_secret_key(key_path, Some(pw.as_str())).ok())
+                    let pw = ask.secret("SSH Key Passphrase", &prompt, false).await?;
+                    load_secret_key(key_path, Some(pw.as_str())).ok()
                 } else {
                     None
                 }
+            }
+            Err(e) => {
+                tracing::debug!("could not load SSH identity {}: {e}", key_path.display());
+                None
             }
         };
         if let Some(k) = key {
@@ -458,37 +600,55 @@ async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn Ss
     }
 
     // 3. Try keyboard-interactive (2FA / PAM) or password via native Olo askpass.
-    if let Some(ask) = askpass.as_deref() {
-        if let Ok(mut resp) = session.authenticate_keyboard_interactive_start(&resolved.user, None).await {
-            loop {
-                match resp {
-                    KeyboardInteractiveAuthResponse::Success => return Ok(session),
-                    KeyboardInteractiveAuthResponse::Failure { .. } => break,
-                    KeyboardInteractiveAuthResponse::InfoRequest { name, instructions, prompts } => {
-                        let mut answers = Vec::with_capacity(prompts.len());
-                        let title = if name.is_empty() { format!("SSH Authentication ({}@{})", resolved.user, resolved.hostname) } else { name };
-                        for p in prompts {
-                            let full_prompt = if instructions.is_empty() { p.prompt } else { format!("{instructions}\n{}", p.prompt) };
-                            let Some(ans) = ask.prompt_secret(&title, &full_prompt, p.echo) else {
-                                return Err(RexError::Ssh("SSH authentication cancelled".to_owned()));
-                            };
-                            answers.push(ans.to_string());
+    if let Some(ask) = askpass.as_ref() {
+        let methods = match session.authenticate_none(&resolved.user).await.map_err(|e| RexError::Ssh(e.to_string()))? {
+            AuthResult::Success => return Ok(session),
+            AuthResult::Failure { remaining_methods, .. } => remaining_methods,
+        };
+        if methods.contains(&MethodKind::KeyboardInteractive) {
+            'attempts: for _ in 0..3 {
+                let mut resp = session.authenticate_keyboard_interactive_start(&resolved.user, None).await.map_err(|e| RexError::Ssh(e.to_string()))?;
+                loop {
+                    match resp {
+                        KeyboardInteractiveAuthResponse::Success => return Ok(session),
+                        KeyboardInteractiveAuthResponse::Failure { remaining_methods, .. } => {
+                            if !remaining_methods.contains(&MethodKind::KeyboardInteractive) {
+                                break 'attempts;
+                            }
+                            break;
                         }
-                        resp = session.authenticate_keyboard_interactive_respond(answers).await.map_err(|e| RexError::Ssh(format!("keyboard-interactive failed: {e}")))?;
+                        KeyboardInteractiveAuthResponse::InfoRequest { name, instructions, prompts } => {
+                            let mut answers = Vec::with_capacity(prompts.len());
+                            let title = if name.is_empty() { format!("SSH Authentication ({}@{})", resolved.user, resolved.hostname) } else { name };
+                            for p in prompts {
+                                let full_prompt = if instructions.is_empty() { p.prompt } else { format!("{instructions}\n{}", p.prompt) };
+                                let ans = ask.secret(&title, &full_prompt, p.echo).await?;
+                                answers.push(ans.to_string());
+                            }
+                            resp = session.authenticate_keyboard_interactive_respond(answers).await.map_err(|e| RexError::Ssh(format!("keyboard-interactive failed: {e}")))?;
+                        }
                     }
                 }
             }
         }
-
-        let prompt = format!("Password for {}@{}:", resolved.user, resolved.hostname);
-        if let Some(pw) = ask.prompt_secret("SSH Password", &prompt, false) {
-            if session.authenticate_password(&resolved.user, pw.as_str()).await.map(|r| r.success()).unwrap_or(false) {
-                return Ok(session);
+        if methods.contains(&MethodKind::Password) {
+            let prompt = format!("Password for {}@{}:", resolved.user, resolved.hostname);
+            for _ in 0..3 {
+                let pw = ask.secret("SSH Password", &prompt, false).await?;
+                match session.authenticate_password(&resolved.user, pw.as_str()).await.map_err(|e| RexError::Ssh(e.to_string()))? {
+                    AuthResult::Success => return Ok(session),
+                    AuthResult::Failure { remaining_methods, .. } if !remaining_methods.contains(&MethodKind::Password) => break,
+                    _ => {}
+                }
             }
         }
     }
 
     Err(RexError::Ssh(format!("SSH authentication failed for {}@{}:{}", resolved.user, resolved.hostname, resolved.port)))
+}
+
+fn cancelled() -> RexError {
+    RexError::Ssh("SSH authentication cancelled".into())
 }
 
 fn shell_escape(s: &str) -> String {

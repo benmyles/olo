@@ -2939,7 +2939,12 @@ it.
   Kit's `styled_text` (wrapping, measuring, run backgrounds); the selection is a
   run background too, as the marks are. `auto_hide(true)`: its bar only
   while the text overflows (a short text beside others; the empty note
-  then in the middle of all of it). `TextView::MARGINS` and
+  then in the middle of all of it). `.panel_well(true)`: a read-only detail quoted
+  on a panel (a server's own answer under the line that says what went
+  wrong), to select and copy: the panel's ground a shade off and the
+  panel's text colour (not the document's white, which says "type
+  here"; dimmed there, it read as a field switched off).
+  `TextView::MARGINS` and
   `TextView::line_height()` (a whole number of points) are how it sets
   its text, for text beside it to be set the same: Calendar's preview
   sets an event's facts so in a box beside its notes, their first lines
@@ -6865,6 +6870,29 @@ lint at a time).
   Power, where the power mode is.
 * New panel: add it to `Panel` (arg, title, icon, size, reset), write the
   module, add it to `PREFERENCE_PANELS`, journal it light and dark.
+* **Rex** (`rex.rs`; `settings.rex`, `olo_protocol::RexSettings`): what
+  the Rex app tells the person about, the hosts it knows and what the
+  sessions of each may do on this computer; in place of a Settings
+  window of the app's own (Ben, 2026-11-21: "some stuff that doesn't
+  integrate properly with olo"). Notifications across the top: which
+  changes of an agent in a pane that isn't in front become an Olo
+  notification (waiting, finished, failed), and a button to Preferences
+  ▸ Notifications, which decides how they show and sound. Hosts under
+  it: a list of names, This computer always first (it is
+  `settings.rex.local`, never removed or renamed), then the hosts in
+  their order, each kept by an id of its own (a name and an address
+  can both change); beside the list the chosen one's name, address,
+  "Connect when Rex starts" and the five things its sessions may do
+  here (`RexGrants`: open links, reach its local servers, Agent
+  Screens, Passwords, the clipboard: nothing until ticked, everything
+  for This computer), with a caution under them when Passwords or the
+  clipboard is given to another host. The window is one size whatever
+  is chosen (This computer shows the same rows, disabled where they
+  don't apply; the caution's and the address note's rooms are kept), so
+  nothing moves on a click in the list; on a narrow screen the list,
+  four rows, sits above the details. Add makes a host named "New host"
+  with the keyboard in its name, all selected; Remove selects its
+  neighbour; both undone by Edit ▸ Undo as every edit here is.
 * **Default Apps** (`default_apps.rs`, BeOS's FileTypes), three tabs.
   *Default Apps*: each kind of file and link (`KINDS`: Text, PDF, Word
   documents, … Pictures, Movies, Music, … Folders, Web pages and links,
@@ -26451,12 +26479,67 @@ remote Rex workspaces (Rex API rev 19), alongside Terminal.
   Tracker `"Open in Rex"`, global Command Palette session search, and
   in-place upgrade state restoration.
 
+**What the person is told, and where** (2026-11-21, the day the app
+was merged; Ben: "it has its own app notifications that show seperate
+from olo ones"). Rex draws no notices of its own. Something the person
+just did in a window and that failed is said in that window, where they
+did it, until they try again (under the control in a panel; the
+workspace's status bar); a passing word ("Server configuration
+reloaded.") is the status bar's for four seconds (`due::Notice`); and
+what happens while they aren't looking at it (an agent in a pane
+waiting, done or failed; a host dropped; a remote program's own notice
+through the bridge) is an Olo notification through the app's one
+`Notifier` (attention.rs): not while that pane is in front, one for a
+pane at a time (a newer one replaces it), taken back when the pane is
+looked at, its action going to that very pane. The status bar is always
+there (the window's host and session at rest): coming and going with
+each word it resized the terminals above it twice.
+
+**A pane is never a picture of something else.** The tab strip, the
+panes and the keyboard all go by the one selection the sidebar shows
+(they were three: a closed terminal left another session's screen
+under the wrong name, taking no keys; Ben: "i closed the terminal but
+now it is like stuck there"). A session with no terminals, a host with
+no sessions, a host or the server gone: each says so where the
+terminal would be, by name, with the one thing to do (New Terminal,
+New Session, Reconnect).
+
+**What the server really says.** The client's types were written from
+documents; `crates/rex/tests/live.rs` and `tests/remote.rs` now hold
+every call and event against a scratch server (`tools/dev/rex-check`):
+75 methods, the Tailscale ones among them (their answers are wrapped,
+`{"tailscale": …}`, which was "json error: missing field `state`" at the
+first press of the button), split and resize and ownership as rev 19
+has them, byte streams that end early, a reply that can't be read
+saying which method and which field. Remote hosts over a scratch sshd
+in a private network namespace: every way of signing in, a changed host
+key refused (it was accepted on a "yes"), ProxyCommand, a link cut,
+frozen or slow, the server killed and started again, forwards and
+100 MiB transfers; 28 cases, ten runs each. A link that dies without a
+word is found by `ControlClient::probe` when the person types (five
+seconds), not by the keepalive minutes on; keys typed into a pane that
+is disconnected go nowhere, and nothing unsent is replayed. Not there:
+ProxyJump (refused with what to use instead).
+
+**The terminal engine's wrapper** (`crates/rex-vt`) was audited against
+the library's headers: its callbacks were registered by the address of
+a local variable; a search outlived its terminal; snapshots, pictures,
+grids and scrollback had no bounds (`limits.rs` has them now: 256 MiB of
+the engine's heap a pane, 128 MiB of snapshot, 64 MiB a picture, 4096
+cells an axis).
+
 **Testing.** `OLO_REX_DEMO=1` starts an isolated demo workspace (no real
 Rex socket touched; used by `tools/dev/ui-lint --tiles`). Point at a
 scratch Rex server (`rex server run --listen unix:///var/tmp/.../rex.sock`)
 via `REX_SERVER_SOCKET`. `cargo test -p olo-rex-vt -p olo-rex-client -p olo-rex`
 runs VT round-trips, inline APC nonce verification, and live scratch
 `rex server run` bootstrap + `GHOSTSNP` -> `RenderState` E2E tests.
+`tools/dev/rex-check` runs the client contracts one case per line. The
+remote tests give the client, sshd and Rex a private loopback network,
+home, credentials and process namespace. Rev-19’s tunnel.dial provider carries
+its connections over `rex.data.bytes.v1`. Use `--remote-only --repeat 10`
+for repeated SSH, HTTP/TLS, transfer, forwarding and connection-loss checks.
+`OLO_REX_TEST_DIR` selects the on-disk scratch parent (default `/var/tmp`).
 
 **Cost.** Measured on release builds in a headless 120 Hz GPU session at
 2× against a live Rex rev-19 server:

@@ -5,10 +5,9 @@
 //! - Which-Key Sequence Hints HUD (`KeyHint`) & Active Key Mode Pill
 //! - Integrated Path Browser (`⌃⌘I`) & Go to Directory (`⇧⌘G`)
 //! - Quick Look (`⌘Y`) image & text preview
-//! - In-App Floating Notification Toast (6 anchors)
 //! - Auto-Approve 30 s Countdown Pill & Password Prompt Autofill Banner
 
-use std::{collections::HashSet, sync::Arc, time::Instant};
+use std::{collections::HashSet, sync::Arc};
 
 use olo_kit::{
     Bounds, Child, CursorStyle, Element, FontWeight, InteractiveElement as _, MouseButton, ParentElement as _, Pixels, RenderImage, SharedString, Styled as _, WindowCx, agent, canvas, div, icons,
@@ -21,7 +20,6 @@ use crate::{
     agent::AgentActivity,
     hub::BlockKey,
     keymap::{ActionSpec, SequenceHint},
-    settings::NotifyAnchor,
     terminal_pane::rgba_to_render_image,
 };
 
@@ -40,15 +38,16 @@ pub enum PathBrowserMode {
     GoToDir,
 }
 
+#[derive(Clone)]
 pub enum QuickLookContent {
     Loading,
     Image { image: Arc<RenderImage>, width: u32, height: u32 },
-    Text { lines: Vec<String>, scroll: usize },
+    Text { lines: Arc<[String]>, scroll: usize },
     Binary { size: usize, content_type: Option<String> },
 }
 
 impl QuickLookContent {
-    pub fn from_bytes(path: &str, bytes: Vec<u8>, content_type: Option<String>) -> Self {
+    pub fn from_bytes(path: &str, bytes: &[u8], content_type: Option<String>) -> Self {
         let lower = path.to_ascii_lowercase();
         let looks_image = content_type.as_deref().is_some_and(|ct| ct.starts_with("image/"))
             || lower.ends_with(".png")
@@ -58,14 +57,14 @@ impl QuickLookContent {
             || lower.ends_with(".webp")
             || lower.ends_with(".bmp");
 
-        if looks_image && let Ok(img) = image::load_from_memory(&bytes) {
+        if looks_image && let Ok(img) = image::load_from_memory(bytes) {
             let rgba = img.to_rgba8();
             let (w, h) = rgba.dimensions();
             if let Some(ri) = rgba_to_render_image(rgba.as_raw(), w, h) {
                 return Self::Image { image: ri, width: w, height: h };
             }
         }
-        if let Ok(text) = String::from_utf8(bytes.clone()) {
+        if let Ok(text) = std::str::from_utf8(bytes) {
             let lines = text.lines().take(2000).map(str::to_owned).collect();
             return Self::Text { lines, scroll: 0 };
         }
@@ -91,16 +90,6 @@ pub enum JumpTarget {
     Session { host_key: String, session_id: String },
     Host(String),
     Directory(String),
-}
-
-/// Ephemeral in-app floating toast notification.
-#[derive(Debug, Clone)]
-pub struct ToastItem {
-    pub id: u64,
-    pub title: String,
-    pub body: String,
-    pub target: Option<BlockKey>,
-    pub created: Instant,
 }
 
 /// Map Rex's 16 official `rex.ui` prompt icon names to Olo SVG icon names.
@@ -621,43 +610,6 @@ pub fn render_mode_pill(text: String) -> Element {
         .px(px(10.0))
         .h(px(22.0))
         .w(px(190.0)),
-    )
-}
-
-/// Floating in-app notification toast anchored to the user's chosen `NotifyAnchor`.
-pub fn render_toast(toast: &ToastItem, anchor: NotifyAnchor, on_click: impl Fn(&(), &mut WindowCx) + 'static, on_dismiss: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
-    let mut wrap = div().absolute().p(px(m::WINDOW_INSET));
-    wrap = match anchor {
-        NotifyAnchor::TopLeft => wrap.top(px(0.0)).left(px(0.0)),
-        NotifyAnchor::TopCenter => wrap.top(px(0.0)).left(px(0.0)).right(px(0.0)).flex().justify_center(),
-        NotifyAnchor::TopRight => wrap.top(px(0.0)).right(px(0.0)),
-        NotifyAnchor::BottomLeft => wrap.bottom(px(0.0)).left(px(0.0)),
-        NotifyAnchor::BottomCenter => wrap.bottom(px(0.0)).left(px(0.0)).right(px(0.0)).flex().justify_center(),
-        NotifyAnchor::BottomRight => wrap.bottom(px(0.0)).right(px(0.0)),
-    };
-
-    wrap.child(
-        div()
-            .relative()
-            .w(px(320.0))
-            .p(px(m::SPACING))
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(m::SPACING))
-            .cursor(CursorStyle::PointingHand)
-            .on_mouse_down(MouseButton::Left, move |_, cx| {
-                on_click(&(), cx);
-                cx.stop_propagation();
-            })
-            .child(overlay_card_back("Notification"))
-            .child(
-                div().flex_1().min_w_0().flex().flex_col().gap(px(2.0)).child(StringView::new(toast.title.clone()).bold(true).cut(true)).child(StringView::new(toast.body.clone()).dim(true).cut(true)),
-            )
-            .child(Button::new("×").small().on_click(move |_, cx| {
-                on_dismiss(&(), cx);
-                cx.stop_propagation();
-            })),
     )
 }
 

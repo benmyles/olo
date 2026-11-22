@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::ffi;
 
+/// Even verbose XML palettes are small. Limit scanning work on imported files.
+pub const MAX_THEME_BYTES: usize = 1 << 20;
+
 /// 8-bit sRGB color.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub struct Rgb {
@@ -32,20 +35,26 @@ impl Rgb {
 
     /// W3C relative luminance (0.0..=1.0).
     pub fn luminance(self) -> f64 {
+        let _ = crate::sys::init();
         let c = self.to_ffi();
+        // SAFETY: The local RGB value is initialized and borrowed only for this calculation.
         unsafe { ffi::ghostty_color_luminance(&c) }
     }
 
     /// Perceived luminance (0.0..=1.0); > 0.5 is treated as light by Ghostty.
     pub fn perceived_luminance(self) -> f64 {
+        let _ = crate::sys::init();
         let c = self.to_ffi();
+        // SAFETY: The local RGB value is initialized and borrowed only for this calculation.
         unsafe { ffi::ghostty_color_perceived_luminance(&c) }
     }
 
     /// WCAG contrast ratio (1.0..=21.0).
     pub fn contrast(self, other: Self) -> f64 {
+        let _ = crate::sys::init();
         let a = self.to_ffi();
         let b = other.to_ffi();
+        // SAFETY: Both RGB values are live, initialized inputs for this call.
         unsafe { ffi::ghostty_color_contrast(&a, &b) }
     }
 }
@@ -113,22 +122,28 @@ impl TerminalTheme {
 
 /// Parse any Ghostty color syntax (`#rrggbb`, `rrggbb`, `#rgb`, `rgb:r/g/b`, X11 name).
 pub fn parse_color(value: &str) -> Option<Rgb> {
+    let _ = crate::sys::init();
     let mut out = ffi::GhosttyColorRgb::default();
+    // SAFETY: Ghostty takes a counted UTF-8 slice and writes the typed local outputs synchronously.
     let res = unsafe { ffi::ghostty_color_parse(value.as_ptr().cast(), value.len(), &mut out) };
     (res == ffi::GHOSTTY_SUCCESS).then(|| Rgb::from_ffi(out))
 }
 
 /// Parse a Ghostty palette entry (`N=COLOR`, e.g. `1=#ef5350`).
 pub fn parse_palette_entry(value: &str) -> Option<(u8, Rgb)> {
+    let _ = crate::sys::init();
     let mut idx = 0u8;
     let mut out = ffi::GhosttyColorRgb::default();
+    // SAFETY: Ghostty takes a counted UTF-8 slice and writes the typed local outputs synchronously.
     let res = unsafe { ffi::ghostty_color_parse_palette_entry(value.as_ptr().cast(), value.len(), &mut idx, &mut out) };
     (res == ffi::GHOSTTY_SUCCESS).then(|| (idx, Rgb::from_ffi(out)))
 }
 
 /// Ghostty's built-in default 256-color palette.
 pub fn default_palette() -> [Rgb; 256] {
+    let _ = crate::sys::init();
     let mut raw = [ffi::GhosttyColorRgb::default(); 256];
+    // SAFETY: color.h requires exactly 256 writable RGB entries.
     unsafe { ffi::ghostty_color_palette_default(raw.as_mut_ptr()) };
     std::array::from_fn(|i| Rgb::from_ffi(raw[i]))
 }
@@ -136,6 +151,7 @@ pub fn default_palette() -> [Rgb; 256] {
 /// Generate a 256-color palette with CIELAB interpolation from `base[0..16]`,
 /// `bg`, and `fg`. Any index present in `preserve_indices` keeps its base value.
 pub fn generate_extended_palette(base: &[Rgb; 256], preserve_indices: Option<&[u8]>, bg: Rgb, fg: Rgb, harmonious: bool) -> [Rgb; 256] {
+    let _ = crate::sys::init();
     let base_ffi: [ffi::GhosttyColorRgb; 256] = std::array::from_fn(|i| base[i].to_ffi());
     let mut mask = ffi::GhosttyColorPaletteMask::default();
     let mask_ptr = if let Some(indices) = preserve_indices {
@@ -151,6 +167,7 @@ pub fn generate_extended_palette(base: &[Rgb; 256], preserve_indices: Option<&[u
     let bg_ffi = bg.to_ffi();
     let fg_ffi = fg.to_ffi();
     let mut out_ffi = [ffi::GhosttyColorRgb::default(); 256];
+    // SAFETY: Both palettes contain 256 RGB values; the optional mask and colors live through the call.
     unsafe {
         ffi::ghostty_color_palette_generate(base_ffi.as_ptr(), mask_ptr, &bg_ffi, &fg_ffi, harmonious, out_ffi.as_mut_ptr());
     }
@@ -161,6 +178,9 @@ pub fn generate_extended_palette(base: &[Rgb; 256], preserve_indices: Option<&[u
 /// `cursor-color`, `cursor-text`, `selection-background`, `selection-foreground`,
 /// `palette = N=#rrggbb`).
 pub fn parse_ghostty_theme(name: impl Into<String>, text: &str) -> Result<TerminalTheme, String> {
+    if text.len() > MAX_THEME_BYTES {
+        return Err("theme exceeds 1 MiB".into());
+    }
     let mut theme = TerminalTheme { name: name.into(), ..TerminalTheme::default() };
     let mut palette = default_palette();
     let mut saw_any = false;
@@ -190,17 +210,28 @@ pub fn parse_ghostty_theme(name: impl Into<String>, text: &str) -> Result<Termin
                 }
             }
             "cursor-color" => {
-                theme.cursor = parse_color(val);
-                saw_any = true;
+                if let Some(color) = parse_color(val) {
+                    theme.cursor = Some(color);
+                    saw_any = true;
+                }
             }
             "cursor-text" => {
-                theme.cursor_text = parse_color(val);
+                if let Some(color) = parse_color(val) {
+                    theme.cursor_text = Some(color);
+                    saw_any = true;
+                }
             }
             "selection-background" => {
-                theme.selection_bg = parse_color(val);
+                if let Some(color) = parse_color(val) {
+                    theme.selection_bg = Some(color);
+                    saw_any = true;
+                }
             }
             "selection-foreground" => {
-                theme.selection_fg = parse_color(val);
+                if let Some(color) = parse_color(val) {
+                    theme.selection_fg = Some(color);
+                    saw_any = true;
+                }
             }
             "palette" => {
                 if let Some((idx, c)) = parse_palette_entry(val) {
@@ -225,6 +256,9 @@ pub fn parse_ghostty_theme(name: impl Into<String>, text: &str) -> Result<Termin
 
 /// Parse an iTerm2 `.itermcolors` XML plist into a [`TerminalTheme`].
 pub fn parse_itermcolors(name: impl Into<String>, xml: &str) -> Result<TerminalTheme, String> {
+    if xml.len() > MAX_THEME_BYTES {
+        return Err("theme exceeds 1 MiB".into());
+    }
     let mut theme = TerminalTheme { name: name.into(), ..TerminalTheme::default() };
     let mut palette = default_palette();
     let mut saw_any = false;
@@ -276,12 +310,15 @@ pub fn parse_itermcolors(name: impl Into<String>, xml: &str) -> Result<TerminalT
             }
             "Cursor Text Color" => {
                 theme.cursor_text = Some(rgb);
+                saw_any = true;
             }
             "Selection Color" => {
                 theme.selection_bg = Some(rgb);
+                saw_any = true;
             }
             "Selected Text Color" => {
                 theme.selection_fg = Some(rgb);
+                saw_any = true;
             }
             _ => {}
         }
@@ -316,6 +353,9 @@ fn parse_iterm_color_dict(dict: &str) -> Option<Rgb> {
         let v_start = after + (dict[after..].len() - rest.len()) + tag_open.len();
         let v_end = dict[v_start..].find(tag_close)?;
         let val: f64 = dict[v_start..v_start + v_end].trim().parse().ok()?;
+        if !val.is_finite() {
+            return None;
+        }
         let byte = (val.clamp(0.0, 1.0) * 255.0).round() as u8;
         match key {
             "Red Component" => r = Some(byte),

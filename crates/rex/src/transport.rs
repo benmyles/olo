@@ -38,6 +38,10 @@ pub enum RexEndpoint {
     Ssh { target: SshTarget, pool: Arc<SshSessionPool>, askpass: Option<Arc<dyn SshAskpass>> },
 }
 
+pub(crate) fn authority_host(host: &str) -> String {
+    if host.contains(':') { format!("[{host}]") } else { host.to_owned() }
+}
+
 impl RexEndpoint {
     /// Parse a Rex address string (`local`, `unix:///...`, `http://...`,
     /// `https://...`, `ssh://...`, `user@host`, `host.tail.ts.net`, or `host:port`).
@@ -47,6 +51,9 @@ impl RexEndpoint {
             return Ok(Self::Local { autostart: true });
         }
         if let Some(path) = s.strip_prefix("unix://") {
+            if !path.starts_with('/') {
+                return Err(RexError::InvalidEndpoint("expected an absolute Unix socket path".into()));
+            }
             return Ok(Self::Unix(PathBuf::from(path)));
         }
         if s.starts_with('/') {
@@ -56,33 +63,30 @@ impl RexEndpoint {
             let target = SshTarget::parse(rest)?;
             return Ok(Self::Ssh { target, pool: ssh_pool, askpass });
         }
-        if s.starts_with("http://") || s.starts_with("https://") {
-            let parsed = url::Url::parse(s).map_err(|e| RexError::InvalidEndpoint(e.to_string()))?;
-            let host = parsed.host_str().ok_or_else(|| RexError::InvalidEndpoint(format!("missing host in {s}")))?.to_owned();
-            if parsed.scheme() == "https" {
-                let port = parsed.port().unwrap_or(443);
-                return Ok(Self::Https { host, port });
-            } else {
-                let port = parsed.port().unwrap_or(7297);
-                return Ok(Self::Http { host, port });
-            }
+        let http = s.strip_prefix("http://");
+        let https = s.strip_prefix("https://");
+        let explicit = http.or(https);
+        if explicit.is_none() && s.contains("://") {
+            return Err(RexError::InvalidEndpoint("unsupported endpoint scheme".into()));
         }
-        if s.contains('@') {
-            let target = SshTarget::parse(s)?;
-            return Ok(Self::Ssh { target, pool: ssh_pool, askpass });
+        if explicit.is_none() && (s.contains('@') || !s.contains(['.', ':', '['])) {
+            return Ok(Self::Ssh { target: SshTarget::parse(s)?, pool: ssh_pool, askpass });
         }
-        // Tailscale MagicDNS (*.ts.net) defaults to HTTPS on 443; host:port defaults to HTTP.
-        if let Some((host, port_s)) = s.rsplit_once(':')
-            && let Ok(port) = port_s.parse::<u16>()
-        {
-            return Ok(Self::Http { host: host.to_owned(), port });
+        let raw_authority = explicit.unwrap_or(s);
+        let authority = raw_authority.strip_suffix('/').unwrap_or(raw_authority);
+        if authority.contains(['@', '/', '?', '#', '\\']) {
+            return Err(RexError::InvalidEndpoint("expected an HTTP host and optional port".into()));
         }
-        if s.ends_with(".ts.net") || s.contains('.') {
-            return Ok(Self::Https { host: s.to_owned(), port: 443 });
+        let target = SshTarget::parse(authority)?;
+        let host = match url::Host::parse(&authority_host(&target.host)).map_err(|e| RexError::InvalidEndpoint(e.to_string()))? {
+            url::Host::Ipv6(ip) => ip.to_string(),
+            host => host.to_string(),
+        };
+        if http.is_some() || explicit.is_none() && target.port.is_some() {
+            Ok(Self::Http { host, port: target.port.unwrap_or(7297) })
+        } else {
+            Ok(Self::Https { host, port: target.port.unwrap_or(443) })
         }
-        // Bare hostname (like an ~/.ssh/config alias): treat as SSH.
-        let target = SshTarget::parse(s)?;
-        Ok(Self::Ssh { target, pool: ssh_pool, askpass })
     }
 
     /// Display label for UI/diagnostics.
@@ -90,12 +94,12 @@ impl RexEndpoint {
         match self {
             Self::Local { .. } => "Local".to_owned(),
             Self::Unix(p) => format!("unix://{}", p.display()),
-            Self::Http { host, port } => format!("http://{host}:{port}"),
+            Self::Http { host, port } => format!("http://{}:{port}", authority_host(host)),
             Self::Https { host, port } => {
                 if *port == 443 {
-                    format!("https://{host}")
+                    format!("https://{}", authority_host(host))
                 } else {
-                    format!("https://{host}:{port}")
+                    format!("https://{}:{port}", authority_host(host))
                 }
             }
             Self::Ssh { target, .. } => target.display(),
@@ -116,18 +120,21 @@ impl RexEndpoint {
                 Ok((RexStream::Unix(stream), "localhost".to_owned()))
             }
             Self::Http { host, port } => {
-                let tcp = TcpStream::connect((host.as_str(), *port)).await?;
+                let tcp = tokio::time::timeout(Duration::from_secs(10), TcpStream::connect((host.as_str(), *port))).await.map_err(|_| RexError::Timeout)??;
                 let _ = tcp.set_nodelay(true);
-                Ok((RexStream::Tcp(tcp), format!("{host}:{port}")))
+                Ok((RexStream::Tcp(tcp), format!("{}:{port}", authority_host(host))))
             }
             Self::Https { host, port } => {
-                let tcp = TcpStream::connect((host.as_str(), *port)).await?;
+                let tcp = tokio::time::timeout(Duration::from_secs(10), TcpStream::connect((host.as_str(), *port))).await.map_err(|_| RexError::Timeout)??;
                 let _ = tcp.set_nodelay(true);
                 let tls_cfg = build_tls_config()?;
                 let connector = TlsConnector::from(Arc::new(tls_cfg));
                 let server_name = ServerName::try_from(host.clone()).map_err(|e| RexError::Tls(format!("invalid server name {host}: {e}")))?;
-                let tls = connector.connect(server_name, tcp).await.map_err(|e| RexError::Tls(format!("TLS handshake with {host}:{port} failed: {e}")))?;
-                let host_hdr = if *port == 443 { host.clone() } else { format!("{host}:{port}") };
+                let tls = tokio::time::timeout(Duration::from_secs(10), connector.connect(server_name, tcp))
+                    .await
+                    .map_err(|_| RexError::Timeout)?
+                    .map_err(|e| RexError::Tls(format!("TLS handshake with {host}:{port} failed: {e}")))?;
+                let host_hdr = if *port == 443 { authority_host(host) } else { format!("{}:{port}", authority_host(host)) };
                 Ok((RexStream::Tls(Box::new(tls)), host_hdr))
             }
             Self::Ssh { target, pool, askpass } => {
@@ -207,7 +214,7 @@ pub fn local_socket_candidates() -> Vec<PathBuf> {
     if let Ok(env_sock) = std::env::var("REX_SERVER_SOCKET")
         && !env_sock.is_empty()
     {
-        out.push(PathBuf::from(env_sock.strip_prefix("unix://").unwrap_or(&env_sock)));
+        return vec![PathBuf::from(env_sock.strip_prefix("unix://").unwrap_or(&env_sock))];
     }
     if let Ok(xdg_rt) = std::env::var("XDG_RUNTIME_DIR")
         && !xdg_rt.is_empty()
@@ -236,6 +243,10 @@ pub async fn discover_or_start_local_socket(autostart: bool) -> Result<PathBuf, 
         if is_live_unix_socket(&path).await {
             return Ok(path);
         }
+    }
+
+    if std::env::var_os("REX_SERVER_SOCKET").is_some_and(|s| !s.is_empty()) {
+        return Err(RexError::ServerUnavailable("no listener at REX_SERVER_SOCKET".to_owned()));
     }
 
     // Ask `rex server status --json` if `rex` is installed on PATH (it knows its exact default path).

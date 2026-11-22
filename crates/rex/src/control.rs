@@ -22,7 +22,7 @@ use tokio::{
 use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
 
 use crate::{
-    error::{ApiError, RexError},
+    error::RexError,
     model::{
         ActionResult, AttachResponse, BlobReadResponse, BootstrapResponse, CONTROL_SUBPROTOCOL, ClientIdentity, ConnectedClient, ControlEvent, ControlEventEnvelope, DataConnectResponse,
         DataTicketRequest, DirListing, DownloadBeginResponse, HostRecord, HostsListResponse, InputMode, KeyEvent, KeymapAction, KeymapLayer, KeymapResponse, PortsSnapshot, ProgramStatusRecord,
@@ -32,6 +32,9 @@ use crate::{
 
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(120);
 const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+/// How long a probe ([`ControlClient::probe`]) waits for anything at all
+/// to come from the server before the connection is taken for dead.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Result of an RPC call paired with the server's `seq` watermark.
 #[derive(Debug, Clone)]
@@ -40,13 +43,34 @@ pub struct RpcResult<T> {
     pub payload: T,
 }
 
+#[derive(serde::Deserialize)]
+struct TailscaleReply {
+    tailscale: TailscaleStatus,
+}
+
 struct PendingCall {
+    method: String,
     tx: oneshot::Sender<Result<RpcResult<Value>, RexError>>,
 }
 
 enum OutboundCmd {
-    Request { id: String, body: String, reply: oneshot::Sender<Result<RpcResult<Value>, RexError>> },
+    Request { id: String, method: String, body: String, reply: oneshot::Sender<Result<RpcResult<Value>, RexError>> },
+    Forget(String),
+    Probe,
     Close,
+}
+
+struct PendingGuard<'a> {
+    sender: &'a mpsc::UnboundedSender<OutboundCmd>,
+    id: Option<String>,
+}
+
+impl Drop for PendingGuard<'_> {
+    fn drop(&mut self) {
+        if let Some(id) = self.id.take() {
+            let _ = self.sender.send(OutboundCmd::Forget(id));
+        }
+    }
 }
 
 /// Live connection to a Rex server's `/api/control` WebSocket (`rex.control.v1`).
@@ -68,6 +92,25 @@ impl ControlClient {
     where
         S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     {
+        Self::handshake(stream, host_header, identity, reconnect_token, true).await
+    }
+
+    /// Local sockets report peer death directly. Respond to the server's pings
+    /// without running a client-side keepalive timer.
+    pub async fn connect_unix(stream: tokio::net::UnixStream, identity: ClientIdentity) -> Result<(Self, mpsc::UnboundedReceiver<ControlEventEnvelope>), RexError> {
+        Self::handshake(stream, "localhost", identity, None, false).await
+    }
+
+    async fn handshake<S>(
+        stream: S,
+        host_header: &str,
+        identity: ClientIdentity,
+        reconnect_token: Option<&str>,
+        keepalive: bool,
+    ) -> Result<(Self, mpsc::UnboundedReceiver<ControlEventEnvelope>), RexError>
+    where
+        S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    {
         let req = http::Request::builder()
             .uri(format!("ws://{host_header}/api/control"))
             .header("Host", host_header)
@@ -79,7 +122,7 @@ impl ControlClient {
             .body(())
             .map_err(|e| RexError::Protocol(format!("control request build failed: {e}")))?;
 
-        let (mut ws, _resp) = tokio_tungstenite::client_async(req, stream).await?;
+        let (mut ws, _resp) = time::timeout(Duration::from_secs(5), tokio_tungstenite::client_async(req, stream)).await.map_err(|_| RexError::Timeout)??;
 
         // Build uncompressed < 512 B `hello` message.
         let mut hello = json!({
@@ -96,26 +139,14 @@ impl ControlClient {
         let hello_text = serde_json::to_string(&hello)?;
         if hello_text.len() >= 512 {
             // Trim optional label if needed so hello is strictly < 512 bytes.
-            let mut trimmed = json!({
-                "type": "hello",
-                "api_revision": REX_API_REVISION,
-                "api_min_revision": REX_API_MIN_REVISION,
-                "client": {
-                    "kind": "app",
-                    "platform": "linux",
-                    "name": "Olo Rex",
-                    "version": env!("CARGO_PKG_VERSION"),
-                }
-            });
-            if let Some(tok) = reconnect_token
-                && !tok.is_empty()
-            {
-                trimmed["reconnect_token"] = Value::String(tok.to_owned());
+            hello["client"].as_object_mut().unwrap().remove("label");
+            let t = serde_json::to_string(&hello)?;
+            if t.len() >= 512 {
+                return Err(RexError::MessageTooLarge { size: t.len(), limit: 511 });
             }
-            let t = serde_json::to_string(&trimmed)?;
-            ws.send(Message::Text(t.into())).await?;
+            send_control(&mut ws, Message::Text(t.into())).await?;
         } else {
-            ws.send(Message::Text(hello_text.into())).await?;
+            send_control(&mut ws, Message::Text(hello_text.into())).await?;
         }
 
         // Wait up to 5 seconds for `welcome`.
@@ -124,11 +155,17 @@ impl ControlClient {
             return Err(RexError::Protocol(format!("unexpected control protocol: {}", welcome.protocol)));
         }
 
-        let max_message_bytes = welcome.limits.max_message_bytes.max(65_536);
+        if !(REX_API_MIN_REVISION..=REX_API_REVISION).contains(&welcome.api_revision) || welcome.api_min_revision > welcome.api_revision {
+            return Err(RexError::Protocol(format!(
+                "incompatible Rex API revision {} (server minimum {}, client supports {REX_API_MIN_REVISION}–{REX_API_REVISION})",
+                welcome.api_revision, welcome.api_min_revision
+            )));
+        }
+        let max_message_bytes = welcome.limits.max_message_bytes;
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let (evt_tx, evt_rx) = mpsc::unbounded_channel();
 
-        tokio::spawn(run_control_loop(ws, cmd_rx, evt_tx));
+        tokio::spawn(run_control_loop(ws, cmd_rx, evt_tx, keepalive));
 
         Ok((Self { cmd_tx, next_id: Arc::new(AtomicU64::new(1)), welcome: Arc::new(welcome), max_message_bytes }, evt_rx))
     }
@@ -143,6 +180,35 @@ impl ControlClient {
 
     pub fn api_revision(&self) -> u32 {
         self.welcome.api_revision
+    }
+
+    /// Resolves when this connection's control loop closes its command receiver.
+    /// From that point, new RPCs on any clone fail. Already closed connections
+    /// resolve immediately. Dropping this wait leaves the connection running.
+    pub async fn disconnected(&self) {
+        self.cmd_tx.closed().await;
+    }
+
+    /// True when both handles belong to the same live or closed control loop.
+    /// Clones compare equal. A reconnect creates a distinct loop, even when
+    /// the server resumes the same client ID and reconnect token.
+    pub fn same_connection(&self, other: &Self) -> bool {
+        self.cmd_tx.same_channel(&other.cmd_tx)
+    }
+
+    /// Ask whether the server is still there, now: a ping is sent, and if
+    /// nothing at all comes back within five seconds (`PROBE_TIMEOUT`)
+    /// the connection ends as lost ([`ControlClient::disconnected`]
+    /// resolves, pending calls fail). For when the person does something
+    /// that should be answered at once (a key typed into a pane of a
+    /// remote host): a link that died without a word is otherwise found
+    /// only by the keepalive, minutes on (120 s apart, three missed) or
+    /// by SSH's own (30 s apart, three missed), and the person types into
+    /// nothing meanwhile. Nothing is sent while a probe is already out,
+    /// so it may be called at every key; and none at all while nobody
+    /// calls it: an idle connection costs what it did.
+    pub fn probe(&self) {
+        let _ = self.cmd_tx.send(OutboundCmd::Probe);
     }
 
     /// Close the control connection cleanly (tells server to end client immediately).
@@ -166,14 +232,19 @@ impl ControlClient {
             return Err(RexError::MessageTooLarge { size: body.len(), limit: self.max_message_bytes });
         }
         let (tx, rx) = oneshot::channel();
-        self.cmd_tx.send(OutboundCmd::Request { id, body, reply: tx }).map_err(|_| RexError::Closed("control loop stopped".to_owned()))?;
-        time::timeout(timeout, rx).await.map_err(|_| RexError::Timeout)?.map_err(|_| RexError::Closed("control loop dropped reply".to_owned()))?
+        self.cmd_tx.send(OutboundCmd::Request { id: id.clone(), method: method.to_owned(), body, reply: tx }).map_err(|_| RexError::Closed("control loop stopped".to_owned()))?;
+        // A cancelled prompt or a caller's deadline must free the pending
+        // entry even when the server never sends another frame.
+        let mut guard = PendingGuard { sender: &self.cmd_tx, id: Some(id) };
+        let result = time::timeout(timeout, rx).await.map_err(|_| RexError::Timeout)?;
+        guard.id = None;
+        result.map_err(|_| RexError::Closed("control loop stopped".to_owned()))?
     }
 
     /// Typed RPC call deserializing `payload` into `T`.
     pub async fn call<T: DeserializeOwned>(&self, method: &str, payload: Option<Value>) -> Result<RpcResult<T>, RexError> {
         let res = self.call_raw(method, payload).await?;
-        let typed = serde_json::from_value(res.payload)?;
+        let typed = decode(method, res.payload)?;
         Ok(RpcResult { seq: res.seq, payload: typed })
     }
 
@@ -200,11 +271,11 @@ impl ControlClient {
     }
 
     pub async fn server_config_reload(&self) -> Result<RpcResult<Value>, RexError> {
-        self.call("server.config_reload", None).await
+        self.call_raw("server.config_reload", None).await
     }
 
     pub async fn server_stop(&self) -> Result<RpcResult<Value>, RexError> {
-        self.call("server.stop", None).await
+        self.call_raw("server.stop", None).await
     }
 
     pub async fn hosts_list(&self) -> Result<RpcResult<HostsListResponse>, RexError> {
@@ -212,11 +283,16 @@ impl ControlClient {
     }
 
     pub async fn hosts_put(&self, host: &HostRecord) -> Result<RpcResult<Value>, RexError> {
-        self.call("hosts.put", Some(json!({ "host": host }))).await
+        self.call_raw("hosts.put", Some(json!({ "host": host }))).await
     }
 
     pub async fn hosts_remove(&self, id: &str) -> Result<RpcResult<Value>, RexError> {
-        self.call("hosts.remove", Some(json!({ "id": id }))).await
+        self.call_raw("hosts.remove", Some(json!({ "id": id }))).await
+    }
+
+    async fn tailscale_change(&self, method: &str, payload: Option<Value>) -> Result<RpcResult<TailscaleStatus>, RexError> {
+        let result: RpcResult<TailscaleReply> = self.call(method, payload).await?;
+        Ok(RpcResult { seq: result.seq, payload: result.payload.tailscale })
     }
 
     pub async fn tailscale_enable(
@@ -234,28 +310,28 @@ impl ControlClient {
             p.insert("allow_tailnet_members".into(), json!(a));
         }
         if let Some(t) = tags {
-            p.insert("tags".into(), json!(t));
+            p.insert("advertise_tags".into(), json!(t));
         }
         if let Some(u) = control_url {
             p.insert("control_url".into(), json!(u));
         }
-        self.call("server.tailscale.enable", Some(Value::Object(p))).await
+        self.tailscale_change("server.tailscale.enable", Some(Value::Object(p))).await
     }
 
     pub async fn tailscale_disable(&self) -> Result<RpcResult<TailscaleStatus>, RexError> {
-        self.call("server.tailscale.disable", None).await
+        self.tailscale_change("server.tailscale.disable", None).await
     }
 
     pub async fn tailscale_login(&self) -> Result<RpcResult<TailscaleStatus>, RexError> {
-        self.call("server.tailscale.login", None).await
+        self.tailscale_change("server.tailscale.login", None).await
     }
 
     pub async fn tailscale_logout(&self) -> Result<RpcResult<TailscaleStatus>, RexError> {
-        self.call("server.tailscale.logout", None).await
+        self.tailscale_change("server.tailscale.logout", None).await
     }
 
     pub async fn tailscale_rename(&self, hostname: &str) -> Result<RpcResult<TailscaleStatus>, RexError> {
-        self.call("server.tailscale.rename", Some(json!({ "hostname": hostname }))).await
+        self.tailscale_change("server.tailscale.rename", Some(json!({ "hostname": hostname }))).await
     }
 
     // ---- Session & Layout Methods ----
@@ -283,7 +359,7 @@ impl ControlClient {
     pub async fn session_list(&self) -> Result<RpcResult<Vec<SessionSummary>>, RexError> {
         #[derive(serde::Deserialize)]
         struct Resp {
-            #[serde(default)]
+            #[serde(deserialize_with = "crate::model::list_or_empty")]
             sessions: Vec<SessionSummary>,
         }
         let r: RpcResult<Resp> = self.call("session.list", None).await?;
@@ -303,7 +379,7 @@ impl ControlClient {
         {
             p["label"] = json!(l);
         }
-        self.call("session.create", Some(p)).await
+        self.call_raw("session.create", Some(p)).await
     }
 
     pub async fn session_attach(&self, session_id: &str) -> Result<RpcResult<AttachResponse>, RexError> {
@@ -311,11 +387,11 @@ impl ControlClient {
     }
 
     pub async fn session_detach(&self, session_id: &str) -> Result<RpcResult<Value>, RexError> {
-        self.call("session.detach", Some(json!({ "session_id": session_id }))).await
+        self.call_raw("session.detach", Some(json!({ "session_id": session_id }))).await
     }
 
     pub async fn session_destroy(&self, session_id: &str) -> Result<RpcResult<Value>, RexError> {
-        self.call("session.destroy", Some(json!({ "session_id": session_id }))).await
+        self.call_raw("session.destroy", Some(json!({ "session_id": session_id }))).await
     }
 
     pub async fn session_view(&self, session_id: &str) -> Result<RpcResult<SessionView>, RexError> {
@@ -323,7 +399,7 @@ impl ControlClient {
     }
 
     pub async fn session_set_label(&self, session_id: &str, label: &str) -> Result<RpcResult<Value>, RexError> {
-        self.call("session.set_label", Some(json!({ "session_id": session_id, "label": label }))).await
+        self.call_raw("session.set_label", Some(json!({ "session_id": session_id, "label": label }))).await
     }
 
     pub async fn session_move(&self, session_id: &str, before_session_id: Option<&str>) -> Result<RpcResult<Value>, RexError> {
@@ -331,7 +407,7 @@ impl ControlClient {
         if let Some(b) = before_session_id {
             p["before_session_id"] = json!(b);
         }
-        self.call("session.move", Some(p)).await
+        self.call_raw("session.move", Some(p)).await
     }
 
     pub async fn session_new_window(&self, session_id: &str, window_label: Option<&str>, shell_options: Option<Value>) -> Result<RpcResult<Value>, RexError> {
@@ -348,7 +424,7 @@ impl ControlClient {
         {
             p["window_label"] = json!(l);
         }
-        self.call("session.new_window", Some(p)).await
+        self.call_raw("session.new_window", Some(p)).await
     }
 
     pub async fn session_close_window(&self, session_id: &str, window_id: Option<&str>) -> Result<RpcResult<Value>, RexError> {
@@ -356,15 +432,15 @@ impl ControlClient {
         if let Some(w) = window_id {
             p["window_id"] = json!(w);
         }
-        self.call("session.close_window", Some(p)).await
+        self.call_raw("session.close_window", Some(p)).await
     }
 
     pub async fn session_set_window_label(&self, session_id: &str, window_id: &str, label: &str) -> Result<RpcResult<Value>, RexError> {
-        self.call("session.set_window_label", Some(json!({ "session_id": session_id, "window_id": window_id, "label": label }))).await
+        self.call_raw("session.set_window_label", Some(json!({ "session_id": session_id, "window_id": window_id, "label": label }))).await
     }
 
     pub async fn session_focus_window(&self, session_id: &str, window_id: &str) -> Result<RpcResult<Value>, RexError> {
-        self.call("session.focus_window", Some(json!({ "session_id": session_id, "window_id": window_id }))).await
+        self.call_raw("session.focus_window", Some(json!({ "session_id": session_id, "window_id": window_id }))).await
     }
 
     pub async fn session_move_window(&self, session_id: &str, window_id: &str, before_window_id: Option<&str>) -> Result<RpcResult<Value>, RexError> {
@@ -372,7 +448,7 @@ impl ControlClient {
         if let Some(b) = before_window_id {
             p["before_window_id"] = json!(b);
         }
-        self.call("session.move_window", Some(p)).await
+        self.call_raw("session.move_window", Some(p)).await
     }
 
     pub async fn session_new_split(&self, session_id: &str, target_block_id: Option<&str>, direction: &str, shell_options: Option<Value>) -> Result<RpcResult<Value>, RexError> {
@@ -380,43 +456,59 @@ impl ControlClient {
         if let Some(opts) = shell_options {
             block["options"] = opts;
         }
+        let (direction, side) = split_placement(direction);
         let mut p = json!({
             "session_id": session_id,
             "direction": direction,
-            "block": block
+            "side": side,
+            "layout": { "block": block },
+            "focus": true,
         });
         if let Some(b) = target_block_id {
-            p["block_id"] = json!(b);
+            p["anchor_id"] = json!(b);
         }
-        self.call("session.new_split", Some(p)).await
+        self.call_raw("session.new_split", Some(p)).await
     }
 
     pub async fn session_resize_pane(&self, session_id: &str, split_id: &str, ratio: f64) -> Result<RpcResult<Value>, RexError> {
-        self.call("session.resize_pane", Some(json!({ "session_id": session_id, "split_id": split_id, "ratio": ratio }))).await
+        let view = self.session_view(session_id).await?.payload;
+        let split = view
+            .windows
+            .iter()
+            .flat_map(|w| &w.layers)
+            .filter_map(|l| l.layout.as_ref())
+            .find_map(|layout| layout.find_split(split_id))
+            .ok_or_else(|| RexError::Protocol(format!("session.resize_pane: split {split_id} is no longer in the session")))?;
+        let before = split.before.first_block_id();
+        let after = split.after.first_block_id();
+        let (Some(before), Some(after)) = (before, after) else {
+            return Err(RexError::Protocol("session.resize_pane: split has no block on one side".into()));
+        };
+        self.call_raw("session.resize_pane", Some(json!({ "session_id": session_id, "direction": split.direction, "before_block_id": before, "after_block_id": after, "ratio": ratio }))).await
     }
 
     pub async fn session_focus_block(&self, session_id: &str, block_id: &str) -> Result<RpcResult<Value>, RexError> {
-        self.call("session.focus_block", Some(json!({ "session_id": session_id, "block_id": block_id }))).await
+        self.call_raw("session.focus_block", Some(json!({ "session_id": session_id, "block_id": block_id }))).await
     }
 
     pub async fn session_focus_direction(&self, session_id: &str, direction: &str) -> Result<RpcResult<Value>, RexError> {
-        self.call("session.focus_direction", Some(json!({ "session_id": session_id, "direction": direction }))).await
+        self.call_raw("session.focus_direction", Some(json!({ "session_id": session_id, "direction": direction }))).await
     }
 
     pub async fn session_focus_next_pane(&self, session_id: &str) -> Result<RpcResult<Value>, RexError> {
-        self.call("session.focus_next_pane", Some(json!({ "session_id": session_id }))).await
+        self.call_raw("session.focus_next_pane", Some(json!({ "session_id": session_id }))).await
     }
 
     pub async fn session_focus_previous_pane(&self, session_id: &str) -> Result<RpcResult<Value>, RexError> {
-        self.call("session.focus_previous_pane", Some(json!({ "session_id": session_id }))).await
+        self.call_raw("session.focus_previous_pane", Some(json!({ "session_id": session_id }))).await
     }
 
     pub async fn session_focus_next_window(&self, session_id: &str) -> Result<RpcResult<Value>, RexError> {
-        self.call("session.focus_next_window", Some(json!({ "session_id": session_id }))).await
+        self.call_raw("session.focus_next_window", Some(json!({ "session_id": session_id }))).await
     }
 
     pub async fn session_focus_previous_window(&self, session_id: &str) -> Result<RpcResult<Value>, RexError> {
-        self.call("session.focus_previous_window", Some(json!({ "session_id": session_id }))).await
+        self.call_raw("session.focus_previous_window", Some(json!({ "session_id": session_id }))).await
     }
 
     pub async fn session_zoom_block(&self, session_id: &str, block_id: Option<&str>, zoom: Option<bool>) -> Result<RpcResult<Value>, RexError> {
@@ -427,20 +519,22 @@ impl ControlClient {
         if let Some(z) = zoom {
             p["zoom"] = json!(z);
         }
-        self.call("session.zoom_block", Some(p)).await
+        self.call_raw("session.zoom_block", Some(p)).await
     }
 
     pub async fn session_swap_blocks(&self, session_id: &str, block_id: &str, other_block_id: &str) -> Result<RpcResult<Value>, RexError> {
-        self.call("session.swap_blocks", Some(json!({ "session_id": session_id, "block_id": block_id, "other_block_id": other_block_id }))).await
+        self.call_raw("session.swap_blocks", Some(json!({ "session_id": session_id, "block_id": block_id, "other_block_id": other_block_id }))).await
     }
 
     pub async fn session_move_block(&self, session_id: &str, block_id: &str, target_block_id: &str, direction: &str) -> Result<RpcResult<Value>, RexError> {
-        self.call(
+        let (direction, side) = split_placement(direction);
+        self.call_raw(
             "session.move_block",
             Some(json!({
                 "session_id": session_id,
                 "block_id": block_id,
-                "target_block_id": target_block_id,
+                "anchor_block_id": target_block_id,
+                "side": side,
                 "direction": direction,
             })),
         )
@@ -448,15 +542,15 @@ impl ControlClient {
     }
 
     pub async fn session_own_block(&self, session_id: &str, block_id: &str) -> Result<RpcResult<Value>, RexError> {
-        self.call("session.own_block", Some(json!({ "session_id": session_id, "block_id": block_id }))).await
+        self.call_raw("session.own_block", Some(json!({ "session_id": session_id, "block_ids": [block_id] }))).await
     }
 
     pub async fn session_disown_block(&self, session_id: &str, block_id: &str) -> Result<RpcResult<Value>, RexError> {
-        self.call("session.disown_block", Some(json!({ "session_id": session_id, "block_id": block_id }))).await
+        self.call_raw("session.disown_block", Some(json!({ "session_id": session_id, "block_ids": [block_id] }))).await
     }
 
     pub async fn session_set_block_label(&self, session_id: &str, block_id: &str, label: &str) -> Result<RpcResult<Value>, RexError> {
-        self.call("session.set_block_label", Some(json!({ "session_id": session_id, "block_id": block_id, "label": label }))).await
+        self.call_raw("session.set_block_label", Some(json!({ "session_id": session_id, "block_id": block_id, "label": label }))).await
     }
 
     pub async fn session_new_block(&self, session_id: &str, flavor: &str, options: Option<Value>, label: Option<&str>) -> Result<RpcResult<Value>, RexError> {
@@ -467,11 +561,11 @@ impl ControlClient {
         if let Some(l) = label {
             p["label"] = json!(l);
         }
-        self.call("session.new_block", Some(p)).await
+        self.call_raw("session.new_block", Some(p)).await
     }
 
     pub async fn block_close(&self, session_id: &str, block_id: &str) -> Result<RpcResult<Value>, RexError> {
-        self.call("block.close", Some(json!({ "session_id": session_id, "block_id": block_id }))).await
+        self.call_raw("block.close", Some(json!({ "session_id": session_id, "block_id": block_id }))).await
     }
 
     // ---- Floating Layer Methods ----
@@ -481,7 +575,7 @@ impl ControlClient {
         if let Some(b) = bounds {
             p["bounds"] = json!(b);
         }
-        self.call("session.float_block", Some(p)).await
+        self.call_raw("session.float_block", Some(p)).await
     }
 
     pub async fn session_new_layer(&self, session_id: &str, window_id: Option<&str>, bounds: [f64; 4], shell_options: Option<Value>) -> Result<RpcResult<Value>, RexError> {
@@ -497,43 +591,43 @@ impl ControlClient {
         if let Some(w) = window_id {
             p["window_id"] = json!(w);
         }
-        self.call("session.new_layer", Some(p)).await
+        self.call_raw("session.new_layer", Some(p)).await
     }
 
     pub async fn session_resize_layer(&self, session_id: &str, layer_id: &str, bounds: [f64; 4]) -> Result<RpcResult<Value>, RexError> {
-        self.call("session.resize_layer", Some(json!({ "session_id": session_id, "layer_id": layer_id, "bounds": bounds }))).await
+        self.call_raw("session.resize_layer", Some(json!({ "session_id": session_id, "layer_id": layer_id, "bounds": bounds }))).await
     }
 
     pub async fn session_set_layer_state(&self, session_id: &str, layer_id: &str, state: &str, focus: bool) -> Result<RpcResult<Value>, RexError> {
-        self.call("session.set_layer_state", Some(json!({ "session_id": session_id, "layer_id": layer_id, "state": state, "focus": focus }))).await
+        self.call_raw("session.set_layer_state", Some(json!({ "session_id": session_id, "layer_id": layer_id, "state": state, "focus": focus }))).await
     }
 
     pub async fn session_raise_layer(&self, session_id: &str, layer_id: &str) -> Result<RpcResult<Value>, RexError> {
-        self.call("session.raise_layer", Some(json!({ "session_id": session_id, "layer_id": layer_id }))).await
+        self.call_raw("session.raise_layer", Some(json!({ "session_id": session_id, "layer_id": layer_id }))).await
     }
 
     pub async fn session_lower_layer(&self, session_id: &str, layer_id: &str) -> Result<RpcResult<Value>, RexError> {
-        self.call("session.lower_layer", Some(json!({ "session_id": session_id, "layer_id": layer_id }))).await
+        self.call_raw("session.lower_layer", Some(json!({ "session_id": session_id, "layer_id": layer_id }))).await
     }
 
     pub async fn session_close_layer(&self, session_id: &str, layer_id: &str) -> Result<RpcResult<Value>, RexError> {
-        self.call("session.close_layer", Some(json!({ "session_id": session_id, "layer_id": layer_id }))).await
+        self.call_raw("session.close_layer", Some(json!({ "session_id": session_id, "layer_id": layer_id }))).await
     }
 
     // ---- Focus History & Client / Keymap / Prompts ----
 
-    pub async fn focus_history_reverse(&self, session_id: &str, scope: Option<&str>) -> Result<RpcResult<Value>, RexError> {
+    pub async fn focus_history_reverse(&self, session_id: &str, cursor: Option<u64>) -> Result<RpcResult<Value>, RexError> {
         let mut p = json!({ "session_id": session_id });
-        if let Some(s) = scope {
-            p["scope"] = json!(s);
+        if let Some(cursor) = cursor {
+            p["cursor"] = json!(cursor);
         }
-        self.call("focus_history.reverse", Some(p)).await
+        self.call_raw("focus_history.reverse", Some(p)).await
     }
 
     pub async fn client_list(&self) -> Result<RpcResult<Vec<ConnectedClient>>, RexError> {
         #[derive(serde::Deserialize)]
         struct Resp {
-            #[serde(default)]
+            #[serde(deserialize_with = "crate::model::list_or_empty")]
             clients: Vec<ConnectedClient>,
         }
         let r: RpcResult<Resp> = self.call("client.list", None).await?;
@@ -541,7 +635,7 @@ impl ControlClient {
     }
 
     pub async fn client_set_label(&self, label: &str) -> Result<RpcResult<Value>, RexError> {
-        self.call("client.set_label", Some(json!({ "label": label }))).await
+        self.call_raw("client.set_label", Some(json!({ "label": label }))).await
     }
 
     pub async fn client_key(&self, session_id: &str, block_id: Option<&str>, key: &KeyEvent, prefix: Option<&[String]>) -> Result<RpcResult<bool>, RexError> {
@@ -608,11 +702,11 @@ impl ControlClient {
     }
 
     pub async fn client_reply_ok(&self, call_id: &str, result: Value) -> Result<RpcResult<Value>, RexError> {
-        self.call("client.reply", Some(json!({ "call_id": call_id, "result": result }))).await
+        self.call_raw("client.reply", Some(json!({ "call_id": call_id, "result": result }))).await
     }
 
     pub async fn client_reply_err(&self, call_id: &str, code: &str, message: &str) -> Result<RpcResult<Value>, RexError> {
-        self.call("client.reply", Some(json!({ "call_id": call_id, "error": { "code": code, "message": message } }))).await
+        self.call_raw("client.reply", Some(json!({ "call_id": call_id, "error": { "code": code, "message": message } }))).await
     }
 
     pub async fn data_connect(&self, session_id: &str, block_id: &str, data_ref_id: &str, subprotocol: &str) -> Result<RpcResult<DataConnectResponse>, RexError> {
@@ -750,9 +844,24 @@ impl ControlClient {
         #[derive(serde::Deserialize)]
         struct Resp {
             content: String,
+            id: Option<u64>,
         }
-        let r: RpcResult<Resp> = self.call_block("com.superlogical.terminal.format", session_id, block_id, Some(json!({ "format": format, "trim": true }))).await?;
-        Ok(RpcResult { seq: r.seq, payload: r.payload.content })
+        let limit = self.max_message_bytes.saturating_sub(1024).clamp(1, 960 * 1024);
+        let r: RpcResult<Resp> = self.call_block("com.superlogical.terminal.format", session_id, block_id, Some(json!({ "format": format, "trim": true, "max_bytes": limit }))).await?;
+        let mut content = r.payload.content;
+        if let Some(id) = r.payload.id {
+            loop {
+                let chunk = self.terminal_blob_read(session_id, block_id, id, content.len()).await?.payload;
+                if chunk.id != id || (!chunk.eof && chunk.data.is_empty()) {
+                    return Err(RexError::Protocol("com.superlogical.terminal.blob_read returned an inconsistent id or empty data before eof".into()));
+                }
+                content.push_str(&chunk.data);
+                if chunk.eof {
+                    break;
+                }
+            }
+        }
+        Ok(RpcResult { seq: r.seq, payload: content })
     }
 
     // ---- Tunnel & Onboarding Block Methods ----
@@ -770,18 +879,46 @@ impl ControlClient {
     }
 }
 
+fn split_placement(direction: &str) -> (&str, &str) {
+    match direction {
+        "left" => ("horizontal", "before"),
+        "right" => ("horizontal", "after"),
+        "above" | "up" => ("vertical", "before"),
+        "below" | "down" => ("vertical", "after"),
+        axis => (axis, "after"),
+    }
+}
+
+fn decode<T: DeserializeOwned>(method: &str, value: Value) -> Result<T, RexError> {
+    serde_path_to_error::deserialize(value).map_err(|e| RexError::Protocol(format!("{method} payload at {}: {}", e.path(), e.inner())))
+}
+
+async fn send_control<S: AsyncRead + AsyncWrite + Unpin>(ws: &mut WebSocketStream<S>, msg: Message) -> Result<(), RexError> {
+    time::timeout(DEFAULT_REQUEST_TIMEOUT, ws.send(msg)).await.map_err(|_| RexError::Timeout)??;
+    Ok(())
+}
+
+fn response(method: &str, frame: &mut Value) -> Result<RpcResult<Value>, RexError> {
+    let seq = frame.get("seq").and_then(Value::as_u64).ok_or_else(|| RexError::Protocol(format!("{method} response missing integer seq")))?;
+    if let Some(error) = frame.get_mut("error").filter(|v| !v.is_null()) {
+        return Err(RexError::Api(decode(method, error.take())?));
+    }
+    let payload = frame.get_mut("payload").ok_or_else(|| RexError::Protocol(format!("{method} response missing payload")))?;
+    Ok(RpcResult { seq, payload: payload.take() })
+}
+
 async fn read_welcome<S: AsyncRead + AsyncWrite + Unpin>(ws: &mut WebSocketStream<S>) -> Result<WelcomeMessage, RexError> {
     while let Some(msg) = ws.next().await {
         match msg? {
             Message::Text(txt) => {
                 let v: Value = serde_json::from_str(&txt)?;
                 if v.get("type").and_then(Value::as_str) != Some("welcome") {
-                    return Err(RexError::Protocol(format!("expected welcome, got {txt}")));
+                    return Err(RexError::Protocol(format!("expected welcome, got frame type {:?}", v.get("type"))));
                 }
-                return Ok(serde_json::from_value(v)?);
+                return decode("welcome", v);
             }
             Message::Ping(p) => {
-                let _ = ws.send(Message::Pong(p)).await;
+                send_control(ws, Message::Pong(p)).await?;
             }
             Message::Close(cf) => {
                 let reason = cf.map(|c| format!("{} {}", c.code, c.reason)).unwrap_or_else(|| "closed".to_owned());
@@ -793,67 +930,81 @@ async fn read_welcome<S: AsyncRead + AsyncWrite + Unpin>(ws: &mut WebSocketStrea
     Err(RexError::Closed("eof waiting for welcome".to_owned()))
 }
 
-async fn run_control_loop<S: AsyncRead + AsyncWrite + Unpin>(mut ws: WebSocketStream<S>, mut cmd_rx: mpsc::UnboundedReceiver<OutboundCmd>, evt_tx: mpsc::UnboundedSender<ControlEventEnvelope>) {
+async fn run_control_loop<S: AsyncRead + AsyncWrite + Unpin>(
+    mut ws: WebSocketStream<S>,
+    mut cmd_rx: mpsc::UnboundedReceiver<OutboundCmd>,
+    evt_tx: mpsc::UnboundedSender<ControlEventEnvelope>,
+    send_keepalives: bool,
+) {
     let mut pending: HashMap<String, PendingCall> = HashMap::new();
-    let mut keepalive = time::interval(KEEPALIVE_INTERVAL);
+    let mut last_frame = time::Instant::now();
+    let mut keepalive = time::interval_at(last_frame + KEEPALIVE_INTERVAL, KEEPALIVE_INTERVAL);
     keepalive.set_missed_tick_behavior(time::MissedTickBehavior::Delay);
-    keepalive.tick().await; // consume initial immediate tick
+    // A probe that is out: when it gives up. (Any frame from the server
+    // answers it.)
+    let mut probe: Option<time::Instant> = None;
 
     let close_reason = loop {
         tokio::select! {
-            _ = keepalive.tick() => {
-                if let Err(e) = ws.send(Message::Ping(Vec::new().into())).await {
+            _ = async { time::sleep_until(probe.unwrap_or_else(time::Instant::now)).await }, if probe.is_some() => {
+                break "no reply to probe".to_owned();
+            }
+            _ = keepalive.tick(), if send_keepalives => {
+                if last_frame.elapsed() >= KEEPALIVE_INTERVAL * 3 {
+                    break "no reply to keepalive".to_owned();
+                }
+                if let Err(e) = send_control(&mut ws, Message::Ping(Vec::new().into())).await {
                     break format!("keepalive send failed: {e}");
                 }
             }
             cmd = cmd_rx.recv() => {
                 match cmd {
-                    Some(OutboundCmd::Request { id, body, reply }) => {
-                        pending.insert(id.clone(), PendingCall { tx: reply });
-                        if let Err(e) = ws.send(Message::Text(body.into())).await {
-                            if let Some(call) = pending.remove(&id) {
-                                let _ = call.tx.send(Err(RexError::WebSocket(e)));
+                    Some(OutboundCmd::Request { id, method, body, reply }) => {
+                        if reply.is_closed() { continue; }
+                        pending.insert(id, PendingCall { method, tx: reply });
+                        if let Err(e) = send_control(&mut ws, Message::Text(body.into())).await {
+                            break format!("send failed: {e}");
+                        }
+                    }
+                    Some(OutboundCmd::Forget(id)) => { pending.remove(&id); }
+                    Some(OutboundCmd::Probe) => {
+                        if probe.is_none() {
+                            if let Err(e) = send_control(&mut ws, Message::Ping(Vec::new().into())).await {
+                                break format!("probe send failed: {e}");
                             }
-                            break "send failed".to_owned();
+                            probe = Some(time::Instant::now() + PROBE_TIMEOUT);
                         }
                     }
                     Some(OutboundCmd::Close) | None => {
-                        let _ = ws.close(Some(tungstenite::protocol::CloseFrame {
+                        let _ = send_control(&mut ws, Message::Close(Some(tungstenite::protocol::CloseFrame {
                             code: tungstenite::protocol::frame::coding::CloseCode::Normal,
                             reason: "".into(),
-                        })).await;
+                        }))).await;
                         break "closed by client".to_owned();
                     }
                 }
             }
             frame = ws.next() => {
+                last_frame = time::Instant::now();
+                probe = None;
                 match frame {
                     Some(Ok(Message::Text(txt))) => {
-                        let Ok(val) = serde_json::from_str::<Value>(&txt) else { continue };
+                        let mut val = match serde_json::from_str::<Value>(&txt) {
+                            Ok(val) => val,
+                            Err(e) => break format!("invalid control frame: {e}"),
+                        };
                         match val.get("type").and_then(Value::as_str) {
                             Some("response") => {
-                                let Some(id) = val.get("id").and_then(Value::as_str) else { continue };
-                                let seq = val.get("seq").and_then(Value::as_u64).unwrap_or(0);
+                                let Some(id) = val.get("id").and_then(Value::as_str) else { break "response missing string id".into() };
                                 if let Some(call) = pending.remove(id) {
-                                    if let Some(err_val) = val.get("error").filter(|v| !v.is_null()) {
-                                        let api_err: ApiError = serde_json::from_value(err_val.clone())
-                                            .unwrap_or(ApiError {
-                                                code: "internal".to_owned(),
-                                                message: err_val.to_string(),
-                                                status: 500,
-                                            });
-                                        let _ = call.tx.send(Err(RexError::Api(api_err)));
-                                    } else {
-                                        let payload = val.get("payload").cloned().unwrap_or(Value::Object(Default::default()));
-                                        let _ = call.tx.send(Ok(RpcResult { seq, payload }));
-                                    }
+                                    let _ = call.tx.send(response(&call.method, &mut val));
                                 }
                             }
                             Some("event") => {
                                 let seq = val.get("seq").and_then(Value::as_u64).unwrap_or(0);
-                                if let Some(inner) = val.get("payload") {
+                                if let Some(inner) = val.get_mut("payload") {
+                                    let payload = inner.get_mut("payload").map(Value::take).unwrap_or(Value::Null);
                                     let kind = inner.get("type").and_then(Value::as_str).unwrap_or_default();
-                                    let payload = inner.get("payload").cloned().unwrap_or(Value::Null);
                                     let ev = ControlEvent::parse(kind, payload);
                                     let _ = evt_tx.send(ControlEventEnvelope { seq, event: ev });
                                 }
@@ -862,7 +1013,7 @@ async fn run_control_loop<S: AsyncRead + AsyncWrite + Unpin>(mut ws: WebSocketSt
                         }
                     }
                     Some(Ok(Message::Ping(p))) => {
-                        let _ = ws.send(Message::Pong(p)).await;
+                        if let Err(e) = send_control(&mut ws, Message::Pong(p)).await { break format!("pong failed: {e}") }
                     }
                     Some(Ok(Message::Pong(_))) => {}
                     Some(Ok(Message::Close(cf))) => {
@@ -879,5 +1030,45 @@ async fn run_control_loop<S: AsyncRead + AsyncWrite + Unpin>(mut ws: WebSocketSt
 
     for (_, call) in pending.drain() {
         let _ = call.tx.send(Err(RexError::Closed(close_reason.clone())));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn response_error_identifies_method_and_nested_field() {
+        let e = decode::<ServerStatus>("server.status", json!({"pid":1,"instance_id":"test","tailscale":{"state":4}})).unwrap_err();
+        assert!(e.to_string().contains("server.status payload at tailscale.state"), "{e}");
+    }
+
+    #[test]
+    fn revision_19_build_fields_and_future_additions() {
+        let v = decode::<ServerVersion>("server.version", json!({"rex_version":"0.1.0-snapshot.2506","built_at":"2026-11-21T15:05:34Z","platform":"linux_amd64","dirty":false,"future":true})).unwrap();
+        assert_eq!(v.version, "0.1.0-snapshot.2506");
+        assert_eq!(v.build_date, "2026-11-21T15:05:34Z");
+        assert_eq!(v.platform, "linux_amd64");
+        let actions = decode::<ActionResult>("client.action", json!({"client_actions":null})).unwrap();
+        assert!(actions.client_actions.is_empty());
+    }
+
+    #[test]
+    fn unknown_events_retain_the_whole_payload_and_session() {
+        let v = json!({"new":["fields"]});
+        assert!(matches!(ControlEvent::parse("future",v.clone()),ControlEvent::Unknown{kind,payload} if kind=="future" && payload==v));
+        let nested = json!({"session_id":"s","event":{"type":"new_kind","payload":v},"extra":true});
+        assert!(matches!(ControlEvent::parse("session_event",nested.clone()),ControlEvent::Unknown{kind,payload} if kind=="session_event.new_kind" && payload==nested));
+        let status = json!({"state":"starting","allow_tailnet_members":false,"https":{"state":"pending"}});
+        for state in ["starting", "needs_login", "disabled"] {
+            let mut value = status.clone();
+            value["state"] = json!(state);
+            if state == "disabled" {
+                value.as_object_mut().unwrap().remove("https");
+            }
+            let reply: TailscaleReply = decode("server.tailscale.enable", json!({"tailscale":value})).unwrap();
+            assert_eq!(reply.tailscale.state, state);
+        }
+        assert!(matches!(ControlEvent::parse("tailscale_status_changed",status),ControlEvent::TailscaleStatusChanged(s) if s.state=="starting"));
     }
 }

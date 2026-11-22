@@ -1,0 +1,88 @@
+#!/usr/bin/python3
+"""Run the Rex client's wire, transport, and recovery checks on scratch servers."""
+import argparse
+from concurrent.futures import ThreadPoolExecutor
+import json
+import os
+import shutil
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--repeat", type=int, default=1)
+parser.add_argument("--jobs", type=int, default=1)
+parser.add_argument("--remote-only", action="store_true")
+args = parser.parse_args()
+if args.repeat < 1 or args.jobs < 1:
+    parser.error("--repeat and --jobs must be positive")
+root = Path(__file__).resolve().parents[2]
+env = os.environ.copy()
+for key in ("REX_SESSION", "REX_BLOCK", "SSH_AUTH_SOCK"):
+    env.pop(key, None)
+cmd = ["cargo", "test", "--locked", "--offline", "-p", "olo-rex-client", "--no-run", "--message-format=json-render-diagnostics"]
+if args.remote_only:
+    cmd += ["--test", "remote"]
+build = subprocess.run(cmd, cwd=root, env=env, stdout=subprocess.PIPE, text=True)
+if build.returncode:
+    sys.exit(build.returncode)
+suites = []
+for line in build.stdout.splitlines():
+    unit = json.loads(line)
+    if unit.get("executable") and unit.get("profile", {}).get("test"):
+        suites.append((unit["target"]["name"], unit["executable"]))
+if not suites:
+    sys.exit("Cargo produced no Rex test executables")
+failed = False
+with tempfile.TemporaryDirectory(prefix="rex-check-", dir=env.get("OLO_REX_TEST_DIR", "/var/tmp")) as directory:
+    base = Path(directory)
+    for folder in ("home", "run", "state", "rex"):
+        (base / folder).mkdir(mode=0o700)
+    env.update(HOME=str(base / "home"), XDG_RUNTIME_DIR=str(base / "run"), XDG_STATE_HOME=str(base / "state"),
+               OLO_REX_TEST_DIR=directory, REX_SERVER_SOCKET=str(base / "rex/rex.sock"))
+    # Cargo can unlink a test binary when another build of the crate starts.
+    # Keep the tested inode until all repetitions finish.
+    pinned = []
+    for index, (suite, binary) in enumerate(suites):
+        target = base / f"suite-{index}"
+        try:
+            os.link(binary, target)
+        except OSError:
+            shutil.copy2(binary, target)
+        pinned.append((suite, str(target)))
+    cases = [(suite, binary, line.removesuffix(": test")) for suite, binary in pinned
+             for line in subprocess.check_output([binary, "--list"], env=env, text=True).splitlines() if line.endswith(": test")]
+
+    def run_case(case):
+        suite, binary, name = case
+        label = f"{suite}/{name}" + (f" [{run}/{args.repeat}]" if args.repeat > 1 else "")
+        try:
+            result = subprocess.run([binary, "--exact", name, "--nocapture"], cwd=root, env=env,
+                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=200)
+        except subprocess.TimeoutExpired:
+            return False, f"FAILED {label}: exceeded 200 seconds"
+        lines = result.stdout.splitlines()
+        if result.returncode:
+            # The nested runner can fail in Rust, bubblewrap, or a fixture
+            # service. Prefer the first specific failure over its outer status.
+            failures = [line.strip() for line in lines if line.startswith(
+                ("Error:", "error:", "bwrap:", "RuntimeError:", "PermissionError:", "fatal:", "assertion", "  left:", " right:"))]
+            if not failures:
+                for i, line in enumerate(lines):
+                    if " panicked at " in line:
+                        failures = [line, *lines[i+1:i+2]]
+                        break
+            return False, f"FAILED {label} — " + " ".join(failures or [f"exited {result.returncode}"])[:600]
+        skipped = next((s for s in lines if s.startswith(("SKIP ", "skipping "))), None)
+        if skipped:
+            return True, f"SKIP {label} — {skipped.partition(': ')[2] or skipped}"
+        measurements = " | ".join(s.removeprefix("MEASURE ") for s in lines if s.startswith("MEASURE "))
+        return True, f"ok {label}" + (f" — {measurements}" if measurements else "")
+
+    with ThreadPoolExecutor(max_workers=args.jobs) as workers:
+        for run in range(1, args.repeat + 1):
+            for passed, message in workers.map(run_case, cases):
+                print(message, flush=True)
+                failed |= not passed
+sys.exit(1 if failed else 0)

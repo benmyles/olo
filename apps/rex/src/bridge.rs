@@ -17,7 +17,6 @@ use std::{
     sync::Arc,
 };
 
-use olo_kit_base::notify::{Note, NoteKind, Notifier};
 use olo_xdg::open::Target;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -54,6 +53,10 @@ pub fn ensure_local_bin_dir() -> Option<PathBuf> {
 pub struct BridgeRequest {
     pub token: String,
     pub cmd: String,
+    #[serde(default)]
+    pub session_id: Option<String>,
+    #[serde(default)]
+    pub block_id: Option<String>,
     #[serde(default)]
     pub args: Vec<String>,
     #[serde(default)]
@@ -99,11 +102,17 @@ impl Drop for BridgeServerHandle {
 
 /// Start an ephemeral local `127.0.0.1:0` bridge server authenticated by a fresh
 /// random UUID token and governed by `policy_fn`.
-pub async fn start_bridge_server(host_label: String, policy_fn: Arc<dyn Fn() -> HostBridgePolicy + Send + Sync>, forward_localhost: LocalhostForwardFn) -> std::io::Result<BridgeServerHandle> {
+pub async fn start_bridge_server(
+    host_label: String,
+    policy_fn: Arc<dyn Fn() -> HostBridgePolicy + Send + Sync>,
+    forward_localhost: LocalhostForwardFn,
+    notify: impl Fn(&BridgeRequest) + Send + Sync + 'static,
+) -> std::io::Result<BridgeServerHandle> {
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let local_addr = listener.local_addr()?;
     let token = format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple());
     let expected_token = token.clone();
+    let notify = Arc::new(notify);
     let (tx, mut rx) = tokio::sync::oneshot::channel::<()>();
 
     tokio::spawn(async move {
@@ -116,6 +125,7 @@ pub async fn start_bridge_server(host_label: String, policy_fn: Arc<dyn Fn() -> 
                     let label = host_label.clone();
                     let get_policy = policy_fn.clone();
                     let fwd = forward_localhost.clone();
+                    let notify = notify.clone();
                     tokio::spawn(async move {
                         let (r, mut w) = stream.into_split();
                         let mut reader = BufReader::new(r);
@@ -124,7 +134,7 @@ pub async fn start_bridge_server(host_label: String, policy_fn: Arc<dyn Fn() -> 
                             let resp = match serde_json::from_str::<BridgeRequest>(line.trim()) {
                                 Ok(req) if req.token == expected => {
                                     let policy = get_policy();
-                                    handle_bridge_request(&label, &policy, req, &fwd).await
+                                    handle_bridge_request(&label, &policy, req, &fwd, notify.as_ref()).await
                                 }
                                 Ok(_) => BridgeResponse::err("unauthorized bridge token"),
                                 Err(e) => BridgeResponse::err(format!("invalid bridge request: {e}")),
@@ -143,7 +153,7 @@ pub async fn start_bridge_server(host_label: String, policy_fn: Arc<dyn Fn() -> 
     Ok(BridgeServerHandle { local_addr, token, shutdown: Some(tx) })
 }
 
-async fn handle_bridge_request(host_label: &str, policy: &HostBridgePolicy, req: BridgeRequest, forward_localhost: &LocalhostForwardFn) -> BridgeResponse {
+async fn handle_bridge_request(host_label: &str, policy: &HostBridgePolicy, req: BridgeRequest, forward_localhost: &LocalhostForwardFn, notify: &(dyn Fn(&BridgeRequest) + Sync)) -> BridgeResponse {
     match req.cmd.as_str() {
         "open" => {
             if !policy.allow_open_url {
@@ -209,9 +219,7 @@ async fn handle_bridge_request(host_label: &str, policy: &HostBridgePolicy, req:
             }
         }
         "notify" => {
-            let title = req.payload.get("title").and_then(|v| v.as_str()).unwrap_or("Rex");
-            let body = req.payload.get("body").and_then(|v| v.as_str()).unwrap_or("");
-            send_desktop_notification(title, body, None);
+            notify(&req);
             BridgeResponse { ok: true, stdout: None, stderr: None, data: None }
         }
         other => BridgeResponse::err(format!("unknown Olo Bridge command '{other}'")),
@@ -236,23 +244,6 @@ pub async fn open_url_with_autoforward(raw: &str, autoforward: bool, forward_loc
     let target_clone = final_target.clone();
     tokio::task::spawn_blocking(move || olo_xdg::open::open(&parsed)).await.map_err(|e| format!("open task failed: {e}"))?.map_err(|e| format!("failed to open {target_clone}: {e}"))?;
     Ok(final_target)
-}
-
-/// Dispatch an Olo desktop notification on a background thread (never blocks UI).
-pub fn send_desktop_notification(title: &str, body: &str, focus_args: Option<Vec<String>>) {
-    let title = title.to_owned();
-    let body = body.to_owned();
-    let _ = std::thread::Builder::new().name("rex-notify".into()).spawn(move || {
-        let mut note = Note::new(&title).kind(NoteKind::Important).icon("rex");
-        if !body.is_empty() {
-            note = note.body(&body);
-        }
-        if let Some(args) = focus_args {
-            note = note.action("default", "Focus Pane").shows(args);
-        }
-        let notifier = Notifier::new(olo_kit::proxy(), "Rex", "olo-rex");
-        let _ = notifier.show(None, note);
-    });
 }
 
 /// Query Olo Passwords for an `op://` secret reference on a worker thread.
@@ -287,7 +278,11 @@ if not port or not token:
 
 cmd = sys.argv[1]
 args = sys.argv[2:]
-req = json.dumps({"token": token, "cmd": cmd, "args": args}) + "\n"
+request = {"token": token, "cmd": cmd, "args": args}
+if cmd == "notify":
+    request.update(session_id=os.environ.get("REX_SESSION"), block_id=os.environ.get("REX_BLOCK"))
+    request["payload"] = {"title": args[0] if args else "Rex", "body": args[1] if len(args) > 1 else ""}
+req = json.dumps(request) + "\n"
 with socket.create_connection(("127.0.0.1", port), timeout=120) as sock:
     sock.sendall(req.encode("utf-8"))
     sock.shutdown(socket.SHUT_WR)
@@ -358,4 +353,39 @@ pub fn open_folder_in_tracker(path: &Path) {
             tracing::warn!("open {} in Tracker failed: {e}", p.display());
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn authenticated_notifications_keep_the_callers_pane_context() {
+        use tokio::net::TcpStream;
+        let (sent, mut delivered) = tokio::sync::mpsc::unbounded_channel();
+        let notify = move |req: &BridgeRequest| {
+            sent.send((req.session_id.clone(), req.block_id.clone(), req.payload.clone())).unwrap();
+        };
+        let forward: LocalhostForwardFn = Arc::new(|_, _| Box::pin(async { unreachable!() }));
+        let server = start_bridge_server("Fixture".into(), Arc::new(HostBridgePolicy::remote_default), forward, notify).await.unwrap();
+        let address = server.local_addr;
+        let call = |request: Value| async move {
+            tokio::time::timeout(std::time::Duration::from_secs(4), async move {
+                let mut stream = TcpStream::connect(address).await.unwrap();
+                stream.write_all(format!("{request}\n").as_bytes()).await.unwrap();
+                let mut line = String::new();
+                BufReader::new(stream).read_line(&mut line).await.unwrap();
+                serde_json::from_str::<BridgeResponse>(&line).unwrap().ok
+            })
+            .await
+            .expect("bridge reply")
+        };
+        let payload = json!({"title":"Ready","body":"Output is available."});
+        assert!(!call(json!({"token":"wrong","cmd":"notify","payload":payload})).await);
+        assert!(delivered.try_recv().is_err());
+        assert!(call(json!({"token":server.token,"cmd":"notify","session_id":"work","block_id":"two","payload":payload})).await);
+        assert_eq!(delivered.try_recv().unwrap(), (Some("work".into()), Some("two".into()), payload.clone()));
+        assert!(call(json!({"token":server.token,"cmd":"notify","payload":payload})).await);
+        assert_eq!(delivered.try_recv().unwrap(), (None, None, payload));
+    }
 }

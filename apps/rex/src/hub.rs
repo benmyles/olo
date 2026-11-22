@@ -13,7 +13,7 @@ use std::{
     net::SocketAddr,
     path::{Path, PathBuf},
     sync::Arc,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 use olo_rex_client::{
@@ -21,18 +21,21 @@ use olo_rex_client::{
     KeyEvent as RexKeyEvent, KeymapBinding, KeymapDiagnostic, KeymapMode, LocalForwardHandle, PortsSnapshot, ProgramStatusRecord, RexEndpoint, ServerStatus, ServerVersion, SessionSummary,
     SessionView, SshAskpass, SshSessionPool, TailscaleStatus, TerminalDataStream, TerminalProcessSnapshot, TerminalStreamFrame, start_local_forward,
 };
-use olo_rex_vt::{GhosttyTerminal, RenderState, TerminalMemoryUsage, TerminalSearch, TerminalTheme, try_decode_snapshot_prefix};
+use olo_rex_vt::{GhosttyTerminal, RenderState, TerminalMemoryUsage, TerminalSearch, TerminalTheme};
 use olo_sync::Mutex;
 use serde_json::{Value, json};
 
 use crate::{
     agent::{AgentActivity, AutoApproveState, KeepGoingState, detect_agent_from_screen},
+    attention::Target,
     bridge::{self, BridgeServerHandle},
     copy_mode::CopyMode,
     git::{GitCache, GitInfo},
     keymap,
+    overlays::QuickLookContent,
     settings::{SavedHost, Settings},
     themes,
+    ui::Feedback,
 };
 
 /// Unique key identifying a Rex block across multiple connected hosts.
@@ -52,17 +55,21 @@ pub enum HubNotice {
     /// Host/session/layout/status/prompt metadata changed (redraws full chrome).
     StateChanged,
     /// A `rex.ui` custom prompt arrived from a server.
-    PromptRequested { host_key: String, req: ClientPromptRequested },
+    PromptRequested {
+        host_key: String,
+        req: ClientPromptRequested,
+    },
     /// A `rex.ui` custom prompt was cancelled/answered on another device.
-    PromptEnded { host_key: String, call_id: String },
-    /// Server requested this client perform an action (`rex perform` / Lua `client:perform`).
-    PerformRequested { host_key: String, action: String, args: Option<Value>, session_id: Option<String> },
-    /// In-app floating notification toast.
-    Toast { title: String, body: String, host_key: Option<String>, session_id: Option<String>, block_id: Option<String> },
-    /// Quick Look download finished and is ready to display.
-    QuickLookReady { path: String, bytes: Vec<u8>, content_type: Option<String> },
-    /// Directory listing result for Path Browser / Go to Directory.
-    DirListingReady { host_key: String, block_id: String, listing: DirListing },
+    PromptEnded {
+        host_key: String,
+        call_id: String,
+    },
+    Attention {
+        target: Target,
+        title: String,
+        body: String,
+        kind: olo_kit::notify::NoteKind,
+    },
     /// Clipboard text requested by `olo.clipboard.set`.
     SetClipboard(String),
 }
@@ -82,13 +89,25 @@ pub struct BlockRuntime {
     pub creator_name: String,
     pub terminal: GhosttyTerminal,
     pub render_state: RenderState,
+    pub frame: crate::frame::Frame,
+    pub current_theme: TerminalTheme,
     pub search: TerminalSearch,
+    find_query: Option<String>,
+    find_generation: u64,
+    pub finding: bool,
+    pub geometry: Option<(u16, u16, u32, u32)>,
+    pub other_size_owner: bool,
     pub copy_mode: Option<CopyMode>,
     pub title: String,
     pub pwd: String,
     pub program_statuses: Vec<ProgramStatusRecord>,
+    // Events can arrive while the initial program_status request is in flight.
+    pending_status: Option<Vec<(u64, StatusUpdate)>>,
+    snapshot_seq: u64,
     pub ports: PortsSnapshot,
     pub process: Option<TerminalProcessSnapshot>,
+    process_seq: u64,
+    ports_seq: u64,
     pub agent_activity: AgentActivity,
     pub keep_going: Option<KeepGoingState>,
     pub auto_approve: Option<AutoApproveState>,
@@ -97,10 +116,70 @@ pub struct BlockRuntime {
     pub muted: bool,
     pub last_bell: Option<Instant>,
     pub data_connected: bool,
+    input_ready: bool,
     pub received_bytes: u64,
     pub upload_progress: Option<(String, f32)>,
     pub password_prompt: bool,
     pub data_cancel: Option<tokio::sync::oneshot::Sender<()>>,
+}
+
+#[derive(Clone)]
+enum StatusUpdate {
+    Set(String, ProgramStatusRecord),
+    Remove(Vec<String>),
+}
+
+impl StatusUpdate {
+    fn parse(name: &str, payload: &Value) -> Option<Self> {
+        match name {
+            "program_status_changed" => Some(Self::Set(payload.get("id")?.as_str()?.to_owned(), serde_json::from_value(payload.get("record")?.clone()).ok()?)),
+            "program_status_removed" => Some(Self::Remove(serde_json::from_value(payload.get("ids")?.clone()).ok()?)),
+            _ => None,
+        }
+    }
+    fn apply(&self, records: &mut Vec<ProgramStatusRecord>) {
+        match self {
+            Self::Set(id, record) => {
+                let mut record = record.clone();
+                record.id = (!id.is_empty()).then(|| id.clone());
+                if let Some(old) = records.iter_mut().find(|r| r.id.as_deref().unwrap_or("") == id) {
+                    *old = record;
+                } else {
+                    records.push(record);
+                }
+            }
+            Self::Remove(ids) => records.retain(|r| !ids.iter().any(|id| id == r.id.as_deref().unwrap_or(""))),
+        }
+    }
+}
+
+fn move_session(rows: &mut Vec<SessionSummary>, id: &str, before: Option<&str>) {
+    if before == Some(id) {
+        return;
+    }
+    if let Some(i) = rows.iter().position(|s| s.session_id == id) {
+        let row = rows.remove(i);
+        let target = rows.iter().position(|s| Some(s.session_id.as_str()) == before).unwrap_or(rows.len());
+        rows.insert(target, row);
+    }
+}
+
+fn transfer_reference(direction: &str) -> String {
+    format!("{direction}:{}", uuid::Uuid::new_v4())
+}
+
+fn merge_process(current: &mut Option<TerminalProcessSnapshot>, payload: &Value) -> Option<String> {
+    // A change describes the foreground only. Home, child and last exit
+    // belong to the full method response and survive this event.
+    let change: TerminalProcessSnapshot = serde_json::from_value(payload.clone()).ok()?;
+    let stored = current.get_or_insert_with(Default::default);
+    if payload.get("foreground").is_some() {
+        stored.foreground = change.foreground;
+    }
+    if payload.get("ancestors").is_some() {
+        stored.ancestors = change.ancestors;
+    }
+    stored.foreground.as_ref().or(stored.child.as_ref()).and_then(|p| p.cwd.clone())
 }
 
 impl BlockRuntime {
@@ -113,13 +192,24 @@ impl BlockRuntime {
             creator_name: "com.superlogical.terminal".to_owned(),
             terminal,
             render_state,
+            frame: crate::frame::Frame::new(),
+            current_theme: theme.clone(),
             search,
+            find_query: None,
+            find_generation: 0,
+            finding: false,
+            geometry: None,
+            other_size_owner: false,
             copy_mode: None,
             title: String::new(),
             pwd: String::new(),
             program_statuses: Vec::new(),
+            pending_status: Some(Vec::new()),
+            snapshot_seq: 0,
             ports: PortsSnapshot::default(),
             process: None,
+            process_seq: 0,
+            ports_seq: 0,
             agent_activity: AgentActivity::Idle,
             keep_going: None,
             auto_approve: None,
@@ -128,11 +218,144 @@ impl BlockRuntime {
             muted: false,
             last_bell: None,
             data_connected: false,
+            input_ready: false,
             received_bytes: 0,
             upload_progress: None,
             password_prompt: false,
             data_cancel: None,
         }
+    }
+
+    pub fn set_find_query(&mut self, query: Option<&str>) -> Result<(), olo_rex_vt::VtError> {
+        self.search.set_needle(query)?;
+        self.find_generation = self.find_generation.wrapping_add(1);
+        self.finding = query.is_some();
+        self.find_query = query.map(str::to_owned);
+        Ok(())
+    }
+
+    fn restore_terminal(&mut self, terminal: GhosttyTerminal) -> Result<(), olo_rex_vt::VtError> {
+        let mut search = TerminalSearch::new(&terminal)?;
+        if let Some(query) = &self.find_query {
+            search.set_needle(Some(query))?;
+        }
+        self.find_generation = self.find_generation.wrapping_add(1);
+        self.finding = self.find_query.is_some();
+        self.geometry = None;
+        self.render_state = RenderState::new()?;
+        self.frame = crate::frame::Frame::new();
+        self.search = search;
+        self.terminal = terminal;
+        Ok(())
+    }
+
+    pub fn apply_theme(&mut self, theme: &TerminalTheme) -> Result<(), olo_rex_vt::VtError> {
+        self.terminal.apply_theme(theme)?;
+        self.current_theme.clone_from(theme);
+        Ok(())
+    }
+
+    fn inline(&mut self, apc: InlineApc, client: Option<&str>) -> Option<InlineApc> {
+        match apc {
+            InlineApc::Resize { cols, rows, cell_width_px, cell_height_px, owner } => {
+                if self.resize(cols, rows, cell_width_px, cell_height_px).is_ok() {
+                    self.other_size_owner = owner.is_some() && owner.as_deref() != client;
+                }
+            }
+            InlineApc::Theme { foreground, background, cursor, palette, .. } => {
+                let mut theme = self.current_theme.clone();
+                if let Some(c) = foreground.as_deref().and_then(olo_rex_vt::parse_color) {
+                    theme.foreground = c;
+                }
+                if let Some(c) = background.as_deref().and_then(olo_rex_vt::parse_color) {
+                    theme.background = c;
+                }
+                if let Some(c) = cursor.as_deref().and_then(olo_rex_vt::parse_color) {
+                    theme.cursor = Some(c);
+                }
+                for (i, c) in palette.iter().filter_map(|s| olo_rex_vt::parse_palette_entry(s)) {
+                    if let Some(entry) = theme.palette.get_mut(i as usize) {
+                        *entry = c;
+                    }
+                }
+                let _ = self.apply_theme(&theme);
+            }
+            other => return Some(other),
+        }
+        None
+    }
+    fn find_step(&mut self, generation: u64) -> Result<bool, olo_rex_vt::VtError> {
+        if !self.finding || self.find_generation != generation {
+            return Ok(true);
+        }
+        match self.search.tick()? {
+            olo_rex_vt::SearchStatus::FeedRequired => self.search.feed()?,
+            olo_rex_vt::SearchStatus::Complete => {
+                self.finding = false;
+                self.search.select_next()?;
+                return Ok(true);
+            }
+            olo_rex_vt::SearchStatus::Running => {}
+        }
+        Ok(false)
+    }
+
+    fn resize(&mut self, cols: u16, rows: u16, cw: u32, ch: u32) -> Result<bool, olo_rex_vt::VtError> {
+        let geometry = (cols, rows, cw, ch);
+        if self.geometry == Some(geometry) {
+            return Ok(false);
+        }
+        self.terminal.resize(cols, rows, cw, ch)?;
+        self.geometry = Some(geometry);
+        Ok(true)
+    }
+    fn status_event(&mut self, seq: u64, change: StatusUpdate) {
+        if seq != 0 && seq <= self.snapshot_seq {
+            return;
+        }
+        change.apply(&mut self.program_statuses);
+        if let Some(events) = &mut self.pending_status {
+            events.push((seq, change));
+        }
+    }
+
+    fn process_snapshot(&mut self, result: olo_rex_client::RpcResult<TerminalProcessSnapshot>) {
+        let mut snapshot = result.payload;
+        if result.seq < self.process_seq {
+            if let Some(latest) = self.process.take() {
+                snapshot.foreground = latest.foreground;
+                snapshot.ancestors = latest.ancestors;
+            }
+        } else {
+            self.process_seq = result.seq;
+        }
+        if let Some(cwd) = snapshot.foreground.as_ref().and_then(|p| p.cwd.clone()).or_else(|| snapshot.child.as_ref().and_then(|p| p.cwd.clone())) {
+            self.pwd = cwd;
+        }
+        self.process = Some(snapshot);
+        self.recompute_activity();
+    }
+    fn set_ports(&mut self, seq: u64, ports: PortsSnapshot) {
+        if seq >= self.ports_seq {
+            self.ports_seq = seq;
+            self.ports = ports;
+        }
+    }
+    fn status_snapshot(&mut self, snapshot: Option<olo_rex_client::RpcResult<Vec<ProgramStatusRecord>>>) {
+        if snapshot.as_ref().is_some_and(|r| r.seq < self.snapshot_seq) {
+            return;
+        }
+        let pending = self.pending_status.take().unwrap_or_default();
+        if let Some(snapshot) = snapshot {
+            self.snapshot_seq = snapshot.seq;
+            self.program_statuses = snapshot.payload;
+            for (seq, event) in pending {
+                if seq == 0 || seq > snapshot.seq {
+                    event.apply(&mut self.program_statuses);
+                }
+            }
+        }
+        self.recompute_activity();
     }
 
     pub fn recompute_activity(&mut self) -> AgentActivity {
@@ -156,8 +379,31 @@ impl BlockRuntime {
     }
 }
 
+/// Keep drawing and input on the clicked pane while earlier server views are in flight.
+struct FocusTarget {
+    window: String,
+    block: Option<String>,
+    restore: Option<String>,
+}
+
+impl FocusTarget {
+    fn apply(&self, view: &mut SessionView) {
+        let Some(w) = view.windows.iter_mut().find(|w| w.window_id == self.window) else { return };
+        view.active_window_id = Some(w.window_id.clone());
+        if let Some(b) = &self.block
+            && w.all_blocks().any(|row| row.block_id == *b)
+        {
+            w.focused_block_id = Some(b.clone());
+        }
+        if let Some(l) = w.layers.iter_mut().find(|l| Some(&l.layer_id) == self.restore.as_ref()) {
+            l.state = Some("normal".into());
+        }
+    }
+}
+
 /// Ordered terminal input operation serialized strictly FIFO per host so fast typing never reorders.
 enum HostInputOp {
+    Focus { session_id: String, switch: bool, target: Arc<FocusTarget> },
     Write { session_id: String, block_id: String, text: String },
     Key { session_id: String, block_id: String, event: RexKeyEvent },
 }
@@ -169,14 +415,74 @@ pub struct ActiveForward {
     pub remote_host: String,
     pub remote_port: u16,
     pub local_addr: SocketAddr,
-    pub handle: Option<LocalForwardHandle>,
+    pub state: ForwardState,
+    handle: LocalForwardHandle,
 }
 
-impl Drop for ActiveForward {
-    fn drop(&mut self) {
-        if let Some(h) = self.handle.take() {
-            h.stop();
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ForwardState {
+    Active,
+    Waiting,
+    Failed(String),
+}
+
+/// Authoritative membership and the views attached on this connection. Some servers
+/// bootstrap only the preferred view. Older peers support the list/attach calls.
+struct SessionSnapshot {
+    seq: u64,
+    rows: Vec<SessionSummary>,
+    views: Vec<SessionView>,
+    tickets: Vec<olo_rex_client::DataTicket>,
+}
+
+impl SessionSnapshot {
+    async fn read(ctrl: &ControlClient, tickets: &[DataTicketRequest]) -> Result<Self, olo_rex_client::RexError> {
+        let mut snapshot = match ctrl.session_bootstrap("all", None, None, tickets).await {
+            Ok(r) => {
+                let b = r.payload;
+                let views = match b.attached_sessions {
+                    Some(attached) => attached.into_iter().map(|a| a.view).collect(),
+                    None => b.selected_session.into_iter().map(|a| a.view).collect(),
+                };
+                Self { seq: r.seq, rows: b.attach_all.sessions, views, tickets: b.data_tickets.unwrap_or_default() }
+            }
+            Err(_) => {
+                let r = ctrl.session_list().await?;
+                Self { seq: r.seq, rows: r.payload, views: Vec::new(), tickets: Vec::new() }
+            }
+        };
+        for row in &snapshot.rows {
+            if !snapshot.views.iter().any(|v| v.session_id == row.session_id) {
+                match ctrl.session_attach(&row.session_id).await {
+                    Ok(r) => snapshot.views.push(r.payload.view),
+                    // Removed since the list. Its ordered destruction event follows.
+                    Err(olo_rex_client::RexError::Api(e)) if e.status == 404 => {}
+                    Err(e) => return Err(e),
+                }
+            }
         }
+        Ok(snapshot)
+    }
+}
+
+/// Each numbered envelope is delivered once. Snapshot watermarks also cover session membership.
+#[derive(Default)]
+struct EventSequence {
+    seen: u64,
+    membership: u64,
+}
+
+impl EventSequence {
+    fn next(&mut self, seq: u64) -> Option<bool> {
+        if seq == 0 {
+            return Some(false);
+        }
+        if seq <= self.seen {
+            return None;
+        }
+        let gap = seq.saturating_sub(self.seen.max(self.membership)) > 1;
+        self.seen = seq;
+        Some(gap)
     }
 }
 
@@ -188,14 +494,18 @@ pub struct HostRuntime {
     pub endpoint: Option<RexEndpoint>,
     pub is_local: bool,
     pub conn_state: HostConnState,
+    pub connection_lost: Option<SystemTime>,
     pub client_id: Option<String>,
     pub reconnect_token: Option<String>,
+    retry: Option<Arc<tokio::sync::Notify>>,
     pub server_status: Option<ServerStatus>,
     pub server_version: Option<ServerVersion>,
     pub tailscale: Option<TailscaleStatus>,
+    tailscale_seq: u64,
     pub synced_hosts: Vec<HostRecord>,
     pub session_summaries: Vec<SessionSummary>,
     pub sessions: HashMap<String, SessionView>,
+    pending_focus: HashMap<String, Arc<FocusTarget>>,
     pub keymap_bindings: Vec<KeymapBinding>,
     pub keymap_modes: Vec<KeymapMode>,
     pub keymap_diagnostics: Vec<KeymapDiagnostic>,
@@ -205,10 +515,40 @@ pub struct HostRuntime {
     pub bridge_remote_port: Option<u16>,
 }
 
+// Only the ordered lifecycle events and bootstrap own list membership.
+// A view RPC can finish after a newer view, destruction, or disconnect.
+fn install_view(rows: &mut [SessionSummary], sessions: &mut HashMap<String, SessionView>, view: SessionView) -> bool {
+    let Some(row) = rows.iter_mut().find(|r| r.session_id == view.session_id) else { return false };
+    if sessions.get(&view.session_id).is_some_and(|old| old.revision > view.revision) {
+        return false;
+    }
+    row.label.clone_from(&view.label);
+    sessions.insert(view.session_id.clone(), view);
+    true
+}
+
+#[derive(Clone)]
 struct QuickLookCacheEntry {
     version: Option<String>,
-    bytes: Vec<u8>,
-    content_type: Option<String>,
+    preview: QuickLookContent,
+}
+
+// A normal end-of-stream and the advertised size are both needed. In particular,
+// even an error after the last byte isn't a completed transfer.
+fn preview_complete(bytes: &mut Vec<u8>, expected: u64, next: Result<Option<Vec<u8>>, olo_rex_client::RexError>) -> Result<bool, olo_rex_client::RexError> {
+    use olo_rex_client::RexError;
+    match next? {
+        Some(chunk) => {
+            if chunk.len() as u64 > expected.saturating_sub(bytes.len() as u64) {
+                return Err(RexError::Protocol("The file is larger than the server reported.".into()));
+            }
+            bytes.try_reserve(chunk.len()).map_err(|_| RexError::Protocol("The preview is too large to load.".into()))?;
+            bytes.extend_from_slice(&chunk);
+            Ok(false)
+        }
+        None if bytes.len() as u64 == expected => Ok(true),
+        None => Err(RexError::Protocol(format!("Received {} of {expected} bytes.", bytes.len()))),
+    }
 }
 
 /// Shared state protected by `olo_sync::Mutex` (never held across `.await`!).
@@ -222,6 +562,22 @@ pub struct HubState {
     pub git_cache: Arc<GitCache>,
     pub local_bin_dir: Option<PathBuf>,
     quick_look_cache: HashMap<(String, String, String), QuickLookCacheEntry>,
+}
+
+impl HubState {
+    fn retain_blocks(&mut self, keep: impl Fn(&BlockKey) -> bool) {
+        self.blocks.retain(|k, b| {
+            if keep(k) {
+                return true;
+            }
+            let mut block = b.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(cancel) = block.data_cancel.take() {
+                let _ = cancel.send(());
+            }
+            block.find_generation = block.find_generation.wrapping_add(1);
+            false
+        })
+    }
 }
 
 /// Thread-safe handle to the Rex background engine.
@@ -263,14 +619,18 @@ impl RexHub {
                 endpoint: None,
                 is_local: home_is_local,
                 conn_state: HostConnState::Disconnected,
+                connection_lost: None,
                 client_id: None,
                 reconnect_token: None,
+                retry: None,
                 server_status: None,
                 server_version: None,
                 tailscale: None,
+                tailscale_seq: 0,
                 synced_hosts: Vec::new(),
                 session_summaries: Vec::new(),
                 sessions: HashMap::new(),
+                pending_focus: HashMap::new(),
                 keymap_bindings: Vec::new(),
                 keymap_modes: Vec::new(),
                 keymap_diagnostics: Vec::new(),
@@ -293,14 +653,18 @@ impl RexHub {
                         endpoint: None,
                         is_local: false,
                         conn_state: HostConnState::Disconnected,
+                        connection_lost: None,
                         client_id: None,
                         reconnect_token: None,
+                        retry: None,
                         server_status: None,
                         server_version: None,
                         tailscale: None,
+                        tailscale_seq: 0,
                         synced_hosts: Vec::new(),
                         session_summaries: Vec::new(),
                         sessions: HashMap::new(),
+                        pending_focus: HashMap::new(),
                         keymap_bindings: Vec::new(),
                         keymap_modes: Vec::new(),
                         keymap_diagnostics: Vec::new(),
@@ -530,7 +894,28 @@ impl RexHub {
         br_logs.terminal.vt_write(b"\x1b[2m2026-11-21T14:00:01Z\x1b[0m \x1b[32mINFO\x1b[0m rex_server: listening on unix:///run/user/1000/rex/server.sock (rev 19)\r\n");
         st.blocks.insert(BlockKey { host_key: "local".into(), session_id: "demo-main".into(), block_id: "demo-logs".into() }, Arc::new(Mutex::new(br_logs)));
 
-        // Second demo host (remote SSH dev server, shown in sidebar).
+        // The remote example owns a separate tab, screen and focus just like a connected host.
+        let remote_block = BlockInfo { host_id: "dev-box".into(), ..mk_block("remote-shell", "Remote shell") };
+        let remote_window = WindowView {
+            window_id: "remote-tab".into(),
+            label: "API console".into(),
+            focused_block_id: Some(remote_block.block_id.clone()),
+            zoomed_block_id: None,
+            layers: vec![LayerView {
+                layer_id: "remote-layer".into(),
+                kind: "tiled".into(),
+                bounds: [0.0, 0.0, 1.0, 1.0],
+                state: Some("normal".into()),
+                layout: Some(LayoutNode { rect: [0.0, 0.0, 1.0, 1.0], block_id: Some(remote_block.block_id.clone()), split: None }),
+                blocks: vec![remote_block],
+            }],
+        };
+        let remote = SessionView { revision: 1, session_id: "remote-api".into(), label: "api-prod".into(), active_window_id: Some(remote_window.window_id.clone()), windows: vec![remote_window] };
+        let mut shell = BlockRuntime::new(110, 32, &theme);
+        shell.title = "Remote shell".into();
+        shell.data_connected = true;
+        shell.terminal.vt_write(b"api-prod: service ready\r\n");
+        st.blocks.insert(BlockKey { host_key: "dev-box".into(), session_id: remote.session_id.clone(), block_id: "remote-shell".into() }, Arc::new(Mutex::new(shell)));
         st.hosts.insert(
             "dev-box".to_owned(),
             HostRuntime {
@@ -540,14 +925,18 @@ impl RexHub {
                 endpoint: None,
                 is_local: false,
                 conn_state: HostConnState::Connected,
+                connection_lost: None,
                 client_id: None,
                 reconnect_token: None,
+                retry: None,
                 server_status: None,
                 server_version: None,
                 tailscale: None,
+                tailscale_seq: 0,
                 synced_hosts: Vec::new(),
-                session_summaries: vec![SessionSummary { session_id: "remote-api".to_owned(), label: "api-prod".to_owned() }],
-                sessions: HashMap::new(),
+                session_summaries: vec![SessionSummary { session_id: remote.session_id.clone(), label: remote.label.clone() }],
+                sessions: HashMap::from([(remote.session_id.clone(), remote)]),
+                pending_focus: HashMap::new(),
                 keymap_bindings: Vec::new(),
                 keymap_modes: Vec::new(),
                 keymap_diagnostics: Vec::new(),
@@ -562,9 +951,22 @@ impl RexHub {
 
     pub fn connect_host(&self, host_key: &str) {
         let key = host_key.to_owned();
+        let retry = {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(host) = st.hosts.get_mut(host_key) else { return };
+            if let Some(retry) = &host.retry {
+                if matches!(host.conn_state, HostConnState::Reconnecting { .. }) {
+                    retry.notify_one();
+                }
+                return;
+            }
+            let retry = Arc::new(tokio::sync::Notify::new());
+            host.retry = Some(retry.clone());
+            retry
+        };
         let inner = self.inner.clone();
         self.rt.spawn(async move {
-            inner.run_host_connection(key).await;
+            inner.run_host_connection(key, retry).await;
         });
     }
 
@@ -583,14 +985,18 @@ impl RexHub {
                     endpoint: None,
                     is_local: false,
                     conn_state: HostConnState::Connecting,
+                    connection_lost: None,
                     client_id: None,
                     reconnect_token: None,
+                    retry: None,
                     server_status: None,
                     server_version: None,
                     tailscale: None,
+                    tailscale_seq: 0,
                     synced_hosts: Vec::new(),
                     session_summaries: Vec::new(),
                     sessions: HashMap::new(),
+                    pending_focus: HashMap::new(),
                     keymap_bindings: Vec::new(),
                     keymap_modes: Vec::new(),
                     keymap_diagnostics: Vec::new(),
@@ -622,9 +1028,17 @@ impl RexHub {
         let key = host_key.to_owned();
         {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            st.hosts.remove(&key);
+            if let Some(host) = st.hosts.remove(&key) {
+                if let Some(ctrl) = host.control {
+                    ctrl.close();
+                }
+                if let Some(retry) = host.retry {
+                    retry.notify_one();
+                }
+            }
             st.host_order.retain(|k| k != &key);
-            st.blocks.retain(|bk, _| bk.host_key != key);
+            st.forwards.retain(|f| f.host_key != key);
+            st.retain_blocks(|bk| bk.host_key != key);
             st.settings.saved_hosts.retain(|h| h.id != key);
             st.settings.save();
         }
@@ -653,7 +1067,7 @@ impl RexHub {
         }
         for b in terms_to_theme {
             let mut guard = b.lock().unwrap_or_else(|e| e.into_inner());
-            let _ = guard.terminal.apply_theme(&new_theme);
+            let _ = guard.apply_theme(&new_theme);
         }
         if !live_blocks.is_empty() {
             let (fg, bg, cur, pal, scheme) = themes::to_rex_theme_args(&new_theme);
@@ -669,7 +1083,7 @@ impl RexHub {
         (self.notify)(HubNotice::StateChanged);
     }
 
-    fn with_control<F, Fut>(&self, host_key: &str, f: F)
+    fn with_control<F, Fut>(&self, host_key: &str, f: F) -> Option<tokio::task::AbortHandle>
     where
         F: FnOnce(ControlClient, RexEndpoint, Arc<RexHubInner>) -> Fut + Send + 'static,
         Fut: std::future::Future<Output = ()> + Send + 'static,
@@ -678,11 +1092,8 @@ impl RexHub {
             let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             st.hosts.get(host_key).and_then(|h| Some((h.control.clone()?, h.endpoint.clone()?)))
         };
-        let Some((ctrl, ep)) = found else { return };
-        let inner = self.inner.clone();
-        self.rt.spawn(async move {
-            f(ctrl, ep, inner).await;
-        });
+        let (ctrl, ep) = found?;
+        Some(self.rt.spawn(f(ctrl, ep, self.inner.clone())).abort_handle())
     }
 
     fn local_shell_opts(&self, host_key: &str, cwd: Option<String>) -> Option<Value> {
@@ -707,21 +1118,27 @@ impl RexHub {
         any.then_some(opts)
     }
 
-    pub fn create_session(&self, host_key: &str, label: Option<String>, cwd: Option<String>) {
+    pub fn create_session(&self, host_key: &str, label: Option<String>, cwd: Option<String>, feedback: Feedback) {
         let hk = host_key.to_owned();
         let opts = self.local_shell_opts(host_key, cwd);
-        self.with_control(host_key, move |ctrl, ep, inner| async move {
-            match ctrl.session_create(label.as_deref(), opts).await {
-                Ok(res) => {
-                    if let Some(sid) = res.payload.get("session_id").and_then(Value::as_str)
-                        && let Ok(att) = ctrl.session_attach(sid).await
-                    {
-                        inner.ingest_session(&hk, &ctrl, &ep, att.payload.view, &[]).await;
+        if self
+            .with_control(host_key, move |ctrl, ep, inner| async move {
+                match ctrl.session_create(label.as_deref(), opts).await {
+                    Ok(res) => {
+                        if let Some(sid) = res.payload.get("session_id").and_then(Value::as_str)
+                            && let Ok(att) = ctrl.session_attach(sid).await
+                        {
+                            inner.ingest_session(&hk, &ctrl, &ep, att.payload.view, &[]).await;
+                            feedback.created(hk, sid.to_owned());
+                        }
                     }
+                    Err(e) => feedback.problem("Couldn’t create the session.", e),
                 }
-                Err(e) => (inner.notify)(HubNotice::Toast { title: "Could not create session".into(), body: e.to_string(), host_key: Some(hk), session_id: None, block_id: None }),
-            }
-        });
+            })
+            .is_none()
+        {
+            feedback.problem("Couldn’t create the session.", "The Rex server is disconnected.");
+        }
     }
 
     #[allow(dead_code)]
@@ -732,21 +1149,18 @@ impl RexHub {
         });
     }
 
-    pub fn close_session(&self, host_key: &str, session_id: &str) {
-        let hk = host_key.to_owned();
+    pub fn close_session(&self, host_key: &str, session_id: &str, feedback: Feedback) {
         let sid = session_id.to_owned();
-        self.with_control(host_key, move |ctrl, _, inner| async move {
-            let _ = ctrl.session_destroy(&sid).await;
-            {
-                let mut st = inner.state.lock().unwrap_or_else(|e| e.into_inner());
-                if let Some(h) = st.hosts.get_mut(&hk) {
-                    h.sessions.remove(&sid);
-                    h.session_summaries.retain(|s| s.session_id != sid);
+        if self
+            .with_control(host_key, move |ctrl, _, _| async move {
+                if let Err(e) = ctrl.session_destroy(&sid).await {
+                    feedback.problem("Couldn’t end the session.", e);
                 }
-                st.blocks.retain(|bk, _| !(bk.host_key == hk && bk.session_id == sid));
-            }
-            (inner.notify)(HubNotice::StateChanged);
-        });
+            })
+            .is_none()
+        {
+            feedback.problem("Couldn’t end the session.", "The Rex server is disconnected.");
+        }
     }
 
     pub fn create_window(&self, host_key: &str, session_id: &str, cwd: Option<String>) {
@@ -763,16 +1177,7 @@ impl RexHub {
     }
 
     pub fn select_window(&self, host_key: &str, session_id: &str, window_id: &str) {
-        let hk = host_key.to_owned();
-        let sid = session_id.to_owned();
-        let wid = window_id.to_owned();
-        self.with_control(host_key, move |ctrl, ep, inner| async move {
-            if ctrl.session_focus_window(&sid, &wid).await.is_ok()
-                && let Ok(v) = ctrl.session_view(&sid).await
-            {
-                inner.ingest_session(&hk, &ctrl, &ep, v.payload, &[]).await;
-            }
-        });
+        self.select(host_key, session_id, window_id, None);
     }
 
     #[allow(dead_code)]
@@ -840,24 +1245,38 @@ impl RexHub {
     }
 
     pub fn focus_block(&self, host_key: &str, session_id: &str, block_id: &str) {
-        let hk = host_key.to_owned();
-        let sid = session_id.to_owned();
-        let bid = block_id.to_owned();
-        let bk = BlockKey { host_key: hk.clone(), session_id: sid.clone(), block_id: bid.clone() };
-        if let Some(br) = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).cloned() {
-            let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
-            if g.unread {
-                g.unread = false;
-                g.unread_cleared_at = Some(Instant::now());
+        self.select(host_key, session_id, "", Some(block_id));
+    }
+
+    fn select(&self, host_key: &str, session_id: &str, window_id: &str, block: Option<&str>) {
+        {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(host) = st.hosts.get_mut(host_key) else { return };
+            let Some(view) = host.sessions.get_mut(session_id) else { return };
+            let (window, restore) = match block {
+                Some(b) => {
+                    let Some((w, l, _)) = view.find_block(b) else { return };
+                    (w, (l.layer_state() == olo_rex_client::LayerState::Minimized).then(|| l.layer_id.clone()))
+                }
+                None => {
+                    let Some(w) = view.windows.iter().find(|w| w.window_id == window_id) else { return };
+                    (w, None)
+                }
+            };
+            let switch = view.active_window_id.as_ref() != Some(&window.window_id);
+            if !switch && restore.is_none() && block.is_none_or(|b| window.focused_block_id.as_deref() == Some(b)) {
+                return;
+            }
+            let target = Arc::new(FocusTarget { window: window.window_id.clone(), block: block.map(str::to_owned), restore });
+            target.apply(view);
+            if let Some(tx) = &host.input_tx {
+                let op = HostInputOp::Focus { session_id: session_id.to_owned(), switch, target: target.clone() };
+                if tx.send(op).is_ok() {
+                    host.pending_focus.insert(session_id.to_owned(), target);
+                }
             }
         }
-        self.with_control(host_key, move |ctrl, ep, inner| async move {
-            if ctrl.session_focus_block(&sid, &bid).await.is_ok()
-                && let Ok(v) = ctrl.session_view(&sid).await
-            {
-                inner.ingest_session(&hk, &ctrl, &ep, v.payload, &[]).await;
-            }
-        });
+        (self.notify)(HubNotice::StateChanged);
     }
 
     pub fn focus_direction(&self, host_key: &str, session_id: &str, direction: &str) {
@@ -936,18 +1355,81 @@ impl RexHub {
         });
     }
 
+    fn writer_for_key(&self, key: &BlockKey, expected: Option<&ControlClient>) -> Option<tokio::sync::mpsc::UnboundedSender<HostInputOp>> {
+        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let host = st.hosts.get(&key.host_key)?;
+        if expected.is_some_and(|c| !host.control.as_ref().is_some_and(|live| live.same_connection(c))) {
+            return None;
+        }
+        let queue = host.input_tx.as_ref()?;
+        let block = st.blocks.get(key)?.lock().unwrap_or_else(|e| e.into_inner());
+        if !block.data_connected || !block.input_ready {
+            return None;
+        }
+        // Probe when the key is accepted: the FIFO writer may already be waiting on a
+        // silent link. A Unix socket tells us directly when its peer goes away.
+        if matches!(host.endpoint, Some(RexEndpoint::Ssh { .. } | RexEndpoint::Http { .. } | RexEndpoint::Https { .. })) {
+            host.control.as_ref()?.probe();
+        }
+        Some(queue.clone())
+    }
+
     pub fn send_input(&self, key: &BlockKey, data: Vec<u8>) {
-        let tx = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(&key.host_key).and_then(|h| h.input_tx.clone());
-        if let Some(tx) = tx {
+        self.write_input(key, data, None);
+    }
+
+    pub fn write_input(&self, key: &BlockKey, data: Vec<u8>, connection: Option<&ControlClient>) {
+        if let Some(tx) = self.writer_for_key(key, connection) {
             let text = String::from_utf8_lossy(&data).into_owned();
             let _ = tx.send(HostInputOp::Write { session_id: key.session_id.clone(), block_id: key.block_id.clone(), text });
         }
     }
 
     pub fn send_rex_key(&self, key: &BlockKey, event: RexKeyEvent) {
-        let tx = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(&key.host_key).and_then(|h| h.input_tx.clone());
-        if let Some(tx) = tx {
+        if let Some(tx) = self.writer_for_key(key, None) {
             let _ = tx.send(HostInputOp::Key { session_id: key.session_id.clone(), block_id: key.block_id.clone(), event });
+        }
+    }
+
+    pub fn prepare_images(&self, block: Arc<Mutex<BlockRuntime>>, bk: BlockKey, owner: u64, keys: Vec<(u32, u64)>) {
+        let notify = self.notify.clone();
+        self.rt.spawn_blocking(move || {
+            for key in keys {
+                let decoded = {
+                    let g = block.lock().unwrap_or_else(|e| e.into_inner());
+                    if g.frame.owner != owner {
+                        return;
+                    }
+                    if !g.frame.textures.contains_key(&key) {
+                        continue;
+                    }
+                    g.terminal.kitty_image_rgba(key.0)
+                };
+                let Some(d) = decoded.filter(|d| d.generation == key.1) else { continue };
+                let image = crate::terminal_pane::rgba_to_render_image(&d.rgba, d.width, d.height);
+                let mut g = block.lock().unwrap_or_else(|e| e.into_inner());
+                if g.frame.owner != owner {
+                    return;
+                }
+                if let Some(slot) = g.frame.textures.get_mut(&key) {
+                    *slot = image;
+                }
+            }
+            notify(HubNotice::BlockOutput(bk));
+        });
+    }
+    pub fn find(&self, bk: &BlockKey, query: Option<&str>) {
+        let block = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(bk).cloned();
+        if let Some(block) = block {
+            let generation = {
+                let mut b = block.lock().unwrap_or_else(|e| e.into_inner());
+                if b.set_find_query(query).is_err() || !b.finding {
+                    return;
+                }
+                b.find_generation
+            };
+            let _guard = self.rt.enter();
+            self.inner.search_on_worker(block, generation);
         }
     }
 
@@ -955,12 +1437,7 @@ impl RexHub {
         let br_opt = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(key).cloned();
         let changed = if let Some(br) = br_opt {
             let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
-            if g.terminal.size() != (cols, rows) {
-                let _ = g.terminal.resize(cols, rows, cell_w, cell_h);
-                true
-            } else {
-                false
-            }
+            !g.other_size_owner && g.resize(cols, rows, cell_w, cell_h).unwrap_or(false)
         } else {
             false
         };
@@ -985,77 +1462,66 @@ impl RexHub {
         });
     }
 
-    pub fn reload_server_config(&self, host_key: &str) {
-        self.with_control(host_key, |ctrl, _, inner| async move {
-            match ctrl.server_config_reload().await {
-                Ok(_) => (inner.notify)(HubNotice::Toast {
-                    title: "Rex configuration reloaded".into(),
-                    body: "Server Lua configuration and keymaps are up to date.".into(),
-                    host_key: None,
-                    session_id: None,
-                    block_id: None,
-                }),
-                Err(e) => (inner.notify)(HubNotice::Toast { title: "Reload failed".into(), body: e.to_string(), host_key: None, session_id: None, block_id: None }),
-            }
-        });
+    pub fn reload_server_config(&self, host_key: &str, feedback: Feedback) {
+        if self
+            .with_control(host_key, move |ctrl, _, _| async move {
+                match ctrl.server_config_reload().await {
+                    Ok(_) => feedback.say("Server configuration reloaded."),
+                    Err(e) => feedback.problem("Couldn’t reload the server configuration.", e),
+                }
+            })
+            .is_none()
+        {
+            feedback.problem("Couldn’t reload the server configuration.", "The Rex server is disconnected.");
+        }
     }
 
-    pub fn request_dir_listing(&self, key: &BlockKey, path: String, files: bool) {
-        let hk = key.host_key.clone();
-        let sid = key.session_id.clone();
-        let bid = key.block_id.clone();
-        self.with_control(&key.host_key, move |ctrl, _, inner| async move {
+    pub fn request_dir_listing(&self, key: &BlockKey, path: String, files: bool, ready: impl FnOnce(DirListing) + Send + 'static) {
+        let (sid, bid) = (key.session_id.clone(), key.block_id.clone());
+        self.with_control(&key.host_key, move |ctrl, _, _| async move {
             if let Ok(res) = ctrl.terminal_list_dir(&sid, &bid, &path, None, files).await {
-                (inner.notify)(HubNotice::DirListingReady { host_key: hk, block_id: bid, listing: res.payload });
+                ready(res.payload);
             }
         });
     }
-
     /// Download a file via `com.superlogical.terminal.download_begin` + `rex.data.bytes.v1`
     /// with `if_none_match` ETag caching for instant Quick Look (`⌘Y`).
-    pub fn quick_look_path(&self, key: &BlockKey, path: String) {
-        let hk = key.host_key.clone();
-        let sid = key.session_id.clone();
-        let bid = key.block_id.clone();
-        let cache_key = (hk.clone(), bid.clone(), path.clone());
-        let cached_version = self.state.lock().unwrap_or_else(|e| e.into_inner()).quick_look_cache.get(&cache_key).and_then(|e| e.version.clone());
-
-        self.with_control(&key.host_key, move |ctrl, ep, inner| async move {
-            let data_ref = format!("dl:{}", uuid::Uuid::new_v4().simple());
-            match ctrl.terminal_download_begin(&sid, &bid, &data_ref, &path, cached_version.as_deref()).await {
-                Ok(res) => {
-                    let resp = res.payload;
-                    if resp.not_modified {
-                        if let Some(entry) = inner.state.lock().unwrap_or_else(|e| e.into_inner()).quick_look_cache.get(&cache_key) {
-                            (inner.notify)(HubNotice::QuickLookReady { path, bytes: entry.bytes.clone(), content_type: entry.content_type.clone() });
-                        }
-                        return;
-                    }
-                    let Some(ticket) = resp.ticket else { return };
-                    if let Ok((raw_stream, host_hdr)) = ep.connect_stream().await
-                        && let Ok(mut ds) = BytesDataStream::connect_hello(raw_stream, &host_hdr, &ticket).await
-                    {
-                        let mut bytes = Vec::new();
-                        while let Ok(Some(chunk)) = ds.read_chunk().await {
-                            bytes.extend_from_slice(&chunk);
-                        }
-                        inner
-                            .state
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .quick_look_cache
-                            .insert(cache_key, QuickLookCacheEntry { version: resp.version, bytes: bytes.clone(), content_type: None });
-                        (inner.notify)(HubNotice::QuickLookReady { path, bytes, content_type: None });
-                    }
+    pub fn quick_look_path(&self, key: &BlockKey, path: String, feedback: Feedback) -> Option<tokio::task::AbortHandle> {
+        let cache_key = (key.host_key.clone(), key.block_id.clone(), path.clone());
+        let (sid, bid) = (key.session_id.clone(), key.block_id.clone());
+        let cached = self.state.lock().unwrap_or_else(|e| e.into_inner()).quick_look_cache.get(&cache_key).cloned();
+        let job = self.with_control(&key.host_key, move |ctrl, ep, inner| async move {
+            let received = async {
+                let data_ref = transfer_reference("download");
+                let version = cached.as_ref().and_then(|e| e.version.as_deref());
+                let resp = ctrl.terminal_download_begin(&sid, &bid, &data_ref, &path, version).await?.payload;
+                if resp.not_modified {
+                    return cached.map(|e| e.preview).ok_or_else(|| olo_rex_client::RexError::Protocol("No cached preview for this file.".into()));
                 }
-                Err(e) => (inner.notify)(HubNotice::Toast { title: "Quick Look failed".into(), body: e.to_string(), host_key: Some(hk), session_id: Some(sid), block_id: Some(bid) }),
+                let ticket = resp.ticket.ok_or_else(|| olo_rex_client::RexError::Protocol("The server didn’t provide a download ticket.".into()))?;
+                let (stream, header) = ep.connect_stream().await?;
+                let mut stream = BytesDataStream::connect_hello(stream, &header, &ticket).await?;
+                let mut bytes = Vec::new();
+                while !preview_complete(&mut bytes, resp.size, stream.read_chunk().await)? {}
+                let preview = QuickLookContent::from_bytes(&path, &bytes, None);
+                inner.state.lock().unwrap_or_else(|e| e.into_inner()).quick_look_cache.insert(cache_key, QuickLookCacheEntry { version: resp.version, preview: preview.clone() });
+                Ok(preview)
+            }
+            .await;
+            match received {
+                Ok(preview) => feedback.preview(path, preview),
+                Err(e) => feedback.problem("Couldn’t preview the file.", e),
             }
         });
+        if job.is_none() {
+            feedback.problem("Couldn’t preview the file.", "The Rex server is disconnected.");
+        }
+        job
     }
 
     /// Upload dropped files into a remote Rex block via `upload_begin` + `rex.data.bytes.v1`
     /// (0-byte half-close EOF triggers Rex's automatic path paste!), or shell-escape paths directly on Local.
-    pub fn upload_files(&self, key: &BlockKey, paths: Vec<PathBuf>) {
+    pub fn upload_files(&self, key: &BlockKey, paths: Vec<PathBuf>, feedback: Feedback) {
         if paths.is_empty() {
             return;
         }
@@ -1075,27 +1541,45 @@ impl RexHub {
             let batch_id = uuid::Uuid::new_v4().to_string();
             for (idx, path) in paths.into_iter().enumerate() {
                 let filename = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "file".to_owned());
-                let Ok(bytes) = tokio::fs::read(&path).await else { continue };
-                let size = bytes.len() as u64;
-                let data_ref = format!("ul:{}", uuid::Uuid::new_v4().simple());
-                let batch_info = if total > 1 { Some((batch_id.as_str(), idx, total)) } else { None };
-                if let Ok(res) = ctrl.terminal_upload_begin(&bk.session_id, &bk.block_id, &data_ref, &filename, size, batch_info).await
-                    && let Ok((raw_stream, host_hdr)) = ep.connect_stream().await
-                    && let Ok(mut ds) = BytesDataStream::connect_hello(raw_stream, &host_hdr, &res.payload.ticket).await
-                {
-                    let mut sent = 0usize;
-                    for chunk in bytes.chunks(65_536) {
-                        if ds.write_all(chunk).await.is_err() {
+                let uploaded = async {
+                    use tokio::io::AsyncReadExt;
+                    let mut file = tokio::fs::File::open(&path).await?;
+                    let size = file.metadata().await?.len();
+                    let data_ref = transfer_reference("upload");
+                    let batch_info = (total > 1).then_some((batch_id.as_str(), idx, total));
+                    let res = ctrl.terminal_upload_begin(&bk.session_id, &bk.block_id, &data_ref, &filename, size, batch_info).await?;
+                    let (stream, header) = ep.connect_stream().await?;
+                    let mut ds = BytesDataStream::connect_hello(stream, &header, &res.payload.ticket).await?;
+                    let mut buf = vec![0; 65536];
+                    let mut sent = 0u64;
+                    let mut last = None;
+                    loop {
+                        let count = file.read(&mut buf).await?;
+                        if count == 0 {
                             break;
                         }
-                        sent += chunk.len();
-                        let frac = if size == 0 { 1.0 } else { sent as f32 / size as f32 };
-                        if let Some(br) = inner.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).cloned() {
-                            br.lock().unwrap_or_else(|e| e.into_inner()).upload_progress = Some((filename.clone(), frac));
+                        sent += count as u64;
+                        if sent > size {
+                            return Err(olo_rex_client::RexError::Protocol("File changed during upload.".into()));
                         }
-                        (inner.notify)(HubNotice::StateChanged);
+                        ds.write_all(&buf[..count]).await?;
+                        if last.is_none_or(|t: Instant| t.elapsed() >= Duration::from_millis(100)) {
+                            if let Some(br) = inner.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).cloned() {
+                                br.lock().unwrap_or_else(|e| e.into_inner()).upload_progress = Some((filename.clone(), sent as f32 / size as f32));
+                            }
+                            (inner.notify)(HubNotice::StateChanged);
+                            last = Some(Instant::now());
+                        }
                     }
-                    let _ = ds.finish_write().await;
+                    if sent != size {
+                        return Err(olo_rex_client::RexError::Protocol("File changed during upload.".into()));
+                    }
+                    ds.finish_write().await
+                }
+                .await;
+                if let Err(e) = uploaded {
+                    feedback.problem(&format!("Couldn’t upload {filename}."), e);
+                    break;
                 }
             }
             if let Some(br) = inner.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).cloned() {
@@ -1105,24 +1589,25 @@ impl RexHub {
         });
     }
 
-    pub fn add_local_forward(&self, host_key: &str, session_id: &str, remote_host: String, remote_port: u16, local_port: u16, open_in_browser: bool) {
+    pub fn add_local_forward(&self, host_key: &str, session_id: &str, remote_host: String, remote_port: u16, local_port: u16, open_in_browser: bool, feedback: Feedback) {
         let hk = host_key.to_owned();
         let sid = session_id.to_owned();
-        self.with_control(host_key, move |ctrl, ep, inner| async move {
-            match start_local_forward(ctrl, ep, sid.clone(), remote_host.clone(), remote_port, local_port).await {
-                Ok(handle) => {
-                    let local_addr = handle.local_addr;
-                    let fwd = ActiveForward { id: uuid::Uuid::new_v4().to_string(), host_key: hk.clone(), remote_host, remote_port, local_addr, handle: Some(handle) };
-                    inner.state.lock().unwrap_or_else(|e| e.into_inner()).forwards.push(fwd);
-                    (inner.notify)(HubNotice::StateChanged);
-                    if open_in_browser {
-                        let url = format!("http://127.0.0.1:{}", local_addr.port());
-                        let _ = bridge::open_url_with_autoforward(&url, false, None).await;
+        if self
+            .with_control(host_key, move |ctrl, ep, inner| async move {
+                match inner.create_forward(&hk, &ctrl, ep, &sid, remote_host, remote_port, local_port).await {
+                    Ok(local_addr) => {
+                        if open_in_browser {
+                            let url = format!("http://127.0.0.1:{}", local_addr.port());
+                            let _ = bridge::open_url_with_autoforward(&url, false, None).await;
+                        }
                     }
+                    Err(e) => feedback.problem("Couldn’t forward the port.", e),
                 }
-                Err(e) => (inner.notify)(HubNotice::Toast { title: "Port forward failed".into(), body: e.to_string(), host_key: Some(hk), session_id: None, block_id: None }),
-            }
-        });
+            })
+            .is_none()
+        {
+            feedback.problem("Couldn’t forward the port.", "The Rex server is disconnected.");
+        }
     }
 
     pub fn remove_forward(&self, forward_id: &str) {
@@ -1132,7 +1617,7 @@ impl RexHub {
         (self.notify)(HubNotice::StateChanged);
     }
 
-    pub fn open_link_from_pane(&self, key: &BlockKey, url: String) {
+    pub fn open_link_from_pane(&self, key: &BlockKey, url: String, feedback: Feedback) {
         let (is_local, policy) = {
             let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             let is_local = st.hosts.get(&key.host_key).is_some_and(|h| h.is_local);
@@ -1156,7 +1641,7 @@ impl RexHub {
                 None
             };
             if let Err(e) = bridge::open_url_with_autoforward(&url, !is_local && policy.allow_localhost_autoforward, fwd.as_ref()).await {
-                (inner.notify)(HubNotice::Toast { title: "Could not open link".into(), body: e, host_key: Some(bk.host_key), session_id: Some(bk.session_id), block_id: Some(bk.block_id) });
+                feedback.problem("Couldn’t open the link.", e);
             }
         });
     }
@@ -1200,61 +1685,159 @@ impl RexHub {
         (blocks.len(), res, img)
     }
 
-    pub fn toggle_tailscale(&self, host_key: &str, enable: bool) {
-        let hk = host_key.to_owned();
-        self.with_control(host_key, move |ctrl, _, inner| async move {
-            let res = if enable { ctrl.tailscale_enable(None, Some(true), None, None).await } else { ctrl.tailscale_disable().await };
-            match res {
-                Ok(r) => {
-                    let mut st = inner.state.lock().unwrap_or_else(|e| e.into_inner());
-                    if let Some(h) = st.hosts.get_mut(&hk) {
-                        h.tailscale = Some(r.payload);
-                    }
-                    drop(st);
-                    (inner.notify)(HubNotice::StateChanged);
+    fn open_sign_in(&self, url: &str, feedback: Feedback) {
+        let matches = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get("local").and_then(|h| h.tailscale.as_ref()).and_then(crate::tailscale::login_link) == Some(url);
+        if matches {
+            let url = url.to_owned();
+            self.rt.spawn(async move {
+                if let Err(e) = bridge::open_url_with_autoforward(&url, false, None).await {
+                    feedback.failed(crate::tailscale::Action::OpenLink(url).server_problem(&e.to_string()));
                 }
-                Err(e) => (inner.notify)(HubNotice::Toast { title: "Tailscale update failed".into(), body: e.to_string(), host_key: Some(hk), session_id: None, block_id: None }),
-            }
-        });
+            });
+        }
+    }
+
+    pub fn change_tailscale(&self, host_key: &str, action: crate::tailscale::Action, feedback: Feedback) {
+        let hk = host_key.to_owned();
+        if let crate::tailscale::Action::OpenLink(url) = &action {
+            self.open_sign_in(url, feedback);
+            return;
+        }
+        if self
+            .with_control(host_key, move |ctrl, _, inner| async move {
+                let res = match action {
+                    crate::tailscale::Action::Enable => ctrl.tailscale_enable(None, Some(true), None, None).await,
+                    crate::tailscale::Action::Disable => ctrl.tailscale_disable().await,
+                    crate::tailscale::Action::Login => ctrl.tailscale_login().await,
+                    crate::tailscale::Action::OpenLink(_) => unreachable!(),
+                };
+                match res {
+                    Ok(r) => {
+                        let status = {
+                            let mut st = inner.state.lock().unwrap_or_else(|e| e.into_inner());
+                            st.hosts
+                                .get_mut(&hk)
+                                .filter(|h| h.control.is_some() && h.client_id.as_deref() == ctrl.client_id())
+                                .and_then(|h| crate::tailscale::apply(&mut h.tailscale, &mut h.tailscale_seq, r.seq, r.payload).then(|| h.tailscale.clone()).flatten())
+                        };
+                        if let Some(status) = status {
+                            if let Some(error) = status.error {
+                                feedback.failed(action.server_problem(&error));
+                            } else if action == crate::tailscale::Action::Login && status.state == "needs_login" && crate::tailscale::login_link(&status).is_none() {
+                                feedback.say("Waiting for a sign-in link…");
+                            }
+                        }
+                        (inner.notify)(HubNotice::StateChanged);
+                    }
+                    Err(e) => feedback.failed(action.failed(&e)),
+                }
+            })
+            .is_none()
+        {
+            feedback.failed((olo_kit::words::tr("The Rex server isn’t connected.").into(), None));
+        }
     }
 }
 
 impl RexHubInner {
-    async fn ensure_ephemeral_forward(&self, host_key: &str, session_id: &str, remote_host: &str, remote_port: u16) -> Result<u16, String> {
-        {
-            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some(f) = st.forwards.iter().find(|f| f.host_key == host_key && f.remote_host == remote_host && f.remote_port == remote_port) {
-                return Ok(f.local_addr.port());
+    fn search_on_worker(&self, block: Arc<Mutex<BlockRuntime>>, generation: u64) {
+        let notify = self.notify.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut last = Instant::now();
+            loop {
+                let done = {
+                    let mut b = block.lock().unwrap_or_else(|e| e.into_inner());
+                    if generation != b.find_generation {
+                        return;
+                    }
+                    b.find_step(generation).unwrap_or_else(|_| {
+                        b.finding = false;
+                        true
+                    })
+                };
+                if done || last.elapsed() >= Duration::from_millis(100) {
+                    notify(HubNotice::StateChanged);
+                    last = Instant::now();
+                }
+                if done {
+                    return;
+                }
+                std::thread::yield_now();
             }
-        }
-        let (ctrl, ep) = {
-            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            st.hosts.get(host_key).and_then(|h| Some((h.control.clone()?, h.endpoint.clone()?))).ok_or_else(|| format!("host '{host_key}' is not connected"))?
-        };
-        let handle = start_local_forward(ctrl, ep, session_id.to_owned(), remote_host.to_owned(), remote_port, 0).await.map_err(|e| e.to_string())?;
-        let port = handle.local_addr.port();
-        self.state.lock().unwrap_or_else(|e| e.into_inner()).forwards.push(ActiveForward {
-            id: uuid::Uuid::new_v4().to_string(),
-            host_key: host_key.to_owned(),
-            remote_host: remote_host.to_owned(),
-            remote_port,
-            local_addr: handle.local_addr,
-            handle: Some(handle),
         });
-        (self.notify)(HubNotice::StateChanged);
-        Ok(port)
+    }
+    fn clipboard_allowed(&self, host: &str) -> bool {
+        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        st.hosts.get(host).is_some_and(|h| st.settings.policy_for_host(host, h.is_local).allow_remote_control)
     }
 
-    async fn run_host_connection(self: Arc<Self>, host_key: String) {
+    async fn ensure_ephemeral_forward(&self, host_key: &str, session_id: &str, remote_host: &str, remote_port: u16) -> Result<u16, String> {
+        let (ctrl, ep) = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(f) = st.forwards.iter().find(|f| f.host_key == host_key && f.handle.session_id == session_id && f.remote_host == remote_host && f.remote_port == remote_port) {
+                return match &f.state {
+                    ForwardState::Active => Ok(f.local_addr.port()),
+                    ForwardState::Waiting => Err("The forward is waiting for its host.".into()),
+                    ForwardState::Failed(why) => Err(why.clone()),
+                };
+            }
+            st.hosts.get(host_key).and_then(|h| Some((h.control.clone()?, h.endpoint.clone()?))).ok_or_else(|| format!("host '{host_key}' is not connected"))?
+        };
+        self.create_forward(host_key, &ctrl, ep, session_id, remote_host.to_owned(), remote_port, 0).await.map(|a| a.port())
+    }
+
+    async fn create_forward(&self, host_key: &str, ctrl: &ControlClient, ep: RexEndpoint, session_id: &str, remote_host: String, remote_port: u16, local_port: u16) -> Result<SocketAddr, String> {
+        let handle = start_local_forward(ctrl.clone(), ep, session_id.into(), remote_host.clone(), remote_port, local_port).await.map_err(|e| e.to_string())?;
+        let local_addr = handle.local_addr;
+        {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if !st.hosts.get(host_key).and_then(|h| h.control.as_ref()).is_some_and(|c| c.same_connection(ctrl)) {
+                return Err("The host disconnected while opening the forward.".into());
+            }
+            st.forwards.push(ActiveForward { id: uuid::Uuid::new_v4().to_string(), host_key: host_key.into(), remote_host, remote_port, local_addr, state: ForwardState::Active, handle });
+        }
+        (self.notify)(HubNotice::StateChanged);
+        Ok(local_addr)
+    }
+
+    fn restore_forwards(self: &Arc<Self>, host_key: &str, ctrl: &ControlClient, ep: &RexEndpoint) {
+        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        for f in st.forwards.iter().filter(|f| f.host_key == host_key && f.state != ForwardState::Active) {
+            let reconnect = f.handle.reconnect(ctrl.clone(), ep.clone());
+            let (id, sid, hk, ctrl, inner) = (f.id.clone(), f.handle.session_id.clone(), host_key.to_owned(), ctrl.clone(), self.clone());
+            tokio::spawn(async move {
+                let result = reconnect.await;
+                let mut st = inner.state.lock().unwrap_or_else(|e| e.into_inner());
+                let Some(host) = st.hosts.get(&hk).filter(|h| h.control.as_ref().is_some_and(|c| c.same_connection(&ctrl))) else { return };
+                let session_ended = !host.session_summaries.iter().any(|s| s.session_id == sid);
+                let Some(f) = st.forwards.iter_mut().find(|f| f.id == id) else { return };
+                f.state = match result {
+                    Ok(()) => ForwardState::Active,
+                    Err(olo_rex_client::RexError::Api(_)) if session_ended => ForwardState::Failed(olo_kit::words::tr("its session has ended.").into()),
+                    Err(olo_rex_client::RexError::Api(e)) => ForwardState::Failed(e.message),
+                    Err(e) => ForwardState::Failed(e.to_string()),
+                };
+                drop(st);
+                (inner.notify)(HubNotice::StateChanged);
+            });
+        }
+    }
+
+    async fn run_host_connection(self: Arc<Self>, host_key: String, retry: Arc<tokio::sync::Notify>) {
         let mut attempt = 0u32;
+        let mut last_seq = 0;
         loop {
-            let (endpoint_raw, reconnect_token, is_local, local_bin, user_overrides) = {
+            let (endpoint_raw, reconnect_token, is_local, user_overrides) = {
                 let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
                 let overrides = st.settings.keymap_overrides.clone();
-                let local_bin = st.local_bin_dir.clone();
                 let Some(h) = st.hosts.get_mut(&host_key) else { return };
-                h.conn_state = if attempt == 0 { HostConnState::Connecting } else { HostConnState::Reconnecting { attempt, last_error: "Reconnecting…".to_owned() } };
-                (h.endpoint_raw.clone(), h.reconnect_token.clone(), h.is_local, local_bin, overrides)
+                if !h.retry.as_ref().is_some_and(|r| Arc::ptr_eq(r, &retry)) {
+                    return;
+                }
+                if attempt == 0 {
+                    h.conn_state = HostConnState::Connecting;
+                }
+                (h.endpoint_raw.clone(), h.reconnect_token.clone(), h.is_local, overrides)
             };
             (self.notify)(HubNotice::StateChanged);
 
@@ -1264,6 +1847,7 @@ impl RexHubInner {
                     let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
                     if let Some(h) = st.hosts.get_mut(&host_key) {
                         h.conn_state = HostConnState::Error(e.to_string());
+                        h.retry = None;
                     }
                     drop(st);
                     (self.notify)(HubNotice::StateChanged);
@@ -1274,86 +1858,89 @@ impl RexHubInner {
             let connected = async {
                 let (stream, host_hdr) = endpoint.connect_stream().await?;
                 let label = std::fs::read_to_string("/etc/hostname").ok().map(|s| s.trim().to_owned()).filter(|s| !s.is_empty());
-                ControlClient::connect(stream, &host_hdr, olo_rex_client::ClientIdentity::olo_rex(label), reconnect_token.as_deref()).await
+                let (ctrl, events) = ControlClient::connect(stream, &host_hdr, olo_rex_client::ClientIdentity::olo_rex(label), reconnect_token.as_deref()).await?;
+                let client_id = ctrl.client_id().map(str::to_owned);
+                let token = ctrl.reconnect_token().map(str::to_owned);
+
+                // Fetch server status, version, synced hosts, keymap, and bootstrap sessions!
+                let status = ctrl.server_status().await.ok();
+                let version = ctrl.server_version().await.ok().map(|r| r.payload);
+                let hosts_resp = ctrl.hosts_list().await.ok().map(|r| r.payload);
+                let km_actions = keymap::register_actions_payload();
+                let km_defaults = [keymap::default_client_layer()];
+                let km_resp = ctrl.client_keymap(&km_actions, &km_defaults, &user_overrides).await.ok().map(|r| r.payload);
+
+                let ticket_req =
+                    [DataTicketRequest { creator_name: "com.superlogical.terminal".to_owned(), data_ref_id: "terminal".to_owned(), subprotocol: Some(DATA_TERMINAL_SUBPROTOCOL.to_owned()) }];
+                let boot = SessionSnapshot::read(&ctrl, &ticket_req).await?;
+                Ok::<_, olo_rex_client::RexError>((ctrl, events, client_id, token, status, version, hosts_resp, km_resp, boot))
             }
             .await;
-
             match connected {
-                Ok((ctrl, mut events)) => {
-                    attempt = 0;
-                    let client_id = ctrl.client_id().map(str::to_owned);
-                    let token = ctrl.reconnect_token().map(str::to_owned);
-
-                    // Fetch server status, version, synced hosts, keymap, and bootstrap sessions!
-                    let status = ctrl.server_status().await.ok().map(|r| r.payload);
-                    let version = ctrl.server_version().await.ok().map(|r| r.payload);
-                    let hosts_resp = ctrl.hosts_list().await.ok().map(|r| r.payload);
-                    let km_actions = keymap::register_actions_payload();
-                    let km_defaults = [keymap::default_client_layer()];
-                    let km_resp = ctrl.client_keymap(&km_actions, &km_defaults, &user_overrides).await.ok().map(|r| r.payload);
-
-                    let ticket_req =
-                        [DataTicketRequest { creator_name: "com.superlogical.terminal".to_owned(), data_ref_id: "terminal".to_owned(), subprotocol: Some(DATA_TERMINAL_SUBPROTOCOL.to_owned()) }];
-                    let bootstrap = ctrl.session_bootstrap("all", None, None, &ticket_req).await.ok().map(|r| r.payload);
-
-                    let mut summaries = bootstrap.as_ref().map(|b| b.attach_all.sessions.clone()).unwrap_or_default();
-                    let mut initial_views: Vec<SessionView> = Vec::new();
-                    let pre_tickets = bootstrap.as_ref().and_then(|b| b.data_tickets.clone()).unwrap_or_default();
-
-                    if let Some(b) = &bootstrap {
-                        if let Some(att) = &b.attached_sessions {
-                            for e in att {
-                                initial_views.push(e.view.clone());
-                            }
-                        } else if let Some(sel) = &b.selected_session {
-                            initial_views.push(sel.view.clone());
-                        }
-                    }
-
-                    // If local server has no sessions yet, create a ready-to-use `main` session!
-                    if summaries.is_empty() && is_local {
-                        let mut opts = json!({});
-                        if let Some(bin) = &local_bin {
-                            opts["path_prepend"] = json!([bin.to_string_lossy()]);
-                        }
-                        if let Some(open_bin) = olo_xdg::find_program("olo-open") {
-                            opts["env"] = json!({ "BROWSER": open_bin.to_string_lossy() });
-                        }
-                        if let Ok(created) = ctrl.session_create(Some("main"), Some(opts)).await
-                            && let Some(sid) = created.payload.get("session_id").and_then(Value::as_str)
-                            && let Ok(att) = ctrl.session_attach(sid).await
-                        {
-                            summaries.push(SessionSummary { session_id: att.payload.view.session_id.clone(), label: att.payload.view.label.clone() });
-                            initial_views.push(att.payload.view);
-                        }
-                    }
+                Ok((ctrl, mut events, client_id, token, status, version, hosts_resp, km_resp, boot)) => {
+                    let SessionSnapshot { seq: boot_seq, rows: summaries, views: initial_views, tickets: pre_tickets } = boot;
 
                     // Spawn one strictly-FIFO input writer task for this host connection so rapid
                     // keystrokes can never race and arrive out of order on `terminal.write`.
                     let (in_tx, mut in_rx) = tokio::sync::mpsc::unbounded_channel::<HostInputOp>();
                     let ctrl_in = ctrl.clone();
-                    tokio::spawn(async move {
-                        while let Some(op) = in_rx.recv().await {
-                            match op {
-                                HostInputOp::Write { session_id, block_id, text } => {
-                                    let _ = ctrl_in.terminal_write(&session_id, &block_id, &text).await;
-                                }
-                                HostInputOp::Key { session_id, block_id, event } => {
-                                    let _ = ctrl_in.client_key(&session_id, Some(&block_id), &event, None).await;
+                    let ep_in = endpoint.clone();
+                    let host_in = host_key.clone();
+                    let inner_in = self.clone();
+                    let input_connection = ctrl.clone();
+                    let input_worker = tokio::spawn(async move {
+                        // The queue belongs to this physical connection. A disconnected pane accepts
+                        // no keys. Discard its unwritten backlog, including any uncertain in-flight
+                        // request; input is never replayed by the app, even to a resumed client ID.
+                        let write = async {
+                            while let Some(op) = in_rx.recv().await {
+                                match op {
+                                    HostInputOp::Focus { session_id, switch, target } => {
+                                        if switch || target.block.is_none() {
+                                            let _ = ctrl_in.session_focus_window(&session_id, &target.window).await;
+                                        }
+                                        if let Some(l) = &target.restore {
+                                            let _ = ctrl_in.session_set_layer_state(&session_id, l, "normal", true).await;
+                                        }
+                                        if let Some(b) = &target.block {
+                                            let _ = ctrl_in.session_focus_block(&session_id, b).await;
+                                        }
+                                        let view = ctrl_in.session_view(&session_id).await;
+                                        {
+                                            let mut st = inner_in.state.lock().unwrap_or_else(|e| e.into_inner());
+                                            let Some(host) = st.hosts.get_mut(&host_in) else { continue };
+                                            if !host.pending_focus.get(&session_id).is_some_and(|newest| Arc::ptr_eq(newest, &target)) {
+                                                continue;
+                                            }
+                                            host.pending_focus.remove(&session_id);
+                                        }
+                                        if let Ok(view) = view {
+                                            inner_in.ingest_session(&host_in, &ctrl_in, &ep_in, view.payload, &[]).await;
+                                        }
+                                    }
+                                    HostInputOp::Write { session_id, block_id, text } => {
+                                        let _ = ctrl_in.terminal_write(&session_id, &block_id, &text).await;
+                                    }
+                                    HostInputOp::Key { session_id, block_id, event } => {
+                                        let _ = ctrl_in.client_key(&session_id, Some(&block_id), &event, None).await;
+                                    }
                                 }
                             }
-                        }
+                        };
+                        tokio::select! { biased; _=input_connection.disconnected()=>{}, _=write=>{} }
                     });
 
                     {
                         let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                        if let Some(h) = st.hosts.get_mut(&host_key) {
+                        if let Some(h) = st.hosts.get_mut(&host_key).filter(|h| h.retry.as_ref().is_some_and(|r| Arc::ptr_eq(r, &retry))) {
                             h.conn_state = HostConnState::Connected;
+                            h.connection_lost = None;
                             h.endpoint = Some(endpoint.clone());
                             h.client_id = client_id;
                             h.reconnect_token = token;
-                            h.tailscale = status.as_ref().and_then(|s| s.tailscale.clone());
-                            h.server_status = status;
+                            h.tailscale_seq = status.as_ref().map_or(0, |s| s.seq);
+                            h.tailscale = status.as_ref().and_then(|s| s.payload.tailscale.clone());
+                            h.server_status = status.map(|r| r.payload);
                             h.server_version = version;
                             if let Some(hr) = hosts_resp {
                                 h.synced_hosts = hr.hosts;
@@ -1366,6 +1953,10 @@ impl RexHubInner {
                             h.session_summaries = summaries;
                             h.control = Some(ctrl.clone());
                             h.input_tx = Some(in_tx);
+                        } else {
+                            ctrl.close();
+                            input_worker.abort();
+                            return;
                         }
                     }
 
@@ -1373,6 +1964,8 @@ impl RexHubInner {
                         self.ingest_session(&host_key, &ctrl, &endpoint, view, &pre_tickets).await;
                     }
                     self.write_palette_index();
+
+                    self.restore_forwards(&host_key, &ctrl, &endpoint);
 
                     // Auto-start Tier 2 Olo Bridge server for remote hosts whose bridge policy is enabled.
                     if !is_local {
@@ -1405,7 +1998,14 @@ impl RexHubInner {
                                     inn.ensure_ephemeral_forward(&hk, &sid, &rh, rp).await
                                 })
                             });
-                            if let Ok(handle) = bridge::start_bridge_server(hlabel, pol_fn, fwd_fn).await {
+                            let inner = Arc::downgrade(&self);
+                            let source_host = host_key.clone();
+                            let notify = move |req: &bridge::BridgeRequest| {
+                                if let Some(inner) = inner.upgrade() {
+                                    inner.bridge_notice(&source_host, req.session_id.as_deref(), req.block_id.as_deref(), &req.payload);
+                                }
+                            };
+                            if let Ok(handle) = bridge::start_bridge_server(hlabel, pol_fn, fwd_fn, notify).await {
                                 let port = handle.local_addr.port();
                                 let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
                                 if let Some(h) = st.hosts.get_mut(&host_key) {
@@ -1418,27 +2018,71 @@ impl RexHubInner {
 
                     (self.notify)(HubNotice::StateChanged);
 
+                    let resumed = ctrl.welcome.client.as_ref().is_some_and(|c| c.resumed);
+                    let mut sequence = EventSequence { seen: if resumed && last_seq <= boot_seq { last_seq } else { 0 }, membership: boot_seq };
                     while let Some(env) = events.recv().await {
-                        self.handle_control_event(&host_key, &ctrl, &endpoint, env.event).await;
+                        let Some(gap) = sequence.next(env.seq) else { continue };
+                        if gap || matches!(env.event, ControlEvent::EventDropped { block_id: None, .. }) {
+                            match self.refresh_host(&host_key, &ctrl, &endpoint).await {
+                                Ok(watermark) => sequence.membership = watermark,
+                                Err(e) => {
+                                    tracing::warn!("Rex event refresh failed: {e}");
+                                    ctrl.close();
+                                    break;
+                                }
+                            }
+                            if matches!(env.event, ControlEvent::EventDropped { .. }) {
+                                continue;
+                            }
+                        }
+                        if env.seq != 0
+                            && env.seq <= sequence.membership
+                            && matches!(env.event, ControlEvent::SessionCreated(_) | ControlEvent::SessionMoved { .. } | ControlEvent::SessionDestroyed { .. })
+                        {
+                            continue;
+                        }
+                        self.handle_control_event(&host_key, &ctrl, &endpoint, env.seq, env.event).await;
                     }
-
-                    {
+                    last_seq = sequence.seen;
+                    input_worker.abort();
+                    let dropped_host = {
                         let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                        if let Some(h) = st.hosts.get_mut(&host_key) {
+                        let label = if let Some(h) = st.hosts.get_mut(&host_key).filter(|h| h.control.as_ref().is_some_and(|c| c.same_connection(&ctrl))) {
+                            h.tailscale = None;
+                            h.server_status = None;
+                            h.server_version = None;
+                            h.sessions.clear();
+                            h.pending_focus.clear();
+                            h.session_summaries.clear();
                             h.control = None;
                             h.input_tx = None;
+                            attempt = 1;
+                            h.connection_lost = Some(SystemTime::now());
                             h.conn_state = HostConnState::Reconnecting { attempt: 1, last_error: "Connection closed".to_owned() };
+                            h.label.clone()
                         } else {
                             return;
+                        };
+                        for f in st.forwards.iter_mut().filter(|f| f.host_key == host_key) {
+                            f.state = ForwardState::Waiting;
                         }
-                    }
+                        st.retain_blocks(|k| k.host_key != host_key);
+                        label
+                    };
+                    (self.notify)(HubNotice::Attention {
+                        target: Target::Host(host_key.clone()),
+                        title: format!("{dropped_host} disconnected"),
+                        body: "The connection to the Rex server closed.".into(),
+                        kind: olo_kit::notify::NoteKind::Important,
+                    });
+                    self.write_palette_index();
                     (self.notify)(HubNotice::StateChanged);
                 }
                 Err(e) => {
                     attempt += 1;
                     let still_exists = {
                         let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                        if let Some(h) = st.hosts.get_mut(&host_key) {
+                        if let Some(h) = st.hosts.get_mut(&host_key).filter(|h| h.retry.as_ref().is_some_and(|r| Arc::ptr_eq(r, &retry))) {
                             h.control = None;
                             h.input_tx = None;
                             h.conn_state = HostConnState::Reconnecting { attempt, last_error: e.to_string() };
@@ -1455,7 +2099,7 @@ impl RexHubInner {
             }
 
             let backoff = Duration::from_secs((1u64 << attempt.min(4)).min(15));
-            tokio::time::sleep(backoff).await;
+            tokio::select! { _ = tokio::time::sleep(backoff) => {}, _ = retry.notified() => {} }
         }
     }
 
@@ -1463,23 +2107,24 @@ impl RexHubInner {
         let session_id = view.session_id.clone();
         let blocks: Vec<BlockInfo> = view.windows.iter().flat_map(|w| w.all_blocks()).cloned().collect();
 
-        let theme = {
-            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            let theme = st.active_theme.clone();
-            if let Some(h) = st.hosts.get_mut(host_key) {
-                if !h.session_summaries.iter().any(|s| s.session_id == session_id) {
-                    h.session_summaries.push(SessionSummary { session_id: session_id.clone(), label: view.label.clone() });
-                }
-                h.sessions.insert(session_id.clone(), view);
-            }
-            theme
-        };
-
         let mut to_attach = Vec::new();
         {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(h) = st.hosts.get_mut(host_key) else { return };
+            if !h.control.as_ref().is_some_and(|c| c.same_connection(ctrl)) {
+                return;
+            }
+            if !install_view(&mut h.session_summaries, &mut h.sessions, view) {
+                return;
+            }
+            if let Some(target) = h.pending_focus.get(&session_id)
+                && let Some(view) = h.sessions.get_mut(&session_id)
+            {
+                target.apply(view);
+            }
+            let theme = st.active_theme.clone();
             let live_ids: HashSet<String> = blocks.iter().map(|b| b.block_id.clone()).collect();
-            st.blocks.retain(|bk, _| !(bk.host_key == host_key && bk.session_id == session_id && !live_ids.contains(&bk.block_id)));
+            st.retain_blocks(|bk| !(bk.host_key == host_key && bk.session_id == session_id && !live_ids.contains(&bk.block_id)));
 
             for b in &blocks {
                 let bk = BlockKey { host_key: host_key.to_owned(), session_id: session_id.clone(), block_id: b.block_id.clone() };
@@ -1522,6 +2167,8 @@ impl RexHubInner {
                 return;
             }
             g.data_connected = true;
+            g.input_ready = false;
+            g.pending_status = Some(Vec::new());
             g.data_cancel = Some(tx);
         }
         let inner = self.clone();
@@ -1557,161 +2204,236 @@ impl RexHubInner {
             let br_meta = br.clone();
             let notify_meta = inner.notify.clone();
             tokio::spawn(async move {
-                if let Ok(r) = c_meta.terminal_program_status(&bk_meta.session_id, &bk_meta.block_id).await {
-                    let mut g = br_meta.lock().unwrap_or_else(|e| e.into_inner());
-                    g.program_statuses = r.payload;
-                    g.recompute_activity();
-                }
+                let snapshot = c_meta.terminal_program_status(&bk_meta.session_id, &bk_meta.block_id).await.ok();
+                br_meta.lock().unwrap_or_else(|e| e.into_inner()).status_snapshot(snapshot);
                 if let Ok(r) = c_meta.terminal_ports(&bk_meta.session_id, &bk_meta.block_id).await {
-                    br_meta.lock().unwrap_or_else(|e| e.into_inner()).ports = r.payload;
+                    br_meta.lock().unwrap_or_else(|e| e.into_inner()).set_ports(r.seq, r.payload);
                 }
                 if let Ok(r) = c_meta.terminal_process(&bk_meta.session_id, &bk_meta.block_id).await {
-                    let mut g = br_meta.lock().unwrap_or_else(|e| e.into_inner());
-                    if let Some(cwd) = r.payload.foreground.as_ref().and_then(|p| p.cwd.as_ref()).or_else(|| r.payload.child.as_ref().and_then(|p| p.cwd.as_ref())) {
-                        g.pwd = cwd.clone();
-                    }
-                    g.process = Some(r.payload);
-                    g.recompute_activity();
+                    br_meta.lock().unwrap_or_else(|e| e.into_inner()).process_snapshot(r);
                 }
                 notify_meta(HubNotice::StateChanged);
             });
 
-            let mut snapshot_buf: Vec<u8> = Vec::new();
-            let mut snapshot_done = false;
+            let mut attachment = Some(crate::attach::Attachment::default());
             let mut apc = InlineApcDemuxer::new(stream.welcome.channel_nonce);
-
             loop {
-                tokio::select! {
-                    _ = &mut rx => {
-                        stream.close_clean().await;
-                        break;
+                let frame = tokio::select! {
+                    _ = &mut rx => { stream.close_clean().await; break; }
+                    res=stream.next_frame()=>res
+                };
+                let Ok(TerminalStreamFrame::Bytes(chunk)) = frame else { break };
+                if chunk.is_empty() {
+                    continue;
+                }
+                let (terminal, snapshot_size, live) = if let Some(attach) = &mut attachment {
+                    match attach.push(&chunk) {
+                        Ok(None) => continue,
+                        Ok(Some(screen)) => {
+                            attachment = None;
+                            (screen.terminal, screen.snapshot_size, screen.live)
+                        }
+                        Err(e) => {
+                            tracing::warn!("Could not read the snapshot for {}: {e}", bk.block_id);
+                            stream.close_clean().await;
+                            break;
+                        }
                     }
-                    res = stream.next_frame() => {
-                        let Ok(TerminalStreamFrame::Bytes(chunk)) = res else { break };
-                        if chunk.is_empty() {
-                            continue;
-                        }
-                        if !snapshot_done {
-                            snapshot_buf.extend_from_slice(&chunk);
-                            if snapshot_buf.len() >= 8 && &snapshot_buf[..8] == b"GHOSTSNP" {
-                                match try_decode_snapshot_prefix(&snapshot_buf, true, None) {
-                                    Ok(Some(res)) => {
-                                        let mut new_term = res.terminal;
-                                        let consumed = res.consumed;
-                                        let theme = inner.state.lock().unwrap_or_else(|e| e.into_inner()).active_theme.clone();
-                                        let _ = new_term.apply_theme(&theme);
-                                        let trailing = &snapshot_buf[consumed..];
-                                        if !trailing.is_empty() {
-                                            for item in apc.push(trailing) {
-                                                match item {
-                                                    DemuxItem::Vt(b) => new_term.vt_write(&b),
-                                                    DemuxItem::Apc(a) => inner.handle_inline_apc(&bk, a),
-                                                }
-                                            }
-                                        }
-                                        {
-                                            let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
-                                            g.terminal = new_term;
-                                            g.received_bytes += snapshot_buf.len() as u64;
-                                            g.recompute_activity();
-                                        }
-                                        snapshot_buf.clear();
-                                        snapshot_done = true;
-                                        (inner.notify)(HubNotice::BlockOutput(bk.clone()));
-                                    }
-                                    Ok(None) => continue,
-                                    Err(e) => {
-                                        tracing::warn!("GHOSTSNP decode fallback for {}: {e}", bk.block_id);
-                                        let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
-                                        g.terminal.vt_write(&snapshot_buf);
-                                        g.received_bytes += snapshot_buf.len() as u64;
-                                        snapshot_buf.clear();
-                                        snapshot_done = true;
-                                        (inner.notify)(HubNotice::BlockOutput(bk.clone()));
-                                    }
-                                }
-                            } else if snapshot_buf.len() >= 8 || !b"GHOSTSNP".starts_with(&snapshot_buf) {
-                                let items = apc.push(&snapshot_buf);
-                                {
-                                    let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
-                                    for item in items {
-                                        match item {
-                                            DemuxItem::Vt(b) => g.terminal.vt_write(&b),
-                                            DemuxItem::Apc(a) => inner.handle_inline_apc(&bk, a),
-                                        }
-                                    }
-                                    g.received_bytes += snapshot_buf.len() as u64;
-                                    g.recompute_activity();
-                                }
-                                snapshot_buf.clear();
-                                snapshot_done = true;
-                                (inner.notify)(HubNotice::BlockOutput(bk.clone()));
+                } else {
+                    (None, 0, std::borrow::Cow::Borrowed(chunk.as_slice()))
+                };
+                let terminal = terminal.map(|mut t| {
+                    let theme = inner.state.lock().unwrap_or_else(|e| e.into_inner()).active_theme.clone();
+                    let _ = t.apply_theme(&theme);
+                    t
+                });
+                let items = apc.push(&live);
+                let mut notices = Vec::new();
+                let restored = terminal.is_some();
+                let applied = {
+                    let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
+                    let result = terminal.map_or(Ok(()), |t| g.restore_terminal(t));
+                    if result.is_ok() {
+                        for item in items {
+                            match item {
+                                DemuxItem::Vt(b) => g.terminal.vt_write(&b),
+                                DemuxItem::Apc(a) => notices.extend(g.inline(a, ctrl.client_id())),
                             }
-                            continue;
                         }
-
-                        let items = apc.push(&chunk);
-                        {
-                            let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
-                            for item in items {
-                                match item {
-                                    DemuxItem::Vt(b) => g.terminal.vt_write(&b),
-                                    DemuxItem::Apc(a) => inner.handle_inline_apc(&bk, a),
-                                }
-                            }
-                            g.received_bytes += chunk.len() as u64;
-                            g.recompute_activity();
-                        }
-                        (inner.notify)(HubNotice::BlockOutput(bk.clone()));
+                        g.input_ready = true;
+                        g.received_bytes += (snapshot_size + live.len()) as u64;
+                        g.recompute_activity();
+                    }
+                    result
+                };
+                if let Err(e) = applied {
+                    tracing::warn!("Could not restore the terminal for {}: {e}", bk.block_id);
+                    stream.close_clean().await;
+                    break;
+                }
+                if restored {
+                    let generation = {
+                        let b = br.lock().unwrap_or_else(|e| e.into_inner());
+                        b.finding.then_some(b.find_generation)
+                    };
+                    if let Some(generation) = generation {
+                        inner.search_on_worker(br.clone(), generation);
                     }
                 }
+                for a in notices {
+                    inner.handle_inline_apc(&bk, a);
+                }
+                (inner.notify)(HubNotice::BlockOutput(bk.clone()));
             }
             br.lock().unwrap_or_else(|e| e.into_inner()).data_connected = false;
         });
     }
 
     fn handle_inline_apc(&self, bk: &BlockKey, apc: InlineApc) {
-        match apc {
-            InlineApc::ChildExited { exit_code } => {
-                (self.notify)(HubNotice::Toast {
-                    title: "Process exited".into(),
-                    body: format!("Exit code {exit_code}"),
-                    host_key: Some(bk.host_key.clone()),
-                    session_id: Some(bk.session_id.clone()),
-                    block_id: Some(bk.block_id.clone()),
-                });
-            }
+        let (title, body) = match apc {
+            InlineApc::ChildExited { exit_code } => ("Process exited".to_owned(), format!("Exit code {exit_code}")),
             InlineApc::Unknown(val) => {
-                if let Some(title) = val.get("title").and_then(Value::as_str) {
-                    let body = val.get("body").and_then(Value::as_str).unwrap_or("");
-                    (self.notify)(HubNotice::Toast {
-                        title: title.to_owned(),
-                        body: body.to_owned(),
-                        host_key: Some(bk.host_key.clone()),
-                        session_id: Some(bk.session_id.clone()),
-                        block_id: Some(bk.block_id.clone()),
-                    });
-                }
+                let Some(title) = val.get("title").and_then(Value::as_str) else { return };
+                (title.to_owned(), val.get("body").and_then(Value::as_str).unwrap_or("").to_owned())
             }
-            InlineApc::Resize { .. } | InlineApc::Theme { .. } => {}
-        }
+            _ => return,
+        };
+        self.pane_attention(bk, &title, body, olo_kit::notify::NoteKind::Information);
     }
 
-    async fn handle_control_event(self: &Arc<Self>, host_key: &str, ctrl: &ControlClient, ep: &RexEndpoint, ev: ControlEvent) {
+    fn pane_attention(&self, bk: &BlockKey, title: &str, body: String, kind: olo_kit::notify::NoteKind) {
+        let session = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(view) = st.hosts.get(&bk.host_key).and_then(|h| h.sessions.get(&bk.session_id)) else { return };
+            view.label.clone()
+        };
+        (self.notify)(HubNotice::Attention { target: Target::Pane(bk.clone()), title: format!("{session} · {title}"), body, kind });
+    }
+
+    /// Legacy bridge callers may only identify their host. An explicit pane belongs
+    /// to its originating host and session, even if another pane now has focus.
+    fn bridge_notice(&self, host_key: &str, session_id: Option<&str>, block_id: Option<&str>, payload: &Value) {
+        let session_id = session_id.or_else(|| payload.get("session_id").and_then(Value::as_str));
+        let block_id = block_id.or_else(|| payload.get("block_id").and_then(Value::as_str));
+        let notice = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(host) = st.hosts.get(host_key) else { return };
+            let (target, label) = match (session_id, block_id) {
+                (sid, Some(bid)) => {
+                    let session = match sid {
+                        Some(id) => host.sessions.get(id).filter(|s| s.find_block(bid).is_some()),
+                        None => host.sessions.values().find(|s| s.find_block(bid).is_some()),
+                    };
+                    let Some(s) = session else { return };
+                    (Target::Pane(BlockKey { host_key: host_key.into(), session_id: s.session_id.clone(), block_id: bid.into() }), &s.label)
+                }
+                (Some(sid), None) => {
+                    let Some(s) = host.session_summaries.iter().find(|s| s.session_id == sid) else { return };
+                    (Target::Session { host_key: host_key.into(), session_id: sid.into() }, &s.label)
+                }
+                (None, None) => (Target::Host(host_key.into()), &host.label),
+            };
+            let title = payload.get("title").and_then(Value::as_str).unwrap_or("Rex");
+            let body = payload.get("body").and_then(Value::as_str).unwrap_or_default().to_owned();
+            HubNotice::Attention { target, title: format!("{label} · {title}"), body, kind: olo_kit::notify::NoteKind::Important }
+        };
+        (self.notify)(notice);
+    }
+
+    /// Re-read the resources that can change between two numbered envelopes.
+    /// A fresh bootstrap also reinstalls subscriptions. Its membership watermark
+    /// prevents events already represented in this snapshot from undoing it.
+    async fn refresh_host(self: &Arc<Self>, host_key: &str, ctrl: &ControlClient, ep: &RexEndpoint) -> Result<u64, olo_rex_client::RexError> {
+        let snapshot = SessionSnapshot::read(ctrl, &[]).await?;
+        let server = ctrl.server_status().await?;
+        let rows = snapshot.rows;
+        let hosts = ctrl.hosts_list().await?;
+        let overrides = self.state.lock().unwrap_or_else(|e| e.into_inner()).settings.keymap_overrides.clone();
+        let keymap = ctrl.client_keymap(&keymap::register_actions_payload(), &[keymap::default_client_layer()], &overrides).await?.payload;
+        {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(h) = st.hosts.get_mut(host_key).filter(|h| h.control.as_ref().is_some_and(|c| c.same_connection(ctrl))) else { return Ok(snapshot.seq) };
+            h.synced_hosts = hosts.payload.hosts;
+            h.keymap_bindings = keymap.bindings;
+            h.keymap_modes = keymap.modes.unwrap_or_default();
+            h.keymap_diagnostics = keymap.diagnostics;
+            h.tailscale_seq = server.seq;
+            h.tailscale = server.payload.tailscale.clone();
+            h.server_status = Some(server.payload);
+            let ids: HashSet<_> = rows.iter().map(|r| r.session_id.as_str()).collect();
+            h.sessions.retain(|id, _| ids.contains(id.as_str()));
+            h.session_summaries = rows.clone();
+            st.retain_blocks(|b| b.host_key != host_key || ids.contains(b.session_id.as_str()));
+        }
+        for view in snapshot.views {
+            let session_id = view.session_id.clone();
+            let ids: Vec<_> = view
+                .windows
+                .iter()
+                .flat_map(|w| w.all_blocks())
+                .filter(|b| b.creator_name == "com.superlogical.terminal" || b.flavor.starts_with("com.superlogical.terminal"))
+                .map(|b| b.block_id.clone())
+                .collect();
+            self.ingest_session(host_key, ctrl, ep, view, &[]).await;
+            for bid in ids {
+                let sid = &session_id;
+                let key = BlockKey { host_key: host_key.into(), session_id: sid.clone(), block_id: bid.clone() };
+                let block = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&key).cloned();
+                let Some(block) = block else { continue };
+                let (status, ports, process, mode) =
+                    tokio::try_join!(ctrl.terminal_program_status(sid, &bid), ctrl.terminal_ports(sid, &bid), ctrl.terminal_process(sid, &bid), ctrl.terminal_input_mode(sid, &bid))?;
+                let mut b = block.lock().unwrap_or_else(|e| e.into_inner());
+                b.status_snapshot(Some(status));
+                b.set_ports(ports.seq, ports.payload);
+                b.process_snapshot(process);
+                b.password_prompt = !mode.payload.echo;
+            }
+        }
+        self.write_palette_index();
+        (self.notify)(HubNotice::StateChanged);
+        Ok(snapshot.seq)
+    }
+
+    async fn handle_control_event(self: &Arc<Self>, host_key: &str, ctrl: &ControlClient, ep: &RexEndpoint, seq: u64, ev: ControlEvent) {
         match ev {
             ControlEvent::SessionCreated(s) => {
+                {
+                    let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                    let Some(h) = st.hosts.get_mut(host_key) else { return };
+                    if !h.session_summaries.iter().any(|row| row.session_id == s.session_id) {
+                        h.session_summaries.push(s.clone());
+                    }
+                }
                 if let Ok(att) = ctrl.session_attach(&s.session_id).await {
                     self.ingest_session(host_key, ctrl, ep, att.payload.view, &[]).await;
                 }
+            }
+            ControlEvent::SessionMoved { session_id, before_session_id } => {
+                let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                let Some(host) = st.hosts.get_mut(host_key) else {
+                    return;
+                };
+                move_session(&mut host.session_summaries, &session_id, before_session_id.as_deref());
+                drop(st);
+                (self.notify)(HubNotice::StateChanged);
             }
             ControlEvent::SessionDestroyed { session_id } => {
                 let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
                 if let Some(h) = st.hosts.get_mut(host_key) {
                     h.sessions.remove(&session_id);
+                    h.pending_focus.remove(&session_id);
                     h.session_summaries.retain(|s| s.session_id != session_id);
                 }
-                st.blocks.retain(|bk, _| !(bk.host_key == host_key && bk.session_id == session_id));
+                st.retain_blocks(|bk| !(bk.host_key == host_key && bk.session_id == session_id));
                 drop(st);
+                self.write_palette_index();
+                (self.notify)(HubNotice::StateChanged);
+            }
+            ControlEvent::BlockOwnerChanged { session_id, block_id, owner } => {
+                let bk = BlockKey { host_key: host_key.to_owned(), session_id, block_id };
+                if let Some(block) = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk) {
+                    block.lock().unwrap_or_else(|e| e.into_inner()).other_size_owner = owner.is_some() && owner.as_deref() != ctrl.client_id();
+                }
                 (self.notify)(HubNotice::StateChanged);
             }
             ControlEvent::SessionViewChanged { session_id, .. }
@@ -1726,18 +2448,52 @@ impl RexHubInner {
                     self.ingest_session(host_key, ctrl, ep, v.payload, &[]).await;
                 }
             }
-            ControlEvent::EventDropped { session_id, .. } => {
-                if let Some(sid) = session_id
-                    && let Ok(v) = ctrl.session_view(&sid).await
-                {
+            ControlEvent::EventDropped { session_id: Some(sid), block_id, block_event_name, .. } => {
+                if let Ok(v) = ctrl.session_view(&sid).await {
                     self.ingest_session(host_key, ctrl, ep, v.payload, &[]).await;
+                }
+                if let Some(bid) = block_id {
+                    let bk = BlockKey { host_key: host_key.into(), session_id: sid.clone(), block_id: bid.clone() };
+                    let block = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).cloned();
+                    let Some(block) = block else { return };
+                    let what = block_event_name.as_deref();
+                    if matches!(what, None | Some("program_status_changed" | "program_status_removed")) {
+                        let result = ctrl.terminal_program_status(&sid, &bid).await.ok();
+                        block.lock().unwrap_or_else(|e| e.into_inner()).status_snapshot(result);
+                    }
+                    if matches!(what, None | Some("ports_changed"))
+                        && let Ok(r) = ctrl.terminal_ports(&sid, &bid).await
+                    {
+                        block.lock().unwrap_or_else(|e| e.into_inner()).set_ports(r.seq, r.payload);
+                    }
+                    if matches!(what, None | Some("process_changed"))
+                        && let Ok(r) = ctrl.terminal_process(&sid, &bid).await
+                    {
+                        block.lock().unwrap_or_else(|e| e.into_inner()).process_snapshot(r);
+                    }
+                    if matches!(what, None | Some("input_mode_changed"))
+                        && let Ok(r) = ctrl.terminal_input_mode(&sid, &bid).await
+                    {
+                        block.lock().unwrap_or_else(|e| e.into_inner()).password_prompt = !r.payload.echo;
+                    }
+                    (self.notify)(HubNotice::StateChanged);
                 }
             }
             ControlEvent::BlockEvent { session_id, block_id, name, payload, .. } => {
+                if name == "clipboard_written" {
+                    let permitted = self.clipboard_allowed(host_key);
+                    if permitted && let Some(text) = payload.get("text").and_then(Value::as_str) {
+                        (self.notify)(HubNotice::SetClipboard(text.to_owned()));
+                    }
+                    return;
+                }
                 let bk = BlockKey { host_key: host_key.to_owned(), session_id: session_id.clone(), block_id: block_id.clone() };
-                let br_opt = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(&bk).cloned();
+                let (br_opt, rules) = {
+                    let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                    (st.blocks.get(&bk).cloned(), st.settings.notifications.clone())
+                };
                 if let Some(br) = br_opt {
-                    let mut notify_toast: Option<(String, String, bool)> = None;
+                    let mut activity_note = None;
                     let mut keep_going_nudge: Option<String> = None;
                     {
                         let mut g = br.lock().unwrap_or_else(|e| e.into_inner());
@@ -1757,16 +2513,27 @@ impl RexHubInner {
                                     g.password_prompt = !echo;
                                 }
                             }
-                            "program_status_changed" => {
-                                if let Ok(recs) = serde_json::from_value::<Vec<ProgramStatusRecord>>(payload.get("records").cloned().unwrap_or(Value::Array(vec![]))) {
-                                    let prev = g.agent_activity;
-                                    g.program_statuses = recs;
+                            "program_status_changed" | "program_status_removed" => {
+                                if let Some(change) = StatusUpdate::parse(&name, &payload) {
+                                    let previous = AgentActivity::from_records(&g.program_statuses).map(|(_, r)| r.clone());
+                                    g.status_event(seq, change);
                                     let now = g.recompute_activity();
-                                    if now != prev && !g.muted && matches!(now, AgentActivity::Blocked | AgentActivity::Error | AgentActivity::Done) {
-                                        g.unread = true;
-                                        let msg = g.program_statuses.first().and_then(|r| r.msg.clone().or_else(|| r.title.clone())).unwrap_or_else(|| format!("{:?}", now));
-                                        let label = if g.title.is_empty() { "Rex Pane".to_owned() } else { g.title.clone() };
-                                        notify_toast = Some((label, msg, now == AgentActivity::Blocked || now == AgentActivity::Error));
+                                    let rule = match now {
+                                        AgentActivity::Blocked => Some((&rules.blocked, "Agent blocked", olo_kit::notify::NoteKind::Important)),
+                                        AgentActivity::Error => Some((&rules.error, "Agent failed", olo_kit::notify::NoteKind::Error)),
+                                        AgentActivity::Done => Some((&rules.done, "Agent finished", olo_kit::notify::NoteKind::Information)),
+                                        _ => None,
+                                    };
+                                    if !g.muted
+                                        && let Some((rule, title, kind)) = rule
+                                        && let Some((_, record)) = AgentActivity::from_records(&g.program_statuses)
+                                        && previous.as_ref() != Some(record)
+                                    {
+                                        if rule.desktop_notification {
+                                            let body = record.msg.clone().or_else(|| record.title.clone()).unwrap_or_else(|| g.title.clone());
+                                            activity_note = Some((title, body, kind));
+                                        }
+                                        g.unread |= rule.badge;
                                     }
                                     if let Some(kg) = &mut g.keep_going
                                         && let Some(nudge) = kg.observe(now)
@@ -1777,17 +2544,18 @@ impl RexHubInner {
                             }
                             "ports_changed" => {
                                 if let Ok(ps) = serde_json::from_value::<PortsSnapshot>(payload.clone()) {
-                                    g.ports = ps;
+                                    g.set_ports(seq, ps);
                                 }
                             }
                             "process_changed" => {
-                                if let Ok(pr) = serde_json::from_value::<TerminalProcessSnapshot>(payload.clone()) {
-                                    if let Some(cwd) = pr.foreground.as_ref().and_then(|p| p.cwd.as_ref()).or_else(|| pr.child.as_ref().and_then(|p| p.cwd.as_ref())) {
-                                        g.pwd = cwd.clone();
-                                    }
-                                    g.process = Some(pr);
-                                    g.recompute_activity();
+                                if seq < g.process_seq {
+                                    return;
                                 }
+                                g.process_seq = seq;
+                                if let Some(cwd) = merge_process(&mut g.process, &payload) {
+                                    g.pwd = cwd;
+                                }
+                                g.recompute_activity();
                             }
                             "bell" => {
                                 g.last_bell = Some(Instant::now());
@@ -1798,17 +2566,8 @@ impl RexHubInner {
                             _ => {}
                         }
                     }
-                    if let Some((title, body, urgent)) = notify_toast {
-                        (self.notify)(HubNotice::Toast {
-                            title: title.clone(),
-                            body: body.clone(),
-                            host_key: Some(bk.host_key.clone()),
-                            session_id: Some(bk.session_id.clone()),
-                            block_id: Some(bk.block_id.clone()),
-                        });
-                        if urgent {
-                            bridge::send_desktop_notification(&title, &body, Some(vec!["--focus-block".into(), bk.host_key.clone(), bk.session_id.clone(), bk.block_id.clone()]));
-                        }
+                    if let Some((title, body, kind)) = activity_note {
+                        self.pane_attention(&bk, title, body, kind);
                     }
                     if let Some(nudge) = keep_going_nudge {
                         let _ = ctrl.terminal_write(&session_id, &block_id, &nudge).await;
@@ -1844,7 +2603,7 @@ impl RexHubInner {
             ControlEvent::TailscaleStatusChanged(status) => {
                 let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
                 if let Some(h) = st.hosts.get_mut(host_key) {
-                    h.tailscale = Some(status);
+                    crate::tailscale::apply(&mut h.tailscale, &mut h.tailscale_seq, seq, status);
                 }
                 drop(st);
                 (self.notify)(HubNotice::StateChanged);
@@ -1856,21 +2615,22 @@ impl RexHubInner {
                 (self.notify)(HubNotice::PromptEnded { host_key: host_key.to_owned(), call_id: end.call_id });
             }
             ControlEvent::ClientPerformRequested(req) => {
-                let ok = self.handle_client_perform(host_key, req.action.clone(), req.args.clone(), req.session_id.clone()).await;
+                let ok = self.handle_client_perform(host_key, req.action.clone(), req.args.clone(), req.session_id.clone(), req.block_id.clone()).await;
                 if ok {
                     let _ = ctrl.client_reply_ok(&req.call_id, json!({ "ok": true })).await;
                 } else {
-                    let _ = ctrl.client_reply_err(&req.call_id, "permission_denied", "Action denied by Olo host policy").await;
+                    let _ = ctrl.client_reply_err(&req.call_id, "permission_denied", "No matching Rex workspace or permission for this action").await;
                 }
             }
             ControlEvent::ClientCallRequested(req) => {
                 let _ = ctrl.client_reply_err(&req.call_id, "unsupported", &format!("Unknown RPC {}.{}", req.server, req.method)).await;
             }
+            ControlEvent::Unknown { kind, .. } => tracing::debug!(%kind,"Unrecognized Rex event"),
             _ => {}
         }
     }
 
-    async fn handle_client_perform(self: &Arc<Self>, host_key: &str, action: String, args: Option<Value>, session_id: Option<String>) -> bool {
+    async fn handle_client_perform(self: &Arc<Self>, host_key: &str, action: String, args: Option<Value>, session_id: Option<String>, block_id: Option<String>) -> bool {
         if action.starts_with("olo.") {
             let (is_local, policy) = {
                 let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -1901,12 +2661,13 @@ impl RexHubInner {
                     return true;
                 }
                 "olo.notify" => {
-                    let title = args.as_ref().and_then(|a| a.get("title")).and_then(Value::as_str).unwrap_or("Rex");
-                    let body = args.as_ref().and_then(|a| a.get("body")).and_then(Value::as_str).unwrap_or("");
-                    bridge::send_desktop_notification(title, body, None);
+                    self.bridge_notice(host_key, session_id.as_deref(), block_id.as_deref(), args.as_ref().unwrap_or(&Value::Null));
                     return true;
                 }
                 "olo.clipboard.set" => {
+                    if !policy.allow_remote_control {
+                        return false;
+                    }
                     if let Some(text) = args.as_ref().and_then(|a| a.get("text")).and_then(Value::as_str) {
                         (self.notify)(HubNotice::SetClipboard(text.to_owned()));
                     }
@@ -1942,8 +2703,7 @@ impl RexHubInner {
             }
         }
 
-        (self.notify)(HubNotice::PerformRequested { host_key: host_key.to_owned(), action, args, session_id });
-        true
+        crate::ui::request_action(host_key, session_id, block_id, action, args)
     }
 
     /// Atomically persist live Rex session summaries so Olo's global Command Palette
@@ -2012,6 +2772,127 @@ pub fn shell_quote(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use olo_rex_vt::try_decode_snapshot_prefix;
+
+    #[test]
+    fn reorders_and_recovered_metadata_follow_the_server() {
+        let mut rows = ["a", "b", "c"].map(|id| SessionSummary { session_id: id.into(), label: id.into() }).to_vec();
+        move_session(&mut rows, "c", Some("b"));
+        assert_eq!(rows[1].session_id, "c");
+        let mut block = BlockRuntime::new(40, 12, &TerminalTheme::default());
+        block.set_ports(3, PortsSnapshot { status: "current".into(), ..Default::default() });
+        block.set_ports(2, PortsSnapshot::default());
+        assert_eq!(block.ports.status, "current");
+        block.status_snapshot(Some(olo_rex_client::RpcResult { seq: 5, payload: vec![ProgramStatusRecord { state: "done".into(), ..Default::default() }] }));
+        block.status_snapshot(Some(olo_rex_client::RpcResult { seq: 4, payload: vec![] }));
+        assert_eq!(block.agent_activity, AgentActivity::Done);
+    }
+    #[test]
+    fn transfer_references_use_the_wire_format() {
+        for direction in ["upload", "download"] {
+            let r = transfer_reference(direction);
+            let uuid = r.strip_prefix(&format!("{direction}:")).unwrap();
+            assert_eq!(uuid, uuid::Uuid::parse_str(uuid).unwrap().to_string());
+        }
+    }
+
+    #[test]
+    fn foreground_event_preserves_snapshot_fields() {
+        let mut p = Some(serde_json::from_value(json!({"child":{"pid":1,"name":"shell"},"home":"/fixture","last_exit":{"exit_code":7}})).unwrap());
+        assert_eq!(merge_process(&mut p, &json!({"generation":3,"foreground":{"pid":2,"name":"editor","cwd":"/fixture/work"}})).as_deref(), Some("/fixture/work"));
+        let p = p.unwrap();
+        assert_eq!(p.child.unwrap().pid, 1);
+        assert_eq!(p.home.as_deref(), Some("/fixture"));
+        assert_eq!(p.last_exit.unwrap().exit_code, 7);
+        assert!(!crate::settings::HostBridgePolicy::remote_default().allow_remote_control);
+    }
+
+    #[test]
+    fn only_a_complete_download_can_become_a_preview() {
+        let mut bytes = Vec::new();
+        assert!(!preview_complete(&mut bytes, 2, Ok(Some(vec![1, 2]))).unwrap());
+        assert!(preview_complete(&mut bytes, 2, Err(olo_rex_client::RexError::Closed("interrupted".into()))).is_err());
+        assert!(preview_complete(&mut bytes, 3, Ok(None)).is_err());
+        assert!(preview_complete(&mut bytes, 2, Ok(None)).unwrap());
+        assert_eq!(bytes, [1, 2]);
+    }
+
+    #[test]
+    fn an_inline_resize_and_theme_apply_to_the_stream_in_order() {
+        let mut b = BlockRuntime::new(60, 12, &TerminalTheme::default());
+        assert!(b.inline(InlineApc::Resize { cols: 90, rows: 20, cell_width_px: 8, cell_height_px: 16, owner: Some("other".into()) }, Some("here")).is_none());
+        assert_eq!(b.terminal.size(), (90, 20));
+        assert!(b.other_size_owner);
+        b.inline(InlineApc::Theme { foreground: None, background: Some("#abcdef".into()), cursor: None, palette: vec![], scheme: None }, None);
+        assert_eq!(b.current_theme.background.to_hex(), "#abcdef");
+    }
+    #[test]
+    fn changed_queries_cancel_pending_search_and_rejected_resizes_keep_geometry() {
+        let mut block = BlockRuntime::new(80, 24, &TerminalTheme::default());
+        block.terminal.vt_write(b"apple berry");
+        block.set_find_query(Some("apple")).unwrap();
+        let stale = block.find_generation;
+        block.set_find_query(Some("berry")).unwrap();
+        assert!(block.find_step(stale).unwrap());
+        assert!(block.finding);
+        while !block.find_step(block.find_generation).unwrap() {}
+        assert_eq!(block.search.total_matches(), 1);
+        assert!(block.resize(60, 22, 8, 16).unwrap());
+        assert!(!block.resize(60, 22, 8, 16).unwrap());
+        assert!(block.resize(60, 22, 12, 24).unwrap());
+        assert!(block.resize(0, 22, 12, 24).is_err());
+        assert_eq!(block.geometry, Some((60, 22, 12, 24)));
+    }
+    #[test]
+    fn find_stays_bound_to_the_restored_terminal() {
+        let mut block = BlockRuntime::new(60, 12, &themes::builtin_themes()[0].1);
+        block.terminal.vt_write(b"needle on the old screen");
+        block.set_find_query(Some("needle")).unwrap();
+        block.search.run().unwrap();
+        assert_eq!(block.search.total_matches(), 1);
+        let mut terminal = GhosttyTerminal::new(60, 12).unwrap();
+        terminal.vt_write(b"needle needle on the replacement screen");
+        let snapshot = terminal.encode_snapshot().unwrap();
+        let restored = try_decode_snapshot_prefix(&snapshot, true, None).unwrap().unwrap();
+        block.restore_terminal(restored.terminal).unwrap();
+        while !block.find_step(block.find_generation).unwrap() {}
+        assert_eq!(block.search.total_matches(), 2);
+        block.set_find_query(Some("replacement")).unwrap();
+        block.search.run().unwrap();
+        assert_eq!(block.search.total_matches(), 1);
+    }
+
+    #[test]
+    fn status_reports_update_one_record_and_removals_reveal_the_next() {
+        let mut b = BlockRuntime::new(40, 12, &themes::builtin_themes()[0].1);
+        let change = |v| StatusUpdate::parse("program_status_changed", &v).unwrap();
+        b.status_event(3, change(json!({"id":"","record":{"state":"working"},"reason":"report"})));
+        b.status_event(4, change(json!({"id":"job","record":{"state":"blocked"},"reason":"report"})));
+        b.status_snapshot(Some(olo_rex_client::RpcResult { seq: 2, payload: vec![] }));
+        assert_eq!(b.program_statuses.len(), 2);
+        assert_eq!(b.recompute_activity(), AgentActivity::Blocked);
+        b.status_event(5, change(json!({"id":"","record":{"state":"done"},"reason":"report"})));
+        assert_eq!(b.recompute_activity(), AgentActivity::Blocked);
+        b.status_event(6, StatusUpdate::parse("program_status_removed", &json!({"ids":["job","another-job"],"reason":"removed"})).unwrap());
+        assert_eq!(b.recompute_activity(), AgentActivity::Done);
+        assert_eq!(b.program_statuses.len(), 1);
+    }
+
+    #[test]
+    fn a_late_view_cannot_restore_closed_panes_or_an_ended_session() {
+        let mut rows = vec![SessionSummary { session_id: "s".into(), label: String::new() }];
+        let mut sessions = HashMap::new();
+        let empty = SessionView { session_id: "s".into(), label: "empty".into(), revision: 2, ..Default::default() };
+        assert!(install_view(&mut rows, &mut sessions, empty.clone()));
+        assert_eq!(rows[0].label, "empty");
+        let old = SessionView { revision: 1, ..empty.clone() };
+        assert!(!install_view(&mut rows, &mut sessions, old));
+        assert!(sessions["s"].windows.is_empty());
+        rows.clear();
+        sessions.clear();
+        assert!(!install_view(&mut rows, &mut sessions, empty));
+        assert!(sessions.is_empty());
+    }
 
     /// End-to-end live integration test: spawns an isolated scratch `rex server run`,
     /// connects via `olo-rex-client`, opens a `rex.data.terminal.v1` stream, decodes
@@ -2022,12 +2903,19 @@ mod tests {
         if !std::path::Path::new("/usr/bin/rex").exists() {
             return;
         }
-        let dir = PathBuf::from(format!("/var/tmp/olo-rex-e2e-{}", std::process::id()));
+        let dir = std::env::var_os("TMPDIR").map(PathBuf::from).filter(|p| p.starts_with("/var/tmp")).unwrap_or_else(|| PathBuf::from("/var/tmp")).join(format!("olo-rex-e2e-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("create scratch dir");
         let sock = dir.join("rex.sock");
-        let mut child = std::process::Command::new("/usr/bin/rex")
-            .args(["server", "run", "--listen", &format!("unix://{}", sock.display())])
+        let child = std::process::Command::new("/usr/bin/rex")
+            .args(["-S", &format!("unix://{}", sock.display()), "server", "run", "--listen", &format!("unix://{}", sock.display()), "--restore=false", "--state-dir"])
+            .arg(&dir)
+            .current_dir(&dir)
+            .env("HOME", &dir)
+            .env("REX_SERVER_SOCKET", &sock)
+            .env_remove("SSH_AUTH_SOCK")
+            .env_remove("REX_SESSION")
+            .env_remove("REX_BLOCK")
             .env("XDG_RUNTIME_DIR", &dir)
             .env("XDG_STATE_HOME", &dir)
             .env("XDG_CONFIG_HOME", &dir)
@@ -2036,6 +2924,15 @@ mod tests {
             .spawn()
             .expect("spawn scratch rex server");
 
+        struct Fixture(std::process::Child, PathBuf);
+        impl Drop for Fixture {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+                let _ = std::fs::remove_dir_all(&self.1);
+            }
+        }
+        let _fixture = Fixture(child, dir.clone());
         let deadline = Instant::now() + Duration::from_secs(6);
         while !sock.exists() && Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(50));
@@ -2044,50 +2941,72 @@ mod tests {
 
         let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap();
         let res: Result<(), String> = rt.block_on(async {
-            let ep = RexEndpoint::Unix(sock.clone());
-            let (stream, host_hdr) = ep.connect_stream().await.map_err(|e| e.to_string())?;
-            let (ctrl, _ev) = ControlClient::connect(stream, &host_hdr, olo_rex_client::ClientIdentity::olo_rex(Some("e2e-test".into())), None).await.map_err(|e| e.to_string())?;
+            tokio::time::timeout(Duration::from_secs(20), async {
+                let ep = RexEndpoint::Unix(sock.clone());
+                let (stream, host_hdr) = ep.connect_stream().await.map_err(|e| e.to_string())?;
+                let (ctrl, _ev) = ControlClient::connect(stream, &host_hdr, olo_rex_client::ClientIdentity::olo_rex(Some("e2e-test".into())), None).await.map_err(|e| e.to_string())?;
 
-            let created = ctrl.session_create(Some("e2e"), None).await.map_err(|e| e.to_string())?;
-            let sid = created.payload.get("session_id").and_then(Value::as_str).ok_or("missing session_id")?;
-            let att = ctrl.session_attach(sid).await.map_err(|e| e.to_string())?;
-            let bid = att.payload.view.windows.first().and_then(|w| w.all_blocks().next()).map(|b| b.block_id.clone()).ok_or("no terminal block in session")?;
+                let created = ctrl.session_create(Some("e2e"), None).await.map_err(|e| e.to_string())?;
+                let sid = created.payload.get("session_id").and_then(Value::as_str).ok_or("missing session_id")?;
+                let att = ctrl.session_attach(sid).await.map_err(|e| e.to_string())?;
+                let bid = att.payload.view.windows.first().and_then(|w| w.all_blocks().next()).map(|b| b.block_id.clone()).ok_or("no terminal block in session")?;
 
-            let open = ctrl.data_connect(sid, &bid, "terminal", DATA_TERMINAL_SUBPROTOCOL).await.map_err(|e| e.to_string())?;
-            let (ds, ds_hdr) = ep.connect_stream().await.map_err(|e| e.to_string())?;
-            let mut tstream = TerminalDataStream::connect_hello(ds, &ds_hdr, &open.payload.ticket).await.map_err(|e| e.to_string())?;
+                let open = ctrl.data_connect(sid, &bid, "terminal", DATA_TERMINAL_SUBPROTOCOL).await.map_err(|e| e.to_string())?;
+                let (ds, ds_hdr) = ep.connect_stream().await.map_err(|e| e.to_string())?;
+                let mut tstream = TerminalDataStream::connect_hello(ds, &ds_hdr, &open.payload.ticket).await.map_err(|e| e.to_string())?;
 
-            let mut buf = Vec::new();
-            let mut decoded = None;
-            let read_deadline = tokio::time::Instant::now() + Duration::from_secs(5);
-            while tokio::time::Instant::now() < read_deadline {
-                match tokio::time::timeout(Duration::from_secs(2), tstream.next_frame()).await {
-                    Ok(Ok(TerminalStreamFrame::Bytes(chunk))) => {
-                        buf.extend_from_slice(&chunk);
-                        if buf.len() >= 8 && &buf[..8] == b"GHOSTSNP" {
-                            if let Some(sr) = try_decode_snapshot_prefix(&buf, true, None).map_err(|e| e.to_string())? {
-                                decoded = Some(sr.terminal);
-                                break;
-                            }
+                let mut attach = crate::attach::Attachment::default();
+                let mut term = tokio::time::timeout(Duration::from_secs(5), async {
+                    loop {
+                        let frame = tstream.next_frame().await.map_err(|e| e.to_string())?;
+                        let TerminalStreamFrame::Bytes(bytes) = frame else {
+                            return Err("closed before snapshot".to_owned());
+                        };
+                        if let Some(screen) = attach.push(&bytes).map_err(|e| e.to_string())? {
+                            return screen.terminal.ok_or_else(|| "no snapshot".to_owned());
                         }
                     }
-                    _ => break,
+                })
+                .await
+                .map_err(|e| e.to_string())??;
+                let fixture = dir.join("preview.txt");
+                std::fs::write(&fixture, b"Rex preview").map_err(|e| e.to_string())?;
+                let begin = ctrl.terminal_download_begin(sid, &bid, &transfer_reference("download"), fixture.to_str().unwrap(), None).await.map_err(|e| e.to_string())?.payload;
+                let (raw, header) = ep.connect_stream().await.map_err(|e| e.to_string())?;
+                let mut transfer = BytesDataStream::connect_hello(raw, &header, &begin.ticket.unwrap()).await.map_err(|e| e.to_string())?;
+                let mut bytes = Vec::new();
+                while !preview_complete(&mut bytes, begin.size, transfer.read_chunk().await).map_err(|e| e.to_string())? {}
+                assert_eq!(&bytes, b"Rex preview");
+                let begin = ctrl.terminal_upload_begin(sid, &bid, &transfer_reference("upload"), "sample.txt", 4, None).await.map_err(|e| e.to_string())?.payload;
+                let (raw, header) = ep.connect_stream().await.map_err(|e| e.to_string())?;
+                let mut upload = BytesDataStream::connect_hello(raw, &header, &begin.ticket).await.map_err(|e| e.to_string())?;
+                upload.write_all(b"test").await.map_err(|e| e.to_string())?;
+                upload.finish_write().await.map_err(|e| e.to_string())?;
+                let mut rs = RenderState::new().map_err(|e| e.to_string())?;
+                rs.begin_update(&mut term).map_err(|e| e.to_string())?;
+                let _ = rs.end_update();
+                let colors = rs.colors();
+                let rows = rs.extract_rows(&colors.palette, false).map_err(|e| e.to_string())?;
+                assert!(!rows.is_empty(), "RenderState extracted zero rows");
+                let split = ctrl.session_new_split(sid, Some(&bid), "down", None).await.map_err(|e| e.to_string())?.payload;
+                assert_eq!(split["anchor_id"], bid);
+                let second = split["block_ids"][0].as_str().unwrap();
+                ctrl.session_resize_pane(sid, split["split_ids"][0].as_str().unwrap(), 0.6).await.map_err(|e| e.to_string())?;
+                ctrl.session_move_block(sid, second, &bid, "left").await.map_err(|e| e.to_string())?;
+                for result in [ctrl.session_own_block(sid, &bid).await, ctrl.session_disown_block(sid, &bid).await] {
+                    let result = result.map_err(|e| e.to_string())?.payload;
+                    assert_eq!(result["blocks"].as_array().unwrap().len(), 1);
+                    assert_eq!(result["blocks"][0]["block_id"], bid);
                 }
-            }
-            let mut term = decoded.ok_or_else(|| format!("did not receive complete GHOSTSNP (got {} bytes)", buf.len()))?;
-            let mut rs = RenderState::new().map_err(|e| e.to_string())?;
-            rs.begin_update(&mut term).map_err(|e| e.to_string())?;
-            let _ = rs.end_update();
-            let colors = rs.colors();
-            let rows = rs.extract_rows(&colors.palette, false).map_err(|e| e.to_string())?;
-            assert!(!rows.is_empty(), "RenderState extracted zero rows");
-            tstream.close_clean().await;
-            Ok(())
+                tstream.close_clean().await;
+                Ok(())
+            })
+            .await
+            .expect("scratch Rex test timed out")
         });
-
-        let _ = child.kill();
-        let _ = child.wait();
-        let _ = std::fs::remove_dir_all(&dir);
         res.expect("live GHOSTSNP -> RenderState pipeline failed");
     }
 }
+
+#[cfg(test)]
+mod reconnect_tests;

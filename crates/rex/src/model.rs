@@ -3,6 +3,15 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+// Several Go slices in the rev-19 schema can be either [] or null.
+pub(crate) fn list_or_empty<'de, D, T>(d: D) -> Result<Vec<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Ok(Option::<Vec<T>>::deserialize(d)?.unwrap_or_default())
+}
+
 /// The API revision this client speaks (matches installed Rex server rev 19).
 pub const REX_API_REVISION: u32 = 19;
 /// Minimum API revision we can interoperate with gracefully.
@@ -51,7 +60,7 @@ pub struct WelcomeClient {
 pub struct CarrierInfo {
     pub carrier: String,
     pub port: u16,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "list_or_empty")]
     pub alpn: Vec<String>,
 }
 
@@ -196,11 +205,15 @@ pub struct ServerStatus {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ServerVersion {
-    #[serde(default)]
+    #[serde(rename = "rex_version", alias = "version")]
     pub version: String,
     #[serde(default)]
-    pub commit: String,
+    pub platform: String,
     #[serde(default)]
+    pub dirty: bool,
+    #[serde(default)]
+    pub commit: String,
+    #[serde(default, rename = "built_at", alias = "build_date")]
     pub build_date: String,
     #[serde(default)]
     pub api_revision: u32,
@@ -213,7 +226,7 @@ pub struct HostRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     pub label: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "list_or_empty")]
     pub endpoints: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
@@ -229,7 +242,9 @@ pub struct HostRecord {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct HostsListResponse {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "list_or_empty")]
+    pub diagnostics: Vec<KeymapDiagnostic>,
+    #[serde(default, deserialize_with = "list_or_empty")]
     pub hosts: Vec<HostRecord>,
     #[serde(default)]
     pub hash: String,
@@ -276,6 +291,17 @@ pub struct LayoutNode {
     pub split: Option<SplitNode>,
 }
 
+impl LayoutNode {
+    pub(crate) fn find_split(&self, id: &str) -> Option<&SplitNode> {
+        let split = self.split.as_ref()?;
+        if split.split_id == id { Some(split) } else { split.before.find_split(id).or_else(|| split.after.find_split(id)) }
+    }
+
+    pub(crate) fn first_block_id(&self) -> Option<&str> {
+        self.block_id.as_deref().or_else(|| self.split.as_ref()?.before.first_block_id())
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BlockInfo {
     pub block_id: String,
@@ -315,7 +341,7 @@ pub struct LayerView {
     pub state: Option<String>,
     #[serde(default)]
     pub layout: Option<LayoutNode>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "list_or_empty")]
     pub blocks: Vec<BlockInfo>,
 }
 
@@ -338,7 +364,7 @@ pub struct WindowView {
     pub focused_block_id: Option<String>,
     #[serde(default)]
     pub zoomed_block_id: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "list_or_empty")]
     pub layers: Vec<LayerView>,
 }
 
@@ -360,7 +386,7 @@ pub struct SessionView {
     pub label: String,
     #[serde(default)]
     pub active_window_id: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "list_or_empty")]
     pub windows: Vec<WindowView>,
 }
 
@@ -403,7 +429,7 @@ pub struct DataTicket {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AttachAllPayload {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "list_or_empty")]
     pub sessions: Vec<SessionSummary>,
 }
 
@@ -472,6 +498,7 @@ pub struct KeymapAction {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct KeymapBinding {
+    #[serde(deserialize_with = "list_or_empty")]
     pub keys: Vec<String>,
     pub action: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -514,12 +541,17 @@ pub struct KeymapDiagnostic {
     pub mode: Option<String>,
 }
 
+fn key_sequences<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Vec<Vec<String>>>, D::Error> {
+    let sequences = Option::<Vec<Option<Vec<String>>>>::deserialize(d)?;
+    Ok(sequences.map(|items| items.into_iter().flatten().collect()))
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct KeymapMode {
     pub name: String,
     #[serde(default)]
     pub exclusive: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "key_sequences")]
     pub blocked: Option<Vec<Vec<String>>>,
 }
 
@@ -538,9 +570,9 @@ pub struct KeymapConfigInfo {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct KeymapResponse {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "list_or_empty")]
     pub bindings: Vec<KeymapBinding>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "list_or_empty")]
     pub diagnostics: Vec<KeymapDiagnostic>,
     #[serde(default)]
     pub actions: Option<Vec<KeymapAction>>,
@@ -629,7 +661,7 @@ pub struct ClientCallRequested {
     pub args: Option<Value>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ProcessOwner {
     pub pid: u32,
     pub name: String,
@@ -654,6 +686,8 @@ pub struct ProgramStatusRecord {
     pub msg: Option<String>,
     #[serde(default)]
     pub updated_at: String,
+    #[serde(default)]
+    pub owner: Option<ProcessOwner>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -770,7 +804,7 @@ pub struct DirListing {
     #[serde(default)]
     pub home: String,
     pub status: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "list_or_empty")]
     pub entries: Vec<DirEntry>,
     #[serde(default)]
     pub truncated: bool,
@@ -828,7 +862,7 @@ pub struct BlobReadResponse {
 pub struct ActionResult {
     #[serde(default)]
     pub result: Option<Value>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "list_or_empty")]
     pub client_actions: Vec<QueuedClientAction>,
     #[serde(default)]
     pub ordered_after: Option<String>,
@@ -884,124 +918,75 @@ pub enum ControlEvent {
     ClientJoined(ConnectedClient),
     ClientChanged(ConnectedClient),
     ClientLeft { client_id: String },
-    EventDropped { event_type: String, session_id: Option<String>, block_id: Option<String> },
+    EventDropped { event_type: String, session_id: Option<String>, block_id: Option<String>, creator_name: Option<String>, block_event_name: Option<String>, size: u64 },
     Unknown { kind: String, payload: Value },
 }
 
 impl ControlEvent {
     pub fn parse(kind: &str, payload: Value) -> Self {
-        match kind {
-            "session_created" => {
-                if let Some(s) = payload.get("session").and_then(|v| serde_json::from_value(v.clone()).ok()) {
-                    return Self::SessionCreated(s);
-                }
+        if kind == "session_event"
+            && let Some(sid) = payload.get("session_id").and_then(Value::as_str)
+            && let Some(inner_kind) = payload.pointer("/event/type").and_then(Value::as_str)
+        {
+            if let Some(event) = Self::parse_session_event(sid.to_owned(), inner_kind, &payload["event"]["payload"]) {
+                return event;
             }
-            "session_destroyed" => {
-                if let Some(id) = payload.get("session_id").and_then(Value::as_str) {
-                    return Self::SessionDestroyed { session_id: id.to_owned() };
-                }
-            }
-            "session_moved" => {
-                if let Some(id) = payload.get("session_id").and_then(Value::as_str) {
-                    return Self::SessionMoved { session_id: id.to_owned(), before_session_id: payload.get("before_session_id").and_then(Value::as_str).map(str::to_owned) };
-                }
-            }
-            "hosts_changed" => {
-                return Self::HostsChanged { hash: payload.get("hash").and_then(Value::as_str).unwrap_or_default().to_owned() };
-            }
-            "keymap_changed" => {
-                return Self::KeymapChanged {
-                    generation: payload.get("generation").and_then(Value::as_u64).unwrap_or(0),
-                    hash: payload.get("hash").and_then(Value::as_str).unwrap_or_default().to_owned(),
-                };
-            }
-            "tailscale_status_changed" => {
-                if let Ok(ts) = serde_json::from_value(payload.clone()) {
-                    return Self::TailscaleStatusChanged(ts);
-                }
-            }
-            "client_prompt_requested" => {
-                if let Ok(req) = serde_json::from_value(payload.clone()) {
-                    return Self::ClientPromptRequested(req);
-                }
-            }
-            "client_prompt_ended" => {
-                if let Ok(end) = serde_json::from_value(payload.clone()) {
-                    return Self::ClientPromptEnded(end);
-                }
-            }
-            "client_perform_requested" => {
-                if let Ok(req) = serde_json::from_value(payload.clone()) {
-                    return Self::ClientPerformRequested(req);
-                }
-            }
-            "client_call_requested" => {
-                if let Ok(req) = serde_json::from_value(payload.clone()) {
-                    return Self::ClientCallRequested(req);
-                }
-            }
-            "client_joined" => {
-                if let Some(c) = payload.get("client").and_then(|v| serde_json::from_value(v.clone()).ok()) {
-                    return Self::ClientJoined(c);
-                }
-            }
-            "client_changed" => {
-                if let Some(c) = payload.get("client").and_then(|v| serde_json::from_value(v.clone()).ok()) {
-                    return Self::ClientChanged(c);
-                }
-            }
-            "client_left" => {
-                if let Some(id) = payload.get("client_id").and_then(Value::as_str) {
-                    return Self::ClientLeft { client_id: id.to_owned() };
-                }
-            }
-            "event_dropped" => {
-                return Self::EventDropped {
-                    event_type: payload.get("event_type").and_then(Value::as_str).unwrap_or_default().to_owned(),
-                    session_id: payload.get("session_id").and_then(Value::as_str).map(str::to_owned),
-                    block_id: payload.get("block_id").and_then(Value::as_str).map(str::to_owned),
-                };
-            }
-            "session_event" => {
-                let sid = payload.get("session_id").and_then(Value::as_str).unwrap_or_default().to_owned();
-                if let Some(inner) = payload.get("event") {
-                    let itype = inner.get("type").and_then(Value::as_str).unwrap_or_default();
-                    let ip = inner.get("payload").cloned().unwrap_or(Value::Null);
-                    return Self::parse_session_event(sid, itype, ip);
-                }
-            }
-            _ => {}
+            return Self::Unknown { kind: format!("session_event.{inner_kind}"), payload };
         }
-        Self::Unknown { kind: kind.to_owned(), payload }
+        Self::parse_server_event(kind, &payload).unwrap_or_else(|| Self::Unknown { kind: kind.to_owned(), payload })
     }
 
-    fn parse_session_event(session_id: String, kind: &str, payload: Value) -> Self {
-        match kind {
-            "session_view_changed" => Self::SessionViewChanged { session_id, revision: payload.get("revision").and_then(Value::as_u64).unwrap_or(0) },
-            "session_label_changed" => Self::SessionLabelChanged { session_id, label: payload.get("label").and_then(Value::as_str).unwrap_or_default().to_owned() },
+    fn parse_server_event(kind: &str, payload: &Value) -> Option<Self> {
+        let string = |key: &str| payload.get(key)?.as_str().map(str::to_owned);
+        Some(match kind {
+            "session_created" => Self::SessionCreated(SessionSummary::deserialize(payload.get("session")?).ok()?),
+            "session_destroyed" => Self::SessionDestroyed { session_id: string("session_id")? },
+            "session_moved" => Self::SessionMoved { session_id: string("session_id")?, before_session_id: string("before_session_id") },
+            "hosts_changed" => Self::HostsChanged { hash: string("hash")? },
+            "keymap_changed" => Self::KeymapChanged { generation: payload.get("generation")?.as_u64()?, hash: string("hash").unwrap_or_default() },
+            "tailscale_status_changed" => Self::TailscaleStatusChanged(TailscaleStatus::deserialize(payload).ok()?),
+            "client_prompt_requested" => Self::ClientPromptRequested(ClientPromptRequested::deserialize(payload).ok()?),
+            "client_prompt_ended" => Self::ClientPromptEnded(ClientPromptEnded::deserialize(payload).ok()?),
+            "client_perform_requested" => Self::ClientPerformRequested(ClientPerformRequested::deserialize(payload).ok()?),
+            "client_call_requested" => Self::ClientCallRequested(ClientCallRequested::deserialize(payload).ok()?),
+            "client_joined" => Self::ClientJoined(ConnectedClient::deserialize(payload.get("client")?).ok()?),
+            "client_changed" => Self::ClientChanged(ConnectedClient::deserialize(payload.get("client")?).ok()?),
+            "client_left" => Self::ClientLeft { client_id: string("client_id")? },
+            "event_dropped" => Self::EventDropped {
+                event_type: string("event_type")?,
+                session_id: string("session_id"),
+                block_id: string("block_id"),
+                creator_name: string("creator_name"),
+                block_event_name: string("block_event_name"),
+                size: payload.get("size")?.as_u64()?,
+            },
+            _ => return None,
+        })
+    }
+
+    fn parse_session_event(session_id: String, kind: &str, payload: &Value) -> Option<Self> {
+        Some(match kind {
+            "session_view_changed" => Self::SessionViewChanged { session_id, revision: payload.get("revision")?.as_u64()? },
+            "session_label_changed" => Self::SessionLabelChanged { session_id, label: payload.get("label").and_then(Value::as_str)?.to_owned() },
             "active_window_changed" => Self::ActiveWindowChanged { session_id, window_id: payload.get("window_id").and_then(Value::as_str).map(str::to_owned) },
-            "window_created" => Self::WindowCreated { session_id, window_id: payload.get("window_id").and_then(Value::as_str).unwrap_or_default().to_owned() },
-            "window_closed" => Self::WindowClosed { session_id, window_id: payload.get("window_id").and_then(Value::as_str).unwrap_or_default().to_owned() },
-            "window_label_changed" => Self::WindowLabelChanged {
-                session_id,
-                window_id: payload.get("window_id").and_then(Value::as_str).unwrap_or_default().to_owned(),
-                label: payload.get("label").and_then(Value::as_str).unwrap_or_default().to_owned(),
-            },
-            "block_created" => Self::BlockCreated { session_id, block_id: payload.get("block_id").and_then(Value::as_str).unwrap_or_default().to_owned() },
-            "block_closed" => Self::BlockClosed { session_id, block_id: payload.get("block_id").and_then(Value::as_str).unwrap_or_default().to_owned() },
-            "block_owner_changed" => Self::BlockOwnerChanged {
-                session_id,
-                block_id: payload.get("block_id").and_then(Value::as_str).unwrap_or_default().to_owned(),
-                owner: payload.get("owner").and_then(Value::as_str).map(str::to_owned),
-            },
+            "window_created" => Self::WindowCreated { session_id, window_id: payload.get("window_id").and_then(Value::as_str)?.to_owned() },
+            "window_closed" => Self::WindowClosed { session_id, window_id: payload.get("window_id").and_then(Value::as_str)?.to_owned() },
+            "window_label_changed" => {
+                Self::WindowLabelChanged { session_id, window_id: payload.get("window_id").and_then(Value::as_str)?.to_owned(), label: payload.get("label").and_then(Value::as_str)?.to_owned() }
+            }
+            "block_created" => Self::BlockCreated { session_id, block_id: payload.get("block_id").and_then(Value::as_str)?.to_owned() },
+            "block_closed" => Self::BlockClosed { session_id, block_id: payload.get("block_id").and_then(Value::as_str)?.to_owned() },
+            "block_owner_changed" => {
+                Self::BlockOwnerChanged { session_id, block_id: payload.get("block_id").and_then(Value::as_str)?.to_owned(), owner: payload.get("owner").and_then(Value::as_str).map(str::to_owned) }
+            }
             "block_event" => {
-                let block_id = payload.get("block_id").and_then(Value::as_str).unwrap_or_default().to_owned();
-                let creator_name = payload.get("creator_name").or_else(|| payload.get("creator")).and_then(Value::as_str).unwrap_or_default().to_owned();
-                let name = payload.get("event").or_else(|| payload.get("name")).and_then(Value::as_str).unwrap_or_default().to_owned();
+                let block_id = payload.get("block_id").and_then(Value::as_str)?.to_owned();
+                let creator_name = payload.get("creator_name").or_else(|| payload.get("creator")).and_then(Value::as_str)?.to_owned();
+                let name = payload.get("event").or_else(|| payload.get("name")).and_then(Value::as_str)?.to_owned();
                 let inner = payload.get("payload").or_else(|| payload.get("data")).cloned().unwrap_or(Value::Null);
                 Self::BlockEvent { session_id, block_id, creator_name, name, payload: inner }
             }
-            _ => Self::Unknown { kind: format!("session_event.{kind}"), payload },
-        }
+            _ => return None,
+        })
     }
 }

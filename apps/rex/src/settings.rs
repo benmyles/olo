@@ -127,17 +127,6 @@ pub enum CustomSchemePolicy {
     Never,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum NotifyAnchor {
-    TopLeft,
-    TopCenter,
-    #[default]
-    TopRight,
-    BottomLeft,
-    BottomCenter,
-    BottomRight,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatusNotificationRule {
     pub tab_indicator: bool,
@@ -168,18 +157,11 @@ pub struct NotificationMatrix {
     pub blocked: StatusNotificationRule,
     pub error: StatusNotificationRule,
     pub done: StatusNotificationRule,
-    pub anchor: NotifyAnchor,
 }
 
 impl Default for NotificationMatrix {
     fn default() -> Self {
-        Self {
-            working: StatusNotificationRule::working(),
-            blocked: StatusNotificationRule::blocked(),
-            error: StatusNotificationRule::error(),
-            done: StatusNotificationRule::done(),
-            anchor: NotifyAnchor::TopRight,
-        }
+        Self { working: StatusNotificationRule::working(), blocked: StatusNotificationRule::blocked(), error: StatusNotificationRule::error(), done: StatusNotificationRule::done() }
     }
 }
 
@@ -402,6 +384,19 @@ pub fn settings_path() -> PathBuf {
 }
 
 impl Settings {
+    /// Reset preferences without forgetting connections or changing the trust granted to them.
+    pub fn preference_defaults(&self) -> Self {
+        Self {
+            saved_hosts: self.saved_hosts.clone(),
+            home_server_address: self.home_server_address.clone(),
+            ssh_agent_socket: self.ssh_agent_socket.clone(),
+            host_policies: self.host_policies.clone(),
+            trusted_links: self.trusted_links.clone(),
+            custom_scheme_policy: self.custom_scheme_policy,
+            ..Self::default()
+        }
+    }
+
     pub fn load() -> Self {
         std::fs::read_to_string(settings_path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
     }
@@ -422,5 +417,30 @@ impl Settings {
             Density::Comfortable => 22.0,
             Density::Compact => 20.0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn defaults_preserve_connections_and_trust() {
+        let settings: Settings = serde_json::from_value(serde_json::json!({
+            "saved_hosts": [{"id":"example","label":"Example","endpoint":"unix:///example","ssh_agent_socket":"/example-agent"}],
+            "home_server_address":"unix:///example",
+            "ssh_agent_socket":"/example-agent",
+            "host_policies":{"local":HostBridgePolicy::remote_default(),"example":HostBridgePolicy::local_default()},
+            "custom_scheme_policy":"Never","trusted_links":["example.invalid"],"font_size":21.0
+        }))
+        .unwrap();
+        let defaults = settings.preference_defaults();
+        assert_eq!(defaults.font_size, Settings::default().font_size);
+        assert_eq!(defaults.saved_hosts, settings.saved_hosts);
+        assert_eq!(defaults.home_server_address, settings.home_server_address);
+        assert_eq!(defaults.ssh_agent_socket, settings.ssh_agent_socket);
+        assert_eq!(defaults.host_policies, settings.host_policies);
+        assert_eq!(defaults.custom_scheme_policy, settings.custom_scheme_policy);
+        assert_eq!(defaults.trusted_links, settings.trusted_links);
     }
 }

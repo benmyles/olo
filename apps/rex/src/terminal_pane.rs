@@ -23,9 +23,7 @@ use std::{
 };
 
 use olo_kit::{Bounds, ContentMask, Font, FontId, FontStyle, FontWeight, GlyphId, GlyphRun, Hsla, Painter, PathBuilder, Pixels, Point, RenderImage, Rgba, TextRun, point, px, size, style};
-use olo_rex_vt::{
-    CellWide, CursorInfo, CursorStyle as VtCursorStyle, DirtyState, GhosttyTerminal, ImageLayer, ImagePlacement, RenderRow, RenderState, Rgb, RowId, TerminalTheme, UnderlineStyle, ViewportMatch,
-};
+use olo_rex_vt::{CellWide, CursorInfo, CursorStyle as VtCursorStyle, GhosttyTerminal, ImageLayer, ImagePlacement, RenderRow, Rgb, RowId, TerminalTheme, UnderlineStyle, ViewportMatch};
 
 use crate::{
     copy_mode::CopyMode,
@@ -147,7 +145,7 @@ impl SmoothScroll {
 #[derive(Default)]
 pub struct PaneVisualState {
     rows: RefCell<RowCache>,
-    images: RefCell<HashMap<u32, (u64, Arc<RenderImage>)>>,
+
     pub bounds: StdCell<Bounds<Pixels>>,
     pub shift: StdCell<f32>,
     pub drag_anchor: StdCell<Option<(u16, u16)>>,
@@ -179,6 +177,8 @@ impl PaneVisualState {
 #[derive(Default)]
 struct RowCache {
     key: Option<RowKey>,
+    owner: u64,
+    revision: u64,
     by_id: HashMap<RowId, CachedRow>,
     order: Vec<Option<RowId>>,
     ascii: Vec<(FontStyleKey, FontId, Box<[Option<Option<GlyphId>>; 95]>)>,
@@ -210,7 +210,7 @@ struct GlyphStyle {
 }
 
 struct CachedRow {
-    selection: Option<(u16, u16)>,
+    revision: u64,
     bgs: Vec<(f32, f32, Hsla)>,
     glyphs: Vec<Glyph>,
     emoji: bool,
@@ -245,7 +245,7 @@ struct Run {
 /// All inputs required to paint one Rex terminal pane.
 pub struct PanePaintArgs<'a> {
     pub term: &'a mut GhosttyTerminal,
-    pub render_state: &'a mut RenderState,
+    pub frame: &'a crate::frame::Frame,
     pub theme: &'a TerminalTheme,
     pub settings: &'a Settings,
     pub metrics: &'a Metrics,
@@ -260,7 +260,7 @@ pub struct PanePaintArgs<'a> {
 
 /// Paint one terminal pane into `rect` and return cursor bounds (in window pixels) for IME positioning.
 pub fn paint_pane(g: &mut Painter, rect: Bounds<Pixels>, args: PanePaintArgs<'_>, visual: &PaneVisualState) -> Option<Bounds<Pixels>> {
-    let PanePaintArgs { term, render_state, theme, settings, metrics: m, focused, window_active, copy_mode, search_matches, hover_link, preedit, reduce_motion } = args;
+    let PanePaintArgs { term, frame, theme, settings, metrics: m, focused, window_active, copy_mode, search_matches, hover_link, preedit, reduce_motion } = args;
 
     visual.bounds.set(rect);
     olo_kit::review::own_grid(g, rect);
@@ -269,17 +269,11 @@ pub fn paint_pane(g: &mut Painter, rect: Bounds<Pixels>, args: PanePaintArgs<'_>
     let (cw, ch) = m.cell;
     let line_px = (1.0 / m.scale).max(0.5);
 
-    // Sync Ghostty render state (incremental dirty tracking!).
-    let _ = render_state.begin_update(term);
-    let _ = render_state.end_update();
-    let dirty = render_state.dirty();
-    let colors = render_state.colors();
-    let cursor = render_state.cursor();
-    let (_, rows_u16) = render_state.size();
-    let rows = rows_u16 as usize;
-    let extracted_rows = render_state.extract_rows(&colors.palette, false).unwrap_or_default();
-    let placements = render_state.extract_image_placements().unwrap_or_default();
-    let _ = render_state.clean();
+    let Some((colors, cursor)) = &frame.header else {
+        g.paint_quad(olo_kit::fill(rect, hsla(theme.background)));
+        return None;
+    };
+    let rows = frame.order.len();
 
     let default_bg = if settings.force_theme_palette { theme.background } else { colors.background };
     let default_fg = if settings.force_theme_palette { theme.foreground } else { colors.foreground };
@@ -325,35 +319,34 @@ pub fn paint_pane(g: &mut Painter, rect: Bounds<Pixels>, args: PanePaintArgs<'_>
     // Update RowCache only for rows that changed (or full dirty / key change).
     {
         let mut cache = visual.rows.borrow_mut();
-        let full_rebuild = dirty == DirtyState::Full || cache.key.as_ref() != Some(&key);
-        if full_rebuild {
-            cache.key = Some(key);
-            cache.by_id.clear();
-            cache.ascii.clear();
-        }
-
-        let mut next_order = Vec::with_capacity(extracted_rows.len());
-        let mut keep_ids = std::collections::HashSet::with_capacity(extracted_rows.len());
-
-        for r in &extracted_rows {
-            keep_ids.insert(r.id);
-            next_order.push(Some(r.id));
-
-            let needs_layout = full_rebuild || r.dirty || !cache.by_id.get(&r.id).is_some_and(|c| c.selection == r.selection);
-
-            if needs_layout {
-                let built = build_cached_row(g, &mut cache.ascii, r, m, default_fg, default_bg, selection_bg, selection_fg, &ansi16, settings.minimum_contrast, settings.bold_is_bright);
-                cache.by_id.insert(r.id, built);
+        let rebuild = cache.owner != frame.owner || cache.key.as_ref() != Some(&key);
+        if rebuild || cache.revision != frame.revision {
+            if rebuild {
+                cache.key = Some(key);
+                cache.owner = frame.owner;
+                cache.by_id.clear();
+                cache.ascii.clear();
             }
+            cache.order.clear();
+            for id in &frame.order {
+                let source = &frame.rows[id];
+                let (stamp, r) = (source.revision, &source.row);
+                cache.order.push(Some(*id));
+                if !cache.by_id.get(id).is_some_and(|cached| cached.revision == stamp) {
+                    let mut built = build_cached_row(g, &mut cache.ascii, r, m, default_fg, default_bg, selection_bg, selection_fg, &ansi16, settings.minimum_contrast, settings.bold_is_bright);
+                    built.revision = stamp;
+                    cache.by_id.insert(*id, built);
+                }
+            }
+            cache.by_id.retain(|id, _| frame.rows.contains_key(id));
+            cache.revision = frame.revision;
         }
-        cache.by_id.retain(|id, _| keep_ids.contains(id));
-        cache.order = next_order;
     }
 
     // Paint inside clip mask of the pane rect.
     g.with_content_mask(Some(ContentMask { bounds: rect }), |g| {
         // 1. Kitty graphics BelowBackground.
-        paint_kitty_layer(g, term, visual, &placements, ImageLayer::BelowBackground, origin, (cw, ch));
+        paint_kitty_layer(g, frame, ImageLayer::BelowBackground, origin, (cw, ch), m.scale);
 
         // 2. All cached rows in one `paint_layer` (backgrounds first, then shapes + glyphs).
         {
@@ -368,7 +361,7 @@ pub fn paint_pane(g: &mut Painter, rect: Bounds<Pixels>, args: PanePaintArgs<'_>
                     }
                 }
                 // Kitty graphics BelowText (above cell backgrounds, under glyphs).
-                paint_kitty_layer(g, term, visual, &placements, ImageLayer::BelowText, origin, (cw, ch));
+                paint_kitty_layer(g, frame, ImageLayer::BelowText, origin, (cw, ch), m.scale);
 
                 for (r_idx, maybe_id) in cache.order.iter().enumerate() {
                     let Some(id) = maybe_id else { continue };
@@ -391,7 +384,7 @@ pub fn paint_pane(g: &mut Painter, rect: Bounds<Pixels>, args: PanePaintArgs<'_>
         }
 
         // 3. Kitty graphics AboveText.
-        paint_kitty_layer(g, term, visual, &placements, ImageLayer::AboveText, origin, (cw, ch));
+        paint_kitty_layer(g, frame, ImageLayer::AboveText, origin, (cw, ch), m.scale);
 
         // Schedule Kitty animation tick if any animated images are active.
         let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
@@ -630,6 +623,7 @@ fn build_cached_row(
     let cols = row.cells.len();
     let mut used = vec![false; cols + 1];
     let mut legible_last: Option<(Rgb, Rgb, Rgb)> = None;
+    let mut last_ink = None;
 
     for (col, cell) in row.cells.iter().enumerate() {
         if matches!(cell.wide, CellWide::SpacerTail | CellWide::SpacerHead) {
@@ -688,7 +682,15 @@ fn build_cached_row(
             continue;
         }
 
-        let st = GlyphStyle { fg: hsla(fg), bold: cell.style.bold, italic: cell.style.italic };
+        let ink = match last_ink {
+            Some((rgb, ink)) if rgb == fg => ink,
+            _ => {
+                let ink = hsla(fg);
+                last_ink = Some((fg, ink));
+                ink
+            }
+        };
+        let st = GlyphStyle { fg: ink, bold: cell.style.bold, italic: cell.style.italic };
         let x = col as f32 * cw;
         let w = cw * span as f32;
 
@@ -822,7 +824,7 @@ fn build_cached_row(
     }
 
     let emoji = glyphs.iter().any(|gl| gl.emoji);
-    CachedRow { selection: row.selection, bgs, glyphs, emoji, run: RefCell::default(), shapes }
+    CachedRow { revision: 0, bgs, glyphs, emoji, run: RefCell::default(), shapes }
 }
 
 fn ascii_glyphs(g: &Painter, table: &mut Vec<(FontStyleKey, FontId, Box<[Option<Option<GlyphId>>; 95]>)>, family: Option<&str>, st: GlyphStyle, text: &str) -> Option<(FontId, Vec<GlyphId>)> {
@@ -846,46 +848,46 @@ fn ascii_glyphs(g: &Painter, table: &mut Vec<(FontStyleKey, FontId, Box<[Option<
     Some((*font, ids))
 }
 
-fn paint_kitty_layer(g: &mut Painter, term: &GhosttyTerminal, visual: &PaneVisualState, placements: &[ImagePlacement], layer: ImageLayer, origin: (f32, f32), (cw, ch): (f32, f32)) {
-    if placements.is_empty() {
-        return;
+fn image_rect(p: &ImagePlacement, origin: (f32, f32), cell: (f32, f32), scale: f32) -> Bounds<Pixels> {
+    let x = origin.0 + p.viewport_col as f32 * cell.0 + p.cell_offset_x as f32 / scale;
+    let y = origin.1 + p.viewport_row as f32 * cell.1 + p.cell_offset_y as f32 / scale;
+    Bounds::new(point(px(x), px(y)), size(px(p.pixel_width as f32 / scale), px(p.pixel_height as f32 / scale)))
+}
+
+// Position the full texture so exactly the source rectangle is inside the clip.
+// Nearest sampling on enlargement keeps a neighbour outside the crop from bleeding in.
+fn image_texture_bounds(p: &ImagePlacement, dest: Bounds<Pixels>, w: f32, h: f32) -> Option<Bounds<Pixels>> {
+    if p.source_width == 0 || p.source_height == 0 {
+        return None;
     }
-    let mut cache = visual.images.borrow_mut();
-    for p in placements {
-        if p.layer != layer {
-            continue;
-        }
-        let img = if let Some((gen_, cached)) = cache.get(&p.image_id)
-            && *gen_ == p.image_generation
-        {
-            cached.clone()
-        } else if let Some(decoded) = term.kitty_image_rgba(p.image_id) {
-            if let Some(render_img) = rgba_to_render_image(&decoded.rgba, decoded.width, decoded.height) {
-                cache.insert(p.image_id, (decoded.generation, render_img.clone()));
-                render_img
-            } else {
-                continue;
-            }
-        } else {
+    let sx = f32::from(dest.size.width) / p.source_width as f32;
+    let sy = f32::from(dest.size.height) / p.source_height as f32;
+    Some(Bounds::new(point(dest.left() - px(p.source_x as f32 * sx), dest.top() - px(p.source_y as f32 * sy)), size(px(w * sx), px(h * sy))))
+}
+fn paint_kitty_layer(g: &mut Painter, frame: &crate::frame::Frame, layer: ImageLayer, origin: (f32, f32), cell: (f32, f32), scale: f32) {
+    for p in frame.placements.iter().filter(|p| p.layer == layer) {
+        let Some(Some(img)) = frame.textures.get(&(p.image_id, p.image_generation)) else {
             continue;
         };
-
-        let x = origin.0 + p.viewport_col as f32 * cw + p.cell_offset_x as f32;
-        let y = origin.1 + p.viewport_row as f32 * ch + p.cell_offset_y as f32;
-        let w = if p.grid_cols > 0 { p.grid_cols as f32 * cw } else { (p.pixel_width as f32).max(1.0) };
-        let h = if p.grid_rows > 0 { p.grid_rows as f32 * ch } else { (p.pixel_height as f32).max(1.0) };
-        let bounds = Bounds::new(point(px(x), px(y)), size(px(w), px(h)));
-        let _ = g.paint_image(bounds, olo_kit::Corners::default(), img, 0, false);
-    }
-    if layer == ImageLayer::AboveText {
-        let active_ids: std::collections::HashSet<u32> = placements.iter().map(|p| p.image_id).collect();
-        cache.retain(|id, _| active_ids.contains(id));
+        let b = image_rect(p, origin, cell, scale);
+        let wh = img.size(0);
+        let (w, h) = (u32::from(wh.width) as f32, u32::from(wh.height) as f32);
+        let Some(bounds) = image_texture_bounds(p, b, w, h) else {
+            continue;
+        };
+        g.with_content_mask(Some(ContentMask { bounds: b }), |g| {
+            if p.pixel_width >= p.source_width || p.pixel_height >= p.source_height {
+                let _ = g.paint_image_nearest(bounds, img.clone());
+            } else {
+                let _ = g.paint_image(bounds, olo_kit::Corners::default(), img.clone(), 0, false);
+            }
+        });
     }
 }
 
 /// Convert straight RGBA8 pixels to Olo's BGRA `RenderImage`.
 pub fn rgba_to_render_image(rgba: &[u8], width: u32, height: u32) -> Option<Arc<RenderImage>> {
-    if width == 0 || height == 0 || rgba.len() < (width as usize * height as usize * 4) {
+    if width == 0 || height == 0 || rgba.len() != (width as usize).checked_mul(height as usize)?.checked_mul(4)? {
         return None;
     }
     let mut bgra = Vec::with_capacity(rgba.len());
@@ -1073,5 +1075,40 @@ fn draw_box(out: &mut Vec<Shape>, (rx, ry, rw, rh): (f32, f32, f32, f32), c: cha
         0xe0b1 => out.push(Shape::Line(vec![(rx, ry), (x1 - one, cy), (rx, y1)], light, color)),
         0xe0b3 => out.push(Shape::Line(vec![(x1, ry), (rx + one, cy), (x1, y1)], light, color)),
         _ => seg(&mut fill, n, n, n, n),
+    }
+}
+
+#[cfg(test)]
+mod image_tests {
+    use super::*;
+    #[test]
+    fn source_crop_pixel_extents_and_fractional_offsets() {
+        let p = ImagePlacement {
+            image_id: 1,
+            image_generation: 1,
+            placement_id: 1,
+            layer: ImageLayer::AboveText,
+            z: 1,
+            viewport_col: 2,
+            viewport_row: 1,
+            grid_cols: 3,
+            grid_rows: 2,
+            cell_offset_x: 3,
+            cell_offset_y: 6,
+            pixel_width: 12,
+            pixel_height: 9,
+            source_x: 2,
+            source_y: 4,
+            source_width: 2,
+            source_height: 2,
+        };
+
+        let r = image_rect(&p, (10., 20.), (6., 12.), 1.5);
+        assert_eq!(r, Bounds::new(point(px(24.), px(36.)), size(px(8.), px(6.))));
+        assert_eq!(image_texture_bounds(&p, r, 8., 8.), Some(Bounds::new(point(px(16.), px(24.)), size(px(32.), px(24.)))));
+        assert!(rgba_to_render_image(&[0; 3], 1, 1).is_none());
+        assert!(rgba_to_render_image(&[0; 5], 1, 1).is_none());
+        assert!(rgba_to_render_image(&[], u32::MAX, u32::MAX).is_none());
+        assert_eq!(rgba_to_render_image(&[1, 2, 3, 255], 1, 1).unwrap().as_bytes(0).unwrap(), &[3, 2, 1, 255]);
     }
 }

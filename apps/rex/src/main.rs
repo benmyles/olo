@@ -5,8 +5,11 @@
 //! in-place upgrade survival, Deskbar Glance, and zero-trust Olo Desktop Bridge).
 
 mod agent;
+mod attach;
+mod attention;
 mod bridge;
 mod copy_mode;
+mod frame;
 mod git;
 mod hub;
 mod keymap;
@@ -14,6 +17,7 @@ mod links;
 mod overlays;
 mod panels;
 mod settings;
+mod tailscale;
 mod terminal_pane;
 mod themes;
 mod ui;
@@ -35,6 +39,7 @@ struct CliArgs {
     open_goto: bool,
     dir: Option<String>,
     session: Option<(String, String)>,
+    focus_host: Option<String>,
     focus_block: Option<(String, String, String)>,
 }
 
@@ -49,6 +54,7 @@ fn parse_args(args: &[String]) -> CliArgs {
         open_goto: false,
         dir: None,
         session: None,
+        focus_host: None,
         focus_block: None,
     };
     let mut i = 0;
@@ -71,6 +77,12 @@ fn parse_args(args: &[String]) -> CliArgs {
                 if let (Some(h), Some(s)) = (args.get(i + 1), args.get(i + 2)) {
                     out.session = Some((h.clone(), s.clone()));
                     i += 2;
+                }
+            }
+            "--focus-host" => {
+                if let Some(h) = args.get(i + 1) {
+                    out.focus_host = Some(h.clone());
+                    i += 1;
                 }
             }
             "--focus-block" => {
@@ -123,6 +135,8 @@ fn main() {
                 let req = parse_args(&launch.args);
                 if let Some((h, s, b)) = req.focus_block {
                     ui::focus_block_from_cli(h, s, b);
+                } else if let Some(host) = req.focus_host {
+                    ui::show_target(attention::Target::Host(host), None);
                 } else if let Some((h, s)) = req.session {
                     ui::focus_session_from_cli(h, s);
                 } else if req.open_settings {
@@ -140,7 +154,7 @@ fn main() {
                 } else if req.new_window {
                     ui::open_workspace_window(None);
                 } else if let Some(dir) = req.dir {
-                    ui::app().hub.create_session("local", None, Some(dir));
+                    ui::create_session_from_cli(dir);
                 } else {
                     ui::open_workspace_window(None);
                 }
@@ -159,6 +173,8 @@ fn main() {
 
         if let Some((h, s, b)) = cli.focus_block {
             ui::focus_block_from_cli(h, s, b);
+        } else if let Some(host) = cli.focus_host {
+            ui::show_target(attention::Target::Host(host), None);
         } else if let Some((h, s)) = cli.session {
             ui::focus_session_from_cli(h, s);
         }

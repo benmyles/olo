@@ -20,7 +20,7 @@ use zeroize::Zeroizing;
 use crate::{
     hub::{HostConnState, RexHub},
     keymap::KeymapEngine,
-    settings::{AnimationStyle, BarBehavior, CursorShapeSetting, CursorTrail, Density, HostBridgePolicy, NotifyAnchor, OptionAsAlt, SchemeChoice, Settings, ToolbarLayout},
+    settings::{AnimationStyle, BarBehavior, CursorShapeSetting, CursorTrail, Density, HostBridgePolicy, OptionAsAlt, SchemeChoice, Settings, ToolbarLayout},
     themes::{self, hsla},
 };
 
@@ -158,6 +158,8 @@ pub fn render_settings_panel(
     state: &SettingsPanelState,
     hub: &Arc<RexHub>,
     keymap: &KeymapEngine,
+    mut feedback: Option<Element>,
+    qr: Option<Arc<qrcode::QrCode>>,
     on_tab: impl Fn(&usize, &mut WindowCx) + 'static,
     mutate: SettingsMutator,
     on_select_bridge_host: impl Fn(&String, &mut WindowCx) + 'static,
@@ -166,7 +168,7 @@ pub fn render_settings_panel(
     on_import_theme: impl Fn(&(), &mut WindowCx) + 'static,
     on_install_shim: impl Fn(&(), &mut WindowCx) + 'static,
     on_install_skill: impl Fn(&(), &mut WindowCx) + 'static,
-    on_toggle_tailscale: impl Fn(&bool, &mut WindowCx) + 'static,
+    on_toggle_tailscale: impl Fn(&crate::tailscale::Action, &mut WindowCx) + 'static,
     on_defaults: impl Fn(&(), &mut WindowCx) + 'static,
     on_revert: impl Fn(&(), &mut WindowCx) + 'static,
     on_close: impl Fn(&(), &mut WindowCx) + 'static,
@@ -179,9 +181,10 @@ pub fn render_settings_panel(
         4 => render_keybindings_tab(state, keymap, on_record_shortcut, on_reload_config),
         5 => render_notifications_tab(settings, mutate),
         6 => render_bridge_tab(settings, state, hub, mutate, on_select_bridge_host, on_install_shim, on_install_skill),
-        _ => render_server_tab(settings, state, hub, mutate, on_toggle_tailscale),
+        _ => render_server_tab(settings, state, hub, mutate, on_toggle_tailscale, feedback.take(), qr),
     };
 
+    let page = if let Some(feedback) = feedback { div().w_full().flex().flex_col().gap(px(m::SPACING)).child(page).child(feedback) } else { page };
     let on_tab_rc = std::rc::Rc::new(on_tab);
     let mut cat_list = div().w(px(SIDEBAR_CAT_W)).flex_shrink_0().flex().flex_col().gap(px(2.0)).p(px(4.0));
     for (idx, &name) in SETTINGS_TABS.iter().enumerate() {
@@ -208,7 +211,7 @@ pub fn render_settings_panel(
         )
         .child(cat_list);
 
-    let defaults_enabled = serde_json::to_string(settings).ok() != serde_json::to_string(&Settings::default()).ok();
+    let defaults_enabled = serde_json::to_string(settings).ok() != serde_json::to_string(&settings.preference_defaults()).ok();
     let revert_enabled = state.opened_snapshot.as_ref().is_some_and(|orig| serde_json::to_string(settings).ok() != serde_json::to_string(orig).ok());
 
     let footer_rule = canvas(|g, b| {
@@ -554,7 +557,7 @@ fn render_typography_tab(settings: &Settings, mutate: SettingsMutator) -> Elemen
                     .flex()
                     .flex_col()
                     .gap(px(m::SPACING))
-                    .child(slider_row("font-size", "Font size:", div_x, settings.font_size, 8.0..=28.0, 1.0, None, format!("{:.0} pt", settings.font_size), POPUP_W, move |&v, _| {
+                    .child(slider_row("font-size", "Font size:", div_x, settings.font_size, 8.0..=28.0, 1.0, None, format!("{} pt", settings.font_size), POPUP_W, move |&v, _| {
                         m1(Box::new(move |s| s.font_size = v.round()))
                     }))
                     .child(slider_row("line-height", "Line height:", div_x, settings.line_height, 0.9..=1.8, 0.05, None, format!("{:.2}×", settings.line_height), POPUP_W, move |&v, _| {
@@ -720,77 +723,34 @@ fn render_keybindings_tab(
 }
 
 fn render_notifications_tab(settings: &Settings, mutate: SettingsMutator) -> Element {
-    let div_x = divider_for(&["Toast position:"]);
-    let anchor_idx = match settings.notifications.anchor {
-        NotifyAnchor::TopLeft => 0,
-        NotifyAnchor::TopCenter => 1,
-        NotifyAnchor::TopRight => 2,
-        NotifyAnchor::BottomLeft => 3,
-        NotifyAnchor::BottomCenter => 4,
-        NotifyAnchor::BottomRight => 5,
-    };
     let m1 = mutate.clone();
     let m2 = mutate.clone();
     let m3 = mutate.clone();
-    let m4 = mutate.clone();
-    let m5 = mutate.clone();
-    let m6 = mutate;
+    let m4 = mutate;
 
-    div()
-        .flex()
-        .flex_col()
-        .gap(px(m::SECTION))
-        .w_full()
-        .child(
-            BBox::new("Agent & Status Alerts").child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(m::SPACING))
-                    .child(
-                        CheckBox::new("Notify when an agent is Blocked (awaiting approval)", settings.notifications.blocked.desktop_notification)
-                            .on_toggle(move |&on, _| m1(Box::new(move |s| s.notifications.blocked.desktop_notification = on))),
-                    )
-                    .child(
-                        CheckBox::new("Show red unread badge for Blocked agents", settings.notifications.blocked.badge)
-                            .on_toggle(move |&on, _| m2(Box::new(move |s| s.notifications.blocked.badge = on))),
-                    )
-                    .child(
-                        CheckBox::new("Notify when a command or agent reports an Error", settings.notifications.error.desktop_notification)
-                            .on_toggle(move |&on, _| m3(Box::new(move |s| s.notifications.error.desktop_notification = on))),
-                    )
-                    .child(
-                        CheckBox::new("Notify when a long-running task finishes (Done)", settings.notifications.done.desktop_notification)
-                            .on_toggle(move |&on, _| m4(Box::new(move |s| s.notifications.done.desktop_notification = on))),
-                    )
-                    .child(CheckBox::new("Play alert sound for Blocked and Error alerts", settings.notifications.blocked.sound).on_toggle(move |&on, _| {
-                        m5(Box::new(move |s| {
-                            s.notifications.blocked.sound = on;
-                            s.notifications.error.sound = on;
-                        }));
-                    })),
-            ),
-        )
-        .child(
-            BBox::new("In-App Floating Notifications").child(
-                MenuField::new("notify-anchor", vec!["Top Left".into(), "Top Center".into(), "Top Right".into(), "Bottom Left".into(), "Bottom Center".into(), "Bottom Right".into()], anchor_idx)
-                    .label("Toast position:")
-                    .divider(div_x)
-                    .width(div_x + POPUP_W)
-                    .on_change(move |&i, _| {
-                        m6(Box::new(move |s| {
-                            s.notifications.anchor = match i {
-                                0 => NotifyAnchor::TopLeft,
-                                1 => NotifyAnchor::TopCenter,
-                                3 => NotifyAnchor::BottomLeft,
-                                4 => NotifyAnchor::BottomCenter,
-                                5 => NotifyAnchor::BottomRight,
-                                _ => NotifyAnchor::TopRight,
-                            };
-                        }));
-                    }),
-            ),
-        )
+    div().flex().flex_col().gap(px(m::SECTION)).w_full().child(
+        BBox::new("Agent & Status Alerts").child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(m::SPACING))
+                .child(
+                    CheckBox::new("Notify when an agent is Blocked (awaiting approval)", settings.notifications.blocked.desktop_notification)
+                        .on_toggle(move |&on, _| m1(Box::new(move |s| s.notifications.blocked.desktop_notification = on))),
+                )
+                .child(
+                    CheckBox::new("Show red unread badge for Blocked agents", settings.notifications.blocked.badge).on_toggle(move |&on, _| m2(Box::new(move |s| s.notifications.blocked.badge = on))),
+                )
+                .child(
+                    CheckBox::new("Notify when a command or agent reports an Error", settings.notifications.error.desktop_notification)
+                        .on_toggle(move |&on, _| m3(Box::new(move |s| s.notifications.error.desktop_notification = on))),
+                )
+                .child(
+                    CheckBox::new("Notify when a long-running task finishes (Done)", settings.notifications.done.desktop_notification)
+                        .on_toggle(move |&on, _| m4(Box::new(move |s| s.notifications.done.desktop_notification = on))),
+                ),
+        ),
+    )
 }
 
 fn render_bridge_tab(
@@ -869,32 +829,75 @@ fn render_bridge_tab(
         )
 }
 
-fn render_server_tab(settings: &Settings, state: &SettingsPanelState, hub: &Arc<RexHub>, mutate: SettingsMutator, on_toggle_tailscale: impl Fn(&bool, &mut WindowCx) + 'static) -> Element {
-    let (ts_status, server_ver) = {
+fn render_server_tab(
+    settings: &Settings,
+    state: &SettingsPanelState,
+    hub: &Arc<RexHub>,
+    mutate: SettingsMutator,
+    on_toggle_tailscale: impl Fn(&crate::tailscale::Action, &mut WindowCx) + 'static,
+    feedback: Option<Element>,
+    qr: Option<Arc<qrcode::QrCode>>,
+) -> Element {
+    let (ts_status, server_ver, connected, name) = {
         let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
         let h = st.hosts.get("local");
-        (h.and_then(|x| x.tailscale.clone()), h.and_then(|x| x.server_version.clone()))
+        (
+            h.and_then(|x| x.tailscale.clone()),
+            h.and_then(|x| x.server_version.clone()),
+            h.is_some_and(|x| x.conn_state == HostConnState::Connected),
+            h.map_or_else(|| "Rex".into(), |x| x.label.clone()),
+        )
     };
-    let ts_enabled = ts_status.as_ref().is_some_and(|t| t.state != "disabled" && t.state != "stopped" && !t.state.is_empty());
-    let ts_line = match &ts_status {
-        Some(t) => format!("State: {}  {}", t.state, t.dns_name.as_deref().unwrap_or("(no MagicDNS name yet)")),
-        None => "Tailscale status unavailable (local Rex server disconnected)".to_owned(),
-    };
+    let status = ts_status.as_ref();
+    let ts_enabled = connected && status.is_some_and(|s| matches!(s.state.as_str(), "starting" | "needs_login" | "running" | "connected" | "needs_machine_auth" | "stopping"));
     let agent_line = if state.ssh_agent_status.reachable {
         format!("Connected ({} keys loaded) — {}", state.ssh_agent_status.key_count, state.ssh_agent_status.socket_path.as_ref().map(|p| p.display().to_string()).unwrap_or_default())
     } else {
-        state.ssh_agent_status.error.clone().unwrap_or_else(|| "No SSH agent detected".to_owned())
+        let msg = state.ssh_agent_status.error.as_deref().unwrap_or("No SSH agent socket found");
+        if msg.ends_with('.') { msg.to_owned() } else { olo_kit::tr!("{}.", msg) }
     };
-    let ver_line = server_ver.map(|v| format!("Rex {} (API rev {})", v.version, v.api_revision)).unwrap_or_else(|| "Not connected".to_owned());
+    let (version, api) = server_ver.map(|v| (olo_kit::tr!("Rex {}", v.version), Some(olo_kit::tr!("(API rev {})", v.api_revision)))).unwrap_or((name, None));
+    let server = div()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap(px(m::TIGHT))
+        .child(StringView::new(olo_kit::tr!("Server: {}", version)).height(m::MARK_ROW))
+        .children(api.map(|v| StringView::new(v).dim(true).height(m::MARK_ROW)));
 
+    use crate::tailscale::Action;
+    let on_action = std::rc::Rc::new(on_toggle_tailscale);
+    let toggle = on_action.clone();
+    let check =
+        CheckBox::new("Reach this server over Tailscale", ts_enabled).enabled(connected && status.is_some()).on_toggle(move |on, cx| toggle(&if *on { Action::Enable } else { Action::Disable }, cx));
+    let needs_login = connected && status.is_some_and(|s| s.state == "needs_login");
+    let mut below = div().w_full().pl(px(m::MARK_SIZE + m::MARK_GAP)).flex().flex_col().items_start().gap(px(m::SPACING));
+    if !connected || feedback.is_none() || needs_login {
+        below = below.child(div().w_full().min_h(px(olo_kit::widgets::TextView::line_height())).child(StringView::new(crate::tailscale::state_line(status, connected)).wrap(true)));
+    }
+    let mut feedback = feedback.filter(|_| connected);
+    if needs_login {
+        if let Some(url) = status.and_then(crate::tailscale::login_link) {
+            let open = on_action.clone();
+            let page = url.to_owned();
+            below = below
+                .gap(px(m::BOX_INSET))
+                .child(Button::new("Open Sign-In Page").on_click(move |_, cx| open(&Action::OpenLink(page.clone()), cx)))
+                .children(feedback.take())
+                .child(StringView::new("Or scan with your phone:").dim(true).height(m::LABEL_ROW))
+                .children(qr.map(|qr| qr_code(url, qr, 144.0)));
+        } else {
+            below = below.child(Button::new("Sign In to Tailscale…").on_click(move |_, cx| on_action(&Action::Login, cx)));
+        }
+    }
+    below = below.children(feedback);
+    let group = div().w_full().flex().flex_col().items_start().gap(px(m::SPACING)).child(server).child(check).child(below);
     div()
         .flex()
         .flex_col()
         .gap(px(m::SECTION))
         .w_full()
-        .child(BBox::new("Local Rex Server & Tailscale").child(div().flex().flex_col().gap(px(m::TIGHT)).child(StringView::new(ver_line).bold(true)).child(StringView::new(ts_line).dim(true)).child(
-            div().pt(px(m::TIGHT)).child(Button::new(if ts_enabled { "Disable Tailscale Listener" } else { "Enable Tailscale Listener" }).on_click(move |_, cx| on_toggle_tailscale(&!ts_enabled, cx))),
-        )))
+        .child(BBox::new("Local Rex Server & Tailscale").child(group))
         .child(BBox::new("SSH Agent (Olo Passwords)").child(StringView::new(agent_line).dim(true)))
         .child(CheckBox::new("Enable Developer Mode (block IDs & protocol inspector)", settings.developer_mode).on_toggle(move |&on, _| mutate(Box::new(move |s| s.developer_mode = on))))
 }
@@ -941,12 +944,12 @@ pub fn render_hosts_panel(
                 ports.push((bk.host_key.clone(), host_lbl.clone(), bk.session_id.clone(), pe.address.clone(), pe.port, proc_name.clone()));
             }
         }
-        let forwards: Vec<(String, String, String, u16, u16)> = st
+        let forwards: Vec<_> = st
             .forwards
             .iter()
             .map(|f| {
                 let lbl = st.hosts.get(&f.host_key).map(|h| h.label.clone()).unwrap_or_else(|| f.host_key.clone());
-                (f.id.clone(), lbl, f.remote_host.clone(), f.remote_port, f.local_addr.port())
+                (f.id.clone(), lbl, f.remote_host.clone(), f.remote_port, f.local_addr.port(), f.state.clone())
             })
             .collect();
         (hosts, ports, forwards)
@@ -1030,9 +1033,18 @@ pub fn render_hosts_panel(
                 })),
         );
     }
-    for (fid, host_lbl, rhost, rport, lport) in active_forwards {
+    for (fid, host_lbl, rhost, rport, lport, state) in active_forwards {
         let stop = on_stop.clone();
         let fid_c = fid.clone();
+        // (A forward that couldn't be restored isn't running: its row says
+        // so in its ink, and what is offered is to remove it, not to stop
+        // it.)
+        let failed = matches!(state, crate::hub::ForwardState::Failed(_));
+        let status = match state {
+            crate::hub::ForwardState::Active => None,
+            crate::hub::ForwardState::Waiting => Some(StringView::new("Waiting to reconnect.").dim(true)),
+            crate::hub::ForwardState::Failed(why) => Some(StringView::new(olo_kit::tr!("Couldn’t restore this forward: {}", why)).color(style::c(theme::palette().failure)).wrap(true)),
+        };
         port_list = port_list.child(
             div()
                 .flex()
@@ -1040,8 +1052,16 @@ pub fn render_hosts_panel(
                 .items_center()
                 .justify_between()
                 .gap(px(m::SPACING))
-                .child(div().flex_1().min_w_0().child(StringView::new(format!("127.0.0.1:{lport}  →  {host_lbl} ({rhost}:{rport})")).bold(true).cut(true)))
-                .child(Button::new("Stop").on_click(move |_, cx| stop(&fid_c, cx))),
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .child(StringView::new(format!("127.0.0.1:{lport}  →  {host_lbl} ({rhost}:{rport})")).bold(!failed).dim(failed).cut(true))
+                        .children(status),
+                )
+                .child(Button::new(if failed { "Remove" } else { "Stop" }).on_click(move |_, cx| stop(&fid_c, cx))),
         );
     }
 
@@ -1086,41 +1106,46 @@ pub fn render_hosts_panel(
         .child(div().w_full().flex().flex_row().justify_end().child(Button::new("Close").min_width(m::BUTTON_MIN_WIDTH).default(true).on_click(move |_, cx| on_close(&(), cx))))
 }
 
-pub fn render_qr_pairing_panel(url: Option<String>, on_copy_url: impl Fn(&String, &mut WindowCx) + 'static, on_close: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
+fn qr_code(url: &str, qr: Arc<qrcode::QrCode>, side: f32) -> Element {
+    canvas(move |g, b| {
+        let p = theme::palette();
+        style::fill_rect(g, b, style::c([255, 255, 255, 255]));
+        style::sunken(g, b, &p, false);
+
+        let w = qr.width();
+        let avail = f32::from(b.size.width).min(f32::from(b.size.height)) - 4.0;
+        let scale = g.scale_factor();
+        let cell = ((avail / (w + 8) as f32) * scale).floor().max(1.0) / scale;
+        let total = cell * w as f32;
+        let ox = f32::from(b.left()) + ((f32::from(b.size.width) - total) / 2.0 * scale).round() / scale;
+        let oy = f32::from(b.top()) + ((f32::from(b.size.height) - total) / 2.0 * scale).round() / scale;
+        let dark = style::c([0, 0, 0, 255]);
+        for y in 0..w {
+            for x in 0..w {
+                if qr[(x, y)] == qrcode::Color::Dark {
+                    g.paint_quad(olo_kit::fill(Bounds::new(point(px(ox + x as f32 * cell), px(oy + y as f32 * cell)), size(px(cell), px(cell))), dark));
+                }
+            }
+        }
+    })
+    .paint_key(style::key(url))
+    .w(px(side))
+    .h(px(side))
+}
+
+pub fn render_qr_pairing_panel(
+    url: Option<String>,
+    qr: Option<Arc<qrcode::QrCode>>,
+    on_copy_url: impl Fn(&String, &mut WindowCx) + 'static,
+    on_close: impl Fn(&(), &mut WindowCx) + 'static,
+) -> Element {
     let mut col = div().flex().flex_col().items_center().gap(px(m::SECTION)).p(px(m::WINDOW_INSET)).w_full();
 
     if let Some(u) = url {
-        let code = qrcode::QrCode::new(u.as_bytes()).ok();
         let u_copy = u.clone();
         col = col
             .child(StringView::new("Scan with Rex on iOS or another desktop to connect:").bold(true))
-            .child(
-                canvas(move |g, b| {
-                    let p = theme::palette();
-                    style::fill_rect(g, b, style::c([255, 255, 255, 255]));
-                    style::sunken(g, b, &p, false);
-                    let Some(ref qr) = code else { return };
-                    let w = qr.width();
-                    let pad = 12.0;
-                    let avail = (f32::from(b.size.width).min(f32::from(b.size.height)) - 2.0 * pad).max(40.0);
-                    let scale = g.scale_factor();
-                    let cell = ((avail / w as f32) * scale).floor().max(1.0) / scale;
-                    let total = cell * w as f32;
-                    let ox = f32::from(b.left()) + ((f32::from(b.size.width) - total) / 2.0 * scale).round() / scale;
-                    let oy = f32::from(b.top()) + ((f32::from(b.size.height) - total) / 2.0 * scale).round() / scale;
-                    let dark = style::c([0, 0, 0, 255]);
-                    for y in 0..w {
-                        for x in 0..w {
-                            if qr[(x, y)] == qrcode::Color::Dark {
-                                g.paint_quad(olo_kit::fill(Bounds::new(point(px(ox + x as f32 * cell), px(oy + y as f32 * cell)), size(px(cell), px(cell))), dark));
-                            }
-                        }
-                    }
-                })
-                .paint_key(style::key(&u))
-                .w(px(220.0))
-                .h(px(220.0)),
-            )
+            .children(qr.map(|qr| qr_code(&u, qr, 220.0)))
             .child(StringView::new(u).dim(true).cut(true))
             .child(
                 div()
@@ -1136,6 +1161,20 @@ pub fn render_qr_pairing_panel(url: Option<String>, on_copy_url: impl Fn(&String
             .child(Button::new("Close").default(true).on_click(move |_, cx| on_close(&(), cx)));
     }
     col
+}
+
+fn build_info(version: &olo_rex_client::ServerVersion) -> String {
+    let mut parts = Vec::new();
+    if !version.platform.is_empty() {
+        parts.push(version.platform.as_str());
+    }
+    if !version.build_date.is_empty() {
+        parts.push(version.build_date.as_str());
+    }
+    if version.dirty {
+        parts.push("modified source");
+    }
+    parts.join(" · ")
 }
 
 pub fn render_diagnostics_panel(
@@ -1156,9 +1195,16 @@ pub fn render_diagnostics_panel(
         let hosts_val = format!("{} configured", st.hosts.len());
         let listeners = status.and_then(|s| s.listeners.as_ref()).map(|ls| ls.iter().map(|l| l.endpoint.as_str()).collect::<Vec<_>>().join(", ")).unwrap_or_else(|| "None".to_owned());
         let vt_val = format!("libghostty-vt ({blocks_n} live panes)");
-        let mem_val = format!("{:.1} MiB resident", res_bytes as f64 / (1024.0 * 1024.0));
+        let mem_val = format!("{:.1} MiB of resident grid pages", res_bytes as f64 / (1024.0 * 1024.0));
         let img_val = if img_bytes == 0 { "none".to_owned() } else { format!("{:.1} MiB", img_bytes as f64 / (1024.0 * 1024.0)) };
-        let ver_copy = format!("Olo Rex {}\nRex server {ver}", env!("CARGO_PKG_VERSION"));
+        let mut ver_copy = format!("Olo Rex {}\nRex server {ver}", env!("CARGO_PKG_VERSION"));
+        if let Some(version) = local.and_then(|h| h.server_version.as_ref()) {
+            let build = build_info(version);
+            if !build.is_empty() {
+                ver_copy.push('\n');
+                ver_copy.push_str(&build);
+            }
+        }
         let dbg_copy = format!(
             "{ver_copy}\nProcess: {pid_val}\nInstance: {inst_val}\nSessions: {sess_val}\nHosts: {hosts_val}\nListeners: {listeners}\nVT engine: {vt_val}\nMemory: {mem_val}\nKitty images: {img_val}"
         );
@@ -1284,5 +1330,14 @@ impl SshAskpass for OloAskpass {
             AskpassReply::Secret(Some(s)) => Some(Zeroizing::new(s)),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn diagnostics_use_the_real_build_fields() {
+        let v = serde_json::from_value(serde_json::json!({"rex_version":"1.2","platform":"linux_amd64","built_at":"fixture-date","dirty":true})).unwrap();
+        assert_eq!(super::build_info(&v), "linux_amd64 · fixture-date · modified source");
     }
 }

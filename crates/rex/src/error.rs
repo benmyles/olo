@@ -52,7 +52,7 @@ pub enum RexError {
     #[error("transport i/o error: {0}")]
     Io(#[from] std::io::Error),
     #[error("websocket error: {0}")]
-    WebSocket(#[from] tungstenite::Error),
+    WebSocket(#[source] tungstenite::Error),
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
     #[error("ssh error: {0}")]
@@ -73,4 +73,16 @@ pub enum RexError {
     InvalidEndpoint(String),
     #[error("local rex server unavailable: {0}")]
     ServerUnavailable(String),
+}
+
+impl From<tungstenite::Error> for RexError {
+    fn from(error: tungstenite::Error) -> Self {
+        use std::io::ErrorKind;
+        use tungstenite::{Error, error::ProtocolError};
+        match &error {
+            Error::ConnectionClosed | Error::AlreadyClosed | Error::Protocol(ProtocolError::ResetWithoutClosingHandshake) => Self::Closed(error.to_string()),
+            Error::Io(io) if matches!(io.kind(), ErrorKind::ConnectionReset | ErrorKind::ConnectionAborted | ErrorKind::BrokenPipe | ErrorKind::UnexpectedEof) => Self::Closed(error.to_string()),
+            _ => Self::WebSocket(error),
+        }
+    }
 }

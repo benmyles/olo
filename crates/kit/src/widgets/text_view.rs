@@ -35,6 +35,7 @@ pub struct TextView {
     /// Its colours (runs covering it), else the document's text colour.
     runs: Option<Vec<TextRun>>,
     mono: bool,
+    panel_well: bool,
     empty: SharedString,
     selected: Range<usize>,
     /// Where a drag started (a byte index), while the pointer is down.
@@ -67,6 +68,7 @@ pub fn text_view<V: View>(cx: &mut Cx<V>, build: impl FnOnce(TextView) -> TextVi
             text: SharedString::default(),
             runs: None,
             mono: false,
+            panel_well: false,
             empty: SharedString::default(),
             selected: 0..0,
             anchor: None,
@@ -83,6 +85,17 @@ impl TextView {
     /// In the monospaced face.
     pub fn mono(mut self, on: bool) -> Self {
         self.mono = on;
+        self
+    }
+
+    /// A read-only detail quoted on a panel (what a server answered, a
+    /// reason's own words), to select and copy: the panel's ground a
+    /// shade off and the panel's own text colour. Not the document's
+    /// white, which says "type here"; nor dimmed text, which on a
+    /// shaded ground read as a field switched off (a design review of
+    /// Rex's, 2026-11-21).
+    pub fn panel_well(mut self, on: bool) -> Self {
+        self.panel_well = on;
         self
     }
 
@@ -187,10 +200,17 @@ impl TextView {
     /// (see-through, as a field's).
     fn shown_runs(&self, focused: bool) -> Vec<TextRun> {
         let p = theme::palette();
-        let runs = self
-            .runs
-            .clone()
-            .unwrap_or_else(|| vec![TextRun { len: self.text.len(), font: self.font(), color: style::c(p.document_text), background_color: None, underline: None, strikethrough: None, size: None }]);
+        let runs = self.runs.clone().unwrap_or_else(|| {
+            vec![TextRun {
+                len: self.text.len(),
+                font: self.font(),
+                color: if self.panel_well { style::c(p.panel_text) } else { style::c(p.document_text) },
+                background_color: None,
+                underline: None,
+                strikethrough: None,
+                size: None,
+            }]
+        });
         let link = style::c(p.syntax(olo_theme::Syntax::Link));
         let ranges: Vec<Range<usize>> = self.links.iter().map(|l| l.range.clone()).collect();
         let runs = marked(runs, &ranges, |r| r.color = link);
@@ -372,6 +392,8 @@ impl View for TextView {
         let body = if self.links.is_empty() { body.moves_matter_while_pressed() } else { body };
 
         // The note while empty, and what agents read.
+        let ground = if self.panel_well { p.shade(p.panel_background, 1.04) } else { p.document_background };
+        let panel_well = self.panel_well;
         let (empty, text, auto_hide) = (self.empty.clone(), self.text.clone(), self.auto_hide);
         let note = canvas(move |g, b| {
             let p = theme::palette();
@@ -382,11 +404,11 @@ impl View for TextView {
                 // scroll: `auto_hide`; "No notes." sat left of the middle).
                 let bar = if auto_hide { 0.0 } else { crate::widgets::SCROLL_BAR };
                 let b = Bounds::from_corners(b.origin, point(b.right() - px(bar), b.bottom()));
-                let dim = style::c(olo_theme::mix(p.document_text, p.document_background, 0.5));
+                let dim = if panel_well { style::secondary_text(&p) } else { style::c(olo_theme::mix(p.document_text, p.document_background, 0.5)) };
                 style::label_fit(g, b.center().x, b.center().y, style::Align::Center, empty.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), dim, b.size.width - px(2.0 * m::SPACING));
             }
         })
-        .paint_key(style::key((&self.empty, &self.text, self.auto_hide)))
+        .paint_key(style::key((&self.empty, &self.text, self.auto_hide, self.panel_well)))
         .absolute()
         .inset_0();
 
@@ -411,7 +433,7 @@ impl View for TextView {
                 cx.stop_propagation();
             }))
             .on_mouse_down(MouseButton::Right, cx.listener(Self::context_menu))
-            .child(ScrollView::new(&self.scroll).auto_hide(self.auto_hide).focused(focused).background(p.document_background).child(body).into_element())
+            .child(ScrollView::new(&self.scroll).auto_hide(self.auto_hide).focused(focused).background(ground).child(body).into_element())
             .child(note)
     }
 }

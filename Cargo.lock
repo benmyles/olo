@@ -8601,6 +8601,7 @@ dependencies = [
  "rustls-platform-verifier 0.6.2",
  "serde",
  "serde_json",
+ "serde_path_to_error",
  "ssh2-config",
  "thiserror 2.0.21",
  "tokio",
@@ -8620,6 +8621,7 @@ version = "0.1.0"
 dependencies = [
  "bindgen 0.72.1",
  "image",
+ "olo-sync",
  "serde",
  "thiserror 2.0.21",
  "tracing",

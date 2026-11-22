@@ -5,7 +5,7 @@ use std::{
     net::SocketAddr,
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicU64, Ordering},
     },
 };
 
@@ -14,6 +14,7 @@ use serde_json::json;
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     net::{TcpListener, TcpStream},
+    sync::{mpsc, oneshot},
 };
 use tokio_tungstenite::tungstenite::Message;
 
@@ -34,21 +35,47 @@ pub struct LocalForwardHandle {
     pub remote_port: u16,
     pub active_connections: Arc<AtomicU64>,
     pub total_connections: Arc<AtomicU64>,
-    stop: Arc<AtomicBool>,
-    task: tokio::task::JoinHandle<()>,
+    _stop: oneshot::Sender<()>,
+    restore: mpsc::Sender<Restore>,
+}
+
+struct Restore {
+    control: ControlClient,
+    endpoint: RexEndpoint,
+    result: oneshot::Sender<Result<(), RexError>>,
 }
 
 impl LocalForwardHandle {
+    /// After bootstrap has attached this session on the replacement connection,
+    /// reclaim the forward's block and resume accepting connections on the same
+    /// local port. The future owns its inputs and can be awaited outside a UI lock.
+    /// A missing session/block is an error. Existing TCP streams are never replayed.
+    pub fn reconnect(&self, control: ControlClient, endpoint: RexEndpoint) -> impl Future<Output = Result<(), RexError>> + Send + 'static {
+        let restore = self.restore.clone();
+        async move {
+            let (result, done) = oneshot::channel();
+            let stopped = || RexError::Closed("forward removed".into());
+            restore.send(Restore { control, endpoint, result }).await.map_err(|_| stopped())?;
+            done.await.map_err(|_| stopped())?
+        }
+    }
+
     pub fn stop(self) {
-        self.stop.store(true, Ordering::Release);
-        self.task.abort();
+        drop(self);
     }
 }
 
 /// Create a `com.superlogical.tunnel.dial` block on the Rex server, bind a local
 /// loopback TCP listener on `127.0.0.1:<local_port>` (0 picks an ephemeral port),
 /// and relay every accepted TCP connection through `rex.data.bytes.v1`.
-pub async fn start_local_forward(control: ControlClient, endpoint: RexEndpoint, session_id: String, remote_host: String, remote_port: u16, local_port: u16) -> Result<LocalForwardHandle, RexError> {
+pub async fn start_local_forward(
+    mut control: ControlClient,
+    mut endpoint: RexEndpoint,
+    session_id: String,
+    remote_host: String,
+    remote_port: u16,
+    local_port: u16,
+) -> Result<LocalForwardHandle, RexError> {
     let listener = TcpListener::bind(("127.0.0.1", local_port)).await?;
     let local_addr = listener.local_addr()?;
 
@@ -65,32 +92,78 @@ pub async fn start_local_forward(control: ControlClient, endpoint: RexEndpoint, 
         )
         .await?;
     let block_id = created.payload.get("block_id").and_then(|v| v.as_str()).ok_or_else(|| RexError::Protocol("session.new_block missing block_id".to_owned()))?.to_owned();
-    let _ = control.session_own_block(&session_id, &block_id).await;
+    if let Err(e) = control.session_own_block(&session_id, &block_id).await {
+        let _ = control.block_close(&session_id, &block_id).await;
+        return Err(e);
+    }
 
     let active_connections = Arc::new(AtomicU64::new(0));
     let total_connections = Arc::new(AtomicU64::new(0));
-    let stop = Arc::new(AtomicBool::new(false));
+    let (stop, mut stopping) = oneshot::channel();
+    let (restore, mut restores) = mpsc::channel::<Restore>(1);
 
     let active_c = active_connections.clone();
     let total_c = total_connections.clone();
-    let stop_c = stop.clone();
     let sid_c = session_id.clone();
     let bid_c = block_id.clone();
 
-    let task = tokio::spawn(async move {
-        while !stop_c.load(Ordering::Acquire) {
-            let Ok((tcp, _peer)) = listener.accept().await else { break };
+    tokio::spawn(async move {
+        let mut relays = tokio::task::JoinSet::new();
+        let mut connected = true;
+        loop {
+            let tcp = tokio::select! {
+                biased;
+                _ = &mut stopping => break,
+                _ = control.disconnected(), if connected => {
+                    connected = false;
+                    relays.shutdown().await;
+                    active_c.store(0, Ordering::Relaxed);
+                    continue;
+                }
+                restore = restores.recv() => {
+                    let Some(restore) = restore else { break };
+                    if control.same_connection(&restore.control) && connected {
+                        let _ = restore.result.send(Ok(()));
+                        continue;
+                    }
+                    let owned = tokio::select! {
+                        _ = &mut stopping => break,
+                        result = restore.control.session_own_block(&sid_c, &bid_c) => result,
+                    };
+                    match owned {
+                        Ok(_) => {
+                            relays.shutdown().await;
+                            active_c.store(0, Ordering::Relaxed);
+                            control = restore.control;
+                            endpoint = restore.endpoint;
+                            connected = true;
+                            let _ = restore.result.send(Ok(()));
+                        }
+                        Err(error) => { let _ = restore.result.send(Err(error)); }
+                    }
+                    continue;
+                }
+                _ = relays.join_next(), if !relays.is_empty() => {
+                    active_c.fetch_sub(1, Ordering::Relaxed);
+                    continue;
+                }
+                accepted = listener.accept() => match accepted {
+                    Ok((tcp, _)) => tcp,
+                    Err(_) => break,
+                }
+            };
+            if !connected {
+                continue;
+            }
             let _ = tcp.set_nodelay(true);
             let ctrl = control.clone();
             let ep = endpoint.clone();
             let sid = sid_c.clone();
             let bid = bid_c.clone();
-            let active = active_c.clone();
-            let total = total_c.clone();
 
-            total.fetch_add(1, Ordering::Relaxed);
-            active.fetch_add(1, Ordering::Relaxed);
-            tokio::spawn(async move {
+            total_c.fetch_add(1, Ordering::Relaxed);
+            active_c.fetch_add(1, Ordering::Relaxed);
+            relays.spawn(async move {
                 let conn_ref = format!("conn:{}", uuid::Uuid::new_v4());
                 let res = async {
                     let ticket = ctrl.data_connect(&sid, &bid, &conn_ref, DATA_BYTES_SUBPROTOCOL).await?.payload.ticket;
@@ -102,12 +175,15 @@ pub async fn start_local_forward(control: ControlClient, endpoint: RexEndpoint, 
                 if let Err(e) = res {
                     tracing::debug!("dial tunnel connection ended: {e}");
                 }
-                active.fetch_sub(1, Ordering::Relaxed);
             });
         }
+        drop(listener);
+        relays.shutdown().await;
+        active_c.store(0, Ordering::Relaxed);
+        let _ = control.block_close(&sid_c, &bid_c).await;
     });
 
-    Ok(LocalForwardHandle { session_id, block_id, local_addr, remote_host, remote_port, active_connections, total_connections, stop, task })
+    Ok(LocalForwardHandle { session_id, block_id, local_addr, remote_host, remote_port, active_connections, total_connections, _stop: stop, restore })
 }
 
 /// Relay one accepted reverse-tunnel (`-R` / `com.superlogical.tunnel.listen`)
@@ -138,7 +214,7 @@ where
             let n = lr.read(&mut buf).await?;
             if n == 0 {
                 // 0-byte binary frame signals half-close EOF on rex.data.bytes.v1.
-                let _ = ws_tx.send(Message::Binary(Vec::new().into())).await;
+                ws_tx.send(Message::Binary(Vec::new().into())).await?;
                 break;
             }
             ws_tx.send(Message::Binary(buf[..n].to_vec().into())).await?;
@@ -146,27 +222,39 @@ where
         Ok::<(), RexError>(())
     };
 
+    let (eof_tx, eof_rx) = oneshot::channel();
     let ws_to_local = async {
+        let mut eof = Some(eof_tx);
         while let Some(msg) = ws_rx.next().await {
             match msg? {
-                Message::Binary(b) => {
-                    if b.is_empty() {
-                        let _ = lw.shutdown().await;
-                        break;
+                Message::Binary(b) if b.is_empty() => {
+                    if let Some(tx) = eof.take() {
+                        lw.shutdown().await?;
+                        let _ = tx.send(());
                     }
-                    lw.write_all(&b).await?;
                 }
-                Message::Close(_) => {
-                    let _ = lw.shutdown().await;
-                    break;
+                Message::Binary(b) if eof.is_some() => lw.write_all(&b).await?,
+                Message::Binary(_) => return Err(RexError::Protocol("tunnel received data after EOF".into())),
+                Message::Close(Some(f)) if f.code == tungstenite::protocol::frame::coding::CloseCode::Normal => {
+                    lw.shutdown().await?;
+                    return Ok(());
                 }
+                Message::Close(frame) => return Err(RexError::Closed(format!("tunnel closed: {frame:?}"))),
                 _ => {}
             }
         }
-        Ok::<(), RexError>(())
+        Err(RexError::Closed("tunnel ended before EOF".into()))
     };
 
-    let _ = tokio::join!(local_to_ws, ws_to_local);
+    // Keep reading after the peer half-closes. A subsequent full close must
+    // release the relay even when the local application has nothing to write.
+    tokio::select! {
+        result = ws_to_local => result?,
+        result = async {
+            local_to_ws.await?;
+            eof_rx.await.map_err(|_| RexError::Closed("tunnel ended before EOF".into()))
+        } => result?,
+    }
     Ok(())
 }
 

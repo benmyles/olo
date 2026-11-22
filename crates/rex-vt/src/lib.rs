@@ -12,6 +12,7 @@
 pub mod color;
 pub mod error;
 pub mod input;
+mod limits;
 pub mod render;
 pub mod search;
 pub mod snapshot;
@@ -28,7 +29,7 @@ pub use error::VtError;
 pub use input::{KeyMods, MouseAction, MouseButton, MouseEncoder, MouseGeometry, encode_focus, encode_paste, paste_is_safe};
 pub use render::{CellStyle, CellWide, CursorInfo, CursorStyle, DirtyState, ImageLayer, ImagePlacement, RenderCell, RenderColors, RenderRow, RenderState, RowId, UnderlineStyle};
 pub use search::{SearchStatus, TerminalSearch, ViewportMatch};
-pub use snapshot::{SnapshotDecoder, SnapshotProgress, StreamingSnapshotResult, try_decode_snapshot_prefix};
+pub use snapshot::{MAX_SNAPSHOT_BYTES, SnapshotDecoder, SnapshotFramer, SnapshotProgress, StreamingSnapshotResult, try_decode_snapshot_prefix};
 pub use terminal::{DecodedKittyImage, FormatKind, GhosttyTerminal, ScreenKind, ScrollbarState, TerminalMemoryUsage, VtEngine};
 
 #[cfg(test)]

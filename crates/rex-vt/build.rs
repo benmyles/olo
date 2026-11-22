@@ -1,5 +1,6 @@
 use std::{
     env, fs,
+    io::Read,
     path::{Path, PathBuf},
 };
 
@@ -28,10 +29,9 @@ fn main() {
     }
 
     // Detect an unpulled Git LFS pointer file before the linker fails cryptically.
-    if let Ok(head) = fs::read(&lib_path).map(|b| b.into_iter().take(48).collect::<Vec<u8>>()) {
-        if head.starts_with(b"version https://git-lfs.github.com/spec/v1") {
-            panic!("{} is a Git LFS pointer, not the static archive. Run `git lfs pull` or `tools/build-ghostty-vt.sh`.", lib_path.display());
-        }
+    let mut head = [0; 42];
+    if fs::File::open(&lib_path).and_then(|mut f| f.read_exact(&mut head)).is_ok() && head.starts_with(b"version https://git-lfs.github.com/spec/v1") {
+        panic!("{} is a Git LFS pointer, not the static archive. Run `git lfs pull` or `tools/build-ghostty-vt.sh`.", lib_path.display());
     }
 
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
