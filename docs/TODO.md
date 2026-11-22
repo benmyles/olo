@@ -888,6 +888,22 @@ something nobody here has is in "Blocked", with what it waits for.
   drops modifiers on keys it doesn't know (BeOS's Alt+Left, ⌥⌘R, kitty
   reports); the configuration's keys are read for this computer's
   server only and a sequence begun in one window counts in another.
+- **GitHub's LFS budget is used up: journal pictures wait** (2026-11-22;
+  a push was refused: "This repository exceeded its LFS budget. The
+  account responsible for the budget should increase it"). **Blocked on
+  Ben**: the budget is raised in GitHub's billing settings (Git LFS),
+  or the month turns. **Done**: what used it up, stopped: the journal's
+  one page (journal.html, every picture embedded, 69 MB) was in LFS and
+  a new copy went up with every entry: 238 copies of 41 to 69 MB, 12.9
+  GB of the 25 GB the repository has there (measured from the pointers
+  in history); it is built when wanted now and not kept (HACKING,
+  "Screenshot journal"). **Left**:
+  the entries made meanwhile are commits on the local branch
+  `journal-pending` (AGENT-NOTES, "A push refused for GitHub's LFS
+  budget"): onto main and pushed when a picture goes through again.
+  What is already stored stays billed: the page's 238 old copies are
+  in the repository's history; removing them is a history rewrite and
+  a word with GitHub, Ben's to choose.
 - **Rex, made an Olo app** (Ben, 2026-11-21, of the app merged that
   day: an error at "Enable Tailscale Listener", a closed terminal left
   stuck, "its own app notifications that show seperate from olo ones";

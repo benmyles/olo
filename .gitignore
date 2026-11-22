@@ -6,5 +6,7 @@
 # (The repository's own skills are kept: .claude/skills/NAME/SKILL.md.)
 !/.claude/skills/
 docs/journal/.cache/
+# The journal as one page: built when wanted (tools/journal_html.py), 69 MB.
+docs/journal/journal.html
 __pycache__/
 /data/wallpapers/src/

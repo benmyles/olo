@@ -6789,6 +6789,12 @@ tools/journal.py add mine "Tracker toolbar" --crop 40 30 600 440         # logic
 
 For fixes, journal a before and an after.
 
+The whole journal as one page to share (every image embedded, 69 MB) is
+built when it is wanted, `tools/journal_html.py [OUT.html] [--last N]`,
+and is not in the repository: kept there, a whole new copy went to Git
+LFS with every entry, which is what used up the repository's LFS budget
+(2026-11-22). What goes to LFS with an entry is its picture alone.
+
 ## Commits
 
 Small, focused commits with a descriptive message ending in the

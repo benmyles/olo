@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Build docs/journal/journal.html: the screenshot journal as one
 self-contained page (every image embedded), for following progress and
-for sharing. journal.py runs this after each `add`; run it by hand after
-editing entries.json.
+for sharing. Run it when the page is wanted: it is not kept in the
+repository (ignored by git), and journal.py no longer builds it with
+each `add` (a new 69 MB copy in Git LFS with every entry, 2026-11-22).
 
     journal_html.py [OUT.html] [--last N]     (--last: only the newest N, for a quick look)
 

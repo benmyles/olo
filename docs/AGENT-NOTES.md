@@ -942,10 +942,11 @@ What was learned making Rex keep its settings as Olo's apps do:
   lacks: the programs a reloadable test session starts (`tsession start
   --session` printed nothing and no window came: `TSESSION_SESSION_EXE`
   at the main tree's `target/debug/olo-session`, or build it there);
-  and the journal's cache of re-encoded pictures
-  (`docs/journal/.cache`, ignored by git), without which the first
-  `journal.py add` re-encodes all nine hundred (two and a half
-  minutes): `cp -r --reflink=always` it from the main tree first.
+  and, for `tools/journal_html.py` only (`journal.py add` no longer
+  builds the page), the journal's cache of re-encoded pictures
+  (`docs/journal/.cache`, ignored by git), without which it re-encodes
+  all nine hundred (two and a half minutes): `cp -r --reflink=always`
+  it from the main tree first.
 
 ### Keys: press them, in the app and in a control (2026-11-21)
 
@@ -997,6 +998,26 @@ one: every test typed text. What was learned:
   `sleep 3; echo $?` after an interrupt goes on to the echo there (130)
   where bash would stop the line. Read the control's result knowing
   which shell ran it.
+
+### A push refused for GitHub's LFS budget (2026-11-22)
+
+`git push` ended at once with "batch response: This repository
+exceeded its LFS budget. The account responsible for the budget should
+increase it to restore access": GitHub takes no new LFS object (a
+journal picture, a wallpaper, a model) until the person raises the
+budget in their GitHub billing settings; only they can. It says
+nothing of the commits: a push that brings no new LFS object goes
+through. What had used it up was the journal's page (above:
+journal.html, 69 MB, a new copy with every entry), no longer kept.
+While it lasts: commit the work without its journal entry and push
+that; keep the entry (the picture, `entries.json`, `README.md`) as a
+commit of its own on the local branch `journal-pending`, each new
+entry on top of the last, and bring the branch onto main (rebase, then
+fast-forward) once a push with a picture goes through again. Never
+skip the LFS upload (`GIT_LFS_SKIP_PUSH`, `--no-verify`): the commit
+would arrive pointing at a picture GitHub doesn't have. Tell the
+person; `git lfs push --dry-run origin main` lists what a push would
+upload.
 
 ### What a drag keeps must outlive a layout (2026-11-22)
 

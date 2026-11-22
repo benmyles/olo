@@ -2,14 +2,19 @@
 """Screenshot journal: Olo's visual history, kept in docs/journal/.
 
     journal.py add SOURCE "Title" ["What changed and why"] [--crop X Y W H]
-    journal.py redo                                   rebuild README.md and journal.html from entries.json
+    journal.py redo                                   rebuild README.md from entries.json
 
 SOURCE is a tsession name (screenshot taken now) or an image path. --crop
 is in logical pixels, as for `tsession zoom`. Images are stored at device
 resolution in docs/journal/<date>/<time>-<slug>.png (tracked with Git LFS)
-and listed newest first in docs/journal/README.md and journal.html (one
-self-contained page with every image embedded, for sharing; see
-journal_html.py).
+and listed newest first in docs/journal/README.md.
+
+The whole journal as one self-contained page, for sharing, is built when
+it is wanted (`tools/journal_html.py`: docs/journal/journal.html) and is
+not kept in the repository. It was: every image embedded, 69 MB, and a
+whole new copy went to Git LFS with each entry (238 copies, 12.9 GB,
+half of all the repository had there), which is what ran it out of its
+LFS budget (2026-11-22).
 
 Add an entry whenever something visible changes: a new app or window, a
 look-and-feel fix (with before/after), a theme. Commit it with the change.
@@ -31,15 +36,13 @@ def load():
 
 def write_pages(entries):
     write_readme(entries)
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import journal_html
-    journal_html.build(os.path.join(DIR, "journal.html"))
 
 
 def write_readme(entries):
     out = ["# Screenshot journal", "",
            "Olo's visual evolution, newest first. Added with `tools/journal.py`",
-           "(images are stored with Git LFS; run `git lfs pull` after cloning).", ""]
+           "(images are stored with Git LFS; run `git lfs pull` after cloning).",
+           "`tools/journal_html.py` builds the whole of it as one page to share.", ""]
     day = None
     order = sorted(enumerate(entries), key=lambda ie: (ie[1]["time"], ie[0]), reverse=True)
     for _, e in order:
