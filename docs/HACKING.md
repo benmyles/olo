@@ -21421,6 +21421,14 @@ finishes a turn (said once for one that has written its result, which
 `list` shows as `done` from then on), exits, or has shown nothing new
 for 15 minutes. A message said to an agent that is working is queued by
 agy for the end of its step; `say NAME --now` has it delivered at once.
+`stop` keeps the agent's transcript in its folder and stops any test
+session it left (`agy-NAME…`); and so that nothing sits at a prompt for
+nobody, `tidy` (run by `list`, `watch`, `start` and the front doors)
+ends an agent whose program has exited, one done and untouched for half
+an hour, one idle for three hours, and removes a folder whose agent
+ended over a week ago (Ben, 2026-11-22: "make sure that the tmux agents
+/ screens are getting properly stopped when they are no longer
+needed"). The tmux server ends with its last session.
 The states are read from what each program shows (agy: "esc to cancel"
 at the start of its last line while it works, "↑/↓ Navigate" under a
 question's numbered choices; Claude Code: "esc to interrupt" in its

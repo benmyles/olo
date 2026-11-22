@@ -246,6 +246,19 @@ are universal and non-negotiable:
   one use of the Agent tool here; its report is checked like any
   helper's (read the results yourself), and what it says went wrong
   with the tooling is fixed in the tooling.
+- **Stop each helper when you have what you need of it.** Once an
+  agent's result is read and nothing more is to be asked of it,
+  `tools/dev/agents stop NAME` (its transcript is kept in its folder,
+  and any test session it left is stopped), then `forget` it when its
+  work is in; a look ends by itself when its review is written. Nothing
+  of yours is left running or waiting at a prompt: before you finish a
+  piece of work, `tools/dev/agents list` and `tools/dev/tsession list`
+  show nothing of it (Ben, 2026-11-22: "make sure that the tmux agents
+  / screens are getting properly stopped when they are no longer
+  needed"). The tool tidies behind you all the same (an agent whose
+  program exited, one done and untouched for half an hour, one idle
+  for three hours: `agents tidy`, which `list`, `watch` and `start`
+  run), but that is the net, not the way.
 - **Gemini 4 Neon and Opus 5.5 at high.** Wherever Gemini reasons for
   Olo (a subagent, the second investigator, the look at pictures), it
   is Gemini 4 Neon with its effort at high (`gemini-4-neon-high`), and

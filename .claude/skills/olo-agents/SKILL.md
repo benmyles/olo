@@ -193,6 +193,21 @@ When it says DONE:
 5. Commit it yourself, saying what the agent did and what you changed;
    then `stop` and `forget` it.
 
+## Nothing left running
+
+Stop each agent as soon as you have what you need of it (`agents stop
+NAME`: its transcript goes to `transcript.txt` in its folder, and a
+test session it left running, `agy-NAME…`, is stopped with it), and
+`forget` it once its work is in. A look ends itself when its review is
+written. Before a piece of work is called finished, `tools/dev/agents
+list` and `tools/dev/tsession list` show nothing of it (Ben,
+2026-11-22: "make sure that the tmux agents / screens are getting
+properly stopped when they are no longer needed"). Behind that, `agents
+tidy` (run by `list`, `watch`, `start` and the front doors) ends an
+agent whose program has exited, one done and untouched for half an
+hour, one idle for three hours, and removes a folder whose agent ended
+over a week ago; the tmux server goes with its last session.
+
 ## How it works (agy 1.5.14, Claude Code 2.1.330)
 
 - One tmux server (`tmux -L olo-agents`), a session per agent, its pane

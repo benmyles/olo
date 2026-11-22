@@ -63,7 +63,8 @@ alone), its settings, and its report when it is done.
 4. **End** when every agent you were given has its result, or when
    something is the lead's to decide. Your last message is your report
    (below). Don't stop the agents or remove their folders: the lead
-   reads their results first.
+   reads their results first, and stops them (the tool ends one left
+   done and untouched for half an hour).
 
 ## Leave to run a command
 

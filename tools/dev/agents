@@ -54,9 +54,17 @@ too: "always do it through tmux never a script that just goes silent".
   agents keys NAME KEY…              press keys in it (up, down, enter, esc, tab, a
                                      digit, a letter): for a question whose choices
                                      have no numbers, or esc to stop what it's doing
-  agents stop NAME                   end it (its folder, /var/tmp/olo-agents/NAME,
-                                     with its report, stays until `forget`; its
-                                     builds a day more: below)
+  agents stop NAME                   end it, when you have what you need of it: its
+                                     transcript is kept in its folder, and any test
+                                     session it left (agy-NAME…) is stopped. (Its
+                                     folder, /var/tmp/olo-agents/NAME, with its
+                                     report, stays until `forget`; its builds a day
+                                     more: below)
+  agents tidy                        end what nobody needs any more (list, watch and
+                                     start do this too): an agent whose program has
+                                     exited, one done and untouched for half an hour,
+                                     one idle for three hours; remove a folder whose
+                                     agent ended over a week ago
   agents forget NAME                 remove a stopped one's folder
   agents attach NAME                 how the person can watch it live (read-only)
   agents allowed                     what an agent runs without asking, and what
@@ -782,7 +790,7 @@ def look(args):
         shutil.copyfile(review, out)
         open(out[:-3] + ".log", "w").write((screen(name, 200000) or "") + "\n")
         print(open(out).read().rstrip())
-        tmux("kill-session", "-t", f"={name}")
+        end(name)
         shutil.rmtree(d, ignore_errors=True)
     sys.exit(rc)
 
@@ -885,6 +893,7 @@ def watch(stuck_min, only=None, at_most=None):
             return 0
         if time.time() - told >= 60:
             told = time.time()
+            say_tidied(tidy())
             for n in rows:
                 if live(n):
                     print(f"… {n}: {state(n)}, {ago((meta(n) or {}).get('started', told))} since its start: {latest(n)}", flush=True)
@@ -1013,14 +1022,83 @@ def keys(name, which):
     seen(name)
 
 
-def stop(name):
-    refuse_nested()
+def end(name):
+    """End its session, whatever state it is in: what it said kept in
+    its folder (transcript.txt) first, and any headless test session it
+    left running (it names them agy-NAME…) stopped with it."""
+    d = folder(name)
+    text = screen(name, 200000)
+    if text and os.path.isdir(d):
+        open(os.path.join(d, "transcript.txt"), "w").write(text + "\n")
     tmux("kill-session", "-t", f"={name}")
+    tsession = os.path.join(ROOT, "tools/dev/tsession")
+    try:
+        listed = subprocess.run(["/usr/bin/python3", tsession, "list"], capture_output=True, text=True, timeout=20).stdout
+        for line in listed.splitlines():
+            its = line.split()
+            if its and (its[0] == f"agy-{name}" or its[0].startswith(f"agy-{name}-")) and "ended" not in its[1:]:
+                subprocess.run(["/usr/bin/python3", tsession, "stop", its[0]], capture_output=True, timeout=60)
+                print(f"agents: stopped {name}'s test session {its[0]}", file=sys.stderr)
+    except (OSError, subprocess.SubprocessError):
+        pass
     m = meta(name)
     if m:
         m["seen_state"] = "exited"
+        m["ended"] = time.time()
         save_meta(name, m)
-    print(f"agents: {name} stopped; its folder {folder(name)} stays (its report or answer, its brief: `agents log` before stopping for its transcript)")
+
+
+def stop(name):
+    refuse_nested()
+    end(name)
+    print(f"agents: {name} stopped; its folder {folder(name)} stays (its report or answer, its brief, transcript.txt)")
+
+
+# An agent nobody needs any more is ended, not left at its prompt (Ben,
+# 2026-11-22: "make sure that the tmux agents / screens are getting
+# properly stopped when they are no longer needed"): one whose program
+# has exited; one that wrote its result this long ago and has sat since;
+# one that has sat idle without a result this long. Its folder (result,
+# transcript) stays; a folder whose agent ended this long ago goes too.
+DONE_KEPT = 30 * 60
+IDLE_KEPT = 3 * 3600
+FOLDER_KEPT = 7 * 24 * 3600
+
+
+def tidy(now=None):
+    """End what is no longer needed; what was done, as lines to print."""
+    if os.environ.get("OLO_SUBAGENT"):
+        return []
+    now = time.time() if now is None else now
+    said = []
+    for n in names():
+        m = meta(n) or {}
+        st = state(n)
+        if st == "exited":
+            end(n)
+            said.append(f"{n}: its program had ended; its session closed (transcript.txt in {folder(n)})")
+        elif st == "idle":
+            p = progress(n)
+            if p != m.get("still"):
+                m["still"], m["still_since"] = p, now
+                save_meta(n, m)
+                continue
+            sat = now - m.get("still_since", now)
+            finished = os.path.exists(done_file(n))
+            if (finished and sat >= DONE_KEPT) or sat >= IDLE_KEPT:
+                end(n)
+                said.append(f"{n}: {'done' if finished else 'idle'} and untouched for {int(sat // 60)} minutes; stopped (its folder {folder(n)} stays)")
+        elif st == "gone":
+            ended = m.get("ended") or os.path.getmtime(os.path.join(folder(n), "meta.json"))
+            if now - ended >= FOLDER_KEPT:
+                shutil.rmtree(folder(n), ignore_errors=True)
+                said.append(f"{n}: ended over a week ago; its folder removed")
+    return said
+
+
+def say_tidied(said):
+    for line in said:
+        print(f"agents: {line}", file=sys.stderr)
 
 
 def forget(name):
@@ -1045,8 +1123,9 @@ def main():
         print(__doc__)
         return
     cmd, rest = a[0], a[1:]
-    if cmd in ("start", "list", "watch", "investigate", "look"):
+    if cmd in ("start", "list", "watch", "investigate", "look", "tidy"):
         say_swept(sweep_builds())
+        say_tidied(tidy())
     if cmd == "start" and len(rest) == 3:
         start(*rest)
     elif cmd == "investigate" and len(rest) in (1, 2):
@@ -1079,6 +1158,8 @@ def main():
         print(f"tmux -L {SOCKET} attach -r -t {rest[0]}")
     elif cmd == "allowed":
         allowed()
+    elif cmd == "tidy":
+        print("agents: tidied (what was ended is said above; `agents list` shows what runs)")
     else:
         print(__doc__)
         sys.exit(2)
