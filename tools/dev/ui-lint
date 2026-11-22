@@ -141,11 +141,42 @@ def session_env(name):
 def ipc(name, req):
     s = socket.socket(socket.AF_UNIX)
     s.settimeout(5)
-    s.connect(session_env(name)["OLO_SOCKET"])
+    try:
+        s.connect(session_env(name)["OLO_SOCKET"])
+    except OSError as e:
+        # (A socket that isn't there says only "No such file or directory",
+        # of no file: a push was refused with that and nothing else to go
+        # by, 2026-11-22. It is the session's window server that is gone.)
+        raise RuntimeError(f"the session's app_server isn't there to ask {req.get('type')} of ({e.strerror or e}): it has ended, or crashed") from e
     s.sendall((json.dumps(req) + "\n").encode())
     a = s.makefile().readline()
     s.close()
     return json.loads(a or "{}")
+
+
+KEPT = os.path.join(BASE, "ui-lint-kept")
+
+
+def keep_failed(name, home):
+    """What a session whose lint failed leaves behind, kept where it can
+    be read after the run has removed the session: its logs (the app's,
+    its window server's), how it was started, and what crashed in it.
+    The newest five; where they are."""
+    import glob
+    import shutil
+    kept = os.path.join(KEPT, f"{time.strftime('%Y%m%d-%H%M%S')}-{name}")
+    try:
+        os.makedirs(kept, exist_ok=True)
+        for src in glob.glob(os.path.join(BASE, name, "*.log")) + glob.glob(os.path.join(BASE, name, "*.json")):
+            shutil.copy(src, kept)
+        crashes = os.path.join(home, ".local/state/olo/crashes")
+        if os.path.isdir(crashes):
+            shutil.copytree(crashes, os.path.join(kept, "crashes"), dirs_exist_ok=True)
+        for old in sorted(os.listdir(KEPT))[:-5]:
+            shutil.rmtree(os.path.join(KEPT, old), ignore_errors=True)
+    except OSError:
+        pass
+    return kept
 
 
 def ask_app(pid, req, timeout=6):
@@ -653,6 +684,10 @@ def lint_one(spec, slot, master, screen, scales, show_review, work, all_themes=F
             level, window, tab, kind, text = key
             lines.append(f"  - {level.lower()} {kind} in {window}{' ▸ ' + tab if tab else ''}: {text} ({', '.join(seen[key])})")
         return len(app_errors), len(app_reviews), lines
+    except Exception as x:
+        # (What it left is kept, and said: the session is gone after this.)
+        x.add_note(f"what its session left is kept in {keep_failed(name, home)}")
+        raise
     finally:
         try:
             sh("stop", name, check=True)
@@ -812,7 +847,11 @@ def main():
                 try:
                     e, r, lines = done.result()
                 except Exception as x:
-                    e, r, lines = 1, 0, [f"{spec[0]}{where(run)}: the lint failed: {x}"]
+                    # (Where in the lint, and what the session left: "the
+                    # lint failed: [Errno 2]" told nobody anything.)
+                    import traceback
+                    at = traceback.extract_tb(x.__traceback__)[-1]
+                    e, r, lines = 1, 0, [f"{spec[0]}{where(run)}: the lint failed: {x} (ui-lint, line {at.lineno}, in {at.name})"] + [f"    {note}" for note in getattr(x, "__notes__", [])]
                 with lock:
                     errors += e
                     reviews += r

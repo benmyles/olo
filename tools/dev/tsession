@@ -497,6 +497,13 @@ def forget_display(display, person=None):
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
             return False
+        # The lock may have been unlinked between open and flock.
+        # A lock on that old inode says nothing about the current display.
+        try:
+            if not os.path.samestat(os.fstat(fd), os.stat(lock)):
+                return False
+        except FileNotFoundError:
+            return False
         if display_pids(display):
             return False
         try:

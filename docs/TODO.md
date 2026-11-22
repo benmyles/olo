@@ -1065,6 +1065,29 @@ something nobody here has is in "Blocked", with what it waits for.
     short is cut at its end, where a folder's last part is what tells
     it ("bash — ~/src/olo/crates/re…": the middle, as Tracker's names);
     a lone "~" is slight as a whole folder's name.
+- **SSH sessions that don't stall under load; Terminal and Rex first in
+  line** (Ben, 2026-11-22: "look into whether there's a way to prioritize
+  ssh sessions and traffic on olo desktop, like maybe under prefs ->
+  performance a way to put ssh sessions on rtkit or give them super high
+  priority or something and also if possible prioritize their network
+  traffic. basically under load (whether machine/cpu or network) i don't
+  want ssh sessions stalling. and it should also include making sure olo
+  terminal and rex has real time priority too (but not all the processes
+  they launch, only the gui app itself and the terminal sessions)").
+  After the Rex work. To find out first: what an `ssh` (and Rex's own
+  in-process SSH, and `sshd` for sessions coming in) waits on when the
+  machine is loaded (the processor: its scheduling class and cgroup
+  weight; the network: its packets' class, DSCP and the queue on the
+  way out), measured (keys to echo over SSH with the processors and the
+  link each saturated, before and after). Then the least that cures it:
+  a real-time or raised priority for the terminal's own threads (the
+  window and the pty's reader and writer, not the shell and what it
+  runs: those must stay as they are, and must not inherit it), through
+  rtkit or the session's own grant, as the window server has; the
+  network side (a socket's priority and its packets' marking, a queue
+  that serves them first); and a switch under Preferences ▸
+  Performance saying what it does. Nothing that starves the rest: a
+  limit on what the raised threads may take.
 - **Tracker's columns resized by hand, one width for them all** (Ben,
   2026-11-21: "in tracker columns mode the column widths need to be
   resizable (let's keep it simple so it resizes the width of all

@@ -43,6 +43,20 @@ fn identity(path: &Path) -> Option<(u64, u64)> {
     std::fs::symlink_metadata(path).ok().map(|m| (m.dev(), m.ino()))
 }
 
+/// Whether `lock`, a file we hold open and have locked, is still the
+/// file at `path`. Between opening a lock file and locking it, whoever
+/// held it can unlink it (a session ending, `tsession`'s clean-up) and
+/// another session make a new one of that name: the lock we then get is
+/// on a file with no name, and says nothing of the name. Taken for the
+/// name's, it had one session delete the sockets of another that was
+/// alive (a layout lint's app_server gone from under it: "[Errno 2] No
+/// such file or directory", 2026-11-22; found by replaying the two in a
+/// private runtime directory).
+fn still_named(lock: &std::fs::File, path: &Path) -> bool {
+    let held = lock.metadata().ok().map(|m| (m.dev(), m.ino()));
+    held.is_some() && held == identity(path)
+}
+
 /// Our own `wayland-N`: the first name whose lock we can take (as
 /// libwayland does), listening, with its files.
 pub struct Wayland {
@@ -69,6 +83,9 @@ pub fn bind_wayland() -> std::io::Result<Wayland> {
         if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
             continue;
         }
+        if !still_named(&lock, &lock_path) {
+            continue;
+        }
         let path = dir.join(&name);
         let _ = std::fs::remove_file(&path);
         let listener = UnixListener::bind(&path)?;
@@ -80,6 +97,26 @@ pub fn bind_wayland() -> std::io::Result<Wayland> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A lock is the name's only while the file locked is the one at the
+    /// name: not once it was unlinked, nor when another was made there.
+    #[test]
+    fn a_lock_on_an_unlinked_file_isnt_the_names() {
+        let dir = std::env::temp_dir().join(format!("olo-sockfile-lock-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("wayland-7.lock");
+        let open = || std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(&path).unwrap();
+        let first = open();
+        assert!(still_named(&first, &path));
+        // Unlinked by a cleaner while we were between open and lock.
+        std::fs::remove_file(&path).unwrap();
+        assert!(!still_named(&first, &path));
+        // And another session's, made there since.
+        let second = open();
+        assert!(!still_named(&first, &path));
+        assert!(still_named(&second, &path));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn leaves_a_replaced_file_alone() {

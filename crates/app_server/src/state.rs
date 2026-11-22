@@ -1153,7 +1153,8 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             // another session's).
             let crate::sockfile::Wayland { name: socket_name, listener, _lock, _files } = crate::sockfile::bind_wayland().expect("Failed to create a wayland socket");
             listener.set_nonblocking(true).expect("nonblocking socket");
-            let files = (_lock, _files);
+            // Drop the socket and lock path guards while the lock is still held.
+            let files = (_files, _lock);
             let mut reserve = olo_system::fds::Reserve::default();
             handle
                 .insert_source(Generic::new(listener, Interest::READ, Mode::Level), move |_, listener, data| {

@@ -336,6 +336,27 @@ Each note: what to do, then why (what happened), then how to apply it.
   window server were ready with no processor to run on
   (`/proc/PID/schedstat`'s second number, `kept_waiting`). Do the same
   for any wait on something that runs at low priority.
+- **A lock file is locked, then checked to be the file at its name.**
+  Open, then `flock`, leaves a gap: whoever held the lock can unlink
+  the file meanwhile and someone else make a new one of that name, and
+  the lock then got is on a file with no name. `tsession`'s clean-up
+  of a display took such a lock for the display's, and deleted the
+  sockets of a session that had just begun on that display: a layout
+  lint's `[Errno 2] No such file or directory` with no file named, and
+  a push refused (2026-11-22). After the lock, compare the open file
+  with the path (`os.path.samestat(os.fstat(fd), os.stat(path))`;
+  app_server's `sockfile::still_named`), and delete what the lock
+  guards before letting the lock go. The second investigator found it
+  in ten minutes by replaying two sessions' stop and start in a
+  private runtime directory with the calls traced
+  (`/var/tmp/…/repro-lock.py`): one that happens once in fifty runs is
+  made to happen by holding one side where the gap is.
+- **A socket that isn't there says "No such file or directory" of no
+  file**: an `OSError` from `connect` carries no name. Say which socket
+  and what was being asked when you raise it; the lint now does, and
+  keeps a failed session's logs and crash reports
+  (`/var/tmp/olo-dev/ui-lint-kept`), which it used to delete with the
+  session.
 - **A wait repeated for each of many things has no bound: give the
   whole run one allowance.** The same lint waited up to a quarter of
   an hour for the machine to have room before *each* app's session;
