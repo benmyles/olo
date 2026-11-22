@@ -1356,6 +1356,67 @@ pub fn cross_mark(g: &mut Painter, r: Bounds<Pixels>, color: Hsla) {
     }
 }
 
+/// A round dot `across` points across centred on `center`, its box on
+/// whole device pixels (a status light, a mark on an icon's corner):
+/// round and sharp at any scale, where a path through sixteen points
+/// was neither.
+pub fn dot(g: &mut Painter, center: Point<Pixels>, across: f32, color: Hsla) {
+    let r = snap_centred(g, center, across, across);
+    g.paint_quad(olo_interface::fill(r, color).corner_radii(r.size.width / 2.0));
+}
+
+/// A plus `across` points across centred on `center`, its arms `thick`
+/// points thick in whole device pixels and as long either side of the
+/// other at any scale: a tab strip's + (ten across, a point and a half
+/// thick), a glyph button's.
+pub fn plus_mark(g: &mut Painter, center: Point<Pixels>, across: f32, thick: f32, color: Hsla) {
+    let s = g.scale_factor();
+    let thick = (thick * s).round().max(1.0);
+    let len = (across * s).round();
+    let len = len + (len - thick).rem_euclid(2.0);
+    let k = snap_centred(g, center, len / s, len / s);
+    let arm = px((len - thick) / 2.0 / s);
+    fill_rect(g, Bounds::from_corners(point(k.left(), k.top() + arm), point(k.right(), k.bottom() - arm)), color);
+    fill_rect(g, Bounds::from_corners(point(k.left() + arm, k.top()), point(k.right() - arm, k.bottom())), color);
+}
+
+/// A close ×, `across` points across centred on `center`, its strokes
+/// as thick as a tab's close × has them (one look for × in Olo: a
+/// tab's, a glyph button's).
+pub fn close_mark(g: &mut Painter, center: Point<Pixels>, across: f32, color: Hsla) {
+    let k = snap_centred(g, center, across, across);
+    let w = px((1.3 * g.scale_factor()).max(1.2) / g.scale_factor());
+    g.paint_segment(k.origin, k.bottom_right(), w, true, color);
+    g.paint_segment(point(k.right(), k.top()), point(k.left(), k.bottom()), w, true, color);
+}
+
+/// A pane and the line a split would draw across it, centred on
+/// `center`: a frame eleven points by nine, one device line thick, with
+/// a line down its middle (`down`: across it), every edge on a whole
+/// device pixel and the two halves equal at any scale.
+pub fn split_mark(g: &mut Painter, center: Point<Pixels>, down: bool, color: Hsla) {
+    let s = g.scale_factor();
+    let line = s.round().max(1.0);
+    // (The side the line divides has an odd number of lines' worth left
+    // over either side of it: equal halves.)
+    let even = |v: f32| v + (v - line).rem_euclid(2.0);
+    let (w, h) = ((11.0 * s).round(), (9.0 * s).round());
+    let (w, h) = if down { (w, even(h)) } else { (even(w), h) };
+    let b = snap_centred(g, center, w / s, h / s);
+    let t = px(line / s);
+    fill_rect(g, Bounds::from_corners(b.origin, point(b.right(), b.top() + t)), color);
+    fill_rect(g, Bounds::from_corners(point(b.left(), b.bottom() - t), b.bottom_right()), color);
+    fill_rect(g, Bounds::from_corners(b.origin, point(b.left() + t, b.bottom())), color);
+    fill_rect(g, Bounds::from_corners(point(b.right() - t, b.top()), b.bottom_right()), color);
+    if down {
+        let y = b.top() + px((h - line) / 2.0 / s);
+        fill_rect(g, Bounds::from_corners(point(b.left(), y), point(b.right(), y + t)), color);
+    } else {
+        let x = b.left() + px((w - line) / 2.0 / s);
+        fill_rect(g, Bounds::from_corners(point(x, b.top()), point(x + t, b.bottom())), color);
+    }
+}
+
 /// `color` in a sunken well filling `b`: a colour well's look, and a
 /// colour's in a menu (`Menu::swatch`) or a tool bar's colour picker.
 pub fn paint_swatch(g: &mut Painter, b: Bounds<Pixels>, color: Hsla, p: &Palette) {

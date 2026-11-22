@@ -202,6 +202,102 @@ impl IntoElement for ArrowButton {
     }
 }
 
+/// What a [`GlyphButton`] has on it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Glyph {
+    /// Add one (a session to a host, a row to a list).
+    Plus,
+    /// Close, or take away, what it is set against.
+    Close,
+    /// Split what it is set against, side by side.
+    SplitRight,
+    /// Split it, one above the other.
+    SplitDown,
+}
+
+/// A glyph button's size: square, lower than a small button, for a
+/// pane's header or a list's heading row (22 points); its mark is
+/// eleven points across at most.
+pub const GLYPH_BUTTON: (f32, f32) = (18.0, 18.0);
+
+/// A small button that is only its mark, for an action set right
+/// against what it acts on in a dense row: a pane's header (split it,
+/// close it), a heading in a list (add to it). At rest the mark alone,
+/// quiet, as a tab's × and a tab strip's + are (one look for those in
+/// Olo, the same marks); under the pointer a push button's face, and
+/// pressed as one. It says what it does to agents and in its tip. Its
+/// mark is drawn in whole device pixels at every scale
+/// ([`style::plus_mark`], [`style::split_mark`], [`style::close_mark`]).
+/// (Rex drew four of its own at fractions of a point, blurred at 1× and
+/// 1.5×; framed at rest, a row of them in each pane's header was the
+/// loudest thing in the window: Opus's review, 2026-11-22.)
+pub struct GlyphButton {
+    id: SharedString,
+    name: SharedString,
+    glyph: Glyph,
+    enabled: bool,
+    on_click: Option<Handler>,
+}
+
+impl GlyphButton {
+    /// `name`: what it does ("New Session", "Split Right"), for agents
+    /// and its tip.
+    pub fn new(name: impl Into<SharedString>, glyph: Glyph) -> GlyphButton {
+        let name = crate::words::of(name);
+        GlyphButton { id: name.clone(), name, glyph, enabled: true, on_click: None }
+    }
+
+    /// Its own id, where several in a window do the same to different
+    /// things (a + for each host).
+    pub fn id(mut self, id: impl Into<SharedString>) -> Self {
+        self.id = id.into();
+        self
+    }
+
+    pub fn enabled(mut self, on: bool) -> Self {
+        self.enabled = on;
+        self
+    }
+
+    pub fn on_click(mut self, f: impl Fn(&ClickEvent, &mut WindowCx) + 'static) -> Self {
+        self.on_click = Some(Rc::new(f));
+        self
+    }
+}
+
+impl IntoElement for GlyphButton {
+    fn into_element(self) -> Element {
+        let glyph = self.glyph;
+        let mut c = control(self.id.clone(), GLYPH_BUTTON.0, GLYPH_BUTTON.1, move |g, r, s| {
+            let p = theme::palette();
+            let over = s.enabled && (s.hovered || s.pressed);
+            if over {
+                paint_button(g, r, s, "", false, false, style::DETAIL_SIZE);
+            }
+            let ink = match (s.enabled, over) {
+                (false, _) => style::disabled_text(&p),
+                (true, true) => style::c(p.control_text),
+                (true, false) => style::secondary_text(&p),
+            };
+            let off = if s.pressed { style::hairline(g) } else { px(0.0) };
+            let center = point(r.center().x + off, r.center().y + off);
+            match glyph {
+                Glyph::Plus => style::plus_mark(g, center, 10.0, 1.5, ink),
+                Glyph::Close => style::close_mark(g, center, 7.0, ink),
+                Glyph::SplitRight => style::split_mark(g, center, false, ink),
+                Glyph::SplitDown => style::split_mark(g, center, true, ink),
+            }
+        })
+        .look((&self.name, glyph))
+        .enabled(self.enabled)
+        .agent("Button", self.name.clone(), None);
+        if let Some(f) = self.on_click {
+            c = c.on_click(move |event, cx| f(event, cx));
+        }
+        crate::tip::on(c.into_element(), self.id, self.name)
+    }
+}
+
 /// A button that is only its words, in the small font and the link
 /// colour, underlined under the pointer: a small action beside what it
 /// acts on, in a line that has no room for a push button (a box's Reset,

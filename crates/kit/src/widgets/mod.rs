@@ -36,7 +36,7 @@ pub use alert::{
     open_app_alert, open_timed_alert, paragraph, paragraph_height, ways_in,
 };
 pub use banner::{Banner, Tone, banner_back, banner_height, verdict_mark};
-pub use buttons::{ArrowButton, Button, CheckBox, LinkButton, PaneSwitch, RadioButton, SMALL_BUTTON_HEIGHT, button_width, check_box_look, link_button_width};
+pub use buttons::{ArrowButton, Button, CheckBox, GLYPH_BUTTON, Glyph, GlyphButton, LinkButton, PaneSwitch, RadioButton, SMALL_BUTTON_HEIGHT, button_width, check_box_look, link_button_width};
 pub use charts::{CellGrid, Graph, GridCell, LegendItem, SPECTRUM_LABELS, Series, Spectrum, SpectrumSeries, legend, legend_height, nice_ceiling};
 pub use color::{ColorControl, ColorWell, color_control_height};
 pub use control::{Control, ControlState, DISABLED_OPACITY, control};
@@ -48,7 +48,7 @@ pub use menu_field::{MenuField, NONE_CHOSEN, divider_for};
 pub use month::MonthGrid;
 pub use picture_text::TextLine;
 pub use scroll::{SCROLL_BAR, ScrollBar, ScrollView};
-pub use side_pane::{Front, Panes, SidePane, side_divider};
+pub use side_pane::{Front, Panes, SidePane, side_divider, side_divider_within};
 pub use sidebar::Sidebar;
 pub use slider::Slider;
 pub use slim_scroll::{SLIM_BAR, SLIM_NEAR, SlimScrollBar};

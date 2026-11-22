@@ -701,6 +701,12 @@ struct RexHubInner {
     notify: Arc<dyn Fn(HubNotice) + Send + Sync>,
 }
 
+/// This computer's home folder, as the status bar shortens folders
+/// under it to `~` (the demo's own, in the demo).
+pub fn local_home() -> Option<String> {
+    if std::env::var("OLO_REX_DEMO").ok().as_deref() == Some("1") { Some("/home/you".into()) } else { std::env::var("HOME").ok() }
+}
+
 impl RexHub {
     pub fn start(settings: Settings, active_theme: TerminalTheme, askpass: Option<Arc<dyn SshAskpass>>, notify: impl Fn(HubNotice) + Send + Sync + 'static) -> Arc<Self> {
         let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(4).thread_name("rex-io").enable_all().build().expect("create Rex tokio runtime");
@@ -878,7 +884,7 @@ impl RexHub {
                 bounds: [0.0, 0.0, 1.0, 1.0],
                 state: Some("normal".to_owned()),
                 layout: Some(root_layout),
-                blocks: vec![mk_block("demo-build", "cargo test — olo-rex"), mk_block("demo-agent", "claude — Refactor VT renderer"), mk_block("demo-shell", "zsh — ~/olo/rex-client")],
+                blocks: vec![mk_block("demo-build", "cargo test — olo-rex"), mk_block("demo-agent", "claude — Refactor VT renderer"), mk_block("demo-shell", "zsh — ~/olo/rex")],
             }],
         };
         let win2 = WindowView {
@@ -937,7 +943,7 @@ impl RexHub {
         // Populate realistic, crisp terminal contents via libghostty-vt sized cleanly for splits.
         let mut br_build = BlockRuntime::new(72, 34, &theme);
         br_build.title = "cargo test — olo-rex".to_owned();
-        br_build.pwd = "/home/you/olo/rex-client".to_owned();
+        br_build.pwd = "/home/you/olo/rex".to_owned();
         br_build.data_connected = true;
         br_build.terminal.vt_write(
             concat!(
@@ -963,7 +969,7 @@ impl RexHub {
 
         let mut br_agent = BlockRuntime::new(56, 18, &theme);
         br_agent.title = "claude — Refactor VT renderer".to_owned();
-        br_agent.pwd = "/home/you/olo/rex-client".to_owned();
+        br_agent.pwd = "/home/you/olo/rex".to_owned();
         br_agent.agent_activity = AgentActivity::Working;
         br_agent.data_connected = true;
         br_agent.terminal.vt_write(
@@ -979,8 +985,8 @@ impl RexHub {
         st.blocks.insert(BlockKey { host_key: "local".into(), session_id: "demo-main".into(), block_id: "demo-agent".into() }, Arc::new(Mutex::new(br_agent)));
 
         let mut br_shell = BlockRuntime::new(56, 14, &theme);
-        br_shell.title = "zsh — ~/olo/rex-client".to_owned();
-        br_shell.pwd = "/home/you/olo/rex-client".to_owned();
+        br_shell.title = "zsh — ~/olo/rex".to_owned();
+        br_shell.pwd = "/home/you/olo/rex".to_owned();
         br_shell.data_connected = true;
         br_shell.ports.ports.push(olo_rex_client::PortEntry {
             port: 3000,

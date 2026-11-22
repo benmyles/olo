@@ -669,7 +669,10 @@ Doctor check, try its fix and look again: the finding must be gone.
   kind it's running on. perf's default scales each count up by the time
   it wasn't counting, so a thread that moved between kinds was counted
   up to twice, at random: the same Logs build read 5.0 or 9.4 M
-  instructions a frame. Sum both kinds' counts. For a benchmark of the
+  instructions a frame. Sum both kinds' counts (`-x,` prints a line
+  for each kind: a script that read the first line alone had the share
+  of the work that happened to run on that kind, 143 to 773 M for the
+  same work, 2026-11-22). For a benchmark of the
   code alone, pin it: `taskset -c 1 perf stat -x, -e
   cpu_core/instructions/u,cpu_core/cycles/u BINARY` (not CPU 2: Olo's
   realtime threads have it) repeats to within a few hundred
@@ -994,6 +997,22 @@ one: every test typed text. What was learned:
   `sleep 3; echo $?` after an interrupt goes on to the echo there (130)
   where bash would stop the line. Read the control's result knowing
   which shell ran it.
+
+### What a drag keeps must outlive a layout (2026-11-22)
+
+Rex's split dividers kept their drag (where the pointer took it, the
+ratio then) in an `Rc<Cell>` made in the view's `body`, and each move
+changed the ratio, which said the view again: the handlers of the next
+layout had a new, empty cell, and the drag ended at its first move. A
+control's state between its handlers belongs to the element
+(`cx.node_state::<T>()`, with an `.id(..)` that is the same in the
+next layout: `SlimScrollBar`'s thumb, Rex's `SplitDrag`), or to the
+view. Test a drag in several moves and read the value back after each
+(`tsession down`, `move`…, `up`; the Splitter's value in the tree):
+one move passes with the bug. And two things sharing a row by a ratio
+take `flex_grow` the ratio with no basis: with a basis of the ratio
+times a thousand points and equal growth, they are right only in a
+row a thousand points wide.
 
 ### A real remote host for Rex (2026-11-21)
 

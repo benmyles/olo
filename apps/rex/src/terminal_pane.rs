@@ -441,8 +441,12 @@ fn paint_cursor(g: &mut Painter, cursor: &CursorInfo, origin: (f32, f32), (cw, c
     // for as long as nothing happens. It blinked where the program asked,
     // and could leave a trail.)
 
-    // Hide cursor in unfocused panes so split layouts never show tofu-like hollow rectangles.
+    // In a pane without the keyboard: an outline, as Terminal's, so the
+    // pane shows where its cursor is and that it lives. (It was hidden:
+    // a shell waiting at its prompt looked hung.)
     if !focused {
+        let t = line_px.max(0.5);
+        g.paint_quad(olo_kit::outline(Bounds::new(point(px(x + t / 2.0), px(y + t / 2.0)), size(px(w - t), px(ch - t))), cursor_color, olo_kit::BorderStyle::Solid).border_widths(px(2.0 * t)));
         return;
     }
 

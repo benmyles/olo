@@ -4095,6 +4095,23 @@ it.
   folded workspaces), is `style::latch(g, r, open, color)`,
   BOutlineListView's: pointing right while what's under it is away,
   down while it shows (`PaneSwitch`'s too).
+- `widgets::GlyphButton::new(name, Glyph::Plus | Close | SplitRight |
+  SplitDown)` (`.id`, `.enabled`, `.on_click`): a small button that is
+  only its mark, 18 points square (`GLYPH_BUTTON`), for an action set
+  right against what it acts on in a dense row (a pane's head: split
+  it, close it; a heading in a list: add to it). At rest the mark
+  alone in the secondary text colour, as a tab's × and a tab strip's +
+  are (the same marks: one look for + and × in Olo); under the pointer
+  a push button's face. `name` is what agents read and its tip; give
+  each of several that do the same to different things its own `id`.
+  The marks are `style`'s, each on whole device pixels at every scale:
+  `plus_mark(g, center, across, thick, color)`, `close_mark(g, center,
+  across, color)`, `split_mark(g, center, down, color)` (a pane and
+  the line a split would draw, its halves equal), and `dot(g, center,
+  across, color)` (a status light, a mark on an icon's corner). Rex's
+  panes and hosts (2026-11-22: it drew four buttons of its own at
+  fractions of a point; framed at rest, three in each pane's head
+  were the loudest thing in the window).
 - `StringView::cut(true).beside(size)`: a line cut to its room sits on
   the baseline of the larger text beside it, as an uncut one does (a
   status after a title: it was half a point off, the layout review's
@@ -4199,6 +4216,11 @@ it.
   its item `.key("s")` for every app's keys (`app.sidebar`: ⌥⌘S, as
   Finder's was; a kit app's keys have no Control of their own, so ⌃⌘S
   would be ⌘S). Agents read a Splitter (its width, or "hidden").
+  `side_divider_within(&pane, x, name, on_change)` is the same in the
+  box the pane and the rest are in (a `relative` row): from its top to
+  its bottom, so nobody works the height out and what is under the row
+  (a status bar and its words) is never under the grip (Rex's ran down
+  over its status bar: the review's "text over a Splitter").
   Telegram's chat list (View ▸ Hide Chat List). In a window too narrow
   for both (a third of a screen: "Tiling layouts"), they show one at a
   time, never both squeezed: `pane.panes(total, rest)` says what shows,
@@ -26666,6 +26688,62 @@ looked at, its action going to that very pane. The status bar is always
 there (the window's host and session at rest): coming and going with
 each word it resized the terminals above it twice.
 
+**The main window's controls are the kit's** (2026-11-22; they were
+drawn by hand, each its own way). The sidebar's two lists are chosen
+by a pair of small buttons, the chosen one held down (`Button::small()
+.pushed(..)`, as Phone's Messages and Contacts), their words on the
+line the tabs' words are on beside them. The + beside a host and split
+right, split down and close in a pane's head are `GlyphButton`s (the
+kit, above): quiet marks, the same on every pane with the room, the
+keyboard in it or not. A session's and a pane's icon is drawn at the
+16 points it is made for (it was that one made 12: nothing is
+resampled), the pane's over the first column of its text, as
+Terminal's. What an agent is doing there is a dot on the icon's corner
+in the look's colours (`paint_activity_icon`), said in words by the
+row's tip and to agents as its value (`activity_words`). Status lights
+are one enum (`panels::Light`, coloured by the palette: `success`,
+`warning`, `failure`, the disabled text's); `Light::of(conn)` is a
+host's, and red is an error's alone (a host disconnected, or never
+connected to, is off). The port a pane's program listens on and
+"Zoomed" are `LinkButton`s.
+
+*Where the keyboard is*: every pane's head is on the panel's ground
+(the chosen tab's face, which opens onto them: with the focused head
+alone on that ground, the keyboard in a pane on the right left the tab
+open onto a darker band); the focused one has its title a weight
+heavier and a line along its foot, two points of the palette's
+`keyboard_navigation`, and its cursor filled; the others' cursors are
+an outline, as Terminal's (hidden, a shell at its prompt looked hung).
+
+*Scrollback* has the kit's `SlimScrollBar` over each pane's right
+edge, in rows (`ScrollbarState`'s `offset`, `len`, `total`;
+`scroll_to_row`), there when the pointer comes near or the pane
+scrolls, as Terminal's.
+
+*Splits.* Each of a split's two panes has its share of what the split
+has (`flex_grow` its ratio, basis nothing): they had a thousand points
+between them by the ratio and equal shares of the rest, so in a window
+wider than that a quarter's pane had a third, and the divider moved
+slower than the pointer dragging it. The line between them is one
+device line of the panes' edge colour. What drags it is a grip over
+the two (`split_grip`: four points either side of a line down; over a
+line across six above and one below, since the head of the pane below
+is there; a grip's breadth short at each end, where it meets the grip
+of the split it is in), and the drag is kept with the element
+(`cx.node_state::<SplitDrag>()`, the element's id the split's): each
+change of the ratio lays the panes out again, and a drag kept in what
+one layout made ended at its first move. `split_dragged` keeps the
+divider under the pointer in a split of any size, neither pane under
+15%; a double click halves it. Agents read each as a Splitter, "Pane
+Width" or "Pane Height", its value the first pane's share. The
+sidebar's divider is `side_divider_within` its row.
+
+*The status bar at rest* says what nothing else in the window does:
+the focused pane's folder (from `~` on this computer:
+`folder_said`, `hub::local_home`; a far host's name first) and its
+size in columns and rows (`where_it_is`). It said the host and the
+session, the sidebar's selected row again.
+
 **A pane is never a picture of something else.** The tab strip, the
 panes and the keyboard all go by the one selection the sidebar shows
 (they were three: a closed terminal left another session's screen
@@ -26723,6 +26801,17 @@ for repeated SSH, HTTP/TLS, transfer, forwarding and connection-loss checks.
   for as long as nothing happened; the cursor is steady now.
 - Live typing keystroke-to-draw latency (`app_server timings`): **~1.54 ms median** `to_draw_us` (1.28–1.80 ms) end-to-end through the Rex server vs the 8.33 ms 120 Hz budget.
 - Sustained colored streaming (100 lines/s over 2 s): **7.5% of a core**, **mean 873 µs** per frame (ui 613 µs, tessellate 0 µs, submit 260 µs; slowest 1.94 ms).
+- The kit's marks, scroll bars and split grips (2026-11-22), on a
+  machine busy with other work (load 35), before and after,
+  interleaved: at rest 0 frames and 0% both; 300 coloured lines into
+  one pane, 921 M instructions before and 926 M after (`perf stat
+  --no-scale`, both kinds of core added; 0.6 to 1.2 ms a frame both);
+  into one of three panes, 780 M before and 818 M after (+5%, about
+  0.04 ms of a frame's 1.1 ms: the two other panes' heads have their
+  marks now, and each pane a scroll bar, said again with every frame of
+  output: TODO, "A pane's head, with every frame of output"); a key to
+  its picture, median 3.3 to 4.0 ms before and 1.4 to 3.1 ms after
+  (the same, at that load).
 - Resident memory: **62.2 MiB RSS** (`olo-rex`). Reviewed at 1×, 1.5×,
   and 2×, Light and Dark, across all 6 tiling layouts (`ui-lint --tiles`:
   0 errors; `tsession review`: 0 findings across Workspace, Settings,

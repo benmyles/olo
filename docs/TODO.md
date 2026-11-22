@@ -905,18 +905,35 @@ something nobody here has is in "Blocked", with what it waits for.
   on Terminal's model, Remote Access in one window, its keys Olo's
   (the profile's, through the menu bar; the person's Rex configuration
   a layer of its own), its commands, sessions and panes found in Olo's
-  palette (its own two pickers gone) (HACKING, "Whose settings are
-  whose", "Keys", "One palette", "The menu bar", "Remote Access").
+  palette (its own two pickers gone), the main window's hand-made
+  controls the kit's (the switch, the marks in a pane's head and
+  beside a host, the scrollback's bar, the splits' dividers named for
+  agents and following the pointer, icons at their size, lights from
+  the palette, a status bar that says the pane's folder and size)
+  (HACKING, "Whose settings are whose", "Keys", "One palette", "The
+  menu bar", "Remote Access", "The main window's controls are the
+  kit's").
   **Left, in this order**:
-  - *Kit widgets for the hand-made ones*: the Sessions/Activity switch,
-    the + beside a host, split and close in pane headers, the
-    scrollback's bar, the split dividers (named for agents). With them,
-    from the review of the workspace (2026-11-22): a session's icon in
-    the sidebar is the tabs' 16-point one shrunk to 12 (blurred at 1×:
-    nothing is resampled); the + beside a host is a bevelled button and
-    the + after the tabs a bare glyph; the status bar at rest repeats
-    the sidebar's selection (the pane's folder and size are what it
-    could say).
+  - *A pane's head, with every frame of output.* The panes' view is
+    said again for each frame a pane draws (as Terminal's is), and in
+    Rex the heads (title, marks, links), the scroll bars and the
+    splits' grips are in it: 300 lines of output into one of three
+    panes cost 818 M instructions with the marks on every pane, 780 M
+    before (+5%; HACKING, Rex, "Cost"). A head a view of its own, said
+    again when its title or state changes; or the screens a view of
+    theirs, drawn again alone.
+  - *What a pane's head says* (Opus's review, 2026-11-22): one form,
+    `program — folder` (home as `~`) unless a program gave its own
+    title; the program running now, not the last command; never the
+    tab's name again. A session whose panes are all "shell" can't be
+    told apart by their heads.
+  - *The sidebar's rows* are still drawn by Rex (the kit's `Sidebar`
+    has no heading with a light and an action, nor a mark on a row's
+    icon): either the kit's grows them or the rows stay Rex's.
+  - *The first tab and the column under it*: the strip's first tab
+    begins ten points right of the pane's icon and text under it (the
+    strip's own lead); with its foot on the pane's edge the tab's
+    icon, the head's and the prompt would stand in one column.
   - *Words through the words layer; the agents' tree* (a terminal's
     text, the splitters); the demo's prompts without a person's name.
   - *What claims to exist and doesn't* (found while taking the
@@ -959,7 +976,14 @@ something nobody here has is in "Blocked", with what it waits for.
     ⌥ and ⌘ run together at 1×, and Return is drawn small and low; an open menu's left edge is a
     device pixel or two left of its title's at 2×; "Notifications
     Settings…" for "Notification Settings…"; a fixed-size window's tab
-    has a zoom box.
+    has a zoom box; a button held down (`Button::pushed`) is, in the
+    dark looks, the darker of a pair and reads as the one not chosen
+    (Rex's Sessions and Activity, Phone's Messages and Contacts); a
+    dark look's tabs have faint edges on their strip, the chosen one
+    told by its bold name alone; a `LinkButton` has no underline until
+    the pointer is on it, beside a link in a terminal that has one;
+    the list selection is far stronger in the dark looks than in the
+    light (Opus's and Astra's looks at Rex, 2026-11-22).
 - **Tracker's columns resized by hand, one width for them all** (Ben,
   2026-11-21: "in tracker columns mode the column widths need to be
   resizable (let's keep it simple so it resizes the width of all

@@ -16,7 +16,7 @@
 use std::sync::Arc;
 
 use olo_kit::{
-    Bounds, Child, Element, IntoElement as _, ParentElement as _, PathBuilder, Pixels, Point, SharedString, Styled as _, WindowCx, canvas, div, metrics as m, point, px, size, style, theme,
+    Bounds, Child, Element, IntoElement as _, ParentElement as _, SharedString, Styled as _, WindowCx, canvas, div, metrics as m, point, px, size, style, theme,
     widgets::{BBox, Button, CheckBox, MenuField, StringView, TextControl, TextField, divider_for},
 };
 use olo_rex_client::{AgentStatus, SshAskpass};
@@ -25,43 +25,49 @@ use zeroize::Zeroizing;
 
 use crate::hub::{HostConnState, RexHub};
 
-/// A status light's colours, in every window of Rex's: on, waiting
-/// (connecting, to be signed in), down, and off (nothing wrong: not
-/// in use).
-const LIGHT_ON: [u8; 4] = [56, 174, 92, 255];
-const LIGHT_WAITING: [u8; 4] = [232, 168, 36, 255];
-const LIGHT_DOWN: [u8; 4] = [210, 64, 64, 255];
-const LIGHT_OFF: [u8; 4] = [140, 140, 148, 160];
+/// A status light, in every window of Rex's, in the look's own colours:
+/// on, waiting (connecting, to be signed in), down (something went
+/// wrong), and off (nothing wrong: not in use).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Light {
+    On,
+    Waiting,
+    Down,
+    Off,
+}
+
+impl Light {
+    /// How a host's connection stands. (One it was never asked to
+    /// connect to, or was disconnected from, is off, not down: red is
+    /// for what went wrong.)
+    pub fn of(conn: &HostConnState) -> Light {
+        match conn {
+            HostConnState::Connected => Light::On,
+            HostConnState::Connecting | HostConnState::Reconnecting { .. } => Light::Waiting,
+            HostConnState::Error(_) => Light::Down,
+            HostConnState::Disconnected => Light::Off,
+        }
+    }
+
+    pub fn color(self, p: &olo_theme::Palette) -> olo_kit::Hsla {
+        match self {
+            Light::On => style::c(p.success),
+            Light::Waiting => style::c(p.warning),
+            Light::Down => style::c(p.failure),
+            Light::Off => style::disabled_text(p),
+        }
+    }
+}
+
+/// How far across a status light is.
+pub const LIGHT: f32 = 8.0;
 
 /// A status light before a line of text: 8 points across and no wider
 /// than it looks, so that its edge is the edge of what it is set under
 /// (in a box of 10 it stood a point to the right of the label above
 /// it); to be centred on the line beside it.
-fn light(color: [u8; 4]) -> Element {
-    canvas(move |g, b| {
-        paint_dot(g, b.center(), 4.0, style::c(color));
-    })
-    .paint_key(style::key(color))
-    .w(px(8.0))
-    .h(px(8.0))
-    .flex_shrink_0()
-    .into_any_element()
-}
-
-fn paint_dot(g: &mut olo_kit::Painter, center: Point<Pixels>, radius: f32, color: olo_kit::Hsla) {
-    let mut pb = PathBuilder::fill();
-    let cx = f32::from(center.x);
-    let cy = f32::from(center.y);
-    let steps = 16;
-    for i in 0..steps {
-        let a = (i as f32 / steps as f32) * std::f32::consts::TAU;
-        let pt = point(px(cx + radius * a.cos()), px(cy + radius * a.sin()));
-        if i == 0 { pb.move_to(pt) } else { pb.line_to(pt) }
-    }
-    pb.close();
-    if let Ok(path) = pb.build() {
-        g.paint_path(path, color);
-    }
+fn light(light: Light) -> Element {
+    canvas(move |g, b| style::dot(g, b.center(), LIGHT, light.color(&theme::palette()))).paint_key(style::key(light)).w(px(LIGHT)).h(px(LIGHT)).flex_shrink_0().into_any_element()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -135,11 +141,7 @@ pub fn render_hosts_panel(
 
     let mut host_list = div().flex().flex_col().gap(px(m::SPACING)).w_full();
     for (key, label, ep, is_local, conn) in hosts {
-        let conn_dot: [u8; 4] = match &conn {
-            HostConnState::Connected => LIGHT_ON,
-            HostConnState::Connecting | HostConnState::Reconnecting { .. } => LIGHT_WAITING,
-            HostConnState::Disconnected | HostConnState::Error(_) => LIGHT_DOWN,
-        };
+        let conn_dot = Light::of(&conn);
         let detail = match &conn {
             HostConnState::Connected => ep,
             HostConnState::Connecting if waits_for_agent(&ep) => olo_kit::tr!("{}  •  Waiting for your key agent to sign…", ep),
@@ -160,8 +162,9 @@ pub fn render_hosts_panel(
                 .min_w_0()
                 .flex()
                 .flex_col()
-                .child(div().flex().flex_row().items_center().gap(px(6.0)).child(light(conn_dot)).child(StringView::new(label).bold(true).cut(true)))
-                .child(div().pl(px(16.0)).child(StringView::new(detail).dim(true).cut(true))),
+                .child(div().flex().flex_row().items_center().gap(px(m::TIGHT)).child(light(conn_dot)).child(StringView::new(label).bold(true).cut(true)))
+                // (Under the name's first letter: past the light and its gap. It was two points further.)
+                .child(div().pl(px(LIGHT + m::TIGHT)).child(StringView::new(detail).dim(true).cut(true))),
         );
         if !is_local {
             row = row.child(Button::new("Remove").on_click(move |_, cx| d_cb(&k2, cx)));
@@ -329,13 +332,13 @@ pub fn render_access_panel(
     // Under the check, in line with its words: how it stands, or what
     // just went wrong with it. One line's room always, so nothing below
     // moves as it comes and goes.
-    let (lit, stands): ([u8; 4], String) = match &step {
+    let (lit, stands): (Light, String) = match &step {
         // (The address is in the group below: not said twice.)
-        Step::Pair(_) => (LIGHT_ON, olo_kit::words::tr("Your other devices on Tailscale can reach these sessions.").into()),
-        Step::SignIn(_) => (LIGHT_WAITING, olo_kit::words::tr("Waiting for you to sign in…").into()),
-        Step::Off if !connected => (LIGHT_DOWN, crate::tailscale::state_line(status, connected)),
-        Step::Off if status.is_some_and(|s| matches!(s.state.as_str(), "starting" | "running" | "connected" | "stopping")) => (LIGHT_WAITING, crate::tailscale::state_line(status, connected)),
-        Step::Off => (LIGHT_OFF, crate::tailscale::state_line(status, connected)),
+        Step::Pair(_) => (Light::On, olo_kit::words::tr("Your other devices on Tailscale can reach these sessions.").into()),
+        Step::SignIn(_) => (Light::Waiting, olo_kit::words::tr("Waiting for you to sign in…").into()),
+        Step::Off if !connected => (Light::Down, crate::tailscale::state_line(status, connected)),
+        Step::Off if status.is_some_and(|s| matches!(s.state.as_str(), "starting" | "running" | "connected" | "stopping")) => (Light::Waiting, crate::tailscale::state_line(status, connected)),
+        Step::Off => (Light::Off, crate::tailscale::state_line(status, connected)),
     };
     // (What just went wrong takes the line's place, without a light: it has its own colour.)
     let line = match feedback {
@@ -692,6 +695,18 @@ impl SshAskpass for OloAskpass {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn red_is_for_what_went_wrong() {
+        use super::Light;
+        use crate::hub::HostConnState;
+        // A host never connected to, or disconnected from, is off: the
+        // red light is an error's alone.
+        assert_eq!(Light::of(&HostConnState::Connected), Light::On);
+        assert_eq!(Light::of(&HostConnState::Connecting), Light::Waiting);
+        assert_eq!(Light::of(&HostConnState::Disconnected), Light::Off);
+        assert_eq!(Light::of(&HostConnState::Error("no route".into())), Light::Down);
+    }
+
     #[test]
     fn diagnostics_use_the_real_build_fields() {
         let v = serde_json::from_value(serde_json::json!({"rex_version":"1.2","platform":"linux_amd64","built_at":"fixture-date","dirty":true})).unwrap();

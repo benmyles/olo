@@ -243,12 +243,27 @@ impl SidePane {
 /// is told each time what shows changed (the view lays out again:
 /// `cx.msg(..)`). Agents read it as a Splitter named `name`.
 pub fn side_divider(pane: &SidePane, x: f32, top: f32, height: f32, name: &'static str, on_change: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
+    grip(pane, x, name, on_change).top(px(top)).h(px(height.max(0.0)))
+}
+
+/// [`side_divider`] in the box the pane and what's beside it are in (a
+/// `relative` row of the window's): from that box's top to its bottom,
+/// however tall it is. What's over and under the row (a menu bar, a
+/// status bar and its words) is then never under the grip, and nobody
+/// works the row's height out. (Rex's ran down over its status bar,
+/// whose words went under it once they were long enough to reach.)
+pub fn side_divider_within(pane: &SidePane, x: f32, name: &'static str, on_change: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
+    grip(pane, x, name, on_change).top(px(0.0)).bottom(px(0.0))
+}
+
+/// A divider's grip at `x`, to be given its top and its height.
+fn grip(pane: &SidePane, x: f32, name: &'static str, on_change: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
     let left = x.max(0.0);
     let on_change = Rc::new(on_change);
     let (said, down, moved, up) = (pane.clone(), pane.clone(), pane.clone(), pane.clone());
     let (pressed, dragged) = (on_change.clone(), on_change);
     let shown = x;
-    div().absolute().left(px(left)).top(px(top)).w(px(GRIP)).h(px(height.max(0.0))).child(
+    div().absolute().left(px(left)).w(px(GRIP)).child(
         // (Nothing drawn: the panes' edges are the divider.)
         canvas(move |g, b| {
             let (collapsed, width) = (said.collapsed(), said.width());

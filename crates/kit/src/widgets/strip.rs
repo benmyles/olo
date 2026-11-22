@@ -541,17 +541,10 @@ fn lerp(a: Hsla, b: Hsla, t: f32) -> Hsla {
     Hsla::from(Rgba { r: a.r + (b.r - a.r) * t, g: a.g + (b.g - a.g) * t, b: a.b + (b.b - a.b) * t, a: a.a + (b.a - a.a) * t })
 }
 
-/// A strip's +, ten points across: arms a point and a half thick in
-/// whole device pixels, as long either side of the other at any scale.
+/// A strip's +, ten points across, its arms a point and a half thick
+/// ([`style::plus_mark`]).
 fn plus_mark(g: &mut Painter, center: Point<Pixels>, color: Hsla) {
-    let s = g.scale_factor();
-    let thick = (1.5 * s).round();
-    let len = (10.0 * s).round();
-    let len = len + (len - thick).rem_euclid(2.0);
-    let k = style::snap_centred(g, center, len / s, len / s);
-    let arm = px((len - thick) / 2.0 / s);
-    style::fill_rect(g, Bounds::from_corners(point(k.left(), k.top() + arm), point(k.right(), k.bottom() - arm)), color);
-    style::fill_rect(g, Bounds::from_corners(point(k.left() + arm, k.top()), point(k.right() - arm, k.bottom())), color);
+    style::plus_mark(g, center, 10.0, 1.5, color);
 }
 
 /// A tab's name to agents: its title, what it's doing, its group.
@@ -733,10 +726,7 @@ fn tab_face(g: &mut Painter, tab: &StripTab, selected: bool, (pointed, on_close)
     let badge = tab.badge.clone().filter(|_| icon);
     if pointed || selected && badge.is_none() {
         let color = if on_close { style::c(theme::palette().failure) } else { lerp(ink, back, 0.3) };
-        let k = style::snap_centred(g, close.center(), CROSS, CROSS);
-        let w = px((1.3 * g.scale_factor()).max(1.2) / g.scale_factor());
-        g.paint_segment(k.origin, k.bottom_right(), w, true, color);
-        g.paint_segment(point(k.right(), k.top()), point(k.left(), k.bottom()), w, true, color);
+        style::close_mark(g, close.center(), CROSS, color);
     }
     let mut end = close.left() - px(m::TIGHT);
     // Its red dot, after the title (the title cut short for it), fading

@@ -13,12 +13,12 @@ use std::{
 
 use olo_kit::{
     Bounds, Child, CursorStyle, DragAction, DropAccept, DropOffer, Dropped, Element, FocusHandle, FontWeight, InteractiveElement as _, IntoElement as _, KeyDownEvent, MouseButton, MouseDownEvent,
-    MouseMoveEvent, Painter, ParentElement as _, PathBuilder, Pixels, Point, ScrollWheelEvent, Styled as _, TextInput, View, WindowCx, WindowHandle, WindowOptions, agent, canvas, div, icons,
+    MouseMoveEvent, Painter, ParentElement as _, Pixels, Point, ScrollWheelEvent, Styled as _, TextInput, View, WindowCx, WindowHandle, WindowOptions, agent, canvas, div, icons,
     menu::{self, Menu, MenuBar},
     metrics as m, point, px, size, style, theme,
     widgets::{
-        self, Banner, Button, Front, Panes as SidePanes, SidePane, StatusBar, StringView, StripAction, StripTab, TabStrip, TextControl, TextField, TextFieldEvent, Tone, find_bar, find_said,
-        side_divider,
+        self, Banner, Button, Front, Glyph, GlyphButton, Panes as SidePanes, SidePane, StatusBar, StringView, StripAction, StripTab, TabStrip, TextControl, TextField, TextFieldEvent, Tone, find_bar,
+        find_said, side_divider_within,
     },
 };
 use olo_rex_client::{LayerKind, LayerState, LayoutNode, WindowView};
@@ -667,8 +667,34 @@ impl RexWindow {
 
     /// Where this window is, for its status bar at rest: its host, and
     /// its session if it shows one ("Local · main").
-    fn where_it_is(&self) -> String {
+    /// What the status bar says at rest: the folder and the size of the
+    /// pane the keyboard is in, which nothing else in the window says
+    /// (it said the host and the session: the sidebar's selected row,
+    /// again); the host and session where no pane is.
+    fn where_it_is(&mut self) -> String {
         let hub = app().hub.clone();
+        let focused = self.focused_block_key();
+        let (block, local, far) = {
+            let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+            match &focused {
+                Some(bk) => {
+                    let host = st.hosts.get(&bk.host_key);
+                    let local = host.is_some_and(|h| h.is_local);
+                    (st.blocks.get(bk).cloned(), local, host.filter(|_| !local).map(|h| h.label.clone()).unwrap_or_default())
+                }
+                None => (None, false, String::new()),
+            }
+        };
+        if let Some(block) = block {
+            let g = block.lock().unwrap_or_else(|e| e.into_inner());
+            let (columns, rows) = g.terminal.size();
+            // (This computer's home is known, and said as a shell says
+            // it; a pane on another host says which first.)
+            let home = if local { crate::hub::local_home() } else { None };
+            let folder = folder_said(&g.pwd, home.as_deref());
+            let size = olo_kit::tr!("{} × {}", columns, rows).to_string();
+            return [far.as_str(), folder.as_str(), size.as_str()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ");
+        }
         let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
         let Some(host) = st.hosts.get(&self.active_host) else { return String::new() };
         let session =
@@ -1867,9 +1893,7 @@ impl RexWindow {
         let said = self.build_menu_bar();
         let menu_bar = MenuBar::said(cx, said, |v: &mut Self, _| v.build_menu_bar(), olo_kit::menu::on_command, true);
 
-        let menu_h = olo_kit::menu::BAR_HEIGHT;
         let total_w = f32::from(viewport.width).max(320.0);
-        let total_h = (f32::from(viewport.height) - menu_h).max(160.0);
 
         // Adaptive SidePane: never squeezes split terminals below 460 pt; folds cleanly in vertical thirds!
         let side_layout = self.side_pane.panes(total_w, 460.0);
@@ -2004,8 +2028,8 @@ impl RexWindow {
                 if offline {
                     let p = theme::palette();
                     let center = point(b.right() - px(m::TIGHT), b.bottom() - px(m::TIGHT));
-                    paint_circle(g, center, m::TIGHT, style::c(p.panel_background));
-                    paint_circle(g, center, m::TIGHT - f32::from(style::hairline(g)), style::disabled_text(&p));
+                    style::dot(g, center, 2.0 * m::TIGHT, style::c(p.panel_background));
+                    style::dot(g, center, 2.0 * m::TIGHT - 2.0, style::disabled_text(&p));
                 }
             })
             .w(px(48.0))
@@ -2087,6 +2111,12 @@ impl RexWindow {
             }
         }
 
+        // The sidebar's divider, in the row it divides: not over the
+        // status bar under it, whose words went under its grip.
+        if !self.side_pane.alone() {
+            body_row = body_row.child(side_divider_within(&self.side_pane, side_w, "Rex Sidebar", cx.msg_with(|_: &()| WinMsg::SidebarMoved)));
+        }
+
         // Overlays layered above the workspace!
         let mut root =
             div().relative().size_full().flex().flex_col().track_focus(&self.focus).on_key_down(cx.listener(|w, e: &KeyDownEvent, cx| w.handle_terminal_key(e, cx))).child(menu_bar).child(body_row);
@@ -2112,11 +2142,6 @@ impl RexWindow {
                     .child(line),
             ),
         );
-
-        // Place `side_divider` directly on the outer window from `BAR_HEIGHT` to bottom (exact `apps/phone` pattern).
-        if !self.side_pane.alone() {
-            root = root.child(side_divider(&self.side_pane, side_w, menu_h, total_h, "Rex Sidebar", cx.msg_with(|_: &()| WinMsg::SidebarMoved)));
-        }
 
         // Mode pill (Copy Mode or Key Mode) anchored bottom-left.
         let mode_pill_text = self
@@ -2225,40 +2250,38 @@ impl RexWindow {
         .absolute()
         .inset_0();
 
-        let seg_sessions = sidebar_segment_button(
-            "Sessions".to_owned(),
-            mode == SidebarMode::Sessions,
-            true,
-            cx.msg_with(move |_: &()| {
-                let mut st = hub_s1.state.lock().unwrap_or_else(|e| e.into_inner());
-                st.settings.sidebar_mode = SidebarMode::Sessions;
-                st.settings.save();
-                WinMsg::Redraw
-            }),
-        );
-        let seg_activity = sidebar_segment_button(
-            act_label,
-            mode == SidebarMode::Activity,
-            false,
-            cx.msg_with(move |_: &()| {
-                let mut st = hub_s2.state.lock().unwrap_or_else(|e| e.into_inner());
-                st.settings.sidebar_mode = SidebarMode::Activity;
-                st.settings.save();
-                WinMsg::Redraw
-            }),
-        );
+        // The sidebar's two lists: a pair of the kit's small buttons, the
+        // chosen one held down (`Button::pushed`, a set of tool buttons),
+        // each half the row. (They were two boxes drawn by hand.)
+        let half = ((width - 2.0 * m::SPACING) / 2.0).floor();
+        let seg_sessions = Button::new("Sessions").id("rex-side-sessions").small().min_width(half).pushed(mode == SidebarMode::Sessions).on_click(cx.msg_with(move |_: &olo_kit::ClickEvent| {
+            let mut st = hub_s1.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.settings.sidebar_mode = SidebarMode::Sessions;
+            st.settings.save();
+            WinMsg::Redraw
+        }));
+        let seg_activity = Button::new(act_label).id("rex-side-activity").small().min_width(half).pushed(mode == SidebarMode::Activity).on_click(cx.msg_with(move |_: &olo_kit::ClickEvent| {
+            let mut st = hub_s2.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.settings.sidebar_mode = SidebarMode::Activity;
+            st.settings.save();
+            WinMsg::Redraw
+        }));
         let header = div()
             .relative()
             .w_full()
             .h(px(widgets::STRIP_HEIGHT))
             .flex_shrink_0()
-            .pt(px(8.0))
+            // (Their words on the line the tabs' words are on, beside
+            // them in the same band: the middle of a tab's row, which
+            // leaves three points to the line under it. Buttons, not
+            // tabs standing on it.)
+            .pt(px(widgets::STRIP_HEIGHT - widgets::STRIP_ROW + (widgets::STRIP_ROW - widgets::SMALL_BUTTON_HEIGHT) / 2.0))
             .px(px(m::SPACING))
             .flex()
             .flex_row()
-            .items_end()
+            .items_start()
             .child(header_bg)
-            .child(div().w_full().flex().flex_row().items_end().child(seg_sessions).child(seg_activity));
+            .child(div().w_full().flex().flex_row().items_start().child(seg_sessions).child(seg_activity));
 
         let mut list = div().flex_shrink_0().w_full().p(px(m::SPACING)).flex().flex_col().gap(px(m::SPACING));
         if mode == SidebarMode::Sessions {
@@ -2271,7 +2294,8 @@ impl RexWindow {
                     HostConnState::Error(why) | HostConnState::Reconnecting { last_error: why, .. } => olo_kit::tr!("Disconnected: {}", why),
                 };
                 let selected = self.active_host == hk && !sessions.iter().any(|(s, ..)| self.active_session.as_ref() == Some(s));
-                let key = style::key((&hlabel, &tip, connected, selected));
+                let lit = crate::panels::Light::of(&conn);
+                let key = style::key((&hlabel, &tip, lit, selected));
                 let state_words = tip.clone();
                 let tip_key = format!("rex-host-{hk}");
                 olo_kit::tip::retext(cx, tip_key.clone(), tip.clone());
@@ -2280,9 +2304,8 @@ impl RexWindow {
                 let pick = cx.msg(WinMsg::SelectHost(hk.clone()));
                 let row_label = canvas(move |g, b| {
                     let p = theme::palette();
-                    let dot = if connected { style::c(p.success) } else { style::disabled_text(&p) };
                     let y = style::baseline_at(g, b.center().y, style::PLAIN_SIZE) - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
-                    paint_circle(g, point(b.left() + px(m::TIGHT), y), 3.5, dot);
+                    style::dot(g, point(b.left() + px(m::TIGHT), y), crate::panels::LIGHT, lit.color(&p));
                     // (Selected, a disconnected host's name is a selected
                     // name: dimmed on the selection it read as something
                     // that can't be chosen, and choosing it is the way
@@ -2320,7 +2343,8 @@ impl RexWindow {
                 if selected {
                     row = row.bg(style::c(theme::palette().list_selected_background));
                 }
-                row = row.child(row_label).child(compact_icon_button("New Session", IconGlyph::Plus, connected, cx.msg(WinMsg::CreateSession(hk_new, None))));
+                let new_session = cx.msg(WinMsg::CreateSession(hk_new, None));
+                row = row.child(row_label).child(GlyphButton::new("New Session", Glyph::Plus).id(format!("rex-new-session-{hk}")).enabled(connected).on_click(move |_, cx| new_session(&(), cx)));
                 let mut group = div().w_full().flex_shrink_0().flex().flex_col().child(olo_kit::tip::on(row, tip_key, tip));
                 for (sid, slabel, sact, unread) in sessions {
                     let is_active = self.active_host == hk && self.active_session.as_deref() == Some(sid.as_str());
@@ -2329,7 +2353,17 @@ impl RexWindow {
                     let badge = if unread > 0 { Some(format!("{unread}")) } else { None };
                     let hk_end = hk.clone();
                     let hub_end = hub.clone();
-                    group = group.child(sidebar_row(slabel, badge, sact, is_active, cx.msg_with(move |_: &()| WinMsg::SelectSession(hk_sel.clone(), sid_sel.clone()))).on_mouse_down(
+                    // (What the mark on its icon says, in words: its tip.)
+                    let tip_key = format!("rex-session-{hk}-{sid}");
+                    let doing = activity_words(sact);
+                    if let Some(words) = doing {
+                        olo_kit::tip::retext(cx, tip_key.clone(), words);
+                    }
+                    let tipped = move |row: Element| match doing {
+                        Some(words) => olo_kit::tip::on(row, tip_key, words),
+                        None => row,
+                    };
+                    group = group.child(tipped(sidebar_row(slabel, badge, sact, is_active, cx.msg_with(move |_: &()| WinMsg::SelectSession(hk_sel.clone(), sid_sel.clone()))).on_mouse_down(
                         MouseButton::Right,
                         move |e, cx| {
                             let hub = hub_end.clone();
@@ -2341,7 +2375,7 @@ impl RexWindow {
                             });
                             cx.stop_propagation();
                         },
-                    ));
+                    )));
                 }
                 list = list.child(group);
             }
@@ -3224,7 +3258,7 @@ fn render_layout_node(
         // squeezes into cramped ~200 pt columns!
         let eff_horiz = split.direction.is_horizontal() && avail_w >= 540.0;
         let ratio = (split.ratio as f32).clamp(0.1, 0.9);
-        let (before_w, after_w) = if eff_horiz { ((avail_w - 2.0).max(80.0) * ratio, (avail_w - 2.0).max(80.0) * (1.0 - ratio)) } else { (avail_w, avail_w) };
+        let (before_w, after_w) = if eff_horiz { ((avail_w - 1.0).max(80.0) * ratio, (avail_w - 1.0).max(80.0) * (1.0 - ratio)) } else { (avail_w, avail_w) };
         let before_el = render_layout_node(&split.before, before_w, host_key, host_label, is_local, session_id, win_view, settings, active_theme, metrics, pad, win_id, cx);
         let after_el = render_layout_node(&split.after, after_w, host_key, host_label, is_local, session_id, win_view, settings, active_theme, metrics, pad, win_id, cx);
         let split_id = split.split_id.clone();
@@ -3233,65 +3267,95 @@ fn render_layout_node(
         let sid_d = session_id.to_owned();
         let hk_dr = host_key.to_owned();
         let sid_dr = session_id.to_owned();
-        let vp_span = if eff_horiz {
-            f32::from(cx.viewport_size().width).max(240.0) * (node.rect[2] as f32).clamp(0.15, 1.0)
-        } else {
-            f32::from(cx.viewport_size().height).max(160.0) * (node.rect[3] as f32).clamp(0.15, 1.0)
-        };
-        let drag_state = Rc::new(std::cell::Cell::new(None::<(Point<Pixels>, f32)>));
-        let ds1 = drag_state.clone();
-        let ds2 = drag_state.clone();
+        let line = 1.0 / cx.scale_factor();
 
-        let divider = canvas(move |g, b| {
-            let p = theme::palette();
-            let (shadow, light) = bevel_colors(&p);
-            let scale = g.scale_factor();
-            let dpx = 1.0 / scale;
-            if eff_horiz {
-                let x0 = (f32::from(b.left()) * scale).round() / scale;
-                g.paint_quad(olo_kit::fill(Bounds::new(point(px(x0), b.top()), size(px(dpx), b.size.height)), shadow));
-                g.paint_quad(olo_kit::fill(Bounds::new(point(px(x0 + dpx), b.top()), size(px(dpx), b.size.height)), light));
-            } else {
-                let y0 = (f32::from(b.top()) * scale).round() / scale;
-                g.paint_quad(olo_kit::fill(Bounds::new(point(b.left(), px(y0)), size(b.size.width, px(dpx))), shadow));
-                g.paint_quad(olo_kit::fill(Bounds::new(point(b.left(), px(y0 + dpx)), size(b.size.width, px(dpx))), light));
-            }
+        // The line between the two, a device line of the panes' edge
+        // colour (as under their heads, and as Terminal's panes have
+        // between them).
+        let divider = canvas(move |g, b| style::fill_rect(g, style::snap(g, b), pane_edge(&theme::palette()))).paint_key(if eff_horiz { 3 } else { 4 }).flex_shrink_0();
+
+        // What drags it: over the two panes, a grip a few points either
+        // side of the line (two points of line were all there was to
+        // catch). The drag is kept with the element, by the split's id:
+        // every change of the ratio lays the panes out again, and a
+        // drag kept in what one layout made ended at its first move.
+        // Agents read it as a Splitter, its value the first pane's share.
+        let name = olo_kit::words::tr(if eff_horiz { "Pane Width" } else { "Pane Height" });
+        let grip = canvas(move |g, b| {
+            let grip = split_grip(b, ratio, eff_horiz, 1.0 / g.scale_factor());
+            g.set_cursor_style(if eff_horiz { CursorStyle::ResizeLeftRight } else { CursorStyle::ResizeUpDown }, grip);
+            g.agent(agent::Node {
+                role: "Splitter",
+                name: Some(name.into()),
+                value: Some(format!("{:.0}%", ratio * 100.0).into()),
+                bounds: grip,
+                enabled: true,
+                clickable: true,
+                ..Default::default()
+            });
         })
-        .paint_key(if eff_horiz { 3 } else { 4 })
-        .cursor(if eff_horiz { CursorStyle::ResizeLeftRight } else { CursorStyle::ResizeUpDown })
+        .id(olo_kit::SharedString::from(format!("rex-split-{}", split.split_id)))
+        .paint_key(style::key((eff_horiz, (ratio * 10_000.0) as i32)))
+        .absolute()
+        .inset_0()
         .on_mouse_down(MouseButton::Left, move |e, cx| {
-            if e.click_count >= 2 {
-                app().hub.set_split_ratio(&hk_d, &sid_d, &split_id, 0.5);
-                ds1.set(None);
-            } else {
-                ds1.set(Some((e.position, ratio)));
-            }
-            cx.stop_propagation();
-        })
-        .on_drag_move(move |e: &MouseMoveEvent, _| {
-            if e.pressed_button != Some(MouseButton::Left) {
+            if !split_grip(cx.listener_bounds(), ratio, eff_horiz, line).contains(&e.position) {
                 return;
             }
-            let Some((origin, orig_ratio)) = ds2.get() else { return };
-            let delta = if eff_horiz { f32::from(e.position.x) - f32::from(origin.x) } else { f32::from(e.position.y) - f32::from(origin.y) };
-            let next = (orig_ratio + delta / vp_span).clamp(0.15, 0.85) as f64;
-            app().hub.set_split_ratio(&hk_dr, &sid_dr, &split_id_drag, next);
+            cx.stop_propagation();
+            if e.click_count >= 2 {
+                cx.node_state::<SplitDrag>().0 = None;
+                app().hub.set_split_ratio(&hk_d, &sid_d, &split_id, 0.5);
+            } else {
+                cx.node_state::<SplitDrag>().0 = Some((e.position, ratio));
+            }
+        })
+        .on_drag_move(move |e: &MouseMoveEvent, cx| {
+            let b = cx.listener_bounds();
+            let drag = cx.node_state::<SplitDrag>();
+            let Some((from, was)) = drag.0 else { return };
+            if e.pressed_button != Some(MouseButton::Left) {
+                drag.0 = None;
+                return;
+            }
+            let (span, moved) = if eff_horiz { (b.size.width, e.position.x - from.x) } else { (b.size.height, e.position.y - from.y) };
+            if let Some(next) = split_dragged(was, f32::from(moved), f32::from(span) - line) {
+                app().hub.set_split_ratio(&hk_dr, &sid_dr, &split_id_drag, f64::from(next));
+            }
+        })
+        .on_window_mouse_up(|e, cx| {
+            if e.button == MouseButton::Left {
+                cx.node_state::<SplitDrag>().0 = None;
+            }
         });
 
-        let mut container = div().size_full().flex();
+        // Each pane its share of what the split has, whatever that is.
+        // (They had a thousand points between them by the ratio and
+        // *equal* shares of the rest: in a window wider than that, a
+        // quarter's pane had a third, and the divider moved slower than
+        // the pointer dragging it.)
+        let share = |el: Element, share: f32| {
+            let mut el = el;
+            el.style().flex_grow = Some(share);
+            el.style().flex_shrink = Some(1.0);
+            el.style().flex_basis = Some(olo_kit::relative(0.0).into());
+            el
+        };
+        let mut container = div().relative().size_full().flex();
         if eff_horiz {
             container = container
                 .flex_row()
-                .child(div().flex_grow().flex_basis(px(ratio * 1000.0)).min_w_0().h_full().child(before_el))
-                .child(divider.w(px(2.0)).h_full().flex_shrink_0())
-                .child(div().flex_grow().flex_basis(px((1.0 - ratio) * 1000.0)).min_w_0().h_full().child(after_el));
+                .child(share(div().min_w_0().h_full(), ratio).child(before_el))
+                .child(divider.w(px(line)).h_full())
+                .child(share(div().min_w_0().h_full(), 1.0 - ratio).child(after_el));
         } else {
             container = container
                 .flex_col()
-                .child(div().flex_grow().flex_basis(px(ratio * 1000.0)).min_h_0().w_full().child(before_el))
-                .child(divider.h(px(2.0)).w_full().flex_shrink_0())
-                .child(div().flex_grow().flex_basis(px((1.0 - ratio) * 1000.0)).min_h_0().w_full().child(after_el));
+                .child(share(div().min_h_0().w_full(), ratio).child(before_el))
+                .child(divider.h(px(line)).w_full())
+                .child(share(div().min_h_0().w_full(), 1.0 - ratio).child(after_el));
         }
+        container = container.child(grip);
         return container;
     }
 
@@ -3330,9 +3394,18 @@ fn render_single_pane(
         return div().size_full().child(StringView::new("Attaching terminal stream…").dim(true));
     };
 
-    let (creator_name, title, pwd, activity, ports_list, upload_prog, password_prompt) = {
+    let (creator_name, title, pwd, activity, ports_list, upload_prog, password_prompt, scrolled) = {
         let g = br.lock().unwrap_or_else(|e| e.into_inner());
-        (g.creator_name.clone(), g.title.clone(), g.pwd.clone(), g.agent_activity, g.ports.ports.iter().map(|p| p.port).collect::<Vec<u16>>(), g.upload_progress.clone(), g.password_prompt)
+        (
+            g.creator_name.clone(),
+            g.title.clone(),
+            g.pwd.clone(),
+            g.agent_activity,
+            g.ports.ports.iter().map(|p| p.port).collect::<Vec<u16>>(),
+            g.upload_progress.clone(),
+            g.password_prompt,
+            g.terminal.scrollbar(),
+        )
     };
 
     // Native onboarding walkthrough card for `com.superlogical.onboarding` blocks!
@@ -3389,19 +3462,20 @@ fn render_single_pane(
         let host_pill = (!is_local).then(|| host_label.to_owned());
         let zoom_pill = zoomed.then(|| "Zoomed".to_owned());
 
-        // Consistent, calm pane header rule at every width:
-        // - Show Split Right / Split Down ONLY on the focused pane (acts as a clear second focus cue and cuts button noise!).
-        // - Keep Close on every pane.
-        let show_split_btns = focused && pane_w >= 230.0;
+        // The same buttons on every pane that has the room, the keyboard
+        // in it or not: quiet marks, a button's face under the pointer.
+        // (Split was on the focused pane only: its head's contents moved
+        // with the keyboard, and were, by accident, what said where the
+        // keyboard was. Opus's review, 2026-11-22.)
+        let show_split_btns = pane_w >= 230.0;
         let show_close_btn = pane_w >= 140.0;
         let show_extras = pane_w >= 260.0;
-        let right_controls_w = m::WINDOW_INSET
-            + if show_close_btn { 18.0 + m::TIGHT } else { 0.0 }
-            + if show_split_btns { (18.0 + m::TIGHT) * 2.0 } else { 0.0 }
-            + if show_extras && ports_pill.is_some() { 48.0 + m::TIGHT } else { 0.0 }
-            + if show_extras && zoom_pill.is_some() { 54.0 + m::TIGHT } else { 0.0 };
+        let right_controls_w = HEADER_END
+            + if show_close_btn { widgets::GLYPH_BUTTON.0 + m::TIGHT } else { 0.0 }
+            + if show_split_btns { (widgets::GLYPH_BUTTON.0 + m::TIGHT) * 2.0 } else { 0.0 }
+            + if show_extras { ports_pill.as_deref().map_or(0.0, |p| widgets::link_button_width(p) + m::TIGHT) } else { 0.0 }
+            + if show_extras { zoom_pill.as_deref().map_or(0.0, |z| widgets::link_button_width(z) + m::TIGHT) } else { 0.0 };
 
-        let show_hl = focused;
         let bk_click = bk.clone();
         let bk_split_r = bk.clone();
         let bk_split_d = bk.clone();
@@ -3412,25 +3486,35 @@ fn render_single_pane(
 
         let head_bg = canvas(move |g, b| {
             let p = theme::palette();
-            // Focused pane header uses `panel_background` (so active TabStrip tab opens seamlessly into it);
-            // unfocused pane headers sit one step quieter with secondary text!
-            let bg = if focused { style::c(p.panel_background) } else { style::shade(&p, p.panel_background, 1.07) };
-            g.paint_quad(olo_kit::fill(b, bg));
-            let (shadow, _) = bevel_colors(&p);
-            style::hline_above(g, b.left(), b.right(), b.bottom(), shadow);
-            if show_hl {
-                // Place a high-contrast amber/yellow focus bar along the bottom edge of the focused pane header:
-                // rich ochre in Light mode (>= 4.5:1 on pale panel) and Olo yellow in Dark mode.
-                let bar_color = if p.mode == olo_theme::ThemeMode::Light { style::c([168, 102, 0, 255]) } else { style::c(p.tab_focused) };
-                let bar_h = if p.mode == olo_theme::ThemeMode::Light { 2.5 } else { 2.0 };
-                g.paint_quad(olo_kit::fill(Bounds::new(point(b.left(), b.bottom() - px(bar_h)), size(b.size.width, px(bar_h))), bar_color));
+            // Every pane's head on the panel's ground, the chosen tab's
+            // face, which opens onto the heads under it: the keyboard in
+            // a pane on the right left the tab open onto a darker band
+            // when the head it was in alone had that ground. Where the
+            // keyboard is, the title says (a weight heavier, the others
+            // quieter) and the line under it.
+            g.paint_quad(olo_kit::fill(b, style::c(p.panel_background)));
+            style::hline_above(g, b.left(), b.right(), b.bottom(), pane_edge(&p));
+            if focused {
+                // And a line along its foot in the look's colour for
+                // where the keyboard is, two points in whole device
+                // pixels. (It was a bar of an ochre no look has, two and
+                // a half points; with no line at all, the grounds alone
+                // didn't say which pane it was, least of all in dark:
+                // Opus's review, 2026-11-22.)
+                let line = style::snap(g, Bounds::from_corners(point(b.left(), b.bottom() - px(2.0)), b.bottom_right()));
+                style::fill_rect(g, line, style::c(p.keyboard_navigation));
             }
+            // The icon over the pane's text (the first column's edge),
+            // as a tab's is over the menu bar's first title and as
+            // Terminal's panes have theirs.
             let text_middle = style::baseline_at(g, b.center().y, style::PLAIN_SIZE) - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
-            let icon_b = style::snap_centred(g, point(b.left() + px(16.0), text_middle), 12.0, 12.0);
+            let icon_b = style::snap_centred(g, point(b.left() + px(pad.0 + ROW_ICON / 2.0), text_middle), ROW_ICON, ROW_ICON);
             paint_activity_icon(g, icon_b, activity);
-            let title_max_w = (f32::from(b.size.width) - 28.0 - right_controls_w - 6.0).max(24.0);
+            let left = pad.0 + ROW_ICON + m::MARK_GAP;
+            let title_max_w = (f32::from(b.size.width) - left - right_controls_w - m::TIGHT).max(24.0);
             let title_ink = if focused { style::c(p.panel_text) } else { style::secondary_text(&p) };
-            style::label_fit(g, b.left() + px(28.0), b.center().y, style::Align::Left, title_paint.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), title_ink, px(title_max_w));
+            let weight = if focused { FontWeight::MEDIUM } else { FontWeight::NORMAL };
+            style::label_fit(g, b.left() + px(left), b.center().y, style::Align::Left, title_paint.clone(), style::PLAIN_SIZE, style::ui_font(weight), title_ink, px(title_max_w));
         })
         .paint_key(key)
         .absolute()
@@ -3446,8 +3530,8 @@ fn render_single_pane(
             .items_center()
             .justify_end()
             .gap(px(m::TIGHT))
-            .pl(px(24.0))
-            .pr(px(m::WINDOW_INSET))
+            .pl(px(pad.0 + ROW_ICON + m::MARK_GAP))
+            .pr(px(HEADER_END))
             .on_mouse_down(MouseButton::Left, move |_, _| {
                 let hub = app().hub.clone();
                 hub.focus_block(&bk_click.host_key, &bk_click.session_id, &bk_click.block_id);
@@ -3462,26 +3546,30 @@ fn render_single_pane(
                 bar = bar.child(StringView::new(gp).dim(true));
             }
             if let Some(pp) = ports_pill {
-                bar = bar.child(sunken_badge(pp, move |_, _| open_or_raise_panel(WinRole::Hosts)));
+                // (The ports it listens on, and Zoomed: the kit's link
+                // buttons, small actions beside what they act on. They
+                // were bevelled wells drawn here, which read as fields
+                // to type in.)
+                bar = bar.child(widgets::LinkButton::new(pp).id(format!("rex-ports-{}", bk.block_id)).on_click(move |_, _| open_or_raise_panel(WinRole::Hosts)));
             }
             if let Some(zp) = zoom_pill {
                 let z = bk_zoom.clone();
-                bar = bar.child(sunken_badge(zp, move |_, _| {
+                bar = bar.child(widgets::LinkButton::new(zp).id(format!("rex-zoomed-{}", bk.block_id)).on_click(move |_, _| {
                     app().hub.toggle_zoom(&z.host_key, &z.session_id, Some(z.block_id.clone()));
                 }));
             }
         }
         if show_split_btns {
             bar = bar
-                .child(compact_icon_button("Split Right", IconGlyph::SplitRight, true, move |_, _| {
+                .child(GlyphButton::new("Split Right", Glyph::SplitRight).id(format!("rex-split-right-{}", bk.block_id)).on_click(move |_, _| {
                     app().hub.split_pane(&bk_split_r.host_key, &bk_split_r.session_id, &bk_split_r.block_id, "right", None);
                 }))
-                .child(compact_icon_button("Split Down", IconGlyph::SplitDown, true, move |_, _| {
+                .child(GlyphButton::new("Split Down", Glyph::SplitDown).id(format!("rex-split-down-{}", bk.block_id)).on_click(move |_, _| {
                     app().hub.split_pane(&bk_split_d.host_key, &bk_split_d.session_id, &bk_split_d.block_id, "down", None);
                 }));
         }
         if show_close_btn {
-            bar = bar.child(compact_icon_button("Close Pane", IconGlyph::Close, true, move |_, _| {
+            bar = bar.child(GlyphButton::new("Close Pane", Glyph::Close).id(format!("rex-close-pane-{}", bk.block_id)).on_click(move |_, _| {
                 app().hub.close_block(&bk_close.host_key, &bk_close.session_id, &bk_close.block_id);
             }));
         }
@@ -3694,7 +3782,25 @@ fn render_single_pane(
                 })),
         );
     }
-    pane_col = pane_col.child(div().relative().flex_1().min_h_0().size_full().child(screen_canvas));
+    // Its scrollback: the kit's slim bar over the screen's right edge, as
+    // Terminal's, there when the pointer comes near or it scrolls; its
+    // thumb drags the view, a click in its track pages. In rows: where
+    // the view's top is, how many show, how many there are. (It had no
+    // bar: how far back a pane was scrolled, nothing said.)
+    let br_bar = br.clone();
+    let pane_m4 = cx.messenger();
+    let bar = widgets::SlimScrollBar::new(olo_kit::SharedString::from(format!("rex-scroll-{}", bk.block_id)), scrolled.offset as f32, scrolled.len as f32, scrolled.total as f32).on_scroll(
+        move |to: &f32, _| {
+            let mut g = br_bar.lock().unwrap_or_else(|e| e.into_inner());
+            let want = to.round().max(0.0) as u64;
+            if want != g.terminal.scrollbar().offset {
+                let _ = g.terminal.scroll_to_row(want as usize);
+                drop(g);
+                pane_m4.send(());
+            }
+        },
+    );
+    pane_col = pane_col.child(div().relative().flex_1().min_h_0().size_full().child(screen_canvas).child(bar));
 
     if let Some((fname, frac)) = upload_prog {
         pane_col = pane_col.child(div().w_full().px(px(m::SPACING)).py(px(4.0)).child(StatusBar::new(frac).label(format!("Uploading {fname}…"))));
@@ -3702,6 +3808,16 @@ fn render_single_pane(
 
     pane_col
 }
+
+/// A row's icon (a session's in the sidebar, a pane's in its header and
+/// in Activity): 16 points, the size the icons are drawn for.
+const ROW_ICON: f32 = 16.0;
+/// Where an Activity row's words begin: past the icon and its gap.
+const ACTIVITY_TEXT: f32 = m::TIGHT + ROW_ICON + m::TIGHT;
+/// What a pane's head has after its last button: as far from the pane's
+/// edge as its icon is from the other (the terminal's own inset, a
+/// window's).
+const HEADER_END: f32 = crate::settings::PADDING.0;
 
 fn sidebar_row(label: String, badge: Option<String>, act: AgentActivity, selected: bool, on_click: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
     let key = style::key((&label, &badge, act as u8, selected));
@@ -3715,7 +3831,10 @@ fn sidebar_row(label: String, badge: Option<String>, act: AgentActivity, selecte
         let ink = style::c(if selected { p.list_selected_item_text } else { p.panel_text });
         // Indent sessions 15 pt under host header so icon left aligns to exact pixel with host title (x=27).
         let text_middle = style::baseline_at(g, b.center().y, style::PLAIN_SIZE) - px(style::PLAIN_SIZE * style::CAP_HEIGHT / 2.0);
-        let icon_b = style::snap_centred(g, point(b.left() + px(22.0), text_middle), 12.0, 12.0);
+        // (The icon at the size it is drawn for, as a list's small icons
+        // are: at 12 points it was the 16-point one made smaller, and
+        // soft at 1×. Its left edge is the host's name's.)
+        let icon_b = style::snap_centred(g, point(b.left() + px(m::WINDOW_INSET + ROW_ICON / 2.0), text_middle), ROW_ICON, ROW_ICON);
         paint_activity_icon(g, icon_b, act);
         let mut right = b.right() - px(8.0);
         if let Some(bg) = &b_paint {
@@ -3724,16 +3843,25 @@ fn sidebar_row(label: String, badge: Option<String>, act: AgentActivity, selecte
         }
         style::label_fit(
             g,
-            b.left() + px(33.0),
+            b.left() + px(m::WINDOW_INSET + ROW_ICON + m::TIGHT),
             b.center().y,
             style::Align::Left,
             l_paint.clone(),
             style::PLAIN_SIZE,
             style::ui_font(FontWeight::NORMAL),
             ink,
-            (right - (b.left() + px(33.0))).max(px(24.0)),
+            (right - (b.left() + px(m::WINDOW_INSET + ROW_ICON + m::TIGHT))).max(px(24.0)),
         );
-        g.agent(agent::Node { role: "ListItem", name: Some(l_paint.clone().into()), bounds: b, selected: Some(selected), enabled: true, clickable: true, ..Default::default() });
+        g.agent(agent::Node {
+            role: "ListItem",
+            name: Some(l_paint.clone().into()),
+            value: activity_words(act).map(|w| olo_kit::words::tr(w).into()),
+            bounds: b,
+            selected: Some(selected),
+            enabled: true,
+            clickable: true,
+            ..Default::default()
+        });
     })
     .paint_key(key)
     .w_full()
@@ -3745,40 +3873,57 @@ fn sidebar_row(label: String, badge: Option<String>, act: AgentActivity, selecte
     })
 }
 
-fn sidebar_segment_button(label: String, active: bool, is_left: bool, on_click: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
-    let key = style::key((&label, active, is_left));
-    let l_paint = label.clone();
-    canvas(move |g, b| {
-        let p = theme::palette();
-        let bg = if active { style::shade(&p, p.control_background, 1.15) } else { style::c(p.control_background) };
-        style::fill_rect(g, b, bg);
-        if active {
-            style::sunken(g, b, &p, false);
-        } else {
-            style::raised(g, b, &p);
-        }
-        let ink = style::c(p.control_text);
-        style::label_fit(
-            g,
-            b.center().x,
-            b.center().y,
-            style::Align::Center,
-            l_paint.clone(),
-            style::SMALL_SIZE,
-            style::ui_font(if active { FontWeight::BOLD } else { FontWeight::NORMAL }),
-            ink,
-            (b.size.width - px(8.0)).max(px(20.0)),
-        );
-        g.agent(agent::Node { role: "Tab", name: Some(l_paint.clone().into()), bounds: b, selected: Some(active), enabled: true, clickable: true, ..Default::default() });
-    })
-    .paint_key(key)
-    .flex_1()
-    .h(px(26.0))
-    .cursor(CursorStyle::PointingHand)
-    .on_mouse_down(MouseButton::Left, move |_, cx| {
-        on_click(&(), cx);
-        cx.stop_propagation();
-    })
+/// A folder as the status bar says it: under `home`, from `~`.
+fn folder_said(folder: &str, home: Option<&str>) -> String {
+    match home.map(|h| h.trim_end_matches('/')).filter(|h| !h.is_empty()) {
+        Some(home) if folder == home => "~".into(),
+        Some(home) => match folder.strip_prefix(home).filter(|rest| rest.starts_with('/')) {
+            Some(rest) => format!("~{rest}"),
+            None => folder.to_owned(),
+        },
+        None => folder.to_owned(),
+    }
+}
+
+/// A split's divider being dragged: where the pointer took it, and the
+/// ratio then.
+#[derive(Default)]
+struct SplitDrag(Option<(Point<Pixels>, f32)>);
+
+/// How far either side of a split's line the pointer catches it; over
+/// a line across, and under it. (Under it is the head of the pane below,
+/// with its title and its buttons: the grip stops short of them, and
+/// has the foot of the pane above, where nothing is, instead.)
+const SPLIT_GRIP: f32 = 4.0;
+const SPLIT_GRIP_OVER: f32 = 6.0;
+const SPLIT_GRIP_UNDER: f32 = 1.0;
+
+/// Where a split's divider is caught, in the split's box `b`: its line
+/// (`line` points thick, after the first pane's `ratio` of the rest)
+/// and the grip round it, the box's length less a grip's breadth at
+/// each end (where it meets the grip of the split it is in, which has
+/// the corner).
+fn split_grip(b: Bounds<Pixels>, ratio: f32, side_by_side: bool, line: f32) -> Bounds<Pixels> {
+    if side_by_side {
+        let x = b.left() + px((f32::from(b.size.width) - line) * ratio);
+        Bounds::from_corners(point(x - px(SPLIT_GRIP), b.top() + px(SPLIT_GRIP)), point(x + px(line + SPLIT_GRIP), b.bottom() - px(SPLIT_GRIP)))
+    } else {
+        let y = b.top() + px((f32::from(b.size.height) - line) * ratio);
+        Bounds::from_corners(point(b.left() + px(SPLIT_GRIP), y - px(SPLIT_GRIP_OVER)), point(b.right() - px(SPLIT_GRIP), y + px(line + SPLIT_GRIP_UNDER)))
+    }
+}
+
+/// A split's ratio with its divider dragged `moved` points from where
+/// the ratio was `was`, the two panes having `span` points between
+/// them: the divider under the pointer, neither pane under 15%. None
+/// where there is no room to say.
+fn split_dragged(was: f32, moved: f32, span: f32) -> Option<f32> {
+    (span >= 1.0).then(|| (was + moved / span).clamp(0.15, 0.85))
+}
+
+/// The line under a pane's head and between panes: Terminal's.
+fn pane_edge(p: &olo_theme::Palette) -> olo_kit::Hsla {
+    if p.mode == olo_theme::ThemeMode::Dark { style::c(olo_theme::mix(p.panel_background, [255, 255, 255, 255], 0.14)) } else { style::shade(p, p.panel_background, 1.22) }
 }
 
 /// High-contrast 2-line bevel pair `(shadow, highlight)` that stays crisp in Light, Dark, and Night modes.
@@ -3790,118 +3935,6 @@ fn bevel_colors(p: &olo_theme::Palette) -> (olo_kit::Hsla, olo_kit::Hsla) {
     }
 }
 
-#[derive(Clone, Copy)]
-enum IconGlyph {
-    Plus,
-    SplitRight,
-    SplitDown,
-    Close,
-}
-
-fn compact_icon_button(aria_name: &'static str, glyph: IconGlyph, enabled: bool, on_click: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
-    let key = style::key((aria_name, glyph as u8, enabled));
-    let button = canvas(move |g, b| {
-        let p = theme::palette();
-        style::fill_rect(g, b, style::c(p.control_background));
-        style::raised(g, b, &p);
-        let ink = if enabled { style::c(p.control_text) } else { style::disabled_text(&p) };
-        let cx = f32::from(b.center().x);
-        let cy = f32::from(b.center().y);
-        match glyph {
-            IconGlyph::Plus => {
-                style::fill_rect(g, Bounds::new(point(px(cx - 3.5), px(cy - 0.5)), size(px(7.0), px(1.2))), ink);
-                style::fill_rect(g, Bounds::new(point(px(cx - 0.5), px(cy - 3.5)), size(px(1.2), px(7.0))), ink);
-            }
-            IconGlyph::SplitRight => {
-                let r = Bounds::new(point(px(cx - 4.5), px(cy - 3.5)), size(px(9.0), px(7.0)));
-                g.paint_quad(olo_kit::outline(r, ink, olo_kit::BorderStyle::Solid).border_widths(px(1.0)));
-                style::fill_rect(g, Bounds::new(point(px(cx - 0.5), px(cy - 3.0)), size(px(1.0), px(6.0))), ink);
-            }
-            IconGlyph::SplitDown => {
-                let r = Bounds::new(point(px(cx - 4.5), px(cy - 3.5)), size(px(9.0), px(7.0)));
-                g.paint_quad(olo_kit::outline(r, ink, olo_kit::BorderStyle::Solid).border_widths(px(1.0)));
-                style::fill_rect(g, Bounds::new(point(px(cx - 4.0), px(cy - 0.5)), size(px(8.0), px(1.0))), ink);
-            }
-            IconGlyph::Close => {
-                let d = 3.2f32;
-                let mut p1 = PathBuilder::stroke(px(1.2));
-                p1.move_to(point(px(cx - d), px(cy - d)));
-                p1.line_to(point(px(cx + d), px(cy + d)));
-                if let Ok(path) = p1.build() {
-                    g.paint_path(path, ink);
-                }
-                let mut p2 = PathBuilder::stroke(px(1.2));
-                p2.move_to(point(px(cx + d), px(cy - d)));
-                p2.line_to(point(px(cx - d), px(cy + d)));
-                if let Ok(path) = p2.build() {
-                    g.paint_path(path, ink);
-                }
-            }
-        }
-        g.agent(agent::Node { role: "Button", name: Some(aria_name.into()), bounds: b, enabled, clickable: enabled, ..Default::default() });
-    })
-    .paint_key(key)
-    .w(px(18.0))
-    .h(px(16.0))
-    .flex_shrink_0();
-    if !enabled {
-        return button;
-    }
-    button.cursor(CursorStyle::PointingHand).on_mouse_down(MouseButton::Left, move |_, cx| {
-        on_click(&(), cx);
-        cx.stop_propagation();
-    })
-}
-
-fn sunken_badge(label: String, on_click: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
-    let w = (label.len() as f32 * 6.0 + 12.0).max(40.0);
-    let key = style::key(&label);
-    let l_paint = label.clone();
-    canvas(move |g, b| {
-        let p = theme::palette();
-        // Clickable port/zoom badge matches the raised bevel style & height of adjacent header icon buttons!
-        style::fill_rect(g, b, style::c(p.control_background));
-        style::raised(g, b, &p);
-        style::label_fit(
-            g,
-            b.center().x,
-            b.center().y + px(0.5),
-            style::Align::Center,
-            l_paint.clone(),
-            style::SMALL_SIZE,
-            style::ui_font(FontWeight::NORMAL),
-            style::c(p.control_text),
-            (b.size.width - px(6.0)).max(px(16.0)),
-        );
-        g.agent(agent::Node { role: "Button", name: Some(l_paint.clone().into()), bounds: b, enabled: true, clickable: true, ..Default::default() });
-    })
-    .paint_key(key)
-    .w(px(w))
-    .h(px(16.0))
-    .flex_shrink_0()
-    .cursor(CursorStyle::PointingHand)
-    .on_mouse_down(MouseButton::Left, move |_, cx| {
-        on_click(&(), cx);
-        cx.stop_propagation();
-    })
-}
-
-fn paint_circle(g: &mut Painter, center: Point<Pixels>, radius: f32, color: olo_kit::Hsla) {
-    let mut pb = PathBuilder::fill();
-    let cx = f32::from(center.x);
-    let cy = f32::from(center.y);
-    let steps = 16;
-    for i in 0..steps {
-        let a = (i as f32 / steps as f32) * std::f32::consts::TAU;
-        let pt = point(px(cx + radius * a.cos()), px(cy + radius * a.sin()));
-        if i == 0 { pb.move_to(pt) } else { pb.line_to(pt) }
-    }
-    pb.close();
-    if let Ok(path) = pb.build() {
-        g.paint_path(path, color);
-    }
-}
-
 fn sidebar_activity_row(title: String, subtitle: String, act: AgentActivity, on_click: impl Fn(&(), &mut WindowCx) + 'static) -> Element {
     let key = style::key((&title, &subtitle, act as u8));
     let t_paint = title.clone();
@@ -3910,29 +3943,29 @@ fn sidebar_activity_row(title: String, subtitle: String, act: AgentActivity, on_
         let p = theme::palette();
         style::fill_rect(g, b, style::c(p.control_background));
         style::raised(g, b, &p);
-        let icon_b = style::snap_centred(g, point(b.left() + px(14.0), b.center().y), 12.0, 12.0);
+        let icon_b = style::snap_centred(g, point(b.left() + px(m::TIGHT + ROW_ICON / 2.0), b.center().y), ROW_ICON, ROW_ICON);
         paint_activity_icon(g, icon_b, act);
         style::label_fit(
             g,
-            b.left() + px(26.0),
+            b.left() + px(ACTIVITY_TEXT),
             b.top() + px(13.0),
             style::Align::Left,
             t_paint.clone(),
             style::PLAIN_SIZE,
             style::ui_font(FontWeight::BOLD),
             style::c(p.panel_text),
-            (b.size.width - px(34.0)).max(px(24.0)),
+            (b.size.width - px(ACTIVITY_TEXT + m::TIGHT)).max(px(24.0)),
         );
         style::label_fit(
             g,
-            b.left() + px(26.0),
+            b.left() + px(ACTIVITY_TEXT),
             b.top() + px(28.0),
             style::Align::Left,
             s_paint.clone(),
             style::SMALL_SIZE,
             style::ui_font(FontWeight::NORMAL),
             style::secondary_text(&p),
-            (b.size.width - px(34.0)).max(px(24.0)),
+            (b.size.width - px(ACTIVITY_TEXT + m::TIGHT)).max(px(24.0)),
         );
     })
     .paint_key(key)
@@ -3946,20 +3979,37 @@ fn sidebar_activity_row(title: String, subtitle: String, act: AgentActivity, on_
 }
 
 fn paint_activity_icon(g: &mut Painter, b: Bounds<Pixels>, act: AgentActivity) {
-    // Always draw the consistent Olo terminal icon first, then overlay a crisp circular badge dot only when active!
+    // The terminal's icon, and on its corner what the agent in it is
+    // doing, in the look's own colours: at work, waiting to be
+    // answered, failed, done. (At rest: the icon alone.)
+    let p = theme::palette();
     if !icons::paint(g, b, "terminal") {
-        paint_circle(g, b.center(), 3.0, style::c([130, 134, 144, 210]));
+        style::dot(g, b.center(), 6.0, style::disabled_text(&p));
     }
-    let dot_color = match act {
+    let color = match act {
         AgentActivity::Idle => return,
-        AgentActivity::Working => [52, 132, 240, 255],
-        AgentActivity::Blocked => [235, 148, 24, 255],
-        AgentActivity::Error => [216, 56, 56, 255],
-        AgentActivity::Done => [56, 174, 92, 255],
+        AgentActivity::Working => p.hue(olo_theme::Hue::Blue),
+        AgentActivity::Blocked => p.warning,
+        AgentActivity::Error => p.failure,
+        AgentActivity::Done => p.success,
     };
-    let dot_center = point(b.right() - px(2.5), b.bottom() - px(2.5));
-    paint_circle(g, dot_center, 3.4, style::c([18, 22, 30, 220]));
-    paint_circle(g, dot_center, 2.4, style::c(dot_color));
+    // (A ring of the ground round it, so it reads as on the icon, not
+    // of it.)
+    let center = point(b.right() - px(3.0), b.bottom() - px(3.0));
+    style::dot(g, center, 8.0, style::c(p.panel_background));
+    style::dot(g, center, 6.0, style::c(color));
+}
+
+/// What the mark on a terminal's icon says, in words (a row's tip, and
+/// what agents read as its value); nothing at rest.
+fn activity_words(act: AgentActivity) -> Option<&'static str> {
+    match act {
+        AgentActivity::Idle => None,
+        AgentActivity::Working => Some("An agent is working here"),
+        AgentActivity::Blocked => Some("An agent is waiting for you here"),
+        AgentActivity::Error => Some("An agent stopped on an error here"),
+        AgentActivity::Done => Some("An agent has finished here"),
+    }
 }
 
 fn higher_activity(a: AgentActivity, b: AgentActivity) -> AgentActivity {
@@ -4074,6 +4124,41 @@ fn encode_terminal_special_key(ks: &olo_kit::Keystroke) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod workspace_tests {
     use super::*;
+
+    #[test]
+    fn a_folder_under_home_is_said_from_the_tilde() {
+        assert_eq!(folder_said("/home/you", Some("/home/you")), "~");
+        assert_eq!(folder_said("/home/you/src/olo", Some("/home/you/")), "~/src/olo");
+        // Another's home that begins as ours does is not ours.
+        assert_eq!(folder_said("/home/young/src", Some("/home/you")), "/home/young/src");
+        // A far host's folders, whose home isn't known, as they are.
+        assert_eq!(folder_said("/srv/www", None), "/srv/www");
+        assert_eq!(folder_said("", Some("/home/you")), "");
+    }
+
+    #[test]
+    fn a_splits_divider_is_caught_round_its_line_and_follows_the_pointer() {
+        let b = Bounds { origin: point(px(100.0), px(50.0)), size: size(px(801.0), px(400.0)) };
+        // Side by side, a quarter: the line after a quarter of the 800
+        // points the panes have, caught four points either side of it,
+        // the split's height less a grip's breadth at each end.
+        let g = split_grip(b, 0.25, true, 1.0);
+        assert_eq!((g.left(), g.right()), (px(296.0), px(305.0)));
+        assert_eq!((g.top(), g.bottom()), (px(54.0), px(446.0)));
+        // One above the other: over the line, and hardly under it (the
+        // head of the pane below is there).
+        let g = split_grip(b, 0.5, false, 0.5);
+        assert_eq!((g.top(), g.bottom()), (px(50.0 + 199.75 - 6.0), px(50.0 + 199.75 + 0.5 + 1.0)));
+        assert_eq!((g.left(), g.right()), (px(104.0), px(897.0)));
+        // Dragged, the divider stays under the pointer: 80 points of 800
+        // is a tenth, in a split of any width.
+        assert_eq!(split_dragged(0.25, 80.0, 800.0), Some(0.35));
+        assert_eq!(split_dragged(0.25, 160.0, 1600.0), Some(0.35));
+        // Neither pane under 15%; and no room, nothing said.
+        assert_eq!(split_dragged(0.25, -400.0, 800.0), Some(0.15));
+        assert_eq!(split_dragged(0.5, 700.0, 800.0), Some(0.85));
+        assert_eq!(split_dragged(0.5, 10.0, 0.0), None);
+    }
     #[test]
     fn lost_connection_age_advances_at_word_boundaries() {
         assert_eq!(connection_age(Duration::from_secs(59)), "Connection lost just now.");
