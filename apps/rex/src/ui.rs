@@ -56,6 +56,8 @@ pub enum WinRole {
     Access,
     Diagnostics,
     Askpass,
+    /// A new name for a session or a tab ([`Renaming`]).
+    Rename,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,6 +84,53 @@ pub struct RexApp {
     pub ssh_agent: olo_rex_client::AgentStatus,
     attention: Attention,
     broadcast_windows: HashSet<(String, String, String)>,
+    /// What the Rename window is naming.
+    pub renaming: Option<Renaming>,
+}
+
+/// What is being given a new name: a session, or one of its tabs.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Renaming {
+    pub host_key: String,
+    pub session_id: String,
+    /// The tab; none, the session itself.
+    pub window_id: Option<String>,
+    /// The name it has (a tab without one: empty), and what it shows
+    /// as now (the tab's program, where it has no name).
+    pub was: String,
+    pub shown: String,
+    /// The window it was asked from, which hears how it went.
+    pub from: WinId,
+}
+
+impl Renaming {
+    /// What its field shows while empty: for a tab, what it shows as
+    /// with no name (what runs in it), which is what leaving it empty
+    /// gives; nothing for a session, which must have a name.
+    fn hint(&self) -> String {
+        if self.window_id.is_some() { self.shown.clone() } else { String::new() }
+    }
+
+    /// Whether `name` (as typed, trimmed) can be given: a session's may
+    /// not be empty (it would show as its id); a tab's may (it shows
+    /// what runs in it again).
+    fn takes(&self, name: &str) -> bool {
+        self.window_id.is_some() || !name.is_empty()
+    }
+}
+
+/// Asks for a new name for `what`, in a small window of its own.
+pub fn open_rename(what: Renaming) {
+    app().renaming = Some(what);
+    // (One already open is for another thing: it takes this one.)
+    let open = wins().map.values().find(|s| s.role == WinRole::Rename).map(|s| s.handle.clone());
+    match open {
+        Some(h) => {
+            h.messenger().send(WinMsg::RenameAgain);
+            h.messenger().send(WinMsg::Raise);
+        }
+        None => open_or_raise_panel(WinRole::Rename),
+    }
 }
 
 #[derive(Default)]
@@ -138,7 +187,7 @@ pub fn init_app(settings: Settings, _initial_cwd: Option<String>, _restored: Vec
     );
     let hub = RexHub::start(settings.clone(), active_theme, Some(askpass.clone()), move |notice| handle_hub_notice(notice));
     let keymap = KeymapEngine::new(&[], &[], &[]);
-    let _ = APP.set(Mutex::new(RexApp { hub, askpass, keymap, ssh_agent: Default::default(), attention: Attention::new(), broadcast_windows: HashSet::new() }));
+    let _ = APP.set(Mutex::new(RexApp { hub, askpass, keymap, ssh_agent: Default::default(), renaming: None, attention: Attention::new(), broadcast_windows: HashSet::new() }));
 
     // How the SSH agent stands, asked once and off this thread, for Diagnostics.
     let agent_override = settings.ssh_agent_socket.map(PathBuf::from);
@@ -360,6 +409,10 @@ pub fn open_or_raise_panel(role: WinRole) {
             o
         }
         WinRole::Askpass => WindowOptions::alert("SSH Authentication", 460.0, 120.0),
+        WinRole::Rename => {
+            let tab = app().renaming.as_ref().is_some_and(|r| r.window_id.is_some());
+            WindowOptions::alert(if tab { "Rename Tab" } else { "Rename Session" }, widgets::ALERT_WIDTH, 120.0)
+        }
         WinRole::Workspace => {
             open_workspace_window(None);
             return;
@@ -386,13 +439,28 @@ pub enum WinMsg {
     Problem(u64, String, Option<String>),
     Confirmation(u64, String),
     Raise,
-    ShowPrompt { host_key: String, req: olo_rex_client::ClientPromptRequested },
-    EndPrompt { host_key: String, call_id: String },
-    PerformAction { host: String, session: Option<String>, block: Option<String>, action: String, args: Option<Value> },
+    ShowPrompt {
+        host_key: String,
+        req: olo_rex_client::ClientPromptRequested,
+    },
+    EndPrompt {
+        host_key: String,
+        call_id: String,
+    },
+    PerformAction {
+        host: String,
+        session: Option<String>,
+        block: Option<String>,
+        action: String,
+        args: Option<Value>,
+    },
     QuickLookReady(u64, String, QuickLookContent),
     QrReady(String, Option<Arc<qrcode::QrCode>>),
     OpenPreview(BlockKey, String),
-    DirListingReady { key: BlockKey, listing: olo_rex_client::DirListing },
+    DirListingReady {
+        key: BlockKey,
+        listing: olo_rex_client::DirListing,
+    },
     SetClipboard(String),
     PasteText(BlockKey, olo_rex_client::ControlClient, String),
     PaneCommand(BlockKey, String),
@@ -412,6 +480,16 @@ pub enum WinMsg {
     HostsForwardFrom(String),
     AskpassConfirm(bool),
     AskpassSubmit,
+    /// The Rename window: Rename (true) or Cancel; and another thing to
+    /// name while it is open.
+    RenameDone(bool),
+    RenameAgain,
+    /// A session's row asked to be renamed (its host, its id).
+    RenameSession(String, String),
+    /// A tab's menu's Rename (its host, its session, the tab).
+    RenameTab(String, String, String),
+    /// A tab's menu asked for (which tab, where the pointer is).
+    TabMenu(usize, Point<Pixels>),
     SidebarMoved,
     CloseWindow,
 }
@@ -612,6 +690,19 @@ impl RexWindow {
                     }
                 });
                 (Some(lf), Some(af), Some(pf), None)
+            }
+            WinRole::Rename => {
+                let (was, hint) = app().renaming.as_ref().map(|r| (r.was.clone(), r.hint())).unwrap_or_default();
+                let f = widgets::text_field(cx, |f| f.name("Name").with_text(was).hint(hint));
+                f.update(cx, |f, cx| f.select_all_text(cx));
+                f.focus(cx);
+                cx.subscribe(&f, |w: &mut Self, e: &TextFieldEvent, cx| match e {
+                    TextFieldEvent::Entered => w.submit_rename(cx),
+                    // (Rename is offered or not by what is typed.)
+                    TextFieldEvent::Changed => cx.invalidate(),
+                    _ => {}
+                });
+                (None, None, None, Some(f))
             }
             WinRole::Askpass => {
                 let is_secret = app().askpass.current_request().is_some_and(|r| matches!(r, AskpassRequest::Secret { echo: false, .. }));
@@ -930,6 +1021,57 @@ impl RexWindow {
         cx.invalidate();
     }
 
+    /// The Rename window's name, given: the session or the tab is
+    /// renamed (as typed, less the space round it; nothing typed takes
+    /// its name away), and how it went is said in the window it was
+    /// asked from.
+    /// Asks for a session's new name.
+    fn rename_session(&self, host_key: &str, session_id: &str) {
+        let label = {
+            let hub = app().hub.clone();
+            let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.hosts.get(host_key).and_then(|h| h.session_summaries.iter().find(|s| s.session_id == session_id)).map(|s| s.label.clone()).unwrap_or_default()
+        };
+        let shown = if label.is_empty() { session_id.to_owned() } else { label.clone() };
+        open_rename(Renaming { host_key: host_key.to_owned(), session_id: session_id.to_owned(), window_id: None, was: label, shown, from: self.id });
+    }
+
+    /// Asks for a tab's name: the one it was given, if any, to change;
+    /// what it shows as now, to say which tab.
+    fn rename_tab(&self, host_key: &str, session: &olo_rex_client::SessionView, window_id: &str) {
+        let Some(i) = session.windows.iter().position(|w| w.window_id == window_id) else { return };
+        let was = crate::hub::tab_label(&session.windows[i]).unwrap_or_default().to_owned();
+        let shown = {
+            let hub = app().hub.clone();
+            let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+            crate::hub::session_tab_names(&st, host_key, session).into_iter().nth(i).unwrap_or_default()
+        };
+        open_rename(Renaming { host_key: host_key.to_owned(), session_id: session.session_id.clone(), window_id: Some(window_id.to_owned()), was, shown, from: self.id });
+    }
+
+    fn submit_rename(&mut self, cx: &mut olo_kit::Cx<Self>) {
+        let name = self.askpass_field.as_ref().map(|f| f.read(cx).text().trim().to_owned()).unwrap_or_default();
+        // (Taken in a statement of its own: held through the `if`, the
+        // app's lock was asked for again under it, which a debug build
+        // refuses and a release build waits on for ever.)
+        // (A name it can't have, a session's empty one: Return does
+        // nothing, as its button, which is off, does nothing.)
+        if app().renaming.as_ref().is_some_and(|r| !r.takes(&name)) {
+            return;
+        }
+        let renaming = app().renaming.take();
+        if let Some(r) = renaming
+            && name != r.was
+        {
+            let hub = app().hub.clone();
+            match &r.window_id {
+                Some(tab) => hub.rename_window(&r.host_key, &r.session_id, tab, name, Feedback::start(r.from)),
+                None => hub.rename_session(&r.host_key, &r.session_id, name, Feedback::start(r.from)),
+            }
+        }
+        cx.request_close();
+    }
+
     fn submit_askpass(&mut self, cx: &mut olo_kit::Cx<Self>) {
         let text = self.askpass_field.as_ref().map(|f| f.read(cx).text().to_owned()).unwrap_or_default();
         if let Some(f) = &self.askpass_field {
@@ -1000,6 +1142,29 @@ impl RexWindow {
             "session.close" => {
                 if let Some((hk, sess)) = self.resolve_active_session() {
                     hub.close_session(&hk, &sess.session_id, Feedback::start(self.id));
+                }
+            }
+            "session.rename" => {
+                if let Some((hk, sess)) = self.resolve_active_session() {
+                    self.rename_session(&hk, &sess.session_id);
+                }
+            }
+            "window.rename" => {
+                if let Some((hk, sess)) = self.resolve_active_session()
+                    && let Some(w) = sess.active_window()
+                {
+                    self.rename_tab(&hk, &sess, &w.window_id.clone());
+                }
+            }
+            "window.move_left" | "window.move_right" => {
+                if let Some((hk, sess)) = self.resolve_active_session()
+                    && let Some(cur) = sess.active_window_id.as_deref().and_then(|id| sess.windows.iter().position(|w| w.window_id == id))
+                {
+                    let ids: Vec<String> = sess.windows.iter().map(|w| w.window_id.clone()).collect();
+                    let to = if action == "window.move_left" { cur.checked_sub(1) } else { Some(cur + 1) };
+                    if let Some(before) = to.and_then(|to| crate::hub::moved_before(&ids, cur, to)) {
+                        hub.move_window(&hk, &sess.session_id, &ids[cur], before);
+                    }
                 }
             }
             "window.new" => {
@@ -1638,15 +1803,23 @@ impl RexWindow {
         // The session's tabs by name, the first nine with their keys
         // (⌘1 to ⌘9), as Terminal's Tabs menu.
         let count = session.as_ref().map_or(0, |s| s.windows.len());
+        let at = session.as_ref().and_then(|s| s.active_window_id.as_deref().and_then(|id| s.windows.iter().position(|w| w.window_id == id)));
         let mut tabs = Menu::new("Tabs")
             .item("New Tab", "window.new")
+            .item("Rename Tab…", "window.rename")
+            .enabled(tab)
             .item("Close Tab", "window.close")
             .enabled(tab)
             .separator()
             .item("Next Tab", "window.next")
             .enabled(count > 1)
             .item("Previous Tab", "window.previous")
-            .enabled(count > 1);
+            .enabled(count > 1)
+            .separator()
+            .item("Move Tab Left", "window.move_left")
+            .enabled(at.is_some_and(|i| i > 0))
+            .item("Move Tab Right", "window.move_right")
+            .enabled(at.is_some_and(|i| i + 1 < count));
         if let Some(s) = &session {
             let active = s.active_window().or_else(|| s.windows.first()).map(|w| w.window_id.clone());
             tabs = tabs.separator();
@@ -1664,6 +1837,8 @@ impl RexWindow {
                 .app_items(&["rex", "notifications"])
                 .item("New Window", "app.new_window")
                 .item("New Session", "session.new")
+                .item("Rename Session…", "session.rename")
+                .enabled(session.is_some())
                 .separator()
                 .item("Hosts…", "app.hosts")
                 .item("Remote Access…", "app.pair_device")
@@ -1974,6 +2149,14 @@ impl RexWindow {
                         }
                     }
                     StripAction::New => hub.create_window(&hk, &sid, None),
+                    // A tab's own menu, and a tab dragged to another
+                    // place among its session's. (Neither did anything.)
+                    StripAction::Menu(i, at) => return WinMsg::TabMenu(*i, *at),
+                    StripAction::Move { from, to, .. } => {
+                        if let Some(before) = crate::hub::moved_before(&ids, *from, *to) {
+                            hub.move_window(&hk, &sid, &ids[*from], before);
+                        }
+                    }
                     _ => return WinMsg::Redraw,
                 }
                 WinMsg::TabChanged
@@ -2370,10 +2553,16 @@ impl RexWindow {
                         move |e, cx| {
                             let hub = hub_end.clone();
                             let (hk, sid) = (hk_end.clone(), sid.clone());
-                            menu::context_menu(cx, Menu::new("").item("End Session", "session.close"), e.position, move |cmd, _| {
-                                if cmd == "session.close" {
-                                    hub.close_session(&hk, &sid, Feedback::start(window));
+                            let mut menu = Menu::new("").item("Rename Session…", "session.rename").separator().item("End Session", "session.close");
+                            menu::resolve(std::slice::from_mut(&mut menu), true);
+                            menu::context_menu(cx, menu, e.position, move |cmd, _| match cmd {
+                                "session.close" => hub.close_session(&hk, &sid, Feedback::start(window)),
+                                "session.rename" => {
+                                    if let Some(slot) = wins().map.get(&window) {
+                                        slot.handle.messenger().send(WinMsg::RenameSession(hk.clone(), sid.clone()));
+                                    }
                                 }
+                                _ => {}
                             });
                             cx.stop_propagation();
                         },
@@ -2580,6 +2769,41 @@ impl RexWindow {
                     }
                     None => div().p(px(m::WINDOW_INSET)).child(StringView::new("No active SSH authentication request.").dim(true)),
                 }
+            }
+            WinRole::Rename => {
+                let what = app().renaming.clone();
+                let typed = self.askpass_field.as_ref().map(|f| f.read(cx).text().trim().to_owned()).unwrap_or_default();
+                let field = self.askpass_field.as_ref().map(|f| TextControl::new(cx, f).into_element()).unwrap_or_else(|| div());
+                // The same words for both, saying which it is; under a
+                // tab's field, what leaving it empty does (its field
+                // shows that name while empty).
+                let (asks, under) = match &what {
+                    Some(r) if r.window_id.is_some() => (olo_kit::tr!("A new name for the tab “{}”:", r.shown), Some("Leave it empty to show what runs in the tab.")),
+                    Some(r) => (olo_kit::tr!("A new name for the session “{}”:", r.shown), None),
+                    None => (olo_kit::words::tr("Nothing to rename.").into(), None),
+                };
+                let can = what.as_ref().is_some_and(|r| r.takes(&typed));
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(m::SPACING))
+                    .p(px(m::WINDOW_INSET))
+                    .w_full()
+                    .on_key_down(cx.listener(|_, e: &KeyDownEvent, cx| {
+                        if e.keystroke.key == "escape" {
+                            cx.stop_propagation();
+                            cx.send(WinMsg::RenameDone(false));
+                        }
+                    }))
+                    .child(StringView::new(asks).wrap(true))
+                    // (The line under the field is the field's: close under it.)
+                    .child(div().w_full().flex().flex_col().gap(px(m::TIGHT)).child(field).children(under.map(|u| StringView::new(u).size(style::SMALL_SIZE).dim(true).wrap(true))))
+                    .child(
+                        widgets::button_row()
+                            .pt(px(m::TIGHT))
+                            .child(Button::new("Cancel").on_click(cx.msg_with(|_: &olo_kit::ClickEvent| WinMsg::RenameDone(false))))
+                            .child(Button::new("Rename").default(true).enabled(can).on_click(cx.msg_with(|_: &olo_kit::ClickEvent| WinMsg::RenameDone(true)))),
+                    )
             }
             WinRole::Workspace => div(),
         }
@@ -2861,6 +3085,69 @@ impl View for RexWindow {
                 cx.request_close();
             }
             WinMsg::AskpassSubmit => self.submit_askpass(cx),
+            WinMsg::RenameDone(true) => self.submit_rename(cx),
+            WinMsg::RenameDone(false) => {
+                app().renaming = None;
+                cx.request_close();
+            }
+            WinMsg::RenameSession(hk, sid) => self.rename_session(&hk, &sid),
+            WinMsg::TabMenu(i, at) => {
+                let Some((hk, sess)) = self.resolve_active_session() else { return };
+                let Some(tab) = sess.windows.get(i).map(|w| w.window_id.clone()) else { return };
+                let count = sess.windows.len();
+                let mut menu = Menu::new("")
+                    .item("Rename Tab…", "window.rename")
+                    .separator()
+                    .item("Move Tab Left", "window.move_left")
+                    .enabled(i > 0)
+                    .item("Move Tab Right", "window.move_right")
+                    .enabled(i + 1 < count)
+                    .separator()
+                    .item("Close Tab", "window.close");
+                menu::resolve(std::slice::from_mut(&mut menu), true);
+                let hub = app().hub.clone();
+                let window = self.id;
+                menu::context_menu(cx, menu, at, move |cmd, _| {
+                    let ids: Vec<String> = sess.windows.iter().map(|w| w.window_id.clone()).collect();
+                    match cmd {
+                        "window.rename" => {
+                            if let Some(slot) = wins().map.get(&window) {
+                                slot.handle.messenger().send(WinMsg::RenameTab(hk.clone(), sess.session_id.clone(), tab.clone()));
+                            }
+                        }
+                        "window.move_left" | "window.move_right" => {
+                            let to = if cmd == "window.move_left" { i.checked_sub(1) } else { Some(i + 1) };
+                            if let Some(before) = to.and_then(|to| crate::hub::moved_before(&ids, i, to)) {
+                                hub.move_window(&hk, &sess.session_id, &tab, before);
+                            }
+                        }
+                        "window.close" => hub.close_window(&hk, &sess.session_id, &tab),
+                        _ => {}
+                    }
+                });
+            }
+            WinMsg::RenameTab(hk, sid, tab) => {
+                let session = {
+                    let hub = app().hub.clone();
+                    let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                    st.hosts.get(&hk).and_then(|h| h.sessions.get(&sid)).cloned()
+                };
+                if let Some(session) = session {
+                    self.rename_tab(&hk, &session, &tab);
+                }
+            }
+            WinMsg::RenameAgain => {
+                let (was, hint) = app().renaming.as_ref().map(|r| (r.was.clone(), r.hint())).unwrap_or_default();
+                if let Some(f) = &self.askpass_field {
+                    f.update(cx, |f, cx| {
+                        f.set_text(was, cx);
+                        f.set_hint(hint, cx);
+                        f.select_all_text(cx);
+                    });
+                    f.focus(cx);
+                }
+                cx.invalidate();
+            }
             WinMsg::SidebarMoved => {
                 let (w, col) = (self.side_pane.width(), self.side_pane.collapsed());
                 let hub = app().hub.clone();
@@ -4126,6 +4413,19 @@ fn encode_terminal_special_key(ks: &olo_kit::Keystroke) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod workspace_tests {
     use super::*;
+
+    #[test]
+    fn a_session_must_have_a_name_and_a_tab_need_not() {
+        let session = Renaming { host_key: "local".into(), session_id: "s".into(), window_id: None, was: "work".into(), shown: "work".into(), from: WinId(1) };
+        let tab = Renaming { window_id: Some("w".into()), was: String::new(), shown: "shell 3".into(), ..session.clone() };
+        // A session's empty name isn't taken (it would show as its id).
+        assert!(session.takes("build") && !session.takes(""));
+        assert_eq!(session.hint(), "");
+        // A tab's is: it shows what runs in it again, which its empty
+        // field says.
+        assert!(tab.takes("") && tab.takes("logs"));
+        assert_eq!(tab.hint(), "shell 3");
+    }
 
     #[test]
     fn a_folder_under_home_is_said_from_the_tilde() {

@@ -274,6 +274,10 @@ pub fn action_catalog() -> Vec<ActionSpec> {
         // ---- Windows / Tabs ----
         ActionSpec { id: "window.new", title: "New Tab", category: "Tab", keywords: &["window", "tab", "shell"], args_schema: None },
         ActionSpec { id: "window.close", title: "Close Tab", category: "Tab", keywords: &["close", "tab"], args_schema: None },
+        ActionSpec { id: "window.rename", title: "Rename Tab…", category: "Tab", keywords: &["name", "title", "label"], args_schema: None },
+        ActionSpec { id: "window.move_left", title: "Move Tab Left", category: "Tab", keywords: &["order", "reorder"], args_schema: None },
+        ActionSpec { id: "window.move_right", title: "Move Tab Right", category: "Tab", keywords: &["order", "reorder"], args_schema: None },
+        ActionSpec { id: "session.rename", title: "Rename Session…", category: "Session", keywords: &["name", "label"], args_schema: None },
         ActionSpec { id: "window.next", title: "Next Tab", category: "Tab", keywords: &["right", "forward"], args_schema: None },
         ActionSpec { id: "window.previous", title: "Previous Tab", category: "Tab", keywords: &["left", "back"], args_schema: None },
         ActionSpec { id: "window.select_1", title: "Select Tab 1", category: "Tab", keywords: &["1"], args_schema: None },

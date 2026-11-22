@@ -959,12 +959,12 @@ something nobody here has is in "Blocked", with what it waits for.
   - *Words through the words layer; the agents' tree* (a terminal's
     text, the splitters); the demo's prompts without a person's name.
   - *What claims to exist and doesn't* (found while taking the
-    Settings window apart): renaming a session or a tab and moving a
-    tab (the hub has the calls, nothing offers them); Auto Approve
-    (removed: it set a flag and approved nothing; Terminal's is the one
-    to share); Keep It Going's message (Terminal has a window for its
-    own: one message for both); the catalogued commands nothing
-    dispatches (with the shortcuts, above).
+    Settings window apart): Auto Approve (removed: it set a flag and
+    approved nothing; Terminal's is the one to share); Keep It Going's
+    message (Terminal has a window for its own: one message for both).
+    (Renaming a session or a tab and moving a tab are done, and a
+    password asked for is seen: HACKING, Rex, "Names and places",
+    "A password asked for".)
   - *The Hosts window, again* (both reviews, 2026-11-21): a list of
     hosts (light, name, address, sessions) with Add…, Remove and
     Reconnect under it acting on the one selected, in place of buttons
@@ -1011,7 +1011,12 @@ something nobody here has is in "Blocked", with what it waits for.
     told by its bold name alone; a `LinkButton` has no underline until
     the pointer is on it, beside a link in a terminal that has one;
     the list selection is far stronger in the dark looks than in the
-    light (Opus's and Astra's looks at Rex, 2026-11-22).
+    light (Opus's and Astra's looks at Rex, 2026-11-22); a default
+    button's ring is faint in the dark looks, fainter still round a
+    button that is off; an empty field's hint begins where the caret
+    is drawn, so the caret stands on its first letter; a tab whose
+    menu is open isn't shown as the one the menu is for (both, of
+    Rex's Rename window and its tabs' menu, 2026-11-22).
 - **Tracker's columns resized by hand, one width for them all** (Ben,
   2026-11-21: "in tracker columns mode the column widths need to be
   resizable (let's keep it simple so it resizes the width of all

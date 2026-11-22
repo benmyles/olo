@@ -117,6 +117,8 @@ pub struct BlockRuntime {
     /// there was last made, and someone is to make it
     /// ([`BlockRuntime::guess_later`]).
     guess_wanted: bool,
+    /// When its last chunk of output came.
+    last_output: Instant,
     pub keep_going: Option<KeepGoingState>,
     pub unread: bool,
     pub unread_cleared_at: Option<Instant>,
@@ -219,6 +221,7 @@ impl BlockRuntime {
             ports_seq: 0,
             agent_activity: AgentActivity::Idle,
             guess_wanted: false,
+            last_output: Instant::now(),
             keep_going: None,
             unread: false,
             unread_cleared_at: None,
@@ -367,22 +370,29 @@ impl BlockRuntime {
 
     /// The screen changed: what an agent is doing there, guessed from
     /// the screen's last rows where the server has no word of it, is to
-    /// be looked at again. True when nobody is yet to: the caller then
-    /// has it done a moment later ([`BlockRuntime::guess_now`], after
-    /// [`GUESS_AFTER`]), once for however many chunks come meanwhile,
-    /// the last of them included. (It was done with every chunk: twelve
-    /// rows read as text and searched, a hundred times a second while a
-    /// pane streamed, 3% of what the streaming cost, under the lock the
-    /// window draws the pane by.)
+    /// be looked at again. True when nobody is yet looking: the caller
+    /// then has someone look every [`GUESS_AFTER`] until the pane is
+    /// quiet ([`BlockRuntime::guess_now`]), once for however many chunks
+    /// come meanwhile, the last of them included. (It was done with
+    /// every chunk: twelve rows read as text and searched, a hundred
+    /// times a second while a pane streamed, 3% of what the streaming
+    /// cost, under the lock the window draws the pane by.)
     pub fn guess_later(&mut self) -> bool {
+        self.last_output = Instant::now();
         !std::mem::replace(&mut self.guess_wanted, true)
     }
 
-    /// Looks again at what an agent is doing; whether that changed.
-    pub fn guess_now(&mut self) -> bool {
-        self.guess_wanted = false;
+    /// Looks again at what an agent is doing: whether that changed, and
+    /// whether the pane has been quiet for `quiet` (no chunk since):
+    /// then whoever looks is done, and the next chunk asks anew.
+    pub fn guess_now(&mut self, quiet: Duration) -> (bool, bool) {
         let was = self.agent_activity;
-        self.recompute_activity() != was
+        let changed = self.recompute_activity() != was;
+        let still = self.last_output.elapsed() >= quiet;
+        if still {
+            self.guess_wanted = false;
+        }
+        (changed, still)
     }
 
     pub fn recompute_activity(&mut self) -> AgentActivity {
@@ -433,6 +443,29 @@ enum HostInputOp {
     Focus { session_id: String, switch: bool, target: Arc<FocusTarget> },
     Write { session_id: String, block_id: String, text: String },
     Key { session_id: String, block_id: String, event: RexKeyEvent },
+}
+
+/// Whether a program at a terminal in this input mode is asking for
+/// something secret: what is typed isn't shown (`echo` off) and the
+/// terminal itself is collecting a line of it (`canonical` on), as
+/// `sudo`, `ssh`, `passwd` and a shell's `read -s` ask. A shell's own
+/// line editor has echo off too, at every prompt, but reads key by key
+/// (canonical off): by echo alone, every shell at its prompt was "asking
+/// for a password", with Paste Password… over it (2026-11-22).
+pub fn asks_for_secret(echo: bool, canonical: bool) -> bool {
+    !echo && canonical
+}
+
+/// Where a tab goes when the one at `from` of `ids` is put at `to` among
+/// the others (a strip's drag, Move Tab Left and Right): the tab it
+/// then stands before, as the server is asked (none: the last). None
+/// altogether where nothing moves.
+pub fn moved_before(ids: &[String], from: usize, to: usize) -> Option<Option<String>> {
+    if from >= ids.len() || to >= ids.len() || from == to {
+        return None;
+    }
+    let others: Vec<&String> = ids.iter().enumerate().filter(|(i, _)| *i != from).map(|(_, id)| id).collect();
+    Some(others.get(to).map(|id| (*id).clone()))
 }
 
 /// A tab's name, if it was given one. The server names a tab it wasn't
@@ -1360,12 +1393,24 @@ impl RexHub {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn rename_session(&self, host_key: &str, session_id: &str, label: String) {
-        let sid = session_id.to_owned();
-        self.with_control(host_key, move |ctrl, _, _| async move {
-            let _ = ctrl.session_set_label(&sid, &label).await;
-        });
+    /// Gives a session its name (none: the server's own for it).
+    pub fn rename_session(&self, host_key: &str, session_id: &str, label: String, feedback: Feedback) {
+        let (hk, sid) = (host_key.to_owned(), session_id.to_owned());
+        if self
+            .with_control(host_key, move |ctrl, ep, inner| async move {
+                match ctrl.session_set_label(&sid, &label).await {
+                    // (Shown at once: the list of sessions read again.)
+                    Ok(_) => {
+                        let _ = inner.refresh_host(&hk, &ctrl, &ep).await;
+                        (inner.notify)(HubNotice::StateChanged);
+                    }
+                    Err(e) => feedback.problem("Couldn’t rename the session.", e),
+                }
+            })
+            .is_none()
+        {
+            feedback.problem("Couldn’t rename the session.", "The Rex server is disconnected.");
+        }
     }
 
     pub fn close_session(&self, host_key: &str, session_id: &str, feedback: Feedback) {
@@ -1399,13 +1444,25 @@ impl RexHub {
         self.select(host_key, session_id, window_id, None);
     }
 
-    #[allow(dead_code)]
-    pub fn rename_window(&self, host_key: &str, session_id: &str, window_id: &str, title: String) {
-        let sid = session_id.to_owned();
-        let wid = window_id.to_owned();
-        self.with_control(host_key, move |ctrl, _, _| async move {
-            let _ = ctrl.session_set_window_label(&sid, &wid, &title).await;
-        });
+    /// Gives a tab its name (none: it shows what runs in it again).
+    pub fn rename_window(&self, host_key: &str, session_id: &str, window_id: &str, title: String, feedback: Feedback) {
+        let (hk, sid, wid) = (host_key.to_owned(), session_id.to_owned(), window_id.to_owned());
+        if self
+            .with_control(host_key, move |ctrl, ep, inner| async move {
+                match ctrl.session_set_window_label(&sid, &wid, &title).await {
+                    Ok(_) => {
+                        if let Ok(v) = ctrl.session_view(&sid).await {
+                            inner.ingest_session(&hk, &ctrl, &ep, v.payload, &[]).await;
+                        }
+                        (inner.notify)(HubNotice::StateChanged);
+                    }
+                    Err(e) => feedback.problem("Couldn’t rename the tab.", e),
+                }
+            })
+            .is_none()
+        {
+            feedback.problem("Couldn’t rename the tab.", "The Rex server is disconnected.");
+        }
     }
 
     pub fn close_window(&self, host_key: &str, session_id: &str, window_id: &str) {
@@ -1421,7 +1478,7 @@ impl RexHub {
         });
     }
 
-    #[allow(dead_code)]
+    /// Moves a tab before another of its session's (none: to the end).
     pub fn move_window(&self, host_key: &str, session_id: &str, window_id: &str, before_window_id: Option<String>) {
         let hk = host_key.to_owned();
         let sid = session_id.to_owned();
@@ -2513,16 +2570,36 @@ impl RexHubInner {
                     (result, guess)
                 };
                 if guess {
-                    // What an agent is doing there, looked at once the
-                    // chunks have come, not with each; the window is
-                    // told if it changed (the sidebar and the pane's
-                    // head show it).
-                    let (br, notify) = (br.clone(), inner.notify.clone());
+                    // What an agent is doing there, looked at while the
+                    // chunks come (every so often, not with each) and
+                    // once more when they stop; the window is told when
+                    // it changes (the sidebar and the pane's head show
+                    // it). And when they stop, whether the program now
+                    // asks for something secret: the server has no
+                    // event for a terminal's input mode (it was read as
+                    // a pane was attached and never again, so a
+                    // password asked for later was never seen), and a
+                    // program that asks has printed its question by
+                    // then. One request for each pause in a pane's
+                    // output; none while it streams or rests.
+                    let (br, notify, ctrl, bk) = (br.clone(), inner.notify.clone(), ctrl.clone(), bk.clone());
                     tokio::spawn(async move {
-                        tokio::time::sleep(GUESS_AFTER).await;
-                        let changed = br.lock().unwrap_or_else(|e| e.into_inner()).guess_now();
-                        if changed {
-                            notify(HubNotice::StateChanged);
+                        loop {
+                            tokio::time::sleep(GUESS_AFTER).await;
+                            let (changed, quiet) = br.lock().unwrap_or_else(|e| e.into_inner()).guess_now(GUESS_AFTER);
+                            if changed {
+                                notify(HubNotice::StateChanged);
+                            }
+                            if quiet {
+                                break;
+                            }
+                        }
+                        if let Ok(mode) = ctrl.terminal_input_mode(&bk.session_id, &bk.block_id).await {
+                            let asks = asks_for_secret(mode.payload.echo, mode.payload.canonical);
+                            let was = std::mem::replace(&mut br.lock().unwrap_or_else(|e| e.into_inner()).password_prompt, asks);
+                            if was != asks {
+                                notify(HubNotice::StateChanged);
+                            }
                         }
                     });
                 }
@@ -2646,7 +2723,7 @@ impl RexHubInner {
                 b.status_snapshot(Some(status));
                 b.set_ports(ports.seq, ports.payload);
                 b.process_snapshot(process);
-                b.password_prompt = !mode.payload.echo;
+                b.password_prompt = asks_for_secret(mode.payload.echo, mode.payload.canonical);
             }
         }
         self.write_palette_index();
@@ -2734,7 +2811,7 @@ impl RexHubInner {
                     if matches!(what, None | Some("input_mode_changed"))
                         && let Ok(r) = ctrl.terminal_input_mode(&sid, &bid).await
                     {
-                        block.lock().unwrap_or_else(|e| e.into_inner()).password_prompt = !r.payload.echo;
+                        block.lock().unwrap_or_else(|e| e.into_inner()).password_prompt = asks_for_secret(r.payload.echo, r.payload.canonical);
                     }
                     (self.notify)(HubNotice::StateChanged);
                 }
@@ -2770,7 +2847,8 @@ impl RexHubInner {
                             }
                             "input_mode_changed" => {
                                 if let Some(echo) = payload.get("echo").and_then(Value::as_bool) {
-                                    g.password_prompt = !echo;
+                                    // (No word of `canonical`: taken as on, as it is at a terminal's start.)
+                                    g.password_prompt = asks_for_secret(echo, payload.get("canonical").and_then(Value::as_bool).unwrap_or(true));
                                 }
                             }
                             "program_status_changed" | "program_status_removed" => {
@@ -3221,23 +3299,56 @@ mod tests {
     }
 
     #[test]
+    fn a_shells_prompt_is_not_a_question_for_a_password() {
+        // sudo, ssh, read -s: nothing shown, the terminal collecting a line.
+        assert!(asks_for_secret(false, true));
+        // A shell's line editor (bash, zsh, fish) at its prompt: nothing
+        // echoed by the terminal, but read key by key.
+        assert!(!asks_for_secret(false, false));
+        // A program reading a line the ordinary way, and a full-screen one.
+        assert!(!asks_for_secret(true, true));
+        assert!(!asks_for_secret(true, false));
+    }
+
+    #[test]
+    fn a_moved_tab_is_put_before_the_one_that_follows_it_there() {
+        let ids: Vec<String> = ["a", "b", "c", "d"].iter().map(|s| s.to_string()).collect();
+        // The first to the third place: before the fourth.
+        assert_eq!(moved_before(&ids, 0, 2), Some(Some("d".into())));
+        // The last to the first place: before the first.
+        assert_eq!(moved_before(&ids, 3, 0), Some(Some("a".into())));
+        // One to the right: before what was two on; to the end: before none.
+        assert_eq!(moved_before(&ids, 1, 2), Some(Some("d".into())));
+        assert_eq!(moved_before(&ids, 1, 3), Some(None));
+        // One to the left.
+        assert_eq!(moved_before(&ids, 2, 1), Some(Some("b".into())));
+        // Nowhere, or nothing there: nothing asked.
+        assert_eq!(moved_before(&ids, 2, 2), None);
+        assert_eq!(moved_before(&ids, 4, 0), None);
+        assert_eq!(moved_before(&ids, 0, 4), None);
+    }
+
+    #[test]
     fn the_guess_at_an_agent_is_made_once_for_many_chunks() {
         let mut b = BlockRuntime::new(40, 12, &themes::from_olo_terminal(&olo_theme::Palette::light().terminal));
-        // The first chunk has it asked for; those that come before it
-        // is made don't ask again.
+        let (never, at_once) = (Duration::from_secs(3600), Duration::ZERO);
+        // The first chunk has someone look; those that come while they
+        // look don't ask again.
         assert!(b.guess_later());
         assert!(!b.guess_later());
+        // Looked at while chunks still come (a shell's screen: nothing an
+        // agent's, nothing changed): whoever looks goes on looking.
+        assert_eq!(b.guess_now(never), (false, false));
         assert!(!b.guess_later());
-        // Made (a shell's screen: nothing an agent's, nothing changed),
-        // the next chunk asks again.
-        assert!(!b.guess_now());
+        // Looked at with the pane quiet: done, and the next chunk asks anew.
+        assert_eq!(b.guess_now(at_once), (false, true));
         assert!(b.guess_later());
         // A screen that asks to be answered, in its last rows (where the
-        // guess looks): the guess changes, and says so.
+        // guess looks): the guess changes, and says so, once.
         b.terminal.vt_write(b"\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\nClaude Code\r\nDo you want to proceed? [y/n]");
-        assert!(b.guess_now());
+        assert_eq!(b.guess_now(at_once), (true, true));
         assert_eq!(b.agent_activity, AgentActivity::Blocked);
-        assert!(!b.guess_now());
+        assert_eq!(b.guess_now(at_once), (false, true));
     }
 
     #[test]

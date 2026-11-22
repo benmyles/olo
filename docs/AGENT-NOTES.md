@@ -999,6 +999,30 @@ one: every test typed text. What was learned:
   where bash would stop the line. Read the control's result knowing
   which shell ran it.
 
+### A lock held through an `if let` (2026-11-22)
+
+`if let Some(r) = app().renaming.take() && … { app().hub… }`: the
+guard `app()` returns lives to the end of the `if`, so the second
+`app()` in its body asks for a lock this thread holds. A debug build
+panics there ("Found cycle in mutex dependency graph": olo-sync checks
+the order locks are taken in), which in a window's handler leaves the
+window open and unanswering to that key; a release build would wait
+for ever. Take what is needed in a statement of its own (`let r =
+app().renaming.take();`), then use it. What told: the test's crash
+reports, in the scratch `XDG_STATE_HOME` it was started with
+(`…/olo/crashes/*.json`: `message`, `thread`, `backtrace`): look there
+whenever a headless test's key or click "does nothing".
+
+### A menu command, run headless (2026-11-22)
+
+`{"invoke":"command.id"}` on the app's socket
+(`$XDG_RUNTIME_DIR/olo-menus-PID.sock`, a line of JSON in, one out)
+runs a menu command of the app's front window, as choosing it would;
+`{"menus":true}` lists them with whether each is enabled (`invoke`
+doesn't ask: check `enabled` first if the test is about that). A
+window the command opens has the keyboard, so `tsession type` and
+`key` go to it.
+
 ### A push refused for GitHub's LFS budget (2026-11-22)
 
 `git push` ended at once with "batch response: This repository

@@ -26744,6 +26744,41 @@ divider under the pointer in a split of any size, neither pane under
 Width" or "Pane Height", its value the first pane's share. The
 sidebar's divider is `side_divider_within` its row.
 
+**Names and places** (2026-11-22; the hub had the calls and nothing
+offered them). A session and a tab are renamed in a small window
+(`WinRole::Rename`, `Renaming`, `open_rename`): what is named, a field
+with its name selected, Cancel and Rename. A tab that has no name
+shows what runs in it (`hub::tab_label`), so its field starts empty
+with that as its hint, and an empty name takes its name away; a
+session must have one (Rename is off while its field is empty:
+`Renaming::takes`). It is reached from Rex ▸ Rename Session…, Tabs ▸
+Rename Tab…, a session row's menu and a tab's (`StripAction::Menu`);
+how it went is said in the window it was asked from (`Feedback`). A
+tab is moved by dragging it along the strip (`StripAction::Move`) and
+by Tabs ▸ Move Tab Left and Right (the keyboard's and agents' way);
+`hub::moved_before` turns "the tab at `from` put at `to` among the
+others" into what the server is asked (the tab it then stands before).
+The commands are in the catalogue and in Olo's key list with no keys
+of their own (`session.rename`, `window.rename`, `window.move_left`,
+`window.move_right`), so the palette finds them and the person can
+give them keys.
+
+**A password asked for** (`hub::asks_for_secret`). A pane whose
+program asks for something secret says so, with Paste Password…: the
+terminal doesn't show what is typed (`echo` off) *and* collects a line
+of it (`canonical` on), as sudo, ssh, passwd, `read -s` and getpass
+ask. By echo alone, every shell at its prompt qualified (a line editor
+turns echo off and reads key by key). The server has no event for a
+terminal's input mode (rev 19: `rex events` shows none in either
+direction), and it was read as a pane was attached and never again; it
+is read once each time a pane's output pauses (the task that guesses
+at an agent, `GUESS_AFTER` after the last chunk: a program that asks
+has printed its question by then), and the window told when it
+changes. One request for each pause; none while a pane streams or
+rests. Checked against a real shell: not at a prompt, yes while `read
+-s` and Python's getpass wait, not once answered, not on coming back
+to a tab.
+
 *For agents*: every text field has a name (`TextField::name`: Label,
 Address and Port in Hosts, Find, Filter, an SSH question's Answer;
 they read as nameless TextInputs, not to be told apart); a session's
@@ -26842,7 +26877,10 @@ for repeated SSH, HTTP/TLS, transfer, forwarding and connection-loss checks.
   lines into one pane 925 M instructions before and 838 M after
   (−9%), into one of three 817 M and 772 M (−5.5%); at rest nothing,
   as before. The two large ones are TODO's ("What a streaming pane
-  costs").
+  costs"). With the input mode read when output pauses (2026-11-22):
+  the same stream 786 to 838 M before and 813 to 838 M after, at rest
+  0 frames and 0% both, a key to its picture 3.2 to 3.9 ms before and
+  3.6 ms after.
 - Resident memory: **62.2 MiB RSS** (`olo-rex`). Reviewed at 1×, 1.5×,
   and 2×, Light and Dark, across all 6 tiling layouts (`ui-lint --tiles`:
   0 errors; `tsession review`: 0 findings across Workspace, Settings,

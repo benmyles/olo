@@ -278,6 +278,10 @@ pub const APP_KEYS: &[AppKey] = &[
     // With no key until the person gives them one (Preferences ▸
     // Keyboard): the rest of what its menus hold.
     k("rex.new-session", REX, "session.new", "New Session", &[], &[], &[]),
+    k("rex.rename-session", REX, "session.rename", "Rename Session…", &[], &[], &[]),
+    k("rex.rename-tab", REX, "window.rename", "Rename Tab…", &[], &[], &[]),
+    k("rex.move-tab-left", REX, "window.move_left", "Move Tab Left", &[], &[], &[]),
+    k("rex.move-tab-right", REX, "window.move_right", "Move Tab Right", &[], &[], &[]),
     k("rex.close-tab", REX, "window.close", "Close Tab", &["Alt+Cmd+W"], &[], &[]),
     k("rex.split-to-fit", REX, "pane.split_best_fit", "Split to Fit", &[], &[], &[]),
     k("rex.focus-left", REX, "pane.focus_left", "Focus the Pane to the Left", &[], &[], &[]),
