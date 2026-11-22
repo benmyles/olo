@@ -43,6 +43,24 @@ const fn k(
 const TRACKER: Option<&str> = Some("olo.tracker");
 const TERMINAL: Option<&str> = Some("olo.terminal");
 const REX: Option<&str> = Some("olo.rex");
+
+/// Olo's own apps whose windows are terminals to the keyboard, whatever
+/// the settings' list of other terminals says (`keyboard.terminal_apps`:
+/// the programs a person adds): the command key's chords reach them with
+/// Shift, as they reach any terminal, their menu bars take them so
+/// (the kit's `MenuBar::raw`), and ⌘⌫, ⌘↑ and ⌘↓ are a shell's. Their
+/// keys are built on it: Rex was left out of the list, every command
+/// key's chord reached its pane as a Control one, and ⌘D was the end of
+/// the shell, not a split (2026-11-21).
+///
+/// **A terminal's window can't tell ⌘X from ⇧⌘X**: the Shift the command
+/// key brings and the person's own are one to it, and of two items with
+/// those keys the first that is on answers to both. Terminal has such
+/// pairs (Undo and Redo, Find Again and Find Previous: ⇧⌘Z undoes while
+/// only Undo is on); Rex's keys have none (the test below). Telling
+/// them apart is the keyboard path's to do, for both: docs/TODO.md,
+/// "The command key's Shift in a terminal".
+pub const OLO_TERMINALS: &[&str] = &["olo.terminal", "olo.rex"];
 const STYLED_EDIT: Option<&str> = Some("olo.styled-edit");
 const VIEWER: Option<&str> = Some("olo.viewer");
 const PASSWORDS: Option<&str> = Some("olo.passwords");
@@ -218,24 +236,62 @@ pub const APP_KEYS: &[AppKey] = &[
     k("terminal.tab-7", TERMINAL, "tab:6", "Tab 7", &["Cmd+7"], &["Ctrl+Shift+7"], &["Alt+7"]),
     k("terminal.tab-8", TERMINAL, "tab:7", "Tab 8", &["Cmd+8"], &["Ctrl+Shift+8"], &["Alt+8"]),
     k("terminal.tab-9", TERMINAL, "tab:8", "Tab 9", &["Cmd+9"], &["Ctrl+Shift+9"], &["Alt+9"]),
-    // Rex: terminal multiplexer shortcuts (Ctrl+Shift on Windows, like Terminal).
-    k("rex.command-palette", REX, "app.command_palette", "Command Palette", &["Shift+Cmd+P"], &["Ctrl+Shift+P"], &["Alt+Shift+P"]),
-    k("rex.go-to-anything", REX, "app.go_to_anything", "Go to Anything", &["Cmd+P"], &["Ctrl+Shift+O"], &["Alt+P"]),
-    k("rex.view-activity", REX, "app.view_activity", "View Activity", &["Cmd+Period"], &["Ctrl+Shift+Period"], &["Alt+Period"]),
-    k("rex.sidebar", REX, "app.toggle_sidebar", "Toggle Sidebar", &["Alt+Cmd+S"], &["Ctrl+Shift+B"], &["Alt+S"]),
-    k("rex.settings", REX, "app.settings", "Settings", &["Cmd+Comma"], &["Ctrl+Shift+Comma"], &["Alt+Comma"]),
+    // Rex: Terminal's keys for what Terminal has too (a tab, the
+    // clipboard, Find, the text's size, the tabs by number), a terminal
+    // of panes' for the rest (⌘W closes the pane the keyboard is in, the
+    // tab with its last; ⌘D splits). Its windows are terminal-style
+    // ([`OLO_TERMINALS`]): on Windows these are Ctrl+Shift ones; and
+    // with a Mac's or BeOS's keys no two of them differ by Shift alone,
+    // which a terminal's window can't tell: Split Down, Copy Mode and
+    // Find Previous are the Option key's (⌥⌘D, ⌥⌘C, ⌥⌘G), not ⇧⌘'s.
     k("rex.new-window", REX, "app.new_window", "New Window", &["Cmd+N"], &["Ctrl+Shift+N"], &["Alt+N"]),
     k("rex.new-tab", REX, "window.new", "New Tab", &["Cmd+T"], &["Ctrl+Shift+T"], &["Alt+T"]),
-    k("rex.close-pane", REX, "pane.close", "Close Pane", &["Shift+Cmd+W"], &["Ctrl+Shift+W"], &["Alt+Shift+W"]),
-    k("rex.split-right", REX, "pane.split_right", "Split Right", &["Cmd+D"], &["Ctrl+Shift+D"], &["Alt+D"]),
-    k("rex.split-down", REX, "pane.split_down", "Split Down", &["Shift+Cmd+D"], &["Ctrl+Shift+E"], &["Alt+Shift+D"]),
-    k("rex.zoom-pane", REX, "pane.zoom_toggle", "Zoom Pane", &["Shift+Cmd+Return"], &["Ctrl+Shift+Return"], &["Alt+Shift+Return"]),
+    k("rex.close-pane", REX, "pane.close", "Close Pane", &["Cmd+W"], &["Ctrl+Shift+W"], &["Alt+W"]),
+    k("rex.quit", REX, "quit", "Quit Rex", &["Cmd+Q"], &["Ctrl+Shift+Q"], &["Alt+Q"]),
     k("rex.copy", REX, "terminal.copy", "Copy", &["Cmd+C"], &["Ctrl+Shift+C"], &["Alt+C"]),
     k("rex.paste", REX, "terminal.paste", "Paste", &["Cmd+V"], &["Ctrl+Shift+V"], &["Alt+V"]),
+    k("rex.select-all", REX, "terminal.select_all", "Select All", &["Cmd+A"], &["Ctrl+Shift+A"], &["Alt+A"]),
     k("rex.find", REX, "terminal.find", "Find", &["Cmd+F"], &["Ctrl+Shift+F"], &["Alt+F"]),
-    k("rex.copy-mode", REX, "terminal.copy_mode", "Copy Mode", &["Shift+Cmd+C"], &["Ctrl+Shift+M"], &["Alt+Shift+C"]),
+    k("rex.find-again", REX, "terminal.find_next", "Find Again", &["Cmd+G"], &["Ctrl+Shift+G"], &["Alt+G"]),
+    k("rex.find-previous", REX, "terminal.find_previous", "Find Previous", &["Alt+Cmd+G"], &["Shift+F3"], &["Alt+Cmd+G"]),
     k("rex.clear", REX, "terminal.clear_scrollback", "Clear Scrollback", &["Cmd+K"], &["Ctrl+Shift+K"], &["Alt+K"]),
-    k("rex.quit", REX, "quit", "Quit Rex", &["Cmd+Q"], &["Ctrl+Shift+Q"], &["Alt+Q"]),
+    k("rex.bigger", REX, "terminal.font_increase", "Bigger text", &["Cmd+Equal"], &["Ctrl+Shift+Equal"], &["Alt+Equal"]),
+    k("rex.smaller", REX, "terminal.font_decrease", "Smaller text", &["Cmd+Minus"], &["Ctrl+Shift+Minus"], &["Alt+Minus"]),
+    k("rex.default-size", REX, "terminal.font_reset", "Text at its own size", &["Cmd+0"], &["Ctrl+Shift+0"], &["Alt+0"]),
+    k("rex.prev-tab", REX, "window.previous", "Previous Tab", &["Shift+Cmd+BracketLeft"], &["Ctrl+Shift+BracketLeft"], &["Alt+BracketLeft"]),
+    k("rex.next-tab", REX, "window.next", "Next Tab", &["Shift+Cmd+BracketRight"], &["Ctrl+Shift+BracketRight"], &["Alt+BracketRight"]),
+    k("rex.tab-1", REX, "window.select_1", "Tab 1", &["Cmd+1"], &["Ctrl+Shift+1"], &["Alt+1"]),
+    k("rex.tab-2", REX, "window.select_2", "Tab 2", &["Cmd+2"], &["Ctrl+Shift+2"], &["Alt+2"]),
+    k("rex.tab-3", REX, "window.select_3", "Tab 3", &["Cmd+3"], &["Ctrl+Shift+3"], &["Alt+3"]),
+    k("rex.tab-4", REX, "window.select_4", "Tab 4", &["Cmd+4"], &["Ctrl+Shift+4"], &["Alt+4"]),
+    k("rex.tab-5", REX, "window.select_5", "Tab 5", &["Cmd+5"], &["Ctrl+Shift+5"], &["Alt+5"]),
+    k("rex.tab-6", REX, "window.select_6", "Tab 6", &["Cmd+6"], &["Ctrl+Shift+6"], &["Alt+6"]),
+    k("rex.tab-7", REX, "window.select_7", "Tab 7", &["Cmd+7"], &["Ctrl+Shift+7"], &["Alt+7"]),
+    k("rex.tab-8", REX, "window.select_8", "Tab 8", &["Cmd+8"], &["Ctrl+Shift+8"], &["Alt+8"]),
+    k("rex.tab-9", REX, "window.select_9", "Tab 9", &["Cmd+9"], &["Ctrl+Shift+9"], &["Alt+9"]),
+    k("rex.split-right", REX, "pane.split_right", "Split Right", &["Cmd+D"], &["Ctrl+Shift+D"], &["Alt+D"]),
+    k("rex.split-down", REX, "pane.split_down", "Split Down", &["Alt+Cmd+D"], &["Ctrl+Shift+E"], &["Alt+E"]),
+    k("rex.zoom-pane", REX, "pane.zoom_toggle", "Zoom Pane", &["Shift+Cmd+Return"], &["Ctrl+Shift+Return"], &["Alt+Shift+Return"]),
+    k("rex.sidebar", REX, "app.toggle_sidebar", "Show Sidebar", &["Alt+Cmd+S"], &["Ctrl+Shift+B"], &["Alt+S"]),
+    k("rex.copy-mode", REX, "terminal.copy_mode", "Copy Mode", &["Alt+Cmd+C"], &["Ctrl+Shift+M"], &["Alt+M"]),
+    k("rex.go-to-anything", REX, "app.go_to_anything", "Go to Anything", &["Cmd+P"], &["Ctrl+Shift+O"], &["Alt+P"]),
+    k("rex.next-waiting", REX, "agent.jump_next_blocked", "Next Waiting Agent", &["Cmd+J"], &["Ctrl+Shift+J"], &["Alt+J"]),
+    // With no key until the person gives them one (Preferences ▸
+    // Keyboard): the rest of what its menus hold.
+    k("rex.new-session", REX, "session.new", "New Session", &[], &[], &[]),
+    k("rex.close-tab", REX, "window.close", "Close Tab", &["Alt+Cmd+W"], &[], &[]),
+    k("rex.split-to-fit", REX, "pane.split_best_fit", "Split to Fit", &[], &[], &[]),
+    k("rex.focus-left", REX, "pane.focus_left", "Focus the Pane to the Left", &[], &[], &[]),
+    k("rex.focus-right", REX, "pane.focus_right", "Focus the Pane to the Right", &[], &[], &[]),
+    k("rex.focus-up", REX, "pane.focus_up", "Focus the Pane Above", &[], &[], &[]),
+    k("rex.focus-down", REX, "pane.focus_down", "Focus the Pane Below", &[], &[], &[]),
+    k("rex.type-in-all", REX, "pane.broadcast_toggle", "Type in All Panes", &[], &[], &[]),
+    k("rex.select-output", REX, "terminal.select_output", "Select Last Output", &[], &[], &[]),
+    k("rex.reset", REX, "terminal.reset", "Reset Terminal", &[], &[], &[]),
+    k("rex.quick-look", REX, "files.quick_look", "Quick Look", &[], &[], &[]),
+    k("rex.go-to-folder", REX, "files.go_to_dir", "Go to Folder", &[], &[], &[]),
+    k("rex.keep-going", REX, "agent.keep_going_toggle", "Keep It Going", &[], &[], &[]),
+    k("rex.mark-read", REX, "agent.mark_all_read", "Mark All as Read", &[], &[], &[]),
     // StyledEdit: TextEdit's on a Mac, WordPad's on Windows, StyledEdit's
     // on BeOS.
     k("styled-edit.replace", STYLED_EDIT, "replace", "Replace", &["Alt+Cmd+F"], &["Ctrl+H"], &["Alt+R"]),
@@ -452,5 +508,43 @@ pub fn app_title(app: Option<&str>) -> &'static str {
     match app {
         None => EVERY_APP,
         Some(id) => APPS.iter().find(|(a, _)| *a == id).map_or("Other", |(_, t)| t),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A terminal's window gets the command key's chords with Shift
+    /// whether Shift was pressed or not: no two of Rex's keys on a
+    /// profile may differ by that alone. (Terminal's own pairs, Undo and
+    /// Redo, Find Again and Find Previous, are known and listed here
+    /// until the keyboard path tells them apart.)
+    #[test]
+    fn a_terminals_keys_are_not_told_apart_by_shift_alone() {
+        fn folded(chord: &str, command: &str) -> String {
+            let mut parts: Vec<&str> = chord.split('+').collect();
+            if parts.contains(&command) && !parts.contains(&"Ctrl") {
+                parts.retain(|p| *p != "Shift");
+            }
+            parts.sort_unstable();
+            parts.join("+")
+        }
+        let mut found = Vec::new();
+        for app in OLO_TERMINALS {
+            for (platform, command) in [(0, "Cmd"), (2, "Alt")] {
+                let keys: Vec<(&str, String)> = APP_KEYS.iter().filter(|k| k.app == Some(*app)).flat_map(|k| k.keys[platform].iter().map(move |c| (k.id, folded(c, command)))).collect();
+                for (i, (a, x)) in keys.iter().enumerate() {
+                    for (b, y) in &keys[i + 1..] {
+                        if x == y {
+                            found.push(format!("{a} and {b}"));
+                        }
+                    }
+                }
+            }
+        }
+        found.sort();
+        found.dedup();
+        assert_eq!(found, ["terminal.find-again and terminal.find-previous", "terminal.undo and terminal.redo"]);
     }
 }

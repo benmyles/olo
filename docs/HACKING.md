@@ -18984,11 +18984,29 @@ passing) and replays (scrollback, `clear`, the alternate screen, modes,
 images).
 
 Keys: physical Ctrl goes to the shell. ⌘ reaches Terminal as Ctrl+Shift
-(see keymap.rs) on the right Ctrl, which the kit marks as
-`Modifiers::command` (see "Raw keys"); ⌘ with one of Terminal's own
-shortcuts in the keyboard profile (`keyboard::is_own_shortcut`, its
-`terminal.*` keys in `olo_protocol::app_keys`) is Terminal's, and any
-other goes to the shell as Ctrl+key, so ⌘R searches history like Ctrl+R.
+(see keymap.rs) on the right Ctrl (`olo_interface::right_control_held`
+tells it, as it was when the key was made); ⌘ with one of Terminal's
+own shortcuts in the keyboard profile (its `terminal.*` keys in
+`olo_protocol::app_keys`) whose menu item is on is Terminal's (its
+`key_down` asks the menus as they are this instant, `menus_beginning`,
+and leaves the key to the menu bar), and any other goes to the shell as
+Ctrl+key: ⌘R searches history like Ctrl+R, and ⌘C with nothing selected
+interrupts, Copy being off.
+
+**Olo's own terminals** (`olo_protocol::app_keys::OLO_TERMINALS`:
+Terminal and Rex) are terminals to the keyboard whatever the settings'
+list of other terminals says (app_server's `Focus::of`): their keys are
+built on the command key's chords arriving with Shift, ⌘⌫ as the
+shell's Ctrl+U, ⌘↑ and ⌘↓ as Shift+Home and Shift+End, and their menu
+bars are the kit's terminal-style ones (`MenuBar::raw`,
+`MenuBar::said(…, true)`). **A terminal's window can't tell ⌘X from
+⇧⌘X**: the Shift the command key brings and the person's own are one
+to it, and of two items with those keys the first that is on answers to
+both (Terminal: Bigger, ⌘Z, ⇧⌘Z, ⇧⌘Z, ⌘Z, ⌘Z takes the text's size
+through 13, 12, 13, 12, 13, 12; the second ⇧⌘Z undoes). Rex's keys have
+no such pair (a test in app_keys.rs holds them to it and names
+Terminal's two); telling the chords apart is in TODO ("The command
+key's Shift in a terminal"), with what a first attempt at it got wrong.
 With Windows' keys Ctrl is the command key itself: Terminal's are
 Ctrl+Shift ones (Ctrl+Shift+C copies), as in Windows Terminal.
 A physical Ctrl+Shift chord isn't `command`, so it is always the
@@ -26518,11 +26536,56 @@ palettes and an importer of theme files), and with "Auto Approve" and
   blinking one the window drew twice a second for as long as nothing
   happened (measured: 2.0 frames a second at rest, now 0).
 
+**Keys** are Olo's, as Terminal's (2026-11-21). Rex's commands have
+their keys from the keyboard profile (`olo_protocol::app_keys`, the
+`rex.*` entries: Terminal's keys for what Terminal has too, ⌘W for the
+pane the keyboard is in and ⌥⌘W for its tab, ⌘D to split and ⌥⌘D to
+split down, ⌘1 to ⌘9 for the tabs, ⌘J for the next agent that waits;
+the rest of its menus'
+commands are listed with no key, for the person to give one), shown
+and changed in Preferences ▸ Keyboard, pressed through the menu bar:
+every key has a menu item. Rex is one of Olo's own terminals (above),
+so no two of its keys differ by Shift alone. The window's key handler
+(`handle_terminal_key`) gives a key, in this order, to: the person's
+own Rex configuration, if one of its sequences or modes is under way
+and it has the key (a sequence begun more than two seconds ago is let
+go of first); the menu bar, if it is the command key's (or one of the
+profile's keys for Rex without Control: Shift+F3) and an item that is
+on has it; the configuration's bindings (`KeymapEngine`: what the
+server answers `client.keymap` with when Rex sends the commands it has
+and no keys of its own, so the configuration's alone, with whatever
+the old recorder left in rex.json; a `cmd` chord there is the command
+key's, Control stays `ctrl` with Windows' keys too); the scrollback,
+for Shift with Page Up, Page Down, Home and End; the tabs, for Ctrl+Tab
+and Ctrl+Page Up/Down where there is more than one; and the program in
+the pane, the command key's as Control's without the Shift it brings.
+A key kept down after its command chord was let go is swallowed (its
+repeats read as Control with the key: Ctrl+D, after ⌘D). The app came
+with 69 keys of its own written for a modifier that doesn't reach an
+app in Olo: none could be pressed, each went to the pane as a Control
+key, and ⌘D ended the shell where it should have split (checked
+headless by pressing them through app_server's real key path,
+`tsession key`: AGENT-NOTES, "Keys"). The commands its catalog offered
+that nothing carried out are gone from it; what a host's program may
+ask of this computer (`bridge_catalog`) is declared to the server and
+is in no palette.
+
+**Typing to a far host.** What is typed goes to a host one request at
+a time, each answered before the next, so that its order is the order
+typed whatever the server does with two at once; and what was typed
+while a request was on its way goes together in the next
+(`hub::typed_together`: text for the same terminal, as far as the next
+key event or change of focus). A request a key was a round trip a key:
+to a host 224 ms away, 65 characters typed in 2.8 s took 18.7 s to
+arrive; 73 typed in 3.3 s are run there within a second of the last
+(measured against a real host over SSH, by the host's own clock).
+
 **The menu bar** is Terminal's model: Rex (the kit's `app_items` with
 its two Preferences panels; what is made new; Hosts…, Remote Access…,
-Diagnostics…; Close Tab, Close Window, Quit), Edit, View (its last
+Diagnostics…; Close Window, Quit), Edit, View (its last
 group the pane's folder: Quick Look, Browse Folders…, Go to Folder…,
-and Open in Tracker for a pane of this computer), Pane, Agents,
+and Open in Tracker for a pane of this computer), Tabs (New Tab, Close
+Tab, next, previous, and the session's tabs by name), Pane, Agents,
 Settings. Every toggle
 shows its check (the sidebar, pane headers, the sidebar's list, Zoom
 Pane, Type in All Panes, Copy Mode, Keep It Going) and every item is

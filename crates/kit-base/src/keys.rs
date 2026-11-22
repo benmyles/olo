@@ -62,6 +62,12 @@ pub fn command_key() -> bool {
     COMMAND_KEY.load(Ordering::Relaxed)
 }
 
+/// How many times the profile has been set: what an app keeps of its
+/// keys is good for as long as this says the same.
+pub fn generation() -> u64 {
+    GENERATION.load(Ordering::Relaxed)
+}
+
 /// A shortcut as the app sees it: an evdev key, with the command key
 /// (Ctrl to the app, whatever the profile presses it with), Shift and
 /// Alt; or a key of its own (Windows' F3, Delete).

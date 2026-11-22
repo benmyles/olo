@@ -8,7 +8,7 @@ use std::{
 };
 
 use olo_kit::{KeyDownEvent, Keystroke};
-use olo_rex_client::{KeyEvent as RexKeyEvent, KeymapAction, KeymapBinding, KeymapDiagnostic, KeymapLayer, KeymapMode};
+use olo_rex_client::{KeyEvent as RexKeyEvent, KeymapAction, KeymapBinding, KeymapDiagnostic, KeymapMode};
 use serde_json::{Value, json};
 
 /// Metadata for a single client-registerable Rex action.
@@ -18,7 +18,6 @@ pub struct ActionSpec {
     pub title: &'static str,
     pub category: &'static str,
     pub keywords: &'static [&'static str],
-    pub default_shortcut: Option<&'static str>,
     pub args_schema: Option<Value>,
 }
 
@@ -56,10 +55,20 @@ impl KeyChord {
         Some(Self { ctrl, alt, shift, meta, key })
     }
 
-    pub fn from_keystroke(ks: &Keystroke) -> Self {
+    /// The chord a keystroke is to the person's Rex configuration.
+    /// `cmd`: it was pressed with a command key that is a key of its own
+    /// ([`cmd_held`]), which the configuration writes as `cmd`; Control
+    /// itself stays `ctrl` (with Windows' keys, where it is the command
+    /// key too, a `ctrl+b` prefix is still Ctrl+B). A shifted symbol is
+    /// its key with Shift (`ctrl+shift+period`, which arrives as ">").
+    /// A `cmd` chord is matched without Shift: the one the command key
+    /// brings to a terminal can't be told from the person's.
+    pub fn from_keystroke(ks: &Keystroke, cmd: bool) -> Self {
         // (Alt is the terminal's Meta, both keys, as in Olo's Terminal.)
         let alt = ks.modifiers.alt;
-        Self { ctrl: ks.modifiers.control, alt, shift: ks.modifiers.shift, meta: ks.modifiers.platform, key: normalize_key_name(&ks.key) }
+        let lower = ks.key.to_ascii_lowercase();
+        let (base, shifted) = olo_kit::keys::unshifted(&lower);
+        Self { ctrl: ks.modifiers.control && !cmd, alt, shift: (ks.modifiers.shift || shifted) && !cmd, meta: cmd || ks.modifiers.platform, key: normalize_key_name(base) }
     }
 
     pub fn format_human(&self) -> String {
@@ -136,10 +145,6 @@ impl KeySequence {
         }
         if chords.is_empty() { None } else { Some(Self { chords }) }
     }
-
-    pub fn format_human(&self) -> String {
-        self.chords.iter().map(KeyChord::format_human).collect::<Vec<_>>().join(" › ")
-    }
 }
 
 fn normalize_key_name(raw: &str) -> String {
@@ -166,9 +171,40 @@ fn normalize_key_name(raw: &str) -> String {
     }
 }
 
+/// Whether a keystroke was pressed with the command key: ⌘ with a Mac's
+/// keys and Alt with BeOS's (the right Control, as app_server sends
+/// it), with Windows' keys Control itself. As Terminal tells it: what
+/// may be one of Rex's own commands.
+pub fn command_held(ks: &Keystroke) -> bool {
+    ks.modifiers.control && (olo_kit::right_control_held() || !olo_kit_base::keys::command_key())
+}
+
+/// Whether it was pressed with a command key that is a key of its own (a
+/// Mac's ⌘, BeOS's Alt), not Control: what the person's Rex
+/// configuration calls `cmd`, and what brings a Shift of its own to a
+/// terminal.
+pub fn cmd_held(ks: &Keystroke) -> bool {
+    ks.modifiers.control && olo_kit::right_control_held() && olo_kit_base::keys::command_key()
+}
+
 /// Convert an Olo [`KeyDownEvent`] into a Rex rev-19 [`RexKeyEvent`].
-pub fn to_rex_key_event(e: &KeyDownEvent) -> RexKeyEvent {
-    let ks = &e.keystroke;
+/// `cmd`: pressed with the command key ([`cmd_held`]) and no command of
+/// Rex's: it goes to the program in the pane as Control with the key,
+/// as in Terminal (⌘R searches a shell's history like Ctrl+R), without
+/// the Shift the command key brings to a terminal.
+pub fn to_rex_key_event(e: &KeyDownEvent, cmd: bool) -> RexKeyEvent {
+    let plain;
+    let ks = if cmd {
+        let mut ks = e.keystroke.clone();
+        let lower = ks.key.to_ascii_lowercase();
+        ks.key = olo_kit::keys::unshifted(&lower).0.to_owned();
+        ks.modifiers.shift = false;
+        ks.key_char = None;
+        plain = ks;
+        &plain
+    } else {
+        &e.keystroke
+    };
     let key = match ks.key.as_str() {
         "up" => "arrow_up".to_owned(),
         "down" => "arrow_down".to_owned(),
@@ -220,276 +256,98 @@ pub fn to_rex_key_event(e: &KeyDownEvent) -> RexKeyEvent {
 /// Complete catalog of ~105 Olo Rex client actions registered via `client.keymap`
 /// and searchable in the Command Palette (`⇧⌘P`).
 pub fn action_catalog() -> Vec<ActionSpec> {
-    let dir_schema = Some(json!({
-        "type": "object",
-        "properties": { "direction": { "type": "string", "enum": ["left", "right", "up", "down"] } }
-    }));
-    let idx_schema = Some(json!({
-        "type": "object",
-        "properties": { "index": { "type": "integer", "minimum": 1 } }
-    }));
     vec![
         // ---- Application & Palettes ----
-        ActionSpec {
-            id: "app.command_palette",
-            title: "Command Palette…",
-            category: "General",
-            keywords: &["commands", "actions", "search"],
-            default_shortcut: Some("meta+shift+p"),
-            args_schema: None,
-        },
-        ActionSpec {
-            id: "app.go_to_anything", title: "Go to Anything…", category: "Navigation", keywords: &["quick", "switch", "jump", "fuzzy"], default_shortcut: Some("meta+p"), args_schema: None
-        },
-        ActionSpec {
-            id: "app.view_activity",
-            title: "View Activity",
-            category: "Activity",
-            keywords: &["agents", "blocked", "working", "status"],
-            default_shortcut: Some("meta+period"),
-            args_schema: None,
-        },
-        ActionSpec { id: "app.toggle_sidebar", title: "Toggle Sidebar", category: "View", keywords: &["hosts", "sessions", "drawer"], default_shortcut: Some("alt+meta+s"), args_schema: None },
-        ActionSpec {
-            id: "app.settings",
-            title: "Rex Settings…",
-            category: "General",
-            keywords: &["preferences", "hosts", "permissions", "notifications"],
-            default_shortcut: Some("meta+comma"),
-            args_schema: None,
-        },
-        ActionSpec {
-            id: "app.diagnostics",
-            title: "Rex Diagnostics…",
-            category: "Diagnostics",
-            keywords: &["debug", "server", "status", "version"],
-            default_shortcut: Some("meta+shift+comma"),
-            args_schema: None,
-        },
-        ActionSpec {
-            id: "app.hosts",
-            title: "Hosts & Port Forwards…",
-            category: "Network",
-            keywords: &["ssh", "remote", "tailscale", "tunnels", "ports"],
-            default_shortcut: Some("meta+shift+h"),
-            args_schema: None,
-        },
-        ActionSpec { id: "app.pair_device", title: "Remote Access…", category: "Network", keywords: &["pair", "device", "phone", "qr", "tailscale"], default_shortcut: None, args_schema: None },
-        ActionSpec { id: "app.new_window", title: "New Window", category: "Window", keywords: &["window", "open"], default_shortcut: Some("meta+n"), args_schema: None },
-        ActionSpec { id: "app.close_window", title: "Close Window", category: "Window", keywords: &["window", "close"], default_shortcut: Some("meta+shift+w"), args_schema: None },
-        ActionSpec { id: "app.quit", title: "Quit Rex", category: "General", keywords: &["exit", "quit"], default_shortcut: Some("meta+q"), args_schema: None },
-        ActionSpec {
-            id: "app.reload_config",
-            title: "Reload Server Configuration",
-            category: "General",
-            keywords: &["lua", "config", "reload"],
-            default_shortcut: Some("meta+shift+r"),
-            args_schema: None,
-        },
+        ActionSpec { id: "app.command_palette", title: "Command Palette…", category: "General", keywords: &["commands", "actions", "search"], args_schema: None },
+        ActionSpec { id: "app.go_to_anything", title: "Go to Anything…", category: "Navigation", keywords: &["quick", "switch", "jump", "fuzzy"], args_schema: None },
+        ActionSpec { id: "app.view_activity", title: "View Activity", category: "Activity", keywords: &["agents", "blocked", "working", "status"], args_schema: None },
+        ActionSpec { id: "app.toggle_sidebar", title: "Toggle Sidebar", category: "View", keywords: &["hosts", "sessions", "drawer"], args_schema: None },
+        ActionSpec { id: "app.settings", title: "Rex Settings…", category: "General", keywords: &["preferences", "hosts", "permissions", "notifications"], args_schema: None },
+        ActionSpec { id: "app.diagnostics", title: "Rex Diagnostics…", category: "Diagnostics", keywords: &["debug", "server", "status", "version"], args_schema: None },
+        ActionSpec { id: "app.hosts", title: "Hosts & Port Forwards…", category: "Network", keywords: &["ssh", "remote", "tailscale", "tunnels", "ports"], args_schema: None },
+        ActionSpec { id: "app.pair_device", title: "Remote Access…", category: "Network", keywords: &["pair", "device", "phone", "qr", "tailscale"], args_schema: None },
+        ActionSpec { id: "app.new_window", title: "New Window", category: "Window", keywords: &["window", "open"], args_schema: None },
+        ActionSpec { id: "app.close_window", title: "Close Window", category: "Window", keywords: &["window", "close"], args_schema: None },
+        ActionSpec { id: "app.quit", title: "Quit Rex", category: "General", keywords: &["exit", "quit"], args_schema: None },
+        ActionSpec { id: "app.reload_config", title: "Reload Server Configuration", category: "General", keywords: &["lua", "config", "reload"], args_schema: None },
         // ---- Sessions ----
-        ActionSpec { id: "session.new", title: "New Session", category: "Session", keywords: &["create", "workspace", "session"], default_shortcut: Some("alt+meta+n"), args_schema: None },
-        ActionSpec { id: "session.rename", title: "Rename Session…", category: "Session", keywords: &["label", "title"], default_shortcut: None, args_schema: None },
-        ActionSpec { id: "session.close", title: "Close Session", category: "Session", keywords: &["kill", "delete"], default_shortcut: None, args_schema: None },
-        ActionSpec { id: "session.next", title: "Next Session", category: "Session", keywords: &["cycle", "switch"], default_shortcut: Some("ctrl+meta+down"), args_schema: None },
-        ActionSpec { id: "session.previous", title: "Previous Session", category: "Session", keywords: &["cycle", "switch"], default_shortcut: Some("ctrl+meta+up"), args_schema: None },
-        ActionSpec { id: "session.detach", title: "Detach Session", category: "Session", keywords: &["disconnect"], default_shortcut: None, args_schema: None },
+        ActionSpec { id: "session.new", title: "New Session", category: "Session", keywords: &["create", "workspace", "session"], args_schema: None },
+        ActionSpec { id: "session.close", title: "Close Session", category: "Session", keywords: &["kill", "delete"], args_schema: None },
         // ---- Windows / Tabs ----
-        ActionSpec { id: "window.new", title: "New Tab", category: "Tab", keywords: &["window", "tab", "shell"], default_shortcut: Some("meta+t"), args_schema: None },
-        ActionSpec { id: "window.close", title: "Close Tab", category: "Tab", keywords: &["close", "tab"], default_shortcut: None, args_schema: None },
-        ActionSpec { id: "window.rename", title: "Rename Tab…", category: "Tab", keywords: &["title", "label"], default_shortcut: Some("meta+shift+i"), args_schema: None },
-        ActionSpec { id: "window.next", title: "Next Tab", category: "Tab", keywords: &["right", "forward"], default_shortcut: Some("meta+shift+bracket_right"), args_schema: None },
-        ActionSpec { id: "window.previous", title: "Previous Tab", category: "Tab", keywords: &["left", "back"], default_shortcut: Some("meta+shift+bracket_left"), args_schema: None },
-        ActionSpec { id: "window.select", title: "Select Tab by Index", category: "Tab", keywords: &["jump", "number"], default_shortcut: None, args_schema: idx_schema },
-        ActionSpec { id: "window.select_1", title: "Select Tab 1", category: "Tab", keywords: &["1"], default_shortcut: Some("meta+1"), args_schema: None },
-        ActionSpec { id: "window.select_2", title: "Select Tab 2", category: "Tab", keywords: &["2"], default_shortcut: Some("meta+2"), args_schema: None },
-        ActionSpec { id: "window.select_3", title: "Select Tab 3", category: "Tab", keywords: &["3"], default_shortcut: Some("meta+3"), args_schema: None },
-        ActionSpec { id: "window.select_4", title: "Select Tab 4", category: "Tab", keywords: &["4"], default_shortcut: Some("meta+4"), args_schema: None },
-        ActionSpec { id: "window.select_5", title: "Select Tab 5", category: "Tab", keywords: &["5"], default_shortcut: Some("meta+5"), args_schema: None },
-        ActionSpec { id: "window.select_6", title: "Select Tab 6", category: "Tab", keywords: &["6"], default_shortcut: Some("meta+6"), args_schema: None },
-        ActionSpec { id: "window.select_7", title: "Select Tab 7", category: "Tab", keywords: &["7"], default_shortcut: Some("meta+7"), args_schema: None },
-        ActionSpec { id: "window.select_8", title: "Select Tab 8", category: "Tab", keywords: &["8"], default_shortcut: Some("meta+8"), args_schema: None },
-        ActionSpec { id: "window.select_9", title: "Select Tab 9", category: "Tab", keywords: &["9"], default_shortcut: Some("meta+9"), args_schema: None },
-        ActionSpec { id: "window.move_left", title: "Move Tab Left", category: "Tab", keywords: &["reorder"], default_shortcut: Some("ctrl+shift+left"), args_schema: None },
-        ActionSpec { id: "window.move_right", title: "Move Tab Right", category: "Tab", keywords: &["reorder"], default_shortcut: Some("ctrl+shift+right"), args_schema: None },
-        ActionSpec { id: "window.toggle_mute", title: "Mute / Unmute Tab Notifications", category: "Tab", keywords: &["silence", "quiet"], default_shortcut: None, args_schema: None },
+        ActionSpec { id: "window.new", title: "New Tab", category: "Tab", keywords: &["window", "tab", "shell"], args_schema: None },
+        ActionSpec { id: "window.close", title: "Close Tab", category: "Tab", keywords: &["close", "tab"], args_schema: None },
+        ActionSpec { id: "window.next", title: "Next Tab", category: "Tab", keywords: &["right", "forward"], args_schema: None },
+        ActionSpec { id: "window.previous", title: "Previous Tab", category: "Tab", keywords: &["left", "back"], args_schema: None },
+        ActionSpec { id: "window.select_1", title: "Select Tab 1", category: "Tab", keywords: &["1"], args_schema: None },
+        ActionSpec { id: "window.select_2", title: "Select Tab 2", category: "Tab", keywords: &["2"], args_schema: None },
+        ActionSpec { id: "window.select_3", title: "Select Tab 3", category: "Tab", keywords: &["3"], args_schema: None },
+        ActionSpec { id: "window.select_4", title: "Select Tab 4", category: "Tab", keywords: &["4"], args_schema: None },
+        ActionSpec { id: "window.select_5", title: "Select Tab 5", category: "Tab", keywords: &["5"], args_schema: None },
+        ActionSpec { id: "window.select_6", title: "Select Tab 6", category: "Tab", keywords: &["6"], args_schema: None },
+        ActionSpec { id: "window.select_7", title: "Select Tab 7", category: "Tab", keywords: &["7"], args_schema: None },
+        ActionSpec { id: "window.select_8", title: "Select Tab 8", category: "Tab", keywords: &["8"], args_schema: None },
+        ActionSpec { id: "window.select_9", title: "Select Tab 9", category: "Tab", keywords: &["9"], args_schema: None },
         // ---- Splits & Panes ----
-        ActionSpec { id: "pane.split_right", title: "Split Right", category: "Pane", keywords: &["vertical", "divide", "horizontal"], default_shortcut: Some("meta+d"), args_schema: None },
-        ActionSpec { id: "pane.split_down", title: "Split Down", category: "Pane", keywords: &["horizontal", "divide", "below"], default_shortcut: Some("meta+shift+d"), args_schema: None },
-        ActionSpec { id: "pane.split_best_fit", title: "Split Best Fit", category: "Pane", keywords: &["auto", "smart", "split"], default_shortcut: Some("meta+enter"), args_schema: None },
-        ActionSpec { id: "pane.close", title: "Close Pane", category: "Pane", keywords: &["close", "kill", "block"], default_shortcut: Some("meta+w"), args_schema: None },
-        ActionSpec { id: "pane.focus_left", title: "Focus Pane Left", category: "Pane", keywords: &["navigate", "left"], default_shortcut: Some("alt+meta+left"), args_schema: None },
-        ActionSpec { id: "pane.focus_right", title: "Focus Pane Right", category: "Pane", keywords: &["navigate", "right"], default_shortcut: Some("alt+meta+right"), args_schema: None },
-        ActionSpec { id: "pane.focus_up", title: "Focus Pane Up", category: "Pane", keywords: &["navigate", "up"], default_shortcut: Some("alt+meta+up"), args_schema: None },
-        ActionSpec { id: "pane.focus_down", title: "Focus Pane Down", category: "Pane", keywords: &["navigate", "down"], default_shortcut: Some("alt+meta+down"), args_schema: None },
-        ActionSpec { id: "pane.focus_direction", title: "Focus Pane in Direction", category: "Pane", keywords: &["direction"], default_shortcut: None, args_schema: dir_schema },
-        ActionSpec { id: "pane.focus_next", title: "Focus Next Pane", category: "Pane", keywords: &["cycle"], default_shortcut: Some("meta+bracket_right"), args_schema: None },
-        ActionSpec { id: "pane.focus_previous", title: "Focus Previous Pane", category: "Pane", keywords: &["cycle"], default_shortcut: Some("meta+bracket_left"), args_schema: None },
-        ActionSpec { id: "pane.swap_left", title: "Swap Pane Left", category: "Pane", keywords: &["move", "exchange"], default_shortcut: None, args_schema: None },
-        ActionSpec { id: "pane.swap_right", title: "Swap Pane Right", category: "Pane", keywords: &["move", "exchange"], default_shortcut: None, args_schema: None },
-        ActionSpec { id: "pane.swap_up", title: "Swap Pane Up", category: "Pane", keywords: &["move", "exchange"], default_shortcut: None, args_schema: None },
-        ActionSpec { id: "pane.swap_down", title: "Swap Pane Down", category: "Pane", keywords: &["move", "exchange"], default_shortcut: None, args_schema: None },
-        ActionSpec { id: "pane.resize_left", title: "Resize Pane Left", category: "Pane", keywords: &["shrink", "grow"], default_shortcut: Some("ctrl+meta+left"), args_schema: None },
-        ActionSpec { id: "pane.resize_right", title: "Resize Pane Right", category: "Pane", keywords: &["shrink", "grow"], default_shortcut: Some("ctrl+meta+right"), args_schema: None },
-        ActionSpec { id: "pane.resize_up", title: "Resize Pane Up", category: "Pane", keywords: &["shrink", "grow"], default_shortcut: None, args_schema: None },
-        ActionSpec { id: "pane.resize_down", title: "Resize Pane Down", category: "Pane", keywords: &["shrink", "grow"], default_shortcut: None, args_schema: None },
-        ActionSpec {
-            id: "pane.zoom_toggle",
-            title: "Zoom / Unzoom Pane",
-            category: "Pane",
-            keywords: &["maximize", "fullscreen", "focus"],
-            default_shortcut: Some("meta+shift+enter"),
-            args_schema: None,
-        },
-        ActionSpec { id: "pane.balance", title: "Balance Splits", category: "Pane", keywords: &["equalize", "reset"], default_shortcut: Some("ctrl+meta+equal"), args_schema: None },
-        ActionSpec { id: "pane.break_to_tab", title: "Break Pane into New Tab", category: "Pane", keywords: &["extract", "promote"], default_shortcut: None, args_schema: None },
-        ActionSpec {
-            id: "pane.broadcast_toggle",
-            title: "Toggle Broadcast Input to Window",
-            category: "Pane",
-            keywords: &["sync", "all panes"],
-            default_shortcut: Some("alt+meta+i"),
-            args_schema: None,
-        },
+        ActionSpec { id: "pane.split_right", title: "Split Right", category: "Pane", keywords: &["vertical", "divide", "horizontal"], args_schema: None },
+        ActionSpec { id: "pane.split_down", title: "Split Down", category: "Pane", keywords: &["horizontal", "divide", "below"], args_schema: None },
+        ActionSpec { id: "pane.split_best_fit", title: "Split Best Fit", category: "Pane", keywords: &["auto", "smart", "split"], args_schema: None },
+        ActionSpec { id: "pane.close", title: "Close Pane", category: "Pane", keywords: &["close", "kill", "block"], args_schema: None },
+        ActionSpec { id: "pane.focus_left", title: "Focus Pane Left", category: "Pane", keywords: &["navigate", "left"], args_schema: None },
+        ActionSpec { id: "pane.focus_right", title: "Focus Pane Right", category: "Pane", keywords: &["navigate", "right"], args_schema: None },
+        ActionSpec { id: "pane.focus_up", title: "Focus Pane Up", category: "Pane", keywords: &["navigate", "up"], args_schema: None },
+        ActionSpec { id: "pane.focus_down", title: "Focus Pane Down", category: "Pane", keywords: &["navigate", "down"], args_schema: None },
+        ActionSpec { id: "pane.zoom_toggle", title: "Zoom / Unzoom Pane", category: "Pane", keywords: &["maximize", "fullscreen", "focus"], args_schema: None },
+        ActionSpec { id: "pane.broadcast_toggle", title: "Toggle Broadcast Input to Window", category: "Pane", keywords: &["sync", "all panes"], args_schema: None },
         // ---- Floating Layers ----
-        ActionSpec { id: "layer.new_floating", title: "New Floating Terminal", category: "Layers", keywords: &["overlay", "popup", "float"], default_shortcut: Some("alt+meta+f"), args_schema: None },
-        ActionSpec { id: "layer.toggle_float", title: "Float / Dock Focused Pane", category: "Layers", keywords: &["floating", "tile"], default_shortcut: None, args_schema: None },
-        ActionSpec { id: "layer.minimize", title: "Minimize Floating Layer", category: "Layers", keywords: &["capsule", "hide"], default_shortcut: None, args_schema: None },
-        ActionSpec { id: "layer.restore_all", title: "Restore All Floating Layers", category: "Layers", keywords: &["unminimize", "show"], default_shortcut: None, args_schema: None },
-        ActionSpec { id: "layer.raise", title: "Raise Floating Layer", category: "Layers", keywords: &["front", "z-order"], default_shortcut: None, args_schema: None },
+        ActionSpec { id: "layer.new_floating", title: "New Floating Terminal", category: "Layers", keywords: &["overlay", "popup", "float"], args_schema: None },
         // ---- Terminal, Clipboard, Find, Copy Mode, Navigation ----
-        ActionSpec { id: "terminal.copy", title: "Copy", category: "Edit", keywords: &["clipboard", "yank"], default_shortcut: Some("meta+c"), args_schema: None },
-        ActionSpec { id: "terminal.paste", title: "Paste", category: "Edit", keywords: &["clipboard"], default_shortcut: Some("meta+v"), args_schema: None },
-        ActionSpec { id: "terminal.select_all", title: "Select All", category: "Edit", keywords: &["selection"], default_shortcut: Some("meta+a"), args_schema: None },
-        ActionSpec { id: "terminal.clear_scrollback", title: "Clear Scrollback", category: "Terminal", keywords: &["cls", "clear"], default_shortcut: Some("meta+k"), args_schema: None },
-        ActionSpec { id: "terminal.reset", title: "Reset Terminal", category: "Terminal", keywords: &["ris", "hard reset"], default_shortcut: None, args_schema: None },
-        ActionSpec { id: "terminal.find", title: "Find in Terminal…", category: "Edit", keywords: &["search", "grep"], default_shortcut: Some("meta+f"), args_schema: None },
-        ActionSpec { id: "terminal.find_next", title: "Find Next", category: "Edit", keywords: &["search"], default_shortcut: Some("meta+g"), args_schema: None },
-        ActionSpec { id: "terminal.find_previous", title: "Find Previous", category: "Edit", keywords: &["search"], default_shortcut: Some("meta+shift+g"), args_schema: None },
-        ActionSpec {
-            id: "terminal.copy_mode",
-            title: "Enter / Exit Copy Mode",
-            category: "Terminal",
-            keywords: &["vim", "tmux", "scroll", "select"],
-            default_shortcut: Some("meta+shift+c"),
-            args_schema: None,
-        },
-        ActionSpec { id: "terminal.scroll_page_up", title: "Scroll Page Up", category: "Terminal", keywords: &["scrollback"], default_shortcut: Some("shift+page_up"), args_schema: None },
-        ActionSpec { id: "terminal.scroll_page_down", title: "Scroll Page Down", category: "Terminal", keywords: &["scrollback"], default_shortcut: Some("shift+page_down"), args_schema: None },
-        ActionSpec { id: "terminal.scroll_top", title: "Scroll to Top", category: "Terminal", keywords: &["scrollback", "home"], default_shortcut: Some("meta+home"), args_schema: None },
-        ActionSpec { id: "terminal.scroll_bottom", title: "Scroll to Bottom", category: "Terminal", keywords: &["scrollback", "end"], default_shortcut: Some("meta+end"), args_schema: None },
-        ActionSpec { id: "terminal.prompt_prev", title: "Jump to Previous Prompt", category: "Terminal", keywords: &["osc133", "command"], default_shortcut: Some("meta+up"), args_schema: None },
-        ActionSpec { id: "terminal.prompt_next", title: "Jump to Next Prompt", category: "Terminal", keywords: &["osc133", "command"], default_shortcut: Some("meta+down"), args_schema: None },
-        ActionSpec {
-            id: "terminal.select_output",
-            title: "Select Last Command Output",
-            category: "Terminal",
-            keywords: &["osc133", "copy"],
-            default_shortcut: Some("meta+shift+o"),
-            args_schema: None,
-        },
-        ActionSpec { id: "terminal.font_increase", title: "Increase Font Size", category: "View", keywords: &["zoom", "bigger"], default_shortcut: Some("meta+equal"), args_schema: None },
-        ActionSpec { id: "terminal.font_decrease", title: "Decrease Font Size", category: "View", keywords: &["zoom", "smaller"], default_shortcut: Some("meta+minus"), args_schema: None },
-        ActionSpec { id: "terminal.font_reset", title: "Reset Font Size", category: "View", keywords: &["zoom", "actual"], default_shortcut: Some("meta+0"), args_schema: None },
-        ActionSpec { id: "terminal.export_text", title: "Export Screen as Plain Text…", category: "Terminal", keywords: &["save", "dump"], default_shortcut: None, args_schema: None },
-        ActionSpec { id: "terminal.export_html", title: "Export Screen as HTML…", category: "Terminal", keywords: &["save", "html"], default_shortcut: None, args_schema: None },
+        ActionSpec { id: "terminal.copy", title: "Copy", category: "Edit", keywords: &["clipboard", "yank"], args_schema: None },
+        ActionSpec { id: "terminal.paste", title: "Paste", category: "Edit", keywords: &["clipboard"], args_schema: None },
+        ActionSpec { id: "terminal.select_all", title: "Select All", category: "Edit", keywords: &["selection"], args_schema: None },
+        ActionSpec { id: "terminal.clear_scrollback", title: "Clear Scrollback", category: "Terminal", keywords: &["cls", "clear"], args_schema: None },
+        ActionSpec { id: "terminal.reset", title: "Reset Terminal", category: "Terminal", keywords: &["ris", "hard reset"], args_schema: None },
+        ActionSpec { id: "terminal.find", title: "Find in Terminal…", category: "Edit", keywords: &["search", "grep"], args_schema: None },
+        ActionSpec { id: "terminal.find_next", title: "Find Next", category: "Edit", keywords: &["search"], args_schema: None },
+        ActionSpec { id: "terminal.find_previous", title: "Find Previous", category: "Edit", keywords: &["search"], args_schema: None },
+        ActionSpec { id: "terminal.copy_mode", title: "Enter / Exit Copy Mode", category: "Terminal", keywords: &["vim", "tmux", "scroll", "select"], args_schema: None },
+        ActionSpec { id: "terminal.scroll_page_up", title: "Scroll Page Up", category: "Terminal", keywords: &["scrollback"], args_schema: None },
+        ActionSpec { id: "terminal.scroll_page_down", title: "Scroll Page Down", category: "Terminal", keywords: &["scrollback"], args_schema: None },
+        ActionSpec { id: "terminal.scroll_top", title: "Scroll to Top", category: "Terminal", keywords: &["scrollback", "home"], args_schema: None },
+        ActionSpec { id: "terminal.scroll_bottom", title: "Scroll to Bottom", category: "Terminal", keywords: &["scrollback", "end"], args_schema: None },
+        ActionSpec { id: "terminal.prompt_prev", title: "Jump to Previous Prompt", category: "Terminal", keywords: &["osc133", "command"], args_schema: None },
+        ActionSpec { id: "terminal.prompt_next", title: "Jump to Next Prompt", category: "Terminal", keywords: &["osc133", "command"], args_schema: None },
+        ActionSpec { id: "terminal.select_output", title: "Select Last Command Output", category: "Terminal", keywords: &["osc133", "copy"], args_schema: None },
+        ActionSpec { id: "terminal.font_increase", title: "Increase Font Size", category: "View", keywords: &["zoom", "bigger"], args_schema: None },
+        ActionSpec { id: "terminal.font_decrease", title: "Decrease Font Size", category: "View", keywords: &["zoom", "smaller"], args_schema: None },
+        ActionSpec { id: "terminal.font_reset", title: "Reset Font Size", category: "View", keywords: &["zoom", "actual"], args_schema: None },
+        ActionSpec { id: "terminal.export_text", title: "Export Screen as Plain Text…", category: "Terminal", keywords: &["save", "dump"], args_schema: None },
+        ActionSpec { id: "terminal.export_html", title: "Export Screen as HTML…", category: "Terminal", keywords: &["save", "html"], args_schema: None },
         // ---- Files, Path Browser, Quick Look ----
-        ActionSpec { id: "files.path_browser", title: "Path Browser…", category: "Files", keywords: &["insert path", "browse", "files"], default_shortcut: Some("ctrl+meta+i"), args_schema: None },
-        ActionSpec { id: "files.go_to_dir", title: "Go to Directory…", category: "Files", keywords: &["cd", "folder", "mru"], default_shortcut: Some("ctrl+shift+g"), args_schema: None },
-        ActionSpec { id: "files.quick_look", title: "Quick Look Path…", category: "Files", keywords: &["preview", "inspect"], default_shortcut: Some("meta+y"), args_schema: None },
-        ActionSpec { id: "files.upload", title: "Upload File to Pane…", category: "Files", keywords: &["send", "drop", "remote"], default_shortcut: None, args_schema: None },
-        ActionSpec {
-            id: "files.open_in_tracker",
-            title: "Open Working Directory in Tracker",
-            category: "Files",
-            keywords: &["finder", "folder", "tracker"],
-            default_shortcut: None,
-            args_schema: None,
-        },
+        ActionSpec { id: "files.path_browser", title: "Path Browser…", category: "Files", keywords: &["insert path", "browse", "files"], args_schema: None },
+        ActionSpec { id: "files.go_to_dir", title: "Go to Directory…", category: "Files", keywords: &["cd", "folder", "mru"], args_schema: None },
+        ActionSpec { id: "files.quick_look", title: "Quick Look Path…", category: "Files", keywords: &["preview", "inspect"], args_schema: None },
+        ActionSpec { id: "files.open_in_tracker", title: "Open Working Directory in Tracker", category: "Files", keywords: &["finder", "folder", "tracker"], args_schema: None },
         // ---- Coding Agents & Automation ----
-        ActionSpec { id: "agent.keep_going_toggle", title: "Toggle Keep It Going", category: "Agents", keywords: &["nudge", "continue", "autonomous"], default_shortcut: None, args_schema: None },
-        ActionSpec {
-            id: "agent.jump_next_blocked",
-            title: "Jump to Next Blocked Agent",
-            category: "Agents",
-            keywords: &["attention", "prompt", "waiting"],
-            default_shortcut: Some("meta+shift+period"),
-            args_schema: None,
-        },
-        ActionSpec { id: "agent.mark_all_read", title: "Mark All Read", category: "Agents", keywords: &["clear", "unread", "badge"], default_shortcut: None, args_schema: None },
+        ActionSpec { id: "agent.keep_going_toggle", title: "Toggle Keep It Going", category: "Agents", keywords: &["nudge", "continue", "autonomous"], args_schema: None },
+        ActionSpec { id: "agent.jump_next_blocked", title: "Jump to Next Blocked Agent", category: "Agents", keywords: &["attention", "prompt", "waiting"], args_schema: None },
+        ActionSpec { id: "agent.mark_all_read", title: "Mark All Read", category: "Agents", keywords: &["clear", "unread", "badge"], args_schema: None },
         // ---- Key Modes ----
         ActionSpec {
             id: "client.mode.enter",
             title: "Enter Key Mode",
             category: "Keymap",
             keywords: &["mode", "vim", "resize"],
-            default_shortcut: None,
             args_schema: Some(json!({"type":"object","properties":{"mode":{"type":"string"},"once":{"type":"boolean"}},"required":["mode"]})),
         },
-        ActionSpec { id: "client.mode.exit", title: "Exit Key Mode", category: "Keymap", keywords: &["mode", "leave"], default_shortcut: None, args_schema: None },
-        ActionSpec { id: "client.mode.exit_all", title: "Exit All Key Modes", category: "Keymap", keywords: &["mode", "reset"], default_shortcut: None, args_schema: None },
+        ActionSpec { id: "client.mode.exit", title: "Exit Key Mode", category: "Keymap", keywords: &["mode", "leave"], args_schema: None },
+        ActionSpec { id: "client.mode.exit_all", title: "Exit All Key Modes", category: "Keymap", keywords: &["mode", "reset"], args_schema: None },
         // ---- Olo Desktop Bridge Actions ----
-        ActionSpec {
-            id: "olo.open",
-            title: "Open URL or File in Olo",
-            category: "Olo Bridge",
-            keywords: &["browser", "chrome", "xdg-open"],
-            default_shortcut: None,
-            args_schema: Some(json!({"type":"object","properties":{"target":{"type":"string"},"autoforward":{"type":"boolean"}},"required":["target"]})),
-        },
-        ActionSpec {
-            id: "olo.notify",
-            title: "Send Olo Desktop Notification",
-            category: "Olo Bridge",
-            keywords: &["notification", "alert"],
-            default_shortcut: None,
-            args_schema: Some(json!({"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"}},"required":["title"]})),
-        },
-        ActionSpec {
-            id: "olo.clipboard.set",
-            title: "Set Olo Clipboard",
-            category: "Olo Bridge",
-            keywords: &["copy", "clipboard"],
-            default_shortcut: None,
-            args_schema: Some(json!({"type":"object","properties":{"text":{"type":"string"}},"required":["text"]})),
-        },
-        ActionSpec {
-            id: "olo.screen.ensure",
-            title: "Ensure Olo Agent Screen",
-            category: "Olo Bridge",
-            keywords: &["agent screen", "headless"],
-            default_shortcut: None,
-            args_schema: Some(json!({"type":"object","properties":{"name":{"type":"string"}},"required":["name"]})),
-        },
-        ActionSpec {
-            id: "olo.screen.watch",
-            title: "Watch Olo Agent Screen",
-            category: "Olo Bridge",
-            keywords: &["agent screen", "watch"],
-            default_shortcut: None,
-            args_schema: Some(json!({"type":"object","properties":{"name":{"type":"string"}},"required":["name"]})),
-        },
-        ActionSpec {
-            id: "olo.screen.open_url",
-            title: "Open URL on Olo Agent Screen",
-            category: "Olo Bridge",
-            keywords: &["agent screen", "chrome", "preview"],
-            default_shortcut: None,
-            args_schema: Some(json!({"type":"object","properties":{"name":{"type":"string"},"url":{"type":"string"}},"required":["name","url"]})),
-        },
-        ActionSpec {
-            id: "olo.passwords.fill",
-            title: "Fill Password from Olo Passwords",
-            category: "Olo Bridge",
-            keywords: &["keychain", "op", "secret"],
-            default_shortcut: Some("alt+meta+backslash"),
-            args_schema: None,
-        },
+        ActionSpec { id: "olo.passwords.fill", title: "Fill Password from Olo Passwords", category: "Olo Bridge", keywords: &["keychain", "op", "secret"], args_schema: None },
         ActionSpec {
             id: "olo.install_remote_shim",
             title: "Install Olo Bridge Shim on Current Host…",
             category: "Olo Bridge",
             keywords: &["shim", "xdg-open", "op", "olo-screen", "remote"],
-            default_shortcut: None,
             args_schema: None,
         },
         ActionSpec {
@@ -497,17 +355,70 @@ pub fn action_catalog() -> Vec<ActionSpec> {
             title: "Install Rex & Olo Agent Skill on Current Host…",
             category: "Olo Bridge",
             keywords: &["skill", "claude", "codex", "agent"],
-            default_shortcut: None,
             args_schema: None,
         },
-        ActionSpec { id: "olo.theme.sync", title: "Sync Olo Theme to Server", category: "Olo Bridge", keywords: &["colors", "theme", "sync"], default_shortcut: None, args_schema: None },
     ]
 }
 
 /// Convert the catalog into the `client.keymap` wire actions payload.
+/// What a program on a host may ask of this computer through the
+/// server (`client.perform`: a link opened, a notice, the clipboard set,
+/// an Agent Screen), carried out by the hub where the host's permissions
+/// allow (`handle_client_perform`; Preferences ▸ Rex). Declared to the
+/// server with Rex's commands, since it refuses to pass on what a
+/// client hasn't said it offers; not commands of the person's, and in
+/// no palette.
+pub fn bridge_catalog() -> Vec<ActionSpec> {
+    vec![
+        ActionSpec {
+            id: "olo.open",
+            title: "Open URL or File in Olo",
+            category: "Olo Bridge",
+            keywords: &["browser", "chrome", "xdg-open"],
+            args_schema: Some(json!({"type":"object","properties":{"target":{"type":"string"},"autoforward":{"type":"boolean"}},"required":["target"]})),
+        },
+        ActionSpec {
+            id: "olo.notify",
+            title: "Send Olo Desktop Notification",
+            category: "Olo Bridge",
+            keywords: &["notification", "alert"],
+            args_schema: Some(json!({"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"}},"required":["title"]})),
+        },
+        ActionSpec {
+            id: "olo.clipboard.set",
+            title: "Set Olo Clipboard",
+            category: "Olo Bridge",
+            keywords: &["copy", "clipboard"],
+            args_schema: Some(json!({"type":"object","properties":{"text":{"type":"string"}},"required":["text"]})),
+        },
+        ActionSpec {
+            id: "olo.screen.ensure",
+            title: "Ensure Olo Agent Screen",
+            category: "Olo Bridge",
+            keywords: &["agent screen", "headless"],
+            args_schema: Some(json!({"type":"object","properties":{"name":{"type":"string"}},"required":["name"]})),
+        },
+        ActionSpec {
+            id: "olo.screen.watch",
+            title: "Watch Olo Agent Screen",
+            category: "Olo Bridge",
+            keywords: &["agent screen", "watch"],
+            args_schema: Some(json!({"type":"object","properties":{"name":{"type":"string"}},"required":["name"]})),
+        },
+        ActionSpec {
+            id: "olo.screen.open_url",
+            title: "Open URL on Olo Agent Screen",
+            category: "Olo Bridge",
+            keywords: &["agent screen", "chrome", "preview"],
+            args_schema: Some(json!({"type":"object","properties":{"name":{"type":"string"},"url":{"type":"string"}},"required":["name","url"]})),
+        },
+    ]
+}
+
 pub fn register_actions_payload() -> Vec<KeymapAction> {
     action_catalog()
         .into_iter()
+        .chain(bridge_catalog())
         .map(|a| KeymapAction {
             name: a.id.to_owned(),
             kind: Some("client".to_owned()),
@@ -520,18 +431,6 @@ pub fn register_actions_payload() -> Vec<KeymapAction> {
             source: Some("olo-rex".to_owned()),
         })
         .collect()
-}
-
-/// Default client keymap layer sent to `client.keymap`.
-pub fn default_client_layer() -> KeymapLayer {
-    let bindings = action_catalog()
-        .into_iter()
-        .filter_map(|a| {
-            let raw = a.default_shortcut?;
-            Some(KeymapBinding { keys: vec![raw.to_owned()], action: a.id.to_owned(), args: None, source: Some("default".to_owned()), mode: None })
-        })
-        .collect();
-    KeymapLayer { name: "olo-rex-defaults".to_owned(), bindings, removals: Vec::new() }
 }
 
 /// A resolved binding ready for matching.
@@ -585,32 +484,35 @@ pub struct KeymapEngine {
 
 impl Default for KeymapEngine {
     fn default() -> Self {
-        Self::new(&[], &[], &[], &[])
+        Self::new(&[], &[], &[])
     }
 }
 
 impl KeymapEngine {
-    pub fn new(user_overrides: &[KeymapLayer], server_bindings: &[KeymapBinding], server_modes: &[KeymapMode], diagnostics: &[KeymapDiagnostic]) -> Self {
+    /// The keys of the person's own Rex configuration, as the server
+    /// resolves them (`client.keymap`: Rex sends it the commands it has
+    /// and no keys of its own, so what comes back is the configuration's
+    /// bindings alone): prefix keys, sequences, modes. Rex's own
+    /// commands have their keys from Olo's keyboard profile
+    /// (`olo_protocol::app_keys`, Preferences ▸ Keyboard) through the
+    /// menu bar, as every app's. (It came with 69 keys of its own here,
+    /// written for a Mac's command key as a modifier of its own, which
+    /// is not how a key reaches an app in Olo: none of them could be
+    /// pressed, and each went to the shell as a Control key.)
+    pub fn new(server_bindings: &[KeymapBinding], server_modes: &[KeymapMode], diagnostics: &[KeymapDiagnostic]) -> Self {
         let titles: HashMap<String, String> = action_catalog().into_iter().map(|a| (a.id.to_owned(), a.title.to_owned())).collect();
         let mut engine = Self { bindings_by_mode: HashMap::new(), modes: HashMap::new(), diagnostics: Vec::new(), mode_stack: Vec::new(), pending_prefix: Vec::new(), pending_since: None, titles };
-        engine.rebuild(user_overrides, server_bindings, server_modes, diagnostics);
+        engine.rebuild(server_bindings, server_modes, diagnostics);
         engine
     }
 
-    pub fn rebuild(&mut self, user_overrides: &[KeymapLayer], server_bindings: &[KeymapBinding], server_modes: &[KeymapMode], diagnostics: &[KeymapDiagnostic]) {
+    pub fn rebuild(&mut self, server_bindings: &[KeymapBinding], server_modes: &[KeymapMode], diagnostics: &[KeymapDiagnostic]) {
         self.bindings_by_mode.clear();
         self.modes.clear();
         self.diagnostics = diagnostics.to_vec();
 
         let mut by_mode: HashMap<String, HashMap<KeySequence, ResolvedBinding>> = HashMap::new();
-        let normal = by_mode.entry(String::new()).or_default();
-        for spec in action_catalog() {
-            if let Some(raw) = spec.default_shortcut
-                && let Some(seq) = KeySequence::parse(raw)
-            {
-                normal.insert(seq.clone(), ResolvedBinding { sequence: seq, action: spec.id.to_owned(), args: None, description: Some(spec.title.to_owned()), source: "default".to_owned() });
-            }
-        }
+        by_mode.entry(String::new()).or_default();
 
         for m in server_modes {
             self.modes.insert(m.name.clone(), m.clone());
@@ -626,28 +528,6 @@ impl KeymapEngine {
                     seq.clone(),
                     ResolvedBinding { sequence: seq, action: b.action.clone(), args: b.args.clone(), description: desc, source: b.source.clone().unwrap_or_else(|| "server".to_owned()) },
                 );
-            }
-        }
-
-        // Apply local Settings user override layers last.
-        for layer in user_overrides {
-            for rem in &layer.removals {
-                let mode_key = rem.mode.clone().unwrap_or_default();
-                if let Some(seq) = KeySequence::from_wire_keys(&rem.keys)
-                    && let Some(table) = by_mode.get_mut(&mode_key)
-                {
-                    table.remove(&seq);
-                }
-            }
-            for b in &layer.bindings {
-                let mode_key = b.mode.clone().unwrap_or_default();
-                if let Some(seq) = KeySequence::from_wire_keys(&b.keys) {
-                    let desc = self.titles.get(&b.action).cloned();
-                    by_mode.entry(mode_key).or_default().insert(
-                        seq.clone(),
-                        ResolvedBinding { sequence: seq, action: b.action.clone(), args: b.args.clone(), description: desc, source: b.source.clone().unwrap_or_else(|| layer.name.clone()) },
-                    );
-                }
             }
         }
 
@@ -691,18 +571,34 @@ impl KeymapEngine {
         Some((prefix_str, hints))
     }
 
-    pub fn shortcut_for(&self, action_id: &str) -> Option<String> {
-        self.bindings_by_mode.get("")?.iter().find(|b| b.action == action_id).map(|b| b.sequence.format_human())
+    /// Whether a key is to be asked of the configuration's keys before
+    /// Olo's own: it is in one of its modes, or part way through one of
+    /// its sequences (one begun within the last two seconds: an older
+    /// one is let go of here, before whose key it is gets decided. Left
+    /// to be found stale only when the key was asked of it, ⌘D after a
+    /// prefix key and a pause skipped Rex's own Split and went to the
+    /// shell as Ctrl+D).
+    pub fn engaged(&mut self) -> bool {
+        if self.pending_since.is_some_and(|since| since.elapsed() > Duration::from_secs(2)) {
+            self.clear_pending();
+        }
+        !self.mode_stack.is_empty() || !self.pending_prefix.is_empty()
     }
 
-    pub fn handle_key(&mut self, ks: &Keystroke) -> KeyMatch {
+    /// Whether the configuration has any keys at all (with none, no key
+    /// is asked of it).
+    pub fn is_empty(&self) -> bool {
+        self.bindings_by_mode.values().all(Vec::is_empty)
+    }
+
+    pub fn handle_key(&mut self, ks: &Keystroke, cmd: bool) -> KeyMatch {
         if let Some(since) = self.pending_since
             && since.elapsed() > Duration::from_secs(2)
         {
             self.clear_pending();
         }
 
-        let chord = KeyChord::from_keystroke(ks);
+        let chord = KeyChord::from_keystroke(ks, cmd);
 
         if chord.key == "escape" && !chord.ctrl && !chord.alt && !chord.meta {
             if !self.pending_prefix.is_empty() {

@@ -944,6 +944,92 @@ What was learned making Rex keep its settings as Olo's apps do:
   `journal.py add` re-encodes all nine hundred (two and a half
   minutes): `cp -r --reflink=always` it from the main tree first.
 
+### Keys: press them, in the app and in a control (2026-11-21)
+
+Rex's command-key shortcuts had never worked, and nobody had pressed
+one: every test typed text. What was learned:
+
+- **`tsession key` goes through app_server's real key path**
+  (`synthetic` → `physical_key`: the keyboard profile's remapping, the
+  command key as the right Ctrl). 125 (left Super) is ⌘ on the Mac
+  profile, 29 the physical Ctrl: `tsession key N 125 20` is ⌘T,
+  `tsession key N 125 42 44` ⇧⌘Z. Check what a key did by its effect (a
+  tab more at the server, a file the shell wrote), not by a picture.
+- **An app's "platform" modifier never arrives.** The command key
+  reaches an app as Control (the right one). Code written for a
+  toolkit's `platform`/`meta` modifier compiles, reads well and is
+  dead: grep for it in anything brought in from elsewhere.
+- **A control in the app that works.** The same presses in Olo's
+  Terminal said what was Olo's rule and what was a limit of every
+  terminal's window: ⌘C with nothing selected interrupting is the rule
+  (a shortcut whose item is off is the shell's); ⇧⌘Z undoing is the
+  limit (TODO, "The command key's Shift in a terminal"). Without the
+  control the first would have been "fixed" and the second blamed on
+  Rex.
+- **A sequence that can only go one way proves nothing.** Undo then
+  Redo passes whether or not ⌘Z and ⇧⌘Z are told apart (only one of the
+  two items is on at a time). The sequence that tells is the one where
+  the wrong item is the only one on: Bigger, ⌘Z, ⇧⌘Z, **⇧⌘Z**, ⌘Z,
+  **⌘Z**. And start from a clean config folder: a run that began at
+  the largest size showed seven equal numbers and "passed".
+- **A fix that passes every test of yours can still be wrong: the
+  keyboard path gets a second reader before it lands.** Sending Olo's
+  own terminals the command key's chords as pressed made every check
+  pass, in Rex and in Terminal. Astra, reading the diff alone, found
+  that Ctrl held before ⌘V would now paste, that with no profile read
+  plain Ctrl+V matched Paste, and that an old Terminal beside a new
+  app_server (a half-installed upgrade) would send ⌘C as an interrupt
+  with text selected. None of those is a chord a test of mine pressed.
+  The change was withdrawn, Terminal's path left as it was, and the
+  list of what a fix must hold is in TODO. Ask "what else can reach
+  this code, in what order, from which version" of anything between
+  the keys and the shell.
+- **A command you prune may be one a test performs.** "Nothing
+  dispatches it" was read from the window's command switch; six of the
+  names were what a host's program asks of this computer, carried out
+  by the hub and declared to the server, and a reconnect test performs
+  one. Grep the whole crate, tests included, for a name before calling
+  it dead.
+- **The person's shell in Terminal is their login shell** (not bash):
+  `sleep 3; echo $?` after an interrupt goes on to the echo there (130)
+  where bash would stop the line. Read the control's result knowing
+  which shell ran it.
+
+### A real remote host for Rex (2026-11-21)
+
+Ben gave a server "just for rex", reached over SSH with a key the
+Passwords agent holds (this shell's `SSH_AUTH_SOCK`), to do with as
+needed. Its address is not written in the repository, a commit or a
+brief: keep it in a file of your scratch folder and read it from there.
+
+- **It finds what a loopback fixture can't: time.** One round trip
+  there is 224 ms. Typing waited for an answer a key (65 characters,
+  18.7 s); nothing local had shown it. Measure by the host's own clock
+  (the remote shell writes `date +%s.%N` to a file when the typed line
+  runs), not by polling over a second SSH call.
+- **Use a known-hosts file of your own** (`-o UserKnownHostsFile=…`,
+  `StrictHostKeyChecking=accept-new`) and a scratch HOME for the app,
+  so the person's `~/.ssh` is neither read nor written; the app then
+  asks about the host's key, which is a path worth testing.
+- **The agent may stop signing** (Passwords locked while the person is
+  away): `ssh -v` stops at "Server accepts key" and hangs. Nothing to
+  do but wait for the person; never type into Passwords. Every call has
+  a `timeout`, and a test says "the agent didn't sign" rather than
+  failing a step later.
+- **A program left running there is started apart from the SSH call**
+  (`setsid -f sh -c '…' </dev/null >/dev/null 2>&1`): started with `&`
+  alone, ssh waits on it and the call never returns. And ended by a
+  pattern that can't match the shell carrying it (`pkill -f
+  '[h]ttp.server 8765'`).
+
+### While a push's hook runs, build nothing (2026-11-21)
+
+The pre-push hook's live lint starts each app in a headless session and
+waits for the machine to have room; with whole test suites building in
+a worktree beside it (and the person's other work), one app's session
+timed out after forty minutes and the push failed: "DiskBackup: the
+lint failed: timed out". Read and plan during a push; build after it.
+
 ### A soak counts threads and descriptors, not only memory (2026-11-21)
 
 - **What a program holds after load is three numbers**: resident

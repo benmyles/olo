@@ -134,7 +134,7 @@ pub fn init_app(settings: Settings, _initial_cwd: Option<String>, _restored: Vec
         open_or_raise_panel(WinRole::Askpass);
     });
     let hub = RexHub::start(settings.clone(), active_theme, Some(askpass.clone()), move |notice| handle_hub_notice(notice));
-    let keymap = KeymapEngine::new(&settings.keymap_overrides, &[], &[], &[]);
+    let keymap = KeymapEngine::new(&[], &[], &[]);
     let _ = APP.set(Mutex::new(RexApp { hub, askpass, keymap, ssh_agent: Default::default(), attention: Attention::new(), broadcast_windows: HashSet::new() }));
 
     // How the SSH agent stands, asked once and off this thread, for Diagnostics.
@@ -161,18 +161,17 @@ fn handle_hub_notice(notice: HubNotice) {
             // Rebuild keymap if server bindings updated.
             if let Some(m) = APP.get() {
                 let hub = m.lock().unwrap_or_else(|e| e.into_inner()).hub.clone();
-                let (overrides, bindings, modes, diags) = {
+                let (bindings, modes, diags) = {
                     let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
                     let local = st.hosts.get("local");
                     (
-                        st.settings.keymap_overrides.clone(),
                         local.map(|h| h.keymap_bindings.clone()).unwrap_or_default(),
                         local.map(|h| h.keymap_modes.clone()).unwrap_or_default(),
                         local.map(|h| h.keymap_diagnostics.clone()).unwrap_or_default(),
                     )
                 };
                 let mut a = m.lock().unwrap_or_else(|e| e.into_inner());
-                a.keymap.rebuild(&overrides, &bindings, &modes, &diags);
+                a.keymap.rebuild(&bindings, &modes, &diags);
                 if a.attention.has_notes() {
                     let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
                     a.attention.prune(|target| match target {
@@ -443,6 +442,9 @@ pub struct RexWindow {
     pub overlay: Option<ActiveOverlay>,
     pub overlay_field: Option<Child<TextField>>,
     pub find_open: bool,
+    /// The key of the command key's chord just handed to the menu bar,
+    /// while it is still down (its repeats are swallowed).
+    pub command_chord: Option<String>,
     pub find_field: Option<Child<TextField>>,
     pub host_label_field: Option<Child<TextField>>,
     pub host_addr_field: Option<Child<TextField>>,
@@ -586,6 +588,7 @@ impl RexWindow {
             overlay: None,
             overlay_field: Some(overlay_field),
             find_open: false,
+            command_chord: None,
             find_field: Some(find_field),
             host_label_field: None,
             host_addr_field: None,
@@ -658,6 +661,7 @@ impl RexWindow {
             overlay: None,
             overlay_field: None,
             find_open: false,
+            command_chord: None,
             find_field: None,
             host_label_field,
             host_addr_field,
@@ -1533,34 +1537,108 @@ impl RexWindow {
             }
         }
 
-        // Match against Rex keymap engine (supports sequences, Which-Key, key modes).
-        let km_match = app().keymap.handle_key(&e.keystroke);
-        match km_match {
-            KeyMatch::Execute { action, args } => {
-                self.execute_action(&action, args, cx);
+        // Whose key it is, in this order (Terminal's, with one layer
+        // more: the person's own Rex configuration):
+        // 1. part way through one of the configuration's sequences, or
+        //    in one of its modes: the configuration's, if it has it;
+        // 2. the command key with a menu shortcut's key (or one of the
+        //    profile's keys for Rex that takes no command key: Shift+F3
+        //    with Windows' keys): Rex's own command, left to the
+        //    window's menu bar. By the menus as things are this instant
+        //    (BeOS's MenusBeginning): Copy is off without a selection,
+        //    and a shortcut whose item is off is the shell's, so ⌘C with
+        //    nothing selected interrupts, as it does in Terminal;
+        // 3. a key the configuration binds (a prefix key, a chord);
+        // 4. Shift with Page Up, Page Down, Home and End: the
+        //    scrollback (⌘↑ and ⌘↓ arrive as the last two);
+        // 5. Ctrl+Tab and Ctrl+Page Up/Down with more tabs than one:
+        //    the tabs, as in other terminals;
+        // 6. the program's in the pane: the command key's as Control's
+        //    (⌘R searches a shell's history like Ctrl+R), without the
+        //    Shift the command key brings to a terminal.
+        let k = &e.keystroke;
+        // A key kept down after the command key's chord it began was let
+        // go (⌘D, then D held): its repeats are that chord's still, and
+        // nothing for the shell. (A repeat says Control as its press had
+        // it and the command key as it is now: it read as Ctrl+D, the
+        // end of the shell, in every pane the split had just made.)
+        if e.is_held && self.command_chord.as_deref() == Some(k.key.as_str()) {
+            cx.stop_propagation();
+            return;
+        }
+        if !e.is_held {
+            self.command_chord = None;
+        }
+        let command = keymap::command_held(k);
+        let cmd = keymap::cmd_held(k);
+        let engaged = app().keymap.engaged();
+        let bound = engaged || !app().keymap.is_empty();
+        let ask_configuration = |w: &mut Self, cx: &mut olo_kit::Cx<Self>| -> bool {
+            let km_match = app().keymap.handle_key(k, cmd);
+            match km_match {
+                KeyMatch::Execute { action, args } => {
+                    w.execute_action(&action, args, cx);
+                    cx.stop_propagation();
+                    true
+                }
+                KeyMatch::Pending { .. } | KeyMatch::Blocked => {
+                    cx.invalidate();
+                    cx.stop_propagation();
+                    true
+                }
+                // (No key of its: whose it is goes on being asked below.)
+                KeyMatch::Passthrough => false,
+            }
+        };
+        if engaged && ask_configuration(self, cx) {
+            return;
+        }
+        if command || own_plain_shortcut(k) {
+            let menus = self.build_menu_bar();
+            olo_kit::menu::menus_beginning(cx, menus);
+            if olo_kit::menu::shortcut_command(cx, k).is_some() {
+                if command {
+                    self.command_chord = Some(k.key.clone());
+                }
+                return;
+            }
+        }
+        if bound && !engaged && ask_configuration(self, cx) {
+            return;
+        }
+        if k.modifiers.shift && !k.modifiers.control && !k.modifiers.alt {
+            let scroll = match k.key.as_str() {
+                "pageup" => Some("terminal.scroll_page_up"),
+                "pagedown" => Some("terminal.scroll_page_down"),
+                "home" => Some("terminal.scroll_top"),
+                "end" => Some("terminal.scroll_bottom"),
+                _ => None,
+            };
+            if let Some(action) = scroll {
+                self.execute_action(action, None, cx);
                 cx.stop_propagation();
                 return;
             }
-            KeyMatch::Pending { .. } | KeyMatch::Blocked => {
-                cx.invalidate();
-                cx.stop_propagation();
-                return;
-            }
-            KeyMatch::Passthrough => {}
+        }
+        let step = olo_kit::tab_step(k);
+        if step != 0 && self.resolve_active_session().is_some_and(|(_, s)| s.windows.len() > 1) {
+            self.execute_action(if step > 0 { "window.next" } else { "window.previous" }, None, cx);
+            cx.stop_propagation();
+            return;
         }
 
-        // Forward terminal keystrokes directly to Rex server (broadcasting to all panes in window if enabled).
+        // To the pane the keyboard is in (to every pane of the tab while Type in All Panes is on).
         let Some(bk) = self.focused_block_key() else { return };
         let targets = self.input_target_blocks(&bk);
         let hub = app().hub.clone();
 
-        if let Some(bytes) = encode_terminal_special_key(&e.keystroke) {
+        if let Some(bytes) = encode_terminal_special_key(k).filter(|_| !cmd) {
             for t in targets {
                 hub.send_input(&t, bytes.clone());
             }
             cx.stop_propagation();
-        } else if e.keystroke.modifiers.control || e.keystroke.modifiers.alt || e.keystroke.modifiers.platform {
-            let rex_ev = keymap::to_rex_key_event(e);
+        } else if k.modifiers.control || k.modifiers.alt || k.modifiers.platform {
+            let rex_ev = keymap::to_rex_key_event(e, cmd);
             for t in targets {
                 hub.send_rex_key(&t, rex_ev.clone());
             }
@@ -1595,8 +1673,10 @@ impl RexWindow {
 
     /// The menu bar, on Terminal's model (apps/terminal): the app's own
     /// menu first (its panels in Preferences, what is made new, what
-    /// closes), Edit, View, Pane, Agents, and a Settings menu for this
-    /// window's quick choices. Every toggle shows its check and every
+    /// closes), Edit, View, Tabs, Pane, Agents, and a Settings menu for
+    /// this window's quick choices. An item's keys are the keyboard
+    /// profile's for its command (`olo_protocol::app_keys`, the entries
+    /// for Rex), given by the kit. Every toggle shows its check and every
     /// item is enabled only when it can act. (It was Rex, File, Edit,
     /// View, Pane, Tools as the app came: items that cycled through
     /// states one couldn't see, "Toggle …" with no check, "Export" that
@@ -1633,13 +1713,34 @@ impl RexWindow {
         let focused = self.focused_block_key();
         let pane = focused.is_some();
         let block = focused.as_ref().and_then(|key| hub.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(key).cloned());
-        let (keep_going, selected, copying) = block.as_ref().map_or((false, false, false), |block| {
+        let (keep_going, selected, copying, found) = block.as_ref().map_or((false, false, false, false), |block| {
             let g = block.lock().unwrap_or_else(|e| e.into_inner());
-            (g.keep_going.is_some(), g.terminal.has_selection(), g.copy_mode.is_some())
+            (g.keep_going.is_some(), g.terminal.has_selection(), g.copy_mode.is_some(), g.search.total_matches() > 0)
         });
-        let window = self.resolve_active_session().and_then(|(_, s)| s.active_window().or_else(|| s.windows.first()).map(|w| (w.zoomed_block_id.is_some(), w.all_blocks().count())));
+        let session = self.resolve_active_session().map(|(_, s)| s);
+        let window = session.as_ref().and_then(|s| s.active_window().or_else(|| s.windows.first()).map(|w| (w.zoomed_block_id.is_some(), w.all_blocks().count())));
         let (zoomed, panes) = window.unwrap_or((false, 0));
         let tab = window.is_some();
+        // The session's tabs by name, the first nine with their keys
+        // (⌘1 to ⌘9), as Terminal's Tabs menu.
+        let count = session.as_ref().map_or(0, |s| s.windows.len());
+        let mut tabs = Menu::new("Tabs")
+            .item("New Tab", "window.new")
+            .item("Close Tab", "window.close")
+            .enabled(tab)
+            .separator()
+            .item("Next Tab", "window.next")
+            .enabled(count > 1)
+            .item("Previous Tab", "window.previous")
+            .enabled(count > 1);
+        if let Some(s) = &session {
+            let active = s.active_window().or_else(|| s.windows.first()).map(|w| w.window_id.clone());
+            tabs = tabs.separator();
+            for (i, w) in s.windows.iter().enumerate() {
+                let name = if w.label.is_empty() { olo_kit::tr!("Tab {}", i + 1) } else { w.label.clone() };
+                tabs = tabs.item(name, format!("window.select_{}", i + 1)).checked(Some(&w.window_id) == active.as_ref());
+            }
+        }
         // A pane of this computer's own server: its folder is one Tracker
         // can open, and it needs no bridge installed.
         let here = self.active_host == "local";
@@ -1649,7 +1750,6 @@ impl RexWindow {
                 .app_items(&["rex", "notifications"])
                 .item("New Window", "app.new_window")
                 .item("New Session", "session.new")
-                .item("New Tab", "window.new")
                 .separator()
                 .item("Hosts…", "app.hosts")
                 .item("Remote Access…", "app.pair_device")
@@ -1657,8 +1757,6 @@ impl RexWindow {
                 .separator()
                 .item("Reload Server Configuration", "app.reload_config")
                 .separator()
-                .item("Close Tab", "window.close")
-                .enabled(tab)
                 .item("Close Window", "close")
                 .item("Quit", "quit"),
             Menu::new("Edit")
@@ -1666,7 +1764,7 @@ impl RexWindow {
                 .enabled(selected)
                 .item("Paste", "terminal.paste")
                 .enabled(pane)
-                .item("Paste a Password…", "olo.passwords.fill")
+                .item("Paste Password…", "olo.passwords.fill")
                 .enabled(pane)
                 .separator()
                 .item("Select All", "terminal.select_all")
@@ -1676,10 +1774,11 @@ impl RexWindow {
                 .separator()
                 .item("Find…", "terminal.find")
                 .enabled(pane)
+                // (With something found: off, ⌘G is the shell's Ctrl+G.)
                 .item("Find Again", "terminal.find_next")
-                .enabled(pane)
+                .enabled(found)
                 .item("Find Previous", "terminal.find_previous")
-                .enabled(pane)
+                .enabled(found)
                 .separator()
                 .item("Copy Mode", "terminal.copy_mode")
                 .checked(copying)
@@ -1717,6 +1816,7 @@ impl RexWindow {
                 .enabled(pane)
                 .item(olo_kit_base::tracker::LABEL, "files.open_in_tracker")
                 .enabled(pane && here),
+            tabs,
             Menu::new("Pane")
                 .item("Split Right", "pane.split_right")
                 .enabled(pane)
@@ -1880,7 +1980,9 @@ impl RexWindow {
             olo_kit::unread::mark(cx, has_unread, false);
         }
 
-        let menu_bar = MenuBar::of(self, cx, |v, _| v.build_menu_bar());
+        // (A terminal-style window's: the command key's chords reach it with Shift.)
+        let said = self.build_menu_bar();
+        let menu_bar = MenuBar::said(cx, said, |v: &mut Self, _| v.build_menu_bar(), olo_kit::menu::on_command, true);
 
         let menu_h = olo_kit::menu::BAR_HEIGHT;
         let total_w = f32::from(viewport.width).max(320.0);
@@ -2158,7 +2260,7 @@ impl RexWindow {
             && let Some(of) = &self.overlay_field
         {
             let catalog = keymap::action_catalog();
-            let shortcut_map: HashMap<String, String> = catalog.iter().filter_map(|a| Some((a.id.to_owned(), app().keymap.shortcut_for(a.id)?))).collect();
+            let shortcut_map: HashMap<String, String> = catalog.iter().filter_map(|a| Some((a.id.to_owned(), olo_kit_base::keys::known(a.id, true)?.keys?.1.to_string()))).collect();
             let overlay_el = overlays::render_active_overlay(
                 cx,
                 ov,
@@ -2826,8 +2928,11 @@ impl View for RexWindow {
                         let key = self.fwd_host.clone().or_else(|| st.host_order.iter().find(|k| st.hosts.get(*k).is_some_and(|h| !h.is_local)).cloned());
                         key.and_then(|key| st.hosts.get(&key)).and_then(|h| h.session_summaries.first().map(|s| (h.key.clone(), s.session_id.clone())))
                     };
+                    // (Forwarded, not opened: a port typed here may be a
+                    // database's. "Forward and Open" is for one a program
+                    // in a pane is seen to listen on.)
                     if let Some((hk, sid)) = target {
-                        hub.add_local_forward(&hk, &sid, "127.0.0.1".to_owned(), port, 0, true, Feedback::start(self.id));
+                        hub.add_local_forward(&hk, &sid, "127.0.0.1".to_owned(), port, 0, false, Feedback::start(self.id));
                     }
                     if let Some(f) = &self.fwd_port_field {
                         f.update(cx, |f, cx| f.set_text(String::new(), cx));
@@ -3982,6 +4087,28 @@ fn activity_sort_rank(a: AgentActivity) -> u8 {
 
 /// Encode special keys (Enter, Backspace, Tab, Esc, Arrows, Ctrl+letter, Alt+letter, F1-F12)
 /// into standard VT escape sequences for direct responsive PTY transmission.
+/// Whether a keystroke without Control is one of the keyboard profile's
+/// keys for Rex (a function key, Shift+F3 for Find Previous with
+/// Windows' keys): asked of the menu bar before it goes to the pane.
+/// The profile's keys are kept until it changes; a letter or a digit
+/// typed is never one, and is not looked up at all.
+fn own_plain_shortcut(k: &olo_kit::Keystroke) -> bool {
+    if k.modifiers.control || (k.key.chars().count() == 1 && !k.modifiers.alt) {
+        return false;
+    }
+    thread_local! {
+        static KEPT: std::cell::RefCell<(u64, Vec<olo_kit_base::keys::Shortcut>)> = const { std::cell::RefCell::new((u64::MAX, Vec::new())) };
+    }
+    KEPT.with(|kept| {
+        let mut kept = kept.borrow_mut();
+        let now = olo_kit_base::keys::generation();
+        if kept.0 != now {
+            *kept = (now, olo_kit_base::keys::own_shortcuts("olo.rex", true).into_iter().filter(|s| !s.command).collect());
+        }
+        kept.1.iter().any(|s| olo_kit::keys::pressed(s, k))
+    })
+}
+
 fn encode_terminal_special_key(ks: &olo_kit::Keystroke) -> Option<Vec<u8>> {
     let ctrl = ks.modifiers.control;
     let alt = ks.modifiers.alt;

@@ -856,6 +856,38 @@ something nobody here has is in "Blocked", with what it waits for.
   back with each title, if Codex's hook is run where the session is;
   and the same for what the hook tells an agent about its tab's group.
 
+- **The command key's Shift in a terminal** (found 2026-11-21, making
+  Rex's keys). A terminal-style window (Terminal, Rex) gets ⌘X and ⇧⌘X
+  as one chord: app_server adds a Shift to the command key's chords for
+  every terminal, and the kit's `MenuBar::raw` looks for them so. In
+  Terminal, of Undo and Redo, Find Again and Find Previous, whichever
+  is on answers to both keys (⇧⌘Z undoes while only Undo is on; ⇧⌘G
+  finds again). Rex avoids such pairs for now (⌥⌘D, ⌥⌘C, ⌥⌘G where
+  ⇧⌘D, ⇧⌘C, ⇧⌘G belong). A first fix (Olo's own terminals sent the
+  chords as pressed, told by the right Ctrl alone) worked in headless
+  tests and was withdrawn on Astra's review; whatever replaces it has
+  to hold all of these:
+  - physical Ctrl held with ⌘ (Ctrl, then ⌘, then V) must not become
+    the command (it pasted): both Control sides travel with each input,
+    and a command-only shortcut is refused when the left one is down;
+  - with no keyboard profile read (outside Olo, a first read failed)
+    plain Ctrl+V must not match a command: a terminal keeps Ctrl+Shift
+    keys then;
+  - an old Terminal with a new app_server, or the reverse (the
+    installer goes on after one binary fails), must not send ⌘C to the
+    shell as an interrupt while Copy is on: the two sides have to agree
+    (the app announces it, the server answers), not assume;
+  - a held key's repeats after ⌘ is let go read as Control with the key
+    (true today in Terminal: ⌘D then D held);
+  - ⌘ with Page Up/Down, Ctrl+Shift+Home with Windows' keys and what
+    an unbound ⇧⌘R sends a program that asked for kitty's key reports
+    all change once Shift is real: decide each;
+  - a text field in a terminal's window gets ⌘⌫ as Ctrl+U and does
+    nothing with it (Find, in both apps).
+  The same review, of Rex's own handling, still open: its pane encoder
+  drops modifiers on keys it doesn't know (BeOS's Alt+Left, ⌥⌘R, kitty
+  reports); the configuration's keys are read for this computer's
+  server only and a sequence begun in one window counts in another.
 - **Rex, made an Olo app** (Ben, 2026-11-21, of the app merged that
   day: an error at "Enable Tailscale Listener", a closed terminal left
   stuck, "its own app notifications that show seperate from olo ones";
@@ -870,12 +902,10 @@ something nobody here has is in "Blocked", with what it waits for.
   notice), notices through Olo's service, Preferences ▸ Rex; the app
   follows Preferences ▸ Rex and has no settings window (what its file
   held, carried over once), a Settings menu as Terminal's, the menu bar
-  on Terminal's model, Remote Access in one window (HACKING, "Whose
-  settings are whose", "The menu bar", "Remote Access"). **Left, in
-  this order**:
-  - *Shortcuts through `app_keys` only* (the private 69 and their
-    recorder go; ⇧⌘W, Ctrl+Shift+Left/Right and Meta+D given back to
-    Olo); the server's own keymap as a separate layer inside a pane.
+  on Terminal's model, Remote Access in one window, its keys Olo's
+  (the profile's, through the menu bar; the person's Rex configuration
+  a layer of its own) (HACKING, "Whose settings are whose", "Keys",
+  "The menu bar", "Remote Access"). **Left, in this order**:
   - *Olo's palette in place of the two private pickers.*
   - *Kit widgets for the hand-made ones*: the Sessions/Activity switch,
     the + beside a host, split and close in pane headers, the
@@ -901,13 +931,24 @@ something nobody here has is in "Blocked", with what it waits for.
     on (the server's `allow_tailnet_members`: read what the server
     enforces before wording it), and the devices paired, with a way to
     remove one, if the server's API has them.
+  - *The client, found against a real host (2026-11-21)*: a key agent
+    that takes the connection and doesn't sign (Passwords locked, or
+    asking) leaves the host "connecting" with no word and no end: a
+    deadline, and words that say whose answer is awaited. A click on a
+    session's row the moment it appears, and typing straight after, are
+    to be checked again there (a first run typed into the wrong pane;
+    later runs, with the same timing, didn't).
   - *From the design reviews, not yet done*: "Starting…" with a busy
     mark (the kit has none small: one for the kit); a disconnected
     host's last-known sessions kept, dimmed; the disconnected mark on
     the big icon ringed. For the kit, seen in Rex's windows and every
     app's: a default button's ring reaches past the edge its face is
     aligned to; a menu's shortcuts are aligned by their key, so their
-    right ends are ragged; a fixed-size window's tab has a zoom box.
+    right ends are ragged, a period or a bracket sits close against ⌘,
+    and Return is drawn small and low; an open menu's left edge is a
+    device pixel or two left of its title's at 2×; "Notifications
+    Settings…" for "Notification Settings…"; a fixed-size window's tab
+    has a zoom box.
 - **Tracker's columns resized by hand, one width for them all** (Ben,
   2026-11-21: "in tracker columns mode the column widths need to be
   resizable (let's keep it simple so it resizes the width of all

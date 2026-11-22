@@ -116,7 +116,10 @@ impl Focus {
     /// slack option+left/right isn't moving back/forward a word it's
     /// navigating back forward").
     pub fn of(id: &str, terminal_apps: &[String], browser_apps: &[String]) -> Focus {
-        if terminal_apps.iter().any(|a| a == id) {
+        // (Olo's own terminals are terminals whatever the list says: a
+        // list saved before Rex was, or one the person emptied. Their
+        // keys are built on it: `app_keys::OLO_TERMINALS`.)
+        if olo_protocol::app_keys::OLO_TERMINALS.contains(&id) || terminal_apps.iter().any(|a| a == id) {
             Focus::Terminal
         } else if olo_protocol::app_keys::CHROMIUM_APPS.contains(&id) || olo_xdg::apps::is_web_app(id) {
             Focus::Chrome
@@ -1366,6 +1369,9 @@ mod tests {
         assert_eq!(Focus::of("olo.tracker", &[], &[]), Focus::Olo);
         assert_eq!(Focus::of("org.gnome.Nautilus", &[], &[]), Focus::Other);
         assert_eq!(Focus::of("olo.terminal", &["olo.terminal".to_owned()], &[]), Focus::Terminal);
+        assert_eq!(Focus::of("olo.rex", &["foot".to_owned()], &[]), Focus::Terminal);
+        assert_eq!(Focus::of("olo.terminal", &[], &[]), Focus::Terminal);
+        assert_eq!(Focus::of("olo.tracker", &[], &[]), Focus::Olo);
         let mut r = Rig::new();
         r.focus = Focus::of("olo.slack", &[], &[]);
         // ⌥←: a word back (Ctrl+←), ⌥ let go of meanwhile; ⌥⇧→ selects one.

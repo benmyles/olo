@@ -406,6 +406,27 @@ enum HostInputOp {
     Key { session_id: String, block_id: String, event: RexKeyEvent },
 }
 
+/// The next of what waits to be written to a host: the first, and with
+/// it, where that is text for a terminal, the text that follows for the
+/// same terminal (as far as the next thing that isn't: a key event, a
+/// change of focus, another pane's text keep their places). So what was
+/// typed while a request was on its way is one request, in the order
+/// typed.
+fn typed_together(waiting: &mut std::collections::VecDeque<HostInputOp>) -> Option<HostInputOp> {
+    let mut first = waiting.pop_front()?;
+    if let HostInputOp::Write { session_id, block_id, text } = &mut first {
+        while let Some(HostInputOp::Write { session_id: s, block_id: b, .. }) = waiting.front() {
+            if s != session_id || b != block_id {
+                break;
+            }
+            if let Some(HostInputOp::Write { text: more, .. }) = waiting.pop_front() {
+                text.push_str(&more);
+            }
+        }
+    }
+    Some(first)
+}
+
 /// Active `-L` port forward entry shown in Hosts & Port Forwards.
 pub struct ActiveForward {
     pub id: String,
@@ -1951,9 +1972,11 @@ impl RexHubInner {
                 let status = ctrl.server_status().await.ok();
                 let version = ctrl.server_version().await.ok().map(|r| r.payload);
                 let hosts_resp = ctrl.hosts_list().await.ok().map(|r| r.payload);
+                // (The commands Rex has, and no keys of its own but what its
+                // old recorder left: what comes back is the keys of the
+                // person's Rex configuration, and those.)
                 let km_actions = keymap::register_actions_payload();
-                let km_defaults = [keymap::default_client_layer()];
-                let km_resp = ctrl.client_keymap(&km_actions, &km_defaults, &user_overrides).await.ok().map(|r| r.payload);
+                let km_resp = ctrl.client_keymap(&km_actions, &[], &user_overrides).await.ok().map(|r| r.payload);
 
                 let ticket_req =
                     [DataTicketRequest { creator_name: "com.superlogical.terminal".to_owned(), data_ref_id: "terminal".to_owned(), subprotocol: Some(DATA_TERMINAL_SUBPROTOCOL.to_owned()) }];
@@ -1978,7 +2001,22 @@ impl RexHubInner {
                         // no keys. Discard its unwritten backlog, including any uncertain in-flight
                         // request; input is never replayed by the app, even to a resumed client ID.
                         let write = async {
-                            while let Some(op) = in_rx.recv().await {
+                            // Each is written and answered before the next (their order
+                            // is the order typed, whatever the server does with two at
+                            // once), so what was typed while one was on its way goes
+                            // together in the next (`typed_together`): a request a key
+                            // was a round trip a key, and 65 characters typed in 2.8 s
+                            // took 18.7 s to reach a host 224 ms away.
+                            let mut waiting = std::collections::VecDeque::new();
+                            loop {
+                                if waiting.is_empty() {
+                                    let Some(op) = in_rx.recv().await else { break };
+                                    waiting.push_back(op);
+                                }
+                                while let Ok(op) = in_rx.try_recv() {
+                                    waiting.push_back(op);
+                                }
+                                let Some(op) = typed_together(&mut waiting) else { continue };
                                 match op {
                                     HostInputOp::Focus { session_id, switch, target } => {
                                         if switch || target.block.is_none() {
@@ -2434,7 +2472,7 @@ impl RexHubInner {
         let rows = snapshot.rows;
         let hosts = ctrl.hosts_list().await?;
         let overrides = self.state.lock().unwrap_or_else(|e| e.into_inner()).settings.keymap_overrides.clone();
-        let keymap = ctrl.client_keymap(&keymap::register_actions_payload(), &[keymap::default_client_layer()], &overrides).await?.payload;
+        let keymap = ctrl.client_keymap(&keymap::register_actions_payload(), &[], &overrides).await?.payload;
         {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             let Some(h) = st.hosts.get_mut(host_key).filter(|h| h.control.as_ref().is_some_and(|c| c.same_connection(ctrl))) else { return Ok(snapshot.seq) };
@@ -2676,8 +2714,7 @@ impl RexHubInner {
             ControlEvent::KeymapChanged { .. } => {
                 let user_overrides = self.state.lock().unwrap_or_else(|e| e.into_inner()).settings.keymap_overrides.clone();
                 let km_actions = keymap::register_actions_payload();
-                let km_defaults = [keymap::default_client_layer()];
-                if let Ok(r) = ctrl.client_keymap(&km_actions, &km_defaults, &user_overrides).await {
+                if let Ok(r) = ctrl.client_keymap(&km_actions, &[], &user_overrides).await {
                     let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
                     if let Some(h) = st.hosts.get_mut(host_key) {
                         h.keymap_bindings = r.payload.bindings;
@@ -2861,6 +2898,31 @@ pub fn shell_quote(s: &str) -> String {
 mod tests {
     use super::*;
     use olo_rex_vt::try_decode_snapshot_prefix;
+
+    /// What was typed while a request was on its way goes together, in
+    /// order; a key event, another pane's text and a change of focus
+    /// keep their places between.
+    #[test]
+    fn what_waits_is_written_together_in_order() {
+        use std::collections::VecDeque;
+        let text = |block: &str, text: &str| HostInputOp::Write { session_id: "s".into(), block_id: block.into(), text: text.into() };
+        let key = || HostInputOp::Key {
+            session_id: "s".into(),
+            block_id: "a".into(),
+            event: RexKeyEvent { key: "key_c".into(), mods: "ctrl".into(), consumed_mods: String::new(), text: String::new(), unshifted_codepoint: 99, composing: false, action: "press".into() },
+        };
+        let mut waiting: VecDeque<HostInputOp> = [text("a", "e"), text("a", "c"), text("a", "ho"), key(), text("a", " x"), text("b", "ls"), text("a", "\r")].into();
+        let mut out = Vec::new();
+        while let Some(op) = typed_together(&mut waiting) {
+            out.push(match op {
+                HostInputOp::Write { block_id, text, .. } => format!("{block_id}:{text}"),
+                HostInputOp::Key { .. } => "key".to_owned(),
+                HostInputOp::Focus { .. } => "focus".to_owned(),
+            });
+        }
+        assert_eq!(out, ["a:echo", "key", "a: x", "b:ls", "a:\r"]);
+        assert!(typed_together(&mut waiting).is_none());
+    }
 
     #[test]
     fn reorders_and_recovered_metadata_follow_the_server() {

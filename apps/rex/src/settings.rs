@@ -14,7 +14,6 @@
 
 use std::{collections::HashMap, path::PathBuf};
 
-use olo_rex_client::KeymapLayer;
 use serde::{Deserialize, Serialize};
 
 /// Where a session's tabs are: along the top, or down the side (as
@@ -156,9 +155,11 @@ pub struct Settings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub before_preferences: Option<crate::shared::Old>,
     pub carried_to_preferences: bool,
-
-    // ---- Keymap Overrides ----
-    pub keymap_overrides: Vec<KeymapLayer>,
+    /// Keys the app's own recorder left (it went with the Settings
+    /// window): kept, and still sent to the server with Rex's commands,
+    /// so what worked goes on working. They are changed in the person's
+    /// Rex configuration now.
+    pub keymap_overrides: Vec<olo_rex_client::KeymapLayer>,
 }
 
 impl Default for Settings {

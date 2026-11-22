@@ -5398,5 +5398,11 @@
   "title": "Rex: the menu bar, on Terminal's model",
   "caption": "Rex, Edit, View, Pane, Agents, Settings: every toggle with its check, every item enabled only when it can act, the names saying what they do. The app's own Settings window (eight sections, sixty settings, most with nothing behind them) is gone: hosts, permissions and notices are Preferences \u25b8 Rex, a window's quick choices its menus.",
   "image": "2026-11-21/210241-rex-the-menu-bar-on-terminal-s-model.png"
+ },
+ {
+  "time": "2026-11-21T23:10:39",
+  "title": "Rex: its keys are Olo's",
+  "caption": "Rex's command-key shortcuts had never worked (\u2318D was the end of the shell, not a split). Its commands now have their keys from the keyboard profile, as Terminal's, shown in its menus and changed in Preferences \u25b8 Keyboard; a Tabs menu lists the session's tabs with \u23181 to \u23189.",
+  "image": "2026-11-21/231039-rex-its-keys-are-olo-s.png"
  }
 ]

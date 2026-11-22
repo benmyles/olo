@@ -5,6 +5,12 @@ Olo's visual evolution, newest first. Added with `tools/journal.py`
 
 ## 2026-11-21
 
+### Rex: its keys are Olo's
+
+*23:10* — Rex's command-key shortcuts had never worked (⌘D was the end of the shell, not a split). Its commands now have their keys from the keyboard profile, as Terminal's, shown in its menus and changed in Preferences ▸ Keyboard; a Tabs menu lists the session's tabs with ⌘1 to ⌘9.
+
+![Rex: its keys are Olo's](2026-11-21/231039-rex-its-keys-are-olo-s.png)
+
 ### Rex: the menu bar, on Terminal's model
 
 *21:02* — Rex, Edit, View, Pane, Agents, Settings: every toggle with its check, every item enabled only when it can act, the names saying what they do. The app's own Settings window (eight sections, sixty settings, most with nothing behind them) is gone: hosts, permissions and notices are Preferences ▸ Rex, a window's quick choices its menus.
