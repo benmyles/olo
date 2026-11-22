@@ -123,10 +123,12 @@ fn main() {
         instance::listen(APP_ID, olo_kit::proxy());
 
         olo_kit::message_handler(app_cx, |msg, _| {
+            // (The kit has taken the launch, or it wouldn't be here: not
+            // asked again. Asked a second time it could be told "no"
+            // after the launcher had been told "yes", and the launch
+            // went nowhere: a second `olo-rex --hosts`, the palette's
+            // jump to a pane.)
             if let Some(launch) = msg.downcast_ref::<Launch>() {
-                if !launch.take() {
-                    return;
-                }
                 let req = parse_args(&launch.args);
                 if let Some((h, s, b)) = req.focus_block {
                     ui::focus_block_from_cli(h, s, b);

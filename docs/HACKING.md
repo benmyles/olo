@@ -1414,6 +1414,11 @@ the Book: a worker with progress, a child view, a drawing, a menu.)
   the handler; 0.2 ms); a copy ending (its last window closed), or one
   with no handler, drops it unanswered and `forward` returns false, so
   the new process opens it itself rather than it being lost. The
+  handler doesn't take it again: it has it because the kit did
+  (`Launch::take` answers as it first did however often it is asked;
+  Rex asked twice and lost a launch in thirty when the listening
+  thread let go of its end in between, 2026-11-22). A launch a program
+  makes for itself is `Launch::new(args, cwd)`. The
   socket is named for the display (`olo_xdg::display_name()`:
   `wayland-1` also when `WAYLAND_DISPLAY` names the socket by its full
   path; use it for any file kept per display).

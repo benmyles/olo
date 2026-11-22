@@ -21,14 +21,32 @@ pub struct Launch {
     /// starts a copy of its own if it doesn't come.
     #[serde(skip)]
     pub taken: Option<std::sync::mpsc::Sender<()>>,
+    /// What the first [`Launch::take`] found, kept for any after it.
+    #[serde(skip)]
+    took: std::sync::OnceLock<bool>,
 }
 
 impl Launch {
+    /// A launch of this process's own making (its arguments as it was
+    /// started; one a program hands itself): nobody waits to hear it
+    /// was taken.
+    pub fn new(args: Vec<String>, cwd: Option<PathBuf>) -> Launch {
+        Launch { args, cwd, taken: None, took: Default::default() }
+    }
+
     /// The app has it ([`Launch::taken`]): false if the launching process
     /// gave up waiting (it starts a copy of its own, so this one is not to
     /// open it too).
+    ///
+    /// Asked again, it answers as it did the first time. The kit takes
+    /// every launch before an app's handler has it (`olo_kit::run`); an
+    /// app that asked once more (Rex did) was told "no" whenever the
+    /// listening thread had, between the two, heard the first, answered
+    /// the launching process and let go of its end: so the launcher
+    /// left, satisfied, and the app dropped what it was asked. A launch
+    /// in thirty went nowhere on a busy machine (2026-11-22).
     pub fn take(&self) -> bool {
-        self.taken.as_ref().is_none_or(|tx| tx.send(()).is_ok())
+        *self.took.get_or_init(|| self.taken.as_ref().is_none_or(|tx| tx.send(()).is_ok()))
     }
 }
 
@@ -107,7 +125,7 @@ pub fn forward_on(app_id: &str, display: &str, args: &[String]) -> bool {
 /// that (no greeting: mid-upgrade) is trusted as it was.
 fn send(path: PathBuf, args: &[String]) -> bool {
     let Ok(mut s) = UnixStream::connect(path) else { return false };
-    let launch = Launch { args: args.to_vec(), cwd: std::env::current_dir().ok(), taken: None };
+    let launch = Launch::new(args.to_vec(), std::env::current_dir().ok());
     let line = serde_json::to_string(&launch).unwrap_or_default();
     if !(s.write_all(line.as_bytes()).is_ok() && s.write_all(b"\n").is_ok()) {
         return false;
@@ -218,6 +236,27 @@ fn listen_at(path: PathBuf, proxy: Proxy) {
 mod tests {
     use super::*;
 
+    /// A launch taken is taken, however often it is asked: the second
+    /// asking, after whoever waited for the first has gone, says the
+    /// same; one nobody waits for any more stays not taken.
+    #[test]
+    fn a_launch_taken_once_stays_taken() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let launch = Launch { args: vec!["--hosts".into()], cwd: None, taken: Some(tx), took: Default::default() };
+        assert!(launch.take());
+        assert!(rx.recv().is_ok());
+        drop(rx);
+        assert!(launch.take(), "asked again after the listener let go");
+        // The launching process gave up before the app got to it.
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        drop(rx);
+        let late = Launch { args: Vec::new(), cwd: None, taken: Some(tx), took: Default::default() };
+        assert!(!late.take());
+        assert!(!late.take());
+        // One with nobody to tell (a copy's own first launch) is taken.
+        assert!(Launch::new(Vec::new(), None).take());
+    }
+
     /// A question isn't a launch: only as the first argument (a
     /// command's own `-h` after `-e` is its).
     #[test]
@@ -303,9 +342,9 @@ mod tests {
     #[test]
     fn a_launch_given_up_on_is_not_taken() {
         let (tx, rx) = std::sync::mpsc::channel();
-        let launch = Launch { args: vec![], cwd: None, taken: Some(tx) };
+        let launch = Launch { taken: Some(tx), ..Launch::new(vec![], None) };
         drop(rx);
         assert!(!launch.take());
-        assert!(Launch { args: vec![], cwd: None, taken: None }.take());
+        assert!(Launch::new(vec![], None).take());
     }
 }

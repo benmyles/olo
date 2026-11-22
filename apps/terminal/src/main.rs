@@ -3674,7 +3674,7 @@ fn main() {
         cx.later(AGENT_SEEN_WITHIN, |t, cx| t.expire_agent_titles(cx));
         // Asked for a new window (or there's nothing to show): open one.
         if !reattached || (state.is_none() && !args.is_empty()) {
-            t.handle_launch(cx, Launch { args, cwd: std::env::current_dir().ok(), taken: None });
+            t.handle_launch(cx, Launch::new(args, std::env::current_dir().ok()));
         }
         // (Its windows, opened above, wait for it here: `ui::terminal`.)
         ui::set_terminal(t);

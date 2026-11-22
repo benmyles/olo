@@ -999,6 +999,38 @@ one: every test typed text. What was learned:
   where bash would stop the line. Read the control's result knowing
   which shell ran it.
 
+### A test looks only at what it started (2026-11-22)
+
+`pgrep -x olo-rex` (any app's name) lists the person's own running
+app beside a test's. A repro of mine took "two olo-rex processes" for
+the test's two and attached gdb to the second for its stacks: it was
+the person's Rex, thirteen hours up, and it was stopped for the moment
+of the dump (it went on, no tracer left; nothing of it was read but
+function names, and the dump was deleted). Never look a process up by
+name to signal, trace or inspect it. A test's processes are the pids
+its launcher gave it (`tsession run` prints "started olo-rex pid N";
+app_server's `list_windows` has each window's pid, of that session
+only), and what a pid is can be checked before anything is done to it
+(`/proc/PID/environ` has its `WAYLAND_DISPLAY`; its start time). The
+same goes for a helper: a brief that says "take the stuck process's
+stacks" says whose, by pid, and that the person's own copy runs on
+this computer.
+
+### A launch handed over and lost: who takes it, once (2026-11-22)
+
+One `olo-rex --hosts` in thirty did nothing on a busy machine: no
+window, no second copy. The kit takes every forwarded launch before
+the app's handler has it (`crates/kit/src/app.rs`), and Rex's handler
+took it again: when the listening thread had heard the first, told the
+launcher "ok" and dropped its end in between, the second asking was
+answered "no" and Rex dropped the request. `Launch::take` answers the
+same however often it is asked now, and Rex asks once. Found by the
+second investigator in a few minutes of reading (its notes named the
+two lines), while my own repro was looking at the wrong process (the
+note above). The repro: `handoff.py` in the Rex scratch (N launches,
+each timed; 6 lost of 141 before, 0 of 120 after, at a load of 40 to
+70).
+
 ### A lock held through an `if let` (2026-11-22)
 
 `if let Some(r) = app().renaming.take() && … { app().hub… }`: the
