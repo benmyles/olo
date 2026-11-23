@@ -2566,6 +2566,22 @@ an argument it doesn't know starts the lint (read its first lines).
   host is to run is tried here first (`ssh::dial_tests`,
   `helper::tests`), and against the host before it is believed
   (`tests/host.rs` with `OLO_REX_TEST_HELPER_FILE`).
+- **A far host that is this computer, for what Rex only does over
+  SSH** (`tools/dev/rex-slow/farhost.py`, `Rig(far=True)`): an sshd of
+  the rig's own on 127.0.0.1 (run as you, keys and an agent of its
+  own under `REX_SLOW_DIR/far`, a scratch HOME by `SetEnv`), saved in
+  the app as "far". The helper put on a host, what a host is asked,
+  the status bar's marks: all with nothing of the person's read or
+  shown, so its pictures can go to a reviewer. Three things it
+  taught: the host's own `rex` finds, or *starts*, a server of its
+  own unless the address names the scratch server's socket
+  (`ssh://you@127.0.0.1:PORT/…/rex.sock`; `REX_SERVER_SOCKET` is the
+  Olo app's variable, not `rex`'s; a server so started is to be
+  stopped with `rex -S unix://… server stop`); its HOME must be the
+  scratch server's sessions' HOME, or what a script typed into a pane
+  installs isn't what a command over SSH finds; and the app's window
+  is to be waited for by its title, since the host-key question is a
+  window too.
 - **The rig can put the helper behind its slow link** (`Rig(helper=
   True)`, `try.py order|timed --helper`): the link runs it for the
   control connection, as sshd would, with the scratch server's own
@@ -2587,3 +2603,30 @@ an argument it doesn't know starts the lint (read its first lines).
   that failed was blamed on the parser for a while. Write such text to
   the file with a quoted shell heredoc, or double the backslash.
 
+- **Boxes in a row are each laid on whole pixels by themselves**: a
+  row of 13-point boxes 6 points apart at 1.5× (19.5 and 9 pixels) had
+  gaps of eight pixels and seven, and a mark that reckoned the row's
+  end from its own box's edge was a pixel or two off it (half a pixel
+  either way, then rounded). What must be evenly set by the pixel is
+  drawn by the row, in one canvas, from one edge of its own (the kit's
+  `widgets::indicators`); measure gaps and both insets at 1×, 1.25×,
+  1.5×, 1.75× and 2× from a picture at each (thirty lines of Python:
+  the commonest colour beside the marks is the fill, and runs of
+  other columns are the marks).
+- **A no-break space joins words for the kit's line wrapper** (a
+  menu's path in a tip: `"Agents\u{a0}▸\u{a0}Install…"`), and is as
+  wide as a space. A wrapped text's lines can be shorter at a narrower
+  width than at the width it was first wrapped at (the break moves a
+  word back): fit to the longest line, wrap again, until it is no
+  narrower (`tip_size`).
+- **Two reviewers who pull apart, or one who asks for the opposite of
+  what it asked two rounds before, are shown candidates, not another
+  build**: sketches of each drawing (the one built, the one asked for
+  drawn exactly, the one the other passed) side by side at true size
+  and enlarged, in both looks, with "CHOICE: A/B/C" asked for on the
+  second line and the earlier rounds' asks listed in the brief. Seven
+  rounds on a 15-by-11 bridge ended in the one look that did this;
+  the reviewer's own latest prescription came last in both rankings.
+- **A hover left by one picture is in the next**: move the pointer off
+  what has a tip (and wait for it to go) before a picture that isn't
+  of the tip.

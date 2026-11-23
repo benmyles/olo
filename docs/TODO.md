@@ -1303,17 +1303,31 @@ something nobody here has is in "Blocked", with what it waits for.
     Terminal does it (`view.rs`, its `Mouse`); the terminal engine
     encodes (rex-vt `input.rs`). With Shift, the pane's own selection,
     as everywhere.
-  - *What a host has of Olo's, as lights in the status bar* (Ben,
-    2026-11-23: "also make the typing helper status as well as status
-    of olo bridge and skills little icons in the status bar that are
-    either in an on or off state not the weird popover"). Next, after
-    the links. For the host of the pane typed into: the typing helper,
-    Olo's bridge and the skills for agents, each a small icon that is
-    on or off (with its name for a tip and for agents), at the status
-    bar's far end; the host's tip in the sidebar back to "Connected".
-    A new thing on screen: to both reviewers early.
-  - *An account set up on a new host, and the bridge through the Token
-    Pool* (Ben, 2026-11-22: "let's make sure that the olo bridge
+  - *Manage Host: everything of Olo's on a host in one place* (Ben,
+    2026-11-23: "i think we also need like a manage host button or
+    something where we can manage all the services and things
+    installed on a host in one place instead of only through random
+    menus and stuff. and for clarity we should rename the manage
+    server button to manage rex server since that is specifically the
+    rex server manager"; the rename is done). Next. A window for a
+    host (Hosts and Ports ▸ Manage Host…, the host's menu, a click on
+    a status-bar mark): what is there and how it stands, each with
+    what can be done to it there, over SSH and shown as it runs (the
+    Server window's way), never by a script typed into a pane: Olo's
+    typing helper (in use, added, removed), Olo's bridge and what the
+    host is granted here, the skill for agents, the Rex server (how it
+    stands, and Manage Rex Server… for the rest), and, when it is
+    built, the Token Pool service. The Agents menu's two installs and
+    Settings ▸ Use Olo’s Typing Helper on Hosts then lead there or go.
+    A new window: to both reviewers early.
+  - *The status bar's marks, further*: a mark that is off put on by
+    a click on it (the bridge and the skill are installed by a script
+    typed into the pane now, which a program running there would
+    take: to be done over SSH, as the helper is); and the bridge's and
+    the skill's marks for a host not reached over SSH (it can't be
+    asked what it has: none are shown).
+  - *An account set up on a new host, and a Token Pool of its own
+    there* (Ben, 2026-11-22: "let's make sure that the olo bridge
     supports token pool and have a way in the rex app where i can have
     rex auto-setup my user on a remote server like install claude
     code, agy, codex, copy my local settings, configure the remote
@@ -1321,17 +1335,51 @@ something nobody here has is in "Blocked", with what it waits for.
     can extend this over time too, e.g. choosing what repos to clone
     and how to set them up and so on to get everything up and running
     for a user as quickly and easily as possible on a new remote
-    server"). Two things: Olo's bridge on a host (the `olo-rex-bridge`
-    shims) carrying the agents' requests to this computer's Token
-    Pool, so Claude Code, Codex and agy on the host draw on the pool
-    as they do here, with the same say over it; and, in Rex, a host's
-    account made ready in one go from a list of steps that can grow:
-    the agents installed, the person's settings for them copied (what
-    is theirs to copy, nothing secret left on the host that the pool
-    makes unneeded), each pointed at the pool, then repositories
-    cloned and set up as the person chose. Each step shown as it runs
-    (the Server window's way), safe to run again, and written so a
-    step is a small thing to add. After the slow link's host half.
+    server"; and, 2026-11-23, of how the pool gets there: "it
+    shouldn't proxy through the token pool running on the user's
+    desktop because then the coding agents couldn't continue when the
+    desktop is off. what it should do is install a token pool service
+    (with another icon in the status bar too) that automatically gets
+    the same config/accounts as the desktop token pool, and update the
+    desktop token pool app to be able to also show the requests etc
+    that are happening on the remote service but the remote service
+    itself should not require the desktop token pool available, and
+    the remote service should send requests for those remote agents
+    directly to claude/openai etc"; "and anytime accounts change in
+    the desktop app it should sync to the remote ones as well and show
+    that sync status etc in the token pool app with the ability to
+    manually sync if needed").
+    Two things.
+    *The Token Pool as a service on the host*, not a way through this
+    computer's: the pool's own program (`crates/pool`), built for the
+    hosts as the typing helper is and put there by Rex, run for the
+    account (a user service where the host has systemd, started by
+    Rex where it hasn't), calling Claude and OpenAI itself, so the
+    agents there go on with this computer off. It is given the
+    desktop pool's settings and accounts, and kept the same as they
+    change (a new account, one signed out, a token renewed on either
+    side: which side renews, so two pools don't spend one refresh
+    token, is the first thing to settle; the accounts' secrets lie in
+    the account's home there, readable by it alone, and are taken
+    away with the service). The desktop's Token Pool shows the remote
+    service's requests, use and limits beside its own when it can
+    reach it (over Rex's connection to the host; what it missed while
+    away, from the service's own record), and is not needed by it.
+    Whenever the accounts change here (one added, signed out,
+    renewed, its order or its limits changed) they are carried to
+    every host's service at once, or as soon as the host is next
+    reached; the Token Pool app says for each host's service how it
+    stands (in step, behind and since when, not reached and why) and
+    has a Sync Now for it. A
+    fourth mark in Rex's status bar, with the helper's, the bridge's
+    and the skill's: on where the service runs there.
+    *A host's account made ready in one go*, in Rex, from a list of
+    steps that can grow: the agents installed, the person's settings
+    for them copied (what is theirs to copy), each pointed at the
+    host's own pool, then repositories cloned and set up as the person
+    chose. Each step shown as it runs (the Server window's way), safe
+    to run again, and written so a step is a small thing to add.
+    After the slow link's host half.
   - *Files from a host, and folders kept in step* (Ben, 2026-11-22:
     "thinking about what we'll need to use rex to build olo (as an
     example), once it's built we'd want an easy way to e.g.

@@ -235,13 +235,47 @@ fn tips<'a>(cx: &'a mut WindowCx) -> &'a mut Tips {
 /// rested on it, not after a press on it), by `key` (its id: what tells
 /// it from the window's other tips).
 pub fn on(element: Element, key: impl Into<SharedString>, text: impl Into<SharedString>) -> Element {
+    on_side(element, key.into(), crate::words::of(text), TipPlace::Below, Reach::default())
+}
+
+/// [`on`], the tip above the element: for what is at a window's foot
+/// (a status bar's marks), where a tip under it would lie on the
+/// window's frame. Below it where there is no room above.
+pub fn on_above(element: Element, key: impl Into<SharedString>, text: impl Into<SharedString>) -> Element {
+    on_side(element, key.into(), crate::words::of(text), TipPlace::Above, Reach::default())
+}
+
+/// [`on_above`], the tip placed over more than the element: one of a
+/// row whose tips all open in one place (a status bar's marks: the
+/// tip of each begins or ends where the row does, not where the mark
+/// under the pointer is), and clear of what stands over the row.
+pub fn on_above_of(element: Element, key: impl Into<SharedString>, text: impl Into<SharedString>, over: Reach) -> Element {
+    on_side(element, key.into(), crate::words::of(text), TipPlace::Above, over)
+}
+
+/// What a tip above an element is placed over besides it
+/// ([`on_above_of`]), in points: what is `before` and `after` the
+/// element in its row, and how far `above` it the thing stands that
+/// the tip keeps clear of (a bar's rule).
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct Reach {
+    pub before: f32,
+    pub after: f32,
+    pub above: f32,
+}
+
+fn on_side(element: Element, key: SharedString, text: SharedString, side: TipPlace, over: Reach) -> Element {
     use olo_interface::InteractiveElement as _;
-    let (key, text) = (key.into(), crate::words::of(text));
     let (rested, pressed_key) = (key.clone(), key);
     element
         .on_hover(move |hovered, cx| {
             let at = cx.listener_bounds();
-            hover(cx, rested.clone(), text.clone(), at, *hovered)
+            let place = Bounds::from_corners(olo_interface::point(at.left() - px(over.before), at.top() - px(over.above)), olo_interface::point(at.right() + px(over.after), at.bottom()));
+            // (Above what is in the far half of its window, a tip
+            // ends where that ends: begun there, most of it lay
+            // outside the window.)
+            let side = if side == TipPlace::Above && place.center().x > cx.viewport_size().width / 2.0 { TipPlace::AboveEnd } else { side };
+            hover_body(cx, rested.clone(), Body::text(text.clone()), at, Place { at: place, side }, *hovered)
         })
         .on_any_mouse_down(move |_, cx| pressed(cx, pressed_key.clone()))
 }
@@ -294,6 +328,7 @@ fn on_the_way(a: Bounds<Pixels>, side: TipPlace, b: Bounds<Pixels>) -> bool {
         TipPlace::Left => across && b.right() <= a.left() + px(1.0),
         TipPlace::Right => across && b.left() >= a.right() - px(1.0),
         TipPlace::Below => along && b.top() >= a.bottom() - px(1.0),
+        TipPlace::Above | TipPlace::AboveEnd => along && b.bottom() <= a.top() + px(1.0),
     }
 }
 
@@ -618,6 +653,42 @@ fn tip_size(text: &str) -> (f32, f32) {
     while inner < most && wraps(inner) {
         inner += 1.0;
     }
+    // A tip that is wrapped is as wide as its longest line, not as
+    // wide as a tip may be: a first line that ended well short of
+    // that (the next word a long one, or kept whole with what follows
+    // it) left a strip of empty tip at its end (Gemini's review of
+    // Rex's status marks, 2026-11-23: seven points before the words
+    // and forty after them).
+    if inner >= most {
+        let lines = paragraph_height(text, inner);
+        let mut longest_at = |width: f32| {
+            let mut longest: f32 = 0.0;
+            for l in text.lines() {
+                let mut from = 0;
+                let ends: Vec<usize> = wrapper.wrap_line(&[olo_interface::LineFragment::text(l)], px(width)).map(|b| b.ix).chain([l.len()]).collect();
+                for to in ends {
+                    longest = longest.max(f32::from(style::text_width(l[from..to].trim_end().to_owned(), style::PLAIN_SIZE, font.clone())));
+                    from = to;
+                }
+            }
+            longest
+        };
+        // (Narrower, its lines may break elsewhere and be shorter
+        // still: "…To install it, choose" and a menu's path under it
+        // became "…To install it," and "choose" with the path, both
+        // shorter. Until it is no narrower.)
+        loop {
+            let mut fitted = longest_at(inner).ceil().min(inner);
+            // (By the advances it is wrapped by, a point or two more.)
+            while fitted < inner && paragraph_height(text, fitted) > lines {
+                fitted += 1.0;
+            }
+            if fitted >= inner {
+                break;
+            }
+            inner = fitted;
+        }
+    }
     let text_h = paragraph_height(text, inner);
     ((inner + 2.0 * PAD_X + frame).ceil(), (text_h + 2.0 * PAD_Y + frame).ceil())
 }
@@ -653,6 +724,31 @@ mod tests {
         // (And one too long for a line is taller, and no wider than a tip grows.)
         let (w, h) = tip_size("Connected. Olo’s typing helper was added and will be used the next time you connect.");
         assert!(h > one && w <= MAX_WIDTH, "{w} x {h}");
+    }
+
+    /// A tip that is wrapped is as wide as its longest line: a first
+    /// line ending well short of the most a tip may be (the words
+    /// after it kept whole) leaves no strip of empty tip after it.
+    #[test]
+    fn a_wrapped_tip_is_as_wide_as_its_longest_line() {
+        let two = tip_size("Open\nSave").1;
+        let font = style::ui_font(FontWeight::NORMAL);
+        let wide = |l: &str| f32::from(style::text_width(l.to_owned(), style::PLAIN_SIZE, font.clone()));
+        // (A menu's path joined with no-break spaces, as Rex's status
+        // marks say it: the whole of it is on the second line. The
+        // second: narrower, it breaks a word sooner, and both lines
+        // are shorter than the first line was.)
+        for (first, second) in [
+            ("Olo’s bridge isn’t on “far”. To install it, choose", "Agents ▸ Install Olo’s Bridge on This Host."),
+            ("Olo’s skill for agents isn’t on “far”. To install it,", "choose Agents ▸ Install Olo’s Skill for Agents."),
+        ] {
+            let path = second.rsplit_once("choose ").map_or(second, |(_, path)| path);
+            let text = format!("{first} {second}").replace(path, &path.replace(' ', "\u{a0}"));
+            let (w, h) = tip_size(&text);
+            assert_eq!(h, two, "two lines: {w} x {h}");
+            let all = wide(first).max(wide(second)) + 2.0 * PAD_X + 2.0;
+            assert!(w >= all.floor() && w <= all + 3.0, "{w} wide for lines of {} and {}: {text:?}", wide(first), wide(second));
+        }
     }
 
     #[test]

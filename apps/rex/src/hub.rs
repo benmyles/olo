@@ -976,19 +976,25 @@ pub enum HostHelper {
     Without(String),
 }
 
-impl HostHelper {
-    /// What a connected host's tip says of it: with a comma what is
-    /// settled, with a full stop what is on its way or to come (the
-    /// second design review).
-    pub fn said(&self) -> String {
-        match self {
-            HostHelper::None => olo_kit::words::tr("Connected").to_string(),
-            HostHelper::Used => olo_kit::words::tr("Connected, with Olo’s typing helper").to_string(),
-            HostHelper::Installing => olo_kit::words::tr("Connected. Adding Olo’s typing helper…").to_string(),
-            HostHelper::Ready => olo_kit::words::tr("Connected. Olo’s typing helper was added and will be used the next time you connect.").to_string(),
-            HostHelper::Without(why) => olo_kit::tr!("Connected, without Olo’s typing helper: {}", why).to_string(),
-        }
-    }
+/// One of the things of Olo's a far host may have, as the status bar
+/// shows it: on or off, and its tip's sentence.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Has {
+    pub on: bool,
+    pub said: String,
+}
+
+/// What a far host has of Olo's, for the status bar's marks (Ben,
+/// 2026-11-23: "make the typing helper status as well as status of olo
+/// bridge and skills little icons in the status bar that are either in
+/// an on or off state not the weird popover": it was said in the
+/// host's tip in the sidebar). The bridge and the skill are there once
+/// the host has been asked ([`RexHubInner::look_at_what_the_host_has`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HostHas {
+    pub helper: Has,
+    pub bridge: Option<Has>,
+    pub skill: Option<Has>,
 }
 
 /// Full live state of one connected (or connecting) Rex host.
@@ -1007,6 +1013,11 @@ pub struct HostRuntime {
     pub server_version: Option<ServerVersion>,
     /// Olo's helper there, for this connection.
     pub helper: HostHelper,
+    /// Whether Olo's bridge is on the host, and the skill for agents
+    /// (their files in the account's home there): none until the host
+    /// has been asked, and for a host that can't be (not over SSH).
+    pub bridge_there: Option<bool>,
+    pub skill_there: Option<bool>,
     pub tailscale: Option<TailscaleStatus>,
     tailscale_seq: u64,
     pub synced_hosts: Vec<HostRecord>,
@@ -1078,6 +1089,44 @@ impl HubState {
     /// the host shows are both this, so they can't disagree. (Typing
     /// goes to a host one write at a time: a terminal of it unanswered
     /// is the host unanswering.)
+    /// What a far host reached over SSH has of Olo's, while it is
+    /// connected: for the status bar's three marks. None for this
+    /// computer and for a host reached another way (nothing of these
+    /// is put there).
+    pub fn host_has(&self, host_key: &str) -> Option<HostHas> {
+        let host = self.hosts.get(host_key)?;
+        if host.is_local || host.conn_state != HostConnState::Connected || !matches!(host.endpoint, Some(RexEndpoint::Ssh { .. })) {
+            return None;
+        }
+        let name = &host.label;
+        let helper = match &host.helper {
+            HostHelper::Used => Has { on: true, said: olo_kit::tr!("Olo’s typing helper is on “{}”.", name).to_string() },
+            HostHelper::Installing => Has { on: false, said: olo_kit::tr!("Olo’s typing helper is being added to “{}”…", name).to_string() },
+            HostHelper::Ready => Has { on: false, said: olo_kit::tr!("Olo’s typing helper was added to “{}”. It will be used the next time you connect.", name).to_string() },
+            HostHelper::Without(why) => Has { on: false, said: olo_kit::tr!("Olo’s typing helper isn’t on “{}”: {}", name, why).to_string() },
+            HostHelper::None if !self.settings.host_helper => Has {
+                on: false,
+                said: olo_kit::words::tr("Olo’s typing helper is turned off. To use it, choose Settings\u{a0}▸\u{a0}Use\u{a0}Olo’s\u{a0}Typing\u{a0}Helper\u{a0}on\u{a0}Hosts.").to_string(),
+            },
+            HostHelper::None => Has { on: false, said: olo_kit::tr!("Olo’s typing helper isn’t on “{}”.", name).to_string() },
+        };
+        let bridge = host.bridge_there.map(|there| match (there, host.bridge_server.is_some()) {
+            (true, true) => Has { on: true, said: olo_kit::tr!("Olo’s bridge is on “{}”.", name).to_string() },
+            (true, false) => {
+                Has { on: false, said: olo_kit::tr!("Olo’s bridge is on “{}”, with nothing granted to it. To grant it something, see Preferences\u{a0}▸\u{a0}Rex.", name).to_string() }
+            }
+            (false, _) => Has { on: false, said: olo_kit::tr!("Olo’s bridge isn’t on “{}”. To install it, choose Agents\u{a0}▸\u{a0}Install\u{a0}Olo’s\u{a0}Bridge.", name).to_string() },
+        });
+        let skill = host.skill_there.map(|there| match there {
+            true => Has { on: true, said: olo_kit::tr!("Olo’s skill for agents is on “{}”.", name).to_string() },
+            false => Has {
+                on: false,
+                said: olo_kit::tr!("Olo’s skill for agents isn’t on “{}”. To install it, choose Agents\u{a0}▸\u{a0}Install\u{a0}Olo’s\u{a0}Skill\u{a0}for\u{a0}Agents.", name).to_string(),
+            },
+        });
+        Some(HostHas { helper, bridge, skill })
+    }
+
     pub fn host_silent(&self, host_key: &str) -> Option<Duration> {
         self.blocks.iter().filter(|(key, _)| key.host_key == host_key).filter_map(|(_, block)| block.lock().unwrap_or_else(|e| e.into_inner()).stalled()).max()
     }
@@ -1153,6 +1202,8 @@ impl RexHub {
                 server_status: None,
                 server_version: None,
                 helper: HostHelper::None,
+                bridge_there: None,
+                skill_there: None,
                 tailscale: None,
                 tailscale_seq: 0,
                 synced_hosts: Vec::new(),
@@ -1188,6 +1239,8 @@ impl RexHub {
                         server_status: None,
                         server_version: None,
                         helper: HostHelper::None,
+                        bridge_there: None,
+                        skill_there: None,
                         tailscale: None,
                         tailscale_seq: 0,
                         synced_hosts: Vec::new(),
@@ -1470,6 +1523,8 @@ impl RexHub {
             server_status: None,
             server_version: None,
             helper: HostHelper::None,
+            bridge_there: None,
+            skill_there: None,
             tailscale: None,
             tailscale_seq: 0,
             synced_hosts: Vec::new(),
@@ -1591,6 +1646,8 @@ impl RexHub {
                     server_status: None,
                     server_version: None,
                     helper: HostHelper::None,
+                    bridge_there: None,
+                    skill_there: None,
                     tailscale: None,
                     tailscale_seq: 0,
                     synced_hosts: Vec::new(),
@@ -2387,12 +2444,29 @@ impl RexHub {
         let script = bridge::generate_remote_shim_install_script();
         let cmd = format!("sh -c {}\n", shell_quote(&script));
         self.send_input(key, cmd.into_bytes());
+        self.look_again_at_what_the_host_has(&key.host_key);
+    }
+
+    /// The host was just told to put the bridge or the skill there
+    /// (a script typed into a pane): it is asked what it has once that
+    /// has had time to run, and once more for a slow one.
+    fn look_again_at_what_the_host_has(&self, host_key: &str) {
+        let (inner, host_key) = (self.inner.clone(), host_key.to_owned());
+        self.rt.spawn(async move {
+            for wait in [3, 12] {
+                tokio::time::sleep(Duration::from_secs(wait)).await;
+                let endpoint = inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(&host_key).and_then(|h| h.endpoint.clone());
+                let Some(endpoint) = endpoint else { return };
+                inner.look_at_what_the_host_has(&host_key, &endpoint);
+            }
+        });
     }
 
     pub fn install_remote_skill_in_pane(&self, key: &BlockKey) {
         let script = bridge::generate_remote_skill_install_script();
         let cmd = format!("sh -c {}\n", shell_quote(&script));
         self.send_input(key, cmd.into_bytes());
+        self.look_again_at_what_the_host_has(&key.host_key);
     }
 
     pub fn git_info_for(&self, key: &BlockKey, pwd: &str) -> Option<GitInfo> {
@@ -2588,6 +2662,32 @@ impl RexHubInner {
                 true
             }
         }
+    }
+
+    /// A host reached over SSH is asked whether Olo's bridge and the
+    /// skill for agents are on it (one command, off the connection's
+    /// path), for the status bar's marks.
+    fn look_at_what_the_host_has(self: &Arc<Self>, host_key: &str, endpoint: &RexEndpoint) {
+        let RexEndpoint::Ssh { target, pool, askpass } = endpoint else { return };
+        let (target, pool, askpass) = (target.clone(), pool.clone(), askpass.clone());
+        let (hub, host_key) = (self.clone(), host_key.to_owned());
+        tokio::spawn(async move {
+            let Ok(ran) = pool.exec(&target, askpass, bridge::PRESENT, &mut |_| {}).await else { return };
+            if !ran.ok() {
+                return;
+            }
+            let (bridge_there, skill_there) = bridge::present(&ran.output);
+            let changed = {
+                let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+                let Some(host) = st.hosts.get_mut(&host_key) else { return };
+                let changed = (host.bridge_there, host.skill_there) != (Some(bridge_there), Some(skill_there));
+                (host.bridge_there, host.skill_there) = (Some(bridge_there), Some(skill_there));
+                changed
+            };
+            if changed {
+                (hub.notify)(HubNotice::StateChanged);
+            }
+        });
     }
 
     /// A host reached over SSH is seen to have the helper the app
@@ -2970,6 +3070,7 @@ impl RexHubInner {
                     if !helper_seen {
                         self.look_after_helper(&host_key, &endpoint);
                     }
+                    self.look_at_what_the_host_has(&host_key, &endpoint);
 
                     for view in initial_views {
                         self.ingest_session(&host_key, &ctrl, &endpoint, view, &pre_tickets).await;

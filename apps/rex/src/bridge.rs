@@ -262,6 +262,18 @@ pub fn fetch_op_reference(reference: &str, purpose: &str) -> Result<String, Stri
 /// Generate a self-contained POSIX installer shell script that installs `xdg-open`,
 /// `op`, and `olo-screen` remote shims under `~/.local/share/olo-rex-bridge/bin`
 /// on a remote Linux host (talking back over `OLO_REX_BRIDGE_PORT` + `OLO_REX_BRIDGE_TOKEN`).
+/// Asks a host whether Olo's bridge and the skill for agents are on
+/// it (what the two install scripts below put there): a word for each
+/// that is.
+pub const PRESENT: &str =
+    r#"sh -c 'if [ -x "$HOME/.local/share/olo-rex-bridge/bin/_olo_bridge_call" ]; then echo bridge; fi; if [ -f "$HOME/.claude/skills/olo-rex-bridge/SKILL.md" ]; then echo skill; fi'"#;
+
+/// What a host answered [`PRESENT`]: whether the bridge is there, and
+/// the skill.
+pub fn present(output: &str) -> (bool, bool) {
+    (output.lines().any(|l| l.trim() == "bridge"), output.lines().any(|l| l.trim() == "skill"))
+}
+
 pub fn generate_remote_shim_install_script() -> String {
     r#"set -eu
 DIR="$HOME/.local/share/olo-rex-bridge/bin"
@@ -387,5 +399,34 @@ mod tests {
         assert_eq!(delivered.try_recv().unwrap(), (Some("work".into()), Some("two".into()), payload.clone()));
         assert!(call(json!({"token":server.token,"cmd":"notify","payload":payload})).await);
         assert_eq!(delivered.try_recv().unwrap(), (None, None, payload));
+    }
+}
+
+#[cfg(test)]
+mod present_tests {
+    use super::*;
+
+    /// What is asked of a host is what its shell runs as meant, and
+    /// what the two install scripts put there is what it finds: run
+    /// here, in a scratch home.
+    #[test]
+    fn a_host_is_asked_what_it_has_and_the_installs_are_what_it_finds() {
+        let home = std::path::PathBuf::from(format!("/var/tmp/olo-rex-present-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(&home).unwrap();
+        let run = |command: &str| {
+            let out = std::process::Command::new("sh").arg("-c").arg(command).env("HOME", &home).output().unwrap();
+            String::from_utf8_lossy(&out.stdout).into_owned()
+        };
+        assert_eq!(present(&run(PRESENT)), (false, false));
+        run(&generate_remote_shim_install_script());
+        assert_eq!(present(&run(PRESENT)), (true, false));
+        // (The skill's script goes on to `rex skill setup` where there
+        // is a `rex`: not in this home's way, with no PATH of its own.)
+        let out = std::process::Command::new("sh").arg("-c").arg(generate_remote_skill_install_script()).env("HOME", &home).env("PATH", "/usr/bin:/bin").output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        assert_eq!(present(&run(PRESENT)), (true, true));
+        let _ = std::fs::remove_dir_all(&home);
+        assert_eq!(present("Linux\n"), (false, false));
     }
 }

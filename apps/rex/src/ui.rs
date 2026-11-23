@@ -471,8 +471,8 @@ pub fn open_or_raise_panel(role: WinRole) {
 /// The Server window's title: whose server it is.
 fn server_title() -> String {
     match crate::server::current() {
-        Some(managed) => olo_kit::tr!("Server on {}", managed.name).into(),
-        None => olo_kit::words::tr("Server").into(),
+        Some(managed) => olo_kit::tr!("Rex Server on {}", managed.name).into(),
+        None => olo_kit::words::tr("Rex Server").into(),
     }
 }
 
@@ -960,6 +960,15 @@ impl RexWindow {
     /// been silent about something typed into the pane the keyboard is
     /// in: the link has stopped, or the host has. What was typed is
     /// still drawn; this is how it is known not to have arrived.
+    /// What the host of the pane the keyboard is in has of Olo's (its
+    /// typing helper, its bridge, the skill for agents): the status
+    /// bar's three marks, for a far host.
+    fn host_has(&mut self) -> Option<crate::hub::HostHas> {
+        let hub = app().hub.clone();
+        let host = self.focused_block_key().map_or_else(|| self.active_host.clone(), |focused| focused.host_key);
+        hub.state.lock().unwrap_or_else(|e| e.into_inner()).host_has(&host)
+    }
+
     fn silent_host(&mut self) -> Option<String> {
         let hub = app().hub.clone();
         let focused = self.focused_block_key()?;
@@ -2132,7 +2141,7 @@ impl RexWindow {
                 .separator()
                 .item("Hosts and Ports…", "app.hosts")
                 .item("Add Host…", "app.add_host")
-                .item("Manage Server…", "host.server")
+                .item("Manage Rex Server…", "host.server")
                 .enabled(managed_host(&hub, &self.active_host).is_some())
                 .item("Remote Access…", "app.pair_device")
                 .item("Diagnostics…", "app.diagnostics")
@@ -2234,9 +2243,9 @@ impl RexWindow {
                 .checked(keep_going)
                 .enabled(pane)
                 .separator()
-                .item("Install Olo’s Bridge on This Host", "olo.install_remote_shim")
+                .item("Install Olo’s Bridge", "olo.install_remote_shim")
                 .enabled(pane && !here)
-                .item("Install Rex Skill for Agents", "olo.install_remote_skill")
+                .item("Install Olo’s Skill for Agents", "olo.install_remote_skill")
                 .enabled(pane),
             Menu::new("Settings")
                 .submenu(
@@ -2626,6 +2635,7 @@ impl RexWindow {
             None => div().child(StringView::new(self.where_it_is()).size(style::SMALL_SIZE).height(m::LABEL_ROW).dim(true).cut(true)).into_any_element(),
         };
         let silent = self.silent_host();
+        let has = self.host_has();
         root = root.child(
             div().w_full().flex_shrink_0().flex().flex_col().child(widgets::separator()).child(
                 div()
@@ -2648,19 +2658,46 @@ impl RexWindow {
                     // design reviews, 2026-11-22: as a fourth fact at
                     // the front it was too quiet, and pushed the others
                     // along with each second.
-                    .child(div().relative().flex().flex_row().items_center().gap(px(m::SPACING)).child(div().flex_1().min_w_0().child(line)).children(silent.map(|said| {
+                    .child(
                         div()
-                            .flex_shrink_0()
+                            .relative()
                             .flex()
                             .flex_row()
                             .items_center()
-                            // (The sidebar's light and its gap, in the
-                            // proportion of the bar's smaller words:
-                            // seven points and five, of eight and six.)
-                            .gap(px((m::TIGHT * style::SMALL_SIZE / style::PLAIN_SIZE).round()))
-                            .child(crate::panels::light_of(crate::panels::Light::Waiting, (crate::panels::LIGHT * style::SMALL_SIZE / style::PLAIN_SIZE).round()))
-                            .child(StringView::new(said).size(style::SMALL_SIZE).height(m::LABEL_ROW))
-                    }))),
+                            .gap(px(m::SPACING))
+                            .child(div().flex_1().min_w_0().child(line))
+                            .children(silent.map(|said| {
+                                div()
+                                    .flex_shrink_0()
+                                    .flex()
+                                    .flex_row()
+                                    .items_center()
+                                    // (The sidebar's light and its gap, in the
+                                    // proportion of the bar's smaller words:
+                                    // seven points and five, of eight and six.)
+                                    .gap(px((m::TIGHT * style::SMALL_SIZE / style::PLAIN_SIZE).round()))
+                                    .child(crate::panels::light_of(crate::panels::Light::Waiting, (crate::panels::LIGHT * style::SMALL_SIZE / style::PLAIN_SIZE).round()))
+                                    .child(StringView::new(said).size(style::SMALL_SIZE).height(m::LABEL_ROW))
+                            }))
+                            // What the host has of Olo's, at the very end: three
+                            // marks, each on or off (its typing helper, its
+                            // bridge, the skill for agents), with what each
+                            // means for its tip.
+                            .children(has.map(|has| {
+                                let mark = |name: &'static str, mark: widgets::Mark, has: crate::hub::Has| widgets::Indicator::new(name, mark).on(has.on).says(has.said);
+                                let marks = [
+                                    Some(mark("Typing helper", widgets::Mark::Keyboard, has.helper)),
+                                    has.bridge.map(|bridge| mark("Olo’s bridge", widgets::Mark::Bridge, bridge)),
+                                    has.skill.map(|skill| mark("Skill for agents", widgets::Mark::Book, skill)),
+                                ];
+                                // (Their tips clear of the bar's rule and of
+                                // the band over it: the separator the bar
+                                // begins with, six points. Clear of the rule
+                                // alone, a tip stood a point over the band's
+                                // edge: Gemini's review.)
+                                widgets::indicators(marks.into_iter().flatten().collect(), 6.0)
+                            })),
+                    ),
             ),
         );
 
@@ -2744,7 +2781,7 @@ impl RexWindow {
                 // (And whether it is silent about something typed: its
                 // light and its words then say so, as the status bar does.)
                 let silent = st.host_silent(&h.key).map(crate::hub::silent_tip);
-                hosts_snap.push((h.key.clone(), h.label.clone(), h.conn_state.clone(), sessions, silent, h.helper.said()));
+                hosts_snap.push((h.key.clone(), h.label.clone(), h.conn_state.clone(), sessions, silent));
             }
             activity_rows.sort_by_key(|(_, _, _, _, a)| activity_sort_rank(*a));
             (mode, hosts_snap, activity_rows)
@@ -2816,11 +2853,11 @@ impl RexWindow {
 
         let mut list = div().flex_shrink_0().w_full().p(px(m::SPACING)).flex().flex_col().gap(px(m::SPACING));
         if mode == SidebarMode::Sessions {
-            for (hk, hlabel, conn, sessions, silent, connected_said) in hosts_snap {
+            for (hk, hlabel, conn, sessions, silent) in hosts_snap {
                 let connected = conn == HostConnState::Connected;
                 let tip = match &conn {
                     HostConnState::Connected if silent.is_some() => silent.clone().unwrap_or_default().into(),
-                    HostConnState::Connected => connected_said.into(),
+                    HostConnState::Connected => olo_kit::words::tr("Connected").into(),
                     HostConnState::Connecting => olo_kit::words::tr("Connecting…").into(),
                     HostConnState::Disconnected => olo_kit::words::tr("Disconnected").into(),
                     HostConnState::Error(why) | HostConnState::Reconnecting { last_error: why, .. } => olo_kit::tr!("Disconnected: {}", why),

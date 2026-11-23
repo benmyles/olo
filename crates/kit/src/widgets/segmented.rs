@@ -79,6 +79,12 @@ pub enum Mark {
     Terminal,
     /// A pulse: activity, what is going on.
     Pulse,
+    /// A keyboard: typing.
+    Keyboard,
+    /// A bridge hung from two towers: what joins two places.
+    Bridge,
+    /// An open book: what is known, skills.
+    Book,
 }
 
 type ChooseFn = Rc<dyn Fn(&usize, &mut WindowCx)>;
@@ -509,14 +515,45 @@ fn paint(g: &mut Painter, outer: Bounds<Pixels>, segments: &[Segment], shares: &
     }
 }
 
-/// A segment's mark, centred on `middle` in a box of `size` points, in
-/// whole device lines: nothing of it between two pixels at any scale.
-fn paint_mark(g: &mut Painter, which: Mark, middle: olo_interface::Point<Pixels>, size: (f32, f32), color: olo_interface::Hsla) {
+/// A mark, centred on `middle` in a box of `size` points, in whole
+/// device lines: nothing of it between two pixels at any scale.
+pub(crate) fn paint_mark(g: &mut Painter, which: Mark, middle: olo_interface::Point<Pixels>, size: (f32, f32), color: olo_interface::Hsla) {
+    let s = g.scale_factor();
+    let (w, h) = ((size.0 * s).round(), (size.1 * s).round());
+    let b = style::snap_centred(g, middle, w / s, h / s);
+    paint_mark_from(g, which, ((f32::from(b.left()) * s).round(), (f32::from(b.top()) * s).round()), size, color);
+}
+
+/// How many device lines across and down `which` of an `Indicator`'s
+/// marks is in a box of `size` points at `scale`: an odd number of each
+/// at every scale, so it has a middle line and what is drawn about it
+/// is as far from one side as from the other (twenty lines across at
+/// 1.5×: a row of keys a pixel nearer one side, Gemini's review); but
+/// the keyboard where its keys are two lines wide ([`key_lines`]),
+/// which is an even number across, so rows of them can be centred.
+pub(crate) fn mark_lines(which: Mark, size: (f32, f32), scale: f32) -> (i32, i32) {
+    let line = style::line_pixels(scale);
+    let odd = |v: f32| 2 * ((v - 1.0) / 2.0).round() as i32 + 1;
+    let across = size.0 * scale / line;
+    (if which == Mark::Keyboard && key_lines(scale) % 2 == 0 { 2 * (across / 2.0).round() as i32 } else { odd(across) }, odd(size.1 * scale / line))
+}
+
+/// How many device lines wide a key of [`Mark::Keyboard`] is: one
+/// where a line is a point, two where it is two thirds of one (single
+/// lines there were specks that an OFF mark lost: Opus's review).
+fn key_lines(scale: f32) -> i32 {
+    ((scale / style::line_pixels(scale)).round() as i32).max(1)
+}
+
+/// [`paint_mark`], its box's corner at the device pixel `corner`: for
+/// marks set in a row by device pixels (an `Indicator`'s: one of
+/// [`mark_lines`] is drawn from that corner, whatever its box's size
+/// came to).
+pub(crate) fn paint_mark_from(g: &mut Painter, which: Mark, corner: (f32, f32), size: (f32, f32), color: olo_interface::Hsla) {
     let s = g.scale_factor();
     let line = style::line_pixels(s);
     let (w, h) = ((size.0 * s).round(), (size.1 * s).round());
-    let b = style::snap_centred(g, middle, w / s, h / s);
-    let (x0, y0) = ((f32::from(b.left()) * s).round(), (f32::from(b.top()) * s).round());
+    let (x0, y0) = corner;
     let at = |x: f32, y: f32| point(px((x0 + x) / s), px((y0 + y) / s));
     let stroke = |g: &mut Painter, points: &[(f32, f32)]| {
         // (A slanting stroke as wide as a level one looks thinner: a
@@ -554,6 +591,155 @@ fn paint_mark(g: &mut Painter, which: Mark, middle: olo_interface::Point<Pixels>
             let mid = (h / 2.0).floor();
             stroke(g, &[(0.0, mid), (w * 0.26, mid), (w * 0.42, 0.0), (w * 0.60, h - line), (w * 0.74, mid), (w - line, mid)]);
         }
+        // The three an `Indicator` shows. Each fills its box (as tall
+        // as the others, on one foot) and is of squares a device line
+        // across and no other stroke: nothing of them is smoothed at
+        // any scale. (The first drawings, to both design reviews: a
+        // bridge of three piers read as a table and one of an arch in
+        // a frame as a doorway, its curve grey at 1×; a book of two
+        // plain pages as two columns; and at 1.5× the keys were
+        // thicker than the keyboard's own outline.)
+        Mark::Keyboard | Mark::Bridge | Mark::Book => {
+            let (cols, rows) = mark_lines(which, size, s);
+            // (So many lines across and down, from a line's place.)
+            let mut cells = |x: i32, y: i32, across: i32, down: i32| {
+                if across > 0 && down > 0 {
+                    style::fill_rect(g, Bounds::from_corners(at(x as f32 * line, y as f32 * line), at((x + across) as f32 * line, (y + down) as f32 * line)), color);
+                }
+            };
+            match which {
+                Mark::Keyboard => {
+                    // Its outline, a corner's square left out at each
+                    // corner; two rows of keys, the second half a key
+                    // along and a key shorter; and the space bar under
+                    // them, two lines in from the keys' ends: one
+                    // drawing at every scale. A key is a line wide
+                    // and as far from the next where a line is a
+                    // point (five over four), two lines wide and two
+                    // from the next where there are more lines than
+                    // points (four dashes over three at 1.5×). What
+                    // was drawn there before, to the reviews: keys of
+                    // one line three lines apart, a screen of dotted
+                    // text; four rows of them two apart, a speaker's
+                    // grille; three rows four apart, an empty tray.
+                    cells(1, 0, cols - 2, 1);
+                    cells(1, rows - 1, cols - 2, 1);
+                    cells(0, 1, 1, rows - 2);
+                    cells(cols - 1, 1, 1, rows - 2);
+                    let key = key_lines(s);
+                    let apart = 2 * key;
+                    let below = ((2.0 * s / line).round() as i32).max(2);
+                    let keys = (cols - 4 - key) / apart + 1;
+                    let across = (keys - 1) * apart + key;
+                    let left = (cols - across) / 2;
+                    let top = 1 + (rows - 2 - (2 * below + 1)) / 2;
+                    for k in 0..keys {
+                        cells(left + k * apart, top, key, 1);
+                    }
+                    for k in 0..keys - 1 {
+                        cells(left + apart / 2 + k * apart, top + below, key, 1);
+                    }
+                    cells(left + 2, top + 2 * below, across - 4, 1);
+                }
+                Mark::Bridge => {
+                    // A bridge hung from two towers, each a fifth of
+                    // the way in from its end and standing from the
+                    // top to the foot: the roadway across the whole,
+                    // two thirds of the way down, so the towers stand
+                    // on under it as piers (a deck held up off the
+                    // ground: what says "over water" at this size);
+                    // the cable from two lines under each tower's
+                    // top, hanging between them in a shallow U (level
+                    // over the middle, two lines of light between it
+                    // and the roadway), and run down outside each
+                    // tower to the roadway's end; no hangers.
+                    //
+                    // Six rounds of two design reviews, and what each
+                    // drawing was to them: three piers, a table; an
+                    // arch in a frame, a doorway; the towers at the
+                    // ends with the cable between them, a letter M
+                    // (three times: from the tops to a point, with
+                    // the towers taller and a level run, with
+                    // hangers; two hangers under the level run closed
+                    // a box); this one, to one review a sawhorse with
+                    // arrowheads; the roadway low and the side spans
+                    // steeper, perfect to one and a crown or a cat's
+                    // head to the other; no side spans and a deeper
+                    // sag, as that other then asked, an M on an
+                    // underline to both. Shown the last three side by
+                    // side at true size, one chose this and one the
+                    // low roadway with this second: it is the one
+                    // each has passed. Don't redraw it without
+                    // showing candidates side by side at true size.
+                    let tower = (cols as f32 * 0.2).round() as i32;
+                    let far = cols - 1 - tower;
+                    let road = (rows as f32 * 0.64).round() as i32;
+                    let under = (rows as f32 * 0.18).round() as i32;
+                    cells(tower, 0, 1, rows);
+                    cells(far, 0, 1, rows);
+                    cells(0, road, cols, 1);
+                    // (A run of the cable from `under`: so many lines
+                    // down over so many columns, and which of them
+                    // column `k` has, never none.)
+                    let part = |fall: i32, over: i32, k: i32| {
+                        let (from, next) = (under + k * fall / over, under + (k + 1) * fall / over);
+                        (from, (next - from).max(1))
+                    };
+                    // Between the towers: down as far again as it is
+                    // under their tops, over the first and last
+                    // quarter and a little, and level between: in
+                    // the same proportion at every scale (by a curve
+                    // of its own at 1.5× it fell further and was
+                    // level over three lines of eleven: a V, and
+                    // another drawing than at 1×, to the last design
+                    // review).
+                    let between = far - tower - 1;
+                    let down = (between as f32 * 0.28).round() as i32;
+                    for k in 0..down {
+                        let (from, lines) = part(under, down, k);
+                        cells(tower + 1 + k, from, 1, lines);
+                        cells(far - 1 - k, from, 1, lines);
+                    }
+                    cells(tower + 1 + down, under + under, between - 2 * down, 1);
+                    // Outside a tower: to the roadway at its end.
+                    for k in 0..tower {
+                        let (from, lines) = part(road - under, tower, k);
+                        cells(tower - 1 - k, from, 1, lines);
+                        cells(far + 1 + k, from, 1, lines);
+                    }
+                }
+                _ => {
+                    // An open book: two pages whose head and foot dip
+                    // toward the fold beside it, in one step (a line
+                    // down over a line at 1× and 2×; two down over two
+                    // where a line is under a point: one alone didn't
+                    // show at 1.5× and the book was a window of two
+                    // panes, and two a step at a time were pages that
+                    // curl, another drawing than at 1×), the fold
+                    // between them, and two lines of text a page, a
+                    // line clear of its edge and of the fold.
+                    let fold = cols / 2;
+                    let dip = ((s / line).round() as i32).max(1);
+                    let inner = fold - dip;
+                    for mirrored in [false, true] {
+                        let x = |c: i32| if mirrored { cols - 1 - c } else { c };
+                        cells(x(0), 0, 1, rows - dip);
+                        for c in 1..fold {
+                            let down = if c < inner { 0 } else { dip };
+                            cells(x(c), down, 1, 1);
+                            cells(x(c), rows - 1 - dip + down, 1, 1);
+                        }
+                        // (The step itself, where it is more than a line.)
+                        cells(x(inner), 1, 1, dip - 1);
+                        cells(x(inner), rows - dip, 1, dip - 1);
+                        for row in [(rows as f32 * 0.3).round() as i32, (rows as f32 * 0.58).round() as i32] {
+                            cells(if mirrored { fold + 2 } else { 2 }, row, fold - 3, 1);
+                        }
+                    }
+                    cells(fold, dip, 1, rows - dip);
+                }
+            }
+        }
     }
 }
 
@@ -564,6 +750,27 @@ mod tests {
 
     fn outer(x: f32, w: f32) -> Bounds<Pixels> {
         Bounds { origin: point(px(x), px(10.0)), size: size(px(w), px(20.0)) }
+    }
+
+    #[test]
+    fn an_indicators_mark_is_an_odd_number_of_lines_each_way_at_every_scale() {
+        // (So each has a middle line: a keyboard's keys, a bridge's
+        // towers and a book's pages as far from one side as from the
+        // other. Twenty lines across at 1.5× was a row of keys a
+        // pixel nearer one side.)
+        for (scale, lines) in [(1.0, (13, 11)), (1.25, (17, 13)), (1.5, (19, 17)), (1.75, (23, 19)), (2.0, (13, 11)), (3.0, (13, 11))] {
+            assert_eq!(mark_lines(Mark::Book, (13.0, 11.0), scale), lines, "at {scale}");
+        }
+        for scale in [1.0_f32, 1.1, 1.25, 1.33, 1.5, 1.66, 1.75, 2.0, 2.25, 2.5, 3.0] {
+            for which in [Mark::Book, Mark::Bridge] {
+                let (across, down) = mark_lines(which, (13.0, 11.0), scale);
+                assert!(across % 2 == 1 && down % 2 == 1, "{across} by {down} at {scale}");
+            }
+            // (The keyboard: as its keys are, so rows of them centre.)
+            let (across, down) = mark_lines(Mark::Keyboard, (13.0, 11.0), scale);
+            assert!(across % 2 == key_lines(scale) % 2 && down % 2 == 1, "{across} by {down} at {scale}");
+        }
+        assert_eq!(mark_lines(Mark::Keyboard, (13.0, 11.0), 1.5), (20, 17));
     }
 
     #[test]

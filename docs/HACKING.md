@@ -4369,6 +4369,91 @@ it.
   Hide). Calendar's calendars and assistant; Phone's and Telegram's
   lists (a conversation opened comes in front; its header's back arrow,
   12 points before its picture, goes back).
+- `widgets::Indicator::new(name, mark).on(bool).says(tip)`: a small
+  mark that is on or off, for a status bar: what a thing has or
+  hasn't, at a glance (Rex's: Olo's typing helper, its bridge and the
+  skill for agents on a far host; Ben, 2026-11-23: "little icons in
+  the status bar that are either in an on or off state"). A row of
+  them is `widgets::indicators(marks, under_by)`, and a bar ends with
+  the row. What three rounds of both design reviews settled:
+  - *One set.* The mark is one of the kit's `Mark`s, each as tall as
+    the others (11 points, in a box 13 across; the bridge's 15) and
+    made only of squares a device line across, so nothing is smoothed
+    at any scale and no stroke is thicker than another; and each is
+    an odd number of lines across and down at every scale
+    (`mark_lines`: 13 by 11 at 1× and 2×, 19 by 17 at 1.5×), so it
+    has a middle line and is the same on both sides of it (but the
+    keyboard at 1.5×, twenty across, whose keys are two lines wide
+    there). `Mark::Keyboard`: its outline with a square left out at
+    each corner, two rows of keys, the second half a key along and a
+    key shorter, and the space bar under them: five over four, a line
+    each, at 1× and 2×; four dashes over three at 1.5×.
+    `Mark::Bridge`: a tower a fifth of the way in from each end, from
+    top to foot; the roadway across the whole, two thirds of the way
+    down, so the towers stand on under it as piers (a deck held up
+    off the ground); the cable from two lines under each tower's top,
+    down as far again over the first and last quarter of the span and
+    level between, in the same proportion at every scale; outside
+    each tower a side span down to the roadway's end; no hangers.
+    `Mark::Book`: two pages whose head and foot dip toward the fold
+    in one step (a line down over a line at 1× and 2×, two over two
+    at 1.5×), two lines of text a page, a line clear of its edge and
+    of the fold. What was drawn first and how it read: a bridge of
+    three piers was a table, one of an arch in a frame a doorway, one
+    with its towers at its ends and the cable between them a letter M
+    (three times: from the tops to a point, with the towers taller
+    and a level run, with hangers; two hangers under the level run
+    closed a box), one with a low roadway and steeper side spans a
+    crown or a cat's head to one review and perfect to the other, one
+    with no side spans and a deeper sag an M on an underline to both;
+    a book of plain pages two columns, and one whose dip was two
+    steps at 1.5× another drawing than at 1×; at 1.5×, keys thicker
+    than their keyboard, two rows of specks three lines apart a
+    screen of dotted text, four rows two apart a speaker's grille,
+    three rows four apart an empty tray. Three things this taught:
+    sketch a mark's squares on its grid (a Python picture of a dozen
+    candidates beside its neighbours, at true size and enlarged)
+    before building any; draw a reviewer's list of cells exactly and
+    look at it yourself; and when the two reviews pull apart, or one
+    asks for the opposite of what it asked before (side spans in the
+    third round, none in the fifth), show both the candidates side by
+    side at true size and ask each to choose: both ranked the fifth
+    round's own drawing last, and the one each could pass was found
+    in that one look. A mark is one drawing at every scale: its parts
+    in proportion, not a curve of its own at 1.5×.
+  - *Ink.* On, a mark is in the ink of a status line's words
+    (`style::secondary_text`); off, in a quarter of the text's ink:
+    off is to be seen as off with nothing on beside it. Where a device
+    line is thinner than a point (two thirds of one at 1.5×) a mark
+    has more ink, on or off, or it is a third lighter there than at
+    the other scales: off, half as much again; on, half the way to
+    the text's own ink (three quarters was near black beside the same
+    marks at 1×).
+  - *Place.* The row draws its marks itself, from its own end, by
+    device pixels: each as many pixels from the next as every other
+    (`INDICATOR_GAP`, 6 points), the last ending where the row does
+    (a bar's inset, as its words begin at the other end), and up
+    where they can't be as far from the top as from the foot. Each
+    drawn in a box of its own, which is laid on whole pixels by
+    itself, the gaps were eight pixels and seven at 1.5×. Measure it
+    (gaps, both insets, over and under) at 1×, 1.25×, 1.5×, 1.75× and
+    2× when it changes.
+  - *Tip.* `says` (a sentence), or its name and "on"/"off", above the
+    row (`tip::on_above_of`, `TipPlace::Above`: it is at a window's
+    foot, and a tip under it lay on the window's frame), in one place
+    whichever mark the pointer is on: ending where the row ends when
+    the row is in the far half of its window (`TipPlace::AboveEnd`:
+    begun at the mark, half of it lay outside the window), and clear
+    of what stands `under_by` points over the row (Rex gives 6, the
+    separator its bar begins with: clear of the rule alone, the tip
+    stood a point over the pale band above the rule). A wrapped tip
+    is as wide as its longest line (`tip_size`), and a menu's path in
+    one is joined with no-break spaces so it is never broken ("choose
+    Agents ▸ Install" at a line's end read as the command). Say what is
+    and what to do in two sentences of one shape for every mark
+    ("Olo’s bridge isn’t on “far”. To install it, choose Agents ▸
+    Install Olo’s Bridge.").
+  - Agents read a `Status` node for each, its name and "on" or "off".
 - `widgets::SegmentedControl::new(id, segments, chosen).on_choose(f)`:
   a few choices side by side in one sunken trough, one chosen (Ben,
   2026-11-22, of Rex's Sessions and Activity, with a drawing: "this
@@ -4410,7 +4495,8 @@ it.
   selected) meaning what they mean. A `Segment` is its name, with a
   `Mark` before it (`.mark(Mark::Terminal)`, `Mark::Pulse`: a small
   drawing in the name's colour, on whole device lines; a colour icon at
-  this size is a smear at 1×; one device line to 2×) and a count after
+  this size is a smear at 1×; one device line to 2×; the other marks,
+  `Keyboard`, `Bridge` and `Book`, are an `Indicator`'s: below) and a count after
   it (`.count(n)`: a disc in the look's notice colour, "99+" over 99,
   nothing for none; 14 points, its middle on the plate's middle, a
   point of the plate's face over and under it, its 11-point numerals in
@@ -26944,6 +27030,29 @@ connection's deadline waits meanwhile, as it does while a question is
 read), and the workspace and the Hosts window say the host waits for
 the key agent, where they said "Connecting…" for as long as it took.
 
+**What a far host has of Olo's, in the status bar** (2026-11-23; Ben:
+"make the typing helper status as well as status of olo bridge and
+skills little icons in the status bar that are either in an on or off
+state not the weird popover": it had been a sentence in the host's tip
+in the sidebar, which says "Connected" again). At the status bar's far
+end, for the far host of the pane typed into (one reached over SSH,
+while it is connected; none for this computer), three of the kit's
+`Indicator`s: a keyboard (Olo's typing helper: on while this
+connection goes through it), a bridge (Olo's bridge: on where its
+shims are on the host and something is granted to the host here), an
+open book (Olo's skill for agents: on where it is on the host), in
+the kit's row of them (`widgets::indicators`, its tips clear of the
+bar's rule). Each says how it stands in its tip, and what to do where
+it is off ("Olo’s bridge isn’t on “far”. To install it, choose Agents
+▸ Install Olo’s Bridge."), and to agents (a `Status`
+node: "Typing helper", "on"). `HubState::host_has` is what
+they show (`HostHas`); whether the bridge and the skill are there is
+asked of the host with one command over SSH after it connects, and
+again a few seconds after either is installed from the Agents menu
+(`bridge::PRESENT`, `hub::look_at_what_the_host_has`: the files the
+two install scripts put in the account's home there; a test runs the
+scripts and the question in a scratch home).
+
 **Links in a terminal, and what a program copies** (2026-11-23; Ben:
 "make sure osc 52 for copy/paste etc works for the remote rex terminals
 and links should be clickable with super+click too").
@@ -27288,10 +27397,11 @@ connecting in fewer round trips); what it does today:
   added to your account on “far”."; where it could only be added after
   the connection was made, "… and will be used the next time you
   connect.": `HubNotice::Said`, never in place of a problem or another
-  word); the host's tip in the sidebar
-  says how it stands (`HostHelper::said`); Settings ▸ Use Olo’s Typing
-  Helper on Hosts (`host_helper`, on) turns it off, and then nothing
-  is put on hosts or run there. (Both design reviews of the menu: "Use
+  word); the status bar's keyboard mark is on while this connection
+  goes through it, with how it stands for its tip ("What a far host
+  has of Olo's", below); Settings ▸ Use Olo’s Typing Helper on Hosts
+  (`host_helper`, on) turns it off, and then nothing is put on hosts
+  or run there. (Both design reviews of the menu: "Use
   Olo’s Helper on Hosts" didn't say what the helper is for, and was
   easy to take for the Agents menu's bridge.)
 - *What it costs* (release builds, 2026-11-22): at rest the helper
@@ -27555,10 +27665,12 @@ Modes, Shared Server, Login Server and Remote Access).
 **A host's server looked after from Rex** (2026-11-23; Ben, 2026-11-22:
 "also build in rex server management to our rex client so that i can
 manage the users, services etc. of the running rex server (if i have a
-root@ key)"). Hosts and Ports ▸ Manage Server… (for the host chosen: one
-reached over SSH as an account), Rex ▸ Manage Server… (the window's own
+root@ key)"). Hosts and Ports ▸ Manage Rex Server… (for the host chosen: one
+reached over SSH as an account), Rex ▸ Manage Rex Server… (the window's own
 host), and, for agents, the command `host.server:KEY`, open the Server
-window (`WinRole::Server`, "Server on NAME"; one host at a time).
+window (`WinRole::Server`, "Rex Server on NAME"; one host at a time:
+"Manage Rex Server", not "Manage Server", since 2026-11-23: it is the
+Rex server's alone, and a host has more of Olo's than that).
 - **What a server is and what is done to one is the client crate's**
   (`olo_rex_client::manage`, on `provision`'s runner, facts and accounts
   file). `look(runner, check)` asks the host as root, in one read-only

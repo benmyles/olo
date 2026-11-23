@@ -1153,6 +1153,14 @@ pub enum TipPlace {
     /// Below its anchor, else above it.
     #[default]
     Below,
+    /// Above its anchor, else below it (for what is at a window's
+    /// foot: a tip under it would lie on the window's frame).
+    Above,
+    /// [`Self::Above`], its end at the anchor's end and the tip toward
+    /// the anchor's start from there (for what is at the far end of a
+    /// window's foot: begun at the anchor's start, the tip lay half
+    /// outside the window).
+    AboveEnd,
     /// At its anchor's left, its top level with the anchor's, else at
     /// its right (Deskbar's cards, beside the bar).
     Left,

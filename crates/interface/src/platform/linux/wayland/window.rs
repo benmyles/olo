@@ -2479,9 +2479,19 @@ fn popup_positioner(globals: &Globals, kind: &WindowKind, size: Size<Pixels>) ->
     let mut gravity = xdg_positioner::Gravity::BottomRight;
     let (anchor, corner, offset) = match *kind {
         WindowKind::Popup { anchor, corner, offset, .. } => (anchor, corner, offset),
-        WindowKind::Tip { anchor, place: crate::TipPlace::Below, .. } => {
+        WindowKind::Tip { anchor, place: place @ (crate::TipPlace::Below | crate::TipPlace::Above | crate::TipPlace::AboveEnd), .. } => {
             let a = Bounds { origin: crate::point(anchor.origin.x, anchor.origin.y - px(TIP_GAP)), size: crate::size(anchor.size.width, anchor.size.height + px(2.0 * TIP_GAP)) };
-            (a, crate::Corner::BottomLeft, Point::default())
+            if place == crate::TipPlace::Above {
+                // (Its bottom-left at the anchor's top-left.)
+                gravity = xdg_positioner::Gravity::TopRight;
+                (a, crate::Corner::TopLeft, Point::default())
+            } else if place == crate::TipPlace::AboveEnd {
+                // (Its bottom-right at the anchor's top-right.)
+                gravity = xdg_positioner::Gravity::TopLeft;
+                (a, crate::Corner::TopRight, Point::default())
+            } else {
+                (a, crate::Corner::BottomLeft, Point::default())
+            }
         }
         WindowKind::Tip { anchor, place, .. } => {
             let a = Bounds { origin: crate::point(anchor.origin.x - px(TIP_GAP), anchor.origin.y), size: crate::size(anchor.size.width + px(2.0 * TIP_GAP), anchor.size.height) };
