@@ -25,7 +25,7 @@ use olo_rex_vt::{CellWide, CursorInfo, CursorStyle as VtCursorStyle, GhosttyTerm
 
 use crate::{
     copy_mode::CopyMode,
-    links::DetectedLink,
+    links::Hover,
     settings::{self, Settings},
     themes::{self, hsla},
 };
@@ -140,6 +140,13 @@ pub struct PaneVisualState {
     pub shift: StdCell<f32>,
     pub drag_anchor: StdCell<Option<(u16, u16)>>,
     smooth: RefCell<SmoothScroll>,
+    /// Where the pointer last was over the pane (for when the key that
+    /// opens a link goes down under a pointer at rest), and the link
+    /// under it while that key is held: underlined, the pointer a hand.
+    pub pointer: StdCell<Option<Point<Pixels>>>,
+    pub hover: RefCell<Option<Hover>>,
+    /// The letters a link's underline has gone round, as drawn.
+    inks: RefCell<olo_kit::underline::Inks>,
 }
 
 impl PaneVisualState {
@@ -231,7 +238,7 @@ pub struct PanePaintArgs<'a> {
     pub window_active: bool,
     pub copy_mode: Option<&'a CopyMode>,
     pub search_matches: &'a [ViewportMatch],
-    pub hover_link: Option<&'a DetectedLink>,
+    pub hover_link: Option<&'a Hover>,
     pub preedit: Option<&'a str>,
     /// What was typed and is drawn ahead of the host's echo of it
     /// (`predict`): painted over the caret's row as the row itself is.
@@ -407,10 +414,33 @@ pub fn paint_pane(g: &mut Painter, rect: Bounds<Pixels>, args: PanePaintArgs<'_>
         let cursor_rgb = colors.cursor.or(theme.cursor).unwrap_or(default_fg);
         let cursor_color = hsla(cursor_rgb);
         if let Some(link) = hover_link {
-            let y = origin.1 + link.row as f32 * ch + m.baseline + (m.row * 0.12).max(1.0);
-            let x = origin.0 + link.start_col as f32 * cw;
-            let w = (link.end_col.saturating_sub(link.start_col) + 1) as f32 * cw;
-            g.paint_quad(olo_kit::fill(Bounds::new(point(px(x), px(y)), size(px(w), px((2.0 * line_px).max(1.0)))), cursor_color));
+            // (One line for each run of its cells on a row: a link may
+            // lie over several rows.)
+            let mut cells = link.cells.iter().copied().peekable();
+            while let Some((row, from)) = cells.next() {
+                let mut to = from;
+                while let Some(&(r, c)) = cells.peek()
+                    && r == row
+                    && c == to + 1
+                {
+                    to = c;
+                    cells.next();
+                }
+                // Under the baseline and round the letters' tails
+                // (`olo_kit::underline`: both design reviews, of a line
+                // two pixels thick drawn through them).
+                let cells = frame.order.iter().filter_map(|id| frame.rows.get(id)).map(|r| &r.row).find(|r| r.viewport_y == row as i32).map(|r| r.cells.as_slice()).unwrap_or(&[]);
+                let text: Vec<(char, Font)> = (from..=to)
+                    .map(|col| match cells.get(col as usize) {
+                        Some(cell) if cell.wide != CellWide::SpacerTail => {
+                            let weight = if cell.style.bold { FontWeight::BOLD } else { FontWeight::NORMAL };
+                            (char::from_u32(cell.codepoint).filter(|c| *c != '\0').unwrap_or(' '), resolve_mono_font(m.font_family.as_deref(), weight, cell.style.italic))
+                        }
+                        _ => (' ', resolve_mono_font(m.font_family.as_deref(), FontWeight::NORMAL, false)),
+                    })
+                    .collect();
+                olo_kit::underline::paint(g, &mut visual.inks.borrow_mut(), origin.0 + from as f32 * cw, origin.1 + row as f32 * ch + m.baseline, cw, &text, m.size, cursor_color);
+            }
         }
 
         // 7. IME Preedit composition text at cursor.

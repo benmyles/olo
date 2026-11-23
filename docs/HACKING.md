@@ -26944,6 +26944,74 @@ connection's deadline waits meanwhile, as it does while a question is
 read), and the workspace and the Hosts window say the host waits for
 the key agent, where they said "Connecting…" for as long as it took.
 
+**Links in a terminal, and what a program copies** (2026-11-23; Ben:
+"make sure osc 52 for copy/paste etc works for the remote rex terminals
+and links should be clickable with super+click too").
+- *A link opens with the command key and a click*, as in Terminal:
+  underlined, the pointer a hand, while the key is held over it
+  (`ui::link_hover`, kept in the pane's `PaneVisualState::hover`;
+  looked for only while the key is held, and only when the pointer is
+  over another cell than last time). The line is the kit's
+  (`olo_kit::underline`, below): close under the baseline, a point
+  thick, broken where a letter's tail crosses it. Where a program
+  named the address for some words (OSC 8) a tip under the link says
+  where it goes, once the pointer rests there (`ui::link_tip`: any
+  program on a far host can name any address for any words). The key
+  is
+  `olo_kit::keys::opens_links`: ⌘ where the keyboard's profile has a
+  command key, which app_server sends as the right Ctrl; Ctrl where it
+  has none; Super itself where that reaches the app. (Rex asked for
+  Super alone, `modifiers.platform`, which no app is given on a
+  profile with a command key: its links never opened.)
+- *Found whole* (`links::hover`): an address a program named for its
+  text (OSC 8) over every cell of it around the pointer; else in the
+  text of the program's whole line, which may lie over several rows
+  (`GhosttyTerminal::viewport_row_cells` gives a row's characters by
+  column and whether it is wrapped onto the next), and a word a
+  program broke over rows itself put together again
+  (`olo_kit::links::broken`, moved from Terminal: Claude Code's long
+  addresses). Addresses by the kit's finder (`olo_kit::links::find`:
+  no full stop or bracket after it; no telephone numbers here), any
+  other scheme's by a pattern, a path on the host (`/…`, `~/…`,
+  `./…`, with `:line`) to its preview. It was looked for in the one
+  row clicked: an address over two rows opened as its first half.
+  An address of the host's own (`localhost:3000`) is forwarded here
+  as before (`open_link_from_pane`).
+- *What a program copies by OSC 52 is copied here*, from this computer
+  or a far host, as in Terminal: the server's `clipboard_written`
+  event. It was dropped for every host not granted the clipboard
+  (Preferences ▸ Rex), which is for what a host's programs ask of the
+  bridge (to read the clipboard too), not for a terminal the person
+  works in. The server sends the text with the event where it is
+  short and only its number and size where it is long (300 kB came as
+  `{"id":2,"bytes":300003}`, and nothing was copied): then it is read
+  a piece at a time (`terminal.clipboard_read`), up to 8 MB, and not
+  put over something copied since. A program *reading* the clipboard
+  by OSC 52 stays refused.
+- *Tried*: `tools/dev/rex-slow/try.py links` (each kind pictured with
+  the key held, one clicked) and `try.py copy` (the session's
+  clipboard read with `olo-pbpaste`); and a copy from the test host,
+  not granted the clipboard.
+
+**An underline that leaves letters' tails alone** (`olo_kit::underline`,
+2026-11-23; for text set cell by cell, a terminal's). A line just under
+the baseline runs through every g, p and y ("the tails turn into blue
+and black knots": both design reviews of Rex's links), and under the
+tails there is no room in a terminal's rows (a line there reads as one
+over the next row). `underline::paint(g, inks, left, baseline, cell,
+text, size, color)` draws it a point thick in whole device pixels
+(`style::line_pixels`: one at 1× and 1.5×, two at 2×), its top edge a
+point and a half under the baseline on a device pixel, and leaves it
+out where a letter's ink crosses those rows, a point clear on each
+side (the faint edge of a curve is ink too); and no piece of it
+shorter than most of a cell (and three points) is drawn: not in a
+letter's bowl, not
+between two tails side by side ("pg"), not after a last letter's tail
+(a final "y"). The ink is the text system's own drawing of the letter
+(`TextSystem::line_mask`), kept by the caller between frames
+(`underline::Inks`: one drawing for a letter, a face, a size and a
+scale). Terminal's own hovered link is still a plain line (TODO).
+
 **Typing to a far host.** What is typed goes to a host one request at
 a time, each answered before the next, so that its order is the order
 typed whatever the server does with two at once; and what was typed

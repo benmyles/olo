@@ -591,3 +591,38 @@ async fn glance_follows_requests_socket_and_agent_events() -> Result {
     assert!(timeout(Duration::from_secs(2), child.wait()).await??.success());
     Ok(())
 }
+
+/// What a program copies by OSC 52 is told to the clients: with its
+/// text where it is short, by its number and size alone where it is
+/// long, to be read a piece at a time (the app does: hub.rs,
+/// `clipboard_written`).
+#[tokio::test]
+async fn what_a_program_copies_is_told_short_and_read_long() -> Result {
+    let Some(server) = Scratch::start().await? else { return Ok(()) };
+    let (ctrl, mut events) = server.connect().await?;
+    let (sid, _, bid) = server.session(&ctrl, "clip").await?;
+    ctrl.session_bootstrap("all", Some(&sid), None, &[]).await?;
+    for len in [15usize, 300_003] {
+        // (Base64 of so many "a": "YWFh" for every three.)
+        ctrl.terminal_write(&sid, &bid, &format!("printf '\\033]52;c;%s\\a' {}\n", "YWFh".repeat(len / 3))).await?;
+        let ControlEvent::BlockEvent { payload, .. } = event(&mut events, |e| matches!(e, ControlEvent::BlockEvent { name, .. } if name == "clipboard_written")).await? else { unreachable!() };
+        assert_eq!(payload["bytes"].as_u64(), Some(len as u64), "{payload}");
+        let id = payload["id"].as_u64().expect("its number");
+        let mut text = String::new();
+        loop {
+            let piece = ctrl.terminal_clipboard_read(&sid, &bid, Some(id), text.len()).await?.payload;
+            assert_eq!((piece.id, piece.total), (id, len));
+            text.push_str(&piece.data);
+            if piece.eof {
+                break;
+            }
+            assert!(!piece.data.is_empty());
+        }
+        assert!(text.len() == len && text.bytes().all(|b| b == b'a'));
+        match payload.get("text").and_then(|t| t.as_str()) {
+            Some(said) => assert_eq!(said, text, "what is short comes with the word of it"),
+            None => assert!(len > 4096, "only what is long comes without its text: {len}"),
+        }
+    }
+    Ok(())
+}

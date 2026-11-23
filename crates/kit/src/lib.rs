@@ -57,6 +57,7 @@ pub mod spotlight;
 pub mod style;
 pub mod theme;
 pub mod tip;
+pub mod underline;
 pub mod undo;
 mod upgrade;
 pub mod when;

@@ -739,6 +739,65 @@ impl GhosttyTerminal {
         (res == ffi::GHOSTTY_SUCCESS).then_some(next_ms)
     }
 
+    /// Viewport row `row` cell by cell: a character for each column
+    /// (the first of a cell's cluster; a space for an empty cell;
+    /// `'\0'` for the second half of a wide character), and whether the
+    /// row is wrapped onto the next (one line of the program's, over two
+    /// rows). For what is looked for across rows by its place on each:
+    /// a link under the pointer.
+    pub fn viewport_row_cells(&self, row: u32) -> (Vec<char>, bool) {
+        let _access = self.lock();
+        let (cols, rows) = self.size_locked();
+        if row >= rows as u32 {
+            return (Vec::new(), false);
+        }
+        let mut out = Vec::with_capacity(cols as usize);
+        let mut wrap = false;
+        for col in 0..cols {
+            let mut pt = ffi::GhosttyPoint::default();
+            pt.tag = ffi::GHOSTTY_POINT_TAG_VIEWPORT;
+            pt.value.coordinate = ffi::GhosttyPointCoordinate { x: col, y: row };
+            let mut gref = ffi::GhosttyGridRef::default();
+            // SAFETY: The VIEWPORT tag selects coordinate; the output is used only on success under this lock.
+            if unsafe { ffi::ghostty_terminal_grid_ref(self.raw(), pt, &mut gref) } != ffi::GHOSTTY_SUCCESS {
+                out.push(' ');
+                continue;
+            }
+            if col == 0 {
+                let mut raw_row: ffi::GhosttyRow = 0;
+                // SAFETY: The grid reference is current; the row getter writes one bool.
+                unsafe {
+                    if ffi::ghostty_grid_ref_row(&gref, &mut raw_row) == ffi::GHOSTTY_SUCCESS {
+                        let _ = ffi::ghostty_row_get(raw_row, ffi::GHOSTTY_ROW_DATA_WRAP, ptr::from_mut(&mut wrap).cast());
+                    }
+                }
+            }
+            let mut raw_cell: ffi::GhosttyCell = 0;
+            let mut wide = ffi::GHOSTTY_CELL_WIDE_NARROW;
+            // SAFETY: The grid reference is current; the cell getter writes the width enum.
+            let tail = unsafe {
+                ffi::ghostty_grid_ref_cell(&gref, &mut raw_cell) == ffi::GHOSTTY_SUCCESS
+                    && ffi::ghostty_cell_get(raw_cell, ffi::GHOSTTY_CELL_DATA_WIDE, ptr::from_mut(&mut wide).cast()) == ffi::GHOSTTY_SUCCESS
+                    && wide == ffi::GHOSTTY_CELL_WIDE_SPACER_TAIL
+            };
+            if tail {
+                out.push('\0');
+                continue;
+            }
+            let mut cp = [0u32; 8];
+            let mut written = 0usize;
+            // SAFETY: The grid reference remains current; the destination has the supplied number of uint32_t entries.
+            let res = unsafe { ffi::ghostty_grid_ref_graphemes(&gref, cp.as_mut_ptr(), cp.len(), &mut written) };
+            out.push(match res {
+                ffi::GHOSTTY_SUCCESS if written > 0 && written <= cp.len() => char::from_u32(cp[0]).filter(|c| *c != '\0').unwrap_or(' '),
+                // (A cluster too long to take: something is there.)
+                ffi::GHOSTTY_OUT_OF_SPACE => '\u{FFFD}',
+                _ => ' ',
+            });
+        }
+        (out, wrap)
+    }
+
     /// Extract visible plain text of viewport row `row` (0-indexed from top of viewport).
     pub fn viewport_row_text(&self, row: u32) -> String {
         let _access = self.lock();

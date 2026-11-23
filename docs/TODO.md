@@ -1289,6 +1289,29 @@ something nobody here has is in "Blocked", with what it waits for.
     too, with the latency, and without root or a network interface on
     either end. Olo's VPNs (Preferences ▸ Network) and Rex's Tailscale
     stay what they are for: reaching a host and what is on it.
+  - *Terminal's links underlined as Rex's are now* (`olo_kit::
+    underline`: thin, close under the baseline, round the letters'
+    tails; its own line is two pixels thick and through them, which
+    both design reviews found of Rex's), and for both a pressed look
+    while the button is down on a link (Opus: the line in the text's
+    own colour until it is let go).
+  - *The mouse for programs that ask for it.* Rex's panes give no
+    program the mouse (a click selects, the wheel scrolls back,
+    whatever mode the program set: found while making links open,
+    2026-11-23): vim's and htop's clicks, a TUI's own scrolling
+    (Claude Code, Codex, agy all take the wheel) don't reach them.
+    Terminal does it (`view.rs`, its `Mouse`); the terminal engine
+    encodes (rex-vt `input.rs`). With Shift, the pane's own selection,
+    as everywhere.
+  - *What a host has of Olo's, as lights in the status bar* (Ben,
+    2026-11-23: "also make the typing helper status as well as status
+    of olo bridge and skills little icons in the status bar that are
+    either in an on or off state not the weird popover"). Next, after
+    the links. For the host of the pane typed into: the typing helper,
+    Olo's bridge and the skills for agents, each a small icon that is
+    on or off (with its name for a tip and for agents), at the status
+    bar's far end; the host's tip in the sidebar back to "Connected".
+    A new thing on screen: to both reviewers early.
   - *An account set up on a new host, and the bridge through the Token
     Pool* (Ben, 2026-11-22: "let's make sure that the olo bridge
     supports token pool and have a way in the rex app where i can have

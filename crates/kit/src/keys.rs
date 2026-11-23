@@ -6,6 +6,16 @@
 use olo_interface::Keystroke;
 pub use olo_kit_base::keys::{Shortcut, profile, shortcut};
 
+/// Whether the key that opens a link is held, for a click in a
+/// terminal (where Ctrl is the program's): the command key (⌘, Super)
+/// where the keyboard's profile has one, which app_server sends as the
+/// right Ctrl; Ctrl where the profile has none; and Super itself where
+/// that reaches the app. (A terminal that asked only for Super never
+/// heard it: Rex's links, 2026-11-23.)
+pub fn opens_links(m: &olo_interface::Modifiers) -> bool {
+    m.platform || (m.control && (olo_interface::right_control_held() || !olo_kit_base::keys::command_key()))
+}
+
 /// The keys shortcuts name, by their evdev codes.
 const KEYS: &[(u32, &str)] = &[
     (30, "a"),

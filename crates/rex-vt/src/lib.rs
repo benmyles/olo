@@ -136,6 +136,20 @@ mod tests {
     }
 
     #[test]
+    fn a_row_is_read_cell_by_cell_with_its_wrap() {
+        let mut t = GhosttyTerminal::new(10, 4).unwrap();
+        t.vt_write("abcdefghijKL\r\n日x".as_bytes());
+        let (first, wraps) = t.viewport_row_cells(0);
+        assert_eq!((first.iter().collect::<String>().as_str(), wraps), ("abcdefghij", true));
+        let (second, wraps) = t.viewport_row_cells(1);
+        assert_eq!((second.iter().collect::<String>().as_str(), wraps), ("KL        ", false));
+        // A wide character takes two columns: itself, and nothing.
+        let (third, _) = t.viewport_row_cells(2);
+        assert_eq!(&third[..4], &['日', '\0', 'x', ' ']);
+        assert_eq!(t.viewport_row_cells(9), (Vec::new(), false));
+    }
+
+    #[test]
     fn paste_safety_and_encoding() {
         assert!(paste_is_safe("hello world"));
         assert!(!paste_is_safe("rm -rf /\n"));

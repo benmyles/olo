@@ -814,6 +814,12 @@ pub fn session_tab_names(st: &HubState, host_key: &str, sess: &olo_rex_client::S
     tab_names(&tabs)
 }
 
+/// The most a program in a terminal may copy at once (OSC 52), and how
+/// many such copies there have been (a long one, read in pieces, isn't
+/// put over one made since).
+const CLIPBOARD_MOST: u64 = 8 << 20;
+static CLIPBOARD_WRITES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// How long the sending of Olo's helper to a host is waited for before
 /// the host's first connection is made without it.
 const HELPER_FIRST: Duration = Duration::from_secs(8);
@@ -2693,11 +2699,6 @@ impl RexHubInner {
             }
         });
     }
-    fn clipboard_allowed(&self, host: &str) -> bool {
-        let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        st.hosts.get(host).is_some_and(|h| st.settings.policy_for_host(host, h.is_local).allow_remote_control)
-    }
-
     async fn ensure_ephemeral_forward(&self, host_key: &str, session_id: &str, remote_host: &str, remote_port: u16) -> Result<u16, String> {
         let (ctrl, ep) = {
             let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -3528,9 +3529,45 @@ impl RexHubInner {
             }
             ControlEvent::BlockEvent { session_id, block_id, name, payload, .. } => {
                 if name == "clipboard_written" {
-                    let permitted = self.clipboard_allowed(host_key);
-                    if permitted && let Some(text) = payload.get("text").and_then(Value::as_str) {
+                    // A program in the terminal copied something (OSC 52):
+                    // it is copied here, on this computer or a far host, as
+                    // in Terminal (Ben, 2026-11-23: "make sure osc 52 for
+                    // copy/paste etc works for the remote rex terminals").
+                    // It was dropped for every host not granted the
+                    // clipboard, which a host isn't until the person says
+                    // so: that grant is for what the host's programs ask
+                    // of the bridge (to read the clipboard too), not for
+                    // what a terminal the person works in copies.
+                    //
+                    // The server gives the text with its word where it is
+                    // short, and only its number and size where it is long
+                    // (over some kilobytes: measured, a copy of 300 kB came
+                    // as `{"id":2,"bytes":300003}`, and nothing was copied):
+                    // then it is read, a piece at a time.
+                    let stamp = CLIPBOARD_WRITES.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                    if let Some(text) = payload.get("text").and_then(Value::as_str) {
                         (self.notify)(HubNotice::SetClipboard(text.to_owned()));
+                    } else if let Some(id) = payload.get("id").and_then(Value::as_u64)
+                        && payload.get("bytes").and_then(Value::as_u64).is_some_and(|bytes| bytes <= CLIPBOARD_MOST)
+                    {
+                        let (ctrl, notify) = (ctrl.clone(), self.notify.clone());
+                        tokio::spawn(async move {
+                            let mut text = String::new();
+                            loop {
+                                let Ok(piece) = ctrl.terminal_clipboard_read(&session_id, &block_id, Some(id), text.len()).await else { return };
+                                text.push_str(&piece.payload.data);
+                                if piece.payload.eof {
+                                    break;
+                                }
+                                if piece.payload.data.is_empty() || text.len() as u64 > CLIPBOARD_MOST {
+                                    return;
+                                }
+                            }
+                            // (Not over something copied since.)
+                            if CLIPBOARD_WRITES.load(std::sync::atomic::Ordering::Relaxed) == stamp {
+                                notify(HubNotice::SetClipboard(text));
+                            }
+                        });
                     }
                     return;
                 }

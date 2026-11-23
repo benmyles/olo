@@ -4280,6 +4280,63 @@ fn render_layout_node(
     div().size_full()
 }
 
+/// The link under `at` in a pane (the pointer, where the key that
+/// opens a link is held; `None`: no link is looked for), kept for the
+/// pane to underline ([`PaneVisualState::hover`]). Whether it changed.
+/// The rows around the pointer are read from the terminal only when
+/// the pointer is over another cell than last time.
+fn link_hover(br: &Arc<Mutex<crate::hub::BlockRuntime>>, vis: &PaneVisualState, metrics: &Metrics, pad: (f32, f32), at: Option<Point<Pixels>>) -> bool {
+    /// How many rows above and below the pointer a link may reach.
+    const AROUND: u32 = 24;
+    let found = at.and_then(|at| {
+        let (col, row) = metrics.cell_at(vis.bounds.get(), pad, at, vis.shift.get());
+        // (Still on the link it was on: nothing to look for.)
+        if let Some(hover) = vis.hover.borrow().as_ref()
+            && hover.cells.contains(&(u32::from(row), col))
+        {
+            return Some(hover.clone());
+        }
+        let g = br.lock().unwrap_or_else(|e| e.into_inner());
+        let (_, count) = g.terminal.size();
+        let row = u32::from(row);
+        let top = row.saturating_sub(AROUND);
+        let bottom = (row + AROUND).min(u32::from(count).saturating_sub(1));
+        let rows: Vec<(Vec<char>, bool)> = (top..=bottom).map(|r| g.terminal.viewport_row_cells(r)).collect();
+        let osc8 = |r: usize, c: usize| g.terminal.hyperlink_at_viewport(c as u16, top + r as u32);
+        links::hover(&rows, (row - top) as usize, usize::from(col), &osc8).map(|mut hover| {
+            hover.cells.iter_mut().for_each(|cell| cell.0 += top);
+            hover
+        })
+    });
+    let mut kept = vis.hover.borrow_mut();
+    let changed = *kept != found;
+    *kept = found;
+    changed
+}
+
+/// Where a link goes, said in a tip under it where its text doesn't
+/// say (an address a program named for some words, OSC 8: any program
+/// on a far host can name any address for any words): as the pointer
+/// rests on it with the key held, and gone with the underline.
+fn link_tip(cx: &mut olo_kit::WindowCx, vis: &PaneVisualState, metrics: &Metrics, pad: (f32, f32)) {
+    const KEY: &str = "rex-link-goes";
+    let hover = vis.hover.borrow();
+    let Some((hover, address)) = hover.as_ref().filter(|h| h.named).and_then(|h| match &h.target {
+        LinkTarget::Url(address) => Some((h, address.clone())),
+        LinkTarget::FilePath { .. } => None,
+    }) else {
+        olo_kit::tip::hover(cx, KEY, "", Bounds::default(), false);
+        return;
+    };
+    // (Under its first row's cells.)
+    let (row, from) = hover.cells[0];
+    let to = hover.cells.iter().take_while(|cell| cell.0 == row).last().map_or(from, |cell| cell.1);
+    let rect = vis.bounds.get();
+    let (x, y) = (f32::from(rect.left()) + pad.0 + f32::from(from) * metrics.cell.0, f32::from(rect.top()) + pad.1 + vis.shift.get() + row as f32 * metrics.cell.1);
+    let anchor = Bounds::new(point(px(x), px(y)), size(px(f32::from(to - from + 1) * metrics.cell.0), px(metrics.cell.1)));
+    olo_kit::tip::hover(cx, KEY, address, anchor, true);
+}
+
 #[allow(clippy::too_many_arguments)]
 fn render_single_pane(
     bk: BlockKey,
@@ -4515,6 +4572,10 @@ fn render_single_pane(
     let pane_m1 = cx.messenger();
     let pane_m2 = cx.messenger();
     let pane_m3 = cx.messenger();
+    let (pane_m4, pane_m5, pane_m6) = (cx.messenger(), cx.messenger(), cx.messenger());
+    let (br_hover, vis_hover, metrics_hover) = (br.clone(), visual.clone(), metrics.clone());
+    let (br_keys, vis_keys, metrics_keys) = (br.clone(), visual.clone(), metrics.clone());
+    let (vis_left, metrics_left) = (visual.clone(), metrics.clone());
 
     let hub_paint = hub.clone();
     let screen_canvas = canvas(move |g, rect| {
@@ -4553,6 +4614,7 @@ fn render_single_pane(
         // What was typed here and is drawn ahead of the host's echo
         // (over a slow link): shown this frame, it says what to draw
         // over it, and when it next waits on time for something.
+        let hover = vis_paint.hover.borrow().clone();
         let (predicted, wake) = br_ref.predicted(now);
         if let Some(at) = wake {
             hub_paint.wake_predictions(&br_paint, br_ref, &bk_paint, at);
@@ -4569,31 +4631,57 @@ fn render_single_pane(
                 window_active: true,
                 copy_mode: copy_mode.as_ref(),
                 search_matches: &search_matches,
-                hover_link: None,
+                hover_link: hover.as_ref(),
                 preedit: None,
                 predicted: predicted.as_ref(),
             },
             &vis_paint,
         );
+        // (A hand over a link while the key that opens it is held.)
+        g.set_cursor_style(if hover.is_some() { CursorStyle::PointingHand } else { CursorStyle::IBeam }, rect);
 
         g.agent(agent::Node { role: "Terminal", name: Some(said_paint.clone().into()), bounds: rect, focused, enabled: true, clickable: false, ..Default::default() });
     })
     .size_full()
-    .cursor(CursorStyle::IBeam)
+    // The link under the pointer, while the key that opens one is held
+    // (and not otherwise: a pointer moving over a terminal costs
+    // nothing): as the pointer moves, as the key goes down or up under
+    // it, and none once the pointer has left.
+    .on_mouse_move(move |e: &MouseMoveEvent, cx| {
+        vis_hover.pointer.set(Some(e.position));
+        if link_hover(&br_hover, &vis_hover, &metrics_hover, pad, olo_kit::keys::opens_links(&e.modifiers).then_some(e.position)) {
+            link_tip(cx, &vis_hover, &metrics_hover, pad);
+            pane_m4.send(());
+        }
+    })
+    .on_modifiers_changed(move |e: &olo_kit::ModifiersChangedEvent, cx| {
+        let at = vis_keys.pointer.get().filter(|_| olo_kit::keys::opens_links(&e.modifiers));
+        if link_hover(&br_keys, &vis_keys, &metrics_keys, pad, at) {
+            link_tip(cx, &vis_keys, &metrics_keys, pad);
+            pane_m5.send(());
+        }
+    })
+    .on_hover(move |over: &bool, cx| {
+        if !*over {
+            vis_left.pointer.set(None);
+            if vis_left.hover.borrow_mut().take().is_some() {
+                link_tip(cx, &vis_left, &metrics_left, pad);
+                pane_m6.send(());
+            }
+        }
+    })
     .on_mouse_down(MouseButton::Left, move |e: &MouseDownEvent, cx| {
         let hub = app().hub.clone();
         hub.focus_block(&bk_mouse.host_key, &bk_mouse.session_id, &bk_mouse.block_id);
         let rect = vis_mouse.bounds.get();
         let (col, row) = metrics_mouse.cell_at(rect, pad, e.position, vis_mouse.shift.get());
 
-        // ⌘-Click opens OSC 8 hyperlink / URL / file path (auto-forwarding remote localhost!).
-        if e.modifiers.platform {
-            let target = {
-                let g = br_mouse.lock().unwrap_or_else(|e| e.into_inner());
-                let osc8 = g.terminal.hyperlink_at_viewport(col, row as u32);
-                let line = g.terminal.viewport_row_text(row as u32);
-                links::link_at(&line, row as u32, col, osc8).map(|d| d.target)
-            };
+        // A click with the command key opens the link under it: an
+        // address a program named (OSC 8), one in the text, a path on
+        // the host (an address of the host's own is forwarded here).
+        if olo_kit::keys::opens_links(&e.modifiers) {
+            link_hover(&br_mouse, &vis_mouse, &metrics_mouse, pad, Some(e.position));
+            let target = vis_mouse.hover.borrow().as_ref().map(|h| h.target.clone());
             if let Some(t) = target {
                 match t {
                     LinkTarget::Url(u) => app().hub.open_link_from_pane(&bk_mouse, u, Feedback::start(win_id)),

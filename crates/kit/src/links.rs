@@ -316,6 +316,88 @@ fn north_american(s: &str) -> Option<(String, usize)> {
     Some((digits, i + 5))
 }
 
+/// How near the right edge a piece of a broken word ends: a program
+/// wrapping its own text (Claude Code) may keep a column or two free.
+const EDGE: usize = 4;
+/// How far in the rest of a broken word may start (its text's indent).
+const INDENT: usize = 8;
+/// How many rows a broken word may cover.
+const PIECES: usize = 24;
+
+/// A word a program broke over rows itself, put together again (for a
+/// terminal's links: a long address at the edge of a program's text,
+/// the rest of it on the next rows, as Claude Code writes them).
+///
+/// The word at column `col` of row `row`, with the rest of it a program
+/// broke over the rows around (`rows`, each a terminal row's characters,
+/// `cols` wide): a piece ends at its row's last character, within
+/// [`EDGE`] of the right, and the next is the first word of the next row,
+/// indented at most [`INDENT`]. The pieces joined, where the click is in
+/// that, and each character's (row, column). None unless there are two or
+/// more pieces.
+pub fn broken(rows: &[Vec<char>], row: usize, col: usize, cols: usize) -> Option<(String, usize, Vec<(usize, usize)>)> {
+    let blank = |c: char| c == ' ' || c == '\0';
+    let line = rows.get(row)?;
+    if line.get(col).is_none_or(|c| blank(*c)) {
+        return None;
+    }
+    let first = |r: &Vec<char>| r.iter().position(|c| !blank(*c));
+    let end = |r: &Vec<char>| r.iter().rposition(|c| !blank(*c)).map(|i| i + 1);
+    let word = |r: &Vec<char>, at: usize| {
+        let s = (0..=at).rev().take_while(|&i| !blank(r[i])).last().unwrap_or(at);
+        let e = (at..r.len()).take_while(|&i| !blank(r[i])).last().map_or(at, |i| i + 1);
+        (s, e)
+    };
+    // Box drawing (a TUI's frames, Claude Code's ⎿) is never part of one.
+    let plain = |r: &Vec<char>, (s, e): (usize, usize)| r[s..e].iter().all(|c| !('\u{2500}'..='\u{257f}').contains(c) && *c != '⎿' && *c != '⏺');
+    let reaches = |r: &Vec<char>, e: usize| end(r) == Some(e) && e + EDGE >= cols;
+    let mut pieces = vec![(row, word(line, col))];
+    // Back: the clicked word starts its row, and the row before ends on a word.
+    while pieces.len() < PIECES {
+        let (r, (s, _)) = pieces[0];
+        if r == 0 || first(&rows[r]) != Some(s) || s > INDENT {
+            break;
+        }
+        let prev = &rows[r - 1];
+        let Some(e) = end(prev).filter(|&e| reaches(prev, e)) else { break };
+        let w = word(prev, e - 1);
+        if !plain(prev, w) {
+            break;
+        }
+        pieces.insert(0, (r - 1, w));
+    }
+    // On: this piece ends its row at the edge, and the next row starts with a word.
+    while pieces.len() < PIECES {
+        let &(r, (_, e)) = pieces.last().unwrap();
+        let Some(next) = rows.get(r + 1) else { break };
+        let Some(s) = first(next).filter(|&s| s <= INDENT) else { break };
+        if !reaches(&rows[r], e) {
+            break;
+        }
+        let w = word(next, s);
+        if !plain(next, w) {
+            break;
+        }
+        pieces.push((r + 1, w));
+    }
+    if pieces.len() < 2 || !pieces.iter().all(|&(r, w)| plain(&rows[r], w)) {
+        return None;
+    }
+    let mut text = String::new();
+    let mut cells = Vec::new();
+    let mut at = 0;
+    for &(r, (s, e)) in &pieces {
+        if r == row {
+            at = cells.len() + (col - s);
+        }
+        for c in s..e {
+            text.push(rows[r][c]);
+            cells.push((r, c));
+        }
+    }
+    Some((text, at, cells))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -420,5 +502,35 @@ mod tests {
         }
         let each = t.elapsed() / n;
         println!("{} bytes, {} links: {each:?} each", page.len(), links / n as usize);
+    }
+
+    /// Rows of `cols` columns, as a terminal shows them.
+    fn screen(lines: &[&str], cols: usize) -> Vec<Vec<char>> {
+        lines.iter().map(|l| l.chars().chain(std::iter::repeat(' ')).take(cols).collect()).collect()
+    }
+
+    #[test]
+    fn a_word_a_program_broke_over_rows_is_put_together() {
+        // Claude Code's way: a long URL at its text's edge, the rest
+        // indented on the next rows.
+        let rows = screen(&["⏺ See https://github.com/anthropics/claude-", "  code/issues/1234?q=a and more.", "  next"], 44);
+        let (text, at, cells) = broken(&rows, 0, 10, 44).unwrap();
+        assert_eq!(text, "https://github.com/anthropics/claude-code/issues/1234?q=a");
+        assert_eq!(at, 4);
+        assert_eq!(cells[0], (0, 6));
+        assert_eq!(*cells.last().unwrap(), (1, 21));
+        // From the second piece too.
+        let (text, at, _) = broken(&rows, 1, 4, 44).unwrap();
+        assert_eq!(text, "https://github.com/anthropics/claude-code/issues/1234?q=a");
+        assert_eq!(at, 39);
+        // (And it is a link, whole.)
+        let found = find(&text);
+        assert_eq!((found.len(), found[0].range.clone(), found[0].target.as_str()), (1, 0..text.len(), text.as_str()));
+        // A row that ends short of the edge isn't broken.
+        let rows = screen(&["see https://x.org/a", "  next row"], 44);
+        assert!(broken(&rows, 0, 6, 44).is_none());
+        // Nor across a frame.
+        let rows = screen(&["│ https://example.com/aaaaaaaaaaaaaaaaaa │", "│ bbb                                   │"], 42);
+        assert!(broken(&rows, 0, 4, 42).is_none());
     }
 }
