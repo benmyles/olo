@@ -1250,9 +1250,28 @@ something nobody here has is in "Blocked", with what it waits for.
         of is asked what it is first (`uname`, a channel and a
         command: two more). To be counted on the rig's far link, and
         what can go together sent together.
-    - *A flood that doesn't hold the link*: hidden panes paused at the
-      host, a flooding one caught up from the screen's state once it
-      stops (not its every line), big chunks packed.
+    - *A flood that doesn't hold the link*: the link is no longer held
+      (2026-11-23; HACKING, "A flood that doesn't hold the link": the
+      SSH window follows the link's rate, and a request beside a flood
+      waits 0.1 to 0.5 s where it waited 6 s, or 40 and more). Left:
+      - *The pane itself catches up.* The server sends a slow reader
+        everything written, so a pane goes on scrolling a flood that
+        is long over (minutes, on a narrow link). When the host says
+        the shell is at its prompt again (the helper's word, or
+        asked) and the stream still floods a moment later, the
+        terminal is given a new stream in place of the old (its first
+        screen is the present: 215 kB packed after a long flood,
+        against megabytes), not while the person has scrolled back,
+        and backing off where output goes on with the shell at its
+        prompt (a job in the background).
+      - *A flood that goes on* (a build's log on a link too narrow for
+        it) falls further and further behind; a new stream now and
+        then would show the present, each at the cost of a first
+        screen. And panes nobody sees could have no stream at all
+        until they are looked at.
+      - A first screen without its scrollback, or the present screen
+        by itself, would make catching up cost a kilobyte: Rex's to
+        offer (`data.connect`, `terminal.format`).
     - *Fewer bytes on a slow link*: done (2026-11-23; HACKING, "Fewer
       bytes to a far host"): a far host's SSH connection is packed,
       and what Rex sends goes under a WebSocket mask of nothing so

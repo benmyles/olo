@@ -607,3 +607,70 @@ fn connecting_is_timed() {
         measured.expect("measured");
     });
 }
+
+/// A flood on a narrow link, and a request beside it: a terminal on
+/// the host writes three million lines, its stream is read as it comes
+/// (as the app reads it), and once a second a small request is made on
+/// the control connection and timed. How long the request waits behind
+/// the flood is how long anything else on the connection does (another
+/// terminal, a key's answer, the word that a command has ended).
+/// `OLO_REX_SSH_WINDOW`: how much the host may send on a channel
+/// before it is told to go on (russh's own: 2 MiB). The session is
+/// ended.
+#[test]
+#[ignore = "needs a real host: OLO_REX_TEST_HOST"]
+fn a_request_beside_a_flood_is_timed() {
+    use olo_rex_client::{ClientIdentity, ControlClient, DATA_TERMINAL_SUBPROTOCOL, RexEndpoint, TerminalDataStream, TerminalStreamFrame};
+    use std::time::{Duration, Instant};
+    let address = std::env::var("OLO_REX_TEST_HOST").expect("OLO_REX_TEST_HOST=ssh://USER@HOST");
+    block(async move {
+        let endpoint = RexEndpoint::parse(&address, Arc::new(SshSessionPool::default()), Some(Arc::new(Nobody))).expect("an address");
+        let (stream, host) = endpoint.connect_control_stream().await.expect("the host's Rex server is reached");
+        let (ctrl, _events) = ControlClient::connect(stream, &host, ClientIdentity::olo_rex(None), None).await.expect("a control connection");
+        for left in ctrl.session_list().await.expect("the sessions").payload.into_iter().filter(|s| s.label == "olo-flood-test") {
+            let _ = ctrl.session_destroy(&left.session_id).await;
+        }
+        let created = ctrl.session_create(Some("olo-flood-test"), Some(serde_json::json!({"command": ["bash", "--norc", "-i"]}))).await.expect("a session");
+        let sid = created.payload["session_id"].as_str().unwrap().to_owned();
+        let bid = created.payload["initial_windows"][0]["block_ids"][0].as_str().unwrap().to_owned();
+        let (endpoint, ctrl_measured, sid_measured) = (endpoint.clone(), ctrl.clone(), sid.clone());
+        let measured = tokio::spawn(async move {
+            let (ctrl, sid) = (ctrl_measured, sid_measured);
+            ctrl.session_bootstrap("all", Some(&sid), None, &[]).await.unwrap();
+            let ticket = ctrl.data_connect(&sid, &bid, "terminal", DATA_TERMINAL_SUBPROTOCOL).await.unwrap().payload.ticket;
+            let (stream, host) = endpoint.connect_stream().await.unwrap();
+            let mut terminal = TerminalDataStream::connect_hello(stream, &host, &ticket).await.unwrap();
+            let got = Arc::new(std::sync::atomic::AtomicU64::new(0));
+            let counted = got.clone();
+            let reader = tokio::spawn(async move {
+                while let Ok(TerminalStreamFrame::Bytes(chunk)) = terminal.next_frame().await {
+                    counted.fetch_add(chunk.len() as u64, std::sync::atomic::Ordering::Relaxed);
+                }
+            });
+            tokio::time::sleep(Duration::from_millis(800)).await;
+            let quiet = Instant::now();
+            ctrl.server_version().await.unwrap();
+            let quiet = quiet.elapsed();
+            ctrl.terminal_write(&sid, &bid, "seq 3000000\n").await.unwrap();
+            let began = Instant::now();
+            let mut waits = Vec::new();
+            for _ in 0..12 {
+                tokio::time::sleep(Duration::from_millis(1000)).await;
+                let at = Instant::now();
+                let answered = tokio::time::timeout(Duration::from_secs(40), ctrl.server_version()).await;
+                waits.push(if answered.is_ok() { at.elapsed().as_millis().to_string() } else { "more than 40000".to_owned() });
+            }
+            println!(
+                "a request beside nothing: {} ms; beside the flood, one a second: {} ms; the stream had brought {} kB in {:.0} s",
+                quiet.as_millis(),
+                waits.join(", "),
+                got.load(std::sync::atomic::Ordering::Relaxed) / 1000,
+                began.elapsed().as_secs_f64()
+            );
+            reader.abort();
+        });
+        let measured = measured.await;
+        let _ = ctrl.session_destroy(&sid).await;
+        measured.expect("measured");
+    });
+}

@@ -81,6 +81,7 @@ path = "smithay/smithay-drm-extras"
 blade-graphics = { path = "vendor/blade-graphics" }
 matroska-demuxer = { path = "vendor/matroska-demuxer" }
 blocking = { path = "vendor/blocking" }
+russh = { path = "vendor/russh" }
 hayro = { path = "vendor/hayro" }
 brush-interactive = { path = "vendor/brush-interactive" }
 rust_h265 = { path = "vendor/rust_h265" }

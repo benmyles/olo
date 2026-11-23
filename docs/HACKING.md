@@ -27782,6 +27782,72 @@ in, each packet flushed as it is sent, so nothing waits to be packed).
   (`far.bytes()`). Without `far_delay` the app reaches the SSH server
   straight, as before.
 
+**A flood that doesn't hold the link** (2026-11-23; `ssh::
+next_window`, the handler's `adjust_window`). Everything between Rex
+and a far host shares one SSH connection, and SSH lets a host send a
+channel's *window* of bytes before it must be told to go on (russh's:
+2 MiB). What it has been let send is on its way whatever happens
+next, and on a narrow link everything else waits behind it: another
+terminal's bytes, a key's answer, the helper's word that a command is
+over.
+- *Measured* (the rig's far host behind a link that carries so many
+  bytes a second and no more, `FarHost(rate=…)`; a terminal there
+  writes three million lines and a small request is made beside it
+  once a second: the client's `tests/host.rs`,
+  `a_request_beside_a_flood_is_timed`; 103 to 115 ms beside nothing):
+  with the window as it was, more than 40 s for each request at
+  30,000 bytes a second, 6.2 s at 300,000, 1.3 s at 1.4 million;
+  with the window fixed at 64 kB, 1.2 to 1.8 s at 30,000, and at 16
+  kB 0.1 to 0.5 s. The wait is the window over the link's rate.
+- *So the window follows the link* (`next_window`): what the link
+  brings in a quarter of a second, or in three round trips where that
+  is longer (a window is topped up when half of it has come, so one
+  under two round trips' worth runs dry before the top-up is there,
+  and the host waits: at 300,000 bytes a second a 64 kB window
+  brought 167,000). The handler counts what comes on all channels
+  (`data`) and, at a top-up, takes the rate over a stretch of a fifth
+  of a second or two round trips (not from one top-up to the next:
+  the link's bytes are read in pieces of many packets, whose top-ups
+  come microseconds apart, and taken one by one they sent the window
+  of the 300,000 link to its most); the next window is that rate's
+  worth, no more than four times nor less than half the last, between
+  16 kB and 2 MiB. A far host's connection begins at 64 kB (far as
+  for packing: `FAR`), a near one's at russh's 2 MiB, and both follow
+  from there. The round trip is how long the TCP connection took to
+  open.
+- *With it* (the same measurement): a request beside the flood waits
+  0.1 to 0.5 s at 30,000 bytes a second once the window has come down
+  (the first two, 1.2 and 1.5 s), 0.10 to 0.30 s at 300,000, 0.13 to
+  0.31 s at 1.4 million; and the flood itself passes as fast as it
+  did (275,000 a second of the 300,000; at 1.4 million the same as
+  with 2 MiB).
+- *russh had to be patched for it* (`vendor/russh`, two lines): its
+  client asked the handler for the next window and didn't use the
+  answer.
+- *What this doesn't do*: the Rex server sends a terminal's stream
+  everything the terminal wrote, however far behind the reader is (a
+  million lines written in a second and read at 300 kB a second: all
+  7.9 MB of them, over 26 s; `live.rs`, a measurement; the program
+  itself isn't slowed: its flood took 1.1 s on the host while a link
+  of 30,000 was still carrying it 150 s later). So after a flood the
+  pane goes on scrolling what is long over. Nothing of the server's
+  gives a terminal's present screen by itself: a new stream begins
+  with screen and scrollback (1.3 kB fresh; 871 kB after 300,000
+  lines, 215 kB packed), `terminal.format` gives all of it too. What
+  the window now makes possible is noticing and catching up: the
+  word that the shell is at its prompt again arrives while the stale
+  lines still come, and the terminal can then be given a new stream
+  in place of its old one (TODO).
+- *The rig's link can be narrow* (`REX_SLOW_RATE`, `REX_SLOW_QUEUE`
+  in `slowlink.py`; `FarHost(rate=…)`, `Rig(far_rate=…)`): a rate
+  each way and a queue of 64 kB, past which nothing more is read from
+  the sender. A delay alone never showed any of this.
+  `OLO_REX_SSH_OPENED_IN_MS` tells the app how long the far host's
+  connection is taken to have opened (the rig's opens at once
+  whatever its link), so that what follows from a host being far is
+  as on a real one; `OLO_REX_SSH_WINDOW` fixes the window, for
+  measuring.
+
 **The menu bar** is Terminal's model: Rex (the kit's `app_items` with
 its two Preferences panels; what is made new; Hosts…, Remote Access…,
 Diagnostics…; Close Window, Quit), Edit, View (its last

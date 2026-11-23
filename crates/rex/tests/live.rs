@@ -593,6 +593,89 @@ async fn how_often_a_flight_leaves_a_gap_in_the_events() -> Result {
     Ok(())
 }
 
+/// A measurement: how large a terminal's first screen is (the snapshot
+/// a new stream begins with) when nothing has scrolled by, and after a
+/// flood of 300,000 lines: what catching a terminal up by a new stream
+/// costs on the wire.
+#[tokio::test]
+#[ignore]
+async fn how_large_a_terminals_snapshot_is_after_a_flood() -> Result {
+    let Some(server) = Scratch::start().await? else { return Ok(()) };
+    let (ctrl, _events) = server.connect().await?;
+    let (sid, _, bid) = server.session(&ctrl, "snapshot").await?;
+    ctrl.session_bootstrap("all", Some(&sid), None, &[]).await?;
+    let attached = |ctrl: ControlClient, sid: String, bid: String, sock: std::path::PathBuf| async move {
+        let ticket = ctrl.data_connect(&sid, &bid, "terminal", DATA_TERMINAL_SUBPROTOCOL).await?.payload.ticket;
+        let mut terminal = TerminalDataStream::connect_hello(tokio::net::UnixStream::connect(&sock).await?, "localhost", &ticket).await?;
+        let (mut bytes, at) = (0usize, std::time::Instant::now());
+        let mut all = Vec::new();
+        while let Ok(Ok(TerminalStreamFrame::Bytes(chunk))) = timeout(Duration::from_millis(400), terminal.next_frame()).await {
+            bytes += chunk.len();
+            all.extend_from_slice(&chunk);
+        }
+        // (`OLO_REX_TEST_SNAPSHOT`: a file to keep it in, to see how it packs.)
+        if let Some(file) = std::env::var_os("OLO_REX_TEST_SNAPSHOT") {
+            fs::write(file, &all)?;
+        }
+        Ok::<_, Box<dyn std::error::Error>>((bytes, at.elapsed()))
+    };
+    sleep(Duration::from_millis(800)).await;
+    let (fresh, _) = attached(ctrl.clone(), sid.clone(), bid.clone(), server.sock.clone()).await?;
+    ctrl.terminal_write(&sid, &bid, "seq 300000\n").await?;
+    sleep(Duration::from_millis(3000)).await;
+    let (flooded, took) = attached(ctrl.clone(), sid.clone(), bid.clone(), server.sock.clone()).await?;
+    eprintln!("a new stream's first screen: {fresh} bytes with nothing scrolled by; {flooded} bytes after 300,000 lines went by (read in {} ms)", took.as_millis());
+    Ok(())
+}
+
+/// A measurement: what the server does with a terminal's stream that
+/// is read slower than the terminal writes (a narrow link): a million
+/// lines written in a second, the stream read at about 300 kB a second.
+/// Whether everything written is sent all the same, a new first screen
+/// is sent in its place, or the stream is closed.
+#[tokio::test]
+#[ignore]
+async fn what_the_server_does_with_a_stream_read_slowly() -> Result {
+    let Some(server) = Scratch::start().await? else { return Ok(()) };
+    let (ctrl, _events) = server.connect().await?;
+    let (sid, _, bid) = server.session(&ctrl, "slow").await?;
+    ctrl.session_bootstrap("all", Some(&sid), None, &[]).await?;
+    let ticket = ctrl.data_connect(&sid, &bid, "terminal", DATA_TERMINAL_SUBPROTOCOL).await?.payload.ticket;
+    let mut terminal = TerminalDataStream::connect_hello(tokio::net::UnixStream::connect(&server.sock).await?, "localhost", &ticket).await?;
+    sleep(Duration::from_millis(500)).await;
+    ctrl.terminal_write(&sid, &bid, "seq 1000000\n").await?;
+    let began = std::time::Instant::now();
+    let (mut bytes, mut frames, mut snapshots, mut largest, mut ended) = (0usize, 0usize, 0usize, 0usize, "went quiet");
+    loop {
+        match timeout(Duration::from_secs(3), terminal.next_frame()).await {
+            Ok(Ok(TerminalStreamFrame::Bytes(chunk))) => {
+                bytes += chunk.len();
+                frames += 1;
+                largest = largest.max(chunk.len());
+                snapshots += chunk.windows(8).filter(|w| w == b"GHOSTSNP").count();
+                // (About 300 kB a second.)
+                sleep(Duration::from_micros(chunk.len() as u64 * 1_000_000 / 300_000)).await;
+            }
+            Ok(Ok(TerminalStreamFrame::Closed { code, .. })) => {
+                eprintln!("closed with {code}");
+                ended = "was closed";
+                break;
+            }
+            Ok(Err(e)) => {
+                eprintln!("failed: {e}");
+                ended = "failed";
+                break;
+            }
+            Err(_) => break,
+        }
+    }
+    eprintln!(
+        "a million lines (6,888,896 bytes) written in a second, read at 300 kB a second: {bytes} bytes came in {frames} frames (the largest {largest}) over {:.1} s, {snapshots} first screens among them, and the stream {ended}",
+        began.elapsed().as_secs_f64() - 3.0
+    );
+    Ok(())
+}
+
 #[tokio::test]
 #[ignore]
 async fn what_the_server_says_as_a_command_runs_is_timed() -> Result {

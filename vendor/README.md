@@ -12,6 +12,23 @@ in the workspace `Cargo.toml`. Drop each one once upstream has the fix.
   patch (`Executor::main_loop` in `src/lib.rs`) stops a thread that is
   over the limit *or* has had nothing to do for half a second, as its
   comment says it should.
+- **russh 0.65.1** (Apache-2.0), the SSH client Rex reaches hosts
+  with: its client asks its handler what a channel's window should be
+  next (`client::Handler::adjust_window`) and then tops the channel up
+  to the configuration's window all the same, so the answer changed
+  nothing (its server side uses the answer). The window is how much a
+  host may send before it is told to go on, and on a narrow link what
+  it has been let send holds up everything else on the connection:
+  beside a flood at 300,000 bytes a second a small request waited 6.2
+  s behind russh's 2 MiB, and waits 0.1 to 0.3 s behind a window that
+  follows the link (HACKING, Rex, "A flood that doesn't hold the
+  link"). The patch (`src/client/encrypted.rs`, two places marked
+  "Olo:"): the top-up goes to the window the handler last asked for.
+  Its tests, benches and examples are left out, and its manifest's
+  entries for them; one lint is allowed there (a variable unused
+  without the crate's `rsa` feature, which a crate of the registry
+  doesn't say). Drop it once upstream's client uses the handler's
+  answer.
 - **hayro 0.8.0** (Apache-2.0 OR MIT), the PDF renderer (Viewer, Quick
   Look, thumbnails): a picture drawn smaller than it is came out with a
   column and a row of it missing somewhere across, and softer than other

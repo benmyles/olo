@@ -25,7 +25,7 @@ PROGRAMS = {
 }
 
 class Rig:
-    def __init__(self, program="shell", delay=300, jitter=0, stall=(0, 0), name="rexslow", size="2560x1600", scale=None, type_ahead=True, bin=None, look=None, release=False, helper=False, far=False, grants=None, settings=None, far_delay=None, env=None):
+    def __init__(self, program="shell", delay=300, jitter=0, stall=(0, 0), name="rexslow", size="2560x1600", scale=None, type_ahead=True, bin=None, look=None, release=False, helper=False, far=False, grants=None, settings=None, far_delay=None, far_rate=None, env=None):
         self.program, self.delay, self.jitter, self.stall, self.name, self.size, self.scale = program, delay, jitter, stall, name, size, scale
         self.type_ahead, self.look = type_ahead, look
         self.bin = bin or f"{R3}/target/{'release' if release else 'debug'}/olo-rex"
@@ -37,7 +37,8 @@ class Rig:
         # per-host permissions, as its settings file held them: {"allow_open_url": True, …}).
         # `far_delay`: the far host's own link, each way in ms (farhost.py's, which also counts the bytes that
         # pass: `r.far.bytes()`); none, and the app reaches its SSH server straight.
-        self.far, self.grants, self.far_delay = (far, grants, far_delay)
+        # `far_rate`: and that link carries no more than so many bytes a second each way.
+        self.far, self.grants, self.far_delay, self.far_rate = (far, grants, far_delay, far_rate)
         # More for the app's own environment (NAME=value strings, as `tsession run` takes them).
         self.env = env or []
         # More of the app's own settings (its rex.json), over the rig's: {"host_helper": False}.
@@ -103,7 +104,7 @@ class Rig:
         agent = ""
         if self.far:
             from farhost import FarHost
-            self.far = FarHost(delay=self.far_delay).__enter__()
+            self.far = FarHost(delay=self.far_delay if self.far_delay is not None or not self.far_rate else 0, rate=self.far_rate).__enter__()
             agent = self.far.agent
             settings["saved_hosts"] = [{"id": "far", "label": "far", "endpoint": self.far.address, "auto_connect": True}]
             if self.grants: settings["host_policies"] = {"far": self.grants}

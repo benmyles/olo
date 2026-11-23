@@ -20,8 +20,10 @@ import getpass, json, os, signal, socket, subprocess, sys, time
 D = os.environ.get("REX_SLOW_DIR", "/var/tmp/olo-rex-slow")
 
 class FarHost:
-    def __init__(self, delay=None):
-        self.delay = delay
+    def __init__(self, delay=None, rate=None):
+        # `rate`: the far link carries no more than so many bytes a second each way (slowlink.py's
+        # REX_SLOW_RATE: a narrow link, on which a flood holds up what comes behind it).
+        self.delay, self.rate = delay, rate
         # (Its home is the scratch Rex server's sessions' own: what a script typed into a pane puts there is what
         # a command run over SSH finds.)
         self.dir = f"{D}/far"; self.home = f"{D}/home"; self.agent = f"{self.dir}/agent.sock"
@@ -69,7 +71,7 @@ class FarHost:
             self.count = f"{self.dir}/bytes.json"
             if os.path.exists(self.count): os.remove(self.count)
             here = os.path.dirname(os.path.abspath(__file__))
-            self.procs.append(subprocess.Popen([sys.executable, f"{here}/slowlink.py", f"tcp:{self.link}", f"tcp:{self.port}", str(self.delay)], env=dict(os.environ, REX_SLOW_COUNT=self.count),
+            self.procs.append(subprocess.Popen([sys.executable, f"{here}/slowlink.py", f"tcp:{self.link}", f"tcp:{self.port}", str(self.delay)], env=dict(os.environ, REX_SLOW_COUNT=self.count, **({"REX_SLOW_RATE": str(self.rate)} if self.rate else {})),
                                                start_new_session=True, **quiet))
             end = time.monotonic() + 8
             while time.monotonic() < end:

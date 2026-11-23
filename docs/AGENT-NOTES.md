@@ -2761,3 +2761,24 @@ an argument it doesn't know starts the lint (read its first lines).
   picks** unless one is named (`preferred_session_id`): a test with
   one session on a scratch server passes, and fails on a host with
   the person's sessions on it.
+- **A link with a delay isn't a narrow link.** The rig's link only
+  delayed, and nothing behind a flood ever waited; with a rate
+  (`REX_SLOW_RATE`, `FarHost(rate=…)`) a small request waited more
+  than 40 s behind SSH's 2 MiB window. Anything about floods, files
+  or several things at once is tried on a narrow link.
+- **A window knob that "changed nothing" was measuring something
+  else**: the stale output after Ctrl-C was the same with a 64 kB SSH
+  window as with 2 MiB, because the Rex server queues all of a
+  terminal's output for a slow stream; what the window changes is how
+  long *other* things wait. Measure the thing a change is for
+  (a request beside the flood), not the nearest visible symptom.
+- **russh's `adjust_window` hook**: called at each top-up of a
+  channel's window (when half has come); the published 0.65.1 client
+  ignores what it returns (`vendor/russh` fixes that). Top-ups come in
+  bursts (many packets in one read), so time between two says nothing
+  of the link: count bytes in `Handler::data` over a stretch.
+- **`rex api list` and `rex api describe METHOD`** (against a scratch
+  server: the rig's `r.rex("api", …)`) say what the server's API
+  takes and gives, with examples and notes: read them before guessing
+  what a request can do (a terminal's present screen by itself: it
+  can't).

@@ -308,6 +308,55 @@ struct SshClientHandler {
     host: String,
     port: u16,
     askpass: Option<Prompts>,
+    /// How long the host's TCP connection took to open: a round trip
+    /// of its link, near enough ([`next_window`]). Not known through a
+    /// `ProxyCommand`.
+    round_trip: Option<Duration>,
+    /// What has come from the host on all channels, and since when it
+    /// is counted: the link's rate, taken over a stretch
+    /// ([`Self::adjust_window`]).
+    came: (std::time::Instant, u64),
+    /// The window stays what it began as (`OLO_REX_SSH_WINDOW`, for
+    /// measuring).
+    fixed: bool,
+}
+
+/// The least and the most a host may send on a channel before it is
+/// told to go on, and where a far host's connection begins (a near
+/// one's begins at the most, as russh's own does).
+const WINDOW_LEAST: u32 = 16 * 1024;
+const WINDOW_MOST: u32 = 2 * 1024 * 1024;
+const WINDOW_FAR: u32 = 64 * 1024;
+
+/// How much a host may send on a channel before it is told to go on
+/// (the channel's window), from the rate at which its link has just
+/// been bringing things (`rate`, bytes a second, over a stretch in
+/// which a window was used up) and the link's round trip.
+///
+/// What the host has been let send is on its way whatever happens
+/// next: on one connection everything else waits behind it (another
+/// terminal, a key's answer, the word that a command is over), for the
+/// window's size over the link's rate. Beside a flood on a link of
+/// 30,000 bytes a second a small request waited more than 40 s with
+/// russh's window of 2 MiB, 1.2 to 1.8 s with 64 kB and 0.1 to 0.5 s
+/// with 16 kB (measured, 2026-11-23: HACKING, Rex, "A flood that
+/// doesn't hold the link"). And a window too small for the link holds
+/// the host back: it sends what it may, and waits to be told to go on
+/// (a window is topped up when half of it has come, so one under two
+/// round trips' worth of the link runs dry before the top-up is
+/// there).
+///
+/// So the window is what the link brings in a quarter of a second, or
+/// in three round trips where that is longer: enough that the host
+/// never waits for leave, and no more on its way than that holds
+/// anything else up for. No more than four times, nor less than half,
+/// what it was, at a step (a rate measured while the host was waiting
+/// for leave is the window's own, not the link's: it grows by steps
+/// until the link is the bound).
+fn next_window(window: u32, rate: f64, round_trip: Duration) -> u32 {
+    let held = Duration::from_millis(250).max(round_trip * 3).as_secs_f64();
+    let wanted = (rate * held).clamp(f64::from(window) / 2.0, f64::from(window) * 4.0);
+    (wanted as u32).clamp(WINDOW_LEAST, WINDOW_MOST)
 }
 
 impl client::Handler for SshClientHandler {
@@ -338,6 +387,41 @@ impl client::Handler for SshClientHandler {
             }
             Err(error) => Err(error.into()),
         }
+    }
+
+    /// A channel's window was topped up (half of it had come): what
+    /// the next top-ups go to, for every channel of the connection
+    /// ([`next_window`]; the vendored russh takes the answer, where the
+    /// published one asked and didn't listen).
+    fn adjust_window(&mut self, _channel: russh::ChannelId, window: u32) -> u32 {
+        if self.fixed {
+            return window;
+        }
+        let now = std::time::Instant::now();
+        let round_trip = self.round_trip.unwrap_or(Duration::from_millis(100));
+        // The link's rate, over a stretch and all channels together
+        // (not from one top-up to the next: what the link brings is
+        // read in pieces of many packets, whose top-ups come
+        // microseconds apart whatever the link's rate; taken one by
+        // one they sent the window of a link of 300,000 bytes a second
+        // to its most, with seven seconds of flood on its way:
+        // measured). A stretch in which little came says nothing of
+        // the link, and one that began long ago began in quiet.
+        let over = now.duration_since(self.came.0);
+        if over < Duration::from_millis(200).max(round_trip * 2) {
+            return window;
+        }
+        let came = std::mem::replace(&mut self.came, (now, 0)).1;
+        if over > Duration::from_secs(2) {
+            return window;
+        }
+        next_window(window, came as f64 / over.as_secs_f64(), round_trip)
+    }
+
+    /// (Counted for the link's rate: [`Self::adjust_window`].)
+    async fn data(&mut self, _channel: russh::ChannelId, data: &[u8], _session: &mut client::Session) -> Result<(), Self::Error> {
+        self.came.1 += data.len() as u64;
+        Ok(())
     }
 }
 
@@ -713,11 +797,23 @@ async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn Ss
     config.nodelay = true;
     config.keepalive_interval = (resolved.keepalive_secs > 0).then(|| Duration::from_secs(resolved.keepalive_secs));
     config.keepalive_max = resolved.keepalive_max;
+    // (For measuring: how much a host may send on a channel before it
+    // is told to go on, to begin with.)
+    let window_knob: Option<u32> = std::env::var("OLO_REX_SSH_WINDOW").ok().and_then(|v| v.parse().ok());
+    if let Some(window) = window_knob {
+        config.window_size = window;
+    }
     let knob = std::env::var("OLO_REX_SSH_COMPRESSION").ok().map(|v| matches!(v.as_str(), "yes" | "1" | "on"));
     // (russh's names: its `ZLIB_LEGACY` is `zlib@openssh.com`, the one
     // OpenSSH's server offers; `ZLIB`, from the first packet, for
     // servers that still have it.)
     let packed = |mut config: client::Config, opened_in: Option<Duration>| {
+        // (A far host's channels begin with a small window, which then
+        // follows the link: `next_window`. `OLO_REX_SSH_WINDOW` says
+        // otherwise, for measuring.)
+        if window_knob.is_none() && opened_in.is_none_or(|took| took >= FAR) {
+            config.window_size = WINDOW_FAR;
+        }
         if compresses(resolved.compression, knob, opened_in) {
             config.preferred.compression = std::borrow::Cow::Borrowed(&[russh::compression::ZLIB_LEGACY, russh::compression::ZLIB, russh::compression::NONE]);
         }
@@ -726,7 +822,8 @@ async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn Ss
 
     let (waiting_tx, mut waiting) = tokio::sync::watch::channel(false);
     let askpass = askpass.map(|ui| Prompts { ui, waiting: waiting_tx.clone() });
-    let handler = SshClientHandler { host: resolved.hostname.clone(), port: resolved.port, askpass: askpass.clone() };
+    let mut handler =
+        SshClientHandler { host: resolved.hostname.clone(), port: resolved.port, askpass: askpass.clone(), round_trip: None, came: (std::time::Instant::now(), 0), fixed: window_knob.is_some() };
     let connection = async {
         if let Some(pc) = &resolved.proxy_command {
             let expanded = expand_proxy(pc, &resolved)?;
@@ -751,7 +848,12 @@ async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn Ss
             let addresses: Vec<std::net::SocketAddr> = tokio::net::lookup_host((resolved.hostname.as_str(), resolved.port)).await.map_err(failed)?.collect();
             let began = std::time::Instant::now();
             let stream = tokio::net::TcpStream::connect(&addresses[..]).await.map_err(failed)?;
-            let opened_in = began.elapsed();
+            // (`OLO_REX_SSH_OPENED_IN_MS`: taken to have opened in so
+            // long, for the rig, whose far host opens at once whatever
+            // its link's delay: what follows from a host being far, or
+            // from its round trip, is then as on a real one.)
+            let opened_in = std::env::var("OLO_REX_SSH_OPENED_IN_MS").ok().and_then(|v| v.parse().ok()).map_or(began.elapsed(), Duration::from_millis);
+            handler.round_trip = Some(opened_in);
             stream.set_nodelay(true).map_err(failed)?;
             client::connect_stream(packed(config, Some(opened_in)), stream, handler).await.map_err(|e| RexError::Ssh(format!("SSH connect {}:{} failed: {e}", resolved.hostname, resolved.port)))
         }
@@ -945,6 +1047,50 @@ fn dial_command(socket: Option<&str>, helper: Option<&str>) -> String {
 #[cfg(test)]
 mod dial_tests {
     use super::*;
+
+    /// A channel's window follows the link: what the link brings in a
+    /// quarter of a second or three round trips, from whatever it
+    /// began at, by steps of no more than four times and no less than
+    /// half; never under the least nor over the most.
+    #[test]
+    fn a_channels_window_follows_the_link() {
+        let ms = Duration::from_millis;
+        // (What is measured of a link of `rate` with a window: the
+        // link's rate, or the window's own where the host waits for
+        // leave: a window's worth each round trip, about.)
+        let settled = |rate: f64, trip: Duration, from: u32| {
+            let (mut window, mut steps) = (from, 0);
+            loop {
+                let measured = rate.min(f64::from(window) / trip.as_secs_f64());
+                let next = next_window(window, measured, trip);
+                if next == window || steps > 40 {
+                    return (window, steps);
+                }
+                (window, steps) = (next, steps + 1);
+            }
+        };
+        // 30,000 bytes a second: a quarter of a second of it is under
+        // the least; the least, from a far host's beginning in two steps.
+        assert_eq!(settled(30_000.0, ms(100), WINDOW_FAR), (WINDOW_LEAST, 2));
+        // 300,000 bytes a second, 100 ms there and back: 0.3 s of it.
+        assert_eq!(settled(300_000.0, ms(100), WINDOW_FAR).0, 90_000);
+        // 10 MB a second: the most, in four steps (each three times the
+        // last, the host waiting for leave meanwhile; each a stretch of
+        // a fifth of a second of flood).
+        assert_eq!(settled(10_000_000.0, ms(100), WINDOW_FAR), (WINDOW_MOST, 4));
+        // A slow, far link (600 ms there and back, 20,000 bytes a
+        // second): three round trips' worth, 1.8 s of it.
+        assert_eq!(settled(20_000.0, ms(600), WINDOW_FAR).0, 36_000);
+        // From the most (a near host's beginning, or a link that got
+        // worse): down by halves.
+        assert_eq!(settled(30_000.0, ms(100), WINDOW_MOST), (WINDOW_LEAST, 7));
+        // A window that never runs dry on a link of this rate: twice a
+        // round trip's worth and more, wherever it settles.
+        for (rate, trip) in [(50_000.0, ms(40)), (2_000_000.0, ms(250)), (700_000.0, ms(10))] {
+            let window = f64::from(settled(rate, trip, WINDOW_FAR).0);
+            assert!(window >= 2.0 * rate * trip.as_secs_f64() || window == f64::from(WINDOW_MOST), "{window} at {rate} and {trip:?}");
+        }
+    }
 
     /// A connection is packed where the person's SSH config says, else
     /// where the knob says, else where the host is far: its connection
