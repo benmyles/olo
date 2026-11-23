@@ -27642,6 +27642,84 @@ what it does today:
   after idle, it seems: not found out yet; typing never sends so, and
   a paste is one request). Belongs to the link of its own.
 
+**Connecting in fewer round trips** (2026-11-23). Between a host's
+window opening and its terminal's first screen, nine round trips of
+the link passed, one after another (read off the rig's link, which
+notes what passes: `REX_SLOW_TRACE`): the control connection's
+upgrade, its hello, then `server.status`, `server.version`,
+`hosts.list`, `client.keymap` and `session.bootstrap`, each waited
+for before the next was asked, then the terminal stream's upgrade and
+its hello. Over SSH thirteen, once signed in: each of the two streams
+costs a channel and a command first. Now:
+- *One flight* (`ControlClient::connect_asking`): the upgrade's
+  request, the hello and the five requests leave together, and the
+  server's yes, its welcome and the five answers come back together.
+  The Rex server takes it so (tried by hand first: the yes, the
+  welcome and two answers in a millisecond), and so do Olo's helper
+  and `rex __internal dial-stdio` in front of it. The WebSocket
+  library's client waits for the upgrade's answer before it lets
+  anything be sent, so the request is written and its answer read
+  here, and the library is given the stream from there
+  (`from_partially_read`); the requests' answers are waited for as
+  any others (`Asked`, `answered`), their ids the connection's first.
+  Only where nothing between here and the server reads HTTP
+  (`RexEndpoint::takes_a_flight`: its socket, an SSH channel), since a
+  web server in front may not pass on what comes behind an upgrade's
+  request; and a server that doesn't take it is connected to the
+  plain way at once (the five then asked together all the same: one
+  round trip, not five).
+- *Terminals' streams opened beforehand* (`hub::Spare`,
+  `TerminalDataStream::upgrade`, `TerminalUpgrade::hello`). The
+  ticket that says whose terminal a stream is goes in its hello, not
+  its upgrade, so the stream is opened as far as its upgrade while
+  the ticket is still being asked for: at connecting, as many as the
+  host had terminals when its connection was lost (one where none is
+  known; at most eight), begun once the host is reached
+  (`RexEndpoint::reach`: over SSH, signed in to, so that a host that
+  can't be reached or whose key isn't trusted is tried and asked
+  about once, not once for each); those no terminal took are let go
+  when the sessions are in. A pane opened later opens its stream
+  while its ticket is asked for (`data.connect`), the same way. One
+  opened beforehand that the host has closed meanwhile is opened anew
+  with a new ticket.
+- *What is asked together elsewhere*: sessions beyond the one the
+  server attaches by itself are attached together
+  (`SessionSnapshot`), a terminal's first facts (its programs'
+  status, ports, process) together, and what is asked again after
+  events were missed (`refresh_host`) together.
+- *Measured.* On the rig (`tools/dev/rex-slow/try.py connect`, which
+  reads the link's own notes: from the app's first byte to the
+  terminal's first screen reaching it): 2.7, 5.4 and 10.8 s at 150,
+  300 and 600 ms each way before (9.0 round trips), 0.6, 1.2 and 2.7
+  s now (2.0 to 2.2). Against the test host over SSH (the client's
+  `tests/host.rs`, `connecting_is_timed`: both ways in one run, a
+  round trip of 165 to 224 ms): a terminal's first bytes 2,150 to
+  2,930 ms after signing in as it was (13.0 round trips), 660 to 915
+  ms as it is (4.0). The app's own cost is what it was (release,
+  three alternating runs: 200 letters typed 224.9 to 227.8 million
+  instructions before and 226.2 to 228.7 after; at rest 0.0% and no
+  wakeups in 6 s, before and after: nothing opened beforehand is
+  kept). 200 flights against a scratch server left no gap in the
+  events that follow (`live.rs`, a measurement).
+- *Seen once, not explained*: one run of twelve on the rig's far host
+  passed twice the bytes while sixty keys were typed (20,000 more up,
+  42,000 down: about what asking for the keys and the sessions again
+  costs). The app now says when a host's events were missed and
+  everything is asked again (`Rex: events of … were missed`), so the
+  next time says what it was.
+- *What an SSH stream costs, and can't be saved here*: a channel
+  (one round trip), then its command, and nothing can be sent behind
+  the command's request: OpenSSH's server opens a session's channel
+  with a window of nothing and gives it one only once the command is
+  set up (read off the wire against the rig's far host: the client
+  sends the request and waits for a small packet before its upgrade
+  goes). Three round trips to a stream's upgrade, so four to a
+  terminal's first bytes however the rest is arranged. A channel
+  straight to the server's socket (`direct-streamlocal`, which Rex
+  uses where the address names the socket and no helper is wanted)
+  has its window at once, but not the helper; a helper that stood on
+  the host with a socket of its own would have both (TODO).
+
 **Fewer bytes to a far host** (2026-11-23; `ssh::compresses`,
 `olo_rex_client::plain`). Everything between Rex and a host reached
 over SSH (requests, events, terminals' bytes, files, the helper sent

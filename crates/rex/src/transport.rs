@@ -123,6 +123,30 @@ impl RexEndpoint {
         }
     }
 
+    /// The host is reached, as far as that can be said before a stream
+    /// is opened to it: over SSH, connected and signed in to (the
+    /// person asked what there is to ask, once). After it, streams
+    /// opened side by side ([`Self::connect_control_stream`],
+    /// [`Self::connect_stream`]) each cost a channel and nothing more,
+    /// and none of them asks the person anything.
+    pub async fn reach(&self) -> Result<(), RexError> {
+        match self {
+            Self::Ssh { target, pool, askpass } => pool.reach(target, askpass.clone()).await,
+            _ => Ok(()),
+        }
+    }
+
+    /// Whether a control connection's hello and first requests may be
+    /// sent in one flight with its upgrade
+    /// ([`ControlClient::connect_asking`](crate::ControlClient::connect_asking)):
+    /// where nothing between here and the Rex server reads HTTP (its
+    /// own socket, or an SSH channel to it). Not through a web server
+    /// in front of it, which may not pass on what comes behind an
+    /// upgrade's request before its answer.
+    pub fn takes_a_flight(&self) -> bool {
+        matches!(self, Self::Local { .. } | Self::Unix(_) | Self::Ssh { .. })
+    }
+
     /// Open a connected [`RexStream`] and the HTTP `Host` header value to use for
     /// WebSocket upgrade on `/api/control` or `/api/data`.
     ///

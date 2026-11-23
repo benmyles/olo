@@ -481,3 +481,129 @@ fn the_helper_says_a_prompt_on_a_real_host() {
         assert_eq!(failed, None, "the helper never said the shell reads again");
     });
 }
+
+/// How long a terminal on a real host takes to show once the host is
+/// signed in to, over its own link: connecting as Rex did (each step
+/// waited for before the next: the control connection's upgrade, its
+/// hello, five requests one by one, then the terminal's stream, its
+/// upgrade and its hello) and as it does (the hello and the five in
+/// one flight with the upgrade, the terminal's stream opened as far as
+/// its upgrade meanwhile). A session of this test's own is made there
+/// and ended.
+#[test]
+#[ignore = "needs a real host: OLO_REX_TEST_HOST"]
+fn connecting_is_timed() {
+    use olo_rex_client::{BootstrapResponse, ClientIdentity, ControlClient, DATA_TERMINAL_SUBPROTOCOL, DataTicketRequest, RexEndpoint, TerminalDataStream, TerminalStreamFrame, answered};
+    use std::time::{Duration, Instant};
+    let address = std::env::var("OLO_REX_TEST_HOST").expect("OLO_REX_TEST_HOST=ssh://USER@HOST");
+    block(async move {
+        let endpoint = RexEndpoint::parse(&address, Arc::new(SshSessionPool::default()), Some(Arc::new(Nobody))).expect("an address");
+        endpoint.reach().await.expect("the host is signed in to");
+        let (stream, host) = endpoint.connect_control_stream().await.expect("the host's Rex server is reached");
+        let (setup, _events) = ControlClient::connect(stream, &host, ClientIdentity::olo_rex(None), None).await.expect("a control connection");
+        // (A run of this that failed left its session: those are ended first.)
+        for left in setup.session_list().await.expect("the sessions").payload.into_iter().filter(|s| s.label == "olo-connect-test") {
+            let _ = setup.session_destroy(&left.session_id).await;
+        }
+        let created = setup.session_create(Some("olo-connect-test"), Some(serde_json::json!({"shell": "none", "command": ["cat"], "exit": {"on_completion": false}}))).await.expect("a session");
+        let sid = created.payload["session_id"].as_str().unwrap().to_owned();
+        let bid = created.payload["initial_windows"][0]["block_ids"][0].as_str().unwrap().to_owned();
+        // (Whatever happens from here, the session is ended: the rest
+        // runs as a task of its own, whose end is waited for first.)
+        let (endpoint, sid_measured) = (endpoint.clone(), sid.clone());
+        let measured = tokio::spawn(async move {
+            let sid = sid_measured;
+            let mut trips = Vec::new();
+            let (stream, host) = endpoint.connect_control_stream().await.unwrap();
+            let (timed, _events) = ControlClient::connect(stream, &host, ClientIdentity::olo_rex(None), None).await.unwrap();
+            for _ in 0..5 {
+                let at = Instant::now();
+                timed.server_version().await.expect("a request");
+                trips.push(at.elapsed());
+            }
+            drop(timed);
+            trips.sort();
+            let trip = trips[2];
+            println!("a request and its answer: {} ms", trip.as_millis());
+            let tickets = [DataTicketRequest { creator_name: "com.superlogical.terminal".into(), data_ref_id: "terminal".into(), subprotocol: Some(DATA_TERMINAL_SUBPROTOCOL.into()) }];
+            let ticket_of = |boot: BootstrapResponse| boot.data_tickets.unwrap_or_default().into_iter().find(|t| t.block_id == bid).expect("a ticket for the terminal").ticket;
+            let first_bytes = |mut terminal: TerminalDataStream<olo_rex_client::RexStream>| async move {
+                assert!(matches!(tokio::time::timeout(Duration::from_secs(10), terminal.next_frame()).await.expect("in time").expect("a frame"), TerminalStreamFrame::Bytes(_)));
+            };
+            for turn in 0..2 {
+                // As it was: one thing after another. (Each step's own time is said, in round trips.)
+                let began = Instant::now();
+                let mut steps = Vec::new();
+                let mut step = |what: &'static str, since: &mut Instant| {
+                    steps.push(format!("{what} {:.1}", since.elapsed().as_secs_f64() / trip.as_secs_f64()));
+                    *since = Instant::now();
+                };
+                let mut since = began;
+                let (stream, host) = endpoint.connect_control_stream().await.unwrap();
+                step("a stream", &mut since);
+                let (ctrl, _events) = ControlClient::connect(stream, &host, ClientIdentity::olo_rex(None), None).await.unwrap();
+                step("upgrade and hello", &mut since);
+                ctrl.server_status().await.unwrap();
+                ctrl.server_version().await.unwrap();
+                ctrl.hosts_list().await.unwrap();
+                ctrl.client_keymap(&[], &[], &[]).await.unwrap();
+                let boot = ctrl.session_bootstrap("all", Some(&sid), None, &tickets).await.unwrap().payload;
+                step("five requests", &mut since);
+                let (stream, host) = endpoint.connect_stream().await.unwrap();
+                step("a stream", &mut since);
+                let upgrade = TerminalDataStream::upgrade(stream, &host).await.unwrap();
+                step("its upgrade", &mut since);
+                let terminal = upgrade.hello(&ticket_of(boot)).await.unwrap();
+                step("its hello", &mut since);
+                first_bytes(terminal).await;
+                step("first bytes", &mut since);
+                if turn == 0 {
+                    println!("as it was, step by step, in round trips: {}", steps.join(", "));
+                }
+                let was = began.elapsed();
+                drop(ctrl);
+
+                // As it is: side by side, and in one flight.
+                let began = Instant::now();
+                let spare = {
+                    let endpoint = endpoint.clone();
+                    tokio::spawn(async move {
+                        let (stream, host) = endpoint.connect_stream().await.unwrap();
+                        TerminalDataStream::upgrade(stream, &host).await.unwrap()
+                    })
+                };
+                let asked = vec![
+                    ("server.status", None),
+                    ("server.version", None),
+                    ("hosts.list", None),
+                    ("client.keymap", Some(ControlClient::keymap_request(&[], &[], &[]).unwrap())),
+                    ("session.bootstrap", Some(ControlClient::bootstrap_request("all", Some(&sid), None, &tickets).unwrap())),
+                ];
+                let (stream, host) = endpoint.connect_control_stream().await.unwrap();
+                let (ctrl, _events, answers) = ControlClient::connect_asking(stream, &host, ClientIdentity::olo_rex(None), None, asked).await.expect("the server takes the flight");
+                let mut boot = None;
+                for (i, answer) in answers.into_iter().enumerate() {
+                    let answer = answer.await;
+                    if i == 4 {
+                        boot = Some(answered::<BootstrapResponse>("session.bootstrap", answer).unwrap().payload);
+                    } else {
+                        answer.unwrap();
+                    }
+                }
+                first_bytes(spare.await.unwrap().hello(&ticket_of(boot.unwrap())).await.unwrap()).await;
+                let is = began.elapsed();
+                drop(ctrl);
+                println!(
+                    "turn {turn}: a terminal's first bytes after signing in: {} ms as it was ({:.1} round trips), {} ms as it is ({:.1})",
+                    was.as_millis(),
+                    was.as_secs_f64() / trip.as_secs_f64(),
+                    is.as_millis(),
+                    is.as_secs_f64() / trip.as_secs_f64()
+                );
+            }
+        });
+        let measured = measured.await;
+        let _ = setup.session_destroy(&sid).await;
+        measured.expect("measured");
+    });
+}

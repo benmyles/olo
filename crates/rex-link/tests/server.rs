@@ -53,8 +53,14 @@ async fn what_the_helper_says_of_a_real_terminal_is_what_the_server_says_asked()
         .kill_on_drop(true)
         .spawn()?;
     let stream = tokio::io::join(helper.stdout.take().unwrap(), helper.stdin.take().unwrap());
-    let (ctrl, mut events) = ControlClient::connect(stream, "localhost", ClientIdentity::olo_rex(None), None).await?;
+    // (Connected as the app connects over SSH: the hello and the first
+    // requests in one flight with the upgrade, which the helper passes
+    // as it comes; its answer to the upgrade says the helper is there.)
+    let (ctrl, mut events, answers) = ControlClient::connect_asking(stream, "localhost", ClientIdentity::olo_rex(None), None, vec![("server.version", None), ("hosts.list", None)]).await?;
     assert!(ctrl.keeps_typing_in_order(), "the connection goes through the helper");
+    for answer in answers {
+        answer.await?;
+    }
     let (sid, _, bid) = server.session(&ctrl, "says").await?;
     ctrl.session_bootstrap("all", Some(&sid), None, &[]).await?;
     tokio::time::sleep(Duration::from_millis(1200)).await;

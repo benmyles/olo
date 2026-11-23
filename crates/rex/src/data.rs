@@ -138,13 +138,36 @@ pub enum TerminalStreamFrame {
     Closed { code: u16, reason: String },
 }
 
+/// A terminal's stream opened as far as its upgrade
+/// ([`TerminalDataStream::upgrade`]): the ticket that says which
+/// terminal's it is goes in the hello that follows
+/// ([`Self::hello`]), so the stream can be opened before the ticket is
+/// had, while it is being asked for: a round trip of the link saved
+/// (three over SSH, where a stream is a channel opened first), which
+/// on a slow link is most of what a terminal waits to show.
+pub struct TerminalUpgrade<S> {
+    ws: WebSocketStream<S>,
+}
+
+impl<S: AsyncRead + AsyncWrite + Unpin> TerminalUpgrade<S> {
+    /// The stream becomes the terminal's whose single-use ticket this is.
+    pub async fn hello(mut self, ticket: &str) -> Result<TerminalDataStream<S>, RexError> {
+        let hello = encode_hello(ticket)?;
+        let welcome = perform_data_handshake(&mut self.ws, &hello).await?;
+        Ok(TerminalDataStream { ws: self.ws, welcome, bytes_received: 0 })
+    }
+}
+
 impl<S: AsyncRead + AsyncWrite + Unpin> TerminalDataStream<S> {
     /// Open a fresh terminal stream using a single-use base64url ticket.
     pub async fn connect_hello(stream: S, host_header: &str, ticket: &str) -> Result<Self, RexError> {
-        let mut ws = upgrade_data_ws(stream, host_header, DATA_TERMINAL_SUBPROTOCOL).await?;
-        let hello = encode_hello(ticket)?;
-        let welcome = perform_data_handshake(&mut ws, &hello).await?;
-        Ok(Self { ws, welcome, bytes_received: 0 })
+        Self::upgrade(stream, host_header).await?.hello(ticket).await
+    }
+
+    /// A terminal stream opened as far as its upgrade, for a ticket
+    /// still to come ([`TerminalUpgrade`]).
+    pub async fn upgrade(stream: S, host_header: &str) -> Result<TerminalUpgrade<S>, RexError> {
+        Ok(TerminalUpgrade { ws: upgrade_data_ws(stream, host_header, DATA_TERMINAL_SUBPROTOCOL).await? })
     }
 
     /// Resume an interrupted terminal stream from `bytes_received` using the

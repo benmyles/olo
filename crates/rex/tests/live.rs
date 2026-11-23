@@ -502,6 +502,97 @@ async fn what_a_program_copies_is_told_short_and_read_long() -> Result {
 /// when, as a command starts and ends and as a line is read: timed, to
 /// know what a host's helper can go by (run by hand: `--ignored
 /// --nocapture`).
+/// The hello and the first requests sent in one flight with the
+/// upgrade (`ControlClient::connect_asking`): the server answers them
+/// all, each answer is its request's, and the connection goes on as
+/// any other (its next request has the next id, events come).
+#[tokio::test]
+async fn the_hello_and_the_first_requests_go_in_one_flight_with_the_upgrade() -> Result {
+    let Some(server) = Scratch::start().await? else { return Ok(()) };
+    // (A session to find, made over a connection of the plain kind.)
+    let (plain, _events) = server.connect().await?;
+    let (sid, _, bid) = server.session(&plain, "flight").await?;
+    let tickets = [DataTicketRequest { creator_name: "com.superlogical.terminal".into(), data_ref_id: "terminal".into(), subprotocol: Some(DATA_TERMINAL_SUBPROTOCOL.into()) }];
+    let asked = vec![
+        ("server.status", None),
+        ("server.version", None),
+        ("hosts.list", None),
+        ("no.such.method", None),
+        ("session.bootstrap", Some(ControlClient::bootstrap_request("all", None, None, &tickets)?)),
+    ];
+    let stream = tokio::net::UnixStream::connect(&server.sock).await?;
+    let (ctrl, mut events, answers) = ControlClient::connect_asking(stream, "localhost", ClientIdentity::olo_rex(None), None, asked).await?;
+    assert!(ctrl.client_id().is_some(), "welcomed");
+    let mut answers = answers.into_iter();
+    let status = answered::<ServerStatus>("server.status", answers.next().unwrap().await)?;
+    assert!(status.payload.pid > 0);
+    answered::<ServerVersion>("server.version", answers.next().unwrap().await)?;
+    answered::<HostsListResponse>("hosts.list", answers.next().unwrap().await)?;
+    assert!(matches!(answers.next().unwrap().await, Err(RexError::Api(_))), "an answer that says no is that request's, and the others' stand");
+    let boot = answered::<BootstrapResponse>("session.bootstrap", answers.next().unwrap().await)?.payload;
+    assert!(boot.attach_all.sessions.iter().any(|s| s.session_id == sid), "the sessions");
+    let ticket = boot.data_tickets.unwrap_or_default().into_iter().find(|t| t.block_id == bid).expect("a ticket for the session's terminal").ticket;
+    // The terminal's stream, opened as far as its upgrade before the
+    // ticket was had, is the terminal's with it.
+    let upgrade = TerminalDataStream::upgrade(tokio::net::UnixStream::connect(&server.sock).await?, "localhost").await?;
+    let mut terminal = upgrade.hello(&ticket).await?;
+    assert!(matches!(timeout(Duration::from_secs(4), terminal.next_frame()).await??, TerminalStreamFrame::Bytes(_)));
+    // And the connection goes on: a request of the usual kind, an event.
+    assert!(ctrl.server_version().await.is_ok());
+    ctrl.terminal_write(&sid, &bid, "printf '\\033]0;flown\\007'\n").await?;
+    event(&mut events, |e| matches!(e, ControlEvent::BlockEvent { name, .. } if name == "title_changed")).await?;
+    Ok(())
+}
+
+/// A measurement: how often the first events after a flight leave a gap
+/// behind the sessions' answer (an event numbered two past it: the
+/// app then asks for everything again). The keys' request makes an
+/// event of its own, and goes with the request that begins the events.
+#[tokio::test]
+#[ignore]
+async fn how_often_a_flight_leaves_a_gap_in_the_events() -> Result {
+    let Some(server) = Scratch::start().await? else { return Ok(()) };
+    let (plain, _events) = server.connect().await?;
+    server.session(&plain, "gaps").await?;
+    let actions: Vec<KeymapAction> = (0..40).map(|i| KeymapAction { name: format!("app.test_{i}"), kind: Some("client".into()), ..Default::default() }).collect();
+    let (mut gaps, mut seen_any) = (0, 0);
+    for turn in 0..200 {
+        let asked = vec![
+            ("server.status", None),
+            ("server.version", None),
+            ("hosts.list", None),
+            ("client.keymap", Some(ControlClient::keymap_request(&actions, &[], &[])?)),
+            ("session.bootstrap", Some(ControlClient::bootstrap_request("all", None, None, &[])?)),
+        ];
+        let stream = tokio::net::UnixStream::connect(&server.sock).await?;
+        let (ctrl, mut events, answers) = ControlClient::connect_asking(stream, "localhost", ClientIdentity::olo_rex(None), None, asked).await?;
+        let mut boot = 0;
+        for (i, answer) in answers.into_iter().enumerate() {
+            let answer = answer.await?;
+            if i == 4 {
+                boot = answer.seq;
+            }
+        }
+        let mut seqs = Vec::new();
+        while let Ok(Some(e)) = timeout(Duration::from_millis(60), events.recv()).await {
+            seqs.push(e.seq);
+        }
+        let (mut last, mut gap) = (0u64, false);
+        for seq in seqs.iter().copied().filter(|seq| *seq != 0) {
+            gap |= seq > last && seq.saturating_sub(last.max(boot)) > 1;
+            last = last.max(seq);
+        }
+        seen_any += usize::from(!seqs.is_empty());
+        if gap {
+            gaps += 1;
+            eprintln!("turn {turn}: the sessions answered at {boot}, then events {seqs:?}");
+        }
+        drop(ctrl);
+    }
+    eprintln!("{gaps} of 200 flights left a gap in their first events ({seen_any} had events at all)");
+    Ok(())
+}
+
 #[tokio::test]
 #[ignore]
 async fn what_the_server_says_as_a_command_runs_is_timed() -> Result {

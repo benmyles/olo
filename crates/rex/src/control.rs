@@ -88,6 +88,66 @@ impl Drop for SentGuard {
     }
 }
 
+/// The answer to a request sent with the hello
+/// ([`ControlClient::connect_asking`]), to be waited for.
+pub type Asked = std::pin::Pin<Box<dyn Future<Output = Result<RpcResult<Value>, RexError>> + Send>>;
+
+/// An answer as the request's own method gives it (`method`, for what
+/// an answer that can't be read says): [`Asked`]'s, typed.
+pub fn answered<T: DeserializeOwned>(method: &str, answer: Result<RpcResult<Value>, RexError>) -> Result<RpcResult<T>, RexError> {
+    let answer = answer?;
+    Ok(RpcResult { seq: answer.seq, payload: decode(method, answer.payload)? })
+}
+
+/// The hello a client begins with: under 512 bytes, its label left out
+/// where that is what makes it longer.
+fn hello_text(identity: &ClientIdentity, reconnect_token: Option<&str>) -> Result<String, RexError> {
+    let mut hello = json!({
+        "type": "hello",
+        "api_revision": REX_API_REVISION,
+        "api_min_revision": REX_API_MIN_REVISION,
+        "client": identity,
+    });
+    if let Some(tok) = reconnect_token
+        && !tok.is_empty()
+    {
+        hello["reconnect_token"] = Value::String(tok.to_owned());
+    }
+    let text = serde_json::to_string(&hello)?;
+    if text.len() < 512 {
+        return Ok(text);
+    }
+    hello["client"].as_object_mut().unwrap().remove("label");
+    let text = serde_json::to_string(&hello)?;
+    if text.len() >= 512 {
+        return Err(RexError::MessageTooLarge { size: text.len(), limit: 511 });
+    }
+    Ok(text)
+}
+
+/// A text message in one frame, as a client sends it: under a mask of
+/// chance (the WebSocket library's own are; over SSH the mask is taken
+/// off again, `plain`).
+fn client_text_frame(text: &[u8]) -> Vec<u8> {
+    let mut out = vec![0x81];
+    match text.len() {
+        n if n < 126 => out.push(0x80 | n as u8),
+        n if n < 65536 => {
+            out.push(0x80 | 126);
+            out.extend_from_slice(&(n as u16).to_be_bytes());
+        }
+        n => {
+            out.push(0x80 | 127);
+            out.extend_from_slice(&(n as u64).to_be_bytes());
+        }
+    }
+    let chance = uuid::Uuid::new_v4();
+    let mask = &chance.as_bytes()[..4];
+    out.extend_from_slice(mask);
+    out.extend(text.iter().enumerate().map(|(i, byte)| byte ^ mask[i % 4]));
+    out
+}
+
 /// Live connection to a Rex server's `/api/control` WebSocket (`rex.control.v1`).
 #[derive(Clone)]
 pub struct ControlClient {
@@ -146,32 +206,19 @@ impl ControlClient {
 
         let (mut ws, resp) = time::timeout(Duration::from_secs(5), tokio_tungstenite::client_async(req, stream)).await.map_err(|_| RexError::Timeout)??;
         let link = resp.headers().get(olo_rex_link::HEADER).and_then(|v| v.to_str().ok()).and_then(|v| v.trim().parse().ok()).unwrap_or(0);
+        send_control(&mut ws, Message::Text(hello_text(&identity, reconnect_token)?.into())).await?;
+        let (client, events) = Self::welcomed(ws, link, keepalive, Vec::new()).await?;
+        Ok((client, events))
+    }
 
-        // Build uncompressed < 512 B `hello` message.
-        let mut hello = json!({
-            "type": "hello",
-            "api_revision": REX_API_REVISION,
-            "api_min_revision": REX_API_MIN_REVISION,
-            "client": identity,
-        });
-        if let Some(tok) = reconnect_token
-            && !tok.is_empty()
-        {
-            hello["reconnect_token"] = Value::String(tok.to_owned());
-        }
-        let hello_text = serde_json::to_string(&hello)?;
-        if hello_text.len() >= 512 {
-            // Trim optional label if needed so hello is strictly < 512 bytes.
-            hello["client"].as_object_mut().unwrap().remove("label");
-            let t = serde_json::to_string(&hello)?;
-            if t.len() >= 512 {
-                return Err(RexError::MessageTooLarge { size: t.len(), limit: 511 });
-            }
-            send_control(&mut ws, Message::Text(t.into())).await?;
-        } else {
-            send_control(&mut ws, Message::Text(hello_text.into())).await?;
-        }
-
+    /// The server's welcome is waited for and held to what this client
+    /// speaks, and the connection's loop begun; `asked`: requests sent
+    /// already, whose answers the loop is to know ([`Self::
+    /// connect_asking`]).
+    async fn welcomed<S>(mut ws: WebSocketStream<S>, link: u32, keepalive: bool, asked: Vec<(String, PendingCall)>) -> Result<(Self, mpsc::UnboundedReceiver<ControlEventEnvelope>), RexError>
+    where
+        S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    {
         // Wait up to 5 seconds for `welcome`.
         let welcome = time::timeout(Duration::from_secs(5), read_welcome(&mut ws)).await.map_err(|_| RexError::Timeout)??;
         if welcome.protocol != CONTROL_SUBPROTOCOL {
@@ -187,10 +234,100 @@ impl ControlClient {
         let max_message_bytes = welcome.limits.max_message_bytes;
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let (evt_tx, evt_rx) = mpsc::unbounded_channel();
+        let next_id = asked.len() as u64 + 1;
 
-        tokio::spawn(run_control_loop(ws, cmd_rx, evt_tx, keepalive));
+        tokio::spawn(run_control_loop(ws, cmd_rx, evt_tx, keepalive, asked));
 
-        Ok((Self { cmd_tx, next_id: Arc::new(AtomicU64::new(1)), welcome: Arc::new(welcome), max_message_bytes, link, typed: Arc::new(AtomicU64::new(0)) }, evt_rx))
+        Ok((Self { cmd_tx, next_id: Arc::new(AtomicU64::new(next_id)), welcome: Arc::new(welcome), max_message_bytes, link, typed: Arc::new(AtomicU64::new(0)) }, evt_rx))
+    }
+
+    /// [`Self::connect`], with `asked` (requests: each a method and its
+    /// payload) sent in the same flight as the upgrade and the hello,
+    /// none waiting for the one before: the upgrade's request, the
+    /// hello and the requests leave together, and the server's yes, its
+    /// welcome and its answers come back together, **one round trip of
+    /// the link where they were one each**. The answers, in the order
+    /// asked, are given back to be waited for ([`Asked`]; typed with
+    /// [`answered`]).
+    ///
+    /// The Rex server takes it so (tried by hand against one,
+    /// 2026-11-23: the yes, the welcome and two answers in a
+    /// millisecond), and so do Olo's helper and `rex __internal
+    /// dial-stdio` in front of it. Only for a stream with nothing
+    /// between that reads HTTP (a socket, an SSH channel): a proxy may
+    /// not pass on what comes behind an upgrade's request before the
+    /// answer to it. A server that doesn't take it fails this (the
+    /// stream is spent): connect again the plain way.
+    pub async fn connect_asking<S>(
+        mut stream: S,
+        host_header: &str,
+        identity: ClientIdentity,
+        reconnect_token: Option<&str>,
+        asked: Vec<(&'static str, Option<Value>)>,
+    ) -> Result<(Self, mpsc::UnboundedReceiver<ControlEventEnvelope>, Vec<Asked>), RexError>
+    where
+        S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+    {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let key = tungstenite::handshake::client::generate_key();
+        let mut flight = format!(
+            "GET /api/control HTTP/1.1\r\nHost: {host_header}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Protocol: {CONTROL_SUBPROTOCOL}\r\n\r\n"
+        )
+        .into_bytes();
+        flight.extend(client_text_frame(hello_text(&identity, reconnect_token)?.as_bytes()));
+        let (mut pending, mut answers) = (Vec::new(), Vec::new());
+        for (i, (method, payload)) in asked.into_iter().enumerate() {
+            let id = (i + 1).to_string();
+            let body = serde_json::to_string(&match payload {
+                Some(p) => json!({ "type": "request", "id": id, "method": method, "payload": p }),
+                None => json!({ "type": "request", "id": id, "method": method }),
+            })?;
+            flight.extend(client_text_frame(body.as_bytes()));
+            let (tx, rx) = oneshot::channel();
+            pending.push((id, PendingCall { method: method.to_owned(), tx }));
+            let answer: Asked =
+                Box::pin(async move { time::timeout(DEFAULT_REQUEST_TIMEOUT, rx).await.map_err(|_| RexError::Timeout)?.map_err(|_| RexError::Closed("control loop stopped".to_owned()))? });
+            answers.push(answer);
+        }
+        // The server's answer to the upgrade, read here (the WebSocket
+        // library's own client waits for it before anything else is
+        // sent, which is the round trip this saves): a yes, to the key
+        // that was sent.
+        let upgraded = async {
+            stream.write_all(&flight).await?;
+            stream.flush().await?;
+            let mut got = Vec::new();
+            let mut buf = [0u8; 4096];
+            let end = loop {
+                if let Some(end) = got.windows(4).position(|w| w == b"\r\n\r\n") {
+                    break end + 4;
+                }
+                if got.len() > 16 * 1024 {
+                    return Err(RexError::Protocol("the upgrade's answer has no end".to_owned()));
+                }
+                match stream.read(&mut buf).await? {
+                    0 => return Err(RexError::Closed("closed before the upgrade was answered".to_owned())),
+                    n => got.extend_from_slice(&buf[..n]),
+                }
+            };
+            let rest = got.split_off(end);
+            Ok::<_, RexError>((got, rest, stream))
+        };
+        let (head, rest, stream) = time::timeout(Duration::from_secs(5), upgraded).await.map_err(|_| RexError::Timeout)??;
+        let head = String::from_utf8_lossy(&head);
+        let mut lines = head.split("\r\n");
+        let status = lines.next().unwrap_or_default();
+        let header = |name: &str| head.split("\r\n").skip(1).filter_map(|line| line.split_once(':')).find(|(n, _)| n.trim().eq_ignore_ascii_case(name)).map(|(_, v)| v.trim().to_owned());
+        if !(status.starts_with("HTTP/1.1 101") || status.starts_with("HTTP/1.0 101")) {
+            return Err(RexError::Protocol(format!("the upgrade was answered {status:?}")));
+        }
+        if header("Sec-WebSocket-Accept").as_deref() != Some(tungstenite::handshake::derive_accept_key(key.as_bytes()).as_str()) {
+            return Err(RexError::Protocol("the upgrade's answer isn't to this request".to_owned()));
+        }
+        let link = header(olo_rex_link::HEADER).and_then(|v| v.parse().ok()).unwrap_or(0);
+        let ws = WebSocketStream::from_partially_read(stream, rest, tungstenite::protocol::Role::Client, None).await;
+        let (client, events) = Self::welcomed(ws, link, true, pending).await?;
+        Ok((client, events, answers))
     }
 
     /// Whether what is typed may be sent as it is typed, each request
@@ -434,6 +571,13 @@ impl ControlClient {
         attach_session_ids: Option<&[String]>,
         data_tickets: &[DataTicketRequest],
     ) -> Result<RpcResult<BootstrapResponse>, RexError> {
+        self.call("session.bootstrap", Some(Self::bootstrap_request(event_scope, preferred_session_id, attach_session_ids, data_tickets)?)).await
+    }
+
+    /// What [`Self::session_bootstrap`] asks (`session.bootstrap`'s
+    /// payload), for a request sent with the hello
+    /// ([`Self::connect_asking`]).
+    pub fn bootstrap_request(event_scope: &str, preferred_session_id: Option<&str>, attach_session_ids: Option<&[String]>, data_tickets: &[DataTicketRequest]) -> Result<Value, RexError> {
         let mut p = json!({ "event_scope": event_scope });
         if let Some(pref) = preferred_session_id {
             p["preferred_session_id"] = json!(pref);
@@ -444,7 +588,7 @@ impl ControlClient {
         if !data_tickets.is_empty() {
             p["data_tickets"] = serde_json::to_value(data_tickets)?;
         }
-        self.call("session.bootstrap", Some(p)).await
+        Ok(p)
     }
 
     pub async fn session_list(&self) -> Result<RpcResult<Vec<SessionSummary>>, RexError> {
@@ -759,6 +903,12 @@ impl ControlClient {
     }
 
     pub async fn client_keymap(&self, actions: &[KeymapAction], defaults: &[KeymapLayer], overrides: &[KeymapLayer]) -> Result<RpcResult<KeymapResponse>, RexError> {
+        self.call("client.keymap", Some(Self::keymap_request(actions, defaults, overrides)?)).await
+    }
+
+    /// What [`Self::client_keymap`] asks (`client.keymap`'s payload),
+    /// for a request sent with the hello ([`Self::connect_asking`]).
+    pub fn keymap_request(actions: &[KeymapAction], defaults: &[KeymapLayer], overrides: &[KeymapLayer]) -> Result<Value, RexError> {
         let mut p = json!({ "server_actions": "all" });
         if !actions.is_empty() {
             p["actions"] = serde_json::to_value(actions)?;
@@ -769,7 +919,7 @@ impl ControlClient {
         if !overrides.is_empty() {
             p["overrides"] = serde_json::to_value(overrides)?;
         }
-        self.call("client.keymap", Some(p)).await
+        Ok(p)
     }
 
     pub async fn client_action(
@@ -1044,8 +1194,10 @@ async fn run_control_loop<S: AsyncRead + AsyncWrite + Unpin>(
     mut cmd_rx: mpsc::UnboundedReceiver<OutboundCmd>,
     evt_tx: mpsc::UnboundedSender<ControlEventEnvelope>,
     send_keepalives: bool,
+    asked: Vec<(String, PendingCall)>,
 ) {
-    let mut pending: HashMap<String, PendingCall> = HashMap::new();
+    // (Requests sent with the hello are waited for from the start.)
+    let mut pending: HashMap<String, PendingCall> = asked.into_iter().collect();
     let mut last_frame = time::Instant::now();
     let mut keepalive = time::interval_at(last_frame + KEEPALIVE_INTERVAL, KEEPALIVE_INTERVAL);
     keepalive.set_missed_tick_behavior(time::MissedTickBehavior::Delay);

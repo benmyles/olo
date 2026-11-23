@@ -951,7 +951,13 @@ struct SessionSnapshot {
 
 impl SessionSnapshot {
     async fn read(ctrl: &ControlClient, tickets: &[DataTicketRequest]) -> Result<Self, olo_rex_client::RexError> {
-        let mut snapshot = match ctrl.session_bootstrap("all", None, None, tickets).await {
+        Self::from_bootstrap(ctrl, ctrl.session_bootstrap("all", None, None, tickets).await).await
+    }
+
+    /// From the answer to `session.bootstrap`, however it was asked
+    /// (by itself, or with the connection's hello).
+    async fn from_bootstrap(ctrl: &ControlClient, bootstrap: Result<olo_rex_client::RpcResult<olo_rex_client::BootstrapResponse>, olo_rex_client::RexError>) -> Result<Self, olo_rex_client::RexError> {
+        let mut snapshot = match bootstrap {
             Ok(r) => {
                 let b = r.payload;
                 let views = match b.attached_sessions {
@@ -965,14 +971,23 @@ impl SessionSnapshot {
                 Self { seq: r.seq, rows: r.payload, views: Vec::new(), tickets: Vec::new() }
             }
         };
-        for row in &snapshot.rows {
-            if !snapshot.views.iter().any(|v| v.session_id == row.session_id) {
-                match ctrl.session_attach(&row.session_id).await {
-                    Ok(r) => snapshot.views.push(r.payload.view),
-                    // Removed since the list. Its ordered destruction event follows.
-                    Err(olo_rex_client::RexError::Api(e)) if e.status == 404 => {}
-                    Err(e) => return Err(e),
-                }
+        // (Asked together, not one after another: a round trip of the
+        // link for all of them, where it was one for each session.)
+        let asked: Vec<_> = snapshot
+            .rows
+            .iter()
+            .filter(|row| !snapshot.views.iter().any(|v| v.session_id == row.session_id))
+            .map(|row| {
+                let (ctrl, id) = (ctrl.clone(), row.session_id.clone());
+                tokio::spawn(async move { ctrl.session_attach(&id).await })
+            })
+            .collect();
+        for attached in asked {
+            match attached.await.map_err(|e| olo_rex_client::RexError::Closed(format!("attaching a session: {e}")))? {
+                Ok(r) => snapshot.views.push(r.payload.view),
+                // Removed since the list. Its ordered destruction event follows.
+                Err(olo_rex_client::RexError::Api(e)) if e.status == 404 => {}
+                Err(e) => return Err(e),
             }
         }
         Ok(snapshot)
@@ -1291,6 +1306,28 @@ struct RexHubInner {
     ssh_pool: Arc<SshSessionPool>,
     askpass: Option<Arc<dyn SshAskpass>>,
     notify: Arc<dyn Fn(HubNotice) + Send + Sync>,
+    /// Terminals' streams opened beforehand for a host that is being
+    /// connected to, by the host's key ([`Spare`]).
+    spares: Mutex<HashMap<String, Vec<Spare>>>,
+}
+
+/// A terminal's stream being opened as far as its upgrade, before the
+/// ticket that says whose it is has come (`TerminalUpgrade`): begun
+/// while the control connection says its own hello and asks for the
+/// sessions, so that a terminal shows a round trip of the link after
+/// those are in, not three (over SSH: a channel, the upgrade, the
+/// hello). `None`: it couldn't be opened.
+type Spare = tokio::task::JoinHandle<Option<olo_rex_client::TerminalUpgrade<olo_rex_client::RexStream>>>;
+
+/// The most streams opened beforehand for a host: as many as it had
+/// terminals when its connection was lost, one where none is known
+/// (the pane that shows first), and no more than this.
+const MOST_SPARES: usize = 8;
+
+/// A terminal's stream opened as far as its upgrade, now.
+async fn open_terminal_stream(ep: &RexEndpoint) -> Option<olo_rex_client::TerminalUpgrade<olo_rex_client::RexStream>> {
+    let (raw, header) = ep.connect_stream().await.ok()?;
+    TerminalDataStream::upgrade(raw, &header).await.ok()
 }
 
 /// This computer's home folder, as the status bar shortens folders
@@ -1404,7 +1441,7 @@ impl RexHub {
             quick_look_cache: HashMap::new(),
         }));
 
-        let inner = Arc::new(RexHubInner { state: state.clone(), ssh_pool, askpass, notify: notify.clone() });
+        let inner = Arc::new(RexHubInner { state: state.clone(), ssh_pool, askpass, notify: notify.clone(), spares: Mutex::new(HashMap::new()) });
 
         let hub = Arc::new(Self { state, rt, notify, inner });
 
@@ -3146,31 +3183,96 @@ impl RexHubInner {
             // connection goes through it.)
             let helper_seen = self.helper_before_connecting(&host_key, &endpoint).await;
 
+            // (Connecting in as few round trips of the link as it takes,
+            // HACKING, Rex, "Connecting in fewer round trips": nine
+            // passed before a terminal's first screen came, one after
+            // another, and over SSH more.)
+            let terminals_known = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.keys().filter(|bk| bk.host_key == host_key).count();
             let connected = async {
-                let (stream, host_hdr) = endpoint.connect_control_stream().await?;
+                // The host is reached first (over SSH: signed in to):
+                // from here its streams are opened side by side. (Not
+                // before: a host that can't be reached, or whose key
+                // the person doesn't trust, would be tried, and asked
+                // about, once for each.)
+                endpoint.reach().await?;
+                // Its terminals' streams, as far as their upgrade,
+                // while the control connection is made and the
+                // sessions asked for.
+                let spares: Vec<Spare> = (0..terminals_known.clamp(1, MOST_SPARES))
+                    .map(|_| {
+                        let ep = endpoint.clone();
+                        tokio::spawn(async move { open_terminal_stream(&ep).await })
+                    })
+                    .collect();
                 let label = std::fs::read_to_string("/etc/hostname").ok().map(|s| s.trim().to_owned()).filter(|s| !s.is_empty());
-                let (ctrl, events) = ControlClient::connect(stream, &host_hdr, olo_rex_client::ClientIdentity::olo_rex(label), reconnect_token.as_deref()).await?;
-                let client_id = ctrl.client_id().map(str::to_owned);
-                let token = ctrl.reconnect_token().map(str::to_owned);
-
-                // Fetch server status, version, synced hosts, keymap, and bootstrap sessions!
-                let status = ctrl.server_status().await.ok();
-                let version = ctrl.server_version().await.ok().map(|r| r.payload);
-                let hosts_resp = ctrl.hosts_list().await.ok().map(|r| r.payload);
-                // (The commands Rex has, and no keys of its own but what its
+                // The server's status and version, the hosts it knows,
+                // the keys, and the sessions: none needs another's
+                // answer, and they were five round trips, each waited
+                // for before the next was asked. (Of the keys: the
+                // commands Rex has, and no keys of its own but what its
                 // old recorder left: what comes back is the keys of the
                 // person's Rex configuration, and those.)
                 let km_actions = keymap::register_actions_payload();
-                let km_resp = ctrl.client_keymap(&km_actions, &[], &user_overrides).await.ok().map(|r| r.payload);
-
                 let ticket_req =
                     [DataTicketRequest { creator_name: "com.superlogical.terminal".to_owned(), data_ref_id: "terminal".to_owned(), subprotocol: Some(DATA_TERMINAL_SUBPROTOCOL.to_owned()) }];
-                let boot = SessionSnapshot::read(&ctrl, &ticket_req).await?;
-                Ok::<_, olo_rex_client::RexError>((ctrl, events, client_id, token, status, version, hosts_resp, km_resp, boot))
+                // In one flight with the upgrade and the hello, where
+                // nothing between here and the server reads HTTP: one
+                // round trip for all of it. A server that doesn't take
+                // it so is connected to the plain way.
+                let mut flown = None;
+                if endpoint.takes_a_flight() {
+                    let asked = vec![
+                        ("server.status", None),
+                        ("server.version", None),
+                        ("hosts.list", None),
+                        ("client.keymap", Some(ControlClient::keymap_request(&km_actions, &[], &user_overrides)?)),
+                        ("session.bootstrap", Some(ControlClient::bootstrap_request("all", None, None, &ticket_req)?)),
+                    ];
+                    let (stream, host_hdr) = endpoint.connect_control_stream().await?;
+                    match ControlClient::connect_asking(stream, &host_hdr, olo_rex_client::ClientIdentity::olo_rex(label.clone()), reconnect_token.as_deref(), asked).await {
+                        Ok(connected) => flown = Some(connected),
+                        Err(e) => tracing::info!("Rex: {host_key} didn't take the hello and the first requests together ({e}); connecting the plain way"),
+                    }
+                }
+                let (ctrl, events, status, version, hosts_resp, km_resp, boot) = match flown {
+                    Some((ctrl, events, answers)) => {
+                        let mut answers = answers.into_iter();
+                        let mut next = || answers.next().expect("five were asked");
+                        let (status, version, hosts, keys, boot) = tokio::join!(next(), next(), next(), next(), next());
+                        let boot = SessionSnapshot::from_bootstrap(&ctrl, olo_rex_client::answered("session.bootstrap", boot)).await;
+                        (
+                            ctrl,
+                            events,
+                            olo_rex_client::answered::<ServerStatus>("server.status", status),
+                            olo_rex_client::answered::<ServerVersion>("server.version", version),
+                            olo_rex_client::answered::<olo_rex_client::HostsListResponse>("hosts.list", hosts),
+                            olo_rex_client::answered::<olo_rex_client::KeymapResponse>("client.keymap", keys),
+                            boot,
+                        )
+                    }
+                    None => {
+                        let (stream, host_hdr) = endpoint.connect_control_stream().await?;
+                        let (ctrl, events) = ControlClient::connect(stream, &host_hdr, olo_rex_client::ClientIdentity::olo_rex(label), reconnect_token.as_deref()).await?;
+                        // (Asked together even so: one round trip.)
+                        let (status, version, hosts, keys, boot) = tokio::join!(
+                            ctrl.server_status(),
+                            ctrl.server_version(),
+                            ctrl.hosts_list(),
+                            ctrl.client_keymap(&km_actions, &[], &user_overrides),
+                            SessionSnapshot::read(&ctrl, &ticket_req)
+                        );
+                        (ctrl, events, status, version, hosts, keys, boot)
+                    }
+                };
+                let client_id = ctrl.client_id().map(str::to_owned);
+                let token = ctrl.reconnect_token().map(str::to_owned);
+                let (status, version, hosts_resp, km_resp, boot) = (status.ok(), version.ok().map(|r| r.payload), hosts_resp.ok().map(|r| r.payload), km_resp.ok().map(|r| r.payload), boot?);
+                Ok::<_, olo_rex_client::RexError>((ctrl, events, client_id, token, status, version, hosts_resp, km_resp, boot, spares))
             }
             .await;
             match connected {
-                Ok((ctrl, mut events, client_id, token, status, version, hosts_resp, km_resp, boot)) => {
+                Ok((ctrl, mut events, client_id, token, status, version, hosts_resp, km_resp, boot, spares)) => {
+                    self.spares.lock().unwrap_or_else(|e| e.into_inner()).insert(host_key.clone(), spares);
                     let SessionSnapshot { seq: boot_seq, rows: summaries, views: initial_views, tickets: pre_tickets } = boot;
 
                     // Spawn one strictly-FIFO input writer task for this host connection so rapid
@@ -3334,6 +3436,10 @@ impl RexHubInner {
                     for view in initial_views {
                         self.ingest_session(&host_key, &ctrl, &endpoint, view, &pre_tickets).await;
                     }
+                    // (The streams opened beforehand that no terminal
+                    // took are let go: one kept would be closed by the
+                    // host before a pane opened later could use it.)
+                    self.spares.lock().unwrap_or_else(|e| e.into_inner()).remove(&host_key);
                     self.write_palette_index();
 
                     self.restore_forwards(&host_key, &ctrl, &endpoint);
@@ -3394,6 +3500,9 @@ impl RexHubInner {
                     while let Some(env) = events.recv().await {
                         let Some(gap) = sequence.next(env.seq) else { continue };
                         if gap || matches!(env.event, ControlEvent::EventDropped { block_id: None, .. }) {
+                            // (Said, so that it can be found afterwards: it costs a
+                            // round of the link, the keys and the sessions among it.)
+                            tracing::info!("Rex: events of {host_key} were missed before number {}; its sessions are asked for again", env.seq);
                             match self.refresh_host(&host_key, &ctrl, &endpoint).await {
                                 Ok(watermark) => sequence.membership = watermark,
                                 Err(e) => {
@@ -3546,25 +3655,61 @@ impl RexHubInner {
             g.data_cancel = Some(tx);
         }
         let inner = self.clone();
+        // (One opened beforehand, where the host is being connected to.)
+        let spare = self.spares.lock().unwrap_or_else(|e| e.into_inner()).get_mut(&bk.host_key).and_then(|spares| spares.pop());
         tokio::spawn(async move {
-            let ticket = match pre_ticket {
-                Some(t) => t,
-                None => match ctrl.data_connect(&bk.session_id, &bk.block_id, "terminal", DATA_TERMINAL_SUBPROTOCOL).await {
-                    Ok(r) => r.payload.ticket,
-                    Err(e) => {
-                        tracing::debug!("data.connect {} failed: {e}", bk.block_id);
-                        br.lock().unwrap_or_else(|e| e.into_inner()).data_connected = false;
-                        return;
-                    }
-                },
+            // The stream is opened while its ticket is asked for (or was
+            // opened beforehand): the ticket goes in the hello, which is
+            // all that waits for it.
+            let asked = async {
+                match pre_ticket {
+                    Some(ticket) => Ok(ticket),
+                    None => ctrl.data_connect(&bk.session_id, &bk.block_id, "terminal", DATA_TERMINAL_SUBPROTOCOL).await.map(|r| r.payload.ticket),
+                }
             };
-
-            let Ok((raw_stream, host_hdr)) = ep.connect_stream().await else {
+            let opened = async {
+                match spare {
+                    Some(spare) => match spare.await {
+                        Ok(Some(upgrade)) => Some((upgrade, true)),
+                        _ => open_terminal_stream(&ep).await.map(|upgrade| (upgrade, false)),
+                    },
+                    None => open_terminal_stream(&ep).await.map(|upgrade| (upgrade, false)),
+                }
+            };
+            let (ticket, opened) = tokio::join!(asked, opened);
+            let ticket = match ticket {
+                Ok(ticket) => ticket,
+                Err(e) => {
+                    tracing::debug!("data.connect {} failed: {e}", bk.block_id);
+                    br.lock().unwrap_or_else(|e| e.into_inner()).data_connected = false;
+                    return;
+                }
+            };
+            let Some((upgrade, beforehand)) = opened else {
                 br.lock().unwrap_or_else(|e| e.into_inner()).data_connected = false;
                 return;
             };
-            let mut stream = match TerminalDataStream::connect_hello(raw_stream, &host_hdr, &ticket).await {
+            let mut stream = match upgrade.hello(&ticket).await {
                 Ok(s) => s,
+                // (One opened beforehand may have been closed by the
+                // host while it waited, and the ticket spent on it or
+                // not: both anew, once.)
+                Err(first) if beforehand => {
+                    tracing::debug!("terminal stream {} opened beforehand failed ({first}): opened anew", bk.block_id);
+                    let anew = async {
+                        let ticket = ctrl.data_connect(&bk.session_id, &bk.block_id, "terminal", DATA_TERMINAL_SUBPROTOCOL).await?.payload.ticket;
+                        let (raw, header) = ep.connect_stream().await?;
+                        TerminalDataStream::connect_hello(raw, &header, &ticket).await
+                    };
+                    match anew.await {
+                        Ok(s) => s,
+                        Err(e) => {
+                            tracing::debug!("terminal stream connect {} failed: {e}", bk.block_id);
+                            br.lock().unwrap_or_else(|e| e.into_inner()).data_connected = false;
+                            return;
+                        }
+                    }
+                }
                 Err(e) => {
                     tracing::debug!("terminal stream connect {} failed: {e}", bk.block_id);
                     br.lock().unwrap_or_else(|e| e.into_inner()).data_connected = false;
@@ -3578,13 +3723,22 @@ impl RexHubInner {
             let br_meta = br.clone();
             let notify_meta = inner.notify.clone();
             tokio::spawn(async move {
-                let snapshot = c_meta.terminal_program_status(&bk_meta.session_id, &bk_meta.block_id).await.ok();
-                br_meta.lock().unwrap_or_else(|e| e.into_inner()).status_snapshot(snapshot);
-                if let Ok(r) = c_meta.terminal_ports(&bk_meta.session_id, &bk_meta.block_id).await {
-                    br_meta.lock().unwrap_or_else(|e| e.into_inner()).set_ports(r.seq, r.payload);
-                }
-                if let Ok(r) = c_meta.terminal_process(&bk_meta.session_id, &bk_meta.block_id).await {
-                    br_meta.lock().unwrap_or_else(|e| e.into_inner()).process_snapshot(r);
+                // (Asked together: one round trip of the link for the
+                // three, where each waited for the one before.)
+                let (status, ports, process) = tokio::join!(
+                    c_meta.terminal_program_status(&bk_meta.session_id, &bk_meta.block_id),
+                    c_meta.terminal_ports(&bk_meta.session_id, &bk_meta.block_id),
+                    c_meta.terminal_process(&bk_meta.session_id, &bk_meta.block_id)
+                );
+                {
+                    let mut block = br_meta.lock().unwrap_or_else(|e| e.into_inner());
+                    block.status_snapshot(status.ok());
+                    if let Ok(r) = ports {
+                        block.set_ports(r.seq, r.payload);
+                    }
+                    if let Ok(r) = process {
+                        block.process_snapshot(r);
+                    }
                 }
                 notify_meta(HubNotice::StateChanged);
             });
@@ -3747,12 +3901,12 @@ impl RexHubInner {
     /// A fresh bootstrap also reinstalls subscriptions. Its membership watermark
     /// prevents events already represented in this snapshot from undoing it.
     async fn refresh_host(self: &Arc<Self>, host_key: &str, ctrl: &ControlClient, ep: &RexEndpoint) -> Result<u64, olo_rex_client::RexError> {
-        let snapshot = SessionSnapshot::read(ctrl, &[]).await?;
-        let server = ctrl.server_status().await?;
-        let rows = snapshot.rows;
-        let hosts = ctrl.hosts_list().await?;
+        // (Asked together: one round trip of the link, not four.)
         let overrides = self.state.lock().unwrap_or_else(|e| e.into_inner()).settings.keymap_overrides.clone();
-        let keymap = ctrl.client_keymap(&keymap::register_actions_payload(), &[], &overrides).await?.payload;
+        let actions = keymap::register_actions_payload();
+        let (snapshot, server, hosts, keymap) = tokio::join!(SessionSnapshot::read(ctrl, &[]), ctrl.server_status(), ctrl.hosts_list(), ctrl.client_keymap(&actions, &[], &overrides));
+        let (snapshot, server, hosts, keymap) = (snapshot?, server?, hosts?, keymap?.payload);
+        let rows = snapshot.rows;
         {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             let Some(h) = st.hosts.get_mut(host_key).filter(|h| h.control.as_ref().is_some_and(|c| c.same_connection(ctrl))) else { return Ok(snapshot.seq) };

@@ -2741,3 +2741,23 @@ an argument it doesn't know starts the lint (read its first lines).
   showed. A failure of the rig that names something far from its
   cause: look at the picture it took first (`shots/far-missing.png`
   showed the question still open).
+- **Count round trips on the wire, not in the code**: the rig's link
+  notes every chunk that passes with its time (`REX_SLOW_TRACE=FILE`,
+  `tools/dev/rex-slow/slowlink.py`), and with a delay of 300 ms each
+  way the round trips of anything are the steps of 600 ms in that
+  file. Connecting was "seven round trips" by reading the code and
+  nine by the trace. For SSH (encrypted) the sizes and times still
+  show who waits for whom: a 68-byte packet up, a 36-byte one down
+  and only then the 236-byte upgrade was how OpenSSH's window of
+  nothing was found, after a guess about Nagle's algorithm had been
+  written into the code and shown wrong by the same measurement.
+- **A test that makes something on the real host ends it whatever
+  happens**: `connecting_is_timed` panicked before its last line twice
+  and left two sessions on the test host. What is made there is ended
+  from outside the part that can fail (a task of its own, waited for,
+  then the ending), and a test clears its own leftovers (by its own
+  label) when it starts.
+- **A Rex server gives tickets, and attaches, only for the session it
+  picks** unless one is named (`preferred_session_id`): a test with
+  one session on a scratch server passes, and fails on a host with
+  the person's sessions on it.

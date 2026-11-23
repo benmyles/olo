@@ -27,8 +27,8 @@ pub mod ssh;
 pub mod transport;
 pub mod tunnel;
 
-pub use control::{ControlClient, RpcResult};
-pub use data::{BytesDataStream, DataWelcome, DemuxItem, InlineApcDemuxer, TerminalDataStream, TerminalStreamFrame};
+pub use control::{Asked, ControlClient, RpcResult, answered};
+pub use data::{BytesDataStream, DataWelcome, DemuxItem, InlineApcDemuxer, TerminalDataStream, TerminalStreamFrame, TerminalUpgrade};
 pub use error::{ApiError, DataRejectReason, RexError};
 pub use model::*;
 pub use provision::ServerMode;

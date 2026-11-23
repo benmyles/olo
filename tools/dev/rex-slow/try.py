@@ -6,7 +6,12 @@
                                               shown at once, to compare)
     try.py stall PROGRAM                      the link frozen with letters typed into it: what the pane and the
                                               status bar show meanwhile, and after
-    try.py connect [DELAY_MS...]              how long a host's terminal takes to show, by the link's delay
+    try.py connect [DELAY_MS...] [--trace] [--bin=APP]
+                                              how long a host's terminal takes to show, by the link's delay
+                                              (--bin: another build of the app, to compare):
+                                              from the app's first byte to the terminal's first screen, read
+                                              from the link's own notes of what passed, and in round trips
+                                              (nine once, two now); --trace: and those notes, in order
     try.py order [DELAY_MS] [--helper]        sixty letters typed quickly (several on their way at once): the host's
                                               line is what was typed, in order; --helper: sent through Olo's helper
                                               behind the link, each as it is typed
@@ -247,9 +252,31 @@ elif what in ("bytes", "flood"):
                     own = sum(int(f[1]) for f in (l.split(",") for l in err.splitlines()) if len(f) > 3 and f[1].isdigit() and not f[0].startswith("llvmpipe"))
                     print(f"compression {packed}: seq {lines}: {b1['down'] - b0['down']:,} bytes down, the last of them {at - t:.1f} s after the command; the app's own threads {own / 1e6:,.0f} million instructions", flush=True)
 elif what == "connect":
+    import re
     for delay in [int(a) for a in args if a.isdigit()] or [0, 150, 300, 600]:
-        with Rig("shell", delay=delay) as r:
-            print(f"{delay} ms each way: the terminal shown {r.ready_after:.1f} s after the window opened", flush=True)
+        os.environ["REX_SLOW_TRACE"] = f"{D}/connect.trace"
+        with Rig("shell", delay=delay, bin=next((a.partition("=")[2] for a in args if a.startswith("--bin=")), None)) as r:
+            shown = r.ready_after
+        # From the link's own notes (each chunk as it is read, before its delay): the first thing the app sent,
+        # and the first of the terminal's bytes on the stream that asked for them (what follows its upgrade's
+        # answer and its welcome), which reaches the app a delay later. (The rig's own "shown after the window
+        # opened" begins a second and more after the app does, and can't see a connection quicker than that.)
+        lines = [l.split(None, 5) for l in open(f"{D}/connect.trace")]
+        first = float(lines[0][0])
+        data = next((l[2] for l in lines if l[3] == ">" and len(l) > 5 and l[5].startswith("GET /api/data")), None)
+        down = [float(l[0]) for l in lines if l[2] == data and l[3] == "<"]
+        if len(down) >= 3:
+            took = down[2] + delay - first
+            print(f"{delay} ms each way: the terminal's first screen {took / 1000:.1f} s after the app's first byte" + (f" ({took / (2 * delay):.1f} round trips)" if delay else "") + f"; shown {shown:.1f} s after the window opened", flush=True)
+        else:
+            print(f"{delay} ms each way: the terminal's stream wasn't seen in the trace; shown {shown:.1f} s after the window opened", flush=True)
+        if "--trace" in args:
+            # (What passed, in order: each step of twice the delay is a round trip. Names of this computer's
+            # and ids are left out of what is printed.)
+            for line in open(f"{D}/connect.trace"):
+                line = re.sub(r"(session|block|window|layer|client):[0-9a-f-]+", r"\1:…", line.rstrip("\n"))
+                line = re.sub(r'"(user|path|invoked_path|cwd|home|hostname|label|ticket|reconnect_token)":"[^"]*"', r'"\1":"…"', line)
+                print(line[:150])
 else:
     raise SystemExit(__doc__)
 print("crash reports:", len(glob.glob(f"{D}/state/olo/crashes/*.json")))

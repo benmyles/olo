@@ -384,6 +384,12 @@ impl SshSessionPool {
     /// The control connection (`control`) goes through Olo's helper where the
     /// host has it ([`Self::set_helper`]); then always by `dial-stdio`, which
     /// the helper runs.
+    /// The host is connected and signed in to (or was already): what
+    /// [`Self::open_rex_channel`] begins with, by itself.
+    pub async fn reach(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Result<(), RexError> {
+        self.get_or_connect(target, askpass).await.map(|_| ())
+    }
+
     pub async fn open_rex_channel(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, control: bool) -> Result<Pin<Box<dyn AsyncReadWrite + Send>>, RexError> {
         let handle = self.get_or_connect(target, askpass).await?;
         let helper = if control { self.helper.lock().unwrap_or_else(|e| e.into_inner()).clone() } else { None };
@@ -477,6 +483,14 @@ impl SshSessionPool {
         // remote Rex Unix socket and autostart if needed).
         let channel = handle.channel_open_session().await.map_err(|e| RexError::Ssh(format!("open ssh session channel: {e}")))?;
         let cmd = dial_command(target.socket_path.as_deref(), helper);
+        // (Nothing can be sent behind this before the server has taken
+        // it: OpenSSH's server opens a session's channel with a window
+        // of nothing, and gives it one only when the command is set up,
+        // so a stream over SSH costs a round trip for its channel, one
+        // for this, and then its upgrade. Read off the wire against the
+        // rig's far host and timed against the test host, 2026-11-23;
+        // not asking for the reply changes nothing, so it is asked for:
+        // a server that refuses the command says so.)
         channel.exec(true, cmd).await.map_err(|e| RexError::Ssh(format!("exec `{}` failed: {e}", target.display())))?;
         let writer = channel.make_writer();
         let reader = ExecOutput::Starting(Some(channel));

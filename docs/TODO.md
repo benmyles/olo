@@ -1232,11 +1232,24 @@ something nobody here has is in "Blocked", with what it waits for.
       second or two (over TCP it is 300 to 500 ms each, more for two:
       this is where "a second or two" comes from); the session goes
       on through a change of network or a sleep. No keepalive at rest.
-    - *Connecting in fewer round trips.* Seven of them pass between
-      the window opening and its terminal showing (measured: 2.1, 4.3
-      and 8.3 s at 150, 300 and 600 ms each way), one after another;
-      what can be asked together should be, and the helper can answer
-      it all in one.
+    - *Connecting in fewer round trips*: done as far as SSH lets it
+      (2026-11-23; HACKING, "Connecting in fewer round trips"): two
+      round trips to a terminal's first screen where there were nine,
+      four over SSH where there were thirteen. Left:
+      - Over SSH a stream's channel and its command cost two round
+        trips before anything can be sent (OpenSSH opens a session's
+        window only when its command is set up). A helper that stays
+        on the host, with a socket of its own, is reached by a
+        channel that has its window at once (`direct-streamlocal`):
+        three round trips to a first screen then, and with the
+        terminals' bytes on the control connection's own stream (the
+        helper's to arrange), two. With the link of its own.
+      - Signing in: the TCP connection, the key exchange and the key
+        (asked whether it would be taken, then signed) are six round
+        trips or so before any of this, and a host nothing is known
+        of is asked what it is first (`uname`, a channel and a
+        command: two more). To be counted on the rig's far link, and
+        what can go together sent together.
     - *A flood that doesn't hold the link*: hidden panes paused at the
       host, a flooding one caught up from the screen's state once it
       stops (not its every line), big chunks packed.
