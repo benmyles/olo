@@ -73,7 +73,7 @@ class FarHost:
         with open(f"{self.dir}/sshd_config", "w") as f:
             f.write("\n".join([f"Port {self.port}", "ListenAddress 127.0.0.1", f"HostKey {self.dir}/host_key", f"PidFile {self.dir}/sshd.pid", f"AuthorizedKeysFile {self.dir}/authorized_keys",
                                "PasswordAuthentication no", "KbdInteractiveAuthentication no", "UsePAM no", "StrictModes no", "PermitUserEnvironment no", "AllowAgentForwarding yes",
-                               "AllowTcpForwarding yes", "X11Forwarding no", "PrintMotd no", "LogLevel ERROR", "SetEnv " + " ".join(f'{k}="{v}"' for k, v in env.items()), ""]))
+                               "AllowTcpForwarding yes", "X11Forwarding no", *([f"MaxSessions {os.environ['FAR_MAX_SESSIONS']}"] if os.environ.get("FAR_MAX_SESSIONS") else []), "PrintMotd no", "LogLevel ERROR", "SetEnv " + " ".join(f'{k}="{v}"' for k, v in env.items()), ""]))
         self.procs.append(started(subprocess.Popen(["/usr/sbin/sshd", "-D", "-e", "-f", f"{self.dir}/sshd_config"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=open(f"{self.dir}/sshd.log", "w"), start_new_session=True)))
         if os.path.exists(self.agent): os.remove(self.agent)
         # (In the foreground, so it is this script's to end.)

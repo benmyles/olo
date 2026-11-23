@@ -730,3 +730,31 @@ fn an_agent_is_forwarded_to_a_real_host() {
         println!("the agent was forwarded, listed there, and gone when taken back");
     });
 }
+
+/// A host's SSH server opens only so many sessions on a connection
+/// (OpenSSH ten; the rig's far host is told two, `FAR_MAX_SESSIONS`):
+/// what is asked of the host beyond them goes over further
+/// connections, made as they are needed, and nothing is refused. Seven
+/// commands held open at once, each answering, and an eighth after.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs OLO_REX_TEST_HOST, an SSH server that allows few sessions a connection"]
+async fn more_sessions_than_a_connection_allows() {
+    let Some(raw) = std::env::var("OLO_REX_TEST_HOST").ok() else { return };
+    let pool = Arc::new(SshSessionPool::default());
+    let target = SshTarget::parse(&raw).unwrap();
+    // (Each holds its session for two seconds: all seven are open at once.)
+    let held: Vec<_> = (0..7)
+        .map(|n| {
+            let (pool, target) = (pool.clone(), target.clone());
+            tokio::spawn(async move { pool.exec(&target, None, &format!("echo held {n}; sleep 2"), &mut |_| {}).await })
+        })
+        .collect();
+    tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+    let beside = pool.exec(&target, None, "echo beside", &mut |_| {}).await.expect("a command while every session of the first connection is taken");
+    assert_eq!(beside.output.trim(), "beside");
+    for (n, held) in held.into_iter().enumerate() {
+        let ran = held.await.unwrap().unwrap_or_else(|e| panic!("command {n} was refused: {e}"));
+        assert_eq!(ran.output.trim(), format!("held {n}"));
+    }
+    println!("a request: eight commands at once over an SSH server allowing two sessions a connection, all answered");
+}

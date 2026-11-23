@@ -1230,7 +1230,9 @@ impl HubState {
             },
             HostHelper::None => Has { on: false, said: olo_kit::tr!("Olo’s typing helper isn’t on “{}”.", name).to_string() },
         };
-        let bridge = host.bridge_there.map(|there| match (there, host.bridge_server.is_some()) {
+        // (What is granted is what the settings say now, not whether the
+        // bridge's server for the host has been started yet.)
+        let bridge = host.bridge_there.map(|there| match (there, self.settings.policy_for_host(host_key, false).any_enabled()) {
             (true, true) => Has { on: true, said: olo_kit::tr!("Olo’s bridge is on “{}”.", name).to_string() },
             (true, false) => {
                 Has { on: false, said: olo_kit::tr!("Olo’s bridge is on “{}”, with nothing granted to it. To grant it something, see Preferences\u{a0}▸\u{a0}Rex.", name).to_string() }
@@ -1291,7 +1293,7 @@ impl HubState {
             helper_kept_off: self.settings.helper_hosts.get(host_key).is_some_and(|word| word == "off"),
             helper_setting: self.settings.host_helper,
             bridge: host.bridge_there,
-            granted: host.bridge_server.is_some(),
+            granted: self.settings.policy_for_host(host_key, false).any_enabled(),
             skill: host.skill_there,
             version: host.server_version.as_ref().map(|v| v.version.clone()).filter(|v| !v.is_empty()),
         })
@@ -1818,6 +1820,16 @@ impl RexHub {
         }
         if !changes.any {
             return;
+        }
+        // The bridge's server for each connected far host, started or
+        // stopped as its permissions now say (`keep_bridge`).
+        let connected: Vec<String> = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.hosts.values().filter(|h| !h.is_local && h.control.is_some()).map(|h| h.key.clone()).collect()
+        };
+        for id in connected {
+            let inner = self.inner.clone();
+            self.rt.spawn(async move { inner.keep_bridge(&id).await });
         }
         for id in changes.removed.iter().chain(changes.moved.iter().map(|h| &h.id)) {
             self.remove_host_as(id, false, false);
@@ -3006,6 +3018,81 @@ impl RexHubInner {
         }
     }
 
+    /// The bridge's server on this computer for the far host
+    /// `host_key`: running while something of the bridge's is granted
+    /// to that host, and not otherwise. Called as the host is connected
+    /// to and whenever its permissions change (`follow_shared`): it was
+    /// started at connection only, so permissions given to a connected
+    /// host did nothing, and the Host window went on saying "nothing
+    /// granted to it", until the next connection (Ben, 2026-11-23: "i
+    /// clicked the bridge icon and then granted it all the access perms
+    /// but it still says nothing is granted").
+    async fn keep_bridge(self: &Arc<Self>, host_key: &str) {
+        let (wanted, running, label) = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(host) = st.hosts.get(host_key) else { return };
+            (st.settings.policy_for_host(host_key, false).any_enabled(), host.bridge_server.is_some(), host.label.clone())
+        };
+        if !wanted {
+            // (Its end closes it: `BridgeServerHandle`'s drop.)
+            let stopped = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(host_key).and_then(|h| {
+                h.bridge_remote_port = None;
+                h.bridge_server.take()
+            });
+            if stopped.is_some() {
+                (self.notify)(HubNotice::StateChanged);
+            }
+            return;
+        }
+        if running {
+            return;
+        }
+        let st_ref = self.state.clone();
+        let hk_pol = host_key.to_owned();
+        let pol_fn: Arc<dyn Fn() -> crate::settings::HostBridgePolicy + Send + Sync> =
+            Arc::new(move || st_ref.lock().unwrap_or_else(|e| e.into_inner()).settings.host_policies.get(&hk_pol).cloned().unwrap_or_else(crate::settings::HostBridgePolicy::remote_default));
+        let inn_fwd = self.clone();
+        let hk_fwd = host_key.to_owned();
+        let fwd_fn: bridge::LocalhostForwardFn = Arc::new(move |rh, rp| {
+            let inn = inn_fwd.clone();
+            let hk = hk_fwd.clone();
+            Box::pin(async move {
+                let sid = inn
+                    .state
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .hosts
+                    .get(&hk)
+                    .and_then(|h| h.session_summaries.first().map(|s| s.session_id.clone()))
+                    .ok_or_else(|| "no active remote session for forward".to_owned())?;
+                inn.ensure_ephemeral_forward(&hk, &sid, &rh, rp).await
+            })
+        });
+        let inner = Arc::downgrade(self);
+        let source_host = host_key.to_owned();
+        let notify = move |req: &bridge::BridgeRequest| {
+            if let Some(inner) = inner.upgrade() {
+                inner.bridge_notice(&source_host, req.session_id.as_deref(), req.block_id.as_deref(), &req.payload);
+            }
+        };
+        let Ok(handle) = bridge::start_bridge_server(label, pol_fn, fwd_fn, notify).await else { return };
+        let port = handle.local_addr.port();
+        {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            // (Started twice at once, or taken back meanwhile: the one
+            // not kept ends as it is dropped.)
+            let still = st.settings.policy_for_host(host_key, false).any_enabled();
+            match st.hosts.get_mut(host_key) {
+                Some(h) if still && h.bridge_server.is_none() => {
+                    h.bridge_remote_port = Some(port);
+                    h.bridge_server = Some(handle);
+                }
+                _ => return,
+            }
+        }
+        (self.notify)(HubNotice::StateChanged);
+    }
+
     /// The SSH agent on a host (HACKING, Rex, "The SSH agent on a
     /// host"): where the person has given a host reached over SSH the
     /// use of their SSH keys (Preferences ▸ Rex), Passwords' agent is
@@ -3547,53 +3634,10 @@ impl RexHubInner {
 
                     self.restore_forwards(&host_key, &ctrl, &endpoint);
 
-                    // Auto-start Tier 2 Olo Bridge server for remote hosts whose bridge policy is enabled.
+                    // The bridge's server here for the host, where something
+                    // is granted to it.
                     if !is_local {
-                        let (should_bridge, hlabel) = {
-                            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                            let pol = st.settings.host_policies.get(&host_key).cloned().unwrap_or_else(crate::settings::HostBridgePolicy::remote_default);
-                            let lbl = st.hosts.get(&host_key).map(|h| h.label.clone()).unwrap_or_else(|| host_key.clone());
-                            (pol.any_enabled() && st.hosts.get(&host_key).is_some_and(|h| h.bridge_server.is_none()), lbl)
-                        };
-                        if should_bridge {
-                            let st_ref = self.state.clone();
-                            let hk_pol = host_key.clone();
-                            let pol_fn: Arc<dyn Fn() -> crate::settings::HostBridgePolicy + Send + Sync> = Arc::new(move || {
-                                st_ref.lock().unwrap_or_else(|e| e.into_inner()).settings.host_policies.get(&hk_pol).cloned().unwrap_or_else(crate::settings::HostBridgePolicy::remote_default)
-                            });
-                            let inn_fwd = self.clone();
-                            let hk_fwd = host_key.clone();
-                            let fwd_fn: bridge::LocalhostForwardFn = Arc::new(move |rh, rp| {
-                                let inn = inn_fwd.clone();
-                                let hk = hk_fwd.clone();
-                                Box::pin(async move {
-                                    let sid = inn
-                                        .state
-                                        .lock()
-                                        .unwrap_or_else(|e| e.into_inner())
-                                        .hosts
-                                        .get(&hk)
-                                        .and_then(|h| h.session_summaries.first().map(|s| s.session_id.clone()))
-                                        .ok_or_else(|| "no active remote session for forward".to_owned())?;
-                                    inn.ensure_ephemeral_forward(&hk, &sid, &rh, rp).await
-                                })
-                            });
-                            let inner = Arc::downgrade(&self);
-                            let source_host = host_key.clone();
-                            let notify = move |req: &bridge::BridgeRequest| {
-                                if let Some(inner) = inner.upgrade() {
-                                    inner.bridge_notice(&source_host, req.session_id.as_deref(), req.block_id.as_deref(), &req.payload);
-                                }
-                            };
-                            if let Ok(handle) = bridge::start_bridge_server(hlabel, pol_fn, fwd_fn, notify).await {
-                                let port = handle.local_addr.port();
-                                let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                                if let Some(h) = st.hosts.get_mut(&host_key) {
-                                    h.bridge_remote_port = Some(port);
-                                    h.bridge_server = Some(handle);
-                                }
-                            }
-                        }
+                        self.keep_bridge(&host_key).await;
                     }
 
                     (self.notify)(HubNotice::StateChanged);

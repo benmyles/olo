@@ -27642,6 +27642,46 @@ what it does today:
   after idle, it seems: not found out yet; typing never sends so, and
   a paste is one request). Belongs to the link of its own.
 
+**More sessions than a host's SSH connection allows** (2026-11-23).
+Everything Rex has on a host reached over SSH goes over one SSH
+connection, and each stream to its server there (the control
+connection, every pane's, a command run for the Host window, the
+agent's kept channel) is a session of it; an SSH server opens only so
+many sessions on a connection (OpenSSH's `MaxSessions`, ten unless the
+host says otherwise). The next one was refused, and whatever asked for
+it failed with the server's word (Ben, installing the skill for
+agents: "ssh error: open ssh session channel: Failed to open channel
+(ConnectFailed)"). `SshSessionPool::session` opens every session
+channel now: on the host's connection, and where that one is full
+(`sessions_full`: the three ways a server says it), on a further
+connection to the host, made then, signed in to as the first was, and
+used for what comes after too (four further at most:
+`FURTHER_MOST`). Tried against a real OpenSSH server told to allow two
+sessions a connection (`tests/host.rs`,
+`more_sessions_than_a_connection_allows`, with the rig's
+`FAR_MAX_SESSIONS=2`): eight commands held open at once, all answered;
+with the overflow turned off it fails with the refusal above. Left
+(TODO): streams that take no session at all (the host's server
+reached by its socket, or one stream carrying many: the QUIC link).
+
+**The bridge's permissions, followed while a host is connected**
+(2026-11-23). The bridge's server on this computer for a far host
+(`hub::keep_bridge`) runs while something of the bridge's is granted
+to that host, and what the Host window and the status bar's mark say
+is granted is read from the permissions themselves
+(`HostBridgePolicy::any_enabled`: the bridge's five, not the SSH keys,
+which need no bridge). It was started at connection only, and "granted"
+was whether it ran: permissions given to a connected host did nothing,
+and the window said "nothing granted to it", until the next connection
+(Ben: "i clicked the bridge icon and then granted it all the access
+perms but it still says nothing is granted"). `follow_shared` calls it
+for every connected far host when the permissions change, both ways.
+Tried on the rig (`tools/dev/rex-slow/try.py granted`: the bridge's
+file put in the far host's home, the Host window opened, three
+permissions given and taken back in the desktop's settings; the
+window's Bridge line follows each within the wait; the build before
+says "nothing granted to it" throughout).
+
 **The SSH agent on a host** (2026-11-23; Ben: "so that e.g. github
 and other ssh using stuff just magically works on the remote session
 through the ssh key i already have in olo passwords locally … go

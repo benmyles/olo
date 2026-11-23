@@ -91,8 +91,12 @@ impl HostBridgePolicy {
         Self::default()
     }
 
+    /// Whether anything of the bridge's is granted: what its server
+    /// here runs for, and what the Host window and the status bar's
+    /// mark say of it. (Not the SSH keys: they go over SSH itself, with
+    /// no bridge.)
     pub fn any_enabled(&self) -> bool {
-        self.allow_open_url || self.allow_localhost_autoforward || self.allow_agent_screens || self.allow_passwords_op || self.allow_remote_control || self.allow_ssh_agent
+        self.allow_open_url || self.allow_localhost_autoforward || self.allow_agent_screens || self.allow_passwords_op || self.allow_remote_control
     }
 }
 

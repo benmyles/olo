@@ -1345,6 +1345,42 @@ something nobody here has is in "Blocked", with what it waits for.
     Terminal does it (`view.rs`, its `Mouse`); the terminal engine
     encodes (rex-vt `input.rs`). With Shift, the pane's own selection,
     as everywhere.
+  - *A host made ready for heavy work, from suggestions that can be
+    applied* (Ben, 2026-11-23, when a host's SSH server refused an
+    eleventh session: "why is there a 10 session limit? that should be
+    like 1024 or something. the host setup in rex app should handle
+    configuring that. and also in the host setup have suggestions that
+    can be applied: it should also increase / max out the open file
+    limits in linux and any other artificial limits like that, and
+    make it persist across restarts, also Raise dirty page writeback
+    thresholds (e.g. vm.dirty_background_bytes = 8589934592 (8 GB),
+    vm.dirty_bytes = 34359738368 (32 GB), vm.dirty_expire_centisecs =
+    6000) and persist and any other settings that optimize it for
+    intensive work like rust builds etc"). In the host's set-up (the
+    Server window, as root): each suggestion with what the host has
+    now, what Olo would set and why, Apply for one or all, kept across
+    restarts (a file of Olo's own under `sshd_config.d`, `sysctl.d`,
+    `limits.d`, systemd's `system.conf.d` and `user.conf.d`), and a
+    way back. The SSH server's `MaxSessions` (Rex opens a further
+    connection where one is full, since 2026-11-23: with it raised it
+    needn't), open files and processes for sessions and services, the
+    kernel's own ceilings (`fs.file-max`, `fs.nr_open`, inotify's
+    watches and instances, `kernel.pid_max`, `vm.max_map_count`), the
+    writeback thresholds as given, and what else serves long builds.
+  - *The bridge on a far host does nothing yet* (Ben, 2026-11-23, an
+    agent on a host told to use an Agent Screen: "The olo-screen and
+    xdg-open commands the skill describes aren't installed on this
+    machine", with the bridge shown as installed). Its shims are put
+    in `~/.local/share/olo-rex-bridge/bin`, which is on no session's
+    PATH, and they look for `OLO_REX_BRIDGE_PORT` and
+    `OLO_REX_BRIDGE_TOKEN`, which nothing sets (the bridge's server
+    here is reached from this computer alone). The agent got as far
+    as it did through the actions Rex's app offers a session
+    (`olo.screen.ensure`, `olo.screen.open_url`), which can't answer
+    with what a screen shows. To do: the shims reach the app over
+    Rex's own connection (a call of the app's, answered with what the
+    command wrote), found on the PATH of every session Rex has on the
+    host, and the skill says only what is so.
   - *The Host window, further* (the window is built, 2026-11-23: Ben's
     "manage host button … manage all the services and things installed
     on a host in one place"; HACKING, "The Host window"). What the two

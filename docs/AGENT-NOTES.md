@@ -2803,3 +2803,7 @@ an argument it doesn't know starts the lint (read its first lines).
   its timeout had left agents, links and a test session running.
 - **`tools/dev/ui-lint --help` is a run of the whole lint**, not help
   (its options are in the file's head).
+- **"Failed to open channel (ConnectFailed)" from an OpenSSH server is
+  its `MaxSessions`** (ten sessions a connection by default), not a
+  network failure: `sshd` answers a session it won't open with that
+  reason. The rig's far host takes `FAR_MAX_SESSIONS=N` to try it.

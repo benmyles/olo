@@ -280,6 +280,35 @@ elif what == "agent":
         gone = r.wait(lambda: (lambda out: out if "olo-test-key" not in out else None)(listed()), 20, every=0.5)
         print("taken back, ssh-add there says:", repr((gone or listed())[:80]))
         print("PASS" if got and gone is not None and "for far at" in said and "asked by olo-rex" in said else "FAIL")
+elif what == "granted":
+    # The bridge's permissions given to a host that is connected, and taken back: what the Host window says of
+    # the bridge follows at once, with no new connection. (It said "nothing granted to it" until the next one.)
+    shim = f"{D}/home/.local/share/olo-rex-bridge/bin/_olo_bridge_call"
+    os.makedirs(os.path.dirname(shim), exist_ok=True)
+    open(shim, "w").write("#!/bin/sh\nexit 0\n"); os.chmod(shim, 0o755)
+    try:
+        with Rig("shell", delay=0, far=True, bin=next((a.partition("=")[2] for a in args if a.startswith("--bin=")), None)) as r:
+            def bridge():
+                """The Host window's line for the bridge: the words after its heading, up to the next heading."""
+                said = [str(n.get("name") or n.get("value") or "") for n in r.nodes("Host") if n.get("role") in ("Text", "Label", "StaticText", "Heading")]
+                said = [w for w in said if w]
+                if "Bridge" not in said: return None
+                at = said.index("Bridge"); rest = said[at + 1:]
+                end = next((i for i, w in enumerate(rest) if w in ("Skill for agents", "Typing helper")), len(rest))
+                return " · ".join(rest[:end])[:120]
+            print("the Host window opened:", r.invoke("host.manage"))
+            first = r.wait(lambda: (lambda b: b if b and "Installed" in b else None)(bridge()), 20)
+            print("as connected, nothing granted:", repr(first))
+            r.grant("far", open_links=True, passwords=True, agent_screens=True)
+            given = r.wait(lambda: (lambda b: b if b and "Installed" in b and "nothing granted" not in b else None)(bridge()), 10)
+            print("permissions given:", repr(given or bridge()))
+            r.grant("far", open_links=False, passwords=False, agent_screens=False)
+            taken = r.wait(lambda: (lambda b: b if b and "nothing granted" in b else None)(bridge()), 10)
+            print("taken back:", repr(taken or bridge()))
+            print("PASS" if first and "nothing granted" in first and given and taken else "FAIL")
+    finally:
+        import shutil
+        shutil.rmtree(f"{D}/home/.local/share/olo-rex-bridge", ignore_errors=True)
 elif what == "behind":
     import re, subprocess
     numbers = [a for a in args if a.isdigit()]

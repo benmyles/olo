@@ -506,6 +506,22 @@ pub struct SshSessionPool {
     /// Olo's helper on the hosts: the name of the build the app
     /// carries ([`Self::set_helper`]).
     helper: std::sync::Mutex<Option<String>>,
+    /// Further connections to a host, opened when its SSH server will
+    /// open no more sessions on those there are ([`Self::session`]).
+    further: Mutex<HashMap<SshTarget, Vec<Arc<Handle<SshClientHandler>>>>>,
+}
+
+/// The most further connections to one host: with OpenSSH's ten
+/// sessions a connection, fifty sessions in all.
+const FURTHER_MOST: usize = 4;
+
+/// Whether a session channel was refused because the connection has
+/// all the sessions the host's SSH server allows it (OpenSSH's
+/// `MaxSessions`, ten unless its configuration says otherwise: it
+/// answers "connect failed" then; others may say the other two).
+fn sessions_full(e: &russh::Error) -> bool {
+    use russh::ChannelOpenFailure::{AdministrativelyProhibited, ConnectFailed, ResourceShortage};
+    matches!(e, russh::Error::ChannelOpenFailure(ConnectFailed | AdministrativelyProhibited | ResourceShortage))
 }
 
 type SessionSlot = Arc<Mutex<Option<Arc<Handle<SshClientHandler>>>>>;
@@ -520,6 +536,51 @@ impl SshSessionPool {
     /// Drop any cached SSH session for `target` (e.g. after disconnect/reconnect).
     pub async fn invalidate(&self, target: &SshTarget) {
         self.sessions.lock().await.remove(target);
+        self.further.lock().await.remove(target);
+    }
+
+    /// A session channel on the host (what a command there is run on).
+    /// Everything Rex has on a host goes over one SSH connection, each
+    /// stream to its server a session of it, and an SSH server opens
+    /// only so many sessions on a connection (OpenSSH ten, its
+    /// `MaxSessions`): with eight panes open there, the control
+    /// connection and the agent's channel, the next thing asked of the
+    /// host was refused ("Failed to open channel (ConnectFailed)":
+    /// Ben, 2026-11-23, installing the skill for agents). Where the
+    /// connection is full, the session is opened on a further
+    /// connection to the host, made then (signed in to as the first
+    /// was) and used for what comes after too.
+    async fn session(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Result<russh::Channel<client::Msg>, RexError> {
+        let failed = |e: russh::Error| RexError::Ssh(format!("open ssh session channel: {e}"));
+        let handle = self.get_or_connect(target, askpass.clone()).await?;
+        match handle.channel_open_session().await {
+            Ok(channel) => return Ok(channel),
+            Err(e) if sessions_full(&e) => {}
+            Err(e) => return Err(failed(e)),
+        }
+        // (One at a time: two things asked at once of a full connection
+        // make one further connection between them, not two.)
+        let mut further = self.further.lock().await;
+        let list = further.entry(target.clone()).or_default();
+        list.retain(|handle| !handle.is_closed());
+        for handle in list.iter() {
+            match handle.channel_open_session().await {
+                Ok(channel) => return Ok(channel),
+                Err(e) if sessions_full(&e) => {}
+                Err(e) => return Err(failed(e)),
+            }
+        }
+        if list.len() >= FURTHER_MOST {
+            return Err(RexError::Ssh(format!(
+                "{} will open no more sessions: its SSH server allows only so many on a connection (MaxSessions), and Rex has {} connections to it, all full",
+                target.display(),
+                list.len() + 1
+            )));
+        }
+        tracing::info!("ssh: {}'s connection has all the sessions its server allows; opening another", target.display());
+        let handle = Arc::new(connect_and_authenticate(target, askpass, self.agent_cell(target)).await?);
+        list.push(handle.clone());
+        handle.channel_open_session().await.map_err(failed)
     }
 
     /// Olo's helper on the hosts, by the name of the build the app
@@ -569,9 +630,8 @@ impl SshSessionPool {
         if self.agent_cell(target).lock().unwrap_or_else(|e| e.into_inner()).is_none() {
             return Err(RexError::Ssh("no agent has been given for this host".to_owned()));
         }
-        let handle = self.get_or_connect(target, askpass).await?;
         let kept = async {
-            let mut channel = handle.channel_open_session().await.map_err(|e| RexError::Ssh(format!("open ssh session channel: {e}")))?;
+            let mut channel = self.session(target, askpass).await?;
             channel.agent_forward(false).await.map_err(|e| RexError::Ssh(format!("asking {} to forward the agent failed: {e}", target.display())))?;
             channel.exec(true, format!("sh -c {}", shell_escape(AGENT_KEPT))).await.map_err(|e| RexError::Ssh(format!("exec on {} failed: {e}", target.display())))?;
             let mut said = Vec::new();
@@ -603,9 +663,10 @@ impl SshSessionPool {
     }
 
     pub async fn open_rex_channel(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, control: bool) -> Result<Pin<Box<dyn AsyncReadWrite + Send>>, RexError> {
-        let handle = self.get_or_connect(target, askpass).await?;
+        let handle = self.get_or_connect(target, askpass.clone()).await?;
         let helper = if control { self.helper.lock().unwrap_or_else(|e| e.into_inner()).clone() } else { None };
-        tokio::time::timeout(Duration::from_secs(10), Self::channel(&handle, target, helper.as_deref())).await.map_err(|_| RexError::Timeout)?
+        // (Longer where a further connection has to be made for it.)
+        tokio::time::timeout(Duration::from_secs(30), self.channel(&handle, target, askpass, helper.as_deref())).await.map_err(|_| RexError::Timeout)?
     }
 
     /// Runs `command` on the host, in a shell there, and waits for it:
@@ -614,8 +675,7 @@ impl SshSessionPool {
     /// setting a host up and looking after it ([`crate::provision`]).
     pub async fn exec(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, command: &str, said: &mut (dyn FnMut(&str) + Send)) -> Result<crate::provision::Ran, RexError> {
         use russh::ChannelMsg;
-        let handle = self.get_or_connect(target, askpass).await?;
-        let mut channel = handle.channel_open_session().await.map_err(|e| RexError::Ssh(format!("open ssh session channel: {e}")))?;
+        let mut channel = self.session(target, askpass).await?;
         channel.exec(true, command).await.map_err(|e| RexError::Ssh(format!("exec on {} failed: {e}", target.display())))?;
         let mut ran = crate::provision::Ran::default();
         // (Each of its two outputs is cut into lines by itself: a line
@@ -657,10 +717,9 @@ impl SshSessionPool {
     /// isn't waited for longer.
     pub async fn put(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, command: &str, input: &[u8]) -> Result<crate::provision::Ran, RexError> {
         use russh::ChannelMsg;
-        let handle = self.get_or_connect(target, askpass).await?;
         let within = Duration::from_secs(120 + input.len() as u64 / 20_000);
         let sent = async {
-            let mut channel = handle.channel_open_session().await.map_err(|e| RexError::Ssh(format!("open ssh session channel: {e}")))?;
+            let mut channel = self.session(target, askpass).await?;
             channel.exec(true, command).await.map_err(|e| RexError::Ssh(format!("exec on {} failed: {e}", target.display())))?;
             channel.data(input).await.map_err(|e| RexError::Ssh(format!("sending to {} failed: {e}", target.display())))?;
             channel.eof().await.map_err(|e| RexError::Ssh(format!("sending to {} failed: {e}", target.display())))?;
@@ -681,7 +740,13 @@ impl SshSessionPool {
         tokio::time::timeout(within, sent).await.map_err(|_| RexError::Timeout)?
     }
 
-    async fn channel(handle: &Handle<SshClientHandler>, target: &SshTarget, helper: Option<&str>) -> Result<Pin<Box<dyn AsyncReadWrite + Send>>, RexError> {
+    async fn channel(
+        &self,
+        handle: &Handle<SshClientHandler>,
+        target: &SshTarget,
+        askpass: Option<Arc<dyn SshAskpass>>,
+        helper: Option<&str>,
+    ) -> Result<Pin<Box<dyn AsyncReadWrite + Send>>, RexError> {
         if let Some(sock) = target.socket_path.as_ref().filter(|_| helper.is_none()) {
             match handle.channel_open_direct_streamlocal(sock.clone()).await {
                 Ok(ch) => return Ok(Box::pin(ch.into_stream())),
@@ -693,7 +758,7 @@ impl SshSessionPool {
 
         // Standard Rex SSH transport: `rex __internal dial-stdio` (auto-discovers
         // remote Rex Unix socket and autostart if needed).
-        let channel = handle.channel_open_session().await.map_err(|e| RexError::Ssh(format!("open ssh session channel: {e}")))?;
+        let channel = self.session(target, askpass).await?;
         let cmd = dial_command(target.socket_path.as_deref(), helper);
         // (Nothing can be sent behind this before the server has taken
         // it: OpenSSH's server opens a session's channel with a window
