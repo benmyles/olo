@@ -25698,9 +25698,11 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   window came back once; SIGTERM to the keeper ended all; a copy killed
   ended the keeper with it.
 - **A pool of its own on a Rex host** (`gateway/hosted.rs`, `host.rs`,
-  `src/bin/olo-pool-host.rs`; being built, 2026-11-23: the program and
-  the pools' agreement are there and tested, the desktop's side that
-  puts it on a host and keeps it in step is next, TODO). Ben: "it
+  `hosts.rs`, `src/bin/olo-pool-host.rs`; 2026-11-23: the program, the
+  pools' agreement and the desktop's side that puts it on a host and
+  keeps it in step are there and tested, driven from `olo-pool
+  --hosts` and `--host ID install|remove|sync|look`; the windows that
+  show it are next, TODO). Ben: "it
   shouldn't proxy through the token pool running on the user's desktop
   because then the coding agents couldn't continue when the desktop is
   off. what it should do is install a token pool service … that
@@ -25745,6 +25747,31 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
     again until it is next carried. What it means for the person: an
     account shared with a host needs that host reached every few
     hours to be used here too.
+  - *The desktop's side* (`hosts::Hosts`, started by the app with the
+    hosts Rex knows from the desktop's settings, those reached over
+    SSH): it reaches a host itself, with Rex's SSH client and the
+    person's keys, whether Rex is open or not. **Install** puts the
+    program for the host's machine in `~/.local/share/olo/pool` (as
+    the typing helper is put: whole, tried there, in one move; the
+    app carries one for x86_64 and one for aarch64, `apps/pool/
+    build.rs`, named for its build), makes it the account's own
+    service (a systemd user unit, `olo-pool.service`, enabled, with
+    lingering asked for; started with `nohup` where the account has
+    no systemd), waits for it to answer, and carries the accounts.
+    **Whenever the accounts change here** (`Shared::on_accounts`: one
+    added, removed, renamed, paused, signed in anew) every host whose
+    pool doesn't have what is here (a digest of what would be
+    carried) is carried it two seconds on; one that can't be reached
+    is behind, since when and why, and tried again by itself (a
+    minute, two, up to ten). **Sync** is that, now. **Remove** takes
+    back every sign-in the host keeps first (none is lost with it:
+    where one can't be, nothing is removed), then the service, the
+    clients there as they were (`put-back`), what the pool kept
+    (`forget`) and the program. `/pool/hosts` on the gateway is how
+    each stands (`hosts::Stands`: wanted, doing, error, in step,
+    behind since, carried at, and the host pool's own status with its
+    accounts, requests and use as it last answered), for Rex's
+    windows and agents; `POST /pool/hosts/ID/WHAT` does one thing.
   - *What is carried* is the accounts (new ones added, ones no longer
     carried removed, names and pauses followed) and never a pool's
     own reading of them (use, meters, cooldowns).
@@ -25753,10 +25780,26 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
     host keeps and renews, the desktop borrows, neither renews what
     the other did, the host goes on alone, the desktop waits without
     signing out, a sign-in given back is whole, and no refresh token
-    is spent twice. And the static program run here in a scratch home
-    on ports of its own: an account carried over `ctl`, its sign-in
-    lent, the vault sealed and the account's alone, stopped, the
-    clients put back.
+    is spent twice. And the whole way over SSH
+    (`tests/hosts_live.rs`): on the rig's far host
+    (`tools/dev/rex-slow/try.py pool`, with a provider of the test's:
+    installed in 2 s, the account handed over and kept there, a
+    sign-in borrowed with one renewal, a rename here there a second
+    or two later, installed again with its sign-in kept, removed with
+    the sign-in taken back whole and renewed here again, no refresh
+    token spent twice); and against an account in a container with
+    systemd (the service's own path: `olo-pool.service` active and
+    enabled, the vault, its key and the socket 0600, Claude Code's
+    settings pointed at the proxy; after removal nothing of the pool
+    there, the unit gone, the settings as before). Not tried: a real
+    host with a real account (the test host has the person's agents
+    on it, which a made-up account would get in the way of).
+  - *The app's build*: `zig` must be installed for the host's program
+    (it compiles the C in it for musl); without it the app is built
+    without, and says so. The first build of both takes six minutes;
+    after that only when the pool's crate or what it stands on
+    changes. No path of this computer is in them (`--remap-path-
+    prefix`, `-ffile-prefix-map`).
 - **The Clients window** (Pool ▸ Clients, ⌘L, or the Clients button;
   `apps/pool/src/clients_window.rs`): the pool's activity over time, a
   line each for Claude Code and Codex in requests a minute over the last

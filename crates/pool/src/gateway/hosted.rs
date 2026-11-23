@@ -41,13 +41,22 @@ use crate::upstream::Failure;
 /// for at least so many seconds more: the app's way to that host.
 pub type Lender = Arc<dyn Fn(String, String, i64) -> Pin<Box<dyn Future<Output = Result<Credential, String>> + Send>> + Send + Sync>;
 
+/// The pools on Rex hosts, as the gateway shows and changes them (the
+/// desktop's `hosts::Hosts`).
+pub trait Hosting: Send + Sync {
+    fn list(&self) -> Value;
+    fn act(self: Arc<Self>, id: &str, what: &str) -> Result<(), String>;
+}
+
 /// How long before a borrowed sign-in runs out a newer one is asked
 /// for (as the accounts' quotas are read, every few minutes: so a
 /// keeper out of reach for a while costs nothing).
 pub const BORROW_AHEAD: i64 = 2 * 3600;
-/// A keeper asked for a longer-lived sign-in renews one at most so
-/// often (one whose sign-ins last less than [`BORROW_AHEAD`] would
-/// else be renewed at every asking).
+/// A keeper asked for a longer-lived sign-in renews one no sooner
+/// than this after its last renewal, whoever asked for that (one whose
+/// sign-ins last less than [`BORROW_AHEAD`] would else be renewed at
+/// every asking, and one just renewed by the keeper for itself again
+/// for its first borrower: seen in the first run over SSH).
 const LEND_RENEWS_EVERY: Duration = Duration::from_secs(30 * 60);
 /// A keeper that couldn't be reached isn't asked again for so long (a
 /// request waits for none of this: it has its answer at once).
@@ -105,6 +114,26 @@ impl Shared {
 
     pub fn is_hosted(&self) -> bool {
         self.hosted.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Where this pool's own work runs, for one that doesn't serve (a
+    /// test's: the gateway sets its own as it starts).
+    pub fn set_runtime(&self, runtime: tokio::runtime::Handle) {
+        *self.runtime.lock().unwrap() = Some(runtime);
+    }
+
+    pub fn set_hosting(&self, hosting: Option<Arc<dyn Hosting>>) {
+        *self.hosting.lock().unwrap() = hosting;
+    }
+
+    pub fn hosting(&self) -> Option<Arc<dyn Hosting>> {
+        self.hosting.lock().unwrap().clone()
+    }
+
+    /// `told` is called (from any thread) whenever the accounts or
+    /// their sign-ins change here.
+    pub fn on_accounts(&self, told: impl Fn() + Send + Sync + 'static) {
+        *self.accounts_changed.lock().unwrap() = Some(Box::new(told));
     }
 
     /// The way to the keepers of the accounts kept elsewhere.
@@ -180,11 +209,7 @@ impl Shared {
         };
         let lately = self.lent.lock().unwrap().get(id).is_some_and(|at| at.elapsed() < LEND_RENEWS_EVERY);
         let within = if kept_elsewhere || lately { 60 } else { at_least };
-        let before = self.pool.lock().unwrap().saved.credentials.get(id).map(|c| c.access.clone());
         let mut c = self.fresh(id, provider, None, within).await.map_err(|e| e.to_string())?;
-        if before.as_deref() != Some(c.access.as_str()) {
-            self.lent.lock().unwrap().insert(id.to_owned(), std::time::Instant::now());
-        }
         c.refresh = None;
         Ok(c)
     }
@@ -313,14 +338,22 @@ impl Shared {
             self.touch();
             self.flush();
         }
+        self.would_carry(host, from)
+    }
+
+    /// What [`Self::carry_to`] would carry to `host`, nothing marked: to
+    /// know whether the host has what is here.
+    pub fn would_carry(&self, host: &str, from: &str) -> Carried {
         let p = self.pool.lock().unwrap();
         let accounts = p
             .saved
             .accounts
             .iter()
             .map(|a| {
+                // (One this pool still keeps would be handed to the host.)
+                let kept_on = a.kept_on.clone().or_else(|| p.saved.credentials.get(&a.id).is_some_and(|c| c.refresh.is_some()).then(|| host.to_owned()));
                 let credential = p.saved.credentials.get(&a.id).cloned().map(|mut c| {
-                    if a.kept_on.as_deref() != Some(host) {
+                    if kept_on.as_deref() != Some(host) {
                         c.refresh = None;
                     }
                     c
@@ -335,7 +368,7 @@ impl Shared {
                     plan: a.plan.clone(),
                     org: a.org.clone(),
                     separate: a.separate,
-                    kept_on: a.kept_on.clone(),
+                    kept_on,
                     credential,
                 }
             })

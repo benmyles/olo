@@ -39,7 +39,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 mod hosted;
-pub use hosted::{Carried, CarriedAccount, Lender};
+pub use hosted::{Carried, CarriedAccount, Hosting, Lender};
 
 use crate::{
     activity::Activity,
@@ -226,8 +226,13 @@ pub struct Shared {
     /// (`hosted::Lender`), and when each was last asked and failed.
     lender: Mutex<Option<hosted::Lender>>,
     asked: Mutex<HashMap<String, std::time::Instant>>,
-    /// When each account's sign-in was last renewed for a borrower.
+    /// When each account's sign-in was last renewed here.
     lent: Mutex<HashMap<String, std::time::Instant>>,
+    /// The pools on Rex hosts, as the gateway's `/pool/hosts` shows and
+    /// changes them (`hosts::Hosts`, the desktop's), and who is told
+    /// when the accounts change.
+    hosting: Mutex<Option<Arc<dyn Hosting>>>,
+    accounts_changed: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
 }
 
 /// How often an account's quota is read while nothing asks for it (its
@@ -360,6 +365,8 @@ impl Shared {
             lender: Mutex::new(None),
             asked: Mutex::new(HashMap::new()),
             lent: Mutex::new(HashMap::new()),
+            hosting: Mutex::new(None),
+            accounts_changed: Mutex::new(None),
         });
         // What the copy it took over from finishes after the handover,
         // booked here, where it's saved.
@@ -413,6 +420,9 @@ impl Shared {
     pub fn touch(&self) {
         let _ = self.save.send(Save::Now);
         (self.changed)();
+        if let Some(told) = self.accounts_changed.lock().unwrap().as_ref() {
+            told();
+        }
     }
 
     /// A request's bookkeeping changed (when an account was used, what it
@@ -835,6 +845,9 @@ impl Shared {
         match upstream::refresh(&self.client_for(id), &self.up, provider, &current, self.like(id).as_ref()).await {
             Ok(c) => {
                 self.pool.lock().unwrap().saved.credentials.insert(id.to_owned(), c.clone());
+                // (When: a borrower asking for a longer-lived one soon
+                // after gets this one, `hosted::lend`.)
+                self.lent.lock().unwrap().insert(id.to_owned(), std::time::Instant::now());
                 if self.drain.retired() {
                     // (Handed over: only this sign-in goes into the file.)
                     let written = tokio::task::block_in_place(|| self.store.lock().unwrap().as_ref().map(|st| st.put_credential(id, &c)));
@@ -1418,6 +1431,8 @@ pub fn router(shared: Arc<Shared>, port: u16) -> Router {
         .route("/pool/status", get(status))
         .route("/pool/open", post(open))
         .route("/pool/capture", post(capture_now))
+        .route("/pool/hosts", get(hosts))
+        .route("/pool/hosts/{id}/{what}", post(host_act))
         .with_state(Ctx { shared, port })
 }
 
@@ -1489,6 +1504,33 @@ pub fn status_json(p: &Pool) -> Value {
         })
         .collect();
     json!({"accounts": accounts, "error": p.error, "loaded": p.loaded, "served": p.served, "open": p.open, "activity": p.activity.minutes})
+}
+
+/// The pools on Rex hosts, for Rex's windows and agents: how each
+/// stands (`hosts::Stands`).
+async fn hosts(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
+    if let Err(r) = local_only(&headers, ctx.port) {
+        return *r;
+    }
+    let hosting = ctx.shared.hosting();
+    match hosting {
+        Some(hosting) => axum::Json(hosting.list()).into_response(),
+        None => axum::Json(json!({"hosts": []})).into_response(),
+    }
+}
+
+/// One thing done to a host's pool: `install`, `remove`, `sync`,
+/// `look`. Begun, and answered at once: how it goes shows in
+/// `/pool/hosts`.
+async fn host_act(State(ctx): State<Ctx>, Path((id, what)): Path<(String, String)>, headers: HeaderMap) -> Response {
+    if let Err(r) = local_only(&headers, ctx.port) {
+        return *r;
+    }
+    match ctx.shared.hosting().map(|hosting| hosting.act(&id, &what)) {
+        Some(Ok(())) => StatusCode::ACCEPTED.into_response(),
+        Some(Err(why)) => (StatusCode::CONFLICT, why).into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 /// A host's pool serves its clients through its proxy alone, which

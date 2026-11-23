@@ -1413,29 +1413,35 @@ something nobody here has is in "Blocked", with what it waits for.
     that sync status etc in the token pool app with the ability to
     manually sync if needed").
     Two things.
-    *The Token Pool as a service on the host*, not a way through this
-    computer's: the pool's own program (`crates/pool`), built for the
-    hosts as the typing helper is and put there by Rex, run for the
-    account (a user service where the host has systemd, started by
-    Rex where it hasn't), calling Claude and OpenAI itself, so the
-    agents there go on with this computer off. It is given the
-    desktop pool's settings and accounts, and kept the same as they
-    change (a new account, one signed out, a token renewed on either
-    side: which side renews, so two pools don't spend one refresh
-    token, is the first thing to settle; the accounts' secrets lie in
-    the account's home there, readable by it alone, and are taken
-    away with the service). The desktop's Token Pool shows the remote
-    service's requests, use and limits beside its own when it can
-    reach it (over Rex's connection to the host; what it missed while
-    away, from the service's own record), and is not needed by it.
-    Whenever the accounts change here (one added, signed out,
-    renewed, its order or its limits changed) they are carried to
-    every host's service at once, or as soon as the host is next
-    reached; the Token Pool app says for each host's service how it
-    stands (in step, behind and since when, not reached and why) and
-    has a Sync Now for it. A
-    fourth mark in Rex's status bar, with the helper's, the bridge's
-    and the skill's: on where the service runs there.
+    *The Token Pool as a service on the host*: the service, the
+    pools' agreement on who renews a sign-in, and the desktop's side
+    that installs it, keeps it in step and removes it are built
+    (2026-11-23; HACKING, Token Pool, "A pool of its own on a Rex
+    host"), driven for now from `olo-pool --hosts` and `--host ID
+    install|remove|sync|look`. Left, in this order:
+    - *The Token Pool app shows it*: a Hosts part of its window, each
+      host's pool with how it stands (in step; behind, since when and
+      why; not reached), Install, Remove and Sync Now, and the host
+      pool's requests, use and limits beside this computer's.
+    - *Rex shows it*: a fourth mark in the status bar and a fifth
+      section in the Host window (from `/pool/hosts`), Install and
+      Remove there too.
+    - Lingering: where the host won't let the account's services run
+      while it is signed out (`loginctl enable-linger` refused), the
+      pool ends with the last session: said, with what to do as root
+      (the Server window could do it).
+    - What Passwords asks when the pool signs in to a host by itself
+      (a background program with no terminal): it should count as
+      Rex's own connection to that host does.
+    - A host whose key this computer doesn't know yet (never
+      connected to in Rex): said plainly, "connect to it in Rex
+      first".
+    - An upgrade of Olo puts the new program on the hosts by itself
+      (now: Install again).
+    - What the desktop missed while away, from the host pool's own
+      record (it has the last 25 requests an account and a day's
+      activity: shown as they are when it is next reached).
+    - Tried with a real account on a real host.
     *A host's account made ready in one go*, in Rex, from a list of
     steps that can grow: the agents installed, the person's settings
     for them copied (what is theirs to copy), each pointed at the

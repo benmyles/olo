@@ -13,6 +13,8 @@ pub mod drain;
 pub mod gateway;
 pub mod hello;
 pub mod host;
+#[cfg(feature = "desktop")]
+pub mod hosts;
 pub mod import;
 pub mod intercept;
 pub mod likeness;

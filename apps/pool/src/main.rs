@@ -22,6 +22,7 @@
 //! the keeper (`keeper`).
 
 mod clients_window;
+mod host_builds;
 mod ui;
 
 use std::{
@@ -92,7 +93,8 @@ fn duration(ms: u64) -> String {
 
 // ---- the command line -------------------------------------------------
 
-const USAGE: &str = "usage: olo-pool [--service | --status [--json] | --clients [--json] | --capture | --restart-codex-service | --put-back claude|codex]
+const USAGE: &str =
+    "usage: olo-pool [--service | --status [--json] | --clients [--json] | --capture | --restart-codex-service | --put-back claude|codex | --hosts | --host ID install|remove|sync|look]
   (none)            open Token Pool (starting the gateway if it isn't running)
   --service         run the gateway in the background (the session does)
   --status [--json] the pool's accounts, quota and state (no sign-ins), and
@@ -109,7 +111,57 @@ const USAGE: &str = "usage: olo-pool [--service | --status [--json] | --clients 
   --put-back claude|codex
                     take the client off the pool's proxy altogether, its
                     settings as before the pool (turned off in Token Pool,
-                    it only passes through, needing no restart)";
+                    it only passes through, needing no restart)
+  --hosts           the Rex hosts that can have a pool of their own, and
+                    how each one's stands (JSON)
+  --host ID install|remove|sync|look
+                    put a pool on a Rex host (its accounts this pool's,
+                    kept in step), take it away, carry the accounts to it
+                    now, or ask it how it stands; `--hosts` shows how it
+                    goes";
+
+/// One request to the running gateway over loopback: its status line's
+/// code and its body.
+fn ask_gateway(port: u16, method: &str, path: &str) -> Result<(u16, String), String> {
+    let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).map_err(|_| "Token Pool isn’t running.".to_owned())?;
+    s.set_read_timeout(Some(Duration::from_secs(5))).ok();
+    write!(s, "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    s.read_to_end(&mut out).map_err(|e| e.to_string())?;
+    let text = String::from_utf8_lossy(&out);
+    let code = text.split_whitespace().nth(1).and_then(|c| c.parse().ok()).unwrap_or(0);
+    Ok((code, text.split_once("\r\n\r\n").map(|(_, b)| b.to_owned()).unwrap_or_default()))
+}
+
+/// `--hosts`, and `--host ID WHAT`.
+fn hosts_now(port: u16, act: Option<(&str, &str)>) -> std::process::ExitCode {
+    let asked = match act {
+        None => ask_gateway(port, "GET", "/pool/hosts"),
+        Some((id, what)) => ask_gateway(port, "POST", &format!("/pool/hosts/{id}/{what}")),
+    };
+    match asked {
+        Ok((200, body)) => {
+            println!("{body}");
+            std::process::ExitCode::SUCCESS
+        }
+        Ok((202, _)) => {
+            println!("Begun: `olo-pool --hosts` shows how it goes.");
+            std::process::ExitCode::SUCCESS
+        }
+        Ok((404, _)) => {
+            eprintln!("olo-pool: the running Token Pool is older: upgrade it first.");
+            std::process::ExitCode::FAILURE
+        }
+        Ok((_, why)) => {
+            eprintln!("olo-pool: {}", if why.is_empty() { "the Token Pool refused." } else { why.trim() });
+            std::process::ExitCode::FAILURE
+        }
+        Err(e) => {
+            eprintln!("olo-pool: {e}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
 
 /// Ask the running gateway to capture every account's client again.
 fn capture_now(port: u16) -> std::process::ExitCode {
@@ -427,6 +479,16 @@ fn main() -> std::process::ExitCode {
     if has("--capture") {
         return capture_now(port);
     }
+    if has("--hosts") {
+        return hosts_now(port, None);
+    }
+    if let Some(i) = args.iter().position(|a| a == "--host") {
+        let (Some(id), Some(what)) = (args.get(i + 1), args.get(i + 2)) else {
+            eprintln!("olo-pool: --host takes a host's id (`olo-pool --hosts`) and install, remove, sync or look");
+            return std::process::ExitCode::FAILURE;
+        };
+        return hosts_now(port, Some((id, what)));
+    }
     if let Some(i) = args.iter().position(|a| a == "--put-back") {
         let Some(p) = args.get(i + 1).and_then(|a| Provider::parse(a)) else {
             eprintln!("olo-pool: --put-back takes claude or codex");
@@ -509,6 +571,14 @@ fn main() -> std::process::ExitCode {
         let shared = Shared::launch(port, move || to_ui.send(ui::Msg::Changed));
         let to_ui = proxy.clone();
         shared.on_open(move || to_ui.send(ui::Msg::Open));
+        // The pools on Rex hosts: the hosts Rex knows, as the desktop's
+        // settings have them (Preferences ▸ Rex), each able to have a
+        // pool of its own with this one's accounts.
+        let to_ui = proxy.clone();
+        let hosts = olo_token_pool::hosts::Hosts::start(shared.clone(), host_builds::builds(), host_builds::ID, move || to_ui.send(ui::Msg::Changed));
+        olo_kit::settings::watch(move |s| {
+            hosts.set_known(s.rex.hosts.iter().map(|h| (h.id.clone(), if h.label.trim().is_empty() { h.endpoint.clone() } else { h.label.clone() }, h.endpoint.clone())).collect())
+        });
         // Clients pointed at the pool the old way (an API endpoint of its
         // own) go through its proxy instead, as on their own subscription.
         let proxy_port = olo_token_pool::intercept::port();

@@ -2829,3 +2829,15 @@ an argument it doesn't know starts the lint (read its first lines).
   `target/TRIPLE/release/build/NAME/` (not `NAME-HASH`) and must be
   removed. musl's `libc::sched_param` has more fields than glibc's:
   make one with `zeroed()`, not a literal.
+- **A scratch host with a systemd user session over SSH**: the same
+  container (above) run with `-p 127.0.0.1:PORT:22`, an account made
+  in it with a scratch key in its `authorized_keys`, and `rm -f
+  /run/nologin`: an SSH sign-in there gets `XDG_RUNTIME_DIR` and a
+  working `systemctl --user`. It can't reach this computer's loopback
+  (a test's stand-in provider here isn't reachable from it), and has
+  no polkit (`loginctl enable-linger` is refused).
+- **The far host of the rig is this computer**: anything put there
+  that listens on a fixed port meets the person's own (their Token
+  Pool on 17891 and 17892). The rig's SSH server sets ports of the
+  rig's own for a pool there (`OLO_POOL_PORT`, `OLO_POOL_PROXY_PORT`)
+  and a provider that isn't there (`FAR_POOL_UPSTREAM`).

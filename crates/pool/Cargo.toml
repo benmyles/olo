@@ -10,7 +10,7 @@ default = ["desktop"]
 # The pool as the desktop runs it. Without it, the pool as a Rex host
 # runs it (`src/bin/olo-pool-host.rs`): its key in a file beside its
 # vault, nothing asked of a desktop.
-desktop = ["dep:olo-system"]
+desktop = ["dep:olo-system", "dep:olo-rex-client"]
 
 [dependencies]
 olo-sync.workspace = true
@@ -20,6 +20,8 @@ olo-protocol.workspace = true
 # Left out of the pool's program for Rex hosts, `olo-pool-host`, which
 # is built for musl with no desktop under it: the feature `desktop`.)
 olo-system = { workspace = true, optional = true }
+# (The way to a Rex host, for the pools on hosts: `hosts.rs`.)
+olo-rex-client = { workspace = true, optional = true }
 olo-xdg.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order", "raw_value"] }

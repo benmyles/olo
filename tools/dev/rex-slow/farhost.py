@@ -69,7 +69,10 @@ class FarHost:
         with socket.socket() as s:
             s.bind(("127.0.0.1", 0)); self.port = s.getsockname()[1]
         env = {"HOME": self.home, "XDG_RUNTIME_DIR": f"{D}/runtime", "XDG_STATE_HOME": f"{D}/state", "XDG_CONFIG_HOME": f"{self.home}/.config", "XDG_CACHE_HOME": f"{self.home}/.cache",
-               "REX_SERVER_SOCKET": f"{D}/rex/rex.sock", "TMPDIR": f"{D}/tmp", "PATH": os.environ.get("PATH", "/usr/bin:/bin")}
+               "REX_SERVER_SOCKET": f"{D}/rex/rex.sock", "TMPDIR": f"{D}/tmp",
+               # (A Token Pool put there by a test: on ports of the rig's own, the person's pool being on this
+               # computer too, and asking a provider that isn't there.)
+               "OLO_POOL_PORT": "27891", "OLO_POOL_PROXY_PORT": "27892", "OLO_POOL_UPSTREAM": os.environ.get("FAR_POOL_UPSTREAM", "http://127.0.0.1:9"), "PATH": os.environ.get("PATH", "/usr/bin:/bin")}
         with open(f"{self.dir}/sshd_config", "w") as f:
             f.write("\n".join([f"Port {self.port}", "ListenAddress 127.0.0.1", f"HostKey {self.dir}/host_key", f"PidFile {self.dir}/sshd.pid", f"AuthorizedKeysFile {self.dir}/authorized_keys",
                                "PasswordAuthentication no", "KbdInteractiveAuthentication no", "UsePAM no", "StrictModes no", "PermitUserEnvironment no", "AllowAgentForwarding yes",

@@ -12,6 +12,7 @@
 //!   SSH).
 //! - `olo-pool-host put-back`: Claude Code and Codex there as they were
 //!   before the pool (as it is removed).
+//! - `olo-pool-host forget`: what the pool kept on the host, removed.
 //! - `olo-pool-host --version`.
 
 use std::io::Read as _;
@@ -51,9 +52,20 @@ fn main() -> std::process::ExitCode {
             }
             if ok { std::process::ExitCode::SUCCESS } else { std::process::ExitCode::FAILURE }
         }
+        // (As the pool is removed from the host: what it kept there,
+        // its sealed accounts and their key among it.)
+        Some("forget") => {
+            let config = olo_xdg::config_dir();
+            for name in ["pool.vault", "pool.key", "pool.lock", "pool-ca.pem", "pool-ca.key", "pool-ca-bundle.pem", "pool-clients.json"] {
+                let _ = std::fs::remove_file(config.join(name));
+            }
+            let _ = std::fs::remove_file(olo_xdg::state_dir().join("pool-activity.json"));
+            let _ = std::fs::remove_file(host::socket());
+            std::process::ExitCode::SUCCESS
+        }
         Some("serve") => serve(),
         _ => {
-            eprintln!("olo-pool-host serve | ctl | put-back | --version");
+            eprintln!("olo-pool-host serve | ctl | put-back | forget | --version");
             std::process::ExitCode::from(2)
         }
     }

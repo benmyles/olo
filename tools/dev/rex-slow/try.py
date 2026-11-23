@@ -346,6 +346,36 @@ elif what == "bridge":
         line = r.wait(lambda: (lambda b: b if b and b.startswith("Off") else None)(bridge()), 10)
         check("taken back", line and do("olo.screen", {"args": ["tree", "agent"]}).get("ok") is False, line)
         print("PASS" if ok else "FAIL")
+elif what == "pool":
+    # The Token Pool put on the far host over SSH by the desktop pool's own code, kept in step, borrowed from and
+    # taken away (crates/pool/tests/hosts_live.rs: a made-up account, a provider of the test's own). The far
+    # host's pool listens on ports of the rig's (farhost.py), the person's own pool being on this computer too.
+    # Needs: cargo build -p olo-pool (the host's program) and the test built (done here).
+    import getpass, shutil, subprocess
+    os.environ["FAR_POOL_UPSTREAM"] = "http://127.0.0.1:27990"
+    from farhost import FarHost
+    built = subprocess.run(["cargo", "test", "-p", "olo-token-pool", "--test", "hosts_live", "--no-run", "--message-format=json"], capture_output=True, text=True, cwd=R3, env=ENV).stdout
+    binary = next(json.loads(l)["executable"] for l in built.splitlines() if l.startswith("{") and json.loads(l).get("executable") and "hosts_live" in l)
+    program = f"{R3}/target/pool-host/x86_64-unknown-linux-musl/release/olo-pool-host"
+    assert os.path.exists(program), "cargo build -p olo-pool"
+    r = Rig("shell")
+    try:
+        r.host()
+        with FarHost() as far:
+            home = f"{D}/far/poolhome"; shutil.rmtree(home, ignore_errors=True); os.makedirs(f"{home}/.ssh")
+            key = open(f"{D}/far/host_key.pub").read().split()
+            open(f"{home}/.ssh/known_hosts", "w").write(f"[127.0.0.1]:{far.port} {key[0]} {key[1]}\n")
+            env = dict(ENV, HOME=home, XDG_CONFIG_HOME=f"{home}/.config", XDG_STATE_HOME=f"{home}/state", SSH_AUTH_SOCK=far.agent, OLO_REX_TEST_HOST=f"ssh://{getpass.getuser()}@127.0.0.1:{far.port}",
+                       OLO_POOL_HOST_BIN=program, OLO_POOL_TEST_UPSTREAM_PORT="27990", OLO_REX_SSH_COMPRESSION="no")
+            try:
+                out = subprocess.run([binary, "--ignored", "--nocapture", "a_pool_is_put_on_a_host"], capture_output=True, text=True, timeout=170, env=env)
+                print("\n".join(l for l in (out.stdout + out.stderr).splitlines() if any(w in l for w in ("the pool", "test result", "panicked", "left:", "right:", "said"))).replace(getpass.getuser(), "USER")[:3000])
+                print("PASS" if "test result: ok. 1 passed" in out.stdout else "FAIL")
+            finally:
+                # (Whatever became of the test: no pool of its is left running on the far host, nor anything of it there.)
+                far.ran('d="$HOME/.local/share/olo/pool"; [ -x "$d/olo-pool-host" ] && { echo \'{"do":"stop"}\' | "$d/olo-pool-host" ctl; "$d/olo-pool-host" put-back; "$d/olo-pool-host" forget; }; rm -rf "$d"')
+    finally:
+        r.__exit__()
 elif what == "behind":
     import re, subprocess
     numbers = [a for a in args if a.isdigit()]
