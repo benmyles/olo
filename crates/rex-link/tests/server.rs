@@ -56,7 +56,7 @@ async fn what_the_helper_says_of_a_real_terminal_is_what_the_server_says_asked()
     // (Connected as the app connects over SSH: the hello and the first
     // requests in one flight with the upgrade, which the helper passes
     // as it comes; its answer to the upgrade says the helper is there.)
-    let (ctrl, mut events, answers) = ControlClient::connect_asking(stream, "localhost", ClientIdentity::olo_rex(None), None, vec![("server.version", None), ("hosts.list", None)]).await?;
+    let (ctrl, mut events, answers) = ControlClient::connect_asking(stream, "localhost", ClientIdentity::a_test(), None, vec![("server.version", None), ("hosts.list", None)]).await?;
     assert!(ctrl.keeps_typing_in_order(), "the connection goes through the helper");
     for answer in answers {
         answer.await?;

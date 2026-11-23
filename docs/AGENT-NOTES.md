@@ -2846,8 +2846,18 @@ an argument it doesn't know starts the lint (read its first lines).
   three, with TCP's at 164 to 183 every time (2026-11-23). A latency
   compared across the two must say which path each run got (the
   link's own `round_trip()`), or it measures the network's choice.
-- **Tests against the real host connect as the app does** ("Olo Rex",
-  an app client): each leaves a client the server lists as lost for a
-  while, and `rex do` there then can't choose between apps (the person
-  met it). Until the tests name themselves otherwise, run none there
-  while the person's agents use the host.
+- **Tests against a host name themselves "Olo Rex test"**
+  (`ClientIdentity::a_test`, since 2026-11-23): as "Olo Rex", an app,
+  each left a client the server listed as lost for a while, and `rex
+  do` there couldn't choose between apps (the person's agent met it).
+- **Rex's Lua** (`rex do SCRIPT`): `io` and `os.getenv`/`os.exit` are
+  there, `os.execute` isn't (`rex.exec{ "sh", "-c", … }` returns
+  stdout, stderr, code, ok); `rex.call(method, table)` returns the
+  answer or nil and why; a long loop over a big string (a base64
+  decoder over 800 kB) dies with "registry overflow"; a Lua sequence
+  is a JSON array, an empty table an object.
+- **Olo's Chrome on an Agent Screen gives no page tree for `file://`
+  pages** (the extension isn't let into them): serve a test page from
+  loopback. A change to `extension/tree.js` can be tried without
+  installing anything: a page that fetches the script and runs it on
+  itself (`apps/chrome/tests/tree-text.html`).

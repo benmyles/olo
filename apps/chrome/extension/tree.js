@@ -9,6 +9,9 @@
 (async () => {
   const MAX = 4000;
   const TEXT_MAX = 300;
+  // A paragraph is read whole (an agent quotes from it): what a page
+  // says isn't a control's name. Cut only where it is no paragraph.
+  const READ_MAX = 20000;
   // How long a frame waits to be told which iframe it is.
   const TOLD_WAIT = 150;
   const nodes = [];
@@ -168,11 +171,45 @@
     return st.visibility !== "hidden" && st.display !== "none" && e.getAttribute("aria-hidden") !== "true";
   }
 
+  const inline = (e) => {
+    const d = getComputedStyle(e).display;
+    return d.startsWith("inline") || d === "contents";
+  };
+
   // Text not inside anything named: what a person reads on the page.
-  function directText(e) {
+  // Where an element has words of its own, they are read with the
+  // words of what runs in the line with them (a link, bold, a span),
+  // in their places: a paragraph is what the page says, whole. (Its own
+  // text nodes alone left out every word that was a link: "Nvidia on
+  // Monday announced Huang has been reinstated" came back as "on Monday
+  // announced has been ,", and anything past 300 letters as "…": an
+  // agent reading a news page through Rex, 2026-11-23.) A control in
+  // the line that isn't a link (a button, a field) is its own node and
+  // its words aren't the paragraph's; nor is what stands in a block of
+  // its own inside it, which is read by itself.
+  function lineText(e) {
     let t = "";
-    for (const c of e.childNodes) if (c.nodeType === Node.TEXT_NODE) t += c.textContent;
-    return clip(t);
+    for (const c of e.childNodes) {
+      if (c.nodeType === Node.TEXT_NODE) t += c.textContent;
+      else if (c.nodeType === Node.ELEMENT_NODE) {
+        if (c.localName === "br") t += " ";
+        else if (!shown(c, c.getBoundingClientRect()) && getComputedStyle(c).display !== "contents") continue;
+        else if (!inline(c)) t += " ";
+        else {
+          const role = roleOf(c);
+          if (!role || role === "Link" || role === "Label") t += lineText(c);
+        }
+      }
+    }
+    return t;
+  }
+
+  function directText(e) {
+    let own = false;
+    for (const c of e.childNodes) if (c.nodeType === Node.TEXT_NODE && c.textContent.trim()) own = true;
+    if (!own) return "";
+    const s = lineText(e).replace(/\s+/g, " ").trim();
+    return s.length > READ_MAX ? s.slice(0, READ_MAX - 1) + "…" : s;
   }
 
   function push(e, r, role, name, parent, extra) {
@@ -192,7 +229,9 @@
     return getComputedStyle(e).cursor === "pointer" && (!up || getComputedStyle(up).cursor !== "pointer");
   }
 
-  function walk(e, parent, inNamed) {
+  // `covered`: its words are in the label of what it runs in the line
+  // of already (they aren't said again; a link in it is still a node).
+  function walk(e, parent, inNamed, covered) {
     if (nodes.length >= MAX) return;
     const r = e.getBoundingClientRect();
     let role = roleOf(e);
@@ -227,16 +266,22 @@
       mine = push(e, r, role, nameOf(e, role), parent, extra);
       // Inside a named control its words are its name already.
       if (leaf) named = true;
+      // (And an item's or a cell's name is its words: what runs in
+      // its line isn't said again under it; a link in it is a node.)
+      else if (role === "ListItem" || role === "Cell" || role === "ColumnHeader") covered = true;
       if (role === "TextInput" || role === "PasswordInput" || role === "MultilineTextInput" || role === "ComboBox" || role === "Slider" || role === "Image" || role === "Iframe") return;
-    } else if (!named && shown(e, r)) {
+    } else if (!named && !covered && shown(e, r)) {
       const t = directText(e);
-      if (t) push(e, r, "Label", t, parent, {});
+      if (t) {
+        push(e, r, "Label", t, parent, {});
+        covered = true;
+      }
     }
-    for (const c of e.children) walk(c, mine, named);
-    if (e.shadowRoot) for (const c of e.shadowRoot.children) walk(c, mine, named);
+    for (const c of e.children) walk(c, mine, named, covered && inline(c));
+    if (e.shadowRoot) for (const c of e.shadowRoot.children) walk(c, mine, named, false);
   }
 
-  if (document.body) walk(document.body, 0, false);
+  if (document.body) walk(document.body, 0, false, false);
   return {
     title: document.title,
     url: location.href,

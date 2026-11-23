@@ -360,7 +360,26 @@ pub fn fetch_op_reference(reference: &str, purpose: &str) -> Result<String, Stri
 /// Asks a host whether the skill for agents is on it (what
 /// [`generate_remote_skill_install_script`] puts there), and whether
 /// the shims of before are ([`OLD_SHIMS`]): a word for each that is.
-pub const PRESENT: &str = r#"sh -c 'if [ -d "$HOME/.local/share/olo-rex-bridge" ]; then echo shims; fi; if [ -f "$HOME/.claude/skills/olo-rex-bridge/SKILL.md" ]; then echo skill; fi'"#;
+pub const PRESENT: &str = r#"sh -c 'if [ -d "$HOME/.local/share/olo-rex-bridge" ]; then echo shims; fi; if [ -f "$HOME/.claude/skills/olo-rex-bridge/SKILL.md" ]; then echo skill; echo "skill-of $(cat "$HOME/.claude/skills/olo-rex-bridge/.olo-skill" 2> /dev/null)"; fi'"#;
+
+/// Which skill this Olo carries, by its words and its command's: what
+/// the install leaves beside it on the host (`.olo-skill`), so that a
+/// host with another Olo's skill is seen to have it and given this
+/// one (an agent goes by what the skill there says, and one from
+/// before said to do by hand what the command now does).
+pub fn skill_stamp() -> String {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in SKILL.bytes().chain(SKILL_OLO.bytes()).chain(SKILL_LUA.bytes()) {
+        hash = (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3);
+    }
+    format!("{hash:016x}")
+}
+
+/// Whether what a host answered [`PRESENT`] says its skill is this
+/// Olo's ([`skill_stamp`]).
+pub fn skill_is_current(output: &str) -> bool {
+    output.lines().any(|l| l.trim().strip_prefix("skill-of ").is_some_and(|stamp| stamp.trim() == skill_stamp()))
+}
 
 /// Takes off a host the shims Olo put there until 2026-11-23, which
 /// did nothing (the module's head).
@@ -378,23 +397,37 @@ pub fn present(output: &str) -> (bool, bool) {
 }
 
 /// The skill for agents on a far host: what the Olo app offers through
-/// Rex and how to ask for it.
+/// Rex and how to ask for it; and its one command, `olo`, with the Lua
+/// that `rex do` runs for it (which Olo desktop among the server's
+/// clients, an answer that is pending waited for, a picture fetched
+/// whole and written on the host: each took an agent a loop or a guess
+/// by hand, "A helper on this host that saves a picture by its ID in
+/// one step would make this much easier", 2026-11-23).
 pub const SKILL: &str = include_str!("bridge_skill.md");
+pub const SKILL_OLO: &str = include_str!("bridge_olo.sh");
+pub const SKILL_LUA: &str = include_str!("bridge_olo.lua");
 
-/// A shell script that puts [`SKILL`] on a far host, for Claude Code
-/// and the agents that read its skills.
+/// A shell script that puts [`SKILL`] on a far host with its command,
+/// for Claude Code and the agents that read its skills.
 pub fn generate_remote_skill_install_script() -> String {
     format!(
         r#"set -eu
 SKILL_DIR="$HOME/.claude/skills/olo-rex-bridge"
 mkdir -p "$SKILL_DIR"
-cat <<'OLO_EOF' > "$SKILL_DIR/SKILL.md"
-{SKILL}OLO_EOF
+cat <<'OLO_SKILL_EOF' > "$SKILL_DIR/SKILL.md"
+{SKILL}OLO_SKILL_EOF
+cat <<'OLO_SKILL_EOF' > "$SKILL_DIR/olo"
+{SKILL_OLO}OLO_SKILL_EOF
+cat <<'OLO_SKILL_EOF' > "$SKILL_DIR/olo.lua"
+{SKILL_LUA}OLO_SKILL_EOF
+chmod +x "$SKILL_DIR/olo"
+echo '{stamp}' > "$SKILL_DIR/.olo-skill"
 if command -v rex >/dev/null 2>&1; then
   rex skill setup 2>/dev/null || true
 fi
 echo "Installed Olo's skill for agents in $SKILL_DIR"
-"#
+"#,
+        stamp = skill_stamp()
     )
 }
 
@@ -522,7 +555,29 @@ mod present_tests {
             .unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
         assert_eq!(present(&run(PRESENT)), (false, true));
+        // (And it is seen to be this Olo's; another's isn't.)
+        assert!(skill_is_current(&run(PRESENT)));
+        std::fs::write(home.join(".claude/skills/olo-rex-bridge/.olo-skill"), "0000\n").unwrap();
+        assert!(!skill_is_current(&run(PRESENT)) && present(&run(PRESENT)).1);
+        std::fs::remove_file(home.join(".claude/skills/olo-rex-bridge/.olo-skill")).unwrap();
+        assert!(!skill_is_current(&run(PRESENT)) && present(&run(PRESENT)).1, "one from before had no stamp");
         assert_eq!(std::fs::read_to_string(home.join(".claude/skills/olo-rex-bridge/SKILL.md")).unwrap(), SKILL, "the skill as written, to the letter");
+        assert_eq!(std::fs::read_to_string(home.join(".claude/skills/olo-rex-bridge/olo.lua")).unwrap(), SKILL_LUA);
+        // (Its command, run with a stand-in for `rex` that says what it
+        // was given: its arguments reach the Lua as they were typed,
+        // whatever is in them.)
+        let rex = home.join("fake-rex");
+        std::fs::write(&rex, "#!/bin/sh\necho \"rex: $*\"\necho \"cmd=$OLO_BRIDGE_CMD argc=$OLO_BRIDGE_ARGC\"\ni=1; while [ $i -le \"$OLO_BRIDGE_ARGC\" ]; do eval \"printf '[%s]\\\\n' \\\"\\$OLO_BRIDGE_ARG_$i\\\"\"; i=$((i + 1)); done\n").unwrap();
+        std::fs::set_permissions(&rex, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        let said = std::process::Command::new(home.join(".claude/skills/olo-rex-bridge/olo"))
+            .args(["screen", "type", "agent", "two words", "it's \"quoted\" $HOME", "", "a\nb"])
+            .env("HOME", &home)
+            .env("OLO_BRIDGE_REX", &rex)
+            .env("TMPDIR", home.join("tmp"))
+            .output()
+            .unwrap();
+        let lua = home.join(".claude/skills/olo-rex-bridge/olo.lua");
+        assert_eq!(String::from_utf8_lossy(&said.stdout), format!("rex: --timeout 60s do {}\ncmd=screen argc=6\n[type]\n[agent]\n[two words]\n[it's \"quoted\" $HOME]\n[]\n[a\nb]\n", lua.display()));
         // (Every action the skill names is one the app offers, and it
         // names every one the app offers.)
         let offered: Vec<&str> = crate::keymap::bridge_catalog().iter().map(|a| a.id).collect();

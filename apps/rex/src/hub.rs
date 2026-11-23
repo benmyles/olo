@@ -3147,7 +3147,12 @@ impl RexHubInner {
         // (The shims of before did nothing, and an agent that finds
         // them takes them for the way: off they come.)
         if old_shims {
-            let _ = pool.exec(target, askpass, &format!("sh -c {}", shell_quote(bridge::OLD_SHIMS)), &mut |_| {}).await;
+            let _ = pool.exec(target, askpass.clone(), &format!("sh -c {}", shell_quote(bridge::OLD_SHIMS)), &mut |_| {}).await;
+        }
+        // (A skill there from another Olo than this one: this one's is
+        // put in its place. An agent goes by what the skill there says.)
+        if skill_there && !bridge::skill_is_current(&ran.output) {
+            let _ = pool.exec(target, askpass, &format!("sh -c {}", shell_quote(&bridge::generate_remote_skill_install_script())), &mut |_| {}).await;
         }
         let bridge_there = true;
         let changed = {

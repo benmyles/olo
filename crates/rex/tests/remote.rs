@@ -87,7 +87,7 @@ fn endpoint(name: &str, ask: Option<Arc<dyn SshAskpass>>) -> RexEndpoint {
 
 async fn connect(ep: &RexEndpoint, token: Option<&str>) -> Result<(ControlClient, Events)> {
     let (stream, host) = ep.connect_stream().await?;
-    Ok(ControlClient::connect(stream, &host, ClientIdentity::olo_rex(None), token).await?)
+    Ok(ControlClient::connect(stream, &host, ClientIdentity::a_test(), token).await?)
 }
 
 async fn session(ctrl: &ControlClient) -> Result<(String, String)> {
@@ -356,7 +356,7 @@ async fn negotiated_revisions() -> Result {
             .await
             .unwrap();
         });
-        let got = ControlClient::connect(client, "localhost", ClientIdentity::olo_rex(None), None).await;
+        let got = ControlClient::connect(client, "localhost", ClientIdentity::a_test(), None).await;
         assert_eq!(got.is_ok(), ok, "server {server} selected {chosen}");
         server_task.await?;
     }
@@ -409,7 +409,7 @@ async fn a_probe_finds_a_silent_server() -> Result {
                 }
             }
         });
-        let (control, _events) = ControlClient::connect(client, "localhost", ClientIdentity::olo_rex(None), None).await?;
+        let (control, _events) = ControlClient::connect(client, "localhost", ClientIdentity::a_test(), None).await?;
         control.probe();
         control.probe();
         seen.recv().await.unwrap();

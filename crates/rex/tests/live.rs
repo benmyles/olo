@@ -521,7 +521,7 @@ async fn the_hello_and_the_first_requests_go_in_one_flight_with_the_upgrade() ->
         ("session.bootstrap", Some(ControlClient::bootstrap_request("all", None, None, &tickets)?)),
     ];
     let stream = tokio::net::UnixStream::connect(&server.sock).await?;
-    let (ctrl, mut events, answers) = ControlClient::connect_asking(stream, "localhost", ClientIdentity::olo_rex(None), None, asked).await?;
+    let (ctrl, mut events, answers) = ControlClient::connect_asking(stream, "localhost", ClientIdentity::a_test(), None, asked).await?;
     assert!(ctrl.client_id().is_some(), "welcomed");
     let mut answers = answers.into_iter();
     let status = answered::<ServerStatus>("server.status", answers.next().unwrap().await)?;
@@ -565,7 +565,7 @@ async fn how_often_a_flight_leaves_a_gap_in_the_events() -> Result {
             ("session.bootstrap", Some(ControlClient::bootstrap_request("all", None, None, &[])?)),
         ];
         let stream = tokio::net::UnixStream::connect(&server.sock).await?;
-        let (ctrl, mut events, answers) = ControlClient::connect_asking(stream, "localhost", ClientIdentity::olo_rex(None), None, asked).await?;
+        let (ctrl, mut events, answers) = ControlClient::connect_asking(stream, "localhost", ClientIdentity::a_test(), None, asked).await?;
         let mut boot = 0;
         for (i, answer) in answers.into_iter().enumerate() {
             let answer = answer.await?;

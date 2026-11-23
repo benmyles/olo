@@ -222,7 +222,7 @@ fn typing_over_the_link_is_timed() {
         let endpoint = RexEndpoint::parse(&address, pool.clone(), Some(Arc::new(Nobody))).expect("an address");
         let began = Instant::now();
         let (stream, host) = endpoint.connect_control_stream().await.expect("the host's Rex server is reached");
-        let (ctrl, _events) = ControlClient::connect(stream, &host, ClientIdentity::olo_rex(None), None).await.expect("the control connection");
+        let (ctrl, _events) = ControlClient::connect(stream, &host, ClientIdentity::a_test(), None).await.expect("the control connection");
         // (The helper's own link over UDP, where the helper put there
         // has it and UDP gets through: `OLO_REX_QUIC=no` for without.)
         let linked = pool.linked(&SshTarget::parse(&address).expect("an ssh:// address")).await;
@@ -453,7 +453,7 @@ fn the_helper_says_a_prompt_on_a_real_host() {
         }
         let endpoint = RexEndpoint::parse(&address, pool, Some(Arc::new(Nobody))).expect("an address");
         let (stream, host) = endpoint.connect_control_stream().await.expect("the host's Rex server is reached");
-        let (ctrl, mut events) = ControlClient::connect(stream, &host, ClientIdentity::olo_rex(None), None).await.expect("the control connection");
+        let (ctrl, mut events) = ControlClient::connect(stream, &host, ClientIdentity::a_test(), None).await.expect("the control connection");
         assert!(ctrl.keeps_typing_in_order(), "the connection goes through the helper");
         let created = ctrl.session_create(Some("olo-prompt-test"), Some(serde_json::json!({"command": ["bash", "--norc", "-i"]}))).await.expect("a session");
         let sid = created.payload["session_id"].as_str().unwrap().to_owned();
@@ -508,7 +508,7 @@ fn connecting_is_timed() {
         let endpoint = RexEndpoint::parse(&address, Arc::new(SshSessionPool::default()), Some(Arc::new(Nobody))).expect("an address");
         endpoint.reach().await.expect("the host is signed in to");
         let (stream, host) = endpoint.connect_control_stream().await.expect("the host's Rex server is reached");
-        let (setup, _events) = ControlClient::connect(stream, &host, ClientIdentity::olo_rex(None), None).await.expect("a control connection");
+        let (setup, _events) = ControlClient::connect(stream, &host, ClientIdentity::a_test(), None).await.expect("a control connection");
         // (A run of this that failed left its session: those are ended first.)
         for left in setup.session_list().await.expect("the sessions").payload.into_iter().filter(|s| s.label == "olo-connect-test") {
             let _ = setup.session_destroy(&left.session_id).await;
@@ -523,7 +523,7 @@ fn connecting_is_timed() {
             let sid = sid_measured;
             let mut trips = Vec::new();
             let (stream, host) = endpoint.connect_control_stream().await.unwrap();
-            let (timed, _events) = ControlClient::connect(stream, &host, ClientIdentity::olo_rex(None), None).await.unwrap();
+            let (timed, _events) = ControlClient::connect(stream, &host, ClientIdentity::a_test(), None).await.unwrap();
             for _ in 0..5 {
                 let at = Instant::now();
                 timed.server_version().await.expect("a request");
@@ -549,7 +549,7 @@ fn connecting_is_timed() {
                 let mut since = began;
                 let (stream, host) = endpoint.connect_control_stream().await.unwrap();
                 step("a stream", &mut since);
-                let (ctrl, _events) = ControlClient::connect(stream, &host, ClientIdentity::olo_rex(None), None).await.unwrap();
+                let (ctrl, _events) = ControlClient::connect(stream, &host, ClientIdentity::a_test(), None).await.unwrap();
                 step("upgrade and hello", &mut since);
                 ctrl.server_status().await.unwrap();
                 ctrl.server_version().await.unwrap();
@@ -588,7 +588,7 @@ fn connecting_is_timed() {
                     ("session.bootstrap", Some(ControlClient::bootstrap_request("all", Some(&sid), None, &tickets).unwrap())),
                 ];
                 let (stream, host) = endpoint.connect_control_stream().await.unwrap();
-                let (ctrl, _events, answers) = ControlClient::connect_asking(stream, &host, ClientIdentity::olo_rex(None), None, asked).await.expect("the server takes the flight");
+                let (ctrl, _events, answers) = ControlClient::connect_asking(stream, &host, ClientIdentity::a_test(), None, asked).await.expect("the server takes the flight");
                 let mut boot = None;
                 for (i, answer) in answers.into_iter().enumerate() {
                     let answer = answer.await;
@@ -646,7 +646,7 @@ fn a_request_beside_a_flood_is_timed() {
         }
         let endpoint = RexEndpoint::parse(&address, pool.clone(), Some(Arc::new(Nobody))).expect("an address");
         let (stream, host) = endpoint.connect_control_stream().await.expect("the host's Rex server is reached");
-        let (ctrl, _events) = ControlClient::connect(stream, &host, ClientIdentity::olo_rex(None), None).await.expect("a control connection");
+        let (ctrl, _events) = ControlClient::connect(stream, &host, ClientIdentity::a_test(), None).await.expect("a control connection");
         println!("{}", if pool.linked(&SshTarget::parse(&address).expect("an ssh:// address")).await { "over the helper's own link (UDP)" } else { "over SSH" });
         for left in ctrl.session_list().await.expect("the sessions").payload.into_iter().filter(|s| s.label == "olo-flood-test") {
             let _ = ctrl.session_destroy(&left.session_id).await;

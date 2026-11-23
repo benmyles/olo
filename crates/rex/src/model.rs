@@ -38,6 +38,13 @@ pub struct ClientIdentity {
 }
 
 impl ClientIdentity {
+    /// One of Olo's own tests: never taken for the app (a test that
+    /// connected as "Olo Rex" left a client the server listed as lost,
+    /// and `rex do` on that host then couldn't choose between apps).
+    pub fn a_test() -> Self {
+        Self { kind: Some("test".to_owned()), platform: Some("linux".to_owned()), name: Some("Olo Rex test".to_owned()), version: Some(env!("CARGO_PKG_VERSION").to_owned()), label: None }
+    }
+
     pub fn olo_rex(label: Option<String>) -> Self {
         Self { kind: Some("app".to_owned()), platform: Some("linux".to_owned()), name: Some("Olo Rex".to_owned()), version: Some(env!("CARGO_PKG_VERSION").to_owned()), label }
     }

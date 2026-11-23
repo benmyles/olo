@@ -1365,6 +1365,12 @@ something nobody here has is in "Blocked", with what it waits for.
     suggested); a host with no systemd (the files are written, the
     running system isn't told); offering the page from the Host
     window where a session was refused for want of `MaxSessions`.
+  - *Rex's own `rex do` won't choose a client while lost ones are
+    listed* ("my first rex do failed because it counted three "Olo
+    Rex" app clients … two of them as connection_state: "lost"": an
+    agent on a host, 2026-11-23). The skill's `olo` command chooses
+    itself, and Olo's tests no longer leave such clients; the rest is
+    Rex's to mend (told to Ben).
   - *The bridge, through Rex*: done (2026-11-23; HACKING, "The
     bridge: the Olo desktop, through Rex"; Ben's words there). Left:
     where two Olo apps show one host, `rex do` asks which client

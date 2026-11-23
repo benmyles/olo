@@ -22550,7 +22550,15 @@ box and clipped to it (and to every iframe around it), cross-origin
 frames and nested ones alike, so `click`, `set` and `wait` work inside
 embedded sign-ins, payment forms and consent dialogs as on the page. `tree.js`
 walks the page (shadow roots too, at most 4000 nodes) as assistive
-technology sees it: ARIA roles, else the element's (Link, Button,
+technology sees it (and what a person reads as they read it: a
+paragraph is one "Label" with the words of what runs in its line in
+their places, a link's and a bold word's among them, whole, up to
+20,000 letters; the links are nodes under it too. Until 2026-11-23 a
+label was an element's own text nodes, cut at 300 letters: "Nvidia on
+Monday announced Huang has been reinstated" came back to an agent as
+"on Monday announced has been ,". `apps/chrome/tests/tree-text.html`
+runs the script on itself in a real Chrome and says in its title what
+held): ARIA roles, else the element's (Link, Button,
 TextInput, PasswordInput, CheckBox, ComboBox, Heading, Image, List, Row,
 Cell, Dialog, …), "Clickable" for script-made buttons (an `onclick`, a
 `tabindex`, or where the pointer cursor starts), and "Label" for text
@@ -28014,8 +28022,27 @@ Rex server, as every Rex client offers its own
 - *The skill for agents* (`apps/rex/src/bridge_skill.md`, put on a
   host from its window or Agents ▸ Install Olo’s Skill for Agents)
   says exactly this, and a test holds it to the actions the app
-  offers, both ways.
-- *Tried on the rig* (`tools/dev/rex-slow/try.py bridge`: `rex do`
+  offers, both ways. It comes with one command, `olo`
+  (`bridge_olo.sh`, and `bridge_olo.lua` which `rex do` runs for it;
+  in the skill's own folder, on nobody's PATH): `olo open URL`, `olo
+  op …`, `olo screen …`, answered as if run on the host. It does what
+  took an agent a loop or a guess by hand (its report, 2026-11-23):
+  picks the Olo desktop among the server's clients (the connected one,
+  the one showing this session where several are; `rex do` by itself
+  refused to choose while the server still listed clients that were
+  lost), waits while an answer is `pending`, and fetches a picture an
+  answer names whole, written on the host with its path there put in
+  the output. (Rex's Lua has no `os.execute`: a piece of a picture is
+  decoded by the host's `base64` through `rex.exec`; decoded in Lua
+  itself, a piece of 600 kB overflowed its stack.)
+- *Olo's own tests name themselves "Olo Rex test"*, kind `test`
+  (`ClientIdentity::a_test`): as the app, each left a client the
+  server listed as lost on the host it ran against.
+- *Tried on the rig* (`tools/dev/rex-slow/try.py bridge`, which ends
+  with the skill put on the far host as the Host window puts it and
+  its command run there: a command's answer, a picture of 700 kB
+  saved there in one step, a command of twelve seconds waited for;
+  before that `rex do`
   run on the far host, a stand-in for `olo-screen` here,
   `OLO_REX_BRIDGE_BIN`): refused by name while nothing is granted; a
   command's arguments as given (spaces, quotes, a dollar), by

@@ -342,6 +342,21 @@ elif what == "bridge":
         check("a command of 12 s: pending, then its answer", slow.get("pending") and waited.get("stdout") == "slow done\n", {"first answer after": round(took, 1), "then": waited})
         listed = r.far.ran(f"{rex} -C {client[0]} actions --json 2>&1 | grep -o '\"olo\\.[a-z_.]*\"' | sort -u | tr '\\n' ' '")
         check("what `rex actions` lists of Olo's", all(w in listed for w in ("olo.open", "olo.op", "olo.screen", "olo.file", "olo.wait")), listed)
+        # The skill's one command on the host (put there as the Host window puts it): the same, in one step
+        # each: which client, an answer waited for, a picture saved there.
+        ran = lambda c: "\n".join(l for l in r.far.ran(c).splitlines() if not l.startswith("Warning: Permanently"))
+        r.invoke("host.put:far:skill")
+        r.wait(lambda: "olo.lua" in ran("ls $HOME/.claude/skills/olo-rex-bridge 2>/dev/null"), 30, every=0.5)
+        olo = f'OLO_BRIDGE_REX="{rex}" $HOME/.claude/skills/olo-rex-bridge/olo'
+        said = ran(f"{olo} screen tree agent 'two words'")
+        check("the skill's command: a command's answer", said == "screen: tree agent two words", said)
+        looked = ran(f"{olo} screen look agent")
+        try: here = json.loads(looked).get("picture", "")
+        except ValueError: here = ""
+        saved = open(here, "rb").read() if here.startswith(f"{D}/tmp/olo-rex-bridge/") and os.path.exists(here) else b""
+        check("the skill's command: a picture saved on the host in one step", saved == picture, {"said": looked[:120], "bytes": len(saved)})
+        t0 = time.monotonic(); slow = ran(f"{olo} screen slow")
+        check("the skill's command: a command of 12 s waited for", slow == "slow done", {"said": slow[:80], "took": round(time.monotonic() - t0, 1)})
         r.grant("far", agent_screens=False)
         line = r.wait(lambda: (lambda b: b if b and b.startswith("Off") else None)(bridge()), 10)
         check("taken back", line and do("olo.screen", {"args": ["tree", "agent"]}).get("ok") is False, line)
