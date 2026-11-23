@@ -518,10 +518,12 @@ impl View for TextView {
             .on_focus_changed(cx.listener(|_: &mut Self, _, cx| cx.notify()))
             .on_key_down(cx.listener(|v: &mut Self, e: &KeyDownEvent, cx| {
                 let k = &e.keystroke;
-                if !(k.modifiers.platform || k.modifiers.control) || k.modifiers.alt || k.modifiers.shift {
+                // (In a terminal app ⌘C comes with a Shift that isn't
+                // the person's: `keys::own_shift`.)
+                if !(k.modifiers.platform || k.modifiers.control) || k.modifiers.alt || crate::keys::own_shift(k) {
                     return;
                 }
-                match k.key.as_str() {
+                match k.key.to_ascii_lowercase().as_str() {
                     "c" => copy(v.selected_text().to_owned()),
                     "a" => v.select_all(cx),
                     _ => return,

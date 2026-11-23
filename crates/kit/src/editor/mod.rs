@@ -2310,10 +2310,12 @@ fn cmd_for(k: &Keystroke) -> Option<Cmd> {
         "backspace" => Cmd::Backspace(false),
         "delete" if word && !shift => Cmd::Delete(true),
         "delete" if !shift => Cmd::Delete(false),
-        "a" if cmd && !alt && !shift => Cmd::SelectAll,
-        "c" if cmd && !alt && !shift => Cmd::Copy,
-        "x" if cmd && !alt && !shift => Cmd::Cut,
-        "v" if cmd && !alt && !shift => Cmd::Paste,
+        // (In a terminal app these come with a Shift that isn't the
+        // person's, and so perhaps in capitals: `keys::own_shift`.)
+        "a" | "A" if cmd && !alt && !crate::keys::own_shift(k) => Cmd::SelectAll,
+        "c" | "C" if cmd && !alt && !crate::keys::own_shift(k) => Cmd::Copy,
+        "x" | "X" if cmd && !alt && !crate::keys::own_shift(k) => Cmd::Cut,
+        "v" | "V" if cmd && !alt && !crate::keys::own_shift(k) => Cmd::Paste,
         "enter" if !cmd && !alt => Cmd::Enter,
         "tab" if !cmd && !alt => Cmd::Tab(shift),
         _ => return None,

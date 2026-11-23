@@ -884,6 +884,13 @@ something nobody here has is in "Blocked", with what it waits for.
     all change once Shift is real: decide each;
   - a text field in a terminal's window gets ⌘⌫ as Ctrl+U and does
     nothing with it (Find, in both apps).
+  (Done meanwhile, 2026-11-23, for the kit's text widgets: the
+  clipboard's keys, Select All and undoing work in every field of a
+  terminal app, its dialogs too, by reading the Shift app_server adds
+  as not the person's: `keys::own_shift`, HACKING. It is this item's
+  cure that would let ⇧⌘Z redo there, and ⌘← and ⌘→ go to a line's
+  ends in those fields: today they select by a word, the Shift
+  counted.)
   The same review, of Rex's own handling, still open: its pane encoder
   drops modifiers on keys it doesn't know (BeOS's Alt+Left, ⌥⌘R, kitty
   reports); the configuration's keys are read for this computer's
@@ -1107,6 +1114,33 @@ something nobody here has is in "Blocked", with what it waits for.
     the session, not "Rex"), allowed as a local terminal session is and
     by the tray's auto-approve; a host's permission for it beside the
     others in Preferences ▸ Rex, off until given.
+  - *A terminal that answers at once over a slow or laggy link* (Ben,
+    2026-11-23: "how can make ssh more performant and responsive when
+    connected over slow/laggy link? e.g. [their test server] can take
+    a second or two to see a letter appear. i know mosh was a thing.
+    can we build something like that into rex terminal but make it
+    work better? study the best way to do it to make it rock solid and
+    performant. use [the test server] for testing"). Next after the
+    clipboard's keys, before the agent below: it is the responsiveness
+    of the thing itself. To do, in this order: **measure first**,
+    against the test server (the keystroke's path timed at each hop:
+    the key taken, the write sent, the host's echo back, the frame
+    drawn; the link's own round trip beside it), since a second or two
+    for a letter is more than a link's delay and something of Rex's
+    own may be in it (writes that wait on each other's answers, a
+    transport that holds small writes back, a window too small);
+    **fix what is Rex's**; then **what a link's delay leaves**: what
+    mosh does and where it falls short (its predictions of typed
+    letters shown at once and underlined until the host agrees, its
+    state synchronised over UDP so a roaming or sleeping link takes up
+    again, its lack of scrollback and of anything but a screen), what
+    can be done over the connection Rex already has (the host's Rex
+    server holds the screen: the client can predict against it and be
+    corrected, with no second protocol), and when a prediction must not
+    be shown (a password prompt, a full-screen program that moves the
+    cursor, anything not echoed). Tried against the test server with
+    the link made slow on purpose (delay, loss, jitter), numbers in
+    the commit.
   - *Files from a host, and folders kept in step* (Ben, 2026-11-22:
     "thinking about what we'll need to use rex to build olo (as an
     example), once it's built we'd want an easy way to e.g.

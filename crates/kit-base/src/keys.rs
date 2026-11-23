@@ -62,6 +62,14 @@ pub fn command_key() -> bool {
     COMMAND_KEY.load(Ordering::Relaxed)
 }
 
+/// Whether this program is one of Olo's terminals to the keyboard
+/// ([`app_keys::OLO_TERMINALS`]: Terminal, Rex). The command key's
+/// chords reach every window of such a program with a Shift app_server
+/// adds, its dialogs as well as its terminals: ⌘V is Ctrl+Shift+V there.
+pub fn terminal_app() -> bool {
+    app_keys::OLO_TERMINALS.contains(&app_id())
+}
+
 /// How many times the profile has been set: what an app keeps of its
 /// keys is good for as long as this says the same.
 pub fn generation() -> u64 {

@@ -2378,6 +2378,15 @@ an argument it doesn't know starts the lint (read its first lines).
   (the flag is `--listen`, not `--socket` or `--data-dir`), and point
   `olo-rex` / `olo-rex-glance` at it with `REX_SERVER_SOCKET=/var/tmp/…/rex.sock`.
   For offline UI/tiling QA without touching any Rex server, pass `OLO_REX_DEMO=1`.
+- **A person's command key in a test session:** `tools/dev/tsession
+  key NAME 125 47` presses Super with V through the session's own
+  app_server and its keymap, so a terminal app (Terminal, Rex) gets
+  what it gets on the person's screen, Ctrl+Shift+V, and any other app
+  Ctrl+V; `29 47` (Ctrl with V) is not the same test. The command
+  key's Cut, Copy and Paste did nothing in any text field of Rex's or
+  Terminal's while every test typed text or pressed Ctrl (2026-11-23).
+  A field's text is read back from the app's tree (`{"tree": true}` on
+  its `olo-menus-PID.sock`: role `TextInput`, its `value`).
 - **Rex's Server window in the demo:** `OLO_REX_DEMO=1
   OLO_REX_DEMO_SERVER=STAGE` (or `@FILE` naming the stage, read each
   time the window opens: one run pictures them all) and

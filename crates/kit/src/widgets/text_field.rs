@@ -23,16 +23,25 @@ use unicode_segmentation::UnicodeSegmentation as _;
 use crate::{style, theme};
 
 /// A key as the field's table names it: "ctrl-shift-left" (the command
-/// key reaches apps as Ctrl).
+/// key reaches apps as Ctrl). In a terminal app the command key's
+/// chords come with a Shift of app_server's: for the clipboard's keys,
+/// Select All's and undoing, it is left out, and the key in small
+/// letters (`keys::own_shift`), so ⌘V is "ctrl-v" in Rex's and Terminal's
+/// fields as in any other.
 fn chord(e: &KeyDownEvent) -> String {
     let m = &e.keystroke.modifiers;
+    let shift = crate::keys::own_shift(&e.keystroke);
     let mut out = String::new();
-    for (on, name) in [(m.control, "ctrl-"), (m.alt, "alt-"), (m.shift, "shift-")] {
+    for (on, name) in [(m.control, "ctrl-"), (m.alt, "alt-"), (shift, "shift-")] {
         if on {
             out.push_str(name);
         }
     }
-    out.push_str(&e.keystroke.key);
+    if m.shift && !shift {
+        out.push_str(&e.keystroke.key.to_ascii_lowercase());
+    } else {
+        out.push_str(&e.keystroke.key);
+    }
     out
 }
 

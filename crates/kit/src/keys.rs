@@ -123,6 +123,32 @@ pub fn mac_command() -> bool {
     olo_kit_base::keys::platform() == olo_protocol::Platform::Mac && olo_kit_base::keys::command_key() && olo_interface::right_control_held()
 }
 
+/// Whether the Shift held in `k` is the person's own, for a text widget's
+/// command keys:
+/// the clipboard's, Select All's, and undoing (⌘C, ⌘X, ⌘V, ⌘A, ⌘Z, ⌘Y).
+/// In a terminal app (`olo_kit_base::keys::terminal_app`: Terminal, Rex)
+/// app_server adds a Shift to every chord of the command key, in every
+/// window of the app, so ⌘V reaches a field of its dialogs as
+/// Ctrl+Shift+V: for those letters that Shift isn't the person's, and
+/// this says it isn't held. (A field matched "ctrl-v" alone, and ⌘C and
+/// ⌘V did nothing in Rex's Add Host, nor in any field of Rex's or
+/// Terminal's: Ben, 2026-11-23, "this should be kit level and work
+/// everywhere".) Every widget that reads text asks this, not
+/// `modifiers.shift`, for those keys. What it costs: there, ⇧⌘Z can't
+/// be told from ⌘Z (it undoes; ⌘Y redoes), as the app's menus can't
+/// tell them either (docs/TODO.md, "The command key's Shift in a
+/// terminal").
+pub fn own_shift(k: &Keystroke) -> bool {
+    own_shift_in(olo_kit_base::keys::terminal_app(), k)
+}
+
+fn own_shift_in(terminal_app: bool, k: &Keystroke) -> bool {
+    let m = &k.modifiers;
+    // (Asked at every key a text widget takes: nothing is made for it.)
+    let commands_text = m.control && !m.alt && !m.platform && ["c", "x", "v", "a", "z", "y"].iter().any(|letter| k.key.eq_ignore_ascii_case(letter));
+    m.shift && !(terminal_app && commands_text)
+}
+
 pub fn pressed(s: &Shortcut, k: &Keystroke) -> bool {
     let Some(name) = key_name(s.key) else { return false };
     let key = k.key.to_ascii_lowercase();
@@ -181,6 +207,29 @@ pub fn shifted(c: char) -> Option<char> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A terminal app's command chords come with a Shift that isn't
+    /// the person's: for the keys a text widget has for the clipboard,
+    /// Select All and undoing, it isn't counted; anywhere else, and for
+    /// any other key, Shift is Shift.
+    #[test]
+    fn a_terminal_apps_command_shift_isnt_the_persons() {
+        let key = |text: &str| Keystroke::parse(text).unwrap();
+        // ⌘V as a terminal app gets it; and as any other app does.
+        assert!(!own_shift_in(true, &key("ctrl-shift-v")));
+        assert!(!own_shift_in(true, &key("ctrl-v")));
+        assert!(own_shift_in(false, &key("ctrl-shift-v")));
+        for letter in ["c", "x", "v", "a", "z", "y"] {
+            assert!(!own_shift_in(true, &key(&format!("ctrl-shift-{letter}"))), "{letter}");
+        }
+        // Selecting by words and to a line's end keep their Shift there.
+        assert!(own_shift_in(true, &key("ctrl-shift-left")));
+        assert!(own_shift_in(true, &key("shift-end")));
+        // Shift with a letter and no command key types a capital, as ever; with Alt too it is another chord.
+        assert!(own_shift_in(true, &key("shift-v")));
+        assert!(own_shift_in(true, &key("ctrl-alt-shift-v")));
+        assert!(!own_shift_in(true, &key("v")));
+    }
 
     #[test]
     fn shifted_symbols_are_their_keys_with_shift() {

@@ -3673,6 +3673,26 @@ it.
   names for a shifted key ("_") to the key and Shift ("-", true);
   `olo_kit::right_control_held()` says whether the right Ctrl (the Mac
   profile's ⌘) is down, for a raw-keys window telling ⌘ from Ctrl.
+  **A terminal app's text widgets take the command key's chords as
+  they come there** (2026-11-23; Ben: "keyboard shortcuts for
+  copy/paste aren't working in the add host modal this should be kit
+  level and work everywhere"). app_server adds a Shift to every chord
+  of the command key for a terminal app, by its app id
+  (`olo_protocol::app_keys::OLO_TERMINALS`: Terminal, Rex), so in
+  every window of such an app, its dialogs too, ⌘V arrives as
+  Ctrl+Shift+V; `TextField` matched "ctrl-v" alone, and the text view
+  and the editor wanted no Shift, so the clipboard's keys did nothing
+  in any field of Rex's or Terminal's. `keys::own_shift(&keystroke)`
+  says whether the Shift held is the person's own: not for ⌘C, ⌘X,
+  ⌘V, ⌘A, ⌘Z and ⌘Y in a terminal app
+  (`olo_kit_base::keys::terminal_app()`). `TextField`, `TextView` and
+  the editor ask it for those keys; a widget that reads keys for text
+  itself does too, and never `modifiers.shift` for them. (There ⇧⌘Z
+  can't be told from ⌘Z and undoes; ⌘Y redoes.) Checked headless with
+  the keys a person presses (Super with the letter, through
+  app_server's own keymap): Rex's Add Host (⌘A ⌘C, ⌘V in the other
+  field, ⌘X, ⌘Z), Rex's Find field in its terminal window, Terminal's
+  Find panel, and an ordinary app's field unchanged (Phone's).
 - `widgets::Slider::new(id, value, range)`: BSlider (label and value
   above, the bar filled to a raised thumb, `limits` under the ends;
   `step`, `fill`, `width`); a press or a drag sets it, the arrows, Home
