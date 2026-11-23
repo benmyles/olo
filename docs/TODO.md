@@ -1059,6 +1059,14 @@ something nobody here has is in "Blocked", with what it waits for.
     that chooses one view of several found and moved to it (Phone's
     Messages and Contacts, and whatever a sweep finds), HACKING's
     patterns saying when it is a segmented control and when tabs.
+    **Done** (2026-11-22): `widgets::SegmentedControl` (HACKING, the
+    kit; "Which to use" there; its look chosen of five by Ben after
+    two polls of the reviewers), in Rex's sidebar, Phone's list,
+    Screenshot's shapes and Viewer's PDF tools; and a rule in the
+    layout review for words squeezed into their control's face
+    (`cramped`). Left as they are,
+    being lone toggles and not a choice: Viewer's Crop, a screen's
+    Take Control, Replay's Live.
   - *Passwords' SSH agent in a remote terminal* (Ben, 2026-11-22: "i'm
     not sure if we already added support for a remote rex terminal to
     be able to use the olo passwords ssh agent so that e.g. github and

@@ -32,7 +32,7 @@ use olo_kit::{
     metrics as m, point, px, size,
     style::{self, Align},
     theme,
-    widgets::{Button, CheckBox, MenuField, TextControl, TextField, TextFieldEvent, Unsaved, ask_to_save, button_width, open_alert, text_field},
+    widgets::{Button, CheckBox, MenuField, Segment, SegmentedControl, TextControl, TextField, TextFieldEvent, Unsaved, ask_to_save, button_width, open_alert, segmented_width, text_field},
 };
 use olo_preview::{
     Body, Item,
@@ -49,7 +49,6 @@ use signature::{Pad, Signature};
 const APP_ID: &str = "olo.viewer";
 
 const PDF_TOOLS: [(&str, Tool, &str); 3] = [("Select", Tool::Select, "tool-select"), ("Text", Tool::Text, "tool-text"), ("Draw", Tool::Draw, "tool-draw")];
-const TOOL_WIDTH: f32 = 64.0;
 const SIGN_WIDTH: f32 = 72.0;
 const ZOOM_BUTTON_WIDTH: f32 = 28.0;
 const ZOOM_LABEL_WIDTH: f32 = 44.0;
@@ -76,8 +75,8 @@ fn tools_fold(page_width: f32) -> f32 {
             let text = style::text_width(olo_kit::words::of_text(label), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL));
             ((f32::from(text) + 2.0 * m::CONTROL_PAD).max(min) / 2.0).ceil() * 2.0
         };
-        let tools: f32 = PDF_TOOLS.iter().map(|(label, _, _)| compact(label, TOOL_WIDTH)).sum();
-        let left = tools + compact("Sign…", SIGN_WIDTH) + m::SPACING + 4.0 * m::TIGHT;
+        let tools = segmented_width(&PDF_TOOLS.iter().map(|(label, _, _)| Segment::new(*label)).collect::<Vec<_>>());
+        let left = tools + compact("Sign…", SIGN_WIDTH) + m::SPACING + 2.0 * m::TIGHT;
         let zoom = compact("−", ZOOM_BUTTON_WIDTH) + ZOOM_LABEL_WIDTH + compact("+", ZOOM_BUTTON_WIDTH) + 2.0 * m::TIGHT;
         let fixed = left + zoom + 4.0 * m::SPACING; // Both insets and the gaps to the info canvas.
         kept.set((language, fixed));
@@ -1714,9 +1713,13 @@ impl Doc {
             let current = PDF_TOOLS.iter().position(|(_, tool, _)| *tool == pv.tool).unwrap();
             left = left.child(MenuField::new("pdf-tool", choices, current).name("Tool").enabled(editable).on_change(cx.listener(|d: &mut Doc, i: &usize, cx| d.run(PDF_TOOLS[*i].2, cx))));
         } else {
-            for (label, tool, c) in PDF_TOOLS {
-                left = left.child(Button::new(label).min_width(TOOL_WIDTH).pushed(editable && pv.tool == tool).enabled(editable).on_click(cmd(c)));
-            }
+            // (Which tool: one of three, the kit's segmented control.)
+            let current = PDF_TOOLS.iter().position(|(_, tool, _)| *tool == pv.tool).unwrap_or(0);
+            left = left.child(
+                SegmentedControl::new("pdf-tool", PDF_TOOLS.iter().map(|(label, _, _)| *label), current)
+                    .enabled(editable)
+                    .on_choose(cx.listener(|d: &mut Doc, i: &usize, cx| d.run(PDF_TOOLS[*i].2, cx))),
+            );
         }
         // Sign…: its menu under the button.
         left = left.child(div().w(px(m::SPACING))).child(Button::new("Sign…").min_width(SIGN_WIDTH).enabled(editable).on_click(cx.listener(|d: &mut Doc, _: &ClickEvent, cx| {

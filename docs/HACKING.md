@@ -4319,6 +4319,76 @@ it.
   Hide). Calendar's calendars and assistant; Phone's and Telegram's
   lists (a conversation opened comes in front; its header's back arrow,
   12 points before its picture, goes back).
+- `widgets::SegmentedControl::new(id, segments, chosen).on_choose(f)`:
+  a few choices side by side in one sunken trough, one chosen (Ben,
+  2026-11-22, of Rex's Sessions and Activity, with a drawing: "this
+  sessions/activity segmented control looks weird. i think something
+  more like this would be much nicer … update it and also the kit so
+  that any app that wants a segmented control component like this will
+  use it (this shouldn't replace tabs, the tabs are good now this is
+  different -- a segmented control -- vs a tab bar)"). Its look is made
+  of the kit's own parts: the trough is a sunken well with round
+  corners (one line all round, shade along its top and left and light
+  along its foot and right, softer than the plate's outline, which is
+  the crisp edge; its ground a step under the panel), and the chosen
+  segment is a raised plate set in it, a push button's outline, bevel
+  and face (`Button`'s colours), its corners round the trough's own
+  centre. The trough's inside is shared equally between the segments
+  and a plate is its share less a point of ground on all four sides, in
+  whole device pixels (`slots`), so a plate is the same size first,
+  middle or last and evenly set in at every scale. It has one size, a
+  push button's height (24 points): the plate is 20 and its face 16, so
+  a name has 3.7 points of the face over and under its capitals (a
+  smaller one, 20 points with 2 over and under, Ben called "way too
+  squashed" in Phone's header, and it is gone). The others are their
+  names on the trough's ground, every name in the text's own colour and
+  the chosen one's in bold, a short line between two neighbours neither
+  of which is chosen. One that can't be used draws its own look (it is
+  not faded besides): names and marks in the colour for text that can't
+  be used, the plate and the trough's shade half way to the ground,
+  the same in the light look and the dark. It was chosen of five looks
+  drawn, built and pictured the same way (the chosen one
+  held down; this; two slanted folder tabs with the chosen one in the
+  window tab's yellow or in the selection's blue; one round-ended frame
+  with a slant-edged chosen segment in either colour): Ben asked for "a
+  poll from the other agents", and both reviewers ranked this first in
+  both polls, because it is a well and a button, which the desktop
+  already has; it can't be taken for a second tab strip beside the real
+  one; and it leaves yellow (the focused window) and blue (what is
+  selected) meaning what they mean. A `Segment` is its name, with a
+  `Mark` before it (`.mark(Mark::Terminal)`, `Mark::Pulse`: a small
+  drawing in the name's colour, on whole device lines; a colour icon at
+  this size is a smear at 1×; one device line to 2×) and a count after
+  it (`.count(n)`: a disc in the look's notice colour, "99+" over 99,
+  nothing for none; 14 points, its middle on the plate's middle, a
+  point of the plate's face over and under it, its 11-point numerals in
+  its own middle: a box of its own to the layout review, which would
+  else hold them to the name's line) if it has them. Marks show where every segment has room for its own beside
+  its whole name in bold and its count; in a narrower control (Rex's
+  sidebar at the width it starts with) none has one, and the names stay
+  whole. A segment that counts keeps a disc's room in the control's
+  width and in what fits while nothing waits, so the control is no
+  wider and loses no mark when the first one comes; what it holds is
+  centred as drawn. Segments are equally wide: as the widest needs, or
+  sharing `.width(w)` (a sidebar's). In a control too narrow for six
+  points of the plate beside what a segment holds, the marks go first,
+  then the room is let down to four points, and only then is a name
+  cut (the review calls that out). A segment's room is measured with its name in bold,
+  so nothing moves when the choice does. A press chooses; it is one
+  stop in the tab order, the arrows moving the choice and Home and End
+  taking the first and last, the chosen name underlined while it
+  has the keyboard; `Segment`s to agents, selected or not, the count
+  their value. **Which to use**: a segmented control for two to four
+  choices of the same standing that sit *in* a bar or a header and
+  switch what a pane lists or which mode a tool is in (Rex's Sessions
+  and Activity, Phone's Messages and Contacts, Screenshot's shapes,
+  Viewer's PDF tools); a `TabView` where the choices are pages of
+  controls, each on the panel its tab opens into (Preferences); a
+  `TabStrip` for a window's documents; a `MenuField` for more than four
+  choices or names that don't fit; radio buttons for a setting among
+  settings in a form; `Button::pushed` only for a lone toggle that
+  stays down (Viewer's Crop, a screen's Take Control), never side by
+  side as a choice.
 - `widgets::TabView::new(id, labels, selected).on_select(f)` with the
   chosen tab's content as its child (BTabView: the tab strip's folder
   tabs, so there is one tab look, over a raised panel: outlined, lit
@@ -6520,11 +6590,28 @@ recorded otherwise.
   bands no clip cuts, since a card at the foot of a scroll view is
   centred in the whole of it, not in what shows, and only icons no clip
   cuts: a row's half scrolled under a menu bar isn't in the bar's
-  band), `uneven-rows` (rows
+  band), `cramped` (words squeezed into the band they are on, a
+  button's face, a plate, a pill: less than 3 points of it over or
+  under their capitals, or less than 4 before or after them; a push
+  button has 6.7 and 12, a small one 4 and 7. Ben, 2026-11-22, of a
+  segmented control 20 points tall whose names had 2 over and under
+  them, which no rule found: "this is way too squashed. you should add
+  lints to ensure this kind of stuff too (spacing/padding/alignment/
+  crowdedness/etc)". A ground just as wide as its words is a mark on
+  them, a selection or a match, and isn't judged; text on a grid of
+  its own is: its room in its own band isn't its grid's business. A
+  control that paints its rounded shapes itself tells the review of
+  each ground, as `style`'s fills do, or none of this sees it),
+  `uneven-rows` (rows
   down a column spaced unevenly). Right edges count as lined up a
   device pixel apart: text set from its right starts on a pixel.
 
-A view tells it two things it can't see. `review::own_grid(window,
+A view tells it what it can't see: `review::frame(g, bounds)`, a
+control's frame (a field's well, a segmented control's plate);
+`review::container(g, bounds)`, a box what's in it is judged in and
+not against what is beside it (a BBox; a count's disc, whose numerals
+are centred in it and not held to the line of the name beside them);
+and `review::own_grid(window,
 bounds)`: text laid out on a grid of its own (Terminal's screen, a cell
 apart; a card in Notifications' history masonry, staggered in its
 column), not held level with what is beside it, nor in a row with
@@ -21439,7 +21526,7 @@ So that no helper waits on a lead who is in the middle of something,
 the lead starts **a minder** with them: one subagent of the Agent tool
 (general-purpose, Fable 5.2 at medium), whose standing instructions are
 `.claude/skills/olo-agents/minder.md` (it waits on `agents watch --for
-9` in the foreground; Ben, 2026-11-22: "launch a fable
+2` in the foreground, again and again; Ben, 2026-11-22: "launch a fable
 5.2 medium subagent whose only job is to launch and manage the tmux
 sessions for these tmux subagents so that they get their responses
 quickly"; a question had waited 66 seconds). It starts the agents it is
@@ -26864,9 +26951,15 @@ each word it resized the terminals above it twice.
 
 **The main window's controls are the kit's** (2026-11-22; they were
 drawn by hand, each its own way). The sidebar's two lists are chosen
-by a pair of small buttons, the chosen one held down (`Button::small()
-.pushed(..)`, as Phone's Messages and Contacts), their words on the
-line the tabs' words are on beside them. The + beside a host and split
+by the kit's segmented control (`SegmentedControl`, the row's width,
+in the middle of its band to the device pixel: a terminal mark and a
+pulse mark, the agents waiting as Activity's count; it was a pair of
+small buttons, one held down). The sidebar starts 224 points wide,
+which is what the marks, the names and a count need with room (it was
+192), and can't be dragged under the kit's side width, 204, where both
+names and a two-figure count are still whole (it was 160, where
+"Activity" was cut once an agent waited); narrower than 224 the marks
+give way. The + beside a host and split
 right, split down and close in a pane's head are `GlyphButton`s (the
 kit, above): quiet marks, the same on every pane with the room, the
 keyboard in it or not. A session's and a pane's icon is drawn at the

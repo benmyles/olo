@@ -927,6 +927,22 @@ frames a second with nobody at it):
   into place) and remove it after. A test desktop has no notification
   service of its own (`olo-notifications` refuses outside a real
   session without `--bus`).
+- **`cargo build -p A --example X -p B` builds examples only**: the
+  target filter holds for every package named, so B's binary is left
+  as it was, and says nothing. Rex was pictured twice with a look it
+  no longer had (2026-11-22: a picture named for one look showed
+  another, and the person saw it first). Build an example and a
+  program in two commands, and look for a word of the change in the
+  binary (`strings BIN | grep -c WORD`) before picturing it.
+- **Open every picture before it is used or shown**: a montage of the
+  candidates, each labelled, takes one look and catches a wrong one.
+- **A test session has two looks, not three**: `tsession theme NAME
+  light|dark`. Any other word (`night`) is taken without complaint and
+  changes nothing: six pictures named "night" were the light look, and
+  both reviewers said so (2026-11-22).
+- **A minder's wait is two minutes at a time**: a foreground command of
+  an Agent-tool subagent is moved to the background by its harness
+  after about three, so `agents watch --for 2`, again and again.
 - **Two reviewers started together**: set what they share on lines of
   their own, then `( agy-look … ) & ( opus-look … ) & wait`. With
   `S=… && ABOUT=… && ( … ) & ( … ) & wait` the assignments are part of

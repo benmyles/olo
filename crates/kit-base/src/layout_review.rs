@@ -297,6 +297,7 @@ pub fn review(parts: &Parts, width: f32, height: f32, ppp: f32) -> Vec<Finding> 
     near_level(parts, ppp, &mut out);
     near_edges(parts, ppp, &mut out);
     off_centre(parts, &mut out);
+    cramped(parts, ppp, &mut out);
     uneven_rows(parts, ppp, &mut out);
     controls(parts, screen, &mut out);
     texts_over(parts, screen, &mut out);
@@ -1312,6 +1313,59 @@ fn off_centre(p: &Parts, out: &mut Vec<Finding>) {
     }
 }
 
+/// The least of a control's face (the band its words are on) that
+/// shows over and under their capitals, in points: with less, a name
+/// looks squeezed into its plate. A push button has 6.7 and a small one
+/// 4; a pill's count has 4 and a count in a segmented control's disc 3.
+const ROOM: f32 = 3.0;
+/// And the least of it before their first letter and after their last:
+/// a button has 12 and a small one 7, a tag 5, a segmented control's
+/// plate 4 at its narrowest, a numeral in its disc 3.7.
+const SIDE_ROOM: f32 = 3.5;
+
+/// Words squeezed into the band they are on: less than [`ROOM`] of it
+/// over their capitals or under them (Ben, 2026-11-22, of a segmented
+/// control twenty points tall whose names had two points over and under
+/// them in their plate, and which no rule here found: "this is way too
+/// squashed. you should add lints to ensure this kind of stuff too
+/// (spacing/padding/alignment/crowdedness/etc)"). The band is the fill
+/// or gradient the words sit in, no more than a few times their
+/// capitals' height (`band_of`: a button's face, a plate, a pill; not a
+/// pane or a page). Text on a grid of its own is judged too: where it
+/// stands against its neighbours is its grid's business, how much room
+/// it has in its own band is not (a segmented control's names are on a
+/// grid of their own, and were the case this was written for).
+fn cramped(p: &Parts, ppp: f32, out: &mut Vec<Finding>) {
+    for t in &p.texts {
+        let capitals = caps(t);
+        let Some(band) = band_of(p, capitals) else { continue };
+        let (over, under) = (capitals.top() - band.top(), band.bottom() - capitals.bottom());
+        let least = over.min(under);
+        // (Half a device pixel is a rounding, not a squeeze.)
+        if least + 0.5 / ppp < ROOM {
+            let which = if over < under { "over" } else { "under" };
+            let text = format!(
+                "{} has {:.1} pt of its {:.0}-pt band {which} its capitals: give its words room ({ROOM:.0} pt at least, a taller control or smaller words)",
+                quote(t),
+                least.max(0.0),
+                band.height()
+            );
+            push(out, finding(Level::Review, "cramped", text, band));
+        }
+        // Beside them too. (A ground just as wide as its words is a
+        // mark on them, a selection or a match found, not a face they
+        // were set on: that one is as wide as they are by its nature.
+        // Words that run out of their band are another rule's.)
+        let (before, after) = (t.rect.left() - band.left(), band.right() - t.rect.right());
+        let side = before.min(after);
+        if side >= 1.0 && side + 0.5 / ppp < SIDE_ROOM {
+            let which = if before < after { "before" } else { "after" };
+            let text = format!("{} has {side:.1} pt of its band {which} it: give its words room ({SIDE_ROOM:.1} pt at least either side)", quote(t));
+            push(out, finding(Level::Review, "cramped", text, band));
+        }
+    }
+}
+
 /// Rows down a column (text starting at one x, in one size) spaced
 /// unevenly, beyond what rounding to device pixels makes. Only where the
 /// column has a rhythm (most of its gaps one step): a column of different
@@ -1378,6 +1432,59 @@ mod tests {
         let parts = Parts { cut_texts: vec![CutText { rect: save.rect, clip, label: name.into() }], ..Parts::default() };
         let findings = review(&parts, 400.0, 300.0, 2.0);
         assert!(findings.iter().any(|f| f.kind == "text-cut" && f.text.starts_with("\"सहेजें\" is cut off")), "{findings:?}");
+    }
+
+    /// A name with two points of its plate over and under its capitals
+    /// is found (the segmented control's small size, as it was); with
+    /// what a segmented control's plate, a small button and a push
+    /// button have, it isn't; nor on a page.
+    #[test]
+    fn words_squeezed_into_their_band_are_found() {
+        // A name of `size` points centred on a face `tall` points tall.
+        let on = |size: f32, tall: f32| {
+            let band = Rect::from_min_max(pos2(20.0, 100.0), pos2(120.0, 100.0 + tall));
+            let middle = band.center().y;
+            let t = Text {
+                rect: Rect::from_min_max(pos2(40.0, middle - size * 0.6), pos2(100.0, middle + size * 0.6)),
+                baseline: middle + size * CAP_HEIGHT / 2.0,
+                middle,
+                left: 40.0,
+                label: "Messages".into(),
+                size,
+            };
+            Parts { texts: vec![t], whole_covers: vec![band], ..Parts::default() }
+        };
+        let found = |p: &Parts, ppp: f32| review(p, 400.0, 300.0, ppp).into_iter().filter(|f| f.kind == "cramped").map(|f| f.text).collect::<Vec<_>>();
+        for ppp in [1.0, 1.5, 2.0] {
+            let said = found(&on(11.0, 12.0), ppp);
+            assert_eq!(said.len(), 1, "{said:?}");
+            assert!(said[0].starts_with("“Messages” has 2.1 pt of its 12-pt band"), "{said:?}");
+            assert!(found(&on(12.0, 16.0), ppp).is_empty(), "a segmented control's plate at {ppp}");
+            assert!(found(&on(11.0, 16.0), ppp).is_empty(), "a small button at {ppp}");
+            assert!(found(&on(12.0, 20.0), ppp).is_empty(), "a push button at {ppp}");
+            assert!(found(&on(11.0, 14.0), ppp).is_empty(), "a count in its disc at {ppp}");
+            // (A page isn't a band: too tall for its words to be on it as a face.)
+            assert!(found(&on(12.0, 200.0), ppp).is_empty());
+        }
+        // Lower in its band by two points: nearer its foot than the least.
+        let mut low = on(12.0, 16.0);
+        low.texts[0].middle += 2.0;
+        low.texts[0].baseline += 2.0;
+        let said = found(&low, 2.0);
+        assert!(said.len() == 1 && said[0].contains("under its capitals"), "{said:?}");
+        // Two points from its band's left edge: squeezed from the side.
+        let mut tight = on(12.0, 20.0);
+        tight.whole_covers[0].min.x = 38.0;
+        let said = found(&tight, 2.0);
+        assert!(said.len() == 1 && said[0].contains("2.0 pt of its band before it"), "{said:?}");
+        // (A ground as wide as its words is a mark on them, not a face.)
+        tight.whole_covers[0].min.x = 40.0;
+        tight.whole_covers[0].max.x = 100.0;
+        assert!(found(&tight, 2.0).is_empty());
+        // On a grid of its own it is judged all the same.
+        let mut cells = on(11.0, 12.0);
+        cells.grids = vec![Rect::from_min_max(pos2(0.0, 0.0), pos2(400.0, 300.0))];
+        assert_eq!(found(&cells, 2.0).len(), 1);
     }
 
     /// A title laid out past its room, over the buttons beside it, is

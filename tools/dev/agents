@@ -181,8 +181,10 @@ def settings(folders, commands=True, own=()):
     `rm` there: a rule matches a command by its whole words, so
     `command(rm FOLDER/)` allows nothing; a file removed there asks,
     and the minder says yes in seconds.)"""
-    yes = [f"command({c})" for c in allow()] if commands else []
-    yes += [f"write_file({d})" for d in own] if commands else []
+    # (A look reads and no more: it listed its own folder of pictures,
+    # and that waited on the minder.)
+    yes = [f"command({c})" for c in (allow() if commands is True else READING if commands == "read" else [])]
+    yes += [f"write_file({d})" for d in own] if commands is True else []
     return {"trustedWorkspaces": folders, "permissions": {"allow": yes, "deny": [f"command({c})" for c in DENY]}}
 
 
@@ -623,7 +625,7 @@ def start(name, crate, brief):
     save_meta(name, {"crate": crate, "package": package, "started": time.time(), "seen": "", "seen_state": "", "done": os.path.join(d, "report.md")})
     launch(name, d, ROOT, [], os.path.join(d, "target"))
     print(f"agents: {name} started on {crate} ({package}); its folder is {d}")
-    print(f"agents: now wait on `tools/dev/agents watch` to hear from it (a lead: in the background; a minder: `watch --for 9`)")
+    print(f"agents: now wait on `tools/dev/agents watch` to hear from it (a lead: in the background; a minder: `watch --for 2`)")
 
 
 def investigate(brief, where):
@@ -773,7 +775,7 @@ def look(args):
             brief = LOOK_RULES.format(**said) + (f"\nWhat changed: {about}\n" if about else "")
             open(os.path.join(d, "brief.md"), "w").write(brief)
             save_meta(name, {**record, "cli": "agy"})
-            launch(name, d, d, [], commands=False)
+            launch(name, d, d, [], commands="read")
         else:
             brief = OPUS_RULES.format(**said) + (f"\nWhat it is, and what changed: {about}\n" if about else "")
             open(os.path.join(d, "brief.md"), "w").write(brief)

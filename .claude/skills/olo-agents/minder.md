@@ -26,9 +26,11 @@ alone), its settings, and its report when it is done.
    `tools/dev/opus-look …`, each of those three as a background
    command of its own, since each waits for its agent). If the message
    names agents already running, start nothing.
-2. **Wait** with `tools/dev/agents watch --for 9` as a foreground
-   command (give the command itself ten minutes); when it returns
-   saying nothing has needed you, run it again. (The tool's help says
+2. **Wait** with `tools/dev/agents watch --for 2` as a foreground
+   command; when it returns saying nothing has needed you, run it
+   again. (Two minutes, no longer: a foreground command that runs past
+   three is moved to the background by your harness, and the wait is
+   lost: a minder found so.) (The tool's help says
    to run `watch` in the background: that is for a lead with other
    work. You have none: the wait is your work.) It prints a line a
    minute for each agent and returns the moment one asks something,
@@ -44,9 +46,13 @@ alone), its settings, and its report when it is done.
      (`tools/dev/agents peek NAME`).
    - *It finished a turn and its result file is there* (`watch` says
      "is DONE" and names the file, once; `tools/dev/agents list` shows
-     it as `done` from then on): note the file. For a look or an
-     investigator started through its front door, that front door ends
-     by itself and prints where the result is.
+     it as `done` from then on): note the file. A look started through
+     its front door (`agy-look`, `opus-look`) is different: the front
+     door itself waits for it, writes its review beside the pictures,
+     ends its session and takes it off the list. So a look's end is its
+     front door's end (exit 0) and its result file being there; `watch`
+     then says "none running" and `list` no longer shows it, and that
+     is as it should be.
    - *It finished a turn with a question, or without its result*
      (`list` shows it `idle`): if the answer is plainly in what it was
      given (`/var/tmp/olo-agents/NAME/brief.md`: its rules, then the

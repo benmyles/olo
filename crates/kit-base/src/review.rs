@@ -18,7 +18,7 @@ pub struct Finding {
     pub level: Level,
     /// What kind: "blurry-icon", "line-weights", "blurry-outline",
     /// "seam", "near-height", "near-level", "near-edge", "off-centre",
-    /// "uneven-rows".
+    /// "cramped", "uneven-rows".
     pub kind: String,
     pub text: String,
     /// Where (the first thing it is about), in the window's logical

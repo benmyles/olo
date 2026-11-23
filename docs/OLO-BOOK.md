@@ -835,6 +835,7 @@ vanished.
 | `BBox` | `BBox::new("Title").child(..)` | `.action("Reset", ..)` |
 | `BScrollView`, `BScrollBar` | `ScrollView::new(&handle).child(..)` | `.horizontal(true)`, `.auto_hide(true)`, `.sticky(item, height, header)` |
 | `BListView`, `BColumnListView` | `ColumnListView::new(cx, id, &model, columns, rows, cell)` | virtual; sort, type-select, drag, context menus |
+| (none: a segmented control) | `SegmentedControl::new(id, [Segment::new("Sessions").mark(Mark::Terminal), Segment::new("Activity").count(n)], chosen).on_choose(..)` | two to four choices in one sunken trough, the chosen one a raised plate, in a bar or a header; `.width(w)`; tabs own a panel, this doesn't |
 | `BTabView` | `TabView::new(id, tabs, chosen).on_select(..).child(..)` | folder tabs, as `TabStrip`'s (document tabs: Terminal's, with groups led by labels in the look's `Palette::group_colors`) |
 | `BMenuBar`, `BMenu`, `BPopUpMenu` | `MenuBar::of(self, cx, \|v, cx\| v.menus(cx))`, `Menu::new("File").item(label, command).key("s")`, `menu::context_menu` | commands arrive in `View::command`; titles that don't fit a narrow window go under a » at the bar's end |
 | `BAlert` | `open_alert(cx, title, icon, message, buttons, on_choose)` | the last button is Return's, the first Escape's |

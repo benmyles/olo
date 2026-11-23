@@ -167,7 +167,10 @@ impl Default for Settings {
         Self {
             toolbar_layout: ToolbarLayout::Above,
             pane_header_behavior: BarBehavior::Always,
-            sidebar_width: 192.0,
+            // (Wide enough for the sidebar's control to show each
+            // name's mark beside it and Activity's count, with room:
+            // as Ben drew it. It was 192, where the marks gave way.)
+            sidebar_width: 224.0,
             sidebar_collapsed: false,
             sidebar_mode: SidebarMode::Sessions,
             activity_include_idle: false,

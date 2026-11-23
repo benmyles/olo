@@ -24,7 +24,8 @@ use std::{cell::Cell, path::PathBuf, rc::Rc, sync::Arc};
 use olo_kit::app_kit::Messenger;
 use olo_kit::{
     Bounds, ClickEvent, Corners, CursorStyle, Cx, Element, Font, FontWeight, Hsla, InteractiveElement as _, KeyDownEvent, LayerKeyboard, LayerShellLayer, MouseButton, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, Painter, ParentElement as _, Pixels, Point, RenderImage, Styled as _, View, WindowOptions, canvas, div, metrics as m, point, px, rgb, size, style, theme, widgets::Button,
+    MouseUpEvent, Painter, ParentElement as _, Pixels, Point, RenderImage, Styled as _, View, WindowOptions, canvas, div, metrics as m, point, px, rgb, size, style, theme,
+    widgets::{Button, SegmentedControl},
 };
 
 use crate::capture::{self, Settings, Shot};
@@ -364,12 +365,12 @@ impl View for Overlay {
         }
         // The bar: shapes and sizes.
         let mut bar = div().flex().items_center().gap(px(m::TIGHT)).p(px(m::TIGHT)).rounded(px(m::CARD_RADIUS)).bg(style::c(theme::palette().panel_background));
-        for (k, (name, _)) in SHAPES.iter().enumerate() {
-            bar = bar.child(Button::new(*name).id(format!("shape-{k}")).small().pushed(self.shape == k).on_click(cx.listener(move |o: &mut Overlay, _: &ClickEvent, _| o.shared.tell(Told::Shape(k)))));
-        }
+        // (Which shape the frame keeps: one of four, the kit's
+        // segmented control.)
+        bar = bar.child(SegmentedControl::new("shape", SHAPES.iter().map(|(name, _)| *name), self.shape).on_choose(cx.listener(|o: &mut Overlay, k: &usize, _| o.shared.tell(Told::Shape(*k)))));
         bar = bar.child(div().w(px(m::SPACING)));
         for (w, h) in SIZES {
-            bar = bar.child(Button::new(format!("{w} × {h}")).small().on_click(cx.listener(move |o: &mut Overlay, _: &ClickEvent, cx| o.place((w, h), cx))));
+            bar = bar.child(Button::new(format!("{w} × {h}")).on_click(cx.listener(move |o: &mut Overlay, _: &ClickEvent, cx| o.place((w, h), cx))));
         }
         // (Where it is: presses there aren't drags.)
         let at = self.bar.clone();

@@ -32,7 +32,7 @@ use olo_kit::{
     size,
     style::{self, Align, c},
     theme, transparent_black, when, white,
-    widgets::{ArrowButton, Button, EmptyState, Panes, ScrollView, SidePane, StringView, TextField, TextFieldEvent, side_divider, text_field},
+    widgets::{ArrowButton, Button, EmptyState, Panes, ScrollView, Segment, SegmentedControl, SidePane, StringView, TextField, TextFieldEvent, side_divider, text_field},
 };
 use olo_protocol::phone::{self, Conversation, Kind, Link, Message, Person, PhoneState, Request};
 use olo_system::phone::pbap;
@@ -1208,27 +1208,28 @@ impl Phone {
     }
 
     /// The list's side: Messages or Contacts, a search, and the rows.
-    fn left(&mut self, _width: f32, cx: &mut Cx<Self>) -> Element {
+    fn left(&mut self, width: f32, cx: &mut Cx<Self>) -> Element {
         let p = theme::palette();
         let unread: usize = self.threads.iter().map(Conversation::unread).sum();
-        let messages = if unread > 0 { olo_kit::tr!("Messages ({})", unread) } else { olo_kit::words::tr("Messages").to_owned() };
-        let tabs = div()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(m::TIGHT))
-            .child(Button::new(messages).id("tab-messages").small().pushed(self.tab == Tab::Messages).on_click(cx.listener(|v: &mut Phone, _: &ClickEvent, cx| {
-                v.tab = Tab::Messages;
+        // Which list: the kit's segmented control, what's unread as
+        // Messages' count.
+        // (As wide as the row leaves beside New, eight points from it:
+        // short of it, the room between read as left over.)
+        // (Both at the size controls are everywhere else: the band is
+        // sixty points tall, and the small ones looked squashed in it,
+        // as Ben said of the first picture.)
+        let beside = olo_kit::widgets::button_width("New", false) + 8.0;
+        let which = SegmentedControl::new("phone-list", [Segment::new("Messages").count(unread), Segment::new("Contacts")], if self.tab == Tab::Contacts { 1 } else { 0 })
+            .width(((width - 2.0 * m::SPACING - beside) / 2.0).floor() * 2.0)
+            .on_choose(cx.listener(|v: &mut Phone, i: &usize, cx| {
+                v.tab = if *i == 1 { Tab::Contacts } else { Tab::Messages };
                 cx.invalidate();
-            })))
-            .child(Button::new("Contacts").id("tab-contacts").small().pushed(self.tab == Tab::Contacts).on_click(cx.listener(|v: &mut Phone, _: &ClickEvent, cx| {
-                v.tab = Tab::Contacts;
-                cx.invalidate();
-            })))
-            .child(div().flex_1())
-            .child(Button::new("New").id("new-message").small().enabled(self.state.paired() || self.demo).on_click(cx.listener(|v: &mut Phone, _: &ClickEvent, cx| {
+            }));
+        let tabs = div().flex().flex_row().items_center().child(which).child(div().flex_1()).child(Button::new("New").id("new-message").enabled(self.state.paired() || self.demo).on_click(
+            cx.listener(|v: &mut Phone, _: &ClickEvent, cx| {
                 v.command("new-message", cx);
-            })));
+            }),
+        ));
         // (The buttons in a band as tall as the conversation's header
         // beside it; the search under.)
         let top = div()

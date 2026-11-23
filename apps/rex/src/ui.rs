@@ -637,7 +637,9 @@ impl RexWindow {
             let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
             (restored.as_ref().map(|r| r.sidebar_width).unwrap_or(st.settings.sidebar_width), restored.as_ref().map(|r| r.sidebar_collapsed).unwrap_or(st.settings.sidebar_collapsed))
         };
-        let side_pane = SidePane::new(side_w, 160.0).first(Front::Rest).restored(Some(side_w), side_col);
+        // (No narrower than its control's two names and a count whole:
+        // at 160 "Activity" was cut once an agent waited.)
+        let side_pane = SidePane::new(side_w, SIDE_LEAST).first(Front::Rest).restored(Some(side_w), side_col);
 
         let focus = FocusHandle::new();
         focus.focus(cx);
@@ -2583,10 +2585,8 @@ impl RexWindow {
         .inset_0();
 
         let blocked_n = activity_rows.iter().filter(|(_, _, _, _, a)| matches!(a, AgentActivity::Blocked | AgentActivity::Error)).count();
-        let act_label = if blocked_n > 0 { format!("Activity ({blocked_n})") } else { "Activity".to_owned() };
 
         let hub_s1 = hub.clone();
-        let hub_s2 = hub.clone();
         // Match TabStrip exactly (`STRIP_HEIGHT = 34`, tabs `y = 8..34`, label center `y = 21`)
         // so Sessions/Activity shares the exact baseline and bottom line of the tab strip!
         let header_bg = canvas(|g, b| {
@@ -2598,19 +2598,22 @@ impl RexWindow {
         .absolute()
         .inset_0();
 
-        // The sidebar's two lists: a pair of the kit's small buttons, the
-        // chosen one held down (`Button::pushed`, a set of tool buttons),
-        // each half the row. (They were two boxes drawn by hand.)
-        let half = ((width - 2.0 * m::SPACING) / 2.0).floor();
-        let seg_sessions = Button::new("Sessions").id("rex-side-sessions").small().min_width(half).pushed(mode == SidebarMode::Sessions).on_click(cx.msg_with(move |_: &olo_kit::ClickEvent| {
+        // The sidebar's two lists: the kit's segmented control, the
+        // row's width, the agents waiting as Activity's count; its
+        // marks show once the sidebar is wide enough for them beside
+        // the names and the count. (They were a pair of small buttons,
+        // the chosen one held down, and before that two boxes drawn by
+        // hand; Ben, 2026-11-22: "this sessions/activity segmented
+        // control looks weird".)
+        let segments = widgets::SegmentedControl::new(
+            "rex-side",
+            [widgets::Segment::new("Sessions").mark(widgets::Mark::Terminal), widgets::Segment::new("Activity").mark(widgets::Mark::Pulse).count(blocked_n)],
+            if mode == SidebarMode::Activity { 1 } else { 0 },
+        )
+        .width(((width - 2.0 * m::SPACING) / 2.0).floor() * 2.0)
+        .on_choose(cx.msg_with(move |i: &usize| {
             let mut st = hub_s1.state.lock().unwrap_or_else(|e| e.into_inner());
-            st.settings.sidebar_mode = SidebarMode::Sessions;
-            st.settings.save();
-            WinMsg::Redraw
-        }));
-        let seg_activity = Button::new(act_label).id("rex-side-activity").small().min_width(half).pushed(mode == SidebarMode::Activity).on_click(cx.msg_with(move |_: &olo_kit::ClickEvent| {
-            let mut st = hub_s2.state.lock().unwrap_or_else(|e| e.into_inner());
-            st.settings.sidebar_mode = SidebarMode::Activity;
+            st.settings.sidebar_mode = if *i == 1 { SidebarMode::Activity } else { SidebarMode::Sessions };
             st.settings.save();
             WinMsg::Redraw
         }));
@@ -2619,17 +2622,23 @@ impl RexWindow {
             .w_full()
             .h(px(widgets::STRIP_HEIGHT))
             .flex_shrink_0()
-            // (Their words on the line the tabs' words are on, beside
-            // them in the same band: the middle of a tab's row, which
-            // leaves three points to the line under it. Buttons, not
-            // tabs standing on it.)
-            .pt(px(widgets::STRIP_HEIGHT - widgets::STRIP_ROW + (widgets::STRIP_ROW - widgets::SMALL_BUTTON_HEIGHT) / 2.0))
+            // (In the middle of its band, between the menu bar's rule
+            // and the band's own, which is its last point: to the device
+            // pixel, the odd one over it. Set on the tabs' words' line it
+            // stood three points over the band's rule and twelve under
+            // the menu bar; and a point high of the middle after that,
+            // five over it and four under, measured in its picture.)
+            .pt(px({
+                let scale = cx.scale_factor();
+                let free = (widgets::STRIP_HEIGHT - 1.0 - m::CONTROL_HEIGHT) * scale;
+                (free / 2.0).ceil() / scale
+            }))
             .px(px(m::SPACING))
             .flex()
             .flex_row()
             .items_start()
             .child(header_bg)
-            .child(div().w_full().flex().flex_row().items_start().child(seg_sessions).child(seg_activity));
+            .child(segments);
 
         let mut list = div().flex_shrink_0().w_full().p(px(m::SPACING)).flex().flex_col().gap(px(m::SPACING));
         if mode == SidebarMode::Sessions {
@@ -4369,6 +4378,11 @@ fn render_single_pane(
 
 /// A row's icon (a session's in the sidebar, a pane's in its header and
 /// in Activity): 16 points, the size the icons are drawn for.
+/// The sidebar's least width, the kit's for a pane at a window's side:
+/// its Sessions and Activity control still has both names whole and
+/// room round them with a two-figure count (at 160, as it was,
+/// "Activity" was cut once an agent waited).
+const SIDE_LEAST: f32 = widgets::STRIP_SIDE_WIDTH;
 const ROW_ICON: f32 = 16.0;
 /// Where an Activity row's words begin: past the icon and its gap.
 const ACTIVITY_TEXT: f32 = m::TIGHT + ROW_ICON + m::TIGHT;
