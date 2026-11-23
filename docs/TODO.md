@@ -1101,9 +1101,12 @@ something nobody here has is in "Blocked", with what it waits for.
     item made there); a signature the whole way against a real key
     (the rig's stand-in lists a key and signs nothing); the host's
     permission and the socket's path shown in the Host window, with
-    the line to export; terminals on the host that Rex didn't open
-    (told by hand now: a line for the shell's profile, offered from
-    the Host window).
+    its file beside the account's SSH config (`~/.ssh/olo-rex.conf`
+    and the `Include` line: left there when the keys are taken back,
+    saying nothing; taken away from the Host window); programs that
+    ask the agent themselves and read no SSH config, in a shell Rex
+    didn't open (they need `SSH_AUTH_SOCK`: a line for the shell's
+    profile, offered there).
   - *A terminal that answers at once over a slow or laggy link* (Ben,
     2026-11-23: "how can make ssh more performant and responsive when
     connected over slow/laggy link? e.g. [their test server] can take

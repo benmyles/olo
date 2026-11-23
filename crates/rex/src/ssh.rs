@@ -493,8 +493,27 @@ const AGENT_MESSAGE_MOST: usize = 256 * 1024;
 /// server makes a new socket for each): a link to it in the account's
 /// own folder, whose path is said back, and then nothing but waiting
 /// (the socket is there as long as this is).
-const AGENT_KEPT: &str =
-    r#"d="$HOME/.local/state/olo-rex"; mkdir -p "$d" && chmod 700 "$d" && [ -n "$SSH_AUTH_SOCK" ] && ln -sfn "$SSH_AUTH_SOCK" "$d/agent.sock" && echo "$d/agent.sock" && exec cat"#;
+///
+/// And `ssh` there is told of it, whatever shell runs it: a file of
+/// Olo's own beside the account's SSH config (`~/.ssh/olo-rex.conf`,
+/// read first by one `Include` line put at the config's head, once)
+/// names the link as the agent while its socket is there and the shell
+/// has no live agent of its own. A shell that was open before the keys
+/// were given has no `SSH_AUTH_SOCK` for it, which is most shells in
+/// sessions that last for weeks: there `git clone` was refused,
+/// "Permission denied (publickey)", with the agent working beside it
+/// (Ben, 2026-11-23, the day it was built). With the keys taken back
+/// the socket goes and the file says nothing: `ssh` is as it was.
+const AGENT_KEPT: &str = r##"d="$HOME/.local/state/olo-rex"; mkdir -p "$d" && chmod 700 "$d" && [ -n "$SSH_AUTH_SOCK" ] && ln -sfn "$SSH_AUTH_SOCK" "$d/agent.sock" || exit 1
+s="$HOME/.ssh"; c="$s/config"
+if mkdir -p "$s" 2> /dev/null && chmod 700 "$s" 2> /dev/null; then
+  printf '%s\n' "# Olo's Rex: your SSH keys from Olo Passwords on this host, while Rex is connected and has" "# been given them (Preferences > Rex). Used where a shell has no agent of its own." 'Match exec "[ -S $HOME/.local/state/olo-rex/agent.sock ] && [ ! -S ${SSH_AUTH_SOCK:-/dev/null} ]"' '    IdentityAgent ~/.local/state/olo-rex/agent.sock' > "$s/olo-rex.conf" && chmod 600 "$s/olo-rex.conf"
+  if ! grep -qs 'olo-rex\.conf' "$c"; then
+    { echo 'Include ~/.ssh/olo-rex.conf'; echo; cat "$c" 2> /dev/null || true; } > "$s/.olo-rex.new" && { [ -e "$c" ] || { : > "$c" && chmod 600 "$c"; }; } && cat "$s/.olo-rex.new" > "$c"
+    rm -f "$s/.olo-rex.new"
+  fi
+fi
+echo "$d/agent.sock" && exec cat"##;
 
 #[derive(Default)]
 pub struct SshSessionPool {
@@ -1418,6 +1437,72 @@ fn dial_command(socket: Option<&str>, helper: Option<&str>) -> String {
 #[cfg(test)]
 mod dial_tests {
     use super::*;
+
+    /// What keeps the agent on a host tells `ssh` there of it: a file
+    /// of Olo's own, read first by one line put at the head of the
+    /// account's SSH config, once, with what the config had kept as it
+    /// was (a config that is a link stays one); and `ssh` itself reads
+    /// it as meant: the link's path is its agent while the socket is
+    /// there and the shell has none of its own, and not otherwise.
+    #[test]
+    fn ssh_on_the_host_finds_the_agent_with_no_variable() {
+        use std::os::unix::net::UnixListener;
+        let home = std::path::PathBuf::from(format!("/var/tmp/olo-rex-agent-kept-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(home.join(".ssh")).unwrap();
+        std::fs::create_dir_all(home.join("dotfiles")).unwrap();
+        std::fs::write(home.join("dotfiles/ssh-config"), "Host build\n    User you\n").unwrap();
+        std::os::unix::fs::symlink(home.join("dotfiles/ssh-config"), home.join(".ssh/config")).unwrap();
+        let forwarded = home.join("forwarded.sock");
+        let _listening = UnixListener::bind(&forwarded).unwrap();
+        // (As the SSH server runs it: `sh -c`, with the socket it made
+        // in SSH_AUTH_SOCK; it says the path and waits on its input.)
+        let run = || {
+            let out = std::process::Command::new("sh").arg("-c").arg(AGENT_KEPT).env("HOME", &home).env("SSH_AUTH_SOCK", &forwarded).stdin(std::process::Stdio::null()).output().unwrap();
+            assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+            String::from_utf8_lossy(&out.stdout).trim().to_owned()
+        };
+        let link = home.join(".local/state/olo-rex/agent.sock");
+        assert_eq!(run(), link.to_str().unwrap());
+        assert_eq!(run(), link.to_str().unwrap());
+        let config = std::fs::read_to_string(home.join(".ssh/config")).unwrap();
+        assert_eq!(config, "Include ~/.ssh/olo-rex.conf\n\nHost build\n    User you\n", "one line at its head, however often; the rest as it was");
+        assert!(std::fs::symlink_metadata(home.join(".ssh/config")).unwrap().file_type().is_symlink(), "a config that is a link stays one");
+        // What ssh makes of it (`-G`: the settings it would use), read
+        // from this home's files: by `-F`, and the include by its
+        // whole path, since ssh takes `~` from the account, not HOME.
+        let own = std::fs::read_to_string(home.join(".ssh/olo-rex.conf")).unwrap();
+        let conf = home.join("read.conf");
+        std::fs::write(&conf, own.replace("~/.local", &format!("{}/.local", home.display()))).unwrap();
+        let agent = |auth: Option<&std::path::Path>| {
+            let mut ssh = std::process::Command::new("ssh");
+            ssh.arg("-F").arg(&conf).args(["-G", "example.invalid"]).env("HOME", &home).env_remove("SSH_AUTH_SOCK");
+            if let Some(auth) = auth {
+                ssh.env("SSH_AUTH_SOCK", auth);
+            }
+            let out = ssh.output().unwrap();
+            String::from_utf8_lossy(&out.stdout).lines().find_map(|l| l.strip_prefix("identityagent ").map(str::to_owned)).unwrap_or_default()
+        };
+        if std::process::Command::new("ssh").arg("-V").output().is_ok() {
+            assert_eq!(agent(None), link.to_str().unwrap(), "a shell with no agent: Olo's");
+            assert_eq!(agent(Some(&home.join("gone.sock"))), link.to_str().unwrap(), "a shell whose agent is gone: Olo's");
+            // (No agent named: ssh goes by the shell's own, as without the file.)
+            assert_eq!(agent(Some(&forwarded)), "", "a shell with a live agent of its own keeps it");
+            // The keys taken back: the socket goes, and ssh is as it was.
+            drop(_listening);
+            std::fs::remove_file(&forwarded).unwrap();
+            assert_eq!(agent(None), "");
+        }
+        // An account with no SSH config yet gets one, its own alone,
+        // that says only this (seen on the rig: none was made, and
+        // ssh there went on without the agent).
+        std::fs::remove_file(home.join(".ssh/config")).unwrap();
+        let _listening = UnixListener::bind(&forwarded).unwrap();
+        run();
+        assert_eq!(std::fs::read_to_string(home.join(".ssh/config")).unwrap(), "Include ~/.ssh/olo-rex.conf\n\n");
+        assert_eq!(std::os::unix::fs::PermissionsExt::mode(&std::fs::metadata(home.join(".ssh/config")).unwrap().permissions()) & 0o777, 0o600);
+        let _ = std::fs::remove_dir_all(&home);
+    }
 
     /// The link is used where UDP's round trip is about TCP's, not
     /// where the network carries it slower.

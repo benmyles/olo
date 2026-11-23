@@ -28062,10 +28062,23 @@ forwarded to it, natively, over the SSH connection Rex keeps:
 - *Given at each connection and when the permission changes*
   (`follow_shared`): taken back, the relay goes, the kept channel
   with it, and nothing answers on the host.
-- *What finds it there*: terminals Rex opens on that host get
-  `SSH_AUTH_SOCK` (the shell options' `env`, `local_shell_opts`). A
-  terminal that was there before, or that something else opens, is
-  told by hand: `export SSH_AUTH_SOCK=~/.local/state/olo-rex/agent.sock`.
+- *What finds it there*: `ssh` itself, in whatever shell. As the
+  agent is forwarded, a file of Olo's own is put beside the account's
+  SSH config on the host (`~/.ssh/olo-rex.conf`, read first by one
+  `Include` line put at the head of `~/.ssh/config`, once; a config
+  that is a link stays one; none there yet, one is made, 0600): it
+  names the link as `IdentityAgent` while its socket is there and the
+  shell has no live agent of its own (`Match exec`). So `git`, `ssh`,
+  `scp` and `rsync` sign in with the keys in every shell, the ones
+  that were open before the keys were given too; with the keys taken
+  back the socket goes, the file says nothing, and `ssh` is as it was.
+  (The first day it was `SSH_AUTH_SOCK` alone, set for the terminals
+  Rex opens: in a shell from before, `git clone` was refused,
+  "Permission denied (publickey)", with the agent working beside it:
+  Ben, 2026-11-23. Shown on the real host: signed in through the
+  agent with the variable set, refused without it.) Terminals Rex
+  opens still get `SSH_AUTH_SOCK` too (the shell options' `env`), for
+  programs that ask the agent themselves and read no SSH config.
 - *Tried*: against a real OpenSSH server (the client's `tests/host.rs`,
   `an_agent_is_forwarded_to_a_real_host`: the host's `ssh-add -L`
   lists the relay's key, nothing answers once the relay is taken back,
