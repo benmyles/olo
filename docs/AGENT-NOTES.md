@@ -933,7 +933,9 @@ frames a second with nobody at it):
   no longer had (2026-11-22: a picture named for one look showed
   another, and the person saw it first). Build an example and a
   program in two commands, and look for a word of the change in the
-  binary (`strings BIN | grep -c WORD`) before picturing it.
+  binary (`strings BIN | grep -c WORD`) before picturing it. (A word
+  of plain letters: `strings` breaks a phrase at a curly apostrophe or
+  an ellipsis, and counts none.)
 - **Open every picture before it is used or shown**: a montage of the
   candidates, each labelled, takes one look and catches a wrong one.
 - **The tiling lint as the push will run it**: `tools/dev/ui-lint
@@ -2376,6 +2378,35 @@ an argument it doesn't know starts the lint (read its first lines).
   (the flag is `--listen`, not `--socket` or `--data-dir`), and point
   `olo-rex` / `olo-rex-glance` at it with `REX_SERVER_SOCKET=/var/tmp/…/rex.sock`.
   For offline UI/tiling QA without touching any Rex server, pass `OLO_REX_DEMO=1`.
+- **Rex's Server window in the demo:** `OLO_REX_DEMO=1
+  OLO_REX_DEMO_SERVER=STAGE` (or `@FILE` naming the stage, read each
+  time the window opens: one run pictures them all) and
+  `{"invoke": "host.server:dev-box"}` on the app's `olo-menus-PID.sock`
+  open it on a made-up host (`server::demo`'s stages); nothing is
+  connected to, whatever is pressed. Add Host's is
+  `OLO_REX_DEMO_SETUP` with `app.add_host`.
+- **What a host says of its Rex server, as root** (asked of a real
+  one, 2026-11-23): `rex version` and the package spell one build two
+  ways ("0.1.0-snapshot.2506", dpkg's "0.1.0~alpha.2506"; apt's
+  candidate is in the package's spelling). An account's open sessions:
+  `runuser -u ACCOUNT -- rex --autostart=false ls -q` (one id a line;
+  it fails, with a message on stderr, where no server runs). The
+  shared server listens at `/run/rex/server.sock`, which is not where
+  the `rex` account's own server would be: ask it with `-S
+  /run/rex/server.sock` (a path or `unix://…` both do, as `rex` or as
+  root). Each running server is a process `rex server run …`, the
+  shared one with `--listen PATH`. apt reads one source again with
+  `apt-get update -o Dir::Etc::sourcelist=FILE -o
+  Dir::Etc::sourceparts=- -o APT::Get::List-Cleanup=0` (Rex's is
+  `/etc/apt/sources.list.d/rex.sources`; 0.6 s). The journal's lines
+  (`-o short-iso`) are `2026-11-23T01:06:20+00:00 HOST rex[PID]:
+  2026/11/23 01:06:20 INFO  words key=value`: Rex writes its own time
+  after the journal's.
+- **Try it against the real thing in every mode it has.** The Server
+  window passed every test on a made-up host; a real one found a comma
+  left in the accounts file and, run as a shared server, a count of
+  sessions asked at the wrong socket. A host made up from what the
+  code expects agrees with the code.
 - **Serialize per-host terminal writes FIFO:** never spawn one tokio task
   per keystroke for `terminal.write` / `client.key` — rapid typing races
   and transposes characters. Route writes through a per-host unbounded

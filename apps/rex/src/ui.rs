@@ -62,6 +62,8 @@ pub enum WinRole {
     AddHost,
     /// A port of another host to forward here.
     Forward,
+    /// A host's own Rex server, looked after as root (`server`).
+    Server,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -275,6 +277,31 @@ pub fn setup_changed() {
     broadcast_to_role(WinRole::AddHost, || WinMsg::SetupChanged);
 }
 
+/// The host whose server is looked after stands otherwise: the Server
+/// window shows it.
+pub fn server_changed() {
+    broadcast_to_role(WinRole::Server, || WinMsg::ServerChanged);
+}
+
+/// A host of the hub's whose server can be looked after from here: one
+/// reached over SSH as an account. Its name here, and where it is.
+fn managed_host(hub: &RexHub, key: &str) -> Option<(String, olo_rex_client::SshTarget)> {
+    let st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
+    let host = st.hosts.get(key).filter(|h| !h.is_local)?;
+    match crate::setup::address(&host.endpoint_raw) {
+        crate::setup::Address::Ssh(target) => Some((if host.label.is_empty() { target.host.clone() } else { host.label.clone() }, target)),
+        _ => None,
+    }
+}
+
+/// Opens the Server window on the host `key` (nothing, where its
+/// server isn't one to look after from here).
+fn open_server(hub: &Arc<RexHub>, key: &str) {
+    let Some((name, target)) = managed_host(hub, key) else { return };
+    crate::server::open(hub, name, target);
+    open_or_raise_panel(WinRole::Server);
+}
+
 fn broadcast_to_role(role: WinRole, make: impl Fn() -> WinMsg) {
     let handles: Vec<WindowHandle<RexWindow>> = wins().map.values().filter(|s| s.role == role).map(|s| s.handle.clone()).collect();
     for h in handles {
@@ -420,6 +447,9 @@ pub fn open_or_raise_panel(role: WinRole) {
         WinRole::Askpass => WindowOptions::alert("SSH Authentication", 460.0, 120.0),
         WinRole::AddHost => WindowOptions::alert("Add Host", panels::ADD_HOST_WIDTH, 120.0),
         WinRole::Forward => WindowOptions::alert("Forward Port", widgets::ALERT_WIDTH, 120.0),
+        // (Not brought back after a reload: it would sign in as root
+        // again with nobody having asked it to.)
+        WinRole::Server => WindowOptions { fixed: true, ..WindowOptions::new(server_title(), crate::server_panel::SERVER_WIDTH, 120.0).dialog() },
         WinRole::Rename => {
             let tab = app().renaming.as_ref().is_some_and(|r| r.window_id.is_some());
             WindowOptions::alert(if tab { "Rename Tab" } else { "Rename Session" }, widgets::ALERT_WIDTH, 120.0)
@@ -431,6 +461,14 @@ pub fn open_or_raise_panel(role: WinRole) {
     };
     let handle = olo_kit::open_window(opts, move |cx| RexWindow::new_panel(id, role, cx));
     wins().map.insert(id, WinSlot { role, handle, selection: Default::default() });
+}
+
+/// The Server window's title: whose server it is.
+fn server_title() -> String {
+    match crate::server::current() {
+        Some(managed) => olo_kit::tr!("Server on {}", managed.name).into(),
+        None => olo_kit::words::tr("Server").into(),
+    }
 }
 
 fn next_win_id() -> WinId {
@@ -503,6 +541,18 @@ pub enum WinMsg {
     SetupTick,
     SetupDo(panels::SetupDo),
     SetupKey(usize),
+    /// The Server window: open it on this host (its key); the host
+    /// looked after stands otherwise (`server::current`); a button of
+    /// it; the key chosen for root, the page, the person to let in, how
+    /// much of the log, the row chosen in its list.
+    ServerOpen(String),
+    ServerChanged,
+    ServerDo(crate::server_panel::ServerDo),
+    ServerKey(usize),
+    ServerPage(usize),
+    ServerPerson(usize),
+    ServerRange(usize),
+    ServerChosen,
     HostsForwardFrom(String),
     AskpassConfirm(bool),
     AskpassSubmit,
@@ -558,8 +608,9 @@ pub struct RexWindow {
     add_mode: olo_rex_client::ServerMode,
     add_set_up: bool,
     /// While the host being set up is waited for (looked at, root
-    /// signed in): the timer that moves its busy bar, and where the bar
-    /// is. None, and nothing drawn, at any other time.
+    /// signed in), and in the Server window while its host is: the
+    /// timer that moves its busy bar, and where the bar is. None, and
+    /// nothing drawn, at any other time.
     setup_tick: Option<olo_kit::TimerId>,
     setup_phase: f32,
     pub hosts_list: widgets::ListModel,
@@ -569,6 +620,14 @@ pub struct RexWindow {
     pub ports_list: widgets::ListModel,
     pub ports_rows: Rc<Vec<panels::PortRow>>,
     pub ports_chosen: Option<panels::PortKind>,
+    /// The Server window's list of accounts (or members): its state,
+    /// its rows as last said, and the one chosen (its name); and its
+    /// Log page's text, with what it was last filled from.
+    pub server_list: widgets::ListModel,
+    pub server_rows: Rc<Vec<crate::server_panel::PersonRow>>,
+    server_chosen: Option<String>,
+    server_log: Option<Child<widgets::TextView>>,
+    server_log_key: u64,
     pub askpass_field: Option<Child<TextField>>,
     pub preedit: Option<String>,
     pub window_active: bool,
@@ -716,6 +775,11 @@ impl RexWindow {
             ports_list: widgets::ListModel::new(false),
             ports_rows: Rc::default(),
             ports_chosen: None,
+            server_list: widgets::ListModel::new(false),
+            server_rows: Rc::default(),
+            server_chosen: None,
+            server_log: None,
+            server_log_key: 0,
             askpass_field: None,
             preedit: None,
             window_active: cx.is_window_active(),
@@ -806,6 +870,20 @@ impl RexWindow {
                 (None, None, None, None)
             }
         };
+        // (The Server window: its log's text, and, in the demo, a made-up
+        // host's server at a stage, for the window's pictures and its
+        // lint: `OLO_REX_DEMO_SERVER=STAGE`, or `@FILE` naming it.)
+        let server_log = (role == WinRole::Server).then(|| widgets::text_view(cx, |v| v.mono(true).size(style::SMALL_SIZE).wrap(false).clear_top(true).empty_text("Reading the log…")));
+        if role == WinRole::Server {
+            if crate::server::demo_mode()
+                && let Ok(stage) = std::env::var("OLO_REX_DEMO_SERVER")
+            {
+                let stage = stage.strip_prefix('@').map_or(stage.clone(), |file| std::fs::read_to_string(file).unwrap_or_default().trim().to_owned());
+                crate::server::show_demo(&stage);
+            }
+            // (Told as a real one is: a stage that waits moves its bar.)
+            cx.send(WinMsg::ServerChanged);
+        }
         // (Hosts and Ports: the keyboard in its hosts' list from the
         // start, for the arrows and a name typed.)
         let hosts_list = widgets::ListModel::new(false);
@@ -851,6 +929,11 @@ impl RexWindow {
             ports_list: widgets::ListModel::new(false),
             ports_rows: Rc::default(),
             ports_chosen: None,
+            server_list: widgets::ListModel::new(false),
+            server_rows: Rc::default(),
+            server_chosen: None,
+            server_log,
+            server_log_key: 0,
             askpass_field,
             preedit: None,
             window_active: cx.is_window_active(),
@@ -1294,6 +1377,9 @@ impl RexWindow {
             "app.settings" => olo_kit::app_menu::open_settings("rex"),
             "app.hosts" => open_or_raise_panel(WinRole::Hosts),
             "app.add_host" => open_or_raise_panel(WinRole::AddHost),
+            "host.server" => open_server(&hub, &self.active_host),
+            // (A host named by its key: for agents, and the window's pictures.)
+            c if c.starts_with("host.server:") => open_server(&hub, c.trim_start_matches("host.server:")),
             "app.forward_port" => open_or_raise_panel(WinRole::Forward),
             "app.pair_device" => open_or_raise_panel(WinRole::Access),
             "app.diagnostics" => open_or_raise_panel(WinRole::Diagnostics),
@@ -2006,6 +2092,8 @@ impl RexWindow {
                 .separator()
                 .item("Hosts and Ports…", "app.hosts")
                 .item("Add Host…", "app.add_host")
+                .item("Manage Server…", "host.server")
+                .enabled(managed_host(&hub, &self.active_host).is_some())
                 .item("Remote Access…", "app.pair_device")
                 .item("Diagnostics…", "app.diagnostics")
                 .separator()
@@ -2875,6 +2963,7 @@ impl RexWindow {
                         hub_d.remove_host(hk);
                         WinMsg::Redraw
                     }),
+                    cx.msg_with(|hk: &String| WinMsg::ServerOpen(hk.clone())),
                     cx.msg_with(|_: &()| WinMsg::PortsChosen),
                     cx.msg_with(|_: &()| WinMsg::Command("app.forward_port".into())),
                     cx.msg_with(move |fid: &String| {
@@ -2920,12 +3009,85 @@ impl RexWindow {
                         cx.msg_with(|forward: &bool| WinMsg::ForwardDone(*forward)),
                     ))
             }
+            WinRole::Server => {
+                let Some(managed) = crate::server::current() else {
+                    return div();
+                };
+                // The list's rows as the host last said, the one chosen
+                // kept by its name; the log's text as it was last read.
+                self.server_rows = Rc::new(crate::server_panel::person_rows(&managed));
+                let chosen = self.server_chosen.as_ref().and_then(|name| self.server_rows.iter().position(|r| &r.name == name));
+                if chosen.is_none() {
+                    self.server_chosen = None;
+                }
+                if self.server_list.state().single() != chosen {
+                    match chosen {
+                        Some(i) => self.server_list.state_mut().select(i),
+                        None => self.server_list.state_mut().selected.clear(),
+                    }
+                }
+                if let Some(log) = &self.server_log {
+                    // (Its colours are the look's: set again when that changes.)
+                    let look = theme::palette();
+                    let key = style::key((&managed.log, managed.log_of, managed.log_range, managed.log_reading, look.document_text, look.warning, look.failure));
+                    if key != self.server_log_key {
+                        self.server_log_key = key;
+                        let (text, runs) = crate::server_panel::log_text(managed.log.as_deref().unwrap_or_default());
+                        let empty = if managed.log_reading || managed.log.is_none() { "Reading the log…" } else { "Nothing was written in that time." };
+                        // (The newest last, and shown first.)
+                        log.update(cx, |v, cx| {
+                            v.set_empty_text(empty, cx);
+                            let other = v.text() != text;
+                            v.set_text(text, Some(runs), cx);
+                            if other {
+                                v.scroll_to_end(cx);
+                            }
+                        });
+                    }
+                }
+                let (list, rows, log) = (self.server_list.clone(), self.server_rows.clone(), self.server_log.as_ref().map(|v| v.element()));
+                div()
+                    .w_full()
+                    .on_key_down(cx.listener(|_, e: &KeyDownEvent, cx| {
+                        if e.keystroke.key == "escape" {
+                            cx.stop_propagation();
+                            // (Escape leaves what is asked; what is being
+                            // done isn't left by a key, nor the page.)
+                            match crate::server::current().map(|m| (m.stage, m.server.is_some())) {
+                                Some((crate::server::Stage::Confirm { .. } | crate::server::Stage::Failed { .. }, true)) => cx.send(WinMsg::ServerDo(crate::server_panel::ServerDo::Back)),
+                                Some((crate::server::Stage::Working { .. } | crate::server::Stage::Shown, _)) => {}
+                                _ => cx.send(WinMsg::ServerDo(crate::server_panel::ServerDo::Close)),
+                            }
+                        }
+                    }))
+                    .child(crate::server_panel::render_server_panel(
+                        cx,
+                        &managed,
+                        self.setup_phase,
+                        &list,
+                        &rows,
+                        chosen,
+                        log,
+                        cx.msg_with(|what: &crate::server_panel::ServerDo| WinMsg::ServerDo(what.clone())),
+                        cx.msg_with(|i: &usize| WinMsg::ServerKey(*i)),
+                        cx.msg_with(|i: &usize| WinMsg::ServerPage(*i)),
+                        cx.msg_with(|i: &usize| WinMsg::ServerPerson(*i)),
+                        cx.msg_with(|i: &usize| WinMsg::ServerRange(*i)),
+                        cx.msg_with(|_: &()| WinMsg::ServerChosen),
+                    ))
+            }
             WinRole::AddHost => {
                 let (Some(name), Some(address)) = (&self.host_label_field, &self.host_addr_field) else {
                     return div();
                 };
+                // (It fills its window: an alert shorter than the window's
+                // least height has its stripe to the window's foot, not
+                // to its own.)
                 div()
                     .w_full()
+                    .flex_1()
+                    .flex()
+                    .flex_col()
                     .on_key_down(cx.listener(|_, e: &KeyDownEvent, cx| {
                         if e.keystroke.key == "escape" {
                             cx.stop_propagation();
@@ -2937,7 +3099,7 @@ impl RexWindow {
                             }
                         }
                     }))
-                    .child(match crate::setup::current() {
+                    .child(div().w_full().flex_1().flex().flex_row().child(match crate::setup::current() {
                         Some(setup) => {
                             panels::render_setup_panel(&setup, self.setup_phase, cx.msg_with(|what: &panels::SetupDo| WinMsg::SetupDo(*what)), cx.msg_with(|i: &usize| WinMsg::SetupKey(*i)))
                         }
@@ -2952,7 +3114,7 @@ impl RexWindow {
                             cx.msg_with(|on: &bool| WinMsg::AddHostSetUp(*on)),
                             cx.msg_with(|add: &bool| WinMsg::AddHostDone(*add)),
                         ),
-                    })
+                    }))
             }
             WinRole::Access => {
                 let step = {
@@ -3351,9 +3513,81 @@ impl View for RexWindow {
                     panels::SetupDo::Go => crate::setup::go(&hub),
                     panels::SetupDo::Again => crate::setup::again(&hub),
                     panels::SetupDo::Stop => crate::setup::stop(),
+                    // (As DiskBackup opens it: the app that runs takes the launch, and comes to the front.)
+                    panels::SetupDo::OpenPasswords => {
+                        let _ = olo_xdg::spawn_detached("olo-passwords");
+                    }
                 }
             }
             WinMsg::SetupKey(i) => crate::setup::choose_key(i),
+            WinMsg::ServerOpen(key) => open_server(&app().hub.clone(), &key),
+            WinMsg::ServerChanged => {
+                let stage = crate::server::current().map(|m| m.stage);
+                // (The busy bar's timer, as Add Host's: begun with a
+                // wait and ended with it.)
+                let waited_for = matches!(stage, Some(crate::server::Stage::Looking | crate::server::Stage::Working { .. }));
+                match (waited_for, self.setup_tick) {
+                    (true, None) => {
+                        self.setup_phase = 0.0;
+                        self.setup_tick = Some(cx.every(std::time::Duration::from_millis(100), || WinMsg::SetupTick));
+                    }
+                    (false, Some(timer)) => {
+                        cx.cancel(timer);
+                        self.setup_tick = None;
+                    }
+                    _ => {}
+                }
+                // (Another host's server opened in the window: its name
+                // in the title.)
+                if self.role == WinRole::Server {
+                    cx.set_window_title(server_title());
+                }
+                cx.invalidate();
+            }
+            WinMsg::ServerDo(what) => {
+                use crate::server_panel::ServerDo;
+                let hub = app().hub.clone();
+                match what {
+                    ServerDo::Back => crate::server::back(),
+                    ServerDo::Go => crate::server::go(&hub),
+                    ServerDo::Again => crate::server::again(&hub),
+                    ServerDo::Close => cx.request_close(),
+                    ServerDo::Ask(action) => crate::server::ask(action),
+                    ServerDo::LetIn => crate::server::ask_to_let_in(),
+                    ServerDo::ShowLog => crate::server::show_log(&hub),
+                    ServerDo::LogOf(service) => {
+                        crate::server::page(&hub, crate::server::Page::Log);
+                        crate::server::read_log(&hub, Some(service), None);
+                    }
+                    ServerDo::Refresh => crate::server::read_log(&hub, None, None),
+                    // (As DiskBackup opens it: the app that runs takes the launch, and comes to the front.)
+                    ServerDo::OpenPasswords => {
+                        let _ = olo_xdg::spawn_detached("olo-passwords");
+                    }
+                    ServerDo::Copy => {
+                        if let Some(lines) = crate::server::current().and_then(|m| m.log).filter(|lines| !lines.is_empty()) {
+                            olo_kit::clipboard::write(olo_kit::ClipboardItem::new_string(lines.join("\n")));
+                        }
+                    }
+                }
+            }
+            WinMsg::ServerKey(i) => crate::server::choose_key(i),
+            WinMsg::ServerPage(i) => {
+                if let Some(page) = crate::server::Page::ALL.get(i) {
+                    crate::server::page(&app().hub.clone(), *page);
+                }
+            }
+            WinMsg::ServerPerson(i) => crate::server::choose_person(i),
+            WinMsg::ServerRange(i) => {
+                if let Some(range) = olo_rex_client::manage::LogRange::ALL.get(i) {
+                    crate::server::read_log(&app().hub.clone(), None, Some(*range));
+                }
+            }
+            WinMsg::ServerChosen => {
+                let row = self.server_list.state().single();
+                self.server_chosen = row.and_then(|i| self.server_rows.get(i)).map(|r| r.name.clone());
+                cx.invalidate();
+            }
             WinMsg::HostsForwardFrom(key) => {
                 self.fwd_host = Some(key);
                 cx.invalidate();
@@ -3522,6 +3756,9 @@ impl Drop for RexWindow {
     fn drop(&mut self) {
         if self.role == WinRole::AddHost {
             crate::setup::back();
+        }
+        if self.role == WinRole::Server {
+            crate::server::close(&app().hub.clone());
         }
         self.cancel_preview();
         app().attention.hide(self.id);

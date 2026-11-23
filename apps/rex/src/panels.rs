@@ -69,7 +69,7 @@ pub const LIGHT: f32 = 8.0;
 /// than it looks, so that its edge is the edge of what it is set under
 /// (in a box of 10 it stood a point to the right of the label above
 /// it); to be centred on the line beside it.
-fn light(light: Light) -> Element {
+pub fn light(light: Light) -> Element {
     canvas(move |g, b| style::dot(g, b.center(), LIGHT, light.color(&theme::palette()))).paint_key(style::key(light)).w(px(LIGHT)).h(px(LIGHT)).flex_shrink_0().into_any_element()
 }
 
@@ -92,6 +92,9 @@ pub struct HostRow {
     /// Whether Connect has something to do: it isn't connected, nor on
     /// its way.
     pub connects: bool,
+    /// Whether its server can be looked after from here (the Server
+    /// window): a host reached over SSH as an account.
+    pub managed: bool,
 }
 
 /// How a host's connection stands, in a word or two (its row's Status:
@@ -143,6 +146,7 @@ pub fn host_rows(hub: &RexHub, waits_for_agent: &dyn Fn(&str) -> bool) -> Vec<Ho
                 },
                 local: h.is_local,
                 connects: matches!(h.conn_state, HostConnState::Disconnected | HostConnState::Error(_) | HostConnState::Reconnecting { .. }),
+                managed: !h.is_local && matches!(crate::setup::address(&h.endpoint_raw), crate::setup::Address::Ssh(_)),
             }
         })
         .collect()
@@ -290,6 +294,7 @@ pub fn render_hosts_panel(
     on_add_host: impl Fn(&(), &mut WindowCx) + 'static,
     on_connect_host: impl Fn(&String, &mut WindowCx) + 'static,
     on_remove_host: impl Fn(&String, &mut WindowCx) + 'static,
+    on_server: impl Fn(&String, &mut WindowCx) + 'static,
     on_port: impl Fn(&(), &mut WindowCx) + 'static,
     on_forward: impl Fn(&(), &mut WindowCx) + 'static,
     on_stop: impl Fn(&String, &mut WindowCx) + 'static,
@@ -325,12 +330,12 @@ pub fn render_hosts_panel(
     let host_list = div().w_full().h(tall(list_rows(hosts.len(), 5))).child(host_list);
     // Every button under the two lists as wide as the widest of them:
     // one column of left edges, one of right.
-    let wide = ["Add…", "Remove", "Connect", "Forward…", "Stop", "Open"].iter().map(|l| olo_kit::widgets::button_width(l, false)).fold(0.0, f32::max);
+    let wide = ["Add…", "Remove", "Manage Server…", "Connect", "Forward…", "Stop", "Open"].iter().map(|l| olo_kit::widgets::button_width(l, false)).fold(0.0, f32::max);
 
     // Under it: what is done to the one chosen. This computer's own
     // server isn't removed; Connect is for one that isn't connected.
     let picked = chosen_host.and_then(|i| hosts.get(i));
-    let (pick_remove, pick_connect) = (picked.map(|h| h.key.clone()), picked.map(|h| h.key.clone()));
+    let (pick_remove, pick_connect, pick_server) = (picked.map(|h| h.key.clone()), picked.map(|h| h.key.clone()), picked.map(|h| h.key.clone()));
     let host_actions = div()
         .w_full()
         .flex()
@@ -344,6 +349,13 @@ pub fn render_hosts_panel(
             }
         }))
         .child(div().flex_1())
+        // (The chosen host's own Rex server, looked after as root: the
+        // Server window. For a host reached over SSH as an account.)
+        .child(Button::new("Manage Server…").min_width(wide).enabled(picked.is_some_and(|h| h.managed)).on_click(move |_, cx| {
+            if let Some(key) = &pick_server {
+                on_server(key, cx);
+            }
+        }))
         .child(Button::new("Connect").min_width(wide).enabled(picked.is_some_and(|h| h.connects)).on_click(move |_, cx| {
             if let Some(key) = &pick_connect {
                 on_connect_host(key, cx);
@@ -475,7 +487,7 @@ pub fn render_hosts_panel(
 pub const ADD_HOST_WIDTH: f32 = 480.0;
 
 /// The size of what a host is asked to run, and of what it says.
-const COMMAND_SIZE: f32 = style::SMALL_SIZE;
+pub const COMMAND_SIZE: f32 = style::SMALL_SIZE;
 /// A well's room round what it holds.
 const WELL_INSET: f32 = 8.0;
 
@@ -551,11 +563,13 @@ pub enum SetupDo {
     Again,
     /// Stop after the step it is at.
     Stop,
+    /// Olo Passwords, opened: it has the keys.
+    OpenPasswords,
 }
 
 /// A key as the menu of them has it: its name, its kind, and enough of
 /// its fingerprint to tell it by.
-fn key_called(key: &olo_rex_client::AgentKey) -> SharedString {
+pub fn key_called(key: &olo_rex_client::AgentKey) -> SharedString {
     let print = key.fingerprint.strip_prefix("SHA256:").unwrap_or(&key.fingerprint);
     let short =
         if print.chars().count() > 16 { format!("{}…{}", print.chars().take(8).collect::<String>(), print.chars().skip(print.chars().count() - 6).collect::<String>()) } else { print.to_owned() };
@@ -599,7 +613,7 @@ pub fn command_lines(command: &str, most: usize) -> Vec<String> {
 
 /// A sunken well, as a field's, round `inner`: what is read as it
 /// stands and not typed (a command to be run, what a host said).
-fn well(inner: Element) -> Element {
+pub fn well(inner: Element) -> Element {
     let back = canvas(|g, b| {
         let p = theme::palette();
         // (The panel's own ground, a little shaded: not a field's
@@ -614,12 +628,12 @@ fn well(inner: Element) -> Element {
 }
 
 /// `lines`, each on a line of its own, in the fixed-width font.
-fn mono_lines(lines: Vec<String>) -> Element {
+pub fn mono_lines(lines: Vec<String>) -> Element {
     div().flex().flex_col().w_full().children(lines.into_iter().map(|line| StringView::new(line).mono(true).size(COMMAND_SIZE).wrap(true)))
 }
 
 /// How many characters of a command fit a well `width` points wide.
-fn command_room(width: f32) -> usize {
+pub fn command_room(width: f32) -> usize {
     let ten = f32::from(style::text_width("0000000000", COMMAND_SIZE, style::mono_font(olo_kit::FontWeight::NORMAL)));
     (((width - 2.0 * WELL_INSET - 2.0) / (ten / 10.0)).floor() as usize).max(20)
 }
@@ -734,9 +748,21 @@ pub fn render_setup_panel(setup: &crate::setup::Setup, phase: f32, on_do: impl F
         Stage::RootKey { keys, .. } if keys.is_empty() => AlertFrame::new("key")
             .child(alert_title("Olo Passwords has no SSH keys to offer"))
             .child(gap(m::TIGHT))
-            .child(body(olo_kit::tr!("Unlock it, or add the key root uses on {}.", setup.host()).into()))
+            .child(body(olo_kit::tr!("Unlock Olo Passwords, or add a key to it that root on {} accepts.", setup.host()).into()))
             .child(gap(m::SPACING))
-            .child(buttons().child(button("Back", SetupDo::Back)).child(button("Try Again", SetupDo::Go).default(true)))
+            // (Open Passwords is a side trip, not a third answer: at
+            // the left, under the words; the alert's two at the right.)
+            .child(
+                div()
+                    .w_full()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .pt(px(m::TIGHT))
+                    .child(button("Open Passwords", SetupDo::OpenPasswords))
+                    .child(div().flex_1())
+                    .child(olo_kit::widgets::button_row().child(button("Back", SetupDo::Back)).child(button("Try Again", SetupDo::Go).default(true))),
+            )
             .into_element(),
         Stage::RootKey { keys, chosen, .. } => AlertFrame::new("key")
             .child(alert_title(olo_kit::tr!("{} didn’t accept your keys for root", setup.host())))

@@ -128,3 +128,51 @@ fn the_agents_keys_are_told_apart() {
     println!("{let_in} of them let root in there");
     assert!(let_in >= 1);
 }
+
+/// The host's server as root sees it ([`olo_rex_client::manage::look`]):
+/// read, nothing changed; and its login server's log. (What it prints
+/// names neither the host nor anybody on it: counts and states only.)
+#[test]
+#[ignore = "needs a real host: OLO_REX_TEST_HOST"]
+fn the_server_is_read_as_root_and_nothing_is_changed() {
+    use olo_rex_client::manage::{self, Service};
+    let mut host = host();
+    let before = block(provision::probe(&mut host, true)).expect("root is let in with the agent's keys");
+    let server = block(manage::look(&mut host, true)).unwrap();
+    println!(
+        "mode {:?}; login {:?}, how long {}; shared {:?}; {} people, {} in the rex group; installed {}, newer {}; accounts {}, {} not listed",
+        server.mode(),
+        server.state(Service::Login),
+        if server.up(Service::Login).is_some() { "known" } else { "unknown" },
+        server.state(Service::Shared),
+        server.people.len(),
+        server.members.len(),
+        server.installed.is_some(),
+        server.newer.is_some(),
+        server.accounts.as_ref().map_or("unread".to_owned(), |a| a.accounts().len().to_string()),
+        server.not_listed().len(),
+    );
+    assert!(server.facts.packaged && server.facts.systemd);
+    assert!(server.mode().is_some(), "a server runs there for everybody");
+    assert!(!server.people.is_empty(), "somebody has an account there");
+    assert!(server.installed.is_some());
+    // Every action says what it would run, and none was run.
+    for action in [manage::Action::Restart(Service::Login), manage::Action::Stop(Service::Shared), manage::Action::Update] {
+        assert!(!action.shown(&server).is_empty(), "{action:?}");
+    }
+    println!(
+        "the repository was asked: {}; a newer version: {}; sessions through the login server: {:?}; failed: {}",
+        server.checked,
+        server.newer.is_some(),
+        server.sessions_on(Service::Login),
+        server.failed(Service::Login)
+    );
+    assert!(server.checked, "apt read Rex's own source again");
+    assert!(server.sessions_on(Service::Login).is_some(), "the account's own server said how many sessions it has");
+    let log = block(manage::journal(&mut host, Service::Login, manage::LogRange::SinceStart)).unwrap();
+    assert!(log.first().is_some_and(|day| day.len() == 10 && day.as_bytes()[4] == b'-'), "the log begins with its day");
+    assert!(log.iter().skip(1).all(|l| l.len() == 10 || l.as_bytes().get(2) == Some(&b':')), "each line begins with its time");
+    println!("the login server's log: {} lines", log.len());
+    let after = block(provision::probe(&mut host, true)).unwrap();
+    assert_eq!((before.login, before.shared, before.own), (after.login, after.shared, after.own));
+}

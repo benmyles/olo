@@ -3003,6 +3003,24 @@ it.
   wrong), to select and copy: the panel's ground a shade off and the
   panel's text colour (not the document's white, which says "type
   here"; dimmed there, it read as a field switched off).
+  `.size(points)`: its text at another size than its face's own, and
+  `.wrap(false)`: each line whole, the view as wide as its longest and
+  scrolled along the bottom (a log: Rex's Server window shows a
+  service's journal in the small monospace so; wrapped, the rest of a
+  long line began at the margin like a line of its own). What scrolls
+  is as wide as the view unless it is given a width, so the unwrapped
+  text measures its longest lines (the three with the most letters,
+  once for a text). `set_empty_text` changes the note ("Reading the
+  log…", then "Nothing was written in that time."), and
+  `scroll_to_end` shows a text's last lines once they are laid out
+  (`set_text` begins at its top). `.clear_top(true)` keeps its top
+  margin clear while it is scrolled (what scrolls goes under it, as
+  under a lip): a view made a whole number of lines
+  (`TextView::line_height_at(size)`) and both margins tall then shows a
+  text of as many lines with nothing to scroll, and scrolled to its
+  end its first line whole (without it, the foot of the line before
+  showed at the frame; with one margin counted instead, a text that
+  fitted still had a thumb the bar's whole length).
   `TextView::MARGINS` and
   `TextView::line_height()` (a whole number of points) are how it sets
   its text, for text beside it to be set the same: Calendar's preview
@@ -27123,10 +27141,164 @@ Modes, Shared Server, Login Server and Remote Access).
   only when a host is given (`OLO_REX_TEST_HOST`). For pictures and
   the lint, `OLO_REX_DEMO_SETUP=STAGE` (or `@FILE` naming it) opens
   Add Host on a made-up host in that stage.
-- **Left** (TODO): the server looked after from Rex (its services, its
-  accounts, its version); a key chosen for the account's own
-  connection; a way to open Passwords from the alert that says it has
-  no key.
+  The alert that says Olo Passwords has no key to offer has an Open
+  Passwords button (2026-11-23, with the Server window's: Passwords is
+  started as DiskBackup starts it, `olo_xdg::spawn_detached`, and the
+  copy that runs takes the launch and comes to the front), apart at
+  the left: a side trip, not a third answer. And the window's content
+  fills the window (`flex_1` in the frame's column): an alert shorter
+  than the window's least height had its stripe stop seven points
+  over the window's foot.
+- **Left** (TODO): a key chosen for the account's own connection.
+
+**A host's server looked after from Rex** (2026-11-23; Ben, 2026-11-22:
+"also build in rex server management to our rex client so that i can
+manage the users, services etc. of the running rex server (if i have a
+root@ key)"). Hosts and Ports ▸ Manage Server… (for the host chosen: one
+reached over SSH as an account), Rex ▸ Manage Server… (the window's own
+host), and, for agents, the command `host.server:KEY`, open the Server
+window (`WinRole::Server`, "Server on NAME"; one host at a time).
+- **What a server is and what is done to one is the client crate's**
+  (`olo_rex_client::manage`, on `provision`'s runner, facts and accounts
+  file). `look(runner, check)` asks the host as root, in one read-only
+  script after the facts' (`MORE`): for how long each service has run
+  (the machine's uptime less when the unit began, both by the host's
+  own clock: no time zones, no clocks compared), whether one failed,
+  the `rex` group's members, the people with accounts (user id 1000
+  and up, with a shell), the open sessions of each Rex server that
+  runs (asked as the account it runs as, `runuser -u U -- rex
+  --autostart=false ls -q`, at the socket its command line names where
+  it names one: the shared server's isn't where the `rex` account's
+  own would be, and a real shared server was first shown with no
+  count at all), and the package's version and its candidate. With
+  `check`, apt reads Rex's own source again first (that one file of
+  `sources.list.d`: 0.6 s on the test host), so "up to date" is known,
+  not assumed; it is asked as the window opens and after an update,
+  and what it said is kept across the looks between. The version shown
+  is the package's (`Server::version`): `rex version` spells the same
+  build another way ("0.1.0-snapshot.2506" is the package
+  "0.1.0~alpha.2506"), and three spellings on one page read as three
+  versions (the first design review).
+  An `Action` is one thing done: `Start`, `Stop` or `Restart` a
+  `Service` (`systemctl enable --now UNIT`, `disable --now SOCKET
+  UNIT`, `restart UNIT`); `Allow(Person)` or `Remove(name)` in the
+  login server's accounts (the file changed in place, `accounts`:
+  allowed as itself, `peer:UID`, and given itself by default); `Join`
+  or `Leave` the `rex` group (`usermod --append --groups rex`,
+  `gpasswd --delete`); `Update` (Rex's installer again on the host's
+  channel, as its Upgrading page has it). Each says its `title`, what
+  it is while it is done (`doing`), its button's `verb`, `what` it
+  does, its `warning` where it costs (a running shared server stopped,
+  restarted or updated ends every session; a login server's sessions
+  go on: Rex's "What Restarts"), and `shown`: the command, or the
+  file's change, exactly. `act` does one and looks again; a service
+  that won't start says what its log says. `journal(runner, service,
+  LogRange)` reads a log (since it last started, from when it left
+  "inactive", so its "Starting…" line is there; today; its last lines)
+  as `log_lines` shows it: a line for each day, then each line its time
+  and what was written, without the host's name, without Rex's own
+  name and without the time Rex writes before its own words (the same
+  three times over, as the journal has them).
+- **The window's state** (`apps/rex/src/server.rs`: `Stage` Looking,
+  RootKey, Shown, Confirm, Working, Failed; `Page`; one `LIVE`, as Add
+  Host's). Root is signed in with keys alone, the agent's, or one
+  chosen where root took none (as Add Host); its connection is kept
+  while the window is open, so each thing asked is answered at once
+  (the window opened in 3 to 5 s on the test host, a restart came back
+  in 0.8 s), and dropped when it closes. Work is the hub's threads',
+  each piece numbered for the program (`next_turn`: one host's is
+  never taken for the next one's), so one overtaken says nothing more.
+  A command begun is never cut: the window closed while one runs, it
+  is let finish (a package half installed is worse than one
+  installed) and root's connection goes when it has; work that
+  changes nothing is ended at once. Asked for again while it shows,
+  the window comes to the front and root isn't signed in a second
+  time. It isn't brought back after a reload: it would sign in as root
+  with nobody having asked it to.
+- **Its drawing** (`apps/rex/src/server_panel.rs`). Three pages in a
+  tab view. *Server*: each service in use (both, where neither is)
+  under its heading and rule: a light and "Running for 2 hours  ·  3
+  sessions open" (counted on by the kit's `ago::age` from when the
+  host said it: no timer of the window's), "Ready", "Failed 4 min ago
+  ·  " and its last words (its own, for why: `journalctl -t rex -n 1`),
+  "Stopped" or "Not in use"; Restart… and Stop…, or Start… (a failed
+  one's with Show Log); what it is for and whether it starts with the
+  machine in the small size, and what stopping it costs in the
+  warning's colour. Where neither kind is in use (a host of personal
+  servers), a line says so and each kind is only what it is with
+  Start… beside it: with a "Not in use" line each, that page alone was
+  taller than the frame. A failed one's last words go under its line,
+  whole, on two lines at most (beside "Failed" they were cut where
+  they began to say something). Then *Version*, both facts on one line: "0.1.0~alpha.2506
+  is installed  ·  0.1.0~alpha.2510 is available", or "·  up to date"
+  with Update… off (what can be acted on isn't left to the small
+  print: the second design review). *Accounts* (a login server's) or *Members* (a
+  shared server's `rex` group): a list (an account and its open
+  sessions; who else may use it has a column only where somebody other
+  than the account itself may: a tailnet's people), Allow… (or Add…)
+  and Remove… for the one chosen, together under the list's left edge
+  as Hosts and Ports has its own. *Log*: how much of it to show, how
+  long ago it was read ("Read 4 min ago": it isn't followed as it is
+  written), Copy and Refresh, over the log in the small monospace
+  (`log_text`, the runs that set it): a heading for each day in words
+  ("Sunday 22 November", bold and quieter, a line's room over it: set
+  like the lines, a day's line was lost among them), each line whole
+  (a bar along the bottom for the long ones: wrapped, the rest of a
+  line began at the margin like a line of its own), WARN and ERROR in
+  the warning's and the failure's colours, the newest shown first. Its
+  view is a whole number of lines tall (`log_room`: thirteen, its
+  text's two margins, its bar) and keeps its top margin clear
+  (`TextView::clear_top`), so scrolled to either end its first and
+  last lines show whole (its first was cut in half: both reviewers),
+  a log of thirteen lines has nothing to scroll, and the pages' least
+  height is what that takes (`page_height`). A host's own words in a
+  well, and a failed service's under its line, are written out as a
+  command is (`hung`): broken at a space, the rest set in by two
+  letters, so one message isn't read as two.
+  Nothing is done at a click: each button puts its action to the
+  person as an alert in the window: what it costs first, in the
+  warning's colour; what it does; who, where somebody is to be chosen
+  (Allow… and Add…: a menu in the alert, whose title, words and well
+  follow the choice); and what is run as root, exactly, in a well
+  under "Rex runs this as root@HOST:". Cancel is the button Return
+  presses where something ends by it. Every stage fills the frame the
+  pages have (`sheet`, `frame_height`): its icon on the alert's stripe (Rex's
+  own while it waits), its words in one column, its buttons at the
+  foot, so the window never changes size under the pointer (it did at
+  every step, 357 points to 155 and back: the first design review).
+  What didn't go says how the service now stands and offers its log.
+- **Tried.** The client's tests on a made-up host (read as it stands;
+  an account let in and taken out; what ends sessions says so and runs
+  what it shows; a service that won't start; the repository asked only
+  when told; the log by its days), the app's (what is asked can be
+  left; who is let in is chosen in the alert and goes by the kind of
+  server), and a real host end to end, headless, the window driven as
+  a person would and the host itself asked after each step: as a login
+  server (33 checks: opened from Hosts and Ports, each page read,
+  nothing changed by looking; the login server restarted, an account
+  allowed and removed, the server stopped and started, each asked
+  first and nothing changed before it was agreed to), and the same
+  host made a shared server and put back (22 checks: its sessions
+  counted, a member added and removed, its log, a restart that says
+  it ends every session). The real host found what the made-up one
+  couldn't: an account let in and taken out left `"…",}` in the
+  accounts file (`accounts::without` took the last member of a line
+  out and left the comma that had set it off; fixed, with a test that
+  the file comes back to the byte), and the shared server's sessions
+  were asked at the wrong socket. `crates/rex/tests/host.rs` reads a
+  real host's server too (read-only). For pictures,
+  `OLO_REX_DEMO_SERVER=STAGE` (or `@FILE` naming it) shows a made-up
+  host's server in that stage (`server::demo`: twenty of them), and
+  in the demo nothing is connected to whatever is pressed.
+- **Measured** (release, headless, five seconds each): the window open
+  at rest on each page 0.0 % of a core, 0 wakeups (1 on the Log page),
+  0 frames; while it waits (its busy bar ten times a second) 3.2 to
+  3.8 % of a core (2.0 to 2.6 of it llvmpipe's, the test session's
+  software renderer), 27 wakeups a second, 50 frames of 1.8 to 2.0 ms
+  against 8.3; closed again, 0.0 % and 0 wakeups.
+- **Left** (TODO): a host changed between a login and a shared server
+  from here (Add Host's set-up does it today); the log followed as it
+  is written; the public key to copy where root took none.
 
 **Names and places** (2026-11-22; the hub had the calls and nothing
 offered them). A session and a tab are renamed in a small window

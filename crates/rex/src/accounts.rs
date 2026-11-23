@@ -412,9 +412,26 @@ fn without(text: &str, members: &[Member], i: usize) -> String {
         return format!("{}{}", &text[..line], &after[to_newline.expect("there is one") + 1..]);
     }
     // (Along a line with others: itself, its comma, and the space after.)
+    let spaced = after.starts_with([' ', '\t']);
     let after = after.trim_start_matches([' ', '\t']);
-    let before = if i + 1 == members.len() && !alone_before { text[..member.span.start].trim_end_matches([' ', '\t']) } else { &text[..member.span.start] };
-    format!("{before}{}{after}", if before.len() != member.span.start && !after.starts_with('}') { " " } else { "" })
+    if i + 1 == members.len() && !alone_before {
+        // The last of them: the comma that set it off from the one
+        // before goes with it (unless it had a comma of its own after
+        // it: then the file is one that ends its lists with one, and
+        // the one before keeps its own), and the space there was
+        // before the closing bracket stays. So a member put in along a
+        // line and taken out again leaves the line as it was (it left
+        // `"a": 1,}`: an account let in and taken out again, on a real
+        // host, 2026-11-23).
+        let own_comma = end > member.span.end;
+        let mut before = text[..member.span.start].trim_end_matches([' ', '\t']);
+        if !own_comma && i > 0 {
+            before = before.strip_suffix(',').unwrap_or(before);
+        }
+        let gap = if spaced && !before.ends_with('{') { " " } else { "" };
+        return format!("{before}{gap}{after}");
+    }
+    format!("{}{after}", &text[..member.span.start])
 }
 
 #[cfg(test)]
@@ -553,6 +570,32 @@ mod tests {
             says(&file),
             serde_json::json!({"version": 1, "accounts": {"root": {"principals": ["tailscale:alice@example.com", "peer:0"]}, "*": {"principals": ["tailscale:*"]}, "bob": {"principals": ["peer:1001"]}}, "defaults": {"peer:1001": "bob"}})
         );
+    }
+
+    /// An account let in beside another and taken out again leaves the
+    /// file as it was, to the byte: its line among the accounts, and
+    /// its default, set along the line of the one already there (a
+    /// real host's file was left with `"alice",}`, 2026-11-23).
+    #[test]
+    fn an_account_let_in_and_taken_out_leaves_the_file_as_it_was() {
+        let mut file = Accounts::parse(SHIPPED).unwrap();
+        file.allow("alice", "peer:1001").unwrap();
+        file.set_default("peer:1001", Some("alice")).unwrap();
+        let before = file.text().to_owned();
+        assert!(before.contains("\"defaults\": { \"peer:1001\": \"alice\" }"), "{before}");
+        file.allow("bo", "peer:1000").unwrap();
+        file.set_default("peer:1000", Some("bo")).unwrap();
+        assert_eq!(file.accounts().len(), 2);
+        assert!(file.remove("bo").unwrap());
+        assert_eq!(file.text(), before);
+        // A file that ends its lists with a comma keeps doing so.
+        let mut ended = Accounts::parse("{\n  \"accounts\": { \"alice\": { \"principals\": [\"peer:1001\"] }, \"bo\": { \"principals\": [] }, },\n}\n").unwrap();
+        assert!(ended.remove("bo").unwrap());
+        assert_eq!(ended.text(), "{\n  \"accounts\": { \"alice\": { \"principals\": [\"peer:1001\"] }, },\n}\n");
+        // The only one of a line taken out: an empty object.
+        let mut one = Accounts::parse("{\n  \"accounts\": { \"bo\": { \"principals\": [] } },\n}\n").unwrap();
+        assert!(one.remove("bo").unwrap());
+        assert_eq!(one.text(), "{\n  \"accounts\": {},\n}\n");
     }
 
     #[test]

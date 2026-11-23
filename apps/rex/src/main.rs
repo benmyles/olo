@@ -16,6 +16,8 @@ mod keymap;
 mod links;
 mod overlays;
 mod panels;
+mod server;
+mod server_panel;
 mod settings;
 mod setup;
 mod shared;

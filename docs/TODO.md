@@ -1005,16 +1005,36 @@ something nobody here has is in "Blocked", with what it waits for.
     rex client so that i can manage the users, services etc. of the
     running rex server (if i have a root@ key)"). **Add Host's part is
     done** (HACKING, Rex, "A host set up from Add Host"), and the
-    person's test server is set up as a login server by it. **Left**:
-    the server's window (its mode and services: start, stop, restart,
-    its log; its accounts, or the rex group's members; its version and
-    updating it), on the same `provision` and `accounts`. From the
-    design reviews, not done: a key chosen for the *account's* own
-    connection as one is for root (the kept connection offers the
-    agent's keys in turn; a host's chosen key would be kept with the
-    host); an "Open Passwords" button on the alert that says it has no
-    key (the kit has no way yet for one app to open another's window:
-    one for the kit); the host's package installed by the two commands
+    person's test server is set up as a login server by it. **The
+    server's window is done too** (2026-11-23: HACKING, Rex, "A host's
+    server looked after from Rex": Hosts and Ports ▸ Manage Server…;
+    its services started, stopped and restarted, its accounts or the
+    rex group's members, its version and Update, its log; tried
+    against the test server as a login server and as a shared one).
+    **Left of it**: a host changed between a login and a shared server
+    from the window (Add Host's set-up does it, and adds the host
+    anew: the window wants the plan's steps without that); the log
+    followed as it is written (a `journalctl -f` held over SSH, ended
+    with the page: today Refresh reads it again, and the page says how
+    long ago it was read); "last signed in" and
+    refused sign-ins on the Accounts page (the login server's log
+    doesn't say them at its usual level); the public key to copy where
+    root took none (the agent gives Rex a key's name and fingerprint,
+    not its text); Rex's new words in the word lists (`tools/dev/words
+    gather --write`: the Server window's and Add Host's aren't in
+    `en.txt` yet). From the window's two design reviews, for the kit
+    and not this window: a busy bar that reads as a bar nearly full
+    when it is still (BeOS's barber pole, moving stripes, says
+    "working" in a picture too); the smaller secondary text is faint
+    on the panel at 1×; the key icon alone has a ground shadow; a rule
+    (`separator`) nearly vanishes in the dark looks; a list's bottom
+    edge is faint against the window in the light look; in Hosts and
+    Ports, the headings have no rule and the room between the hosts'
+    buttons and "Ports" is twice that between a heading and its list.
+    From the earlier design reviews, not done: a key chosen for the
+    *account's* own connection as one is for root (the kept connection
+    offers the agent's keys in turn; a host's chosen key would be kept
+    with the host); the host's package installed by the two commands
     the installer runs, shown as such, in place of the installer
     itself (it is Rex's own, and knows five package managers: kept).
     For the kit, seen there: an alert's stripe is hardly told from the

@@ -35,6 +35,17 @@ pub struct TextView {
     /// Its colours (runs covering it), else the document's text colour.
     runs: Option<Vec<TextRun>>,
     mono: bool,
+    /// Its text's size, where it isn't its face's own ([`TextView::size`]).
+    size: Option<f32>,
+    /// Wrapped to the view; else each line whole, scrolled sideways
+    /// ([`TextView::wrap`]).
+    wrap: bool,
+    /// Its top margin kept clear while it is scrolled
+    /// ([`TextView::clear_top`]).
+    clear_top: bool,
+    /// Unwrapped: how wide its longest line is, and of which text at
+    /// which size that was measured (measured once for a text).
+    widest: (u64, f32),
     panel_well: bool,
     empty: SharedString,
     selected: Range<usize>,
@@ -68,6 +79,10 @@ pub fn text_view<V: View>(cx: &mut Cx<V>, build: impl FnOnce(TextView) -> TextVi
             text: SharedString::default(),
             runs: None,
             mono: false,
+            size: None,
+            wrap: true,
+            clear_top: false,
+            widest: (0, 0.0),
             panel_well: false,
             empty: SharedString::default(),
             selected: 0..0,
@@ -85,6 +100,35 @@ impl TextView {
     /// In the monospaced face.
     pub fn mono(mut self, on: bool) -> Self {
         self.mono = on;
+        self
+    }
+
+    /// Its text at `size` points, not its face's own size: a log's
+    /// lines in the small size (`style::SMALL_SIZE`), which gets a
+    /// line of a journal onto a line of the view.
+    pub fn size(mut self, size: f32) -> Self {
+        self.size = Some(size);
+        self
+    }
+
+    /// Whether its lines wrap to the view (they do, unless told not
+    /// to): a log's don't, each line of it one line of the view, the
+    /// long ones reached with a scroll bar along the bottom (wrapped,
+    /// the rest of a line began at the margin like a line of its own).
+    pub fn wrap(mut self, on: bool) -> Self {
+        self.wrap = on;
+        self
+    }
+
+    /// Its top margin kept clear while it is scrolled: what scrolls
+    /// goes under it, as under a lip, and not up to the frame. For a
+    /// view made a whole number of lines tall and both its margins
+    /// ([`Self::line_height_at`], [`Self::MARGINS`]): a text of as many
+    /// lines then fits with nothing to scroll, and scrolled to its end
+    /// its first line shows whole under the margin, not the foot of the
+    /// line before it at the frame (a log's view: Rex's Server window).
+    pub fn clear_top(mut self, on: bool) -> Self {
+        self.clear_top = on;
         self
     }
 
@@ -117,6 +161,16 @@ impl TextView {
     /// their lines on its lines at every scale).
     pub fn line_height() -> f32 {
         (style::PLAIN_SIZE * style::LINE_HEIGHT).ceil()
+    }
+
+    /// Its lines' height with its text at `size` points ([`Self::size`]):
+    /// a whole number of points too. A view that shows a log is made a
+    /// whole number of these tall (and [`Self::MARGINS`]' two margins,
+    /// its frame and its bar along the bottom) and keeps its top
+    /// margin clear ([`Self::clear_top`]), so that scrolled to its end
+    /// its first line shows whole, not its lower half.
+    pub fn line_height_at(size: f32) -> f32 {
+        (size * style::LINE_HEIGHT).ceil()
     }
 
     /// Its web addresses, mail addresses and numbers to dial as links
@@ -180,6 +234,22 @@ impl TextView {
             self.found();
         }
         cx.notify();
+    }
+
+    /// Another note for the middle of it while it's empty (a log being
+    /// read; then one with nothing in it).
+    pub fn set_empty_text(&mut self, text: impl Into<SharedString>, cx: &mut Cx<Self>) {
+        let text = text.into();
+        if text != self.empty {
+            self.empty = text;
+            cx.notify();
+        }
+    }
+
+    /// Scrolls to its end, once its text is laid out: a log's newest
+    /// lines, after [`Self::set_text`] (which begins at its top).
+    pub fn scroll_to_end(&mut self, cx: &mut Cx<Self>) {
+        self.scroll.scroll_to_bottom(cx);
     }
 
     pub fn selected_text(&self) -> &str {
@@ -364,14 +434,28 @@ impl View for TextView {
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
         let p = theme::palette();
         let focused = self.focus.is_focused(cx);
-        let size = if self.mono { style::MONO_SIZE } else { style::PLAIN_SIZE };
+        let size = self.size.unwrap_or(if self.mono { style::MONO_SIZE } else { style::PLAIN_SIZE });
         // (The view says what it is to agents: its text isn't a label
         // too.)
         let styled = styled_text(self.text.clone(), self.shown_runs(focused)).unlabelled().links(self.text_links());
-        let body = div()
-            .px(px(MARGIN_X))
-            .py(px(MARGIN_Y))
-            .w_full()
+        let body = div().px(px(MARGIN_X)).py(px(MARGIN_Y));
+        let body = if self.wrap {
+            body.w_full()
+        } else {
+            // (As wide as its longest line, so the view has that much
+            // to scroll: what scrolls is as wide as the view otherwise,
+            // whatever runs out of it. The longest few lines by their
+            // letters are measured, once for a text.)
+            let key = style::key((&self.text, size.to_bits(), self.mono));
+            if self.widest.0 != key {
+                let mut lines: Vec<&str> = self.text.lines().collect();
+                lines.sort_by_key(|l| std::cmp::Reverse(l.chars().count()));
+                let font = self.font();
+                self.widest = (key, lines.iter().take(3).map(|l| f32::from(style::text_width((*l).to_owned(), size, font.clone()))).fold(0.0, f32::max).ceil());
+            }
+            body.whitespace_nowrap().flex_shrink_0().w(px(self.widest.1 + 2.0 * MARGIN_X))
+        };
+        let body = body
             .text_size(px(size))
             .line_height(px((size * style::LINE_HEIGHT).ceil()))
             .font(self.font())
@@ -394,21 +478,33 @@ impl View for TextView {
         // The note while empty, and what agents read.
         let ground = if self.panel_well { p.shade(p.panel_background, 1.04) } else { p.document_background };
         let panel_well = self.panel_well;
-        let (empty, text, auto_hide) = (self.empty.clone(), self.text.clone(), self.auto_hide);
+        let (empty, text, auto_hide, clear_top, wrap) = (self.empty.clone(), self.text.clone(), self.auto_hide, self.clear_top, self.wrap);
         let note = canvas(move |g, b| {
             let p = theme::palette();
             g.agent(agent::Node { role: "Document", value: Some(text.clone()), bounds: b, enabled: true, ..Default::default() });
+            if clear_top {
+                // (Its ground again over the top margin's room, inside
+                // the frame's two lines and beside the bar: over what
+                // scrolls, which this canvas is.)
+                let inner = style::inset(g, b, 2.0);
+                let bar = if auto_hide { 0.0 } else { crate::widgets::SCROLL_BAR };
+                let ground = if panel_well { p.shade(p.panel_background, 1.04) } else { p.document_background };
+                style::fill_rect(g, Bounds::from_corners(inner.origin, point(inner.right() - px(bar), inner.top() + px(MARGIN_Y))), style::c(ground));
+            }
             if text.is_empty() && !empty.is_empty() {
                 // In the middle of where text goes: beside the bar, or all
                 // of it where the bar is hidden (no text, nothing to
                 // scroll: `auto_hide`; "No notes." sat left of the middle).
+                // (And over the bar along the bottom, where the view has
+                // one: unwrapped. It stood half that bar's height low.)
                 let bar = if auto_hide { 0.0 } else { crate::widgets::SCROLL_BAR };
-                let b = Bounds::from_corners(b.origin, point(b.right() - px(bar), b.bottom()));
+                let along = if wrap { 0.0 } else { crate::widgets::SCROLL_BAR };
+                let b = Bounds::from_corners(b.origin, point(b.right() - px(bar), b.bottom() - px(along)));
                 let dim = if panel_well { style::secondary_text(&p) } else { style::c(olo_theme::mix(p.document_text, p.document_background, 0.5)) };
                 style::label_fit(g, b.center().x, b.center().y, style::Align::Center, empty.clone(), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL), dim, b.size.width - px(2.0 * m::SPACING));
             }
         })
-        .paint_key(style::key((&self.empty, &self.text, self.auto_hide, self.panel_well)))
+        .paint_key(style::key((&self.empty, &self.text, self.auto_hide, self.panel_well, self.clear_top, self.wrap)))
         .absolute()
         .inset_0();
 
@@ -433,7 +529,7 @@ impl View for TextView {
                 cx.stop_propagation();
             }))
             .on_mouse_down(MouseButton::Right, cx.listener(Self::context_menu))
-            .child(ScrollView::new(&self.scroll).auto_hide(self.auto_hide).focused(focused).background(ground).child(body).into_element())
+            .child(ScrollView::new(&self.scroll).auto_hide(self.auto_hide).horizontal(!self.wrap).focused(focused).background(ground).child(body).into_element())
             .child(note)
     }
 }
