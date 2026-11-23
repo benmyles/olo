@@ -4372,8 +4372,11 @@ it.
   centred as drawn. Segments are equally wide: as the widest needs, or
   sharing `.width(w)` (a sidebar's). In a control too narrow for six
   points of the plate beside what a segment holds, the marks go first,
-  then the room is let down to four points, and only then is a name
-  cut (the review calls that out). A segment's room is measured with its name in bold,
+  then the room is let down to four points; then, if an equal share
+  would cut a name the width could hold, each segment gets what it
+  needs and an equal part of the rest (`shares`: Phone's Messages, with
+  a count, beside Contacts in a third of a screen); and only then is a
+  name cut (the review calls that out). A segment's room is measured with its name in bold,
   so nothing moves when the choice does. A press chooses; it is one
   stop in the tab order, the arrows moving the choice and Home and End
   taking the first and last, the chosen name underlined while it

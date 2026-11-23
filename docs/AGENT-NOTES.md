@@ -936,6 +936,13 @@ frames a second with nobody at it):
   binary (`strings BIN | grep -c WORD`) before picturing it.
 - **Open every picture before it is used or shown**: a montage of the
   candidates, each labelled, takes one look and catches a wrong one.
+- **The tiling lint as the push will run it**: `tools/dev/ui-lint
+  --dev --no-cache --tiles --screens "2560x1600@2,$(tools/dev/ui-lint
+  --person-screens)" APP…`. Without `--screens` it tiles on one
+  screen, and a pane that is whole there is cut in a third of the
+  person's 1920 × 1080 one: Phone's passed here and the push was
+  refused (2026-11-22). And `--no-cache`, or an app the lint remembers
+  as clean isn't run again.
 - **A test session has two looks, not three**: `tsession theme NAME
   light|dark`. Any other word (`night`) is taken without complaint and
   changes nothing: six pictures named "night" were the light look, and

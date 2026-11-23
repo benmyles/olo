@@ -47,7 +47,11 @@ const ROW: f32 = 64.0;
 const PERSON_ROW: f32 = 48.0;
 const PICTURE: f32 = 40.0;
 const LIST: f32 = 300.0;
-const LIST_MIN: f32 = 230.0;
+/// The New button's least width.
+const NEW_LEAST: f32 = 64.0;
+// (No narrower than its Messages and Contacts control needs, both names
+// whole with a two-figure count, beside New: at 230 "Messages" was cut.)
+const LIST_MIN: f32 = 260.0;
 /// What a conversation keeps beside the list: less, they show one at a
 /// time (the kit's SidePane; a third of a screen is 407 points).
 const TALK_LEAST: f32 = 360.0;
@@ -1218,18 +1222,23 @@ impl Phone {
         // (Both at the size controls are everywhere else: the band is
         // sixty points tall, and the small ones looked squashed in it,
         // as Ben said of the first picture.)
-        let beside = olo_kit::widgets::button_width("New", false) + 8.0;
+        // (New as wide as its word needs, 64 points at least: a push
+        // button's usual 80 left the control too little in a pane at
+        // its narrowest.)
+        let new_width =
+            ((f32::from(style::text_width(olo_kit::words::of_text("New"), style::PLAIN_SIZE, style::ui_font(FontWeight::NORMAL))) + 2.0 * m::CONTROL_PAD).max(NEW_LEAST) / 2.0).ceil() * 2.0;
+        let beside = new_width + 8.0;
         let which = SegmentedControl::new("phone-list", [Segment::new("Messages").count(unread), Segment::new("Contacts")], if self.tab == Tab::Contacts { 1 } else { 0 })
             .width(((width - 2.0 * m::SPACING - beside) / 2.0).floor() * 2.0)
             .on_choose(cx.listener(|v: &mut Phone, i: &usize, cx| {
                 v.tab = if *i == 1 { Tab::Contacts } else { Tab::Messages };
                 cx.invalidate();
             }));
-        let tabs = div().flex().flex_row().items_center().child(which).child(div().flex_1()).child(Button::new("New").id("new-message").enabled(self.state.paired() || self.demo).on_click(
-            cx.listener(|v: &mut Phone, _: &ClickEvent, cx| {
+        let tabs = div().flex().flex_row().items_center().child(which).child(div().flex_1()).child(
+            Button::new("New").id("new-message").min_width(NEW_LEAST).enabled(self.state.paired() || self.demo).on_click(cx.listener(|v: &mut Phone, _: &ClickEvent, cx| {
                 v.command("new-message", cx);
-            }),
-        ));
+            })),
+        );
         // (The buttons in a band as tall as the conversation's header
         // beside it; the search under.)
         let top = div()

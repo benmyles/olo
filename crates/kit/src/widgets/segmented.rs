@@ -217,34 +217,70 @@ pub fn segmented_width(segments: &[Segment]) -> f32 {
     each * segments.len().max(1) as f32
 }
 
-/// Each segment's place in `outer`: equal shares of it, the edges
+/// How a control `width` points wide is shared between its segments,
+/// as parts of the whole: equally, which is what a segmented control
+/// looks like; but where an equal share would cut a name short and the
+/// names would all be whole with what each needs (a pane drawn narrow,
+/// one long name with a count beside a short one: Phone's Messages and
+/// Contacts in a third of a screen, where the lint found "Messages"
+/// cut), each gets what it needs and an equal part of what is over.
+fn shares(segments: &[Segment], sz: Sizes, width: f32) -> Vec<f32> {
+    let n = segments.len().max(1);
+    let equal = vec![1.0 / n as f32; n];
+    // (Inside the trough's line. What a segment needs at the least: its
+    // name in bold and its count, the least room either side of them
+    // in the plate, and the ground round the plate. Marks have given
+    // way long before this.)
+    let inside = width - 2.0;
+    let needs: Vec<f32> = segments
+        .iter()
+        .map(|seg| {
+            let (_, name, count) = parts(seg, sz);
+            name + if count > 0.0 { GAP + count } else { 0.0 } + 2.0 * TIGHT_PAD + 2.0 * sz.ground
+        })
+        .collect();
+    let all: f32 = needs.iter().sum();
+    if inside <= 0.0 || needs.iter().all(|w| *w <= inside / n as f32) || all > inside {
+        return equal;
+    }
+    let over = (inside - all) / n as f32;
+    needs.iter().map(|w| (w + over) / inside).collect()
+}
+
+/// Each segment's place in `outer`, by its share of it: the edges
 /// between them on device pixels, its own ends as they are given (the
 /// first and the last take what rounding left).
-fn places(scale: f32, outer: Bounds<Pixels>, n: usize) -> Vec<Bounds<Pixels>> {
+fn places(scale: f32, outer: Bounds<Pixels>, shares: &[f32]) -> Vec<Bounds<Pixels>> {
     let snap = |v: f32| px((v * scale).round() / scale);
     let (left, width) = (f32::from(outer.left()), f32::from(outer.size.width));
-    (0..n)
-        .map(|i| {
-            let (x0, x1) = (left + width * i as f32 / n as f32, left + width * (i + 1) as f32 / n as f32);
+    let n = shares.len();
+    let mut before = 0.0;
+    shares
+        .iter()
+        .enumerate()
+        .map(|(i, share)| {
+            let (x0, x1) = (left + width * before, left + width * (before + share));
+            before += share;
             Bounds::from_corners(point(if i == 0 { outer.left() } else { snap(x0) }, outer.top()), point(if i + 1 == n { outer.right() } else { snap(x1) }, outer.bottom()))
         })
         .collect()
 }
 
 /// Where each segment's plate is when it is the chosen one, in the
-/// trough `outer`: the trough inside its line is shared equally between
-/// the segments, and a plate's place is its share less `ground` on all
+/// trough `outer`: the trough inside its line is shared between the
+/// segments (equally, but in a control too narrow for that: `shares`),
+/// and a plate's place is its segment's share less `ground` on all
 /// four sides (in whole device pixels). So a plate is the same size
 /// wherever it is, first, middle or last (an end plate was a point and
 /// a half narrower than a middle one: Opus), the ground showing round
 /// it is as wide on every side at every scale, and between two places
 /// there is twice that. What a segment holds is centred in its place
 /// whether it is chosen or not.
-fn slots(scale: f32, outer: Bounds<Pixels>, n: usize, ground: f32) -> Vec<Bounds<Pixels>> {
+fn slots(scale: f32, outer: Bounds<Pixels>, shares: &[f32], ground: f32) -> Vec<Bounds<Pixels>> {
     let line = px(style::line_pixels(scale) / scale);
     let inside = Bounds::from_corners(point(outer.left() + line, outer.top() + line), point(outer.right() - line, outer.bottom() - line));
     let round = px((ground * scale).round().max(1.0) / scale);
-    places(scale, inside, n).iter().map(|r| Bounds::from_corners(point(r.left() + round, r.top() + round), point(r.right() - round, r.bottom() - round))).collect()
+    places(scale, inside, shares).iter().map(|r| Bounds::from_corners(point(r.left() + round, r.top() + round), point(r.right() - round, r.bottom() - round))).collect()
 }
 
 impl IntoElement for SegmentedControl {
@@ -254,7 +290,9 @@ impl IntoElement for SegmentedControl {
         let n = segments.len();
         let width = width.unwrap_or_else(|| segmented_width(&segments));
         let painted = segments.clone();
-        let mut el = control_canvas(move |g, b, state| paint(g, b, &painted, chosen, sz, enabled, state.focused))
+        let split: Rc<[f32]> = shares(&segments, sz, width).into();
+        let (drawn, pressed_at) = (split.clone(), split);
+        let mut el = control_canvas(move |g, b, state| paint(g, b, &painted, &drawn, chosen, sz, enabled, state.focused))
             .paint_key(style::key((&*segments, chosen, enabled)))
             .id(SharedString::from(format!("segmented-{id}")))
             .w(px(width))
@@ -269,7 +307,7 @@ impl IntoElement for SegmentedControl {
             .focusable()
             .tab_stop()
             .on_mouse_down(MouseButton::Left, move |e, cx| {
-                let hit = places(cx.scale_factor(), cx.listener_bounds(), n).iter().position(|r| r.contains(&e.position));
+                let hit = places(cx.scale_factor(), cx.listener_bounds(), &pressed_at).iter().position(|r| r.contains(&e.position));
                 if let (Some(i), Some(f)) = (hit, &pressed)
                     && i != chosen
                 {
@@ -358,12 +396,13 @@ fn paint_plate(g: &mut Painter, plate: Bounds<Pixels>, radius: Pixels, p: &olo_t
     crate::review::gradient(g, face);
 }
 
-fn paint(g: &mut Painter, outer: Bounds<Pixels>, segments: &[Segment], chosen: usize, sz: Sizes, enabled: bool, focused: bool) {
+#[allow(clippy::too_many_arguments)]
+fn paint(g: &mut Painter, outer: Bounds<Pixels>, segments: &[Segment], shares: &[f32], chosen: usize, sz: Sizes, enabled: bool, focused: bool) {
     let p = theme::palette();
     let outer = style::snap(g, outer);
     let scale = g.scale_factor();
-    let rects = places(scale, outer, segments.len());
-    let at = slots(scale, outer, segments.len(), sz.ground);
+    let rects = places(scale, outer, shares);
+    let at = slots(scale, outer, shares, sz.ground);
     // Marks are shown where every segment has room for its own beside
     // its name in bold and its count: in a control too narrow for that
     // (a sidebar drawn in), none has one and the names are whole
@@ -528,7 +567,7 @@ mod tests {
             for (x, w) in [(0.0, 201.0), (7.0, 188.0), (3.5, 157.0)] {
                 for n in 1..=4 {
                     let b = outer(x, w);
-                    let at = places(scale, b, n);
+                    let at = places(scale, b, &vec![1.0 / n as f32; n]);
                     assert_eq!(at.len(), n);
                     // They tile it: no gap, none past its end.
                     assert_eq!(at[0].left(), b.left());
@@ -557,7 +596,7 @@ mod tests {
                         // (As the control is painted: its own edges on device pixels.)
                         let snap = |v: f32| px((v * scale).round() / scale);
                         let b = Bounds::from_corners(point(snap(x), snap(10.0)), point(snap(x + w), snap(30.0)));
-                        let at = slots(scale, b, n, ground);
+                        let at = slots(scale, b, &vec![1.0 / n as f32; n], ground);
                         let dev = |v: Pixels| f32::from(v) * scale;
                         let near = |a: f32, b: f32| (a - b).abs() < 1e-2;
                         // From the trough's line (one of the kit's lines in) to the plate, all round.
@@ -592,6 +631,30 @@ mod tests {
         assert_eq!(content_width(&counting, sz), content_width(&three, sz));
         // (So the control is as wide before the first one comes as after.)
         assert_eq!(segmented_width(&[Segment::new("Sessions"), counting]), segmented_width(&[Segment::new("Sessions"), three]));
+    }
+
+    #[test]
+    fn a_long_name_takes_what_a_short_one_can_spare_before_it_is_cut() {
+        let sz = SIZES;
+        let segments = [Segment::new("Messages").count(2), Segment::new("Contacts")];
+        let need = |seg: &Segment| {
+            let (_, name, count) = parts(seg, sz);
+            name + if count > 0.0 { GAP + count } else { 0.0 } + 2.0 * TIGHT_PAD + 2.0 * sz.ground
+        };
+        let (long, short) = (need(&segments[0]), need(&segments[1]));
+        assert!(long > short);
+        // With room for two of the longer: halves.
+        let wide = 2.0 * long + 2.0;
+        assert_eq!(shares(&segments, sz, wide), vec![0.5, 0.5]);
+        // Too narrow for halves, wide enough for what each needs: each
+        // has it, and half of what is over.
+        let width = long + short + 2.0 + 6.0;
+        let split = shares(&segments, sz, width);
+        assert!((split.iter().sum::<f32>() - 1.0).abs() < 1e-4);
+        let inside = width - 2.0;
+        assert!((split[0] * inside - (long + 3.0)).abs() < 1e-2 && (split[1] * inside - (short + 3.0)).abs() < 1e-2, "{split:?}");
+        // Too narrow even for that: halves again (and the review says the name is cut).
+        assert_eq!(shares(&segments, sz, long + short - 4.0), vec![0.5, 0.5]);
     }
 
     #[test]
