@@ -70,6 +70,9 @@ other: 另有 {n} 項
 1 day before
 1 天前
 
+1 extent
+1 個分段
+
 1 hour
 1 小時
 
@@ -1270,6 +1273,9 @@ Automatically
 Automatically,
 自動，
 
+Avoids an fsync on every build (index_mode = off). Safe on a laptop because index.db is a rebuildable cache index.
+避免每次建置都呼叫 fsync (index_mode = off)。在筆記型電腦上很安全，因為 index.db 是可重建的快取索引。
+
 BBR’s model
 BBR 模型
 
@@ -1752,6 +1758,9 @@ Can’t come back as it was: {} and {} more.
 
 Can’t come back as it was: {}.
 無法恢復原狀：{}。
+
+Cap unwritten data in memory
+限制記憶體中未寫入的資料
 
 Caps Lock is another Control key
 將 Caps Lock 用作額外的 Control 鍵
@@ -2461,6 +2470,12 @@ Copy the Code That Just Came
 Copy to clipboard
 複製到剪貼簿
 
+Copy-on-write
+寫入時複製
+
+Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache.
+已對 index.db 關閉寫入時複製以防止 Btrfs 碎片化；儲存區仍保留寫入時複製以支援 reflink。還原時會短暫重新啟動 kache。
+
 Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
 正在從 1Password 複製 {} 中的項目。如果 1Password 詢問是否允許 Passwords 存取，請選擇「允許」。如已鎖定，請先解鎖。
 
@@ -2959,6 +2974,12 @@ Dim the built-in display when idle
 Dim the display while you look away
 移開視線時調暗顯示器
 
+Disable Copy-on-Write on index.db
+關閉 index.db 的寫入時複製
+
+Disable copy-on-write
+關閉寫入時複製
+
 Disagree
 不同意
 
@@ -3187,6 +3208,9 @@ Drawing
 Drawn into each frame
 每影格重新繪製
 
+Drive
+硬碟
+
 Drive Setup
 Drive Setup
 
@@ -3198,6 +3222,9 @@ Drive:
 
 DriveSetup
 DriveSetup
+
+Drives
+硬碟
 
 Drizzle
 毛毛雨
@@ -4759,6 +4786,9 @@ Indent Less
 Indent More
 增加縮進
 
+Index file (Btrfs)
+索引檔案 (Btrfs)
+
 Ink Colour
 墨跡顏色
 
@@ -5130,6 +5160,9 @@ Keeping the key in Passwords (unlock it if it asks)…
 
 Keeping what’s done…
 正在儲存已完成的部分…
+
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
+在大量同步寫入或捨棄操作湧向 NVMe 硬碟時仍可限制讀取延遲，而 Linux 預設的 "none" 僅限制背景寫回 (queue/scheduler)。
 
 Kept
 已保留
@@ -6210,6 +6243,9 @@ NVIDIA GPU (NVDEC)
 
 NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor. {}
 NVIDIA GPU 可解碼 H.264、HEVC、VP9 和 AV1，播放 4K 60 影格影片時很少佔用 CPU。{}
+
+NVMe Scheduler
+NVMe 排程器
 
 NW
 西北
@@ -7738,6 +7774,9 @@ Pictures can be saved as PNG, JPEG, WebP, BMP, TIFF or GIF.
 Pictures, Movies and Music
 圖片、影片和音樂
 
+Pieces on disk
+磁碟分段
+
 Pin
 固定
 
@@ -8581,6 +8620,9 @@ Resting: nothing new on it
 Restore
 還原
 
+Restore Copy-on-Write on index.db
+還原寫入時複製 (index.db)
+
 Restore Defaults
 回復預設值
 
@@ -8589,6 +8631,9 @@ Restore Files…
 
 Restore To…
 還原到…
+
+Restore copy-on-write
+還原寫入時複製
 
 Restored as {}.
 已還原為 {}。
@@ -8643,6 +8688,9 @@ Reverting in 1 second.
 
 Reverting in {} seconds.
 {} 秒後還原。
+
+Rewriting index.db…
+正在重寫 index.db…
 
 Rich Text (RTF)…
 富文字（RTF）…
@@ -8736,6 +8784,9 @@ SE
 
 SQL
 SQL
+
+SQLite's random 4 KB writes fragment a copy-on-write file on Btrfs and slow clean-ups. Only index.db is changed; the store stays copy-on-write for reflinks. Briefly restarts kache.
+SQLite 的 4 KB 隨機寫入會使 Btrfs 上的寫入時複製檔案高度碎片化並拖慢清理。僅修改 index.db；儲存區仍保留寫入時複製以支援 reflink。會短暫重新啟動 kache。
 
 SSD temperature
 SSD 溫度
@@ -8847,6 +8898,9 @@ Scheduled
 
 Scheduler
 排程器
+
+Scheduler now
+目前排程器
 
 Scientific Keypad
 科學計算鍵盤
@@ -9418,6 +9472,9 @@ Size
 Size:
 大小：
 
+Skip syncing the index to disk
+略過將索引同步到磁碟
+
 Skip this step
 跳過此步驟
 
@@ -9633,6 +9690,12 @@ Starting the agent…
 
 Starting…
 正在啟動…
+
+Starts flushing
+開始寫回
+
+Starts flushing writes at 256 MB and caps them at 1 GB, instead of letting gigabytes pile up and stall reads or Btrfs commits (vm.dirty_bytes).
+在達到 256 MB 時開始寫回並將上限設為 1 GB，避免堆積數 GB 未寫資料導致讀取或 Btrfs 提交卡頓 (vm.dirty_bytes)。
 
 Starts:
 開始：
@@ -10720,6 +10783,9 @@ This isn't the session at the computer, so the computer isn't restarted.
 This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 此核心不支援按磁碟分別設定限制（Linux 6.2 及以上版本支援）。
 
+This kernel doesn't offer the kyber I/O scheduler on this computer's NVMe drives.
+此核心不為這部電腦的 NVMe 硬碟提供 kyber I/O 排程器。
+
 This kernel has one way of preempting only: it wasn't built to be told another.
 此核心在建置時只啟用了一種搶佔方式，無法切換。
 
@@ -11443,6 +11509,9 @@ Use a key already in Passwords
 Use the Usual Order
 恢復常用順序
 
+Use the kyber I/O scheduler on NVMe drives
+對 NVMe 硬碟使用 kyber I/O 排程器
+
 Use this account
 使用此帳號
 
@@ -12094,6 +12163,9 @@ Wrap Lines
 Write Disk Image…
 寫入磁碟映像…
 
+Writeback
+回寫
+
 Writes
 寫入次數
 
@@ -12627,6 +12699,9 @@ no
 
 no display ports
 無顯示介面
+
+no limit
+無限制
 
 no limit to its space
 儲存空間不限
@@ -13359,6 +13434,9 @@ other: {n} 週
 
 {} dpi as it comes
 預設 {} dpi
+
+{} extents
+{} 個分段
 
 {} for each
 每個 {}

@@ -79,6 +79,62 @@ pub fn steps(setting: Setting, on: bool, places: &Places) -> Vec<Step> {
                 }
             }
         }
+        Setting::DirtyWriteback => {
+            let Some(d) = tuning::dirty_writeback(places) else { return steps };
+            let mut changed_limit = false;
+            if on {
+                if !d.kept {
+                    steps.push(Step::WriteFile { path: places.dirty_writeback_conf(), content: tuning::DIRTY_WRITEBACK_CONF.into(), mode: 0o644 });
+                }
+                if d.bg_bytes != tuning::DIRTY_BACKGROUND_BYTES {
+                    steps.push(Step::WriteSysfs { path: places.vm_dirty_background_bytes(), value: tuning::DIRTY_BACKGROUND_BYTES.to_string() });
+                }
+                if d.dirty_bytes != tuning::DIRTY_BYTES {
+                    steps.push(Step::WriteSysfs { path: places.vm_dirty_bytes(), value: tuning::DIRTY_BYTES.to_string() });
+                    changed_limit = true;
+                }
+            } else {
+                if places.dirty_writeback_conf().exists() {
+                    steps.push(Step::RemoveFile { path: places.dirty_writeback_conf() });
+                }
+                if d.bg_bytes != 0 || d.bg_ratio != tuning::DIRTY_DEFAULT_BACKGROUND_RATIO {
+                    steps.push(Step::WriteSysfs { path: places.vm_dirty_background_ratio(), value: tuning::DIRTY_DEFAULT_BACKGROUND_RATIO.to_string() });
+                }
+                if d.dirty_bytes != 0 || d.dirty_ratio != tuning::DIRTY_DEFAULT_RATIO {
+                    steps.push(Step::WriteSysfs { path: places.vm_dirty_ratio(), value: tuning::DIRTY_DEFAULT_RATIO.to_string() });
+                    changed_limit = true;
+                }
+            }
+            // The kernel stores each disk's `bdi/max_bytes` as a share of the
+            // global dirty limit (`max_ratio_fine`), so changing `dirty_bytes`
+            // rescales any already-plugged removable disk's cap: re-apply it.
+            if changed_limit {
+                for disk in tuning::slow_disks(places).disks.iter().filter(|k| k.limit.is_some()) {
+                    steps.push(Step::WriteSysfs { path: places.max_bytes(&disk.name), value: tuning::SLOW_DISK_BYTES.to_string() });
+                }
+            }
+        }
+        Setting::NvmeScheduler => {
+            let Some(n) = tuning::nvme_scheduler(places) else { return steps };
+            if on {
+                if !n.can() {
+                    return steps;
+                }
+                if !n.kept {
+                    steps.push(Step::WriteFile { path: places.nvme_scheduler_rule(), content: tuning::NVME_SCHEDULER_RULE.into(), mode: 0o644 });
+                }
+                for d in n.disks.iter().filter(|d| d.has_kyber && d.scheduler != tuning::NVME_SCHEDULER) {
+                    steps.push(Step::WriteSysfs { path: places.block_scheduler(&d.name), value: tuning::NVME_SCHEDULER.into() });
+                }
+            } else {
+                if places.nvme_scheduler_rule().exists() {
+                    steps.push(Step::RemoveFile { path: places.nvme_scheduler_rule() });
+                }
+                for d in n.disks.iter().filter(|d| d.scheduler == tuning::NVME_SCHEDULER) {
+                    steps.push(Step::WriteSysfs { path: places.block_scheduler(&d.name), value: "none".into() });
+                }
+            }
+        }
         Setting::ShortTurns => {
             let Some(t) = tuning::turns(places) else { return steps };
             let (lines, unit, wanted) = (places.short_turns_lines(), places.short_turns_unit(), places.short_turns_wanted());
@@ -217,6 +273,8 @@ fn cannot(setting: Setting, on: bool, places: &Places) -> Option<&'static str> {
             Some("This computer's turns on its processor are the short ones already (the kernel lengthens them where there are more processors).")
         }
         Setting::SlowDisks if !tuning::slow_disks(places).can => Some("This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can)."),
+        Setting::DirtyWriteback if tuning::dirty_writeback(places).is_none() => Some("This computer has 12 GB of memory or less, so Linux's percentage writeback limits are already small."),
+        Setting::NvmeScheduler if on && tuning::nvme_scheduler(places).is_none_or(|n| !n.can()) => Some("This computer has no NVMe drive with the kyber I/O scheduler available."),
         Setting::Bbr3 if tuning::bbr3(places).is_none() => Some("This computer has no TCP to set."),
         // (Not to be switched on by anyone until it is offered, whatever
         // is in the kernel meanwhile: a trial's load made its switch
@@ -278,6 +336,10 @@ pub fn apply(setting: Setting, on: bool, places: &Places, progress: &mut dyn FnM
         },
         (Setting::SlowDisks, true) => "What waits in memory for a removable disk is limited to 16 MB: those here now, and each as it's plugged in.".to_owned(),
         (Setting::SlowDisks, false) => "Writes to removable disks wait in memory like any others, as the kernel comes.".to_owned(),
+        (Setting::DirtyWriteback, true) => "Writes start flushing at 256 MB and cap at 1 GB, now and from every start.".to_owned(),
+        (Setting::DirtyWriteback, false) => "Writeback thresholds are back to Linux's defaults (10% and 20% of memory).".to_owned(),
+        (Setting::NvmeScheduler, true) => "NVMe drives use the kyber I/O scheduler, now and from every start.".to_owned(),
+        (Setting::NvmeScheduler, false) => "NVMe drives use Linux's default scheduler (none).".to_owned(),
         (Setting::Bbr3, true) => "New connections send with BBRv3, now and from every start.".to_owned(),
         (Setting::Bbr3, false) => format!("TCP sends as before ({}).", tuning::bbr3(places).map(|b| b.control).unwrap_or_default()),
         (Setting::GraphicsMemory, true) => "Windows' graphics memory stays out of swap, now and from every start.".to_owned(),
@@ -314,6 +376,17 @@ pub fn status(places: &Places) -> serde_json::Value {
             "may_wait_bytes": s.slow_disks.may_wait, "waiting_bytes": s.slow_disks.waiting,
             "disks": s.slow_disks.disks.iter().map(|d| json!({ "name": d.name, "model": d.model, "limit_bytes": d.limit })).collect::<Vec<_>>(),
         }),
+        "dirty-writeback": s.dirty_writeback.map(|d| json!({
+            "on": d.on(), "kept_at_start": d.kept, "ram_bytes": d.ram_bytes,
+            "background_bytes": d.bg_bytes, "limit_bytes": d.dirty_bytes,
+            "background_ratio": d.bg_ratio, "limit_ratio": d.dirty_ratio,
+            "effective_background_bytes": d.bg_now_bytes, "effective_limit_bytes": d.limit_now_bytes,
+            "waiting_bytes": d.waiting_bytes,
+        })),
+        "nvme-scheduler": s.nvme_scheduler.map(|n| json!({
+            "on": n.on(), "can": n.can(), "rule": n.kept, "scheduler": tuning::NVME_SCHEDULER,
+            "disks": n.disks.iter().map(|d| json!({ "name": d.name, "model": d.model, "scheduler": d.scheduler, "has_kyber": d.has_kyber })).collect::<Vec<_>>(),
+        })),
         "bbr3": s.bbr3.map(|b| json!({
             "on": b.on(), "control": b.control, "module_loaded": b.loaded, "kept_at_start": b.kept, "said": b.said,
             "kernel_series": b.series, "checked_on_series": b.checked,
@@ -561,6 +634,72 @@ mod tests {
         for setting in Setting::ALL {
             assert!(s.get(setting.word()).is_some(), "{}", setting.word());
         }
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn dirty_writeback_is_capped_now_and_kept_and_put_back() {
+        let (root, places) = tree("dirty-wb");
+        put(&places, "proc/meminfo", "MemTotal:       65260884 kB\n");
+        put(&places, "proc/sys/vm/dirty_bytes", "0\n");
+        put(&places, "proc/sys/vm/dirty_background_bytes", "0\n");
+        put(&places, "proc/sys/vm/dirty_ratio", "20\n");
+        put(&places, "proc/sys/vm/dirty_background_ratio", "10\n");
+        // A limited removable disk here: its max_bytes is re-applied when dirty_bytes changes.
+        put(&places, "sys/block/sdb/removable", "1");
+        put(&places, "sys/block/sdb/size", "60000");
+        put(&places, "sys/block/sdb/bdi/strict_limit", "1\n");
+        put(&places, "sys/block/sdb/bdi/max_bytes", "16777216\n");
+        let on = steps(Setting::DirtyWriteback, true, &places);
+        assert!(
+            matches!(on.as_slice(), [Step::WriteFile { content, .. }, Step::WriteSysfs { value: bg, .. }, Step::WriteSysfs { value: lim, .. }, Step::WriteSysfs { path: bdi, value: slow }]
+            if content == tuning::DIRTY_WRITEBACK_CONF && bg == "268435456" && lim == "1073741824" && bdi.ends_with("sdb/bdi/max_bytes") && slow == "16777216"),
+            "{on:?}"
+        );
+        run(&on);
+        assert!(tuning::dirty_writeback(&places).unwrap().on());
+        assert!(steps(Setting::DirtyWriteback, true, &places).is_empty());
+        // Simulate Linux zeroing ratios when *_bytes were written.
+        put(&places, "proc/sys/vm/dirty_ratio", "0\n");
+        put(&places, "proc/sys/vm/dirty_background_ratio", "0\n");
+        let off = steps(Setting::DirtyWriteback, false, &places);
+        assert!(
+            matches!(off.as_slice(), [Step::RemoveFile { .. }, Step::WriteSysfs { value: bg, .. }, Step::WriteSysfs { value: lim, .. }, Step::WriteSysfs { path: bdi, .. }]
+            if bg == "10" && lim == "20" && bdi.ends_with("sdb/bdi/max_bytes")),
+            "{off:?}"
+        );
+        run(&off);
+        // Simulate Linux zeroing *_bytes when ratios are written.
+        put(&places, "proc/sys/vm/dirty_bytes", "0\n");
+        put(&places, "proc/sys/vm/dirty_background_bytes", "0\n");
+        assert!(!tuning::dirty_writeback(&places).unwrap().on());
+        assert!(steps(Setting::DirtyWriteback, false, &places).is_empty());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn nvme_scheduler_switches_to_kyber_now_and_at_every_start_and_back() {
+        let (root, places) = tree("nvme-sched");
+        put(&places, "sys/block/nvme0n1/size", "1000000\n");
+        put(&places, "sys/block/nvme0n1/queue/rotational", "0\n");
+        put(&places, "sys/block/nvme0n1/queue/scheduler", "[none] mq-deadline kyber bfq\n");
+        let on = steps(Setting::NvmeScheduler, true, &places);
+        assert!(
+            matches!(on.as_slice(), [Step::WriteFile { content, .. }, Step::WriteSysfs { path, value }]
+            if content == tuning::NVME_SCHEDULER_RULE && path.ends_with("nvme0n1/queue/scheduler") && value == "kyber"),
+            "{on:?}"
+        );
+        run(&on);
+        // Simulate kernel bracket formatting on read-back.
+        put(&places, "sys/block/nvme0n1/queue/scheduler", "none mq-deadline [kyber] bfq\n");
+        assert!(tuning::nvme_scheduler(&places).unwrap().on());
+        assert!(steps(Setting::NvmeScheduler, true, &places).is_empty());
+        let off = steps(Setting::NvmeScheduler, false, &places);
+        assert!(matches!(off.as_slice(), [Step::RemoveFile { .. }, Step::WriteSysfs { path, value }] if path.ends_with("nvme0n1/queue/scheduler") && value == "none"), "{off:?}");
+        run(&off);
+        put(&places, "sys/block/nvme0n1/queue/scheduler", "[none] mq-deadline kyber bfq\n");
+        assert!(!tuning::nvme_scheduler(&places).unwrap().on());
+        assert!(steps(Setting::NvmeScheduler, false, &places).is_empty());
         let _ = std::fs::remove_dir_all(root);
     }
 }

@@ -1,0 +1,9 @@
+# Olo: use the kyber I/O scheduler on NVMe drives so heavy writes and
+# discards don't stall interactive reads (Preferences ▸ Performance ▸
+# Disks; kernel/TUNING.md).
+#
+# Linux defaults multi-queue NVMe drives to "none", which relies on
+# blk-wbt alone (throttling async writeback, not synchronous writes or
+# discards). Kyber keeps per-domain latency targets (read, write,
+# discard) with very low multi-queue overhead.
+ACTION=="add|change", SUBSYSTEM=="block", KERNEL=="nvme[0-9]*n[0-9]*", ENV{DEVTYPE}=="disk", ATTR{queue/rotational}=="0", TEST=="queue/scheduler", ATTR{queue/scheduler}="kyber"

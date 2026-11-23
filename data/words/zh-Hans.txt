@@ -70,6 +70,9 @@ other: 另有 {n} 项
 1 day before
 1 天前
 
+1 extent
+1 个分段
+
 1 hour
 1 小时
 
@@ -1270,6 +1273,9 @@ Automatically
 Automatically,
 自动，
 
+Avoids an fsync on every build (index_mode = off). Safe on a laptop because index.db is a rebuildable cache index.
+避免每次构建都调用 fsync (index_mode = off)。在笔记本上很安全，因为 index.db 是可重建的缓存索引。
+
 BBR’s model
 BBR 模型
 
@@ -1752,6 +1758,9 @@ Can’t come back as it was: {} and {} more.
 
 Can’t come back as it was: {}.
 无法恢复原状：{}。
+
+Cap unwritten data in memory
+限制内存中未写入的数据
 
 Caps Lock is another Control key
 将 Caps Lock 用作额外的 Control 键
@@ -2461,6 +2470,12 @@ Copy the Code That Just Came
 Copy to clipboard
 复制到剪贴板
 
+Copy-on-write
+写时复制
+
+Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache.
+已对 index.db 关闭写时复制以防止 Btrfs 碎片化；存储区仍保留写时复制以支持 reflink。恢复时会短暂重启 kache。
+
 Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
 正在从 1Password 复制 {} 中的项目。如果 1Password 询问是否允许 Passwords 访问，请选择“允许”。如已锁定，请先解锁。
 
@@ -2959,6 +2974,12 @@ Dim the built-in display when idle
 Dim the display while you look away
 移开视线时调暗显示器
 
+Disable Copy-on-Write on index.db
+关闭 index.db 的写时复制
+
+Disable copy-on-write
+关闭写时复制
+
 Disagree
 不同意
 
@@ -3187,6 +3208,9 @@ Drawing
 Drawn into each frame
 每帧重新绘制
 
+Drive
+硬盘
+
 Drive Setup
 Drive Setup
 
@@ -3198,6 +3222,9 @@ Drive:
 
 DriveSetup
 DriveSetup
+
+Drives
+硬盘
 
 Drizzle
 毛毛雨
@@ -4759,6 +4786,9 @@ Indent Less
 Indent More
 增加缩进
 
+Index file (Btrfs)
+索引文件 (Btrfs)
+
 Ink Colour
 墨迹颜色
 
@@ -5130,6 +5160,9 @@ Keeping the key in Passwords (unlock it if it asks)…
 
 Keeping what’s done…
 正在保存已完成的部分…
+
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
+在大量同步写入或丢弃操作涌向 NVMe 硬盘时仍可限制读取延迟，而 Linux 默认的 "none" 仅限制后台回写 (queue/scheduler)。
 
 Kept
 已保留
@@ -6210,6 +6243,9 @@ NVIDIA GPU (NVDEC)
 
 NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor. {}
 NVIDIA GPU 可解码 H.264、HEVC、VP9 和 AV1，播放 4K 60 帧视频时很少占用 CPU。{}
+
+NVMe Scheduler
+NVMe 调度器
 
 NW
 西北
@@ -7738,6 +7774,9 @@ Pictures can be saved as PNG, JPEG, WebP, BMP, TIFF or GIF.
 Pictures, Movies and Music
 图片、影片和音乐
 
+Pieces on disk
+磁盘分段
+
 Pin
 固定
 
@@ -8581,6 +8620,9 @@ Resting: nothing new on it
 Restore
 恢复
 
+Restore Copy-on-Write on index.db
+恢复 index.db 的写时复制
+
 Restore Defaults
 恢复默认值
 
@@ -8589,6 +8631,9 @@ Restore Files…
 
 Restore To…
 恢复到…
+
+Restore copy-on-write
+恢复写时复制
 
 Restored as {}.
 已恢复为 {}。
@@ -8643,6 +8688,9 @@ Reverting in 1 second.
 
 Reverting in {} seconds.
 {} 秒后还原。
+
+Rewriting index.db…
+正在重写 index.db…
 
 Rich Text (RTF)…
 富文本（RTF）…
@@ -8736,6 +8784,9 @@ SE
 
 SQL
 SQL
+
+SQLite's random 4 KB writes fragment a copy-on-write file on Btrfs and slow clean-ups. Only index.db is changed; the store stays copy-on-write for reflinks. Briefly restarts kache.
+SQLite 的 4 KB 随机写入会使 Btrfs 上的写时复制文件高度碎片化并拖慢清理。仅修改 index.db；存储区仍保留写时复制以支持 reflink。会短暂重启 kache。
 
 SSD temperature
 SSD 温度
@@ -8847,6 +8898,9 @@ Scheduled
 
 Scheduler
 调度器
+
+Scheduler now
+当前调度器
 
 Scientific Keypad
 科学计算键盘
@@ -9418,6 +9472,9 @@ Size
 Size:
 大小：
 
+Skip syncing the index to disk
+跳过将索引同步到磁盘
+
 Skip this step
 跳过此步骤
 
@@ -9633,6 +9690,12 @@ Starting the agent…
 
 Starting…
 正在启动…
+
+Starts flushing
+开始刷写
+
+Starts flushing writes at 256 MB and caps them at 1 GB, instead of letting gigabytes pile up and stall reads or Btrfs commits (vm.dirty_bytes).
+在达到 256 MB 时开始刷写并将上限设为 1 GB，避免堆积数 GB 未写数据导致读取或 Btrfs 提交卡顿 (vm.dirty_bytes)。
 
 Starts:
 开始：
@@ -10720,6 +10783,9 @@ This isn't the session at the computer, so the computer isn't restarted.
 This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 此内核不支持按磁盘分别设定限制（Linux 6.2 及以上版本支持）。
 
+This kernel doesn't offer the kyber I/O scheduler on this computer's NVMe drives.
+此内核不为此电脑的 NVMe 硬盘提供 kyber I/O 调度器。
+
 This kernel has one way of preempting only: it wasn't built to be told another.
 此内核在构建时只启用了一种抢占方式，无法切换。
 
@@ -11443,6 +11509,9 @@ Use a key already in Passwords
 Use the Usual Order
 恢复常用顺序
 
+Use the kyber I/O scheduler on NVMe drives
+对 NVMe 硬盘使用 kyber I/O 调度器
+
 Use this account
 使用此账户
 
@@ -12094,6 +12163,9 @@ Wrap Lines
 Write Disk Image…
 写入磁盘映像…
 
+Writeback
+回写
+
 Writes
 写入次数
 
@@ -12627,6 +12699,9 @@ no
 
 no display ports
 无显示接口
+
+no limit
+无限制
 
 no limit to its space
 存储空间不限
@@ -13359,6 +13434,9 @@ other: {n} 周
 
 {} dpi as it comes
 默认 {} dpi
+
+{} extents
+{} 个分段
 
 {} for each
 每个 {}

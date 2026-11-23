@@ -70,6 +70,9 @@ other: ほか{n}件
 1 day before
 1日前
 
+1 extent
+1 エクステント
+
 1 hour
 1時間
 
@@ -1270,6 +1273,9 @@ Automatically
 Automatically,
 自動で、
 
+Avoids an fsync on every build (index_mode = off). Safe on a laptop because index.db is a rebuildable cache index.
+ビルドごとの fsync を省きます (index_mode = off)。index.db は再構築できるキャッシュの索引なのでノート PC でも安全です。
+
 BBR’s model
 BBRの推定
 
@@ -1752,6 +1758,9 @@ Can’t come back as it was: {} and {} more.
 
 Can’t come back as it was: {}.
 {}を元に戻せませんでした。
+
+Cap unwritten data in memory
+メモリ内の未書き込みデータを制限する
 
 Caps Lock is another Control key
 Caps Lockをもう1つのControlキーにする
@@ -2461,6 +2470,12 @@ Copy the Code That Just Came
 Copy to clipboard
 クリップボードにコピー
 
+Copy-on-write
+コピーオンライト
+
+Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache.
+Btrfs の断片化を防ぐため index.db のコピーオンライトはオフです。ストアは reflink のためオンのままです。戻すと kache が一時的に再起動します。
+
 Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
 1Passwordの{}にある項目をコピーしています。1PasswordがPasswordsの許可を求めたら「許可」を選んでください。必要ならロックを解除します。
 
@@ -2959,6 +2974,12 @@ Dim the built-in display when idle
 Dim the display while you look away
 目を離したら画面を暗くする
 
+Disable Copy-on-Write on index.db
+index.db のコピーオンライトを無効にする
+
+Disable copy-on-write
+コピーオンライトを無効にする
+
 Disagree
 同意しない
 
@@ -3187,6 +3208,9 @@ Drawing
 Drawn into each frame
 各フレームで描画
 
+Drive
+ドライブ
+
 Drive Setup
 Drive Setup
 
@@ -3198,6 +3222,9 @@ Drive:
 
 DriveSetup
 DriveSetup
+
+Drives
+ドライブ
 
 Drizzle
 霧雨
@@ -4759,6 +4786,9 @@ Indent Less
 Indent More
 インデントを増やす
 
+Index file (Btrfs)
+インデックスファイル (Btrfs)
+
 Ink Colour
 インクの色
 
@@ -5130,6 +5160,9 @@ Passwordsに鍵を保存中（求められたらロックを解除してくだ�
 
 Keeping what’s done…
 進捗を保存中…
+
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
+大量の同期書き込みや discard が NVMe ドライブに集中しても読み込み遅延を抑えます。Linux 標準の "none" はバックグラウンドの書き出ししか抑えません (queue/scheduler)。
 
 Kept
 保持
@@ -6210,6 +6243,9 @@ NVIDIA GPU（NVDEC）
 
 NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor. {}
 NVIDIAのGPUでH.264、HEVC、VP9、AV1をデコードします。4K・60 fpsでもCPU負荷はわずかです。{}
+
+NVMe Scheduler
+NVMe スケジューラ
 
 NW
 北西
@@ -7738,6 +7774,9 @@ PNG、JPEG、WebP、BMP、TIFF、GIF形式で保存できます。
 Pictures, Movies and Music
 画像、動画、音楽
 
+Pieces on disk
+ディスク上の断片
+
 Pin
 固定
 
@@ -8581,6 +8620,9 @@ Resting: nothing new on it
 Restore
 復元
 
+Restore Copy-on-Write on index.db
+index.db のコピーオンライトを元に戻す
+
 Restore Defaults
 既定値に戻す
 
@@ -8589,6 +8631,9 @@ Restore Files…
 
 Restore To…
 復元先…
+
+Restore copy-on-write
+コピーオンライトを元に戻す
 
 Restored as {}.
 {}として復元しました。
@@ -8643,6 +8688,9 @@ Reverting in 1 second.
 
 Reverting in {} seconds.
 {}秒後に元に戻します。
+
+Rewriting index.db…
+index.db を書き直しています…
 
 Rich Text (RTF)…
 リッチテキスト（RTF）…
@@ -8736,6 +8784,9 @@ SE
 
 SQL
 SQL
+
+SQLite's random 4 KB writes fragment a copy-on-write file on Btrfs and slow clean-ups. Only index.db is changed; the store stays copy-on-write for reflinks. Briefly restarts kache.
+SQLite の 4 KB ランダム書き込みは Btrfs 上のコピーオンライトファイルを断片化し、整理を遅くします。変更するのは index.db だけで、ストアは reflink のためそのままです。kache が一時的に再起動します。
 
 SSD temperature
 SSD温度
@@ -8847,6 +8898,9 @@ Scheduled
 
 Scheduler
 スケジューラー
+
+Scheduler now
+現在のスケジューラ
 
 Scientific Keypad
 関数キーパッド
@@ -9418,6 +9472,9 @@ Size
 Size:
 サイズ:
 
+Skip syncing the index to disk
+インデックスのディスク同期を省く
+
 Skip this step
 この手順をスキップ
 
@@ -9633,6 +9690,12 @@ Starting the agent…
 
 Starting…
 起動中…
+
+Starts flushing
+書き出し開始
+
+Starts flushing writes at 256 MB and caps them at 1 GB, instead of letting gigabytes pile up and stall reads or Btrfs commits (vm.dirty_bytes).
+何ギガバイトも溜まって読み込みや Btrfs のコミットを止める代わりに、256 MB で書き出しを始め、上限を 1 GB に抑えます (vm.dirty_bytes)。
 
 Starts:
 開始:
@@ -10720,6 +10783,9 @@ This isn't the session at the computer, so the computer isn't restarted.
 This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 このカーネルはディスク別の制限に対応していません。Linux 6.2以降が必要です。
 
+This kernel doesn't offer the kyber I/O scheduler on this computer's NVMe drives.
+このカーネルは、このコンピューターの NVMe ドライブで kyber I/O スケジューラを提供していません。
+
 This kernel has one way of preempting only: it wasn't built to be told another.
 このカーネルはプリエンプション方式が固定されており、変更できません。
 
@@ -11443,6 +11509,9 @@ Passwordsに保存済みのキーを使う
 Use the Usual Order
 通常の順序に戻す
 
+Use the kyber I/O scheduler on NVMe drives
+NVMe ドライブで kyber I/O スケジューラを使う
+
 Use this account
 このアカウントを使う
 
@@ -12094,6 +12163,9 @@ Wrap Lines
 Write Disk Image…
 ディスクイメージを書き込む…
 
+Writeback
+ライトバック
+
 Writes
 書き込み
 
@@ -12627,6 +12699,9 @@ no
 
 no display ports
 映像出力ポートなし
+
+no limit
+制限なし
 
 no limit to its space
 容量制限なし
@@ -13359,6 +13434,9 @@ other: {n}週間
 
 {} dpi as it comes
 標準{} dpi
+
+{} extents
+{} エクステント
 
 {} for each
 それぞれ{}

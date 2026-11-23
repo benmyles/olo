@@ -72,6 +72,9 @@ other: +{n} weitere
 1 day before
 1 Tag vorher
 
+1 extent
+1 Extent
+
 1 hour
 1 Stunde
 
@@ -1276,6 +1279,9 @@ Automatisch
 Automatically,
 Automatisch,
 
+Avoids an fsync on every build (index_mode = off). Safe on a laptop because index.db is a rebuildable cache index.
+Vermeidet ein fsync bei jedem Build (index_mode = off). Auf einem Laptop unbedenklich, da index.db ein neu erstellbarer Cache-Index ist.
+
 BBR’s model
 Modell von BBR
 
@@ -1759,6 +1765,9 @@ Kann nicht wie zuvor wiederhergestellt werden: {} und {} weitere.
 
 Can’t come back as it was: {}.
 Kann nicht wie zuvor wiederhergestellt werden: {}.
+
+Cap unwritten data in memory
+Ungeschriebene Daten im Speicher begrenzen
 
 Caps Lock is another Control key
 Feststelltaste ist eine weitere Strg-Taste
@@ -2471,6 +2480,12 @@ Gerade eingegangenen Code kopieren
 Copy to clipboard
 In die Zwischenablage kopieren
 
+Copy-on-write
+Copy-on-Write
+
+Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache.
+Copy-on-Write ist für index.db deaktiviert, um Btrfs-Fragmentierung zu vermeiden; der Speicher behält Copy-on-Write für Reflinks. Das Wiederherstellen startet kache kurz neu.
+
 Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
 Die Einträge in {} werden aus 1Password kopiert. Falls 1Password fragt, ob Passwords zugreifen darf, wählen Sie „Erlauben“ (und entsperren Sie es, falls es gesperrt ist).
 
@@ -2969,6 +2984,12 @@ Eingebautes Display im Leerlauf abdunkeln
 Dim the display while you look away
 Bildschirm abdunkeln, während Sie wegsehen
 
+Disable Copy-on-Write on index.db
+Copy-on-Write für index.db deaktivieren
+
+Disable copy-on-write
+Copy-on-Write deaktivieren
+
 Disagree
 Ablehnen
 
@@ -3198,6 +3219,9 @@ Zeichnen
 Drawn into each frame
 In jeden Frame gezeichnet
 
+Drive
+Laufwerk
+
 Drive Setup
 Drive Setup
 
@@ -3209,6 +3233,9 @@ Laufwerk:
 
 DriveSetup
 DriveSetup
+
+Drives
+Laufwerke
 
 Drizzle
 Nieselregen
@@ -4777,6 +4804,9 @@ Einzug verkleinern
 Indent More
 Einzug vergrößern
 
+Index file (Btrfs)
+Indexdatei (Btrfs)
+
 Ink Colour
 Tintenfarbe
 
@@ -5150,6 +5180,9 @@ Der Schlüssel wird in Passwords abgelegt (entsperren Sie es, falls es fragt) �
 
 Keeping what’s done…
 Das Erledigte wird behalten …
+
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
+Hält die Leselatenz niedrig, wenn starke synchrone Schreibvorgänge oder Discards ein NVMe-Laufwerk fluten, während Linux' Standard "none" nur Hintergrund-Zurückschreiben bremst (queue/scheduler).
 
 Kept
 Behalten
@@ -6230,6 +6263,9 @@ NVIDIA GPU (NVDEC)
 
 NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor. {}
 Die GPU von NVIDIA decodiert H.264, HEVC, VP9 und AV1, 4K mit 60 Bildern pro Sekunde bei wenig Prozessorlast. {}
+
+NVMe Scheduler
+NVMe-Scheduler
 
 NW
 NW
@@ -7760,6 +7796,9 @@ Bilder können als PNG, JPEG, WebP, BMP, TIFF oder GIF gesichert werden.
 Pictures, Movies and Music
 Bilder, Filme und Musik
 
+Pieces on disk
+Teile auf der Platte
+
 Pin
 Anheften
 
@@ -8603,6 +8642,9 @@ Ruhend: nichts Neues darauf
 Restore
 Wiederherstellen
 
+Restore Copy-on-Write on index.db
+Copy-on-Write für index.db wiederherstellen
+
 Restore Defaults
 Standard wiederherstellen
 
@@ -8611,6 +8653,9 @@ Dateien wiederherstellen …
 
 Restore To…
 Wiederherstellen nach …
+
+Restore copy-on-write
+Copy-on-Write wiederherstellen
 
 Restored as {}.
 Als {} wiederhergestellt.
@@ -8665,6 +8710,9 @@ Wird in 1 Sekunde zurückgesetzt.
 
 Reverting in {} seconds.
 Wird in {} Sekunden zurückgesetzt.
+
+Rewriting index.db…
+Schreibe index.db neu…
 
 Rich Text (RTF)…
 Rich Text (RTF) …
@@ -8758,6 +8806,9 @@ SO
 
 SQL
 SQL
+
+SQLite's random 4 KB writes fragment a copy-on-write file on Btrfs and slow clean-ups. Only index.db is changed; the store stays copy-on-write for reflinks. Briefly restarts kache.
+Zufällige 4-KB-Schreibvorgänge von SQLite fragmentieren Copy-on-Write-Dateien auf Btrfs und verlangsamen Bereinigungen. Nur index.db wird geändert; der Speicher behält Copy-on-Write für Reflinks. Startet kache kurz neu.
 
 SSD temperature
 SSD-Temperatur
@@ -8869,6 +8920,9 @@ Geplant
 
 Scheduler
 Scheduler
+
+Scheduler now
+Aktueller Scheduler
 
 Scientific Keypad
 Wissenschaftlicher Ziffernblock
@@ -9441,6 +9495,9 @@ Größe
 Size:
 Größe:
 
+Skip syncing the index to disk
+Index nicht bei jedem Build auf die Platte synchronisieren
+
 Skip this step
 Diesen Schritt überspringen
 
@@ -9658,6 +9715,12 @@ Der Agent wird gestartet …
 
 Starting…
 Wird gestartet …
+
+Starts flushing
+Schreibt ab
+
+Starts flushing writes at 256 MB and caps them at 1 GB, instead of letting gigabytes pile up and stall reads or Btrfs commits (vm.dirty_bytes).
+Beginnt ab 256 MB mit dem Wegschreiben und begrenzt es auf 1 GB, statt Gigabyte anzustauen und Lesevorgänge oder Btrfs-Commits auszubremsen (vm.dirty_bytes).
 
 Starts:
 Beginnt:
@@ -10745,6 +10808,9 @@ Dies ist nicht die Sitzung am Computer, daher wird der Computer nicht neu gestar
 This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 Dieser Kernel kann ein Laufwerk nicht an ein eigenes Limit binden (Linux 6.2 und neuer können es).
 
+This kernel doesn't offer the kyber I/O scheduler on this computer's NVMe drives.
+Dieser Kernel bietet den E/A-Scheduler kyber für die NVMe-Laufwerke dieses Computers nicht an.
+
 This kernel has one way of preempting only: it wasn't built to be told another.
 Dieser Kernel kennt nur eine Art der Präemption: Er wurde nicht gebaut, um eine andere zu nehmen.
 
@@ -11468,6 +11534,9 @@ Einen Schlüssel aus Passwords verwenden
 Use the Usual Order
 Die übliche Reihenfolge verwenden
 
+Use the kyber I/O scheduler on NVMe drives
+Den E/A-Scheduler kyber für NVMe-Laufwerke verwenden
+
 Use this account
 Dieses Konto verwenden
 
@@ -12119,6 +12188,9 @@ Zeilen umbrechen
 Write Disk Image…
 Laufwerksabbild schreiben …
 
+Writeback
+Zurückschreiben
+
 Writes
 Schreibvorgänge
 
@@ -12658,6 +12730,9 @@ nein
 
 no display ports
 keine Bildschirmanschlüsse
+
+no limit
+kein Limit
 
 no limit to its space
 ohne Platzbegrenzung
@@ -13451,6 +13526,9 @@ vor {} Tagen
 
 {} dpi as it comes
 {} dpi, wie es kommt
+
+{} extents
+{} Extents
 
 {} for each
 {} für jedes

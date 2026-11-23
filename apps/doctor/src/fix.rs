@@ -79,6 +79,19 @@ pub enum Step {
         name: String,
         action: UnitAction,
     },
+    /// Act on a user systemd unit (as this account, never root).
+    UserUnit {
+        name: String,
+        action: UnitAction,
+    },
+    /// Rewrite a regular file on Btrfs with `FS_NOCOW_FL` set (`nocow`) or
+    /// cleared, optionally stopping and restarting a user systemd service
+    /// around the rewrite.
+    SetFileNoCow {
+        path: PathBuf,
+        nocow: bool,
+        user_service: Option<String>,
+    },
     Signal {
         pid: i32,
         signal: i32,
@@ -293,7 +306,7 @@ impl Step {
             Step::WriteSysfs { path, value } => format!("Setting {} to {value}", path.display()),
             Step::AllowThunderbolt { device, .. } => format!("Letting Thunderbolt device {device} in, now and from now on"),
             Step::RemoveFile { path } => format!("Removing {}", path.display()),
-            Step::Unit { name, action } => {
+            Step::Unit { name, action } | Step::UserUnit { name, action } => {
                 let verb = match action {
                     UnitAction::Start => "Starting",
                     UnitAction::Stop => "Stopping",
@@ -305,6 +318,8 @@ impl Step {
                 };
                 format!("{verb} {name}")
             }
+            Step::SetFileNoCow { path, nocow: true, .. } => format!("Disabling copy-on-write on {}", path.display()),
+            Step::SetFileNoCow { path, nocow: false, .. } => format!("Restoring copy-on-write on {}", path.display()),
             Step::Signal { pid, .. } => format!("Stopping process {pid}"),
             Step::RestartGpu { address, .. } => format!("Starting the graphics card at {address} and its driver again"),
             Step::RestartBluetooth { device, .. } => {
@@ -401,6 +416,17 @@ impl Step {
                 .map_err(|e| format!("{}: {e}", self.describe()))
             }
             Step::RebuildInitramfs => rebuild_initramfs(progress).map_err(|e| format!("{}: {e}", self.describe())),
+            Step::SetFileNoCow { path, nocow, user_service } => {
+                let mut last = 0u64;
+                olo_system::btrfs::rewrite_file_nocow_with_service(path, *nocow, user_service.as_deref(), &mut |done, total| {
+                    let pct = if total > 0 { done * 100 / total } else { 100 };
+                    if pct != last {
+                        last = pct;
+                        progress(format!("{pct}%"));
+                    }
+                })
+                .map_err(|e| format!("{}: {e}", self.describe()))
+            }
             _ => self.run(),
         }
     }
@@ -435,6 +461,10 @@ impl Step {
                 _ => Ok(()),
             },
             Step::Unit { name, action } => unit(name, action).map_err(|e| format!("{}: {e}", self.describe())),
+            Step::UserUnit { name, action } => user_unit_action(name, action).map_err(|e| format!("{}: {e}", self.describe())),
+            Step::SetFileNoCow { path, nocow, user_service } => {
+                olo_system::btrfs::rewrite_file_nocow_with_service(path, *nocow, user_service.as_deref(), &mut |_, _| {}).map_err(|e| format!("{}: {e}", self.describe()))
+            }
             Step::Signal { pid, signal } => {
                 // SAFETY: kill with a pid and signal number has no memory effects.
                 if unsafe { libc::kill(*pid, *signal) } == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) { Ok(()) } else { Err(failed(std::io::Error::last_os_error())) }
@@ -669,9 +699,33 @@ impl Step {
                     // brackets: "always [madvise] never".)
                     let now = now.trim();
                     let now = now.split_whitespace().find_map(|w| w.strip_prefix('[').and_then(|w| w.strip_suffix(']'))).unwrap_or(now).to_owned();
-                    if now == value.trim() { Inverse::default() } else { Inverse::restore(vec![Step::WriteSysfs { path: path.clone(), value: now }]) }
+                    if now == value.trim() {
+                        Inverse::default()
+                    } else if let Some(sibling) = dirty_sysctl_sibling(path, &now) {
+                        // Writing 0 to dirty_bytes is a no-op in Linux: restore
+                        // the paired *_ratio (or *_bytes) knob that was active.
+                        Inverse::restore(vec![sibling])
+                    } else {
+                        Inverse::restore(vec![Step::WriteSysfs { path: path.clone(), value: now }])
+                    }
                 }
                 Err(_) => cant(&format!("What {} was set to couldn't be read.", path.display())),
+            },
+            Step::UserUnit { name, action } => {
+                let active = olo_system::systemd::user_unit(name).is_ok_and(|u| u.running());
+                let unit = |action: UnitAction| Step::UserUnit { name: name.clone(), action };
+                match action {
+                    UnitAction::Start if !active => Inverse::restore(vec![unit(UnitAction::Stop)]),
+                    UnitAction::Stop if active => Inverse::restore(vec![unit(UnitAction::Start)]),
+                    UnitAction::Restart if active => Inverse::after(unit(UnitAction::Restart)),
+                    UnitAction::Restart => Inverse::restore(vec![unit(UnitAction::Stop)]),
+                    _ => Inverse::default(),
+                }
+            }
+            Step::SetFileNoCow { path, nocow, user_service } => match olo_system::btrfs::is_nocow(path) {
+                Ok(was) if was == *nocow => Inverse::default(),
+                Ok(was) => Inverse::restore(vec![Step::SetFileNoCow { path: path.clone(), nocow: was, user_service: user_service.clone() }]),
+                Err(_) => cant(&format!("Whether {} used copy-on-write before couldn't be read.", path.display())),
             },
             Step::Unit { name, action } => {
                 let state = unit_state(name).ok();
@@ -1344,6 +1398,43 @@ fn unit(name: &str, action: &UnitAction) -> Result<(), String> {
     Ok(())
 }
 
+/// Act on a per-user systemd unit via the session bus (never root).
+fn user_unit_action(name: &str, action: &UnitAction) -> Result<(), String> {
+    let method = match action {
+        UnitAction::Start => "StartUnit",
+        UnitAction::Stop => "StopUnit",
+        UnitAction::Restart => "RestartUnit",
+        UnitAction::Reload => return olo_system::systemd::user_reload().map_err(|e| e.to_string()),
+        _ => return Err(format!("unsupported action for user unit {name}")),
+    };
+    let u = olo_system::systemd::user_job(name, method).map_err(|e| e.to_string())?;
+    if matches!(action, UnitAction::Start | UnitAction::Restart) && u.active == "failed" {
+        return Err(format!("{name} failed to start (journalctl --user -u {name} says why)"));
+    }
+    Ok(())
+}
+
+/// Linux's `vm.dirty_bytes` and `vm.dirty_ratio` (and their `background`
+/// pair) are mutually exclusive: writing `0` to one does NOT restore the
+/// other. When `path` currently reads `"0"`, return the step that restores
+/// its non-zero sibling instead.
+fn dirty_sysctl_sibling(path: &Path, now: &str) -> Option<Step> {
+    if now != "0" {
+        return None;
+    }
+    let name = path.file_name()?.to_str()?;
+    let other = match name {
+        "dirty_bytes" => "dirty_ratio",
+        "dirty_background_bytes" => "dirty_background_ratio",
+        "dirty_ratio" => "dirty_bytes",
+        "dirty_background_ratio" => "dirty_background_bytes",
+        _ => return None,
+    };
+    let sibling = path.with_file_name(other);
+    let val = std::fs::read_to_string(&sibling).ok()?.trim().to_owned();
+    (!val.is_empty() && val != "0").then_some(Step::WriteSysfs { path: sibling, value: val })
+}
+
 /// How many times each place a release package might be is tried.
 const TRIES: usize = 3;
 
@@ -1691,10 +1782,31 @@ mod tests {
         let steps = vec![
             Step::WriteFile { path: "/etc/x".into(), content: "a\n".into(), mode: 0o644 },
             Step::Unit { name: "keyd.service".into(), action: UnitAction::Disable },
+            Step::UserUnit { name: "kache.service".into(), action: UnitAction::Restart },
+            Step::SetFileNoCow { path: "/home/me/.cache/kache/index.db".into(), nocow: true, user_service: Some("kache.service".into()) },
             Step::Signal { pid: 4, signal: 15 },
         ];
         let back: Vec<Step> = serde_json::from_str(&serde_json::to_string(&steps).unwrap()).unwrap();
         assert_eq!(back, steps);
+    }
+
+    #[test]
+    fn dirty_sysctl_inverse_restores_active_sibling() {
+        let dir = PathBuf::from(format!("/var/tmp/olo-doctor-dirty-inv-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let bytes = dir.join("dirty_bytes");
+        let ratio = dir.join("dirty_ratio");
+        std::fs::write(&bytes, "0\n").unwrap();
+        std::fs::write(&ratio, "20\n").unwrap();
+        let inv = Step::WriteSysfs { path: bytes.clone(), value: "1073741824".into() }.inverse();
+        assert_eq!(inv.restore, [Step::WriteSysfs { path: ratio.clone(), value: "20".into() }]);
+        // And in reverse: when ratio is 0 and bytes is active.
+        std::fs::write(&bytes, "1073741824\n").unwrap();
+        std::fs::write(&ratio, "0\n").unwrap();
+        let inv = Step::WriteSysfs { path: ratio, value: "20".into() }.inverse();
+        assert_eq!(inv.restore, [Step::WriteSysfs { path: bytes, value: "1073741824".into() }]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

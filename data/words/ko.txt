@@ -70,6 +70,9 @@ other: 외 {n}개
 1 day before
 1일 전
 
+1 extent
+1 익스텐트
+
 1 hour
 1시간
 
@@ -1270,6 +1273,9 @@ Automatically
 Automatically,
 자동으로,
 
+Avoids an fsync on every build (index_mode = off). Safe on a laptop because index.db is a rebuildable cache index.
+빌드마다 발생하는 fsync를 피합니다 (index_mode = off). index.db는 다시 만들 수 있는 캐시 인덱스라 노트북에서 안전합니다.
+
 BBR’s model
 BBR 모델
 
@@ -1752,6 +1758,9 @@ Can’t come back as it was: {} and {} more.
 
 Can’t come back as it was: {}.
 이전 상태로 복원할 수 없습니다: {}.
+
+Cap unwritten data in memory
+메모리의 미기록 데이터 제한
 
 Caps Lock is another Control key
 Caps Lock을 Control 키로 사용
@@ -2461,6 +2470,12 @@ Copy the Code That Just Came
 Copy to clipboard
 클립보드에 복사
 
+Copy-on-write
+쓰기 시 복사
+
+Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache.
+Btrfs 조각화를 막기 위해 index.db의 쓰기 시 복사가 꺼져 있습니다. 저장소는 reflink를 위해 유지됩니다. 복원하면 kache가 잠시 재시작됩니다.
+
 Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
 1Password에서 {}의 항목을 복사하고 있습니다. Passwords를 허용할지 물으면 ‘허용’을 선택하세요. 잠겨 있으면 먼저 잠금을 해제하세요.
 
@@ -2959,6 +2974,12 @@ Dim the built-in display when idle
 Dim the display while you look away
 시선을 돌리면 화면 어둡게
 
+Disable Copy-on-Write on index.db
+index.db의 쓰기 시 복사 끄기
+
+Disable copy-on-write
+쓰기 시 복사 끄기
+
 Disagree
 동의하지 않음
 
@@ -3187,6 +3208,9 @@ Drawing
 Drawn into each frame
 프레임마다 다시 그림
 
+Drive
+드라이브
+
 Drive Setup
 Drive Setup
 
@@ -3198,6 +3222,9 @@ Drive:
 
 DriveSetup
 DriveSetup
+
+Drives
+드라이브
 
 Drizzle
 이슬비
@@ -4759,6 +4786,9 @@ Indent Less
 Indent More
 들여쓰기
 
+Index file (Btrfs)
+인덱스 파일 (Btrfs)
+
 Ink Colour
 잉크 색상
 
@@ -5130,6 +5160,9 @@ Passwords에 키 보관 중(요청하면 잠금을 해제하세요)…
 
 Keeping what’s done…
 완료된 부분 보관 중…
+
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
+대량의 동기 쓰기나 discard가 NVMe 드라이브에 몰릴 때도 읽기 지연을 억제합니다. Linux 기본값 "none"은 백그라운드 라이트백만 조절합니다 (queue/scheduler).
 
 Kept
 보관됨
@@ -6210,6 +6243,9 @@ NVIDIA GPU (NVDEC)
 
 NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor. {}
 NVIDIA GPU는 CPU를 거의 쓰지 않고 H.264, HEVC, VP9, AV1을 4K 초당 60프레임으로 디코딩합니다. {}
+
+NVMe Scheduler
+NVMe 스케줄러
 
 NW
 북서
@@ -7738,6 +7774,9 @@ Pictures can be saved as PNG, JPEG, WebP, BMP, TIFF or GIF.
 Pictures, Movies and Music
 그림, 동영상 및 음악
 
+Pieces on disk
+디스크 조각 수
+
 Pin
 고정
 
@@ -8581,6 +8620,9 @@ Resting: nothing new on it
 Restore
 복원
 
+Restore Copy-on-Write on index.db
+index.db의 쓰기 시 복사 복원
+
 Restore Defaults
 기본값 복원
 
@@ -8589,6 +8631,9 @@ Restore Files…
 
 Restore To…
 다른 위치에 복원…
+
+Restore copy-on-write
+쓰기 시 복사 복원
 
 Restored as {}.
 {} 이름으로 복원했습니다.
@@ -8643,6 +8688,9 @@ Reverting in 1 second.
 
 Reverting in {} seconds.
 {}초 후 되돌립니다.
+
+Rewriting index.db…
+index.db 다시 쓰는 중…
 
 Rich Text (RTF)…
 서식 있는 텍스트 (RTF)…
@@ -8736,6 +8784,9 @@ SE
 
 SQL
 SQL
+
+SQLite's random 4 KB writes fragment a copy-on-write file on Btrfs and slow clean-ups. Only index.db is changed; the store stays copy-on-write for reflinks. Briefly restarts kache.
+SQLite의 무작위 4 KB 쓰기는 Btrfs의 쓰기 시 복사 파일을 조각내 정리를 느리게 합니다. index.db만 변경하며 저장소는 reflink를 위해 유지합니다. kache가 잠시 재시작됩니다.
 
 SSD temperature
 SSD 온도
@@ -8847,6 +8898,9 @@ Scheduled
 
 Scheduler
 스케줄러
+
+Scheduler now
+현재 스케줄러
 
 Scientific Keypad
 공학용 키패드
@@ -9418,6 +9472,9 @@ Size
 Size:
 크기:
 
+Skip syncing the index to disk
+인덱스 디스크 동기화 건너뛰기
+
 Skip this step
 이 단계 건너뛰기
 
@@ -9633,6 +9690,12 @@ Starting the agent…
 
 Starting…
 시작 중…
+
+Starts flushing
+쓰기 시작
+
+Starts flushing writes at 256 MB and caps them at 1 GB, instead of letting gigabytes pile up and stall reads or Btrfs commits (vm.dirty_bytes).
+기가바이트 단위로 쌓여 읽기나 Btrfs 커밋이 멈추는 대신 256 MB에서 쓰기를 시작하고 1 GB로 제한합니다 (vm.dirty_bytes).
 
 Starts:
 시작:
@@ -10720,6 +10783,9 @@ This isn't the session at the computer, so the computer isn't restarted.
 This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 이 커널은 디스크별 제한을 지원하지 않습니다(Linux 6.2 이상에서 지원).
 
+This kernel doesn't offer the kyber I/O scheduler on this computer's NVMe drives.
+이 커널은 이 컴퓨터의 NVMe 드라이브에서 kyber I/O 스케줄러를 제공하지 않습니다.
+
 This kernel has one way of preempting only: it wasn't built to be told another.
 이 커널은 한 가지 선점 방식만 지원하도록 빌드되었습니다.
 
@@ -11443,6 +11509,9 @@ Passwords에 있는 키 사용
 Use the Usual Order
 기본 순서 사용
 
+Use the kyber I/O scheduler on NVMe drives
+NVMe 드라이브에서 kyber I/O 스케줄러 사용
+
 Use this account
 이 계정 사용
 
@@ -12094,6 +12163,9 @@ Wrap Lines
 Write Disk Image…
 디스크 이미지 쓰기…
 
+Writeback
+라이트백
+
 Writes
 쓰기
 
@@ -12627,6 +12699,9 @@ no
 
 no display ports
 디스플레이 포트 없음
+
+no limit
+제한 없음
 
 no limit to its space
 공간 제한 없음
@@ -13359,6 +13434,9 @@ other: {n}주
 
 {} dpi as it comes
 기본 해상도 {}dpi
+
+{} extents
+{} 익스텐트
 
 {} for each
 각각 {}

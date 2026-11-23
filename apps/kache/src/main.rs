@@ -39,6 +39,7 @@ use olo_kit::{
     widgets::{
         Button, CheckBox, Column, ColumnListView, EmptyState, ListModel, MenuField, StringView, button_row,
         dashboard::{Card, Facts},
+        separator,
         sidebar::{Row, Sidebar},
     },
 };
@@ -113,8 +114,9 @@ pub enum Msg {
     CleanedUp(Result<String, String>),
 }
 
-/// What `doing` says while the store is cleaned up.
+/// What `doing` says while the store is cleaned up or `index.db` is rewritten.
 const CLEANING_UP: &str = "Cleaning up the store…";
+const REWRITING_INDEX: &str = "Rewriting index.db…";
 
 struct Kache {
     section: Section,
@@ -147,7 +149,7 @@ impl Kache {
         let values = data::settings();
         let processors = std::thread::available_parallelism().map_or(1, |n| n.get() as u32);
         let steps: Vec<Vec<(Option<String>, String)>> =
-            data::SETTINGS.iter().zip(&values).map(|(s, v)| if s.kind == data::Kind::Switch { Vec::new() } else { data::steps(s, v.as_deref(), processors) }).collect();
+            data::SETTINGS.iter().zip(&values).map(|(s, v)| if s.kind.is_switch() { Vec::new() } else { data::steps(s, v.as_deref(), processors) }).collect();
         let chosen = data::SETTINGS.iter().zip(&values).zip(&steps).map(|((s, v), st)| data::step_of(st, v.as_deref(), s.kind == data::Kind::Size)).collect();
         let switches = data::SETTINGS.iter().zip(&values).map(|(s, v)| data::switched(s, v.as_deref())).collect();
         // Kache's records followed: what's written there is looked at.
@@ -221,6 +223,15 @@ impl Kache {
         cx.invalidate();
     }
 
+    fn set_index_nocow(&mut self, nocow: bool, cx: &mut Cx<Self>) {
+        if self.doing.is_some() {
+            return;
+        }
+        self.doing = Some(REWRITING_INDEX);
+        cx.work(move || data::set_index_nocow(nocow), Msg::CleanedUp);
+        cx.invalidate();
+    }
+
     /// The settings as edited.
     fn values(&self) -> Vec<Option<String>> {
         data::SETTINGS
@@ -230,6 +241,8 @@ impl Kache {
                 data::Kind::Switch if self.saved_values[i].is_none() && self.switches[i] == data::switched(s, None) => None,
                 // (A switch as kache has it unset, and never set: left out.)
                 data::Kind::Switch => Some(self.switches[i].to_string()),
+                data::Kind::IndexModeOff if self.switches[i] => Some("off".to_owned()),
+                data::Kind::IndexModeOff => self.saved_values[i].as_deref().filter(|v| !v.trim().eq_ignore_ascii_case("off")).map(str::to_owned),
                 _ => self.steps[i].get(self.chosen[i]).and_then(|(v, _)| v.clone()),
             })
             .collect()
@@ -255,7 +268,7 @@ impl Kache {
     fn revert_settings(&mut self, cx: &mut Cx<Self>) {
         let values = self.saved_values.clone();
         for (i, (s, v)) in data::SETTINGS.iter().zip(&values).enumerate() {
-            if s.kind == data::Kind::Switch {
+            if s.kind.is_switch() {
                 self.switches[i] = data::switched(s, v.as_deref());
             } else {
                 self.chosen[i] = data::step_of(&self.steps[i], v.as_deref(), s.kind == data::Kind::Size);
@@ -272,6 +285,8 @@ impl Kache {
             "stop" => self.service("StopUnit", cx),
             "start" => self.service("StartUnit", cx),
             "clean-up" => self.clean_up(cx),
+            "index-nocow-on" => self.set_index_nocow(true, cx),
+            "index-nocow-off" => self.set_index_nocow(false, cx),
             "save-settings" => self.save_settings(cx),
             "revert-settings" => self.revert_settings(cx),
             c if c.starts_with("end-test:") => {
@@ -641,6 +656,22 @@ impl Kache {
                 ));
                 continue;
             }
+            if s.kind == data::Kind::IndexModeOff {
+                let on = self.switches[i];
+                blocks.push(Some(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(m::TIGHT))
+                        .child(CheckBox::new(s.label, on).on_toggle(cx.listener(move |v: &mut Kache, on: &bool, cx| {
+                            v.switches[i] = *on;
+                            cx.invalidate();
+                        })))
+                        .child(div().pl(px(m::MARK_SIZE + m::MARK_GAP)).child(StringView::new(s.about).dim(true).small(true).wrap(true)))
+                        .into_element(),
+                ));
+                continue;
+            }
             let steps = &self.steps[i];
             let at = self.chosen[i].min(steps.len().saturating_sub(1));
             let mut said = steps.get(at).map(|(_, n)| n.clone()).unwrap_or_default();
@@ -668,7 +699,7 @@ impl Kache {
         }
         let at = |key: &str| data::SETTINGS.iter().position(|s| s.key == key);
         let mut take = |keys: &[&str]| -> Element {
-            let mut cell = div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING));
+            let mut cell = div().flex_1().min_w_0().flex().flex_col().gap(px(m::STACK));
             for k in keys {
                 if let Some(b) = at(k).and_then(|i| blocks.get_mut(i)).and_then(Option::take) {
                     cell = cell.child(b);
@@ -680,17 +711,26 @@ impl Kache {
             (&["local_max_size", "count_held_in_max_size"], &["scheduler_permits"]),
             (&["gc_max_age_hours"], &["scheduler_test_slots"]),
             (&["auto_clean_idle_targets_days", "auto_clean_orphaned_targets"], &["scheduler_test_wait_secs"]),
-            (&[], &["scheduler_dynamic", "scheduler_cpu_percent"]),
+            (&["index_mode"], &["scheduler_dynamic", "scheduler_cpu_percent"]),
         ];
         let gap = m::SPACING * 3.0;
-        if self.content_width(cx) >= 2.0 * CARD_LEAST + gap {
-            col = col.child(
+        let wide = self.content_width(cx) >= 2.0 * CARD_LEAST + gap;
+        if wide {
+            let mut grid = div().flex().flex_col().gap(px(m::SPACING));
+            let mut head_and_first = div().flex().flex_col().gap(px(m::STACK)).child(
                 div().flex().gap(px(gap)).child(div().flex_1().min_w_0().child(StringView::new("The store").bold(true))).child(div().flex_1().min_w_0().child(StringView::new("The pool").bold(true))),
             );
-            for (left, right) in rows {
-                let (l, r) = (take(left), take(right));
-                col = col.child(div().flex().items_start().gap(px(gap)).child(l).child(r));
+            for (idx, (left, right)) in rows.into_iter().enumerate() {
+                let row = div().flex().items_start().gap(px(gap)).child(take(left)).child(take(right));
+                if idx == 0 {
+                    head_and_first = head_and_first.child(row);
+                    grid = grid.child(head_and_first);
+                    head_and_first = div();
+                } else {
+                    grid = grid.child(row);
+                }
             }
+            col = col.child(grid);
         } else {
             // (Too narrow for two columns, a third of a screen: the store's,
             // then the pool's, one under the other, their words whole.)
@@ -703,11 +743,78 @@ impl Kache {
                 col = col.child(take(right));
             }
         }
-        let buttons = button_row()
-            .child(Button::new("Revert").on_click(cx.listener(|v: &mut Kache, _: &ClickEvent, cx| v.revert_settings(cx))))
-            .child(Button::new("Save").default(true).on_click(cx.listener(|v: &mut Kache, _: &ClickEvent, cx| v.save_settings(cx))))
-            .child(Button::new("Restart kache").enabled(self.doing.is_none() && self.running().is_some()).on_click(cx.listener(|v: &mut Kache, _: &ClickEvent, cx| v.service("RestartUnit", cx))));
+        let dirty = self.values() != self.saved_values;
+        // (Restart kache on the left, Revert and Save right-aligned with Save
+        // in the rightmost default slot; Revert and Save disabled until edited.
+        // Opus's look.)
+        let buttons = div()
+            .flex()
+            .flex_row()
+            .items_center()
+            .justify_between()
+            .gap(px(m::SPACING))
+            .child(Button::new("Restart kache").enabled(self.doing.is_none() && self.running().is_some()).on_click(cx.listener(|v: &mut Kache, _: &ClickEvent, cx| v.service("RestartUnit", cx))))
+            .child(
+                button_row()
+                    .child(Button::new("Revert").enabled(dirty).on_click(cx.listener(|v: &mut Kache, _: &ClickEvent, cx| v.revert_settings(cx))))
+                    .child(Button::new("Save").default(true).enabled(dirty).on_click(cx.listener(|v: &mut Kache, _: &ClickEvent, cx| v.save_settings(cx)))),
+            );
         col = col.child(buttons);
+        if let Some(index) = self.snap.index_file.as_ref().filter(|f| f.btrfs) {
+            let want = !index.nocow;
+            let about = if index.nocow {
+                "Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache."
+            } else {
+                "SQLite's random 4 KB writes fragment a copy-on-write file on Btrfs and slow clean-ups. Only index.db is changed; the store stays copy-on-write for reflinks. Briefly restarts kache."
+            };
+            let label = if index.nocow { "Restore copy-on-write" } else { "Disable copy-on-write" };
+            let action = if self.doing == Some(REWRITING_INDEX) {
+                Button::new(label).working(None)
+            } else {
+                Button::new(label).enabled(self.doing.is_none()).on_click(cx.listener(move |v: &mut Kache, _: &ClickEvent, cx| v.set_index_nocow(want, cx)))
+            };
+            let mut facts: Vec<(olo_kit::SharedString, olo_kit::SharedString)> =
+                vec![("Copy-on-write".into(), olo_kit::words::tr(if index.nocow { "off" } else { "on" }).into()), ("Size".into(), data::bytes(index.size).into())];
+            match index.extents {
+                Some(1) => facts.push(("Pieces on disk".into(), olo_kit::words::tr("1 extent").into())),
+                Some(e) if e > 1 => facts.push(("Pieces on disk".into(), olo_kit::tr!("{} extents", style::thousands(e as usize)).into())),
+                _ => {}
+            }
+            let p = theme::palette();
+            let facts_view = Facts::new(facts).colors(style::secondary_text(&p), style::c(p.panel_text)).row_height(style::PLAIN_SIZE * style::LINE_HEIGHT);
+            // (Extra top room so Save's outer default ring sits as far above
+            // the groove as the Index file heading sits below it. Both looks.)
+            col = col.child(div().pt(px(m::TIGHT)).child(separator()));
+            if wide {
+                let header = div()
+                    .flex()
+                    .flex_row()
+                    .items_start()
+                    .justify_between()
+                    .gap(px(m::SPACING * 2.0))
+                    .child(StringView::new("Index file (Btrfs)").bold(true))
+                    .child(div().flex_shrink_0().child(action));
+                let body = div()
+                    .flex()
+                    .flex_row()
+                    .items_start()
+                    .gap(px(gap))
+                    .child(div().flex_1().min_w_0().child(StringView::new(about).dim(true).small(true).wrap(true)))
+                    .child(div().flex_1().min_w_0().child(facts_view));
+                col = col.child(div().flex().flex_col().gap(px(m::STACK)).child(header).child(body));
+            } else {
+                col = col.child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(m::STACK))
+                        .child(StringView::new("Index file (Btrfs)").bold(true))
+                        .child(StringView::new(about).dim(true).small(true).wrap(true))
+                        .child(facts_view)
+                        .child(div().flex().flex_row().child(action)),
+                );
+            }
+        }
         if let Some(line) = self.status_line() {
             col = col.child(line);
         }
@@ -950,6 +1057,7 @@ fn print() -> std::process::ExitCode {
             "slowest_compiles": s.day.slowest.iter().map(|(c, ms)| serde_json::json!({"crate": c, "ms": ms})).collect::<Vec<_>>(),
             "miss_causes": s.day.causes.iter().map(|(c, n)| serde_json::json!({"cause": c, "misses": n})).collect::<Vec<_>>()},
         "tests_holding_slots": s.held.iter().map(|h| serde_json::json!({"pid": h.pid, "test": h.name, "project": h.project, "slots": h.slots, "since_ms": h.since_ms})).collect::<Vec<_>>(),
+        "index_file": s.index_file.as_ref().map(|f| serde_json::json!({"btrfs": f.btrfs, "nocow": f.nocow, "size_bytes": f.size, "extents": f.extents})),
         "settings": data::SETTINGS.iter().zip(data::settings()).map(|(k, v)| (k.key.to_owned(), serde_json::json!(v))).collect::<serde_json::Map<_, _>>(),
     });
     println!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());
@@ -968,6 +1076,46 @@ fn main() -> std::process::ExitCode {
     // A clean-up now, with no window (agents), saying what it did.
     if args.first().is_some_and(|a| a == "--clean-up") {
         return match data::clean_up() {
+            Ok(said) => {
+                println!("{said}");
+                std::process::ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("olo-kache: {e}");
+                std::process::ExitCode::FAILURE
+            }
+        };
+    }
+    if args.first().is_some_and(|a| a == "--index-nocow") {
+        let nocow = match args.get(1).map(String::as_str) {
+            Some("on") => true,
+            Some("off") => false,
+            _ => {
+                eprintln!("olo-kache: --index-nocow takes on or off");
+                return std::process::ExitCode::from(2);
+            }
+        };
+        return match data::set_index_nocow(nocow) {
+            Ok(said) => {
+                println!("{said}");
+                std::process::ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("olo-kache: {e}");
+                std::process::ExitCode::FAILURE
+            }
+        };
+    }
+    if args.first().is_some_and(|a| a == "--index-mode") {
+        let off = match args.get(1).map(String::as_str) {
+            Some("off") => true,
+            Some("auto") => false,
+            _ => {
+                eprintln!("olo-kache: --index-mode takes off or auto");
+                return std::process::ExitCode::from(2);
+            }
+        };
+        return match data::set_index_mode(off) {
             Ok(said) => {
                 println!("{said}");
                 std::process::ExitCode::SUCCESS
@@ -1005,7 +1153,7 @@ fn main() -> std::process::ExitCode {
         return std::process::ExitCode::SUCCESS;
     }
     olo_kit::run(APP_ID, |app| {
-        let window = olo_kit::open_window(WindowOptions::new("Kache", 980.0, 680.0).min_size(MIN_WIDTH, MIN_HEIGHT).keep_size("main"), Kache::new);
+        let window = olo_kit::open_window(WindowOptions::new("Kache", 980.0, 734.0).min_size(MIN_WIDTH, MIN_HEIGHT).keep_size("main"), Kache::new);
         instance::listen(APP_ID, olo_kit::proxy());
         olo_kit::message_handler(app, move |message, _| {
             if message.is::<Launch>() {

@@ -72,6 +72,9 @@ No se puede leer /etc/hosts: {}
 1 day before
 1 día antes
 
+1 extent
+1 extensión
+
 1 hour
 1 hora
 
@@ -1276,6 +1279,9 @@ Automáticamente
 Automatically,
 Automáticamente,
 
+Avoids an fsync on every build (index_mode = off). Safe on a laptop because index.db is a rebuildable cache index.
+Evita un fsync en cada compilación (index_mode = off). Seguro en un portátil porque index.db es un índice de caché reconstruible.
+
 BBR’s model
 Modelo de BBR
 
@@ -1759,6 +1765,9 @@ No puede volver a como estaba: {} y {} más.
 
 Can’t come back as it was: {}.
 No puede volver a como estaba: {}.
+
+Cap unwritten data in memory
+Limitar los datos pendientes de escritura en memoria
 
 Caps Lock is another Control key
 Bloq Mayús es otra tecla Control
@@ -2471,6 +2480,12 @@ Copiar el código recién llegado
 Copy to clipboard
 Copiar al portapapeles
 
+Copy-on-write
+Copy-on-write
+
+Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache.
+Copy-on-write está desactivado en index.db para evitar fragmentación en Btrfs; el almacén conserva copy-on-write para reflinks. Restaurarlo reinicia brevemente kache.
+
 Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
 Copiando los elementos de {} desde 1Password. Si 1Password pregunta si permitir a Passwords, elige Permitir (y desbloquéalo si está bloqueado).
 
@@ -2969,6 +2984,12 @@ Atenuar la pantalla integrada en reposo
 Dim the display while you look away
 Atenuar la pantalla mientras miras a otro lado
 
+Disable Copy-on-Write on index.db
+Desactivar copy-on-write en index.db
+
+Disable copy-on-write
+Desactivar copy-on-write
+
 Disagree
 No acepto
 
@@ -3198,6 +3219,9 @@ Dibujo
 Drawn into each frame
 Dibujado en cada fotograma
 
+Drive
+Unidad
+
 Drive Setup
 Drive Setup
 
@@ -3209,6 +3233,9 @@ Unidad:
 
 DriveSetup
 DriveSetup
+
+Drives
+Unidades
 
 Drizzle
 Llovizna
@@ -4777,6 +4804,9 @@ Reducir sangría
 Indent More
 Aumentar sangría
 
+Index file (Btrfs)
+Archivo de índice (Btrfs)
+
 Ink Colour
 Color de tinta
 
@@ -5150,6 +5180,9 @@ Guardando la clave en Passwords (desbloquéalo si lo pide)…
 
 Keeping what’s done…
 Guardando lo hecho…
+
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
+Mantiene acotada la latencia de lectura cuando escrituras síncronas o descartes intensos saturan una unidad NVMe, donde el valor predeterminado "none" de Linux solo frena la escritura en segundo plano (queue/scheduler).
 
 Kept
 Conservado
@@ -6230,6 +6263,9 @@ GPU NVIDIA (NVDEC)
 
 NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor. {}
 La GPU de NVIDIA decodifica H.264, HEVC, VP9 y AV1, 4K a 60 fotogramas por segundo con poco del procesador. {}
+
+NVMe Scheduler
+Planificador NVMe
 
 NW
 NO
@@ -7760,6 +7796,9 @@ Las imágenes se pueden guardar como PNG, JPEG, WebP, BMP, TIFF o GIF.
 Pictures, Movies and Music
 Imágenes, películas y música
 
+Pieces on disk
+Fragmentos en disco
+
 Pin
 Fijar
 
@@ -8603,6 +8642,9 @@ En reposo: nada nuevo
 Restore
 Restaurar
 
+Restore Copy-on-Write on index.db
+Restaurar copy-on-write en index.db
+
 Restore Defaults
 Restaurar valores
 
@@ -8611,6 +8653,9 @@ Restaurar archivos…
 
 Restore To…
 Restaurar en…
+
+Restore copy-on-write
+Restaurar copy-on-write
 
 Restored as {}.
 Restaurado como {}.
@@ -8665,6 +8710,9 @@ Volviendo atrás en 1 segundo.
 
 Reverting in {} seconds.
 Volviendo atrás en {} segundos.
+
+Rewriting index.db…
+Reescribiendo index.db…
 
 Rich Text (RTF)…
 Texto enriquecido (RTF)…
@@ -8758,6 +8806,9 @@ SE
 
 SQL
 SQL
+
+SQLite's random 4 KB writes fragment a copy-on-write file on Btrfs and slow clean-ups. Only index.db is changed; the store stays copy-on-write for reflinks. Briefly restarts kache.
+Las escrituras aleatorias de 4 KB de SQLite fragmentan archivos copy-on-write en Btrfs y ralentizan las limpiezas. Solo se cambia index.db; el almacén conserva copy-on-write para reflinks. Reinicia brevemente kache.
 
 SSD temperature
 Temperatura del SSD
@@ -8869,6 +8920,9 @@ Programado
 
 Scheduler
 Planificador
+
+Scheduler now
+Planificador actual
 
 Scientific Keypad
 Teclado científico
@@ -9441,6 +9495,9 @@ Tamaño
 Size:
 Tamaño:
 
+Skip syncing the index to disk
+No sincronizar el índice con el disco
+
 Skip this step
 Saltar este paso
 
@@ -9658,6 +9715,12 @@ Iniciando el agente…
 
 Starting…
 Iniciando…
+
+Starts flushing
+Empieza a volcar
+
+Starts flushing writes at 256 MB and caps them at 1 GB, instead of letting gigabytes pile up and stall reads or Btrfs commits (vm.dirty_bytes).
+Empieza a volcar escrituras a partir de 256 MB y las limita a 1 GB, en lugar de dejar que se acumulen gigabytes y bloqueen lecturas o confirmaciones de Btrfs (vm.dirty_bytes).
 
 Starts:
 Empieza:
@@ -10745,6 +10808,9 @@ Esta no es la sesión del ordenador, así que el ordenador no se reinicia.
 This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 Este núcleo no puede sujetar un disco a un límite propio (Linux 6.2 y posteriores pueden).
 
+This kernel doesn't offer the kyber I/O scheduler on this computer's NVMe drives.
+Este núcleo no ofrece el planificador de E/S kyber para las unidades NVMe de este equipo.
+
 This kernel has one way of preempting only: it wasn't built to be told another.
 Este núcleo solo tiene una forma de expropiación: no se compiló para que se le diga otra.
 
@@ -11468,6 +11534,9 @@ Usar una clave que ya esté en Passwords
 Use the Usual Order
 Usar el orden habitual
 
+Use the kyber I/O scheduler on NVMe drives
+Usar el planificador de E/S kyber en unidades NVMe
+
 Use this account
 Usar esta cuenta
 
@@ -12119,6 +12188,9 @@ Ajustar líneas
 Write Disk Image…
 Escribir imagen de disco…
 
+Writeback
+Escritura diferida
+
 Writes
 Escrituras
 
@@ -12658,6 +12730,9 @@ no
 
 no display ports
 sin puertos de pantalla
+
+no limit
+sin límite
 
 no limit to its space
 sin límite de espacio
@@ -13451,6 +13526,9 @@ hace {} días
 
 {} dpi as it comes
 {} ppp tal cual
+
+{} extents
+{} extensiones
 
 {} for each
 {} cada uno

@@ -276,6 +276,22 @@ to work properly after doing os updates that update the kernel."
   name since 6.6 (`sched/base_slice_ns`), written at every start by
   Olo's unit; where a kernel hasn't it the line does nothing, and
   Preferences shows the turn as the kernel comes.
+- **Dirty writeback byte caps** (`vm.dirty_background_bytes = 256 MiB`,
+  `vm.dirty_bytes = 1 GiB`) live in `/etc/sysctl.d/85-olo-dirty-writeback.conf`,
+  applied by systemd-sysctl at every boot. Offered only on machines with
+  at least 12 GiB of RAM (below that, Linux's default 10% / 20% ratios
+  are already close to or below 1 GiB). When toggled at runtime, any
+  currently limited removable disk's `bdi/max_bytes` is re-applied so
+  the kernel doesn't rescale its 16 MiB cap.
+- **NVMe I/O scheduler (`kyber`)** lives in `/etc/udev/rules.d/62-olo-nvme-scheduler.rules`
+  (`data/udev/62-olo-nvme-scheduler.rules`), matching non-rotational whole
+  NVMe namespaces (`ENV{DEVTYPE}=="disk"`) whenever `queue/scheduler` is
+  present. Fedora's kernel builds `CONFIG_MQ_IOSCHED_KYBER=y` in; on a
+  kernel without `kyber` the rule is ignored. Unlike `none` (which
+  relies on `blk-wbt` alone, throttling only async background writeback),
+  `kyber` keeps `blk-wbt` enabled and adds low-overhead per-domain
+  latency targets across reads, synchronous/asynchronous writes, and
+  discards (`discard=async`).
 - **BBRv3 and the graphics-memory patch** are built again for the new
   kernel by their services at its first start (kernel/README.md).
 
@@ -484,8 +500,10 @@ doesn't govern it. "Graphics memory in 2 MB pieces", below.
 - **`vm.page-cluster=0`** (swap read a page at a time): with swap in
   compressed memory the kernel already reads one page at a time for a
   page only one program has (`SWP_SYNCHRONOUS_IO`).
-- **`vm.dirty_ratio` lowered** (CachyOS: 10): it throttles writes to a
-  fast disk too. The slow disk's own limit is the case it's wanted for.
+- **`vm.dirty_ratio` lowered** (CachyOS: 10): percentage ratios still
+  scale to gigabytes on 32–64 GiB laptops. Byte caps (`dirty-writeback`:
+  256 MiB / 1 GiB on machines with >= 12 GiB RAM) are offered instead
+  under Preferences ▸ Performance ▸ Disks and Olo Doctor (`kernel:dirty-writeback`).
 - **The NMI watchdog off**: saves one counter interrupt every ten
   seconds of work for each processor, and gives up the report of a
   hard lockup.

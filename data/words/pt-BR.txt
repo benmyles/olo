@@ -72,6 +72,9 @@ Não foi possível ler /etc/hosts: {}
 1 day before
 1 dia antes
 
+1 extent
+1 extensão
+
 1 hour
 1 hora
 
@@ -1276,6 +1279,9 @@ Automaticamente
 Automatically,
 Automaticamente,
 
+Avoids an fsync on every build (index_mode = off). Safe on a laptop because index.db is a rebuildable cache index.
+Evita um fsync a cada compilação (index_mode = off). Seguro em um notebook porque index.db é um índice de cache reconstruível.
+
 BBR’s model
 Modelo do BBR
 
@@ -1759,6 +1765,9 @@ Não foi possível restaurar {} e mais {}.
 
 Can’t come back as it was: {}.
 Não foi possível restaurar {}.
+
+Cap unwritten data in memory
+Limitar dados não gravados na memória
 
 Caps Lock is another Control key
 Usar Caps Lock como outra tecla Control
@@ -2471,6 +2480,12 @@ Copiar o código recém-recebido
 Copy to clipboard
 Copiar para a área de transferência
 
+Copy-on-write
+Copy-on-write
+
+Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache.
+Copy-on-write está desativado em index.db para evitar fragmentação no Btrfs; o repositório mantém copy-on-write para reflinks. Restaurar reinicia o kache brevemente.
+
 Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
 Copiando os itens de {} do 1Password. Se o 1Password pedir autorização para o Passwords, escolha Permitir e desbloqueie-o, se necessário.
 
@@ -2969,6 +2984,12 @@ Escurecer a tela integrada em repouso
 Dim the display while you look away
 Escurecer a tela quando você desviar o olhar
 
+Disable Copy-on-Write on index.db
+Desativar copy-on-write em index.db
+
+Disable copy-on-write
+Desativar copy-on-write
+
 Disagree
 Discordar
 
@@ -3198,6 +3219,9 @@ Desenho
 Drawn into each frame
 Desenhado em cada quadro
 
+Drive
+Unidade
+
 Drive Setup
 Drive Setup
 
@@ -3209,6 +3233,9 @@ Unidade:
 
 DriveSetup
 DriveSetup
+
+Drives
+Unidades
 
 Drizzle
 Garoa
@@ -4777,6 +4804,9 @@ Diminuir recuo
 Indent More
 Aumentar recuo
 
+Index file (Btrfs)
+Arquivo de índice (Btrfs)
+
 Ink Colour
 Cor da tinta
 
@@ -5150,6 +5180,9 @@ Guardando a chave no Passwords (desbloqueie-o se solicitado)…
 
 Keeping what’s done…
 Salvando o progresso…
+
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
+Mantém a latência de leitura controlada quando gravações síncronas ou discards pesados saturam uma unidade NVMe, onde o padrão "none" do Linux limita apenas a gravação em segundo plano (queue/scheduler).
 
 Kept
 Mantidos
@@ -6230,6 +6263,9 @@ GPU NVIDIA (NVDEC)
 
 NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor. {}
 A GPU NVIDIA decodifica H.264, HEVC, VP9 e AV1 em 4K a 60 quadros por segundo, com pouco uso de CPU. {}
+
+NVMe Scheduler
+Escalonador NVMe
 
 NW
 NO
@@ -7760,6 +7796,9 @@ As imagens podem ser salvas em PNG, JPEG, WebP, BMP, TIFF ou GIF.
 Pictures, Movies and Music
 Imagens, vídeos e música
 
+Pieces on disk
+Partes no disco
+
 Pin
 Fixar
 
@@ -8603,6 +8642,9 @@ Em repouso: nada novo para exibir
 Restore
 Restaurar
 
+Restore Copy-on-Write on index.db
+Restaurar copy-on-write em index.db
+
 Restore Defaults
 Restaurar padrões
 
@@ -8611,6 +8653,9 @@ Restaurar arquivos…
 
 Restore To…
 Restaurar em…
+
+Restore copy-on-write
+Restaurar copy-on-write
 
 Restored as {}.
 Restaurado como {}.
@@ -8665,6 +8710,9 @@ Revertendo em 1 segundo.
 
 Reverting in {} seconds.
 Revertendo em {} segundos.
+
+Rewriting index.db…
+Reescrevendo index.db…
 
 Rich Text (RTF)…
 Texto formatado (RTF)…
@@ -8758,6 +8806,9 @@ SE
 
 SQL
 SQL
+
+SQLite's random 4 KB writes fragment a copy-on-write file on Btrfs and slow clean-ups. Only index.db is changed; the store stays copy-on-write for reflinks. Briefly restarts kache.
+Gravações aleatórias de 4 KB do SQLite fragmentam arquivos copy-on-write no Btrfs e deixam limpezas lentas. Apenas index.db é alterado; o repositório mantém copy-on-write para reflinks. Reinicia o kache brevemente.
 
 SSD temperature
 Temperatura do SSD
@@ -8869,6 +8920,9 @@ Agendado
 
 Scheduler
 Escalonador
+
+Scheduler now
+Escalonador atual
 
 Scientific Keypad
 Teclado científico
@@ -9441,6 +9495,9 @@ Tamanho
 Size:
 Tamanho:
 
+Skip syncing the index to disk
+Ignorar sincronização do índice no disco
+
 Skip this step
 Pular esta etapa
 
@@ -9658,6 +9715,12 @@ Iniciando o agente…
 
 Starting…
 Iniciando…
+
+Starts flushing
+Começa a gravar
+
+Starts flushing writes at 256 MB and caps them at 1 GB, instead of letting gigabytes pile up and stall reads or Btrfs commits (vm.dirty_bytes).
+Começa a descarregar gravações em 256 MB e limita em 1 GB, em vez de deixar gigabytes acumularem e travarem leituras ou commits do Btrfs (vm.dirty_bytes).
 
 Starts:
 Início:
@@ -10745,6 +10808,9 @@ Só é possível reiniciar o computador a partir da sessão local.
 This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 Este kernel não permite definir um limite por disco. Esse recurso exige Linux 6.2 ou posterior.
 
+This kernel doesn't offer the kyber I/O scheduler on this computer's NVMe drives.
+Este kernel não oferece o escalonador de E/S kyber nas unidades NVMe deste computador.
+
 This kernel has one way of preempting only: it wasn't built to be told another.
 Este kernel foi compilado com um único modo de preempção.
 
@@ -11468,6 +11534,9 @@ Usar uma chave já salva no Passwords
 Use the Usual Order
 Usar ordem habitual
 
+Use the kyber I/O scheduler on NVMe drives
+Usar o escalonador de E/S kyber em unidades NVMe
+
 Use this account
 Usar esta conta
 
@@ -12119,6 +12188,9 @@ Quebrar linhas
 Write Disk Image…
 Gravar imagem de disco…
 
+Writeback
+Gravação diferida
+
 Writes
 Gravações
 
@@ -12658,6 +12730,9 @@ não
 
 no display ports
 sem portas de vídeo
+
+no limit
+sem limite
 
 no limit to its space
 sem limite de espaço
@@ -13451,6 +13526,9 @@ Falha ao baixar {}: {}
 
 {} dpi as it comes
 {} dpi de fábrica
+
+{} extents
+{} extensões
 
 {} for each
 {} para cada

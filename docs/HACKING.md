@@ -11444,58 +11444,74 @@ On 2026-11-16 it passed on 7.3.3-300.fc45, with BBRv3's full self-check
 (1,265,738 figures over 25 links).
 
 **Offered** (apps/doctor/src/checks.rs, `kernel_settings`): the
-suggestions `kernel:preemption` (Preempt at Once) and
-`kernel:slow-disks` (Limit Removable Disks), and, recommended,
-`kernel:short-turns` (Keep Turns Short), each with what was
-measured, where the kernel has the setting and it isn't on. A `preempt=` of the person's own choosing is theirs (nothing
-is suggested), and nothing is suggested while a scheduler loaded over
-the kernel's is chosen or scheduling: it asks for each switch itself,
-so the setting changes nothing (measured with LAVD: the same wakes
-either way), which the tab's Preemption box says too. A locked-down kernel with the argument kept is fine,
-"from the next restart". A stick plugged in before the rule was there
-is offered its limit.
+suggestions `kernel:preemption` (Preempt at Once),
+`kernel:slow-disks` (Limit Removable Disks), `kernel:dirty-writeback`
+(Cap Writeback, on computers with at least 12 GiB of RAM), and
+`kernel:nvme-scheduler` (Use Kyber, where NVMe namespaces offer
+`kyber`), and, recommended, `kernel:short-turns` (Keep Turns Short),
+each with what was measured or why it helps, where the kernel has the
+setting and it isn't on. A `preempt=`, `vm.dirty_*` or NVMe scheduler
+of the person's own choosing is theirs (nothing is suggested), and
+nothing is suggested for preemption or short turns while a scheduler
+loaded over the kernel's is chosen or scheduling: it asks for each
+switch itself, so the setting changes nothing (measured with LAVD: the
+same wakes either way), which the tab's Preemption box says too. A
+locked-down kernel with the argument kept is fine, "from the next
+restart". A stick plugged in before the rule was there is offered its
+limit; toggling `dirty-writeback` also re-applies any already limited
+removable disk's `bdi/max_bytes` because changing global `dirty_bytes`
+rescales `bdi/max_ratio_fine`.
 
-**Shown and switched** (Preferences ▸ Performance ▸ Kernel;
-`olo-preferences kernel`, or `performance --tab Kernel`): a box for
-each, the kernel's own settings on the left (Preemption, Processor
-Turns, Removable Disks) and Olo's pieces in it on the right (Network,
-Window Buffers, and Drawing where its module is: three a side, 717
-points on the smallest screen's 760): four on one side were taller
-than the smallest screen, and no other split keeps what belongs
-together. Each has a check box (`kernel-preemption`,
-`kernel-short-turns`, `kernel-slow-disks`, `kernel-bbr3`,
-`kernel-graphics-memory`, `kernel-graphics-pages`), what
-it does in a sentence that ends with the kernel's own name for it,
-and its figures as facts, every box's values in one line
-(`Facts::label_width`: one width for the tab's labels) and its rows
-as far apart as the paragraph's lines (`Facts::row_height`, whose
-height isn't rounded), so boxes side by side with as many lines and
-rows between them end on one line: Processor Turns and Window Buffers
-do. The columns stand as far apart as boxes stand over one another,
-their titles' room included (twice `STACK`; at `SPACING` the two read
-as one wall of boxes), and each column's last box takes what height
-its column has to spare (`Ui::growing_bbox`), so both end on one line.
-The note that says whose the settings are is under both columns,
-across the tab, as far under them as boxes are from each other (not
-`Ui::note`, which sets a note close under its control): with three
-boxes a side neither column is the shorter one it used to stand
-under; a switch's result takes its place. A sentence with the
-setting's own figures
-in it says "With this on," so it reads right while the box is
-unchecked. The facts: what the kernel is on now and at the next
-start; what may wait for a removable disk, what waits now, and the
-disks here with whether each is limited; what new connections use, how
-many connections are on BBRv3 now, their round trip and the share of
-their segments sent again, and whether its module was checked on this
-kernel's series; whether the patch is in the running kernel and at
-every start. A switch runs `olo-doctor --kernel` on a thread
-("Setting it: an administrator's password is asked…", every box
-dimmed; refused or failed, as it was, with why in red). The figures are
-read every two seconds while the tab is shown, by a thread that sleeps
-(parked, not polling) on any other tab and ends with the panel. A
-setting the kernel hasn't says so in place of its switch; the Window
-Buffers box is there only where Intel's xe driver is, and Drawing as
-"No program held for large pieces of graphics memory" says.
+**Shown and switched** (Preferences ▸ Performance ▸ Kernel and Disks;
+`olo-preferences kernel`, `performance --tab Kernel`, or
+`performance --tab Disks`): Kernel puts the processor settings on the
+left (Preemption, Processor Turns) and Olo's pieces in it on the right
+(Network, Window Buffers, and Drawing where its module is); Disks
+stacks the three storage settings in one column (Writeback, NVMe
+Scheduler, Removable Disks) so both tabs fit the smallest screen's 760
+points cleanly. Each has a check box (`kernel-preemption`,
+`kernel-short-turns`, `kernel-dirty-writeback`, `kernel-nvme-scheduler`,
+`kernel-slow-disks`, `kernel-bbr3`, `kernel-graphics-memory`,
+`kernel-graphics-pages`), what it does in a sentence that ends with the
+kernel's own name for it, and its figures as facts, every box's values
+in one line (`Facts::label_width`: one width for the tab's labels) and
+its rows as far apart as the paragraph's lines (`Facts::row_height`,
+whose height isn't rounded), so boxes side by side with as many lines
+and rows between them end on one line. On the Kernel tab, the columns
+stand as far apart as boxes stand over one another, their titles' room
+included (twice `STACK`; at `SPACING` the two read as one wall of
+boxes), and when both columns have the same number of boxes each
+column's last box takes what height its column has to spare
+(`Ui::growing_bbox`), so both end on one line without leaving an empty
+cavern when Drawing adds a third box on the right. The note that says
+whose the settings are is under the boxes, across the tab, as far under
+them as boxes are from each other (not `Ui::note`, which sets a note
+close under its control); a switch's result takes its place. A sentence
+with the setting's own figures in it says "With this on," so it reads
+right while the box is unchecked. The facts: what the kernel is on now
+and at the next start; what starts flushing, the writeback limit and
+what waits now; each NVMe drive and its scheduler; what may wait for a
+removable disk, what waits now, and the disks here with whether each is
+limited; what new connections use, how many connections are on BBRv3
+now, their round trip and the share of their segments sent again, and
+whether its module was checked on this kernel's series; whether the
+patch is in the running kernel and at every start. A switch runs
+`olo-doctor --kernel` on a thread ("Setting it: an administrator's
+password is asked…", every box dimmed; refused or failed, as it was,
+with why in red). The figures are read every two seconds while either
+tab is shown, by a thread that sleeps (parked, not polling) on any
+other tab and ends with the panel. A setting the kernel hasn't says so
+in place of its switch; the Window Buffers box is there only where
+Intel's xe driver is, and Drawing as "No program held for large pieces
+of graphics memory" says.
+
+Kache's SQLite index tuning (`kache:index-mode` and `kache:index-nocow`
+in `apps/doctor/src/checks.rs`, plus Kache ▸ Settings and
+`olo-kache --index-mode` / `--index-nocow`) uses native Rust
+`FS_IOC_GETFLAGS` / `FS_IOC_SETFLAGS` / `FS_IOC_FIEMAP` ioctls and a
+plain `read`/`write` copy loop (`crates/system/src/btrfs.rs`) so
+`index.db` gets `FS_NOCOW_FL` while `store/` keeps Btrfs copy-on-write
+for zero-copy reflinks.
 
 ## Every frame on time (app_server frames.rs; Activity Monitor ▸ Displays)
 

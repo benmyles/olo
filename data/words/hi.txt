@@ -72,6 +72,9 @@ other: +{n} और
 1 day before
 1 दिन पहले
 
+1 extent
+1 एक्सटेंट
+
 1 hour
 1 घंटा
 
@@ -1276,6 +1279,9 @@ Automatically
 Automatically,
 अपने आप,
 
+Avoids an fsync on every build (index_mode = off). Safe on a laptop because index.db is a rebuildable cache index.
+हर बिल्ड पर fsync से बचाता है (index_mode = off)। लैपटॉप पर सुरक्षित है क्योंकि index.db दोबारा बन सकने वाला कैश इंडेक्स है।
+
 BBR’s model
 BBR का मॉडल
 
@@ -1759,6 +1765,9 @@ Can’t come back as it was: {} and {} more.
 
 Can’t come back as it was: {}.
 पहले की तरह बहाल नहीं हो सका: {}।
+
+Cap unwritten data in memory
+मेमोरी में बिना लिखे डेटा की सीमा तय करें
 
 Caps Lock is another Control key
 Caps Lock को दूसरी Control कुंजी बनाएँ
@@ -2471,6 +2480,12 @@ Copy the Code That Just Came
 Copy to clipboard
 क्लिपबोर्ड पर कॉपी करें
 
+Copy-on-write
+कॉपी-ऑन-राइट
+
+Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache.
+Btrfs फ्रेगमेंटेशन रोकने के लिए index.db पर कॉपी-ऑन-राइट बंद है; स्टोर reflinks के लिए कॉपी-ऑन-राइट पर रहता है। इसे वापस चालू करने पर kache थोड़े समय के लिए पुनरारंभ होगा।
+
 Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
 1Password से {} के आइटम कॉपी किए जा रहे हैं। अगर 1Password पूछे तो Passwords को अनुमति दें। ताला लगा हो तो पहले खोलें।
 
@@ -2969,6 +2984,12 @@ Dim the built-in display when idle
 Dim the display while you look away
 नज़र हटाने पर डिस्प्ले मंद करें
 
+Disable Copy-on-Write on index.db
+index.db पर कॉपी-ऑन-राइट बंद करें
+
+Disable copy-on-write
+कॉपी-ऑन-राइट बंद करें
+
 Disagree
 असहमत
 
@@ -3198,6 +3219,9 @@ Drawing
 Drawn into each frame
 हर फ़्रेम में बनाया जाता है
 
+Drive
+ड्राइव
+
 Drive Setup
 Drive Setup
 
@@ -3209,6 +3233,9 @@ Drive:
 
 DriveSetup
 DriveSetup
+
+Drives
+ड्राइव
 
 Drizzle
 बूंदाबांदी
@@ -4777,6 +4804,9 @@ Indent Less
 Indent More
 हाशिया बढ़ाएँ
 
+Index file (Btrfs)
+इंडेक्स फ़ाइल (Btrfs)
+
 Ink Colour
 स्याही का रंग
 
@@ -5150,6 +5180,9 @@ Keeping the key in Passwords (unlock it if it asks)…
 
 Keeping what’s done…
 पूरा हुआ काम सहेज रहे हैं…
+
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
+जब भारी सिंक्रोनस राइट या डिस्कार्ड NVMe ड्राइव पर दबाव डालते हैं, तब रीड लेटेंसी सीमित रखता है; Linux का डिफ़ॉल्ट "none" केवल बैकग्राउंड राइटबैक को नियंत्रित करता है (queue/scheduler)।
 
 Kept
 रखा गया
@@ -6230,6 +6263,9 @@ NVIDIA GPU (NVDEC)
 
 NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor. {}
 NVIDIA GPU बहुत कम CPU का इस्तेमाल करके H.264, HEVC, VP9 और AV1 को 4K पर 60 फ़्रेम प्रति सेकंड डिकोड करता है। {}
+
+NVMe Scheduler
+NVMe शेड्यूलर
 
 NW
 उत्तर-पश्चिम
@@ -7760,6 +7796,9 @@ Pictures can be saved as PNG, JPEG, WebP, BMP, TIFF or GIF.
 Pictures, Movies and Music
 तस्वीरें, फ़िल्में और संगीत
 
+Pieces on disk
+डिस्क पर हिस्से
+
 Pin
 पिन
 
@@ -8603,6 +8642,9 @@ Resting: nothing new on it
 Restore
 बहाल करें
 
+Restore Copy-on-Write on index.db
+index.db पर कॉपी-ऑन-राइट वापस चालू करें
+
 Restore Defaults
 डिफ़ॉल्ट बहाल करें
 
@@ -8611,6 +8653,9 @@ Restore Files…
 
 Restore To…
 यहाँ बहाल करें…
+
+Restore copy-on-write
+कॉपी-ऑन-राइट वापस चालू करें
 
 Restored as {}.
 {} के नाम से बहाल किया गया।
@@ -8665,6 +8710,9 @@ Reverting in 1 second.
 
 Reverting in {} seconds.
 {} सेकंड में पुरानी सेटिंग लौटेगी।
+
+Rewriting index.db…
+index.db दोबारा लिखा जा रहा है…
 
 Rich Text (RTF)…
 रिच टेक्स्ट (RTF)…
@@ -8758,6 +8806,9 @@ SE
 
 SQL
 SQL
+
+SQLite's random 4 KB writes fragment a copy-on-write file on Btrfs and slow clean-ups. Only index.db is changed; the store stays copy-on-write for reflinks. Briefly restarts kache.
+SQLite के रैंडम 4 KB राइट Btrfs पर कॉपी-ऑन-राइट फ़ाइल को खंडित करते हैं और सफाई धीमी करते हैं। केवल index.db बदला जाता है; स्टोर reflinks के लिए कॉपी-ऑन-राइट पर रहता है। kache थोड़े समय के लिए पुनरारंभ होगा।
 
 SSD temperature
 SSD का तापमान
@@ -8869,6 +8920,9 @@ Scheduled
 
 Scheduler
 शेड्यूलर
+
+Scheduler now
+वर्तमान शेड्यूलर
 
 Scientific Keypad
 वैज्ञानिक कीपैड
@@ -9441,6 +9495,9 @@ Size
 Size:
 आकार:
 
+Skip syncing the index to disk
+इंडेक्स को डिस्क पर सिंक करना छोड़ें
+
 Skip this step
 यह चरण छोड़ें
 
@@ -9658,6 +9715,12 @@ Starting the agent…
 
 Starting…
 शुरू हो रहा है…
+
+Starts flushing
+फ्लश शुरू
+
+Starts flushing writes at 256 MB and caps them at 1 GB, instead of letting gigabytes pile up and stall reads or Btrfs commits (vm.dirty_bytes).
+गीगाबाइट डेटा जमा होकर रीड या Btrfs कमिट को धीमा करने के बजाय, 256 MB पर लिखना शुरू करता है और 1 GB पर सीमित करता है (vm.dirty_bytes)।
 
 Starts:
 शुरुआत:
@@ -10745,6 +10808,9 @@ This isn't the session at the computer, so the computer isn't restarted.
 This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 यह कर्नेल अलग-अलग डिस्क की अलग सीमा तय नहीं कर सकता (Linux 6.2 और बाद के संस्करणों में संभव है)।
 
+This kernel doesn't offer the kyber I/O scheduler on this computer's NVMe drives.
+यह कर्नेल इस कंप्यूटर के NVMe ड्राइव के लिए kyber I/O शेड्यूलर उपलब्ध नहीं कराता।
+
 This kernel has one way of preempting only: it wasn't built to be told another.
 यह कर्नेल सिर्फ़ एक प्रीएम्प्शन विधि के साथ बना है। इसे बदला नहीं जा सकता।
 
@@ -11468,6 +11534,9 @@ Passwords में पहले से रखी कुंजी इस्त�
 Use the Usual Order
 सामान्य क्रम इस्तेमाल करें
 
+Use the kyber I/O scheduler on NVMe drives
+NVMe ड्राइव पर kyber I/O शेड्यूलर उपयोग करें
+
 Use this account
 यह खाता इस्तेमाल करें
 
@@ -12119,6 +12188,9 @@ Wrap Lines
 Write Disk Image…
 डिस्क इमेज लिखें…
 
+Writeback
+राइटबैक
+
 Writes
 लिखने की संख्या
 
@@ -12658,6 +12730,9 @@ no
 
 no display ports
 कोई डिस्प्ले पोर्ट नहीं
+
+no limit
+कोई सीमा नहीं
 
 no limit to its space
 जगह की कोई सीमा नहीं
@@ -13451,6 +13526,9 @@ other: {n} हफ़्ते
 
 {} dpi as it comes
 मूल रूप में {} dpi
+
+{} extents
+{} एक्सटेंट
 
 {} for each
 हर एक के लिए {}

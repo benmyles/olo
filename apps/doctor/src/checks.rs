@@ -1196,6 +1196,91 @@ fn kache(roots: &Roots, procs: &[Proc], r: &mut Report) {
     } else {
         r.fine.push(Fine { title: "The build cache is running".into(), detail: format!("kache's daemon is running, and its store can keep under its {} limit.", gb(limit)) });
     }
+    kache_index_settings(roots, &store, r);
+}
+
+/// kache's SQLite index tuning:
+/// - `cache.index_mode = "off"` skips WAL `fsync()` on checkpoints (avoiding
+///   full filesystem transaction commits on every build; safe on a laptop
+///   because `index.db` is a rebuildable cache index).
+/// - On Btrfs, disabling copy-on-write (`FS_NOCOW_FL`) on `index.db` alone
+///   stops random 4 KB SQLite writes from fragmenting the database into
+///   hundreds of thousands of extents, while keeping `store/` copy-on-write
+///   so zero-copy reflinks keep working.
+fn kache_index_settings(roots: &Roots, store: &Path, r: &mut Report) {
+    let config_path = roots.temp.config.join("kache/config.toml");
+    let has_service = roots.temp.config.join("systemd/user/kache.service").exists();
+    let text = read(&config_path).unwrap_or_default();
+    let mode = text.parse::<toml_edit::DocumentMut>().ok().and_then(|d| d.get("cache")?.get("index_mode")?.as_str().map(|s| s.trim().to_ascii_lowercase()));
+    if mode.as_deref() == Some("off") {
+        r.fine.push(Fine { title: "kache skips syncing its index to disk".into(), detail: "cache.index_mode is off (SQLite synchronous=OFF), avoiding a filesystem sync on every build.".into() });
+    } else {
+        let mut doc = text.parse::<toml_edit::DocumentMut>().unwrap_or_default();
+        if !doc.contains_key("cache") {
+            doc["cache"] = toml_edit::table();
+        }
+        if let Some(cache) = doc["cache"].as_table_mut() {
+            cache["index_mode"] = toml_edit::value("off");
+            let mut steps = vec![Step::WriteFile { path: config_path.clone(), content: doc.to_string(), mode: 0o644 }];
+            if has_service {
+                steps.push(Step::UserUnit { name: "kache.service".into(), action: UnitAction::Restart });
+            }
+            let now = match mode.as_deref() {
+                Some(m) => format!("“{m}”"),
+                None => "its default (auto / SQLite synchronous=NORMAL)".to_owned(),
+            };
+            r.findings.push(Finding {
+                id: "kache:index-mode".into(),
+                severity: Severity::Suggestion,
+                title: "kache syncs its SQLite index on every build".into(),
+                detail: format!(
+                    "kache's cache.index_mode is {now}, so SQLite checkpoints call fsync() — forcing full filesystem commits on every build (especially costly on Btrfs + LUKS). Because index.db is a rebuildable cache index, setting cache.index_mode = \"off\" eliminates those sync stalls with low risk on a laptop. The fix updates {}{}.",
+                    config_path.display(),
+                    if has_service { " and restarts kache" } else { "" }
+                ),
+                fix: Some(Fix { label: "Skip Index Sync".into(), root: false, steps }),
+            });
+        }
+    }
+
+    let index_db = store.join("index.db");
+    if index_db.is_file() && olo_system::btrfs::is_btrfs(&index_db) {
+        match olo_system::btrfs::is_nocow(&index_db) {
+            Ok(true) => {
+                r.fine.push(Fine {
+                    title: "kache's index avoids Btrfs fragmentation".into(),
+                    detail: "index.db has copy-on-write disabled (NOCOW), while kache's store stays copy-on-write for reflinks.".into(),
+                });
+            }
+            Ok(false) => {
+                let bytes = std::fs::metadata(&index_db).map(|m| m.len()).unwrap_or(0);
+                let exts = olo_system::btrfs::extents(&index_db).ok();
+                let about_file = match (bytes, exts) {
+                    (b, Some(1)) if b > 0 => format!(" ({}, 1 extent)", gb(b)),
+                    (b, Some(e)) if b > 0 && e > 1 => format!(" ({}, {} extents)", gb(b), thousands(e)),
+                    (b, _) if b > 0 => format!(" ({})", gb(b)),
+                    _ => String::new(),
+                };
+                r.findings.push(Finding {
+                    id: "kache:index-nocow".into(),
+                    severity: Severity::Suggestion,
+                    title: "kache's index uses copy-on-write on Btrfs".into(),
+                    detail: format!(
+                        "kache's SQLite index at {}{about_file} uses copy-on-write on Btrfs: random 4 KB page writes fragment it into tens of thousands of extents and slow clean-ups. Disabling copy-on-write on index.db alone — leaving kache's store copy-on-write so zero-copy reflinks keep working — stops that fragmentation. The fix {}rewrites index.db with NOCOW{}.",
+                        index_db.display(),
+                        if has_service { "briefly stops kache, " } else { "" },
+                        if has_service { ", and starts kache again" } else { "" }
+                    ),
+                    fix: Some(Fix {
+                        label: "Disable Copy-on-Write".into(),
+                        root: false,
+                        steps: vec![Step::SetFileNoCow { path: index_db, nocow: true, user_service: has_service.then(|| "kache.service".into()) }],
+                    }),
+                });
+            }
+            Err(_) => {}
+        }
+    }
 }
 
 /// kache's store's limit: its settings' `local_max_size`, else as kache
@@ -4061,7 +4146,13 @@ fn tcp_bbr3(roots: &Roots, r: &mut Report) {
 fn kernel_settings(roots: &Roots, r: &mut Report) {
     use olo_system::kernel_tuning::{self as tuning, Setting};
     let places = crate::kernel::places(&roots.fs);
-    let size = |bytes: u64| if bytes >= 1 << 30 { format!("{:.1} GB", bytes as f64 / (1u64 << 30) as f64) } else { format!("{:.0} MB", bytes as f64 / (1u64 << 20) as f64) };
+    let size = |bytes: u64| {
+        if bytes >= 1 << 30 {
+            if bytes % (1 << 30) == 0 { format!("{} GB", bytes >> 30) } else { format!("{:.1} GB", bytes as f64 / (1u64 << 30) as f64) }
+        } else {
+            format!("{:.0} MB", bytes as f64 / (1u64 << 20) as f64)
+        }
+    };
 
     // Preemption.
     if let Some(p) = tuning::preemption(&places) {
@@ -4155,6 +4246,58 @@ fn kernel_settings(roots: &Roots, r: &mut Report) {
                 ),
                 fix: Some(Fix { label: "Limit Removable Disks".into(), root: true, steps: crate::kernel::steps(Setting::SlowDisks, true, &places) }),
             });
+        }
+    }
+
+    // Dirty writeback caps (large-RAM machines).
+    if let Some(d) = tuning::dirty_writeback(&places) {
+        if d.on() {
+            r.fine.push(Fine {
+                title: "Unwritten data in memory is capped".into(),
+                detail: format!("Writes start flushing at {} and cap at {}, now and at every start.", size(tuning::DIRTY_BACKGROUND_BYTES), size(tuning::DIRTY_BYTES)),
+            });
+        } else if !d.chosen_otherwise() {
+            let steps = crate::kernel::steps(Setting::DirtyWriteback, true, &places);
+            if !steps.is_empty() {
+                r.findings.push(Finding {
+                    id: "kernel:dirty-writeback".into(),
+                    severity: Severity::Suggestion,
+                    title: "Gigabytes of unwritten data can pile up in memory".into(),
+                    detail: format!(
+                        "With Linux's percentage defaults ({}% / {}%), up to {} can pile up unwritten on this {} machine before flushing all at once — stalling interactive reads and Btrfs commits during builds. Capping writeback in bytes (starting at {}, capped at {}) drains writes smoothly in the background instead. The fix sets vm.dirty_background_bytes and vm.dirty_bytes now and at every start.",
+                        d.bg_ratio,
+                        d.dirty_ratio,
+                        size(d.limit_now_bytes.max(d.ram_bytes / 5)),
+                        size(d.ram_bytes),
+                        size(tuning::DIRTY_BACKGROUND_BYTES),
+                        size(tuning::DIRTY_BYTES),
+                    ),
+                    fix: Some(Fix { label: "Cap Writeback".into(), root: true, steps }),
+                });
+            }
+        }
+    }
+
+    // NVMe I/O scheduler (kyber).
+    if let Some(n) = tuning::nvme_scheduler(&places)
+        && n.can()
+    {
+        if n.on() {
+            r.fine.push(Fine { title: "NVMe drives use the kyber I/O scheduler".into(), detail: "Reads stay responsive under heavy writes and discards, now and at every start.".into() });
+        } else if !n.chosen_otherwise() {
+            let steps = crate::kernel::steps(Setting::NvmeScheduler, true, &places);
+            if !steps.is_empty() {
+                let names = n.disks.iter().filter(|d| d.has_kyber).map(|d| d.name.as_str()).collect::<Vec<_>>().join(", ");
+                r.findings.push(Finding {
+                    id: "kernel:nvme-scheduler".into(),
+                    severity: Severity::Suggestion,
+                    title: "NVMe drives run without an I/O scheduler".into(),
+                    detail: format!(
+                        "Linux runs NVMe drives ({names}) with scheduler “none”, which throttles background writeback (blk-wbt) but gives no latency isolation against heavy synchronous writes or discards (such as Btrfs commits or kache clean-ups). Switching to kyber keeps read latency bounded during write storms with low multi-queue overhead. The fix switches {names} to kyber now and installs a udev rule for every start."
+                    ),
+                    fix: Some(Fix { label: "Use Kyber".into(), root: true, steps }),
+                });
+            }
         }
     }
 }
@@ -6213,6 +6356,31 @@ mod tests {
         let r = scan(&roots);
         assert!(r.find("kache:over-limit").is_none() && r.fine.iter().any(|f| f.title == "The build cache is running" && !f.detail.contains("limit")));
         assert_eq!((size_of("95GiB"), size_of("1.5 TB"), size_of("12"), size_of("lots")), (Some(102_005_473_280), Some(1_500_000_000_000), Some(12), None));
+        // Index tuning suggestions: index_mode = "off" suggested until set.
+        let im = r.find("kache:index-mode").expect("index_mode suggested");
+        assert_eq!((im.severity, im.fix.as_ref().unwrap().label.as_str(), im.fix.as_ref().unwrap().root), (Severity::Suggestion, "Skip Index Sync", false));
+        assert!(matches!(im.fix.as_ref().unwrap().steps.as_slice(), [Step::WriteFile { .. }, Step::UserUnit { name, action: UnitAction::Restart }] if name == "kache.service"));
+        // Running the config write step alone sets index_mode = "off" while keeping local_max_size.
+        let write_step = &im.fix.as_ref().unwrap().steps[0];
+        crate::helper::run_steps(std::slice::from_ref(write_step))[0].as_ref().unwrap();
+        let cfg = std::fs::read_to_string(fs.join("home/me/.config/kache/config.toml")).unwrap();
+        assert!(cfg.contains("local_max_size = \"95GiB\"") && cfg.contains("index_mode = \"off\""), "{cfg}");
+        let r = scan(&roots);
+        assert!(r.find("kache:index-mode").is_none());
+        assert!(r.fine.iter().any(|f| f.title == "kache skips syncing its index to disk"));
+        // index.db on Btrfs: NOCOW suggested until applied.
+        w("home/me/.cache/kache/index.db", &"x".repeat(8192));
+        let index_db = fs.join("home/me/.cache/kache/index.db");
+        if olo_system::btrfs::is_btrfs(&index_db) {
+            let f = scan(&roots).find("kache:index-nocow").expect("nocow suggested on btrfs").clone();
+            assert_eq!((f.severity, f.fix.as_ref().unwrap().label.as_str(), f.fix.as_ref().unwrap().root), (Severity::Suggestion, "Disable Copy-on-Write", false));
+            assert!(matches!(f.fix.as_ref().unwrap().steps.as_slice(), [Step::SetFileNoCow { nocow: true, user_service: Some(u), .. }] if u == "kache.service"));
+            // Rewrite without touching real user systemd in test.
+            olo_system::btrfs::rewrite_nocow(&index_db, true, &mut |_, _| {}).unwrap();
+            let r = scan(&roots);
+            assert!(r.find("kache:index-nocow").is_none());
+            assert!(r.fine.iter().any(|f| f.title == "kache's index avoids Btrfs fragmentation"));
+        }
     }
 
     /// Token Pool running twice (Ben, 2026-11-09): the copy serving holds
@@ -7483,6 +7651,28 @@ mod tests {
         // A stick plugged in before the rule's time (not limited): offered again, for it.
         w("sys/block/sdb/bdi/strict_limit", "0\n");
         assert_eq!(scan(&roots).find("kernel:slow-disks").unwrap().fix.as_ref().unwrap().steps.len(), 2);
+        // Dirty writeback and NVMe scheduler: offered on a large-RAM NVMe machine, then fixed.
+        w("proc/meminfo", "MemTotal:       65260884 kB\n");
+        w("proc/sys/vm/dirty_bytes", "0\n");
+        w("proc/sys/vm/dirty_background_bytes", "0\n");
+        w("proc/sys/vm/dirty_ratio", "20\n");
+        w("proc/sys/vm/dirty_background_ratio", "10\n");
+        w("sys/block/nvme0n1/queue/rotational", "0\n");
+        w("sys/block/nvme0n1/queue/scheduler", "[none] mq-deadline kyber bfq\n");
+        let r = scan(&roots);
+        for (id, label) in [("kernel:dirty-writeback", "Cap Writeback"), ("kernel:nvme-scheduler", "Use Kyber")] {
+            let f = r.find(id).expect(id);
+            assert_eq!((f.severity, f.fix.as_ref().unwrap().label.as_str(), f.fix.as_ref().unwrap().root), (Severity::Suggestion, label, true), "{id}");
+            for done in crate::helper::run_steps(&f.fix.as_ref().unwrap().steps) {
+                done.unwrap();
+            }
+        }
+        // Simulate kernel bracket read-back for queue/scheduler.
+        w("sys/block/nvme0n1/queue/scheduler", "none mq-deadline [kyber] bfq\n");
+        let r = scan(&roots);
+        assert!(r.find("kernel:dirty-writeback").is_none() && r.find("kernel:nvme-scheduler").is_none());
+        assert!(r.fine.iter().any(|f| f.title == "Unwritten data in memory is capped"));
+        assert!(r.fine.iter().any(|f| f.title == "NVMe drives use the kyber I/O scheduler"));
     }
 
     #[test]

@@ -72,6 +72,9 @@ Impossible de lire /etc/hosts : {}
 1 day before
 1 jour avant
 
+1 extent
+1 segment
+
 1 hour
 1 heure
 
@@ -1276,6 +1279,9 @@ Automatiquement
 Automatically,
 Automatiquement,
 
+Avoids an fsync on every build (index_mode = off). Safe on a laptop because index.db is a rebuildable cache index.
+Évite un fsync à chaque compilation (index_mode = off). Sans risque sur un portable car index.db est un index de cache reconstructible.
+
 BBR’s model
 Modèle de BBR
 
@@ -1759,6 +1765,9 @@ Ne peut pas revenir tel quel : {} et {} de plus.
 
 Can’t come back as it was: {}.
 Ne peut pas revenir tel quel : {}.
+
+Cap unwritten data in memory
+Plafonner les données non écrites en mémoire
 
 Caps Lock is another Control key
 Utiliser Verr. Maj comme touche Contrôle
@@ -2471,6 +2480,12 @@ Copier le code qui vient d’arriver
 Copy to clipboard
 Copier dans le presse-papiers
 
+Copy-on-write
+Copie sur écriture
+
+Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache.
+La copie sur écriture est désactivée sur index.db pour éviter la fragmentation Btrfs ; le dépôt la conserve pour les reflinks. La rétablir redémarre brièvement kache.
+
 Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
 Copie des éléments de {} depuis 1Password. Si 1Password demande s’il faut autoriser Passwords, choisissez Autoriser (et déverrouillez-le s’il est verrouillé).
 
@@ -2969,6 +2984,12 @@ Atténuer l’écran intégré au repos
 Dim the display while you look away
 Assombrir l’écran quand vous regardez ailleurs
 
+Disable Copy-on-Write on index.db
+Désactiver la copie sur écriture sur index.db
+
+Disable copy-on-write
+Désactiver la copie sur écriture
+
 Disagree
 Je refuse
 
@@ -3198,6 +3219,9 @@ Dessin
 Drawn into each frame
 Dessiné dans chaque image
 
+Drive
+Disque
+
 Drive Setup
 Drive Setup
 
@@ -3209,6 +3233,9 @@ Disque :
 
 DriveSetup
 DriveSetup
+
+Drives
+Disques
 
 Drizzle
 Bruine
@@ -4777,6 +4804,9 @@ Réduire le retrait
 Indent More
 Augmenter le retrait
 
+Index file (Btrfs)
+Fichier d'index (Btrfs)
+
 Ink Colour
 Couleur de l’encre
 
@@ -5150,6 +5180,9 @@ Conservation de la clé dans Passwords (déverrouillez-le s’il le demande)…
 
 Keeping what’s done…
 Conservation de ce qui est fait…
+
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
+Contient la latence de lecture lorsque de lourdes écritures synchrones ou des discards saturent un disque NVMe, là où "none" par défaut sous Linux ne régule que l'écriture en arrière-plan (queue/scheduler).
 
 Kept
 Gardé
@@ -6230,6 +6263,9 @@ GPU NVIDIA (NVDEC)
 
 NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor. {}
 Le GPU NVIDIA décode H.264, HEVC, VP9 et AV1, 4K à 60 images par seconde avec peu de processeur. {}
+
+NVMe Scheduler
+Ordonnanceur NVMe
 
 NW
 NO
@@ -7760,6 +7796,9 @@ Les images peuvent être enregistrées en PNG, JPEG, WebP, BMP, TIFF ou GIF.
 Pictures, Movies and Music
 Images, films et musique
 
+Pieces on disk
+Morceaux sur le disque
+
 Pin
 Épingler
 
@@ -8603,6 +8642,9 @@ Au repos : rien de nouveau
 Restore
 Restaurer
 
+Restore Copy-on-Write on index.db
+Rétablir la copie sur écriture sur index.db
+
 Restore Defaults
 Rétablir les réglages
 
@@ -8611,6 +8653,9 @@ Restaurer des fichiers…
 
 Restore To…
 Restaurer vers…
+
+Restore copy-on-write
+Rétablir la copie sur écriture
 
 Restored as {}.
 Restauré sous {}.
@@ -8665,6 +8710,9 @@ Retour dans 1 seconde.
 
 Reverting in {} seconds.
 Retour dans {} secondes.
+
+Rewriting index.db…
+Réécriture d'index.db…
 
 Rich Text (RTF)…
 Texte enrichi (RTF)…
@@ -8758,6 +8806,9 @@ SE
 
 SQL
 SQL
+
+SQLite's random 4 KB writes fragment a copy-on-write file on Btrfs and slow clean-ups. Only index.db is changed; the store stays copy-on-write for reflinks. Briefly restarts kache.
+Les écritures aléatoires de 4 Ko de SQLite fragmentent les fichiers en copie sur écriture sur Btrfs et ralentissent le nettoyage. Seul index.db est modifié ; le dépôt la conserve pour les reflinks. Redémarre brièvement kache.
 
 SSD temperature
 Température du SSD
@@ -8869,6 +8920,9 @@ Planifié
 
 Scheduler
 Ordonnanceur
+
+Scheduler now
+Ordonnanceur actuel
 
 Scientific Keypad
 Pavé scientifique
@@ -9441,6 +9495,9 @@ Taille
 Size:
 Taille :
 
+Skip syncing the index to disk
+Ne pas synchroniser l'index sur le disque
+
 Skip this step
 Passer cette étape
 
@@ -9658,6 +9715,12 @@ Lancement de l’agent…
 
 Starting…
 Démarrage…
+
+Starts flushing
+Début du vidage
+
+Starts flushing writes at 256 MB and caps them at 1 GB, instead of letting gigabytes pile up and stall reads or Btrfs commits (vm.dirty_bytes).
+Commence à vider les écritures dès 256 Mo et les plafonne à 1 Go, au lieu de laisser des gigaoctets s'accumuler et bloquer les lectures ou les validations Btrfs (vm.dirty_bytes).
 
 Starts:
 Début :
@@ -10745,6 +10808,9 @@ Ce n’est pas la session de l’ordinateur, celui-ci ne redémarre donc pas.
 This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 Ce noyau ne peut pas tenir un disque à une limite propre (Linux 6.2 et suivants le peuvent).
 
+This kernel doesn't offer the kyber I/O scheduler on this computer's NVMe drives.
+Ce noyau ne propose pas l'ordonnanceur d'E/S kyber sur les disques NVMe de cet ordinateur.
+
 This kernel has one way of preempting only: it wasn't built to be told another.
 Ce noyau n’a qu’une façon de préempter : il n’a pas été compilé pour en recevoir une autre.
 
@@ -11468,6 +11534,9 @@ Utiliser une clé déjà dans Passwords
 Use the Usual Order
 Utiliser l’ordre habituel
 
+Use the kyber I/O scheduler on NVMe drives
+Utiliser l'ordonnanceur d'E/S kyber sur les disques NVMe
+
 Use this account
 Utiliser ce compte
 
@@ -12119,6 +12188,9 @@ Retour à la ligne
 Write Disk Image…
 Écrire une image disque…
 
+Writeback
+Écriture différée
+
 Writes
 Écritures
 
@@ -12658,6 +12730,9 @@ non
 
 no display ports
 aucun port d’écran
+
+no limit
+aucune limite
 
 no limit to its space
 sans limite d’espace
@@ -13451,6 +13526,9 @@ il y a {} jours
 
 {} dpi as it comes
 {} ppp d’origine
+
+{} extents
+{} segments
 
 {} for each
 {} pour chacun

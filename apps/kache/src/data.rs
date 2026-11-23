@@ -287,6 +287,16 @@ pub fn pool(dir: &std::path::Path, permits: Option<u32>) -> Option<Pool> {
     Some(Pool { size, compiles: locked("permits"), tests: locked("tests"), waiting: count("waiters").max(count("queue")) })
 }
 
+/// Status of kache's SQLite `index.db` on disk (Btrfs copy-on-write and
+/// fragmentation).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct IndexFile {
+    pub btrfs: bool,
+    pub nocow: bool,
+    pub size: u64,
+    pub extents: Option<u64>,
+}
+
 /// Everything shown, read at once.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Snapshot {
@@ -306,6 +316,8 @@ pub struct Snapshot {
     /// whether its budget counts that too (`count_held_in_max_size`).
     pub held_now: Option<u64>,
     pub counts_held: bool,
+    /// `index.db` filesystem state (None when `index.db` does not exist yet).
+    pub index_file: Option<IndexFile>,
 }
 
 /// How long kache's trigger takes a sweep's held bytes as still held
@@ -359,7 +371,50 @@ pub fn read() -> Snapshot {
     let held = crate::held::held(&dir);
     let held_now = held_now(&dir, now);
     let counts_held = settings_at(&config_path(), "count_held_in_max_size").is_some_and(|v| v.trim() == "true");
-    Snapshot { unit, daemon, cleanup, day, recent, pool, held, held_now, counts_held }
+    let index_file = read_index_file(&dir);
+    Snapshot { unit, daemon, cleanup, day, recent, pool, held, held_now, counts_held, index_file }
+}
+
+/// Inspect `dir/index.db` on disk: size, whether it lives on Btrfs, and if so
+/// whether `FS_NOCOW_FL` is set and how many extents it spans.
+pub fn read_index_file(dir: &std::path::Path) -> Option<IndexFile> {
+    let path = dir.join("index.db");
+    let meta = std::fs::symlink_metadata(&path).ok()?;
+    if !meta.file_type().is_file() {
+        return None;
+    }
+    let btrfs = olo_system::btrfs::is_btrfs(&path);
+    let nocow = btrfs && olo_system::btrfs::is_nocow(&path).unwrap_or(false);
+    let extents = if btrfs { olo_system::btrfs::extents(&path).ok() } else { None };
+    Some(IndexFile { btrfs, nocow, size: meta.len(), extents })
+}
+
+/// Disable (`nocow = true`) or restore (`nocow = false`) copy-on-write on
+/// kache's `index.db` (stopping and restarting `kache.service` if running).
+pub fn set_index_nocow(nocow: bool) -> Result<String, String> {
+    if demo() {
+        return Ok(olo_kit::words::tr(if nocow { "Disabled copy-on-write on index.db (made up)." } else { "Restored copy-on-write on index.db (made up)." }).into());
+    }
+    let path = cache_dir().join("index.db");
+    olo_system::btrfs::rewrite_file_nocow_with_service(&path, nocow, Some(UNIT), &mut |_, _| {})?;
+    Ok(olo_kit::words::tr(if nocow { "Disabled copy-on-write on index.db and restarted kache." } else { "Restored copy-on-write on index.db and restarted kache." }).into())
+}
+
+/// Set `[cache] index_mode` to `"off"` (`off = true`) or remove it (returning
+/// to kache's default `"auto"`), then restart `kache.service` if running.
+pub fn set_index_mode(off: bool) -> Result<String, String> {
+    if demo() {
+        return Ok(olo_kit::words::tr(if off { "Set index_mode = off (made up)." } else { "Restored default index_mode (made up)." }).into());
+    }
+    let mut values = settings();
+    if let Some(i) = SETTINGS.iter().position(|s| s.key == "index_mode") {
+        values[i] = off.then(|| "off".to_owned());
+    }
+    save_settings(&values)?;
+    if olo_system::systemd::user_unit(UNIT).is_ok_and(|u| u.loaded && u.running()) {
+        let _ = service("RestartUnit")?;
+    }
+    Ok(olo_kit::words::tr(if off { "Set index_mode = off and restarted kache." } else { "Restored default index_mode and restarted kache." }).into())
 }
 
 /// The live build log, read as it grows: what was read is kept, and each
@@ -668,6 +723,14 @@ pub enum Kind {
     Size,
     Number,
     Switch,
+    /// String mode toggled between `"off"` (checked) and unset / default.
+    IndexModeOff,
+}
+
+impl Kind {
+    pub fn is_switch(self) -> bool {
+        matches!(self, Kind::Switch | Kind::IndexModeOff)
+    }
 }
 
 /// The settings Kache offers, in order.
@@ -683,6 +746,13 @@ pub const SETTINGS: &[Setting] = &[
     Setting { key: "gc_max_age_hours", label: "Age limit", about: "How long an entry may go unused before a clean-up takes it.", kind: Kind::Number, default: "none" },
     Setting { key: "auto_clean_idle_targets_days", label: "Idle target folders", about: "How long a build's target folder may go unused before it's cleaned.", kind: Kind::Number, default: "never" },
     Setting { key: "auto_clean_orphaned_targets", label: "", about: "Clean target folders whose project is gone", kind: Kind::Switch, default: "true" },
+    Setting {
+        key: "index_mode",
+        label: "Skip syncing the index to disk",
+        about: "Avoids an fsync on every build (index_mode = off). Safe on a laptop because index.db is a rebuildable cache index.",
+        kind: Kind::IndexModeOff,
+        default: "auto",
+    },
     Setting {
         key: "scheduler_permits",
         label: "Compiles at once",
@@ -791,7 +861,10 @@ pub fn settings() -> Vec<Option<String>> {
 
 /// Whether a switch is on: as set, else kache's own.
 pub fn switched(s: &Setting, value: Option<&str>) -> bool {
-    value.unwrap_or(s.default) == "true"
+    match s.kind {
+        Kind::IndexModeOff => value.is_some_and(|v| v.trim().eq_ignore_ascii_case("off")),
+        _ => value.unwrap_or(s.default) == "true",
+    }
 }
 
 /// `values` (None: kache's own) written into the file's `[cache]`, the rest
@@ -826,6 +899,10 @@ pub fn set_in(text: &str, values: &[Option<String>]) -> Result<String, String> {
         cache[s.key] = match s.kind {
             Kind::Number => toml_edit::value(v.parse::<i64>().map_err(|_| olo_kit::tr!("{}: a whole number, please", name))?),
             Kind::Switch => toml_edit::value(v == "true"),
+            Kind::IndexModeOff => match v.to_ascii_lowercase().as_str() {
+                "off" | "auto" | "conservative" => toml_edit::value(v.to_ascii_lowercase()),
+                _ => return Err(olo_kit::tr!("{}: expected auto, conservative, or off", name)),
+            },
             Kind::Size => {
                 if !size_reads(v) {
                     return Err(olo_kit::tr!("{}: a size such as 95GiB, please", name));
@@ -912,6 +989,11 @@ pub fn made_up(now: u64) -> Snapshot {
         held,
         held_now: Some(41_000_000_000),
         counts_held: false,
+        index_file: Some(if std::env::var("OLO_KACHE_DEMO").is_ok_and(|v| v == "nocow") {
+            IndexFile { btrfs: true, nocow: true, size: 1_650_000_000, extents: Some(12) }
+        } else {
+            IndexFile { btrfs: true, nocow: false, size: 1_650_000_000, extents: Some(250_128) }
+        }),
     }
 }
 
@@ -1090,6 +1172,14 @@ mod tests {
         let s = |k: &str| SETTINGS.iter().find(|s| s.key == k).unwrap();
         assert!(switched(s("scheduler_dynamic"), None) && !switched(s("scheduler_dynamic"), Some("false")));
         assert!(!switched(s("count_held_in_max_size"), None) && switched(s("count_held_in_max_size"), Some("true")));
+        assert!(!switched(s("index_mode"), None) && !switched(s("index_mode"), Some("conservative")) && switched(s("index_mode"), Some("off")));
+        let mut values = vec![None; SETTINGS.len()];
+        let at = SETTINGS.iter().position(|x| x.key == "index_mode").unwrap();
+        values[at] = Some("off".into());
+        let out = set_in("[cache]\nauto_recover_targets = true\n", &values).unwrap();
+        assert!(out.contains("index_mode = \"off\"") && out.contains("auto_recover_targets = true"), "{out}");
+        values[at] = None;
+        assert!(!set_in(&out, &values).unwrap().contains("index_mode"));
     }
 
     /// Each miss's cause from its key against the same crate's last.

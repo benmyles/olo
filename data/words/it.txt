@@ -72,6 +72,9 @@ Impossibile leggere /etc/hosts: {}
 1 day before
 1 giorno prima
 
+1 extent
+1 extent
+
 1 hour
 1 ora
 
@@ -1276,6 +1279,9 @@ Automaticamente
 Automatically,
 Automaticamente,
 
+Avoids an fsync on every build (index_mode = off). Safe on a laptop because index.db is a rebuildable cache index.
+Evita un fsync a ogni compilazione (index_mode = off). Sicuro su un portatile perché index.db è un indice di cache ricostruibile.
+
 BBR’s model
 Modello di BBR
 
@@ -1759,6 +1765,9 @@ Impossibile ripristinare {} e altri {}.
 
 Can’t come back as it was: {}.
 Impossibile ripristinare {}.
+
+Cap unwritten data in memory
+Limita i dati non ancora scritti in memoria
 
 Caps Lock is another Control key
 Usa Blocco maiuscole come secondo tasto Control
@@ -2471,6 +2480,12 @@ Copia il codice appena ricevuto
 Copy to clipboard
 Copia negli appunti
 
+Copy-on-write
+Copy-on-write
+
+Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache.
+Copy-on-write è disattivato su index.db per evitare frammentazione Btrfs; l'archivio mantiene copy-on-write per i reflink. Ripristinarlo riavvia brevemente kache.
+
 Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
 Copia degli elementi di {} da 1Password. Se 1Password chiede di autorizzare Passwords, scegli Consenti. Sbloccalo se necessario.
 
@@ -2969,6 +2984,12 @@ Attenua lo schermo integrato a riposo
 Dim the display while you look away
 Riduci la luminosità quando distogli lo sguardo
 
+Disable Copy-on-Write on index.db
+Disattiva copy-on-write su index.db
+
+Disable copy-on-write
+Disattiva copy-on-write
+
 Disagree
 Non accetto
 
@@ -3198,6 +3219,9 @@ Disegno
 Drawn into each frame
 Disegnato in ogni fotogramma
 
+Drive
+Unità
+
 Drive Setup
 Drive Setup
 
@@ -3209,6 +3233,9 @@ Unità:
 
 DriveSetup
 DriveSetup
+
+Drives
+Unità
 
 Drizzle
 Pioviggine
@@ -4777,6 +4804,9 @@ Riduci rientro
 Indent More
 Aumenta rientro
 
+Index file (Btrfs)
+File indice (Btrfs)
+
 Ink Colour
 Colore dell’inchiostro
 
@@ -5150,6 +5180,9 @@ Salvataggio della chiave in Passwords (sbloccalo se richiesto)…
 
 Keeping what’s done…
 Salvataggio dei progressi…
+
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
+Mantiene contenuta la latenza di lettura quando scritture sincrone o discard intensi saturano un'unità NVMe, dove il valore predefinito "none" di Linux limita solo la scrittura in background (queue/scheduler).
 
 Kept
 Conservati
@@ -6230,6 +6263,9 @@ GPU NVIDIA (NVDEC)
 
 NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor. {}
 La GPU NVIDIA decodifica H.264, HEVC, VP9 e AV1, anche in 4K a 60 fotogrammi al secondo con poco uso della CPU. {}
+
+NVMe Scheduler
+Scheduler NVMe
 
 NW
 NO
@@ -7760,6 +7796,9 @@ Puoi salvare le immagini in formato PNG, JPEG, WebP, BMP, TIFF o GIF.
 Pictures, Movies and Music
 Immagini, filmati e musica
 
+Pieces on disk
+Frammenti su disco
+
 Pin
 Fissa
 
@@ -8603,6 +8642,9 @@ A riposo: nessun nuovo contenuto
 Restore
 Ripristina
 
+Restore Copy-on-Write on index.db
+Ripristina copy-on-write su index.db
+
 Restore Defaults
 Ripristina valori
 
@@ -8611,6 +8653,9 @@ Ripristina file…
 
 Restore To…
 Ripristina in…
+
+Restore copy-on-write
+Ripristina copy-on-write
 
 Restored as {}.
 Ripristinato come {}.
@@ -8665,6 +8710,9 @@ Ripristino tra 1 secondo.
 
 Reverting in {} seconds.
 Ripristino tra {} secondi.
+
+Rewriting index.db…
+Riscrittura di index.db…
 
 Rich Text (RTF)…
 Testo formattato (RTF)…
@@ -8758,6 +8806,9 @@ SE
 
 SQL
 SQL
+
+SQLite's random 4 KB writes fragment a copy-on-write file on Btrfs and slow clean-ups. Only index.db is changed; the store stays copy-on-write for reflinks. Briefly restarts kache.
+Le scritture casuali da 4 KB di SQLite frammentano i file copy-on-write su Btrfs e rallentano le pulizie. Viene modificato solo index.db; l'archivio mantiene copy-on-write per i reflink. Riavvia brevemente kache.
 
 SSD temperature
 Temperatura SSD
@@ -8869,6 +8920,9 @@ Pianificato
 
 Scheduler
 Scheduler
+
+Scheduler now
+Scheduler attuale
 
 Scientific Keypad
 Tastierino scientifico
@@ -9441,6 +9495,9 @@ Dimensione
 Size:
 Dimensione:
 
+Skip syncing the index to disk
+Non sincronizzare l'indice su disco
+
 Skip this step
 Salta questo passaggio
 
@@ -9658,6 +9715,12 @@ Avvio dell’agente…
 
 Starting…
 Avvio…
+
+Starts flushing
+Avvia svuotamento
+
+Starts flushing writes at 256 MB and caps them at 1 GB, instead of letting gigabytes pile up and stall reads or Btrfs commits (vm.dirty_bytes).
+Avvia lo svuotamento delle scritture a 256 MB e le limita a 1 GB, invece di lasciare accumulare gigabyte che bloccano letture o commit Btrfs (vm.dirty_bytes).
 
 Starts:
 Inizio:
@@ -10745,6 +10808,9 @@ Il riavvio è possibile solo dalla sessione locale del computer.
 This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 Questo kernel non può imporre un limite per singolo disco. La funzione richiede Linux 6.2 o successivo.
 
+This kernel doesn't offer the kyber I/O scheduler on this computer's NVMe drives.
+Questo kernel non offre lo scheduler di I/O kyber sulle unità NVMe di questo computer.
+
 This kernel has one way of preempting only: it wasn't built to be told another.
 Il kernel è stato compilato con una sola modalità di preemption.
 
@@ -11468,6 +11534,9 @@ Usa una chiave già salvata in Passwords
 Use the Usual Order
 Usa l’ordine abituale
 
+Use the kyber I/O scheduler on NVMe drives
+Usa lo scheduler di I/O kyber sulle unità NVMe
+
 Use this account
 Usa questo account
 
@@ -12119,6 +12188,9 @@ A capo automatico
 Write Disk Image…
 Scrivi immagine disco…
 
+Writeback
+Scrittura differita
+
 Writes
 Scritture
 
@@ -12658,6 +12730,9 @@ no
 
 no display ports
 nessuna porta video
+
+no limit
+nessun limite
 
 no limit to its space
 nessun limite di spazio
@@ -13451,6 +13526,9 @@ Download di {} non riuscito: {}
 
 {} dpi as it comes
 {} dpi di fabbrica
+
+{} extents
+{} extent
 
 {} for each
 {} ciascuno

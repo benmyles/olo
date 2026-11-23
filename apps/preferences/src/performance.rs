@@ -167,6 +167,21 @@ fn made_up_kernel() -> tuning::State {
             may_wait: 15_355_826_176,
             waiting: 30_195_712,
         },
+        dirty_writeback: Some(tuning::DirtyWriteback {
+            ram_bytes: 66_827_145_216,
+            bg_bytes: tuning::DIRTY_BACKGROUND_BYTES,
+            dirty_bytes: tuning::DIRTY_BYTES,
+            bg_ratio: 0,
+            dirty_ratio: 0,
+            bg_now_bytes: tuning::DIRTY_BACKGROUND_BYTES,
+            limit_now_bytes: tuning::DIRTY_BYTES,
+            waiting_bytes: 30_195_712,
+            kept: true,
+        }),
+        nvme_scheduler: Some(tuning::NvmeScheduler {
+            kept: true,
+            disks: vec![tuning::NvmeDisk { name: "nvme0n1".into(), model: "SKHynix HFS002TFM9X179N".into(), scheduler: "kyber".into(), has_kyber: true }],
+        }),
         bbr3: Some(tuning::Bbr3 {
             control: "bbr3".into(),
             loaded: true,
@@ -277,15 +292,20 @@ impl State {
 }
 
 /// Performance's tabs.
-pub const TABS: [&str; 4] = ["Supervisor", "Watchdog", "Scheduler", "Kernel"];
-/// The Kernel tab's place among them.
+pub const TABS: [&str; 5] = ["Supervisor", "Watchdog", "Scheduler", "Kernel", "Disks"];
+/// The Kernel and Disks tabs' places among them (both read `tuning::State`).
 const KERNEL_TAB: usize = 3;
+const DISKS_TAB: usize = 4;
+
+fn is_kernel_tab(tab: usize) -> bool {
+    tab == KERNEL_TAB || tab == DISKS_TAB
+}
 
 /// Performance shown on tab `name` (`--tab`).
 pub fn show_tab(st: &mut State, name: &str) {
     if let Some(i) = TABS.iter().position(|t| t.eq_ignore_ascii_case(name)) {
         st.tab = i;
-        st.kernel.show(i == KERNEL_TAB);
+        st.kernel.show(is_kernel_tab(i));
     }
 }
 
@@ -316,9 +336,10 @@ fn set_kernel(shared: Arc<Mutex<Kernel>>, proxy: olo_kit::Proxy, setting: Settin
         .expect("thread");
 }
 
-/// A size in words ("16 MB", "14.3 GB").
+/// A size in words ("16 MB", "1 GB", "14.3 GB").
 fn size(bytes: u64) -> String {
     match bytes {
+        b if b >= 1 << 30 && b % (1 << 30) == 0 => format!("{} GB", b >> 30),
         b if b >= 1 << 30 => format!("{:.1} GB", b as f64 / (1u64 << 30) as f64),
         b if b >= 1 << 20 => format!("{:.0} MB", b as f64 / (1u64 << 20) as f64),
         b => format!("{:.0} KB", b as f64 / 1024.0),
@@ -407,6 +428,28 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
         });
     }
     let d = &s.slow_disks;
+    let may_wait = if d.kept {
+        olo_kit::tr!("{} for each", size(tuning::SLOW_DISK_BYTES))
+    } else if d.may_wait > 0 {
+        format!("up to {}", size(d.may_wait))
+    } else {
+        olo_kit::words::tr("no limit").to_owned()
+    };
+    let mut slow_facts = vec![("May wait", may_wait)];
+    // (When Writeback is shown above on the same Disks tab, it already
+    // reports "Waiting now" for all disks; avoid repeating the same line.)
+    if s.dirty_writeback.is_none() {
+        slow_facts.push(("Waiting now", olo_kit::tr!("{}, all disks", size(d.waiting))));
+    }
+    slow_facts.push((
+        "Here",
+        match d.disks.as_slice() {
+            [] => "none".to_owned(),
+            disks => {
+                disks.iter().map(|k| format!("{}, {}", if k.model.is_empty() { &k.name } else { &k.model }, if k.limit.is_some() { "limited" } else { "not limited" })).collect::<Vec<_>>().join("; ")
+            }
+        },
+    ));
     boxes.push(if d.can {
         KernelBox {
             title: "Removable Disks",
@@ -417,21 +460,7 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             locked: false,
             doctor: false,
             about: olo_kit::words::tr("A copy to a stick or a card goes at the disk's own pace, so its progress is true and ejecting is quick.").into(),
-            facts: vec![
-                ("May wait", if d.kept { olo_kit::tr!("{} for each", size(tuning::SLOW_DISK_BYTES)) } else { format!("up to {}", size(d.may_wait)) }),
-                ("Waiting now", olo_kit::tr!("{}, all disks", size(d.waiting))),
-                (
-                    "Here",
-                    match d.disks.as_slice() {
-                        [] => "none".to_owned(),
-                        disks => disks
-                            .iter()
-                            .map(|k| format!("{}, {}", if k.model.is_empty() { &k.name } else { &k.model }, if k.limit.is_some() { "limited" } else { "not limited" }))
-                            .collect::<Vec<_>>()
-                            .join("; "),
-                    },
-                ),
-            ],
+            facts: slow_facts,
         }
     } else {
         KernelBox {
@@ -446,6 +475,71 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
             facts: Vec::new(),
         }
     });
+    if let Some(w) = &s.dirty_writeback {
+        let starts = if w.bg_bytes > 0 { size(w.bg_bytes) } else { format!("{}% ({})", w.bg_ratio, size(w.bg_now_bytes)) };
+        let limit = if w.dirty_bytes > 0 { size(w.dirty_bytes) } else { format!("{}% ({})", w.dirty_ratio, size(w.limit_now_bytes)) };
+        boxes.push(KernelBox {
+            title: "Writeback",
+            setting: Setting::DirtyWriteback,
+            label: "Cap unwritten data in memory",
+            on: Some(w.on()),
+            locked: false,
+            doctor: false,
+            about: olo_kit::words::tr("Starts flushing writes at 256 MB and caps them at 1 GB, instead of letting gigabytes pile up and stall reads or Btrfs commits (vm.dirty_bytes).").into(),
+            facts: vec![("Starts flushing", starts), ("Limit", limit), ("Waiting now", size(w.waiting_bytes)), ("At every start", olo_kit::words::tr(if w.kept { "yes" } else { "no" }).to_owned())],
+        });
+    }
+    if let Some(n) = &s.nvme_scheduler {
+        let shared_sched = n.disks.first().map(|d| d.scheduler.as_str()).filter(|first| n.disks.iter().all(|d| d.scheduler == *first));
+        let mut nvme_facts = Vec::new();
+        match (n.disks.as_slice(), shared_sched) {
+            ([], _) => nvme_facts.push(("Drives", "none".to_owned())),
+            (disks, Some(sched)) => {
+                let label = if disks.len() == 1 { "Drive" } else { "Drives" };
+                let names = disks.iter().map(|d| if d.model.is_empty() { d.name.as_str() } else { d.model.as_str() }).collect::<Vec<_>>().join(", ");
+                nvme_facts.push((label, names));
+                nvme_facts.push(("Scheduler now", sched.to_owned()));
+            }
+            (disks, None) => {
+                let names = disks
+                    .iter()
+                    .map(|d| {
+                        let name = if d.model.is_empty() { d.name.as_str() } else { d.model.as_str() };
+                        format!("{name} — {}", d.scheduler)
+                    })
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                nvme_facts.push(("Drives", names));
+            }
+        }
+        nvme_facts.push(("At every start", olo_kit::words::tr(if n.kept { "yes" } else { "no" }).to_owned()));
+        boxes.push(if n.can() {
+            KernelBox {
+                title: "NVMe Scheduler",
+                setting: Setting::NvmeScheduler,
+                label: "Use the kyber I/O scheduler on NVMe drives",
+                on: Some(n.on()),
+                locked: false,
+                doctor: false,
+                about: olo_kit::words::tr(
+                    "Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default \"none\" only throttles background writeback (queue/scheduler).",
+                )
+                .into(),
+                facts: nvme_facts,
+            }
+        } else {
+            KernelBox {
+                title: "NVMe Scheduler",
+                setting: Setting::NvmeScheduler,
+                label: "",
+                on: None,
+                locked: false,
+                doctor: false,
+                about: olo_kit::words::tr("This kernel doesn't offer the kyber I/O scheduler on this computer's NVMe drives.").into(),
+                facts: Vec::new(),
+            }
+        });
+    }
     if let Some(b) = &s.bbr3 {
         let o = b.on_it.clone();
         boxes.push(KernelBox {
@@ -568,10 +662,10 @@ fn kernel_boxes(s: &tuning::State, scheduled_by: Option<&str>) -> Vec<KernelBox>
     boxes
 }
 
-/// The Kernel tab: the kernel's settings Olo suggests and Olo's own
-/// pieces in it, each with its switch, what it does and its figures, in
-/// two columns.
-fn kernel_tab(ui: &mut Ui, shared: &Arc<Mutex<Kernel>>, scheduled_by: Option<&str>) {
+/// Render either the Kernel tab (processors on the left, Olo's kernel pieces
+/// on the right) or the Disks tab (writeback, NVMe scheduler and removable
+/// disks stacked cleanly in one column so everything fits 1280 × 800).
+fn kernel_tab(ui: &mut Ui, shared: &Arc<Mutex<Kernel>>, scheduled_by: Option<&str>, disks_only: bool) {
     let k = shared.lock().unwrap().clone();
     let Some(state) = k.state else { return ui.note("Reading…") };
     let p = theme::palette();
@@ -596,6 +690,15 @@ fn kernel_tab(ui: &mut Ui, shared: &Arc<Mutex<Kernel>>, scheduled_by: Option<&st
             ui.add(CheckBox::new(b.label, shown).id(format!("kernel-{}", setting.word())).enabled(enabled).on_toggle(move |on, _| set_kernel(shared.clone(), proxy.clone(), setting, *on)));
             // (Under the label, past the mark.)
             let rows: Vec<(SharedString, SharedString)> = b.facts.into_iter().map(|(l, v)| (SharedString::from(l), SharedString::from(v))).collect();
+            let about = StringView::new(b.about).dim(true).wrap(true);
+            let about_el: olo_kit::Element = if disks_only {
+                // (In the full-width Disks tab, cap the paragraph measure at
+                // 600 pt so descriptions wrap into balanced lines instead of
+                // running 120 characters wide. Opus's look.)
+                olo_kit::IntoElement::into_any_element(div().max_w(px(600.0)).child(about))
+            } else {
+                olo_kit::IntoElement::into_any_element(about)
+            };
             ui.add(
                 div()
                     .pl(px(m::MARK_SIZE + m::MARK_GAP))
@@ -605,7 +708,7 @@ fn kernel_tab(ui: &mut Ui, shared: &Arc<Mutex<Kernel>>, scheduled_by: Option<&st
                     // under the check box: nearer, the facts read as its
                     // next line. Opus's look.)
                     .gap(px(m::STACK))
-                    .child(StringView::new(b.about).dim(true).wrap(true))
+                    .child(about_el)
                     // (Its rows as far apart as the paragraph's lines: two
                     // boxes side by side with as many lines and rows
                     // between them are then as tall as each other.)
@@ -624,28 +727,7 @@ fn kernel_tab(ui: &mut Ui, shared: &Arc<Mutex<Kernel>>, scheduled_by: Option<&st
         let title = b.title;
         if last { ui.growing_bbox(title, build) } else { ui.bbox(title, build) }
     };
-    // The kernel's settings on the left, Olo's own pieces in it on the
-    // right; whose they all are under both, until a switch has something
-    // to say in its place.
-    let (settings, pieces): (Vec<KernelBox>, Vec<KernelBox>) =
-        kernel_boxes(&state, scheduled_by).into_iter().partition(|b| !matches!(b.setting, Setting::Bbr3 | Setting::GraphicsMemory | Setting::GraphicsPages));
-    // (One width for every box's labels, the tab's widest as it's shown,
-    // each a literal looked up: the values in one line down each
-    // column, and the two columns' alike.)
-    let shown: Vec<SharedString> = settings.iter().chain(&pieces).flat_map(|b| b.facts.iter().map(|(l, _)| olo_kit::words::of(SharedString::from(*l)))).collect();
-    let labels = olo_kit::widgets::dashboard::facts_label_width(shown.iter().map(|l| l.as_ref()));
-    let (settings_last, pieces_last) = (settings.len().saturating_sub(1), pieces.len().saturating_sub(1));
-    let left = ui.collect(|ui| settings.into_iter().enumerate().for_each(|(i, b)| one(ui, b, labels, i == settings_last)));
-    let right = ui.collect(|ui| pieces.into_iter().enumerate().for_each(|(i, b)| one(ui, b, labels, i == pieces_last)));
-    // (The columns as far apart as boxes stand over one another, their
-    // titles' room included: at `SPACING` the two read as one wall of
-    // boxes. Opus's look.)
-    let column = |items: Vec<olo_kit::Element>| div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).children(items);
-    // (The line under both columns, across them: with three boxes a
-    // side neither is the shorter one it used to stand under, and under
-    // the longer it made the window as tall as the smallest screen. Not
-    // `Ui::note`, which sets a note close under the control it is about:
-    // this is as far under the boxes as they are from each other.)
+    let is_disk = |s: Setting| matches!(s, Setting::DirtyWriteback | Setting::NvmeScheduler | Setting::SlowDisks);
     let said = |text: SharedString| olo_kit::IntoElement::into_any_element(StringView::new(text).dim(true).wrap(true));
     let line = match (&k.applying, &k.said) {
         (Some(_), _) => said(olo_kit::words::tr("Setting it: an administrator's password is asked…").into()),
@@ -653,6 +735,40 @@ fn kernel_tab(ui: &mut Ui, shared: &Arc<Mutex<Kernel>>, scheduled_by: Option<&st
         (None, Some(Ok(text))) => said(text.clone().into()),
         _ => said(olo_kit::words::tr("All these settings are for the whole computer, so changing one asks for an administrator's password.").into()),
     };
+    let all = kernel_boxes(&state, scheduled_by);
+    if disks_only {
+        let mut disk_boxes: Vec<KernelBox> = all.into_iter().filter(|b| is_disk(b.setting)).collect();
+        // Order: Writeback, NVMe Scheduler, Removable Disks.
+        disk_boxes.sort_by_key(|b| match b.setting {
+            Setting::DirtyWriteback => 0,
+            Setting::NvmeScheduler => 1,
+            Setting::SlowDisks => 2,
+            _ => 3,
+        });
+        let shown: Vec<SharedString> = disk_boxes.iter().flat_map(|b| b.facts.iter().map(|(l, _)| olo_kit::words::of(SharedString::from(*l)))).collect();
+        let labels = olo_kit::widgets::dashboard::facts_label_width(shown.iter().map(|l| l.as_ref()));
+        let items = ui.collect(|ui| disk_boxes.into_iter().for_each(|b| one(ui, b, labels, false)));
+        ui.add(div().flex().flex_col().gap(px(m::SPACING)).children(items).child(line));
+        return;
+    }
+    // Kernel tab: processor settings on the left, Olo's own pieces in it on
+    // the right; whose they all are under both, until a switch has something
+    // to say in its place.
+    let (settings, pieces): (Vec<KernelBox>, Vec<KernelBox>) =
+        all.into_iter().filter(|b| !is_disk(b.setting)).partition(|b| !matches!(b.setting, Setting::Bbr3 | Setting::GraphicsMemory | Setting::GraphicsPages));
+    // (One width for every box's labels, the tab's widest as it's shown,
+    // each a literal looked up: the values in one line down each
+    // column, and the two columns' alike.)
+    let shown: Vec<SharedString> = settings.iter().chain(&pieces).flat_map(|b| b.facts.iter().map(|(l, _)| olo_kit::words::of(SharedString::from(*l)))).collect();
+    let labels = olo_kit::widgets::dashboard::facts_label_width(shown.iter().map(|l| l.as_ref()));
+    let equalize = settings.len() == pieces.len();
+    let (settings_last, pieces_last) = (settings.len().saturating_sub(1), pieces.len().saturating_sub(1));
+    let left = ui.collect(|ui| settings.into_iter().enumerate().for_each(|(i, b)| one(ui, b, labels, equalize && i == settings_last)));
+    let right = ui.collect(|ui| pieces.into_iter().enumerate().for_each(|(i, b)| one(ui, b, labels, equalize && i == pieces_last)));
+    // (The columns as far apart as boxes stand over one another, their
+    // titles' room included: at `SPACING` the two read as one wall of
+    // boxes. Opus's look.)
+    let column = |items: Vec<olo_kit::Element>| div().flex_1().min_w_0().flex().flex_col().gap(px(m::SPACING)).children(items);
     ui.add(div().flex().flex_col().gap(px(m::SPACING)).child(div().flex().flex_row().gap(px(2.0 * m::STACK)).child(column(left)).child(column(right))).child(line));
 }
 
@@ -884,14 +1000,14 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let tab = st.tab;
     let scheduler = st.scheduler.clone();
     let kernel = st.kernel.shared.clone();
-    st.kernel.show(tab == KERNEL_TAB);
+    st.kernel.show(is_kernel_tab(tab));
     let items = ui.collect(|ui| {
-        if tab == KERNEL_TAB {
+        if is_kernel_tab(tab) {
             // (What's loaded over the kernel's scheduler, as the
             // Scheduler tab's reader last saw it: "LAVD" for Olo's.)
             let loaded = scheduler.lock().unwrap().state.clone().flatten().and_then(|s| s.loaded);
             let by = loaded.map(|ops| if ops.starts_with("lavd") { "LAVD".to_owned() } else { ops });
-            return kernel_tab(ui, &kernel, by.as_deref());
+            return kernel_tab(ui, &kernel, by.as_deref(), tab == DISKS_TAB);
         }
         if tab == 2 {
             scheduler_tab(ui, &scheduler);
@@ -1027,7 +1143,7 @@ pub fn ui(ui: &mut Ui, st: &mut State) {
     let pick = ui.on_view(|v, i: &usize, cx| {
         if let Some(st) = state_of(v) {
             st.tab = *i;
-            st.kernel.show(*i == KERNEL_TAB);
+            st.kernel.show(is_kernel_tab(*i));
         }
         cx.notify();
     });

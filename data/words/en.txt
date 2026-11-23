@@ -21,6 +21,7 @@
 1 Minute
 1 Second
 1 day before
+1 extent
 1 hour
 1 hour before
 1 minute
@@ -444,6 +445,7 @@ Automatic: {} for AV1 and VP9 (Fedora's driver has no H.264 or HEVC: Olo Doctor 
 Automatic: {} for every video (H.264, HEVC, VP9, AV1), 4K at 60 frames a second with a quarter of a core. {}
 Automatically
 Automatically,
+Avoids an fsync on every build (index_mode = off). Safe on a laptop because index.db is a rebuildable cache index.
 BBR’s model
 Back
 Back Up Now
@@ -607,6 +609,7 @@ Cancel Trimming
 Cancel echo from the speakers
 Can’t come back as it was: {} and {} more.
 Can’t come back as it was: {}.
+Cap unwritten data in memory
 Caps Lock is another Control key
 Capture Client Requests Again
 Capture debug information whenever a frame drops
@@ -864,6 +867,8 @@ Copy Version Info
 Copy a code no tab is waiting for
 Copy the Code That Just Came
 Copy to clipboard
+Copy-on-write
+Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache.
 Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
 Core
 Cores
@@ -1041,6 +1046,8 @@ Diagnostics…
 Diff
 Dim the built-in display when idle
 Dim the display while you look away
+Disable Copy-on-Write on index.db
+Disable copy-on-write
 Disagree
 Discard
 Discard Recording
@@ -1121,10 +1128,12 @@ Draw
 Draw tool
 Drawing
 Drawn into each frame
+Drive
 Drive Setup
 Drive {}:
 Drive:
 DriveSetup
+Drives
 Drizzle
 Drizzle and freezing drizzle
 Drizzle and freezing rain
@@ -1682,6 +1691,7 @@ Incoming call
 Incomplete expression
 Indent Less
 Indent More
+Index file (Btrfs)
 Ink Colour
 Input
 Input level
@@ -1815,6 +1825,7 @@ Keeping it in Passwords…
 Keeping the key in Passwords (unlock it if it asks)…
 Keeping what’s done…
 Keeps a build’s files in memory and running programs out of swap.
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
 Kept
 Kept Core
 Kept for this computer and set again at every start.
@@ -2191,6 +2202,7 @@ NNE
 NNW
 NVIDIA GPU (NVDEC)
 NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor. {}
+NVMe Scheduler
 NW
 Name
 Name looked up in
@@ -2744,6 +2756,7 @@ Picture
 Picture Size
 Pictures can be saved as PNG, JPEG, WebP, BMP, TIFF or GIF.
 Pictures, Movies and Music
+Pieces on disk
 Pin
 Pin as Main
 Pin it as the main window, or let it go
@@ -3048,9 +3061,11 @@ Restarting or stopping it leaves open sessions running.
 Restart…
 Resting: nothing new on it
 Restore
+Restore Copy-on-Write on index.db
 Restore Defaults
 Restore Files…
 Restore To…
+Restore copy-on-write
 Restored as {}.
 Restore…
 Restoring
@@ -3069,6 +3084,7 @@ Revert to Saved…
 Revert to the last saved version of “{}”?
 Reverting in 1 second.
 Reverting in {} seconds.
+Rewriting index.db…
 Rex
 Rex Server
 Rex Server on {}
@@ -3119,6 +3135,7 @@ Rust build output and downloaded crates
 S
 SE
 SQL
+SQLite's random 4 KB writes fragment a copy-on-write file on Btrfs and slow clean-ups. Only index.db is changed; the store stays copy-on-write for reflinks. Briefly restarts kache.
 SSD temperature
 SSE
 SSH Authentication
@@ -3159,6 +3176,7 @@ Scanning… {}, {}
 Schedule
 Scheduled
 Scheduler
+Scheduler now
 Scientific Keypad
 Score {} of 2000
 Screen
@@ -3367,6 +3385,7 @@ Site Settings
 Sixth folder
 Size
 Size:
+Skip syncing the index to disk
 Skip this step
 Sleep
 Sleet
@@ -3444,6 +3463,8 @@ Starting Up
 Starting over…
 Starting the agent…
 Starting…
+Starts flushing
+Starts flushing writes at 256 MB and caps them at 1 GB, instead of letting gigabytes pile up and stall reads or Btrfs commits (vm.dirty_bytes).
 Starts:
 State
 Stats
@@ -3821,6 +3842,7 @@ This is the recommended profile for this touchpad.
 This isn't an Olo backup.
 This isn't the session at the computer, so the computer isn't restarted.
 This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
+This kernel doesn't offer the kyber I/O scheduler on this computer's NVMe drives.
 This kernel has one way of preempting only: it wasn't built to be told another.
 This kernel's build hasn't been checked yet: Olo's module stays out until an Olo update checks it.
 This keyboard has no backlight.
@@ -4072,6 +4094,7 @@ Use a QR Code
 Use a Reset Credit…
 Use a key already in Passwords
 Use the Usual Order
+Use the kyber I/O scheduler on NVMe drives
 Use this account
 Use:
 User
@@ -4298,6 +4321,7 @@ Workspaces
 Worst
 Wrap Lines
 Write Disk Image…
+Writeback
 Writes
 Writing the backup’s lists…
 Writing to disk
@@ -4484,6 +4508,7 @@ misses, the last 24 hours
 ms
 no
 no display ports
+no limit
 no limit to its space
 no network: it goes on once there’s one
 no sessions open
@@ -4736,6 +4761,7 @@ your own picture
 {} didn’t say how its limits stand.
 {} different commands, of {} run
 {} dpi as it comes
+{} extents
 {} for each
 {} for the next hour
 {} for the next {} hours

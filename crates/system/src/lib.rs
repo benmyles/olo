@@ -14,6 +14,7 @@ pub mod backlight;
 pub mod battery;
 pub mod bluetooth;
 pub mod bolt;
+pub mod btrfs;
 pub mod caps;
 pub mod cores;
 pub mod cpu_tuning;

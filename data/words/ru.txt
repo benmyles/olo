@@ -76,6 +76,9 @@ other: Ещё {n}
 1 day before
 За 1 день
 
+1 extent
+1 экстент
+
 1 hour
 1 час
 
@@ -1288,6 +1291,9 @@ Automatically
 Automatically,
 Автоматически,
 
+Avoids an fsync on every build (index_mode = off). Safe on a laptop because index.db is a rebuildable cache index.
+Убирает fsync на каждой сборке (index_mode = off). Безопасно на ноутбуке, так как index.db — перестраиваемый индекс кэша.
+
 BBR’s model
 Модель BBR
 
@@ -1773,6 +1779,9 @@ Can’t come back as it was: {} and {} more.
 
 Can’t come back as it was: {}.
 Не удалось восстановить: {}.
+
+Cap unwritten data in memory
+Ограничить объём незаписанных данных в памяти
 
 Caps Lock is another Control key
 Использовать Caps Lock как ещё одну клавишу Control
@@ -2491,6 +2500,12 @@ Copy the Code That Just Came
 Copy to clipboard
 Копировать в буфер обмена
 
+Copy-on-write
+Copy-on-write
+
+Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache.
+Copy-on-write отключён для index.db, чтобы избежать фрагментации Btrfs; для хранилища он сохранён ради reflink. Восстановление ненадолго перезапустит kache.
+
 Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
 Копирование записей {} из 1Password. Если 1Password спросит о доступе для Passwords, выберите «Разрешить». При необходимости разблокируйте 1Password.
 
@@ -2989,6 +3004,12 @@ Dim the built-in display when idle
 Dim the display while you look away
 Затемнять экран, когда вы отворачиваетесь
 
+Disable Copy-on-Write on index.db
+Отключить copy-on-write для index.db
+
+Disable copy-on-write
+Отключить copy-on-write
+
 Disagree
 Не соглашаться
 
@@ -3220,6 +3241,9 @@ Drawing
 Drawn into each frame
 Рисуется в каждом кадре
 
+Drive
+Накопитель
+
 Drive Setup
 Drive Setup
 
@@ -3231,6 +3255,9 @@ Drive:
 
 DriveSetup
 DriveSetup
+
+Drives
+Накопители
 
 Drizzle
 Морось
@@ -4813,6 +4840,9 @@ Indent Less
 Indent More
 Увеличить отступ
 
+Index file (Btrfs)
+Файл индекса (Btrfs)
+
 Ink Colour
 Цвет чернил
 
@@ -5190,6 +5220,9 @@ Keeping the key in Passwords (unlock it if it asks)…
 
 Keeping what’s done…
 Сохранение выполненной части…
+
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
+Удерживает задержки чтения в норме при интенсивной синхронной записи или discard на NVMe, тогда как стандартный в Linux "none" ограничивает лишь фоновый сброс (queue/scheduler).
 
 Kept
 Сохранено
@@ -6270,6 +6303,9 @@ NVIDIA GPU (NVDEC)
 
 NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor. {}
 GPU NVIDIA декодирует H.264, HEVC, VP9 и AV1 в 4K при 60 кадрах/с с небольшой нагрузкой на процессор. {}
+
+NVMe Scheduler
+Планировщик NVMe
 
 NW
 СЗ
@@ -7804,6 +7840,9 @@ Pictures can be saved as PNG, JPEG, WebP, BMP, TIFF or GIF.
 Pictures, Movies and Music
 Изображения, фильмы и музыка
 
+Pieces on disk
+Фрагментов на диске
+
 Pin
 Закрепить
 
@@ -8647,6 +8686,9 @@ Resting: nothing new on it
 Restore
 Восстановить
 
+Restore Copy-on-Write on index.db
+Восстановить copy-on-write для index.db
+
 Restore Defaults
 Восстановить по умолчанию
 
@@ -8655,6 +8697,9 @@ Restore Files…
 
 Restore To…
 Восстановить в…
+
+Restore copy-on-write
+Восстановить copy-on-write
 
 Restored as {}.
 Восстановлено как {}.
@@ -8709,6 +8754,9 @@ Reverting in 1 second.
 
 Reverting in {} seconds.
 Возврат через {} с.
+
+Rewriting index.db…
+Перезапись index.db…
 
 Rich Text (RTF)…
 Форматированный текст (RTF)…
@@ -8802,6 +8850,9 @@ SE
 
 SQL
 SQL
+
+SQLite's random 4 KB writes fragment a copy-on-write file on Btrfs and slow clean-ups. Only index.db is changed; the store stays copy-on-write for reflinks. Briefly restarts kache.
+Случайная запись SQLite блоками по 4 КБ фрагментирует файлы copy-on-write на Btrfs и замедляет очистку. Меняется только index.db; хранилище остаётся с copy-on-write для reflink. Ненадолго перезапустит kache.
 
 SSD temperature
 Температура SSD
@@ -8913,6 +8964,9 @@ Scheduled
 
 Scheduler
 Планировщик
+
+Scheduler now
+Текущий планировщик
 
 Scientific Keypad
 Инженерная клавиатура
@@ -9487,6 +9541,9 @@ Size
 Size:
 Размер:
 
+Skip syncing the index to disk
+Не синхронизировать индекс с диском
+
 Skip this step
 Пропустить этот шаг
 
@@ -9708,6 +9765,12 @@ Starting the agent…
 
 Starting…
 Запуск…
+
+Starts flushing
+Начало сброса
+
+Starts flushing writes at 256 MB and caps them at 1 GB, instead of letting gigabytes pile up and stall reads or Btrfs commits (vm.dirty_bytes).
+Начинает сброс записи с 256 МБ и ограничивает буфер 1 ГБ, не давая гигабайтам накапливаться и тормозить чтение или коммиты Btrfs (vm.dirty_bytes).
 
 Starts:
 Начало:
@@ -10795,6 +10858,9 @@ This isn't the session at the computer, so the computer isn't restarted.
 This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 В этом ядре нельзя ограничивать диски по отдельности (нужен Linux 6.2 или новее).
 
+This kernel doesn't offer the kyber I/O scheduler on this computer's NVMe drives.
+Это ядро не поддерживает планировщик ввода-вывода kyber для NVMe-накопителей этого компьютера.
+
 This kernel has one way of preempting only: it wasn't built to be told another.
 Это ядро собрано с одним режимом вытеснения, переключить его нельзя.
 
@@ -11518,6 +11584,9 @@ Use a key already in Passwords
 Use the Usual Order
 Вернуть обычный порядок
 
+Use the kyber I/O scheduler on NVMe drives
+Использовать планировщик ввода-вывода kyber для NVMe
+
 Use this account
 Использовать этот аккаунт
 
@@ -12169,6 +12238,9 @@ Wrap Lines
 Write Disk Image…
 Записать образ диска…
 
+Writeback
+Обратная запись
+
 Writes
 Операции записи
 
@@ -12720,6 +12792,9 @@ no
 
 no display ports
 нет видеовыходов
+
+no limit
+без ограничения
 
 no limit to its space
 место не ограничено
@@ -13635,6 +13710,9 @@ other: {n} недели
 
 {} dpi as it comes
 Заводское значение: {} dpi
+
+{} extents
+{} экстентов
 
 {} for each
 по {} на каждый

@@ -103,7 +103,9 @@ impl Panel {
             "air-play" | "mirroring" | "screen-mirroring" | "apple-tv" | "tv" => Some(Panel::AirPlay),
             "wifi" | "wi-fi" | "networks" => Some(Panel::Network),
             "notification" | "dnd" | "do-not-disturb" => Some(Panel::Notifications),
-            "supervisor" | "responsiveness" | "watchdog" | "pointer-thread" | "input-thread" | "kernel" | "kernel-tuning" => Some(Panel::Performance),
+            "supervisor" | "responsiveness" | "watchdog" | "pointer-thread" | "input-thread" | "kernel" | "kernel-tuning" | "writeback" | "dirty-writeback" | "nvme" | "nvme-scheduler" => {
+                Some(Panel::Performance)
+            }
             "time" | "date" | "clock" | "date-time" => Some(Panel::DateTime),
             "languages" | "locale" | "region" | "translation" | "translations" | "language-region" => Some(Panel::Language),
             "open-with" | "file-types" | "filetypes" | "default-applications" => Some(Panel::DefaultApps),

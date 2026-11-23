@@ -72,6 +72,9 @@ other: +{n}
 1 day before
 1 dag van tevoren
 
+1 extent
+1 extent
+
 1 hour
 1 uur
 
@@ -1276,6 +1279,9 @@ Automatisch
 Automatically,
 Automatisch,
 
+Avoids an fsync on every build (index_mode = off). Safe on a laptop because index.db is a rebuildable cache index.
+Voorkomt een fsync bij elke build (index_mode = off). Veilig op een laptop omdat index.db een herstelbare cache-index is.
+
 BBR’s model
 BBR-model
 
@@ -1759,6 +1765,9 @@ Herstellen mislukt voor {} en nog {} andere.
 
 Can’t come back as it was: {}.
 Herstellen mislukt voor {}.
+
+Cap unwritten data in memory
+Ongeschreven gegevens in het geheugen begrenzen
 
 Caps Lock is another Control key
 Caps Lock als extra Control-toets gebruiken
@@ -2471,6 +2480,12 @@ Zojuist ontvangen code kopiëren
 Copy to clipboard
 Naar klembord kopiëren
 
+Copy-on-write
+Copy-on-write
+
+Copy-on-write is off on index.db to prevent Btrfs fragmentation; the store stays copy-on-write for reflinks. Restoring it briefly restarts kache.
+Copy-on-write staat uit voor index.db om Btrfs-fragmentatie te voorkomen; de opslag behoudt copy-on-write voor reflinks. Herstellen herstart kache kort.
+
 Copying the items in {} from 1Password. If 1Password asks whether to allow Passwords, choose Allow (and unlock it if it is locked).
 Onderdelen in {} uit 1Password kopiëren. Vraagt 1Password om toestemming voor Passwords, kies dan Toestaan. Ontgrendel 1Password zo nodig.
 
@@ -2969,6 +2984,12 @@ Ingebouwd scherm dimmen bij inactiviteit
 Dim the display while you look away
 Scherm dimmen als u wegkijkt
 
+Disable Copy-on-Write on index.db
+Copy-on-write voor index.db uitschakelen
+
+Disable copy-on-write
+Copy-on-write uitschakelen
+
 Disagree
 Niet akkoord
 
@@ -3198,6 +3219,9 @@ Tekenen
 Drawn into each frame
 Getekend in elk frame
 
+Drive
+Schijf
+
 Drive Setup
 Drive Setup
 
@@ -3209,6 +3233,9 @@ Schijf:
 
 DriveSetup
 DriveSetup
+
+Drives
+Schijven
 
 Drizzle
 Motregen
@@ -4777,6 +4804,9 @@ Inspringing verkleinen
 Indent More
 Inspringing vergroten
 
+Index file (Btrfs)
+Indexbestand (Btrfs)
+
 Ink Colour
 Inktkleur
 
@@ -5150,6 +5180,9 @@ Sleutel in Passwords bewaren (ontgrendel als daarom wordt gevraagd)…
 
 Keeping what’s done…
 Voortgang bewaren…
+
+Keeps read latency bounded when heavy synchronous writes or discards flood an NVMe drive, where Linux's default "none" only throttles background writeback (queue/scheduler).
+Houdt de leeslatentie laag wanneer zware synchrone schrijfacties of discards een NVMe-schijf overspoelen, waar Linux' standaard "none" alleen terugschrijven op de achtergrond afremt (queue/scheduler).
 
 Kept
 Bewaard
@@ -6230,6 +6263,9 @@ NVIDIA-GPU (NVDEC)
 
 NVIDIA's GPU decodes H.264, HEVC, VP9 and AV1, 4K at 60 frames a second with little of the processor. {}
 De NVIDIA-GPU decodeert H.264, HEVC, VP9 en AV1 in 4K met 60 beelden per seconde. De processor wordt nauwelijks belast. {}
+
+NVMe Scheduler
+NVMe-scheduler
 
 NW
 NW
@@ -7760,6 +7796,9 @@ U kunt afbeeldingen opslaan als PNG, JPEG, WebP, BMP, TIFF of GIF.
 Pictures, Movies and Music
 Afbeeldingen, films en muziek
 
+Pieces on disk
+Delen op schijf
+
 Pin
 Vastmaken
 
@@ -8603,6 +8642,9 @@ In rust: niets nieuws te tonen
 Restore
 Herstellen
 
+Restore Copy-on-Write on index.db
+Copy-on-write voor index.db herstellen
+
 Restore Defaults
 Standaard herstellen
 
@@ -8611,6 +8653,9 @@ Bestanden herstellen…
 
 Restore To…
 Herstellen naar…
+
+Restore copy-on-write
+Copy-on-write herstellen
 
 Restored as {}.
 Hersteld als {}.
@@ -8665,6 +8710,9 @@ Terugzetten over 1 seconde.
 
 Reverting in {} seconds.
 Terugzetten over {} seconden.
+
+Rewriting index.db…
+index.db opnieuw schrijven…
 
 Rich Text (RTF)…
 Opgemaakte tekst (RTF)…
@@ -8758,6 +8806,9 @@ ZO
 
 SQL
 SQL
+
+SQLite's random 4 KB writes fragment a copy-on-write file on Btrfs and slow clean-ups. Only index.db is changed; the store stays copy-on-write for reflinks. Briefly restarts kache.
+Willekeurige 4 KB-schrijfacties van SQLite fragmenteren een copy-on-write-bestand op Btrfs en vertragen opschoningen. Alleen index.db wordt gewijzigd; de opslag behoudt copy-on-write voor reflinks. Herstart kache kort.
 
 SSD temperature
 SSD-temperatuur
@@ -8869,6 +8920,9 @@ Gepland
 
 Scheduler
 Scheduler
+
+Scheduler now
+Huidige scheduler
 
 Scientific Keypad
 Wetenschappelijk toetsenblok
@@ -9441,6 +9495,9 @@ Grootte
 Size:
 Grootte:
 
+Skip syncing the index to disk
+Synchroniseren van de index naar schijf overslaan
+
 Skip this step
 Deze stap overslaan
 
@@ -9658,6 +9715,12 @@ Agent starten…
 
 Starting…
 Starten…
+
+Starts flushing
+Begint bij
+
+Starts flushing writes at 256 MB and caps them at 1 GB, instead of letting gigabytes pile up and stall reads or Btrfs commits (vm.dirty_bytes).
+Begint bij 256 MB met wegschrijven en begrenst dit op 1 GB, in plaats van gigabytes op te stapelen die leesacties of Btrfs-commits vertragen (vm.dirty_bytes).
 
 Starts:
 Begin:
@@ -10745,6 +10808,9 @@ De computer wordt alleen vanuit de lokale sessie herstart.
 This kernel can't hold a disk to a limit of its own (Linux 6.2 and later can).
 Deze kernel kan geen limiet per schijf instellen. Dat kan vanaf Linux 6.2.
 
+This kernel doesn't offer the kyber I/O scheduler on this computer's NVMe drives.
+Deze kernel biedt de kyber I/O-scheduler niet aan voor de NVMe-schijven van deze computer.
+
 This kernel has one way of preempting only: it wasn't built to be told another.
 Deze kernel is gebouwd met één vaste preëmptiemodus.
 
@@ -11468,6 +11534,9 @@ Een al in Passwords bewaarde sleutel gebruiken
 Use the Usual Order
 Gebruikelijke volgorde gebruiken
 
+Use the kyber I/O scheduler on NVMe drives
+De kyber I/O-scheduler gebruiken voor NVMe-schijven
+
 Use this account
 Dit account gebruiken
 
@@ -12119,6 +12188,9 @@ Regels afbreken
 Write Disk Image…
 Schijfkopie schrijven…
 
+Writeback
+Terugschrijven
+
 Writes
 Schrijfbewerkingen
 
@@ -12658,6 +12730,9 @@ nee
 
 no display ports
 geen beeldschermpoorten
+
+no limit
+geen limiet
 
 no limit to its space
 geen opslaglimiet
@@ -13451,6 +13526,9 @@ maximaal {} cd/m², {} over het hele scherm
 
 {} dpi as it comes
 standaard {} dpi
+
+{} extents
+{} extents
 
 {} for each
 {} per stuk

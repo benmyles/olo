@@ -21,6 +21,12 @@
 //!   a removable disk (its `bdi/strict_limit` and `bdi/max_bytes`, set by
 //!   a udev rule as each is plugged in), so a copy's progress is true and
 //!   ejecting is quick.
+//! - [`DirtyWriteback`]: byte caps (`vm.dirty_background_bytes` 256 MiB,
+//!   `vm.dirty_bytes` 1 GiB) on machines with large RAM (>= 12 GiB) so
+//!   builds stream writes steadily instead of flushing gigabytes at once.
+//! - [`NvmeScheduler`]: the `kyber` I/O scheduler on non-rotational NVMe
+//!   drives (udev rule + sysfs), keeping read latency bounded during
+//!   heavy synchronous writes and discards.
 //!
 //! Beside them, Olo's own pieces in the kernel, shown in the same place:
 //! [`Bbr3`] (TCP's congestion control, a module), [`GraphicsMemory`] (a
@@ -38,13 +44,16 @@ pub enum Setting {
     Preemption,
     ShortTurns,
     SlowDisks,
+    DirtyWriteback,
+    NvmeScheduler,
     Bbr3,
     GraphicsMemory,
     GraphicsPages,
 }
 
 impl Setting {
-    pub const ALL: [Setting; 6] = [Setting::Preemption, Setting::ShortTurns, Setting::SlowDisks, Setting::Bbr3, Setting::GraphicsMemory, Setting::GraphicsPages];
+    pub const ALL: [Setting; 8] =
+        [Setting::Preemption, Setting::ShortTurns, Setting::SlowDisks, Setting::DirtyWriteback, Setting::NvmeScheduler, Setting::Bbr3, Setting::GraphicsMemory, Setting::GraphicsPages];
 
     /// As the command line says it.
     pub fn word(self) -> &'static str {
@@ -52,6 +61,8 @@ impl Setting {
             Setting::Preemption => "preemption",
             Setting::ShortTurns => "short-turns",
             Setting::SlowDisks => "slow-disks",
+            Setting::DirtyWriteback => "dirty-writeback",
+            Setting::NvmeScheduler => "nvme-scheduler",
             Setting::Bbr3 => "bbr3",
             Setting::GraphicsMemory => "graphics-memory",
             Setting::GraphicsPages => "graphics-pages",
@@ -70,6 +81,23 @@ pub const PREEMPT_KEY: &str = "preempt";
 /// What may wait in memory for a removable disk: 16 MB, about a second
 /// of a USB stick's writing.
 pub const SLOW_DISK_BYTES: u64 = 16 << 20;
+
+/// Byte caps on unwritten dirty pages for large-RAM machines: background
+/// flushing begins at 256 MiB, and writers throttle at 1 GiB.
+pub const DIRTY_BACKGROUND_BYTES: u64 = 256 << 20;
+pub const DIRTY_BYTES: u64 = 1 << 30;
+/// Minimum total RAM before byte caps are offered (below 12 GiB, Linux's
+/// default 20% dirty_ratio can already be close to or below 1 GiB).
+pub const DIRTY_MIN_RAM_BYTES: u64 = 12 << 30;
+/// Linux's default percentage thresholds, restored when turned off.
+pub const DIRTY_DEFAULT_BACKGROUND_RATIO: u64 = 10;
+pub const DIRTY_DEFAULT_RATIO: u64 = 20;
+pub const DIRTY_WRITEBACK_CONF: &str = "# Olo: cap unwritten data in memory so writes stream to disk smoothly\n# instead of flushing gigabytes at once (Preferences ▸ Performance ▸ Disks;\n# kernel/TUNING.md).\nvm.dirty_background_bytes = 268435456\nvm.dirty_bytes = 1073741824\n";
+
+/// I/O scheduler Olo suggests for non-rotational NVMe drives.
+pub const NVME_SCHEDULER: &str = "kyber";
+/// The udev rule that selects kyber for each NVMe drive at start and hot-plug.
+pub const NVME_SCHEDULER_RULE: &str = include_str!("../../../data/udev/62-olo-nvme-scheduler.rules");
 
 /// A short turn: the scheduler's base slice before the kernel lengthens
 /// it for the number of processors (`sysctl_sched_base_slice`'s 0.7 ms,
@@ -190,6 +218,35 @@ impl Places {
     /// A disk's limit as a share of the kernel's whole (100: none).
     pub fn max_ratio(&self, name: &str) -> PathBuf {
         self.at("/sys/block").join(name).join("bdi/max_ratio")
+    }
+
+    pub fn dirty_writeback_conf(&self) -> PathBuf {
+        self.at("/etc/sysctl.d/85-olo-dirty-writeback.conf")
+    }
+
+    pub fn vm_dirty_background_bytes(&self) -> PathBuf {
+        self.at("/proc/sys/vm/dirty_background_bytes")
+    }
+
+    pub fn vm_dirty_bytes(&self) -> PathBuf {
+        self.at("/proc/sys/vm/dirty_bytes")
+    }
+
+    pub fn vm_dirty_background_ratio(&self) -> PathBuf {
+        self.at("/proc/sys/vm/dirty_background_ratio")
+    }
+
+    pub fn vm_dirty_ratio(&self) -> PathBuf {
+        self.at("/proc/sys/vm/dirty_ratio")
+    }
+
+    pub fn nvme_scheduler_rule(&self) -> PathBuf {
+        self.at("/etc/udev/rules.d/62-olo-nvme-scheduler.rules")
+    }
+
+    /// A block device's I/O scheduler choice (`name`: "nvme0n1").
+    pub fn block_scheduler(&self, name: &str) -> PathBuf {
+        self.at("/sys/block").join(name).join("queue/scheduler")
     }
 }
 
@@ -456,6 +513,167 @@ pub fn slow_disks(places: &Places) -> SlowDisks {
     SlowDisks { can, kept, disks, may_wait: pages("nr_dirty_threshold"), waiting: pages("nr_dirty") + pages("nr_writeback") }
 }
 
+/// Byte caps on unwritten dirty pages in memory (`vm.dirty_background_bytes`,
+/// `vm.dirty_bytes`).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct DirtyWriteback {
+    /// Total RAM on this machine, in bytes (`/proc/meminfo`'s `MemTotal`).
+    pub ram_bytes: u64,
+    /// Current sysctl settings (setting `*_bytes` zeroes `*_ratio` and vice versa).
+    pub bg_bytes: u64,
+    pub dirty_bytes: u64,
+    pub bg_ratio: u64,
+    pub dirty_ratio: u64,
+    /// Effective thresholds now from `/proc/vmstat`, in bytes.
+    pub bg_now_bytes: u64,
+    pub limit_now_bytes: u64,
+    /// Currently waiting to be written (`nr_dirty + nr_writeback`), in bytes.
+    pub waiting_bytes: u64,
+    /// Olo's sysctl file (`/etc/sysctl.d/85-olo-dirty-writeback.conf`) is in place.
+    pub kept: bool,
+}
+
+impl DirtyWriteback {
+    /// Capped at Olo's byte limits, now and at every start.
+    pub fn on(&self) -> bool {
+        self.kept && self.bg_bytes == DIRTY_BACKGROUND_BYTES && self.dirty_bytes == DIRTY_BYTES
+    }
+
+    /// Someone already set custom dirty limits of their own without Olo's file:
+    /// theirs to keep (Doctor doesn't nag).
+    pub fn chosen_otherwise(&self) -> bool {
+        !self.kept && (self.bg_bytes > 0 || self.dirty_bytes > 0 || self.bg_ratio != DIRTY_DEFAULT_BACKGROUND_RATIO || self.dirty_ratio != DIRTY_DEFAULT_RATIO)
+    }
+}
+
+/// Total RAM from `/proc/meminfo` (`MemTotal: N kB`), in bytes.
+fn mem_total(places: &Places) -> Option<u64> {
+    let text = read(&places.at("/proc/meminfo"))?;
+    let kb: u64 = text.lines().find_map(|l| l.strip_prefix("MemTotal:")?.split_whitespace().next()?.parse().ok())?;
+    Some(kb.saturating_mul(1024))
+}
+
+/// None on machines whose `/proc/sys/vm/dirty_bytes` isn't there, or with
+/// less than `DIRTY_MIN_RAM_BYTES` of RAM (unless Olo's file is already kept,
+/// so it can still be turned off).
+pub fn dirty_writeback(places: &Places) -> Option<DirtyWriteback> {
+    let dirty_bytes: u64 = read(&places.vm_dirty_bytes())?.parse().ok()?;
+    let bg_bytes: u64 = read(&places.vm_dirty_background_bytes())?.parse().ok()?;
+    let dirty_ratio: u64 = read(&places.vm_dirty_ratio()).and_then(|v| v.parse().ok()).unwrap_or(0);
+    let bg_ratio: u64 = read(&places.vm_dirty_background_ratio()).and_then(|v| v.parse().ok()).unwrap_or(0);
+    let kept = std::fs::read_to_string(places.dirty_writeback_conf()).is_ok_and(|t| t == DIRTY_WRITEBACK_CONF);
+    let ram_bytes = mem_total(places).unwrap_or(0);
+    if !kept && ram_bytes < DIRTY_MIN_RAM_BYTES {
+        return None;
+    }
+    let vmstat = read(&places.at("/proc/vmstat")).unwrap_or_default();
+    let pages = |name: &str| stat(&vmstat, name).unwrap_or(0) * 4096;
+    let bg_now_bytes = match pages("nr_dirty_background_threshold") {
+        0 if bg_bytes > 0 => bg_bytes,
+        0 => ram_bytes.saturating_mul(bg_ratio) / 100,
+        n => n,
+    };
+    let limit_now_bytes = match pages("nr_dirty_threshold") {
+        0 if dirty_bytes > 0 => dirty_bytes,
+        0 => ram_bytes.saturating_mul(dirty_ratio) / 100,
+        n => n,
+    };
+    Some(DirtyWriteback { ram_bytes, bg_bytes, dirty_bytes, bg_ratio, dirty_ratio, bg_now_bytes, limit_now_bytes, waiting_bytes: pages("nr_dirty") + pages("nr_writeback"), kept })
+}
+
+/// An NVMe drive seen in `/sys/block`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NvmeDisk {
+    /// The kernel's name ("nvme0n1").
+    pub name: String,
+    /// What it calls itself ("SKHynix HFS002TFM9X179N"), where it does.
+    pub model: String,
+    /// Active scheduler ("none", "kyber", "mq-deadline", "bfq").
+    pub scheduler: String,
+    /// Whether `kyber` is available in `queue/scheduler`.
+    pub has_kyber: bool,
+}
+
+/// The I/O scheduler on non-rotational NVMe drives (`kyber` vs `none`).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct NvmeScheduler {
+    /// Olo's udev rule (`/etc/udev/rules.d/62-olo-nvme-scheduler.rules`) is in place.
+    pub kept: bool,
+    /// Non-rotational NVMe drives here.
+    pub disks: Vec<NvmeDisk>,
+}
+
+impl NvmeScheduler {
+    /// At least one NVMe drive here supports `kyber`.
+    pub fn can(&self) -> bool {
+        self.disks.iter().any(|d| d.has_kyber)
+    }
+
+    /// On: the rule is there and every kyber-capable NVMe drive here is on `kyber`.
+    pub fn on(&self) -> bool {
+        self.kept && self.can() && self.disks.iter().filter(|d| d.has_kyber).all(|d| d.scheduler == NVME_SCHEDULER)
+    }
+
+    /// Someone already chose a scheduler other than `none` without Olo's rule.
+    pub fn chosen_otherwise(&self) -> bool {
+        !self.kept && self.disks.iter().any(|d| !d.scheduler.is_empty() && d.scheduler != "none")
+    }
+}
+
+/// Parse `queue/scheduler` (e.g. `"[none] mq-deadline kyber bfq"`) into
+/// `(active, available)`.
+fn parse_scheduler(text: &str) -> (String, Vec<String>) {
+    let mut active = String::new();
+    let mut avail = Vec::new();
+    for word in text.split_whitespace() {
+        if let Some(chosen) = word.strip_prefix('[').and_then(|w| w.strip_suffix(']')) {
+            active = chosen.to_owned();
+            avail.push(chosen.to_owned());
+        } else {
+            avail.push(word.to_owned());
+        }
+    }
+    (active, avail)
+}
+
+fn is_nvme_disk_name(name: &str) -> bool {
+    let Some(rest) = name.strip_prefix("nvme") else { return false };
+    let Some((ctrl, ns)) = rest.split_once('n') else { return false };
+    !ctrl.is_empty() && ctrl.bytes().all(|b| b.is_ascii_digit()) && !ns.is_empty() && ns.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// None where there are no NVMe drives exposing `queue/scheduler` and no
+/// Olo rule is installed.
+pub fn nvme_scheduler(places: &Places) -> Option<NvmeScheduler> {
+    let kept = std::fs::read_to_string(places.nvme_scheduler_rule()).is_ok_and(|t| t == NVME_SCHEDULER_RULE);
+    let mut disks = Vec::new();
+    for e in std::fs::read_dir(places.at("/sys/block")).into_iter().flatten().flatten() {
+        let (dir, name) = (e.path(), e.file_name().to_string_lossy().into_owned());
+        if !is_nvme_disk_name(&name) {
+            continue;
+        }
+        if read(&dir.join("size")).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0) == 0 {
+            continue;
+        }
+        if read(&dir.join("queue/rotational")).as_deref() == Some("1") {
+            continue;
+        }
+        let Some(sched_text) = read(&places.block_scheduler(&name)) else { continue };
+        let (scheduler, avail) = parse_scheduler(&sched_text);
+        if scheduler.is_empty() {
+            continue;
+        }
+        let has_kyber = avail.iter().any(|a| a == NVME_SCHEDULER);
+        let model = read(&dir.join("device/model")).unwrap_or_default().replace('_', " ");
+        disks.push(NvmeDisk { name, model, scheduler, has_kyber });
+    }
+    disks.sort_by(|a, b| a.name.cmp(&b.name));
+    if disks.is_empty() && !kept {
+        return None;
+    }
+    Some(NvmeScheduler { kept, disks })
+}
+
 /// The connections that are on BBRv3 now, of all TCP's, and what they
 /// have to show for it.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -693,13 +911,24 @@ pub struct State {
     pub preemption: Option<Preemption>,
     pub turns: Option<Turns>,
     pub slow_disks: SlowDisks,
+    pub dirty_writeback: Option<DirtyWriteback>,
+    pub nvme_scheduler: Option<NvmeScheduler>,
     pub bbr3: Option<Bbr3>,
     pub graphics_memory: Option<GraphicsMemory>,
     pub graphics_pages: Option<GraphicsPages>,
 }
 
 pub fn look(places: &Places) -> State {
-    State { preemption: preemption(places), turns: turns(places), slow_disks: slow_disks(places), bbr3: bbr3(places), graphics_memory: graphics_memory(places), graphics_pages: graphics_pages(places) }
+    State {
+        preemption: preemption(places),
+        turns: turns(places),
+        slow_disks: slow_disks(places),
+        dirty_writeback: dirty_writeback(places),
+        nvme_scheduler: nvme_scheduler(places),
+        bbr3: bbr3(places),
+        graphics_memory: graphics_memory(places),
+        graphics_pages: graphics_pages(places),
+    }
 }
 
 /// [`look`] for a reader that looks every couple of seconds: everything
@@ -713,6 +942,8 @@ pub fn look_again(places: &Places, before: &State) -> State {
         preemption: preemption(places),
         turns: turns(places),
         slow_disks: slow_disks(places),
+        dirty_writeback: dirty_writeback(places),
+        nvme_scheduler: nvme_scheduler(places),
         bbr3: bbr3_with(places, on_it),
         graphics_memory: graphics_memory(places),
         graphics_pages: graphics_pages(places),
@@ -972,7 +1203,74 @@ mod tests {
         assert_eq!(g.kept_out(), None);
         assert_eq!(Setting::parse("graphics-pages"), Some(Setting::GraphicsPages));
         assert_eq!(Setting::parse("slow-disks"), Some(Setting::SlowDisks));
+        assert_eq!(Setting::parse("dirty-writeback"), Some(Setting::DirtyWriteback));
+        assert_eq!(Setting::parse("nvme-scheduler"), Some(Setting::NvmeScheduler));
         assert!(Setting::ALL.iter().all(|s| Setting::parse(s.word()) == Some(*s)));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn dirty_writeback_scales_by_ram_and_respects_custom_settings() {
+        let (root, places) = tree("dirty");
+        assert_eq!(dirty_writeback(&places), None, "no proc sysctls");
+        put(&places, "proc/sys/vm/dirty_bytes", "0\n");
+        put(&places, "proc/sys/vm/dirty_background_bytes", "0\n");
+        put(&places, "proc/sys/vm/dirty_ratio", "20\n");
+        put(&places, "proc/sys/vm/dirty_background_ratio", "10\n");
+        // 8 GiB machine: under DIRTY_MIN_RAM_BYTES, not offered.
+        put(&places, "proc/meminfo", "MemTotal:        8388608 kB\n");
+        assert_eq!(dirty_writeback(&places), None);
+        // 62 GiB machine: offered, off by default.
+        put(&places, "proc/meminfo", "MemTotal:       65260884 kB\n");
+        put(&places, "proc/vmstat", "nr_dirty 1000\nnr_writeback 200\nnr_dirty_background_threshold 708968\nnr_dirty_threshold 1419669\n");
+        let d = dirty_writeback(&places).unwrap();
+        assert!(!d.on() && !d.chosen_otherwise() && !d.kept);
+        assert_eq!(d.waiting_bytes, 1200 * 4096);
+        assert_eq!(d.limit_now_bytes, 1419669 * 4096);
+        // Someone's custom ratio: respected.
+        put(&places, "proc/sys/vm/dirty_ratio", "15\n");
+        assert!(dirty_writeback(&places).unwrap().chosen_otherwise());
+        put(&places, "proc/sys/vm/dirty_ratio", "0\n");
+        put(&places, "proc/sys/vm/dirty_background_ratio", "0\n");
+        put(&places, "proc/sys/vm/dirty_background_bytes", &format!("{DIRTY_BACKGROUND_BYTES}\n"));
+        put(&places, "proc/sys/vm/dirty_bytes", &format!("{DIRTY_BYTES}\n"));
+        assert!(dirty_writeback(&places).unwrap().chosen_otherwise(), "set without Olo's file");
+        put(&places, "etc/sysctl.d/85-olo-dirty-writeback.conf", DIRTY_WRITEBACK_CONF);
+        let d = dirty_writeback(&places).unwrap();
+        assert!(d.on() && !d.chosen_otherwise());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn nvme_scheduler_reads_nvme_namespaces_and_kyber_availability() {
+        let (root, places) = tree("nvme");
+        assert_eq!(nvme_scheduler(&places), None, "no NVMe drives");
+        assert!(is_nvme_disk_name("nvme0n1") && is_nvme_disk_name("nvme12n3"));
+        assert!(!is_nvme_disk_name("nvme0n1p1") && !is_nvme_disk_name("sda") && !is_nvme_disk_name("nvme0c0n1"));
+        put(&places, "sys/block/nvme0n1/size", "1000000\n");
+        put(&places, "sys/block/nvme0n1/queue/rotational", "0\n");
+        put(&places, "sys/block/nvme0n1/queue/scheduler", "[none] mq-deadline kyber bfq\n");
+        put(&places, "sys/block/nvme0n1/device/model", "SKHynix_HFS002TFM9X179N  \n");
+        // Partitions and SATA disks are ignored.
+        put(&places, "sys/block/nvme0n1p1/size", "1000\n");
+        put(&places, "sys/block/nvme0n1p1/queue/scheduler", "[none] kyber\n");
+        put(&places, "sys/block/sda/size", "1000\n");
+        put(&places, "sys/block/sda/queue/scheduler", "[mq-deadline] kyber\n");
+        let n = nvme_scheduler(&places).unwrap();
+        assert_eq!(n.disks.len(), 1);
+        assert_eq!(n.disks[0].name, "nvme0n1");
+        assert_eq!(n.disks[0].model, "SKHynix HFS002TFM9X179N");
+        assert_eq!(n.disks[0].scheduler, "none");
+        assert!(n.can() && !n.on() && !n.chosen_otherwise());
+        // Manual choice without Olo's rule: respected.
+        put(&places, "sys/block/nvme0n1/queue/scheduler", "none [mq-deadline] kyber bfq\n");
+        assert!(nvme_scheduler(&places).unwrap().chosen_otherwise());
+        // Olo's rule + kyber active.
+        put(&places, "sys/block/nvme0n1/queue/scheduler", "none mq-deadline [kyber] bfq\n");
+        put(&places, "etc/udev/rules.d/62-olo-nvme-scheduler.rules", NVME_SCHEDULER_RULE);
+        let n = nvme_scheduler(&places).unwrap();
+        assert!(n.on() && !n.chosen_otherwise());
+        assert!(NVME_SCHEDULER_RULE.contains("ATTR{queue/scheduler}=\"kyber\""));
         let _ = std::fs::remove_dir_all(root);
     }
 }
