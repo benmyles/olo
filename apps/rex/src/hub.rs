@@ -1067,6 +1067,10 @@ pub enum HostThing {
     Bridge,
     /// The skill that tells agents there of the bridge and of Rex.
     Skill,
+    /// A Token Pool of its own there, with this computer's accounts
+    /// (put there and kept in step by this computer's Token Pool:
+    /// `pool`).
+    Pool,
 }
 
 /// How a host stands, for the Host window: what it has of Olo's, as
@@ -1093,6 +1097,9 @@ pub struct HostStands {
     /// Rex), each in a word or two; none: nothing.
     pub granted: Vec<&'static str>,
     pub skill: Option<bool>,
+    /// How its Token Pool stands, as this computer's Token Pool says;
+    /// none: that isn't running here (or wasn't asked yet).
+    pub pool: Option<crate::pool::PoolStands>,
     /// Its Rex server's version, as it said when it connected.
     pub version: Option<String>,
 }
@@ -1196,6 +1203,10 @@ pub struct HubState {
     pub forwards: Vec<ActiveForward>,
     pub settings: Settings,
     pub active_theme: TerminalTheme,
+    /// How each far host's Token Pool stands, by the host's key, as
+    /// this computer's Token Pool last said (`pool::hosts`); none: it
+    /// didn't answer, or wasn't asked yet.
+    pub pools: Option<HashMap<String, crate::pool::PoolStands>>,
     pub git_cache: Arc<GitCache>,
     pub local_bin_dir: Option<PathBuf>,
     quick_look_cache: HashMap<(String, String, String), QuickLookCacheEntry>,
@@ -1279,6 +1290,7 @@ impl HubState {
                 bridge: there.then_some(true),
                 granted: if there { vec!["links", "Agent Screens", "Passwords"] } else { Vec::new() },
                 skill: there.then_some(false),
+                pool: Some(crate::pool::PoolStands { wanted: there, in_step: there, accounts: there.then_some(3), ..Default::default() }),
                 version: there.then(|| "0.19.2".to_owned()),
             });
         }
@@ -1293,6 +1305,7 @@ impl HubState {
             bridge: host.bridge_there,
             granted: self.settings.policy_for_host(host_key, false).granted(),
             skill: host.skill_there,
+            pool: self.pools.as_ref().map(|pools| pools.get(host_key).cloned().unwrap_or_default()),
             version: host.server_version.as_ref().map(|v| v.version.clone()).filter(|v| !v.is_empty()),
         })
     }
@@ -1461,6 +1474,7 @@ impl RexHub {
             forwards: Vec::new(),
             settings,
             active_theme,
+            pools: None,
             git_cache: GitCache::new(),
             local_bin_dir,
             quick_look_cache: HashMap::new(),
@@ -2740,6 +2754,22 @@ impl RexHub {
                 }
                 // (Nothing of the bridge is on a host: `bridge`.)
                 (HostThing::Bridge, _) => Ok(()),
+                // (This computer's Token Pool does it; asked, and how
+                // it stands read again until it has.)
+                (HostThing::Pool, add) => {
+                    let (key, what) = (host_key.clone(), if add { "install" } else { "remove" });
+                    match tokio::task::spawn_blocking(move || crate::pool::act(&key, what)).await.unwrap_or_else(|e| Err(e.to_string())) {
+                        Err(why) => Err(why),
+                        Ok(()) => {
+                            let stands = inner.pools_settled(&host_key).await;
+                            match stands {
+                                Some(p) if p.wanted == add && (p.error.is_none() || !add) => Ok(()),
+                                Some(p) => Err(p.error.unwrap_or_else(|| olo_kit::words::tr("It didn’t say why.").to_string())),
+                                None => Err(olo_kit::words::tr("Token Pool isn’t running on this computer.").to_string()),
+                            }
+                        }
+                    }
+                }
                 (HostThing::Skill, true) => run(script(&bridge::generate_remote_skill_install_script())).await,
                 (HostThing::Skill, false) => run(script(bridge::REMOVE_SKILL)).await,
             };
@@ -2755,6 +2785,15 @@ impl RexHub {
     /// window's Check Again: something may have been changed there by
     /// hand): the bridge and the skill, and whether this app's build
     /// of the typing helper is there. `done` once it has answered.
+    /// How the far hosts' Token Pools stand, asked of this computer's
+    /// Token Pool now (`pool`); the windows are told where it differs.
+    pub fn ask_pools(&self) {
+        let inner = self.inner.clone();
+        self.rt.spawn(async move {
+            inner.ask_the_pools().await;
+        });
+    }
+
     pub fn check_host(&self, host_key: &str, done: impl FnOnce() + Send + 'static) {
         let endpoint = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).and_then(|h| h.endpoint.clone());
         let Some(RexEndpoint::Ssh { target, pool, askpass }) = endpoint else {
@@ -2765,6 +2804,7 @@ impl RexHub {
         self.rt.spawn(async move {
             use olo_rex_client::helper::{Asked, ask};
             inner.ask_what_the_host_has(&host_key, &pool, &target, askpass.clone()).await;
+            inner.ask_the_pools().await;
             if crate::link::carried()
                 && let Ok(Ok(asked)) = ask(&pool, &target, askpass, crate::link::ID, &crate::link::BUILDS).await
             {
@@ -2999,6 +3039,39 @@ impl RexHubInner {
                 true
             }
         }
+    }
+
+    /// How the far hosts' Token Pools stand is asked of this
+    /// computer's Token Pool (off the runtime's own threads: a few
+    /// lines of HTTP that block), and kept; the windows are told where
+    /// it differs.
+    async fn ask_the_pools(&self) -> Option<HashMap<String, crate::pool::PoolStands>> {
+        let pools = tokio::task::spawn_blocking(crate::pool::hosts).await.ok().and_then(Result::ok);
+        let changed = {
+            let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let changed = st.pools != pools;
+            st.pools.clone_from(&pools);
+            changed
+        };
+        if changed {
+            (self.notify)(HubNotice::StateChanged);
+        }
+        pools
+    }
+
+    /// Asked again, a second apart, while something is being done to
+    /// the pool of `host_key` (two minutes at most): how it stands
+    /// once it is done.
+    async fn pools_settled(&self, host_key: &str) -> Option<crate::pool::PoolStands> {
+        let mut stands = None;
+        for _ in 0..120 {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            stands = self.ask_the_pools().await.map(|pools| pools.get(host_key).cloned().unwrap_or_default());
+            if stands.as_ref().is_none_or(|p| p.doing.is_none()) {
+                break;
+            }
+        }
+        stands
     }
 
     /// The SSH agent on a host (HACKING, Rex, "The SSH agent on a

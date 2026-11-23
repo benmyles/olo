@@ -4369,6 +4369,17 @@ it.
   Hide). Calendar's calendars and assistant; Phone's and Telegram's
   lists (a conversation opened comes in front; its header's back arrow,
   12 points before its picture, goes back).
+- `widgets::light(Light)`, `light_of(light, across)`, `busy_of(across)`
+  (`widgets/light.rs`): a status light before a line of words that
+  says how a thing stands, 8 points across (`LIGHT`), in the look's
+  own colours: `Light::On` (green), `Waiting` (the look's orange),
+  `Down` (red: something went wrong) and `Off` (grey: nothing wrong,
+  not in use); and a ring in its place for a thing being done now. A
+  round dot on whole device pixels at any scale (`style::dot`). Rex's
+  windows had them first (its `panels`); the Token Pool's Hosts
+  window is the second app to, so they are the kit's (2026-11-23).
+  What a light means for a thing is the app's to say (Rex:
+  `panels::light_for` a connection).
 - `widgets::Indicator::new(name, mark).on(bool).says(tip)`: a small
   mark that is on or off, for a status bar: what a thing has or
   hasn't, at a glance (Rex's: Olo's typing helper, its bridge and the
@@ -25701,8 +25712,9 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   `hosts.rs`, `src/bin/olo-pool-host.rs`; 2026-11-23: the program, the
   pools' agreement and the desktop's side that puts it on a host and
   keeps it in step are there and tested, driven from `olo-pool
-  --hosts` and `--host ID install|remove|sync|look`; the windows that
-  show it are next, TODO). Ben: "it
+  --hosts` and `--host ID install|remove|sync|look`, and shown in the
+  app's Hosts window and in Rex's Host window; a mark in Rex's status
+  bar is next, TODO). Ben: "it
   shouldn't proxy through the token pool running on the user's desktop
   because then the coding agents couldn't continue when the desktop is
   off. what it should do is install a token pool service … that
@@ -25772,6 +25784,49 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
     behind since, carried at, and the host pool's own status with its
     accounts, requests and use as it last answered), for Rex's
     windows and agents; `POST /pool/hosts/ID/WHAT` does one thing.
+  - *The Hosts window* (Pool ▸ Hosts; `apps/pool/src/hosts_window.rs`;
+    a tab beside the pool's own window, as its Clients window is):
+    each host Rex reaches over SSH, with a light and how its pool
+    stands ("Up to date", "Behind since 13:30", "Installing…", "Couldn't
+    install", "No pool"), Sync Now and Remove… where it has one
+    (Remove asks in the row itself, saying what it means for the
+    agents there), Install or Try Again where it hasn't; under its
+    name its address, what its pool last said of itself (accounts,
+    the day's requests, what it is answering now) with its three
+    latest requests, or in red why the last thing didn't go. While it
+    is open each pool is asked again every half minute, quietly
+    (`Hosts::refresh`); nothing in it waits on a host. The hosts are
+    in a well on the list's ground, its scroll bar in it; the action a
+    state wants has the right edge, Remove… to its left; the question
+    puts Cancel where Remove… was pressed; a request's line is columns
+    (what is running first, "now"; the account's column begins where
+    Remove… does, the tokens end where Sync Now does); a host that is
+    behind says why in grey and in a few words (`brief`), red is for an
+    install that failed, and one that can't be mended by trying again
+    (no pool for that kind of host: `Stands::hopeless`) has no button.
+    `OLO_POOL_DEMO_HOSTS=1`: five made-up hosts, one in each state,
+    for its pictures. Agents: the menu command `hosts` opens it, and
+    `olo-pool --hosts` is the same in JSON.
+  - *Rex's Host window* has a Token Pool section, after the Bridge
+    (`apps/rex/src/pool.rs`, `HostThing::Pool`): how the host's pool
+    stands as this computer's Token Pool says ("Installed · 3
+    accounts, up to date", "Installed · 3 accounts, behind" with why,
+    "Not installed", "Couldn't install", and "Not known · Token Pool
+    isn't running on this computer"), and one button, Token Pool…,
+    which opens the pool's own Hosts window (`olo-pool
+    --hosts-window`, starting the pool where it isn't running):
+    moving a person's accounts to another machine isn't one click in
+    a window of Rex's, nor part of its Remove All… (Opus's review of
+    the section). Rex asks over the gateway on loopback, a few lines
+    of HTTP off the interface's thread, with no crate of the pool's
+    under it: as the window opens, at Check Again. Agents may have it
+    done outright, `host.put:KEY:pool` and `host.take:KEY:pool`
+    (which have the Token Pool do it and read how it stands a second
+    apart until it has). Tried through both apps on the rig
+    (`tools/dev/rex-slow/try.py poolrex`: a test Token Pool in the
+    session on ports of its own; installed by Rex's command, the far
+    host's pool answering, the window's line following, removed,
+    nothing of it left there).
   - *What is carried* is the accounts (new ones added, ones no longer
     carried removed, names and pauses followed) and never a pool's
     own reading of them (use, meters, cooldowns).

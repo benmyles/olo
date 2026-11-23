@@ -20,11 +20,14 @@
 1 Hour Before
 1 Minute
 1 Second
+1 account
 1 day before
 1 extent
 1 hour
 1 hour before
 1 minute
+1 request running
+1 request today
 1 second
 1. Type your account password and choose Set Up. Olo keeps it locked so that only this key can unlock it.
 1. Type your account password and the key’s PIN, and choose Set Up. Olo keeps the password locked so that only this key can unlock it; the PIN is asked for this once, not kept.
@@ -105,6 +108,7 @@
 A Copr project is owner/project (as “@group/project” for a group’s).
 A Disk or Folder
 A GPU's encoder takes a 4K screen in about 15 ms a frame, the processor about 110: recordings of a lot of motion keep every frame on the GPU, about nine a second on the processor.
+A Rex host can have a Token Pool of its own, with these accounts: Claude Code and Codex there go on when this computer is off.
 A WireGuard file (from the server, or wg-quick's) is kept with its keys; its DNS servers are asked alone while it's connected.
 A backup reads one file at a time, and leaves what it read out of memory: it never takes much of either.
 A battery kept full wears faster: for a computer that's mostly plugged in.
@@ -223,6 +227,7 @@ Add a repository: its packages and updates come with Fedora’s. Add only ones y
 Add an App…
 Add an account in Preferences
 Add lunch tomorrow at noon
+Add one in Rex or in Preferences ▸ Rex.
 Add the one-time code this page shows to your login {}?
 Add to Collector
 Add “{}” to Favorites
@@ -398,6 +403,7 @@ Ask for sudo Passwords in a Window
 Ask the assistant
 Ask what to do about urgent ones
 Asked now:
+Asking
 Asking Passwords…
 Asking Telegram…
 Asking how Rex is set up there
@@ -503,6 +509,10 @@ Be the SSH agent (ssh, git)
 Because
 Before import {}.{}
 Begin
+Behind
+Behind since {}
+Being installed…
+Being updated…
 Benchmark…
 Beside the widget before it
 Best second {}; {} moved
@@ -614,6 +624,7 @@ Caps Lock is another Control key
 Capture Client Requests Again
 Capture debug information whenever a frame drops
 Cards
+Carrying the accounts
 Cascade All
 Cascade Others
 Cascade all windows on the display
@@ -702,6 +713,8 @@ Claude Code
 Claude Code and Codex are told, as they start, to test and use desktop apps and web pages on screens of their own that you can watch and take over, never on yours, and how: Olo’s Chrome included, so they never start one on your screen.
 Claude Code and Codex get a tool to title their tab with what they’re working on, and are asked to keep it current. They see the tool from their next start.
 Claude Code and Codex started in a tab of a group whose tabs are in more than one repository are told the group’s name and those repositories and worktrees, theirs marked. Codex asks you once to trust Terminal’s hook (/hooks).
+Claude Code and Codex there go back to their own sign-ins.
+Claude Code and Codex there go back to their own sign-ins. The accounts’ latest sign-ins are copied back here first.
 Clean Up
 Clean Up Microphone Sound
 Clean Up Now
@@ -891,6 +904,7 @@ Couldn’t change this vault in 1Password. {}
 Couldn’t delete it in 1Password. {}
 Couldn’t delete this vault from 1Password. {}
 Couldn’t get a sign-in link: {}.
+Couldn’t install
 Couldn’t keep the approval: {}
 Couldn’t keep the key in the login keyring: {}
 Couldn’t keep the key: {}
@@ -1492,6 +1506,7 @@ GitHub answered {}
 GitHub answered {}.
 GitHub couldn’t be reached ({}).
 GitHub didn’t take the token: it may have expired or been revoked.
+Give a Rex host a Token Pool of its own, with the same accounts, so Claude Code and Codex there keep working while this computer is off.
 Give a new key
 Give compilers and linkers only spare memory
 Give it a name.
@@ -1502,6 +1517,7 @@ Give your passwords and SSH keys only to\na host you trust as much as this compu
 Give your passwords and clipboard only to\na host you trust as much as this computer.
 Give your passwords only to a host\nyou trust as much as this computer.
 Give your passwords, SSH keys and clipboard\nonly to a host you trust as much as this computer.
+Gives Claude Code and Codex there your accounts, this computer on or off.
 Glide
 Glow new windows for
 Go
@@ -1665,6 +1681,7 @@ In an Hour
 In an agent’s tab:
 In its own way
 In place of the blue dot of its notifications, for as long as the app says something is unread or waiting in it.
+In step
 In the Scratchpad
 In the Tray
 In the archive
@@ -1702,6 +1719,7 @@ Insert Table
 Inspect
 Inspect Parent
 Inspect Process
+Install
 Install Now
 Install Olo’s Bridge
 Install Olo’s Skill for Agents
@@ -1710,6 +1728,7 @@ Install from:
 Install just
 Install the Helper…
 Installed
+Installing
 Install…
 Integrated GPU (VA-API)
 Integrations
@@ -1726,9 +1745,12 @@ It backs up once the computer is connected by a cable. {}. {}.
 It backs up once the computer is plugged in. {}. {}.
 It can’t be stopped once it has started.
 It couldn’t be fetched: {}
+It couldn’t be reached ({}). Olo keeps trying.
+It couldn’t be reached: {}. Olo keeps trying.
 It couldn’t be read: {}
 It didn't work.
 It didn’t open: {}.
+It didn’t say why.
 It downloads {}
 It goes on once there’s one. {}. {}.
 It has no [repository] in it.
@@ -1903,6 +1925,7 @@ Less space between windows
 Let coding agents keep their tab’s title current
 Let your other devices reach this computer’s sessions over Tailscale
 Lets a build’s many small writes reach the disk together.
+Lets agents there use your accounts, even with this computer off.
 Letting go of backups past keeping
 Level
 Level evened out
@@ -2305,6 +2328,7 @@ No Keypad
 No Other Windows
 No Pull Request
 No Receivers Paired
+No SSH hosts yet
 No Saved Groups
 No Section
 No To-Do Chosen
@@ -2343,6 +2367,7 @@ No open files.
 No phone found yet.
 No phone or mail account is set up: a phone in Phone, a Google or Fastmail account for Mail in Integrations.
 No phone paired
+No pool
 No power profiles daemon is running (power-profiles-daemon, or tuned-ppd on Fedora): Olo sets the power mode through it.
 No power profiles daemon is running, so there's no power mode to follow.
 No precipitation in the next hour
@@ -2415,6 +2440,8 @@ Not in a Repository
 Not in a vault
 Not in force: {}
 Not in the last minute; {} since this window opened
+Not installed
+Not known
 Not paired
 Not recognised. Try again
 Not running under olo-session.
@@ -2598,6 +2625,7 @@ Open Parent
 Open Phone
 Open Power
 Open Pull Request #{}
+Open Rex Preferences
 Open Saved Group
 Open Screenshot
 Open Sign-In Page
@@ -2985,6 +3013,7 @@ Remove Account
 Remove Graph
 Remove Host
 Remove Place
+Remove Pool
 Remove Repository
 Remove Repository…
 Remove Tab
@@ -2993,6 +3022,8 @@ Remove Worktree…
 Remove from Group
 Remove from Pool…
 Remove it from the pool? Its sign-in here is deleted; the account itself isn’t touched.
+Remove the Token Pool from {}?
+Remove the Token Pool from {}? Claude Code and Codex there go back to their own sign-ins. Its accounts’ sign-ins are taken back to this computer first.
 Remove the VPN “{}”? Its settings and keys go with it.
 Remove the bridge, skill and typing helper?
 Remove the {}? It will no longer unlock anything.
@@ -3000,6 +3031,7 @@ Remove {}
 Remove {} from the Collector
 Remove “{}” from Favorites
 Remove…
+Removing
 Removing…
 Rename
 Rename Group…
@@ -3091,6 +3123,7 @@ Rex Server on {}
 Rex adds these entries to {} as {}:
 Rex changes {} as {}:
 Rex isn’t installed
+Rex knows no host reached over SSH. Add one in Rex, or in Preferences ▸ Rex.
 Rex needs an address to connect.
 Rex picks a free port on this computer; the Ports list shows it.
 Rex removes these as {}:
@@ -3649,10 +3682,12 @@ The MTU is a number of bytes.
 The New Build
 The Rex server isn’t connected.
 The Theme’s Own
+The Token Pool running on this computer is older: upgrade it first.
 The VPN couldn't be saved.
 The account answering now
 The account couldn’t be saved ({}).
 The accounts file couldn’t be read.
+The accounts’ latest sign-ins are copied back here first.
 The address search answered {}.
 The address search’s answer can’t be read: {}
 The agent is at work in a Terminal window, on its agent screen “{}” (Agent Screens shows it): it makes the account’s app in Google Cloud and signs Olo in with it. The account shows here when it’s done; you can talk to the agent in Terminal meanwhile.
@@ -3818,6 +3853,7 @@ Thinking…
 Third folder
 This Computer
 This Computer's Microphones
+This Olo was built without the Token Pool for hosts, so none can be installed.
 This PDF can't be edited, so it can't be saved.
 This PDF can't be edited.
 This PDF can't be read.
@@ -3906,10 +3942,14 @@ Today
 Today and tomorrow
 Today {}
 Token Pool
+Token Pool answered something else.
 Token Pool asks {} to wait until one resets.
 Token Pool isn't running: its quotas are listed once it is.
+Token Pool isn’t running on this computer
+Token Pool isn’t running on this computer.
 Token Pool · {} · {}
 Token Pool: its accounts came in paused. Turn them on here once the other computer's pool no longer uses them: each sign-in renews itself, and two computers renewing one sign each other out.
+Token Pool…
 Token:
 Tomorrow
 Took
@@ -4048,6 +4088,7 @@ Up
 Up (sent)
 Up a level
 Up for
+Up to date
 Upcoming
 Update
 Update Interval
@@ -4411,11 +4452,13 @@ app_server's main thread: nice {}{}, {}
 applied
 as in 1Password's sidebar, or its UUID
 as it goes
+as of {}
 as the machine has it
 at most {}
 at {}
 auto approving (Yes after {} s; {} answered)
 backing up
+behind
 bell rang
 brush’s grey hint after what you type, from a tiny model of your own commands on this computer. Your shell is {}: Olo Doctor makes it brush (a suggestion).
 brush’s grey hint after what you type, from a tiny model of your own commands on this computer: it weighs what’s typed, the folder, the commands before, the hour and the day, and learns as you go.
@@ -4471,6 +4514,7 @@ install {n} packages
 it couldn't be ended: {}
 it is on a different volume from the Trash, so it can only be deleted
 it took too long
+its accounts are behind
 its address can’t be found (is the computer online?)
 its clock as the driver has it, up to {} MHz
 its clock up to {} MHz
@@ -4641,6 +4685,7 @@ turned off
 under a minute
 under a second
 up to
+up to date
 up to {} dpi
 up to {} today
 update {n} packages
@@ -4732,11 +4777,13 @@ your own picture
 {} What’s looked in for codes, and where they go: Security ▸ Passwords.
 {} a minute
 {} a second
+{} accounts
 {} ago · click a graph for another moment
 {} and {} are typing…
 {} and {} more
 {} and {} others
 {} answered {} (not a speed test server?)
+{} answering now
 {} applications are keeping the display awake.
 {} asked for, none waited for
 {} at {}
@@ -4779,6 +4826,7 @@ your own picture
 {} hasn’t answered for over {} minutes
 {} hasn’t answered for {} seconds
 {} hours ago
+{} in
 {} in all
 {} in the last minute
 {} in the last minute, {} of {} in all
@@ -4862,6 +4910,7 @@ your own picture
 {} on {}?
 {} on {}…
 {} open
+{} out
 {} over 5 ms in the last minute, the longest {}
 {} packets
 {} people are typing…
@@ -4871,6 +4920,8 @@ your own picture
 {} read back
 {} repeats. Change only this one, or every one of them?
 {} repositories, {} on. Packages come from those that are on.
+{} requests running
+{} requests today
 {} right first
 {} s
 {} s ago
@@ -4954,6 +5005,7 @@ your own picture
 {}: Show Notifications
 {}: a size such as 95GiB, please
 {}: a whole number, please
+{}: expected auto, conservative, or off
 {}: it asks for its PIN at every use, so a touch can’t stand for your password
 {}: it can’t keep a secret for Olo (no hmac-secret)
 {}: left as it is here, as this computer's couldn't be saved first.

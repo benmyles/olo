@@ -376,6 +376,44 @@ elif what == "pool":
                 far.ran('d="$HOME/.local/share/olo/pool"; [ -x "$d/olo-pool-host" ] && { echo \'{"do":"stop"}\' | "$d/olo-pool-host" ctl; "$d/olo-pool-host" put-back; "$d/olo-pool-host" forget; }; rm -rf "$d"')
     finally:
         r.__exit__()
+elif what == "poolrex":
+    # The Token Pool on the far host from Rex's Host window, through both apps: Rex asks this session's own Token
+    # Pool (a test one, on ports and a key file of its own, no accounts), which puts the pool there over SSH; the
+    # window's Token Pool line follows; and taken away again. Needs: cargo build -p olo-pool -p olo-rex.
+    with Rig("shell", delay=0, far=True, env=["OLO_POOL_PORT=27991"]) as r:
+        pool_env = ["OLO_POOL_PORT=27991", "OLO_POOL_PROXY_PORT=27992", f"OLO_POOL_KEYFILE={D}/pool-test.key", "OLO_POOL_UPSTREAM=http://127.0.0.1:9", f"SSH_AUTH_SOCK={r.far.agent}", "OLO_REX_SSH_COMPRESSION=no"]
+        r.ts("run", r.name, *pool_env, f"{R3}/target/debug/olo-pool", "--service")
+        def line():
+            said = [str(n.get("name") or n.get("value") or "") for n in r.nodes("Host") if n.get("role") in ("Text", "Label", "StaticText", "Heading")]
+            said = [w for w in said if w]
+            return " · ".join(said[said.index("Token Pool") + 1:][:4])[:90] if "Token Pool" in said else None
+        there = lambda: r.far.ran('echo \'{"do":"status"}\' | "$HOME/.local/share/olo/pool/olo-pool-host" ctl 2>&1 | head -c 300').strip()
+        ok = True
+        def check(what, passed, shown):
+            global ok
+            ok = ok and bool(passed); print(("ok   " if passed else "FAIL ") + what + ":", repr(shown)[:260], flush=True)
+        try:
+            # (The test's pool answers on its port before the window is opened.)
+            import urllib.request
+            end = time.monotonic() + 20
+            while time.monotonic() < end:
+                try:
+                    if urllib.request.urlopen("http://127.0.0.1:27991/pool/hosts", timeout=1).status == 200: break
+                except OSError: time.sleep(0.3)
+            r.invoke("host.manage")
+            first = r.wait(lambda: (lambda l: l if l and "Not installed" in l else None)(line()), 25)
+            check("the Host window, no pool there", first, first or line())
+            r.invoke("host.put:far:pool")
+            got = r.wait(lambda: (lambda l: l if l and l.startswith("Installed") else None)(line()), 60, every=0.5)
+            check("installed from Rex's window", got and "up to date" in got, got or line())
+            check("the pool on the far host says", '"hosted":true' in there(), there()[-120:])
+            r.invoke("host.take:far:pool")
+            gone = r.wait(lambda: (lambda l: l if l and "Not installed" in l else None)(line()), 60, every=0.5)
+            check("removed from Rex's window", gone, gone or line())
+            check("nothing of it on the far host", "No such file" in there() or "not found" in there(), there()[-120:])
+        finally:
+            r.far.ran('d="$HOME/.local/share/olo/pool"; [ -x "$d/olo-pool-host" ] && { echo \'{"do":"stop"}\' | "$d/olo-pool-host" ctl; "$d/olo-pool-host" put-back; "$d/olo-pool-host" forget; }; rm -rf "$d"')
+        print("PASS" if ok else "FAIL")
 elif what == "behind":
     import re, subprocess
     numbers = [a for a in args if a.isdigit()]

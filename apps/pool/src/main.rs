@@ -23,6 +23,7 @@
 
 mod clients_window;
 mod host_builds;
+mod hosts_window;
 mod ui;
 
 use std::{
@@ -576,8 +577,9 @@ fn main() -> std::process::ExitCode {
         // pool of its own with this one's accounts.
         let to_ui = proxy.clone();
         let hosts = olo_token_pool::hosts::Hosts::start(shared.clone(), host_builds::builds(), host_builds::ID, move || to_ui.send(ui::Msg::Changed));
+        let known = hosts.clone();
         olo_kit::settings::watch(move |s| {
-            hosts.set_known(s.rex.hosts.iter().map(|h| (h.id.clone(), if h.label.trim().is_empty() { h.endpoint.clone() } else { h.label.clone() }, h.endpoint.clone())).collect())
+            known.set_known(s.rex.hosts.iter().map(|h| (h.id.clone(), if h.label.trim().is_empty() { h.endpoint.clone() } else { h.label.clone() }, h.endpoint.clone())).collect())
         });
         // Clients pointed at the pool the old way (an API endpoint of its
         // own) go through its proxy instead, as on their own subscription.
@@ -594,7 +596,7 @@ fn main() -> std::process::ExitCode {
             follow_clients(shared.clone());
         }
         // (The app's state lives in the hub the app's looper keeps.)
-        ui::start(app, ui::Hub::new(shared, proxy_port, proxy), service);
+        ui::start(app, ui::Hub::new(shared, hosts, proxy_port, proxy), service);
     });
     std::process::ExitCode::SUCCESS
 }

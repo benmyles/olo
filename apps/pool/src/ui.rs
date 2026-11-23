@@ -34,7 +34,9 @@ use olo_token_pool::{
 use crate::{
     PROVIDERS, client_index,
     clients_window::{ClientsMsg, ClientsWindow},
-    clock, duration, plan_name, span, tokens,
+    clock, duration,
+    hosts_window::{HostsMsg, HostsWindow},
+    plan_name, span, tokens,
 };
 
 /// How long a separate sign-in in Terminal is waited for.
@@ -68,8 +70,8 @@ pub enum Msg {
     SignIn(Provider, String, bool),
     /// The sign-in being waited for is given up.
     CancelSignIn,
-    /// A window closed by the person (true: Clients).
-    Closed(bool),
+    /// A window closed by the person.
+    Closed(Which),
     /// Every window closes (handed over to a new copy, which opens them).
     CloseWindows,
 }
@@ -94,16 +96,25 @@ pub struct Told {
     waiting: Option<(Provider, Option<String>)>,
 }
 
+/// One of the app's windows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Which {
+    Main,
+    Clients,
+    Hosts,
+}
+
 /// Which windows are open, for the upgrade's thread to read.
 #[derive(Default)]
 pub struct Open {
     main: AtomicBool,
     clients: AtomicBool,
+    hosts: AtomicBool,
 }
 
 impl Open {
     fn state(&self) -> String {
-        serde_json::json!({"open": self.main.load(Ordering::Relaxed), "clients": self.clients.load(Ordering::Relaxed)}).to_string()
+        serde_json::json!({"open": self.main.load(Ordering::Relaxed), "clients": self.clients.load(Ordering::Relaxed), "hosts": self.hosts.load(Ordering::Relaxed)}).to_string()
     }
 }
 
@@ -116,6 +127,9 @@ pub struct Hub {
     win: Option<WindowHandle<PoolWindow>>,
     /// The Clients window, while it's open.
     clients_win: Option<WindowHandle<ClientsWindow>>,
+    /// The pools on Rex hosts, and their window while it's open.
+    hosts: Arc<olo_token_pool::hosts::Hosts>,
+    hosts_win: Option<WindowHandle<HostsWindow>>,
     clients: Option<[bool; 2]>,
     note: Option<(String, bool)>,
     waiting: Option<Waiting>,
@@ -123,8 +137,8 @@ pub struct Hub {
 }
 
 impl Hub {
-    pub fn new(shared: Arc<Shared>, proxy_port: u16, proxy: Proxy) -> Hub {
-        Hub { shared, proxy_port, proxy, win: None, clients_win: None, clients: None, note: None, waiting: None, open: Arc::default() }
+    pub fn new(shared: Arc<Shared>, hosts: Arc<olo_token_pool::hosts::Hosts>, proxy_port: u16, proxy: Proxy) -> Hub {
+        Hub { shared, proxy_port, proxy, win: None, clients_win: None, hosts, hosts_win: None, clients: None, note: None, waiting: None, open: Arc::default() }
     }
 
     fn told(&self) -> Told {
@@ -148,6 +162,14 @@ impl Hub {
         olo_kit::open_or_raise(&mut self.win, options, move |cx| PoolWindow::new(shared, port, told, cx));
         self.open.main.store(true, Ordering::Relaxed);
         self.read_clients();
+    }
+
+    /// Opens the Hosts window (or brings it to the front).
+    pub fn open_hosts(&mut self) {
+        let (shared, hosts) = (self.shared.clone(), self.hosts.clone());
+        let options = WindowOptions::new("Hosts", 560.0, 420.0).min_size(460.0, 260.0);
+        olo_kit::open_or_raise(&mut self.hosts_win, options, move |cx| HostsWindow::new(shared, hosts, cx));
+        self.open.hosts.store(true, Ordering::Relaxed);
     }
 
     /// Opens the Clients window (or brings it to the front).
@@ -274,6 +296,9 @@ impl Hub {
         if command == "clients" {
             return self.open_clients();
         }
+        if command == "hosts" {
+            return self.open_hosts();
+        }
         let provider = command.rsplit(':').next().and_then(Provider::parse);
         match (command.split(':').next(), provider) {
             (Some("import"), Some(p)) => self.import_local(p, None),
@@ -285,7 +310,10 @@ impl Hub {
     /// A message from a worker thread, the gateway, a launch or a window.
     pub fn message(&mut self, message: Box<dyn std::any::Any + Send>) {
         if let Some(launch) = message.downcast_ref::<olo_kit::instance::Launch>() {
-            if !launch.args.iter().any(|a| a == "--service") {
+            // (`--hosts-window`: its Hosts window, as Rex's Host window asks.)
+            if launch.args.iter().any(|a| a == "--hosts-window") {
+                self.open_hosts();
+            } else if !launch.args.iter().any(|a| a == "--service") {
                 self.open();
             }
             return;
@@ -296,6 +324,9 @@ impl Hub {
                 // (Each window reads the pool itself.)
                 if let Some(w) = &self.win {
                     w.messenger().send(WinMsg::Changed);
+                }
+                if let Some(w) = &self.hosts_win {
+                    w.messenger().send(HostsMsg::Changed);
                 }
                 if let Some(w) = &self.clients_win {
                     w.messenger().send(ClientsMsg::Changed);
@@ -357,13 +388,20 @@ impl Hub {
             }
             // A window closed by the person: what it showed goes (the
             // gateway keeps serving).
-            Msg::Closed(clients) => {
-                if clients {
-                    self.clients_win = None;
-                    self.open.clients.store(false, Ordering::Relaxed);
-                } else {
-                    self.win = None;
-                    self.open.main.store(false, Ordering::Relaxed);
+            Msg::Closed(which) => {
+                match which {
+                    Which::Clients => {
+                        self.clients_win = None;
+                        self.open.clients.store(false, Ordering::Relaxed);
+                    }
+                    Which::Hosts => {
+                        self.hosts_win = None;
+                        self.open.hosts.store(false, Ordering::Relaxed);
+                    }
+                    Which::Main => {
+                        self.win = None;
+                        self.open.main.store(false, Ordering::Relaxed);
+                    }
                 }
                 return;
             }
@@ -372,6 +410,9 @@ impl Hub {
                     w.close();
                 }
                 if let Some(w) = self.clients_win.take() {
+                    w.close();
+                }
+                if let Some(w) = self.hosts_win.take() {
                     w.close();
                 }
                 return;
@@ -399,7 +440,15 @@ pub fn menu_bar<V: View>(cx: &mut Cx<V>) -> MenuBar {
     // (The gateway stays running: Close, no Quit. Its settings: whether
     // Olo's AI uses it, and its Deskbar widgets.)
     let menus = vec![
-        Menu::new("Pool").app_items(&["ai", "deskbar"]).item("Read Quota Now", "refresh").key("r").item("Clients", "clients").key("l").item("Capture Client Requests Again", "capture").close_item(),
+        Menu::new("Pool")
+            .app_items(&["ai", "deskbar"])
+            .item("Read Quota Now", "refresh")
+            .key("r")
+            .item("Clients", "clients")
+            .key("l")
+            .item("Hosts", "hosts")
+            .item("Capture Client Requests Again", "capture")
+            .close_item(),
         add_menu(),
     ];
     MenuBar::fixed(cx, menus)
@@ -783,7 +832,7 @@ impl View for PoolWindow {
     }
 
     fn window_closing(&mut self, _: &mut Cx<Self>) {
-        olo_kit::proxy().send(Msg::Closed(false));
+        olo_kit::proxy().send(Msg::Closed(Which::Main));
     }
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {
@@ -866,6 +915,7 @@ pub fn start(app: &mut AppCx, hub: Hub, service: bool) {
         None => !service,
     };
     let clients = restored.as_ref().is_some_and(|r| r["clients"] == true);
+    let hosts = restored.as_ref().is_some_and(|r| r["hosts"] == true);
     let (shared, flags, proxy) = (hub.shared.clone(), hub.open.clone(), hub.proxy.clone());
     let hub = Rc::new(RefCell::new(hub));
     if open {
@@ -873,6 +923,9 @@ pub fn start(app: &mut AppCx, hub: Hub, service: bool) {
     }
     if clients {
         hub.borrow_mut().open_clients();
+    }
+    if hosts || std::env::args().any(|a| a == "--hosts-window") {
+        hub.borrow_mut().open_hosts();
     }
     olo_kit::message_handler(app, move |message, _| hub.borrow_mut().message(message));
     let saved = flags.clone();

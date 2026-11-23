@@ -25,83 +25,19 @@ use zeroize::Zeroizing;
 
 use crate::hub::{HostConnState, RexHub};
 
-/// A status light, in every window of Rex's, in the look's own colours:
-/// on, waiting (connecting, to be signed in), down (something went
-/// wrong), and off (nothing wrong: not in use).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Light {
-    On,
-    Waiting,
-    Down,
-    Off,
-}
+// (The status light of every window of Rex's is the kit's.)
+pub use olo_kit::widgets::{LIGHT, Light, busy_of, light, light_of};
 
-impl Light {
-    /// How a host's connection stands. (One it was never asked to
-    /// connect to, or was disconnected from, is off, not down: red is
-    /// for what went wrong.)
-    pub fn of(conn: &HostConnState) -> Light {
-        match conn {
-            HostConnState::Connected => Light::On,
-            HostConnState::Connecting | HostConnState::Reconnecting { .. } => Light::Waiting,
-            HostConnState::Error(_) => Light::Down,
-            HostConnState::Disconnected => Light::Off,
-        }
+/// How a host's connection stands, as a light. (One it was never asked
+/// to connect to, or was disconnected from, is off, not down: red is
+/// for what went wrong.)
+pub fn light_for(conn: &HostConnState) -> Light {
+    match conn {
+        HostConnState::Connected => Light::On,
+        HostConnState::Connecting | HostConnState::Reconnecting { .. } => Light::Waiting,
+        HostConnState::Error(_) => Light::Down,
+        HostConnState::Disconnected => Light::Off,
     }
-
-    pub fn color(self, p: &olo_theme::Palette) -> olo_kit::Hsla {
-        match self {
-            Light::On => style::c(p.success),
-            // (The look's orange: `warning` is made to be read as
-            // text, and as a dot it was a brown hard to tell from red
-            // at 1×.)
-            Light::Waiting => style::c(p.hue(olo_theme::Hue::Orange)),
-            Light::Down => style::c(p.failure),
-            Light::Off => style::disabled_text(p),
-        }
-    }
-}
-
-/// How far across a status light is.
-pub const LIGHT: f32 = 8.0;
-
-/// A status light before a line of text: 8 points across and no wider
-/// than it looks, so that its edge is the edge of what it is set under
-/// (in a box of 10 it stood a point to the right of the label above
-/// it); to be centred on the line beside it.
-pub fn light(light: Light) -> Element {
-    light_of(light, LIGHT)
-}
-
-/// A thing being done now, where a light would stand: a ring in the
-/// waiting light's colour, `across` points across. (Not that light
-/// itself, which is also a thing at rest that wants something: the
-/// Host window's "Being installed…" beside its "nothing granted to
-/// it", to the second design review.)
-pub fn busy_of(across: f32) -> Element {
-    canvas(move |g, b| {
-        let s = g.scale_factor();
-        let r = style::snap_centred(g, b.center(), across, across);
-        // (A point and a half of line, in whole device pixels.)
-        let line = (1.5 * s).round().max(1.0) / s;
-        g.paint_quad(olo_kit::quad(r, r.size.width / 2.0, olo_kit::transparent_black(), px(line), Light::Waiting.color(&theme::palette()), olo_kit::BorderStyle::Solid));
-    })
-    .paint_key(style::key(("busy", across.to_bits())))
-    .w(px(across))
-    .h(px(across))
-    .flex_shrink_0()
-    .into_any_element()
-}
-
-/// The same light, `across` points across: before words set smaller
-/// than a label's (the status bar's), in their proportion.
-pub fn light_of(light: Light, across: f32) -> Element {
-    canvas(move |g, b| style::dot(g, b.center(), across, light.color(&theme::palette())))
-        .paint_key(style::key((light, across.to_bits())))
-        .w(px(across))
-        .h(px(across))
-        .flex_shrink_0()
-        .into_any_element()
 }
 
 /// A host in the Hosts window's list: its name and address, how it
@@ -169,7 +105,7 @@ pub fn host_rows(hub: &RexHub, waits_for_agent: &dyn Fn(&str) -> bool) -> Vec<Ho
                 } else {
                     String::new()
                 },
-                light: Light::of(&h.conn_state),
+                light: light_for(&h.conn_state),
                 state: host_state(&h.conn_state, waits_for_agent(&h.endpoint_raw)),
                 trouble: match &h.conn_state {
                     HostConnState::Error(why) => Some(why.clone()),
@@ -1313,14 +1249,14 @@ mod tests {
 
     #[test]
     fn red_is_for_what_went_wrong() {
-        use super::Light;
+        use super::{Light, light_for};
         use crate::hub::HostConnState;
         // A host never connected to, or disconnected from, is off: the
         // red light is an error's alone.
-        assert_eq!(Light::of(&HostConnState::Connected), Light::On);
-        assert_eq!(Light::of(&HostConnState::Connecting), Light::Waiting);
-        assert_eq!(Light::of(&HostConnState::Disconnected), Light::Off);
-        assert_eq!(Light::of(&HostConnState::Error("no route".into())), Light::Down);
+        assert_eq!(light_for(&HostConnState::Connected), Light::On);
+        assert_eq!(light_for(&HostConnState::Connecting), Light::Waiting);
+        assert_eq!(light_for(&HostConnState::Disconnected), Light::Off);
+        assert_eq!(light_for(&HostConnState::Error("no route".into())), Light::Down);
     }
 
     #[test]

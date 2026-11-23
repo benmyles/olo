@@ -1419,13 +1419,18 @@ something nobody here has is in "Blocked", with what it waits for.
     (2026-11-23; HACKING, Token Pool, "A pool of its own on a Rex
     host"), driven for now from `olo-pool --hosts` and `--host ID
     install|remove|sync|look`. Left, in this order:
-    - *The Token Pool app shows it*: a Hosts part of its window, each
-      host's pool with how it stands (in step; behind, since when and
-      why; not reached), Install, Remove and Sync Now, and the host
-      pool's requests, use and limits beside this computer's.
-    - *Rex shows it*: a fourth mark in the status bar and a fifth
-      section in the Host window (from `/pool/hosts`), Install and
-      Remove there too.
+    - *The Token Pool app shows it*: done (its Hosts window,
+      2026-11-23). Left: the host pool's limits (each account's
+      meters there) and more than its three latest requests, in a
+      view of that host's own; the window is a tab 460 points wide.
+    - *Rex shows it*: the Host window's Token Pool section is done
+      (2026-11-23). Left: the fourth mark in the status bar (a mark
+      of the kit's has to be drawn for it, in whole device lines at
+      every scale as the keyboard, the bridge and the book are, and
+      reviewed); Rex told when the pool's standing changes (it asks
+      as the Host window opens and at Check Again); the section's
+      other states pictured and reviewed (being installed, behind,
+      couldn't install: Rex's demo shows two).
     - Lingering: where the host won't let the account's services run
       while it is signed out (`loginctl enable-linger` refused), the
       pool ends with the last session: said, with what to do as root

@@ -320,6 +320,9 @@ fn open_host(hub: &Arc<RexHub>, key: &str) {
     crate::host::open(key, &name);
     open_or_raise_panel(WinRole::Host);
     host_changed();
+    // (How its Token Pool stands is this computer's Token Pool's to
+    // say: asked as the window opens.)
+    hub.ask_pools();
 }
 
 /// The Host window's title: whose things it shows. (By what `host`
@@ -1484,6 +1487,7 @@ impl RexWindow {
                     let thing = match thing {
                         "helper" => crate::hub::HostThing::Helper,
                         "skill" => crate::hub::HostThing::Skill,
+                        "pool" => crate::hub::HostThing::Pool,
                         _ => return None,
                     };
                     Some((key.to_owned(), thing))
@@ -2959,7 +2963,7 @@ impl RexWindow {
                 // typed waits: the light the status bar's word has. The
                 // second design review: the bar said it hadn't answered
                 // beside a green light here.)
-                let lit = if connected && silent.is_some() { crate::panels::Light::Waiting } else { crate::panels::Light::of(&conn) };
+                let lit = if connected && silent.is_some() { crate::panels::Light::Waiting } else { crate::panels::light_for(&conn) };
                 let key = style::key((&hlabel, &tip, lit, selected));
                 let state_words = tip.clone();
                 let tip_key = format!("rex-host-{hk}");
@@ -3783,6 +3787,9 @@ impl View for RexWindow {
                         }
                     }
                     HostDo::Permissions => olo_kit::app_menu::open_settings("rex"),
+                    HostDo::OpenPool => {
+                        let _ = olo_xdg::spawn_detached("olo-pool --hosts-window");
+                    }
                     HostDo::AskAll(asking) => crate::host::ask_all(asking),
                     HostDo::RemoveAll(things) => crate::host::remove_all(&hub, &things),
                 }

@@ -269,7 +269,7 @@ impl View for ClientsWindow {
 
     fn window_closing(&mut self, _: &mut Cx<Self>) {
         self.watching.store(false, Ordering::Relaxed);
-        olo_kit::proxy().send(Msg::Closed(true));
+        olo_kit::proxy().send(Msg::Closed(crate::ui::Which::Clients));
     }
 
     fn body(&mut self, cx: &mut Cx<Self>) -> Element {

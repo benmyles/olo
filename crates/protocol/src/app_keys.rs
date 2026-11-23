@@ -425,6 +425,7 @@ pub const APP_KEYS: &[AppKey] = &[
     k("styled-edit.source", STYLED_EDIT, "source", "Show or hide the source", &["Cmd+Slash"], &["Ctrl+Slash"], &["Alt+Slash"]),
     k("passwords.open-website", PASSWORDS, "open-website", "Open the website", &["Cmd+O"], &["Ctrl+O"], &["Alt+O"]),
     k("pool.refresh", Some("olo.pool"), "refresh", "Read Quota Now", &["Cmd+R"], &["F5"], &["Alt+R"]),
+    k("pool.clients", Some("olo.pool"), "clients", "Clients", &["Cmd+L"], &["Ctrl+L"], &["Alt+L"]),
     k("screen.control", Some("olo.screen"), "control", "Take or give back control", &["Cmd+K"], &["Ctrl+K"], &["Alt+K"]),
     k("screen.export", Some("olo.screen"), "export", "Export Video", &["Cmd+E"], &["Ctrl+E"], &["Alt+E"]),
     k("screen.tab-live", Some("olo.screen"), "tab-live", "Live", &["Cmd+1"], &["Ctrl+1"], &["Alt+1"]),

@@ -56,6 +56,9 @@ pub struct Stands {
     pub doing: Option<String>,
     /// Why the last thing asked of it didn't go.
     pub error: Option<String>,
+    /// And trying again can't mend it (Olo has no pool for that kind
+    /// of host).
+    pub hopeless: bool,
     /// The accounts there are the accounts here.
     pub in_step: bool,
     /// Since when they aren't (seconds since the epoch).
@@ -94,6 +97,7 @@ struct State {
 struct Live {
     doing: Option<String>,
     error: Option<String>,
+    hopeless: bool,
     status: Option<Value>,
     heard_at: Option<i64>,
     /// When it is next tried by itself, while it is behind.
@@ -181,6 +185,7 @@ impl Hosts {
                     wanted: kept.wanted,
                     doing: live.doing,
                     error: live.error,
+                    hopeless: live.hopeless,
                     in_step: kept.wanted && kept.behind_since.is_none() && kept.carried.is_some(),
                     behind_since: kept.behind_since,
                     carried_at: kept.carried_at,
@@ -201,6 +206,12 @@ impl Hosts {
     fn target(&self, id: &str) -> Result<SshTarget, String> {
         let address = self.state.lock().unwrap().known.iter().find(|(known, _, _)| known == id).map(|(_, _, address)| address.clone()).ok_or("Rex doesn’t know that host.")?;
         SshTarget::parse(&address).map_err(|e| e.to_string())
+    }
+
+    /// Whether the app carries the host's program at all (built
+    /// without zig, it carries none: nothing can be installed).
+    pub fn carried(&self) -> bool {
+        self.builds.iter().any(|b| !b.bytes.is_empty())
     }
 
     fn name(&self, id: &str) -> String {
@@ -357,11 +368,11 @@ impl Hosts {
         if !there {
             let mut kind = uname.split_whitespace();
             let (system, machine) = (kind.next().unwrap_or_default(), kind.next().unwrap_or_default());
-            let build = self
-                .builds
-                .iter()
-                .find(|b| system == "Linux" && b.machines.contains(&machine) && !b.bytes.is_empty())
-                .ok_or_else(|| format!("Olo has no Token Pool for {}.", if uname.is_empty() { "that host" } else { &uname }))?;
+            let build = self.builds.iter().find(|b| system == "Linux" && b.machines.contains(&machine) && !b.bytes.is_empty());
+            let Some(build) = build else {
+                self.live(id, |l| l.hopeless = true);
+                return Err(format!("Olo has no Token Pool for {}.", if uname.is_empty() { "that host" } else { &uname }));
+            };
             // (Whole, able to run there, and in its place in one move.)
             let takes = format!(
                 "set -e; d=\"$HOME\"/{DIR}; mkdir -p \"$d\"; chmod 700 \"$d\"; t=\"$d/.new.$$\"; trap 'rm -f \"$t\"' EXIT; cat > \"$t\"; \
@@ -441,6 +452,24 @@ impl Hosts {
         Ok(())
     }
 
+    /// Every host that has a pool and nothing being done to it is asked
+    /// how its pool stands, quietly (no "Asking…": for a window that
+    /// shows them, now and then while it is open).
+    pub fn refresh(self: &Arc<Self>) {
+        let ids: Vec<String> = {
+            let st = self.state.lock().unwrap();
+            st.kept.iter().filter(|(id, k)| k.wanted && st.known.iter().any(|(known, _, _)| known == *id) && st.live.get(*id).is_none_or(|l| l.doing.is_none())).map(|(id, _)| id.clone()).collect()
+        };
+        for id in ids {
+            let hosts = self.clone();
+            self.shared.spawn(async move {
+                if let Err(why) = hosts.look(&id).await {
+                    hosts.live(&id, |l| l.error = Some(why));
+                }
+            });
+        }
+    }
+
     /// Does `what` to host `id` ("install", "remove", "sync", "look"),
     /// on the gateway's threads: how it goes shows in [`Self::list`].
     pub fn act(self: &Arc<Self>, id: &str, what: &str) -> Result<(), String> {
@@ -460,7 +489,7 @@ impl Hosts {
             self.shared.spawn(async move { hosts.carry_and_say(id, true).await });
             return Ok(());
         }
-        self.live(id, |l| (l.doing, l.error) = (Some(doing.into()), None));
+        self.live(id, |l| (l.doing, l.error, l.hopeless) = (Some(doing.into()), None, false));
         let (hosts, id, what) = (self.clone(), id.to_owned(), what.to_owned());
         self.shared.spawn(async move {
             let done = match what.as_str() {

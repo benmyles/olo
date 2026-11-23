@@ -77,6 +77,8 @@ pub enum HostDo {
     Server,
     /// What the bridge may do here: Preferences ▸ Rex.
     Permissions,
+    /// The Token Pool's Hosts window, where a host's pool is managed.
+    OpenPool,
     /// Remove All… pressed (`true`), or its question answered no.
     AskAll(bool),
     /// Its question answered yes: these taken off.
@@ -149,6 +151,28 @@ pub fn thing_stands(host: &HostStands, shown: &Shown, thing: HostThing) -> Stand
             HostHelper::None => absent(stands(Light::Off, "Not installed")),
         },
         HostThing::Bridge => unreachable!("answered above"),
+        // (As this computer's Token Pool says, which puts it there and
+        // keeps its accounts in step: `pool`.)
+        // (Never "there" for Remove All…, and with no Install or Remove
+        // of this window's: its accounts are the Token Pool's to move.)
+        HostThing::Pool => {
+            let accounts = |pool: &crate::pool::PoolStands, then: &'static str| -> String {
+                let then = olo_kit::words::tr(then);
+                match pool.accounts {
+                    Some(1) => format!("{}, {then}", olo_kit::words::tr("1 account")),
+                    Some(n) => format!("{}, {then}", olo_kit::tr!("{} accounts", n)),
+                    None => then.to_string(),
+                }
+            };
+            match &host.pool {
+                None => more(stands(Light::Off, "Not known"), "Token Pool isn’t running on this computer"),
+                Some(pool) if pool.doing.is_some() => Stands { busy: true, ..stands(Light::Waiting, if pool.wanted { "Being updated…" } else { "Being installed…" }) },
+                Some(pool) if pool.wanted && pool.in_step => Stands { more: Some(accounts(pool, "up to date")), ..stands(Light::On, "Installed") },
+                Some(pool) if pool.wanted => Stands { more: Some(accounts(pool, "behind")), host_said: pool.error.clone(), ..stands(Light::Waiting, "Installed") },
+                Some(pool) if pool.error.is_some() => Stands { host_said: pool.error.clone(), ..stands(Light::Down, "Couldn’t install") },
+                Some(_) => stands(Light::Off, "Not installed"),
+            }
+        }
         HostThing::Skill => match host.skill {
             Some(true) => installed(stands(Light::On, "Installed")),
             Some(false) => absent(stands(Light::Off, "Not installed")),
@@ -173,7 +197,8 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
     let on_do: Rc<dyn Fn(&HostDo, &mut WindowCx)> = Rc::new(on_do);
     // Every button one width, the widest of their words: one column
     // down the window's right side.
-    let wide = ["Check Again", "Connect", "Manage…", "Permissions…", "Install", "Remove", "Try Again", "Remove All…", "Cancel"].iter().map(|l| button_width(l, false)).fold(0.0, f32::max);
+    let wide =
+        ["Check Again", "Connect", "Manage…", "Permissions…", "Token Pool…", "Install", "Remove", "Try Again", "Remove All…", "Cancel"].iter().map(|l| button_width(l, false)).fold(0.0, f32::max);
     let button = |label: &str, id: &str, what: HostDo, enabled: bool| {
         let on_do = on_do.clone();
         Button::new(label.to_owned()).id(id.to_owned()).min_width(wide).enabled(enabled).on_click(move |_, cx| on_do(&what, cx))
@@ -257,7 +282,7 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
                     .flex_row()
                     .items_center()
                     .gap(px(m::TIGHT))
-                    .child(if shown.checking { panels::busy_of(panels::LIGHT) } else { panels::light(Light::of(&host.conn)) })
+                    .child(if shown.checking { panels::busy_of(panels::LIGHT) } else { panels::light(panels::light_for(&host.conn)) })
                     .child(StringView::new(state).size(style::SMALL_SIZE).height(STATE_ROW))
                     .child(div().flex_1().min_w_0().child(StringView::new(format!("·  {}", host.address)).size(style::SMALL_SIZE).dim(true).cut(true).height(STATE_ROW))),
             ),
@@ -315,6 +340,8 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
     let mut there = Vec::new();
     for (thing, title, id, note, path) in [
         (HostThing::Bridge, "Bridge", "bridge", "Lets programs there open links, ask Passwords and use Agent Screens here.", None),
+        // (What runs for the host first, the files put there after.)
+        (HostThing::Pool, "Token Pool", "pool", "Lets agents there use your accounts, even with this computer off.", None),
         (HostThing::Skill, "Skill for agents", "skill", "Tells Claude Code and other agents there how to use the bridge and Rex.", Some("~/.claude/skills/olo-rex-bridge")),
         (HostThing::Helper, "Typing helper", "helper", "Keeps typing quick over a slow link.", Some("~/.local/share/olo/rex-link")),
     ] {
@@ -327,6 +354,11 @@ pub fn render_host_panel(host: &HostStands, shown: &Shown, managed: bool, on_do:
         // here, and its one button, since nothing of it is installed.)
         if thing == HostThing::Bridge {
             actions.push(button("Permissions…", "host-bridge-permissions", HostDo::Permissions, true));
+        } else if thing == HostThing::Pool {
+            // (Installed, kept up to date and removed in the Token
+            // Pool's own Hosts window, which this opens: starting the
+            // pool where it isn't running.)
+            actions.push(button("Token Pool…", "host-pool-open", HostDo::OpenPool, true));
         } else {
             actions.push(match s.can {
                 Some((add, true)) => button("Try Again", &format!("host-{id}-again"), HostDo::Change(thing, add), true),
@@ -387,6 +419,7 @@ mod tests {
             bridge: Some(false),
             granted: Vec::new(),
             skill: Some(false),
+            pool: None,
             version: Some("0.19.2".into()),
         }
     }
@@ -423,6 +456,28 @@ mod tests {
         let s = of(&h, &shown, HostThing::Skill);
         assert_eq!((said(&s), s.can), ((Light::Off, "Not installed", None), Some((true, false))));
 
+        // The Token Pool, as this computer's own says: not running
+        // here, none there, being installed, there and up to date,
+        // there and behind (why, in the host's words), couldn't be.
+        use crate::pool::PoolStands;
+        let s = of(&h, &shown, HostThing::Pool);
+        assert_eq!((said(&s), s.can, s.there), ((Light::Off, "Not known", Some("Token Pool isn’t running on this computer")), None, false));
+        h.pool = Some(PoolStands::default());
+        assert_eq!(said(&of(&h, &shown, HostThing::Pool)), (Light::Off, "Not installed", None));
+        h.pool = Some(PoolStands { doing: Some("Installing".into()), ..Default::default() });
+        let s = of(&h, &shown, HostThing::Pool);
+        assert_eq!((said(&s), s.busy), ((Light::Waiting, "Being installed…", None), true));
+        h.pool = Some(PoolStands { wanted: true, in_step: true, accounts: Some(2), ..Default::default() });
+        let s = of(&h, &shown, HostThing::Pool);
+        // (Never one of what Remove All… takes off: its accounts are the Token Pool's to move.)
+        assert_eq!((said(&s), s.there, s.can), ((Light::On, "Installed", Some("2 accounts, up to date")), false, None));
+        h.pool = Some(PoolStands { wanted: true, error: Some("no route".into()), accounts: Some(1), ..Default::default() });
+        let s = of(&h, &shown, HostThing::Pool);
+        assert_eq!((said(&s), s.host_said.as_deref()), ((Light::Waiting, "Installed", Some("1 account, behind")), Some("no route")));
+        h.pool = Some(PoolStands { error: Some("no room".into()), ..Default::default() });
+        let s = of(&h, &shown, HostThing::Pool);
+        assert_eq!((said(&s), s.host_said.as_deref(), s.can), ((Light::Down, "Couldn’t install", None), Some("no room"), None));
+
         // The helper: in use, for the next connection, taken off while
         // in use, couldn't be put there (the host's words kept), off.
         h.helper = HostHelper::Used;
@@ -453,7 +508,7 @@ mod tests {
 
         // A host that isn't connected: nothing is known, nothing to press.
         h.conn = HostConnState::Disconnected;
-        for thing in [HostThing::Skill, HostThing::Helper] {
+        for thing in [HostThing::Skill, HostThing::Helper, HostThing::Pool] {
             let s = of(&h, &Shown::default(), thing);
             assert_eq!((said(&s), s.can), ((Light::Off, "Not known", None), None));
         }

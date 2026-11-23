@@ -19,6 +19,7 @@ mod link;
 mod links;
 mod overlays;
 mod panels;
+mod pool;
 mod predict;
 mod server;
 mod server_panel;
