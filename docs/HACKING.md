@@ -4342,7 +4342,9 @@ it.
   smaller one, 20 points with 2 over and under, Ben called "way too
   squashed" in Phone's header, and it is gone). The others are their
   names on the trough's ground, every name in the text's own colour and
-  the chosen one's in bold, a short line between two neighbours neither
+  the chosen one's in semibold (bold, as a chosen tab's name is, was a
+  touch too strong on its plate: Ben), a short line between two
+  neighbours neither
   of which is chosen. One that can't be used draws its own look (it is
   not faded besides): names and marks in the colour for text that can't
   be used, the plate and the trough's shade half way to the ground,
@@ -4364,7 +4366,7 @@ it.
   point of the plate's face over and under it, its 11-point numerals in
   its own middle: a box of its own to the layout review, which would
   else hold them to the name's line) if it has them. Marks show where every segment has room for its own beside
-  its whole name in bold and its count; in a narrower control (Rex's
+  its whole name at the chosen weight and its count; in a narrower control (Rex's
   sidebar at the width it starts with) none has one, and the names stay
   whole. A segment that counts keeps a disc's room in the control's
   width and in what fits while nothing waits, so the control is no
@@ -4376,7 +4378,7 @@ it.
   would cut a name the width could hold, each segment gets what it
   needs and an equal part of the rest (`shares`: Phone's Messages, with
   a count, beside Contacts in a third of a screen); and only then is a
-  name cut (the review calls that out). A segment's room is measured with its name in bold,
+  name cut (the review calls that out). A segment's room is measured with its name at the chosen weight,
   so nothing moves when the choice does. A press chooses; it is one
   stop in the tab order, the arrows moving the choice and Home and End
   taking the first and last, the chosen name underlined while it

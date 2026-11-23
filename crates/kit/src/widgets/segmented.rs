@@ -5,7 +5,7 @@
 //! (Screenshot's shapes, Viewer's tools). Each segment is its name, with
 //! a mark before it and a count after it if it has them. The chosen one
 //! is a raised plate set in the trough, a button's face with a button's
-//! bevel, its name in bold; the others are their names on the trough's
+//! bevel, its name in semibold; the others are their names on the trough's
 //! ground, a short line between two neighbours neither of which is
 //! chosen.
 //!
@@ -61,6 +61,11 @@ const LEAST_PAD: f32 = 6.0;
 const TIGHT_PAD: f32 = 4.0;
 /// Between a segment's name and its count.
 const GAP: f32 = 5.0;
+/// The chosen segment's name: semibold. Bold, as a chosen tab's name
+/// is, was a touch too strong here (Ben, 2026-11-22: "yeah let's just
+/// go with semibold"): the plate says which is chosen, and the name's
+/// weight need only agree with it.
+const CHOSEN: FontWeight = FontWeight::SEMIBOLD;
 /// Between a segment's mark and its name.
 const MARK_GAP: f32 = 4.0;
 
@@ -193,12 +198,12 @@ fn count_width(text: &str, sz: Sizes) -> f32 {
 }
 
 /// What a segment holds, left to right: how wide its mark, its name (in
-/// bold, which the chosen one is drawn in: a segment doesn't change its
+/// the chosen one's weight: a segment doesn't change its
 /// width when chosen) and its count are. One that counts keeps a
 /// numeral's disc of room while nothing waits.
 fn parts(seg: &Segment, sz: Sizes) -> (f32, f32, f32) {
     let mark = if seg.mark.is_some() { sz.mark.0 } else { 0.0 };
-    let name = f32::from(style::text_width(seg.name.clone(), sz.font, style::ui_font(FontWeight::BOLD))).ceil();
+    let name = f32::from(style::text_width(seg.name.clone(), sz.font, style::ui_font(CHOSEN))).ceil();
     let count = seg.count.map_or(0.0, |_| count_width(seg.badge().as_deref().unwrap_or("0"), sz));
     (mark, name, count)
 }
@@ -228,7 +233,7 @@ fn shares(segments: &[Segment], sz: Sizes, width: f32) -> Vec<f32> {
     let n = segments.len().max(1);
     let equal = vec![1.0 / n as f32; n];
     // (Inside the trough's line. What a segment needs at the least: its
-    // name in bold and its count, the least room either side of them
+    // name at the chosen one's weight and its count, the least room either side of them
     // in the plate, and the ground round the plate. Marks have given
     // way long before this.)
     let inside = width - 2.0;
@@ -404,7 +409,7 @@ fn paint(g: &mut Painter, outer: Bounds<Pixels>, segments: &[Segment], shares: &
     let rects = places(scale, outer, shares);
     let at = slots(scale, outer, shares, sz.ground);
     // Marks are shown where every segment has room for its own beside
-    // its name in bold and its count: in a control too narrow for that
+    // its name at the chosen one's weight and its count: in a control too narrow for that
     // (a sidebar drawn in), none has one and the names are whole
     // ("Sessi…" beside a mark said less than "Sessions" without).
     let marks = segments.iter().zip(&at).all(|(seg, slot)| content_width(seg, sz) <= f32::from(slot.size.width) - 2.0 * LEAST_PAD);
@@ -423,7 +428,7 @@ fn paint(g: &mut Painter, outer: Bounds<Pixels>, segments: &[Segment], shares: &
         crate::review::frame(g, *slot);
     }
     crate::review::own_grid(g, outer);
-    // (Every name in the text's own colour, the chosen one's in bold:
+    // (Every name in the text's own colour, the chosen one's heavier:
     // greyed, the ones not chosen read as switched off, and could not
     // be told from a control that can't be used: Opus, of the poll's
     // pictures. One that can't be used draws itself so, in the colour
@@ -431,12 +436,12 @@ fn paint(g: &mut Painter, outer: Bounds<Pixels>, segments: &[Segment], shares: &
     let ink = if enabled { style::c(p.control_text) } else { style::disabled_text(&p) };
     for (i, ((seg, r), slot)) in segments.iter().zip(&rects).zip(&at).enumerate() {
         let on = i == chosen;
-        let font = style::ui_font(if on { FontWeight::BOLD } else { FontWeight::NORMAL });
+        let font = style::ui_font(if on { CHOSEN } else { FontWeight::NORMAL });
         let (mark, name_room, count) = parts(seg, sz);
         let mark = if marks { mark } else { 0.0 };
         // What it holds, as one group with the same gaps whichever it
         // is, centred in its place: its name as wide as it is drawn
-        // (the room a segment has was measured with it in bold, so the
+        // (the room a segment has was measured at the chosen weight, so the
         // segment never changes width; a lighter name leaves a little
         // more either side of the group, and its mark and its count
         // stay as near it as the chosen one's).
