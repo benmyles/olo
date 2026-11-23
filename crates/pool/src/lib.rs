@@ -12,6 +12,7 @@ pub mod codex_daemon;
 pub mod drain;
 pub mod gateway;
 pub mod hello;
+pub mod host;
 pub mod import;
 pub mod intercept;
 pub mod likeness;

@@ -38,6 +38,9 @@ use futures_util::StreamExt;
 use serde::Serialize;
 use serde_json::{Value, json};
 
+mod hosted;
+pub use hosted::{Carried, CarriedAccount, Lender};
+
 use crate::{
     activity::Activity,
     model::{Account, Credential, Outcome, Provider, Request, Usage, model_family, now, today},
@@ -216,6 +219,15 @@ pub struct Shared {
     /// nothing, 1: what's due, 2: every account): one lock, so an ask
     /// never falls between a run's last look and its end.
     capture_state: std::sync::Mutex<(bool, u8)>,
+    /// This pool is a Rex host's (`hosted`): it claims no reset credits
+    /// by itself (the desktop's pool does), and is given its accounts.
+    hosted: std::sync::atomic::AtomicBool,
+    /// Who brings a newer sign-in for an account kept elsewhere
+    /// (`hosted::Lender`), and when each was last asked and failed.
+    lender: Mutex<Option<hosted::Lender>>,
+    asked: Mutex<HashMap<String, std::time::Instant>>,
+    /// When each account's sign-in was last renewed for a borrower.
+    lent: Mutex<HashMap<String, std::time::Instant>>,
 }
 
 /// How often an account's quota is read while nothing asks for it (its
@@ -344,6 +356,10 @@ impl Shared {
             own_clients: Mutex::new(std::collections::VecDeque::new()),
             exact: Default::default(),
             capture_state: std::sync::Mutex::new((false, 0)),
+            hosted: Default::default(),
+            lender: Mutex::new(None),
+            asked: Mutex::new(HashMap::new()),
+            lent: Mutex::new(HashMap::new()),
         });
         // What the copy it took over from finishes after the handover,
         // booked here, where it's saved.
@@ -732,6 +748,9 @@ impl Shared {
             if let Some(a) = p.account_mut(id) {
                 a.signed_out = None;
                 a.cooldown_until = None;
+                // (Signed in anew here: this pool's to keep, until it
+                // is next carried to the hosts, `hosted`.)
+                a.kept_on = None;
             }
         }
         // (Signed in again, perhaps as another account under the same name:
@@ -803,6 +822,12 @@ impl Shared {
         // Someone else may have refreshed it while we waited.
         let current = self.pool.lock().unwrap().saved.credentials.get(id).cloned().ok_or_else(|| Failure::Refused("No sign-in".into()))?;
         let due = current.expires_at.is_some_and(|e| e - now() < within);
+        // Kept elsewhere: never renewed here (`hosted`).
+        let kept_on = self.pool.lock().unwrap().account(id).and_then(|a| a.kept_on.clone());
+        if let Some(keeper) = kept_on {
+            let refused = refused.is_some_and(|rejected| current.access == rejected.access);
+            return self.borrowed(id, &keeper, current, due || refused, refused).await;
+        }
         // (Refused, but the other copy renewed it since: that one, then.)
         if (renewed_there || refused.is_none_or(|rejected| current.access != rejected.access)) && !due {
             return Ok(current);
@@ -1115,6 +1140,10 @@ impl Shared {
     /// Recheck which account can serve under the provider's claim lock. A
     /// refusal or another request's reset may already have released one.
     async fn redeem_for(&self, provider: Provider, family: &str, tried: &HashMap<String, u64>) -> Option<String> {
+        // (A host's pool claims nothing by itself: `hosted`.)
+        if self.is_hosted() {
+            return None;
+        }
         let gate = self.claims_gate(provider);
         let _gate = gate.lock().await;
         if self.drain.retired() {
@@ -1187,7 +1216,9 @@ impl Shared {
     /// moment (`Account::expiring_claim`). At most once a minute per
     /// account; none from a copy that has handed over.
     async fn spend_expiring(&self) {
-        if self.drain.retired() {
+        // (A host's pool claims nothing by itself: two pools would
+        // claim the same reset.)
+        if self.drain.retired() || self.is_hosted() {
             return;
         }
         let t = now();
@@ -1342,6 +1373,7 @@ pub fn start(shared: Arc<Shared>, port: u16) -> Result<(), String> {
                     tokio::time::sleep(Duration::from_secs(2)).await;
                     loop {
                         s.sync(None).await;
+                        s.borrow_ahead().await;
                         s.spend_expiring().await;
                         tokio::time::sleep(Duration::from_secs(60)).await;
                     }
@@ -1459,11 +1491,25 @@ pub fn status_json(p: &Pool) -> Value {
     json!({"accounts": accounts, "error": p.error, "loaded": p.loaded, "served": p.served, "open": p.open, "activity": p.activity.minutes})
 }
 
+/// A host's pool serves its clients through its proxy alone, which
+/// knows the program that asks (`peer`: the account's own Claude Code
+/// or Codex). By address anybody on the machine could spend the
+/// accounts: a host has other people on it, a desktop its one person.
+fn not_by_address() -> Response {
+    (StatusCode::NOT_FOUND, "This Token Pool serves Claude Code and Codex through its proxy only.").into_response()
+}
+
 async fn claude(State(ctx): State<Ctx>, Path(rest): Path<String>, RawQuery(q): RawQuery, method: Method, headers: HeaderMap, body: Bytes) -> Response {
+    if ctx.shared.is_hosted() {
+        return not_by_address();
+    }
     proxy(ctx, Provider::Claude, rest, q, method, headers, body).await
 }
 
 async fn codex(State(ctx): State<Ctx>, Path(rest): Path<String>, RawQuery(q): RawQuery, method: Method, headers: HeaderMap, body: Bytes) -> Response {
+    if ctx.shared.is_hosted() {
+        return not_by_address();
+    }
     proxy(ctx, Provider::Codex, rest, q, method, headers, body).await
 }
 

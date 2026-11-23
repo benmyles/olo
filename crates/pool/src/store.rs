@@ -24,6 +24,7 @@ use crate::model::{Account, Credential};
 const MAGIC: &[u8; 4] = b"TABP";
 const FORMAT: u8 = 1;
 // (Kept with every other secret of Olo's, which Backup takes along.)
+#[cfg(feature = "desktop")]
 const KEY_ATTRS: &[(&str, &str)] = olo_system::secrets::POOL_KEY.attributes;
 
 /// Everything kept: the accounts and, by account id, their sign-ins.
@@ -43,7 +44,12 @@ pub fn path() -> PathBuf {
 pub const ARRIVED: &str = "pool-arrived.json";
 
 fn keyfile() -> Option<PathBuf> {
-    std::env::var_os("OLO_POOL_KEYFILE").map(PathBuf::from)
+    let named = std::env::var_os("OLO_POOL_KEYFILE").map(PathBuf::from);
+    // (On a Rex host there is no login keyring: the key is a file
+    // beside the vault, the account's alone, as the vault is.)
+    #[cfg(not(feature = "desktop"))]
+    let named = named.or_else(|| Some(path().with_extension("key")));
+    named
 }
 
 pub fn random<const N: usize>() -> [u8; N] {
@@ -81,6 +87,9 @@ fn key(sealed_exists: bool) -> Result<Zeroizing<[u8; 32]>, String> {
             Err(_) if sealed_exists => return Err(missing()),
             Err(e) => return Err(format!("Couldn’t read the key: {e}")),
         },
+        #[cfg(not(feature = "desktop"))]
+        None => unreachable!("a host's pool always has a key file"),
+        #[cfg(feature = "desktop")]
         None => match olo_system::secrets::lookup(KEY_ATTRS) {
             Ok(Some(b)) => Zeroizing::new(b),
             Ok(None) if sealed_exists => return Err(missing()),

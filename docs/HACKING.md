@@ -25681,6 +25681,66 @@ on `127.0.0.1:17892` (`OLO_POOL_PROXY_PORT`) as the clients' proxy.
   keeper; a second upgrade went to a third copy under the keeper; the
   window came back once; SIGTERM to the keeper ended all; a copy killed
   ended the keeper with it.
+- **A pool of its own on a Rex host** (`gateway/hosted.rs`, `host.rs`,
+  `src/bin/olo-pool-host.rs`; being built, 2026-11-23: the program and
+  the pools' agreement are there and tested, the desktop's side that
+  puts it on a host and keeps it in step is next, TODO). Ben: "it
+  shouldn't proxy through the token pool running on the user's desktop
+  because then the coding agents couldn't continue when the desktop is
+  off. what it should do is install a token pool service … that
+  automatically gets the same config/accounts as the desktop token
+  pool … the remote service itself should not require the desktop
+  token pool available, and the remote service should send requests
+  for those remote agents directly to claude/openai etc".
+  - *`olo-pool-host`*: the pool's own gateway and proxy with no
+    desktop under it (the crate without its `desktop` feature: its key
+    in a file beside its vault, both the account's alone, since a host
+    has no login keyring), one static program for x86_64 and aarch64
+    hosts (built for musl with zig as the C compiler, for aws-lc and
+    zstd: `-fno-sanitize=undefined`, or zig's own checks are left
+    undefined at the link). `serve` runs it (Claude Code and Codex
+    there pointed at it as it first starts), `ctl` puts one line of
+    JSON to it and writes the answer (`host::Ask`: status, carry,
+    lend, give back, stop), over a socket in the account's own state
+    folder: no port, no token. It serves through its proxy alone
+    (which knows the program asking is the account's own Claude Code
+    or Codex), not by address, since a host has other people on it;
+    and it claims no reset credits by itself (the desktop's pool
+    does: two pools would claim the same one).
+  - *One pool renews each sign-in.* A provider's refresh token is
+    spent once; renewed by two pools the second is refused, and a
+    provider may end the whole sign-in for it. So each account has
+    one keeper, and since a host's pool must go on with the desktop
+    off, an account carried to a host is kept there: the desktop
+    marks it `kept_on` that host (saved before anything is sent, so
+    that from then on it never renews it, whatever becomes of the
+    message), hands over its refresh token (`carry_to`,
+    `Shared::carried`), drops its own once the host says it keeps it
+    (`handed_over`), and from then on uses the access token it has
+    and takes a newer one from the host as it comes due (`fresh` →
+    `borrowed`, through the `Lender` the app gives; asked two hours
+    ahead with the quotas' reading, `borrow_ahead`, so a request
+    never waits and a host out of reach for a while costs nothing).
+    The host out of reach and the token run out, the account waits
+    ("Its sign-in is kept on build, which can't be reached now") and
+    is not signed out. Given back whole when the host's pool is
+    removed (`give_back`, the same answer however often it is asked;
+    `took_back`). A sign-in made anew on the desktop is the desktop's
+    again until it is next carried. What it means for the person: an
+    account shared with a host needs that host reached every few
+    hours to be used here too.
+  - *What is carried* is the accounts (new ones added, ones no longer
+    carried removed, names and pauses followed) and never a pool's
+    own reading of them (use, meters, cooldowns).
+  - *Tested* (`tests/hosted.rs`, against a provider that gives a new
+    refresh token at each renewal and refuses one used twice): the
+    host keeps and renews, the desktop borrows, neither renews what
+    the other did, the host goes on alone, the desktop waits without
+    signing out, a sign-in given back is whole, and no refresh token
+    is spent twice. And the static program run here in a scratch home
+    on ports of its own: an account carried over `ctl`, its sign-in
+    lent, the vault sealed and the account's alone, stopped, the
+    clients put back.
 - **The Clients window** (Pool ▸ Clients, ⌘L, or the Clients button;
   `apps/pool/src/clients_window.rs`): the pool's activity over time, a
   line each for Claude Code and Codex in requests a minute over the last

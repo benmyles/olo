@@ -103,7 +103,7 @@ fn mark(tid: i32) {
     // SAFETY: sched_getscheduler only reads.
     let policy = unsafe { libc::sched_getscheduler(tid) };
     if matches!(policy, libc::SCHED_OTHER | libc::SCHED_BATCH | libc::SCHED_IDLE) {
-        let param = libc::sched_param { sched_priority: 0 };
+        let param = normal_priority();
         // SAFETY: sched_setscheduler reads `param`; setting the flag on a
         // thread of our own (never clearing it) needs no privilege, and the
         // same class keeps the thread's nice.
@@ -191,7 +191,7 @@ pub fn forget(tid: i32) {
 /// kernel refuses (EPERM) an unprivileged caller that would clear it. Any
 /// thread of the caller's user (app_server puts back a window's looper).
 pub fn demote(tid: i32) -> bool {
-    let param = libc::sched_param { sched_priority: 0 };
+    let param = normal_priority();
     // SAFETY: sched_setscheduler reads `param`; lowering a thread of our
     // own user to the normal class needs no privilege.
     unsafe { libc::sched_setscheduler(tid, libc::SCHED_OTHER | libc::SCHED_RESET_ON_FORK, &param) == 0 }
@@ -258,6 +258,16 @@ pub fn guarded(pid: u32) -> bool {
         let (soft, hard) = (n.next().and_then(|v| v.parse::<u64>().ok()), n.next().and_then(|v| v.parse::<u64>().ok()));
         (soft, hard) == (Some(STUCK_LIMIT_US), Some(HARD_LIMIT_US))
     })
+}
+
+/// A `sched_param` of priority nothing, whatever else the C library's
+/// has in it (musl's has four more fields than glibc's: the pool's
+/// program for Rex hosts is built for musl, with this crate under it).
+fn normal_priority() -> libc::sched_param {
+    // SAFETY: `sched_param` is integers alone; all nothing is a value of it.
+    let mut param: libc::sched_param = unsafe { std::mem::zeroed() };
+    param.sched_priority = 0;
+    param
 }
 
 #[cfg(test)]
@@ -332,7 +342,7 @@ mod tests {
     #[test]
     fn a_batch_thread_is_marked_in_its_class() {
         std::thread::spawn(|| {
-            let param = libc::sched_param { sched_priority: 0 };
+            let param = normal_priority();
             let me = tid();
             // SAFETY: sched_setscheduler reads `param`, for this thread;
             // sched_getscheduler only reads.

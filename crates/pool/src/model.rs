@@ -355,6 +355,13 @@ pub struct Account {
     /// Its latest requests, newest last (at most [`RECENT`]).
     #[serde(default)]
     pub recent: VecDeque<Request>,
+    /// Where its sign-in is kept, if not here: the pool that renews it
+    /// (a Rex host's, by the host's id; or, on a host, the name of the
+    /// pool that lent it). This pool then never renews it itself, and
+    /// asks the keeper for a newer one (`gateway::hosted`): a
+    /// provider's refresh token is spent once, by one pool.
+    #[serde(default)]
+    pub kept_on: Option<String>,
 }
 
 impl Account {
@@ -458,6 +465,7 @@ impl Account {
             redeeming: None,
             redeem_tried: None,
             recent: VecDeque::new(),
+            kept_on: None,
         }
     }
 

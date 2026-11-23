@@ -2816,3 +2816,16 @@ an argument it doesn't know starts the lint (read its first lines).
   (the default network reaches no mirror), and a rootless container
   can't raise its limits or write `vm.*`: what that breaks (a sign-in
   refused by PAM's limits) is worth finding there first.
+- **A static program for Rex hosts with C in it** (the pool's:
+  aws-lc, zstd) is built with zig as the C compiler: a wrapper for
+  each target (`zig cc -target ARCH-linux-musl -fno-sanitize=undefined`,
+  dropping cc's own `--target=`, which zig doesn't take as Rust names
+  it; `zig ar`), `CC_<target>` and `AR_<target>` set to them,
+  `-Clinker=rust-lld`, and `CARGO_RESOLVER_FEATURE_UNIFICATION=selected`
+  (this workspace unifies features across all its packages: without
+  it the host's build takes every package's). Without
+  `-fno-sanitize=undefined` the link fails on `__ubsan_handle_*`; C
+  objects built before the flag are kept under
+  `target/TRIPLE/release/build/NAME/` (not `NAME-HASH`) and must be
+  removed. musl's `libc::sched_param` has more fields than glibc's:
+  make one with `zeroed()`, not a literal.

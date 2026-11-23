@@ -400,6 +400,7 @@ impl Drain {
 /// taking requests, and one that handed over, finishing what it has). The
 /// session's copy keeps them when it finds one there already (olo-pool's
 /// `keeper`), rather than running beside it with no gateway.
+#[cfg(feature = "desktop")]
 pub fn serving(port: u16) -> Vec<i32> {
     use std::os::unix::fs::MetadataExt as _;
     let me = std::process::id() as i32;
@@ -409,6 +410,12 @@ pub fn serving(port: u16) -> Vec<i32> {
     olo_system::listening::holders(root, port, |pid| {
         pid != me && std::fs::metadata(format!("/proc/{pid}")).is_ok_and(|m| m.uid() == uid) && olo_system::listening::program(root, pid).as_deref() == Some("olo-pool")
     })
+}
+
+/// (A Rex host's pool hands over to no copy: none is looked for.)
+#[cfg(not(feature = "desktop"))]
+pub fn serving(_port: u16) -> Vec<i32> {
+    Vec::new()
 }
 
 /// A listening socket on loopback `port`: the one the version before

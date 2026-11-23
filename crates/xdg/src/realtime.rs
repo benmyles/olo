@@ -55,7 +55,12 @@ pub fn allowed_priority() -> u32 {
 /// says so where it isn't.
 pub fn make_realtime(pid: u32, tid: u32, priority: u32) -> Result<(), String> {
     let _ = pid;
-    let param = libc::sched_param { sched_priority: priority.clamp(1, 99) as i32 };
+    // (All nothing first: musl's `sched_param` has more fields than
+    // glibc's, and the pool's program for Rex hosts is built for musl
+    // with this crate under it.)
+    // SAFETY: `sched_param` is integers alone; all nothing is a value of it.
+    let mut param: libc::sched_param = unsafe { std::mem::zeroed() };
+    param.sched_priority = priority.clamp(1, 99) as i32;
     // SAFETY: sched_setscheduler reads `param`, for a thread of our user.
     if unsafe { libc::sched_setscheduler(tid as i32, libc::SCHED_RR | libc::SCHED_RESET_ON_FORK, &param) } == 0 {
         return Ok(());
