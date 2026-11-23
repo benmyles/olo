@@ -2630,3 +2630,17 @@ an argument it doesn't know starts the lint (read its first lines).
 - **A hover left by one picture is in the next**: move the pointer off
   what has a tip (and wait for it to go) before a picture that isn't
   of the tip.
+- **A word made longer is a layout change**: picture every window
+  the word is in before the commit, not only the one the work is
+  about. "Manage Server…" renamed "Manage Rex Server…" made four
+  buttons, each as wide as the widest label, wider than Hosts and
+  Ports, and it was pushed so (mended in the next commit). The static
+  lint passes a flex row that shrinks its children, and the live lint
+  saw only the windows Rex shows at its start; it opens Hosts and
+  Ports now (`OLO_REX_DEMO_OPEN`). `grep -rn "the old words"` over
+  `apps/` says where a label is used and what is sized from it.
+- **A picture of Rex's Hosts and Ports holds the account's name** (the
+  far host's address, `USER@…`): paint the cell over before it goes to
+  a reviewer (the rig's script finds the label's node by its text and
+  fills it with the ground beside it), or use the demo
+  (`OLO_REX_DEMO=1 OLO_REX_DEMO_HOSTS=states`, made-up hosts).

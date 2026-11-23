@@ -744,6 +744,21 @@ impl RexWindow {
 
         let panes_view = cx.new_view(|_| PanesView { win_id: id, session: None });
 
+        // (The demo's other windows, opened as it starts, for the live
+        // lint and for pictures: `OLO_REX_DEMO_OPEN=app.hosts`, the
+        // commands that open them, with commas between. The lint
+        // reviews the windows an app shows; shown none of these, it
+        // passed a row of buttons in Hosts and Ports that was wider
+        // than its window, 2026-11-23.)
+        if std::env::var("OLO_REX_DEMO").ok().as_deref() == Some("1")
+            && restored.is_none()
+            && let Ok(open) = std::env::var("OLO_REX_DEMO_OPEN")
+        {
+            for command in open.split(',').map(str::trim).filter(|c| !c.is_empty()) {
+                cx.send(WinMsg::Command(command.to_owned()));
+            }
+        }
+
         Self {
             id,
             role: WinRole::Workspace,

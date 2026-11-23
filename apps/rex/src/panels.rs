@@ -340,8 +340,12 @@ pub fn render_hosts_panel(
     .on_select(on_host);
     let host_list = div().w_full().h(tall(list_rows(hosts.len(), 5))).child(host_list);
     // Every button under the two lists as wide as the widest of them:
-    // one column of left edges, one of right.
-    let wide = ["Add…", "Remove", "Manage Rex Server…", "Connect", "Forward…", "Stop", "Open"].iter().map(|l| olo_kit::widgets::button_width(l, false)).fold(0.0, f32::max);
+    // one column of left edges, one of right. But the long one, which
+    // is as wide as its own words: as wide as it, the four under the
+    // hosts were wider than the window, and Connect was cut at its
+    // edge ("Manage Server…" renamed, 2026-11-23, and this window not
+    // pictured before the commit).
+    let wide = ["Add…", "Remove", "Connect", "Forward…", "Stop", "Open"].iter().map(|l| olo_kit::widgets::button_width(l, false)).fold(0.0, f32::max);
 
     // Under it: what is done to the one chosen. This computer's own
     // server isn't removed; Connect is for one that isn't connected.
@@ -362,7 +366,7 @@ pub fn render_hosts_panel(
         .child(div().flex_1())
         // (The chosen host's own Rex server, looked after as root: the
         // Server window. For a host reached over SSH as an account.)
-        .child(Button::new("Manage Rex Server…").min_width(wide).enabled(picked.is_some_and(|h| h.managed)).on_click(move |_, cx| {
+        .child(Button::new("Manage Rex Server…").enabled(picked.is_some_and(|h| h.managed)).on_click(move |_, cx| {
             if let Some(key) = &pick_server {
                 on_server(key, cx);
             }

@@ -27565,7 +27565,16 @@ first part of the host in its address, which the empty Name field
 shows: `hub::host_name_from`); a port and the host it is of. A host
 added is one of Preferences ▸ Rex's hosts, as every host is.
 `OLO_REX_DEMO_HOSTS=states` gives the demo hosts and forwards in every
-state, for pictures.
+state, for pictures. `OLO_REX_DEMO_OPEN=app.hosts` (commands, commas between) opens
+the demo's other windows as it starts: the live lint reviews the
+windows an app shows, and runs Rex so, with Hosts and Ports beside its
+window (it had never seen that window: the row of buttons under its
+hosts was wider than the window after "Manage Server…" became "Manage
+Rex Server…", Connect cut at the edge, and every lint passed,
+2026-11-23). Its buttons: the short ones all as wide as the widest of
+them, the long one as wide as its own words. A window an app opens
+only by a command is added to the lint's run of that app
+(`tools/dev/ui-lint`, `apps()`), when the window is made.
 
 **What a pane and a tab are called** (2026-11-22). A pane's head, and
 its name to agents, is `hub::pane_title` (`BlockRuntime::said`): the

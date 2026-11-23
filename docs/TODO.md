@@ -1320,6 +1320,10 @@ something nobody here has is in "Blocked", with what it waits for.
     built, the Token Pool service. The Agents menu's two installs and
     Settings ▸ Use Olo’s Typing Helper on Hosts then lead there or go.
     A new window: to both reviewers early.
+  - *Hosts and Ports: Connect has no way back* (Opus's design review
+    of the window, 2026-11-23): for a host that is connected the
+    button is only disabled; it could be Disconnect there, in the
+    same place.
   - *The status bar's marks, further*: a mark that is off put on by
     a click on it (the bridge and the skill are installed by a script
     typed into the pane now, which a program running there would
