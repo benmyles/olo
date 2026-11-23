@@ -7,4 +7,8 @@
 [toolchain]
 channel = "nightly-2026-11-14"
 components = ["rustfmt", "clippy", "rust-src"]
+# The targets of Olo's helper on a Rex host (crates/rex-link): built
+# for the hosts, statically, by apps/rex's build script, whatever
+# computer Olo itself is built for.
+targets = ["x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"]
 profile = "minimal"

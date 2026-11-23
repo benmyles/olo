@@ -106,6 +106,21 @@ impl RexEndpoint {
         }
     }
 
+    /// [`Self::connect_stream`] for the control connection: over SSH it
+    /// goes through Olo's helper on the host where that is installed
+    /// ([`SshSessionPool::set_helper`]), which the connection then says
+    /// (`ControlClient::keeps_typing_in_order`). The same stream
+    /// everywhere else.
+    pub async fn connect_control_stream(&self) -> Result<(RexStream, String), RexError> {
+        match self {
+            Self::Ssh { target, pool, askpass } => {
+                let chan = pool.open_rex_channel(target, askpass.clone(), true).await?;
+                Ok((RexStream::Boxed(chan), "localhost".to_owned()))
+            }
+            _ => self.connect_stream().await,
+        }
+    }
+
     /// Open a connected [`RexStream`] and the HTTP `Host` header value to use for
     /// WebSocket upgrade on `/api/control` or `/api/data`.
     pub async fn connect_stream(&self) -> Result<(RexStream, String), RexError> {
@@ -138,7 +153,7 @@ impl RexEndpoint {
                 Ok((RexStream::Tls(Box::new(tls)), host_hdr))
             }
             Self::Ssh { target, pool, askpass } => {
-                let chan = pool.open_rex_channel(target, askpass.clone()).await?;
+                let chan = pool.open_rex_channel(target, askpass.clone(), false).await?;
                 Ok((RexStream::Boxed(chan), "localhost".to_owned()))
             }
         }

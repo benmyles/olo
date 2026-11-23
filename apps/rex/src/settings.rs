@@ -137,6 +137,10 @@ pub struct Settings {
     /// What is typed is drawn at once where the host's echo is slow to
     /// come back (`predict`).
     pub type_ahead: bool,
+    /// Olo's helper is put on the hosts reached over SSH and used
+    /// there (`link`, `olo_rex_client::helper`): what is typed then
+    /// goes as it is typed, in order.
+    pub host_helper: bool,
     /// What Keep It Going types to an agent that has stopped.
     pub keep_going_message: String,
 
@@ -182,6 +186,7 @@ impl Default for Settings {
             dark_theme_id: None,
             font_size: TEXT_SIZE,
             type_ahead: true,
+            host_helper: true,
             keep_going_message: "Please keep going until everything is complete and verified.".to_owned(),
             home_server_address: "local".to_owned(),
             saved_hosts: Vec::new(),

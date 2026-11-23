@@ -346,6 +346,9 @@ impl client::Handler for SshClientHandler {
 #[derive(Default)]
 pub struct SshSessionPool {
     sessions: Mutex<HashMap<SshTarget, SessionSlot>>,
+    /// Olo's helper on the hosts: the name of the build the app
+    /// carries ([`Self::set_helper`]).
+    helper: std::sync::Mutex<Option<String>>,
 }
 
 type SessionSlot = Arc<Mutex<Option<Arc<Handle<SshClientHandler>>>>>;
@@ -362,13 +365,29 @@ impl SshSessionPool {
         self.sessions.lock().await.remove(target);
     }
 
+    /// Olo's helper on the hosts, by the name of the build the app
+    /// carries (`helper::file`; letters and digits only, or it is
+    /// refused): a control connection goes through that build where
+    /// the host has it, through another build of the helper where it
+    /// has only that, and straight to the server where it has none
+    /// ([`Self::open_rex_channel`], [`dial_command`]). `None`: straight
+    /// to the server everywhere.
+    pub fn set_helper(&self, id: Option<&str>) {
+        let id = id.filter(|id| !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric()));
+        *self.helper.lock().unwrap_or_else(|e| e.into_inner()) = id.map(str::to_owned);
+    }
+
     /// Open a bidirectional byte stream to the remote Rex server over SSH:
     /// tries `direct-streamlocal@openssh.com` if an explicit socket path is
     /// configured, otherwise launches `rex __internal dial-stdio` over an SSH
     /// exec channel (which automatically discovers or starts the remote Rex server).
-    pub async fn open_rex_channel(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Result<Pin<Box<dyn AsyncReadWrite + Send>>, RexError> {
+    /// The control connection (`control`) goes through Olo's helper where the
+    /// host has it ([`Self::set_helper`]); then always by `dial-stdio`, which
+    /// the helper runs.
+    pub async fn open_rex_channel(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, control: bool) -> Result<Pin<Box<dyn AsyncReadWrite + Send>>, RexError> {
         let handle = self.get_or_connect(target, askpass).await?;
-        tokio::time::timeout(Duration::from_secs(10), Self::channel(&handle, target)).await.map_err(|_| RexError::Timeout)?
+        let helper = if control { self.helper.lock().unwrap_or_else(|e| e.into_inner()).clone() } else { None };
+        tokio::time::timeout(Duration::from_secs(10), Self::channel(&handle, target, helper.as_deref())).await.map_err(|_| RexError::Timeout)?
     }
 
     /// Runs `command` on the host, in a shell there, and waits for it:
@@ -412,8 +431,40 @@ impl SshSessionPool {
         Ok(ran)
     }
 
-    async fn channel(handle: &Handle<SshClientHandler>, target: &SshTarget) -> Result<Pin<Box<dyn AsyncReadWrite + Send>>, RexError> {
-        if let Some(sock) = &target.socket_path {
+    /// [`Self::exec`] with `input` given to the command on its input,
+    /// which then ends: for putting a file on the host (the command
+    /// reads it: `cat > …`). What the command writes comes back whole
+    /// with its exit status. It is given two minutes and a second for
+    /// each 20 kB: a command that stops reading, or a link that stops,
+    /// isn't waited for longer.
+    pub async fn put(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, command: &str, input: &[u8]) -> Result<crate::provision::Ran, RexError> {
+        use russh::ChannelMsg;
+        let handle = self.get_or_connect(target, askpass).await?;
+        let within = Duration::from_secs(120 + input.len() as u64 / 20_000);
+        let sent = async {
+            let mut channel = handle.channel_open_session().await.map_err(|e| RexError::Ssh(format!("open ssh session channel: {e}")))?;
+            channel.exec(true, command).await.map_err(|e| RexError::Ssh(format!("exec on {} failed: {e}", target.display())))?;
+            channel.data(input).await.map_err(|e| RexError::Ssh(format!("sending to {} failed: {e}", target.display())))?;
+            channel.eof().await.map_err(|e| RexError::Ssh(format!("sending to {} failed: {e}", target.display())))?;
+            let mut ran = crate::provision::Ran::default();
+            let mut written = Vec::new();
+            loop {
+                match channel.wait().await {
+                    Some(ChannelMsg::Data { data }) => written.extend_from_slice(&data),
+                    Some(ChannelMsg::ExtendedData { data, .. }) => written.extend_from_slice(&data),
+                    Some(ChannelMsg::ExitStatus { exit_status }) => ran.status = Some(exit_status),
+                    Some(ChannelMsg::Close) | None => break,
+                    _ => {}
+                }
+            }
+            ran.output = String::from_utf8_lossy(&written).into_owned();
+            Ok(ran)
+        };
+        tokio::time::timeout(within, sent).await.map_err(|_| RexError::Timeout)?
+    }
+
+    async fn channel(handle: &Handle<SshClientHandler>, target: &SshTarget, helper: Option<&str>) -> Result<Pin<Box<dyn AsyncReadWrite + Send>>, RexError> {
+        if let Some(sock) = target.socket_path.as_ref().filter(|_| helper.is_none()) {
             match handle.channel_open_direct_streamlocal(sock.clone()).await {
                 Ok(ch) => return Ok(Box::pin(ch.into_stream())),
                 Err(e) => {
@@ -425,7 +476,7 @@ impl SshSessionPool {
         // Standard Rex SSH transport: `rex __internal dial-stdio` (auto-discovers
         // remote Rex Unix socket and autostart if needed).
         let channel = handle.channel_open_session().await.map_err(|e| RexError::Ssh(format!("open ssh session channel: {e}")))?;
-        let cmd = if let Some(sock) = &target.socket_path { format!("rex -S unix://{} __internal dial-stdio", shell_escape(sock)) } else { "rex __internal dial-stdio".to_owned() };
+        let cmd = dial_command(target.socket_path.as_deref(), helper);
         channel.exec(true, cmd).await.map_err(|e| RexError::Ssh(format!("exec `{}` failed: {e}", target.display())))?;
         let writer = channel.make_writer();
         let reader = ExecOutput::Starting(Some(channel));
@@ -797,50 +848,134 @@ fn shell_escape(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
+/// What is run on the host for a connection to its Rex server: the
+/// server's own `dial-stdio`, and for a control connection that may go
+/// through Olo's helper (`helper`, the name of the build the app
+/// carries), the helper in front of it:
+/// - the app's own build, where the host has it;
+/// - else the newest other build of the helper there (after an upgrade
+///   of Olo, until the new one is put there: the helper says what it
+///   does by a number, `olo_rex_link::VERSION`, and the app asks no
+///   more of it);
+/// - else the server itself, as before.
+///
+/// A helper is only run if the file is the account's own and answers
+/// when asked its version (a home that runs nothing, a file for
+/// another machine, a file cut short: straight to the server, never a
+/// connection that fails). Its file is named for the machine too
+/// (`uname -m` there): a home shared by hosts of two kinds holds one
+/// for each. The choice is made by `sh`, whatever the account's own
+/// shell is (fish and csh have no `if … then … fi`); every shell takes
+/// the one quoted word it is given.
+fn dial_command(socket: Option<&str>, helper: Option<&str>) -> String {
+    let dial = match socket {
+        Some(sock) => format!("rex -S unix://{} __internal dial-stdio", shell_escape(sock)),
+        None => "rex __internal dial-stdio".to_owned(),
+    };
+    let Some(id) = helper else { return dial };
+    let dir = crate::helper::DIR;
+    let script = format!(
+        "d=\"$HOME\"/{dir}; m=$(uname -m); \
+         run() {{ if [ -f \"$1\" ] && [ -O \"$1\" ] && \"$1\" --version > /dev/null 2>&1; then exec \"$1\" -- {dial}; fi; }}; \
+         run \"$d/olo-rex-link-{id}-$m\"; \
+         for L in $(ls -t \"$d\"/olo-rex-link-*-\"$m\" 2> /dev/null); do run \"$L\"; done; \
+         exec {dial}"
+    );
+    format!("sh -c {}", shell_escape(&script))
+}
+
 #[cfg(test)]
-mod agent_wait_tests {
+mod dial_tests {
     use super::*;
 
-    #[derive(Debug, Default)]
-    struct Told(std::sync::Mutex<Vec<(String, bool)>>);
-    impl SshAskpass for Told {
-        fn confirm_host_key(&self, _: &str, _: u16, _: &str, _: &str, _: bool) -> bool {
-            false
+    /// The command is what a POSIX shell runs as meant: checked by
+    /// running it, with stand-ins for `rex` and for the helper.
+    #[test]
+    fn a_control_connection_goes_through_the_helper_where_it_is_and_straight_where_it_isnt() {
+        assert_eq!(dial_command(None, None), "rex __internal dial-stdio");
+        assert_eq!(dial_command(Some("/run/it's/rex.sock"), None), "rex -S unix://'/run/it'\\''s/rex.sock' __internal dial-stdio");
+        // (On disk: /tmp is memory here.)
+        let dir = std::path::PathBuf::from(format!("/var/tmp/olo-rex-dial-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (home, bin) = (dir.join("home"), dir.join("bin"));
+        let there = home.join(crate::helper::DIR);
+        std::fs::create_dir_all(&there).unwrap();
+        std::fs::create_dir_all(&bin).unwrap();
+        let script = |path: &std::path::Path, body: &str| {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::write(path, format!("#!/bin/sh\n{body}\n")).unwrap();
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        };
+        // (A helper that runs: it answers when asked its version, and
+        // otherwise says who it is and what it was given.)
+        let helper = |name: &str| format!("if [ \"$1\" = --version ]; then echo olo-rex-link 1; exit 0; fi; echo \"{name}: $*\"");
+        script(&bin.join("rex"), "echo \"rex: $*\"");
+        let run = |command: &str| {
+            let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap_or_default());
+            let out = std::process::Command::new("sh").arg("-c").arg(command).env("HOME", &home).env("PATH", path).output().unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_owned()
+        };
+        let machine = String::from_utf8(std::process::Command::new("uname").arg("-m").output().unwrap().stdout).unwrap().trim().to_owned();
+        let file = |id: &str| there.join(format!("olo-rex-link-{id}-{machine}"));
+        let aged = |id: &str, days: u64| std::fs::File::options().write(true).open(file(id)).unwrap().set_modified(std::time::SystemTime::now() - Duration::from_secs(days * 86400)).unwrap();
+        for socket in [None, Some("/run/it's a/rex.sock")] {
+            let wanted = match socket {
+                Some(sock) => format!("-S unix://{sock} __internal dial-stdio"),
+                None => "__internal dial-stdio".to_owned(),
+            };
+            let command = dial_command(socket, Some("0a1b2c"));
+            for id in ["0a1b2c", "old1", "old2"] {
+                let _ = std::fs::remove_file(file(id));
+            }
+            let _ = std::fs::remove_file(there.join("olo-rex-link-0a1b2c-othermachine"));
+            // No helper there: straight to the server.
+            assert_eq!(run(&command), format!("rex: {wanted}"));
+            // The app's own build: through it, given the server's command.
+            script(&file("0a1b2c"), &helper("mine"));
+            assert_eq!(run(&command), format!("mine: -- rex {wanted}"));
+            // With other builds beside it: still the app's own.
+            script(&file("old1"), &helper("old1"));
+            aged("0a1b2c", 3);
+            assert_eq!(run(&command), format!("mine: -- rex {wanted}"));
+            // Only other builds: the newest of them.
+            std::fs::remove_file(file("0a1b2c")).unwrap();
+            script(&file("old2"), &helper("old2"));
+            aged("old1", 9);
+            aged("old2", 2);
+            assert_eq!(run(&command), format!("old2: -- rex {wanted}"));
+            aged("old2", 20);
+            assert_eq!(run(&command), format!("old1: -- rex {wanted}"));
+            // The app's own build there, but it doesn't run (a file cut
+            // short, a home that runs nothing): another that does.
+            script(&file("0a1b2c"), "exit 126");
+            assert_eq!(run(&command), format!("old1: -- rex {wanted}"));
+            std::fs::write(file("0a1b2c"), b"\x7fELF not a program").unwrap();
+            assert_eq!(run(&command), format!("old1: -- rex {wanted}"));
+            // None that runs: straight to the server, never a failure.
+            script(&file("old1"), "exit 1");
+            script(&file("old2"), "exit 1");
+            assert_eq!(run(&command), format!("rex: {wanted}"));
+            // A build for another machine isn't this host's.
+            for id in ["0a1b2c", "old1", "old2"] {
+                std::fs::remove_file(file(id)).unwrap();
+            }
+            script(&there.join("olo-rex-link-0a1b2c-othermachine"), &helper("another machine's"));
+            assert_eq!(run(&command), format!("rex: {wanted}"));
         }
-        fn prompt_secret(&self, _: &str, _: &str, _: bool) -> Option<Zeroizing<String>> {
-            None
-        }
-        fn waiting_for_agent(&self, host: &str, waiting: bool) {
-            self.0.lock().unwrap().push((host.to_owned(), waiting));
-        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// An agent that signs at once is never spoken of; one that is slow
-    /// is said to be waited for, and then not; and a wait given up (the
-    /// connection dropped) is taken back too. The connection's deadline
-    /// stands still meanwhile.
-    #[tokio::test]
-    async fn a_slow_agent_is_said_to_be_waited_for() {
-        let told = Arc::new(Told::default());
-        let (waiting, paused) = tokio::sync::watch::channel(false);
-        let prompts = Prompts { ui: told.clone(), waiting };
-        assert_eq!(signed(Some(&prompts), "build.example", async { 7 }).await, 7);
-        assert!(told.0.lock().unwrap().is_empty());
-        let slow = signed(Some(&prompts), "build.example", async {
-            tokio::time::sleep(AGENT_SLOW + Duration::from_millis(300)).await;
-            8
-        });
-        tokio::pin!(slow);
-        tokio::select! { _ = &mut slow => panic!("answered before it could have"), _ = tokio::time::sleep(AGENT_SLOW + Duration::from_millis(100)) => {} }
-        assert_eq!(*told.0.lock().unwrap(), [("build.example".to_owned(), true)]);
-        assert!(*paused.borrow(), "the deadline waits with it");
-        assert_eq!(slow.await, 8);
-        assert_eq!(told.0.lock().unwrap().last(), Some(&("build.example".to_owned(), false)));
-        assert!(!*paused.borrow());
-        // Given up while waited for: taken back.
-        told.0.lock().unwrap().clear();
-        let never = signed(Some(&prompts), "gone.example", std::future::pending::<()>());
-        let _ = tokio::time::timeout(AGENT_SLOW + Duration::from_millis(200), never).await;
-        assert_eq!(*told.0.lock().unwrap(), [("gone.example".to_owned(), true), ("gone.example".to_owned(), false)]);
+    #[test]
+    fn only_a_plain_name_is_taken_for_the_helpers_build() {
+        let pool = SshSessionPool::default();
+        let set = |id: &str| {
+            pool.set_helper(Some(id));
+            pool.helper.lock().unwrap().clone()
+        };
+        assert_eq!(set("0a1b2c3d4e5f6071").as_deref(), Some("0a1b2c3d4e5f6071"));
+        assert_eq!(set("../x"), None);
+        assert_eq!(set("x; rm -rf ~"), None);
+        assert_eq!(set("a'b"), None);
+        assert_eq!(set(""), None);
     }
 }

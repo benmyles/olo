@@ -8593,6 +8593,7 @@ dependencies = [
  "jiff",
  "libc",
  "olo-protocol",
+ "olo-rex-link",
  "olo-sync",
  "olo-theme",
  "olo-xdg",
@@ -8613,6 +8614,14 @@ dependencies = [
  "uuid",
  "webpki-roots",
  "zeroize",
+]
+
+[[package]]
+name = "olo-rex-link"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

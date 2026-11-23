@@ -609,3 +609,65 @@ fn of_the_same_letter_twice_the_one_seen_is_known_or_none_is() {
     assert!(p.typed(b"y", Some(&screen("$  s_st")), t + ms(800)).1);
     assert_eq!(shown(&p), Some(("y@7".into(), 8)));
 }
+
+// What the played sessions found with each key sent as it is typed
+// (Olo's helper on the host: several writes on their way at once).
+
+#[test]
+fn an_echo_isnt_back_before_the_write_before_it_is_answered() {
+    let (mut p, t) = warm();
+    // (A round trip is timed: 0.3 s.)
+    let (a, _) = p.typed(b"a", Some(&screen("$ x")), t);
+    p.went(a, t);
+    p.answered(a, t + ms(300));
+    p.frame(Some(&screen("$ xa")), t + ms(305));
+    // Enter, "*", "q", Enter, "q": each sent as typed.
+    let (on, t) = (screen("$ xa"), t + ms(1000));
+    let seqs: Vec<u64> = [&b"\r"[..], b"*", b"q", b"\r", b"q"]
+        .iter()
+        .enumerate()
+        .map(|(i, key)| {
+            let at = t + ms(10 * i as u64);
+            let (seq, _) = p.typed(key, Some(&on), at);
+            p.went(seq, at);
+            seq
+        })
+        .collect();
+    // The host takes the first three; the prompt comes, the echoes of
+    // "*" and "q" don't (the link holds them), and they are no longer
+    // looked for.
+    p.answered(seqs[0], t + ms(600));
+    p.frame(Some(&screen("$ ")), t + ms(605));
+    p.answered(seqs[2], t + ms(620));
+    p.tick(t + ms(900));
+    // They come late. The second Enter isn't answered, so the "q" on
+    // the screen can't be the one typed after it, though by the clock
+    // alone that one could be back: nothing is held to be seen, and
+    // nothing typed now is drawn on the strength of it.
+    p.frame(Some(&screen("$ *")), t + ms(1000));
+    p.frame(Some(&screen("$ *q")), t + ms(1010));
+    assert!(p.waits(), "the second q is still looked for");
+    assert!(!p.typed(b"z", Some(&screen("$ *q")), t + ms(1020)).1);
+    assert_eq!(p.overlay(), None);
+}
+
+#[test]
+fn a_caret_gone_right_over_a_letter_isnt_that_letter_typed() {
+    // A program that draws its caret, the caret on the "b" of "ab".
+    // Something not predicted, then a right arrow and a "b".
+    let mut p = Predictor::new(true);
+    let t = Instant::now();
+    let base = drawn("> ab", 3);
+    p.frame(Some(&base), t);
+    type_all(&mut p, &[b"\t", b"\x1b[C", b"b"], &base, t + ms(10));
+    gone(&mut p, t + ms(10));
+    taken(&mut p, t + ms(300));
+    // The caret goes right, over the "b" that was there: the text
+    // before it is what a "b" typed would leave before it too, but the
+    // caret stands on nothing, where a "b" typed would have pushed the
+    // old one under it.
+    p.frame(Some(&drawn("> ab", 4)), t + ms(310));
+    assert!(p.waits(), "the b typed is still to come");
+    p.frame(Some(&drawn("> abb", 5)), t + ms(320));
+    assert!(!p.waits(), "and now it has");
+}

@@ -455,7 +455,11 @@ message):
   random (the same build of Logs measured 5.0 M instructions a frame
   or 9.4 M, run to run: the "noise" was this). Unscaled, a window's
   looper counted alone (`perf stat --no-scale -t TID` over the drag)
-  gave 5.140, 5.142 and 5.140 M a frame. Counts barely depend on
+  gave 5.140, 5.142 and 5.140 M a frame. (In a headless session the
+  app's drawing is Mesa's llvmpipe, in threads of the app's own
+  process, `llvmpipe-N`: most of what `-p PID` counts, and wandering
+  by 40% between the same runs. Count per thread, `--per-thread`, and
+  leave those out: AGENT-NOTES.) Counts barely depend on
   what else the machine is doing, where times do; two builds are
   compared by running each three times, in turn, and taking the
   middle. (Instructions don't see copying: a copy of 3 KB is a few
@@ -26941,6 +26945,8 @@ key event or change of focus). A request a key was a round trip a key:
 to a host 224 ms away, 65 characters typed in 2.8 s took 18.7 s to
 arrive; 73 typed in 3.3 s are run there within a second of the last
 (measured against a real host over SSH, by the host's own clock).
+Where Olo's helper is on the host (below, "A helper on the host") the
+waiting is done there, and each is sent as it is typed.
 
 **A slow link, measured** (2026-11-23; Ben: "the ssh://… can take a
 second or two to see a letter appear … can we build something like
@@ -26959,7 +26965,8 @@ with a host given):
   at once and may do the second first**: with Nagle's algorithm on the
   SSH socket (russh's default) two went in one packet and forty
   letters came back "acbdefgjhilknm…". So typing stays one write at a
-  time, and that half a round trip is the price of its order;
+  time, and that half a round trip is the price of its order (until
+  the host has Olo's helper, which keeps the order there: below);
 - *Nagle off* (`config.nodelay`, as OpenSSH has it for a terminal, and
   now Rex): no change to typing as Rex types, another terminal
   printing all the while or not (it is never held: its answer has
@@ -27040,8 +27047,9 @@ once over a slow or laggy link").
   with a waiting host's light before it: "“far” hasn’t answered for 4
   seconds", by the second for a minute and by the minute from then
   (`hub::silent_said`); and the host's own light in the sidebar is
-  that light for as long, with the same words for its tip
-  (`HubState::host_silent` is the one condition for both: the bar's
+  that light for as long, with the same words for its tip, without the
+  name (`silent_tip`: a tip on a host's row never names its host;
+  `HubState::host_silent` is the one condition for both: the bar's
   word beside a green light was the second design review's first
   finding). The bar's light and gap are the sidebar's in the proportion
   of the bar's smaller words (seven points and five, of eight and six:
@@ -27085,9 +27093,148 @@ once over a slow or laggy link").
   letter is back, which on a very slow link is most of a short line
   (the played typist, who presses Enter every seventeen keys, has 81 in
   a hundred letters drawn at once at 35 ms each way, 65 at 90, 45 at
-  200, 20 at 450). That, a key's one and a half round trips, a lost
-  packet's second or two and the seven round trips of connecting are
-  the host's half.
+  200, 20 at 450). That, a lost packet's second or two and the seven
+  round trips of connecting are the host's half; a key's one and a
+  half round trips were, and are one now (next).
+
+**A helper on the host** (`crates/rex-link`, `olo-rex-link`,
+2026-11-22; Ben: "if it's helpful to have e.g. a daemon server side to
+help for this too you can also add that and have the rex app setup
+install that too when it manages the rex server … i just want this to
+be the best ever implementation for this kind of thing"). A small
+program of Olo's own that the app puts on a host reached over SSH and
+runs there in front of the Rex server, for what can only be done at
+the host's end of a slow link. It is the foundation of the host's half
+(TODO: the first letter at a prompt, a link of its own over UDP,
+connecting in fewer round trips); what it does today:
+- *Every key in one round trip.* It stands between the app's control
+  connection and the server (`rex __internal dial-stdio`, which it
+  runs), passes everything as it comes, byte for byte, and holds a
+  request that types into a terminal (`terminal.write`, `client.key`)
+  while the one before it is unanswered: the waiting that keeps the
+  order happens there, where an answer takes a third of a millisecond,
+  not across the link. So the app sends each key as it is typed
+  (`ControlClient::keeps_typing_in_order`, `send_terminal_write`,
+  `send_client_key`; the hub's input worker keeps the answers in a
+  queue, `Unanswered`, at most 32 on their way, what is typed past
+  that going together). Against the test server, forty letters a tenth
+  of a second apart, a letter's echo at the middle, at nine in ten and
+  at worst: with a round trip of 166 ms, 257, 326 and 358 ms one write
+  at a time and **168, 184 and 233 ms through the helper**; with one of
+  226 ms, 349, 434 and 463 ms and **227, 238 and 258 ms**; in the
+  order typed. On the rig at 150 ms each way, 483 ms (589; 600) and
+  301 ms (303; 304).
+- *More of what is typed drawn at once.* An echo back sooner proves
+  the next letters sooner ("Typing shown at once"): the played typist
+  has 82, 73, 59 and 40 in a hundred letters drawn at once in a shell
+  at 35, 90, 200 and 450 ms each way with each key sent as typed (81,
+  65, 45 and 20 one write at a time), and 73, 59, 46 and 28 at a caret
+  a program draws (71, 50, 33, 16). The second 2,400 of the played
+  sessions send so (`Plan::piped`), and found two rules the predictor
+  lacked: an echo can only be back for the *oldest* write the host
+  hasn't answered (it takes a write only when it has answered the one
+  before, and both come back over one connection: `can_be_back`), and
+  under a caret a program draws, a letter of the line's own must be on
+  the screen (a caret gone right over a letter leaves the same text
+  before it as that letter typed again: `Line::is`).
+- *What it knows of the connection*: where the HTTP upgrade ends,
+  where each WebSocket frame ends, and of a text frame whether it is
+  one of those requests or the answer to the one waited for (`Scanner`,
+  `Gate`, in the library; a message is known by its own `type`, `id`
+  and `method`, read without keeping the rest of it). Every byte given
+  to it comes out again, in order, whatever it is: a frame with an
+  extension's bit is a frame with nothing to say; one over 16 MiB
+  passes as it comes, never kept; an upgrade the server refuses is
+  followed by a page, which passes plain (and then nothing says a
+  helper is there, and nothing is held); what is cut off by either
+  end's going is passed on before the helper ends. `main.rs` is four
+  threads, each waiting on one thing and none on a clock unless a
+  request is held; nothing is written while the gate is locked, and
+  what the server doesn't read is no longer read from the app past 4
+  MiB. A request is held for another's answer as long as the app
+  itself waits for one (`HELD_AT_MOST`, 30 s: a server stopped, or a
+  program that isn't reading, gets what was typed in order for as long
+  as it did before); then all that waited goes on together. It says it
+  is there by a header in the server's answer to the upgrade
+  (`X-Olo-Rex-Link: 1`, its `VERSION`: the app asks of a helper only
+  what its number says it does).
+- *Carried in the app, built for the hosts* (`apps/rex/build.rs`,
+  `src/link.rs`): the app's build script builds the helper for
+  x86_64 and aarch64 Linux, statically (musl: it runs on any Linux of
+  its machine), with the toolchain's own linker (`rust-lld`: no C
+  compiler for another machine), by one `cargo build` each into
+  `target/rex-link` (the same for every profile), and the app carries
+  both (about 600 kB each). The targets are in `rust-toolchain.toml`,
+  so rustup fetches them. The folders it is built from are named as
+  anybody's in it (`--remap-path-prefix`): no path of the builder's
+  computer goes to a host, and a test says so. A helper that can't be
+  built is left out with a warning, and hosts of its kind go without
+  (`OLO_REX_LINK_SKIP` builds without any). The build's name
+  (`link::ID`, a hash of what is carried) is in the file's name on the
+  host.
+- *Put there by the app, by itself* (`olo_rex_client::helper`,
+  `hub::look_after_helper`). The file is
+  `~/.local/share/olo/rex-link/olo-rex-link-ID-MACHINE` in the
+  account's own home (MACHINE is the host's `uname -m`: a home shared
+  by hosts of two kinds holds one for each; two computers with
+  different Olos use one host side by side). What the control
+  connection runs on the host (`ssh::dial_command`, chosen by `sh`
+  whatever the account's shell) is the app's own build where it is
+  there; else the newest other build of the helper there (after an
+  upgrade of Olo, until the new one is put there); else the server's
+  own `dial-stdio`, as before. A helper is only run if the file is
+  the account's own and answers when asked its version, so a home that
+  runs nothing, a file for another machine or one cut short is a
+  connection straight to the server, never one that fails; and
+  connecting never waits for a helper. After each SSH connection the
+  app asks the host what it is and whether it has the app's build
+  (`uname -sm`, one command, off the connection's path) and where it
+  hasn't, sends it over the same SSH connection (`SshSessionPool::put`):
+  checked whole, asked its version there, moved into place in one
+  step, the folder made the account's alone; builds nobody installed
+  for a month are removed with it. 589 kB took 1.8 s to the test
+  server. It is used from the host's next connection (one that stands
+  isn't remade for it: TODO). No root, nothing started, nothing on the
+  host's PATH: a file that does nothing until the app runs it, and
+  that ends with the connection.
+- *What the person is told*: as the helper is put on a host the
+  status bar says so, once, for six seconds ("Olo’s typing helper was
+  added to your account on “far” and will be used the next time you
+  connect.": `HubNotice::Said`, never in place of a problem or another
+  word); the host's tip in the sidebar
+  says how it stands (`HostHelper::said`); Settings ▸ Use Olo’s Typing
+  Helper on Hosts (`host_helper`, on) turns it off, and then nothing
+  is put on hosts or run there. (Both design reviews of the menu: "Use
+  Olo’s Helper on Hosts" didn't say what the helper is for, and was
+  easy to take for the Agents menu's bridge.)
+- *What it costs* (release builds, 2026-11-22): at rest the helper
+  uses no CPU and wakes for nothing; 200 letters typed through it
+  cost it 8.0 M instructions (40 thousand a letter). The app's own
+  threads spend the same before the change, after it and through the
+  helper: 183.8 to 185.2 M, 185.5 to 186.4 M and 185.6 to 186.2 M
+  instructions for 200 letters, 0.0% CPU and no wakeups at rest in
+  all three, a typed letter drawn after 1.6 to 1.7 ms.
+- *Tested*: the gate and the scanner by their rules and by two fuzzes
+  (frames cut anywhere, requests and answers in any order: all goes on
+  whole, in order, never two typed at once; bytes of any kind cut
+  anywhere come out whole); the program itself between the test and a
+  stand-in server that answers each request in its own time, as the
+  Rex server does (`tests/through.rs`, whose stand-in is the test
+  program run again: bursts cut anywhere, 400 requests through in 20
+  to 30 ms, a request never answered, an upgrade refused, 17 MiB
+  frames both ways, the app's last bytes, the app going away); what
+  is run on the host, by running it here (`ssh::dial_tests`,
+  `helper::tests`); the played sessions (above); on the rig behind the
+  slow link (`try.py order --helper`, `timed --helper`); against the
+  real host, whose `sh` is dash (`tests/host.rs` with
+  `OLO_REX_TEST_HELPER_FILE`; and the app itself, headless: the helper
+  put there at a first connection, used at the second, forty letters
+  typed 30 ms apart arriving in order).
+- *Not the helper's*: forty requests sent in the same instant after a
+  quiet spell are answered two at one round trip and the rest a round
+  trip later, with the helper and without (the connection's own window
+  after idle, it seems: not found out yet; typing never sends so, and
+  a paste is one request). Belongs to the link of its own.
 
 **The menu bar** is Terminal's model: Rex (the kit's `app_items` with
 its two Preferences panels; what is made new; Hosts…, Remote Access…,

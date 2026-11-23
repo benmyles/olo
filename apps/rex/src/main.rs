@@ -13,6 +13,7 @@ mod frame;
 mod git;
 mod hub;
 mod keymap;
+mod link;
 mod links;
 mod overlays;
 mod panels;

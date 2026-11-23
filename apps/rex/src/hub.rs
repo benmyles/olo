@@ -72,6 +72,11 @@ pub enum HubNotice {
     },
     /// Clipboard text requested by `olo.clipboard.set`.
     SetClipboard(String),
+    /// A passing word of the hub's own, for something it did that
+    /// nobody asked for in a window (Olo's helper put on a host): the
+    /// workspace's status bar says it for a few seconds, where nothing
+    /// else is being said.
+    Said(String),
 }
 
 /// Connection lifecycle state for one Rex host.
@@ -647,6 +652,17 @@ pub fn silent_said(host: &str, local: bool, silent: Duration) -> String {
     .to_string()
 }
 
+/// The same for the host's own row, which needs no name (the third
+/// design review of the helper's words: a tip on a host's row never
+/// names its host).
+pub fn silent_tip(silent: Duration) -> String {
+    match silent.as_secs() {
+        secs @ 0..=59 => olo_kit::tr!("Hasn’t answered for {} seconds", secs).to_string(),
+        60..=119 => olo_kit::words::tr("Hasn’t answered for over a minute").to_string(),
+        secs => olo_kit::tr!("Hasn’t answered for over {} minutes", secs / 60).to_string(),
+    }
+}
+
 /// A terminal's predictions are looked at once, at `at`, for what time
 /// brings (a frame that was none of those expected is believed, a key
 /// the host took and didn't show is given up), and the pane drawn again
@@ -798,6 +814,39 @@ pub fn session_tab_names(st: &HubState, host_key: &str, sess: &olo_rex_client::S
     tab_names(&tabs)
 }
 
+/// The most typed requests on their way to a host at once (where its
+/// helper keeps their order): what is typed past that waits here, and
+/// goes together.
+const MOST_UNANSWERED: usize = 32;
+
+/// Something typed, sent without waiting, and its answer still to come.
+struct Unanswered {
+    session_id: String,
+    block_id: String,
+    seq: u64,
+    answer: std::pin::Pin<Box<dyn Future<Output = ()> + Send>>,
+}
+
+impl Unanswered {
+    fn new<T>(session_id: String, block_id: String, seq: u64, answer: impl Future<Output = T> + Send + 'static) -> Unanswered {
+        Unanswered {
+            session_id,
+            block_id,
+            seq,
+            answer: Box::pin(async move {
+                let _ = answer.await;
+            }),
+        }
+    }
+}
+
+/// The oldest of them answered (or given up on), and taken off; `None`
+/// at once where there is none.
+async fn oldest_answer(unanswered: &mut std::collections::VecDeque<Unanswered>) -> Option<Unanswered> {
+    unanswered.front_mut()?.answer.as_mut().await;
+    unanswered.pop_front()
+}
+
 /// The next of what waits to be written to a host: the first, and with
 /// it, where that is text for a terminal, the text that follows for the
 /// same terminal (as far as the next thing that isn't: a key event, a
@@ -898,6 +947,40 @@ impl EventSequence {
     }
 }
 
+/// Olo's helper on a host (`olo-rex-link`), as the host's connection
+/// found it or left it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum HostHelper {
+    /// Not looked for: the host isn't reached over SSH, the setting is
+    /// off, or it isn't connected.
+    #[default]
+    None,
+    /// The control connection goes through it: what is typed is sent
+    /// as it is typed.
+    Used,
+    /// It is being put there now.
+    Installing,
+    /// It is there, for the next connection.
+    Ready,
+    /// The host goes without, and why (said to the person).
+    Without(String),
+}
+
+impl HostHelper {
+    /// What a connected host's tip says of it: with a comma what is
+    /// settled, with a full stop what is on its way or to come (the
+    /// second design review).
+    pub fn said(&self) -> String {
+        match self {
+            HostHelper::None => olo_kit::words::tr("Connected").to_string(),
+            HostHelper::Used => olo_kit::words::tr("Connected, with Olo’s typing helper").to_string(),
+            HostHelper::Installing => olo_kit::words::tr("Connected. Adding Olo’s typing helper…").to_string(),
+            HostHelper::Ready => olo_kit::words::tr("Connected. Olo’s typing helper was added and will be used the next time you connect.").to_string(),
+            HostHelper::Without(why) => olo_kit::tr!("Connected, without Olo’s typing helper: {}", why).to_string(),
+        }
+    }
+}
+
 /// Full live state of one connected (or connecting) Rex host.
 pub struct HostRuntime {
     pub key: String,
@@ -912,6 +995,8 @@ pub struct HostRuntime {
     retry: Option<Arc<tokio::sync::Notify>>,
     pub server_status: Option<ServerStatus>,
     pub server_version: Option<ServerVersion>,
+    /// Olo's helper there, for this connection.
+    pub helper: HostHelper,
     pub tailscale: Option<TailscaleStatus>,
     tailscale_seq: u64,
     pub synced_hosts: Vec<HostRecord>,
@@ -1029,6 +1114,9 @@ impl RexHub {
 
         let local_bin_dir = bridge::ensure_local_bin_dir();
         let ssh_pool = Arc::new(SshSessionPool::default());
+        // (Olo's helper on the hosts: a control connection goes through
+        // it where it is. `link`.)
+        ssh_pool.set_helper((settings.host_helper && crate::link::carried()).then_some(crate::link::ID));
         let notify: Arc<dyn Fn(HubNotice) + Send + Sync> = Arc::new(notify);
 
         let mut hosts = HashMap::new();
@@ -1054,6 +1142,7 @@ impl RexHub {
                 retry: None,
                 server_status: None,
                 server_version: None,
+                helper: HostHelper::None,
                 tailscale: None,
                 tailscale_seq: 0,
                 synced_hosts: Vec::new(),
@@ -1088,6 +1177,7 @@ impl RexHub {
                         retry: None,
                         server_status: None,
                         server_version: None,
+                        helper: HostHelper::None,
                         tailscale: None,
                         tailscale_seq: 0,
                         synced_hosts: Vec::new(),
@@ -1369,6 +1459,7 @@ impl RexHub {
             retry: None,
             server_status: None,
             server_version: None,
+            helper: HostHelper::None,
             tailscale: None,
             tailscale_seq: 0,
             synced_hosts: Vec::new(),
@@ -1489,6 +1580,7 @@ impl RexHub {
                     retry: None,
                     server_status: None,
                     server_version: None,
+                    helper: HostHelper::None,
                     tailscale: None,
                     tailscale_seq: 0,
                     synced_hosts: Vec::new(),
@@ -1571,6 +1663,16 @@ impl RexHub {
 
     /// Whether what is typed is drawn ahead of a slow host's echo, in
     /// every terminal (the Settings menu's choice).
+    /// Olo's helper on the hosts, used or not (Settings ▸ Use Olo’s
+    /// Typing Helper on Hosts). From each host's next connection: one that
+    /// stands isn't remade for it.
+    pub fn set_host_helper(&self, on: bool) {
+        let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        st.settings.host_helper = on;
+        st.settings.save();
+        self.inner.ssh_pool.set_helper((on && crate::link::carried()).then_some(crate::link::ID));
+    }
+
     pub fn set_type_ahead(&self, on: bool) {
         let blocks: Vec<_> = {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -2365,6 +2467,57 @@ impl RexHub {
 }
 
 impl RexHubInner {
+    /// A host reached over SSH is seen to have the helper the app
+    /// carries (where the setting has it and one is carried for such a
+    /// host): asked, and where it hasn't, given it, off the
+    /// connection's own path. A connection that went straight to the
+    /// server uses it from the host's next connection; one that went
+    /// through an older build of the helper goes on through that.
+    /// Nothing is asked of the person: it is one file in the account's
+    /// own home that does nothing until the app runs it
+    /// (`olo_rex_client::helper`).
+    fn look_after_helper(self: &Arc<Self>, host_key: &str, endpoint: &RexEndpoint) {
+        let RexEndpoint::Ssh { target, pool, askpass } = endpoint else { return };
+        if !crate::link::carried() || !self.state.lock().unwrap_or_else(|e| e.into_inner()).settings.host_helper {
+            return;
+        }
+        let (target, pool, askpass) = (target.clone(), pool.clone(), askpass.clone());
+        let (hub, host_key) = (self.clone(), host_key.to_owned());
+        let set = move |hub: &RexHubInner, host_key: &str, helper: HostHelper| {
+            if let Some(host) = hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(host_key).filter(|h| h.helper != HostHelper::Used) {
+                host.helper = helper;
+            }
+            (hub.notify)(HubNotice::StateChanged);
+        };
+        set(&hub, &host_key, HostHelper::Installing);
+        tokio::spawn(async move {
+            use olo_rex_client::helper::{Stands, ensure};
+            let helper = match ensure(&pool, &target, askpass, crate::link::ID, &crate::link::BUILDS).await {
+                Ok(Stands::Already) => {
+                    tracing::info!("rex: Olo's helper is on host {host_key} already, for its next connection");
+                    HostHelper::Ready
+                }
+                Ok(Stands::Installed { bytes, took }) => {
+                    tracing::info!("rex: Olo's helper put on host {host_key}: {bytes} bytes in {} ms", took.as_millis());
+                    // (Something of Olo's now lies on the person's host:
+                    // said, once, as it happens.)
+                    let label = hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(&host_key).map(|h| h.label.clone()).unwrap_or_default();
+                    (hub.notify)(HubNotice::Said(olo_kit::tr!("Olo’s typing helper was added to your account on “{}” and will be used the next time you connect.", label).to_string()));
+                    HostHelper::Ready
+                }
+                Ok(Stands::NoBuild(kind)) => {
+                    tracing::info!("rex: no helper is carried for host {host_key} ({kind})");
+                    HostHelper::Without(olo_kit::tr!("there isn’t one for {}", kind).to_string())
+                }
+                Err(e) => {
+                    tracing::warn!("rex: Olo's helper couldn't be put on host {host_key}: {e}");
+                    HostHelper::Without(e.to_string())
+                }
+            };
+            set(&hub, &host_key, helper);
+        });
+    }
+
     /// What was typed up to `seq` in a terminal leaves for the host
     /// now: its predictions are told (an echo can't be back sooner
     /// than a round trip from this).
@@ -2535,7 +2688,7 @@ impl RexHubInner {
             };
 
             let connected = async {
-                let (stream, host_hdr) = endpoint.connect_stream().await?;
+                let (stream, host_hdr) = endpoint.connect_control_stream().await?;
                 let label = std::fs::read_to_string("/etc/hostname").ok().map(|s| s.trim().to_owned()).filter(|s| !s.is_empty());
                 let (ctrl, events) = ControlClient::connect(stream, &host_hdr, olo_rex_client::ClientIdentity::olo_rex(label), reconnect_token.as_deref()).await?;
                 let client_id = ctrl.client_id().map(str::to_owned);
@@ -2586,16 +2739,39 @@ impl RexHubInner {
                             // back "acbdefgjhilknm…": measured 2026-11-23,
                             // `ControlClient::send_raw`. What a slow link leaves is
                             // shown at once another way: HACKING, Rex, "A slow link".)
+                            //
+                            // Where Olo's helper is on the host
+                            // (`keeps_typing_in_order`: it gives the server one at
+                            // a time, there, where an answer takes no time), each
+                            // is sent as it is typed and its answer waited for
+                            // apart: a round trip a key whatever is on its way.
+                            let in_order = ctrl_in.keeps_typing_in_order();
                             let mut waiting = std::collections::VecDeque::new();
+                            let mut unanswered: std::collections::VecDeque<Unanswered> = std::collections::VecDeque::new();
                             loop {
                                 if waiting.is_empty() {
-                                    let Some(op) = in_rx.recv().await else { break };
-                                    waiting.push_back(op);
+                                    tokio::select! {
+                                        op = in_rx.recv() => {
+                                            let Some(op) = op else { break };
+                                            waiting.push_back(op);
+                                        }
+                                        Some(done) = oldest_answer(&mut unanswered) => {
+                                            inner_in.input_answered(&host_in, &done.session_id, &done.block_id, done.seq);
+                                            continue;
+                                        }
+                                    }
                                 }
                                 while let Ok(op) = in_rx.try_recv() {
                                     waiting.push_back(op);
                                 }
                                 let Some(op) = typed_together(&mut waiting) else { continue };
+                                // (What isn't typed keeps its place behind what was;
+                                // and no more than so many are on their way at once.)
+                                let room = if matches!(op, HostInputOp::Focus { .. }) { 0 } else { MOST_UNANSWERED - 1 };
+                                while unanswered.len() > room {
+                                    let Some(done) = oldest_answer(&mut unanswered).await else { break };
+                                    inner_in.input_answered(&host_in, &done.session_id, &done.block_id, done.seq);
+                                }
                                 match op {
                                     HostInputOp::Focus { session_id, switch, target } => {
                                         if switch || target.block.is_none() {
@@ -2622,13 +2798,25 @@ impl RexHubInner {
                                     }
                                     HostInputOp::Write { session_id, block_id, text, seq } => {
                                         inner_in.input_went(&host_in, &session_id, &block_id, seq);
-                                        let _ = ctrl_in.terminal_write(&session_id, &block_id, &text).await;
-                                        inner_in.input_answered(&host_in, &session_id, &block_id, seq);
+                                        match in_order.then(|| ctrl_in.send_terminal_write(&session_id, &block_id, &text)) {
+                                            Some(Ok(answer)) => unanswered.push_back(Unanswered::new(session_id, block_id, seq, answer)),
+                                            Some(Err(_)) => inner_in.input_answered(&host_in, &session_id, &block_id, seq),
+                                            None => {
+                                                let _ = ctrl_in.terminal_write(&session_id, &block_id, &text).await;
+                                                inner_in.input_answered(&host_in, &session_id, &block_id, seq);
+                                            }
+                                        }
                                     }
                                     HostInputOp::Key { session_id, block_id, event, seq } => {
                                         inner_in.input_went(&host_in, &session_id, &block_id, seq);
-                                        let _ = ctrl_in.client_key(&session_id, Some(&block_id), &event, None).await;
-                                        inner_in.input_answered(&host_in, &session_id, &block_id, seq);
+                                        match in_order.then(|| ctrl_in.send_client_key(&session_id, Some(&block_id), &event)) {
+                                            Some(Ok(answer)) => unanswered.push_back(Unanswered::new(session_id, block_id, seq, answer)),
+                                            Some(Err(_)) => inner_in.input_answered(&host_in, &session_id, &block_id, seq),
+                                            None => {
+                                                let _ = ctrl_in.client_key(&session_id, Some(&block_id), &event, None).await;
+                                                inner_in.input_answered(&host_in, &session_id, &block_id, seq);
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -2648,6 +2836,9 @@ impl RexHubInner {
                             h.tailscale = status.as_ref().and_then(|s| s.payload.tailscale.clone());
                             h.server_status = status.map(|r| r.payload);
                             h.server_version = version;
+                            // (Olo's helper: this connection goes through
+                            // it, or it is seen to below.)
+                            h.helper = if ctrl.keeps_typing_in_order() { HostHelper::Used } else { HostHelper::None };
                             if let Some(hr) = hosts_resp {
                                 h.synced_hosts = hr.hosts;
                             }
@@ -2665,6 +2856,8 @@ impl RexHubInner {
                             return;
                         }
                     }
+
+                    self.look_after_helper(&host_key, &endpoint);
 
                     for view in initial_views {
                         self.ingest_session(&host_key, &ctrl, &endpoint, view, &pre_tickets).await;
@@ -3604,6 +3797,10 @@ mod tests {
         assert_eq!(said(false, 119), "“far” hasn’t answered for over a minute");
         assert_eq!(said(false, 185), "“far” hasn’t answered for over 3 minutes");
         assert_eq!(said(true, 4), "This computer hasn’t answered for 4 seconds");
+        // (On the host's own row, without its name.)
+        assert_eq!(silent_tip(Duration::from_secs(4)), "Hasn’t answered for 4 seconds");
+        assert_eq!(silent_tip(Duration::from_secs(75)), "Hasn’t answered for over a minute");
+        assert_eq!(silent_tip(Duration::from_secs(185)), "Hasn’t answered for over 3 minutes");
     }
 
     #[test]

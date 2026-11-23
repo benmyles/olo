@@ -197,9 +197,33 @@ fn typing_over_the_link_is_timed() {
     let letters: usize = std::env::var("OLO_REX_TEST_LETTERS").ok().and_then(|n| n.parse().ok()).unwrap_or(40);
     let apart = Duration::from_millis(std::env::var("OLO_REX_TEST_APART_MS").ok().and_then(|n| n.parse().ok()).unwrap_or(100));
     block(async move {
-        let endpoint = RexEndpoint::parse(&address, Arc::new(SshSessionPool::default()), Some(Arc::new(Nobody))).expect("an address");
-        let (stream, host) = endpoint.connect_stream().await.expect("the host's Rex server is reached");
+        // (`OLO_REX_TEST_HELPER_FILE`: a build of Olo's helper for the
+        // host, `olo-rex-link` built for its kind. It is put there as the
+        // app puts it, under the name of a build called "test", and the
+        // control connection goes through it. A measurement only: the
+        // file is left there, and is the host's to keep or remove.)
+        let pool = Arc::new(SshSessionPool::default());
+        if let Ok(file) = std::env::var("OLO_REX_TEST_HELPER_FILE") {
+            use olo_rex_client::helper::{self, Build, Stands};
+            let bytes: &'static [u8] = Box::leak(std::fs::read(&file).expect("the helper's file").into_boxed_slice());
+            let builds = [Build { system: "Linux", machines: &["x86_64", "amd64", "aarch64", "arm64"], bytes }];
+            let target = SshTarget::parse(&address).expect("an ssh:// address");
+            let stands = helper::ensure(&pool, &target, Some(Arc::new(Nobody)), "test", &builds).await.expect("the helper is put on the host");
+            match stands {
+                Stands::Already => println!("the helper was on the host already"),
+                Stands::Installed { bytes, took } => println!("the helper was put on the host: {bytes} bytes in {} ms", took.as_millis()),
+                Stands::NoBuild(_) => println!("the host is of a kind the helper isn't built for"),
+            }
+            pool.set_helper(Some("test"));
+        }
+        let endpoint = RexEndpoint::parse(&address, pool, Some(Arc::new(Nobody))).expect("an address");
+        let (stream, host) = endpoint.connect_control_stream().await.expect("the host's Rex server is reached");
         let (ctrl, _events) = ControlClient::connect(stream, &host, ClientIdentity::olo_rex(None), None).await.expect("the control connection");
+        let in_order = ctrl.keeps_typing_in_order();
+        println!(
+            "{}",
+            if in_order { "Olo's helper is on the host: it gives the server what is typed one at a time" } else { "no helper on the host: the server takes what reaches it together at once" }
+        );
         let created = ctrl.session_create(Some("olo-typing-test"), Some(serde_json::json!({"shell": "none", "command": ["cat"], "exit": {"on_completion": false}}))).await.expect("a session");
         let sid = created.payload["session_id"].as_str().unwrap().to_owned();
         let bid = created.payload["initial_windows"][0]["block_ids"][0].as_str().unwrap().to_owned();
@@ -265,6 +289,36 @@ fn typing_over_the_link_is_timed() {
             trips[count - 1].as_millis()
         );
 
+        // What one write costs the server itself: writes sent together,
+        // each answered before the next is given to it (by Olo's helper
+        // there; without one they are given together, and the time is
+        // the link's). `OLO_REX_TEST_TOGETHER` of them (none unless set).
+        let together: usize = std::env::var("OLO_REX_TEST_TOGETHER").ok().and_then(|n| n.parse().ok()).unwrap_or(0);
+        if together > 0 {
+            let at = Instant::now();
+            let answers: Vec<_> = (0..together).filter_map(|_| ctrl.send_terminal_write(&sid, &bid, "x").ok()).collect();
+            let mut times = Vec::new();
+            for answer in answers {
+                let _ = answer.await;
+                times.push(at.elapsed());
+            }
+            // (Evenly apart: each waited for the one before it, there. In
+            // a step: they were answered together and came in two
+            // packets, the second kept for the first's acknowledgement.)
+            let at = |i: usize| times[i.min(together - 1)].as_millis();
+            println!(
+                "{together} writes sent together: answered after {} ms the first, {} the second, {} a quarter of them, {} half, {} three quarters, {} the last",
+                at(0),
+                at(1),
+                at(together / 4),
+                at(together / 2),
+                at(together * 3 / 4),
+                at(together - 1)
+            );
+            let _ = ctrl.terminal_write(&sid, &bid, "\u{15}").await;
+            while let Ok(Ok(_)) = tokio::time::timeout(Duration::from_millis(1200), term.next_frame()).await {}
+        }
+
         for piped in [false, true] {
             let (typed_tx, mut typed_rx) = tokio::sync::mpsc::unbounded_channel::<(String, Instant)>();
             let (sent_at_tx, mut sent_at_rx) = tokio::sync::mpsc::unbounded_channel::<Instant>();
@@ -324,9 +378,10 @@ fn typing_over_the_link_is_timed() {
             let _ = typist.await;
             let _ = writer.await;
             let expected: String = (0..letters).map(|i| char::from(b'a' + (i % 26) as u8)).collect();
-            if piped {
+            if piped && !in_order {
                 // (The server takes two requests at once and may write the
-                // second first: why Rex doesn't type this way.)
+                // second first: why Rex doesn't type this way without its
+                // helper there.)
                 let mut letters_back: Vec<char> = echoed.chars().collect();
                 letters_back.sort_unstable();
                 let mut all: Vec<char> = expected.chars().collect();

@@ -415,7 +415,18 @@ impl Line {
     /// text the keys touched (with two cells before it, to know the
     /// place by). What is right of the caret is the program's to draw
     /// (a suggestion, a hint): only what was moved there is looked at,
-    /// and not where the program draws dimmer.
+    /// and not where the program draws dimmer; nor the cell a program
+    /// draws its caret in, where this line has nothing there (the
+    /// first letter of a suggestion shows through it, in reverse and
+    /// so not dim).
+    ///
+    /// (Where this line has a letter of its own under a drawn caret,
+    /// text pushed along by what was typed before it, the screen must
+    /// show it: a caret gone right over a letter leaves the same text
+    /// before it as that letter typed again would, and only the cell
+    /// under the caret tells them apart. The played sessions, each key
+    /// sent as typed: a right arrow's frame passed for the echo of the
+    /// "h" typed after it.)
     fn is(&self, screen: &Screen) -> bool {
         if screen.col != self.col || screen.cells.len() != self.cells.len() || screen.drawn != self.drawn {
             return false;
@@ -423,7 +434,7 @@ impl Line {
         let from = (self.low as usize).saturating_sub(2);
         let col = self.col as usize;
         (from..col).all(|i| screen.cells[i].ch == self.cells[i].0.ch)
-            && (col..(self.high as usize).min(self.cells.len())).all(|i| screen.cells[i].dim || screen.cells[i].ch == self.cells[i].0.ch || (self.drawn && i == col))
+            && (col..(self.high as usize).min(self.cells.len())).all(|i| screen.cells[i].dim || screen.cells[i].ch == self.cells[i].0.ch || (self.drawn && i == col && self.cells[i].0.ch == ' '))
     }
 }
 
@@ -726,15 +737,26 @@ impl Predictor {
     }
 
     /// Whether a key's echo can be back by now: the host has answered
-    /// for it, or its write left at least most of a round trip ago (as
-    /// quick a one as the link has shown of late). Where no round trip
-    /// has been timed yet, only the answer says.
+    /// for it, or its write is the oldest the host hasn't answered and
+    /// left at least most of a round trip ago (as quick a one as the
+    /// link has shown of late). Where no round trip has been timed
+    /// yet, only the answer says.
+    ///
+    /// (The oldest: where each key is sent as it is typed, several
+    /// writes are on their way at once, and the host takes one only
+    /// when it has answered the one before, which is what its helper
+    /// there is for. The answer and the echo come back over one
+    /// connection, in the order they were sent, so no echo of a write
+    /// is back before the answer to the write before it. The played
+    /// sessions found the need: of two Enters and an "x" on their way
+    /// behind an "x" typed before them, the first x's echo passed for
+    /// the second's.)
     fn can_be_back(&self, seq: u64, now: Instant) -> bool {
         if seq <= self.answered {
             return true;
         }
         let Some(quickest) = self.trips.iter().min() else { return false };
-        self.went.iter().find(|(upto, _)| seq <= *upto).is_some_and(|(_, at)| now.saturating_duration_since(*at) >= *quickest * 7 / 10)
+        self.went.front().filter(|(upto, _)| seq <= *upto).is_some_and(|(_, at)| now.saturating_duration_since(*at) >= *quickest * 7 / 10)
     }
 
     /// The host answered write `seq` (it has taken what was typed up to

@@ -18,6 +18,7 @@ pub mod accounts;
 pub mod control;
 pub mod data;
 pub mod error;
+pub mod helper;
 pub mod manage;
 pub mod model;
 pub mod provision;

@@ -95,6 +95,10 @@ pub struct ControlClient {
     next_id: Arc<AtomicU64>,
     pub welcome: Arc<WelcomeMessage>,
     pub max_message_bytes: usize,
+    /// What Olo's helper on the host does for this connection, as it
+    /// said in the upgrade's answer (`olo_rex_link::VERSION`); 0 where
+    /// the connection doesn't go through one.
+    link: u32,
 }
 
 impl ControlClient {
@@ -137,7 +141,8 @@ impl ControlClient {
             .body(())
             .map_err(|e| RexError::Protocol(format!("control request build failed: {e}")))?;
 
-        let (mut ws, _resp) = time::timeout(Duration::from_secs(5), tokio_tungstenite::client_async(req, stream)).await.map_err(|_| RexError::Timeout)??;
+        let (mut ws, resp) = time::timeout(Duration::from_secs(5), tokio_tungstenite::client_async(req, stream)).await.map_err(|_| RexError::Timeout)??;
+        let link = resp.headers().get(olo_rex_link::HEADER).and_then(|v| v.to_str().ok()).and_then(|v| v.trim().parse().ok()).unwrap_or(0);
 
         // Build uncompressed < 512 B `hello` message.
         let mut hello = json!({
@@ -182,7 +187,17 @@ impl ControlClient {
 
         tokio::spawn(run_control_loop(ws, cmd_rx, evt_tx, keepalive));
 
-        Ok((Self { cmd_tx, next_id: Arc::new(AtomicU64::new(1)), welcome: Arc::new(welcome), max_message_bytes }, evt_rx))
+        Ok((Self { cmd_tx, next_id: Arc::new(AtomicU64::new(1)), welcome: Arc::new(welcome), max_message_bytes, link }, evt_rx))
+    }
+
+    /// Whether what is typed may be sent as it is typed, each request
+    /// without waiting for the last one's answer
+    /// ([`Self::send_terminal_write`], [`Self::send_client_key`]):
+    /// Olo's helper on the host stands in front of the server and
+    /// gives it one at a time (`olo-rex-link`). Without it the server
+    /// takes two at once, and what was typed can come out shuffled.
+    pub fn keeps_typing_in_order(&self) -> bool {
+        self.link >= 1
     }
 
     pub fn client_id(&self) -> Option<&str> {
@@ -271,8 +286,10 @@ impl ControlClient {
     /// of the link, 183 to 237 ms, where one write at a time takes about
     /// one and a half, 255 to 355 ms). What is typed therefore goes one
     /// write at a time, what is typed meanwhile gathered into the next
-    /// (the app's `typed_together`); this is for what has no order to
-    /// keep, and for measuring (`tests/host.rs`).
+    /// (the app's `typed_together`), unless Olo's helper is on the host
+    /// to keep the order there ([`Self::keeps_typing_in_order`]);
+    /// otherwise this is for what has no order to keep, and for
+    /// measuring (`tests/host.rs`).
     pub fn send_raw(&self, method: &str, payload: Option<Value>) -> Result<impl Future<Output = Result<RpcResult<Value>, RexError>> + Send + 'static + use<>, RexError> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed).to_string();
         let req = match payload {
@@ -698,6 +715,11 @@ impl ControlClient {
         struct Resp {
             handled: bool,
         }
+        let r: RpcResult<Resp> = self.call("client.key", Some(Self::key_payload(session_id, block_id, key, prefix))).await?;
+        Ok(RpcResult { seq: r.seq, payload: r.payload.handled })
+    }
+
+    fn key_payload(session_id: &str, block_id: Option<&str>, key: &KeyEvent, prefix: Option<&[String]>) -> Value {
         let mut p = json!({ "session_id": session_id, "key": key });
         if let Some(b) = block_id {
             p["block_id"] = json!(b);
@@ -707,8 +729,14 @@ impl ControlClient {
         {
             p["prefix"] = json!(pre);
         }
-        let r: RpcResult<Resp> = self.call("client.key", Some(p)).await?;
-        Ok(RpcResult { seq: r.seq, payload: r.payload.handled })
+        p
+    }
+
+    /// [`Self::client_key`], sent now and its answer given back to be
+    /// waited for apart ([`Self::send_raw`]): for a connection that
+    /// [`Self::keeps_typing_in_order`].
+    pub fn send_client_key(&self, session_id: &str, block_id: Option<&str>, key: &KeyEvent) -> Result<impl Future<Output = Result<RpcResult<Value>, RexError>> + Send + 'static + use<>, RexError> {
+        self.send_raw("client.key", Some(Self::key_payload(session_id, block_id, key, None)))
     }
 
     pub async fn client_keymap(&self, actions: &[KeymapAction], defaults: &[KeymapLayer], overrides: &[KeymapLayer]) -> Result<RpcResult<KeymapResponse>, RexError> {

@@ -5,17 +5,27 @@
 
 Each chunk read is delivered DELAY_MS (+ up to JITTER_MS) later, never before an earlier one of its direction (as
 TCP: a late packet holds those behind it). With STALL_PERCENT, that share of chunks is held STALL_MS more (a packet
-lost and waited for), and all behind it with it. Prints nothing; ends when killed."""
-import asyncio, os, random, sys
+lost and waited for), and all behind it with it. Prints nothing; ends when killed.
+
+With REX_SLOW_HELPER (a command, as a JSON list) the control connection goes to that command's input and output
+instead of UPSTREAM: Olo's helper on a host (olo-rex-link), which runs the Rex server's own dial-stdio behind it,
+as over SSH. Every other connection goes to UPSTREAM as before."""
+import asyncio, json, os, random, sys
 
 LISTEN, UPSTREAM, DELAY = sys.argv[1], sys.argv[2], float(sys.argv[3]) / 1000
 JITTER = float(sys.argv[4]) / 1000 if len(sys.argv) > 4 else 0.0
 STALL_P = float(sys.argv[5]) / 100 if len(sys.argv) > 5 else 0.0
 STALL = float(sys.argv[6]) / 1000 if len(sys.argv) > 6 else 0.0
+HELPER = json.loads(os.environ.get("REX_SLOW_HELPER") or "null")
 
-async def pump(reader, writer):
+def held():
+    return DELAY + random.random() * JITTER + (STALL if random.random() < STALL_P else 0.0)
+
+async def pump(reader, writer, first=None):
     loop = asyncio.get_running_loop()
     queue = asyncio.Queue()
+    if first:
+        queue.put_nowait((loop.time() + held(), first))
     async def deliver():
         last = 0.0
         while True:
@@ -40,8 +50,7 @@ async def pump(reader, writer):
     try:
         while True:
             data = await reader.read(65536)
-            hold = DELAY + random.random() * JITTER + (STALL if random.random() < STALL_P else 0.0)
-            await queue.put((loop.time() + hold, data or None))
+            await queue.put((loop.time() + held(), data or None))
             if not data:
                 break
     except Exception:
@@ -50,11 +59,17 @@ async def pump(reader, writer):
 
 async def serve(reader, writer):
     try:
-        up_reader, up_writer = await asyncio.open_unix_connection(UPSTREAM)
+        # (What it asks for is in its first bytes: the upgrade's request line.)
+        first = await reader.read(65536)
+        if HELPER and b" /api/control " in first.split(b"\r\n", 1)[0]:
+            helper = await asyncio.create_subprocess_exec(*HELPER, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE)
+            up_reader, up_writer = helper.stdout, helper.stdin
+        else:
+            up_reader, up_writer = await asyncio.open_unix_connection(UPSTREAM)
     except Exception:
         writer.close()
         return
-    await asyncio.gather(pump(reader, up_writer), pump(up_reader, writer))
+    await asyncio.gather(pump(reader, up_writer, first), pump(up_reader, writer))
 
 async def main():
     if os.path.exists(LISTEN):

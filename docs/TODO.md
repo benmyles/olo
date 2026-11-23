@@ -1170,16 +1170,30 @@ something nobody here has is in "Blocked", with what it waits for.
     "make sure there are fuzz tests for this all this slow link stuff
     too so that we catch and fix all the edge cases / race conditions";
     "also of course color and everything must work too".
-    **Next, the host's half** (a helper of Olo's own on the host: a
-    static Rust program put there by the app, as the account, started
-    over SSH; Gemini's review of the design, 2026-11-22, is what most
-    of this list is from):
-    - *Every key in one round trip, not one and a half.* The helper
-      takes what is typed in order on the host (the Rex server takes
-      two requests at once and may write them out of order, which is
-      why the app waits for each write's answer before the next), so
-      the app sends each key as it is typed. Measured before: a
-      letter's echo after 183 to 237 ms sent so, 241 to 355 as now.
+    **The host's half has begun, 2026-11-22** (HACKING, Rex, "A helper
+    on the host"; `crates/rex-link`): a small static program of Olo's
+    own that the app carries for x86_64 and aarch64 Linux, puts in the
+    account's home on a host by itself (no root; said in the status
+    bar as it happens; Settings ▸ Use Olo’s Typing Helper on Hosts)
+    and runs in front of the Rex server over SSH. It keeps what is
+    typed in order there, so the app sends each key as it is typed:
+    against the test server a letter's echo came after 349 ms at the
+    middle before and 227 ms through it (one round trip of that link,
+    where it was one and a half), and on a link of 450 ms each way
+    twice as many letters are drawn at once (40 in a hundred, of 20).
+    **What is left of the host's half** (Gemini's review of the design,
+    2026-11-22, is what most of this list is from):
+    - *The helper there for a host's first connection too*: it is used
+      from the connection after the one that put it there. Add Host
+      can put it there before it connects (it asks the host how it
+      stands then anyway), and a connection that stands could be moved
+      onto it once it is there (the control connection remade with
+      its token, the terminals' own streams left alone: to be tried).
+    - *A burst after a quiet spell*: forty requests sent in the same
+      instant are answered two at one round trip and the rest a round
+      trip later, with the helper and without. Which window holds
+      them (ours after idle, the host's) isn't found out; typing never
+      sends so. For the link of its own.
     - *The first letter at a shell's prompt at once.* After every
       Enter what is typed is unseen until a letter is back (mosh's
       rule: on a link of 450 ms each way only a fifth of a fast
@@ -1222,8 +1236,9 @@ something nobody here has is in "Blocked", with what it waits for.
     - *The link's state for the person and for agents* (which way it
       goes, round trip, loss, how much is drawn ahead and how often
       wrongly), in Diagnostics.
-    - *Installed and kept current by the app* (Add Host and the Server
-      window), for the account, with no root.
+    - *The helper in the Server window* (which build is there, put
+      there or removed by hand), beside the host's tip that says it
+      now; and removed from a host when the person takes the host out.
     - *The real programs typed into* (Claude Code, Codex, agy): they
       were looked at for how they draw their caret (agy and Claude
       Code, as they run here, show the terminal's cursor; programs
@@ -1255,7 +1270,11 @@ something nobody here has is in "Blocked", with what it waits for.
     point under the baseline, six points either side: every menu's, so
     a look of its own); the note's light moves a digit's width when
     the count goes from 9 to 10 seconds (Opus: acceptable; a least
-    width would still it).
+    width would still it); the sidebar's divider stops some three
+    points short of the status bar's top rule, where it should meet it
+    (Opus, at the helper's fourth review; it was so before); and the
+    gap from a menu's longest label to its arrows' column, 37 points,
+    is a touch loose in every Olo menu (the kit's).
     *Shell over WireGuard, set up by Rex on both ends* (Ben,
     2026-11-22: "maybe it's also worth having shell over WireGuard as
     an option and rex automating it client and server side would that

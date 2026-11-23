@@ -262,6 +262,11 @@ fn handle_hub_notice(notice: HubNotice) {
                 w.messenger().send(WinMsg::SetClipboard(text));
             }
         }
+        HubNotice::Said(text) => {
+            if let Some(w) = workspace() {
+                w.messenger().send(WinMsg::Said(text));
+            }
+        }
     }
 }
 
@@ -487,6 +492,8 @@ pub enum WinMsg {
     StartFeedback(u64),
     Problem(u64, String, Option<String>),
     Confirmation(u64, String),
+    /// A passing word nobody asked for here (`HubNotice::Said`).
+    Said(String),
     Raise,
     ShowPrompt {
         host_key: String,
@@ -1369,6 +1376,11 @@ impl RexWindow {
                 hub.set_type_ahead(on);
                 cx.invalidate();
             }
+            "hosts.helper" => {
+                let on = !hub.state.lock().unwrap_or_else(|e| e.into_inner()).settings.host_helper;
+                hub.set_host_helper(on);
+                cx.invalidate();
+            }
             "tabs.top" | "tabs.side" => {
                 let mut st = hub.state.lock().unwrap_or_else(|e| e.into_inner());
                 st.settings.toolbar_layout = if action == "tabs.side" { ToolbarLayout::Side } else { ToolbarLayout::Above };
@@ -2031,9 +2043,20 @@ impl RexWindow {
         let hub = app().hub.clone();
         let broadcast_on = self.active_window_key().is_some_and(|key| app().broadcast_windows.contains(&key));
         let sidebar_shown = self.side_pane.showing();
-        let (sidebar_mode, layout, headers, text_size, include_idle, scheme, light, dark, type_ahead) = {
+        let (sidebar_mode, layout, headers, text_size, include_idle, scheme, light, dark, type_ahead, host_helper) = {
             let s = &hub.state.lock().unwrap_or_else(|e| e.into_inner()).settings;
-            (s.sidebar_mode, s.toolbar_layout, s.pane_header_behavior, s.font_size, s.activity_include_idle, s.scheme_choice, s.light_theme_id.clone(), s.dark_theme_id.clone(), s.type_ahead)
+            (
+                s.sidebar_mode,
+                s.toolbar_layout,
+                s.pane_header_behavior,
+                s.font_size,
+                s.activity_include_idle,
+                s.scheme_choice,
+                s.light_theme_id.clone(),
+                s.dark_theme_id.clone(),
+                s.type_ahead,
+                s.host_helper,
+            )
         };
         // For each mode: the look's own colours (whatever Preferences ▸
         // Themes has, followed as it changes), or one chosen here, which
@@ -2231,7 +2254,11 @@ impl RexWindow {
                 // (Over a slow link: what is typed, drawn before the
                 // host's echo of it is back. `predict`.)
                 .item("Show Typing Immediately", "terminal.type_ahead")
-                .checked(type_ahead),
+                .checked(type_ahead)
+                // (And sent as it is typed, in order, by Olo's helper on
+                // the host, which the app puts there. `link`.)
+                .item("Use Olo’s Typing Helper on Hosts", "hosts.helper")
+                .checked(host_helper),
         ]
     }
 
@@ -2716,8 +2743,8 @@ impl RexWindow {
                 }
                 // (And whether it is silent about something typed: its
                 // light and its words then say so, as the status bar does.)
-                let silent = st.host_silent(&h.key).map(|silent| crate::hub::silent_said(&h.label, h.is_local, silent));
-                hosts_snap.push((h.key.clone(), h.label.clone(), h.conn_state.clone(), sessions, silent));
+                let silent = st.host_silent(&h.key).map(crate::hub::silent_tip);
+                hosts_snap.push((h.key.clone(), h.label.clone(), h.conn_state.clone(), sessions, silent, h.helper.said()));
             }
             activity_rows.sort_by_key(|(_, _, _, _, a)| activity_sort_rank(*a));
             (mode, hosts_snap, activity_rows)
@@ -2789,11 +2816,11 @@ impl RexWindow {
 
         let mut list = div().flex_shrink_0().w_full().p(px(m::SPACING)).flex().flex_col().gap(px(m::SPACING));
         if mode == SidebarMode::Sessions {
-            for (hk, hlabel, conn, sessions, silent) in hosts_snap {
+            for (hk, hlabel, conn, sessions, silent, connected_said) in hosts_snap {
                 let connected = conn == HostConnState::Connected;
                 let tip = match &conn {
                     HostConnState::Connected if silent.is_some() => silent.clone().unwrap_or_default().into(),
-                    HostConnState::Connected => olo_kit::words::tr("Connected").into(),
+                    HostConnState::Connected => connected_said.into(),
                     HostConnState::Connecting => olo_kit::words::tr("Connecting…").into(),
                     HostConnState::Disconnected => olo_kit::words::tr("Disconnected").into(),
                     HostConnState::Error(why) | HostConnState::Reconnecting { last_error: why, .. } => olo_kit::tr!("Disconnected: {}", why),
@@ -3326,6 +3353,14 @@ impl View for RexWindow {
             WinMsg::Confirmation(serial, title) => {
                 if self.feedback_serial == serial {
                     self.notice.say(title, Duration::from_secs(4));
+                    cx.invalidate();
+                }
+            }
+            // (Never in place of what the person is being told about
+            // something they did: that stays until they try again.)
+            WinMsg::Said(text) => {
+                if self.problem.is_none() && self.notice.text().is_none() {
+                    self.notice.say(text, Duration::from_secs(6));
                     cx.invalidate();
                 }
             }

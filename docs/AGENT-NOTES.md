@@ -2544,4 +2544,46 @@ an argument it doesn't know starts the lint (read its first lines).
 - **Connecting costs seven round trips** between the window opening
   and its terminal showing (`try.py connect`: 2.1, 4.3 and 8.3 s at
   150, 300 and 600 ms each way).
+- **An app's instructions in a test session: count its own threads,
+  not the rasteriser's.** A headless session has no GPU, so the app
+  draws with Mesa's llvmpipe, in the app's own process (threads named
+  `llvmpipe-0`, `llvmpipe-1`): nine tenths of the instructions `perf
+  stat -p PID` counts while a terminal is typed into, and wandering
+  between 1.09 and 1.56 G for the same 200 letters, run to run, in the
+  same build (where the app's own threads spent 184.1 to 186.3 M every
+  time). Three runs each "showed" the host helper costing a quarter
+  more, and it was this. `perf stat --no-scale --per-thread -x, -e
+  instructions:u -p PID`, and leave out the lines whose thread begins
+  `llvmpipe` (in a profile, `perf report --sort comm` shows the same
+  split; this computer's two kinds of core each give a table of their
+  own, to be added).
+- **The helper for hosts is built by `apps/rex`'s build script**, for
+  two musl targets, with `rust-lld`: no C compiler for another machine
+  is here or needed (no `musl-gcc`, no `zig`), and the targets come
+  with the toolchain file. A first build of each takes about nine
+  seconds, into `target/rex-link`, whatever the profile.
+- **The test host's `sh` is dash**, this computer's is bash: what a
+  host is to run is tried here first (`ssh::dial_tests`,
+  `helper::tests`), and against the host before it is believed
+  (`tests/host.rs` with `OLO_REX_TEST_HELPER_FILE`).
+- **The rig can put the helper behind its slow link** (`Rig(helper=
+  True)`, `try.py order|timed --helper`): the link runs it for the
+  control connection, as sshd would, with the scratch server's own
+  `dial-stdio` behind it.
+- **A scratch script named as one of Python's own modules is run by
+  whatever imports that module beside it**: a `typing.py` among the
+  test host's scripts was run, whole, when a new script there imported
+  PIL (which imports `typing`): it made and ended a session on the
+  host before it failed. Name scratch scripts for what they are of
+  (`rex_typing.py`).
+- **A picture of Rex against a real host shows that host's sessions**,
+  whoever's they are: the sidebar lists them all. Before one goes to a
+  reviewer, crop to what the review is of (the status bar, a tip), and
+  give the host a name of its own in the test's settings
+  (`saved_hosts`, `label`), so no address is drawn.
+- **A backslash before a quote is lost in a Python heredoc's
+  triple-quoted string** (`\"` comes out as `"`): a test's JSON
+  written so (`"a\"b"`) reached the file as `"a"b"`, and the test
+  that failed was blamed on the parser for a while. Write such text to
+  the file with a quoted shell heredoc, or double the backslash.
 

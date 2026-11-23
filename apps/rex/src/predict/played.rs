@@ -203,6 +203,11 @@ struct Plan {
     /// Someone else types into the same line, and a shell's prompt
     /// changes under it.
     others: bool,
+    /// Each key is sent as it is typed, several on their way at once
+    /// (Olo's helper is on the host and gives them to the server one
+    /// at a time, in order); not one write at a time with what waits
+    /// gathered into the next.
+    piped: bool,
 }
 
 #[derive(Default, Debug, Clone, Copy)]
@@ -244,6 +249,9 @@ fn play(plan: Plan, keys: usize) -> Tally {
     p.frame(seen.as_ref(), t0);
     let mut outbox: VecDeque<(u64, Vec<u8>)> = VecDeque::new();
     let mut in_flight = false;
+    // (What is on its way on one connection arrives in the order it
+    // was sent, there and back: a packet held holds those behind it.)
+    let (mut arrives_after, mut back_after) = (0u64, 0u64);
     // Each key by its write's number: with it drawn, the text before
     // the caret the pane then showed. And the keys that went into a
     // line that doesn't echo them.
@@ -252,6 +260,7 @@ fn play(plan: Plan, keys: usize) -> Tally {
     let mut at_once: HashSet<u64> = HashSet::new();
     let mut tally = Tally::default();
     let mut waking: Option<u64> = None;
+    let mut on_their_way = 0usize;
     let (mut now, mut typed, mut since_enter, mut next_key) = (0u64, 0usize, 0usize, 0u64);
     // (Where others type too, what is drawn can be overtaken: only the
     // secrets are held to.)
@@ -343,7 +352,10 @@ fn play(plan: Plan, keys: usize) -> Tally {
                     // moment after the answer, or just before it; a
                     // program that draws in pieces sends one first.
                     let stall = if plan.stalls && rng.chance(4) { 400 + rng.next(2600) } else { 0 };
-                    let back = now + delay + stall;
+                    let mut back = now + delay + stall;
+                    if plan.piped {
+                        back = back.max(back_after);
+                    }
                     push(&mut events, back + 3, Event::Answer(last));
                     let mut at = back + rng.next(9);
                     for frame in frames {
@@ -354,10 +366,12 @@ fn play(plan: Plan, keys: usize) -> Tally {
                         push(&mut events, at, Event::Frame(frame));
                         at += 1 + rng.next(12);
                     }
+                    back_after = at.max(back + 3);
                 }
                 Event::Answer(seq) => {
                     p.answered(seq, t0 + ms(now));
                     in_flight = false;
+                    on_their_way = on_their_way.saturating_sub(1);
                 }
                 Event::Frame(screen) => {
                     // (A pane paints the newest of the frames that came
@@ -384,8 +398,20 @@ fn play(plan: Plan, keys: usize) -> Tally {
                 Event::Tick => waking = None,
             }
         }
-        // One write at a time, all that waits gathered into it.
-        if !in_flight && !outbox.is_empty() {
+        // One write at a time, all that waits gathered into it; or,
+        // with the helper on the host, each as it is typed (no more
+        // than the app has on their way at once: the rest wait, and go
+        // together).
+        if plan.piped {
+            while !outbox.is_empty() && on_their_way < 32 {
+                let written: Vec<_> = if on_their_way == 31 { outbox.drain(..).collect() } else { outbox.drain(..1).collect() };
+                on_their_way += 1;
+                p.went(written.last().unwrap().0, t0 + ms(now));
+                let stall = if plan.stalls && rng.chance(4) { 400 + rng.next(2600) } else { 0 };
+                arrives_after = arrives_after.max(now + delay + stall);
+                push(&mut events, arrives_after, Event::Arrives(written));
+            }
+        } else if !in_flight && !outbox.is_empty() {
             in_flight = true;
             let written: Vec<_> = outbox.drain(..).collect();
             p.went(written.last().unwrap().0, t0 + ms(now));
@@ -439,7 +465,10 @@ fn said(p: &Predictor) -> String {
     format!("sent {sent:?} epoch {} proven {} floor {} right {} doubt {} taint {}", p.epoch, p.proven, p.floor, p.right, p.doubt.is_some(), p.taint.is_some())
 }
 
+/// (The sessions from 2,400 on are the first 2,400 again, each key
+/// sent as it is typed.)
 fn plan(n: u64) -> Plan {
+    let (n, piped) = (n % 2400, n >= 2400);
     Plan {
         seed: n,
         kind: if n % 3 == 2 { Kind::Boxed } else { Kind::Shell },
@@ -447,6 +476,7 @@ fn plan(n: u64) -> Plan {
         stalls: n / 15 % 2 == 1,
         drops: n / 30 % 2 == 1,
         others: n / 60 % 4 == 3,
+        piped,
     }
 }
 
@@ -456,11 +486,11 @@ fn sessions_played_by_the_thousand() {
         eprintln!("{:?}: {:?}", plan(only), play(plan(only), 160));
         return;
     }
-    let mut tallies: HashMap<(bool, u64, bool), Tally> = HashMap::new();
-    for n in 0..2400 {
+    let mut tallies: HashMap<(bool, bool, u64, bool), Tally> = HashMap::new();
+    for n in 0..4800 {
         let plan = plan(n);
         let tally = play(plan, 160);
-        let sum = tallies.entry((plan.kind == Kind::Boxed, plan.delay, plan.stalls || plan.others)).or_default();
+        let sum = tallies.entry((plan.piped, plan.kind == Kind::Boxed, plan.delay, plan.stalls || plan.others)).or_default();
         sum.echoed += tally.echoed;
         sum.at_once += tally.at_once;
     }
@@ -469,10 +499,11 @@ fn sessions_played_by_the_thousand() {
     // quick one that doesn't stall.
     let mut all: Vec<_> = tallies.into_iter().collect();
     all.sort_by_key(|(key, _)| *key);
-    for ((boxed, delay, rough), tally) in all {
+    for ((piped, boxed, delay, rough), tally) in all {
         let share = tally.at_once as f64 / tally.echoed.max(1) as f64;
         eprintln!(
-            "{} at {delay} ms each way{}: {} of {} letters drawn at once ({:.0}%)",
+            "{}{} at {delay} ms each way{}: {} of {} letters drawn at once ({:.0}%)",
+            if piped { "each key sent as typed: " } else { "" },
             if boxed { "a drawn caret" } else { "a shell" },
             if rough { ", stalling or shared" } else { "" },
             tally.at_once,

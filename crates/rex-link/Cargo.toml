@@ -1,0 +1,22 @@
+[package]
+name = "olo-rex-link"
+description = "Olo's helper on a Rex host: it stands in front of the Rex server's control connection there and keeps what is typed in order, so the app sends each key as it is typed instead of waiting for the last one's answer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "olo-rex-link"
+path = "src/main.rs"
+
+# (Nothing that needs a C compiler: it is built for the hosts, x86_64 and
+# aarch64, statically, on this computer.)
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+# The helper itself, run against a stand-in for the server: the stand-in
+# is the test program again, so it has a `main` of its own.
+[[test]]
+name = "through"
+harness = false

@@ -25,10 +25,13 @@ PROGRAMS = {
 }
 
 class Rig:
-    def __init__(self, program="shell", delay=300, jitter=0, stall=(0, 0), name="rexslow", size="2560x1600", scale=None, type_ahead=True, bin=None, look=None, release=False):
+    def __init__(self, program="shell", delay=300, jitter=0, stall=(0, 0), name="rexslow", size="2560x1600", scale=None, type_ahead=True, bin=None, look=None, release=False, helper=False):
         self.program, self.delay, self.jitter, self.stall, self.name, self.size, self.scale = program, delay, jitter, stall, name, size, scale
         self.type_ahead, self.look = type_ahead, look
         self.bin = bin or f"{R3}/target/{'release' if release else 'debug'}/olo-rex"
+        # Olo's helper on the host (olo-rex-link), behind the link as it is behind SSH: True for this tree's
+        # build of it, or a path.
+        self.helper = f"{R3}/target/{'release' if release else 'debug'}/olo-rex-link" if helper is True else helper
         self.procs = []
     def ts(self, *a):
         return subprocess.run(["/usr/bin/python3", f"{R3}/tools/dev/tsession", *a], capture_output=True, text=True, env=ENV).stdout
@@ -54,7 +57,9 @@ class Rig:
         except BaseException:
             self.__exit__()
             raise
-    def begin(self):
+    def host(self):
+        """The far side by itself: the scratch server and the slow link in front of it (at REX_SLOW_DIR/link.sock),
+        with Olo's helper behind the link where the rig has one. For what talks to a host without the app."""
         for f in ("rex/rex.sock", "link.sock"):
             if os.path.exists(f"{D}/{f}"): os.remove(f"{D}/{f}")
         quiet = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
@@ -64,8 +69,15 @@ class Rig:
         while not os.path.exists(f"{D}/rex/rex.sock") and time.monotonic() < end: time.sleep(0.05)
         assert os.path.exists(f"{D}/rex/rex.sock"), "the scratch server didn't start"
         link = ["/usr/bin/python3", f"{HERE}/slowlink.py", f"{D}/link.sock", f"{D}/rex/rex.sock", str(self.delay), str(self.jitter), str(self.stall[0]), str(self.stall[1])]
-        self.procs.append(subprocess.Popen(link, **quiet))
+        dial, env = self.scratch("rex", "__internal", "dial-stdio")
+        if self.helper:
+            assert os.path.exists(self.helper), f"no helper at {self.helper}: cargo build -p olo-rex-link"
+            env["REX_SLOW_HELPER"] = json.dumps([self.helper, "--", *dial])
+        self.procs.append(subprocess.Popen(link, env=env, cwd=D, **quiet))
         while not os.path.exists(f"{D}/link.sock") and time.monotonic() < end: time.sleep(0.05)
+        return f"{D}/link.sock"
+    def begin(self):
+        self.host()
         home = f"{D}/home-app"
         os.makedirs(home, exist_ok=True)
         self.ts("start", self.name, self.size, "--home", home, "--owner", "none")
