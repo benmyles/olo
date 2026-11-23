@@ -115,7 +115,9 @@ impl RexEndpoint {
         match self {
             Self::Ssh { target, pool, askpass } => {
                 let chan = pool.open_rex_channel(target, askpass.clone(), true).await?;
-                Ok((RexStream::Boxed(chan), "localhost".to_owned()))
+                // (What is sent a host over SSH goes under a mask of
+                // nothing, so that SSH can pack it: `plain`.)
+                Ok((RexStream::Boxed(Box::pin(crate::plain::PlainMask::new(chan))), "localhost".to_owned()))
             }
             _ => self.connect_stream().await,
         }
@@ -123,6 +125,10 @@ impl RexEndpoint {
 
     /// Open a connected [`RexStream`] and the HTTP `Host` header value to use for
     /// WebSocket upgrade on `/api/control` or `/api/data`.
+    ///
+    /// Over SSH the stream is for a WebSocket connection and nothing
+    /// else: what is written to it is read as an upgrade's request and
+    /// then frames, whose masks are taken off ([`crate::plain`]).
     pub async fn connect_stream(&self) -> Result<(RexStream, String), RexError> {
         match self {
             Self::Local { autostart } => {
@@ -154,7 +160,7 @@ impl RexEndpoint {
             }
             Self::Ssh { target, pool, askpass } => {
                 let chan = pool.open_rex_channel(target, askpass.clone(), false).await?;
-                Ok((RexStream::Boxed(chan), "localhost".to_owned()))
+                Ok((RexStream::Boxed(Box::pin(crate::plain::PlainMask::new(chan))), "localhost".to_owned()))
             }
         }
     }

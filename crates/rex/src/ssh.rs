@@ -549,6 +549,8 @@ struct ResolvedSshConfig {
     keepalive_max: usize,
     connect_timeout: Duration,
     proxy_command: Option<String>,
+    /// `Compression` in the person's SSH config, where it says.
+    compression: Option<bool>,
 }
 
 fn resolve_ssh_config(target: &SshTarget) -> Result<ResolvedSshConfig, RexError> {
@@ -562,6 +564,7 @@ fn resolve_ssh_config(target: &SshTarget) -> Result<ResolvedSshConfig, RexError>
         keepalive_max: 3,
         connect_timeout: Duration::from_secs(10),
         proxy_command: None,
+        compression: None,
     };
 
     if let Ok(home) = std::env::var("HOME") {
@@ -593,6 +596,7 @@ fn resolve_ssh_config(target: &SshTarget) -> Result<ResolvedSshConfig, RexError>
                     cfg.identity_files.push(expand_tilde(&f, &home));
                 }
             }
+            cfg.compression = params.compression;
             if let Some(ka) = params.server_alive_interval {
                 cfg.keepalive_secs = ka.as_secs();
             }
@@ -654,6 +658,28 @@ impl tokio::io::AsyncWrite for ChildStdioStream {
     }
 }
 
+/// A host whose TCP connection took this long to open is far: what
+/// passes between it and here is worth packing ([`compresses`]).
+const FAR: Duration = Duration::from_millis(20);
+
+/// Whether an SSH connection asks for compression (`zlib@openssh.com`,
+/// begun once signed in): what the person's SSH config says
+/// (`Compression`), else `OLO_REX_SSH_COMPRESSION` (yes or no: for
+/// measuring), else whether the host is far, by how long its TCP
+/// connection took to open (`opened_in`; not known through a
+/// `ProxyCommand`, which is taken for far).
+///
+/// Measured, 2026-11-23 (HACKING, Rex, "Fewer bytes"): packed, a far
+/// host's flood is a quarter to a third of its bytes, a program that
+/// redraws its box at each key a tenth, and what Rex sends a fifth;
+/// on a link with no delay the same flood took a quarter longer (the
+/// host's SSH server packs on one core) and cost the app 6% more
+/// instructions. So where the link is the bound, and not where it
+/// isn't.
+fn compresses(said: Option<bool>, knob: Option<bool>, opened_in: Option<Duration>) -> bool {
+    said.or(knob).unwrap_or_else(|| opened_in.is_none_or(|took| took >= FAR))
+}
+
 async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Result<Handle<SshClientHandler>, RexError> {
     let resolved = resolve_ssh_config(target)?;
     let mut config = client::Config::default();
@@ -673,7 +699,16 @@ async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn Ss
     config.nodelay = true;
     config.keepalive_interval = (resolved.keepalive_secs > 0).then(|| Duration::from_secs(resolved.keepalive_secs));
     config.keepalive_max = resolved.keepalive_max;
-    let config = Arc::new(config);
+    let knob = std::env::var("OLO_REX_SSH_COMPRESSION").ok().map(|v| matches!(v.as_str(), "yes" | "1" | "on"));
+    // (russh's names: its `ZLIB_LEGACY` is `zlib@openssh.com`, the one
+    // OpenSSH's server offers; `ZLIB`, from the first packet, for
+    // servers that still have it.)
+    let packed = |mut config: client::Config, opened_in: Option<Duration>| {
+        if compresses(resolved.compression, knob, opened_in) {
+            config.preferred.compression = std::borrow::Cow::Borrowed(&[russh::compression::ZLIB_LEGACY, russh::compression::ZLIB, russh::compression::NONE]);
+        }
+        Arc::new(config)
+    };
 
     let (waiting_tx, mut waiting) = tokio::sync::watch::channel(false);
     let askpass = askpass.map(|ui| Prompts { ui, waiting: waiting_tx.clone() });
@@ -693,9 +728,18 @@ async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn Ss
             let stdin = child.stdin.take().ok_or_else(|| RexError::Ssh("ProxyCommand missing stdin".into()))?;
             let stdout = child.stdout.take().ok_or_else(|| RexError::Ssh("ProxyCommand missing stdout".into()))?;
             let stream = ChildStdioStream { _child: child, stdout, stdin };
-            client::connect_stream(config, stream, handler).await.map_err(|e| RexError::Ssh(format!("SSH connect via ProxyCommand failed: {e}")))
+            client::connect_stream(packed(config, None), stream, handler).await.map_err(|e| RexError::Ssh(format!("SSH connect via ProxyCommand failed: {e}")))
         } else {
-            client::connect(config, (resolved.hostname.as_str(), resolved.port), handler).await.map_err(|e| RexError::Ssh(format!("SSH connect {}:{} failed: {e}", resolved.hostname, resolved.port)))
+            // (The connection is opened here, not by russh, to know
+            // how long it took: the host's name is looked up first, so
+            // that isn't counted.)
+            let failed = |e: std::io::Error| RexError::Ssh(format!("SSH connect {}:{} failed: {e}", resolved.hostname, resolved.port));
+            let addresses: Vec<std::net::SocketAddr> = tokio::net::lookup_host((resolved.hostname.as_str(), resolved.port)).await.map_err(failed)?.collect();
+            let began = std::time::Instant::now();
+            let stream = tokio::net::TcpStream::connect(&addresses[..]).await.map_err(failed)?;
+            let opened_in = began.elapsed();
+            stream.set_nodelay(true).map_err(failed)?;
+            client::connect_stream(packed(config, Some(opened_in)), stream, handler).await.map_err(|e| RexError::Ssh(format!("SSH connect {}:{} failed: {e}", resolved.hostname, resolved.port)))
         }
     };
 
@@ -887,6 +931,26 @@ fn dial_command(socket: Option<&str>, helper: Option<&str>) -> String {
 #[cfg(test)]
 mod dial_tests {
     use super::*;
+
+    /// A connection is packed where the person's SSH config says, else
+    /// where the knob says, else where the host is far: its connection
+    /// took a while to open, or went through a command of the person's.
+    #[test]
+    fn a_far_host_is_packed_and_a_near_one_is_not_unless_the_person_says() {
+        let ms = Duration::from_millis;
+        assert!(!compresses(None, None, Some(ms(0))), "this computer");
+        assert!(!compresses(None, None, Some(ms(3))), "the same network");
+        assert!(compresses(None, None, Some(FAR)));
+        assert!(compresses(None, None, Some(ms(180))), "another continent");
+        assert!(compresses(None, None, None), "through a ProxyCommand");
+        // The person's word, either way, whatever the link.
+        assert!(compresses(Some(true), None, Some(ms(0))));
+        assert!(!compresses(Some(false), Some(true), Some(ms(180))));
+        assert!(!compresses(Some(false), None, None));
+        // The knob, where the config says nothing.
+        assert!(compresses(None, Some(true), Some(ms(0))));
+        assert!(!compresses(None, Some(false), Some(ms(180))));
+    }
 
     /// The command is what a POSIX shell runs as meant: checked by
     /// running it, with stand-ins for `rex` and for the helper.

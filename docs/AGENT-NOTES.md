@@ -2721,3 +2721,23 @@ an argument it doesn't know starts the lint (read its first lines).
   measured** (a `tsession shot` is 0.4 to 0.6 s): time the keys from
   one clock and compare the picture after with one taken later, when
   everything has settled.
+- **What a WebSocket client sends doesn't pack**: every frame is under
+  a mask of chance. SSH's compression made what a far host sends a
+  third to a tenth of its bytes and left what Rex sends as it was,
+  until its frames went under a mask of nothing
+  (`olo_rex_client::plain`). Count both ways before believing a
+  packer works (`tools/dev/rex-slow/try.py bytes`).
+- **russh's compression names are swapped** (`ZLIB_LEGACY` is
+  `zlib@openssh.com`, the modern one), and its default order puts
+  `none` first.
+- **The rig's far host opens its connection at once** whatever
+  `far_delay` is (the link delays what passes, not the connecting), so
+  what Rex decides from how long a connection took to open (packing)
+  is set there by `OLO_REX_SSH_COMPRESSION`.
+- **The rig answers the far host's key question by waiting for its
+  button**, not by looking once after a moment: on a busy computer
+  the window was there before its button, the question stayed, and
+  the run failed a minute later saying the host's session never
+  showed. A failure of the rig that names something far from its
+  cause: look at the picture it took first (`shots/far-missing.png`
+  showed the question still open).

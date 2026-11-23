@@ -36,10 +36,21 @@
                                               `read -es`), typed soon after the Enter and after a pause: how
                                               much more ink there is with four letters typed than once the host
                                               has them (0: none was drawn)
+    try.py bytes [DELAY_MS]                   what a far host costs on the wire, with SSH's own compression and
+                                              without (OLO_REX_SSH_COMPRESSION: the app packs by itself only
+                                              where a host's connection takes a while to open, and the rig's
+                                              opens at once): the bytes each way over the far host's link
+                                              (farhost.py's, which counts) for connecting with the helper put
+                                              there, 132 letters typed at a shell, a flood (seq 20000) and 60
+                                              letters typed into a program that redraws its box at each key
+    try.py flood [LINES] [--release]          what the packing costs where the link is fast: seq LINES from a
+                                              far host with no delay, without and with: the bytes, the time
+                                              until the link is quiet, the app's own threads' instructions
 
 PROGRAM: shell, box, box-nosync, line (tui.py's stand-ins), or a command line."""
 import glob, os, signal, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import rig
 from rig import *
 what, args = (sys.argv[1] if len(sys.argv) > 1 else ""), sys.argv[2:]
 program = next((a for a in args if not a.isdigit() and not a.startswith("--")), "shell")
@@ -195,6 +206,46 @@ elif what in ("prompt", "secrets"):
                     time.sleep(4 * delay / 1000 + 1.0)
                     print(f"`{command}`, typed {name}: {typed - r.inked(r.shot('secret-settled'))} pixels more with four letters typed than once the host has them", flush=True)
                     r.type("\n"); time.sleep(1.0)
+elif what in ("bytes", "flood"):
+    import shutil, subprocess
+    def settled(r, quiet=1.2, within=120):
+        """The far link's count once nothing has passed for `quiet` seconds, and when the last of it did."""
+        last, since, end = r.far.bytes(), time.monotonic(), time.monotonic() + within
+        while time.monotonic() < end:
+            time.sleep(0.1); now = r.far.bytes()
+            if now != last: last, since = now, time.monotonic()
+            elif time.monotonic() - since >= quiet: break
+        return last, since
+    def more(a, b): return f"{b['up'] - a['up']:,} up, {b['down'] - a['down']:,} down"
+    if what == "bytes":
+        delay = int(next((a for a in args if a.isdigit()), "40"))
+        for packed in ("no", "yes"):
+            for program in ("shell", "box"):
+                # (The helper is put there at each connection: the host's home has none to begin with.)
+                shutil.rmtree(f"{D}/home/.local/share/olo/rex-link", ignore_errors=True)
+                with Rig(program, delay=0, far=True, far_delay=delay, env=[f"OLO_REX_SSH_COMPRESSION={packed}"]) as r:
+                    b0, _ = settled(r)
+                    print(f"compression {packed}, {program}: connected, the helper put there: {b0['up']:,} up, {b0['down']:,} down", flush=True)
+                    r.type(("the quick brown fox jumps over the lazy dog " * 3) if program == "shell" else "the quick brown fox jumps over the lazy dog and more words here"[:60], apart=0.03)
+                    b1, _ = settled(r)
+                    print(f"compression {packed}, {program}: {132 if program == 'shell' else 60} letters typed: {more(b0, b1)}", flush=True)
+                    if program == "shell":
+                        r.type("\b" * 140, apart=0.005); time.sleep(1.0); b1, _ = settled(r)
+                        r.type("seq 20000\n", apart=0.02); b2, _ = settled(r)
+                        print(f"compression {packed}, shell: seq 20000 (108,894 bytes of digits): {more(b1, b2)}", flush=True)
+    else:
+        lines = next((a for a in args if a.isdigit()), "2000000")
+        release = "--release" in args
+        if release: rig.ENV["TSESSION_PROFILE"] = "release"
+        for turn in range(2):
+            for packed in ("no", "yes"):
+                with Rig("shell", delay=0, far=True, far_delay=0, release=release, env=[f"OLO_REX_SSH_COMPRESSION={packed}"]) as r:
+                    b0, _ = settled(r, quiet=1.0)
+                    p = subprocess.Popen(["perf", "stat", "--no-scale", "--per-thread", "-x,", "-e", "instructions:u", "-p", str(r.win["pid"]), "--timeout", "110000"], stderr=subprocess.PIPE, stdout=subprocess.DEVNULL, text=True)
+                    time.sleep(0.5); t = time.monotonic(); r.type(f"seq {lines}\n", apart=0.02)
+                    b1, at = settled(r, quiet=1.0); p.send_signal(signal.SIGINT); err = p.communicate()[1]
+                    own = sum(int(f[1]) for f in (l.split(",") for l in err.splitlines()) if len(f) > 3 and f[1].isdigit() and not f[0].startswith("llvmpipe"))
+                    print(f"compression {packed}: seq {lines}: {b1['down'] - b0['down']:,} bytes down, the last of them {at - t:.1f} s after the command; the app's own threads {own / 1e6:,.0f} million instructions", flush=True)
 elif what == "connect":
     for delay in [int(a) for a in args if a.isdigit()] or [0, 150, 300, 600]:
         with Rig("shell", delay=delay) as r:

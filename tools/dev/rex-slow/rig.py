@@ -25,7 +25,7 @@ PROGRAMS = {
 }
 
 class Rig:
-    def __init__(self, program="shell", delay=300, jitter=0, stall=(0, 0), name="rexslow", size="2560x1600", scale=None, type_ahead=True, bin=None, look=None, release=False, helper=False, far=False, grants=None, settings=None):
+    def __init__(self, program="shell", delay=300, jitter=0, stall=(0, 0), name="rexslow", size="2560x1600", scale=None, type_ahead=True, bin=None, look=None, release=False, helper=False, far=False, grants=None, settings=None, far_delay=None, env=None):
         self.program, self.delay, self.jitter, self.stall, self.name, self.size, self.scale = program, delay, jitter, stall, name, size, scale
         self.type_ahead, self.look = type_ahead, look
         self.bin = bin or f"{R3}/target/{'release' if release else 'debug'}/olo-rex"
@@ -35,7 +35,11 @@ class Rig:
         # A far host too (farhost.py: an SSH server of the rig's own, the scratch Rex server behind it), saved in
         # the app as "far" and its session the one typed into; `grants`: what it may do here (Rex's old
         # per-host permissions, as its settings file held them: {"allow_open_url": True, …}).
-        self.far, self.grants = (far, grants)
+        # `far_delay`: the far host's own link, each way in ms (farhost.py's, which also counts the bytes that
+        # pass: `r.far.bytes()`); none, and the app reaches its SSH server straight.
+        self.far, self.grants, self.far_delay = (far, grants, far_delay)
+        # More for the app's own environment (NAME=value strings, as `tsession run` takes them).
+        self.env = env or []
         # More of the app's own settings (its rex.json), over the rig's: {"host_helper": False}.
         self.settings = settings or {}
         self.procs = []
@@ -99,7 +103,7 @@ class Rig:
         agent = ""
         if self.far:
             from farhost import FarHost
-            self.far = FarHost().__enter__()
+            self.far = FarHost(delay=self.far_delay).__enter__()
             agent = self.far.agent
             settings["saved_hosts"] = [{"id": "far", "label": "far", "endpoint": self.far.address, "auto_connect": True}]
             if self.grants: settings["host_policies"] = {"far": self.grants}
@@ -110,7 +114,7 @@ class Rig:
         if self.look: self.ts("look", self.name, self.look)
         time.sleep(1.2)
         self.rex("new", "typing", "--json", "--", "sh", "-c", PROGRAMS.get(self.program, self.program))
-        self.ts("run", self.name, f"REX_SERVER_SOCKET={D}/link.sock", f"XDG_STATE_HOME={D}/state", f"SSH_AUTH_SOCK={agent}", self.bin)
+        self.ts("run", self.name, f"REX_SERVER_SOCKET={D}/link.sock", f"XDG_STATE_HOME={D}/state", f"SSH_AUTH_SOCK={agent}", *self.env, self.bin)
         self.win = None
         for _ in range(80):
             time.sleep(0.25)
@@ -121,10 +125,18 @@ class Rig:
             # The far host's key is new to the app: trusted, as a person would at its question.
             asked = self.wait(lambda: next((w for w in self.windows() if w.get("title") == "SSH Authentication"), None), 30)
             if asked:
-                time.sleep(0.8)
-                button = next((n for n in self.nodes() if n.get("role") == "Button" and n.get("name") == "Trust & Connect"), None)
-                if button: self.ts("click", self.name, str(int(asked["content"]["x"] + button["x"] + button["width"] / 2)), str(int(asked["content"]["y"] + button["y"] + button["height"] / 2)))
-                self.wait(lambda: not any(w.get("title") == "SSH Authentication" for w in self.windows()), 20)
+                # (Its button is waited for, not looked for once after a moment: on a busy computer the window
+                # was there 0.8 s before its button was, the question stayed unanswered, and the run failed a
+                # minute later saying the host's session never showed. Clicked again if the window stays.)
+                gone = lambda: not any(w.get("title") == "SSH Authentication" for w in self.windows())
+                for _ in range(4):
+                    button = self.wait(lambda: next((n for n in self.nodes() if n.get("role") == "Button" and n.get("name") == "Trust & Connect"), None), 20)
+                    assert button, f"the question about the far host's key has no Trust & Connect button; pictured in {self.shot('far-question')}"
+                    time.sleep(0.3)
+                    asked = next((w for w in self.windows() if w.get("title") == "SSH Authentication"), asked)
+                    self.ts("click", self.name, str(int(asked["content"]["x"] + button["x"] + button["width"] / 2)), str(int(asked["content"]["y"] + button["y"] + button["height"] / 2)))
+                    if self.wait(gone, 5): break
+                assert gone(), f"the question about the far host's key was clicked and is still there; pictured in {self.shot('far-question')}"
         # (Its place once it has settled: a first window is sized after it opens.)
         time.sleep(1.0)
         self.win = next((w for w in self.windows() if w["id"] == self.win["id"]), self.win)

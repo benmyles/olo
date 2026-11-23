@@ -1181,17 +1181,22 @@ something nobody here has is in "Blocked", with what it waits for.
     middle before and 227 ms through it (one round trip of that link,
     where it was one and a half), and on a link of 450 ms each way
     twice as many letters are drawn at once (40 in a hundred, of 20).
+    Since 2026-11-23 it also says, unasked, when a shell is at its
+    prompt again (46 in a hundred then, and the first letter after a
+    command at once), and a far host's connection is packed.
     **What is left of the host's half** (Gemini's review of the design,
     2026-11-22, is what most of this list is from):
-    - *The helper sent smaller, and a standing connection moved onto
-      it*: a new host gets the helper before its first connection now
-      (589 kB, 1.8 s to the test server; waited for eight seconds),
-      but on a link too slow for that, and for a newer build beside an
-      older one, it is used from the next connection. Packed (gzip is
-      on every host) it would be half; and a connection that stands
-      could be moved onto it once it is there (the control connection
-      remade with its token, the terminals' streams left alone: to be
-      tried).
+    - *A standing connection moved onto the helper*: a new host gets
+      the helper before its first connection now (689 kB, 440 kB on
+      the wire to a far host since SSH packs it, 2026-11-23; waited
+      for eight seconds), but on a link too slow for that, and for a
+      newer build beside an older one, it is used from the next
+      connection. A connection that stands could be moved onto it once
+      it is there (the control connection remade with its token, the
+      terminals' streams left alone: to be tried). (The helper itself
+      is mostly Rust's own library: built for size it is 598 kB, not
+      worth its speed; without the library's unwinding and formatting
+      it would be half, which takes a nightly compiler.)
     - *A burst after a quiet spell*: forty requests sent in the same
       instant are answered two at one round trip and the rest a round
       trip later, with the helper and without. Which window holds
@@ -1235,17 +1240,21 @@ something nobody here has is in "Blocked", with what it waits for.
     - *A flood that doesn't hold the link*: hidden panes paused at the
       host, a flooding one caught up from the screen's state once it
       stops (not its every line), big chunks packed.
-    - *Fewer bytes on a slow link*: the SSH connection's own
-      compression (russh is built with it; whether it is asked for,
-      and what it does to a program that redraws its whole screen at
-      each key, to be measured against the test host), before the
-      helper's own packing.
+    - *Fewer bytes on a slow link*: done (2026-11-23; HACKING, "Fewer
+      bytes to a far host"): a far host's SSH connection is packed,
+      and what Rex sends goes under a WebSocket mask of nothing so
+      that it packs too (a redrawing program's keys a tenth of the
+      bytes down, a letter typed 83 bytes up for 350). Left: whether
+      a host is far is decided once, as its connection opens (a
+      laptop that moves from the office to a train keeps what it
+      had until it connects again); and a setting for it, should
+      anybody want one beside their SSH config.
     - *The link's state for the person and for agents* (which way it
       goes, round trip, loss, how much is drawn ahead and how often
       wrongly), in Diagnostics.
-    - *The helper in the Server window* (which build is there, put
-      there or removed by hand), beside the host's tip that says it
-      now; and removed from a host when the person takes the host out.
+    - *The helper removed from a host when the person takes the host
+      out* (which build is there, and putting it there or removing it
+      by hand, are the Host window's now).
     - *The real programs typed into* (Claude Code, Codex, agy): they
       were looked at for how they draw their caret (agy and Claude
       Code, as they run here, show the terminal's cursor; programs

@@ -27642,6 +27642,68 @@ what it does today:
   after idle, it seems: not found out yet; typing never sends so, and
   a paste is one request). Belongs to the link of its own.
 
+**Fewer bytes to a far host** (2026-11-23; `ssh::compresses`,
+`olo_rex_client::plain`). Everything between Rex and a host reached
+over SSH (requests, events, terminals' bytes, files, the helper sent
+there) goes through one SSH connection, and SSH can pack it
+(`zlib@openssh.com`, which OpenSSH's server offers: begun once signed
+in, each packet flushed as it is sent, so nothing waits to be packed).
+- *What it saves* (the rig's far host behind a link that counts,
+  `tools/dev/rex-slow/try.py bytes`; bytes on the wire, not packed and
+  packed): a flood of 108,894 bytes of digits 131,500 down and
+  43,800; sixty keys typed into a program that redraws its box at
+  each 77,500 down and 8,300 (a tenth), and 20,700 up and 6,500; 132
+  letters typed at a shell 46,700 up and 10,900 (a letter: 350 bytes
+  and 83), 26,600 down and 13,300; connecting, the helper put there
+  with it, 710,800 up and 440,300 (the helper is a program, which
+  packs by 38%: "the helper sent smaller" is this), 29,000 down and
+  11,000.
+- *What Rex sends had to be made packable.* A WebSocket client hides
+  every frame it sends under four bytes of chance (its mask, against
+  proxies between a browser and a server), and bytes under chance
+  don't pack: with compression on, 132 letters were 39,900 bytes up
+  where they had been 43,000, though each request is nearly the one
+  before it. Over SSH each frame now goes under a mask of nothing
+  (`PlainMask`, a writer behind the WebSocket library, which has no
+  say in its mask: it knows where the upgrade's request ends and
+  where each frame's header and payload are, keeps nothing but a
+  header not yet whole, changes no length): still a masked frame, as
+  a client's must be, which the Rex server takes as any other (and
+  the helper, and the library's own server: a test). Every stream Rex
+  opens to a host over SSH speaks WebSocket (`RexEndpoint::
+  connect_stream`, `connect_control_stream`: control, terminals,
+  files, tunnels), so all of them go through it; anything that didn't
+  would have to be left out.
+- *Only where the link is the bound* (`compresses`). Packed, a flood
+  of two million lines from a host with no delay
+  (`try.py flood --release`) was 4.2 MB on the wire for 16.9, took
+  between no longer and a quarter longer over six runs (the host's
+  SSH server packs on one core), and cost the app's own threads 6%
+  more instructions (3,400 million and 3,590); 200 letters typed
+  cost them 229.0 to 230.4 million packed and 224.3 to 226.9 not
+  (18,000 a letter). So a connection asks for compression where the
+  host is far: where its TCP connection took 20 ms or more to open
+  (`FAR`; the name is looked up first, so that isn't counted; through
+  a `ProxyCommand` nothing is known, and it is taken for far). The
+  person's SSH config decides where it says (`Compression yes` or
+  `no`), as for `ssh`; `OLO_REX_SSH_COMPRESSION=yes|no` is for
+  measuring (the rig's far host opens at once, whatever its link's
+  delay).
+- *No wait added*: against the test host (a round trip of 166 ms), a
+  request and its answer took 166 and 169 ms not packed and 165 and
+  165 packed, a letter's echo sent as typed 166 and 168 ms and 165
+  and 165 (two runs of each, `tests/host.rs`).
+- *russh's names are the other way round*: its `compression::
+  ZLIB_LEGACY` is `zlib@openssh.com`, the one to ask for; its `ZLIB`
+  is the old `zlib`, from the first packet, which OpenSSH's server no
+  longer offers. And its default order puts `none` first: nothing is
+  packed unless asked.
+- *The rig's far host has a link now* (`FarHost(delay=MS)`,
+  `Rig(far=True, far_delay=MS)`): `slowlink.py` over TCP in front of
+  the SSH server, each way MS late, counting what passes
+  (`far.bytes()`). Without `far_delay` the app reaches the SSH server
+  straight, as before.
+
 **The menu bar** is Terminal's model: Rex (the kit's `app_items` with
 its two Preferences panels; what is made new; Hosts…, Remote Access…,
 Diagnostics…; Close Window, Quit), Edit, View (its last

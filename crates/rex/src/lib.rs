@@ -21,6 +21,7 @@ pub mod error;
 pub mod helper;
 pub mod manage;
 pub mod model;
+pub mod plain;
 pub mod provision;
 pub mod ssh;
 pub mod transport;

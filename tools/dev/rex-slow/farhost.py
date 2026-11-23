@@ -7,15 +7,21 @@
         far.address                 # ssh://YOU@127.0.0.1:PORT/…/rex.sock, for a saved host (the scratch server's socket)
         far.agent                   # SSH_AUTH_SOCK for the app: an agent of the rig's own, holding the one key
         far.home                    # the "host's" home: what is installed there is found here
+        far.bytes()                 # with FarHost(delay=MS): what has passed over its link, {"up", "down", "connections"}
+
+FarHost(delay=MS) puts the rig's slow link in front of the SSH server (slowlink.py, over TCP: each way MS late, in
+order) and counts the bytes that pass it: the address is the link's, so everything Rex does with the host goes
+through it. Without, the address is the SSH server's own.
 
 sshd runs as you (it can log nobody else in), with keys of its own under REX_SLOW_DIR/far, lets in only the rig's
 own key, and gives every session a scratch HOME (SetEnv): nothing of yours is read or written (not ~/.ssh, not your Rex server, not your agent). It listens on 127.0.0.1 alone and ends with the
 `with`. The shell it runs is your login shell, with the scratch HOME (so none of your profile)."""
-import getpass, os, signal, socket, subprocess, time
+import getpass, json, os, signal, socket, subprocess, sys, time
 D = os.environ.get("REX_SLOW_DIR", "/var/tmp/olo-rex-slow")
 
 class FarHost:
-    def __init__(self):
+    def __init__(self, delay=None):
+        self.delay = delay
         # (Its home is the scratch Rex server's sessions' own: what a script typed into a pane puts there is what
         # a command run over SSH finds.)
         self.dir = f"{D}/far"; self.home = f"{D}/home"; self.agent = f"{self.dir}/agent.sock"
@@ -56,9 +62,29 @@ class FarHost:
         else:
             raise SystemExit(f"the rig's sshd didn't start: {open(f'{self.dir}/sshd.log').read()[-300:]}")
         subprocess.run(["ssh-add", "-q", f"{self.dir}/client_key"], env=dict(os.environ, SSH_AUTH_SOCK=self.agent), check=True, **quiet)
+        self.link = self.port
+        if self.delay is not None:
+            with socket.socket() as s:
+                s.bind(("127.0.0.1", 0)); self.link = s.getsockname()[1]
+            self.count = f"{self.dir}/bytes.json"
+            if os.path.exists(self.count): os.remove(self.count)
+            here = os.path.dirname(os.path.abspath(__file__))
+            self.procs.append(subprocess.Popen([sys.executable, f"{here}/slowlink.py", f"tcp:{self.link}", f"tcp:{self.port}", str(self.delay)], env=dict(os.environ, REX_SLOW_COUNT=self.count),
+                                               start_new_session=True, **quiet))
+            end = time.monotonic() + 8
+            while time.monotonic() < end:
+                with socket.socket() as s:
+                    if s.connect_ex(("127.0.0.1", self.link)) == 0: break
+                time.sleep(0.05)
+            else:
+                raise SystemExit("the far host's slow link didn't start")
         # (With the scratch server's socket in it: the host's `rex` would find, or start, a server of its own.)
-        self.address = f"ssh://{getpass.getuser()}@127.0.0.1:{self.port}{D}/rex/rex.sock"
+        self.address = f"ssh://{getpass.getuser()}@127.0.0.1:{self.link}{D}/rex/rex.sock"
         return self
+    def bytes(self):
+        """What has passed over the far host's link so far (FarHost(delay=…)): up is what the app sent."""
+        try: return json.load(open(self.count))
+        except (OSError, ValueError): return {"up": 0, "down": 0, "connections": 0}
     def __exit__(self, *exc):
         for p in self.procs:
             try: os.killpg(p.pid, signal.SIGTERM)
