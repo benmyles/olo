@@ -52,11 +52,14 @@ pub enum Page {
     /// Who may use it: the login server's accounts, or the `rex`
     /// group's members where the server is the shared one.
     People,
+    /// The machine's limits, raised for heavy work
+    /// (`olo_rex_client::tune`).
+    Limits,
     Log,
 }
 
 impl Page {
-    pub const ALL: [Page; 3] = [Page::Server, Page::People, Page::Log];
+    pub const ALL: [Page; 4] = [Page::Server, Page::People, Page::Limits, Page::Log];
 }
 
 /// A host whose server is being looked after.
@@ -533,6 +536,7 @@ pub fn demo(named: &str) -> Option<Managed> {
         accounts.set_default(&principal, Some(&person.name)).ok()?;
     }
     let login = Server {
+        tuning: Some(limits(0)),
         facts: facts(on, Unit::default()),
         login_up: Some(2 * 3600 + 9 * 60),
         people: people.clone(),
@@ -617,6 +621,13 @@ pub fn demo(named: &str) -> Option<Managed> {
         // (Nothing newer in the repository.)
         "current" => Managed { server: Some(Server { newer: None, installed: Some("0.1.0~alpha.2510".into()), ..login }), ..base },
         "people" => Managed { page: Page::People, ..base },
+        // (The limits: a machine as it comes; one with some applied;
+        // one made ready; and what is asked before all are applied.)
+        "limits" => Managed { page: Page::Limits, ..base },
+        "limits-some" => Managed { server: Some(Server { tuning: Some(limits(2)), ..login }), page: Page::Limits, ..base },
+        "limits-ready" => Managed { server: Some(Server { tuning: Some(limits(5)), ..login }), page: Page::Limits, ..base },
+        "confirm-limits" => Managed { stage: Stage::Confirm { action: Action::Tune(olo_rex_client::tune::Tune::ALL.to_vec()), choose: false }, page: Page::Limits, ..base },
+        "confirm-limit" => Managed { stage: Stage::Confirm { action: Action::Tune(vec![olo_rex_client::tune::Tune::Kernel]), choose: false }, page: Page::Limits, ..base },
         // (Nobody listed yet: as the package ships the file.)
         "people-empty" => Managed { server: Some(Server { accounts: Accounts::parse(olo_rex_client::accounts::EMPTY).ok(), sessions: Vec::new(), ..login }), page: Page::People, ..base },
         "members" => Managed { server: Some(shared), page: Page::People, log_of: Service::Shared, ..base },
@@ -642,6 +653,23 @@ pub fn demo(named: &str) -> Option<Managed> {
         "nokeys" => Managed { stage: Stage::RootKey { keys: Vec::new(), chosen: 0 }, server: None, ..base },
         _ => return None,
     })
+}
+
+/// The demo's machine (64 GB) with the first `applied` kinds of limits
+/// applied, the rest as a machine comes.
+fn limits(applied: usize) -> olo_rex_client::tune::Tuning {
+    use olo_rex_client::tune::{Tune, Tuning};
+    let comes = "ram 67108864\nMaxSessions 10\nopen files 524288\nDefaultLimitNOFILE 524288\nDefaultTasksMax 76000\nfs.file-max 9223372036854775807\nfs.inotify.max_user_watches 524288\n\
+        fs.inotify.max_user_instances 128\nfs.inotify.max_queued_events 16384\nfs.aio-max-nr 65536\nkernel.pid_max 4194304\nvm.max_map_count 1048576\nvm.dirty_background_bytes 0\nvm.dirty_bytes 0\n\
+        vm.dirty_expire_centisecs 3000\nvm.swappiness 60\nvm.vfs_cache_pressure 100\n";
+    let mut tuning = Tuning::read(comes);
+    for stands in tuning.stands.iter_mut().filter(|s| Tune::ALL.iter().position(|t| *t == s.tune).is_some_and(|at| at < applied)) {
+        stands.kept = true;
+        for value in &mut stands.values {
+            value.now = Some(value.wanted);
+        }
+    }
+    tuning
 }
 
 /// Shows the demo's stage `named` in the window (Rex's demo only).

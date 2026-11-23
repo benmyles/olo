@@ -121,6 +121,8 @@ pub struct Server {
     pub accounts: Option<Accounts>,
     /// Why it couldn't, if it is there and isn't one.
     pub accounts_trouble: Option<String>,
+    /// How the host's limits stand ([`crate::tune`]), where it said.
+    pub tuning: Option<crate::tune::Tuning>,
 }
 
 impl Server {
@@ -325,6 +327,11 @@ pub async fn look(runner: &mut impl Runner, check: bool) -> Result<Server, Faile
     if ran.ok() {
         server.add(&ran.output);
     }
+    if let Ok(ran) = runner.run(true, &format!("sh -c {}", shell_word(crate::tune::LOOK)), &mut |_| {}).await
+        && ran.ok()
+    {
+        server.tuning = Some(crate::tune::Tuning::read(&ran.output));
+    }
     match provision::read_accounts(runner).await {
         Ok(file) => server.accounts = Some(file),
         Err(failed) if failed.refused => return Err(failed),
@@ -353,6 +360,11 @@ pub enum Action {
     Leave(String),
     /// Rex's package brought up to date, by its installer.
     Update,
+    /// Limits raised for heavy work ([`crate::tune`]): each kind named,
+    /// where the host is short of it.
+    Tune(Vec<crate::tune::Tune>),
+    /// One kind put back as the host had it.
+    Untune(crate::tune::Tune),
 }
 
 impl Action {
@@ -368,6 +380,9 @@ impl Action {
             Action::Join(name) => format!("Add {name} to the rex group"),
             Action::Leave(name) => format!("Take {name} out of the rex group"),
             Action::Update => "Update Rex".to_owned(),
+            Action::Tune(kinds) if kinds.len() == 1 => format!("Apply “{}”", kinds[0].title()),
+            Action::Tune(_) => "Apply the suggested limits".to_owned(),
+            Action::Untune(kind) => format!("Put back “{}”", kind.title()),
         }
     }
 
@@ -382,6 +397,9 @@ impl Action {
             Action::Join(name) => format!("Adding {name} to the rex group"),
             Action::Leave(name) => format!("Taking {name} out of the rex group"),
             Action::Update => "Updating Rex".to_owned(),
+            Action::Tune(kinds) if kinds.len() == 1 => format!("Applying “{}”", kinds[0].title()),
+            Action::Tune(_) => "Applying the suggested limits".to_owned(),
+            Action::Untune(kind) => format!("Putting back “{}”", kind.title()),
         }
     }
 
@@ -395,6 +413,8 @@ impl Action {
             Action::Remove(_) | Action::Leave(_) => "Remove",
             Action::Join(_) => "Add",
             Action::Update => "Update",
+            Action::Tune(_) => "Apply",
+            Action::Untune(_) => "Put Back",
         }
     }
 
@@ -417,6 +437,12 @@ impl Action {
                 };
                 if server.state(Service::Shared).active { replaces } else { format!("{replaces} Open sessions keep running.") }
             }
+            Action::Tune(kinds) => {
+                let mut said: Vec<&str> = kinds.iter().filter_map(|k| k.note()).collect();
+                said.push("Each is kept across restarts and can be put back from this page. Nothing that is already higher there is lowered.");
+                said.join(" ")
+            }
+            Action::Untune(kind) => format!("Olo’s {} taken away, and the host’s own settings again.", if kind.files().len() == 1 { "file is" } else { "files are" }),
         }
     }
 
@@ -428,6 +454,9 @@ impl Action {
             }
             Action::Stop(Service::Login) => Some("Nobody can sign in through it until it is started again. Open sessions keep running.".to_owned()),
             Action::Remove(name) => Some(format!("{name} can no longer sign in through the login server. Their open sessions keep running until they end.")),
+            // (Only what it can cost: what it merely does is said
+            // with the rest, in `what`.)
+            Action::Tune(kinds) => kinds.iter().find_map(|k| k.cost()).map(str::to_owned),
             Action::Update if server.state(Service::Shared).active => Some("Updating restarts the shared server, which ends every session on it and every program running in them.".to_owned()),
             _ => None,
         }
@@ -439,6 +468,38 @@ impl Action {
         match self {
             Action::Allow(p) => format!("\"accounts\": {{ \"{0}\": {{ \"principals\": [\"peer:{1}\"] }} }}\n\"defaults\": {{ \"peer:{1}\": \"{0}\" }}", p.name, p.uid),
             Action::Remove(name) => format!("\"{name}\" is taken out of \"accounts\" and \"defaults\""),
+            // (What changes, every setting, from what the host has to
+            // what it will, in columns: the script that does it is a
+            // page long. Several kinds: each under its name.)
+            Action::Tune(kinds) => {
+                let Some(tuning) = &server.tuning else { return String::new() };
+                let short: Vec<(crate::tune::Tune, Vec<(&str, String, String)>)> = kinds
+                    .iter()
+                    .map(|kind| {
+                        let rows = tuning
+                            .of(*kind)
+                            .values
+                            .iter()
+                            .filter(|v| !v.met())
+                            .map(|v| (v.name, v.now.map_or("?".to_owned(), |now| crate::tune::said(v.name, now)), crate::tune::said(v.name, v.wanted)));
+                        (*kind, rows.collect())
+                    })
+                    .filter(|(_, rows): &(_, Vec<_>)| !rows.is_empty())
+                    .collect();
+                let wide = |of: &dyn Fn(&(&str, String, String)) -> usize, least: usize| short.iter().flat_map(|(_, rows)| rows.iter().map(of)).fold(least, usize::max);
+                let (name, now, new) = (wide(&|r| r.0.chars().count(), 0), wide(&|r| r.1.chars().count(), 3), wide(&|r| r.2.chars().count(), 3));
+                // (Under a kind's name its settings stand a step in.)
+                let step = if short.len() > 1 { "  " } else { "" };
+                let mut lines = vec![format!("{step}{:name$}  {:>now$}  {:>new$}", "", "now", "new")];
+                for (kind, rows) in &short {
+                    if short.len() > 1 {
+                        lines.push(kind.title().to_owned());
+                    }
+                    lines.extend(rows.iter().map(|(n, a, b)| format!("{step}{n:name$}  {a:>now$}  {b:>new$}")));
+                }
+                lines.join("\n")
+            }
+            Action::Untune(kind) => kind.files().join("\n"),
             other => other.command(server).unwrap_or_default(),
         }
     }
@@ -462,6 +523,17 @@ impl Action {
                 };
                 format!("{fetch} {} | sh -s --{options}", provision::INSTALLER).trim_end_matches("--").trim().to_owned()
             }
+            Action::Tune(kinds) => {
+                let tuning = server.tuning.as_ref()?;
+                let scripts: Vec<String> = kinds.iter().filter_map(|k| k.apply(tuning)).collect();
+                if scripts.is_empty() {
+                    return None;
+                }
+                // (Each kind by itself: one that can't be applied
+                // doesn't keep the next from it.)
+                scripts.iter().map(|s| format!("( {} )", s.trim_end())).collect::<Vec<_>>().join("\n")
+            }
+            Action::Untune(kind) => kind.undo(),
             Action::Allow(_) | Action::Remove(_) => return None,
         })
     }
@@ -494,6 +566,8 @@ pub async fn act(runner: &mut impl Runner, server: &Server, action: &Action, sai
         }
         other => {
             let command = other.command(server).ok_or_else(|| Failed::from("nothing to run".to_owned()))?;
+            // (A script of several lines goes to a shell as one word.)
+            let command = if matches!(other, Action::Tune(_) | Action::Untune(_)) { format!("sh -c {}", shell_word(&command)) } else { command };
             let ran = runner.run(true, &command, said).await?;
             if !ran.ok() {
                 let mut why = last_lines(&ran);
@@ -616,6 +690,52 @@ fn own_time_off(said: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What a change of limits shows before it is done: every setting
+    /// that is short, from what the host has to what it will, in
+    /// columns; several kinds each under its name; and the cost said
+    /// apart from what it merely does.
+    #[test]
+    fn a_change_of_limits_shows_every_setting_and_what_it_costs() {
+        use crate::tune::{Tune, Tuning};
+        let comes = "vm.dirty_background_ratio 10\nvm.dirty_ratio 20\nram 67108864\nMaxSessions 10\nopen files 1048576\nDefaultLimitNOFILE 1048576\nDefaultTasksMax infinity\nfs.file-max 9223372036854775807\n\
+            fs.inotify.max_user_watches 524288\nfs.inotify.max_user_instances 8192\nfs.inotify.max_queued_events 65536\nfs.aio-max-nr 1048576\nkernel.pid_max 4194304\nvm.max_map_count 1048576\n\
+            vm.dirty_background_bytes 0\nvm.dirty_bytes 0\nvm.dirty_expire_centisecs 3000\nvm.swappiness 10\nvm.vfs_cache_pressure 50\n";
+        let server = Server { tuning: Some(Tuning::read(comes)), ..Server::default() };
+        // (Its words, column by column; and the columns are columns:
+        // every line of settings as long as the head's.)
+        let words = |shown: &str| shown.lines().map(|l| l.split_whitespace().collect::<Vec<_>>().join(" ")).collect::<Vec<_>>();
+        let in_columns = |shown: &str| {
+            let wide = shown.lines().next().unwrap().chars().count();
+            shown.lines().all(|l| l.chars().count() == wide || !l.contains("  "))
+        };
+        let one = Action::Tune(vec![Tune::Kernel]);
+        assert_eq!(words(&one.shown(&server)), ["now new", "fs.inotify.max_user_watches 524,288 1,048,576"]);
+        assert!(in_columns(&one.shown(&server)), "{}", one.shown(&server));
+        assert_eq!((one.title().as_str(), one.verb(), one.warning(&server)), ("Apply “Kernel limits”", "Apply", None));
+        let all = Action::Tune(server.tuning.as_ref().unwrap().short());
+        assert_eq!(
+            words(&all.shown(&server)),
+            [
+                "now new",
+                "SSH sessions",
+                "MaxSessions 10 1,024",
+                "Kernel limits",
+                "fs.inotify.max_user_watches 524,288 1,048,576",
+                "Writing to disk",
+                "vm.dirty_background_bytes not set 8 GB",
+                "vm.dirty_bytes not set 32 GB",
+                "vm.dirty_expire_centisecs 3,000 6,000",
+            ]
+        );
+        assert!(in_columns(&all.shown(&server)), "{}", all.shown(&server));
+        assert!(all.warning(&server).is_some_and(|w| w.contains("loses power")), "the one real cost, apart");
+        assert!(all.what(&server).contains("open connections stay") && !all.what(&server).contains("sign-in"), "what it does besides: of the kinds applied alone");
+        // What is run is each kind's script, each by itself.
+        let command = all.command(&server).unwrap();
+        assert_eq!(command.matches("\n( set -e").count() + usize::from(command.starts_with("( set -e")), 3);
+        assert_eq!(Action::Untune(Tune::Files).shown(&server).lines().count(), 4);
+    }
 
     /// A host that answers as written: each command run is kept, and
     /// answered by the first rule whose words it holds.

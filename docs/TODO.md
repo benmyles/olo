@@ -1345,28 +1345,14 @@ something nobody here has is in "Blocked", with what it waits for.
     Terminal does it (`view.rs`, its `Mouse`); the terminal engine
     encodes (rex-vt `input.rs`). With Shift, the pane's own selection,
     as everywhere.
-  - *A host made ready for heavy work, from suggestions that can be
-    applied* (Ben, 2026-11-23, when a host's SSH server refused an
-    eleventh session: "why is there a 10 session limit? that should be
-    like 1024 or something. the host setup in rex app should handle
-    configuring that. and also in the host setup have suggestions that
-    can be applied: it should also increase / max out the open file
-    limits in linux and any other artificial limits like that, and
-    make it persist across restarts, also Raise dirty page writeback
-    thresholds (e.g. vm.dirty_background_bytes = 8589934592 (8 GB),
-    vm.dirty_bytes = 34359738368 (32 GB), vm.dirty_expire_centisecs =
-    6000) and persist and any other settings that optimize it for
-    intensive work like rust builds etc"). In the host's set-up (the
-    Server window, as root): each suggestion with what the host has
-    now, what Olo would set and why, Apply for one or all, kept across
-    restarts (a file of Olo's own under `sshd_config.d`, `sysctl.d`,
-    `limits.d`, systemd's `system.conf.d` and `user.conf.d`), and a
-    way back. The SSH server's `MaxSessions` (Rex opens a further
-    connection where one is full, since 2026-11-23: with it raised it
-    needn't), open files and processes for sessions and services, the
-    kernel's own ceilings (`fs.file-max`, `fs.nr_open`, inotify's
-    watches and instances, `kernel.pid_max`, `vm.max_map_count`), the
-    writeback thresholds as given, and what else serves long builds.
+  - *A host made ready for heavy work*: built (2026-11-23; HACKING,
+    "A host made ready for heavy work: the Server window's Limits";
+    Ben's words there). Left: more of what serves long builds as it
+    is learnt (transparent huge pages, the I/O scheduler, the CPU's
+    governor: each needs measuring on a real build before it is
+    suggested); a host with no systemd (the files are written, the
+    running system isn't told); offering the page from the Host
+    window where a session was refused for want of `MaxSessions`.
   - *The bridge, through Rex*: done (2026-11-23; HACKING, "The
     bridge: the Olo desktop, through Rex"; Ben's words there). Left:
     where two Olo apps show one host, `rex do` asks which client

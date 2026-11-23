@@ -25,6 +25,7 @@ pub mod plain;
 pub mod provision;
 pub mod ssh;
 pub mod transport;
+pub mod tune;
 pub mod tunnel;
 
 pub use control::{Asked, ControlClient, RpcResult, answered};

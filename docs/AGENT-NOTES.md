@@ -2807,3 +2807,12 @@ an argument it doesn't know starts the lint (read its first lines).
   its `MaxSessions`** (ten sessions a connection by default), not a
   network failure: `sshd` answers a session it won't open with that
   reason. The rig's far host takes `FAR_MAX_SESSIONS=N` to try it.
+- **A scratch machine to change as root**: a container with systemd
+  and an SSH server (`podman --root /var/tmp/… --runroot /var/tmp/…
+  build --network host` from Fedora's image with `systemd
+  openssh-server` installed, then `run -d --systemd=always`). Its
+  storage goes under your own scratch folder, not the person's
+  `~/.local/share/containers`. A build needs `--network host` here
+  (the default network reaches no mirror), and a rootless container
+  can't raise its limits or write `vm.*`: what that breaks (a sign-in
+  refused by PAM's limits) is worth finding there first.

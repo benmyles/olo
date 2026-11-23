@@ -545,6 +545,7 @@ Brown
 Browse Folders…
 Bug Fixes
 Builds
+Builds and agents open many files and start many tasks at once.
 Builds by the hour
 Builds go on without the cache until it starts.
 Built incrementally
@@ -637,6 +638,7 @@ Changing a limit of process {}
 Changing how process {} fares when memory runs out
 Changing the CPU governor
 Changing the cores process {} may use
+Changing the machine’s settings as {}
 Changing the priority of process {}
 Changing the rex group as {}
 Changing {} as {}
@@ -1338,6 +1340,7 @@ Field
 Fifth folder
 File
 File system:
+File watchers, linkers and large programs run into the kernel’s own ceilings.
 Files
 Files with these extensions are this kind wherever Olo looks at them, and open in its app. An extension another kind had is this one's now.
 File…
@@ -1811,6 +1814,7 @@ Keep windows' graphics memory out of swap
 Keeping it in Passwords…
 Keeping the key in Passwords (unlock it if it asks)…
 Keeping what’s done…
+Keeps a build’s files in memory and running programs out of swap.
 Kept
 Kept Core
 Kept for this computer and set again at every start.
@@ -1818,6 +1822,7 @@ Kept in step with network time servers.
 Kept on this computer.
 Kept on this computer; made in 1Password once you sync an account.
 Kernel
+Kernel limits
 Kernel:
 Key
 Key Repeat
@@ -1886,6 +1891,7 @@ Less noise
 Less space between windows
 Let coding agents keep their tab’s title current
 Let your other devices reach this computer’s sessions over Tailscale
+Lets a build’s many small writes reach the disk together.
 Letting go of backups past keeping
 Level
 Level evened out
@@ -1907,6 +1913,7 @@ Limit
 Limit charging to {}%
 Limit the built-in display to 60 Hz
 Limit what waits to be written to them
+Limits a Linux machine comes with, raised for long builds and many sessions.
 Line
 Line Numbers
 Line:
@@ -2053,6 +2060,7 @@ Members of the rex group use the shared server, where every terminal runs as the
 Membership
 Memory
 Memory Pressure
+Memory for builds
 Memory free
 Memory stalls
 Memory:
@@ -2587,6 +2595,7 @@ Open Website
 Open With
 Open With Offers
 Open files
+Open files and tasks
 Open in Google Drive
 Open in Rex
 Open in Terminal
@@ -3068,7 +3077,9 @@ Rex changes {} as {}:
 Rex isn’t installed
 Rex needs an address to connect.
 Rex picks a free port on this computer; the Ports list shows it.
+Rex removes these as {}:
 Rex runs this as {}:
+Rex sets these as {}:
 Rex signs in as {} with an SSH key from Olo Passwords, and changes nothing until that works.
 Rex signs in as {}@{}, as it will to connect.
 Rex: Agents & Sessions
@@ -3111,6 +3122,8 @@ SQL
 SSD temperature
 SSE
 SSH Authentication
+SSH allows ten sessions on a connection by default; each pane uses one.
+SSH sessions
 SSW
 SW
 Saturday
@@ -4287,6 +4300,7 @@ Wrap Lines
 Write Disk Image…
 Writes
 Writing the backup’s lists…
+Writing to disk
 Written
 XML
 YAML
@@ -4370,8 +4384,10 @@ and takes {} more disk space.
 and the {n} items in it
 and {} more
 app_server's main thread: nice {}{}, {}
+applied
 as in 1Password's sidebar, or its UUID
 as it goes
+as the machine has it
 at most {}
 at {}
 auto approving (Yes after {} s; {} answered)
@@ -4717,6 +4733,7 @@ your own picture
 {} didn’t accept your keys for root
 {} didn’t accept your keys for {}
 {} didn’t download: {}
+{} didn’t say how its limits stand.
 {} different commands, of {} run
 {} dpi as it comes
 {} for each
@@ -4791,6 +4808,7 @@ your own picture
 {} needs your answer
 {} new examples, learned within a second
 {} new to the backup · {} sent, compressed and encrypted ({}/s{})
+{} now, {} suggested
 {} of Olo’s {} words are in {} so far; the rest stay in English.
 {} of each frame kept for drawing: a frame starts {} after the vblank
 {} of memory
@@ -4812,6 +4830,7 @@ your own picture
 {} of {} selected
 {} of {} sent
 {} of {} slots
+{} of {} to change
 {} on Workspace {}
 {} on this computer
 {} on {}?

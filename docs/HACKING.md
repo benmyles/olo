@@ -27665,6 +27665,57 @@ with the overflow turned off it fails with the refusal above. Left
 (TODO): streams that take no session at all (the host's server
 reached by its socket, or one stream carrying many: the QUIC link).
 
+**A host made ready for heavy work: the Server window's Limits**
+(2026-11-23, `crates/rex/src/tune.rs`; Ben, when a host's SSH server
+refused an eleventh session: "why is there a 10 session limit? that
+should be like 1024 or something. the host setup in rex app should
+handle configuring that. and also in the host setup have suggestions
+that can be applied: it should also increase / max out the open file
+limits in linux and any other artificial limits like that, and make
+it persist across restarts, also Raise dirty page writeback thresholds
+… and any other settings that optimize it for intensive work like
+rust builds etc"). Five kinds (`Tune`), each a few settings:
+- *SSH sessions*: `MaxSessions 1024`
+  (`/etc/ssh/sshd_config.d/00-olo.conf`; tried with `sshd -t` before
+  the server is told to read its settings again, and taken out if it
+  refuses; a host whose `sshd_config` reads no such folder is told
+  so).
+- *Open files and tasks*: 1,048,576 open files for sign-ins
+  (`limits.d/90-olo.conf`) and for services (systemd's
+  `system.conf.d` and `user.conf.d`: `DefaultLimitNOFILE`), no limit
+  on tasks (`DefaultTasksMax`, logind's `UserTasksMax`). Never more
+  than can be set (the kernel's `fs.nr_open`; what root's own shell
+  can give itself, which in a container is what it has): a sign-in
+  that can't set its limits is refused ("su: cannot open session:
+  Permission denied", met in a container the first time this ran), so
+  a sign-in is tried after, and the file taken out if it fails.
+- *Kernel limits* (`sysctl.d/90-olo-kernel.conf`): `fs.file-max`,
+  inotify's watches, instances and queue, `fs.aio-max-nr`,
+  `kernel.pid_max`, `vm.max_map_count`.
+- *Writing to disk* (`90-olo-writeback.conf`): as Ben gave them,
+  `vm.dirty_background_bytes` 8 GB, `vm.dirty_bytes` 32 GB,
+  `vm.dirty_expire_centisecs` 6000, on a machine with the memory for
+  it: never more than half its memory waiting, and a quarter of that
+  before writing begins (16 GB: 8 and 2).
+- *Memory for builds* (`90-olo-memory.conf`): `vm.swappiness` 10,
+  `vm.vfs_cache_pressure` 50.
+The host is asked how each stands (`tune::LOOK`, one command as root
+with the server's own look: `Server::tuning`), so the page shows what
+it has beside what Olo would set. A setting it already has as high is
+met, never lowered, and not written. Applying is an `Action`
+(`Tune(kinds)`, `Untune(kind)`) like every other of the window: asked
+first, with what changes (each setting from its value to the new one;
+a line for each kind where several are applied at once) and what it
+costs, then run as root, and the host looked at again. Each file says
+it is Olo's and how to remove it; a kernel setting's file notes what
+the value was, which Put Back… puts there again at once. Tried
+(`tune::tests`, the ignored `the_scripts_do_what_they_say_on_a_real_machine`,
+with `OLO_TUNE_EXEC`): in a container with systemd and an SSH server
+(sessions, files; a container can't write the kernel's settings), and
+as root on a real host (all five: applied, the host says it has them,
+a new sign-in works and has the open files, put back, the host says
+what it said before).
+
 **The bridge: the Olo desktop, through Rex** (2026-11-23,
 `apps/rex/src/bridge.rs`; Ben: "we should leverage rex as much as we
 can to do things 'the rex way' instead of reinventing the wheel …

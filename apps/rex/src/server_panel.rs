@@ -435,10 +435,15 @@ pub fn render_server_panel(
                 ]);
             }
             let shown = action.shown(server);
-            let command = action.command(server).is_some();
+            // (A change of limits is shown as what changes, not as the
+            // script that does it, which is a page long.)
+            let limits = matches!(action, Action::Tune(_) | Action::Untune(_));
+            let command = action.command(server).is_some() && !limits;
             let lines = if command { panels::command_lines(&shown, panels::command_room(column)) } else { shown.lines().map(str::to_owned).collect() };
             let over: String = match (command, action) {
                 (true, _) => olo_kit::tr!("Rex runs this as {}:", managed.root()).into(),
+                (false, Action::Tune(_)) => olo_kit::tr!("Rex sets these as {}:", managed.root()).into(),
+                (false, Action::Untune(_)) => olo_kit::tr!("Rex removes these as {}:", managed.root()).into(),
                 (false, Action::Allow(_)) => olo_kit::tr!("Rex adds these entries to {} as {}:", olo_rex_client::provision::ACCOUNTS_FILE, managed.root()).into(),
                 (false, _) => olo_kit::tr!("Rex changes {} as {}:", olo_rex_client::provision::ACCOUNTS_FILE, managed.root()).into(),
             };
@@ -454,6 +459,7 @@ pub fn render_server_panel(
                 Action::Start(_) | Action::Stop(_) | Action::Restart(_) => olo_kit::tr!("Running systemctl as {}", managed.root()),
                 Action::Allow(_) | Action::Remove(_) => olo_kit::tr!("Changing {} as {}", olo_rex_client::provision::ACCOUNTS_FILE, managed.root()),
                 Action::Join(_) | Action::Leave(_) => olo_kit::tr!("Changing the rex group as {}", managed.root()),
+                Action::Tune(_) | Action::Untune(_) => olo_kit::tr!("Changing the machine’s settings as {}", managed.root()),
             }),
             StringView::new(if said.is_empty() { " ".to_owned() } else { said.clone() }).mono(true),
             Some(olo_kit::words::tr("It can’t be stopped once it has started.").into()),
@@ -468,11 +474,12 @@ pub fn render_server_panel(
         }
         _ => {
             let people = if managed.shared() { "Members" } else { "Accounts" };
-            let tabs: Vec<SharedString> = ["Server", people, "Log"].into_iter().map(SharedString::from).collect();
+            let tabs: Vec<SharedString> = ["Server", people, "Limits", "Log"].into_iter().map(SharedString::from).collect();
             let at = Page::ALL.iter().position(|p| *p == managed.page).unwrap_or(0);
             let page: Vec<Element> = match managed.page {
                 Page::Server => server_page(managed, server, &button, &small),
                 Page::People => people_page(cx, managed, server, list, rows, chosen, &button, &small, on_chosen),
+                Page::Limits => limits_page(managed, server, &button, &small),
                 Page::Log => log_page(cx.scale_factor(), managed, log, &button, on_range),
             };
             div().w_full().flex().flex_col().p(px(m::WINDOW_INSET)).child(
@@ -622,6 +629,74 @@ fn server_page(managed: &Managed, server: &Server, button: &dyn Fn(&str, ServerD
     // (A section's step between them, as Add Host's groups of steps
     // have: each heading plainly over its own.)
     vec![div().w_full().flex().flex_col().gap(px(m::SECTION - m::TIGHT)).children(page).into_element()]
+}
+
+/// The Limits page: the limits a Linux machine comes with that long
+/// builds and many sessions run into (`olo_rex_client::tune`), each
+/// kind a line that says how the host stands (what it has, what Olo
+/// would set), with Apply… where it is short and Put Back… where
+/// Olo's file is there; and all that are short at once, at the foot.
+fn limits_page(managed: &Managed, server: &Server, button: &dyn Fn(&str, ServerDo) -> Button, small: &dyn Fn(String) -> StringView) -> Vec<Element> {
+    use olo_rex_client::tune::{Tune, said};
+    let Some(tuning) = &server.tuning else {
+        return vec![StringView::new(olo_kit::tr!("{} didn’t say how its limits stand.", managed.name)).wrap(true).into_element()];
+    };
+    // (What the page is, and all that are short at once, in one row at
+    // its head: with that button at its foot the page was taller than
+    // the others, and the window grew as its tab was chosen.)
+    let all = tuning.short();
+    // (One width for the page's buttons: their edges in two columns.)
+    let wide = ["Apply…", "Put Back…", "Apply All…"].iter().map(|l| olo_kit::widgets::button_width(l, false)).fold(m::BUTTON_MIN_WIDTH, f32::max);
+    // (The page's head, with a rule under it: what follows is the
+    // list, and Apply All… isn't the first row's button.)
+    let head = div()
+        .w_full()
+        .flex()
+        .flex_row()
+        .items_center()
+        .gap(px(m::SPACING))
+        .child(div().flex_1().min_w_0().child(small(olo_kit::words::tr("Limits a Linux machine comes with, raised for long builds and many sessions.").into())))
+        .child(button("Apply All…", if all.is_empty() { ServerDo::Back } else { ServerDo::Ask(Action::Tune(all.clone())) }).min_width(wide).enabled(!all.is_empty()));
+    let mut page = vec![div().w_full().flex().flex_col().gap(px(m::TIGHT)).child(head).child(separator()).into_element()];
+    let mut rows = Vec::new();
+    for tune in Tune::ALL {
+        let stands = tuning.of(tune);
+        let short: Vec<_> = stands.values.iter().filter(|v| !v.met()).collect();
+        // How it stands: applied; as the host has it by itself; or
+        // what is short (one setting: from what to what; several: how
+        // many of them).
+        let (lamp, state): (Light, String) = match short.as_slice() {
+            [] if stands.kept => (Light::On, olo_kit::words::tr("applied").into()),
+            [] => (Light::On, olo_kit::words::tr("as the machine has it").into()),
+            [one] if stands.values.len() == 1 => (Light::Off, olo_kit::tr!("{} now, {} suggested", one.now.map_or("?".to_owned(), |now| said(one.name, now)), said(one.name, one.wanted)).into()),
+            more => (Light::Off, olo_kit::tr!("{} of {} to change", more.len(), stands.values.len()).into()),
+        };
+        let action = match (short.is_empty(), stands.kept) {
+            (false, _) => button("Apply…", ServerDo::Ask(Action::Tune(vec![tune]))),
+            (true, true) => button("Put Back…", ServerDo::Ask(Action::Untune(tune))),
+            (true, false) => button("Apply…", ServerDo::Back).enabled(false),
+        };
+        let words = div()
+            .flex_1()
+            .min_w_0()
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(m::TIGHT))
+            .child(panels::light(lamp))
+            .child(StringView::new(olo_kit::words::tr(tune.title()).to_string()))
+            .child(StringView::new("·").dim(true))
+            .child(div().flex_1().min_w_0().child(StringView::new(state).dim(true).cut(true)));
+        let line = div().w_full().flex().flex_row().items_center().gap(px(m::SPACING)).child(words).child(action.min_width(wide));
+        // (Its reason under it, begun where its name begins.)
+        // (And ended where the names' column ends, clear of the buttons'.)
+        let why = div().w_full().pl(px(panels::LIGHT + m::TIGHT)).pr(px(wide + m::SPACING)).child(small(olo_kit::words::tr(tune.why()).into()));
+        rows.push(div().w_full().flex().flex_col().child(line).child(why).into_element());
+    }
+    // (Close enough that the page is as tall as the others: five
+    // kinds, each a line and its reason.)
+    page.push(div().w_full().flex().flex_col().gap(px(4.0)).children(rows).into_element());
+    page
 }
 
 /// The Accounts page (a login server's) or the Members page (a shared
