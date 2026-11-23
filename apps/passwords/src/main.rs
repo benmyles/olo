@@ -245,6 +245,32 @@ fn allow_message(a: &cli::Asker, ssh: bool, ways: Option<String>) -> String {
     m
 }
 
+/// A host as it is said to the person: its name here and its address
+/// (“build (you@build.example)”), or the address where that is its name.
+fn host_named(origin: &olo_keychain::SshOrigin) -> String {
+    if origin.host.is_empty() || origin.host == origin.address { origin.address.clone() } else { format!("{} ({})", origin.host, origin.address) }
+}
+
+/// The question for letting a host's terminals sign with the SSH keys
+/// (asked through Rex), with what else allows it (`ways`).
+fn allow_host_message(origin: &olo_keychain::SshOrigin, ways: Option<String>) -> String {
+    let mut m = olo_kit::tr!("Allow programs on “{}” to sign in with your SSH keys? A terminal there asks, through Rex.", host_named(origin));
+    if let Some(ways) = ways {
+        m.push(' ');
+        m.push_str(&ways);
+    }
+    m.push(' ');
+    m.push_str(&olo_kit::tr!("Programs on that host can then use them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here."));
+    m
+}
+
+/// Whether the program `pid` is this Olo's Rex: its file is `olo-rex`,
+/// beside Passwords' own (the one build, or the one install).
+fn carried_by_rex(pid: i32) -> bool {
+    let (Ok(theirs), Ok(ours)) = (std::fs::read_link(format!("/proc/{pid}/exe")), std::env::current_exe()) else { return false };
+    theirs.file_name().is_some_and(|name| name == "olo-rex") && theirs.parent() == ours.parent()
+}
+
 /// The question for letting `program` (an executable) have the secret
 /// `reference` names, for `purpose`: Olo's apps by their names.
 /// `named`: what the reference names, as a person reads it (“the
@@ -1058,9 +1084,16 @@ impl Passwords {
                 return;
             }
         }
-        if matches!(incoming.request, Request::SshKeys | Request::SshSign { .. }) && !self.security.ssh_agent {
+        if matches!(incoming.request, Request::SshKeys | Request::SshSign { .. } | Request::SshKeysFor { .. } | Request::SshSignFor { .. }) && !self.security.ssh_agent {
             let message = "Passwords isn’t the SSH agent (Preferences ▸ Security).".into();
             return incoming.reply(Response::Error { message });
+        }
+        // A host's request is Rex's to carry and nobody else's: the
+        // program asking is the Rex of this very Olo (its file beside
+        // Passwords' own), or the request is refused. (Any program could
+        // otherwise name a host the person has allowed.)
+        if matches!(incoming.request, Request::SshKeysFor { .. } | Request::SshSignFor { .. }) && !carried_by_rex(incoming.pid) {
+            return incoming.reply(Response::Error { message: "only Rex asks for a host".into() });
         }
         if !self.set_up() {
             return incoming.reply(Response::NotSetUp);
@@ -1136,7 +1169,22 @@ impl Passwords {
                 }
                 return;
             }
-            Request::Shares | Request::SetShares { .. } | Request::SshKeys => {
+            Request::Shares | Request::SetShares { .. } | Request::SshKeys | Request::SshKeysFor { .. } => {
+                return self.store.send(Job::Keychain { incoming: Box::new(incoming), candidates: Vec::new(), vault: String::new() });
+            }
+            // A signature for a program on a host, carried here by Rex:
+            // once the person has allowed that host, as a terminal
+            // session of this computer is allowed (asked by the host's
+            // name and address; for 10 minutes after its last request,
+            // 12 hours at most, until Passwords locks; without asking
+            // while the tray says so).
+            Request::SshSignFor { origin, .. } => {
+                let session = cli::Session::of_host(&origin.address);
+                if !self.grants.check(session) {
+                    self.cli_waiting.push((session, incoming));
+                    self.ask_approval(Some(session));
+                    return;
+                }
                 return self.store.send(Job::Keychain { incoming: Box::new(incoming), candidates: Vec::new(), vault: String::new() });
             }
             // A signature with an SSH key: once the asking program's
@@ -1475,15 +1523,28 @@ impl Passwords {
             None => self.open_main(),
             Some(session) => {
                 let Some(pid) = self.cli_waiting.iter().find(|(s, _)| *s == session).map(|(_, i)| i.pid) else { return };
-                let ssh = self.cli_waiting.iter().any(|(s, i)| *s == session && matches!(i.request, Request::SshSign { .. }));
-                let asker = cli::asker(pid);
+                let ssh = self.cli_waiting.iter().any(|(s, i)| *s == session && matches!(i.request, Request::SshSign { .. } | Request::SshSignFor { .. }));
+                // (A host's terminals, through Rex: asked by the host's
+                // name and address, not by Rex's own command line.)
+                let host = self.cli_waiting.iter().find_map(|(s, i)| match &i.request {
+                    Request::SshSignFor { origin, .. } if *s == session => Some(origin.clone()),
+                    _ => None,
+                });
+                let asker = match &host {
+                    Some(origin) => cli::Asker { command: host_named(origin), parent: None, cwd: None },
+                    None => cli::asker(pid),
+                };
                 if on {
-                    tracing::info!(command = asker.command, "op allowed without asking");
-                    quietly(&self.notifier, "op allowed without asking", asker.command.clone());
+                    let said = if host.is_some() { "SSH keys used without asking" } else { "op allowed without asking" };
+                    tracing::info!(command = asker.command, "{said}");
+                    quietly(&self.notifier, said, asker.command.clone());
                     self.answer_cli(session, true);
                 } else {
                     // Allowed by its button, or by what unlocks Passwords.
-                    let message = allow_message(&asker, ssh, ways.sentence());
+                    let message = match &host {
+                        Some(origin) => allow_host_message(origin, ways.sentence()),
+                        None => allow_message(&asker, ssh, ways.sentence()),
+                    };
                     let waits = allow::Waits::start(ways, self.lock.user(), session, &self.proxy);
                     let window = open_app_alert("Passwords", "warning", &message, &["Deny", "Allow"], move |choice| app().answer_cli(session, choice == Some(1)));
                     self.allow_shown.insert(session, Allowing { window: Some(window), _waits: waits, command: asker.command, ssh });

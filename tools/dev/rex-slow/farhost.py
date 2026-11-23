@@ -19,6 +19,30 @@ own key, and gives every session a scratch HOME (SetEnv): nothing of yours is re
 import getpass, json, os, signal, socket, subprocess, sys, time
 D = os.environ.get("REX_SLOW_DIR", "/var/tmp/olo-rex-slow")
 
+def started(proc):
+    """A process the rig started, noted with when it began (`REX_SLOW_DIR/started`): a run that is killed (a
+    timeout, a session that ends) never reaches its own tidying, and its server, links and agents were found
+    running hours later (three agents, seven listeners: 2026-11-23). `swept` ends them at the next run."""
+    try:
+        begun = open(f"/proc/{proc.pid}/stat").read().rsplit(")", 1)[1].split()[19]
+        with open(f"{D}/started", "a") as f: f.write(f"{proc.pid} {begun}\n")
+    except (OSError, IndexError): pass
+    return proc
+
+def swept():
+    """What an earlier run started and left: ended, each only if it is still the process noted (the same pid begun
+    at the same moment)."""
+    try: lines = open(f"{D}/started").read().split("\n")
+    except OSError: return
+    for line in lines:
+        try:
+            pid, begun = line.split()
+            if open(f"/proc/{pid}/stat").read().rsplit(")", 1)[1].split()[19] == begun:
+                os.killpg(int(pid), signal.SIGTERM)
+        except (OSError, ValueError, IndexError): pass
+    try: os.remove(f"{D}/started")
+    except OSError: pass
+
 class FarHost:
     def __init__(self, delay=None, rate=None):
         # `rate`: the far link carries no more than so many bytes a second each way (slowlink.py's
@@ -48,12 +72,12 @@ class FarHost:
                "REX_SERVER_SOCKET": f"{D}/rex/rex.sock", "TMPDIR": f"{D}/tmp", "PATH": os.environ.get("PATH", "/usr/bin:/bin")}
         with open(f"{self.dir}/sshd_config", "w") as f:
             f.write("\n".join([f"Port {self.port}", "ListenAddress 127.0.0.1", f"HostKey {self.dir}/host_key", f"PidFile {self.dir}/sshd.pid", f"AuthorizedKeysFile {self.dir}/authorized_keys",
-                               "PasswordAuthentication no", "KbdInteractiveAuthentication no", "UsePAM no", "StrictModes no", "PermitUserEnvironment no", "AllowAgentForwarding no",
+                               "PasswordAuthentication no", "KbdInteractiveAuthentication no", "UsePAM no", "StrictModes no", "PermitUserEnvironment no", "AllowAgentForwarding yes",
                                "AllowTcpForwarding yes", "X11Forwarding no", "PrintMotd no", "LogLevel ERROR", "SetEnv " + " ".join(f'{k}="{v}"' for k, v in env.items()), ""]))
-        self.procs.append(subprocess.Popen(["/usr/sbin/sshd", "-D", "-e", "-f", f"{self.dir}/sshd_config"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=open(f"{self.dir}/sshd.log", "w"), start_new_session=True))
+        self.procs.append(started(subprocess.Popen(["/usr/sbin/sshd", "-D", "-e", "-f", f"{self.dir}/sshd_config"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=open(f"{self.dir}/sshd.log", "w"), start_new_session=True)))
         if os.path.exists(self.agent): os.remove(self.agent)
         # (In the foreground, so it is this script's to end.)
-        self.procs.append(subprocess.Popen(["ssh-agent", "-D", "-a", self.agent], start_new_session=True, **quiet))
+        self.procs.append(started(subprocess.Popen(["ssh-agent", "-D", "-a", self.agent], start_new_session=True, **quiet)))
         end = time.monotonic() + 8
         while time.monotonic() < end:
             listening = False
@@ -71,8 +95,8 @@ class FarHost:
             self.count = f"{self.dir}/bytes.json"
             if os.path.exists(self.count): os.remove(self.count)
             here = os.path.dirname(os.path.abspath(__file__))
-            self.procs.append(subprocess.Popen([sys.executable, f"{here}/slowlink.py", f"tcp:{self.link}", f"tcp:{self.port}", str(self.delay)], env=dict(os.environ, REX_SLOW_COUNT=self.count, **({"REX_SLOW_RATE": str(self.rate)} if self.rate else {})),
-                                               start_new_session=True, **quiet))
+            self.procs.append(started(subprocess.Popen([sys.executable, f"{here}/slowlink.py", f"tcp:{self.link}", f"tcp:{self.port}", str(self.delay)], env=dict(os.environ, REX_SLOW_COUNT=self.count, **({"REX_SLOW_RATE": str(self.rate)} if self.rate else {})),
+                                               start_new_session=True, **quiet)))
             end = time.monotonic() + 8
             while time.monotonic() < end:
                 with socket.socket() as s:

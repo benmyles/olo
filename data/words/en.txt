@@ -51,6 +51,7 @@
 2 Hours Before
 2 Seconds
 2 hours before
+2 items
 2 minutes
 2 seconds
 2. When the key’s light starts blinking, touch {}. A touch before it blinks does nothing.
@@ -74,6 +75,7 @@
 32 letters and digits
 3G
 4 hours
+4 items
 4 weeks
 48 hours
 5 Minutes
@@ -88,6 +90,7 @@
 5 years
 512 MB a screen
 52 weeks
+6 items
 6 months
 60 min
 7 days
@@ -116,6 +119,7 @@ A dotted line
 A finger ({} so far)
 A finger on the fingerprint sensor can stand for your password. Fingers enrolled for {}:
 A frame dropped in the last minute
+A key with no name
 A letter goes on everything you can pick: controls, menu items, windows, Deskbar. Type one to pick it, or to letter what’s inside; Backspace goes back, Esc puts them away.
 A little room
 A look at the infrared camera can stand for your password: sudo in Terminal, administrator requests, Passwords and the lock screen. Only infrared counts, so a photo on a screen can't pass it.
@@ -128,6 +132,8 @@ A new build of Olo ({}) and {} are ready. Click to choose.
 A new build of Olo is ready ({}). Click to upgrade.
 A new build of Olo is ready ({}). Install it now? Your windows stay open.
 A new build of Olo is ready ({}). Installing it restarts the window server: Olo's windows stay open, but {} will close.
+A new name for the session “{}”:
+A new name for the tab “{}”:
 A notch scrolls as far in Chrome and other programs as in Olo’s apps.
 A palm, ignored ({} so far)
 A path: /…, ~/… or a name here
@@ -172,6 +178,7 @@ Access
 Account
 Account:
 Accounts
+Accounts that may sign in through the login server, kept in {}.
 Accounts:
 Action
 Activity
@@ -190,6 +197,8 @@ Add Field
 Add Field…
 Add Fingerprint
 Add Graph
+Add Host
+Add Host…
 Add Kind
 Add Mark
 Add Place…
@@ -222,6 +231,7 @@ Address
 Address, port, program or state
 Address:
 Addresses can’t be looked up: {}
+Add…
 Adjust Size
 Adjust Size…
 After BeOS: glossy, bright and friendly.
@@ -241,6 +251,7 @@ Agent Screen
 Agent Screen Logs
 Agent Screen “{}” is waiting for a code
 Agent Screens
+Agents
 Agree
 AirPlay
 AirPlay Settings…
@@ -262,6 +273,7 @@ All Items
 All Metric
 All Preferences
 All accounts together
+All agents and shells are quiet.
 All day
 All lines around the selected one. {}
 All of Olo’s {} words are in {}.
@@ -274,11 +286,13 @@ Allow NVIDIA Fallback on Battery
 Allow Sleep
 Allow Sleep (awake until {})
 Allow it on the phone
+Allow programs on “{}” to sign in with your SSH keys? A terminal there asks, through Rex.
 Allow “{}” to use {}{}? Always lets it have it whenever it asks, until you take it back (File ▸ Apps Allowed…).
 Allowed with {}
 Along the Top
 Also from the Deskbar: click the cup.
 Also leave out:
+Also used by
 Also when running on battery
 Alt
 Always Dark
@@ -316,8 +330,12 @@ Answering now
 Answering now · {}
 Any of the {}
 Any storms on the way?
+Any tagged device on the tailnet
 Any time
 Any touch
+Anyone at all
+Anyone on the tailnet
+Anyone who is identified
 App
 App caches
 App password:
@@ -357,11 +375,14 @@ As a list
 As fast as the computer goes: the processors kept quick and the firmware's power limits raised, the fans as needed. The battery runs down sooner.
 As in Themes ({})
 As it goes
+As root, over SSH
 As set now
 As the Mode
 As the other mice
 As wide as the widgets
+As {}, over SSH
 As {}: nice {} → {}, {} scheduling, {} I/O priority{}, so the active window’s app and Olo stay quick.
+As {}’s package manager last heard from Rex’s repository.
 Ask
 Ask Again
 Ask Again ({} left, until {})
@@ -378,6 +399,7 @@ Ask what to do about urgent ones
 Asked now:
 Asking Passwords…
 Asking Telegram…
+Asking how Rex is set up there
 Asking it…
 Asking…
 Ask…
@@ -403,6 +425,7 @@ Attach Link
 Attach Link…
 Attach a file or a link
 Attach what's on the clipboard
+Attaching terminal stream…
 Attachments
 Authenticate
 Authentication:
@@ -519,6 +542,7 @@ Bright
 Brightness
 Bring It Into Olo…
 Brown
+Browse Folders…
 Bug Fixes
 Builds
 Builds by the hour
@@ -614,6 +638,8 @@ Changing how process {} fares when memory runs out
 Changing the CPU governor
 Changing the cores process {} may use
 Changing the priority of process {}
+Changing the rex group as {}
+Changing {} as {}
 Changing…
 Charging resumes below {}%.
 Chat
@@ -624,6 +650,7 @@ Check Health
 Check Spelling While Typing
 Check everything
 Check for Updates
+Check the account name, and that one of your keys is in ~{}/.ssh/authorized_keys there.
 Check the backups chosen are whole, quickly: everything they need there, the store’s checksums compared with what was sent, and a few samples read back (as after each backup). What’s damaged is repaired as far as it can be.
 Checked
 Checking for updates…
@@ -643,11 +670,13 @@ Choose a Folder…
 Choose a backup to see how it was last checked.
 Choose a backup to see what it holds before importing it.
 Choose a chat from the list to start messaging.
+Choose a key that root accepts there. If none works, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
 Choose a network to join it.
 Choose a setting, then play the original or its sound: switching goes on from the same place.
 Choose a to-do to see its details.
 Choose a widget to change it, or add one.
 Choose every update
+Choose how they look and sound in Notifications.
 Choose what to scan:
 Choose:
 Choose…
@@ -708,6 +737,7 @@ Close All from {}
 Close Group
 Close Other Tabs
 Close Others
+Close Pane
 Close Tab
 Close Window
 Close the window
@@ -766,20 +796,28 @@ Connect
 Connect Another Account…
 Connect GitHub for Pull Requests…
 Connect Google Drive…
+Connect Remote Host…
 Connect automatically when you put them in near this computer
+Connect when Rex starts
 Connect with a Token…
 Connect your phone
 Connected
 Connected as {}, through {}.
+Connected to Tailscale.
 Connected to “{}”
 Connected to “{}”: {}
 Connected {}, but its sign-in wasn’t allowed {}: Sign In Again and allow everything it asks.
 Connected, {}%
 Connected.
 Connecting to Telegram…
+Connecting to {}…
 Connecting to “{}”…
 Connecting…
 Connection
+Connection lost just now.
+Connection lost {n} days ago.
+Connection lost {n} hours ago.
+Connection lost {n} minutes ago.
 Connection:
 Connections
 Contacts
@@ -801,20 +839,26 @@ Copied the {}.
 Copied {}. It leaves the clipboard in {} seconds.
 Copr project
 Copy
+Copy Address
 Copy Code
 Copy Conversation
+Copy Debug Info
 Copy Here
 Copy Latest Code
 Copy Link
+Copy Mode
 Copy Name
 Copy Name and Value
 Copy One-Time Password
 Copy Password
 Copy Path
 Copy Reference
+Copy Screen as HTML
+Copy Screen as Text
 Copy Text
 Copy Username
 Copy Value
+Copy Version Info
 Copy a code no tab is waiting for
 Copy the Code That Just Came
 Copy to clipboard
@@ -839,13 +883,18 @@ Couldn’t be checked {}: {}.
 Couldn’t change this vault in 1Password. {}
 Couldn’t delete it in 1Password. {}
 Couldn’t delete this vault from 1Password. {}
+Couldn’t get a sign-in link: {}.
 Couldn’t keep the approval: {}
 Couldn’t keep the key in the login keyring: {}
 Couldn’t keep the key: {}
 Couldn’t list its items. {}
+Couldn’t look at {}
+Couldn’t look at {} again
 Couldn’t make this vault in 1Password, so its items weren’t sent either. {}
+Couldn’t open the sign-in page: {}.
 Couldn’t open this item: {}
 Couldn’t reach the login keyring: {}
+Couldn’t reach {}
 Couldn’t read 1Password’s copy to compare, so yours wasn’t sent. {}
 Couldn’t read the key: {}
 Couldn’t remove the account: {}
@@ -860,7 +909,11 @@ Couldn’t send this account’s changes. {}
 Couldn’t sign out ({}).
 Couldn’t sync this account. {}
 Couldn’t take the approval back: {}
+Couldn’t turn off Tailscale: {}.
+Couldn’t turn on Tailscale: {}.
 Couldn’t write the shared copy: {}
+Couldn’t {}
+Couldn’t {} on {}
 Count accounts turned off or signed out
 Countdown
 Counting what there is to back up: {}, {} so far.
@@ -977,10 +1030,12 @@ Destination
 Details
 Developer Tools
 Device
+Devices tagged {}, over Tailscale
 Dew point
 Dew point spread
 Dew point spread {}
 Dew point {}
+Diagnostics…
 Diff
 Dim the built-in display when idle
 Dim the display while you look away
@@ -991,6 +1046,8 @@ Discard the changes to this item?
 Disconnect
 Disconnect Google Drive
 Disconnect Google Drive ({})? DiskBackup stops backing up there, and forgets its sign-in on this computer. The backups in your Drive stay as they are: connect again to go on from them, or to restore from them.
+Disconnected
+Disconnected: {}
 Disconnecting from Google Drive…
 Disconnecting…
 Disconnect…
@@ -1045,11 +1102,13 @@ Done {}
 Done: {}
 Don’t Trust
 Double-press speed
+Down
 Down (received)
 Down the Side
 Download
 Download at most:
 Download, Then Restart to Install
+Downloading preview from Rex server…
 Downloading: {}
 Downloading…
 Downloads
@@ -1105,6 +1164,8 @@ Each network's own
 Each new window takes a tile, and the others make room.
 Each new window takes half of the one you were using.
 Each of these set up stands for your password wherever it's asked (Passwords, sudo in Terminal, administrator requests; a face or fingerprint the lock and login screens too), all at once: whichever you use first.
+Each person gets their own Rex server, and signs in through this one.
+Each person on {} gets a Rex server of their own; they sign in through this one.
 Each repository gets a folder in there: olo’s worktree fix-tabs goes in {}/olo/fix-tabs.
 Each setting tried shows here.
 Each shows in the Deskbar as it changes. A click on one there opens its app: Activity Monitor, Token Pool or the app it’s from.
@@ -1137,6 +1198,7 @@ Encode With
 Encode on:
 Encrypt it with a passphrase
 End
+End Session
 End Test
 Ended the test (process {}): its slots go back to the pool.
 Ended the test (process {}, made up).
@@ -1149,6 +1211,7 @@ Enhancements
 Enrolling didn't finish.
 Enrolling your {}
 Enter Full Screen
+Enter secret…
 Enter the password for “{}” to unlock it.
 Entire disk
 Entries
@@ -1188,6 +1251,9 @@ Every interface
 Every key press and every frame go through the window server's loop and its input thread. With this on they have processor {}, one of the fastest, to themselves: builds, browsers and every other program of yours run on the others, so nothing can keep them waiting.
 Every list's to-dos show here.
 Every month
+Every regular account
+Every step ran, and it still needs: {}.
+Every step ran.
 Every week
 Every weekday
 Every window a column of its own width, in a strip that scrolls to the active one.
@@ -1198,6 +1264,10 @@ Every {n} days
 Every {n} months
 Every {n} weeks
 Every {n} years
+Everyone in the rex group shares one server, run as the rex account.
+Everyone in the rex group shares this server, and every terminal on it runs as the rex account.
+Everyone with an account on {} is in the rex group, and uses the shared server.
+Everyone with an account on {} may sign in. The list is kept in {}.
 Everything
 Everything Else
 Everything else's brightness
@@ -1232,6 +1302,11 @@ Face unlock's service isn't in this build.
 Fade
 Fade Colors
 Fahrenheit (°F)
+Failed
+Failed just now
+Failed {n} days ago
+Failed {n} hours ago
+Failed {n} minutes ago
 Fan Out
 Fan Out Others
 Fan level {}
@@ -1267,6 +1342,7 @@ Files
 Files with these extensions are this kind wherever Olo looks at them, and open in its app. An extension another kind had is this one's now.
 File…
 Fill It In
+Filter
 Find
 Find Again
 Find Next
@@ -1276,6 +1352,7 @@ Find Your Phone
 Find a free hour this week
 Find an app
 Find in document
+Find in terminal…
 Find the selection
 Find your phone
 Find:
@@ -1356,6 +1433,7 @@ Format:
 Formats
 Format…
 Forward
+Forward Port
 Forwarded from {}
 Forward…
 Found as {}. Leave it empty for that name.
@@ -1393,6 +1471,7 @@ German
 Gestures
 Get Full Access…
 Get Info
+Get items from Passwords
 Getting ready
 Getting the sensor ready…
 Git Worktrees
@@ -1404,6 +1483,13 @@ GitHub didn’t take the token: it may have expired or been revoked.
 Give a new key
 Give compilers and linkers only spare memory
 Give it a name.
+Give your SSH keys and clipboard only to\na host you trust as much as this computer.
+Give your SSH keys only to a host\nyou trust as much as this computer.
+Give your clipboard only to a host\nyou trust as much as this computer.
+Give your passwords and SSH keys only to\na host you trust as much as this computer.
+Give your passwords and clipboard only to\na host you trust as much as this computer.
+Give your passwords only to a host\nyou trust as much as this computer.
+Give your passwords, SSH keys and clipboard\nonly to a host you trust as much as this computer.
 Glide
 Glow new windows for
 Go
@@ -1411,6 +1497,7 @@ Go to
 Go to End
 Go to File or Folder
 Go to File or Folder…
+Go to Folder…
 Go to:
 Going:
 Good. Lift, and touch again, a little differently.
@@ -1456,7 +1543,12 @@ Hard
 Hardware
 Hardware Address: {}
 Hardware address:
+Has failed
+Has finished
 Haskell
+Hasn’t answered for over a minute
+Hasn’t answered for over {} minutes
+Hasn’t answered for {} seconds
 Header & Footer…
 Header Row
 Heading 1
@@ -1507,7 +1599,10 @@ Holding at least
 Holds
 Home
 Home Page
+Host
+Host “{}”
 Hosts
+Hosts and Ports…
 Hotspot
 Hours:
 How cloudy will it be today?
@@ -1595,6 +1690,8 @@ Inspect
 Inspect Parent
 Inspect Process
 Install Now
+Install Olo’s Bridge
+Install Olo’s Skill for Agents
 Install When Restarting
 Install from:
 Install just
@@ -1610,9 +1707,11 @@ Interrupts
 Invalid one-time password secret
 Invert Selection
 Invite:
+Is waiting for me
 It Matches
 It backs up once the computer is connected by a cable. {}. {}.
 It backs up once the computer is plugged in. {}. {}.
+It can’t be stopped once it has started.
 It couldn’t be fetched: {}
 It couldn’t be read: {}
 It didn't work.
@@ -1626,11 +1725,13 @@ It lasts until it's turned off, the link goes away or the computer restarts. Cha
 It learned from {} of your touches, but app_server didn't keep it: it's likely older than this Preferences. Upgrade Olo (the new build in Deskbar's tray), then train again.
 It needs at least three palms and three fingers among the touches it learns from. Train again and do each exercise as its film shows.
 It plays at a quarter of full volume, whatever yours is set to, and not while the sound is muted.
+It starts when {} starts.
 It takes only what nothing else wants, the processor’s time and the disk’s: never in your way, though slower while you work.
 It was run by {} in {}.
 It was run by {}.
 It wasn't forgotten ({}).
 It wasn't set up ({}).
+It won’t start again when {} restarts.
 It's in use now, in place of Olo's own.
 Italian
 Italic
@@ -1654,6 +1755,8 @@ Its power limit is the computer's to set, as a laptop's is.
 Its release packages are installed: they add its repositories and keys.
 Its secret reference, as Passwords’ Copy Secret Reference gives it. Passwords asks once, while it runs, whether Weather may have it.
 Its service starts with your session: log out and in again, or ask Olo Doctor to start it.
+Its services, accounts and log, managed as root in their own window.
+Its sessions may:
 Its sign-in isn’t in the keyring: sign in again.
 Its vault is gone from 1Password
 Its versions can’t be read: {}.
@@ -1720,6 +1823,7 @@ Key
 Key Repeat
 Key password:
 Key {} trusted.
+Key:
 Keyboard
 Keyboard Hints
 Keyboard Profile
@@ -1781,6 +1885,7 @@ Length
 Less noise
 Less space between windows
 Let coding agents keep their tab’s title current
+Let your other devices reach this computer’s sessions over Tailscale
 Letting go of backups past keeping
 Level
 Level evened out
@@ -1818,6 +1923,7 @@ List:
 Listening
 Lists
 Live
+Live blocked, error, and working coding agents and open sessions across Rex.
 Load
 Load average
 Local
@@ -1846,11 +1952,14 @@ Look Again
 Look ahead:
 Look for codes in:
 Look:
+Looking after a server needs root. Choose a key that root accepts there. If none does, add your public key to /root/.ssh/authorized_keys on that machine, then try again.
+Looking after a server needs root. Unlock Olo Passwords, or add a key to it that root on {} accepts.
 Looking at Bluetooth…
 Looking at its disk…
 Looking at what’s there
 Looking at what’s there…
 Looking at which processes use it…
+Looking at {}…
 Looking for Bluetooth…
 Looking for a newer release…
 Looking for apps…
@@ -1916,6 +2025,8 @@ Makefile
 Making a hotspot (below)
 Making it again, empty
 Making it…
+Manage Host…
+Manage Rex Server…
 Manually
 Mapped
 Mappings
@@ -1938,6 +2049,7 @@ Maybe
 Measuring the round trip…
 Media errors
 Medium
+Members of the rex group use the shared server, where every terminal runs as the rex account. Changes take effect the next time they sign in.
 Membership
 Memory
 Memory Pressure
@@ -2029,6 +2141,8 @@ Move Down
 Move Group to New Window
 Move Group to Window
 Move Here
+Move Tab Left
+Move Tab Right
 Move Tab to New Window
 Move Tab to Window
 Move To
@@ -2057,6 +2171,7 @@ Move to {}
 Moved “{}” to the Archive.
 Moving {} to the Trash
 Moving {} to the Trash…
+Multiplex local & remote SSH/Tailscale workspaces with Ghostty VT, splits, floating layers, and live AI agent monitoring.
 Music
 Music Quality (AAC)
 Mute
@@ -2081,6 +2196,7 @@ Natural scrolling (content follows your fingers)
 Nearby
 Needed by another package
 Needs full access
+Neither kind of Rex server is in use on {}. Start one of them:
 Network
 Network name
 Never
@@ -2092,6 +2208,7 @@ New
 New Agent Screen
 New Conversation
 New Event…
+New Floating Terminal
 New Folder
 New Group…
 New Incognito Window
@@ -2105,6 +2222,7 @@ New Screen
 New Section
 New Sections
 New Section…
+New Session
 New Signature…
 New Tab
 New Tab in Group
@@ -2118,6 +2236,7 @@ New Worktree…
 New connections
 New description
 New event
+New host
 New message
 New ones go in
 New ones go in:
@@ -2138,6 +2257,7 @@ Next File
 Next Month
 Next Page
 Next Tab
+Next Waiting Agent
 Next Week
 Next auto-tiling layout
 Next column width (Scrolling)
@@ -2169,6 +2289,8 @@ No Saved Groups
 No Section
 No To-Do Chosen
 No VPNs. Import a WireGuard configuration, or add one with its maker's app.
+No account is listed: nobody can sign in through the login server.
+No active SSH authentication request.
 No app may have an item without asking. When one asks for an item, Approve Always allows it for good, and it’s listed here to take back.
 No app opens these
 No app opens these yet: add one.
@@ -2191,6 +2313,7 @@ No event from a year back to two years on has “{}” in its title, its place o
 No key yet.
 No keyboards are plugged in.
 No limit
+No matching entries
 No messages with {} yet. What you write below goes as a text message from your phone.
 No mouse is connected. These settings are for any you connect.
 No new notifications
@@ -2206,6 +2329,7 @@ No precipitation in the next hour
 No precipitation this hour
 No process uses much of it now
 No processes match.
+No programs in the panes are listening on ports, and none is forwarded here.
 No screen recordings yet. Record one with ⌘⇧6.
 No space around an auto-tiled window alone
 No to-dos
@@ -2215,6 +2339,7 @@ No update matches the search.
 No widgets: add one below.
 No {} for this account.
 No: it did no better ({}), so the weights before stay
+Nobody is in the rex group.
 Noise
 Noise Cancellation
 Noise Control
@@ -2226,6 +2351,7 @@ None
 None (flat)
 None asked for yet: type in brush
 None connected to Olo yet.
+None found
 None in the last minute
 None in the last second
 None just now
@@ -2262,6 +2388,7 @@ Not connected
 Not connected: only public repositories’ pull requests show.
 Not connected: {}.
 Not enough touches to learn from
+Not fixed with the others: it has its own button.
 Not found
 Not imported: {}
 Not in a Repository
@@ -2293,26 +2420,34 @@ Nothing
 Nothing Found
 Nothing backed up yet.
 Nothing came from the microphone.
+Nothing can be installed on {} from here: it isn’t reached over SSH.
 Nothing changed: Olo's own model is still in use.
 Nothing coming up
 Nothing connects until it starts again. Olo Doctor restarts it (it asks for your password).
 Nothing done yet
 Nothing due today
+Nothing else was changed.
 Nothing found
 Nothing found by that name or address.
 Nothing in the history yet.
 Nothing is backed up or sent until you resume. {}. {}.
+Nothing is changed until you choose something to do.
 Nothing more today
 Nothing new
 Nothing new to learn
+Nothing on {} is changed yet.
+Nothing on {} is known until it connects.
+Nothing on {} is known until it’s connected.
 Nothing read yet
 Nothing recorded yet. Press Record and talk for a few seconds.
 Nothing to calculate
 Nothing to do
 Nothing to do here
 Nothing to do.
+Nothing to rename.
 Nothing to show yet
 Nothing to tune for its driver ({}) yet.
+Nothing was changed on {}.
 Notification
 Notification Settings…
 Notifications
@@ -2356,6 +2491,7 @@ Olo Doctor found {} things to fix: {}, and more. Click to see them.
 Olo Doctor: {}. Click to see it.
 Olo Installer
 Olo doesn’t have {} app on this computer: give its client’s ID and secret (Google Cloud ▸ its Olo project ▸ Clients), or Cancel and Add a Google Account… to have the agent do it.
+Olo has no typing helper for {}.
 Olo keeps {}{}: their sign-ins, keys and Wi-Fi passwords, opened by your login password.
 Olo saying its name
 Olo's Choice
@@ -2365,9 +2501,22 @@ Olo's module checks the kernel as it loads, and it stayed out of this one. Olo D
 Olo's own
 Olo's own model is still in use.
 Olo's own palm model, made from {} touches of real hands (Preferences ▸ Touchpad & Mouse ▸ Touch trains one of yours)
+Olo’s bridge is on “{}”, with nothing granted to it. To grant it something, see Preferences ▸ Rex.
+Olo’s bridge is on “{}”.
+Olo’s bridge isn’t on “{}”. To install it, choose Agents ▸ Install Olo’s Bridge.
 Olo’s keyring isn’t running here; it starts with your session.
 Olo’s language:
 Olo’s phone service isn’t running.
+Olo’s skill for agents is on “{}”.
+Olo’s skill for agents isn’t on “{}”. To install it, choose Agents ▸ Install Olo’s Skill for Agents.
+Olo’s typing helper is being added to “{}”…
+Olo’s typing helper is on “{}”.
+Olo’s typing helper is turned off. To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
+Olo’s typing helper isn’t on “{}”.
+Olo’s typing helper isn’t on “{}”: {}
+Olo’s typing helper was added to your account on “{}” and will be used the next time you connect.
+Olo’s typing helper was added to your account on “{}”.
+Olo’s typing helper was added to “{}”. It will be used the next time you connect.
 Olo’s windows change at once. Other programs take it as they next start, in the languages they have.
 On
 On AirPlay
@@ -2385,6 +2534,8 @@ On it now
 On the day, at 9 AM
 On the network
 On the phone, open Settings ▸ Bluetooth and keep it open there. It appears here in a moment.
+On the tailnet as {}.
+On this computer
 On your phone, open Telegram ▸ Settings ▸ Devices ▸ Link Desktop Device, and point it at this code.
 On {} now: {}. Moving a setting makes it Custom {}; Power Modes says what each mode puts it on.
 On “{}”: Settings ▸ Bluetooth ▸ tap ⓘ beside this computer, and turn these on. They can take a minute or two to appear there; leaving that page and opening it again shows them sooner. (If this computer is listed twice, look in both.)
@@ -2406,6 +2557,7 @@ Only an https:// address: one that can be listened in on could be changed on its
 Only on battery power
 Only the active window shows, zoomed, with its dialogs over it.
 Only the latest of the same notification
+Only this computer can reach these sessions.
 Only when I choose Sync Now
 Only when I click Back Up Now
 Only when connected to Ethernet
@@ -2435,9 +2587,11 @@ Open With
 Open With Offers
 Open files
 Open in Google Drive
+Open in Rex
 Open in Terminal
 Open in Tracker
 Open kache's Log
+Open links on this computer
 Open my.telegram.org
 Open the website
 Open with {}
@@ -2445,6 +2599,7 @@ Open {} to see it.
 Open {} to see them.
 OpenDocument Text…
 Opening programs’ secrets…
+Opening session…
 Opening the backup in {}
 Opening the backup…
 Opening…
@@ -2493,6 +2648,7 @@ Palms
 Palms and Hovering Fingers
 Palms caught
 Palms while typing
+Pane
 Panel
 Panels
 Paragraph
@@ -2550,6 +2706,7 @@ Passwords: Locking
 Passwords: Syncing with 1Password
 Passwords’ password is used now: try again.
 Paste
+Paste Password…
 Paste as Attachment
 Paste the key
 Paste the key first.
@@ -2603,6 +2760,9 @@ Point with your hand resting low
 Pointer
 Polish
 Pool
+Port
+Port:
+Ports
 Portuguese
 Portuguese (Brazil)
 Power
@@ -2670,6 +2830,7 @@ Program
 Program names, comma separated
 Programs Using the Network
 Programs Using the {}
+Programs on that host can then use them, until Passwords locks or for 10 minutes after the last. The keys themselves stay here.
 Programs’ Secrets
 Programs’ secrets are locked: {}.
 Project
@@ -2711,13 +2872,19 @@ Rain and snow
 Raise Soft Limit to Hard
 Ran for
 Range
+Reach its local servers
+Reach their local servers
 Reaches:
 React
 Read
 Read Quota Now
+Read and set the clipboard
 Read every byte the backups chosen need back from where they’re kept, and check each piece, as a restore would
+Read just now
 Read ones fade, then move to Cleared; unread ones stay.
 Read only
+Read {} h ago
+Read {} min ago
 Reading /etc/hosts…
 Reading battery…
 Reading hardware…
@@ -2728,11 +2895,13 @@ Reading the changelog…
 Reading the clock…
 Reading the index again
 Reading the journal…
+Reading the log…
 Reading the packages…
 Reading the updates…
 Reading your logins in Passwords…
 Reading…
 Reads
+Ready: it starts when somebody signs in
 Real-time priority
 Real-time timeout
 Received
@@ -2741,6 +2910,7 @@ Recent Folders
 Recommended
 Recommended by another package
 Recommended for it
+Reconnecting (try {})…
 Record
 Record Active Window
 Record Again
@@ -2778,15 +2948,18 @@ Regenerate
 Reinstall Selected…
 Reject
 Reload
+Reload Server Configuration
 Reload Without the Cache
 Remind:
 Reminder
 Reminder:
 Remote
+Remote Access…
 Removable Disks
 Remove
 Remove Account
 Remove Graph
+Remove Host
 Remove Place
 Remove Repository
 Remove Repository…
@@ -2797,6 +2970,7 @@ Remove from Group
 Remove from Pool…
 Remove it from the pool? Its sign-in here is deleted; the account itself isn’t touched.
 Remove the VPN “{}”? Its settings and keys go with it.
+Remove the bridge, skill and typing helper?
 Remove the {}? It will no longer unlock anything.
 Remove {}
 Remove {} from the Collector
@@ -2809,6 +2983,8 @@ Rename List
 Rename List…
 Rename Place…
 Rename Section
+Rename Session…
+Rename Tab…
 Rename Worktree…
 Rename…
 Reopen Closed Tab
@@ -2836,6 +3012,7 @@ Reset Display Settings…
 Reset Pane Sizes
 Reset Passwords
 Reset Passwords…
+Reset Terminal
 Reset Thresholds
 Reset of “{}”
 Resetting the displays' settings…
@@ -2855,6 +3032,8 @@ Restart Recording
 Restart and Shut Down end every program and stop the system in order, as Deskbar's menu does; Immediately doesn't wait for that. Held long, most computers' own firmware cuts the power whatever is set here (often after 4 to 10 seconds).
 Restart kache
 Restart, Asking First
+Restarting or stopping it ends every session.
+Restarting or stopping it leaves open sessions running.
 Restart…
 Resting: nothing new on it
 Restore
@@ -2879,6 +3058,18 @@ Revert to Saved…
 Revert to the last saved version of “{}”?
 Reverting in 1 second.
 Reverting in {} seconds.
+Rex
+Rex Server
+Rex Server on {}
+Rex adds these entries to {} as {}:
+Rex changes {} as {}:
+Rex isn’t installed
+Rex needs an address to connect.
+Rex picks a free port on this computer; the Ports list shows it.
+Rex runs this as {}:
+Rex signs in as {} with an SSH key from Olo Passwords, and changes nothing until that works.
+Rex signs in as {}@{}, as it will to connect.
+Rex: Agents & Sessions
 Rich Text (RTF)…
 Right
 Right Half
@@ -2890,6 +3081,7 @@ Right third
 Right two thirds
 Roll up or down
 Room:
+Root on {} didn’t accept your keys
 Rotate Left
 Rotate Right
 Rotate the tiles
@@ -2898,11 +3090,15 @@ Round trip
 Round trip meanwhile
 Router:
 Rows
+Rows:
 Ruby
 Ruler
 Run module
 Run on it with “olo-screen run”
 Running
+Running Rex’s installer as {}
+Running for {}
+Running systemctl as {}
 Runs on
 Russian
 Rust
@@ -2912,6 +3108,7 @@ SE
 SQL
 SSD temperature
 SSE
+SSH Authentication
 SSW
 SW
 Saturday
@@ -2988,6 +3185,7 @@ Select All
 Select All Chats
 Select All Conversations
 Select All Screens
+Select Last Output
 Select None
 Select a line to read it whole.
 Select a repository to see everything about it.
@@ -3024,8 +3222,12 @@ Server’s window
 Service
 Service Order
 Session:
+Sessions
+Sessions on this computer may:
+Sessions on {} may:
 Set
 Set Background
+Set Rex up there if it needs it
 Set Time Zone
 Set Up
 Set Up Again…
@@ -3034,12 +3236,17 @@ Set Up…
 Set date and time automatically
 Set for the whole computer by {}{}.
 Set up ({} looks).
+Set up your own Rex server on {}
+Set up {} as a Rex login server
+Set up {} as a shared Rex server
 Setting
 Setting it: an administrator's password is asked…
 Setting up backups to {}…
+Setting up needs root. Nothing on {} is changed yet.
 Setting up the backups in {}’s Google Drive…
 Setting up your {} takes your password and two touches of the key:
 Setting up your {} takes your password, its PIN and two touches of the key:
+Setting up {}…
 Settings
 Settings:
 Seventh folder
@@ -3076,8 +3283,10 @@ Show Display
 Show Done
 Show File in Tracker
 Show Hidden Files
+Show Idle Panes in Activity
 Show Notifications
 Show Only {}
+Show Pane Headers
 Show Places
 Show Preview
 Show Rescue Here
@@ -3086,6 +3295,7 @@ Show Shortcuts
 Show Sidebar
 Show Source
 Show Toolbars
+Show Typing Immediately
 Show a window from its tab's menu (right-click its title) or its row in Deskbar: Show on AirPlay. Play a film from Viewer or Tracker: Play On.
 Show banners for:
 Show icons in the Deskbar menu
@@ -3120,10 +3330,13 @@ Sign In
 Sign In Again
 Sign In Again in Terminal…
 Sign In Again…
+Sign In to Tailscale…
 Sign In with Google
 Sign In…
 Sign Out
 Sign Out…
+Sign in to connect this server to Tailscale.
+Sign in to other hosts with your SSH keys
 Sign in to {} as “{}” with your passkey?
 Sign in to {} with which passkey?
 Sign in to “{}”
@@ -3131,6 +3344,8 @@ Sign-In Needed
 Signal
 Signed in as {} ({}).
 Signed in as {}.
+Signing in as {} with a key from Olo Passwords
+Signing in as {}…
 Signing in to Fastmail…
 Sign…
 Site Settings
@@ -3189,12 +3404,16 @@ Speed & Resources
 Speed Test
 Speed:
 Spiral
+Split Down
+Split Right
+Split to Fit
 Standard
 Standing By: {} Is in Use
 Start
 Start Olo over (Rescue stays on), log out, or restart the computer.
 Start Over
 Start Over…
+Start Terminal Here
 Start Test
 Start or end of the document
 Start or end of the line
@@ -3205,6 +3424,7 @@ Start with To Do and Doing
 Started
 Started {n} hours ago
 Started {n} minutes ago
+Starting Tailscale…
 Starting Up
 Starting over…
 Starting the agent…
@@ -3223,7 +3443,9 @@ Steady freezing rain
 Steady rain
 Steady sleet
 Steady snow
+Step 1 is done. Try Again carries on from step 2.
 Step {} of {}
+Steps 1 to {} are done. Try Again carries on from step {}.
 Still going after {}. Other fixes wait until it's done; if it never finishes, restarting the computer stops it.
 Stop
 Stop All
@@ -3237,10 +3459,12 @@ Stop Sharing
 Stop charging at {}% (and start again below {}%)
 Stop syncing with {}? Its items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
 Stop syncing with {}? Their items are removed from this computer, along with changes made here and not yet sent. Nothing in 1Password changes.
+Stopped before step {} of {}
 Stopped part way, {}
 Stopped · {}
 Stopped.
 Stopped: what was restored so far is there.
+Stopping after this step…
 Stopping the backup
 Store
 Stretch the charge and keep everyday work responsive.
@@ -3308,11 +3532,14 @@ Tab 6
 Tab 7
 Tab 8
 Tab 9
+Tab {}
 Table
 Tablet
 Tabs
 Tabs on Agent Screens are never given a code.
 Tags:
+Tailscale status is unavailable.
+Tailscale: {}.
 Take Back
 Take Screenshot
 Take Screenshot…
@@ -3335,6 +3562,7 @@ Telegram sent a code to Telegram on your other devices (or by text message). Typ
 Tell coding agents about the repositories in their tab group
 Tell coding agents to use Olo’s Agent Screens
 Tell me of:
+Tell me when an agent whose pane isn’t in front:
 Tell me when it runs out, and when it's back
 Tell palms apart with a palm model
 Tell palms apart with a palm model too
@@ -3383,10 +3611,12 @@ The DiskBackup service isn’t running
 The GPU
 The MTU is a number of bytes.
 The New Build
+The Rex server isn’t connected.
 The Theme’s Own
 The VPN couldn't be saved.
 The account answering now
 The account couldn’t be saved ({}).
+The accounts file couldn’t be read.
 The address search answered {}.
 The address search’s answer can’t be read: {}
 The agent is at work in a Terminal window, on its agent screen “{}” (Agent Screens shows it): it makes the account’s app in Google Cloud and signs Olo in with it. The account shows here when it’s done; you can talk to the agent in Terminal meanwhile.
@@ -3446,6 +3676,7 @@ The last whole one was {}
 The list of Google accounts couldn’t be saved ({}).
 The log can't be opened: {}
 The login keyring couldn't be read: {}
+The login server isn’t running.
 The look of every icon, window and control, in every app, and a wallpaper to match.
 The look's own
 The loss is a number, in percent.
@@ -3490,12 +3721,14 @@ The power service reported a problem applying this mode. Olo Doctor has the deta
 The process has quit.
 The processor
 The processor (OpenH264)
+The program in this pane is asking for a password.
 The repository has a worktree called {} already.
 The right edge
 The screen
 The server answered {}{}.
 The server didn’t take the name and password.
 The server’s CalDAV address, and the name and password it signs you in with. The password is kept in your login keyring.
+The shared server isn’t running.
 The shell has ended.
 The shortcut you just gave keys can have a second, pressed after them: the first keys begin a group of shortcuts, the second picks one.
 The sky and temperature now, and what's coming.
@@ -3557,6 +3790,7 @@ This PDF is protected by a password.
 This Touchpad
 This account has a two-step password.
 This backup was made by a newer Olo.
+This computer
 This computer has no Bluetooth.
 This computer has no battery.
 This computer is “{}” to AirPlay receivers.
@@ -3567,6 +3801,7 @@ This computer's sensor sees when someone is in front of it.
 This display reports no modes.
 This event
 This folder was moved or deleted.
+This host isn’t reached over SSH.
 This is the recommended profile for this touchpad.
 This isn't an Olo backup.
 This isn't the session at the computer, so the computer isn't restarted.
@@ -3618,6 +3853,7 @@ To Do
 To allow it, you can also {}.
 To the next display
 To the previous display
+To use it, choose Settings ▸ Use Olo’s Typing Helper on Hosts.
 To {}
 To {}.
 To-Do
@@ -3679,6 +3915,7 @@ Trim
 Trim to Selection
 Trim…
 Trust
+Trust & Connect
 Trust this repository’s key?
 Trusting the key…
 Try Again
@@ -3714,6 +3951,7 @@ Type
 Type a time like 13:05 or 1:05 PM.
 Type a to-do above, and press Return.
 Type here to try the settings
+Type in All Panes
 Type the PIN for “{}” (often 0000).
 Type the code “{}” shows on its screen.
 Type the key to press after {}. Esc leaves it as it is.
@@ -3722,6 +3960,7 @@ Type the keys…
 Type the passkey shown by “{}”.
 Type the password it’s to be opened with.
 Type this
+Type to filter…
 Type with your palms down
 Type {} on “{}”, then press Return.
 Type:
@@ -3758,6 +3997,7 @@ Unknown
 Unknown Senders
 Unknown caller
 Unless the app says; kept while the pointer is over it.
+Unlock Olo Passwords, or add a key to it that root on {} accepts.
 Unlock…
 Unmount
 Unmute
@@ -3775,9 +4015,12 @@ Upcoming
 Update
 Update Interval
 Update Only This…
+Update Rex on {} to {}?
 Update Selected Only…
 Update These {}…
+Update asks Rex’s repository for a newer version, and installs it if there is one.
 Update every:
+Update installs it, with Rex’s installer.
 Update the power service in Olo Doctor to use these policies.
 Updated
 Updated {} · {}
@@ -3796,12 +4039,14 @@ Uploading…
 Uptime:
 Urgent at
 Use
+Use Agent Screens
 Use Battery Saver automatically
 Use Credit
 Use Default
 Use F1, F2, etc. as standard function keys
 Use Google Drive Instead…
 Use Music Quality
+Use Olo’s Typing Helper on Hosts
 Use Passwords for ssh
 Use Saved Password
 Use Suggested
@@ -3815,6 +4060,7 @@ Use the Usual Order
 Use this account
 Use:
 User
+User {}, over SSH
 Username or Site
 Username:
 Using
@@ -3875,6 +4121,7 @@ Wait for the sync to finish, then remove the account.
 Wait for the sync to finish, then reset.
 Waiting
 Waiting for Ethernet
+Waiting for a key from Olo Passwords
 Waiting for another fix to finish…
 Waiting for app_server…
 Waiting for it…
@@ -3884,6 +4131,9 @@ Waiting for the phone to allow it
 Waiting for the phone… this page follows it by itself.
 Waiting for the touchpad…
 Waiting for you to sign in to Google in the browser…
+Waiting for you to sign in…
+Waiting for your key agent to sign in to “{}”. If your keys are in Passwords, it may be locked.
+Waiting for your key agent…
 Waiting for “{}” to allow it (its switches for this computer, in its Bluetooth settings).
 Waiting now
 Waiting: {}
@@ -3907,6 +4157,7 @@ Web Page (HTML)…
 Week
 Week Starts On
 Weights
+Welcome to Olo Rex
 What
 What Each Mode Sets
 What You Did
@@ -3922,6 +4173,7 @@ What it draws from the battery; on power, it says so.
 What it’s for (optional)
 What should I wear today?
 What should I wear tomorrow?
+What was done stays done. Setting it up again carries on from there.
 What you change applies when you leave Rescue.
 What's checked off shows here, the newest first.
 What's due after today, the soonest first, each by its day.
@@ -4056,6 +4308,7 @@ Your home folder
 Your home folder is backed up every hour, leaving out what can be downloaded or built again. Once it’s set up, you can change any of it.
 Your messages, your contacts and the one-time codes texted to you, on this computer: over Bluetooth, with nothing between and nothing else to install.
 Your notes, files and forwarded messages
+Your other devices on Tailscale can reach these sessions.
 Your own files and folders
 Your own:
 Your palm model couldn't be saved
@@ -4083,6 +4336,7 @@ Zoom
 Zoom All
 Zoom In
 Zoom Out
+Zoom Pane
 Zoom horizontally
 Zoom on Clicks
 Zoom or unzoom
@@ -4123,6 +4377,7 @@ brush’s grey hint after what you type, from a tiny model of your own commands 
 brush’s grey hint after what you type, from a tiny model of your own commands on this computer: it weighs what’s typed, the folder, the commands before, the hour and the day, and learns as you go.
 brush’s grey hints, from a tiny model of your own commands
 built most, the last 24 hours
+busy
 ceiling {}%
 charging, full in {}
 compile going on
@@ -4177,6 +4432,7 @@ its clock as the driver has it, up to {} MHz
 its clock up to {} MHz
 its disk has {}
 its ports: {}
+its session has ended.
 its shells have all ended
 just now
 kache is stopped
@@ -4197,6 +4453,7 @@ kache{} is running
 kbit/s
 last seen recently
 left to the firmware for now
+less than a minute
 level {} of 7
 libinput's default
 libinput's own: Olo's touch filter is off
@@ -4209,6 +4466,7 @@ no
 no display ports
 no limit to its space
 no network: it goes on once there’s one
+no sessions open
 no wired network: it waits for one
 node_modules, .next, .turbo, .parcel-cache, ~/.npm
 not in the running kernel
@@ -4276,6 +4534,7 @@ slots of the pool in use
 some of it couldn't be read
 something else is called “{}” there now
 ssh, git and other programs sign in with the SSH keys in Passwords, each one allowed the first time it asks.
+ssh://you@host or host.ts.net
 sudo needs your password to run this{}:
 taken as at least {}% busy
 tan is undefined there
@@ -4307,6 +4566,7 @@ the request failed
 the screen
 the secret at {}
 the server answered {}
+the server couldn’t complete the request
 the service answered {}
 the service is busy
 the session
@@ -4314,6 +4574,7 @@ the system's power profiles daemon
 the unfinished backup
 the window server
 the {} didn't get going: {}
+there isn’t one for {}
 these {n} backups need
 this event
 this site
@@ -4389,6 +4650,7 @@ your own picture
 {n} screens shown on AirPlay receivers. Click to pause or stop them.
 {n} seconds
 {n} secrets
+{n} sessions open
 {n} shares, control among them. Click to stop them.
 {n} slots
 {n} sync changes to review
@@ -4448,6 +4710,8 @@ your own picture
 {} didn't answer a request: {}
 {} didn't say where it is.
 {} didn't start pairing: {}.
+{} didn’t accept your keys for root
+{} didn’t accept your keys for {}
 {} didn’t download: {}
 {} different commands, of {} run
 {} dpi as it comes
@@ -4464,6 +4728,9 @@ your own picture
 {} h
 {} h ago
 {} h {} min
+{} hasn’t answered for over a minute
+{} hasn’t answered for over {} minutes
+{} hasn’t answered for {} seconds
 {} hours ago
 {} in all
 {} in the last minute
@@ -4481,6 +4748,9 @@ your own picture
 {} is connected but plays no sound: {}.
 {} is disconnected from Olo. Its app stays in its Google Cloud project, to connect it again with.
 {} is grabbing input devices: a mouse it has grabbed moves through its virtual pointer, and settings made here don't reach it.
+{} is installed
+{} is installed  ·  up to date
+{} is installed  ·  {} is available
 {} is protected by a password.
 {} is ready, made {} ({} to download). Install it? Olo downloads it in the background and switches to it when it's done: your windows stay open.{}
 {} is ready. Click to upgrade.
@@ -4499,6 +4769,7 @@ your own picture
 {} kept of {}
 {} kept, still shared with builds' target folders
 {} keys
+{} keys, at {}
 {} knows this computer.
 {} later: gone
 {} least, {} now
@@ -4539,6 +4810,9 @@ your own picture
 {} of {} slots
 {} on Workspace {}
 {} on this computer
+{} on {}?
+{} on {}…
+{} open
 {} over 5 ms in the last minute, the longest {}
 {} packets
 {} people are typing…
@@ -4551,10 +4825,12 @@ your own picture
 {} right first
 {} s
 {} s ago
+{} said:
 {} shared with this screen
 {} since the computer started{}
 {} starting in about {} minutes
 {} steps in the last minute (a wheel's notches, a touchpad's moves)
+{} still isn’t set up
 {} stopped answering: {}
 {} stopping in about {} minutes
 {} suggestions since it started
@@ -4609,6 +4885,8 @@ your own picture
 {}, in “{}”
 {}, no limit
 {}, on set days
+{}, over SSH
+{}, over Tailscale
 {}, until {}
 {}, {}
 {}, {} new to the backup, {} sent so far.
@@ -4632,6 +4910,8 @@ your own picture
 {}: left as it is here, as this computer's couldn't be saved first.
 {}: left as it is here. The backup holds no key to open what it has of it (one exported without passwords and sign-ins holds none).
 {}: not here yet
+{}: off
+{}: on
 {}: sign in again on this computer (each computer signs in as itself).
 {}: the login keyring didn't take it ({}). Import the backup again once it does.
 {}: what's set below. Power Modes says what each mode puts it on.
@@ -4649,6 +4929,7 @@ your own picture
 {}{}, plugged in: {}.
 {}–{}% performance range
 {}’s data centre
+{}’s package manager checked Rex’s repository when this window opened.
 {}″ ({} × {} mm), {} pixels per inch
 ~/.cache, browsers’ caches, thumbnails
 ~/.gradle, ~/.m2/repository, a project’s .gradle
@@ -4678,6 +4959,8 @@ your own picture
 “{}” couldn't be written. {}
 “{}” couldn't be written: {}
 “{}” doesn’t say where its packages are (no baseurl, metalink or mirrorlist).
+“{}” has no sessions.
+“{}” has no terminals.
 “{}” has no {}.
 “{}” has nothing to refer to.
 “{}” hasn’t allowed this computer its messages yet.
@@ -4685,6 +4968,7 @@ your own picture
 “{}” is an enterprise network.
 “{}” is asking something else to pair.
 “{}” is connected, but its messages aren’t answering. Olo keeps trying.
+“{}” is disconnected.
 “{}” is imported.
 “{}” is out of reach or its Bluetooth is off. It’s tried again by itself.
 “{}” is out of reach. It’s tried again by itself.

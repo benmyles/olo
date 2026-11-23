@@ -674,3 +674,59 @@ fn a_request_beside_a_flood_is_timed() {
         measured.expect("measured");
     });
 }
+
+/// An SSH agent of this computer's, forwarded to a real host: the host
+/// is given a relay (here one that knows a single made-up key and
+/// refuses to sign), the agent is forwarded, and `ssh-add` on the host,
+/// pointed at the path that came back, lists that key. With the relay
+/// taken back, what the host's server opens is refused: `ssh-add` there
+/// finds no agent. Nothing of the account's own is used or changed but
+/// the link in `~/.local/state/olo-rex`.
+#[test]
+#[ignore = "needs a real host: OLO_REX_TEST_HOST"]
+fn an_agent_is_forwarded_to_a_real_host() {
+    let address = std::env::var("OLO_REX_TEST_HOST").expect("OLO_REX_TEST_HOST=ssh://USER@HOST");
+    block(async move {
+        let pool = Arc::new(SshSessionPool::default());
+        let target = SshTarget::parse(&address).expect("an ssh:// address");
+        let nobody: Option<Arc<dyn SshAskpass>> = Some(Arc::new(Nobody));
+        // (An ed25519 public key's blob: "ssh-ed25519" and 32 bytes.)
+        let mut blob = Vec::new();
+        for part in [&b"ssh-ed25519"[..], &[7u8; 32][..]] {
+            blob.extend_from_slice(&(part.len() as u32).to_be_bytes());
+            blob.extend_from_slice(part);
+        }
+        let asked = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let (counted, key) = (asked.clone(), blob.clone());
+        pool.set_agent(
+            &target,
+            Some(Arc::new(move |message: &[u8]| {
+                counted.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                // 11: the identities are asked for; 12 answers, with how many, and each key's blob and comment.
+                (message.first() == Some(&11)).then(|| {
+                    let mut answer = vec![12, 0, 0, 0, 1];
+                    for part in [&key[..], &b"olo-test-key"[..]] {
+                        answer.extend_from_slice(&(part.len() as u32).to_be_bytes());
+                        answer.extend_from_slice(part);
+                    }
+                    answer
+                })
+            })),
+        );
+        let path = pool.forward_agent(&target, nobody.clone()).await.expect("the agent is forwarded");
+        assert!(path.ends_with("/.local/state/olo-rex/agent.sock"), "a path in the account's own folder");
+        let listed = pool.exec(&target, nobody.clone(), &format!("SSH_AUTH_SOCK='{path}' ssh-add -L 2>&1"), &mut |_| {}).await.expect("ssh-add ran");
+        assert!(listed.output.contains("olo-test-key") && listed.output.contains("ssh-ed25519"), "the host's ssh-add lists the key");
+        assert!(asked.load(std::sync::atomic::Ordering::Relaxed) >= 1);
+        // The same path at the next forwarding (a link, made again).
+        assert_eq!(pool.forward_agent(&target, nobody.clone()).await.expect("forwarded again"), path);
+        // Taken back: nothing answers there any more.
+        pool.set_agent(&target, None);
+        let before = asked.load(std::sync::atomic::Ordering::Relaxed);
+        let gone = pool.exec(&target, nobody.clone(), &format!("SSH_AUTH_SOCK='{path}' ssh-add -L 2>&1; true"), &mut |_| {}).await.expect("ssh-add ran");
+        assert!(!gone.output.contains("olo-test-key"), "no key is listed once the relay is taken back");
+        assert_eq!(asked.load(std::sync::atomic::Ordering::Relaxed), before, "and the relay isn't asked");
+        assert!(pool.forward_agent(&target, nobody).await.is_err(), "nothing is forwarded for a host without a relay");
+        println!("the agent was forwarded, listed there, and gone when taken back");
+    });
+}

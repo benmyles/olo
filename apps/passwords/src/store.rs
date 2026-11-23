@@ -896,8 +896,10 @@ fn keychain(c: &mut Vault, request: &Request, candidates: &[(String, String)], v
             Err(message) => Response::Error { message },
         },
         // The SSH agent's (`agent`): the keys never leave this thread.
-        Request::SshKeys => Response::SshKeys { keys: crate::agent::keys(&c.data) },
-        Request::SshSign { key, data, flags } => {
+        // (For a host's terminals too, carried here by Rex: who may
+        // ask is main.rs's to decide; what is answered is the same.)
+        Request::SshKeys | Request::SshKeysFor { .. } => Response::SshKeys { keys: crate::agent::keys(&c.data) },
+        Request::SshSign { key, data, flags } | Request::SshSignFor { key, data, flags, .. } => {
             let (Ok(key), Ok(data)) = (b64.decode(key), b64.decode(data)) else {
                 return Response::Error { message: "not base64".into() };
             };

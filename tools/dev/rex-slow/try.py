@@ -59,6 +59,11 @@
                                               far link is quiet, the bytes that came, what the app said of
                                               catching up, and a picture. (Not typed: a key held a moment too
                                               long on a busy computer repeats.)
+    try.py agent                              Passwords' SSH agent on a host: the far host is given the SSH keys
+                                              (as in Preferences ▸ Rex), with a stand-in for Passwords that knows
+                                              one made-up key; `ssh-add -L` there then lists it, the stand-in
+                                              was asked for that host by Rex, and with the permission taken back
+                                              nothing answers there
 
 PROGRAM: shell, box, box-nosync, line (tui.py's stand-ins), or a command line."""
 import glob, os, signal, sys, time
@@ -259,6 +264,22 @@ elif what in ("bytes", "flood"):
                     b1, at = settled(r, quiet=1.0); p.send_signal(signal.SIGINT); err = p.communicate()[1]
                     own = sum(int(f[1]) for f in (l.split(",") for l in err.splitlines()) if len(f) > 3 and f[1].isdigit() and not f[0].startswith("llvmpipe"))
                     print(f"compression {packed}: seq {lines}: {b1['down'] - b0['down']:,} bytes down, the last of them {at - t:.1f} s after the command; the app's own threads {own / 1e6:,.0f} million instructions", flush=True)
+elif what == "agent":
+    import getpass
+    with Rig("shell", delay=0, far=True) as r:
+        asked = r.keychain()
+        sock = f"{D}/home/.local/state/olo-rex/agent.sock"
+        listed = lambda: r.far.ran(f"SSH_AUTH_SOCK={sock} ssh-add -L 2>&1").strip()
+        print("before the host is given the keys, ssh-add there says:", repr(listed()[:80]))
+        r.grant("far", ssh_keys=True)
+        got = r.wait(lambda: (lambda out: out if "olo-test-key" in out else None)(listed()), 20, every=0.5)
+        print("given them, ssh-add there lists:", repr((got or listed())[:120]))
+        said = open(asked).read().replace(getpass.getuser(), "USER") if os.path.exists(asked) else ""
+        print("the stand-in for Passwords was asked:", said.strip().splitlines()[:3])
+        r.grant("far", ssh_keys=False)
+        gone = r.wait(lambda: (lambda out: out if "olo-test-key" not in out else None)(listed()), 20, every=0.5)
+        print("taken back, ssh-add there says:", repr((gone or listed())[:80]))
+        print("PASS" if got and gone is not None and "for far at" in said and "asked by olo-rex" in said else "FAIL")
 elif what == "behind":
     import re, subprocess
     numbers = [a for a in args if a.isdigit()]

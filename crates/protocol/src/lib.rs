@@ -2101,17 +2101,24 @@ pub struct RexGrants {
     pub passwords: bool,
     /// Read and set this computer's clipboard.
     pub clipboard: bool,
+    /// Sign in from that host with the SSH keys in Passwords (its agent,
+    /// forwarded to the host's terminals), each host with the person's
+    /// leave as Passwords asks it. Not this computer's own sessions':
+    /// they have Passwords' agent as every program here has.
+    pub ssh_keys: bool,
 }
 
 impl RexGrants {
     /// Everything: what this computer's own sessions have.
     pub const fn all() -> Self {
-        RexGrants { open_links: true, forward_ports: true, agent_screens: true, passwords: true, clipboard: true }
+        // (Not `ssh_keys`: it is a host's alone, and counted here it made
+        // this computer's own permissions differ from their defaults.)
+        RexGrants { open_links: true, forward_ports: true, agent_screens: true, passwords: true, clipboard: true, ssh_keys: false }
     }
 
     /// Whether anything is granted.
     pub fn any(&self) -> bool {
-        self.open_links || self.forward_ports || self.agent_screens || self.passwords || self.clipboard
+        self.open_links || self.forward_ports || self.agent_screens || self.passwords || self.clipboard || self.ssh_keys
     }
 }
 

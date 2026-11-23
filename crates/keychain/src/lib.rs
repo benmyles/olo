@@ -106,6 +106,15 @@ pub enum Request {
     /// gives them (2 and 4: RSA with SHA-256 or SHA-512); once unlocked and
     /// the asking program's terminal session is allowed.
     SshSign { key: String, data: String, flags: u32 },
+    /// [`Request::SshKeys`] for a program on another machine (`origin`),
+    /// carried here by Rex for a host's terminals (SSH's agent
+    /// forwarding): answered to Rex alone.
+    SshKeysFor { origin: SshOrigin },
+    /// [`Request::SshSign`] for a program on another machine: once
+    /// unlocked and the person has allowed that machine (asked as a
+    /// terminal session is, by its name and address, and allowed
+    /// without asking while the tray says so). Answered to Rex alone.
+    SshSignFor { origin: SshOrigin, key: String, data: String, flags: u32 },
     /// What's shared with agent screens (Agent Screens' Passwords tab and
     /// Shared with Every Screen), with every item it could share: once
     /// unlocked. Never answered to a program on an agent screen.
@@ -248,6 +257,8 @@ impl Request {
             | Request::Cli { .. }
             | Request::SshKeys
             | Request::SshSign { .. }
+            | Request::SshKeysFor { .. }
+            | Request::SshSignFor { .. }
             | Request::Shares
             | Request::SetShares { .. }
             | Request::KeepSecret { .. }
@@ -424,6 +435,17 @@ pub enum Response {
     SshSignature {
         signature: String,
     },
+}
+
+/// Who, on another machine, asks for the SSH agent through an Olo
+/// program that carries its request here (Rex, for a host's terminals):
+/// the host as it is called here and its address ("you@build.example").
+/// It is said in Passwords' question, and what the person's leave is
+/// kept by (the address).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct SshOrigin {
+    pub host: String,
+    pub address: String,
 }
 
 /// An SSH key Passwords has: its public key (base64 of SSH's encoding) and
@@ -868,6 +890,161 @@ mod tests {
 /// `~/.ssh/config` and Passwords' SSH agent: ssh uses the agent in
 /// `SSH_AUTH_SOCK` unless an `IdentityAgent` line names another (1Password's
 /// app writes `IdentityAgent ~/.1password/agent.sock`).
+/// The SSH agent protocol's messages (draft-miller-ssh-agent, section
+/// 6), read once for the two that answer them: Passwords' own agent, for
+/// the programs of this computer, and Rex, for a host's terminals (an
+/// agent connection forwarded over SSH, answered here). Each message
+/// becomes a keychain request, and Passwords decides.
+pub mod agent {
+    use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
+
+    use super::{Request, Response, SshOrigin};
+
+    pub const FAILURE: u8 = 5;
+    pub const REQUEST_IDENTITIES: u8 = 11;
+    pub const IDENTITIES_ANSWER: u8 = 12;
+    pub const SIGN_REQUEST: u8 = 13;
+    pub const SIGN_RESPONSE: u8 = 14;
+    /// A signature request's flags: an RSA key signs with SHA-2 (256,
+    /// 512) where one is set, with SHA-1 for an old server otherwise.
+    pub const RSA_SHA2_256: u32 = 2;
+    pub const RSA_SHA2_512: u32 = 4;
+    /// The most a message may be (OpenSSH's own limit).
+    pub const MAX_MESSAGE: usize = 256 * 1024;
+
+    /// A string as the agent protocol encodes it: its length, then it.
+    pub fn put(out: &mut Vec<u8>, bytes: &[u8]) {
+        out.extend_from_slice(&(bytes.len() as u32).to_be_bytes());
+        out.extend_from_slice(bytes);
+    }
+
+    /// The next string in `msg` from `at`.
+    pub fn take<'a>(msg: &'a [u8], at: &mut usize) -> Option<&'a [u8]> {
+        let len = u32::from_be_bytes(msg.get(*at..*at + 4)?.try_into().ok()?) as usize;
+        let s = msg.get(*at + 4..*at + 4 + len)?;
+        *at += 4 + len;
+        Some(s)
+    }
+
+    /// A message as it goes on the wire: its length, then it. (None: a
+    /// failure, which is a message of its own.)
+    pub fn framed(answer: Option<Vec<u8>>) -> Vec<u8> {
+        let answer = answer.unwrap_or_else(|| vec![FAILURE]);
+        let mut out = (answer.len() as u32).to_be_bytes().to_vec();
+        out.extend_from_slice(&answer);
+        out
+    }
+
+    /// The answer to one message (None: a failure). `ask` puts a
+    /// keychain request to Passwords and gives back its answer (None:
+    /// it couldn't be asked). `origin`: the message is a program's on
+    /// another machine, and the request says so.
+    pub fn answer(msg: &[u8], origin: Option<&SshOrigin>, ask: &dyn Fn(Request) -> Option<Response>) -> Option<Vec<u8>> {
+        match *msg.first()? {
+            REQUEST_IDENTITIES => {
+                let request = match origin {
+                    Some(origin) => Request::SshKeysFor { origin: origin.clone() },
+                    None => Request::SshKeys,
+                };
+                let Some(Response::SshKeys { ref keys }) = ask(request) else {
+                    // (Locked and not unlocked, turned off: no keys, so
+                    // ssh goes on to its others.)
+                    return Some(vec![IDENTITIES_ANSWER, 0, 0, 0, 0]);
+                };
+                let mut out = vec![IDENTITIES_ANSWER];
+                let keys: Vec<(Vec<u8>, &str)> = keys.iter().filter_map(|k| Some((B64.decode(&k.key).ok()?, k.comment.as_str()))).collect();
+                out.extend_from_slice(&(keys.len() as u32).to_be_bytes());
+                for (blob, comment) in keys {
+                    put(&mut out, &blob);
+                    put(&mut out, comment.as_bytes());
+                }
+                Some(out)
+            }
+            SIGN_REQUEST => {
+                let mut at = 1;
+                let key = B64.encode(take(msg, &mut at)?);
+                let data = B64.encode(take(msg, &mut at)?);
+                let flags = msg.get(at..at + 4).and_then(|f| f.try_into().ok()).map_or(0, u32::from_be_bytes);
+                let request = match origin {
+                    Some(origin) => Request::SshSignFor { origin: origin.clone(), key, data, flags },
+                    None => Request::SshSign { key, data, flags },
+                };
+                let Some(Response::SshSignature { ref signature }) = ask(request) else { return None };
+                let mut out = vec![SIGN_RESPONSE];
+                put(&mut out, &B64.decode(signature).ok()?);
+                Some(out)
+            }
+            // Adding and removing keys, locking, extensions: Passwords
+            // keeps the keys; ssh goes on without.
+            _ => None,
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        fn origin() -> SshOrigin {
+            SshOrigin { host: "build".into(), address: "you@build.example".into() }
+        }
+
+        #[test]
+        fn the_keys_are_asked_for_as_whose_request_it_is() {
+            let seen = std::cell::RefCell::new(Vec::new());
+            let ask = |request: Request| {
+                seen.borrow_mut().push(format!("{request:?}"));
+                Some(Response::SshKeys { keys: vec![super::super::SshKey { key: B64.encode(b"blob"), comment: "work laptop".into() }] })
+            };
+            // A program here; then one on a host, carried by Rex.
+            let here = answer(&[REQUEST_IDENTITIES], None, &ask).unwrap();
+            let there = answer(&[REQUEST_IDENTITIES], Some(&origin()), &ask).unwrap();
+            assert_eq!(here, there);
+            // One key: its blob, then what it is called.
+            let mut at = 5;
+            assert_eq!((here[0], &here[1..5]), (IDENTITIES_ANSWER, &[0, 0, 0, 1][..]));
+            assert_eq!(take(&here, &mut at), Some(&b"blob"[..]));
+            assert_eq!(take(&here, &mut at), Some(&b"work laptop"[..]));
+            let seen = seen.borrow();
+            assert_eq!(seen[0], "SshKeys");
+            assert!(seen[1].starts_with("SshKeysFor") && seen[1].contains("you@build.example"), "{}", seen[1]);
+        }
+
+        #[test]
+        fn a_signature_is_asked_for_with_its_key_its_data_and_its_flags() {
+            let mut msg = vec![SIGN_REQUEST];
+            put(&mut msg, b"key blob");
+            put(&mut msg, b"what is signed");
+            msg.extend_from_slice(&4u32.to_be_bytes());
+            let ask = |request: Request| match &request {
+                Request::SshSignFor { origin, key, data, flags } => {
+                    assert_eq!((origin.host.as_str(), B64.decode(key).unwrap(), B64.decode(data).unwrap(), *flags), ("build", b"key blob".to_vec(), b"what is signed".to_vec(), 4));
+                    Some(Response::SshSignature { signature: B64.encode(b"signed") })
+                }
+                other => panic!("{other:?}"),
+            };
+            let out = answer(&msg, Some(&origin()), &ask).unwrap();
+            let mut at = 1;
+            assert_eq!((out[0], take(&out, &mut at)), (SIGN_RESPONSE, Some(&b"signed"[..])));
+            // Refused, locked or gone: a failure, as a message of its own.
+            assert_eq!(answer(&msg, Some(&origin()), &|_| Some(Response::Declined)), None);
+            assert_eq!(framed(None), [0, 0, 0, 1, FAILURE]);
+            assert_eq!(framed(Some(vec![SIGN_RESPONSE, 7])), [0, 0, 0, 2, SIGN_RESPONSE, 7]);
+        }
+
+        #[test]
+        fn no_keys_is_an_answer_and_what_isnt_understood_a_failure() {
+            // Locked, or turned off: no keys, and ssh goes on to its others.
+            assert_eq!(answer(&[REQUEST_IDENTITIES], None, &|_| Some(Response::Locked)), Some(vec![IDENTITIES_ANSWER, 0, 0, 0, 0]));
+            assert_eq!(answer(&[REQUEST_IDENTITIES], None, &|_| None), Some(vec![IDENTITIES_ANSWER, 0, 0, 0, 0]));
+            // Add a key, lock, an extension: not Passwords' to do.
+            assert_eq!(answer(&[17, 1, 2, 3], None, &|_| panic!("nothing is asked")), None);
+            assert_eq!(answer(&[], None, &|_| panic!("nothing is asked")), None);
+            // A signature request cut short.
+            assert_eq!(answer(&[SIGN_REQUEST, 0, 0, 0, 9, 1], None, &|_| panic!("nothing is asked")), None);
+        }
+    }
+}
+
 pub mod ssh_config {
     /// The person's ssh configuration.
     pub fn path() -> std::path::PathBuf {

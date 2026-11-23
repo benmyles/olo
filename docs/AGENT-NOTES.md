@@ -2791,3 +2791,15 @@ an argument it doesn't know starts the lint (read its first lines).
 - **The Rex server takes one stream of a terminal from a client at a
   time**: a second one's hello is refused ("AlreadyConnected") until
   the first has ended, and its end takes a moment to reach the server.
+- **A new field in the desktop's settings needs the test session's
+  app_server built again** (`cargo build -p app_server`): an older one
+  drops the field when it is set (`tsession ipc … set_settings`), and
+  the app under test never hears of it.
+- **The rig's app can never ask the person's Passwords**: it always
+  runs with `OLO_KEYCHAIN_SOCKET` at a path of the rig's own; a test
+  that wants an answer puts a stand-in there (`r.keychain()`). And the
+  rig notes what it starts (`REX_SLOW_DIR/started`), so a run that is
+  killed is cleaned up by the next (`farhost.swept`): a run cut off by
+  its timeout had left agents, links and a test session running.
+- **`tools/dev/ui-lint --help` is a run of the whole lint**, not help
+  (its options are in the file's head).

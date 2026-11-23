@@ -77,11 +77,14 @@ pub struct HostBridgePolicy {
     pub allow_agent_screens: bool,
     pub allow_passwords_op: bool,
     pub allow_remote_control: bool,
+    /// Passwords' SSH agent in the host's terminals (`hub`, "The SSH
+    /// agent on a host").
+    pub allow_ssh_agent: bool,
 }
 
 impl HostBridgePolicy {
     pub fn local_default() -> Self {
-        Self { allow_open_url: true, allow_localhost_autoforward: true, allow_agent_screens: true, allow_passwords_op: true, allow_remote_control: true }
+        Self { allow_open_url: true, allow_localhost_autoforward: true, allow_agent_screens: true, allow_passwords_op: true, allow_remote_control: true, allow_ssh_agent: true }
     }
 
     pub fn remote_default() -> Self {
@@ -89,7 +92,7 @@ impl HostBridgePolicy {
     }
 
     pub fn any_enabled(&self) -> bool {
-        self.allow_open_url || self.allow_localhost_autoforward || self.allow_agent_screens || self.allow_passwords_op || self.allow_remote_control
+        self.allow_open_url || self.allow_localhost_autoforward || self.allow_agent_screens || self.allow_passwords_op || self.allow_remote_control || self.allow_ssh_agent
     }
 }
 

@@ -32,6 +32,17 @@ pub struct Session {
     pub tty: u64,
 }
 
+impl Session {
+    /// A host whose terminals ask through Rex (`address`: as Rex
+    /// reaches it), allowed and forgotten as a terminal session of this
+    /// computer is. (No session of the kernel's has a number below
+    /// nothing; the address is the rest of it.)
+    pub fn of_host(address: &str) -> Session {
+        let hash = address.bytes().fold(0xcbf2_9ce4_8422_2325u64, |hash, byte| (hash ^ u64::from(byte)).wrapping_mul(0x0000_0100_0000_01b3));
+        Session { sid: -1, tty: hash }
+    }
+}
+
 /// The session process `pid` is in (from `/proc/PID/stat`).
 pub fn session_of(pid: i32) -> Option<Session> {
     let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
@@ -501,5 +512,28 @@ mod tests {
         assert!(!g.check(Session { sid: me.sid + 1, tty: me.tty }));
         g.clear();
         assert!(!g.check(me));
+    }
+}
+
+#[cfg(test)]
+mod host_tests {
+    use super::*;
+
+    /// A host is allowed and forgotten as a terminal session is, by its
+    /// address: the same host is the same session, another host
+    /// another, and none is a session of the kernel's.
+    #[test]
+    fn a_host_is_a_session_of_its_own() {
+        let build = Session::of_host("you@build.example");
+        assert_eq!(build, Session::of_host("you@build.example"));
+        assert_ne!(build, Session::of_host("you@staging.example"));
+        assert_ne!(build, Session::of_host("root@build.example"));
+        assert!(build.sid < 0, "no terminal session of this computer has a number below nothing");
+        let mut grants = Grants::default();
+        assert!(!grants.check(build));
+        grants.allow(build);
+        assert!(grants.check(build) && !grants.check(Session::of_host("you@staging.example")));
+        grants.clear();
+        assert!(!grants.check(build), "locking ends a host's leave as it ends a terminal's");
     }
 }

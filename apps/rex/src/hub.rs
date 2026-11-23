@@ -1332,6 +1332,10 @@ struct RexHubInner {
     /// Terminals' streams opened beforehand for a host that is being
     /// connected to, by the host's key ([`Spare`]).
     spares: Mutex<HashMap<String, Vec<Spare>>>,
+    /// Where Passwords' SSH agent is on each host that has it, by the
+    /// host's key: the path its terminals take as `SSH_AUTH_SOCK`
+    /// ([`Self::give_the_agent`]).
+    agent_socks: Mutex<HashMap<String, String>>,
 }
 
 /// A terminal's stream being opened as far as its upgrade, before the
@@ -1464,7 +1468,7 @@ impl RexHub {
             quick_look_cache: HashMap::new(),
         }));
 
-        let inner = Arc::new(RexHubInner { state: state.clone(), ssh_pool, askpass, notify: notify.clone(), spares: Mutex::new(HashMap::new()) });
+        let inner = Arc::new(RexHubInner { state: state.clone(), ssh_pool, askpass, notify: notify.clone(), spares: Mutex::new(HashMap::new()), agent_socks: Mutex::new(HashMap::new()) });
 
         let hub = Arc::new(Self { state, rt, notify, inner });
 
@@ -1779,12 +1783,14 @@ impl RexHub {
         if !crate::shared::settled(rex) {
             return;
         }
-        let changes = {
+        let (changes, agents) = {
             let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
             // (What Rex's own file held from before, if this start
             // couldn't read the desktop's settings to carry it over.)
             let pending = st.settings.before_preferences.is_some();
             let rex = crate::shared::adopt(&mut st.settings, rex.clone());
+            let had_agent = |st: &HubState| -> Vec<(String, bool)> { st.hosts.keys().map(|id| (id.clone(), st.settings.policy_for_host(id, false).allow_ssh_agent)).collect() };
+            let before = had_agent(&st);
             let changes = crate::shared::apply(&rex, &mut st.settings);
             if changes.any || pending {
                 st.settings.save();
@@ -1794,8 +1800,22 @@ impl RexHub {
                     h.label.clone_from(&host.label);
                 }
             }
-            changes
+            // (The hosts whose leave to use the SSH keys was given or
+            // taken back, and that are connected: told now, not at
+            // their next connection.)
+            let agents: Vec<(String, RexEndpoint)> = had_agent(&st)
+                .into_iter()
+                .filter(|now| !before.contains(now))
+                .filter_map(|(id, _)| st.hosts.get(&id).filter(|h| h.control.is_some()).and_then(|h| h.endpoint.clone()).map(|endpoint| (id, endpoint)))
+                .collect();
+            (changes, agents)
         };
+        if !agents.is_empty() {
+            let _in_runtime = self.rt.enter();
+            for (id, endpoint) in &agents {
+                self.inner.give_the_agent(id, endpoint);
+            }
+        }
         if !changes.any {
             return;
         }
@@ -2040,6 +2060,13 @@ impl RexHub {
                 opts["env"] = json!({ "BROWSER": open_bin.to_string_lossy() });
                 any = true;
             }
+        } else if let Some(agent) = self.inner.agent_socks.lock().unwrap_or_else(|e| e.into_inner()).get(host_key) {
+            // (Passwords' SSH agent, where the host has been given it:
+            // what Rex opens there finds it. A terminal that was there
+            // before, or that something else opens, is told by hand:
+            // the path is the same at every connection.)
+            opts["env"] = json!({ "SSH_AUTH_SOCK": agent });
+            any = true;
         }
         any.then_some(opts)
     }
@@ -2979,6 +3006,58 @@ impl RexHubInner {
         }
     }
 
+    /// The SSH agent on a host (HACKING, Rex, "The SSH agent on a
+    /// host"): where the person has given a host reached over SSH the
+    /// use of their SSH keys (Preferences ▸ Rex), Passwords' agent is
+    /// forwarded to it over the SSH connection Rex keeps: a program
+    /// there that asks the agent (`git`, `ssh`) is answered by
+    /// Passwords here, which asks the person about that host as it
+    /// asks about a terminal session of this computer. Rex only
+    /// carries the messages (`olo_keychain::agent`), saying whose they
+    /// are. Without the permission the host is given nothing, and what
+    /// its SSH server opens is refused. Done after each connection (the
+    /// SSH server's socket is that connection's) and when the
+    /// permission changes.
+    fn give_the_agent(self: &Arc<Self>, host_key: &str, endpoint: &RexEndpoint) {
+        let RexEndpoint::Ssh { target, pool, askpass } = endpoint else { return };
+        let (allowed, label) = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let is_local = st.hosts.get(host_key).is_some_and(|h| h.is_local);
+            (st.settings.policy_for_host(host_key, is_local).allow_ssh_agent, st.hosts.get(host_key).map(|h| h.label.clone()).unwrap_or_default())
+        };
+        if !allowed {
+            pool.set_agent(target, None);
+            if self.agent_socks.lock().unwrap_or_else(|e| e.into_inner()).remove(host_key).is_some() {
+                (self.notify)(HubNotice::StateChanged);
+            }
+            return;
+        }
+        // (Whose request it is, as Passwords says it to the person: the
+        // host's name here and how it is reached.)
+        let address = format!(
+            "{}{}{}",
+            target.user.as_ref().map(|user| format!("{user}@")).unwrap_or_default(),
+            target.host,
+            target.port.filter(|port| *port != 22).map(|port| format!(":{port}")).unwrap_or_default()
+        );
+        let origin = olo_keychain::SshOrigin { host: label, address };
+        pool.set_agent(target, Some(Arc::new(move |message: &[u8]| olo_keychain::agent::answer(message, Some(&origin), &|request| olo_keychain::call(&request).ok()))));
+        let (target, pool, askpass) = (target.clone(), pool.clone(), askpass.clone());
+        let (hub, host_key) = (self.clone(), host_key.to_owned());
+        tokio::spawn(async move {
+            match pool.forward_agent(&target, askpass).await {
+                Ok(path) => {
+                    hub.agent_socks.lock().unwrap_or_else(|e| e.into_inner()).insert(host_key, path);
+                }
+                Err(e) => {
+                    tracing::info!("Rex: the SSH agent couldn't be given to {host_key}: {e}");
+                    hub.agent_socks.lock().unwrap_or_else(|e| e.into_inner()).remove(&host_key);
+                }
+            }
+            (hub.notify)(HubNotice::StateChanged);
+        });
+    }
+
     /// A host reached over SSH is asked whether Olo's bridge and the
     /// skill for agents are on it (one command, off the connection's
     /// path), for the status bar's marks.
@@ -3455,6 +3534,7 @@ impl RexHubInner {
                         self.look_after_helper(&host_key, &endpoint);
                     }
                     self.look_at_what_the_host_has(&host_key, &endpoint);
+                    self.give_the_agent(&host_key, &endpoint);
 
                     for view in initial_views {
                         self.ingest_session(&host_key, &ctrl, &endpoint, view, &pre_tickets).await;

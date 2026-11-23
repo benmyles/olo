@@ -30,17 +30,9 @@ use ssh_key::{
 
 use crate::vault::Data;
 
-// The agent protocol's messages (draft-miller-ssh-agent, section 6).
-const FAILURE: u8 = 5;
-const REQUEST_IDENTITIES: u8 = 11;
-const IDENTITIES_ANSWER: u8 = 12;
-const SIGN_REQUEST: u8 = 13;
-const SIGN_RESPONSE: u8 = 14;
-/// Sign-request flags: RSA with SHA-2.
-const RSA_SHA2_256: u32 = 2;
-const RSA_SHA2_512: u32 = 4;
-/// The most a message may be (OpenSSH's own limit).
-const MAX_MESSAGE: usize = 256 * 1024;
+// (The agent protocol's messages are read in `olo_keychain::agent`:
+// Rex reads them the same way, for a host's terminals.)
+use olo_keychain::agent::{MAX_MESSAGE, RSA_SHA2_256, RSA_SHA2_512};
 
 /// Listen on `path`, each request going to `deliver` (Passwords' UI
 /// thread) and its answer back to the program that asked.
@@ -91,65 +83,14 @@ fn client(mut stream: UnixStream, deliver: &(impl Fn(Incoming) + ?Sized)) {
         if stream.read_exact(&mut msg).is_err() {
             return;
         }
-        let answer = answer(&msg, pid, &from, deliver).unwrap_or_else(|| vec![FAILURE]);
-        let mut out = (answer.len() as u32).to_be_bytes().to_vec();
-        out.extend_from_slice(&answer);
-        if stream.write_all(&out).is_err() {
+        let ask = |request: Request| -> Option<Response> {
+            let (incoming, stream) = Incoming::local(request, from.clone(), pid).ok()?;
+            deliver(incoming);
+            olo_keychain::read_reply(&stream)
+        };
+        if stream.write_all(&olo_keychain::agent::framed(olo_keychain::agent::answer(&msg, None, &ask))).is_err() {
             return;
         }
-    }
-}
-
-/// A string as the agent protocol encodes it: its length, then it.
-fn put(out: &mut Vec<u8>, bytes: &[u8]) {
-    out.extend_from_slice(&(bytes.len() as u32).to_be_bytes());
-    out.extend_from_slice(bytes);
-}
-
-/// The next string in `msg` from `at`.
-fn take<'a>(msg: &'a [u8], at: &mut usize) -> Option<&'a [u8]> {
-    let len = u32::from_be_bytes(msg.get(*at..*at + 4)?.try_into().ok()?) as usize;
-    let s = msg.get(*at + 4..*at + 4 + len)?;
-    *at += 4 + len;
-    Some(s)
-}
-
-/// The answer to one message (None: a failure).
-fn answer(msg: &[u8], pid: i32, from: &str, deliver: &(impl Fn(Incoming) + ?Sized)) -> Option<Vec<u8>> {
-    let ask = |request: Request| -> Option<Response> {
-        let (incoming, stream) = Incoming::local(request, from.to_owned(), pid).ok()?;
-        deliver(incoming);
-        olo_keychain::read_reply(&stream)
-    };
-    match msg[0] {
-        REQUEST_IDENTITIES => {
-            let Some(Response::SshKeys { ref keys }) = ask(Request::SshKeys) else {
-                // (Locked and not unlocked, turned off: no keys, so ssh goes
-                // on to its others.)
-                return Some(vec![IDENTITIES_ANSWER, 0, 0, 0, 0]);
-            };
-            let mut out = vec![IDENTITIES_ANSWER];
-            let keys: Vec<(Vec<u8>, &str)> = keys.iter().filter_map(|k| Some((B64.decode(&k.key).ok()?, k.comment.as_str()))).collect();
-            out.extend_from_slice(&(keys.len() as u32).to_be_bytes());
-            for (blob, comment) in keys {
-                put(&mut out, &blob);
-                put(&mut out, comment.as_bytes());
-            }
-            Some(out)
-        }
-        SIGN_REQUEST => {
-            let mut at = 1;
-            let key = take(msg, &mut at)?;
-            let data = take(msg, &mut at)?;
-            let flags = msg.get(at..at + 4).and_then(|f| f.try_into().ok()).map_or(0, u32::from_be_bytes);
-            let Some(Response::SshSignature { ref signature }) = ask(Request::SshSign { key: B64.encode(key), data: B64.encode(data), flags }) else { return None };
-            let mut out = vec![SIGN_RESPONSE];
-            put(&mut out, &B64.decode(signature).ok()?);
-            Some(out)
-        }
-        // Adding and removing keys, locking, extensions: Passwords keeps
-        // the keys; ssh goes on without.
-        _ => None,
     }
 }
 

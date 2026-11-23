@@ -27642,6 +27642,66 @@ what it does today:
   after idle, it seems: not found out yet; typing never sends so, and
   a paste is one request). Belongs to the link of its own.
 
+**The SSH agent on a host** (2026-11-23; Ben: "so that e.g. github
+and other ssh using stuff just magically works on the remote session
+through the ssh key i already have in olo passwords locally … go
+through the same permissions thing as we do if something uses it
+locally"). Where a host reached over SSH has been given the person's
+SSH keys (Preferences ▸ Rex, "Sign in to other hosts with your SSH
+keys": off until given, `RexGrants::ssh_keys`), Passwords' agent is
+forwarded to it, natively, over the SSH connection Rex keeps:
+- *On the wire* (`olo_rex_client::ssh`: `SshSessionPool::set_agent`,
+  `forward_agent`, the handler's `server_channel_open_agent_forward`,
+  `relay_agent`): a session channel asks the host's SSH server to
+  forward the agent and runs a line of `sh` that links the server's
+  socket at `~/.local/state/olo-rex/agent.sock` (the same path at
+  every connection; the folder the account's alone), says the path,
+  and waits. Each agent connection a program there makes comes back
+  as a channel, taken only where that host has a relay (one opened
+  unasked, or after the leave was taken back, is refused), and each
+  message is answered through the relay, off the connection's thread
+  (an answer may wait on the person).
+- *The relay is Rex's, the answer Passwords'* (`hub::give_the_agent`;
+  `olo_keychain::agent`): Rex reads the agent protocol with the same
+  code Passwords' own agent does and turns each message into a
+  keychain request that says whose it is (`Request::SshKeysFor`,
+  `SshSignFor`, with `SshOrigin`: the host's name here and its
+  address). Passwords takes such a request from this Olo's Rex alone
+  (`carried_by_rex`: the program's file is `olo-rex` beside its own),
+  and allows a signature as it allows a terminal session of this
+  computer (`cli::Session::of_host`: asked by the host's name and
+  address, "Allow programs on “build (you@build.example)” to sign in
+  with your SSH keys?"; for ten minutes after the host's last request,
+  twelve hours at most, until it locks; without asking while the
+  tray's key says so, said in a quiet notice). The keys never leave
+  Passwords.
+- *Given at each connection and when the permission changes*
+  (`follow_shared`): taken back, the relay goes, the kept channel
+  with it, and nothing answers on the host.
+- *What finds it there*: terminals Rex opens on that host get
+  `SSH_AUTH_SOCK` (the shell options' `env`, `local_shell_opts`). A
+  terminal that was there before, or that something else opens, is
+  told by hand: `export SSH_AUTH_SOCK=~/.local/state/olo-rex/agent.sock`.
+- *Tried*: against a real OpenSSH server (the client's `tests/host.rs`,
+  `an_agent_is_forwarded_to_a_real_host`: the host's `ssh-add -L`
+  lists the relay's key, nothing answers once the relay is taken back,
+  nothing is forwarded for a host without one); and the whole way on
+  the rig (`tools/dev/rex-slow/try.py agent`: the far host given the
+  keys in the desktop's settings, a stand-in for Passwords at a socket
+  of the rig's own, `crates/keychain/examples/olo-keychain-stand-in`:
+  `ssh-add -L` on the host lists its key, the stand-in was asked for
+  "far" by `olo-rex`, and with the permission taken back nothing
+  answers). The rig's app always has a keychain socket of the rig's
+  own (`OLO_KEYCHAIN_SOCKET`): it can never ask the person's
+  Passwords. Passwords' own question for a host hasn't been pictured
+  yet: it is the alert every terminal session gets, with other words
+  (TODO).
+- *OpenSSH puts a forwarded agent's socket in the account's
+  `~/.ssh/agent/`* on the host (so the rig's far host, which is this
+  computer, makes its sockets in the person's own `~/.ssh/agent/`
+  while a test forwards: the server's doing, gone when the forwarding
+  ends).
+
 **Connecting in fewer round trips** (2026-11-23). Between a host's
 window opening and its terminal's first screen, nine round trips of
 the link passed, one after another (read off the rig's link, which

@@ -74,13 +74,16 @@ class Rig:
     def host(self):
         """The far side by itself: the scratch server and the slow link in front of it (at REX_SLOW_DIR/link.sock),
         with Olo's helper behind the link where the rig has one. For what talks to a host without the app."""
+        from farhost import started, swept
+        globals().update(started=started)
+        swept()
         for f in ("rex/rex.sock", "link.sock"):
             # (Not "if it is there, remove it": the server of the run before removes its own socket as it
             # ends, and did so between the two, once.)
             with contextlib.suppress(FileNotFoundError): os.remove(f"{D}/{f}")
         quiet = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         cmd, env = self.scratch("server")
-        self.procs.append(subprocess.Popen(cmd, env=env, cwd=D, **quiet))
+        self.procs.append(started(subprocess.Popen(cmd, env=env, cwd=D, **quiet)))
         end = time.monotonic() + 8
         while not os.path.exists(f"{D}/rex/rex.sock") and time.monotonic() < end: time.sleep(0.05)
         assert os.path.exists(f"{D}/rex/rex.sock"), "the scratch server didn't start"
@@ -89,7 +92,7 @@ class Rig:
         if self.helper:
             assert os.path.exists(self.helper), f"no helper at {self.helper}: cargo build -p olo-rex-link"
             env["REX_SLOW_HELPER"] = json.dumps([self.helper, "--", *dial])
-        self.procs.append(subprocess.Popen(link, env=env, cwd=D, **quiet))
+        self.procs.append(started(subprocess.Popen(link, env=env, cwd=D, **quiet)))
         while not os.path.exists(f"{D}/link.sock") and time.monotonic() < end: time.sleep(0.05)
         return f"{D}/link.sock"
     def begin(self):
@@ -115,7 +118,9 @@ class Rig:
         if self.look: self.ts("look", self.name, self.look)
         time.sleep(1.2)
         self.rex("new", "typing", "--json", "--", "sh", "-c", PROGRAMS.get(self.program, self.program))
-        self.ts("run", self.name, f"REX_SERVER_SOCKET={D}/link.sock", f"XDG_STATE_HOME={D}/state", f"SSH_AUTH_SOCK={agent}", *self.env, self.bin)
+        # (The app's Passwords is never the person's: a socket of the rig's own, where a test may put a stand-in
+        # (`keychain`), and where nothing answers otherwise. Rex asks Passwords for a host's SSH agent.)
+        self.ts("run", self.name, f"REX_SERVER_SOCKET={D}/link.sock", f"XDG_STATE_HOME={D}/state", f"SSH_AUTH_SOCK={agent}", f"OLO_KEYCHAIN_SOCKET={D}/keychain.sock", *self.env, self.bin)
         self.win = None
         for _ in range(80):
             time.sleep(0.25)
@@ -167,6 +172,25 @@ class Rig:
             self.ts("click", self.name, str(int(c["x"] + rows[-1]["x"] + rows[-1]["width"] / 2)), str(int(c["y"] + rows[-1]["y"] + rows[-1]["height"] / 2))); time.sleep(2.5)
         self.ts("click", self.name, str(c["x"] + c["width"] * 2 // 3), str(c["y"] + c["height"] // 2)); time.sleep(0.4 + 2 * self.delay / 1000)
         return self
+    def keychain(self):
+        """A stand-in for Passwords at the rig's keychain socket (cargo build -p olo-keychain --examples): it
+        answers a host's SSH agent requests with one made-up key, and writes who asked into the file given back."""
+        asked = f"{D}/asked.txt"
+        for f in (asked, f"{D}/keychain.sock"):
+            with contextlib.suppress(FileNotFoundError): os.remove(f)
+        stand_in = f"{R3}/target/debug/examples/olo-keychain-stand-in"
+        assert os.path.exists(stand_in), "cargo build -p olo-keychain --examples"
+        self.procs.append(started(subprocess.Popen([stand_in, asked], env=dict(ENV, OLO_KEYCHAIN_SOCKET=f"{D}/keychain.sock"), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)))
+        end = time.monotonic() + 5
+        while not os.path.exists(f"{D}/keychain.sock") and time.monotonic() < end: time.sleep(0.05)
+        return asked
+    def grant(self, host, **grants):
+        """The desktop's permissions for a host of the app's (Preferences ▸ Rex), changed as the person would:
+        r.grant("far", ssh_keys=True)."""
+        settings = json.loads(self.ts("ipc", self.name, '{"type":"get_settings"}'))["settings"]
+        entry = next(h for h in settings["rex"]["hosts"] if h["id"] == host)
+        entry.setdefault("grants", {}).update(grants)
+        return self.ts("ipc", self.name, json.dumps({"type": "set_settings", "settings": settings}))
     def wait(self, what, within, every=0.3):
         end = time.monotonic() + within
         while time.monotonic() < end:

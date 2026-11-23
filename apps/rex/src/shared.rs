@@ -26,6 +26,7 @@ pub fn policy(g: RexGrants) -> HostBridgePolicy {
         allow_agent_screens: g.agent_screens,
         allow_passwords_op: g.passwords,
         allow_remote_control: g.clipboard,
+        allow_ssh_agent: g.ssh_keys,
     }
 }
 
@@ -59,6 +60,9 @@ impl OldPolicy {
             agent_screens: self.allow_agent_screens,
             passwords: self.allow_passwords_op,
             clipboard: self.allow_remote_control,
+            // (Rex's own file wrote one for this and never acted on
+            // it: not carried over as a yes.)
+            ssh_keys: false,
         }
     }
 }

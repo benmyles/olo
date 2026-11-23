@@ -319,6 +319,38 @@ struct SshClientHandler {
     /// The window stays what it began as (`OLO_REX_SSH_WINDOW`, for
     /// measuring).
     fixed: bool,
+    /// The host's agent relay, where it has one.
+    agent: AgentCell,
+}
+
+/// A forwarded agent connection (a program on the host asks its
+/// `SSH_AUTH_SOCK`): each message, its length and then it, is answered
+/// through the relay, until either side has had enough.
+async fn relay_agent(stream: impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin, relay: AgentRelay) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let (mut from, mut to) = tokio::io::split(stream);
+    loop {
+        let mut len = [0u8; 4];
+        if from.read_exact(&mut len).await.is_err() {
+            return;
+        }
+        let len = u32::from_be_bytes(len) as usize;
+        if len == 0 || len > AGENT_MESSAGE_MOST {
+            return;
+        }
+        let mut message = vec![0u8; len];
+        if from.read_exact(&mut message).await.is_err() {
+            return;
+        }
+        let relay = relay.clone();
+        // (A failure is a message of its own: one byte, 5.)
+        let answer = tokio::task::spawn_blocking(move || relay(&message)).await.ok().flatten().unwrap_or_else(|| vec![5]);
+        let mut framed = (answer.len() as u32).to_be_bytes().to_vec();
+        framed.extend_from_slice(&answer);
+        if to.write_all(&framed).await.is_err() || to.flush().await.is_err() {
+            return;
+        }
+    }
 }
 
 /// The least and the most a host may send on a channel before it is
@@ -389,6 +421,22 @@ impl client::Handler for SshClientHandler {
         }
     }
 
+    /// The host's SSH server opens an agent connection: taken only
+    /// where this host has been given a relay (a server that opens one
+    /// unasked, or after the person took the host's leave back, is
+    /// refused), and answered through it.
+    async fn server_channel_open_agent_forward(&mut self, channel: russh::Channel<client::Msg>, reply: client::ChannelOpenHandle, _session: &mut client::Session) -> Result<(), Self::Error> {
+        let relay = self.agent.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        match relay {
+            Some(relay) => {
+                reply.accept().await;
+                tokio::spawn(relay_agent(channel.into_stream(), relay));
+            }
+            None => reply.reject(russh::ChannelOpenFailure::AdministrativelyProhibited).await,
+        }
+        Ok(())
+    }
+
     /// A channel's window was topped up (half of it had come): what
     /// the next top-ups go to, for every channel of the connection
     /// ([`next_window`]; the vendored russh takes the answer, where the
@@ -427,9 +475,34 @@ impl client::Handler for SshClientHandler {
 
 /// Pool of live authenticated SSH sessions keyed by target, allowing `/api/control`
 /// and every `/api/data` stream for a remote host to share one SSH connection.
+/// Answers one message of the SSH agent protocol for a host's programs
+/// (`None`: a failure). It may take as long as a person takes to say
+/// yes: it is run off the connection's own thread.
+pub type AgentRelay = Arc<dyn Fn(&[u8]) -> Option<Vec<u8>> + Send + Sync>;
+
+/// A host's relay, where it has been given one ([`SshSessionPool::
+/// set_agent`]): looked at when the host's SSH server opens an agent
+/// connection, so one given or taken back later counts at once.
+type AgentCell = Arc<std::sync::Mutex<Option<AgentRelay>>>;
+
+/// The most an agent message may be (OpenSSH's own limit).
+const AGENT_MESSAGE_MOST: usize = 256 * 1024;
+
+/// What is run on a host to give its programs the forwarded agent at a
+/// path that stays the same from one connection to the next (the SSH
+/// server makes a new socket for each): a link to it in the account's
+/// own folder, whose path is said back, and then nothing but waiting
+/// (the socket is there as long as this is).
+const AGENT_KEPT: &str =
+    r#"d="$HOME/.local/state/olo-rex"; mkdir -p "$d" && chmod 700 "$d" && [ -n "$SSH_AUTH_SOCK" ] && ln -sfn "$SSH_AUTH_SOCK" "$d/agent.sock" && echo "$d/agent.sock" && exec cat"#;
+
 #[derive(Default)]
 pub struct SshSessionPool {
     sessions: Mutex<HashMap<SshTarget, SessionSlot>>,
+    /// The hosts' agent relays, and the channels that keep a forwarded
+    /// agent's socket there ([`Self::forward_agent`]).
+    agents: std::sync::Mutex<HashMap<SshTarget, AgentCell>>,
+    agent_channels: std::sync::Mutex<HashMap<SshTarget, russh::Channel<client::Msg>>>,
     /// Olo's helper on the hosts: the name of the build the app
     /// carries ([`Self::set_helper`]).
     helper: std::sync::Mutex<Option<String>>,
@@ -468,6 +541,61 @@ impl SshSessionPool {
     /// The control connection (`control`) goes through Olo's helper where the
     /// host has it ([`Self::set_helper`]); then always by `dial-stdio`, which
     /// the helper runs.
+    fn agent_cell(&self, target: &SshTarget) -> AgentCell {
+        self.agents.lock().unwrap_or_else(|e| e.into_inner()).entry(target.clone()).or_default().clone()
+    }
+
+    /// A host's programs may use an SSH agent of this computer's through
+    /// `relay` (which answers each of their messages), or no longer
+    /// (`None`: what the host's server opens from then on is refused,
+    /// and the socket kept there goes). Nothing is forwarded until
+    /// [`Self::forward_agent`].
+    pub fn set_agent(&self, target: &SshTarget, relay: Option<AgentRelay>) {
+        if relay.is_none() {
+            self.agent_channels.lock().unwrap_or_else(|e| e.into_inner()).remove(target);
+        }
+        *self.agent_cell(target).lock().unwrap_or_else(|e| e.into_inner()) = relay;
+    }
+
+    /// The agent is forwarded to the host over its SSH connection, kept
+    /// until the connection ends or the host's relay is taken back: the
+    /// path on the host that its programs take as `SSH_AUTH_SOCK` (a
+    /// link in the account's own folder to the socket the SSH server
+    /// made, the same path at every connection). Asked again after each
+    /// connection. An error where the host's SSH server doesn't forward
+    /// agents.
+    pub async fn forward_agent(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Result<String, RexError> {
+        use russh::ChannelMsg;
+        if self.agent_cell(target).lock().unwrap_or_else(|e| e.into_inner()).is_none() {
+            return Err(RexError::Ssh("no agent has been given for this host".to_owned()));
+        }
+        let handle = self.get_or_connect(target, askpass).await?;
+        let kept = async {
+            let mut channel = handle.channel_open_session().await.map_err(|e| RexError::Ssh(format!("open ssh session channel: {e}")))?;
+            channel.agent_forward(false).await.map_err(|e| RexError::Ssh(format!("asking {} to forward the agent failed: {e}", target.display())))?;
+            channel.exec(true, format!("sh -c {}", shell_escape(AGENT_KEPT))).await.map_err(|e| RexError::Ssh(format!("exec on {} failed: {e}", target.display())))?;
+            let mut said = Vec::new();
+            loop {
+                match channel.wait().await {
+                    Some(ChannelMsg::Data { data }) => {
+                        said.extend_from_slice(&data);
+                        if let Some(end) = said.iter().position(|b| *b == b'\n') {
+                            let path = String::from_utf8_lossy(&said[..end]).trim().to_owned();
+                            return Ok((path, channel));
+                        }
+                    }
+                    Some(ChannelMsg::ExitStatus { .. } | ChannelMsg::Close | ChannelMsg::Failure) | None => {
+                        return Err(RexError::Ssh(format!("{}’s SSH server doesn’t forward agents (AllowAgentForwarding)", target.display())));
+                    }
+                    _ => {}
+                }
+            }
+        };
+        let (path, channel) = tokio::time::timeout(Duration::from_secs(15), kept).await.map_err(|_| RexError::Timeout)??;
+        self.agent_channels.lock().unwrap_or_else(|e| e.into_inner()).insert(target.clone(), channel);
+        Ok(path)
+    }
+
     /// The host is connected and signed in to (or was already): what
     /// [`Self::open_rex_channel`] begins with, by itself.
     pub async fn reach(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Result<(), RexError> {
@@ -587,7 +715,7 @@ impl SshSessionPool {
         if let Some(handle) = session.as_ref().filter(|h| !h.is_closed()) {
             return Ok(handle.clone());
         }
-        let handle = Arc::new(connect_and_authenticate(target, askpass).await?);
+        let handle = Arc::new(connect_and_authenticate(target, askpass, self.agent_cell(target)).await?);
         *session = Some(handle.clone());
         Ok(handle)
     }
@@ -778,7 +906,7 @@ fn compresses(said: Option<bool>, knob: Option<bool>, opened_in: Option<Duration
     said.or(knob).unwrap_or_else(|| opened_in.is_none_or(|took| took >= FAR))
 }
 
-async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Result<Handle<SshClientHandler>, RexError> {
+async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, agent: AgentCell) -> Result<Handle<SshClientHandler>, RexError> {
     let resolved = resolve_ssh_config(target)?;
     let mut config = client::Config::default();
     // A small write goes when it is written. russh leaves Nagle's
@@ -822,8 +950,15 @@ async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn Ss
 
     let (waiting_tx, mut waiting) = tokio::sync::watch::channel(false);
     let askpass = askpass.map(|ui| Prompts { ui, waiting: waiting_tx.clone() });
-    let mut handler =
-        SshClientHandler { host: resolved.hostname.clone(), port: resolved.port, askpass: askpass.clone(), round_trip: None, came: (std::time::Instant::now(), 0), fixed: window_knob.is_some() };
+    let mut handler = SshClientHandler {
+        host: resolved.hostname.clone(),
+        port: resolved.port,
+        askpass: askpass.clone(),
+        round_trip: None,
+        came: (std::time::Instant::now(), 0),
+        fixed: window_knob.is_some(),
+        agent,
+    };
     let connection = async {
         if let Some(pc) = &resolved.proxy_command {
             let expanded = expand_proxy(pc, &resolved)?;

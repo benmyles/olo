@@ -1094,26 +1094,16 @@ something nobody here has is in "Blocked", with what it waits for.
     (`cramped`). Left as they are,
     being lone toggles and not a choice: Viewer's Crop, a screen's
     Take Control, Replay's Live.
-  - *Passwords' SSH agent in a remote terminal* (Ben, 2026-11-22: "i'm
-    not sure if we already added support for a remote rex terminal to
-    be able to use the olo passwords ssh agent so that e.g. github and
-    other ssh using stuff just magically works on the remote session
-    through the ssh key i already have in olo passwords locally, but if
-    not please add that too (and it should -- like all the olo
-    passwords integration -- go through the same permissions thing as
-    we do if something uses it locally, i.e. the prompt to get
-    permission by default but if auto-approve is on from the key in the
-    deskbar tray then auto approve it)"). Not there yet (looked,
-    2026-11-22): old settings carry an `allow_ssh_agent` for a host that
-    nothing acts on, and the bridge to a remote session has `op`, links
-    and screens (`apps/rex/src/bridge.rs`, its `allow_passwords_op`),
-    not the agent. To build: a socket on the host for the session's
-    terminals (`SSH_AUTH_SOCK` there), carried back over the Rex
-    connection to this computer and answered by Passwords as a request
-    of that host's session (who asks, said in the prompt: the host and
-    the session, not "Rex"), allowed as a local terminal session is and
-    by the tray's auto-approve; a host's permission for it beside the
-    others in Preferences ▸ Rex, off until given.
+  - *Passwords' SSH agent in a remote terminal*: built (2026-11-23;
+    HACKING, Rex, "The SSH agent on a host"; Ben's words there). Left:
+    Passwords' own question for a host pictured and reviewed (it needs
+    a test's Passwords with an SSH key in it: the stand-in vault, an
+    item made there); a signature the whole way against a real key
+    (the rig's stand-in lists a key and signs nothing); the host's
+    permission and the socket's path shown in the Host window, with
+    the line to export; terminals on the host that Rex didn't open
+    (told by hand now: a line for the shell's profile, offered from
+    the Host window).
   - *A terminal that answers at once over a slow or laggy link* (Ben,
     2026-11-23: "how can make ssh more performant and responsive when
     connected over slow/laggy link? e.g. [their test server] can take
@@ -1184,6 +1174,14 @@ something nobody here has is in "Blocked", with what it waits for.
     Since 2026-11-23 it also says, unasked, when a shell is at its
     prompt again (46 in a hundred then, and the first letter after a
     command at once), and a far host's connection is packed.
+    **The link of its own is asked for again** (Ben, 2026-11-23, later
+    the same day: "after you finish this please do work on and
+    implement the QUIC link, but just use the C libraries where it
+    saves us a bunch of time. i installed all the c/c++ fedora dev libs
+    and you can install anything else you want i gave you sudo access.
+    let's get it done quickly and efficiently without reinventing the
+    world"): QUIC between the app and the helper, with the usual
+    C-backed TLS, next. The rest below stays parked.
     **Parked** (Ben, 2026-11-23, after a day of it: "this is taking way
     too long. wrap up the in flight perf improvements and then let's
     move on don't worry about the QUIC stuff right now or any further

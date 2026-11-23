@@ -205,7 +205,7 @@ fn host_list(ui: &mut Ui, st: &State, wide: bool) {
         }
     }));
     // Whole rows inside the two-line rim, including at fractional scales.
-    let lines = if wide { 15.0 } else { 4.0 };
+    let lines = if wide { 16.0 } else { 4.0 };
     ui.add(div().h(px(m::LIST_ROW * lines + 2.0 * list_rim(ui))).child(list));
 }
 
@@ -295,6 +295,10 @@ fn fields(ui: &mut Ui, host: Option<&RexHost>, st: &mut State, changed_host: boo
     ui.add(div().flex().flex_col().gap(px(m::TIGHT)).children(fields));
 }
 
+/// The most the caution under a host's permissions is wide: its
+/// longest sentence in two lines of about a length.
+const CAUTION_WIDTH: f32 = 320.0;
+
 fn grants(ui: &mut Ui, selected: &Selection, name: Option<&str>, grants: RexGrants) {
     let local = *selected == Selection::Local;
     // (The heading names whose sessions: "Its sessions may:" pointed at
@@ -319,22 +323,53 @@ fn grants(ui: &mut Ui, selected: &Selection, name: Option<&str>, grants: RexGran
         check(if local { "Reach their local servers" } else { "Reach its local servers" }, grants.forward_ports, |g| &mut g.forward_ports);
         check("Use Agent Screens", grants.agent_screens, |g| &mut g.agent_screens);
         check("Get items from Passwords", grants.passwords, |g| &mut g.passwords);
+        // (Not this computer's own: they have Passwords' agent as every
+        // program here has. Its room is kept there, after the others
+        // and unseen, so that choosing a host moves nothing.)
+        // ("to other hosts": under the host's own address, "Sign in
+        // with your SSH keys" read as how Rex signs in to it.)
+        if !local {
+            check("Sign in to other hosts with your SSH keys", grants.ssh_keys, |g| &mut g.ssh_keys);
+        }
         check("Read and set the clipboard", grants.clipboard, |g| &mut g.clipboard);
+        if local {
+            check("Sign in to other hosts with your SSH keys", false, |g| &mut g.ssh_keys);
+        }
     });
+    let rows = checks.len();
+    let checks = checks.into_iter().enumerate().map(|(i, row)| if local && i + 1 == rows { div().invisible().child(row) } else { div().child(row) });
     ui.add(div().mt(px(m::TIGHT - m::STACK)).flex().flex_col().gap(px(m::STACK)).children(checks));
     // Reserve the same wrapped line(s) in every state. Hidden messages
     // take their room without being painted or appearing in the tree.
     let p = theme::palette();
     let ink = olo_theme::readable(p.warning, p.panel_background, 4.5);
-    // (Of what is ticked, under the ticks and beginning where their
-    // words begin.)
-    let words = match (grants.passwords, grants.clipboard) {
-        (true, false) => "Give Passwords only to a host you trust as much as this computer.",
-        (false, true) => "Give the clipboard only to a host you trust as much as this computer.",
-        _ => "Give Passwords and the clipboard only to a host you trust as much as this computer.",
+    // (One determiner, plain nouns, in the rows' order: Opus's review of
+    // "Give Passwords, your SSH keys and the clipboard".)
+    // (Each in two lines of about a length, broken here: wrapped where
+    // the width ran out, one left "this computer." alone under a long
+    // line. Both reviews' third look.)
+    let words = match (grants.passwords, grants.ssh_keys, grants.clipboard) {
+        (true, false, false) => "Give your passwords only to a host\nyou trust as much as this computer.",
+        (false, true, false) => "Give your SSH keys only to a host\nyou trust as much as this computer.",
+        (false, false, true) => "Give your clipboard only to a host\nyou trust as much as this computer.",
+        (true, true, false) => "Give your passwords and SSH keys only to\na host you trust as much as this computer.",
+        (false, true, true) => "Give your SSH keys and clipboard only to\na host you trust as much as this computer.",
+        (true, false, true) => "Give your passwords and clipboard only to\na host you trust as much as this computer.",
+        _ => "Give your passwords, SSH keys and clipboard\nonly to a host you trust as much as this computer.",
     };
-    let caution = div().mt(px(m::TIGHT - m::STACK)).pl(px(m::MARK_SIZE + m::MARK_GAP)).child(StringView::new(words).color(style::c(ink)).wrap(true));
-    ui.add(if !local && (grants.passwords || grants.clipboard) { caution } else { caution.invisible() });
+    // A note for the ticks as a group: from their own left edge, and
+    // further under the last of them than they are from each other
+    // (begun at the labels' edge and close under the last row it read
+    // as that row's own, which with three things it may be about is
+    // often the wrong one: both design reviews, 2026-11-23). Two lines'
+    // room always, so that a tick never changes the window's height.
+    // (No wider than the ticks' own words, in two lines of about a
+    // length: at the fields' width it was a long strip with two words
+    // under it. And the list beside is a row longer, so that Add and
+    // Remove stand at the group's foot as the button of the group
+    // above does. Both reviews' second look.)
+    let caution = div().mt(px(m::STACK)).min_h(px(2.0 * m::LABEL_ROW)).max_w(px(CAUTION_WIDTH)).child(StringView::new(words).color(style::c(ink)).wrap(true));
+    ui.add(if !local && (grants.passwords || grants.clipboard || grants.ssh_keys) { caution } else { caution.invisible() });
 }
 
 #[cfg(test)]
