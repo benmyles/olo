@@ -1414,3 +1414,40 @@ mod tests {
         }
     }
 }
+
+/// What the app and the helper agree on for the helper's own link over
+/// UDP (QUIC; the helper's `quic` mode, the app's `olo_rex_client::
+/// quic`).
+///
+/// The helper is started over SSH (`olo-rex-link quic -- DIAL…`), is
+/// given a token on its input (a line of 64 hex digits, made by the
+/// app for this link alone), listens on a UDP port with a certificate
+/// it makes then, and says on its output one line, [`ANNOUNCE`], its
+/// [`VERSION`](quic_wire::VERSION), the port, and the certificate's
+/// SHA-256 in hex: so the app knows the certificate by a channel SSH
+/// vouches for, and anybody who reaches the port is nobody without the
+/// token. Each stream the app opens begins with the token and a kind:
+/// [`PLAIN`](quic_wire::PLAIN) is joined to a `DIAL` of its own (a
+/// stream to the host's Rex server, as an SSH channel was),
+/// [`CONTROL`](quic_wire::CONTROL) to the helper's gate in front of
+/// one, [`HELLO`](quic_wire::HELLO) is answered with a byte (the link
+/// is up).
+pub mod quic_wire {
+    pub const ALPN: &[u8] = b"olo-rex-1";
+    /// The name in the helper's certificate (nobody looks it up).
+    pub const NAME: &str = "olo-rex";
+    pub const ANNOUNCE: &str = "olo-rex-quic";
+    pub const VERSION: u32 = 1;
+    pub const TOKEN: usize = 32;
+    pub const PLAIN: u8 = 0;
+    pub const CONTROL: u8 = 1;
+    pub const HELLO: u8 = 2;
+    /// The ports the helper tries first (one to open in a firewall),
+    /// before any the system gives it.
+    pub const PORTS: std::ops::RangeInclusive<u16> = 61100..=61199;
+    /// A link with nothing passing ends after so long (each end), and
+    /// the app says it is there this often meanwhile: a path that died
+    /// is known within the first, and a NAT keeps its way open.
+    pub const IDLE: std::time::Duration = std::time::Duration::from_secs(30);
+    pub const KEEP_ALIVE: std::time::Duration = std::time::Duration::from_secs(10);
+}

@@ -2841,3 +2841,13 @@ an argument it doesn't know starts the lint (read its first lines).
   Pool on 17891 and 17892). The rig's SSH server sets ports of the
   rig's own for a pool there (`OLO_POOL_PORT`, `OLO_POOL_PROXY_PORT`)
   and a provider that isn't there (`FAR_POOL_UPSTREAM`).
+- **UDP isn't TCP on the way to the test host**: a QUIC connection's
+  round trip there was 225 ms on five connections of eight and 166 on
+  three, with TCP's at 164 to 183 every time (2026-11-23). A latency
+  compared across the two must say which path each run got (the
+  link's own `round_trip()`), or it measures the network's choice.
+- **Tests against the real host connect as the app does** ("Olo Rex",
+  an app client): each leaves a client the server lists as lost for a
+  while, and `rex do` there then can't choose between apps (the person
+  met it). Until the tests name themselves otherwise, run none there
+  while the person's agents use the host.

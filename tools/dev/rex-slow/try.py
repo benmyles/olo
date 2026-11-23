@@ -414,6 +414,29 @@ elif what == "poolrex":
         finally:
             r.far.ran('d="$HOME/.local/share/olo/pool"; [ -x "$d/olo-pool-host" ] && { echo \'{"do":"stop"}\' | "$d/olo-pool-host" ctl; "$d/olo-pool-host" put-back; "$d/olo-pool-host" forget; }; rm -rf "$d"')
         print("PASS" if ok else "FAIL")
+elif what == "quic":
+    # The helper's own link over UDP to the far host: the app says its streams go over it, what is typed reaches
+    # the host's shell through it, and with it turned off (OLO_REX_QUIC=no) everything is as before. The far
+    # host is this computer: the UDP goes straight to the helper (the slow link is TCP's).
+    import re, subprocess
+    def run(env, label):
+        with Rig("shell", delay=0, far=True, env=["RUST_LOG=info", *env]) as r:
+            log = f"/var/tmp/olo-dev/{r.name}/olo-rex.log"
+            said = lambda: re.sub(r"\x1b\[[0-9;]*m", "", open(log, errors="replace").read())
+            linked = r.wait(lambda: next((l for l in said().splitlines() if "link over UDP" in l or "own link (UDP)" in l), None), 25)
+            mark = f"quic{int(time.time()) % 100000}"
+            r.type(f"touch {mark}\n"); 
+            there = r.wait(lambda: mark in r.far.ran(f"ls $HOME {D} {D}/home 2>/dev/null"), 15)
+            udp = subprocess.run(["ss", "-lunH"], capture_output=True, text=True).stdout
+            port = next((p for p in re.findall(r":(611\d\d)\s", udp)), None)
+            import getpass
+            linked = linked and linked.replace(getpass.getuser(), "USER")
+            print(f"{label}: the app said: {(linked or '(nothing of a link)')[-110:].strip()!r}; typed, the file is there: {bool(there)}; the helper listens on UDP {port}", flush=True)
+            return linked, there, port
+    on = run(["OLO_REX_QUIC=yes"], "with the link (waited for)")
+    by_itself = run([], "as the app does it (begun behind the first streams)")
+    off = run(["OLO_REX_QUIC=no"], "turned off")
+    print("PASS" if all(x[0] and "own link (UDP)" in x[0] and x[1] and x[2] for x in (on, by_itself)) and not off[0] and off[1] else "FAIL")
 elif what == "behind":
     import re, subprocess
     numbers = [a for a in args if a.isdigit()]

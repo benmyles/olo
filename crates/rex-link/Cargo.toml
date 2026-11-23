@@ -9,14 +9,25 @@ license.workspace = true
 name = "olo-rex-link"
 path = "src/main.rs"
 
-# (Nothing that needs a C compiler: it is built for the hosts, x86_64 and
-# aarch64, statically, on this computer.)
+# The helper's own link over UDP (QUIC: `olo-rex-link quic`, `src/quic.rs`),
+# in the program only: the library, which the app's Rex client takes for
+# what the two agree on, stays as light as it was. It brings TLS, whose
+# ciphers are C (aws-lc): built for the hosts with zig as the C compiler
+# (`apps/rex/build.rs`).
+[features]
+quic = ["dep:tokio", "dep:quinn", "dep:rustls", "dep:rcgen", "dep:sha2"]
+
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
 # (In the build already, under serde_json: the search for a word in a
 # message, which is most of what the helper does to each one.)
 memchr = "2"
+tokio = { version = "1", optional = true, features = ["rt", "net", "io-util", "io-std", "process", "time", "macros", "sync"] }
+quinn = { version = "0.11", optional = true, default-features = false, features = ["runtime-tokio", "rustls-aws-lc-rs"] }
+rustls = { version = "0.23", optional = true, default-features = false, features = ["aws_lc_rs", "std"] }
+rcgen = { version = "0.14", optional = true, default-features = false, features = ["aws_lc_rs"] }
+sha2 = { version = "0.11", optional = true }
 
 # For `tests/server.rs` alone: the helper in front of a real Rex server
 # of the test's own, spoken to as the app speaks to it. (The app's Rex
@@ -32,3 +43,10 @@ libc = "0.2"
 [[test]]
 name = "through"
 harness = false
+
+# The helper's link over UDP, both ends: the program in its `quic` mode
+# and the app's side of it (`olo_rex_client::quic`), on this computer.
+[[test]]
+name = "quic"
+required-features = ["quic"]
+

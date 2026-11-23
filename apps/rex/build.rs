@@ -7,10 +7,15 @@
 //! Each is one `cargo build` of that package for its target, in a
 //! folder of its own under the target folder (shared by every profile:
 //! the helper is the same for a dev build of the app and a release
-//! one), linked by the toolchain's own linker (no C compiler for
-//! another machine is needed). The targets are in `rust-toolchain.toml`,
-//! so rustup has them; where one can't be built the app is built
-//! without that host's helper, and says so here.
+//! one), linked by the toolchain's own linker. The targets are in
+//! `rust-toolchain.toml`, so rustup has them; where one can't be built
+//! the app is built without that host's helper, and says so here.
+//!
+//! The helper's own link over UDP (its `quic` feature) brings TLS,
+//! whose ciphers are C: compiled for the host's machine by zig (`zig
+//! cc`, through a wrapper written here for each target). Where zig
+//! isn't installed the helper is built without that link (no C in it,
+//! as before), and says so here.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -30,13 +35,20 @@ fn main() {
     // folder out: the helper's own folder is beside the profiles'.)
     let profile = out.ancestors().find(|dir| dir.file_name().is_some_and(|name| name == "build")).and_then(Path::parent).unwrap_or(&out);
     let target = profile.parent().unwrap_or(profile).join("rex-link");
+    let skip = std::env::var_os("OLO_REX_LINK_SKIP").is_some();
+    let zig = !skip && Command::new("zig").arg("version").output().is_ok_and(|o| o.status.success());
+    if !zig && !skip {
+        println!("cargo:warning=zig isn't installed (`dnf install zig`): Olo's helper for hosts is built without its link over UDP");
+    }
     let mut id = 0xcbf29ce484222325u64;
     for (triple, name) in HOSTS {
         let built = target.join(triple).join("release/olo-rex-link");
         let carried = out.join(format!("olo-rex-link-{name}"));
         // (`OLO_REX_LINK_SKIP`: built without the helpers, for a build
         // that only checks the app.)
-        let ok = std::env::var_os("OLO_REX_LINK_SKIP").is_none() && build(&root, &target, triple);
+        // (With the link where zig can compile its C for the host; and
+        // without it where that build fails, rather than no helper.)
+        let ok = !skip && ((zig && build(&root, &target, &out, triple, true)) || build(&root, &target, &out, triple, false));
         let bytes = if ok { std::fs::read(&built).unwrap_or_default() } else { Vec::new() };
         if bytes.is_empty() {
             println!("cargo:warning=Olo's helper for {name} hosts wasn't built ({triple}: is the target installed? `rustup target add {triple}`); Rex is built without it");
@@ -52,14 +64,38 @@ fn main() {
     println!("cargo:rustc-env=OLO_REX_LINK_ID={id:016x}");
 }
 
-fn build(root: &Path, target: &Path, triple: &str) -> bool {
+/// zig as the C compiler and the archiver for the host's machine: cc's
+/// own `--target=` is dropped (zig doesn't take the target as Rust
+/// names it), and zig's checks for undefined behaviour are left out
+/// (their handlers aren't linked: `__ubsan_handle_*` undefined
+/// otherwise).
+fn wrappers(out: &Path, triple: &str) -> Option<(PathBuf, PathBuf)> {
+    use std::os::unix::fs::PermissionsExt;
+    let zig_target = triple.replace("-unknown", "");
+    let (cc, ar) = (out.join(format!("zcc-{zig_target}")), out.join(format!("zar-{zig_target}")));
+    let script = format!("#!/bin/sh\nfor a in \"$@\"; do shift; case \"$a\" in --target=*) ;; *) set -- \"$@\" \"$a\";; esac; done\nexec zig cc -target {zig_target} -fno-sanitize=undefined \"$@\"\n");
+    std::fs::write(&cc, script).ok()?;
+    std::fs::write(&ar, "#!/bin/sh\nexec zig ar \"$@\"\n").ok()?;
+    for file in [&cc, &ar] {
+        std::fs::set_permissions(file, std::fs::Permissions::from_mode(0o755)).ok()?;
+    }
+    Some((cc, ar))
+}
+
+fn build(root: &Path, target: &Path, out: &Path, triple: &str, quic: bool) -> bool {
     let mut cargo = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()));
     cargo.current_dir(root).args(["build", "--release", "--locked", "-p", "olo-rex-link", "--bin", "olo-rex-link", "--target", triple, "--target-dir"]).arg(target);
+    if quic {
+        cargo.args(["--features", "quic"]);
+    }
     // (What this build was told is not for that one: its flags, its
     // target folder, the profile it is built in.)
     for (name, _) in std::env::vars() {
         if name == "RUSTFLAGS"
             || name == "CARGO_TARGET_DIR"
+            || name == "CC"
+            || name == "CFLAGS"
+            || name == "AR"
             || name == "CARGO_BUILD_TARGET"
             || name.starts_with("CARGO_PROFILE_")
             || name.starts_with("CARGO_CFG_")
@@ -78,7 +114,16 @@ fn build(root: &Path, target: &Path, triple: &str) -> bool {
             flags.push(format!("--remap-path-prefix={}={named}", Path::new(&dir).display()));
         }
     }
+    if quic {
+        let Some((cc, ar)) = wrappers(out, triple) else { return false };
+        let under = triple.replace('-', "_");
+        // (And no path of this computer in what the C compiler writes.)
+        cargo.env(format!("CC_{under}"), cc).env(format!("AR_{under}"), ar).env(format!("CFLAGS_{under}"), format!("-ffile-prefix-map={}=/olo", root.display()));
+    }
     cargo
+        // (This workspace unifies features across all its packages:
+        // the helper takes only its own.)
+        .env("CARGO_RESOLVER_FEATURE_UNIFICATION", "selected")
         .env("CARGO_ENCODED_RUSTFLAGS", flags.join("\x1f"))
         .env("CARGO_PROFILE_RELEASE_DEBUG", "0")
         .env("CARGO_PROFILE_RELEASE_STRIP", "symbols")

@@ -1225,17 +1225,26 @@ something nobody here has is in "Blocked", with what it waits for.
         own conditions hold), but the word is of the wrong moment: the
         server could say when the shell has read what was written, if
         Rex grows that.
-    - *A link of its own over UDP* (QUIC: `quinn`, with a cipher in
-      Rust alone so the helper is built for x86_64 and aarch64 hosts
-      with no C toolchain; the key handed over SSH; the same frames
-      over the SSH channel at once, and taken over to UDP if it gets
-      through). A terminal's output no longer holds up typing or
-      another terminal; small urgent frames (a key going up, a short
-      burst of echo coming down) go twice a few ms apart where the
-      link loses packets, so a lost packet costs a few ms and not a
-      second or two (over TCP it is 300 to 500 ms each, more for two:
-      this is where "a second or two" comes from); the session goes
-      on through a change of network or a sleep. No keepalive at rest.
+    - *A link of its own over UDP*: built (QUIC; 2026-11-23, HACKING,
+      "The helper's own link over UDP", with what was measured on a
+      real host). Left:
+      - Streams open before the link came up stay on SSH: a pane
+        moved over once it is (as catching up moves one), and the
+        control connection at a quiet moment.
+      - The network carried UDP to the test host more slowly than TCP
+        on most connections (225 ms for 166): why (it differs from one
+        connection to the next: perhaps the path chosen by the
+        packet's ports), and whether a few tries from different ports
+        find the quick one.
+      - Loss: small urgent frames sent twice a few ms apart, measured
+        against SSH; the rig needs a slow link for UDP (delay, loss,
+        rate) for it.
+      - Packing: what SSH's compression gave on a narrow link, per
+        stream.
+      - Through a change of network or a sleep (QUIC's own migration
+        carries the link; Rex's reconnection above it is to be tried).
+      - Said in the Host window: whether a host's streams are on it,
+        and why not.
     - *Connecting in fewer round trips*: done as far as SSH lets it
       (2026-11-23; HACKING, "Connecting in fewer round trips"): two
       round trips to a terminal's first screen where there were nine,

@@ -509,7 +509,39 @@ pub struct SshSessionPool {
     /// Further connections to a host, opened when its SSH server will
     /// open no more sessions on those there are ([`Self::session`]).
     further: Mutex<HashMap<SshTarget, Vec<Arc<Handle<SshClientHandler>>>>>,
+    /// The helper's own link over UDP to each host ([`crate::quic`]):
+    /// up, with the SSH channel that keeps its helper there; or not to
+    /// be tried again before a time.
+    links: Mutex<HashMap<SshTarget, Link>>,
+    /// Where each host's SSH connection went (none: through a proxy):
+    /// where its link goes too.
+    peers: std::sync::Mutex<HashMap<SshTarget, PeerCell>>,
 }
+
+/// Where a host's SSH connection went, and how long it took to open
+/// (its round trip).
+type PeerCell = Arc<std::sync::Mutex<Option<(std::net::IpAddr, Duration)>>>;
+
+/// Whether the helper's own link is to be used, by its round trip and
+/// the SSH connection's: not where the network carries UDP to the host
+/// more slowly than TCP (more than a quarter and 10 ms: a letter's
+/// echo is one round trip, and the link is for making things quicker).
+/// Measured on a real host, 2026-11-23: 225 ms over UDP on four
+/// connections of five where TCP's was 167 ms.
+fn link_is_as_quick(link: Duration, ssh: Duration) -> bool {
+    link <= ssh + ssh / 4 + Duration::from_millis(10)
+}
+
+enum Link {
+    Up(Arc<crate::quic::QuicLink>, #[allow(dead_code)] russh::Channel<client::Msg>),
+    /// Being made, behind the streams that go over SSH meanwhile.
+    Starting,
+    Down(std::time::Instant),
+}
+
+/// A link that couldn't be made isn't tried again for so long (UDP
+/// that doesn't get through to a host today won't in a minute).
+const LINK_AGAIN: Duration = Duration::from_secs(600);
 
 /// The most further connections to one host: with OpenSSH's ten
 /// sessions a connection, fifty sessions in all.
@@ -537,6 +569,116 @@ impl SshSessionPool {
     pub async fn invalidate(&self, target: &SshTarget) {
         self.sessions.lock().await.remove(target);
         self.further.lock().await.remove(target);
+        // (A link that is up went with its SSH channel; one that
+        // couldn't be made is still not tried before its time.)
+        let mut links = self.links.lock().await;
+        if matches!(links.get(target), Some(Link::Up(..))) {
+            links.remove(target);
+        }
+    }
+
+    fn peer_cell(&self, target: &SshTarget) -> PeerCell {
+        self.peers.lock().unwrap_or_else(|e| e.into_inner()).entry(target.clone()).or_default().clone()
+    }
+
+    /// Whether the host's streams go over the helper's own link (UDP)
+    /// now.
+    pub async fn linked(&self, target: &SshTarget) -> bool {
+        matches!(self.links.lock().await.get(target), Some(Link::Up(link, _)) if link.alive())
+    }
+
+    /// The helper's own link to the host, where it is up. Where it
+    /// isn't and may be tried, it is begun now, behind what asked: a
+    /// stream never waits for it (made first, a connection took
+    /// seven tenths of a second longer on a real host, and longer
+    /// still where UDP then turned out the slower way), so a host's
+    /// first streams go over SSH and those opened once it is up go
+    /// over it. None where the host hasn't the app's helper, where UDP
+    /// doesn't get through or is the slower way, or where it is turned
+    /// off (`OLO_REX_QUIC=no`). `OLO_REX_QUIC=yes`: waited for, and
+    /// used whatever its round trip, for measuring.
+    async fn link(self: &Arc<Self>, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>) -> Option<Arc<crate::quic::QuicLink>> {
+        let knob = std::env::var("OLO_REX_QUIC").ok();
+        if knob.as_deref() == Some("no") {
+            return None;
+        }
+        let helper = self.helper.lock().unwrap_or_else(|e| e.into_inner()).clone()?;
+        let mut links = self.links.lock().await;
+        match links.get(target) {
+            Some(Link::Up(link, _)) if link.alive() => return Some(link.clone()),
+            Some(Link::Down(until)) if std::time::Instant::now() < *until => return None,
+            Some(Link::Starting) => return None,
+            _ => {}
+        }
+        if knob.as_deref() == Some("yes") {
+            let made = self.start_link(target, askpass, &helper).await;
+            return self.made(&mut links, target, made);
+        }
+        links.insert(target.clone(), Link::Starting);
+        let (pool, target) = (self.clone(), target.clone());
+        tokio::spawn(async move {
+            let made = pool.start_link(&target, askpass, &helper).await;
+            let mut links = pool.links.lock().await;
+            pool.made(&mut links, &target, made);
+        });
+        None
+    }
+
+    fn made(&self, links: &mut HashMap<SshTarget, Link>, target: &SshTarget, made: Result<(crate::quic::QuicLink, russh::Channel<client::Msg>), String>) -> Option<Arc<crate::quic::QuicLink>> {
+        match made {
+            Ok((link, held)) => {
+                tracing::info!("ssh: {}'s streams go over the helper's own link (UDP) from now", target.display());
+                let link = Arc::new(link);
+                links.insert(target.clone(), Link::Up(link.clone(), held));
+                Some(link)
+            }
+            Err(why) => {
+                tracing::info!("ssh: no link over UDP to {} ({why}); its streams go over SSH", target.display());
+                links.insert(target.clone(), Link::Down(std::time::Instant::now() + LINK_AGAIN));
+                None
+            }
+        }
+    }
+
+    /// The helper started in its `quic` mode over SSH, given a token,
+    /// and the link made to where it says it listens: the link, and
+    /// the SSH channel that keeps the helper there.
+    async fn start_link(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, helper: &str) -> Result<(crate::quic::QuicLink, russh::Channel<client::Msg>), String> {
+        use russh::ChannelMsg;
+        // (Made first: the host's address is known once it is reached.)
+        self.get_or_connect(target, askpass.clone()).await.map_err(|e| e.to_string())?;
+        let (peer, ssh_round_trip) = (*self.peer_cell(target).lock().unwrap_or_else(|e| e.into_inner())).ok_or("the host is reached through a proxy")?;
+        let token = crate::quic::new_token()?;
+        let mut channel = self.session(target, askpass).await.map_err(|e| e.to_string())?;
+        channel.exec(true, quic_command(target.socket_path.as_deref(), helper)).await.map_err(|e| e.to_string())?;
+        channel.data(format!("{}\n", crate::quic::hex(&token)).as_bytes()).await.map_err(|e| e.to_string())?;
+        let said = async {
+            let mut said = Vec::new();
+            loop {
+                match channel.wait().await {
+                    Some(ChannelMsg::Data { data }) => {
+                        said.extend_from_slice(&data);
+                        if let Some(end) = said.iter().position(|b| *b == b'\n') {
+                            return crate::quic::announced(&String::from_utf8_lossy(&said[..end])).ok_or("the helper said something else");
+                        }
+                    }
+                    Some(ChannelMsg::ExitStatus { .. } | ChannelMsg::Close | ChannelMsg::Failure) | None => return Err("the host hasn't the helper with its link"),
+                    _ => {}
+                }
+            }
+        };
+        let (port, print) = tokio::time::timeout(Duration::from_secs(5), said).await.map_err(|_| "the helper didn't say where it listens")??;
+        // (`OLO_REX_QUIC_DIAL=IP:PORT`: reached there instead, for the
+        // rig, whose slow link for UDP stands in front of the helper.)
+        let to = std::env::var("OLO_REX_QUIC_DIAL").ok().and_then(|v| v.parse().ok()).unwrap_or_else(|| std::net::SocketAddr::new(peer, port));
+        let link = crate::quic::QuicLink::connect(to, &print, token).await?;
+        // (`OLO_REX_QUIC=yes`: used whatever its round trip, for measuring.)
+        let (round_trip, forced) = (link.round_trip(), std::env::var("OLO_REX_QUIC").is_ok_and(|v| v == "yes"));
+        tracing::info!("ssh: {}'s round trip is {} ms over UDP, {} ms over SSH's connection", target.display(), round_trip.as_millis(), ssh_round_trip.as_millis());
+        if !forced && !link_is_as_quick(round_trip, ssh_round_trip) {
+            return Err(format!("UDP's round trip there is {} ms, SSH's {} ms", round_trip.as_millis(), ssh_round_trip.as_millis()));
+        }
+        Ok((link, channel))
     }
 
     /// A session channel on the host (what a command there is run on).
@@ -578,7 +720,7 @@ impl SshSessionPool {
             )));
         }
         tracing::info!("ssh: {}'s connection has all the sessions its server allows; opening another", target.display());
-        let handle = Arc::new(connect_and_authenticate(target, askpass, self.agent_cell(target)).await?);
+        let handle = Arc::new(connect_and_authenticate(target, askpass, self.agent_cell(target), self.peer_cell(target)).await?);
         list.push(handle.clone());
         handle.channel_open_session().await.map_err(failed)
     }
@@ -662,7 +804,19 @@ impl SshSessionPool {
         self.get_or_connect(target, askpass).await.map(|_| ())
     }
 
-    pub async fn open_rex_channel(&self, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, control: bool) -> Result<Pin<Box<dyn AsyncReadWrite + Send>>, RexError> {
+    pub async fn open_rex_channel(self: &Arc<Self>, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, control: bool) -> Result<Pin<Box<dyn AsyncReadWrite + Send>>, RexError> {
+        // Over the helper's own link where there is one (UDP: `quic`);
+        // a link that fails a stream is given up for a while, and the
+        // stream goes over SSH as every stream did.
+        if let Some(link) = self.link(target, askpass.clone()).await {
+            match link.open(control).await {
+                Ok(stream) => return Ok(stream),
+                Err(why) => {
+                    tracing::info!("ssh: {}'s link over UDP failed ({why}); its streams go over SSH", target.display());
+                    self.links.lock().await.insert(target.clone(), Link::Down(std::time::Instant::now() + LINK_AGAIN));
+                }
+            }
+        }
         let handle = self.get_or_connect(target, askpass.clone()).await?;
         let helper = if control { self.helper.lock().unwrap_or_else(|e| e.into_inner()).clone() } else { None };
         // (Longer where a further connection has to be made for it.)
@@ -780,7 +934,7 @@ impl SshSessionPool {
         if let Some(handle) = session.as_ref().filter(|h| !h.is_closed()) {
             return Ok(handle.clone());
         }
-        let handle = Arc::new(connect_and_authenticate(target, askpass, self.agent_cell(target)).await?);
+        let handle = Arc::new(connect_and_authenticate(target, askpass, self.agent_cell(target), self.peer_cell(target)).await?);
         *session = Some(handle.clone());
         Ok(handle)
     }
@@ -971,7 +1125,7 @@ fn compresses(said: Option<bool>, knob: Option<bool>, opened_in: Option<Duration
     said.or(knob).unwrap_or_else(|| opened_in.is_none_or(|took| took >= FAR))
 }
 
-async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, agent: AgentCell) -> Result<Handle<SshClientHandler>, RexError> {
+async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, agent: AgentCell, peer: PeerCell) -> Result<Handle<SshClientHandler>, RexError> {
     let resolved = resolve_ssh_config(target)?;
     let mut config = client::Config::default();
     // A small write goes when it is written. russh leaves Nagle's
@@ -1048,12 +1202,14 @@ async fn connect_and_authenticate(target: &SshTarget, askpass: Option<Arc<dyn Ss
             let addresses: Vec<std::net::SocketAddr> = tokio::net::lookup_host((resolved.hostname.as_str(), resolved.port)).await.map_err(failed)?.collect();
             let began = std::time::Instant::now();
             let stream = tokio::net::TcpStream::connect(&addresses[..]).await.map_err(failed)?;
+
             // (`OLO_REX_SSH_OPENED_IN_MS`: taken to have opened in so
             // long, for the rig, whose far host opens at once whatever
             // its link's delay: what follows from a host being far, or
             // from its round trip, is then as on a real one.)
             let opened_in = std::env::var("OLO_REX_SSH_OPENED_IN_MS").ok().and_then(|v| v.parse().ok()).map_or(began.elapsed(), Duration::from_millis);
             handler.round_trip = Some(opened_in);
+            *peer.lock().unwrap_or_else(|e| e.into_inner()) = stream.peer_addr().ok().map(|a| (a.ip(), opened_in));
             stream.set_nodelay(true).map_err(failed)?;
             client::connect_stream(packed(config, Some(opened_in)), stream, handler).await.map_err(|e| RexError::Ssh(format!("SSH connect {}:{} failed: {e}", resolved.hostname, resolved.port)))
         }
@@ -1227,6 +1383,21 @@ fn shell_escape(s: &str) -> String {
 /// for each. The choice is made by `sh`, whatever the account's own
 /// shell is (fish and csh have no `if … then … fi`); every shell takes
 /// the one quoted word it is given.
+/// What is run on the host to start the helper's own link over UDP:
+/// the app's own build of the helper (no other: the two ends of the
+/// link are of one build), in its `quic` mode, with what it dials for
+/// each stream. Where that build isn't there, or runs nothing, it ends
+/// at once and there is no link.
+fn quic_command(socket: Option<&str>, id: &str) -> String {
+    let dial = match socket {
+        Some(sock) => format!("rex -S unix://{} __internal dial-stdio", shell_escape(sock)),
+        None => "rex __internal dial-stdio".to_owned(),
+    };
+    let dir = crate::helper::DIR;
+    let script = format!("L=\"$HOME\"/{dir}/olo-rex-link-{id}-$(uname -m); if [ -f \"$L\" ] && [ -O \"$L\" ]; then exec \"$L\" quic -- {dial}; fi; exit 127");
+    format!("sh -c {}", shell_escape(&script))
+}
+
 fn dial_command(socket: Option<&str>, helper: Option<&str>) -> String {
     let dial = match socket {
         Some(sock) => format!("rex -S unix://{} __internal dial-stdio", shell_escape(sock)),
@@ -1247,6 +1418,18 @@ fn dial_command(socket: Option<&str>, helper: Option<&str>) -> String {
 #[cfg(test)]
 mod dial_tests {
     use super::*;
+
+    /// The link is used where UDP's round trip is about TCP's, not
+    /// where the network carries it slower.
+    #[test]
+    fn the_link_isnt_used_where_udp_is_slower() {
+        let ms = Duration::from_millis;
+        assert!(link_is_as_quick(ms(166), ms(167)) && link_is_as_quick(ms(210), ms(167)));
+        assert!(!link_is_as_quick(ms(225), ms(167)), "what was measured: a third slower");
+        assert!(link_is_as_quick(ms(11), ms(1)) && !link_is_as_quick(ms(30), ms(1)), "a host next door");
+        let said = quic_command(Some("/run/it's/rex.sock"), "0a1b2c");
+        assert!(said.contains("olo-rex-link-0a1b2c-$(uname -m)") && said.contains("quic -- rex -S unix://") && said.ends_with("exit 127'"), "{said}");
+    }
 
     /// A channel's window follows the link: what the link brings in a
     /// quarter of a second or three round trips, from whatever it

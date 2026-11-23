@@ -11,6 +11,9 @@
 //! reads. Nothing is written while the gate is locked: a server
 //! that stops reading stops only what goes to it.
 
+#[cfg(feature = "quic")]
+mod quic;
+
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{Sender, channel};
@@ -69,6 +72,16 @@ fn main() {
     if args.first().is_some_and(|a| a == "--version") {
         println!("olo-rex-link {}", olo_rex_link::VERSION);
         return;
+    }
+    // (`quic`: the helper's own link over UDP, where it was built with it.)
+    if args.first().is_some_and(|a| a == "quic") {
+        #[cfg(feature = "quic")]
+        quic::run(args.split_off(1));
+        #[cfg(not(feature = "quic"))]
+        {
+            eprintln!("olo-rex-link: built without its link over UDP");
+            std::process::exit(126);
+        }
     }
     if args.first().is_some_and(|a| a == "--") {
         args.remove(0);

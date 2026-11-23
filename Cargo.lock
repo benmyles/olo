@@ -8598,12 +8598,14 @@ dependencies = [
  "olo-sync",
  "olo-theme",
  "olo-xdg",
+ "quinn",
  "russh",
  "rustls",
  "rustls-platform-verifier 0.6.2",
  "serde",
  "serde_json",
  "serde_path_to_error",
+ "sha2 0.11.1",
  "ssh2-config",
  "thiserror 2.0.21",
  "tokio",
@@ -8624,8 +8626,12 @@ dependencies = [
  "libc",
  "memchr",
  "olo-rex-client",
+ "quinn",
+ "rcgen",
+ "rustls",
  "serde",
  "serde_json",
+ "sha2 0.11.1",
  "tokio",
  "uuid",
 ]
@@ -10407,6 +10413,7 @@ version = "0.11.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e750cca55fe4f0439a15d0bb529da9651e79993e8e72c61a899a36d462befbe"
 dependencies = [
+ "aws-lc-rs",
  "bytes",
  "getrandom 0.4.3",
  "lru-slab",

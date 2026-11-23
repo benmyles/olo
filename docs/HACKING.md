@@ -27817,6 +27817,79 @@ what it does today:
   after idle, it seems: not found out yet; typing never sends so, and
   a paste is one request). Belongs to the link of its own.
 
+**The helper's own link over UDP** (QUIC; 2026-11-23,
+`crates/rex/src/quic.rs`, `crates/rex-link/src/quic.rs`,
+`olo_rex_link::quic_wire`; Ben: "please do work on and implement the
+QUIC link, but just use the C libraries where it saves us a bunch of
+time … let's get it done quickly and efficiently without reinventing
+the world": quinn, rustls with aws-lc, rcgen).
+- *How it is made.* SSH signs in, as ever. Over an SSH session the
+  app starts the helper it put on the host in its `quic` mode (the
+  app's own build, no other), gives it a token made for this link (32
+  random bytes) on its input, and reads one line back: the UDP port it
+  listens on (61100 to 61199 first, one range to open in a firewall)
+  and the SHA-256 of the certificate it made then. The app connects to
+  that port on the address SSH reached, accepting that certificate and
+  no other: SSH vouches for both ends, and whoever else reaches the
+  port can shake hands and no more (a stream begins with the token; one
+  that doesn't closes the link). The helper lives while that SSH
+  channel is open or a link is up, and waits on no clock.
+- *What goes over it.* Every stream to the host's Rex server opened
+  while it is up (`SshSessionPool::open_rex_channel`): each a QUIC
+  stream that the helper joins to a `rex … dial-stdio` of its own (as
+  an SSH channel was joined to one), the control connection's through
+  the helper's gate (`CONTROL`: this program again in front of it) and
+  ahead of the others' bytes. The same bytes as over SSH: the server
+  and everything above the stream know no difference.
+- *When it is used.* Begun behind a host's first streams, never in
+  front of them (`link`): made first it added seven tenths of a second
+  to a connection on a real host. So a host's first streams go over
+  SSH, and those opened once it is up (a new pane, a tab, a connection
+  made again) go over it. Not at all through a ProxyCommand; where UDP
+  doesn't get through (2.5 s for the handshake, `WITHIN`); or where
+  the network carries UDP more slowly than TCP (`link_is_as_quick`: its
+  round trip, as its own packets measure it, against the SSH
+  connection's, a quarter and 10 ms to spare: a letter's echo is one
+  round trip). One that isn't used isn't tried again for ten minutes.
+  A link that fails a stream is given up the same way, and the stream
+  goes over SSH. `OLO_REX_QUIC=no` turns it off, `=yes` waits for it
+  and uses it whatever its round trip (for measuring). 30 s without
+  an answer ends a link (`IDLE`), and the app says it is there every
+  10 s meanwhile (`KEEP_ALIVE`: a dead path is known, a NAT keeps its
+  way; the one thing here that isn't still at rest, while a link is
+  up).
+- *Built for hosts* with TLS in it: its ciphers are C (aws-lc),
+  compiled by zig as the pool's host program's are (`apps/rex/
+  build.rs`; without zig the helper is built without the link, as it
+  was). The helper is 4.6 MB for x86_64 and 3.3 MB for aarch64 with it
+  (0.7 MB without): 2.4 s to put on the real test host.
+- *Measured* on the real test host, over the internet (release of the
+  helper, the client's tests `typing_over_the_link_is_timed` and
+  `a_request_beside_a_flood_is_timed` with `OLO_REX_TEST_HELPER_FILE`
+  and `OLO_REX_QUIC=yes|no`):
+  - A request beside a flood of three million lines, one a second:
+    224 to 268 ms over the link (234 with nothing beside it: the round
+    trip), where over SSH it was 178 to 504 ms (165 beside nothing):
+    the flood holds nothing else up. And the flood itself came faster:
+    18.6 MB in 15 s for 9.9 MB in 17 s.
+  - A letter's echo is the path's round trip either way. But UDP's
+    path there was the slower on most connections: 225 ms on five of
+    eight, 166 on three, where SSH's was 164 to 183 every time. Hence
+    the rule above: on such a connection the link isn't used.
+  - Connecting: 1.25 to 1.7 s with the link made first, 0.67 to 0.73
+    over SSH. Hence behind the first streams.
+- *Tried*: both ends on this computer (`crates/rex-link/tests/quic.rs`:
+  up in 2 ms, eight streams of a megabyte each way at once with every
+  byte in place, another token or another certificate refused, the
+  helper gone once nothing holds it); through the app on the rig
+  (`tools/dev/rex-slow/try.py quic`: waited for, begun by itself, and
+  turned off; what is typed reaches the host each way).
+- *Left* (TODO): streams that were open before the link came up stay
+  on SSH (a pane could be moved over as catching up moves one); what
+  SSH's packing gave on a narrow link (the link packs nothing yet);
+  loss, which is what it is most for and the rig can't make for UDP
+  yet; whether a host's streams are on it, said in the Host window.
+
 **More sessions than a host's SSH connection allows** (2026-11-23).
 Everything Rex has on a host reached over SSH goes over one SSH
 connection, and each stream to its server there (the control
@@ -27836,8 +27909,8 @@ sessions a connection (`tests/host.rs`,
 `more_sessions_than_a_connection_allows`, with the rig's
 `FAR_MAX_SESSIONS=2`): eight commands held open at once, all answered;
 with the overflow turned off it fails with the refusal above. Left
-(TODO): streams that take no session at all (the host's server
-reached by its socket, or one stream carrying many: the QUIC link).
+(TODO): streams over the helper's own link take no session (above),
+once it is up.
 
 **A host made ready for heavy work: the Server window's Limits**
 (2026-11-23, `crates/rex/src/tune.rs`; Ben, when a host's SSH server

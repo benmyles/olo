@@ -208,17 +208,25 @@ fn typing_over_the_link_is_timed() {
             let bytes: &'static [u8] = Box::leak(std::fs::read(&file).expect("the helper's file").into_boxed_slice());
             let builds = [Build { system: "Linux", machines: &["x86_64", "amd64", "aarch64", "arm64"], bytes }];
             let target = SshTarget::parse(&address).expect("an ssh:// address");
-            let stands = helper::ensure(&pool, &target, Some(Arc::new(Nobody)), "test", &builds).await.expect("the helper is put on the host");
+            // (`OLO_REX_TEST_HELPER_NAME`: under another name than
+            // "test", where a build of before is there under that one.)
+            let name = std::env::var("OLO_REX_TEST_HELPER_NAME").unwrap_or_else(|_| "test".to_owned());
+            let stands = helper::ensure(&pool, &target, Some(Arc::new(Nobody)), &name, &builds).await.expect("the helper is put on the host");
             match stands {
                 Stands::Already => println!("the helper was on the host already"),
                 Stands::Installed { bytes, took } => println!("the helper was put on the host: {bytes} bytes in {} ms", took.as_millis()),
                 Stands::NoBuild(_) => println!("the host is of a kind the helper isn't built for"),
             }
-            pool.set_helper(Some("test"));
+            pool.set_helper(Some(&name));
         }
-        let endpoint = RexEndpoint::parse(&address, pool, Some(Arc::new(Nobody))).expect("an address");
+        let endpoint = RexEndpoint::parse(&address, pool.clone(), Some(Arc::new(Nobody))).expect("an address");
+        let began = Instant::now();
         let (stream, host) = endpoint.connect_control_stream().await.expect("the host's Rex server is reached");
         let (ctrl, _events) = ControlClient::connect(stream, &host, ClientIdentity::olo_rex(None), None).await.expect("the control connection");
+        // (The helper's own link over UDP, where the helper put there
+        // has it and UDP gets through: `OLO_REX_QUIC=no` for without.)
+        let linked = pool.linked(&SshTarget::parse(&address).expect("an ssh:// address")).await;
+        println!("the control connection was up {} ms after it was asked for, {}", began.elapsed().as_millis(), if linked { "over the helper's own link (UDP)" } else { "over SSH" });
         let in_order = ctrl.keeps_typing_in_order();
         println!(
             "{}",
@@ -624,9 +632,22 @@ fn a_request_beside_a_flood_is_timed() {
     use std::time::{Duration, Instant};
     let address = std::env::var("OLO_REX_TEST_HOST").expect("OLO_REX_TEST_HOST=ssh://USER@HOST");
     block(async move {
-        let endpoint = RexEndpoint::parse(&address, Arc::new(SshSessionPool::default()), Some(Arc::new(Nobody))).expect("an address");
+        // (`OLO_REX_TEST_HELPER_FILE`, `OLO_REX_TEST_HELPER_NAME`: with
+        // Olo's helper put on the host, as the typing test puts it, and
+        // so over its own link where UDP gets through.)
+        let pool = Arc::new(SshSessionPool::default());
+        if let Ok(file) = std::env::var("OLO_REX_TEST_HELPER_FILE") {
+            use olo_rex_client::helper::{self, Build};
+            let bytes: &'static [u8] = Box::leak(std::fs::read(&file).expect("the helper's file").into_boxed_slice());
+            let builds = [Build { system: "Linux", machines: &["x86_64", "amd64", "aarch64", "arm64"], bytes }];
+            let name = std::env::var("OLO_REX_TEST_HELPER_NAME").unwrap_or_else(|_| "test".to_owned());
+            helper::ensure(&pool, &SshTarget::parse(&address).expect("an ssh:// address"), Some(Arc::new(Nobody)), &name, &builds).await.expect("the helper is put on the host");
+            pool.set_helper(Some(&name));
+        }
+        let endpoint = RexEndpoint::parse(&address, pool.clone(), Some(Arc::new(Nobody))).expect("an address");
         let (stream, host) = endpoint.connect_control_stream().await.expect("the host's Rex server is reached");
         let (ctrl, _events) = ControlClient::connect(stream, &host, ClientIdentity::olo_rex(None), None).await.expect("a control connection");
+        println!("{}", if pool.linked(&SshTarget::parse(&address).expect("an ssh:// address")).await { "over the helper's own link (UDP)" } else { "over SSH" });
         for left in ctrl.session_list().await.expect("the sessions").payload.into_iter().filter(|s| s.label == "olo-flood-test") {
             let _ = ctrl.session_destroy(&left.session_id).await;
         }
