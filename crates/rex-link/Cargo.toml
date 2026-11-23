@@ -14,6 +14,18 @@ path = "src/main.rs"
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
+# (In the build already, under serde_json: the search for a word in a
+# message, which is most of what the helper does to each one.)
+memchr = "2"
+
+# For `tests/server.rs` alone: the helper in front of a real Rex server
+# of the test's own, spoken to as the app speaks to it. (The app's Rex
+# client depends on this crate; only this crate's tests on it.)
+[dev-dependencies]
+olo-rex-client.workspace = true
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time", "io-util"] }
+uuid = { version = "1", features = ["v4"] }
+libc = "0.2"
 
 # The helper itself, run against a stand-in for the server: the stand-in
 # is the test program again, so it has a `main` of its own.

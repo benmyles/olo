@@ -8620,8 +8620,13 @@ dependencies = [
 name = "olo-rex-link"
 version = "0.1.0"
 dependencies = [
+ "libc",
+ "memchr",
+ "olo-rex-client",
  "serde",
  "serde_json",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

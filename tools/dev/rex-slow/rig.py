@@ -11,12 +11,12 @@ Its files are under REX_SLOW_DIR (/var/tmp/olo-rex-slow unless set), a scratch h
 own among them; the app is this tree's build (dev unless `release=True`), in a `tsession`. Nothing is on the
 person's screen or session, and the only processes ended are the ones started here, by their pids. It needs the
 `rex` command (the server it starts is a scratch one, at a socket of its own)."""
-import json, os, shutil, signal, socket, subprocess, sys, time
+import contextlib, json, os, shutil, signal, socket, subprocess, sys, time
 HERE = os.path.dirname(os.path.abspath(__file__))
 D = os.environ.get("REX_SLOW_DIR", "/var/tmp/olo-rex-slow"); R3 = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 ENV = {k: v for k, v in os.environ.items() if k not in ("WAYLAND_DISPLAY", "OLO_SOCKET", "REX_SESSION", "REX_BLOCK", "SSH_AUTH_SOCK")}
 ENV.update(XDG_STATE_HOME=f"{D}/state")
-CODES = dict(zip("qwertyuiop", range(16, 26))) | dict(zip("asdfghjkl", range(30, 39))) | dict(zip("zxcvbnm", range(44, 51))) | {" ": 57, "\n": 28, "\b": 14, "/": 53, "-": 12, ".": 52, "<": 105, ">": 106, "\t": 15}
+CODES = dict(zip("1234567890", range(2, 12))) | dict(zip("qwertyuiop", range(16, 26))) | dict(zip("asdfghjkl", range(30, 39))) | dict(zip("zxcvbnm", range(44, 51))) | {" ": 57, "\n": 28, "\b": 14, "/": 53, "-": 12, ".": 52, "<": 105, ">": 106, "\t": 15}
 PROGRAMS = {
     "shell": "PS1='\\[\\e[1;32m\\]you@far\\[\\e[0m\\]:\\[\\e[1;34m\\]~/project\\[\\e[0m\\]$ ' exec bash --norc -i",
     "box": f"exec /usr/bin/python3 {HERE}/tui.py box",
@@ -70,7 +70,9 @@ class Rig:
         """The far side by itself: the scratch server and the slow link in front of it (at REX_SLOW_DIR/link.sock),
         with Olo's helper behind the link where the rig has one. For what talks to a host without the app."""
         for f in ("rex/rex.sock", "link.sock"):
-            if os.path.exists(f"{D}/{f}"): os.remove(f"{D}/{f}")
+            # (Not "if it is there, remove it": the server of the run before removes its own socket as it
+            # ends, and did so between the two, once.)
+            with contextlib.suppress(FileNotFoundError): os.remove(f"{D}/{f}")
         quiet = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         cmd, env = self.scratch("server")
         self.procs.append(subprocess.Popen(cmd, env=env, cwd=D, **quiet))

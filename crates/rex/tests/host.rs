@@ -415,3 +415,69 @@ fn typing_over_the_link_is_timed() {
         }
     });
 }
+
+/// Olo's helper on a real host says how a terminal reads unasked
+/// (`olo_rex_link::Teller`): a shell of this test's own there, a line
+/// that is over at once, a command of two seconds, and what the helper
+/// says of each and when, as the host's own server makes it say it
+/// (its messages are the server's own, whatever its version). With
+/// `OLO_REX_TEST_HELPER_FILE`, the build of the helper to put there, as
+/// `typing_over_the_link_is_timed` takes it. The session is ended.
+#[test]
+#[ignore = "needs a real host: OLO_REX_TEST_HOST"]
+fn the_helper_says_a_prompt_on_a_real_host() {
+    use olo_rex_client::{ClientIdentity, ControlClient, ControlEvent, RexEndpoint};
+    use std::time::{Duration, Instant};
+    let address = std::env::var("OLO_REX_TEST_HOST").expect("OLO_REX_TEST_HOST=ssh://USER@HOST");
+    block(async move {
+        let pool = Arc::new(SshSessionPool::default());
+        let file = std::env::var("OLO_REX_TEST_HELPER_FILE").expect("OLO_REX_TEST_HELPER_FILE: the helper, built for the host");
+        {
+            use olo_rex_client::helper::{self, Build};
+            let bytes: &'static [u8] = Box::leak(std::fs::read(&file).expect("the helper's file").into_boxed_slice());
+            let builds = [Build { system: "Linux", machines: &["x86_64", "amd64", "aarch64", "arm64"], bytes }];
+            let target = SshTarget::parse(&address).expect("an ssh:// address");
+            // (Named for what it is: a build put there under the same
+            // name before would be taken for this one.)
+            let name = format!("test{:08x}", bytes.iter().fold(0x811c_9dc5u32, |hash, byte| (hash ^ u32::from(*byte)).wrapping_mul(0x0100_0193)));
+            helper::ensure(&pool, &target, Some(Arc::new(Nobody)), &name, &builds).await.expect("the helper is put on the host");
+            pool.set_helper(Some(&name));
+        }
+        let endpoint = RexEndpoint::parse(&address, pool, Some(Arc::new(Nobody))).expect("an address");
+        let (stream, host) = endpoint.connect_control_stream().await.expect("the host's Rex server is reached");
+        let (ctrl, mut events) = ControlClient::connect(stream, &host, ClientIdentity::olo_rex(None), None).await.expect("the control connection");
+        assert!(ctrl.keeps_typing_in_order(), "the connection goes through the helper");
+        let created = ctrl.session_create(Some("olo-prompt-test"), Some(serde_json::json!({"command": ["bash", "--norc", "-i"]}))).await.expect("a session");
+        let sid = created.payload["session_id"].as_str().unwrap().to_owned();
+        let bid = created.payload["initial_windows"][0]["block_ids"][0].as_str().unwrap().to_owned();
+        ctrl.session_bootstrap("all", Some(&sid), None, &[]).await.expect("the session's events");
+        tokio::time::sleep(Duration::from_millis(1500)).await;
+        let mut failed = None;
+        for (line, what) in [("true\r", "a line over at once"), ("sleep 2\r", "a command of two seconds")] {
+            let sent = Instant::now();
+            ctrl.send_terminal_write(&sid, &bid, line).expect("sent").await.expect("the line is taken");
+            let taken = sent.elapsed();
+            let mut reads = None;
+            while let Ok(Some(envelope)) = tokio::time::timeout_at((sent + Duration::from_secs(6)).into(), events.recv()).await {
+                if let ControlEvent::BlockEvent { block_id, name, payload, .. } = envelope.event
+                    && block_id == bid
+                    && name == "input_mode_changed"
+                    && payload.get("shell").is_some()
+                {
+                    let at = sent.elapsed();
+                    println!("{what}: after {} ms the helper says echo {} canonical {} shell {} after {}", at.as_millis(), payload["echo"], payload["canonical"], payload["shell"], payload["after"]);
+                    if payload["shell"] == true && payload["echo"] == false && payload["canonical"] == false && payload["after"] == ctrl.last_typed().to_string() {
+                        reads = Some(at);
+                        break;
+                    }
+                }
+            }
+            match reads {
+                Some(at) => println!("{what}: the line was taken in {} ms (a round trip), and the shell said to read {} ms after it was sent", taken.as_millis(), at.as_millis()),
+                None => failed = Some(what),
+            }
+        }
+        let _ = ctrl.session_destroy(&sid).await;
+        assert_eq!(failed, None, "the helper never said the shell reads again");
+    });
+}

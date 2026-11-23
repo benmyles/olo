@@ -27380,16 +27380,18 @@ once over a slow or laggy link").
   sessions: expect it to find what the old ones didn't, and fix each
   where it is. (A session's number in a failure is `n % 2400`: play
   `n` and `n + 2400`, `PLAY_ONLY=N PLAY_SAY=1`.)
-- *What it leaves*: the question takes a round trip, so the first
-  letter after an Enter is drawn at once only when the person pauses
-  that long (the played typist, who pauses to read after half their
-  Enters, three lines in ten of whose are a secret's: 30 in a hundred
-  first letters at 35 ms each way, 21 at 90, 12 at 200, 2 at 450; of
-  all letters 84, 71, 51 and 25, and with each key sent as typed 85,
-  77, 65 and 40). The host's helper saying it unasked, with the
-  prompt, is the host's half, with a lost packet's second or two and
-  the seven round trips of connecting; a key's one and a half round
-  trips were, and are one now (next).
+- *What it leaves*: asked, the question takes a pause and a round
+  trip, so the first letter after an Enter is drawn at once only when
+  the person pauses that long (the played typist, who pauses to read
+  after half their Enters, three lines in ten of whose are a secret's:
+  30 in a hundred first letters at 35 ms each way, 21 at 90, 12 at 200,
+  2 at 450; of all letters 84, 71, 51 and 25). Where Olo's helper is on
+  the host it says so unasked, a moment after each line is ended
+  (below, "How a terminal reads, said unasked": 50, 40, 34 and 23 first
+  letters in a hundred, and 88, 80, 68 and 46 of all letters). What is
+  left then is a letter typed before the line before it has so much as
+  reached the host, a lost packet's second or two, and the seven round
+  trips of connecting (the host's half, TODO).
 
 **A helper on the host** (`crates/rex-link`, `olo-rex-link`,
 2026-11-22; Ben: "if it's helpful to have e.g. a daemon server side to
@@ -27399,8 +27401,8 @@ be the best ever implementation for this kind of thing"). A small
 program of Olo's own that the app puts on a host reached over SSH and
 runs there in front of the Rex server, for what can only be done at
 the host's end of a slow link. It is the foundation of the host's half
-(TODO: a shell's prompt said unasked, a link of its own over UDP,
-connecting in fewer round trips); what it does today:
+(TODO: a link of its own over UDP, connecting in fewer round trips);
+what it does today:
 - *Every key in one round trip.* It stands between the app's control
   connection and the server (`rex __internal dial-stdio`, which it
   runs), passes everything as it comes, byte for byte, and holds a
@@ -27431,6 +27433,99 @@ connecting in fewer round trips); what it does today:
   under a caret a program draws, a letter of the line's own must be on
   the screen (a caret gone right over a letter leaves the same text
   before it as that letter typed again: `Line::is`).
+- *How a terminal reads, said unasked* (2026-11-23, `Teller`; its
+  number 2). The app draws the first letter typed at a shell's prompt
+  at once where the host says the shell itself reads there ("The first
+  letter at a shell's prompt"), and asking that across the link takes
+  a pause and a round trip after every command. The helper asks
+  beside the server, where it takes a millisecond, and tells the app:
+  80 ms after the server has taken a line's end typed into a terminal
+  (`AFTER_ENTER`: a command that does nothing to speak of is over by
+  then), and 40 ms after the server says the terminal's foreground
+  process changed (`AFTER_PROCESS`: a longer command's end, which the
+  server says about 100 ms after it), it sends the server two requests
+  of its own (`terminal.input_mode`, `terminal.process`; ids
+  `olo-rex-link-N-m` and `-p`, their answers taken out of what goes to
+  the app) and gives the app one event of that terminal,
+  `input_mode_changed` (a name the app had a place for and the server
+  never sends), with `echo`, `canonical`, `signals`, `shell` (the
+  terminal's first process is in its foreground) and `after`. While
+  the shell isn't reading it looks again 40, 80, 160, 320 and 640 ms
+  on (`ASKED_AGAIN`: a prompt that takes its time, a command too quick
+  for the server to have said it ran), then no more until something
+  happens there; and it says only what differs from what it last said
+  of that terminal, so a command costs the link two small events, and
+  a terminal where nothing happens costs nothing.
+  - *The word is exact, or not given.* `after` is the id of the last
+    typed request (of the connection) that the server had answered
+    when the helper asked; it never asks while something typed is
+    unanswered, and drops a word that something typed overtook before
+    both answers were in. The app keeps the id of the last request it
+    typed (`ControlClient::last_typed`, set as it is sent) and trusts
+    a word only where `after` is that (`BlockRuntime::
+    host_says_prompt`): then the terminal was looked at after
+    everything this app typed had been taken. Trusted so, it is what
+    the asked answer is (`Predictor::prompt_said`): only at a known
+    prompt drawn now, with nothing typed on its way. Tried when the
+    word comes, when a key is typed (the prompt's frame may come after
+    the word) and before the app would ask (which it then doesn't).
+    Its event is numbered 0, as nothing of the server's is: it has no
+    place among the server's events and takes none
+    (`EventSequence::next`).
+  - *What it can't know*: a host so loaded that its shell hasn't run
+    80 ms after the server wrote the Enter is looked at too early, and
+    says what stood before. The app's own conditions are what holds
+    then (a known prompt, drawn again, nothing typed since): the
+    played sessions have the helper look too early four times in a
+    hundred, and no secret is drawn. A secret read at a line that
+    *looks* like the prompt, by a program that reads key by key, would
+    be drawn as it is where the host is asked; nothing real does that.
+  - *Measured.* Against a real server (`tests/server.rs`): said 80 ms
+    after the server took a line that is over at once, and 141 ms
+    after a command of two seconds ended. On the test host over its
+    own link (a round trip of 255 ms; the client's `tests/host.rs`,
+    `the_helper_says_a_prompt_on_a_real_host`): the shell said to read
+    344 ms after a line over at once was sent, 81 ms behind the line's
+    own answer (asked, a pause and a round trip behind it: 400 ms and
+    more), and 2,394 ms after `sleep 2` was. On the rig at 1,000 ms each
+    way (`tools/dev/rex-slow/try.py prompt` and `secrets`, with
+    `--helper`), a letter typed half a second after a command's prompt
+    could be back, and one typed 600 ms after a two-second command's:
+    not drawn until its echo before (all 68 pixels of it still to
+    come in a picture taken 1.2 s later, three runs of each), drawn at
+    once now (none to come, three runs of each); a secret (`read -s
+    -p`, `read -es -p`, `read -es`), typed soon after its Enter and
+    after a pause: no ink. (The measurement judges its own pictures:
+    one that took nearly a round trip says nothing and is taken
+    again; at 400 ms each way a busy computer's pictures were too
+    slow to tell.) The played typist with the
+    helper: 50, 40, 34 and 23 first letters in a hundred at 35, 90,
+    200 and 450 ms each way (32, 26, 19 and 8 asked), and 88, 80, 68
+    and 46 of all letters (85, 77, 65, 40). The helper's own cost
+    (release, its threads' instructions, `perf stat --no-scale`:
+    `tools/dev/rex-slow/helper-cost.py`): a
+    letter 16,610 before and 16,790 after; a line ended 16,840 and
+    135,500 (the look: two requests, two answers, one event); at rest
+    0 and 0. The app's own threads on a far host with its helper
+    (release, three alternating runs): 200 letters 223.7 to 228.1
+    million instructions before and 225.0 to 227.6 after; 20 short
+    lines run 317 to 341 million before and 288 to 323 after (the
+    spread is the frames a run paints); at rest 0.0% and no wakeups
+    in 6 s, before and after. Reading a message twice (the gate and the teller each)
+    had doubled a letter's cost, and a searcher made at every search
+    cost 5,000 more: each message is read once for both (`typed_in`,
+    `answered_in`), and the searchers are made once (`WORDS`).
+  - *The stand-in isn't the server.* `tests/through.rs` runs the
+    helper against a stand-in that answers as its author thought the
+    server does, and the helper passed there while looking for a block
+    event's name under `event`: the server writes `name` (the app
+    reads either), so on a real host no command's end was ever seen.
+    The rig showed it (the letter after `sleep 2` wasn't drawn), and
+    `tests/server.rs` holds it now: the helper itself in front of a
+    real scratch server (`crates/rex/tests/scratch`, shared with the
+    client's `live.rs`), what it says unasked held to what the server
+    says asked. Whatever the helper takes from the server's own
+    messages gets a test there.
 - *What it knows of the connection*: where the HTTP upgrade ends,
   where each WebSocket frame ends, and of a text frame whether it is
   one of those requests or the answer to the one waited for (`Scanner`,
@@ -27443,15 +27538,20 @@ connecting in fewer round trips); what it does today:
   helper is there, and nothing is held); what is cut off by either
   end's going is passed on before the helper ends. `main.rs` is four
   threads, each waiting on one thing and none on a clock unless a
-  request is held; nothing is written while the gate is locked, and
+  request is held or a terminal is to be asked about (a request of
+  the helper's own goes to the server between two frames of the
+  app's, never into one that passes in parts); nothing is written
+  while the gate is locked, and
   what the server doesn't read is no longer read from the app past 4
   MiB. A request is held for another's answer as long as the app
   itself waits for one (`HELD_AT_MOST`, 30 s: a server stopped, or a
   program that isn't reading, gets what was typed in order for as long
   as it did before); then all that waited goes on together. It says it
   is there by a header in the server's answer to the upgrade
-  (`X-Olo-Rex-Link: 1`, its `VERSION`: the app asks of a helper only
-  what its number says it does).
+  (`X-Olo-Rex-Link: 2`, its `VERSION`: the app asks of a helper only
+  what its number says it does; 1 kept typing in order, 2 says how a
+  terminal reads too. An older build left on a host after an upgrade
+  says nothing unasked, and the app asks as before).
 - *Carried in the app, built for the hosts* (`apps/rex/build.rs`,
   `src/link.rs`): the app's build script builds the helper for
   x86_64 and aarch64 Linux, statically (musl: it runs on any Linux of

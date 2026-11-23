@@ -140,6 +140,12 @@ pub struct BlockRuntime {
     /// When the predictions are next looked at for what time brings
     /// (one wait, begun when there is something to wait for).
     predict_wake: Option<Instant>,
+    /// The host's helper said, unasked, that the shell itself reads
+    /// this terminal at its line editor: the number of the last typed
+    /// request the server had taken when it looked
+    /// ([`ControlClient::last_typed`]); 0, before any. `None` where it
+    /// said otherwise, or nothing.
+    host_reads: Option<u64>,
     /// For how many seconds the host is said (in the window's status
     /// bar) to have been silent about something typed.
     stall_said: Option<u64>,
@@ -253,6 +259,7 @@ impl BlockRuntime {
             input_ready: false,
             predict: crate::predict::Predictor::new(false),
             predict_wake: None,
+            host_reads: None,
             stall_said: None,
             updating_since: None,
             received_bytes: 0,
@@ -320,6 +327,23 @@ impl BlockRuntime {
         }
         None
     }
+    /// The host's helper has said its shell reads here
+    /// ([`Self::host_reads`]), having looked after everything typed on
+    /// the connection (`typed`, [`ControlClient::last_typed`], is what
+    /// its word names): where the caret stands at a prompt known to
+    /// echo on `screen`, the terminal as drawn now, what is typed next
+    /// is drawn at once, as when the host is asked (`ask_the_host`),
+    /// without the asking. Whether it is trusted so now.
+    fn host_says_prompt(&mut self, typed: u64, screen: Option<&crate::predict::Screen>) -> bool {
+        if self.host_reads != Some(typed) {
+            return false;
+        }
+        match self.predict.wants_prompt(screen) {
+            Some(asked) => self.predict.prompt_said(asked, true, screen),
+            None => false,
+        }
+    }
+
     /// The caret's row of the frame as last captured, for predictions:
     /// none while text is being selected by keys or the pane looks
     /// back at what scrolled away (nothing typed is seen go in there).
@@ -2257,11 +2281,19 @@ impl RexHub {
     /// changes what is drawn (a letter shown at once), the pane is
     /// drawn again.
     fn input_typed(&self, key: &BlockKey, data: &[u8]) -> u64 {
-        let Some(block) = self.state.lock().unwrap_or_else(|e| e.into_inner()).blocks.get(key).cloned() else { return 0 };
+        let (block, last_typed) = {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            (st.blocks.get(key).cloned(), st.hosts.get(&key.host_key).and_then(|h| h.control.as_ref()).map_or(0, |ctrl| ctrl.last_typed()))
+        };
+        let Some(block) = block else { return 0 };
         let (seq, changed) = {
             let mut b = block.lock().unwrap_or_else(|e| e.into_inner());
             // (Typed on what was last drawn of it.)
             let screen = b.caret_screen();
+            // (Where the host's helper has said its shell reads here and
+            // a known prompt has been drawn since: this key is drawn at
+            // once.)
+            b.host_says_prompt(last_typed, screen.as_ref());
             b.predict.typed(data, screen.as_ref(), Instant::now())
         };
         if changed {
@@ -3918,7 +3950,21 @@ impl RexHubInner {
                             "input_mode_changed" => {
                                 if let Some(echo) = payload.get("echo").and_then(Value::as_bool) {
                                     // (No word of `canonical`: taken as on, as it is at a terminal's start.)
-                                    g.set_password_prompt(asks_for_secret(echo, payload.get("canonical").and_then(Value::as_bool).unwrap_or(true)));
+                                    let canonical = payload.get("canonical").and_then(Value::as_bool).unwrap_or(true);
+                                    g.set_password_prompt(asks_for_secret(echo, canonical));
+                                    // (The helper's, said unasked: with `shell`, whether the
+                                    // terminal's own first process is in its foreground, and
+                                    // `after`, the last thing typed that the server had taken
+                                    // when it looked. The server has no such event of its own.)
+                                    if let Some(shell) = payload.get("shell").and_then(Value::as_bool) {
+                                        let after = match payload.get("after") {
+                                            Some(Value::String(id)) => id.parse::<u64>().ok(),
+                                            _ => Some(0),
+                                        };
+                                        g.host_reads = after.filter(|_| shell && !echo && !canonical);
+                                        let screen = g.caret_screen();
+                                        g.host_says_prompt(ctrl.last_typed(), screen.as_ref());
+                                    }
                                 }
                             }
                             "program_status_changed" | "program_status_removed" => {
@@ -4223,8 +4269,11 @@ struct PaletteEntry {
 /// whose echo is quick, or that isn't at such a prompt.
 async fn ask_the_host(br: &Arc<Mutex<BlockRuntime>>, ctrl: &ControlClient, bk: &BlockKey, notify: &Arc<dyn Fn(HubNotice) + Send + Sync>) {
     let asked = {
-        let b = br.lock().unwrap_or_else(|e| e.into_inner());
-        b.predict.wants_prompt(b.caret_screen().as_ref())
+        let mut b = br.lock().unwrap_or_else(|e| e.into_inner());
+        let screen = b.caret_screen();
+        // (Not asked what the host's helper has said already.)
+        b.host_says_prompt(ctrl.last_typed(), screen.as_ref());
+        b.predict.wants_prompt(screen.as_ref())
     };
     let (mode, process) = match asked {
         Some(_) => match tokio::try_join!(ctrl.terminal_input_mode(&bk.session_id, &bk.block_id), ctrl.terminal_process(&bk.session_id, &bk.block_id)) {

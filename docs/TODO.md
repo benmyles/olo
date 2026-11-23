@@ -1197,20 +1197,25 @@ something nobody here has is in "Blocked", with what it waits for.
       trip later, with the helper and without. Which window holds
       them (ours after idle, the host's) isn't found out; typing never
       sends so. For the link of its own.
-    - *A shell's prompt said unasked.* The app's half is done
-      (2026-11-23; HACKING, "The first letter at a shell's prompt"):
-      at a prompt known to echo it asks the host what reads the
-      terminal, and draws the next letter at once where that is the
-      shell at its line editor. The asking takes a round trip, so
-      only a person who pauses that long gains (the played typist: 30
-      first letters in a hundred at 35 ms each way, 2 at 450). The
-      helper knows what the app asks for (the Rex server's own
-      `terminal.process` and `input_mode`, asked on the host for
-      nothing) and can say it in the stream of the terminal's output
-      as the prompt is drawn: then the first letter is at once after
-      every Enter. Never by the pty's own queues (on Linux a pty's far
-      side says nothing of them, and holding it open keeps a pane from
-      closing). Programs that aren't shells stay on mosh's rule.
+    - *A shell's prompt said unasked*: done (2026-11-23; HACKING, "How
+      a terminal reads, said unasked"). Left of it:
+      - A letter typed before the line before it has reached the host
+        (someone who doesn't wait for the prompt) is still not drawn
+        until a letter of it is back: nothing at either end knows what
+        the command will leave reading the terminal.
+      - The app still asks the terminal's mode at every pause in its
+        output (one small request each: a secret asked for is shown by
+        it). The helper says the mode after each line and each change
+        of the foreground, and a little after; a program that asks for
+        a secret later than that (a sign-in that takes two seconds to
+        get to its prompt) is only caught by the asking. The helper
+        could watch such a terminal instead (the server has no event
+        for the mode), and the asking go.
+      - A host too loaded to run its shell within 80 ms of an Enter is
+        looked at too early. Nothing is drawn wrongly then (the app's
+        own conditions hold), but the word is of the wrong moment: the
+        server could say when the shell has read what was written, if
+        Rex grows that.
     - *A link of its own over UDP* (QUIC: `quinn`, with a cipher in
       Rust alone so the helper is built for x86_64 and aarch64 hosts
       with no C toolchain; the key handed over SSH; the same frames

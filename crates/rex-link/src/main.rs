@@ -4,10 +4,11 @@
 //! and stands between: see the library.
 //!
 //! Four threads, each waiting on one thing and none on a clock unless
-//! something is held: what the app sends (to the gate), what the gate
-//! lets go (to the server), what the server sends (to the app, and an
-//! answer to the gate), and the time after which a held request waits
-//! no longer. Nothing is written while the gate is locked: a server
+//! something is held or to be asked: what the app sends (to the gate),
+//! what the gate lets go (to the server), what the server sends (to
+//! the app, and an answer to the gate), and the time after which a
+//! held request waits no longer or the teller asks how a terminal
+//! reads. Nothing is written while the gate is locked: a server
 //! that stops reading stops only what goes to it.
 
 use std::io::{Read, Write};
@@ -16,7 +17,7 @@ use std::sync::mpsc::{Sender, channel};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Instant;
 
-use olo_rex_link::{Gate, Piece, Scanner, announced, upgraded};
+use olo_rex_link::{Gate, Piece, Scanner, Teller, announced, answered_in, typed_in, upgraded};
 
 /// The most that waits to be written to the server before no more is
 /// read from the app (which SSH then holds back in its turn).
@@ -26,7 +27,20 @@ const MOST_WAITING: usize = 4 << 20;
 /// what passes the gate is queued in the order it passed).
 struct Onward {
     gate: Gate,
+    /// What the helper asks of the server itself, and tells the app.
+    teller: Teller,
+    /// Part of a frame too large to keep has come from the app, and
+    /// the rest hasn't.
+    mid_frame: bool,
     to_server: Option<Sender<Vec<u8>>>,
+}
+
+impl Onward {
+    /// Whether what goes to the server stands between two frames: a
+    /// request of the helper's own can go there.
+    fn between_frames(&self) -> bool {
+        !self.mid_frame && !self.gate.holds_raw()
+    }
 }
 
 struct Shared {
@@ -76,7 +90,12 @@ fn main() {
         None => Gate::new(),
     };
     let (to_server, queued) = channel::<Vec<u8>>();
-    let shared = Arc::new(Shared { onward: Mutex::new(Onward { gate, to_server: Some(to_server) }), changed: Condvar::new(), waiting: Mutex::new(0), written: Condvar::new() });
+    let shared = Arc::new(Shared {
+        onward: Mutex::new(Onward { gate, teller: Teller::new(), mid_frame: false, to_server: Some(to_server) }),
+        changed: Condvar::new(),
+        waiting: Mutex::new(0),
+        written: Condvar::new(),
+    });
     let mut server_in = child.stdin.take().expect("the server's side");
     let mut from_server = child.stdout.take().expect("the server's side");
 
@@ -108,9 +127,13 @@ fn main() {
             {
                 let mut onward = up.onward.lock().unwrap_or_else(|e| e.into_inner());
                 for piece in scanner.push(&buf[..n]) {
-                    let gone = onward.gate.from_app(piece, Instant::now());
+                    // (Read once, for both.)
+                    let typed = typed_in(&piece);
+                    onward.teller.from_app_as(&piece, typed.as_deref());
+                    let gone = onward.gate.from_app_as(piece, typed, Instant::now());
                     up.send(&mut onward, gone);
                 }
+                onward.mid_frame = scanner.mid_frame();
                 if onward.to_server.is_none() {
                     return;
                 }
@@ -144,11 +167,20 @@ fn main() {
     std::thread::spawn(move || {
         let mut onward = timer.onward.lock().unwrap_or_else(|e| e.into_inner());
         loop {
-            onward = match onward.gate.deadline() {
+            // (And the teller's questions at theirs: a request of the
+            // helper's own goes to the server between two frames of the
+            // app's, never into one that is passing in parts.)
+            let at = [onward.gate.deadline(), onward.teller.deadline().filter(|_| onward.between_frames())].into_iter().flatten().min();
+            onward = match at {
                 Some(at) => {
                     let (mut onward, _) = timer.changed.wait_timeout(onward, at.saturating_duration_since(Instant::now())).unwrap_or_else(|e| e.into_inner());
-                    let gone = onward.gate.tick(Instant::now());
+                    let now = Instant::now();
+                    let gone = onward.gate.tick(now);
                     timer.send(&mut onward, gone);
+                    if onward.between_frames() {
+                        let asked = onward.teller.tick(now);
+                        timer.send(&mut onward, asked);
+                    }
                     onward
                 }
                 None => timer.changed.wait(onward).unwrap_or_else(|e| e.into_inner()),
@@ -174,10 +206,39 @@ fn main() {
         if refused {
             pieces.extend(scanner.plain());
         }
-        for piece in &pieces {
-            let sent = match piece {
-                Piece::Head(head) => stdout.write_all(&announced(head)),
-                other => stdout.write_all(other.bytes()),
+        // What the teller takes out, or puts in its place (the answers
+        // to its own requests, and the event that says them); and what
+        // an answer lets on to the server, which is queued here and
+        // written by its own thread.
+        let mut instead: Vec<(usize, Vec<u8>)> = Vec::new();
+        {
+            let mut onward = shared.onward.lock().unwrap_or_else(|e| e.into_inner());
+            let now = Instant::now();
+            if refused {
+                onward.teller.off();
+                let gone = onward.gate.open(now);
+                shared.send(&mut onward, gone);
+            }
+            for (i, piece) in pieces.iter().enumerate() {
+                // (Read once, for both, and only where an answer is
+                // waited for.)
+                let answered = if onward.gate.waits() || onward.teller.waits() { answered_in(piece) } else { None };
+                match onward.teller.from_server_as(piece, answered.as_deref(), now) {
+                    Some(bytes) => instead.push((i, bytes)),
+                    None => {
+                        let gone = onward.gate.answered(answered.as_deref(), now);
+                        shared.send(&mut onward, gone);
+                    }
+                }
+            }
+        }
+        shared.changed.notify_all();
+        let mut instead = instead.iter().peekable();
+        for (i, piece) in pieces.iter().enumerate() {
+            let sent = match (instead.next_if(|(at, _)| *at == i), piece) {
+                (Some((_, bytes)), _) => stdout.write_all(bytes),
+                (None, Piece::Head(head)) => stdout.write_all(&announced(head)),
+                (None, other) => stdout.write_all(other.bytes()),
             };
             if sent.is_err() {
                 std::process::exit(0);
@@ -186,18 +247,6 @@ fn main() {
         if stdout.flush().is_err() {
             std::process::exit(0);
         }
-        let mut onward = shared.onward.lock().unwrap_or_else(|e| e.into_inner());
-        let now = Instant::now();
-        if refused {
-            let gone = onward.gate.open(now);
-            shared.send(&mut onward, gone);
-        }
-        for piece in &pieces {
-            let gone = onward.gate.from_server(piece, now);
-            shared.send(&mut onward, gone);
-        }
-        drop(onward);
-        shared.changed.notify_all();
     }
     // (The server's last bytes, a piece cut off among them.)
     if let Some(piece) = scanner.rest() {

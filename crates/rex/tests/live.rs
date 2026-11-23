@@ -1,143 +1,14 @@
 //! Wire contracts against the installed server. Each test owns its socket,
 //! process tree, home, and network namespace (including embedded Tailscale).
-use std::{
-    fs,
-    os::unix::fs::DirBuilderExt,
-    path::PathBuf,
-    process::{Child, Command, Stdio},
-    time::Duration,
-};
+use std::{fs, path::PathBuf, time::Duration};
 
 use olo_rex_client::*;
 use serde_json::{Value, json};
-use tokio::{
-    sync::mpsc,
-    time::{sleep, timeout},
-};
+use tokio::time::{sleep, timeout};
 use uuid::Uuid;
 
-type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
-type Events = mpsc::UnboundedReceiver<ControlEventEnvelope>;
-
-struct Scratch {
-    child: Child,
-    dir: PathBuf,
-    sock: PathBuf,
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-        let _ = fs::remove_dir_all(&self.dir);
-    }
-}
-
-impl Scratch {
-    async fn start() -> Result<Option<Self>> {
-        let rex = find_rex_binary();
-        if !rex.is_file() && !std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()).any(|d| d.join(&rex).is_file()) {
-            eprintln!("skipping live Rex contract test: rex is not installed");
-            return Ok(None);
-        }
-        if !std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()).any(|dir| dir.join("bwrap").is_file()) {
-            eprintln!("skipping live Rex contract test: bwrap is not installed");
-            return Ok(None);
-        }
-        let root = std::env::var_os("OLO_REX_TEST_DIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/var/tmp"));
-        let dir = root.join(format!("rex-{}", &Uuid::new_v4().simple().to_string()[..12]));
-        let home = dir.join("home");
-        let runtime = dir.join("run");
-        let sock = dir.join("rex.sock");
-        fs::DirBuilder::new().mode(0o700).create(&dir)?;
-        for sub in [&home, &runtime, &dir.join("tmp")] {
-            fs::DirBuilder::new().mode(0o700).create(sub)?;
-        }
-        // Rex also takes a per-endpoint startup lock below /run/user/UID.
-        // Map that and /tmp to scratch disk. No host /home, /run or network.
-        let addr = format!("unix://{}", sock.display());
-        let uid = unsafe { libc::geteuid() };
-        let child = Command::new("bwrap")
-            .args([
-                "--die-with-parent",
-                "--unshare-net",
-                "--unshare-pid",
-                "--new-session",
-                "--ro-bind",
-                "/usr",
-                "/usr",
-                "--ro-bind",
-                "/etc",
-                "/etc",
-                "--ro-bind",
-                "/bin",
-                "/bin",
-                "--ro-bind",
-                "/lib",
-                "/lib",
-                "--ro-bind-try",
-                "/lib64",
-                "/lib64",
-                "--dev",
-                "/dev",
-                "--proc",
-                "/proc",
-                "--bind",
-            ])
-            .arg(&dir)
-            .arg(&dir)
-            .args(["--dir", "/run/user", "--bind"])
-            .arg(&runtime)
-            .arg(format!("/run/user/{uid}"))
-            .arg("--bind")
-            .arg(dir.join("tmp"))
-            .arg("/tmp")
-            .arg("--chdir")
-            .arg(&home)
-            .args(["--clearenv", "--setenv", "PATH", "/usr/local/bin:/usr/bin:/bin", "--setenv", "SHELL", "/bin/sh", "--setenv", "HOME"])
-            .arg(&home)
-            .args(["--setenv", "XDG_RUNTIME_DIR"])
-            .arg(&runtime)
-            .args(["--setenv", "XDG_STATE_HOME"])
-            .arg(dir.join("state"))
-            .args(["--setenv", "REX_SERVER_SOCKET"])
-            .arg(&sock)
-            .arg("--")
-            .arg(rex)
-            .args(["-S", &addr, "server", "run", "--listen", &addr, "--state-dir"])
-            .arg(dir.join("rex-state"))
-            .arg("--restore=false")
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(fs::File::create(dir.join("server.log"))?)
-            .spawn()?;
-        let mut server = Self { child, dir, sock };
-        timeout(Duration::from_secs(5), async {
-            loop {
-                if tokio::net::UnixStream::connect(&server.sock).await.is_ok() {
-                    return Ok::<(), std::io::Error>(());
-                }
-                if let Some(status) = server.child.try_wait()? {
-                    return Err(std::io::Error::other(format!("scratch Rex exited {status}: {}", fs::read_to_string(server.dir.join("server.log"))?)));
-                }
-                sleep(Duration::from_millis(20)).await;
-            }
-        })
-        .await
-        .map_err(|_| "scratch Rex did not start in five seconds")??;
-        Ok(Some(server))
-    }
-
-    async fn connect(&self) -> Result<(ControlClient, Events)> {
-        let stream = tokio::net::UnixStream::connect(&self.sock).await?;
-        Ok(ControlClient::connect_unix(stream, ClientIdentity::olo_rex(None)).await?)
-    }
-
-    async fn session(&self, ctrl: &ControlClient, label: &str) -> Result<(String, String, String)> {
-        let r = ctrl.session_create(Some(label), Some(json!({"command":["/bin/sh"],"cwd": self.dir.join("home")}))).await?.payload;
-        Ok((r["session_id"].as_str().unwrap().into(), r["initial_windows"][0]["window_id"].as_str().unwrap().into(), r["initial_windows"][0]["block_ids"][0].as_str().unwrap().into()))
-    }
-}
+mod scratch;
+use scratch::{Events, Result, Scratch};
 
 async fn event(events: &mut Events, predicate: impl Fn(&ControlEvent) -> bool) -> Result<ControlEvent> {
     Ok(timeout(Duration::from_secs(4), async {
@@ -623,6 +494,38 @@ async fn what_a_program_copies_is_told_short_and_read_long() -> Result {
             Some(said) => assert_eq!(said, text, "what is short comes with the word of it"),
             None => assert!(len > 4096, "only what is long comes without its text: {len}"),
         }
+    }
+    Ok(())
+}
+
+/// What the server says of a terminal's process and input mode, and
+/// when, as a command starts and ends and as a line is read: timed, to
+/// know what a host's helper can go by (run by hand: `--ignored
+/// --nocapture`).
+#[tokio::test]
+#[ignore]
+async fn what_the_server_says_as_a_command_runs_is_timed() -> Result {
+    let Some(server) = Scratch::start().await? else { return Ok(()) };
+    let (ctrl, mut events) = server.connect().await?;
+    let (sid, _, bid) = server.session(&ctrl, "says").await?;
+    ctrl.session_bootstrap("all", Some(&sid), None, &[]).await?;
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+    for command in ["sleep 1\n", "true\n", "read -s x\n", "\n", "read -es y\n", "\n"] {
+        let t = std::time::Instant::now();
+        eprintln!("--- {command:?}");
+        ctrl.terminal_write(&sid, &bid, command).await?;
+        let until = t + std::time::Duration::from_millis(2600);
+        while let Ok(Some(e)) = tokio::time::timeout_at(until.into(), events.recv()).await {
+            if let ControlEvent::BlockEvent { name, payload, .. } = e.event
+                && (name == "process_changed" || name == "input_mode_changed")
+            {
+                let short: String = payload.to_string().chars().take(230).collect();
+                eprintln!("{:5} ms  {name}  {short}", t.elapsed().as_millis());
+            }
+        }
+        let mode = ctrl.terminal_input_mode(&sid, &bid).await?.payload;
+        let process = ctrl.terminal_process(&sid, &bid).await?.payload;
+        eprintln!("      asked: echo {} canonical {}; child {:?} foreground {:?}", mode.echo, mode.canonical, process.child.map(|p| (p.pid, p.name)), process.foreground.map(|p| (p.pid, p.name)));
     }
     Ok(())
 }

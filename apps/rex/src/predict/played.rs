@@ -273,6 +273,16 @@ fn play(plan: Plan, keys: usize) -> Tally {
         /// reaches the host; and the host's answer the app.
         Asked(u64),
         Said(u64, bool),
+        /// The helper on the host looks at how the terminal reads, a
+        /// moment after the host took an Enter and a few times more
+        /// while the shell doesn't read: which Enter's look this is,
+        /// how many times it has looked, and what it finds if the host
+        /// was so loaded that its shell hadn't run when it looked
+        /// (what stood before the Enter).
+        Look(u64, u8, Option<bool>),
+        /// Its word reaches the app, unasked: after which write it
+        /// looked, and whether the shell reads.
+        Word(u64, bool),
     }
     let Plan { seed, delay, .. } = plan;
     let say = std::env::var("PLAY_SAY").is_ok();
@@ -312,6 +322,21 @@ fn play(plan: Plan, keys: usize) -> Tally {
     let mut overtaken = false;
     // (One question on its way at a time.)
     let mut asking = false;
+    // The helper on the host (where each key is sent as typed: it is
+    // what makes that so): the last write the host took, which Enter
+    // its looks are for, what it last said, and when its last word and
+    // the last answer reach the app (its word goes on the connection
+    // the answers come on, behind them). Chance of its own, so that
+    // the sessions are otherwise what they were.
+    let mut helper = Lcg(seed ^ 0x2545_f491);
+    let (mut host_last, mut look_turn, mut helper_said, mut word_back, mut answers_back) = (0u64, 0u64, None::<(bool, Option<u64>)>, 0u64, 0u64);
+    // The app's side of it: the last write that left, and the helper's
+    // word where it says the shell reads (after which write).
+    let (mut last_went, mut host_reads) = (0u64, None::<u64>);
+    // (As the app does: the word is trusted where it is of after
+    // everything typed, at a prompt known to echo.)
+    let host_says_prompt =
+        |p: &mut Predictor, host_reads: Option<u64>, last_went: u64, seen: Option<&Screen>| host_reads == Some(last_went) && p.wants_prompt(seen).is_some_and(|asked| p.prompt_said(asked, true, seen));
     loop {
         events.sort_by_key(|e| (e.0, e.1));
         let mut heard = false;
@@ -341,6 +366,7 @@ fn play(plan: Plan, keys: usize) -> Tally {
             }
             since_enter = if bytes == b"\r" { 0 } else { since_enter + 1 };
             let enter = bytes == b"\r";
+            host_says_prompt(&mut p, host_reads, last_went, seen.as_ref());
             let (seq, _) = p.typed(&bytes, seen.as_ref(), t0 + ms(now));
             if say {
                 eprintln!("{now:6} typed {seq} {:?} on {} -> {}", String::from_utf8_lossy(&bytes), text(&seen), said(&p));
@@ -380,6 +406,16 @@ fn play(plan: Plan, keys: usize) -> Tally {
                         );
                     }
                     let mut frames = Vec::new();
+                    // (The helper looks a moment after an Enter is taken.
+                    // Now and then the host is so loaded that its shell
+                    // hasn't run by then, and the look finds what stood
+                    // before the Enter.)
+                    if plan.piped && written.iter().any(|(_, bytes)| bytes == b"\r") {
+                        look_turn += 1;
+                        let early = helper.chance(4).then(|| host.shell_reads());
+                        push(&mut events, now + 80, Event::Look(look_turn, 0, early));
+                    }
+                    host_last = last;
                     for (seq, bytes) in written {
                         // A key that lands in a line that doesn't echo it
                         // must never have been drawn.
@@ -422,6 +458,7 @@ fn play(plan: Plan, keys: usize) -> Tally {
                         back = back.max(back_after);
                     }
                     push(&mut events, back + 3, Event::Answer(last));
+                    answers_back = answers_back.max(back + 3);
                     let mut at = back + rng.next(9);
                     for frame in frames {
                         if plan.kind == Kind::Boxed && whim.chance(30) {
@@ -474,6 +511,29 @@ fn play(plan: Plan, keys: usize) -> Tally {
                     // pass the frames, or come after them.)
                     push(&mut events, now + delay + rng.next(40), Event::Said(token, reads));
                 }
+                Event::Look(turn, tries, early) => {
+                    // (A later Enter's look takes this one's place.)
+                    if turn == look_turn {
+                        let reads = early.unwrap_or_else(|| host.shell_reads());
+                        if !reads && tries < 5 {
+                            push(&mut events, now + (40 << tries), Event::Look(turn, tries + 1, None));
+                        }
+                        // (Said only where it isn't what was last said.)
+                        let word = (reads, reads.then_some(host_last));
+                        if helper_said != Some(word) {
+                            helper_said = Some(word);
+                            word_back = (now + delay + helper.next(40)).max(word_back + 1).max(answers_back + 1);
+                            push(&mut events, word_back, Event::Word(host_last, reads));
+                        }
+                    }
+                }
+                Event::Word(after, reads) => {
+                    host_reads = reads.then_some(after);
+                    let trusted = host_says_prompt(&mut p, host_reads, last_went, seen.as_ref());
+                    if say {
+                        eprintln!("{now:6} the helper says the shell {} after {after} -> {} ({})", if reads { "reads" } else { "doesn't read" }, said(&p), if trusted { "trusted" } else { "kept" });
+                    }
+                }
                 Event::Said(token, reads) => {
                     asking = false;
                     let trusted = p.prompt_said(token, reads, seen.as_ref());
@@ -490,6 +550,9 @@ fn play(plan: Plan, keys: usize) -> Tally {
         // asks at a pause in a terminal's output, not on a clock. Asked
         // again at every turn of this loop, a session whose host said
         // no never ended.)
+        if heard {
+            host_says_prompt(&mut p, host_reads, last_went, seen.as_ref());
+        }
         if heard
             && !asking
             && let Some(token) = p.wants_prompt(seen.as_ref())
@@ -505,7 +568,8 @@ fn play(plan: Plan, keys: usize) -> Tally {
             while !outbox.is_empty() && on_their_way < 32 {
                 let written: Vec<_> = if on_their_way == 31 { outbox.drain(..).collect() } else { outbox.drain(..1).collect() };
                 on_their_way += 1;
-                p.went(written.last().unwrap().0, t0 + ms(now));
+                last_went = written.last().unwrap().0;
+                p.went(last_went, t0 + ms(now));
                 let stall = if plan.stalls && rng.chance(4) { 400 + rng.next(2600) } else { 0 };
                 arrives_after = arrives_after.max(now + delay + stall);
                 push(&mut events, arrives_after, Event::Arrives(written));
@@ -618,30 +682,41 @@ fn sessions_played_by_the_thousand() {
             // (Less on a slower link: after each key that isn't
             // predicted, what is typed is unseen until a letter of it is
             // back, and on a slow link much of a short line is typed by
-            // then. The host's half is to change that: TODO.)
-            let least = match (boxed, delay) {
-                (false, 35) => 0.78,
-                (false, 90) => 0.64,
-                (false, 200) => 0.44,
-                (false, _) => 0.20,
-                (true, 35) => 0.65,
-                (true, 90) => 0.45,
-                (true, 200) => 0.30,
-                (true, _) => 0.13,
+            // then. More where the host's helper is, which says the
+            // shell is at its prompt again without being asked.)
+            let least = match (piped, boxed, delay) {
+                (false, false, 35) => 0.78,
+                (false, false, 90) => 0.64,
+                (false, false, 200) => 0.44,
+                (false, false, _) => 0.20,
+                (true, false, 35) => 0.83,
+                (true, false, 90) => 0.75,
+                (true, false, 200) => 0.62,
+                (true, false, _) => 0.40,
+                (_, true, 35) => 0.65,
+                (_, true, 90) => 0.45,
+                (_, true, 200) => 0.30,
+                (_, true, _) => 0.13,
             };
             assert!(share > least, "too careful to be of use at {delay} ms: {share:.2}");
             // And a shell's prompt is known again: of the first letters
             // typed at a line (after an Enter, as often as not after
             // the pause of someone reading; three lines in ten read a
             // secret), a share is drawn at once, the host having said
-            // its shell reads there. (Less on a slower link: the
-            // question takes a round trip, which the host's half is to
-            // save: TODO.)
+            // its shell reads there. Asked, that takes a pause and a
+            // round trip, and less of them are on a slower link; said
+            // unasked by the host's helper, a moment and one way, and
+            // what is left is the letters typed before the last line
+            // had so much as reached the host.
             let firsts = tally.firsts_at_once as f64 / tally.firsts.max(1) as f64;
-            let least = match (boxed, delay) {
-                (false, 35) => 0.22,
-                (false, 90) => 0.14,
-                (false, 200) => 0.07,
+            let least = match (piped, boxed, delay) {
+                (false, false, 35) => 0.22,
+                (false, false, 90) => 0.14,
+                (false, false, 200) => 0.07,
+                (true, false, 35) => 0.42,
+                (true, false, 90) => 0.33,
+                (true, false, 200) => 0.27,
+                (true, false, _) => 0.17,
                 _ => 0.0,
             };
             assert!(firsts >= least, "a line's first letter is drawn at once too seldom at {delay} ms: {firsts:.2}");

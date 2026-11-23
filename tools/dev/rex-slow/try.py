@@ -23,6 +23,19 @@
                                               (no app: the client crate's own measurement, tests/host.rs), each
                                               letter's echo timed, one write at a time and each sent as typed;
                                               --helper: with Olo's helper behind the link, as on a host that has it
+    try.py prompt [DELAY_MS] [--runs SECS] [--helper[=FILE]]
+                                              the first letter typed at a shell's prompt soon after a command:
+                                              a command is run (one that takes SECS, with --runs), and a letter
+                                              typed half a second after its prompt can be back, well before
+                                              the app could have asked the host itself; how much of the letter
+                                              is still to come in a picture taken at once (0: it was drawn at
+                                              once; a picture that took as long as the echo is taken again). --helper: Olo's helper behind the link (this tree's build,
+                                              or FILE: an older one, to compare), which says the prompt unasked
+    try.py secrets [DELAY_MS] [--helper[=FILE]]
+                                              secrets the shell itself reads (`read -s -p`, `read -es -p`,
+                                              `read -es`), typed soon after the Enter and after a pause: how
+                                              much more ink there is with four letters typed than once the host
+                                              has them (0: none was drawn)
 
 PROGRAM: shell, box, box-nosync, line (tui.py's stand-ins), or a command line."""
 import glob, os, signal, sys, time
@@ -134,6 +147,54 @@ elif what == "timed":
         print("\n".join(l for l in (out.stdout + out.stderr).splitlines() if l and not l.startswith(("warning", "package:", "workspace:", "running", "test "))))
     finally:
         r.__exit__()
+elif what in ("prompt", "secrets"):
+    # (--runs' number isn't the delay.)
+    runs = float(args.pop(args.index("--runs") + 1)) if "--runs" in args else 0.0
+    delay = int(next((a for a in args if a.isdigit()), "1000"))
+    helper = next((a.partition("=")[2] or True for a in args if a.startswith("--helper")), False)
+    def warmed(r):
+        # (Letters echoed as typed: the link is seen to be slow, and the prompt to echo.)
+        r.type("e"); time.sleep(3.2 * delay / 1000 + 0.6)
+        r.type("cho hi", apart=0.05); time.sleep(4 * delay / 1000 + 0.6)
+    if what == "prompt":
+        # (The letter is typed after the helper's word can be there, one way and a moment after the prompt, and
+        # long before the app's own question could be answered, a pause and a round trip more. A picture that
+        # took as long as the letter's own echo says nothing, on a busy computer: such a turn is taken again.)
+        told, turn = 0, 0
+        while told < 3 and turn < 8:
+            turn += 1
+            with Rig("shell", delay=delay, helper=helper) as r:
+                warmed(r)
+                if runs:
+                    r.type("\n", apart=0); time.sleep(8 * delay / 1000 + 2.0)
+                    r.type(f"sleep {runs:g}", apart=0.05); time.sleep(4 * delay / 1000 + 0.6)
+                # (No picture between the Enter and the letter: taking one takes as long as the wait this is about.)
+                t0 = time.monotonic(); r.type("\n", apart=0)
+                time.sleep(max(0, t0 + runs + (2 * delay + (600 if runs else 500)) / 1000 - time.monotonic()))
+                t = time.monotonic(); r.type("x", apart=0)
+                soon = r.inked(r.shot(f"prompt-{turn}-soon")); took = time.monotonic() - t
+                time.sleep(4 * delay / 1000 + 0.8)
+                settled = r.inked(r.shot(f"prompt-{turn}-settled"))
+                if took * 1000 > 2 * delay - 300:
+                    print(f"(a picture that took {took * 1000:.0f} ms, too near the round trip of {2 * delay} ms to tell: again)", flush=True)
+                    continue
+                told += 1
+                print(f"{delay} ms each way, the letter {(t - t0) * 1000:.0f} ms after the Enter: {settled - soon} pixels of it still to come {took * 1000:.0f} ms after it was typed (a round trip is {2 * delay} ms)", flush=True)
+        if told < 3:
+            print(f"only {told} of 3 turns could be told: the computer is too busy for this at {delay} ms; give a longer DELAY_MS")
+    else:
+        for command in ("read -s -p pw x", "read -es -p pw x", "read -es x"):
+            for wait, name in (((2 * delay + 250) / 1000, "soon"), (8 * delay / 1000 + 2.5, "after a pause")):
+                with Rig("shell", delay=delay, helper=helper) as r:
+                    warmed(r)
+                    r.type("\n"); time.sleep(8 * delay / 1000 + 2.5)
+                    r.type(command, apart=0.05); time.sleep(4 * delay / 1000 + 0.6)
+                    r.type("\n", apart=0); time.sleep(wait)
+                    r.type("q", apart=0); time.sleep(0.12); r.type("wer", apart=0.08)
+                    typed = r.inked(r.shot("secret-typed"))
+                    time.sleep(4 * delay / 1000 + 1.0)
+                    print(f"`{command}`, typed {name}: {typed - r.inked(r.shot('secret-settled'))} pixels more with four letters typed than once the host has them", flush=True)
+                    r.type("\n"); time.sleep(1.0)
 elif what == "connect":
     for delay in [int(a) for a in args if a.isdigit()] or [0, 150, 300, 600]:
         with Rig("shell", delay=delay) as r:

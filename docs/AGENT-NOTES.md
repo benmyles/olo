@@ -2690,3 +2690,34 @@ an argument it doesn't know starts the lint (read its first lines).
   minutes and was moved to the background when a fuzz's loop had no
   end (an event rescheduled itself for ever). Run a test that plays a
   loop under `timeout 400`, always.
+- **A stand-in for a server answers as you think the server does.**
+  Rex's helper passed all its tests against its stand-in while
+  looking for a block event's name under `event`; the real server
+  writes `name` (the app's parser takes either, which is how the
+  guess looked right). Found on the rig in one run, by writing what
+  the helper saw of the real server to a file for that run. Whatever
+  is read from a server's own messages is tested against the real
+  server (`crates/rex-link/tests/server.rs`, on the scratch server of
+  `crates/rex/tests/scratch`), and a new field or event is read from
+  a real message first, not from the client's model of it.
+- **A model in the played sessions, to keep the old sessions as they
+  were**: draw its chance from a number generator of its own (the
+  helper's in `predict/played.rs` is `Lcg(seed ^ …)`), and the 4,800
+  sessions are the same ones with the new thing added, not all new.
+- **Instructions per message, in a small program, are its parses and
+  what it makes each time**: the helper's cost for a letter doubled
+  when two of its parts each read the message (16,600 to 32,900
+  instructions), and `memchr::memmem::find` makes its searcher anew at
+  every call, which for messages this short cost more than the search
+  (5,000 of a letter's 21,800). Read once and hand the result on; make
+  searchers once (`Finder`, in a `LazyLock`).
+  `tools/dev/rex-slow/helper-cost.py` counts it: the helper run
+  against its tests' stand-in, `perf stat -p` on it while 1,000
+  letters pass one at a time, 50 lines are ended, and at rest.
+- **The rig's keys** (`tools/dev/rex-slow/rig.py`, `CODES`) are the
+  ones somebody needed: a key it hasn't is a `KeyError` at `type`.
+  Add it there (digits came with `sleep 2`).
+- **A picture between two timed keys takes as long as the wait being
+  measured** (a `tsession shot` is 0.4 to 0.6 s): time the keys from
+  one clock and compare the picture after with one taken later, when
+  everything has settled.

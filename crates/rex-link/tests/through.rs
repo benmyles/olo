@@ -25,7 +25,7 @@ fn main() {
         return println!("\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out");
     }
     let only = args.iter().find(|a| !a.starts_with('-'));
-    let tests: [(&str, fn()); 7] = [
+    let tests: [(&str, fn()); 8] = [
         ("what_is_typed_reaches_the_server_one_at_a_time_in_order_however_it_is_sent", what_is_typed_reaches_the_server_one_at_a_time_in_order_however_it_is_sent),
         ("a_burst_is_passed_as_fast_as_its_answers_come", a_burst_is_passed_as_fast_as_its_answers_come),
         ("a_request_never_answered_holds_the_rest_its_time_and_no_longer", a_request_never_answered_holds_the_rest_its_time_and_no_longer),
@@ -33,6 +33,7 @@ fn main() {
         ("a_frame_too_large_to_keep_passes_either_way_and_typing_goes_on", a_frame_too_large_to_keep_passes_either_way_and_typing_goes_on),
         ("what_the_app_sent_last_reaches_the_server_before_it_ends", what_the_app_sent_last_reaches_the_server_before_it_ends),
         ("the_app_gone_the_helper_ends", the_app_gone_the_helper_ends),
+        ("how_a_terminal_reads_is_said_unasked_after_an_enter_and_nothing_else_is_added", how_a_terminal_reads_is_said_unasked_after_an_enter_and_nothing_else_is_added),
     ];
     let (mut passed, mut failed, mut skipped) = (0, 0, 0);
     println!("\nrunning {} tests", tests.len());
@@ -70,6 +71,79 @@ impl Lcg {
         self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
         (self.0 >> 33) % below.max(1)
     }
+}
+
+/// A moment after the server has taken an Enter typed into a terminal
+/// the app is told how that terminal reads, in one event, having asked
+/// nothing; a write with no Enter brings none; the answers to the
+/// helper's own questions never reach the app; and what the app sent
+/// is all the server was given but those two questions.
+fn how_a_terminal_reads_is_said_unasked_after_an_enter_and_nothing_else_is_added() {
+    let mut rng = Lcg(7);
+    let mut through = Through::new(&["--reads", "--slow-ms", "1"]);
+    // A letter: answered, and nothing more comes.
+    through.to.write_all(&frame(&write(1), &mut rng)).unwrap();
+    let mut seen: Vec<serde_json::Value> = Vec::new();
+    let read = |through: &mut Through, within: Duration| {
+        let until = Instant::now() + within;
+        let mut got = Vec::new();
+        while let Ok(piece) = through.from.recv_timeout(until.saturating_duration_since(Instant::now())) {
+            if let Piece::Frame { text: Some(text), .. } = piece {
+                got.push(serde_json::from_slice::<serde_json::Value>(&text).unwrap());
+            }
+        }
+        got
+    };
+    seen.extend(read(&mut through, Duration::from_millis(300)));
+    assert!(seen.iter().any(|v| v["type"] == "response" && v["id"] == "1"), "{seen:?}");
+    assert!(!seen.iter().any(|v| v.to_string().contains("input_mode_changed")), "no Enter, nothing said: {seen:?}");
+    // An Enter: its answer, and then the event, in that order, within
+    // a moment and a little.
+    let sent = Instant::now();
+    through.to.write_all(&frame(&enter(2), &mut rng)).unwrap();
+    let got = read(&mut through, Duration::from_millis(600));
+    let answer = got.iter().position(|v| v["type"] == "response" && v["id"] == "2").expect("the Enter's answer");
+    let said =
+        got.iter().position(|v| v["payload"]["payload"]["event"]["payload"]["name"] == "input_mode_changed").unwrap_or_else(|| panic!("the event: {got:?} ({:?} after the Enter)", sent.elapsed()));
+    assert!(said > answer, "the event after the answer it follows: {got:?}");
+    let event = &got[said]["payload"]["payload"];
+    assert_eq!((event["session_id"].as_str(), event["event"]["payload"]["block_id"].as_str()), (Some("s"), Some("b")));
+    assert_eq!(event["event"]["payload"]["payload"], serde_json::json!({ "echo": false, "canonical": false, "signals": true, "shell": true, "after": "2" }));
+    // Nothing of the helper's own questions reaches the app.
+    seen.extend(got);
+    assert!(!seen.iter().any(|v| v["id"].as_str().is_some_and(|id| id.starts_with("olo-rex-link"))), "{seen:?}");
+    assert_eq!(seen.iter().filter(|v| v.to_string().contains("input_mode_changed")).count(), 1);
+    // Lines and letters sent all at once, cut anywhere: every one is
+    // answered, in order, none of the helper's own answers among them;
+    // and the last line's word comes, of after everything typed.
+    let mut all = Vec::new();
+    for id in 3..203 {
+        all.extend(frame(&if id % 3 == 0 { enter(id) } else { write(id) }, &mut rng));
+    }
+    while !all.is_empty() {
+        let n = (1 + rng.next(700) as usize).min(all.len());
+        through.to.write_all(&all[..n]).unwrap();
+        all.drain(..n);
+    }
+    let got = read(&mut through, Duration::from_millis(1500));
+    let answered: Vec<usize> = got.iter().filter(|v| v["type"] == "response").map(|v| v["id"].as_str().unwrap().parse().expect("only the app's own answers")).collect();
+    assert_eq!(answered, (3..203).collect::<Vec<_>>());
+    // (A word while the burst passed, if the server was ever done with
+    // all that had come: each of after more typed than the last. And
+    // one at its end, of after everything.)
+    let after: Vec<usize> = got
+        .iter()
+        .filter(|v| v["payload"]["payload"]["event"]["payload"]["name"] == "input_mode_changed")
+        .map(|v| v["payload"]["payload"]["event"]["payload"]["payload"]["after"].as_str().unwrap().parse().unwrap())
+        .collect();
+    assert!(after.windows(2).all(|pair| pair[0] < pair[1]), "{after:?}");
+    assert_eq!(after.last(), Some(&202), "{after:?}");
+    // One more line, by itself: said, after it.
+    through.to.write_all(&frame(&enter(203), &mut rng)).unwrap();
+    let got = read(&mut through, Duration::from_millis(600));
+    let words: Vec<&serde_json::Value> = got.iter().filter(|v| v["payload"]["payload"]["event"]["payload"]["name"] == "input_mode_changed").collect();
+    assert_eq!(words.len(), 1, "{got:?}");
+    assert_eq!(words[0]["payload"]["payload"]["event"]["payload"]["payload"]["after"], "203");
 }
 
 /// A text frame as the app sends it (masked).
@@ -170,6 +244,11 @@ impl Drop for Through {
 
 fn write(id: usize) -> String {
     format!(r#"{{"type":"request","id":"{id}","method":"com.superlogical.terminal.write","payload":{{"session_id":"s","block_id":"b","args":{{"data":"k"}}}}}}"#)
+}
+
+/// A write that ends a line.
+fn enter(id: usize) -> String {
+    format!(r#"{{"type":"request","id":"{id}","method":"com.superlogical.terminal.write","payload":{{"session_id":"s","block_id":"b","args":{{"data":"ls\r"}}}}}}"#)
 }
 
 fn other(id: usize) -> String {
@@ -420,6 +499,7 @@ fn standin(args: &[String]) {
     let slow = after("--slow-ms").unwrap_or(2);
     let never = after("--never");
     let (refuse, mut big, count) = (args.iter().any(|a| a == "--refuse"), args.iter().any(|a| a == "--big"), args.iter().any(|a| a == "--count"));
+    let reads = args.iter().any(|a| a == "--reads");
     let mut given = 0u64;
     let out = Arc::new(Mutex::new(std::io::stdout()));
     let unanswered = Arc::new(AtomicUsize::new(0));
@@ -456,6 +536,21 @@ fn standin(args: &[String]) {
                         frame.resize(10 + (17 << 20), 6);
                         let mut out = out.lock().unwrap();
                         let _ = out.write_all(&frame);
+                    }
+                    // (How a terminal reads, asked as the server is: a
+                    // shell at its line editor, where the stand-in is
+                    // told to say so.)
+                    let method = value.get("method").and_then(|m| m.as_str()).unwrap_or_default();
+                    if reads && (method.ends_with(".input_mode") || method.ends_with(".process")) {
+                        let payload = if method.ends_with(".input_mode") {
+                            r#"{"echo":false,"canonical":false,"signals":true}"#
+                        } else {
+                            r#"{"child":{"pid":24,"name":"bash"},"foreground":{"pid":24,"name":"bash"}}"#
+                        };
+                        let mut out = out.lock().unwrap();
+                        let _ = out.write_all(&answer_frame(&format!(r#"{{"type":"response","id":"{id}","seq":5,"payload":{payload}}}"#)));
+                        let _ = out.flush();
+                        continue;
                     }
                     let (place, overlap) = if typed { (arrived.fetch_add(1, Ordering::SeqCst) + 1, unanswered.fetch_add(1, Ordering::SeqCst) > 0) } else { (0, false) };
                     if typed && never == Some(place) {

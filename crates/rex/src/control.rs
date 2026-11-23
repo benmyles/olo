@@ -99,6 +99,9 @@ pub struct ControlClient {
     /// said in the upgrade's answer (`olo_rex_link::VERSION`); 0 where
     /// the connection doesn't go through one.
     link: u32,
+    /// The number of the last request sent by [`Self::send_raw`]: the
+    /// last thing typed ([`Self::last_typed`]).
+    typed: Arc<AtomicU64>,
 }
 
 impl ControlClient {
@@ -187,7 +190,7 @@ impl ControlClient {
 
         tokio::spawn(run_control_loop(ws, cmd_rx, evt_tx, keepalive));
 
-        Ok((Self { cmd_tx, next_id: Arc::new(AtomicU64::new(1)), welcome: Arc::new(welcome), max_message_bytes, link }, evt_rx))
+        Ok((Self { cmd_tx, next_id: Arc::new(AtomicU64::new(1)), welcome: Arc::new(welcome), max_message_bytes, link, typed: Arc::new(AtomicU64::new(0)) }, evt_rx))
     }
 
     /// Whether what is typed may be sent as it is typed, each request
@@ -198,6 +201,18 @@ impl ControlClient {
     /// takes two at once, and what was typed can come out shuffled.
     pub fn keeps_typing_in_order(&self) -> bool {
         self.link >= 1
+    }
+
+    /// The id of the last request typed on this connection as it is
+    /// typed ([`Self::send_terminal_write`], [`Self::send_client_key`]),
+    /// as a number; 0 before any. Olo's helper on the host says how a
+    /// terminal reads unasked, and after which typed request it looked
+    /// (`after`, in its `input_mode_changed`: `olo_rex_link::Teller`):
+    /// its word is of the terminal as everything typed left it where
+    /// that is this number still, and of before something typed
+    /// otherwise.
+    pub fn last_typed(&self) -> u64 {
+        self.typed.load(Ordering::Relaxed)
     }
 
     pub fn client_id(&self) -> Option<&str> {
@@ -291,7 +306,11 @@ impl ControlClient {
     /// otherwise this is for what has no order to keep, and for
     /// measuring (`tests/host.rs`).
     pub fn send_raw(&self, method: &str, payload: Option<Value>) -> Result<impl Future<Output = Result<RpcResult<Value>, RexError>> + Send + 'static + use<>, RexError> {
-        let id = self.next_id.fetch_add(1, Ordering::Relaxed).to_string();
+        let number = self.next_id.fetch_add(1, Ordering::Relaxed);
+        // (Said typed before it leaves: a word of the helper's that
+        // names an earlier one is of before this from here on.)
+        self.typed.fetch_max(number, Ordering::Relaxed);
+        let id = number.to_string();
         let req = match payload {
             Some(p) => json!({ "type": "request", "id": id, "method": method, "payload": p }),
             None => json!({ "type": "request", "id": id, "method": method }),

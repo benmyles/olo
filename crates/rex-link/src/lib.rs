@@ -22,16 +22,27 @@
 //! HTTP upgrade ends, where each WebSocket frame ends, and of a text
 //! frame whether it is one of those requests or an answer ([`Scanner`],
 //! [`Gate`]). It tells the app it is there by a header in the server's
-//! answer to the upgrade ([`HERE`]). Nothing is altered otherwise, and
-//! what it doesn't understand passes untouched.
+//! answer to the upgrade ([`HERE`]). What it doesn't understand passes
+//! untouched.
+//!
+//! And it says one thing of its own, unasked ([`Teller`]): how a
+//! terminal reads, a moment after the server has taken an Enter typed
+//! into it and a moment after the program in its foreground changes.
+//! The app draws the first letter typed at a shell's prompt at once
+//! where the host says the shell itself is reading there; asked from
+//! the app that costs a round trip of the link after every command,
+//! and here, beside the server, nothing. It asks the server itself
+//! (two requests of its own, whose answers go no further) and tells
+//! the app in an event the app already knows by name.
 
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 /// What this helper does, counted: the app reads it from [`HEADER`] and
 /// asks of the helper only what its number says it does. 1: what is
-/// typed is kept in order.
-pub const VERSION: u32 = 1;
+/// typed is kept in order. 2: and how a terminal reads is said
+/// unasked ([`Teller`]).
+pub const VERSION: u32 = 2;
 
 /// The name of the header the helper adds to the server's answer to
 /// the upgrade, by which the app knows its control connection goes
@@ -39,7 +50,7 @@ pub const VERSION: u32 = 1;
 pub const HEADER: &str = "X-Olo-Rex-Link";
 
 /// That header, whole.
-pub const HERE: &str = "X-Olo-Rex-Link: 1";
+pub const HERE: &str = "X-Olo-Rex-Link: 2";
 
 /// The requests that type into a terminal: given to the server one at
 /// a time.
@@ -91,6 +102,8 @@ pub struct Scanner {
     plain: bool,
     /// So many bytes more of a frame too large to keep pass as they come.
     passing: u64,
+    /// A message sent in several frames has begun and not ended.
+    in_parts: bool,
 }
 
 impl Scanner {
@@ -104,6 +117,13 @@ impl Scanner {
     pub fn plain(&mut self) -> Option<Piece> {
         self.plain = true;
         self.rest()
+    }
+
+    /// Whether part of a frame too large to keep has passed and the
+    /// rest hasn't, or a message sent in several frames has begun and
+    /// not ended: nothing can be put into the direction here.
+    pub fn mid_frame(&self) -> bool {
+        self.passing > 0 || self.in_parts
     }
 
     /// What is kept, at the connection's end: the beginning of a piece
@@ -163,6 +183,14 @@ impl Scanner {
             };
             if masked {
                 at += 4;
+            }
+            // (A message in several frames: begun by a frame of text
+            // or bytes that isn't its last, ended by a continuation
+            // that is. What may come between them says nothing of it.)
+            match (first & 0x0f, first & 0x80 != 0) {
+                (1 | 2, last) => self.in_parts = !last,
+                (0, true) => self.in_parts = false,
+                _ => {}
             }
             // Too large to keep: its header and what has come pass now,
             // the rest as it comes.
@@ -241,24 +269,55 @@ impl Id<'_> {
 /// into a terminal.
 fn typed(text: &[u8]) -> Option<String> {
     // (Looked at only if it names one: most messages don't.)
-    if !TYPED.iter().any(|method| contains(text, method.as_bytes())) {
+    if !WORDS.typed.iter().any(|method| has(text, method)) {
         return None;
     }
     let top: Top = serde_json::from_slice(text).ok()?;
     (top.kind.as_deref() == Some("request") && top.method.as_deref().is_some_and(|m| TYPED.contains(&m))).then(|| top.id.map(|id| id.said())).flatten()
 }
 
-/// Whether a text message is the answer to the request `id`.
-fn answers(text: &[u8], id: &str) -> bool {
-    // (Looked at only if it holds the id and the word: most don't.)
-    if !contains(text, id.as_bytes()) || !contains(text, b"\"response\"") {
-        return false;
+/// The id of the request a piece from the app is, if it is one that
+/// types into a terminal. (A message is read once for it, here: the
+/// gate and the teller are both given what it found, [`Gate::
+/// from_app_as`], [`Teller::from_app_as`]. Reading it is most of what
+/// a letter costs the helper.)
+pub fn typed_in(piece: &Piece) -> Option<String> {
+    match piece {
+        Piece::Frame { text: Some(text), .. } => typed(text),
+        _ => None,
     }
-    serde_json::from_slice::<Top>(text).is_ok_and(|top| top.kind.as_deref() == Some("response") && top.id.is_some_and(|got| got.said() == id))
 }
 
-fn contains(text: &[u8], what: &[u8]) -> bool {
-    text.windows(what.len()).any(|w| w == what)
+/// The id of the request a piece from the server answers, if it is an
+/// answer (read once too: [`Gate::answered`], [`Teller::
+/// from_server_as`]).
+pub fn answered_in(piece: &Piece) -> Option<String> {
+    let Piece::Frame { text: Some(text), .. } = piece else { return None };
+    // (Looked at only if it holds the word: events don't.)
+    if !has(text, &WORDS.response) {
+        return None;
+    }
+    let top: Top = serde_json::from_slice(text).ok()?;
+    (top.kind.as_deref() == Some("response")).then(|| top.id.map(|id| id.said())).flatten()
+}
+
+/// The words a message is searched for before it is read, each with
+/// its searcher made once (making one costs more than a search of a
+/// message this short: measured, 2026-11-23, a letter through the
+/// helper was 5,000 instructions more with one made at each search).
+struct Words {
+    typed: [memchr::memmem::Finder<'static>; 2],
+    response: memchr::memmem::Finder<'static>,
+    process_changed: memchr::memmem::Finder<'static>,
+}
+
+static WORDS: std::sync::LazyLock<Words> = std::sync::LazyLock::new(|| {
+    let word = |word: &'static str| memchr::memmem::Finder::new(word);
+    Words { typed: TYPED.map(word), response: word("\"response\""), process_changed: word("process_changed") }
+});
+
+fn has(text: &[u8], word: &memchr::memmem::Finder) -> bool {
+    word.find(text).is_some()
 }
 
 /// What goes on to the server, and when: everything in the order it
@@ -268,8 +327,9 @@ pub struct Gate {
     /// The typed request the server hasn't answered: its id, and since
     /// when.
     waiting: Option<(String, Instant)>,
-    /// What came from the app behind it.
-    held: VecDeque<Piece>,
+    /// What came from the app behind it; with each piece, the id of
+    /// the typed request it is, if it is one.
+    held: VecDeque<(Piece, Option<String>)>,
     /// Nothing is held any more ([`Gate::open`]).
     open: bool,
     /// The longest a request is held for another's answer.
@@ -295,20 +355,40 @@ impl Gate {
 
     /// A piece from the app: what goes on to the server now, in order.
     pub fn from_app(&mut self, piece: Piece, now: Instant) -> Vec<Vec<u8>> {
-        self.held.push_back(piece);
+        let typed = typed_in(&piece);
+        self.from_app_as(piece, typed, now)
+    }
+
+    /// [`Self::from_app`], the piece read already: `typed`,
+    /// [`typed_in`] of it.
+    pub fn from_app_as(&mut self, piece: Piece, typed: Option<String>, now: Instant) -> Vec<Vec<u8>> {
+        self.held.push_back((piece, typed));
         self.pass(now)
     }
 
     /// A piece from the server (it goes on to the app whatever it is):
     /// what an answer in it lets go on to the server.
     pub fn from_server(&mut self, piece: &Piece, now: Instant) -> Vec<Vec<u8>> {
-        if let (Piece::Frame { text: Some(text), .. }, Some((id, _))) = (piece, &self.waiting)
-            && answers(text, id)
-        {
+        if self.waiting.is_none() {
+            return Vec::new();
+        }
+        self.answered(answered_in(piece).as_deref(), now)
+    }
+
+    /// [`Self::from_server`], the piece read already: the id of the
+    /// request it answers ([`answered_in`]), if it is an answer.
+    pub fn answered(&mut self, id: Option<&str>, now: Instant) -> Vec<Vec<u8>> {
+        if id.is_some() && self.waiting.as_ref().map(|(waiting, _)| waiting.as_str()) == id {
             self.waiting = None;
             return self.pass(now);
         }
         Vec::new()
+    }
+
+    /// Whether a typed request is at the server unanswered (an answer
+    /// is of interest).
+    pub fn waits(&self) -> bool {
+        self.waiting.is_some()
     }
 
     /// The server's side isn't a connection whose answers can be read
@@ -329,10 +409,8 @@ impl Gate {
             return Vec::new();
         }
         let mut out = Vec::new();
-        while let Some(piece) = self.held.pop_front() {
-            if let Piece::Frame { text: Some(text), .. } = &piece
-                && let Some(id) = typed(text)
-            {
+        while let Some((piece, typed)) = self.held.pop_front() {
+            if let Some(id) = typed {
                 self.waiting = Some((id, now));
             }
             out.push(piece.bytes().to_vec());
@@ -350,22 +428,419 @@ impl Gate {
         self.waiting.as_ref().filter(|_| !self.held.is_empty()).map(|(_, since)| *since + self.at_most)
     }
 
+    /// Whether part of a frame too large to keep is among what is
+    /// held: its other parts may have gone on already, and nothing can
+    /// be put between them.
+    pub fn holds_raw(&self) -> bool {
+        self.held.iter().any(|(piece, _)| matches!(piece, Piece::Raw(_)))
+    }
+
     fn pass(&mut self, now: Instant) -> Vec<Vec<u8>> {
         let mut out = Vec::new();
-        while let Some(piece) = self.held.front() {
-            let typed = match piece {
-                Piece::Frame { text: Some(text), .. } if !self.open => typed(text),
-                _ => None,
-            };
-            if typed.is_some() && self.waiting.is_some() {
+        while let Some((_, typed)) = self.held.front() {
+            let typed = typed.is_some() && !self.open;
+            if typed && self.waiting.is_some() {
                 break;
             }
-            if let Some(id) = typed {
-                self.waiting = Some((id, now));
+            let (piece, id) = self.held.pop_front().unwrap();
+            if typed {
+                self.waiting = id.map(|id| (id, now));
             }
-            out.push(self.held.pop_front().unwrap().bytes().to_vec());
+            out.push(piece.bytes().to_vec());
         }
         out
+    }
+}
+
+/// How long after the server has taken an Enter the terminal it went to
+/// is asked how it reads: a command that does nothing to speak of is
+/// over by then and its shell at its prompt again. (And a host so
+/// loaded that its shell hasn't run in that time is still asked then,
+/// and says what stood before the Enter: the app trusts the word only
+/// with a prompt it knows drawn again after it, HACKING, "A shell's
+/// prompt said unasked".)
+pub const AFTER_ENTER: Duration = Duration::from_millis(80);
+
+/// How long after the server says the program in a terminal's
+/// foreground changed the terminal is asked: a shell back in the
+/// foreground sets the terminal up for its line editor a moment after.
+/// And the first of the waits before a terminal that didn't read is
+/// asked again ([`ASKED_AGAIN`]), each twice the one before.
+pub const AFTER_PROCESS: Duration = Duration::from_millis(40);
+
+/// How many more times a terminal is asked while its shell isn't
+/// reading there: 40, 80, 160, 320 and 640 ms on, which is a command
+/// over within a second and a quarter, a prompt that takes its time
+/// to be drawn (one that looks at a repository first), and a command
+/// too quick for the server to have said it ran. Then no more, until
+/// the server says the foreground changed or another line is ended:
+/// nothing is asked of a terminal where nothing happens.
+pub const ASKED_AGAIN: u8 = 5;
+
+/// The requests the helper makes of the server itself, and the mark of
+/// their ids (no id of the app's begins so: its are numbers).
+const INPUT_MODE: &str = "com.superlogical.terminal.input_mode";
+const PROCESS: &str = "com.superlogical.terminal.process";
+const OURS: &str = "olo-rex-link-";
+
+/// The most of anything the teller keeps: past it the oldest is let go
+/// (a server that never answers isn't kept count of for ever).
+const MOST_KEPT: usize = 32;
+
+/// A terminal, as a request names it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Terminal {
+    session: String,
+    block: String,
+}
+
+/// A terminal to be asked about, when, and how many times it has been
+/// since something happened there.
+struct Due {
+    at: Instant,
+    of: Terminal,
+    tries: u8,
+}
+
+/// A question of the helper's own on its way: about which terminal,
+/// and what has come back of its two halves (the mode: echo,
+/// canonical, signals; and whether the foreground process is the
+/// terminal's own first, its shell).
+struct Asked {
+    n: u64,
+    of: Terminal,
+    mode: Option<(bool, bool, bool)>,
+    shell: Option<bool>,
+    /// The last thing typed that the server had taken when this was
+    /// asked.
+    after: Option<String>,
+    /// Something was typed since it was asked: what it says may be of
+    /// before that or of after, and isn't said.
+    stale: bool,
+    tries: u8,
+}
+
+/// What was last said of a terminal (said again only when it changes).
+#[derive(PartialEq)]
+struct Said {
+    mode: (bool, bool, bool),
+    shell: bool,
+    /// For a terminal that reads: after what typed.
+    after: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct Write<'a> {
+    #[serde(borrow)]
+    payload: Option<WriteTo<'a>>,
+}
+
+#[derive(serde::Deserialize)]
+struct WriteTo<'a> {
+    #[serde(borrow)]
+    session_id: Option<std::borrow::Cow<'a, str>>,
+    #[serde(borrow)]
+    block_id: Option<std::borrow::Cow<'a, str>>,
+    #[serde(borrow)]
+    args: Option<WriteArgs<'a>>,
+}
+
+#[derive(serde::Deserialize)]
+struct WriteArgs<'a> {
+    #[serde(borrow)]
+    data: Option<std::borrow::Cow<'a, str>>,
+}
+
+/// The terminal a write ends a line in, if it is one that does.
+fn line_ended(text: &[u8]) -> Option<Terminal> {
+    // (Looked at only if it is a write with a line's end in it, which
+    // in a request is the escape `\r` or `\n`: most have none.)
+    if !memchr::memchr_iter(b'\\', text).any(|at| matches!(text.get(at + 1), Some(b'r' | b'n'))) {
+        return None;
+    }
+    let to = serde_json::from_slice::<Write>(text).ok()?.payload?;
+    let (session, block) = (to.session_id?, to.block_id?);
+    to.args?.data?.contains(['\r', '\n']).then(|| Terminal { session: session.into_owned(), block: block.into_owned() })
+}
+
+/// What the helper says of a terminal unasked: how it reads (its input
+/// mode, and whether its shell is in the foreground), a moment after
+/// the server took an Enter typed into it ([`AFTER_ENTER`]) and a
+/// moment after the server said its foreground process changed
+/// ([`AFTER_PROCESS`]); and a few times more while the shell isn't
+/// reading there ([`ASKED_AGAIN`]). It asks the server with two
+/// requests of its own and gives the app one event of the terminal's,
+/// `input_mode_changed`, with `echo`, `canonical`, `signals`, `shell`
+/// and `after`; only when it says something other than the last did.
+///
+/// **What the word is good for.** `after` is the id of the last
+/// request typed (on this connection, into any terminal) that the
+/// server had answered when the helper asked, and the word is only
+/// given if nothing typed was unanswered then and nothing typed came
+/// before both answers were in. So an app whose own last typed request
+/// is `after` knows the terminal was looked at after everything it
+/// typed had been taken, and one that has typed since knows the word
+/// is of before that.
+///
+/// Everything else passes: [`Teller::from_server`] takes out only the
+/// answers to its own requests.
+#[derive(Default)]
+pub struct Teller {
+    /// What the app typed that the server hasn't answered: each
+    /// request's id, and the terminal it ends a line in, if it does.
+    typed: VecDeque<(String, Option<Terminal>)>,
+    /// The last of them the server answered.
+    last: Option<String>,
+    due: Vec<Due>,
+    asked: Vec<Asked>,
+    /// How many answers to the helper's own requests are still to
+    /// come (the server's messages are searched for them only then).
+    owed: u32,
+    said: Vec<(Terminal, Said)>,
+    next: u64,
+    off: bool,
+}
+
+impl Teller {
+    pub fn new() -> Teller {
+        Teller::default()
+    }
+
+    /// The server's side isn't a connection to ask on (the upgrade was
+    /// refused): nothing is asked or said from here.
+    pub fn off(&mut self) {
+        self.off = true;
+        self.typed.clear();
+        self.due.clear();
+    }
+
+    /// A piece from the app, as it passes: what is typed is noted (a
+    /// question on its way is of before it or of after, and says
+    /// nothing now), and where it ends a line, its terminal is asked
+    /// about once the server has taken it.
+    pub fn from_app(&mut self, piece: &Piece) {
+        self.from_app_as(piece, typed_in(piece).as_deref());
+    }
+
+    /// [`Self::from_app`], the piece read already: `typed`,
+    /// [`typed_in`] of it.
+    pub fn from_app_as(&mut self, piece: &Piece, typed: Option<&str>) {
+        let (Piece::Frame { text: Some(text), .. }, Some(id), false) = (piece, typed, self.off) else { return };
+        for asked in &mut self.asked {
+            asked.stale = true;
+        }
+        if self.typed.len() >= MOST_KEPT {
+            self.typed.pop_front();
+        }
+        self.typed.push_back((id.to_owned(), line_ended(text)));
+    }
+
+    /// Whether an answer of the server's is of interest: to something
+    /// typed, or to a request of the helper's own.
+    pub fn waits(&self) -> bool {
+        !self.typed.is_empty() || self.owed > 0
+    }
+
+    /// A piece from the server. What goes to the app in its place, if
+    /// it isn't to pass as it is: nothing, for an answer to one of the
+    /// helper's own requests, or the event that says how the terminal
+    /// reads, once both answers are in.
+    pub fn from_server(&mut self, piece: &Piece, now: Instant) -> Option<Vec<u8>> {
+        let answered = if self.waits() { answered_in(piece) } else { None };
+        self.from_server_as(piece, answered.as_deref(), now)
+    }
+
+    /// [`Self::from_server`], the piece read already: the id of the
+    /// request it answers ([`answered_in`]), if it is an answer and
+    /// one is of interest ([`Self::waits`]).
+    pub fn from_server_as(&mut self, piece: &Piece, answered: Option<&str>, now: Instant) -> Option<Vec<u8>> {
+        let Piece::Frame { text: Some(text), .. } = piece else { return None };
+        if self.off {
+            return None;
+        }
+        if let Some(id) = answered {
+            if self.owed > 0
+                && id.starts_with(OURS)
+                && let Some(instead) = self.answered(text, now)
+            {
+                self.owed -= 1;
+                return Some(instead);
+            }
+            // (The answer to something typed, and so to all typed
+            // before it: the terminals they ended lines in are asked
+            // about in a moment.)
+            if let Some(at) = self.typed.iter().position(|(typed, _)| typed == id) {
+                // (Several only where an answer never came: seldom.)
+                for _ in 0..=at {
+                    let Some((typed, of)) = self.typed.pop_front() else { break };
+                    self.last = Some(typed);
+                    if let Some(of) = of {
+                        self.ask(of, now + AFTER_ENTER, 0);
+                    }
+                }
+            }
+        } else if has(text, &WORDS.process_changed)
+            && let Ok(event) = serde_json::from_slice::<serde_json::Value>(text)
+            && let Some(block) = event.pointer("/payload/payload/event/payload")
+            // (The server names a block's event `name`; `event` is read too, as the app reads either.)
+            && block.get("name").or_else(|| block.get("event")).and_then(|e| e.as_str()) == Some("process_changed")
+            && let (Some(session), Some(block)) =
+                (event.pointer("/payload/payload/session_id").and_then(|s| s.as_str()), block.get("block_id").and_then(|b| b.as_str()))
+        {
+            self.ask(Terminal { session: session.to_owned(), block: block.to_owned() }, now + AFTER_PROCESS, 0);
+        }
+        None
+    }
+
+    /// One question waits for a terminal at a time: of two, the one
+    /// for what happened last (the fewer times asked since), and of
+    /// those the later.
+    fn ask(&mut self, of: Terminal, at: Instant, tries: u8) {
+        if let Some(due) = self.due.iter_mut().find(|due| due.of == of) {
+            if tries <= due.tries {
+                (due.at, due.tries) = (if tries == due.tries { at.max(due.at) } else { at }, tries);
+            }
+            return;
+        }
+        if self.due.len() >= MOST_KEPT {
+            self.due.remove(0);
+        }
+        self.due.push(Due { at, of, tries });
+    }
+
+    /// When [`Self::tick`] next has something to ask: never while
+    /// something typed is unanswered (it asks once that is taken).
+    pub fn deadline(&self) -> Option<Instant> {
+        self.due.iter().map(|due| due.at).min().filter(|_| self.typed.is_empty())
+    }
+
+    /// What is to be asked of the server now: the requests, each a
+    /// frame as a client sends it.
+    pub fn tick(&mut self, now: Instant) -> Vec<Vec<u8>> {
+        let mut out = Vec::new();
+        if !self.typed.is_empty() {
+            return out;
+        }
+        let mut i = 0;
+        while i < self.due.len() {
+            if self.due[i].at > now {
+                i += 1;
+                continue;
+            }
+            let Due { of, tries, .. } = self.due.remove(i);
+            self.next += 1;
+            let n = self.next;
+            for (method, half) in [(INPUT_MODE, 'm'), (PROCESS, 'p')] {
+                let request = serde_json::json!({ "type": "request", "id": format!("{OURS}{n}-{half}"), "method": method, "payload": { "session_id": of.session, "block_id": of.block } });
+                out.push(client_frame(request.to_string().as_bytes()));
+                self.owed += 1;
+            }
+            if self.asked.len() >= MOST_KEPT {
+                self.asked.remove(0);
+            }
+            self.asked.push(Asked { n, of, mode: None, shell: None, after: self.last.clone(), stale: false, tries });
+        }
+        out
+    }
+
+    /// An answer to one of the helper's own requests: it goes no
+    /// further; with the second of a pair, the event that says both,
+    /// if it says something new. `None` for what isn't one.
+    fn answered(&mut self, text: &[u8], now: Instant) -> Option<Vec<u8>> {
+        let answer: serde_json::Value = serde_json::from_slice(text).ok()?;
+        let id = answer.get("id")?.as_str()?.strip_prefix(OURS)?;
+        if answer.get("type").and_then(|t| t.as_str()) != Some("response") {
+            return None;
+        }
+        // (One of ours, whatever it says: not the app's to see. One
+        // whose question is no longer kept says nothing.)
+        let nothing = Some(Vec::new());
+        let Some((n, half)) = id.split_once('-').and_then(|(n, half)| Some((n.parse::<u64>().ok()?, half))) else { return nothing };
+        let Some(at) = self.asked.iter().position(|asked| asked.n == n) else { return nothing };
+        let asked = &mut self.asked[at];
+        let payload = answer.get("payload").filter(|_| answer.get("error").is_none_or(|e| e.is_null()));
+        let flag = |name: &str| payload.and_then(|p| p.get(name)).and_then(|v| v.as_bool());
+        let failed = match half {
+            "m" => {
+                asked.mode = flag("echo").zip(flag("canonical")).map(|(echo, canonical)| (echo, canonical, flag("signals").unwrap_or(true)));
+                asked.mode.is_none()
+            }
+            _ => {
+                let pid = |of: &str| payload.and_then(|p| p.pointer(&format!("/{of}/pid"))).and_then(|pid| pid.as_u64());
+                asked.shell = payload.map(|_| matches!((pid("child"), pid("foreground")), (Some(child), Some(foreground)) if child == foreground && child != 0));
+                asked.shell.is_none()
+            }
+        };
+        if failed {
+            self.asked.remove(at);
+            return nothing;
+        }
+        let (Some(mode), Some(shell)) = (asked.mode, asked.shell) else { return nothing };
+        let asked = self.asked.remove(at);
+        if asked.stale {
+            return nothing;
+        }
+        let (echo, canonical, signals) = mode;
+        let reads = shell && !echo && !canonical;
+        if !reads && asked.tries < ASKED_AGAIN {
+            self.ask(asked.of.clone(), now + AFTER_PROCESS * (1 << asked.tries), asked.tries + 1);
+        }
+        let said = Said { mode, shell, after: asked.after.clone().filter(|_| reads) };
+        if self.said.iter().any(|(of, last)| *of == asked.of && *last == said) {
+            return nothing;
+        }
+        self.said.retain(|(of, _)| *of != asked.of);
+        if self.said.len() >= MOST_KEPT {
+            self.said.remove(0);
+        }
+        self.said.push((asked.of.clone(), said));
+        // (Numbered 0, as nothing of the server's is: it has no place
+        // among the server's own events, and takes none.)
+        let event = serde_json::json!({
+            "type": "event",
+            "seq": 0,
+            "payload": { "type": "session_event", "payload": { "session_id": asked.of.session, "event": { "type": "block_event", "payload": {
+                "block_id": asked.of.block,
+                "creator_name": "com.superlogical.terminal",
+                "name": "input_mode_changed",
+                "payload": { "echo": echo, "canonical": canonical, "signals": signals, "shell": shell, "after": asked.after },
+            } } } },
+        });
+        Some(server_frame(event.to_string().as_bytes()))
+    }
+}
+
+/// A text message in one frame, as a server sends it.
+fn server_frame(text: &[u8]) -> Vec<u8> {
+    let mut out = vec![0x81];
+    length(&mut out, text.len(), 0);
+    out.extend_from_slice(text);
+    out
+}
+
+/// A text message in one frame, as a client sends it: masked, as a
+/// client's must be (with a key of nothing, which leaves it as it is:
+/// the masking is against proxies between a browser and a server, and
+/// there is none between the helper and the server beside it).
+fn client_frame(text: &[u8]) -> Vec<u8> {
+    let mut out = vec![0x81];
+    length(&mut out, text.len(), 0x80);
+    out.extend_from_slice(&[0; 4]);
+    out.extend_from_slice(text);
+    out
+}
+
+fn length(out: &mut Vec<u8>, n: usize, masked: u8) {
+    match n {
+        n if n < 126 => out.push(masked | n as u8),
+        n if n < 65536 => {
+            out.push(masked | 126);
+            out.extend_from_slice(&(n as u16).to_be_bytes());
+        }
+        n => {
+            out.push(masked | 127);
+            out.extend_from_slice(&(n as u64).to_be_bytes());
+        }
     }
 }
 
@@ -405,6 +880,255 @@ mod tests {
 
     fn answer(id: u32) -> String {
         format!(r#"{{"type":"response","id":"{id}","ok":true,"seq":7}}"#)
+    }
+
+    /// A piece as a scanner gives it: a text frame and what it says.
+    fn said(text: &str, mask: Option<[u8; 4]>) -> Piece {
+        Piece::Frame { bytes: frame(text, mask), text: Some(text.as_bytes().to_vec()) }
+    }
+
+    fn text_of(frame: &[u8]) -> serde_json::Value {
+        let mut scanner = Scanner::new();
+        scanner.past_head = true;
+        match scanner.push(frame).pop() {
+            Some(Piece::Frame { text: Some(text), .. }) => serde_json::from_slice(&text).unwrap(),
+            other => panic!("not a text frame: {other:?}"),
+        }
+    }
+
+    /// Nothing of the helper's own can be put into a direction while a
+    /// frame too large to keep is passing, or between the frames of a
+    /// message sent in several.
+    #[test]
+    fn a_message_in_parts_and_a_frame_passing_are_not_between_frames() {
+        let mut scanner = Scanner::new();
+        scanner.past_head = true;
+        scanner.push(&frame("whole", Some([1, 2, 3, 4])));
+        assert!(!scanner.mid_frame());
+        // A text message in three frames, a ping between two of them.
+        let mut first = frame("be", Some([1, 2, 3, 4]));
+        first[0] = 0x01;
+        scanner.push(&first);
+        assert!(scanner.mid_frame(), "begun, not ended");
+        let mut ping = frame("", Some([0; 4]));
+        ping[0] = 0x89;
+        scanner.push(&ping);
+        let mut middle = frame("gu", Some([1, 2, 3, 4]));
+        middle[0] = 0x00;
+        scanner.push(&middle);
+        assert!(scanner.mid_frame());
+        let mut last = frame("n", Some([1, 2, 3, 4]));
+        last[0] = 0x80;
+        scanner.push(&last);
+        assert!(!scanner.mid_frame(), "ended");
+        // A frame too large to keep: mid-frame from its header to its last byte.
+        let mut large = vec![0x82, 127];
+        large.extend_from_slice(&((LARGEST as u64 + 1).to_be_bytes()));
+        scanner.push(&large);
+        scanner.push(&vec![0; LARGEST]);
+        assert!(scanner.mid_frame());
+        scanner.push(&[0]);
+        assert!(!scanner.mid_frame());
+    }
+
+    /// The helper's two questions about a terminal, as the teller gave
+    /// them: checked, and their ids.
+    fn questions(asked: &[Vec<u8>]) -> (String, String) {
+        let asked: Vec<serde_json::Value> = asked.iter().map(|frame| text_of(frame)).collect();
+        assert_eq!(asked.len(), 2, "{asked:?}");
+        assert_eq!(asked[0]["method"], "com.superlogical.terminal.input_mode");
+        assert_eq!(asked[1]["method"], "com.superlogical.terminal.process");
+        for request in &asked {
+            assert_eq!((request["type"].as_str(), request["payload"]["session_id"].as_str(), request["payload"]["block_id"].as_str()), (Some("request"), Some("s"), Some("b")));
+        }
+        (asked[0]["id"].as_str().unwrap().to_owned(), asked[1]["id"].as_str().unwrap().to_owned())
+    }
+
+    fn mode(id: &str, echo: bool, canonical: bool) -> Piece {
+        said(&format!(r#"{{"type":"response","id":"{id}","seq":41,"payload":{{"echo":{echo},"canonical":{canonical},"signals":true}}}}"#), None)
+    }
+
+    fn process(id: &str, foreground: u32) -> Piece {
+        said(&format!(r#"{{"type":"response","id":"{id}","seq":42,"payload":{{"child":{{"pid":24,"name":"bash"}},"foreground":{{"pid":{foreground},"name":"x"}}}}}}"#), None)
+    }
+
+    /// What an event of the teller's says of the terminal.
+    fn word(event: Option<Vec<u8>>) -> serde_json::Value {
+        let event = text_of(&event.expect("an event in the answer's place"));
+        assert_eq!((event["type"].as_str(), event["seq"].as_u64(), event["payload"]["type"].as_str()), (Some("event"), Some(0), Some("session_event")), "numbered 0: none of the server's own");
+        assert_eq!(event["payload"]["payload"]["session_id"], "s");
+        let block = &event["payload"]["payload"]["event"];
+        assert_eq!((block["type"].as_str(), block["payload"]["block_id"].as_str(), block["payload"]["name"].as_str()), (Some("block_event"), Some("b"), Some("input_mode_changed")));
+        block["payload"]["payload"].clone()
+    }
+
+    /// (As the server writes it: the event's name under `name`. Read
+    /// from a real one, 2026-11-23; the helper had looked for `event`,
+    /// which the app reads too, and never saw a command end.)
+    const CHANGED: &str = r#"{"type":"event","seq":50,"payload":{"type":"session_event","payload":{"session_id":"s","event":{"type":"block_event","payload":{"block_id":"b","creator_name":"com.superlogical.terminal","name":"process_changed","payload":{"generation":4,"foreground":{"pid":30,"user_id":1000,"name":"sudo","argv0":"sudo"}}}}}}}"#;
+
+    /// How a terminal reads is asked of the server a moment after it
+    /// took an Enter typed into that terminal, and a moment after it
+    /// said the terminal's foreground process changed; the two answers
+    /// go no further, and the app is given one event that says both,
+    /// and after what typed.
+    #[test]
+    fn how_a_terminal_reads_is_asked_after_an_enter_and_said_in_one_event() {
+        let t = Instant::now();
+        let mut teller = Teller::new();
+        // A write with no Enter in it, and its answer: nothing to ask.
+        teller.from_app(&said(&write(1, "ls"), Some([1, 2, 3, 4])));
+        assert_eq!(teller.from_server(&said(&answer(1), None), t), None);
+        assert_eq!(teller.deadline(), None);
+        // One with an Enter: asked about a moment after its answer, not before.
+        teller.from_app(&said(&write(2, "ls\\r"), Some([9, 9, 9, 9])));
+        assert_eq!(teller.deadline(), None, "the server hasn't taken it yet");
+        assert_eq!(teller.from_server(&said(&answer(2), None), t), None, "the answer passes");
+        assert_eq!(teller.deadline(), Some(t + AFTER_ENTER));
+        assert!(teller.tick(t + AFTER_ENTER - Duration::from_millis(1)).is_empty());
+        let (m, p) = questions(&teller.tick(t + AFTER_ENTER));
+        assert_eq!(teller.deadline(), None);
+        // The answers: neither goes on; with the second, the event.
+        assert_eq!(teller.from_server(&mode(&m, false, false), t), Some(Vec::new()));
+        let reads = word(teller.from_server(&process(&p, 24), t));
+        assert_eq!(reads, serde_json::json!({ "echo": false, "canonical": false, "signals": true, "shell": true, "after": "2" }));
+        assert_eq!(teller.deadline(), None, "a shell that reads isn't asked again");
+
+        // The server's word that a foreground process changed: asked
+        // again, sooner; another program in the foreground isn't the
+        // shell, whichever answer comes last.
+        assert_eq!(teller.from_server(&said(CHANGED, None), t), None, "the server's own events pass");
+        assert_eq!(teller.deadline(), Some(t + AFTER_PROCESS));
+        // (Named either way, as the app reads it.)
+        let mut other = Teller::new();
+        other.from_server(&said(&CHANGED.replace(r#""name":"process_changed""#, r#""event":"process_changed""#), None), t);
+        assert_eq!(other.deadline(), Some(t + AFTER_PROCESS));
+        let (m, p) = questions(&teller.tick(t + AFTER_PROCESS));
+        assert_eq!(teller.from_server(&process(&p, 30), t), Some(Vec::new()));
+        let asks = word(teller.from_server(&mode(&m, false, true), t));
+        assert_eq!(asks, serde_json::json!({ "echo": false, "canonical": true, "signals": true, "shell": false, "after": "2" }));
+    }
+
+    /// A terminal whose shell isn't reading is asked again, a few
+    /// times and each wait twice the last, and then no more; what it
+    /// says is given to the app only when it changes; and the shell
+    /// back at its prompt is said at the first look that finds it.
+    #[test]
+    fn a_terminal_that_does_not_read_is_asked_a_few_times_more_and_only_what_changes_is_said() {
+        let t = Instant::now();
+        let mut teller = Teller::new();
+        teller.from_app(&said(&write(1, "make\\r"), None));
+        teller.from_server(&said(&answer(1), None), t);
+        let mut at = t + AFTER_ENTER;
+        let (m, p) = questions(&teller.tick(at));
+        teller.from_server(&mode(&m, true, true), at);
+        let first = word(teller.from_server(&process(&p, 77), at));
+        assert_eq!(first, serde_json::json!({ "echo": true, "canonical": true, "signals": true, "shell": false, "after": "1" }));
+        // Four more looks at a command still running: asked, nothing said.
+        for again in 0..4u32 {
+            assert_eq!(teller.deadline(), Some(at + AFTER_PROCESS * (1 << again)), "look {again}");
+            at += AFTER_PROCESS * (1 << again);
+            let (m, p) = questions(&teller.tick(at));
+            assert_eq!(teller.from_server(&mode(&m, true, true), at), Some(Vec::new()));
+            assert_eq!(teller.from_server(&process(&p, 77), at), Some(Vec::new()), "the same as was said: not said again");
+        }
+        // The fifth finds the shell back, its prompt not drawn yet (it
+        // reads nothing, the terminal as a command leaves it): said,
+        // and that was the last look of its own.
+        at += AFTER_PROCESS * 16;
+        let (m, p) = questions(&teller.tick(at));
+        teller.from_server(&mode(&m, true, true), at);
+        assert_eq!(word(teller.from_server(&process(&p, 24), at))["shell"], true);
+        assert_eq!(teller.deadline(), None, "asked {ASKED_AGAIN} times more, and no more");
+        // The server's word starts it again; the prompt is there now.
+        teller.from_server(&said(CHANGED, None), at);
+        let (m, p) = questions(&teller.tick(at + AFTER_PROCESS));
+        teller.from_server(&mode(&m, false, false), at);
+        assert_eq!(word(teller.from_server(&process(&p, 24), at)), serde_json::json!({ "echo": false, "canonical": false, "signals": true, "shell": true, "after": "1" }));
+        // The same again, after nothing typed: not said twice.
+        teller.from_server(&said(CHANGED, None), at);
+        let (m, p) = questions(&teller.tick(at + AFTER_PROCESS));
+        teller.from_server(&mode(&m, false, false), at);
+        assert_eq!(teller.from_server(&process(&p, 24), at), Some(Vec::new()));
+        // After another line, the same mode is news: it is of after that line.
+        teller.from_app(&said(&write(2, "\\r"), None));
+        teller.from_server(&said(&answer(2), None), at);
+        let (m, p) = questions(&teller.tick(at + AFTER_ENTER));
+        teller.from_server(&mode(&m, false, false), at);
+        assert_eq!(word(teller.from_server(&process(&p, 24), at))["after"], "2");
+    }
+
+    /// The word is of after everything typed, or it isn't given: no
+    /// question is asked while something typed is unanswered, and one
+    /// that something was typed after says nothing.
+    #[test]
+    fn a_word_that_typing_overtook_is_not_given() {
+        let t = Instant::now();
+        let mut teller = Teller::new();
+        teller.from_app(&said(&write(1, "ls\\r"), None));
+        teller.from_server(&said(&answer(1), None), t);
+        // A letter typed before the question's time, unanswered at it:
+        // not asked yet, and nothing waited for meanwhile.
+        teller.from_app(&said(&write(2, "g"), None));
+        assert_eq!(teller.deadline(), None);
+        assert!(teller.tick(t + AFTER_ENTER).is_empty());
+        // Answered: asked now, late as it is, and of after that letter.
+        teller.from_server(&said(&answer(2), None), t + AFTER_ENTER * 2);
+        assert_eq!(teller.deadline(), Some(t + AFTER_ENTER));
+        let (m, p) = questions(&teller.tick(t + AFTER_ENTER * 2));
+        // Another letter while the question is on its way: its answers
+        // are taken, and say nothing.
+        teller.from_app(&said(&write(3, "i"), None));
+        assert_eq!(teller.from_server(&mode(&m, false, false), t), Some(Vec::new()));
+        assert_eq!(teller.from_server(&process(&p, 24), t), Some(Vec::new()), "of before the letter or of after: not said");
+        teller.from_server(&said(&answer(3), None), t);
+        assert_eq!(teller.deadline(), None, "and not asked again for a letter");
+        // A key the host's own bindings are asked about is typed too.
+        teller.from_app(&said(&write(4, "x\\r"), None));
+        teller.from_server(&said(&answer(4), None), t);
+        teller.from_app(&said(r#"{"type":"request","id":"5","method":"client.key","payload":{"session_id":"s","block_id":"b","key":{"key":"a"}}}"#, None));
+        assert!(teller.tick(t + AFTER_ENTER).is_empty());
+        teller.from_server(&said(&answer(5), None), t);
+        let (m, p) = questions(&teller.tick(t + AFTER_ENTER));
+        teller.from_server(&mode(&m, false, false), t);
+        assert_eq!(word(teller.from_server(&process(&p, 24), t))["after"], "5");
+    }
+
+    /// What isn't the teller's passes as it is, and what goes wrong
+    /// says nothing: an answer the server gives as an error, an answer
+    /// to a question no longer kept, the app's own requests of the same
+    /// methods, and a connection that isn't one to ask on.
+    #[test]
+    fn the_teller_takes_only_its_own_and_says_nothing_of_what_failed() {
+        let t = Instant::now();
+        let mut teller = Teller::new();
+        // The app's own question and its answer: theirs.
+        let own = r#"{"type":"request","id":"7","method":"com.superlogical.terminal.input_mode","payload":{"session_id":"s","block_id":"b"}}"#;
+        teller.from_app(&said(own, Some([1, 1, 1, 1])));
+        assert_eq!(teller.from_server(&said(r#"{"type":"response","id":"7","seq":3,"payload":{"echo":true,"canonical":true,"signals":true}}"#, None), t), None);
+        // An event that only names the helper (a process of that name): the server's.
+        let named = r#"{"type":"event","seq":4,"payload":{"type":"session_event","payload":{"session_id":"s","event":{"type":"block_event","payload":{"block_id":"b","event":"title_changed","payload":{"title":"olo-rex-link-1-m \"response\""}}}}}}"#;
+        assert_eq!(teller.from_server(&said(named, None), t), None);
+        // A failure: the pair is dropped, and its other half says nothing either.
+        teller.from_app(&said(&write(8, "x\\n"), Some([2, 2, 2, 2])));
+        teller.from_server(&said(&answer(8), None), t);
+        let (m, p) = questions(&teller.tick(t + AFTER_ENTER));
+        let failed = format!(r#"{{"type":"response","id":"{m}","seq":9,"error":{{"code":"not_found","message":"no such block"}}}}"#);
+        assert_eq!(teller.from_server(&said(&failed, None), t), Some(Vec::new()));
+        assert_eq!(teller.from_server(&process(&p, 24), t), Some(Vec::new()), "one of ours, though its question is gone");
+        assert_eq!(teller.deadline(), None, "and a terminal that can't be asked isn't asked again");
+        // Two Enters into one terminal before either is asked about: one question.
+        teller.from_app(&said(&write(11, "a\\r"), None));
+        teller.from_app(&said(&write(12, "b\\r"), None));
+        teller.from_server(&said(&answer(12), None), t);
+        assert_eq!(teller.tick(t + AFTER_ENTER).len(), 2, "one pair for the terminal");
+        assert!(teller.typed.is_empty(), "the write before it was answered too");
+        // Off: nothing is noted, asked or taken.
+        let mut teller = Teller::new();
+        teller.off();
+        teller.from_app(&said(&write(1, "x\\r"), None));
+        assert_eq!(teller.from_server(&said(&answer(1), None), t), None);
+        assert_eq!(teller.deadline(), None);
     }
 
     struct Lcg(u64);
@@ -552,7 +1276,7 @@ mod tests {
         assert_eq!(HERE, format!("{HEADER}: {VERSION}"));
         let head = b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nSec-WebSocket-Accept: abc\r\n\r\n";
         let said = announced(head);
-        assert_eq!(String::from_utf8(said).unwrap(), "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nSec-WebSocket-Accept: abc\r\nX-Olo-Rex-Link: 1\r\n\r\n");
+        assert_eq!(String::from_utf8(said).unwrap(), "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nSec-WebSocket-Accept: abc\r\nX-Olo-Rex-Link: 2\r\n\r\n");
         let refused = b"HTTP/1.1 403 Forbidden\r\n\r\n";
         assert_eq!(announced(refused), refused);
     }
@@ -625,6 +1349,7 @@ mod tests {
         assert_eq!(typed(br#"{"type":"request","id":"3","method":"session.view","payload":{"note":"client.key"}}"#), None);
         assert_eq!(typed(br#"{"type":"response","id":"3","payload":{"method":"client.key"}}"#), None);
         assert_eq!(typed(b"client.key, but not a message"), None);
+        let answers = |text: &[u8], id: &str| answered_in(&Piece::Frame { bytes: Vec::new(), text: Some(text.to_vec()) }).as_deref() == Some(id);
         assert!(answers(answer(7).as_bytes(), "7"));
         assert!(answers(br#"{"type":"response","id":7,"error":{"code":"no"}}"#, "7"));
         assert!(!answers(answer(17).as_bytes(), "7"));
