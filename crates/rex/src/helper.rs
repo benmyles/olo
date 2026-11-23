@@ -79,27 +79,61 @@ pub enum Stands {
     NoBuild(String),
 }
 
-/// Sees that the host has the helper of build `id`, putting it there
-/// where it hasn't. A control connection opened afterwards goes through
-/// it ([`SshSessionPool::set_helper`] with `id`).
-pub async fn ensure(pool: &SshSessionPool, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, id: &str, builds: &[Build]) -> Result<Stands, Failed> {
-    let failed = |e: crate::error::RexError| Failed { refused: matches!(e, crate::error::RexError::SshRefused(_)), why: e.to_string() };
-    let asked = pool.exec(target, askpass.clone(), &asks(id), &mut |_| {}).await.map_err(failed)?;
-    let mut lines = asked.output.lines();
+/// What a host said when asked ([`ask`]).
+#[derive(Clone, Copy, Debug)]
+pub enum Asked<'a> {
+    /// It has the helper of this build, and can run it.
+    Here,
+    /// It hasn't: this is the build for it.
+    Needs(&'a Build),
+}
+
+/// What the host's answer to [`asks`] says: which build it needs, if
+/// any; or that none is carried for such a host (what it said it is).
+fn asked<'a>(ran: &crate::provision::Ran, builds: &'a [Build]) -> Result<Result<Asked<'a>, String>, Failed> {
+    let mut lines = ran.output.lines();
     let uname = lines.next().unwrap_or_default().trim().to_owned();
-    if !asked.ok() || uname.is_empty() {
-        return Err(format!("the host didn't say what it is ({})", asked.output.lines().last().unwrap_or("no answer").trim()).into());
+    if !ran.ok() || uname.is_empty() {
+        return Err(format!("the host didn't say what it is ({})", ran.output.lines().last().unwrap_or("no answer").trim()).into());
     }
     if lines.any(|l| l.trim() == "here") {
-        return Ok(Stands::Already);
+        return Ok(Ok(Asked::Here));
     }
-    let Some(build) = build_for(&uname, builds) else { return Ok(Stands::NoBuild(uname)) };
+    Ok(build_for(&uname, builds).map(Asked::Needs).ok_or(uname))
+}
+
+fn failed(e: crate::error::RexError) -> Failed {
+    Failed { refused: matches!(e, crate::error::RexError::SshRefused(_)), why: e.to_string() }
+}
+
+/// Asks the host whether it has the helper of build `id` (one command
+/// there; the SSH connection is made for it where there is none yet,
+/// with whatever that asks of the person). `Ok(Err(kind))`: no build is
+/// carried for such a host.
+pub async fn ask<'a>(pool: &SshSessionPool, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, id: &str, builds: &'a [Build]) -> Result<Result<Asked<'a>, String>, Failed> {
+    asked(&pool.exec(target, askpass, &asks(id), &mut |_| {}).await.map_err(failed)?, builds)
+}
+
+/// Puts `build` on the host as the helper of build `id`.
+pub async fn put(pool: &SshSessionPool, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, id: &str, build: &Build) -> Result<Stands, Failed> {
     let began = Instant::now();
     let put = pool.put(target, askpass, &takes(id, build.bytes.len()), build.bytes).await.map_err(failed)?;
     if !put.ok() || put.output.lines().last().map(str::trim) != Some("installed") {
         return Err(format!("the helper couldn't be put on the host ({})", put.output.lines().last().unwrap_or("no answer").trim()).into());
     }
     Ok(Stands::Installed { bytes: build.bytes.len(), took: began.elapsed() })
+}
+
+/// Sees that the host has the helper of build `id`, putting it there
+/// where it hasn't ([`ask`], then [`put`]). A control connection opened
+/// afterwards goes through it ([`SshSessionPool::set_helper`] with
+/// `id`).
+pub async fn ensure(pool: &SshSessionPool, target: &SshTarget, askpass: Option<Arc<dyn SshAskpass>>, id: &str, builds: &[Build]) -> Result<Stands, Failed> {
+    match ask(pool, target, askpass.clone(), id, builds).await? {
+        Ok(Asked::Here) => Ok(Stands::Already),
+        Ok(Asked::Needs(build)) => put(pool, target, askpass, id, build).await,
+        Err(kind) => Ok(Stands::NoBuild(kind)),
+    }
 }
 
 #[cfg(test)]
@@ -199,6 +233,17 @@ mod tests {
         old.set_modified(std::time::SystemTime::now() - Duration::from_secs(40 * 86400)).unwrap();
         assert_eq!(home.run(&takes("new2", RUNS.len()), RUNS).1, "installed");
         assert_eq!(home.files(), [format!("olo-rex-link-new1-{m}"), format!("olo-rex-link-new2-{m}")]);
+    }
+
+    #[test]
+    fn what_a_host_answers_says_what_it_needs() {
+        let builds = [Build { system: "Linux", machines: &["x86_64"], bytes: b"x" }];
+        let ran = |status, output: &str| crate::provision::Ran { status: Some(status), output: output.to_owned() };
+        assert!(matches!(asked(&ran(0, "Linux x86_64\nhere\n"), &builds), Ok(Ok(Asked::Here))));
+        assert!(matches!(asked(&ran(0, "Linux x86_64\n"), &builds), Ok(Ok(Asked::Needs(b))) if b.bytes == b"x"));
+        assert!(matches!(asked(&ran(0, "FreeBSD amd64\n"), &builds), Ok(Err(kind)) if kind == "FreeBSD amd64"));
+        assert!(asked(&ran(127, "sh: uname: not found\n"), &builds).is_err());
+        assert!(asked(&ran(0, ""), &builds).is_err());
     }
 
     #[test]

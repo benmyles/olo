@@ -604,7 +604,20 @@ fn tip_size(text: &str) -> (f32, f32) {
     let one_line = text.lines().map(|l| f32::from(style::text_width(l.to_owned(), style::PLAIN_SIZE, font.clone()))).fold(0.0, f32::max);
     // (A hairline frame each side; two points: whole device pixels.)
     let frame = 2.0;
-    let inner = one_line.ceil().min(MAX_WIDTH - 2.0 * PAD_X - frame);
+    let most = MAX_WIDTH - 2.0 * PAD_X - frame;
+    let mut inner = one_line.ceil().min(most);
+    // Lines are wrapped by their letters' advances, which add up to a
+    // little more than the shaped line where pairs of letters are set
+    // closer: a line that fits is given the point or two that takes,
+    // or it was sized as two lines and drawn as one ("Connected, with
+    // Olo’s typing helper" had an empty line under it, 2026-11-23).
+    let mut wrapper = olo_interface::text_system().line_wrapper(font.clone(), px(style::PLAIN_SIZE));
+    let mut wraps = |width: f32| {
+        text.lines().any(|l| f32::from(style::text_width(l.to_owned(), style::PLAIN_SIZE, font.clone())) <= most && wrapper.wrap_line(&[olo_interface::LineFragment::text(l)], px(width)).count() > 0)
+    };
+    while inner < most && wraps(inner) {
+        inner += 1.0;
+    }
     let text_h = paragraph_height(text, inner);
     ((inner + 2.0 * PAD_X + frame).ceil(), (text_h + 2.0 * PAD_Y + frame).ceil())
 }
@@ -623,6 +636,23 @@ mod tests {
         assert!(!within(widget, b(62.0, 182.0, 52.0, 36.0)), "the widget beside it");
         assert!(!within(widget, b(8.0, 160.0, 164.0, 22.0)), "the row above");
         assert!(within(widget, widget));
+    }
+
+    /// A tip of one line that fits is one line tall: as tall as any
+    /// other of one line, whatever its letters (its width is the shaped
+    /// line's, which pairs of letters set closer than their advances
+    /// add up to: sized by one and wrapped by the other, "Connected,
+    /// with Olo’s typing helper" had room for a second line under it).
+    #[test]
+    fn a_tip_of_one_line_is_one_line_tall() {
+        let one = tip_size("Open").1;
+        for text in ["Connected, with Olo’s typing helper", "Connected", "Hasn’t answered for 4 seconds", "Bold (⌘B)", "AVAVAVAV To Ty. WAVE, Yo. fi fl ffi", "Tailscale: you@far, away"] {
+            let (w, h) = tip_size(text);
+            assert_eq!(h, one, "{text:?} is {w} wide and {h} tall");
+        }
+        // (And one too long for a line is taller, and no wider than a tip grows.)
+        let (w, h) = tip_size("Connected. Olo’s typing helper was added and will be used the next time you connect.");
+        assert!(h > one && w <= MAX_WIDTH, "{w} x {h}");
     }
 
     #[test]

@@ -814,6 +814,10 @@ pub fn session_tab_names(st: &HubState, host_key: &str, sess: &olo_rex_client::S
     tab_names(&tabs)
 }
 
+/// How long the sending of Olo's helper to a host is waited for before
+/// the host's first connection is made without it.
+const HELPER_FIRST: Duration = Duration::from_secs(8);
+
 /// The most typed requests on their way to a host at once (where its
 /// helper keeps their order): what is typed past that waits here, and
 /// goes together.
@@ -2467,6 +2471,119 @@ impl RexHub {
 }
 
 impl RexHubInner {
+    /// What is known of the helper on a host is kept (`Settings::
+    /// helper_hosts`): `Some(true)` it has one, `Some(false)` this
+    /// build of the app has none to give it, `None` nothing is known
+    /// (it is asked before its next connection).
+    fn helper_known(&self, host_key: &str, known: Option<bool>) {
+        let mut st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let word = known.map(|has| if has { "yes".to_owned() } else { format!("no:{}", crate::link::ID) });
+        if st.settings.helper_hosts.get(host_key) != word.as_ref() {
+            match word {
+                Some(word) => st.settings.helper_hosts.insert(host_key.to_owned(), word),
+                None => st.settings.helper_hosts.remove(host_key),
+            };
+            st.settings.save();
+        }
+    }
+
+    /// How the helper came to stand on a host, taken note of: the
+    /// host's tip, what is kept of it, and where it was put there now,
+    /// the status bar's word (something of Olo's now lies on the
+    /// person's host: said, once, as it happens). `in_use`: the
+    /// connection about to be made goes through it.
+    fn helper_stands(&self, host_key: &str, stands: Result<olo_rex_client::helper::Stands, olo_rex_client::provision::Failed>, in_use: bool) {
+        use olo_rex_client::helper::Stands;
+        let helper = match stands {
+            Ok(Stands::Already) => {
+                tracing::info!("rex: Olo's helper is on host {host_key} already");
+                self.helper_known(host_key, Some(true));
+                HostHelper::Ready
+            }
+            Ok(Stands::Installed { bytes, took }) => {
+                tracing::info!("rex: Olo's helper put on host {host_key}: {bytes} bytes in {} ms", took.as_millis());
+                self.helper_known(host_key, Some(true));
+                let label = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(host_key).map(|h| h.label.clone()).unwrap_or_default();
+                let said = if in_use {
+                    olo_kit::tr!("Olo’s typing helper was added to your account on “{}”.", label)
+                } else {
+                    olo_kit::tr!("Olo’s typing helper was added to your account on “{}” and will be used the next time you connect.", label)
+                };
+                (self.notify)(HubNotice::Said(said.to_string()));
+                HostHelper::Ready
+            }
+            Ok(Stands::NoBuild(kind)) => {
+                tracing::info!("rex: no helper is carried for host {host_key} ({kind})");
+                self.helper_known(host_key, Some(false));
+                HostHelper::Without(olo_kit::tr!("there isn’t one for {}", kind).to_string())
+            }
+            Err(e) => {
+                tracing::warn!("rex: Olo's helper couldn't be put on host {host_key}: {e}");
+                HostHelper::Without(e.to_string())
+            }
+        };
+        if let Some(host) = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(host_key).filter(|h| h.helper != HostHelper::Used) {
+            host.helper = helper;
+        }
+        (self.notify)(HubNotice::StateChanged);
+    }
+
+    /// A host of which nothing is known gets the helper **before** its
+    /// connection is made, so its first connection already goes
+    /// through it: asked (which makes the SSH connection, with
+    /// whatever that asks of the person), and where it has none, given
+    /// it. The sending is waited for [`HELPER_FIRST`] and no longer: on
+    /// a link too slow for that the connection is made without, and
+    /// the helper is there for the next. Whether the app's build is on
+    /// the host now (nothing more is to be asked after connecting).
+    ///
+    /// Only where nothing is known: a host that has a helper (any
+    /// build: `ssh::dial_command` runs what is there) or can't have
+    /// this app's is connected to at once, as before.
+    async fn helper_before_connecting(self: &Arc<Self>, host_key: &str, endpoint: &RexEndpoint) -> bool {
+        use olo_rex_client::helper::{Asked, Stands, ask, put};
+        let RexEndpoint::Ssh { target, pool, askpass } = endpoint else { return false };
+        {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let known = st.settings.helper_hosts.get(host_key).is_some_and(|word| word == "yes" || word.strip_prefix("no:") == Some(crate::link::ID));
+            if !crate::link::carried() || !st.settings.host_helper || known {
+                return false;
+            }
+        }
+        let build = match ask(pool, target, askpass.clone(), crate::link::ID, &crate::link::BUILDS).await {
+            Ok(Ok(Asked::Here)) => {
+                self.helper_stands(host_key, Ok(Stands::Already), true);
+                return true;
+            }
+            Ok(Ok(Asked::Needs(build))) => build,
+            Ok(Err(kind)) => {
+                self.helper_stands(host_key, Ok(Stands::NoBuild(kind)), true);
+                return true;
+            }
+            // (Why it can't be reached is the connection's to say.)
+            Err(_) => return false,
+        };
+        let (pool, target, askpass) = (pool.clone(), target.clone(), askpass.clone());
+        let mut sending = tokio::spawn(async move { put(&pool, &target, askpass, crate::link::ID, build).await });
+        match tokio::time::timeout(HELPER_FIRST, &mut sending).await {
+            Ok(done) => {
+                let done = done.unwrap_or_else(|e| Err(e.to_string().into()));
+                let there = done.is_ok();
+                self.helper_stands(host_key, done, true);
+                there
+            }
+            Err(_) => {
+                let (hub, host_key) = (self.clone(), host_key.to_owned());
+                tokio::spawn(async move {
+                    let done = sending.await.unwrap_or_else(|e| Err(e.to_string().into()));
+                    hub.helper_stands(&host_key, done, false);
+                });
+                // (It is on its way: not to be asked for again meanwhile.)
+                true
+            }
+        }
+    }
+
     /// A host reached over SSH is seen to have the helper the app
     /// carries (where the setting has it and one is carried for such a
     /// host): asked, and where it hasn't, given it, off the
@@ -2478,43 +2595,21 @@ impl RexHubInner {
     /// (`olo_rex_client::helper`).
     fn look_after_helper(self: &Arc<Self>, host_key: &str, endpoint: &RexEndpoint) {
         let RexEndpoint::Ssh { target, pool, askpass } = endpoint else { return };
-        if !crate::link::carried() || !self.state.lock().unwrap_or_else(|e| e.into_inner()).settings.host_helper {
-            return;
+        {
+            let st = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            let cant = st.settings.helper_hosts.get(host_key).is_some_and(|word| word.strip_prefix("no:") == Some(crate::link::ID));
+            if !crate::link::carried() || !st.settings.host_helper || cant {
+                return;
+            }
         }
         let (target, pool, askpass) = (target.clone(), pool.clone(), askpass.clone());
         let (hub, host_key) = (self.clone(), host_key.to_owned());
-        let set = move |hub: &RexHubInner, host_key: &str, helper: HostHelper| {
-            if let Some(host) = hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(host_key).filter(|h| h.helper != HostHelper::Used) {
-                host.helper = helper;
-            }
-            (hub.notify)(HubNotice::StateChanged);
-        };
-        set(&hub, &host_key, HostHelper::Installing);
+        if let Some(host) = self.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get_mut(&host_key).filter(|h| h.helper != HostHelper::Used) {
+            host.helper = HostHelper::Installing;
+        }
         tokio::spawn(async move {
-            use olo_rex_client::helper::{Stands, ensure};
-            let helper = match ensure(&pool, &target, askpass, crate::link::ID, &crate::link::BUILDS).await {
-                Ok(Stands::Already) => {
-                    tracing::info!("rex: Olo's helper is on host {host_key} already, for its next connection");
-                    HostHelper::Ready
-                }
-                Ok(Stands::Installed { bytes, took }) => {
-                    tracing::info!("rex: Olo's helper put on host {host_key}: {bytes} bytes in {} ms", took.as_millis());
-                    // (Something of Olo's now lies on the person's host:
-                    // said, once, as it happens.)
-                    let label = hub.state.lock().unwrap_or_else(|e| e.into_inner()).hosts.get(&host_key).map(|h| h.label.clone()).unwrap_or_default();
-                    (hub.notify)(HubNotice::Said(olo_kit::tr!("Olo’s typing helper was added to your account on “{}” and will be used the next time you connect.", label).to_string()));
-                    HostHelper::Ready
-                }
-                Ok(Stands::NoBuild(kind)) => {
-                    tracing::info!("rex: no helper is carried for host {host_key} ({kind})");
-                    HostHelper::Without(olo_kit::tr!("there isn’t one for {}", kind).to_string())
-                }
-                Err(e) => {
-                    tracing::warn!("rex: Olo's helper couldn't be put on host {host_key}: {e}");
-                    HostHelper::Without(e.to_string())
-                }
-            };
-            set(&hub, &host_key, helper);
+            let stands = olo_rex_client::helper::ensure(&pool, &target, askpass, crate::link::ID, &crate::link::BUILDS).await;
+            hub.helper_stands(&host_key, stands, false);
         });
     }
 
@@ -2687,6 +2782,10 @@ impl RexHubInner {
                 }
             };
 
+            // (A host nothing is known of: its helper first, so this
+            // connection goes through it.)
+            let helper_seen = self.helper_before_connecting(&host_key, &endpoint).await;
+
             let connected = async {
                 let (stream, host_hdr) = endpoint.connect_control_stream().await?;
                 let label = std::fs::read_to_string("/etc/hostname").ok().map(|s| s.trim().to_owned()).filter(|s| !s.is_empty());
@@ -2857,7 +2956,19 @@ impl RexHubInner {
                         }
                     }
 
-                    self.look_after_helper(&host_key, &endpoint);
+                    // (What is kept of the helper there follows what this
+                    // connection found: gone from a host that had one, it
+                    // is asked for before the next.)
+                    if matches!(endpoint, RexEndpoint::Ssh { .. }) && self.state.lock().unwrap_or_else(|e| e.into_inner()).settings.host_helper {
+                        if ctrl.keeps_typing_in_order() {
+                            self.helper_known(&host_key, Some(true));
+                        } else if self.state.lock().unwrap_or_else(|e| e.into_inner()).settings.helper_hosts.get(&host_key).is_some_and(|word| word == "yes") {
+                            self.helper_known(&host_key, None);
+                        }
+                    }
+                    if !helper_seen {
+                        self.look_after_helper(&host_key, &endpoint);
+                    }
 
                     for view in initial_views {
                         self.ingest_session(&host_key, &ctrl, &endpoint, view, &pre_tickets).await;

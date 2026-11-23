@@ -1183,12 +1183,15 @@ something nobody here has is in "Blocked", with what it waits for.
     twice as many letters are drawn at once (40 in a hundred, of 20).
     **What is left of the host's half** (Gemini's review of the design,
     2026-11-22, is what most of this list is from):
-    - *The helper there for a host's first connection too*: it is used
-      from the connection after the one that put it there. Add Host
-      can put it there before it connects (it asks the host how it
-      stands then anyway), and a connection that stands could be moved
-      onto it once it is there (the control connection remade with
-      its token, the terminals' own streams left alone: to be tried).
+    - *The helper sent smaller, and a standing connection moved onto
+      it*: a new host gets the helper before its first connection now
+      (589 kB, 1.8 s to the test server; waited for eight seconds),
+      but on a link too slow for that, and for a newer build beside an
+      older one, it is used from the next connection. Packed (gzip is
+      on every host) it would be half; and a connection that stands
+      could be moved onto it once it is there (the control connection
+      remade with its token, the terminals' streams left alone: to be
+      tried).
     - *A burst after a quiet spell*: forty requests sent in the same
       instant are answered two at one round trip and the rest a round
       trip later, with the helper and without. Which window holds

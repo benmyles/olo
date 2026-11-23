@@ -1966,6 +1966,14 @@ once that comes), so a tip that grows at the screen's edge stays on it.
 So a tip can be wider or taller than its window: Deskbar's tray,
 Terminal's sudo window's command.
 
+A tip of one line is one line tall (`tip_size`): its width is the
+shaped line's and as much more as its wrapping takes. Lines are wrapped
+by their letters' advances, which add up to a point or two more than
+the shaped line where pairs of letters are set closer; sized by the one
+and wrapped by the other, "Connected, with Olo’s typing helper" was
+given room for a second, empty line under it (seen in a picture of
+Rex's sidebar, 2026-11-23; a test holds it).
+
 A tip can be a card (`olo_kit::card`), for more than a sentence:
 `tip::hover_card(cx, key, Rc<Card>, anchor, hovered)` and
 `tip::recard(cx, key, card)` are `hover` and `retext` for one (a card
@@ -27193,13 +27201,24 @@ connecting in fewer round trips); what it does today:
   checked whole, asked its version there, moved into place in one
   step, the folder made the account's alone; builds nobody installed
   for a month are removed with it. 589 kB took 1.8 s to the test
-  server. It is used from the host's next connection (one that stands
-  isn't remade for it: TODO). No root, nothing started, nothing on the
+  server. A host of which nothing is known is asked, and given the
+  helper, **before** its connection is made
+  (`hub::helper_before_connecting`), so its first connection already
+  goes through it; the sending is waited for eight seconds
+  (`HELPER_FIRST`) and no longer: on a link too slow for that the
+  connection is made without, and the helper is there for the next
+  (one that stands isn't remade for it). What is known of each host is
+  kept (`Settings::helper_hosts`: "yes" where a connection went
+  through one, "no:BUILD" where this build had none to give), so a
+  host that has a helper, or can't have this app's, is connected to at
+  once, as before; a host whose helper is gone is asked again before
+  its next connection. No root, nothing started, nothing on the
   host's PATH: a file that does nothing until the app runs it, and
   that ends with the connection.
 - *What the person is told*: as the helper is put on a host the
   status bar says so, once, for six seconds ("Olo’s typing helper was
-  added to your account on “far” and will be used the next time you
+  added to your account on “far”."; where it could only be added after
+  the connection was made, "… and will be used the next time you
   connect.": `HubNotice::Said`, never in place of a problem or another
   word); the host's tip in the sidebar
   says how it stands (`HostHelper::said`); Settings ▸ Use Olo’s Typing

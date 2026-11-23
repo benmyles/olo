@@ -141,6 +141,12 @@ pub struct Settings {
     /// there (`link`, `olo_rex_client::helper`): what is typed then
     /// goes as it is typed, in order.
     pub host_helper: bool,
+    /// What is known of the helper on each host, by the host's key:
+    /// "yes" where a connection went through one, "no:BUILD" where
+    /// this build of the app found it had none to give (`hub`,
+    /// `helper_before_connecting`). A host with no word here is asked
+    /// before its connection is made.
+    pub helper_hosts: std::collections::BTreeMap<String, String>,
     /// What Keep It Going types to an agent that has stopped.
     pub keep_going_message: String,
 
@@ -187,6 +193,7 @@ impl Default for Settings {
             font_size: TEXT_SIZE,
             type_ahead: true,
             host_helper: true,
+            helper_hosts: std::collections::BTreeMap::new(),
             keep_going_message: "Please keep going until everything is complete and verified.".to_owned(),
             home_server_address: "local".to_owned(),
             saved_hosts: Vec::new(),
